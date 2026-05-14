@@ -1,0 +1,56 @@
+# prek.toml - Git hook configuration for xylitol
+# Docs: https://github.com/j178/prek
+
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "trailing-whitespace" },
+  { id = "end-of-file-fixer" },
+  { id = "check-toml" },
+  { id = "check-yaml" },
+  { id = "check-merge-conflict" },
+  { id = "check-added-large-files", args = ["--maxkb=512"] },
+  { id = "mixed-line-ending", args = ["--fix=lf"] },
+  { id = "detect-private-key" },
+  { id = "check-case-conflict" },
+]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "cargo-fmt"
+name = "cargo fmt (check)"
+language = "system"
+entry = "cargo fmt -- --check"
+types = ["rust"]
+pass_filenames = false
+require_serial = true
+
+[[repos.hooks]]
+id = "cargo-clippy"
+name = "cargo clippy"
+language = "system"
+entry = "cargo clippy -- -D warnings"
+types = ["rust"]
+pass_filenames = false
+require_serial = true
+
+[[repos.hooks]]
+id = "cargo-test"
+name = "cargo test"
+language = "system"
+entry = "cargo test"
+types = ["rust"]
+pass_filenames = false
+require_serial = true
+stages = ["pre-push"]
+
+[[repos.hooks]]
+id = "conventional-commits"
+name = "conventional commits"
+language = "system"
+entry = "prek hook-conventional-commits"
+stages = ["commit-msg"]
+always_run = true
+pass_filenames = false
