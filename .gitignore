@@ -3,9 +3,6 @@
 # Generated on 2026-05-14
 # Includes: rust, python, go, typescript, javascript
 
-### llmanspec generated ###
-llmanspec/dag.gen.md
-
 ### Universal ###
 # Common files that should be ignored in all projects
 
