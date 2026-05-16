@@ -2,28 +2,19 @@
 schema: spec-driven
 locale: zh-CN
 
-# Project context (optional)
-# Tech stack, conventions, constraints. Shown to AI during artifact creation.
-# context: |
-#   Tech stack: TypeScript, React, Node.js
-#   We use conventional commits
-#   Domain: e-commerce platform
+context: |
+  Project conventions: see AGENTS.md (SSOT).
+  Design principle: pluggable/configurable architecture. Only core agent loop + basic tools are built-in; everything else (LSP, DAP, hooks, skills, MCP, diff review, session snapshots, repeat detection) is opt-in via YAML config.
+  Dependency tracking: each proposal.md frontmatter contains depends_on and blocks. Read proposal.md files to determine execution order. For human overview run: ./scripts/generate-llmanspec-changes-dag.sh
 
-# Per-artifact rules (optional)
-# Map of artifact_id -> string[].
-# rules:
-#   proposal:
-#     - Keep proposals under 500 words
-#     - Always include a "Non-goals" section
-#   tasks:
-#     - Break tasks into chunks of max 2 hours
-
-# Optional extra skills (disabled by default, uncomment to enable)
-# extra_skills:
-#   - llman-sdd-new-change
-#   - llman-sdd-continue
-#   - llman-sdd-ff
-#   - llman-sdd-show
-#   - llman-sdd-sync
-#   - llman-sdd-validate
-#   - llman-sdd-verify
+rules:
+  proposal:
+    - "Change ID format: c{priority}-{verb}-{subject} where priority is a multiple of 5 (e.g., c05-add-skeleton, c10-add-config, c15-add-tools). Verb prefix: add / update / remove / refactor / fix. Priority numbers MUST be unique."
+    - "Priority numbers are advisory ordering. Actual execution follows dependency edges first, then priority as tiebreaker. To insert between c05 and c10, use c06/c07/c08/c09."
+    - "Every proposal.md MUST include YAML frontmatter with depends_on (list of change IDs) and blocks (list of change IDs blocked by this one). Use [] if none."
+    - "A change cannot be applied until all its depends_on changes have been archived (moved to changes/archive/)."
+    - "If depends_on references a change that does not exist in llmanspec/changes/, treat as validation error and STOP."
+    - "Keep changes atomic: each change must be independently validatable and archivable."
+    - "Prefer pluggable/configurable design: features beyond core agent loop + basic tools should be opt-in via YAML config, not hard-coded."
+  tasks:
+    - "Break tasks into chunks of max 2 hours."
