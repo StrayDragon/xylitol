@@ -10,7 +10,74 @@
 
 # AGENTS.md
 
-> **SSOT**: 本文档是 xylitol 项目的通用规范文档。所有开发指南都应引用本文档，避免重复。
+> **SSOT**: 本文档是 xylitol 项目的通用规范文档。
+
+---
+
+## 项目简介
+
+xylitol 是一个 Rust 编写的 AI coding agent，参考 codex-rs 设计。采用单 crate + 领域分层 + feature flags 架构。
+
+---
+
+## 架构
+
+```
+src/
+├── agent/       # 核心领域：agent loop, tools, planner, model
+├── infra/       # 基础设施：config, hooks, security, lsp, dap, session, skills
+└── interface/   # 用户接口：cli, tui, print, rpc
+```
+
+层间通过 `pub(crate)` 控制可见性，跨层访问通过 `lib.rs` re-export。
+
+---
+
+## Feature Flags（两层启用策略）
+
+### 命名规则：`<domain>-<capability>`
+
+| 前缀 | 层 | 含义 |
+|------|-----|------|
+| `agent-` | `agent/` | 改变 agent 核心行为 |
+| `infra-` | `infra/` | 基础设施集成 |
+| `ui-` | `interface/` | 用户交互模式 |
+| `dev-` | test-only | 开发/测试专用 |
+
+### 两层策略
+
+- **始终编译（built-in）**：无 feature flag，通过 `config.yaml` 运行时控制
+- **可选编译（feature-flagged）**：Cargo feature flag 控制，引入重依赖或非必需集成
+
+### 始终编译功能
+
+| 功能 | Config 控制 |
+|------|------------|
+| 7 个内置工具 | `tools.allowlist` / `tools.blocklist` |
+| Hook 事件系统 | `hooks: []`（空 = no-op） |
+| 安全策略引擎 | `security.enabled` |
+| 重复检测 | `repeat_detection.enabled` |
+| Print 模式 | CLI `--mode print` |
+| JSON-RPC 模式 | CLI `--mode rpc` |
+
+### 可选编译 Feature Flags
+
+| Feature | 层 | 说明 | 重依赖 |
+|---------|-----|------|--------|
+| `agent-planning` | agent | 规划-执行分离 | — |
+| `agent-model-lock` | agent | 模型抢占锁（Phase 2） | — |
+| `infra-lsp` | infra | LSP 集成 | `lspz` |
+| `infra-dap` | infra | DAP 集成（Phase 2） | — |
+| `infra-skills` | infra | Skills & MCP | `rmcp` |
+| `infra-session` | infra | Session 快照 | SQLite |
+| `infra-sandbox` | infra | 沙箱（Phase 2） | — |
+| `infra-rtk` | infra | rtk 输出压缩 | — |
+| `ui-tui` | interface | ratatui TUI | `ratatui` 等 |
+| `ui-review` | interface | Diff 评审 | `syntect` |
+| `dev-vt100` | dev | VT100 测试 | `vt100` |
+| `dev-e2e` | dev | PTY E2E 测试 | — |
+
+**默认**: `ui-tui`, `infra-session`, `ui-review`
 
 ---
 
@@ -37,6 +104,31 @@
 
 - `tokio` 运行时，`async-trait` 定义异步 trait，所有 I/O 异步
 - `tracing`（非 `log`），结构化日志
+
+---
+
+## Bootstrap & Setup
+
+```bash
+# 1. 安装 toolchain
+rustup show          # 确认 stable + rustfmt + clippy
+
+# 2. 安装 task runner
+cargo install just   # 或系统包管理器
+
+# 3. 安装 git hooks 工具
+cargo install prek   # 或系统包管理器
+
+# 4. 安装 hooks
+just setup
+
+# 5. 验证环境
+just qa
+
+# 6. 开始开发
+#    使用 /llman-sdd-onboard 了解工作流
+#    使用 /llman-sdd-explore 探索提案
+```
 
 ---
 
@@ -105,7 +197,35 @@ Shell: `bash -euo pipefail`
 - 处理 change 前必须检查 `depends_on`：未归档的前置 change 未完成则不能开始
 - 检查 `blocks`：了解哪些后续 change 依赖当前 change，把握全局影响
 - 如果 `depends_on` 引用的 change 不在 `changes/` 目录，可能在 `changes/archive/` 或已被 freeze，告知用户并忽略
-- 需要全局 DAG 可视化时运行：`./scripts/generate-llmanspec-changes-dag.sh`（生成 `llmanspec/dag.gen.md`，不入库）
+- 需要全局 DAG 可视化时运行：`llman sdd graph`
+
+---
+
+## MVP Change DAG
+
+```
+c05-init-skeleton ─────────────────────────────────────────────────
+  ├─ c10-add-config ───────────────────────────────────────────────
+  │   ├─ c15-add-cli ─────────────────────────────────────────────
+  │   │   ├─ c30-add-print-mode (built-in)
+  │   │   ├─ c80-add-tui (ui-tui)
+  │   │   └─ c87-add-rpc-mode (built-in)
+  │   ├─ c20-add-tools (built-in) ───────────────────────────────
+  │   │   ├─ c25-add-agent-loop ─────────────────────────────────
+  │   │   │   ├─ c35-add-repeat-detection (built-in)
+  │   │   │   ├─ c55-add-planning-execution (agent-planning)
+  │   │   │   │   └─ c60-add-model-lock (agent-model-lock, Phase 2)
+  │   │   │   ├─ c70-add-session-snapshot (infra-session)
+  │   │   │   ├─ c88-add-test-infra (dev-vt100, dev-e2e)
+  │   │   │   └─ (c30, c80, c87 共享依赖)
+  │   │   ├─ c40-add-hooks (built-in) ── c50-add-security (built-in)
+  │   │   ├─ c65-add-skills-mcp (infra-skills)
+  │   │   └─ c75-add-diff-review (ui-review)
+  │   ├─ c45-add-lsp-layer (infra-lsp)
+  │   └─ c85-add-dap-layer (infra-dap, Phase 2)
+```
+
+括号中标注 feature flag 名称或 `built-in`（始终编译）。
 
 ---
 
