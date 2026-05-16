@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="512" height="512">
+  <defs>
+    <!-- 晶体冰晶质感渐变 -->
+    <linearGradient id="crystalGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#BAE6FD" stop-opacity="0.7"/>
+    </linearGradient>
+
+    <!-- 动漫光晕滤镜 -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- 主体：可爱的木糖醇晶体精灵 -->
+  <g id="xylitol-crystal">
+    <!-- 六边形晶体轮廓 -->
+    <path d="M 128 68 L 180 98 L 180 158 L 128 188 L 76 158 L 76 98 Z"
+          fill="url(#crystalGrad)"
+          stroke="#38BDF8"
+          stroke-width="6"
+          stroke-linejoin="round"/>
+
+    <!-- 晶体内部刻面高光（增加立体感和设计感） -->
+    <path d="M 128 80 L 170 104 L 170 152 L 128 176 L 86 152 L 86 104 Z"
+          fill="none"
+          stroke="#FFFFFF"
+          stroke-width="3"
+          stroke-linejoin="round"
+          opacity="0.6"/>
+
+    <!-- 中心菱形高光（晶体棱镜质感） -->
+    <path d="M 128 108 L 158 128 L 128 148 L 98 128 Z"
+          fill="#FFFFFF"
+          opacity="0.3"/>
+
+    <!-- 左眼 -->
+    <circle cx="112" cy="128" r="7" fill="#0F172A"/>
+    <circle cx="110" cy="125" r="2.5" fill="#FFFFFF" filter="url(#glow)"/>
+    <circle cx="113" cy="129" r="1.5" fill="#FFFFFF"/>
+
+    <!-- 右眼 -->
+    <circle cx="144" cy="128" r="7" fill="#0F172A"/>
+    <circle cx="142" cy="125" r="2.5" fill="#FFFFFF" filter="url(#glow)"/>
+    <circle cx="145" cy="129" r="1.5" fill="#FFFFFF"/>
+
+    <!-- 萌系腮红 -->
+    <ellipse cx="100" cy="134" rx="6" ry="3" fill="#F472B6" opacity="0.6"/>
+    <ellipse cx="156" cy="134" rx="6" ry="3" fill="#F472B6" opacity="0.6"/>
+
+    <!-- 软萌微笑 -->
+    <path d="M 124 138 Q 128 143 132 138" fill="none" stroke="#0F172A" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+</svg>

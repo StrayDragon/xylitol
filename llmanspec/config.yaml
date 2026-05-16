@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/StrayDragon/llman/main/artifacts/schema/configs/en/llmanspec-config.schema.json
+schema: spec-driven
+locale: zh-CN
+
+# Project context (optional)
+# Tech stack, conventions, constraints. Shown to AI during artifact creation.
+# context: |
+#   Tech stack: TypeScript, React, Node.js
+#   We use conventional commits
+#   Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Map of artifact_id -> string[].
+# rules:
+#   proposal:
+#     - Keep proposals under 500 words
+#     - Always include a "Non-goals" section
+#   tasks:
+#     - Break tasks into chunks of max 2 hours
+
+# Optional extra skills (disabled by default, uncomment to enable)
+# extra_skills:
+#   - llman-sdd-new-change
+#   - llman-sdd-continue
+#   - llman-sdd-ff
+#   - llman-sdd-show
+#   - llman-sdd-sync
+#   - llman-sdd-validate
+#   - llman-sdd-verify
