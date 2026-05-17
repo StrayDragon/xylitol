@@ -42,6 +42,7 @@ description: "归档单个或多个变更，并将增量合并到 specs。"
 - `llman sdd archive <id>`（`archive run` 的兼容别名）
 - `llman sdd archive freeze [--before YYYY-MM-DD] [--keep-recent N] [--dry-run]`（将已归档目录冻结到单一冷备文件）
 - `llman sdd archive thaw [--change <id> ...] [--dest <path>]`（从冷备文件恢复目录）
+- `llman sdd graph [CHANGE] [--format mermaid] [--scope active|archived|all] [--depth N]`（生成变更依赖图并输出到标准输出）
 
 
 常见校验修复（TOON 风格）：
@@ -76,6 +77,16 @@ ops[1]{op,req_id,title,statement,from,to,name}:
   add_requirement,r1,Title,System MUST do something.,null,null,null
 op_scenarios[1]{req_id,id,given,when,then}:
   r1,happy,"",a trigger happens,the outcome is observed
+```
+
+4) 表格化行引号错误（"Expected N tabular row values, but got M"）：
+值包含逗号、冒号或方括号时，必须用双引号包裹。
+```toon
+# 错误：statement 中的逗号被解析为分隔符
+r1,title,System MUST do X, Y, and Z.
+
+# 正确：用引号包裹包含逗号的值
+r1,title,"System MUST do X, Y, and Z."
 ```
 
 备注：

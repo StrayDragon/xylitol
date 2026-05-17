@@ -46,6 +46,7 @@ description: "实施一个 llman SDD 变更的 tasks，并同步更新 tasks.md 
 - `llman sdd archive <id>`（`archive run` 的兼容别名）
 - `llman sdd archive freeze [--before YYYY-MM-DD] [--keep-recent N] [--dry-run]`（将已归档目录冻结到单一冷备文件）
 - `llman sdd archive thaw [--change <id> ...] [--dest <path>]`（从冷备文件恢复目录）
+- `llman sdd graph [CHANGE] [--format mermaid] [--scope active|archived|all] [--depth N]`（生成变更依赖图并输出到标准输出）
 
 
 ## Context
