@@ -18,6 +18,8 @@ blocks: [c15-add-cli, c20-add-tools, c25-add-agent-loop, c40-add-hooks, c45-add-
 5. 生成 `configs/config.schema.json` 供 IDE 补全
 6. 定义完整配置结构体（`AppConfig`），所有模块从此读取配置
 
+> **⏸️ DAP PAUSED** — DAP 相关配置段已暂停开发（2026-05-17）。配置结构体中 DAP 字段暂不添加，等待 `c85-add-dap-layer` 恢复后引入。
+
 ### 配置层级
 
 | 层级 | 路径 | 说明 |
