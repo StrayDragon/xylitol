@@ -1,0 +1,530 @@
+//! AppConfig type definitions with serde + schemars derives.
+
+use std::collections::HashMap;
+
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+// ---------------------------------------------------------------------------
+// Top-level config
+// ---------------------------------------------------------------------------
+
+/// The root configuration object for xylitol.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct AppConfig {
+    pub model: ModelConfig,
+    pub execution: ExecutionConfig,
+    pub patch_apply: PatchApplyConfig,
+
+    // ── always compiled ──────────────────────────────────────────────
+    pub hooks: HooksConfig,
+    pub security: SecurityConfig,
+    pub repeat_detection: RepeatDetectionConfig,
+    pub tools: ToolsConfig,
+
+    // ── feature-gated ────────────────────────────────────────────────
+    #[cfg(feature = "agent-planning")]
+    pub planning: Option<PlanningConfig>,
+    #[cfg(feature = "agent-planning")]
+    pub validation: Option<ValidationConfig>,
+
+    #[cfg(feature = "infra-session")]
+    pub session: Option<SessionConfig>,
+    #[cfg(feature = "infra-session")]
+    pub compaction: Option<CompactionConfig>,
+
+    #[cfg(feature = "infra-skills")]
+    pub skills: Option<Vec<SkillConfig>>,
+    #[cfg(feature = "infra-skills")]
+    pub mcp_servers: Option<Vec<McpServerConfig>>,
+
+    #[cfg(feature = "ui-review")]
+    pub review: Option<ReviewConfig>,
+
+    #[cfg(feature = "infra-acp")]
+    pub acp: Option<AcpConfig>,
+}
+
+// ---------------------------------------------------------------------------
+// Model
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub(crate) struct ModelConfig {
+    /// Default model ID to use when no model is specified.
+    #[serde(default = "default_model_id")]
+    pub default_model: String,
+    /// Named model entries keyed by alias.
+    #[serde(default)]
+    pub models: HashMap<String, ModelEntry>,
+}
+
+impl Default for ModelConfig {
+    fn default() -> Self {
+        Self {
+            default_model: default_model_id(),
+            models: HashMap::new(),
+        }
+    }
+}
+
+fn default_model_id() -> String {
+    "gpt-4o".into()
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub(crate) struct ModelEntry {
+    pub provider: ProviderKind,
+    pub model: String,
+    /// Optional fallback model ID (must be another key in `models`).
+    #[serde(default)]
+    pub fallback: Option<String>,
+}
+
+/// Supported LLM providers (MVP: only OpenAI-compatible and Anthropic).
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ProviderKind {
+    OpenAI,
+    Anthropic,
+}
+
+// ---------------------------------------------------------------------------
+// Execution
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub(crate) struct ExecutionConfig {
+    /// Override model for execution steps.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// System prompt for the execution agent.
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+    /// Maximum retries on failure.
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u8,
+}
+
+impl Default for ExecutionConfig {
+    fn default() -> Self {
+        Self {
+            model: None,
+            system_prompt: None,
+            max_retries: default_max_retries(),
+        }
+    }
+}
+
+fn default_max_retries() -> u8 {
+    3
+}
+
+// ---------------------------------------------------------------------------
+// Patch apply
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct PatchApplyConfig {
+    /// Whether to automatically apply patches without prompting.
+    #[serde(default)]
+    pub auto_apply: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Hooks
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct HooksConfig {
+    pub global: Vec<HookEntry>,
+    pub project: Vec<HookEntry>,
+    pub user: Vec<HookEntry>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct HookEntry {
+    pub command: String,
+    #[serde(default)]
+    pub events: Vec<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Security
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+pub(crate) struct SecurityConfig {
+    /// Master toggle — opt-in (default false).
+    #[serde(default)]
+    pub enabled: bool,
+    /// Tools explicitly allowed (empty = allow all not in blocklist).
+    #[serde(default)]
+    pub tool_allowlist: Vec<String>,
+    pub bash: BashSecurityConfig,
+    pub filesystem: FilesystemSecurityConfig,
+    pub network: NetworkSecurityConfig,
+    pub resource_limits: ResourceLimits,
+    /// Only present when `infra-sandbox` feature is enabled.
+    #[cfg(feature = "infra-sandbox")]
+    pub sandbox: Option<SandboxConfig>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct BashSecurityConfig {
+    #[serde(default)]
+    pub allowed_paths: Vec<String>,
+    #[serde(default)]
+    pub forbidden_patterns: Vec<String>,
+    #[serde(default = "default_bash_timeout")]
+    pub timeout_secs: u64,
+}
+
+impl Default for BashSecurityConfig {
+    fn default() -> Self {
+        Self {
+            allowed_paths: Vec::new(),
+            forbidden_patterns: Vec::new(),
+            timeout_secs: 120,
+        }
+    }
+}
+
+fn default_bash_timeout() -> u64 {
+    120
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct FilesystemSecurityConfig {
+    #[serde(default)]
+    pub allowed_patterns: Vec<String>,
+    #[serde(default)]
+    pub forbidden_patterns: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct NetworkSecurityConfig {
+    #[serde(default)]
+    pub allowed_domains: Vec<String>,
+    #[serde(default)]
+    pub blocked_domains: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub(crate) struct ResourceLimits {
+    #[serde(default = "default_max_memory")]
+    pub max_memory_mb: u64,
+    #[serde(default = "default_max_cpu")]
+    pub max_cpu_percent: u8,
+    #[serde(default = "default_max_disk")]
+    pub max_disk_mb: u64,
+}
+
+impl Default for ResourceLimits {
+    fn default() -> Self {
+        Self {
+            max_memory_mb: default_max_memory(),
+            max_cpu_percent: default_max_cpu(),
+            max_disk_mb: default_max_disk(),
+        }
+    }
+}
+
+fn default_max_memory() -> u64 {
+    4096
+}
+fn default_max_cpu() -> u8 {
+    80
+}
+fn default_max_disk() -> u64 {
+    1024
+}
+
+#[cfg(feature = "infra-sandbox")]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct SandboxConfig {
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Repeat detection
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub(crate) struct RepeatDetectionConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_min_n")]
+    pub min_n: u8,
+    #[serde(default = "default_max_n")]
+    pub max_n: u8,
+    #[serde(default = "default_window_size")]
+    pub window_size: u16,
+    #[serde(default = "default_hit_threshold")]
+    pub consecutive_hit_threshold: u8,
+    pub recovery: RecoveryConfig,
+}
+
+impl Default for RepeatDetectionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            min_n: default_min_n(),
+            max_n: default_max_n(),
+            window_size: default_window_size(),
+            consecutive_hit_threshold: default_hit_threshold(),
+            recovery: RecoveryConfig::default(),
+        }
+    }
+}
+
+fn default_min_n() -> u8 {
+    3
+}
+fn default_max_n() -> u8 {
+    10
+}
+fn default_window_size() -> u16 {
+    100
+}
+fn default_hit_threshold() -> u8 {
+    3
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct RecoveryConfig {
+    #[serde(default = "default_recovery_strategy")]
+    pub strategy: String,
+    #[serde(default = "default_backoff_factor")]
+    pub backoff_factor: f64,
+}
+
+impl Default for RecoveryConfig {
+    fn default() -> Self {
+        Self {
+            strategy: default_recovery_strategy(),
+            backoff_factor: default_backoff_factor(),
+        }
+    }
+}
+
+fn default_recovery_strategy() -> String {
+    "backoff".into()
+}
+fn default_backoff_factor() -> f64 {
+    2.0
+}
+
+// ---------------------------------------------------------------------------
+// Tools
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct ToolsConfig {
+    #[serde(default)]
+    pub allowlist: Vec<String>,
+    #[serde(default)]
+    pub blocklist: Vec<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Feature-gated: agent-planning
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "agent-planning")]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub(crate) struct PlanningConfig {
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+    #[serde(default = "default_max_steps")]
+    pub max_steps: u16,
+    #[serde(default = "default_reasoning_depth")]
+    pub reasoning_depth: String,
+}
+
+#[cfg(feature = "agent-planning")]
+impl Default for PlanningConfig {
+    fn default() -> Self {
+        Self {
+            model: None,
+            system_prompt: None,
+            max_steps: default_max_steps(),
+            reasoning_depth: default_reasoning_depth(),
+        }
+    }
+}
+
+#[cfg(feature = "agent-planning")]
+fn default_max_steps() -> u16 {
+    10
+}
+
+#[cfg(feature = "agent-planning")]
+fn default_reasoning_depth() -> String {
+    "medium".into()
+}
+
+#[cfg(feature = "agent-planning")]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct ValidationConfig {
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Feature-gated: infra-session
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "infra-session")]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub(crate) struct SessionConfig {
+    #[serde(default)]
+    pub auto_snapshot: bool,
+    #[serde(default = "default_max_snapshots")]
+    pub max_snapshots: u16,
+    pub storage: SessionStorageConfig,
+}
+
+#[cfg(feature = "infra-session")]
+impl Default for SessionConfig {
+    fn default() -> Self {
+        Self {
+            auto_snapshot: false,
+            max_snapshots: default_max_snapshots(),
+            storage: SessionStorageConfig::default(),
+        }
+    }
+}
+
+#[cfg(feature = "infra-session")]
+fn default_max_snapshots() -> u16 {
+    50
+}
+
+#[cfg(feature = "infra-session")]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct SessionStorageConfig {
+    #[serde(default = "default_storage_backend")]
+    pub backend: String,
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+#[cfg(feature = "infra-session")]
+fn default_storage_backend() -> String {
+    "file".into()
+}
+
+#[cfg(feature = "infra-session")]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct CompactionConfig {
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Feature-gated: infra-skills
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "infra-skills")]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct SkillConfig {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub allowed_tools: Option<Vec<String>>,
+}
+
+#[cfg(feature = "infra-skills")]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct McpServerConfig {
+    pub name: String,
+    pub command: String,
+    #[serde(default)]
+    pub args: Option<Vec<String>>,
+    #[serde(default)]
+    pub env: Option<HashMap<String, String>>,
+}
+
+// ---------------------------------------------------------------------------
+// Feature-gated: ui-review
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "ui-review")]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub(crate) struct ReviewConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_review_mode")]
+    pub mode: String,
+    #[serde(default = "default_review_backend")]
+    pub backend: String,
+}
+
+#[cfg(feature = "ui-review")]
+impl Default for ReviewConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: default_review_mode(),
+            backend: default_review_backend(),
+        }
+    }
+}
+
+#[cfg(feature = "ui-review")]
+fn default_review_mode() -> String {
+    "diff".into()
+}
+
+#[cfg(feature = "ui-review")]
+fn default_review_backend() -> String {
+    "claude".into()
+}
+
+// ---------------------------------------------------------------------------
+// Feature-gated: infra-acp
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "infra-acp")]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub(crate) struct AcpConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_acp_port")]
+    pub port: u16,
+}
+
+#[cfg(feature = "infra-acp")]
+impl Default for AcpConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: default_acp_port(),
+        }
+    }
+}
+
+#[cfg(feature = "infra-acp")]
+fn default_acp_port() -> u16 {
+    8080
+}
