@@ -27,6 +27,11 @@ tokio = { version = "1.52.3", features = ["fs", "process", "io-util", "macros", 
 async-trait = "0.1.89"
 similar = "3.1.0"
 glob = "0.3.3"
+adk-agent = "0.8.2"
+adk-runner = { version = "0.8.2", default-features = false }
+adk-model = { version = "0.8.2", features = ["openai", "anthropic"] }
+adk-session = { version = "0.8.2", features = ["sqlite"] }
+futures = "0.3.32"
 
 [features]
 default = ["ui-tui", "infra-session", "ui-review"]
