@@ -26,82 +26,72 @@
 
 ## Decisions
 
-### Decision 1: Agent Loop 核心流程
+### Decision 1: 基于 adk-rust LlmAgent + Runner 的 Agent 运行时
+
+**背景**: adk-rust 的 `LlmAgent` + `Runner` 已实现完整的 ReAct 循环，包括流式解析、工具调用提取、多轮对话拼接、重试、熔断器。无需自建 agent loop。
 
 ```mermaid
 flowchart TD
-    START["接收用户 Prompt"] --> BUILD["构建上下文<br/>system_prompt +<br/>conversation_history +<br/>tool_results"]
-    BUILD --> CALL["调用 LLM（流式）<br/>adk-model Provider"]
+    START["接收用户 Prompt"] --> RUNNER["Runner::run_async()"]
+    RUNNER --> AGENT["LlmAgent::run()"]
+    AGENT --> BUILD["构建上下文 instruction + history + tools"]
+    BUILD --> CALL["调用 LLM 流式 adk-model Provider"]
 
     CALL --> STREAM["流式解析响应"]
     STREAM --> PARSE{"响应类型?"}
 
-    PARSE -->|文本 delta| EMIT_TEXT["发射 TextDelta"]
-    EMIT_TEXT --> STREAM
+    PARSE -->|文本 delta| CALLBACK["AfterModelCallback 事件转发"]
+    CALLBACK --> STREAM
 
-    PARSE -->|工具调用| EMIT_TC_START["发射 ToolCallStart<br/>tool_name + args"]
-    EMIT_TC_START --> EXEC["执行工具<br/>ToolRegistry::get(name)<br/>→ tool.execute(ctx, args)"]
-    EXEC --> EMIT_TC_END["发射 ToolCallEnd<br/>ToolOutput"]
-    EMIT_TC_END --> APPEND["工具结果加入上下文<br/>role: tool"]
-    APPEND --> CALL
+    PARSE -->|工具调用| DISPATCH["ToolExecutionStrategy::Auto"]
+    DISPATCH --> EXEC["执行工具 impl adk_core::Tool"]
+    EXEC --> AFTER["AfterToolCallback 事件转发"]
+    AFTER --> CALL
 
-    PARSE -->|最终响应<br/>（无工具调用）| EMIT_STEP["发射 StepComplete"]
-    EMIT_STEP --> PERSIST["持久化 session state<br/>adk-session"]
+    PARSE -->|无工具调用| COMPLETE["StepComplete"]
+    COMPLETE --> PERSIST["Runner 持久化 adk-session"]
     PERSIST --> DONE["循环结束"]
 
-    CALL -->|LLM Error| EMIT_ERR["发射 Error"]
-    EMIT_ERR --> RETRY{"可重试?"}
-    RETRY -->|yes| CALL
-    RETRY -->|no| DONE
-
     style DONE fill:#e8f5e9
-    style EMIT_ERR fill:#ffebee
 ```
 
-**选择**: 经典 ReAct 循环——LLM 输出文本或工具调用，工具结果反馈回 LLM，直到 LLM 不再请求工具。
+**选择**: 使用 `adk-runner::Runner` 管理完整生命周期（session 加载/保存、事件持久化、transfer 路由、取消）。使用 `adk-agent::LlmAgent` 实现核心循环。xylitol 通过 callbacks 注册自定义逻辑：
 
-**关键设计**: 使用 adk-agent 的 `LlmAgent` 作为基础构建块，而非从零实现循环逻辑。adk-agent 已处理流式解析、工具调用提取、多轮对话拼接等细节。
+1. `AfterModelCallback` — 转发 adk Event 为 xylitol AgentEvent（供 Print/TUI/RPC 消费）
+2. `AfterToolCallback` — 触发 hook 系统（c40）+ 安全检查（c50）
+3. `BeforeToolCallback` — 重复检测中断（c35）
 
-### Decision 2: adk-rust 集成架构
+**权衡**: 依赖 adk-rust API 稳定性，但消除自建循环的大量代码。如遇问题可直接修改 adk-rust 源码。
+
+### Decision 2: xylitol AppConfig 与 adk RunnerConfig 的映射
 
 ```mermaid
 graph TD
-    subgraph "xylitol 封装层"
-        XLOOP["AgentLoop<br/>xylitol 核心"]
-        XMODEL["ModelRegistry<br/>模型注册"]
-        XEVENT["EventAdapter<br/>事件适配"]
-        XTOOL["ToolAdapter<br/>工具适配"]
+    subgraph "xylitol 配置层"
+        APP["AppConfig YAML 驱动"]
+        TOOLS_CFG["tools section"]
+        MODEL_CFG["model section"]
+        HOOK_CFG["hooks section"]
     end
 
-    subgraph "adk-rust 框架"
-        AGENT["adk-agent<br/>LlmAgent"]
-        RUNNER["adk-runner<br/>ExecutionEngine"]
-        MODEL["adk-model<br/>OpenAI + Anthropic Provider"]
-        SESSION["adk-session<br/>SQLiteBackend"]
-        CORE["adk-core<br/>Agent trait + Event"]
+    subgraph "adk-rust 构建层"
+        BUILDER["LlmAgentBuilder 30+ 配置方法"]
+        RUNNER_CFG["RunnerConfig"]
+        PROVIDER["adk-model Provider"]
+        SESSION["SqliteSessionService"]
     end
 
-    XLOOP --> XEVENT
-    XLOOP --> XTOOL
-    XLOOP --> XMODEL
-
-    XEVENT --> CORE
-    XTOOL --> AGENT
-    XMODEL --> MODEL
-
-    AGENT --> CORE
-    RUNNER --> AGENT
-    RUNNER --> SESSION
+    APP --> BUILDER
+    TOOLS_CFG --> BUILDER
+    MODEL_CFG --> PROVIDER
+    PROVIDER --> BUILDER
+    BUILDER --> RUNNER_CFG
+    HOOK_CFG -->|"映射为 callbacks"| BUILDER
 ```
 
-**选择**: 使用 adk-rust 作为运行时框架（LlmAgent + Runner + Session），xylitol 提供三层适配：
-1. `ToolAdapter` — xylitol Tool trait → adk FunctionTool
-2. `EventAdapter` — adk Event → xylitol AgentEvent
-3. `ModelRegistry` — 配置驱动创建 adk-model Provider 实例（仅 OpenAI-compatible + Anthropic-compatible）
+**选择**: `AppConfig` 作为 YAML 配置入口，通过构建器模式映射到 `LlmAgentBuilder` 和 `RunnerConfig`。xylitol 的 hooks、security、repeat-detection 映射为 adk-agent 的 callback 系统。
 
-**权衡**: 使用 adk-rust 减少自己维护的循环代码量，但引入了对 adk-rust API 的依赖。adk-rust v0.8 尚未 1.0，API 可能变化。
-
-### Decision 3: AgentEvent 枚举设计
+### Decision 3: AgentEvent 枚举设计（adk Event → xylitol 事件）
 
 ```mermaid
 classDiagram
@@ -125,18 +115,15 @@ classDiagram
     AgentEvent --> AgentError : Error variant
 ```
 
-**选择**: 5 种事件类型覆盖循环生命周期。事件通过 `tokio::sync::broadcast` 通道发射，所有消费者（Print mode、TUI、RPC）订阅同一通道。
+**选择**: 5 种事件类型覆盖循环生命周期。通过 `AfterModelCallback` / `AfterToolCallback` 从 adk Event 流中提取并转发为 xylitol AgentEvent，通过 `tokio::sync::broadcast` 通道发射。
 
-**事件流示例**:
+**事件映射**:
 ```
-TextDelta("I'll read")
-TextDelta(" the file")
-ToolCallStart("tc1", "read", {file: "main.rs"})
-ToolCallEnd("tc1", ToolOutput { output: "...", success: true })
-TextDelta("Now I'll edit...")
-ToolCallStart("tc2", "edit", {...})
-ToolCallEnd("tc2", ToolOutput { output: "...", success: true })
-StepComplete(1, "Fixed the bug")
+adk Event (LlmResponse with text)     → AgentEvent::TextDelta
+adk Event (LlmResponse with func_call) → AgentEvent::ToolCallStart
+adk Event (FunctionResponse)           → AgentEvent::ToolCallEnd
+adk Runner (invocation complete)       → AgentEvent::StepComplete
+adk Runner (error)                     → AgentEvent::Error
 ```
 
 ### Decision 4: Session 集成策略
@@ -197,9 +184,9 @@ flowchart LR
 
 | 风险 | 等级 | 缓解 |
 |------|------|------|
-| adk-rust API 不稳定（v0.8 pre-release） | 高 | 适配层隔离变更；可降级为自建循环（回退成本中等） |
+| adk-rust API 不稳定（v0.8 pre-release） | 高 | 回调层隔离变更；如遇问题可直接修改 adk-rust 源码（fork + patch） |
 | adk-model provider 扩展 | 低 | 硬约束：仅启用 OpenAI + Anthropic 两个 provider，不扩展。ProviderKind 枚举锁定为 `OpenAI | Anthropic` |
-| wiremock mock 与真实 LLM 行为差异 | 中 | 集成测试使用真实 API（CI secrets）；mock 仅用于单元/快速测试 |
+| adk-runner 生命周期管理与 xylitol 预期不符 | 中 | Runner 提供 cancel/session 管理接口；测试覆盖生命周期场景 |
 | broadcast channel 消费者慢导致背压 | 低 | 事件通道使用 bounded buffer + 溢出丢弃策略（非阻塞） |
 
 ### 待确认问题

@@ -24,36 +24,44 @@
 
 ## Decisions
 
-### Decision 1: Tool trait 接口设计
+### Decision 1: 基于 adk-core Tool trait 的工具实现
+
+**背景**: adk-rust 作为主力框架，工具直接实现 `adk_core::Tool` trait，无需自建 trait 或适配层。
 
 ```mermaid
 classDiagram
     class Tool {
-        <<trait>>
+        <<trait>> adk_core::Tool
         +name() &str
         +description() &str
-        +parameters() JsonSchema
-        +execute(ctx, args) Future~Result~ToolOutput~~
+        +declaration() Value
+        +parameters_schema() Option~Value~
+        +is_read_only() bool
+        +is_concurrency_safe() bool
+        +execute(ctx, args) Future~Result~Value~~
     }
 
-    class ToolOutput {
-        +String output
-        +bool success
-        +Option~String~ error
+    class FunctionTool {
+        <<adk-tool>>
+        封装闭包为 Tool
     }
 
-    class ToolContext {
-        +AppConfig config
-        +PathBuf project_root
-        +Sender~ToolEvent~ event_tx
+    class Toolset {
+        <<trait>> adk_core::Toolset
+        +tools(ctx) Future~Vec~Arc~dyn Tool~~~
     }
 
-    class ToolRegistry {
-        -Map~String, Box~dyn Tool~~ tools
-        +register(tool) void
-        +get(name) Option~&dyn Tool~
-        +list() Vec~&str~
+    class BasicToolset {
+        静态工具集
     }
+
+    class McpToolset {
+        MCP 动态工具集
+    }
+
+    Tool <|.. FunctionTool
+    Toolset <|.. BasicToolset
+    Toolset <|.. McpToolset
 
     class ReadTool
     class BashTool
@@ -70,19 +78,11 @@ classDiagram
     Tool <|.. GrepTool
     Tool <|.. FindTool
     Tool <|.. ListTool
-    ToolRegistry o-- Tool
 ```
 
-**选择**: 自定义 `Tool` trait 而非直接使用 adk-core `FunctionTool`，但保持接口等价以便后续通过适配器桥接。
+**选择**: 直接 `impl adk_core::Tool` for 7 个内置工具。使用 `adk_tool::FunctionTool` 简化简单工具创建。工具集通过 `BasicToolset` 管理，后续 MCP 工具通过 `McpToolset` 加入。
 
-**适配器策略**: 后续集成 adk-rust 时，`Tool` trait 可通过 wrapper 实现 `FunctionTool`：
-
-```
-XylitolTool(impl Tool) → impl FunctionTool  // 适配器
-FunctionTool(外部) → impl Tool              // 反向适配（MCP 工具等）
-```
-
-**权衡**: 自定义 trait 避免在工具层直接依赖 adk-core 类型（降低耦合），但需要一个薄适配层。考虑到 agent loop 层才会用到 adk-core，这个分层是合理的。
+**权衡**: 直接使用 adk-core trait 消除了适配层开销，但工具实现需遵循 adk-core 的 `ToolContext` 接口。adk-core 的 `ToolContext` 提供 `function_call_id()`, `actions()`, `search_memory()` 等能力，足够满足内置工具需求。
 
 ### Decision 2: 7 个内置工具的参数与行为
 
@@ -188,7 +188,7 @@ flowchart LR
 | 风险 | 等级 | 缓解 |
 |------|------|------|
 | fudiff 极早期（v0.0.x），API 可能不稳定 | 高 | 封装 PatchApplier trait，fudiff 仅作为实现细节；hybrid 策略下 patch 兜底保底 |
-| Tool trait 与 adk-core FunctionTool 签名未来不兼容 | 中 | 保持接口等价设计，适配器层隔离变更 |
+| adk-core Tool trait 与 xylitol 需求不完全匹配 | 中 | 直接 impl adk_core::Tool，按需实现 optional 方法（is_read_only, is_concurrency_safe 等） |
 | bash 工具的安全边界（命令注入风险） | 高 | 安全策略由 c50 统一管控（forbidden_patterns、sandbox），本 change 仅执行 |
 | edit 工具 old/new 匹配在多行重复时歧义 | 低 | `replace_all=false` 时仅替换首个匹配；匹配失败时返回错误让代理重试 |
 

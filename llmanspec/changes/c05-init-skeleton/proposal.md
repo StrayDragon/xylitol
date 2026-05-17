@@ -1,6 +1,6 @@
 ---
 depends_on: []
-blocks: [c10-add-config, c15-add-cli, c20-add-tools]
+blocks: [c10-add-config, c15-add-cli]
 ---
 
 # c05-init-skeleton

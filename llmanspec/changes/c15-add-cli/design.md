@@ -3,6 +3,7 @@
 ## Context
 
 - PRD: §2（核心架构 CLI 入口）、§0.2（三种模式：Interactive/Print/JSON-RPC）
+- **adk-rust 集成**: 扩展 `adk-cli::Launcher` 而非从零构建 CLI。adk-cli 已提供 clap 参数解析、chat 子命令、rustyline REPL、StreamPrinter。xylitol 添加 `--mode`（print/interactive/json）、`--yolo`、`--project` 等 coding agent 特有参数。
 - 依赖关系见 proposal.md frontmatter（depends_on / blocks 为 SSOT）
 
 ## Goals / Non-Goals
@@ -21,7 +22,9 @@
 
 ## Decisions
 
-### Decision 1: CLI 参数结构
+### Decision 1: 扩展 adk-cli Launcher 的参数结构
+
+**背景**: adk-cli 的 `Launcher` 已实现 clap 参数解析和基本 chat 功能。xylitol 扩展它以支持 coding agent 特有的参数和模式。
 
 ```mermaid
 flowchart TD
