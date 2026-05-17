@@ -7,10 +7,6 @@ blocks: []
 
 ## Why
 
-工具调用需要声明式安全策略，默认禁止所有未显式允许的操作。内置限制层先于 Hook 执行，后者只能收紧不能放宽（§12）。
-
-> **⏸️ PROMPT INJECTION PAUSED** — Prompt 注入攻击防护（如系统提示词覆盖检测、用户输入注入识别等）暂不在此 change 范围内（2026-05-17）。恢复开发前需先补充 threat model 并创建独立 change。
-
 ## What Changes
 
 1. 在 `src/infra/security/` 实现安全策略引擎（`SecurityPolicy`）
