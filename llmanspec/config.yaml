@@ -4,7 +4,8 @@ locale: zh-CN
 
 context: |
   Project conventions: see AGENTS.md (SSOT).
-  Design principle: pluggable/configurable architecture. Only core agent loop + basic tools are built-in; everything else (LSP, DAP, hooks, skills, MCP, diff review, session snapshots, repeat detection) is opt-in via YAML config.
+  Framework: adk-rust as primary framework. Agent loop via LlmAgent + Runner, tools via adk-core Tool trait, sessions via adk-session, CLI via adk-cli Launcher. Only application-specific logic is custom.
+  Design principle: pluggable/configurable architecture. Core (agent loop + tools + provider + CLI) is always present; built-in enhancements (hooks, security, repeat detection) are runtime-toggled; everything else (LSP, DAP, skills, MCP, diff review, TUI, session snapshots, planning) is opt-in via feature flag.
   Dependency tracking: each proposal.md frontmatter contains depends_on and blocks. Read proposal.md files to determine execution order. For DAG visualization run: llman sdd graph
 
 rules:
@@ -15,6 +16,7 @@ rules:
     - "A change cannot be applied until all its depends_on changes have been archived (moved to changes/archive/)."
     - "If depends_on references a change that does not exist in llmanspec/changes/, treat as validation error and STOP."
     - "Keep changes atomic: each change must be independently validatable and archivable."
-    - "Prefer pluggable/configurable design: features beyond core agent loop + basic tools should be opt-in via YAML config, not hard-coded."
+    - "Prefer pluggable/configurable design: features beyond core agent loop + basic tools should be opt-in via config or feature flag, not hard-coded."
+    - "Spec naming: spec directory names MUST be domain nouns describing WHAT the spec governs, not actions. Examples: runtime-config (not add-config), tool-system (not add-tools), agent-runtime (not add-agent-loop). Use hyphenated lowercase noun phrases."
   tasks:
     - "Break tasks into chunks of max 2 hours."

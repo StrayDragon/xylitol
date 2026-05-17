@@ -1,6 +1,6 @@
 ---
 depends_on: [c05-init-skeleton, c10-add-config]
-blocks: [c30-add-print-mode, c80-add-tui, c87-add-rpc-mode]
+blocks: [c20-add-tools, c30-add-print-mode, c80-add-tui, c87-add-rpc-mode]
 ---
 
 # c15-add-cli
