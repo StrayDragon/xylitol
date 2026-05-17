@@ -3,9 +3,16 @@
 //! Uses clap derive for arg parsing with three dispatch modes:
 //! Print (always), Interactive (feature `ui-tui`), Acp (feature `infra-acp`).
 
+use std::sync::Arc;
+
+use adk_session::InMemorySessionService;
 use clap::Parser;
 
+use crate::agent::model::{ModelConfig, ModelKind};
+use crate::agent::tools::ToolRegistry;
 use crate::infra::config;
+use crate::infra::config::types::ProviderKind;
+use crate::interface::print;
 
 /// xylitol — LLM-Augmented Development Toolkit
 #[derive(Parser, Debug)]
@@ -29,6 +36,10 @@ pub(crate) struct CliArgs {
     /// Override default model
     #[arg(long)]
     pub(crate) model: Option<String>,
+
+    /// Disable ANSI colour output
+    #[arg(long)]
+    pub(crate) no_color: bool,
 
     /// Skip all confirmations
     #[arg(long)]
@@ -55,29 +66,58 @@ pub(crate) fn run() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("starting xylitol in {:?} mode", args.mode);
 
     let config_path = args.config.as_deref().map(std::path::Path::new);
-    let _config = config::load_app_config(config_path)?;
+    let app_config = config::load_app_config(config_path)?;
 
     // Override project root if --project was provided
-    if let Some(project) = args.project {
+    if let Some(ref project) = args.project {
         tracing::info!("project root: {project}");
     }
 
     // Override model if --model was provided
-    if let Some(model) = args.model {
+    if let Some(ref model) = args.model {
         tracing::info!("model override: {model}");
     }
 
+    if args.no_color {
+        tracing::info!("ANSI colour output disabled");
+    }
+
     // Dispatch to mode-specific logic
-    dispatch_mode(args.mode)?;
+    dispatch_mode(&args, &app_config)?;
 
     Ok(())
 }
 
 /// Dispatch to the appropriate run mode handler.
-fn dispatch_mode(mode: RunMode) -> Result<(), Box<dyn std::error::Error>> {
-    match mode {
+fn dispatch_mode(
+    args: &CliArgs,
+    app_config: &config::AppConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match args.mode {
         RunMode::Print => {
-            tracing::info!("Print mode — implemented in c30-add-print-mode");
+            let prompt = args.prompt.as_deref().unwrap_or("");
+            if prompt.is_empty() {
+                return Err(
+                    "a prompt is required in print mode — use: xylitol \"your prompt\"".into(),
+                );
+            }
+
+            // Build components for the agent loop.
+            let tools = ToolRegistry::builtins();
+            let model_config = build_model_config(app_config, args.model.as_deref())?;
+            let session_service = Arc::new(InMemorySessionService::new());
+
+            // Create a tokio runtime and run the print mode.
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(print::run_print(
+                prompt,
+                &tools,
+                app_config,
+                &model_config,
+                session_service,
+                args.no_color,
+            ))?;
+
             Ok(())
         }
         #[cfg(feature = "ui-tui")]
@@ -91,6 +131,44 @@ fn dispatch_mode(mode: RunMode) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
     }
+}
+
+/// Build a [`ModelConfig`] from app config, optionally overridden by a CLI
+/// `--model` value.
+fn build_model_config(
+    config: &config::AppConfig,
+    model_override: Option<&str>,
+) -> Result<ModelConfig, Box<dyn std::error::Error>> {
+    let model_id = model_override.unwrap_or(&config.model.default_model);
+
+    // Look up the model entry, or create a default.
+    let (kind, model_name) = if let Some(entry) = config.model.models.get(model_id) {
+        let kind = match entry.provider {
+            ProviderKind::OpenAI => ModelKind::OpenAi,
+            ProviderKind::Anthropic => ModelKind::Anthropic,
+        };
+        (kind, entry.model.clone())
+    } else {
+        // Default to OpenAI if not found.
+        (ModelKind::OpenAi, model_id.to_string())
+    };
+
+    // Read API key from env.
+    let api_key = match kind {
+        ModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
+            .or_else(|_| std::env::var("OPENAI_KEY"))
+            .map_err(|_| "OPENAI_API_KEY environment variable is not set".to_string())?,
+        ModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
+            .or_else(|_| std::env::var("ANTHROPIC_KEY"))
+            .map_err(|_| "ANTHROPIC_API_KEY environment variable is not set".to_string())?,
+    };
+
+    Ok(ModelConfig {
+        kind,
+        api_key,
+        model: model_name,
+        base_url: None,
+    })
 }
 
 #[cfg(test)]
