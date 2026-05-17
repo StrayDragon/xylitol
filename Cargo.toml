@@ -21,6 +21,7 @@ dotenvy = "0.15"
 dirs = "6"
 thiserror = "2"
 tracing = "0.1"
+clap = { version = "4.6.1", features = ["derive"] }
 
 [features]
 default = ["ui-tui", "infra-session", "ui-review"]
