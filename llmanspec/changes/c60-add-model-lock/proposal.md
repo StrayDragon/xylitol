@@ -1,6 +1,5 @@
 ---
 depends_on: [c10-add-config, c25-add-agent-loop, c55-add-planning-execution]
-blocks: []
 ---
 
 # c60-add-model-lock（Phase 2 — 延后实施）

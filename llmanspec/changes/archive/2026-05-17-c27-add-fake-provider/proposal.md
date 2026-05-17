@@ -1,6 +1,5 @@
 ---
 depends_on: [c25-add-agent-loop]
-blocks: [c30-add-print-mode, c88-add-test-infra]
 ---
 
 # c27-add-fake-provider

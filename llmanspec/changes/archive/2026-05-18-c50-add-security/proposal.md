@@ -1,6 +1,5 @@
 ---
 depends_on: [c10-add-config, c40-add-hooks]
-blocks: []
 ---
 
 # c50-add-security

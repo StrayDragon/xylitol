@@ -1,6 +1,5 @@
 ---
 depends_on: [c10-add-config, c25-add-agent-loop]
-blocks: [c60-add-model-lock]
 ---
 
 # c55-add-planning-execution

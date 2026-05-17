@@ -1,6 +1,5 @@
 ---
 depends_on: [c15-add-cli, c25-add-agent-loop]
-blocks: []
 ---
 
 # c30-add-print-mode

@@ -1,6 +1,5 @@
 ---
 depends_on: [c10-add-config, c20-add-tools]
-blocks: []
 ---
 
 # c65-add-skills-mcp

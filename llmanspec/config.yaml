@@ -6,13 +6,13 @@ context: |
   Project conventions: see AGENTS.md (SSOT).
   Framework: adk-rust as primary framework. Agent loop via LlmAgent + Runner, tools via adk-core Tool trait, sessions via adk-session, CLI via adk-cli Launcher. Only application-specific logic is custom.
   Design principle: pluggable/configurable architecture. Core (agent loop + tools + provider + CLI) is always present; built-in enhancements (hooks, security, repeat detection) are runtime-toggled; everything else (LSP, DAP, skills, MCP, diff review, TUI, session snapshots, planning) is opt-in via feature flag.
-  Dependency tracking: each proposal.md frontmatter contains depends_on and blocks. Read proposal.md files to determine execution order. For DAG visualization run: llman sdd graph
+  Dependency tracking: each proposal.md frontmatter contains depends_on. Read proposal.md files to determine execution order. For DAG visualization run: llman sdd graph
 
 rules:
   proposal:
     - "Change ID format: c{priority}-{verb}-{subject} where priority is a multiple of 5 (e.g., c05-add-skeleton, c10-add-config, c15-add-tools). Verb prefix: add / update / remove / refactor / fix. Priority numbers MUST be unique."
     - "Priority numbers are advisory ordering. Actual execution follows dependency edges first, then priority as tiebreaker. To insert between c05 and c10, use c06/c07/c08/c09."
-    - "Every proposal.md MUST include YAML frontmatter with depends_on (list of change IDs) and blocks (list of change IDs blocked by this one). Use [] if none."
+    - "Every proposal.md MUST include YAML frontmatter with depends_on (list of change IDs). Use [] if none."
     - "A change cannot be applied until all its depends_on changes have been archived (moved to changes/archive/)."
     - "If depends_on references a change that does not exist in llmanspec/changes/, treat as validation error and STOP."
     - "Keep changes atomic: each change must be independently validatable and archivable."

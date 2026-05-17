@@ -1,6 +1,5 @@
 ---
 depends_on: [c10-add-config]
-blocks: []
 status: paused
 paused_reason: "DAP 集成暂停开发"
 paused_date: 2026-05-17

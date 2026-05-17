@@ -1,6 +1,5 @@
 ---
 depends_on: [c10-add-config, c20-add-tools]
-blocks: [c50-add-security, c75-add-diff-review]
 ---
 
 # c40-add-hooks

@@ -1,6 +1,5 @@
 ---
 depends_on: [c10-add-config, c15-add-cli]
-blocks: [c25-add-agent-loop, c40-add-hooks, c65-add-skills-mcp, c75-add-diff-review, c80-add-tui]
 ---
 
 # c20-add-tools
