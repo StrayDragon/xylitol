@@ -56,6 +56,7 @@ ui-review = []
 # ── development only ──────────────────────────
 dev-vt100 = []
 dev-e2e = []
+dev-fake-provider = []
 
 [profile.dev]
 opt-level = 0
