@@ -3,6 +3,7 @@
 ## Context
 
 - PRD: §2（核心架构配置驱动）、§5（规划器/执行器模型绑定）、§11.9（session 配置）、§12.2（安全配置结构）
+- **adk-rust 集成**: AppConfig 作为 YAML 配置入口，通过构建器模式映射到 `adk-runner::RunnerConfig` 和 `adk-agent::LlmAgentBuilder`。无需自建运行时配置系统，adk-rust 已提供 `RunnerConfig`、`GenerateContentConfig` 等类型。
 - **硬约束**: MVP 仅支持 OpenAI-compatible Response API 和 Anthropic-compatible API 两种 provider。ProviderKind 枚举仅含 `OpenAI | Anthropic`，不扩展。fallback 为可选单跳（OpenAI↔Anthropic），非多模型链。
 - 依赖关系见 proposal.md frontmatter（depends_on / blocks 为 SSOT）
 
@@ -125,7 +126,7 @@ classDiagram
     ModelConfig --> Map~String, ModelEntry~
 ```
 
-**选择**: 扁平化顶层 + 嵌套子结构。每个子结构对应一个功能域（由对应 change 实现）。
+**选择**: 扁平化顶层 + 嵌套子结构。每个子结构对应一个功能域（由对应 change 实现）。`AppConfig` 包含一个 `runner` 字段直接映射 `adk-runner::RunnerConfig`，xylitol 特有字段（hooks、security、repeat_detection 等）作为扩展字段。
 
 **权衡**: 扁平化比深层嵌套更容易做深层合并和 JSON Schema 生成。MVP 仅 `ProviderKind::OpenAI | ProviderKind::Anthropic` 两种变体。
 

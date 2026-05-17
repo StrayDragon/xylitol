@@ -1,5 +1,5 @@
 ---
-depends_on: [c05-init-skeleton, c10-add-config]
+depends_on: [c10-add-config, c15-add-cli]
 blocks: [c25-add-agent-loop, c40-add-hooks, c65-add-skills-mcp, c75-add-diff-review, c80-add-tui]
 ---
 
@@ -11,7 +11,7 @@ blocks: [c25-add-agent-loop, c40-add-hooks, c65-add-skills-mcp, c75-add-diff-rev
 
 ## What Changes
 
-1. 在 `src/agent/tools/` 定义 `Tool` trait（基于 adk-core 的 `FunctionTool`）
+1. 在 `src/agent/tools/` 实现 `impl adk_core::Tool` for 7 个内置工具
 2. 实现 7 个内置工具
 3. 实现 AI patch 应用策略（fudiff 模糊匹配 + patch 精确兜底）
 4. 工具注册表（`ToolRegistry`）
