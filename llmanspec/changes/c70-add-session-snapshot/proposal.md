@@ -18,6 +18,8 @@ Session 快照系统使 agent 拥有持久化状态、上下文派生、蜂群�
 5. 增量快照（CoW）+ Zstandard 压缩 + GC 策略
 6. 蜂群协作：从快照派生新 agent 实例
 
+> **⏸️ DAP PAUSED** — `debugger_state`（DAP 产物）字段已暂停（2026-05-17）。DAP 开发恢复前此字段为 `None`/空。
+
 ### 快照数据结构
 
 ```yaml
