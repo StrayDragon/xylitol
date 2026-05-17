@@ -7,7 +7,7 @@
 - [ ] 重写 `src/main.rs`：最小 `fn main() {}` 占位
 - [ ] 创建 `src/agent/mod.rs` + 占位子模块（loop.rs, planner.rs [feature = "agent-planning"], model.rs, tools/mod.rs [built-in]）
 - [ ] 创建 `src/infra/mod.rs` + 占位子模块：config/ [built-in], hooks/ [built-in], security/ [built-in], lsp/ [feature = "infra-lsp"], dap/ [feature = "infra-dap"], session/ [feature = "infra-session"], skills/ [feature = "infra-skills"]
-- [ ] 创建 `src/interface/mod.rs` + 占位子模块：cli/ [built-in], print.rs [built-in], rpc.rs [built-in], tui/ [feature = "ui-tui"]
+- [ ] 创建 `src/interface/mod.rs` + 占位子模块：cli/ [built-in], print.rs [built-in], acp.rs [feature = "infra-acp"], tui/ [feature = "ui-tui"]
 - [ ] 创建 `configs/config.schema.json` 空占位（`{}`）
 - [ ] 删除原 `src/lib.rs` 中的 `place_holder()` 函数（已被新 lib.rs 替换）
 

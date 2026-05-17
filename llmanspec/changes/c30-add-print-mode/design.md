@@ -2,7 +2,7 @@
 
 ## Context
 
-- PRD: §0.2（三种模式：Interactive/Print/JSON-RPC）
+- PRD: §0.2（三种模式：Interactive/Print/ACP）
 - 依赖关系见 proposal.md frontmatter（depends_on / blocks 为 SSOT）
 
 ## Goals / Non-Goals
@@ -20,7 +20,7 @@
 - 不实现 ANSI 颜色/富文本渲染（保持纯文本，颜色可选）
 - 不实现 TUI 交互（c80 负责）
 - 不实现 stdin 交互式多轮对话（Print 模式单次执行）
-- 不实现 JSON-RPC 协议（c87 负责）
+- 不实现 ACP 协议（c87-add-acp-mode 负责）
 
 ## Decisions
 

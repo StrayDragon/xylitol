@@ -1,6 +1,6 @@
 ---
 depends_on: [c10-add-config, c20-add-tools]
-blocks: [c30-add-print-mode, c35-add-repeat-detection, c55-add-planning-execution, c60-add-model-lock, c70-add-session-snapshot, c80-add-tui, c87-add-rpc-mode, c88-add-test-infra]
+blocks: [c30-add-print-mode, c35-add-repeat-detection, c55-add-planning-execution, c60-add-model-lock, c70-add-session-snapshot, c80-add-tui, c87-add-acp-mode, c88-add-test-infra]
 ---
 
 # c25-add-agent-loop

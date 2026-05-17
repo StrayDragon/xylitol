@@ -61,7 +61,7 @@ graph TB
         CLI[cli/<br/>CLI Entry]
         TUI[tui/<br/>TUI]
         PRINT[print.rs<br/>Print Mode]
-        RPC[rpc.rs<br/>JSON-RPC]
+        ACP[acp.rs<br/>ACP Agent]
     end
 
     LOOP --> TOOLS
@@ -73,7 +73,7 @@ graph TB
     CLI --> LOOP
     PRINT --> LOOP
     TUI --> LOOP
-    RPC --> LOOP
+    ACP --> LOOP
     SEC --> TOOLS
     HOOK --> TOOLS
     SKI --> TOOLS
@@ -84,7 +84,7 @@ graph TB
 
 ### Decision 2: Feature flags 两层启用策略
 
-**背景**: 部分 feature 之间存在逻辑依赖（如 ui-review 需要 hooks），需要定义隐式启用关系。同时，部分功能（hooks、security、repeat-detection、print-mode、rpc-mode）轻量且对 agent 正确运行至关重要，不应通过 feature flag 控制。
+**背景**: 部分 feature 之间存在逻辑依赖（如 ui-review 需要 hooks），需要定义隐式启用关系。同时，部分功能（hooks、security、repeat-detection、print-mode）轻量且对 agent 正确运行至关重要，不应通过 feature flag 控制。
 
 **选择**: 两层启用策略——始终编译（built-in, config 层控制）+ 可选编译（feature-flagged）
 
@@ -96,7 +96,7 @@ graph TB
         SEC["安全策略引擎"]
         REPEAT["重复检测"]
         PRINT["Print 模式"]
-        RPC["JSON-RPC 模式"]
+        ACP["ACP 模式"]
     end
 
     subgraph "可选编译 (feature-flagged)"
@@ -144,7 +144,7 @@ graph TB
 - `hooks: []` — 空列表即 no-op dispatcher
 - `security.enabled: true/false` — 安全策略引擎开关
 - `repeat_detection.enabled: true/false` — 重复检测开关
-- 运行模式由 CLI `--mode` 选择（print / rpc / tui）
+- 运行模式由 CLI `--mode` 选择（print / acp / tui）
 
 ### Decision 3: 占位模块策略
 
