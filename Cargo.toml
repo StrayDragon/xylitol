@@ -12,6 +12,30 @@ resolver = "2"
 
 [dependencies]
 
+[features]
+default = ["ui-tui", "infra-session", "ui-review"]
+
+# ── agent/ layer ──────────────────────────────
+agent-planning = []
+agent-model-lock = []
+
+# ── infra/ layer ──────────────────────────────
+infra-lsp = []
+infra-dap = []
+infra-acp = []
+infra-skills = []
+infra-session = []
+infra-sandbox = []
+infra-rtk = []
+
+# ── interface/ layer ──────────────────────────
+ui-tui = []
+ui-review = []
+
+# ── development only ──────────────────────────
+dev-vt100 = []
+dev-e2e = []
+
 [profile.dev]
 opt-level = 0
 codegen-units = 256
