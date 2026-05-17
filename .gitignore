@@ -20,6 +20,7 @@
 
 # Local configuration that shouldn't be shared
 *.local
+config.local.yaml
 
 ### Rust ###
 # rust specific files
