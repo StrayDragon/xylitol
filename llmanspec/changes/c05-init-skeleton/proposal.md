@@ -68,7 +68,7 @@ xylitol/
 │       ├── tui/                # ratatui TUI（feature = "ui-tui"）
 │       │   └── mod.rs
 │       ├── print.rs            # Print 模式 (built-in)
-│       └── rpc.rs              # JSON-RPC 模式 (built-in)
+│       └── acp.rs              # ACP 模式 (feature = "infra-acp")
 ├── configs/
 │   └── config.schema.json      # 占位
 └── tests/
@@ -93,6 +93,7 @@ agent-model-lock = []    # 模型抢占锁（Phase 2: 仅本地模型需要）
 # ── infra/ layer ──────────────────────────────
 infra-lsp = []           # LSP 集成层（lspz agent-sdk）
 infra-dap = []           # DAP 集成层（dapz -- Phase 2 placeholder）
+infra-acp = []            # ACP Agent Client Protocol（agent-client-protocol SDK）
 infra-skills = []        # Skills & MCP 支持（rmcp via adk-tool）
 infra-session = []       # Session 快照系统（adk-session SQLite）
 infra-sandbox = []       # 沙箱执行环境（Phase 2 placeholder）
@@ -116,7 +117,7 @@ dev-e2e = []             # PTY E2E 测试
 | 安全策略引擎 | `security.enabled` | 默认 deny-all，`globset` + `regex` |
 | 重复检测 | `repeat_detection.enabled` | HashSet + 滑动窗口，防止死循环 |
 | Print 模式 | CLI `--mode print` | 默认交互模式，仅 `owo-colors` |
-| JSON-RPC 模式 | CLI `--mode rpc` | IDE 集成，仅 `serde_json` |
+| ACP 模式 | CLI `--mode acp` | IDE 集成，agent-client-protocol SDK |
 
 ## Capabilities
 

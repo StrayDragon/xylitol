@@ -2,7 +2,7 @@
 
 ## Context
 
-- PRD: §2（核心架构 CLI 入口）、§0.2（三种模式：Interactive/Print/JSON-RPC）
+- PRD: §2（核心架构 CLI 入口）、§0.2（三种模式：Interactive/Print/ACP）
 - **adk-rust 集成**: 扩展 `adk-cli::Launcher` 而非从零构建 CLI。adk-cli 已提供 clap 参数解析、chat 子命令、rustyline REPL、StreamPrinter。xylitol 添加 `--mode`（print/interactive/json）、`--yolo`、`--project` 等 coding agent 特有参数。
 - 依赖关系见 proposal.md frontmatter（depends_on / blocks 为 SSOT）
 
@@ -11,13 +11,13 @@
 ### Goals
 
 - clap derive 参数解析（mode/config/project/model/yolo/--features）
-- RunMode 分派到 Print/Interactive(TUI)/Json 三种模式
+- RunMode 分派到 Print/Interactive(TUI)/Acp 三种模式
 - 集成配置加载（调用 infra::config）
 - main.rs 最小化——仅调用 CLI 入口
 
 ### Non-Goals
 
-- 不实现各模式的具体逻辑（c30/c80/c87 负责）
+- 不实现各模式的具体逻辑（c30/c80/c87-add-acp-mode 负责）
 - 不处理信号/优雅退出（后续 change）
 
 ## Decisions
@@ -32,7 +32,7 @@ flowchart TD
     PARSE --> MODE{"--mode?"}
     MODE -->|print/默认| PRINT["Print Mode<br/>c30 实现"]
     MODE -->|interactive| INTER{"feature tui<br/>启用?"}
-    MODE -->|json| JSON["JSON-RPC Mode<br/>c87 实现"]
+    MODE -->|acp| ACP["ACP Mode<br/>c87 实现"]
 
     INTER -->|yes| TUI["TUI Mode<br/>c80 实现"]
     INTER -->|no| ERR1["error:<br/>tui feature not enabled"]
@@ -49,7 +49,7 @@ flowchart TD
 ```
 CliArgs:
   prompt: Option<String>          # 位置参数，用户输入
-  --mode: RunMode                 # print | interactive | json（默认 print）
+  --mode: RunMode                 # print | interactive | acp（默认 print）
   --config: Option<PathBuf>       # 覆盖配置文件路径
   --project: Option<PathBuf>      # 项目根目录（默认 CWD）
   --model: Option<String>         # 覆盖默认模型
