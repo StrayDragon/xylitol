@@ -37,6 +37,10 @@ This repo uses `just` as the command runner:
 - Errors: avoid `.unwrap()`/`.expect()` outside tests; prefer `thiserror` for library
   error enums and `anyhow` at application boundaries.
 - Logging: use `tracing` (structured logs), not `log`.
+- **Dependencies**: must be managed via `cargo add` / `cargo upgrade` — never manually
+  write version numbers into `Cargo.toml`. Before adding a new dep, run
+  `cargo search <name>` to confirm the name, then `cargo add <name>` to let the tool
+  pick the latest version. To bulk-upgrade, run `cargo upgrade --incompatible`.
 
 ## Testing Guidelines
 

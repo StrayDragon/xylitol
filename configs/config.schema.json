@@ -1,1 +1,511 @@
-{}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AppConfig",
+  "description": "The root configuration object for xylitol.",
+  "type": "object",
+  "properties": {
+    "compaction": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CompactionConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "execution": {
+      "$ref": "#/$defs/ExecutionConfig",
+      "default": {
+        "max_retries": 3,
+        "model": null,
+        "system_prompt": null
+      }
+    },
+    "hooks": {
+      "$ref": "#/$defs/HooksConfig",
+      "default": {
+        "global": [],
+        "project": [],
+        "user": []
+      }
+    },
+    "model": {
+      "$ref": "#/$defs/ModelConfig",
+      "default": {
+        "default_model": "gpt-4o",
+        "models": {}
+      }
+    },
+    "patch_apply": {
+      "$ref": "#/$defs/PatchApplyConfig",
+      "default": {
+        "auto_apply": false
+      }
+    },
+    "repeat_detection": {
+      "$ref": "#/$defs/RepeatDetectionConfig",
+      "default": {
+        "consecutive_hit_threshold": 3,
+        "enabled": false,
+        "max_n": 10,
+        "min_n": 3,
+        "recovery": {
+          "backoff_factor": 2.0,
+          "strategy": "backoff"
+        },
+        "window_size": 100
+      }
+    },
+    "review": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReviewConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "security": {
+      "$ref": "#/$defs/SecurityConfig",
+      "default": {
+        "bash": {
+          "allowed_paths": [],
+          "forbidden_patterns": [],
+          "timeout_secs": 120
+        },
+        "enabled": false,
+        "filesystem": {
+          "allowed_patterns": [],
+          "forbidden_patterns": []
+        },
+        "network": {
+          "allowed_domains": [],
+          "blocked_domains": []
+        },
+        "resource_limits": {
+          "max_cpu_percent": 80,
+          "max_disk_mb": 1024,
+          "max_memory_mb": 4096
+        },
+        "tool_allowlist": []
+      }
+    },
+    "session": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SessionConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "tools": {
+      "$ref": "#/$defs/ToolsConfig",
+      "default": {
+        "allowlist": [],
+        "blocklist": []
+      }
+    }
+  },
+  "$defs": {
+    "BashSecurityConfig": {
+      "type": "object",
+      "properties": {
+        "allowed_paths": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "forbidden_patterns": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "timeout_secs": {
+          "type": "integer",
+          "format": "uint64",
+          "default": 120,
+          "minimum": 0
+        }
+      }
+    },
+    "CompactionConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "ExecutionConfig": {
+      "type": "object",
+      "properties": {
+        "max_retries": {
+          "description": "Maximum retries on failure.",
+          "type": "integer",
+          "format": "uint8",
+          "default": 3,
+          "maximum": 255,
+          "minimum": 0
+        },
+        "model": {
+          "description": "Override model for execution steps.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "system_prompt": {
+          "description": "System prompt for the execution agent.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      }
+    },
+    "FilesystemSecurityConfig": {
+      "type": "object",
+      "properties": {
+        "allowed_patterns": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "forbidden_patterns": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "HookEntry": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "default": ""
+        },
+        "events": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "HooksConfig": {
+      "type": "object",
+      "properties": {
+        "global": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/HookEntry"
+          }
+        },
+        "project": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/HookEntry"
+          }
+        },
+        "user": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/HookEntry"
+          }
+        }
+      }
+    },
+    "ModelConfig": {
+      "type": "object",
+      "properties": {
+        "default_model": {
+          "description": "Default model ID to use when no model is specified.",
+          "type": "string",
+          "default": "gpt-4o"
+        },
+        "models": {
+          "description": "Named model entries keyed by alias.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/ModelEntry"
+          },
+          "default": {}
+        }
+      }
+    },
+    "ModelEntry": {
+      "type": "object",
+      "properties": {
+        "fallback": {
+          "description": "Optional fallback model ID (must be another key in `models`).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/ProviderKind"
+        }
+      },
+      "required": [
+        "provider",
+        "model"
+      ]
+    },
+    "NetworkSecurityConfig": {
+      "type": "object",
+      "properties": {
+        "allowed_domains": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "blocked_domains": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "PatchApplyConfig": {
+      "type": "object",
+      "properties": {
+        "auto_apply": {
+          "description": "Whether to automatically apply patches without prompting.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "ProviderKind": {
+      "description": "Supported LLM providers (MVP: only OpenAI-compatible and Anthropic).",
+      "type": "string",
+      "enum": [
+        "open_a_i",
+        "anthropic"
+      ]
+    },
+    "RecoveryConfig": {
+      "type": "object",
+      "properties": {
+        "backoff_factor": {
+          "type": "number",
+          "format": "double",
+          "default": 2.0
+        },
+        "strategy": {
+          "type": "string",
+          "default": "backoff"
+        }
+      }
+    },
+    "RepeatDetectionConfig": {
+      "type": "object",
+      "properties": {
+        "consecutive_hit_threshold": {
+          "type": "integer",
+          "format": "uint8",
+          "default": 3,
+          "maximum": 255,
+          "minimum": 0
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "max_n": {
+          "type": "integer",
+          "format": "uint8",
+          "default": 10,
+          "maximum": 255,
+          "minimum": 0
+        },
+        "min_n": {
+          "type": "integer",
+          "format": "uint8",
+          "default": 3,
+          "maximum": 255,
+          "minimum": 0
+        },
+        "recovery": {
+          "$ref": "#/$defs/RecoveryConfig"
+        },
+        "window_size": {
+          "type": "integer",
+          "format": "uint16",
+          "default": 100,
+          "maximum": 65535,
+          "minimum": 0
+        }
+      },
+      "required": [
+        "recovery"
+      ]
+    },
+    "ResourceLimits": {
+      "type": "object",
+      "properties": {
+        "max_cpu_percent": {
+          "type": "integer",
+          "format": "uint8",
+          "default": 80,
+          "maximum": 255,
+          "minimum": 0
+        },
+        "max_disk_mb": {
+          "type": "integer",
+          "format": "uint64",
+          "default": 1024,
+          "minimum": 0
+        },
+        "max_memory_mb": {
+          "type": "integer",
+          "format": "uint64",
+          "default": 4096,
+          "minimum": 0
+        }
+      }
+    },
+    "ReviewConfig": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "type": "string",
+          "default": "claude"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "mode": {
+          "type": "string",
+          "default": "diff"
+        }
+      }
+    },
+    "SecurityConfig": {
+      "type": "object",
+      "properties": {
+        "bash": {
+          "$ref": "#/$defs/BashSecurityConfig"
+        },
+        "enabled": {
+          "description": "Master toggle — opt-in (default false).",
+          "type": "boolean",
+          "default": false
+        },
+        "filesystem": {
+          "$ref": "#/$defs/FilesystemSecurityConfig"
+        },
+        "network": {
+          "$ref": "#/$defs/NetworkSecurityConfig"
+        },
+        "resource_limits": {
+          "$ref": "#/$defs/ResourceLimits"
+        },
+        "tool_allowlist": {
+          "description": "Tools explicitly allowed (empty = allow all not in blocklist).",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "bash",
+        "filesystem",
+        "network",
+        "resource_limits"
+      ]
+    },
+    "SessionConfig": {
+      "type": "object",
+      "properties": {
+        "auto_snapshot": {
+          "type": "boolean",
+          "default": false
+        },
+        "max_snapshots": {
+          "type": "integer",
+          "format": "uint16",
+          "default": 50,
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "storage": {
+          "$ref": "#/$defs/SessionStorageConfig"
+        }
+      },
+      "required": [
+        "storage"
+      ]
+    },
+    "SessionStorageConfig": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "type": "string",
+          "default": "file"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      }
+    },
+    "ToolsConfig": {
+      "type": "object",
+      "properties": {
+        "allowlist": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "blocklist": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

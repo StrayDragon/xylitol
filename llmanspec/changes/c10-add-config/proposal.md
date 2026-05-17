@@ -1,5 +1,5 @@
 ---
-depends_on: [c05-init-skeleton]
+depends_on: []
 blocks: [c15-add-cli, c20-add-tools, c25-add-agent-loop, c40-add-hooks, c45-add-lsp-layer, c50-add-security, c55-add-planning-execution, c60-add-model-lock, c65-add-skills-mcp, c70-add-session-snapshot, c85-add-dap-layer]
 ---
 
