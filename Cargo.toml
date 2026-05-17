@@ -22,6 +22,11 @@ dirs = "6"
 thiserror = "2"
 tracing = "0.1"
 clap = { version = "4.6.1", features = ["derive"] }
+adk-core = "0.8.2"
+tokio = { version = "1.52.3", features = ["fs", "process", "io-util", "macros", "rt", "rt-multi-thread"] }
+async-trait = "0.1.89"
+similar = "3.1.0"
+glob = "0.3.3"
 
 [features]
 default = ["ui-tui", "infra-session", "ui-review"]
@@ -63,6 +68,9 @@ lto = "thin"
 strip = "symbols"
 panic = "abort"
 incremental = false
+
+[dev-dependencies]
+tempfile = "3.27.0"
 
 [package.metadata.docs.rs]
 all-features = true
