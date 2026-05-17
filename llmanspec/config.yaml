@@ -5,7 +5,7 @@ locale: zh-CN
 context: |
   Project conventions: see AGENTS.md (SSOT).
   Design principle: pluggable/configurable architecture. Only core agent loop + basic tools are built-in; everything else (LSP, DAP, hooks, skills, MCP, diff review, session snapshots, repeat detection) is opt-in via YAML config.
-  Dependency tracking: each proposal.md frontmatter contains depends_on and blocks. Read proposal.md files to determine execution order. For human overview run: ./scripts/generate-llmanspec-changes-dag.sh
+  Dependency tracking: each proposal.md frontmatter contains depends_on and blocks. Read proposal.md files to determine execution order. For DAG visualization run: llman sdd graph
 
 rules:
   proposal:
