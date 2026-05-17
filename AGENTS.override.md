@@ -8,7 +8,7 @@
 保留此托管块，便于 `llman sdd update` 刷新。
 <!-- LLMANSPEC:END -->
 
-# AGENTS.md
+请先阅读 @AGENTS.md 获得基本认知, 然后根据以下MVP实践阶段临时覆盖为准
 
 > **SSOT**: 本文档是 xylitol 项目的通用规范文档。
 
