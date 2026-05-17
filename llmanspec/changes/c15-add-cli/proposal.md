@@ -1,13 +1,13 @@
 ---
 depends_on: [c05-init-skeleton, c10-add-config]
-blocks: [c20-add-tools, c30-add-print-mode, c80-add-tui, c87-add-rpc-mode]
+blocks: [c20-add-tools, c30-add-print-mode, c80-add-tui, c87-add-acp-mode]
 ---
 
 # c15-add-cli
 
 ## Why
 
-CLI 是用户入口，需要解析命令行参数并分派到 Print/Interactive(TUI)/JSON-RPC 三种模式。这是 c05 骨架中 `src/interface/cli/` 模块的实现。
+CLI 是用户入口，需要解析命令行参数并分派到 Print/Interactive(TUI)/ACP 三种模式。这是 c05 骨架中 `src/interface/cli/` 模块的实现。
 
 ## What Changes
 
@@ -22,7 +22,7 @@ CLI 是用户入口，需要解析命令行参数并分派到 Print/Interactive(
 xylitol [OPTIONS] [PROMPT]
 
 Options:
-  --mode <print|interactive|json>   运行模式（默认 print）
+  --mode <print|interactive|acp>    运行模式（默认 print）
   --config <PATH>                   配置文件路径
   --project <PATH>                  项目根目录
   --model <ID>                      覆盖默认模型
@@ -36,7 +36,7 @@ Options:
 enum RunMode {
     Print,       // 非交互，stdout 流式输出
     Interactive, // TUI 模式（feature = "ui-tui"）
-    Json,        // JSON-RPC over stdio
+    Acp,         // ACP over stdio (feature = "infra-acp")
 }
 ```
 
@@ -48,4 +48,4 @@ enum RunMode {
 
 - 新增 `clap` 依赖
 - `src/interface/cli/` 和 `src/main.rs` 从占位变为实际实现
-- Print 模式和 JSON-RPC 模式的分派占位（实际逻辑在 c30/c80）
+- Print 模式和 ACP 模式的分派占位（实际逻辑在 c30/c87）
