@@ -1,9 +1,14 @@
 ---
 depends_on: [c10-add-config]
 blocks: []
+status: paused
+paused_reason: "DAP 集成暂停开发"
+paused_date: 2026-05-17
 ---
 
 # c85-add-dap-layer
+
+> **⏸️ PAUSED** — DAP 集成已暂停（2026-05-17）。此 change 所有内容均不实施，`infra-dap` feature flag 保留但无功能逻辑。如需恢复，请更新 `status` 为 `active` 并更新设计文档。
 
 ## Why
 
