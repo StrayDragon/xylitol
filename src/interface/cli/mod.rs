@@ -116,11 +116,17 @@ fn run_print_mode(
     app_config: &config::AppConfig,
     prompt: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let tools = ToolRegistry::builtins();
+    let rt = tokio::runtime::Runtime::new()?;
+    #[allow(unused_mut)]
+    let mut tools = ToolRegistry::builtins();
+
+    // Register MCP tools from configured servers.
+    #[cfg(feature = "infra-skills")]
+    rt.block_on(register_mcp_tools(&mut tools, app_config))?;
+
     let profile = build_resolved_profile(app_config, args.model.as_deref())?;
     let session_service = Arc::new(InMemorySessionService::new());
 
-    let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(print::run_print(
         prompt,
         &tools,
@@ -130,6 +136,34 @@ fn run_print_mode(
         args.no_color,
     ))?;
 
+    Ok(())
+}
+
+/// Connect to all configured MCP servers and register their tools into the registry.
+#[cfg(feature = "infra-skills")]
+async fn register_mcp_tools(
+    tools: &mut ToolRegistry,
+    app_config: &config::AppConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::infra::skills::{McpClientManager, McpToolAdapter};
+    use std::sync::Arc;
+
+    let manager = Arc::new(McpClientManager::new());
+    manager
+        .connect(app_config)
+        .await
+        .map_err(|e| format!("MCP connect: {e}"))?;
+    let mcp_tools = manager.list_all_tools().await;
+    for (server_id, tool_name, description, schema) in mcp_tools {
+        let adapter = McpToolAdapter::new(
+            server_id,
+            tool_name,
+            description,
+            Some(schema),
+            manager.clone(),
+        );
+        tools.register(Arc::new(adapter));
+    }
     Ok(())
 }
 
