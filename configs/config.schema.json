@@ -488,7 +488,7 @@
       "description": "Supported LLM providers (MVP: only OpenAI-compatible and Anthropic).",
       "type": "string",
       "enum": [
-        "open_a_i",
+        "openai",
         "anthropic"
       ]
     },
