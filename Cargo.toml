@@ -35,6 +35,7 @@ futures = "0.3.32"
 lspz = { version = "0.9.3", features = ["agent-sdk"] }
 anyhow = "1.0.102"
 regex = "1.12.3"
+rmcp = { version = "1.7.0", features = ["client", "transport-child-process", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
 
 [features]
 default = ["agent-planning", "ui-tui", "infra-session", "ui-review"]
