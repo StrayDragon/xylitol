@@ -4353,6 +4353,7 @@ dependencies = [
  "jsonschema",
  "lspz",
  "minijinja",
+ "regex",
  "schemars",
  "serde",
  "serde_json",
