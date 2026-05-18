@@ -61,3 +61,6 @@ This repo uses `just` as the command runner:
 
 - When working on planned changes, follow llman SDD: specs/changes live under
   `llmanspec/`. Keep proposals and dependencies up to date (see `llmanspec/config.yaml`).
+- Change priority numbers only need to be unique among **unarchived** (active) changes.
+  Numbers may overlap with archived changes. Priority is advisory — execution follows
+  the `depends_on` DAG edges first, then priority as tiebreaker.
