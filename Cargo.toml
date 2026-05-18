@@ -23,7 +23,7 @@ thiserror = "2"
 tracing = "0.1"
 clap = { version = "4.6.1", features = ["derive"] }
 adk-core = "0.8.2"
-tokio = { version = "1.52.3", features = ["fs", "process", "io-util", "macros", "rt", "rt-multi-thread"] }
+tokio = { version = "1.52.3", features = ["fs", "process", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
 async-trait = "0.1.89"
 similar = "3.1.0"
 glob = "0.3.3"
@@ -43,10 +43,11 @@ chrono = { version = "0.4.44", features = ["serde"] }
 hex = "0.4.3"
 uuid = { version = "1.23.1", features = ["v4"] }
 
-# ── ui-review dependencies (optional) ────────────
+# ── ui-review / ui-tui dependencies (optional) ──
 ratatui = { version = "0.29", optional = true, default-features = false, features = ["crossterm"] }
 crossterm = { version = "0.28", optional = true }
 syntect = { version = "5", optional = true }
+termimad = { version = "0.34", optional = true }
 
 # ── acp dependencies (optional, infra-acp) ─────
 agent-client-protocol = { version = "0.12.1", optional = true }
@@ -68,8 +69,8 @@ infra-sandbox = []
 infra-rtk = []
 
 # ── interface/ layer ──────────────────────────
-ui-tui = []
-ui-review = ["ratatui", "crossterm"]
+ui-tui = ["dep:ratatui", "dep:crossterm", "dep:termimad", "dep:syntect"]
+ui-review = ["dep:ratatui", "dep:crossterm"]
 
 # ── development only ──────────────────────────
 dev-vt100 = []
