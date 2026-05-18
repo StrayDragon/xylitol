@@ -175,16 +175,42 @@ pub(crate) async fn run_print_mode(
                         .await;
                 }
                 AgentEvent::ToolCallEnd { id, result, .. } => {
-                    let tool_name = tool_names.get(id).cloned().unwrap_or_default();
-                    agent
-                        .dispatch_hook(
-                            &HookEvent::ToolCall {
-                                tool: tool_name,
-                                args: result.clone(),
-                            },
-                            HookPhase::Post,
-                        )
-                        .await;
+                    if result
+                        .get("blocked")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
+                    {
+                        let reason = result
+                            .get("reason")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown");
+                        let rule = result
+                            .get("rule")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown");
+                        let tool_name = tool_names.get(id).cloned().unwrap_or_default();
+                        agent
+                            .dispatch_hook(
+                                &HookEvent::ToolCallBlocked {
+                                    tool: tool_name,
+                                    reason: reason.into(),
+                                    rule: rule.into(),
+                                },
+                                HookPhase::Post,
+                            )
+                            .await;
+                    } else {
+                        let tool_name = tool_names.get(id).cloned().unwrap_or_default();
+                        agent
+                            .dispatch_hook(
+                                &HookEvent::ToolCall {
+                                    tool: tool_name,
+                                    args: result.clone(),
+                                },
+                                HookPhase::Post,
+                            )
+                            .await;
+                    }
                 }
                 _ => {}
             }
@@ -224,6 +250,22 @@ fn display_event(
             line_buf.flush();
 
             let name = tool_names.get(&id).map(|s| s.as_str()).unwrap_or(&id);
+
+            // Security-blocked tool call
+            if result
+                .get("blocked")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                let reason = result
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown");
+                let mark = if no_color { "!" } else { "\x1b[31m!\x1b[0m" };
+                let _ = writeln!(io::stderr(), "[Tool: {name}] {mark} BLOCKED: {reason}");
+                return;
+            }
+
             let summary = tool_result_summary(&result);
             let mark = if no_color {
                 "✓"
@@ -281,8 +323,18 @@ pub(crate) async fn run_print(
     session_service: Arc<dyn SessionService>,
     no_color: bool,
 ) -> Result<(), AgentError> {
+    // Build security engine and wrap tools if security is enabled.
+    let tools = {
+        let mut tools = tool_registry.clone();
+        if app_config.security.enabled {
+            let engine = crate::infra::security::SecurityEngine::new(&app_config.security);
+            tools.wrap_with_security(engine);
+        }
+        tools
+    };
+
     let agent_loop = AgentLoop::new(
-        tool_registry,
+        &tools,
         profile.clone(),
         session_service,
         "xylitol".into(),
