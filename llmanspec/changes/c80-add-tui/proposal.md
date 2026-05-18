@@ -1,6 +1,5 @@
 ---
 depends_on: [c15-add-cli, c20-add-tools, c25-add-agent-loop]
-blocks: []
 ---
 
 # c80-add-tui

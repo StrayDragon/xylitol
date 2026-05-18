@@ -1,6 +1,5 @@
 ---
 depends_on: [c20-add-tools, c40-add-hooks]
-blocks: []
 ---
 
 # c75-add-diff-review

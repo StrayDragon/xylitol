@@ -1,6 +1,5 @@
 ---
 depends_on: [c03-update-cli-mode-dispatch]
-blocks: [c55-add-planning-execution, c60-add-model-lock]
 ---
 
 # c04-add-agent-profile-foundation

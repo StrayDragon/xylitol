@@ -1,6 +1,5 @@
 ---
 depends_on: [c05-init-skeleton, c25-add-agent-loop]
-blocks: []
 ---
 
 # c88-add-test-infra

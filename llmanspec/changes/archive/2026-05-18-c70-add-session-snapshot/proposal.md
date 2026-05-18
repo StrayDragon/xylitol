@@ -1,6 +1,5 @@
 ---
 depends_on: [c10-add-config, c25-add-agent-loop, c45-add-lsp-layer]
-blocks: []
 ---
 
 # c70-add-session-snapshot
