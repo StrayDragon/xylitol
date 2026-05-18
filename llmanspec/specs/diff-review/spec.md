@@ -1,0 +1,21 @@
+---
+llman_spec_valid_scope:
+  - src/
+  - tests/
+llman_spec_valid_commands:
+  - cargo test
+llman_spec_evidence:
+  - "Archived from change c75-add-diff-review"
+---
+
+```toon
+kind: llman.sdd.spec
+name: "diff-review"
+purpose: "TBD - created by archiving change c75-add-diff-review. Update purpose after archive."
+requirements[2]{req_id,title,statement}:
+  r1,"cli-review","System MUST provide CLI terminal diff review with line-level comments via ratatui."
+  r2,"web-review",System MUST provide Web browser diff review via axum HTTP server and Monaco Editor.
+scenarios[2]{req_id,id,given,when,then}:
+  r1,happy,agent completes a step with file changes,review backend is cli,TUI shows diff with j/k navigation and c comment capability
+  r2,happy,agent completes a step with file changes,review backend is web,local HTTP server starts with Monaco diff view
+```
