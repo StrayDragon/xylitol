@@ -37,7 +37,7 @@ anyhow = "1.0.102"
 regex = "1.12.3"
 
 [features]
-default = ["ui-tui", "infra-session", "ui-review"]
+default = ["agent-planning", "ui-tui", "infra-session", "ui-review"]
 
 # ── agent/ layer ──────────────────────────────
 agent-planning = []
