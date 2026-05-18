@@ -81,8 +81,12 @@ pub(crate) fn run() -> Result<(), Box<dyn std::error::Error>> {
     // ACP mode: explicit opt-in via flag.
     #[cfg(feature = "infra-acp")]
     if args.acp {
-        tracing::info!("ACP mode — implemented in c87-add-acp-mode");
-        return Ok(());
+        tracing::info!("ACP mode");
+        let rt = tokio::runtime::Runtime::new()?;
+        match rt.block_on(crate::interface::acp::run_acp_mode(app_config)) {
+            Ok(()) => return Ok(()),
+            Err(e) => return Err(e.to_string().into()),
+        }
     }
 
     // Auto-detect mode from positional prompt.
