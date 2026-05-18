@@ -787,7 +787,7 @@ fn default_review_mode() -> String {
 
 #[cfg(feature = "ui-review")]
 fn default_review_backend() -> String {
-    "claude".into()
+    "cli".into()
 }
 
 // ---------------------------------------------------------------------------

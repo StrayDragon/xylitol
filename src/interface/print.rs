@@ -21,6 +21,9 @@ use crate::agent::tools::ToolRegistry;
 use crate::infra::config::AppConfig;
 use crate::infra::hooks::{HookEvent, HookPhase};
 
+#[cfg(feature = "ui-review")]
+use crate::interface::diff_review::{ReviewEngine, ReviewMode, types::ReviewVerdict};
+
 /// Flush partial lines at most every 100 ms to maintain streaming feel
 /// while reducing syscall overhead.
 const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
@@ -352,7 +355,57 @@ pub(crate) async fn run_print(
         .run(prompt, "default-session", repeat_cfg)
         .await?;
 
-    run_print_mode(stream, no_color, Some(&agent_loop)).await
+    run_print_mode(stream, no_color, Some(&agent_loop)).await?;
+
+    // Post-agent review.
+    #[cfg(feature = "ui-review")]
+    run_post_review(app_config, &agent_loop).await?;
+
+    Ok(())
+}
+
+/// Run post-agent review if configured.
+#[cfg(feature = "ui-review")]
+async fn run_post_review(app_config: &AppConfig, agent_loop: &AgentLoop) -> Result<(), AgentError> {
+    let Some(ref review_cfg) = app_config.review else {
+        return Ok(());
+    };
+    if !review_cfg.enabled {
+        return Ok(());
+    }
+
+    let engine = ReviewEngine::from_config(review_cfg);
+    if engine.mode() != ReviewMode::OnStep {
+        return Ok(());
+    }
+
+    // For now, create an empty review session (file-change tracking
+    // requires tool-level integration — future work).
+    let files: Vec<(String, String, String)> = Vec::new();
+    let mut session = engine.create_session(&files);
+
+    if session.hunks.is_empty() {
+        tracing::info!("No changes to review.");
+        return Ok(());
+    }
+
+    let verdict = engine
+        .run_review(&mut session, agent_loop.hooks_ref())
+        .await;
+
+    let n_comments = match &verdict {
+        ReviewVerdict::AcceptAll(comments) => {
+            tracing::info!("Review: changes accepted ({} comment(s)).", comments.len());
+            comments.len()
+        }
+        ReviewVerdict::RejectWithComments(comments) => {
+            tracing::warn!("Review: rejected with {} comment(s).", comments.len());
+            comments.len()
+        }
+    };
+    let _ = n_comments;
+
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

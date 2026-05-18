@@ -6,3 +6,6 @@ pub(crate) mod acp;
 
 #[cfg(feature = "ui-tui")]
 pub(crate) mod tui;
+
+#[cfg(feature = "ui-review")]
+pub(crate) mod diff_review;
