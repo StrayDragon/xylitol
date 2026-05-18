@@ -95,9 +95,12 @@ mod tests {
                 "max_n": 10,
                 "window_size": 100,
                 "consecutive_hit_threshold": 3,
+                "window_repeat_ratio": 0.8,
+                "early_stop_tokens": 0,
                 "recovery": {
-                    "strategy": "backoff",
-                    "backoff_factor": 2.0
+                    "strategy": "sequential",
+                    "max_attempts": 3,
+                    "actions": []
                 }
             },
             "tools": {}

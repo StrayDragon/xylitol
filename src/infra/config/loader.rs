@@ -311,7 +311,7 @@ mod tests {
         assert!(!config.security.enabled);
         assert_eq!(config.security.bash.timeout_secs, 120);
         assert!(!config.repeat_detection.enabled);
-        assert_eq!(config.repeat_detection.recovery.strategy, "backoff");
+        assert_eq!(config.repeat_detection.recovery.strategy, "sequential");
         assert!(config.hooks.global.is_empty());
         assert!(config.tools.allowlist.is_empty());
     }
@@ -355,7 +355,7 @@ mod tests {
         writeln!(f, "repeat_detection:").unwrap();
         writeln!(
             f,
-            "  enabled: true\n  min_n: 2\n  max_n: 8\n  window_size: 50\n  consecutive_hit_threshold: 2\n  recovery:\n    strategy: rotate\n    backoff_factor: 1.5"
+            "  enabled: true\n  min_n: 2\n  max_n: 8\n  window_size: 50\n  consecutive_hit_threshold: 2\n  recovery:\n    strategy: rotate\n    max_attempts: 5\n    actions: []"
         )
         .unwrap();
         writeln!(f, "tools: {{}}").unwrap();
