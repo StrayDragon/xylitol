@@ -12,7 +12,7 @@ llman_spec_evidence:
 kind: llman.sdd.spec
 name: "tui-interface"
 purpose: "TBD - created by archiving change c80-add-tui. Update purpose after archive."
-requirements[10]{req_id,title,statement}:
+requirements[17]{req_id,title,statement}:
   r1,"component-architecture","System MUST implement a Component trait with render(&mut self, f, area), is_dirty(), mark_clean(), and handle_event() methods for all major TUI components."
   r2,"event-driven-ui","System MUST consume AgentEvent stream via tokio::select! and update TUI in real-time with dirty-flag differential rendering."
   r3,"markdown-rendering","System MUST render markdown via pulldown-cmark (CommonMark spec) with syntect syntax highlighting for code blocks."
@@ -23,7 +23,14 @@ requirements[10]{req_id,title,statement}:
   r8,"history-persistence",System SHALL persist input history to ~/.xylitol/history file and support up/down history navigation.
   r9,"overlay-stack","System SHALL implement a z-ordered OverlayStack for modals (help, selection) with stack-based input routing."
   r10,"status-bar","System SHALL display a status bar with model name, running/ready state, token usage, and session name."
-scenarios[10]{req_id,id,given,when,then}:
+  r11,"async-input-queue","System SHALL queue user input when Enter is pressed during agent execution and auto-submit queued messages after current execution completes."
+  r12,"selector-real-data","System SHALL populate session/model/theme selectors from AppConfig (agent.profiles) and SessionService (list_sessions), with fuzzy-filterable list rendering."
+  r13,"editor-integration",System SHALL support Ctrl+G to open current input buffer in $EDITOR (or vim as fallback) and read back the content on editor exit.
+  r14,"history-search",System SHALL support Ctrl+R interactive history search overlay with fuzzy matching.
+  r15,"mouse-interaction",System SHALL process mouse scroll wheel for chat scrolling and mouse click for focus switching.
+  r16,"focus-visual",System SHALL visually indicate the active focus area with highlighted border and title accent.
+  r17,"pane-resize",System SHALL support Ctrl+Up/Down to resize the chat/tool output split.
+scenarios[17]{req_id,id,given,when,then}:
   r1,happy,Component trait is defined,each major component implements it,is_dirty returns correct state after mutations
   r2,happy,agent emits TextDelta events via agent_tx channel,"App::handle_agent_event processes them",chat component marks dirty and content updates on next render
   r3,happy,"assistant message contains markdown with code blocks, lists, links","MarkdownRenderer::render() is called",output contains correctly styled ratatui Lines with syntax highlighting
@@ -34,4 +41,11 @@ scenarios[10]{req_id,id,given,when,then}:
   r8,happy,user submits prompts in multiple sessions,history file is written and read,↑ key navigates through previously submitted prompts across sessions
   r9,happy,user presses ? to open help,OverlayStack.push(help) is called,keyboard events route to help overlay until Esc dismisses it
   r10,happy,agent starts execution,status_bar.set_running(true),"status bar shows RUNNING state, model name, and updates token count live"
+  r11,happy,agent is running and user types 'hello' then presses Enter,input is not disabled and Enter is accepted,"message is queued; status bar shows [Q: 1]; after agent completes, 'hello' is submitted automatically"
+  r12,happy,user types /model and presses Enter,SelectorOverlay opens with model list from AppConfig,fuzzy search narrows the list; Enter selects a model; status bar updates
+  r13,happy,user types text in input then presses Ctrl+G,$EDITOR (or vim) opens with the text,user saves and exits; text is read back into the input area
+  r14,happy,user presses Ctrl+R during input,history search overlay opens,fuzzy matching against history file; Enter loads selected entry into input
+  r15,happy,mouse scroll wheel is used over the chat area,"App handles MouseEvent::ScrollDown",chat scrolls down by N lines
+  r16,happy,user presses Tab to cycle focus,"App::cycle_focus() changes focus field",focused component gets a highlighted border (cyan) vs dim border for unfocused
+  r17,happy,tool panel is visible and user presses Ctrl+Up,"tool panel Constraint::Length increases by 1",layout adjusts; chat area shrinks accordingly
 ```
