@@ -297,12 +297,44 @@ pub(crate) struct HooksConfig {
     pub user: Vec<HookEntry>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub(crate) struct HookEntry {
+    /// Shell command to execute (e.g., "python3 /path/to/hook.py").
     pub command: String,
+    /// Event patterns to match (e.g., "pre.tool_call", "post.step_complete").
+    /// Supports exact and prefix matching.
     #[serde(default)]
     pub events: Vec<String>,
+    /// Timeout in seconds per hook execution. Default: 5.
+    #[serde(default = "default_hook_timeout")]
+    pub timeout_secs: u64,
+    /// Optional phase filter: "pre", "post", or "" for both. When set, only
+    /// matches events of that phase.
+    #[serde(default)]
+    pub phase: String,
+    /// Whether this hook requires explicit user approval before execution.
+    #[serde(default)]
+    pub requires_approval: bool,
+    /// Extra environment variables for the hook process.
+    #[serde(default)]
+    pub env: std::collections::HashMap<String, String>,
+}
+
+impl Default for HookEntry {
+    fn default() -> Self {
+        Self {
+            command: String::new(),
+            events: Vec::new(),
+            timeout_secs: default_hook_timeout(),
+            phase: String::new(),
+            requires_approval: false,
+            env: std::collections::HashMap::new(),
+        }
+    }
+}
+
+fn default_hook_timeout() -> u64 {
+    5
 }
 
 // ---------------------------------------------------------------------------
