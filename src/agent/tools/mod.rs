@@ -11,6 +11,7 @@ use adk_core::Tool;
 use std::sync::Arc;
 
 /// Registry for managing available tools.
+#[derive(Clone)]
 pub(crate) struct ToolRegistry {
     tools: Vec<Arc<dyn Tool>>,
 }
@@ -43,6 +44,24 @@ impl ToolRegistry {
                 .collect(),
             _ => self.tools.clone(),
         }
+    }
+
+    /// Wrap every registered tool with a security-checking wrapper.
+    ///
+    /// Applies [`SecurityToolWrapper`] to each tool so that policy checks
+    /// run before the actual tool implementation.  Multiple calls are
+    /// idempotent — wrapping an already-wrapped tool is transparent.
+    pub(crate) fn wrap_with_security(&mut self, engine: crate::infra::security::SecurityEngine) {
+        let engine = std::sync::Arc::new(engine);
+        self.tools = self
+            .tools
+            .iter()
+            .map(|t| {
+                let w =
+                    crate::infra::security::SecurityToolWrapper::new(t.clone(), (*engine).clone());
+                Arc::new(w) as Arc<dyn Tool>
+            })
+            .collect();
     }
 
     /// Create a registry with all built-in tools registered.

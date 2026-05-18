@@ -403,6 +403,8 @@ pub(crate) struct NetworkSecurityConfig {
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub(crate) struct ResourceLimits {
+    #[serde(default = "default_max_subprocesses")]
+    pub max_subprocesses: u16,
     #[serde(default = "default_max_memory")]
     pub max_memory_mb: u64,
     #[serde(default = "default_max_cpu")]
@@ -414,6 +416,7 @@ pub(crate) struct ResourceLimits {
 impl Default for ResourceLimits {
     fn default() -> Self {
         Self {
+            max_subprocesses: default_max_subprocesses(),
             max_memory_mb: default_max_memory(),
             max_cpu_percent: default_max_cpu(),
             max_disk_mb: default_max_disk(),
@@ -421,6 +424,9 @@ impl Default for ResourceLimits {
     }
 }
 
+fn default_max_subprocesses() -> u16 {
+    16
+}
 fn default_max_memory() -> u64 {
     4096
 }
