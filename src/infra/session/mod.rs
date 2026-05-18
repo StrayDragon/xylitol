@@ -1,9 +1,16 @@
-/// Session snapshot system — placeholder (feature = "infra-session").
-/// Expanded in c70.
-pub(crate) struct Session;
+pub(crate) mod compaction;
+pub(crate) mod config;
+pub(crate) mod fine_tune;
+pub(crate) mod gc;
+pub(crate) mod manager;
+pub(crate) mod storage;
+pub(crate) mod types;
 
-impl Session {
-    pub(crate) fn new() -> Self {
-        Self
-    }
-}
+// Re-exports consumed by upper layers (integrated in agent setup).
+#[allow(unused_imports)]
+pub(crate) use config::SessionConfig;
+#[allow(unused_imports)]
+pub(crate) use manager::SnapshotManager;
+
+#[cfg(test)]
+pub(crate) mod tests;
