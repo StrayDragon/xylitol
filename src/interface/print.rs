@@ -19,6 +19,7 @@ use crate::agent::r#loop::{AgentError, AgentEvent, AgentLoop};
 use crate::agent::repeat::DetectionConfig;
 use crate::agent::tools::ToolRegistry;
 use crate::infra::config::AppConfig;
+use crate::infra::hooks::{HookEvent, HookPhase};
 
 /// Flush partial lines at most every 100 ms to maintain streaming feel
 /// while reducing syscall overhead.
@@ -136,14 +137,59 @@ type ToolNameMap = HashMap<String, String>;
 ///
 /// Text content is written to stdout (pipe-able).  Tool and error information
 /// goes to stderr so it doesn't interfere with `xylitol … > output.txt`.
+///
+/// When `agent_loop` has hooks configured, relevant events are dispatched
+/// to the hook subsystem during stream consumption.
 pub(crate) async fn run_print_mode(
     mut stream: impl Stream<Item = AgentEvent> + Unpin,
     no_color: bool,
+    agent_loop: Option<&AgentLoop>,
 ) -> Result<(), AgentError> {
     let mut line_buf = LineBuffer::new();
     let mut tool_names: ToolNameMap = HashMap::new();
 
     while let Some(event) = stream.next().await {
+        // Dispatch hook events before display.
+        if let Some(agent) = agent_loop {
+            match &event {
+                AgentEvent::StepComplete { step, summary } => {
+                    agent
+                        .dispatch_hook(
+                            &HookEvent::StepComplete {
+                                step: *step,
+                                summary: summary.clone(),
+                            },
+                            HookPhase::Post,
+                        )
+                        .await;
+                }
+                AgentEvent::ToolCallStart { name, args, .. } => {
+                    agent
+                        .dispatch_hook(
+                            &HookEvent::ToolCall {
+                                tool: name.clone(),
+                                args: args.clone(),
+                            },
+                            HookPhase::Pre,
+                        )
+                        .await;
+                }
+                AgentEvent::ToolCallEnd { id, result, .. } => {
+                    let tool_name = tool_names.get(id).cloned().unwrap_or_default();
+                    agent
+                        .dispatch_hook(
+                            &HookEvent::ToolCall {
+                                tool: tool_name,
+                                args: result.clone(),
+                            },
+                            HookPhase::Post,
+                        )
+                        .await;
+                }
+                _ => {}
+            }
+        }
+
         display_event(event, &mut line_buf, &mut tool_names, no_color);
     }
 
@@ -240,6 +286,7 @@ pub(crate) async fn run_print(
         profile.clone(),
         session_service,
         "xylitol".into(),
+        Some(&app_config.hooks),
     )
     .await?;
 
@@ -253,7 +300,7 @@ pub(crate) async fn run_print(
         .run(prompt, "default-session", repeat_cfg)
         .await?;
 
-    run_print_mode(stream, no_color).await
+    run_print_mode(stream, no_color, Some(&agent_loop)).await
 }
 
 // ---------------------------------------------------------------------------
@@ -393,7 +440,7 @@ mod tests {
                 result: serde_json::json!({"content": "x"}),
             },
         ];
-        let result = run_print_mode(futures::stream::iter(events), true).await;
+        let result = run_print_mode(futures::stream::iter(events), true, None).await;
         assert!(result.is_ok());
     }
 }
