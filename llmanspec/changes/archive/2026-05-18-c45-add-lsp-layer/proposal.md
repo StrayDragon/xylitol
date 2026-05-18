@@ -1,6 +1,5 @@
 ---
 depends_on: [c10-add-config]
-blocks: [c70-add-session-snapshot]
 ---
 
 # c45-add-lsp-layer

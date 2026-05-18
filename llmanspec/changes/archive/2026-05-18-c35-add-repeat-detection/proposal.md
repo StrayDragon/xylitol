@@ -1,6 +1,5 @@
 ---
 depends_on: [c25-add-agent-loop]
-blocks: []
 ---
 
 # c35-add-repeat-detection

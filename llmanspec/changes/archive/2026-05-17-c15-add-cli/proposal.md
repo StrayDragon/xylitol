@@ -1,6 +1,5 @@
 ---
 depends_on: [c05-init-skeleton, c10-add-config]
-blocks: [c20-add-tools, c30-add-print-mode, c80-add-tui, c87-add-acp-mode]
 ---
 
 # c15-add-cli

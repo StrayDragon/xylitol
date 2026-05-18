@@ -1,6 +1,5 @@
 ---
 depends_on: [c30-add-print-mode]
-blocks: [c80-add-tui, c87-add-acp-mode]
 ---
 
 # c03-update-cli-mode-dispatch
