@@ -15,6 +15,7 @@ use futures::Stream;
 
 use crate::agent::repeat::{DetectionConfig, RepeatDetector};
 use crate::agent::tools::ToolRegistry;
+use crate::infra::hooks::{DispatchResult, HookDispatcher, HookEvent, HookPhase};
 
 // ---------------------------------------------------------------------------
 // AgentEvent
@@ -98,6 +99,8 @@ pub(crate) struct AgentLoop {
     app_name: String,
     session_service: Arc<dyn SessionService>,
     step_counter: std::sync::atomic::AtomicU32,
+    /// Optional hook dispatcher for event-driven extension.
+    hooks: Option<HookDispatcher>,
 }
 
 impl AgentLoop {
@@ -105,11 +108,15 @@ impl AgentLoop {
     ///
     /// Builds an `LlmAgent` from the resolved profile (model, prompt, tools, iterations),
     /// then wraps it in a `Runner` for session and lifecycle management.
+    ///
+    /// `hooks_config` — optional hooks configuration. When provided with at least
+    /// one hook entry, a `HookDispatcher` is initialised.
     pub(crate) async fn new(
         tool_registry: &ToolRegistry,
         profile: crate::agent::profile::ResolvedProfile,
         session_service: Arc<dyn SessionService>,
         app_name: String,
+        hooks_config: Option<&crate::infra::config::types::HooksConfig>,
     ) -> Result<Self, AgentError> {
         let model = profile
             .model_config
@@ -150,11 +157,14 @@ impl AgentLoop {
         })
         .map_err(|e| AgentError::ConfigError(format!("build runner: {e}")))?;
 
+        let hooks = hooks_config.map(HookDispatcher::new);
+
         Ok(Self {
             runner,
             app_name,
             session_service,
             step_counter: std::sync::atomic::AtomicU32::new(0),
+            hooks,
         })
     }
 
@@ -197,6 +207,25 @@ impl AgentLoop {
             done: false,
             detector,
         })
+    }
+
+    /// Dispatch a hook event through the configured dispatcher.
+    ///
+    /// Returns `DispatchResult::Allowed` when hooks are not configured (no-op).
+    pub(crate) async fn dispatch_hook(
+        &self,
+        event: &HookEvent,
+        phase: HookPhase,
+    ) -> DispatchResult {
+        match &self.hooks {
+            Some(d) => d.dispatch(event, phase).await,
+            None => DispatchResult::Allowed,
+        }
+    }
+
+    /// Whether hooks are configured.
+    pub(crate) fn has_hooks(&self) -> bool {
+        self.hooks.as_ref().is_some_and(|d| !d.is_empty())
     }
 
     /// Ensure a session exists for the given ID by creating one if absent.
