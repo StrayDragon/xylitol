@@ -99,7 +99,23 @@ pub(crate) fn run() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(feature = "ui-tui")]
             {
                 tracing::info!("interactive/TUI mode");
-                tracing::info!("TUI mode — implemented in c80-add-tui");
+                let rt = tokio::runtime::Runtime::new()?;
+                #[allow(unused_mut)]
+                let mut tools = ToolRegistry::builtins();
+
+                // Register MCP tools from configured servers.
+                #[cfg(feature = "infra-skills")]
+                rt.block_on(register_mcp_tools(&mut tools, &app_config))?;
+
+                let profile = build_resolved_profile(&app_config, args.model.as_deref())?;
+                let session_service = Arc::new(InMemorySessionService::new());
+
+                rt.block_on(crate::interface::tui::run_tui(
+                    tools,
+                    app_config,
+                    profile,
+                    session_service,
+                ))?;
                 Ok(())
             }
             #[cfg(not(feature = "ui-tui"))]
