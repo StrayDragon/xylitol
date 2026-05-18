@@ -423,6 +423,12 @@ pub(crate) struct RepeatDetectionConfig {
     pub window_size: u16,
     #[serde(default = "default_hit_threshold")]
     pub consecutive_hit_threshold: u8,
+    #[serde(default = "default_window_repeat_ratio")]
+    pub window_repeat_ratio: f64,
+    /// Stop monitoring after this many tokens. 0 = no limit.
+    #[serde(default)]
+    pub early_stop_tokens: u16,
+    #[serde(default)]
     pub recovery: RecoveryConfig,
 }
 
@@ -434,6 +440,8 @@ impl Default for RepeatDetectionConfig {
             max_n: default_max_n(),
             window_size: default_window_size(),
             consecutive_hit_threshold: default_hit_threshold(),
+            window_repeat_ratio: default_window_repeat_ratio(),
+            early_stop_tokens: 0,
             recovery: RecoveryConfig::default(),
         }
     }
@@ -451,30 +459,81 @@ fn default_window_size() -> u16 {
 fn default_hit_threshold() -> u8 {
     3
 }
+fn default_window_repeat_ratio() -> f64 {
+    0.8
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub(crate) struct RecoveryConfig {
     #[serde(default = "default_recovery_strategy")]
     pub strategy: String,
-    #[serde(default = "default_backoff_factor")]
-    pub backoff_factor: f64,
+    #[serde(default = "default_max_attempts")]
+    pub max_attempts: u8,
+    #[serde(default)]
+    pub actions: Vec<RecoveryAction>,
 }
 
 impl Default for RecoveryConfig {
     fn default() -> Self {
         Self {
             strategy: default_recovery_strategy(),
-            backoff_factor: default_backoff_factor(),
+            max_attempts: default_max_attempts(),
+            actions: default_recovery_actions(),
         }
     }
 }
 
-fn default_recovery_strategy() -> String {
-    "backoff".into()
+/// A single recovery action in the sequential chain.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub(crate) enum RecoveryAction {
+    /// Prepend an anti-repetition warning to the prompt and retry.
+    AlterPrompt {
+        #[serde(default = "default_alter_prompt_prepend")]
+        prepend: String,
+    },
+    /// Switch to a different model provider and retry.
+    SwitchModel {
+        /// Model ID to switch to. None = switch to the other provider.
+        #[serde(default)]
+        model_id: Option<String>,
+    },
+    /// Increase repetition/frequency/presence penalties and retry.
+    AdjustParams {
+        #[serde(default)]
+        repetition_penalty: f64,
+        #[serde(default)]
+        frequency_penalty: f64,
+        #[serde(default)]
+        presence_penalty: f64,
+    },
+    /// Fall back to the planner for re-planning the task.
+    DelegateToPlanner,
 }
-fn default_backoff_factor() -> f64 {
-    2.0
+
+fn default_recovery_strategy() -> String {
+    "sequential".into()
+}
+fn default_max_attempts() -> u8 {
+    3
+}
+fn default_alter_prompt_prepend() -> String {
+    "WARNING: Avoid repetition.".into()
+}
+
+fn default_recovery_actions() -> Vec<RecoveryAction> {
+    vec![
+        RecoveryAction::AlterPrompt {
+            prepend: default_alter_prompt_prepend(),
+        },
+        RecoveryAction::AdjustParams {
+            repetition_penalty: 1.4,
+            frequency_penalty: 0.0,
+            presence_penalty: 0.0,
+        },
+        RecoveryAction::DelegateToPlanner,
+    ]
 }
 
 // ---------------------------------------------------------------------------

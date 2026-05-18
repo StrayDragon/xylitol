@@ -16,6 +16,7 @@ use adk_session::SessionService;
 use futures::{Stream, StreamExt};
 
 use crate::agent::r#loop::{AgentError, AgentEvent, AgentLoop};
+use crate::agent::repeat::DetectionConfig;
 use crate::agent::tools::ToolRegistry;
 use crate::infra::config::AppConfig;
 
@@ -205,6 +206,18 @@ fn display_event(
             let suffix = if no_color { "" } else { "\x1b[0m" };
             let _ = writeln!(io::stderr(), "{prefix}Error: {err}{suffix}");
         }
+        AgentEvent::RepeatDetected {
+            consecutive_hits,
+            window_repeat_ratio,
+        } => {
+            line_buf.flush();
+            let dim_pre = if no_color { "" } else { "\x1b[2m" };
+            let dim_suf = if no_color { "" } else { "\x1b[0m" };
+            let _ = writeln!(
+                io::stderr(),
+                "{dim_pre}[RepeatDetected] hits={consecutive_hits}, ratio={window_repeat_ratio:.2}{dim_suf}"
+            );
+        }
     }
 }
 
@@ -217,7 +230,7 @@ fn display_event(
 pub(crate) async fn run_print(
     prompt: &str,
     tool_registry: &ToolRegistry,
-    _app_config: &AppConfig,
+    app_config: &AppConfig,
     profile: &crate::agent::profile::ResolvedProfile,
     session_service: Arc<dyn SessionService>,
     no_color: bool,
@@ -230,7 +243,15 @@ pub(crate) async fn run_print(
     )
     .await?;
 
-    let stream = agent_loop.run(prompt, "default-session").await?;
+    let repeat_cfg = if app_config.repeat_detection.enabled {
+        Some(DetectionConfig::from(&app_config.repeat_detection))
+    } else {
+        None
+    };
+
+    let stream = agent_loop
+        .run(prompt, "default-session", repeat_cfg)
+        .await?;
 
     run_print_mode(stream, no_color).await
 }

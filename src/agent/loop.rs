@@ -13,6 +13,7 @@ use adk_runner::{Runner, RunnerConfig};
 use adk_session::SessionService;
 use futures::Stream;
 
+use crate::agent::repeat::{DetectionConfig, RepeatDetector};
 use crate::agent::tools::ToolRegistry;
 
 // ---------------------------------------------------------------------------
@@ -39,6 +40,11 @@ pub(crate) enum AgentEvent {
     StepComplete { step: u32, summary: String },
     /// An error occurred during execution.
     Error(AgentError),
+    /// Repeat detection triggered — model output loop was interrupted.
+    RepeatDetected {
+        consecutive_hits: u32,
+        window_repeat_ratio: f64,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -157,10 +163,13 @@ impl AgentLoop {
     /// Auto-creates the session if it does not yet exist (load-or-create
     /// semantics), then runs the agent and returns a stream of [`AgentEvent`]
     /// items.
+    ///
+    /// Optionally pass repeat detection config to enable loop detection.
     pub(crate) async fn run(
         &self,
         prompt: &str,
         session_id: &str,
+        repeat_detection: Option<DetectionConfig>,
     ) -> Result<AgentEventStream, AgentError> {
         // Load-or-create session so callers don't need to manage session lifecycle.
         self.ensure_session(session_id).await?;
@@ -180,10 +189,13 @@ impl AgentLoop {
         self.step_counter
             .store(step_counter, std::sync::atomic::Ordering::Relaxed);
 
+        let detector = repeat_detection.map(RepeatDetector::new);
+
         Ok(AgentEventStream {
             inner: stream,
             step: step_counter,
             done: false,
+            detector,
         })
     }
 
@@ -217,6 +229,10 @@ pub(crate) struct AgentEventStream {
     inner: Pin<Box<dyn Stream<Item = Result<Event, adk_core::AdkError>> + Send>>,
     step: u32,
     done: bool,
+    /// Optional repeat detector. When `Some`, text content is monitored for
+    /// repetition loops. On detection, the stream yields `RepeatDetected` and
+    /// terminates.
+    detector: Option<RepeatDetector>,
 }
 
 impl Stream for AgentEventStream {
@@ -230,6 +246,19 @@ impl Stream for AgentEventStream {
         match self.inner.as_mut().poll_next(cx) {
             Poll::Ready(Some(Ok(event))) => {
                 let agent_event = map_adk_event(event, self.step);
+
+                // Feed text deltas through the repeat detector, if active.
+                if let AgentEvent::TextDelta(ref text) = agent_event
+                    && let Some(ref mut detector) = self.detector
+                    && let Some(result) = detector.feed(text)
+                {
+                    self.done = true;
+                    return Poll::Ready(Some(AgentEvent::RepeatDetected {
+                        consecutive_hits: result.consecutive_hits,
+                        window_repeat_ratio: result.window_repeat_ratio,
+                    }));
+                }
+
                 Poll::Ready(Some(agent_event))
             }
             Poll::Ready(Some(Err(e))) => {
@@ -479,6 +508,7 @@ mod tests {
             inner: raw_stream,
             step: 1,
             done: false,
+            detector: None,
         };
 
         let mut agent_events: Vec<AgentEvent> = Vec::new();
