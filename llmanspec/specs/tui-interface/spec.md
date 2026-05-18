@@ -12,7 +12,7 @@ llman_spec_evidence:
 kind: llman.sdd.spec
 name: "tui-interface"
 purpose: "TBD - created by archiving change c80-add-tui. Update purpose after archive."
-requirements[23]{req_id,title,statement}:
+requirements[26]{req_id,title,statement}:
   r1,"component-architecture","System MUST implement a Component trait with render(&mut self, f, area), is_dirty(), mark_clean(), and handle_event() methods for all major TUI components."
   r2,"event-driven-ui","System MUST consume AgentEvent stream via tokio::select! and update TUI in real-time with dirty-flag differential rendering."
   r3,"markdown-rendering","System MUST render markdown via pulldown-cmark (CommonMark spec) with syntect syntax highlighting for code blocks."
@@ -36,7 +36,10 @@ requirements[23]{req_id,title,statement}:
   r21,"tool-call-cards","System SHALL render tool calls as collapsible cards with status badge (running/success/failed), argument preview, and Enter to expand."
   r22,"thinking-blocks","System SHALL detect and render agent reasoning as collapsible dim-styled blocks, collapsed by default with Enter to expand."
   r23,"approval-with-diff","System SHALL show the diff of proposed tool changes inline within the approval overlay for edit-type tools."
-scenarios[23]{req_id,id,given,when,then}:
+  r24,"initial-paint","System MUST render the first TUI frame immediately after entering the alternate screen, before waiting for the first user input or tick event, so the user never sees a blank screen at startup."
+  r25,"full-frame-render","System MUST render all visible TUI components on every `Terminal::draw` frame; dirty flags MUST only control whether a draw is scheduled, not whether individual components render within a frame."
+  r26,"quit-cleanup","System MUST exit interactive mode on Ctrl+D (or /quit) without hanging and MUST restore the terminal (leave alternate screen, disable raw mode, show cursor)."
+scenarios[26]{req_id,id,given,when,then}:
   r1,happy,Component trait is defined,each major component implements it,is_dirty returns correct state after mutations
   r2,happy,agent emits TextDelta events via agent_tx channel,"App::handle_agent_event processes them",chat component marks dirty and content updates on next render
   r3,happy,"assistant message contains markdown with code blocks, lists, links","MarkdownRenderer::render() is called",output contains correctly styled ratatui Lines with syntax highlighting
@@ -60,4 +63,7 @@ scenarios[23]{req_id,id,given,when,then}:
   r21,happy,agent starts a tool call during streaming,chat receives ToolCallStart event,"a collapsible card renders with a spinner; on ToolCallEnd, spinner changes to checkmark; Enter toggles details"
   r22,happy,assistant message contains thinking content delimited by markers,chat component detects the pattern,content renders as a collapsed dim block; Enter expands to full text
   r23,happy,a write/edit tool requires approval,ApprovalOverlay shows with diff preview,the diff of the file change is visible within the overlay before user decides
+  r24,happy,TUI starts and enters alternate screen,initial render is performed,input box and status bar are visible without requiring key press
+  r25,happy,event loop runs and no new events occur,a redraw happens (tick/agent update/etc),previously rendered UI remains visible (no blank/black frame)
+  r26,happy,user is in interactive mode,Ctrl+D is pressed,process exits cleanly and returns to shell prompt without requiring Ctrl+C
 ```
