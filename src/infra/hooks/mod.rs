@@ -237,12 +237,7 @@ pub(crate) fn event_matches(
 }
 
 /// Check if a single pattern string matches the given event and phase.
-fn pattern_matches(
-    pattern: &str,
-    event_type: &str,
-    phase: HookPhase,
-    event: &HookEvent,
-) -> bool {
+fn pattern_matches(pattern: &str, event_type: &str, phase: HookPhase, event: &HookEvent) -> bool {
     let parts: Vec<&str> = pattern.split('.').collect();
 
     match parts.len() {
