@@ -32,6 +32,19 @@ impl ToolRegistry {
         &self.tools
     }
 
+    /// Return tools matching the given names. Returns all if `allowed` is `None` or empty.
+    pub(crate) fn filtered(&self, allowed: Option<&[String]>) -> Vec<Arc<dyn Tool>> {
+        match allowed {
+            Some(names) if !names.is_empty() => self
+                .tools
+                .iter()
+                .filter(|t| names.contains(&t.name().to_string()))
+                .cloned()
+                .collect(),
+            _ => self.tools.clone(),
+        }
+    }
+
     /// Create a registry with all built-in tools registered.
     pub(crate) fn builtins() -> Self {
         let mut reg = Self::new();

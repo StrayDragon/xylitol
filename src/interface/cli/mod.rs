@@ -1,14 +1,15 @@
 //! CLI argument parsing and mode dispatch.
 //!
-//! Uses clap derive for arg parsing with three dispatch modes:
-//! Print (always), Interactive (feature `ui-tui`), Acp (feature `infra-acp`).
+//! Mode is auto-detected from positional args and flags:
+//! - prompt present → print/stdio mode
+//! - no prompt → interactive/TUI mode (requires `ui-tui` feature)
+//! - `--acp` flag → ACP mode (requires `infra-acp` feature)
 
 use std::sync::Arc;
 
 use adk_session::InMemorySessionService;
 use clap::Parser;
 
-use crate::agent::model::{ModelConfig, ModelKind};
 use crate::agent::tools::ToolRegistry;
 use crate::infra::config;
 use crate::infra::config::types::ProviderKind;
@@ -18,12 +19,17 @@ use crate::interface::print;
 #[derive(Parser, Debug)]
 #[command(name = "xylitol", version, about)]
 pub(crate) struct CliArgs {
-    /// Prompt to process
+    /// Prompt to process (omitting it starts interactive mode)
     pub(crate) prompt: Option<String>,
 
-    /// Run mode: print, interactive, or acp
-    #[arg(long, default_value = "print")]
-    pub(crate) mode: RunMode,
+    /// Activate ACP mode (IDE integration via stdio)
+    #[cfg(feature = "infra-acp")]
+    #[arg(long)]
+    pub(crate) acp: bool,
+
+    /// List available models and exit
+    #[arg(long)]
+    pub(crate) list_models: bool,
 
     /// Path to config file
     #[arg(long)]
@@ -33,7 +39,7 @@ pub(crate) struct CliArgs {
     #[arg(long)]
     pub(crate) project: Option<String>,
 
-    /// Override default model
+    /// Override default model (use __fake__ for dev fake provider)
     #[arg(long)]
     pub(crate) model: Option<String>,
 
@@ -46,27 +52,17 @@ pub(crate) struct CliArgs {
     pub(crate) yolo: bool,
 }
 
-/// Operating mode of the CLI.
-#[derive(Clone, Debug, clap::ValueEnum)]
-pub(crate) enum RunMode {
-    /// Non-interactive, stream output to stdout
-    Print,
-    /// TUI mode (requires ui-tui feature)
-    #[cfg(feature = "ui-tui")]
-    Interactive,
-    /// ACP over stdio (requires infra-acp feature)
-    #[cfg(feature = "infra-acp")]
-    Acp,
-}
-
-/// Entry point: parse args → load config → dispatch to mode.
+/// Entry point: parse args → load config → dispatch by auto-detected mode.
 pub(crate) fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = CliArgs::parse();
 
-    tracing::info!("starting xylitol in {:?} mode", args.mode);
-
     let config_path = args.config.as_deref().map(std::path::Path::new);
     let app_config = config::load_app_config(config_path)?;
+
+    // Early-exit: list models and quit.
+    if args.list_models {
+        return list_models_and_exit(&app_config);
+    }
 
     // Override project root if --project was provided
     if let Some(ref project) = args.project {
@@ -82,93 +78,135 @@ pub(crate) fn run() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("ANSI colour output disabled");
     }
 
-    // Dispatch to mode-specific logic
-    dispatch_mode(&args, &app_config)?;
+    // ACP mode: explicit opt-in via flag.
+    #[cfg(feature = "infra-acp")]
+    if args.acp {
+        tracing::info!("ACP mode — implemented in c87-add-acp-mode");
+        return Ok(());
+    }
 
-    Ok(())
-}
-
-/// Dispatch to the appropriate run mode handler.
-fn dispatch_mode(
-    args: &CliArgs,
-    app_config: &config::AppConfig,
-) -> Result<(), Box<dyn std::error::Error>> {
-    match args.mode {
-        RunMode::Print => {
-            let prompt = args.prompt.as_deref().unwrap_or("");
-            if prompt.is_empty() {
-                return Err(
-                    "a prompt is required in print mode — use: xylitol \"your prompt\"".into(),
-                );
+    // Auto-detect mode from positional prompt.
+    match args.prompt {
+        Some(ref prompt) if !prompt.is_empty() => {
+            tracing::info!("print/stdio mode");
+            run_print_mode(&args, &app_config, prompt)
+        }
+        _ => {
+            #[cfg(feature = "ui-tui")]
+            {
+                tracing::info!("interactive/TUI mode");
+                tracing::info!("TUI mode — implemented in c80-add-tui");
+                Ok(())
             }
-
-            // Build components for the agent loop.
-            let tools = ToolRegistry::builtins();
-            let model_config = build_model_config(app_config, args.model.as_deref())?;
-            let session_service = Arc::new(InMemorySessionService::new());
-
-            // Create a tokio runtime and run the print mode.
-            let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(print::run_print(
-                prompt,
-                &tools,
-                app_config,
-                &model_config,
-                session_service,
-                args.no_color,
-            ))?;
-
-            Ok(())
-        }
-        #[cfg(feature = "ui-tui")]
-        RunMode::Interactive => {
-            tracing::info!("Interactive/TUI mode — implemented in c80-add-tui");
-            Ok(())
-        }
-        #[cfg(feature = "infra-acp")]
-        RunMode::Acp => {
-            tracing::info!("ACP mode — implemented in c87-add-acp-mode");
-            Ok(())
+            #[cfg(not(feature = "ui-tui"))]
+            {
+                Err(
+                    "no prompt provided and interactive mode is not available (ui-tui feature not enabled) \
+                     — use: xylitol \"your prompt\""
+                        .into(),
+                )
+            }
         }
     }
 }
 
-/// Build a [`ModelConfig`] from app config, optionally overridden by a CLI
-/// `--model` value.
-fn build_model_config(
+/// Run print/stdio mode with the given prompt.
+fn run_print_mode(
+    args: &CliArgs,
+    app_config: &config::AppConfig,
+    prompt: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let tools = ToolRegistry::builtins();
+    let profile = build_resolved_profile(app_config, args.model.as_deref())?;
+    let session_service = Arc::new(InMemorySessionService::new());
+
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(print::run_print(
+        prompt,
+        &tools,
+        app_config,
+        &profile,
+        session_service,
+        args.no_color,
+    ))?;
+
+    Ok(())
+}
+
+/// Print available models from config and exit.
+fn list_models_and_exit(config: &config::AppConfig) -> Result<(), Box<dyn std::error::Error>> {
+    let default = &config.model.default_model;
+    println!("Available models (default: {default}):\n");
+
+    if config.model.models.is_empty() {
+        println!("  (no models configured)");
+    } else {
+        // Header
+        println!("  {:<20} {:<12} MODEL", "ALIAS", "PROVIDER");
+        for (alias, entry) in &config.model.models {
+            let default_marker = if alias == default { " *" } else { "" };
+            let provider = match entry.provider {
+                ProviderKind::OpenAI => "openai",
+                ProviderKind::Anthropic => "anthropic",
+            };
+            println!(
+                "  {:<20} {:<12} {}{default_marker}",
+                alias, provider, entry.model
+            );
+        }
+    }
+
+    #[cfg(feature = "dev-fake-provider")]
+    {
+        println!("\nSpecial models:");
+        println!(
+            "  {:<20} {:<12} {}",
+            "__fake__", "fake", "scenario-based [dev]"
+        );
+    }
+
+    Ok(())
+}
+
+/// Build a [`ResolvedProfile`] from app config, optionally overridden by `--model`.
+fn build_resolved_profile(
     config: &config::AppConfig,
     model_override: Option<&str>,
-) -> Result<ModelConfig, Box<dyn std::error::Error>> {
-    let model_id = model_override.unwrap_or(&config.model.default_model);
+) -> Result<crate::agent::profile::ResolvedProfile, Box<dyn std::error::Error>> {
+    // --- Fake provider short-circuit (CLI-specific) ---
+    #[cfg(feature = "dev-fake-provider")]
+    if model_override == Some("__fake__") {
+        use crate::agent::model::{ModelConfig, ModelKind};
+        return Ok(crate::agent::profile::ResolvedProfile {
+            model_config: ModelConfig {
+                kind: ModelKind::Fake,
+                api_key: String::new(),
+                model: "__fake__".into(),
+                base_url: None,
+            },
+            system_prompt: None,
+            allowed_tools: None,
+            max_iterations: 50,
+            name: "__fake__".into(),
+        });
+    }
+    #[cfg(not(feature = "dev-fake-provider"))]
+    if model_override == Some("__fake__") {
+        return Err(
+            "the __fake__ model requires the dev-fake-provider feature flag — \
+             rebuild with: cargo run --features dev-fake-provider"
+                .into(),
+        );
+    }
 
-    // Look up the model entry, or create a default.
-    let (kind, model_name) = if let Some(entry) = config.model.models.get(model_id) {
-        let kind = match entry.provider {
-            ProviderKind::OpenAI => ModelKind::OpenAi,
-            ProviderKind::Anthropic => ModelKind::Anthropic,
-        };
-        (kind, entry.model.clone())
-    } else {
-        // Default to OpenAI if not found.
-        (ModelKind::OpenAi, model_id.to_string())
-    };
+    let mut profile = config.resolve_default_profile()?;
 
-    // Read API key from env.
-    let api_key = match kind {
-        ModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
-            .or_else(|_| std::env::var("OPENAI_KEY"))
-            .map_err(|_| "OPENAI_API_KEY environment variable is not set".to_string())?,
-        ModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
-            .or_else(|_| std::env::var("ANTHROPIC_KEY"))
-            .map_err(|_| "ANTHROPIC_API_KEY environment variable is not set".to_string())?,
-    };
+    // --model overrides the profile's model.
+    if let Some(model_id) = model_override {
+        profile.model_config = config.resolve_model(model_id)?;
+    }
 
-    Ok(ModelConfig {
-        kind,
-        api_key,
-        model: model_name,
-        base_url: None,
-    })
+    Ok(profile)
 }
 
 #[cfg(test)]
@@ -176,15 +214,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_default_mode_is_print() {
-        let args = CliArgs::parse_from(["xylitol"]);
-        assert!(matches!(args.mode, RunMode::Print));
+    fn test_prompt_argument() {
+        let args = CliArgs::parse_from(["xylitol", "my prompt here"]);
+        assert_eq!(args.prompt.as_deref(), Some("my prompt here"));
     }
 
     #[test]
-    fn test_mode_print_explicit() {
-        let args = CliArgs::parse_from(["xylitol", "--mode", "print"]);
-        assert!(matches!(args.mode, RunMode::Print));
+    fn test_no_prompt() {
+        let args = CliArgs::parse_from(["xylitol"]);
+        assert!(args.prompt.is_none());
+    }
+
+    #[test]
+    fn test_list_models_flag() {
+        let args = CliArgs::parse_from(["xylitol", "--list-models"]);
+        assert!(args.list_models);
+    }
+
+    #[test]
+    fn test_list_models_default_false() {
+        let args = CliArgs::parse_from(["xylitol"]);
+        assert!(!args.list_models);
     }
 
     #[test]
@@ -206,6 +256,12 @@ mod tests {
     }
 
     #[test]
+    fn test_model_fake_sentinel() {
+        let args = CliArgs::parse_from(["xylitol", "--model", "__fake__"]);
+        assert_eq!(args.model.as_deref(), Some("__fake__"));
+    }
+
+    #[test]
     fn test_yolo_flag() {
         let args = CliArgs::parse_from(["xylitol", "--yolo"]);
         assert!(args.yolo);
@@ -218,17 +274,9 @@ mod tests {
     }
 
     #[test]
-    fn test_prompt_argument() {
-        let args = CliArgs::parse_from(["xylitol", "my prompt here"]);
-        assert_eq!(args.prompt.as_deref(), Some("my prompt here"));
-    }
-
-    #[test]
     fn test_all_options() {
         let args = CliArgs::parse_from([
             "xylitol",
-            "--mode",
-            "print",
             "--config",
             "/tmp/c.yaml",
             "--project",
@@ -236,13 +284,27 @@ mod tests {
             "--model",
             "gpt-4o",
             "--yolo",
+            "--list-models",
             "some prompt",
         ]);
-        assert!(matches!(args.mode, RunMode::Print));
         assert_eq!(args.config.as_deref(), Some("/tmp/c.yaml"));
         assert_eq!(args.project.as_deref(), Some("/proj"));
         assert_eq!(args.model.as_deref(), Some("gpt-4o"));
         assert!(args.yolo);
+        assert!(args.list_models);
         assert_eq!(args.prompt.as_deref(), Some("some prompt"));
+    }
+
+    #[test]
+    fn test_auto_detect_mode_with_prompt() {
+        let args = CliArgs::parse_from(["xylitol", "do something"]);
+        assert!(args.prompt.is_some());
+        assert!(!args.list_models);
+    }
+
+    #[test]
+    fn test_auto_detect_mode_without_prompt() {
+        let args = CliArgs::parse_from(["xylitol"]);
+        assert!(args.prompt.is_none());
     }
 }

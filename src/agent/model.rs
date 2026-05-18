@@ -12,6 +12,8 @@ use crate::agent::r#loop::AgentError;
 pub(crate) enum ModelKind {
     OpenAi,
     Anthropic,
+    #[cfg(feature = "dev-fake-provider")]
+    Fake,
 }
 
 /// Configuration for building an LLM provider.
@@ -49,6 +51,16 @@ impl ModelConfig {
                     .map_err(|e| AgentError::ConfigError(format!("Anthropic client: {e}")))?;
                 Ok(Arc::new(client) as Arc<dyn Llm>)
             }
+            #[cfg(feature = "dev-fake-provider")]
+            ModelKind::Fake => {
+                let fake = crate::agent::provider::FakeProvider::new(
+                    "__fake__",
+                    vec![crate::agent::provider::ScenarioStep::text(
+                        "Hello from __fake__ provider",
+                    )],
+                );
+                Ok(Arc::new(fake) as Arc<dyn Llm>)
+            }
         }
     }
 
@@ -57,6 +69,8 @@ impl ModelConfig {
         match self.kind {
             ModelKind::OpenAi => "openai",
             ModelKind::Anthropic => "anthropic",
+            #[cfg(feature = "dev-fake-provider")]
+            ModelKind::Fake => "fake",
         }
     }
 }
