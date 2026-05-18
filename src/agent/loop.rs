@@ -13,7 +13,6 @@ use adk_runner::{Runner, RunnerConfig};
 use adk_session::SessionService;
 use futures::Stream;
 
-use crate::agent::model::ModelConfig;
 use crate::agent::tools::ToolRegistry;
 
 // ---------------------------------------------------------------------------
@@ -98,25 +97,31 @@ pub(crate) struct AgentLoop {
 impl AgentLoop {
     /// Create a new agent loop.
     ///
-    /// Builds an `LlmAgent` from the given tools and model, then wraps it
-    /// in a `Runner` for session and lifecycle management.
+    /// Builds an `LlmAgent` from the resolved profile (model, prompt, tools, iterations),
+    /// then wraps it in a `Runner` for session and lifecycle management.
     pub(crate) async fn new(
         tool_registry: &ToolRegistry,
-        model_config: ModelConfig,
+        profile: crate::agent::profile::ResolvedProfile,
         session_service: Arc<dyn SessionService>,
         app_name: String,
     ) -> Result<Self, AgentError> {
-        let model = model_config
+        let model = profile
+            .model_config
             .build()
             .map_err(|e| AgentError::ConfigError(format!("build model: {e}")))?;
 
         let mut builder = LlmAgentBuilder::new("xylitol")
             .model(model)
             .description("xylitol — LLM-Augmented Development Toolkit")
-            .max_iterations(50);
+            .max_iterations(profile.max_iterations);
 
-        for tool in tool_registry.list() {
-            builder = builder.tool(tool.clone());
+        if let Some(ref prompt) = profile.system_prompt {
+            builder = builder.instruction(prompt);
+        }
+
+        let tools = tool_registry.filtered(profile.allowed_tools.as_deref());
+        for tool in tools {
+            builder = builder.tool(tool);
         }
 
         let agent = builder

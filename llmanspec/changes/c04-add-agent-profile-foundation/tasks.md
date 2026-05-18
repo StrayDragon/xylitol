@@ -8,4 +8,4 @@
 - [x] 新增 `ToolRegistry::filtered()` 方法
 - [x] 更新 `cli/mod.rs`: `build_resolved_profile()` 替代 `build_model_config()`
 - [x] 更新 `print.rs`: `run_print()` 接受 `&ResolvedProfile`
-- [ ] Run `just fmt && just lint && just test`
+- [x] Run `just fmt && just lint && just test`

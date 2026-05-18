@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 #[serde(default)]
 pub(crate) struct AppConfig {
     pub model: ModelConfig,
+    pub agents: AgentsConfig,
     pub execution: ExecutionConfig,
     pub patch_apply: PatchApplyConfig,
 
@@ -119,6 +120,157 @@ impl Default for ExecutionConfig {
 
 fn default_max_retries() -> u8 {
     3
+}
+
+// ---------------------------------------------------------------------------
+// Agent Profiles
+// ---------------------------------------------------------------------------
+
+/// Agent profile — binds model, prompt, tools, iterations.
+///
+/// Flat struct to support YAML anchor/alias merge keys:
+/// ```yaml
+/// agents:
+///   profiles:
+///     default: &default-agent
+///       model: gpt-4o
+///       max_iterations: 50
+///     planning:
+///       <<: *default-agent
+///       model: claude-opus
+///       system_prompt: "You are a planning agent."
+/// ```
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub(crate) struct AgentProfile {
+    /// Model alias referencing a key in `model.models`, or a raw model ID.
+    /// When `None`, falls back to `model.default_model`.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// System prompt / instruction for this agent.
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+    /// Tool names this agent is allowed to use. `None` = all tools.
+    #[serde(default)]
+    pub allowed_tools: Option<Vec<String>>,
+    /// Maximum agent loop iterations.
+    #[serde(default = "default_max_iterations")]
+    pub max_iterations: u32,
+}
+
+/// Agent profiles container.
+///
+/// When entirely absent from config, falls back to single-model behavior
+/// using `model.default_model` and `execution.*` fields.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub(crate) struct AgentsConfig {
+    /// The profile name used when no profile is explicitly specified.
+    #[serde(default = "default_profile_name")]
+    pub default_profile: String,
+    /// Named agent profiles.
+    #[serde(default)]
+    pub profiles: HashMap<String, AgentProfile>,
+}
+
+fn default_profile_name() -> String {
+    "default".into()
+}
+
+fn default_max_iterations() -> u32 {
+    50
+}
+
+impl AppConfig {
+    /// Resolve a model alias to an agent-level [`ModelConfig`].
+    pub(crate) fn resolve_model(
+        &self,
+        model_id: &str,
+    ) -> Result<crate::agent::model::ModelConfig, String> {
+        use crate::agent::model::{ModelConfig, ModelKind};
+
+        let (kind, model_name) = if let Some(entry) = self.model.models.get(model_id) {
+            let kind = match entry.provider {
+                ProviderKind::OpenAI => ModelKind::OpenAi,
+                ProviderKind::Anthropic => ModelKind::Anthropic,
+            };
+            (kind, entry.model.clone())
+        } else {
+            (ModelKind::OpenAi, model_id.to_string())
+        };
+
+        let api_key = match kind {
+            ModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
+                .or_else(|_| std::env::var("OPENAI_KEY"))
+                .map_err(|_| "OPENAI_API_KEY environment variable is not set".to_string())?,
+            ModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
+                .or_else(|_| std::env::var("ANTHROPIC_KEY"))
+                .map_err(|_| "ANTHROPIC_API_KEY environment variable is not set".to_string())?,
+            #[cfg(feature = "dev-fake-provider")]
+            ModelKind::Fake => String::new(),
+        };
+
+        Ok(ModelConfig {
+            kind,
+            api_key,
+            model: model_name,
+            base_url: None,
+        })
+    }
+
+    /// Resolve a named agent profile to a [`ResolvedProfile`].
+    ///
+    /// Falls back to `model.default_model` + `execution.*` when no profiles
+    /// are configured (backward compatible).
+    pub(crate) fn resolve_profile(
+        &self,
+        name: &str,
+    ) -> Result<crate::agent::profile::ResolvedProfile, String> {
+        let profile = self.agents.profiles.get(name);
+
+        let (model_ref, system_prompt, allowed_tools, max_iterations) = match profile {
+            Some(p) => (
+                p.model.as_deref(),
+                p.system_prompt.as_ref().cloned(),
+                p.allowed_tools.as_ref().cloned(),
+                p.max_iterations,
+            ),
+            None => {
+                // Backward-compat: synthesize from execution config + default model.
+                (
+                    self.execution
+                        .model
+                        .as_deref()
+                        .or(Some(&self.model.default_model)),
+                    self.execution.system_prompt.clone(),
+                    None,
+                    50,
+                )
+            }
+        };
+
+        let model_id = model_ref.unwrap_or(&self.model.default_model);
+        let model_config = self.resolve_model(model_id)?;
+
+        Ok(crate::agent::profile::ResolvedProfile {
+            model_config,
+            system_prompt,
+            allowed_tools,
+            max_iterations,
+            name: name.into(),
+        })
+    }
+
+    /// Resolve the default agent profile.
+    pub(crate) fn resolve_default_profile(
+        &self,
+    ) -> Result<crate::agent::profile::ResolvedProfile, String> {
+        let name = if self.agents.default_profile.is_empty() {
+            "default"
+        } else {
+            &self.agents.default_profile
+        };
+        self.resolve_profile(name)
+    }
 }
 
 // ---------------------------------------------------------------------------

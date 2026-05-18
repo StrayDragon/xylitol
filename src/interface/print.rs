@@ -16,7 +16,6 @@ use adk_session::SessionService;
 use futures::{Stream, StreamExt};
 
 use crate::agent::r#loop::{AgentError, AgentEvent, AgentLoop};
-use crate::agent::model::ModelConfig;
 use crate::agent::tools::ToolRegistry;
 use crate::infra::config::AppConfig;
 
@@ -219,13 +218,13 @@ pub(crate) async fn run_print(
     prompt: &str,
     tool_registry: &ToolRegistry,
     _app_config: &AppConfig,
-    model_config: &ModelConfig,
+    profile: &crate::agent::profile::ResolvedProfile,
     session_service: Arc<dyn SessionService>,
     no_color: bool,
 ) -> Result<(), AgentError> {
     let agent_loop = AgentLoop::new(
         tool_registry,
-        model_config.clone(),
+        profile.clone(),
         session_service,
         "xylitol".into(),
     )
