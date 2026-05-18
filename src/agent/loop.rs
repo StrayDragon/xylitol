@@ -228,6 +228,11 @@ impl AgentLoop {
         self.hooks.as_ref().is_some_and(|d| !d.is_empty())
     }
 
+    /// Return a reference to the hook dispatcher, if any.
+    pub(crate) fn hooks_ref(&self) -> Option<&HookDispatcher> {
+        self.hooks.as_ref()
+    }
+
     /// Ensure a session exists for the given ID by creating one if absent.
     async fn ensure_session(&self, session_id: &str) -> Result<(), AgentError> {
         use adk_session::CreateRequest;

@@ -43,6 +43,11 @@ chrono = { version = "0.4.44", features = ["serde"] }
 hex = "0.4.3"
 uuid = { version = "1.23.1", features = ["v4"] }
 
+# ── ui-review dependencies (optional) ────────────
+ratatui = { version = "0.29", optional = true, default-features = false, features = ["crossterm"] }
+crossterm = { version = "0.28", optional = true }
+syntect = { version = "5", optional = true }
+
 [features]
 default = ["agent-planning", "ui-tui", "infra-session", "ui-review"]
 
@@ -61,7 +66,7 @@ infra-rtk = []
 
 # ── interface/ layer ──────────────────────────
 ui-tui = []
-ui-review = []
+ui-review = ["ratatui", "crossterm"]
 
 # ── development only ──────────────────────────
 dev-vt100 = []
