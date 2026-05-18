@@ -698,20 +698,60 @@ pub(crate) struct SkillConfig {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
+    /// System prompt fragment injected when this skill is activated.
+    #[serde(default)]
+    pub system_prompt_addon: Option<String>,
+    /// Tool names this skill is allowed to use. `None` or empty = all tools.
     #[serde(default)]
     pub allowed_tools: Option<Vec<String>>,
 }
 
 #[cfg(feature = "infra-skills")]
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub(crate) struct McpServerConfig {
     pub name: String,
-    pub command: String,
+    /// Transport kind: "stdio" or "sse".
+    #[serde(default = "default_mcp_transport")]
+    pub transport: McpTransportKind,
+    /// Command to spawn (stdio transport only).
+    #[serde(default)]
+    pub command: Option<String>,
+    /// Arguments for the command (stdio transport only).
     #[serde(default)]
     pub args: Option<Vec<String>>,
+    /// SSE endpoint URL (sse transport only).
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Extra environment variables for the child process (stdio transport only).
     #[serde(default)]
     pub env: Option<HashMap<String, String>>,
+}
+
+#[cfg(feature = "infra-skills")]
+impl Default for McpServerConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            transport: default_mcp_transport(),
+            command: None,
+            args: None,
+            url: None,
+            env: None,
+        }
+    }
+}
+
+#[cfg(feature = "infra-skills")]
+fn default_mcp_transport() -> McpTransportKind {
+    McpTransportKind::Stdio
+}
+
+#[cfg(feature = "infra-skills")]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum McpTransportKind {
+    Stdio,
+    Sse,
 }
 
 // ---------------------------------------------------------------------------
