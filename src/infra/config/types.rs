@@ -74,9 +74,10 @@ pub(crate) struct ModelEntry {
 
 /// Supported LLM providers (MVP: only OpenAI-compatible and Anthropic).
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
 pub(crate) enum ProviderKind {
+    #[serde(rename = "openai")]
     OpenAI,
+    #[serde(rename = "anthropic")]
     Anthropic,
 }
 
