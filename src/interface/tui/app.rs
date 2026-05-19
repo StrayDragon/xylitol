@@ -1,5 +1,6 @@
 //! Root app component and event loop for the TUI.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::StreamExt;
@@ -16,7 +17,9 @@ use crate::agent::r#loop::{AgentEvent, AgentLoop};
 use crate::agent::profile::ResolvedProfile;
 use crate::agent::tools::ToolRegistry;
 use crate::infra::config::AppConfig;
+use crate::infra::security::SecurityEngine;
 
+use super::approval::{ApprovalHub, SecureApprovalToolWrapper, requires_approval};
 use super::chat::ChatComponent;
 use super::component::Component;
 use super::component::OverlayStack;
@@ -24,10 +27,20 @@ use super::event::{AppAction, TuiEvent};
 use super::history::HistoryStore;
 use super::input::InputComponent;
 use super::markdown::MarkdownRenderer;
-use super::overlays::{HelpOverlay, HistorySearchOverlay, SelectorKind, SelectorOverlay};
+use super::overlays::{
+    ApprovalOverlay, HelpOverlay, HistorySearchOverlay, SelectorKind, SelectorOverlay,
+};
 use super::slash::{Completer, SlashCommand};
 use super::status_bar::StatusBar;
 use super::tool_panel::ToolPanelComponent;
+
+#[cfg(feature = "ui-review")]
+use super::overlays::DiffPreviewOverlay;
+
+#[cfg(feature = "ui-review")]
+use crate::interface::diff_review::types::DiffHunk;
+#[cfg(feature = "ui-review")]
+use crate::interface::diff_review::{ReviewBackend, ReviewEngine, ReviewEngineConfig, ReviewMode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Focus {
@@ -45,6 +58,7 @@ pub(crate) struct App {
     app_config: AppConfig,
     session_service: Arc<dyn SessionService>,
     active_profile: String,
+    approvals: Arc<ApprovalHub>,
 
     running: bool,
     should_quit: bool,
@@ -68,6 +82,13 @@ pub(crate) struct App {
     last_tool_panel_height: u16,
 
     tool_panel_height: u16,
+
+    #[cfg(feature = "ui-review")]
+    tool_calls: HashMap<String, (String, serde_json::Value)>,
+    #[cfg(feature = "ui-review")]
+    file_changes: HashMap<String, (String, Option<String>)>,
+    #[cfg(feature = "ui-review")]
+    diff_hunks: Vec<DiffHunk>,
 }
 
 impl App {
@@ -76,6 +97,7 @@ impl App {
         app_config: AppConfig,
         profile: ResolvedProfile,
         session_service: Arc<dyn SessionService>,
+        approvals: Arc<ApprovalHub>,
     ) -> Self {
         let markdown = MarkdownRenderer::default();
         let chat = ChatComponent::new(markdown);
@@ -139,6 +161,7 @@ impl App {
             app_config,
             session_service,
             active_profile: profile.name.clone(),
+            approvals,
             running: false,
             should_quit: false,
             queued_prompts: Vec::new(),
@@ -157,6 +180,13 @@ impl App {
             last_tool_panel_height: 0,
 
             tool_panel_height: 8,
+
+            #[cfg(feature = "ui-review")]
+            tool_calls: HashMap::new(),
+            #[cfg(feature = "ui-review")]
+            file_changes: HashMap::new(),
+            #[cfg(feature = "ui-review")]
+            diff_hunks: Vec::new(),
         }
     }
 
@@ -237,6 +267,8 @@ impl App {
 
         match event {
             TuiEvent::Agent(agent_event) => {
+                let mut next_action = None;
+
                 // Update running flag on terminal events.
                 match agent_event {
                     AgentEvent::StepComplete { .. }
@@ -248,16 +280,55 @@ impl App {
                         if let Some(next) = self.queued_prompts.first().cloned() {
                             self.queued_prompts.remove(0);
                             self.status_bar.set_queue_len(self.queued_prompts.len());
-                            return Some(AppAction::RunPrompt(next));
+                            next_action = Some(AppAction::RunPrompt(next));
                         }
                     }
                     _ => {}
                 }
 
+                // Tool approval modal.
+                if let AgentEvent::ToolCallStart { id, name, args } = &agent_event
+                    && requires_approval(self.app_config.security.enabled, name)
+                {
+                    #[cfg(feature = "ui-review")]
+                    self.capture_pre_tool_file_state(id, name, args);
+                    let tx = self.approvals.register(id.clone());
+                    #[cfg(feature = "ui-review")]
+                    let diff_hunks = self.compute_approval_diff_hunks(name, args);
+                    self.overlays.push(Box::new(ApprovalOverlay::prompt(
+                        id.clone(),
+                        name.clone(),
+                        args.clone(),
+                        #[cfg(feature = "ui-review")]
+                        diff_hunks,
+                        tx,
+                    )));
+                    self.status_bar
+                        .set_message(format!("Approval required: {name}"));
+                }
+
+                #[cfg(feature = "ui-review")]
+                {
+                    match &agent_event {
+                        AgentEvent::ToolCallStart { id, name, args } => {
+                            self.tool_calls
+                                .insert(id.clone(), (name.clone(), args.clone()));
+                            self.capture_pre_tool_file_state(id, name, args);
+                        }
+                        AgentEvent::ToolCallEnd { id, .. } => {
+                            self.capture_post_tool_file_state(id);
+                        }
+                        AgentEvent::StepComplete { .. } => {
+                            self.collect_step_diffs();
+                        }
+                        _ => {}
+                    }
+                }
+
                 let tool_event = agent_event.clone();
                 self.chat.handle_event(&TuiEvent::Agent(agent_event));
                 self.tool_panel.handle_event(&TuiEvent::Agent(tool_event));
-                None
+                next_action
             }
             TuiEvent::Key(key) => {
                 use crossterm::event::{KeyCode, KeyModifiers};
@@ -294,6 +365,20 @@ impl App {
                     }
                     KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         return Some(AppAction::Clear);
+                    }
+                    KeyCode::Char('r')
+                        if key.modifiers.contains(KeyModifiers::CONTROL)
+                            && self.focus == Focus::Chat =>
+                    {
+                        #[cfg(feature = "ui-review")]
+                        if !self.diff_hunks.is_empty() {
+                            self.overlays
+                                .push(Box::new(DiffPreviewOverlay::new(self.diff_hunks.clone())));
+                        } else {
+                            self.status_bar.set_message("No diffs to preview.");
+                        }
+
+                        return None;
                     }
                     _ => {}
                 }
@@ -493,11 +578,147 @@ impl App {
             self.overlays.render_all(frame, area);
         }
     }
+
+    #[cfg(feature = "ui-review")]
+    fn capture_pre_tool_file_state(
+        &mut self,
+        _call_id: &str,
+        tool_name: &str,
+        args: &serde_json::Value,
+    ) {
+        if !matches!(tool_name, "write" | "edit") {
+            return;
+        }
+
+        let Some(file_path) = args.get("file_path").and_then(|v| v.as_str()) else {
+            return;
+        };
+
+        if self.file_changes.contains_key(file_path) {
+            return;
+        }
+
+        let old = match std::fs::read_to_string(file_path) {
+            Ok(s) => s,
+            Err(err) => {
+                tracing::debug!(path = file_path, error = %err, "Failed to read file before tool call.");
+                String::new()
+            }
+        };
+
+        self.file_changes.insert(file_path.to_string(), (old, None));
+    }
+
+    #[cfg(feature = "ui-review")]
+    fn capture_post_tool_file_state(&mut self, call_id: &str) {
+        let Some((tool_name, args)) = self.tool_calls.remove(call_id) else {
+            return;
+        };
+        if !matches!(tool_name.as_str(), "write" | "edit") {
+            return;
+        }
+
+        let Some(file_path) = args.get("file_path").and_then(|v| v.as_str()) else {
+            return;
+        };
+
+        let new = match std::fs::read_to_string(file_path) {
+            Ok(s) => s,
+            Err(err) => {
+                tracing::debug!(path = file_path, error = %err, "Failed to read file after tool call.");
+                String::new()
+            }
+        };
+
+        self.file_changes
+            .entry(file_path.to_string())
+            .and_modify(|entry| entry.1 = Some(new.clone()))
+            .or_insert_with(|| (String::new(), Some(new)));
+    }
+
+    #[cfg(feature = "ui-review")]
+    fn collect_step_diffs(&mut self) {
+        if self.file_changes.is_empty() {
+            self.diff_hunks.clear();
+            return;
+        }
+
+        let mut files = Vec::new();
+        for (path, (old, new)) in std::mem::take(&mut self.file_changes) {
+            let new_text =
+                new.unwrap_or_else(|| std::fs::read_to_string(&path).unwrap_or_default());
+            files.push((path, old, new_text));
+        }
+
+        let engine = ReviewEngine::new(ReviewEngineConfig {
+            backend: ReviewBackend::Cli,
+            mode: ReviewMode::OnStep,
+        });
+        let session = engine.create_session(&files);
+        self.diff_hunks = session.hunks;
+    }
+
+    #[cfg(feature = "ui-review")]
+    fn compute_approval_diff_hunks(
+        &self,
+        tool_name: &str,
+        args: &serde_json::Value,
+    ) -> Vec<DiffHunk> {
+        let Some(file_path) = args.get("file_path").and_then(|v| v.as_str()) else {
+            return Vec::new();
+        };
+
+        let old_text = std::fs::read_to_string(file_path).unwrap_or_default();
+
+        let new_text = match tool_name {
+            "write" => args
+                .get("content")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            "edit" => {
+                let old_string = args
+                    .get("old_string")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let new_string = args
+                    .get("new_string")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if old_string.is_empty() {
+                    None
+                } else if old_text.contains(old_string) {
+                    Some(old_text.replace(old_string, new_string))
+                } else {
+                    crate::agent::tools::patch::fudiff_replace(&old_text, old_string, new_string)
+                        .or_else(|| {
+                            crate::agent::tools::patch::patch_fallback(
+                                &old_text, old_string, new_string,
+                            )
+                        })
+                }
+            }
+            _ => None,
+        };
+
+        let Some(new_text) = new_text else {
+            return Vec::new();
+        };
+        if new_text == old_text {
+            return Vec::new();
+        }
+
+        let engine = ReviewEngine::new(ReviewEngineConfig {
+            backend: ReviewBackend::Cli,
+            mode: ReviewMode::OnStep,
+        });
+        let session = engine.create_session(&[(file_path.to_string(), old_text, new_text)]);
+        session.hunks
+    }
 }
 
 /// Run the TUI event loop. This is the main entry point called from the CLI.
 pub(crate) async fn run_tui(
-    tool_registry: ToolRegistry,
+    mut tool_registry: ToolRegistry,
     app_config: AppConfig,
     profile: ResolvedProfile,
     session_service: Arc<dyn SessionService>,
@@ -517,6 +738,28 @@ pub(crate) async fn run_tui(
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     terminal.hide_cursor()?;
+
+    // ── Tool policy wiring ──────────────────────────────────
+    let approvals = Arc::new(ApprovalHub::new());
+    if app_config.security.enabled {
+        let engine = SecurityEngine::new(&app_config.security);
+        let approval_tools = std::sync::Arc::new(
+            ["write", "edit"]
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect::<std::collections::HashSet<_>>(),
+        );
+
+        tool_registry.map_tools(|tool| {
+            Arc::new(SecureApprovalToolWrapper::new(
+                tool,
+                engine.clone(),
+                approvals.clone(),
+                approval_tools.clone(),
+                app_config.security.enabled,
+            )) as Arc<dyn adk_core::Tool>
+        });
+    }
 
     // ── Agent loop setup ────────────────────────────────────
     let agent_loop = Arc::new(
@@ -568,6 +811,7 @@ pub(crate) async fn run_tui(
         app_config.clone(),
         profile.clone(),
         session_service.clone(),
+        approvals.clone(),
     )
     .await;
     let mut current_agent_handle: Option<tokio::task::JoinHandle<()>> = None;
