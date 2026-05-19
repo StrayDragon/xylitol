@@ -12,7 +12,7 @@ llman_spec_evidence:
 kind: llman.sdd.spec
 name: "runtime-config"
 purpose: "TBD - created by archiving change c10-add-config. Update purpose after archive."
-requirements[9]{req_id,title,statement}:
+requirements[10]{req_id,title,statement}:
   r1,"yaml-parse","System MUST parse YAML configuration from three layers (global/project/user) and deep-merge them with later layers overriding earlier ones."
   r2,"schema-gen","System MUST generate JSON Schema from Rust config types via schemars for IDE auto-completion."
   r3,"runtime-validate","System MUST validate merged config against JSON Schema at runtime and report human-readable errors."
@@ -22,7 +22,8 @@ requirements[9]{req_id,title,statement}:
   r7,"config-dir-env",System MUST respect XYLITOL_CONFIG_DIR and XYLITOL_PROJECT_DIR environment variables for config directory resolution.
   r8,"agents-dir-discovery",System MUST discover .agents/ directory alongside .xylitol/ during project root detection and expose its path via ConfigPaths for downstream consumers.
   r9,"model-resolution","System MUST resolve the effective model ID from user-provided sources (CLI override, agent profile, execution config, model.default_model). System MUST NOT embed environment-specific local model IDs as code defaults. If no model is configured, system MUST return a clear error describing how to configure one."
-scenarios[13]{req_id,id,given,when,then}:
+  r10,"provider-tag","System MUST accept `openai` (not `open_a_i`) as the provider tag for OpenAI-compatible models in configuration. System MUST validate provider tags via JSON Schema and return a descriptive error for unknown values."
+scenarios[15]{req_id,id,given,when,then}:
   r1,happy,a project config overrides model field,config is loaded,merged config contains project model value
   r2,happy,AppConfig struct is defined,"schemars::schema_for is called",valid JSON Schema is generated to configs/config.schema.json
   r3,happy,a config file has invalid field,config is loaded,a descriptive error is returned with field path
@@ -36,4 +37,6 @@ scenarios[13]{req_id,id,given,when,then}:
   r8,sad,project root has no .agents/ directory,project root is discovered,ConfigPaths.agents_dir is None and system proceeds normally
   r9,happy,a config provides model.default_model,a resolved profile is built,the model id resolves to model.default_model
   r9,sad,no model is configured in CLI or config,a resolved profile is built,a descriptive configuration error is returned
+  r10,happy,config provider tag is openai,config is loaded,"provider is parsed as ProviderKind::OpenAI"
+  r10,sad,config provider tag is invalid,config is loaded,a schema validation error is returned pointing to the provider field
 ```
