@@ -3,6 +3,7 @@
 //! This module is feature-gated behind `ui-tui`.
 
 mod app;
+mod approval;
 mod component;
 mod event;
 

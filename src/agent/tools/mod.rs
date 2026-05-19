@@ -33,6 +33,14 @@ impl ToolRegistry {
         &self.tools
     }
 
+    /// Transform each registered tool in-place.
+    pub(crate) fn map_tools<F>(&mut self, f: F)
+    where
+        F: FnMut(Arc<dyn Tool>) -> Arc<dyn Tool>,
+    {
+        self.tools = self.tools.iter().cloned().map(f).collect();
+    }
+
     /// Return tools matching the given names. Returns all if `allowed` is `None` or empty.
     pub(crate) fn filtered(&self, allowed: Option<&[String]>) -> Vec<Arc<dyn Tool>> {
         match allowed {
