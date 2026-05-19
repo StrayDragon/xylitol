@@ -1,285 +1,220 @@
-//! User input component for the TUI.
-//!
-//! Provides a text input area with cursor, history tracking, and
-//! submission handling.
+//! Input component — multi-line prompt editor for the TUI.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
-use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders};
+use tui_textarea::TextArea;
 
-/// Maximum input line length.
-const MAX_INPUT: usize = 1024;
+use super::component::{Component, EventResult};
+use super::event::{AppAction, TuiEvent};
+use super::slash::Completer;
 
-/// Input component — single-line text entry.
+const MIN_HEIGHT: u16 = 3;
+const MAX_HEIGHT: u16 = 15;
+
 pub(crate) struct InputComponent {
-    /// Current input buffer.
-    input: String,
-    /// Cursor position within input (byte index).
-    cursor: usize,
-    /// History of submitted prompts (oldest first).
+    textarea: TextArea<'static>,
+    dirty: bool,
+    completer: Completer,
     history: Vec<String>,
-    /// Current position in history navigation (None = fresh input).
     history_pos: Option<usize>,
-    /// Whether the input is disabled (agent running).
-    disabled: bool,
 }
 
 impl InputComponent {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(completer: Completer) -> Self {
+        let mut textarea = TextArea::default();
+        textarea.set_placeholder_text("Type a message… (Enter to submit, Shift+Enter newline)");
+        textarea.set_placeholder_style(Style::default().fg(Color::DarkGray));
+
         Self {
-            input: String::new(),
-            cursor: 0,
+            textarea,
+            dirty: true,
+            completer,
             history: Vec::new(),
             history_pos: None,
-            disabled: false,
         }
     }
 
-    /// Insert a character at cursor position.
-    pub(crate) fn insert_char(&mut self, c: char) {
-        if self.disabled || self.input.len() >= MAX_INPUT {
-            return;
-        }
-        self.input.insert(self.cursor, c);
-        self.cursor += c.len_utf8();
+    pub(crate) fn desired_height(&self) -> u16 {
+        let n = self.textarea.lines().len() as u16;
+        n.clamp(MIN_HEIGHT, MAX_HEIGHT)
     }
 
-    /// Delete character before cursor (backspace).
-    pub(crate) fn delete_before(&mut self) {
-        if self.disabled || self.cursor == 0 {
-            return;
-        }
-        let prev = self.input[..self.cursor].char_indices().next_back();
-        if let Some((idx, _c)) = prev {
-            self.input.drain(idx..self.cursor);
-            self.cursor = idx;
-        }
+    pub(crate) fn set_history(&mut self, history: Vec<String>) {
+        self.history = history;
+        self.history_pos = None;
     }
 
-    /// Delete character at cursor (delete key).
-    pub(crate) fn delete_at(&mut self) {
-        if self.disabled || self.cursor >= self.input.len() {
-            return;
-        }
-        let next = self.input[self.cursor..].char_indices().nth(1);
-        let end = next
-            .map(|(i, _)| self.cursor + i)
-            .unwrap_or(self.input.len());
-        self.input.drain(self.cursor..end);
+    pub(crate) fn clear(&mut self) {
+        self.textarea = TextArea::default();
+        self.dirty = true;
+        self.history_pos = None;
     }
 
-    /// Move cursor left.
-    pub(crate) fn cursor_left(&mut self) {
-        if self.cursor > 0 {
-            let prev = self.input[..self.cursor].char_indices().next_back();
-            if let Some((idx, _)) = prev {
-                self.cursor = idx;
-            }
-        }
+    fn set_text(&mut self, text: &str) {
+        self.textarea = TextArea::from(text.lines());
+        self.textarea
+            .set_placeholder_text("Type a message… (Enter to submit, Shift+Enter newline)");
+        self.dirty = true;
+        // Move cursor to end.
+        self.textarea.move_cursor(tui_textarea::CursorMove::End);
     }
 
-    /// Move cursor right.
-    pub(crate) fn cursor_right(&mut self) {
-        if self.cursor < self.input.len() {
-            let next = self.input[self.cursor..].char_indices().nth(1);
-            if let Some((i, _)) = next {
-                self.cursor += i;
-            }
-        }
+    fn text(&self) -> String {
+        self.textarea.lines().join("\n")
     }
 
-    /// Move cursor to beginning.
-    pub(crate) fn cursor_home(&mut self) {
-        self.cursor = 0;
-    }
-
-    /// Move cursor to end.
-    pub(crate) fn cursor_end(&mut self) {
-        self.cursor = self.input.len();
-    }
-
-    /// Navigate history backward (↑).
-    pub(crate) fn history_back(&mut self) {
+    fn handle_history_up(&mut self) -> bool {
         if self.history.is_empty() {
-            return;
+            return false;
         }
         match self.history_pos {
-            None => {
-                // Save current input and go to newest history entry.
-                self.history_pos = Some(self.history.len() - 1);
-            }
-            Some(pos) if pos > 0 => {
-                self.history_pos = Some(pos - 1);
-            }
-            _ => return,
+            None => self.history_pos = Some(self.history.len().saturating_sub(1)),
+            Some(0) => return false,
+            Some(pos) => self.history_pos = Some(pos.saturating_sub(1)),
         }
-        let pos = self.history_pos.unwrap();
-        self.input = self.history[pos].clone();
-        self.cursor = self.input.len();
+        let pos = self.history_pos.unwrap_or(0);
+        let entry = self.history[pos].clone();
+        self.set_text(&entry);
+        true
     }
 
-    /// Navigate history forward (↓).
-    pub(crate) fn history_forward(&mut self) {
+    fn handle_history_down(&mut self) -> bool {
         match self.history_pos {
+            None => false,
             Some(pos) if pos + 1 < self.history.len() => {
                 self.history_pos = Some(pos + 1);
-                self.input = self.history[pos + 1].clone();
-                self.cursor = self.input.len();
+                let entry = self.history[pos + 1].clone();
+                self.set_text(&entry);
+                true
             }
             Some(_) => {
-                // Back to fresh input.
                 self.history_pos = None;
-                self.input.clear();
-                self.cursor = 0;
+                self.set_text("");
+                true
             }
-            None => {}
         }
     }
 
-    /// Submit the current input. Returns the prompt string if non-empty.
-    pub(crate) fn submit(&mut self) -> Option<String> {
-        if self.disabled {
+    fn submit(&mut self) -> Option<String> {
+        let text = self.text().trim().to_string();
+        if text.is_empty() {
             return None;
         }
-        let trimmed = self.input.trim().to_string();
-        if trimmed.is_empty() {
-            return None;
-        }
-        self.history.push(trimmed.clone());
-        self.input.clear();
-        self.cursor = 0;
+        self.history.push(text.clone());
         self.history_pos = None;
-        Some(trimmed)
+        self.clear();
+        Some(text)
     }
 
-    /// Enable/disable input.
-    pub(crate) fn set_disabled(&mut self, disabled: bool) {
-        self.disabled = disabled;
+    fn is_slash_mode(&self) -> bool {
+        let s = self.text();
+        s.trim_start().starts_with('/')
     }
 
-    /// Render the input component.
-    pub(crate) fn render(&self, frame: &mut Frame, area: Rect) {
-        let title = if self.disabled {
-            " Input (disabled while running) "
-        } else {
-            " Input "
-        };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(title)
-            .title_style(Style::default().fg(if self.disabled {
-                Color::DarkGray
-            } else {
-                Color::Green
-            }));
-
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-
-        // Show the input text.
-        let display = if self.input.is_empty() && !self.disabled {
-            "Type a message and press Enter..."
-        } else {
-            self.input.as_str()
-        };
-
-        let para = Paragraph::new(Line::from(display))
-            .style(Style::default().fg(if self.disabled {
-                Color::DarkGray
-            } else {
-                Color::White
-            }))
-            .wrap(Wrap { trim: false });
-        frame.render_widget(para, inner);
-
-        // Set cursor position.
-        if !self.disabled {
-            // Calculate visual cursor position (approximate).
-            let visual_cx = self.input[..self.cursor]
-                .chars()
-                .map(|c| if c == '\t' { 4 } else { 1 })
-                .sum::<usize>() as u16;
-            frame.set_cursor_position(ratatui::layout::Position::new(
-                inner.x + visual_cx.min(inner.width.saturating_sub(1)),
-                inner.y,
-            ));
+    fn try_complete(&mut self) -> bool {
+        if !self.is_slash_mode() {
+            return false;
         }
-    }
-
-    /// Access the current input text.
-    pub(crate) fn input_text(&self) -> &str {
-        &self.input
+        let current = self.text();
+        let completed = self.completer.complete(&current);
+        if completed == current {
+            return false;
+        }
+        self.set_text(&completed);
+        true
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl Component for InputComponent {
+    fn render(&mut self, frame: &mut Frame, area: Rect) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Input ")
+            .border_style(Style::default().fg(Color::Green));
+        self.textarea.set_block(block);
+        frame.render_widget(&self.textarea, area);
 
-    #[test]
-    fn test_insert_and_delete() {
-        let mut ic = InputComponent::new();
-        ic.insert_char('a');
-        ic.insert_char('b');
-        ic.insert_char('c');
-        assert_eq!(ic.input, "abc");
-        ic.cursor_left();
-        ic.delete_at();
-        assert_eq!(ic.input, "ab");
+        // Cursor positioning is approximated from (row,col) within the visible box.
+        let inner = area.inner(ratatui::layout::Margin {
+            vertical: 1,
+            horizontal: 1,
+        });
+        let (row, col) = self.textarea.cursor();
+        let x = inner
+            .x
+            .saturating_add(col as u16)
+            .min(inner.right().saturating_sub(1));
+        let y = inner
+            .y
+            .saturating_add(row as u16)
+            .min(inner.bottom().saturating_sub(1));
+        frame.set_cursor_position((x, y));
+
+        self.dirty = false;
     }
 
-    #[test]
-    fn test_submit_returns_text() {
-        let mut ic = InputComponent::new();
-        ic.insert_char('h');
-        ic.insert_char('i');
-        let result = ic.submit();
-        assert_eq!(result.as_deref(), Some("hi"));
-        assert!(ic.input.is_empty());
+    fn is_dirty(&self) -> bool {
+        self.dirty
     }
 
-    #[test]
-    fn test_empty_submit_returns_none() {
-        let mut ic = InputComponent::new();
-        assert!(ic.submit().is_none());
+    fn mark_clean(&mut self) {
+        self.dirty = false;
     }
 
-    #[test]
-    fn test_history_navigation() {
-        let mut ic = InputComponent::new();
-        ic.insert_char('a');
-        ic.submit();
-        ic.insert_char('b');
-        ic.submit();
+    fn handle_event(&mut self, event: &TuiEvent) -> EventResult {
+        let TuiEvent::Key(key) = event else {
+            return EventResult::default();
+        };
 
-        ic.history_back();
-        assert_eq!(ic.input, "b");
-        ic.history_back();
-        assert_eq!(ic.input, "a");
-        ic.history_forward();
-        assert_eq!(ic.input, "b");
-    }
+        use crossterm::event::{KeyCode, KeyModifiers};
 
-    #[test]
-    fn test_disabled_blocks_input() {
-        let mut ic = InputComponent::new();
-        ic.set_disabled(true);
-        ic.insert_char('x');
-        assert!(ic.input.is_empty());
-        assert!(ic.submit().is_none());
-    }
+        // Shift+Enter inserts newline; Enter submits.
+        if key.code == KeyCode::Enter {
+            if key.modifiers.contains(KeyModifiers::SHIFT) {
+                let input: tui_textarea::Input = (*key).into();
+                if self.textarea.input(input) {
+                    self.dirty = true;
+                }
+                return EventResult::consumed();
+            }
 
-    #[test]
-    fn test_cursor_movement() {
-        let mut ic = InputComponent::new();
-        ic.insert_char('a');
-        ic.insert_char('b');
-        ic.insert_char('c');
-        ic.cursor_left();
-        ic.cursor_left();
-        ic.insert_char('X');
-        assert_eq!(ic.input, "aXbc");
+            if let Some(text) = self.submit() {
+                self.dirty = true;
+                return EventResult::action(AppAction::RunPrompt(text));
+            }
+            return EventResult::consumed();
+        }
+
+        // History navigation on bare Up/Down.
+        if key.code == KeyCode::Up && key.modifiers.is_empty() && self.handle_history_up() {
+            return EventResult::consumed();
+        }
+        if key.code == KeyCode::Down && key.modifiers.is_empty() && self.handle_history_down() {
+            return EventResult::consumed();
+        }
+
+        // Slash completion.
+        if key.code == KeyCode::Tab && key.modifiers.is_empty() && self.try_complete() {
+            return EventResult::consumed();
+        }
+
+        // Readline tweak: Ctrl+U kills to head-of-line (textarea default uses Ctrl+U for undo).
+        if key.code == KeyCode::Char('u') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            if self.textarea.delete_line_by_head() {
+                self.dirty = true;
+            }
+            return EventResult::consumed();
+        }
+
+        // Default handling via tui-textarea.
+        let input: tui_textarea::Input = (*key).into();
+        if self.textarea.input(input) {
+            self.dirty = true;
+            return EventResult::consumed();
+        }
+
+        EventResult::default()
     }
 }

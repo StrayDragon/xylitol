@@ -1,384 +1,290 @@
-//! Root App component and event loop for the TUI.
-//!
-//! Manages the component tree, routes events, and drives the ratatui render loop.
+//! Root app component and event loop for the TUI.
 
 use std::sync::Arc;
 
 use futures::StreamExt;
 use ratatui::Terminal;
-use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::style::{Color, Style};
+use ratatui::backend::CrosstermBackend;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use tokio::sync::mpsc;
 
-use crate::agent::r#loop::{AgentEvent, AgentLoop};
 use adk_session::SessionService;
 
+use crate::agent::r#loop::{AgentEvent, AgentLoop};
+use crate::agent::profile::ResolvedProfile;
+use crate::agent::tools::ToolRegistry;
 use crate::infra::config::AppConfig;
 
-use super::approval::ApprovalOverlay;
 use super::chat::ChatComponent;
-use super::diff_preview::DiffPreviewComponent;
-use super::help::HelpOverlay;
+use super::component::Component;
+use super::component::OverlayStack;
+use super::event::{AppAction, TuiEvent};
+use super::history::HistoryStore;
 use super::input::InputComponent;
-use super::selectors::{ListSelector, SelectorKind, session_selector};
+use super::markdown::MarkdownRenderer;
+use super::overlays::HelpOverlay;
+use super::slash::{Completer, SlashCommand};
 use super::status_bar::StatusBar;
-use super::tool_output::ToolOutputComponent;
 
-/// Active focus area.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FocusArea {
-    Chat,
+enum Focus {
     Input,
-    ToolPanel,
+    Chat,
 }
 
-/// Application state — root component tree.
 pub(crate) struct App {
-    // Components
     chat: ChatComponent,
-    tool_output: ToolOutputComponent,
     input: InputComponent,
     status_bar: StatusBar,
-    diff_preview: DiffPreviewComponent,
-    approval: ApprovalOverlay,
-    help: HelpOverlay,
+    overlays: OverlayStack,
 
-    // Selectors
-    session_selector: ListSelector,
-    model_selector: ListSelector,
-    theme_selector: ListSelector,
-    active_selector: Option<SelectorKind>,
-
-    // State
-    focus: FocusArea,
     running: bool,
     should_quit: bool,
+    queued_prompts: Vec<String>,
+
+    focus: Focus,
     session_id: String,
+
+    history: HistoryStore,
+
+    last_area: Rect,
+    last_input_height: u16,
 }
 
 impl App {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(
+        _tool_registry: ToolRegistry,
+        _app_config: AppConfig,
+        profile: ResolvedProfile,
+        _session_service: Arc<dyn SessionService>,
+    ) -> Self {
+        let markdown = MarkdownRenderer::default();
+        let chat = ChatComponent::new(markdown);
+        let completer = Completer::new();
+        let mut input = InputComponent::new(completer);
+        let mut status_bar = StatusBar::new();
+
+        status_bar.set_model(format!(
+            "{}:{}",
+            profile.model_config.provider_name(),
+            profile.model_config.model
+        ));
+        status_bar.set_session("default");
+
+        let history = HistoryStore::load(200).unwrap_or_else(|_| {
+            let path = std::env::temp_dir().join("xylitol-history");
+            HistoryStore::load_from(path, 200).unwrap()
+        });
+        input.set_history(history.iter().map(|s| s.to_string()).collect());
+
         Self {
-            chat: ChatComponent::new(),
-            tool_output: ToolOutputComponent::new(),
-            input: InputComponent::new(),
-            status_bar: StatusBar::new(),
-            diff_preview: DiffPreviewComponent::new(),
-            approval: ApprovalOverlay::new(),
-            help: HelpOverlay::new(),
-            session_selector: session_selector(),
-            model_selector: session_selector(),
-            theme_selector: session_selector(),
-            active_selector: None,
-            focus: FocusArea::Input,
+            chat,
+            input,
+            status_bar,
+            overlays: OverlayStack::new(),
             running: false,
             should_quit: false,
+            queued_prompts: Vec::new(),
+            focus: Focus::Input,
             session_id: "tui-session".into(),
+            history,
+            last_area: Rect::new(0, 0, 0, 0),
+            last_input_height: 0,
         }
     }
 
-    /// Handle a keyboard event.
-    fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Option<AppAction> {
-        // If an overlay is active, route keys there first.
-        if self.help.is_visible() {
-            match key.code {
-                crossterm::event::KeyCode::Esc | crossterm::event::KeyCode::Char('?') => {
-                    self.help.toggle();
-                }
-                _ => {}
+    pub(crate) fn should_quit(&self) -> bool {
+        self.should_quit
+    }
+
+    pub(crate) fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    pub(crate) fn set_running(&mut self, running: bool) {
+        self.running = running;
+        self.status_bar.set_running(running);
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.chat.clear();
+        self.queued_prompts.clear();
+        self.status_bar.set_queue_len(0);
+        self.status_bar.set_message("Cleared.");
+    }
+
+    pub(crate) fn update(&mut self, event: TuiEvent) -> Option<AppAction> {
+        // Overlays always get first right of refusal for key events.
+        if !self.overlays.is_empty()
+            && let Some(result) = self.overlays.route_event(&event)
+        {
+            if let Some(action) = result.action {
+                return Some(action);
             }
             return None;
         }
 
-        if self.approval.is_active() {
-            match key.code {
-                crossterm::event::KeyCode::Up | crossterm::event::KeyCode::Char('k') => {
-                    self.approval.select_prev();
-                }
-                crossterm::event::KeyCode::Down | crossterm::event::KeyCode::Char('j') => {
-                    self.approval.select_next();
-                }
-                crossterm::event::KeyCode::Enter => {
-                    self.approval.confirm();
-                }
-                crossterm::event::KeyCode::Esc => {
-                    self.approval.cancel();
-                }
-                _ => {}
-            }
-            return None;
-        }
+        match event {
+            TuiEvent::Agent(agent_event) => {
+                // Update running flag on terminal events.
+                match agent_event {
+                    AgentEvent::StepComplete { .. }
+                    | AgentEvent::Error(_)
+                    | AgentEvent::RepeatDetected { .. } => {
+                        self.set_running(false);
 
-        if let Some(ref kind) = self.active_selector {
-            match key.code {
-                crossterm::event::KeyCode::Up | crossterm::event::KeyCode::Char('k') => {
-                    match kind {
-                        SelectorKind::Session => self.session_selector.select_prev(),
-                        SelectorKind::Model => self.model_selector.select_prev(),
-                        SelectorKind::Theme => self.theme_selector.select_prev(),
+                        // Auto-submit queued prompt after agent completion.
+                        if let Some(next) = self.queued_prompts.first().cloned() {
+                            self.queued_prompts.remove(0);
+                            self.status_bar.set_queue_len(self.queued_prompts.len());
+                            return Some(AppAction::RunPrompt(next));
+                        }
                     }
+                    _ => {}
                 }
-                crossterm::event::KeyCode::Down | crossterm::event::KeyCode::Char('j') => {
-                    match kind {
-                        SelectorKind::Session => self.session_selector.select_next(),
-                        SelectorKind::Model => self.model_selector.select_next(),
-                        SelectorKind::Theme => self.theme_selector.select_next(),
-                    }
-                }
-                crossterm::event::KeyCode::Enter => {
-                    let result = match kind {
-                        SelectorKind::Session => self.session_selector.confirm(),
-                        SelectorKind::Model => self.model_selector.confirm(),
-                        SelectorKind::Theme => self.theme_selector.confirm(),
-                    };
-                    if let Some(selected) = result {
-                        self.status_bar.set_message(format!("Selected: {selected}"));
-                    }
-                    self.active_selector = None;
-                }
-                crossterm::event::KeyCode::Esc => {
-                    match kind {
-                        SelectorKind::Session => self.session_selector.cancel(),
-                        SelectorKind::Model => self.model_selector.cancel(),
-                        SelectorKind::Theme => self.theme_selector.cancel(),
-                    }
-                    self.active_selector = None;
-                }
-                _ => {}
-            }
-            return None;
-        }
 
-        // Normal mode key handling.
-        match key.code {
-            crossterm::event::KeyCode::Char('?') => {
-                self.help.toggle();
+                self.chat.handle_event(&TuiEvent::Agent(agent_event));
+                None
             }
-            crossterm::event::KeyCode::Char('c')
-                if key.modifiers == crossterm::event::KeyModifiers::CONTROL && self.running =>
-            {
-                return Some(AppAction::Interrupt);
+            TuiEvent::Key(key) => {
+                use crossterm::event::{KeyCode, KeyModifiers};
+
+                // Global shortcuts.
+                match key.code {
+                    KeyCode::Char('?') => {
+                        self.overlays.push(Box::new(HelpOverlay::new()));
+                        return None;
+                    }
+                    KeyCode::Tab => {
+                        self.focus = match self.focus {
+                            Focus::Input => Focus::Chat,
+                            Focus::Chat => Focus::Input,
+                        };
+                        return None;
+                    }
+                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.should_quit = true;
+                        return None;
+                    }
+                    KeyCode::Char('c')
+                        if key.modifiers.contains(KeyModifiers::CONTROL) && self.running =>
+                    {
+                        return Some(AppAction::Interrupt);
+                    }
+                    KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        return Some(AppAction::Clear);
+                    }
+                    _ => {}
+                }
+
+                // Focused component routing.
+                match self.focus {
+                    Focus::Input => {
+                        let result = self.input.handle_event(&TuiEvent::Key(key));
+                        if let Some(AppAction::RunPrompt(text)) = result.action {
+                            // Slash commands run locally.
+                            if let Some(cmd) = SlashCommand::parse(&text) {
+                                match cmd {
+                                    SlashCommand::Clear => return Some(AppAction::Clear),
+                                    SlashCommand::Help => {
+                                        self.overlays.push(Box::new(HelpOverlay::new()));
+                                        return None;
+                                    }
+                                    SlashCommand::Quit => {
+                                        self.should_quit = true;
+                                        return None;
+                                    }
+                                }
+                            }
+
+                            // Persist history.
+                            let _ = self.history.add(&text);
+                            self.input
+                                .set_history(self.history.iter().map(|s| s.to_string()).collect());
+
+                            // Add to chat now (optimistic).
+                            self.chat.add_user_message(&text);
+
+                            if self.running {
+                                self.queued_prompts.push(text.clone());
+                                self.status_bar.set_queue_len(self.queued_prompts.len());
+                                return Some(AppAction::QueuePrompt(text));
+                            }
+
+                            self.set_running(true);
+                            return Some(AppAction::RunPrompt(text));
+                        }
+                        None
+                    }
+                    Focus::Chat => {
+                        let _ = self.chat.handle_event(&TuiEvent::Key(key));
+                        None
+                    }
+                }
             }
-            crossterm::event::KeyCode::Char('d')
-                if key.modifiers == crossterm::event::KeyModifiers::CONTROL =>
-            {
+            TuiEvent::Tick => {
+                // Currently a no-op; components that animate should mark themselves dirty.
+                None
+            }
+            TuiEvent::Shutdown => {
                 self.should_quit = true;
-            }
-            crossterm::event::KeyCode::Char('l')
-                if key.modifiers == crossterm::event::KeyModifiers::CONTROL =>
-            {
-                return Some(AppAction::Clear);
-            }
-            crossterm::event::KeyCode::Char('r')
-                if key.modifiers == crossterm::event::KeyModifiers::CONTROL =>
-            {
-                self.diff_preview.toggle();
-            }
-            crossterm::event::KeyCode::Tab => {
-                self.cycle_focus();
-            }
-            crossterm::event::KeyCode::Enter if !self.running => {
-                let prompt = self.input.submit();
-                if let Some(text) = prompt {
-                    self.chat.add_user_message(&text);
-                    self.running = true;
-                    self.input.set_disabled(true);
-                    self.status_bar.set_running(true);
-                    self.status_bar
-                        .set_message(format!("Running... (prompt: {text})"));
-                    return Some(AppAction::RunPrompt(text));
-                }
-            }
-            crossterm::event::KeyCode::Backspace => {
-                self.input.delete_before();
-            }
-            crossterm::event::KeyCode::Delete => {
-                self.input.delete_at();
-            }
-            crossterm::event::KeyCode::Left => {
-                self.input.cursor_left();
-            }
-            crossterm::event::KeyCode::Right => {
-                self.input.cursor_right();
-            }
-            crossterm::event::KeyCode::Up => {
-                self.input.history_back();
-            }
-            crossterm::event::KeyCode::Down => {
-                self.input.history_forward();
-            }
-            crossterm::event::KeyCode::Home => {
-                self.input.cursor_home();
-            }
-            crossterm::event::KeyCode::End => {
-                self.input.cursor_end();
-            }
-            crossterm::event::KeyCode::Char(c) => {
-                self.input.insert_char(c);
-            }
-            crossterm::event::KeyCode::Esc => {
-                // May also close help/overlays.
-            }
-            _ => {}
-        }
-
-        None
-    }
-
-    /// Handle an agent event.
-    fn handle_agent_event(&mut self, event: AgentEvent) {
-        match &event {
-            AgentEvent::TextDelta(_) => {
-                self.chat.handle_event(&event);
-            }
-            AgentEvent::ToolCallStart { id, name, .. } => {
-                self.tool_output.handle_tool_start(id.clone(), name.clone());
-                self.chat.handle_event(&event);
-                self.status_bar.set_message(format!("Tool call: {name}..."));
-            }
-            AgentEvent::ToolCallEnd { id, result } => {
-                self.tool_output.handle_tool_end(id.clone(), result);
-                self.status_bar.set_message("Tool call completed.");
-            }
-            AgentEvent::StepComplete { summary, .. } => {
-                self.chat.handle_event(&event);
-                self.status_bar.set_message(format!("Step done: {summary}"));
-            }
-            AgentEvent::Error(err) => {
-                self.status_bar.set_message(format!("Error: {err}"));
-                self.chat.handle_event(&event);
-            }
-            AgentEvent::RepeatDetected { .. } => {
-                self.status_bar
-                    .set_message("Repeat detected — interrupting.");
+                None
             }
         }
     }
 
-    /// Mark agent as completed.
-    fn agent_completed(&mut self) {
-        self.running = false;
-        self.input.set_disabled(false);
-        self.status_bar.set_running(false);
-        self.status_bar.set_message("Ready.");
-    }
-
-    /// Cycle focus between Chat, Input, and ToolPanel.
-    fn cycle_focus(&mut self) {
-        self.focus = match self.focus {
-            FocusArea::Chat => FocusArea::Input,
-            FocusArea::Input => FocusArea::ToolPanel,
-            FocusArea::ToolPanel => FocusArea::Chat,
-        };
-    }
-
-    /// Render the entire TUI.
-    fn render(&mut self, frame: &mut ratatui::Frame) {
+    pub(crate) fn render(&mut self, frame: &mut ratatui::Frame) {
         let area = frame.area();
+        let input_h = self.input.desired_height().saturating_add(2);
 
-        // ── Layout ──────────────────────────────────────────
+        let size_changed = self.last_area != area;
+        let input_changed = self.last_input_height != input_h;
+        if size_changed || input_changed {
+            self.last_area = area;
+            self.last_input_height = input_h;
+        }
+
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1), // Header
-                Constraint::Min(3),    // Chat + Tools
-                Constraint::Length(4), // Tool output
-                Constraint::Length(3), // Input
-                Constraint::Length(1), // Status bar
-            ])
+            .constraints(
+                [
+                    Constraint::Min(1),
+                    Constraint::Length(input_h),
+                    Constraint::Length(1),
+                ]
+                .as_ref(),
+            )
             .split(area);
 
-        // ── Header ──────────────────────────────────────────
-        let header_style = if self.running {
-            Style::default().fg(Color::Black).bg(Color::Green)
-        } else {
-            Style::default().fg(Color::White).bg(Color::Rgb(30, 30, 50))
-        };
-        let mode_indicator = if self.running { " RUNNING " } else { " READY " };
-        let focus_name = match self.focus {
-            FocusArea::Chat => "Chat",
-            FocusArea::Input => "Input",
-            FocusArea::ToolPanel => "Tools",
-        };
-        let header_text = format!(
-            " xylitol  |  {}  |  [{}]  |  ? for help",
-            mode_indicator, focus_name
-        );
-
-        // Fill header background.
-        let header_buf = frame.buffer_mut();
-        for x in chunks[0].x..chunks[0].right() {
-            if let Some(cell) = header_buf.cell_mut((x, chunks[0].y)) {
-                cell.set_style(header_style);
-                cell.set_symbol(" ");
-            }
+        if size_changed || input_changed || self.chat.is_dirty() {
+            self.chat.render(frame, chunks[0]);
         }
-        header_buf.set_string(chunks[0].x, chunks[0].y, &header_text, header_style);
+        if size_changed || input_changed || self.input.is_dirty() {
+            self.input.render(frame, chunks[1]);
+        }
+        if size_changed || input_changed || self.status_bar.is_dirty() {
+            self.status_bar.render(frame, chunks[2]);
+        }
 
-        // ── Chat area ───────────────────────────────────────
-        let chat_area = if self.tool_output_is_empty() {
-            chunks[1]
-        } else {
-            // Split chat and tool output vertically.
-            let chat_chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Min(1),
-                    Constraint::Length(4), // tool output
-                ])
-                .split(chunks[1]);
-            self.tool_output.render(frame, chat_chunks[1]);
-            chat_chunks[0]
-        };
-        self.chat.render(frame, chat_area);
-
-        // ── Input area ──────────────────────────────────────
-        self.input.render(frame, chunks[3]);
-
-        // ── Status bar ──────────────────────────────────────
-        frame.render_widget(&self.status_bar, chunks[4]);
-
-        // ── Overlays ────────────────────────────────────────
-        self.diff_preview.render(frame, area);
-        self.approval.render(frame, area);
-        self.help.render(frame, area);
-
-        if let Some(ref kind) = self.active_selector {
-            match kind {
-                SelectorKind::Session => self.session_selector.render(frame, area),
-                SelectorKind::Model => self.model_selector.render(frame, area),
-                SelectorKind::Theme => self.theme_selector.render(frame, area),
-            }
+        if !self.overlays.is_empty() {
+            self.overlays.render_all(frame, area);
         }
     }
-
-    fn tool_output_is_empty(&self) -> bool {
-        // Check if there are visible tool entries.
-        // ToolOutputComponent doesn't expose this directly; approximate.
-        false
-    }
-}
-
-/// Actions that the event loop performs on behalf of the App.
-enum AppAction {
-    RunPrompt(String),
-    Interrupt,
-    Clear,
 }
 
 /// Run the TUI event loop. This is the main entry point called from the CLI.
 pub(crate) async fn run_tui(
-    tool_registry: crate::agent::tools::ToolRegistry,
+    tool_registry: ToolRegistry,
     app_config: AppConfig,
-    profile: crate::agent::profile::ResolvedProfile,
+    profile: ResolvedProfile,
     session_service: Arc<dyn SessionService>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
     use crossterm::execute;
     use crossterm::terminal::{
-        EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+        BeginSynchronizedUpdate, EndSynchronizedUpdate, EnterAlternateScreen, LeaveAlternateScreen,
+        disable_raw_mode, enable_raw_mode,
     };
-    use ratatui::backend::CrosstermBackend;
     use std::io::stdout;
 
     // ── Terminal setup ──────────────────────────────────────
@@ -393,7 +299,7 @@ pub(crate) async fn run_tui(
     let agent_loop = Arc::new(
         AgentLoop::new(
             &tool_registry,
-            profile,
+            profile.clone(),
             session_service.clone(),
             "xylitol".into(),
             Some(&app_config.hooks),
@@ -403,99 +309,60 @@ pub(crate) async fn run_tui(
 
     // ── Channels ────────────────────────────────────────────
     let (agent_tx, mut agent_rx) = mpsc::unbounded_channel::<AgentEvent>();
-    let (key_tx, mut key_rx) = mpsc::unbounded_channel::<crossterm::event::Event>();
+    let (key_tx, mut key_rx) = mpsc::unbounded_channel::<crossterm::event::KeyEvent>();
 
     // Spawn crossterm keyboard reader on a blocking thread.
     tokio::task::spawn_blocking(move || {
         while let Ok(event) = crossterm::event::read() {
-            if key_tx.send(event).is_err() {
+            if let crossterm::event::Event::Key(key) = event
+                && key_tx.send(key).is_err()
+            {
                 break;
             }
         }
     });
 
     // ── App ─────────────────────────────────────────────────
-    let mut app = App::new();
+    let mut app = App::new(
+        tool_registry.clone(),
+        app_config.clone(),
+        profile.clone(),
+        session_service.clone(),
+    );
     let mut current_agent_handle: Option<tokio::task::JoinHandle<()>> = None;
+
+    let mut tick = tokio::time::interval(std::time::Duration::from_millis(250));
 
     // ── Event loop ──────────────────────────────────────────
     let result: Result<(), Box<dyn std::error::Error>> = 'event_loop: loop {
-        // Tick timer for frame rate control.
-        let tick = tokio::time::sleep(std::time::Duration::from_millis(250));
-        tokio::pin!(tick);
-
         tokio::select! {
             Some(agent_event) = agent_rx.recv() => {
-                app.handle_agent_event(agent_event);
+                if let Some(action) = app.update(TuiEvent::Agent(agent_event)) {
+                    handle_action(&mut app, action, &agent_loop, &agent_tx, &mut current_agent_handle);
+                }
             }
-            key_event = key_rx.recv() => {
-                let Some(crossterm::event::Event::Key(key)) = key_event else {
-                    // Keyboard reader thread exited — quit.
-                    break 'event_loop Ok(());
-                };
-                if let Some(action) = app.handle_key(key) {
-                        match action {
-                            AppAction::RunPrompt(prompt) => {
-                                // Start agent execution in background.
-                                let agent_loop = agent_loop.clone();
-                                let agent_tx = agent_tx.clone();
-                                let session_id = app.session_id.clone();
-                                let handle = tokio::spawn(async move {
-                                    let result = agent_loop
-                                        .run(&prompt, &session_id, None)
-                                        .await;
-                                    match result {
-                                        Ok(mut stream) => {
-                                            while let Some(event) = stream.next().await {
-                                                if agent_tx.send(event).is_err() {
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                        Err(err) => {
-                                            let _ = agent_tx.send(AgentEvent::Error(err));
-                                        }
-                                    }
-                                });
-                                current_agent_handle = Some(handle);
-                            }
-                            AppAction::Interrupt => {
-                                // Cancel current agent task.
-                                if let Some(handle) = current_agent_handle.take() {
-                                    handle.abort();
-                                }
-                                app.agent_completed();
-                            }
-                            AppAction::Clear => {
-                                // Clear is not fully implemented yet.
-                            }
-                        }
-                    }
-
-                    if app.should_quit {
-                        break 'event_loop Ok(());
-                    }
+            Some(key) = key_rx.recv() => {
+                if let Some(action) = app.update(TuiEvent::Key(key)) {
+                    handle_action(&mut app, action, &agent_loop, &agent_tx, &mut current_agent_handle);
+                }
             }
-            _ = &mut tick => {
-                // Tick — redraw.
+            _ = tick.tick() => {
+                let _ = app.update(TuiEvent::Tick);
             }
         }
 
-        // Check if agent task has completed.
-        if app.running
-            && let Some(ref handle) = current_agent_handle
-            && handle.is_finished()
-        {
-            app.agent_completed();
-            current_agent_handle = None;
+        if app.should_quit() {
+            break 'event_loop Ok(());
         }
 
-        // Redraw on every iteration.
+        // Redraw.
+        execute!(terminal.backend_mut(), BeginSynchronizedUpdate)?;
         terminal.draw(|f| app.render(f))?;
+        execute!(terminal.backend_mut(), EndSynchronizedUpdate)?;
     };
 
     // ── Cleanup ─────────────────────────────────────────────
-    if let Some(handle) = current_agent_handle {
+    if let Some(handle) = current_agent_handle.take() {
         handle.abort();
     }
     disable_raw_mode()?;
@@ -507,4 +374,49 @@ pub(crate) async fn run_tui(
     terminal.show_cursor()?;
 
     result
+}
+
+fn handle_action(
+    app: &mut App,
+    action: AppAction,
+    agent_loop: &Arc<AgentLoop>,
+    agent_tx: &mpsc::UnboundedSender<AgentEvent>,
+    current_agent_handle: &mut Option<tokio::task::JoinHandle<()>>,
+) {
+    match action {
+        AppAction::RunPrompt(prompt) => {
+            app.set_running(true);
+            // Start agent execution in background.
+            let agent_loop = agent_loop.clone();
+            let agent_tx = agent_tx.clone();
+            let session_id = app.session_id().to_string();
+            let handle = tokio::spawn(async move {
+                let result = agent_loop.run(&prompt, &session_id, None).await;
+                match result {
+                    Ok(mut stream) => {
+                        while let Some(event) = stream.next().await {
+                            if agent_tx.send(event).is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        let _ = agent_tx.send(AgentEvent::Error(err));
+                    }
+                }
+            });
+            *current_agent_handle = Some(handle);
+        }
+        AppAction::Interrupt => {
+            if let Some(handle) = current_agent_handle.take() {
+                handle.abort();
+            }
+            app.set_running(false);
+        }
+        AppAction::Clear => {
+            app.clear();
+        }
+        AppAction::SetDiff(_diff) => {}
+        AppAction::QueuePrompt(_prompt) => {}
+    }
 }

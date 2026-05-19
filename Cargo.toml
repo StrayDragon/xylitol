@@ -47,7 +47,8 @@ uuid = { version = "1.23.1", features = ["v4"] }
 ratatui = { version = "0.29", optional = true, default-features = false, features = ["crossterm"] }
 crossterm = { version = "0.28", optional = true }
 syntect = { version = "5", optional = true }
-termimad = { version = "0.34", optional = true }
+pulldown-cmark = { version = "0.12", optional = true }
+tui-textarea = { version = "0.7", optional = true }
 
 # ── acp dependencies (optional, infra-acp) ─────
 agent-client-protocol = { version = "0.12.1", optional = true }
@@ -69,7 +70,7 @@ infra-sandbox = []
 infra-rtk = []
 
 # ── interface/ layer ──────────────────────────
-ui-tui = ["dep:ratatui", "dep:crossterm", "dep:termimad", "dep:syntect"]
+ui-tui = ["dep:ratatui", "dep:crossterm", "dep:pulldown-cmark", "dep:syntect", "dep:tui-textarea"]
 ui-review = ["dep:ratatui", "dep:crossterm"]
 
 # ── development only ──────────────────────────
