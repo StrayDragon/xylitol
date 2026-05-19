@@ -39,6 +39,15 @@ impl Default for MarkdownRenderer {
 }
 
 impl MarkdownRenderer {
+    pub(crate) fn set_theme(&mut self, theme_name: &str) -> bool {
+        let theme_set = ThemeSet::load_defaults();
+        let Some(theme) = theme_set.themes.get(theme_name) else {
+            return false;
+        };
+        self.theme = theme.clone();
+        true
+    }
+
     /// Render a markdown string to ratatui lines.
     pub(crate) fn render(&self, source: &str, _width: u16) -> Vec<Line<'static>> {
         let mut options = Options::empty();

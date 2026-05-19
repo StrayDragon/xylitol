@@ -1,4 +1,4 @@
-//! Selector overlay — generic list picker.
+//! Interactive history search overlay (Ctrl+R).
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -8,29 +8,18 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState};
 use crate::interface::tui::component::{Component, EventResult, OverlayAction};
 use crate::interface::tui::event::{AppAction, TuiEvent};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SelectorKind {
-    Profile,
-    Session,
-    Theme,
-}
-
-pub(crate) struct SelectorOverlay {
-    title: String,
-    items: Vec<String>,
-    kind: SelectorKind,
+pub(crate) struct HistorySearchOverlay {
+    entries: Vec<String>,
     query: String,
     filtered: Vec<usize>,
     selected: usize,
     dirty: bool,
 }
 
-impl SelectorOverlay {
-    pub(crate) fn new(kind: SelectorKind, title: impl Into<String>, items: Vec<String>) -> Self {
+impl HistorySearchOverlay {
+    pub(crate) fn new(entries: Vec<String>) -> Self {
         let mut overlay = Self {
-            title: title.into(),
-            items,
-            kind,
+            entries,
             query: String::new(),
             filtered: Vec::new(),
             selected: 0,
@@ -51,7 +40,7 @@ impl SelectorOverlay {
     fn recompute_filtered(&mut self) {
         let query = self.query.trim();
         let mut out: Vec<(usize, i64)> = Vec::new();
-        for (idx, item) in self.items.iter().enumerate() {
+        for (idx, item) in self.entries.iter().enumerate() {
             if let Some(score) = fuzzy_score(item, query) {
                 out.push((idx, score));
             }
@@ -65,27 +54,19 @@ impl SelectorOverlay {
 
     fn selected_value(&self) -> String {
         let idx = self.filtered.get(self.selected).copied().unwrap_or(0);
-        self.items.get(idx).cloned().unwrap_or_default()
-    }
-
-    fn action_for(&self, value: String) -> AppAction {
-        match self.kind {
-            SelectorKind::Profile => AppAction::SelectProfile(value),
-            SelectorKind::Session => AppAction::SelectSession(value),
-            SelectorKind::Theme => AppAction::SelectTheme(value),
-        }
+        self.entries.get(idx).cloned().unwrap_or_default()
     }
 }
 
-impl Component for SelectorOverlay {
+impl Component for HistorySearchOverlay {
     fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let modal = Self::centered(area, 70, 18);
+        let modal = Self::centered(area, 80, 20);
         frame.render_widget(Clear, modal);
 
         let items = self
             .filtered
             .iter()
-            .filter_map(|idx| self.items.get(*idx))
+            .filter_map(|idx| self.entries.get(*idx))
             .map(|s| ListItem::new(s.as_str()))
             .collect::<Vec<_>>();
 
@@ -93,7 +74,7 @@ impl Component for SelectorOverlay {
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(format!(" {}  {} ", self.title, self.query))
+                    .title(format!(" History  {} ", self.query))
                     .border_style(Style::default().fg(Color::LightCyan)),
             )
             .highlight_style(
@@ -158,7 +139,7 @@ impl Component for SelectorOverlay {
                 let selected = self.selected_value();
                 EventResult {
                     consumed: true,
-                    action: Some(self.action_for(selected)),
+                    action: Some(AppAction::LoadInput(selected)),
                     overlay: Some(OverlayAction::Dismiss),
                 }
             }
@@ -182,9 +163,6 @@ fn fuzzy_score(candidate: &str, query: &str) -> Option<i64> {
         return Some(0);
     }
 
-    // Simple subsequence matcher with a small scoring heuristic:
-    // - earlier matches score higher
-    // - contiguous matches score higher
     let cand_lower = candidate.to_ascii_lowercase();
     let query_lower = query.to_ascii_lowercase();
 
@@ -202,10 +180,7 @@ fn fuzzy_score(candidate: &str, query: &str) -> Option<i64> {
         }
         let idx = found?;
 
-        // Prefer earlier matches.
         score -= idx as i64;
-
-        // Prefer contiguous matches.
         if let Some(prev) = last_match
             && idx == prev + 1
         {

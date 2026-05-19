@@ -7,6 +7,9 @@ pub(crate) enum SlashCommand {
     Clear,
     Help,
     Quit,
+    Model,
+    Session,
+    Theme,
 }
 
 impl SlashCommand {
@@ -20,6 +23,9 @@ impl SlashCommand {
             "clear" => Some(Self::Clear),
             "help" => Some(Self::Help),
             "quit" | "exit" => Some(Self::Quit),
+            "model" => Some(Self::Model),
+            "session" => Some(Self::Session),
+            "theme" => Some(Self::Theme),
             _ => None,
         }
     }
@@ -29,6 +35,9 @@ impl SlashCommand {
             Self::Clear => "/clear",
             Self::Help => "/help",
             Self::Quit => "/quit",
+            Self::Model => "/model",
+            Self::Session => "/session",
+            Self::Theme => "/theme",
         }
     }
 }
@@ -44,7 +53,7 @@ impl Completer {
         let mut c = Self {
             trie: TrieNode::default(),
         };
-        for cmd in ["/clear", "/help", "/quit"] {
+        for cmd in ["/clear", "/help", "/quit", "/model", "/session", "/theme"] {
             c.insert(cmd);
         }
         c
@@ -126,6 +135,9 @@ mod tests {
         assert_eq!(SlashCommand::parse("/clear"), Some(SlashCommand::Clear));
         assert_eq!(SlashCommand::parse("  /help  "), Some(SlashCommand::Help));
         assert_eq!(SlashCommand::parse("/quit"), Some(SlashCommand::Quit));
+        assert_eq!(SlashCommand::parse("/model"), Some(SlashCommand::Model));
+        assert_eq!(SlashCommand::parse("/session"), Some(SlashCommand::Session));
+        assert_eq!(SlashCommand::parse("/theme"), Some(SlashCommand::Theme));
         assert_eq!(SlashCommand::parse("/unknown"), None);
         assert_eq!(SlashCommand::parse("hello"), None);
     }
@@ -135,6 +147,7 @@ mod tests {
         let c = Completer::new();
         assert_eq!(c.complete("/cl"), "/clear");
         assert_eq!(c.complete("/he"), "/help");
+        assert_eq!(c.complete("/mo"), "/model");
     }
 
     #[test]

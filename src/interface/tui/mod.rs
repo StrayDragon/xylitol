@@ -12,6 +12,7 @@ mod input;
 mod markdown;
 mod slash;
 mod status_bar;
+mod tool_panel;
 
 mod overlays;
 
