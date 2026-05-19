@@ -12,7 +12,7 @@ llman_spec_evidence:
 kind: llman.sdd.spec
 name: "tui-interface"
 purpose: "TBD - created by archiving change c80-add-tui. Update purpose after archive."
-requirements[17]{req_id,title,statement}:
+requirements[23]{req_id,title,statement}:
   r1,"component-architecture","System MUST implement a Component trait with render(&mut self, f, area), is_dirty(), mark_clean(), and handle_event() methods for all major TUI components."
   r2,"event-driven-ui","System MUST consume AgentEvent stream via tokio::select! and update TUI in real-time with dirty-flag differential rendering."
   r3,"markdown-rendering","System MUST render markdown via pulldown-cmark (CommonMark spec) with syntect syntax highlighting for code blocks."
@@ -30,7 +30,13 @@ requirements[17]{req_id,title,statement}:
   r15,"mouse-interaction",System SHALL process mouse scroll wheel for chat scrolling and mouse click for focus switching.
   r16,"focus-visual",System SHALL visually indicate the active focus area with highlighted border and title accent.
   r17,"pane-resize",System SHALL support Ctrl+Up/Down to resize the chat/tool output split.
-scenarios[17]{req_id,id,given,when,then}:
+  r18,"approval-wiring",System SHALL wire ApprovalOverlay to agent SecurityPolicy such that tool calls requiring approval show a modal with Allow/Deny/AllowOnce/DenyOnce options.
+  r19,"diff-preview-wiring","System SHALL wire DiffPreviewOverlay to StepComplete events, collecting diffs from ReviewEngine and displaying them via Ctrl+R toggle."
+  r20,"diff-type-reuse","System SHALL reuse diff_review::types::{DiffHunk, DiffLine, DiffLineKind} in diff_preview.rs, eliminating duplicate type definitions."
+  r21,"tool-call-cards","System SHALL render tool calls as collapsible cards with status badge (running/success/failed), argument preview, and Enter to expand."
+  r22,"thinking-blocks","System SHALL detect and render agent reasoning as collapsible dim-styled blocks, collapsed by default with Enter to expand."
+  r23,"approval-with-diff","System SHALL show the diff of proposed tool changes inline within the approval overlay for edit-type tools."
+scenarios[23]{req_id,id,given,when,then}:
   r1,happy,Component trait is defined,each major component implements it,is_dirty returns correct state after mutations
   r2,happy,agent emits TextDelta events via agent_tx channel,"App::handle_agent_event processes them",chat component marks dirty and content updates on next render
   r3,happy,"assistant message contains markdown with code blocks, lists, links","MarkdownRenderer::render() is called",output contains correctly styled ratatui Lines with syntax highlighting
@@ -48,4 +54,10 @@ scenarios[17]{req_id,id,given,when,then}:
   r15,happy,mouse scroll wheel is used over the chat area,"App handles MouseEvent::ScrollDown",chat scrolls down by N lines
   r16,happy,user presses Tab to cycle focus,"App::cycle_focus() changes focus field",focused component gets a highlighted border (cyan) vs dim border for unfocused
   r17,happy,tool panel is visible and user presses Ctrl+Up,"tool panel Constraint::Length increases by 1",layout adjusts; chat area shrinks accordingly
+  r18,happy,agent calls a tool that SecurityPolicy flags as needing approval,ToolCallStart triggers ApprovalOverlay.prompt(),overlay shows tool name and args; user selects Allow; tool executes
+  r19,happy,agent completes a step with file edits,StepComplete event fires with diffs,DiffPreviewOverlay.set_diff() is called; Ctrl+R shows the diff
+  r20,happy,diff_preview.rs renders a diff,"it imports DiffHunk from diff_review::types",no duplicate DiffLineKind enum exists in the codebase
+  r21,happy,agent starts a tool call during streaming,chat receives ToolCallStart event,"a collapsible card renders with a spinner; on ToolCallEnd, spinner changes to checkmark; Enter toggles details"
+  r22,happy,assistant message contains thinking content delimited by markers,chat component detects the pattern,content renders as a collapsed dim block; Enter expands to full text
+  r23,happy,a write/edit tool requires approval,ApprovalOverlay shows with diff preview,the diff of the file change is visible within the overlay before user decides
 ```
