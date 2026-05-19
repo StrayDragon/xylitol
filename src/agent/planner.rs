@@ -508,7 +508,13 @@ pub(crate) async fn build_orchestrator(
     let planner_model_id = planning_config
         .model
         .as_deref()
-        .unwrap_or(&app_config.model.default_model);
+        .or(app_config.model.default_model.as_deref())
+        .ok_or_else(|| {
+            PlannerError::ConfigError(
+                "planning model not configured: set `planning.model` or `model.default_model`"
+                    .into(),
+            )
+        })?;
     let planner_model = build_model(planner_model_id, app_config)?;
     let planner = Planner::new(planner_model, planner_model_id.to_string(), planning_config);
 
@@ -517,7 +523,13 @@ pub(crate) async fn build_orchestrator(
         .execution
         .model
         .as_deref()
-        .unwrap_or(&app_config.model.default_model);
+        .or(app_config.model.default_model.as_deref())
+        .ok_or_else(|| {
+            PlannerError::ConfigError(
+                "execution model not configured: set `execution.model` or `model.default_model`"
+                    .into(),
+            )
+        })?;
     let executor_model = build_model(executor_model_id, app_config)?;
     let executor = Executor::new(
         executor_model,
@@ -919,6 +931,7 @@ mod tests {
             ModelEntry {
                 provider: crate::infra::config::types::ProviderKind::OpenAI,
                 model: "gpt-4o".into(),
+                base_url: None,
                 fallback: None,
             },
         );

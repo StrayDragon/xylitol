@@ -189,7 +189,7 @@ async fn register_mcp_tools(
 
 /// Print available models from config and exit.
 fn list_models_and_exit(config: &config::AppConfig) -> Result<(), Box<dyn std::error::Error>> {
-    let default = &config.model.default_model;
+    let default = config.model.default_model.as_deref().unwrap_or("<unset>");
     println!("Available models (default: {default}):\n");
 
     if config.model.models.is_empty() {
@@ -198,7 +198,11 @@ fn list_models_and_exit(config: &config::AppConfig) -> Result<(), Box<dyn std::e
         // Header
         println!("  {:<20} {:<12} MODEL", "ALIAS", "PROVIDER");
         for (alias, entry) in &config.model.models {
-            let default_marker = if alias == default { " *" } else { "" };
+            let default_marker = if Some(alias.as_str()) == config.model.default_model.as_deref() {
+                " *"
+            } else {
+                ""
+            };
             let provider = match entry.provider {
                 ProviderKind::OpenAI => "openai",
                 ProviderKind::Anthropic => "anthropic",
