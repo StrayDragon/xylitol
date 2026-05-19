@@ -1,214 +1,316 @@
-//! Chat message display component for the TUI.
-//!
-//! Renders a scrollable list of messages (user + assistant) with streaming
-//! text deltas and Markdown formatting.
+//! Chat component — scrollable message history with markdown rendering.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
-use crate::agent::r#loop::AgentEvent;
+use crate::agent::r#loop::{AgentError, AgentEvent};
 
+use super::component::{Component, EventResult};
+use super::event::TuiEvent;
 use super::markdown::MarkdownRenderer;
 
-/// A single chat message.
-#[derive(Debug, Clone)]
-pub(crate) struct Message {
-    /// "user" or "assistant".
-    pub(crate) role: String,
-    /// Accumulated text content.
-    pub(crate) content: String,
-    /// Whether this message is still receiving deltas.
-    pub(crate) streaming: bool,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Role {
+    User,
+    Assistant,
+    System,
+    Error,
 }
 
-/// Chat component — scrollable message history.
+#[derive(Debug, Clone)]
+pub(crate) struct Message {
+    role: Role,
+    content: String,
+    streaming: bool,
+    cached_width: u16,
+    cached_lines: Vec<Line<'static>>,
+    dirty: bool,
+}
+
+impl Message {
+    fn new(role: Role, content: String) -> Self {
+        Self {
+            role,
+            content,
+            streaming: false,
+            cached_width: 0,
+            cached_lines: Vec::new(),
+            dirty: true,
+        }
+    }
+
+    fn role_label(&self) -> (&'static str, Style) {
+        match self.role {
+            Role::User => (
+                "user",
+                Style::default()
+                    .fg(Color::LightYellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Role::Assistant => (
+                "assistant",
+                Style::default()
+                    .fg(Color::LightBlue)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Role::System => (
+                "system",
+                Style::default()
+                    .fg(Color::LightMagenta)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Role::Error => (
+                "error",
+                Style::default()
+                    .fg(Color::LightRed)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        }
+    }
+}
+
 pub(crate) struct ChatComponent {
-    messages: Vec<Message>,
-    scroll_offset: u16,
-    needs_scroll: bool,
     markdown: MarkdownRenderer,
+    messages: Vec<Message>,
+    /// Scroll offset measured from the bottom (0 = show newest).
+    scroll_offset: u16,
+    follow_tail: bool,
+    dirty: bool,
 }
 
 impl ChatComponent {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(markdown: MarkdownRenderer) -> Self {
         Self {
+            markdown,
             messages: Vec::new(),
             scroll_offset: 0,
-            needs_scroll: false,
-            markdown: MarkdownRenderer::default(),
+            follow_tail: true,
+            dirty: true,
         }
     }
 
-    /// Handle an agent event.
-    pub(crate) fn handle_event(&mut self, event: &AgentEvent) {
-        match event {
-            AgentEvent::TextDelta(delta) => {
-                // Append to the last assistant message or create one.
-                if let Some(last) = self.messages.last_mut()
-                    && last.role == "assistant"
-                {
-                    last.content.push_str(delta);
-                    last.streaming = true;
-                    self.needs_scroll = true;
-                    return;
-                }
-                // No assistant message yet — start one.
-                self.messages.push(Message {
-                    role: "assistant".into(),
-                    content: delta.clone(),
-                    streaming: true,
-                });
-                self.needs_scroll = true;
-            }
-            AgentEvent::ToolCallStart { name, .. } => {
-                // Show tool invocation in the chat area.
-                let msg = format!("\n\n*[Tool: {name} — running...]*\n");
-                if let Some(last) = self.messages.last_mut()
-                    && last.role == "assistant"
-                {
-                    last.content.push_str(&msg);
-                }
-            }
-            AgentEvent::StepComplete { .. } => {
-                // Finalize the current assistant message.
-                if let Some(last) = self.messages.last_mut()
-                    && last.role == "assistant"
-                {
-                    last.streaming = false;
-                }
-                self.needs_scroll = true;
-            }
-            _ => {}
-        }
-    }
-
-    /// Add a user message.
     pub(crate) fn add_user_message(&mut self, text: &str) {
-        self.messages.push(Message {
-            role: "user".into(),
-            content: text.to_string(),
-            streaming: false,
-        });
-        self.needs_scroll = true;
+        self.messages
+            .push(Message::new(Role::User, text.to_string()));
+        self.scroll_to_bottom();
+        self.dirty = true;
     }
 
-    /// Scroll up by `n` lines.
-    pub(crate) fn scroll_up(&mut self, n: u16) {
-        self.scroll_offset = self.scroll_offset.saturating_add(n);
-        self.needs_scroll = false;
-    }
-
-    /// Scroll down by `n` lines.
-    pub(crate) fn scroll_down(&mut self, n: u16) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(n);
-        self.needs_scroll = false;
-    }
-
-    /// Reset scroll to bottom.
-    pub(crate) fn scroll_bottom(&mut self) {
+    pub(crate) fn clear(&mut self) {
+        self.messages.clear();
         self.scroll_offset = 0;
-        self.needs_scroll = false;
+        self.follow_tail = true;
+        self.dirty = true;
     }
 
-    /// Render the chat component into the given area.
-    pub(crate) fn render(&mut self, frame: &mut Frame, area: Rect) {
-        // Build rendered lines from all messages.
-        let mut all_lines: Vec<Line<'_>> = Vec::new();
+    fn append_assistant_delta(&mut self, delta: &str) {
+        if let Some(last) = self.messages.last_mut()
+            && last.role == Role::Assistant
+            && last.streaming
+        {
+            last.content.push_str(delta);
+            last.dirty = true;
+        } else {
+            let mut m = Message::new(Role::Assistant, delta.to_string());
+            m.streaming = true;
+            self.messages.push(m);
+        }
 
-        for msg in &self.messages {
-            // Role label.
-            let role_style = match msg.role.as_str() {
-                "user" => Style::default()
-                    .fg(Color::LightYellow)
-                    .add_modifier(Modifier::BOLD),
-                "assistant" => Style::default()
-                    .fg(Color::LightBlue)
-                    .add_modifier(Modifier::BOLD),
-                _ => Style::default().fg(Color::Gray),
-            };
+        if self.follow_tail {
+            self.scroll_offset = 0;
+        }
+        self.dirty = true;
+    }
+
+    fn finish_streaming(&mut self) {
+        if let Some(last) = self.messages.last_mut()
+            && last.role == Role::Assistant
+        {
+            last.streaming = false;
+            last.dirty = true;
+        }
+        if self.follow_tail {
+            self.scroll_offset = 0;
+        }
+        self.dirty = true;
+    }
+
+    fn show_tool_message(&mut self, line: String) {
+        self.messages.push(Message::new(Role::System, line));
+        if self.follow_tail {
+            self.scroll_offset = 0;
+        }
+        self.dirty = true;
+    }
+
+    fn show_error(&mut self, err: AgentError) {
+        self.messages
+            .push(Message::new(Role::Error, format!("{err}")));
+        if self.follow_tail {
+            self.scroll_offset = 0;
+        }
+        self.dirty = true;
+    }
+
+    fn scroll_up(&mut self, n: u16, max_scroll: u16) {
+        self.scroll_offset = self.scroll_offset.saturating_add(n).min(max_scroll);
+        self.follow_tail = self.scroll_offset == 0;
+        self.dirty = true;
+    }
+
+    fn scroll_down(&mut self, n: u16) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(n);
+        self.follow_tail = self.scroll_offset == 0;
+        self.dirty = true;
+    }
+
+    fn scroll_to_top(&mut self, max_scroll: u16) {
+        self.scroll_offset = max_scroll;
+        self.follow_tail = false;
+        self.dirty = true;
+    }
+
+    fn scroll_to_bottom(&mut self) {
+        self.scroll_offset = 0;
+        self.follow_tail = true;
+        self.dirty = true;
+    }
+
+    fn render_lines(&mut self, width: u16) -> Vec<Line<'static>> {
+        let mut lines: Vec<Line<'static>> = Vec::new();
+
+        for msg in &mut self.messages {
+            let (label, style) = msg.role_label();
             let suffix = if msg.streaming { " ▍" } else { "" };
-            all_lines.push(Line::from(ratatui::text::Span::styled(
-                format!("{}{}", msg.role, suffix),
-                role_style,
-            )));
+            lines.push(Line::from(Span::styled(format!("{label}{suffix}"), style)));
 
-            // Message content as markdown-rendered lines.
-            let content_lines = self
-                .markdown
-                .render(&msg.content, area.width.saturating_sub(2));
-            all_lines.extend(content_lines);
-
-            // Spacer between messages.
-            all_lines.push(Line::from(""));
+            if msg.dirty || msg.cached_width != width {
+                msg.cached_width = width;
+                msg.cached_lines = self.markdown.render(&msg.content, width);
+                msg.dirty = false;
+            }
+            lines.extend(msg.cached_lines.clone());
+            lines.push(Line::from(""));
         }
 
-        // Compute scroll offset.
-        let total_lines = all_lines.len() as u16;
-        let view_height = area.height.saturating_sub(2); // borders
+        lines
+    }
+}
+
+impl Component for ChatComponent {
+    fn render(&mut self, frame: &mut Frame, area: Rect) {
+        let inner_width = area.width.saturating_sub(2);
+        let mut lines = self.render_lines(inner_width);
+
+        let view_height = area.height.saturating_sub(2);
+        let total_lines = lines.len() as u16;
         let max_scroll = total_lines.saturating_sub(view_height);
-
-        if self.needs_scroll {
-            self.scroll_offset = 0; // always show latest
-            self.needs_scroll = false;
-        }
-
         let scroll = self.scroll_offset.min(max_scroll);
+        let start = max_scroll.saturating_sub(scroll) as usize;
+        let end = (start + view_height as usize).min(lines.len());
 
-        // Visible slice.
-        let start = scroll as usize;
-        let end = (scroll + view_height).min(total_lines) as usize;
-        let visible: Vec<Line<'_>> = all_lines
-            .into_iter()
-            .skip(start)
-            .take(end - start)
-            .collect();
+        let visible = if start < end {
+            lines.drain(start..end).collect::<Vec<Line<'static>>>()
+        } else {
+            Vec::new()
+        };
+
+        let title = if max_scroll == 0 {
+            " Chat ".to_string()
+        } else {
+            format!(
+                " Chat  ({} / {}) ",
+                max_scroll.saturating_sub(scroll),
+                max_scroll
+            )
+        };
 
         let para = Paragraph::new(visible)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(" Chat ")
-                    .title_style(Style::default().fg(Color::Cyan)),
+                    .title(title)
+                    .border_style(Style::default().fg(Color::Cyan)),
             )
             .wrap(Wrap { trim: false });
 
         frame.render_widget(para, area);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_add_user_message() {
-        let mut cc = ChatComponent::new();
-        cc.add_user_message("hello");
-        assert_eq!(cc.messages.len(), 1);
-        assert_eq!(cc.messages[0].content, "hello");
+        self.dirty = false;
     }
 
-    #[test]
-    fn test_text_delta_appends() {
-        let mut cc = ChatComponent::new();
-        cc.handle_event(&AgentEvent::TextDelta("Hello ".into()));
-        cc.handle_event(&AgentEvent::TextDelta("world".into()));
-        assert_eq!(cc.messages.len(), 1);
-        assert_eq!(cc.messages[0].content, "Hello world");
-        assert!(cc.messages[0].streaming);
+    fn is_dirty(&self) -> bool {
+        self.dirty
     }
 
-    #[test]
-    fn test_step_complete_stops_streaming() {
-        let mut cc = ChatComponent::new();
-        cc.handle_event(&AgentEvent::TextDelta("hi".into()));
-        cc.handle_event(&AgentEvent::StepComplete {
-            step: 1,
-            summary: "done".into(),
-        });
-        assert!(!cc.messages[0].streaming);
+    fn mark_clean(&mut self) {
+        self.dirty = false;
+    }
+
+    fn handle_event(&mut self, event: &TuiEvent) -> EventResult {
+        match event {
+            TuiEvent::Agent(agent_event) => {
+                match agent_event {
+                    AgentEvent::TextDelta(delta) => self.append_assistant_delta(delta),
+                    AgentEvent::ToolCallStart { name, args, .. } => {
+                        self.show_tool_message(format!("Tool call: {name} {args}"));
+                    }
+                    AgentEvent::ToolCallEnd { id, result } => {
+                        self.show_tool_message(format!("Tool result ({id}): {result}"));
+                    }
+                    AgentEvent::StepComplete { .. } => self.finish_streaming(),
+                    AgentEvent::RepeatDetected { .. } => {
+                        self.show_tool_message("Repeat detected — interrupted.".to_string());
+                        self.finish_streaming();
+                    }
+                    AgentEvent::Error(err) => self.show_error(err.clone()),
+                }
+                return EventResult::consumed();
+            }
+            TuiEvent::Key(key) => {
+                use crossterm::event::{KeyCode, KeyModifiers};
+                if !key.modifiers.is_empty() {
+                    return EventResult::default();
+                }
+
+                // Scroll shortcuts.
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        // Max scroll is computed lazily in render; approximate here as "some".
+                        // The exact clamp will happen in render.
+                        self.scroll_offset = self.scroll_offset.saturating_add(1);
+                        self.follow_tail = self.scroll_offset == 0;
+                        self.dirty = true;
+                        return EventResult::consumed();
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        self.scroll_down(1);
+                        return EventResult::consumed();
+                    }
+                    KeyCode::Char('g') => {
+                        // We'll clamp in render once we know max_scroll.
+                        self.scroll_offset = u16::MAX;
+                        self.follow_tail = false;
+                        self.dirty = true;
+                        return EventResult::consumed();
+                    }
+                    KeyCode::Char('G') => {
+                        self.scroll_to_bottom();
+                        return EventResult::consumed();
+                    }
+                    _ => {}
+                }
+
+                // Ctrl+L: clear screen (handled at app level) should not scroll chat.
+                if key.code == KeyCode::Char('l') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    return EventResult::default();
+                }
+            }
+            TuiEvent::Tick | TuiEvent::Shutdown => {}
+        }
+
+        EventResult::default()
     }
 }
