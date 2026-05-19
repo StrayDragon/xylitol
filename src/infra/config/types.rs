@@ -51,33 +51,22 @@ pub(crate) struct AppConfig {
 // Model
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
 pub(crate) struct ModelConfig {
     /// Default model ID to use when no model is specified.
-    #[serde(default = "default_model_id")]
-    pub default_model: String,
+    pub default_model: Option<String>,
     /// Named model entries keyed by alias.
-    #[serde(default)]
     pub models: HashMap<String, ModelEntry>,
-}
-
-impl Default for ModelConfig {
-    fn default() -> Self {
-        Self {
-            default_model: default_model_id(),
-            models: HashMap::new(),
-        }
-    }
-}
-
-fn default_model_id() -> String {
-    "gpt-4o".into()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub(crate) struct ModelEntry {
     pub provider: ProviderKind,
     pub model: String,
+    /// Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.
+    #[serde(default)]
+    pub base_url: Option<String>,
     /// Optional fallback model ID (must be another key in `models`).
     #[serde(default)]
     pub fallback: Option<String>,
@@ -143,7 +132,7 @@ fn default_max_retries() -> u8 {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub(crate) struct AgentProfile {
     /// Model alias referencing a key in `model.models`, or a raw model ID.
-    /// When `None`, falls back to `model.default_model`.
+    /// When `None`, falls back to config-level defaults.
     #[serde(default)]
     pub model: Option<String>,
     /// System prompt / instruction for this agent.
@@ -160,7 +149,7 @@ pub(crate) struct AgentProfile {
 /// Agent profiles container.
 ///
 /// When entirely absent from config, falls back to single-model behavior
-/// using `model.default_model` and `execution.*` fields.
+/// using config-level model resolution.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub(crate) struct AgentsConfig {
@@ -188,14 +177,14 @@ impl AppConfig {
     ) -> Result<crate::agent::model::ModelConfig, String> {
         use crate::agent::model::{ModelConfig, ModelKind};
 
-        let (kind, model_name) = if let Some(entry) = self.model.models.get(model_id) {
+        let (kind, model_name, base_url) = if let Some(entry) = self.model.models.get(model_id) {
             let kind = match entry.provider {
                 ProviderKind::OpenAI => ModelKind::OpenAi,
                 ProviderKind::Anthropic => ModelKind::Anthropic,
             };
-            (kind, entry.model.clone())
+            (kind, entry.model.clone(), entry.base_url.clone())
         } else {
-            (ModelKind::OpenAi, model_id.to_string())
+            (ModelKind::OpenAi, model_id.to_string(), None)
         };
 
         let api_key = match kind {
@@ -213,14 +202,11 @@ impl AppConfig {
             kind,
             api_key,
             model: model_name,
-            base_url: None,
+            base_url,
         })
     }
 
     /// Resolve a named agent profile to a [`ResolvedProfile`].
-    ///
-    /// Falls back to `model.default_model` + `execution.*` when no profiles
-    /// are configured (backward compatible).
     pub(crate) fn resolve_profile(
         &self,
         name: &str,
@@ -234,21 +220,17 @@ impl AppConfig {
                 p.allowed_tools.as_ref().cloned(),
                 p.max_iterations,
             ),
-            None => {
-                // Backward-compat: synthesize from execution config + default model.
-                (
-                    self.execution
-                        .model
-                        .as_deref()
-                        .or(Some(&self.model.default_model)),
-                    self.execution.system_prompt.clone(),
-                    None,
-                    50,
-                )
-            }
+            None => (None, self.execution.system_prompt.clone(), None, 50),
         };
 
-        let model_id = model_ref.unwrap_or(&self.model.default_model);
+        let model_id = model_ref
+            .or(self.execution.model.as_deref())
+            .or(self.model.default_model.as_deref())
+            .ok_or_else(|| {
+                "no model configured: set `--model`, `execution.model`, `model.default_model`, \
+                 or `agents.profiles.<name>.model`"
+                    .to_string()
+            })?;
         let model_config = self.resolve_model(model_id)?;
 
         Ok(crate::agent::profile::ResolvedProfile {

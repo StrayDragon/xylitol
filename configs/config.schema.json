@@ -4,6 +4,13 @@
   "description": "The root configuration object for xylitol.",
   "type": "object",
   "properties": {
+    "agents": {
+      "$ref": "#/$defs/AgentsConfig",
+      "default": {
+        "default_profile": "",
+        "profiles": {}
+      }
+    },
     "compaction": {
       "anyOf": [
         {
@@ -34,7 +41,7 @@
     "model": {
       "$ref": "#/$defs/ModelConfig",
       "default": {
-        "default_model": "gpt-4o",
+        "default_model": null,
         "models": {}
       }
     },
@@ -44,17 +51,45 @@
         "auto_apply": false
       }
     },
+    "planning": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlanningConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "repeat_detection": {
       "$ref": "#/$defs/RepeatDetectionConfig",
       "default": {
         "consecutive_hit_threshold": 3,
+        "early_stop_tokens": 0,
         "enabled": false,
         "max_n": 10,
         "min_n": 3,
         "recovery": {
-          "backoff_factor": 2.0,
-          "strategy": "backoff"
+          "actions": [
+            {
+              "prepend": "WARNING: Avoid repetition.",
+              "type": "alter_prompt"
+            },
+            {
+              "frequency_penalty": 0.0,
+              "presence_penalty": 0.0,
+              "repetition_penalty": 1.4,
+              "type": "adjust_params"
+            },
+            {
+              "type": "delegate_to_planner"
+            }
+          ],
+          "max_attempts": 3,
+          "strategy": "sequential"
         },
+        "window_repeat_ratio": 0.8,
         "window_size": 100
       }
     },
@@ -89,7 +124,8 @@
         "resource_limits": {
           "max_cpu_percent": 80,
           "max_disk_mb": 1024,
-          "max_memory_mb": 4096
+          "max_memory_mb": 4096,
+          "max_subprocesses": 16
         },
         "tool_allowlist": []
       }
@@ -111,9 +147,79 @@
         "allowlist": [],
         "blocklist": []
       }
+    },
+    "validation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ValidationConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "$defs": {
+    "AgentProfile": {
+      "description": "Agent profile — binds model, prompt, tools, iterations.\n\nFlat struct to support YAML anchor/alias merge keys:\n```yaml\nagents:\n  profiles:\n    default: &default-agent\n      model: gpt-4o\n      max_iterations: 50\n    planning:\n      <<: *default-agent\n      model: claude-opus\n      system_prompt: \"You are a planning agent.\"\n```",
+      "type": "object",
+      "properties": {
+        "allowed_tools": {
+          "description": "Tool names this agent is allowed to use. `None` = all tools.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "default": null,
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_iterations": {
+          "description": "Maximum agent loop iterations.",
+          "type": "integer",
+          "format": "uint32",
+          "default": 50,
+          "minimum": 0
+        },
+        "model": {
+          "description": "Model alias referencing a key in `model.models`, or a raw model ID.\nWhen `None`, falls back to config-level defaults.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "system_prompt": {
+          "description": "System prompt / instruction for this agent.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      }
+    },
+    "AgentsConfig": {
+      "description": "Agent profiles container.\n\nWhen entirely absent from config, falls back to single-model behavior\nusing config-level model resolution.",
+      "type": "object",
+      "properties": {
+        "default_profile": {
+          "description": "The profile name used when no profile is explicitly specified.",
+          "type": "string",
+          "default": "default"
+        },
+        "profiles": {
+          "description": "Named agent profiles.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/AgentProfile"
+          },
+          "default": {}
+        }
+      }
+    },
     "BashSecurityConfig": {
       "type": "object",
       "properties": {
@@ -200,17 +306,46 @@
       "type": "object",
       "properties": {
         "command": {
-          "type": "string",
-          "default": ""
+          "description": "Shell command to execute (e.g., \"python3 /path/to/hook.py\").",
+          "type": "string"
+        },
+        "env": {
+          "description": "Extra environment variables for the hook process.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
         },
         "events": {
+          "description": "Event patterns to match (e.g., \"pre.tool_call\", \"post.step_complete\").\nSupports exact and prefix matching.",
           "type": "array",
           "default": [],
           "items": {
             "type": "string"
           }
+        },
+        "phase": {
+          "description": "Optional phase filter: \"pre\", \"post\", or \"\" for both. When set, only\nmatches events of that phase.",
+          "type": "string",
+          "default": ""
+        },
+        "requires_approval": {
+          "description": "Whether this hook requires explicit user approval before execution.",
+          "type": "boolean",
+          "default": false
+        },
+        "timeout_secs": {
+          "description": "Timeout in seconds per hook execution. Default: 5.",
+          "type": "integer",
+          "format": "uint64",
+          "default": 5,
+          "minimum": 0
         }
-      }
+      },
+      "required": [
+        "command"
+      ]
     },
     "HooksConfig": {
       "type": "object",
@@ -243,8 +378,11 @@
       "properties": {
         "default_model": {
           "description": "Default model ID to use when no model is specified.",
-          "type": "string",
-          "default": "gpt-4o"
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
         },
         "models": {
           "description": "Named model entries keyed by alias.",
@@ -259,6 +397,14 @@
     "ModelEntry": {
       "type": "object",
       "properties": {
+        "base_url": {
+          "description": "Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
         "fallback": {
           "description": "Optional fallback model ID (must be another key in `models`).",
           "type": [
@@ -308,6 +454,36 @@
         }
       }
     },
+    "PlanningConfig": {
+      "type": "object",
+      "properties": {
+        "max_steps": {
+          "type": "integer",
+          "format": "uint16",
+          "default": 10,
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "reasoning_depth": {
+          "type": "string",
+          "default": "medium"
+        },
+        "system_prompt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      }
+    },
     "ProviderKind": {
       "description": "Supported LLM providers (MVP: only OpenAI-compatible and Anthropic).",
       "type": "string",
@@ -316,17 +492,110 @@
         "anthropic"
       ]
     },
+    "RecoveryAction": {
+      "description": "A single recovery action in the sequential chain.",
+      "oneOf": [
+        {
+          "description": "Prepend an anti-repetition warning to the prompt and retry.",
+          "type": "object",
+          "properties": {
+            "prepend": {
+              "type": "string",
+              "default": "WARNING: Avoid repetition."
+            },
+            "type": {
+              "type": "string",
+              "const": "alter_prompt"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "description": "Switch to a different model provider and retry.",
+          "type": "object",
+          "properties": {
+            "model_id": {
+              "description": "Model ID to switch to. None = switch to the other provider.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "type": {
+              "type": "string",
+              "const": "switch_model"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "description": "Increase repetition/frequency/presence penalties and retry.",
+          "type": "object",
+          "properties": {
+            "frequency_penalty": {
+              "type": "number",
+              "format": "double",
+              "default": 0.0
+            },
+            "presence_penalty": {
+              "type": "number",
+              "format": "double",
+              "default": 0.0
+            },
+            "repetition_penalty": {
+              "type": "number",
+              "format": "double",
+              "default": 0.0
+            },
+            "type": {
+              "type": "string",
+              "const": "adjust_params"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "description": "Fall back to the planner for re-planning the task.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "delegate_to_planner"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    },
     "RecoveryConfig": {
       "type": "object",
       "properties": {
-        "backoff_factor": {
-          "type": "number",
-          "format": "double",
-          "default": 2.0
+        "actions": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RecoveryAction"
+          }
+        },
+        "max_attempts": {
+          "type": "integer",
+          "format": "uint8",
+          "default": 3,
+          "maximum": 255,
+          "minimum": 0
         },
         "strategy": {
           "type": "string",
-          "default": "backoff"
+          "default": "sequential"
         }
       }
     },
@@ -338,6 +607,14 @@
           "format": "uint8",
           "default": 3,
           "maximum": 255,
+          "minimum": 0
+        },
+        "early_stop_tokens": {
+          "description": "Stop monitoring after this many tokens. 0 = no limit.",
+          "type": "integer",
+          "format": "uint16",
+          "default": 0,
+          "maximum": 65535,
           "minimum": 0
         },
         "enabled": {
@@ -359,7 +636,31 @@
           "minimum": 0
         },
         "recovery": {
-          "$ref": "#/$defs/RecoveryConfig"
+          "$ref": "#/$defs/RecoveryConfig",
+          "default": {
+            "actions": [
+              {
+                "prepend": "WARNING: Avoid repetition.",
+                "type": "alter_prompt"
+              },
+              {
+                "frequency_penalty": 0.0,
+                "presence_penalty": 0.0,
+                "repetition_penalty": 1.4,
+                "type": "adjust_params"
+              },
+              {
+                "type": "delegate_to_planner"
+              }
+            ],
+            "max_attempts": 3,
+            "strategy": "sequential"
+          }
+        },
+        "window_repeat_ratio": {
+          "type": "number",
+          "format": "double",
+          "default": 0.8
         },
         "window_size": {
           "type": "integer",
@@ -368,10 +669,7 @@
           "maximum": 65535,
           "minimum": 0
         }
-      },
-      "required": [
-        "recovery"
-      ]
+      }
     },
     "ResourceLimits": {
       "type": "object",
@@ -394,6 +692,13 @@
           "format": "uint64",
           "default": 4096,
           "minimum": 0
+        },
+        "max_subprocesses": {
+          "type": "integer",
+          "format": "uint16",
+          "default": 16,
+          "maximum": 65535,
+          "minimum": 0
         }
       }
     },
@@ -402,7 +707,7 @@
       "properties": {
         "backend": {
           "type": "string",
-          "default": "claude"
+          "default": "cli"
         },
         "enabled": {
           "type": "boolean",
@@ -504,6 +809,15 @@
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "ValidationConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
         }
       }
     }
