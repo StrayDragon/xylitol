@@ -116,7 +116,7 @@ impl Component for StatusBar {
         if self.queued > 0 {
             spans.push(Span::raw("  "));
             spans.push(Span::styled(
-                format!("queued: {}", self.queued),
+                format!("[Q: {}]", self.queued),
                 Style::default().fg(Color::LightYellow),
             ));
         }

@@ -78,6 +78,7 @@ pub(crate) struct ChatComponent {
     /// Scroll offset measured from the bottom (0 = show newest).
     scroll_offset: u16,
     follow_tail: bool,
+    focused: bool,
     dirty: bool,
 }
 
@@ -88,8 +89,30 @@ impl ChatComponent {
             messages: Vec::new(),
             scroll_offset: 0,
             follow_tail: true,
+            focused: false,
             dirty: true,
         }
+    }
+
+    pub(crate) fn set_focused(&mut self, focused: bool) {
+        if self.focused != focused {
+            self.focused = focused;
+            self.dirty = true;
+        }
+    }
+
+    pub(crate) fn set_theme(&mut self, theme: &str) -> bool {
+        if !self.markdown.set_theme(theme) {
+            return false;
+        }
+
+        // Invalidate markdown caches.
+        for msg in &mut self.messages {
+            msg.cached_width = 0;
+            msg.dirty = true;
+        }
+        self.dirty = true;
+        true
     }
 
     pub(crate) fn add_user_message(&mut self, text: &str) {
@@ -104,6 +127,16 @@ impl ChatComponent {
         self.scroll_offset = 0;
         self.follow_tail = true;
         self.dirty = true;
+    }
+
+    pub(crate) fn scroll_wheel_up(&mut self, n: u16) {
+        self.scroll_offset = self.scroll_offset.saturating_add(n);
+        self.follow_tail = self.scroll_offset == 0;
+        self.dirty = true;
+    }
+
+    pub(crate) fn scroll_wheel_down(&mut self, n: u16) {
+        self.scroll_down(n);
     }
 
     fn append_assistant_delta(&mut self, delta: &str) {
@@ -228,12 +261,21 @@ impl Component for ChatComponent {
             )
         };
 
+        let border_style = if self.focused {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+
         let para = Paragraph::new(visible)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
                     .title(title)
-                    .border_style(Style::default().fg(Color::Cyan)),
+                    .border_style(border_style)
+                    .title_style(border_style),
             )
             .wrap(Wrap { trim: false });
 
@@ -308,7 +350,7 @@ impl Component for ChatComponent {
                     return EventResult::default();
                 }
             }
-            TuiEvent::Tick | TuiEvent::Shutdown => {}
+            TuiEvent::Mouse(_) | TuiEvent::Tick | TuiEvent::Shutdown => {}
         }
 
         EventResult::default()

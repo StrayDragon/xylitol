@@ -2,7 +2,7 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, Borders};
 use tui_textarea::TextArea;
 
@@ -19,6 +19,7 @@ pub(crate) struct InputComponent {
     completer: Completer,
     history: Vec<String>,
     history_pos: Option<usize>,
+    focused: bool,
 }
 
 impl InputComponent {
@@ -33,6 +34,14 @@ impl InputComponent {
             completer,
             history: Vec::new(),
             history_pos: None,
+            focused: false,
+        }
+    }
+
+    pub(crate) fn set_focused(&mut self, focused: bool) {
+        if self.focused != focused {
+            self.focused = focused;
+            self.dirty = true;
         }
     }
 
@@ -50,6 +59,11 @@ impl InputComponent {
         self.textarea = TextArea::default();
         self.dirty = true;
         self.history_pos = None;
+    }
+
+    pub(crate) fn load_text(&mut self, text: &str) {
+        self.set_text(text);
+        self.dirty = true;
     }
 
     fn set_text(&mut self, text: &str) {
@@ -129,10 +143,19 @@ impl InputComponent {
 
 impl Component for InputComponent {
     fn render(&mut self, frame: &mut Frame, area: Rect) {
+        let border_style = if self.focused {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+
         let block = Block::default()
             .borders(Borders::ALL)
             .title(" Input ")
-            .border_style(Style::default().fg(Color::Green));
+            .border_style(border_style)
+            .title_style(border_style);
         self.textarea.set_block(block);
         frame.render_widget(&self.textarea, area);
 
@@ -206,6 +229,14 @@ impl Component for InputComponent {
                 self.dirty = true;
             }
             return EventResult::consumed();
+        }
+
+        if key.code == KeyCode::Char('r') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            return EventResult::action(AppAction::ShowHistorySearch);
+        }
+
+        if key.code == KeyCode::Char('g') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            return EventResult::action(AppAction::OpenEditor(self.text()));
         }
 
         // Default handling via tui-textarea.

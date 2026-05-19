@@ -24,6 +24,14 @@ impl HistoryStore {
         Self::load_from(path, max_entries)
     }
 
+    pub(crate) fn empty(path: PathBuf, max_entries: usize) -> Self {
+        Self {
+            path,
+            max_entries,
+            entries: Vec::new(),
+        }
+    }
+
     pub(crate) fn load_from(path: PathBuf, max_entries: usize) -> io::Result<Self> {
         let entries = read_lines(&path)?
             .into_iter()

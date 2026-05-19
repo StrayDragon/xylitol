@@ -6,9 +6,11 @@ use futures::StreamExt;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc;
 
-use adk_session::SessionService;
+use adk_session::{ListRequest, SessionService};
+use syntect::highlighting::ThemeSet;
 
 use crate::agent::r#loop::{AgentEvent, AgentLoop};
 use crate::agent::profile::ResolvedProfile;
@@ -22,9 +24,10 @@ use super::event::{AppAction, TuiEvent};
 use super::history::HistoryStore;
 use super::input::InputComponent;
 use super::markdown::MarkdownRenderer;
-use super::overlays::HelpOverlay;
+use super::overlays::{HelpOverlay, HistorySearchOverlay, SelectorKind, SelectorOverlay};
 use super::slash::{Completer, SlashCommand};
 use super::status_bar::StatusBar;
+use super::tool_panel::ToolPanelComponent;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Focus {
@@ -34,9 +37,14 @@ enum Focus {
 
 pub(crate) struct App {
     chat: ChatComponent,
+    tool_panel: ToolPanelComponent,
     input: InputComponent,
     status_bar: StatusBar,
     overlays: OverlayStack,
+
+    app_config: AppConfig,
+    session_service: Arc<dyn SessionService>,
+    active_profile: String,
 
     running: bool,
     should_quit: bool,
@@ -47,16 +55,27 @@ pub(crate) struct App {
 
     history: HistoryStore,
 
+    profile_choices: Vec<String>,
+    session_choices: Vec<String>,
+    theme_choices: Vec<String>,
+
     last_area: Rect,
+    chat_area: Rect,
+    tool_area: Rect,
+    input_area: Rect,
+    status_area: Rect,
     last_input_height: u16,
+    last_tool_panel_height: u16,
+
+    tool_panel_height: u16,
 }
 
 impl App {
-    pub(crate) fn new(
+    pub(crate) async fn new(
         _tool_registry: ToolRegistry,
-        _app_config: AppConfig,
+        app_config: AppConfig,
         profile: ResolvedProfile,
-        _session_service: Arc<dyn SessionService>,
+        session_service: Arc<dyn SessionService>,
     ) -> Self {
         let markdown = MarkdownRenderer::default();
         let chat = ChatComponent::new(markdown);
@@ -71,25 +90,73 @@ impl App {
         ));
         status_bar.set_session("default");
 
-        let history = HistoryStore::load(200).unwrap_or_else(|_| {
-            let path = std::env::temp_dir().join("xylitol-history");
-            HistoryStore::load_from(path, 200).unwrap()
-        });
+        let history = match HistoryStore::load(200) {
+            Ok(store) => store,
+            Err(err) => {
+                tracing::warn!(error = %err, "Failed to load history store; using temp file.");
+                let path = std::env::temp_dir().join("xylitol-history");
+                HistoryStore::load_from(path.clone(), 200).unwrap_or_else(|err| {
+                    tracing::warn!(error = %err, "Failed to load temp history store; disabling.");
+                    HistoryStore::empty(path, 200)
+                })
+            }
+        };
         input.set_history(history.iter().map(|s| s.to_string()).collect());
+
+        let mut profile_choices: Vec<String> = app_config.agents.profiles.keys().cloned().collect();
+        profile_choices.sort();
+        if profile_choices.is_empty() && !app_config.agents.default_profile.is_empty() {
+            profile_choices.push(app_config.agents.default_profile.clone());
+        }
+
+        let mut session_choices: Vec<String> = match session_service
+            .list(ListRequest {
+                app_name: "xylitol".into(),
+                user_id: "default-user".into(),
+                limit: Some(200),
+                offset: None,
+            })
+            .await
+        {
+            Ok(sessions) => sessions.into_iter().map(|s| s.id().to_string()).collect(),
+            Err(err) => {
+                tracing::warn!(error = %err, "Failed to list sessions.");
+                Vec::new()
+            }
+        };
+        session_choices.sort();
+
+        let mut theme_choices: Vec<String> =
+            ThemeSet::load_defaults().themes.keys().cloned().collect();
+        theme_choices.sort();
 
         Self {
             chat,
+            tool_panel: ToolPanelComponent::new(),
             input,
             status_bar,
             overlays: OverlayStack::new(),
+            app_config,
+            session_service,
+            active_profile: profile.name.clone(),
             running: false,
             should_quit: false,
             queued_prompts: Vec::new(),
             focus: Focus::Input,
             session_id: "tui-session".into(),
             history,
+            profile_choices,
+            session_choices,
+            theme_choices,
             last_area: Rect::new(0, 0, 0, 0),
+            chat_area: Rect::new(0, 0, 0, 0),
+            tool_area: Rect::new(0, 0, 0, 0),
+            input_area: Rect::new(0, 0, 0, 0),
+            status_area: Rect::new(0, 0, 0, 0),
             last_input_height: 0,
+            last_tool_panel_height: 0,
+
+            tool_panel_height: 8,
         }
     }
 
@@ -108,9 +175,53 @@ impl App {
 
     pub(crate) fn clear(&mut self) {
         self.chat.clear();
+        self.tool_panel.clear();
         self.queued_prompts.clear();
         self.status_bar.set_queue_len(0);
         self.status_bar.set_message("Cleared.");
+    }
+
+    fn apply_profile_selection(&mut self, name: String) {
+        self.active_profile = name.clone();
+
+        match self.app_config.resolve_profile(&name) {
+            Ok(profile) => {
+                self.status_bar.set_model(format!(
+                    "{}:{}",
+                    profile.model_config.provider_name(),
+                    profile.model_config.model
+                ));
+                self.status_bar.set_message(format!("Profile: {name}"));
+            }
+            Err(err) => {
+                self.status_bar.set_model(name.clone());
+                self.status_bar
+                    .set_message(format!("Profile '{name}' not ready: {err}"));
+            }
+        }
+    }
+
+    fn apply_session_selection(&mut self, session_id: String) {
+        self.session_id = session_id.clone();
+        self.status_bar.set_session(session_id);
+        self.status_bar.set_message("Session switched.");
+    }
+
+    fn apply_theme_selection(&mut self, theme: String) {
+        if self.chat.set_theme(&theme) {
+            self.status_bar.set_message(format!("Theme: {theme}"));
+        } else {
+            self.status_bar
+                .set_message(format!("Theme not found: {theme}"));
+        }
+    }
+
+    fn bump_tool_panel_height(&mut self, delta: i16) {
+        let area_h = self.last_area.height.max(1);
+        let max_tool = (area_h / 2).saturating_sub(1) as i16;
+        let current = self.tool_panel_height as i16;
+        let next = (current + delta).clamp(0, max_tool.max(0));
+        self.tool_panel_height = next as u16;
     }
 
     pub(crate) fn update(&mut self, event: TuiEvent) -> Option<AppAction> {
@@ -143,7 +254,9 @@ impl App {
                     _ => {}
                 }
 
+                let tool_event = agent_event.clone();
                 self.chat.handle_event(&TuiEvent::Agent(agent_event));
+                self.tool_panel.handle_event(&TuiEvent::Agent(tool_event));
                 None
             }
             TuiEvent::Key(key) => {
@@ -160,6 +273,14 @@ impl App {
                             Focus::Input => Focus::Chat,
                             Focus::Chat => Focus::Input,
                         };
+                        return None;
+                    }
+                    KeyCode::Up if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.bump_tool_panel_height(1);
+                        return None;
+                    }
+                    KeyCode::Down if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.bump_tool_panel_height(-1);
                         return None;
                     }
                     KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -181,46 +302,105 @@ impl App {
                 match self.focus {
                     Focus::Input => {
                         let result = self.input.handle_event(&TuiEvent::Key(key));
-                        if let Some(AppAction::RunPrompt(text)) = result.action {
-                            // Slash commands run locally.
-                            if let Some(cmd) = SlashCommand::parse(&text) {
-                                match cmd {
-                                    SlashCommand::Clear => return Some(AppAction::Clear),
-                                    SlashCommand::Help => {
-                                        self.overlays.push(Box::new(HelpOverlay::new()));
-                                        return None;
-                                    }
-                                    SlashCommand::Quit => {
-                                        self.should_quit = true;
-                                        return None;
+                        match result.action {
+                            Some(AppAction::RunPrompt(text)) => {
+                                // Slash commands run locally.
+                                if let Some(cmd) = SlashCommand::parse(&text) {
+                                    match cmd {
+                                        SlashCommand::Clear => return Some(AppAction::Clear),
+                                        SlashCommand::Help => {
+                                            self.overlays.push(Box::new(HelpOverlay::new()));
+                                            return None;
+                                        }
+                                        SlashCommand::Quit => {
+                                            self.should_quit = true;
+                                            return None;
+                                        }
+                                        SlashCommand::Model => {
+                                            let items = self.profile_choices.clone();
+                                            self.overlays.push(Box::new(SelectorOverlay::new(
+                                                SelectorKind::Profile,
+                                                "Model",
+                                                items,
+                                            )));
+                                            return None;
+                                        }
+                                        SlashCommand::Session => {
+                                            let items = self.session_choices.clone();
+                                            self.overlays.push(Box::new(SelectorOverlay::new(
+                                                SelectorKind::Session,
+                                                "Session",
+                                                items,
+                                            )));
+                                            return None;
+                                        }
+                                        SlashCommand::Theme => {
+                                            let items = self.theme_choices.clone();
+                                            self.overlays.push(Box::new(SelectorOverlay::new(
+                                                SelectorKind::Theme,
+                                                "Theme",
+                                                items,
+                                            )));
+                                            return None;
+                                        }
                                     }
                                 }
+
+                                // Persist history.
+                                let _ = self.history.add(&text);
+                                self.input.set_history(
+                                    self.history.iter().map(|s| s.to_string()).collect(),
+                                );
+
+                                // Add to chat now (optimistic).
+                                self.chat.add_user_message(&text);
+
+                                if self.running {
+                                    self.queued_prompts.push(text.clone());
+                                    self.status_bar.set_queue_len(self.queued_prompts.len());
+                                    return Some(AppAction::QueuePrompt(text));
+                                }
+
+                                self.set_running(true);
+                                Some(AppAction::RunPrompt(text))
                             }
-
-                            // Persist history.
-                            let _ = self.history.add(&text);
-                            self.input
-                                .set_history(self.history.iter().map(|s| s.to_string()).collect());
-
-                            // Add to chat now (optimistic).
-                            self.chat.add_user_message(&text);
-
-                            if self.running {
-                                self.queued_prompts.push(text.clone());
-                                self.status_bar.set_queue_len(self.queued_prompts.len());
-                                return Some(AppAction::QueuePrompt(text));
-                            }
-
-                            self.set_running(true);
-                            return Some(AppAction::RunPrompt(text));
+                            Some(other) => Some(other),
+                            None => None,
                         }
-                        None
                     }
                     Focus::Chat => {
                         let _ = self.chat.handle_event(&TuiEvent::Key(key));
                         None
                     }
                 }
+            }
+            TuiEvent::Mouse(mouse) => {
+                use crossterm::event::{MouseButton, MouseEventKind};
+                use ratatui::layout::Position;
+
+                let pos = Position {
+                    x: mouse.column,
+                    y: mouse.row,
+                };
+
+                match mouse.kind {
+                    MouseEventKind::ScrollUp if self.chat_area.contains(pos) => {
+                        self.chat.scroll_wheel_up(3);
+                    }
+                    MouseEventKind::ScrollDown if self.chat_area.contains(pos) => {
+                        self.chat.scroll_wheel_down(3);
+                    }
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        if self.input_area.contains(pos) {
+                            self.focus = Focus::Input;
+                        } else if self.chat_area.contains(pos) || self.tool_area.contains(pos) {
+                            self.focus = Focus::Chat;
+                        }
+                    }
+                    _ => {}
+                }
+
+                None
             }
             TuiEvent::Tick => {
                 // Currently a no-op; components that animate should mark themselves dirty.
@@ -237,33 +417,76 @@ impl App {
         let area = frame.area();
         let input_h = self.input.desired_height().saturating_add(2);
 
+        let max_tool_h = (area.height / 2).saturating_sub(1);
+        let tool_h = self.tool_panel_height.min(max_tool_h);
+
         let size_changed = self.last_area != area;
         let input_changed = self.last_input_height != input_h;
-        if size_changed || input_changed {
+        let tool_changed = self.last_tool_panel_height != tool_h;
+        if size_changed || input_changed || tool_changed {
             self.last_area = area;
             self.last_input_height = input_h;
+            self.last_tool_panel_height = tool_h;
         }
 
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(
-                [
-                    Constraint::Min(1),
-                    Constraint::Length(input_h),
-                    Constraint::Length(1),
-                ]
-                .as_ref(),
-            )
-            .split(area);
+        let layout_changed = size_changed || input_changed || tool_changed;
 
-        if size_changed || input_changed || self.chat.is_dirty() {
+        let chunks = if tool_h > 0 {
+            Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(
+                    [
+                        Constraint::Min(1),
+                        Constraint::Length(tool_h),
+                        Constraint::Length(input_h),
+                        Constraint::Length(1),
+                    ]
+                    .as_ref(),
+                )
+                .split(area)
+        } else {
+            Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(
+                    [
+                        Constraint::Min(1),
+                        Constraint::Length(input_h),
+                        Constraint::Length(1),
+                    ]
+                    .as_ref(),
+                )
+                .split(area)
+        };
+
+        if tool_h > 0 {
+            self.chat_area = chunks[0];
+            self.tool_area = chunks[1];
+            self.input_area = chunks[2];
+            self.status_area = chunks[3];
+        } else {
+            self.chat_area = chunks[0];
+            self.tool_area = Rect::new(0, 0, 0, 0);
+            self.input_area = chunks[1];
+            self.status_area = chunks[2];
+        }
+
+        self.chat.set_focused(self.focus == Focus::Chat);
+        self.tool_panel.set_focused(self.focus == Focus::Chat);
+        self.input.set_focused(self.focus == Focus::Input);
+
+        if layout_changed || self.chat.is_dirty() {
             self.chat.render(frame, chunks[0]);
         }
-        if size_changed || input_changed || self.input.is_dirty() {
-            self.input.render(frame, chunks[1]);
+        if tool_h > 0 && (layout_changed || self.tool_panel.is_dirty()) {
+            self.tool_panel.render(frame, chunks[1]);
         }
-        if size_changed || input_changed || self.status_bar.is_dirty() {
-            self.status_bar.render(frame, chunks[2]);
+        if layout_changed || self.input.is_dirty() {
+            let input_idx = if tool_h > 0 { 2 } else { 1 };
+            self.input.render(frame, chunks[input_idx]);
+        }
+        if layout_changed || self.status_bar.is_dirty() {
+            let status_idx = if tool_h > 0 { 3 } else { 2 };
+            self.status_bar.render(frame, chunks[status_idx]);
         }
 
         if !self.overlays.is_empty() {
@@ -309,15 +532,32 @@ pub(crate) async fn run_tui(
 
     // ── Channels ────────────────────────────────────────────
     let (agent_tx, mut agent_rx) = mpsc::unbounded_channel::<AgentEvent>();
-    let (key_tx, mut key_rx) = mpsc::unbounded_channel::<crossterm::event::KeyEvent>();
+    let (evt_tx, mut evt_rx) = mpsc::unbounded_channel::<crossterm::event::Event>();
+    let input_paused = Arc::new(AtomicBool::new(false));
 
     // Spawn crossterm keyboard reader on a blocking thread.
-    tokio::task::spawn_blocking(move || {
-        while let Ok(event) = crossterm::event::read() {
-            if let crossterm::event::Event::Key(key) = event
-                && key_tx.send(key).is_err()
-            {
-                break;
+    tokio::task::spawn_blocking({
+        let input_paused = input_paused.clone();
+        move || {
+            use std::time::Duration;
+            loop {
+                if input_paused.load(Ordering::Relaxed) {
+                    std::thread::sleep(Duration::from_millis(25));
+                    continue;
+                }
+
+                match crossterm::event::poll(Duration::from_millis(50)) {
+                    Ok(false) => continue,
+                    Ok(true) => {}
+                    Err(_) => break,
+                }
+
+                let Ok(event) = crossterm::event::read() else {
+                    break;
+                };
+                if evt_tx.send(event).is_err() {
+                    break;
+                }
             }
         }
     });
@@ -328,7 +568,8 @@ pub(crate) async fn run_tui(
         app_config.clone(),
         profile.clone(),
         session_service.clone(),
-    );
+    )
+    .await;
     let mut current_agent_handle: Option<tokio::task::JoinHandle<()>> = None;
 
     let mut tick = tokio::time::interval(std::time::Duration::from_millis(250));
@@ -338,12 +579,34 @@ pub(crate) async fn run_tui(
         tokio::select! {
             Some(agent_event) = agent_rx.recv() => {
                 if let Some(action) = app.update(TuiEvent::Agent(agent_event)) {
-                    handle_action(&mut app, action, &agent_loop, &agent_tx, &mut current_agent_handle);
+                    handle_action(
+                        &mut app,
+                        action,
+                        &agent_loop,
+                        &agent_tx,
+                        &mut current_agent_handle,
+                        &mut terminal,
+                        &input_paused,
+                    );
                 }
             }
-            Some(key) = key_rx.recv() => {
-                if let Some(action) = app.update(TuiEvent::Key(key)) {
-                    handle_action(&mut app, action, &agent_loop, &agent_tx, &mut current_agent_handle);
+            Some(evt) = evt_rx.recv() => {
+                let event = match evt {
+                    crossterm::event::Event::Key(key) => TuiEvent::Key(key),
+                    crossterm::event::Event::Mouse(mouse) => TuiEvent::Mouse(mouse),
+                    crossterm::event::Event::Resize(_, _) => TuiEvent::Tick,
+                    _ => TuiEvent::Tick,
+                };
+                if let Some(action) = app.update(event) {
+                    handle_action(
+                        &mut app,
+                        action,
+                        &agent_loop,
+                        &agent_tx,
+                        &mut current_agent_handle,
+                        &mut terminal,
+                        &input_paused,
+                    );
                 }
             }
             _ = tick.tick() => {
@@ -382,6 +645,8 @@ fn handle_action(
     agent_loop: &Arc<AgentLoop>,
     agent_tx: &mpsc::UnboundedSender<AgentEvent>,
     current_agent_handle: &mut Option<tokio::task::JoinHandle<()>>,
+    terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+    input_paused: &Arc<AtomicBool>,
 ) {
     match action {
         AppAction::RunPrompt(prompt) => {
@@ -418,5 +683,118 @@ fn handle_action(
         }
         AppAction::SetDiff(_diff) => {}
         AppAction::QueuePrompt(_prompt) => {}
+        AppAction::SelectProfile(name) => {
+            app.apply_profile_selection(name);
+        }
+        AppAction::SelectSession(session_id) => {
+            app.apply_session_selection(session_id);
+        }
+        AppAction::SelectTheme(theme) => {
+            app.apply_theme_selection(theme);
+        }
+        AppAction::OpenEditor(text) => match open_editor(terminal, input_paused, &text) {
+            Ok(edited) => {
+                app.input.load_text(&edited);
+                app.status_bar.set_message("Edited in $EDITOR.");
+            }
+            Err(err) => {
+                app.status_bar.set_message(err);
+            }
+        },
+        AppAction::ShowHistorySearch => {
+            let mut entries = app
+                .history
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>();
+            entries.reverse();
+            app.overlays
+                .push(Box::new(HistorySearchOverlay::new(entries)));
+        }
+        AppAction::LoadInput(text) => {
+            app.input.load_text(&text);
+            app.status_bar.set_message("Loaded from history.");
+        }
     }
+}
+
+fn open_editor(
+    terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+    input_paused: &Arc<AtomicBool>,
+    initial: &str,
+) -> Result<String, String> {
+    use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+    use crossterm::execute;
+    use crossterm::terminal::{
+        EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    };
+    use std::io::Write;
+    use std::process::Command;
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+        .as_millis();
+    let path = std::env::temp_dir().join(format!("xylitol-input-{}-{}.md", std::process::id(), ts));
+
+    if let Err(err) = std::fs::write(&path, initial) {
+        return Err(format!("Failed to write temp file: {err}"));
+    }
+
+    input_paused.store(true, Ordering::Relaxed);
+
+    // Suspend TUI.
+    if let Err(err) = disable_raw_mode() {
+        input_paused.store(false, Ordering::Relaxed);
+        return Err(format!("disable_raw_mode failed: {err}"));
+    }
+    if let Err(err) = execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    ) {
+        let _ = enable_raw_mode();
+        input_paused.store(false, Ordering::Relaxed);
+        return Err(format!("LeaveAlternateScreen failed: {err}"));
+    }
+    let _ = terminal.show_cursor();
+    let _ = std::io::stdout().flush();
+
+    // Launch editor.
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vim".into());
+    let mut parts = editor.split_whitespace();
+    let bin = parts.next().unwrap_or("vim");
+    let args: Vec<&str> = parts.collect();
+
+    let status = Command::new(bin)
+        .args(args)
+        .arg(&path)
+        .status()
+        .map_err(|e| format!("Failed to run editor '{bin}': {e}"))?;
+    if !status.success() {
+        // Still attempt to restore and read back.
+        tracing::warn!("Editor exited with status: {status}");
+    }
+
+    // Restore TUI.
+    if let Err(err) = execute!(
+        terminal.backend_mut(),
+        EnterAlternateScreen,
+        EnableMouseCapture
+    ) {
+        input_paused.store(false, Ordering::Relaxed);
+        return Err(format!("EnterAlternateScreen failed: {err}"));
+    }
+    if let Err(err) = enable_raw_mode() {
+        input_paused.store(false, Ordering::Relaxed);
+        return Err(format!("enable_raw_mode failed: {err}"));
+    }
+    let _ = terminal.hide_cursor();
+    let _ = terminal.clear();
+
+    input_paused.store(false, Ordering::Relaxed);
+
+    let edited = std::fs::read_to_string(&path).unwrap_or_default();
+    let _ = std::fs::remove_file(&path);
+    Ok(edited)
 }
