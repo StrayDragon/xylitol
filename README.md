@@ -1,3 +1,1 @@
 # xylitol
-
-Placeholder crate.
