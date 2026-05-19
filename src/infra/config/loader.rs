@@ -257,13 +257,14 @@ mod tests {
         use std::collections::HashMap;
         let config = AppConfig {
             model: super::super::types::ModelConfig {
-                default_model: "gpt-4o".into(),
+                default_model: Some("gpt-4o".into()),
                 models: HashMap::from([
                     (
                         "gpt-4o".into(),
                         super::super::types::ModelEntry {
                             provider: super::super::types::ProviderKind::OpenAI,
                             model: "gpt-4o".into(),
+                            base_url: None,
                             fallback: Some("claude-3".into()),
                         },
                     ),
@@ -272,6 +273,7 @@ mod tests {
                         super::super::types::ModelEntry {
                             provider: super::super::types::ProviderKind::Anthropic,
                             model: "claude-3-5-sonnet".into(),
+                            base_url: None,
                             fallback: None,
                         },
                     ),
@@ -287,12 +289,13 @@ mod tests {
         use std::collections::HashMap;
         let config = AppConfig {
             model: super::super::types::ModelConfig {
-                default_model: "gpt-4o".into(),
+                default_model: Some("gpt-4o".into()),
                 models: HashMap::from([(
                     "gpt-4o".into(),
                     super::super::types::ModelEntry {
                         provider: super::super::types::ProviderKind::OpenAI,
                         model: "gpt-4o".into(),
+                        base_url: None,
                         fallback: Some("nonexistent-model".into()),
                     },
                 )]),
@@ -305,7 +308,7 @@ mod tests {
     #[test]
     fn test_app_config_default_values() {
         let config = AppConfig::default();
-        assert_eq!(config.model.default_model, "gpt-4o");
+        assert!(config.model.default_model.is_none());
         assert!(config.model.models.is_empty());
         assert_eq!(config.execution.max_retries, 3);
         assert!(!config.security.enabled);
@@ -320,7 +323,7 @@ mod tests {
     fn test_load_app_config_no_files() {
         // Without any config files, should return defaults.
         let config = load_app_config(None).unwrap();
-        assert_eq!(config.model.default_model, "gpt-4o");
+        assert!(config.model.default_model.is_none());
     }
 
     #[test]
@@ -361,7 +364,7 @@ mod tests {
         writeln!(f, "tools: {{}}").unwrap();
 
         let config = load_app_config(Some(&path)).unwrap();
-        assert_eq!(config.model.default_model, "claude-opus-4");
+        assert_eq!(config.model.default_model.as_deref(), Some("claude-opus-4"));
         assert!(config.security.enabled);
 
         let _ = std::fs::remove_dir_all(&dir);
