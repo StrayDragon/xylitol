@@ -514,8 +514,6 @@ impl App {
             self.last_tool_panel_height = tool_h;
         }
 
-        let layout_changed = size_changed || input_changed || tool_changed;
-
         let chunks = if tool_h > 0 {
             Layout::default()
                 .direction(Direction::Vertical)
@@ -559,20 +557,17 @@ impl App {
         self.tool_panel.set_focused(self.focus == Focus::Chat);
         self.input.set_focused(self.focus == Focus::Input);
 
-        if layout_changed || self.chat.is_dirty() {
-            self.chat.render(frame, chunks[0]);
-        }
-        if tool_h > 0 && (layout_changed || self.tool_panel.is_dirty()) {
+        // Ratatui uses immediate-mode rendering: every `Terminal::draw` starts from an empty buffer.
+        // We must render all visible components every frame; "dirty" flags should only be used to
+        // decide whether a draw is needed at all, not to skip rendering within a draw.
+        self.chat.render(frame, chunks[0]);
+        if tool_h > 0 {
             self.tool_panel.render(frame, chunks[1]);
         }
-        if layout_changed || self.input.is_dirty() {
-            let input_idx = if tool_h > 0 { 2 } else { 1 };
-            self.input.render(frame, chunks[input_idx]);
-        }
-        if layout_changed || self.status_bar.is_dirty() {
-            let status_idx = if tool_h > 0 { 3 } else { 2 };
-            self.status_bar.render(frame, chunks[status_idx]);
-        }
+        let input_idx = if tool_h > 0 { 2 } else { 1 };
+        self.input.render(frame, chunks[input_idx]);
+        let status_idx = if tool_h > 0 { 3 } else { 2 };
+        self.status_bar.render(frame, chunks[status_idx]);
 
         if !self.overlays.is_empty() {
             self.overlays.render_all(frame, area);
@@ -777,33 +772,47 @@ pub(crate) async fn run_tui(
     let (agent_tx, mut agent_rx) = mpsc::unbounded_channel::<AgentEvent>();
     let (evt_tx, mut evt_rx) = mpsc::unbounded_channel::<crossterm::event::Event>();
     let input_paused = Arc::new(AtomicBool::new(false));
+    let input_shutdown = Arc::new(AtomicBool::new(false));
 
-    // Spawn crossterm keyboard reader on a blocking thread.
-    tokio::task::spawn_blocking({
-        let input_paused = input_paused.clone();
-        move || {
-            use std::time::Duration;
-            loop {
-                if input_paused.load(Ordering::Relaxed) {
-                    std::thread::sleep(Duration::from_millis(25));
-                    continue;
-                }
+    // Spawn crossterm keyboard reader on a dedicated OS thread.
+    //
+    // NOTE: avoid `tokio::task::spawn_blocking` for this long-lived loop. Tokio waits for all
+    // blocking tasks to finish when shutting down the runtime, which can cause quit to hang.
+    let input_thread = std::thread::Builder::new()
+        .name("xylitol-tui-input".into())
+        .spawn({
+            let input_paused = input_paused.clone();
+            let input_shutdown = input_shutdown.clone();
+            move || {
+                use std::time::Duration;
+                loop {
+                    if input_shutdown.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    if input_paused.load(Ordering::Relaxed) {
+                        std::thread::sleep(Duration::from_millis(25));
+                        continue;
+                    }
 
-                match crossterm::event::poll(Duration::from_millis(50)) {
-                    Ok(false) => continue,
-                    Ok(true) => {}
-                    Err(_) => break,
-                }
+                    match crossterm::event::poll(Duration::from_millis(50)) {
+                        Ok(false) => continue,
+                        Ok(true) => {}
+                        Err(_) => break,
+                    }
 
-                let Ok(event) = crossterm::event::read() else {
-                    break;
-                };
-                if evt_tx.send(event).is_err() {
-                    break;
+                    if input_shutdown.load(Ordering::Relaxed) {
+                        break;
+                    }
+
+                    let Ok(event) = crossterm::event::read() else {
+                        break;
+                    };
+                    if evt_tx.send(event).is_err() {
+                        break;
+                    }
                 }
             }
-        }
-    });
+        })?;
 
     // ── App ─────────────────────────────────────────────────
     let mut app = App::new(
@@ -817,6 +826,12 @@ pub(crate) async fn run_tui(
     let mut current_agent_handle: Option<tokio::task::JoinHandle<()>> = None;
 
     let mut tick = tokio::time::interval(std::time::Duration::from_millis(250));
+
+    // First paint: avoid showing a blank alternate screen until the first event arrives.
+    execute!(terminal.backend_mut(), BeginSynchronizedUpdate)?;
+    terminal.clear()?;
+    terminal.draw(|f| app.render(f))?;
+    execute!(terminal.backend_mut(), EndSynchronizedUpdate)?;
 
     // ── Event loop ──────────────────────────────────────────
     let result: Result<(), Box<dyn std::error::Error>> = 'event_loop: loop {
@@ -872,6 +887,9 @@ pub(crate) async fn run_tui(
     if let Some(handle) = current_agent_handle.take() {
         handle.abort();
     }
+    input_shutdown.store(true, Ordering::Relaxed);
+    drop(evt_rx);
+    let _ = input_thread.join();
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
