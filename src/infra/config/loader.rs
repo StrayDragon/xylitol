@@ -209,6 +209,31 @@ impl AppConfig {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::sync::Mutex;
+
+    /// Serialize env-modifying tests to avoid races.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Guard to restore env vars on drop.
+    struct EnvGuard(Vec<(String, Option<String>)>);
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (k, v) in &self.0 {
+                match v {
+                    Some(val) => unsafe { std::env::set_var(k, val) },
+                    None => unsafe { std::env::remove_var(k) },
+                }
+            }
+        }
+    }
+
+    fn save_env(keys: &[&str]) -> EnvGuard {
+        EnvGuard(
+            keys.iter()
+                .map(|k| (k.to_string(), std::env::var(k).ok()))
+                .collect(),
+        )
+    }
 
     #[test]
     fn test_deep_merge_object() {
@@ -307,6 +332,11 @@ mod tests {
 
     #[test]
     fn test_app_config_default_values() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _guard = save_env(&["XYLITOL_PROJECT_DIR", "XYLITOL_CONFIG_DIR"]);
+        unsafe { std::env::remove_var("XYLITOL_PROJECT_DIR") };
+        unsafe { std::env::remove_var("XYLITOL_CONFIG_DIR") };
+
         let config = AppConfig::default();
         assert!(config.model.default_model.is_none());
         assert!(config.model.models.is_empty());
@@ -321,6 +351,16 @@ mod tests {
 
     #[test]
     fn test_load_app_config_no_files() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _guard = save_env(&["XYLITOL_PROJECT_DIR", "XYLITOL_CONFIG_DIR"]);
+        // Pin config discovery to empty temp dirs so the test is hermetic even
+        // when the developer has local config files.
+        let dir = std::env::temp_dir().join("xylitol_test_no_files");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::create_dir_all(&dir);
+        unsafe { std::env::set_var("XYLITOL_CONFIG_DIR", &dir) };
+        unsafe { std::env::set_var("XYLITOL_PROJECT_DIR", &dir) };
+
         // Without any config files, should return defaults.
         let config = load_app_config(None).unwrap();
         assert!(config.model.default_model.is_none());
@@ -328,6 +368,14 @@ mod tests {
 
     #[test]
     fn test_load_app_config_cli_override() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _guard = save_env(&["XYLITOL_PROJECT_DIR", "XYLITOL_CONFIG_DIR"]);
+        let root = std::env::temp_dir().join("xylitol_test_cli_override_root");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::create_dir_all(&root);
+        unsafe { std::env::set_var("XYLITOL_CONFIG_DIR", &root) };
+        unsafe { std::env::set_var("XYLITOL_PROJECT_DIR", &root) };
+
         use std::io::Write;
         let dir = std::env::temp_dir().join("xylitol_test_cli_config");
         let _ = std::fs::create_dir_all(&dir);
