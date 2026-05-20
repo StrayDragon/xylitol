@@ -1,7 +1,5 @@
 //! Chat component — scrollable message history with markdown rendering.
 
-use std::time::Instant;
-
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -14,6 +12,7 @@ use super::chat_style;
 use super::component::{Component, EventResult};
 use super::event::TuiEvent;
 use super::markdown::MarkdownRenderer;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Role {
@@ -27,6 +26,7 @@ enum Role {
 pub(crate) struct Message {
     role: Role,
     content: String,
+    thinking: Option<String>,
     streaming: bool,
     cached_width: u16,
     cached_lines: Vec<Line<'static>>,
@@ -57,6 +57,7 @@ impl Message {
         Self {
             role,
             content,
+            thinking: None,
             streaming: false,
             cached_width: 0,
             cached_lines: Vec::new(),
@@ -94,252 +95,21 @@ impl Message {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ToolCardStatus {
-    Running,
-    Success,
-    Failed,
-}
-
-#[derive(Debug, Clone)]
-struct ToolCallCard {
-    id: String,
-    name: String,
-    args: serde_json::Value,
-    status: ToolCardStatus,
-    result: Option<serde_json::Value>,
-    started_at: Instant,
-    ended_at: Option<Instant>,
-    expanded: bool,
-    cached_width: u16,
-    cached_lines: Vec<Line<'static>>,
-    dirty: bool,
-}
-
-impl ToolCallCard {
-    fn new_running(id: String, name: String, args: serde_json::Value) -> Self {
-        Self {
-            id,
-            name,
-            args,
-            status: ToolCardStatus::Running,
-            result: None,
-            started_at: Instant::now(),
-            ended_at: None,
-            expanded: true,
-            cached_width: 0,
-            cached_lines: Vec::new(),
-            dirty: true,
-        }
-    }
-
-    fn complete(&mut self, result: serde_json::Value) {
-        self.ended_at = Some(Instant::now());
-        self.status = if result.get("blocked").and_then(|v| v.as_bool()) == Some(true)
-            || result.get("error").is_some()
-        {
-            ToolCardStatus::Failed
-        } else {
-            ToolCardStatus::Success
-        };
-        self.result = Some(result);
-        // Default to collapsed on completion.
-        self.expanded = false;
-        self.dirty = true;
-    }
-
-    fn toggle(&mut self) {
-        self.expanded = !self.expanded;
-        self.dirty = true;
-    }
-
-    fn render_lines(&mut self, width: u16) -> Vec<Line<'static>> {
-        if !self.dirty && self.cached_width == width {
-            return self.cached_lines.clone();
-        }
-
-        let inner_w = width.max(20);
-        let mut out = Vec::<Line<'static>>::new();
-
-        let (icon, status_label, status_style) = match self.status {
-            ToolCardStatus::Running => (
-                "🔧",
-                "running…",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            ToolCardStatus::Success => (
-                "✅",
-                "ok",
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            ToolCardStatus::Failed => (
-                "❌",
-                "failed",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            ),
-        };
-
-        let duration = self
-            .ended_at
-            .and_then(|end| end.checked_duration_since(self.started_at))
-            .map(|d| format!("{:.1}s", d.as_secs_f32()));
-
-        let mut header_right = status_label.to_string();
-        if let Some(d) = duration {
-            header_right = format!("{header_right}  {d}");
-        }
-
-        // ┌─ <icon> <name> ───────── <status> ┐
-        out.push(render_box_top(
-            inner_w,
-            &format!("{icon} {}", self.name),
-            &header_right,
-            status_style,
-        ));
-
-        if self.expanded {
-            // Arguments (pretty, limited).
-            let args_text =
-                serde_json::to_string_pretty(&self.args).unwrap_or_else(|_| self.args.to_string());
-            out.extend(render_box_body(
-                inner_w,
-                "Arguments",
-                &args_text,
-                Style::default().fg(Color::DarkGray),
-            ));
-
-            if let Some(ref result) = self.result {
-                let result_text =
-                    serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string());
-                out.extend(render_box_body(
-                    inner_w,
-                    "Result",
-                    &result_text,
-                    Style::default().fg(Color::DarkGray),
-                ));
-            }
-
-            out.push(render_box_hint(
-                inner_w,
-                "Enter to collapse",
-                Style::default().fg(Color::DarkGray),
-            ));
-        } else {
-            out.push(render_box_hint(
-                inner_w,
-                "Enter to expand",
-                Style::default().fg(Color::DarkGray),
-            ));
-        }
-
-        out.push(Line::from(render_box_bottom(inner_w)));
-
-        self.cached_width = inner_w;
-        self.cached_lines = out.clone();
-        self.dirty = false;
-
-        out
-    }
-}
-
-#[derive(Debug, Clone)]
-struct ThinkingBlock {
-    content: String,
-    expanded: bool,
-    cached_width: u16,
-    cached_lines: Vec<Line<'static>>,
-    dirty: bool,
-}
-
-impl ThinkingBlock {
-    fn new_collapsed(content: String) -> Self {
-        Self {
-            content,
-            expanded: false,
-            cached_width: 0,
-            cached_lines: Vec::new(),
-            dirty: true,
-        }
-    }
-
-    fn toggle(&mut self) {
-        self.expanded = !self.expanded;
-        self.dirty = true;
-    }
-
-    fn render_lines(&mut self, width: u16) -> Vec<Line<'static>> {
-        if !self.dirty && self.cached_width == width {
-            return self.cached_lines.clone();
-        }
-
-        let inner_w = width.max(20);
-        let mut out = Vec::<Line<'static>>::new();
-
-        out.push(render_box_top(
-            inner_w,
-            "💭 Thinking",
-            if self.expanded {
-                "expanded"
-            } else {
-                "collapsed"
-            },
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
-        ));
-
-        if self.expanded {
-            out.extend(render_box_body(
-                inner_w,
-                "Content",
-                &self.content,
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::ITALIC),
-            ));
-            out.push(render_box_hint(
-                inner_w,
-                "Enter to collapse",
-                Style::default().fg(Color::DarkGray),
-            ));
-        } else {
-            out.push(render_box_hint(
-                inner_w,
-                "Enter to expand",
-                Style::default().fg(Color::DarkGray),
-            ));
-        }
-
-        out.push(Line::from(render_box_bottom(inner_w)));
-
-        self.cached_width = inner_w;
-        self.cached_lines = out.clone();
-        self.dirty = false;
-        out
-    }
-}
-
 #[derive(Debug, Clone)]
 enum ChatItem {
     Message(Message),
-    ToolCard(ToolCallCard),
-    Thinking(ThinkingBlock),
 }
 
 pub(crate) struct ChatComponent {
     markdown: MarkdownRenderer,
     items: Vec<ChatItem>,
     raw_output: bool,
-    /// Scroll offset measured from the bottom (0 = show newest).
-    scroll_offset: u16,
-    follow_tail: bool,
-    focused: bool,
+    pending_thinking: String,
+    last_thinking: String,
+    tool_names: HashMap<String, String>,
+    next_insert_index: usize,
+    show_thinking: bool,
     dirty: bool,
-    last_toggle_idx: Option<usize>,
 }
 
 impl ChatComponent {
@@ -348,19 +118,17 @@ impl ChatComponent {
             markdown,
             items: Vec::new(),
             raw_output: false,
-            scroll_offset: 0,
-            follow_tail: true,
-            focused: false,
+            pending_thinking: String::new(),
+            last_thinking: String::new(),
+            tool_names: HashMap::new(),
+            next_insert_index: 0,
+            show_thinking: false,
             dirty: true,
-            last_toggle_idx: None,
         }
     }
 
     pub(crate) fn set_focused(&mut self, focused: bool) {
-        if self.focused != focused {
-            self.focused = focused;
-            self.dirty = true;
-        }
+        let _ = focused;
     }
 
     pub(crate) fn set_theme(&mut self, theme: &str) -> bool {
@@ -374,14 +142,6 @@ impl ChatComponent {
                 ChatItem::Message(msg) => {
                     msg.cached_width = 0;
                     msg.dirty = true;
-                }
-                ChatItem::ToolCard(card) => {
-                    card.cached_width = 0;
-                    card.dirty = true;
-                }
-                ChatItem::Thinking(block) => {
-                    block.cached_width = 0;
-                    block.dirty = true;
                 }
             }
         }
@@ -399,14 +159,6 @@ impl ChatComponent {
                         msg.cached_width = 0;
                         msg.dirty = true;
                     }
-                    ChatItem::ToolCard(card) => {
-                        card.cached_width = 0;
-                        card.dirty = true;
-                    }
-                    ChatItem::Thinking(block) => {
-                        block.cached_width = 0;
-                        block.dirty = true;
-                    }
                 }
             }
             self.dirty = true;
@@ -418,26 +170,77 @@ impl ChatComponent {
             Role::User,
             text.to_string(),
         )));
-        self.scroll_to_bottom();
         self.dirty = true;
     }
 
     pub(crate) fn clear(&mut self) {
         self.items.clear();
-        self.scroll_offset = 0;
-        self.follow_tail = true;
-        self.last_toggle_idx = None;
+        self.pending_thinking.clear();
+        self.last_thinking.clear();
+        self.tool_names.clear();
+        self.next_insert_index = 0;
+        self.show_thinking = false;
         self.dirty = true;
     }
 
+    fn thinking_text(&self) -> &str {
+        if !self.pending_thinking.trim().is_empty() {
+            &self.pending_thinking
+        } else {
+            &self.last_thinking
+        }
+    }
+
+    pub(crate) fn has_thinking_panel(&self) -> bool {
+        !self.thinking_text().trim().is_empty()
+    }
+
+    pub(crate) fn thinking_panel_height(&self, max_height: u16) -> u16 {
+        if !self.has_thinking_panel() {
+            return 0;
+        }
+        // 1 header line + content lines, capped.
+        let content_lines = self.thinking_text().lines().count() as u16;
+        content_lines.saturating_add(1).min(max_height.max(1))
+    }
+
+    pub(crate) fn render_thinking_panel(&mut self, frame: &mut Frame, area: Rect) {
+        if area.is_empty() || !self.has_thinking_panel() {
+            return;
+        }
+
+        let style = Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::ITALIC);
+
+        let mut lines = Vec::<Line<'static>>::new();
+        lines.push(Line::from(Span::styled("Thinking", style)));
+
+        let content_h = area.height.saturating_sub(1) as usize;
+        if content_h > 0 {
+            let all = self
+                .thinking_text()
+                .lines()
+                .map(|l| Line::from(Span::styled(l.to_string(), style)))
+                .collect::<Vec<_>>();
+            let start = all.len().saturating_sub(content_h);
+            lines.extend(all.into_iter().skip(start));
+        }
+
+        // No borders/cards: keep it lightweight and let the transcript use the remaining space.
+        let para = Paragraph::new(lines)
+            .block(Block::default())
+            .wrap(Wrap { trim: false });
+        frame.render_widget(para, area);
+    }
+
     pub(crate) fn scroll_wheel_up(&mut self, n: u16) {
-        self.scroll_offset = self.scroll_offset.saturating_add(n);
-        self.follow_tail = self.scroll_offset == 0;
+        let _ = n;
         self.dirty = true;
     }
 
     pub(crate) fn scroll_wheel_down(&mut self, n: u16) {
-        self.scroll_down(n);
+        let _ = n;
     }
 
     fn append_assistant_delta(&mut self, delta: &str) {
@@ -455,43 +258,65 @@ impl ChatComponent {
             self.items.push(ChatItem::Message(m));
         }
 
-        if self.follow_tail {
-            self.scroll_offset = 0;
-        }
+        self.dirty = true;
+    }
+
+    fn append_thinking_delta(&mut self, delta: &str) {
+        self.pending_thinking.push_str(delta);
+        self.show_thinking = true;
         self.dirty = true;
     }
 
     fn finish_streaming(&mut self) {
-        let last_assistant = self.items.iter_mut().rev().find_map(|item| match item {
-            ChatItem::Message(msg) if msg.role == Role::Assistant => Some(msg),
-            _ => None,
-        });
+        let last_assistant_index = self.items.iter().rposition(
+            |item| matches!(item, ChatItem::Message(msg) if msg.role == Role::Assistant),
+        );
 
-        if let Some(msg) = last_assistant {
+        let mut thinking_parts = Vec::<String>::new();
+
+        if let Some(idx) = last_assistant_index
+            && let Some(ChatItem::Message(msg)) = self.items.get_mut(idx)
+        {
             msg.streaming = false;
             msg.dirty = true;
 
             let thinking_blocks = extract_thinking_blocks(&mut msg.content);
             if !thinking_blocks.is_empty() {
-                for block in thinking_blocks {
-                    self.items
-                        .push(ChatItem::Thinking(ThinkingBlock::new_collapsed(block)));
-                    self.last_toggle_idx = Some(self.items.len().saturating_sub(1));
-                }
+                thinking_parts.extend(thinking_blocks);
             }
         }
-        if self.follow_tail {
-            self.scroll_offset = 0;
+
+        if !self.pending_thinking.trim().is_empty() {
+            let block = std::mem::take(&mut self.pending_thinking);
+            thinking_parts.push(block);
+        } else {
+            self.pending_thinking.clear();
         }
+
+        let combined_thinking = thinking_parts.join("\n\n").trim().to_string();
+        if let Some(idx) = last_assistant_index
+            && let Some(ChatItem::Message(msg)) = self.items.get_mut(idx)
+        {
+            if combined_thinking.is_empty() {
+                msg.thinking = None;
+            } else {
+                msg.thinking = Some(combined_thinking.clone());
+            }
+        }
+
+        if combined_thinking.is_empty() {
+            self.last_thinking.clear();
+        } else {
+            self.last_thinking = combined_thinking;
+        }
+        // Collapse thinking once the assistant is done; users can re-open it via a shortcut.
+        self.show_thinking = false;
         self.dirty = true;
     }
 
     fn show_tool_message(&mut self, line: String) {
         self.items
             .push(ChatItem::Message(Message::new(Role::System, line)));
-        if self.follow_tail {
-            self.scroll_offset = 0;
-        }
         self.dirty = true;
     }
 
@@ -500,98 +325,155 @@ impl ChatComponent {
             Role::Error,
             format!("{err}"),
         )));
-        if self.follow_tail {
-            self.scroll_offset = 0;
+        self.dirty = true;
+    }
+
+    fn render_thinking_inline_lines(&self, max_height: usize) -> Vec<Line<'static>> {
+        if !self.has_thinking_panel() || max_height == 0 {
+            return Vec::new();
         }
+
+        let style = Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::ITALIC);
+
+        let mut lines = Vec::<Line<'static>>::new();
+        lines.push(Line::from(Span::styled("Thinking", style)));
+
+        let max_content = max_height.saturating_sub(1);
+        let mut content = self
+            .thinking_text()
+            .lines()
+            .map(|l| Line::from(Span::styled(format!("  {l}"), style)))
+            .collect::<Vec<_>>();
+        if content.len() > max_content {
+            let start = content.len().saturating_sub(max_content);
+            content = content.split_off(start);
+        }
+        lines.extend(content);
+        lines
+    }
+
+    pub(crate) fn toggle_show_thinking(&mut self) {
+        self.show_thinking = !self.show_thinking;
         self.dirty = true;
     }
 
-    fn scroll_up(&mut self, n: u16, max_scroll: u16) {
-        self.scroll_offset = self.scroll_offset.saturating_add(n).min(max_scroll);
-        self.follow_tail = self.scroll_offset == 0;
-        self.dirty = true;
-    }
+    pub(crate) fn take_pending_insert_lines(&mut self, width: u16) -> Vec<Line<'static>> {
+        let mut out = Vec::<Line<'static>>::new();
+        while let Some(item) = self.items.get_mut(self.next_insert_index) {
+            let ChatItem::Message(msg) = item;
+            if msg.streaming {
+                break;
+            }
 
-    fn scroll_down(&mut self, n: u16) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(n);
-        self.follow_tail = self.scroll_offset == 0;
-        self.dirty = true;
-    }
+            if msg.dirty || msg.cached_width != width {
+                msg.cached_width = width;
+                msg.cached_lines = if self.raw_output {
+                    msg.content
+                        .trim_end_matches(['\r', '\n'])
+                        .lines()
+                        .map(|l| Line::from(l.to_string()))
+                        .collect::<Vec<_>>()
+                } else {
+                    self.markdown.render(&msg.content, width)
+                };
+                msg.dirty = false;
+            }
 
-    fn scroll_to_top(&mut self, max_scroll: u16) {
-        self.scroll_offset = max_scroll;
-        self.follow_tail = false;
-        self.dirty = true;
-    }
-
-    fn scroll_to_bottom(&mut self) {
-        self.scroll_offset = 0;
-        self.follow_tail = true;
-        self.dirty = true;
-    }
-
-    fn render_lines(&mut self, width: u16) -> Vec<Line<'static>> {
-        let mut lines: Vec<Line<'static>> = Vec::new();
-
-        for item in &mut self.items {
-            match item {
-                ChatItem::Message(msg) => {
-                    if msg.dirty || msg.cached_width != width {
-                        msg.cached_width = width;
-                        msg.cached_lines = if self.raw_output {
-                            msg.content
-                                .trim_end_matches(['\r', '\n'])
-                                .lines()
-                                .map(|l| Line::from(l.to_string()))
-                                .collect::<Vec<_>>()
-                        } else {
-                            self.markdown.render(&msg.content, width)
-                        };
-                        msg.dirty = false;
-                    }
-
-                    match msg.role {
-                        Role::User => {
-                            lines.extend(chat_style::prefix_user_lines(msg.cached_lines.clone()));
-                            lines.push(Line::from(""));
-                        }
-                        Role::Assistant => {
-                            lines.extend(chat_style::prefix_assistant_lines(
-                                msg.cached_lines.clone(),
-                                msg.streaming,
-                            ));
-                            lines.push(Line::from(""));
-                        }
-                        Role::System => {
-                            let mut system_lines = msg.cached_lines.clone();
-                            for line in &mut system_lines {
-                                line.style = Style::default().fg(Color::DarkGray);
-                            }
-                            lines.extend(system_lines);
-                            lines.push(Line::from(""));
-                        }
-                        Role::Error => {
-                            let mut error_lines = msg.cached_lines.clone();
-                            for line in &mut error_lines {
-                                line.style = Style::default().fg(Color::Red);
-                            }
-                            lines.extend(error_lines);
-                            lines.push(Line::from(""));
-                        }
-                    }
+            match msg.role {
+                Role::User => {
+                    out.extend(chat_style::prefix_user_lines(msg.cached_lines.clone()));
+                    out.push(Line::from(""));
                 }
-                ChatItem::ToolCard(card) => {
-                    lines.extend(card.render_lines(width));
-                    lines.push(Line::from(""));
+                Role::Assistant => {
+                    out.extend(chat_style::prefix_assistant_lines(
+                        msg.cached_lines.clone(),
+                        /*streaming*/ false,
+                    ));
+                    out.push(Line::from(""));
                 }
-                ChatItem::Thinking(block) => {
-                    lines.extend(block.render_lines(width));
-                    lines.push(Line::from(""));
+                Role::System => {
+                    let mut system_lines = msg.cached_lines.clone();
+                    for line in &mut system_lines {
+                        line.style = Style::default().fg(Color::DarkGray);
+                    }
+                    out.extend(system_lines);
+                    out.push(Line::from(""));
+                }
+                Role::Error => {
+                    let mut error_lines = msg.cached_lines.clone();
+                    for line in &mut error_lines {
+                        line.style = Style::default().fg(Color::Red);
+                    }
+                    out.extend(error_lines);
+                    out.push(Line::from(""));
                 }
             }
+
+            self.next_insert_index += 1;
         }
 
-        lines
+        out
+    }
+
+    pub(crate) fn render_live_preview(&mut self, frame: &mut Frame, area: Rect) {
+        if area.is_empty() {
+            return;
+        }
+
+        let width = area.width.max(1);
+        let mut lines: Vec<Line<'static>> = Vec::new();
+
+        let show_thinking = self.show_thinking && self.has_thinking_panel();
+        if show_thinking {
+            lines.extend(self.render_thinking_inline_lines(6));
+            lines.push(Line::from(""));
+        }
+
+        let streaming = self.items.iter_mut().rev().find_map(|item| match item {
+            ChatItem::Message(msg) if msg.role == Role::Assistant && msg.streaming => Some(msg),
+            _ => None,
+        });
+
+        if let Some(msg) = streaming {
+            if msg.dirty || msg.cached_width != width {
+                msg.cached_width = width;
+                msg.cached_lines = if self.raw_output {
+                    msg.content
+                        .trim_end_matches(['\r', '\n'])
+                        .lines()
+                        .map(|l| Line::from(l.to_string()))
+                        .collect::<Vec<_>>()
+                } else {
+                    self.markdown.render(&msg.content, width)
+                };
+                msg.dirty = false;
+            }
+
+            let mut assistant_lines = chat_style::prefix_assistant_lines(
+                msg.cached_lines.clone(),
+                /*streaming*/ true,
+            );
+            // Clip to available height (keep newest).
+            let remaining = area.height.saturating_sub(lines.len() as u16).max(1) as usize;
+            if assistant_lines.len() > remaining {
+                assistant_lines =
+                    assistant_lines.split_off(assistant_lines.len().saturating_sub(remaining));
+            }
+            lines.extend(assistant_lines);
+        }
+
+        // Clip overall to the viewport height.
+        if lines.len() > area.height as usize {
+            lines = lines.split_off(lines.len() - area.height as usize);
+        }
+
+        let para = Paragraph::new(lines)
+            .block(Block::default())
+            .wrap(Wrap { trim: false });
+        frame.render_widget(para, area);
+        self.dirty = false;
     }
 
     pub(crate) fn last_user_message(&self) -> Option<String> {
@@ -622,22 +504,15 @@ impl ChatComponent {
                     out.push_str(&format!("## {label}\n\n"));
                     out.push_str(&msg.content);
                     out.push_str("\n\n");
-                }
-                ChatItem::ToolCard(card) => {
-                    out.push_str(&format!("## Tool: {}\n\n", card.name));
-                    let args = serde_json::to_string_pretty(&card.args)
-                        .unwrap_or_else(|_| card.args.to_string());
-                    out.push_str(&format!("```json\n{args}\n```\n\n"));
-                    if let Some(result) = &card.result {
-                        let result = serde_json::to_string_pretty(result)
-                            .unwrap_or_else(|_| result.to_string());
-                        out.push_str(&format!("```json\n{result}\n```\n\n"));
+
+                    if msg.role == Role::Assistant
+                        && let Some(thinking) = msg.thinking.as_deref()
+                        && !thinking.trim().is_empty()
+                    {
+                        out.push_str("### Thinking\n\n");
+                        out.push_str(thinking);
+                        out.push_str("\n\n");
                     }
-                }
-                ChatItem::Thinking(block) => {
-                    out.push_str("## Thinking\n\n");
-                    out.push_str(&block.content);
-                    out.push_str("\n\n");
                 }
             }
         }
@@ -647,36 +522,9 @@ impl ChatComponent {
 
 impl Component for ChatComponent {
     fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let inner_width = area.width.max(1);
-        let mut lines = self.render_lines(inner_width);
-
-        let view_height = area.height.max(1);
-        let total_lines = lines.len() as u16;
-        let max_scroll = total_lines.saturating_sub(view_height);
-        let scroll = self.scroll_offset.min(max_scroll);
-        let start = max_scroll.saturating_sub(scroll) as usize;
-        let end = (start + view_height as usize).min(lines.len());
-
-        let visible = if start < end {
-            lines.drain(start..end).collect::<Vec<Line<'static>>>()
-        } else {
-            Vec::new()
-        };
-
-        // Codex-style: transcript is not boxed; render as plain scrolling text.
-        // Keep a subtle focus tint by changing the base paragraph style.
-        let base_style = if self.focused {
-            Style::default().fg(Color::Cyan)
-        } else {
-            Style::default().fg(Color::Reset)
-        };
-
-        let para = Paragraph::new(visible)
-            .block(Block::default().style(base_style))
-            .wrap(Wrap { trim: false });
-
-        frame.render_widget(para, area);
-        self.dirty = false;
+        // In inline mode the transcript is appended above the viewport via `Terminal::insert_before`.
+        // The chat widget's "render" path is now just the live preview.
+        self.render_live_preview(frame, area);
     }
 
     fn is_dirty(&self) -> bool {
@@ -692,27 +540,20 @@ impl Component for ChatComponent {
             TuiEvent::Agent(agent_event) => {
                 match agent_event {
                     AgentEvent::TextDelta(delta) => self.append_assistant_delta(delta),
+                    AgentEvent::ThinkingDelta(delta) => self.append_thinking_delta(delta),
                     AgentEvent::ToolCallStart { id, name, args } => {
-                        self.items
-                            .push(ChatItem::ToolCard(ToolCallCard::new_running(
-                                id.clone(),
-                                name.clone(),
-                                args.clone(),
-                            )));
-                        self.last_toggle_idx = Some(self.items.len().saturating_sub(1));
+                        let args_summary = tool_args_summary(args);
+                        let mut msg = format!("• {name}");
+                        if !args_summary.is_empty() {
+                            msg.push_str(&format!("\n  └ {args_summary}"));
+                        }
+                        self.tool_names.insert(id.clone(), name.clone());
+                        self.show_tool_message(msg);
                     }
                     AgentEvent::ToolCallEnd { id, result } => {
-                        if let Some(idx) = self.items.iter().position(|item| match item {
-                            ChatItem::ToolCard(card) => card.id == *id,
-                            _ => false,
-                        }) {
-                            if let Some(ChatItem::ToolCard(card)) = self.items.get_mut(idx) {
-                                card.complete(result.clone());
-                            }
-                            self.last_toggle_idx = Some(idx);
-                        } else {
-                            self.show_tool_message(format!("Tool result ({id}): {result}"));
-                        }
+                        let status = tool_result_status(result);
+                        let tool_name = self.tool_names.remove(id).unwrap_or_else(|| "tool".into());
+                        self.show_tool_message(format!("  └ {tool_name}: {status}"));
                     }
                     AgentEvent::StepComplete { .. } => self.finish_streaming(),
                     AgentEvent::RepeatDetected { .. } => {
@@ -725,60 +566,96 @@ impl Component for ChatComponent {
             }
             TuiEvent::Key(key) => {
                 use crossterm::event::{KeyCode, KeyModifiers};
-                if !key.modifiers.is_empty() {
-                    return EventResult::default();
-                }
-
-                if key.code == KeyCode::Enter
-                    && let Some(idx) = self.last_toggle_idx
-                    && let Some(item) = self.items.get_mut(idx)
-                {
-                    match item {
-                        ChatItem::ToolCard(card) => card.toggle(),
-                        ChatItem::Thinking(block) => block.toggle(),
-                        ChatItem::Message(_) => {}
-                    }
-                    self.dirty = true;
-                    return EventResult::consumed();
-                }
-
-                // Scroll shortcuts.
-                match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        // Max scroll is computed lazily in render; approximate here as "some".
-                        // The exact clamp will happen in render.
-                        self.scroll_offset = self.scroll_offset.saturating_add(1);
-                        self.follow_tail = self.scroll_offset == 0;
-                        self.dirty = true;
-                        return EventResult::consumed();
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        self.scroll_down(1);
-                        return EventResult::consumed();
-                    }
-                    KeyCode::Char('g') => {
-                        // We'll clamp in render once we know max_scroll.
-                        self.scroll_offset = u16::MAX;
-                        self.follow_tail = false;
-                        self.dirty = true;
-                        return EventResult::consumed();
-                    }
-                    KeyCode::Char('G') => {
-                        self.scroll_to_bottom();
-                        return EventResult::consumed();
-                    }
-                    _ => {}
-                }
-
-                // Ctrl+L: clear screen (handled at app level) should not scroll chat.
-                if key.code == KeyCode::Char('l') && key.modifiers.contains(KeyModifiers::CONTROL) {
-                    return EventResult::default();
-                }
+                let _ = (key, KeyCode::Enter, KeyModifiers::NONE);
             }
-            TuiEvent::Mouse(_) | TuiEvent::Tick | TuiEvent::Shutdown => {}
+            TuiEvent::Paste(_) | TuiEvent::Mouse(_) | TuiEvent::Tick | TuiEvent::Shutdown => {}
         }
 
         EventResult::default()
+    }
+}
+
+fn tool_args_summary(args: &serde_json::Value) -> String {
+    use serde_json::Value;
+
+    fn kv(key: &str, value: &Value) -> Option<String> {
+        match value {
+            Value::Null => None,
+            Value::String(s) => Some(format!("{key}={}", s.trim())),
+            Value::Bool(b) => Some(format!("{key}={b}")),
+            Value::Number(n) => Some(format!("{key}={n}")),
+            Value::Array(arr) => Some(format!("{key}=[{}]", arr.len())),
+            Value::Object(map) => Some(format!("{key}={{{} keys}}", map.len())),
+        }
+    }
+
+    let Value::Object(map) = args else {
+        let s = args.to_string();
+        return truncate_one_line(&s, 140);
+    };
+
+    let preferred_keys = [
+        "file_path",
+        "path",
+        "query",
+        "url",
+        "command",
+        "mode",
+        "name",
+    ];
+
+    let mut parts = Vec::new();
+    for key in preferred_keys {
+        if let Some(value) = map.get(key)
+            && let Some(rendered) = kv(key, value)
+        {
+            parts.push(rendered);
+        }
+    }
+
+    if parts.is_empty() {
+        truncate_one_line(&args.to_string(), 140)
+    } else {
+        truncate_one_line(&parts.join(" "), 140)
+    }
+}
+
+fn tool_result_status(result: &serde_json::Value) -> &'static str {
+    if result.get("blocked").and_then(|v| v.as_bool()) == Some(true) {
+        return "blocked";
+    }
+    if result.get("error").is_some() {
+        return "error";
+    }
+    "ok"
+}
+
+fn truncate_one_line(text: &str, max_chars: usize) -> String {
+    let mut out = text.lines().next().unwrap_or("").trim().to_string();
+    if out.chars().count() <= max_chars {
+        return out;
+    }
+    out = out.chars().take(max_chars.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thinking_deltas_accumulate_into_thinking_panel_on_step_complete() {
+        let mut chat = ChatComponent::new(MarkdownRenderer::default());
+
+        let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::ThinkingDelta("a".to_string())));
+        let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::ThinkingDelta("b".to_string())));
+        let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::StepComplete {
+            step: 1,
+            summary: String::new(),
+        }));
+
+        assert_eq!(chat.last_thinking, "ab");
     }
 }
 
@@ -809,87 +686,4 @@ fn extract_thinking_blocks(text: &mut String) -> Vec<String> {
 
     blocks.retain(|b| !b.is_empty());
     blocks
-}
-
-fn render_box_top(width: u16, left: &str, right: &str, right_style: Style) -> Line<'static> {
-    let inner = width.saturating_sub(2).max(2) as usize;
-    let mut left_text = format!(" {left} ");
-    let mut right_text = format!(" {right} ");
-
-    if left_text.chars().count() > inner {
-        left_text = left_text.chars().take(inner).collect();
-    }
-    if right_text.chars().count() > inner {
-        right_text = right_text.chars().take(inner).collect();
-    }
-
-    // Place right-aligned marker at the end.
-    let left_len = left_text.chars().count();
-    let right_len = right_text.chars().count();
-    let gap = inner.saturating_sub(left_len + right_len);
-
-    Line::from(vec![
-        Span::raw("┌"),
-        Span::raw(left_text),
-        Span::raw("─".repeat(gap)),
-        Span::styled(right_text, right_style),
-        Span::raw("┐"),
-    ])
-}
-
-fn render_box_body(width: u16, label: &str, body: &str, style: Style) -> Vec<Line<'static>> {
-    let inner = width.saturating_sub(2).max(2) as usize;
-    let mut out = Vec::new();
-
-    out.push(Line::from(vec![
-        Span::raw("│ "),
-        Span::styled(format!("{label}:"), style.add_modifier(Modifier::BOLD)),
-        Span::raw(" ".repeat(inner.saturating_sub(label.len() + 2))),
-        Span::raw("│"),
-    ]));
-
-    for line in body.lines().take(10) {
-        let mut text = line.to_string();
-        if text.chars().count() > inner.saturating_sub(3) {
-            text = text.chars().take(inner.saturating_sub(3)).collect();
-        }
-        let padding = inner.saturating_sub(2).saturating_sub(text.chars().count());
-        out.push(Line::from(vec![
-            Span::raw("│ "),
-            Span::styled(text, style),
-            Span::raw(" ".repeat(padding)),
-            Span::raw("│"),
-        ]));
-    }
-    if body.lines().count() > 10 {
-        out.push(Line::from(vec![
-            Span::raw("│ "),
-            Span::styled("…".to_string(), style),
-            Span::raw(" ".repeat(inner.saturating_sub(3))),
-            Span::raw("│"),
-        ]));
-    }
-
-    out
-}
-
-fn render_box_hint(width: u16, hint: &str, style: Style) -> Line<'static> {
-    let inner = width.saturating_sub(2).max(2) as usize;
-    let mut text = hint.to_string();
-    if text.chars().count() > inner.saturating_sub(2) {
-        text = text.chars().take(inner.saturating_sub(2)).collect();
-    }
-    let padding = inner.saturating_sub(2).saturating_sub(text.chars().count());
-
-    Line::from(vec![
-        Span::raw("│ "),
-        Span::styled(text, style),
-        Span::raw(" ".repeat(padding)),
-        Span::raw("│"),
-    ])
-}
-
-fn render_box_bottom(width: u16) -> String {
-    let inner = width.saturating_sub(2).max(2) as usize;
-    format!("└{}┘", "─".repeat(inner))
 }

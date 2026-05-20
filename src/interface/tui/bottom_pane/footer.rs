@@ -24,6 +24,7 @@ pub(crate) struct FooterState {
     pub(crate) mode: FooterMode,
     pub(crate) is_task_running: bool,
     pub(crate) queue_len: usize,
+    pub(crate) use_shift_enter_hint: bool,
     pub(crate) model_label: String,
     pub(crate) session_label: String,
     pub(crate) message: String,
@@ -35,6 +36,7 @@ impl FooterState {
             mode: FooterMode::ComposerEmpty,
             is_task_running: false,
             queue_len: 0,
+            use_shift_enter_hint: false,
             model_label: "unknown".to_string(),
             session_label: "default".to_string(),
             message: String::new(),
@@ -53,7 +55,7 @@ impl FooterState {
                     // Minimal codex-style shortcut overlay as a multi-line footer isn't currently
                     // supported by this simplified FooterState renderer. Keep it single-line and
                     // show the most important keys.
-                    "Esc edit previous · Tab queue · Ctrl+T transcript · Ctrl+O copy · Alt+R raw"
+                    "Esc edit previous · Tab queue · Ctrl+T transcript · Ctrl+O copy · Alt+R raw · Alt+Y thinking"
                         .dim()
                 }
                 FooterMode::ComposerEmpty => {
@@ -75,7 +77,11 @@ impl FooterState {
                             "Tab to queue".cyan()
                         }
                     } else {
-                        "Enter to send · Shift+Enter newline".dim()
+                        if self.use_shift_enter_hint {
+                            "Enter to send · Shift+Enter newline".dim()
+                        } else {
+                            "Enter to send · Ctrl+J newline".dim()
+                        }
                     }
                 }
             }

@@ -241,6 +241,12 @@ fn send_event_notification(
             cx.send_notification(AgentNotification::SessionNotification(notif))
         }
 
+        AgentEvent::ThinkingDelta(_thinking) => {
+            // ACP channel does not have a dedicated "reasoning" block in this MVP.
+            // Skip to avoid leaking chain-of-thought in IDE integrations.
+            Ok(())
+        }
+
         AgentEvent::ToolCallStart { id, name, args } => {
             let update = SessionUpdate::ToolCall(
                 ToolCall::new(id.clone(), name.clone())
