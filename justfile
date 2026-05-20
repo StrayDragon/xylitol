@@ -17,7 +17,7 @@ lint:
 
 # Run cargo test.
 test:
-    cargo test
+    if command -v cargo-nextest >/dev/null; then cargo nextest run --profile ci --features dev-vt100; else cargo test --features dev-vt100; fi
 
 # Run all checks (qa = fmt-check + lint + test + doc-check).
 qa: fmt-check lint test doc-check
