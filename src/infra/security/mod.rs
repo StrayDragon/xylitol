@@ -403,6 +403,8 @@ mod tests {
                 blocked_domains: vec![],
             },
             resource_limits: ResourceLimits::default(),
+            #[cfg(feature = "infra-sandbox")]
+            sandbox: None,
         }
     }
 

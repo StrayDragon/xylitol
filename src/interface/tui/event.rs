@@ -30,6 +30,15 @@ pub(crate) enum AppAction {
     SetDiff(String),
     /// Queue a prompt while the agent is running.
     QueuePrompt(String),
+
+    /// Queue-or-submit semantics (Codex-style composer Tab key).
+    ///
+    /// - When the app is running: queue the draft.
+    /// - When idle: submit immediately (except for bang-shell drafts).
+    ///
+    /// This is handled at the app layer because the composer itself does not
+    /// own the "running" state.
+    QueueOrSubmit(String),
     /// Switch the active agent profile for future runs.
     SelectProfile(String),
     /// Switch the active session and load its history.
@@ -42,4 +51,19 @@ pub(crate) enum AppAction {
     ShowHistorySearch,
     /// Load a string into the input buffer (without submitting).
     LoadInput(String),
+
+    /// Prime backtrack mode (Esc on empty composer).
+    BacktrackPrime,
+
+    /// Edit last user message (Esc Esc on empty composer).
+    BacktrackEditLast,
+
+    /// Open transcript overlay.
+    OpenTranscript,
+
+    /// Copy latest assistant response as Markdown.
+    CopyLastResponse,
+
+    /// Toggle raw output mode.
+    ToggleRawOutput,
 }

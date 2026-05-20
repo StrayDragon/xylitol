@@ -91,7 +91,7 @@ impl Completer {
         trimmed.to_string()
     }
 
-    fn matches_for_prefix(&self, prefix: &str) -> Vec<String> {
+    pub(crate) fn matches_for_prefix(&self, prefix: &str) -> Vec<String> {
         let mut node = &self.trie;
         for ch in prefix.chars() {
             let Some(next) = node.children.get(&ch) else {

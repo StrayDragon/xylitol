@@ -6,10 +6,11 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block, Paragraph, Wrap};
 
 use crate::agent::r#loop::{AgentError, AgentEvent};
 
+use super::chat_style;
 use super::component::{Component, EventResult};
 use super::event::TuiEvent;
 use super::markdown::MarkdownRenderer;
@@ -30,6 +31,25 @@ pub(crate) struct Message {
     cached_width: u16,
     cached_lines: Vec<Line<'static>>,
     dirty: bool,
+}
+
+impl Message {
+    pub(crate) fn role(&self) -> &'static str {
+        match self.role {
+            Role::User => "user",
+            Role::Assistant => "assistant",
+            Role::System => "system",
+            Role::Error => "error",
+        }
+    }
+
+    pub(crate) fn content(&self) -> &str {
+        &self.content
+    }
+
+    pub(crate) fn streaming(&self) -> bool {
+        self.streaming
+    }
 }
 
 impl Message {
@@ -313,6 +333,7 @@ enum ChatItem {
 pub(crate) struct ChatComponent {
     markdown: MarkdownRenderer,
     items: Vec<ChatItem>,
+    raw_output: bool,
     /// Scroll offset measured from the bottom (0 = show newest).
     scroll_offset: u16,
     follow_tail: bool,
@@ -326,6 +347,7 @@ impl ChatComponent {
         Self {
             markdown,
             items: Vec::new(),
+            raw_output: false,
             scroll_offset: 0,
             follow_tail: true,
             focused: false,
@@ -365,6 +387,30 @@ impl ChatComponent {
         }
         self.dirty = true;
         true
+    }
+
+    pub(crate) fn set_raw_output(&mut self, raw: bool) {
+        if self.raw_output != raw {
+            self.raw_output = raw;
+            // Invalidate markdown caches so the next draw uses the selected renderer.
+            for item in &mut self.items {
+                match item {
+                    ChatItem::Message(msg) => {
+                        msg.cached_width = 0;
+                        msg.dirty = true;
+                    }
+                    ChatItem::ToolCard(card) => {
+                        card.cached_width = 0;
+                        card.dirty = true;
+                    }
+                    ChatItem::Thinking(block) => {
+                        block.cached_width = 0;
+                        block.dirty = true;
+                    }
+                }
+            }
+            self.dirty = true;
+        }
     }
 
     pub(crate) fn add_user_message(&mut self, text: &str) {
@@ -490,17 +536,49 @@ impl ChatComponent {
         for item in &mut self.items {
             match item {
                 ChatItem::Message(msg) => {
-                    let (label, style) = msg.role_label();
-                    let suffix = if msg.streaming { " ▍" } else { "" };
-                    lines.push(Line::from(Span::styled(format!("{label}{suffix}"), style)));
-
                     if msg.dirty || msg.cached_width != width {
                         msg.cached_width = width;
-                        msg.cached_lines = self.markdown.render(&msg.content, width);
+                        msg.cached_lines = if self.raw_output {
+                            msg.content
+                                .trim_end_matches(['\r', '\n'])
+                                .lines()
+                                .map(|l| Line::from(l.to_string()))
+                                .collect::<Vec<_>>()
+                        } else {
+                            self.markdown.render(&msg.content, width)
+                        };
                         msg.dirty = false;
                     }
-                    lines.extend(msg.cached_lines.clone());
-                    lines.push(Line::from(""));
+
+                    match msg.role {
+                        Role::User => {
+                            lines.extend(chat_style::prefix_user_lines(msg.cached_lines.clone()));
+                            lines.push(Line::from(""));
+                        }
+                        Role::Assistant => {
+                            lines.extend(chat_style::prefix_assistant_lines(
+                                msg.cached_lines.clone(),
+                                msg.streaming,
+                            ));
+                            lines.push(Line::from(""));
+                        }
+                        Role::System => {
+                            let mut system_lines = msg.cached_lines.clone();
+                            for line in &mut system_lines {
+                                line.style = Style::default().fg(Color::DarkGray);
+                            }
+                            lines.extend(system_lines);
+                            lines.push(Line::from(""));
+                        }
+                        Role::Error => {
+                            let mut error_lines = msg.cached_lines.clone();
+                            for line in &mut error_lines {
+                                line.style = Style::default().fg(Color::Red);
+                            }
+                            lines.extend(error_lines);
+                            lines.push(Line::from(""));
+                        }
+                    }
                 }
                 ChatItem::ToolCard(card) => {
                     lines.extend(card.render_lines(width));
@@ -515,14 +593,64 @@ impl ChatComponent {
 
         lines
     }
+
+    pub(crate) fn last_user_message(&self) -> Option<String> {
+        self.items.iter().rev().find_map(|item| match item {
+            ChatItem::Message(msg) if msg.role == Role::User => Some(msg.content.clone()),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn last_assistant_message(&self) -> Option<String> {
+        self.items.iter().rev().find_map(|item| match item {
+            ChatItem::Message(msg) if msg.role == Role::Assistant => Some(msg.content.clone()),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn transcript_as_markdown(&self) -> String {
+        let mut out = String::new();
+        for item in &self.items {
+            match item {
+                ChatItem::Message(msg) => {
+                    let label = match msg.role {
+                        Role::User => "User",
+                        Role::Assistant => "Assistant",
+                        Role::System => "System",
+                        Role::Error => "Error",
+                    };
+                    out.push_str(&format!("## {label}\n\n"));
+                    out.push_str(&msg.content);
+                    out.push_str("\n\n");
+                }
+                ChatItem::ToolCard(card) => {
+                    out.push_str(&format!("## Tool: {}\n\n", card.name));
+                    let args = serde_json::to_string_pretty(&card.args)
+                        .unwrap_or_else(|_| card.args.to_string());
+                    out.push_str(&format!("```json\n{args}\n```\n\n"));
+                    if let Some(result) = &card.result {
+                        let result = serde_json::to_string_pretty(result)
+                            .unwrap_or_else(|_| result.to_string());
+                        out.push_str(&format!("```json\n{result}\n```\n\n"));
+                    }
+                }
+                ChatItem::Thinking(block) => {
+                    out.push_str("## Thinking\n\n");
+                    out.push_str(&block.content);
+                    out.push_str("\n\n");
+                }
+            }
+        }
+        out
+    }
 }
 
 impl Component for ChatComponent {
     fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let inner_width = area.width.saturating_sub(2);
+        let inner_width = area.width.max(1);
         let mut lines = self.render_lines(inner_width);
 
-        let view_height = area.height.saturating_sub(2);
+        let view_height = area.height.max(1);
         let total_lines = lines.len() as u16;
         let max_scroll = total_lines.saturating_sub(view_height);
         let scroll = self.scroll_offset.min(max_scroll);
@@ -535,32 +663,16 @@ impl Component for ChatComponent {
             Vec::new()
         };
 
-        let title = if max_scroll == 0 {
-            " Chat ".to_string()
+        // Codex-style: transcript is not boxed; render as plain scrolling text.
+        // Keep a subtle focus tint by changing the base paragraph style.
+        let base_style = if self.focused {
+            Style::default().fg(Color::Cyan)
         } else {
-            format!(
-                " Chat  ({} / {}) ",
-                max_scroll.saturating_sub(scroll),
-                max_scroll
-            )
-        };
-
-        let border_style = if self.focused {
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(Color::Reset)
         };
 
         let para = Paragraph::new(visible)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(title)
-                    .border_style(border_style)
-                    .title_style(border_style),
-            )
+            .block(Block::default().style(base_style))
             .wrap(Wrap { trim: false });
 
         frame.render_widget(para, area);

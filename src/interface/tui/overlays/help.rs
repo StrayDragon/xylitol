@@ -46,19 +46,24 @@ impl Component for HelpOverlay {
             ]),
             Line::from(""),
             Line::from("Navigation"),
-            Line::from("  Tab          switch focus (input/chat)"),
+            Line::from("  Tab          queue (running) / submit (idle, except '!')"),
+            Line::from("  Shift+Tab    switch focus (input/chat)"),
             Line::from("  j/k, ↑/↓     scroll chat (when focused)"),
             Line::from("  g / G        top / bottom"),
             Line::from(""),
             Line::from("Input"),
             Line::from("  Enter        submit"),
             Line::from("  Shift+Enter  newline"),
+            Line::from("  Esc          cancel draft / backtrack"),
             Line::from("  Ctrl+K/U/W   kill-line / kill-backward / delete-word"),
             Line::from("  Ctrl+A/E     line start / end"),
             Line::from(""),
             Line::from("Runtime"),
             Line::from("  Ctrl+C       interrupt running agent"),
             Line::from("  Ctrl+L       clear chat"),
+            Line::from("  Ctrl+T       transcript"),
+            Line::from("  Ctrl+O       copy last response"),
+            Line::from("  Alt+R        raw output"),
             Line::from("  Ctrl+D       quit"),
         ];
 
@@ -66,7 +71,7 @@ impl Component for HelpOverlay {
             .block(block)
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: false })
-            .style(Style::default().fg(Color::White));
+            .style(Style::default().fg(Color::Reset));
         frame.render_widget(para, modal);
 
         self.dirty = false;
