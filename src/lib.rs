@@ -19,3 +19,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 pub async fn run_review_demo() -> Result<(), String> {
     interface::diff_review::run_demo().await
 }
+
+#[cfg(test)]
+mod tests;

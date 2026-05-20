@@ -1,0 +1,15 @@
+---
+source: tests/support/mod.rs
+expression: screen
+---
+› Please find the function definition.
+
+
+
+• search └ path=src/interface/tui/app.rs query=fn copy_to_clipboard
+
+
+└ search: ok
+
+
+Found it in src/interface/tui/app.rs.
