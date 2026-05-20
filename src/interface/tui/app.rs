@@ -20,15 +20,18 @@ use crate::infra::config::AppConfig;
 use crate::infra::security::SecurityEngine;
 
 use super::approval::{ApprovalHub, SecureApprovalToolWrapper, requires_approval};
+use super::bottom_pane::footer::{FooterMode, FooterState};
 use super::chat::ChatComponent;
 use super::component::Component;
 use super::component::OverlayStack;
 use super::event::{AppAction, TuiEvent};
 use super::history::HistoryStore;
 use super::input::InputComponent;
+use super::keymap::{AppKeyAction, ComposerKeyAction, RuntimeKeymap};
 use super::markdown::MarkdownRenderer;
 use super::overlays::{
     ApprovalOverlay, HelpOverlay, HistorySearchOverlay, SelectorKind, SelectorOverlay,
+    TranscriptOverlay,
 };
 use super::slash::{Completer, SlashCommand};
 use super::status_bar::StatusBar;
@@ -53,7 +56,10 @@ pub(crate) struct App {
     tool_panel: ToolPanelComponent,
     input: InputComponent,
     status_bar: StatusBar,
+    footer: FooterState,
     overlays: OverlayStack,
+
+    keymap: RuntimeKeymap,
 
     app_config: AppConfig,
     session_service: Arc<dyn SessionService>,
@@ -63,6 +69,10 @@ pub(crate) struct App {
     running: bool,
     should_quit: bool,
     queued_prompts: Vec<String>,
+
+    backtrack_primed: bool,
+
+    raw_output: bool,
 
     focus: Focus,
     session_id: String,
@@ -104,6 +114,9 @@ impl App {
         let completer = Completer::new();
         let mut input = InputComponent::new(completer);
         let mut status_bar = StatusBar::new();
+        let mut footer = FooterState::new();
+
+        let keymap = RuntimeKeymap::built_in_defaults();
 
         status_bar.set_model(format!(
             "{}:{}",
@@ -111,6 +124,12 @@ impl App {
             profile.model_config.model
         ));
         status_bar.set_session("default");
+        footer.model_label = format!(
+            "{}:{}",
+            profile.model_config.provider_name(),
+            profile.model_config.model
+        );
+        footer.session_label = "default".to_string();
 
         let history = match HistoryStore::load(200) {
             Ok(store) => store,
@@ -157,7 +176,10 @@ impl App {
             tool_panel: ToolPanelComponent::new(),
             input,
             status_bar,
+            footer,
             overlays: OverlayStack::new(),
+
+            keymap,
             app_config,
             session_service,
             active_profile: profile.name.clone(),
@@ -165,6 +187,10 @@ impl App {
             running: false,
             should_quit: false,
             queued_prompts: Vec::new(),
+
+            backtrack_primed: false,
+
+            raw_output: false,
             focus: Focus::Input,
             session_id: "tui-session".into(),
             history,
@@ -201,6 +227,7 @@ impl App {
     pub(crate) fn set_running(&mut self, running: bool) {
         self.running = running;
         self.status_bar.set_running(running);
+        self.footer.is_task_running = running;
     }
 
     pub(crate) fn clear(&mut self) {
@@ -208,7 +235,12 @@ impl App {
         self.tool_panel.clear();
         self.queued_prompts.clear();
         self.status_bar.set_queue_len(0);
-        self.status_bar.set_message("Cleared.");
+        self.footer.queue_len = 0;
+        self.footer.message = "Cleared.".to_string();
+    }
+
+    fn last_user_message(&self) -> Option<String> {
+        self.chat.last_user_message()
     }
 
     fn apply_profile_selection(&mut self, name: String) {
@@ -221,12 +253,17 @@ impl App {
                     profile.model_config.provider_name(),
                     profile.model_config.model
                 ));
-                self.status_bar.set_message(format!("Profile: {name}"));
+                self.footer.model_label = format!(
+                    "{}:{}",
+                    profile.model_config.provider_name(),
+                    profile.model_config.model
+                );
+                self.footer.message = format!("Profile: {name}");
             }
             Err(err) => {
                 self.status_bar.set_model(name.clone());
-                self.status_bar
-                    .set_message(format!("Profile '{name}' not ready: {err}"));
+                self.footer.model_label = name.clone();
+                self.footer.message = format!("Profile '{name}' not ready: {err}");
             }
         }
     }
@@ -234,24 +271,63 @@ impl App {
     fn apply_session_selection(&mut self, session_id: String) {
         self.session_id = session_id.clone();
         self.status_bar.set_session(session_id);
-        self.status_bar.set_message("Session switched.");
+        self.footer.session_label = self.session_id.clone();
+        self.footer.message = "Session switched.".to_string();
     }
 
     fn apply_theme_selection(&mut self, theme: String) {
         if self.chat.set_theme(&theme) {
-            self.status_bar.set_message(format!("Theme: {theme}"));
+            self.footer.message = format!("Theme: {theme}");
         } else {
-            self.status_bar
-                .set_message(format!("Theme not found: {theme}"));
+            self.footer.message = format!("Theme not found: {theme}");
         }
     }
 
-    fn bump_tool_panel_height(&mut self, delta: i16) {
-        let area_h = self.last_area.height.max(1);
-        let max_tool = (area_h / 2).saturating_sub(1) as i16;
-        let current = self.tool_panel_height as i16;
-        let next = (current + delta).clamp(0, max_tool.max(0));
-        self.tool_panel_height = next as u16;
+    fn handle_app_key_action(&mut self, action: AppKeyAction) -> Option<AppAction> {
+        match action {
+            AppKeyAction::ToggleShortcutOverlay => {
+                if self.running || !self.input.is_empty() || !self.overlays.is_empty() {
+                    return None;
+                }
+
+                self.footer.toggle_shortcuts_overlay();
+                None
+            }
+            AppKeyAction::Quit => {
+                self.should_quit = true;
+                None
+            }
+            AppKeyAction::Interrupt => {
+                if self.running {
+                    Some(AppAction::Interrupt)
+                } else {
+                    None
+                }
+            }
+            AppKeyAction::Clear => Some(AppAction::Clear),
+            AppKeyAction::PreviewDiff => {
+                #[cfg(feature = "ui-review")]
+                if !self.diff_hunks.is_empty() {
+                    self.overlays
+                        .push(Box::new(DiffPreviewOverlay::new(self.diff_hunks.clone())));
+                } else {
+                    self.footer.message = "No diffs to preview.".to_string();
+                }
+
+                None
+            }
+
+            AppKeyAction::OpenTranscript => Some(AppAction::OpenTranscript),
+            AppKeyAction::CopyLastResponse => Some(AppAction::CopyLastResponse),
+            AppKeyAction::ToggleRawOutput => Some(AppAction::ToggleRawOutput),
+        }
+    }
+
+    fn handle_composer_key_action(&mut self, action: ComposerKeyAction) -> Option<AppAction> {
+        match action {
+            ComposerKeyAction::OpenExternalEditor => Some(AppAction::OpenEditor(self.input.text())),
+            ComposerKeyAction::ShowHistorySearch => Some(AppAction::ShowHistorySearch),
+        }
     }
 
     pub(crate) fn update(&mut self, event: TuiEvent) -> Option<AppAction> {
@@ -280,6 +356,7 @@ impl App {
                         if let Some(next) = self.queued_prompts.first().cloned() {
                             self.queued_prompts.remove(0);
                             self.status_bar.set_queue_len(self.queued_prompts.len());
+                            self.footer.queue_len = self.queued_prompts.len();
                             next_action = Some(AppAction::RunPrompt(next));
                         }
                     }
@@ -303,8 +380,7 @@ impl App {
                         diff_hunks,
                         tx,
                     )));
-                    self.status_bar
-                        .set_message(format!("Approval required: {name}"));
+                    self.footer.message = format!("Approval required: {name}");
                 }
 
                 #[cfg(feature = "ui-review")]
@@ -331,56 +407,20 @@ impl App {
                 next_action
             }
             TuiEvent::Key(key) => {
-                use crossterm::event::{KeyCode, KeyModifiers};
+                if let Some(app_action) = self.keymap.resolve_app(&key) {
+                    if let Some(out) = self.handle_app_key_action(app_action) {
+                        return Some(out);
+                    }
+                    return None;
+                }
 
-                // Global shortcuts.
-                match key.code {
-                    KeyCode::Char('?') => {
-                        self.overlays.push(Box::new(HelpOverlay::new()));
-                        return None;
+                if self.focus == Focus::Input
+                    && let Some(composer_action) = self.keymap.resolve_composer(&key)
+                {
+                    if let Some(out) = self.handle_composer_key_action(composer_action) {
+                        return Some(out);
                     }
-                    KeyCode::Tab => {
-                        self.focus = match self.focus {
-                            Focus::Input => Focus::Chat,
-                            Focus::Chat => Focus::Input,
-                        };
-                        return None;
-                    }
-                    KeyCode::Up if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.bump_tool_panel_height(1);
-                        return None;
-                    }
-                    KeyCode::Down if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.bump_tool_panel_height(-1);
-                        return None;
-                    }
-                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.should_quit = true;
-                        return None;
-                    }
-                    KeyCode::Char('c')
-                        if key.modifiers.contains(KeyModifiers::CONTROL) && self.running =>
-                    {
-                        return Some(AppAction::Interrupt);
-                    }
-                    KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        return Some(AppAction::Clear);
-                    }
-                    KeyCode::Char('r')
-                        if key.modifiers.contains(KeyModifiers::CONTROL)
-                            && self.focus == Focus::Chat =>
-                    {
-                        #[cfg(feature = "ui-review")]
-                        if !self.diff_hunks.is_empty() {
-                            self.overlays
-                                .push(Box::new(DiffPreviewOverlay::new(self.diff_hunks.clone())));
-                        } else {
-                            self.status_bar.set_message("No diffs to preview.");
-                        }
-
-                        return None;
-                    }
-                    _ => {}
+                    return None;
                 }
 
                 // Focused component routing.
@@ -388,7 +428,38 @@ impl App {
                     Focus::Input => {
                         let result = self.input.handle_event(&TuiEvent::Key(key));
                         match result.action {
+                            Some(AppAction::OpenTranscript) => {
+                                let transcript = self.chat.transcript_as_markdown();
+                                self.overlays
+                                    .push(Box::new(TranscriptOverlay::new(transcript)));
+                                None
+                            }
+                            Some(AppAction::CopyLastResponse) => {
+                                if let Some(text) = self.chat.last_assistant_message() {
+                                    if let Err(err) = copy_to_clipboard(&text) {
+                                        self.footer.message = err;
+                                    } else {
+                                        self.footer.message = "Copied last response.".to_string();
+                                    }
+                                } else {
+                                    self.footer.message = "No assistant response yet.".to_string();
+                                }
+                                None
+                            }
+                            Some(AppAction::ToggleRawOutput) => {
+                                self.raw_output = !self.raw_output;
+                                self.chat.set_raw_output(self.raw_output);
+                                self.input.set_raw_output(self.raw_output);
+                                let msg = if self.raw_output {
+                                    "Raw output: ON"
+                                } else {
+                                    "Raw output: OFF"
+                                };
+                                self.footer.message = msg.to_string();
+                                None
+                            }
                             Some(AppAction::RunPrompt(text)) => {
+                                self.backtrack_primed = false;
                                 // Slash commands run locally.
                                 if let Some(cmd) = SlashCommand::parse(&text) {
                                     match cmd {
@@ -443,11 +514,59 @@ impl App {
                                 if self.running {
                                     self.queued_prompts.push(text.clone());
                                     self.status_bar.set_queue_len(self.queued_prompts.len());
+                                    self.footer.queue_len = self.queued_prompts.len();
                                     return Some(AppAction::QueuePrompt(text));
                                 }
 
                                 self.set_running(true);
                                 Some(AppAction::RunPrompt(text))
+                            }
+                            Some(AppAction::QueueOrSubmit(text)) => {
+                                self.backtrack_primed = false;
+                                // Persist history.
+                                let _ = self.history.add(&text);
+                                self.input.set_history(
+                                    self.history.iter().map(|s| s.to_string()).collect(),
+                                );
+
+                                // Add to chat now (optimistic).
+                                self.chat.add_user_message(&text);
+
+                                if self.running {
+                                    self.queued_prompts.push(text.clone());
+                                    self.status_bar.set_queue_len(self.queued_prompts.len());
+                                    self.footer.queue_len = self.queued_prompts.len();
+                                    return Some(AppAction::QueuePrompt(text));
+                                }
+
+                                self.set_running(true);
+                                Some(AppAction::RunPrompt(text))
+                            }
+                            Some(AppAction::BacktrackPrime) => {
+                                if self.running {
+                                    return None;
+                                }
+                                if self.backtrack_primed {
+                                    return Some(AppAction::BacktrackEditLast);
+                                }
+
+                                self.backtrack_primed = true;
+                                self.footer.message =
+                                    "Backtrack: press Esc again to edit last message.".to_string();
+                                None
+                            }
+                            Some(AppAction::BacktrackEditLast) => {
+                                if self.running {
+                                    return None;
+                                }
+                                self.backtrack_primed = false;
+                                if let Some(last) = self.last_user_message() {
+                                    self.input.load_text(&last);
+                                    self.footer.message = "Editing last message.".to_string();
+                                } else {
+                                    self.footer.message = "No previous user message.".to_string();
+                                }
+                                None
                             }
                             Some(other) => Some(other),
                             None => None,
@@ -500,74 +619,64 @@ impl App {
 
     pub(crate) fn render(&mut self, frame: &mut ratatui::Frame) {
         let area = frame.area();
-        let input_h = self.input.desired_height().saturating_add(2);
-
-        let max_tool_h = (area.height / 2).saturating_sub(1);
-        let tool_h = self.tool_panel_height.min(max_tool_h);
+        // Codex-style layout: transcript + bottom pane (composer + footer).
+        // We temporarily keep the legacy tool panel disabled by default (height=0) so the layout
+        // matches codex visually. Future work can re-introduce tool output as inline transcript
+        // items instead of a separate panel.
+        let footer_h = 1u16;
+        let input_h = self.input.desired_height();
+        let bottom_h = input_h.saturating_add(footer_h).max(2);
 
         let size_changed = self.last_area != area;
-        let input_changed = self.last_input_height != input_h;
-        let tool_changed = self.last_tool_panel_height != tool_h;
-        if size_changed || input_changed || tool_changed {
+        let input_changed = self.last_input_height != bottom_h;
+        if size_changed || input_changed {
             self.last_area = area;
-            self.last_input_height = input_h;
-            self.last_tool_panel_height = tool_h;
+            self.last_input_height = bottom_h;
         }
 
-        let chunks = if tool_h > 0 {
-            Layout::default()
-                .direction(Direction::Vertical)
-                .constraints(
-                    [
-                        Constraint::Min(1),
-                        Constraint::Length(tool_h),
-                        Constraint::Length(input_h),
-                        Constraint::Length(1),
-                    ]
-                    .as_ref(),
-                )
-                .split(area)
-        } else {
-            Layout::default()
-                .direction(Direction::Vertical)
-                .constraints(
-                    [
-                        Constraint::Min(1),
-                        Constraint::Length(input_h),
-                        Constraint::Length(1),
-                    ]
-                    .as_ref(),
-                )
-                .split(area)
-        };
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(1), Constraint::Length(bottom_h)].as_ref())
+            .split(area);
 
-        if tool_h > 0 {
-            self.chat_area = chunks[0];
-            self.tool_area = chunks[1];
-            self.input_area = chunks[2];
-            self.status_area = chunks[3];
-        } else {
-            self.chat_area = chunks[0];
-            self.tool_area = Rect::new(0, 0, 0, 0);
-            self.input_area = chunks[1];
-            self.status_area = chunks[2];
-        }
+        self.chat_area = chunks[0];
+        self.tool_area = Rect::new(0, 0, 0, 0);
+        self.input_area = Rect::new(
+            chunks[1].x,
+            chunks[1].y,
+            chunks[1].width,
+            chunks[1].height.saturating_sub(footer_h).max(1),
+        );
+        self.status_area = Rect::new(
+            chunks[1].x,
+            chunks[1]
+                .y
+                .saturating_add(chunks[1].height.saturating_sub(footer_h)),
+            chunks[1].width,
+            footer_h,
+        );
 
         self.chat.set_focused(self.focus == Focus::Chat);
-        self.tool_panel.set_focused(self.focus == Focus::Chat);
         self.input.set_focused(self.focus == Focus::Input);
 
         // Ratatui uses immediate-mode rendering: every `Terminal::draw` starts from an empty buffer.
         // We must render all visible components every frame; "dirty" flags should only be used to
         // decide whether a draw is needed at all, not to skip rendering within a draw.
-        self.chat.render(frame, chunks[0]);
-        if tool_h > 0 {
-            self.tool_panel.render(frame, chunks[1]);
+        self.chat.render(frame, self.chat_area);
+        self.input.render(frame, self.input_area);
+
+        // Footer mode: reflect current composer state and backtrack priming.
+        // Preserve overlay state so `?` toggles persist until dismissed.
+        if self.footer.mode != FooterMode::ShortcutOverlay {
+            self.footer.mode = if self.backtrack_primed {
+                FooterMode::EscHint
+            } else if self.input.is_empty() {
+                FooterMode::ComposerEmpty
+            } else {
+                FooterMode::ComposerHasDraft
+            };
         }
-        let input_idx = if tool_h > 0 { 2 } else { 1 };
-        self.input.render(frame, chunks[input_idx]);
-        let status_idx = if tool_h > 0 { 3 } else { 2 };
-        self.status_bar.render(frame, chunks[status_idx]);
+        self.footer.render(self.status_area, frame.buffer_mut());
 
         if !self.overlays.is_empty() {
             self.overlays.render_all(frame, area);
@@ -945,6 +1054,16 @@ fn handle_action(
         }
         AppAction::SetDiff(_diff) => {}
         AppAction::QueuePrompt(_prompt) => {}
+        AppAction::QueueOrSubmit(_prompt) => {
+            // This action is intended to be handled in `App::update` when the
+            // composer has focus. If it reaches here, ignore it.
+        }
+        AppAction::BacktrackPrime | AppAction::BacktrackEditLast => {
+            // These actions are also handled in `App::update`.
+        }
+        AppAction::OpenTranscript | AppAction::CopyLastResponse | AppAction::ToggleRawOutput => {
+            // These actions are also handled in `App::update`.
+        }
         AppAction::SelectProfile(name) => {
             app.apply_profile_selection(name);
         }
@@ -957,10 +1076,10 @@ fn handle_action(
         AppAction::OpenEditor(text) => match open_editor(terminal, input_paused, &text) {
             Ok(edited) => {
                 app.input.load_text(&edited);
-                app.status_bar.set_message("Edited in $EDITOR.");
+                app.footer.message = "Edited in $EDITOR.".to_string();
             }
             Err(err) => {
-                app.status_bar.set_message(err);
+                app.footer.message = err;
             }
         },
         AppAction::ShowHistorySearch => {
@@ -975,7 +1094,7 @@ fn handle_action(
         }
         AppAction::LoadInput(text) => {
             app.input.load_text(&text);
-            app.status_bar.set_message("Loaded from history.");
+            app.footer.message = "Loaded from history.".to_string();
         }
     }
 }
@@ -1059,4 +1178,49 @@ fn open_editor(
     let edited = std::fs::read_to_string(&path).unwrap_or_default();
     let _ = std::fs::remove_file(&path);
     Ok(edited)
+}
+
+fn copy_to_clipboard(text: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let mut child = Command::new("pbcopy")
+            .stdin(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to run pbcopy: {e}"))?;
+        {
+            let stdin = child
+                .stdin
+                .as_mut()
+                .ok_or_else(|| "Failed to open pbcopy stdin".to_string())?;
+            stdin
+                .write_all(text.as_bytes())
+                .map_err(|e| format!("Failed to write to pbcopy: {e}"))?;
+        }
+        let status = child
+            .wait()
+            .map_err(|e| format!("Failed to wait for pbcopy: {e}"))?;
+        if status.success() {
+            return Ok(());
+        }
+        Err(format!("pbcopy exited with {status}"))
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+            .as_millis();
+        let path =
+            std::env::temp_dir().join(format!("xylitol-copy-{}-{}.md", std::process::id(), ts));
+        std::fs::write(&path, text)
+            .map_err(|e| format!("Clipboard not supported; wrote to {path:?}: {e}"))?;
+        Err(format!(
+            "Clipboard not supported; wrote to {}",
+            path.display()
+        ))
+    }
 }

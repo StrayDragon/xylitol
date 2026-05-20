@@ -12,7 +12,7 @@ llman_spec_evidence:
 kind: llman.sdd.spec
 name: "tui-interface"
 purpose: "TBD - created by archiving change c80-add-tui. Update purpose after archive."
-requirements[26]{req_id,title,statement}:
+requirements[36]{req_id,title,statement}:
   r1,"component-architecture","System MUST implement a Component trait with render(&mut self, f, area), is_dirty(), mark_clean(), and handle_event() methods for all major TUI components."
   r2,"event-driven-ui","System MUST consume AgentEvent stream via tokio::select! and update TUI in real-time with dirty-flag differential rendering."
   r3,"markdown-rendering","System MUST render markdown via pulldown-cmark (CommonMark spec) with syntect syntax highlighting for code blocks."
@@ -39,7 +39,17 @@ requirements[26]{req_id,title,statement}:
   r24,"initial-paint","System MUST render the first TUI frame immediately after entering the alternate screen, before waiting for the first user input or tick event, so the user never sees a blank screen at startup."
   r25,"full-frame-render","System MUST render all visible TUI components on every `Terminal::draw` frame; dirty flags MUST only control whether a draw is scheduled, not whether individual components render within a frame."
   r26,"quit-cleanup","System MUST exit interactive mode on Ctrl+D (or /quit) without hanging and MUST restore the terminal (leave alternate screen, disable raw mode, show cursor)."
-scenarios[26]{req_id,id,given,when,then}:
+  r27,"codex-parity-keymap","System MUST provide a RuntimeKeymap abstraction (KeyBinding + context maps) and route TUI shortcuts through it, instead of matching raw KeyCode values directly."
+  r28,"composer-tab-queue","System MUST implement Codex-style composer semantics where Tab queues the current draft while an agent task is running; when idle it behaves as submit except for bang-shell drafts."
+  r29,"bang-shell-special-case","System MUST treat drafts starting with '!' as shell-mode drafts; when idle, Tab MUST NOT submit bang-shell drafts."
+  r30,"composer-esc-cancel","System MUST implement Codex-style Esc handling in the composer: Esc dismisses any active popup; otherwise Esc cancels (clears) the current draft without quitting the app. When the composer is empty, Esc MUST prime backtrack rather than doing nothing."
+  r31,"backtrack-esc-esc","When the composer is empty and the agent is idle, System MUST support a minimal backtrack flow where pressing Esc twice loads the last user message into the composer for editing."
+  r32,"transcript-overlay",System MUST provide a transcript overlay toggled by Ctrl+T that shows the current conversation transcript and can be dismissed with Esc/q.
+  r33,"copy-last-response","System MUST support copying the latest assistant response as Markdown via Ctrl+O (macOS pbcopy) with a cross-platform fallback."
+  r34,"codex-style-layout","System MUST render the interactive TUI using a Codex-style transcript + bottom-pane layout (without separate boxed Chat/Tools/Input panels), while preserving xylitol backend semantics."
+  r35,"codex-style-footer","System MUST render Codex-style footer/statusline hints (queue, shortcuts, running state) instead of the legacy StatusBar widget."
+  r36,"codex-style-colors","System MUST follow Codex TUI style constraints (prefer default fg + dim, cyan for hints/selection, magenta for Codex identity; avoid heavy box borders) to match Codex look-and-feel."
+scenarios[36]{req_id,id,given,when,then}:
   r1,happy,Component trait is defined,each major component implements it,is_dirty returns correct state after mutations
   r2,happy,agent emits TextDelta events via agent_tx channel,"App::handle_agent_event processes them",chat component marks dirty and content updates on next render
   r3,happy,"assistant message contains markdown with code blocks, lists, links","MarkdownRenderer::render() is called",output contains correctly styled ratatui Lines with syntax highlighting
@@ -55,7 +65,7 @@ scenarios[26]{req_id,id,given,when,then}:
   r13,happy,user types text in input then presses Ctrl+G,$EDITOR (or vim) opens with the text,user saves and exits; text is read back into the input area
   r14,happy,user presses Ctrl+R during input,history search overlay opens,fuzzy matching against history file; Enter loads selected entry into input
   r15,happy,mouse scroll wheel is used over the chat area,"App handles MouseEvent::ScrollDown",chat scrolls down by N lines
-  r16,happy,user presses Tab to cycle focus,"App::cycle_focus() changes focus field",focused component gets a highlighted border (cyan) vs dim border for unfocused
+  r16,happy,user presses Shift+Tab to cycle focus,"App::cycle_focus() changes focus field",focused component gets a highlighted border (cyan) vs dim border for unfocused
   r17,happy,tool panel is visible and user presses Ctrl+Up,"tool panel Constraint::Length increases by 1",layout adjusts; chat area shrinks accordingly
   r18,happy,agent calls a tool that SecurityPolicy flags as needing approval,ToolCallStart triggers ApprovalOverlay.prompt(),overlay shows tool name and args; user selects Allow; tool executes
   r19,happy,agent completes a step with file edits,StepComplete event fires with diffs,DiffPreviewOverlay.set_diff() is called; Ctrl+R shows the diff
@@ -66,4 +76,14 @@ scenarios[26]{req_id,id,given,when,then}:
   r24,happy,TUI starts and enters alternate screen,initial render is performed,input box and status bar are visible without requiring key press
   r25,happy,event loop runs and no new events occur,a redraw happens (tick/agent update/etc),previously rendered UI remains visible (no blank/black frame)
   r26,happy,user is in interactive mode,Ctrl+D is pressed,process exits cleanly and returns to shell prompt without requiring Ctrl+C
+  r27,happy,"",user presses a configured shortcut key,the corresponding action is dispatched via RuntimeKeymap matching
+  r28,happy,"",agent is running and user presses Tab,draft is queued (not submitted) and status bar queue length increments
+  r29,happy,"",agent is idle and composer starts with '!',pressing Tab does not submit or clear the draft
+  r30,happy,"","composer has non-empty draft and user presses Esc",draft is cleared (and popup dismissed if active)
+  r31,happy,"",composer is empty and user presses Esc twice,last user message is loaded into composer
+  r32,happy,"",user presses Ctrl+T,transcript overlay opens and can be dismissed with Esc
+  r33,happy,"",user presses Ctrl+O,latest assistant response is copied (or written to a temp file on fallback)
+  r34,happy,"",TUI starts,"the screen shows a transcript area and a bottom composer/footer, without boxed Chat/Tools/Input headers"
+  r35,happy,"",agent task is running and the composer is empty,"footer shows running hint and Tab queue hint in a single-line Codex-style footer"
+  r36,happy,"",rendering transcript and composer,"UI uses limited Codex palette (default/dim/cyan/magenta/green/red) and does not draw Borders::ALL boxes for major panels"
 ```
