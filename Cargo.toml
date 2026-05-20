@@ -59,7 +59,19 @@ shlex = { version = "1", optional = true }
 agent-client-protocol = { version = "0.12.1", optional = true }
 
 [features]
-default = ["agent-planning", "ui-tui", "infra-session", "ui-review"]
+default = [
+    "agent-planning",
+    "agent-model-lock",
+    "infra-lsp",
+    "infra-dap",
+    "infra-acp",
+    "infra-skills",
+    "infra-session",
+    "infra-sandbox",
+    "infra-rtk",
+    "ui-tui",
+    "ui-review",
+]
 
 # ── agent/ layer ──────────────────────────────
 agent-planning = []
