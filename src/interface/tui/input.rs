@@ -5,6 +5,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState};
 use tui_textarea::TextArea;
+use unicode_width::UnicodeWidthStr;
 
 use super::component::{Component, EventResult};
 use super::event::{AppAction, TuiEvent};
@@ -54,8 +55,16 @@ impl InputComponent {
 }
 
 impl InputComponent {
+    fn configure_textarea(textarea: &mut TextArea<'static>) {
+        // tui-textarea defaults to styling the cursor/line (often blue + underline). Keep the
+        // composer visually minimal so it doesn't fight with terminal themes.
+        textarea.set_cursor_style(Style::default());
+        textarea.set_cursor_line_style(Style::default());
+    }
+
     pub(crate) fn new(completer: Completer) -> Self {
         let mut textarea = TextArea::default();
+        Self::configure_textarea(&mut textarea);
         textarea.set_placeholder_text("Type a message… (Enter to submit, Ctrl+J newline)");
         textarea.set_placeholder_style(Style::default().fg(Color::DarkGray));
 
@@ -106,6 +115,7 @@ impl InputComponent {
 
     pub(crate) fn clear(&mut self) {
         self.textarea = TextArea::default();
+        Self::configure_textarea(&mut self.textarea);
         self.dirty = true;
         self.history_pos = None;
         self.slash_popup = SlashPopupState::new();
@@ -118,6 +128,7 @@ impl InputComponent {
 
     fn set_text(&mut self, text: &str) {
         self.textarea = TextArea::from(text.lines());
+        Self::configure_textarea(&mut self.textarea);
         self.dirty = true;
         // Move cursor to end.
         self.textarea.move_cursor(tui_textarea::CursorMove::End);
@@ -126,6 +137,28 @@ impl InputComponent {
 
     pub(crate) fn text(&self) -> String {
         self.textarea.lines().join("\n")
+    }
+
+    pub(crate) fn cursor(&self) -> (usize, usize) {
+        self.textarea.cursor()
+    }
+
+    pub(crate) fn cursor_display_col(&self) -> (usize, usize) {
+        let (row, col_chars) = self.textarea.cursor();
+        let line = self
+            .textarea
+            .lines()
+            .get(row)
+            .map(String::as_str)
+            .unwrap_or("");
+        let byte_idx = line
+            .char_indices()
+            .nth(col_chars)
+            .map(|(idx, _)| idx)
+            .unwrap_or_else(|| line.len());
+        let prefix = &line[..byte_idx];
+        let col_cells = UnicodeWidthStr::width(prefix);
+        (row, col_cells)
     }
 
     pub(crate) fn is_empty(&self) -> bool {
