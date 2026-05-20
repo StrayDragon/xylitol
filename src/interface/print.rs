@@ -246,6 +246,10 @@ fn display_event(
         AgentEvent::TextDelta(text) => {
             line_buf.push(&text);
         }
+        AgentEvent::ThinkingDelta(_thinking) => {
+            // Print-mode does not surface model reasoning by default.
+            // TUI renders these as collapsible blocks.
+        }
         AgentEvent::ToolCallStart { id, name, .. } => {
             tool_names.insert(id, name);
         }

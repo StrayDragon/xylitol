@@ -78,3 +78,52 @@ fn esc_on_empty_composer_primes_backtrack() {
         other => panic!("unexpected action: {other:?}"),
     }
 }
+
+#[test]
+fn shift_enter_inserts_newline_without_submitting() {
+    let mut input = InputComponent::new(Completer::new());
+    input.load_text("hello");
+
+    let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT);
+    let result = input.handle_event(&TuiEvent::Key(key));
+
+    assert!(result.consumed);
+    assert!(result.action.is_none());
+    assert_eq!(input.text(), "hello\n");
+}
+
+#[test]
+fn ctrl_j_inserts_newline_without_submitting() {
+    let mut input = InputComponent::new(Completer::new());
+    input.load_text("hello");
+
+    let key = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL);
+    let result = input.handle_event(&TuiEvent::Key(key));
+
+    assert!(result.consumed);
+    assert!(result.action.is_none());
+    assert_eq!(input.text(), "hello\n");
+}
+
+#[test]
+fn alt_enter_inserts_newline_without_submitting() {
+    let mut input = InputComponent::new(Completer::new());
+    input.load_text("hello");
+
+    let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT);
+    let result = input.handle_event(&TuiEvent::Key(key));
+
+    assert!(result.consumed);
+    assert!(result.action.is_none());
+    assert_eq!(input.text(), "hello\n");
+}
+
+#[test]
+fn paste_event_inserts_text() {
+    let mut input = InputComponent::new(Completer::new());
+    let result = input.handle_event(&TuiEvent::Paste("a\nb".to_string()));
+
+    assert!(result.consumed);
+    assert!(result.action.is_none());
+    assert_eq!(input.text(), "a\nb");
+}

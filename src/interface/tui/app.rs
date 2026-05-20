@@ -7,6 +7,7 @@ use futures::StreamExt;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::{TerminalOptions, Viewport};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc;
 
@@ -27,6 +28,7 @@ use super::component::OverlayStack;
 use super::event::{AppAction, TuiEvent};
 use super::history::HistoryStore;
 use super::input::InputComponent;
+use super::keyboard_modes;
 use super::keymap::{AppKeyAction, ComposerKeyAction, RuntimeKeymap};
 use super::markdown::MarkdownRenderer;
 use super::overlays::{
@@ -49,6 +51,37 @@ use crate::interface::diff_review::{ReviewBackend, ReviewEngine, ReviewEngineCon
 enum Focus {
     Input,
     Chat,
+}
+
+#[derive(Clone)]
+struct InputThreadControl {
+    paused: Arc<AtomicBool>,
+    drain_requested: Arc<AtomicBool>,
+}
+
+impl InputThreadControl {
+    fn new() -> Self {
+        Self {
+            paused: Arc::new(AtomicBool::new(false)),
+            drain_requested: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn pause(&self) {
+        self.paused.store(true, Ordering::Relaxed);
+    }
+
+    fn resume(&self) {
+        self.paused.store(false, Ordering::Relaxed);
+    }
+
+    fn is_paused(&self) -> bool {
+        self.paused.load(Ordering::Relaxed)
+    }
+
+    fn request_drain(&self) {
+        self.drain_requested.store(true, Ordering::Relaxed);
+    }
 }
 
 pub(crate) struct App {
@@ -317,9 +350,40 @@ impl App {
                 None
             }
 
-            AppKeyAction::OpenTranscript => Some(AppAction::OpenTranscript),
-            AppKeyAction::CopyLastResponse => Some(AppAction::CopyLastResponse),
-            AppKeyAction::ToggleRawOutput => Some(AppAction::ToggleRawOutput),
+            AppKeyAction::OpenTranscript => {
+                let transcript = self.chat.transcript_as_markdown();
+                self.overlays
+                    .push(Box::new(TranscriptOverlay::new(transcript)));
+                None
+            }
+            AppKeyAction::CopyLastResponse => {
+                if let Some(text) = self.chat.last_assistant_message() {
+                    if let Err(err) = copy_to_clipboard(&text) {
+                        self.footer.message = err;
+                    } else {
+                        self.footer.message = "Copied last response.".to_string();
+                    }
+                } else {
+                    self.footer.message = "No assistant response yet.".to_string();
+                }
+                None
+            }
+            AppKeyAction::ToggleRawOutput => {
+                self.raw_output = !self.raw_output;
+                self.chat.set_raw_output(self.raw_output);
+                self.input.set_raw_output(self.raw_output);
+                let msg = if self.raw_output {
+                    "Raw output: ON"
+                } else {
+                    "Raw output: OFF"
+                };
+                self.footer.message = msg.to_string();
+                None
+            }
+            AppKeyAction::ToggleThinking => {
+                self.chat.toggle_show_thinking();
+                None
+            }
         }
     }
 
@@ -578,34 +642,15 @@ impl App {
                     }
                 }
             }
-            TuiEvent::Mouse(mouse) => {
-                use crossterm::event::{MouseButton, MouseEventKind};
-                use ratatui::layout::Position;
-
-                let pos = Position {
-                    x: mouse.column,
-                    y: mouse.row,
-                };
-
-                match mouse.kind {
-                    MouseEventKind::ScrollUp if self.chat_area.contains(pos) => {
-                        self.chat.scroll_wheel_up(3);
-                    }
-                    MouseEventKind::ScrollDown if self.chat_area.contains(pos) => {
-                        self.chat.scroll_wheel_down(3);
-                    }
-                    MouseEventKind::Down(MouseButton::Left) => {
-                        if self.input_area.contains(pos) {
-                            self.focus = Focus::Input;
-                        } else if self.chat_area.contains(pos) || self.tool_area.contains(pos) {
-                            self.focus = Focus::Chat;
-                        }
-                    }
-                    _ => {}
+            TuiEvent::Paste(text) => {
+                if self.focus == Focus::Input {
+                    let _ = self.input.handle_event(&TuiEvent::Paste(text));
                 }
-
                 None
             }
+            // We intentionally avoid enabling mouse capture so terminal text selection behaves
+            // normally (Codex-style). Mouse events are ignored.
+            TuiEvent::Mouse(_mouse) => None,
             TuiEvent::Tick => {
                 // Currently a no-op; components that animate should mark themselves dirty.
                 None
@@ -619,50 +664,43 @@ impl App {
 
     pub(crate) fn render(&mut self, frame: &mut ratatui::Frame) {
         let area = frame.area();
-        // Codex-style layout: transcript + bottom pane (composer + footer).
-        // We temporarily keep the legacy tool panel disabled by default (height=0) so the layout
-        // matches codex visually. Future work can re-introduce tool output as inline transcript
-        // items instead of a separate panel.
         let footer_h = 1u16;
-        let input_h = self.input.desired_height();
-        let bottom_h = input_h.saturating_add(footer_h).max(2);
+        let input_h = self
+            .input
+            .desired_height()
+            .min(area.height.saturating_sub(footer_h).max(1));
 
         let size_changed = self.last_area != area;
-        let input_changed = self.last_input_height != bottom_h;
+        let input_changed = self.last_input_height != input_h;
         if size_changed || input_changed {
             self.last_area = area;
-            self.last_input_height = bottom_h;
+            self.last_input_height = input_h;
         }
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(bottom_h)].as_ref())
+            .constraints(
+                [
+                    Constraint::Min(0),
+                    Constraint::Length(input_h),
+                    Constraint::Length(footer_h),
+                ]
+                .as_ref(),
+            )
             .split(area);
 
         self.chat_area = chunks[0];
         self.tool_area = Rect::new(0, 0, 0, 0);
-        self.input_area = Rect::new(
-            chunks[1].x,
-            chunks[1].y,
-            chunks[1].width,
-            chunks[1].height.saturating_sub(footer_h).max(1),
-        );
-        self.status_area = Rect::new(
-            chunks[1].x,
-            chunks[1]
-                .y
-                .saturating_add(chunks[1].height.saturating_sub(footer_h)),
-            chunks[1].width,
-            footer_h,
-        );
+        self.input_area = chunks[1];
+        self.status_area = chunks[2];
 
-        self.chat.set_focused(self.focus == Focus::Chat);
+        self.chat.set_focused(false);
         self.input.set_focused(self.focus == Focus::Input);
 
         // Ratatui uses immediate-mode rendering: every `Terminal::draw` starts from an empty buffer.
         // We must render all visible components every frame; "dirty" flags should only be used to
         // decide whether a draw is needed at all, not to skip rendering within a draw.
-        self.chat.render(frame, self.chat_area);
+        self.chat.render_live_preview(frame, self.chat_area);
         self.input.render(frame, self.input_area);
 
         // Footer mode: reflect current composer state and backtrack priming.
@@ -827,21 +865,47 @@ pub(crate) async fn run_tui(
     profile: ResolvedProfile,
     session_service: Arc<dyn SessionService>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+    use crossterm::cursor::{SetCursorStyle, Show};
+    use crossterm::event::{
+        DisableBracketedPaste, DisableFocusChange, EnableBracketedPaste, EnableFocusChange,
+    };
     use crossterm::execute;
     use crossterm::terminal::{
-        BeginSynchronizedUpdate, EndSynchronizedUpdate, EnterAlternateScreen, LeaveAlternateScreen,
-        disable_raw_mode, enable_raw_mode,
+        BeginSynchronizedUpdate, EndSynchronizedUpdate, disable_raw_mode, enable_raw_mode,
     };
     use std::io::stdout;
 
+    // Inline viewport height (Codex-style: keep a stable bottom pane so the transcript can live in
+    // normal scrollback and be selectable/copyable in multiplexers like zellij/tmux).
+    const INLINE_VIEWPORT_HEIGHT: u16 = 16;
+
     // ── Terminal setup ──────────────────────────────────────
-    enable_raw_mode()?;
     let mut stdout = stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(stdout, EnableBracketedPaste)?;
+    enable_raw_mode()?;
+    keyboard_modes::enable_keyboard_enhancement();
+    // Ensure mouse wheel scrolls normal terminal scrollback (inline viewport mode).
+    let _ = execute!(stdout, super::terminal_modes::DisableAlternateScroll);
+    let _ = execute!(stdout, EnableFocusChange);
+
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    let mut terminal = Terminal::with_options(
+        backend,
+        TerminalOptions {
+            viewport: Viewport::Inline(INLINE_VIEWPORT_HEIGHT),
+        },
+    )?;
     terminal.hide_cursor()?;
+
+    // Detect whether progressive keyboard enhancement is actually supported so we can present the
+    // right newline hint (Shift+Enter vs Ctrl+J). Keep it bounded to avoid slow startup.
+    flush_terminal_input_buffer();
+    let enhanced_keys_supported = if keyboard_modes::keyboard_enhancement_disabled() {
+        false
+    } else {
+        super::terminal_probe::keyboard_enhancement_supported(std::time::Duration::from_millis(100))
+    };
+    flush_terminal_input_buffer();
 
     // ── Tool policy wiring ──────────────────────────────────
     let approvals = Arc::new(ApprovalHub::new());
@@ -880,7 +944,7 @@ pub(crate) async fn run_tui(
     // ── Channels ────────────────────────────────────────────
     let (agent_tx, mut agent_rx) = mpsc::unbounded_channel::<AgentEvent>();
     let (evt_tx, mut evt_rx) = mpsc::unbounded_channel::<crossterm::event::Event>();
-    let input_paused = Arc::new(AtomicBool::new(false));
+    let input_ctrl = InputThreadControl::new();
     let input_shutdown = Arc::new(AtomicBool::new(false));
 
     // Spawn crossterm keyboard reader on a dedicated OS thread.
@@ -890,7 +954,8 @@ pub(crate) async fn run_tui(
     let input_thread = std::thread::Builder::new()
         .name("xylitol-tui-input".into())
         .spawn({
-            let input_paused = input_paused.clone();
+            let input_paused = input_ctrl.paused.clone();
+            let input_drain_requested = input_ctrl.drain_requested.clone();
             let input_shutdown = input_shutdown.clone();
             move || {
                 use std::time::Duration;
@@ -903,6 +968,21 @@ pub(crate) async fn run_tui(
                         continue;
                     }
 
+                    if input_drain_requested.swap(false, Ordering::Relaxed) {
+                        // Best-effort: drain any buffered events so stray terminal replies
+                        // (e.g. OSC queries from external editors) don't get interpreted as input.
+                        for _ in 0..256 {
+                            match crossterm::event::poll(Duration::from_millis(0)) {
+                                Ok(false) => break,
+                                Ok(true) => {
+                                    let _ = crossterm::event::read();
+                                }
+                                Err(_) => break,
+                            }
+                        }
+                        continue;
+                    }
+
                     match crossterm::event::poll(Duration::from_millis(50)) {
                         Ok(false) => continue,
                         Ok(true) => {}
@@ -911,6 +991,9 @@ pub(crate) async fn run_tui(
 
                     if input_shutdown.load(Ordering::Relaxed) {
                         break;
+                    }
+                    if input_paused.load(Ordering::Relaxed) {
+                        continue;
                     }
 
                     let Ok(event) = crossterm::event::read() else {
@@ -932,6 +1015,8 @@ pub(crate) async fn run_tui(
         approvals.clone(),
     )
     .await;
+    app.input.set_use_shift_enter_hint(enhanced_keys_supported);
+    app.footer.use_shift_enter_hint = enhanced_keys_supported;
     let mut current_agent_handle: Option<tokio::task::JoinHandle<()>> = None;
 
     let mut tick = tokio::time::interval(std::time::Duration::from_millis(250));
@@ -954,7 +1039,7 @@ pub(crate) async fn run_tui(
                         &agent_tx,
                         &mut current_agent_handle,
                         &mut terminal,
-                        &input_paused,
+                        &input_ctrl,
                     );
                 }
             }
@@ -962,6 +1047,7 @@ pub(crate) async fn run_tui(
                 let event = match evt {
                     crossterm::event::Event::Key(key) => TuiEvent::Key(key),
                     crossterm::event::Event::Mouse(mouse) => TuiEvent::Mouse(mouse),
+                    crossterm::event::Event::Paste(text) => TuiEvent::Paste(text),
                     crossterm::event::Event::Resize(_, _) => TuiEvent::Tick,
                     _ => TuiEvent::Tick,
                 };
@@ -973,7 +1059,7 @@ pub(crate) async fn run_tui(
                         &agent_tx,
                         &mut current_agent_handle,
                         &mut terminal,
-                        &input_paused,
+                        &input_ctrl,
                     );
                 }
             }
@@ -984,6 +1070,20 @@ pub(crate) async fn run_tui(
 
         if app.should_quit() {
             break 'event_loop Ok(());
+        }
+
+        // Append any newly committed transcript lines above the inline viewport (Codex-style).
+        // This keeps chat history in the terminal's normal scrollback so multiplexers can copy it.
+        let pending_lines = app
+            .chat
+            .take_pending_insert_lines(terminal.size()?.width.max(1));
+        if !pending_lines.is_empty() {
+            use ratatui::widgets::{Paragraph, Widget, Wrap};
+            terminal.insert_before(pending_lines.len() as u16, |buf| {
+                Paragraph::new(pending_lines)
+                    .wrap(Wrap { trim: false })
+                    .render(buf.area, buf);
+            })?;
         }
 
         // Redraw.
@@ -999,15 +1099,30 @@ pub(crate) async fn run_tui(
     input_shutdown.store(true, Ordering::Relaxed);
     drop(evt_rx);
     let _ = input_thread.join();
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
+    keyboard_modes::reset_keyboard_reporting_after_exit();
 
-    result
+    // Restore terminal modes best-effort (Codex-style): prefer returning the app error over
+    // restoration failures, but avoid leaving the shell in a broken state.
+    let mut restore_error: Option<std::io::Error> = None;
+    let _ = execute!(
+        std::io::stdout(),
+        super::terminal_modes::DisableAlternateScroll
+    );
+    if let Err(err) = execute!(std::io::stdout(), DisableBracketedPaste) {
+        restore_error.get_or_insert(err);
+    }
+    let _ = execute!(std::io::stdout(), DisableFocusChange);
+    if let Err(err) = disable_raw_mode() {
+        restore_error.get_or_insert(err);
+    }
+    let _ = execute!(std::io::stdout(), SetCursorStyle::DefaultUserShape, Show);
+    flush_terminal_input_buffer();
+
+    match (result, restore_error) {
+        (Err(err), _) => Err(err),
+        (Ok(()), Some(err)) => Err(Box::new(err)),
+        (Ok(()), None) => Ok(()),
+    }
 }
 
 fn handle_action(
@@ -1017,7 +1132,7 @@ fn handle_action(
     agent_tx: &mpsc::UnboundedSender<AgentEvent>,
     current_agent_handle: &mut Option<tokio::task::JoinHandle<()>>,
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
-    input_paused: &Arc<AtomicBool>,
+    input_ctrl: &InputThreadControl,
 ) {
     match action {
         AppAction::RunPrompt(prompt) => {
@@ -1073,7 +1188,7 @@ fn handle_action(
         AppAction::SelectTheme(theme) => {
             app.apply_theme_selection(theme);
         }
-        AppAction::OpenEditor(text) => match open_editor(terminal, input_paused, &text) {
+        AppAction::OpenEditor(text) => match open_editor(terminal, input_ctrl, &text) {
             Ok(edited) => {
                 app.input.load_text(&edited);
                 app.footer.message = "Edited in $EDITOR.".to_string();
@@ -1101,16 +1216,12 @@ fn handle_action(
 
 fn open_editor(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
-    input_paused: &Arc<AtomicBool>,
+    input_ctrl: &InputThreadControl,
     initial: &str,
 ) -> Result<String, String> {
-    use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
-    use crossterm::execute;
-    use crossterm::terminal::{
-        EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
-    };
+    use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
     use std::io::Write;
-    use std::process::Command;
+    use std::process::{Command, Stdio};
 
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1122,34 +1233,33 @@ fn open_editor(
         return Err(format!("Failed to write temp file: {err}"));
     }
 
-    input_paused.store(true, Ordering::Relaxed);
+    input_ctrl.pause();
+    // Give the input thread a brief window to exit poll/read loops before we
+    // hand terminal ownership to an external program.
+    std::thread::sleep(std::time::Duration::from_millis(75));
 
     // Suspend TUI.
+    keyboard_modes::restore_keyboard_enhancement_stack();
     if let Err(err) = disable_raw_mode() {
-        input_paused.store(false, Ordering::Relaxed);
+        keyboard_modes::enable_keyboard_enhancement();
+        input_ctrl.resume();
         return Err(format!("disable_raw_mode failed: {err}"));
-    }
-    if let Err(err) = execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    ) {
-        let _ = enable_raw_mode();
-        input_paused.store(false, Ordering::Relaxed);
-        return Err(format!("LeaveAlternateScreen failed: {err}"));
     }
     let _ = terminal.show_cursor();
     let _ = std::io::stdout().flush();
 
     // Launch editor.
-    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vim".into());
-    let mut parts = editor.split_whitespace();
-    let bin = parts.next().unwrap_or("vim");
-    let args: Vec<&str> = parts.collect();
+    let editor_cmd = resolve_editor_command();
+    let Some(bin) = editor_cmd.first() else {
+        return Err("Editor command is empty.".to_string());
+    };
 
     let status = Command::new(bin)
-        .args(args)
+        .args(editor_cmd.iter().skip(1))
         .arg(&path)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
         .status()
         .map_err(|e| format!("Failed to run editor '{bin}': {e}"))?;
     if !status.success() {
@@ -1158,26 +1268,52 @@ fn open_editor(
     }
 
     // Restore TUI.
-    if let Err(err) = execute!(
-        terminal.backend_mut(),
-        EnterAlternateScreen,
-        EnableMouseCapture
-    ) {
-        input_paused.store(false, Ordering::Relaxed);
-        return Err(format!("EnterAlternateScreen failed: {err}"));
-    }
     if let Err(err) = enable_raw_mode() {
-        input_paused.store(false, Ordering::Relaxed);
+        keyboard_modes::enable_keyboard_enhancement();
+        input_ctrl.resume();
         return Err(format!("enable_raw_mode failed: {err}"));
     }
+    keyboard_modes::enable_keyboard_enhancement();
+    flush_terminal_input_buffer();
+    input_ctrl.request_drain();
     let _ = terminal.hide_cursor();
     let _ = terminal.clear();
 
-    input_paused.store(false, Ordering::Relaxed);
+    input_ctrl.resume();
 
     let edited = std::fs::read_to_string(&path).unwrap_or_default();
     let _ = std::fs::remove_file(&path);
     Ok(edited)
+}
+
+fn resolve_editor_command() -> Vec<String> {
+    let raw = std::env::var("VISUAL")
+        .or_else(|_| std::env::var("EDITOR"))
+        .unwrap_or_else(|_| "vim".into());
+
+    #[cfg(windows)]
+    {
+        raw.split_whitespace().map(|s| s.to_string()).collect()
+    }
+
+    #[cfg(not(windows))]
+    {
+        shlex::split(&raw)
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| raw.split_whitespace().map(|s| s.to_string()).collect())
+    }
+}
+
+fn flush_terminal_input_buffer() {
+    #[cfg(unix)]
+    {
+        // Safety: flushing the stdin queue is safe and does not move ownership.
+        let result = unsafe { libc::tcflush(libc::STDIN_FILENO, libc::TCIFLUSH) };
+        if result != 0 {
+            let err = std::io::Error::last_os_error();
+            tracing::warn!("failed to tcflush stdin: {err}");
+        }
+    }
 }
 
 fn copy_to_clipboard(text: &str) -> Result<(), String> {

@@ -44,11 +44,16 @@ hex = "0.4.3"
 uuid = { version = "1.23.1", features = ["v4"] }
 
 # ── ui-review / ui-tui dependencies (optional) ──
-ratatui = { version = "0.29", optional = true, default-features = false, features = ["crossterm"] }
-crossterm = { version = "0.28", optional = true }
+# Keep in sync with Codex TUI's battle-tested terminal stack.
+ratatui = { version = "0.29", optional = true, default-features = false, features = ["crossterm", "scrolling-regions", "unstable-backend-writer"] }
+crossterm = { version = "0.28", optional = true, features = ["bracketed-paste", "event-stream"] }
 syntect = { version = "5", optional = true }
 pulldown-cmark = { version = "0.12", optional = true }
 tui-textarea = { version = "0.7", optional = true }
+unicode-width = { version = "0.2", optional = true }
+libc = { version = "0.2", optional = true }
+vt100 = { version = "0.15", optional = true }
+shlex = { version = "1", optional = true }
 
 # ── acp dependencies (optional, infra-acp) ─────
 agent-client-protocol = { version = "0.12.1", optional = true }
@@ -70,11 +75,11 @@ infra-sandbox = []
 infra-rtk = []
 
 # ── interface/ layer ──────────────────────────
-ui-tui = ["dep:ratatui", "dep:crossterm", "dep:pulldown-cmark", "dep:syntect", "dep:tui-textarea"]
+ui-tui = ["dep:ratatui", "dep:crossterm", "dep:pulldown-cmark", "dep:syntect", "dep:tui-textarea", "dep:unicode-width", "dep:libc", "dep:shlex"]
 ui-review = ["dep:ratatui", "dep:crossterm"]
 
 # ── development only ──────────────────────────
-dev-vt100 = []
+dev-vt100 = ["dep:vt100"]
 dev-e2e = []
 dev-fake-provider = []
 
@@ -97,6 +102,19 @@ incremental = false
 
 [dev-dependencies]
 tempfile = "3.27.0"
+assert_cmd = "2.0.17"
+assert_matches = "1.5.0"
+ctor = "0.5.0"
+insta = { version = "1.43.2", features = ["filters", "glob"] }
+serial_test = "3.2.0"
+test-case = "3.3.1"
+wiremock = "0.6.5"
+
+[patch.crates-io]
+# Codex's battle-tested terminal stack. Patching (instead of direct git deps)
+# keeps transitive crates like `tui-textarea` on the same ratatui/crossterm build.
+crossterm = { git = "https://github.com/nornagon/crossterm", rev = "87db8bfa6dc99427fd3b071681b07fc31c6ce995" }
+ratatui = { git = "https://github.com/nornagon/ratatui", rev = "9b2ad1298408c45918ee9f8241a6f95498cdbed2" }
 
 [package.metadata.docs.rs]
 all-features = true

@@ -104,11 +104,17 @@ impl Component for ToolPanelComponent {
                     }
                     AgentEvent::Error(err) => self.show_error(err),
                     AgentEvent::RepeatDetected { .. } => self.push("repeat detected".to_string()),
-                    AgentEvent::TextDelta(_) | AgentEvent::StepComplete { .. } => {}
+                    AgentEvent::TextDelta(_)
+                    | AgentEvent::ThinkingDelta(_)
+                    | AgentEvent::StepComplete { .. } => {}
                 }
                 return EventResult::consumed();
             }
-            TuiEvent::Key(_) | TuiEvent::Mouse(_) | TuiEvent::Tick | TuiEvent::Shutdown => {}
+            TuiEvent::Paste(_)
+            | TuiEvent::Key(_)
+            | TuiEvent::Mouse(_)
+            | TuiEvent::Tick
+            | TuiEvent::Shutdown => {}
         }
 
         EventResult::default()

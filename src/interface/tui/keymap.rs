@@ -17,6 +17,7 @@ pub(crate) enum AppKeyAction {
     OpenTranscript,
     CopyLastResponse,
     ToggleRawOutput,
+    ToggleThinking,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -58,8 +59,8 @@ impl KeyBinding {
     }
 
     pub(crate) fn matches(&self, key: &KeyEvent) -> bool {
-        // Only handle key presses; ignore release/repeat.
-        if key.kind != KeyEventKind::Press {
+        // Handle key presses and repeats; ignore releases.
+        if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
             return false;
         }
 
@@ -112,6 +113,7 @@ impl RuntimeKeymap {
             (KeyBinding::ctrl(KeyCode::Char('t')), A::OpenTranscript),
             (KeyBinding::ctrl(KeyCode::Char('o')), A::CopyLastResponse),
             (KeyBinding::alt(KeyCode::Char('r')), A::ToggleRawOutput),
+            (KeyBinding::alt(KeyCode::Char('y')), A::ToggleThinking),
         ];
 
         let composer = vec![
