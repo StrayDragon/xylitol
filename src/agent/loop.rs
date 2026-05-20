@@ -26,6 +26,8 @@ use crate::infra::hooks::{DispatchResult, HookDispatcher, HookEvent, HookPhase};
 pub(crate) enum AgentEvent {
     /// Streaming text delta from the LLM.
     TextDelta(String),
+    /// Streaming thinking/reasoning delta from a thinking-capable model.
+    ThinkingDelta(String),
     /// A tool call was requested by the LLM.
     ToolCallStart {
         id: String,
@@ -205,6 +207,7 @@ impl AgentLoop {
             inner: stream,
             step: step_counter,
             done: false,
+            pending: std::collections::VecDeque::new(),
             detector,
         })
     }
@@ -263,6 +266,7 @@ pub(crate) struct AgentEventStream {
     inner: Pin<Box<dyn Stream<Item = Result<Event, adk_core::AdkError>> + Send>>,
     step: u32,
     done: bool,
+    pending: std::collections::VecDeque<AgentEvent>,
     /// Optional repeat detector. When `Some`, text content is monitored for
     /// repetition loops. On detection, the stream yields `RepeatDetected` and
     /// terminates.
@@ -277,41 +281,71 @@ impl Stream for AgentEventStream {
             return Poll::Ready(None);
         }
 
-        match self.inner.as_mut().poll_next(cx) {
-            Poll::Ready(Some(Ok(event))) => {
-                let agent_event = map_adk_event(event, self.step);
+        if let Some(next) = self.pending.pop_front() {
+            return Poll::Ready(Some(self.apply_repeat_detection(next)));
+        }
 
-                // Feed text deltas through the repeat detector, if active.
-                if let AgentEvent::TextDelta(ref text) = agent_event
-                    && let Some(ref mut detector) = self.detector
-                    && let Some(result) = detector.feed(text)
-                {
+        loop {
+            match self.inner.as_mut().poll_next(cx) {
+                Poll::Ready(Some(Ok(event))) => {
+                    let mapped = map_adk_event(event, self.step);
+                    let mut iter = mapped.into_iter();
+                    let Some(first) = iter.next() else {
+                        // No user-visible delta in this event; keep polling.
+                        continue;
+                    };
+                    self.pending.extend(iter);
+                    return Poll::Ready(Some(self.apply_repeat_detection(first)));
+                }
+                Poll::Ready(Some(Err(e))) => {
                     self.done = true;
-                    return Poll::Ready(Some(AgentEvent::RepeatDetected {
-                        consecutive_hits: result.consecutive_hits,
-                        window_repeat_ratio: result.window_repeat_ratio,
+                    return Poll::Ready(Some(AgentEvent::Error(AgentError::LlmError {
+                        message: e.to_string(),
+                        retryable: false,
+                    })));
+                }
+                Poll::Ready(None) => {
+                    self.done = true;
+                    // Yields StepComplete after all events are consumed.
+                    return Poll::Ready(Some(AgentEvent::StepComplete {
+                        step: self.step,
+                        summary: String::new(),
                     }));
                 }
-
-                Poll::Ready(Some(agent_event))
+                Poll::Pending => return Poll::Pending,
             }
-            Poll::Ready(Some(Err(e))) => {
-                self.done = true;
-                Poll::Ready(Some(AgentEvent::Error(AgentError::LlmError {
-                    message: e.to_string(),
-                    retryable: false,
-                })))
-            }
-            Poll::Ready(None) => {
-                self.done = true;
-                // Yields StepComplete after all events are consumed.
-                Poll::Ready(Some(AgentEvent::StepComplete {
-                    step: self.step,
-                    summary: String::new(),
-                }))
-            }
-            Poll::Pending => Poll::Pending,
         }
+    }
+}
+
+impl AgentEventStream {
+    pub(crate) fn new_raw(
+        inner: Pin<Box<dyn Stream<Item = Result<Event, adk_core::AdkError>> + Send>>,
+        step: u32,
+    ) -> Self {
+        Self {
+            inner,
+            step,
+            done: false,
+            pending: std::collections::VecDeque::new(),
+            detector: None,
+        }
+    }
+
+    fn apply_repeat_detection(&mut self, agent_event: AgentEvent) -> AgentEvent {
+        // Feed assistant text deltas through the repeat detector, if active.
+        if let AgentEvent::TextDelta(ref text) = agent_event
+            && let Some(ref mut detector) = self.detector
+            && let Some(result) = detector.feed(text)
+        {
+            self.pending.clear();
+            self.done = true;
+            return AgentEvent::RepeatDetected {
+                consecutive_hits: result.consecutive_hits,
+                window_repeat_ratio: result.window_repeat_ratio,
+            };
+        }
+        agent_event
     }
 }
 
@@ -322,11 +356,11 @@ impl Stream for AgentEventStream {
 /// Map an `adk_core::Event` to an [`AgentEvent`].
 ///
 /// Priority: FunctionCall > FunctionResponse > text content.
-fn map_adk_event(event: Event, step: u32) -> AgentEvent {
+fn map_adk_event(event: Event, step: u32) -> Vec<AgentEvent> {
     let content = match event.llm_response.content {
         Some(ref c) => c,
         None => {
-            return AgentEvent::TextDelta(String::new());
+            return Vec::new();
         }
     };
 
@@ -334,11 +368,11 @@ fn map_adk_event(event: Event, step: u32) -> AgentEvent {
     for part in &content.parts {
         if let Part::FunctionCall { name, args, id, .. } = part {
             let call_id = id.clone().unwrap_or_else(|| format!("{step}-{name}"));
-            return AgentEvent::ToolCallStart {
+            return vec![AgentEvent::ToolCallStart {
                 id: call_id,
                 name: name.clone(),
                 args: args.clone(),
-            };
+            }];
         }
     }
 
@@ -352,27 +386,40 @@ fn map_adk_event(event: Event, step: u32) -> AgentEvent {
             let call_id = id
                 .clone()
                 .unwrap_or_else(|| format!("{step}-{}", function_response.name));
-            return AgentEvent::ToolCallEnd {
+            return vec![AgentEvent::ToolCallEnd {
                 id: call_id,
                 result: function_response.response.clone(),
-            };
+            }];
         }
     }
 
-    // Extract text content (handles both plain text and thinking+text).
+    let mut out = Vec::new();
+
+    let thinking: String = content
+        .parts
+        .iter()
+        .filter_map(|p| match p {
+            Part::Thinking { thinking, .. } => Some(thinking.as_str()),
+            _ => None,
+        })
+        .collect();
+    if !thinking.is_empty() {
+        out.push(AgentEvent::ThinkingDelta(thinking));
+    }
+
     let text: String = content
         .parts
         .iter()
-        .filter_map(|p| {
-            if let Part::Text { text } = p {
-                Some(text.as_str())
-            } else {
-                None
-            }
+        .filter_map(|p| match p {
+            Part::Text { text } => Some(text.as_str()),
+            _ => None,
         })
         .collect();
+    if !text.is_empty() {
+        out.push(AgentEvent::TextDelta(text));
+    }
 
-    AgentEvent::TextDelta(text)
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -393,8 +440,11 @@ mod tests {
     fn test_map_text_event() {
         let mut event = Event::new("inv-1");
         event.llm_response.content = Some(Content::new("assistant").with_text("Hello world"));
-        let agent_event = map_adk_event(event, 1);
-        assert!(matches!(agent_event, AgentEvent::TextDelta(t) if t == "Hello world"));
+        let agent_events = map_adk_event(event, 1);
+        assert!(matches!(
+            agent_events.as_slice(),
+            [AgentEvent::TextDelta(t)] if t == "Hello world"
+        ));
     }
 
     #[test]
@@ -409,9 +459,9 @@ mod tests {
                 thought_signature: None,
             }],
         });
-        let agent_event = map_adk_event(event, 1);
-        match agent_event {
-            AgentEvent::ToolCallStart { id, name, .. } => {
+        let agent_events = map_adk_event(event, 1);
+        match agent_events.as_slice() {
+            [AgentEvent::ToolCallStart { id, name, .. }] => {
                 assert_eq!(id, "call-1");
                 assert_eq!(name, "read");
             }
@@ -432,14 +482,38 @@ mod tests {
                 id: Some("call-1".into()),
             }],
         });
-        let agent_event = map_adk_event(event, 1);
-        match agent_event {
-            AgentEvent::ToolCallEnd { id, result } => {
+        let agent_events = map_adk_event(event, 1);
+        match agent_events.as_slice() {
+            [AgentEvent::ToolCallEnd { id, result }] => {
                 assert_eq!(id, "call-1");
                 assert_eq!(result["content"], "file content");
             }
             other => panic!("expected ToolCallEnd, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_map_thinking_and_text_event_orders_thinking_first() {
+        let mut event = Event::new("inv-1");
+        event.llm_response.content = Some(Content {
+            role: "assistant".into(),
+            parts: vec![
+                Part::Thinking {
+                    thinking: "step-by-step".into(),
+                    signature: None,
+                },
+                Part::Text {
+                    text: "final".into(),
+                },
+            ],
+        });
+
+        let agent_events = map_adk_event(event, 1);
+        assert!(matches!(
+            agent_events.as_slice(),
+            [AgentEvent::ThinkingDelta(t), AgentEvent::TextDelta(x)]
+                if t == "step-by-step" && x == "final"
+        ));
     }
 
     // ── Integration tests ────────────────────────────────────────
@@ -542,6 +616,7 @@ mod tests {
             inner: raw_stream,
             step: 1,
             done: false,
+            pending: std::collections::VecDeque::new(),
             detector: None,
         };
 

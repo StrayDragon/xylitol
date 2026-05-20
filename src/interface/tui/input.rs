@@ -11,7 +11,7 @@ use super::event::{AppAction, TuiEvent};
 use super::slash::Completer;
 
 const MIN_HEIGHT: u16 = 3;
-const MAX_HEIGHT: u16 = 15;
+const MAX_HEIGHT: u16 = MIN_HEIGHT + 5;
 
 pub(crate) struct InputComponent {
     textarea: TextArea<'static>,
@@ -21,6 +21,7 @@ pub(crate) struct InputComponent {
     history_pos: Option<usize>,
     focused: bool,
     raw_output: bool,
+    use_shift_enter_hint: bool,
 
     // Slash popup (Codex-style, minimal v1).
     slash_popup: SlashPopupState,
@@ -55,7 +56,7 @@ impl InputComponent {
 impl InputComponent {
     pub(crate) fn new(completer: Completer) -> Self {
         let mut textarea = TextArea::default();
-        textarea.set_placeholder_text("Type a message… (Enter to submit, Shift+Enter newline)");
+        textarea.set_placeholder_text("Type a message… (Enter to submit, Ctrl+J newline)");
         textarea.set_placeholder_style(Style::default().fg(Color::DarkGray));
 
         Self {
@@ -66,8 +67,16 @@ impl InputComponent {
             history_pos: None,
             focused: false,
             raw_output: false,
+            use_shift_enter_hint: false,
 
             slash_popup: SlashPopupState::new(),
+        }
+    }
+
+    pub(crate) fn set_use_shift_enter_hint(&mut self, enabled: bool) {
+        if self.use_shift_enter_hint != enabled {
+            self.use_shift_enter_hint = enabled;
+            self.dirty = true;
         }
     }
 
@@ -109,8 +118,6 @@ impl InputComponent {
 
     fn set_text(&mut self, text: &str) {
         self.textarea = TextArea::from(text.lines());
-        self.textarea
-            .set_placeholder_text("Type a message… (Enter to submit, Shift+Enter newline)");
         self.dirty = true;
         // Move cursor to end.
         self.textarea.move_cursor(tui_textarea::CursorMove::End);
@@ -264,6 +271,12 @@ impl InputComponent {
         let s = self.text();
         s.trim_start().starts_with('/')
     }
+
+    fn insert_newline(&mut self) {
+        self.textarea.insert_newline();
+        self.dirty = true;
+        self.sync_slash_popup();
+    }
 }
 
 impl Component for InputComponent {
@@ -276,9 +289,11 @@ impl Component for InputComponent {
         };
 
         let placeholder = if self.raw_output {
-            "Raw mode: type a message…"
+            "Raw mode: type a message…".to_string()
+        } else if self.use_shift_enter_hint {
+            "Type a message… (Enter to submit, Shift+Enter newline)".to_string()
         } else {
-            "Type a message… (Enter to submit, Shift+Enter newline)"
+            "Type a message… (Enter to submit, Ctrl+J newline)".to_string()
         };
         self.textarea.set_placeholder_text(placeholder);
         self.textarea
@@ -329,22 +344,6 @@ impl Component for InputComponent {
             frame.render_stateful_widget(list, popup, &mut state);
         }
 
-        // Cursor positioning is approximated from (row,col) within the visible box.
-        let inner = area.inner(ratatui::layout::Margin {
-            vertical: 1,
-            horizontal: 1,
-        });
-        let (row, col) = self.textarea.cursor();
-        let x = inner
-            .x
-            .saturating_add(col as u16)
-            .min(inner.right().saturating_sub(1));
-        let y = inner
-            .y
-            .saturating_add(row as u16)
-            .min(inner.bottom().saturating_sub(1));
-        frame.set_cursor_position((x, y));
-
         self.dirty = false;
     }
 
@@ -357,128 +356,156 @@ impl Component for InputComponent {
     }
 
     fn handle_event(&mut self, event: &TuiEvent) -> EventResult {
-        let TuiEvent::Key(key) = event else {
-            return EventResult::default();
-        };
-
-        use crossterm::event::{KeyCode, KeyModifiers};
-
-        if key.kind != crossterm::event::KeyEventKind::Press {
-            return EventResult::default();
-        }
-
-        // Slash popup navigation.
-        if self.slash_popup.active {
-            match key.code {
-                KeyCode::Up => {
-                    self.slash_popup_move(-1);
-                    return EventResult::consumed();
-                }
-                KeyCode::Down => {
-                    self.slash_popup_move(1);
-                    return EventResult::consumed();
-                }
-                KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    self.slash_popup_move(-1);
-                    return EventResult::consumed();
-                }
-                KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    self.slash_popup_move(1);
-                    return EventResult::consumed();
-                }
-                KeyCode::Esc => {
-                    self.slash_popup = SlashPopupState::new();
+        match event {
+            TuiEvent::Paste(text) => {
+                if self.textarea.insert_str(text) {
                     self.dirty = true;
+                    self.sync_slash_popup();
+                }
+                EventResult::consumed()
+            }
+            TuiEvent::Key(key) => {
+                use crossterm::event::{KeyCode, KeyModifiers};
+
+                if !matches!(
+                    key.kind,
+                    crossterm::event::KeyEventKind::Press | crossterm::event::KeyEventKind::Repeat
+                ) {
+                    return EventResult::default();
+                }
+
+                // Slash popup navigation.
+                if self.slash_popup.active {
+                    match key.code {
+                        KeyCode::Up => {
+                            self.slash_popup_move(-1);
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Down => {
+                            self.slash_popup_move(1);
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            self.slash_popup_move(-1);
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            self.slash_popup_move(1);
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Esc => {
+                            self.slash_popup = SlashPopupState::new();
+                            self.dirty = true;
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Tab
+                            if key.modifiers.is_empty() && self.slash_popup_complete_selected() =>
+                        {
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Enter if key.modifiers.is_empty() => {
+                            if let Some(cmd) = self.slash_popup_execute_selected() {
+                                return EventResult::action(AppAction::RunPrompt(cmd));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Esc cancels the draft (Codex-style): dismiss popup if active, then clear.
+                if key.code == KeyCode::Esc {
+                    if self.cancel_draft() {
+                        return EventResult::consumed();
+                    }
+                    // When the composer is empty, Esc is reserved for backtrack.
+                    return EventResult::action(AppAction::BacktrackPrime);
+                }
+
+                // Newline insertion (Codex-style): support multiple chords because some terminals can't
+                // reliably report Shift+Enter without keyboard enhancement.
+                if matches!(key.code, KeyCode::Char('\n' | '\r')) {
+                    self.insert_newline();
                     return EventResult::consumed();
                 }
-                KeyCode::Tab
-                    if key.modifiers.is_empty() && self.slash_popup_complete_selected() =>
+                if key.code == KeyCode::Char('j') && key.modifiers == KeyModifiers::CONTROL {
+                    self.insert_newline();
+                    return EventResult::consumed();
+                }
+                if key.code == KeyCode::Char('m') && key.modifiers == KeyModifiers::CONTROL {
+                    self.insert_newline();
+                    return EventResult::consumed();
+                }
+                if key.code == KeyCode::Enter
+                    && (key.modifiers.contains(KeyModifiers::SHIFT)
+                        || key.modifiers.contains(KeyModifiers::ALT))
+                {
+                    self.insert_newline();
+                    return EventResult::consumed();
+                }
+
+                // Enter submits.
+                if key.code == KeyCode::Enter {
+                    if let Some(text) = self.submit() {
+                        self.dirty = true;
+                        return EventResult::action(AppAction::RunPrompt(text));
+                    }
+                    return EventResult::consumed();
+                }
+
+                // History navigation on bare Up/Down.
+                if key.code == KeyCode::Up && key.modifiers.is_empty() && self.handle_history_up() {
+                    return EventResult::consumed();
+                }
+                if key.code == KeyCode::Down
+                    && key.modifiers.is_empty()
+                    && self.handle_history_down()
                 {
                     return EventResult::consumed();
                 }
-                KeyCode::Enter if key.modifiers.is_empty() => {
-                    if let Some(cmd) = self.slash_popup_execute_selected() {
-                        return EventResult::action(AppAction::RunPrompt(cmd));
+
+                // Codex-style Tab key:
+                // - When slash popup active: complete selection (handled above)
+                // - Otherwise: queue-or-submit semantics at the app layer
+                //   (except for bang-shell drafts, which should not submit on Tab while idle).
+                if key.code == KeyCode::Tab && key.modifiers.is_empty() {
+                    if self.is_bang_shell_draft() {
+                        // Preserve Tab for indentation/completion/no-op.
+                        return EventResult::consumed();
                     }
+                    if let Some(text) = self.submit() {
+                        self.dirty = true;
+                        return EventResult::action(AppAction::QueueOrSubmit(text));
+                    }
+                    return EventResult::consumed();
                 }
-                _ => {}
-            }
-        }
 
-        // Esc cancels the draft (Codex-style): dismiss popup if active, then clear.
-        if key.code == KeyCode::Esc {
-            if self.cancel_draft() {
-                return EventResult::consumed();
-            }
-            // When the composer is empty, Esc is reserved for backtrack.
-            return EventResult::action(AppAction::BacktrackPrime);
-        }
+                // Readline tweak: Ctrl+U kills to head-of-line (textarea default uses Ctrl+U for undo).
+                if key.code == KeyCode::Char('u') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    if self.textarea.delete_line_by_head() {
+                        self.dirty = true;
+                    }
+                    return EventResult::consumed();
+                }
 
-        // Shift+Enter inserts newline; Enter submits.
-        if key.code == KeyCode::Enter {
-            if key.modifiers.contains(KeyModifiers::SHIFT) {
+                if key.code == KeyCode::Char('r') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    return EventResult::action(AppAction::ShowHistorySearch);
+                }
+
+                if key.code == KeyCode::Char('g') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    return EventResult::action(AppAction::OpenEditor(self.text()));
+                }
+
+                // Default handling via tui-textarea.
                 let input: tui_textarea::Input = (*key).into();
                 if self.textarea.input(input) {
                     self.dirty = true;
+                    self.sync_slash_popup();
+                    return EventResult::consumed();
                 }
-                return EventResult::consumed();
+
+                EventResult::default()
             }
-
-            if let Some(text) = self.submit() {
-                self.dirty = true;
-                return EventResult::action(AppAction::RunPrompt(text));
-            }
-            return EventResult::consumed();
+            _ => EventResult::default(),
         }
-
-        // History navigation on bare Up/Down.
-        if key.code == KeyCode::Up && key.modifiers.is_empty() && self.handle_history_up() {
-            return EventResult::consumed();
-        }
-        if key.code == KeyCode::Down && key.modifiers.is_empty() && self.handle_history_down() {
-            return EventResult::consumed();
-        }
-
-        // Codex-style Tab key:
-        // - When slash popup active: complete selection (handled above)
-        // - Otherwise: queue-or-submit semantics at the app layer
-        //   (except for bang-shell drafts, which should not submit on Tab while idle).
-        if key.code == KeyCode::Tab && key.modifiers.is_empty() {
-            if self.is_bang_shell_draft() {
-                // Preserve Tab for indentation/completion/no-op.
-                return EventResult::consumed();
-            }
-            if let Some(text) = self.submit() {
-                self.dirty = true;
-                return EventResult::action(AppAction::QueueOrSubmit(text));
-            }
-            return EventResult::consumed();
-        }
-
-        // Readline tweak: Ctrl+U kills to head-of-line (textarea default uses Ctrl+U for undo).
-        if key.code == KeyCode::Char('u') && key.modifiers.contains(KeyModifiers::CONTROL) {
-            if self.textarea.delete_line_by_head() {
-                self.dirty = true;
-            }
-            return EventResult::consumed();
-        }
-
-        if key.code == KeyCode::Char('r') && key.modifiers.contains(KeyModifiers::CONTROL) {
-            return EventResult::action(AppAction::ShowHistorySearch);
-        }
-
-        if key.code == KeyCode::Char('g') && key.modifiers.contains(KeyModifiers::CONTROL) {
-            return EventResult::action(AppAction::OpenEditor(self.text()));
-        }
-
-        // Default handling via tui-textarea.
-        let input: tui_textarea::Input = (*key).into();
-        if self.textarea.input(input) {
-            self.dirty = true;
-            self.sync_slash_popup();
-            return EventResult::consumed();
-        }
-
-        EventResult::default()
     }
 }

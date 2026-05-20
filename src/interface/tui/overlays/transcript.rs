@@ -117,7 +117,7 @@ impl Component for TranscriptOverlay {
         };
 
         use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
-        if key.kind != KeyEventKind::Press {
+        if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
             return EventResult::default();
         }
 

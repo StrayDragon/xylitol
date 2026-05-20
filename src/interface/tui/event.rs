@@ -9,6 +9,8 @@ pub(crate) enum TuiEvent {
     Agent(AgentEvent),
     /// Crossterm keyboard input event.
     Key(crossterm::event::KeyEvent),
+    /// Bracketed paste payload (requires `EnableBracketedPaste`).
+    Paste(String),
     /// Crossterm mouse input event.
     Mouse(crossterm::event::MouseEvent),
     /// Frame tick (used for periodic redraw / spinners).
