@@ -107,8 +107,9 @@ pub(crate) struct ChatComponent {
     pending_thinking: String,
     last_thinking: String,
     tool_names: HashMap<String, String>,
-    next_insert_index: usize,
-    show_thinking: bool,
+    scroll_from_bottom: usize,
+    last_rendered_width: u16,
+    last_rendered_line_count: usize,
     dirty: bool,
 }
 
@@ -121,8 +122,9 @@ impl ChatComponent {
             pending_thinking: String::new(),
             last_thinking: String::new(),
             tool_names: HashMap::new(),
-            next_insert_index: 0,
-            show_thinking: false,
+            scroll_from_bottom: 0,
+            last_rendered_width: 0,
+            last_rendered_line_count: 0,
             dirty: true,
         }
     }
@@ -178,69 +180,25 @@ impl ChatComponent {
         self.pending_thinking.clear();
         self.last_thinking.clear();
         self.tool_names.clear();
-        self.next_insert_index = 0;
-        self.show_thinking = false;
+        self.scroll_from_bottom = 0;
+        self.last_rendered_width = 0;
+        self.last_rendered_line_count = 0;
         self.dirty = true;
     }
 
-    fn thinking_text(&self) -> &str {
-        if !self.pending_thinking.trim().is_empty() {
-            &self.pending_thinking
-        } else {
-            &self.last_thinking
-        }
-    }
-
-    pub(crate) fn has_thinking_panel(&self) -> bool {
-        !self.thinking_text().trim().is_empty()
-    }
-
-    pub(crate) fn thinking_panel_height(&self, max_height: u16) -> u16 {
-        if !self.has_thinking_panel() {
-            return 0;
-        }
-        // 1 header line + content lines, capped.
-        let content_lines = self.thinking_text().lines().count() as u16;
-        content_lines.saturating_add(1).min(max_height.max(1))
-    }
-
-    pub(crate) fn render_thinking_panel(&mut self, frame: &mut Frame, area: Rect) {
-        if area.is_empty() || !self.has_thinking_panel() {
-            return;
-        }
-
-        let style = Style::default()
-            .fg(Color::DarkGray)
-            .add_modifier(Modifier::ITALIC);
-
-        let mut lines = Vec::<Line<'static>>::new();
-        lines.push(Line::from(Span::styled("Thinking", style)));
-
-        let content_h = area.height.saturating_sub(1) as usize;
-        if content_h > 0 {
-            let all = self
-                .thinking_text()
-                .lines()
-                .map(|l| Line::from(Span::styled(l.to_string(), style)))
-                .collect::<Vec<_>>();
-            let start = all.len().saturating_sub(content_h);
-            lines.extend(all.into_iter().skip(start));
-        }
-
-        // No borders/cards: keep it lightweight and let the transcript use the remaining space.
-        let para = Paragraph::new(lines)
-            .block(Block::default())
-            .wrap(Wrap { trim: false });
-        frame.render_widget(para, area);
-    }
-
-    pub(crate) fn scroll_wheel_up(&mut self, n: u16) {
-        let _ = n;
+    pub(crate) fn scroll_up(&mut self, n: usize) {
+        self.scroll_from_bottom = self.scroll_from_bottom.saturating_add(n.max(1));
         self.dirty = true;
     }
 
-    pub(crate) fn scroll_wheel_down(&mut self, n: u16) {
-        let _ = n;
+    pub(crate) fn scroll_down(&mut self, n: usize) {
+        self.scroll_from_bottom = self.scroll_from_bottom.saturating_sub(n.max(1));
+        self.dirty = true;
+    }
+
+    pub(crate) fn scroll_to_bottom(&mut self) {
+        self.scroll_from_bottom = 0;
+        self.dirty = true;
     }
 
     fn append_assistant_delta(&mut self, delta: &str) {
@@ -258,12 +216,15 @@ impl ChatComponent {
             self.items.push(ChatItem::Message(m));
         }
 
+        // When following the conversation, keep the viewport pinned to the bottom.
+        if self.scroll_from_bottom == 0 {
+            // no-op, but keep the intent explicit
+        }
         self.dirty = true;
     }
 
     fn append_thinking_delta(&mut self, delta: &str) {
         self.pending_thinking.push_str(delta);
-        self.show_thinking = true;
         self.dirty = true;
     }
 
@@ -309,14 +270,15 @@ impl ChatComponent {
         } else {
             self.last_thinking = combined_thinking;
         }
-        // Collapse thinking once the assistant is done; users can re-open it via a shortcut.
-        self.show_thinking = false;
         self.dirty = true;
     }
 
     fn show_tool_message(&mut self, line: String) {
         self.items
             .push(ChatItem::Message(Message::new(Role::System, line)));
+        if self.scroll_from_bottom == 0 {
+            // keep pinned
+        }
         self.dirty = true;
     }
 
@@ -325,47 +287,47 @@ impl ChatComponent {
             Role::Error,
             format!("{err}"),
         )));
+        if self.scroll_from_bottom == 0 {
+            // keep pinned
+        }
         self.dirty = true;
     }
 
-    fn render_thinking_inline_lines(&self, max_height: usize) -> Vec<Line<'static>> {
-        if !self.has_thinking_panel() || max_height == 0 {
-            return Vec::new();
+    pub(crate) fn thinking_snapshot(&self) -> Option<(String, bool)> {
+        if !self.pending_thinking.trim().is_empty() {
+            return Some((self.pending_thinking.clone(), true));
         }
+        if !self.last_thinking.trim().is_empty() {
+            return Some((self.last_thinking.clone(), false));
+        }
+        None
+    }
+
+    fn thinking_collapsed_line(&self) -> Line<'static> {
+        let has_pending_thinking = !self.pending_thinking.trim().is_empty();
+        let label = if has_pending_thinking {
+            "Thinking…"
+        } else {
+            "Thinking"
+        };
 
         let style = Style::default()
             .fg(Color::DarkGray)
             .add_modifier(Modifier::ITALIC);
+        Line::from(Span::styled(label, style))
+    }
 
-        let mut lines = Vec::<Line<'static>>::new();
-        lines.push(Line::from(Span::styled("Thinking", style)));
-
-        let max_content = max_height.saturating_sub(1);
-        let mut content = self
-            .thinking_text()
-            .lines()
-            .map(|l| Line::from(Span::styled(format!("  {l}"), style)))
-            .collect::<Vec<_>>();
-        if content.len() > max_content {
-            let start = content.len().saturating_sub(max_content);
-            content = content.split_off(start);
+    pub(crate) fn render_live_preview(&mut self, frame: &mut Frame, area: Rect) {
+        if area.is_empty() {
+            return;
         }
-        lines.extend(content);
-        lines
-    }
 
-    pub(crate) fn toggle_show_thinking(&mut self) {
-        self.show_thinking = !self.show_thinking;
-        self.dirty = true;
-    }
+        let width = area.width.max(1);
+        let mut lines: Vec<Line<'static>> = Vec::new();
 
-    pub(crate) fn take_pending_insert_lines(&mut self, width: u16) -> Vec<Line<'static>> {
-        let mut out = Vec::<Line<'static>>::new();
-        while let Some(item) = self.items.get_mut(self.next_insert_index) {
+        // Render full transcript in the viewport (keep newest lines).
+        for item in &mut self.items {
             let ChatItem::Message(msg) = item;
-            if msg.streaming {
-                break;
-            }
 
             if msg.dirty || msg.cached_width != width {
                 msg.cached_width = width;
@@ -383,90 +345,72 @@ impl ChatComponent {
 
             match msg.role {
                 Role::User => {
-                    out.extend(chat_style::prefix_user_lines(msg.cached_lines.clone()));
-                    out.push(Line::from(""));
+                    lines.extend(chat_style::prefix_user_lines(msg.cached_lines.clone()));
+                    lines.push(Line::from(""));
                 }
                 Role::Assistant => {
-                    out.extend(chat_style::prefix_assistant_lines(
+                    lines.extend(chat_style::prefix_assistant_lines(
                         msg.cached_lines.clone(),
-                        /*streaming*/ false,
+                        /*streaming*/ msg.streaming,
                     ));
-                    out.push(Line::from(""));
+                    lines.push(Line::from(""));
                 }
                 Role::System => {
                     let mut system_lines = msg.cached_lines.clone();
                     for line in &mut system_lines {
                         line.style = Style::default().fg(Color::DarkGray);
                     }
-                    out.extend(system_lines);
-                    out.push(Line::from(""));
+                    lines.extend(system_lines);
+                    lines.push(Line::from(""));
                 }
                 Role::Error => {
                     let mut error_lines = msg.cached_lines.clone();
                     for line in &mut error_lines {
                         line.style = Style::default().fg(Color::Red);
                     }
-                    out.extend(error_lines);
-                    out.push(Line::from(""));
+                    lines.extend(error_lines);
+                    lines.push(Line::from(""));
                 }
             }
-
-            self.next_insert_index += 1;
         }
 
-        out
-    }
-
-    pub(crate) fn render_live_preview(&mut self, frame: &mut Frame, area: Rect) {
-        if area.is_empty() {
-            return;
-        }
-
-        let width = area.width.max(1);
-        let mut lines: Vec<Line<'static>> = Vec::new();
-
-        let show_thinking = self.show_thinking && self.has_thinking_panel();
-        if show_thinking {
-            lines.extend(self.render_thinking_inline_lines(6));
-            lines.push(Line::from(""));
-        }
-
-        let streaming = self.items.iter_mut().rev().find_map(|item| match item {
-            ChatItem::Message(msg) if msg.role == Role::Assistant && msg.streaming => Some(msg),
-            _ => None,
-        });
-
-        if let Some(msg) = streaming {
-            if msg.dirty || msg.cached_width != width {
-                msg.cached_width = width;
-                msg.cached_lines = if self.raw_output {
-                    msg.content
-                        .trim_end_matches(['\r', '\n'])
-                        .lines()
-                        .map(|l| Line::from(l.to_string()))
-                        .collect::<Vec<_>>()
-                } else {
-                    self.markdown.render(&msg.content, width)
-                };
-                msg.dirty = false;
+        // Thinking display (rendered at the bottom, close to the latest activity):
+        // - While streaming: show a single collapsed line.
+        // - After completion: keep a collapsed placeholder so users can expand it.
+        let has_any_thinking =
+            !self.pending_thinking.trim().is_empty() || !self.last_thinking.trim().is_empty();
+        if has_any_thinking {
+            if !lines.is_empty() && !lines.last().is_some_and(|l| l.spans.is_empty()) {
+                lines.push(Line::from(""));
             }
-
-            let mut assistant_lines = chat_style::prefix_assistant_lines(
-                msg.cached_lines.clone(),
-                /*streaming*/ true,
-            );
-            // Clip to available height (keep newest).
-            let remaining = area.height.saturating_sub(lines.len() as u16).max(1) as usize;
-            if assistant_lines.len() > remaining {
-                assistant_lines =
-                    assistant_lines.split_off(assistant_lines.len().saturating_sub(remaining));
-            }
-            lines.extend(assistant_lines);
+            lines.push(self.thinking_collapsed_line());
         }
 
-        // Clip overall to the viewport height.
-        if lines.len() > area.height as usize {
-            lines = lines.split_off(lines.len() - area.height as usize);
+        // Keep scroll stable while new content streams in: if the user has scrolled up (i.e. not
+        // pinned to bottom), maintain the same "end" index by increasing the distance from the
+        // bottom as new lines are appended.
+        let full_len = lines.len();
+        if self.last_rendered_width == width
+            && self.scroll_from_bottom > 0
+            && full_len > self.last_rendered_line_count
+        {
+            let delta = full_len - self.last_rendered_line_count;
+            self.scroll_from_bottom = self.scroll_from_bottom.saturating_add(delta);
+        }
+        self.last_rendered_width = width;
+        self.last_rendered_line_count = full_len;
+
+        // Window the transcript into the viewport with a scroll offset from the bottom.
+        let height = area.height.max(1) as usize;
+        if lines.len() > height {
+            let max_scroll = lines.len().saturating_sub(height);
+            self.scroll_from_bottom = self.scroll_from_bottom.min(max_scroll);
+
+            let end = lines.len().saturating_sub(self.scroll_from_bottom);
+            let start = end.saturating_sub(height);
+            lines = lines[start..end].to_vec();
+        } else {
+            self.scroll_from_bottom = 0;
         }
 
         let para = Paragraph::new(lines)
@@ -565,8 +509,55 @@ impl Component for ChatComponent {
                 return EventResult::consumed();
             }
             TuiEvent::Key(key) => {
-                use crossterm::event::{KeyCode, KeyModifiers};
-                let _ = (key, KeyCode::Enter, KeyModifiers::NONE);
+                use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+                if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+                    return EventResult::default();
+                }
+
+                if key.modifiers.is_empty() {
+                    match key.code {
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            self.scroll_up(1);
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            self.scroll_down(1);
+                            return EventResult::consumed();
+                        }
+                        KeyCode::PageUp => {
+                            self.scroll_up(10);
+                            return EventResult::consumed();
+                        }
+                        KeyCode::PageDown => {
+                            self.scroll_down(10);
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Char('g') => {
+                            self.scroll_from_bottom = usize::MAX;
+                            self.dirty = true;
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Char('G') => {
+                            self.scroll_to_bottom();
+                            return EventResult::consumed();
+                        }
+                        _ => {}
+                    }
+                }
+
+                if key.modifiers.contains(KeyModifiers::CONTROL) {
+                    match key.code {
+                        KeyCode::Char('u') => {
+                            self.scroll_up(10);
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Char('d') => {
+                            self.scroll_down(10);
+                            return EventResult::consumed();
+                        }
+                        _ => {}
+                    }
+                }
             }
             TuiEvent::Paste(_) | TuiEvent::Mouse(_) | TuiEvent::Tick | TuiEvent::Shutdown => {}
         }

@@ -122,12 +122,6 @@ serial_test = "3.2.0"
 test-case = "3.3.1"
 wiremock = "0.6.5"
 
-[patch.crates-io]
-# Codex's battle-tested terminal stack. Patching (instead of direct git deps)
-# keeps transitive crates like `tui-textarea` on the same ratatui/crossterm build.
-crossterm = { git = "https://github.com/nornagon/crossterm", rev = "87db8bfa6dc99427fd3b071681b07fc31c6ce995" }
-ratatui = { git = "https://github.com/nornagon/ratatui", rev = "9b2ad1298408c45918ee9f8241a6f95498cdbed2" }
-
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

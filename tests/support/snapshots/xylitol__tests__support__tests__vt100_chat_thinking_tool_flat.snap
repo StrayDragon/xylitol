@@ -1,5 +1,6 @@
 ---
 source: tests/support/mod.rs
+assertion_line: 141
 expression: screen
 ---
 › Please find the function definition.
@@ -13,3 +14,6 @@ expression: screen
 
 
 Found it in src/interface/tui/app.rs.
+
+
+Thinking
