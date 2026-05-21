@@ -238,22 +238,40 @@ impl AgentLoop {
 
     /// Ensure a session exists for the given ID by creating one if absent.
     async fn ensure_session(&self, session_id: &str) -> Result<(), AgentError> {
-        use adk_session::CreateRequest;
+        use adk_session::{CreateRequest, GetRequest};
         use std::collections::HashMap;
 
-        self.session_service
-            .create(CreateRequest {
+        // NOTE: `SessionService::create()` is *not* guaranteed to be idempotent.
+        // The in-memory backend overwrites any existing session (clearing events),
+        // which makes conversations appear to "reset" on every prompt.
+        //
+        // So we probe with `get()` first and only `create()` when the session is missing.
+        match self
+            .session_service
+            .get(GetRequest {
                 app_name: self.app_name.clone(),
                 user_id: "default-user".into(),
-                session_id: Some(session_id.into()),
-                state: HashMap::new(),
+                session_id: session_id.into(),
+                // Only checking existence; avoid loading any history here.
+                num_recent_events: Some(0),
+                after: None,
             })
             .await
-            .map(|_| ())
-            .or({
-                // Session already exists — that's fine.
-                Ok(())
-            })
+        {
+            Ok(_) => Ok(()),
+            Err(e) if e.is_session() && e.message == "session not found" => self
+                .session_service
+                .create(CreateRequest {
+                    app_name: self.app_name.clone(),
+                    user_id: "default-user".into(),
+                    session_id: Some(session_id.into()),
+                    state: HashMap::new(),
+                })
+                .await
+                .map(|_| ())
+                .map_err(|e| AgentError::SessionError(format!("create session: {e}"))),
+            Err(e) => Err(AgentError::SessionError(format!("get session: {e}"))),
+        }
     }
 }
 
@@ -669,5 +687,68 @@ mod tests {
             event_count += 1;
         }
         assert!(event_count > 0, "expected at least one event");
+    }
+
+    #[tokio::test]
+    async fn test_session_is_not_reset_between_runs() {
+        let mock = MockLlm::new("persist-llm")
+            .with_response(LlmResponse::new(Content::new("assistant").with_text("ok")));
+        let agent = build_test_agent(mock).unwrap();
+
+        let session_service: Arc<dyn SessionService> = Arc::new(InMemorySessionService::new());
+        let runner = build_test_runner(agent, session_service.clone(), "test-session-persist")
+            .await
+            .unwrap();
+
+        let agent_loop = AgentLoop {
+            runner,
+            app_name: "xylitol-test".into(),
+            session_service: session_service.clone(),
+            step_counter: std::sync::atomic::AtomicU32::new(0),
+            hooks: None,
+        };
+
+        // First turn
+        let mut stream = agent_loop
+            .run("first", "test-session-persist", None)
+            .await
+            .unwrap();
+        while stream.next().await.is_some() {}
+
+        let s1 = session_service
+            .get(adk_session::GetRequest {
+                app_name: "xylitol-test".into(),
+                user_id: "default-user".into(),
+                session_id: "test-session-persist".into(),
+                num_recent_events: None,
+                after: None,
+            })
+            .await
+            .unwrap();
+        let len1 = s1.events().len();
+        assert!(len1 > 0, "expected persisted events after first run");
+
+        // Second turn on the same session id should append, not reset.
+        let mut stream = agent_loop
+            .run("second", "test-session-persist", None)
+            .await
+            .unwrap();
+        while stream.next().await.is_some() {}
+
+        let s2 = session_service
+            .get(adk_session::GetRequest {
+                app_name: "xylitol-test".into(),
+                user_id: "default-user".into(),
+                session_id: "test-session-persist".into(),
+                num_recent_events: None,
+                after: None,
+            })
+            .await
+            .unwrap();
+        let len2 = s2.events().len();
+        assert!(
+            len2 > len1,
+            "expected events to accumulate across runs (len1={len1}, len2={len2})"
+        );
     }
 }
