@@ -102,20 +102,13 @@ mod tests {
     #[cfg(feature = "dev-vt100")]
     #[test]
     fn vt100_chat_renders_thinking_and_tool_calls_flat() {
-        use ratatui::widgets::{Paragraph, Widget, Wrap};
-        use ratatui::{Terminal, TerminalOptions, Viewport};
+        use ratatui::Terminal;
         use serde_json::json;
 
         use crate::interface::tui::{ChatComponent, Component, MarkdownRenderer, TuiEvent};
 
         let backend = vt100_backend::VT100Backend::new(/*width*/ 70, /*height*/ 18);
-        let mut terminal = Terminal::with_options(
-            backend,
-            TerminalOptions {
-                viewport: Viewport::Inline(6),
-            },
-        )
-        .expect("terminal");
+        let mut terminal = Terminal::new(backend).expect("terminal");
 
         let mut chat = ChatComponent::new(MarkdownRenderer::default());
         chat.add_user_message("Please find the function definition.");
@@ -139,15 +132,6 @@ mod tests {
             step: 1,
             summary: String::new(),
         }));
-
-        let pending_lines = chat.take_pending_insert_lines(/*width*/ 70);
-        terminal
-            .insert_before(pending_lines.len() as u16, |buf| {
-                Paragraph::new(pending_lines)
-                    .wrap(Wrap { trim: false })
-                    .render(buf.area, buf);
-            })
-            .expect("insert");
 
         terminal
             .draw(|frame| chat.render(frame, frame.area()))

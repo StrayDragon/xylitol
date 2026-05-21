@@ -63,6 +63,7 @@ impl Component for HelpOverlay {
             Line::from("  Ctrl+L       clear chat"),
             Line::from("  Ctrl+T       transcript"),
             Line::from("  Ctrl+O       copy last response"),
+            Line::from("  Alt+Y        view thinking"),
             Line::from("  Alt+R        raw output"),
             Line::from("  Ctrl+D       quit"),
         ];

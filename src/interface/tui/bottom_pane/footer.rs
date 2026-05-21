@@ -78,7 +78,7 @@ impl FooterState {
                     // Minimal codex-style shortcut overlay as a multi-line footer isn't currently
                     // supported by this simplified FooterState renderer. Keep it single-line and
                     // show the most important keys.
-                    "Esc edit previous · Tab queue · Ctrl+T transcript · Ctrl+O copy · Alt+R raw · Alt+Y thinking"
+                    "Esc edit previous · Tab queue · Ctrl+T transcript · Ctrl+O copy · Alt+R raw · Alt+Y view thinking"
                         .dim()
                 }
                 FooterMode::ComposerEmpty => {

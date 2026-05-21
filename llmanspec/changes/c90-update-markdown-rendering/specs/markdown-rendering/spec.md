@@ -1,0 +1,19 @@
+---
+llman_spec_valid_scope:
+  - src/interface/print.rs
+  - src/interface/tui/markdown.rs
+llman_spec_valid_commands:
+  - llman sdd validate c90-update-markdown-rendering --type spec --strict --no-interactive
+llman_spec_evidence:
+  - markdown rendering snapshots pass
+---
+
+```toon
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r1,terminal-markdown-rendering,"System MUST render Markdown into terminal styled lines with stable wrapping for wide characters and code blocks.",null,null,null
+  add_requirement,r2,terminal-markdown-links,"System MUST avoid forcing link underline and link color when rendering Markdown unless explicitly enabled by configuration.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r1,happy,"TUI output is enabled","assistant content contains Markdown with code blocks and CJK characters","rendered lines wrap within viewport width and preserve styling"
+  r2,happy,"Markdown contains links","renderer uses default configuration","rendered output does not apply underline and blue color unconditionally"
+```
