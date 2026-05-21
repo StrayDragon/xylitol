@@ -66,6 +66,9 @@ pub(crate) enum AppAction {
     /// Copy latest assistant response as Markdown.
     CopyLastResponse,
 
+    /// Copy arbitrary text to the clipboard (used by overlays).
+    CopyText(String),
+
     /// Toggle raw output mode.
     ToggleRawOutput,
 }
