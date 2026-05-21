@@ -268,7 +268,8 @@ impl App {
         self.queued_prompts.clear();
         self.status_bar.set_queue_len(0);
         self.footer.queue_len = 0;
-        self.footer.message = "Cleared.".to_string();
+        self.footer
+            .set_message("Cleared.", std::time::Duration::from_secs(2));
     }
 
     fn last_user_message(&self) -> Option<String> {
@@ -290,12 +291,18 @@ impl App {
                     profile.model_config.provider_name(),
                     profile.model_config.model
                 );
-                self.footer.message = format!("Profile: {name}");
+                self.footer.set_message(
+                    format!("Profile: {name}"),
+                    std::time::Duration::from_secs(2),
+                );
             }
             Err(err) => {
                 self.status_bar.set_model(name.clone());
                 self.footer.model_label = name.clone();
-                self.footer.message = format!("Profile '{name}' not ready: {err}");
+                self.footer.set_message(
+                    format!("Profile '{name}' not ready: {err}"),
+                    std::time::Duration::from_secs(4),
+                );
             }
         }
     }
@@ -304,14 +311,19 @@ impl App {
         self.session_id = session_id.clone();
         self.status_bar.set_session(session_id);
         self.footer.session_label = self.session_id.clone();
-        self.footer.message = "Session switched.".to_string();
+        self.footer
+            .set_message("Session switched.", std::time::Duration::from_secs(2));
     }
 
     fn apply_theme_selection(&mut self, theme: String) {
         if self.chat.set_theme(&theme) {
-            self.footer.message = format!("Theme: {theme}");
+            self.footer
+                .set_message(format!("Theme: {theme}"), std::time::Duration::from_secs(2));
         } else {
-            self.footer.message = format!("Theme not found: {theme}");
+            self.footer.set_message(
+                format!("Theme not found: {theme}"),
+                std::time::Duration::from_secs(4),
+            );
         }
     }
 
@@ -343,7 +355,8 @@ impl App {
                     self.overlays
                         .push(Box::new(DiffPreviewOverlay::new(self.diff_hunks.clone())));
                 } else {
-                    self.footer.message = "No diffs to preview.".to_string();
+                    self.footer
+                        .set_message("No diffs to preview.", std::time::Duration::from_secs(2));
                 }
 
                 None
@@ -356,18 +369,29 @@ impl App {
                 None
             }
             AppKeyAction::CopyLastResponse => {
+                use std::time::Duration;
+
                 if let Some(text) = self.chat.last_assistant_message() {
-                    if let Err(err) = copy_to_clipboard(&text) {
-                        self.footer.message = err;
-                    } else {
-                        self.footer.message = "Copied last response.".to_string();
+                    match copy_to_clipboard(&text) {
+                        Ok(method) => {
+                            self.footer.set_message(
+                                format!("Copied last response ({})", method.label()),
+                                Duration::from_secs(2),
+                            );
+                        }
+                        Err(err) => {
+                            self.footer.set_message(err, Duration::from_secs(4));
+                        }
                     }
                 } else {
-                    self.footer.message = "No assistant response yet.".to_string();
+                    self.footer
+                        .set_message("No assistant response yet.", Duration::from_secs(2));
                 }
                 None
             }
             AppKeyAction::ToggleRawOutput => {
+                use std::time::Duration;
+
                 self.raw_output = !self.raw_output;
                 self.chat.set_raw_output(self.raw_output);
                 self.input.set_raw_output(self.raw_output);
@@ -376,7 +400,7 @@ impl App {
                 } else {
                     "Raw output: OFF"
                 };
-                self.footer.message = msg.to_string();
+                self.footer.set_message(msg, Duration::from_secs(2));
                 None
             }
             AppKeyAction::ToggleThinking => {
@@ -443,7 +467,8 @@ impl App {
                         diff_hunks,
                         tx,
                     )));
-                    self.footer.message = format!("Approval required: {name}");
+                    self.footer
+                        .set_sticky_message(format!("Approval required: {name}"));
                 }
 
                 #[cfg(feature = "ui-review")]
@@ -498,18 +523,34 @@ impl App {
                                 None
                             }
                             Some(AppAction::CopyLastResponse) => {
+                                use std::time::Duration;
+
                                 if let Some(text) = self.chat.last_assistant_message() {
-                                    if let Err(err) = copy_to_clipboard(&text) {
-                                        self.footer.message = err;
-                                    } else {
-                                        self.footer.message = "Copied last response.".to_string();
+                                    match copy_to_clipboard(&text) {
+                                        Ok(method) => {
+                                            self.footer.set_message(
+                                                format!(
+                                                    "Copied last response ({})",
+                                                    method.label()
+                                                ),
+                                                Duration::from_secs(2),
+                                            );
+                                        }
+                                        Err(err) => {
+                                            self.footer.set_message(err, Duration::from_secs(4));
+                                        }
                                     }
                                 } else {
-                                    self.footer.message = "No assistant response yet.".to_string();
+                                    self.footer.set_message(
+                                        "No assistant response yet.",
+                                        Duration::from_secs(2),
+                                    );
                                 }
                                 None
                             }
                             Some(AppAction::ToggleRawOutput) => {
+                                use std::time::Duration;
+
                                 self.raw_output = !self.raw_output;
                                 self.chat.set_raw_output(self.raw_output);
                                 self.input.set_raw_output(self.raw_output);
@@ -518,7 +559,7 @@ impl App {
                                 } else {
                                     "Raw output: OFF"
                                 };
-                                self.footer.message = msg.to_string();
+                                self.footer.set_message(msg, Duration::from_secs(2));
                                 None
                             }
                             Some(AppAction::RunPrompt(text)) => {
@@ -614,8 +655,10 @@ impl App {
                                 }
 
                                 self.backtrack_primed = true;
-                                self.footer.message =
-                                    "Backtrack: press Esc again to edit last message.".to_string();
+                                self.footer.set_message(
+                                    "Backtrack: press Esc again to edit last message.",
+                                    std::time::Duration::from_secs(2),
+                                );
                                 None
                             }
                             Some(AppAction::BacktrackEditLast) => {
@@ -625,9 +668,15 @@ impl App {
                                 self.backtrack_primed = false;
                                 if let Some(last) = self.last_user_message() {
                                     self.input.load_text(&last);
-                                    self.footer.message = "Editing last message.".to_string();
+                                    self.footer.set_message(
+                                        "Editing last message.",
+                                        std::time::Duration::from_secs(2),
+                                    );
                                 } else {
-                                    self.footer.message = "No previous user message.".to_string();
+                                    self.footer.set_message(
+                                        "No previous user message.",
+                                        std::time::Duration::from_secs(2),
+                                    );
                                 }
                                 None
                             }
@@ -651,7 +700,7 @@ impl App {
             // normally (Codex-style). Mouse events are ignored.
             TuiEvent::Mouse(_mouse) => None,
             TuiEvent::Tick => {
-                // Currently a no-op; components that animate should mark themselves dirty.
+                self.footer.tick();
                 None
             }
             TuiEvent::Shutdown => {
@@ -1173,6 +1222,18 @@ fn handle_action(
         AppAction::OpenTranscript | AppAction::CopyLastResponse | AppAction::ToggleRawOutput => {
             // These actions are also handled in `App::update`.
         }
+        AppAction::CopyText(text) => match copy_to_clipboard(&text) {
+            Ok(method) => {
+                app.footer.set_message(
+                    format!("Copied ({})", method.label()),
+                    std::time::Duration::from_secs(2),
+                );
+            }
+            Err(err) => {
+                app.footer
+                    .set_message(err, std::time::Duration::from_secs(4));
+            }
+        },
         AppAction::SelectProfile(name) => {
             app.apply_profile_selection(name);
         }
@@ -1185,10 +1246,12 @@ fn handle_action(
         AppAction::OpenEditor(text) => match open_editor(terminal, input_ctrl, &text) {
             Ok(edited) => {
                 app.input.load_text(&edited);
-                app.footer.message = "Edited in $EDITOR.".to_string();
+                app.footer
+                    .set_message("Edited in $EDITOR.", std::time::Duration::from_secs(2));
             }
             Err(err) => {
-                app.footer.message = err;
+                app.footer
+                    .set_message(err, std::time::Duration::from_secs(4));
             }
         },
         AppAction::ShowHistorySearch => {
@@ -1203,7 +1266,8 @@ fn handle_action(
         }
         AppAction::LoadInput(text) => {
             app.input.load_text(&text);
-            app.footer.message = "Loaded from history.".to_string();
+            app.footer
+                .set_message("Loaded from history.", std::time::Duration::from_secs(2));
         }
     }
 }
@@ -1310,7 +1374,87 @@ fn flush_terminal_input_buffer() {
     }
 }
 
-fn copy_to_clipboard(text: &str) -> Result<(), String> {
+fn copy_to_clipboard(text: &str) -> Result<CopyMethod, String> {
+    copy_to_clipboard_with_context(text, detect_copy_context())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CopyContext {
+    LocalDirect,
+    RemoteOrMux { in_tmux: bool },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CopyMethod {
+    Osc52,
+    Osc52Tmux,
+    Pbcopy,
+    WlCopy,
+    Xclip,
+    Xsel,
+    TempFile,
+}
+
+impl CopyMethod {
+    fn label(self) -> &'static str {
+        match self {
+            CopyMethod::Osc52 => "OSC52",
+            CopyMethod::Osc52Tmux => "OSC52/tmux",
+            CopyMethod::Pbcopy => "pbcopy",
+            CopyMethod::WlCopy => "wl-copy",
+            CopyMethod::Xclip => "xclip",
+            CopyMethod::Xsel => "xsel",
+            CopyMethod::TempFile => "temp file",
+        }
+    }
+}
+
+fn detect_copy_context() -> CopyContext {
+    fn has(name: &str) -> bool {
+        std::env::var_os(name).is_some()
+    }
+
+    let in_tmux = has("TMUX");
+    let in_zellij = has("ZELLIJ");
+    let in_ssh = has("SSH_CONNECTION") || has("SSH_CLIENT") || has("SSH_TTY");
+    if in_ssh || in_tmux || in_zellij {
+        CopyContext::RemoteOrMux { in_tmux }
+    } else {
+        CopyContext::LocalDirect
+    }
+}
+
+fn copy_to_clipboard_with_context(text: &str, context: CopyContext) -> Result<CopyMethod, String> {
+    match context {
+        CopyContext::RemoteOrMux { in_tmux } => {
+            // In SSH / multiplexers prefer OSC52 so the clipboard lands on the local machine.
+            match copy_via_osc52(text, in_tmux) {
+                Ok(method) => Ok(method),
+                Err(_err) => {
+                    let path = write_temp_copy_file(text)?;
+                    Err(format!(
+                        "Clipboard not supported; wrote to {}",
+                        path.display()
+                    ))
+                }
+            }
+        }
+        CopyContext::LocalDirect => {
+            // In a local terminal, prefer the OS clipboard tooling; fall back to OSC52.
+            copy_via_system_clipboard(text)
+                .or_else(|_| copy_via_osc52(text, /*in_tmux*/ false))
+                .or_else(|_err| {
+                    let path = write_temp_copy_file(text)?;
+                    Err(format!(
+                        "Clipboard not supported; wrote to {}",
+                        path.display()
+                    ))
+                })
+        }
+    }
+}
+
+fn copy_via_system_clipboard(text: &str) -> Result<CopyMethod, String> {
     #[cfg(target_os = "macos")]
     {
         use std::io::Write;
@@ -1333,24 +1477,158 @@ fn copy_to_clipboard(text: &str) -> Result<(), String> {
             .wait()
             .map_err(|e| format!("Failed to wait for pbcopy: {e}"))?;
         if status.success() {
-            return Ok(());
+            return Ok(CopyMethod::Pbcopy);
         }
-        Err(format!("pbcopy exited with {status}"))
+        return Err(format!("pbcopy exited with {status}"));
     }
 
     #[cfg(not(target_os = "macos"))]
     {
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
-            .as_millis();
-        let path =
-            std::env::temp_dir().join(format!("xylitol-copy-{}-{}.md", std::process::id(), ts));
-        std::fs::write(&path, text)
-            .map_err(|e| format!("Clipboard not supported; wrote to {path:?}: {e}"))?;
-        Err(format!(
-            "Clipboard not supported; wrote to {}",
-            path.display()
-        ))
+        #[cfg(windows)]
+        {
+            let _ = text;
+            Err("Clipboard not supported on this platform.".to_string())
+        }
+
+        #[cfg(not(windows))]
+        {
+            // Linux/BSD: prefer wl-copy on Wayland, then xclip/xsel on X11.
+            if std::env::var_os("WAYLAND_DISPLAY").is_some()
+                && let Ok(method) = copy_via_command_stdin("wl-copy", &[], text, CopyMethod::WlCopy)
+            {
+                return Ok(method);
+            }
+
+            if std::env::var_os("DISPLAY").is_some() {
+                if let Ok(method) = copy_via_command_stdin(
+                    "xclip",
+                    &["-selection", "clipboard"],
+                    text,
+                    CopyMethod::Xclip,
+                ) {
+                    return Ok(method);
+                }
+                if let Ok(method) = copy_via_command_stdin("xsel", &["-ib"], text, CopyMethod::Xsel)
+                {
+                    return Ok(method);
+                }
+            }
+
+            Err("No system clipboard helper found (wl-copy/xclip/xsel).".to_string())
+        }
     }
+}
+
+fn copy_via_command_stdin(
+    bin: &str,
+    args: &[&str],
+    text: &str,
+    method: CopyMethod,
+) -> Result<CopyMethod, String> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new(bin)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to run {bin}: {e}"))?;
+    {
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| format!("Failed to open {bin} stdin"))?;
+        stdin
+            .write_all(text.as_bytes())
+            .map_err(|e| format!("Failed to write to {bin}: {e}"))?;
+    }
+    let status = child
+        .wait()
+        .map_err(|e| format!("Failed to wait for {bin}: {e}"))?;
+    if status.success() {
+        Ok(method)
+    } else {
+        Err(format!("{bin} exited with {status}"))
+    }
+}
+
+fn copy_via_osc52(text: &str, in_tmux: bool) -> Result<CopyMethod, String> {
+    use std::io::Write;
+
+    // Many terminals impose size limits on OSC52 payloads; keep it bounded and fall back.
+    const MAX_B64_CHARS: usize = 100_000;
+    let b64 = base64_encode(text.as_bytes());
+    if b64.len() > MAX_B64_CHARS {
+        return Err(format!(
+            "OSC52 payload too large ({} chars); falling back.",
+            b64.len()
+        ));
+    }
+
+    let seq = if in_tmux {
+        // Wrap the OSC sequence in a DCS passthrough so tmux forwards it.
+        format!("\x1bPtmux;\x1b\x1b]52;c;{}\x07\x1b\\", b64)
+    } else {
+        format!("\x1b]52;c;{}\x07", b64)
+    };
+
+    let mut out = std::io::stdout();
+    out.write_all(seq.as_bytes())
+        .map_err(|e| format!("Failed to write OSC52 sequence: {e}"))?;
+    out.flush()
+        .map_err(|e| format!("Failed to flush OSC52 sequence: {e}"))?;
+
+    Ok(if in_tmux {
+        CopyMethod::Osc52Tmux
+    } else {
+        CopyMethod::Osc52
+    })
+}
+
+fn write_temp_copy_file(text: &str) -> Result<std::path::PathBuf, String> {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+        .as_millis();
+    let path = std::env::temp_dir().join(format!("xylitol-copy-{}-{}.md", std::process::id(), ts));
+    std::fs::write(&path, text).map_err(|e| format!("Failed to write {path:?}: {e}"))?;
+    Ok(path)
+}
+
+fn base64_encode(data: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+
+    let mut i = 0;
+    while i + 3 <= data.len() {
+        let n = ((data[i] as u32) << 16) | ((data[i + 1] as u32) << 8) | (data[i + 2] as u32);
+        out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
+        out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
+        out.push(TABLE[((n >> 6) & 0x3f) as usize] as char);
+        out.push(TABLE[(n & 0x3f) as usize] as char);
+        i += 3;
+    }
+
+    match data.len().saturating_sub(i) {
+        0 => {}
+        1 => {
+            let n = (data[i] as u32) << 16;
+            out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
+            out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
+            out.push('=');
+            out.push('=');
+        }
+        2 => {
+            let n = ((data[i] as u32) << 16) | ((data[i + 1] as u32) << 8);
+            out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
+            out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
+            out.push(TABLE[((n >> 6) & 0x3f) as usize] as char);
+            out.push('=');
+        }
+        _ => unreachable!(),
+    }
+
+    out
 }
