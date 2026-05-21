@@ -7,7 +7,6 @@ use futures::StreamExt;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::{TerminalOptions, Viewport};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc;
 
@@ -703,6 +702,17 @@ impl App {
         self.chat.render_live_preview(frame, self.chat_area);
         self.input.render(frame, self.input_area);
 
+        // Anchor the terminal cursor inside the composer so IME/preedit placement stays stable
+        // while the model is streaming output.
+        if self.overlays.is_empty() && self.focus == Focus::Input {
+            let (row, col) = self.input.cursor_display_col();
+            let max_row = self.input_area.height.saturating_sub(1) as usize;
+            let max_col = self.input_area.width.saturating_sub(1) as usize;
+            let row = row.min(max_row) as u16;
+            let col = col.min(max_col) as u16;
+            frame.set_cursor_position((self.input_area.x + col, self.input_area.y + row));
+        }
+
         // Footer mode: reflect current composer state and backtrack priming.
         // Preserve overlay state so `?` toggles persist until dismissed.
         if self.footer.mode != FooterMode::ShortcutOverlay {
@@ -873,15 +883,13 @@ pub(crate) async fn run_tui(
     use crossterm::terminal::{
         BeginSynchronizedUpdate, EndSynchronizedUpdate, disable_raw_mode, enable_raw_mode,
     };
+    use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
     use std::io::stdout;
-
-    // Inline viewport height (Codex-style: keep a stable bottom pane so the transcript can live in
-    // normal scrollback and be selectable/copyable in multiplexers like zellij/tmux).
-    const INLINE_VIEWPORT_HEIGHT: u16 = 16;
 
     // ── Terminal setup ──────────────────────────────────────
     let mut stdout = stdout();
     execute!(stdout, EnableBracketedPaste)?;
+    execute!(stdout, EnterAlternateScreen)?;
     enable_raw_mode()?;
     keyboard_modes::enable_keyboard_enhancement();
     // Ensure mouse wheel scrolls normal terminal scrollback (inline viewport mode).
@@ -889,13 +897,7 @@ pub(crate) async fn run_tui(
     let _ = execute!(stdout, EnableFocusChange);
 
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::with_options(
-        backend,
-        TerminalOptions {
-            viewport: Viewport::Inline(INLINE_VIEWPORT_HEIGHT),
-        },
-    )?;
-    terminal.hide_cursor()?;
+    let mut terminal = Terminal::new(backend)?;
 
     // Detect whether progressive keyboard enhancement is actually supported so we can present the
     // right newline hint (Shift+Enter vs Ctrl+J). Keep it bounded to avoid slow startup.
@@ -1074,17 +1076,8 @@ pub(crate) async fn run_tui(
 
         // Append any newly committed transcript lines above the inline viewport (Codex-style).
         // This keeps chat history in the terminal's normal scrollback so multiplexers can copy it.
-        let pending_lines = app
-            .chat
-            .take_pending_insert_lines(terminal.size()?.width.max(1));
-        if !pending_lines.is_empty() {
-            use ratatui::widgets::{Paragraph, Widget, Wrap};
-            terminal.insert_before(pending_lines.len() as u16, |buf| {
-                Paragraph::new(pending_lines)
-                    .wrap(Wrap { trim: false })
-                    .render(buf.area, buf);
-            })?;
-        }
+        // (Disabled) Inline viewport transcript injection is not compatible with stable cursor
+        // placement for IME/composition while the model is streaming output.
 
         // Redraw.
         execute!(terminal.backend_mut(), BeginSynchronizedUpdate)?;
@@ -1108,6 +1101,7 @@ pub(crate) async fn run_tui(
         std::io::stdout(),
         super::terminal_modes::DisableAlternateScroll
     );
+    let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
     if let Err(err) = execute!(std::io::stdout(), DisableBracketedPaste) {
         restore_error.get_or_insert(err);
     }
