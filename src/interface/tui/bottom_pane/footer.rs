@@ -10,6 +10,7 @@ use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Widget;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FooterMode {
@@ -28,6 +29,7 @@ pub(crate) struct FooterState {
     pub(crate) model_label: String,
     pub(crate) session_label: String,
     pub(crate) message: String,
+    message_until: Option<Instant>,
 }
 
 impl FooterState {
@@ -40,6 +42,27 @@ impl FooterState {
             model_label: "unknown".to_string(),
             session_label: "default".to_string(),
             message: String::new(),
+            message_until: None,
+        }
+    }
+
+    pub(crate) fn set_message(&mut self, message: impl Into<String>, ttl: Duration) {
+        self.message = message.into();
+        self.message_until = Some(Instant::now() + ttl);
+    }
+
+    pub(crate) fn set_sticky_message(&mut self, message: impl Into<String>) {
+        self.message = message.into();
+        self.message_until = None;
+    }
+
+    pub(crate) fn tick(&mut self) {
+        let Some(until) = self.message_until else {
+            return;
+        };
+        if Instant::now() >= until {
+            self.message.clear();
+            self.message_until = None;
         }
     }
 
