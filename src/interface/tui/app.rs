@@ -403,8 +403,24 @@ impl App {
                 self.footer.set_message(msg, Duration::from_secs(2));
                 None
             }
-            AppKeyAction::ToggleThinking => {
-                self.chat.toggle_show_thinking();
+            AppKeyAction::ViewThinking => {
+                use std::time::Duration;
+
+                let Some((thinking, pending)) = self.chat.thinking_snapshot() else {
+                    self.footer
+                        .set_message("No thinking to show.", Duration::from_secs(2));
+                    return None;
+                };
+
+                let title = if pending {
+                    "## Thinking (live)\n\n"
+                } else {
+                    "## Thinking\n\n"
+                };
+                let mut md = String::new();
+                md.push_str(title);
+                md.push_str(&thinking);
+                self.overlays.push(Box::new(TranscriptOverlay::new(md)));
                 None
             }
         }
@@ -495,6 +511,37 @@ impl App {
                 next_action
             }
             TuiEvent::Key(key) => {
+                use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+                if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+                    return None;
+                }
+
+                // Focus switch (Input <-> Chat).
+                if matches!(key.code, KeyCode::BackTab)
+                    || (key.code == KeyCode::Tab && key.modifiers.contains(KeyModifiers::SHIFT))
+                {
+                    self.focus = match self.focus {
+                        Focus::Input => Focus::Chat,
+                        Focus::Chat => Focus::Input,
+                    };
+                    return None;
+                }
+
+                // Global chat scrolling keys (work even when the composer is focused).
+                if key.modifiers.is_empty() {
+                    match key.code {
+                        KeyCode::PageUp => {
+                            self.chat.scroll_up(10);
+                            return None;
+                        }
+                        KeyCode::PageDown => {
+                            self.chat.scroll_down(10);
+                            return None;
+                        }
+                        _ => {}
+                    }
+                }
+
                 if let Some(app_action) = self.keymap.resolve_app(&key) {
                     if let Some(out) = self.handle_app_key_action(app_action) {
                         return Some(out);
