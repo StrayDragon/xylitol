@@ -2,9 +2,10 @@
 source: tests/support/mod.rs
 expression: screen
 ---
-Result
-
-Key │ Value
-a │ 1
+┌─────┬───────┐
+│ Key │ Value │
+╞═════╪═══════╡
+│ a   │ 1     │
+└─────┴───────┘
 
 Done.
