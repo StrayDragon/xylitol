@@ -643,13 +643,18 @@ mod tests {
     use lspz::mcp::LspSession;
     use lspz::transport::mock::MockTransport;
 
-    /// Create a temp file and return (file:// URI, path).
-    fn temp_file(content: &str) -> (String, String) {
-        static COUNTER: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
-        let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let path = format!("/tmp/xylitol-lsp-test-{id}.rs");
-        std::fs::write(&path, content).unwrap();
-        (format!("file://{path}"), path)
+    /// Create a temp file and return (file:// URI, path, _guard).
+    /// The guard ensures cleanup via RAII.
+    fn temp_file(content: &str) -> (String, String, tempfile::NamedTempFile) {
+        let mut file = tempfile::Builder::new()
+            .prefix("xylitol-lsp-test-")
+            .suffix(".rs")
+            .tempfile()
+            .unwrap();
+        std::io::Write::write_all(&mut file, content.as_bytes()).unwrap();
+        let path = file.path().to_str().unwrap().to_string();
+        let uri = format!("file://{path}");
+        (uri, path, file)
     }
 
     /// Build a mock AgentHandle backed by a MockTransport.
@@ -688,7 +693,7 @@ mod tests {
         });
         pool.insert_handle("rust", handle);
 
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _path, _guard) = temp_file("fn main() {}");
         let result = pool.get_diagnostics(&uri, "rust").await.unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["diagnostics"][0]["message"], "mock error");
@@ -719,7 +724,7 @@ mod tests {
         });
         pool.insert_handle("rust", handle);
 
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _path, _guard) = temp_file("fn main() {}");
         let result = pool.get_completions(&uri, "rust", 0, 0).await.unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["items"][0]["label"], "fn");
@@ -750,7 +755,7 @@ mod tests {
         });
         pool.insert_handle("rust", handle);
 
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _path, _guard) = temp_file("fn main() {}");
         let result = pool.get_hover(&uri, "rust", 0, 0).await.unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["contents"]["value"], "**fn main** — entry point");
@@ -778,7 +783,7 @@ mod tests {
         });
         pool.insert_handle("rust", handle);
 
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _path, _guard) = temp_file("fn main() {}");
         let result = pool.get_symbols(&uri, "rust").await.unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed[0]["name"], "main");
@@ -807,7 +812,7 @@ mod tests {
         });
         pool.insert_handle("rust", handle);
 
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _path, _guard) = temp_file("fn main() {}");
         let result = pool.get_definition(&uri, "rust", 0, 0).await.unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["uri"], "file:///src/lib.rs");
@@ -835,7 +840,7 @@ mod tests {
         });
         pool.insert_handle("rust", handle);
 
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _path, _guard) = temp_file("fn main() {}");
         let result = pool.get_references(&uri, "rust", 0, 0).await.unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed[0]["uri"], "file:///lib.rs");
@@ -898,7 +903,7 @@ mod tests {
         });
         pool.insert_handle("rust", handle);
 
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _path, _guard) = temp_file("fn main() {}");
         let result = pool.rename(&uri, "rust", 0, 3, "new_name").await.unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert!(parsed["changes"].is_object());
@@ -929,7 +934,7 @@ mod tests {
         });
         pool.insert_handle("rust", handle);
 
-        let (uri, _path) = temp_file("fn main(){}");
+        let (uri, _path, _guard) = temp_file("fn main(){}");
         let result = pool.formatting(&uri, "rust", None).await.unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed[0]["newText"], "fn main() {}\n");
@@ -1075,8 +1080,8 @@ mod tests {
         pool.insert_handle("rust", handle_rust);
         pool.insert_handle("python", handle_py);
 
-        let (uri_a, _) = temp_file("fn main() {}");
-        let (uri_b, _) = temp_file("x = 1");
+        let (uri_a, _, _guard_a) = temp_file("fn main() {}");
+        let (uri_b, _, _guard_b) = temp_file("x = 1");
 
         let result_a = pool.get_diagnostics(&uri_a, "rust").await.unwrap();
         let parsed_a: serde_json::Value = serde_json::from_str(&result_a).unwrap();
