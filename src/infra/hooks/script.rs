@@ -57,10 +57,10 @@ pub(crate) async fn run_hook_script(
         let _ = stdin.shutdown().await;
     }
 
-    // Wait for output with timeout.
-    let output = tokio::time::timeout(timeout, child.wait_with_output()).await;
+    // Wait for output with timeout. On timeout, kill the child to prevent zombies.
+    let result = tokio::time::timeout(timeout, child.wait_with_output()).await;
 
-    match output {
+    match result {
         Ok(Ok(output)) => {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
@@ -99,9 +99,11 @@ pub(crate) async fn run_hook_script(
             warn!(
                 command = command,
                 timeout_ms = timeout.as_millis(),
-                "Hook script timed out, killing and allowing"
+                "Hook script timed out, blocking (fail-closed)"
             );
-            HookAction::Allow
+            HookAction::Block {
+                reason: format!("hook timed out after {}ms", timeout.as_millis()),
+            }
         }
     }
 }
@@ -205,7 +207,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_timeout_is_allow() {
+    async fn test_timeout_is_block() {
         let action = run_hook_script(
             "sleep 10",
             &HookEvent::ToolCall {
@@ -218,8 +220,8 @@ mod tests {
         )
         .await;
         assert!(
-            matches!(action, HookAction::Allow),
-            "timeout should be allow, got {action:?}"
+            matches!(action, HookAction::Block { .. }),
+            "timeout should be block (fail-closed), got {action:?}"
         );
     }
 

@@ -49,10 +49,12 @@ struct SecurityEngineInner {
     tool_allowlist: Vec<String>,
     bash_allowed: Vec<Regex>,
     bash_forbidden: Vec<Regex>,
+    bash_timeout_secs: u64,
     fs_allowed: Vec<String>,
     fs_forbidden: Vec<String>,
     network_allowed: Vec<String>,
     network_blocked: Vec<String>,
+    mcp_allowlist: Vec<String>,
     max_subprocesses: u16,
     subprocess_count: AtomicU16,
 }
@@ -73,10 +75,12 @@ impl SecurityEngine {
                 tool_allowlist: config.tool_allowlist.clone(),
                 bash_allowed,
                 bash_forbidden,
+                bash_timeout_secs: config.bash.timeout_secs,
                 fs_allowed: config.filesystem.allowed_patterns.clone(),
                 fs_forbidden: config.filesystem.forbidden_patterns.clone(),
                 network_allowed: config.network.allowed_domains.clone(),
                 network_blocked: config.network.blocked_domains.clone(),
+                mcp_allowlist: config.mcp_allowlist.clone(),
                 max_subprocesses: config.resource_limits.max_subprocesses,
                 subprocess_count: AtomicU16::new(0),
             }),
@@ -98,6 +102,7 @@ impl SecurityEngine {
         match tool {
             "bash" => self.check_bash(args),
             "read" | "write" | "edit" | "grep" | "find" | "ls" => self.check_file_tool(args),
+            t if t.starts_with("mcp:") => self.check_mcp_tool(t),
             _ => SecurityVerdict::Allowed,
         }
     }
@@ -148,14 +153,93 @@ impl SecurityEngine {
             };
         }
 
+        // Network domain enforcement for commands containing URLs/hostnames.
+        if let verdict @ SecurityVerdict::Blocked { .. } =
+            self.check_network_domains_in_command(command)
+        {
+            return verdict;
+        }
+
         SecurityVerdict::Allowed
     }
 
+    fn check_network_domains_in_command(&self, command: &str) -> SecurityVerdict {
+        if self.inner.network_blocked.is_empty() && self.inner.network_allowed.is_empty() {
+            return SecurityVerdict::Allowed;
+        }
+
+        for domain in &self.inner.network_blocked {
+            if command.contains(domain.as_str()) {
+                return SecurityVerdict::Blocked {
+                    reason: format!("command references blocked domain '{domain}'"),
+                    rule: "network.blocked_domains".into(),
+                };
+            }
+        }
+
+        if !self.inner.network_allowed.is_empty() {
+            let has_network_indicator = command.contains("http://")
+                || command.contains("https://")
+                || command.contains("curl")
+                || command.contains("wget");
+            if has_network_indicator
+                && !self
+                    .inner
+                    .network_allowed
+                    .iter()
+                    .any(|d| command.contains(d.as_str()))
+            {
+                return SecurityVerdict::Blocked {
+                    reason: "command appears to access network but no allowed domain matched"
+                        .into(),
+                    rule: "network.allowed_domains".into(),
+                };
+            }
+        }
+
+        SecurityVerdict::Allowed
+    }
+
+    fn check_mcp_tool(&self, tool: &str) -> SecurityVerdict {
+        if self.inner.mcp_allowlist.is_empty() {
+            return SecurityVerdict::Blocked {
+                reason: format!("MCP tool '{tool}' blocked: no mcp_allowlist configured"),
+                rule: "mcp.default_deny".into(),
+            };
+        }
+        let parts: Vec<&str> = tool.splitn(3, ':').collect();
+        let server = parts.get(1).unwrap_or(&"");
+        let tool_name = parts.get(2).unwrap_or(&"");
+        let qualified = format!("{server}:{tool_name}");
+        if self
+            .inner
+            .mcp_allowlist
+            .iter()
+            .any(|entry| entry == server || entry == &qualified || entry == "*")
+        {
+            SecurityVerdict::Allowed
+        } else {
+            SecurityVerdict::Blocked {
+                reason: format!(
+                    "MCP tool '{tool}' blocked: server '{server}' not in mcp_allowlist"
+                ),
+                rule: "mcp.default_deny".into(),
+            }
+        }
+    }
+
     fn check_file_tool(&self, args: &serde_json::Value) -> SecurityVerdict {
-        let file_path = args.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+        let file_path = args
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .or_else(|| args.get("path").and_then(|v| v.as_str()))
+            .unwrap_or("");
 
         if file_path.is_empty() {
-            return SecurityVerdict::Allowed;
+            return SecurityVerdict::Blocked {
+                reason: "no path provided for file tool".into(),
+                rule: "filesystem.require_path".into(),
+            };
         }
 
         let path = std::path::Path::new(file_path);
@@ -187,6 +271,11 @@ impl SecurityEngine {
 }
 
 impl SecurityEngine {
+    /// Returns the configured bash timeout cap in seconds.
+    pub(crate) fn bash_timeout_secs(&self) -> u64 {
+        self.inner.bash_timeout_secs
+    }
+
     /// Try to acquire a subprocess slot for bash execution.
     ///
     /// Returns a guard that releases the slot on drop. When at capacity,
@@ -389,6 +478,7 @@ mod tests {
         SecurityConfig {
             enabled: true,
             tool_allowlist: vec![],
+            mcp_allowlist: vec![],
             bash: BashSecurityConfig {
                 allowed_paths: vec![],
                 forbidden_patterns: vec![],
@@ -433,7 +523,7 @@ mod tests {
         cfg.tool_allowlist = vec!["read".into(), "write".into()];
         let engine = make_engine(cfg);
         assert!(matches!(
-            engine.check_tool_call("read", &serde_json::json!({})),
+            engine.check_tool_call("read", &serde_json::json!({"file_path": "/tmp/test.txt"})),
             SecurityVerdict::Allowed
         ));
     }
@@ -653,5 +743,46 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result["content"], "hello");
+    }
+
+    // ── Path field unification (c91) ─────────────────────────────────
+
+    #[test]
+    fn test_fs_check_uses_path_field_for_grep_find_ls() {
+        let mut cfg = minimal_config();
+        cfg.filesystem.forbidden_patterns = vec!["/etc/**".into()];
+        let engine = make_engine(cfg);
+        for tool in &["grep", "find", "ls"] {
+            match engine.check_tool_call(tool, &serde_json::json!({"path": "/etc/passwd"})) {
+                SecurityVerdict::Blocked { .. } => {}
+                other => panic!("{tool} with 'path' field expected Blocked, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_fs_check_empty_path_is_blocked() {
+        let cfg = minimal_config();
+        let engine = make_engine(cfg);
+        match engine.check_tool_call("grep", &serde_json::json!({})) {
+            SecurityVerdict::Blocked { rule, .. } => {
+                assert_eq!(rule, "filesystem.require_path");
+            }
+            other => panic!("expected Blocked for empty path, got {other:?}"),
+        }
+    }
+
+    // ── MCP tool default-deny (c91) ──────────────────────────────────
+
+    #[test]
+    fn test_mcp_tool_blocked_by_default() {
+        let cfg = minimal_config();
+        let engine = make_engine(cfg);
+        match engine.check_tool_call("mcp:server:tool", &serde_json::json!({})) {
+            SecurityVerdict::Blocked { rule, .. } => {
+                assert_eq!(rule, "mcp.default_deny");
+            }
+            other => panic!("expected MCP tool to be blocked, got {other:?}"),
+        }
     }
 }
