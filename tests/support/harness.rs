@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use adk_agent::LlmAgentBuilder;
 use adk_core::{Content, Llm};
-use adk_runner::{Runner, RunnerConfig};
+use adk_runner::Runner;
 use adk_session::{CreateRequest, SessionService};
 use futures::StreamExt;
 use tempfile::TempDir;
@@ -66,21 +66,12 @@ impl HarnessBuilder {
 
         let agent = builder.build().expect("build test agent");
 
-        let runner = Runner::new(RunnerConfig {
-            app_name: self.app_name.clone(),
-            agent: Arc::new(agent),
-            session_service: self.session_service.clone(),
-            memory_service: None,
-            run_config: None,
-            compaction_config: None,
-            context_cache_config: None,
-            cache_capable: None,
-            request_context: None,
-            cancellation_token: None,
-            intra_compaction_config: None,
-            intra_compaction_summarizer: None,
-        })
-        .expect("build test runner");
+        let runner = Runner::builder()
+            .app_name(self.app_name.clone())
+            .agent(Arc::new(agent))
+            .session_service(self.session_service.clone())
+            .build()
+            .expect("build test runner");
 
         TestHarness {
             _tempdir: tempfile::tempdir().ok(),
