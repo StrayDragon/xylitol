@@ -3,8 +3,6 @@
 //! Detects token repetition in LLM output streams using a sliding window
 //! and n-gram HashSet. When repetition exceeds thresholds, the stream is
 //! interrupted and recovery strategies are attempted.
-//!
-//! [MermaidChart:./docs/mmd/c35-repeat-detection.mmd]
 
 #![allow(dead_code)] // WIP: not yet integrated into main flow
 

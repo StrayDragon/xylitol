@@ -576,6 +576,25 @@ pub(crate) struct ToolsConfig {
     pub allowlist: Vec<String>,
     #[serde(default)]
     pub blocklist: Vec<String>,
+
+    #[serde(default = "default_max_results")]
+    pub max_results: u32,
+    #[serde(default = "default_max_file_size")]
+    pub max_file_size: u64,
+    #[serde(default = "default_max_dir_entries")]
+    pub max_dir_entries: u32,
+}
+
+fn default_max_results() -> u32 {
+    1000
+}
+
+fn default_max_file_size() -> u64 {
+    10 * 1024 * 1024
+}
+
+fn default_max_dir_entries() -> u32 {
+    1000
 }
 
 // ---------------------------------------------------------------------------
