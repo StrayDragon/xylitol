@@ -35,8 +35,8 @@ pub(crate) struct CliArgs {
     #[arg(long)]
     pub(crate) config: Option<String>,
 
-    /// Project root directory
-    #[arg(long)]
+    /// Project root directory (not yet implemented)
+    #[arg(long, hide = true)]
     pub(crate) project: Option<String>,
 
     /// Override default model (use __fake__ for dev fake provider)
@@ -47,8 +47,8 @@ pub(crate) struct CliArgs {
     #[arg(long)]
     pub(crate) no_color: bool,
 
-    /// Skip all confirmations
-    #[arg(long)]
+    /// Skip all confirmations (not yet implemented)
+    #[arg(long, hide = true)]
     pub(crate) yolo: bool,
 }
 

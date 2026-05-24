@@ -6,6 +6,8 @@
 //!
 //! [MermaidChart:./docs/mmd/c35-repeat-detection.mmd]
 
+#![allow(dead_code)] // WIP: not yet integrated into main flow
+
 use std::collections::{HashSet, VecDeque};
 use std::pin::Pin;
 use std::task::{Context, Poll};

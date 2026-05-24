@@ -2,6 +2,8 @@
 //!
 //! These types are used by the CLI (ratatui) review backend.
 
+#![allow(dead_code)] // WIP: review backend not yet fully integrated
+
 /// Severity level of a review comment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum CommentSeverity {

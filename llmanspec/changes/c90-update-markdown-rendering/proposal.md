@@ -19,6 +19,7 @@ depends_on: [c30-add-print-mode, c80-add-tui]
 1. 新增 capability `markdown-rendering`：定义终端 Markdown 渲染的需求与验收场景（与 Print/TUI 共享）。
 2. 建立评估基准：用快照测试覆盖常见 Markdown 元素与边界条件（宽字符、长单词、嵌套样式、代码块高亮、链接样式等）。
 3. 调研并对比候选方案（示例）：
+   - https://github.com/RivoLink/leaf
    - 继续使用 `pulldown-cmark` 解析 + 自研渲染（保持最小依赖，成本较高）
    - 引入成熟的 ratatui markdown 渲染库（要求：非 GPL，能与 `syntect` 配合）
 4. 选定并落地一个默认方案，并在必要时保留 `raw output` 作为一致性兜底。
