@@ -46,6 +46,7 @@ impl Tool for LsTool {
             )
         })?;
 
+        let max_entries: usize = 1000;
         let mut entries = Vec::new();
         let mut read_dir = tokio::fs::read_dir(dir_path).await.map_err(|e| {
             AdkError::new(
@@ -90,6 +91,9 @@ impl Tool for LsTool {
                 "name": name,
                 "type": entry_type,
             }));
+            if entries.len() >= max_entries {
+                break;
+            }
         }
 
         Ok(json!({

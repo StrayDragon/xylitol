@@ -3,6 +3,9 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+/// Maximum file size for read operations (10 MB).
+const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
+
 pub(crate) struct ReadTool;
 
 #[async_trait]
@@ -59,6 +62,29 @@ impl Tool for ReadTool {
 
         let offset = args.get("offset").and_then(|v| v.as_i64()).unwrap_or(0);
         let limit = args.get("limit").and_then(|v| v.as_i64());
+
+        let metadata = tokio::fs::metadata(file_path).await.map_err(|e| {
+            AdkError::new(
+                ErrorComponent::Tool,
+                ErrorCategory::NotFound,
+                "read.read_error",
+                format!("failed to read '{}': {}", file_path, e),
+            )
+        })?;
+
+        if metadata.len() > MAX_FILE_SIZE {
+            return Err(AdkError::new(
+                ErrorComponent::Tool,
+                ErrorCategory::InvalidInput,
+                "read.file_too_large",
+                format!(
+                    "file '{}' is {} bytes, exceeding limit of {} bytes. Use offset/limit.",
+                    file_path,
+                    metadata.len(),
+                    MAX_FILE_SIZE
+                ),
+            ));
+        }
 
         let content = tokio::fs::read_to_string(file_path).await.map_err(|e| {
             AdkError::new(
