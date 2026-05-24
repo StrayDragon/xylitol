@@ -12,7 +12,7 @@ llman_spec_evidence:
 kind: llman.sdd.spec
 name: "tui-interface"
 purpose: "TBD - created by archiving change c80-add-tui. Update purpose after archive."
-requirements[36]{req_id,title,statement}:
+requirements[40]{req_id,title,statement}:
   r1,"component-architecture","System MUST implement a Component trait with render(&mut self, f, area), is_dirty(), mark_clean(), and handle_event() methods for all major TUI components."
   r2,"event-driven-ui","System MUST consume AgentEvent stream via tokio::select! and update TUI in real-time with dirty-flag differential rendering."
   r3,"markdown-rendering","System MUST render markdown via pulldown-cmark (CommonMark spec) with syntect syntax highlighting for code blocks."
@@ -49,7 +49,11 @@ requirements[36]{req_id,title,statement}:
   r34,"codex-style-layout","System MUST render the interactive TUI using a Codex-style transcript + bottom-pane layout (without separate boxed Chat/Tools/Input panels), while preserving xylitol backend semantics."
   r35,"codex-style-footer","System MUST render Codex-style footer/statusline hints (queue, shortcuts, running state) instead of the legacy StatusBar widget."
   r36,"codex-style-colors","System MUST follow Codex TUI style constraints (prefer default fg + dim, cyan for hints/selection, magenta for Codex identity; avoid heavy box borders) to match Codex look-and-feel."
-scenarios[36]{req_id,id,given,when,then}:
+  r37,"approval-no-race",TUI approval mechanism MUST ensure the approval channel is registered before the tool wrapper attempts to receive a decision.
+  r38,"atomic-file-write",Write and edit tools MUST use atomic write (temp file + rename) to prevent partial writes on crash or concurrent access.
+  r39,"hook-process-cleanup",Hook executor MUST terminate child processes on timeout via kill() and MUST wait for process exit before returning.
+  r40,"mcp-lock-granularity",MCP client manager MUST NOT hold its mutex across await points to avoid serializing concurrent tool calls.
+scenarios[40]{req_id,id,given,when,then}:
   r1,happy,Component trait is defined,each major component implements it,is_dirty returns correct state after mutations
   r2,happy,agent emits TextDelta events via agent_tx channel,"App::handle_agent_event processes them",chat component marks dirty and content updates on next render
   r3,happy,"assistant message contains markdown with code blocks, lists, links","MarkdownRenderer::render() is called",output contains correctly styled ratatui Lines with syntax highlighting
@@ -86,4 +90,8 @@ scenarios[36]{req_id,id,given,when,then}:
   r34,happy,"",TUI starts,"the screen shows a transcript area and a bottom composer/footer, without boxed Chat/Tools/Input headers"
   r35,happy,"",agent task is running and the composer is empty,"footer shows running hint and Tab queue hint in a single-line Codex-style footer"
   r36,happy,"",rendering transcript and composer,"UI uses limited Codex palette (default/dim/cyan/magenta/green/red) and does not draw Borders::ALL boxes for major panels"
+  r37,"no-spurious-reject",TUI mode with approval enabled,agent calls a tool requiring approval immediately after stream yields,tool waits for user decision without 'missing approval prompt' error
+  r38,"crash-safe-write",write tool is called,"process crashes mid-write",original file remains intact (no partial content)
+  r39,"hook-zombie-prevention",hook script exceeds timeout,timeout fires,child process is killed and no zombie remains
+  r40,"concurrent-mcp",two MCP tools are called concurrently,both execute,neither blocks waiting for the other's completion
 ```
