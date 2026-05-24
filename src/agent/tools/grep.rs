@@ -69,7 +69,31 @@ impl Tool for GrepTool {
         let max_results = args
             .get("max_results")
             .and_then(|v| v.as_i64())
-            .unwrap_or(100) as usize;
+            .unwrap_or(100)
+            .max(1) as usize;
+        let max_results = max_results.min(1000);
+
+        let metadata = tokio::fs::metadata(file_path).await.map_err(|e| {
+            AdkError::new(
+                ErrorComponent::Tool,
+                ErrorCategory::NotFound,
+                "grep.read_error",
+                format!("failed to read '{}': {}", file_path, e),
+            )
+        })?;
+
+        if metadata.len() > 10 * 1024 * 1024 {
+            return Err(AdkError::new(
+                ErrorComponent::Tool,
+                ErrorCategory::InvalidInput,
+                "grep.file_too_large",
+                format!(
+                    "file '{}' is {} bytes, exceeding 10MB limit for grep",
+                    file_path,
+                    metadata.len()
+                ),
+            ));
+        }
 
         let content = tokio::fs::read_to_string(file_path).await.map_err(|e| {
             AdkError::new(
