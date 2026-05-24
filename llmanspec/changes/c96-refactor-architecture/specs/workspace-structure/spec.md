@@ -1,0 +1,25 @@
+---
+llman_spec_valid_scope:
+  - src/lib.rs
+  - src/interface/cli/mod.rs
+  - src/infra/config/types.rs
+  - Cargo.toml
+llman_spec_valid_commands:
+  - llman sdd validate c96-refactor-architecture --type spec --strict --no-interactive
+llman_spec_evidence:
+  - no circular dependency between agent and infra layers
+  - unified bootstrap reduces code duplication
+  - README contains quickstart instructions
+---
+
+```toon
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r1,no-circular-layer-dependency,"Agent layer MUST NOT be imported by infra layer; dependency direction MUST be interface -> agent -> infra only.",null,null,null
+  add_requirement,r2,unified-bootstrap,"Interface modes (Print/TUI/ACP) MUST share a single bootstrap function for runtime construction to eliminate duplicated initialization logic.",null,null,null
+  add_requirement,r3,minimal-default-features,"Default feature set MUST only include features required for basic CLI operation; extended features MUST be opt-in or grouped under a 'full' alias.",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  r1,layer-check,"developer adds an import from infra/ to agent/","cargo clippy with layer lint runs","build fails or lint warns about layer violation"
+  r2,new-mode-bootstrap,"a new interface mode is added","developer calls shared bootstrap()","runtime is correctly initialized without copy-pasting from other modes"
+  r3,minimal-build,"cargo build --no-default-features --features agent-core","build succeeds","binary can run in print mode without LSP/DAP/TUI dependencies"
+```

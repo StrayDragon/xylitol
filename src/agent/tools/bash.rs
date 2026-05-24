@@ -14,6 +14,9 @@ const MAX_OUTPUT_SIZE: usize = 1_048_576;
 /// Default timeout for bash commands in seconds.
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
+/// Hard cap for bash timeout (matches security.bash.timeout_secs default).
+const MAX_TIMEOUT_SECS: u64 = 120;
+
 #[async_trait]
 impl Tool for BashTool {
     fn name(&self) -> &str {
@@ -58,10 +61,16 @@ impl Tool for BashTool {
                 )
             })?;
 
-        let timeout_secs = args
+        let requested = args
             .get("timeout")
             .and_then(|v| v.as_i64())
-            .unwrap_or(DEFAULT_TIMEOUT_SECS as i64) as u64;
+            .unwrap_or(DEFAULT_TIMEOUT_SECS as i64);
+
+        let timeout_secs = if requested <= 0 {
+            DEFAULT_TIMEOUT_SECS
+        } else {
+            (requested as u64).min(MAX_TIMEOUT_SECS)
+        };
 
         let timeout_duration = Duration::from_secs(timeout_secs);
 
@@ -106,10 +115,10 @@ impl Tool for BashTool {
 fn truncate_output(data: &[u8]) -> String {
     let text = String::from_utf8_lossy(data);
     if text.len() > MAX_OUTPUT_SIZE {
+        let truncated = &text[..text.floor_char_boundary(MAX_OUTPUT_SIZE)];
         format!(
             "{}...\n[Output truncated at {} bytes]",
-            &text[..MAX_OUTPUT_SIZE],
-            MAX_OUTPUT_SIZE
+            truncated, MAX_OUTPUT_SIZE
         )
     } else {
         text.to_string()

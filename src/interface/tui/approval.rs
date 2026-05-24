@@ -98,7 +98,7 @@ pub(crate) fn requires_approval(security_enabled: bool, tool_name: &str) -> bool
     if !security_enabled {
         return false;
     }
-    matches!(tool_name, "write" | "edit")
+    matches!(tool_name, "write" | "edit" | "bash")
 }
 
 /// A tool wrapper that:
