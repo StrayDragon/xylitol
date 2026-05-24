@@ -1,10 +1,6 @@
 //! Planning-Execution split: Architect → Editor → Validator flow.
 //!
 //! Feature: `agent-planning`.
-//!
-//! ## Architecture
-//!
-//! [MermaidChart:./docs/mmd/c55-orchestration.mmd]
 
 #![allow(dead_code)] // WIP: not yet integrated into CLI entry points
 //!

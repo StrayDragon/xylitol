@@ -10,12 +10,18 @@ llman_spec_evidence:
 
 ```toon
 kind: llman.sdd.spec
-name: workspace-structure
-purpose: TBD - created by archiving change c05-init-skeleton. Update purpose after archive.
-requirements[2]{req_id,title,statement}:
-  r1,domain-layers,"System MUST organize source code into three domain layers: agent/ infra/ interface/ under src/. Built-in modules (tools, hooks, security, print) compile unconditionally; feature-gated modules use #[cfg(feature = '...')] guards with domain-prefixed names (agent-*, infra-*, ui-*, dev-*)."
-  r2,feature-flags,"System MUST define feature flags with domain prefixes for each optional capability so that non-default features compile out with zero overhead. Built-in capabilities (tools, hooks, security, repeat-detection, print-mode) have no feature flag and are controlled via config.yaml at runtime. ACP mode uses feature flag infra-acp."
-scenarios[2]{req_id,id,given,when,then}:
-  r1,happy,"",cargo check is run,all three layers compile with only default features; built-in modules compile without feature gates
-  r2,happy,"",cargo check --all-features is run,all feature-gated modules compile without error
+name: "workspace-structure"
+purpose: "TBD - created by archiving change c05-init-skeleton. Update purpose after archive."
+requirements[5]{req_id,title,statement}:
+  r1,"domain-layers","System MUST organize source code into three domain layers: agent/ infra/ interface/ under src/. Built-in modules (tools, hooks, security, print) compile unconditionally; feature-gated modules use #[cfg(feature = '...')] guards with domain-prefixed names (agent-*, infra-*, ui-*, dev-*)."
+  r2,"feature-flags","System MUST define feature flags with domain prefixes for each optional capability so that non-default features compile out with zero overhead. Built-in capabilities (tools, hooks, security, repeat-detection, print-mode) have no feature flag and are controlled via config.yaml at runtime. ACP mode uses feature flag infra-acp."
+  r3,"no-circular-layer-dependency","Agent layer MUST NOT be imported by infra layer; dependency direction MUST be interface -> agent -> infra only."
+  r4,"unified-bootstrap",Interface modes (Print/TUI/ACP) MUST share a single bootstrap function for runtime construction to eliminate duplicated initialization logic.
+  r5,"minimal-default-features","Default feature set MUST only include features required for basic CLI operation; extended features MUST be opt-in or grouped under a 'full' alias."
+scenarios[5]{req_id,id,given,when,then}:
+  r1,happy,"",cargo check is run,"all three layers compile with only default features; built-in modules compile without feature gates"
+  r2,happy,"","cargo check --all-features is run","all feature-gated modules compile without error"
+  r3,"layer-check",developer adds an import from infra/ to agent/,cargo clippy with layer lint runs,build fails or lint warns about layer violation
+  r4,"new-mode-bootstrap",a new interface mode is added,developer calls shared bootstrap(),"runtime is correctly initialized without copy-pasting from other modes"
+  r5,"minimal-build","cargo build --no-default-features --features agent-core",build succeeds,binary can run in print mode without LSP/DAP/TUI dependencies
 ```
