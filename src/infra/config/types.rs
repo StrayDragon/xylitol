@@ -326,12 +326,16 @@ fn default_hook_timeout() -> u64 {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub(crate) struct SecurityConfig {
-    /// Master toggle — opt-in (default false).
-    #[serde(default)]
+    /// Master toggle — enabled by default for safety.
+    #[serde(default = "default_security_enabled")]
     pub enabled: bool,
     /// Tools explicitly allowed (empty = allow all not in blocklist).
     #[serde(default)]
     pub tool_allowlist: Vec<String>,
+    /// MCP servers/tools allowed (entries: "server_name" or "server:tool").
+    /// Empty = deny all MCP tools when security is enabled.
+    #[serde(default)]
+    pub mcp_allowlist: Vec<String>,
     pub bash: BashSecurityConfig,
     pub filesystem: FilesystemSecurityConfig,
     pub network: NetworkSecurityConfig,
@@ -339,6 +343,10 @@ pub(crate) struct SecurityConfig {
     /// Only present when `infra-sandbox` feature is enabled.
     #[cfg(feature = "infra-sandbox")]
     pub sandbox: Option<SandboxConfig>,
+}
+
+fn default_security_enabled() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
