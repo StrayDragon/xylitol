@@ -2,7 +2,7 @@
 //!
 //! LLM-Augmented Development Toolkit.
 
-#![allow(dead_code)]
+#![allow(dead_code)] // TODO(c92): progressively remove as WIP modules are integrated
 #![cfg_attr(docsrs, warn(missing_docs))]
 
 pub(crate) mod agent;
