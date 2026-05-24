@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "adk-agent"
-version = "0.8.2"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fab08b2fa6d401d6e231b9daa738a4c2d3f0f83875f066871112fdaa421efb83"
+checksum = "6d7411655f5eeffdfa1b4f88ce73e515fb92601176d2dcde719f474bec66669c"
 dependencies = [
  "adk-core",
  "adk-skill",
@@ -22,9 +22,9 @@ dependencies = [
 
 [[package]]
 name = "adk-anthropic"
-version = "0.8.2"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1703e8cb9ceee235b819747475e1c8acc30f8a5aa952745c6b7cfc384ea7377d"
+checksum = "f4ae9adcb34bc1f35e15fbe16e2bdc9c4f7797a8e007401a97bb65ac00b27c93"
 dependencies = [
  "base64",
  "bytes",
@@ -40,9 +40,9 @@ dependencies = [
 
 [[package]]
 name = "adk-core"
-version = "0.8.2"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f90b9437f0e2be5c107d0a26ca09bf7d65f6e8650f7690137307e39d94403e77"
+checksum = "257e0d5a39ef6130bc5fe7f0a8d9c1b28a3fbb690f28854525f9493ebf3df4f5"
 dependencies = [
  "async-trait",
  "chrono",
@@ -57,9 +57,9 @@ dependencies = [
 
 [[package]]
 name = "adk-gemini"
-version = "0.8.2"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efad64612513363c714ff46ee48a09c189555740bec51f549a7308567c58699c"
+checksum = "20b787fb33d1d0eaca0a6e7a8294e22639aa89234e2a37de3f70823ef970754d"
 dependencies = [
  "adk-core",
  "async-stream",
@@ -85,9 +85,9 @@ dependencies = [
 
 [[package]]
 name = "adk-model"
-version = "0.8.2"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15bc29f11cd1cea321f254c082eb966c60333b16bafce5df3205fede7ad7f3bb"
+checksum = "29ed8150197d3a036deae063126f719408c2d9828a00bd4b93664d4a3de5de13"
 dependencies = [
  "adk-anthropic",
  "adk-core",
@@ -109,9 +109,9 @@ dependencies = [
 
 [[package]]
 name = "adk-plugin"
-version = "0.8.2"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf889a7e25a730b114422cb9dbddc4067be229f65176f72d07b864435ed61cd6"
+checksum = "8b1ec44c9593b47245d5839ed855494b53cd89b0f9fb2893ff26a065f7253cba"
 dependencies = [
  "adk-core",
  "serde_json",
@@ -121,9 +121,9 @@ dependencies = [
 
 [[package]]
 name = "adk-runner"
-version = "0.8.2"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f318302b8f7cf9090a41322284634d9b3f4a60cb4dbe8ba83bb5de0e4448da3d"
+checksum = "81060ce13ca23755c4d8aa34aa707b6bec293efa8af6ac1126a5ce0a891c20e8"
 dependencies = [
  "adk-core",
  "adk-session",
@@ -132,6 +132,7 @@ dependencies = [
  "futures",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-util",
  "tracing",
@@ -140,9 +141,9 @@ dependencies = [
 
 [[package]]
 name = "adk-session"
-version = "0.8.2"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "126bdc8a8f8b90ec2ae8cff61b86f14682e360a5952202407cc0d75399fdde33"
+checksum = "7ce52dadc5ba4aca30cc9675dead0ad8d7ccf2283f4138d52df62e157eb97f4b"
 dependencies = [
  "adk-core",
  "async-trait",
@@ -156,9 +157,9 @@ dependencies = [
 
 [[package]]
 name = "adk-skill"
-version = "0.8.2"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2dbbb3d708b1465e09403a3ef0b14f9327dc849147c008b815442d05ebc8c068"
+checksum = "20d27e046c90cb545e52fa2c2e0e180620cf2b6df8dffa2e95eaff6d0b2717f0"
 dependencies = [
  "adk-core",
  "adk-plugin",
@@ -172,9 +173,9 @@ dependencies = [
 
 [[package]]
 name = "adk-telemetry"
-version = "0.8.2"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34b067a8f54b3868a1af0d1e6dc9c1356b2ae489a33d7ab657f8d094f5eb7a47"
+checksum = "9dbc8ab717002f32629639f74f0e080fc643e91c85cbf2fdced7b0abb41f5746"
 dependencies = [
  "thiserror 2.0.18",
  "tracing",
@@ -5250,7 +5251,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -9,7 +9,7 @@ use std::task::{Context, Poll};
 
 use adk_agent::LlmAgentBuilder;
 use adk_core::{Content, Event, Part};
-use adk_runner::{Runner, RunnerConfig};
+use adk_runner::Runner;
 use adk_session::SessionService;
 use futures::Stream;
 
@@ -143,21 +143,12 @@ impl AgentLoop {
             .build()
             .map_err(|e| AgentError::ConfigError(format!("build agent: {e}")))?;
 
-        let runner = Runner::new(RunnerConfig {
-            app_name: app_name.clone(),
-            agent: Arc::new(agent),
-            session_service: session_service.clone(),
-            memory_service: None,
-            run_config: None,
-            compaction_config: None,
-            context_cache_config: None,
-            cache_capable: None,
-            request_context: None,
-            cancellation_token: None,
-            intra_compaction_config: None,
-            intra_compaction_summarizer: None,
-        })
-        .map_err(|e| AgentError::ConfigError(format!("build runner: {e}")))?;
+        let runner = Runner::builder()
+            .app_name(app_name.clone())
+            .agent(Arc::new(agent))
+            .session_service(session_service.clone())
+            .build()
+            .map_err(|e| AgentError::ConfigError(format!("build runner: {e}")))?;
 
         let hooks = hooks_config.map(HookDispatcher::new);
 
@@ -564,20 +555,11 @@ mod tests {
             .await
             .map_err(|e| adk_core::AdkError::session(format!("create session: {e}")))?;
 
-        Runner::new(RunnerConfig {
-            app_name: "xylitol-test".into(),
-            agent: Arc::new(agent),
-            session_service,
-            memory_service: None,
-            run_config: None,
-            compaction_config: None,
-            context_cache_config: None,
-            cache_capable: None,
-            request_context: None,
-            cancellation_token: None,
-            intra_compaction_config: None,
-            intra_compaction_summarizer: None,
-        })
+        Runner::builder()
+            .app_name("xylitol-test")
+            .agent(Arc::new(agent))
+            .session_service(session_service)
+            .build()
     }
 
     #[tokio::test]

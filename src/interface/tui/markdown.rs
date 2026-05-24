@@ -325,6 +325,12 @@ fn push_line(out: &mut Vec<Line<'static>>, spans: &mut Vec<Span<'static>>) {
         out.push(Line::from(""));
         return;
     }
+    if let Some(last) = spans.last_mut() {
+        let trimmed = last.content.trim_end();
+        if trimmed != last.content.as_ref() {
+            *last = Span::styled(trimmed.to_owned(), last.style);
+        }
+    }
     out.push(Line::from(std::mem::take(spans)));
 }
 
