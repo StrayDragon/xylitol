@@ -1,0 +1,8 @@
+---
+source: src/interface/tui/markdown.rs
+assertion_line: 433
+expression: render_to_plain(md)
+---
+fn main() {
+    println!("hello");
+}
