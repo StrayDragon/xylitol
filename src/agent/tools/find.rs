@@ -69,7 +69,18 @@ impl Tool for FindTool {
         let max_results = args
             .get("max_results")
             .and_then(|v| v.as_i64())
-            .unwrap_or(100) as usize;
+            .unwrap_or(100)
+            .max(1) as usize;
+        let max_results = max_results.min(1000);
+
+        if pattern.starts_with('/') || pattern.starts_with(std::path::MAIN_SEPARATOR) {
+            return Err(AdkError::new(
+                ErrorComponent::Tool,
+                ErrorCategory::InvalidInput,
+                "find.absolute_pattern_rejected",
+                "absolute patterns are not allowed; use a relative pattern within the root path",
+            ));
+        }
 
         let root = std::path::Path::new(root_path);
         if !root.exists() {
@@ -81,14 +92,10 @@ impl Tool for FindTool {
             ));
         }
 
-        // Construct full glob pattern by joining root and pattern
-        let full_pattern =
-            if pattern.starts_with('/') || pattern.starts_with(std::path::MAIN_SEPARATOR) {
-                pattern.to_string()
-            } else {
-                let joined = root.join(pattern);
-                joined.to_string_lossy().to_string()
-            };
+        let full_pattern = {
+            let joined = root.join(pattern);
+            joined.to_string_lossy().to_string()
+        };
 
         let mut files = Vec::new();
         match glob::glob(&full_pattern) {
