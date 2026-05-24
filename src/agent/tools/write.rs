@@ -75,12 +75,22 @@ impl Tool for WriteTool {
             })?;
         }
 
-        tokio::fs::write(path, content).await.map_err(|e| {
+        let temp_path = path.with_extension("xylitol-tmp");
+        tokio::fs::write(&temp_path, content).await.map_err(|e| {
             AdkError::new(
                 ErrorComponent::Tool,
                 ErrorCategory::Internal,
                 "write.write_failed",
-                format!("failed to write '{}': {}", file_path, e),
+                format!("failed to write temp file for '{}': {}", file_path, e),
+            )
+        })?;
+        tokio::fs::rename(&temp_path, path).await.map_err(|e| {
+            let _ = std::fs::remove_file(&temp_path);
+            AdkError::new(
+                ErrorComponent::Tool,
+                ErrorCategory::Internal,
+                "write.rename_failed",
+                format!("failed to atomically replace '{}': {}", file_path, e),
             )
         })?;
 
