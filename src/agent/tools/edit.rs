@@ -1,11 +1,35 @@
+use std::path::Path;
+use std::sync::Arc;
+
 use adk_core::{AdkError, ErrorCategory, ErrorComponent, Result, Tool, ToolContext};
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use std::sync::Arc;
 
 use super::patch;
 
 pub(crate) struct EditTool;
+
+async fn atomic_write(file_path: &str, content: &str) -> Result<()> {
+    let path = Path::new(file_path);
+    let temp_path = path.with_extension("xylitol-tmp");
+    tokio::fs::write(&temp_path, content).await.map_err(|e| {
+        AdkError::new(
+            ErrorComponent::Tool,
+            ErrorCategory::Internal,
+            "edit.write_failed",
+            format!("failed to write temp file for '{}': {}", file_path, e),
+        )
+    })?;
+    tokio::fs::rename(&temp_path, path).await.map_err(|e| {
+        let _ = std::fs::remove_file(&temp_path);
+        AdkError::new(
+            ErrorComponent::Tool,
+            ErrorCategory::Internal,
+            "edit.rename_failed",
+            format!("failed to atomically replace '{}': {}", file_path, e),
+        )
+    })
+}
 
 #[async_trait]
 impl Tool for EditTool {
@@ -95,14 +119,7 @@ impl Tool for EditTool {
         // Step 1: Try exact match first
         if let Some(modified) = try_exact_replace(&content, old_string, new_string) {
             let diff = patch::generate_diff(old_string, &modified);
-            tokio::fs::write(file_path, &modified).await.map_err(|e| {
-                AdkError::new(
-                    ErrorComponent::Tool,
-                    ErrorCategory::Internal,
-                    "edit.write_failed",
-                    format!("failed to write '{}': {}", file_path, e),
-                )
-            })?;
+            atomic_write(file_path, &modified).await?;
 
             return Ok(json!({
                 "success": true,
@@ -115,14 +132,7 @@ impl Tool for EditTool {
         // Step 2: Try fuzzy match (fudiff)
         if let Some(modified) = patch::fudiff_replace(&content, old_string, new_string) {
             let diff = patch::generate_diff(old_string, &modified);
-            tokio::fs::write(file_path, &modified).await.map_err(|e| {
-                AdkError::new(
-                    ErrorComponent::Tool,
-                    ErrorCategory::Internal,
-                    "edit.write_failed",
-                    format!("failed to write '{}': {}", file_path, e),
-                )
-            })?;
+            atomic_write(file_path, &modified).await?;
 
             return Ok(json!({
                 "success": true,
@@ -135,14 +145,7 @@ impl Tool for EditTool {
         // Step 3: Try patch fallback
         if let Some(modified) = patch::patch_fallback(&content, old_string, new_string) {
             let diff = patch::generate_diff(old_string, &modified);
-            tokio::fs::write(file_path, &modified).await.map_err(|e| {
-                AdkError::new(
-                    ErrorComponent::Tool,
-                    ErrorCategory::Internal,
-                    "edit.write_failed",
-                    format!("failed to write '{}': {}", file_path, e),
-                )
-            })?;
+            atomic_write(file_path, &modified).await?;
 
             return Ok(json!({
                 "success": true,

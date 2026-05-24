@@ -197,9 +197,10 @@ impl AgentLoop {
                 retryable: true,
             })?;
 
-        let step_counter = self.step_counter.load(std::sync::atomic::Ordering::Relaxed) + 1;
-        self.step_counter
-            .store(step_counter, std::sync::atomic::Ordering::Relaxed);
+        let step_counter = self
+            .step_counter
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
 
         let detector = repeat_detection.map(RepeatDetector::new);
 
