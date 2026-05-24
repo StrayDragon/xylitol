@@ -5,6 +5,8 @@
 //! ## Architecture
 //!
 //! [MermaidChart:./docs/mmd/c55-orchestration.mmd]
+
+#![allow(dead_code)] // WIP: not yet integrated into CLI entry points
 //!
 //! - **Planner** (strong model) decomposes tasks into structured JSON step plans.
 //! - **Executor** (fast model) executes each step with access to tools.

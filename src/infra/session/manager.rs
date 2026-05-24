@@ -1,3 +1,5 @@
+#![allow(dead_code)] // WIP: not yet integrated into main flow
+
 use std::path::PathBuf;
 
 use anyhow::Result;

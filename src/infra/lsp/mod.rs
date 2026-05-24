@@ -3,6 +3,8 @@
 //!
 //! Gated behind `feature = "infra-lsp"`.
 
+#![allow(dead_code)] // WIP: not yet wired into CLI entry points
+
 use std::collections::HashMap;
 
 use lspz::agent_sdk::AgentHandle;

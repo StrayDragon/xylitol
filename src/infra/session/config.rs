@@ -1,3 +1,5 @@
+#![allow(dead_code)] // WIP: not yet integrated into main flow
+
 /// Session system configuration.
 #[derive(Debug, Clone)]
 pub struct SessionConfig {

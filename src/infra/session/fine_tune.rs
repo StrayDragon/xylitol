@@ -1,3 +1,5 @@
+#![allow(dead_code)] // WIP: not yet integrated into main flow
+
 use anyhow::Result;
 
 use super::types::*;
