@@ -401,3 +401,89 @@ fn current_style(
 
     style
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn render_to_plain(source: &str) -> String {
+        let renderer = MarkdownRenderer::default();
+        let lines = renderer.render(source, 80);
+        lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn test_headings() {
+        let md = "# H1\n## H2\n### H3\n#### H4";
+        insta::assert_snapshot!("md_headings", render_to_plain(md));
+    }
+
+    #[test]
+    fn test_code_block() {
+        let md = "```rust\nfn main() {\n    println!(\"hello\");\n}\n```";
+        insta::assert_snapshot!("md_code_block", render_to_plain(md));
+    }
+
+    #[test]
+    fn test_inline_styles() {
+        let md = "Normal **bold** *italic* ~~strike~~ `code`";
+        insta::assert_snapshot!("md_inline_styles", render_to_plain(md));
+    }
+
+    #[test]
+    fn test_links() {
+        let md = "[click here](https://example.com) and plain text";
+        insta::assert_snapshot!("md_links", render_to_plain(md));
+    }
+
+    #[test]
+    fn test_blockquote() {
+        let md = "> quoted line\n> second line\n\nnormal";
+        insta::assert_snapshot!("md_blockquote", render_to_plain(md));
+    }
+
+    #[test]
+    fn test_unordered_list() {
+        let md = "- item 1\n- item 2\n  - nested\n- item 3";
+        insta::assert_snapshot!("md_unordered_list", render_to_plain(md));
+    }
+
+    #[test]
+    fn test_ordered_list() {
+        let md = "1. first\n2. second\n3. third";
+        insta::assert_snapshot!("md_ordered_list", render_to_plain(md));
+    }
+
+    #[test]
+    fn test_task_list() {
+        let md = "- [x] done\n- [ ] pending";
+        insta::assert_snapshot!("md_task_list", render_to_plain(md));
+    }
+
+    #[test]
+    fn test_horizontal_rule() {
+        let md = "above\n\n---\n\nbelow";
+        insta::assert_snapshot!("md_horizontal_rule", render_to_plain(md));
+    }
+
+    #[test]
+    fn test_wide_chars_cjk() {
+        let md = "中文内容 **粗体** and `代码`";
+        insta::assert_snapshot!("md_wide_chars_cjk", render_to_plain(md));
+    }
+
+    #[test]
+    fn test_table_rendering() {
+        let md = "| Col A | Col B |\n|-------|-------|\n| 1     | 2     |";
+        insta::assert_snapshot!("md_table", render_to_plain(md));
+    }
+}

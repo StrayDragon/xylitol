@@ -1,0 +1,12 @@
+---
+source: src/interface/tui/markdown.rs
+assertion_line: 427
+expression: render_to_plain(md)
+---
+H1
+
+H2
+
+H3
+
+H4
