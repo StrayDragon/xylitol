@@ -1,0 +1,6 @@
+---
+source: src/interface/tui/markdown.rs
+assertion_line: 445
+expression: render_to_plain(md)
+---
+click here (https://example.com) and plain text
