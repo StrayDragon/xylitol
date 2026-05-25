@@ -2,6 +2,10 @@
 source: src/interface/tui/markdown.rs
 expression: render_to_plain(md)
 ---
-Name │ Value │ Note
-a │ 1 │ ok
-b │ 2 │ -
+┌──────┬───────┬──────┐
+│ Name │ Value │ Note │
+╞══════╪═══════╪══════╡
+│ a    │ 1     │ ok   │
+├──────┼───────┼──────┤
+│ b    │ 2     │ -    │
+└──────┴───────┴──────┘

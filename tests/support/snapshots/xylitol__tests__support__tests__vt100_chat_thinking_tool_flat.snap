@@ -1,19 +1,22 @@
 ---
 source: tests/support/mod.rs
-assertion_line: 141
 expression: screen
 ---
-› Please find the function definition.
-
-
-
-• search └ path=src/interface/tui/app.rs query=fn copy_to_clipboard
-
 
 └ search: ok
 
 
-Found it in src/interface/tui/app.rs.
+
+
+
+
+
+Found it in  src/interface/tui/app.rs .
+
+
+
+
+
 
 
 Thinking

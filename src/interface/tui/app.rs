@@ -11,7 +11,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc;
 
 use adk_session::{ListRequest, SessionService};
-use syntect::highlighting::ThemeSet;
 
 use crate::agent::r#loop::{AgentEvent, AgentLoop};
 use crate::agent::profile::ResolvedProfile;
@@ -199,8 +198,10 @@ impl App {
         };
         session_choices.sort();
 
-        let mut theme_choices: Vec<String> =
-            ThemeSet::load_defaults().themes.keys().cloned().collect();
+        let mut theme_choices: Vec<String> = super::markdown::MarkdownRenderer::available_themes()
+            .into_iter()
+            .map(String::from)
+            .collect();
         theme_choices.sort();
 
         Self {

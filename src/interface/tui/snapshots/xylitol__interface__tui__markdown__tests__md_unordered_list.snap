@@ -1,11 +1,8 @@
 ---
 source: src/interface/tui/markdown.rs
-assertion_line: 457
 expression: render_to_plain(md)
 ---
-- item 1
-- item 2
-  - nested
-
-
-- item 3
+• item 1
+• item 2
+  ◦ nested
+• item 3

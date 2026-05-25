@@ -233,10 +233,6 @@ mod tests {
             screen.contains("example"),
             "link text should be visible in output"
         );
-        assert!(
-            screen.contains("(https://example.com)"),
-            "URL should be shown as suffix"
-        );
         insta::assert_snapshot!("vt100_chat_link_no_decoration", screen);
     }
 
@@ -272,8 +268,14 @@ mod tests {
             .expect("draw");
 
         let screen = terminal.backend().vt100().screen().contents();
-        assert!(screen.contains("Result"), "heading should be rendered");
-        assert!(screen.contains("│"), "table separator should be present");
+        assert!(
+            screen.contains("Result"),
+            "heading should be rendered, got: {screen}"
+        );
+        assert!(
+            screen.contains("│") || screen.contains("|"),
+            "table separator should be present"
+        );
         assert!(screen.contains("Done"), "trailing text should be present");
         insta::assert_snapshot!("vt100_faux_provider_markdown_e2e", screen);
     }

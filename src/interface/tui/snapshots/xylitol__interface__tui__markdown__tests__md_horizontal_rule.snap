@@ -1,9 +1,9 @@
 ---
 source: src/interface/tui/markdown.rs
-assertion_line: 475
 expression: render_to_plain(md)
 ---
 above
 
-────────────────────────────────
+────────────────────────────────────────────────────────────────────────────────
+
 below
