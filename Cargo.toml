@@ -44,12 +44,10 @@ hex = "0.4.3"
 uuid = { version = "1.23.1", features = ["v4"] }
 
 # ── ui-review / ui-tui dependencies (optional) ──
-# Keep in sync with Codex TUI's battle-tested terminal stack.
-ratatui = { version = "0.29", optional = true, default-features = false, features = ["crossterm", "scrolling-regions", "unstable-backend-writer"] }
-crossterm = { version = "0.28", optional = true, features = ["bracketed-paste", "event-stream"] }
-syntect = { version = "5", optional = true }
-pulldown-cmark = { version = "0.12", optional = true }
-tui-textarea = { version = "0.7", optional = true }
+ratatui = { version = "0.30", optional = true, default-features = false, features = ["crossterm", "scrolling-regions", "unstable-backend-writer"] }
+crossterm = { version = "0.29", optional = true, features = ["bracketed-paste", "event-stream"] }
+leaf-core = { version = "0.1.0", path = "../leaf/crates/leaf-core", optional = true }
+tui-textarea = { version = "0.11.0", package = "tui-textarea-2", features = ["crossterm"], optional = true }
 unicode-width = { version = "0.2", optional = true }
 libc = { version = "0.2", optional = true }
 vt100 = { version = "0.15", optional = true }
@@ -87,7 +85,7 @@ infra-sandbox = []
 infra-rtk = []
 
 # ── interface/ layer ──────────────────────────
-ui-tui = ["dep:ratatui", "dep:crossterm", "dep:pulldown-cmark", "dep:syntect", "dep:tui-textarea", "dep:unicode-width", "dep:libc", "dep:shlex"]
+ui-tui = ["dep:ratatui", "dep:crossterm", "dep:leaf-core", "dep:tui-textarea", "dep:unicode-width", "dep:libc", "dep:shlex"]
 ui-review = ["dep:ratatui", "dep:crossterm"]
 
 # ── development only ──────────────────────────

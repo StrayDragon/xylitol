@@ -1,6 +1,5 @@
 ---
 source: src/interface/tui/markdown.rs
-assertion_line: 439
 expression: render_to_plain(md)
 ---
-Normal bold italic strike code
+Normal bold italic strike  code

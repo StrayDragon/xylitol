@@ -1,7 +1,6 @@
 ---
 source: src/interface/tui/markdown.rs
-assertion_line: 469
 expression: render_to_plain(md)
 ---
-- [x] done
-- [ ] pending
+☑ done
+☐ pending

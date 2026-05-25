@@ -21,6 +21,11 @@ c90-update-markdown-rendering 调研了终端 Markdown 渲染方案，将 [RivoL
 
 leaf 的渲染管线经过 227 个测试验证，覆盖上述所有场景。
 
+此外，`leaf-core` 新增了 `StreamingRenderer`，专为 LLM token 流式输出设计：
+- 防抖全量重解析（可配置间隔，默认 150ms）
+- 行级增量 diff（只报告变化区域，减少 TUI 重绘）
+- 双阶段渲染（已完成段落精确 Markdown + 当前行近似 ANSI）
+
 ## What Changes
 
 1. **添加 `leaf-core` 为本地 path 依赖**（`leaf-core = { path = "../leaf/crates/leaf-core" }`）
