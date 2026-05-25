@@ -75,4 +75,4 @@
 
 ## Phase C — 流程改进
 
-- [ ] 在 AGENTS.md 中补充 defer 归档规范（defer 项必须关联后续 change 或明确取消）
+- [x] 在 AGENTS.md 中补充 defer 归档规范（defer 项必须关联后续 change 或明确取消）
