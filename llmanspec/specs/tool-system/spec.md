@@ -12,8 +12,8 @@ llman_spec_evidence:
 kind: llman.sdd.spec
 name: "tool-system"
 purpose: "TBD - created by archiving change c20-add-tools. Update purpose after archive."
-requirements[10]{req_id,title,statement}:
-  r1,"tool-trait","System MUST define a Tool trait compatible with adk-core FunctionTool for all built-in tools."
+requirements[11]{req_id,title,statement}:
+  r1,"tool-trait","System MUST define a XyTool trait as the primary tool interface; adk-core Tool compatibility MUST be provided via adapter only."
   r2,"seven-tools","System MUST implement 7 built-in tools: read bash edit write grep find ls."
   r3,"patch-apply","System MUST apply AI-generated patches using fudiff fuzzy matching with patch crate exact fallback."
   r4,"read-file-size-limit",Read tool MUST reject files exceeding MAX_FILE_SIZE (default 10MB) with a clear error message.
@@ -23,8 +23,9 @@ requirements[10]{req_id,title,statement}:
   r8,"safe-utf8-truncation","Output truncation MUST use character-boundary-aware slicing to prevent UTF-8 panics."
   r9,"tool-args-helper",Tool system MUST provide a shared argument extraction helper that eliminates repetitive JSON field parsing across tool implementations.
   r10,"no-global-dead-code-allow","Crate root MUST NOT use global #![allow(dead_code)]; dead code suppression MUST be scoped to individual items with justification."
-scenarios[10]{req_id,id,given,when,then}:
-  r1,happy,"",Tool trait is defined,"it implements the adk-core FunctionTool interface"
+  r11,"tool-error-types","System MUST define XyToolError with structured error categories (invalid_args / execution_failed / permission_denied / timeout) independent of adk-core."
+scenarios[11]{req_id,id,given,when,then}:
+  r1,"xy-tool-impl","all 7 built-in tools implement XyTool",each tool is invoked,each returns Result<String> without any adk_core types in the call chain
   r2,happy,a tool registry with all 7 tools,each tool is invoked with valid args,each returns a successful ToolResult
   r3,happy,"an AI-generated unified diff with slight line offset",patch is applied via fudiff,fudiff successfully applies despite line offset
   r4,"large-file",a 50MB file exists,read tool is called on it without offset/limit,tool returns error indicating file too large
@@ -34,4 +35,5 @@ scenarios[10]{req_id,id,given,when,then}:
   r8,"multibyte-truncation","bash output ends with incomplete UTF-8 sequence at cap boundary",truncate_output is called,output is safely truncated at character boundary without panic
   r9,happy,a tool needs a required string argument,tool calls require_str(args and 'file_path'),returns Ok(value) or Err(AdkError) with consistent error code
   r10,happy,crate compiles with dead_code lint enabled,cargo clippy runs,no dead_code warnings in production code paths
+  r11,"error-mapping","a tool returns XyToolError::InvalidArgs",error is propagated to agent loop,error category is preserved and displayed to user
 ```
