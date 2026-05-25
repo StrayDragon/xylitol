@@ -6,6 +6,8 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph, Wrap};
 
+use leaf_core::streaming::StreamingRenderer;
+
 use crate::agent::r#loop::{AgentError, AgentEvent};
 
 use super::chat_style;
@@ -102,6 +104,7 @@ enum ChatItem {
 
 pub(crate) struct ChatComponent {
     markdown: MarkdownRenderer,
+    streaming_renderer: Option<StreamingRenderer>,
     items: Vec<ChatItem>,
     raw_output: bool,
     pending_thinking: String,
@@ -117,6 +120,7 @@ impl ChatComponent {
     pub(crate) fn new(markdown: MarkdownRenderer) -> Self {
         Self {
             markdown,
+            streaming_renderer: None,
             items: Vec::new(),
             raw_output: false,
             pending_thinking: String::new(),
@@ -216,10 +220,18 @@ impl ChatComponent {
             self.items.push(ChatItem::Message(m));
         }
 
-        // When following the conversation, keep the viewport pinned to the bottom.
-        if self.scroll_from_bottom == 0 {
-            // no-op, but keep the intent explicit
+        if !self.raw_output {
+            if let Some(ref mut sr) = self.streaming_renderer {
+                sr.push(delta);
+            } else {
+                let renderer = leaf_core::MarkdownRenderer::new();
+                let width = self.last_rendered_width.max(80) as usize;
+                let mut sr = StreamingRenderer::new(renderer, width).with_dual_phase(true);
+                sr.push(delta);
+                self.streaming_renderer = Some(sr);
+            }
         }
+
         self.dirty = true;
     }
 
@@ -229,6 +241,19 @@ impl ChatComponent {
     }
 
     fn finish_streaming(&mut self) {
+        if let Some(ref mut sr) = self.streaming_renderer {
+            let final_update = sr.finish();
+            let last_streaming_msg = self.items.iter_mut().rev().find_map(|item| match item {
+                ChatItem::Message(msg) if msg.role == Role::Assistant && msg.streaming => Some(msg),
+                _ => None,
+            });
+            if let Some(msg) = last_streaming_msg {
+                msg.cached_lines = final_update.lines.to_vec();
+                msg.cached_width = self.last_rendered_width;
+            }
+        }
+        self.streaming_renderer = None;
+
         let last_assistant_index = self.items.iter().rposition(
             |item| matches!(item, ChatItem::Message(msg) if msg.role == Role::Assistant),
         );
@@ -337,6 +362,17 @@ impl ChatComponent {
                         .lines()
                         .map(|l| Line::from(l.to_string()))
                         .collect::<Vec<_>>()
+                } else if msg.streaming {
+                    if let Some(ref mut sr) = self.streaming_renderer {
+                        sr.set_width(width as usize);
+                        if let Some(update) = sr.tick() {
+                            update.lines.to_vec()
+                        } else {
+                            sr.force_tick().lines.to_vec()
+                        }
+                    } else {
+                        self.markdown.render(&msg.content, width)
+                    }
                 } else {
                     self.markdown.render(&msg.content, width)
                 };
@@ -647,6 +683,54 @@ mod tests {
         }));
 
         assert_eq!(chat.last_thinking, "ab");
+    }
+
+    #[test]
+    fn streaming_renderer_activates_on_text_delta() {
+        let mut chat = ChatComponent::new(MarkdownRenderer::default());
+        assert!(chat.streaming_renderer.is_none());
+
+        let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::TextDelta(
+            "Hello **world**".to_string(),
+        )));
+
+        assert!(
+            chat.streaming_renderer.is_some(),
+            "StreamingRenderer should activate on first text delta"
+        );
+    }
+
+    #[test]
+    fn streaming_renderer_clears_on_step_complete() {
+        let mut chat = ChatComponent::new(MarkdownRenderer::default());
+
+        let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::TextDelta("# Hi".to_string())));
+        assert!(chat.streaming_renderer.is_some());
+
+        let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::StepComplete {
+            step: 1,
+            summary: String::new(),
+        }));
+
+        assert!(
+            chat.streaming_renderer.is_none(),
+            "StreamingRenderer should be cleared after finish"
+        );
+    }
+
+    #[test]
+    fn raw_output_skips_streaming_renderer() {
+        let mut chat = ChatComponent::new(MarkdownRenderer::default());
+        chat.set_raw_output(true);
+
+        let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::TextDelta(
+            "plain text".to_string(),
+        )));
+
+        assert!(
+            chat.streaming_renderer.is_none(),
+            "StreamingRenderer should not activate in raw_output mode"
+        );
     }
 }
 
