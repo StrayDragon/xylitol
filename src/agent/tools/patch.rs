@@ -7,15 +7,27 @@
 
 use adk_core::{CallbackContext, Content, EventActions, MemoryEntry, ReadonlyContext, Result};
 use async_trait::async_trait;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
 /// Create a mock `ToolContext` for testing.
 pub(crate) fn mock_context() -> Arc<dyn adk_core::ToolContext> {
-    Arc::new(MockToolContext)
+    Arc::new(MockToolContext {
+        workspace_root: PathBuf::from(env!("CARGO_MANIFEST_DIR")),
+    })
 }
 
-struct MockToolContext;
+/// Create a mock `ToolContext` with a custom workspace root.
+pub(crate) fn mock_context_with_root(root: PathBuf) -> Arc<dyn adk_core::ToolContext> {
+    Arc::new(MockToolContext {
+        workspace_root: root,
+    })
+}
+
+struct MockToolContext {
+    workspace_root: PathBuf,
+}
 
 fn empty_content() -> &'static Content {
     static EMPTY: OnceLock<Content> = OnceLock::new();
