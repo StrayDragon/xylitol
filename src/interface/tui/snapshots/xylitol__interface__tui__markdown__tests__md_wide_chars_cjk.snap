@@ -1,6 +1,5 @@
 ---
 source: src/interface/tui/markdown.rs
-assertion_line: 481
 expression: render_to_plain(md)
 ---
-中文内容 粗体 and 代码
+中文内容 粗体 and  代码

@@ -1,10 +1,9 @@
 ---
 source: src/interface/tui/markdown.rs
-assertion_line: 451
 expression: render_to_plain(md)
 ---
-│
-│ quoted line second line
+▏ quoted line
+▏ second line
 
 
 normal

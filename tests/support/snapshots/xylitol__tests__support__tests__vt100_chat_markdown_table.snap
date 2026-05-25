@@ -2,6 +2,10 @@
 source: tests/support/mod.rs
 expression: screen
 ---
-Name │ Version │ License
-pulldown-cmark │ 0.12 │ MIT
-syntect │ 5.x │ MIT
+┌────────────────┬─────────┬─────────┐
+│ Name           │ Version │ License │
+╞════════════════╪═════════╪═════════╡
+│ pulldown-cmark │ 0.12    │ MIT     │
+├────────────────┼─────────┼─────────┤
+│ syntect        │ 5.x     │ MIT     │
+└────────────────┴─────────┴─────────┘

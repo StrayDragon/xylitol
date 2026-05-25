@@ -3,11 +3,13 @@ source: tests/support/mod.rs
 expression: screen
 ---
 Summary
+═══════
+Here is a bold statement with  inline code .
+• item one
+• item two
 
-Here is a bold statement with inline code.
+┌─ rust ─────────────────────────────────────┐
+│1│ fn main() {}                             │
+└─┴──────────────────────────────────────────┘
 
-- item one
-- item two
-
-fn main() {}
-docs (https://example.com)
+#docs
