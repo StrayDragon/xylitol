@@ -27,6 +27,10 @@ struct ListState {
 pub(crate) struct MarkdownRenderer {
     syntax_set: SyntaxSet,
     theme: Theme,
+    /// When true, links get LightBlue + UNDERLINED styling.
+    /// Defaults to false per spec r2: avoid forcing link decoration
+    /// unless explicitly enabled.
+    link_styled: bool,
 }
 
 impl Default for MarkdownRenderer {
@@ -34,11 +38,19 @@ impl Default for MarkdownRenderer {
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let theme_set = ThemeSet::load_defaults();
         let theme = theme_set.themes["base16-ocean.dark"].clone();
-        Self { syntax_set, theme }
+        Self {
+            syntax_set,
+            theme,
+            link_styled: false,
+        }
     }
 }
 
 impl MarkdownRenderer {
+    pub(crate) fn set_link_styled(&mut self, enabled: bool) {
+        self.link_styled = enabled;
+    }
+
     pub(crate) fn set_theme(&mut self, theme_name: &str) -> bool {
         let theme_set = ThemeSet::load_defaults();
         let Some(theme) = theme_set.themes.get(theme_name) else {
@@ -71,6 +83,9 @@ impl MarkdownRenderer {
 
         let mut in_code_block: Option<String> = None;
         let mut code_buf = String::new();
+
+        let mut in_table_head = false;
+        let mut cell_index: usize = 0;
 
         for event in parser {
             // Code blocks are buffered and rendered with syntect once closed.
@@ -156,6 +171,19 @@ impl MarkdownRenderer {
                         };
                         in_code_block = Some(lang);
                     }
+                    Tag::Table(_) if !current.is_empty() => {
+                        push_line(&mut out, &mut current);
+                    }
+                    Tag::TableHead => {
+                        in_table_head = true;
+                        cell_index = 0;
+                    }
+                    Tag::TableRow => {
+                        cell_index = 0;
+                    }
+                    Tag::TableCell if cell_index > 0 => {
+                        current.push(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
+                    }
                     _ => {}
                 },
                 Event::End(tag_end) => match tag_end {
@@ -197,14 +225,36 @@ impl MarkdownRenderer {
                         push_line(&mut out, &mut current);
                         out.push(Line::from(""));
                     }
+                    TagEnd::Table => {
+                        if !current.is_empty() {
+                            push_line(&mut out, &mut current);
+                        }
+                        out.push(Line::from(""));
+                    }
+                    TagEnd::TableHead => {
+                        push_line(&mut out, &mut current);
+                        in_table_head = false;
+                    }
+                    TagEnd::TableRow => {
+                        push_line(&mut out, &mut current);
+                    }
+                    TagEnd::TableCell => {
+                        cell_index += 1;
+                        if in_table_head && let Some(last) = current.last_mut() {
+                            *last = Span::styled(
+                                last.content.to_string(),
+                                last.style.add_modifier(Modifier::BOLD),
+                            );
+                        }
+                    }
                     _ => {}
                 },
                 Event::Text(text) => {
                     if current.is_empty() {
                         start_line(&mut current, blockquote_depth, &mut list_stack, in_item);
                     }
-                    let style =
-                        current_style(bold, italic, strike, heading, !link_stack.is_empty());
+                    let link_active = self.link_styled && !link_stack.is_empty();
+                    let style = current_style(bold, italic, strike, heading, link_active);
                     current.push(Span::styled(text.to_string(), style));
                 }
                 Event::Code(code) => {
@@ -491,5 +541,84 @@ mod tests {
     fn test_table_rendering() {
         let md = "| Col A | Col B |\n|-------|-------|\n| 1     | 2     |";
         insta::assert_snapshot!("md_table", render_to_plain(md));
+    }
+
+    #[test]
+    fn test_table_multi_row() {
+        let md = "| Name | Value | Note |\n|------|-------|------|\n| a | 1 | ok |\n| b | 2 | - |";
+        insta::assert_snapshot!("md_table_multi_row", render_to_plain(md));
+    }
+
+    #[test]
+    fn test_table_single_column() {
+        let md = "| Only |\n|------|\n| val  |";
+        insta::assert_snapshot!("md_table_single_col", render_to_plain(md));
+    }
+
+    // -- link_styled configuration tests ---
+
+    fn render_with_link_styled(source: &str, styled: bool) -> Vec<Line<'static>> {
+        let mut renderer = MarkdownRenderer::default();
+        renderer.set_link_styled(styled);
+        renderer.render(source, 80)
+    }
+
+    #[test]
+    fn test_link_default_no_forced_style() {
+        let md = "[click](https://example.com)";
+        let lines = render_with_link_styled(md, false);
+        let link_span = lines
+            .first()
+            .and_then(|l| l.spans.first())
+            .expect("link text span");
+
+        assert!(
+            !link_span.style.add_modifier.contains(Modifier::UNDERLINED),
+            "link_styled=false should not force UNDERLINED, got: {:?}",
+            link_span.style
+        );
+        assert_ne!(
+            link_span.style.fg,
+            Some(Color::LightBlue),
+            "link_styled=false should not force LightBlue"
+        );
+    }
+
+    #[test]
+    fn test_link_styled_enabled() {
+        let md = "[click](https://example.com)";
+        let lines = render_with_link_styled(md, true);
+        let link_span = lines
+            .first()
+            .and_then(|l| l.spans.first())
+            .expect("link text span");
+
+        assert!(
+            link_span.style.add_modifier.contains(Modifier::UNDERLINED),
+            "link_styled=true should apply UNDERLINED"
+        );
+        assert_eq!(
+            link_span.style.fg,
+            Some(Color::LightBlue),
+            "link_styled=true should apply LightBlue"
+        );
+    }
+
+    #[test]
+    fn test_link_url_suffix_always_shown() {
+        let md = "[text](https://example.com)";
+        let plain_off = {
+            let r = MarkdownRenderer::default();
+            let lines = r.render(md, 80);
+            lines
+                .iter()
+                .flat_map(|l| l.spans.iter())
+                .map(|s| s.content.as_ref())
+                .collect::<String>()
+        };
+        assert!(
+            plain_off.contains("(https://example.com)"),
+            "URL suffix should appear regardless of link_styled"
+        );
     }
 }

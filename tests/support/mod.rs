@@ -140,4 +140,141 @@ mod tests {
         let screen = terminal.backend().vt100().screen().contents();
         insta::assert_snapshot!("vt100_chat_thinking_tool_flat", screen);
     }
+
+    #[cfg(feature = "dev-vt100")]
+    #[test]
+    fn vt100_chat_renders_markdown_table() {
+        use ratatui::Terminal;
+
+        use crate::interface::tui::{ChatComponent, Component, MarkdownRenderer, TuiEvent};
+
+        let backend = vt100_backend::VT100Backend::new(60, 14);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+
+        let mut chat = ChatComponent::new(MarkdownRenderer::default());
+
+        let md = "| Name | Version | License |\n\
+                  |------|---------|----------|\n\
+                  | pulldown-cmark | 0.12 | MIT |\n\
+                  | syntect | 5.x | MIT |";
+        let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::TextDelta(md.to_string())));
+        let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::StepComplete {
+            step: 1,
+            summary: String::new(),
+        }));
+
+        terminal
+            .draw(|frame| chat.render(frame, frame.area()))
+            .expect("draw");
+
+        let screen = terminal.backend().vt100().screen().contents();
+        insta::assert_snapshot!("vt100_chat_markdown_table", screen);
+    }
+
+    #[cfg(feature = "dev-vt100")]
+    #[test]
+    fn vt100_chat_renders_markdown_mixed_content() {
+        use ratatui::Terminal;
+
+        use crate::interface::tui::{ChatComponent, Component, MarkdownRenderer, TuiEvent};
+
+        let backend = vt100_backend::VT100Backend::new(60, 20);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+
+        let mut chat = ChatComponent::new(MarkdownRenderer::default());
+
+        let md = concat!(
+            "# Summary\n\n",
+            "Here is a **bold** statement with `inline code`.\n\n",
+            "- item one\n",
+            "- item two\n\n",
+            "```rust\nfn main() {}\n```\n\n",
+            "[docs](https://example.com)\n",
+        );
+        let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::TextDelta(md.to_string())));
+        let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::StepComplete {
+            step: 1,
+            summary: String::new(),
+        }));
+
+        terminal
+            .draw(|frame| chat.render(frame, frame.area()))
+            .expect("draw");
+
+        let screen = terminal.backend().vt100().screen().contents();
+        insta::assert_snapshot!("vt100_chat_markdown_mixed", screen);
+    }
+
+    #[cfg(feature = "dev-vt100")]
+    #[test]
+    fn vt100_chat_link_no_forced_decoration() {
+        use ratatui::Terminal;
+
+        use crate::interface::tui::{ChatComponent, Component, MarkdownRenderer, TuiEvent};
+
+        let backend = vt100_backend::VT100Backend::new(60, 8);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+
+        let mut chat = ChatComponent::new(MarkdownRenderer::default());
+
+        let md = "Visit [example](https://example.com) for details.";
+        let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::TextDelta(md.to_string())));
+        let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::StepComplete {
+            step: 1,
+            summary: String::new(),
+        }));
+
+        terminal
+            .draw(|frame| chat.render(frame, frame.area()))
+            .expect("draw");
+
+        let screen = terminal.backend().vt100().screen().contents();
+        assert!(
+            screen.contains("example"),
+            "link text should be visible in output"
+        );
+        assert!(
+            screen.contains("(https://example.com)"),
+            "URL should be shown as suffix"
+        );
+        insta::assert_snapshot!("vt100_chat_link_no_decoration", screen);
+    }
+
+    #[cfg(feature = "dev-vt100")]
+    #[tokio::test]
+    async fn vt100_chat_faux_provider_markdown_e2e() {
+        use ratatui::Terminal;
+
+        use crate::interface::tui::{ChatComponent, Component, MarkdownRenderer, TuiEvent};
+
+        let provider = faux_provider::FauxProvider::new("faux-md");
+        provider.set_responses(vec![faux_provider::FauxResponseStep::text(
+            "## Result\n\n| Key | Value |\n|-----|-------|\n| a   | 1     |\n\nDone.",
+        )]);
+
+        let mut harness = harness::TestHarness::builder()
+            .with_model(provider.clone_box())
+            .build()
+            .await;
+
+        let events = harness.run("show table", "e2e-session").await;
+
+        let backend = vt100_backend::VT100Backend::new(60, 14);
+        let mut terminal = Terminal::new(backend).expect("terminal");
+        let mut chat = ChatComponent::new(MarkdownRenderer::default());
+
+        for event in events {
+            let _ = chat.handle_event(&TuiEvent::Agent(event));
+        }
+
+        terminal
+            .draw(|frame| chat.render(frame, frame.area()))
+            .expect("draw");
+
+        let screen = terminal.backend().vt100().screen().contents();
+        assert!(screen.contains("Result"), "heading should be rendered");
+        assert!(screen.contains("│"), "table separator should be present");
+        assert!(screen.contains("Done"), "trailing text should be present");
+        insta::assert_snapshot!("vt100_faux_provider_markdown_e2e", screen);
+    }
 }

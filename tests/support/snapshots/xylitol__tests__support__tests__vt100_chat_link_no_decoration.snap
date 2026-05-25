@@ -1,0 +1,5 @@
+---
+source: tests/support/mod.rs
+expression: screen
+---
+Visit example (https://example.com) for details.
