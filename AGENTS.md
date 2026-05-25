@@ -64,3 +64,18 @@ This repo uses `just` as the command runner:
 - Change priority numbers only need to be unique among **unarchived** (active) changes.
   Numbers may overlap with archived changes. Priority is advisory — execution follows
   the `depends_on` DAG edges first, then priority as tiebreaker.
+
+### Defer & Archive Rules
+
+- **All tasks must be resolved before archiving**: every `[ ]` item in `tasks.md` must
+  be either checked `[x]`, linked to a follow-up change via
+  `(defer → <target-change-id>)`, or explicitly marked `(cancelled — <reason>)`.
+- **Unlinked defer is forbidden**: writing `(defer - reason)` without creating a
+  follow-up change proposal causes the deferred work to be silently lost. Always create
+  the follow-up change first, then reference its ID.
+- **Minimum completion ratio**: a change should not be archived if fewer than 50% of
+  its tasks are completed. If the scope was too large, split it into smaller changes
+  rather than deferring everything.
+- Periodically audit archived changes for orphaned defer items. Use
+  `docs/feature-request-llman-sdd-defer-tracking.md` for the proposed tooling
+  improvement to automate this.
