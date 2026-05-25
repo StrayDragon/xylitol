@@ -1,0 +1,31 @@
+//! OpenAI provider implementation for ADK.
+//!
+//! This module provides support for OpenAI, Azure OpenAI, and OpenAI-compatible APIs.
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use adk_model::openai::{OpenAIClient, OpenAIConfig};
+//!
+//! let client = OpenAIClient::new(OpenAIConfig {
+//!     api_key: std::env::var("OPENAI_API_KEY").unwrap(),
+//!     model: "gpt-4o-mini".to_string(),
+//!     ..Default::default()
+//! })?;
+//! ```
+
+mod client;
+mod config;
+pub(crate) mod convert;
+pub mod pricing;
+mod responses_client;
+mod responses_convert;
+pub mod schema_adapter;
+
+pub use crate::openai_compatible::{OpenAICompatible, OpenAICompatibleConfig};
+pub use client::{AzureOpenAIClient, OpenAIClient};
+pub use config::{
+    AzureConfig, OpenAIConfig, OpenAIResponsesConfig, ReasoningEffort, ReasoningSummary,
+};
+pub use responses_client::OpenAIResponsesClient;
+pub use schema_adapter::{OpenAiSchemaAdapter, OpenAiStrictSchemaAdapter};
