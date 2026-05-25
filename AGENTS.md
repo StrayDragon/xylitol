@@ -76,6 +76,10 @@ This repo uses `just` as the command runner:
 - **Minimum completion ratio**: a change should not be archived if fewer than 50% of
   its tasks are completed. If the scope was too large, split it into smaller changes
   rather than deferring everything.
+- **Defer triage on archive**: when archiving a change that contains deferred items,
+  each defer must be explicitly triaged into one of: (1) a follow-up change proposal
+  (with ID reference), (2) cancelled with reason, or (3) absorbed into an existing
+  active change. No defer item may remain unresolved after archive.
 - Periodically audit archived changes for orphaned defer items. Use
   `docs/feature-request-llman-sdd-defer-tracking.md` for the proposed tooling
   improvement to automate this.
