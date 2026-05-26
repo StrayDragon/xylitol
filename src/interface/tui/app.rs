@@ -735,9 +735,19 @@ impl App {
                 }
                 None
             }
-            // We intentionally avoid enabling mouse capture so terminal text selection behaves
-            // normally (Codex-style). Mouse events are ignored.
-            TuiEvent::Mouse(_mouse) => None,
+            TuiEvent::Mouse(mouse) => {
+                use crossterm::event::MouseEventKind;
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => {
+                        self.chat.scroll_up(3);
+                    }
+                    MouseEventKind::ScrollDown => {
+                        self.chat.scroll_down(3);
+                    }
+                    _ => {}
+                }
+                None
+            }
             TuiEvent::Tick => {
                 self.footer.tick();
                 None
@@ -965,7 +975,8 @@ pub(crate) async fn run_tui(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crossterm::cursor::{SetCursorStyle, Show};
     use crossterm::event::{
-        DisableBracketedPaste, DisableFocusChange, EnableBracketedPaste, EnableFocusChange,
+        DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
+        EnableFocusChange, EnableMouseCapture,
     };
     use crossterm::execute;
     use crossterm::terminal::{
@@ -980,9 +991,9 @@ pub(crate) async fn run_tui(
     execute!(stdout, EnterAlternateScreen)?;
     enable_raw_mode()?;
     keyboard_modes::enable_keyboard_enhancement();
-    // Ensure mouse wheel scrolls normal terminal scrollback (inline viewport mode).
     let _ = execute!(stdout, super::terminal_modes::DisableAlternateScroll);
     let _ = execute!(stdout, EnableFocusChange);
+    let _ = execute!(stdout, EnableMouseCapture);
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
@@ -1189,6 +1200,7 @@ pub(crate) async fn run_tui(
         std::io::stdout(),
         super::terminal_modes::DisableAlternateScroll
     );
+    let _ = execute!(std::io::stdout(), DisableMouseCapture);
     let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
     if let Err(err) = execute!(std::io::stdout(), DisableBracketedPaste) {
         restore_error.get_or_insert(err);
