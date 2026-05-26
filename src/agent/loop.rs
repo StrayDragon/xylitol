@@ -439,8 +439,8 @@ fn map_adk_event(event: Event, step: u32) -> Vec<AgentEvent> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::provider::MockLlm;
     use adk_core::LlmResponse;
-    use adk_model::MockLlm;
     use adk_session::InMemorySessionService;
     use futures::StreamExt;
 

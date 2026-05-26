@@ -93,9 +93,11 @@ pub(crate) struct TestHarness {
 
 impl TestHarness {
     pub(crate) fn builder() -> HarnessBuilder {
-        let model = Arc::new(adk_model::MockLlm::new("harness-default").with_response(
-            adk_core::LlmResponse::new(Content::new("assistant").with_text("ok")),
-        ));
+        let model = Arc::new(
+            crate::agent::provider::MockLlm::new("harness-default").with_response(
+                adk_core::LlmResponse::new(Content::new("assistant").with_text("ok")),
+            ),
+        );
 
         HarnessBuilder {
             model,

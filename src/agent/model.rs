@@ -1,6 +1,6 @@
 /// LLM provider configuration and model registry.
 ///
-/// Supports OpenAI-compatible (Response API) and Anthropic (Claude) providers.
+/// Supports OpenAI-compatible and Anthropic providers via direct HTTP integration.
 /// The ModelKind enum locks to these two — no dynamic provider extension.
 use adk_core::Llm;
 use std::sync::Arc;
@@ -30,26 +30,20 @@ impl ModelConfig {
     pub(crate) fn build(&self) -> Result<Arc<dyn Llm>, AgentError> {
         match self.kind {
             ModelKind::OpenAi => {
-                let mut cfg =
-                    adk_model::openai::OpenAIConfig::new(self.api_key.clone(), self.model.clone());
-                if let Some(ref base_url) = self.base_url {
-                    cfg.base_url = Some(base_url.clone());
-                }
-                let client = adk_model::OpenAIClient::new(cfg)
-                    .map_err(|e| AgentError::ConfigError(format!("OpenAI client: {e}")))?;
-                Ok(Arc::new(client) as Arc<dyn Llm>)
-            }
-            ModelKind::Anthropic => {
-                let mut cfg = adk_model::anthropic::AnthropicConfig::new(
+                let provider = crate::agent::provider::openai::OpenAIProvider::new(
                     self.api_key.clone(),
                     self.model.clone(),
+                    self.base_url.clone(),
                 );
-                if let Some(ref base_url) = self.base_url {
-                    cfg.base_url = Some(base_url.clone());
-                }
-                let client = adk_model::AnthropicClient::new(cfg)
-                    .map_err(|e| AgentError::ConfigError(format!("Anthropic client: {e}")))?;
-                Ok(Arc::new(client) as Arc<dyn Llm>)
+                Ok(Arc::new(provider) as Arc<dyn Llm>)
+            }
+            ModelKind::Anthropic => {
+                let provider = crate::agent::provider::anthropic::AnthropicProvider::new(
+                    self.api_key.clone(),
+                    self.model.clone(),
+                    self.base_url.clone(),
+                );
+                Ok(Arc::new(provider) as Arc<dyn Llm>)
             }
             #[cfg(feature = "dev-fake-provider")]
             ModelKind::Fake => {
