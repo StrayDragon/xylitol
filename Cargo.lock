@@ -2437,6 +2437,7 @@ dependencies = [
 [[package]]
 name = "leaf"
 version = "1.23.0"
+source = "git+https://github.com/StrayDragon/leaf#f6116ff75a72551a941cf130a84319d17c953a59"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -2456,6 +2457,7 @@ dependencies = [
 [[package]]
 name = "leaf-core"
 version = "0.1.0"
+source = "git+https://github.com/StrayDragon/leaf#f6116ff75a72551a941cf130a84319d17c953a59"
 dependencies = [
  "anyhow",
  "leaf",
