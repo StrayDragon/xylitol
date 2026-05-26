@@ -99,8 +99,8 @@ mod tests {
             assert!(
                 requests
                     .iter()
-                    .flat_map(|r| r.contents.iter())
-                    .any(|c| c.role == "user"),
+                    .flatten()
+                    .any(|c| c.role == crate::agent::types::XyRole::User),
                 "expected at least one user content in captured requests"
             );
         })

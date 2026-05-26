@@ -8,10 +8,11 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
-use adk_core::{Result, Tool, ToolContext};
 use async_trait::async_trait;
 use tokio::sync::oneshot;
 
+use crate::agent::error::XyToolError;
+use crate::agent::traits::{XyTool, XyToolCtx};
 use crate::infra::security::{SecurityEngine, SecurityVerdict};
 
 /// User decision for a tool approval prompt.
@@ -105,7 +106,7 @@ pub(crate) fn requires_approval(security_enabled: bool, tool_name: &str) -> bool
 /// - Enforces [`SecurityEngine`] allow/block checks.
 /// - When required, blocks tool execution until the user approves.
 pub(crate) struct SecureApprovalToolWrapper {
-    inner: Arc<dyn Tool>,
+    inner: Arc<dyn XyTool>,
     engine: SecurityEngine,
     approvals: Arc<ApprovalHub>,
     tool_name: String,
@@ -123,7 +124,7 @@ impl std::fmt::Debug for SecureApprovalToolWrapper {
 
 impl SecureApprovalToolWrapper {
     pub(crate) fn new(
-        tool: Arc<dyn Tool>,
+        tool: Arc<dyn XyTool>,
         engine: SecurityEngine,
         approvals: Arc<ApprovalHub>,
         approval_tools: Arc<HashSet<String>>,
@@ -146,7 +147,7 @@ impl SecureApprovalToolWrapper {
 }
 
 #[async_trait]
-impl Tool for SecureApprovalToolWrapper {
+impl XyTool for SecureApprovalToolWrapper {
     fn name(&self) -> &str {
         self.inner.name()
     }
@@ -155,23 +156,24 @@ impl Tool for SecureApprovalToolWrapper {
         self.inner.description()
     }
 
-    fn parameters_schema(&self) -> Option<serde_json::Value> {
+    fn parameters_schema(&self) -> serde_json::Value {
         self.inner.parameters_schema()
-    }
-
-    fn is_read_only(&self) -> bool {
-        self.inner.is_read_only()
-    }
-
-    fn is_concurrency_safe(&self) -> bool {
-        self.inner.is_concurrency_safe()
     }
 
     async fn execute(
         &self,
-        ctx: Arc<dyn ToolContext>,
+        ctx: &XyToolCtx,
         args: serde_json::Value,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<String, XyToolError> {
+        let blocked_json = |reason: &str, rule: &str| -> String {
+            serde_json::to_string(&serde_json::json!({
+                "blocked": true,
+                "reason": reason,
+                "rule": rule,
+            }))
+            .unwrap()
+        };
+
         // 1) Security policy always runs first.
         match self.engine.check_tool_call(&self.tool_name, &args) {
             SecurityVerdict::Blocked { reason, rule } => {
@@ -181,11 +183,7 @@ impl Tool for SecureApprovalToolWrapper {
                     rule = rule,
                     "Tool call blocked by security policy"
                 );
-                return Ok(serde_json::json!({
-                    "blocked": true,
-                    "reason": reason,
-                    "rule": rule,
-                }));
+                return Ok(blocked_json(&reason, &rule));
             }
             SecurityVerdict::Allowed => {}
         }
@@ -196,15 +194,14 @@ impl Tool for SecureApprovalToolWrapper {
                 match sticky {
                     StickyDecision::Allow => {}
                     StickyDecision::Deny => {
-                        return Ok(serde_json::json!({
-                            "blocked": true,
-                            "reason": "tool call denied by user (sticky decision)",
-                            "rule": "approval",
-                        }));
+                        return Ok(blocked_json(
+                            "tool call denied by user (sticky decision)",
+                            "approval",
+                        ));
                     }
                 }
             } else {
-                let call_id = ctx.function_call_id().to_string();
+                let call_id = ctx.call_id.clone();
                 let receiver = self.approvals.take(&call_id);
                 match receiver {
                     Some(rx) => match rx.await {
@@ -216,19 +213,14 @@ impl Tool for SecureApprovalToolWrapper {
                             ApprovalDecision::Deny => {
                                 self.approvals
                                     .set_sticky(self.tool_name.clone(), StickyDecision::Deny);
-                                return Ok(serde_json::json!({
-                                    "blocked": true,
-                                    "reason": "tool call denied by user",
-                                    "rule": "approval",
-                                }));
+                                return Ok(blocked_json("tool call denied by user", "approval"));
                             }
                             ApprovalDecision::AllowOnce => {}
                             ApprovalDecision::DenyOnce => {
-                                return Ok(serde_json::json!({
-                                    "blocked": true,
-                                    "reason": "tool call denied by user (once)",
-                                    "rule": "approval",
-                                }));
+                                return Ok(blocked_json(
+                                    "tool call denied by user (once)",
+                                    "approval",
+                                ));
                             }
                         },
                         Err(err) => {
@@ -238,11 +230,7 @@ impl Tool for SecureApprovalToolWrapper {
                                 error = %err,
                                 "Approval channel closed; denying tool call"
                             );
-                            return Ok(serde_json::json!({
-                                "blocked": true,
-                                "reason": "approval channel closed",
-                                "rule": "approval",
-                            }));
+                            return Ok(blocked_json("approval channel closed", "approval"));
                         }
                     },
                     None => {
@@ -251,11 +239,7 @@ impl Tool for SecureApprovalToolWrapper {
                             call_id = call_id,
                             "No approval receiver registered; denying tool call"
                         );
-                        return Ok(serde_json::json!({
-                            "blocked": true,
-                            "reason": "missing approval prompt",
-                            "rule": "approval",
-                        }));
+                        return Ok(blocked_json("missing approval prompt", "approval"));
                     }
                 }
             }
@@ -276,11 +260,7 @@ impl Tool for SecureApprovalToolWrapper {
                         rule = rule,
                         "Subprocess limit reached"
                     );
-                    Ok(serde_json::json!({
-                        "blocked": true,
-                        "reason": reason,
-                        "rule": rule,
-                    }))
+                    Ok(blocked_json(&reason, &rule))
                 }
             }
         } else {

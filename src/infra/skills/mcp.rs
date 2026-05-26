@@ -1,12 +1,11 @@
 //! MCP (Model Context Protocol) client integration.
 //!
 //! Provides [`McpClientManager`] to connect to MCP servers via stdio or SSE
-//! transport, and [`McpToolAdapter`] to expose MCP tools as [`adk_core::Tool`].
+//! transport, and [`McpToolAdapter`] to expose MCP tools as [`XyTool`].
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use adk_core::{AdkError, ErrorCategory, ErrorComponent};
 use async_trait::async_trait;
 use rmcp::model::{CallToolRequestParams, CallToolResult};
 use rmcp::service::RunningService;
@@ -165,7 +164,7 @@ impl McpClientManager {
     }
 }
 
-/// Adapter wrapping an MCP tool as an `adk_core::Tool`.
+/// Adapter wrapping an MCP tool as an [`XyTool`].
 ///
 /// The publicly-facing name follows the convention `mcp:{server_id}:{name}`
 /// to avoid naming conflicts with built-in tools.
@@ -195,7 +194,7 @@ impl McpToolAdapter {
 }
 
 #[async_trait]
-impl adk_core::Tool for McpToolAdapter {
+impl crate::agent::traits::XyTool for McpToolAdapter {
     fn name(&self) -> &str {
         &self.full_name
     }
@@ -204,39 +203,46 @@ impl adk_core::Tool for McpToolAdapter {
         &self.description
     }
 
-    fn parameters_schema(&self) -> Option<Value> {
-        self.parameters_schema.clone()
+    fn parameters_schema(&self) -> Value {
+        self.parameters_schema
+            .clone()
+            .unwrap_or(serde_json::json!({}))
     }
 
     async fn execute(
         &self,
-        _ctx: Arc<dyn adk_core::ToolContext>,
+        _ctx: &crate::agent::traits::XyToolCtx,
         args: Value,
-    ) -> adk_core::Result<Value> {
-        // Parse the server_id from the prefixed name.
-        // Format: mcp:{server_id}:{tool_name}
+    ) -> Result<String, crate::agent::error::XyToolError> {
         let parts: Vec<&str> = self.full_name.splitn(3, ':').collect();
         let server_id = parts.get(1).unwrap_or(&"unknown");
         let tool_name = parts.get(2).unwrap_or(&"unknown");
 
-        self.manager
+        let result = self
+            .manager
             .call_tool(server_id, tool_name, args)
             .await
             .map_err(|e| {
-                AdkError::new(
-                    ErrorComponent::Tool,
-                    ErrorCategory::Internal,
-                    "mcp_tool_error",
-                    format!("MCP call to {} failed: {}", self.full_name, e),
-                )
-            })
+                crate::agent::error::XyToolError::ExecutionFailed(anyhow::anyhow!(
+                    "MCP call to {} failed: {}",
+                    self.full_name,
+                    e
+                ))
+            })?;
+
+        serde_json::to_string(&result).map_err(|e| {
+            crate::agent::error::XyToolError::ExecutionFailed(anyhow::anyhow!(
+                "failed to serialize MCP result: {}",
+                e
+            ))
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use adk_core::Tool;
+    use crate::agent::traits::XyTool;
 
     #[test]
     fn test_mcp_tool_adapter_name_format() {
@@ -250,7 +256,7 @@ mod tests {
         );
         assert_eq!(adapter.name(), "mcp:filesystem:read_file");
         assert_eq!(adapter.description(), "Read a file");
-        assert!(adapter.parameters_schema().is_none());
+        assert_eq!(adapter.parameters_schema(), serde_json::json!({}));
     }
 
     #[test]
@@ -270,7 +276,7 @@ mod tests {
             manager,
         );
         assert_eq!(adapter.name(), "mcp:git:status");
-        assert_eq!(adapter.parameters_schema(), Some(schema));
+        assert_eq!(adapter.parameters_schema(), schema);
     }
 
     #[test]

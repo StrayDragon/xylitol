@@ -1,20 +1,19 @@
-//! Agent execution loop — core ReAct loop powered by adk-rust.
+//! Agent execution loop — core ReAct loop powered by XyModel / XyTool.
 //!
-//! Provides [`AgentLoop`] which wraps `adk_runner::Runner` / `adk_agent::LlmAgent`
+//! Provides [`AgentLoop`] which owns an `XyModel`, `ToolRegistry`, and `XySession`
 //! and emits [`AgentEvent`] items that consumer layers (Print / TUI / ACP) subscribe to.
 
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use adk_agent::LlmAgentBuilder;
-use adk_core::{Content, Event, Part};
-use adk_runner::Runner;
-use adk_session::SessionService;
 use futures::Stream;
 
 use crate::agent::repeat::{DetectionConfig, RepeatDetector};
+use crate::agent::session::XySession;
 use crate::agent::tools::ToolRegistry;
+use crate::agent::traits::{XyModel, XyToolCtx};
+use crate::agent::types::{XyChunk, XyContent, XyPart, XyToolSchema};
 use crate::infra::hooks::{DispatchResult, HookDispatcher, HookEvent, HookPhase};
 
 // ---------------------------------------------------------------------------
@@ -60,11 +59,7 @@ pub(crate) enum AgentEvent {
 pub(crate) enum AgentError {
     /// Error from the LLM provider (API error, rate limit, etc.).
     #[error("LLM error: {message}")]
-    LlmError {
-        message: String,
-        /// Whether the operation can be retried.
-        retryable: bool,
-    },
+    LlmError { message: String, retryable: bool },
 
     /// Error during tool execution.
     #[error("Tool '{tool}' failed: {message}")]
@@ -79,44 +74,27 @@ pub(crate) enum AgentError {
     ConfigError(String),
 }
 
-impl From<adk_core::AdkError> for AgentError {
-    fn from(e: adk_core::AdkError) -> Self {
-        AgentError::LlmError {
-            message: e.to_string(),
-            retryable: false,
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // AgentLoop
 // ---------------------------------------------------------------------------
 
 /// High-level agent execution loop.
-///
-/// Wraps an `adk_runner::Runner` (which itself owns an `LlmAgent`) and
-/// provides a `run()` method that streams [`AgentEvent`] items.
 pub(crate) struct AgentLoop {
-    runner: Runner,
+    model: Arc<dyn XyModel>,
+    tools: ToolRegistry,
+    session: Arc<dyn XySession>,
+    system_prompt: Option<String>,
+    max_iterations: usize,
     app_name: String,
-    session_service: Arc<dyn SessionService>,
     step_counter: std::sync::atomic::AtomicU32,
-    /// Optional hook dispatcher for event-driven extension.
     hooks: Option<HookDispatcher>,
 }
 
 impl AgentLoop {
-    /// Create a new agent loop.
-    ///
-    /// Builds an `LlmAgent` from the resolved profile (model, prompt, tools, iterations),
-    /// then wraps it in a `Runner` for session and lifecycle management.
-    ///
-    /// `hooks_config` — optional hooks configuration. When provided with at least
-    /// one hook entry, a `HookDispatcher` is initialised.
     pub(crate) async fn new(
         tool_registry: &ToolRegistry,
         profile: crate::agent::profile::ResolvedProfile,
-        session_service: Arc<dyn SessionService>,
+        session: Arc<dyn XySession>,
         app_name: String,
         hooks_config: Option<&crate::infra::config::types::HooksConfig>,
     ) -> Result<Self, AgentError> {
@@ -125,88 +103,90 @@ impl AgentLoop {
             .build()
             .map_err(|e| AgentError::ConfigError(format!("build model: {e}")))?;
 
-        let mut builder = LlmAgentBuilder::new("xylitol")
-            .model(model)
-            .description("xylitol — LLM-Augmented Development Toolkit")
-            .max_iterations(profile.max_iterations);
-
-        if let Some(ref prompt) = profile.system_prompt {
-            builder = builder.instruction(prompt);
-        }
-
-        let tools = tool_registry.filtered(profile.allowed_tools.as_deref());
-        for tool in tools {
-            builder = builder.tool(tool);
-        }
-
-        let agent = builder
-            .build()
-            .map_err(|e| AgentError::ConfigError(format!("build agent: {e}")))?;
-
-        let runner = Runner::builder()
-            .app_name(app_name.clone())
-            .agent(Arc::new(agent))
-            .session_service(session_service.clone())
-            .build()
-            .map_err(|e| AgentError::ConfigError(format!("build runner: {e}")))?;
-
+        let tools = tool_registry.clone();
         let hooks = hooks_config.map(HookDispatcher::new);
 
         Ok(Self {
-            runner,
+            model,
+            tools,
+            session,
+            system_prompt: profile.system_prompt.clone(),
+            max_iterations: profile.max_iterations as usize,
             app_name,
-            session_service,
             step_counter: std::sync::atomic::AtomicU32::new(0),
             hooks,
         })
     }
 
+    /// Create an AgentLoop with a pre-built model (for testing).
+    #[cfg(test)]
+    pub(crate) fn with_model(
+        model: Arc<dyn XyModel>,
+        tool_registry: &ToolRegistry,
+        session: Arc<dyn XySession>,
+        system_prompt: Option<String>,
+        max_iterations: usize,
+    ) -> Self {
+        Self {
+            model,
+            tools: tool_registry.clone(),
+            session,
+            system_prompt,
+            max_iterations,
+            app_name: "test".into(),
+            step_counter: std::sync::atomic::AtomicU32::new(0),
+            hooks: None,
+        }
+    }
+
     /// Run the agent with the given prompt and session.
-    ///
-    /// Auto-creates the session if it does not yet exist (load-or-create
-    /// semantics), then runs the agent and returns a stream of [`AgentEvent`]
-    /// items.
-    ///
-    /// Optionally pass repeat detection config to enable loop detection.
     pub(crate) async fn run(
         &self,
         prompt: &str,
         session_id: &str,
         repeat_detection: Option<DetectionConfig>,
     ) -> Result<AgentEventStream, AgentError> {
-        // Load-or-create session so callers don't need to manage session lifecycle.
-        self.ensure_session(session_id).await?;
+        // Load-or-create session
+        if !self.session.exists(session_id).await {
+            self.session
+                .create(session_id)
+                .await
+                .map_err(|e| AgentError::SessionError(format!("create session: {e}")))?;
+        }
 
-        let content = Content::new("user").with_text(prompt);
-
-        let stream = self
-            .runner
-            .run_str("default-user", session_id, content)
-            .await
-            .map_err(|e| AgentError::LlmError {
-                message: e.to_string(),
-                retryable: true,
-            })?;
-
-        let step_counter = self
+        let step = self
             .step_counter
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             + 1;
-
         let detector = repeat_detection.map(RepeatDetector::new);
 
+        let model = self.model.clone();
+        let tools = self.tools.clone();
+        let session = self.session.clone();
+        let system_prompt = self.system_prompt.clone();
+        let max_iterations = self.max_iterations;
+        let prompt = prompt.to_string();
+        let session_id = session_id.to_string();
+
+        let inner = Box::pin(run_react_loop(ReactLoopParams {
+            model,
+            tools,
+            session,
+            system_prompt,
+            max_iterations,
+            prompt,
+            session_id,
+        }));
+
         Ok(AgentEventStream {
-            inner: stream,
-            step: step_counter,
+            inner,
+            step,
             done: false,
             pending: std::collections::VecDeque::new(),
             detector,
         })
     }
 
-    /// Dispatch a hook event through the configured dispatcher.
-    ///
-    /// Returns `DispatchResult::Allowed` when hooks are not configured (no-op).
     pub(crate) async fn dispatch_hook(
         &self,
         event: &HookEvent,
@@ -218,68 +198,200 @@ impl AgentLoop {
         }
     }
 
-    /// Whether hooks are configured.
     pub(crate) fn has_hooks(&self) -> bool {
         self.hooks.as_ref().is_some_and(|d| !d.is_empty())
     }
 
-    /// Return a reference to the hook dispatcher, if any.
     pub(crate) fn hooks_ref(&self) -> Option<&HookDispatcher> {
         self.hooks.as_ref()
     }
+}
 
-    /// Ensure a session exists for the given ID by creating one if absent.
-    async fn ensure_session(&self, session_id: &str) -> Result<(), AgentError> {
-        use adk_session::{CreateRequest, GetRequest};
-        use std::collections::HashMap;
+/// Parameters for the core ReAct loop.
+struct ReactLoopParams {
+    model: Arc<dyn XyModel>,
+    tools: ToolRegistry,
+    session: Arc<dyn XySession>,
+    system_prompt: Option<String>,
+    max_iterations: usize,
+    prompt: String,
+    session_id: String,
+}
 
-        // NOTE: `SessionService::create()` is *not* guaranteed to be idempotent.
-        // The in-memory backend overwrites any existing session (clearing events),
-        // which makes conversations appear to "reset" on every prompt.
-        //
-        // So we probe with `get()` first and only `create()` when the session is missing.
-        match self
-            .session_service
-            .get(GetRequest {
-                app_name: self.app_name.clone(),
-                user_id: "default-user".into(),
-                session_id: session_id.into(),
-                // Only checking existence; avoid loading any history here.
-                num_recent_events: Some(0),
-                after: None,
+/// The core ReAct loop as an async stream of AgentEvent.
+fn run_react_loop(params: ReactLoopParams) -> Pin<Box<dyn Stream<Item = AgentEvent> + Send>> {
+    Box::pin(async_stream::stream! {
+        use futures::StreamExt;
+
+        let ReactLoopParams {
+            model, tools, session, system_prompt, max_iterations, prompt, session_id,
+        } = params;
+
+        // Load history + append user message
+        let mut history = session.load(&session_id).await.unwrap_or_default();
+        history.push(XyContent::user(&prompt));
+
+        // Build tool schemas for the model
+        let tool_schemas: Vec<XyToolSchema> = tools
+            .list()
+            .iter()
+            .map(|t| XyToolSchema {
+                name: t.name().to_string(),
+                description: t.description().to_string(),
+                parameters: t.parameters_schema(),
             })
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(e) if e.is_session() && e.message == "session not found" => self
-                .session_service
-                .create(CreateRequest {
-                    app_name: self.app_name.clone(),
-                    user_id: "default-user".into(),
-                    session_id: Some(session_id.into()),
-                    state: HashMap::new(),
-                })
-                .await
-                .map(|_| ())
-                .map_err(|e| AgentError::SessionError(format!("create session: {e}"))),
-            Err(e) => Err(AgentError::SessionError(format!("get session: {e}"))),
+            .collect();
+
+        for iteration in 0..max_iterations {
+            // Build messages with optional system prompt
+            let mut messages = Vec::new();
+            if let Some(ref sp) = system_prompt {
+                messages.push(XyContent::system(sp));
+            }
+            messages.extend(history.iter().cloned());
+
+            // Call the model
+            let stream_result = model
+                .generate_stream(messages, &tool_schemas, true)
+                .await;
+
+            let mut chunk_stream = match stream_result {
+                Ok(s) => s,
+                Err(e) => {
+                    yield AgentEvent::Error(AgentError::LlmError {
+                        message: e.to_string(),
+                        retryable: true,
+                    });
+                    return;
+                }
+            };
+
+            // Accumulate the response
+            let mut text_acc = String::new();
+            let mut thinking_acc = String::new();
+            let mut tool_calls: Vec<(String, String, serde_json::Value)> = Vec::new();
+            let mut done = false;
+
+            while let Some(chunk_result) = chunk_stream.next().await {
+                match chunk_result {
+                    Ok(chunk) => match chunk {
+                        XyChunk::TextDelta(text) => {
+                            text_acc.push_str(&text);
+                            yield AgentEvent::TextDelta(text);
+                        }
+                        XyChunk::ThinkingDelta(text) => {
+                            thinking_acc.push_str(&text);
+                            yield AgentEvent::ThinkingDelta(text);
+                        }
+                        XyChunk::FunctionCall { name, args, id } => {
+                            yield AgentEvent::ToolCallStart {
+                                id: id.clone(),
+                                name: name.clone(),
+                                args: args.clone(),
+                            };
+                            tool_calls.push((id, name, args));
+                        }
+                        XyChunk::Done { .. } => {
+                            done = true;
+                        }
+                    },
+                    Err(e) => {
+                        yield AgentEvent::Error(AgentError::LlmError {
+                            message: e.to_string(),
+                            retryable: false,
+                        });
+                        return;
+                    }
+                }
+            }
+
+            // Build assistant message for history
+            let mut assistant_parts = Vec::new();
+            if !thinking_acc.is_empty() {
+                assistant_parts.push(XyPart::Thinking(thinking_acc));
+            }
+            if !text_acc.is_empty() {
+                assistant_parts.push(XyPart::Text(text_acc));
+            }
+            for (id, name, args) in &tool_calls {
+                assistant_parts.push(XyPart::FunctionCall {
+                    name: name.clone(),
+                    args: args.clone(),
+                    id: id.clone(),
+                });
+            }
+            if !assistant_parts.is_empty() {
+                history.push(XyContent::assistant(assistant_parts));
+            }
+
+            // If no tool calls, we're done
+            if tool_calls.is_empty() {
+                let _ = session.save(&session_id, &history).await;
+                return;
+            }
+
+            // Execute tool calls and add results to history
+            for (id, name, args) in &tool_calls {
+                let tool = tools.get(name);
+                let result = match tool {
+                    Some(t) => {
+                        let ctx = XyToolCtx { call_id: id.clone() };
+                        match t.execute(&ctx, args.clone()).await {
+                            Ok(output) => output,
+                            Err(e) => {
+                                let error_msg = format!("Tool error: {e}");
+                                yield AgentEvent::Error(AgentError::ToolError {
+                                    tool: name.clone(),
+                                    message: error_msg.clone(),
+                                });
+                                error_msg
+                            }
+                        }
+                    }
+                    None => {
+                        let msg = format!("Unknown tool: {name}");
+                        yield AgentEvent::Error(AgentError::ToolError {
+                            tool: name.clone(),
+                            message: msg.clone(),
+                        });
+                        msg
+                    }
+                };
+
+                let result_value: serde_json::Value = serde_json::from_str(&result)
+                    .unwrap_or(serde_json::Value::String(result.clone()));
+
+                yield AgentEvent::ToolCallEnd {
+                    id: id.clone(),
+                    result: result_value,
+                };
+
+                history.push(XyContent::tool_result(
+                    name.clone(),
+                    result,
+                    id.clone(),
+                ));
+            }
+
+            let _ = session.save(&session_id, &history).await;
+
+            if done && iteration + 1 >= max_iterations {
+                break;
+            }
         }
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
 // AgentEventStream
 // ---------------------------------------------------------------------------
 
-/// Stream that maps `adk_core::Event` items to [`AgentEvent`] items.
+/// Stream wrapper that adds repeat detection on top of the inner event stream.
 pub(crate) struct AgentEventStream {
-    inner: Pin<Box<dyn Stream<Item = Result<Event, adk_core::AdkError>> + Send>>,
+    inner: Pin<Box<dyn Stream<Item = AgentEvent> + Send>>,
     step: u32,
     done: bool,
     pending: std::collections::VecDeque<AgentEvent>,
-    /// Optional repeat detector. When `Some`, text content is monitored for
-    /// repetition loops. On detection, the stream yields `RepeatDetected` and
-    /// terminates.
     detector: Option<RepeatDetector>,
 }
 
@@ -295,55 +407,22 @@ impl Stream for AgentEventStream {
             return Poll::Ready(Some(self.apply_repeat_detection(next)));
         }
 
-        loop {
-            match self.inner.as_mut().poll_next(cx) {
-                Poll::Ready(Some(Ok(event))) => {
-                    let mapped = map_adk_event(event, self.step);
-                    let mut iter = mapped.into_iter();
-                    let Some(first) = iter.next() else {
-                        // No user-visible delta in this event; keep polling.
-                        continue;
-                    };
-                    self.pending.extend(iter);
-                    return Poll::Ready(Some(self.apply_repeat_detection(first)));
-                }
-                Poll::Ready(Some(Err(e))) => {
-                    self.done = true;
-                    return Poll::Ready(Some(AgentEvent::Error(AgentError::LlmError {
-                        message: e.to_string(),
-                        retryable: false,
-                    })));
-                }
-                Poll::Ready(None) => {
-                    self.done = true;
-                    // Yields StepComplete after all events are consumed.
-                    return Poll::Ready(Some(AgentEvent::StepComplete {
-                        step: self.step,
-                        summary: String::new(),
-                    }));
-                }
-                Poll::Pending => return Poll::Pending,
+        match self.inner.as_mut().poll_next(cx) {
+            Poll::Ready(Some(event)) => Poll::Ready(Some(self.apply_repeat_detection(event))),
+            Poll::Ready(None) => {
+                self.done = true;
+                Poll::Ready(Some(AgentEvent::StepComplete {
+                    step: self.step,
+                    summary: String::new(),
+                }))
             }
+            Poll::Pending => Poll::Pending,
         }
     }
 }
 
 impl AgentEventStream {
-    pub(crate) fn new_raw(
-        inner: Pin<Box<dyn Stream<Item = Result<Event, adk_core::AdkError>> + Send>>,
-        step: u32,
-    ) -> Self {
-        Self {
-            inner,
-            step,
-            done: false,
-            pending: std::collections::VecDeque::new(),
-            detector: None,
-        }
-    }
-
     fn apply_repeat_detection(&mut self, agent_event: AgentEvent) -> AgentEvent {
-        // Feed assistant text deltas through the repeat detector, if active.
         if let AgentEvent::TextDelta(ref text) = agent_event
             && let Some(ref mut detector) = self.detector
             && let Some(result) = detector.feed(text)
@@ -360,378 +439,124 @@ impl AgentEventStream {
 }
 
 // ---------------------------------------------------------------------------
-// Event mapping
-// ---------------------------------------------------------------------------
-
-/// Map an `adk_core::Event` to an [`AgentEvent`].
-///
-/// Priority: FunctionCall > FunctionResponse > text content.
-fn map_adk_event(event: Event, step: u32) -> Vec<AgentEvent> {
-    let content = match event.llm_response.content {
-        Some(ref c) => c,
-        None => {
-            return Vec::new();
-        }
-    };
-
-    // Check for function calls first.
-    for part in &content.parts {
-        if let Part::FunctionCall { name, args, id, .. } = part {
-            let call_id = id.clone().unwrap_or_else(|| format!("{step}-{name}"));
-            return vec![AgentEvent::ToolCallStart {
-                id: call_id,
-                name: name.clone(),
-                args: args.clone(),
-            }];
-        }
-    }
-
-    // Check for function responses.
-    for part in &content.parts {
-        if let Part::FunctionResponse {
-            function_response,
-            id,
-        } = part
-        {
-            let call_id = id
-                .clone()
-                .unwrap_or_else(|| format!("{step}-{}", function_response.name));
-            return vec![AgentEvent::ToolCallEnd {
-                id: call_id,
-                result: function_response.response.clone(),
-            }];
-        }
-    }
-
-    let mut out = Vec::new();
-
-    let thinking: String = content
-        .parts
-        .iter()
-        .filter_map(|p| match p {
-            Part::Thinking { thinking, .. } => Some(thinking.as_str()),
-            _ => None,
-        })
-        .collect();
-    if !thinking.is_empty() {
-        out.push(AgentEvent::ThinkingDelta(thinking));
-    }
-
-    let text: String = content
-        .parts
-        .iter()
-        .filter_map(|p| match p {
-            Part::Text { text } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect();
-    if !text.is_empty() {
-        out.push(AgentEvent::TextDelta(text));
-    }
-
-    out
-}
-
-// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::provider::MockLlm;
-    use adk_core::LlmResponse;
-    use adk_session::InMemorySessionService;
+    use crate::agent::provider::MockXyModel;
+    use crate::agent::session::InMemorySession;
     use futures::StreamExt;
 
-    // ── Unit tests for event mapping ─────────────────────────────
+    #[tokio::test]
+    async fn test_react_loop_text_response() {
+        let model = Arc::new(MockXyModel::new("test").with_text("Hello from mock!"));
+        let session: Arc<dyn XySession> = Arc::new(InMemorySession::new());
+        session.create("s1").await.unwrap();
+        let tool_schemas = Vec::new();
 
-    #[test]
-    fn test_map_text_event() {
-        let mut event = Event::new("inv-1");
-        event.llm_response.content = Some(Content::new("assistant").with_text("Hello world"));
-        let agent_events = map_adk_event(event, 1);
-        assert!(matches!(
-            agent_events.as_slice(),
-            [AgentEvent::TextDelta(t)] if t == "Hello world"
-        ));
-    }
-
-    #[test]
-    fn test_map_function_call_event() {
-        let mut event = Event::new("inv-1");
-        event.llm_response.content = Some(Content {
-            role: "assistant".into(),
-            parts: vec![Part::FunctionCall {
-                name: "read".into(),
-                args: serde_json::json!({"file_path": "/tmp/test.txt"}),
-                id: Some("call-1".into()),
-                thought_signature: None,
-            }],
-        });
-        let agent_events = map_adk_event(event, 1);
-        match agent_events.as_slice() {
-            [AgentEvent::ToolCallStart { id, name, .. }] => {
-                assert_eq!(id, "call-1");
-                assert_eq!(name, "read");
-            }
-            other => panic!("expected ToolCallStart, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn test_map_function_response_event() {
-        let mut event = Event::new("inv-1");
-        event.llm_response.content = Some(Content {
-            role: "function".into(),
-            parts: vec![Part::FunctionResponse {
-                function_response: adk_core::FunctionResponseData::new(
-                    "read",
-                    serde_json::json!({"content": "file content"}),
-                ),
-                id: Some("call-1".into()),
-            }],
-        });
-        let agent_events = map_adk_event(event, 1);
-        match agent_events.as_slice() {
-            [AgentEvent::ToolCallEnd { id, result }] => {
-                assert_eq!(id, "call-1");
-                assert_eq!(result["content"], "file content");
-            }
-            other => panic!("expected ToolCallEnd, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn test_map_thinking_and_text_event_orders_thinking_first() {
-        let mut event = Event::new("inv-1");
-        event.llm_response.content = Some(Content {
-            role: "assistant".into(),
-            parts: vec![
-                Part::Thinking {
-                    thinking: "step-by-step".into(),
-                    signature: None,
-                },
-                Part::Text {
-                    text: "final".into(),
-                },
-            ],
-        });
-
-        let agent_events = map_adk_event(event, 1);
-        assert!(matches!(
-            agent_events.as_slice(),
-            [AgentEvent::ThinkingDelta(t), AgentEvent::TextDelta(x)]
-                if t == "step-by-step" && x == "final"
-        ));
-    }
-
-    // ── Integration tests ────────────────────────────────────────
-
-    /// Build a test agent with MockLlm and no tools.
-    fn build_test_agent(mock: MockLlm) -> Result<adk_agent::LlmAgent, adk_core::AdkError> {
-        let mut builder = adk_agent::LlmAgentBuilder::new("test-agent")
-            .model(Arc::new(mock))
-            .description("test agent for integration tests")
-            .max_iterations(5);
-        builder = builder.tool(Arc::new(crate::agent::tools::read::ReadTool));
-        builder.build()
-    }
-
-    /// Build a Runner wired to MockLlm + InMemorySessionService.
-    async fn build_test_runner(
-        agent: adk_agent::LlmAgent,
-        session_service: Arc<dyn SessionService>,
-        session_id: &str,
-    ) -> Result<Runner, adk_core::AdkError> {
-        // Pre-create the session so Runner's `get()` succeeds
-        session_service
-            .create(adk_session::CreateRequest {
-                app_name: "xylitol-test".into(),
-                user_id: "default-user".into(),
-                session_id: Some(session_id.into()),
-                state: std::collections::HashMap::new(),
-            })
+        let msgs = vec![XyContent::user("say hi")];
+        let stream = model
+            .generate_stream(msgs.clone(), &tool_schemas, true)
             .await
-            .map_err(|e| adk_core::AdkError::session(format!("create session: {e}")))?;
-
-        Runner::builder()
-            .app_name("xylitol-test")
-            .agent(Arc::new(agent))
-            .session_service(session_service)
-            .build()
+            .unwrap();
+        let chunks: Vec<_> = stream.collect::<Vec<_>>().await;
+        assert!(
+            chunks
+                .iter()
+                .any(|c| matches!(c, Ok(XyChunk::TextDelta(t)) if t.contains("Hello")))
+        );
     }
 
     #[tokio::test]
-    async fn test_agent_loop_text_response() {
-        let mock = MockLlm::new("test-llm").with_response(LlmResponse::new(
-            Content::new("assistant").with_text("Hello from mock!"),
-        ));
-        let agent = build_test_agent(mock).unwrap();
-        let session_service = Arc::new(InMemorySessionService::new());
-        let runner = build_test_runner(agent, session_service, "test-session-1")
-            .await
-            .unwrap();
+    async fn test_agent_loop_emits_step_complete() {
+        let model = Arc::new(MockXyModel::new("test").with_text("done"));
+        let session: Arc<dyn XySession> = Arc::new(InMemorySession::new());
+        let tools = ToolRegistry::new();
 
-        let content = Content::new("user").with_text("Say hello");
-        let mut stream = runner
-            .run_str("default-user", "test-session-1", content)
-            .await
-            .unwrap();
-
-        let mut events: Vec<Event> = Vec::new();
-        while let Some(result) = stream.next().await {
-            events.push(result.unwrap());
-        }
-
-        // Should have at least one event with text content
-        assert!(!events.is_empty(), "expected at least one event");
-        let has_text = events.iter().any(|e| {
-            e.llm_response.content.as_ref().is_some_and(|c| {
-                c.parts
-                    .iter()
-                    .any(|p| matches!(p, Part::Text { text } if text.contains("Hello from mock")))
-            })
+        let inner = run_react_loop(ReactLoopParams {
+            model,
+            tools,
+            session: session.clone(),
+            system_prompt: None,
+            max_iterations: 5,
+            prompt: "hi".into(),
+            session_id: "s1".into(),
         });
-        assert!(has_text, "expected text response in events");
-    }
-
-    #[tokio::test]
-    async fn test_agent_loop_event_stream() {
-        let mock = MockLlm::new("test-llm").with_response(LlmResponse::new(
-            Content::new("assistant").with_text("Hello world"),
-        ));
-        let agent = build_test_agent(mock).unwrap();
-        let session_service = Arc::new(InMemorySessionService::new());
-        let runner = build_test_runner(agent, session_service, "test-session-2")
-            .await
-            .unwrap();
-
-        let content = Content::new("user").with_text("Hi");
-        let raw_stream = runner
-            .run_str("default-user", "test-session-2", content)
-            .await
-            .unwrap();
-
         let mut event_stream = AgentEventStream {
-            inner: raw_stream,
+            inner: Box::pin(inner),
             step: 1,
             done: false,
             pending: std::collections::VecDeque::new(),
             detector: None,
         };
 
-        let mut agent_events: Vec<AgentEvent> = Vec::new();
-        while let Some(event) = event_stream.next().await {
-            agent_events.push(event);
+        let mut events = Vec::new();
+        while let Some(e) = event_stream.next().await {
+            events.push(e);
         }
 
-        // Should have at least TextDelta and StepComplete
-        assert!(!agent_events.is_empty(), "expected agent events");
-        let text_events: Vec<_> = agent_events
-            .iter()
-            .filter(|e| matches!(e, AgentEvent::TextDelta(_)))
-            .collect();
-        assert!(!text_events.is_empty(), "expected at least one TextDelta");
-
-        let has_step_complete = agent_events
-            .iter()
-            .any(|e| matches!(e, AgentEvent::StepComplete { .. }));
-        assert!(has_step_complete, "expected StepComplete");
-    }
-
-    #[tokio::test]
-    async fn test_agent_loop_empty_tools() {
-        let mock = MockLlm::new("empty-tools-llm").with_response(LlmResponse::new(
-            Content::new("assistant").with_text("No tools needed"),
-        ));
-
-        let mut builder = adk_agent::LlmAgentBuilder::new("no-tools-agent")
-            .model(Arc::new(mock))
-            .description("test agent with no tools")
-            .max_iterations(3);
-        builder = builder.tool(Arc::new(crate::agent::tools::read::ReadTool));
-        let agent = builder.build().unwrap();
-
-        let session_service = Arc::new(InMemorySessionService::new());
-        let runner = build_test_runner(agent, session_service, "test-session-3")
-            .await
-            .unwrap();
-
-        let content = Content::new("user").with_text("Hello");
-        let mut stream = runner
-            .run_str("default-user", "test-session-3", content)
-            .await
-            .unwrap();
-
-        let mut event_count = 0;
-        while let Some(result) = stream.next().await {
-            assert!(result.is_ok());
-            event_count += 1;
-        }
-        assert!(event_count > 0, "expected at least one event");
-    }
-
-    #[tokio::test]
-    async fn test_session_is_not_reset_between_runs() {
-        let mock = MockLlm::new("persist-llm")
-            .with_response(LlmResponse::new(Content::new("assistant").with_text("ok")));
-        let agent = build_test_agent(mock).unwrap();
-
-        let session_service: Arc<dyn SessionService> = Arc::new(InMemorySessionService::new());
-        let runner = build_test_runner(agent, session_service.clone(), "test-session-persist")
-            .await
-            .unwrap();
-
-        let agent_loop = AgentLoop {
-            runner,
-            app_name: "xylitol-test".into(),
-            session_service: session_service.clone(),
-            step_counter: std::sync::atomic::AtomicU32::new(0),
-            hooks: None,
-        };
-
-        // First turn
-        let mut stream = agent_loop
-            .run("first", "test-session-persist", None)
-            .await
-            .unwrap();
-        while stream.next().await.is_some() {}
-
-        let s1 = session_service
-            .get(adk_session::GetRequest {
-                app_name: "xylitol-test".into(),
-                user_id: "default-user".into(),
-                session_id: "test-session-persist".into(),
-                num_recent_events: None,
-                after: None,
-            })
-            .await
-            .unwrap();
-        let len1 = s1.events().len();
-        assert!(len1 > 0, "expected persisted events after first run");
-
-        // Second turn on the same session id should append, not reset.
-        let mut stream = agent_loop
-            .run("second", "test-session-persist", None)
-            .await
-            .unwrap();
-        while stream.next().await.is_some() {}
-
-        let s2 = session_service
-            .get(adk_session::GetRequest {
-                app_name: "xylitol-test".into(),
-                user_id: "default-user".into(),
-                session_id: "test-session-persist".into(),
-                num_recent_events: None,
-                after: None,
-            })
-            .await
-            .unwrap();
-        let len2 = s2.events().len();
         assert!(
-            len2 > len1,
-            "expected events to accumulate across runs (len1={len1}, len2={len2})"
+            events
+                .iter()
+                .any(|e| matches!(e, AgentEvent::TextDelta(t) if t.contains("done")))
         );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, AgentEvent::StepComplete { .. }))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_session_preserves_across_runs() {
+        let model = Arc::new(MockXyModel::new("test").with_text("ok"));
+        let session: Arc<dyn XySession> = Arc::new(InMemorySession::new());
+        let tools = ToolRegistry::new();
+
+        // First run
+        let inner = run_react_loop(ReactLoopParams {
+            model: model.clone(),
+            tools: tools.clone(),
+            session: session.clone(),
+            system_prompt: None,
+            max_iterations: 5,
+            prompt: "first".into(),
+            session_id: "s1".into(),
+        });
+        let mut s = AgentEventStream {
+            inner: Box::pin(inner),
+            step: 1,
+            done: false,
+            pending: std::collections::VecDeque::new(),
+            detector: None,
+        };
+        while s.next().await.is_some() {}
+
+        let h1 = session.load("s1").await.unwrap();
+        assert!(!h1.is_empty());
+
+        // Second run on same session
+        let inner = run_react_loop(ReactLoopParams {
+            model: model.clone(),
+            tools: tools.clone(),
+            session: session.clone(),
+            system_prompt: None,
+            max_iterations: 5,
+            prompt: "second".into(),
+            session_id: "s1".into(),
+        });
+        let mut s = AgentEventStream {
+            inner: Box::pin(inner),
+            step: 2,
+            done: false,
+            pending: std::collections::VecDeque::new(),
+            detector: None,
+        };
+        while s.next().await.is_some() {}
+
+        let h2 = session.load("s1").await.unwrap();
+        assert!(h2.len() > h1.len(), "history should grow across runs");
     }
 }

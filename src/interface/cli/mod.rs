@@ -7,9 +7,9 @@
 
 use std::sync::Arc;
 
-use adk_session::InMemorySessionService;
 use clap::Parser;
 
+use crate::agent::session::InMemorySession;
 use crate::agent::tools::ToolRegistry;
 use crate::infra::config;
 use crate::infra::config::types::ProviderKind;
@@ -108,13 +108,10 @@ pub(crate) fn run() -> Result<(), Box<dyn std::error::Error>> {
                 rt.block_on(register_mcp_tools(&mut tools, &app_config))?;
 
                 let profile = build_resolved_profile(&app_config, args.model.as_deref())?;
-                let session_service = Arc::new(InMemorySessionService::new());
+                let session = Arc::new(InMemorySession::new());
 
                 rt.block_on(crate::interface::tui::run_tui(
-                    tools,
-                    app_config,
-                    profile,
-                    session_service,
+                    tools, app_config, profile, session,
                 ))?;
                 Ok(())
             }
@@ -145,14 +142,14 @@ fn run_print_mode(
     rt.block_on(register_mcp_tools(&mut tools, app_config))?;
 
     let profile = build_resolved_profile(app_config, args.model.as_deref())?;
-    let session_service = Arc::new(InMemorySessionService::new());
+    let session = Arc::new(InMemorySession::new());
 
     rt.block_on(print::run_print(
         prompt,
         &tools,
         app_config,
         &profile,
-        session_service,
+        session,
         args.no_color,
     ))?;
 

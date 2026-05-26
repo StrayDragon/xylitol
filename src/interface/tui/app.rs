@@ -10,10 +10,9 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc;
 
-use adk_session::{ListRequest, SessionService};
-
 use crate::agent::r#loop::{AgentEvent, AgentLoop};
 use crate::agent::profile::ResolvedProfile;
+use crate::agent::session::XySession;
 use crate::agent::tools::ToolRegistry;
 use crate::infra::config::AppConfig;
 use crate::infra::security::SecurityEngine;
@@ -93,7 +92,7 @@ pub(crate) struct App {
     keymap: RuntimeKeymap,
 
     app_config: AppConfig,
-    session_service: Arc<dyn SessionService>,
+    session_service: Arc<dyn XySession>,
     active_profile: String,
     approvals: Arc<ApprovalHub>,
 
@@ -137,7 +136,7 @@ impl App {
         _tool_registry: ToolRegistry,
         app_config: AppConfig,
         profile: ResolvedProfile,
-        session_service: Arc<dyn SessionService>,
+        session_service: Arc<dyn XySession>,
         approvals: Arc<ApprovalHub>,
     ) -> Self {
         let markdown = MarkdownRenderer::default();
@@ -181,16 +180,8 @@ impl App {
             profile_choices.push(app_config.agents.default_profile.clone());
         }
 
-        let mut session_choices: Vec<String> = match session_service
-            .list(ListRequest {
-                app_name: "xylitol".into(),
-                user_id: "default-user".into(),
-                limit: Some(200),
-                offset: None,
-            })
-            .await
-        {
-            Ok(sessions) => sessions.into_iter().map(|s| s.id().to_string()).collect(),
+        let mut session_choices: Vec<String> = match session_service.list_session_ids().await {
+            Ok(ids) => ids,
             Err(err) => {
                 tracing::warn!(error = %err, "Failed to list sessions.");
                 Vec::new()
@@ -970,7 +961,7 @@ pub(crate) async fn run_tui(
     mut tool_registry: ToolRegistry,
     app_config: AppConfig,
     profile: ResolvedProfile,
-    session_service: Arc<dyn SessionService>,
+    session_service: Arc<dyn XySession>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crossterm::cursor::{SetCursorStyle, Show};
     use crossterm::event::{
@@ -1024,7 +1015,7 @@ pub(crate) async fn run_tui(
                 approvals.clone(),
                 approval_tools.clone(),
                 app_config.security.enabled,
-            )) as Arc<dyn adk_core::Tool>
+            )) as Arc<dyn crate::agent::traits::XyTool>
         });
     }
 

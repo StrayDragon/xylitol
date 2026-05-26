@@ -12,11 +12,11 @@ use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::Instant;
 
-use adk_session::SessionService;
 use futures::{Stream, StreamExt};
 
 use crate::agent::r#loop::{AgentError, AgentEvent, AgentLoop};
 use crate::agent::repeat::DetectionConfig;
+use crate::agent::session::XySession;
 use crate::agent::tools::ToolRegistry;
 use crate::infra::config::AppConfig;
 use crate::infra::hooks::{HookEvent, HookPhase};
@@ -327,7 +327,7 @@ pub(crate) async fn run_print(
     tool_registry: &ToolRegistry,
     app_config: &AppConfig,
     profile: &crate::agent::profile::ResolvedProfile,
-    session_service: Arc<dyn SessionService>,
+    session_service: Arc<dyn XySession>,
     no_color: bool,
 ) -> Result<(), AgentError> {
     // Build security engine and wrap tools if security is enabled.

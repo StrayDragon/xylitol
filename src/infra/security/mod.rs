@@ -3,7 +3,7 @@
 //! Provides [`SecurityEngine`] for checking tool calls against a declared
 //! security policy (bash command regex, filesystem glob patterns, network
 //! domain matching) and [`SecurityToolWrapper`] for transparently wrapping
-//! any `adk_core::Tool` with a pre-execution check.
+//! any [`XyTool`](crate::agent::traits::XyTool) with a pre-execution check.
 //!
 //! Design principles:
 //! - **Only-tighten**: merging rules always produces a more restrictive set.
@@ -14,10 +14,12 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU16, Ordering};
 
-use adk_core::{Result, Tool, ToolContext};
 use async_trait::async_trait;
 use regex::Regex;
 use tracing::warn;
+
+use crate::agent::error::XyToolError;
+use crate::agent::traits::{XyTool, XyToolCtx};
 
 use crate::infra::config::types::SecurityConfig;
 
@@ -332,7 +334,7 @@ impl Drop for SubprocessGuard<'_> {
 /// tool.  When the check fails the call returns `Ok({"blocked": true, …})`
 /// instead of executing — the LLM receives a clear explanation.
 pub(crate) struct SecurityToolWrapper {
-    inner: Arc<dyn Tool>,
+    inner: Arc<dyn XyTool>,
     engine: SecurityEngine,
     tool_name: String,
 }
@@ -346,7 +348,7 @@ impl std::fmt::Debug for SecurityToolWrapper {
 }
 
 impl SecurityToolWrapper {
-    pub(crate) fn new(tool: Arc<dyn Tool>, engine: SecurityEngine) -> Self {
+    pub(crate) fn new(tool: Arc<dyn XyTool>, engine: SecurityEngine) -> Self {
         let tool_name = tool.name().to_string();
         Self {
             inner: tool,
@@ -357,7 +359,7 @@ impl SecurityToolWrapper {
 }
 
 #[async_trait]
-impl Tool for SecurityToolWrapper {
+impl XyTool for SecurityToolWrapper {
     fn name(&self) -> &str {
         self.inner.name()
     }
@@ -366,26 +368,17 @@ impl Tool for SecurityToolWrapper {
         self.inner.description()
     }
 
-    fn parameters_schema(&self) -> Option<serde_json::Value> {
+    fn parameters_schema(&self) -> serde_json::Value {
         self.inner.parameters_schema()
-    }
-
-    fn is_read_only(&self) -> bool {
-        self.inner.is_read_only()
-    }
-
-    fn is_concurrency_safe(&self) -> bool {
-        self.inner.is_concurrency_safe()
     }
 
     async fn execute(
         &self,
-        ctx: Arc<dyn ToolContext>,
+        ctx: &XyToolCtx,
         args: serde_json::Value,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<String, XyToolError> {
         match self.engine.check_tool_call(&self.tool_name, &args) {
             SecurityVerdict::Allowed => {
-                // Acquire a subprocess slot for bash commands.
                 if self.tool_name == "bash" {
                     match self.engine.acquire_subprocess() {
                         Ok(_guard) => self.inner.execute(ctx, args).await,
@@ -403,11 +396,12 @@ impl Tool for SecurityToolWrapper {
                                 rule = rule,
                                 "Subprocess limit reached"
                             );
-                            Ok(serde_json::json!({
+                            Ok(serde_json::to_string(&serde_json::json!({
                                 "blocked": true,
                                 "reason": reason,
                                 "rule": rule,
                             }))
+                            .unwrap())
                         }
                     }
                 } else {
@@ -421,11 +415,12 @@ impl Tool for SecurityToolWrapper {
                     rule = rule,
                     "Tool call blocked by security policy"
                 );
-                Ok(serde_json::json!({
+                Ok(serde_json::to_string(&serde_json::json!({
                     "blocked": true,
                     "reason": reason,
                     "rule": rule,
                 }))
+                .unwrap())
             }
         }
     }
@@ -712,13 +707,16 @@ mod tests {
         let engine = SecurityEngine::new(&cfg);
 
         let wrapper = SecurityToolWrapper::new(Arc::new(ReadTool), engine);
-        let ctx = crate::agent::tools::patch::mock_context();
+        let ctx = XyToolCtx {
+            call_id: "test".into(),
+        };
         let result = wrapper
-            .execute(ctx, serde_json::json!({"file_path": "/etc/passwd"}))
+            .execute(&ctx, serde_json::json!({"file_path": "/etc/passwd"}))
             .await
             .unwrap();
-        assert_eq!(result["blocked"], true);
-        assert!(result["reason"].as_str().unwrap().contains("forbidden"));
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["blocked"], true);
+        assert!(v["reason"].as_str().unwrap().contains("forbidden"));
     }
 
     #[tokio::test]
@@ -726,7 +724,7 @@ mod tests {
         use crate::agent::tools::read::ReadTool;
         use std::sync::Arc;
 
-        let cfg = minimal_config(); // no restrictions
+        let cfg = minimal_config();
         let engine = SecurityEngine::new(&cfg);
 
         let wrapper = SecurityToolWrapper::new(Arc::new(ReadTool), engine);
@@ -734,15 +732,18 @@ mod tests {
         let path = dir.path().join("test.txt");
         tokio::fs::write(&path, "hello").await.unwrap();
 
-        let ctx = crate::agent::tools::patch::mock_context();
+        let ctx = XyToolCtx {
+            call_id: "test".into(),
+        };
         let result = wrapper
             .execute(
-                ctx,
+                &ctx,
                 serde_json::json!({"file_path": path.to_str().unwrap()}),
             )
             .await
             .unwrap();
-        assert_eq!(result["content"], "hello");
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["content"], "hello");
     }
 
     // ── Path field unification (c91) ─────────────────────────────────

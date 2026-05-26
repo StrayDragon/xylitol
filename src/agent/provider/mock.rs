@@ -1,39 +1,47 @@
-use adk_core::{AdkError, Llm, LlmRequest, LlmResponse, LlmResponseStream};
 use async_trait::async_trait;
 
-/// Minimal mock LLM that always returns the same response.
-/// Drop-in replacement for `adk_model::MockLlm` used in tests.
-pub(crate) struct MockLlm {
-    name: String,
-    response: LlmResponse,
+use crate::agent::error::XyError;
+use crate::agent::traits::{XyModel, XyStream};
+use crate::agent::types::{XyChunk, XyContent, XyFinishReason, XyToolSchema};
+
+/// Drop-in mock for tests. Returns a fixed text response.
+pub(crate) struct MockXyModel {
+    model_name: String,
+    response_text: String,
 }
 
-impl MockLlm {
-    pub(crate) fn new(name: impl Into<String>) -> Self {
+impl MockXyModel {
+    pub(crate) fn new(name: &str) -> Self {
         Self {
-            name: name.into(),
-            response: LlmResponse::default(),
+            model_name: name.into(),
+            response_text: "ok".into(),
         }
     }
 
-    pub(crate) fn with_response(mut self, response: LlmResponse) -> Self {
-        self.response = response;
+    pub(crate) fn with_text(mut self, text: &str) -> Self {
+        self.response_text = text.into();
         self
     }
 }
 
 #[async_trait]
-impl Llm for MockLlm {
+impl XyModel for MockXyModel {
     fn name(&self) -> &str {
-        &self.name
+        &self.model_name
     }
 
-    async fn generate_content(
+    async fn generate_stream(
         &self,
-        _req: LlmRequest,
+        _messages: Vec<XyContent>,
+        _tools: &[XyToolSchema],
         _stream: bool,
-    ) -> Result<LlmResponseStream, AdkError> {
-        let response = self.response.clone();
-        Ok(Box::pin(futures::stream::once(async move { Ok(response) })))
+    ) -> Result<XyStream, XyError> {
+        let text = self.response_text.clone();
+        Ok(Box::pin(futures::stream::iter(vec![
+            Ok(XyChunk::TextDelta(text)),
+            Ok(XyChunk::Done {
+                finish_reason: XyFinishReason::Stop,
+            }),
+        ])))
     }
 }

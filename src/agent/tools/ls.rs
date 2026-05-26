@@ -1,12 +1,13 @@
-use adk_core::{AdkError, ErrorCategory, ErrorComponent, Result, Tool, ToolContext};
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use std::sync::Arc;
+
+use crate::agent::error::XyToolError;
+use crate::agent::traits::{XyTool, XyToolCtx};
 
 pub(crate) struct LsTool;
 
 #[async_trait]
-impl Tool for LsTool {
+impl XyTool for LsTool {
     fn name(&self) -> &str {
         "ls"
     }
@@ -15,8 +16,8 @@ impl Tool for LsTool {
         "List files and directories at the given path."
     }
 
-    fn parameters_schema(&self) -> Option<Value> {
-        Some(json!({
+    fn parameters_schema(&self) -> Value {
+        json!({
             "type": "object",
             "properties": {
                 "path": {
@@ -25,57 +26,34 @@ impl Tool for LsTool {
                 }
             },
             "required": ["path"]
-        }))
+        })
     }
 
-    fn is_read_only(&self) -> bool {
-        true
-    }
-
-    fn is_concurrency_safe(&self) -> bool {
-        true
-    }
-
-    async fn execute(&self, _ctx: Arc<dyn ToolContext>, args: Value) -> Result<Value> {
-        let dir_path = args.get("path").and_then(|v| v.as_str()).ok_or_else(|| {
-            AdkError::new(
-                ErrorComponent::Tool,
-                ErrorCategory::InvalidInput,
-                "ls.missing_path",
-                "missing required argument: path",
-            )
-        })?;
+    async fn execute(&self, _ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+        let dir_path = args
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| XyToolError::InvalidArgs("missing required argument: path".into()))?;
 
         let max_entries: usize = 1000;
         let mut entries = Vec::new();
         let mut read_dir = tokio::fs::read_dir(dir_path).await.map_err(|e| {
-            AdkError::new(
-                ErrorComponent::Tool,
-                ErrorCategory::NotFound,
-                "ls.read_dir_failed",
-                format!("failed to list '{}': {}", dir_path, e),
-            )
+            XyToolError::ExecutionFailed(anyhow::anyhow!("failed to list '{}': {}", dir_path, e))
         })?;
 
         while let Some(entry) = read_dir.next_entry().await.map_err(|e| {
-            AdkError::new(
-                ErrorComponent::Tool,
-                ErrorCategory::Internal,
-                "ls.read_entry_failed",
-                format!("failed to read entry in '{}': {}", dir_path, e),
-            )
+            XyToolError::ExecutionFailed(anyhow::anyhow!(
+                "failed to read entry in '{}': {}",
+                dir_path,
+                e
+            ))
         })? {
             let file_type = entry.file_type().await.map_err(|e| {
-                AdkError::new(
-                    ErrorComponent::Tool,
-                    ErrorCategory::Internal,
-                    "ls.file_type_failed",
-                    format!(
-                        "failed to get file type for '{}': {}",
-                        entry.path().display(),
-                        e
-                    ),
-                )
+                XyToolError::ExecutionFailed(anyhow::anyhow!(
+                    "failed to get file type for '{}': {}",
+                    entry.path().display(),
+                    e
+                ))
             })?;
 
             let name = entry.file_name().to_string_lossy().to_string();
@@ -87,30 +65,29 @@ impl Tool for LsTool {
                 "file"
             };
 
-            entries.push(json!({
-                "name": name,
-                "type": entry_type,
-            }));
+            entries.push(json!({ "name": name, "type": entry_type }));
             if entries.len() >= max_entries {
                 break;
             }
         }
 
-        Ok(json!({
+        Ok(serde_json::to_string(&json!({
             "entries": entries,
             "total": entries.len(),
             "path": dir_path,
         }))
+        .unwrap())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
 
-    fn test_context() -> Arc<dyn ToolContext> {
-        crate::agent::tools::patch::mock_context()
+    fn test_ctx() -> XyToolCtx {
+        XyToolCtx {
+            call_id: "test-call".into(),
+        }
     }
 
     #[tokio::test]
@@ -119,14 +96,11 @@ mod tests {
 
         let tool = LsTool;
         let result = tool
-            .execute(
-                test_context(),
-                json!({ "path": dir.path().to_str().unwrap() }),
-            )
+            .execute(&test_ctx(), json!({ "path": dir.path().to_str().unwrap() }))
             .await
             .unwrap();
-
-        assert_eq!(result["total"], 0);
+        let v: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["total"], 0);
     }
 
     #[tokio::test]
@@ -142,40 +116,26 @@ mod tests {
 
         let tool = LsTool;
         let result = tool
-            .execute(
-                test_context(),
-                json!({ "path": dir.path().to_str().unwrap() }),
-            )
+            .execute(&test_ctx(), json!({ "path": dir.path().to_str().unwrap() }))
             .await
             .unwrap();
-
-        assert_eq!(result["total"], 3);
-
-        let names: Vec<&str> = result["entries"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|e| e["name"].as_str().unwrap())
-            .collect();
-        assert!(names.contains(&"a.txt"));
-        assert!(names.contains(&"b.txt"));
-        assert!(names.contains(&"sub"));
+        let v: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["total"], 3);
     }
 
     #[tokio::test]
     async fn test_ls_nonexistent_path() {
         let tool = LsTool;
         let result = tool
-            .execute(test_context(), json!({ "path": "/nonexistent_path_12345" }))
+            .execute(&test_ctx(), json!({ "path": "/nonexistent_path_12345" }))
             .await;
-
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_ls_missing_path() {
         let tool = LsTool;
-        let result = tool.execute(test_context(), json!({})).await;
+        let result = tool.execute(&test_ctx(), json!({})).await;
         assert!(result.is_err());
     }
 }

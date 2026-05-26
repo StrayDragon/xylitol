@@ -667,6 +667,33 @@ fn truncate_one_line(text: &str, max_chars: usize) -> String {
     out
 }
 
+fn extract_thinking_blocks(text: &mut String) -> Vec<String> {
+    let mut blocks = Vec::new();
+
+    let candidates = [
+        ("thinking", "<thinking>", "</thinking>"),
+        ("think", "<think>", "</think>"),
+        ("analysis", "<analysis>", "</analysis>"),
+    ];
+
+    for (_label, open, close) in candidates {
+        while let Some(start) = text.find(open) {
+            let Some(end) = text[start + open.len()..]
+                .find(close)
+                .map(|i| i + start + open.len())
+            else {
+                break;
+            };
+            let inner = text[start + open.len()..end].to_string();
+            blocks.push(inner.trim().to_string());
+            text.replace_range(start..end + close.len(), "");
+        }
+    }
+
+    blocks.retain(|b| !b.is_empty());
+    blocks
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -732,31 +759,4 @@ mod tests {
             "StreamingRenderer should not activate in raw_output mode"
         );
     }
-}
-
-fn extract_thinking_blocks(text: &mut String) -> Vec<String> {
-    let mut blocks = Vec::new();
-
-    let candidates = [
-        ("thinking", "<thinking>", "</thinking>"),
-        ("think", "<think>", "</think>"),
-        ("analysis", "<analysis>", "</analysis>"),
-    ];
-
-    for (_label, open, close) in candidates {
-        while let Some(start) = text.find(open) {
-            let Some(end) = text[start + open.len()..]
-                .find(close)
-                .map(|i| i + start + open.len())
-            else {
-                break;
-            };
-            let inner = text[start + open.len()..end].to_string();
-            blocks.push(inner.trim().to_string());
-            text.replace_range(start..end + close.len(), "");
-        }
-    }
-
-    blocks.retain(|b| !b.is_empty());
-    blocks
 }
