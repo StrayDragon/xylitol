@@ -735,13 +735,11 @@ mod tests {
 }
 
 fn extract_thinking_blocks(text: &mut String) -> Vec<String> {
-    // Supported markers (minimal v1):
-    // - <thinking>...</thinking>
-    // - <analysis>...</analysis>
     let mut blocks = Vec::new();
 
     let candidates = [
         ("thinking", "<thinking>", "</thinking>"),
+        ("think", "<think>", "</think>"),
         ("analysis", "<analysis>", "</analysis>"),
     ];
 
