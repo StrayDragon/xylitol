@@ -13,7 +13,7 @@ kind: llman.sdd.spec
 name: "security-policy"
 purpose: "TBD - created by archiving change c50-add-security. Update purpose after archive."
 requirements[9]{req_id,title,statement}:
-  r1,"declarative-rules",System MUST enforce declarative security rules for bash/filesystem/network access before any tool execution.
+  r1,"security-wrapper","SecurityToolWrapper MUST wrap XyTool (not adk_core::Tool) and MUST enforce approval policy before tool execution."
   r2,"tighten-only","System MUST only allow three-tier config overrides to tighten rules never to relax them."
   r3,"unified-path-field-check",SecurityEngine MUST check both 'file_path' and 'path' argument fields when evaluating filesystem tool access.
   r4,"mcp-tool-security-policy","SecurityEngine MUST apply a dedicated policy branch for MCP tools (name prefix 'mcp:') with explicit server/tool allowlist and default-deny semantics."
@@ -23,7 +23,7 @@ requirements[9]{req_id,title,statement}:
   r8,"bash-timeout-cap",Bash tool MUST cap timeout to min(requested_timeout and config.security.bash.timeout_secs).
   r9,"bash-approval-required",TUI approval MUST cover bash tool execution when security is enabled.
 scenarios[9]{req_id,id,given,when,then}:
-  r1,happy,"bash tool called with rm -rf /","security policy has forbidden pattern for rm -rf",tool call is blocked and tool_call_blocked event emitted
+  r1,"xy-tool-approval",a tool requiring approval is wrapped with SecurityToolWrapper,tool is invoked,"approval check runs before XyTool::execute and blocks if denied"
   r2,happy,user config tries to allow a forbidden pattern,config is merged,the forbidden pattern remains blocked
   r3,"path-field-bypass","security enabled with forbidden_patterns=['/etc/**']",grep tool called with path='/etc/passwd',SecurityEngine returns Blocked
   r4,"mcp-default-deny",security enabled with no MCP allowlist,"agent calls mcp:server:tool",SecurityEngine returns Blocked with reason
