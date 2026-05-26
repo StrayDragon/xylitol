@@ -46,7 +46,7 @@ uuid = { version = "1.23.1", features = ["v4"] }
 # ── ui-review / ui-tui dependencies (optional) ──
 ratatui = { version = "0.30", optional = true, default-features = false, features = ["crossterm", "scrolling-regions", "unstable-backend-writer"] }
 crossterm = { version = "0.29", optional = true, features = ["bracketed-paste", "event-stream"] }
-leaf-core = { version = "0.1.0", path = "../leaf/crates/leaf-core", optional = true }
+leaf-core = { git = "https://github.com/StrayDragon/leaf", package = "leaf-core", optional = true }
 tui-textarea = { version = "0.11.0", package = "tui-textarea-2", features = ["crossterm"], optional = true }
 unicode-width = { version = "0.2", optional = true }
 libc = { version = "0.2", optional = true }
