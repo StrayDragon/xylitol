@@ -9,20 +9,19 @@
 //! - **Validator** runs static checks (compile/lint/test) on each step's output.
 //! - **Orchestrator** ties the three together with retry and fallback logic.
 
-use std::pin::Pin;
 use std::sync::Arc;
 
-use adk_core::{Content, Llm, LlmRequest, LlmResponse};
-use futures::Stream;
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 
+use crate::agent::traits::{XyModel, XyStream};
+use crate::agent::types::{XyChunk, XyContent};
 use crate::infra::config::types::{AppConfig, PlanningConfig, ValidationConfig};
 
 // ---------------------------------------------------------------------------
 // Error type
 // ---------------------------------------------------------------------------
 
-/// Errors that can occur during the planning-execution pipeline.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum PlannerError {
     #[error("LLM call failed: {0}")]
@@ -48,7 +47,6 @@ pub(crate) enum PlannerError {
 // Data types
 // ---------------------------------------------------------------------------
 
-/// A single step in an execution plan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct PlanStep {
     pub step: u32,
@@ -57,13 +55,11 @@ pub(crate) struct PlanStep {
     pub tools: Vec<String>,
 }
 
-/// A complete execution plan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ExecutionPlan {
     pub steps: Vec<PlanStep>,
 }
 
-/// Result of executing a single plan step.
 #[derive(Debug, Clone)]
 pub(crate) struct StepResult {
     pub step: u32,
@@ -71,7 +67,6 @@ pub(crate) struct StepResult {
     pub success: bool,
 }
 
-/// Result from the validator.
 #[derive(Debug, Clone)]
 pub(crate) struct ValidationResult {
     pub passed: bool,
@@ -82,7 +77,6 @@ pub(crate) struct ValidationResult {
 // Prompt templates
 // ---------------------------------------------------------------------------
 
-/// Architect prompt — task decomposition with structured JSON output.
 const ARCHITECT_PROMPT: &str = r#"You are an expert software architect. Your task is to analyze the given problem and decompose it into a structured, step-by-step execution plan.
 
 Guidelines:
@@ -93,7 +87,6 @@ Guidelines:
 - Use sequential step numbers starting from 1
 - Keep steps focused and actionable"#;
 
-/// Editor prompt — step-by-step execution without deviation.
 const EDITOR_PROMPT: &str = r#"You are an expert software engineer executing a planned change. You must strictly follow the given plan step without adding extra scope or creative modifications.
 
 Guidelines:
@@ -103,7 +96,6 @@ Guidelines:
 - If you encounter unexpected issues, report them clearly
 - Do NOT deviate from the specified step"#;
 
-/// Return the reasoning instruction for the given depth.
 fn reasoning_instruction(depth: &str) -> &'static str {
     match depth {
         "deep" => {
@@ -122,16 +114,19 @@ fn reasoning_instruction(depth: &str) -> &'static str {
 // Planner
 // ---------------------------------------------------------------------------
 
-/// The Planner role — uses a strong model to decompose tasks into structured plans.
 pub(crate) struct Planner {
-    model: Arc<dyn Llm>,
+    model: Arc<dyn XyModel>,
     model_name: String,
     system_prompt: String,
     reasoning_depth: String,
 }
 
 impl Planner {
-    pub(crate) fn new(model: Arc<dyn Llm>, model_name: String, config: &PlanningConfig) -> Self {
+    pub(crate) fn new(
+        model: Arc<dyn XyModel>,
+        model_name: String,
+        config: &PlanningConfig,
+    ) -> Self {
         Self {
             model,
             model_name,
@@ -143,7 +138,6 @@ impl Planner {
         }
     }
 
-    /// Decompose a task into an execution plan.
     pub(crate) async fn plan(&self, task: &str) -> Result<ExecutionPlan, PlannerError> {
         let depth_instr = reasoning_instruction(&self.reasoning_depth);
         let prompt = format!(
@@ -152,7 +146,7 @@ impl Planner {
             depth = depth_instr,
         );
 
-        let text = call_llm(self.model.as_ref(), &self.model_name, &prompt).await?;
+        let text = call_llm(self.model.as_ref(), &prompt).await?;
 
         let json_str = extract_json(&text)
             .ok_or_else(|| PlannerError::ParseError("no JSON found in planner response".into()))?;
@@ -164,7 +158,6 @@ impl Planner {
             return Err(PlannerError::ParseError("plan has zero steps".into()));
         }
 
-        // Re-number steps sequentially.
         let steps: Vec<PlanStep> = plan
             .steps
             .into_iter()
@@ -183,9 +176,8 @@ impl Planner {
 // Executor
 // ---------------------------------------------------------------------------
 
-/// The Executor role — uses a fast model to execute individual plan steps.
 pub(crate) struct Executor {
-    model: Arc<dyn Llm>,
+    model: Arc<dyn XyModel>,
     model_name: String,
     system_prompt: String,
     max_retries: u8,
@@ -193,7 +185,7 @@ pub(crate) struct Executor {
 
 impl Executor {
     pub(crate) fn new(
-        model: Arc<dyn Llm>,
+        model: Arc<dyn XyModel>,
         model_name: String,
         system_prompt: Option<String>,
         max_retries: u8,
@@ -206,7 +198,6 @@ impl Executor {
         }
     }
 
-    /// Execute a single plan step with the given context.
     pub(crate) async fn execute_step(
         &self,
         step: &PlanStep,
@@ -220,7 +211,7 @@ impl Executor {
             ctx = context,
         );
 
-        let text = call_llm(self.model.as_ref(), &self.model_name, &prompt).await?;
+        let text = call_llm(self.model.as_ref(), &prompt).await?;
 
         Ok(StepResult {
             step: step.step,
@@ -238,7 +229,6 @@ impl Executor {
 // Validator
 // ---------------------------------------------------------------------------
 
-/// The Validator role — runs static check commands (compile/lint/test).
 pub(crate) struct Validator {
     commands: Vec<String>,
 }
@@ -257,7 +247,6 @@ impl Validator {
         Self { commands }
     }
 
-    /// Run all validation commands. Returns Ok if all pass.
     pub(crate) async fn validate(&self) -> Result<ValidationResult, PlannerError> {
         if self.commands.is_empty() {
             return Ok(ValidationResult {
@@ -295,17 +284,14 @@ impl Validator {
 // PlanningOrchestrator
 // ---------------------------------------------------------------------------
 
-/// The orchestrator that coordinates Planner → Executor → Validator flow.
-///
-/// Handles step sequencing, retries, and model fallback.
 pub(crate) struct PlanningOrchestrator {
     planner: Planner,
     executor: Executor,
     validator: Validator,
     max_steps: u16,
-    planner_fallback: Option<Arc<dyn Llm>>,
+    planner_fallback: Option<Arc<dyn XyModel>>,
     planner_fallback_name: Option<String>,
-    executor_fallback: Option<Arc<dyn Llm>>,
+    executor_fallback: Option<Arc<dyn XyModel>>,
     executor_fallback_name: Option<String>,
 }
 
@@ -316,9 +302,9 @@ impl PlanningOrchestrator {
         executor: Executor,
         validator: Validator,
         max_steps: u16,
-        planner_fallback: Option<Arc<dyn Llm>>,
+        planner_fallback: Option<Arc<dyn XyModel>>,
         planner_fallback_name: Option<String>,
-        executor_fallback: Option<Arc<dyn Llm>>,
+        executor_fallback: Option<Arc<dyn XyModel>>,
         executor_fallback_name: Option<String>,
     ) -> Self {
         Self {
@@ -333,9 +319,7 @@ impl PlanningOrchestrator {
         }
     }
 
-    /// Run the full planning-execution pipeline.
     pub(crate) async fn run(&self, task: &str) -> Result<Vec<StepResult>, PlannerError> {
-        // Phase 1: Plan
         let plan = self.plan_with_fallback(task).await?;
 
         if plan.steps.len() > self.max_steps as usize {
@@ -346,7 +330,6 @@ impl PlanningOrchestrator {
             )));
         }
 
-        // Phase 2: Execute + Validate per step
         let mut results = Vec::new();
         let mut context = task.to_string();
 
@@ -365,7 +348,6 @@ impl PlanningOrchestrator {
         Ok(results)
     }
 
-    /// Plan with fallback support.
     async fn plan_with_fallback(&self, task: &str) -> Result<ExecutionPlan, PlannerError> {
         match self.planner.plan(task).await {
             Ok(plan) => Ok(plan),
@@ -388,7 +370,6 @@ impl PlanningOrchestrator {
         }
     }
 
-    /// Execute a step with retry and fallback.
     async fn execute_step_with_retry(
         &self,
         step: &PlanStep,
@@ -423,7 +404,6 @@ impl PlanningOrchestrator {
 
             match result {
                 Ok(r) => {
-                    // Validate after successful execution
                     let validation = self.validator.validate().await?;
                     if validation.passed {
                         return Ok(r);
@@ -449,14 +429,10 @@ impl PlanningOrchestrator {
 // Fallback resolution
 // ---------------------------------------------------------------------------
 
-/// Resolve a fallback model for the given model ID.
-///
-/// Checks the model entry's `fallback` field. Returns `None` if no fallback
-/// is configured or resolution fails.
 fn resolve_fallback(
     model_id: &str,
     app_config: &AppConfig,
-) -> (Option<Arc<dyn Llm>>, Option<String>) {
+) -> (Option<Arc<dyn XyModel>>, Option<String>) {
     let entry = match app_config.model.models.get(model_id) {
         Some(e) => e,
         None => return (None, None),
@@ -476,8 +452,7 @@ fn resolve_fallback(
     }
 }
 
-/// Build an LLM model reference from a model ID and app config.
-fn build_model(model_id: &str, app_config: &AppConfig) -> Result<Arc<dyn Llm>, PlannerError> {
+fn build_model(model_id: &str, app_config: &AppConfig) -> Result<Arc<dyn XyModel>, PlannerError> {
     let cfg = app_config
         .resolve_model(model_id)
         .map_err(PlannerError::ConfigError)?;
@@ -489,7 +464,6 @@ fn build_model(model_id: &str, app_config: &AppConfig) -> Result<Arc<dyn Llm>, P
 // Builder
 // ---------------------------------------------------------------------------
 
-/// Build a `PlanningOrchestrator` from app config.
 pub(crate) async fn build_orchestrator(
     app_config: &AppConfig,
 ) -> Result<PlanningOrchestrator, PlannerError> {
@@ -502,7 +476,6 @@ pub(crate) async fn build_orchestrator(
         .as_ref()
         .ok_or_else(|| PlannerError::ConfigError("validation config not found".into()))?;
 
-    // Resolve planning model
     let planner_model_id = planning_config
         .model
         .as_deref()
@@ -516,7 +489,6 @@ pub(crate) async fn build_orchestrator(
     let planner_model = build_model(planner_model_id, app_config)?;
     let planner = Planner::new(planner_model, planner_model_id.to_string(), planning_config);
 
-    // Resolve execution model
     let executor_model_id = app_config
         .execution
         .model
@@ -536,10 +508,8 @@ pub(crate) async fn build_orchestrator(
         app_config.execution.max_retries,
     );
 
-    // Build validator
     let validator = Validator::from_config(validation_config);
 
-    // Resolve fallbacks
     let (planner_fallback, planner_fallback_name) = resolve_fallback(planner_model_id, app_config);
     let (executor_fallback, executor_fallback_name) =
         resolve_fallback(executor_model_id, app_config);
@@ -560,28 +530,19 @@ pub(crate) async fn build_orchestrator(
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Call an LLM with a single user prompt and return the text response.
-async fn call_llm(model: &dyn Llm, model_name: &str, prompt: &str) -> Result<String, PlannerError> {
-    let content = Content::new("user").with_text(prompt);
-    let req = LlmRequest::new(model_name, vec![content]);
+async fn call_llm(model: &dyn XyModel, prompt: &str) -> Result<String, PlannerError> {
+    let messages = vec![XyContent::user(prompt)];
 
-    let mut stream: Pin<
-        Box<dyn Stream<Item = std::result::Result<LlmResponse, adk_core::AdkError>> + Send>,
-    > = model
-        .generate_content(req, false)
+    let mut stream: XyStream = model
+        .generate_stream(messages, &[], false)
         .await
         .map_err(|e| PlannerError::LlmError(e.to_string()))?;
 
     let mut text = String::new();
-    use futures::StreamExt;
     while let Some(result) = stream.next().await {
-        let response = result.map_err(|e| PlannerError::LlmError(e.to_string()))?;
-        if let Some(ref content) = response.content {
-            for part in &content.parts {
-                if let adk_core::Part::Text { text: t } = part {
-                    text.push_str(t);
-                }
-            }
+        let chunk = result.map_err(|e| PlannerError::LlmError(e.to_string()))?;
+        if let XyChunk::TextDelta(t) = chunk {
+            text.push_str(&t);
         }
     }
 
@@ -591,11 +552,9 @@ async fn call_llm(model: &dyn Llm, model_name: &str, prompt: &str) -> Result<Str
     Ok(text)
 }
 
-/// Extract JSON from text, handling markdown code blocks and raw JSON objects.
 fn extract_json(text: &str) -> Option<String> {
     let trimmed = text.trim();
 
-    // Try markdown code block with language tag.
     if let Some(start) = trimmed.find("```json") {
         let start = start + "```json".len();
         let remaining = &trimmed[start..];
@@ -607,7 +566,6 @@ fn extract_json(text: &str) -> Option<String> {
         }
     }
 
-    // Try generic markdown code block.
     if let Some(start) = trimmed.find("```") {
         let start = start + 3;
         let remaining = &trimmed[start..];
@@ -619,7 +577,6 @@ fn extract_json(text: &str) -> Option<String> {
         }
     }
 
-    // Try raw JSON object — find the outermost balanced braces.
     if let Some(start) = trimmed.find('{') {
         let mut depth = 0u32;
         let mut in_string = false;
@@ -647,7 +604,6 @@ fn extract_json(text: &str) -> Option<String> {
     None
 }
 
-/// Truncate text to a reasonable summary length (first line, max 120 chars).
 fn truncate_summary(s: &str) -> String {
     let first_line = s.lines().next().unwrap_or("");
     if first_line.len() > 120 {
@@ -670,14 +626,10 @@ fn truncate_summary(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::provider::MockLlm;
+    use crate::agent::provider::MockXyModel;
     use crate::infra::config::types::ModelEntry;
 
     // ── Helpers ──────────────────────────────────────────────────────
-
-    fn mock_response(text: &str) -> LlmResponse {
-        LlmResponse::new(Content::new("assistant").with_text(text))
-    }
 
     fn test_planning_config() -> PlanningConfig {
         PlanningConfig {
@@ -796,7 +748,7 @@ mod tests {
     #[tokio::test]
     async fn test_planner_parses_valid_json_response() {
         let json = r#"{"steps":[{"step":1,"description":"Read main.rs","tools":["read"]},{"step":2,"description":"Fix the bug","tools":["edit"]}]}"#;
-        let mock = MockLlm::new("test-planner").with_response(mock_response(json));
+        let mock = MockXyModel::new("test-planner").with_text(json);
         let config = test_planning_config();
         let planner = Planner::new(Arc::new(mock), "test".into(), &config);
 
@@ -809,7 +761,7 @@ mod tests {
     #[tokio::test]
     async fn test_planner_parses_markdown_wrapped_json() {
         let md = "Here's the plan:\n```json\n{\"steps\":[{\"step\":1,\"description\":\"Do something\",\"tools\":[]}]}\n```";
-        let mock = MockLlm::new("test-planner").with_response(mock_response(md));
+        let mock = MockXyModel::new("test-planner").with_text(md);
         let config = test_planning_config();
         let planner = Planner::new(Arc::new(mock), "test".into(), &config);
 
@@ -821,7 +773,7 @@ mod tests {
     #[tokio::test]
     async fn test_planner_renumbers_steps() {
         let json = r#"{"steps":[{"step":99,"description":"First","tools":[]},{"step":100,"description":"Second","tools":[]}]}"#;
-        let mock = MockLlm::new("test-planner").with_response(mock_response(json));
+        let mock = MockXyModel::new("test-planner").with_text(json);
         let config = test_planning_config();
         let planner = Planner::new(Arc::new(mock), "test".into(), &config);
 
@@ -832,8 +784,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_planner_empty_response_error() {
-        let mock =
-            MockLlm::new("test-planner").with_response(mock_response("I cannot help with that."));
+        let mock = MockXyModel::new("test-planner").with_text("I cannot help with that.");
         let config = test_planning_config();
         let planner = Planner::new(Arc::new(mock), "test".into(), &config);
 
@@ -846,7 +797,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_executor_returns_step_result() {
-        let mock = MockLlm::new("test-executor").with_response(mock_response("Fixed the bug."));
+        let mock = MockXyModel::new("test-executor").with_text("Fixed the bug.");
         let executor = Executor::new(Arc::new(mock), "test".into(), None, 2);
         let step = PlanStep {
             step: 1,
@@ -862,7 +813,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_executor_empty_response() {
-        let mock = MockLlm::new("test-executor").with_response(mock_response(""));
+        let mock = MockXyModel::new("test-executor").with_text("");
         let executor = Executor::new(Arc::new(mock), "test".into(), None, 2);
         let step = PlanStep {
             step: 1,
@@ -876,7 +827,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_executor_with_custom_system_prompt() {
-        let mock = MockLlm::new("test-executor").with_response(mock_response("Done."));
+        let mock = MockXyModel::new("test-executor").with_text("Done.");
         let executor = Executor::new(
             Arc::new(mock),
             "test".into(),
@@ -956,7 +907,7 @@ mod tests {
             {"step":11,"description":"s11","tools":[]}
         ]}"#;
 
-        let mock = MockLlm::new("test-orchestrator").with_response(mock_response(json));
+        let mock = MockXyModel::new("test-orchestrator").with_text(json);
         let config = PlanningConfig {
             model: None,
             system_prompt: None,
@@ -964,7 +915,7 @@ mod tests {
             reasoning_depth: "standard".into(),
         };
         let planner = Planner::new(Arc::new(mock), "test".into(), &config);
-        let executor = Executor::new(Arc::new(MockLlm::new("exec")), "test".into(), None, 0);
+        let executor = Executor::new(Arc::new(MockXyModel::new("exec")), "test".into(), None, 0);
         let validator = Validator::new(vec![]);
 
         let orchestrator =
@@ -979,8 +930,8 @@ mod tests {
     async fn test_orchestrator_happy_path() {
         let plan_json = r#"{"steps":[{"step":1,"description":"Step one","tools":[]}]}"#;
 
-        let plan_mock = MockLlm::new("planner").with_response(mock_response(plan_json));
-        let exec_mock = MockLlm::new("executor").with_response(mock_response("Executed."));
+        let plan_mock = MockXyModel::new("planner").with_text(plan_json);
+        let exec_mock = MockXyModel::new("executor").with_text("Executed.");
 
         let config = PlanningConfig {
             model: None,

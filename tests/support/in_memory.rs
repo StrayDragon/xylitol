@@ -1,20 +1,18 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use adk_session::{InMemorySessionService, SessionService};
+use crate::agent::session::{InMemorySession, XySession};
 
 /// In-memory session manager for tests.
 pub(crate) struct SessionManager;
 
 impl SessionManager {
-    pub(crate) fn in_memory() -> Arc<dyn SessionService> {
-        Arc::new(InMemorySessionService::new())
+    pub(crate) fn in_memory() -> Arc<dyn XySession> {
+        Arc::new(InMemorySession::new())
     }
 }
 
 /// Minimal in-memory settings manager placeholder for tests.
-///
-/// This is intentionally small today; it exists to standardize "no-FS" test wiring.
 pub(crate) struct SettingsManager {
     _kv: Mutex<HashMap<String, String>>,
 }

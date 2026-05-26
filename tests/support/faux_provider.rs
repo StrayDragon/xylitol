@@ -2,14 +2,18 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use adk_core::{Content, Llm, LlmRequest, LlmResponse, LlmResponseStream, Part};
 use async_trait::async_trait;
 
-/// A single pre-configured response step for [`FauxProvider`].
+use crate::agent::error::XyError;
+use crate::agent::traits::{XyModel, XyStream};
+use crate::agent::types::{XyChunk, XyContent, XyFinishReason, XyToolSchema};
+
+type FauxFactory = Arc<dyn Fn(&[XyContent], usize) -> FauxMessage + Send + Sync>;
+
 #[derive(Clone)]
 pub(crate) enum FauxResponseStep {
     Message(FauxMessage),
-    Factory(Arc<dyn Fn(&LlmRequest, usize) -> FauxMessage + Send + Sync>),
+    Factory(FauxFactory),
 }
 
 impl FauxResponseStep {
@@ -48,7 +52,7 @@ struct FauxProviderInner {
     name: String,
     steps: Mutex<VecDeque<FauxResponseStep>>,
     call_count: AtomicUsize,
-    captured_requests: Mutex<Vec<LlmRequest>>,
+    captured_messages: Mutex<Vec<Vec<XyContent>>>,
 }
 
 impl FauxProvider {
@@ -58,7 +62,7 @@ impl FauxProvider {
                 name: name.into(),
                 steps: Mutex::new(VecDeque::new()),
                 call_count: AtomicUsize::new(0),
-                captured_requests: Mutex::new(Vec::new()),
+                captured_messages: Mutex::new(Vec::new()),
             }),
         }
     }
@@ -67,9 +71,9 @@ impl FauxProvider {
         self.inner.call_count.load(Ordering::Relaxed)
     }
 
-    pub(crate) fn captured_requests(&self) -> Vec<LlmRequest> {
+    pub(crate) fn captured_messages(&self) -> Vec<Vec<XyContent>> {
         self.inner
-            .captured_requests
+            .captured_messages
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
@@ -87,28 +91,33 @@ impl FauxProvider {
         }
     }
 
-    pub(crate) fn clone_box(&self) -> Arc<dyn Llm> {
-        Arc::new(self.clone()) as Arc<dyn Llm>
+    pub(crate) fn clone_box(&self) -> Arc<dyn XyModel> {
+        Arc::new(self.clone()) as Arc<dyn XyModel>
+    }
+
+    pub(crate) fn captured_requests(&self) -> Vec<Vec<XyContent>> {
+        self.captured_messages()
     }
 }
 
 #[async_trait]
-impl Llm for FauxProvider {
+impl XyModel for FauxProvider {
     fn name(&self) -> &str {
         &self.inner.name
     }
 
-    async fn generate_content(
+    async fn generate_stream(
         &self,
-        req: LlmRequest,
-        stream: bool,
-    ) -> adk_core::Result<LlmResponseStream> {
+        messages: Vec<XyContent>,
+        _tools: &[XyToolSchema],
+        _stream: bool,
+    ) -> Result<XyStream, XyError> {
         self.inner.call_count.fetch_add(1, Ordering::Relaxed);
         self.inner
-            .captured_requests
+            .captured_messages
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .push(req.clone());
+            .push(messages.clone());
 
         let step = self
             .inner
@@ -123,93 +132,31 @@ impl Llm for FauxProvider {
 
         let msg = match step {
             FauxResponseStep::Message(msg) => msg,
-            FauxResponseStep::Factory(f) => f(&req, self.call_count()),
+            FauxResponseStep::Factory(f) => f(&messages, self.call_count()),
         };
 
         match msg {
             FauxMessage::ToolCall { name, args } => {
-                let content = Content {
-                    role: "assistant".into(),
-                    parts: vec![Part::FunctionCall {
-                        name,
-                        args,
-                        id: None,
-                        thought_signature: None,
-                    }],
-                };
-                let resp = LlmResponse::new(content);
-                return Ok(Box::pin(futures::stream::once(async move { Ok(resp) })));
+                let id = format!("faux-call-{name}");
+                Ok(Box::pin(futures::stream::iter(vec![
+                    Ok(XyChunk::FunctionCall { name, args, id }),
+                    Ok(XyChunk::Done {
+                        finish_reason: XyFinishReason::Stop,
+                    }),
+                ])))
             }
-            FauxMessage::Text(text) => {
-                return Ok(boxed_text_stream(text, stream, /*thinking*/ false));
-            }
-            FauxMessage::Thinking(thinking) => {
-                return Ok(boxed_thinking_stream(thinking, stream));
-            }
+            FauxMessage::Text(text) => Ok(Box::pin(futures::stream::iter(vec![
+                Ok(XyChunk::TextDelta(text)),
+                Ok(XyChunk::Done {
+                    finish_reason: XyFinishReason::Stop,
+                }),
+            ]))),
+            FauxMessage::Thinking(thinking) => Ok(Box::pin(futures::stream::iter(vec![
+                Ok(XyChunk::ThinkingDelta(thinking)),
+                Ok(XyChunk::Done {
+                    finish_reason: XyFinishReason::Stop,
+                }),
+            ]))),
         }
     }
-}
-
-fn boxed_text_stream(text: String, stream: bool, thinking: bool) -> LlmResponseStream {
-    if !stream {
-        let mut content = Content::new("assistant");
-        if thinking {
-            content.parts.push(Part::Thinking {
-                thinking: text,
-                signature: None,
-            });
-        } else {
-            content.parts.push(Part::Text { text });
-        }
-        let resp = LlmResponse::new(content);
-        return Box::pin(futures::stream::once(async move { Ok(resp) }));
-    }
-
-    let chunks = chunk_text(&text, 4);
-    let chunks_len = chunks.len();
-    let mut out = Vec::new();
-    for (idx, chunk) in chunks.into_iter().enumerate() {
-        let is_last = idx + 1 == chunks_len;
-        let mut content = Content::new("assistant");
-        if thinking {
-            content.parts.push(Part::Thinking {
-                thinking: chunk,
-                signature: None,
-            });
-        } else {
-            content.parts.push(Part::Text { text: chunk });
-        }
-        let mut resp = LlmResponse::new(content);
-        resp.partial = !is_last;
-        resp.turn_complete = is_last;
-        out.push(Ok(resp));
-    }
-
-    Box::pin(futures::stream::iter(out))
-}
-
-fn boxed_thinking_stream(thinking: String, stream: bool) -> LlmResponseStream {
-    boxed_text_stream(thinking, stream, /*thinking*/ true)
-}
-
-fn chunk_text(text: &str, chunk_size: usize) -> Vec<String> {
-    if text.is_empty() {
-        return vec![String::new()];
-    }
-
-    let mut out = Vec::new();
-    let mut buf = String::new();
-    let mut count = 0usize;
-    for ch in text.chars() {
-        buf.push(ch);
-        count += 1;
-        if count >= chunk_size {
-            out.push(std::mem::take(&mut buf));
-            count = 0;
-        }
-    }
-    if !buf.is_empty() {
-        out.push(buf);
-    }
-    out
 }

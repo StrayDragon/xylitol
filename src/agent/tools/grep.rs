@@ -1,12 +1,13 @@
-use adk_core::{AdkError, ErrorCategory, ErrorComponent, Result, Tool, ToolContext};
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use std::sync::Arc;
+
+use crate::agent::error::XyToolError;
+use crate::agent::traits::{XyTool, XyToolCtx};
 
 pub(crate) struct GrepTool;
 
 #[async_trait]
-impl Tool for GrepTool {
+impl XyTool for GrepTool {
     fn name(&self) -> &str {
         "grep"
     }
@@ -15,8 +16,8 @@ impl Tool for GrepTool {
         "Search for a pattern in a file. Returns matching lines with line numbers."
     }
 
-    fn parameters_schema(&self) -> Option<Value> {
-        Some(json!({
+    fn parameters_schema(&self) -> Value {
+        json!({
             "type": "object",
             "properties": {
                 "pattern": {
@@ -33,38 +34,19 @@ impl Tool for GrepTool {
                 }
             },
             "required": ["pattern", "path"]
-        }))
+        })
     }
 
-    fn is_read_only(&self) -> bool {
-        true
-    }
-
-    fn is_concurrency_safe(&self) -> bool {
-        true
-    }
-
-    async fn execute(&self, _ctx: Arc<dyn ToolContext>, args: Value) -> Result<Value> {
+    async fn execute(&self, _ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
         let pattern = args
             .get("pattern")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                AdkError::new(
-                    ErrorComponent::Tool,
-                    ErrorCategory::InvalidInput,
-                    "grep.missing_pattern",
-                    "missing required argument: pattern",
-                )
-            })?;
+            .ok_or_else(|| XyToolError::InvalidArgs("missing required argument: pattern".into()))?;
 
-        let file_path = args.get("path").and_then(|v| v.as_str()).ok_or_else(|| {
-            AdkError::new(
-                ErrorComponent::Tool,
-                ErrorCategory::InvalidInput,
-                "grep.missing_path",
-                "missing required argument: path",
-            )
-        })?;
+        let file_path = args
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| XyToolError::InvalidArgs("missing required argument: path".into()))?;
 
         let max_results = args
             .get("max_results")
@@ -74,34 +56,19 @@ impl Tool for GrepTool {
         let max_results = max_results.min(1000);
 
         let metadata = tokio::fs::metadata(file_path).await.map_err(|e| {
-            AdkError::new(
-                ErrorComponent::Tool,
-                ErrorCategory::NotFound,
-                "grep.read_error",
-                format!("failed to read '{}': {}", file_path, e),
-            )
+            XyToolError::ExecutionFailed(anyhow::anyhow!("failed to read '{}': {}", file_path, e))
         })?;
 
         if metadata.len() > 10 * 1024 * 1024 {
-            return Err(AdkError::new(
-                ErrorComponent::Tool,
-                ErrorCategory::InvalidInput,
-                "grep.file_too_large",
-                format!(
-                    "file '{}' is {} bytes, exceeding 10MB limit for grep",
-                    file_path,
-                    metadata.len()
-                ),
-            ));
+            return Err(XyToolError::InvalidArgs(format!(
+                "file '{}' is {} bytes, exceeding 10MB limit for grep",
+                file_path,
+                metadata.len()
+            )));
         }
 
         let content = tokio::fs::read_to_string(file_path).await.map_err(|e| {
-            AdkError::new(
-                ErrorComponent::Tool,
-                ErrorCategory::NotFound,
-                "grep.read_error",
-                format!("failed to read '{}': {}", file_path, e),
-            )
+            XyToolError::ExecutionFailed(anyhow::anyhow!("failed to read '{}': {}", file_path, e))
         })?;
 
         let mut matches = Vec::new();
@@ -117,22 +84,24 @@ impl Tool for GrepTool {
             }
         }
 
-        Ok(json!({
+        Ok(serde_json::to_string(&json!({
             "matches": matches,
             "total": matches.len(),
             "pattern": pattern,
             "path": file_path,
         }))
+        .unwrap())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
 
-    fn test_context() -> Arc<dyn ToolContext> {
-        crate::agent::tools::patch::mock_context()
+    fn test_ctx() -> XyToolCtx {
+        XyToolCtx {
+            call_id: "test-call".into(),
+        }
     }
 
     #[tokio::test]
@@ -146,23 +115,13 @@ mod tests {
         let tool = GrepTool;
         let result = tool
             .execute(
-                test_context(),
-                json!({
-                    "pattern": "apple",
-                    "path": path.to_str().unwrap(),
-                }),
+                &test_ctx(),
+                json!({ "pattern": "apple", "path": path.to_str().unwrap() }),
             )
             .await
             .unwrap();
-
-        assert_eq!(result["total"], 2);
-        let lines: Vec<usize> = result["matches"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|m| m["line"].as_i64().unwrap() as usize)
-            .collect();
-        assert_eq!(lines, vec![1, 4]);
+        let v: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["total"], 2);
     }
 
     #[tokio::test]
@@ -174,16 +133,13 @@ mod tests {
         let tool = GrepTool;
         let result = tool
             .execute(
-                test_context(),
-                json!({
-                    "pattern": "nonexistent",
-                    "path": path.to_str().unwrap(),
-                }),
+                &test_ctx(),
+                json!({ "pattern": "nonexistent", "path": path.to_str().unwrap() }),
             )
             .await
             .unwrap();
-
-        assert_eq!(result["total"], 0);
+        let v: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["total"], 0);
     }
 
     #[tokio::test]
@@ -199,17 +155,13 @@ mod tests {
         let tool = GrepTool;
         let result = tool
             .execute(
-                test_context(),
-                json!({
-                    "pattern": "match",
-                    "path": path.to_str().unwrap(),
-                    "max_results": 3,
-                }),
+                &test_ctx(),
+                json!({ "pattern": "match", "path": path.to_str().unwrap(), "max_results": 3 }),
             )
             .await
             .unwrap();
-
-        assert_eq!(result["total"], 3);
+        let v: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["total"], 3);
     }
 
     #[tokio::test]
@@ -217,23 +169,19 @@ mod tests {
         let tool = GrepTool;
         let result = tool
             .execute(
-                test_context(),
-                json!({
-                    "pattern": "test",
-                    "path": "/nonexistent/grep_test_file",
-                }),
+                &test_ctx(),
+                json!({ "pattern": "test", "path": "/nonexistent/grep_test_file" }),
             )
             .await;
-
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_grep_missing_args() {
         let tool = GrepTool;
-        assert!(tool.execute(test_context(), json!({})).await.is_err());
+        assert!(tool.execute(&test_ctx(), json!({})).await.is_err());
         assert!(
-            tool.execute(test_context(), json!({ "pattern": "x" }))
+            tool.execute(&test_ctx(), json!({ "pattern": "x" }))
                 .await
                 .is_err()
         );

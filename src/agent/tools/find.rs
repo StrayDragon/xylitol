@@ -1,12 +1,13 @@
-use adk_core::{AdkError, ErrorCategory, ErrorComponent, Result, Tool, ToolContext};
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use std::sync::Arc;
+
+use crate::agent::error::XyToolError;
+use crate::agent::traits::{XyTool, XyToolCtx};
 
 pub(crate) struct FindTool;
 
 #[async_trait]
-impl Tool for FindTool {
+impl XyTool for FindTool {
     fn name(&self) -> &str {
         "find"
     }
@@ -15,8 +16,8 @@ impl Tool for FindTool {
         "Find files and directories matching a glob pattern under the given root directory."
     }
 
-    fn parameters_schema(&self) -> Option<Value> {
-        Some(json!({
+    fn parameters_schema(&self) -> Value {
+        json!({
             "type": "object",
             "properties": {
                 "pattern": {
@@ -33,38 +34,19 @@ impl Tool for FindTool {
                 }
             },
             "required": ["pattern", "path"]
-        }))
+        })
     }
 
-    fn is_read_only(&self) -> bool {
-        true
-    }
-
-    fn is_concurrency_safe(&self) -> bool {
-        true
-    }
-
-    async fn execute(&self, _ctx: Arc<dyn ToolContext>, args: Value) -> Result<Value> {
+    async fn execute(&self, _ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
         let pattern = args
             .get("pattern")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                AdkError::new(
-                    ErrorComponent::Tool,
-                    ErrorCategory::InvalidInput,
-                    "find.missing_pattern",
-                    "missing required argument: pattern",
-                )
-            })?;
+            .ok_or_else(|| XyToolError::InvalidArgs("missing required argument: pattern".into()))?;
 
-        let root_path = args.get("path").and_then(|v| v.as_str()).ok_or_else(|| {
-            AdkError::new(
-                ErrorComponent::Tool,
-                ErrorCategory::InvalidInput,
-                "find.missing_path",
-                "missing required argument: path",
-            )
-        })?;
+        let root_path = args
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| XyToolError::InvalidArgs("missing required argument: path".into()))?;
 
         let max_results = args
             .get("max_results")
@@ -74,70 +56,58 @@ impl Tool for FindTool {
         let max_results = max_results.min(1000);
 
         if pattern.starts_with('/') || pattern.starts_with(std::path::MAIN_SEPARATOR) {
-            return Err(AdkError::new(
-                ErrorComponent::Tool,
-                ErrorCategory::InvalidInput,
-                "find.absolute_pattern_rejected",
-                "absolute patterns are not allowed; use a relative pattern within the root path",
+            return Err(XyToolError::InvalidArgs(
+                "absolute patterns are not allowed; use a relative pattern within the root path"
+                    .into(),
             ));
         }
 
         let root = std::path::Path::new(root_path);
         if !root.exists() {
-            return Err(AdkError::new(
-                ErrorComponent::Tool,
-                ErrorCategory::NotFound,
-                "find.root_not_found",
-                format!("root path does not exist: '{}'", root_path),
-            ));
+            return Err(XyToolError::ExecutionFailed(anyhow::anyhow!(
+                "root path does not exist: '{}'",
+                root_path
+            )));
         }
 
-        let full_pattern = {
-            let joined = root.join(pattern);
-            joined.to_string_lossy().to_string()
-        };
+        let full_pattern = root.join(pattern).to_string_lossy().to_string();
 
         let mut files = Vec::new();
         match glob::glob(&full_pattern) {
             Ok(entries) => {
-                for entry in entries {
-                    match entry {
-                        Ok(path) => {
-                            files.push(path.to_string_lossy().to_string());
-                            if files.len() >= max_results {
-                                break;
-                            }
-                        }
-                        Err(_) => continue,
+                for path in entries.flatten() {
+                    files.push(path.to_string_lossy().to_string());
+                    if files.len() >= max_results {
+                        break;
                     }
                 }
             }
             Err(e) => {
-                return Err(AdkError::new(
-                    ErrorComponent::Tool,
-                    ErrorCategory::InvalidInput,
-                    "find.invalid_pattern",
-                    format!("invalid glob pattern '{}': {}", pattern, e),
-                ));
+                return Err(XyToolError::InvalidArgs(format!(
+                    "invalid glob pattern '{}': {}",
+                    pattern, e
+                )));
             }
         }
 
-        Ok(json!({
+        Ok(serde_json::to_string(&json!({
             "files": files,
             "total": files.len(),
             "pattern": pattern,
             "path": root_path,
         }))
+        .unwrap())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
 
-    fn test_context() -> Arc<dyn ToolContext> {
-        crate::agent::tools::patch::mock_context()
+    fn test_ctx() -> XyToolCtx {
+        XyToolCtx {
+            call_id: "test-call".into(),
+        }
     }
 
     #[tokio::test]
@@ -156,26 +126,21 @@ mod tests {
         let tool = FindTool;
         let result = tool
             .execute(
-                test_context(),
-                json!({
-                    "pattern": "**/*.rs",
-                    "path": dir.path().to_str().unwrap(),
-                }),
+                &test_ctx(),
+                json!({ "pattern": "**/*.rs", "path": dir.path().to_str().unwrap() }),
             )
             .await
             .unwrap();
-
-        let files: Vec<&str> = result["files"]
+        let v: Value = serde_json::from_str(&result).unwrap();
+        let files: Vec<&str> = v["files"]
             .as_array()
             .unwrap()
             .iter()
             .map(|f| {
-                // Extract just filename for comparison
                 let path = std::path::Path::new(f.as_str().unwrap());
                 path.file_name().unwrap().to_str().unwrap()
             })
             .collect();
-
         assert!(files.contains(&"a.rs"));
         assert!(files.contains(&"b.rs"));
         assert!(files.contains(&"d.rs"));
@@ -187,14 +152,10 @@ mod tests {
         let tool = FindTool;
         let result = tool
             .execute(
-                test_context(),
-                json!({
-                    "pattern": "*.rs",
-                    "path": "/nonexistent_root_12345",
-                }),
+                &test_ctx(),
+                json!({ "pattern": "*.rs", "path": "/nonexistent_root_12345" }),
             )
             .await;
-
         assert!(result.is_err());
     }
 
@@ -204,24 +165,21 @@ mod tests {
         let tool = FindTool;
         let result = tool
             .execute(
-                test_context(),
-                json!({
-                    "pattern": "*.nonexistent_ext",
-                    "path": dir.path().to_str().unwrap(),
-                }),
+                &test_ctx(),
+                json!({ "pattern": "*.nonexistent_ext", "path": dir.path().to_str().unwrap() }),
             )
             .await
             .unwrap();
-
-        assert_eq!(result["total"], 0);
+        let v: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["total"], 0);
     }
 
     #[tokio::test]
     async fn test_find_missing_args() {
         let tool = FindTool;
-        assert!(tool.execute(test_context(), json!({})).await.is_err());
+        assert!(tool.execute(&test_ctx(), json!({})).await.is_err());
         assert!(
-            tool.execute(test_context(), json!({ "pattern": "*.rs" }))
+            tool.execute(&test_ctx(), json!({ "pattern": "*.rs" }))
                 .await
                 .is_err()
         );
