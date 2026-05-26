@@ -1,11 +1,10 @@
 /// LLM provider configuration and model registry.
 ///
 /// Supports OpenAI-compatible and Anthropic providers via direct HTTP integration.
-/// The ModelKind enum locks to these two — no dynamic provider extension.
-use adk_core::Llm;
 use std::sync::Arc;
 
 use crate::agent::r#loop::AgentError;
+use crate::agent::traits::XyModel;
 
 /// Supported model provider kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,7 +26,7 @@ pub(crate) struct ModelConfig {
 
 impl ModelConfig {
     /// Build the LLM provider from this configuration.
-    pub(crate) fn build(&self) -> Result<Arc<dyn Llm>, AgentError> {
+    pub(crate) fn build(&self) -> Result<Arc<dyn XyModel>, AgentError> {
         match self.kind {
             ModelKind::OpenAi => {
                 let provider = crate::agent::provider::openai::OpenAIProvider::new(
@@ -35,7 +34,7 @@ impl ModelConfig {
                     self.model.clone(),
                     self.base_url.clone(),
                 );
-                Ok(Arc::new(provider) as Arc<dyn Llm>)
+                Ok(Arc::new(provider) as Arc<dyn XyModel>)
             }
             ModelKind::Anthropic => {
                 let provider = crate::agent::provider::anthropic::AnthropicProvider::new(
@@ -43,7 +42,7 @@ impl ModelConfig {
                     self.model.clone(),
                     self.base_url.clone(),
                 );
-                Ok(Arc::new(provider) as Arc<dyn Llm>)
+                Ok(Arc::new(provider) as Arc<dyn XyModel>)
             }
             #[cfg(feature = "dev-fake-provider")]
             ModelKind::Fake => {
@@ -53,7 +52,7 @@ impl ModelConfig {
                         "Hello from __fake__ provider",
                     )],
                 );
-                Ok(Arc::new(fake) as Arc<dyn Llm>)
+                Ok(Arc::new(fake) as Arc<dyn XyModel>)
             }
         }
     }

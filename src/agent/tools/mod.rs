@@ -7,13 +7,14 @@ pub(crate) mod patch;
 pub(crate) mod read;
 pub(crate) mod write;
 
-use adk_core::Tool;
 use std::sync::Arc;
+
+use crate::agent::traits::XyTool;
 
 /// Registry for managing available tools.
 #[derive(Clone)]
 pub(crate) struct ToolRegistry {
-    tools: Vec<Arc<dyn Tool>>,
+    tools: Vec<Arc<dyn XyTool>>,
 }
 
 impl ToolRegistry {
@@ -21,28 +22,28 @@ impl ToolRegistry {
         Self { tools: Vec::new() }
     }
 
-    pub(crate) fn register(&mut self, tool: Arc<dyn Tool>) {
+    pub(crate) fn register(&mut self, tool: Arc<dyn XyTool>) {
         self.tools.push(tool);
     }
 
-    pub(crate) fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
+    pub(crate) fn get(&self, name: &str) -> Option<Arc<dyn XyTool>> {
         self.tools.iter().find(|t| t.name() == name).cloned()
     }
 
-    pub(crate) fn list(&self) -> &[Arc<dyn Tool>] {
+    pub(crate) fn list(&self) -> &[Arc<dyn XyTool>] {
         &self.tools
     }
 
     /// Transform each registered tool in-place.
     pub(crate) fn map_tools<F>(&mut self, f: F)
     where
-        F: FnMut(Arc<dyn Tool>) -> Arc<dyn Tool>,
+        F: FnMut(Arc<dyn XyTool>) -> Arc<dyn XyTool>,
     {
         self.tools = self.tools.iter().cloned().map(f).collect();
     }
 
     /// Return tools matching the given names. Returns all if `allowed` is `None` or empty.
-    pub(crate) fn filtered(&self, allowed: Option<&[String]>) -> Vec<Arc<dyn Tool>> {
+    pub(crate) fn filtered(&self, allowed: Option<&[String]>) -> Vec<Arc<dyn XyTool>> {
         match allowed {
             Some(names) if !names.is_empty() => self
                 .tools
@@ -55,10 +56,6 @@ impl ToolRegistry {
     }
 
     /// Wrap every registered tool with a security-checking wrapper.
-    ///
-    /// Applies [`SecurityToolWrapper`] to each tool so that policy checks
-    /// run before the actual tool implementation.  Multiple calls are
-    /// idempotent — wrapping an already-wrapped tool is transparent.
     pub(crate) fn wrap_with_security(&mut self, engine: crate::infra::security::SecurityEngine) {
         let engine = std::sync::Arc::new(engine);
         self.tools = self
@@ -67,7 +64,7 @@ impl ToolRegistry {
             .map(|t| {
                 let w =
                     crate::infra::security::SecurityToolWrapper::new(t.clone(), (*engine).clone());
-                Arc::new(w) as Arc<dyn Tool>
+                Arc::new(w) as Arc<dyn XyTool>
             })
             .collect();
     }

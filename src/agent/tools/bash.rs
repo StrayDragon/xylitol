@@ -1,24 +1,21 @@
-use adk_core::{AdkError, ErrorCategory, ErrorComponent, Result, Tool, ToolContext};
+use std::time::Duration;
+
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use std::sync::Arc;
-use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::timeout;
 
+use crate::agent::error::XyToolError;
+use crate::agent::traits::{XyTool, XyToolCtx};
+
 pub(crate) struct BashTool;
 
-/// Maximum output size in bytes (1 MB).
 const MAX_OUTPUT_SIZE: usize = 1_048_576;
-
-/// Default timeout for bash commands in seconds.
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
-
-/// Hard cap for bash timeout (matches security.bash.timeout_secs default).
 const MAX_TIMEOUT_SECS: u64 = 120;
 
 #[async_trait]
-impl Tool for BashTool {
+impl XyTool for BashTool {
     fn name(&self) -> &str {
         "bash"
     }
@@ -27,8 +24,8 @@ impl Tool for BashTool {
         "Execute a shell command on the local system. Use with caution."
     }
 
-    fn parameters_schema(&self) -> Option<Value> {
-        Some(json!({
+    fn parameters_schema(&self) -> Value {
+        json!({
             "type": "object",
             "properties": {
                 "command": {
@@ -45,21 +42,14 @@ impl Tool for BashTool {
                 }
             },
             "required": ["command"]
-        }))
+        })
     }
 
-    async fn execute(&self, _ctx: Arc<dyn ToolContext>, args: Value) -> Result<Value> {
+    async fn execute(&self, _ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
         let cmd = args
             .get("command")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                AdkError::new(
-                    ErrorComponent::Tool,
-                    ErrorCategory::InvalidInput,
-                    "bash.missing_command",
-                    "missing required argument: command",
-                )
-            })?;
+            .ok_or_else(|| XyToolError::InvalidArgs("missing required argument: command".into()))?;
 
         let requested = args
             .get("timeout")
@@ -79,36 +69,24 @@ impl Tool for BashTool {
             Command::new("sh").arg("-c").arg(cmd).output(),
         )
         .await
-        .map_err(|_| {
-            AdkError::new(
-                ErrorComponent::Tool,
-                ErrorCategory::Timeout,
-                "bash.timeout",
-                format!("command timed out after {}s", timeout_secs),
-            )
-        })?
+        .map_err(|_| XyToolError::Timeout(timeout_duration))?
         .map_err(|e| {
-            AdkError::new(
-                ErrorComponent::Tool,
-                ErrorCategory::Internal,
-                "bash.execution_failed",
-                format!("failed to execute command: {}", e),
-            )
+            XyToolError::ExecutionFailed(anyhow::anyhow!("failed to execute command: {}", e))
         })?;
 
         let stdout = truncate_output(&output.stdout);
         let stderr = truncate_output(&output.stderr);
         let exit_code = output.status.code().unwrap_or(-1);
 
-        // RTK compression when feature is enabled
         #[cfg(feature = "infra-rtk")]
         let stdout = compress_with_rtk(&stdout);
 
-        Ok(json!({
+        Ok(serde_json::to_string(&json!({
             "stdout": stdout,
             "stderr": stderr,
             "exit_code": exit_code,
         }))
+        .unwrap())
     }
 }
 
@@ -125,12 +103,8 @@ fn truncate_output(data: &[u8]) -> String {
     }
 }
 
-/// Compress bash output using the rtk proxy pipeline.
-/// Only compiled when `infra-rtk` feature is enabled.
 #[cfg(feature = "infra-rtk")]
 fn compress_with_rtk(output: &str) -> String {
-    // RTK compression pipes output through the rtk binary for token optimization.
-    // If rtk is not available, fall back to original output.
     use std::process::Command as StdCommand;
 
     let result = StdCommand::new("rtk")
@@ -148,65 +122,60 @@ fn compress_with_rtk(output: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
 
-    fn test_context() -> Arc<dyn ToolContext> {
-        crate::agent::tools::patch::mock_context()
+    fn test_ctx() -> XyToolCtx {
+        XyToolCtx {
+            call_id: "test-call".into(),
+        }
     }
 
     #[tokio::test]
     async fn test_bash_echo() {
         let tool = BashTool;
         let result = tool
-            .execute(test_context(), json!({ "command": "echo hello" }))
+            .execute(&test_ctx(), json!({ "command": "echo hello" }))
             .await
             .unwrap();
-
-        assert_eq!(result["exit_code"], 0);
-        let stdout = result["stdout"].as_str().unwrap();
-        assert!(stdout.contains("hello"));
+        let v: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["exit_code"], 0);
+        assert!(v["stdout"].as_str().unwrap().contains("hello"));
     }
 
     #[tokio::test]
     async fn test_bash_exit_code_nonzero() {
         let tool = BashTool;
         let result = tool
-            .execute(test_context(), json!({ "command": "exit 42" }))
+            .execute(&test_ctx(), json!({ "command": "exit 42" }))
             .await
             .unwrap();
-
-        assert_eq!(result["exit_code"], 42);
+        let v: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["exit_code"], 42);
     }
 
     #[tokio::test]
     async fn test_bash_stderr() {
         let tool = BashTool;
         let result = tool
-            .execute(test_context(), json!({ "command": "echo error >&2" }))
+            .execute(&test_ctx(), json!({ "command": "echo error >&2" }))
             .await
             .unwrap();
-
-        let stderr = result["stderr"].as_str().unwrap();
-        assert!(stderr.contains("error"));
+        let v: Value = serde_json::from_str(&result).unwrap();
+        assert!(v["stderr"].as_str().unwrap().contains("error"));
     }
 
     #[tokio::test]
     async fn test_bash_timeout() {
         let tool = BashTool;
         let result = tool
-            .execute(
-                test_context(),
-                json!({ "command": "sleep 10", "timeout": 1 }),
-            )
+            .execute(&test_ctx(), json!({ "command": "sleep 10", "timeout": 1 }))
             .await;
-
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_bash_missing_command() {
         let tool = BashTool;
-        let result = tool.execute(test_context(), json!({})).await;
+        let result = tool.execute(&test_ctx(), json!({})).await;
         assert!(result.is_err());
     }
 }

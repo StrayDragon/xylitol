@@ -1,12 +1,13 @@
-use adk_core::{AdkError, ErrorCategory, ErrorComponent, Result, Tool, ToolContext};
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use std::sync::Arc;
+
+use crate::agent::error::XyToolError;
+use crate::agent::traits::{XyTool, XyToolCtx};
 
 pub(crate) struct WriteTool;
 
 #[async_trait]
-impl Tool for WriteTool {
+impl XyTool for WriteTool {
     fn name(&self) -> &str {
         "write"
     }
@@ -15,8 +16,8 @@ impl Tool for WriteTool {
         "Create or overwrite a file with the given content. Creates parent directories if needed."
     }
 
-    fn parameters_schema(&self) -> Option<Value> {
-        Some(json!({
+    fn parameters_schema(&self) -> Value {
+        json!({
             "type": "object",
             "properties": {
                 "file_path": {
@@ -29,33 +30,21 @@ impl Tool for WriteTool {
                 }
             },
             "required": ["file_path", "content"]
-        }))
+        })
     }
 
-    async fn execute(&self, _ctx: Arc<dyn ToolContext>, args: Value) -> Result<Value> {
+    async fn execute(&self, _ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
         let file_path = args
             .get("file_path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
-                AdkError::new(
-                    ErrorComponent::Tool,
-                    ErrorCategory::InvalidInput,
-                    "write.missing_path",
-                    "missing required argument: file_path",
-                )
+                XyToolError::InvalidArgs("missing required argument: file_path".into())
             })?;
 
         let content = args
             .get("content")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                AdkError::new(
-                    ErrorComponent::Tool,
-                    ErrorCategory::InvalidInput,
-                    "write.missing_content",
-                    "missing required argument: content",
-                )
-            })?;
+            .ok_or_else(|| XyToolError::InvalidArgs("missing required argument: content".into()))?;
 
         let path = std::path::Path::new(file_path);
 
@@ -63,51 +52,47 @@ impl Tool for WriteTool {
             && !parent.as_os_str().is_empty()
         {
             tokio::fs::create_dir_all(parent).await.map_err(|e| {
-                AdkError::new(
-                    ErrorComponent::Tool,
-                    ErrorCategory::Internal,
-                    "write.mkdir_failed",
-                    format!(
-                        "failed to create parent directories for '{}': {}",
-                        file_path, e
-                    ),
-                )
+                XyToolError::ExecutionFailed(anyhow::anyhow!(
+                    "failed to create parent directories for '{}': {}",
+                    file_path,
+                    e
+                ))
             })?;
         }
 
         let temp_path = path.with_extension("xylitol-tmp");
         tokio::fs::write(&temp_path, content).await.map_err(|e| {
-            AdkError::new(
-                ErrorComponent::Tool,
-                ErrorCategory::Internal,
-                "write.write_failed",
-                format!("failed to write temp file for '{}': {}", file_path, e),
-            )
+            XyToolError::ExecutionFailed(anyhow::anyhow!(
+                "failed to write temp file for '{}': {}",
+                file_path,
+                e
+            ))
         })?;
         tokio::fs::rename(&temp_path, path).await.map_err(|e| {
             let _ = std::fs::remove_file(&temp_path);
-            AdkError::new(
-                ErrorComponent::Tool,
-                ErrorCategory::Internal,
-                "write.rename_failed",
-                format!("failed to atomically replace '{}': {}", file_path, e),
-            )
+            XyToolError::ExecutionFailed(anyhow::anyhow!(
+                "failed to atomically replace '{}': {}",
+                file_path,
+                e
+            ))
         })?;
 
-        Ok(json!({
+        Ok(serde_json::to_string(&json!({
             "success": true,
             "path": file_path,
         }))
+        .unwrap())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
 
-    fn test_context() -> Arc<dyn ToolContext> {
-        crate::agent::tools::patch::mock_context()
+    fn test_ctx() -> XyToolCtx {
+        XyToolCtx {
+            call_id: "test-call".into(),
+        }
     }
 
     #[tokio::test]
@@ -118,7 +103,7 @@ mod tests {
         let tool = WriteTool;
         let result = tool
             .execute(
-                test_context(),
+                &test_ctx(),
                 json!({
                     "file_path": path.to_str().unwrap(),
                     "content": "hello world",
@@ -126,8 +111,8 @@ mod tests {
             )
             .await
             .unwrap();
-
-        assert_eq!(result["success"], true);
+        let v: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["success"], true);
 
         let content = tokio::fs::read_to_string(&path).await.unwrap();
         assert_eq!(content, "hello world");
@@ -140,7 +125,7 @@ mod tests {
 
         let tool = WriteTool;
         tool.execute(
-            test_context(),
+            &test_ctx(),
             json!({
                 "file_path": path.to_str().unwrap(),
                 "content": "nested content",
@@ -162,7 +147,7 @@ mod tests {
 
         let tool = WriteTool;
         tool.execute(
-            test_context(),
+            &test_ctx(),
             json!({
                 "file_path": path.to_str().unwrap(),
                 "content": "new content",
@@ -179,11 +164,11 @@ mod tests {
     async fn test_write_missing_args() {
         let tool = WriteTool;
 
-        let result = tool.execute(test_context(), json!({})).await;
+        let result = tool.execute(&test_ctx(), json!({})).await;
         assert!(result.is_err());
 
         let result = tool
-            .execute(test_context(), json!({ "file_path": "/tmp/x" }))
+            .execute(&test_ctx(), json!({ "file_path": "/tmp/x" }))
             .await;
         assert!(result.is_err());
     }

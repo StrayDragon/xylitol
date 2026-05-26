@@ -5,7 +5,6 @@
 
 use std::sync::Arc;
 
-use adk_session::InMemorySessionService;
 use agent_client_protocol::schema;
 use agent_client_protocol::{
     ConnectionTo, Responder, Stdio, UntypedRole, on_receive_notification, on_receive_request,
@@ -174,7 +173,7 @@ async fn handle_prompt(
     );
 
     // Build components for this prompt turn.
-    let session_service = Arc::new(InMemorySessionService::new());
+    let session_service = Arc::new(crate::agent::session::InMemorySession::new());
     let profile = state
         .config
         .resolve_default_profile()

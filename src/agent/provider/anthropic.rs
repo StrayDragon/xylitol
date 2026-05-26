@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::pin::Pin;
 
-use adk_core::{
-    AdkError, Content, ErrorCategory, ErrorComponent, Llm, LlmRequest, LlmResponse,
-    LlmResponseStream, Part,
-};
 use async_trait::async_trait;
 use futures::Stream;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::Value;
+
+use crate::agent::error::XyError;
+use crate::agent::traits::{XyModel, XyStream};
+use crate::agent::types::{XyChunk, XyContent, XyFinishReason, XyPart, XyRole, XyToolSchema};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
@@ -44,12 +44,17 @@ impl AnthropicProvider {
         headers
     }
 
-    fn build_request_body(&self, req: &LlmRequest, stream: bool) -> Value {
-        let (system_prompt, messages) = contents_to_anthropic(&req.contents);
+    fn build_request_body(
+        &self,
+        messages: &[XyContent],
+        tools: &[XyToolSchema],
+        stream: bool,
+    ) -> Value {
+        let (system_prompt, msgs) = xy_to_anthropic(messages);
 
         let mut body = serde_json::json!({
             "model": self.model,
-            "messages": messages,
+            "messages": msgs,
             "max_tokens": self.max_tokens,
             "stream": stream,
         });
@@ -58,33 +63,18 @@ impl AnthropicProvider {
             body["system"] = Value::String(system);
         }
 
-        if !req.tools.is_empty() {
-            let tools: Vec<Value> = req
-                .tools
+        if !tools.is_empty() {
+            let tool_defs: Vec<Value> = tools
                 .iter()
-                .map(|(name, schema)| {
+                .map(|t| {
                     serde_json::json!({
-                        "name": name,
-                        "input_schema": schema,
+                        "name": t.name,
+                        "description": t.description,
+                        "input_schema": t.parameters,
                     })
                 })
                 .collect();
-            body["tools"] = Value::Array(tools);
-        }
-
-        if let Some(ref config) = req.config {
-            if let Some(temp) = config.temperature {
-                body["temperature"] = serde_json::json!(temp);
-            }
-            if let Some(top_p) = config.top_p {
-                body["top_p"] = serde_json::json!(top_p);
-            }
-            if let Some(top_k) = config.top_k {
-                body["top_k"] = serde_json::json!(top_k);
-            }
-            if let Some(max_tokens) = config.max_output_tokens {
-                body["max_tokens"] = serde_json::json!(max_tokens);
-            }
+            body["tools"] = Value::Array(tool_defs);
         }
 
         body
@@ -92,17 +82,18 @@ impl AnthropicProvider {
 }
 
 #[async_trait]
-impl Llm for AnthropicProvider {
+impl XyModel for AnthropicProvider {
     fn name(&self) -> &str {
         &self.model
     }
 
-    async fn generate_content(
+    async fn generate_stream(
         &self,
-        req: LlmRequest,
+        messages: Vec<XyContent>,
+        tools: &[XyToolSchema],
         stream: bool,
-    ) -> Result<LlmResponseStream, AdkError> {
-        let body = self.build_request_body(&req, stream);
+    ) -> Result<XyStream, XyError> {
+        let body = self.build_request_body(&messages, tools, stream);
         let url = format!("{}/v1/messages", self.base_url);
 
         let response = self
@@ -112,12 +103,14 @@ impl Llm for AnthropicProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| anthropic_request_error(&e))?;
+            .map_err(|e| XyError::Provider(anyhow::anyhow!("Anthropic request error: {e}")))?;
 
         let status = response.status();
         if !status.is_success() {
             let body_text = response.text().await.unwrap_or_default();
-            return Err(anthropic_http_error(status.as_u16(), &body_text));
+            let msg = extract_error_message(&body_text)
+                .unwrap_or_else(|| format!("HTTP {}: {}", status.as_u16(), body_text));
+            return Err(XyError::Provider(anyhow::anyhow!(msg)));
         }
 
         if stream {
@@ -126,18 +119,16 @@ impl Llm for AnthropicProvider {
             let json: Value = response
                 .json()
                 .await
-                .map_err(|e| anthropic_request_error(&e))?;
-            let llm_response = parse_anthropic_response(&json);
-            Ok(Box::pin(futures::stream::once(
-                async move { Ok(llm_response) },
-            )))
+                .map_err(|e| XyError::Provider(anyhow::anyhow!("parse response: {e}")))?;
+            let chunks = parse_anthropic_response(&json);
+            Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
         }
     }
 }
 
 fn anthropic_stream(
     response: reqwest::Response,
-) -> Pin<Box<dyn Stream<Item = Result<LlmResponse, AdkError>> + Send>> {
+) -> Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>> {
     Box::pin(async_stream::try_stream! {
         use futures::StreamExt;
         use eventsource_stream::Eventsource;
@@ -186,31 +177,12 @@ fn anthropic_stream(
                         match delta_type {
                             "text_delta" => {
                                 if let Some(text) = delta.get("text").and_then(|v| v.as_str()) {
-                                    yield LlmResponse {
-                                        content: Some(Content {
-                                            role: "model".into(),
-                                            parts: vec![Part::Text { text: text.to_string() }],
-                                        }),
-                                        partial: true,
-                                        turn_complete: false,
-                                        ..Default::default()
-                                    };
+                                    yield XyChunk::TextDelta(text.to_string());
                                 }
                             }
                             "thinking" => {
                                 if let Some(thinking) = delta.get("thinking").and_then(|v| v.as_str()) {
-                                    yield LlmResponse {
-                                        content: Some(Content {
-                                            role: "model".into(),
-                                            parts: vec![Part::Thinking {
-                                                thinking: thinking.to_string(),
-                                                signature: None,
-                                            }],
-                                        }),
-                                        partial: true,
-                                        turn_complete: false,
-                                        ..Default::default()
-                                    };
+                                    yield XyChunk::ThinkingDelta(thinking.to_string());
                                 }
                             }
                             "input_json_delta" => {
@@ -237,57 +209,30 @@ fn anthropic_stream(
                         .and_then(|v| v.as_str());
 
                     if stop_reason.is_some() {
-                        let mut parts: Vec<Part> = Vec::new();
-
                         let mut sorted: Vec<_> = tool_accumulators.drain().collect();
                         sorted.sort_by_key(|(idx, _)| *idx);
                         for (_, (id, name, args_str)) in sorted {
                             let args: Value = serde_json::from_str(&args_str).unwrap_or(serde_json::json!({}));
-                            parts.push(Part::FunctionCall {
-                                name,
-                                args,
-                                id: Some(id),
-                                thought_signature: None,
-                            });
+                            yield XyChunk::FunctionCall { name, args, id };
                         }
 
-                        let finish_reason = match stop_reason {
-                            Some("max_tokens") => Some(adk_core::FinishReason::MaxTokens),
-                            _ => Some(adk_core::FinishReason::Stop),
+                        let finish = match stop_reason {
+                            Some("max_tokens") => XyFinishReason::MaxTokens,
+                            _ => XyFinishReason::Stop,
                         };
-
-                        if !parts.is_empty() {
-                            yield LlmResponse {
-                                content: Some(Content {
-                                    role: "model".into(),
-                                    parts,
-                                }),
-                                partial: false,
-                                turn_complete: true,
-                                finish_reason,
-                                ..Default::default()
-                            };
-                        } else {
-                            yield LlmResponse {
-                                partial: false,
-                                turn_complete: true,
-                                finish_reason,
-                                ..Default::default()
-                            };
-                        }
+                        yield XyChunk::Done { finish_reason: finish };
                     }
                 }
 
                 "message_stop" | "ping" | "message_start" => {}
-
                 _ => {}
             }
         }
     })
 }
 
-fn parse_anthropic_response(json: &Value) -> LlmResponse {
-    let mut parts = Vec::new();
+fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
+    let mut chunks = Vec::new();
 
     if let Some(content) = json.get("content").and_then(|v| v.as_array()) {
         for block in content {
@@ -295,22 +240,12 @@ fn parse_anthropic_response(json: &Value) -> LlmResponse {
             match block_type {
                 "text" => {
                     if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                        parts.push(Part::Text {
-                            text: text.to_string(),
-                        });
+                        chunks.push(XyChunk::TextDelta(text.to_string()));
                     }
                 }
                 "thinking" => {
                     if let Some(thinking) = block.get("thinking").and_then(|v| v.as_str()) {
-                        let signature = block
-                            .get("signature")
-                            .and_then(|v| v.as_str())
-                            .filter(|s| !s.is_empty())
-                            .map(String::from);
-                        parts.push(Part::Thinking {
-                            thinking: thinking.to_string(),
-                            signature,
-                        });
+                        chunks.push(XyChunk::ThinkingDelta(thinking.to_string()));
                     }
                 }
                 "tool_use" => {
@@ -325,84 +260,70 @@ fn parse_anthropic_response(json: &Value) -> LlmResponse {
                         .unwrap_or("")
                         .to_string();
                     let args = block.get("input").cloned().unwrap_or(serde_json::json!({}));
-                    parts.push(Part::FunctionCall {
-                        name,
-                        args,
-                        id: Some(id),
-                        thought_signature: None,
-                    });
+                    chunks.push(XyChunk::FunctionCall { name, args, id });
                 }
                 _ => {}
             }
         }
     }
 
-    let finish_reason = match json.get("stop_reason").and_then(|v| v.as_str()) {
-        Some("max_tokens") => Some(adk_core::FinishReason::MaxTokens),
-        _ => Some(adk_core::FinishReason::Stop),
+    let finish = match json.get("stop_reason").and_then(|v| v.as_str()) {
+        Some("max_tokens") => XyFinishReason::MaxTokens,
+        _ => XyFinishReason::Stop,
     };
+    chunks.push(XyChunk::Done {
+        finish_reason: finish,
+    });
 
-    LlmResponse {
-        content: Some(Content {
-            role: "model".into(),
-            parts,
-        }),
-        partial: false,
-        turn_complete: true,
-        finish_reason,
-        ..Default::default()
-    }
+    chunks
 }
 
-fn contents_to_anthropic(contents: &[Content]) -> (Option<String>, Vec<Value>) {
+fn xy_to_anthropic(contents: &[XyContent]) -> (Option<String>, Vec<Value>) {
     let mut system_parts: Vec<String> = Vec::new();
     let mut messages: Vec<Value> = Vec::new();
 
     for content in contents {
-        match content.role.as_str() {
-            "system" => {
+        match content.role {
+            XyRole::System => {
                 for part in &content.parts {
-                    if let Part::Text { text } = part {
+                    if let XyPart::Text(text) = part {
                         system_parts.push(text.clone());
                     }
                 }
             }
             _ => {
-                let role = match content.role.as_str() {
-                    "model" | "assistant" => "assistant",
+                let role = match content.role {
+                    XyRole::Assistant => "assistant",
                     _ => "user",
                 };
 
                 let blocks: Vec<Value> = content
                     .parts
                     .iter()
-                    .filter_map(|part| match part {
-                        Part::Text { text } => Some(serde_json::json!({
+                    .map(|part| match part {
+                        XyPart::Text(text) => serde_json::json!({
                             "type": "text",
                             "text": text,
-                        })),
-                        Part::Thinking { thinking, .. } => Some(serde_json::json!({
+                        }),
+                        XyPart::Thinking(thinking) => serde_json::json!({
                             "type": "text",
                             "text": thinking,
-                        })),
-                        Part::FunctionCall { name, args, id, .. } => Some(serde_json::json!({
+                        }),
+                        XyPart::FunctionCall { name, args, id } => serde_json::json!({
                             "type": "tool_use",
-                            "id": id.as_deref().unwrap_or(&format!("call_{name}")),
+                            "id": id,
                             "name": name,
                             "input": args,
-                        })),
-                        Part::FunctionResponse { function_response, id } => {
-                            let content_str = match &function_response.response {
-                                Value::String(s) => s.clone(),
-                                other => other.to_string(),
-                            };
-                            Some(serde_json::json!({
-                                "type": "tool_result",
-                                "tool_use_id": id.as_deref().unwrap_or(&format!("call_{}", function_response.name)),
-                                "content": content_str,
-                            }))
-                        }
-                        _ => None,
+                        }),
+                        XyPart::FunctionResponse {
+                            name: _,
+                            result,
+                            id,
+                        } => serde_json::json!({
+                            "type": "tool_result",
+                            "tool_use_id": id,
+                            "content": result,
+                        }),
                     })
                     .collect();
 
@@ -416,7 +337,6 @@ fn contents_to_anthropic(contents: &[Content]) -> (Option<String>, Vec<Value>) {
         }
     }
 
-    // Merge consecutive same-role messages (required for parallel tool use)
     merge_consecutive_messages(&mut messages);
 
     let system = if system_parts.is_empty() {
@@ -454,34 +374,6 @@ fn merge_consecutive_messages(messages: &mut Vec<Value>) {
             i += 1;
         }
     }
-}
-
-fn anthropic_request_error(e: &reqwest::Error) -> AdkError {
-    AdkError::new(
-        ErrorComponent::Model,
-        ErrorCategory::Internal,
-        "anthropic.request_error",
-        e.to_string(),
-    )
-}
-
-fn anthropic_http_error(status: u16, body: &str) -> AdkError {
-    let message = extract_error_message(body).unwrap_or_else(|| format!("HTTP {status}: {body}"));
-
-    let category = match status {
-        401 => ErrorCategory::InvalidInput,
-        429 => ErrorCategory::RateLimited,
-        529 => ErrorCategory::Unavailable,
-        500..=599 => ErrorCategory::Unavailable,
-        _ => ErrorCategory::Internal,
-    };
-
-    AdkError::new(
-        ErrorComponent::Model,
-        category,
-        "anthropic.http_error",
-        message,
-    )
 }
 
 fn extract_error_message(body: &str) -> Option<String> {
