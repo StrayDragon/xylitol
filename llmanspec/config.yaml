@@ -4,7 +4,11 @@ locale: zh-CN
 
 context: |
   Project conventions: see AGENTS.md (SSOT).
-  Framework: adk-rust as primary framework. Agent loop via LlmAgent + Runner, tools via adk-core Tool trait, sessions via adk-session, CLI via adk-cli Launcher. Only application-specific logic is custom.
+  Framework migration: transitioning from adk-rust to self-owned abstractions (c103→c104→c105).
+    Phase 1 (c103): replace adk-model with async-openai + reqwest (OpenAI/Anthropic providers).
+    Phase 2 (c104): define XyModel/XyTool traits, migrate 7 tools + wrappers, bridge via adapter.
+    Phase 3 (c105): self-built XyRunner ReAct loop, remove all adk-* dependencies.
+  Current state: adk-rust still in use; XyModel/XyTool/XyRunner are target abstractions.
   Design principle: pluggable/configurable architecture. Core (agent loop + tools + provider + CLI) is always present; built-in enhancements (hooks, security, repeat detection) are runtime-toggled; everything else (LSP, DAP, skills, MCP, diff review, TUI, session snapshots, planning) is opt-in via feature flag.
   Dependency tracking: each proposal.md frontmatter contains depends_on. Read proposal.md files to determine execution order. For DAG visualization run: llman sdd graph
 
