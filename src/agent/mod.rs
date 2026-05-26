@@ -7,5 +7,4 @@ pub(crate) mod tools;
 #[cfg(feature = "agent-planning")]
 pub(crate) mod planner;
 
-#[cfg(feature = "dev-fake-provider")]
 pub(crate) mod provider;

@@ -1,14 +1,20 @@
-//! Fake LLM provider for offline testing and development.
+//! LLM providers for xylitol.
 //!
-//! Provides [`FakeProvider`] which implements [`adk_core::Llm`] with
-//! scenario-based orchestration, delay simulation, and error injection.
-//! Useful for testing agent loop, tool system, and mode flows without
-//! a real LLM API.
-//!
-//! ## Feature gate
-//!
-//! Only available behind the `dev-fake-provider` feature flag.
+//! Direct integrations with LLM APIs:
+//! - [`openai::OpenAIProvider`]: OpenAI Chat Completions via raw HTTP + SSE streaming
+//! - [`anthropic::AnthropicProvider`]: Anthropic Messages API via raw HTTP + SSE streaming
+//! - [`FakeProvider`] (dev-only): scenario-based mock for offline testing
+//! - [`MockLlm`] (test-only): simple mock that returns a fixed response
 
+pub(crate) mod anthropic;
+pub(crate) mod openai;
+
+#[cfg(feature = "dev-fake-provider")]
 mod fake;
+#[cfg(test)]
+mod mock;
 
+#[cfg(feature = "dev-fake-provider")]
 pub(crate) use fake::*;
+#[cfg(test)]
+pub(crate) use mock::MockLlm;

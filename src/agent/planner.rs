@@ -670,8 +670,8 @@ fn truncate_summary(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::provider::MockLlm;
     use crate::infra::config::types::ModelEntry;
-    use adk_model::MockLlm;
 
     // ── Helpers ──────────────────────────────────────────────────────
 
