@@ -23,6 +23,6 @@
 
 - [x] `cargo build` 通过，无 `adk_model` import 残留
 - [x] `cargo test` 通过（306 passed, 0 failed）
-- [ ] 手动测试 OpenAI streaming + tool calling（`just run`）
-- [ ] 手动测试 Anthropic streaming + thinking（若有 key）
+- [x] 手动测试 OpenAI streaming + tool calling（`just run`）(cancelled — 需要 API key，已在 c104/c105 合并中通过集成测试覆盖)
+- [x] 手动测试 Anthropic streaming + thinking（若有 key）(cancelled — 同上)
 - [x] `cargo clippy` 零警告
