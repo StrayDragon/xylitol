@@ -1,12 +1,13 @@
 ---
 name: tui-expert-of-gemini-cli
 description: '当需要用 React/Ink 构建 Node.js 终端 TUI 应用，或参考 Google Gemini CLI 的 TUI 架构设计（声明式渲染、按键系统、流式处理、虚拟滚动、主题系统）时使用。Use when building terminal UIs with React/Ink in Node.js, or referencing Gemini CLI TUI architecture (declarative rendering, keybinding system, streaming, virtualized list, theme system). Keywords: React, Ink, TUI, terminal UI, 终端UI, CLI, gemini, streaming, virtualized list, keybinding, theme'
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash
+allowed-tools: Read Write Edit Glob Grep Bash
 metadata:
   tech_stack: "React + Ink 6.x + TypeScript + Node.js"
   source_project: "google-gemini/gemini-cli v0.45.0"
   rendering_mode: "declarative (React/Ink)"
   input_system: "custom KeypressContext with Kitty Protocol"
+disable-model-invocation: true
 ---
 
 # TUI Expert of Gemini CLI

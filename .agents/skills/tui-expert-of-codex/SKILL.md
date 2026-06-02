@@ -1,11 +1,12 @@
 ---
 name: tui-expert-of-codex
-description: 'OpenAI Codex CLI 项目 TUI 交互层深度分析。基于 ratatui + crossterm 构建的工业级终端应用架构，涵盖事件循环/EventBroker、帧调度、弹性布局、流式渲染、终端兼容性探测等核心模式。用于指导新 Agent TUI 的实现。'
-allowed-tools: Read, Write, Edit, Glob, Grep, Bash, WebSearch, WebFetch
+description: 'OpenAI Codex CLI 项目 TUI 交互层深度分析。基于 ratatui + crossterm 构建的工业级终端应用架构，涵盖事件循环/EventBroker、帧调度、弹性布局、流式渲染、终端兼容性探测等核心模式。用于指导新 Agent TUI 的实现。In-depth analysis of OpenAI Codex CLI TUI layer built with ratatui + crossterm: event loop/EventBroker, frame scheduling, elastic layout, streaming rendering, terminal capability detection. Use when building Rust-based agent TUIs. Keywords: Rust, ratatui, crossterm, TUI, terminal UI, 终端UI, event loop, EventBroker, frame scheduling, elastic layout, streaming, Codex CLI'
+allowed-tools: Read Write Edit Glob Grep Bash WebSearch WebFetch
 metadata:
   based_on: "OpenAI Codex CLI (https://github.com/openai/codex)"
   ratatui_version: "0.28"
   analysis_lang: "Rust"
+disable-model-invocation: true
 ---
 
 # tui-expert-of-codex
