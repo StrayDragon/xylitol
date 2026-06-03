@@ -1,9 +1,0 @@
----
-source: src/interface/tui/markdown.rs
-expression: render_to_plain(md)
----
-┌───────┬───────┐
-│ Col A │ Col B │
-╞═══════╪═══════╡
-│ 1     │ 2     │
-└───────┴───────┘

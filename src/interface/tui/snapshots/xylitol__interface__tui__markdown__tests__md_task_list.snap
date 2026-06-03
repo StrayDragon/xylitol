@@ -1,6 +1,0 @@
----
-source: src/interface/tui/markdown.rs
-expression: render_to_plain(md)
----
-☑ done
-☐ pending

@@ -1,8 +1,0 @@
----
-source: src/interface/tui/markdown.rs
-assertion_line: 463
-expression: render_to_plain(md)
----
-1. first
-2. second
-3. third

@@ -3,9 +3,9 @@
 
 本项目使用 llman SDD。阅读 `llmanspec/config.yaml` 了解项目上下文与规则。
 
-使用 `/llman-sdd-onboard` 开始，然后使用 `/llman-sdd-*` 技能进行工作流。
+使用 `/llman-sdd-onboard` 开始,然后使用 `/llman-sdd-*` 技能进行工作流。
 
-保留此托管块，便于 `llman sdd update` 刷新。
+保留此托管块,便于 `llman sdd update` 刷新。
 <!-- LLMANSPEC:END -->
 
 # Repository Guidelines
@@ -15,7 +15,7 @@
 - Source lives in `src/`. As the project grows, keep the domain layering:
   - `src/agent/`: agent loop, tools, config, prompts
   - `src/infra/`: hooks, security, skills, session, planning
-  - `src/interface/`: CLI/TUI/RPC and user-facing output
+  - `src/interface/`: CLI/RPC and user-facing output
 - Specs and workflow artifacts live in `llmanspec/`. General docs live in `docs/`.
 - Build output is generated under `target/` (do not commit).
 
@@ -37,7 +37,7 @@ This repo uses `just` as the command runner:
 - Errors: avoid `.unwrap()`/`.expect()` outside tests; prefer `thiserror` for library
   error enums and `anyhow` at application boundaries.
 - Logging: use `tracing` (structured logs), not `log`.
-- **Dependencies**: must be managed via `cargo add` / `cargo upgrade` — never manually
+- **Dependencies**: must be managed via `cargo add` / `cargo upgrade` - never manually
   write version numbers into `Cargo.toml`. Before adding a new dep, run
   `cargo search <name>` to confirm the name, then `cargo add <name>` to let the tool
   pick the latest version. To bulk-upgrade, run `cargo upgrade --incompatible`.
@@ -54,22 +54,22 @@ This repo uses `just` as the command runner:
   `type(scope)!: description` (keep the header ≤ 72 chars).
   Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`,
   `chore`, `revert`.
-- PRs: include a clear “what/why”, link relevant issues/specs, and ensure `just qa`
-  passes locally. Add screenshots for UI changes (TUI/review modes) when applicable.
+- PRs: include a clear "what/why", link relevant issues/specs, and ensure `just qa`
+  passes locally. Add screenshots for UI changes (review modes) when applicable.
 
 ## Spec-Driven Development (llman SDD)
 
 - When working on planned changes, follow llman SDD: specs/changes live under
   `llmanspec/`. Keep proposals and dependencies up to date (see `llmanspec/config.yaml`).
 - Change priority numbers only need to be unique among **unarchived** (active) changes.
-  Numbers may overlap with archived changes. Priority is advisory — execution follows
+  Numbers may overlap with archived changes. Priority is advisory - execution follows
   the `depends_on` DAG edges first, then priority as tiebreaker.
 
 ### Defer & Archive Rules
 
 - **All tasks must be resolved before archiving**: every `[ ]` item in `tasks.md` must
   be either checked `[x]`, linked to a follow-up change via
-  `(defer → <target-change-id>)`, or explicitly marked `(cancelled — <reason>)`.
+  `(defer → <target-change-id>)`, or explicitly marked `(cancelled - <reason>)`.
 - **Unlinked defer is forbidden**: writing `(defer - reason)` without creating a
   follow-up change proposal causes the deferred work to be silently lost. Always create
   the follow-up change first, then reference its ID.
