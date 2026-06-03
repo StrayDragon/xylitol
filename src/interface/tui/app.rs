@@ -104,6 +104,9 @@ pub(crate) struct App {
 
     raw_output: bool,
 
+    /// Whether mouse capture is active (toggle with M key).
+    mouse_capture: bool,
+
     focus: Focus,
     session_id: String,
 
@@ -215,6 +218,7 @@ impl App {
             backtrack_primed: false,
 
             raw_output: false,
+            mouse_capture: true,
             focus: Focus::Input,
             session_id: "tui-session".into(),
             history,
@@ -415,6 +419,29 @@ impl App {
                 self.overlays.push(Box::new(TranscriptOverlay::new(md)));
                 None
             }
+            AppKeyAction::ToggleMouseCapture => {
+                use std::time::Duration;
+                self.mouse_capture = !self.mouse_capture;
+                // Toggle mouse capture at the terminal level.
+                if self.mouse_capture {
+                    let _ = crossterm::execute!(
+                        std::io::stdout(),
+                        crossterm::event::EnableMouseCapture
+                    );
+                } else {
+                    let _ = crossterm::execute!(
+                        std::io::stdout(),
+                        crossterm::event::DisableMouseCapture
+                    );
+                }
+                let msg = if self.mouse_capture {
+                    "Mouse mode: ON (scroll with wheel)"
+                } else {
+                    "Mouse mode: OFF (select text with mouse)"
+                };
+                self.footer.set_message(msg, Duration::from_secs(2));
+                None
+            }
         }
     }
 
@@ -516,6 +543,8 @@ impl App {
                         Focus::Input => Focus::Chat,
                         Focus::Chat => Focus::Input,
                     };
+                    // Reset visual selection when leaving chat focus.
+                    self.chat.reset_selection();
                     return None;
                 }
 
@@ -736,6 +765,11 @@ impl App {
                 None
             }
             TuiEvent::Mouse(mouse) => {
+                // When mouse capture is toggled off, ignore mouse events
+                // so the terminal's native text selection works.
+                if !self.mouse_capture {
+                    return None;
+                }
                 use crossterm::event::MouseEventKind;
                 match mouse.kind {
                     MouseEventKind::ScrollUp => {
@@ -743,6 +777,24 @@ impl App {
                     }
                     MouseEventKind::ScrollDown => {
                         self.chat.scroll_down(3);
+                    }
+                    MouseEventKind::Down(_) => {
+                        // Click to focus: click in chat area focuses chat, click in input focuses input.
+                        let row = mouse.row;
+                        let col = mouse.column;
+                        let in_chat = row >= self.chat_area.y
+                            && row < self.chat_area.y + self.chat_area.height
+                            && col >= self.chat_area.x
+                            && col < self.chat_area.x + self.chat_area.width;
+                        let in_input = row >= self.input_area.y
+                            && row < self.input_area.y + self.input_area.height
+                            && col >= self.input_area.x
+                            && col < self.input_area.x + self.input_area.width;
+                        if in_chat {
+                            self.focus = Focus::Chat;
+                        } else if in_input {
+                            self.focus = Focus::Input;
+                        }
                     }
                     _ => {}
                 }
@@ -791,7 +843,7 @@ impl App {
         self.input_area = chunks[1];
         self.status_area = chunks[2];
 
-        self.chat.set_focused(false);
+        self.chat.set_focused(self.focus == Focus::Chat);
         self.input.set_focused(self.focus == Focus::Input);
 
         // Ratatui uses immediate-mode rendering: every `Terminal::draw` starts from an empty buffer.
