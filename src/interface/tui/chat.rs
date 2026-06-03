@@ -12,7 +12,7 @@ use crate::agent::r#loop::{AgentError, AgentEvent};
 
 use super::chat_style;
 use super::component::{Component, EventResult};
-use super::event::TuiEvent;
+use super::event::{AppAction, TuiEvent};
 use super::markdown::MarkdownRenderer;
 use std::collections::HashMap;
 
@@ -29,6 +29,7 @@ pub(crate) struct Message {
     role: Role,
     content: String,
     thinking: Option<String>,
+    thinking_visible: bool,
     streaming: bool,
     cached_width: u16,
     cached_lines: Vec<Line<'static>>,
@@ -60,6 +61,7 @@ impl Message {
             role,
             content,
             thinking: None,
+            thinking_visible: false,
             streaming: false,
             cached_width: 0,
             cached_lines: Vec::new(),
@@ -108,12 +110,26 @@ pub(crate) struct ChatComponent {
     items: Vec<ChatItem>,
     raw_output: bool,
     pending_thinking: String,
-    last_thinking: String,
     tool_names: HashMap<String, String>,
+    /// Index of the message under the cursor (for thinking toggle and visual selection).
+    cursor_index: usize,
+    /// Visual selection state.
+    select: SelectState,
+    /// Whether the chat pane has keyboard focus.
+    focused: bool,
     scroll_from_bottom: usize,
     last_rendered_width: u16,
     last_rendered_line_count: usize,
+    /// Maps each rendered line index to its source message index.
+    last_line_message_indices: Vec<usize>,
     dirty: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SelectState {
+    pub(crate) active: bool,
+    pub(crate) anchor: usize,
+    pub(crate) cursor: usize,
 }
 
 impl ChatComponent {
@@ -124,17 +140,23 @@ impl ChatComponent {
             items: Vec::new(),
             raw_output: false,
             pending_thinking: String::new(),
-            last_thinking: String::new(),
             tool_names: HashMap::new(),
+            cursor_index: 0,
+            select: SelectState::default(),
+            focused: false,
             scroll_from_bottom: 0,
             last_rendered_width: 0,
             last_rendered_line_count: 0,
+            last_line_message_indices: Vec::new(),
             dirty: true,
         }
     }
 
     pub(crate) fn set_focused(&mut self, focused: bool) {
-        let _ = focused;
+        if self.focused != focused {
+            self.focused = focused;
+            self.dirty = true;
+        }
     }
 
     pub(crate) fn set_theme(&mut self, theme: &str) -> bool {
@@ -182,8 +204,10 @@ impl ChatComponent {
     pub(crate) fn clear(&mut self) {
         self.items.clear();
         self.pending_thinking.clear();
-        self.last_thinking.clear();
         self.tool_names.clear();
+        self.cursor_index = 0;
+        self.select = SelectState::default();
+        self.last_line_message_indices.clear();
         self.scroll_from_bottom = 0;
         self.last_rendered_width = 0;
         self.last_rendered_line_count = 0;
@@ -206,6 +230,8 @@ impl ChatComponent {
     }
 
     fn append_assistant_delta(&mut self, delta: &str) {
+        // Buffer content internally — streaming messages are hidden from view.
+        // They become visible only on finish_streaming().
         let last_streaming = self.items.iter_mut().rev().find_map(|item| match item {
             ChatItem::Message(msg) if msg.role == Role::Assistant && msg.streaming => Some(msg),
             _ => None,
@@ -213,13 +239,14 @@ impl ChatComponent {
 
         if let Some(msg) = last_streaming {
             msg.content.push_str(delta);
-            msg.dirty = true;
         } else {
             let mut m = Message::new(Role::Assistant, delta.to_string());
             m.streaming = true;
             self.items.push(ChatItem::Message(m));
         }
 
+        // Feed streaming renderer for later use, but don't mark dirty —
+        // streaming messages are not rendered.
         if !self.raw_output {
             if let Some(ref mut sr) = self.streaming_renderer {
                 sr.push(delta);
@@ -231,13 +258,12 @@ impl ChatComponent {
                 self.streaming_renderer = Some(sr);
             }
         }
-
-        self.dirty = true;
+        // NOTE: deliberately NOT setting self.dirty — streaming messages are hidden.
     }
 
     fn append_thinking_delta(&mut self, delta: &str) {
         self.pending_thinking.push_str(delta);
-        self.dirty = true;
+        // NOTE: deliberately NOT setting self.dirty — streaming is hidden.
     }
 
     fn finish_streaming(&mut self) {
@@ -279,6 +305,7 @@ impl ChatComponent {
             self.pending_thinking.clear();
         }
 
+        // Store thinking in the message (per-message, not global).
         let combined_thinking = thinking_parts.join("\n\n").trim().to_string();
         if let Some(idx) = last_assistant_index
             && let Some(ChatItem::Message(msg)) = self.items.get_mut(idx)
@@ -286,14 +313,8 @@ impl ChatComponent {
             if combined_thinking.is_empty() {
                 msg.thinking = None;
             } else {
-                msg.thinking = Some(combined_thinking.clone());
+                msg.thinking = Some(combined_thinking);
             }
-        }
-
-        if combined_thinking.is_empty() {
-            self.last_thinking.clear();
-        } else {
-            self.last_thinking = combined_thinking;
         }
         self.dirty = true;
     }
@@ -318,28 +339,175 @@ impl ChatComponent {
         self.dirty = true;
     }
 
+    /// Get thinking content from the message at cursor (for overlay display).
     pub(crate) fn thinking_snapshot(&self) -> Option<(String, bool)> {
         if !self.pending_thinking.trim().is_empty() {
             return Some((self.pending_thinking.clone(), true));
         }
-        if !self.last_thinking.trim().is_empty() {
-            return Some((self.last_thinking.clone(), false));
+        // Look at the message at cursor_index.
+        if let Some(ChatItem::Message(msg)) = self.items.get(self.cursor_index)
+            && let Some(ref thinking) = msg.thinking
+            && !thinking.trim().is_empty()
+        {
+            return Some((thinking.clone(), false));
         }
         None
     }
 
-    fn thinking_collapsed_line(&self) -> Line<'static> {
-        let has_pending_thinking = !self.pending_thinking.trim().is_empty();
-        let label = if has_pending_thinking {
-            "Thinking…"
-        } else {
-            "Thinking"
-        };
+    /// Toggle thinking visibility for the message at cursor.
+    pub(crate) fn toggle_thinking_at_cursor(&mut self) {
+        if let Some(ChatItem::Message(msg)) = self.items.get_mut(self.cursor_index)
+            && msg.thinking.is_some()
+        {
+            msg.thinking_visible = !msg.thinking_visible;
+            msg.dirty = true;
+            self.dirty = true;
+        }
+    }
 
+    /// Toggle thinking visibility for all messages.
+    pub(crate) fn toggle_all_thinking(&mut self) {
+        // Determine new state: if majority are visible, collapse all; else expand all.
+        let visible_count = self
+            .items
+            .iter()
+            .filter(|item| {
+                let ChatItem::Message(msg) = item;
+                msg.thinking_visible
+            })
+            .count();
+        let has_thinking_count = self
+            .items
+            .iter()
+            .filter(|item| {
+                let ChatItem::Message(msg) = item;
+                msg.thinking.is_some()
+            })
+            .count();
+        let new_visible = if has_thinking_count == 0 {
+            return;
+        } else {
+            visible_count < has_thinking_count
+        };
+        for item in &mut self.items {
+            let ChatItem::Message(msg) = item;
+            if msg.thinking.is_some() {
+                msg.thinking_visible = new_visible;
+                msg.dirty = true;
+            }
+        }
+        self.dirty = true;
+    }
+
+    fn thinking_header_line(visible: bool, is_streaming: bool) -> Line<'static> {
+        let indicator = if visible { "[-]" } else { "[+]" };
+        let label = if is_streaming {
+            format!(" {indicator} Thinking…")
+        } else {
+            format!(" {indicator} Thinking")
+        };
         let style = Style::default()
             .fg(Color::DarkGray)
-            .add_modifier(Modifier::ITALIC);
+            .add_modifier(Modifier::BOLD);
         Line::from(Span::styled(label, style))
+    }
+
+    /// Separator line between thinking block and message content.
+    fn thinking_separator() -> Line<'static> {
+        Line::from(Span::styled(
+            " ┄".to_string(),
+            Style::default().fg(Color::DarkGray),
+        ))
+    }
+
+    // ── Visual selection helpers ────────────────────────────────
+
+    fn select_extend_down(&mut self) {
+        let max = self.items.len().saturating_sub(1);
+        self.select.cursor = (self.select.cursor + 1).min(max);
+        self.dirty = true;
+    }
+
+    fn select_extend_up(&mut self) {
+        self.select.cursor = self.select.cursor.saturating_sub(1);
+        self.dirty = true;
+    }
+
+    fn collect_selected_text(&self, raw: bool) -> String {
+        let lo = self.select.anchor.min(self.select.cursor);
+        let hi = self.select.anchor.max(self.select.cursor);
+        let mut out = String::new();
+        for item in self.items.iter().take(hi + 1).skip(lo) {
+            let ChatItem::Message(msg) = item;
+            if raw {
+                out.push_str(&msg.content);
+            } else {
+                let label = match msg.role {
+                    Role::User => "> user: ",
+                    Role::Assistant => "assistant: ",
+                    Role::System => "system: ",
+                    Role::Error => "error: ",
+                };
+                out.push_str(label);
+                out.push_str(&msg.content);
+            }
+            out.push('\n');
+        }
+        out.trim().to_string()
+    }
+
+    fn message_at_cursor_text(&self, raw: bool) -> String {
+        if let Some(ChatItem::Message(msg)) = self.items.get(self.cursor_index) {
+            if raw {
+                msg.content.clone()
+            } else {
+                let label = match msg.role {
+                    Role::User => "> user: ",
+                    Role::Assistant => "assistant: ",
+                    Role::System => "system: ",
+                    Role::Error => "error: ",
+                };
+                format!("{label}{}", msg.content)
+            }
+        } else {
+            String::new()
+        }
+    }
+
+    /// Reset visual selection state (called when focus leaves chat).
+    pub(crate) fn reset_selection(&mut self) {
+        if self.select.active {
+            self.select.active = false;
+            self.dirty = true;
+        }
+    }
+
+    /// Get the message text at a viewport row (0-based from top of chat area).
+    /// Used for click-to-copy behavior.
+    pub(crate) fn message_at_viewport_row(&self, row: usize) -> Option<String> {
+        let height = self.last_rendered_line_count;
+        if height == 0 || self.last_line_message_indices.is_empty() {
+            return None;
+        }
+        // Compute viewport window (same logic as render_live_preview).
+        let full_len = self.last_line_message_indices.len();
+        let max_scroll = full_len.saturating_sub(height);
+        let scroll = self.scroll_from_bottom.min(max_scroll);
+        let end = full_len.saturating_sub(scroll);
+        let start = end.saturating_sub(height);
+        let viewport_row = start + row;
+        let &msg_idx = self.last_line_message_indices.get(viewport_row)?;
+        if let Some(ChatItem::Message(msg)) = self.items.get(msg_idx) {
+            let label = match msg.role {
+                Role::User => "> ",
+                Role::Assistant => "",
+                Role::System => "[system] ",
+                Role::Error => "[error] ",
+            };
+            Some(format!("{label}{}", msg.content))
+        } else {
+            None
+        }
     }
 
     pub(crate) fn render_live_preview(&mut self, frame: &mut Frame, area: Rect) {
@@ -349,10 +517,16 @@ impl ChatComponent {
 
         let width = area.width.max(1);
         let mut lines: Vec<Line<'static>> = Vec::new();
+        // Track which message index each line belongs to (for cursor tracking).
+        let mut line_message_indices: Vec<usize> = Vec::new();
 
         // Render full transcript in the viewport (keep newest lines).
-        for item in &mut self.items {
+        // Skip streaming messages — they are hidden until finish_streaming().
+        for (msg_idx, item) in self.items.iter_mut().enumerate() {
             let ChatItem::Message(msg) = item;
+            if msg.streaming {
+                continue;
+            }
 
             if msg.dirty || msg.cached_width != width {
                 msg.cached_width = width;
@@ -379,52 +553,91 @@ impl ChatComponent {
                 msg.dirty = false;
             }
 
+            // Render thinking block inline before assistant messages.
+            if msg.role == Role::Assistant {
+                let has_thinking = msg.thinking.as_ref().is_some_and(|t| !t.trim().is_empty());
+                let has_pending = msg.streaming && !self.pending_thinking.trim().is_empty();
+
+                if has_thinking || has_pending {
+                    let is_streaming = msg.streaming && has_pending;
+                    lines.push(Self::thinking_header_line(
+                        msg.thinking_visible,
+                        is_streaming,
+                    ));
+                    line_message_indices.push(msg_idx);
+
+                    if msg.thinking_visible {
+                        // Render thinking content in dim italic style.
+                        let thinking_text = if has_pending {
+                            &self.pending_thinking
+                        } else {
+                            msg.thinking.as_deref().unwrap_or("")
+                        };
+                        for tline in thinking_text.lines() {
+                            let styled = Line::from(Span::styled(
+                                format!(" │ {tline}"),
+                                Style::default()
+                                    .fg(Color::DarkGray)
+                                    .add_modifier(Modifier::ITALIC),
+                            ));
+                            lines.push(styled);
+                            line_message_indices.push(msg_idx);
+                        }
+                        // Separator between thinking and message content.
+                        lines.push(Self::thinking_separator());
+                        line_message_indices.push(msg_idx);
+                    }
+                }
+            }
+
             match msg.role {
                 Role::User => {
-                    lines.extend(chat_style::prefix_user_lines(msg.cached_lines.clone()));
+                    for line in chat_style::prefix_user_lines(msg.cached_lines.clone()) {
+                        lines.push(line);
+                        line_message_indices.push(msg_idx);
+                    }
                     lines.push(Line::from(""));
+                    line_message_indices.push(msg_idx);
                 }
                 Role::Assistant => {
-                    lines.extend(chat_style::prefix_assistant_lines(
+                    for line in chat_style::prefix_assistant_lines(
                         msg.cached_lines.clone(),
                         /*streaming*/ msg.streaming,
-                    ));
+                    ) {
+                        lines.push(line);
+                        line_message_indices.push(msg_idx);
+                    }
                     lines.push(Line::from(""));
+                    line_message_indices.push(msg_idx);
                 }
                 Role::System => {
                     let mut system_lines = msg.cached_lines.clone();
                     for line in &mut system_lines {
                         line.style = Style::default().fg(Color::DarkGray);
                     }
-                    lines.extend(system_lines);
+                    for line in system_lines {
+                        line_message_indices.push(msg_idx);
+                        lines.push(line);
+                    }
                     lines.push(Line::from(""));
+                    line_message_indices.push(msg_idx);
                 }
                 Role::Error => {
                     let mut error_lines = msg.cached_lines.clone();
                     for line in &mut error_lines {
                         line.style = Style::default().fg(Color::Red);
                     }
-                    lines.extend(error_lines);
+                    for line in error_lines {
+                        line_message_indices.push(msg_idx);
+                        lines.push(line);
+                    }
                     lines.push(Line::from(""));
+                    line_message_indices.push(msg_idx);
                 }
             }
         }
 
-        // Thinking display (rendered at the bottom, close to the latest activity):
-        // - While streaming: show a single collapsed line.
-        // - After completion: keep a collapsed placeholder so users can expand it.
-        let has_any_thinking =
-            !self.pending_thinking.trim().is_empty() || !self.last_thinking.trim().is_empty();
-        if has_any_thinking {
-            if !lines.is_empty() && !lines.last().is_some_and(|l| l.spans.is_empty()) {
-                lines.push(Line::from(""));
-            }
-            lines.push(self.thinking_collapsed_line());
-        }
-
-        // Keep scroll stable while new content streams in: if the user has scrolled up (i.e. not
-        // pinned to bottom), maintain the same "end" index by increasing the distance from the
-        // bottom as new lines are appended.
+        // Keep scroll stable while new content streams in.
         let full_len = lines.len();
         if self.last_rendered_width == width
             && self.scroll_from_bottom > 0
@@ -438,18 +651,54 @@ impl ChatComponent {
 
         // Window the transcript into the viewport with a scroll offset from the bottom.
         let height = area.height.max(1) as usize;
-        if lines.len() > height {
+        let (mut visible_lines, visible_indices) = if lines.len() > height {
             let max_scroll = lines.len().saturating_sub(height);
             self.scroll_from_bottom = self.scroll_from_bottom.min(max_scroll);
 
             let end = lines.len().saturating_sub(self.scroll_from_bottom);
             let start = end.saturating_sub(height);
-            lines = lines[start..end].to_vec();
+            // Store full line-message mapping before slicing.
+            self.last_line_message_indices = line_message_indices.clone();
+            (
+                lines[start..end].to_vec(),
+                &line_message_indices[start..end],
+            )
         } else {
             self.scroll_from_bottom = 0;
+            self.last_line_message_indices = line_message_indices.clone();
+            (lines, line_message_indices.as_slice())
+        };
+
+        // Update cursor_index to the last visible message.
+        if let Some(&last_idx) = visible_indices.last() {
+            self.cursor_index = last_idx;
         }
 
-        let para = Paragraph::new(lines)
+        // Apply visual selection highlight.
+        if self.select.active {
+            let lo = self.select.anchor.min(self.select.cursor);
+            let hi = self.select.anchor.max(self.select.cursor);
+            let highlight_bg = Color::DarkGray;
+            for (i, line) in visible_lines.iter_mut().enumerate() {
+                if let Some(&msg_idx) = visible_indices.get(i)
+                    && msg_idx >= lo
+                    && msg_idx <= hi
+                {
+                    line.style = Style::default().bg(highlight_bg);
+                }
+            }
+        }
+
+        // Show focus indicator: subtle bar on the left when chat is focused.
+        if self.focused && !self.select.active {
+            for line in &mut visible_lines {
+                // Prepend a focus indicator as the first span.
+                line.spans
+                    .insert(0, Span::styled("▎", Style::default().fg(Color::DarkGray)));
+            }
+        }
+
+        let para = Paragraph::new(visible_lines)
             .block(Block::default())
             .wrap(Wrap { trim: false });
         frame.render_widget(para, area);
@@ -481,10 +730,8 @@ impl ChatComponent {
                         Role::System => "System",
                         Role::Error => "Error",
                     };
-                    out.push_str(&format!("## {label}\n\n"));
-                    out.push_str(&msg.content);
-                    out.push_str("\n\n");
 
+                    // Include thinking before assistant message content.
                     if msg.role == Role::Assistant
                         && let Some(thinking) = msg.thinking.as_deref()
                         && !thinking.trim().is_empty()
@@ -493,6 +740,10 @@ impl ChatComponent {
                         out.push_str(thinking);
                         out.push_str("\n\n");
                     }
+
+                    out.push_str(&format!("## {label}\n\n"));
+                    out.push_str(&msg.content);
+                    out.push_str("\n\n");
                 }
             }
         }
@@ -550,8 +801,83 @@ impl Component for ChatComponent {
                     return EventResult::default();
                 }
 
+                // Visual selection mode keys.
+                if self.select.active && key.modifiers.is_empty() {
+                    match key.code {
+                        KeyCode::Char('j') | KeyCode::Down => {
+                            self.select_extend_down();
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Char('k') | KeyCode::Up => {
+                            self.select_extend_up();
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Char('g') => {
+                            self.select.cursor = 0;
+                            self.dirty = true;
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Char('G') => {
+                            self.select.cursor = self.items.len().saturating_sub(1);
+                            self.dirty = true;
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Char('y') => {
+                            // Copy selected messages with role prefixes.
+                            let text = self.collect_selected_text(false);
+                            self.select.active = false;
+                            self.dirty = true;
+                            if !text.is_empty() {
+                                return EventResult::action(AppAction::CopyText(text));
+                            }
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Char('Y') => {
+                            // Copy selected messages as raw text.
+                            let text = self.collect_selected_text(true);
+                            self.select.active = false;
+                            self.dirty = true;
+                            if !text.is_empty() {
+                                return EventResult::action(AppAction::CopyText(text));
+                            }
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Esc => {
+                            self.select.active = false;
+                            self.dirty = true;
+                            return EventResult::consumed();
+                        }
+                        _ => {}
+                    }
+                }
+
                 if key.modifiers.is_empty() {
                     match key.code {
+                        // Thinking toggle.
+                        KeyCode::Char('t') => {
+                            self.toggle_thinking_at_cursor();
+                            return EventResult::consumed();
+                        }
+                        KeyCode::Char('T') => {
+                            self.toggle_all_thinking();
+                            return EventResult::consumed();
+                        }
+                        // Enter visual selection mode.
+                        KeyCode::Char('v') => {
+                            self.select.active = true;
+                            self.select.anchor = self.cursor_index;
+                            self.select.cursor = self.cursor_index;
+                            self.dirty = true;
+                            return EventResult::consumed();
+                        }
+                        // Copy message under cursor.
+                        KeyCode::Char('y') => {
+                            let text = self.message_at_cursor_text(false);
+                            if !text.is_empty() {
+                                return EventResult::action(AppAction::CopyText(text));
+                            }
+                            return EventResult::consumed();
+                        }
                         KeyCode::Up | KeyCode::Char('k') => {
                             self.scroll_up(1);
                             return EventResult::consumed();
@@ -702,6 +1028,9 @@ mod tests {
     fn thinking_deltas_accumulate_into_thinking_panel_on_step_complete() {
         let mut chat = ChatComponent::new(MarkdownRenderer::default());
 
+        // Need a message to attach thinking to.
+        chat.add_user_message("test");
+        let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::TextDelta("hi".to_string())));
         let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::ThinkingDelta("a".to_string())));
         let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::ThinkingDelta("b".to_string())));
         let _ = chat.handle_event(&TuiEvent::Agent(AgentEvent::StepComplete {
@@ -709,7 +1038,13 @@ mod tests {
             summary: String::new(),
         }));
 
-        assert_eq!(chat.last_thinking, "ab");
+        // Thinking should be stored in the assistant message.
+        let last_msg = chat.items.iter().rev().find_map(|item| match item {
+            ChatItem::Message(msg) if msg.role == Role::Assistant => Some(msg),
+            _ => None,
+        });
+        assert!(last_msg.is_some());
+        assert_eq!(last_msg.unwrap().thinking.as_deref(), Some("ab"));
     }
 
     #[test]
