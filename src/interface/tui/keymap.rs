@@ -18,6 +18,7 @@ pub(crate) enum AppKeyAction {
     CopyLastResponse,
     ToggleRawOutput,
     ViewThinking,
+    ToggleMouseCapture,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -114,6 +115,7 @@ impl RuntimeKeymap {
             (KeyBinding::ctrl(KeyCode::Char('o')), A::CopyLastResponse),
             (KeyBinding::alt(KeyCode::Char('r')), A::ToggleRawOutput),
             (KeyBinding::alt(KeyCode::Char('y')), A::ViewThinking),
+            (KeyBinding::plain(KeyCode::Char('M')), A::ToggleMouseCapture),
         ];
 
         let composer = vec![
