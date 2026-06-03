@@ -26,7 +26,7 @@ xylitol 是一个 Rust 编写的 AI coding agent，基于 [adk-rust](https://git
 src/
 ├── agent/       # 核心领域：agent loop, tools, config, prompts (adk-core + adk-agent + adk-runner)
 ├── infra/       # 基础设施：hooks, security, repeat, lsp, skills, session, planning, dap
-└── interface/   # 用户接口：cli, print, tui, rpc, review
+└── interface/   # 用户接口：cli, print, rpc, review
 ```
 
 层间通过 `pub(crate)` 控制可见性，跨层访问通过 `lib.rs` re-export。
@@ -62,13 +62,13 @@ src/
 | `infra-skills` | infra | `adk-tool`（rmcp） |
 | `infra-session` | infra | `adk-session`（rusqlite） |
 | `infra-dap` | infra | Phase 2 |
-| `ui-tui` | interface | `ratatui`, `crossterm`, `termimad`, `syntect` |
+
 | `ui-review` | interface | `syntect`, `similar`, `axum` |
 | `ui-rpc` | interface | — |
 | `dev-vt100` | dev | `vt100` |
 | `dev-e2e` | dev | — |
 
-**默认 features**: `ui-tui`, `infra-session`, `ui-review`
+**默认 features**: `infra-session`, `ui-review`
 
 ---
 
@@ -126,7 +126,7 @@ c05-init-skeleton ────────────────────�
   │   │   │     │   └─ c60-add-model-lock (Phase 2)
   │   │   │     ├─ c70-add-session-snapshot (infra-session)
   │   │   │     └─ c88-add-test-infra
-  │   │   ├─ c80-add-tui (ui-tui)
+  │
   │   │   └─ c87-add-rpc-mode
   │   ├─ c40-add-hooks ── c50-add-security
   │   ├─ c45-add-lsp-layer (infra-lsp)

@@ -1,8 +1,0 @@
----
-source: src/interface/tui/markdown.rs
-expression: render_to_plain(md)
----
-• item 1
-• item 2
-  ◦ nested
-• item 3
