@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 use chrono::Utc;
+use uuid::Uuid;
 
 use super::types::*;
 
@@ -167,14 +168,167 @@ impl SessionManager {
     }
 
     /// Generate a branch summary for cut-point entries.
-    pub fn generate_branch_summary(
+    pub fn generate_branch_summary(&self, skipped_entries: &[SessionEntry]) -> String {
+        if skipped_entries.is_empty() {
+            return String::new();
+        }
+
+        let total = skipped_entries.len();
+        let user_count = skipped_entries
+            .iter()
+            .filter(|e| matches!(e, SessionEntry::Message(m) if m.message.get("role").and_then(|r| r.as_str()) == Some("user")))
+            .count();
+        let assistant_count = skipped_entries
+            .iter()
+            .filter(|e| matches!(e, SessionEntry::Message(m) if m.message.get("role").and_then(|r| r.as_str()) == Some("assistant")))
+            .count();
+
+        // Count tool calls from assistant messages
+        let tool_calls: usize = skipped_entries
+            .iter()
+            .filter_map(|e| {
+                if let SessionEntry::Message(m) = e {
+                    m.message
+                        .get("parts")
+                        .and_then(|p| p.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter(|p| {
+                                    p.get("type").and_then(|t| t.as_str()) == Some("FunctionCall")
+                                })
+                                .count()
+                        })
+                } else {
+                    None
+                }
+            })
+            .sum();
+
+        // Extract files from tool calls
+        let mut files: Vec<String> = Vec::new();
+        for entry in skipped_entries {
+            if let SessionEntry::Message(m) = entry
+                && let Some(parts) = m.message.get("parts").and_then(|p| p.as_array())
+            {
+                for part in parts {
+                    if part.get("type").and_then(|t| t.as_str()) == Some("FunctionCall") {
+                        let name = part.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                        if matches!(name, "read" | "write" | "edit")
+                            && let Some(path) = part
+                                .get("args")
+                                .and_then(|a| a.get("path"))
+                                .and_then(|p| p.as_str())
+                            && !files.contains(&path.to_string())
+                        {
+                            files.push(path.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Find last user message
+        let last_user_msg = skipped_entries.iter().rev().find_map(|e| {
+            if let SessionEntry::Message(m) = e {
+                if m.message.get("role").and_then(|r| r.as_str()) == Some("user") {
+                    m.message
+                        .get("parts")
+                        .and_then(|p| p.as_array())
+                        .and_then(|arr| arr.first())
+                        .and_then(|p| p.get("text"))
+                        .and_then(|t| t.as_str())
+                        .map(|s| {
+                            let truncated: String = s.chars().take(100).collect();
+                            if s.len() > 100 {
+                                format!("{truncated}...")
+                            } else {
+                                truncated
+                            }
+                        })
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        });
+
+        let mut summary = format!("分支摘要:\n- 跳过 {total} 条记录\n");
+        summary.push_str(&format!(
+            "- 包含: {user_count} 条用户消息, {assistant_count} 条助手消息"
+        ));
+        if tool_calls > 0 {
+            summary.push_str(&format!(", {tool_calls} 次工具调用"));
+        }
+        summary.push('\n');
+
+        if let Some(ref msg) = last_user_msg {
+            summary.push_str(&format!("- 最后一条用户消息: \"{msg}\"\n"));
+        }
+
+        if !files.is_empty() {
+            files.sort();
+            files.dedup();
+            summary.push_str(&format!("- 涉及文件: {}\n", files.join(", ")));
+        }
+
+        summary
+    }
+
+    /// Fork a session: create a child session from a parent up to a given entry.
+    ///
+    /// Copies entries [0..at_entry_index+1] from parent, then appends a
+    /// branch_summary for any skipped entries.
+    pub async fn fork(
         &self,
-        _parent_entries: &[SessionEntry],
-    ) -> Result<String, String> {
-        // For now, a simple summary; full compaction logic in Phase 4
-        Ok(format!(
-            "[Branch with {} prior entries]",
-            _parent_entries.len()
-        ))
+        parent_id: &str,
+        child_id: &str,
+        at_entry_id: &str,
+    ) -> Result<(), String> {
+        // Load parent entries
+        let parent_entries = self.load(parent_id).await?;
+
+        // Find the fork point
+        let fork_index = parent_entries
+            .iter()
+            .position(|e| e.entry_id() == Some(at_entry_id))
+            .ok_or_else(|| format!("entry not found in parent session: {at_entry_id}"))?;
+
+        // Split: kept = [0..fork_index+1], skipped = [fork_index+1..]
+        let kept = &parent_entries[..=fork_index];
+        let skipped = if fork_index + 1 < parent_entries.len() {
+            &parent_entries[fork_index + 1..]
+        } else {
+            &[]
+        };
+
+        // Create child session with parent link
+        self.create(child_id, None, Some(parent_id)).await?;
+
+        // Write kept entries to child session
+        for entry in kept {
+            self.append(child_id, entry).await?;
+        }
+
+        // Generate and write branch summary for skipped entries
+        if !skipped.is_empty() {
+            let summary = self.generate_branch_summary(skipped);
+            let now = Utc::now().to_rfc3339();
+            let branch_entry = SessionEntry::BranchSummary(BranchSummaryEntry {
+                base: EntryBase {
+                    entry_type: "branch_summary".into(),
+                    id: Uuid::new_v4().to_string(),
+                    parent_id: Some(at_entry_id.to_string()),
+                    timestamp: now,
+                },
+                from_id: at_entry_id.to_string(),
+                summary,
+                details: None,
+                from_hook: Some(false),
+            });
+            self.append(child_id, &branch_entry).await?;
+        }
+
+        Ok(())
     }
 }
