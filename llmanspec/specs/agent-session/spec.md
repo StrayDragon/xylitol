@@ -12,7 +12,7 @@ llman_spec_evidence:
 kind: llman.sdd.spec
 name: "agent-session"
 purpose: "TBD - created by archiving change c05-rebuild-core. Update purpose after archive."
-requirements[10]{req_id,title,statement}:
+requirements[16]{req_id,title,statement}:
   a1,"agent-session","System MUST provide AgentSession encapsulating: prompt→model→tools→loop with full event stream."
   a2,"turn-events","AgentSession MUST emit: turn_start, message_start, message_update (streaming), message_end events per turn."
   a3,"tool-events","AgentSession MUST emit: tool_execution_start, tool_execution_update (streaming partials), tool_execution_end events per tool call."
@@ -23,7 +23,13 @@ requirements[10]{req_id,title,statement}:
   a8,"session-persistence","AgentSession MUST auto-persist messages to SessionManager after each turn and after tool execution."
   a9,"prompt-construction","AgentSession MUST construct the full messages array: system prompt + context files + history + user prompt, prepended per turn."
   a10,"bdd-agent",BDD tests under tests/features/agent.feature MUST all pass.
-scenarios[10]{req_id,id,given,when,then}:
+  a21,"prompt-template","System MUST support forward-slash template colon name args syntax with positional arg substitution and all-args placeholder and default-value syntax."
+  a22,"template-loader","System MUST load md files as prompt templates from global and project dot-xylitol-prompts directories and CLI-specified paths. Frontmatter provides description."
+  a23,"slash-commands","AgentSession MUST expose get_commands returning builtin commands including model compact session fork stats export new resume plus extension-registered commands."
+  a24,"command-dispatch","AgentSession prompt MUST intercept forward-slash prefix input dispatching to command handler or template expander before sending to LLM."
+  a25,"resource-loader",System MUST provide ResourceLoader aggregating project context files from AGENTS.md and CLAUDE.md plus skills and prompts and system prompt from CLI.
+  a26,"bdd-agent-v3",BDD tests for prompt templates and slash commands MUST all pass.
+scenarios[19]{req_id,id,given,when,then}:
   a1,run,a model and tools are configured,agent is started with a prompt,text response is streamed via events
   a2,"turn-events","agent processes a tool-calling turn",turn starts,"events are emitted in order: turn_start message_start message_update* message_end turn_end"
   a3,"tool-stream",bash tool streams output,tool_execution_start fires,tool_execution_update fires multiple times then tool_execution_end
@@ -34,4 +40,13 @@ scenarios[10]{req_id,id,given,when,then}:
   a8,"auto-save",a turn completes,session is loaded from disk,the turn's messages are persisted
   a9,"prompt-build",system prompt is configured with context files,agent starts a turn,messages array has system prompt then history then user message
   a10,"bdd-pass",BDD runner invoked,"cargo test --test bdd",all agent scenarios pass
+  a21,"template-expand",template has placeholder for first arg,template expanded with main.rs,content has main.rs substituted
+  a21,"default-value",template has default for first arg,template expanded without args,content has default value
+  a22,"load-global",prompts dir has review.md,templates are loaded,review template returned with description
+  a23,"builtin-commands",get_commands called at startup,result is returned,result includes model compact session fork commands
+  a23,"extension-commands",extension registers command analyze,get_commands called,result includes analyze command
+  a24,"slash-dispatch","user sends forward-slash compact",prompt is intercepted,compact handler invoked
+  a24,"template-dispatch","user sends forward-slash review with args",prompt is intercepted,template expanded and sent to LLM
+  a25,"context-files-found",AGENTS.md exists in cwd tree,load_context_files called,returns AGENTS.md content as first entry
+  a26,"bdd-pass",BDD runner invoked,cargo test runs,"all agent-v3 scenarios pass"
 ```

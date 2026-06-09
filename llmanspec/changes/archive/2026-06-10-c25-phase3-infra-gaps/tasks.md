@@ -51,12 +51,12 @@
 
 ## 验收标准
 
-- [ ] 270+ tests pass (existing 261 + new 10+)
-- [ ] ModelRegistry: register_provider, has_configured_auth, get_available, defaults
-- [ ] ModelResolver: exact, fuzzy, alias-pref, thinking suffix, fallback
-- [ ] ResourceLoader: context_files from AGENTS.md, templates from .xylitol/prompts/
-- [ ] PromptTemplate: /template:name args expansion with $1..$N, $@, ${N:-default}
-- [ ] SlashCommands: builtin command table, / prefix interception
-- [ ] OutputAccumulator: rolling buffer, temp file, snapshot
-- [ ] SessionCWD: assert exists on load
-- [ ] Diagnostics: warning on missing API key, error on missing CWD
+- [x] 270+ tests pass (329: 252 lib + 77 BDD)
+- [x] ModelRegistry: register_provider, has_configured_auth, get_available, defaults
+- [x] ModelResolver: exact, fuzzy, alias-pref, thinking suffix, fallback
+- [x] ResourceLoader: context_files from AGENTS.md, templates from .xylitol/prompts/
+- [x] PromptTemplate: /template:name args expansion with $1..$N, $@, ${N:-default}
+- [x] SlashCommands: builtin command table, / prefix interception
+- [x] OutputAccumulator: rolling buffer, temp file, snapshot
+- [x] SessionCWD: assert exists on load
+- [x] Diagnostics: warning on missing API key, error on missing CWD

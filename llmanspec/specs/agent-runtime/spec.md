@@ -12,7 +12,7 @@ llman_spec_evidence:
 kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "TBD - created by archiving change c25-add-agent-loop. Update purpose after archive."
-requirements[11]{req_id,title,statement}:
+requirements[15]{req_id,title,statement}:
   r1,"execution-loop","System MUST implement a self-contained ReAct loop (XyRunner) that calls XyModel for generation and dispatches XyTool calls until completion or max_iterations."
   r2,"event-system","System MUST emit AgentEvent variants (TextDelta / ThinkingDelta / ToolCallStart / ToolCallEnd / StepComplete / Error) from XyRunner without any adk-core Event dependency."
   r3,"session-runtime",System MUST manage session history via XySession trait with InMemorySession as default backend.
@@ -24,7 +24,11 @@ requirements[11]{req_id,title,statement}:
   ar3,"tool-execution","Agent runtime MUST execute all tool calls from a single model response before the next model call, supporting both sequential and parallel execution modes."
   ar4,"iteration-limit","Agent runtime MUST enforce a configurable max_iterations limit, terminating with error when reached."
   ar5,"event-stream",Agent runtime MUST expose the loop as an async Stream<AgentEvent> for consumer layers (Print/TUI/RPC).
-scenarios[12]{req_id,id,given,when,then}:
+  ar8,"session-cwd","Agent runtime MUST validate session working directory exists on session creation and import, returning an error with the missing path when CWD is not accessible."
+  ar9,diagnostics,"Agent runtime MUST collect non-fatal diagnostics (info/warning/error) during session creation covering: missing API keys, unknown model references, extension load failures, and CWD issues."
+  ar10,defaults,"System MUST centralize default values: DEFAULT_THINKING_LEVEL = medium, DEFAULT_MODEL for each known provider, DEFAULT_MAX_ITERATIONS = 50, DEFAULT_COMPACTION_THRESHOLD = 0.8."
+  ar11,"bdd-runtime-v3","BDD tests for session-cwd validation and defaults MUST all pass."
+scenarios[17]{req_id,id,given,when,then}:
   r1,"react-loop",a mock XyModel returns text then tool call then final text,XyRunner executes,all events are emitted and loop terminates after tool response
   r1,"max-iterations",XyModel always returns tool calls,XyRunner reaches max_iterations,loop terminates with MaxIterationsReached error
   r2,"no-adk-events",agent is executing,events are emitted,"no adk_core::Event or adk_runner types appear in the event stream"
@@ -37,4 +41,9 @@ scenarios[12]{req_id,id,given,when,then}:
   ar3,"parallel-tools",model returns 3 tool calls with parallel execution mode,tools execute concurrently,all results are appended before next model call
   ar4,"max-iterations",max_iterations is set to 2,model keeps calling tools for 3 iterations,loop terminates with error after 2nd iteration
   ar5,consumer,an event stream consumer subscribes,loop runs,consumer receives all AgentEvent variants
+  ar8,"cwd-exists",a session has cwd /home/user/project and directory exists,session is loaded,no error returned
+  ar8,"cwd-missing",a session has cwd /nonexistent/path,session is loaded,error message includes the missing path
+  ar9,"diag-missing-key",no API key configured for openai,session is created,diagnostics list contains warning about missing openai API key
+  ar10,"default-thinking",no thinking level explicitly set,thinking_level is queried,returns medium
+  ar11,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all runtime-v3 scenarios pass"
 ```
