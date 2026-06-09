@@ -38,13 +38,9 @@ chrono = { version = "0.4.44", features = ["serde"] }
 hex = "0.4.3"
 uuid = { version = "1.23.1", features = ["v4"] }
 
-# ── ui-review / ui-tui dependencies (optional) ──
+# ── ui-review dependencies (optional) ──
 ratatui = { version = "0.30", optional = true, default-features = false, features = ["crossterm", "scrolling-regions", "unstable-backend-writer"] }
 crossterm = { version = "0.29", optional = true, features = ["bracketed-paste", "event-stream"] }
-leaf-core = { git = "https://github.com/StrayDragon/leaf", package = "leaf-core", optional = true }
-tui-textarea = { version = "0.11.0", package = "tui-textarea-2", features = ["crossterm"], optional = true }
-unicode-width = { version = "0.2", optional = true }
-libc = { version = "0.2", optional = true }
 vt100 = { version = "0.15", optional = true }
 shlex = { version = "1", optional = true }
 
@@ -66,7 +62,6 @@ default = [
     "infra-session",
     "infra-sandbox",
     "infra-rtk",
-    "ui-tui",
     "ui-review",
 ]
 
@@ -84,7 +79,6 @@ infra-sandbox = []
 infra-rtk = []
 
 # ── interface/ layer ──────────────────────────
-ui-tui = ["dep:ratatui", "dep:crossterm", "dep:leaf-core", "dep:tui-textarea", "dep:unicode-width", "dep:libc", "dep:shlex"]
 ui-review = ["dep:ratatui", "dep:crossterm"]
 
 # ── development only ──────────────────────────

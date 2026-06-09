@@ -1,7 +1,7 @@
 # xylitol
 
-An LLM-driven local development agent for Rust projects. Provides an interactive
-terminal interface with tool-calling capabilities (bash, file I/O, grep, find)
+An LLM-driven local development agent for Rust projects. Provides a CLI-based
+agent with tool-calling capabilities (bash, file I/O, grep, find)
 governed by a configurable security policy.
 
 ## Quick Start
@@ -12,8 +12,9 @@ git clone https://github.com/straydragon/xylitol
 cd xylitol
 cargo build --release
 
-# Run with default features (TUI mode)
-cargo run -- --model <alias>
+# Run with default features
+# Requires a prompt: xylitol "your prompt"
+cargo run -- --model <alias> -- "your prompt"
 ```
 
 ## Configuration
@@ -45,7 +46,7 @@ Key sections:
 | `infra-session`   | yes     | Session persistence & compaction    |
 | `infra-sandbox`   | yes     | Sandboxed execution environment     |
 | `infra-rtk`       | yes     | Runtime toolkit utilities           |
-| `ui-tui`          | yes     | Terminal User Interface (ratatui)   |
+
 | `ui-review`       | yes     | Diff review UI mode                 |
 
 Build with minimal features:

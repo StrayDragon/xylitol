@@ -1,5 +1,0 @@
----
-source: src/interface/tui/markdown.rs
-expression: render_to_plain(md)
----
-中文内容 粗体 and  代码

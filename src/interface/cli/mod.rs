@@ -2,7 +2,7 @@
 //!
 //! Mode is auto-detected from positional args and flags:
 //! - prompt present → print/stdio mode
-//! - no prompt → interactive/TUI mode (requires `ui-tui` feature)
+//! - no prompt → requires a prompt (or use `--acp` for ACP mode)
 //! - `--acp` flag → ACP mode (requires `infra-acp` feature)
 
 use std::sync::Arc;
@@ -95,35 +95,7 @@ pub(crate) fn run() -> Result<(), Box<dyn std::error::Error>> {
             tracing::info!("print/stdio mode");
             run_print_mode(&args, &app_config, prompt)
         }
-        _ => {
-            #[cfg(feature = "ui-tui")]
-            {
-                tracing::info!("interactive/TUI mode");
-                let rt = tokio::runtime::Runtime::new()?;
-                #[allow(unused_mut)]
-                let mut tools = ToolRegistry::builtins();
-
-                // Register MCP tools from configured servers.
-                #[cfg(feature = "infra-skills")]
-                rt.block_on(register_mcp_tools(&mut tools, &app_config))?;
-
-                let profile = build_resolved_profile(&app_config, args.model.as_deref())?;
-                let session = Arc::new(InMemorySession::new());
-
-                rt.block_on(crate::interface::tui::run_tui(
-                    tools, app_config, profile, session,
-                ))?;
-                Ok(())
-            }
-            #[cfg(not(feature = "ui-tui"))]
-            {
-                Err(
-                    "no prompt provided and interactive mode is not available (ui-tui feature not enabled) \
-                     — use: xylitol \"your prompt\""
-                        .into(),
-                )
-            }
-        }
+        _ => Err("no prompt provided — use: xylitol \"your prompt\"".into()),
     }
 }
 
