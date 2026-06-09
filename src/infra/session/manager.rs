@@ -11,6 +11,7 @@ use chrono::Utc;
 use serde_json::Value;
 use uuid::Uuid;
 
+use super::compaction;
 use super::types::*;
 
 /// Manages session persistence using JSONL files.
@@ -688,6 +689,18 @@ impl SessionManager {
         child_id: &str,
         at_entry_id: &str,
     ) -> Result<(), String> {
+        self.fork_with_model(parent_id, child_id, at_entry_id, None)
+            .await
+    }
+
+    /// Fork with optional LLM model for branch summary.
+    pub async fn fork_with_model(
+        &self,
+        parent_id: &str,
+        child_id: &str,
+        at_entry_id: &str,
+        model: Option<&dyn crate::agent::traits::XyModel>,
+    ) -> Result<(), String> {
         let parent_entries = self.load(parent_id).await?;
 
         let fork_index = parent_entries
@@ -709,7 +722,14 @@ impl SessionManager {
         }
 
         if !skipped.is_empty() {
-            let summary = self.generate_branch_summary(skipped);
+            let summary = if let Some(m) = model {
+                match compaction::generate_branch_summary_llm(skipped, m, 16384).await {
+                    Some(r) => r.summary,
+                    None => self.generate_branch_summary(skipped), // fallback
+                }
+            } else {
+                self.generate_branch_summary(skipped)
+            };
             let now = Utc::now().to_rfc3339();
             let branch_entry = SessionEntry::BranchSummary(BranchSummaryEntry {
                 base: EntryBase {
