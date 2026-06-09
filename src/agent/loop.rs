@@ -12,6 +12,9 @@ use futures::Stream;
 use futures::StreamExt;
 use serde_json::Value;
 
+use crate::agent::error::XyError;
+use crate::agent::event::AgentEventBus;
+use crate::agent::retry::{RetryState, is_retryable_error};
 use crate::agent::session::AgentSession;
 use crate::agent::traits::{XyModel, XyToolCtx};
 use crate::agent::types::{XyChunk, XyContent, XyPart, XyToolSchema};
@@ -160,6 +163,8 @@ fn run_react_loop(
         // Add user message
         history.push(XyContent::user(&user_prompt));
 
+        let retry_state = RetryState::new(3, 1000);
+
         for turn in 0..max_iterations {
             yield AgentEvent::TurnStart { turn_index: turn as u32 };
 
@@ -175,18 +180,19 @@ fn run_react_loop(
                 msgs
             };
 
-            // Call model
-            let stream_result = model
-                .generate_stream(messages, &tool_schemas, true)
-                .await;
+            // Call model with retry support
+            let stream_result = call_with_retry(
+                &model, messages.clone(), &tool_schemas, &retry_state,
+            ).await;
 
-            let mut chunk_stream = match stream_result {
-                Ok(s) => s,
+            let mut chunk_stream: Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
+            match stream_result {
+                Ok(s) => chunk_stream = s,
                 Err(e) => {
-                    yield AgentEvent::Error(format!("model error: {e}"));
+                    yield AgentEvent::Error(e);
                     break;
                 }
-            };
+            }
 
             yield AgentEvent::MessageStart { role: "assistant".to_string() };
 
@@ -301,6 +307,32 @@ fn run_react_loop(
     }
 }
 
+/// Helper: call model with retry for transient errors.
+async fn call_with_retry(
+    model: &Arc<dyn XyModel>,
+    messages: Vec<XyContent>,
+    tool_schemas: &[XyToolSchema],
+    retry_state: &RetryState,
+) -> Result<Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>, String> {
+    loop {
+        match model
+            .generate_stream(messages.clone(), tool_schemas, true)
+            .await
+        {
+            Ok(stream) => return Ok(stream),
+            Err(e) => {
+                let err_msg = format!("model error: {e}");
+                if is_retryable_error(&err_msg) && retry_state.can_retry() {
+                    let delay = retry_state.next_delay();
+                    retry_state.backoff(delay).await;
+                    continue;
+                }
+                return Err(err_msg);
+            }
+        }
+    }
+}
+
 use crate::agent::tools::ToolRegistry;
 
 // ── AgentEventStream ────────────────────────────────────────────────
@@ -321,6 +353,16 @@ impl AgentEventStream {
             inner,
             done: false,
             turn_index: 0,
+        }
+    }
+
+    /// Bridge this stream to an EventBus, returning a handle.
+    /// Events consumed from the stream are published to the bus.
+    /// The subscriber receives events via the bus.
+    pub async fn fan_out(self, bus: &AgentEventBus) {
+        let mut stream = self;
+        while let Some(event) = stream.next().await {
+            bus.emit(event);
         }
     }
 }
