@@ -93,9 +93,7 @@ impl XyTool for BashTool {
 
         let child_result = tokio::select! {
             _ = cancel.cancelled() => {
-                // Kill process tree via a separately-tracked pid
-                kill_tree(pid).await;
-                // We can't access child here but we already have pid
+                super::process::kill_tree(pid).await;
                 return Err(XyToolError::Aborted);
             }
             r = timeout_fallible(output_fut, timeout_dur) => r,
@@ -109,8 +107,7 @@ impl XyTool for BashTool {
                 )));
             }
             Err(_elapsed) => {
-                // Timeout — kill via pid (child already moved)
-                kill_tree(pid).await;
+                super::process::kill_tree(pid).await;
                 return Err(XyToolError::Timeout(timeout_dur));
             }
         };
@@ -163,17 +160,6 @@ fn is_executable(name: &str) -> bool {
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
-}
-
-async fn kill_tree(pid: u32) {
-    if pid == 0 {
-        return;
-    }
-    // Kill process group
-    let _ = Command::new("kill")
-        .args(["-9", &format!("-{pid}")])
-        .output()
-        .await;
 }
 
 async fn timeout_fallible<F, T, E>(
