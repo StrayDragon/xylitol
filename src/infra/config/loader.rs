@@ -20,7 +20,7 @@ use super::validate::{ValidationError, validate_config};
 
 /// Errors from config loading.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum LoadError {
+pub enum LoadError {
     #[error("I/O error reading {path}: {source}")]
     Io {
         path: String,
@@ -44,7 +44,7 @@ pub(crate) enum LoadError {
 /// Load configuration from all layers, returning the merged `AppConfig`.
 ///
 /// `cli_config` — optional path to a CLI `--config` YAML file (highest priority).
-pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, LoadError> {
+pub fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, LoadError> {
     let paths = ConfigPaths::discover();
 
     // Load all config levels into serde_json::Value, rendering templates.
@@ -160,7 +160,7 @@ fn load_and_render(path: &Path, paths: &ConfigPaths) -> Result<Value, LoadError>
 /// - `Value::Object`: recursive merge, latter keys override earlier.
 /// - `Value::Array`: overlay replaces base (default).
 /// - Scalar values: overlay replaces base.
-pub(crate) fn deep_merge(base: &mut Value, overlay: Value) {
+pub fn deep_merge(base: &mut Value, overlay: Value) {
     match (base, overlay) {
         (base @ &mut Value::Object(_), Value::Object(map)) => {
             let base_map = base.as_object_mut().unwrap();
@@ -187,7 +187,7 @@ impl AppConfig {
     /// Checks:
     /// - Model ID cross-references within `models` entries.
     /// - Provider constraints (MVP: only OpenAI / Anthropic).
-    pub(crate) fn validate_business_rules(&self) -> Result<(), ValidationError> {
+    pub fn validate_business_rules(&self) -> Result<(), ValidationError> {
         // Check that model entries reference valid models.
         for (alias, entry) in &self.model.models {
             if let Some(ref fallback) = entry.fallback

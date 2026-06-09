@@ -8,7 +8,7 @@ use minijinja::UndefinedBehavior;
 
 /// Errors that can occur during template rendering.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum TemplateError {
+pub enum TemplateError {
     #[error("template error in config file: {detail}")]
     Parse { detail: String },
     #[error(
@@ -22,7 +22,7 @@ pub(crate) enum TemplateError {
 ///
 /// `env_vars` and `secret_vars` provide the `{{ env.* }}` and `{{ secret.* }}`
 /// namespaces respectively.
-pub(crate) fn render(
+pub fn render(
     source: &str,
     env_vars: &HashMap<String, String>,
     secret_vars: &HashMap<String, String>,

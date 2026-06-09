@@ -1,16 +1,15 @@
-pub(crate) mod compaction;
-pub(crate) mod config;
-pub(crate) mod fine_tune;
-pub(crate) mod gc;
-pub(crate) mod manager;
-pub(crate) mod storage;
-pub(crate) mod types;
+//! Session persistence — JSONL file-based session storage.
+//!
+//! Aligns with pi's session-manager.ts. Key behaviors:
+//! - JSONL format (one JSON object per line, append-only)
+//! - Stored in ~/.xylitol/sessions/<id>.jsonl
+//! - Entry types: message, compaction, branch_summary, model_change, thinking_level_change, custom
+//! - Session tree via parentSession header field
+//! - Version migration support
+//! - Atomic appends with file locking
 
-// Re-exports consumed by upper layers (integrated in agent setup).
-#[allow(unused_imports)]
-pub(crate) use config::SessionConfig;
-#[allow(unused_imports)]
-pub(crate) use manager::SnapshotManager;
+pub mod manager;
+pub mod types;
 
-#[cfg(test)]
-pub(crate) mod tests;
+pub use manager::SessionManager;
+pub use types::*;

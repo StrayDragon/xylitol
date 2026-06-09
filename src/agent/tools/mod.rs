@@ -1,49 +1,53 @@
-pub(crate) mod bash;
-pub(crate) mod edit;
-pub(crate) mod find;
-pub(crate) mod grep;
-pub(crate) mod ls;
-pub(crate) mod patch;
-pub(crate) mod read;
-pub(crate) mod write;
+pub mod bash;
+pub mod edit;
+pub mod find;
+pub mod grep;
+pub mod ls;
+pub mod mutation;
+pub mod operations;
+pub mod patch;
+pub mod path_utils;
+pub mod read;
+pub mod truncate;
+pub mod write;
 
 use std::sync::Arc;
 
 use crate::agent::traits::XyTool;
 
+// ── ToolRegistry ───────────────────────────────────────────────────
+
 /// Registry for managing available tools.
 #[derive(Clone)]
-pub(crate) struct ToolRegistry {
+pub struct ToolRegistry {
     tools: Vec<Arc<dyn XyTool>>,
 }
 
+impl Default for ToolRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ToolRegistry {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { tools: Vec::new() }
     }
 
-    pub(crate) fn register(&mut self, tool: Arc<dyn XyTool>) {
+    pub fn register(&mut self, tool: Arc<dyn XyTool>) {
         self.tools.push(tool);
     }
 
-    pub(crate) fn get(&self, name: &str) -> Option<Arc<dyn XyTool>> {
+    pub fn get(&self, name: &str) -> Option<Arc<dyn XyTool>> {
         self.tools.iter().find(|t| t.name() == name).cloned()
     }
 
-    pub(crate) fn list(&self) -> &[Arc<dyn XyTool>] {
+    pub fn list(&self) -> &[Arc<dyn XyTool>] {
         &self.tools
     }
 
-    /// Transform each registered tool in-place.
-    pub(crate) fn map_tools<F>(&mut self, f: F)
-    where
-        F: FnMut(Arc<dyn XyTool>) -> Arc<dyn XyTool>,
-    {
-        self.tools = self.tools.iter().cloned().map(f).collect();
-    }
-
     /// Return tools matching the given names. Returns all if `allowed` is `None` or empty.
-    pub(crate) fn filtered(&self, allowed: Option<&[String]>) -> Vec<Arc<dyn XyTool>> {
+    pub fn filtered(&self, allowed: Option<&[String]>) -> Vec<Arc<dyn XyTool>> {
         match allowed {
             Some(names) if !names.is_empty() => self
                 .tools
@@ -55,26 +59,23 @@ impl ToolRegistry {
         }
     }
 
-    /// Wrap every registered tool with a security-checking wrapper.
-    pub(crate) fn wrap_with_security(&mut self, engine: crate::infra::security::SecurityEngine) {
-        let engine = std::sync::Arc::new(engine);
-        self.tools = self
-            .tools
-            .iter()
-            .map(|t| {
-                let w =
-                    crate::infra::security::SecurityToolWrapper::new(t.clone(), (*engine).clone());
-                Arc::new(w) as Arc<dyn XyTool>
-            })
-            .collect();
+    /// Wrap every registered tool with a hook-checking wrapper.
+    /// TODO: implement in hook-system phase — for now it's a no-op passthrough.
+    pub fn wrap_with_hooks<F>(&mut self, _hook_cb: F)
+    where
+        F: Fn(&str, &serde_json::Value) -> bool + Send + Sync + 'static,
+    {
+        // Placeholder: will implement proper hook tool wrapper in Phase 5.
+        // For now, tools are passed through as-is.
     }
 
     /// Create a registry with all built-in tools registered.
-    pub(crate) fn builtins() -> Self {
+    pub fn builtins() -> Self {
+        let mq = Arc::new(mutation::FileMutationQueue::new());
         let mut reg = Self::new();
         reg.register(Arc::new(read::ReadTool));
-        reg.register(Arc::new(write::WriteTool));
-        reg.register(Arc::new(edit::EditTool));
+        reg.register(Arc::new(write::WriteTool::new(mq.clone())));
+        reg.register(Arc::new(edit::EditTool::new(mq.clone())));
         reg.register(Arc::new(bash::BashTool));
         reg.register(Arc::new(grep::GrepTool));
         reg.register(Arc::new(find::FindTool));
@@ -115,5 +116,23 @@ mod tests {
         assert!(names.contains(&"find"));
         assert!(names.contains(&"ls"));
         assert_eq!(names.len(), 7);
+    }
+
+    #[test]
+    fn test_registry_filtered_subset() {
+        let reg = ToolRegistry::builtins();
+        let allowed: Vec<String> = vec!["read".into(), "bash".into()];
+        let filtered = reg.filtered(Some(&allowed));
+        assert_eq!(filtered.len(), 2);
+        let names: Vec<&str> = filtered.iter().map(|t| t.name()).collect();
+        assert!(names.contains(&"read"));
+        assert!(names.contains(&"bash"));
+    }
+
+    #[test]
+    fn test_registry_filtered_all_when_none() {
+        let reg = ToolRegistry::builtins();
+        let filtered = reg.filtered(None);
+        assert_eq!(filtered.len(), 7);
     }
 }

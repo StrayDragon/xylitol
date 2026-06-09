@@ -361,7 +361,7 @@ impl LspPool {
 
     /// Insert a pre-constructed [`AgentHandle`] (for testing).
     #[cfg(test)]
-    pub(crate) fn insert_handle(&mut self, language: &str, handle: AgentHandle) {
+    pub fn insert_handle(&mut self, language: &str, handle: AgentHandle) {
         // Also ensure a backend entry exists so pool invariants hold.
         self.backends.entry(language.to_owned()).or_insert_with(|| {
             tracing::warn!(language, "insert_handle without registered backend");

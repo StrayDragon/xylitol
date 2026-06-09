@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// The root configuration object for xylitol.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct AppConfig {
+pub struct AppConfig {
     pub model: ModelConfig,
     pub agents: AgentsConfig,
     pub execution: ExecutionConfig,
@@ -53,7 +53,7 @@ pub(crate) struct AppConfig {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct ModelConfig {
+pub struct ModelConfig {
     /// Default model ID to use when no model is specified.
     pub default_model: Option<String>,
     /// Named model entries keyed by alias.
@@ -61,7 +61,7 @@ pub(crate) struct ModelConfig {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub(crate) struct ModelEntry {
+pub struct ModelEntry {
     pub provider: ProviderKind,
     pub model: String,
     /// Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.
@@ -74,7 +74,7 @@ pub(crate) struct ModelEntry {
 
 /// Supported LLM providers (MVP: only OpenAI-compatible and Anthropic).
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub(crate) enum ProviderKind {
+pub enum ProviderKind {
     #[serde(rename = "openai")]
     OpenAI,
     #[serde(rename = "anthropic")]
@@ -86,7 +86,7 @@ pub(crate) enum ProviderKind {
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub(crate) struct ExecutionConfig {
+pub struct ExecutionConfig {
     /// Override model for execution steps.
     #[serde(default)]
     pub model: Option<String>,
@@ -131,7 +131,7 @@ fn default_max_retries() -> u8 {
 ///       system_prompt: "You are a planning agent."
 /// ```
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub(crate) struct AgentProfile {
+pub struct AgentProfile {
     /// Model alias referencing a key in `model.models`, or a raw model ID.
     /// When `None`, falls back to config-level defaults.
     #[serde(default)]
@@ -153,7 +153,7 @@ pub(crate) struct AgentProfile {
 /// using config-level model resolution.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct AgentsConfig {
+pub struct AgentsConfig {
     /// The profile name used when no profile is explicitly specified.
     #[serde(default = "default_profile_name")]
     pub default_profile: String,
@@ -172,7 +172,7 @@ fn default_max_iterations() -> u32 {
 
 impl AppConfig {
     /// Resolve a model alias to an agent-level [`ModelConfig`].
-    pub(crate) fn resolve_model(
+    pub fn resolve_model(
         &self,
         model_id: &str,
     ) -> Result<crate::agent::model::ModelConfig, String> {
@@ -208,7 +208,7 @@ impl AppConfig {
     }
 
     /// Resolve a named agent profile to a [`ResolvedProfile`].
-    pub(crate) fn resolve_profile(
+    pub fn resolve_profile(
         &self,
         name: &str,
     ) -> Result<crate::agent::profile::ResolvedProfile, String> {
@@ -244,7 +244,7 @@ impl AppConfig {
     }
 
     /// Resolve the default agent profile.
-    pub(crate) fn resolve_default_profile(
+    pub fn resolve_default_profile(
         &self,
     ) -> Result<crate::agent::profile::ResolvedProfile, String> {
         let name = if self.agents.default_profile.is_empty() {
@@ -262,7 +262,7 @@ impl AppConfig {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct PatchApplyConfig {
+pub struct PatchApplyConfig {
     /// Whether to automatically apply patches without prompting.
     #[serde(default)]
     pub auto_apply: bool,
@@ -274,14 +274,14 @@ pub(crate) struct PatchApplyConfig {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct HooksConfig {
+pub struct HooksConfig {
     pub global: Vec<HookEntry>,
     pub project: Vec<HookEntry>,
     pub user: Vec<HookEntry>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub(crate) struct HookEntry {
+pub struct HookEntry {
     /// Shell command to execute (e.g., "python3 /path/to/hook.py").
     pub command: String,
     /// Event patterns to match (e.g., "pre.tool_call", "post.step_complete").
@@ -325,7 +325,7 @@ fn default_hook_timeout() -> u64 {
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-pub(crate) struct SecurityConfig {
+pub struct SecurityConfig {
     /// Master toggle — enabled by default for safety.
     #[serde(default = "default_security_enabled")]
     pub enabled: bool,
@@ -351,7 +351,7 @@ fn default_security_enabled() -> bool {
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct BashSecurityConfig {
+pub struct BashSecurityConfig {
     #[serde(default)]
     pub allowed_paths: Vec<String>,
     #[serde(default)]
@@ -376,7 +376,7 @@ fn default_bash_timeout() -> u64 {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct FilesystemSecurityConfig {
+pub struct FilesystemSecurityConfig {
     #[serde(default)]
     pub allowed_patterns: Vec<String>,
     #[serde(default)]
@@ -385,7 +385,7 @@ pub(crate) struct FilesystemSecurityConfig {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct NetworkSecurityConfig {
+pub struct NetworkSecurityConfig {
     #[serde(default)]
     pub allowed_domains: Vec<String>,
     #[serde(default)]
@@ -393,7 +393,7 @@ pub(crate) struct NetworkSecurityConfig {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub(crate) struct ResourceLimits {
+pub struct ResourceLimits {
     #[serde(default = "default_max_subprocesses")]
     pub max_subprocesses: u16,
     #[serde(default = "default_max_memory")]
@@ -431,7 +431,7 @@ fn default_max_disk() -> u64 {
 #[cfg(feature = "infra-sandbox")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct SandboxConfig {
+pub struct SandboxConfig {
     #[serde(default)]
     pub enabled: bool,
 }
@@ -441,7 +441,7 @@ pub(crate) struct SandboxConfig {
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub(crate) struct RepeatDetectionConfig {
+pub struct RepeatDetectionConfig {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_min_n")]
@@ -494,7 +494,7 @@ fn default_window_repeat_ratio() -> f64 {
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct RecoveryConfig {
+pub struct RecoveryConfig {
     #[serde(default = "default_recovery_strategy")]
     pub strategy: String,
     #[serde(default = "default_max_attempts")]
@@ -516,7 +516,7 @@ impl Default for RecoveryConfig {
 /// A single recovery action in the sequential chain.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub(crate) enum RecoveryAction {
+pub enum RecoveryAction {
     /// Prepend an anti-repetition warning to the prompt and retry.
     AlterPrompt {
         #[serde(default = "default_alter_prompt_prepend")]
@@ -571,7 +571,7 @@ fn default_recovery_actions() -> Vec<RecoveryAction> {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct ToolsConfig {
+pub struct ToolsConfig {
     #[serde(default)]
     pub allowlist: Vec<String>,
     #[serde(default)]
@@ -603,7 +603,7 @@ fn default_max_dir_entries() -> u32 {
 
 #[cfg(feature = "agent-planning")]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub(crate) struct PlanningConfig {
+pub struct PlanningConfig {
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
@@ -639,7 +639,7 @@ fn default_reasoning_depth() -> String {
 #[cfg(feature = "agent-planning")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct ValidationConfig {
+pub struct ValidationConfig {
     #[serde(default)]
     pub enabled: bool,
 }
@@ -650,7 +650,7 @@ pub(crate) struct ValidationConfig {
 
 #[cfg(feature = "infra-session")]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub(crate) struct SessionConfig {
+pub struct SessionConfig {
     #[serde(default)]
     pub auto_snapshot: bool,
     #[serde(default = "default_max_snapshots")]
@@ -677,7 +677,7 @@ fn default_max_snapshots() -> u16 {
 #[cfg(feature = "infra-session")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct SessionStorageConfig {
+pub struct SessionStorageConfig {
     #[serde(default = "default_storage_backend")]
     pub backend: String,
     #[serde(default)]
@@ -692,7 +692,7 @@ fn default_storage_backend() -> String {
 #[cfg(feature = "infra-session")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct CompactionConfig {
+pub struct CompactionConfig {
     #[serde(default)]
     pub enabled: bool,
 }
@@ -704,7 +704,7 @@ pub(crate) struct CompactionConfig {
 #[cfg(feature = "infra-skills")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub(crate) struct SkillConfig {
+pub struct SkillConfig {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
@@ -718,7 +718,7 @@ pub(crate) struct SkillConfig {
 
 #[cfg(feature = "infra-skills")]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub(crate) struct McpServerConfig {
+pub struct McpServerConfig {
     pub name: String,
     /// Transport kind: "stdio" or "sse".
     #[serde(default = "default_mcp_transport")]
@@ -759,7 +759,7 @@ fn default_mcp_transport() -> McpTransportKind {
 #[cfg(feature = "infra-skills")]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum McpTransportKind {
+pub enum McpTransportKind {
     Stdio,
     Sse,
 }
@@ -770,7 +770,7 @@ pub(crate) enum McpTransportKind {
 
 #[cfg(feature = "ui-review")]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub(crate) struct ReviewConfig {
+pub struct ReviewConfig {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_review_mode")]
@@ -806,7 +806,7 @@ fn default_review_backend() -> String {
 
 #[cfg(feature = "infra-acp")]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub(crate) struct AcpConfig {
+pub struct AcpConfig {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_acp_port")]

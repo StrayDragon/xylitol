@@ -6,7 +6,7 @@
 
 /// Severity level of a review comment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CommentSeverity {
+pub enum CommentSeverity {
     Info,
     Warning,
     Error,
@@ -15,7 +15,7 @@ pub(crate) enum CommentSeverity {
 
 impl CommentSeverity {
     /// Parse from a string.
-    pub(crate) fn parse(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "warning" | "warn" => CommentSeverity::Warning,
             "error" | "err" => CommentSeverity::Error,
@@ -25,7 +25,7 @@ impl CommentSeverity {
     }
 
     /// Return a short label.
-    pub(crate) fn label(&self) -> &'static str {
+    pub fn label(&self) -> &'static str {
         match self {
             CommentSeverity::Info => "info",
             CommentSeverity::Warning => "warning",
@@ -37,7 +37,7 @@ impl CommentSeverity {
 
 /// A single line-level review comment.
 #[derive(Debug, Clone)]
-pub(crate) struct ReviewComment {
+pub struct ReviewComment {
     /// File path the comment refers to.
     pub file: String,
     /// Start line number (1-based).
@@ -52,7 +52,7 @@ pub(crate) struct ReviewComment {
 
 /// The final verdict after reviewing.
 #[derive(Debug, Clone)]
-pub(crate) enum ReviewVerdict {
+pub enum ReviewVerdict {
     /// Accept all changes (comments are still captured).
     AcceptAll(Vec<ReviewComment>),
     /// Reject with attached comments.
@@ -61,7 +61,7 @@ pub(crate) enum ReviewVerdict {
 
 /// A single line in a diff hunk.
 #[derive(Debug, Clone)]
-pub(crate) struct DiffLine {
+pub struct DiffLine {
     /// The kind of change.
     pub kind: DiffLineKind,
     /// The line content (without prefix).
@@ -74,7 +74,7 @@ pub(crate) struct DiffLine {
 
 /// Whether a diff line is an addition, deletion, or context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DiffLineKind {
+pub enum DiffLineKind {
     Add,
     Delete,
     Context,
@@ -82,7 +82,7 @@ pub(crate) enum DiffLineKind {
 
 impl DiffLineKind {
     /// Return the diff prefix character.
-    pub(crate) fn prefix(&self) -> &'static str {
+    pub fn prefix(&self) -> &'static str {
         match self {
             DiffLineKind::Add => "+",
             DiffLineKind::Delete => "-",
@@ -93,7 +93,7 @@ impl DiffLineKind {
 
 /// A contiguous hunk of changes in a diff.
 #[derive(Debug, Clone)]
-pub(crate) struct DiffHunk {
+pub struct DiffHunk {
     /// File path this hunk belongs to.
     pub file: String,
     /// Start line in the old file (1-based).
@@ -110,7 +110,7 @@ pub(crate) struct DiffHunk {
 
 /// A complete diff review session.
 #[derive(Debug, Clone)]
-pub(crate) struct ReviewSession {
+pub struct ReviewSession {
     /// Unique identifier for this review session.
     pub review_id: String,
     /// All hunks in this session.
@@ -123,7 +123,7 @@ pub(crate) struct ReviewSession {
 
 impl ReviewSession {
     /// Create a new review session.
-    pub(crate) fn new(review_id: String, hunks: Vec<DiffHunk>) -> Self {
+    pub fn new(review_id: String, hunks: Vec<DiffHunk>) -> Self {
         Self {
             review_id,
             hunks,
@@ -133,17 +133,17 @@ impl ReviewSession {
     }
 
     /// Add a comment to the session.
-    pub(crate) fn add_comment(&mut self, comment: ReviewComment) {
+    pub fn add_comment(&mut self, comment: ReviewComment) {
         self.comments.push(comment);
     }
 
     /// Return the total number of changed lines across all hunks.
-    pub(crate) fn total_changes(&self) -> usize {
+    pub fn total_changes(&self) -> usize {
         self.hunks.iter().flat_map(|h| &h.lines).count()
     }
 
     /// Return the number of files touched.
-    pub(crate) fn file_count(&self) -> usize {
+    pub fn file_count(&self) -> usize {
         let mut files: Vec<&str> = self.hunks.iter().map(|h| h.file.as_str()).collect();
         files.sort();
         files.dedup();

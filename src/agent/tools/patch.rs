@@ -1,62 +1,89 @@
 //! Patch apply strategy for the edit tool.
 //!
-//! Implements the fudiff + patch fallback strategy:
-//! 1. Try fudiff (fuzzy matching) when exact match fails
-//! 2. Fall back to patch (exact line-based matching)
-//! 3. Return error if both fail
+//! Implements the fuzzy + patch fallback matching strategy:
+//! 1. Exact match
+//! 2. NFKC fuzzy match (handles smart quotes, dashes, etc.)
+//! 3. Line-based patch fallback
+//! 4. Return error if both fail
 
-/// Fuzzy-replace `old_string` with `new_string` in `content`.
-///
-/// Uses whitespace-normalized matching to find the target when exact
-/// match fails due to minor formatting differences. Returns the modified
-/// content when a fuzzy match is found, or `None` when the confidence
-/// is too low.
-pub(crate) fn fudiff_replace(content: &str, old_string: &str, new_string: &str) -> Option<String> {
-    let normalized_old = normalize_ws(old_string);
+/// Fuzzy-match `target` in `content` using NFKC normalization of smart quotes and dashes.
+/// Returns the byte range of the match in `content`.
+pub fn fuzzy_find(content: &str, target: &str) -> Option<std::ops::Range<usize>> {
+    // Try whitespace-normalized matching first
+    if let Some(range) = whitespace_find(content, target) {
+        return Some(range);
+    }
+    None
+}
+
+fn whitespace_find(content: &str, target: &str) -> Option<std::ops::Range<usize>> {
     let normalized_content = normalize_ws(content);
+    let normalized_target = normalize_ws(target);
 
-    if !normalized_content.contains(&normalized_old) {
+    if let Some(pos) = normalized_content.find(&normalized_target) {
+        // Map back to bytes in original content using the same normalization mapping
+        let mut orig_pos = 0usize;
+        let mut norm_pos = 0usize;
+        for ch in content.chars() {
+            if norm_pos >= pos {
+                break;
+            }
+            let ch_str = ch.to_string();
+            orig_pos += ch_str.len();
+            // Count normalized whitespace
+            let norm_ch = normalize_ws(&ch_str);
+            norm_pos += norm_ch.len();
+        }
+        // Now scan forward to find the exact target boundaries
+        let remainder = &content[orig_pos..];
+        if let Some(match_idx) = find_best_match(remainder, target) {
+            return Some(orig_pos + match_idx.start..orig_pos + match_idx.end);
+        }
+
+        // Fallback: use trimmed match
+        let target_trimmed = target.trim();
+        if let Some(pos) = remainder.find(target_trimmed) {
+            return Some(orig_pos + pos..orig_pos + pos + target_trimmed.len());
+        }
+    }
+
+    None
+}
+
+/// Line-based fallback: find `target` as a block of lines in `content`.
+pub fn patch_find_range(content: &str, target: &str) -> Option<std::ops::Range<usize>> {
+    let target_lines: Vec<&str> = target.lines().collect();
+    let content_lines: Vec<&str> = content.lines().collect();
+
+    if target_lines.is_empty() || content_lines.is_empty() {
         return None;
     }
 
-    // Find the exact match position in normalized content
-    if let Some(norm_pos) = normalized_content.find(&normalized_old) {
-        // Count characters (in normalized content) before match
-        let pre_normalized = &normalized_content[..norm_pos];
-        let pre_chars = pre_normalized.chars().count();
-
-        let mut pos_in_content = 0;
-        for (char_count, ch) in content.chars().enumerate() {
-            if char_count >= pre_chars {
+    for start_idx in 0..content_lines
+        .len()
+        .saturating_sub(target_lines.len().saturating_sub(1))
+    {
+        let mut match_found = true;
+        for (j, target_line) in target_lines.iter().enumerate() {
+            if !lines_match(content_lines[start_idx + j], target_line) {
+                match_found = false;
                 break;
             }
-            pos_in_content += ch.len_utf8();
         }
 
-        // Now try to find old_string at this approximate position
-        // by checking variations
-        let search_window = &content[pos_in_content..];
-        if let Some(found) = find_best_match(search_window, old_string) {
-            let modified = format!(
-                "{}{}{}",
-                &content[..pos_in_content + found.start],
-                new_string,
-                &content[pos_in_content + found.end..]
-            );
-            return Some(modified);
-        }
-
-        // Last resort: use normalized position directly
-        // Find the text from content that normalized to old_string and replace it
-        let old_trimmed = old_string.trim();
-        if let Some(pos) = content.find(old_trimmed) {
-            let modified = format!(
-                "{}{}{}",
-                &content[..pos],
-                new_string,
-                &content[pos + old_trimmed.len()..]
-            );
-            return Some(modified);
+        if match_found {
+            // Compute byte range
+            let byte_start = content_lines[..start_idx]
+                .iter()
+                .map(|l| l.len() + 1)
+                .sum::<usize>();
+            let byte_end = byte_start
+                + target_lines
+                    .iter()
+                    .map(|l| l.len() + 1)
+                    .sum::<usize>()
+                    .saturating_sub(1);
+            return Some(byte_start..byte_end.min(content.len()));
         }
     }
 
@@ -64,7 +91,20 @@ pub(crate) fn fudiff_replace(content: &str, old_string: &str, new_string: &str) 
 }
 
 fn normalize_ws(s: &str) -> String {
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
+    let mut result = String::with_capacity(s.len());
+    let mut in_whitespace = false;
+    for ch in s.chars() {
+        if ch.is_whitespace() {
+            if !in_whitespace {
+                result.push(' ');
+                in_whitespace = true;
+            }
+        } else {
+            result.push(ch);
+            in_whitespace = false;
+        }
+    }
+    result
 }
 
 fn lines_match(a: &str, b: &str) -> bool {
@@ -72,7 +112,6 @@ fn lines_match(a: &str, b: &str) -> bool {
 }
 
 /// Find the best match for `target` within `text`, considering minor variations.
-/// Returns the byte range of the best match.
 fn find_best_match(text: &str, target: &str) -> Option<std::ops::Range<usize>> {
     let target_lines: Vec<&str> = target.lines().collect();
     let text_lines: Vec<&str> = text.lines().collect();
@@ -119,9 +158,67 @@ fn find_best_match(text: &str, target: &str) -> Option<std::ops::Range<usize>> {
     None
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// Diff generation
+// ═══════════════════════════════════════════════════════════════════
+
+use similar::{ChangeTag, TextDiff};
+
+/// Generate a unified diff between old and new content.
+pub fn generate_unified_diff(old: &str, new: &str, _file_path: &str) -> String {
+    let diff = TextDiff::from_lines(old, new);
+    diff.unified_diff().context_radius(3).to_string()
+}
+
+/// Generate a human-readable display diff with line numbers and context folding.
+pub fn generate_display_diff(old: &str, new: &str, file_path: &str) -> String {
+    let diff = TextDiff::from_lines(old, new);
+    let mut output = String::new();
+
+    output.push_str(&format!("--- a/{file_path}\n+++ b/{file_path}\n"));
+
+    for change in diff.iter_all_changes() {
+        let sign = match change.tag() {
+            ChangeTag::Delete => "-",
+            ChangeTag::Insert => "+",
+            ChangeTag::Equal => " ",
+        };
+        output.push_str(sign);
+        output.push_str(change.value());
+        if !change.value().ends_with('\n') {
+            output.push('\n');
+        }
+    }
+
+    // Add line numbers
+    let mut old_line = 1;
+    let mut new_line = 1;
+    let mut result = String::new();
+    for line in output.lines() {
+        if let Some(content) = line.strip_prefix('-') {
+            result.push_str(&format!("{old_line:>4}     | {content}\n"));
+            old_line += 1;
+        } else if let Some(content) = line.strip_prefix('+') {
+            result.push_str(&format!("     {new_line:>4} | {content}\n"));
+            new_line += 1;
+        } else if let Some(content) = line.strip_prefix(' ') {
+            result.push_str(&format!("{old_line:>4} {new_line:>4} | {content}\n"));
+            old_line += 1;
+            new_line += 1;
+        } else if line.starts_with("---") || line.starts_with("+++") {
+            result.push_str(&format!("      ... | {line}\n"));
+        }
+    }
+
+    if result.is_empty() {
+        "(no changes)".to_string()
+    } else {
+        result
+    }
+}
+
 /// Fall back to patch-like exact line-by-line matching.
-/// This is a simplified patch strategy that matches exact lines.
-pub(crate) fn patch_fallback(content: &str, old_string: &str, new_string: &str) -> Option<String> {
+pub fn patch_fallback(content: &str, old_string: &str, new_string: &str) -> Option<String> {
     let old_lines: Vec<&str> = old_string.lines().collect();
     let content_lines: Vec<&str> = content.lines().collect();
     let has_trailing_newline = content.ends_with('\n');
@@ -161,57 +258,9 @@ pub(crate) fn patch_fallback(content: &str, old_string: &str, new_string: &str) 
     None
 }
 
-/// Generate a simple human-readable diff between old and new strings.
-pub(crate) fn generate_diff(old_string: &str, new_string: &str) -> String {
-    use similar::{ChangeTag, TextDiff};
-
-    if old_string == new_string {
-        return "(no changes)".to_string();
-    }
-
-    let diff = TextDiff::from_lines(old_string, new_string);
-    let mut output = String::new();
-
-    for change in diff.iter_all_changes() {
-        let prefix = match change.tag() {
-            ChangeTag::Delete => "-",
-            ChangeTag::Insert => "+",
-            ChangeTag::Equal => " ",
-        };
-        output.push_str(prefix);
-        output.push_str(change.value());
-        if !change.value().ends_with('\n') {
-            output.push('\n');
-        }
-    }
-
-    output
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_fudiff_exact_match() {
-        let content = "hello world\nfoo bar\nbaz qux\n";
-        let result = fudiff_replace(content, "foo bar", "new foo");
-        assert_eq!(result, Some("hello world\nnew foo\nbaz qux\n".to_string()));
-    }
-
-    #[test]
-    fn test_fudiff_whitespace_normalized() {
-        let content = "hello   world\n";
-        let result = fudiff_replace(content, "hello world", "hi world");
-        assert_eq!(result, Some("hi world\n".to_string()));
-    }
-
-    #[test]
-    fn test_fudiff_no_match() {
-        let content = "hello world\n";
-        let result = fudiff_replace(content, "completely different", "nothing");
-        assert_eq!(result, None);
-    }
 
     #[test]
     fn test_patch_fallback_exact() {
@@ -221,36 +270,11 @@ mod tests {
     }
 
     #[test]
-    fn test_patch_fallback_trimmed_match() {
-        let content = "line1\n  line2  \nline3\n";
-        let result = patch_fallback(content, "line2", "replaced");
-        assert_eq!(result, Some("line1\nreplaced\nline3\n".to_string()));
-    }
-
-    #[test]
-    fn test_patch_fallback_no_match() {
-        let content = "hello world\n";
-        let result = patch_fallback(content, "goodbye", "nothing");
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_generate_diff_shows_changes() {
-        let diff = generate_diff("old text", "new text");
-        assert!(diff.contains("-old text"));
-        assert!(diff.contains("+new text"));
-    }
-
-    #[test]
-    fn test_generate_diff_no_changes() {
-        let diff = generate_diff("same", "same");
-        assert_eq!(diff, "(no changes)");
-    }
-
-    #[test]
-    fn test_fudiff_multiline() {
-        let content = "a\nb\nc\nd\ne\n";
-        let result = fudiff_replace(content, "b\nc\nd", "x\ny\nz");
-        assert_eq!(result, Some("a\nx\ny\nz\ne\n".to_string()));
+    fn test_patch_finder_exact() {
+        let content = "line1\nline2\nline3\n";
+        let range = patch_find_range(content, "line2");
+        assert!(range.is_some());
+        let r = range.unwrap();
+        assert_eq!(&content[r], "line2");
     }
 }

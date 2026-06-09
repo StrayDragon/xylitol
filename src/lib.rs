@@ -2,16 +2,15 @@
 //!
 //! LLM-Augmented Development Toolkit.
 
-#![allow(dead_code)] // TODO(c92): progressively remove as WIP modules are integrated
-#![cfg_attr(docsrs, warn(missing_docs))]
+#![allow(dead_code)]
 
-pub(crate) mod agent;
-pub(crate) mod infra;
-pub(crate) mod interface;
+pub mod agent;
+pub mod infra;
+pub mod interface;
 
-/// Application entry point — parses CLI args, loads config, dispatches to mode.
-pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    interface::cli::run()
+/// Application entry point.
+pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    interface::cli::run().await
 }
 
 /// Run the interactive diff review demo (requires `ui-review` feature).

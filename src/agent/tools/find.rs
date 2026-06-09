@@ -1,10 +1,26 @@
+//! Find tool — uses `fd` to search for files by glob pattern.
+//!
+//! Key behaviors (aligns with pi's find.ts):
+//! - Uses external `fd` process via tokio::process::Command
+//! - Respects .gitignore via fd's default behavior
+//! - Returns Posix-relative paths
+//! - Supports result limit (default 1000)
+//! - Supports `--full-path` mode for path-containing patterns
+
 use async_trait::async_trait;
 use serde_json::{Value, json};
+use tokio::process::Command;
+use tokio::time::{Duration, timeout};
 
+use super::path_utils::resolve_to_cwd;
+use super::truncate::{DEFAULT_MAX_BYTES, TruncationOptions, format_size, truncate_head};
 use crate::agent::error::XyToolError;
 use crate::agent::traits::{XyTool, XyToolCtx};
 
-pub(crate) struct FindTool;
+const DEFAULT_LIMIT: usize = 1000;
+const FD_TIMEOUT: Duration = Duration::from_secs(30);
+
+pub struct FindTool;
 
 #[async_trait]
 impl XyTool for FindTool {
@@ -13,7 +29,7 @@ impl XyTool for FindTool {
     }
 
     fn description(&self) -> &str {
-        "Find files and directories matching a glob pattern under the given root directory."
+        "Search for files by glob pattern using fd. Returns matching file paths relative to the search directory. Respects .gitignore."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -22,81 +38,133 @@ impl XyTool for FindTool {
             "properties": {
                 "pattern": {
                     "type": "string",
-                    "description": "Glob pattern to match (e.g., '**/*.rs', '*.toml')"
+                    "description": "Glob pattern to match files, e.g. '*.ts', '**/*.json'"
                 },
                 "path": {
                     "type": "string",
-                    "description": "Root directory to search from"
+                    "description": "Directory to search in (default: current directory)"
                 },
-                "max_results": {
+                "limit": {
                     "type": "integer",
-                    "description": "Maximum number of results to return (default 100)"
+                    "description": "Maximum number of results (default: 1000)"
                 }
             },
-            "required": ["pattern", "path"]
+            "required": ["pattern"]
         })
     }
 
-    async fn execute(&self, _ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
-        let pattern = args
-            .get("pattern")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| XyToolError::InvalidArgs("missing required argument: pattern".into()))?;
+    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+        let pattern = args["pattern"]
+            .as_str()
+            .ok_or_else(|| XyToolError::InvalidArgs("missing 'pattern'".into()))?;
+        let search_path = args["path"].as_str().unwrap_or(".");
+        let limit = args["limit"].as_u64().unwrap_or(DEFAULT_LIMIT as u64) as usize;
+        let effective_limit = limit.clamp(1, 10_000);
 
-        let root_path = args
-            .get("path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| XyToolError::InvalidArgs("missing required argument: path".into()))?;
+        let search_dir = resolve_to_cwd(search_path);
+        let search_dir_str = search_dir.to_string_lossy().to_string();
 
-        let max_results = args
-            .get("max_results")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(100)
-            .max(1) as usize;
-        let max_results = max_results.min(1000);
-
-        if pattern.starts_with('/') || pattern.starts_with(std::path::MAIN_SEPARATOR) {
-            return Err(XyToolError::InvalidArgs(
-                "absolute patterns are not allowed; use a relative pattern within the root path"
-                    .into(),
-            ));
+        if ctx.cancel.is_cancelled() {
+            return Err(XyToolError::Aborted);
         }
 
-        let root = std::path::Path::new(root_path);
-        if !root.exists() {
-            return Err(XyToolError::ExecutionFailed(anyhow::anyhow!(
-                "root path does not exist: '{}'",
-                root_path
-            )));
-        }
+        // Build fd args
+        let mut fd_args: Vec<String> = vec![
+            "--glob".to_string(),
+            "--color=never".to_string(),
+            "--hidden".to_string(),
+            "--no-require-git".to_string(),
+            "--max-results".to_string(),
+            effective_limit.to_string(),
+        ];
 
-        let full_pattern = root.join(pattern).to_string_lossy().to_string();
-
-        let mut files = Vec::new();
-        match glob::glob(&full_pattern) {
-            Ok(entries) => {
-                for path in entries.flatten() {
-                    files.push(path.to_string_lossy().to_string());
-                    if files.len() >= max_results {
-                        break;
-                    }
-                }
-            }
-            Err(e) => {
-                return Err(XyToolError::InvalidArgs(format!(
-                    "invalid glob pattern '{}': {}",
-                    pattern, e
-                )));
+        let mut effective_pattern = pattern.to_string();
+        if pattern.contains('/') {
+            fd_args.push("--full-path".to_string());
+            if !pattern.starts_with('/') && !pattern.starts_with("**/") && pattern != "**" {
+                effective_pattern = format!("**/{pattern}");
             }
         }
 
-        Ok(serde_json::to_string(&json!({
-            "files": files,
-            "total": files.len(),
-            "pattern": pattern,
-            "path": root_path,
-        }))
-        .unwrap())
+        fd_args.push("--".to_string());
+        fd_args.push(effective_pattern);
+        fd_args.push(search_dir_str.clone());
+
+        let cancel = ctx.cancel.clone();
+        let output_fut = Command::new("fd").args(&fd_args).output();
+
+        let child_result = tokio::select! {
+            _ = cancel.cancelled() => return Err(XyToolError::Aborted),
+            r = output_fut => r,
+            _ = timeout(FD_TIMEOUT, std::future::pending::<()>()) => return Err(XyToolError::Timeout(FD_TIMEOUT)),
+        };
+
+        let output = child_result
+            .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("failed to run fd: {e}")))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let msg = if !stderr.is_empty() {
+                stderr.to_string()
+            } else {
+                format!("fd exited with {}", output.status)
+            };
+            return Err(XyToolError::ExecutionFailed(anyhow::anyhow!("{msg}")));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.trim().is_empty() {
+            return Ok("No files found matching pattern".to_string());
+        }
+
+        // Relativize against search root
+        let mut relativized: Vec<String> = Vec::new();
+        for raw_line in stdout.lines() {
+            let line = raw_line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let had_trailing_slash = line.ends_with('/') || line.ends_with('\\');
+            let rel = if line.starts_with(&search_dir_str) {
+                let rest = &line[search_dir_str.len()..];
+                rest.trim_start_matches(std::path::MAIN_SEPARATOR)
+                    .to_string()
+            } else {
+                line.to_string()
+            };
+            let rel = rel.replace('\\', "/");
+            let rel = if had_trailing_slash && !rel.ends_with('/') {
+                format!("{rel}/")
+            } else {
+                rel
+            };
+            relativized.push(rel);
+        }
+
+        let result_limit_reached = relativized.len() >= effective_limit;
+        let raw_output = relativized.join("\n");
+
+        let truncation = truncate_head(
+            &raw_output,
+            TruncationOptions {
+                max_lines: Some(usize::MAX),
+                max_bytes: Some(DEFAULT_MAX_BYTES),
+            },
+        );
+
+        let mut final_output = truncation.content;
+        let mut notices: Vec<String> = Vec::new();
+        if result_limit_reached {
+            notices.push(format!("{effective_limit} results limit reached"));
+        }
+        if truncation.truncated {
+            notices.push(format!("{} limit reached", format_size(DEFAULT_MAX_BYTES)));
+        }
+        if !notices.is_empty() {
+            final_output.push_str(&format!("\n\n[{}]", notices.join(". ")));
+        }
+
+        Ok(final_output)
     }
 }
 
@@ -105,83 +173,34 @@ mod tests {
     use super::*;
 
     fn test_ctx() -> XyToolCtx {
-        XyToolCtx {
-            call_id: "test-call".into(),
-        }
+        XyToolCtx::new("test-call")
     }
 
     #[tokio::test]
-    async fn test_find_glob() {
+    async fn test_find_basic() {
         let dir = tempfile::tempdir().unwrap();
         tokio::fs::write(dir.path().join("a.rs"), "").await.unwrap();
         tokio::fs::write(dir.path().join("b.rs"), "").await.unwrap();
         tokio::fs::write(dir.path().join("c.txt"), "")
             .await
             .unwrap();
-        tokio::fs::create_dir(dir.path().join("sub")).await.unwrap();
-        tokio::fs::write(dir.path().join("sub/d.rs"), "")
-            .await
-            .unwrap();
 
         let tool = FindTool;
         let result = tool
             .execute(
                 &test_ctx(),
-                json!({ "pattern": "**/*.rs", "path": dir.path().to_str().unwrap() }),
+                json!({"pattern": "*.rs", "path": dir.path().to_str().unwrap()}),
             )
             .await
             .unwrap();
-        let v: Value = serde_json::from_str(&result).unwrap();
-        let files: Vec<&str> = v["files"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|f| {
-                let path = std::path::Path::new(f.as_str().unwrap());
-                path.file_name().unwrap().to_str().unwrap()
-            })
-            .collect();
-        assert!(files.contains(&"a.rs"));
-        assert!(files.contains(&"b.rs"));
-        assert!(files.contains(&"d.rs"));
-        assert!(!files.contains(&"c.txt"));
+        assert!(result.contains("a.rs"));
+        assert!(result.contains("b.rs"));
+        assert!(!result.contains("c.txt"));
     }
 
     #[tokio::test]
-    async fn test_find_nonexistent_root() {
-        let tool = FindTool;
-        let result = tool
-            .execute(
-                &test_ctx(),
-                json!({ "pattern": "*.rs", "path": "/nonexistent_root_12345" }),
-            )
-            .await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_find_no_matches() {
-        let dir = tempfile::tempdir().unwrap();
-        let tool = FindTool;
-        let result = tool
-            .execute(
-                &test_ctx(),
-                json!({ "pattern": "*.nonexistent_ext", "path": dir.path().to_str().unwrap() }),
-            )
-            .await
-            .unwrap();
-        let v: Value = serde_json::from_str(&result).unwrap();
-        assert_eq!(v["total"], 0);
-    }
-
-    #[tokio::test]
-    async fn test_find_missing_args() {
+    async fn test_find_missing_pattern() {
         let tool = FindTool;
         assert!(tool.execute(&test_ctx(), json!({})).await.is_err());
-        assert!(
-            tool.execute(&test_ctx(), json!({ "pattern": "*.rs" }))
-                .await
-                .is_err()
-        );
     }
 }

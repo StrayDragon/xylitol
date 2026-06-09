@@ -13,11 +13,11 @@ use crate::infra::config::types::AppConfig;
 
 mod mcp;
 #[allow(unused_imports)]
-pub(crate) use mcp::{McpClientManager, McpToolAdapter};
+pub use mcp::{McpClientManager, McpToolAdapter};
 
 /// A loaded skill definition.
 #[derive(Clone, Debug)]
-pub(crate) struct Skill {
+pub struct Skill {
     pub name: String,
     pub description: String,
     pub system_prompt_addon: Option<String>,
@@ -26,13 +26,19 @@ pub(crate) struct Skill {
 
 /// Manages skill lifecycle: loading, activation, deactivation.
 #[derive(Clone)]
-pub(crate) struct SkillManager {
+pub struct SkillManager {
     skills: HashMap<String, Skill>,
     active: Vec<String>,
 }
 
+impl Default for SkillManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SkillManager {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             skills: HashMap::new(),
             active: Vec::new(),
@@ -40,7 +46,7 @@ impl SkillManager {
     }
 
     /// Load skills from the app configuration.
-    pub(crate) fn load(&mut self, config: &AppConfig) {
+    pub fn load(&mut self, config: &AppConfig) {
         let Some(ref skill_configs) = config.skills else {
             return;
         };
@@ -58,7 +64,7 @@ impl SkillManager {
     }
 
     /// Activate a skill by name. Returns `true` if newly activated.
-    pub(crate) fn activate(&mut self, name: &str) -> bool {
+    pub fn activate(&mut self, name: &str) -> bool {
         if !self.skills.contains_key(name) {
             return false;
         }
@@ -70,12 +76,12 @@ impl SkillManager {
     }
 
     /// Deactivate a skill by name.
-    pub(crate) fn deactivate(&mut self, name: &str) {
+    pub fn deactivate(&mut self, name: &str) {
         self.active.retain(|n| n != name);
     }
 
     /// Returns the concatenated `system_prompt_addon` of all active skills.
-    pub(crate) fn get_system_prompt_addon(&self) -> String {
+    pub fn get_system_prompt_addon(&self) -> String {
         self.active
             .iter()
             .filter_map(|name| self.skills.get(name))
@@ -88,7 +94,7 @@ impl SkillManager {
     /// Combined `allowed_tools` across active skills.
     ///
     /// Returns `None` if any active skill has no restriction (allow all).
-    pub(crate) fn get_allowed_tools(&self) -> Option<Vec<String>> {
+    pub fn get_allowed_tools(&self) -> Option<Vec<String>> {
         let mut combined = Vec::new();
         for name in &self.active {
             let Some(skill) = self.skills.get(name) else {
@@ -103,7 +109,7 @@ impl SkillManager {
     }
 
     /// Returns the names of currently active skills.
-    pub(crate) fn active_skill_names(&self) -> &[String] {
+    pub fn active_skill_names(&self) -> &[String] {
         &self.active
     }
 }

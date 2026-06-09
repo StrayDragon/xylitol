@@ -6,10 +6,10 @@
 //!
 //! Built-in, config-gated (empty hooks list = no-op).
 
-pub(crate) mod dispatcher;
-pub(crate) mod script;
+pub mod dispatcher;
+pub mod script;
 
-pub(crate) use dispatcher::HookDispatcher;
+pub use dispatcher::HookDispatcher;
 
 // ---------------------------------------------------------------------------
 // HookPhase
@@ -17,7 +17,7 @@ pub(crate) use dispatcher::HookDispatcher;
 
 /// Whether the hook fires before or after an event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HookPhase {
+pub enum HookPhase {
     /// Before the event (can block/modify).
     Pre,
     /// After the event (observation only).
@@ -26,7 +26,7 @@ pub(crate) enum HookPhase {
 
 impl HookPhase {
     /// Parse a phase string. Accepts "pre", "post", or empty (matches both).
-    pub(crate) fn matches(&self, pattern: &str) -> bool {
+    pub fn matches(&self, pattern: &str) -> bool {
         match pattern {
             "pre" => matches!(self, HookPhase::Pre),
             "post" => matches!(self, HookPhase::Post),
@@ -36,7 +36,7 @@ impl HookPhase {
     }
 
     /// Return the string representation.
-    pub(crate) fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             HookPhase::Pre => "pre",
             HookPhase::Post => "post",
@@ -52,7 +52,7 @@ impl HookPhase {
 ///
 /// Each variant carries the context data relevant to that event.
 #[derive(Debug, Clone)]
-pub(crate) enum HookEvent {
+pub enum HookEvent {
     /// A tool is about to be called (pre) or has completed (post).
     ToolCall {
         tool: String,
@@ -101,7 +101,7 @@ pub(crate) enum HookEvent {
 impl HookEvent {
     /// Return the event type string used in pattern matching (e.g., "tool_call",
     /// "step_complete", "model_query").
-    pub(crate) fn event_type(&self) -> &'static str {
+    pub fn event_type(&self) -> &'static str {
         match self {
             HookEvent::ToolCall { .. } => "tool_call",
             HookEvent::ToolCallLspQuery { .. } => "tool_call.lsp_query",
@@ -122,7 +122,7 @@ impl HookEvent {
     }
 
     /// Serialize the event to a JSON map for the hook script stdin.
-    pub(crate) fn to_json_context(&self, phase: HookPhase) -> serde_json::Value {
+    pub fn to_json_context(&self, phase: HookPhase) -> serde_json::Value {
         let mut ctx = serde_json::json!({
             "event": self.event_type(),
             "phase": phase.as_str(),
@@ -215,7 +215,7 @@ impl HookEvent {
 /// - `post.step_complete` — matches StepComplete events in Post phase
 /// - `tool_call` — matches ToolCall events in either phase
 /// - `pre.tool_call.bash` — matches ToolCall with tool="bash" in Pre phase
-pub(crate) fn event_matches(
+pub fn event_matches(
     entry: &crate::infra::config::types::HookEntry,
     event: &HookEvent,
     phase: HookPhase,
@@ -258,7 +258,7 @@ fn pattern_matches(pattern: &str, event_type: &str, phase: HookPhase, event: &Ho
 
 /// The result of executing a single hook.
 #[derive(Debug, Clone)]
-pub(crate) enum HookAction {
+pub enum HookAction {
     /// Allow the operation to proceed.
     Allow,
     /// Block the operation with a reason.
@@ -269,7 +269,7 @@ pub(crate) enum HookAction {
 
 impl HookAction {
     /// Parse a `HookAction` from the JSON output of a hook script.
-    pub(crate) fn from_json(value: &serde_json::Value) -> Self {
+    pub fn from_json(value: &serde_json::Value) -> Self {
         let action = value
             .get("action")
             .and_then(|v| v.as_str())
@@ -302,7 +302,7 @@ impl HookAction {
 
 /// The aggregate result of dispatching an event to all matching hooks.
 #[derive(Debug, Clone)]
-pub(crate) enum DispatchResult {
+pub enum DispatchResult {
     /// All hooks allowed the operation.
     Allowed,
     /// A hook blocked the operation.

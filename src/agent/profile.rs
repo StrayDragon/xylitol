@@ -7,7 +7,7 @@ use crate::agent::model::ModelConfig;
 /// Produced by [`crate::infra::config::types::AppConfig::resolve_profile`] from
 /// config-level [`AgentProfile`](crate::infra::config::types::AgentProfile) entries.
 #[derive(Debug, Clone)]
-pub(crate) struct ResolvedProfile {
+pub struct ResolvedProfile {
     /// Agent-level model config (has kind, api_key, model name, base_url).
     pub model_config: ModelConfig,
     /// System prompt override for this agent.

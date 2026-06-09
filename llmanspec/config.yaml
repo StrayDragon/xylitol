@@ -12,6 +12,13 @@ context: |
   Design principle: pluggable/configurable architecture. Core (agent loop + tools + provider + CLI) is always present; built-in enhancements (hooks, security, repeat detection) are runtime-toggled; everything else (LSP, DAP, skills, MCP, diff review, TUI, session snapshots, planning) is opt-in via feature flag.
   Dependency tracking: each proposal.md frontmatter contains depends_on. Read proposal.md files to determine execution order. For DAG visualization run: llman sdd graph
 
+bdd:
+  framework: cucumber
+  feature_dir: tests/features
+  default_language: zh-CN
+  run_command: "cargo test --test bdd -- --test-threads=1"
+  verify_prompt: "Each scenario in the feature file MUST be mapped to an implemented step definition. Run `cargo test --test bdd` to confirm all scenarios pass."
+
 rules:
   proposal:
     - "Change ID format: c{priority}-{verb}-{subject} where priority is a multiple of 5 (e.g., c05-add-skeleton, c10-add-config, c15-add-tools). Verb prefix: add / update / remove / refactor / fix. Priority numbers MUST be unique."
