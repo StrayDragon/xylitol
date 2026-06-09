@@ -12,7 +12,7 @@ llman_spec_evidence:
 kind: llman.sdd.spec
 name: "tool-system"
 purpose: "TBD - created by archiving change c20-add-tools. Update purpose after archive."
-requirements[11]{req_id,title,statement}:
+requirements[24]{req_id,title,statement}:
   r1,"tool-trait","System MUST define a XyTool trait as the primary tool interface; adk-core Tool compatibility MUST be provided via adapter only."
   r2,"seven-tools","System MUST implement 7 built-in tools: read bash edit write grep find ls."
   r3,"patch-apply","System MUST apply AI-generated patches using fudiff fuzzy matching with patch crate exact fallback."
@@ -24,7 +24,20 @@ requirements[11]{req_id,title,statement}:
   r9,"tool-args-helper",Tool system MUST provide a shared argument extraction helper that eliminates repetitive JSON field parsing across tool implementations.
   r10,"no-global-dead-code-allow","Crate root MUST NOT use global #![allow(dead_code)]; dead code suppression MUST be scoped to individual items with justification."
   r11,"tool-error-types","System MUST define XyToolError with structured error categories (invalid_args / execution_failed / permission_denied / timeout) independent of adk-core."
-scenarios[11]{req_id,id,given,when,then}:
+  t1,traits,System MUST define a XyTool trait with execute accepting CancellationToken.
+  t2,"seven-tools","System MUST implement 7 pi-equivalent tools: read bash edit write grep find ls."
+  t3,"edit-multi",Edit tool MUST accept path and edits array of oldText and newText matching against original content.
+  t4,"edit-validation","Edit tool MUST reject overlapping edits and non-unique oldText and empty oldText and no-change edits."
+  t5,"edit-unicode","Edit tool MUST normalize CRLF to LF and strip UTF-8 BOM and fuzzy-match via NFKC normalization."
+  t6,"edit-diff",Edit tool MUST return both a unified patch and a display diff with line numbers.
+  t7,"grep-ripgrep",Grep tool MUST use ripgrep supporting regex and glob and ignoreCase and literal and context and limit.
+  t8,"find-fd","Find tool MUST use fd respecting gitignore and returning Posix-relative paths with limit."
+  t9,"bash-abort",Bash tool MUST support CancellationToken killing process tree and merge streaming output.
+  t10,"read-trunc","Read tool MUST truncate at 2000 lines or 50KB and report offset-out-of-bounds with remaining lines hint."
+  t11,infra,System MUST provide TruncationResult and XxxOperations traits and FileMutationQueue and CancellationToken.
+  t12,registry,ToolRegistry MUST provide builtins and get and list and filtered and wrap_with_hooks methods.
+  t13,"bdd-tools",BDD tests under tests/features/ for all 7 tools MUST pass.
+scenarios[24]{req_id,id,given,when,then}:
   r1,"xy-tool-impl","all 7 built-in tools implement XyTool",each tool is invoked,each returns Result<String> without any adk_core types in the call chain
   r2,happy,a tool registry with all 7 tools,each tool is invoked with valid args,each returns a successful ToolResult
   r3,happy,"an AI-generated unified diff with slight line offset",patch is applied via fudiff,fudiff successfully applies despite line offset
@@ -36,4 +49,17 @@ scenarios[11]{req_id,id,given,when,then}:
   r9,happy,a tool needs a required string argument,tool calls require_str(args and 'file_path'),returns Ok(value) or Err(AdkError) with consistent error code
   r10,happy,crate compiles with dead_code lint enabled,cargo clippy runs,no dead_code warnings in production code paths
   r11,"error-mapping","a tool returns XyToolError::InvalidArgs",error is propagated to agent loop,error category is preserved and displayed to user
+  t1,cancel,all tools implement XyTool,cancel triggered,abort error returned
+  t2,registry,ToolRegistry builtins called,list() invoked,seven tools returned
+  t3,"multi-edit",file with 3 distinct regions,"multi-edit called",all 3 regions replaced
+  t4,overlap,two overlapping edits,edit called,error contains overlap with indices
+  t5,bom,"file with UTF-8 BOM",text replaced,BOM retained and content updated
+  t6,diff,file edited,result returned,"unified patch and line-numbered diff present"
+  t7,"grep-basic",files with matches,grep called with pattern,rg returns matching lines with paths
+  t8,"find-basic",files match glob,find called,fd returns Posix paths respecting gitignore
+  t9,"bash-kill",long bash command runs,CancellationToken fires,process killed and abort error
+  t10,"read-trunc","10000-line file exists",read called without limits,truncated with hint
+  t11,"infra-works",infra structures defined,all tools use them,behavior matches pi exactly
+  t12,filter,registry has 7 tools,filtered called,only requested tools returned
+  t13,"bdd-pass",BDD runner invoked,"cargo test --test bdd",all tool scenarios pass
 ```

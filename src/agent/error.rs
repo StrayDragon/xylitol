@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum XyError {
+pub enum XyError {
     #[error("provider error: {0}")]
     Provider(#[source] anyhow::Error),
     #[error("tool error: {0}")]
@@ -12,10 +12,12 @@ pub(crate) enum XyError {
     MaxIterations(usize),
     #[error("agent config error: {0}")]
     Config(String),
+    #[error("aborted")]
+    Aborted,
 }
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum XyToolError {
+pub enum XyToolError {
     #[error("invalid arguments: {0}")]
     InvalidArgs(String),
     #[error("execution failed: {0}")]
@@ -24,4 +26,6 @@ pub(crate) enum XyToolError {
     PermissionDenied(String),
     #[error("timeout after {0:?}")]
     Timeout(Duration),
+    #[error("aborted")]
+    Aborted,
 }

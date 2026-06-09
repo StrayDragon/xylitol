@@ -5,20 +5,20 @@ use crate::agent::traits::{XyModel, XyStream};
 use crate::agent::types::{XyChunk, XyContent, XyFinishReason, XyToolSchema};
 
 /// Drop-in mock for tests. Returns a fixed text response.
-pub(crate) struct MockXyModel {
+pub struct MockXyModel {
     model_name: String,
     response_text: String,
 }
 
 impl MockXyModel {
-    pub(crate) fn new(name: &str) -> Self {
+    pub fn new(name: &str) -> Self {
         Self {
             model_name: name.into(),
             response_text: "ok".into(),
         }
     }
 
-    pub(crate) fn with_text(mut self, text: &str) -> Self {
+    pub fn with_text(mut self, text: &str) -> Self {
         self.response_text = text.into();
         self
     }

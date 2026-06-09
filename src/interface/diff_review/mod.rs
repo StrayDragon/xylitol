@@ -20,8 +20,8 @@
 //!                 └── return ReviewVerdict
 //! ```
 
-pub(crate) mod cli;
-pub(crate) mod types;
+pub mod cli;
+pub mod types;
 
 use types::{DiffHunk, DiffLine, DiffLineKind, ReviewSession, ReviewVerdict};
 use uuid::Uuid;
@@ -32,14 +32,14 @@ use uuid::Uuid;
 
 /// The review engine — orchestrates diff collection, session creation, and
 /// user interaction.
-pub(crate) struct ReviewEngine {
+pub struct ReviewEngine {
     /// Configuration reference.
     config: ReviewEngineConfig,
 }
 
 /// Configuration for the review engine.
 #[derive(Debug, Clone)]
-pub(crate) struct ReviewEngineConfig {
+pub struct ReviewEngineConfig {
     /// Which backend to use for rendering.
     pub backend: ReviewBackend,
     /// When to trigger review.
@@ -48,14 +48,14 @@ pub(crate) struct ReviewEngineConfig {
 
 /// Supported review rendering backends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ReviewBackend {
+pub enum ReviewBackend {
     /// Terminal-based review via ratatui.
     Cli,
 }
 
 /// When to trigger a review session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ReviewMode {
+pub enum ReviewMode {
     /// Every step completion.
     OnStep,
     /// Only on error/failure.
@@ -66,12 +66,12 @@ pub(crate) enum ReviewMode {
 
 impl ReviewEngine {
     /// Create a new review engine from configuration.
-    pub(crate) fn new(config: ReviewEngineConfig) -> Self {
+    pub fn new(config: ReviewEngineConfig) -> Self {
         Self { config }
     }
 
     /// Create a review engine from the app config's review section.
-    pub(crate) fn from_config(cfg: &crate::infra::config::types::ReviewConfig) -> Self {
+    pub fn from_config(cfg: &crate::infra::config::types::ReviewConfig) -> Self {
         let _backend = cfg.backend.as_str();
         let backend = ReviewBackend::Cli;
         let mode = match cfg.mode.as_str() {
@@ -83,7 +83,7 @@ impl ReviewEngine {
     }
 
     /// Return the configured review mode.
-    pub(crate) fn mode(&self) -> ReviewMode {
+    pub fn mode(&self) -> ReviewMode {
         self.config.mode
     }
 
@@ -91,7 +91,7 @@ impl ReviewEngine {
     ///
     /// `files` — a list of `(file_path, old_content, new_content)` tuples.
     /// Returns a session with generated diff hunks.
-    pub(crate) fn create_session(&self, files: &[(String, String, String)]) -> ReviewSession {
+    pub fn create_session(&self, files: &[(String, String, String)]) -> ReviewSession {
         let review_id = Uuid::new_v4().to_string();
         let mut hunks = Vec::new();
 
@@ -107,7 +107,7 @@ impl ReviewEngine {
     ///
     /// Dispatches `ReviewStart` and `ReviewEnd` hook events if a hook
     /// dispatcher is provided.
-    pub(crate) async fn run_review(
+    pub async fn run_review(
         &self,
         session: &mut ReviewSession,
         hook_dispatcher: Option<&crate::infra::hooks::HookDispatcher>,

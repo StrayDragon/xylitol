@@ -1,13 +1,10 @@
-pub(crate) mod error;
-pub(crate) mod r#loop;
-pub(crate) mod model;
-pub(crate) mod profile;
-pub(crate) mod provider;
-pub(crate) mod repeat;
-pub(crate) mod session;
-pub(crate) mod tools;
-pub(crate) mod traits;
-pub(crate) mod types;
-
-#[cfg(feature = "agent-planning")]
-pub(crate) mod planner;
+pub mod error;
+pub mod r#loop;
+pub mod model;
+pub mod profile;
+pub mod provider;
+pub mod session;
+pub mod tools;
+pub mod traits;
+pub mod types;
+// repeat and planner removed per c05-rebuild-core

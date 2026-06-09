@@ -1,156 +1,165 @@
-#![allow(dead_code)] // WIP: not yet integrated into main flow
+//! Session entry types — aligns with pi's SessionEntry interfaces.
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-
-use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 
-/// A snapshot ID (UUID v4).
-pub type SnapshotId = String;
+pub const SESSION_VERSION: u32 = 3;
 
-/// A project hash (SHA-256 hex).
-pub type ProjectHash = String;
+// ── Header ──────────────────────────────────────────────────────────
 
-/// Convenience newtype for Unix-millisecond timestamps (works cleanly with rmp-serde).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct TimestampMillis(i64);
-
-impl TimestampMillis {
-    pub fn now() -> Self {
-        Self(Utc::now().timestamp_millis())
-    }
-
-    pub fn from_datetime(dt: DateTime<Utc>) -> Self {
-        Self(dt.timestamp_millis())
-    }
-
-    pub fn to_datetime(self) -> DateTime<Utc> {
-        Utc.timestamp_millis_opt(self.0).unwrap()
-    }
-
-    pub fn millis(self) -> i64 {
-        self.0
-    }
-
-    /// Subtract a number of milliseconds, returning None on underflow.
-    pub fn checked_sub_millis(self, ms: i64) -> Option<Self> {
-        self.0.checked_sub(ms).map(Self)
-    }
-}
-
-impl From<DateTime<Utc>> for TimestampMillis {
-    fn from(dt: DateTime<Utc>) -> Self {
-        Self::from_datetime(dt)
-    }
-}
-
-impl From<TimestampMillis> for DateTime<Utc> {
-    fn from(ts: TimestampMillis) -> Self {
-        ts.to_datetime()
-    }
-}
-
-/// Immutable session snapshot — the core data structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Snapshot {
-    pub id: SnapshotId,
-    pub created: TimestampMillis,
-    pub parent_snapshot_id: Option<SnapshotId>,
-    pub meta: SnapshotMeta,
-    pub conversation: Vec<ConversationTurn>,
-    pub project_cognition: ProjectCognition,
-    pub tool_call_log: Vec<ToolCallSummary>,
-    pub config_fingerprint: ConfigFingerprint,
-}
-
-/// Metadata attached to every snapshot.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SnapshotMeta {
-    pub project_root: PathBuf,
-    pub project_hash: String,
-    pub model_id: String,
-    pub tags: Vec<String>,
-}
-
-/// Project-level cognition — agent's "long-term memory".
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ProjectCognition {
-    pub code_summaries: HashMap<String, CodeSummary>,
-    pub codebase_graph: CodebaseGraph,
-    /// DAP debugger state; always `None` until DAP dev resumes (paused 2026-05-17).
+pub struct SessionHeader {
+    #[serde(rename = "type")]
+    pub entry_type: String, // "session"
+    #[serde(default = "default_version")]
+    pub version: u32,
+    pub id: String,
+    pub timestamp: String,
+    pub cwd: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub debugger_state: Option<DebuggerState>,
+    pub parent_session: Option<String>,
 }
 
-impl ProjectCognition {
-    pub fn empty() -> Self {
-        Self {
-            code_summaries: HashMap::new(),
-            codebase_graph: CodebaseGraph {
-                nodes: vec![],
-                edges: vec![],
-            },
-            debugger_state: None,
+fn default_version() -> u32 {
+    SESSION_VERSION
+}
+
+// ── Entry base ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntryBase {
+    #[serde(rename = "type")]
+    pub entry_type: String,
+    pub id: String,
+    pub parent_id: Option<String>,
+    pub timestamp: String,
+}
+
+// ── Message entry ───────────────────────────────────────────────────
+
+use serde_json::Value;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    pub message: Value, // AgentMessage equivalent — serialized to JSON
+}
+
+// ── Compaction entry ───────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    pub summary: String,
+    pub first_kept_entry_id: String,
+    pub tokens_before: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_hook: Option<bool>,
+}
+
+// ── Branch summary entry ───────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchSummaryEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    pub from_id: String,
+    pub summary: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_hook: Option<bool>,
+}
+
+// ── Model change entry ─────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelChangeEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    pub provider: String,
+    pub model_id: String,
+}
+
+// ── Thinking level change entry ────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThinkingLevelChangeEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    pub thinking_level: String,
+}
+
+// ── Custom entry ───────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    pub custom_type: String,
+    pub data: Value,
+}
+
+// ── Unified entry enum ─────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum SessionEntry {
+    #[serde(rename = "session")]
+    Header(SessionHeader),
+    #[serde(rename = "message")]
+    Message(MessageEntry),
+    #[serde(rename = "compaction")]
+    Compaction(CompactionEntry),
+    #[serde(rename = "branch_summary")]
+    BranchSummary(BranchSummaryEntry),
+    #[serde(rename = "model_change")]
+    ModelChange(ModelChangeEntry),
+    #[serde(rename = "thinking_level_change")]
+    ThinkingLevelChange(ThinkingLevelChangeEntry),
+    #[serde(rename = "custom")]
+    Custom(CustomEntry),
+}
+
+impl SessionEntry {
+    pub fn base(&self) -> Option<&EntryBase> {
+        match self {
+            SessionEntry::Header(_) => None,
+            SessionEntry::Message(e) => Some(&e.base),
+            SessionEntry::Compaction(e) => Some(&e.base),
+            SessionEntry::BranchSummary(e) => Some(&e.base),
+            SessionEntry::ModelChange(e) => Some(&e.base),
+            SessionEntry::ThinkingLevelChange(e) => Some(&e.base),
+            SessionEntry::Custom(e) => Some(&e.base),
         }
     }
-}
 
-/// LSP-derived summary for a single module/file.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CodeSummary {
-    pub summary: String,
-    pub symbols: Vec<String>,
-    pub last_indexed: TimestampMillis,
-    /// Set to `true` when project_hash has changed since this summary was created.
-    pub stale: bool,
-}
+    pub fn entry_type(&self) -> &str {
+        match self {
+            SessionEntry::Header(_) => "session",
+            SessionEntry::Message(_) => "message",
+            SessionEntry::Compaction(_) => "compaction",
+            SessionEntry::BranchSummary(_) => "branch_summary",
+            SessionEntry::ModelChange(_) => "model_change",
+            SessionEntry::ThinkingLevelChange(_) => "thinking_level_change",
+            SessionEntry::Custom(_) => "custom",
+        }
+    }
 
-/// Dependency graph of the codebase (nodes = symbols, edges = dependency relations).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct CodebaseGraph {
-    pub nodes: Vec<String>,
-    pub edges: Vec<(String, String)>,
-}
+    pub fn entry_id(&self) -> Option<&str> {
+        self.base().map(|b| b.id.as_str())
+    }
 
-/// Debugger state — reserved for DAP integration (paused).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DebuggerState;
-
-/// A single turn in the conversation history.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConversationTurn {
-    pub role: ConversationRole,
-    pub content: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_calls: Option<Vec<ToolCallSummary>>,
-    pub timestamp: TimestampMillis,
-    /// When `true`, this turn has been superseded (e.g., by compaction).
-    pub deprecated: bool,
-}
-
-/// Role of a conversation participant.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ConversationRole {
-    User,
-    Assistant,
-    System,
-    Tool,
-}
-
-/// Summarised tool invocation — keeps only essential metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolCallSummary {
-    pub tool: String,
-    pub params: serde_json::Value,
-    pub result_summary: String,
-    pub tokens_consumed: u32,
-}
-
-/// Fingerprint of the agent configuration at snapshot time.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ConfigFingerprint {
-    pub features: Vec<String>,
-    pub config_hash: String,
+    pub fn parent_id(&self) -> Option<&str> {
+        self.base().and_then(|b| b.parent_id.as_deref())
+    }
 }

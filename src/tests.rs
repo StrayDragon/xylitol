@@ -4,4 +4,4 @@
 // "test-support crate" in this single-crate repository.
 
 #[path = "../tests/support/mod.rs"]
-pub(crate) mod support;
+pub mod support;

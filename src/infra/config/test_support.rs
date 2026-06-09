@@ -6,10 +6,10 @@
 use std::sync::Mutex;
 
 /// Serialize env-modifying tests to avoid cross-test races.
-pub(crate) static ENV_LOCK: Mutex<()> = Mutex::new(());
+pub static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 /// Guard to restore env vars on drop.
-pub(crate) struct EnvGuard(Vec<(String, Option<String>)>);
+pub struct EnvGuard(Vec<(String, Option<String>)>);
 
 impl Drop for EnvGuard {
     fn drop(&mut self) {
@@ -22,7 +22,7 @@ impl Drop for EnvGuard {
     }
 }
 
-pub(crate) fn save_env(keys: &[&str]) -> EnvGuard {
+pub fn save_env(keys: &[&str]) -> EnvGuard {
     EnvGuard(
         keys.iter()
             .map(|k| (k.to_string(), std::env::var(k).ok()))

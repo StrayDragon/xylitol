@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 /// Resolved config paths consumed by the loader and downstream modules.
 #[derive(Clone, Debug)]
-pub(crate) struct ConfigPaths {
+pub struct ConfigPaths {
     /// Global config directory (e.g. `~/.config/xylitol/`).
     pub global_dir: PathBuf,
     /// Project `.xylitol/` directory, if found.
@@ -23,7 +23,7 @@ impl ConfigPaths {
     /// - `XYLITOL_CONFIG_DIR` env var to override global config dir.
     /// - `XYLITOL_PROJECT_DIR` env var to pin the project root.
     /// - CWD ancestor walk to find `.xylitol/` or `.agents/` as project markers.
-    pub(crate) fn discover() -> Self {
+    pub fn discover() -> Self {
         let global_dir = resolve_global_dir();
         let (project_dir, agents_dir) = resolve_project_dirs();
         Self {

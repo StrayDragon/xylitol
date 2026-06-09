@@ -12,7 +12,7 @@ use crate::agent::types::{XyChunk, XyContent, XyFinishReason, XyPart, XyRole, Xy
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
-pub(crate) struct AnthropicProvider {
+pub struct AnthropicProvider {
     client: reqwest::Client,
     api_key: String,
     model: String,
@@ -21,7 +21,7 @@ pub(crate) struct AnthropicProvider {
 }
 
 impl AnthropicProvider {
-    pub(crate) fn new(api_key: String, model: String, base_url: Option<String>) -> Self {
+    pub fn new(api_key: String, model: String, base_url: Option<String>) -> Self {
         Self {
             client: reqwest::Client::new(),
             api_key,

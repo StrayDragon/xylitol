@@ -19,19 +19,25 @@ use crate::infra::config::types::{AppConfig, McpTransportKind};
 type McpService = RunningService<RoleClient, ()>;
 
 /// Manages connections to MCP servers and dispatches tool calls.
-pub(crate) struct McpClientManager {
+pub struct McpClientManager {
     services: tokio::sync::Mutex<HashMap<String, McpService>>,
 }
 
+impl Default for McpClientManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl McpClientManager {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             services: tokio::sync::Mutex::new(HashMap::new()),
         }
     }
 
     /// Connect to all MCP servers from the app configuration.
-    pub(crate) async fn connect(&self, config: &AppConfig) -> Result<(), String> {
+    pub async fn connect(&self, config: &AppConfig) -> Result<(), String> {
         let Some(ref servers) = config.mcp_servers else {
             return Ok(());
         };
@@ -104,7 +110,7 @@ impl McpClientManager {
     /// List all tools from all connected MCP servers.
     ///
     /// Returns `(server_id, tool_name, description, input_schema)` for each tool.
-    pub(crate) async fn list_all_tools(&self) -> Vec<(String, String, String, Value)> {
+    pub async fn list_all_tools(&self) -> Vec<(String, String, String, Value)> {
         let mut result = Vec::new();
         let services = self.services.lock().await;
         for (server_id, service) in services.iter() {
@@ -130,7 +136,7 @@ impl McpClientManager {
     }
 
     /// Call a tool on a specific MCP server.
-    pub(crate) async fn call_tool(
+    pub async fn call_tool(
         &self,
         server_id: &str,
         tool_name: &str,
@@ -154,7 +160,7 @@ impl McpClientManager {
     }
 
     /// Gracefully shut down all MCP connections.
-    pub(crate) async fn shutdown(&self) {
+    pub async fn shutdown(&self) {
         let mut services = self.services.lock().await;
         for (name, mut service) in services.drain() {
             if let Err(e) = service.close().await {
@@ -168,7 +174,7 @@ impl McpClientManager {
 ///
 /// The publicly-facing name follows the convention `mcp:{server_id}:{name}`
 /// to avoid naming conflicts with built-in tools.
-pub(crate) struct McpToolAdapter {
+pub struct McpToolAdapter {
     full_name: String,
     description: String,
     parameters_schema: Option<Value>,
@@ -176,7 +182,7 @@ pub(crate) struct McpToolAdapter {
 }
 
 impl McpToolAdapter {
-    pub(crate) fn new(
+    pub fn new(
         server_id: String,
         tool_name: String,
         description: String,

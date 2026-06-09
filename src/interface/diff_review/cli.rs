@@ -783,7 +783,7 @@ fn handle_comment_input(app: &mut ReviewApp, key: KeyCode, modifiers: KeyModifie
 /// Run the CLI review for the given session.
 ///
 /// Returns the user's [`ReviewVerdict`].
-pub(crate) async fn run_cli_review(session: &mut ReviewSession) -> io::Result<ReviewVerdict> {
+pub async fn run_cli_review(session: &mut ReviewSession) -> io::Result<ReviewVerdict> {
     // Setup terminal
     terminal::enable_raw_mode()?;
     let mut stdout = io::stdout();

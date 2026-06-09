@@ -13,7 +13,7 @@ use crate::agent::types::{XyChunk, XyContent, XyFinishReason, XyToolSchema};
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
-pub(crate) enum ScenarioStep {
+pub enum ScenarioStep {
     Text(String),
     ToolCall { name: String, args: Value },
     ToolResult { name: String, result: Value },
@@ -22,29 +22,29 @@ pub(crate) enum ScenarioStep {
 }
 
 impl ScenarioStep {
-    pub(crate) fn text(text: impl Into<String>) -> Self {
+    pub fn text(text: impl Into<String>) -> Self {
         Self::Text(text.into())
     }
 
-    pub(crate) fn tool_call(name: impl Into<String>, args: Value) -> Self {
+    pub fn tool_call(name: impl Into<String>, args: Value) -> Self {
         Self::ToolCall {
             name: name.into(),
             args,
         }
     }
 
-    pub(crate) fn tool_result(name: impl Into<String>, result: Value) -> Self {
+    pub fn tool_result(name: impl Into<String>, result: Value) -> Self {
         Self::ToolResult {
             name: name.into(),
             result,
         }
     }
 
-    pub(crate) fn delay(duration: Duration) -> Self {
+    pub fn delay(duration: Duration) -> Self {
         Self::Delay(duration)
     }
 
-    pub(crate) fn error(message: impl Into<String>, retryable: bool) -> Self {
+    pub fn error(message: impl Into<String>, retryable: bool) -> Self {
         Self::Error {
             message: message.into(),
             retryable,
@@ -57,7 +57,7 @@ impl ScenarioStep {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FakeProviderMode {
+pub enum FakeProviderMode {
     #[default]
     Scenario,
     Cyclic,
@@ -68,7 +68,7 @@ pub(crate) enum FakeProviderMode {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug)]
-pub(crate) struct FakeProvider {
+pub struct FakeProvider {
     name: String,
     steps: Vec<ScenarioStep>,
     cursor: AtomicUsize,
@@ -76,7 +76,7 @@ pub(crate) struct FakeProvider {
 }
 
 impl FakeProvider {
-    pub(crate) fn new(name: impl Into<String>, steps: Vec<ScenarioStep>) -> Self {
+    pub fn new(name: impl Into<String>, steps: Vec<ScenarioStep>) -> Self {
         Self {
             name: name.into(),
             steps,
@@ -85,28 +85,28 @@ impl FakeProvider {
         }
     }
 
-    pub(crate) fn builder(name: impl Into<String>) -> FakeProviderBuilder {
+    pub fn builder(name: impl Into<String>) -> FakeProviderBuilder {
         FakeProviderBuilder::new(name)
     }
 
-    pub(crate) fn with_mode(mut self, mode: FakeProviderMode) -> Self {
+    pub fn with_mode(mut self, mode: FakeProviderMode) -> Self {
         self.mode = mode;
         self
     }
 
-    pub(crate) fn reset(&self) {
+    pub fn reset(&self) {
         self.cursor.store(0, Ordering::Release);
     }
 
-    pub(crate) fn position(&self) -> usize {
+    pub fn position(&self) -> usize {
         self.cursor.load(Ordering::Acquire)
     }
 
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.steps.len()
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.steps.is_empty()
     }
 
@@ -166,7 +166,7 @@ struct StepOutcome {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug)]
-pub(crate) struct FakeProviderBuilder {
+pub struct FakeProviderBuilder {
     name: String,
     steps: Vec<ScenarioStep>,
     mode: FakeProviderMode,
@@ -181,17 +181,17 @@ impl FakeProviderBuilder {
         }
     }
 
-    pub(crate) fn step(mut self, step: ScenarioStep) -> Self {
+    pub fn step(mut self, step: ScenarioStep) -> Self {
         self.steps.push(step);
         self
     }
 
-    pub(crate) fn mode(mut self, mode: FakeProviderMode) -> Self {
+    pub fn mode(mut self, mode: FakeProviderMode) -> Self {
         self.mode = mode;
         self
     }
 
-    pub(crate) fn build(self) -> FakeProvider {
+    pub fn build(self) -> FakeProvider {
         FakeProvider {
             name: self.name,
             steps: self.steps,
