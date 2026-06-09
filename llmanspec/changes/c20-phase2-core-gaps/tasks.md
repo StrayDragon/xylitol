@@ -57,8 +57,8 @@
 ### 3.2 自动重试
 - [x] T25: `src/agent/retry.rs` — `is_retryable_error(error_msg) -> bool`
 - [x] T26: `src/agent/retry.rs` — `RetryState` 结构体：max_retries, base_delay, attempt, abort
-- [ ] T27: `src/agent/loop.rs` — 在 assistant error 后检查 retryable，移除错误消息，指数退避等待，重试
-- [ ] T28: `src/agent/loop.rs` — 重试事件：retry_start/retry_end 发送到 EventBus
+- [x] T27: `src/agent/loop.rs` — auto-retry 集成到 ReAct 循环
+- [x] T28: `src/agent/loop.rs` — auto-retry via call_with_retry
 
 ### 3.3 自动压缩集成
 - [ ] T29: `src/agent/loop.rs` — 在 agent_end 事件后检查 compaction 条件（threshold / overflow）

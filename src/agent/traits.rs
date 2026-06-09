@@ -59,4 +59,15 @@ pub trait XyTool: Send + Sync {
     fn description(&self) -> &str;
     fn parameters_schema(&self) -> Value;
     async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError>;
+
+    /// Optional one-line prompt snippet for system prompt construction.
+    /// Default returns the description.
+    fn prompt_snippet(&self) -> Option<&str> {
+        None
+    }
+
+    /// Optional prompt guidelines for system prompt.
+    fn prompt_guidelines(&self) -> &[&str] {
+        &[]
+    }
 }
