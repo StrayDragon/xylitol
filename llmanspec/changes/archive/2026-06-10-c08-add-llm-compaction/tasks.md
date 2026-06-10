@@ -39,4 +39,4 @@
 
 - [x] T18: `cargo test -p xylitol` 通过 (250/250)
 - [x] T19: `just qa` 通过
-- [ ] T20: `llman sdd validate c08-add-llm-compaction --strict --no-interactive`
+- [x] T20: `llman sdd validate c08-add-llm-compaction --strict --no-interactive`
