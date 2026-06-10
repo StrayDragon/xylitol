@@ -1,6 +1,6 @@
 # Xylitol — Strategic Direction
 
-> Last updated: 2026-06-10 · c25 fully implemented · entering Phase 4: OutputGuard + AgentSession Integration
+> Last updated: 2026-06-10 · c25 archived · c26 proposed · 与 pi 对齐度 ~88%
 
 ## Core Positioning
 
@@ -10,7 +10,7 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 
 ## Current Status (2026-06-10)
 
-### ✅ 与 pi 核心功能对齐度: ~85%
+### ✅ 与 pi 核心功能对齐度: ~88%
 
 | 层次 | 状态 |
 |------|------|
@@ -18,15 +18,16 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 | 7 built-in tools + OutputAccumulator | ✅ 完整 |
 | Session persistence (JSONL, tree, fork) | ✅ 完整 |
 | Hooks (pre/post, block/modify/allow) | ✅ 完整 |
-| Compaction (LLM summary + split detection) | ✅ 完整 (c08 待合并) |
+| Compaction (LLM summary + split detection) | ✅ 完整 |
 | ResourceLoader (context, templates, skills) | ✅ 完整 |
 | PromptTemplate + SlashCommands | ✅ 完整 |
 | System prompt (dynamic build) | ✅ 完整 |
 | Defaults + Diagnostics | ✅ 完整 |
 | Multi-provider (OpenAI + Anthropic) | ✅ 完整 |
 | BDD framework (77 scenarios) | ✅ 完整 |
-| **OutputGuard** (stdout takeover) | 🔴 缺失 |
-| **AgentSession 集成** (事件总线, 生命周期) | 🟡 部分 |
+| Streaming cancel (grep/find) | ✅ 代码完成 |
+| **OutputGuard** (stdout takeover) | 🔴 提案中 (c26) |
+| **AgentSession 生命周期** (event bus + auto-persist) | 🔴 提案中 (c26) |
 | **PackageManager 检测** | ⬜ P2 |
 | **TrustManager + project-trust** | ⬜ P2 |
 | **OAuth / auth-storage** | ⬜ P2 |
@@ -51,13 +52,14 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 
 ### 🔴 P0 Remaining (unblocks print mode)
 
-1. **OutputGuard** (108L in pi): stdout/stderr 劫持 — 进入 print 模式时暂停 TUI writer，恢复时接管。`src/agent/output_guard.rs`
-2. **AgentSession 集成增强**: 事件总线自动持久化 turn 生命周期 (pi 的 agent-session.ts 中 auto-save、turn-reset 逻辑)
+1. **OutputGuard** (`src/agent/output_guard.rs`): stdout takeover/restore for print mode — **c26**
+2. **AgentSession 生命周期**: event bus 集成 + auto-persist turn lifecycle — **c26**
 
-### 🟡 P1 (active proposals)
+### 🟡 P1 (complete, no llman artifacts)
 
-- **Streaming cancel for grep/find** — c10
-- **LLM-based Compaction** — c08 (已实现, 待合并/归档)
+- Streaming cancel for grep/find — 代码完成 (CancellationToken)
+- LLM-based Compaction — 代码完成 (compaction.rs 1217L)
+- Session fork — 代码完成 (SessionManager::fork)
 
 ### ⬜ P2/P3
 
@@ -81,9 +83,10 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 
 ### Phase 1 — Core Harden ✅ 85% done
 
-- [x] LLM-based Compaction (c08 — implemented, not yet archived)
+- [x] LLM-based Compaction (`infra/session/compaction.rs` 1217L, 代码完成无需 llman 工件)
 - [x] Config merge (5-layer deep merge + template + secret.env)
-- [x] Session tree / fork support (c15 — proposed)
+- [x] Session tree / fork (SessionManager::fork, 代码完成无需 llman 工件)
+- [x] Streaming cancel for grep/find (CancellationToken, 代码完成无需 llman 工件)
 - [x] ModelRegistry + ModelResolver (c25)
 - [x] ResourceLoader, PromptTemplate, SlashCommands (c25)
 - [x] OutputAccumulator (c25)
@@ -110,22 +113,15 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 
 按优先级排序：
 
-### 1. c25 归档
+### 1. 实施 c26-add-outputguard-lifecycle
 ```bash
-llman sdd archive c25-phase3-infra-gaps
+llman-sdd-apply c26-add-outputguard-lifecycle
 ```
 
-### 2. 提案: OutputGuard + AgentSession 集成
-新建变更 `c26-add-outputguard-session-lifecycle`:
-- `src/agent/output_guard.rs`: stdout/stderr takeover (pi: output-guard.ts 108L)
-- AgentSession 生命周期: event bus 持久化, turn-reset, auto-save
-- 单元测试 + BDD
-
-### 3. 继续推进 c08/c10/c15
-这些提案需要实施和归档：
-- c08-add-llm-compaction (LLM compaction 已实现)
-- c10-add-streaming-cancel (grep/find 进程取消)
-- c15-add-session-fork (fork + branch_summary)
+### 2. 后续 P2 独立变更
+- PackageManager 检测 (2573L pi) — 独立 `c<next>`
+- TrustManager + project-trust — 独立 `c<next>`
+- OAuth / Login — 独立 `c<next>`
 
 ## Architecture Target
 

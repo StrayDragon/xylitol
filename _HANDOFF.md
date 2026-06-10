@@ -1,6 +1,6 @@
-# Handoff: Phase 3 Infrastructure Gaps Complete
+# Handoff: Phase 3 Complete → Phase 4 P0 Gap
 
-> 最后更新：2026-06-10 · c25 已实施(待归档) · c08/c10/c15 已提案
+> 最后更新：2026-06-10 · c25 已归档 · c26 已提案
 > 上游参考：`../pi-mono` (pi coding-agent 源码)
 
 ## 当前测试状态
@@ -25,10 +25,11 @@ just qa                                      # → fmt + clippy + test + doc + p
 | c05 | rebuild-core | ✅ 归档 | 7 tools, ReAct loop, session, hooks, CLI |
 | c06 | update-bdd-framework | ✅ 归档 | cucumber-rs → rstest-bdd |
 | c07 | fix-bdd-scenarios | ✅ 归档 | 36 个 BDD 失败修复, 77/77 全绿 |
-| c25 | phase3-infra-gaps | 🆕 已实施 | ModelRegistry/Resolver, ResourceLoader, PromptTemplate, SlashCommands, OutputAccumulator, defaults, diagnostics, SessionCWD |
-| c08 | add-llm-compaction | 🆕 提案 | LLM 结构化摘要 + 切点检测 + 文件追踪 |
-| c10 | add-streaming-cancel | 🆕 提案 | grep/find 进程取消 |
-| c15 | add-session-fork | 🆕 提案 | fork + branch_summary |
+| c25 | phase3-infra-gaps | ✅ 归档 | ModelRegistry/Resolver, ResourceLoader, PromptTemplate, SlashCommands, OutputAccumulator, defaults, diagnostics, SessionCWD |
+| — | llm-compaction | ✅ 代码完成 | `infra/session/compaction.rs` (1217L) — LLM 摘要, cut-point, fork summary. 无 llman 工件。 |
+| — | streaming-cancel | ✅ 代码完成 | grep/find CancellationToken + tokio::select! 进程 kill. 无 llman 工件。 |
+| — | session-fork | ✅ 代码完成 | SessionManager::fork() + AgentSession::fork_session() + LLM branch summary. 无 llman 工件。 |
+| c26 | add-outputguard-lifecycle | 🆕 提案 | OutputGuard + AgentSession 事件总线 + session lifecycle (P0) |
 
 ## c25 新增模块
 
