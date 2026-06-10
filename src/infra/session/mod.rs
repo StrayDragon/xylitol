@@ -8,6 +8,7 @@
 //! - Version migration support
 //! - Atomic appends with file locking
 
+pub mod compaction;
 pub mod manager;
 pub mod types;
 
