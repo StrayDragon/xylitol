@@ -66,6 +66,10 @@ pub fn estimate_tokens_entry(entry: &SessionEntry) -> u64 {
             let s = c.data.to_string();
             (s.len() as u64).div_ceil(4)
         }
+        SessionEntry::CustomMessage(cm) => {
+            let s = cm.content.to_string();
+            (s.len() as u64).div_ceil(4)
+        }
     }
 }
 
