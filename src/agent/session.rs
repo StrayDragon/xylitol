@@ -17,7 +17,8 @@ use crate::agent::model::ModelConfig;
 use crate::agent::tools::ToolRegistry;
 use crate::agent::traits::XyModel;
 use crate::agent::types::{XyContent, XyPart};
-use crate::infra::session::SessionManager;
+use crate::infra::session::compaction::{CompactionSettings, compact_session};
+use crate::infra::session::manager::SessionManager;
 
 // ── Thinking Level ──────────────────────────────────────────────────
 
@@ -263,6 +264,30 @@ impl AgentSession {
 
     pub fn model_registry(&self) -> &ModelRegistry {
         &self.model_registry
+    }
+
+    // ── Compaction ───────────────────────────────────────────────
+
+    /// Compact the current session, summarizing old entries via LLM.
+    ///
+    /// Requires an active session and a configured model. Writes a
+    /// CompactionEntry to the session file.
+    pub async fn compact_current_session(&self, model: &dyn XyModel) -> Result<(), String> {
+        let sid = self
+            .session_id()
+            .ok_or_else(|| "no active session".to_string())?;
+
+        let settings = CompactionSettings {
+            enabled: true,
+            reserve_tokens: 16384,
+            keep_recent_tokens: 20000,
+        };
+
+        compact_session(&self.session_manager, sid, model, &settings)
+            .await
+            .map_err(|e| format!("compaction failed: {e}"))?;
+
+        Ok(())
     }
 }
 
