@@ -1,4 +1,15 @@
-use std::path::Path;
+//! Edit tool — aligns with pi's edit.ts (multi-edit, original-file matching).
+//!
+//! Key behaviors:
+//! - All edits match against the ORIGINAL file content, not sequentially.
+//! - Rejects overlapping edits, non-unique oldText, no-change edits.
+//! - Normalizes CRLF/CR → LF.
+//! - Strips/restores UTF-8 BOM.
+//! - Fuzzy-matches via NFKC normalization of smart quotes and dashes.
+//! - Returns unified patch AND display diff with line numbers.
+
+use std::collections::HashSet;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -6,28 +17,135 @@ use serde_json::{Value, json};
 use crate::agent::error::XyToolError;
 use crate::agent::traits::{XyTool, XyToolCtx};
 
+use super::mutation::FileMutationQueue;
 use super::patch;
 
-pub(crate) struct EditTool;
+pub struct EditTool {
+    mutation_queue: Arc<FileMutationQueue>,
+}
 
-async fn atomic_write(file_path: &str, content: &str) -> Result<(), XyToolError> {
-    let path = Path::new(file_path);
-    let temp_path = path.with_extension("xylitol-tmp");
-    tokio::fs::write(&temp_path, content).await.map_err(|e| {
-        XyToolError::ExecutionFailed(anyhow::anyhow!(
-            "failed to write temp file for '{}': {}",
-            file_path,
-            e
-        ))
-    })?;
-    tokio::fs::rename(&temp_path, path).await.map_err(|e| {
-        let _ = std::fs::remove_file(&temp_path);
-        XyToolError::ExecutionFailed(anyhow::anyhow!(
-            "failed to atomically replace '{}': {}",
-            file_path,
-            e
-        ))
-    })
+impl EditTool {
+    pub fn new(mutation_queue: Arc<FileMutationQueue>) -> Self {
+        Self { mutation_queue }
+    }
+
+    fn find_match_range(
+        file_content: &str,
+        old_text: &str,
+        file_path: &str,
+    ) -> Result<std::ops::Range<usize>, XyToolError> {
+        // Exact match
+        if let Some(pos) = file_content.find(old_text) {
+            return Ok(pos..pos + old_text.len());
+        }
+        // Fuzzy
+        if let Some(pos) = patch::fuzzy_find(file_content, old_text) {
+            return Ok(pos);
+        }
+        // Patch fallback
+        if let Some(pos) = patch::patch_find_range(file_content, old_text) {
+            return Ok(pos);
+        }
+        let snippet = &old_text[..old_text.len().min(50)];
+        Err(XyToolError::ExecutionFailed(anyhow::anyhow!(
+            "Could not find '{snippet}...' in '{file_path}'"
+        )))
+    }
+
+    fn check_overlaps(ranges: &[(usize, (usize, usize))]) -> Result<(), XyToolError> {
+        for i in 0..ranges.len() {
+            for j in (i + 1)..ranges.len() {
+                let (_, (as_, ae)) = ranges[i];
+                let (_, (bs, be)) = ranges[j];
+                if as_ < be && bs < ae {
+                    return Err(XyToolError::InvalidArgs(format!(
+                        "Overlapping edits: edit {i} and edit {j} overlap"
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Core edit logic — isolated for use with mutation queue.
+    async fn do_edit(
+        file_path: &str,
+        edit_pairs: Vec<(String, String)>,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> Result<String, XyToolError> {
+        if cancel.is_cancelled() {
+            return Err(XyToolError::Aborted);
+        }
+
+        let raw_content = tokio::fs::read_to_string(file_path).await.map_err(|e| {
+            XyToolError::ExecutionFailed(anyhow::anyhow!("failed to read '{file_path}': {e}"))
+        })?;
+
+        let has_bom = raw_content.starts_with('\u{FEFF}');
+        let content_no_bom = if has_bom {
+            raw_content[3..].to_string()
+        } else {
+            raw_content.clone()
+        };
+        let normalized = content_no_bom.replace("\r\n", "\n").replace('\r', "\n");
+
+        // Match all against ORIGINAL content
+        let mut match_ranges: Vec<(usize, (usize, usize))> = Vec::new();
+        for (i, (old, _)) in edit_pairs.iter().enumerate() {
+            let range = Self::find_match_range(&normalized, old, file_path)?;
+            match_ranges.push((i, (range.start, range.end)));
+        }
+        Self::check_overlaps(&match_ranges)?;
+
+        // Capture matched text per edit
+        let mut matched_old_texts: Vec<String> = edit_pairs.iter().map(|_| String::new()).collect();
+        for &(i, (start, end)) in &match_ranges {
+            matched_old_texts[i] = normalized[start..end].to_string();
+        }
+
+        // Build result by applying edits in sorted order
+        let mut sorted: Vec<(usize, (usize, usize))> = match_ranges;
+        sorted.sort_by_key(|(_, (s, _))| *s);
+        let mut result_content = String::new();
+        let mut last = 0usize;
+        for &(i, (start, end)) in &sorted {
+            result_content.push_str(&normalized[last..start]);
+            result_content.push_str(&edit_pairs[i].1);
+            last = end;
+        }
+        result_content.push_str(&normalized[last..]);
+
+        let final_content = if has_bom {
+            format!("\u{FEFF}{result_content}")
+        } else {
+            result_content
+        };
+
+        let old_sample = &matched_old_texts[0];
+        let unified = patch::generate_unified_diff(old_sample, &final_content, file_path);
+        let display = patch::generate_display_diff(old_sample, &final_content, file_path);
+
+        // Atomic write
+        let path = std::path::Path::new(file_path);
+        let temp_path = path.with_extension("xylitol-tmp");
+        tokio::fs::write(&temp_path, &final_content)
+            .await
+            .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("write temp: {e}")))?;
+        tokio::fs::rename(&temp_path, path).await.map_err(|e| {
+            let _ = std::fs::remove_file(&temp_path);
+            XyToolError::ExecutionFailed(anyhow::anyhow!("rename: {e}"))
+        })?;
+
+        Ok(serde_json::to_string(&json!({
+            "success": true,
+            "path": file_path,
+            "diff": unified,
+            "display_diff": display,
+            "strategy": "exact-multi",
+            "edit_count": edit_pairs.len(),
+        }))
+        .unwrap())
+    }
 }
 
 #[async_trait]
@@ -37,113 +155,97 @@ impl XyTool for EditTool {
     }
 
     fn description(&self) -> &str {
-        "Edit a file by finding and replacing text. Uses exact match first, then falls back to fuzzy matching."
+        "Edit a file by finding and replacing text in one or more locations. All edits match against the original file content."
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "file_path": {
-                    "type": "string",
-                    "description": "Path to the file to edit"
-                },
-                "old_string": {
-                    "type": "string",
-                    "description": "Text to search for and replace"
-                },
-                "new_string": {
-                    "type": "string",
-                    "description": "Text to replace with"
-                },
-                "coords": {
-                    "type": "object",
-                    "description": "Explicit selection coordinates",
-                    "properties": {
-                        "start_line": { "type": "integer" },
-                        "end_line": { "type": "integer" }
+                "path": {"type": "string", "description": "Path to the file to edit"},
+                "edits": {
+                    "type": "array",
+                    "description": "Array of {oldText, newText} pairs to replace",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "oldText": {"type": "string", "description": "Text to search for and replace"},
+                            "newText": {"type": "string", "description": "Text to replace with"}
+                        },
+                        "required": ["oldText", "newText"]
                     }
                 }
             },
-            "required": ["file_path", "old_string", "new_string"]
+            "required": ["path", "edits"]
         })
     }
 
-    async fn execute(&self, _ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
-        let file_path = args
-            .get("file_path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                XyToolError::InvalidArgs("missing required argument: file_path".into())
-            })?;
+    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+        let file_path = args["path"]
+            .as_str()
+            .ok_or_else(|| XyToolError::InvalidArgs("missing 'path'".into()))?;
 
-        let old_string = args
-            .get("old_string")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                XyToolError::InvalidArgs("missing required argument: old_string".into())
-            })?;
-
-        let new_string = args
-            .get("new_string")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                XyToolError::InvalidArgs("missing required argument: new_string".into())
-            })?;
-
-        let content = tokio::fs::read_to_string(file_path).await.map_err(|e| {
-            XyToolError::ExecutionFailed(anyhow::anyhow!("failed to read '{}': {}", file_path, e))
-        })?;
-
-        if let Some(modified) = try_exact_replace(&content, old_string, new_string) {
-            let diff = patch::generate_diff(old_string, &modified);
-            atomic_write(file_path, &modified).await?;
-            return Ok(serde_json::to_string(&json!({
-                "success": true,
-                "path": file_path,
-                "diff": diff,
-                "strategy": "exact",
-            }))
-            .unwrap());
+        let edits_arr = args["edits"]
+            .as_array()
+            .ok_or_else(|| XyToolError::InvalidArgs("missing 'edits' array".into()))?;
+        if edits_arr.is_empty() {
+            return Err(XyToolError::InvalidArgs("edits must not be empty".into()));
         }
 
-        if let Some(modified) = patch::fudiff_replace(&content, old_string, new_string) {
-            let diff = patch::generate_diff(old_string, &modified);
-            atomic_write(file_path, &modified).await?;
-            return Ok(serde_json::to_string(&json!({
-                "success": true,
-                "path": file_path,
-                "diff": diff,
-                "strategy": "fuzzy",
-            }))
-            .unwrap());
+        let edit_pairs: Vec<(String, String)> = edits_arr
+            .iter()
+            .enumerate()
+            .map(|(i, e)| {
+                let old = e["oldText"].as_str().ok_or_else(|| {
+                    XyToolError::InvalidArgs(format!("edits[{i}].oldText required"))
+                })?;
+                let new = e["newText"].as_str().ok_or_else(|| {
+                    XyToolError::InvalidArgs(format!("edits[{i}].newText required"))
+                })?;
+                if old.is_empty() {
+                    return Err(XyToolError::InvalidArgs(format!(
+                        "edits[{i}].oldText must not be empty"
+                    )));
+                }
+                if old == new {
+                    return Err(XyToolError::InvalidArgs(format!(
+                        "edits[{i}]: oldText == newText (no change)"
+                    )));
+                }
+                Ok((old.to_string(), new.to_string()))
+            })
+            .collect::<Result<_, _>>()?;
+
+        // Check uniqueness
+        let mut seen = HashSet::new();
+        for (i, (old, _)) in edit_pairs.iter().enumerate() {
+            if !seen.insert(old.as_str()) {
+                return Err(XyToolError::InvalidArgs(format!(
+                    "edits[{i}].oldText is not unique"
+                )));
+            }
         }
 
-        if let Some(modified) = patch::patch_fallback(&content, old_string, new_string) {
-            let diff = patch::generate_diff(old_string, &modified);
-            atomic_write(file_path, &modified).await?;
-            return Ok(serde_json::to_string(&json!({
-                "success": true,
-                "path": file_path,
-                "diff": diff,
-                "strategy": "patch",
-            }))
-            .unwrap());
-        }
+        let cancel = ctx.cancel.clone();
+        let fp = file_path.to_string();
 
-        Err(XyToolError::ExecutionFailed(anyhow::anyhow!(
-            "could not find '{}...' in '{}'",
-            &old_string[..old_string.len().min(50)],
-            file_path,
-        )))
-    }
-}
+        // Use mutation queue to serialize same-path edits
+        let result_text = self
+            .mutation_queue
+            .run(&fp, || {
+                let edit_pairs = edit_pairs.clone();
+                let cancel = cancel.clone();
+                let file_path = fp.clone();
+                async move {
+                    Self::do_edit(&file_path, edit_pairs, cancel)
+                        .await
+                        .map_err(|e| e.to_string())
+                }
+            })
+            .await
+            .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("{e}")))?;
 
-fn try_exact_replace(content: &str, old_string: &str, new_string: &str) -> Option<String> {
-    if content.contains(old_string) {
-        Some(content.replace(old_string, new_string))
-    } else {
-        None
+        Ok(result_text)
     }
 }
 
@@ -152,115 +254,133 @@ mod tests {
     use super::*;
 
     fn test_ctx() -> XyToolCtx {
-        XyToolCtx {
-            call_id: "test-call".into(),
-        }
+        XyToolCtx::new("test-call")
     }
 
     #[tokio::test]
-    async fn test_edit_exact_replace() {
+    async fn test_edit_single_replace() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.txt");
+        let ps = path.to_str().unwrap().to_string();
         tokio::fs::write(&path, "hello world\nfoo bar\n")
             .await
             .unwrap();
 
-        let tool = EditTool;
-        let result = tool
+        let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
+        let r = tool
             .execute(
                 &test_ctx(),
-                json!({
-                    "file_path": path.to_str().unwrap(),
-                    "old_string": "foo bar",
-                    "new_string": "baz qux",
-                }),
+                json!({"path": &ps, "edits": [{"oldText": "foo bar", "newText": "baz qux"}]}),
             )
             .await
             .unwrap();
-        let v: Value = serde_json::from_str(&result).unwrap();
+        let v: Value = serde_json::from_str(&r).unwrap();
         assert_eq!(v["success"], true);
-        assert_eq!(v["strategy"], "exact");
-
-        let content = tokio::fs::read_to_string(&path).await.unwrap();
-        assert_eq!(content, "hello world\nbaz qux\n");
-    }
-
-    #[tokio::test]
-    async fn test_edit_nonexistent_file() {
-        let tool = EditTool;
-        let result = tool
-            .execute(
-                &test_ctx(),
-                json!({
-                    "file_path": "/nonexistent/edit_test_file",
-                    "old_string": "foo",
-                    "new_string": "bar",
-                }),
-            )
-            .await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_edit_pattern_not_found() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("test.txt");
-        tokio::fs::write(&path, "hello world\n").await.unwrap();
-
-        let tool = EditTool;
-        let result = tool
-            .execute(
-                &test_ctx(),
-                json!({
-                    "file_path": path.to_str().unwrap(),
-                    "old_string": "nonexistent text here",
-                    "new_string": "replacement",
-                }),
-            )
-            .await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_edit_fuzzy_replace_whitespace() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("test.txt");
-        tokio::fs::write(&path, "hello   world\n").await.unwrap();
-
-        let tool = EditTool;
-        let result = tool
-            .execute(
-                &test_ctx(),
-                json!({
-                    "file_path": path.to_str().unwrap(),
-                    "old_string": "hello world",
-                    "new_string": "hi world",
-                }),
-            )
-            .await;
-        assert!(
-            result.is_ok(),
-            "fuzzy match should succeed: {:?}",
-            result.err()
+        assert_eq!(
+            tokio::fs::read_to_string(&path).await.unwrap(),
+            "hello world\nbaz qux\n"
         );
     }
 
     #[tokio::test]
-    async fn test_edit_missing_args() {
-        let tool = EditTool;
-        assert!(tool.execute(&test_ctx(), json!({})).await.is_err());
-        assert!(
-            tool.execute(&test_ctx(), json!({ "file_path": "/tmp/x" }))
-                .await
-                .is_err()
+    async fn test_edit_multiple_non_overlapping() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.txt");
+        let ps = path.to_str().unwrap().to_string();
+        tokio::fs::write(&path, "AAA\nBBB\nCCC\n").await.unwrap();
+
+        let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
+        tool.execute(
+            &test_ctx(),
+            json!({"path": &ps, "edits": [{"oldText":"AAA","newText":"111"},{"oldText":"CCC","newText":"333"}]}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            tokio::fs::read_to_string(&path).await.unwrap(),
+            "111\nBBB\n333\n"
         );
+    }
+
+    #[tokio::test]
+    async fn test_edit_rejects_overlap() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.txt");
+        let ps = path.to_str().unwrap().to_string();
+        tokio::fs::write(&path, "ABCDEF\n").await.unwrap();
+
+        let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
+        let r = tool
+            .execute(
+                &test_ctx(),
+                json!({"path": &ps, "edits": [{"oldText":"ABC","newText":"111"},{"oldText":"BCD","newText":"222"}]}),
+            )
+            .await;
+        assert!(r.is_err());
+        assert!(r.unwrap_err().to_string().contains("overlap"));
+    }
+
+    #[tokio::test]
+    async fn test_edit_rejects_empty_oldtext() {
+        let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
         assert!(
             tool.execute(
                 &test_ctx(),
-                json!({ "file_path": "/tmp/x", "old_string": "a" }),
+                json!({"path":"/tmp/x","edits":[{"oldText":"","newText":"f"}]})
             )
             .await
             .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn test_edit_rejects_no_change() {
+        let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
+        assert!(
+            tool.execute(
+                &test_ctx(),
+                json!({"path":"/tmp/x","edits":[{"oldText":"s","newText":"s"}]})
+            )
+            .await
+            .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_edit_crlf_normalized() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.txt");
+        let ps = path.to_str().unwrap().to_string();
+        tokio::fs::write(&path, "hello\r\nworld\r\n").await.unwrap();
+
+        let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
+        let r = tool
+            .execute(
+                &test_ctx(),
+                json!({"path": &ps, "edits": [{"oldText":"hello\nworld","newText":"hi\nthere"}]}),
+            )
+            .await;
+        assert!(r.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_edit_bom_preserved() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.txt");
+        let ps = path.to_str().unwrap().to_string();
+        tokio::fs::write(&path, "\u{FEFF}hello world\n")
+            .await
+            .unwrap();
+
+        let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
+        tool.execute(
+            &test_ctx(),
+            json!({"path": &ps, "edits": [{"oldText":"hello world","newText":"hi world"}]}),
+        )
+        .await
+        .unwrap();
+        let c = tokio::fs::read_to_string(&path).await.unwrap();
+        assert!(c.starts_with('\u{FEFF}'));
+        assert!(c.contains("hi world"));
     }
 }

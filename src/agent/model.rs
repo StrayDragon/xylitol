@@ -3,12 +3,11 @@
 /// Supports OpenAI-compatible and Anthropic providers via direct HTTP integration.
 use std::sync::Arc;
 
-use crate::agent::r#loop::AgentError;
 use crate::agent::traits::XyModel;
 
 /// Supported model provider kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ModelKind {
+pub enum ModelKind {
     OpenAi,
     Anthropic,
     #[cfg(feature = "dev-fake-provider")]
@@ -17,16 +16,16 @@ pub(crate) enum ModelKind {
 
 /// Configuration for building an LLM provider.
 #[derive(Debug, Clone)]
-pub(crate) struct ModelConfig {
-    pub(crate) kind: ModelKind,
-    pub(crate) api_key: String,
-    pub(crate) model: String,
-    pub(crate) base_url: Option<String>,
+pub struct ModelConfig {
+    pub kind: ModelKind,
+    pub api_key: String,
+    pub model: String,
+    pub base_url: Option<String>,
 }
 
 impl ModelConfig {
     /// Build the LLM provider from this configuration.
-    pub(crate) fn build(&self) -> Result<Arc<dyn XyModel>, AgentError> {
+    pub fn build(&self) -> Result<Arc<dyn XyModel>, String> {
         match self.kind {
             ModelKind::OpenAi => {
                 let provider = crate::agent::provider::openai::OpenAIProvider::new(
@@ -58,7 +57,7 @@ impl ModelConfig {
     }
 
     /// Provider identifier for display purposes.
-    pub(crate) fn provider_name(&self) -> &'static str {
+    pub fn provider_name(&self) -> &'static str {
         match self.kind {
             ModelKind::OpenAi => "openai",
             ModelKind::Anthropic => "anthropic",

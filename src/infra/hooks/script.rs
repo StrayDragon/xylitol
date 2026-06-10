@@ -24,7 +24,7 @@ use super::{HookAction, HookEvent, HookPhase};
 ///
 /// On timeout, the process is killed and `Allow` is returned (non-blocking
 /// default to avoid freezing the agent).
-pub(crate) async fn run_hook_script(
+pub async fn run_hook_script(
     command: &str,
     event: &HookEvent,
     phase: HookPhase,

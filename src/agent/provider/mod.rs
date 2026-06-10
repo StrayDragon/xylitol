@@ -6,8 +6,8 @@
 //! - [`FakeProvider`] (dev-only): scenario-based mock for offline testing
 //! - [`MockXyModel`] (test-only): returns a fixed text response
 
-pub(crate) mod anthropic;
-pub(crate) mod openai;
+pub mod anthropic;
+pub mod openai;
 
 #[cfg(feature = "dev-fake-provider")]
 mod fake;
@@ -15,6 +15,6 @@ mod fake;
 mod mock;
 
 #[cfg(feature = "dev-fake-provider")]
-pub(crate) use fake::*;
+pub use fake::*;
 #[cfg(test)]
-pub(crate) use mock::MockXyModel;
+pub use mock::MockXyModel;

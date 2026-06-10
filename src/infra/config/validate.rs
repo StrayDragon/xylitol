@@ -7,7 +7,7 @@ use super::types::AppConfig;
 
 /// Errors from config validation.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum ValidationError {
+pub enum ValidationError {
     #[error("JSON Schema compilation failed: {0}")]
     SchemaCompile(String),
     #[error("config validation failed:\n{errors}")]
@@ -17,7 +17,7 @@ pub(crate) enum ValidationError {
 }
 
 /// Validate a parsed (merged) config value against the AppConfig JSON Schema.
-pub(crate) fn validate_config(value: &Value) -> Result<(), ValidationError> {
+pub fn validate_config(value: &Value) -> Result<(), ValidationError> {
     // Build JSON Schema from AppConfig type.
     let schema = schema_for!(AppConfig);
     let schema_value =
@@ -44,7 +44,7 @@ pub(crate) fn validate_config(value: &Value) -> Result<(), ValidationError> {
 }
 
 /// Generate JSON Schema from `AppConfig` and write to `configs/config.schema.json`.
-pub(crate) fn write_schema_file() -> Result<(), Box<dyn std::error::Error>> {
+pub fn write_schema_file() -> Result<(), Box<dyn std::error::Error>> {
     let schema = schema_for!(AppConfig);
     let json = serde_json::to_string_pretty(&schema)?;
     let path = std::path::Path::new("configs/config.schema.json");

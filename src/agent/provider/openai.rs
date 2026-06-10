@@ -10,7 +10,7 @@ use crate::agent::error::XyError;
 use crate::agent::traits::{XyModel, XyStream};
 use crate::agent::types::{XyChunk, XyContent, XyFinishReason, XyPart, XyRole, XyToolSchema};
 
-pub(crate) struct OpenAIProvider {
+pub struct OpenAIProvider {
     client: reqwest::Client,
     api_key: String,
     model: String,
@@ -18,7 +18,7 @@ pub(crate) struct OpenAIProvider {
 }
 
 impl OpenAIProvider {
-    pub(crate) fn new(api_key: String, model: String, base_url: Option<String>) -> Self {
+    pub fn new(api_key: String, model: String, base_url: Option<String>) -> Self {
         Self {
             client: reqwest::Client::new(),
             api_key,

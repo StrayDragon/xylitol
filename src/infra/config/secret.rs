@@ -9,13 +9,13 @@ use std::path::Path;
 
 /// Errors from secret loading.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum SecretError {
+pub enum SecretError {
     #[error("permission warning: {path} is readable by group/others. Consider: chmod 600 {path}")]
     Permissions { path: String },
 }
 
 /// Result from loading a secret.env file.
-pub(crate) struct SecretResult {
+pub struct SecretResult {
     pub vars: HashMap<String, String>,
     pub warnings: Vec<SecretError>,
 }
@@ -24,7 +24,7 @@ pub(crate) struct SecretResult {
 ///
 /// Returns the parsed key-value pairs plus any permission warnings.
 /// If the file does not exist, returns an empty map (no error).
-pub(crate) fn load_secret_env(path: &Path) -> SecretResult {
+pub fn load_secret_env(path: &Path) -> SecretResult {
     let mut warnings = Vec::new();
     let vars = if path.exists() {
         // Check file permissions (Unix only).

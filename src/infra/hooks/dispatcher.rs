@@ -18,7 +18,8 @@ const DEFAULT_TIMEOUT_SECS: u64 = 5;
 /// serially. A hook that returns `block` immediately terminates the chain.
 ///
 /// When no hooks are configured, dispatch is a no-op returning `Allowed`.
-pub(crate) struct HookDispatcher {
+#[derive(Debug, Default)]
+pub struct HookDispatcher {
     /// Merged hook entries (user overrides project overrides global).
     hooks: Vec<HookEntry>,
     /// Default timeout for hook execution.
@@ -29,7 +30,7 @@ impl HookDispatcher {
     /// Create a new dispatcher from the three-tier config.
     ///
     /// Merges hooks by event pattern: user > project > global.
-    pub(crate) fn new(config: &HooksConfig) -> Self {
+    pub fn new(config: &HooksConfig) -> Self {
         let hooks = merge_hooks(config);
         Self {
             hooks,
@@ -42,7 +43,7 @@ impl HookDispatcher {
     /// Hooks are executed in order: global → project → user. If any hook
     /// returns `Block`, the chain terminates immediately. A `Modify` result
     /// updates the args for subsequent hooks.
-    pub(crate) async fn dispatch(&self, event: &HookEvent, phase: HookPhase) -> DispatchResult {
+    pub async fn dispatch(&self, event: &HookEvent, phase: HookPhase) -> DispatchResult {
         let mut modified_args: Option<serde_json::Value> = None;
 
         for hook in &self.hooks {
@@ -82,12 +83,12 @@ impl HookDispatcher {
     }
 
     /// Number of registered hooks.
-    pub(crate) fn hook_count(&self) -> usize {
+    pub fn hook_count(&self) -> usize {
         self.hooks.len()
     }
 
     /// Whether any hooks are registered.
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.hooks.is_empty()
     }
 }

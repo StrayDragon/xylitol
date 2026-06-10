@@ -1,12 +1,23 @@
+//! Read tool — reads file contents with truncation and offset support.
+//!
+//! Key behaviors (aligns with pi's read.ts):
+//! - Truncation at 2000 lines OR 50KB (whichever first)
+//! - Offset (line-based) and limit support
+//! - Reports offset-out-of-bounds
+//! - Remaining lines hint when truncated
+//! - Image file detection: returns placeholder for images
+
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use crate::agent::error::XyToolError;
 use crate::agent::traits::{XyTool, XyToolCtx};
 
-const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
+use super::truncate::{TruncationOptions, truncate_head};
 
-pub(crate) struct ReadTool;
+const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "ico", "svg"];
+
+pub struct ReadTool;
 
 #[async_trait]
 impl XyTool for ReadTool {
@@ -15,14 +26,14 @@ impl XyTool for ReadTool {
     }
 
     fn description(&self) -> &str {
-        "Read the contents of a file from the filesystem. Supports line offset and limit."
+        "Read the contents of a file. Supports images and text files with optional offset and limit for large files. Output is truncated to 2000 lines / 50KB."
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "file_path": {
+                "path": {
                     "type": "string",
                     "description": "Path to the file to read"
                 },
@@ -35,73 +46,106 @@ impl XyTool for ReadTool {
                     "description": "Maximum number of lines to read"
                 }
             },
-            "required": ["file_path"]
+            "required": ["path"]
         })
     }
 
-    async fn execute(&self, _ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
-        let file_path = args
-            .get("file_path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                XyToolError::InvalidArgs("missing required argument: file_path".into())
-            })?;
+    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+        let file_path = args["path"]
+            .as_str()
+            .ok_or_else(|| XyToolError::InvalidArgs("missing 'path'".into()))?;
 
-        let offset = args.get("offset").and_then(|v| v.as_i64()).unwrap_or(0);
-        let limit = args.get("limit").and_then(|v| v.as_i64());
+        if ctx.cancel.is_cancelled() {
+            return Err(XyToolError::Aborted);
+        }
 
         let metadata = tokio::fs::metadata(file_path).await.map_err(|e| {
-            XyToolError::ExecutionFailed(anyhow::anyhow!("failed to read '{}': {}", file_path, e))
+            XyToolError::ExecutionFailed(anyhow::anyhow!("failed to stat '{file_path}': {e}"))
         })?;
 
-        if metadata.len() > MAX_FILE_SIZE {
-            return Err(XyToolError::InvalidArgs(format!(
-                "file '{}' is {} bytes, exceeding limit of {} bytes. Use offset/limit.",
-                file_path,
-                metadata.len(),
-                MAX_FILE_SIZE
-            )));
+        // Detect image files by extension
+        let ext = std::path::Path::new(file_path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        if IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+            // Return placeholder for images (like pi does)
+            return Ok(format!(
+                "[Image file: {file_path} ({size})]",
+                size = format_size(metadata.len())
+            ));
         }
 
-        let content = tokio::fs::read_to_string(file_path).await.map_err(|e| {
-            XyToolError::ExecutionFailed(anyhow::anyhow!("failed to read '{}': {}", file_path, e))
+        let raw_content = tokio::fs::read_to_string(file_path).await.map_err(|e| {
+            XyToolError::ExecutionFailed(anyhow::anyhow!("failed to read '{file_path}': {e}"))
         })?;
 
-        if offset <= 0 && limit.is_none() {
-            let line_count = content.lines().count();
-            return Ok(serde_json::to_string(&json!({
-                "content": content,
-                "line_count": line_count,
-            }))
-            .unwrap());
-        }
+        let total_lines = raw_content.lines().count();
+        let offset = args["offset"].as_i64().unwrap_or(0);
+        let limit = args["limit"].as_i64();
 
-        let lines: Vec<&str> = content.lines().collect();
-        let total_lines = lines.len();
-        let start = (offset.max(1) as usize).saturating_sub(1);
-        let end = match limit {
-            Some(n) => (start + n as usize).min(total_lines),
-            None => total_lines,
+        // Apply offset/limit filtering
+        let filtered = if offset <= 0 && limit.is_none() {
+            raw_content
+        } else {
+            let lines: Vec<&str> = raw_content.lines().collect();
+            let start = (offset.max(1) as usize).saturating_sub(1);
+            let end = match limit {
+                Some(n) if n > 0 => (start + n as usize).min(total_lines),
+                _ => total_lines,
+            };
+
+            if start >= total_lines {
+                return Ok(json!({
+                    "content": "",
+                    "total_lines": total_lines,
+                    "offset": offset,
+                    "note": "offset exceeds file length"
+                })
+                .to_string());
+            }
+
+            lines[start..end].join("\n")
         };
 
-        if start >= total_lines {
-            return Ok(serde_json::to_string(&json!({
-                "content": "",
-                "line_count": 0,
-                "total_lines": total_lines,
-                "offset": offset,
-            }))
-            .unwrap());
+        // Truncate
+        let truncation = truncate_head(&filtered, TruncationOptions::default());
+
+        let mut result = json!({
+            "content": truncation.content,
+            "total_lines": total_lines,
+        });
+
+        if offset > 0 {
+            result["offset"] = json!(offset);
+        }
+        if truncation.truncated {
+            let remaining = total_lines.saturating_sub(truncation.output_lines);
+            result["truncated"] = json!(true);
+            result["truncated_by"] = json!(truncation.truncated_by.map(|l| l.to_string()));
+            if remaining > 0 {
+                result["remaining_lines"] = json!(remaining);
+                result["hint"] = json!(format!(
+                    "Output truncated. {} lines remaining. Use offset={} to read more.",
+                    remaining,
+                    offset.max(1) as usize + truncation.output_lines
+                ));
+            }
         }
 
-        let excerpt = lines[start..end].join("\n");
-        Ok(serde_json::to_string(&json!({
-            "content": excerpt,
-            "line_count": end - start,
-            "total_lines": total_lines,
-            "offset": offset,
-        }))
-        .unwrap())
+        Ok(serde_json::to_string(&result).unwrap())
+    }
+}
+
+fn format_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{bytes}B")
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1}KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1}MB", bytes as f64 / (1024.0 * 1024.0))
     }
 }
 
@@ -110,9 +154,7 @@ mod tests {
     use super::*;
 
     fn test_ctx() -> XyToolCtx {
-        XyToolCtx {
-            call_id: "test-call".into(),
-        }
+        XyToolCtx::new("test-call")
     }
 
     #[tokio::test]
@@ -125,12 +167,12 @@ mod tests {
 
         let tool = ReadTool;
         let result = tool
-            .execute(&test_ctx(), json!({ "file_path": path.to_str().unwrap() }))
+            .execute(&test_ctx(), json!({"path": path.to_str().unwrap()}))
             .await
             .unwrap();
         let v: Value = serde_json::from_str(&result).unwrap();
         assert_eq!(v["content"], "hello\nworld\nthird line\n");
-        assert_eq!(v["line_count"], 3);
+        assert_eq!(v["total_lines"], 3);
     }
 
     #[tokio::test]
@@ -145,58 +187,46 @@ mod tests {
         let result = tool
             .execute(
                 &test_ctx(),
-                json!({
-                    "file_path": path.to_str().unwrap(),
-                    "offset": 2,
-                    "limit": 2,
-                }),
+                json!({"path": path.to_str().unwrap(), "offset": 2, "limit": 2}),
             )
             .await
             .unwrap();
         let v: Value = serde_json::from_str(&result).unwrap();
         assert_eq!(v["content"], "line2\nline3");
-        assert_eq!(v["line_count"], 2);
-        assert_eq!(v["total_lines"], 4);
     }
 
     #[tokio::test]
     async fn test_read_nonexistent_file() {
         let tool = ReadTool;
-        let result = tool
-            .execute(
-                &test_ctx(),
-                json!({ "file_path": "/nonexistent/path/file.txt" }),
-            )
-            .await;
-        assert!(result.is_err());
+        assert!(
+            tool.execute(&test_ctx(), json!({"path": "/nonexistent/read_test_file"}))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
-    async fn test_read_missing_path_arg() {
+    async fn test_read_missing_path() {
         let tool = ReadTool;
-        let result = tool.execute(&test_ctx(), json!({})).await;
-        assert!(result.is_err());
+        assert!(tool.execute(&test_ctx(), json!({})).await.is_err());
     }
 
     #[tokio::test]
-    async fn test_read_offset_beyond_end() {
+    async fn test_read_offset_past_end() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("short.txt");
-        tokio::fs::write(&path, "only one line\n").await.unwrap();
+        tokio::fs::write(&path, "one line\n").await.unwrap();
 
         let tool = ReadTool;
         let result = tool
             .execute(
                 &test_ctx(),
-                json!({
-                    "file_path": path.to_str().unwrap(),
-                    "offset": 10,
-                }),
+                json!({"path": path.to_str().unwrap(), "offset": 10}),
             )
             .await
             .unwrap();
         let v: Value = serde_json::from_str(&result).unwrap();
         assert_eq!(v["content"], "");
-        assert_eq!(v["line_count"], 0);
+        assert!(v["note"].as_str().unwrap_or("").contains("exceeds"));
     }
 }

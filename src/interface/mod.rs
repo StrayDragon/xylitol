@@ -1,8 +1,8 @@
-pub(crate) mod cli;
-pub(crate) mod print;
+pub mod cli;
+pub mod print;
 
 #[cfg(feature = "infra-acp")]
-pub(crate) mod acp;
+pub mod acp;
 
 #[cfg(feature = "ui-review")]
-pub(crate) mod diff_review;
+pub mod diff_review;
