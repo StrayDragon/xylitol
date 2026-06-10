@@ -1,6 +1,6 @@
 # Xylitol — Strategic Direction
 
-> Last updated: 2026-06-10 · c25/c26 archived · all P0/P1 gaps closed · pi alignment ~89%
+> Last updated: 2026-06-10 · c25/c26 archived · all P0/P1 gaps closed · pi alignment ~91%
 
 ## Core Positioning
 
@@ -10,9 +10,9 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 
 ## Current Status (2026-06-10)
 
-### ✅ 与 pi 核心功能对齐度: ~89%
+### ✅ 与 pi 核心功能对齐度: ~91%
 
-所有 P0 和 P1 差距已关闭。剩余为 P2/P3 级别。
+所有 P0 和 P1 差距已关闭。TrustManager + ProjectTrust (P2) 也已完成。剩余为 P2/P3 级别。
 
 | 层次 | 状态 |
 |------|------|
@@ -29,9 +29,10 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 | AgentSession lifecycle (event bus, auto-persist, start_new/resume) | ✅ 完整 |
 | Streaming cancel (grep/find) | ✅ 代码完成 |
 | Multi-provider (OpenAI + Anthropic) | ✅ 完整 |
-| BDD framework (77 scenarios, 336 total tests) | ✅ 完整 |
+| TrustManager (trust.json + lock + ancestor walk) | ✅ 完整 |
+| ProjectTrust (resolve override → store → policy → prompt) | ✅ 完整 |
+| BDD framework (77 scenarios, 356 total tests) | ✅ 完整 |
 | **PackageManager 检测** | ⬜ P2 |
-| **TrustManager + project-trust** | ⬜ P2 |
 | **OAuth / auth-storage** | ⬜ P2 |
 | **Extensions SDK** | ⬜ P3 |
 
@@ -45,8 +46,8 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 - **SlashCommands**: 7 builtin commands, dispatch interception
 - **OutputAccumulator**: rolling buffer, temp file spill
 - **Defaults + Diagnostics**: centralized values + startup checks
-- **LLM Compaction**: compaction.rs (1217L) — cut-point detection, LLM summarization, fork summary
-- **Session fork**: SessionManager::fork + AgentSession::fork_session
+- **TrustManager**: `src/agent/trust.rs` (500L) — TrustStore (JSON persistence, file lock, ancestor-walk lookup, set/set_many atomic), trust options builder
+- **ProjectTrust**: `src/agent/project_trust.rs` (380L) — resolution pipeline (override → no-inputs-auto-trust → store → default-policy → UI-prompt → fallback-deny), DefaultProjectTrust (Always/Never/Ask)
 
 ## What Xylitol Should NOT Do
 
@@ -81,11 +82,12 @@ All P0/P1 items complete. Core is solid.
 - [x] BDD 测试全绿 (77/77)
 - [x] 7 built-in tools 全部 BDD 覆盖
 - [x] At least 2 LLM providers (OpenAI + Anthropic)
-- [x] 336 tests pass (259 lib + 77 BDD)
+- [x] 356 tests pass (279 lib + 77 BDD)
 - [x] OutputGuard: stdout takeover for print mode
 - [x] AgentSession full lifecycle with auto-persist
 - [x] LLM-based compaction fully functional
 - [x] Session persistence survives process restart
 - [x] SecurityEngine policies cover built-in tools
+- [x] ProjectTrust full resolution pipeline (override/store/policy/prompt)
 - [ ] Can be invoked by zirvox workflow (via ACP/MCP)
 - [ ] At least 3 LLM providers
