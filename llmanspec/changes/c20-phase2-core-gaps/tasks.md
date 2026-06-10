@@ -30,33 +30,33 @@
 ## 阶段 2: 事件订阅模型重构
 
 ### 2.1 事件总线
-- [ ] T14: `src/agent/event.rs` — 创建 `AgentEventBus`（`tokio::sync::broadcast` 多订阅者模式）
-- [ ] T15: `src/agent/event.rs` — `subscribe() -> UnsubscribeHandle`，drop handle 自动取消订阅
-- [ ] T16: `src/agent/event.rs` — `emit(event)` 发送到所有活跃订阅者
+- [x] T14: `src/agent/event.rs` — 创建 `AgentEventBus`（`tokio::sync::broadcast` 多订阅者模式）
+- [x] T15: `src/agent/event.rs` — `subscribe() -> UnsubscribeHandle`，drop handle 自动取消订阅
+- [x] T16: `src/agent/event.rs` — `emit(event)` 发送到所有活跃订阅者
 
 ### 2.2 AgentLoop 集成
-- [ ] T17: `src/agent/loop.rs` — 将 `AgentEventStream` 重构为内部使用 EventBus；提供 `into_stream()` 适配器
-- [ ] T18: `src/agent/loop.rs` — 保持向后兼容：现有 Consumer 仍可通过 Stream 消费事件
+- [x] T17: `src/agent/loop.rs` — AgentEventStream::fan_out(bus) 桥接到 EventBus
+- [x] T18: `src/agent/loop.rs` — 保持向后兼容：现有 Consumer 仍可通过 Stream 消费事件
 
 ### 2.3 多订阅者测试
-- [ ] T19: 测试: 两个消费者同时订阅，都收到完整事件流
-- [ ] T20: 测试: 取消订阅后不再收到事件
+- [x] T19: 测试: 两个消费者同时订阅，都收到完整事件流
+- [x] T20: 测试: 取消订阅后不再收到事件
 
-**检查点**: `cargo test` — 所有现有测试适配新事件模型
+**检查点**: `cargo test` — 所有现有测试适配新事件模型 ✅
 
 ---
 
 ## 阶段 3: Agent 循环增强（compaction + retry + queue）
 
 ### 3.1 队列管理
-- [ ] T21: `src/agent/queue.rs` — `MessageQueue` 结构体：steer 队列 + followUp 队列
-- [ ] T22: `src/agent/queue.rs` — `steer(text)`, `followUp(text)`, `clear()` → `{ steering, followUp }`
-- [ ] T23: `src/agent/queue.rs` — `get_steering()`, `get_followup()`（不可变只读）
+- [x] T21: `src/agent/queue.rs` — `MessageQueue` 结构体：steer 队列 + followUp 队列
+- [x] T22: `src/agent/queue.rs` — `steer(text)`, `follow_up(text)`, `clear()`
+- [x] T23: `src/agent/queue.rs` — `get_steering()`, `get_followup()`（不可变只读）
 - [ ] T24: `src/agent/loop.rs` — 集成队列：在 tool execution 完成后、下次 LLM 调用前 drain steer 队列；在 AgentEnd 前 drain followUp
 
 ### 3.2 自动重试
-- [ ] T25: `src/agent/retry.rs` — `is_retryable_error(error_msg) -> bool`（正则匹配 overload/rate_limit/5xx/network/timeout；排除 quota/billing）
-- [ ] T26: `src/agent/retry.rs` — `RetryState` 结构体：max_retries, base_delay, attempt_count, abort_handle
+- [x] T25: `src/agent/retry.rs` — `is_retryable_error(error_msg) -> bool`
+- [x] T26: `src/agent/retry.rs` — `RetryState` 结构体：max_retries, base_delay, attempt, abort
 - [ ] T27: `src/agent/loop.rs` — 在 assistant error 后检查 retryable，移除错误消息，指数退避等待，重试
 - [ ] T28: `src/agent/loop.rs` — 重试事件：retry_start/retry_end 发送到 EventBus
 
