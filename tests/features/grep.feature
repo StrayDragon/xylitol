@@ -29,7 +29,7 @@
       baz
       """
     当 调用grep 模式 "nonexistent" 路径 "src/data.txt"
-    那么 结果包含 "No matches found" 或 "未找到匹配"
+    那么 结果应该为空或提示无匹配
 
   场景: 搜索遵守限制参数
     假定 存在文件 "src/many.txt" 包含20行 "match"

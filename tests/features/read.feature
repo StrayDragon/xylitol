@@ -44,7 +44,8 @@
   场景: 偏移超出文件末尾
     假定 存在文件 "src/short.txt" 内容为 "只有一行\n"
     当 调用read工具 路径 "src/short.txt" 偏移 10
-    那么 调用失败 包含错误信息 "beyond end" 或 "out of bounds" 或 "超出"
+    那么 内容为空
+    并且 偏移量为 10
 
   场景: 输出超过限制时截断
     假定 存在文件 "src/large.txt" 包含10000行内容

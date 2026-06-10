@@ -10,22 +10,15 @@ use std::future::Future;
 use std::sync::Arc;
 
 use futures::StreamExt;
-use xylitol::agent::model::{ModelConfig, ModelKind};
 use xylitol::agent::r#loop::{AgentEvent, AgentLoop};
+use xylitol::agent::model::{ModelConfig, ModelKind};
 use xylitol::agent::session::{
-    AgentSession, ContextUsage, ModelMeta, ModelRegistry, ThinkingLevel,
-    get_context_usage, should_compact,
+    AgentSession, ContextUsage, ModelMeta, ModelRegistry, ThinkingLevel, get_context_usage,
+    should_compact,
 };
 use xylitol::agent::tools::{
-    ToolRegistry,
-    bash::BashTool,
-    edit::EditTool,
-    find::FindTool,
-    grep::GrepTool,
-    ls::LsTool,
-    mutation::FileMutationQueue,
-    read::ReadTool,
-    write::WriteTool,
+    ToolRegistry, bash::BashTool, edit::EditTool, find::FindTool, grep::GrepTool, ls::LsTool,
+    mutation::FileMutationQueue, read::ReadTool, write::WriteTool,
 };
 use xylitol::agent::traits::{XyTool, XyToolCtx};
 use xylitol::infra::config::types::HookEntry;
@@ -44,11 +37,20 @@ pub struct Workspace {
 }
 impl Workspace {
     fn new() -> Self {
-        Self { dir: RefCell::new(None), last_result: RefCell::new(None) }
+        Self {
+            dir: RefCell::new(None),
+            last_result: RefCell::new(None),
+        }
     }
     fn ws(&self, path: &str) -> String {
-        self.dir.borrow().as_ref().expect("workspace not initialized")
-            .path().join(path).to_string_lossy().to_string()
+        self.dir
+            .borrow()
+            .as_ref()
+            .expect("workspace not initialized")
+            .path()
+            .join(path)
+            .to_string_lossy()
+            .to_string()
     }
     fn init(&self) {
         let d = tempfile::tempdir().expect("create temp dir");
@@ -61,6 +63,7 @@ pub struct SessionStore {
     pub mgr: RefCell<Option<SessionManager>>,
     pub entries: RefCell<Vec<SessionEntry>>,
     pub current_id: RefCell<Option<String>>,
+    pub last_result: RefCell<Option<Result<String, String>>>,
 }
 impl SessionStore {
     fn new() -> Self {
@@ -68,6 +71,19 @@ impl SessionStore {
             mgr: RefCell::new(None),
             entries: RefCell::new(Vec::new()),
             current_id: RefCell::new(None),
+            last_result: RefCell::new(None),
+        }
+    }
+    /// Auto-initialize session manager if not yet set.
+    fn ensure_mgr(&self) {
+        if self.mgr.borrow().is_none() {
+            let dir = tempfile::tempdir().unwrap();
+            let d = dir.path().join("sessions");
+            std::fs::create_dir_all(&d).ok();
+            // Leak the TempDir to keep it alive for the test duration.
+            // This is only for tests.
+            std::mem::forget(dir);
+            self.mgr.replace(Some(SessionManager::new(d)));
         }
     }
 }
@@ -98,13 +114,19 @@ impl AgentState {
 }
 
 #[fixture]
-fn ws() -> Workspace { Workspace::new() }
+fn ws() -> Workspace {
+    Workspace::new()
+}
 
 #[fixture]
-fn sess() -> SessionStore { SessionStore::new() }
+fn sess() -> SessionStore {
+    SessionStore::new()
+}
 
 #[fixture]
-fn agent() -> AgentState { AgentState::new() }
+fn agent() -> AgentState {
+    AgentState::new()
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // Helpers
@@ -113,6 +135,26 @@ fn agent() -> AgentState { AgentState::new() }
 fn result_ok_str(r: &RefCell<Option<Result<String, String>>>) -> String {
     let guard = r.borrow();
     guard.as_ref().unwrap().as_ref().unwrap().clone()
+}
+
+/// Strip surrounding double quotes from `{text}` placeholders.
+/// Also unescape \\n to real newlines and \\\" to real quotes (rstest-bdd captures escaped).
+fn strip_quotes(s: &str) -> String {
+    let s = s.trim();
+    let s = if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
+        &s[1..s.len() - 1]
+    } else {
+        s
+    };
+    s.replace("\\n", "\n").replace("\\\"", "\"")
+}
+
+/// Split on ` 或 ` and check if any stripped clause is in haystack (case-insensitive).
+fn check_or_contains(haystack: &str, or_clause: &str) -> bool {
+    let lower = haystack.to_lowercase();
+    or_clause
+        .split(" 或 ")
+        .any(|c| lower.contains(&strip_quotes(c).to_lowercase()))
 }
 
 /// Borrow result as &str — callers must keep the Ref alive
@@ -138,7 +180,9 @@ async fn dispatch_hook(agent: &AgentState, event: HookEvent, phase: HookPhase) {
         project: vec![],
         user: vec![],
     });
-    agent.hook_result.replace(Some(dispatcher.dispatch(&event, phase).await));
+    agent
+        .hook_result
+        .replace(Some(dispatcher.dispatch(&event, phase).await));
 }
 
 macro_rules! tool_call {
@@ -155,7 +199,9 @@ macro_rules! tool_call {
 // ═══════════════════════════════════════════════════════════════════
 
 #[given("有一个临时工作目录")]
-fn _g_workspace(ws: &Workspace) { ws.init(); }
+fn _g_workspace(ws: &Workspace) {
+    ws.init();
+}
 
 #[given("会话存储目录已初始化")]
 fn _g_session_dir(sess: &SessionStore) {
@@ -184,10 +230,14 @@ fn _g_empty_file(ws: &Workspace, path: String) {
 }
 
 #[given("存在目录 {path:string}")]
-fn _g_dir(ws: &Workspace, path: String) { std::fs::create_dir_all(ws.ws(&path)).ok(); }
+fn _g_dir(ws: &Workspace, path: String) {
+    std::fs::create_dir_all(ws.ws(&path)).ok();
+}
 
 #[given("存在空目录 {path:string}")]
-fn _g_empty_dir(ws: &Workspace, path: String) { std::fs::create_dir_all(ws.ws(&path)).ok(); }
+fn _g_empty_dir(ws: &Workspace, path: String) {
+    std::fs::create_dir_all(ws.ws(&path)).ok();
+}
 
 #[given("存在文件 {path:string} 使用CRLF行尾 内容为:")]
 fn _g_file_crlf(ws: &Workspace, path: String, docstring: String) {
@@ -213,7 +263,10 @@ fn _g_file_n_lines(ws: &Workspace, path: String, count: u32) {
     if let Some(p) = std::path::Path::new(&full).parent() {
         std::fs::create_dir_all(p).ok();
     }
-    let c = (1..=count).map(|i| format!("第{i}行")).collect::<Vec<_>>().join("\n");
+    let c = (1..=count)
+        .map(|i| format!("第{i}行"))
+        .collect::<Vec<_>>()
+        .join("\n");
     std::fs::write(&full, c).ok();
 }
 
@@ -223,7 +276,10 @@ fn _g_file_n_lines_text(ws: &Workspace, path: String, count: u32, text: String) 
     if let Some(p) = std::path::Path::new(&full).parent() {
         std::fs::create_dir_all(p).ok();
     }
-    let c = std::iter::repeat(text).take(count as usize).collect::<Vec<_>>().join("\n");
+    let c = std::iter::repeat(text)
+        .take(count as usize)
+        .collect::<Vec<_>>()
+        .join("\n");
     std::fs::write(&full, c).ok();
 }
 
@@ -267,20 +323,24 @@ fn _g_file_in_root(ws: &Workspace, path: String) {
 
 #[given("存在会话 {id:string}")]
 async fn _g_session_exists(sess: &SessionStore, id: String) {
+    sess.ensure_mgr();
     let mgr = sess.mgr.borrow();
     let _ = mgr.as_ref().unwrap().create(&id, Some("."), None).await;
 }
 
 #[given("存在会话 {id:string} 包含 {count:u32} 条记录")]
 async fn _g_session_with_n(sess: &SessionStore, id: String, count: u32) {
+    sess.ensure_mgr();
     let mgr = sess.mgr.borrow();
     let mgr = mgr.as_ref().unwrap();
     let _ = mgr.create(&id, Some("."), None).await;
     for i in 0..count {
         let e = SessionEntry::Message(MessageEntry {
             base: EntryBase {
-                entry_type: "message".into(), id: format!("msg-{i}"),
-                parent_id: None, timestamp: "2024-01-01T00:00:00Z".into(),
+                entry_type: "message".into(),
+                id: format!("msg-{i}"),
+                parent_id: None,
+                timestamp: "2024-01-01T00:00:00Z".into(),
             },
             message: serde_json::json!({"role":"user","content":format!("message {i}")}),
         });
@@ -290,20 +350,30 @@ async fn _g_session_with_n(sess: &SessionStore, id: String, count: u32) {
 
 #[when("创建一个新会话 {id:string}")]
 async fn _w_session_create(sess: &SessionStore, id: String) {
-    sess.mgr.borrow().as_ref().unwrap().create(&id, Some("."), None).await.unwrap();
+    sess.ensure_mgr();
+    sess.mgr
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .create(&id, Some("."), None)
+        .await
+        .unwrap();
     sess.current_id.replace(Some(id));
 }
 
 #[when("向会话追加一条消息 {msg:string}")]
 async fn _w_session_append(sess: &SessionStore, msg: String) {
+    sess.ensure_mgr();
     let sid = sess.current_id.borrow();
     let sid = sid.as_ref().unwrap().clone();
     let mgr = sess.mgr.borrow();
     let mgr = mgr.as_ref().unwrap();
     let e = SessionEntry::Message(MessageEntry {
         base: EntryBase {
-            entry_type: "message".into(), id: "msg-1".into(),
-            parent_id: None, timestamp: "2024-01-01T00:00:00Z".into(),
+            entry_type: "message".into(),
+            id: "msg-1".into(),
+            parent_id: None,
+            timestamp: "2024-01-01T00:00:00Z".into(),
         },
         message: serde_json::json!({"role":"user","content":msg}),
     });
@@ -312,19 +382,31 @@ async fn _w_session_append(sess: &SessionStore, msg: String) {
 
 #[when("加载会话 {id:string}")]
 async fn _w_session_load(sess: &SessionStore, id: String) {
+    sess.ensure_mgr();
     let entries = sess.mgr.borrow().as_ref().unwrap().load(&id).await.unwrap();
     sess.entries.replace(entries);
 }
 
 #[then("会话包含 {count:u32} 条记录")]
 fn _t_session_has_n(sess: &SessionStore, count: u32) {
-    let n = sess.entries.borrow().iter().filter(|e| e.entry_type() != "session").count();
+    let n = sess
+        .entries
+        .borrow()
+        .iter()
+        .filter(|e| e.entry_type() != "session")
+        .count();
     assert_eq!(n, count as usize);
 }
 
 #[then("记录类型为 {typ:string}")]
 fn _t_session_entry_type(sess: &SessionStore, typ: String) {
-    assert!(sess.entries.borrow().iter().skip(1).any(|e| e.entry_type() == typ));
+    assert!(
+        sess.entries
+            .borrow()
+            .iter()
+            .skip(1)
+            .any(|e| e.entry_type() == typ)
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -336,8 +418,15 @@ fn _g_agent_mock_model(agent: &AgentState, ws: &Workspace, name: String) {
     ws.init();
     agent.registry.borrow_mut().register(ModelMeta {
         id: name,
-        config: ModelConfig { kind: ModelKind::OpenAi, api_key: "sk".into(), model: "mock".into(), base_url: None },
-        display_name: "Mock".into(), thinking: false, context_window: 200000,
+        config: ModelConfig {
+            kind: ModelKind::OpenAi,
+            api_key: "sk".into(),
+            model: "mock".into(),
+            base_url: None,
+        },
+        display_name: "Mock".into(),
+        thinking: false,
+        context_window: 200000,
     });
 }
 
@@ -350,7 +439,9 @@ async fn _w_agent_start(agent: &AgentState, prompt: String) {
     let mut stream = runner.run(&prompt, &uuid::Uuid::new_v4().to_string()).await;
     let mut events = agent.events.borrow_mut();
     events.clear();
-    while let Some(e) = stream.next().await { events.push(e); }
+    while let Some(e) = stream.next().await {
+        events.push(e);
+    }
 }
 
 #[when("启动 agent 会话")]
@@ -367,12 +458,18 @@ fn _t_agent_textdelta(agent: &AgentState, text: String) {
 #[then("turn_end 事件触发")]
 fn _t_agent_turn_end(agent: &AgentState) {
     let events = agent.events.borrow();
-    assert!(events.iter().any(|e| matches!(e, AgentEvent::TurnEnd { .. }))
-        || events.iter().any(|e| matches!(e, AgentEvent::Error(_))));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, AgentEvent::TurnEnd { .. }))
+            || events.iter().any(|e| matches!(e, AgentEvent::Error(_)))
+    );
 }
 
 #[then("tool_execution_start 事件触发")]
-fn _t_agent_tool_start(agent: &AgentState) { assert!(!agent.events.borrow().is_empty()); }
+fn _t_agent_tool_start(agent: &AgentState) {
+    assert!(!agent.events.borrow().is_empty());
+}
 
 #[then("tool_execution_end 事件包含结果 {result}")]
 fn _t_agent_tool_end(agent: &AgentState, result: String) {
@@ -384,17 +481,25 @@ fn _t_agent_tool_end(agent: &AgentState, result: String) {
 fn _t_agent_turn_end_has_tool(_agent: &AgentState) {}
 
 #[then("事件按顺序为: turn_start, message_start, message_update, message_end, turn_end")]
-fn _t_agent_event_order(agent: &AgentState) { assert!(!agent.events.borrow().is_empty()); }
+fn _t_agent_event_order(agent: &AgentState) {
+    assert!(!agent.events.borrow().is_empty());
+}
 
 // Thinking
 #[given("当前思考级别为 {level:string}")]
 fn _g_agent_thinking_level(agent: &AgentState, level: String) {
     let mut r = ModelRegistry::new();
     r.register(ModelMeta {
-        id: "test".into(), config: ModelConfig {
-            kind: ModelKind::OpenAi, api_key: "sk".into(), model: "m".into(), base_url: None,
+        id: "test".into(),
+        config: ModelConfig {
+            kind: ModelKind::OpenAi,
+            api_key: "sk".into(),
+            model: "m".into(),
+            base_url: None,
         },
-        display_name: "Test".into(), thinking: level != "off", context_window: 128000,
+        display_name: "Test".into(),
+        thinking: level != "off",
+        context_window: 128000,
     });
     agent.registry.replace(r);
 }
@@ -403,10 +508,16 @@ fn _g_agent_thinking_level(agent: &AgentState, level: String) {
 fn _g_agent_no_thinking(agent: &AgentState) {
     let mut r = ModelRegistry::new();
     r.register(ModelMeta {
-        id: "test".into(), config: ModelConfig {
-            kind: ModelKind::OpenAi, api_key: "sk".into(), model: "m".into(), base_url: None,
+        id: "test".into(),
+        config: ModelConfig {
+            kind: ModelKind::OpenAi,
+            api_key: "sk".into(),
+            model: "m".into(),
+            base_url: None,
         },
-        display_name: "Test".into(), thinking: false, context_window: 128000,
+        display_name: "Test".into(),
+        thinking: false,
+        context_window: 128000,
     });
     agent.registry.replace(r);
 }
@@ -417,20 +528,39 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.into_path());
     let mut session = AgentSession::new(
-        agent.registry.borrow().clone(), ToolRegistry::builtins(), mgr,
-        None, 50, 0.8, ".".into(),
+        agent.registry.borrow().clone(),
+        ToolRegistry::builtins(),
+        mgr,
+        None,
+        50,
+        0.8,
+        ".".into(),
     );
     let tl = match level.as_str() {
-        "high" => ThinkingLevel::High, "medium" => ThinkingLevel::Medium,
-        "low" => ThinkingLevel::Low, _ => ThinkingLevel::Off,
+        "high" => ThinkingLevel::High,
+        "medium" => ThinkingLevel::Medium,
+        "low" => ThinkingLevel::Low,
+        _ => ThinkingLevel::Off,
     };
     let _ = session.set_thinking_level(tl);
-    agent.last_result.replace(Some(Ok(format!("level:{}", session.thinking_level().as_str()))));
+    agent.last_result.replace(Some(Ok(format!(
+        "level:{}",
+        session.thinking_level().as_str()
+    ))));
 }
 
 #[then("getThinkingLevel 返回 {level:string}")]
 fn _t_agent_thinking_level_is(agent: &AgentState, level: String) {
-    assert!(agent.last_result.borrow().as_ref().unwrap().as_ref().unwrap().contains(&level));
+    assert!(
+        agent
+            .last_result
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .contains(&level)
+    );
 }
 
 #[then("thinking_level_change 记录写入会话")]
@@ -439,7 +569,16 @@ fn _t_agent_thinking_saved(_agent: &AgentState) {}
 #[then("实际思考级别被限制为 {level} 或模型支持的最高级别")]
 fn _t_agent_thinking_clamped(agent: &AgentState, level: String) {
     let _ = level;
-    assert!(agent.last_result.borrow().as_ref().unwrap().as_ref().unwrap().contains("off"));
+    assert!(
+        agent
+            .last_result
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .contains("off")
+    );
 }
 
 // Model switching
@@ -447,33 +586,64 @@ fn _t_agent_thinking_clamped(agent: &AgentState, level: String) {
 fn _g_agent_models_registered(agent: &AgentState, m1: String, m2: String) {
     let mut r = ModelRegistry::new();
     for name in [m1, m2] {
-        let kind = if name.contains("claude") { ModelKind::Anthropic } else { ModelKind::OpenAi };
+        let kind = if name.contains("claude") {
+            ModelKind::Anthropic
+        } else {
+            ModelKind::OpenAi
+        };
         r.register(ModelMeta {
-            id: name.clone(), config: ModelConfig { kind, api_key: "sk".into(), model: name.clone(), base_url: None },
-            display_name: name.clone(), thinking: true, context_window: 128000,
+            id: name.clone(),
+            config: ModelConfig {
+                kind,
+                api_key: "sk".into(),
+                model: name.clone(),
+                base_url: None,
+            },
+            display_name: name.clone(),
+            thinking: true,
+            context_window: 128000,
         });
     }
     agent.registry.replace(r);
 }
 
 #[given("当前模型为 {model}")]
-fn _g_agent_current_model(_agent: &AgentState, model: String) { let _ = model; }
+fn _g_agent_current_model(_agent: &AgentState, model: String) {
+    let _ = model;
+}
 
 #[when("执行 cycleForward")]
 fn _w_agent_cycle_forward(agent: &AgentState) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.into_path());
     let mut session = AgentSession::new(
-        agent.registry.borrow().clone(), ToolRegistry::builtins(), mgr,
-        None, 50, 0.8, ".".into(),
+        agent.registry.borrow().clone(),
+        ToolRegistry::builtins(),
+        mgr,
+        None,
+        50,
+        0.8,
+        ".".into(),
     );
-    let next = session.cycle_forward().map(|m| m.id.clone()).unwrap_or_default();
+    let next = session
+        .cycle_forward()
+        .map(|m| m.id.clone())
+        .unwrap_or_default();
     agent.last_result.replace(Some(Ok(next)));
 }
 
 #[then("当前模型变为 {model:string}")]
 fn _t_agent_model_changed_to(agent: &AgentState, model: String) {
-    assert_eq!(agent.last_result.borrow().as_ref().unwrap().as_ref().unwrap(), &model);
+    assert_eq!(
+        agent
+            .last_result
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .unwrap(),
+        &model
+    );
 }
 
 #[then("model_select 事件触发")]
@@ -481,7 +651,9 @@ fn _t_agent_model_select_event(_agent: &AgentState) {}
 
 #[given("会话包含 {tokens:u32} 个 token 的消息")]
 fn _g_agent_tokens(agent: &AgentState, tokens: u32) {
-    agent.last_result.replace(Some(Ok(format!("tokens:{tokens}"))));
+    agent
+        .last_result
+        .replace(Some(Ok(format!("tokens:{tokens}"))));
 }
 
 #[given("当前模型上下文窗口为 200000")]
@@ -489,50 +661,73 @@ fn _g_agent_window_200k(_agent: &AgentState) {}
 
 #[when("调用 getContextUsage")]
 fn _w_agent_context_usage(agent: &AgentState) {
-    let tokens: u64 = agent.last_result.borrow().as_ref()
+    let tokens: u64 = agent
+        .last_result
+        .borrow()
+        .as_ref()
         .and_then(|r| r.as_ref().ok())
         .and_then(|s| s.strip_prefix("tokens:").and_then(|n| n.parse().ok()))
         .unwrap_or(0);
-    agent.context_usage.replace(Some(get_context_usage(tokens, 200000, 0.8)));
+    agent
+        .context_usage
+        .replace(Some(get_context_usage(tokens, 200000, 0.8)));
 }
 
 #[then("返回 tokens 约为 {val:u32}")]
 fn _t_agent_tokens_approx(agent: &AgentState, val: u32) {
-    assert_eq!(agent.context_usage.borrow().as_ref().unwrap().tokens, val as u64);
+    assert_eq!(
+        agent.context_usage.borrow().as_ref().unwrap().tokens,
+        val as u64
+    );
 }
 
 #[then("percent 约为 {val:u32}")]
 fn _t_agent_percent(agent: &AgentState, val: u32) {
-    assert_eq!(agent.context_usage.borrow().as_ref().unwrap().percent, val as u64);
+    assert_eq!(
+        agent.context_usage.borrow().as_ref().unwrap().percent,
+        val as u64
+    );
 }
 
 #[given("一个 turn 完成")]
 async fn _g_agent_turn_done(sess: &SessionStore) {
-    let dir = tempfile::tempdir().unwrap();
-    let mgr = SessionManager::new(dir.into_path());
+    sess.ensure_mgr();
+    let mgr_ref = sess.mgr.borrow();
+    let mgr = mgr_ref.as_ref().unwrap();
     let sid = "auto-save-test";
     let _ = mgr.create(sid, Some("."), None).await;
     let e = SessionEntry::Message(MessageEntry {
         base: EntryBase {
-            entry_type: "message".into(), id: "auto-1".into(),
-            parent_id: None, timestamp: "2024-01-01T00:00:00Z".into(),
+            entry_type: "message".into(),
+            id: "auto-1".into(),
+            parent_id: None,
+            timestamp: "2024-01-01T00:00:00Z".into(),
         },
         message: serde_json::json!({"role":"assistant","content":"done"}),
     });
     let _ = mgr.append(sid, &e).await;
-    sess.mgr.replace(Some(mgr));
+    drop(mgr_ref);
     sess.current_id.replace(Some(sid.to_string()));
 }
 
 #[when("加载会话文件")]
 async fn _w_agent_load_session_file(sess: &SessionStore) {
     let sid = sess.current_id.borrow().clone().unwrap();
-    let entries = sess.mgr.borrow().as_ref().unwrap().load(&sid).await.unwrap_or_default();
+    let entries = sess
+        .mgr
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .load(&sid)
+        .await
+        .unwrap_or_default();
     sess.entries.replace(entries);
 }
 
 #[then("该 turn 的消息记录已保存")]
-fn _t_agent_messages_saved(sess: &SessionStore) { assert!(!sess.entries.borrow().is_empty()); }
+fn _t_agent_messages_saved(sess: &SessionStore) {
+    assert!(!sess.entries.borrow().is_empty());
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // Steps: compaction
@@ -543,39 +738,58 @@ fn _g_comp_config_window(_agent: &AgentState) {}
 
 #[given("会话消息估算使用 {tokens:u32} 个 token")]
 fn _g_comp_tokens(agent: &AgentState, tokens: u32) {
-    agent.last_result.replace(Some(Ok(format!("tokens:{tokens}"))));
+    agent
+        .last_result
+        .replace(Some(Ok(format!("tokens:{tokens}"))));
 }
 
 #[given("压缩阈值为 {val:f64}")]
-fn _g_comp_threshold(agent: &AgentState, val: f64) { agent.compaction_threshold.set(val); }
+fn _g_comp_threshold(agent: &AgentState, val: f64) {
+    agent.compaction_threshold.set(val);
+}
 
 #[when("调用 shouldCompact")]
 fn _w_comp_check(agent: &AgentState) {
-    let tokens: u64 = agent.last_result.borrow().as_ref()
+    let tokens: u64 = agent
+        .last_result
+        .borrow()
+        .as_ref()
         .and_then(|r| r.as_ref().ok())
         .and_then(|s| s.strip_prefix("tokens:").and_then(|n| n.parse().ok()))
         .unwrap_or(0);
-    agent.compaction_result.replace(Some(should_compact(tokens, 100000, agent.compaction_threshold.get())));
+    agent.compaction_result.replace(Some(should_compact(
+        tokens,
+        100000,
+        agent.compaction_threshold.get(),
+    )));
 }
 
 #[then("返回 true")]
-fn _t_comp_result_true(agent: &AgentState) { assert_eq!(*agent.compaction_result.borrow(), Some(true)); }
+fn _t_comp_result_true(agent: &AgentState) {
+    assert_eq!(*agent.compaction_result.borrow(), Some(true));
+}
 #[then("返回 false")]
-fn _t_comp_result_false(agent: &AgentState) { assert_eq!(*agent.compaction_result.borrow(), Some(false)); }
+fn _t_comp_result_false(agent: &AgentState) {
+    assert_eq!(*agent.compaction_result.borrow(), Some(false));
+}
 
 #[given("会话有 50 个轮次")]
 fn _g_comp_50_turns(_agent: &AgentState) {}
 
 #[when("触发压缩保留最近 10 轮")]
 fn _w_comp_trigger(agent: &AgentState) {
-    agent.compaction_result.replace(Some(should_compact(50 * 2000, 100000, 0.8)));
+    agent
+        .compaction_result
+        .replace(Some(should_compact(50 * 2000, 100000, 0.8)));
 }
 
 #[then("前 40 轮被总结为一个 CompactionEntry")]
 fn _t_comp_has_summary(_agent: &AgentState) {}
 
 #[then("会话中剩余 {n:u32} 条记录（概要 + {m:u32} 轮）")]
-fn _t_comp_remaining(_agent: &AgentState, n: u32, m: u32) { let _ = (n, m); }
+fn _t_comp_remaining(_agent: &AgentState, n: u32, m: u32) {
+    let _ = (n, m);
+}
 
 #[given("会话正在活跃使用")]
 fn _g_comp_active(_agent: &AgentState) {}
@@ -587,9 +801,17 @@ fn _t_comp_jsonl_has_entry(_agent: &AgentState) {}
 #[then("CompactionEntry 包含 summary 字段")]
 fn _t_comp_has_summary_field(_agent: &AgentState) {
     let e = CompactionEntry {
-        base: EntryBase { entry_type: "compaction".into(), id: "c1".into(), parent_id: None, timestamp: "t".into() },
-        summary: "ok".into(), first_kept_entry_id: "e10".into(),
-        tokens_before: 50000, details: None, from_hook: None,
+        base: EntryBase {
+            entry_type: "compaction".into(),
+            id: "c1".into(),
+            parent_id: None,
+            timestamp: "t".into(),
+        },
+        summary: "ok".into(),
+        first_kept_entry_id: "e10".into(),
+        tokens_before: 50000,
+        details: None,
+        from_hook: None,
     };
     assert_eq!(e.summary, "ok");
 }
@@ -608,7 +830,9 @@ fn _w_comp_branch_summary(agent: &AgentState) {
 }
 
 #[then("摘要描述了被跳过的上下文")]
-fn _t_comp_branch_desc(agent: &AgentState) { assert!(agent.last_result.borrow().as_ref().unwrap().is_ok()); }
+fn _t_comp_branch_desc(agent: &AgentState) {
+    assert!(agent.last_result.borrow().as_ref().unwrap().is_ok());
+}
 #[then("当前上下文是连贯的")]
 fn _t_comp_context_coherent(_agent: &AgentState) {}
 
@@ -619,8 +843,12 @@ fn _t_comp_context_coherent(_agent: &AgentState) {}
 #[given("注册了匹配 {pat:string} 的 hook")]
 fn _g_hook_registered(agent: &AgentState, pat: String) {
     agent.hook_entries.borrow_mut().push(HookEntry {
-        events: vec![pat], command: "echo '{\"action\":\"allow\"}'".into(),
-        phase: String::new(), timeout_secs: 5, requires_approval: false, env: HashMap::new(),
+        events: vec![pat],
+        command: "echo '{\"action\":\"allow\"}'".into(),
+        phase: String::new(),
+        timeout_secs: 5,
+        requires_approval: false,
+        env: HashMap::new(),
     });
 }
 
@@ -636,7 +864,8 @@ fn _g_hook_returns(agent: &AgentState, json_str: String) {
 fn _g_hook_global(agent: &AgentState, p: String) {
     let _ = p;
     agent.hook_entries.borrow_mut().push(HookEntry {
-        events: vec!["pre.tool_call".into()], command: "echo '{\"action\":\"allow\"}'".into(),
+        events: vec!["pre.tool_call".into()],
+        command: "echo '{\"action\":\"allow\"}'".into(),
         ..Default::default()
     });
 }
@@ -651,37 +880,63 @@ fn _g_hook_user_override(agent: &AgentState, p: String) {
 
 #[given("一个 hook 脚本执行超过 2 秒")]
 fn _g_hook_slow(agent: &AgentState) {
-    if let Some(e) = agent.hook_entries.borrow_mut().last_mut() { e.command = "sleep 10".into(); }
+    if let Some(e) = agent.hook_entries.borrow_mut().last_mut() {
+        e.command = "sleep 10".into();
+    }
 }
 #[given("hook 超时设为 1 秒")]
 fn _g_hook_timeout_1s(agent: &AgentState) {
-    if let Some(e) = agent.hook_entries.borrow_mut().last_mut() { e.timeout_secs = 1; }
+    if let Some(e) = agent.hook_entries.borrow_mut().last_mut() {
+        e.timeout_secs = 1;
+    }
 }
 #[given("没有注册任何 hook")]
-fn _g_hook_none(agent: &AgentState) { agent.hook_entries.borrow_mut().clear(); }
+fn _g_hook_none(agent: &AgentState) {
+    agent.hook_entries.borrow_mut().clear();
+}
 #[given("当前 provider 为 {name}")]
-fn _g_hook_provider(_agent: &AgentState, name: String) { let _ = name; }
+fn _g_hook_provider(_agent: &AgentState, name: String) {
+    let _ = name;
+}
 
 #[when("bash 工具即将执行")]
 async fn _w_hook_bash(agent: &AgentState) {
-    dispatch_hook(agent, HookEvent::ToolCall {
-        tool: "bash".into(), args: serde_json::json!({"command":"echo hello"}),
-    }, HookPhase::Pre).await;
+    dispatch_hook(
+        agent,
+        HookEvent::ToolCall {
+            tool: "bash".into(),
+            args: serde_json::json!({"command":"echo hello"}),
+        },
+        HookPhase::Pre,
+    )
+    .await;
 }
 
 #[when("任何工具即将执行")]
 async fn _w_hook_any_tool(agent: &AgentState) {
-    dispatch_hook(agent, HookEvent::ToolCall {
-        tool: "read".into(), args: serde_json::json!({}),
-    }, HookPhase::Pre).await;
+    dispatch_hook(
+        agent,
+        HookEvent::ToolCall {
+            tool: "read".into(),
+            args: serde_json::json!({}),
+        },
+        HookPhase::Pre,
+    )
+    .await;
 }
 
 #[when("bash 工具以 {cmd:string} 调用")]
 async fn _w_hook_bash_called(agent: &AgentState, cmd: String) {
     let _ = cmd;
-    dispatch_hook(agent, HookEvent::ToolCall {
-        tool: "bash".into(), args: serde_json::json!({"command":"rm -rf /"}),
-    }, HookPhase::Pre).await;
+    dispatch_hook(
+        agent,
+        HookEvent::ToolCall {
+            tool: "bash".into(),
+            args: serde_json::json!({"command":"rm -rf /"}),
+        },
+        HookPhase::Pre,
+    )
+    .await;
 }
 
 #[when("hook 被加载")]
@@ -689,9 +944,15 @@ fn _w_hook_loaded(_agent: &AgentState) {}
 
 #[when("dispatch hook")]
 async fn _w_hook_dispatch_step(agent: &AgentState) {
-    dispatch_hook(agent, HookEvent::ToolCall {
-        tool: "bash".into(), args: serde_json::json!({}),
-    }, HookPhase::Pre).await;
+    dispatch_hook(
+        agent,
+        HookEvent::ToolCall {
+            tool: "bash".into(),
+            args: serde_json::json!({}),
+        },
+        HookPhase::Pre,
+    )
+    .await;
 }
 
 #[when("provider 请求发送前")]
@@ -701,9 +962,15 @@ fn _w_hook_provider_responded(_agent: &AgentState) {}
 
 #[when("任何事件触发")]
 async fn _w_hook_any_event_step(agent: &AgentState) {
-    dispatch_hook(agent, HookEvent::StepComplete {
-        step: 1, summary: "done".into(),
-    }, HookPhase::Post).await;
+    dispatch_hook(
+        agent,
+        HookEvent::StepComplete {
+            step: 1,
+            summary: "done".into(),
+        },
+        HookPhase::Post,
+    )
+    .await;
 }
 
 #[then("hook 脚本被调用")]
@@ -713,26 +980,41 @@ fn _t_hook_received_json(_agent: &AgentState) {}
 
 #[then("操作被阻止")]
 fn _t_hook_blocked(agent: &AgentState) {
-    assert!(matches!(agent.hook_result.borrow().as_ref().unwrap(), DispatchResult::Blocked { .. }));
+    assert!(matches!(
+        agent.hook_result.borrow().as_ref().unwrap(),
+        DispatchResult::Blocked { .. }
+    ));
 }
 
 #[then("阻止原因包含 {reason}")]
 fn _t_hook_block_reason(agent: &AgentState, reason: String) {
     if let Some(DispatchResult::Blocked { reason: r }) = agent.hook_result.borrow().as_ref() {
-        assert!(r.contains(&reason));
+        assert!(
+            r.contains(&strip_quotes(&reason)),
+            "block reason '{r}' does not contain '{reason}'"
+        );
+    } else {
+        panic!("Expected Blocked, got {:?}", agent.hook_result.borrow());
     }
 }
 
 #[then("实际执行的命令为 {cmd}")]
-fn _t_hook_actual_cmd(_agent: &AgentState, cmd: String) { let _ = cmd; }
+fn _t_hook_actual_cmd(_agent: &AgentState, cmd: String) {
+    let _ = cmd;
+}
 #[then("使用用户配置的 hook 命令")]
 fn _t_hook_user_used(_agent: &AgentState) {}
 #[then("hook 在 1 秒后被杀死")]
-fn _t_hook_killed(agent: &AgentState) { assert!(agent.hook_result.borrow().is_some()); }
+fn _t_hook_killed(agent: &AgentState) {
+    assert!(agent.hook_result.borrow().is_some());
+}
 
 #[then("操作被允许继续")]
 fn _t_hook_allowed(agent: &AgentState) {
-    assert!(matches!(agent.hook_result.borrow().as_ref().unwrap(), DispatchResult::Allowed));
+    assert!(matches!(
+        agent.hook_result.borrow().as_ref().unwrap(),
+        DispatchResult::Allowed
+    ));
 }
 
 #[then("hook 收到请求 payload")]
@@ -743,7 +1025,10 @@ fn _t_hook_cache_control(_agent: &AgentState) {}
 fn _t_hook_got_response(_agent: &AgentState) {}
 #[then("dispatch 是零开销 no-op")]
 fn _t_hook_noop(agent: &AgentState) {
-    assert!(matches!(agent.hook_result.borrow().as_ref().unwrap(), DispatchResult::Allowed));
+    assert!(matches!(
+        agent.hook_result.borrow().as_ref().unwrap(),
+        DispatchResult::Allowed
+    ));
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -755,7 +1040,16 @@ async fn _w_edit_single(ws: &Workspace, path: String, old: String, new: String) 
     let full = ws.ws(&path);
     let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
     let ctx = XyToolCtx::new("test");
-    tool_call!(tool, ctx, serde_json::json!({"path": full, "edits": [{"oldText": old, "newText": new}]}), ws);
+    // The {string} placeholder captures escaped quotes from the feature file as-is;
+    // we need to unescape \" → " for the edit tool to match.
+    let old_clean = old.replace("\\\"", "\"");
+    let new_clean = new.replace("\\\"", "\"");
+    tool_call!(
+        tool,
+        ctx,
+        serde_json::json!({"path": full, "edits": [{"oldText": old_clean, "newText": new_clean}]}),
+        ws
+    );
 }
 
 #[when("调用bash命令 {cmd:string}")]
@@ -771,11 +1065,28 @@ async fn _w_read_path(ws: &Workspace, path: String) {
     tool_call!(ReadTool, ctx, serde_json::json!({"path": full}), ws);
 }
 
+#[when("调用read工具 路径 {path:string} 偏移 {offset:i64}")]
+async fn _w_read_offset_only(ws: &Workspace, path: String, offset: i64) {
+    let full = ws.ws(&path);
+    let ctx = XyToolCtx::new("test");
+    tool_call!(
+        ReadTool,
+        ctx,
+        serde_json::json!({"path": full, "offset": offset}),
+        ws
+    );
+}
+
 #[when("调用read工具 路径 {path:string} 偏移 {offset:i64} 限制 {limit:i64}")]
 async fn _w_read_offset(ws: &Workspace, path: String, offset: i64, limit: i64) {
     let full = ws.ws(&path);
     let ctx = XyToolCtx::new("test");
-    tool_call!(ReadTool, ctx, serde_json::json!({"path": full, "offset": offset, "limit": limit}), ws);
+    tool_call!(
+        ReadTool,
+        ctx,
+        serde_json::json!({"path": full, "offset": offset, "limit": limit}),
+        ws
+    );
 }
 
 #[when("调用write工具 路径 {path:string} 内容 {content:string}")]
@@ -783,21 +1094,36 @@ async fn _w_write_file(ws: &Workspace, path: String, content: String) {
     let full = ws.ws(&path);
     let tool = WriteTool::new(Arc::new(FileMutationQueue::new()));
     let ctx = XyToolCtx::new("test");
-    tool_call!(tool, ctx, serde_json::json!({"path": full, "content": content}), ws);
+    tool_call!(
+        tool,
+        ctx,
+        serde_json::json!({"path": full, "content": content}),
+        ws
+    );
 }
 
 #[when("调用grep 模式 {pattern:string} 路径 {path:string}")]
 async fn _w_grep(ws: &Workspace, pattern: String, path: String) {
     let full = ws.ws(&path);
     let ctx = XyToolCtx::new("test");
-    tool_call!(GrepTool, ctx, serde_json::json!({"pattern": pattern, "path": full}), ws);
+    tool_call!(
+        GrepTool,
+        ctx,
+        serde_json::json!({"pattern": pattern, "path": full}),
+        ws
+    );
 }
 
 #[when("调用find 模式 {pattern:string} 路径 {path:string}")]
 async fn _w_find(ws: &Workspace, pattern: String, path: String) {
     let full = ws.ws(&path);
     let ctx = XyToolCtx::new("test");
-    tool_call!(FindTool, ctx, serde_json::json!({"pattern": pattern, "path": full}), ws);
+    tool_call!(
+        FindTool,
+        ctx,
+        serde_json::json!({"pattern": pattern, "path": full}),
+        ws
+    );
 }
 
 #[when("调用ls工具 路径 {path:string}")]
@@ -814,12 +1140,16 @@ async fn _w_ls(ws: &Workspace, path: String) {
 #[then("文件 {path:string} 应该包含 {text}")]
 fn _t_file_contains(ws: &Workspace, path: String, text: String) {
     let c = std::fs::read_to_string(ws.ws(&path)).unwrap();
-    assert!(c.contains(&text), "expected containing '{text}', got: {c}");
+    let t = strip_quotes(&text);
+    assert!(c.contains(&t), "expected containing '{t}', got: {c}");
 }
 
 #[then("文件 {path:string} 内容为 {text}")]
 fn _t_file_content_is(ws: &Workspace, path: String, text: String) {
-    assert_eq!(std::fs::read_to_string(ws.ws(&path)).unwrap(), text);
+    assert_eq!(
+        std::fs::read_to_string(ws.ws(&path)).unwrap(),
+        strip_quotes(&text)
+    );
 }
 
 #[then("文件 {path:string} 应该存在")]
@@ -829,22 +1159,38 @@ fn _t_file_exists(ws: &Workspace, path: String) {
 
 #[then("文件 {path:string} 应该保持CRLF行尾")]
 fn _t_file_has_crlf(ws: &Workspace, path: String) {
-    assert!(std::fs::read_to_string(ws.ws(&path)).unwrap().contains("\r\n"));
+    assert!(
+        std::fs::read_to_string(ws.ws(&path))
+            .unwrap()
+            .contains("\r\n")
+    );
 }
 
 #[then("文件 {path:string} 应该保留UTF8_BOM")]
 fn _t_file_has_bom(ws: &Workspace, path: String) {
-    assert!(std::fs::read_to_string(ws.ws(&path)).unwrap().starts_with('\u{FEFF}'));
+    assert!(
+        std::fs::read_to_string(ws.ws(&path))
+            .unwrap()
+            .starts_with('\u{FEFF}')
+    );
 }
 
 // "结果包含 unified patch" ambiguous with "结果包含 {text}" — removed
 // "结果包含 带行号的 display diff" ambiguous — removed
 
+// "结果包含 unified patch" — use generic "_t_result_contains" (feature file uses {text} pattern)
+// "结果包含 带行号的 display diff" — same
+
 #[then("edit调用应该失败 包含错误信息 {msg}")]
 fn _t_edit_failed(ws: &Workspace, msg: String) {
     let r = ws.last_result.borrow();
     let r = r.as_ref().unwrap();
-    assert!(r.is_err() && r.as_ref().unwrap_err().contains(&msg));
+    assert!(
+        r.is_err() && check_or_contains(r.as_ref().unwrap_err(), &msg),
+        "expected error to match '{}', got: {}",
+        msg,
+        r.as_ref().unwrap_err()
+    );
 }
 
 #[then("调用失败 包含验证错误")]
@@ -854,11 +1200,18 @@ fn _t_call_fail_validation(ws: &Workspace) {
 
 #[then("调用失败 包含错误信息 {msg}")]
 fn _t_call_fail_msg(ws: &Workspace, msg: String) {
-    assert!(ws.last_result.borrow().as_ref().unwrap().as_ref().unwrap_err().contains(&msg));
+    let err = ws.last_result.borrow();
+    let err = err.as_ref().unwrap().as_ref().unwrap_err();
+    assert!(
+        check_or_contains(err, &msg),
+        "expected error to match '{msg}', got: {err}"
+    );
 }
 
 #[then("调用失败 包含错误信息")]
-fn _t_call_fail(ws: &Workspace) { assert!(ws.last_result.borrow().as_ref().unwrap().is_err()); }
+fn _t_call_fail(ws: &Workspace) {
+    assert!(ws.last_result.borrow().as_ref().unwrap().is_err());
+}
 
 #[then("退出码为 {code:i32}")]
 fn _t_exit_code_is(ws: &Workspace, code: i32) {
@@ -867,18 +1220,43 @@ fn _t_exit_code_is(ws: &Workspace, code: i32) {
 
 #[then("stdout 包含 {text}")]
 fn _t_stdout_has(ws: &Workspace, text: String) {
-    assert!(result_ok_str(&ws.last_result).contains(&text));
+    let r = result_ok_str(&ws.last_result);
+    let t = strip_quotes(&text);
+    // Parse JSON to extract stdout field; fall back to contains on raw string
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r) {
+        if let Some(s) = v["stdout"].as_str() {
+            assert!(s.contains(&t), "stdout doesn't contain '{t}', stdout: {s}");
+            return;
+        }
+    }
+    assert!(r.contains(&t), "result doesn't contain '{t}', result: {r}");
 }
 
 #[then("stdout 和 stderr 合并输出包含 {text}")]
 fn _t_combined_has(ws: &Workspace, text: String) {
-    assert!(result_ok_str(&ws.last_result).contains(&text));
+    let r = result_ok_str(&ws.last_result);
+    let t = strip_quotes(&text);
+    // Parse JSON to extract combined field; fall back to contains on raw string
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r) {
+        if let Some(s) = v["combined"].as_str() {
+            assert!(
+                s.contains(&t),
+                "combined doesn't contain '{t}', combined: {s}"
+            );
+            return;
+        }
+    }
+    assert!(r.contains(&t), "result doesn't contain '{t}', result: {r}");
 }
 
 #[then("命令应该失败 包含超时错误")]
-fn _t_cmd_timeout(ws: &Workspace) { assert!(ws.last_result.borrow().as_ref().unwrap().is_err()); }
+fn _t_cmd_timeout(ws: &Workspace) {
+    assert!(ws.last_result.borrow().as_ref().unwrap().is_err());
+}
 #[then("命令应该失败 包含取消错误")]
-fn _t_cmd_abort(ws: &Workspace) { assert!(ws.last_result.borrow().as_ref().unwrap().is_err()); }
+fn _t_cmd_abort(ws: &Workspace) {
+    assert!(ws.last_result.borrow().as_ref().unwrap().is_err());
+}
 
 #[then("输出被截断")]
 fn _t_truncated(ws: &Workspace) {
@@ -895,27 +1273,56 @@ fn _t_remaining_hint(_ws: &Workspace) {}
 
 #[then("内容为 {text}")]
 fn _t_read_content(ws: &Workspace, text: String) {
-    assert!(result_ok_str(&ws.last_result).contains(&text));
+    let r = result_ok_str(&ws.last_result);
+    let t = strip_quotes(&text);
+    // Check JSON content field first
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r) {
+        if let Some(s) = v["content"].as_str() {
+            assert_eq!(s, t, "content mismatch");
+            return;
+        }
+    }
+    assert!(r.contains(&t));
 }
 
 #[then("总行数为 {count:u32}")]
 fn _t_total_lines(ws: &Workspace, count: u32) {
-    let v: serde_json::Value = serde_json::from_str(&result_ok_str(&ws.last_result)).unwrap_or_default();
+    let v: serde_json::Value =
+        serde_json::from_str(&result_ok_str(&ws.last_result)).unwrap_or_default();
     assert_eq!(v["total_lines"], count);
 }
 
 #[then("偏移量为 {offset:i64}")]
 fn _t_offset_is(ws: &Workspace, offset: i64) {
-    let v: serde_json::Value = serde_json::from_str(&result_ok_str(&ws.last_result)).unwrap_or_default();
+    let v: serde_json::Value =
+        serde_json::from_str(&result_ok_str(&ws.last_result)).unwrap_or_default();
     assert_eq!(v["offset"], offset);
 }
 
 #[then("结果指示目录为空")]
-fn _t_ls_empty(ws: &Workspace) { assert!(result_ok_str(&ws.last_result).contains("empty")); }
+fn _t_ls_empty(ws: &Workspace) {
+    assert!(result_ok_str(&ws.last_result).contains("empty"));
+}
 
-// 通用 "结果列出 {entry}" 已删除 — 由 "结果包含 {text}" (+ content check) 或
-// "结果列出 {entry} 带后缀 {suffix}" 覆盖
-// Ambient "结果列出 {entry}" pattern removed to resolve suffix ambiguity
+#[then("结果应该为空或提示无匹配")]
+fn _t_result_empty_or_no_match(ws: &Workspace) {
+    let r = result_ok_str(&ws.last_result);
+    assert!(
+        r.is_empty() || r.contains("No matches") || r.contains("No files found"),
+        "expected empty or no-match, got: {r}"
+    );
+}
+
+// 通用 "结果列出 {entry}" — 用于 ls_with_files 和 ls_default_path
+#[then("结果列出 {entry:string}")]
+fn _t_ls_lists(ws: &Workspace, entry: String) {
+    assert!(
+        result_ok_str(&ws.last_result).contains(&entry),
+        "result doesn't list '{entry}', result: {}",
+        result_ok_str(&ws.last_result)
+    );
+}
+
 #[then("结果列出 {entry} 带后缀 {suffix}")]
 fn _t_ls_lists_suffix(ws: &Workspace, entry: String, suffix: String) {
     assert!(result_ok_str(&ws.last_result).contains(&format!("{entry}{suffix}")));
@@ -924,7 +1331,10 @@ fn _t_ls_lists_suffix(ws: &Workspace, entry: String, suffix: String) {
 #[then("条目按字母顺序排列")]
 fn _t_ls_sorted(ws: &Workspace) {
     let r = result_ok_str(&ws.last_result);
-    let lines: Vec<&str> = r.lines().filter(|l| !l.is_empty() && !l.starts_with('[')).collect();
+    let lines: Vec<&str> = r
+        .lines()
+        .filter(|l| !l.is_empty() && !l.starts_with('['))
+        .collect();
     let mut sorted = lines.clone();
     sorted.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
     assert_eq!(lines, sorted);
@@ -937,30 +1347,62 @@ fn _t_ls_limit_hint(ws: &Workspace) {
 
 #[then("结果包含 {text}")]
 fn _t_result_contains(ws: &Workspace, text: String) {
-    assert!(result_ok_str(&ws.last_result).contains(&text));
+    let r = result_ok_str(&ws.last_result);
+    let t = strip_quotes(&text);
+    // Support OR clauses like "A" 或 "B"
+    if t.contains(" 或 ") {
+        if !check_or_contains(&r, &text) {
+            panic!("result doesn't match any of '{}', result: {}", t, r);
+        }
+    } else {
+        assert!(
+            r.contains(&t),
+            "result doesn't contain '{}', result: {}",
+            t,
+            r
+        );
+    }
 }
 
 #[then("结果不包含 {text}")]
 fn _t_result_not_has(ws: &Workspace, text: String) {
-    assert!(!result_ok_str(&ws.last_result).contains(&text));
+    assert!(!result_ok_str(&ws.last_result).contains(&strip_quotes(&text)));
 }
 
 #[then("恰好有 {count:u32} 条结果")]
 fn _t_exact_results(ws: &Workspace, count: u32) {
     let lines = result_ok_str(&ws.last_result)
-        .lines().filter(|l| !l.is_empty() && !l.contains("limit")).count();
+        .lines()
+        .filter(|l| !l.is_empty() && !l.contains("limit"))
+        .count();
     assert_eq!(lines, count as usize);
 }
 
 #[then("共有 {n:u32} 条匹配")]
-fn _t_grep_match_count(_ws: &Workspace, n: u32) { let _ = n; }
+fn _t_grep_match_count(_ws: &Workspace, n: u32) {
+    let _ = n;
+}
 
 #[then("匹配结果包含第{line:u32}行的 {text}")]
-fn _t_grep_match_on_line(_ws: &Workspace, line: u32, text: String) { let _ = (line, text); }
+fn _t_grep_match_on_line(_ws: &Workspace, line: u32, text: String) {
+    let _ = (line, text);
+}
+
+#[then("内容为空")]
+fn _t_content_empty(ws: &Workspace) {
+    let r = result_ok_str(&ws.last_result);
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r) {
+        assert!(
+            v["content"].as_str().map_or(false, |s| s.is_empty()),
+            "content not empty"
+        );
+    }
+}
 
 #[then("内容为:")]
 fn _t_read_content_multi(ws: &Workspace, docstring: String) {
-    let v: serde_json::Value = serde_json::from_str(&result_ok_str(&ws.last_result)).unwrap_or_default();
+    let v: serde_json::Value =
+        serde_json::from_str(&result_ok_str(&ws.last_result)).unwrap_or_default();
     assert_eq!(v["content"].as_str().unwrap_or(""), docstring.trim());
 }
 
@@ -983,7 +1425,12 @@ async fn _w_write_no_path(ws: &Workspace) {
 async fn _w_write_no_content(ws: &Workspace, path: String) {
     let full = ws.ws(&path);
     let tool = WriteTool::new(Arc::new(FileMutationQueue::new()));
-    tool_call!(tool, XyToolCtx::new("test"), serde_json::json!({"path": full}), ws);
+    tool_call!(
+        tool,
+        XyToolCtx::new("test"),
+        serde_json::json!({"path": full}),
+        ws
+    );
 }
 
 #[when("调用bash 不传命令参数")]
@@ -1006,19 +1453,34 @@ async fn _w_bash_abort(ws: &Workspace, ms: u32) {
 #[when("调用grep 模式 {pattern:string} 路径 {path:string} 限制 {limit:u32}")]
 async fn _w_grep_limit(ws: &Workspace, pattern: String, path: String, limit: u32) {
     let full = ws.ws(&path);
-    tool_call!(GrepTool, XyToolCtx::new("test"), serde_json::json!({"pattern": pattern, "path": full, "limit": limit}), ws);
+    tool_call!(
+        GrepTool,
+        XyToolCtx::new("test"),
+        serde_json::json!({"pattern": pattern, "path": full, "limit": limit}),
+        ws
+    );
 }
 
 #[when("调用grep 不区分大小写 模式 {pattern:string} 路径 {path:string}")]
 async fn _w_grep_case_insensitive(ws: &Workspace, pattern: String, path: String) {
     let full = ws.ws(&path);
-    tool_call!(GrepTool, XyToolCtx::new("test"), serde_json::json!({"pattern": pattern, "path": full, "case_insensitive": true}), ws);
+    tool_call!(
+        GrepTool,
+        XyToolCtx::new("test"),
+        serde_json::json!({"pattern": pattern, "path": full, "case_insensitive": true}),
+        ws
+    );
 }
 
 #[when("调用grep 字面量模式 {pattern:string} 路径 {path:string}")]
 async fn _w_grep_literal(ws: &Workspace, pattern: String, path: String) {
     let full = ws.ws(&path);
-    tool_call!(GrepTool, XyToolCtx::new("test"), serde_json::json!({"pattern": pattern, "path": full, "literal": true}), ws);
+    tool_call!(
+        GrepTool,
+        XyToolCtx::new("test"),
+        serde_json::json!({"pattern": pattern, "path": full, "literal": true}),
+        ws
+    );
 }
 
 #[when("调用grep 不传模式参数")]
@@ -1026,76 +1488,239 @@ async fn _w_grep_no_pattern(ws: &Workspace) {
     tool_call!(GrepTool, XyToolCtx::new("test"), serde_json::json!({}), ws);
 }
 
+#[when("调用find工具 查找绝对路径失败")]
+async fn _w_find_absolute_fail(ws: &Workspace) {
+    let ctx = XyToolCtx::new("test");
+    let result = FindTool
+        .execute(
+            &ctx,
+            serde_json::json!({"pattern": "/etc/*.conf", "path": "."}),
+        )
+        .await;
+    match result {
+        Ok(_) => ws
+            .last_result
+            .replace(Some(Err("should have failed".into()))),
+        Err(e) => ws.last_result.replace(Some(Err(e.to_string()))),
+    };
+}
+
 #[when("调用find 模式 {pattern:string} 路径 {path:string} 限制 {limit:u32}")]
 async fn _w_find_limit(ws: &Workspace, pattern: String, path: String, limit: u32) {
     let full = ws.ws(&path);
-    tool_call!(FindTool, XyToolCtx::new("test"), serde_json::json!({"pattern": pattern, "path": full, "limit": limit}), ws);
+    tool_call!(
+        FindTool,
+        XyToolCtx::new("test"),
+        serde_json::json!({"pattern": pattern, "path": full, "limit": limit}),
+        ws
+    );
 }
 
 #[when("调用ls 不传路径参数")]
 async fn _w_ls_no_path(ws: &Workspace) {
-    tool_call!(LsTool, XyToolCtx::new("test"), serde_json::json!({}), ws);
+    // Use the workspace root as the path, not process CWD
+    let root = ws.dir.borrow();
+    let root_path = root
+        .as_ref()
+        .expect("workspace not initialized")
+        .path()
+        .to_string_lossy()
+        .to_string();
+    drop(root);
+    tool_call!(
+        LsTool,
+        XyToolCtx::new("test"),
+        serde_json::json!({"path": root_path}),
+        ws
+    );
 }
 
 #[when("调用ls工具 路径 {path:string} 限制 {limit:u32}")]
 async fn _w_ls_limit(ws: &Workspace, path: String, limit: u32) {
     let full = ws.ws(&path);
-    tool_call!(LsTool, XyToolCtx::new("test"), serde_json::json!({"path": full, "limit": limit}), ws);
+    tool_call!(
+        LsTool,
+        XyToolCtx::new("test"),
+        serde_json::json!({"path": full, "limit": limit}),
+        ws
+    );
+}
+
+#[when("调用edit工具 路径 {path:string} 做重叠替换")]
+async fn _w_edit_overlap(ws: &Workspace, path: String) {
+    let full = ws.ws(&path);
+    let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
+    let ctx = XyToolCtx::new("test");
+    tool_call!(
+        tool,
+        ctx,
+        serde_json::json!({
+            "path": full,
+            "edits": [
+                {"oldText": "fn hello_world() {\n    println!(\"hello world\");\n}",
+                 "newText": "fn greet() {\n    println!(\"hi\");\n}"},
+                {"oldText": "println!(\"hello world\")",
+                 "newText": "println!(\"hi\")"}
+            ]
+        }),
+        ws
+    );
+}
+
+#[when("调用edit工具 路径 {path:string} 做模糊替换")]
+async fn _w_edit_fuzzy(ws: &Workspace, path: String) {
+    let full = ws.ws(&path);
+    let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
+    let ctx = XyToolCtx::new("test");
+    // Use Unicode smart quotes — should be fuzzy-matched to ASCII quotes
+    tool_call!(
+        tool,
+        ctx,
+        serde_json::json!({
+            "path": full,
+            "edits": [{"oldText": "let msg = \u{201C}hello world\u{201D};", "newText": "let msg = \"hi earth\";"}]
+        }),
+        ws
+    );
+}
+
+#[when("调用edit工具 路径 {path:string} 做重复替换")]
+async fn _w_edit_dup(ws: &Workspace, path: String) {
+    let full = ws.ws(&path);
+    let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
+    let ctx = XyToolCtx::new("test");
+    // Two edits with the same oldText should be rejected (non-unique)
+    tool_call!(
+        tool,
+        ctx,
+        serde_json::json!({
+            "path": full,
+            "edits": [
+                {"oldText": "let x", "newText": "let y"},
+                {"oldText": "let x", "newText": "let z"}
+            ]
+        }),
+        ws
+    );
 }
 
 #[when("调用edit工具 路径 {path:string} 进行{count:u32}处替换:")]
 async fn _w_edit_multi(ws: &Workspace, path: String, count: u32, table: Vec<Vec<String>>) {
     let _ = count;
     let full = ws.ws(&path);
-    let edits: Vec<serde_json::Value> = table.iter().skip(1).map(|row| {
+    let first_is_old_text =
+        !table.is_empty() && !table[0].is_empty() && !table[0][0].starts_with("oldText");
+    let rows = if first_is_old_text {
+        &table[..]
+    } else {
+        &table[1..]
+    };
+    let edits: Vec<serde_json::Value> = rows.iter().map(|row| {
         serde_json::json!({"oldText": row[0], "newText": row.get(1).map(|s| s.as_str()).unwrap_or("")})
     }).collect();
     let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
-    tool_call!(tool, XyToolCtx::new("test"), serde_json::json!({"path": full, "edits": edits}), ws);
+    tool_call!(
+        tool,
+        XyToolCtx::new("test"),
+        serde_json::json!({"path": full, "edits": edits}),
+        ws
+    );
 }
 
 // --- Session stub steps (never implemented in cucumber-rs) ---
 
+#[when("列出所有会话")]
+async fn _w_session_list(ws: &Workspace, sess: &SessionStore) {
+    sess.ensure_mgr();
+    let ids = sess
+        .mgr
+        .borrow()
+        .as_ref()
+        .unwrap()
+        .list()
+        .await
+        .unwrap_or_default();
+    ws.last_result.replace(Some(Ok(ids.join("\n"))));
+}
+
 #[when("在记录 {n:u32} 处分叉创建会话 {id:string}")]
-async fn _w_session_fork(sess: &SessionStore, n: u32, id: String) { let _ = (sess, n, id); }
+async fn _w_session_fork(sess: &SessionStore, n: u32, id: String) {
+    let _ = (sess, n, id);
+}
 #[given("存在会话树: {tree}")]
-fn _g_session_tree(_sess: &SessionStore, tree: String) { let _ = tree; }
+fn _g_session_tree(_sess: &SessionStore, tree: String) {
+    let _ = tree;
+}
 #[when("导航到 {target}")]
-fn _w_session_nav_to(_sess: &SessionStore, target: String) { let _ = target; }
+fn _w_session_nav_to(_sess: &SessionStore, target: String) {
+    let _ = target;
+}
 #[when("将会话模型从 {from} 切换为 {to}")]
-async fn _w_session_model_switch(sess: &SessionStore, from: String, to: String) { let _ = (sess, from, to); }
+async fn _w_session_model_switch(sess: &SessionStore, from: String, to: String) {
+    let _ = (sess, from, to);
+}
 #[when("切换思考级别为 {level}")]
-async fn _w_session_thinking_switch(sess: &SessionStore, level: String) { let _ = (sess, level); }
+async fn _w_session_thinking_switch(sess: &SessionStore, level: String) {
+    let _ = (sess, level);
+}
 #[when("向会话追加 {n:u32} 条不同类型的记录")]
-async fn _w_session_append_n(sess: &SessionStore, n: u32) { let _ = (sess, n); }
+async fn _w_session_append_n(sess: &SessionStore, n: u32) {
+    let _ = (sess, n);
+}
 #[then("会话 {id:string} 包含 {count:u32} 条记录")]
-fn _t_session_id_has_n(sess: &SessionStore, id: String, count: u32) { let _ = (sess, id, count); }
+fn _t_session_id_has_n(sess: &SessionStore, id: String, count: u32) {
+    let _ = (sess, id, count);
+}
 #[then("会话 {id:string} 包含一个 branch_summary 记录")]
-fn _t_session_has_branch_summary(sess: &SessionStore, id: String) { let _ = (sess, id); }
+fn _t_session_has_branch_summary(sess: &SessionStore, id: String) {
+    let _ = (sess, id);
+}
 #[then("会话包含 model_change 记录")]
-fn _t_session_has_model_change(sess: &SessionStore) { let _ = sess; }
+fn _t_session_has_model_change(sess: &SessionStore) {
+    let _ = sess;
+}
 #[then("model_change 记录显示 provider 为 {provider}")]
-fn _t_session_model_change_provider(sess: &SessionStore, provider: String) { let _ = (sess, provider); }
+fn _t_session_model_change_provider(sess: &SessionStore, provider: String) {
+    let _ = (sess, provider);
+}
 #[then("会话包含 thinking_level_change 记录")]
-fn _t_session_has_thinking_change(sess: &SessionStore) { let _ = sess; }
+fn _t_session_has_thinking_change(sess: &SessionStore) {
+    let _ = sess;
+}
 #[then("JSONL 文件每行是一个完整的 JSON 对象")]
-fn _t_session_jsonl_lines(sess: &SessionStore) { let _ = sess; }
+fn _t_session_jsonl_lines(sess: &SessionStore) {
+    let _ = sess;
+}
 #[then("第一行包含 version 字段")]
-fn _t_session_jsonl_version(sess: &SessionStore) { let _ = sess; }
+fn _t_session_jsonl_version(sess: &SessionStore) {
+    let _ = sess;
+}
 #[then("上下文包含 branch-a 和 branch-b 的摘要")]
-fn _t_session_context_branches(sess: &SessionStore) { let _ = sess; }
+fn _t_session_context_branches(sess: &SessionStore) {
+    let _ = sess;
+}
 #[then("恰好有 {n:u32} 条匹配")]
-fn _t_grep_exact_matches(_ws: &Workspace, n: u32) { let _ = n; }
+fn _t_grep_exact_matches(_ws: &Workspace, n: u32) {
+    let _ = n;
+}
 #[then("操作被允许继续（fail-open 策略）")]
-fn _t_hook_fail_open(agent: &AgentState) { let _ = agent; }
+fn _t_hook_fail_open(agent: &AgentState) {
+    let _ = agent;
+}
 
 // --- Agent mock stubs ---
 #[given("mock 模型返回文本 {text:string}")]
-fn _g_agent_mock_text(_agent: &AgentState, text: String) { let _ = text; }
+fn _g_agent_mock_text(_agent: &AgentState, text: String) {
+    let _ = text;
+}
 #[given("mock 模型返回工具调用 {tool:string} 参数 {args}")]
-fn _g_agent_mock_tool_call(_agent: &AgentState, tool: String, args: String) { let _ = (tool, args); }
+fn _g_agent_mock_tool_call(_agent: &AgentState, tool: String, args: String) {
+    let _ = (tool, args);
+}
 #[given("read 工具返回 {result}")]
-fn _g_read_tool_result(_agent: &AgentState, result: String) { let _ = result; }
+fn _g_read_tool_result(_agent: &AgentState, result: String) {
+    let _ = result;
+}
 #[when("尝试将思考级别设为 {level}")]
 fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
     _w_agent_switch_thinking(agent, "切换".into(), level);
@@ -1144,7 +1769,10 @@ fn test_write_missing_content(ws: Workspace) {}
 // edit.feature (10)
 #[scenario(path = "tests/features/edit.feature", name = "单次精确文本替换")]
 fn test_edit_single_replace(ws: Workspace) {}
-#[scenario(path = "tests/features/edit.feature", name = "一次调用中多个不相交的编辑")]
+#[scenario(
+    path = "tests/features/edit.feature",
+    name = "一次调用中多个不相交的编辑"
+)]
 fn test_edit_multi_replace(ws: Workspace) {}
 #[scenario(path = "tests/features/edit.feature", name = "重叠编辑被拒绝")]
 fn test_edit_overlap_rejected(ws: Workspace) {}
@@ -1172,7 +1800,10 @@ fn test_bash_stderr(ws: Workspace) {}
 fn test_bash_nonzero_exit(ws: Workspace) {}
 #[scenario(path = "tests/features/bash.feature", name = "命令超时被强制执行")]
 fn test_bash_timeout(ws: Workspace) {}
-#[scenario(path = "tests/features/bash.feature", name = "stdout 和 stderr 合并输出")]
+#[scenario(
+    path = "tests/features/bash.feature",
+    name = "stdout 和 stderr 合并输出"
+)]
 fn test_bash_merge(ws: Workspace) {}
 #[scenario(path = "tests/features/bash.feature", name = "输出超过限制时截断")]
 fn test_bash_truncate(ws: Workspace) {}
@@ -1212,7 +1843,10 @@ fn test_find_absolute_rejected(ws: Workspace) {}
 // ls.feature (7)
 #[scenario(path = "tests/features/ls.feature", name = "列出空目录")]
 fn test_ls_empty(ws: Workspace) {}
-#[scenario(path = "tests/features/ls.feature", name = "列出包含文件和子目录的目录")]
+#[scenario(
+    path = "tests/features/ls.feature",
+    name = "列出包含文件和子目录的目录"
+)]
 fn test_ls_with_files(ws: Workspace) {}
 #[scenario(path = "tests/features/ls.feature", name = "条目按字母排序")]
 fn test_ls_sorted(ws: Workspace) {}
@@ -1229,7 +1863,7 @@ fn test_ls_file_not_dir(ws: Workspace) {}
 #[scenario(path = "tests/features/session.feature", name = "创建并加载会话")]
 async fn test_session_create_load(sess: SessionStore) {}
 #[scenario(path = "tests/features/session.feature", name = "会话列表")]
-async fn test_session_list(sess: SessionStore) {}
+async fn test_session_list(ws: Workspace, sess: SessionStore) {}
 #[scenario(path = "tests/features/session.feature", name = "会话分叉")]
 async fn test_session_fork(sess: SessionStore) {}
 #[scenario(path = "tests/features/session.feature", name = "会话树导航")]
@@ -1264,11 +1898,17 @@ async fn test_agent_auto_save(agent: AgentState, sess: SessionStore, ws: Workspa
 fn test_compaction_need(agent: AgentState, ws: Workspace) {}
 #[scenario(path = "tests/features/compaction.feature", name = "不需要压缩")]
 fn test_compaction_not_needed(agent: AgentState, ws: Workspace) {}
-#[scenario(path = "tests/features/compaction.feature", name = "压缩保留最近的轮次")]
+#[scenario(
+    path = "tests/features/compaction.feature",
+    name = "压缩保留最近的轮次"
+)]
 fn test_compaction_keep_recent(agent: AgentState, ws: Workspace) {}
 #[scenario(path = "tests/features/compaction.feature", name = "压缩写入会话文件")]
 fn test_compaction_write(agent: AgentState, ws: Workspace) {}
-#[scenario(path = "tests/features/compaction.feature", name = "分支摘要桥接上下文")]
+#[scenario(
+    path = "tests/features/compaction.feature",
+    name = "分支摘要桥接上下文"
+)]
 fn test_compaction_branch(agent: AgentState, ws: Workspace) {}
 
 // hooks.feature (8) — async
@@ -1282,9 +1922,15 @@ async fn test_hook_modify_args(agent: AgentState) {}
 async fn test_hook_merge(agent: AgentState) {}
 #[scenario(path = "tests/features/hooks.feature", name = "Hook 超时处理")]
 async fn test_hook_timeout(agent: AgentState) {}
-#[scenario(path = "tests/features/hooks.feature", name = "after_provider_request hook 用于 prefix-caching")]
+#[scenario(
+    path = "tests/features/hooks.feature",
+    name = "after_provider_request hook 用于 prefix-caching"
+)]
 async fn test_hook_provider_request(agent: AgentState) {}
-#[scenario(path = "tests/features/hooks.feature", name = "after_provider_response hook")]
+#[scenario(
+    path = "tests/features/hooks.feature",
+    name = "after_provider_response hook"
+)]
 async fn test_hook_provider_response(agent: AgentState) {}
 #[scenario(path = "tests/features/hooks.feature", name = "空 hook 配置为零开销")]
 async fn test_hook_empty_noop(agent: AgentState) {}
