@@ -12,7 +12,7 @@ llman_spec_evidence:
 kind: llman.sdd.spec
 name: "session-persistence"
 purpose: "TBD - created by archiving change c70-add-session-snapshot. Update purpose after archive."
-requirements[13]{req_id,title,statement}:
+requirements[15]{req_id,title,statement}:
   r1,"snapshot-ops",System MUST support snapshot restore spawn list prune diff and merge operations on immutable session snapshots.
   r2,compaction,System MUST automatically compact context when conversation token count exceeds configured window threshold.
   s1,"jsonl-storage","SessionManager MUST persist sessions as JSONL files with one JSON object per line, version-tagged, in ~/.xylitol/sessions/."
@@ -26,7 +26,9 @@ requirements[13]{req_id,title,statement}:
   s9,"session-fork","SessionManager MUST support fork(parent_id, child_id, at_entry_id) that copies parent entries up to the fork point into a new child session file and appends a branch_summary entry."
   s10,"branch-summary-impl","System MUST generate a branch summary when forking that describes the skipped entries: count of entries, entry types, last user message, and notable actions from tool calls."
   s11,"agent-fork","AgentSession MUST expose fork_session(at_entry_id) that creates a new child session via SessionManager::fork() and returns the child session id."
-scenarios[16]{req_id,id,given,when,then}:
+  s16,"session-cwd-validate","SessionManager MUST validate that the stored CWD exists and is accessible when loading a session from disk, returning an actionable error message when not found."
+  s17,"bdd-session-v3",BDD tests for CWD validation MUST pass.
+scenarios[19]{req_id,id,given,when,then}:
   r1,happy,a snapshot exists,spawn is called with snapshot_id and new prompt,new agent instance starts with inherited context from snapshot
   r2,happy,conversation exceeds 75% of context window,compaction is triggered,older turns are summarized and replaced with compact system message
   s1,"create-load",a new session is created,entries are appended and session is loaded,all entries are returned in order
@@ -43,4 +45,7 @@ scenarios[16]{req_id,id,given,when,then}:
   s10,summary,parent session has 3 user messages and 7 assistant messages with 5 tool calls,branch summary is generated,summary includes total entries count and tool call count
   s10,"empty-summary",no entries remain after fork point,branch summary is generated,summary is empty string or indicates nothing skipped
   s11,"agent-fork",agent session is active,AgentSession.fork_session(e4) is called,new child session id is returned and child session file exists on disk
+  s16,"cwd-ok",session file has cwd /tmp and directory exists,load is called,entries are returned normally
+  s16,"cwd-missing",session file has cwd /nonexistent,load is called,error references missing directory /nonexistent
+  s17,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all session-v3 scenarios pass"
 ```

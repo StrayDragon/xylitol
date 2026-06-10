@@ -9,7 +9,7 @@ ops[8]{op,req_id,title,statement,from,to,name}:
   add_requirement,m6,"model-fallback","ModelResolver MUST build a fallback Model when target model ID is not in the provider's available list, preserving user intent while falling back to a base model from same provider.",null,null,null
   add_requirement,m7,"auth-guidance","ModelRegistry MUST return user-facing error messages when no API key or OAuth auth is configured for a model, guiding to slash-command /login.",null,null,null
   add_requirement,m8,"bdd-model",BDD tests for model registry and resolution MUST all pass.,null,null,null
-op_scenarios[9]{req_id,id,given,when,then}:
+op_scenarios[10]{req_id,id,given,when,then}:
   m1,"register-provider","a provider is registered with name openai and api key","has_configured_auth for an openai model",returns true
   m1,"no-auth","no provider is registered for anthropic","has_configured_auth for a claude model",returns false
   m2,"available-models","two providers each have 2 models",get_available is called,returns 4 models sorted by priority
@@ -18,5 +18,6 @@ op_scenarios[9]{req_id,id,given,when,then}:
   m4,"bare-id-match","available models include a model with id claude-sonnet-4-20250514","resolve_model of claude-sonnet-4-20250514 is called",returns the matching model
   m5,"scoped-cycle","scoped_models has 3 entries",cycle_model is called,"cycles through only those 3 models"
   m6,"fallback-model","user requests model-id-that-does-not-exist on openai provider","model is resolved",fallback uses base openai model with the requested id as name
+  m7,"auth-guidance-message","no API key configured for anthropic model",auth_guidance_message is called,"message includes ANTHROPIC_API_KEY"
   m8,"bdd-pass",BDD runner invoked,"cargo test --test bdd",all model-registry scenarios pass
 ```
