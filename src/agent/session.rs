@@ -14,6 +14,8 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::agent::model::ModelConfig;
+use crate::agent::prompt::{self, SystemPromptOpts};
+use crate::agent::queue::MessageQueue;
 use crate::agent::tools::ToolRegistry;
 use crate::agent::traits::XyModel;
 use crate::agent::types::{XyContent, XyPart};
@@ -125,6 +127,10 @@ pub struct AgentSession {
     compaction_threshold: f64,
     /// CWD for session header.
     cwd: String,
+    /// System prompt options for dynamic building.
+    prompt_opts: SystemPromptOpts,
+    /// Message queue for steer/followUp.
+    message_queue: MessageQueue,
 }
 
 impl AgentSession {
@@ -147,7 +153,12 @@ impl AgentSession {
             session_id: None,
             max_iterations,
             compaction_threshold,
-            cwd,
+            cwd: cwd.clone(),
+            prompt_opts: SystemPromptOpts {
+                cwd,
+                ..Default::default()
+            },
+            message_queue: MessageQueue::new(),
         }
     }
 
@@ -173,13 +184,16 @@ impl AgentSession {
     }
 
     /// Set thinking level.
-    pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
+    pub fn set_thinking_level(&mut self, level: ThinkingLevel) {
         self.thinking_level = level;
-        // Persist to session if active
-        if let Some(ref _sid) = self.session_id {
-            Ok(()) // handled by caller
-        } else {
-            Ok(())
+        // Fire-and-forget persistence (async call from sync context OK in tokio tests)
+        if let Some(ref sid) = self.session_id {
+            let mgr = self.session_manager.clone();
+            let sid = sid.clone();
+            let level_str = level.as_str().to_string();
+            tokio::spawn(async move {
+                let _ = mgr.append_thinking_level_change(&sid, &level_str).await;
+            });
         }
     }
 
@@ -214,6 +228,15 @@ impl AgentSession {
             .position(|m| m.id == model_id)
             .ok_or_else(|| format!("model not found: {model_id}"))?;
         self.current_model_index = idx;
+        // Fire-and-forget persistence
+        if let Some(ref sid) = self.session_id {
+            let mgr = self.session_manager.clone();
+            let sid = sid.clone();
+            let mid = model_id.to_string();
+            tokio::spawn(async move {
+                let _ = mgr.append_model_change(&sid, &mid, &mid).await;
+            });
+        }
         Ok(())
     }
 
@@ -309,6 +332,93 @@ impl AgentSession {
 
         Ok(child_id)
     }
+
+    // ── Dynamic system prompt ────────────────────────────────────
+
+    /// Set active tools by name and rebuild the system prompt.
+    pub fn set_active_tools(&mut self, tool_names: &[String]) {
+        self.prompt_opts.selected_tools = tool_names.to_vec();
+        self.prompt_opts.tool_snippets =
+            prompt::collect_tool_snippets(&self.tool_registry, tool_names);
+        self.rebuild_system_prompt();
+    }
+
+    /// Rebuild the system prompt from current options.
+    pub fn rebuild_system_prompt(&mut self) {
+        self.system_prompt = Some(prompt::build_system_prompt(&self.prompt_opts));
+    }
+
+    /// Set append system prompt text.
+    pub fn set_append_prompt(&mut self, text: Option<String>) {
+        self.prompt_opts.append_prompt = text;
+        self.rebuild_system_prompt();
+    }
+
+    // ── Message queue ────────────────────────────────────────────
+
+    pub fn message_queue(&self) -> &MessageQueue {
+        &self.message_queue
+    }
+
+    pub fn message_queue_mut(&mut self) -> &mut MessageQueue {
+        &mut self.message_queue
+    }
+
+    // ── Session stats ────────────────────────────────────────────
+
+    /// Get session statistics.
+    pub async fn get_session_stats(&self) -> Result<SessionStats, String> {
+        let sid = self
+            .session_id()
+            .ok_or_else(|| "no active session".to_string())?;
+        let ctx = self.session_manager.build_session_context(sid).await?;
+
+        let user_messages = ctx
+            .messages
+            .iter()
+            .filter(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+            .count();
+        let assistant_messages = ctx
+            .messages
+            .iter()
+            .filter(|m| m.get("role").and_then(|r| r.as_str()) == Some("assistant"))
+            .count();
+        let total_messages = ctx.messages.len();
+
+        Ok(SessionStats {
+            session_id: sid.to_string(),
+            user_messages,
+            assistant_messages,
+            total_messages,
+            thinking_level: ctx.thinking_level,
+            model: ctx.model,
+        })
+    }
+
+    /// Send a custom message to the session.
+    pub async fn send_custom_message(
+        &self,
+        custom_type: &str,
+        content: serde_json::Value,
+        display: bool,
+    ) -> Result<(), String> {
+        let sid = self
+            .session_id()
+            .ok_or_else(|| "no active session".to_string())?;
+        self.session_manager
+            .append_custom_message(sid, custom_type, content, display, None)
+            .await
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionStats {
+    pub session_id: String,
+    pub user_messages: usize,
+    pub assistant_messages: usize,
+    pub total_messages: usize,
+    pub thinking_level: String,
+    pub model: Option<(String, String)>,
 }
 
 // ── Context estimation ──────────────────────────────────────────────
