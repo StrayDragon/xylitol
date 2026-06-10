@@ -289,6 +289,26 @@ impl AgentSession {
 
         Ok(())
     }
+
+    // ── Fork ────────────────────────────────────────────────────
+
+    /// Fork the current session at a given entry, creating a child session.
+    ///
+    /// Returns the child session ID on success.
+    pub async fn fork_session(&self, at_entry_id: &str) -> Result<String, String> {
+        let parent_id = self
+            .session_id()
+            .ok_or_else(|| "no active session".to_string())?;
+
+        let child_id = uuid::Uuid::new_v4().to_string();
+
+        self.session_manager
+            .fork(parent_id, &child_id, at_entry_id)
+            .await
+            .map_err(|e| format!("fork failed: {e}"))?;
+
+        Ok(child_id)
+    }
 }
 
 // ── Context estimation ──────────────────────────────────────────────
