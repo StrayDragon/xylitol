@@ -1,21 +1,41 @@
 # Xylitol — Strategic Direction
 
-> Last updated: 2026-06-02
+> Last updated: 2026-06-10 · c07-fix-bdd-scenarios: 77/77 BDD 全绿
 
 ## Core Positioning
 
 **Xylitol = General-Purpose Agent Runtime**
 
-Xylitol focuses on being the **best agent execution engine** — capable of coding, research, analysis, and any task that benefits from a ReAct loop with tool calling. It does NOT aim to be an orchestration platform — that role belongs to [zirvox](../zirvox).
+Xylitol focuses on being the **best agent execution engine** — capable of coding, research, analysis, and any task that benefits from a ReAct loop with tool calling. It does NOT aim to be an orchestration platform — that role belongs to zirvox.
 
-## What Xylitol Does Best
+## Current Status (2026-06-10)
 
-- **ReAct Agent Loop**: Clean, event-driven, trait-decoupled execution engine
-- **Tool System**: `XyTool` trait with 8 built-in dev tools + MCP extensibility
-- **Security Engine**: Fine-grained policy enforcement (regex/glob path restrictions, command filtering, resource limits)
-- **Multi-Provider LLM**: `XyModel` trait with OpenAI + Anthropic, easy to extend
-- **Agent Profiles**: YAML-driven multi-personality configuration
-- **Multi-Interface**: TUI (ratatui), CLI (print mode), ACP (IDE integration)
+### ✅ Complete
+
+- **ReAct Agent Loop**: clean, event-driven, trait-decoupled (`XyModel` + `XyTool`)
+- **7 Built-in Tools**: read, write, edit, bash, grep, find, ls — 77 BDD scenarios passing
+- **Session Persistence**: JSONL-based, create/append/load/list
+- **Hooks System**: pre/post dispatch, block/modify/allow, timeout-kill
+- **Compaction** (threshold detection): context usage + shouldCompact
+- **Multi-Provider**: OpenAI + Anthropic via `XyModel` trait
+- **CLI Interface**: clap-based, print mode
+- **BDD Framework**: rstest-bdd, 77/77 scenarios, native `cargo test`
+
+### 🔴 P0 Remaining
+
+- **LLM-based Compaction**: summarization core (stub only)
+- **Grep/Find/Bash streaming cancel**: currently tokio spawn + timeout
+
+### 🟡 P1 Remaining
+
+- **Config 3-tier merge + ENV interpolation**: currently global tier only
+- **Session file locking (flock)**: not implemented
+- **Session tree / fork**: stub only
+
+### 🟢 P2/P3
+
+- Parallel tool execution, system prompt building
+- Interactive TUI (removed — belongs in zirvox)
 
 ## What Xylitol Should NOT Do
 
@@ -27,32 +47,28 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 
 ## Growth Path
 
-### Phase 1 — Coding Agent (current focus)
+### Phase 1 — Core Harden (current focus)
 
-- [ ] Harden the existing tool system (bash, read, write, edit, grep, find, ls, patch)
-- [ ] Improve SecurityEngine with granular per-tool policies
-- [ ] Complete ACP server mode for IDE integration (Zed, VS Code)
-- [ ] Stabilize session persistence beyond InMemorySession
-- [ ] Polish TUX experience: markdown rendering, diff review, history navigation
+- [ ] LLM-based Compaction (summarization via LLM call)
+- [ ] Streaming cancel for bash/grep/find
+- [ ] Config merge (global → project → user) with ENV interpolation
+- [ ] Session flock + fork support
 
 ### Phase 2 — Beyond Coding (medium-term)
 
-- [ ] Expand tool categories:
-  - Web tools (fetch, search, scrape) — via MCP skills
-  - Data tools (CSV/JSON processing, chart generation)
-  - API tools (REST client, GraphQL)
-- [ ] Add more LLM providers (Gemini, local models via Ollama, custom endpoints)
-- [ ] Integrate Planner into main loop (task decomposition → step execution)
-- [ ] Add conversation memory / context compaction for long sessions
-- [ ] Support multi-modal inputs (images, documents)
+- [ ] Expand tool categories (web, data, API via MCP skills)
+- [ ] Add more LLM providers (Gemini, Ollama, custom endpoints)
+- [ ] Integrate Planner into main loop
+- [ ] Conversation memory / context compaction for long sessions
+- [ ] Multi-modal inputs (images, documents)
 
 ### Phase 3 — Agent-as-a-Service (long-term)
 
 - [ ] Expose agent capabilities via ACP-over-HTTP or MCP server mode
 - [ ] zirvox can discover and invoke xylitol as a "super tool" in workflows
-- [ ] Profile-based agent selection: different profiles for coding, research, review, etc.
-- [ ] Streaming results back to caller (zirvox Gateway → WebSocket → user)
-- [ ] Agent composition: xylitol can call other xylitol instances (sub-agent pattern)
+- [ ] Profile-based agent selection
+- [ ] Streaming results back to caller
+- [ ] Agent composition (sub-agent pattern)
 
 ## Architecture Target
 
@@ -69,7 +85,7 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 │  │         AgentLoop (ReAct)            │    │
 │  │  ┌──────────┐  ┌───────────────────┐ │    │
 │  │  │ XyModel  │  │  ToolRegistry     │ │    │
-│  │  │ (LLM)    │  │  ├─ Built-in (8)  │ │    │
+│  │  │ (LLM)    │  │  ├─ Built-in (7)  │ │    │
 │  │  │ OpenAI   │  │  ├─ MCP Skills    │ │    │
 │  │  │ Anthropic│  │  └─ Security Wrap │ │    │
 │  │  │ Gemini?  │  │                   │ │    │
@@ -117,9 +133,13 @@ Communication: ACP over HTTP / MCP protocol
 
 ## Success Metrics
 
+- [x] BDD 测试全绿 (77/77)
+- [x] 7 built-in tools 全部 BDD 覆盖
+- [x] At least 2 LLM providers supported (OpenAI + Anthropic)
 - [ ] Can be invoked by zirvox workflow as a Step (via ACP/MCP)
 - [ ] IDE integration works end-to-end (Zed / VS Code via ACP)
 - [ ] At least 3 LLM providers supported (OpenAI, Anthropic, +1)
 - [ ] Tool count ≥ 15 (built-in + MCP skills)
+- [ ] LLM-based compaction fully functional
 - [ ] Session persistence survives process restart
 - [ ] SecurityEngine policies cover all built-in tools
