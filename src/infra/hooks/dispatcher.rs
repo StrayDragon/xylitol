@@ -22,7 +22,8 @@ const DEFAULT_TIMEOUT_SECS: u64 = 5;
 pub struct HookDispatcher {
     /// Merged hook entries (user overrides project overrides global).
     hooks: Vec<HookEntry>,
-    /// Default timeout for hook execution.
+    /// Timeout for hook execution (from config, applied per-invoke).
+    #[allow(dead_code)]
     timeout: Duration,
 }
 

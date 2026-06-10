@@ -135,7 +135,7 @@ impl XyTool for ReadTool {
             }
         }
 
-        Ok(serde_json::to_string(&result).unwrap())
+        Ok(serde_json::to_string(&result).expect("serde_json::to_string on Value/Map never fails"))
     }
 }
 
