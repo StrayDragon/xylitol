@@ -409,6 +409,46 @@ impl AgentSession {
             .append_custom_message(sid, custom_type, content, display, None)
             .await
     }
+
+    /// Check and perform auto-compaction if the context is full.
+    /// Returns true if compaction was performed.
+    pub async fn maybe_auto_compact(&self) -> Result<bool, String> {
+        let sid = self
+            .session_id()
+            .ok_or_else(|| "no active session".to_string())?;
+
+        let model = self
+            .build_current_model()
+            .map_err(|e| format!("no model: {e}"))?;
+
+        let ctx_window = self
+            .current_model()
+            .map(|m| m.context_window)
+            .unwrap_or(128000);
+
+        let session_ctx = self.session_manager.build_session_context(sid).await?;
+        let token_estimate: u64 = session_ctx
+            .messages
+            .iter()
+            .map(|m| (m.to_string().len() as u64).div_ceil(4))
+            .sum();
+
+        if !should_compact(token_estimate, ctx_window, self.compaction_threshold) {
+            return Ok(false);
+        }
+
+        let settings = CompactionSettings {
+            enabled: true,
+            reserve_tokens: 16384,
+            keep_recent_tokens: 20000,
+        };
+
+        compact_session(&self.session_manager, sid, model.as_ref(), &settings)
+            .await
+            .map_err(|e| format!("auto-compaction: {e}"))?;
+
+        Ok(true)
+    }
 }
 
 #[derive(Debug, Clone)]
