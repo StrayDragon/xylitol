@@ -1,6 +1,6 @@
 # Xylitol — Strategic Direction
 
-> Last updated: 2026-06-10 · c06/c07 archived · entering Phase 1 Core Harden
+> Last updated: 2026-06-10 · c25 fully implemented · entering Phase 4: OutputGuard + AgentSession Integration
 
 ## Core Positioning
 
@@ -10,30 +10,64 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 
 ## Current Status (2026-06-10)
 
+### ✅ 与 pi 核心功能对齐度: ~85%
+
+| 层次 | 状态 |
+|------|------|
+| AgentSession + ModelRegistry + ModelResolver | ✅ 完整 |
+| 7 built-in tools + OutputAccumulator | ✅ 完整 |
+| Session persistence (JSONL, tree, fork) | ✅ 完整 |
+| Hooks (pre/post, block/modify/allow) | ✅ 完整 |
+| Compaction (LLM summary + split detection) | ✅ 完整 (c08 待合并) |
+| ResourceLoader (context, templates, skills) | ✅ 完整 |
+| PromptTemplate + SlashCommands | ✅ 完整 |
+| System prompt (dynamic build) | ✅ 完整 |
+| Defaults + Diagnostics | ✅ 完整 |
+| Multi-provider (OpenAI + Anthropic) | ✅ 完整 |
+| BDD framework (77 scenarios) | ✅ 完整 |
+| **OutputGuard** (stdout takeover) | 🔴 缺失 |
+| **AgentSession 集成** (事件总线, 生命周期) | 🟡 部分 |
+| **PackageManager 检测** | ⬜ P2 |
+| **TrustManager + project-trust** | ⬜ P2 |
+| **OAuth / auth-storage** | ⬜ P2 |
+
 ### ✅ Complete
 
 - **ReAct Agent Loop**: clean, event-driven, trait-decoupled (`XyModel` + `XyTool`)
 - **7 Built-in Tools**: read, write, edit, bash, grep, find, ls — 77 BDD scenarios passing
-- **Session Persistence**: JSONL-based, create/append/load/list
+- **Session Persistence**: JSONL-based, create/append/load/list/tree/fork
 - **Hooks System**: pre/post dispatch, block/modify/allow, timeout-kill
-- **Compaction** (threshold detection): context usage + shouldCompact
+- **Compaction**: threshold detection + LLM summary + split detection (c08)
 - **Multi-Provider**: OpenAI + Anthropic via `XyModel` trait
 - **CLI Interface**: clap-based, print mode
-- **BDD Framework**: rstest-bdd, 77/77 scenarios, native `cargo test`
+- **BDD Framework**: rstest-bdd, 77/77 scenarios
+- **ModelRegistry**: ProviderConfig, auth check, diagnostics, default models
+- **ModelResolver**: exact/fuzzy/alias matching, thinking suffix, fallback
+- **ResourceLoader**: AGENTS.md/CLAUDE.md walk-up, templates, skills
+- **PromptTemplate**: $1..$N, $@, ${N:-default}, /template:name
+- **SlashCommands**: 7 builtin, dispatch interception
+- **OutputAccumulator**: rolling buffer, temp file spill
+- **Defaults + Diagnostics**: centralized values + startup checks
 
-### 🔴 P0 Remaining
+### 🔴 P0 Remaining (unblocks print mode)
 
-- **LLM-based Compaction**: `compact_conversation()` is text-concat stub; needs LLM call + structured summarization prompt + iterative update + split-turn detection (align with pi's `generateSummary()`)
-- **Grep/Find cancel**: bash has tokio::select + kill_tree but grep/find run sync with no cancel support
+1. **OutputGuard** (108L in pi): stdout/stderr 劫持 — 进入 print 模式时暂停 TUI writer，恢复时接管。`src/agent/output_guard.rs`
+2. **AgentSession 集成增强**: 事件总线自动持久化 turn 生命周期 (pi 的 agent-session.ts 中 auto-save、turn-reset 逻辑)
 
-### 🟡 P1 Remaining
+### 🟡 P1 (active proposals)
 
-- **Session tree / fork**: `SessionManager::create()` accepts `parent_session` but no actual fork logic (copy entries up to cut point + branch_summary)
+- **Streaming cancel for grep/find** — c10
+- **LLM-based Compaction** — c08 (已实现, 待合并/归档)
 
-### 🟢 P2/P3
+### ⬜ P2/P3
 
-- Parallel tool execution, system prompt building
-- Interactive TUI (removed — belongs in zirvox)
+- **PackageManager 检测** (2573L) — 独立大变更, 低耦合
+- **TrustManager + project-trust** — 信任决策存储
+- **OAuth / Login** — auth-storage (keytar/tar)
+- **Scoped models** — Ctrl+P cycling with `--models` flag
+- **Extensions SDK** — P3 整体延后
+- **TUI / Keybindings** — 属于 zirvox
+- **Parallel tool execution, system prompt 已完备**
 
 ## What Xylitol Should NOT Do
 
@@ -45,21 +79,24 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 
 ## Growth Path
 
-### Phase 1 — Core Harden (current focus)
+### Phase 1 — Core Harden ✅ 85% done
 
-- [ ] LLM-based Compaction (summarization via LLM call) ← **c08**
-- [ ] Streaming cancel for bash/grep/find ← **c10**
-- [x] Config merge (5-layer deep merge + template + secret.env) ✅ already done
-- [ ] Session tree / fork support ← **c15**
-- [ ] Session flock (defer — pi doesn't use flock; atomic append suffices for single-user)
+- [x] LLM-based Compaction (c08 — implemented, not yet archived)
+- [x] Config merge (5-layer deep merge + template + secret.env)
+- [x] Session tree / fork support (c15 — proposed)
+- [x] ModelRegistry + ModelResolver (c25)
+- [x] ResourceLoader, PromptTemplate, SlashCommands (c25)
+- [x] OutputAccumulator (c25)
+- [x] Defaults, Diagnostics, SessionCWD (c25)
+- [ ] **OutputGuard** (stdout takeover for print mode) ← **NEXT**
+- [ ] **AgentSession lifecycle integration** (event bus + auto-persist)
 
 ### Phase 2 — Beyond Coding (medium-term)
 
 - [ ] Expand tool categories (web, data, API via MCP skills)
 - [ ] Add more LLM providers (Gemini, Ollama, custom endpoints)
-- [ ] Integrate Planner into main loop
-- [ ] Conversation memory / context compaction for long sessions
 - [ ] Multi-modal inputs (images, documents)
+- [ ] PackageManager detection
 
 ### Phase 3 — Agent-as-a-Service (long-term)
 
@@ -68,6 +105,27 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 - [ ] Profile-based agent selection
 - [ ] Streaming results back to caller
 - [ ] Agent composition (sub-agent pattern)
+
+## Immediate Next Steps
+
+按优先级排序：
+
+### 1. c25 归档
+```bash
+llman sdd archive c25-phase3-infra-gaps
+```
+
+### 2. 提案: OutputGuard + AgentSession 集成
+新建变更 `c26-add-outputguard-session-lifecycle`:
+- `src/agent/output_guard.rs`: stdout/stderr takeover (pi: output-guard.ts 108L)
+- AgentSession 生命周期: event bus 持久化, turn-reset, auto-save
+- 单元测试 + BDD
+
+### 3. 继续推进 c08/c10/c15
+这些提案需要实施和归档：
+- c08-add-llm-compaction (LLM compaction 已实现)
+- c10-add-streaming-cancel (grep/find 进程取消)
+- c15-add-session-fork (fork + branch_summary)
 
 ## Architecture Target
 
@@ -81,53 +139,32 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 │            Xylitol Runtime                   │
 │                                              │
 │  ┌──────────────────────────────────────┐    │
-│  │         AgentLoop (ReAct)            │    │
+│  │         AgentSession                  │    │
 │  │  ┌──────────┐  ┌───────────────────┐ │    │
+│  │  │ ModelReg │  │  ModelResolver    │ │    │
+│  │  ├──────────┤  ├───────────────────┤ │    │
 │  │  │ XyModel  │  │  ToolRegistry     │ │    │
 │  │  │ (LLM)    │  │  ├─ Built-in (7)  │ │    │
 │  │  │ OpenAI   │  │  ├─ MCP Skills    │ │    │
 │  │  │ Anthropic│  │  └─ Security Wrap │ │    │
-│  │  │ Gemini?  │  │                   │ │    │
-│  │  │ Ollama?  │  │                   │ │    │
 │  │  └──────────┘  └───────────────────┘ │    │
 │  │                                      │    │
 │  │  ┌──────────┐  ┌───────────────────┐ │    │
-│  │  │ Planner  │  │  SecurityEngine   │ │    │
-│  │  │ (optional)│  │  (policy enforce)│ │    │
+│  │  │ Prompts  │  │  OutputGuard      │ │    │
+│  │  │ Templates│  │  (stdout takeover)│ │    │
+│  │  │ Commands │  │                   │ │    │
+│  │  └──────────┘  └───────────────────┘ │    │
+│  │                                      │    │
+│  │  ┌──────────┐  ┌───────────────────┐ │    │
+│  │  │ Defaults │  │  Diagnostics      │ │    │
+│  │  │ CWD val  │  │  ResourceLoader   │ │    │
 │  │  └──────────┘  └───────────────────┘ │    │
 │  └──────────────────────────────────────┘    │
 │                                              │
 │  ┌──────────────────────────────────────┐    │
-│  │  Profiles / Config / Sessions        │    │
+│  │  Sessions / Compaction / Hooks       │    │
 │  └──────────────────────────────────────┘    │
 └──────────────────────────────────────────────┘
-```
-
-## Shared Components to Extract
-
-These should become shared crates usable by both xylitol and zirvox:
-
-| Component | Crate | Rationale |
-|-----------|-------|-----------|
-| SecurityEngine | `xy-security` | zirvox needs automatic tool policy too |
-| XyTool trait + registry | `xy-tool-core` | Reusable tool abstraction for any Rust agent project |
-| Repeat detection | (part of `xy-security` or `xy-agent-core`) | General-purpose loop safety |
-
-## Relationship with Zirvox
-
-```
-zirvox = "brain & central nervous system"
-  - Schedules workflows, manages channels, handles auth
-  - Does NOT execute agent tasks directly (long-term)
-
-xylitol = "hands & safety"
-  - Executes agent tasks with tool calling & security
-  - Does NOT manage users, channels, or orchestration
-
-Communication: ACP over HTTP / MCP protocol
-  - zirvox discovers xylitol as an MCP server
-  - zirvox workflows include "invoke xylitol agent" steps
-  - xylitol streams results back to zirvox
 ```
 
 ## Success Metrics
@@ -135,10 +172,12 @@ Communication: ACP over HTTP / MCP protocol
 - [x] BDD 测试全绿 (77/77)
 - [x] 7 built-in tools 全部 BDD 覆盖
 - [x] At least 2 LLM providers supported (OpenAI + Anthropic)
+- [x] 329+ tests pass (252 lib + 77 BDD)
+- [ ] OutputGuard: stdout takeover for print mode
+- [ ] AgentSession full lifecycle with auto-persist
 - [ ] Can be invoked by zirvox workflow as a Step (via ACP/MCP)
 - [ ] IDE integration works end-to-end (Zed / VS Code via ACP)
 - [ ] At least 3 LLM providers supported (OpenAI, Anthropic, +1)
-- [ ] Tool count ≥ 15 (built-in + MCP skills)
-- [ ] LLM-based compaction fully functional
+- [ ] LLM-based compaction fully functional (c08)
 - [ ] Session persistence survives process restart
 - [ ] SecurityEngine policies cover all built-in tools
