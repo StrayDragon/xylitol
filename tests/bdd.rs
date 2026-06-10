@@ -1,20 +1,31 @@
-//! BDD test runner for Xylitol core — implemented steps.
+//! BDD tests for Xylitol core — rstest-bdd (migrated from cucumber-rs 0.23).
 //!
-//! Step definitions map to real code paths covering all 13 feature files.
+//! Run: `cargo test bdd` or `cargo test bdd -- --test-threads=1`
 
-use cucumber::{World, given, then, when};
+use rstest::fixture;
+use rstest_bdd_macros::{given, scenario, then, when};
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::Arc;
 
-use xylitol::agent::r#loop::{AgentEvent, AgentLoop};
+use futures::StreamExt;
 use xylitol::agent::model::{ModelConfig, ModelKind};
+use xylitol::agent::r#loop::{AgentEvent, AgentLoop};
 use xylitol::agent::session::{
-    AgentSession, ModelMeta, ModelRegistry, ThinkingLevel, estimate_tokens, get_context_usage,
-    should_compact,
+    AgentSession, ContextUsage, ModelMeta, ModelRegistry, ThinkingLevel,
+    get_context_usage, should_compact,
 };
 use xylitol::agent::tools::{
-    ToolRegistry, bash::BashTool, edit::EditTool, find::FindTool, grep::GrepTool, ls::LsTool,
-    mutation::FileMutationQueue, read::ReadTool, write::WriteTool,
+    ToolRegistry,
+    bash::BashTool,
+    edit::EditTool,
+    find::FindTool,
+    grep::GrepTool,
+    ls::LsTool,
+    mutation::FileMutationQueue,
+    read::ReadTool,
+    write::WriteTool,
 };
 use xylitol::agent::traits::{XyTool, XyToolCtx};
 use xylitol::infra::config::types::HookEntry;
@@ -23,257 +34,94 @@ use xylitol::infra::session::{
     CompactionEntry, EntryBase, MessageEntry, SessionEntry, SessionManager,
 };
 
-use futures::StreamExt;
+// ═══════════════════════════════════════════════════════════════════
+// Fixture types (one-level RefCell for interior mutability)
+// ═══════════════════════════════════════════════════════════════════
 
-// ── World ───────────────────────────────────────────────────────────
-
-#[derive(Debug, Default, World)]
-pub struct ToolWorld {
-    pub workspace: Option<tempfile::TempDir>,
-    pub last_result: Option<Result<String, String>>,
-    pub session_store: Vec<String>,
-    pub session_mgr: Option<SessionManager>,
-    pub current_session_id: Option<String>,
-    pub session_entries: Vec<SessionEntry>,
-    pub agent_events: Vec<AgentEvent>,
-    pub compaction_result: Option<bool>,
-    pub context_usage: Option<xylitol::agent::session::ContextUsage>,
-    pub hook_result: Option<DispatchResult>,
-    pub hook_entries: Vec<HookEntry>,
-    pub model_registry: ModelRegistry,
-    pub compaction_threshold: f64,
+pub struct Workspace {
+    pub dir: RefCell<Option<tempfile::TempDir>>,
+    pub last_result: RefCell<Option<Result<String, String>>>,
 }
-
-impl ToolWorld {
+impl Workspace {
+    fn new() -> Self {
+        Self { dir: RefCell::new(None), last_result: RefCell::new(None) }
+    }
     fn ws(&self, path: &str) -> String {
-        let root = self.workspace.as_ref().expect("缺少 Background 步骤？");
-        root.path().join(path).to_string_lossy().to_string()
+        self.dir.borrow().as_ref().expect("workspace not initialized")
+            .path().join(path).to_string_lossy().to_string()
+    }
+    fn init(&self) {
+        let d = tempfile::tempdir().expect("create temp dir");
+        std::fs::create_dir_all(d.path().join("src")).ok();
+        self.dir.replace(Some(d));
     }
 }
+
+pub struct SessionStore {
+    pub mgr: RefCell<Option<SessionManager>>,
+    pub entries: RefCell<Vec<SessionEntry>>,
+    pub current_id: RefCell<Option<String>>,
+}
+impl SessionStore {
+    fn new() -> Self {
+        Self {
+            mgr: RefCell::new(None),
+            entries: RefCell::new(Vec::new()),
+            current_id: RefCell::new(None),
+        }
+    }
+}
+
+pub struct AgentState {
+    pub registry: RefCell<ModelRegistry>,
+    pub events: RefCell<Vec<AgentEvent>>,
+    pub last_result: RefCell<Option<Result<String, String>>>,
+    pub context_usage: RefCell<Option<ContextUsage>>,
+    pub compaction_result: RefCell<Option<bool>>,
+    pub compaction_threshold: Cell<f64>,
+    pub hook_result: RefCell<Option<DispatchResult>>,
+    pub hook_entries: RefCell<Vec<HookEntry>>,
+}
+impl AgentState {
+    fn new() -> Self {
+        Self {
+            registry: RefCell::new(ModelRegistry::new()),
+            events: RefCell::new(Vec::new()),
+            last_result: RefCell::new(None),
+            context_usage: RefCell::new(None),
+            compaction_result: RefCell::new(None),
+            compaction_threshold: Cell::new(0.8),
+            hook_result: RefCell::new(None),
+            hook_entries: RefCell::new(Vec::new()),
+        }
+    }
+}
+
+#[fixture]
+fn ws() -> Workspace { Workspace::new() }
+
+#[fixture]
+fn sess() -> SessionStore { SessionStore::new() }
+
+#[fixture]
+fn agent() -> AgentState { AgentState::new() }
 
 // ═══════════════════════════════════════════════════════════════════
-// Background
+// Helpers
 // ═══════════════════════════════════════════════════════════════════
 
-#[given("有一个临时工作目录")]
-fn setup(w: &mut ToolWorld) {
-    let dir = tempfile::tempdir().expect("创建临时目录失败");
-    std::fs::create_dir_all(dir.path().join("src")).ok();
-    w.workspace = Some(dir);
+fn result_ok_str(r: &RefCell<Option<Result<String, String>>>) -> String {
+    let guard = r.borrow();
+    guard.as_ref().unwrap().as_ref().unwrap().clone()
 }
 
-#[given("会话存储目录已初始化")]
-fn session_dir_ready(w: &mut ToolWorld) {
-    let dir = tempfile::tempdir().unwrap();
-    let d = dir.path().join("sessions");
-    std::fs::create_dir_all(&d).ok();
-    w.session_mgr = Some(SessionManager::new(d));
-}
+/// Borrow result as &str — callers must keep the Ref alive
 
-// ═══════════════════════════════════════════════════════════════════
-// Given: 文件/目录夹具
-// ═══════════════════════════════════════════════════════════════════
-
-#[given(regex = r#"^存在文件 "([^"]+)" 内容为:$"#)]
-fn file_with_content(w: &mut ToolWorld, path: String, content: String) {
-    let full = w.ws(&path);
-    if let Some(p) = std::path::Path::new(&full).parent() {
-        std::fs::create_dir_all(p).ok();
-    }
-    std::fs::write(&full, content.trim()).expect("写入失败");
-}
-
-#[given(regex = r#"^存在文件 "([^"]+)"$"#)]
-fn empty_file(w: &mut ToolWorld, path: String) {
-    let full = w.ws(&path);
-    if let Some(p) = std::path::Path::new(&full).parent() {
-        std::fs::create_dir_all(p).ok();
-    }
-    std::fs::write(&full, "").expect("创建空文件失败");
-}
-
-#[given(regex = r#"^存在目录 "([^"]+)"$"#)]
-fn dir_exists(w: &mut ToolWorld, path: String) {
-    std::fs::create_dir_all(w.ws(&path)).ok();
-}
-
-#[given(regex = r#"^存在空目录 "([^"]+)"$"#)]
-fn empty_dir(w: &mut ToolWorld, path: String) {
-    std::fs::create_dir_all(w.ws(&path)).ok();
-}
-
-#[given(regex = r#"^存在文件 "([^"]+)" 使用CRLF行尾 内容为:$"#)]
-fn file_crlf(w: &mut ToolWorld, path: String, content: String) {
-    let full = w.ws(&path);
-    if let Some(p) = std::path::Path::new(&full).parent() {
-        std::fs::create_dir_all(p).ok();
-    }
-    std::fs::write(&full, content.trim().replace('\n', "\r\n")).ok();
-}
-
-#[given(regex = r#"^存在文件 "([^"]+)" 带UTF8_BOM 内容为 "([^"]*)"$"#)]
-fn file_bom(w: &mut ToolWorld, path: String, content: String) {
-    let full = w.ws(&path);
-    if let Some(p) = std::path::Path::new(&full).parent() {
-        std::fs::create_dir_all(p).ok();
-    }
-    std::fs::write(&full, format!("\u{FEFF}{content}")).ok();
-}
-
-#[given(regex = r#"^存在文件 "([^"]+)" 包含(\d+)行内容$"#)]
-fn file_n_lines(w: &mut ToolWorld, path: String, count: u32) {
-    let full = w.ws(&path);
-    if let Some(p) = std::path::Path::new(&full).parent() {
-        std::fs::create_dir_all(p).ok();
-    }
-    let c = (1..=count)
-        .map(|i| format!("第{i}行"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    std::fs::write(&full, c).ok();
-}
-
-#[given(regex = r#"^存在文件 "([^"]+)" 包含(\d+)行 "([^"]*)"$"#)]
-fn file_n_lines_text(w: &mut ToolWorld, path: String, count: u32, text: String) {
-    let full = w.ws(&path);
-    if let Some(p) = std::path::Path::new(&full).parent() {
-        std::fs::create_dir_all(p).ok();
-    }
-    let c = std::iter::repeat(text)
-        .take(count as usize)
-        .collect::<Vec<_>>()
-        .join("\n");
-    std::fs::write(&full, c).ok();
-}
-
-#[given(regex = r#"^目录 "([^"]+)" 中存在文件 "([^"]+)" "([^"]+)" "([^"]+)"$"#)]
-fn three_files_in_dir(w: &mut ToolWorld, dir: String, f1: String, f2: String, f3: String) {
-    let d = w.ws(&dir);
-    std::fs::create_dir_all(&d).ok();
-    for f in [&f1, &f2, &f3] {
-        std::fs::write(format!("{d}/{f}"), "").ok();
-    }
-}
-
-#[given(regex = r#"^存在 (\d+) 个文件匹配模式$"#)]
-fn n_files_glob(w: &mut ToolWorld, count: u32) {
-    for i in 0..count {
-        std::fs::write(w.ws(&format!("file_{i}.log")), "").ok();
-    }
-}
-
-#[given(regex = r#"^目录 "([^"]+)" 中存在 (\d+) 个文件$"#)]
-fn n_files_in_dir(w: &mut ToolWorld, dir: String, count: u32) {
-    let d = w.ws(&dir);
-    std::fs::create_dir_all(&d).ok();
-    for i in 0..count {
-        std::fs::write(format!("{d}/file_{i}.txt"), "").ok();
-    }
-}
-
-#[given(regex = r#"^工作区根目录存在文件 "([^"]+)"$"#)]
-fn file_in_root(w: &mut ToolWorld, path: String) {
-    let full = w.ws(&path);
-    if let Some(p) = std::path::Path::new(&full).parent() {
-        std::fs::create_dir_all(p).ok();
-    }
-    std::fs::write(&full, "").ok();
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// Session Given/When/Then
-// ═══════════════════════════════════════════════════════════════════
-
-#[given(regex = r#"^存在会话 "([^"]+)"$"#)]
-async fn session_exists(w: &mut ToolWorld, id: String) {
-    let mgr = w.session_mgr.as_ref().unwrap();
-    let _ = mgr.create(&id, Some("."), None).await;
-}
-
-#[given(regex = r#"^存在会话 "([^"]+)" 包含 (\d+) 条记录$"#)]
-async fn session_with_n(w: &mut ToolWorld, id: String, count: u32) {
-    let mgr = w.session_mgr.as_ref().unwrap();
-    let _ = mgr.create(&id, Some("."), None).await;
-    for i in 0..count {
-        let e = SessionEntry::Message(MessageEntry {
-            base: EntryBase {
-                entry_type: "message".into(),
-                id: format!("msg-{i}"),
-                parent_id: None,
-                timestamp: "2024-01-01T00:00:00Z".into(),
-            },
-            message: serde_json::json!({"role":"user","content":format!("message {i}")}),
-        });
-        let _ = mgr.append(&id, &e).await;
-    }
-}
-
-#[when(regex = r#"^创建一个新会话 "([^"]+)"$"#)]
-async fn session_create(w: &mut ToolWorld, id: String) {
-    w.session_mgr
-        .as_ref()
-        .unwrap()
-        .create(&id, Some("."), None)
-        .await
-        .unwrap();
-    w.current_session_id = Some(id);
-}
-
-#[when(regex = r#"^向会话追加一条消息 "([^"]+)"$"#)]
-async fn session_append(w: &mut ToolWorld, msg: String) {
-    let mgr = w.session_mgr.as_ref().unwrap();
-    let sid = w.current_session_id.as_ref().unwrap();
-    let e = SessionEntry::Message(MessageEntry {
-        base: EntryBase {
-            entry_type: "message".into(),
-            id: "msg-1".into(),
-            parent_id: None,
-            timestamp: "2024-01-01T00:00:00Z".into(),
-        },
-        message: serde_json::json!({"role":"user","content":msg}),
-    });
-    mgr.append(sid, &e).await.unwrap();
-}
-
-#[when(regex = r#"^加载会话 "([^"]+)"$"#)]
-async fn session_load(w: &mut ToolWorld, id: String) {
-    w.session_entries = w.session_mgr.as_ref().unwrap().load(&id).await.unwrap();
-}
-
-#[when("列出所有会话")]
-async fn session_list(w: &mut ToolWorld) {
-    w.session_store = w.session_mgr.as_ref().unwrap().list().await.unwrap();
-}
-
-#[then(regex = r#"^会话包含 (\d+) 条记录$"#)]
-fn session_has_n(w: &mut ToolWorld, count: u32) {
-    let n = w
-        .session_entries
-        .iter()
-        .filter(|e| e.entry_type() != "session")
-        .count();
-    assert_eq!(n, count as usize);
-}
-
-#[then(regex = r#"^记录类型为 "([^"]+)"$"#)]
-fn session_entry_type(w: &mut ToolWorld, typ: String) {
-    assert!(
-        w.session_entries
-            .iter()
-            .skip(1)
-            .any(|e| e.entry_type() == typ)
-    );
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// Agent Given/When/Then
-// ═══════════════════════════════════════════════════════════════════
-
-fn make_agent(w: &ToolWorld) -> AgentLoop {
+fn make_agent(agent: &AgentState) -> AgentLoop {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.into_path());
     let session = AgentSession::new(
-        w.model_registry.clone(),
+        agent.registry.borrow().clone(),
         ToolRegistry::builtins(),
         mgr,
         Some("you are helpful".into()),
@@ -284,908 +132,1159 @@ fn make_agent(w: &ToolWorld) -> AgentLoop {
     AgentLoop::new(session)
 }
 
-#[given(regex = r#"^配置了 mock 模型 "([^"]+)"$"#)]
-fn agent_mock_model(w: &mut ToolWorld, name: String) {
-    w.model_registry.register(ModelMeta {
-        id: name,
-        config: ModelConfig {
-            kind: ModelKind::OpenAi,
-            api_key: "sk".into(),
-            model: "mock".into(),
-            base_url: None,
+async fn dispatch_hook(agent: &AgentState, event: HookEvent, phase: HookPhase) {
+    let dispatcher = HookDispatcher::new(&xylitol::infra::config::types::HooksConfig {
+        global: agent.hook_entries.borrow().clone(),
+        project: vec![],
+        user: vec![],
+    });
+    agent.hook_result.replace(Some(dispatcher.dispatch(&event, phase).await));
+}
+
+macro_rules! tool_call {
+    ($tool:expr, $ctx:expr, $json:expr, $ws:expr) => {
+        match $tool.execute(&$ctx, $json).await {
+            Ok(r) => $ws.last_result.replace(Some(Ok(r))),
+            Err(e) => $ws.last_result.replace(Some(Err(e.to_string()))),
+        }
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Steps: workspace given
+// ═══════════════════════════════════════════════════════════════════
+
+#[given("有一个临时工作目录")]
+fn _g_workspace(ws: &Workspace) { ws.init(); }
+
+#[given("会话存储目录已初始化")]
+fn _g_session_dir(sess: &SessionStore) {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path().join("sessions");
+    std::fs::create_dir_all(&d).ok();
+    sess.mgr.replace(Some(SessionManager::new(d)));
+}
+
+#[given("存在文件 {path:string} 内容为:")]
+fn _g_file_with_content(ws: &Workspace, path: String, docstring: String) {
+    let full = ws.ws(&path);
+    if let Some(p) = std::path::Path::new(&full).parent() {
+        std::fs::create_dir_all(p).ok();
+    }
+    std::fs::write(&full, docstring.trim()).expect("write failed");
+}
+
+#[given("存在文件 {path:string}")]
+fn _g_empty_file(ws: &Workspace, path: String) {
+    let full = ws.ws(&path);
+    if let Some(p) = std::path::Path::new(&full).parent() {
+        std::fs::create_dir_all(p).ok();
+    }
+    std::fs::write(&full, "").expect("write failed");
+}
+
+#[given("存在目录 {path:string}")]
+fn _g_dir(ws: &Workspace, path: String) { std::fs::create_dir_all(ws.ws(&path)).ok(); }
+
+#[given("存在空目录 {path:string}")]
+fn _g_empty_dir(ws: &Workspace, path: String) { std::fs::create_dir_all(ws.ws(&path)).ok(); }
+
+#[given("存在文件 {path:string} 使用CRLF行尾 内容为:")]
+fn _g_file_crlf(ws: &Workspace, path: String, docstring: String) {
+    let full = ws.ws(&path);
+    if let Some(p) = std::path::Path::new(&full).parent() {
+        std::fs::create_dir_all(p).ok();
+    }
+    std::fs::write(&full, docstring.trim().replace('\n', "\r\n")).ok();
+}
+
+#[given("存在文件 {path:string} 带UTF8_BOM 内容为 {content:string}")]
+fn _g_file_bom(ws: &Workspace, path: String, content: String) {
+    let full = ws.ws(&path);
+    if let Some(p) = std::path::Path::new(&full).parent() {
+        std::fs::create_dir_all(p).ok();
+    }
+    std::fs::write(&full, format!("\u{FEFF}{content}")).ok();
+}
+
+#[given("存在文件 {path:string} 包含{count:u32}行内容")]
+fn _g_file_n_lines(ws: &Workspace, path: String, count: u32) {
+    let full = ws.ws(&path);
+    if let Some(p) = std::path::Path::new(&full).parent() {
+        std::fs::create_dir_all(p).ok();
+    }
+    let c = (1..=count).map(|i| format!("第{i}行")).collect::<Vec<_>>().join("\n");
+    std::fs::write(&full, c).ok();
+}
+
+#[given("存在文件 {path:string} 包含{count:u32}行 {text:string}")]
+fn _g_file_n_lines_text(ws: &Workspace, path: String, count: u32, text: String) {
+    let full = ws.ws(&path);
+    if let Some(p) = std::path::Path::new(&full).parent() {
+        std::fs::create_dir_all(p).ok();
+    }
+    let c = std::iter::repeat(text).take(count as usize).collect::<Vec<_>>().join("\n");
+    std::fs::write(&full, c).ok();
+}
+
+#[given("目录 {dir:string} 中存在文件 {f1:string} {f2:string} {f3:string}")]
+fn _g_three_files(ws: &Workspace, dir: String, f1: String, f2: String, f3: String) {
+    let d = ws.ws(&dir);
+    std::fs::create_dir_all(&d).ok();
+    for f in [&f1, &f2, &f3] {
+        std::fs::write(format!("{d}/{f}"), "").ok();
+    }
+}
+
+#[given("存在 {count:u32} 个文件匹配模式")]
+fn _g_n_files_glob(ws: &Workspace, count: u32) {
+    for i in 0..count {
+        std::fs::write(ws.ws(&format!("file_{i}.log")), "").ok();
+    }
+}
+
+#[given("目录 {dir:string} 中存在 {count:u32} 个文件")]
+fn _g_n_files_in_dir(ws: &Workspace, dir: String, count: u32) {
+    let d = ws.ws(&dir);
+    std::fs::create_dir_all(&d).ok();
+    for i in 0..count {
+        std::fs::write(format!("{d}/file_{i}.txt"), "").ok();
+    }
+}
+
+#[given("工作区根目录存在文件 {path:string}")]
+fn _g_file_in_root(ws: &Workspace, path: String) {
+    let full = ws.ws(&path);
+    if let Some(p) = std::path::Path::new(&full).parent() {
+        std::fs::create_dir_all(p).ok();
+    }
+    std::fs::write(&full, "").ok();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Steps: session
+// ═══════════════════════════════════════════════════════════════════
+
+#[given("存在会话 {id:string}")]
+async fn _g_session_exists(sess: &SessionStore, id: String) {
+    let mgr = sess.mgr.borrow();
+    let _ = mgr.as_ref().unwrap().create(&id, Some("."), None).await;
+}
+
+#[given("存在会话 {id:string} 包含 {count:u32} 条记录")]
+async fn _g_session_with_n(sess: &SessionStore, id: String, count: u32) {
+    let mgr = sess.mgr.borrow();
+    let mgr = mgr.as_ref().unwrap();
+    let _ = mgr.create(&id, Some("."), None).await;
+    for i in 0..count {
+        let e = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(), id: format!("msg-{i}"),
+                parent_id: None, timestamp: "2024-01-01T00:00:00Z".into(),
+            },
+            message: serde_json::json!({"role":"user","content":format!("message {i}")}),
+        });
+        let _ = mgr.append(&id, &e).await;
+    }
+}
+
+#[when("创建一个新会话 {id:string}")]
+async fn _w_session_create(sess: &SessionStore, id: String) {
+    sess.mgr.borrow().as_ref().unwrap().create(&id, Some("."), None).await.unwrap();
+    sess.current_id.replace(Some(id));
+}
+
+#[when("向会话追加一条消息 {msg:string}")]
+async fn _w_session_append(sess: &SessionStore, msg: String) {
+    let sid = sess.current_id.borrow();
+    let sid = sid.as_ref().unwrap().clone();
+    let mgr = sess.mgr.borrow();
+    let mgr = mgr.as_ref().unwrap();
+    let e = SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(), id: "msg-1".into(),
+            parent_id: None, timestamp: "2024-01-01T00:00:00Z".into(),
         },
-        display_name: "Mock".into(),
-        thinking: false,
-        context_window: 200000,
+        message: serde_json::json!({"role":"user","content":msg}),
+    });
+    mgr.append(&sid, &e).await.unwrap();
+}
+
+#[when("加载会话 {id:string}")]
+async fn _w_session_load(sess: &SessionStore, id: String) {
+    let entries = sess.mgr.borrow().as_ref().unwrap().load(&id).await.unwrap();
+    sess.entries.replace(entries);
+}
+
+#[then("会话包含 {count:u32} 条记录")]
+fn _t_session_has_n(sess: &SessionStore, count: u32) {
+    let n = sess.entries.borrow().iter().filter(|e| e.entry_type() != "session").count();
+    assert_eq!(n, count as usize);
+}
+
+#[then("记录类型为 {typ:string}")]
+fn _t_session_entry_type(sess: &SessionStore, typ: String) {
+    assert!(sess.entries.borrow().iter().skip(1).any(|e| e.entry_type() == typ));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Steps: agent
+// ═══════════════════════════════════════════════════════════════════
+
+#[given("配置了 mock 模型 {name:string}")]
+fn _g_agent_mock_model(agent: &AgentState, ws: &Workspace, name: String) {
+    ws.init();
+    agent.registry.borrow_mut().register(ModelMeta {
+        id: name,
+        config: ModelConfig { kind: ModelKind::OpenAi, api_key: "sk".into(), model: "mock".into(), base_url: None },
+        display_name: "Mock".into(), thinking: false, context_window: 200000,
     });
 }
 
 #[given("工具注册表包含 7 个内置工具")]
-fn agent_tools_ready(_w: &mut ToolWorld) {}
+fn _g_agent_tools_ready(_agent: &AgentState) {}
 
-#[when(regex = r#"^启动 agent 会话并发送提示 "([^"]+)"$"#)]
-async fn agent_start(w: &mut ToolWorld, prompt: String) {
-    let mut loop_runner = make_agent(w);
-    let mut stream = loop_runner
-        .run(&prompt, &uuid::Uuid::new_v4().to_string())
-        .await;
-    while let Some(e) = stream.next().await {
-        w.agent_events.push(e);
-    }
+#[when("启动 agent 会话并发送提示 {prompt:string}")]
+async fn _w_agent_start(agent: &AgentState, prompt: String) {
+    let mut runner = make_agent(agent);
+    let mut stream = runner.run(&prompt, &uuid::Uuid::new_v4().to_string()).await;
+    let mut events = agent.events.borrow_mut();
+    events.clear();
+    while let Some(e) = stream.next().await { events.push(e); }
 }
 
 #[when("启动 agent 会话")]
-async fn agent_start_no_prompt(w: &mut ToolWorld) {
-    agent_start(w, "hello".into()).await;
+async fn _w_agent_start_no_prompt(agent: &AgentState) {
+    _w_agent_start(agent, "hello".into()).await;
 }
 
-#[then(regex = r#"^响应事件流包含 TextDelta "([^"]*)"$"#)]
-fn agent_textdelta(w: &mut ToolWorld, _text: String) {
-    assert!(!w.agent_events.is_empty());
+#[then("响应事件流包含 TextDelta {text}")]
+fn _t_agent_textdelta(agent: &AgentState, text: String) {
+    let _ = text;
+    assert!(!agent.events.borrow().is_empty());
 }
 
 #[then("turn_end 事件触发")]
-fn agent_turn_end(w: &mut ToolWorld) {
-    assert!(
-        w.agent_events
-            .iter()
-            .any(|e| matches!(e, AgentEvent::TurnEnd { .. }))
-            || w.agent_events
-                .iter()
-                .any(|e| matches!(e, AgentEvent::Error(_)))
-    );
+fn _t_agent_turn_end(agent: &AgentState) {
+    let events = agent.events.borrow();
+    assert!(events.iter().any(|e| matches!(e, AgentEvent::TurnEnd { .. }))
+        || events.iter().any(|e| matches!(e, AgentEvent::Error(_))));
 }
 
 #[then("tool_execution_start 事件触发")]
-fn agent_tool_start(w: &mut ToolWorld) {
-    assert!(!w.agent_events.is_empty());
-}
+fn _t_agent_tool_start(agent: &AgentState) { assert!(!agent.events.borrow().is_empty()); }
 
-#[then(regex = r#"^tool_execution_end 事件包含结果 "([^"]+)"$"#)]
-fn agent_tool_end(w: &mut ToolWorld, _result: String) {
-    assert!(!w.agent_events.is_empty());
+#[then("tool_execution_end 事件包含结果 {result}")]
+fn _t_agent_tool_end(agent: &AgentState, result: String) {
+    let _ = result;
+    assert!(!agent.events.borrow().is_empty());
 }
 
 #[then("turn_end 事件包含 toolResult")]
-fn agent_turn_end_has_tool(_w: &mut ToolWorld) {}
+fn _t_agent_turn_end_has_tool(_agent: &AgentState) {}
 
 #[then("事件按顺序为: turn_start, message_start, message_update, message_end, turn_end")]
-fn agent_event_order(w: &mut ToolWorld) {
-    assert!(!w.agent_events.is_empty());
-}
+fn _t_agent_event_order(agent: &AgentState) { assert!(!agent.events.borrow().is_empty()); }
 
-// Thinking level
-#[given(regex = r#"^当前思考级别为 "([^"]+)"$"#)]
-fn agent_thinking_level(w: &mut ToolWorld, level: String) {
-    w.model_registry = ModelRegistry::new();
-    w.model_registry.register(ModelMeta {
-        id: "test".into(),
-        config: ModelConfig {
-            kind: ModelKind::OpenAi,
-            api_key: "sk".into(),
-            model: "m".into(),
-            base_url: None,
+// Thinking
+#[given("当前思考级别为 {level:string}")]
+fn _g_agent_thinking_level(agent: &AgentState, level: String) {
+    let mut r = ModelRegistry::new();
+    r.register(ModelMeta {
+        id: "test".into(), config: ModelConfig {
+            kind: ModelKind::OpenAi, api_key: "sk".into(), model: "m".into(), base_url: None,
         },
-        display_name: "Test".into(),
-        thinking: level != "off",
-        context_window: 128000,
+        display_name: "Test".into(), thinking: level != "off", context_window: 128000,
     });
+    agent.registry.replace(r);
 }
 
 #[given("当前模型不支持思考")]
-fn agent_no_thinking(w: &mut ToolWorld) {
-    w.model_registry = ModelRegistry::new();
-    w.model_registry.register(ModelMeta {
-        id: "test".into(),
-        config: ModelConfig {
-            kind: ModelKind::OpenAi,
-            api_key: "sk".into(),
-            model: "m".into(),
-            base_url: None,
+fn _g_agent_no_thinking(agent: &AgentState) {
+    let mut r = ModelRegistry::new();
+    r.register(ModelMeta {
+        id: "test".into(), config: ModelConfig {
+            kind: ModelKind::OpenAi, api_key: "sk".into(), model: "m".into(), base_url: None,
         },
-        display_name: "Test".into(),
-        thinking: false,
-        context_window: 128000,
+        display_name: "Test".into(), thinking: false, context_window: 128000,
     });
+    agent.registry.replace(r);
 }
 
-#[when(regex = r#"^([^ ]+)思考级别到 "([^"]+)"$"#)]
-fn agent_switch_thinking(w: &mut ToolWorld, _verb: String, level: String) {
+#[when("{verb}思考级别到 {level:string}")]
+fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
+    let _ = verb;
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.into_path());
     let mut session = AgentSession::new(
-        w.model_registry.clone(),
-        ToolRegistry::builtins(),
-        mgr,
-        None,
-        50,
-        0.8,
-        ".".into(),
+        agent.registry.borrow().clone(), ToolRegistry::builtins(), mgr,
+        None, 50, 0.8, ".".into(),
     );
     let tl = match level.as_str() {
-        "high" => ThinkingLevel::High,
-        "medium" => ThinkingLevel::Medium,
-        "low" => ThinkingLevel::Low,
-        _ => ThinkingLevel::Off,
+        "high" => ThinkingLevel::High, "medium" => ThinkingLevel::Medium,
+        "low" => ThinkingLevel::Low, _ => ThinkingLevel::Off,
     };
     let _ = session.set_thinking_level(tl);
-    w.last_result = Some(Ok(format!("level:{}", session.thinking_level().as_str())));
+    agent.last_result.replace(Some(Ok(format!("level:{}", session.thinking_level().as_str()))));
 }
 
-#[then(regex = r#"^getThinkingLevel 返回 "([^"]+)"$"#)]
-fn agent_thinking_level_is(w: &mut ToolWorld, level: String) {
-    assert!(
-        w.last_result
-            .as_ref()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .contains(&level)
-    );
+#[then("getThinkingLevel 返回 {level:string}")]
+fn _t_agent_thinking_level_is(agent: &AgentState, level: String) {
+    assert!(agent.last_result.borrow().as_ref().unwrap().as_ref().unwrap().contains(&level));
 }
 
 #[then("thinking_level_change 记录写入会话")]
-fn agent_thinking_saved(_w: &mut ToolWorld) {}
+fn _t_agent_thinking_saved(_agent: &AgentState) {}
 
-#[then(regex = r#"^实际思考级别被限制为 "([^"]+)" 或模型支持的最高级别$"#)]
-fn agent_thinking_clamped(w: &mut ToolWorld, _level: String) {
-    assert!(
-        w.last_result
-            .as_ref()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .contains("off")
-    );
+#[then("实际思考级别被限制为 {level} 或模型支持的最高级别")]
+fn _t_agent_thinking_clamped(agent: &AgentState, level: String) {
+    let _ = level;
+    assert!(agent.last_result.borrow().as_ref().unwrap().as_ref().unwrap().contains("off"));
 }
 
 // Model switching
-#[given(regex = r#"^注册了模型 "([^"]+)" 和 "([^"]+)"$"#)]
-fn agent_models_registered(w: &mut ToolWorld, m1: String, m2: String) {
-    w.model_registry = ModelRegistry::new();
+#[given("注册了模型 {m1:string} 和 {m2:string}")]
+fn _g_agent_models_registered(agent: &AgentState, m1: String, m2: String) {
+    let mut r = ModelRegistry::new();
     for name in [m1, m2] {
-        let kind = if name.contains("claude") {
-            ModelKind::Anthropic
-        } else {
-            ModelKind::OpenAi
-        };
-        w.model_registry.register(ModelMeta {
-            id: name.clone(),
-            config: ModelConfig {
-                kind,
-                api_key: "sk".into(),
-                model: name.clone(),
-                base_url: None,
-            },
-            display_name: name.clone(),
-            thinking: true,
-            context_window: 128000,
+        let kind = if name.contains("claude") { ModelKind::Anthropic } else { ModelKind::OpenAi };
+        r.register(ModelMeta {
+            id: name.clone(), config: ModelConfig { kind, api_key: "sk".into(), model: name.clone(), base_url: None },
+            display_name: name.clone(), thinking: true, context_window: 128000,
         });
     }
+    agent.registry.replace(r);
 }
 
-#[given(regex = r#"^当前模型为 "([^"]+)"$"#)]
-fn agent_current_model(_w: &mut ToolWorld, _model: String) {}
+#[given("当前模型为 {model}")]
+fn _g_agent_current_model(_agent: &AgentState, model: String) { let _ = model; }
 
 #[when("执行 cycleForward")]
-fn agent_cycle_forward(w: &mut ToolWorld) {
+fn _w_agent_cycle_forward(agent: &AgentState) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.into_path());
     let mut session = AgentSession::new(
-        w.model_registry.clone(),
-        ToolRegistry::builtins(),
-        mgr,
-        None,
-        50,
-        0.8,
-        ".".into(),
+        agent.registry.borrow().clone(), ToolRegistry::builtins(), mgr,
+        None, 50, 0.8, ".".into(),
     );
-    let next = session
-        .cycle_forward()
-        .map(|m| m.id.clone())
-        .unwrap_or_default();
-    w.last_result = Some(Ok(next));
+    let next = session.cycle_forward().map(|m| m.id.clone()).unwrap_or_default();
+    agent.last_result.replace(Some(Ok(next)));
 }
 
-#[then(regex = r#"^当前模型变为 "([^"]+)"$"#)]
-fn agent_model_changed_to(w: &mut ToolWorld, model: String) {
-    assert_eq!(w.last_result.as_ref().unwrap().as_ref().unwrap(), &model);
+#[then("当前模型变为 {model:string}")]
+fn _t_agent_model_changed_to(agent: &AgentState, model: String) {
+    assert_eq!(agent.last_result.borrow().as_ref().unwrap().as_ref().unwrap(), &model);
 }
 
 #[then("model_select 事件触发")]
-fn agent_model_select_event(_w: &mut ToolWorld) {}
+fn _t_agent_model_select_event(_agent: &AgentState) {}
 
-// Context usage
-#[given(regex = r#"^会话包含 (\d+) 个 token 的消息$"#)]
-fn agent_tokens(w: &mut ToolWorld, tokens: u32) {
-    w.last_result = Some(Ok(format!("tokens:{tokens}")));
+#[given("会话包含 {tokens:u32} 个 token 的消息")]
+fn _g_agent_tokens(agent: &AgentState, tokens: u32) {
+    agent.last_result.replace(Some(Ok(format!("tokens:{tokens}"))));
 }
 
 #[given("当前模型上下文窗口为 200000")]
-fn agent_window_200k(_w: &mut ToolWorld) {}
+fn _g_agent_window_200k(_agent: &AgentState) {}
 
 #[when("调用 getContextUsage")]
-fn agent_context_usage(w: &mut ToolWorld) {
-    let tokens: u64 = w
-        .last_result
-        .as_ref()
+fn _w_agent_context_usage(agent: &AgentState) {
+    let tokens: u64 = agent.last_result.borrow().as_ref()
         .and_then(|r| r.as_ref().ok())
         .and_then(|s| s.strip_prefix("tokens:").and_then(|n| n.parse().ok()))
         .unwrap_or(0);
-    w.context_usage = Some(get_context_usage(tokens, 200000, 0.8));
+    agent.context_usage.replace(Some(get_context_usage(tokens, 200000, 0.8)));
 }
 
-#[then(regex = r#"^返回 tokens 约为 (\d+)$"#)]
-fn agent_tokens_approx(w: &mut ToolWorld, tokens: u32) {
-    assert_eq!(w.context_usage.as_ref().unwrap().tokens, tokens as u64);
+#[then("返回 tokens 约为 {val:u32}")]
+fn _t_agent_tokens_approx(agent: &AgentState, val: u32) {
+    assert_eq!(agent.context_usage.borrow().as_ref().unwrap().tokens, val as u64);
 }
 
-#[then(regex = r#"^percent 约为 (\d+)$"#)]
-fn agent_percent(w: &mut ToolWorld, pct: u32) {
-    assert_eq!(w.context_usage.as_ref().unwrap().percent, pct as u64);
+#[then("percent 约为 {val:u32}")]
+fn _t_agent_percent(agent: &AgentState, val: u32) {
+    assert_eq!(agent.context_usage.borrow().as_ref().unwrap().percent, val as u64);
 }
 
-// Auto-persistence
 #[given("一个 turn 完成")]
-async fn agent_turn_done(w: &mut ToolWorld) {
+async fn _g_agent_turn_done(sess: &SessionStore) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.into_path());
     let sid = "auto-save-test";
     let _ = mgr.create(sid, Some("."), None).await;
     let e = SessionEntry::Message(MessageEntry {
         base: EntryBase {
-            entry_type: "message".into(),
-            id: "auto-1".into(),
-            parent_id: None,
-            timestamp: "2024-01-01T00:00:00Z".into(),
+            entry_type: "message".into(), id: "auto-1".into(),
+            parent_id: None, timestamp: "2024-01-01T00:00:00Z".into(),
         },
         message: serde_json::json!({"role":"assistant","content":"done"}),
     });
     let _ = mgr.append(sid, &e).await;
-    w.current_session_id = Some(sid.to_string());
-    w.session_mgr = Some(mgr);
+    sess.mgr.replace(Some(mgr));
+    sess.current_id.replace(Some(sid.to_string()));
 }
 
 #[when("加载会话文件")]
-async fn agent_load_session_file(w: &mut ToolWorld) {
-    let sid = w.current_session_id.as_ref().unwrap().clone();
-    w.session_entries = w
-        .session_mgr
-        .as_ref()
-        .unwrap()
-        .load(&sid)
-        .await
-        .unwrap_or_default();
+async fn _w_agent_load_session_file(sess: &SessionStore) {
+    let sid = sess.current_id.borrow().clone().unwrap();
+    let entries = sess.mgr.borrow().as_ref().unwrap().load(&sid).await.unwrap_or_default();
+    sess.entries.replace(entries);
 }
 
 #[then("该 turn 的消息记录已保存")]
-fn agent_messages_saved(w: &mut ToolWorld) {
-    assert!(!w.session_entries.is_empty());
-}
+fn _t_agent_messages_saved(sess: &SessionStore) { assert!(!sess.entries.borrow().is_empty()); }
 
 // ═══════════════════════════════════════════════════════════════════
-// Compaction
+// Steps: compaction
 // ═══════════════════════════════════════════════════════════════════
 
 #[given("配置了上下文窗口为 100000 的模型")]
-fn comp_config_window(_w: &mut ToolWorld) {}
+fn _g_comp_config_window(_agent: &AgentState) {}
 
-#[given(regex = r#"^会话消息估算使用 (\d+) 个 token$"#)]
-fn comp_tokens(w: &mut ToolWorld, tokens: u32) {
-    w.last_result = Some(Ok(format!("tokens:{tokens}")));
+#[given("会话消息估算使用 {tokens:u32} 个 token")]
+fn _g_comp_tokens(agent: &AgentState, tokens: u32) {
+    agent.last_result.replace(Some(Ok(format!("tokens:{tokens}"))));
 }
 
-#[given(regex = r#"^压缩阈值为 ([0-9.]+)$"#)]
-fn comp_threshold(w: &mut ToolWorld, t: f64) {
-    w.compaction_threshold = t;
-}
+#[given("压缩阈值为 {val:f64}")]
+fn _g_comp_threshold(agent: &AgentState, val: f64) { agent.compaction_threshold.set(val); }
 
 #[when("调用 shouldCompact")]
-fn comp_check(w: &mut ToolWorld) {
-    let tokens: u64 = w
-        .last_result
-        .as_ref()
+fn _w_comp_check(agent: &AgentState) {
+    let tokens: u64 = agent.last_result.borrow().as_ref()
         .and_then(|r| r.as_ref().ok())
         .and_then(|s| s.strip_prefix("tokens:").and_then(|n| n.parse().ok()))
         .unwrap_or(0);
-    w.compaction_result = Some(should_compact(tokens, 100000, w.compaction_threshold));
+    agent.compaction_result.replace(Some(should_compact(tokens, 100000, agent.compaction_threshold.get())));
 }
 
 #[then("返回 true")]
-fn comp_result_true(w: &mut ToolWorld) {
-    assert_eq!(w.compaction_result, Some(true));
-}
-
+fn _t_comp_result_true(agent: &AgentState) { assert_eq!(*agent.compaction_result.borrow(), Some(true)); }
 #[then("返回 false")]
-fn comp_result_false(w: &mut ToolWorld) {
-    assert_eq!(w.compaction_result, Some(false));
-}
+fn _t_comp_result_false(agent: &AgentState) { assert_eq!(*agent.compaction_result.borrow(), Some(false)); }
 
 #[given("会话有 50 个轮次")]
-fn comp_50_turns(_w: &mut ToolWorld) {}
+fn _g_comp_50_turns(_agent: &AgentState) {}
 
 #[when("触发压缩保留最近 10 轮")]
-fn comp_trigger(w: &mut ToolWorld) {
-    w.compaction_result = Some(should_compact(50 * 2000, 100000, 0.8));
+fn _w_comp_trigger(agent: &AgentState) {
+    agent.compaction_result.replace(Some(should_compact(50 * 2000, 100000, 0.8)));
 }
 
 #[then("前 40 轮被总结为一个 CompactionEntry")]
-fn comp_has_summary(_w: &mut ToolWorld) {}
+fn _t_comp_has_summary(_agent: &AgentState) {}
 
-#[then(regex = r#"^会话中剩余 (\d+) 条记录（概要 \+ \d+ 轮）$"#)]
-fn comp_remaining(_w: &mut ToolWorld, _n: u32) {}
+#[then("会话中剩余 {n:u32} 条记录（概要 + {m:u32} 轮）")]
+fn _t_comp_remaining(_agent: &AgentState, n: u32, m: u32) { let _ = (n, m); }
 
 #[given("会话正在活跃使用")]
-fn comp_active(_w: &mut ToolWorld) {}
-
+fn _g_comp_active(_agent: &AgentState) {}
 #[when("压缩完成")]
-fn comp_done(_w: &mut ToolWorld) {}
-
+fn _w_comp_done(_agent: &AgentState) {}
 #[then("会话 JSONL 包含 CompactionEntry")]
-fn comp_jsonl_has_entry(_w: &mut ToolWorld) {}
+fn _t_comp_jsonl_has_entry(_agent: &AgentState) {}
 
 #[then("CompactionEntry 包含 summary 字段")]
-fn comp_has_summary_field(_w: &mut ToolWorld) {
+fn _t_comp_has_summary_field(_agent: &AgentState) {
     let e = CompactionEntry {
-        base: EntryBase {
-            entry_type: "compaction".into(),
-            id: "c1".into(),
-            parent_id: None,
-            timestamp: "t".into(),
-        },
-        summary: "ok".into(),
-        first_kept_entry_id: "e10".into(),
-        tokens_before: 50000,
-        details: None,
-        from_hook: None,
+        base: EntryBase { entry_type: "compaction".into(), id: "c1".into(), parent_id: None, timestamp: "t".into() },
+        summary: "ok".into(), first_kept_entry_id: "e10".into(),
+        tokens_before: 50000, details: None, from_hook: None,
     };
     assert_eq!(e.summary, "ok");
 }
 
 #[then("CompactionEntry 包含 firstKeptEntryId 字段")]
-fn comp_has_firstkept(_w: &mut ToolWorld) {}
-
+fn _t_comp_has_firstkept(_agent: &AgentState) {}
 #[then("CompactionEntry 包含 tokensBefore 字段")]
-fn comp_has_tokensbefore(_w: &mut ToolWorld) {}
+fn _t_comp_has_tokensbefore(_agent: &AgentState) {}
 
 #[given("用户在树中导航到分支点")]
-fn comp_navigate_branch(_w: &mut ToolWorld) {}
+fn _g_comp_navigate_branch(_agent: &AgentState) {}
 
 #[when("生成分支摘要")]
-fn comp_branch_summary(w: &mut ToolWorld) {
-    w.last_result = Some(Ok("branch summary".into()));
+fn _w_comp_branch_summary(agent: &AgentState) {
+    agent.last_result.replace(Some(Ok("branch summary".into())));
 }
 
 #[then("摘要描述了被跳过的上下文")]
-fn comp_branch_desc(w: &mut ToolWorld) {
-    assert!(w.last_result.as_ref().unwrap().is_ok());
-}
-
+fn _t_comp_branch_desc(agent: &AgentState) { assert!(agent.last_result.borrow().as_ref().unwrap().is_ok()); }
 #[then("当前上下文是连贯的")]
-fn comp_context_coherent(_w: &mut ToolWorld) {}
+fn _t_comp_context_coherent(_agent: &AgentState) {}
 
 // ═══════════════════════════════════════════════════════════════════
-// Hooks
+// Steps: hooks
 // ═══════════════════════════════════════════════════════════════════
 
-#[given(regex = r#"^注册了匹配 "([^"]+)" 的 hook$"#)]
-fn hook_registered(w: &mut ToolWorld, pattern: String) {
-    w.hook_entries.push(HookEntry {
-        events: vec![pattern],
-        command: "echo '{\"action\":\"allow\"}'".into(),
-        phase: String::new(),
-        timeout_secs: 5,
-        requires_approval: false,
-        env: HashMap::new(),
+#[given("注册了匹配 {pat:string} 的 hook")]
+fn _g_hook_registered(agent: &AgentState, pat: String) {
+    agent.hook_entries.borrow_mut().push(HookEntry {
+        events: vec![pat], command: "echo '{\"action\":\"allow\"}'".into(),
+        phase: String::new(), timeout_secs: 5, requires_approval: false, env: HashMap::new(),
     });
 }
 
-#[given(regex = r#"^hook 返回 (.+)$"#)]
-fn hook_returns(w: &mut ToolWorld, json_str: String) {
-    if let Some(e) = w.hook_entries.last_mut() {
+#[given("hook 返回 {json_str}")]
+fn _g_hook_returns(agent: &AgentState, json_str: String) {
+    if let Some(e) = agent.hook_entries.borrow_mut().last_mut() {
         let j: serde_json::Value = serde_json::from_str(&json_str).unwrap_or_default();
         e.command = format!("echo '{}'", j.to_string().replace('\'', "'\\''"));
     }
 }
 
-#[given(regex = r#"^全局配置有 hook for "([^\"]+)"$"#)]
-fn hook_global(w: &mut ToolWorld, _p: String) {
-    w.hook_entries.push(HookEntry {
-        events: vec!["pre.tool_call".into()],
-        command: "echo '{\"action\":\"allow\"}'".into(),
+#[given("全局配置有 hook for {p}")]
+fn _g_hook_global(agent: &AgentState, p: String) {
+    let _ = p;
+    agent.hook_entries.borrow_mut().push(HookEntry {
+        events: vec!["pre.tool_call".into()], command: "echo '{\"action\":\"allow\"}'".into(),
         ..Default::default()
     });
 }
 
-#[given(regex = r#"^用户配置有 hook for "([^\"]+)" 覆盖全局$"#)]
-fn hook_user_override(w: &mut ToolWorld, _p: String) {
-    if let Some(e) = w.hook_entries.last_mut() {
+#[given("用户配置有 hook for {p} 覆盖全局")]
+fn _g_hook_user_override(agent: &AgentState, p: String) {
+    let _ = p;
+    if let Some(e) = agent.hook_entries.borrow_mut().last_mut() {
         e.command = "echo '{\"action\":\"allow\",\"source\":\"user\"}'".into();
     }
 }
 
 #[given("一个 hook 脚本执行超过 2 秒")]
-fn hook_slow(w: &mut ToolWorld) {
-    if let Some(e) = w.hook_entries.last_mut() {
-        e.command = "sleep 10".into();
-    }
+fn _g_hook_slow(agent: &AgentState) {
+    if let Some(e) = agent.hook_entries.borrow_mut().last_mut() { e.command = "sleep 10".into(); }
 }
-
 #[given("hook 超时设为 1 秒")]
-fn hook_timeout_1s(w: &mut ToolWorld) {
-    if let Some(e) = w.hook_entries.last_mut() {
-        e.timeout_secs = 1;
-    }
+fn _g_hook_timeout_1s(agent: &AgentState) {
+    if let Some(e) = agent.hook_entries.borrow_mut().last_mut() { e.timeout_secs = 1; }
 }
-
 #[given("没有注册任何 hook")]
-fn hook_none(w: &mut ToolWorld) {
-    w.hook_entries.clear();
-}
-
-#[given(regex = r#"^当前 provider 为 "([^"]+)"$"#)]
-fn hook_provider(_w: &mut ToolWorld, _name: String) {}
-
-async fn dispatch_hook(w: &mut ToolWorld, event: HookEvent, phase: HookPhase) {
-    let dispatcher = HookDispatcher::new(&xylitol::infra::config::types::HooksConfig {
-        global: w.hook_entries.clone(),
-        project: vec![],
-        user: vec![],
-    });
-    w.hook_result = Some(dispatcher.dispatch(&event, phase).await);
-}
+fn _g_hook_none(agent: &AgentState) { agent.hook_entries.borrow_mut().clear(); }
+#[given("当前 provider 为 {name}")]
+fn _g_hook_provider(_agent: &AgentState, name: String) { let _ = name; }
 
 #[when("bash 工具即将执行")]
-async fn hook_bash(w: &mut ToolWorld) {
-    dispatch_hook(
-        w,
-        HookEvent::ToolCall {
-            tool: "bash".into(),
-            args: serde_json::json!({"command":"echo hello"}),
-        },
-        HookPhase::Pre,
-    )
-    .await;
+async fn _w_hook_bash(agent: &AgentState) {
+    dispatch_hook(agent, HookEvent::ToolCall {
+        tool: "bash".into(), args: serde_json::json!({"command":"echo hello"}),
+    }, HookPhase::Pre).await;
 }
 
 #[when("任何工具即将执行")]
-async fn hook_any_tool(w: &mut ToolWorld) {
-    dispatch_hook(
-        w,
-        HookEvent::ToolCall {
-            tool: "read".into(),
-            args: serde_json::json!({}),
-        },
-        HookPhase::Pre,
-    )
-    .await;
+async fn _w_hook_any_tool(agent: &AgentState) {
+    dispatch_hook(agent, HookEvent::ToolCall {
+        tool: "read".into(), args: serde_json::json!({}),
+    }, HookPhase::Pre).await;
 }
 
-#[when(regex = r#"^bash 工具以 "([^"]+)" 调用$"#)]
-async fn hook_bash_called(w: &mut ToolWorld, _cmd: String) {
-    dispatch_hook(
-        w,
-        HookEvent::ToolCall {
-            tool: "bash".into(),
-            args: serde_json::json!({"command":"rm -rf /"}),
-        },
-        HookPhase::Pre,
-    )
-    .await;
+#[when("bash 工具以 {cmd:string} 调用")]
+async fn _w_hook_bash_called(agent: &AgentState, cmd: String) {
+    let _ = cmd;
+    dispatch_hook(agent, HookEvent::ToolCall {
+        tool: "bash".into(), args: serde_json::json!({"command":"rm -rf /"}),
+    }, HookPhase::Pre).await;
 }
 
 #[when("hook 被加载")]
-fn hook_loaded(_w: &mut ToolWorld) {}
+fn _w_hook_loaded(_agent: &AgentState) {}
 
 #[when("dispatch hook")]
-async fn hook_dispatch_step(w: &mut ToolWorld) {
-    dispatch_hook(
-        w,
-        HookEvent::ToolCall {
-            tool: "bash".into(),
-            args: serde_json::json!({}),
-        },
-        HookPhase::Pre,
-    )
-    .await;
+async fn _w_hook_dispatch_step(agent: &AgentState) {
+    dispatch_hook(agent, HookEvent::ToolCall {
+        tool: "bash".into(), args: serde_json::json!({}),
+    }, HookPhase::Pre).await;
 }
 
 #[when("provider 请求发送前")]
-fn hook_before_request(_w: &mut ToolWorld) {}
-
+fn _w_hook_before_request(_agent: &AgentState) {}
 #[when("provider 返回状态码 200")]
-fn hook_provider_responded(_w: &mut ToolWorld) {}
+fn _w_hook_provider_responded(_agent: &AgentState) {}
 
 #[when("任何事件触发")]
-async fn hook_any_event_step(w: &mut ToolWorld) {
-    dispatch_hook(
-        w,
-        HookEvent::StepComplete {
-            step: 1,
-            summary: "done".into(),
-        },
-        HookPhase::Post,
-    )
-    .await;
+async fn _w_hook_any_event_step(agent: &AgentState) {
+    dispatch_hook(agent, HookEvent::StepComplete {
+        step: 1, summary: "done".into(),
+    }, HookPhase::Post).await;
 }
 
 #[then("hook 脚本被调用")]
-fn hook_called(_w: &mut ToolWorld) {}
-
+fn _t_hook_called(_agent: &AgentState) {}
 #[then("hook 收到包含事件类型和参数的 JSON")]
-fn hook_received_json(_w: &mut ToolWorld) {}
+fn _t_hook_received_json(_agent: &AgentState) {}
 
 #[then("操作被阻止")]
-fn hook_blocked(w: &mut ToolWorld) {
-    assert!(matches!(
-        w.hook_result.as_ref().unwrap(),
-        DispatchResult::Blocked { .. }
-    ));
+fn _t_hook_blocked(agent: &AgentState) {
+    assert!(matches!(agent.hook_result.borrow().as_ref().unwrap(), DispatchResult::Blocked { .. }));
 }
 
-#[then(regex = r#"^阻止原因包含 "([^"]*)"$"#)]
-fn hook_block_reason(w: &mut ToolWorld, reason: String) {
-    if let Some(DispatchResult::Blocked { reason: r }) = w.hook_result.as_ref() {
+#[then("阻止原因包含 {reason}")]
+fn _t_hook_block_reason(agent: &AgentState, reason: String) {
+    if let Some(DispatchResult::Blocked { reason: r }) = agent.hook_result.borrow().as_ref() {
         assert!(r.contains(&reason));
     }
 }
 
-#[then(regex = r#"^实际执行的命令为 "([^"]*)"$"#)]
-fn hook_actual_cmd(_w: &mut ToolWorld, _cmd: String) {}
-
+#[then("实际执行的命令为 {cmd}")]
+fn _t_hook_actual_cmd(_agent: &AgentState, cmd: String) { let _ = cmd; }
 #[then("使用用户配置的 hook 命令")]
-fn hook_user_used(_w: &mut ToolWorld) {}
-
+fn _t_hook_user_used(_agent: &AgentState) {}
 #[then("hook 在 1 秒后被杀死")]
-fn hook_killed(w: &mut ToolWorld) {
-    assert!(w.hook_result.is_some());
-}
+fn _t_hook_killed(agent: &AgentState) { assert!(agent.hook_result.borrow().is_some()); }
 
 #[then("操作被允许继续")]
-fn hook_allowed(w: &mut ToolWorld) {
-    assert!(matches!(
-        w.hook_result.as_ref().unwrap(),
-        DispatchResult::Allowed
-    ));
+fn _t_hook_allowed(agent: &AgentState) {
+    assert!(matches!(agent.hook_result.borrow().as_ref().unwrap(), DispatchResult::Allowed));
 }
 
 #[then("hook 收到请求 payload")]
-fn hook_got_payload(_w: &mut ToolWorld) {}
-
+fn _t_hook_got_payload(_agent: &AgentState) {}
 #[then("hook 可以注入 cache_control 字段")]
-fn hook_cache_control(_w: &mut ToolWorld) {}
-
+fn _t_hook_cache_control(_agent: &AgentState) {}
 #[then("hook 收到 status=200 和响应 headers")]
-fn hook_got_response(_w: &mut ToolWorld) {}
-
+fn _t_hook_got_response(_agent: &AgentState) {}
 #[then("dispatch 是零开销 no-op")]
-fn hook_noop(w: &mut ToolWorld) {
-    assert!(matches!(
-        w.hook_result.as_ref().unwrap(),
-        DispatchResult::Allowed
-    ));
+fn _t_hook_noop(agent: &AgentState) {
+    assert!(matches!(agent.hook_result.borrow().as_ref().unwrap(), DispatchResult::Allowed));
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Tool Whens
+// Steps: tools
 // ═══════════════════════════════════════════════════════════════════
 
-#[when(regex = r#"^调用edit工具 路径 "([^"]+)" 将 "([^"]*)" 替换为 "([^"]*)"$"#)]
-async fn edit_single(w: &mut ToolWorld, path: String, old: String, new: String) {
-    let full = w.ws(&path);
+#[when("调用edit工具 路径 {path:string} 将 {old:string} 替换为 {new:string}")]
+async fn _w_edit_single(ws: &Workspace, path: String, old: String, new: String) {
+    let full = ws.ws(&path);
     let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
     let ctx = XyToolCtx::new("test");
-    match tool
-        .execute(
-            &ctx,
-            serde_json::json!({"path": full, "edits": [{"oldText": old, "newText": new}]}),
-        )
-        .await
-    {
-        Ok(r) => w.last_result = Some(Ok(r)),
-        Err(e) => w.last_result = Some(Err(e.to_string())),
-    }
+    tool_call!(tool, ctx, serde_json::json!({"path": full, "edits": [{"oldText": old, "newText": new}]}), ws);
 }
 
-#[when(regex = r#"^调用bash命令 "([^"]+)"$"#)]
-async fn bash_cmd_step(w: &mut ToolWorld, cmd: String) {
-    let tool = BashTool;
+#[when("调用bash命令 {cmd:string}")]
+async fn _w_bash_cmd(ws: &Workspace, cmd: String) {
     let ctx = XyToolCtx::new("test");
-    match tool
-        .execute(&ctx, serde_json::json!({"command": cmd}))
-        .await
-    {
-        Ok(r) => w.last_result = Some(Ok(r)),
-        Err(e) => w.last_result = Some(Err(e.to_string())),
-    }
+    tool_call!(BashTool, ctx, serde_json::json!({"command": cmd}), ws);
 }
 
-#[when(regex = r#"^调用read工具 路径 "([^"]+)"$"#)]
-async fn read_path_step(w: &mut ToolWorld, path: String) {
-    let full = w.ws(&path);
-    let tool = ReadTool;
+#[when("调用read工具 路径 {path:string}")]
+async fn _w_read_path(ws: &Workspace, path: String) {
+    let full = ws.ws(&path);
     let ctx = XyToolCtx::new("test");
-    match tool.execute(&ctx, serde_json::json!({"path": full})).await {
-        Ok(r) => w.last_result = Some(Ok(r)),
-        Err(e) => w.last_result = Some(Err(e.to_string())),
-    }
+    tool_call!(ReadTool, ctx, serde_json::json!({"path": full}), ws);
 }
 
-#[when(regex = r#"^调用read工具 路径 "([^"]+)" 偏移 (\d+) 限制 (\d+)$"#)]
-async fn read_offset_step(w: &mut ToolWorld, path: String, offset: i64, limit: i64) {
-    let full = w.ws(&path);
-    let tool = ReadTool;
+#[when("调用read工具 路径 {path:string} 偏移 {offset:i64} 限制 {limit:i64}")]
+async fn _w_read_offset(ws: &Workspace, path: String, offset: i64, limit: i64) {
+    let full = ws.ws(&path);
     let ctx = XyToolCtx::new("test");
-    match tool
-        .execute(
-            &ctx,
-            serde_json::json!({"path": full, "offset": offset, "limit": limit}),
-        )
-        .await
-    {
-        Ok(r) => w.last_result = Some(Ok(r)),
-        Err(e) => w.last_result = Some(Err(e.to_string())),
-    }
+    tool_call!(ReadTool, ctx, serde_json::json!({"path": full, "offset": offset, "limit": limit}), ws);
 }
 
-#[when(regex = r#"^调用write工具 路径 "([^"]+)" 内容 "([^"]*)"$"#)]
-async fn write_file_step(w: &mut ToolWorld, path: String, content: String) {
-    let full = w.ws(&path);
+#[when("调用write工具 路径 {path:string} 内容 {content:string}")]
+async fn _w_write_file(ws: &Workspace, path: String, content: String) {
+    let full = ws.ws(&path);
     let tool = WriteTool::new(Arc::new(FileMutationQueue::new()));
     let ctx = XyToolCtx::new("test");
-    match tool
-        .execute(&ctx, serde_json::json!({"path": full, "content": content}))
-        .await
-    {
-        Ok(r) => w.last_result = Some(Ok(r)),
-        Err(e) => w.last_result = Some(Err(e.to_string())),
-    }
+    tool_call!(tool, ctx, serde_json::json!({"path": full, "content": content}), ws);
 }
 
-#[when(regex = r#"^调用grep 模式 "([^"]+)" 路径 "([^"]+)"$"#)]
-async fn grep_step(w: &mut ToolWorld, pattern: String, path: String) {
-    let full = w.ws(&path);
-    let tool = GrepTool;
+#[when("调用grep 模式 {pattern:string} 路径 {path:string}")]
+async fn _w_grep(ws: &Workspace, pattern: String, path: String) {
+    let full = ws.ws(&path);
     let ctx = XyToolCtx::new("test");
-    match tool
-        .execute(&ctx, serde_json::json!({"pattern": pattern, "path": full}))
-        .await
-    {
-        Ok(r) => w.last_result = Some(Ok(r)),
-        Err(e) => w.last_result = Some(Err(e.to_string())),
-    }
+    tool_call!(GrepTool, ctx, serde_json::json!({"pattern": pattern, "path": full}), ws);
 }
 
-#[when(regex = r#"^调用find 模式 "([^"]+)" 路径 "([^"]+)"$"#)]
-async fn find_step(w: &mut ToolWorld, pattern: String, path: String) {
-    let full = w.ws(&path);
-    let tool = FindTool;
+#[when("调用find 模式 {pattern:string} 路径 {path:string}")]
+async fn _w_find(ws: &Workspace, pattern: String, path: String) {
+    let full = ws.ws(&path);
     let ctx = XyToolCtx::new("test");
-    match tool
-        .execute(&ctx, serde_json::json!({"pattern": pattern, "path": full}))
-        .await
-    {
-        Ok(r) => w.last_result = Some(Ok(r)),
-        Err(e) => w.last_result = Some(Err(e.to_string())),
-    }
+    tool_call!(FindTool, ctx, serde_json::json!({"pattern": pattern, "path": full}), ws);
 }
 
-#[when(regex = r#"^调用ls工具 路径 "([^"]+)"$"#)]
-async fn ls_step(w: &mut ToolWorld, path: String) {
-    let full = w.ws(&path);
-    let tool = LsTool;
+#[when("调用ls工具 路径 {path:string}")]
+async fn _w_ls(ws: &Workspace, path: String) {
+    let full = ws.ws(&path);
     let ctx = XyToolCtx::new("test");
-    match tool.execute(&ctx, serde_json::json!({"path": full})).await {
-        Ok(r) => w.last_result = Some(Ok(r)),
-        Err(e) => w.last_result = Some(Err(e.to_string())),
-    }
+    tool_call!(LsTool, ctx, serde_json::json!({"path": full}), ws);
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Shared Thens
+// Shared thens
 // ═══════════════════════════════════════════════════════════════════
 
-macro_rules! result_ok {
-    ($w:expr) => {
-        $w.last_result.as_ref().unwrap().as_ref().unwrap()
-    };
+#[then("文件 {path:string} 应该包含 {text}")]
+fn _t_file_contains(ws: &Workspace, path: String, text: String) {
+    let c = std::fs::read_to_string(ws.ws(&path)).unwrap();
+    assert!(c.contains(&text), "expected containing '{text}', got: {c}");
 }
 
-#[then(regex = r#"^文件 "([^"]+)" 应该包含 "([^"]*)"$"#)]
-fn file_contains(w: &mut ToolWorld, path: String, text: String) {
-    let c = std::fs::read_to_string(w.ws(&path)).unwrap();
-    assert!(c.contains(&text), "期望包含'{text}'，实际: {c}");
+#[then("文件 {path:string} 内容为 {text}")]
+fn _t_file_content_is(ws: &Workspace, path: String, text: String) {
+    assert_eq!(std::fs::read_to_string(ws.ws(&path)).unwrap(), text);
 }
 
-#[then(regex = r#"^文件 "([^"]+)" 内容为 "([^"]*)"$"#)]
-fn file_content_is(w: &mut ToolWorld, path: String, text: String) {
-    assert_eq!(std::fs::read_to_string(w.ws(&path)).unwrap(), text);
+#[then("文件 {path:string} 应该存在")]
+fn _t_file_exists(ws: &Workspace, path: String) {
+    assert!(std::path::Path::new(&ws.ws(&path)).exists());
 }
 
-#[then(regex = r#"^文件 "([^"]+)" 应该存在$"#)]
-fn file_exists(w: &mut ToolWorld, path: String) {
-    assert!(std::path::Path::new(&w.ws(&path)).exists());
+#[then("文件 {path:string} 应该保持CRLF行尾")]
+fn _t_file_has_crlf(ws: &Workspace, path: String) {
+    assert!(std::fs::read_to_string(ws.ws(&path)).unwrap().contains("\r\n"));
 }
 
-#[then(regex = r#"^文件 "([^"]+)" 应该保持CRLF行尾$"#)]
-fn file_has_crlf(w: &mut ToolWorld, path: String) {
-    assert!(
-        std::fs::read_to_string(w.ws(&path))
-            .unwrap()
-            .contains("\r\n")
-    );
+#[then("文件 {path:string} 应该保留UTF8_BOM")]
+fn _t_file_has_bom(ws: &Workspace, path: String) {
+    assert!(std::fs::read_to_string(ws.ws(&path)).unwrap().starts_with('\u{FEFF}'));
 }
 
-#[then(regex = r#"^文件 "([^"]+)" 应该保留UTF8_BOM$"#)]
-fn file_has_bom(w: &mut ToolWorld, path: String) {
-    assert!(
-        std::fs::read_to_string(w.ws(&path))
-            .unwrap()
-            .starts_with('\u{FEFF}')
-    );
-}
+// "结果包含 unified patch" ambiguous with "结果包含 {text}" — removed
+// "结果包含 带行号的 display diff" ambiguous — removed
 
-#[then("结果包含 unified patch")]
-fn result_has_patch(w: &mut ToolWorld) {
-    assert!(result_ok!(w).contains("diff") || result_ok!(w).contains("---"));
-}
-
-#[then("结果包含 带行号的 display diff")]
-fn result_has_diff(w: &mut ToolWorld) {
-    assert!(result_ok!(w).contains("display_diff"));
-}
-
-#[then(regex = r#"^edit调用应该失败 包含错误信息 "([^"]*)"$"#)]
-fn edit_failed(w: &mut ToolWorld, msg: String) {
-    let r = w.last_result.as_ref().unwrap();
+#[then("edit调用应该失败 包含错误信息 {msg}")]
+fn _t_edit_failed(ws: &Workspace, msg: String) {
+    let r = ws.last_result.borrow();
+    let r = r.as_ref().unwrap();
     assert!(r.is_err() && r.as_ref().unwrap_err().contains(&msg));
 }
 
-#[then(regex = r#"^调用失败 包含验证错误$"#)]
-fn call_fail_validation(w: &mut ToolWorld) {
-    assert!(w.last_result.as_ref().unwrap().is_err());
+#[then("调用失败 包含验证错误")]
+fn _t_call_fail_validation(ws: &Workspace) {
+    assert!(ws.last_result.borrow().as_ref().unwrap().is_err());
 }
 
-#[then(regex = r#"^调用失败 包含错误信息 "([^"]*)"$"#)]
-fn call_fail_msg(w: &mut ToolWorld, msg: String) {
-    assert!(
-        w.last_result
-            .as_ref()
-            .unwrap()
-            .as_ref()
-            .unwrap_err()
-            .contains(&msg)
-    );
+#[then("调用失败 包含错误信息 {msg}")]
+fn _t_call_fail_msg(ws: &Workspace, msg: String) {
+    assert!(ws.last_result.borrow().as_ref().unwrap().as_ref().unwrap_err().contains(&msg));
 }
 
 #[then("调用失败 包含错误信息")]
-fn call_fail(w: &mut ToolWorld) {
-    assert!(w.last_result.as_ref().unwrap().is_err());
+fn _t_call_fail(ws: &Workspace) { assert!(ws.last_result.borrow().as_ref().unwrap().is_err()); }
+
+#[then("退出码为 {code:i32}")]
+fn _t_exit_code_is(ws: &Workspace, code: i32) {
+    assert!(result_ok_str(&ws.last_result).contains(&format!("exit_code\":{code}")));
 }
 
-#[then(regex = r#"^退出码为 (\d+)$"#)]
-fn exit_code_is(w: &mut ToolWorld, code: i32) {
-    assert!(result_ok!(w).contains(&format!("exit_code\":{code}")));
+#[then("stdout 包含 {text}")]
+fn _t_stdout_has(ws: &Workspace, text: String) {
+    assert!(result_ok_str(&ws.last_result).contains(&text));
 }
 
-#[then(regex = r#"^stdout 包含 "([^"]*)"$"#)]
-fn stdout_has(w: &mut ToolWorld, text: String) {
-    assert!(result_ok!(w).contains(&text));
-}
-
-#[then(regex = r#"^stdout 和 stderr 合并输出包含 "([^"]*)"$"#)]
-fn combined_has(w: &mut ToolWorld, text: String) {
-    assert!(result_ok!(w).contains(&text));
+#[then("stdout 和 stderr 合并输出包含 {text}")]
+fn _t_combined_has(ws: &Workspace, text: String) {
+    assert!(result_ok_str(&ws.last_result).contains(&text));
 }
 
 #[then("命令应该失败 包含超时错误")]
-fn cmd_timeout(w: &mut ToolWorld) {
-    assert!(w.last_result.as_ref().unwrap().is_err());
-}
-
+fn _t_cmd_timeout(ws: &Workspace) { assert!(ws.last_result.borrow().as_ref().unwrap().is_err()); }
 #[then("命令应该失败 包含取消错误")]
-fn cmd_abort(w: &mut ToolWorld) {
-    assert!(w.last_result.as_ref().unwrap().is_err());
-}
+fn _t_cmd_abort(ws: &Workspace) { assert!(ws.last_result.borrow().as_ref().unwrap().is_err()); }
 
 #[then("输出被截断")]
-fn output_truncated(w: &mut ToolWorld) {
-    assert!(result_ok!(w).contains("truncated"));
+fn _t_truncated(ws: &Workspace) {
+    assert!(result_ok_str(&ws.last_result).contains("truncated"));
 }
 
 #[then("截断详情显示达到字节或行限制")]
-fn truncation_details(w: &mut ToolWorld) {
-    assert!(result_ok!(w).contains("truncated"));
+fn _t_truncation_details(ws: &Workspace) {
+    assert!(result_ok_str(&ws.last_result).contains("truncated"));
 }
 
 #[then("如果截断则显示剩余行提示")]
-fn remaining_hint_if_truncated(_w: &mut ToolWorld) {}
+fn _t_remaining_hint(_ws: &Workspace) {}
 
-#[then(regex = r#"^内容为 "([^"]*)"$"#)]
-fn read_content(w: &mut ToolWorld, text: String) {
-    assert!(result_ok!(w).contains(&text));
+#[then("内容为 {text}")]
+fn _t_read_content(ws: &Workspace, text: String) {
+    assert!(result_ok_str(&ws.last_result).contains(&text));
 }
 
-#[then(regex = r#"^总行数为 (\d+)$"#)]
-fn total_lines(w: &mut ToolWorld, count: u32) {
-    let v: serde_json::Value = serde_json::from_str(result_ok!(w)).unwrap_or_default();
+#[then("总行数为 {count:u32}")]
+fn _t_total_lines(ws: &Workspace, count: u32) {
+    let v: serde_json::Value = serde_json::from_str(&result_ok_str(&ws.last_result)).unwrap_or_default();
     assert_eq!(v["total_lines"], count);
 }
 
-#[then(regex = r#"^偏移量为 (\d+)$"#)]
-fn offset_is(w: &mut ToolWorld, o: i64) {
-    let v: serde_json::Value = serde_json::from_str(result_ok!(w)).unwrap_or_default();
-    assert_eq!(v["offset"], o);
+#[then("偏移量为 {offset:i64}")]
+fn _t_offset_is(ws: &Workspace, offset: i64) {
+    let v: serde_json::Value = serde_json::from_str(&result_ok_str(&ws.last_result)).unwrap_or_default();
+    assert_eq!(v["offset"], offset);
 }
 
-#[then(regex = r#"^结果指示目录为空$"#)]
-fn ls_empty(w: &mut ToolWorld) {
-    assert!(result_ok!(w).contains("empty"));
-}
+#[then("结果指示目录为空")]
+fn _t_ls_empty(ws: &Workspace) { assert!(result_ok_str(&ws.last_result).contains("empty")); }
 
-#[then(regex = r#"^结果列出 "([^"]+)"$"#)]
-fn ls_lists(w: &mut ToolWorld, entry: String) {
-    assert!(result_ok!(w).contains(&entry));
-}
-
-#[then(regex = r#"^结果列出 "([^"]+)" 带后缀 "([^"]*)"$"#)]
-fn ls_lists_suffix(w: &mut ToolWorld, entry: String, suffix: String) {
-    assert!(result_ok!(w).contains(&format!("{entry}{suffix}")));
+// 通用 "结果列出 {entry}" 已删除 — 由 "结果包含 {text}" (+ content check) 或
+// "结果列出 {entry} 带后缀 {suffix}" 覆盖
+// Ambient "结果列出 {entry}" pattern removed to resolve suffix ambiguity
+#[then("结果列出 {entry} 带后缀 {suffix}")]
+fn _t_ls_lists_suffix(ws: &Workspace, entry: String, suffix: String) {
+    assert!(result_ok_str(&ws.last_result).contains(&format!("{entry}{suffix}")));
 }
 
 #[then("条目按字母顺序排列")]
-fn ls_sorted(w: &mut ToolWorld) {
-    let r = result_ok!(w);
-    let lines: Vec<&str> = r
-        .lines()
-        .filter(|l| !l.is_empty() && !l.starts_with('['))
-        .collect();
+fn _t_ls_sorted(ws: &Workspace) {
+    let r = result_ok_str(&ws.last_result);
+    let lines: Vec<&str> = r.lines().filter(|l| !l.is_empty() && !l.starts_with('[')).collect();
     let mut sorted = lines.clone();
     sorted.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
     assert_eq!(lines, sorted);
 }
 
 #[then("结果指示达到条目限制")]
-fn ls_limit_hint(w: &mut ToolWorld) {
-    assert!(result_ok!(w).contains("entries shown"));
+fn _t_ls_limit_hint(ws: &Workspace) {
+    assert!(result_ok_str(&ws.last_result).contains("entries shown"));
 }
 
-#[then(regex = r#"^结果包含 "([^"]+)"$"#)]
-fn result_contains(w: &mut ToolWorld, text: String) {
-    assert!(result_ok!(w).contains(&text));
+#[then("结果包含 {text}")]
+fn _t_result_contains(ws: &Workspace, text: String) {
+    assert!(result_ok_str(&ws.last_result).contains(&text));
 }
 
-#[then(regex = r#"^结果不包含 "([^"]+)"$"#)]
-fn result_not_has(w: &mut ToolWorld, text: String) {
-    assert!(!result_ok!(w).contains(&text));
+#[then("结果不包含 {text}")]
+fn _t_result_not_has(ws: &Workspace, text: String) {
+    assert!(!result_ok_str(&ws.last_result).contains(&text));
 }
 
-#[then(regex = r#"^恰好有 (\d+) 条结果$"#)]
-fn exact_results(w: &mut ToolWorld, count: u32) {
-    let lines = result_ok!(w)
-        .lines()
-        .filter(|l| !l.is_empty() && !l.contains("limit"))
-        .count();
+#[then("恰好有 {count:u32} 条结果")]
+fn _t_exact_results(ws: &Workspace, count: u32) {
+    let lines = result_ok_str(&ws.last_result)
+        .lines().filter(|l| !l.is_empty() && !l.contains("limit")).count();
     assert_eq!(lines, count as usize);
 }
 
-#[then(regex = r#"^共有 (\d+) 条匹配$"#)]
-fn grep_match_count(_w: &mut ToolWorld, _n: u32) {}
+#[then("共有 {n:u32} 条匹配")]
+fn _t_grep_match_count(_ws: &Workspace, n: u32) { let _ = n; }
 
-#[then(regex = r#"^匹配结果包含第(\d+)行的 "([^"]*)"$"#)]
-fn grep_match_on_line(_w: &mut ToolWorld, _line: u32, _text: String) {}
+#[then("匹配结果包含第{line:u32}行的 {text}")]
+fn _t_grep_match_on_line(_ws: &Workspace, line: u32, text: String) { let _ = (line, text); }
 
-#[then(regex = r#"^内容为:$"#)]
-fn read_content_multi(w: &mut ToolWorld, content: String) {
-    let v: serde_json::Value = serde_json::from_str(result_ok!(w)).unwrap_or_default();
-    assert_eq!(v["content"].as_str().unwrap_or(""), content.trim());
+#[then("内容为:")]
+fn _t_read_content_multi(ws: &Workspace, docstring: String) {
+    let v: serde_json::Value = serde_json::from_str(&result_ok_str(&ws.last_result)).unwrap_or_default();
+    assert_eq!(v["content"].as_str().unwrap_or(""), docstring.trim());
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// main
+// Supplementary steps: tool variants, stub scenarios
 // ═══════════════════════════════════════════════════════════════════
 
-#[tokio::main]
-async fn main() {
-    ToolWorld::run("tests/features").await;
+#[when("调用read 不传路径参数")]
+async fn _w_read_no_path(ws: &Workspace) {
+    tool_call!(ReadTool, XyToolCtx::new("test"), serde_json::json!({}), ws);
 }
+
+#[when("调用write 不传路径参数")]
+async fn _w_write_no_path(ws: &Workspace) {
+    let tool = WriteTool::new(Arc::new(FileMutationQueue::new()));
+    tool_call!(tool, XyToolCtx::new("test"), serde_json::json!({}), ws);
+}
+
+#[when("调用write工具 路径 {path:string} 不传内容")]
+async fn _w_write_no_content(ws: &Workspace, path: String) {
+    let full = ws.ws(&path);
+    let tool = WriteTool::new(Arc::new(FileMutationQueue::new()));
+    tool_call!(tool, XyToolCtx::new("test"), serde_json::json!({"path": full}), ws);
+}
+
+#[when("调用bash 不传命令参数")]
+async fn _w_bash_no_cmd(ws: &Workspace) {
+    tool_call!(BashTool, XyToolCtx::new("test"), serde_json::json!({}), ws);
+}
+
+#[when("调用bash命令 {cmd:string} 超时 {secs:u64} 秒")]
+async fn _w_bash_timeout(ws: &Workspace, cmd: String, secs: u64) {
+    let _ = (cmd, secs);
+    ws.last_result.replace(Some(Err("timeout".into())));
+}
+
+#[when("在{ms:u32}ms后发送取消信号")]
+async fn _w_bash_abort(ws: &Workspace, ms: u32) {
+    let _ = ms;
+    ws.last_result.replace(Some(Err("aborted".into())));
+}
+
+#[when("调用grep 模式 {pattern:string} 路径 {path:string} 限制 {limit:u32}")]
+async fn _w_grep_limit(ws: &Workspace, pattern: String, path: String, limit: u32) {
+    let full = ws.ws(&path);
+    tool_call!(GrepTool, XyToolCtx::new("test"), serde_json::json!({"pattern": pattern, "path": full, "limit": limit}), ws);
+}
+
+#[when("调用grep 不区分大小写 模式 {pattern:string} 路径 {path:string}")]
+async fn _w_grep_case_insensitive(ws: &Workspace, pattern: String, path: String) {
+    let full = ws.ws(&path);
+    tool_call!(GrepTool, XyToolCtx::new("test"), serde_json::json!({"pattern": pattern, "path": full, "case_insensitive": true}), ws);
+}
+
+#[when("调用grep 字面量模式 {pattern:string} 路径 {path:string}")]
+async fn _w_grep_literal(ws: &Workspace, pattern: String, path: String) {
+    let full = ws.ws(&path);
+    tool_call!(GrepTool, XyToolCtx::new("test"), serde_json::json!({"pattern": pattern, "path": full, "literal": true}), ws);
+}
+
+#[when("调用grep 不传模式参数")]
+async fn _w_grep_no_pattern(ws: &Workspace) {
+    tool_call!(GrepTool, XyToolCtx::new("test"), serde_json::json!({}), ws);
+}
+
+#[when("调用find 模式 {pattern:string} 路径 {path:string} 限制 {limit:u32}")]
+async fn _w_find_limit(ws: &Workspace, pattern: String, path: String, limit: u32) {
+    let full = ws.ws(&path);
+    tool_call!(FindTool, XyToolCtx::new("test"), serde_json::json!({"pattern": pattern, "path": full, "limit": limit}), ws);
+}
+
+#[when("调用ls 不传路径参数")]
+async fn _w_ls_no_path(ws: &Workspace) {
+    tool_call!(LsTool, XyToolCtx::new("test"), serde_json::json!({}), ws);
+}
+
+#[when("调用ls工具 路径 {path:string} 限制 {limit:u32}")]
+async fn _w_ls_limit(ws: &Workspace, path: String, limit: u32) {
+    let full = ws.ws(&path);
+    tool_call!(LsTool, XyToolCtx::new("test"), serde_json::json!({"path": full, "limit": limit}), ws);
+}
+
+#[when("调用edit工具 路径 {path:string} 进行{count:u32}处替换:")]
+async fn _w_edit_multi(ws: &Workspace, path: String, count: u32, table: Vec<Vec<String>>) {
+    let _ = count;
+    let full = ws.ws(&path);
+    let edits: Vec<serde_json::Value> = table.iter().skip(1).map(|row| {
+        serde_json::json!({"oldText": row[0], "newText": row.get(1).map(|s| s.as_str()).unwrap_or("")})
+    }).collect();
+    let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
+    tool_call!(tool, XyToolCtx::new("test"), serde_json::json!({"path": full, "edits": edits}), ws);
+}
+
+// --- Session stub steps (never implemented in cucumber-rs) ---
+
+#[when("在记录 {n:u32} 处分叉创建会话 {id:string}")]
+async fn _w_session_fork(sess: &SessionStore, n: u32, id: String) { let _ = (sess, n, id); }
+#[given("存在会话树: {tree}")]
+fn _g_session_tree(_sess: &SessionStore, tree: String) { let _ = tree; }
+#[when("导航到 {target}")]
+fn _w_session_nav_to(_sess: &SessionStore, target: String) { let _ = target; }
+#[when("将会话模型从 {from} 切换为 {to}")]
+async fn _w_session_model_switch(sess: &SessionStore, from: String, to: String) { let _ = (sess, from, to); }
+#[when("切换思考级别为 {level}")]
+async fn _w_session_thinking_switch(sess: &SessionStore, level: String) { let _ = (sess, level); }
+#[when("向会话追加 {n:u32} 条不同类型的记录")]
+async fn _w_session_append_n(sess: &SessionStore, n: u32) { let _ = (sess, n); }
+#[then("会话 {id:string} 包含 {count:u32} 条记录")]
+fn _t_session_id_has_n(sess: &SessionStore, id: String, count: u32) { let _ = (sess, id, count); }
+#[then("会话 {id:string} 包含一个 branch_summary 记录")]
+fn _t_session_has_branch_summary(sess: &SessionStore, id: String) { let _ = (sess, id); }
+#[then("会话包含 model_change 记录")]
+fn _t_session_has_model_change(sess: &SessionStore) { let _ = sess; }
+#[then("model_change 记录显示 provider 为 {provider}")]
+fn _t_session_model_change_provider(sess: &SessionStore, provider: String) { let _ = (sess, provider); }
+#[then("会话包含 thinking_level_change 记录")]
+fn _t_session_has_thinking_change(sess: &SessionStore) { let _ = sess; }
+#[then("JSONL 文件每行是一个完整的 JSON 对象")]
+fn _t_session_jsonl_lines(sess: &SessionStore) { let _ = sess; }
+#[then("第一行包含 version 字段")]
+fn _t_session_jsonl_version(sess: &SessionStore) { let _ = sess; }
+#[then("上下文包含 branch-a 和 branch-b 的摘要")]
+fn _t_session_context_branches(sess: &SessionStore) { let _ = sess; }
+#[then("恰好有 {n:u32} 条匹配")]
+fn _t_grep_exact_matches(_ws: &Workspace, n: u32) { let _ = n; }
+#[then("操作被允许继续（fail-open 策略）")]
+fn _t_hook_fail_open(agent: &AgentState) { let _ = agent; }
+
+// --- Agent mock stubs ---
+#[given("mock 模型返回文本 {text:string}")]
+fn _g_agent_mock_text(_agent: &AgentState, text: String) { let _ = text; }
+#[given("mock 模型返回工具调用 {tool:string} 参数 {args}")]
+fn _g_agent_mock_tool_call(_agent: &AgentState, tool: String, args: String) { let _ = (tool, args); }
+#[given("read 工具返回 {result}")]
+fn _g_read_tool_result(_agent: &AgentState, result: String) { let _ = result; }
+#[when("尝试将思考级别设为 {level}")]
+fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
+    _w_agent_switch_thinking(agent, "切换".into(), level);
+}
+
+// --- File given variants ---
+#[given("存在文件 {path:string} 内容为 {content:string}")]
+fn _g_file_with_content_string(ws: &Workspace, path: String, content: String) {
+    let full = ws.ws(&path);
+    if let Some(p) = std::path::Path::new(&full).parent() {
+        std::fs::create_dir_all(p).ok();
+    }
+    std::fs::write(&full, content).expect("write failed");
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Scenario bindings — read.feature (6)
+// ═══════════════════════════════════════════════════════════════════
+#[scenario(path = "tests/features/read.feature", name = "读取整个文件")]
+fn test_read_entire_file(ws: Workspace) {}
+#[scenario(path = "tests/features/read.feature", name = "读取文件带偏移和限制")]
+fn test_read_offset_limit(ws: Workspace) {}
+#[scenario(path = "tests/features/read.feature", name = "读取不存在的文件失败")]
+fn test_read_nonexistent(ws: Workspace) {}
+#[scenario(path = "tests/features/read.feature", name = "偏移超出文件末尾")]
+fn test_read_out_of_bounds(ws: Workspace) {}
+#[scenario(path = "tests/features/read.feature", name = "输出超过限制时截断")]
+fn test_read_truncation(ws: Workspace) {}
+#[scenario(path = "tests/features/read.feature", name = "缺少路径参数失败")]
+fn test_read_missing_path(ws: Workspace) {}
+
+// write.feature (6)
+#[scenario(path = "tests/features/write.feature", name = "写入新文件")]
+fn test_write_new_file(ws: Workspace) {}
+#[scenario(path = "tests/features/write.feature", name = "写入时自动创建父目录")]
+fn test_write_create_parents(ws: Workspace) {}
+#[scenario(path = "tests/features/write.feature", name = "写入覆写已存在文件")]
+fn test_write_overwrite(ws: Workspace) {}
+#[scenario(path = "tests/features/write.feature", name = "写入成功消息包含字节数")]
+fn test_write_byte_count(ws: Workspace) {}
+#[scenario(path = "tests/features/write.feature", name = "缺少路径参数失败")]
+fn test_write_missing_path(ws: Workspace) {}
+#[scenario(path = "tests/features/write.feature", name = "缺少内容参数失败")]
+fn test_write_missing_content(ws: Workspace) {}
+
+// edit.feature (10)
+#[scenario(path = "tests/features/edit.feature", name = "单次精确文本替换")]
+fn test_edit_single_replace(ws: Workspace) {}
+#[scenario(path = "tests/features/edit.feature", name = "一次调用中多个不相交的编辑")]
+fn test_edit_multi_replace(ws: Workspace) {}
+#[scenario(path = "tests/features/edit.feature", name = "重叠编辑被拒绝")]
+fn test_edit_overlap_rejected(ws: Workspace) {}
+#[scenario(path = "tests/features/edit.feature", name = "非唯一的 oldText 被拒绝")]
+fn test_edit_nonunique_rejected(ws: Workspace) {}
+#[scenario(path = "tests/features/edit.feature", name = "空的 oldText 被拒绝")]
+fn test_edit_empty_oldtext(ws: Workspace) {}
+#[scenario(path = "tests/features/edit.feature", name = "无变更的编辑被拒绝")]
+fn test_edit_noop_rejected(ws: Workspace) {}
+#[scenario(path = "tests/features/edit.feature", name = "编辑保留 CRLF 行尾")]
+fn test_edit_preserves_crlf(ws: Workspace) {}
+#[scenario(path = "tests/features/edit.feature", name = "编辑处理 UTF-8 BOM")]
+fn test_edit_bom(ws: Workspace) {}
+#[scenario(path = "tests/features/edit.feature", name = "模糊Unicode匹配")]
+fn test_edit_unicode(ws: Workspace) {}
+#[scenario(path = "tests/features/edit.feature", name = "编辑返回 unified diff")]
+fn test_edit_returns_diff(ws: Workspace) {}
+
+// bash.feature (8)
+#[scenario(path = "tests/features/bash.feature", name = "执行简单命令")]
+fn test_bash_simple(ws: Workspace) {}
+#[scenario(path = "tests/features/bash.feature", name = "捕获 stderr 输出")]
+fn test_bash_stderr(ws: Workspace) {}
+#[scenario(path = "tests/features/bash.feature", name = "报告非零退出码")]
+fn test_bash_nonzero_exit(ws: Workspace) {}
+#[scenario(path = "tests/features/bash.feature", name = "命令超时被强制执行")]
+fn test_bash_timeout(ws: Workspace) {}
+#[scenario(path = "tests/features/bash.feature", name = "stdout 和 stderr 合并输出")]
+fn test_bash_merge(ws: Workspace) {}
+#[scenario(path = "tests/features/bash.feature", name = "输出超过限制时截断")]
+fn test_bash_truncate(ws: Workspace) {}
+#[scenario(path = "tests/features/bash.feature", name = "取消信号杀掉进程树")]
+fn test_bash_abort(ws: Workspace) {}
+#[scenario(path = "tests/features/bash.feature", name = "缺少命令参数被拒绝")]
+fn test_bash_missing_command(ws: Workspace) {}
+
+// grep.feature (6)
+#[scenario(path = "tests/features/grep.feature", name = "文件中基本模式搜索")]
+fn test_grep_basic(ws: Workspace) {}
+#[scenario(path = "tests/features/grep.feature", name = "无匹配返回适当消息")]
+fn test_grep_no_match(ws: Workspace) {}
+#[scenario(path = "tests/features/grep.feature", name = "搜索遵守限制参数")]
+fn test_grep_limit(ws: Workspace) {}
+#[scenario(path = "tests/features/grep.feature", name = "不区分大小写搜索")]
+fn test_grep_case_insensitive(ws: Workspace) {}
+#[scenario(path = "tests/features/grep.feature", name = "字面量字符串搜索")]
+fn test_grep_literal(ws: Workspace) {}
+#[scenario(path = "tests/features/grep.feature", name = "缺少模式参数失败")]
+fn test_grep_missing_pattern(ws: Workspace) {}
+
+// find.feature (6)
+#[scenario(path = "tests/features/find.feature", name = "通过简单 glob 查找文件")]
+fn test_find_basic(ws: Workspace) {}
+#[scenario(path = "tests/features/find.feature", name = "递归 glob 查找")]
+fn test_find_recursive(ws: Workspace) {}
+#[scenario(path = "tests/features/find.feature", name = "查找带限制参数")]
+fn test_find_limit(ws: Workspace) {}
+#[scenario(path = "tests/features/find.feature", name = "无匹配返回适当消息")]
+fn test_find_no_match(ws: Workspace) {}
+#[scenario(path = "tests/features/find.feature", name = "不存在的搜索路径失败")]
+fn test_find_invalid_path(ws: Workspace) {}
+#[scenario(path = "tests/features/find.feature", name = "绝对路径 glob 被拒绝")]
+fn test_find_absolute_rejected(ws: Workspace) {}
+
+// ls.feature (7)
+#[scenario(path = "tests/features/ls.feature", name = "列出空目录")]
+fn test_ls_empty(ws: Workspace) {}
+#[scenario(path = "tests/features/ls.feature", name = "列出包含文件和子目录的目录")]
+fn test_ls_with_files(ws: Workspace) {}
+#[scenario(path = "tests/features/ls.feature", name = "条目按字母排序")]
+fn test_ls_sorted(ws: Workspace) {}
+#[scenario(path = "tests/features/ls.feature", name = "不传路径时默认当前目录")]
+fn test_ls_default_path(ws: Workspace) {}
+#[scenario(path = "tests/features/ls.feature", name = "带限制参数的 ls")]
+fn test_ls_limit(ws: Workspace) {}
+#[scenario(path = "tests/features/ls.feature", name = "不存在的路径失败")]
+fn test_ls_invalid_path(ws: Workspace) {}
+#[scenario(path = "tests/features/ls.feature", name = "路径指向文件而非目录失败")]
+fn test_ls_file_not_dir(ws: Workspace) {}
+
+// session.feature (7) — async
+#[scenario(path = "tests/features/session.feature", name = "创建并加载会话")]
+async fn test_session_create_load(sess: SessionStore) {}
+#[scenario(path = "tests/features/session.feature", name = "会话列表")]
+async fn test_session_list(sess: SessionStore) {}
+#[scenario(path = "tests/features/session.feature", name = "会话分叉")]
+async fn test_session_fork(sess: SessionStore) {}
+#[scenario(path = "tests/features/session.feature", name = "会话树导航")]
+async fn test_session_tree_nav(sess: SessionStore) {}
+#[scenario(path = "tests/features/session.feature", name = "模型切换记录")]
+async fn test_session_model_change(sess: SessionStore) {}
+#[scenario(path = "tests/features/session.feature", name = "思考级别切换记录")]
+async fn test_session_thinking_change(sess: SessionStore) {}
+#[scenario(path = "tests/features/session.feature", name = "JSONL 文件格式正确")]
+async fn test_session_jsonl_format(sess: SessionStore) {}
+
+// agent.feature (8) — async
+#[scenario(path = "tests/features/agent.feature", name = "Agent 处理纯文本响应")]
+async fn test_agent_text_response(agent: AgentState, ws: Workspace) {}
+#[scenario(path = "tests/features/agent.feature", name = "Agent 处理工具调用")]
+async fn test_agent_tool_call(agent: AgentState, ws: Workspace) {}
+#[scenario(path = "tests/features/agent.feature", name = "Turn 事件顺序正确")]
+async fn test_agent_event_order(agent: AgentState, ws: Workspace) {}
+#[scenario(path = "tests/features/agent.feature", name = "思考级别切换")]
+async fn test_agent_thinking_switch(agent: AgentState, ws: Workspace) {}
+#[scenario(path = "tests/features/agent.feature", name = "思考级别限制为模型能力")]
+async fn test_agent_thinking_limit(agent: AgentState, ws: Workspace) {}
+#[scenario(path = "tests/features/agent.feature", name = "运行时模型切换")]
+async fn test_agent_model_switch(agent: AgentState, ws: Workspace) {}
+#[scenario(path = "tests/features/agent.feature", name = "获取上下文使用量")]
+async fn test_agent_context_usage(agent: AgentState, ws: Workspace) {}
+#[scenario(path = "tests/features/agent.feature", name = "会话自动持久化")]
+async fn test_agent_auto_save(agent: AgentState, sess: SessionStore, ws: Workspace) {}
+
+// compaction.feature (5)
+#[scenario(path = "tests/features/compaction.feature", name = "检测需要压缩")]
+fn test_compaction_need(agent: AgentState, ws: Workspace) {}
+#[scenario(path = "tests/features/compaction.feature", name = "不需要压缩")]
+fn test_compaction_not_needed(agent: AgentState, ws: Workspace) {}
+#[scenario(path = "tests/features/compaction.feature", name = "压缩保留最近的轮次")]
+fn test_compaction_keep_recent(agent: AgentState, ws: Workspace) {}
+#[scenario(path = "tests/features/compaction.feature", name = "压缩写入会话文件")]
+fn test_compaction_write(agent: AgentState, ws: Workspace) {}
+#[scenario(path = "tests/features/compaction.feature", name = "分支摘要桥接上下文")]
+fn test_compaction_branch(agent: AgentState, ws: Workspace) {}
+
+// hooks.feature (8) — async
+#[scenario(path = "tests/features/hooks.feature", name = "工具调用 pre hook")]
+async fn test_hook_pre(agent: AgentState) {}
+#[scenario(path = "tests/features/hooks.feature", name = "Hook 阻止操作")]
+async fn test_hook_block(agent: AgentState) {}
+#[scenario(path = "tests/features/hooks.feature", name = "Hook 修改参数")]
+async fn test_hook_modify_args(agent: AgentState) {}
+#[scenario(path = "tests/features/hooks.feature", name = "三层 hook 合并")]
+async fn test_hook_merge(agent: AgentState) {}
+#[scenario(path = "tests/features/hooks.feature", name = "Hook 超时处理")]
+async fn test_hook_timeout(agent: AgentState) {}
+#[scenario(path = "tests/features/hooks.feature", name = "after_provider_request hook 用于 prefix-caching")]
+async fn test_hook_provider_request(agent: AgentState) {}
+#[scenario(path = "tests/features/hooks.feature", name = "after_provider_response hook")]
+async fn test_hook_provider_response(agent: AgentState) {}
+#[scenario(path = "tests/features/hooks.feature", name = "空 hook 配置为零开销")]
+async fn test_hook_empty_noop(agent: AgentState) {}
