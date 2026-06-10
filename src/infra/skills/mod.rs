@@ -12,7 +12,6 @@ use std::collections::HashMap;
 use crate::infra::config::types::AppConfig;
 
 mod mcp;
-#[allow(unused_imports)]
 pub use mcp::{McpClientManager, McpToolAdapter};
 
 /// A loaded skill definition.

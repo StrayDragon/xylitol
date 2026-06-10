@@ -27,7 +27,7 @@ impl Clone for SessionManager {
     fn clone(&self) -> Self {
         Self {
             sessions_dir: self.sessions_dir.clone(),
-            leaf_ids: RwLock::new(self.leaf_ids.read().unwrap().clone()),
+            leaf_ids: RwLock::new(self.leaf_ids.read().expect("RwLock not poisoned").clone()),
         }
     }
 }
@@ -63,14 +63,14 @@ impl SessionManager {
     fn set_leaf(&self, session_id: &str, entry_id: Option<String>) {
         self.leaf_ids
             .write()
-            .unwrap()
+            .expect("RwLock not poisoned")
             .insert(session_id.to_string(), entry_id);
     }
 
     fn get_leaf(&self, session_id: &str) -> Option<String> {
         self.leaf_ids
             .read()
-            .unwrap()
+            .expect("RwLock not poisoned")
             .get(session_id)
             .cloned()
             .unwrap_or(None)

@@ -163,7 +163,9 @@ fn load_and_render(path: &Path, paths: &ConfigPaths) -> Result<Value, LoadError>
 pub fn deep_merge(base: &mut Value, overlay: Value) {
     match (base, overlay) {
         (base @ &mut Value::Object(_), Value::Object(map)) => {
-            let base_map = base.as_object_mut().unwrap();
+            let base_map = base
+                .as_object_mut()
+                .expect("matched &mut Value::Object guard");
             for (k, v) in map {
                 if let Some(existing) = base_map.get_mut(&k) {
                     deep_merge(existing, v);
