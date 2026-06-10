@@ -12,7 +12,7 @@ llman_spec_evidence:
 kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "TBD - created by archiving change c25-add-agent-loop. Update purpose after archive."
-requirements[15]{req_id,title,statement}:
+requirements[18]{req_id,title,statement}:
   r1,"execution-loop","System MUST implement a self-contained ReAct loop (XyRunner) that calls XyModel for generation and dispatches XyTool calls until completion or max_iterations."
   r2,"event-system","System MUST emit AgentEvent variants (TextDelta / ThinkingDelta / ToolCallStart / ToolCallEnd / StepComplete / Error) from XyRunner without any adk-core Event dependency."
   r3,"session-runtime",System MUST manage session history via XySession trait with InMemorySession as default backend.
@@ -28,7 +28,10 @@ requirements[15]{req_id,title,statement}:
   ar9,diagnostics,"Agent runtime MUST collect non-fatal diagnostics (info/warning/error) during session creation covering: missing API keys, unknown model references, extension load failures, and CWD issues."
   ar10,defaults,"System MUST centralize default values: DEFAULT_THINKING_LEVEL = medium, DEFAULT_MODEL for each known provider, DEFAULT_MAX_ITERATIONS = 50, DEFAULT_COMPACTION_THRESHOLD = 0.8."
   ar11,"bdd-runtime-v3","BDD tests for session-cwd validation and defaults MUST all pass."
-scenarios[17]{req_id,id,given,when,then}:
+  ar12,"output-guard-takeover","Agent runtime MUST support stdout takeover that redirects all process.stdout.write calls to stderr, enabling clean output in print mode. The takeover state must be queryable via is_stdout_taken_over()."
+  ar13,"output-guard-restore","Agent runtime MUST support stdout restore returning process.stdout.write to its original implementation, and write_raw_stdout that bypasses the takeover for direct output."
+  ar14,"bdd-runtime-v4",BDD tests for OutputGuard stdout takeover and restore MUST all pass.
+scenarios[21]{req_id,id,given,when,then}:
   r1,"react-loop",a mock XyModel returns text then tool call then final text,XyRunner executes,all events are emitted and loop terminates after tool response
   r1,"max-iterations",XyModel always returns tool calls,XyRunner reaches max_iterations,loop terminates with MaxIterationsReached error
   r2,"no-adk-events",agent is executing,events are emitted,"no adk_core::Event or adk_runner types appear in the event stream"
@@ -46,4 +49,8 @@ scenarios[17]{req_id,id,given,when,then}:
   ar9,"diag-missing-key",no API key configured for openai,session is created,diagnostics list contains warning about missing openai API key
   ar10,"default-thinking",no thinking level explicitly set,thinking_level is queried,returns medium
   ar11,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all runtime-v3 scenarios pass"
+  ar12,"takeover-redirects",stdout is not taken over,take_over_stdout is called,is_stdout_taken_over returns true
+  ar12,"double-takeover-noop",stdout is already taken over,take_over_stdout is called again,no error and is_stdout_taken_over still true
+  ar13,restore,stdout is taken over,restore_stdout is called,is_stdout_taken_over returns false and original stdout is restored
+  ar14,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all runtime-v4 scenarios pass"
 ```
