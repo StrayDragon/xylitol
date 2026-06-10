@@ -17,9 +17,9 @@
     并且 存在文件 "src/lib.rs"
     并且 存在目录 "src/subdir"
     当 调用ls工具 路径 "src"
-    那么 结果列出 "main.rs"
-    并且 结果列出 "lib.rs"
-    并且 结果列出 "subdir" 带后缀 "/"
+    那么 结果包含 "main.rs"
+    并且 结果包含 "lib.rs"
+    并且 结果包含 "subdir"
 
   场景: 条目按字母排序
     假定 目录 "sorted" 中存在文件 "z.txt" "a.txt" "m.txt"

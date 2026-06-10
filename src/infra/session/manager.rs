@@ -52,14 +52,17 @@ impl SessionManager {
                 .map_err(|e| format!("create sessions dir: {e}"))?;
         }
 
-        let header = SessionHeader {
-            entry_type: "session".to_string(),
-            version: SESSION_VERSION,
-            id: id.to_string(),
-            timestamp: Utc::now().to_rfc3339(),
-            cwd: cwd.unwrap_or(".").to_string(),
-            parent_session: parent_session.map(|s| s.to_string()),
-        };
+        // Build header JSON manually (not via enum tag to avoid duplicate `type`).
+        let mut header = serde_json::json!({
+            "type": "session",
+            "version": SESSION_VERSION,
+            "id": id,
+            "timestamp": Utc::now().to_rfc3339(),
+            "cwd": cwd.unwrap_or(".")
+        });
+        if let Some(ps) = parent_session {
+            header["parent_session"] = serde_json::json!(ps);
+        }
 
         let line = serde_json::to_string(&header).map_err(|e| format!("serialize header: {e}"))?;
         tokio::fs::write(&path, format!("{line}\n"))

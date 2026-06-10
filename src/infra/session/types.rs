@@ -8,8 +8,8 @@ pub const SESSION_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionHeader {
-    #[serde(rename = "type")]
-    pub entry_type: String, // "session"
+    #[serde(skip, default)]
+    pub entry_type: String, // "session" — provided by enum tag
     #[serde(default = "default_version")]
     pub version: u32,
     pub id: String,
@@ -27,7 +27,7 @@ fn default_version() -> u32 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntryBase {
-    #[serde(rename = "type")]
+    #[serde(skip, default)]
     pub entry_type: String,
     pub id: String,
     pub parent_id: Option<String>,

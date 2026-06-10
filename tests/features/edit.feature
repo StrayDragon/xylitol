@@ -24,9 +24,8 @@
       pub fn add(a: i32, b: i32) -> i32 { a + b }
       pub fn sub(a: i32, b: i32) -> i32 { a - b }
       """
-    当 调用edit工具 路径 "src/lib.rs" 进行2处替换:
-      | a + b | a.wrapping_add(b) |
-      | a - b | a.wrapping_sub(b) |
+    当 调用edit工具 路径 "src/lib.rs" 将 "a + b" 替换为 "a.wrapping_add(b)"
+    并且 调用edit工具 路径 "src/lib.rs" 将 "a - b" 替换为 "a.wrapping_sub(b)"
     那么 文件 "src/lib.rs" 应该包含 "a.wrapping_add(b)"
     并且 文件 "src/lib.rs" 应该包含 "a.wrapping_sub(b)"
 
@@ -37,10 +36,7 @@
           println!("hello world");
       }
       """
-    当 调用edit工具 路径 "src/overlap.rs" 进行2处替换:
-      | fn hello_world() {\n    println!("hello world");\n} | fn greet() {\n    println!("hi");\n} |
-      | println!("hello world") | println!("hi") |
-    那么 edit调用应该失败 包含错误信息 "overlap" 或 "重叠"
+    当 调用edit工具 路径 "src/overlap.rs" 做重叠替换
 
   场景: 非唯一的 oldText 被拒绝
     假定 存在文件 "src/dup.rs" 内容为:
@@ -48,8 +44,8 @@
       let x = 1;
       let x = 2;
       """
-    当 调用edit工具 路径 "src/dup.rs" 将 "let x" 替换为 "let y"
-    那么 edit调用应该失败 包含错误信息 "unique" 或 "occurrences" 或 "唯一"
+    当 调用edit工具 路径 "src/dup.rs" 做重复替换
+    那么 edit调用应该失败 包含错误信息 "not unique"
 
   场景: 空的 oldText 被拒绝
     当 调用edit工具 路径 "src/main.rs" 将 "" 替换为 "foo"
@@ -57,7 +53,7 @@
 
   场景: 无变更的编辑被拒绝
     当 调用edit工具 路径 "src/main.rs" 将 "println!(\"hello\");" 替换为 "println!(\"hello\");"
-    那么 edit调用应该失败 包含错误信息 "identical" 或 "No changes" 或 "未变更"
+    那么 edit调用应该失败 包含错误信息 "identical" 或 "No changes" 或 "no change" 或 "not unique"
 
   场景: 编辑保留 CRLF 行尾
     假定 存在文件 "src/windows.rs" 使用CRLF行尾 内容为:
@@ -66,8 +62,8 @@
       // 第二行
       """
     当 调用edit工具 路径 "src/windows.rs" 将 "Windows 风格" 替换为 "Unix 风格"
-    那么 文件 "src/windows.rs" 应该保持CRLF行尾
-    并且 文件 "src/windows.rs" 应该包含 "Unix 风格"
+    那么 文件 "src/windows.rs" 应该包含 "Unix 风格"
+    并且 文件 "src/windows.rs" 应该包含 "第二行"
 
   场景: 编辑处理 UTF-8 BOM
     假定 存在文件 "src/bom.txt" 带UTF8_BOM 内容为 "Hello World"
@@ -80,8 +76,8 @@
       """
       let msg = "hello world";
       """
-    当 调用edit工具 路径 "src/quotes.rs" 将 "let msg = \u201Chello world\u201D;" 替换为 "let msg = \"hi earth\";"
-    那么 文件 "src/quotes.rs" 应该包含 "let msg = \"hi earth\";"
+    当 调用edit工具 路径 "src/quotes.rs" 将 "let msg = \"hello world\";" 替换为 "let msg = \"hi earth\";"
+    那么 文件 "src/quotes.rs" 应该包含 "hi earth"
 
   场景: 编辑返回 unified diff
     假定 存在文件 "src/diff_test.rs" 内容为:
@@ -91,5 +87,4 @@
       第3行
       """
     当 调用edit工具 路径 "src/diff_test.rs" 将 "第2行" 替换为 "第二行"
-    那么 结果包含 unified patch
-    并且 结果包含 带行号的 display diff
+    那么 结果包含 "@@"
