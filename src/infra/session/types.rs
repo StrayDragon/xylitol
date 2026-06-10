@@ -109,6 +109,31 @@ pub struct CustomEntry {
     pub data: Value,
 }
 
+// ── Custom message entry (participates in LLM context) ─────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomMessageEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    pub custom_type: String,
+    pub content: Value,
+    pub display: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
+}
+
+// ── Session context (reconstructed LLM messages) ───────────────────
+
+/// Reconstructed session context from stored entries.
+/// Messages use Value to avoid circular agent dependency in types.
+#[derive(Debug, Clone)]
+pub struct SessionContext {
+    pub messages: Vec<serde_json::Value>, // Vec<XyContent> in JSON form
+    pub thinking_level: String,
+    pub model: Option<(String, String)>, // (provider, model_id)
+}
+
 // ── Unified entry enum ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,6 +153,8 @@ pub enum SessionEntry {
     ThinkingLevelChange(ThinkingLevelChangeEntry),
     #[serde(rename = "custom")]
     Custom(CustomEntry),
+    #[serde(rename = "custom_message")]
+    CustomMessage(CustomMessageEntry),
 }
 
 impl SessionEntry {
@@ -140,6 +167,7 @@ impl SessionEntry {
             SessionEntry::ModelChange(e) => Some(&e.base),
             SessionEntry::ThinkingLevelChange(e) => Some(&e.base),
             SessionEntry::Custom(e) => Some(&e.base),
+            SessionEntry::CustomMessage(e) => Some(&e.base),
         }
     }
 
@@ -152,6 +180,7 @@ impl SessionEntry {
             SessionEntry::ModelChange(_) => "model_change",
             SessionEntry::ThinkingLevelChange(_) => "thinking_level_change",
             SessionEntry::Custom(_) => "custom",
+            SessionEntry::CustomMessage(_) => "custom_message",
         }
     }
 
