@@ -1,6 +1,6 @@
 # Handoff: All P0/P1 Gaps Closed
 
-> 最后更新：2026-06-10 · c25/c26 已归档 · 与 pi 核心对齐度 **~89%**
+> 最后更新：2026-06-10 · c25/c26 已归档 · 与 pi 核心对齐度 **~91%**
 > 上游参考：`../pi-mono` (pi coding-agent 源码)
 
 ## 当前测试状态
@@ -13,9 +13,9 @@ just qa                                      # → fmt + clippy + test + doc + p
 
 | 指标 | 数值 |
 |------|------|
-| lib tests | 259 |
+| lib tests | 279 |
 | BDD scenarios | 77 |
-| total | 336 |
+| total | 356 |
 | src 源文件 | 50+ 个，~18,200 行 |
 
 ## 变更历史
@@ -57,6 +57,8 @@ just qa                                      # → fmt + clippy + test + doc + p
 | event-bus.ts | event.rs | ✅ |
 | hooks | infra/hooks/ | ✅ |
 | skills | infra/skills/mod.rs | ✅ |
+| trust-manager.ts | trust.rs (500L) | ✅ |
+| project-trust.ts | project_trust.rs (380L) | ✅ |
 | 7 built-in tools | tools/*.rs | ✅ |
 
 ### ⬜ 剩余 P2/P3 延后
@@ -64,7 +66,6 @@ just qa                                      # → fmt + clippy + test + doc + p
 | pi 模块 | 行数 | 原因 |
 |---------|------|------|
 | package-manager.ts | 2573 | 依赖检测/安装 — 独立大变更 |
-| trust-manager.ts / project-trust.ts | 229+95 | 信任决策存储 |
 | auth-storage.ts | 533 | OAuth token 持久化 |
 | extensions/* / sdk.ts | ~1000 | 整体延后到 Extensions SDK 阶段 |
 | keybindings.ts / footer-data-provider.ts | ~750 | TUI — 属于 zirvox |
@@ -75,7 +76,8 @@ just qa                                      # → fmt + clippy + test + doc + p
 ```
 src/
   agent/          — agent loop, model, registry, resolver, tools, templates, commands,
-                    output_guard, defaults, diagnostics, session, prompt, event, queue
+                    output_guard, defaults, diagnostics, session, prompt, event, queue,
+                    trust, project_trust
   infra/          — hooks, skills, resource, session, config
   interface/      — CLI/RPC, diff_review, ACP
 tests/

@@ -7,6 +7,7 @@ pub mod r#loop;
 pub mod model;
 pub mod output_guard;
 pub mod profile;
+pub mod project_trust;
 pub mod prompt;
 pub mod provider;
 pub mod queue;
@@ -17,5 +18,5 @@ pub mod session;
 pub mod templates;
 pub mod tools;
 pub mod traits;
+pub mod trust;
 pub mod types;
-// repeat and planner removed per c05-rebuild-core
