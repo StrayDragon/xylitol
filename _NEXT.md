@@ -1,6 +1,6 @@
 # Xylitol — Strategic Direction
 
-> Last updated: 2026-06-10 · c07-fix-bdd-scenarios: 77/77 BDD 全绿
+> Last updated: 2026-06-10 · c06/c07 archived · entering Phase 1 Core Harden
 
 ## Core Positioning
 
@@ -23,14 +23,12 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 
 ### 🔴 P0 Remaining
 
-- **LLM-based Compaction**: summarization core (stub only)
-- **Grep/Find/Bash streaming cancel**: currently tokio spawn + timeout
+- **LLM-based Compaction**: `compact_conversation()` is text-concat stub; needs LLM call + structured summarization prompt + iterative update + split-turn detection (align with pi's `generateSummary()`)
+- **Grep/Find cancel**: bash has tokio::select + kill_tree but grep/find run sync with no cancel support
 
 ### 🟡 P1 Remaining
 
-- **Config 3-tier merge + ENV interpolation**: currently global tier only
-- **Session file locking (flock)**: not implemented
-- **Session tree / fork**: stub only
+- **Session tree / fork**: `SessionManager::create()` accepts `parent_session` but no actual fork logic (copy entries up to cut point + branch_summary)
 
 ### 🟢 P2/P3
 
@@ -49,10 +47,11 @@ Xylitol focuses on being the **best agent execution engine** — capable of codi
 
 ### Phase 1 — Core Harden (current focus)
 
-- [ ] LLM-based Compaction (summarization via LLM call)
-- [ ] Streaming cancel for bash/grep/find
-- [ ] Config merge (global → project → user) with ENV interpolation
-- [ ] Session flock + fork support
+- [ ] LLM-based Compaction (summarization via LLM call) ← **c08**
+- [ ] Streaming cancel for bash/grep/find ← **c10**
+- [x] Config merge (5-layer deep merge + template + secret.env) ✅ already done
+- [ ] Session tree / fork support ← **c15**
+- [ ] Session flock (defer — pi doesn't use flock; atomic append suffices for single-user)
 
 ### Phase 2 — Beyond Coding (medium-term)
 
