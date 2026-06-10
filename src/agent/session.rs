@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::agent::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::model::ModelConfig;
+use crate::agent::output_guard;
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::queue::MessageQueue;
 use crate::agent::templates::{PromptTemplate, is_template_line, parse_template_line};
@@ -137,6 +138,8 @@ pub struct AgentSession {
     prompt_templates: Vec<PromptTemplate>,
     /// Extension-registered slash commands.
     extension_commands: Vec<SlashCommandInfo>,
+    /// Event bus for turn lifecycle notifications (lazy init).
+    event_bus: Option<crate::agent::event::AgentEventBus>,
 }
 
 impl AgentSession {
@@ -167,6 +170,7 @@ impl AgentSession {
             message_queue: MessageQueue::new(),
             prompt_templates: Vec::new(),
             extension_commands: Vec::new(),
+            event_bus: None,
         }
     }
 
@@ -360,6 +364,124 @@ impl AgentSession {
 
     pub fn model_registry(&self) -> &ModelRegistry {
         &self.model_registry
+    }
+
+    // ── OutputGuard ──────────────────────────────────────────
+
+    /// Enter print mode: take over stdout so agent/tool output is suppressed.
+    /// Returns a guard that restores stdout when dropped.
+    pub fn enter_print_mode(&self) -> output_guard::OutputGuard {
+        output_guard::take_over_stdout()
+    }
+
+    /// Leave print mode: restore stdout.
+    pub fn leave_print_mode(&self) {
+        output_guard::restore_stdout();
+    }
+
+    /// Check if stdout is currently taken over (print mode active).
+    pub fn is_in_print_mode(&self) -> bool {
+        output_guard::is_stdout_taken_over()
+    }
+
+    // ── Session lifecycle ────────────────────────────────────
+
+    /// Ensure the event bus exists (lazy init).
+    pub fn ensure_event_bus(&mut self) -> &mut crate::agent::event::AgentEventBus {
+        self.event_bus
+            .get_or_insert_with(|| crate::agent::event::AgentEventBus::new(64))
+    }
+
+    /// Subscribe to agent events.
+    pub fn subscribe_events(&self) -> Option<crate::agent::event::UnsubscribeHandle> {
+        self.event_bus.as_ref().map(|bus| bus.subscribe())
+    }
+
+    /// Emit a turn_start event.
+    pub fn begin_turn(&self, turn_index: u32) {
+        if let Some(ref bus) = self.event_bus {
+            bus.emit(crate::agent::r#loop::AgentEvent::TurnStart { turn_index });
+        }
+    }
+
+    /// Emit a turn_end event.
+    pub fn end_turn(&self, turn_index: u32) {
+        if let Some(ref bus) = self.event_bus {
+            bus.emit(crate::agent::r#loop::AgentEvent::TurnEnd { turn_index });
+        }
+    }
+
+    /// Start a new session, creating it in the session manager.
+    /// Sets the active session ID and persists model/thinking state.
+    pub async fn start_new_session(
+        &mut self,
+        name: Option<&str>,
+        parent: Option<&str>,
+    ) -> Result<(), String> {
+        let id = name
+            .map(String::from)
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+        self.session_manager
+            .create(&id, Some(&self.cwd), parent)
+            .await?;
+        self.session_id = Some(id.clone());
+
+        // Emit initial model state
+        if let Some(model) = self.current_model() {
+            let mgr = self.session_manager.clone();
+            let sid = id.clone();
+            let provider = model.config.provider_name().to_string();
+            let model_id = model.config.model.clone();
+            tokio::spawn(async move {
+                let _ = mgr.append_model_change(&sid, &provider, &model_id).await;
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Resume an existing session, loading its entries and validating CWD.
+    pub async fn resume_session(&mut self, id: &str) -> Result<(), String> {
+        // Load + validate CWD
+        let entries = self.session_manager.load_validated(id, &self.cwd).await?;
+
+        self.session_id = Some(id.to_string());
+
+        // Restore thinking level and model from session entries
+        for entry in &entries {
+            match entry {
+                crate::infra::session::SessionEntry::ThinkingLevelChange(e) => {
+                    if let Ok(level) =
+                        serde_json::from_value::<ThinkingLevel>(serde_json::json!(e.thinking_level))
+                    {
+                        self.thinking_level = level;
+                    }
+                }
+                crate::infra::session::SessionEntry::ModelChange(e) => {
+                    // Try to find and select this model
+                    let model_id = format!("{}/{}", e.provider, e.model_id);
+                    if self.model_registry.find(&model_id).is_some() {
+                        let idx = self
+                            .model_registry
+                            .list()
+                            .iter()
+                            .position(|m| m.id == model_id);
+                        if let Some(i) = idx {
+                            self.current_model_index = i;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get a reference to the event bus if initialized.
+    pub fn event_bus(&self) -> Option<&crate::agent::event::AgentEventBus> {
+        self.event_bus.as_ref()
     }
 
     // ── Compaction ───────────────────────────────────────────────

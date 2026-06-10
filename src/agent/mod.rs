@@ -5,6 +5,7 @@ pub mod error;
 pub mod event;
 pub mod r#loop;
 pub mod model;
+pub mod output_guard;
 pub mod profile;
 pub mod prompt;
 pub mod provider;

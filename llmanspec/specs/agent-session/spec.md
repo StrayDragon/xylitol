@@ -12,7 +12,7 @@ llman_spec_evidence:
 kind: llman.sdd.spec
 name: "agent-session"
 purpose: "TBD - created by archiving change c05-rebuild-core. Update purpose after archive."
-requirements[16]{req_id,title,statement}:
+requirements[19]{req_id,title,statement}:
   a1,"agent-session","System MUST provide AgentSession encapsulating: prompt→model→tools→loop with full event stream."
   a2,"turn-events","AgentSession MUST emit: turn_start, message_start, message_update (streaming), message_end events per turn."
   a3,"tool-events","AgentSession MUST emit: tool_execution_start, tool_execution_update (streaming partials), tool_execution_end events per tool call."
@@ -29,7 +29,10 @@ requirements[16]{req_id,title,statement}:
   a24,"command-dispatch","AgentSession prompt MUST intercept forward-slash prefix input dispatching to command handler or template expander before sending to LLM."
   a25,"resource-loader",System MUST provide ResourceLoader aggregating project context files from AGENTS.md and CLAUDE.md plus skills and prompts and system prompt from CLI.
   a26,"bdd-agent-v3",BDD tests for prompt templates and slash commands MUST all pass.
-scenarios[19]{req_id,id,given,when,then}:
+  as27,"event-bus-lifecycle","AgentSession MUST integrate AgentEventBus to emit turn_start and turn_end events with auto-persistence of agent messages to session storage during the turn lifecycle."
+  as28,"session-lifecycle","AgentSession MUST support start_new_session creating a fresh session with optional parent reference, and resume_session loading and validating an existing session including CWD assertion."
+  as29,"bdd-agent-v4",BDD tests for AgentSession lifecycle and event bus integration MUST all pass.
+scenarios[23]{req_id,id,given,when,then}:
   a1,run,a model and tools are configured,agent is started with a prompt,text response is streamed via events
   a2,"turn-events","agent processes a tool-calling turn",turn starts,"events are emitted in order: turn_start message_start message_update* message_end turn_end"
   a3,"tool-stream",bash tool streams output,tool_execution_start fires,tool_execution_update fires multiple times then tool_execution_end
@@ -49,4 +52,8 @@ scenarios[19]{req_id,id,given,when,then}:
   a24,"template-dispatch","user sends forward-slash review with args",prompt is intercepted,template expanded and sent to LLM
   a25,"context-files-found",AGENTS.md exists in cwd tree,load_context_files called,returns AGENTS.md content as first entry
   a26,"bdd-pass",BDD runner invoked,cargo test runs,"all agent-v3 scenarios pass"
+  as27,"turn-events-emitted",AgentSession has event bus subscriber,a turn starts and completes,turn_start and turn_end events are received by subscriber
+  as27,"auto-persist",AgentSession has enabled session,agent message is received,message is persisted to session file
+  as28,"resume-validates-cwd",a session file has cwd set to existing directory,resume_session is called,session loads successfully
+  as29,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all agent-v4 scenarios pass"
 ```
