@@ -3,6 +3,7 @@ pub mod event;
 pub mod r#loop;
 pub mod model;
 pub mod profile;
+pub mod prompt;
 pub mod provider;
 pub mod queue;
 pub mod retry;
