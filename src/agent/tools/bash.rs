@@ -17,7 +17,7 @@ use tokio::time::timeout;
 use crate::agent::error::XyToolError;
 use crate::agent::traits::{XyTool, XyToolCtx};
 
-use super::truncate::{DEFAULT_MAX_BYTES, TruncationOptions, format_size, truncate_tail};
+use super::accumulator::OutputAccumulator;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 const MAX_TIMEOUT_SECS: u64 = 120;
@@ -116,37 +116,23 @@ impl XyTool for BashTool {
         let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
 
-        // Merge stdout + stderr like pi does (stderr prepended for visibility)
-        let combined = if stderr_raw.is_empty() {
-            stdout_raw.clone()
-        } else if stdout_raw.is_empty() {
-            stderr_raw.clone()
-        } else {
-            format!("{stderr_raw}{stdout_raw}")
-        };
-
-        // Truncate tail (show end of output — errors/final results)
-        let truncation = truncate_tail(
-            &combined,
-            TruncationOptions {
-                max_lines: None,
-                max_bytes: Some(DEFAULT_MAX_BYTES),
-            },
-        );
-
-        let mut output_text = truncation.content;
-        if truncation.truncated {
-            output_text.push_str(&format!(
-                "\n[Output truncated at {}]",
-                format_size(DEFAULT_MAX_BYTES)
-            ));
+        // Feed into OutputAccumulator for rolling buffer + temp file support
+        let mut acc = OutputAccumulator::new();
+        if !stderr_raw.is_empty() {
+            acc.append(stderr_raw.as_bytes());
         }
+        if !stdout_raw.is_empty() {
+            acc.append(stdout_raw.as_bytes());
+        }
+
+        let snapshot = acc.finish();
 
         Ok(serde_json::to_string(&json!({
             "stdout": stdout_raw,
             "stderr": stderr_raw,
             "exit_code": exit_code,
-            "combined": output_text,
+            "combined": snapshot.display_content(),
+            "full_output_path": snapshot.full_output_path,
         }))
         .unwrap())
     }

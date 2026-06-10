@@ -1,3 +1,6 @@
+pub mod commands;
+pub mod defaults;
+pub mod diagnostics;
 pub mod error;
 pub mod event;
 pub mod r#loop;
@@ -6,8 +9,11 @@ pub mod profile;
 pub mod prompt;
 pub mod provider;
 pub mod queue;
+pub mod registry;
+pub mod resolver;
 pub mod retry;
 pub mod session;
+pub mod templates;
 pub mod tools;
 pub mod traits;
 pub mod types;

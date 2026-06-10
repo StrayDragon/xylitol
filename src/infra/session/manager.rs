@@ -308,6 +308,21 @@ impl SessionManager {
         Ok(entries)
     }
 
+    /// Load and validate that the session's CWD exists.
+    ///
+    /// If the CWD from the session header does not exist, tries `fallback_cwd`.
+    /// Returns an error if neither directory is accessible.
+    pub async fn load_validated(
+        &self,
+        session_id: &str,
+        fallback_cwd: &str,
+    ) -> Result<Vec<SessionEntry>, String> {
+        let entries = self.load(session_id).await?;
+        assert_session_cwd_exists(&entries, fallback_cwd)
+            .map_err(|e| format!("session validation failed: {e}"))?;
+        Ok(entries)
+    }
+
     /// Migrate v3 entries (no id/parentId) to v4.
     fn migrate_v3_to_v4(&self, entries: Vec<SessionEntry>) -> Vec<SessionEntry> {
         let mut prev_id: Option<String> = None;
@@ -748,4 +763,49 @@ impl SessionManager {
 
         Ok(())
     }
+}
+
+// ── CWD Validation ──────────────────────────────────────────────────
+
+/// Validate that the session's working directory exists.
+///
+/// Checks the CWD stored in the session header. If the directory does not
+/// exist, tries `fallback_cwd`. Returns an error if neither is accessible.
+pub fn assert_session_cwd_exists(
+    entries: &[SessionEntry],
+    fallback_cwd: &str,
+) -> Result<(), String> {
+    // Find the session header
+    let header = entries
+        .iter()
+        .find_map(|e| {
+            if let SessionEntry::Header(h) = e {
+                Some(h)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| "session has no header entry".to_string())?;
+
+    let cwd = if header.cwd.is_empty() {
+        "."
+    } else {
+        &header.cwd
+    };
+
+    let cwd_path = std::path::Path::new(cwd);
+    if cwd_path.is_dir() {
+        return Ok(());
+    }
+
+    // Try fallback
+    let fallback_path = std::path::Path::new(fallback_cwd);
+    if fallback_path.is_dir() {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Session working directory '{}' does not exist. Fallback '{}' also not found.",
+        cwd, fallback_cwd
+    ))
 }
