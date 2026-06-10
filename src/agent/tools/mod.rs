@@ -7,6 +7,7 @@ pub mod mutation;
 pub mod operations;
 pub mod patch;
 pub mod path_utils;
+pub mod process;
 pub mod read;
 pub mod truncate;
 pub mod write;

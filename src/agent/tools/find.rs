@@ -91,12 +91,25 @@ impl XyTool for FindTool {
         fd_args.push(search_dir_str.clone());
 
         let cancel = ctx.cancel.clone();
-        let output_fut = Command::new("fd").args(&fd_args).output();
+        let child = Command::new("fd")
+            .args(&fd_args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("spawn fd: {e}")))?;
+
+        let pid = child.id().unwrap_or(0);
 
         let child_result = tokio::select! {
-            _ = cancel.cancelled() => return Err(XyToolError::Aborted),
-            r = output_fut => r,
-            _ = timeout(FD_TIMEOUT, std::future::pending::<()>()) => return Err(XyToolError::Timeout(FD_TIMEOUT)),
+            _ = cancel.cancelled() => {
+                super::process::kill_tree(pid).await;
+                return Err(XyToolError::Aborted);
+            }
+            r = child.wait_with_output() => r,
+            _ = timeout(FD_TIMEOUT, std::future::pending::<()>()) => {
+                super::process::kill_tree(pid).await;
+                return Err(XyToolError::Timeout(FD_TIMEOUT));
+            }
         };
 
         let output = child_result

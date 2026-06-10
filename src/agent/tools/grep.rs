@@ -117,22 +117,29 @@ impl XyTool for GrepTool {
         rg_args.push(search_dir_str);
 
         let cancel = ctx.cancel.clone();
-        let output_fut =
-            tokio::task::spawn(async move { Command::new("rg").args(&rg_args).output().await });
+        let child = Command::new("rg")
+            .args(&rg_args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("spawn rg: {e}")))?;
+
+        let pid = child.id().unwrap_or(0);
 
         let child_result = tokio::select! {
             _ = cancel.cancelled() => {
+                super::process::kill_tree(pid).await;
                 return Err(XyToolError::Aborted);
             }
-            result = output_fut => result,
+            result = child.wait_with_output() => result,
             _ = tokio::time::sleep(RG_TIMEOUT) => {
+                super::process::kill_tree(pid).await;
                 return Err(XyToolError::Timeout(RG_TIMEOUT));
             }
         };
 
         let output = child_result
-            .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("join error: {e}")))?
-            .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("failed to run rg: {e}")))?;
+            .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("wait rg: {e}")))?;
 
         // rg exit code 0 = matches, 1 = no matches, >1 = error
         if !output.status.success() && output.status.code() != Some(1) {
