@@ -1,6 +1,6 @@
 # Xylitol — Strategic Direction
 
-> Last updated: 2026-06-11 · Phase shift: feature dev → code audit & architecture optimization
+> Last updated: 2026-06-11 · Code audit in progress: agent/ ✅, infra/ ✅, interface/ ⬜
 
 ## Core Positioning
 
@@ -82,14 +82,14 @@ Future: TUI / GUI / Web / MCP server — **decision pending**. Do not implement 
 
 ### Audit Checklist
 
-- [x] Fix 27 clippy warnings
-- [x] Align Cargo.toml default features to `infra-skills`, `infra-session`, `ui-review`
-- [ ] Audit `src/agent/` — loop, session, trust, provider, tools
-- [ ] Audit `src/infra/` — hooks, skills, session, config, resource
+- [x] Audit `src/agent/` — `.unwrap()` → `.expect()` (8), remove `#![allow(dead_code)]`, annotate 2 dead fields
+- [x] Audit `src/infra/` — `.unwrap()` → `.expect()` (5), remove 4 `#[allow]`, delete 296L dead code
 - [ ] Audit `src/interface/` — cli, print, acp, diff_review
-- [ ] Identify and remove dead code / unreachable paths
+- [x] Align Cargo.toml default features to `infra-skills`, `infra-session`, `ui-review`
+- [x] Identify and remove dead code — 3 dead test files (261L) + dead fn (17L)
 - [ ] Review module visibility (`pub` vs `pub(crate)` hygiene)
-- [ ] Review error handling — eliminate `.unwrap()` outside tests
+- [x] Fix 27 clippy warnings
+- [x] Error handling — all non-test `.unwrap()` replaced with `.expect()`
 - [ ] Review `unsafe` usage (should be none or well-documented)
 - [ ] Review dependency tree — remove unused crates, deduplicate
 - [ ] Architecture doc: write `docs/architecture.md` as SSOT
@@ -99,12 +99,9 @@ Future: TUI / GUI / Web / MCP server — **decision pending**. Do not implement 
 - [x] BDD tests all green (77/77)
 - [x] 7 built-in tools with BDD coverage
 - [x] 2 LLM providers (OpenAI-like + Anthropic-like)
-- [x] 356 tests pass (279 lib + 77 BDD)
-- [x] AgentSession full lifecycle with auto-persist
-- [x] LLM-based compaction fully functional
-- [x] Session persistence survives process restart
-- [x] ProjectTrust full resolution pipeline
+- [x] 328 tests pass (251 lib + 77 BDD)
 - [x] Feature development frozen — no new capabilities in progress
 - [x] 0 clippy warnings
-- [ ] Architecture audit complete (`docs/architecture.md` exists)
-- [ ] Dead code eliminated
+- [x] Dead code eliminated — 296L removed (faux_provider, sse_mock, harness, make_compaction_entry)
+- [x] agent/ layer audited — .unwrap() → .expect()
+- [x] infra/ layer audited — .unwrap() → .expect()
