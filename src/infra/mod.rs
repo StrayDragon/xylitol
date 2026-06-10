@@ -1,6 +1,9 @@
 pub mod config;
 pub mod hooks;
 
+// ── resource loading ──
+pub mod resource;
+
 // ── session is always-on core ──
 pub mod session;
 

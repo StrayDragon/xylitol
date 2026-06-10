@@ -13,9 +13,11 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+use crate::agent::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::model::ModelConfig;
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::queue::MessageQueue;
+use crate::agent::templates::{PromptTemplate, is_template_line, parse_template_line};
 use crate::agent::tools::ToolRegistry;
 use crate::agent::traits::XyModel;
 use crate::agent::types::{XyContent, XyPart};
@@ -131,6 +133,10 @@ pub struct AgentSession {
     prompt_opts: SystemPromptOpts,
     /// Message queue for steer/followUp.
     message_queue: MessageQueue,
+    /// Registered prompt templates for /template:name expansion.
+    prompt_templates: Vec<PromptTemplate>,
+    /// Extension-registered slash commands.
+    extension_commands: Vec<SlashCommandInfo>,
 }
 
 impl AgentSession {
@@ -159,6 +165,8 @@ impl AgentSession {
                 ..Default::default()
             },
             message_queue: MessageQueue::new(),
+            prompt_templates: Vec::new(),
+            extension_commands: Vec::new(),
         }
     }
 
@@ -238,6 +246,71 @@ impl AgentSession {
             });
         }
         Ok(())
+    }
+
+    // ── Prompt templates and commands ───────────────────────────
+
+    /// Register a prompt template.
+    pub fn register_template(&mut self, template: PromptTemplate) {
+        self.prompt_templates.push(template);
+    }
+
+    /// Register prompt templates.
+    pub fn register_templates(&mut self, templates: Vec<PromptTemplate>) {
+        self.prompt_templates.extend(templates);
+    }
+
+    /// Register an extension slash command.
+    pub fn register_command(&mut self, cmd: SlashCommandInfo) {
+        self.extension_commands.push(cmd);
+    }
+
+    /// Get all available commands (builtin + extension).
+    pub fn get_commands(&self) -> Vec<SlashCommandInfo> {
+        get_all_commands(&self.extension_commands)
+    }
+
+    /// Process user input: intercept /commands and /template:name.
+    ///
+    /// Returns `Some(expanded_text)` if the input was intercepted and should
+    /// be sent to the LLM as expanded prompt text (template expansion).
+    /// Returns `None` if the input was handled entirely (command dispatched)
+    /// or should pass through unchanged.
+    ///
+    /// The caller should check `result.is_handled()` first:
+    /// - `PromptResult::Handled` means the command was dispatched, no LLM call needed.
+    /// - `PromptResult::Expanded(text)` means the template was expanded, send `text` to LLM.
+    /// - `PromptResult::PassThrough(text)` means normal input, send `text` to LLM.
+    pub fn process_prompt(&self, input: &str) -> PromptResult {
+        let input = input.trim();
+
+        // Check for /template:name first
+        if is_template_line(input) {
+            if let Some((name, args)) = parse_template_line(input)
+                && let Some(tmpl) = self.prompt_templates.iter().find(|t| t.name == name)
+            {
+                let expanded = tmpl.expand(&args);
+                return PromptResult::Expanded(expanded);
+            }
+            return PromptResult::PassThrough(input.to_string());
+        }
+
+        // Check for /command
+        if let Some(cmd_name) = crate::agent::commands::is_slash_command(input) {
+            let all_cmds = self.get_commands();
+            if crate::agent::commands::find_command(cmd_name, &all_cmds).is_some() {
+                let args = crate::agent::commands::get_command_args(input)
+                    .unwrap_or("")
+                    .to_string();
+                return PromptResult::Handled {
+                    command: cmd_name.to_string(),
+                    args,
+                };
+            }
+        }
+
+        // Normal pass-through
+        PromptResult::PassThrough(input.to_string())
     }
 
     // ── Session management ────────────────────────────────────────
@@ -519,4 +592,17 @@ pub fn get_context_usage(token_estimate: u64, context_window: u64, threshold: f6
         percent,
         should_compact: should_compact(token_estimate, context_window, threshold),
     }
+}
+
+// ── Prompt Result ───────────────────────────────────────────────────
+
+/// Result of processing user input through the prompt interceptor.
+#[derive(Debug, Clone)]
+pub enum PromptResult {
+    /// A slash command was matched and handled. No LLM call needed.
+    Handled { command: String, args: String },
+    /// A /template:name was expanded. The caller should send the content to the LLM.
+    Expanded(String),
+    /// Normal input — pass through to LLM unchanged.
+    PassThrough(String),
 }
