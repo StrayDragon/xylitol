@@ -12,7 +12,7 @@ llman_spec_evidence:
 kind: llman.sdd.spec
 name: "tool-system"
 purpose: "TBD - created by archiving change c20-add-tools. Update purpose after archive."
-requirements[24]{req_id,title,statement}:
+requirements[27]{req_id,title,statement}:
   r1,"tool-trait","System MUST define a XyTool trait as the primary tool interface; adk-core Tool compatibility MUST be provided via adapter only."
   r2,"seven-tools","System MUST implement 7 built-in tools: read bash edit write grep find ls."
   r3,"patch-apply","System MUST apply AI-generated patches using fudiff fuzzy matching with patch crate exact fallback."
@@ -37,7 +37,10 @@ requirements[24]{req_id,title,statement}:
   t11,infra,System MUST provide TruncationResult and XxxOperations traits and FileMutationQueue and CancellationToken.
   t12,registry,ToolRegistry MUST provide builtins and get and list and filtered and wrap_with_hooks methods.
   t13,"bdd-tools",BDD tests under tests/features/ for all 7 tools MUST pass.
-scenarios[24]{req_id,id,given,when,then}:
+  t14,"output-accumulator","Tool execution MUST support OutputAccumulator: incremental buffer receiving streaming data, keeping a configurable tail window in memory, transparently spilling to temp file when total output exceeds rolling threshold, and producing a final snapshot with truncation info."
+  t15,"bash-accumulator","Bash tool MUST use OutputAccumulator for stdout and stderr streaming, replacing String concatenation. Configured with max_lines 100 and max_bytes DEFAULT_MAX_BYTES."
+  t16,"bdd-tool-v3",BDD tests for OutputAccumulator and bash accumulator integration MUST all pass.
+scenarios[28]{req_id,id,given,when,then}:
   r1,"xy-tool-impl","all 7 built-in tools implement XyTool",each tool is invoked,each returns Result<String> without any adk_core types in the call chain
   r2,happy,a tool registry with all 7 tools,each tool is invoked with valid args,each returns a successful ToolResult
   r3,happy,"an AI-generated unified diff with slight line offset",patch is applied via fudiff,fudiff successfully applies despite line offset
@@ -62,4 +65,8 @@ scenarios[24]{req_id,id,given,when,then}:
   t11,"infra-works",infra structures defined,all tools use them,behavior matches pi exactly
   t12,filter,registry has 7 tools,filtered called,only requested tools returned
   t13,"bdd-pass",BDD runner invoked,"cargo test --test bdd",all tool scenarios pass
+  t14,"small-output",accumulator receives 100 bytes,finish is called,"snapshot.content contains the 100 bytes, no temp file created"
+  t14,"overflow-temp-file",accumulator receives 2x max_bytes,finish is called,"snapshot content is truncated tail, full_output_path points to temp file with complete output"
+  t15,"bash-uses-accumulator",bash tool executes echo hello,output is captured via OutputAccumulator,result.output is hello and result.full_output_path is None for small output
+  t16,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all tool-v3 scenarios pass"
 ```
