@@ -312,7 +312,9 @@ mod tests {
     fn test_app_config_default_values() {
         let _lock = ENV_LOCK.lock().unwrap();
         let _guard = save_env(&["XYLITOL_PROJECT_DIR", "XYLITOL_CONFIG_DIR"]);
+        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
         unsafe { std::env::remove_var("XYLITOL_PROJECT_DIR") };
+        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
         unsafe { std::env::remove_var("XYLITOL_CONFIG_DIR") };
 
         let config = AppConfig::default();
@@ -336,7 +338,9 @@ mod tests {
         let dir = std::env::temp_dir().join("xylitol_test_no_files");
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::create_dir_all(&dir);
+        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
         unsafe { std::env::set_var("XYLITOL_CONFIG_DIR", &dir) };
+        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
         unsafe { std::env::set_var("XYLITOL_PROJECT_DIR", &dir) };
 
         // Without any config files, should return defaults.
@@ -351,7 +355,9 @@ mod tests {
         let root = std::env::temp_dir().join("xylitol_test_cli_override_root");
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::create_dir_all(&root);
+        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
         unsafe { std::env::set_var("XYLITOL_CONFIG_DIR", &root) };
+        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
         unsafe { std::env::set_var("XYLITOL_PROJECT_DIR", &root) };
 
         use std::io::Write;
