@@ -12,11 +12,12 @@ use tokio::sync::watch;
 
 static RETRYABLE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)overloaded|provider.?returned.?error|rate.?limit|too many requests|429|500|502|503|504|service.?unavailable|server.?error|internal.?error|network.?error|connection.?refused|connection.?lost|websocket.?closed|websocket.?error|fetch failed|upstream.?connect|reset before headers|socket hang up|ended without|stream ended before|timed? out|timeout|terminated|retry delay")
-        .unwrap()
+        .expect("static regex literal for retryable errors")
 });
 
 static NON_RETRYABLE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)usage.?limit|insufficient_quota|out of budget|quota exceeded|billing").unwrap()
+    Regex::new(r"(?i)usage.?limit|insufficient_quota|out of budget|quota exceeded|billing")
+        .expect("static regex literal for non-retryable errors")
 });
 
 /// Check if an error message indicates a retryable transient error.

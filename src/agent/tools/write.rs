@@ -102,7 +102,8 @@ impl XyTool for WriteTool {
                     format!("rename: {e}")
                 })?;
 
-                Ok(serde_json::to_string(&json!({"success": true, "path": fp})).unwrap())
+                Ok(serde_json::to_string(&json!({"success": true, "path": fp}))
+                    .expect("serde_json::to_string on Value/Map never fails"))
             }
         })
         .await

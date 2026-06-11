@@ -1071,16 +1071,15 @@ mod tests {
     #[test]
     fn test_find_cut_point_split_turn_detected() {
         let long = "x".repeat(1000); // ~250 tokens
-        let mut entries = Vec::new();
-        // User message
-        entries.push(make_user_entry("u1", &long));
-        // Assistant message (cut point here = split turn)
-        entries.push(make_assistant_entry("a1", &long));
-        entries.push(make_tool_result_entry("t1", &long));
-        entries.push(make_assistant_entry("a2", &long));
-        entries.push(make_tool_result_entry("t2", &long));
-        // Next user
-        entries.push(make_user_entry("u2", "short"));
+        // User message: u1, then assistant/tool cycles, then u2
+        let entries = vec![
+            make_user_entry("u1", &long),
+            make_assistant_entry("a1", &long),
+            make_tool_result_entry("t1", &long),
+            make_assistant_entry("a2", &long),
+            make_tool_result_entry("t2", &long),
+            make_user_entry("u2", "short"),
+        ];
 
         let result = find_cut_point(&entries, 0, entries.len(), 200);
         // Should cut at the assistant after u2 or at u2
@@ -1108,12 +1107,9 @@ mod tests {
         let result = find_cut_point(&entries, 0, entries.len(), 200);
         // Should never cut at tool_result
         let cut = &entries[result.first_kept_entry_index];
-        match cut {
-            SessionEntry::Message(msg) => {
-                let role = msg.message["role"].as_str().unwrap();
-                assert_ne!(role, "tool"); // Never cut at tool results
-            }
-            _ => {}
+        if let SessionEntry::Message(msg) = cut {
+            let role = msg.message["role"].as_str().unwrap();
+            assert_ne!(role, "tool"); // Never cut at tool results
         }
     }
 

@@ -75,7 +75,8 @@ pub fn substitute_template_args(template: &str, args: &[String]) -> String {
             match chars[i + 1] {
                 '0'..='9' => {
                     // $N — positional argument
-                    let num: usize = chars[i + 1].to_digit(10).unwrap() as usize;
+                    let num: usize =
+                        chars[i + 1].to_digit(10).expect("digit: matched '0'..='9'") as usize;
                     let arg = args
                         .get(num.wrapping_sub(1))
                         .map(|s| s.as_str())

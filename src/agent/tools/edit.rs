@@ -144,7 +144,7 @@ impl EditTool {
             "strategy": "exact-multi",
             "edit_count": edit_pairs.len(),
         }))
-        .unwrap())
+        .expect("serde_json::to_string on Value/Map never fails"))
     }
 }
 

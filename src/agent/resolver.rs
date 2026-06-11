@@ -99,7 +99,7 @@ pub fn resolve_model(
     }
 
     // Step 6: Last resort — first available
-    let first = available.first().unwrap();
+    let first = available.first().expect("non-empty: checked above");
     Ok(ResolvedModel::new((*first).clone())
         .with_thinking_level_opt(thinking_level)
         .with_warning(format!(
