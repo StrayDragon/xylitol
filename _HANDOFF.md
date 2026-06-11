@@ -1,6 +1,7 @@
-# Handoff: Feature Dev Frozen · Code Audit Phase
+# Handoff: Feature Dev Frozen · Code Audit In Progress
 
-> 最后更新：2026-06-11 · 最新 commit: `style(bdd): fix clippy warnings` · clippy 0 warnings
+> 最后更新：2026-06-11 · 最新 commit: `refactor(audit): infra layer` · clippy 0 warnings
+> 审计进度: agent/ ✅, infra/ ✅, interface/ ⬜ (下次继续)
 
 ## 当前测试状态
 
@@ -89,11 +90,11 @@ llmanspec/
 
 1. [x] 修复 27 clippy warnings
 2. [x] 对齐 Cargo.toml 默认 features → `infra-skills`, `infra-session`, `ui-review`
-3. [x] 审计 agent/ 层 — `.unwrap()` → `.expect()` + 移除 `#![allow(dead_code)]` + dead_code 字段标注
-4. [x] 审计 infra/ 层 — `.unwrap()` → `.expect()`, 移除 3 个 `#[allow]`, 删除 261L 死代码 (faux_provider, sse_mock, harness)
+3. [x] 审计 agent/ 层 — `.unwrap()` → `.expect()` (8) + 移除 `#![allow(dead_code)]` + 标注 2 个死字段
+4. [x] 审计 infra/ 层 — `.unwrap()` → `.expect()` (5), 移除 4 `#[allow]`, 删除 296L 死代码
 5. [ ] 审计 interface/ 层: cli, print, acp, diff_review
-6. [ ] 识别并移除死代码
-7. [ ] 审查 `pub` vs `pub(crate)` 可见性
-8. [ ] 审查错误处理 (`unwrap`/`expect`)
+6. [x] 识别并移除死代码 — 296L 已删
+7. [ ] 审查 `pub` vs `pub(crate)` 可见性 (288 pub, 仅 2 pub(crate))
+8. [x] 审查错误处理 — 所有非测试 `.unwrap()` → `.expect()`
 9. [ ] 审查依赖树 (去重、移除未使用)
 10. [ ] 撰写 `docs/architecture.md`
