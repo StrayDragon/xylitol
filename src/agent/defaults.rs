@@ -3,26 +3,27 @@
 //! Aligns with pi's defaults.ts. Provides canonical defaults for
 //! thinking level, max iterations, compaction threshold, and model defaults.
 
+#![allow(dead_code)]
 use crate::agent::session::ThinkingLevel;
 
 /// Default thinking level when none is explicitly configured.
-pub const DEFAULT_THINKING_LEVEL: ThinkingLevel = ThinkingLevel::Medium;
+pub(crate) const DEFAULT_THINKING_LEVEL: ThinkingLevel = ThinkingLevel::Medium;
 
 /// Default maximum ReAct loop iterations per turn.
-pub const DEFAULT_MAX_ITERATIONS: u32 = 50;
+pub(crate) const DEFAULT_MAX_ITERATIONS: u32 = 50;
 
 /// Default compaction threshold (0.0-1.0).
 ///
 /// When estimated token usage exceeds this fraction of the context window,
 /// auto-compaction is triggered.
-pub const DEFAULT_COMPACTION_THRESHOLD: f64 = 0.8;
+pub(crate) const DEFAULT_COMPACTION_THRESHOLD: f64 = 0.8;
 
 /// Default model ID per known provider.
-pub const DEFAULT_MODEL_OPENAI: &str = "gpt-4o";
-pub const DEFAULT_MODEL_ANTHROPIC: &str = "claude-sonnet-4-20250514";
+pub(crate) const DEFAULT_MODEL_OPENAI: &str = "gpt-4o";
+pub(crate) const DEFAULT_MODEL_ANTHROPIC: &str = "claude-sonnet-4-20250514";
 
 /// Get the default model ID for a provider name.
-pub fn default_model_for_provider(provider: &str) -> &'static str {
+pub(crate) fn default_model_for_provider(provider: &str) -> &'static str {
     match provider {
         "openai" => DEFAULT_MODEL_OPENAI,
         "anthropic" => DEFAULT_MODEL_ANTHROPIC,

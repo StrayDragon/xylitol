@@ -5,6 +5,7 @@
 //! boolean trust decisions. Supports directory-walk ancestor lookup and
 //! file-based locking for concurrent access safety.
 
+#![allow(dead_code)]
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{ErrorKind, Write};
@@ -14,29 +15,29 @@ use std::time::Duration;
 // ── Types ───────────────────────────────────────────────────────────
 
 /// A project trust decision: Some(true) = trusted, Some(false) = not trusted, None = no decision.
-pub type TrustDecision = Option<bool>;
+pub(crate) type TrustDecision = Option<bool>;
 
 /// An entry in the trust store.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TrustStoreEntry {
-    pub path: String,
-    pub decision: bool,
+pub(crate) struct TrustStoreEntry {
+    pub(crate) path: String,
+    pub(crate) decision: bool,
 }
 
 /// An update to apply to the trust store.
 #[derive(Debug, Clone)]
-pub struct TrustUpdate {
-    pub path: String,
-    pub decision: TrustDecision,
+pub(crate) struct TrustUpdate {
+    pub(crate) path: String,
+    pub(crate) decision: TrustDecision,
 }
 
 /// A trust option presented to the user.
 #[derive(Debug, Clone)]
-pub struct TrustOption {
-    pub label: String,
-    pub trusted: bool,
-    pub updates: Vec<TrustUpdate>,
-    pub saved_path: Option<String>,
+pub(crate) struct TrustOption {
+    pub(crate) label: String,
+    pub(crate) trusted: bool,
+    pub(crate) updates: Vec<TrustUpdate>,
+    pub(crate) saved_path: Option<String>,
 }
 
 // ── Path utilities ──────────────────────────────────────────────────
@@ -69,7 +70,7 @@ fn normalize_cwd(cwd: &str) -> String {
 /// 1. Trust this project
 /// 2. Trust parent folder (if there is one)
 /// 3. Do not trust
-pub fn get_project_trust_options(cwd: &str) -> Vec<TrustOption> {
+pub(crate) fn get_project_trust_options(cwd: &str) -> Vec<TrustOption> {
     let trust_path = normalize_cwd(cwd);
     let parent_path = get_project_trust_parent_path(&trust_path);
 
@@ -115,12 +116,12 @@ pub fn get_project_trust_options(cwd: &str) -> Vec<TrustOption> {
 }
 
 /// Get the trust path for a CWD (canonicalized).
-pub fn get_project_trust_path(cwd: &str) -> String {
+pub(crate) fn get_project_trust_path(cwd: &str) -> String {
     normalize_cwd(cwd)
 }
 
 /// Get the parent directory of the trust path, if one exists (not root).
-pub fn get_project_trust_parent_path(trust_path: &str) -> Option<String> {
+pub(crate) fn get_project_trust_parent_path(trust_path: &str) -> Option<String> {
     let p = Path::new(trust_path);
     let parent = p.parent()?;
     if parent == p {
@@ -135,7 +136,7 @@ pub fn get_project_trust_parent_path(trust_path: &str) -> Option<String> {
 const CONFIG_DIR_NAME: &str = ".xylitol";
 
 /// Check if the given directory has a `.xylitol/` config directory.
-pub fn has_project_config_dir(cwd: &str) -> bool {
+pub(crate) fn has_project_config_dir(cwd: &str) -> bool {
     let canonical = match std::fs::canonicalize(cwd) {
         Ok(p) => p,
         Err(_) => return false,
@@ -146,7 +147,7 @@ pub fn has_project_config_dir(cwd: &str) -> bool {
 /// Check if a project has trust-relevant inputs (config dir, skills dir).
 ///
 /// Walks up from CWD looking for `.xylitol/` or `.agents/skills/`.
-pub fn has_project_trust_inputs(cwd: &str) -> bool {
+pub(crate) fn has_project_trust_inputs(cwd: &str) -> bool {
     let mut current = match std::fs::canonicalize(cwd) {
         Ok(p) => p,
         Err(_) => return false,
@@ -305,7 +306,7 @@ fn with_trust_file_lock<T>(
 ///
 /// Reads/writes a `trust.json` file in the agent config directory.
 #[derive(Debug, Clone)]
-pub struct TrustStore {
+pub(crate) struct TrustStore {
     trust_path: PathBuf,
 }
 
@@ -313,7 +314,7 @@ impl TrustStore {
     /// Create a new TrustStore.
     ///
     /// `agent_dir` should be the global config directory (e.g. `~/.xylitol/`).
-    pub fn new(agent_dir: &Path) -> Self {
+    pub(crate) fn new(agent_dir: &Path) -> Self {
         Self {
             trust_path: agent_dir.join("trust.json"),
         }
@@ -323,12 +324,12 @@ impl TrustStore {
     ///
     /// Walks up the directory tree to find the nearest ancestor with a stored decision.
     /// Returns `None` if no decision is found.
-    pub fn get(&self, cwd: &str) -> TrustDecision {
+    pub(crate) fn get(&self, cwd: &str) -> TrustDecision {
         self.get_entry(cwd).map(|e| e.decision)
     }
 
     /// Get the nearest trust entry for a CWD (with path info).
-    pub fn get_entry(&self, cwd: &str) -> Option<TrustStoreEntry> {
+    pub(crate) fn get_entry(&self, cwd: &str) -> Option<TrustStoreEntry> {
         with_trust_file_lock(&self.trust_path, || {
             let data = read_trust_file(&self.trust_path)?;
             Ok(find_nearest_trust_entry(&data, cwd))
@@ -337,7 +338,7 @@ impl TrustStore {
     }
 
     /// Set a single trust decision for a CWD.
-    pub fn set(&self, cwd: &str, decision: TrustDecision) {
+    pub(crate) fn set(&self, cwd: &str, decision: TrustDecision) {
         self.set_many(&[TrustUpdate {
             path: cwd.to_string(),
             decision,
@@ -345,7 +346,7 @@ impl TrustStore {
     }
 
     /// Apply multiple trust updates atomically.
-    pub fn set_many(&self, decisions: &[TrustUpdate]) {
+    pub(crate) fn set_many(&self, decisions: &[TrustUpdate]) {
         let _ = with_trust_file_lock(&self.trust_path, || {
             let mut data = read_trust_file(&self.trust_path)?;
             for update in decisions {
@@ -364,7 +365,7 @@ impl TrustStore {
     }
 
     /// Returns the path to the trust file (for testing/debugging).
-    pub fn trust_file_path(&self) -> &Path {
+    pub(crate) fn trust_file_path(&self) -> &Path {
         &self.trust_path
     }
 }
