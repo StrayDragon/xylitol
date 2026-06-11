@@ -8,15 +8,46 @@
 保留此托管块，便于 `llman sdd update` 刷新。
 <!-- LLMANSPEC:END -->
 
-请先阅读 @AGENTS.md 获得基本认知, 然后根据以下MVP实践阶段临时覆盖为准
+请先阅读 @AGENTS.md 获得基本认知, 然后根据以下实践阶段覆盖为准
 
 > **SSOT**: 本文档是 xylitol 项目的通用规范文档。
 
 ---
 
+## 当前阶段: 代码审计与架构优化 (2026-06-11)
+
+**功能开发已冻结。** 当前重点工作: 审计现有代码、修复 clippy warnings、优化架构。
+不新增任何功能。详见 `_NEXT.md`。
+
+## 明确不做的功能 (permanent)
+
+| 类别 | 原因 |
+|------|------|
+| PackageManager 检测 (npm/pnpm/yarn/bun) | 用户自行管理依赖 |
+| OAuth / auth-storage / token 管理 | 用户自行配置 API key |
+| Extensions SDK / 插件系统 | 不实现 |
+| 额外 LLM provider (Gemini, Ollama 等) | 仅 OpenAI-like + Anthropic-like |
+| 多模态输入 (图片/文档) | 不规划 |
+| TUI / GUI / Web 界面 | 仅 CLI 单次模式; 交互形态待定 |
+
+## Provider 策略
+
+仅支持两种 API 接口:
+- **OpenAI-compatible API** — 兼容 OpenAI chat completions 的任意端点（用户自配 `base_url` + `api_key`）
+- **Anthropic-compatible API** — 兼容 Anthropic messages 的任意端点（用户自配 `base_url` + `api_key`）
+
+无内置模型列表、无自动发现、无 OAuth 流程。用户自行提供 API key 和 endpoint。
+
+## 交互形态策略
+
+当前: **CLI 单次模式** (`print` 模式)。agent 接收任务 → 执行 → 退出。
+未来的交互形态 (TUI / GUI / Web / MCP server) **待定** — 未决策前不实现。
+
+---
+
 ## 项目简介
 
-xylitol 是一个 Rust 编写的 AI coding agent，基于 [adk-rust](https://github.com/StrayDragon/adk-rust) 框架构建，参考 codex-rs 设计。单 crate + 领域分层 + feature flags 架构。
+xylitol 是一个 Rust 编写的 AI coding agent。单 crate + 领域分层架构。自主实现，从零构建。
 
 ---
 
@@ -24,51 +55,30 @@ xylitol 是一个 Rust 编写的 AI coding agent，基于 [adk-rust](https://git
 
 ```
 src/
-├── agent/       # 核心领域：agent loop, tools, config, prompts (adk-core + adk-agent + adk-runner)
-├── infra/       # 基础设施：hooks, security, repeat, lsp, skills, session, planning, dap
-└── interface/   # 用户接口：cli, print, rpc, review
+├── agent/       # 核心: agent loop, session, trust, tools, provider, registry, resolver, prompts
+├── infra/       # 基础设施: hooks, skills, session (compaction/storage/manager), config, resource
+└── interface/   # 入口: cli, print, acp, diff_review
 ```
 
 层间通过 `pub(crate)` 控制可见性，跨层访问通过 `lib.rs` re-export。
-
-### adk-rust 依赖映射
-
-| xylitol 层 | adk-rust crate | 用途 |
-|-------------|----------------|------|
-| `agent/` | `adk-core` + `adk-agent` + `adk-runner` | Agent trait, LlmAgent ReAct 循环, Runner 生命周期 |
-| `agent/model` | `adk-model` | LLM Provider（MVP 仅 OpenAI + Anthropic） |
-| `infra/session` | `adk-session` | SQLite 后端, event compaction |
-| `infra/skills` | `adk-skill` + `adk-tool` | Skill 发现+注入, MCP 客户端 (rmcp) |
-| `infra/sandbox` | `adk-sandbox` | OS 级沙箱 (Seatbelt/seccomp) |
-| `infra/eval` | `adk-eval` | MockLlm, 轨迹评分, LLM-as-judge |
-| `interface/cli` | `adk-cli` | Launcher + StreamPrinter（扩展） |
-
----
 
 ## Feature Flags
 
 命名规则：`<domain>-<capability>`
 
-### 三层策略
-
 - **核心**（始终编译）：Agent 循环, 7 内置工具, LLM Provider, Config, CLI + Print 模式
-- **内置增强**（始终编译，运行时 config 开关）：Hook 系统, 安全策略, 重复检测, Patch Apply
+- **内置增强**（始终编译，运行时 config 开关）：Hook 系统, 安全策略, 重复检测
 - **可选扩展**（Cargo feature flag）：
 
-| Feature | 层 | 重依赖 |
-|---------|-----|--------|
-| `agent-planning` | agent | — |
-| `infra-lsp` | infra | `lspz` |
-| `infra-skills` | infra | `adk-tool`（rmcp） |
-| `infra-session` | infra | `adk-session`（rusqlite） |
-| `infra-dap` | infra | Phase 2 |
+| Feature | 层 | 说明 |
+|---------|-----|------|
+| `infra-skills` | infra | MCP skills |
+| `infra-session` | infra | Session 持久化 (JSONL, tree, fork) |
+| `ui-review` | interface | Diff review 渲染 |
 
-| `ui-review` | interface | `syntect`, `similar`, `axum` |
-| `ui-rpc` | interface | — |
-| `dev-vt100` | dev | `vt100` |
-| `dev-e2e` | dev | — |
+**默认 features**: `infra-skills`, `infra-session`, `ui-review`
 
-**默认 features**: `infra-session`, `ui-review`
+> 以下 feature flags 通过 Cargo.toml 显式 opt-in（不在默认编译中）: `agent-planning`, `agent-model-lock`, `infra-lsp`, `infra-dap`, `infra-acp`, `infra-sandbox`, `infra-rtk`, `dev-vt100`, `dev-e2e`, `dev-fake-provider`
 
 ---
 
@@ -109,31 +119,7 @@ just ci       # prek run --all-files + qa
 
 - 依赖关系在 `llmanspec/changes/<id>/proposal.md` 的 YAML frontmatter（`depends_on` / `blocks`）中声明
 - 处理前检查 `depends_on`，DAG 可视化：`llman sdd graph`
-
----
-
-## MVP Change DAG
-
-```
-c05-init-skeleton ──────────────────────────────────────────────
-  ├─ c10-add-config ────────────────────────────────────────────
-  │   ├─ c15-add-cli ──────────────────────────────────────────
-  │   │   ├─ c20-add-tools ────────────────────────────────────
-  │   │   │   └─ c25-add-agent-loop ───────────────────────────
-  │   │   │     ├─ c30-add-print-mode
-  │   │   │     ├─ c35-add-repeat-detection
-  │   │   │     ├─ c55-add-planning-execution (agent-planning)
-  │   │   │     │   └─ c60-add-model-lock (Phase 2)
-  │   │   │     ├─ c70-add-session-snapshot (infra-session)
-  │   │   │     └─ c88-add-test-infra
-  │
-  │   │   └─ c87-add-rpc-mode
-  │   ├─ c40-add-hooks ── c50-add-security
-  │   ├─ c45-add-lsp-layer (infra-lsp)
-  │   ├─ c65-add-skills-mcp (infra-skills)
-  │   ├─ c75-add-diff-review (ui-review)
-  │   └─ c85-add-dap-layer (Phase 2)
-```
+- **功能开发已冻结。** 当前阶段不再新增 proposal。仅用于审计/优化相关的追踪变更。
 
 ---
 
@@ -141,4 +127,3 @@ c05-init-skeleton ────────────────────�
 
 - [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
 - [Conventional Commits](https://www.conventionalcommits.org/)
-- [adk-rust](https://github.com/StrayDragon/adk-rust)
