@@ -979,23 +979,6 @@ mod tests {
         make_message_entry(id, "tool", content)
     }
 
-    fn make_compaction_entry(id: &str, summary: &str, first_kept: &str) -> SessionEntry {
-        let now = chrono::Utc::now().to_rfc3339();
-        SessionEntry::Compaction(CompactionEntry {
-            base: EntryBase {
-                entry_type: "compaction".into(),
-                id: id.to_string(),
-                parent_id: None,
-                timestamp: now,
-            },
-            summary: summary.to_string(),
-            first_kept_entry_id: first_kept.to_string(),
-            tokens_before: 5000,
-            details: None,
-            from_hook: Some(false),
-        })
-    }
-
     // ── T2: estimate_tokens_entry ─────────────────────────────────
 
     #[test]

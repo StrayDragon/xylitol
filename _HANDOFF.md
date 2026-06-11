@@ -90,7 +90,7 @@ llmanspec/
 1. [x] 修复 27 clippy warnings
 2. [x] 对齐 Cargo.toml 默认 features → `infra-skills`, `infra-session`, `ui-review`
 3. [x] 审计 agent/ 层 — `.unwrap()` → `.expect()` + 移除 `#![allow(dead_code)]` + dead_code 字段标注
-4. [ ] 审计 infra/ 层: hooks, skills, session, config, resource
+4. [x] 审计 infra/ 层 — `.unwrap()` → `.expect()`, 移除 3 个 `#[allow]`, 删除 261L 死代码 (faux_provider, sse_mock, harness)
 5. [ ] 审计 interface/ 层: cli, print, acp, diff_review
 6. [ ] 识别并移除死代码
 7. [ ] 审查 `pub` vs `pub(crate)` 可见性
