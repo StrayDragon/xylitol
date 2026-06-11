@@ -12,12 +12,10 @@ resolver = "2"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_yaml = "0.9"
 serde_json = "1"
 schemars = { version = "1", features = ["derive"] }
 jsonschema = "0.46"
 minijinja = { version = "2", features = ["json", "builtins"] }
-dotenvy = "0.15"
 dirs = "6"
 thiserror = "2"
 tracing = "0.1"
@@ -32,7 +30,6 @@ anyhow = "1.0.102"
 regex = "1.12.3"
 rmcp = { version = "1.7.0", features = ["client", "transport-child-process", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
 zstd = "0.13.3"
-rmp-serde = "1.3.1"
 sha2 = "0.11.0"
 chrono = { version = "0.4.44", features = ["serde"] }
 hex = "0.4.3"
@@ -41,8 +38,6 @@ uuid = { version = "1.23.1", features = ["v4"] }
 # ── ui-review dependencies (optional) ──
 ratatui = { version = "0.30", optional = true, default-features = false, features = ["crossterm", "scrolling-regions", "unstable-backend-writer"] }
 crossterm = { version = "0.29", optional = true, features = ["bracketed-paste", "event-stream"] }
-vt100 = { version = "0.15", optional = true }
-shlex = { version = "1", optional = true }
 
 # ── acp dependencies (optional, infra-acp) ─────
 agent-client-protocol = { version = "0.12.1", optional = true }
@@ -51,6 +46,7 @@ reqwest = { version = "0.13.4", features = ["stream", "json"] }
 eventsource-stream = "0.2.3"
 async-stream = "0.3.6"
 tokio-util = "0.7.18"
+yaml_serde = "0.10.4"
 
 [features]
 default = [
@@ -76,7 +72,6 @@ infra-rtk = []
 ui-review = ["dep:ratatui", "dep:crossterm"]
 
 # ── development only ──────────────────────────
-dev-vt100 = ["dep:vt100"]
 dev-e2e = []
 dev-fake-provider = []
 

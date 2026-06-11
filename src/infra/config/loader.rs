@@ -29,7 +29,7 @@ pub enum LoadError {
     #[error("YAML parse error in {path}: {source}")]
     Yaml {
         path: String,
-        source: serde_yaml::Error,
+        source: yaml_serde::Error,
     },
     #[error("template {0}")]
     Template(#[from] super::template::TemplateError),
@@ -146,7 +146,7 @@ fn load_and_render(path: &Path, paths: &ConfigPaths) -> Result<Value, LoadError>
     let rendered = render(&raw, &env_vars, &secret_vars)?;
 
     // Parse YAML.
-    let value: Value = serde_yaml::from_str(&rendered).map_err(|e| LoadError::Yaml {
+    let value: Value = yaml_serde::from_str(&rendered).map_err(|e| LoadError::Yaml {
         path: path.to_string_lossy().to_string(),
         source: e,
     })?;
