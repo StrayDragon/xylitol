@@ -1,93 +1,110 @@
 # Xylitol — Strategic Direction
 
-> Last updated: 2026-06-10 · c25/c26 archived · all P0/P1 gaps closed · pi alignment ~91%
+> Last updated: 2026-06-11 · Phase shift: feature dev → code audit & architecture optimization
 
 ## Core Positioning
 
-**Xylitol = General-Purpose Agent Runtime**
+**Xylitol = Minimalist Agent Runtime**
 
-Xylitol focuses on being the **best agent execution engine** — capable of coding, research, analysis, and any task that benefits from a ReAct loop with tool calling. It does NOT aim to be an orchestration platform — that role belongs to zirvox.
+Xylitol is a lean, single-shot agent execution engine — ReAct loop + tools + CLI.
+It is NOT a platform, NOT an orchestration layer, NOT a multi-user service.
 
-## Current Status (2026-06-10)
+## Current Status (2026-06-11)
 
-### ✅ 与 pi 核心功能对齐度: ~91%
+### ✅ Core Complete — Feature Development Frozen
 
-所有 P0 和 P1 差距已关闭。TrustManager + ProjectTrust (P2) 也已完成。剩余为 P2/P3 级别。
+All planned features are implemented. No new capabilities will be added in the near term.
 
-| 层次 | 状态 |
-|------|------|
-| AgentSession + ModelRegistry + ModelResolver | ✅ 完整 |
-| 7 built-in tools + OutputAccumulator | ✅ 完整 |
-| Session persistence (JSONL, tree, fork) | ✅ 完整 |
-| Hooks (pre/post, block/modify/allow) | ✅ 完整 |
-| Compaction (LLM summary + split detection) | ✅ 完整 |
-| ResourceLoader (context, templates, skills) | ✅ 完整 |
-| PromptTemplate + SlashCommands | ✅ 完整 |
-| System prompt (dynamic build) | ✅ 完整 |
-| Defaults + Diagnostics | ✅ 完整 |
-| OutputGuard (stdout takeover/restore) | ✅ 完整 |
-| AgentSession lifecycle (event bus, auto-persist, start_new/resume) | ✅ 完整 |
-| Streaming cancel (grep/find) | ✅ 代码完成 |
-| Multi-provider (OpenAI + Anthropic) | ✅ 完整 |
-| TrustManager (trust.json + lock + ancestor walk) | ✅ 完整 |
-| ProjectTrust (resolve override → store → policy → prompt) | ✅ 完整 |
-| BDD framework (77 scenarios, 356 total tests) | ✅ 完整 |
-| **PackageManager 检测** | ⬜ P2 |
-| **OAuth / auth-storage** | ⬜ P2 |
-| **Extensions SDK** | ⬜ P3 |
+| Layer | Status |
+|-------|--------|
+| AgentSession + ModelRegistry + ModelResolver | ✅ Done |
+| 7 built-in tools + OutputAccumulator | ✅ Done |
+| Session persistence (JSONL, tree, fork) | ✅ Done |
+| Hooks (pre/post, block/modify/allow) | ✅ Done |
+| Compaction (LLM summary + split detection) | ✅ Done |
+| ResourceLoader (AGENTS.md walk-up, templates, skills) | ✅ Done |
+| PromptTemplate + SlashCommands | ✅ Done |
+| System prompt (dynamic build) | ✅ Done |
+| OutputGuard (stdout takeover/restore) | ✅ Done |
+| AgentSession lifecycle (event bus, auto-persist) | ✅ Done |
+| Streaming cancel (CancellationToken) | ✅ Done |
+| Multi-provider (OpenAI-like + Anthropic-like API) | ✅ Done |
+| TrustManager + ProjectTrust | ✅ Done |
+| BDD framework (77 scenarios, 328 total tests) | ✅ Done |
 
-### ✅ All P0/P1 Complete
+### ❌ Explicitly NOT Implementing
 
-- **OutputGuard**: `src/agent/output_guard.rs` (126L) — global atomic flag, RAII guard, write_raw_stdout, safe_println
-- **AgentSession lifecycle**: event bus lazy init, begin_turn/end_turn, start_new_session/resume_session with CWD validation, enter_print_mode/leave_print_mode
-- **ModelRegistry + ModelResolver**: ProviderConfig, exact/fuzzy/alias, thinking suffix, fallback, auth guidance
-- **ResourceLoader**: AGENTS.md/CLAUDE.md walk-up, templates, skills
-- **PromptTemplate**: $1..$N, $@, ${N:-default}
-- **SlashCommands**: 7 builtin commands, dispatch interception
-- **OutputAccumulator**: rolling buffer, temp file spill
-- **Defaults + Diagnostics**: centralized values + startup checks
-- **TrustManager**: `src/agent/trust.rs` (500L) — TrustStore (JSON persistence, file lock, ancestor-walk lookup, set/set_many atomic), trust options builder
-- **ProjectTrust**: `src/agent/project_trust.rs` (380L) — resolution pipeline (override → no-inputs-auto-trust → store → default-policy → UI-prompt → fallback-deny), DefaultProjectTrust (Always/Never/Ask)
+| Category | Reason |
+|----------|--------|
+| PackageManager detection (npm/pnpm/yarn/bun) | User manages dependencies |
+| OAuth / auth-storage / token flows | User configures API keys manually |
+| Extensions SDK / plugin system | Out of scope |
+| Additional providers (Gemini, Ollama, etc.) | OpenAI-like + Anthropic-like only |
+| Multi-modal inputs (images, documents) | Not planned |
+
+### 🤔 Interaction Mode: TBD
+
+Current: **CLI single-shot (`print` mode)**.
+Future: TUI / GUI / Web / MCP server — **decision pending**. Do not implement until finalized.
+
+## Provider Policy
+
+- **OpenAI-compatible API**: any endpoint that speaks OpenAI chat completions (user sets `base_url` + `api_key`)
+- **Anthropic-compatible API**: any endpoint that speaks Anthropic messages (user sets `base_url` + `api_key`)
+- No built-in model lists, no auth flows, no token management, no provider auto-discovery
 
 ## What Xylitol Should NOT Do
 
 - Build workflow orchestration (DAG, checkpoint, branching) — that's zirvox
-- Implement multi-user auth/authorization — xylitol is a single-user runtime
-- Add HTTP/WebSocket gateway — it gets called BY gateways
-- Build a web dashboard — TUI + IDE integration is the interface
+- Implement multi-user auth/authorization — single-user runtime
+- Add HTTP/WebSocket gateway — called BY gateways, not a gateway itself
+- Build a web dashboard — TUI or IDE integration is the interface
 - Manage multi-channel ingress (Feishu, etc.) — zirvox handles that
+- Auto-install packages or manage package.json — user responsibility
+- Manage OAuth tokens or API key storage beyond config file — user responsibility
 
-## Growth Path
+## Current Phase: Code Audit & Architecture Optimization
 
-### Phase 1 — Core Harden ✅ 100% Done
+### Phase Goals
 
-All P0/P1 items complete. Core is solid.
+1. **Audit existing code** — identify dead code, redundant abstractions, inconsistency
+2. **Fix clippy warnings** — resolve 27 pre-existing warnings
+3. **Optimize architecture** — reduce coupling, improve module boundaries, simplify where possible
+4. **Strengthen tests** — ensure test coverage quality, not just quantity
+5. **Remove dead/vestigial code** — anything related to out-of-scope features
 
-### Phase 2 — Beyond Coding (medium-term)
+### Guiding Principles
 
-- [ ] Expand tool categories (web, data, API via MCP skills)
-- [ ] Add more LLM providers (Gemini, Ollama, custom endpoints)
-- [ ] Multi-modal inputs (images, documents)
-- [ ] PackageManager detection (npm/pnpm/yarn/bun)
+- **Less is more**: remove code that isn't pulling its weight
+- **Explicit over implicit**: favor plain function calls over deep abstraction chains
+- **Test-first refactoring**: tests must pass before and after every change
+- **Small, auditable diffs**: each commit should be reviewable in isolation
 
-### Phase 3 — Agent-as-a-Service (long-term)
+### Audit Checklist
 
-- [ ] Expose agent capabilities via ACP-over-HTTP or MCP server mode
-- [ ] zirvox can discover and invoke xylitol as a "super tool"
-- [ ] Profile-based agent selection
-- [ ] Agent composition (sub-agent pattern)
+- [x] Fix 27 clippy warnings
+- [x] Align Cargo.toml default features to `infra-skills`, `infra-session`, `ui-review`
+- [ ] Audit `src/agent/` — loop, session, trust, provider, tools
+- [ ] Audit `src/infra/` — hooks, skills, session, config, resource
+- [ ] Audit `src/interface/` — cli, print, acp, diff_review
+- [ ] Identify and remove dead code / unreachable paths
+- [ ] Review module visibility (`pub` vs `pub(crate)` hygiene)
+- [ ] Review error handling — eliminate `.unwrap()` outside tests
+- [ ] Review `unsafe` usage (should be none or well-documented)
+- [ ] Review dependency tree — remove unused crates, deduplicate
+- [ ] Architecture doc: write `docs/architecture.md` as SSOT
 
-## Success Metrics
+## Success Metrics (Updated)
 
-- [x] BDD 测试全绿 (77/77)
-- [x] 7 built-in tools 全部 BDD 覆盖
-- [x] At least 2 LLM providers (OpenAI + Anthropic)
+- [x] BDD tests all green (77/77)
+- [x] 7 built-in tools with BDD coverage
+- [x] 2 LLM providers (OpenAI-like + Anthropic-like)
 - [x] 356 tests pass (279 lib + 77 BDD)
-- [x] OutputGuard: stdout takeover for print mode
 - [x] AgentSession full lifecycle with auto-persist
 - [x] LLM-based compaction fully functional
 - [x] Session persistence survives process restart
-- [x] SecurityEngine policies cover built-in tools
-- [x] ProjectTrust full resolution pipeline (override/store/policy/prompt)
-- [ ] Can be invoked by zirvox workflow (via ACP/MCP)
-- [ ] At least 3 LLM providers
+- [x] ProjectTrust full resolution pipeline
+- [x] Feature development frozen — no new capabilities in progress
+- [x] 0 clippy warnings
+- [ ] Architecture audit complete (`docs/architecture.md` exists)
+- [ ] Dead code eliminated

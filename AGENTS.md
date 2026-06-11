@@ -10,12 +10,41 @@
 
 # Repository Guidelines
 
+## Current Phase: Code Audit & Architecture Optimization (2026-06-11)
+
+**Active focus: audit existing code, fix clippy warnings, optimize architecture.**
+No new features or pi-parity work. See `_NEXT.md` for strategic direction.
+
+### Explicitly Out of Scope (permanent)
+
+| Category | Reason |
+|----------|--------|
+| PackageManager detection (npm/pnpm/yarn/bun) | Not implementing; user manages deps |
+| OAuth / auth-storage / token management | Not implementing; user configures API keys |
+| Extensions SDK / plugin system | Not implementing |
+| Additional LLM providers (Gemini, Ollama, etc.) | OpenAI-like + Anthropic-like API only |
+| TUI/GUI/Web interface | CLI single-shot only; interaction mode TBD |
+| Multi-modal inputs (images, documents) | Not planned |
+
+### Provider Policy
+
+Only two provider interfaces are supported:
+- **OpenAI-compatible API** — works with any OpenAI-compatible endpoint (user configures URL + key)
+- **Anthropic-compatible API** — works with any Anthropic-compatible endpoint (user configures URL + key)
+
+No built-in model lists, no auto-discovery, no OAuth flows. Users provide their own API keys and endpoints.
+
+### Interaction Mode Policy
+
+Current: **CLI single-shot mode only** (`print` mode). The agent receives a task, executes it, and exits.
+Future interaction mode (TUI / GUI / Web / MCP server) is **TBD** — do not implement until a decision is made.
+
 ## Project Structure & Module Organization
 
-- Source lives in `src/`. As the project grows, keep the domain layering:
-  - `src/agent/`: agent loop, tools, config, prompts
-  - `src/infra/`: hooks, security, skills, session, planning
-  - `src/interface/`: CLI/RPC and user-facing output
+- Source lives in `src/`. Domain layering:
+  - `src/agent/`: agent loop, tools, config, prompts, providers, trust
+  - `src/infra/`: hooks, security, skills, session, config
+  - `src/interface/`: CLI entry and user-facing output
 - Specs and workflow artifacts live in `llmanspec/`. General docs live in `docs/`.
 - Build output is generated under `target/` (do not commit).
 
