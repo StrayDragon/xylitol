@@ -3,9 +3,11 @@
 //! Aligns with pi's diagnostics.ts. Collects info/warning/error level
 //! diagnostics for API key checks, model validation, CWD issues, etc.
 
+#![allow(dead_code)]
+#[allow(dead_code)]
 /// Diagnostic severity level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum DiagLevel {
+pub(crate) enum DiagLevel {
     Info,
     Warning,
     Error,
@@ -23,15 +25,15 @@ impl std::fmt::Display for DiagLevel {
 
 /// A single diagnostic message.
 #[derive(Debug, Clone)]
-pub struct Diagnostic {
-    pub level: DiagLevel,
-    pub message: String,
+pub(crate) struct Diagnostic {
+    pub(crate) level: DiagLevel,
+    pub(crate) message: String,
     /// Optional source hint (e.g., "provider:openai", "session:load").
-    pub source: Option<String>,
+    pub(crate) source: Option<String>,
 }
 
 impl Diagnostic {
-    pub fn info(message: impl Into<String>) -> Self {
+    pub(crate) fn info(message: impl Into<String>) -> Self {
         Self {
             level: DiagLevel::Info,
             message: message.into(),
@@ -39,7 +41,7 @@ impl Diagnostic {
         }
     }
 
-    pub fn warning(message: impl Into<String>) -> Self {
+    pub(crate) fn warning(message: impl Into<String>) -> Self {
         Self {
             level: DiagLevel::Warning,
             message: message.into(),
@@ -47,7 +49,7 @@ impl Diagnostic {
         }
     }
 
-    pub fn error(message: impl Into<String>) -> Self {
+    pub(crate) fn error(message: impl Into<String>) -> Self {
         Self {
             level: DiagLevel::Error,
             message: message.into(),
@@ -55,13 +57,13 @@ impl Diagnostic {
         }
     }
 
-    pub fn with_source(mut self, source: impl Into<String>) -> Self {
+    pub(crate) fn with_source(mut self, source: impl Into<String>) -> Self {
         self.source = Some(source.into());
         self
     }
 
     /// Format for display.
-    pub fn display(&self) -> String {
+    pub(crate) fn display(&self) -> String {
         let source_str = self
             .source
             .as_ref()
@@ -78,67 +80,67 @@ impl Diagnostic {
 
 /// Collection of diagnostics gathered during session creation.
 #[derive(Debug, Clone, Default)]
-pub struct Diagnostics {
+pub(crate) struct Diagnostics {
     items: Vec<Diagnostic>,
 }
 
 impl Diagnostics {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self { items: Vec::new() }
     }
 
     /// Add a diagnostic.
-    pub fn add(&mut self, diag: Diagnostic) {
+    pub(crate) fn add(&mut self, diag: Diagnostic) {
         self.items.push(diag);
     }
 
     /// Convenience: add info.
-    pub fn add_info(&mut self, msg: impl Into<String>) {
+    pub(crate) fn add_info(&mut self, msg: impl Into<String>) {
         self.add(Diagnostic::info(msg));
     }
 
     /// Convenience: add warning.
-    pub fn add_warning(&mut self, msg: impl Into<String>) {
+    pub(crate) fn add_warning(&mut self, msg: impl Into<String>) {
         self.add(Diagnostic::warning(msg));
     }
 
     /// Convenience: add error.
-    pub fn add_error(&mut self, msg: impl Into<String>) {
+    pub(crate) fn add_error(&mut self, msg: impl Into<String>) {
         self.add(Diagnostic::error(msg));
     }
 
     /// Get all diagnostics.
-    pub fn all(&self) -> &[Diagnostic] {
+    pub(crate) fn all(&self) -> &[Diagnostic] {
         &self.items
     }
 
     /// Get diagnostics of a specific level.
-    pub fn of_level(&self, level: DiagLevel) -> Vec<&Diagnostic> {
+    pub(crate) fn of_level(&self, level: DiagLevel) -> Vec<&Diagnostic> {
         self.items.iter().filter(|d| d.level == level).collect()
     }
 
     /// Check if there are any errors.
-    pub fn has_errors(&self) -> bool {
+    pub(crate) fn has_errors(&self) -> bool {
         self.items.iter().any(|d| d.level == DiagLevel::Error)
     }
 
     /// Check if there are any warnings.
-    pub fn has_warnings(&self) -> bool {
+    pub(crate) fn has_warnings(&self) -> bool {
         self.items.iter().any(|d| d.level == DiagLevel::Warning)
     }
 
     /// Number of diagnostics.
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.items.len()
     }
 
     /// Whether the collection is empty.
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
 
     /// Format all diagnostics for display.
-    pub fn display_all(&self) -> String {
+    pub(crate) fn display_all(&self) -> String {
         if self.items.is_empty() {
             return String::from("no issues found");
         }

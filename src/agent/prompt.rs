@@ -7,27 +7,27 @@ use crate::agent::tools::ToolRegistry;
 
 /// Options for building the system prompt.
 #[derive(Debug, Clone, Default)]
-pub struct SystemPromptOpts {
+pub(crate) struct SystemPromptOpts {
     /// User-provided custom prompt (replaces the default).
-    pub custom_prompt: Option<String>,
+    pub(crate) custom_prompt: Option<String>,
     /// Selected tool names (for snippet/guideline inclusion).
-    pub selected_tools: Vec<String>,
+    pub(crate) selected_tools: Vec<String>,
     /// One-line tool snippets keyed by tool name.
-    pub tool_snippets: Vec<(String, String)>,
+    pub(crate) tool_snippets: Vec<(String, String)>,
     /// Additional guideline bullets.
-    pub prompt_guidelines: Vec<String>,
+    pub(crate) prompt_guidelines: Vec<String>,
     /// Text appended to the end of the prompt.
-    pub append_prompt: Option<String>,
+    pub(crate) append_prompt: Option<String>,
     /// Current working directory.
-    pub cwd: String,
+    pub(crate) cwd: String,
     /// Project-specific context files (path => content).
-    pub context_files: Vec<(String, String)>,
+    pub(crate) context_files: Vec<(String, String)>,
     /// Available skills.
-    pub skills: Vec<String>,
+    pub(crate) skills: Vec<String>,
 }
 
 /// Build a system prompt dynamically based on options.
-pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
+pub(crate) fn build_system_prompt(opts: &SystemPromptOpts) -> String {
     let now = chrono::Utc::now();
     let date = now.format("%Y-%m-%d").to_string();
 
@@ -112,7 +112,7 @@ fn default_prompt_base(selected_tools: &[String], snippets: &[(String, String)])
 }
 
 /// Collect tool snippets from a ToolRegistry.
-pub fn collect_tool_snippets(
+pub(crate) fn collect_tool_snippets(
     tool_registry: &ToolRegistry,
     selected: &[String],
 ) -> Vec<(String, String)> {

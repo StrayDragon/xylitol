@@ -10,6 +10,8 @@
 //! - Callers check `is_stdout_taken_over()` before writing to stdout
 //! - `write_raw_stdout()` always writes to stdout regardless of the flag
 
+#![allow(dead_code)]
+#[allow(dead_code)]
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -23,18 +25,18 @@ static TAKEN_OVER: AtomicBool = AtomicBool::new(false);
 /// can check `is_stdout_taken_over()`.
 ///
 /// Returns a guard that automatically restores stdout when dropped.
-pub fn take_over_stdout() -> OutputGuard {
+pub(crate) fn take_over_stdout() -> OutputGuard {
     TAKEN_OVER.store(true, Ordering::SeqCst);
     OutputGuard { restored: false }
 }
 
 /// Restore stdout — clear the takeover flag.
-pub fn restore_stdout() {
+pub(crate) fn restore_stdout() {
     TAKEN_OVER.store(false, Ordering::SeqCst);
 }
 
 /// Check whether stdout is currently taken over.
-pub fn is_stdout_taken_over() -> bool {
+pub(crate) fn is_stdout_taken_over() -> bool {
     TAKEN_OVER.load(Ordering::SeqCst)
 }
 
@@ -42,14 +44,14 @@ pub fn is_stdout_taken_over() -> bool {
 ///
 /// This is used in print mode to emit the final agent response.
 /// Always writes to `std::io::stdout()` regardless of takeover state.
-pub fn write_raw_stdout(text: &str) -> io::Result<()> {
+pub(crate) fn write_raw_stdout(text: &str) -> io::Result<()> {
     let mut stdout = io::stdout().lock();
     stdout.write_all(text.as_bytes())?;
     stdout.flush()
 }
 
 /// Write a line directly to stdout (like `println!` but bypassing takeover).
-pub fn writeln_raw_stdout(text: &str) -> io::Result<()> {
+pub(crate) fn writeln_raw_stdout(text: &str) -> io::Result<()> {
     let mut stdout = io::stdout().lock();
     stdout.write_all(text.as_bytes())?;
     stdout.write_all(b"\n")?;
@@ -59,7 +61,7 @@ pub fn writeln_raw_stdout(text: &str) -> io::Result<()> {
 /// Print to stdout only if not taken over. Otherwise write to stderr.
 ///
 /// This is the safe alternative to `println!` in agent code.
-pub fn safe_println(text: &str) {
+pub(crate) fn safe_println(text: &str) {
     if is_stdout_taken_over() {
         eprintln!("{text}");
     } else {
@@ -71,13 +73,13 @@ pub fn safe_println(text: &str) {
 ///
 /// Created by `take_over_stdout()`.
 #[must_use = "if unused the stdout takeover will be immediately undone"]
-pub struct OutputGuard {
+pub(crate) struct OutputGuard {
     restored: bool,
 }
 
 impl OutputGuard {
     /// Explicitly restore stdout without waiting for drop.
-    pub fn restore(mut self) {
+    pub(crate) fn restore(mut self) {
         self.restored = true;
         restore_stdout();
     }

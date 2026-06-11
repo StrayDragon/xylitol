@@ -4,19 +4,21 @@
 //! - Builtin command table with descriptions
 //! - Command dispatch interception in session.prompt()
 
+#![allow(dead_code)]
+#[allow(dead_code)]
 /// Information about a registered slash command.
 #[derive(Debug, Clone)]
-pub struct SlashCommandInfo {
+pub(crate) struct SlashCommandInfo {
     /// Command name (without leading `/`).
-    pub name: String,
+    pub(crate) name: String,
     /// Human-readable description.
-    pub description: String,
+    pub(crate) description: String,
     /// Optional argument hint (e.g., "<model-id>").
-    pub argument_hint: Option<String>,
+    pub(crate) argument_hint: Option<String>,
 }
 
 impl SlashCommandInfo {
-    pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
+    pub(crate) fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             description: description.into(),
@@ -24,14 +26,14 @@ impl SlashCommandInfo {
         }
     }
 
-    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
+    pub(crate) fn with_hint(mut self, hint: impl Into<String>) -> Self {
         self.argument_hint = Some(hint.into());
         self
     }
 }
 
 /// Built-in slash commands available in every session.
-pub const BUILTIN_COMMANDS: &[(&str, &str)] = &[
+pub(crate) const BUILTIN_COMMANDS: &[(&str, &str)] = &[
     ("model", "Select model"),
     ("compact", "Compact session context"),
     ("session", "Show session info"),
@@ -42,7 +44,7 @@ pub const BUILTIN_COMMANDS: &[(&str, &str)] = &[
 ];
 
 /// Get the builtin commands as `SlashCommandInfo` vec.
-pub fn builtin_commands() -> Vec<SlashCommandInfo> {
+pub(crate) fn builtin_commands() -> Vec<SlashCommandInfo> {
     BUILTIN_COMMANDS
         .iter()
         .map(|(name, desc)| SlashCommandInfo::new(*name, *desc))
@@ -50,7 +52,7 @@ pub fn builtin_commands() -> Vec<SlashCommandInfo> {
 }
 
 /// Merge builtin commands with extension-registered commands.
-pub fn get_all_commands(extensions: &[SlashCommandInfo]) -> Vec<SlashCommandInfo> {
+pub(crate) fn get_all_commands(extensions: &[SlashCommandInfo]) -> Vec<SlashCommandInfo> {
     let mut commands = builtin_commands();
     commands.extend(extensions.iter().cloned());
     commands
@@ -59,7 +61,7 @@ pub fn get_all_commands(extensions: &[SlashCommandInfo]) -> Vec<SlashCommandInfo
 /// Check if a line starts with a slash command.
 ///
 /// Returns `Some(command_name)` if detected, stripping the leading `/`.
-pub fn is_slash_command(line: &str) -> Option<&str> {
+pub(crate) fn is_slash_command(line: &str) -> Option<&str> {
     let line = line.trim();
     if !line.starts_with('/') {
         return None;
@@ -75,7 +77,7 @@ pub fn is_slash_command(line: &str) -> Option<&str> {
 }
 
 /// Get the args part of a slash command line (everything after the command name).
-pub fn get_command_args(line: &str) -> Option<&str> {
+pub(crate) fn get_command_args(line: &str) -> Option<&str> {
     let line = line.trim();
     if !line.starts_with('/') {
         return None;
@@ -88,7 +90,7 @@ pub fn get_command_args(line: &str) -> Option<&str> {
 }
 
 /// Find a slash command by name (case-insensitive).
-pub fn find_command<'a>(
+pub(crate) fn find_command<'a>(
     name: &str,
     commands: &'a [SlashCommandInfo],
 ) -> Option<&'a SlashCommandInfo> {
@@ -96,7 +98,7 @@ pub fn find_command<'a>(
 }
 
 /// Look up a builtin command by name.
-pub fn find_builtin_command(name: &str) -> Option<SlashCommandInfo> {
+pub(crate) fn find_builtin_command(name: &str) -> Option<SlashCommandInfo> {
     BUILTIN_COMMANDS
         .iter()
         .find(|(n, _)| n.eq_ignore_ascii_case(name))
