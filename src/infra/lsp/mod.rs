@@ -14,7 +14,7 @@ use serde_json::Value;
 
 /// LSP initialization strategy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum InitStrategy {
+pub(crate) enum InitStrategy {
     /// Start LSP server on first query (default).
     #[default]
     Lazy,
@@ -26,18 +26,18 @@ pub enum InitStrategy {
 
 /// Registered LSP backend descriptor.
 #[derive(Debug, Clone)]
-pub struct LspBackend {
-    pub language: String,
-    pub backend: String,
-    pub workspace_root: Option<String>,
+pub(crate) struct LspBackend {
+    pub(crate) language: String,
+    pub(crate) backend: String,
+    pub(crate) workspace_root: Option<String>,
 }
 
 /// LSP pool configuration.
 #[derive(Debug, Clone, Default)]
-pub struct LspConfig {
-    pub backends: Vec<LspBackend>,
-    pub strategy: InitStrategy,
-    pub compression: bool,
+pub(crate) struct LspConfig {
+    pub(crate) backends: Vec<LspBackend>,
+    pub(crate) strategy: InitStrategy,
+    pub(crate) compression: bool,
 }
 
 // ── LspPool ──────────────────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ pub struct LspConfig {
 ///
 /// Manages LSP server subprocesses via `AgentHandle`. Sessions are created
 /// according to `InitStrategy` and shut down when the pool is dropped.
-pub struct LspPool {
+pub(crate) struct LspPool {
     handles: HashMap<String, AgentHandle>,
     backends: HashMap<String, LspBackend>,
     strategy: InitStrategy,
@@ -66,7 +66,7 @@ impl std::fmt::Debug for LspPool {
 
 impl LspPool {
     /// Create a new empty pool. Call [`init`](Self::init) before making queries.
-    pub fn new(config: LspConfig) -> Self {
+    pub(crate) fn new(config: LspConfig) -> Self {
         let backends = config
             .backends
             .into_iter()
@@ -361,7 +361,7 @@ impl LspPool {
 
     /// Insert a pre-constructed [`AgentHandle`] (for testing).
     #[cfg(test)]
-    pub fn insert_handle(&mut self, language: &str, handle: AgentHandle) {
+    pub(crate) fn insert_handle(&mut self, language: &str, handle: AgentHandle) {
         // Also ensure a backend entry exists so pool invariants hold.
         self.backends.entry(language.to_owned()).or_insert_with(|| {
             tracing::warn!(language, "insert_handle without registered backend");
@@ -375,66 +375,66 @@ impl LspPool {
     }
 
     /// Number of active (started) LSP sessions.
-    pub fn num_active(&self) -> usize {
+    pub(crate) fn num_active(&self) -> usize {
         self.handles.len()
     }
 
     /// Number of registered backends.
-    pub fn num_registered(&self) -> usize {
+    pub(crate) fn num_registered(&self) -> usize {
         self.backends.len()
     }
 
     /// List languages with registered backends.
-    pub fn registered_languages(&self) -> Vec<&str> {
+    pub(crate) fn registered_languages(&self) -> Vec<&str> {
         self.backends.keys().map(|s| s.as_str()).collect()
     }
 
     /// List languages with active sessions.
-    pub fn active_languages(&self) -> Vec<&str> {
+    pub(crate) fn active_languages(&self) -> Vec<&str> {
         self.handles.keys().map(|s| s.as_str()).collect()
     }
 
     // ── Compression helpers — 2 ────────────────────────────────────────────
 
     /// Compress standard LSP output into compact JSON format.
-    pub fn compress(raw_json: &str) -> Result<String, anyhow::Error> {
+    pub(crate) fn compress(raw_json: &str) -> Result<String, anyhow::Error> {
         AgentHandle::compress(raw_json)
     }
 
     /// Expand compact JSON back to standard LSP format.
-    pub fn inflate(compressed_json: &str) -> Result<String, anyhow::Error> {
+    pub(crate) fn inflate(compressed_json: &str) -> Result<String, anyhow::Error> {
         AgentHandle::inflate(compressed_json)
     }
 
     /// Convert compact diagnostics JSON to TOON text format.
     ///
     /// The input should be output from a `get_diagnostics` call with compression enabled.
-    pub fn diagnostics_to_toon(compact_json: &str) -> Result<String, anyhow::Error> {
+    pub(crate) fn diagnostics_to_toon(compact_json: &str) -> Result<String, anyhow::Error> {
         let value: Value = serde_json::from_str(compact_json)?;
         let diags: lspz::codec::compact::CompactDiagnostics = serde_json::from_value(value)?;
         Ok(lspz::codec::toon::diagnostics_to_toon(&diags))
     }
 
     /// Convert compact completions JSON to TOON text format.
-    pub fn completions_to_toon(compact_json: &str) -> Result<String, anyhow::Error> {
+    pub(crate) fn completions_to_toon(compact_json: &str) -> Result<String, anyhow::Error> {
         let value: Value = serde_json::from_str(compact_json)?;
         Ok(lspz::codec::toon::completions_to_toon(&value)?)
     }
 
     /// Convert compact hover JSON to TOON text format.
-    pub fn hover_to_toon(compact_json: &str) -> Result<String, anyhow::Error> {
+    pub(crate) fn hover_to_toon(compact_json: &str) -> Result<String, anyhow::Error> {
         let value: Value = serde_json::from_str(compact_json)?;
         Ok(lspz::codec::toon::hover_to_toon(&value)?)
     }
 
     /// Convert compact symbol JSON to TOON text format.
-    pub fn symbols_to_toon(compact_json: &str) -> Result<String, anyhow::Error> {
+    pub(crate) fn symbols_to_toon(compact_json: &str) -> Result<String, anyhow::Error> {
         let value: Value = serde_json::from_str(compact_json)?;
         Ok(lspz::codec::toon::symbols_to_toon(&value)?)
     }
 
     /// Convert compact location JSON to TOON text format.
-    pub fn locations_to_toon(compact_json: &str) -> Result<String, anyhow::Error> {
+    pub(crate) fn locations_to_toon(compact_json: &str) -> Result<String, anyhow::Error> {
         let value: Value = serde_json::from_str(compact_json)?;
         Ok(lspz::codec::toon::locations_to_toon(&value)?)
     }

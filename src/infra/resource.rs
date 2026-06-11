@@ -5,6 +5,7 @@
 //! - Prompt templates from global (~/.xylitol/prompts/) and project (.xylitol/prompts/)
 //! - Skills via existing SkillManager integration
 
+#![allow(dead_code)]
 use std::path::{Path, PathBuf};
 
 use crate::infra::config::types::AppConfig;
@@ -12,21 +13,21 @@ use crate::infra::skills::SkillManager;
 
 /// Result of loading prompt templates.
 #[derive(Debug, Clone)]
-pub struct PromptTemplate {
+pub(crate) struct PromptTemplate {
     /// Template name (filename without .md extension).
-    pub name: String,
+    pub(crate) name: String,
     /// Template content (markdown body, after frontmatter).
-    pub content: String,
+    pub(crate) content: String,
     /// Optional description from frontmatter.
-    pub description: Option<String>,
+    pub(crate) description: Option<String>,
     /// Optional argument hint from frontmatter.
-    pub argument_hint: Option<String>,
+    pub(crate) argument_hint: Option<String>,
     /// Source path for display.
-    pub source_path: PathBuf,
+    pub(crate) source_path: PathBuf,
 }
 
 /// Aggregates all resources needed by the agent session.
-pub struct ResourceLoader {
+pub(crate) struct ResourceLoader {
     /// Current working directory.
     cwd: PathBuf,
     /// Global agent directory (~/.xylitol/).
@@ -38,12 +39,12 @@ impl ResourceLoader {
     ///
     /// `agent_dir` is typically `~/.xylitol/`.
     /// `cwd` is the project root directory.
-    pub fn new(cwd: PathBuf, agent_dir: PathBuf) -> Self {
+    pub(crate) fn new(cwd: PathBuf, agent_dir: PathBuf) -> Self {
         Self { cwd, agent_dir }
     }
 
     /// Default agent directory: ~/.xylitol/
-    pub fn default_agent_dir() -> PathBuf {
+    pub(crate) fn default_agent_dir() -> PathBuf {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".xylitol")
@@ -57,7 +58,7 @@ impl ResourceLoader {
     /// The first found file of each name is used (closest to cwd).
     ///
     /// Returns `Vec<(file_name, file_content)>`.
-    pub fn load_context_files(&self) -> Vec<(String, String)> {
+    pub(crate) fn load_context_files(&self) -> Vec<(String, String)> {
         let candidate_names = ["AGENTS.md", "CLAUDE.md"];
         let mut found: Vec<(String, String)> = Vec::new();
 
@@ -104,7 +105,7 @@ impl ResourceLoader {
     /// 2. `<cwd>/.xylitol/prompts/*.md` (project)
     ///
     /// Project templates override global templates with the same name.
-    pub fn load_prompt_templates(&self) -> Vec<PromptTemplate> {
+    pub(crate) fn load_prompt_templates(&self) -> Vec<PromptTemplate> {
         let mut templates: Vec<PromptTemplate> = Vec::new();
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
@@ -168,7 +169,7 @@ impl ResourceLoader {
     ///
     /// This is a convenience wrapper that creates a SkillManager,
     /// loads from config, and returns the manager.
-    pub fn load_skills(&self, config: Option<&AppConfig>) -> SkillManager {
+    pub(crate) fn load_skills(&self, config: Option<&AppConfig>) -> SkillManager {
         let mut manager = SkillManager::new();
         if let Some(cfg) = config {
             manager.load(cfg);
@@ -179,7 +180,7 @@ impl ResourceLoader {
     // ── All resources ───────────────────────────────────────────────
 
     /// Load all resources and return them as a Resources struct.
-    pub fn load_all(&self, config: Option<&AppConfig>) -> Resources {
+    pub(crate) fn load_all(&self, config: Option<&AppConfig>) -> Resources {
         let context_files = self.load_context_files();
         let templates = self.load_prompt_templates();
         let skills = self.load_skills(config);
@@ -193,10 +194,10 @@ impl ResourceLoader {
 }
 
 /// All loaded resources bundled together.
-pub struct Resources {
-    pub context_files: Vec<(String, String)>,
-    pub templates: Vec<PromptTemplate>,
-    pub skills: SkillManager,
+pub(crate) struct Resources {
+    pub(crate) context_files: Vec<(String, String)>,
+    pub(crate) templates: Vec<PromptTemplate>,
+    pub(crate) skills: SkillManager,
 }
 
 // ── Frontmatter Parsing ─────────────────────────────────────────────

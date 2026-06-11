@@ -4,27 +4,28 @@
 //! checks file permissions, and returns key-value pairs for template
 //! rendering's `{{ secret.* }}` namespace.
 
+#![allow(dead_code)]
 use std::collections::HashMap;
 use std::path::Path;
 
 /// Errors from secret loading.
 #[derive(Debug, thiserror::Error)]
-pub enum SecretError {
+pub(crate) enum SecretError {
     #[error("permission warning: {path} is readable by group/others. Consider: chmod 600 {path}")]
     Permissions { path: String },
 }
 
 /// Result from loading a secret.env file.
-pub struct SecretResult {
-    pub vars: HashMap<String, String>,
-    pub warnings: Vec<SecretError>,
+pub(crate) struct SecretResult {
+    pub(crate) vars: HashMap<String, String>,
+    pub(crate) warnings: Vec<SecretError>,
 }
 
 /// Load and parse a `secret.env` file at the given path.
 ///
 /// Returns the parsed key-value pairs plus any permission warnings.
 /// If the file does not exist, returns an empty map (no error).
-pub fn load_secret_env(path: &Path) -> SecretResult {
+pub(crate) fn load_secret_env(path: &Path) -> SecretResult {
     let mut warnings = Vec::new();
     let vars = if path.exists() {
         // Check file permissions (Unix only).

@@ -2,13 +2,14 @@
 //!
 //! Supports `{{ env.KEY }}`, `{{ secret.KEY }}`, and `| default("val")`.
 
+#![allow(dead_code)]
 use std::collections::HashMap;
 
 use minijinja::UndefinedBehavior;
 
 /// Errors that can occur during template rendering.
 #[derive(Debug, thiserror::Error)]
-pub enum TemplateError {
+pub(crate) enum TemplateError {
     #[error("template error in config file: {detail}")]
     Parse { detail: String },
     #[error(
@@ -22,7 +23,7 @@ pub enum TemplateError {
 ///
 /// `env_vars` and `secret_vars` provide the `{{ env.* }}` and `{{ secret.* }}`
 /// namespaces respectively.
-pub fn render(
+pub(crate) fn render(
     source: &str,
     env_vars: &HashMap<String, String>,
     secret_vars: &HashMap<String, String>,

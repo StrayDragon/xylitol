@@ -9,7 +9,7 @@
 //! - Atomic appends with file locking
 
 pub mod compaction;
-pub mod manager;
+pub(crate) mod manager;
 pub mod types;
 
 pub use manager::SessionManager;

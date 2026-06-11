@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
@@ -8,7 +9,7 @@ use super::config::StorageConfig;
 use super::types::{Snapshot, SnapshotId};
 
 /// Persistent snapshot storage backed by adk-session SQLite.
-pub struct SnapshotStore {
+pub(crate) struct SnapshotStore {
     config: StorageConfig,
     /// In-memory index keyed by snapshot ID (adk-session provides the actual
     /// durable backend; this struct is a convenience wrapper).
@@ -16,7 +17,7 @@ pub struct SnapshotStore {
 }
 
 impl SnapshotStore {
-    pub fn new(config: StorageConfig) -> Self {
+    pub(crate) fn new(config: StorageConfig) -> Self {
         Self {
             config,
             snapshots: HashMap::new(),
@@ -28,7 +29,7 @@ impl SnapshotStore {
     /// Format: JSON → optional Zstd compression.
     /// JSON is used over MessagePack for broad serde compatibility; zstd
     /// provides the space savings.
-    pub fn encode(&self, snapshot: &Snapshot) -> Result<Vec<u8>> {
+    pub(crate) fn encode(&self, snapshot: &Snapshot) -> Result<Vec<u8>> {
         let encoded = serde_json::to_vec(snapshot).context("json encode failed")?;
         if self.config.compress {
             let compressed = zstd::encode_all(std::io::Cursor::new(encoded), 3)
@@ -40,7 +41,7 @@ impl SnapshotStore {
     }
 
     /// Deserialise a snapshot from its wire format.
-    pub fn decode(&self, blob: &[u8]) -> Result<Snapshot> {
+    pub(crate) fn decode(&self, blob: &[u8]) -> Result<Snapshot> {
         let decompressed = if self.config.compress {
             zstd::decode_all(std::io::Cursor::new(blob)).context("zstd decompression failed")?
         } else {
@@ -51,14 +52,14 @@ impl SnapshotStore {
 
     /// Persist a snapshot.
     #[instrument(skip(self, snapshot))]
-    pub fn store(&mut self, snapshot: &Snapshot) -> Result<()> {
+    pub(crate) fn store(&mut self, snapshot: &Snapshot) -> Result<()> {
         let blob = self.encode(snapshot)?;
         self.snapshots.insert(snapshot.id.clone(), blob);
         Ok(())
     }
 
     /// Load a snapshot by ID.
-    pub fn load(&self, id: &str) -> Result<Snapshot> {
+    pub(crate) fn load(&self, id: &str) -> Result<Snapshot> {
         let blob = self
             .snapshots
             .get(id)
@@ -67,7 +68,7 @@ impl SnapshotStore {
     }
 
     /// Delete a snapshot by ID.
-    pub fn delete(&mut self, id: &str) -> Result<()> {
+    pub(crate) fn delete(&mut self, id: &str) -> Result<()> {
         self.snapshots
             .remove(id)
             .with_context(|| format!("snapshot {id} not found"))?;
@@ -75,22 +76,22 @@ impl SnapshotStore {
     }
 
     /// List all stored snapshot IDs.
-    pub fn list_ids(&self) -> Vec<SnapshotId> {
+    pub(crate) fn list_ids(&self) -> Vec<SnapshotId> {
         self.snapshots.keys().cloned().collect()
     }
 
     /// Check whether a snapshot exists.
-    pub fn exists(&self, id: &str) -> bool {
+    pub(crate) fn exists(&self, id: &str) -> bool {
         self.snapshots.contains_key(id)
     }
 
     /// Number of stored snapshots.
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.snapshots.len()
     }
 
     /// Whether the store is empty.
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.snapshots.is_empty()
     }
 
@@ -98,7 +99,7 @@ impl SnapshotStore {
     ///
     /// Only hashes files matching the given glob patterns (excludes common
     /// generated directories like `target/`, `node_modules/`).
-    pub fn compute_project_hash(paths: &[String]) -> String {
+    pub(crate) fn compute_project_hash(paths: &[String]) -> String {
         let mut hasher = Sha256::new();
         for path in paths {
             hasher.update(path.as_bytes());

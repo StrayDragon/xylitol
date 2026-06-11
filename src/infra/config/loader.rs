@@ -7,6 +7,7 @@
 //! 4. Project local: `<project>/.xylitol/config.local.yaml`
 //! 5. CLI override:  `--config <path>` (single file, no local overlay)
 
+#![allow(dead_code)]
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -20,7 +21,7 @@ use super::validate::{ValidationError, validate_config};
 
 /// Errors from config loading.
 #[derive(Debug, thiserror::Error)]
-pub enum LoadError {
+pub(crate) enum LoadError {
     #[error("I/O error reading {path}: {source}")]
     Io {
         path: String,
@@ -44,7 +45,7 @@ pub enum LoadError {
 /// Load configuration from all layers, returning the merged `AppConfig`.
 ///
 /// `cli_config` — optional path to a CLI `--config` YAML file (highest priority).
-pub fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, LoadError> {
+pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, LoadError> {
     let paths = ConfigPaths::discover();
 
     // Load all config levels into serde_json::Value, rendering templates.
@@ -160,7 +161,7 @@ fn load_and_render(path: &Path, paths: &ConfigPaths) -> Result<Value, LoadError>
 /// - `Value::Object`: recursive merge, latter keys override earlier.
 /// - `Value::Array`: overlay replaces base (default).
 /// - Scalar values: overlay replaces base.
-pub fn deep_merge(base: &mut Value, overlay: Value) {
+pub(crate) fn deep_merge(base: &mut Value, overlay: Value) {
     match (base, overlay) {
         (base @ &mut Value::Object(_), Value::Object(map)) => {
             let base_map = base
@@ -189,7 +190,7 @@ impl AppConfig {
     /// Checks:
     /// - Model ID cross-references within `models` entries.
     /// - Provider constraints (MVP: only OpenAI / Anthropic).
-    pub fn validate_business_rules(&self) -> Result<(), ValidationError> {
+    pub(crate) fn validate_business_rules(&self) -> Result<(), ValidationError> {
         // Check that model entries reference valid models.
         for (alias, entry) in &self.model.models {
             if let Some(ref fallback) = entry.fallback
