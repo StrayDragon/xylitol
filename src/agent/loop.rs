@@ -340,6 +340,8 @@ use crate::agent::tools::ToolRegistry;
 pub struct AgentEventStream {
     inner: Pin<Box<dyn Stream<Item = AgentEvent> + Send>>,
     done: bool,
+    /// Track turn number (set externally via event wrapping).
+    #[allow(dead_code)]
     turn_index: u32,
 }
 
@@ -394,7 +396,7 @@ impl Stream for AgentEventStream {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::provider::MockXyModel;
+
     use crate::agent::session::{ModelMeta, ModelRegistry};
     use crate::infra::session::SessionManager;
 
@@ -457,7 +459,7 @@ mod tests {
         );
 
         let mut loop_runner = AgentLoop::new(session);
-        let stream = loop_runner.run("hello", "test-session").await;
+        let _stream = loop_runner.run("hello", "test-session").await;
         // Stream should emit either error (no API key) or events
         // Just verify the stream compiles and produces items
     }

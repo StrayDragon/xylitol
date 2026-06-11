@@ -134,7 +134,7 @@ impl XyTool for BashTool {
             "combined": snapshot.display_content(),
             "full_output_path": snapshot.full_output_path,
         }))
-        .unwrap())
+        .expect("serde_json::to_string on Value/Map never fails"))
     }
 }
 

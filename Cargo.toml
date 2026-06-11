@@ -54,15 +54,8 @@ tokio-util = "0.7.18"
 
 [features]
 default = [
-    "agent-planning",
-    "agent-model-lock",
-    "infra-lsp",
-    "infra-dap",
-    "infra-acp",
     "infra-skills",
     "infra-session",
-    "infra-sandbox",
-    "infra-rtk",
     "ui-review",
 ]
 

@@ -158,10 +158,9 @@ fn check_or_contains(haystack: &str, or_clause: &str) -> bool {
 }
 
 /// Borrow result as &str — callers must keep the Ref alive
-
 fn make_agent(agent: &AgentState) -> AgentLoop {
     let dir = tempfile::tempdir().unwrap();
-    let mgr = SessionManager::new(dir.into_path());
+    let mgr = SessionManager::new(dir.keep());
     let session = AgentSession::new(
         agent.registry.borrow().clone(),
         ToolRegistry::builtins(),
@@ -276,8 +275,7 @@ fn _g_file_n_lines_text(ws: &Workspace, path: String, count: u32, text: String) 
     if let Some(p) = std::path::Path::new(&full).parent() {
         std::fs::create_dir_all(p).ok();
     }
-    let c = std::iter::repeat(text)
-        .take(count as usize)
+    let c = std::iter::repeat_n(text, count as usize)
         .collect::<Vec<_>>()
         .join("\n");
     std::fs::write(&full, c).ok();
@@ -324,15 +322,14 @@ fn _g_file_in_root(ws: &Workspace, path: String) {
 #[given("存在会话 {id:string}")]
 async fn _g_session_exists(sess: &SessionStore, id: String) {
     sess.ensure_mgr();
-    let mgr = sess.mgr.borrow();
-    let _ = mgr.as_ref().unwrap().create(&id, Some("."), None).await;
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let _ = mgr.create(&id, Some("."), None).await;
 }
 
 #[given("存在会话 {id:string} 包含 {count:u32} 条记录")]
 async fn _g_session_with_n(sess: &SessionStore, id: String, count: u32) {
     sess.ensure_mgr();
-    let mgr = sess.mgr.borrow();
-    let mgr = mgr.as_ref().unwrap();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let _ = mgr.create(&id, Some("."), None).await;
     for i in 0..count {
         let e = SessionEntry::Message(MessageEntry {
@@ -351,23 +348,16 @@ async fn _g_session_with_n(sess: &SessionStore, id: String, count: u32) {
 #[when("创建一个新会话 {id:string}")]
 async fn _w_session_create(sess: &SessionStore, id: String) {
     sess.ensure_mgr();
-    sess.mgr
-        .borrow()
-        .as_ref()
-        .unwrap()
-        .create(&id, Some("."), None)
-        .await
-        .unwrap();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    mgr.create(&id, Some("."), None).await.unwrap();
     sess.current_id.replace(Some(id));
 }
 
 #[when("向会话追加一条消息 {msg:string}")]
 async fn _w_session_append(sess: &SessionStore, msg: String) {
     sess.ensure_mgr();
-    let sid = sess.current_id.borrow();
-    let sid = sid.as_ref().unwrap().clone();
-    let mgr = sess.mgr.borrow();
-    let mgr = mgr.as_ref().unwrap();
+    let sid = sess.current_id.borrow().clone().unwrap();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let e = SessionEntry::Message(MessageEntry {
         base: EntryBase {
             entry_type: "message".into(),
@@ -383,7 +373,8 @@ async fn _w_session_append(sess: &SessionStore, msg: String) {
 #[when("加载会话 {id:string}")]
 async fn _w_session_load(sess: &SessionStore, id: String) {
     sess.ensure_mgr();
-    let entries = sess.mgr.borrow().as_ref().unwrap().load(&id).await.unwrap();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(&id).await.unwrap();
     sess.entries.replace(entries);
 }
 
@@ -437,11 +428,13 @@ fn _g_agent_tools_ready(_agent: &AgentState) {}
 async fn _w_agent_start(agent: &AgentState, prompt: String) {
     let mut runner = make_agent(agent);
     let mut stream = runner.run(&prompt, &uuid::Uuid::new_v4().to_string()).await;
+    let mut local_events = Vec::new();
+    while let Some(e) = stream.next().await {
+        local_events.push(e);
+    }
     let mut events = agent.events.borrow_mut();
     events.clear();
-    while let Some(e) = stream.next().await {
-        events.push(e);
-    }
+    events.extend(local_events);
 }
 
 #[when("启动 agent 会话")]
@@ -526,7 +519,7 @@ fn _g_agent_no_thinking(agent: &AgentState) {
 fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
     let _ = verb;
     let dir = tempfile::tempdir().unwrap();
-    let mgr = SessionManager::new(dir.into_path());
+    let mgr = SessionManager::new(dir.keep());
     let mut session = AgentSession::new(
         agent.registry.borrow().clone(),
         ToolRegistry::builtins(),
@@ -542,7 +535,7 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         "low" => ThinkingLevel::Low,
         _ => ThinkingLevel::Off,
     };
-    let _ = session.set_thinking_level(tl);
+    session.set_thinking_level(tl);
     agent.last_result.replace(Some(Ok(format!(
         "level:{}",
         session.thinking_level().as_str()
@@ -615,7 +608,7 @@ fn _g_agent_current_model(_agent: &AgentState, model: String) {
 #[when("执行 cycleForward")]
 fn _w_agent_cycle_forward(agent: &AgentState) {
     let dir = tempfile::tempdir().unwrap();
-    let mgr = SessionManager::new(dir.into_path());
+    let mgr = SessionManager::new(dir.keep());
     let mut session = AgentSession::new(
         agent.registry.borrow().clone(),
         ToolRegistry::builtins(),
@@ -692,8 +685,7 @@ fn _t_agent_percent(agent: &AgentState, val: u32) {
 #[given("一个 turn 完成")]
 async fn _g_agent_turn_done(sess: &SessionStore) {
     sess.ensure_mgr();
-    let mgr_ref = sess.mgr.borrow();
-    let mgr = mgr_ref.as_ref().unwrap();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let sid = "auto-save-test";
     let _ = mgr.create(sid, Some("."), None).await;
     let e = SessionEntry::Message(MessageEntry {
@@ -706,21 +698,14 @@ async fn _g_agent_turn_done(sess: &SessionStore) {
         message: serde_json::json!({"role":"assistant","content":"done"}),
     });
     let _ = mgr.append(sid, &e).await;
-    drop(mgr_ref);
     sess.current_id.replace(Some(sid.to_string()));
 }
 
 #[when("加载会话文件")]
 async fn _w_agent_load_session_file(sess: &SessionStore) {
     let sid = sess.current_id.borrow().clone().unwrap();
-    let entries = sess
-        .mgr
-        .borrow()
-        .as_ref()
-        .unwrap()
-        .load(&sid)
-        .await
-        .unwrap_or_default();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(&sid).await.unwrap_or_default();
     sess.entries.replace(entries);
 }
 
@@ -1223,11 +1208,11 @@ fn _t_stdout_has(ws: &Workspace, text: String) {
     let r = result_ok_str(&ws.last_result);
     let t = strip_quotes(&text);
     // Parse JSON to extract stdout field; fall back to contains on raw string
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r) {
-        if let Some(s) = v["stdout"].as_str() {
-            assert!(s.contains(&t), "stdout doesn't contain '{t}', stdout: {s}");
-            return;
-        }
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r)
+        && let Some(s) = v["stdout"].as_str()
+    {
+        assert!(s.contains(&t), "stdout doesn't contain '{t}', stdout: {s}");
+        return;
     }
     assert!(r.contains(&t), "result doesn't contain '{t}', result: {r}");
 }
@@ -1237,14 +1222,14 @@ fn _t_combined_has(ws: &Workspace, text: String) {
     let r = result_ok_str(&ws.last_result);
     let t = strip_quotes(&text);
     // Parse JSON to extract combined field; fall back to contains on raw string
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r) {
-        if let Some(s) = v["combined"].as_str() {
-            assert!(
-                s.contains(&t),
-                "combined doesn't contain '{t}', combined: {s}"
-            );
-            return;
-        }
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r)
+        && let Some(s) = v["combined"].as_str()
+    {
+        assert!(
+            s.contains(&t),
+            "combined doesn't contain '{t}', combined: {s}"
+        );
+        return;
     }
     assert!(r.contains(&t), "result doesn't contain '{t}', result: {r}");
 }
@@ -1276,11 +1261,11 @@ fn _t_read_content(ws: &Workspace, text: String) {
     let r = result_ok_str(&ws.last_result);
     let t = strip_quotes(&text);
     // Check JSON content field first
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r) {
-        if let Some(s) = v["content"].as_str() {
-            assert_eq!(s, t, "content mismatch");
-            return;
-        }
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r)
+        && let Some(s) = v["content"].as_str()
+    {
+        assert_eq!(s, t, "content mismatch");
+        return;
     }
     assert!(r.contains(&t));
 }
@@ -1336,7 +1321,7 @@ fn _t_ls_sorted(ws: &Workspace) {
         .filter(|l| !l.is_empty() && !l.starts_with('['))
         .collect();
     let mut sorted = lines.clone();
-    sorted.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    sorted.sort_by_key(|a| a.to_lowercase());
     assert_eq!(lines, sorted);
 }
 
@@ -1393,7 +1378,7 @@ fn _t_content_empty(ws: &Workspace) {
     let r = result_ok_str(&ws.last_result);
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r) {
         assert!(
-            v["content"].as_str().map_or(false, |s| s.is_empty()),
+            v["content"].as_str().is_some_and(|s| s.is_empty()),
             "content not empty"
         );
     }
@@ -1519,14 +1504,14 @@ async fn _w_find_limit(ws: &Workspace, pattern: String, path: String, limit: u32
 #[when("调用ls 不传路径参数")]
 async fn _w_ls_no_path(ws: &Workspace) {
     // Use the workspace root as the path, not process CWD
-    let root = ws.dir.borrow();
-    let root_path = root
-        .as_ref()
-        .expect("workspace not initialized")
-        .path()
-        .to_string_lossy()
-        .to_string();
-    drop(root);
+    let root_path = {
+        let root = ws.dir.borrow();
+        root.as_ref()
+            .expect("workspace not initialized")
+            .path()
+            .to_string_lossy()
+            .to_string()
+    };
     tool_call!(
         LsTool,
         XyToolCtx::new("test"),
@@ -1632,14 +1617,8 @@ async fn _w_edit_multi(ws: &Workspace, path: String, count: u32, table: Vec<Vec<
 #[when("列出所有会话")]
 async fn _w_session_list(ws: &Workspace, sess: &SessionStore) {
     sess.ensure_mgr();
-    let ids = sess
-        .mgr
-        .borrow()
-        .as_ref()
-        .unwrap()
-        .list()
-        .await
-        .unwrap_or_default();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let ids = mgr.list().await.unwrap_or_default();
     ws.last_result.replace(Some(Ok(ids.join("\n"))));
 }
 

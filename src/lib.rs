@@ -2,8 +2,6 @@
 //!
 //! LLM-Augmented Development Toolkit.
 
-#![allow(dead_code)]
-
 pub mod agent;
 pub mod infra;
 pub mod interface;

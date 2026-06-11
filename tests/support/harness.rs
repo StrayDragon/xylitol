@@ -4,8 +4,6 @@
 //! The previous InMemorySession/XySession types were removed as part of
 //! the SessionManager migration.
 
-use std::sync::Arc;
-
 #[allow(dead_code)]
 pub(crate) struct HarnessBuilder {
     _placeholder: bool,
