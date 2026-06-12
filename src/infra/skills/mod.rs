@@ -7,25 +7,27 @@
 //! MCP (Model Context Protocol) enables dynamic tool loading from external
 //! servers via stdio or SSE transport.
 
+#![allow(dead_code)]
 use std::collections::HashMap;
 
 use crate::infra::config::types::AppConfig;
 
 mod mcp;
-pub use mcp::{McpClientManager, McpToolAdapter};
+#[allow(unused_imports)]
+pub(crate) use mcp::{McpClientManager, McpToolAdapter};
 
 /// A loaded skill definition.
 #[derive(Clone, Debug)]
-pub struct Skill {
-    pub name: String,
-    pub description: String,
-    pub system_prompt_addon: Option<String>,
-    pub allowed_tools: Option<Vec<String>>,
+pub(crate) struct Skill {
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) system_prompt_addon: Option<String>,
+    pub(crate) allowed_tools: Option<Vec<String>>,
 }
 
 /// Manages skill lifecycle: loading, activation, deactivation.
 #[derive(Clone)]
-pub struct SkillManager {
+pub(crate) struct SkillManager {
     skills: HashMap<String, Skill>,
     active: Vec<String>,
 }
@@ -37,7 +39,7 @@ impl Default for SkillManager {
 }
 
 impl SkillManager {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             skills: HashMap::new(),
             active: Vec::new(),
@@ -45,7 +47,7 @@ impl SkillManager {
     }
 
     /// Load skills from the app configuration.
-    pub fn load(&mut self, config: &AppConfig) {
+    pub(crate) fn load(&mut self, config: &AppConfig) {
         let Some(ref skill_configs) = config.skills else {
             return;
         };
@@ -63,7 +65,7 @@ impl SkillManager {
     }
 
     /// Activate a skill by name. Returns `true` if newly activated.
-    pub fn activate(&mut self, name: &str) -> bool {
+    pub(crate) fn activate(&mut self, name: &str) -> bool {
         if !self.skills.contains_key(name) {
             return false;
         }
@@ -75,12 +77,12 @@ impl SkillManager {
     }
 
     /// Deactivate a skill by name.
-    pub fn deactivate(&mut self, name: &str) {
+    pub(crate) fn deactivate(&mut self, name: &str) {
         self.active.retain(|n| n != name);
     }
 
     /// Returns the concatenated `system_prompt_addon` of all active skills.
-    pub fn get_system_prompt_addon(&self) -> String {
+    pub(crate) fn get_system_prompt_addon(&self) -> String {
         self.active
             .iter()
             .filter_map(|name| self.skills.get(name))
@@ -93,7 +95,7 @@ impl SkillManager {
     /// Combined `allowed_tools` across active skills.
     ///
     /// Returns `None` if any active skill has no restriction (allow all).
-    pub fn get_allowed_tools(&self) -> Option<Vec<String>> {
+    pub(crate) fn get_allowed_tools(&self) -> Option<Vec<String>> {
         let mut combined = Vec::new();
         for name in &self.active {
             let Some(skill) = self.skills.get(name) else {
@@ -108,7 +110,7 @@ impl SkillManager {
     }
 
     /// Returns the names of currently active skills.
-    pub fn active_skill_names(&self) -> &[String] {
+    pub(crate) fn active_skill_names(&self) -> &[String] {
         &self.active
     }
 }

@@ -6,7 +6,7 @@ use super::types::*;
 
 /// Fine-tune operation to apply to a snapshot.
 #[derive(Debug, Clone)]
-pub enum FineTuneOp {
+pub(crate) enum FineTuneOp {
     /// Remove a conversation turn by index.
     RemoveTurn(usize),
     /// Deprecate a conversation turn by index.
@@ -21,14 +21,14 @@ pub enum FineTuneOp {
 
 /// Result of a fine-tune editing session.
 #[derive(Debug, Clone)]
-pub struct FineTuneResult {
-    pub modified: bool,
-    pub applied_ops: Vec<String>,
+pub(crate) struct FineTuneResult {
+    pub(crate) modified: bool,
+    pub(crate) applied_ops: Vec<String>,
 }
 
 /// Apply a series of fine-tune operations to a snapshot, producing a new
 /// snapshot (immutable — edits always produce a new version).
-pub fn apply_fine_tune(
+pub(crate) fn apply_fine_tune(
     snapshot: &Snapshot,
     ops: &[FineTuneOp],
 ) -> Result<(Snapshot, FineTuneResult)> {
@@ -87,7 +87,7 @@ pub fn apply_fine_tune(
 }
 
 /// Render a human-readable tree view of a snapshot's structure.
-pub fn render_snapshot_tree(snapshot: &Snapshot) -> String {
+pub(crate) fn render_snapshot_tree(snapshot: &Snapshot) -> String {
     let mut lines = Vec::new();
 
     let short_id = if snapshot.id.len() > 8 {

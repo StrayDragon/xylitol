@@ -2,11 +2,11 @@
 
 /// Session system configuration.
 #[derive(Debug, Clone)]
-pub struct SessionConfig {
-    pub auto_snapshot: bool,
-    pub max_snapshots: usize,
-    pub storage: StorageConfig,
-    pub compaction: CompactionConfig,
+pub(crate) struct SessionConfig {
+    pub(crate) auto_snapshot: bool,
+    pub(crate) max_snapshots: usize,
+    pub(crate) storage: StorageConfig,
+    pub(crate) compaction: CompactionConfig,
 }
 
 impl Default for SessionConfig {
@@ -21,9 +21,9 @@ impl Default for SessionConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct StorageConfig {
-    pub backend: StorageBackend,
-    pub compress: bool,
+pub(crate) struct StorageConfig {
+    pub(crate) backend: StorageBackend,
+    pub(crate) compress: bool,
 }
 
 impl Default for StorageConfig {
@@ -36,17 +36,17 @@ impl Default for StorageConfig {
 }
 
 #[derive(Debug, Clone)]
-pub enum StorageBackend {
+pub(crate) enum StorageBackend {
     Sqlite,
 }
 
 #[derive(Debug, Clone)]
-pub struct CompactionConfig {
-    pub strategy: CompactionStrategy,
+pub(crate) struct CompactionConfig {
+    pub(crate) strategy: CompactionStrategy,
     /// Fraction of context window that triggers auto-compaction (0.0–1.0).
-    pub token_threshold: f64,
+    pub(crate) token_threshold: f64,
     /// Keep tool-call summaries in compacted output.
-    pub keep_tool_summaries: bool,
+    pub(crate) keep_tool_summaries: bool,
 }
 
 impl Default for CompactionConfig {
@@ -60,7 +60,7 @@ impl Default for CompactionConfig {
 }
 
 #[derive(Debug, Clone)]
-pub enum CompactionStrategy {
+pub(crate) enum CompactionStrategy {
     Intra,
     Manual,
     Derive,
