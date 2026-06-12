@@ -8,7 +8,7 @@ use crate::agent::r#loop::{AgentEvent, AgentLoop};
 use futures::StreamExt;
 
 /// Run the agent in print mode with the given prompt.
-pub async fn run_print(
+pub(crate) async fn run_print(
     agent_loop: &mut AgentLoop,
     prompt: &str,
     session_id: &str,
