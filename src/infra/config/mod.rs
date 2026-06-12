@@ -1,8 +1,8 @@
-pub mod loader;
-pub mod paths;
-pub mod secret;
-pub mod template;
+pub(crate) mod loader;
+pub(crate) mod paths;
+pub(crate) mod secret;
+pub(crate) mod template;
 #[cfg(test)]
-pub mod test_support;
+pub(crate) mod test_support;
 pub mod types;
-pub mod validate;
+pub(crate) mod validate;

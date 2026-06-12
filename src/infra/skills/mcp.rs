@@ -19,7 +19,7 @@ use crate::infra::config::types::{AppConfig, McpTransportKind};
 type McpService = RunningService<RoleClient, ()>;
 
 /// Manages connections to MCP servers and dispatches tool calls.
-pub struct McpClientManager {
+pub(crate) struct McpClientManager {
     services: tokio::sync::Mutex<HashMap<String, McpService>>,
 }
 
@@ -30,7 +30,7 @@ impl Default for McpClientManager {
 }
 
 impl McpClientManager {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             services: tokio::sync::Mutex::new(HashMap::new()),
         }
@@ -174,7 +174,7 @@ impl McpClientManager {
 ///
 /// The publicly-facing name follows the convention `mcp:{server_id}:{name}`
 /// to avoid naming conflicts with built-in tools.
-pub struct McpToolAdapter {
+pub(crate) struct McpToolAdapter {
     full_name: String,
     description: String,
     parameters_schema: Option<Value>,
@@ -182,7 +182,7 @@ pub struct McpToolAdapter {
 }
 
 impl McpToolAdapter {
-    pub fn new(
+    pub(crate) fn new(
         server_id: String,
         tool_name: String,
         description: String,

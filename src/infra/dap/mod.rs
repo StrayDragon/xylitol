@@ -1,6 +1,7 @@
+#![allow(dead_code)]
 /// DAP integration layer — placeholder (feature = "infra-dap").
 /// Expanded in c85.
-pub struct Dap;
+pub(crate) struct Dap;
 
 impl Default for Dap {
     fn default() -> Self {
@@ -9,7 +10,7 @@ impl Default for Dap {
 }
 
 impl Dap {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 }

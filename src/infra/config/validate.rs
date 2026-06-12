@@ -1,5 +1,6 @@
 //! Config validation: JSON Schema runtime check + business rules.
 
+#![allow(dead_code)]
 use schemars::schema_for;
 use serde_json::Value;
 
@@ -7,7 +8,7 @@ use super::types::AppConfig;
 
 /// Errors from config validation.
 #[derive(Debug, thiserror::Error)]
-pub enum ValidationError {
+pub(crate) enum ValidationError {
     #[error("JSON Schema compilation failed: {0}")]
     SchemaCompile(String),
     #[error("config validation failed:\n{errors}")]
@@ -17,7 +18,7 @@ pub enum ValidationError {
 }
 
 /// Validate a parsed (merged) config value against the AppConfig JSON Schema.
-pub fn validate_config(value: &Value) -> Result<(), ValidationError> {
+pub(crate) fn validate_config(value: &Value) -> Result<(), ValidationError> {
     // Build JSON Schema from AppConfig type.
     let schema = schema_for!(AppConfig);
     let schema_value =
@@ -44,7 +45,7 @@ pub fn validate_config(value: &Value) -> Result<(), ValidationError> {
 }
 
 /// Generate JSON Schema from `AppConfig` and write to `configs/config.schema.json`.
-pub fn write_schema_file() -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn write_schema_file() -> Result<(), Box<dyn std::error::Error>> {
     let schema = schema_for!(AppConfig);
     let json = serde_json::to_string_pretty(&schema)?;
     let path = std::path::Path::new("configs/config.schema.json");

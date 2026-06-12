@@ -33,7 +33,7 @@ pub static ENV_LOCK: Mutex<()> = Mutex::new(());
 /// - The lock held by the test guarantees exclusive access to the process env.
 /// - `EnvGuard` only restores values that the test itself mutated during
 ///   the same lock acquisition window.
-pub struct EnvGuard(Vec<(String, Option<String>)>);
+pub(crate) struct EnvGuard(Vec<(String, Option<String>)>);
 
 impl Drop for EnvGuard {
     fn drop(&mut self) {
@@ -48,7 +48,7 @@ impl Drop for EnvGuard {
     }
 }
 
-pub fn save_env(keys: &[&str]) -> EnvGuard {
+pub(crate) fn save_env(keys: &[&str]) -> EnvGuard {
     EnvGuard(
         keys.iter()
             .map(|k| (k.to_string(), std::env::var(k).ok()))
