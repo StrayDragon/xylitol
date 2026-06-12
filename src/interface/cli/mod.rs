@@ -4,6 +4,7 @@ use clap::Parser;
 
 use crate::agent::r#loop::AgentLoop;
 use crate::agent::model::{ModelConfig, ModelKind};
+use crate::agent::registry;
 use crate::agent::session::{AgentSession, ModelMeta, ModelRegistry};
 use crate::agent::tools::ToolRegistry;
 use crate::infra::session::SessionManager;
@@ -31,33 +32,28 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut model_registry = ModelRegistry::new();
 
-    if let Ok(key) = std::env::var("OPENAI_API_KEY") {
-        model_registry.register(ModelMeta {
-            id: "gpt-4o".into(),
-            config: ModelConfig {
-                kind: ModelKind::OpenAi,
-                api_key: key,
-                model: "gpt-4o".into(),
-                base_url: None,
-            },
-            display_name: "GPT-4o".into(),
-            thinking: false,
-            context_window: 128000,
-        });
-    }
-    if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
-        model_registry.register(ModelMeta {
-            id: "claude-sonnet".into(),
-            config: ModelConfig {
-                kind: ModelKind::Anthropic,
-                api_key: key,
-                model: "claude-sonnet-4-20250514".into(),
-                base_url: None,
-            },
-            display_name: "Claude Sonnet 4".into(),
-            thinking: true,
-            context_window: 200000,
-        });
+    // Build default models from environment variables.
+    // Uses agent::registry for canonical model IDs and context windows.
+    for (provider_name, env_var, kind) in [
+        ("openai", "OPENAI_API_KEY", ModelKind::OpenAi),
+        ("anthropic", "ANTHROPIC_API_KEY", ModelKind::Anthropic),
+    ] {
+        if let Ok(key) = std::env::var(env_var)
+            && let Some(model_id) = registry::default_model_id_for_provider(provider_name)
+        {
+            model_registry.register(ModelMeta {
+                id: model_id.to_string(),
+                config: ModelConfig {
+                    kind,
+                    api_key: key,
+                    model: model_id.to_string(),
+                    base_url: None,
+                },
+                display_name: model_id.to_string(),
+                thinking: matches!(kind, ModelKind::OpenAi | ModelKind::Anthropic),
+                context_window: registry::default_context_window_for(kind),
+            });
+        }
     }
 
     if args.list_models {

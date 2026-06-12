@@ -277,7 +277,7 @@ pub fn build_default_model_meta(provider: &ProviderConfig) -> Option<ModelMeta> 
 }
 
 /// Default context window sizes.
-fn default_context_window_for(kind: ModelKind) -> u64 {
+pub fn default_context_window_for(kind: ModelKind) -> u64 {
     match kind {
         ModelKind::OpenAi => 128_000,
         ModelKind::Anthropic => 200_000,

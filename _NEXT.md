@@ -1,6 +1,6 @@
 # Xylitol — Strategic Direction
 
-> Last updated: 2026-06-11 · Code audit in progress: agent/ ✅, infra/ ✅, interface/ ⬜
+> Last updated: 2026-06-12 · Code audit: agent/ ✅, infra/ ✅, interface/ ✅
 
 ## Core Positioning
 
@@ -80,19 +80,15 @@ Future: TUI / GUI / Web / MCP server — **decision pending**. Do not implement 
 - **Test-first refactoring**: tests must pass before and after every change
 - **Small, auditable diffs**: each commit should be reviewable in isolation
 
-### Audit Checklist
+### Next Steps After Audit Completes
 
-- [x] Audit `src/agent/` — `.unwrap()` → `.expect()` (8), remove `#![allow(dead_code)]`, annotate 2 dead fields
-- [x] Audit `src/infra/` — `.unwrap()` → `.expect()` (5), remove 4 `#[allow]`, delete 296L dead code
-- [ ] Audit `src/interface/` — cli, print, acp, diff_review
-- [x] Align Cargo.toml default features to `infra-skills`, `infra-session`, `ui-review`
-- [x] Identify and remove dead code — 3 dead test files (261L) + dead fn (17L)
-- [ ] Review module visibility (`pub` vs `pub(crate)` hygiene)
-- [x] Fix 27 clippy warnings
-- [x] Error handling — all non-test `.unwrap()` replaced with `.expect()`
-- [ ] Review `unsafe` usage (should be none or well-documented)
-- [ ] Review dependency tree — remove unused crates, deduplicate
-- [ ] Architecture doc: write `docs/architecture.md` as SSOT
+| # | Task | Status |
+|---|------|--------|
+| 1 | Audit interface/ — remove acp.rs, drop `#![allow(dead_code)]`, eliminate hardcoded model IDs | ✅ Done |
+| 2 | Review `pub` vs `pub(crate)` visibility (335 pub : 1 pub(crate)) | ⬜ |
+| 3 | Review dependency tree — remove unused, dedup | ⬜ |
+| 4 | Review `unsafe` usage (13 instances, all in tests) — add comments | ⬜ |
+| 5 | Write `docs/architecture.md` as SSOT | ⬜ |
 
 ## Success Metrics (Updated)
 
