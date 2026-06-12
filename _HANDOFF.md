@@ -1,7 +1,7 @@
 # Handoff: Code Audit In Progress ▸ Phase 1 Interface Done
 
 > 最后更新：2026-06-12 · 最新 commit: 即将 · clippy 0 warnings
-> 审计进度: agent/ ✅, infra/ ✅, interface/ ✅
+> 审计进度: agent/ ✅, infra/ ✅, interface/ ✅ · deps ✅
 
 ## 当前测试状态
 
@@ -96,6 +96,6 @@ llmanspec/
 6. [x] 识别并移除死代码 — 296L 已删 + acp.rs
 7. [ ] 审查 `pub` vs `pub(crate)` 可见性 (335 pub, 1 pub(crate))
 8. [x] 审查错误处理 — 所有非测试 `.unwrap()` → `.expect()`
-9. [ ] 审查依赖树 (去重、移除未使用)
+9. [x] 审查依赖树 — 移除 4 未使用 crate, 替换 deprecated serde_yaml → yaml_serde, 32→31 direct deps
 10. [ ] 审查 `unsafe` (13 个全在 tests, 需加注释)
 11. [ ] 撰写 `docs/architecture.md`

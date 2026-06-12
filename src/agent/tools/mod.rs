@@ -1,16 +1,15 @@
-pub mod accumulator;
+pub(crate) mod accumulator;
 pub mod bash;
 pub mod edit;
 pub mod find;
 pub mod grep;
 pub mod ls;
 pub mod mutation;
-pub mod operations;
-pub mod patch;
-pub mod path_utils;
-pub mod process;
+pub(crate) mod patch;
+pub(crate) mod path_utils;
+pub(crate) mod process;
 pub mod read;
-pub mod truncate;
+pub(crate) mod truncate;
 pub mod write;
 
 use std::sync::Arc;
