@@ -8,7 +8,7 @@
 
 /// Fuzzy-match `target` in `content` using NFKC normalization of smart quotes and dashes.
 /// Returns the byte range of the match in `content`.
-pub fn fuzzy_find(content: &str, target: &str) -> Option<std::ops::Range<usize>> {
+pub(crate) fn fuzzy_find(content: &str, target: &str) -> Option<std::ops::Range<usize>> {
     // Try whitespace-normalized matching first
     if let Some(range) = whitespace_find(content, target) {
         return Some(range);
@@ -51,7 +51,7 @@ fn whitespace_find(content: &str, target: &str) -> Option<std::ops::Range<usize>
 }
 
 /// Line-based fallback: find `target` as a block of lines in `content`.
-pub fn patch_find_range(content: &str, target: &str) -> Option<std::ops::Range<usize>> {
+pub(crate) fn patch_find_range(content: &str, target: &str) -> Option<std::ops::Range<usize>> {
     let target_lines: Vec<&str> = target.lines().collect();
     let content_lines: Vec<&str> = content.lines().collect();
 
@@ -165,13 +165,13 @@ fn find_best_match(text: &str, target: &str) -> Option<std::ops::Range<usize>> {
 use similar::{ChangeTag, TextDiff};
 
 /// Generate a unified diff between old and new content.
-pub fn generate_unified_diff(old: &str, new: &str, _file_path: &str) -> String {
+pub(crate) fn generate_unified_diff(old: &str, new: &str, _file_path: &str) -> String {
     let diff = TextDiff::from_lines(old, new);
     diff.unified_diff().context_radius(3).to_string()
 }
 
 /// Generate a human-readable display diff with line numbers and context folding.
-pub fn generate_display_diff(old: &str, new: &str, file_path: &str) -> String {
+pub(crate) fn generate_display_diff(old: &str, new: &str, file_path: &str) -> String {
     let diff = TextDiff::from_lines(old, new);
     let mut output = String::new();
 
@@ -217,57 +217,9 @@ pub fn generate_display_diff(old: &str, new: &str, file_path: &str) -> String {
     }
 }
 
-/// Fall back to patch-like exact line-by-line matching.
-pub fn patch_fallback(content: &str, old_string: &str, new_string: &str) -> Option<String> {
-    let old_lines: Vec<&str> = old_string.lines().collect();
-    let content_lines: Vec<&str> = content.lines().collect();
-    let has_trailing_newline = content.ends_with('\n');
-
-    if old_lines.is_empty() || content_lines.is_empty() {
-        return None;
-    }
-
-    for start_idx in 0..content_lines
-        .len()
-        .saturating_sub(old_lines.len().saturating_sub(1))
-    {
-        let mut match_found = true;
-        for (j, old_line) in old_lines.iter().enumerate() {
-            if !lines_match(content_lines[start_idx + j], old_line) {
-                match_found = false;
-                break;
-            }
-        }
-
-        if match_found {
-            let mut result: Vec<&str> = Vec::new();
-            result.extend_from_slice(&content_lines[..start_idx]);
-            for new_line in new_string.lines() {
-                result.push(new_line);
-            }
-            result.extend_from_slice(&content_lines[start_idx + old_lines.len()..]);
-
-            let mut result_str = result.join("\n");
-            if has_trailing_newline {
-                result_str.push('\n');
-            }
-            return Some(result_str);
-        }
-    }
-
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_patch_fallback_exact() {
-        let content = "line1\nline2\nline3\n";
-        let result = patch_fallback(content, "line2", "replaced");
-        assert_eq!(result, Some("line1\nreplaced\nline3\n".to_string()));
-    }
 
     #[test]
     fn test_patch_finder_exact() {

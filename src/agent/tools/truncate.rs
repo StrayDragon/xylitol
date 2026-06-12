@@ -6,39 +6,40 @@
 //!
 //! Never returns partial lines (except bash tail truncation edge case).
 
-pub const DEFAULT_MAX_LINES: usize = 2000;
-pub const DEFAULT_MAX_BYTES: usize = 50 * 1024; // 50KB
-pub const GREP_MAX_LINE_LENGTH: usize = 500; // Max chars per grep match line
+pub(crate) const DEFAULT_MAX_LINES: usize = 2000;
+pub(crate) const DEFAULT_MAX_BYTES: usize = 50 * 1024; // 50KB
+pub(crate) const GREP_MAX_LINE_LENGTH: usize = 500; // Max chars per grep match line
 
 /// Result of a truncation operation.
 #[derive(Debug, Clone)]
-pub struct TruncationResult {
+#[allow(dead_code)]
+pub(crate) struct TruncationResult {
     /// The truncated content.
-    pub content: String,
+    pub(crate) content: String,
     /// Whether truncation occurred.
-    pub truncated: bool,
+    pub(crate) truncated: bool,
     /// Which limit was hit: "lines", "bytes", or None if not truncated.
-    pub truncated_by: Option<TruncationLimit>,
+    pub(crate) truncated_by: Option<TruncationLimit>,
     /// Total number of lines in the original content.
-    pub total_lines: usize,
+    pub(crate) total_lines: usize,
     /// Total number of bytes in the original content.
-    pub total_bytes: usize,
+    pub(crate) total_bytes: usize,
     /// Number of complete lines in the truncated output.
-    pub output_lines: usize,
+    pub(crate) output_lines: usize,
     /// Number of bytes in the truncated output.
-    pub output_bytes: usize,
+    pub(crate) output_bytes: usize,
     /// Whether the first line was partially truncated (for head truncation when first line > max bytes).
-    pub last_line_partial: bool,
+    pub(crate) last_line_partial: bool,
     /// Whether the first line alone exceeded the byte limit.
-    pub first_line_exceeds_limit: bool,
+    pub(crate) first_line_exceeds_limit: bool,
     /// The max lines limit that was applied.
-    pub max_lines: usize,
+    pub(crate) max_lines: usize,
     /// The max bytes limit that was applied.
-    pub max_bytes: usize,
+    pub(crate) max_bytes: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TruncationLimit {
+pub(crate) enum TruncationLimit {
     Lines,
     Bytes,
 }
@@ -53,9 +54,9 @@ impl std::fmt::Display for TruncationLimit {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct TruncationOptions {
-    pub max_lines: Option<usize>,
-    pub max_bytes: Option<usize>,
+pub(crate) struct TruncationOptions {
+    pub(crate) max_lines: Option<usize>,
+    pub(crate) max_bytes: Option<usize>,
 }
 
 /// Split content into lines for counting (excluding trailing empty line from final \n).
@@ -75,7 +76,7 @@ fn split_lines_for_counting(content: &str) -> Vec<&str> {
 ///
 /// Never returns partial lines. If first line exceeds byte limit,
 /// returns empty content with `first_line_exceeds_limit = true`.
-pub fn truncate_head(content: &str, options: TruncationOptions) -> TruncationResult {
+pub(crate) fn truncate_head(content: &str, options: TruncationOptions) -> TruncationResult {
     let max_lines = options.max_lines.unwrap_or(DEFAULT_MAX_LINES);
     let max_bytes = options.max_bytes.unwrap_or(DEFAULT_MAX_BYTES);
 
@@ -161,112 +162,9 @@ pub fn truncate_head(content: &str, options: TruncationOptions) -> TruncationRes
         max_bytes,
     }
 }
-
-/// Truncate content from the tail (keep last N lines/bytes).
-/// Suitable for bash output where you want to see the end.
-///
-/// May return partial first line if the last line of original content exceeds byte limit.
-pub fn truncate_tail(content: &str, options: TruncationOptions) -> TruncationResult {
-    let max_lines = options.max_lines.unwrap_or(DEFAULT_MAX_LINES);
-    let max_bytes = options.max_bytes.unwrap_or(DEFAULT_MAX_BYTES);
-
-    let total_bytes = content.len();
-    let lines = split_lines_for_counting(content);
-    let total_lines = lines.len();
-
-    // Check if no truncation needed
-    if total_lines <= max_lines && total_bytes <= max_bytes {
-        return TruncationResult {
-            content: content.to_string(),
-            truncated: false,
-            truncated_by: None,
-            total_lines,
-            total_bytes,
-            output_lines: total_lines,
-            output_bytes: total_bytes,
-            last_line_partial: false,
-            first_line_exceeds_limit: false,
-            max_lines,
-            max_bytes,
-        };
-    }
-
-    // Work backwards from the end
-    let mut output_lines_arr: Vec<&str> = Vec::new();
-    let mut output_bytes_count = 0usize;
-    let mut truncated_by = TruncationLimit::Lines;
-    let mut last_line_partial = false;
-
-    for i in (0..lines.len()).rev() {
-        if output_lines_arr.len() >= max_lines {
-            break;
-        }
-
-        let line = lines[i];
-        let line_bytes = line.len() + if !output_lines_arr.is_empty() { 1 } else { 0 };
-
-        if output_bytes_count + line_bytes > max_bytes {
-            truncated_by = TruncationLimit::Bytes;
-            // Edge case: if we haven't added ANY lines yet and this line exceeds maxBytes,
-            // take the end of the line (partial)
-            if output_lines_arr.is_empty() {
-                let truncated = truncate_string_to_bytes_from_end(line, max_bytes);
-                output_lines_arr.insert(0, truncated);
-                output_bytes_count = truncated.len();
-                last_line_partial = true;
-            }
-            break;
-        }
-
-        output_lines_arr.insert(0, line);
-        output_bytes_count += line_bytes;
-    }
-
-    if output_lines_arr.len() >= max_lines && output_bytes_count <= max_bytes {
-        truncated_by = TruncationLimit::Lines;
-    }
-
-    let output_content = output_lines_arr.join("\n");
-    let final_output_bytes = output_content.len();
-
-    TruncationResult {
-        content: output_content,
-        truncated: true,
-        truncated_by: Some(truncated_by),
-        total_lines,
-        total_bytes,
-        output_lines: output_lines_arr.len(),
-        output_bytes: final_output_bytes,
-        last_line_partial,
-        first_line_exceeds_limit: false,
-        max_lines,
-        max_bytes,
-    }
-}
-
-/// Truncate a string to fit within a byte limit from the end.
-/// Handles multi-byte UTF-8 characters correctly.
-fn truncate_string_to_bytes_from_end(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes {
-        return s;
-    }
-
-    // Start from the end, skip max_bytes back
-    let start = s.len() - max_bytes;
-
-    // Find a valid UTF-8 character boundary
-    let valid_start = s
-        .char_indices()
-        .find(|(i, _)| *i >= start)
-        .map(|(i, _)| i)
-        .unwrap_or(s.len());
-
-    &s[valid_start..]
-}
-
 /// Truncate a single line to max characters, adding [truncated] suffix.
 /// Used for grep match lines.
-pub fn truncate_line(line: &str, max_chars: usize) -> TruncatedLine {
+pub(crate) fn truncate_line(line: &str, max_chars: usize) -> TruncatedLine {
     if line.char_indices().count() <= max_chars {
         return TruncatedLine {
             text: line.to_string(),
@@ -295,13 +193,14 @@ pub fn truncate_line(line: &str, max_chars: usize) -> TruncatedLine {
     }
 }
 
-pub struct TruncatedLine {
-    pub text: String,
-    pub was_truncated: bool,
+pub(crate) struct TruncatedLine {
+    pub(crate) text: String,
+    #[allow(dead_code)]
+    pub(crate) was_truncated: bool,
 }
 
 /// Format bytes as human-readable size.
-pub fn format_size(bytes: usize) -> String {
+pub(crate) fn format_size(bytes: usize) -> String {
     if bytes < 1024 {
         format!("{bytes}B")
     } else if bytes < 1024 * 1024 {
@@ -344,22 +243,6 @@ mod tests {
     }
 
     #[test]
-    fn test_truncate_tail_basic() {
-        let lines: Vec<String> = (0..100).map(|i| format!("line {i}")).collect();
-        let content = lines.join("\n");
-        let result = truncate_tail(
-            &content,
-            TruncationOptions {
-                max_lines: Some(10),
-                ..Default::default()
-            },
-        );
-        assert!(result.truncated);
-        assert_eq!(result.output_lines, 10);
-        assert!(result.content.starts_with("line 90"));
-    }
-
-    #[test]
     fn test_truncate_line_within_limit() {
         let result = truncate_line("short line", GREP_MAX_LINE_LENGTH);
         assert!(!result.was_truncated);
@@ -372,15 +255,6 @@ mod tests {
         let result = truncate_line(&long, GREP_MAX_LINE_LENGTH);
         assert!(result.was_truncated);
         assert!(result.text.ends_with("[truncated]"));
-    }
-
-    #[test]
-    fn test_truncate_string_from_end_multibyte() {
-        let s = "héllo wörld élégant";
-        let result = truncate_string_to_bytes_from_end(s, 10);
-        // Should be valid UTF-8
-        assert!(!result.is_empty());
-        assert!(result.len() <= 10 + 3); // +3 for potential multi-byte boundary
     }
 
     #[test]
