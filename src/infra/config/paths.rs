@@ -115,6 +115,7 @@ mod tests {
     fn test_resolve_global_dir_env_override() {
         let _lock = ENV_LOCK.lock().unwrap();
         let _guard = save_env(&["XYLITOL_CONFIG_DIR"]);
+        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
         unsafe { std::env::set_var("XYLITOL_CONFIG_DIR", "/custom/xylitol") };
         let dir = resolve_global_dir();
         assert_eq!(dir, PathBuf::from("/custom/xylitol"));
@@ -124,7 +125,9 @@ mod tests {
     fn test_resolve_global_dir_xdg() {
         let _lock = ENV_LOCK.lock().unwrap();
         let _guard = save_env(&["XYLITOL_CONFIG_DIR", "XDG_CONFIG_HOME"]);
+        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
         unsafe { std::env::remove_var("XYLITOL_CONFIG_DIR") };
+        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
         unsafe { std::env::set_var("XDG_CONFIG_HOME", "/tmp/xdg-test") };
         let dir = resolve_global_dir();
         assert_eq!(dir, PathBuf::from("/tmp/xdg-test/xylitol"));
@@ -134,7 +137,9 @@ mod tests {
     fn test_resolve_global_dir_fallback() {
         let _lock = ENV_LOCK.lock().unwrap();
         let _guard = save_env(&["XYLITOL_CONFIG_DIR", "XDG_CONFIG_HOME"]);
+        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
         unsafe { std::env::remove_var("XYLITOL_CONFIG_DIR") };
+        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
         unsafe { std::env::remove_var("XDG_CONFIG_HOME") };
         // This test verifies it doesn't panic.
         let _dir = resolve_global_dir();
