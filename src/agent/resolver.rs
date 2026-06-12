@@ -7,6 +7,7 @@
 //! - `model:thinkingLevel` suffix parsing
 //! - Fallback model construction
 
+#![allow(dead_code)]
 use crate::agent::model::ModelConfig;
 #[cfg(test)]
 use crate::agent::model::ModelKind;
@@ -16,17 +17,17 @@ use crate::agent::session::{ModelMeta, ThinkingLevel};
 
 /// Result of resolving a model pattern against the available models.
 #[derive(Debug, Clone)]
-pub struct ResolvedModel {
+pub(crate) struct ResolvedModel {
     /// The resolved model metadata.
-    pub model: ModelMeta,
+    pub(crate) model: ModelMeta,
     /// Optional thinking level parsed from `model:level` suffix.
-    pub thinking_level: Option<ThinkingLevel>,
+    pub(crate) thinking_level: Option<ThinkingLevel>,
     /// Warning message, e.g., when using a fallback.
-    pub warning: Option<String>,
+    pub(crate) warning: Option<String>,
 }
 
 impl ResolvedModel {
-    pub fn new(model: ModelMeta) -> Self {
+    pub(crate) fn new(model: ModelMeta) -> Self {
         Self {
             model,
             thinking_level: None,
@@ -34,12 +35,12 @@ impl ResolvedModel {
         }
     }
 
-    pub fn with_thinking_level(mut self, level: ThinkingLevel) -> Self {
+    pub(crate) fn with_thinking_level(mut self, level: ThinkingLevel) -> Self {
         self.thinking_level = Some(level);
         self
     }
 
-    pub fn with_warning(mut self, warning: String) -> Self {
+    pub(crate) fn with_warning(mut self, warning: String) -> Self {
         self.warning = Some(warning);
         self
     }
@@ -56,7 +57,7 @@ impl ResolvedModel {
 /// 4. Try fuzzy match (partial id or display_name substring)
 /// 5. Prefer aliases (no version suffix) over dated versions
 /// 6. Fallback to first available model
-pub fn resolve_model(
+pub(crate) fn resolve_model(
     pattern: &str,
     available: &[&ModelMeta],
     default_provider: Option<&str>,
@@ -252,7 +253,7 @@ fn fuzzy_match<'a>(pattern: &str, available: &'a [&'a ModelMeta]) -> Option<&'a 
 /// 3. Otherwise use the first available model
 ///
 /// The fallback model preserves the user's requested id as a reference name.
-pub fn build_fallback_model(
+pub(crate) fn build_fallback_model(
     pattern: &str,
     available: &[&ModelMeta],
     default_provider: Option<&str>,
