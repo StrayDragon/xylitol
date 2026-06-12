@@ -12,13 +12,14 @@
 //! NOTE: Extension event and UI prompt integration points are stubbed for
 //! future wiring. The core resolution logic is fully functional.
 
+#![allow(dead_code)]
 use crate::agent::trust::{self, TrustStore};
 
 // ── Configuration ──────────────────────────────────────────────────
 
 /// Default project trust policy when no explicit decision is stored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DefaultProjectTrust {
+pub(crate) enum DefaultProjectTrust {
     /// Always trust projects with trust inputs (auto-trust).
     Always,
     /// Never trust projects with trust inputs (auto-deny).
@@ -32,32 +33,32 @@ pub enum DefaultProjectTrust {
 
 /// Options for resolving project trust.
 #[derive(Debug, Clone)]
-pub struct ResolveTrustOptions {
+pub(crate) struct ResolveTrustOptions {
     /// The project directory to check.
-    pub cwd: String,
+    pub(crate) cwd: String,
     /// The trust store for persisted decisions.
-    pub trust_store: TrustStore,
+    pub(crate) trust_store: TrustStore,
     /// Explicit override from CLI (Some(true) = --trust, Some(false) = --no-trust).
-    pub trust_override: Option<bool>,
+    pub(crate) trust_override: Option<bool>,
     /// Default policy when no stored decision exists.
-    pub default_policy: DefaultProjectTrust,
+    pub(crate) default_policy: DefaultProjectTrust,
     /// Whether the current mode has UI capabilities (for prompting).
-    pub has_ui: bool,
+    pub(crate) has_ui: bool,
 }
 
 // ── Resolution outcome ─────────────────────────────────────────────
 
 /// Result of trust resolution.
 #[derive(Debug, Clone)]
-pub struct TrustResolution {
+pub(crate) struct TrustResolution {
     /// Whether the project is trusted.
-    pub trusted: bool,
+    pub(crate) trusted: bool,
     /// How the decision was reached (for logging/debugging).
-    pub reason: TrustReason,
+    pub(crate) reason: TrustReason,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TrustReason {
+pub(crate) enum TrustReason {
     /// Explicit CLI override.
     Override,
     /// No trust inputs detected — auto-trusted.
@@ -83,7 +84,10 @@ pub enum TrustReason {
 /// * `on_prompt` — callback for UI prompt. Receives a list of trust options
 ///   and should return the selected option index (or None to cancel/deny).
 ///   Only called when `has_ui` is true and `default_policy` is `Ask`.
-pub fn resolve_project_trusted<F>(options: &ResolveTrustOptions, on_prompt: F) -> TrustResolution
+pub(crate) fn resolve_project_trusted<F>(
+    options: &ResolveTrustOptions,
+    on_prompt: F,
+) -> TrustResolution
 where
     F: FnOnce(&[trust::TrustOption]) -> Option<usize>,
 {
@@ -164,7 +168,7 @@ where
 // ── Trust prompt formatting ─────────────────────────────────────────
 
 /// Format the trust prompt message for display to the user.
-pub fn format_trust_prompt(cwd: &str) -> String {
+pub(crate) fn format_trust_prompt(cwd: &str) -> String {
     format!(
         "Trust project folder?\n{cwd}\n\n\
          This allows xylitol to load .xylitol settings and resources, \

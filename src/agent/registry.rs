@@ -6,6 +6,7 @@
 //! - Available model listing sorted by provider priority
 //! - Default model ID per provider
 
+#![allow(dead_code)]
 use std::collections::HashMap;
 
 use crate::agent::model::{ModelConfig, ModelKind};
@@ -20,20 +21,21 @@ use crate::agent::session::ModelMeta;
 #[derive(Debug, Clone)]
 pub struct ProviderConfig {
     /// Provider name (e.g., "openai", "anthropic").
-    pub name: String,
+    pub(crate) name: String,
     /// API key if configured via env or config file.
-    pub api_key: Option<String>,
+    pub(crate) api_key: Option<String>,
     /// Custom base URL for self-hosted / compatible endpoints.
-    pub base_url: Option<String>,
+    pub(crate) base_url: Option<String>,
     /// Sort priority (lower = higher priority). Default 100.
-    pub priority: u32,
+    pub(crate) priority: u32,
     /// Whether this provider uses OAuth instead of API key.
-    pub is_oauth: bool,
+    pub(crate) is_oauth: bool,
 }
 
+#[allow(dead_code)]
 impl ProviderConfig {
     /// Create a new provider config with OpenAI defaults.
-    pub fn openai(api_key: Option<String>) -> Self {
+    pub(crate) fn openai(api_key: Option<String>) -> Self {
         Self {
             name: "openai".to_string(),
             api_key,
@@ -44,7 +46,7 @@ impl ProviderConfig {
     }
 
     /// Create a new provider config with Anthropic defaults.
-    pub fn anthropic(api_key: Option<String>) -> Self {
+    pub(crate) fn anthropic(api_key: Option<String>) -> Self {
         Self {
             name: "anthropic".to_string(),
             api_key,
@@ -55,7 +57,7 @@ impl ProviderConfig {
     }
 
     /// Check if this provider has configured credentials.
-    pub fn has_credentials(&self) -> bool {
+    pub(crate) fn has_credentials(&self) -> bool {
         self.is_oauth || self.api_key.is_some()
     }
 }
@@ -86,7 +88,8 @@ pub fn default_model_id_for_provider(provider_name: &str) -> Option<&'static str
 ///
 /// Manages provider configuration, auth checks, and model discovery.
 #[derive(Clone, Debug, Default)]
-pub struct ModelRegistry {
+#[allow(dead_code)]
+pub(crate) struct ModelRegistry {
     /// Registered providers by name.
     providers: HashMap<String, ProviderConfig>,
     /// All registered models.
@@ -95,7 +98,7 @@ pub struct ModelRegistry {
 
 impl ModelRegistry {
     /// Create an empty registry.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             providers: HashMap::new(),
             models: Vec::new(),
@@ -105,24 +108,24 @@ impl ModelRegistry {
     // ── Provider management ───────────────────────────────────────
 
     /// Register a provider configuration.
-    pub fn register_provider(&mut self, name: &str, config: ProviderConfig) {
+    pub(crate) fn register_provider(&mut self, name: &str, config: ProviderConfig) {
         self.providers.insert(name.to_string(), config);
     }
 
     /// Check if a provider is registered.
-    pub fn has_provider(&self, name: &str) -> bool {
+    pub(crate) fn has_provider(&self, name: &str) -> bool {
         self.providers.contains_key(name)
     }
 
     /// Get a provider config by name.
-    pub fn get_provider(&self, name: &str) -> Option<&ProviderConfig> {
+    pub(crate) fn get_provider(&self, name: &str) -> Option<&ProviderConfig> {
         self.providers.get(name)
     }
 
     /// Check if a provider has configured authentication.
     ///
     /// Returns `true` if the provider has an API key or is configured for OAuth.
-    pub fn has_configured_auth(&self, provider_name: &str) -> bool {
+    pub(crate) fn has_configured_auth(&self, provider_name: &str) -> bool {
         self.providers
             .get(provider_name)
             .map(|p| p.has_credentials())
@@ -130,7 +133,7 @@ impl ModelRegistry {
     }
 
     /// Check if a specific model has available authentication.
-    pub fn has_configured_auth_for_model(&self, model: &ModelMeta) -> bool {
+    pub(crate) fn has_configured_auth_for_model(&self, model: &ModelMeta) -> bool {
         let provider_name = model.config.provider_name();
         self.has_configured_auth(provider_name)
     }
@@ -138,7 +141,7 @@ impl ModelRegistry {
     // ── Model management ──────────────────────────────────────────
 
     /// Register a model.
-    pub fn register(&mut self, meta: ModelMeta) {
+    pub(crate) fn register(&mut self, meta: ModelMeta) {
         self.models.push(meta);
     }
 
@@ -146,7 +149,7 @@ impl ModelRegistry {
     ///
     /// Models from higher-priority providers (lower priority number)
     /// appear first. Unknown providers are sorted after all known ones.
-    pub fn get_available(&self) -> Vec<&ModelMeta> {
+    pub(crate) fn get_available(&self) -> Vec<&ModelMeta> {
         let mut models: Vec<&ModelMeta> = self.models.iter().collect();
         models.sort_by(|a, b| {
             let pa = self
@@ -165,32 +168,32 @@ impl ModelRegistry {
     }
 
     /// Get the default model ID for a given provider.
-    pub fn default_model_id(&self, provider_name: &str) -> Option<&'static str> {
+    pub(crate) fn default_model_id(&self, provider_name: &str) -> Option<&'static str> {
         default_model_id_for_provider(provider_name)
     }
 
     /// Find a model by exact ID match.
-    pub fn find(&self, id: &str) -> Option<&ModelMeta> {
+    pub(crate) fn find(&self, id: &str) -> Option<&ModelMeta> {
         self.models.iter().find(|m| m.id == id)
     }
 
     /// List all registered models (in insertion order).
-    pub fn list(&self) -> &[ModelMeta] {
+    pub(crate) fn list(&self) -> &[ModelMeta] {
         &self.models
     }
 
     /// Number of registered models.
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.models.len()
     }
 
     /// Check if the registry is empty.
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.models.is_empty()
     }
 
     /// Get the first model (for fallback when nothing else matches).
-    pub fn first_model(&self) -> Option<&ModelMeta> {
+    pub(crate) fn first_model(&self) -> Option<&ModelMeta> {
         self.models.first()
     }
 
@@ -199,7 +202,7 @@ impl ModelRegistry {
     /// Build an auth-guidance error when no auth is configured for a model.
     ///
     /// Returns a user-facing message guiding to use `/login`.
-    pub fn auth_guidance_message(&self, model: &ModelMeta) -> Option<String> {
+    pub(crate) fn auth_guidance_message(&self, model: &ModelMeta) -> Option<String> {
         let provider_name = model.config.provider_name();
         if self.has_configured_auth(provider_name) {
             return None;
@@ -213,7 +216,7 @@ impl ModelRegistry {
     }
 
     /// Collect diagnostics about provider configurations.
-    pub fn collect_diagnostics(&self) -> Vec<String> {
+    pub(crate) fn collect_diagnostics(&self) -> Vec<String> {
         let mut diags = Vec::new();
 
         for (name, provider) in &self.providers {
