@@ -7,25 +7,27 @@
 //! - Default-value syntax (${N:-default})
 //! - `/template:name` line extraction
 
+#![allow(dead_code)]
+#[allow(dead_code)]
 /// A loaded prompt template.
 ///
 /// Templates are markdown files with optional YAML frontmatter.
 /// The body uses positional placeholders: `$1`, `$2`, `$@`, `${N:-default}`.
 #[derive(Debug, Clone)]
-pub struct PromptTemplate {
+pub(crate) struct PromptTemplate {
     /// Template name (derived from filename).
-    pub name: String,
+    pub(crate) name: String,
     /// Markdown body with placeholders.
-    pub body: String,
+    pub(crate) body: String,
     /// Optional description from frontmatter.
-    pub description: Option<String>,
+    pub(crate) description: Option<String>,
     /// Optional argument hint from frontmatter.
-    pub argument_hint: Option<String>,
+    pub(crate) argument_hint: Option<String>,
 }
 
 impl PromptTemplate {
     /// Create a new template.
-    pub fn new(name: impl Into<String>, body: impl Into<String>) -> Self {
+    pub(crate) fn new(name: impl Into<String>, body: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             body: body.into(),
@@ -42,12 +44,12 @@ impl PromptTemplate {
     /// - `${N:-default}` → positional argument with default value
     ///
     /// Unknown `${...}` patterns are left unchanged.
-    pub fn substitute_args(&self, args: &[String]) -> String {
+    pub(crate) fn substitute_args(&self, args: &[String]) -> String {
         substitute_template_args(&self.body, args)
     }
 
     /// Expand by substituting args and appending a soft-newline if needed.
-    pub fn expand(&self, args: &[String]) -> String {
+    pub(crate) fn expand(&self, args: &[String]) -> String {
         let content = self.substitute_args(args);
         // Ensure trailing newline for clean prompt injection
         if content.ends_with('\n') {
@@ -64,7 +66,7 @@ impl PromptTemplate {
 /// - `$1`..`$N`: positional argument (1-indexed, empty string if out of range)
 /// - `$@`, `$ARGUMENTS`: all arguments space-joined
 /// - `${N:-default}`: positional with default
-pub fn substitute_template_args(template: &str, args: &[String]) -> String {
+pub(crate) fn substitute_template_args(template: &str, args: &[String]) -> String {
     let mut result = String::with_capacity(template.len() + args.len() * 20);
     let chars: Vec<char> = template.chars().collect();
     let len = chars.len();
@@ -168,7 +170,7 @@ fn expand_braced_pattern(pattern: &str, args: &[String]) -> String {
 /// Parse a `/template:name arg1 arg2 ...` line.
 ///
 /// Returns `Some((template_name, args))` if the line is a template reference.
-pub fn parse_template_line(line: &str) -> Option<(String, Vec<String>)> {
+pub(crate) fn parse_template_line(line: &str) -> Option<(String, Vec<String>)> {
     let line = line.trim();
     let name_part = line.strip_prefix("/template:")?;
 
@@ -189,7 +191,7 @@ pub fn parse_template_line(line: &str) -> Option<(String, Vec<String>)> {
 }
 
 /// Test if a line is a `/template:` reference.
-pub fn is_template_line(line: &str) -> bool {
+pub(crate) fn is_template_line(line: &str) -> bool {
     line.trim().starts_with("/template:")
 }
 

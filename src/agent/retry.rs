@@ -2,6 +2,8 @@
 //!
 //! Aligns with pi's _isRetryableError / _prepareRetry / exponential backoff logic.
 
+#![allow(dead_code)]
+#[allow(dead_code)]
 use regex::Regex;
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -22,7 +24,7 @@ static NON_RETRYABLE_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Check if an error message indicates a retryable transient error.
 /// Returns false for context overflow (handled by compaction).
-pub fn is_retryable_error(error_msg: &str) -> bool {
+pub(crate) fn is_retryable_error(error_msg: &str) -> bool {
     if NON_RETRYABLE_RE.is_match(error_msg) {
         return false;
     }
@@ -31,7 +33,7 @@ pub fn is_retryable_error(error_msg: &str) -> bool {
 
 // ── RetryState ─────────────────────────────────────────────────────
 
-pub struct RetryState {
+pub(crate) struct RetryState {
     max_retries: u32,
     base_delay_ms: u64,
     attempt: AtomicU32,
@@ -40,7 +42,7 @@ pub struct RetryState {
 }
 
 impl RetryState {
-    pub fn new(max_retries: u32, base_delay_ms: u64) -> Self {
+    pub(crate) fn new(max_retries: u32, base_delay_ms: u64) -> Self {
         let (tx, rx) = watch::channel(false);
         Self {
             max_retries,
@@ -51,22 +53,22 @@ impl RetryState {
         }
     }
 
-    pub fn can_retry(&self) -> bool {
+    pub(crate) fn can_retry(&self) -> bool {
         self.attempt.load(Ordering::Acquire) < self.max_retries
     }
 
-    pub fn next_delay(&self) -> Duration {
+    pub(crate) fn next_delay(&self) -> Duration {
         let attempt = self.attempt.fetch_add(1, Ordering::AcqRel) + 1;
         let delay_ms = self.base_delay_ms * 2u64.pow(attempt.saturating_sub(1));
         Duration::from_millis(delay_ms)
     }
 
-    pub fn attempt(&self) -> u32 {
+    pub(crate) fn attempt(&self) -> u32 {
         self.attempt.load(Ordering::Acquire)
     }
 
     /// Abort any in-progress backoff wait.
-    pub fn abort(&self) {
+    pub(crate) fn abort(&self) {
         let _ = self.abort_tx.send(true);
     }
 

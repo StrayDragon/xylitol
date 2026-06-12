@@ -4,12 +4,14 @@
 //! Uses tokio::sync::broadcast for multi-consumer event delivery.
 //! Drop-based unsubscribe via UnsubscribeHandle.
 
+#![allow(dead_code)]
+#[allow(dead_code)]
 use tokio::sync::broadcast;
 
 use crate::agent::r#loop::AgentEvent;
 
 /// A bus for publishing AgentEvents to multiple subscribers.
-pub struct AgentEventBus {
+pub(crate) struct AgentEventBus {
     sender: broadcast::Sender<AgentEvent>,
 }
 
@@ -23,34 +25,34 @@ impl Clone for AgentEventBus {
 
 impl AgentEventBus {
     /// Create a new event bus with the given buffer capacity.
-    pub fn new(capacity: usize) -> Self {
+    pub(crate) fn new(capacity: usize) -> Self {
         let (sender, _) = broadcast::channel(capacity);
         Self { sender }
     }
 
     /// Emit an event to all active subscribers.
     /// Ignores errors when no receivers exist.
-    pub fn emit(&self, event: AgentEvent) {
+    pub(crate) fn emit(&self, event: AgentEvent) {
         let _ = self.sender.send(event);
     }
 
     /// Subscribe to events.
     /// Returns a handle that unsubscribes when dropped.
-    pub fn subscribe(&self) -> UnsubscribeHandle {
+    pub(crate) fn subscribe(&self) -> UnsubscribeHandle {
         UnsubscribeHandle {
             receiver: self.sender.subscribe(),
         }
     }
 
     /// Get the number of active subscribers.
-    pub fn receiver_count(&self) -> usize {
+    pub(crate) fn receiver_count(&self) -> usize {
         self.sender.receiver_count()
     }
 }
 
 /// An unsubscribe handle that receives events from the bus.
 /// When dropped, the subscriber is automatically removed.
-pub struct UnsubscribeHandle {
+pub(crate) struct UnsubscribeHandle {
     receiver: broadcast::Receiver<AgentEvent>,
 }
 
@@ -62,7 +64,7 @@ impl UnsubscribeHandle {
     }
 
     /// Try to receive an event without blocking.
-    pub fn try_recv(&mut self) -> Option<AgentEvent> {
+    pub(crate) fn try_recv(&mut self) -> Option<AgentEvent> {
         self.receiver.try_recv().ok()
     }
 }

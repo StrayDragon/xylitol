@@ -361,7 +361,8 @@ impl AgentEventStream {
     /// Bridge this stream to an EventBus, returning a handle.
     /// Events consumed from the stream are published to the bus.
     /// The subscriber receives events via the bus.
-    pub async fn fan_out(self, bus: &AgentEventBus) {
+    #[allow(dead_code)]
+    pub(crate) async fn fan_out(self, bus: &AgentEventBus) {
         let mut stream = self;
         while let Some(event) = stream.next().await {
             bus.emit(event);

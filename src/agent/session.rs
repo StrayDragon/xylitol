@@ -133,6 +133,7 @@ pub struct AgentSession {
     /// System prompt options for dynamic building.
     prompt_opts: SystemPromptOpts,
     /// Message queue for steer/followUp.
+    #[allow(dead_code)]
     message_queue: MessageQueue,
     /// Registered prompt templates for /template:name expansion.
     prompt_templates: Vec<PromptTemplate>,
@@ -219,7 +220,8 @@ impl AgentSession {
     }
 
     /// Cycle to the previous model.
-    pub fn cycle_backward(&mut self) -> Option<&ModelMeta> {
+    #[allow(dead_code)]
+    pub(crate) fn cycle_backward(&mut self) -> Option<&ModelMeta> {
         if self.model_registry.is_empty() {
             return None;
         }
@@ -255,22 +257,25 @@ impl AgentSession {
     // ── Prompt templates and commands ───────────────────────────
 
     /// Register a prompt template.
-    pub fn register_template(&mut self, template: PromptTemplate) {
+    #[allow(dead_code)]
+    pub(crate) fn register_template(&mut self, template: PromptTemplate) {
         self.prompt_templates.push(template);
     }
 
     /// Register prompt templates.
-    pub fn register_templates(&mut self, templates: Vec<PromptTemplate>) {
+    #[allow(dead_code)]
+    pub(crate) fn register_templates(&mut self, templates: Vec<PromptTemplate>) {
         self.prompt_templates.extend(templates);
     }
 
     /// Register an extension slash command.
-    pub fn register_command(&mut self, cmd: SlashCommandInfo) {
+    #[allow(dead_code)]
+    pub(crate) fn register_command(&mut self, cmd: SlashCommandInfo) {
         self.extension_commands.push(cmd);
     }
 
     /// Get all available commands (builtin + extension).
-    pub fn get_commands(&self) -> Vec<SlashCommandInfo> {
+    pub(crate) fn get_commands(&self) -> Vec<SlashCommandInfo> {
         get_all_commands(&self.extension_commands)
     }
 
@@ -342,7 +347,7 @@ impl AgentSession {
 
     // ── Accessors ─────────────────────────────────────────────────
 
-    pub fn tool_registry(&self) -> &ToolRegistry {
+    pub(crate) fn tool_registry(&self) -> &ToolRegistry {
         &self.tool_registry
     }
 
@@ -370,7 +375,8 @@ impl AgentSession {
 
     /// Enter print mode: take over stdout so agent/tool output is suppressed.
     /// Returns a guard that restores stdout when dropped.
-    pub fn enter_print_mode(&self) -> output_guard::OutputGuard {
+    #[allow(dead_code)]
+    pub(crate) fn enter_print_mode(&self) -> output_guard::OutputGuard {
         output_guard::take_over_stdout()
     }
 
@@ -387,13 +393,15 @@ impl AgentSession {
     // ── Session lifecycle ────────────────────────────────────
 
     /// Ensure the event bus exists (lazy init).
-    pub fn ensure_event_bus(&mut self) -> &mut crate::agent::event::AgentEventBus {
+    #[allow(dead_code)]
+    pub(crate) fn ensure_event_bus(&mut self) -> &mut crate::agent::event::AgentEventBus {
         self.event_bus
             .get_or_insert_with(|| crate::agent::event::AgentEventBus::new(64))
     }
 
     /// Subscribe to agent events.
-    pub fn subscribe_events(&self) -> Option<crate::agent::event::UnsubscribeHandle> {
+    #[allow(dead_code)]
+    pub(crate) fn subscribe_events(&self) -> Option<crate::agent::event::UnsubscribeHandle> {
         self.event_bus.as_ref().map(|bus| bus.subscribe())
     }
 
@@ -480,7 +488,8 @@ impl AgentSession {
     }
 
     /// Get a reference to the event bus if initialized.
-    pub fn event_bus(&self) -> Option<&crate::agent::event::AgentEventBus> {
+    #[allow(dead_code)]
+    pub(crate) fn event_bus(&self) -> Option<&crate::agent::event::AgentEventBus> {
         self.event_bus.as_ref()
     }
 
@@ -551,11 +560,13 @@ impl AgentSession {
 
     // ── Message queue ────────────────────────────────────────────
 
-    pub fn message_queue(&self) -> &MessageQueue {
+    #[allow(dead_code)]
+    pub(crate) fn message_queue(&self) -> &MessageQueue {
         &self.message_queue
     }
 
-    pub fn message_queue_mut(&mut self) -> &mut MessageQueue {
+    #[allow(dead_code)]
+    pub(crate) fn message_queue_mut(&mut self) -> &mut MessageQueue {
         &mut self.message_queue
     }
 
