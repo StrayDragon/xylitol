@@ -78,7 +78,7 @@ src/
 
 **默认 features**: `infra-skills`, `infra-session`, `ui-review`
 
-> 以下 feature flags 通过 Cargo.toml 显式 opt-in（不在默认编译中）: `agent-planning`, `agent-model-lock`, `infra-lsp`, `infra-dap`, `infra-acp`, `infra-sandbox`, `infra-rtk`, `dev-vt100`, `dev-e2e`, `dev-fake-provider`
+> 以下 feature flags 通过 Cargo.toml 显式 opt-in（不在默认编译中）: `agent-planning`, `agent-model-lock`, `infra-lsp`, `infra-dap`, `infra-acp`, `infra-sandbox`, `infra-rtk`, `dev-e2e`, `dev-fake-provider`
 
 ---
 

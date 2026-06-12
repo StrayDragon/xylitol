@@ -20,18 +20,7 @@ Commands:
 
 - `cargo test -p xylitol --lib tests::support`
 
-## Tier 3 — TUI rendering verification (VT100)
-
-- Runs: ANSI pipeline rendering checks via `vt100` emulator
-- Feature-gated: `dev-vt100`
-- Snapshot workflow: `cargo insta test` / `cargo insta review`
-
-Commands:
-
-- `cargo test -p xylitol --features dev-vt100`
-- `just qa` (includes `dev-vt100`)
-
-## Tier 4 — PTY E2E (process-level)
+## Tier 3 — PTY E2E (process-level)
 
 - Runs: spawn the binary in a pseudo-terminal and assert interactive flows
 - Feature-gated: `dev-e2e`
