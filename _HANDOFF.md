@@ -1,7 +1,7 @@
-# Handoff: Feature Dev Frozen · Code Audit In Progress
+# Handoff: Code Audit In Progress ▸ Phase 1 Interface Done
 
-> 最后更新：2026-06-11 · 最新 commit: `refactor(audit): infra layer` · clippy 0 warnings
-> 审计进度: agent/ ✅, infra/ ✅, interface/ ⬜ (下次继续)
+> 最后更新：2026-06-12 · 最新 commit: 即将 · clippy 0 warnings
+> 审计进度: agent/ ✅, infra/ ✅, interface/ ✅
 
 ## 当前测试状态
 
@@ -92,9 +92,10 @@ llmanspec/
 2. [x] 对齐 Cargo.toml 默认 features → `infra-skills`, `infra-session`, `ui-review`
 3. [x] 审计 agent/ 层 — `.unwrap()` → `.expect()` (8) + 移除 `#![allow(dead_code)]` + 标注 2 个死字段
 4. [x] 审计 infra/ 层 — `.unwrap()` → `.expect()` (5), 移除 4 `#[allow]`, 删除 296L 死代码
-5. [ ] 审计 interface/ 层: cli, print, acp, diff_review
-6. [x] 识别并移除死代码 — 296L 已删
-7. [ ] 审查 `pub` vs `pub(crate)` 可见性 (288 pub, 仅 2 pub(crate))
+5. [x] 审计 interface/ 层 — 删除 acp.rs (死代码, 3L), 移除 diff_review/types.rs `#![allow(dead_code)]`, cli/mod.rs 消除硬编码 model name (用 registry::default_model_id_for_provider)
+6. [x] 识别并移除死代码 — 296L 已删 + acp.rs
+7. [ ] 审查 `pub` vs `pub(crate)` 可见性 (335 pub, 1 pub(crate))
 8. [x] 审查错误处理 — 所有非测试 `.unwrap()` → `.expect()`
 9. [ ] 审查依赖树 (去重、移除未使用)
-10. [ ] 撰写 `docs/architecture.md`
+10. [ ] 审查 `unsafe` (13 个全在 tests, 需加注释)
+11. [ ] 撰写 `docs/architecture.md`
