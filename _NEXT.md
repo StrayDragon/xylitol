@@ -86,8 +86,8 @@ Future: TUI / GUI / Web / MCP server — **decision pending**. Do not implement 
 |---|------|--------|
 | 1 | Audit interface/ — remove acp.rs, drop `#![allow(dead_code)]`, eliminate hardcoded model IDs | ✅ Done |
 | 2 | Review `pub` vs `pub(crate)` visibility (335 pub : 1 pub(crate)) | ⬜ |
-| 3 | Review dependency tree — remove unused, dedup | ⬜ |
-| 4 | Review `unsafe` usage (13 instances, all in tests) — add comments | ⬜ |
+| 3 | Review dependency tree — remove unused, dedup | ✅ Done (32→31, deprecated yaml swapped) |
+| 4 | Review `unsafe` usage (13 instances, all in tests) — add comments | ✅ Done (SAFETY comments + module docs) |
 | 5 | Write `docs/architecture.md` as SSOT | ⬜ |
 
 ## Success Metrics (Updated)

@@ -22,7 +22,7 @@ const DEFAULT_MAX_ROLLING_BYTES_FACTOR: usize = 2;
 ///   and all accumulated data is written to it.
 /// - Further appends go directly to the temp file.
 /// - A rolling text buffer keeps the tail in memory for quick access.
-pub struct OutputAccumulator {
+pub(crate) struct OutputAccumulator {
     /// Max bytes to keep in the rolling text buffer (tail).
     max_bytes: usize,
     /// Max bytes before spilling to temp file.
@@ -190,11 +190,6 @@ impl OutputAccumulator {
             full_output_path: self.temp_file.clone(),
         }
     }
-
-    /// Get current total bytes accumulated.
-    pub fn total_bytes(&self) -> usize {
-        self.total_bytes
-    }
 }
 
 /// Result of output accumulation.
@@ -202,17 +197,18 @@ impl OutputAccumulator {
 /// Provides the tail of the output (for display), truncation information,
 /// and a path to the full output if spilled to file.
 #[derive(Debug, Clone)]
-pub struct OutputSnapshot {
+pub(crate) struct OutputSnapshot {
     /// Tail of the output (for display).
-    pub content: String,
+    pub(crate) content: String,
     /// Full output content.
-    pub full_content: String,
+    #[allow(dead_code)]
+    pub(crate) full_content: String,
     /// Total bytes accumulated.
-    pub total_bytes: usize,
+    pub(crate) total_bytes: usize,
     /// Whether the output was truncated.
-    pub truncated: bool,
+    pub(crate) truncated: bool,
     /// Path to full output if spilled to temp file.
-    pub full_output_path: Option<PathBuf>,
+    pub(crate) full_output_path: Option<PathBuf>,
 }
 
 impl OutputSnapshot {
