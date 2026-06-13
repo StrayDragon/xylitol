@@ -7,8 +7,6 @@
 //! - Default-value syntax (${N:-default})
 //! - `/template:name` line extraction
 
-#![allow(dead_code)]
-#[allow(dead_code)]
 /// A loaded prompt template.
 ///
 /// Templates are markdown files with optional YAML frontmatter.
@@ -20,13 +18,16 @@ pub(crate) struct PromptTemplate {
     /// Markdown body with placeholders.
     pub(crate) body: String,
     /// Optional description from frontmatter.
+    #[allow(dead_code)]
     pub(crate) description: Option<String>,
     /// Optional argument hint from frontmatter.
+    #[allow(dead_code)]
     pub(crate) argument_hint: Option<String>,
 }
 
 impl PromptTemplate {
     /// Create a new template.
+    #[allow(dead_code)]
     pub(crate) fn new(name: impl Into<String>, body: impl Into<String>) -> Self {
         Self {
             name: name.into(),

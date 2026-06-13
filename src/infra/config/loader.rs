@@ -258,15 +258,16 @@ mod tests {
 
     #[test]
     fn test_business_rules_valid() {
+        use crate::agent::model::ModelKind;
         use std::collections::HashMap;
         let config = AppConfig {
-            model: super::super::types::ModelConfig {
+            model: super::super::types::ModelsConfig {
                 default_model: Some("gpt-4o".into()),
                 models: HashMap::from([
                     (
                         "gpt-4o".into(),
                         super::super::types::ModelEntry {
-                            provider: super::super::types::ProviderKind::OpenAI,
+                            provider: ModelKind::OpenAi,
                             model: "gpt-4o".into(),
                             base_url: None,
                             fallback: Some("claude-3".into()),
@@ -275,7 +276,7 @@ mod tests {
                     (
                         "claude-3".into(),
                         super::super::types::ModelEntry {
-                            provider: super::super::types::ProviderKind::Anthropic,
+                            provider: ModelKind::Anthropic,
                             model: "claude-3-5-sonnet".into(),
                             base_url: None,
                             fallback: None,
@@ -290,14 +291,15 @@ mod tests {
 
     #[test]
     fn test_business_rules_invalid_fallback() {
+        use crate::agent::model::ModelKind;
         use std::collections::HashMap;
         let config = AppConfig {
-            model: super::super::types::ModelConfig {
+            model: super::super::types::ModelsConfig {
                 default_model: Some("gpt-4o".into()),
                 models: HashMap::from([(
                     "gpt-4o".into(),
                     super::super::types::ModelEntry {
-                        provider: super::super::types::ProviderKind::OpenAI,
+                        provider: ModelKind::OpenAi,
                         model: "gpt-4o".into(),
                         base_url: None,
                         fallback: Some("nonexistent-model".into()),

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct AppConfig {
-    pub model: ModelConfig,
+    pub model: ModelsConfig,
     pub agents: AgentsConfig,
     pub execution: ExecutionConfig,
     pub patch_apply: PatchApplyConfig,
@@ -51,18 +51,25 @@ pub struct AppConfig {
 // Model
 // ---------------------------------------------------------------------------
 
+/// Top-level model configuration section.
+/// Split from agent-level [`ModelConfig`](crate::agent::model::ModelConfig) —
+/// this is YAML-facing; [`ModelEntry`] aliases resolve into runtime config.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub struct ModelConfig {
-    /// Default model ID to use when no model is specified.
+pub struct ModelsConfig {
+    /// Default model ID (or alias key) to use when no model is specified.
     pub default_model: Option<String>,
     /// Named model entries keyed by alias.
     pub models: HashMap<String, ModelEntry>,
 }
 
+/// A single model alias entry.
+///
+/// References [`ModelKind`](crate::agent::model::ModelKind) for the provider;
+/// the kind's serde representation is the YAML wire format.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ModelEntry {
-    pub provider: ProviderKind,
+    pub provider: crate::agent::model::ModelKind,
     pub model: String,
     /// Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.
     #[serde(default)]
@@ -70,15 +77,6 @@ pub struct ModelEntry {
     /// Optional fallback model ID (must be another key in `models`).
     #[serde(default)]
     pub fallback: Option<String>,
-}
-
-/// Supported LLM providers (MVP: only OpenAI-compatible and Anthropic).
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub enum ProviderKind {
-    #[serde(rename = "openai")]
-    OpenAI,
-    #[serde(rename = "anthropic")]
-    Anthropic,
 }
 
 // ---------------------------------------------------------------------------
@@ -179,11 +177,7 @@ impl AppConfig {
         use crate::agent::model::{ModelConfig, ModelKind};
 
         let (kind, model_name, base_url) = if let Some(entry) = self.model.models.get(model_id) {
-            let kind = match entry.provider {
-                ProviderKind::OpenAI => ModelKind::OpenAi,
-                ProviderKind::Anthropic => ModelKind::Anthropic,
-            };
-            (kind, entry.model.clone(), entry.base_url.clone())
+            (entry.provider, entry.model.clone(), entry.base_url.clone())
         } else {
             (ModelKind::OpenAi, model_id.to_string(), None)
         };
