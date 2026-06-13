@@ -271,6 +271,7 @@ mod tests {
                             model: "gpt-4o".into(),
                             base_url: None,
                             fallback: Some("claude-3".into()),
+                            ..Default::default()
                         },
                     ),
                     (
@@ -280,6 +281,7 @@ mod tests {
                             model: "claude-3-5-sonnet".into(),
                             base_url: None,
                             fallback: None,
+                            ..Default::default()
                         },
                     ),
                 ]),
@@ -303,6 +305,7 @@ mod tests {
                         model: "gpt-4o".into(),
                         base_url: None,
                         fallback: Some("nonexistent-model".into()),
+                        ..Default::default()
                     },
                 )]),
             },
