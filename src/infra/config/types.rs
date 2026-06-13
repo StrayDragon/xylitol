@@ -67,7 +67,7 @@ pub struct ModelsConfig {
 ///
 /// References [`ModelKind`](crate::agent::model::ModelKind) for the provider;
 /// the kind's serde representation is the YAML wire format.
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct ModelEntry {
     pub provider: crate::agent::model::ModelKind,
     pub model: String,
@@ -77,6 +77,16 @@ pub struct ModelEntry {
     /// Optional fallback model ID (must be another key in `models`).
     #[serde(default)]
     pub fallback: Option<String>,
+    /// Whether this model supports thinking/reasoning. Default: true for all.
+    #[serde(default = "default_thinking")]
+    pub thinking: bool,
+    /// Context window size in tokens. Default: 0 (auto-detect from provider).
+    #[serde(default)]
+    pub context_window: u64,
+}
+
+fn default_thinking() -> bool {
+    true
 }
 
 // ---------------------------------------------------------------------------
@@ -169,7 +179,7 @@ fn default_max_iterations() -> u32 {
 }
 
 impl AppConfig {
-    /// Resolve a model alias to an agent-level [`ModelConfig`].
+    /// Resolve a model alias to a runtime [`ModelConfig`](crate::agent::model::ModelConfig).
     pub fn resolve_model(
         &self,
         model_id: &str,
@@ -198,6 +208,34 @@ impl AppConfig {
             api_key,
             model: model_name,
             base_url,
+        })
+    }
+
+    /// Resolve a model alias to [`ModelMeta`](crate::agent::session::ModelMeta) for the registry.
+    ///
+    /// Composes [`resolve_model`](Self::resolve_model) with per‑model metadata (thinking support,
+    /// context window size) from [`ModelEntry`] or sensible defaults.
+    pub fn resolve_model_meta(
+        &self,
+        model_id: &str,
+    ) -> Result<crate::agent::session::ModelMeta, String> {
+        use crate::agent::registry::default_context_window_for;
+        use crate::agent::session::ModelMeta;
+
+        let model_config = self.resolve_model(model_id)?;
+        let entry = self.model.models.get(model_id);
+
+        let thinking = entry.map(|e| e.thinking).unwrap_or(true);
+        let context_window = entry
+            .and_then(|e| (e.context_window > 0).then_some(e.context_window))
+            .unwrap_or_else(|| default_context_window_for(model_config.kind));
+
+        Ok(ModelMeta {
+            id: model_id.to_string(),
+            config: model_config,
+            display_name: model_id.to_string(),
+            thinking,
+            context_window,
         })
     }
 
