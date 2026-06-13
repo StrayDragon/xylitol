@@ -11,6 +11,7 @@ use std::task::{Context, Poll};
 use futures::Stream;
 use futures::StreamExt;
 use serde_json::Value;
+use tokio_util::sync::CancellationToken;
 
 use crate::agent::error::XyError;
 use crate::agent::event::AgentEventBus;
@@ -76,11 +77,26 @@ pub enum AgentEvent {
 
 pub struct AgentLoop {
     pub(crate) session: AgentSession,
+    /// Cancellation token for aborting the agent loop mid-execution.
+    cancel: CancellationToken,
 }
 
 impl AgentLoop {
     pub fn new(session: AgentSession) -> Self {
-        Self { session }
+        Self {
+            session,
+            cancel: CancellationToken::new(),
+        }
+    }
+
+    /// Get a reference to the cancellation token.
+    pub fn cancel_token(&self) -> CancellationToken {
+        self.cancel.clone()
+    }
+
+    /// Signal cancellation to abort the agent loop.
+    pub fn abort(&self) {
+        self.cancel.cancel();
     }
 
     pub fn session(&self) -> &AgentSession {
@@ -121,17 +137,18 @@ impl AgentLoop {
             })
             .collect();
 
-        let thinking_level = self.session.thinking_level();
+        let cancel = self.cancel.clone();
 
-        let inner: Pin<Box<dyn Stream<Item = AgentEvent> + Send>> = Box::pin(run_react_loop(
-            model,
-            tools,
-            tool_schemas,
-            system_prompt,
-            max_iterations as usize,
-            prompt,
-            thinking_level,
-        ));
+        let inner: Pin<Box<dyn Stream<Item = AgentEvent> + Send>> =
+            Box::pin(run_react_loop(ReActConfig {
+                model,
+                tools,
+                tool_schemas,
+                system_prompt,
+                max_iterations: max_iterations as usize,
+                user_prompt: prompt,
+                cancel,
+            }));
 
         AgentEventStream {
             inner,
@@ -141,17 +158,31 @@ impl AgentLoop {
     }
 }
 
-// ── Core ReAct loop ─────────────────────────────────────────────────
+// ── Core ReAct loop config ─────────────────────────────────────────
 
-fn run_react_loop(
+/// Parameters for the ReAct agent loop.
+struct ReActConfig {
     model: Arc<dyn XyModel>,
     tools: ToolRegistry,
     tool_schemas: Vec<XyToolSchema>,
     system_prompt: Option<String>,
     max_iterations: usize,
     user_prompt: String,
-    _thinking_level: crate::agent::session::ThinkingLevel,
-) -> impl Stream<Item = AgentEvent> + Send {
+    cancel: CancellationToken,
+}
+
+// ── Core ReAct loop ─────────────────────────────────────────────────
+
+fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
+    let ReActConfig {
+        model,
+        tools,
+        tool_schemas,
+        system_prompt,
+        max_iterations,
+        user_prompt,
+        cancel,
+    } = cfg;
     async_stream::stream! {
         let mut history: Vec<XyContent> = Vec::new();
 
@@ -166,19 +197,18 @@ fn run_react_loop(
         let retry_state = RetryState::new(3, 1000);
 
         for turn in 0..max_iterations {
+            // Check for cancellation before each turn
+            if cancel.is_cancelled() {
+                yield AgentEvent::Error("aborted".to_string());
+                break;
+            }
+
             yield AgentEvent::TurnStart { turn_index: turn as u32 };
 
-            // Build messages: history (without final user) + current user
-            let messages: Vec<XyContent> = if turn == 0 {
-                history.clone()
-            } else {
-                let mut msgs = Vec::new();
-                if let Some(ref sp) = system_prompt {
-                    msgs.push(XyContent::system(sp));
-                }
-                msgs.push(XyContent::user(&user_prompt));
-                msgs
-            };
+            // Send accumulated history to the model.
+            // History includes system prompt, user messages, assistant responses,
+            // and tool results from previous turns — giving the LLM full context.
+            let messages = history.clone();
 
             // Call model with retry support
             let stream_result = call_with_retry(
@@ -265,7 +295,7 @@ fn run_react_loop(
             // Execute tool calls
             for (id, name, args) in &tool_calls {
                 let tool = tools.get(name);
-                let ctx = XyToolCtx::new(id);
+                let ctx = XyToolCtx::with_cancel(id, cancel.clone());
 
                 let result = match tool {
                     Some(t) => match t.execute(&ctx, args.clone()).await {
@@ -359,8 +389,6 @@ impl AgentEventStream {
     }
 
     /// Bridge this stream to an EventBus, returning a handle.
-    /// Events consumed from the stream are published to the bus.
-    /// The subscriber receives events via the bus.
     #[allow(dead_code)]
     pub(crate) async fn fan_out(self, bus: &AgentEventBus) {
         let mut stream = self;
@@ -398,7 +426,8 @@ impl Stream for AgentEventStream {
 mod tests {
     use super::*;
 
-    use crate::agent::session::{ModelMeta, ModelRegistry};
+    use crate::agent::registry::ModelRegistry;
+    use crate::agent::session::ModelMeta;
     use crate::infra::session::SessionManager;
 
     #[tokio::test]
@@ -461,7 +490,5 @@ mod tests {
 
         let mut loop_runner = AgentLoop::new(session);
         let _stream = loop_runner.run("hello", "test-session").await;
-        // Stream should emit either error (no API key) or events
-        // Just verify the stream compiles and produces items
     }
 }
