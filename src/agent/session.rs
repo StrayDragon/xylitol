@@ -61,11 +61,7 @@ impl ThinkingLevel {
 
 // ── Model Registry ──────────────────────────────────────────────────
 
-/// Registry of available models with their configs.
-#[derive(Clone, Debug, Default)]
-pub struct ModelRegistry {
-    models: Vec<ModelMeta>,
-}
+pub use crate::agent::registry::ModelRegistry;
 
 #[derive(Debug, Clone)]
 pub struct ModelMeta {
@@ -74,36 +70,6 @@ pub struct ModelMeta {
     pub display_name: String,
     pub thinking: bool,
     pub context_window: u64,
-}
-
-impl ModelRegistry {
-    pub fn new() -> Self {
-        Self { models: vec![] }
-    }
-
-    pub fn register(&mut self, meta: ModelMeta) {
-        self.models.push(meta);
-    }
-
-    pub fn find(&self, id: &str) -> Option<&ModelMeta> {
-        self.models.iter().find(|m| m.id == id)
-    }
-
-    pub fn list(&self) -> &[ModelMeta] {
-        &self.models
-    }
-
-    pub fn len(&self) -> usize {
-        self.models.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.models.is_empty()
-    }
-
-    pub fn default_model_id(&self) -> Option<&str> {
-        self.models.first().map(|m| m.id.as_str())
-    }
 }
 
 // ── AgentSession ────────────────────────────────────────────────────
@@ -179,7 +145,7 @@ impl AgentSession {
 
     /// Get the current model config.
     pub fn current_model(&self) -> Option<&ModelMeta> {
-        self.model_registry.models.get(self.current_model_index)
+        self.model_registry.get_at(self.current_model_index)
     }
 
     /// Build the current model instance.
@@ -237,9 +203,7 @@ impl AgentSession {
     pub fn select_model(&mut self, model_id: &str) -> Result<(), String> {
         let idx = self
             .model_registry
-            .models
-            .iter()
-            .position(|m| m.id == model_id)
+            .index_of(model_id)
             .ok_or_else(|| format!("model not found: {model_id}"))?;
         self.current_model_index = idx;
         // Fire-and-forget persistence
@@ -469,15 +433,8 @@ impl AgentSession {
                 crate::infra::session::SessionEntry::ModelChange(e) => {
                     // Try to find and select this model
                     let model_id = format!("{}/{}", e.provider, e.model_id);
-                    if self.model_registry.find(&model_id).is_some() {
-                        let idx = self
-                            .model_registry
-                            .list()
-                            .iter()
-                            .position(|m| m.id == model_id);
-                        if let Some(i) = idx {
-                            self.current_model_index = i;
-                        }
+                    if let Some(i) = self.model_registry.index_of(&model_id) {
+                        self.current_model_index = i;
                     }
                 }
                 _ => {}

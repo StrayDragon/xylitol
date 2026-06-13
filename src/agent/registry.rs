@@ -6,7 +6,6 @@
 //! - Available model listing sorted by provider priority
 //! - Default model ID per provider
 
-#![allow(dead_code)]
 use std::collections::HashMap;
 
 use crate::agent::model::{ModelConfig, ModelKind};
@@ -15,27 +14,17 @@ use crate::agent::session::ModelMeta;
 // ── Provider Config ─────────────────────────────────────────────────
 
 /// Configuration for a model provider.
-///
-/// Providers are registered with a name, optional API key, base URL override,
-/// priority for ordering, and OAuth flag.
 #[derive(Debug, Clone)]
 pub struct ProviderConfig {
-    /// Provider name (e.g., "openai", "anthropic").
-    pub(crate) name: String,
-    /// API key if configured via env or config file.
-    pub(crate) api_key: Option<String>,
-    /// Custom base URL for self-hosted / compatible endpoints.
-    pub(crate) base_url: Option<String>,
-    /// Sort priority (lower = higher priority). Default 100.
-    pub(crate) priority: u32,
-    /// Whether this provider uses OAuth instead of API key.
-    pub(crate) is_oauth: bool,
+    pub name: String,
+    pub api_key: Option<String>,
+    pub base_url: Option<String>,
+    pub priority: u32,
+    pub is_oauth: bool,
 }
 
-#[allow(dead_code)]
 impl ProviderConfig {
-    /// Create a new provider config with OpenAI defaults.
-    pub(crate) fn openai(api_key: Option<String>) -> Self {
+    pub fn openai(api_key: Option<String>) -> Self {
         Self {
             name: "openai".to_string(),
             api_key,
@@ -45,8 +34,7 @@ impl ProviderConfig {
         }
     }
 
-    /// Create a new provider config with Anthropic defaults.
-    pub(crate) fn anthropic(api_key: Option<String>) -> Self {
+    pub fn anthropic(api_key: Option<String>) -> Self {
         Self {
             name: "anthropic".to_string(),
             api_key,
@@ -56,25 +44,18 @@ impl ProviderConfig {
         }
     }
 
-    /// Check if this provider has configured credentials.
-    pub(crate) fn has_credentials(&self) -> bool {
+    pub fn has_credentials(&self) -> bool {
         self.is_oauth || self.api_key.is_some()
     }
 }
 
 // ── Default Model IDs ───────────────────────────────────────────────
 
-/// Default model ID for each known provider.
-///
-/// When a user does not specify a model, the default for their configured
-/// provider is used. These defaults are the latest stable models as of
-/// the reference date.
 const DEFAULT_MODEL_PER_PROVIDER: &[(&str, &str)] = &[
     ("openai", "gpt-4o"),
     ("anthropic", "claude-sonnet-4-20250514"),
 ];
 
-/// Get the default model ID for a provider.
 pub fn default_model_id_for_provider(provider_name: &str) -> Option<&'static str> {
     DEFAULT_MODEL_PER_PROVIDER
         .iter()
@@ -85,20 +66,15 @@ pub fn default_model_id_for_provider(provider_name: &str) -> Option<&'static str
 // ── Model Registry ──────────────────────────────────────────────────
 
 /// Registry of model providers and their available models.
-///
-/// Manages provider configuration, auth checks, and model discovery.
+/// This is the canonical `ModelRegistry` used throughout the agent.
 #[derive(Clone, Debug, Default)]
-#[allow(dead_code)]
-pub(crate) struct ModelRegistry {
-    /// Registered providers by name.
+pub struct ModelRegistry {
     providers: HashMap<String, ProviderConfig>,
-    /// All registered models.
     models: Vec<ModelMeta>,
 }
 
 impl ModelRegistry {
-    /// Create an empty registry.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             providers: HashMap::new(),
             models: Vec::new(),
@@ -107,49 +83,37 @@ impl ModelRegistry {
 
     // ── Provider management ───────────────────────────────────────
 
-    /// Register a provider configuration.
-    pub(crate) fn register_provider(&mut self, name: &str, config: ProviderConfig) {
+    pub fn register_provider(&mut self, name: &str, config: ProviderConfig) {
         self.providers.insert(name.to_string(), config);
     }
 
-    /// Check if a provider is registered.
-    pub(crate) fn has_provider(&self, name: &str) -> bool {
+    pub fn has_provider(&self, name: &str) -> bool {
         self.providers.contains_key(name)
     }
 
-    /// Get a provider config by name.
-    pub(crate) fn get_provider(&self, name: &str) -> Option<&ProviderConfig> {
+    pub fn get_provider(&self, name: &str) -> Option<&ProviderConfig> {
         self.providers.get(name)
     }
 
-    /// Check if a provider has configured authentication.
-    ///
-    /// Returns `true` if the provider has an API key or is configured for OAuth.
-    pub(crate) fn has_configured_auth(&self, provider_name: &str) -> bool {
+    pub fn has_configured_auth(&self, provider_name: &str) -> bool {
         self.providers
             .get(provider_name)
             .map(|p| p.has_credentials())
             .unwrap_or(false)
     }
 
-    /// Check if a specific model has available authentication.
-    pub(crate) fn has_configured_auth_for_model(&self, model: &ModelMeta) -> bool {
+    pub fn has_configured_auth_for_model(&self, model: &ModelMeta) -> bool {
         let provider_name = model.config.provider_name();
         self.has_configured_auth(provider_name)
     }
 
     // ── Model management ──────────────────────────────────────────
 
-    /// Register a model.
-    pub(crate) fn register(&mut self, meta: ModelMeta) {
+    pub fn register(&mut self, meta: ModelMeta) {
         self.models.push(meta);
     }
 
-    /// Get all available models, sorted by provider priority.
-    ///
-    /// Models from higher-priority providers (lower priority number)
-    /// appear first. Unknown providers are sorted after all known ones.
-    pub(crate) fn get_available(&self) -> Vec<&ModelMeta> {
+    pub fn get_available(&self) -> Vec<&ModelMeta> {
         let mut models: Vec<&ModelMeta> = self.models.iter().collect();
         models.sort_by(|a, b| {
             let pa = self
@@ -167,42 +131,41 @@ impl ModelRegistry {
         models
     }
 
-    /// Get the default model ID for a given provider.
-    pub(crate) fn default_model_id(&self, provider_name: &str) -> Option<&'static str> {
+    pub fn default_model_id_for(&self, provider_name: &str) -> Option<&'static str> {
         default_model_id_for_provider(provider_name)
     }
 
-    /// Find a model by exact ID match.
-    pub(crate) fn find(&self, id: &str) -> Option<&ModelMeta> {
+    pub fn find(&self, id: &str) -> Option<&ModelMeta> {
         self.models.iter().find(|m| m.id == id)
     }
 
-    /// List all registered models (in insertion order).
-    pub(crate) fn list(&self) -> &[ModelMeta] {
+    pub fn list(&self) -> &[ModelMeta] {
         &self.models
     }
 
-    /// Number of registered models.
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.models.len()
     }
 
-    /// Check if the registry is empty.
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.models.is_empty()
     }
 
-    /// Get the first model (for fallback when nothing else matches).
-    pub(crate) fn first_model(&self) -> Option<&ModelMeta> {
+    pub fn first_model(&self) -> Option<&ModelMeta> {
         self.models.first()
+    }
+
+    pub fn get_at(&self, index: usize) -> Option<&ModelMeta> {
+        self.models.get(index)
+    }
+
+    pub fn index_of(&self, id: &str) -> Option<usize> {
+        self.models.iter().position(|m| m.id == id)
     }
 
     // ── Diagnostics ───────────────────────────────────────────────
 
-    /// Build an auth-guidance error when no auth is configured for a model.
-    ///
-    /// Returns a user-facing message guiding to use `/login`.
-    pub(crate) fn auth_guidance_message(&self, model: &ModelMeta) -> Option<String> {
+    pub fn auth_guidance_message(&self, model: &ModelMeta) -> Option<String> {
         let provider_name = model.config.provider_name();
         if self.has_configured_auth(provider_name) {
             return None;
@@ -215,8 +178,7 @@ impl ModelRegistry {
         ))
     }
 
-    /// Collect diagnostics about provider configurations.
-    pub(crate) fn collect_diagnostics(&self) -> Vec<String> {
+    pub fn collect_diagnostics(&self) -> Vec<String> {
         let mut diags = Vec::new();
 
         for (name, provider) in &self.providers {
@@ -228,7 +190,6 @@ impl ModelRegistry {
             }
         }
 
-        // Check for models with unknown providers
         for model in &self.models {
             let pname = model.config.provider_name();
             if !self.providers.contains_key(pname) {
@@ -243,7 +204,6 @@ impl ModelRegistry {
     }
 }
 
-/// Get environment variable name for a provider.
 fn env_var_for_provider(name: &str) -> &'static str {
     match name {
         "openai" => "OPENAI_API_KEY",
@@ -252,9 +212,8 @@ fn env_var_for_provider(name: &str) -> &'static str {
     }
 }
 
-// ── Helpers for building ModelMeta from provider config ─────────────
+// ── Helpers ────────────────────────────────────────────────────────
 
-/// Create a default ModelMeta for the given provider using its default model.
 pub fn build_default_model_meta(provider: &ProviderConfig) -> Option<ModelMeta> {
     let model_id = default_model_id_for_provider(&provider.name)?;
     let kind = match provider.name.as_str() {
@@ -279,7 +238,6 @@ pub fn build_default_model_meta(provider: &ProviderConfig) -> Option<ModelMeta> 
     })
 }
 
-/// Default context window sizes.
 pub fn default_context_window_for(kind: ModelKind) -> u64 {
     match kind {
         ModelKind::OpenAi => 128_000,
@@ -381,7 +339,6 @@ mod tests {
         let reg = make_test_registry();
         let available = reg.get_available();
         assert_eq!(available.len(), 3);
-        // openai (priority 10) should come before anthropic (priority 20)
         assert!(available[0].id.starts_with("openai"));
         assert!(available[1].id.starts_with("openai"));
         assert!(available[2].id.starts_with("claude"));
@@ -432,7 +389,6 @@ mod tests {
     fn test_collect_diagnostics() {
         let reg = make_test_registry();
         let diags = reg.collect_diagnostics();
-        // Should warn about missing anthropic key
         assert!(diags.iter().any(|d| d.contains("anthropic")));
     }
 }
