@@ -1,27 +1,27 @@
-# Handoff: Code Audit In Progress ▸ Phase 1 Interface Done
+# Handoff: Code Audit & Deep Fixes Done
 
-> 最后更新：2026-06-12 · 最新 commit: 即将 · clippy 0 warnings
-> 审计进度: agent/ ✅, infra/ ✅, interface/ ✅ · deps ✅
+> 最后更新：2026-06-13 · clippy 0 warnings · 5 个关键问题已修复
 
 ## 当前测试状态
 
 ```bash
 cargo test --test bdd -- --test-threads=1  # → 77 passed ✅
-cargo test --lib                             # → 251 passed + 1 ignored ✅
+cargo test --lib                             # → 245 passed + 1 ignored ✅
 cargo fmt -- --check                         # → clean ✅
-cargo clippy --all-targets                   # → 0 warnings ✅ (27 fixed)
+cargo clippy --all-targets                   # → 0 warnings ✅
 ```
 
 | 指标 | 数值 |
 |------|------|
-| lib tests | 251 |
+| lib tests | 245 |
 | BDD scenarios | 77 |
-| total | 328 |
-| src 源文件 | ~70 个，~19,000 行 |
-| clippy warnings | 0 (27 resolved) |
+| total | 322 |
+| src 源文件 | ~63 个 (lsp/dap 已删除 ~1100L, openai.rs 从 398L 减为 350L) |
+| clippy warnings | 0 |
 
 > 默认 features 已对齐为 `infra-skills`, `infra-session`, `ui-review`。
-> `infra-lsp` 已移出默认编译（28 个 lsp 测试不再编译，251 + 77 = 328）。
+> `infra-lsp`, `infra-dap` 已完全移除（含源码和 feature flag）。
+> `lspz` 依赖已删除。
 
 ## 阶段状态: 功能开发已冻结
 
@@ -47,6 +47,30 @@ cargo clippy --all-targets                   # → 0 warnings ✅ (27 fixed)
 ### 交互形态: TBD
 
 当前仅 CLI 单次模式 (`print`)。未来方向待决策。
+
+## 2026-06-13: 5 个关键问题修复
+
+### ✅ P0: 双重 ModelRegistry 已合并
+- 删除 `session.rs` 中的简单版 `ModelRegistry`，改从 `registry.rs` 导入
+- 复杂版 `ModelRegistry` 从 `pub(crate)` 升级为 `pub`，新增 `get_at()` / `index_of()` 方法
+- `AgentSession` 不再直接访问 `.models` 内部字段
+
+### ✅ P0: ReAct Loop 多轮逻辑错误已修复
+- `run_react_loop()` 每个 turn 现在发送完整 `history`（含之前 assistant + tool results）
+- 添加了 `ReActConfig` struct 解决 clippy "too many arguments"
+
+### ✅ P0: OpenAI provider 已用 async-openai 重写
+- 从 ~398 行手写 HTTP+SSE 降为 ~350 行，利用 `async_openai::Client` 的 Chat + Stream API
+- Cargo.toml 启用 `chat-completion + rustls` features
+
+### ✅ P0: LSP/DAP 已完全移除
+- 删除 `src/infra/lsp/` + `src/infra/dap/` (~1100L)
+- 从 `Cargo.toml` 删除 `lspz` 依赖和 `infra-lsp`/`infra-dap` features
+
+### ✅ P0: CancellationToken 已正确连线
+- `AgentLoop` 持有 `CancellationToken`，通过 `abort()` 公开取消接口
+- tool 调用及每 turn 开头都检查 `cancel.is_cancelled()`
+- 工具执行使用 `XyToolCtx::with_cancel()` 传递父 token
 
 ## 变更历史
 
@@ -75,7 +99,7 @@ src/
   infra/          — hooks (pre/post), skills (MCP), resource (AGENTS.md walk-up),
                     session (compaction, storage, manager, gc, fine_tune),
                     config (loader, paths, secret, template, validate)
-  interface/      — cli, print, acp, diff_review
+  interface/      — cli, print, diff_review
 tests/
   bdd.rs          — BDD step definitions, 77 scenarios
   features/       — 12 .feature files
@@ -89,13 +113,17 @@ llmanspec/
 ## 下一步行动
 
 1. [x] 修复 27 clippy warnings
-2. [x] 对齐 Cargo.toml 默认 features → `infra-skills`, `infra-session`, `ui-review`
-3. [x] 审计 agent/ 层 — `.unwrap()` → `.expect()` (8) + 移除 `#![allow(dead_code)]` + 标注 2 个死字段
-4. [x] 审计 infra/ 层 — `.unwrap()` → `.expect()` (5), 移除 4 `#[allow]`, 删除 296L 死代码
-5. [x] 审计 interface/ 层 — 删除 acp.rs (死代码, 3L), 移除 diff_review/types.rs `#![allow(dead_code)]`, cli/mod.rs 消除硬编码 model name (用 registry::default_model_id_for_provider)
-6. [x] 识别并移除死代码 — 296L 已删 + acp.rs
-7. [ ] 审查 `pub` vs `pub(crate)` 可见性 (335 pub, 1 pub(crate))
-8. [x] 审查错误处理 — 所有非测试 `.unwrap()` → `.expect()`
-9. [x] 审查依赖树 — 移除 4 未使用 crate, 替换 deprecated serde_yaml → yaml_serde, 32→31 direct deps
-10. [ ] 审查 `unsafe` (13 个全在 tests, 需加注释)
-11. [ ] 撰写 `docs/architecture.md`
+2. [x] 对齐 Cargo.toml 默认 features
+3. [x] 审计 agent/ 层
+4. [x] 审计 infra/ 层
+5. [x] 审计 interface/ 层
+6. [x] 识别并移除死代码
+7. [x] 合并双重 ModelRegistry
+8. [x] 修复 ReAct Loop 多轮 bug
+9. [x] 用 async-openai 重写 OpenAI provider
+10. [x] 移除 LSP/DAP
+11. [x] 修复 CancellationToken 连线
+12. [ ] 审查 `pub` vs `pub(crate)` 可见性
+13. [ ] 审查 `unsafe` (13 个全在 tests, 需加注释)
+14. [ ] 撰写 `docs/architecture.md`
+15. [ ] 决定 pi-parity 死代码模块去留: `trust.rs` (529L) + `project_trust.rs` (394L) + `output_guard.rs` (77L) + `commands.rs` (173L) + `resolver.rs` (496L) + `templates.rs` (318L) + `resource.rs` (358L) + `diagnostics.rs` (206L) + `event.rs` (110L) + `queue.rs` — 合计 ~3000L
