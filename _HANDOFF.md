@@ -1,4 +1,4 @@
-# Handoff: Unified Config Done → YAML Wiring Next
+# Handoff: YAML Config Wired ✅
 
 > 最后更新：2026-06-13 · clippy 0 warnings · 245 + 77 tests pass
 
@@ -16,72 +16,75 @@ cargo clippy --all-targets                   # → 0 warnings ✅
 | lib tests | 245 |
 | BDD scenarios | 77 |
 | total | 322 |
-| src 源文件 | 73 个 |
-| 总代码行数 | ~17,500L (含 ~3,100L 死代码) |
 | clippy warnings | 0 |
 
-## 本次会话 Commit 历史
+## 本次会话所有 Commit
 
 | Hash | 说明 |
 |------|------|
-| `a4d1489` | chore: remove lspz dependency and infra-lsp/dap modules (-1110L) |
-| `7b22fd0` | refactor(agent): merge duplicate ModelRegistry into single canonical version |
-| `6c7ddc8` | fix(agent): ReAct loop sends full history every turn; wire CancellationToken |
-| `67a6bb9` | refactor(provider): rewrite OpenAI provider with async-openai crate |
-| `2d493f6` | docs: update handoff with 5 critical fixes summary |
-| `ee4f70b` | docs: update handoff and next with dead code triage plan |
-| `*` | **refactor(model): unify ModelKind/ModelConfig, eliminate ProviderKind** |
+| `a4d1489` | chore: remove lspz dependency and infra-lsp/dap modules |
+| `7b22fd0` | refactor(agent): merge duplicate ModelRegistry |
+| `6c7ddc8` | fix(agent): ReAct loop + CancellationToken |
+| `67a6bb9` | refactor(provider): rewrite OpenAI with async-openai |
+| `2d493f6` | docs: handoff update |
+| `ee4f70b` | docs: dead code triage plan |
+| `691c7b3` | refactor(model): unify ModelKind/ModelConfig, B phase |
+| `1a2288c` | docs: handoff + next update |
+| `*` | **feat(cli): wire YAML config loader into CLI** |
 
-## 2026-06-13 最新: 配置系统统一
+## 本次会话完成摘要
 
-### ✅ 已完成: ModelKind / ModelConfig 统一
+| 类别 | 内容 |
+|------|------|
+| 🔴 Bug 修复 | ReAct loop 多轮丢上下文、CancellationToken 悬空 |
+| 🔴 架构 | 双重 ModelRegistry 合并、ModelKind 统一、ProviderKind 删除 |
+| 🟡 依赖 | lspz + infra-lsp/dap 删除、async-openai 接入 |
+| 🟢 配置 | YAML 5层加载 → CLI → ModelRegistry 全链路打通 |
+| 🟢 注解 | retry.rs + templates.rs #![allow(dead_code)] 修复 |
 
-```
-Before:                                    After:
-────────────────────────────────────────── ──────────────────────────────────
-agent::model::ModelKind     (3 variants)   → 统一在这里（加 serde/schemars）
-infra::config::types::ProviderKind (2 var)  → 删除，合并到 ModelKind
-
-agent::model::ModelConfig    (运行时)       → 唯一的运行时 ModelConfig
-infra::config::types::ModelConfig (YAML)    → 重命名为 ModelsConfig
-
-ModelEntry.provider: ProviderKind           → ModelEntry.provider: ModelKind
-```
-
-### 🔴 待处理: CLI 未调用 YAML 配置系统
+## 配置: YAML → CLI 完整数据流
 
 ```
-当前流程:                      应该的流程:
-  env vars                       config.yaml (5-layer merge)
-    ↓                                ↓
-  CLI 硬编码 ModelRegistry()    load_app_config() → AppConfig
-    ↓                                ↓
-  AgentSession::new()           resolve_model() → agent::model::ModelConfig
-                                    ↓
-                               AgentSession::new()
+config.yaml                config.local.yaml        --config override
+    ↓                            ↓                       ↓
+load_app_config() → deep merge → MiniJinja render → JSON schema validate
+    ↓
+ModelsConfig { models: { alias → ModelEntry { provider, model, ... } } }
+    ↓
+for each (alias, entry): resolve_api_key() → ModelMeta → ModelRegistry
+    ↓                                                    (fallback: env vars)
+AgentSession::new(registry, ...)
 ```
 
-YAML 配置系统 (loader.rs, types.rs, paths.rs, secret.rs, template.rs, validate.rs) 代码完整但 `interface/cli/mod.rs` 从未调用 `load_app_config()` — CLI 目前完全跳过配置层直接从 env vars 构建。
+用户只需创建 `~/.config/xylitol/config.yaml`:
 
-### 死代码 (保留给 TUI)
+```yaml
+model:
+  default_model: gpt-4o
+  models:
+    gpt-4o:
+      provider: openai
+      model: gpt-4o
+    sonnet:
+      provider: anthropic
+      model: claude-sonnet-4-20250514
+      context_window: 200000
+```
 
-按你的要求，pi-parity 死代码先保留（TUI 阶段会用到）：
-- `trust.rs` / `project_trust.rs` — 信任决策（TUI 交互需要）
-- `commands.rs` / `resolver.rs` / `templates.rs` — 交互式命令
-- `output_guard.rs` / `event.rs` — 界面输出控制
-- `resource.rs` — 项目上下文加载
+`xylitol --model sonnet "hello"` 即可工作。API key 仍从环境变量读取 (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`)。
 
-### 误标记 dead_code 已修复 (B 阶段 ✅)
+## 死代码: 保留给 TUI
 
-- `agent/retry.rs` — 去掉 `#![allow(dead_code)]`，行级标注未使用项
-- `agent/templates.rs` — 同上
-- `infra/config/secret.rs` / `template.rs` / `validate.rs` — 保留（config 系统待接线）
+按决策保留 pi-parity 模块 (TUI 阶段接入):
+- `trust.rs` / `project_trust.rs` — 信任决策
+- `commands.rs` / `resolver.rs` / `templates.rs` — 交互命令
+- `output_guard.rs` / `event.rs` — 界面输出
+- `resource.rs` — 项目上下文
 
 ## 下一步
 
 | # | 任务 | 优先级 |
 |---|------|--------|
-| 1 | CLI 接入 YAML 配置 (`load_app_config()` → `resolve_model()`) | 🔴 最高 |
-| 2 | `AppConfig::model` 字段名改为 `models`（更准确） | 🟡 建议 |
-| 3 | `pub` → `pub(crate)` 收紧 | 🟡 |
-| 4 | 撰写 `docs/architecture.md` | 🟡 |
+| 1 | `AppConfig::model` 字段重命名为 `models` | 🟡 建议 |
+| 2 | `pub` → `pub(crate)` 收紧 | 🟡 |
+| 3 | 撰写 `docs/architecture.md` | 🟡 |
