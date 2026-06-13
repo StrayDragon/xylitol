@@ -1,6 +1,6 @@
 # Xylitol — Strategic Direction
 
-> Last updated: 2026-06-13 · Config unified · B + C phases done · YAML wiring next
+> Last updated: 2026-06-13 · YAML config wired ✅ · All phases complete
 
 ## Core Positioning
 
@@ -15,101 +15,78 @@ It is NOT a platform, NOT an orchestration layer, NOT a multi-user service.
 
 | Layer | Status |
 |-------|--------|
-| AgentSession + unified ModelRegistry | ✅ Done (deduplicated 06-13) |
+| AgentSession + unified ModelRegistry | ✅ Done |
 | 7 built-in tools + OutputAccumulator | ✅ Done |
 | Session persistence (JSONL, tree, fork) | ✅ Done |
 | Hooks (pre/post, block/modify/allow) | ✅ Done |
 | Compaction (LLM summary + split detection) | ✅ Done |
 | System prompt (dynamic build) | ✅ Done |
-| Streaming cancel (CancellationToken wired) | ✅ Done (fixed 06-13) |
-| Multi-provider (OpenAI + Anthropic API) | ✅ Done (OpenAI uses async-openai 06-13) |
-| ReAct loop (multi-turn correct) | ✅ Done (fixed 06-13) |
-| BDD framework (77 scenarios, 322 total tests) | ✅ Done |
-| YAML config loader (5-layer merge, template, schema) | ✅ Code complete |
-| ModelKind/ModelConfig unified (no ProviderKind) | ✅ Done (06-13) |
+| Streaming cancel (CancellationToken wired) | ✅ Done |
+| Multi-provider (OpenAI + Anthropic API) | ✅ Done (async-openai) |
+| ReAct loop (multi-turn correct) | ✅ Done |
+| BDD framework (77 scenarios, 322 tests) | ✅ Done |
+| YAML config → CLI wiring | ✅ Done (5-layer merge + template + schema) |
+| ModelKind/ModelConfig unified | ✅ Done (no ProviderKind) |
 
 ### ❌ Explicitly NOT Implementing
 
 | Category | Reason |
 |----------|--------|
-| PackageManager detection | User manages dependencies |
-| OAuth / auth-storage / token flows | User configures API keys manually |
-| Extensions SDK / plugin system | Out of scope |
-| Additional providers (Gemini, Ollama, etc.) | OpenAI-like + Anthropic-like only |
-| Multi-modal inputs (images, documents) | Not planned |
+| PackageManager detection | User manages deps |
+| OAuth / auth-storage | User sets API keys |
+| Extensions SDK | Out of scope |
+| Extra providers (Gemini, Ollama) | OpenAI+Anthropic only |
+| Multi-modal | Not planned |
 
 ### 🤔 Interaction Mode: TBD
 
-Current: **CLI single-shot (`print` mode)**.
-Future: TUI / GUI / Web / MCP server — **decision pending**.
+Current: **CLI single-shot (`print`)**. Future: TUI/GUI/MCP — pending decision.
 
-## Provider Policy
+## Config: How It Works
 
-- **OpenAI-compatible API**: uses `async-openai` crate with user-provided `base_url` + `api_key`
-- **Anthropic-compatible API**: hand-rolled HTTP+SSE
-- No built-in model lists, no auth flows, no token management, no provider auto-discovery
-
-## Current Phase: Wire YAML Config → CLI
-
-### What's Already Built But Not Connected
-
-The YAML config pipeline is fully coded but `interface/cli/mod.rs` skips it entirely:
-
-| Component | Code | Status |
-|-----------|------|--------|
-| `ConfigPaths::discover()` | `paths.rs` | ✅ Walks CWD for `.xylitol/config.yaml` |
-| `load_app_config()` | `loader.rs` | ✅ 5-layer merge + MiniJinja templates |
-| `secret.env` loader | `secret.rs` | ✅ Dotenv + permission check |
-| JSON Schema validation | `validate.rs` | ✅ Runtime schema check |
-| `AppConfig::resolve_model()` | `types.rs` | ✅ Alias → `agent::model::ModelConfig` |
-| `AppConfig::resolve_profile()` | `types.rs` | ✅ Agent profile resolution |
-| CLI integration | `cli/mod.rs` | ❌ **Hardcodes env vars, never calls config** |
-
-### What Needs To Happen
-
-```rust
-// cli/mod.rs today:
-let mut model_registry = ModelRegistry::new();
-for (provider, env_var, kind) in [...env vars...] { ... }
-
-// Should be:
-let app_config = load_app_config(None)?;
-// For each model alias in app_config.model.models:
-//   resolve_model(alias) -> agent::model::ModelConfig
-//   register in ModelRegistry
-// Fallback: env vars as before
+```
+config.yaml (global) → config.local.yaml → project .xylitol/config.yaml → .local → --config
+                                    ↓
+                          load_app_config()
+                                    ↓
+                    ModelsConfig → ModelEntry → ModelMeta → ModelRegistry
+                                                          (fallback: env vars)
 ```
 
-### Dead Code: Kept for TUI
+Minimal `~/.config/xylitol/config.yaml`:
+```yaml
+model:
+  default_model: gpt-4o
+  models:
+    gpt-4o:
+      provider: openai
+      model: gpt-4o
+    sonnet:
+      provider: anthropic
+      model: claude-sonnet-4-20250514
+      context_window: 200000
+```
 
-Per decision, pi-parity modules are preserved (not deleted now):
-- `trust.rs` / `project_trust.rs` — trust decisions
-- `commands.rs` / `resolver.rs` / `templates.rs` — interactive commands
-- `output_guard.rs` / `event.rs` — UI output control
-- `resource.rs` — project context loading
+## Remaining Polish Items
 
-### Completed Today
-
-| Phase | Result |
-|-------|--------|
-| B: Fix `#![allow(dead_code)]` | ✅ retry.rs + templates.rs now use targeted `#[allow]` |
-| C: Unify ModelKind/ModelConfig | ✅ ProviderKind removed; ModelKind gets serde/schemars |
-| C: Rename YAML `ModelConfig` → `ModelsConfig` | ✅ No name conflict with agent-level ModelConfig |
+| # | Task | Priority |
+|---|------|----------|
+| 1 | `AppConfig::model` → rename field to `models` | 🟡 |
+| 2 | `pub` → `pub(crate)` tighten | 🟡 |
+| 3 | `docs/architecture.md` | 🟡 |
 
 ## Success Metrics
 
-- [x] BDD tests all green (77/77)
-- [x] 7 built-in tools with BDD coverage
-- [x] 2 LLM providers (OpenAI + Anthropic)
-- [x] 322 tests pass (245 lib + 77 BDD)
-- [x] Feature development frozen
+- [x] BDD tests 77/77
+- [x] 7 tools with BDD coverage
+- [x] 2 LLM providers
+- [x] 322 tests (245 lib + 77 BDD)
 - [x] 0 clippy warnings
-- [x] Critical bugs fixed (ReAct loop, CancellationToken, dual ModelRegistry)
-- [x] OpenAI provider uses async-openai
+- [x] ReAct loop multi-turn correct
+- [x] OpenAI uses async-openai
 - [x] lspz/dap removed
-- [x] `#![allow(dead_code)]` fixed (retry.rs, templates.rs)
-- [x] ModelKind/ModelConfig unified — single canonical enum + struct
-- [ ] CLI wired to YAML config loader
-- [ ] `AppConfig::model` field renamed to `models`
-- [ ] Visibility tightened — pub vs pub(crate) review
-- [ ] `docs/architecture.md` written
+- [x] ModelKind unified
+- [x] YAML config wired
+- [ ] `AppConfig::model` → `models` rename
+- [ ] visibility tightened
+- [ ] `docs/architecture.md`
