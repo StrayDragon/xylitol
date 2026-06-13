@@ -8,10 +8,11 @@ use crate::agent::traits::XyModel;
 use schemars::JsonSchema;
 
 /// Supported LLM providers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ModelKind {
     #[serde(rename = "openai")]
+    #[default]
     OpenAi,
     #[serde(rename = "anthropic")]
     Anthropic,
