@@ -2,8 +2,6 @@
 //!
 //! Aligns with pi's _isRetryableError / _prepareRetry / exponential backoff logic.
 
-#![allow(dead_code)]
-#[allow(dead_code)]
 use regex::Regex;
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -37,6 +35,7 @@ pub(crate) struct RetryState {
     max_retries: u32,
     base_delay_ms: u64,
     attempt: AtomicU32,
+    #[allow(dead_code)]
     abort_tx: watch::Sender<bool>,
     abort_rx: watch::Receiver<bool>,
 }
@@ -63,11 +62,13 @@ impl RetryState {
         Duration::from_millis(delay_ms)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn attempt(&self) -> u32 {
         self.attempt.load(Ordering::Acquire)
     }
 
     /// Abort any in-progress backoff wait.
+    #[allow(dead_code)]
     pub(crate) fn abort(&self) {
         let _ = self.abort_tx.send(true);
     }
