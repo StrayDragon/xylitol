@@ -278,7 +278,7 @@ Resolves whether a project directory has trust inputs:
 ### AppConfig Structure
 
 ```yaml
-model:
+models:
   default_model: gpt-4o
   models:
     gpt-4o:

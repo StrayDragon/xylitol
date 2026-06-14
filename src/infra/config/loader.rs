@@ -371,7 +371,7 @@ mod tests {
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("cli-config.yaml");
         let mut f = std::fs::File::create(&path).unwrap();
-        writeln!(f, "model:").unwrap();
+        writeln!(f, "models:").unwrap();
         writeln!(f, "  default_model: claude-opus-4").unwrap();
         writeln!(f, "  models: {{}}").unwrap();
         writeln!(f, "execution:").unwrap();
