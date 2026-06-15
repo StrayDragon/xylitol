@@ -104,7 +104,7 @@ AgentSession::new(registry, ...)
 用户只需创建 `~/.config/xylitol/config.yaml`:
 
 ```yaml
-model:
+models:
   default_model: gpt-4o
   models:
     gpt-4o:
@@ -120,7 +120,4 @@ model:
 
 ## 下一步
 
-| # | 任务 | 优先级 |
-|---|------|--------|
-| 1 | `AppConfig::model` 字段重命名为 `models` | 🟡 建议 |
-| 2 | 进入下一开发阶段 (TBD) | — |
+审计已完成，待进入下一开发阶段 (TBD)。

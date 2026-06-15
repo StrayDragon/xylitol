@@ -57,7 +57,7 @@ config.yaml (global) → config.local.yaml → project .xylitol/config.yaml → 
 
 Minimal `~/.config/xylitol/config.yaml`:
 ```yaml
-model:
+models:
   default_model: gpt-4o
   models:
     gpt-4o:
@@ -83,9 +83,7 @@ model:
 
 ## Remaining Polish Items
 
-| # | Task | Priority |
-|---|------|----------|
-| 1 | `AppConfig::model` → rename field to `models` | 🟡 |
+None — all items complete 🎉
 
 ## Success Metrics
 
@@ -102,4 +100,7 @@ model:
 - [x] Visibility audited (pub vs pub(crate))
 - [x] unsafe reviewed + documented
 - [x] docs/architecture.md written
-- [ ] `AppConfig::model` → `models` rename
+
+---
+
+## Next Phase: TBD

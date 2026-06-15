@@ -66,7 +66,7 @@ mod tests {
     fn test_validate_valid_config() {
         // A minimal valid config (all required fields present).
         let value = json!({
-            "model": {
+            "models": {
                 "default_model": "gpt-4o",
                 "models": {}
             },
@@ -131,7 +131,7 @@ mod tests {
     fn test_validate_invalid_type() {
         // model field should be an object, not a string.
         let value = json!({
-            "model": "not-an-object",
+            "models": "not-an-object",
         });
         let result = validate_config(&value);
         assert!(result.is_err());
