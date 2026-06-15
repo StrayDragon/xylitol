@@ -28,6 +28,11 @@ description: "实施一个 llman SDD 变更的 tasks，并同步更新 tasks.md 
    - 完成一项任务后立刻更新 checkbox（`- [ ]` → `- [x]`）
    - 若任务不明确、遇到阻塞、或发现 specs/design 与现实不一致，必须 STOP 并询问用户下一步。
 
+6. **BDD 回归**:
+   - 每完成一个 task，运行关联的 BDD 测试确保不回退:
+     `cargo test --test bdd -- --test-threads=1`
+   - 如有 scenario 由 PASS 变 FAIL，立即停止并报告
+
 7. 在完成（或暂停）时运行校验：
    ```bash
    llman sdd validate <id> --strict --no-interactive
