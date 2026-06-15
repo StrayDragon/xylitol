@@ -2,7 +2,7 @@
 # Place as xylitol.yaml or .xylitol.yaml in your project root,
 # or at $XDG_CONFIG_HOME/xylitol/config.yaml
 
-model:
+models:
   default_model: "claude"
   models:
     claude:

@@ -38,8 +38,18 @@
         "user": []
       }
     },
-    "model": {
-      "$ref": "#/$defs/ModelConfig",
+    "mcp_servers": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "default": null,
+      "items": {
+        "$ref": "#/$defs/McpServerConfig"
+      }
+    },
+    "models": {
+      "$ref": "#/$defs/ModelsConfig",
       "default": {
         "default_model": null,
         "models": {}
@@ -50,17 +60,6 @@
       "default": {
         "auto_apply": false
       }
-    },
-    "planning": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/PlanningConfig"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
     },
     "repeat_detection": {
       "$ref": "#/$defs/RepeatDetectionConfig",
@@ -117,6 +116,7 @@
           "allowed_patterns": [],
           "forbidden_patterns": []
         },
+        "mcp_allowlist": [],
         "network": {
           "allowed_domains": [],
           "blocked_domains": []
@@ -141,23 +141,25 @@
       ],
       "default": null
     },
+    "skills": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "default": null,
+      "items": {
+        "$ref": "#/$defs/SkillConfig"
+      }
+    },
     "tools": {
       "$ref": "#/$defs/ToolsConfig",
       "default": {
         "allowlist": [],
-        "blocklist": []
+        "blocklist": [],
+        "max_dir_entries": 0,
+        "max_file_size": 0,
+        "max_results": 0
       }
-    },
-    "validation": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/ValidationConfig"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
     }
   },
   "$defs": {
@@ -373,11 +375,125 @@
         }
       }
     },
-    "ModelConfig": {
+    "McpServerConfig": {
+      "type": "object",
+      "properties": {
+        "args": {
+          "description": "Arguments for the command (stdio transport only).",
+          "type": [
+            "array",
+            "null"
+          ],
+          "default": null,
+          "items": {
+            "type": "string"
+          }
+        },
+        "command": {
+          "description": "Command to spawn (stdio transport only).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "env": {
+          "description": "Extra environment variables for the child process (stdio transport only).",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": null
+        },
+        "name": {
+          "type": "string"
+        },
+        "transport": {
+          "description": "Transport kind: \"stdio\" or \"sse\".",
+          "$ref": "#/$defs/McpTransportKind",
+          "default": "stdio"
+        },
+        "url": {
+          "description": "SSE endpoint URL (sse transport only).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "McpTransportKind": {
+      "type": "string",
+      "enum": [
+        "stdio",
+        "sse"
+      ]
+    },
+    "ModelEntry": {
+      "description": "A single model alias entry.\n\nReferences [`ModelKind`](crate::agent::model::ModelKind) for the provider;\nthe kind's serde representation is the YAML wire format.",
+      "type": "object",
+      "properties": {
+        "base_url": {
+          "description": "Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "context_window": {
+          "description": "Context window size in tokens. Default: 0 (auto-detect from provider).",
+          "type": "integer",
+          "format": "uint64",
+          "default": 0,
+          "minimum": 0
+        },
+        "fallback": {
+          "description": "Optional fallback model ID (must be another key in `models`).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/ModelKind"
+        },
+        "thinking": {
+          "description": "Whether this model supports thinking/reasoning. Default: true for all.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": [
+        "provider",
+        "model"
+      ]
+    },
+    "ModelKind": {
+      "description": "Supported LLM providers.",
+      "type": "string",
+      "enum": [
+        "openai",
+        "anthropic"
+      ]
+    },
+    "ModelsConfig": {
+      "description": "Top-level model configuration section.\nSplit from agent-level [`ModelConfig`](crate::agent::model::ModelConfig) —\nthis is YAML-facing; [`ModelEntry`] aliases resolve into runtime config.",
       "type": "object",
       "properties": {
         "default_model": {
-          "description": "Default model ID to use when no model is specified.",
+          "description": "Default model ID (or alias key) to use when no model is specified.",
           "type": [
             "string",
             "null"
@@ -393,37 +509,6 @@
           "default": {}
         }
       }
-    },
-    "ModelEntry": {
-      "type": "object",
-      "properties": {
-        "base_url": {
-          "description": "Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
-        "fallback": {
-          "description": "Optional fallback model ID (must be another key in `models`).",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
-        "model": {
-          "type": "string"
-        },
-        "provider": {
-          "$ref": "#/$defs/ProviderKind"
-        }
-      },
-      "required": [
-        "provider",
-        "model"
-      ]
     },
     "NetworkSecurityConfig": {
       "type": "object",
@@ -453,44 +538,6 @@
           "default": false
         }
       }
-    },
-    "PlanningConfig": {
-      "type": "object",
-      "properties": {
-        "max_steps": {
-          "type": "integer",
-          "format": "uint16",
-          "default": 10,
-          "maximum": 65535,
-          "minimum": 0
-        },
-        "model": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
-        "reasoning_depth": {
-          "type": "string",
-          "default": "medium"
-        },
-        "system_prompt": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        }
-      }
-    },
-    "ProviderKind": {
-      "description": "Supported LLM providers (MVP: only OpenAI-compatible and Anthropic).",
-      "type": "string",
-      "enum": [
-        "openai",
-        "anthropic"
-      ]
     },
     "RecoveryAction": {
       "description": "A single recovery action in the sequential chain.",
@@ -726,12 +773,20 @@
           "$ref": "#/$defs/BashSecurityConfig"
         },
         "enabled": {
-          "description": "Master toggle — opt-in (default false).",
+          "description": "Master toggle — enabled by default for safety.",
           "type": "boolean",
-          "default": false
+          "default": true
         },
         "filesystem": {
           "$ref": "#/$defs/FilesystemSecurityConfig"
+        },
+        "mcp_allowlist": {
+          "description": "MCP servers/tools allowed (entries: \"server_name\" or \"server:tool\").\nEmpty = deny all MCP tools when security is enabled.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
         },
         "network": {
           "$ref": "#/$defs/NetworkSecurityConfig"
@@ -793,6 +848,41 @@
         }
       }
     },
+    "SkillConfig": {
+      "type": "object",
+      "properties": {
+        "allowed_tools": {
+          "description": "Tool names this skill is allowed to use. `None` or empty = all tools.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "default": null,
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "name": {
+          "type": "string",
+          "default": ""
+        },
+        "system_prompt_addon": {
+          "description": "System prompt fragment injected when this skill is activated.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      }
+    },
     "ToolsConfig": {
       "type": "object",
       "properties": {
@@ -809,15 +899,24 @@
           "items": {
             "type": "string"
           }
-        }
-      }
-    },
-    "ValidationConfig": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": false
+        },
+        "max_dir_entries": {
+          "type": "integer",
+          "format": "uint32",
+          "default": 1000,
+          "minimum": 0
+        },
+        "max_file_size": {
+          "type": "integer",
+          "format": "uint64",
+          "default": 10485760,
+          "minimum": 0
+        },
+        "max_results": {
+          "type": "integer",
+          "format": "uint32",
+          "default": 1000,
+          "minimum": 0
         }
       }
     }

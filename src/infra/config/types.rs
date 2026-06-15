@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct AppConfig {
+    #[serde(rename = "models")]
+    #[schemars(rename = "models")]
     pub model: ModelsConfig,
     pub agents: AgentsConfig,
     pub execution: ExecutionConfig,
