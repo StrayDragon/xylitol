@@ -123,6 +123,29 @@ pub struct CustomMessageEntry {
     pub details: Option<Value>,
 }
 
+// ── Label entry ──────────────────────────────────────────────────────
+
+/// Label entry for user-defined bookmarks/markers on entries.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LabelEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    pub target_id: String,
+    pub label: Option<String>,
+}
+
+// ── Session info entry ──────────────────────────────────────────────
+
+/// Session metadata entry (e.g., user-defined display name).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionInfoEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    pub name: Option<String>,
+}
+
 // ── Session context (reconstructed LLM messages) ───────────────────
 
 /// Reconstructed session context from stored entries.
@@ -132,6 +155,17 @@ pub struct SessionContext {
     pub messages: Vec<serde_json::Value>, // Vec<XyContent> in JSON form
     pub thinking_level: String,
     pub model: Option<(String, String)>, // (provider, model_id)
+}
+
+/// Tree node for getTree() - defensive copy of session structure.
+#[derive(Debug, Clone)]
+pub struct SessionTreeNode {
+    /// The session entry at this node.
+    pub entry: SessionEntry,
+    /// Child nodes in timestamp order.
+    pub children: Vec<SessionTreeNode>,
+    /// Resolved label for this entry, if any.
+    pub label: Option<String>,
 }
 
 // ── Unified entry enum ─────────────────────────────────────────────
@@ -155,6 +189,10 @@ pub enum SessionEntry {
     Custom(CustomEntry),
     #[serde(rename = "custom_message")]
     CustomMessage(CustomMessageEntry),
+    #[serde(rename = "label")]
+    Label(LabelEntry),
+    #[serde(rename = "session_info")]
+    SessionInfo(SessionInfoEntry),
 }
 
 impl SessionEntry {
@@ -168,6 +206,8 @@ impl SessionEntry {
             SessionEntry::ThinkingLevelChange(e) => Some(&e.base),
             SessionEntry::Custom(e) => Some(&e.base),
             SessionEntry::CustomMessage(e) => Some(&e.base),
+            SessionEntry::Label(e) => Some(&e.base),
+            SessionEntry::SessionInfo(e) => Some(&e.base),
         }
     }
 
@@ -181,6 +221,8 @@ impl SessionEntry {
             SessionEntry::ThinkingLevelChange(_) => "thinking_level_change",
             SessionEntry::Custom(_) => "custom",
             SessionEntry::CustomMessage(_) => "custom_message",
+            SessionEntry::Label(_) => "label",
+            SessionEntry::SessionInfo(_) => "session_info",
         }
     }
 

@@ -324,6 +324,7 @@ async fn _g_session_exists(sess: &SessionStore, id: String) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let _ = mgr.create(&id, Some("."), None).await;
+    sess.current_id.replace(Some(id));
 }
 
 #[given("存在会话 {id:string} 包含 {count:u32} 条记录")]
@@ -1678,6 +1679,94 @@ fn _t_session_jsonl_version(sess: &SessionStore) {
 fn _t_session_context_branches(sess: &SessionStore) {
     let _ = sess;
 }
+
+// ── Label and session_info steps ──
+
+#[given("向会话追加一条消息 {msg:string}")]
+async fn _given_session_append_msg(sess: &SessionStore, msg: String) {
+    _w_session_append(sess, msg).await;
+}
+
+#[when("为最后一条记录设置标签 {label:string}")]
+async fn _w_session_set_label(sess: &SessionStore, label: String) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let sid = sess.current_id.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(&sid).await.unwrap();
+    let last_id = entries
+        .iter()
+        .rev()
+        .find(|e| {
+            e.entry_type() != "label"
+                && e.entry_type() != "session_info"
+                && e.entry_type() != "session"
+        })
+        .and_then(|e| e.entry_id().map(String::from))
+        .expect("no entries to label");
+    mgr.append_label_change(&sid, &last_id, Some(&label))
+        .await
+        .unwrap();
+}
+
+#[when("清除该记录的标签")]
+async fn _w_session_clear_label(sess: &SessionStore) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let sid = sess.current_id.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(&sid).await.unwrap();
+    let last_id = entries
+        .iter()
+        .rev()
+        .find(|e| {
+            e.entry_type() != "label"
+                && e.entry_type() != "session_info"
+                && e.entry_type() != "session"
+        })
+        .and_then(|e| e.entry_id().map(String::from))
+        .expect("no entries to clear label");
+    mgr.append_label_change(&sid, &last_id, None).await.unwrap();
+}
+
+#[then("该记录的标签为 {expected:string}")]
+async fn _t_session_label_is(sess: &SessionStore, expected: String) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let sid = sess.current_id.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(&sid).await.unwrap();
+    let last_id = entries
+        .iter()
+        .rev()
+        .find(|e| {
+            e.entry_type() != "label"
+                && e.entry_type() != "session_info"
+                && e.entry_type() != "session"
+        })
+        .and_then(|e| e.entry_id())
+        .expect("no entries");
+    let label = mgr.get_label(&sid, last_id).await.unwrap();
+    assert_eq!(label, Some(expected), "label mismatch");
+}
+
+#[then("该记录没有标签")]
+async fn _t_session_no_label(sess: &SessionStore) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let sid = sess.current_id.borrow().as_ref().unwrap().clone();
+    let entries = mgr.load(&sid).await.unwrap();
+    let last_id = entries
+        .iter()
+        .rev()
+        .find(|e| {
+            e.entry_type() != "label"
+                && e.entry_type() != "session_info"
+                && e.entry_type() != "session"
+        })
+        .and_then(|e| e.entry_id())
+        .expect("no entries");
+    let label = mgr.get_label(&sid, last_id).await.unwrap();
+    assert!(label.is_none(), "expected no label, got {:?}", label);
+}
+
 #[then("恰好有 {n:u32} 条匹配")]
 fn _t_grep_exact_matches(_ws: &Workspace, n: u32) {
     let _ = n;
@@ -1838,7 +1927,7 @@ fn test_ls_invalid_path(ws: Workspace) {}
 #[scenario(path = "tests/features/ls.feature", name = "路径指向文件而非目录失败")]
 fn test_ls_file_not_dir(ws: Workspace) {}
 
-// session.feature (7) — async
+// session.feature (9) — async
 #[scenario(path = "tests/features/session.feature", name = "创建并加载会话")]
 async fn test_session_create_load(sess: SessionStore) {}
 #[scenario(path = "tests/features/session.feature", name = "会话列表")]
@@ -1853,6 +1942,10 @@ async fn test_session_model_change(sess: SessionStore) {}
 async fn test_session_thinking_change(sess: SessionStore) {}
 #[scenario(path = "tests/features/session.feature", name = "JSONL 文件格式正确")]
 async fn test_session_jsonl_format(sess: SessionStore) {}
+#[scenario(path = "tests/features/session.feature", name = "为会话条目设置标签")]
+async fn test_session_label_set(sess: SessionStore) {}
+#[scenario(path = "tests/features/session.feature", name = "清除会话条目标签")]
+async fn test_session_label_clear(sess: SessionStore) {}
 
 // agent.feature (8) — async
 #[scenario(path = "tests/features/agent.feature", name = "Agent 处理纯文本响应")]
