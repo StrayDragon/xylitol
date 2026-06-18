@@ -1,0 +1,14 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ex1,"tool-definition","System MUST support ToolDefinition trait with name description parameters and execute method.",null,null,null
+  add_requirement,ex2,"extension-hooks","Extension MUST be able to subscribe to agent lifecycle events via string channels.",null,null,null
+  add_requirement,ex3,"extension-loader","System MUST load extensions from configured paths using ExtensionLoader.",null,null,null
+  add_requirement,ex4,"extension-context","ExtensionContext MUST provide cwd session_manager model_registry model signal and abort.",null,null,null
+  add_requirement,ex5,"tool-hooks","System MUST support before_tool_call and after_tool_call hooks per tool definition.",null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  ex1,"register-tool",an extension registers a custom tool my-tool,agent calls my-tool with args,tool executes and returns result
+  ex2,"tool-hook",extension subscribes to tool_execution_start,bash tool executes,extension receives ToolExecutionStartEvent
+  ex2,"context-hook",extension subscribes to context event,before LLM call fires,extension receives messages array
+  ex3,"load-extension",extension file path is configured,ExtensionLoader loads it,extension init called
+  ex4,"abort",ExtensionContext.abort is called during agent streaming,agent loop checks signal,agent stops
+  ex5,"block-tool","extension before_tool_call returns block with reason",tool execution attempted,tool blocked and reason logged

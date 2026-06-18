@@ -1,0 +1,22 @@
+kind: llman.sdd.delta
+ops[8]{op,req_id,title,statement,from,to,name}:
+  add_requirement,m9,"provider-registration","ModelRegistry MUST accept RegisterProvider with provider config including comat field.",null,null,null
+  add_requirement,m10,"custom-model-definition","ModelRegistry MUST support CustomModelDefinition with id provider model baseURL headers comat thinking and contextWindow.",null,null,null
+  add_requirement,m11,"model-filtering","ModelResolver MUST support FilterModels with enabledModels patterns supporting wildcard and bare id matching.",null,null,null
+  add_requirement,m12,"alias-preference","ModelResolver MUST prefer non-dated aliases over dated versions when resolving bare model IDs.",null,null,null
+  add_requirement,m13,"auth-storage","AuthStorage MUST persist OAuth credentials to disk with expiration tracking and token refresh.",null,null,null
+  add_requirement,m14,"custom-provider-definition","ModelRegistry MUST accept CustomProviderDefinition with api baseURL apiKey headers for user-defined providers.",null,null,null
+  modify_requirement,m4,"model-resolver","ModelResolver MUST support resolve_model with canonical form bare id alias preference thinking-level pattern and fallback.",null,null,null
+  modify_requirement,m7,"auth-guidance","ModelRegistry MUST produce user-facing error for missing auth listing required env vars and login hint.",null,null,null
+op_scenarios[11]{req_id,id,given,when,then}:
+  m9,"register-openai",a provider registered as openai with apiKey and comat,get_available is called,model list includes openai models
+  m10,"custom-model",custom model definition has id my-model provider openai,model is registered,get_available includes my-model
+  m11,"filter-wildcard","enabledModels is [ openai/* ]",filter_models is called,only openai models pass filter
+  m11,"thinking-suffix",model pattern has thinking=high suffix,pattern is resolved,model has thinking level high
+  m12,"dedup-alias",available models include alias and dated version,resolve_model is called,dated version returned
+  m13,"oauth-store",auth configured with accessToken and expiresAt,auth saved and loaded,credentials restored
+  m13,"oauth-refresh","auth expiresAt is 30 seconds from now",get_api_key is called,refresh triggered
+  m14,"custom-provider",custom provider has api openai-compatible and local baseURL,ModelRegistry builds client,requests go to custom URL
+  m4,"canonical-resolve","available models include openai/gpt-4o",resolve_model is called,returns matching model
+  m4,"bare-id-fallback","available models include claude-sonnet-4-20250514",resolve_model is called,returns anthropic model
+  m7,"missing-auth",no API key configured for claude model,get_configured_auth is called,error mentions ANTHROPIC_API_KEY

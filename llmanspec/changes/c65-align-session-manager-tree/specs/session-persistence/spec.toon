@@ -1,0 +1,18 @@
+kind: llman.sdd.delta
+ops[6]{op,req_id,title,statement,from,to,name}:
+  add_requirement,s26,session-fork-impl,SessionManager.fork MUST create child session and copy parent entries.,null,null,null
+  add_requirement,s27,session-tree-navigate,SessionManager.navigate_tree MUST change leaf pointer to target.,null,null,null
+  add_requirement,s28,get-tree,SessionManager.get_tree MUST return SessionTreeNode vec.,null,null,null
+  add_requirement,s29,build-session-context,SessionManager.build_session_context MUST reconstruct LLM messages.,null,null,null
+  add_requirement,s30,label-entry,SessionManager MUST support LabelEntry with target_id and label.,null,null,null
+  modify_requirement,s2,entry-types,SessionEntry types MUST include label and session_info.,null,null,null
+op_scenarios[9]{req_id,id,given,when,then}:
+  s26,fork-copies,parent has entries e0 through e9,fork at e5,child has e0-e5 plus BranchSummaryEntry
+  s26,fork-full,parent has entries e0-e4,fork at last entry,child has all entries
+  s27,navigate,leaf is at e9,navigate_tree to e4,new appends diverge
+  s28,tree-structure,session entries form tree,get_tree called,tree structure matches
+  s29,context-messages,session has messages and compaction,build_session_context returns,LLM messages include summary
+  s29,context-model,session has ModelChangeEntry,build_session_context returns,SessionContext.model set
+  s2,label-type,LabelEntry saved with label important,entry loaded,label is important
+  s30,add-label,label set on entry e5,get_label e5 called,returns important
+  s30,clear-label,label cleared on entry e5,get_label e5 called,returns undefined

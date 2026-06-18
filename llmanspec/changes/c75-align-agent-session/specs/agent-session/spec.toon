@@ -1,0 +1,20 @@
+kind: llman.sdd.delta
+ops[7]{op,req_id,title,statement,from,to,name}:
+  add_requirement,as1,session-prompt-pipeline,AgentSession.prompt MUST process input through slash commands skill blocks and agent loop.,null,null,null
+  add_requirement,as2,session-operations,AgentSession MUST expose fork navigate_tree new_session and switch_session.,null,null,null
+  add_requirement,as3,event-auto-persistence,AgentSession MUST auto-persist turn events to session JSONL.,null,null,null
+  add_requirement,as4,message-queue,AgentSession MUST support steering_mode and follow_up_mode for queued messages.,null,null,null
+  add_requirement,as5,skill-commands,AgentSession MUST auto-register slash skill commands when enabled.,null,null,null
+  add_requirement,as6,wrap-extensions,AgentSession MUST wrap built-in tools with extension hooks at session start.,null,null,null
+  add_requirement,as7,auto-compaction,AgentSession MUST auto-trigger compaction after each turn.,null,null,null
+op_scenarios[10]{req_id,id,given,when,then}:
+  as1,slash-dispatch,user types model switch,AgentSession.prompt called,model switched
+  as1,template-expand,user types template review,AgentSession finds template,content substituted
+  as2,session-fork,agent running with session current,AgentSession.fork called,child session created
+  as2,session-navigate,session tree has two branches,AgentSession.navigate_tree called,leaf moves
+  as3,auto-persist,turn completes with message and results,turn_end fires,entries appended
+  as3,model-change,user switches models,model_change fires,ModelChangeEntry appended
+  as4,steering,steering_mode is one-at-a-time,user types followup while agent runs,message queued
+  as5,skill-cmd,python skill loaded and enabled,user types skill command,skill content injected
+  as6,hook-wrap,extension registers block hook,bash tool called with risky cmd,tool blocked
+  as7,auto-compact,context exceeds threshold,auto-compaction triggers,compaction_start fires
