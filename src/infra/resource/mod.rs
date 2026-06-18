@@ -11,4 +11,8 @@
 
 pub mod loader;
 
-pub use loader::DefaultResourceLoader;
+#[allow(unused_imports)]
+pub use loader::{
+    AgentsFile, DefaultResourceLoader, PromptTemplate, ResourceDiagnostic, SkillInfo, ThemeInfo,
+    load_project_context_files,
+};
