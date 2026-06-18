@@ -21,6 +21,18 @@ pub struct ProviderConfig {
     pub base_url: Option<String>,
     pub priority: u32,
     pub is_oauth: bool,
+    /// Provider compatibility mode (openai-compatible / anthropic-messages / openai-responses).
+    pub api: Option<ProviderApi>,
+    /// Additional HTTP headers for this provider.
+    pub headers: Option<std::collections::HashMap<String, String>>,
+}
+
+/// Provider API compatibility type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProviderApi {
+    OpenAiCompatible,
+    AnthropicMessages,
+    OpenAiResponses,
 }
 
 impl ProviderConfig {
@@ -31,6 +43,8 @@ impl ProviderConfig {
             base_url: None,
             priority: 10,
             is_oauth: false,
+            api: Some(ProviderApi::OpenAiCompatible),
+            headers: None,
         }
     }
 
@@ -41,6 +55,26 @@ impl ProviderConfig {
             base_url: None,
             priority: 20,
             is_oauth: false,
+            api: Some(ProviderApi::AnthropicMessages),
+            headers: None,
+        }
+    }
+
+    /// Create a custom provider config (user-defined provider like LM Studio, Ollama).
+    pub fn custom(
+        name: &str,
+        api: ProviderApi,
+        base_url: impl Into<String>,
+        api_key: Option<String>,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            api_key,
+            base_url: Some(base_url.into()),
+            priority: 30,
+            is_oauth: false,
+            api: Some(api),
+            headers: None,
         }
     }
 
@@ -262,6 +296,8 @@ mod tests {
                 base_url: None,
                 priority: 20,
                 is_oauth: false,
+                api: Some(ProviderApi::AnthropicMessages),
+                headers: None,
             },
         );
         reg.register(ModelMeta {
@@ -329,6 +365,8 @@ mod tests {
                 base_url: None,
                 priority: 10,
                 is_oauth: true,
+                api: None,
+                headers: None,
             },
         );
         assert!(reg.has_configured_auth("openai"));

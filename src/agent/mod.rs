@@ -1,3 +1,4 @@
+pub mod auth_storage;
 pub mod commands;
 pub mod defaults;
 pub mod diagnostics;
