@@ -1,0 +1,12 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,s17,"channel-event-bus","EventBus MUST use string channels for event dispatch with emit and on methods.",null,null,null
+  add_requirement,s18,"async-handlers","EventBus handlers MUST be async and errors in handlers caught and logged without crashing the bus.",null,null,null
+  add_requirement,s19,"event-bus-clear","EventBus MUST support clear that removes all listeners from all channels.",null,null,null
+  add_requirement,s20,"handler-error-isolation","When an event handler panics EventBus MUST catch the error and continue delivering to remaining handlers.",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  s17,"channel-emit",event bus is created,emit tool_execution_start with payload,subscriber on that channel receives payload
+  s18,"unsubscribe",subscriber registered on channel,unsubscribe handle is dropped,subsequent emit does not reach droppped handler
+  s18,"async-handler",handler is async fn that records receipt,emit fires,event is recorded after handler completes
+  s19,"clear-all",handlers registered across 3 channels,clear is called,no handlers remain
+  s20,"handler-panics","handler A panics handler B is normal on same channel",emit fires,handler B still receives event

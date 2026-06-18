@@ -1,0 +1,13 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,sk1,"skill-markdown-loading","System MUST discover skills by scanning directories for SKILL.md files.",null,null,null
+  add_requirement,sk2,"skill-frontmatter","System MUST parse YAML frontmatter from SKILL.md files extracting name description.",null,null,null
+  add_requirement,sk3,"skill-ignore-support","System MUST respect gitignore files when scanning for skills.",null,null,null
+  modify_requirement,r1,"skill-source-info","Skill loading MUST include SourceInfo marking each skill as user project or path.",null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  sk1,root-skill,dir contains SKILL.md,load_skills_from_dir called,dir loaded as one skill
+  sk1,root-md,dir root has .md file,load_skills_from_dir scans root,md file loaded as skill
+  sk2,valid-skill,SKILL.md has valid name,skill loaded,skill name matches
+  sk2,invalid-name,SKILL.md has invalid uppercase name,skill loaded with diagnostics,skill excluded
+  sk3,ignore-dir,subdir matches gitignore,scan recurses,ignored subdir skipped
+  r1,source-info,skill loaded from project dir,source_info checked,scope is project

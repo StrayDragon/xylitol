@@ -1,0 +1,17 @@
+kind: llman.sdd.delta
+ops[6]{op,req_id,title,statement,from,to,name}:
+  add_requirement,sk4,resource-loader,ResourceLoader MUST provide get_extensions get_skills get_prompts get_themes and reload.,null,null,null
+  add_requirement,sk5,agents-file-discovery,ResourceLoader MUST discover AGENTS.md and CLAUDE.md files from CWD to root.,null,null,null
+  add_requirement,sk6,system-prompt-builder,System MUST build system prompt by assembling systemPrompt AGENTS.md APPEND_SYSTEM.md and active skills.,null,null,null
+  add_requirement,sk7,resource-reload,ResourceLoader.reload MUST reload all resources and return fresh data.,null,null,null
+  add_requirement,sk8,resource-diagnostics,ResourceLoader MUST collect diagnostics for each resource loading failure.,null,null,null
+  modify_requirement,sk1,skill-loading-integration,Skill loading MUST be integrated into ResourceLoader not called directly by AgentSession.,null,null,null
+op_scenarios[8]{req_id,id,given,when,then}:
+  sk4,get-skills,project has skills dir,ResourceLoader created,get_skills returns Python skill
+  sk5,ancestor-agents,AGENTS.md exists in parent dirs,get_agents_files called,both files returned in ancestor order
+  sk5,global-agents,global AGENTS.md exists,get_agents_files called,global file included
+  sk6,full-prompt,systemPrompt AGENTS.md and skill present,build_system_prompt called,output has all sections
+  sk7,reload-skills,new SKILL.md added after load,reload called,get_skills includes new skill
+  sk8,diagnostic,SKILL.md has invalid YAML,ResourceLoader loads skills,diagnostics has parse error
+  sk1,via-loader,project has skills dir,AgentSession calls resource_loader,skill loaded via loader
+  sk1,command-registration,skill has name python,AgentSession starts,"slash command registered"
