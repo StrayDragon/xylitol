@@ -494,6 +494,83 @@ impl AgentSession {
         Ok(child_id)
     }
 
+    /// Navigate the session tree: change the current leaf to a different entry.
+    /// After navigation, future appends will create children of the target entry.
+    pub fn navigate_tree(&self, target_id: &str) -> Result<(), String> {
+        let sid = self
+            .session_id()
+            .ok_or_else(|| "no active session".to_string())?;
+        self.session_manager.navigate_tree(sid, Some(target_id));
+        Ok(())
+    }
+
+    /// Switch to a different session file.
+    pub async fn switch_session(&self, new_path: &str) -> Result<(), String> {
+        let new_id = std::path::Path::new(new_path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+        self.session_manager
+            .switch_session(new_id, new_path)
+            .await?;
+        self.session_manager.set_active_session(new_id);
+        Ok(())
+    }
+
+    // ── Skill commands ──────────────────────────────────────────
+
+    /// Register skill commands from loaded skills.
+    /// When a skill is loaded, `/skill:name` slash command is auto-registered.
+    pub fn register_skill_commands(&mut self, skills: &[crate::infra::resource::SkillInfo]) {
+        for skill in skills {
+            let name = skill.name.clone();
+            let desc = skill.description.clone().unwrap_or_default();
+            self.extension_commands.push(SlashCommandInfo {
+                name: format!("skill:{name}"),
+                description: format!("Activate skill: {desc}"),
+                argument_hint: None,
+            });
+        }
+    }
+
+    // ── Extension tool wrapping ─────────────────────────────────
+
+    /// Wrap built-in tools with extension hooks (before_tool_call / after_tool_call).
+    ///
+    /// Each built-in tool is wrapped so that before execution, extensions can block it,
+    /// and after execution, extensions can modify the result.
+    #[allow(dead_code)]
+    pub(crate) fn wrap_registered_tools(
+        &mut self,
+        _loader: &crate::agent::extensions::ExtensionLoader,
+    ) {
+        // Tool wrapping happens at the ToolRegistry level in c80.
+        // For now, this is a placeholder that will be wired in AgentLoop.
+    }
+
+    /// Check if a steering message is pending (for steering_mode).
+    pub fn has_pending_steer(&self) -> bool {
+        self.message_queue.has_pending()
+    }
+
+    /// Enter steering mode: queue messages while agent is running.
+    /// Steering messages don't trigger new turns but are injected into context.
+    #[allow(dead_code)]
+    pub(crate) fn queue_steer_message(&mut self, message: XyContent) {
+        self.message_queue.push(message);
+    }
+
+    /// Enter follow-up mode: queue messages to be delivered after current turn.
+    #[allow(dead_code)]
+    pub(crate) fn queue_follow_up(&mut self, message: XyContent) {
+        self.message_queue.push(message);
+    }
+
+    /// Drain queued messages for the next turn.
+    pub fn drain_queued_messages(&mut self) -> Vec<XyContent> {
+        self.message_queue.drain()
+    }
+
     // ── Dynamic system prompt ────────────────────────────────────
 
     /// Set active tools by name and rebuild the system prompt.

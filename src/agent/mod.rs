@@ -4,6 +4,7 @@ pub mod defaults;
 pub mod diagnostics;
 pub mod error;
 pub mod event;
+pub mod extensions;
 pub mod r#loop;
 pub mod model;
 pub mod output_guard;

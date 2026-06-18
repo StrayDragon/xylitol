@@ -3,16 +3,18 @@
 //! Aligns with pi's AgentSession steer/followUp/sendCustomMessage.
 
 #![allow(dead_code)]
-#[allow(dead_code)]
+
 use std::collections::VecDeque;
+
+use crate::agent::types::XyContent;
 
 /// Manages queued messages during streaming and idle periods.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct MessageQueue {
     /// Steering messages — delivered after current tool execution round.
-    steering: VecDeque<String>,
+    steering: VecDeque<XyContent>,
     /// Follow-up messages — delivered when agent has no pending operations.
-    follow_up: VecDeque<String>,
+    follow_up: VecDeque<XyContent>,
 }
 
 impl MessageQueue {
@@ -20,33 +22,43 @@ impl MessageQueue {
         Self::default()
     }
 
+    /// Push a message to the queue.
+    pub(crate) fn push(&mut self, msg: XyContent) {
+        self.follow_up.push_back(msg);
+    }
+
     /// Queue a steering message (interrupting).
-    pub(crate) fn steer(&mut self, text: String) {
+    pub(crate) fn steer(&mut self, text: XyContent) {
         self.steering.push_back(text);
     }
 
     /// Queue a follow-up message (non-interrupting).
-    pub(crate) fn follow_up(&mut self, text: String) {
+    pub(crate) fn follow_up(&mut self, text: XyContent) {
         self.follow_up.push_back(text);
     }
 
+    /// Drain all messages.
+    pub(crate) fn drain(&mut self) -> Vec<XyContent> {
+        self.follow_up.drain(..).collect()
+    }
+
     /// Drain all steering messages and return them.
-    pub(crate) fn drain_steering(&mut self) -> Vec<String> {
+    pub(crate) fn drain_steering(&mut self) -> Vec<XyContent> {
         self.steering.drain(..).collect()
     }
 
     /// Drain all follow-up messages and return them.
-    pub(crate) fn drain_follow_up(&mut self) -> Vec<String> {
+    pub(crate) fn drain_follow_up(&mut self) -> Vec<XyContent> {
         self.follow_up.drain(..).collect()
     }
 
     /// Get read-only references to steering messages.
-    pub(crate) fn get_steering(&self) -> &VecDeque<String> {
+    pub(crate) fn get_steering(&self) -> &VecDeque<XyContent> {
         &self.steering
     }
 
     /// Get read-only references to follow-up messages.
-    pub(crate) fn get_followup(&self) -> &VecDeque<String> {
+    pub(crate) fn get_followup(&self) -> &VecDeque<XyContent> {
         &self.follow_up
     }
 
@@ -72,6 +84,6 @@ impl MessageQueue {
 /// Result from clearing queues.
 #[derive(Debug)]
 pub(crate) struct ClearResult {
-    pub(crate) steering: Vec<String>,
-    pub(crate) follow_up: Vec<String>,
+    pub(crate) steering: Vec<XyContent>,
+    pub(crate) follow_up: Vec<XyContent>,
 }
