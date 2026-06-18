@@ -1,5 +1,7 @@
 pub mod config;
+pub mod event;
 pub mod hooks;
+pub mod trust;
 
 // ── resource loading ──
 pub(crate) mod resource;

@@ -295,6 +295,38 @@ pub(crate) fn build_fallback_model(
     })
 }
 
+// ── Model Filtering (enabledModels) ─────────────────────────────────
+
+/// Filter models by enabledModels patterns from settings.
+/// Patterns support: `provider/*` wildcard, bare id matching.
+/// Returns filtered Vec in original order (sorting is caller's responsibility).
+pub(crate) fn filter_models<'a>(
+    patterns: &[String],
+    available: &'a [&'a ModelMeta],
+) -> Vec<&'a ModelMeta> {
+    if patterns.is_empty() {
+        return available.to_vec();
+    }
+
+    available
+        .iter()
+        .filter(|m| {
+            patterns.iter().any(|p| {
+                // provider/* wildcard
+                if p.ends_with("/*") {
+                    let prov = &p[..p.len() - 2];
+                    return m.config.provider_name() == prov;
+                }
+                // Exact id match
+                m.id == *p
+                    || m.config.model == *p
+                    || m.display_name.to_lowercase() == p.to_lowercase()
+            })
+        })
+        .copied()
+        .collect()
+}
+
 // ── Helper: apply thinking level to ResolvedModel ───────────────────
 
 impl ResolvedModel {
@@ -458,6 +490,36 @@ mod tests {
         let fallback = build_fallback_model("missing-model", &available, Some("openai")).unwrap();
         assert_eq!(fallback.id, "missing-model");
         assert_eq!(fallback.config.kind, ModelKind::OpenAi);
+    }
+
+    #[test]
+    fn test_filter_models_wildcard() {
+        let models = make_available();
+        let available = refs(&models);
+        let filtered = filter_models(&["openai/*".into()], &available);
+        assert_eq!(filtered.len(), 2);
+        assert!(
+            filtered
+                .iter()
+                .all(|m| m.config.provider_name() == "openai")
+        );
+    }
+
+    #[test]
+    fn test_filter_models_exact() {
+        let models = make_available();
+        let available = refs(&models);
+        let filtered = filter_models(&["openai/gpt-4o".into()], &available);
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "openai/gpt-4o");
+    }
+
+    #[test]
+    fn test_filter_models_empty_patterns() {
+        let models = make_available();
+        let available = refs(&models);
+        let filtered = filter_models(&[], &available);
+        assert_eq!(filtered.len(), available.len());
     }
 
     #[test]
