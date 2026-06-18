@@ -36,6 +36,89 @@ impl Default for CompactionSettings {
     }
 }
 
+// ── Token calculation (c50) ───────────────────────────────────────
+
+/// Provider usage information from an assistant message.
+#[derive(Debug, Clone, Copy)]
+pub struct XyUsage {
+    pub total_tokens: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+}
+
+/// Calculate total context tokens from a Usage struct.
+/// Priority: total_tokens > input+output+cache_read+cache_write sum.
+pub fn calculate_context_tokens(usage: &XyUsage) -> u64 {
+    if usage.total_tokens > 0 {
+        return usage.total_tokens;
+    }
+    usage.input_tokens + usage.output_tokens + usage.cache_read_tokens + usage.cache_write_tokens
+}
+
+/// Structure returned by [`estimate_context_tokens`].
+#[derive(Debug, Clone)]
+pub struct ContextUsageEstimate {
+    pub tokens: u64,
+    pub usage_tokens: u64,
+    pub trailing_tokens: u64,
+    pub last_usage_index: Option<usize>,
+}
+
+/// Estimate context tokens from messages.
+/// Uses chars/4 heuristic per message.
+/// When a `last_usage` is provided, uses real usage tokens and
+/// estimates only trailing messages.
+pub fn estimate_context_tokens(
+    messages: &[crate::agent::types::XyContent],
+    last_usage: Option<&XyUsage>,
+) -> ContextUsageEstimate {
+    if let Some(usage) = last_usage {
+        let usage_tokens = calculate_context_tokens(usage);
+        let mut trailing_tokens = 0u64;
+        for msg in messages {
+            trailing_tokens += estimate_tokens_xyt_content(msg);
+        }
+        ContextUsageEstimate {
+            tokens: usage_tokens + trailing_tokens,
+            usage_tokens,
+            trailing_tokens,
+            last_usage_index: Some(0),
+        }
+    } else {
+        let mut total = 0u64;
+        for msg in messages {
+            total += estimate_tokens_xyt_content(msg);
+        }
+        ContextUsageEstimate {
+            tokens: total,
+            usage_tokens: 0,
+            trailing_tokens: total,
+            last_usage_index: None,
+        }
+    }
+}
+
+/// Estimate tokens for an XyContent message using chars/4.
+fn estimate_tokens_xyt_content(msg: &crate::agent::types::XyContent) -> u64 {
+    let s = serde_json::to_string(msg).unwrap_or_default();
+    (s.len() as u64).div_ceil(4)
+}
+
+/// Check if compaction should trigger based on context token usage.
+pub fn should_compact(
+    context_tokens: u64,
+    context_window: u64,
+    settings: &CompactionSettings,
+) -> bool {
+    if !settings.enabled {
+        return false;
+    }
+    let threshold = context_window.saturating_sub(settings.reserve_tokens);
+    context_tokens > threshold
+}
+
 // ── Cut-point detection ────────────────────────────────────────────
 
 /// Result from [`find_cut_point`].
@@ -1192,5 +1275,68 @@ mod tests {
     fn test_format_file_ops_xml_empty() {
         let xml = format_file_ops_xml(&[], &[]);
         assert!(xml.is_empty());
+    }
+
+    // ── c50: Token calculation tests ──────────────────────────
+
+    #[test]
+    fn test_calculate_context_tokens_total() {
+        let usage = XyUsage {
+            total_tokens: 50000,
+            input_tokens: 30000,
+            output_tokens: 15000,
+            cache_read_tokens: 3000,
+            cache_write_tokens: 2000,
+        };
+        // total_tokens has priority
+        assert_eq!(calculate_context_tokens(&usage), 50000);
+    }
+
+    #[test]
+    fn test_calculate_context_tokens_sum() {
+        let usage = XyUsage {
+            total_tokens: 0,
+            input_tokens: 30000,
+            output_tokens: 15000,
+            cache_read_tokens: 3000,
+            cache_write_tokens: 2000,
+        };
+        // Falls back to sum
+        assert_eq!(calculate_context_tokens(&usage), 50000);
+    }
+
+    #[test]
+    fn test_should_compact_triggers() {
+        let settings = CompactionSettings {
+            enabled: true,
+            reserve_tokens: 16384,
+            keep_recent_tokens: 20000,
+        };
+        // 170000 tokens, 200000 window → 170000 > 200000-16384=183616? false
+        let false_case = should_compact(170000, 200000, &settings);
+        assert!(!false_case);
+        // 190000 tokens > 183616 → true
+        let true_case = should_compact(190000, 200000, &settings);
+        assert!(true_case);
+    }
+
+    #[test]
+    fn test_should_compact_disabled() {
+        let settings = CompactionSettings {
+            enabled: false,
+            ..Default::default()
+        };
+        assert!(!should_compact(999999, 100000, &settings));
+    }
+
+    #[test]
+    fn test_estimate_context_tokens() {
+        let msgs = vec![
+            crate::agent::types::XyContent::user("hello"),
+            crate::agent::types::XyContent::user("world"),
+        ];
+        let estimate = estimate_context_tokens(&msgs, None);
+        assert!(estimate.tokens > 0);
+        assert_eq!(estimate.usage_tokens, 0);
     }
 }
