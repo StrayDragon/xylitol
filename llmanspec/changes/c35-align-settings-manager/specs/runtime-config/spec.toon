@@ -1,0 +1,15 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,rc8,"settings-struct","Settings struct MUST mirror pi Settings interface with all fields.",null,null,null
+  add_requirement,rc9,"three-tier-merge","SettingsManager MUST deep-merge settings from default project and user tiers with later sources overriding earlier.",null,null,null
+  add_requirement,rc10,"settings-locking","SettingsManager MUST use file locking for concurrent access safety with retry up to 10 attempts.",null,null,null
+  add_requirement,rc11,"settings-hot-reload","SettingsManager MUST support reload that re-reads settings files and fires settings:changed event via EventBus.",null,null,null
+  modify_requirement,rc4,"settings-section","Config settings section MUST cover the full pi Settings interface including compaction retry terminal images and enabledModels.",null,null,null
+op_scenarios[7]{req_id,id,given,when,then}:
+  rc8,"serialize",a Settings struct with all pi-equivalent fields is populated,serde serializes to JSON,JSON uses camelCase matching pi wire format
+  rc9,"deep-merge","project sets compaction.enabled=false and user sets reserveTokens=32768",settings are merged,merged compact settings reflect both overrides
+  rc9,"no-project","settings.json exists at global only",settings are loaded,merged settings equals global
+  rc10,"concurrent-safe",two SettingsManager instances write project settings simultaneously,one writes successfully,other retries and succeeds
+  rc11,"reload-event",settings file is externally modified,reload is called,settings:changed event fires
+  rc4,"tools-allowlist","settings.tools.allow contains [read bash]",agent session starts,only read and bash tools registered
+  rc4,"tools-denylist","settings.tools.deny contains [bash]",agent session starts,all tools except bash registered

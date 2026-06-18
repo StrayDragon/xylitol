@@ -1,0 +1,15 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,c1,"llm-summarization","Compaction MUST call LLM with structured summarization prompt to produce a summary string saved in CompactionEntry.",null,null,null
+  add_requirement,c2,"file-ops-tracking","Compaction MUST extract file operations from tool calls and accumulate across compaction boundaries.",null,null,null
+  add_requirement,c3,"real-token-count","System MUST use LLM usage.totalTokens for compaction threshold check falling back to estimateTokens when no usage available.",null,null,null
+  modify_requirement,s2,"compaction-threshold","Compaction MUST trigger when shouldCompact returns true based on context tokens exceeding threshold.",null,null,null
+  modify_requirement,s6,"branch-summary","Branch summary generation MUST produce a CompactionEntry summarizing entries between fork point and leaf.",null,null,null
+op_scenarios[7]{req_id,id,given,when,then}:
+  c1,"llm-summary","session has 100 entries and compaction triggers",compact is called with an LLM model,summary is non-empty
+  c2,"track-read",a read tool call reads src/main.rs,compaction runs,CompactionEntry.details.readFiles contains src/main.rs
+  c2,"cross-compaction","previous compaction tracked readFiles=[a.rs]",new turn reads b.rs and compaction triggers,new details.readFiles has both files
+  c3,"usage-token",last assistant message has usage.totalTokens=50000,calculateContextTokens is called,returns 50000
+  s2,"threshold-hit","contextWindow=200000 and current tokens=170000",shouldCompact is called,returns true
+  s6,"branch-summary",10 entries between fork point and leaf with 3 tool calls,branch summary generated,summary mentions entry count
+  s6,"skip-prompt",BranchSummarySettings.skipPrompt is true,fork triggered,branch summary prompt skipped

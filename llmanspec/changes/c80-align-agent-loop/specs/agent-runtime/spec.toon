@@ -1,0 +1,18 @@
+kind: llman.sdd.delta
+ops[6]{op,req_id,title,statement,from,to,name}:
+  add_requirement,al1,steering-messages,AgentLoop MUST support get_steering_messages callback checked before each turn.,null,null,null
+  add_requirement,al2,follow-up-messages,AgentLoop MUST support get_follow_up_messages callback when agent would stop.,null,null,null
+  add_requirement,al3,tool-execution-modes,AgentLoop MUST support per-tool execution modes sequential and parallel.,null,null,null
+  add_requirement,al4,agent-hooks,AgentLoop MUST invoke AgentHooks at key points.,null,null,null
+  add_requirement,al5,context-transformation,AgentLoop MUST apply transform_context hook before each LLM call.,null,null,null
+  add_requirement,al6,auto-retry,AgentLoop MUST support auto-retry on transient errors.,null,null,null
+op_scenarios[9]{req_id,id,given,when,then}:
+  al1,steer-inject,steering queue has message,agent completes turn,message injected before next LLM call
+  al1,steer-one,SteeringMode is one-at-a-time,queue has two messages,each turn injects one
+  al2,follow-up,agent has no more tool calls,follow-up queue has message,agent continues
+  al3,parallel-exec,assistant calls two reads,tools run parallel,both complete
+  al3,sequential-exec,assistant calls write then read,write is sequential,write then read in order
+  al4,block-tool,before_tool_call returns block,bash with risky cmd attempted,tool blocked
+  al5,transform,transform_context hook appends note,messages sent to LLM,note present
+  al6,retry-success,model call fails rate_limit,auto-retry fires,second attempt succeeds
+  al6,retry-exhausted,model call fails 4 times,maxRetries is 3,auto_retry_end fires failed

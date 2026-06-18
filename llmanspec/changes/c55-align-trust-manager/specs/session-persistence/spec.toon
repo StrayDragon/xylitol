@@ -1,0 +1,15 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,s21,"trust-manager","System MUST provide TrustManager with is_project_trusted get_trust_options and set_trust with file locking.",null,null,null
+  add_requirement,s22,"trust-inheritance","TrustManager MUST support parent directory inheritance walking up directories to root.",null,null,null
+  add_requirement,s23,"trust-resource-detection","System MUST detect trust-requiring project resources like .xylitol config files.",null,null,null
+  add_requirement,s24,"trust-session-only","get_trust_options MUST include session-only variants when include_session_only is true.",null,null,null
+  add_requirement,s25,"trust-locking","Trust store writes MUST use advisory file locking with retry up to 10 attempts.",null,null,null
+op_scenarios[7]{req_id,id,given,when,then}:
+  s21,"trusted-project","trust.json has path marked true",is_project_trusted is called,returns true
+  s21,"untrusted-project",cwd is not in trust store,is_project_trusted is called,returns false
+  s22,"parent-inheritance","trust.json has parent dir marked true",is_project_trusted for child dir,returns true via inheritance
+  s23,"has-resources","project dir contains .xylitol/extensions",has_trust_requiring_resources called,returns true
+  s23,"no-resources","project dir has no .xylitol subdirs",has_trust_requiring_resources called,returns false
+  s24,"session-only","include_session_only is true",get_trust_options is called,session-only options present
+  s25,"concurrent-write",two TrustManager instances write trust.json simultaneously,both writes complete,no corruption
