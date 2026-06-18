@@ -1,0 +1,10 @@
+kind: llman.sdd.spec
+name: "skill-extension"
+purpose: "Skill discovery and loading — SKILL.md parsing, MCP adapter bridge, and resource loader integration."
+valid_scope[1]: src
+requirements[2]{req_id,title,statement}:
+  r1,mcp-adapter,McpToolAdapter MUST bridge rmcp tool results to XyTool interface (not adk_core::Tool).
+  r2,mcp-client,System MUST connect to MCP servers via stdio or SSE transport and register their tools dynamically.
+scenarios[2]{req_id,id,given,when,then}:
+  r1,mcp-as-xytool,an MCP server exposes a tool,McpToolAdapter wraps it as XyTool,tool can be registered in ToolRegistry and executed by agent loop
+  r2,happy,MCP server configured with stdio transport,agent starts,MCP tools are registered and callable as normal tools
