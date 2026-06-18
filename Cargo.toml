@@ -46,6 +46,8 @@ eventsource-stream = "0.2.3"
 async-stream = "0.3.6"
 tokio-util = "0.7.18"
 yaml_serde = "0.10.4"
+serde_yaml = "0.9.34"
+pathdiff = "0.2.3"
 
 [features]
 default = [

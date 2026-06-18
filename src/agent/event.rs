@@ -3,6 +3,11 @@
 //! Aligns with pi's AgentSession subscribe/unsubscribe pattern.
 //! Uses tokio::sync::broadcast for multi-consumer event delivery.
 //! Drop-based unsubscribe via UnsubscribeHandle.
+//!
+//! NOTE(c40): This file will be **deleted** when c75/c80 AgentSession/AgentLoop
+//! rewrites are applied. The replacement is `crate::infra::event::EventBus`
+//! (channel-based, aligning with pi's event-bus.ts). Until then, this file
+//! remains to keep the current AgentSession/AgentLoop compiling.
 
 #![allow(dead_code)]
 #[allow(dead_code)]
