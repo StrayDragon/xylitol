@@ -2,8 +2,15 @@
 //!
 //! Aligns with pi's buildSystemPrompt() — dynamically composes
 //! custom prompt, tool snippets, guidelines, skills, context files, date, and CWD.
+//!
+//! Key functions:
+//! - `build_system_prompt(opts)` — explicit options
+//! - `build_system_prompt_from_loader(loader, tools_opts)` — integrates with ResourceLoader
+
+#![allow(dead_code)]
 
 use crate::agent::tools::ToolRegistry;
+use crate::infra::resource::DefaultResourceLoader;
 
 /// Options for building the system prompt.
 #[derive(Debug, Clone, Default)]
@@ -24,6 +31,10 @@ pub(crate) struct SystemPromptOpts {
     pub(crate) context_files: Vec<(String, String)>,
     /// Available skills.
     pub(crate) skills: Vec<String>,
+    /// System prompt from SYSTEM.md (will be prepended to the output).
+    pub(crate) system_prompt: Option<String>,
+    /// Append system prompt lines from APPEND_SYSTEM.md.
+    pub(crate) append_system_prompt: Vec<String>,
 }
 
 /// Build a system prompt dynamically based on options.
@@ -33,8 +44,10 @@ pub(crate) fn build_system_prompt(opts: &SystemPromptOpts) -> String {
 
     let mut prompt = String::new();
 
-    // Use custom prompt if provided, otherwise use default
-    if let Some(ref custom) = opts.custom_prompt {
+    // Use system prompt (SYSTEM.md) if available, then custom_prompt, then default
+    if let Some(ref sp) = opts.system_prompt {
+        prompt.push_str(sp);
+    } else if let Some(ref custom) = opts.custom_prompt {
         prompt.push_str(custom);
     } else {
         prompt.push_str(&default_prompt_base(
@@ -43,7 +56,7 @@ pub(crate) fn build_system_prompt(opts: &SystemPromptOpts) -> String {
         ));
     }
 
-    // Append section
+    // Append section (explicit append_prompt)
     if let Some(ref append) = opts.append_prompt {
         prompt.push_str("\n\n");
         prompt.push_str(append);
@@ -59,6 +72,14 @@ pub(crate) fn build_system_prompt(opts: &SystemPromptOpts) -> String {
             ));
         }
         prompt.push_str("</project_context>\n");
+    }
+
+    // Append system prompt (APPEND_SYSTEM.md from loader)
+    if !opts.append_system_prompt.is_empty() {
+        for append in &opts.append_system_prompt {
+            prompt.push_str("\n\n");
+            prompt.push_str(append);
+        }
     }
 
     // Skills section
@@ -127,9 +148,57 @@ pub(crate) fn collect_tool_snippets(
         .collect()
 }
 
+/// Options for the tools/skills part of prompt construction.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct PromptToolsOpts {
+    pub(crate) custom_prompt: Option<String>,
+    pub(crate) selected_tools: Vec<String>,
+    pub(crate) tool_snippets: Vec<(String, String)>,
+    pub(crate) prompt_guidelines: Vec<String>,
+    pub(crate) append_prompt: Option<String>,
+    pub(crate) cwd: String,
+}
+
+/// Build a system prompt from a ResourceLoader and tools options.
+///
+/// Assembles:
+/// 1. System prompt (SYSTEM.md) from the loader
+/// 2. AGENTS.md/CLAUDE.md context files
+/// 3. APPEND_SYSTEM.md
+/// 4. Active skills
+/// 5. Tools and guidelines
+pub(crate) fn build_system_prompt_from_loader(
+    loader: &DefaultResourceLoader,
+    tools_opts: &PromptToolsOpts,
+) -> String {
+    let opts = SystemPromptOpts {
+        custom_prompt: tools_opts.custom_prompt.clone(),
+        selected_tools: tools_opts.selected_tools.clone(),
+        tool_snippets: tools_opts.tool_snippets.clone(),
+        prompt_guidelines: tools_opts.prompt_guidelines.clone(),
+        append_prompt: tools_opts.append_prompt.clone(),
+        cwd: tools_opts.cwd.clone(),
+        context_files: loader
+            .get_agents_files()
+            .iter()
+            .map(|f| (f.path.to_string_lossy().to_string(), f.content.clone()))
+            .collect(),
+        skills: loader
+            .get_skills()
+            .0
+            .iter()
+            .map(|s| s.name.clone())
+            .collect(),
+        system_prompt: loader.get_system_prompt().map(String::from),
+        append_system_prompt: loader.get_append_system_prompt().to_vec(),
+    };
+    build_system_prompt(&opts)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn test_build_basic_prompt() {
@@ -181,5 +250,50 @@ mod tests {
         };
         let prompt = build_system_prompt(&opts);
         assert!(prompt.contains("rust-cli-tui-developer"));
+    }
+
+    #[test]
+    fn test_system_prompt_field() {
+        let opts = SystemPromptOpts {
+            cwd: ".".into(),
+            system_prompt: Some("Custom SYSTEM.md content".into()),
+            ..Default::default()
+        };
+        let prompt = build_system_prompt(&opts);
+        assert!(prompt.contains("Custom SYSTEM.md content"));
+        // system_prompt takes priority over custom_prompt
+        assert!(!prompt.contains("expert coding assistant"));
+    }
+
+    #[test]
+    fn test_append_system_prompt_field() {
+        let opts = SystemPromptOpts {
+            cwd: ".".into(),
+            append_system_prompt: vec!["Extra safety rules".into()],
+            ..Default::default()
+        };
+        let prompt = build_system_prompt(&opts);
+        assert!(prompt.contains("Extra safety rules"));
+    }
+
+    #[test]
+    fn test_build_from_loader() {
+        use crate::infra::resource::DefaultResourceLoader;
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("AGENTS.md"), "# Project rules").unwrap();
+
+        let loader = DefaultResourceLoader::new(tmp.path().to_path_buf(), PathBuf::from("/tmp"));
+        let tools_opts = PromptToolsOpts {
+            selected_tools: vec!["read".into()],
+            tool_snippets: vec![("read".into(), "Read files".into())],
+            cwd: tmp.path().to_string_lossy().to_string(),
+            ..Default::default()
+        };
+        let prompt = build_system_prompt_from_loader(&loader, &tools_opts);
+        // Should include project rules from AGENTS.md
+        assert!(prompt.contains("Project rules"));
+        // Should include tools
+        assert!(prompt.contains("read: Read files"));
     }
 }

@@ -21,6 +21,8 @@ pub struct SessionManager {
     /// Per-session leaf node tracking (in-memory).
     /// session_id -> current leaf entry id (None = root).
     leaf_ids: RwLock<HashMap<String, Option<String>>>,
+    /// Active session tracking.
+    active_session: RwLock<Option<String>>,
 }
 
 impl Clone for SessionManager {
@@ -28,6 +30,12 @@ impl Clone for SessionManager {
         Self {
             sessions_dir: self.sessions_dir.clone(),
             leaf_ids: RwLock::new(self.leaf_ids.read().expect("RwLock not poisoned").clone()),
+            active_session: RwLock::new(
+                self.active_session
+                    .read()
+                    .expect("RwLock not poisoned")
+                    .clone(),
+            ),
         }
     }
 }
@@ -37,6 +45,7 @@ impl Default for SessionManager {
         Self {
             sessions_dir: PathBuf::from("."),
             leaf_ids: RwLock::new(HashMap::new()),
+            active_session: RwLock::new(None),
         }
     }
 }
@@ -47,6 +56,7 @@ impl SessionManager {
         Self {
             sessions_dir,
             leaf_ids: RwLock::new(HashMap::new()),
+            active_session: RwLock::new(None),
         }
     }
 
@@ -229,6 +239,15 @@ impl SessionManager {
                 content: cm.content.clone(),
                 display: cm.display,
                 details: cm.details.clone(),
+            }),
+            SessionEntry::Label(l) => SessionEntry::Label(LabelEntry {
+                base,
+                target_id: l.target_id.clone(),
+                label: l.label.clone(),
+            }),
+            SessionEntry::SessionInfo(si) => SessionEntry::SessionInfo(SessionInfoEntry {
+                base,
+                name: si.name.clone(),
             }),
         }
     }
@@ -504,7 +523,10 @@ impl SessionManager {
                         messages.push(cm.content.clone());
                     }
                 }
-                SessionEntry::Header(_) | SessionEntry::Custom(_) => {
+                SessionEntry::Header(_)
+                | SessionEntry::Custom(_)
+                | SessionEntry::Label(_)
+                | SessionEntry::SessionInfo(_) => {
                     // Non-context entries: skip
                 }
             }
@@ -762,6 +784,229 @@ impl SessionManager {
         }
 
         Ok(())
+    }
+
+    // ── Tree operations ────────────────────────────────────────
+
+    /// Get the active session id.
+    pub fn active_session_id(&self) -> Option<String> {
+        self.active_session
+            .read()
+            .expect("RwLock not poisoned")
+            .clone()
+    }
+
+    /// Set the active session.
+    pub fn set_active_session(&self, id: &str) {
+        self.active_session
+            .write()
+            .expect("RwLock not poisoned")
+            .replace(id.to_string());
+    }
+
+    /// Navigate tree: change the current leaf to a different entry.
+    /// Future appends will be children of this entry.
+    /// Alias for `branch()`.
+    pub fn navigate_tree(&self, session_id: &str, target_id: Option<&str>) {
+        match target_id {
+            Some(id) => self.branch(session_id, id),
+            None => self.reset_leaf(session_id),
+        }
+    }
+
+    /// Switch the active session to a new file path.
+    /// This loads entries from the new path and updates the active session.
+    pub async fn switch_session(&self, new_session_id: &str, new_path: &str) -> Result<(), String> {
+        // Verify the new path exists
+        let path = std::path::Path::new(new_path);
+        if !path.exists() {
+            return Err(format!("session file not found: {new_path}"));
+        }
+        // Load entries from the new path
+        let content = tokio::fs::read_to_string(path)
+            .await
+            .map_err(|e| format!("read session file: {e}"))?;
+
+        let mut entries: Vec<SessionEntry> = Vec::new();
+        for line in content.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let entry: SessionEntry =
+                serde_json::from_str(line).map_err(|e| format!("parse entry: {e}"))?;
+            entries.push(entry);
+        }
+
+        // Update active session
+        self.set_active_session(new_session_id);
+
+        // Update leaf tracking: last entry's id
+        if let Some(last) = entries.last() {
+            if let Some(id) = last.entry_id() {
+                self.set_leaf(new_session_id, Some(id.to_string()));
+            }
+        } else {
+            self.set_leaf(new_session_id, None);
+        }
+
+        Ok(())
+    }
+
+    /// Get the session as a tree structure.
+    /// Builds a `Vec<SessionTreeNode>` with labels resolved from LabelEntries.
+    pub async fn get_tree(&self, session_id: &str) -> Result<Vec<SessionTreeNode>, String> {
+        let entries = self.load(session_id).await?;
+        Ok(Self::build_tree(&entries))
+    }
+
+    /// Build a tree from entries (public for testing).
+    pub fn build_tree(entries: &[SessionEntry]) -> Vec<SessionTreeNode> {
+        use std::collections::HashMap;
+
+        // Collect labels from LabelEntries
+        let mut labels: HashMap<String, String> = HashMap::new();
+        for entry in entries {
+            if let SessionEntry::Label(l) = entry {
+                if let Some(ref label) = l.label {
+                    labels.insert(l.target_id.clone(), label.clone());
+                } else {
+                    labels.remove(&l.target_id);
+                }
+            }
+        }
+
+        let mut node_map: HashMap<String, SessionTreeNode> = HashMap::new();
+        let mut roots: Vec<SessionTreeNode> = Vec::new();
+
+        // Create nodes
+        for entry in entries {
+            if entry.entry_type() == "label" || entry.entry_type() == "session" {
+                continue; // Labels and headers not part of tree display
+            }
+            if let Some(id) = entry.entry_id() {
+                let label = labels.get(id).cloned();
+                node_map.insert(
+                    id.to_string(),
+                    SessionTreeNode {
+                        entry: entry.clone(),
+                        children: Vec::new(),
+                        label,
+                    },
+                );
+            }
+        }
+
+        // Build tree connections
+        for entry in entries {
+            if entry.entry_type() == "label" || entry.entry_type() == "session" {
+                continue;
+            }
+            let Some(id) = entry.entry_id() else { continue };
+            let Some(node) = node_map.remove(id) else {
+                continue;
+            };
+
+            if let Some(parent_id) = entry.parent_id() {
+                if let Some(parent) = node_map.get_mut(parent_id) {
+                    parent.children.push(node);
+                } else {
+                    // Orphan - treat as root
+                    roots.push(node);
+                }
+            } else {
+                roots.push(node);
+            }
+        }
+
+        // Sort children by timestamp
+        fn sort_children(nodes: &mut [SessionTreeNode]) {
+            for node in nodes.iter_mut() {
+                node.children.sort_by(|a, b| {
+                    let ta = a.entry.base().map(|b| b.timestamp.clone());
+                    let tb = b.entry.base().map(|b| b.timestamp.clone());
+                    ta.cmp(&tb)
+                });
+                sort_children(&mut node.children);
+            }
+        }
+        sort_children(&mut roots);
+
+        roots
+    }
+
+    // ── Label and session info ─────────────────────────────────
+
+    /// Append a label change entry.
+    /// Labels are user-defined bookmarks/markers on entries.
+    pub async fn append_label_change(
+        &self,
+        session_id: &str,
+        target_id: &str,
+        label: Option<&str>,
+    ) -> Result<(), String> {
+        // Verify target exists
+        let _ = self
+            .get_entry(session_id, target_id)
+            .await?
+            .ok_or_else(|| format!("target entry not found: {target_id}"))?;
+
+        let entry = SessionEntry::Label(LabelEntry {
+            base: EntryBase {
+                entry_type: "label".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: String::new(),
+            },
+            target_id: target_id.to_string(),
+            label: label.map(String::from),
+        });
+        self.append(session_id, &entry).await
+    }
+
+    /// Get the label for an entry, if any.
+    pub async fn get_label(
+        &self,
+        session_id: &str,
+        target_id: &str,
+    ) -> Result<Option<String>, String> {
+        let entries = self.load(session_id).await?;
+        // Walk in reverse to find the latest label for this target
+        for entry in entries.iter().rev() {
+            if let SessionEntry::Label(l) = entry
+                && l.target_id == target_id
+            {
+                return Ok(l.label.clone());
+            }
+        }
+        Ok(None)
+    }
+
+    /// Append a session info entry (e.g., display name).
+    pub async fn append_session_info(&self, session_id: &str, name: &str) -> Result<(), String> {
+        let entry = SessionEntry::SessionInfo(SessionInfoEntry {
+            base: EntryBase {
+                entry_type: "session_info".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: String::new(),
+            },
+            name: Some(name.trim().to_string()),
+        });
+        self.append(session_id, &entry).await
+    }
+
+    /// Get the current session name from the latest session_info entry.
+    pub async fn get_session_name(&self, session_id: &str) -> Result<Option<String>, String> {
+        let entries = self.load(session_id).await?;
+        for entry in entries.iter().rev() {
+            if let SessionEntry::SessionInfo(si) = entry {
+                return Ok(si
+                    .name
+                    .clone()
+                    .and_then(|n| if n.is_empty() { None } else { Some(n) }));
+            }
+        }
+        Ok(None)
     }
 }
 
