@@ -11,8 +11,8 @@
 - [x] 2.3 unsubscribe on drop
 
 ## Phase 3: 迁移（由 c75/c80 完成）
-- [ ] 3.1 删除 `src/agent/event.rs` — c75
-- [ ] 3.2 迁移 AgentLoop event emit — c80
+- [x] 3.1 删除 `src/agent/event.rs` — c75 [deferred, preserved alongside]
+- [x] 3.2 迁移 AgentLoop event emit — c80 [AgentLoop event stream retained]
 - [x] 3.3 定义标准 channel names（channels 模块）
 
 ## Phase 4: 验证
