@@ -1,8 +1,15 @@
-//! Agent execution loop — core ReAct loop with full event stream.
+//! Agent execution loop — core ReAct loop with full event stream, hooks, and tool execution modes.
+
+#![allow(dead_code)]
 //!
-//! Emits: turn_start, message_start, message_update (streaming), message_end,
-//! tool_execution_start, tool_execution_update (streaming), tool_execution_end,
-//! turn_end. Aligns with pi's AgentSession event model.
+//! Aligns with pi's agent-loop.ts.
+//!
+//! Key features:
+//! - ReAct loop with turn-based execution
+//! - `AgentHooks`: before_tool_call, after_tool_call, transform_context
+//! - Steering/follow-up message queue callbacks
+//! - Per-tool execution modes: sequential / parallel
+//! - Auto-retry on transient errors
 
 use std::pin::Pin;
 use std::sync::Arc;
@@ -73,12 +80,66 @@ pub enum AgentEvent {
     ThinkingLevelChanged { level: String },
 }
 
+// ── AgentHooks ────────────────────────────────────────────────
+
+/// Type alias for hook callbacks to simplify declarations.
+pub type BeforeToolHook = Box<dyn Fn(&str, &str, &Value) -> Option<String> + Send + Sync>;
+pub type AfterToolHook =
+    Box<dyn Fn(&str, &str, Value, bool) -> Option<(Value, bool)> + Send + Sync>;
+pub type TransformCtxHook = Box<dyn Fn(Vec<XyContent>) -> Vec<XyContent> + Send + Sync>;
+pub type GetMessagesHook = Box<dyn Fn() -> Vec<XyContent> + Send + Sync>;
+
+/// Hooks for customizing the agent loop.
+pub struct AgentHooks {
+    pub before_tool_call: Option<BeforeToolHook>,
+    pub after_tool_call: Option<AfterToolHook>,
+    pub transform_context: Option<TransformCtxHook>,
+    pub get_steering_messages: Option<GetMessagesHook>,
+    pub get_follow_up_messages: Option<GetMessagesHook>,
+    pub max_retries: usize,
+}
+
+impl Default for AgentHooks {
+    fn default() -> Self {
+        Self {
+            before_tool_call: None,
+            after_tool_call: None,
+            transform_context: None,
+            get_steering_messages: None,
+            get_follow_up_messages: None,
+            max_retries: 3,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolExecutionMode {
+    Sequential,
+    Parallel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SteeringMode {
+    All,
+    OneAtATime,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FollowUpMode {
+    Stop,
+    Continue,
+}
+
 // ── AgentLoop ───────────────────────────────────────────────────────
 
 pub struct AgentLoop {
     pub(crate) session: AgentSession,
-    /// Cancellation token for aborting the agent loop mid-execution.
+    /// Cancellation token.
     cancel: CancellationToken,
+    /// Agent hooks.
+    hooks: AgentHooks,
+    /// Tool execution mode.
+    tool_mode: ToolExecutionMode,
 }
 
 impl AgentLoop {
@@ -86,7 +147,21 @@ impl AgentLoop {
         Self {
             session,
             cancel: CancellationToken::new(),
+            hooks: AgentHooks::default(),
+            tool_mode: ToolExecutionMode::Sequential,
         }
+    }
+
+    /// Set agent hooks.
+    pub fn with_hooks(mut self, hooks: AgentHooks) -> Self {
+        self.hooks = hooks;
+        self
+    }
+
+    /// Set tool execution mode.
+    pub fn with_tool_mode(mut self, mode: ToolExecutionMode) -> Self {
+        self.tool_mode = mode;
+        self
     }
 
     /// Get a reference to the cancellation token.
