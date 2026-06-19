@@ -1,0 +1,14 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,sc1,info-fields,SlashCommandInfo MUST carry name description source and source_info fields.,null,null,null
+  add_requirement,sc2,source-enum,SlashCommandSource MUST be exactly one of extension prompt or skill.,null,null,null
+  add_requirement,sc3,builtin-table,System MUST provide the full builtin slash command table matching pi semantics including export compact tree fork and reload.,null,null,null
+  add_requirement,sc4,dispatch,AgentSession MUST dispatch slash commands via dispatch_slash_command routing to the matching handler.,null,null,null
+  add_requirement,sc5,tui-not-available,Slash commands requiring a TUI MUST return a clear not-available message when invoked outside TUI mode.,null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  sc1,fields,a command originates from a skill,the command is queried,source is skill and source_info is set
+  sc2,source-values,command sources are enumerated,the set is inspected,values are extension prompt or skill only
+  sc3,builtin-table,builtin commands are listed,the table is inspected,it includes export compact tree fork and reload
+  sc4,dispatch-compact,user types compact in a session,dispatch_slash_command is invoked,the compaction handler runs
+  sc4,dispatch-export,user types export in a session,dispatch_slash_command is invoked,the export handler runs
+  sc5,tui-cmd,user types settings outside TUI mode,dispatch is invoked,a not-available message is returned

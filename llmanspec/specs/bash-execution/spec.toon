@@ -1,0 +1,19 @@
+kind: llman.sdd.spec
+name: "bash-execution"
+purpose: "TBD - created by archiving change c95-add-bash-executor. Update purpose after archive."
+valid_scope[2]: src/,tests/
+requirements[6]{req_id,title,statement}:
+  be1,"streaming-executor",System MUST provide BashExecutor that executes shell commands emitting output chunks via an on_chunk callback.
+  be2,"abort-cancellation",BashExecutor MUST support cancellation that kills the whole process group and marks the result cancelled.
+  be3,"output-truncation",BashExecutor MUST truncate output to a configured max bytes and spill the full output to a temp file path when exceeded.
+  be4,"session-entry",SessionEntry MUST support a BashExecution variant carrying command output exit_code cancelled truncated full_output_path and exclude_from_context.
+  be5,"agent-session-api",AgentSession MUST expose execute_bash record_bash_result and abort_bash and route single or double bang prefixes to the executor.
+  be6,"context-filter",System MUST omit BashExecution entries whose exclude_from_context is true when building LLM context.
+scenarios[7]{req_id,id,given,when,then}:
+  be1,stream,command prints multiple lines,on_chunk fires for each line,all chunks are received in order
+  be2,abort,long running command is executing,abort is invoked,process group is killed and cancelled is true
+  be3,truncate,output exceeds max bytes,execution completes,truncated is true and full_output_path is set
+  be4,entry,bash result is recorded,session is appended,entry is stored as BashExecution variant
+  be5,"bang-include",user input starts with single bang,command runs,result recorded with exclude_from_context false and sent to LLM
+  be5,"bang-exclude",user input starts with double bang,command runs,result recorded exclude_from_context true and omitted from context
+  be6,omit,history has a BashExecution entry with exclude_from_context true,LLM context is built,that entry is omitted

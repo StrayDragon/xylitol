@@ -1,0 +1,13 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ex1,export-html,"AgentSession MUST support exporting a session to an HTML file.",null,null,null
+  add_requirement,ex2,export-jsonl,"AgentSession MUST support exporting a session to a JSONL file.",null,null,null
+  add_requirement,ex3,import-jsonl,"AgentSession MUST support importing a session from a JSONL file into a new session.",null,null,null
+  add_requirement,ex4,html-tool-render,"HTML export MUST render tool and assistant content into readable blocks.",null,null,null
+  add_requirement,ex5,share-guidance,"System MUST return configuration guidance when sharing is invoked without a token.",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  ex1,html,"a session has messages","export_to_html is called","an HTML file is written"
+  ex2,jsonl,"a session has entries","export_to_jsonl is called","the file has one JSON object per line"
+  ex3,import,"a valid JSONL file exists","import_from_jsonl is called","entries are loaded into a new session"
+  ex4,html-tools,"a session contains tool calls","the exported HTML is opened","tool results are rendered as readable blocks"
+  ex5,share-unconfigured,"share is invoked without a token","share is called","a configuration guidance message is returned"
