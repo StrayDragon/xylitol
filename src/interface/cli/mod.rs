@@ -1,6 +1,6 @@
 //! CLI argument parsing and mode dispatch.
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 use crate::agent::r#loop::AgentLoop;
 use crate::agent::model::{ModelConfig, ModelKind};
@@ -9,10 +9,25 @@ use crate::agent::session::{AgentSession, ModelMeta, ModelRegistry};
 use crate::agent::tools::ToolRegistry;
 use crate::infra::config::loader::load_app_config;
 use crate::infra::session::SessionManager;
+use crate::interface::resources::ResourcesAction;
+
+/// Top-level subcommand. When absent, the flat flags/positional below drive
+/// the default print-mode flow (backward compatible).
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// Read-only resource listing and diagnostics.
+    Resources {
+        #[command(subcommand)]
+        action: ResourcesAction,
+    },
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "xylitol", version, about)]
 pub struct CliArgs {
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
     pub prompt: Option<String>,
     #[arg(long)]
     pub print: bool,
@@ -32,6 +47,18 @@ pub struct CliArgs {
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = CliArgs::parse();
+
+    // ── Subcommands: handled early, no model loading needed ─────────
+    match args.command {
+        Some(Command::Resources { action }) => {
+            let code = crate::interface::resources::run(action);
+            if code == std::process::ExitCode::FAILURE {
+                std::process::exit(1);
+            }
+            return Ok(());
+        }
+        None => {}
+    }
 
     let cli_config_path = args.config.as_deref().map(std::path::Path::new);
 
@@ -142,6 +169,18 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .to_string_lossy()
         .to_string();
 
+    // ── Step 3b: discover prompt templates (read-only scan) ─────
+    // DefaultResourceLoader scans ~/.xylitol/prompts and <cwd>/.xylitol/prompts.
+    // Each becomes a /template:name command after the session is built.
+    let discovered_templates = {
+        let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
+        let loader = crate::infra::resource::DefaultResourceLoader::new(
+            std::path::PathBuf::from(&cwd),
+            agent_dir,
+        );
+        loader.get_prompts().0.to_vec()
+    };
+
     let mut agent_session = AgentSession::new(
         model_registry,
         tool_registry,
@@ -151,8 +190,16 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         0.8,
         cwd,
     );
+    agent_session.register_prompt_commands(&discovered_templates);
 
-    // ── Step 4: select model ─────────────────────────────────────
+    // ── Step 4: RPC mode (early return) ────────────────────────
+    if args.rpc {
+        return crate::interface::rpc::run(agent_session)
+            .await
+            .map_err(|e| e.into());
+    }
+
+    // ── Step 5: select model ─────────────────────────────────────
     if let Some(ref mid) = args.model {
         if agent_session.model_registry().find(mid).is_none() {
             eprintln!("Warning: model '{mid}' not found in registry");
