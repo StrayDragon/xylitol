@@ -15,7 +15,10 @@ use xylitol::agent::extensions::{
     ToolDefinition,
 };
 use xylitol::agent::r#loop::{AgentEvent, AgentLoop};
-use xylitol::agent::model::{ModelConfig, ModelKind};
+use xylitol::agent::model::{
+    ModelConfig, ModelKind, reset_fake_state, set_fake_text, set_fake_tool_call,
+    set_fake_tool_result,
+};
 use xylitol::agent::session::{
     AgentSession, ContextUsage, ModelMeta, ModelRegistry, ThinkingLevel, get_context_usage,
     should_compact,
@@ -443,16 +446,17 @@ fn _t_session_entry_type(sess: &SessionStore, typ: String) {
 
 #[given("配置了 mock 模型 {name:string}")]
 fn _g_agent_mock_model(agent: &AgentState, ws: &Workspace, name: String) {
+    reset_fake_state();
     ws.init();
     agent.registry.borrow_mut().register(ModelMeta {
         id: name,
         config: ModelConfig {
-            kind: ModelKind::OpenAi,
-            api_key: "sk".into(),
-            model: "mock".into(),
+            kind: ModelKind::Fake,
+            api_key: String::new(),
+            model: "fake-model".into(),
             base_url: None,
         },
-        display_name: "Mock".into(),
+        display_name: "Fake Mock".into(),
         thinking: false,
         context_window: 200000,
     });
@@ -522,12 +526,12 @@ fn _g_agent_thinking_level(agent: &AgentState, level: String) {
     r.register(ModelMeta {
         id: "test".into(),
         config: ModelConfig {
-            kind: ModelKind::OpenAi,
-            api_key: "sk".into(),
-            model: "m".into(),
+            kind: ModelKind::Fake,
+            api_key: String::new(),
+            model: "fake-model".into(),
             base_url: None,
         },
-        display_name: "Test".into(),
+        display_name: "Fake".into(),
         thinking: level != "off",
         context_window: 128000,
     });
@@ -540,12 +544,12 @@ fn _g_agent_no_thinking(agent: &AgentState) {
     r.register(ModelMeta {
         id: "test".into(),
         config: ModelConfig {
-            kind: ModelKind::OpenAi,
-            api_key: "sk".into(),
-            model: "m".into(),
+            kind: ModelKind::Fake,
+            api_key: String::new(),
+            model: "fake-model".into(),
             base_url: None,
         },
-        display_name: "Test".into(),
+        display_name: "Fake".into(),
         thinking: false,
         context_window: 128000,
     });
@@ -2008,15 +2012,15 @@ fn _t_hook_fail_open(agent: &AgentState) {
 // --- Agent mock stubs ---
 #[given("mock 模型返回文本 {text:string}")]
 fn _g_agent_mock_text(_agent: &AgentState, text: String) {
-    let _ = text;
+    set_fake_text(&text);
 }
 #[given("mock 模型返回工具调用 {tool:string} 参数 {args}")]
 fn _g_agent_mock_tool_call(_agent: &AgentState, tool: String, args: String) {
-    let _ = (tool, args);
+    set_fake_tool_call(&tool, &args);
 }
 #[given("read 工具返回 {result}")]
 fn _g_read_tool_result(_agent: &AgentState, result: String) {
-    let _ = result;
+    set_fake_tool_result(&result);
 }
 #[when("尝试将思考级别设为 {level}")]
 fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
