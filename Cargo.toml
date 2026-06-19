@@ -54,6 +54,7 @@ default = [
     "infra-skills",
     "infra-session",
     "ui-review",
+    "dev-fake-provider",
 ]
 
 # ── agent/ layer ──────────────────────────────
