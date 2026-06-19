@@ -146,6 +146,27 @@ pub struct SessionInfoEntry {
     pub name: Option<String>,
 }
 
+// ── Bash execution entry ─────────────────────────────────────────────
+
+/// Records a user-initiated bash execution (`!cmd` / `!!cmd`).
+///
+/// When `exclude_from_context` is true (`!!` prefix), the entry is stored
+/// on disk but omitted from the LLM context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BashExecutionEntry {
+    #[serde(flatten)]
+    pub base: EntryBase,
+    pub command: String,
+    pub output: String,
+    pub exit_code: Option<i32>,
+    pub cancelled: bool,
+    pub truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub full_output_path: Option<String>,
+    pub exclude_from_context: bool,
+}
+
 // ── Session context (reconstructed LLM messages) ───────────────────
 
 /// Reconstructed session context from stored entries.
@@ -193,6 +214,8 @@ pub enum SessionEntry {
     Label(LabelEntry),
     #[serde(rename = "session_info")]
     SessionInfo(SessionInfoEntry),
+    #[serde(rename = "bash_execution")]
+    BashExecution(BashExecutionEntry),
 }
 
 impl SessionEntry {
@@ -208,6 +231,7 @@ impl SessionEntry {
             SessionEntry::CustomMessage(e) => Some(&e.base),
             SessionEntry::Label(e) => Some(&e.base),
             SessionEntry::SessionInfo(e) => Some(&e.base),
+            SessionEntry::BashExecution(e) => Some(&e.base),
         }
     }
 
@@ -223,6 +247,7 @@ impl SessionEntry {
             SessionEntry::CustomMessage(_) => "custom_message",
             SessionEntry::Label(_) => "label",
             SessionEntry::SessionInfo(_) => "session_info",
+            SessionEntry::BashExecution(_) => "bash_execution",
         }
     }
 
