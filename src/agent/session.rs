@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::agent::commands::{SlashCommandInfo, get_all_commands};
+use crate::agent::commands::{DispatchResult, SlashCommandInfo, get_all_commands};
 use crate::agent::model::ModelConfig;
 use crate::agent::output_guard;
 use crate::agent::prompt::{self, SystemPromptOpts};
@@ -107,6 +107,8 @@ pub struct AgentSession {
     extension_commands: Vec<SlashCommandInfo>,
     /// Event bus for turn lifecycle notifications (lazy init).
     event_bus: Option<crate::agent::event::AgentEventBus>,
+    /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
+    bash_cancel: Option<tokio_util::sync::CancellationToken>,
 }
 
 impl AgentSession {
@@ -138,6 +140,7 @@ impl AgentSession {
             prompt_templates: Vec::new(),
             extension_commands: Vec::new(),
             event_bus: None,
+            bash_cancel: None,
         }
     }
 
@@ -232,15 +235,77 @@ impl AgentSession {
         self.prompt_templates.extend(templates);
     }
 
+    /// Register prompt templates discovered by the ResourceLoader.
+    ///
+    /// Converts the loader's `PromptTemplate` (content field) into the runtime
+    /// `agent::templates::PromptTemplate` (body field) and records the source
+    /// path for provenance. Each registered template becomes a `/template:name`
+    /// command.
+    pub fn register_prompt_commands(
+        &mut self,
+        templates: &[crate::infra::resource::PromptTemplate],
+    ) {
+        for t in templates {
+            self.prompt_templates.push(PromptTemplate {
+                name: t.name.clone(),
+                body: t.content.clone(),
+                description: t.description.clone(),
+                argument_hint: t.argument_hint.clone(),
+                source_path: Some(t.source_path.clone()),
+            });
+        }
+    }
+
     /// Register an extension slash command.
     #[allow(dead_code)]
     pub(crate) fn register_command(&mut self, cmd: SlashCommandInfo) {
         self.extension_commands.push(cmd);
     }
 
-    /// Get all available commands (builtin + extension).
+    /// Get all available commands (builtin + extension + prompt templates).
     pub(crate) fn get_commands(&self) -> Vec<SlashCommandInfo> {
-        get_all_commands(&self.extension_commands)
+        let mut all = get_all_commands(&self.extension_commands);
+        // Surface registered prompt templates as commands so callers (c110
+        // slash dispatch, c115 RPC get_commands) can discover them.
+        for t in &self.prompt_templates {
+            let mut cmd = SlashCommandInfo::new(
+                format!("template:{}", t.name),
+                t.description
+                    .clone()
+                    .unwrap_or_else(|| "prompt template".into()),
+                crate::agent::commands::SlashCommandSource::Prompt,
+            );
+            if let Some(ref path) = t.source_path {
+                cmd.source_path = Some(path.clone());
+            }
+            all.push(cmd);
+        }
+        all
+    }
+
+    /// Routes the behaviour of a recognised slash command into the concrete
+    /// handler on AgentSession. The caller (AgentLoop or RPC mode) must hold
+    /// a mutably borrowed session to call async handlers.
+    ///
+    /// Returns [`DispatchResult`] synchronously so the caller can decide
+    /// whether to break a loop, fall through to LLM, or show a guidance message.
+    pub(crate) fn dispatch_slash_command(&mut self, name: &str, _args: &str) -> DispatchResult {
+        if crate::agent::commands::is_tui_command(name) {
+            return DispatchResult::NotAvailable {
+                reason: format!("`/{name}` requires TUI mode"),
+            };
+        }
+
+        // Commands whose dispatch is purely synchronous and doesn't need
+        // AgentSession state mutations (delegated to the caller loop).
+        match name {
+            "quit" => {
+                // The caller (AgentLoop / RPC) will break the loop.
+                DispatchResult::Handled
+            }
+            _ if crate::agent::commands::has_handler(name) => DispatchResult::Handled,
+            _ => DispatchResult::NotFound,
+        }
     }
 
     /// Process user input: intercept /commands and /template:name.
@@ -257,7 +322,17 @@ impl AgentSession {
     pub fn process_prompt(&self, input: &str) -> PromptResult {
         let input = input.trim();
 
-        // Check for /template:name first
+        // Check for `!cmd` / `!!cmd` first (before slash/template handling).
+        if let Some((exclude, command)) = crate::agent::bash_executor::parse_bang_prefix(input)
+            && !command.is_empty()
+        {
+            return PromptResult::Bash {
+                exclude_from_context: exclude,
+                command: command.to_string(),
+            };
+        }
+
+        // Check for /template:name
         if is_template_line(input) {
             if let Some((name, args)) = parse_template_line(input)
                 && let Some(tmpl) = self.prompt_templates.iter().find(|t| t.name == name)
@@ -275,6 +350,12 @@ impl AgentSession {
                 let args = crate::agent::commands::get_command_args(input)
                     .unwrap_or("")
                     .to_string();
+                // Check for TUI-only commands before returning Handled.
+                if crate::agent::commands::is_tui_command(cmd_name) {
+                    return PromptResult::Expanded(format!(
+                        "`/{cmd_name}` requires TUI mode. Run the agent interactively."
+                    ));
+                }
                 return PromptResult::Handled {
                     command: cmd_name.to_string(),
                     args,
@@ -333,6 +414,16 @@ impl AgentSession {
 
     pub fn model_registry(&self) -> &ModelRegistry {
         &self.model_registry
+    }
+
+    /// Clone the model registry (needed by RPC mode).
+    pub fn registry_clone(&self) -> ModelRegistry {
+        self.model_registry.clone()
+    }
+
+    /// Current working directory.
+    pub fn cwd(&self) -> &str {
+        &self.cwd
     }
 
     // ── OutputGuard ──────────────────────────────────────────
@@ -525,11 +616,11 @@ impl AgentSession {
         for skill in skills {
             let name = skill.name.clone();
             let desc = skill.description.clone().unwrap_or_default();
-            self.extension_commands.push(SlashCommandInfo {
-                name: format!("skill:{name}"),
-                description: format!("Activate skill: {desc}"),
-                argument_hint: None,
-            });
+            self.extension_commands.push(SlashCommandInfo::new(
+                format!("skill:{name}"),
+                format!("Activate skill: {desc}"),
+                crate::agent::commands::SlashCommandSource::Skill,
+            ));
         }
     }
 
@@ -648,6 +739,130 @@ impl AgentSession {
         self.session_manager
             .append_custom_message(sid, custom_type, content, display, None)
             .await
+    }
+
+    // ── Bash execution (`!cmd` / `!!cmd`) ───────────────────────
+
+    /// Execute a user-initiated bash command and record the result.
+    ///
+    /// `exclude_from_context=true` (the `!!` prefix) stores the entry on disk
+    /// but omits it from LLM context (see `build_session_context`).
+    pub async fn execute_bash(
+        &mut self,
+        command: &str,
+        exclude_from_context: bool,
+    ) -> Result<crate::agent::bash_executor::BashResult, String> {
+        let cancel = tokio_util::sync::CancellationToken::new();
+        self.bash_cancel = Some(cancel.clone());
+
+        let result = crate::agent::bash_executor::execute(
+            command,
+            crate::agent::bash_executor::BashExecutorOptions {
+                cancel: Some(cancel),
+                ..Default::default()
+            },
+        )
+        .await;
+
+        self.bash_cancel = None;
+
+        // Record on disk.
+        if let Some(sid) = self.session_id() {
+            let sid = sid.to_string();
+            self.record_bash_result(command, &result, exclude_from_context, Some(&sid))
+                .await?;
+        }
+
+        Ok(result)
+    }
+
+    /// Persist a bash result as a `BashExecution` session entry.
+    pub async fn record_bash_result(
+        &self,
+        command: &str,
+        result: &crate::agent::bash_executor::BashResult,
+        exclude_from_context: bool,
+        session_id: Option<&str>,
+    ) -> Result<(), String> {
+        let sid = match session_id {
+            Some(s) => s.to_string(),
+            None => self
+                .session_id()
+                .ok_or_else(|| "no active session".to_string())?
+                .to_string(),
+        };
+        self.session_manager
+            .append_bash_execution(
+                &sid,
+                command,
+                &result.output,
+                result.exit_code,
+                result.cancelled,
+                result.truncated,
+                result.full_output_path.as_deref(),
+                exclude_from_context,
+            )
+            .await
+    }
+
+    /// Abort any in-flight bash execution.
+    pub fn abort_bash(&mut self) {
+        if let Some(cancel) = self.bash_cancel.take() {
+            cancel.cancel();
+        }
+    }
+
+    // ── Export / import ─────────────────────────────────────────
+
+    /// Export the active session's entries to an HTML file. Returns the path.
+    pub async fn export_to_html(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<std::path::PathBuf, String> {
+        let sid = self.session_id().ok_or("no active session")?.to_string();
+        let entries = self.session_manager.load(&sid).await?;
+        let html = crate::infra::session::export::render_html(&sid, &entries);
+        crate::infra::session::export::write_to(path, &html)?;
+        Ok(path.to_path_buf())
+    }
+
+    /// Export the active session's entries as JSONL. Returns the path.
+    pub async fn export_to_jsonl(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<std::path::PathBuf, String> {
+        let sid = self.session_id().ok_or("no active session")?.to_string();
+        let entries = self.session_manager.load(&sid).await?;
+        let jsonl = crate::infra::session::export::render_jsonl(&entries)?;
+        crate::infra::session::export::write_to(path, &jsonl)?;
+        Ok(path.to_path_buf())
+    }
+
+    /// Import a JSONL file into a brand-new session. Returns the new session id.
+    ///
+    /// The new session id is derived from the source header (re-used) to keep
+    /// identities stable across export/import, but the file lands in this
+    /// manager's sessions dir without overwriting an existing session.
+    pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String> {
+        let bytes = std::fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let entries = crate::infra::session::export::parse_jsonl(&bytes)?;
+        let new_id = match entries.first() {
+            Some(crate::infra::session::SessionEntry::Header(h)) => h.id.clone(),
+            _ => return Err("import: missing header".into()),
+        };
+        if self.session_manager.exists(&new_id) {
+            return Err(format!("session already exists: {new_id}"));
+        }
+        // Append all entries into a fresh session file.
+        for entry in &entries {
+            self.session_manager.append(&new_id, entry).await?;
+        }
+        Ok(new_id)
+    }
+
+    /// Share guidance stub — returns a configuration hint (no network upload).
+    pub fn share_as_gist(&self, path: &std::path::Path) -> String {
+        crate::infra::session::export::share_guidance_message(path)
     }
 
     /// Check and perform auto-compaction if the context is full.
@@ -770,6 +985,152 @@ pub enum PromptResult {
     Handled { command: String, args: String },
     /// A /template:name was expanded. The caller should send the content to the LLM.
     Expanded(String),
+    /// A `!cmd` / `!!cmd` bash execution request. The caller should invoke
+    /// `execute_bash` with the parsed command; `exclude_from_context` reflects
+    /// the bang prefix.
+    Bash {
+        exclude_from_context: bool,
+        command: String,
+    },
     /// Normal input — pass through to LLM unchanged.
     PassThrough(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::tools::ToolRegistry;
+    use std::path::PathBuf;
+
+    fn make_session() -> AgentSession {
+        let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+        AgentSession::new(
+            ModelRegistry::new(),
+            ToolRegistry::builtins(),
+            mgr,
+            Some("you are helpful".into()),
+            50,
+            0.8,
+            ".".into(),
+        )
+    }
+
+    fn loader_template(
+        name: &str,
+        body: &str,
+        source: &str,
+    ) -> crate::infra::resource::PromptTemplate {
+        crate::infra::resource::PromptTemplate {
+            name: name.into(),
+            content: body.into(),
+            description: None,
+            argument_hint: None,
+            source_path: PathBuf::from(source),
+        }
+    }
+
+    #[test]
+    fn register_prompt_commands_injects_templates() {
+        let mut session = make_session();
+        session.register_prompt_commands(&[loader_template(
+            "review",
+            "Review: $1",
+            "/home/u/.xylitol/prompts/review.md",
+        )]);
+        // Wired: process_prompt expands /template:review.
+        let result = session.process_prompt("/template:review main.rs");
+        match result {
+            PromptResult::Expanded(text) => assert!(text.contains("Review: main.rs")),
+            other => panic!("expected Expanded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn registered_templates_appear_in_commands() {
+        let mut session = make_session();
+        session.register_prompt_commands(&[
+            loader_template("review", "body", "/x/review.md"),
+            loader_template("plan", "body2", "/x/plan.md"),
+        ]);
+        let names: Vec<String> = session.get_commands().into_iter().map(|c| c.name).collect();
+        assert!(names.iter().any(|n| n == "template:review"));
+        assert!(names.iter().any(|n| n == "template:plan"));
+        // All 22 builtin names should also be present.
+        assert!(names.iter().any(|n| n == "model"));
+        assert!(names.iter().any(|n| n == "export"));
+        assert!(names.iter().any(|n| n == "compact"));
+    }
+
+    #[test]
+    fn tui_commands_return_guidance_in_non_tui_mode() {
+        let session = make_session();
+        let result = session.process_prompt("/settings");
+        match result {
+            PromptResult::Expanded(text) => assert!(text.contains("TUI")),
+            other => panic!("expected Expanded for TUI command, got {other:?}"),
+        }
+        let result = session.process_prompt("/hotkeys");
+        match result {
+            PromptResult::Expanded(text) => assert!(text.contains("TUI")),
+            other => panic!("expected Expanded for TUI command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dispatch_slash_command_routes_correctly() {
+        let mut session = make_session();
+        // Known handler
+        match session.dispatch_slash_command("compact", "") {
+            DispatchResult::Handled => {}
+            other => panic!("expected Handled, got {other:?}"),
+        }
+        // TUI command
+        match session.dispatch_slash_command("settings", "") {
+            DispatchResult::NotAvailable { ref reason } => assert!(reason.contains("TUI")),
+            other => panic!("expected NotAvailable, got {other:?}"),
+        }
+        // Unknown command
+        match session.dispatch_slash_command("nonexistent", "") {
+            DispatchResult::NotFound => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn source_path_preserved_after_registration() {
+        let mut session = make_session();
+        session.register_prompt_commands(&[loader_template(
+            "greet",
+            "hi",
+            "/home/u/.xylitol/prompts/greet.md",
+        )]);
+        let t = session
+            .prompt_templates
+            .iter()
+            .find(|t| t.name == "greet")
+            .unwrap();
+        assert_eq!(
+            t.source_path.as_deref(),
+            Some(std::path::Path::new("/home/u/.xylitol/prompts/greet.md"))
+        );
+    }
+
+    #[test]
+    fn positional_args_still_substituted() {
+        let mut session = make_session();
+        session.register_prompt_commands(&[loader_template(
+            "multi",
+            "a=$1 b=$@ d=${2:-x}",
+            "/x/multi.md",
+        )]);
+        let result = session.process_prompt("/template:multi foo bar");
+        match result {
+            PromptResult::Expanded(text) => {
+                assert!(text.contains("a=foo"));
+                assert!(text.contains("b=foo bar"));
+                assert!(text.contains("d=bar"));
+            }
+            other => panic!("expected Expanded, got {other:?}"),
+        }
+    }
 }
