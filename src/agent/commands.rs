@@ -1,66 +1,126 @@
-//! Slash commands — `/model`, `/compact`, `/help`, etc.
+//! Slash commands — `/model`, `/compact`, `/export`, etc.
 //!
-//! Aligns with pi's slash-commands.ts. Provides:
-//! - Builtin command table with descriptions
-//! - Command dispatch interception in session.prompt()
+//! Aligns with pi's slash-commands.ts. Provides a full builtin command table,
+//! slash-command detection, and `DispatchResult` for routing.
+//!
+//! ## Architecture
+//! - **Builtins** are defined as simple `(&str, &str)` tuples (name, description).
+//! - **Non-builtin commands** (from skills, prompts, extensions) carry a
+//!   [`SlashCommandSource`] and optional `source_path` for provenance.
+//! - AgentSession owns the dispatch logic (`dispatch_slash_command` in session.rs).
+//! - TUI-only commands return `NotAvailable` when invoked outside TUI mode.
 
-#![allow(dead_code)]
-#[allow(dead_code)]
-/// Information about a registered slash command.
+use std::path::PathBuf;
+
+/// Source of a registered (non-builtin) slash command.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum SlashCommandSource {
+    /// Registered by an extension.
+    Extension,
+    /// Registered from a prompt template (`/template:name`).
+    Prompt,
+    /// Registered from a discovered SKILL.md.
+    Skill,
+}
+
+/// A slash command registered by a non-builtin source (skill, prompt, extension).
 #[derive(Debug, Clone)]
 pub(crate) struct SlashCommandInfo {
     /// Command name (without leading `/`).
     pub(crate) name: String,
     /// Human-readable description.
     pub(crate) description: String,
-    /// Optional argument hint (e.g., "<model-id>").
-    pub(crate) argument_hint: Option<String>,
+    /// Source of the command.
+    pub(crate) source: SlashCommandSource,
+    /// Path to the originating resource, if applicable.
+    pub(crate) source_path: Option<PathBuf>,
 }
 
 impl SlashCommandInfo {
-    pub(crate) fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
+    pub(crate) fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        source: SlashCommandSource,
+    ) -> Self {
         Self {
             name: name.into(),
             description: description.into(),
-            argument_hint: None,
+            source,
+            source_path: None,
         }
     }
 
-    pub(crate) fn with_hint(mut self, hint: impl Into<String>) -> Self {
-        self.argument_hint = Some(hint.into());
+    pub(crate) fn with_path(mut self, path: PathBuf) -> Self {
+        self.source_path = Some(path);
         self
     }
 }
 
-/// Built-in slash commands available in every session.
-pub(crate) const BUILTIN_COMMANDS: &[(&str, &str)] = &[
-    ("model", "Select model"),
-    ("compact", "Compact session context"),
-    ("session", "Show session info"),
-    ("fork", "Fork session at a previous message"),
-    ("stats", "Show session statistics"),
-    ("new", "Start a new session"),
-    ("help", "Show available commands"),
-];
-
-/// Get the builtin commands as `SlashCommandInfo` vec.
-pub(crate) fn builtin_commands() -> Vec<SlashCommandInfo> {
-    BUILTIN_COMMANDS
-        .iter()
-        .map(|(name, desc)| SlashCommandInfo::new(*name, *desc))
-        .collect()
+/// Outcome of attempting to dispatch a slash command.
+#[derive(Debug, Clone)]
+pub(crate) enum DispatchResult {
+    /// The command was handled. No further LLM action is needed.
+    Handled,
+    /// This command requires a TUI or interactive mode.
+    NotAvailable {
+        /// Reason the command is unavailable (e.g., "requires TUI mode").
+        reason: String,
+    },
+    /// No command with that name was found.
+    NotFound,
 }
 
-/// Merge builtin commands with extension-registered commands.
+/// Full builtin slash command table.
+///
+/// Commands that require TUI interaction are marked with `[requires TUI]` in
+/// their description so callers can distinguish them without a separate flag.
+pub(crate) const BUILTIN_COMMANDS: &[(&str, &str)] = &[
+    ("model", "Select model"),
+    ("compact", "Manually compact the session context"),
+    ("session", "Show session info and stats"),
+    ("fork", "Fork session at a previous message"),
+    ("new", "Start a new session"),
+    ("export", "Export session (HTML/JSONL)"),
+    ("import", "Import and resume a session from a JSONL file"),
+    ("tree", "Navigate session tree (switch branches)"),
+    ("resume", "Resume a different session"),
+    ("quit", "Quit the agent"),
+    ("settings", "Open settings menu [requires TUI]"),
+    (
+        "scoped-models",
+        "Enable/disable models for cycling [requires TUI]",
+    ),
+    ("share", "Share session as a gist"),
+    (
+        "copy",
+        "Copy last agent message to clipboard [requires clipboard]",
+    ),
+    ("name", "Set session display name"),
+    ("changelog", "Show changelog entries"),
+    ("hotkeys", "Show all keyboard shortcuts [requires TUI]"),
+    ("clone", "Clone the current session"),
+    ("trust", "Save project trust decision"),
+    ("login", "Configure provider authentication"),
+    ("logout", "Remove provider authentication"),
+    ("reload", "Reload extensions, skills, and prompts"),
+];
+
+/// Get builtin commands as a Vec for iteration.
+/// Merge builtin + extension/skill/prompt commands into a single list.
 pub(crate) fn get_all_commands(extensions: &[SlashCommandInfo]) -> Vec<SlashCommandInfo> {
-    let mut commands = builtin_commands();
-    commands.extend(extensions.iter().cloned());
-    commands
+    let mut all: Vec<SlashCommandInfo> = BUILTIN_COMMANDS
+        .iter()
+        .map(|(n, d)| SlashCommandInfo::new(*n, *d, SlashCommandSource::Skill))
+        .collect();
+    all.extend(extensions.iter().cloned());
+    all
 }
 
 /// Check if a line starts with a slash command.
 ///
 /// Returns `Some(command_name)` if detected, stripping the leading `/`.
+/// Excludes `/template:` (handled separately by the template system) and
+/// `!`/`!!` lines (handled by bash executor).
 pub(crate) fn is_slash_command(line: &str) -> Option<&str> {
     let line = line.trim();
     if !line.starts_with('/') {
@@ -79,17 +139,14 @@ pub(crate) fn is_slash_command(line: &str) -> Option<&str> {
 /// Get the args part of a slash command line (everything after the command name).
 pub(crate) fn get_command_args(line: &str) -> Option<&str> {
     let line = line.trim();
-    if !line.starts_with('/') {
-        return None;
-    }
-    let rest = &line[1..]; // skip /
+    let rest = line.strip_prefix('/')?;
     match rest.find(char::is_whitespace) {
         Some(pos) => Some(rest[pos + 1..].trim()),
-        None => Some(""), // command with no args
+        None => Some(""),
     }
 }
 
-/// Find a slash command by name (case-insensitive).
+/// Find a command by name (case-insensitive).
 pub(crate) fn find_command<'a>(
     name: &str,
     commands: &'a [SlashCommandInfo],
@@ -97,12 +154,31 @@ pub(crate) fn find_command<'a>(
     commands.iter().find(|c| c.name.eq_ignore_ascii_case(name))
 }
 
-/// Look up a builtin command by name.
-pub(crate) fn find_builtin_command(name: &str) -> Option<SlashCommandInfo> {
-    BUILTIN_COMMANDS
-        .iter()
-        .find(|(n, _)| n.eq_ignore_ascii_case(name))
-        .map(|(n, d)| SlashCommandInfo::new(*n, *d))
+/// Check whether a command is a TUI-only builtin.
+pub(crate) fn is_tui_command(name: &str) -> bool {
+    matches!(name, "settings" | "scoped-models" | "changelog" | "hotkeys")
+}
+
+/// Check whether a command has a concrete handler that can be dispatched now.
+/// Returns `true` for commands with working implementations.
+pub(crate) fn has_handler(name: &str) -> bool {
+    matches!(
+        name,
+        "model"
+            | "compact"
+            | "session"
+            | "fork"
+            | "new"
+            | "export"
+            | "import"
+            | "tree"
+            | "resume"
+            | "quit"
+            | "name"
+            | "reload"
+            | "login"
+            | "logout"
+    )
 }
 
 #[cfg(test)]
@@ -110,17 +186,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_builtin_commands_have_expected_entries() {
-        let cmds = builtin_commands();
-        let names: Vec<&str> = cmds.iter().map(|c| c.name.as_str()).collect();
+    fn test_builtin_22_commands() {
+        assert_eq!(BUILTIN_COMMANDS.len(), 22);
+        let names: Vec<&str> = BUILTIN_COMMANDS.iter().map(|(n, _)| *n).collect();
         assert!(names.contains(&"model"));
+        assert!(names.contains(&"export"));
         assert!(names.contains(&"compact"));
-        assert!(names.contains(&"session"));
+        assert!(names.contains(&"tree"));
         assert!(names.contains(&"fork"));
-        assert!(names.contains(&"stats"));
-        assert!(names.contains(&"new"));
-        assert!(names.contains(&"help"));
-        assert_eq!(names.len(), 7);
+        assert!(names.contains(&"reload"));
+        assert!(names.contains(&"quit"));
+        assert!(!names.contains(&"stats"));
     }
 
     #[test]
@@ -150,23 +226,56 @@ mod tests {
 
     #[test]
     fn test_find_command_case_insensitive() {
-        let cmds = builtin_commands();
+        let cmds = get_all_commands(&[]);
         assert!(find_command("MODEL", &cmds).is_some());
         assert!(find_command("Model", &cmds).is_some());
         assert!(find_command("nonexistent", &cmds).is_none());
     }
 
     #[test]
-    fn test_get_all_commands_with_extensions() {
-        let ext = vec![SlashCommandInfo::new("analyze", "Analyze code").with_hint("<file>")];
+    fn test_get_all_commands_includes_extensions() {
+        let ext = vec![SlashCommandInfo::new(
+            "analyze",
+            "Analyze code",
+            SlashCommandSource::Extension,
+        )];
         let all = get_all_commands(&ext);
-        assert_eq!(all.len(), 8); // 7 builtin + 1 extension
         assert!(all.iter().any(|c| c.name == "analyze"));
+        assert!(all.iter().any(|c| c.name == "model"));
     }
 
     #[test]
-    fn test_slash_command_info_with_hint() {
-        let cmd = SlashCommandInfo::new("model", "Select model").with_hint("<model-id>");
-        assert_eq!(cmd.argument_hint, Some("<model-id>".into()));
+    fn test_is_tui_command() {
+        assert!(is_tui_command("settings"));
+        assert!(is_tui_command("hotkeys"));
+        assert!(!is_tui_command("model"));
+        assert!(!is_tui_command("export"));
+    }
+
+    #[test]
+    fn test_has_handler() {
+        assert!(has_handler("model"));
+        assert!(has_handler("compact"));
+        assert!(has_handler("export"));
+        assert!(!has_handler("settings"));
+    }
+
+    #[test]
+    fn test_slash_command_info_with_path() {
+        let cmd = SlashCommandInfo::new("x", "desc", SlashCommandSource::Skill)
+            .with_path(PathBuf::from("/a/b/c.md"));
+        assert_eq!(cmd.source_path, Some(PathBuf::from("/a/b/c.md")));
+        assert_eq!(cmd.source, SlashCommandSource::Skill);
+    }
+
+    #[test]
+    fn test_slash_command_source_variants() {
+        let ext = SlashCommandSource::Extension;
+        let prompt = SlashCommandSource::Prompt;
+        let skill = SlashCommandSource::Skill;
+        // All three variants exist (no builtin variant — builtins use Skill as
+        // a placeholder so get_all_commands can return a uniform Vec).
+        assert_ne!(format!("{ext:?}"), format!("{prompt:?}"));
+        assert_ne!(format!("{prompt:?}"), format!("{skill:?}"));
     }
 }
