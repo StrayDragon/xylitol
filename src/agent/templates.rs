@@ -23,6 +23,9 @@ pub(crate) struct PromptTemplate {
     /// Optional argument hint from frontmatter.
     #[allow(dead_code)]
     pub(crate) argument_hint: Option<String>,
+    /// Originating file path (provenance tracing).
+    #[allow(dead_code)]
+    pub(crate) source_path: Option<std::path::PathBuf>,
 }
 
 impl PromptTemplate {
@@ -34,6 +37,7 @@ impl PromptTemplate {
             body: body.into(),
             description: None,
             argument_hint: None,
+            source_path: None,
         }
     }
 
@@ -310,6 +314,7 @@ mod tests {
             body: "Review files matching: ${1:-*.rs}\nTarget dir: ${2:-src/}\nArgs: $@".into(),
             description: Some("Code review".into()),
             argument_hint: Some("<pattern> <dir>".into()),
+            source_path: None,
         };
         let result = tmpl.expand(&["*.py".into(), "tests/".into(), "--verbose".into()]);
         assert!(result.contains("*.py"));
