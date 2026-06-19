@@ -155,6 +155,9 @@ pub fn estimate_tokens_entry(entry: &SessionEntry) -> u64 {
         }
         SessionEntry::Label(_) => 0,
         SessionEntry::SessionInfo(_) => 0,
+        SessionEntry::BashExecution(b) => {
+            (b.command.len() as u64 + b.output.len() as u64).div_ceil(4)
+        }
     }
 }
 

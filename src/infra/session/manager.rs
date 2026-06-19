@@ -249,6 +249,16 @@ impl SessionManager {
                 base,
                 name: si.name.clone(),
             }),
+            SessionEntry::BashExecution(b) => SessionEntry::BashExecution(BashExecutionEntry {
+                base,
+                command: b.command.clone(),
+                output: b.output.clone(),
+                exit_code: b.exit_code,
+                cancelled: b.cancelled,
+                truncated: b.truncated,
+                full_output_path: b.full_output_path.clone(),
+                exclude_from_context: b.exclude_from_context,
+            }),
         }
     }
 
@@ -528,6 +538,21 @@ impl SessionManager {
                 | SessionEntry::Label(_)
                 | SessionEntry::SessionInfo(_) => {
                     // Non-context entries: skip
+                }
+                SessionEntry::BashExecution(b) => {
+                    // Bash executions enter context only when not explicitly excluded (`!` vs `!!`).
+                    if b.exclude_from_context {
+                        continue;
+                    }
+                    let msg = serde_json::json!({
+                        "role": "user",
+                        "parts": [{
+                            "type": "text",
+                            "text": format!("$ {}
+                    {}", b.command, b.output)
+                        }]
+                    });
+                    messages.push(msg);
                 }
             }
         }
@@ -991,6 +1016,39 @@ impl SessionManager {
                 timestamp: String::new(),
             },
             name: Some(name.trim().to_string()),
+        });
+        self.append(session_id, &entry).await
+    }
+
+    /// Append a bash-execution entry (`!cmd` / `!!cmd`).
+    ///
+    /// Stored on disk; the `exclude_from_context` flag controls whether it
+    /// participates in LLM context (see `build_session_context`).
+    pub async fn append_bash_execution(
+        &self,
+        session_id: &str,
+        command: &str,
+        output: &str,
+        exit_code: Option<i32>,
+        cancelled: bool,
+        truncated: bool,
+        full_output_path: Option<&str>,
+        exclude_from_context: bool,
+    ) -> Result<(), String> {
+        let entry = SessionEntry::BashExecution(BashExecutionEntry {
+            base: EntryBase {
+                entry_type: "bash_execution".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: String::new(),
+            },
+            command: command.to_string(),
+            output: output.to_string(),
+            exit_code,
+            cancelled,
+            truncated,
+            full_output_path: full_output_path.map(|s| s.to_string()),
+            exclude_from_context,
         });
         self.append(session_id, &entry).await
     }

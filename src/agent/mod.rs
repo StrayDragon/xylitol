@@ -1,4 +1,5 @@
 pub mod auth_storage;
+pub mod bash_executor;
 pub mod commands;
 pub mod defaults;
 pub mod diagnostics;
