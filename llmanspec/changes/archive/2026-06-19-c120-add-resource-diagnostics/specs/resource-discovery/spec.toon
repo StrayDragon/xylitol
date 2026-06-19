@@ -1,0 +1,16 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,rd1,resource-listing,System MUST provide a read-only command that lists all discovered skills prompts and themes with their source scope and path.,null,null,null
+  add_requirement,rd2,resource-info,System MUST provide a command that shows details for a single named resource and exits non-zero when not found.,null,null,null
+  add_requirement,rd3,resource-doctor,System MUST provide a command that surfaces ResourceLoader diagnostics and exits non-zero when issues exist.,null,null,null
+  add_requirement,rd4,read-only,The resource commands MUST NOT create modify or delete any files or installed package state.,null,null,null
+  add_requirement,rd5,loader-reuse,The resource commands MUST reuse DefaultResourceLoader discovery rather than rescanning independently.,null,null,null
+op_scenarios[8]{req_id,id,given,when,then}:
+  rd1,list,"ResourceLoader has skills and prompts loaded","list is invoked","output shows each resource with scope and path"
+  rd1,list-empty,"no resources are installed","list is invoked","output is empty and exit code is zero"
+  rd2,info-found,"a skill named foo exists","info foo is invoked","details for foo are shown and exit zero"
+  rd2,info-missing,"no resource named bar exists","info bar is invoked","a not-found message is shown and exit non-zero"
+  rd3,doctor-clean,"all resources are valid","doctor is invoked","no issues are reported and exit zero"
+  rd3,doctor-issues,"a SKILL.md with missing frontmatter exists","doctor is invoked","the issue is listed and exit non-zero"
+  rd4,read-only,"any resource command is invoked","the command completes","no files are created or modified"
+  rd5,reuse,"ResourceLoader already discovered resources","list is invoked","the same set is shown without an independent rescan"

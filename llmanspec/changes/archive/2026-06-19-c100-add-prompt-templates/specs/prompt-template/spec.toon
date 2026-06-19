@@ -1,0 +1,14 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,pt1,wiring,System MUST inject discovered prompt templates from ResourceLoader into AgentSession so they are available at runtime.,null,null,null
+  add_requirement,pt2,command-registration,AgentSession MUST expose register_prompt_commands that registers each prompt template as a slash command.,null,null,null
+  add_requirement,pt3,command-discovery,Registered prompt templates MUST appear in the command listing returned by get_commands.,null,null,null
+  add_requirement,pt4,source-attribution,The runtime PromptTemplate MUST carry a source_path field for provenance tracing.,null,null,null
+  add_requirement,pt5,positional-args-preserved,System MUST preserve the existing positional argument substitution semantics for templates.,null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  pt1,wiring,ResourceLoader discovered a prompt template,AgentSession is constructed and wired,that template is available for expansion
+  pt2,register,templates are loaded,register_prompt_commands is called,each template is registered as a slash command
+  pt3,listing,a template is registered,get_commands is queried,the template appears in the list
+  pt4,source,a template originates from a prompt file,its source_path is inspected,the originating file path is recorded
+  pt5,positionals,a template body uses dollar-1 and dollar-at,expansion is called with args,the positional substitution behaves as before
+  pt3,dispatch,user invokes template-name with args,process_prompt intercepts it,the body is expanded

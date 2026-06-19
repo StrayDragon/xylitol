@@ -1,0 +1,14 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,rpc1,stdio-transport,System MUST provide an RPC mode that reads JSONL commands from stdin and writes JSONL events to stdout.,null,null,null
+  add_requirement,rpc2,command-coverage,RpcCommand MUST cover prompt steer follow_up abort new_session get_state set_model cycle_model get_available_models set_thinking_level cycle_thinking_level set_steering_mode set_follow_up_mode compact set_auto_compaction set_auto_retry abort_retry bash abort_bash get_session_stats export_html switch_session fork clone get_fork_messages get_last_assistant_text set_session_name get_messages and get_commands.,null,null,null
+  add_requirement,rpc3,event-streaming,RPC mode MUST subscribe to the AgentEvent stream and emit corresponding RpcEvent lines on stdout.,null,null,null
+  add_requirement,rpc4,signal-shutdown,RPC mode MUST handle SIGINT and SIGTERM with graceful abort and clean process exit.,null,null,null
+  add_requirement,rpc5,id-correlation,Each RPC command and its response MUST carry an optional id field for request correlation.,null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  rpc1,roundtrip,rpc mode is started,a prompt command is sent on stdin,response lines are emitted on stdout
+  rpc2,model-cycle,a cycle_model command is sent,the handler runs,the state response reflects the new model
+  rpc2,bash,a bash command is sent,the handler runs,a bash result event is emitted
+  rpc3,events,the agent streams text deltas,TextDelta events occur,jsonl event lines are emitted on stdout
+  rpc4,sigint,a long running prompt is active,SIGINT is received,an abort is emitted and the process exits cleanly
+  rpc5,id,a command with id 42 is sent,the response is produced,the response carries id 42
