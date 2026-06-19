@@ -1,0 +1,17 @@
+kind: llman.sdd.spec
+name: "prompt-template"
+purpose: "TBD - created by archiving change c100-add-prompt-templates. Update purpose after archive."
+valid_scope[2]: src/,tests/
+requirements[5]{req_id,title,statement}:
+  pt1,wiring,System MUST inject discovered prompt templates from ResourceLoader into AgentSession so they are available at runtime.
+  pt2,"command-registration",AgentSession MUST expose register_prompt_commands that registers each prompt template as a slash command.
+  pt3,"command-discovery",Registered prompt templates MUST appear in the command listing returned by get_commands.
+  pt4,"source-attribution",The runtime PromptTemplate MUST carry a source_path field for provenance tracing.
+  pt5,"positional-args-preserved",System MUST preserve the existing positional argument substitution semantics for templates.
+scenarios[6]{req_id,id,given,when,then}:
+  pt1,wiring,ResourceLoader discovered a prompt template,AgentSession is constructed and wired,that template is available for expansion
+  pt2,register,templates are loaded,register_prompt_commands is called,each template is registered as a slash command
+  pt3,listing,a template is registered,get_commands is queried,the template appears in the list
+  pt3,dispatch,"user invokes template-name with args",process_prompt intercepts it,the body is expanded
+  pt4,source,a template originates from a prompt file,its source_path is inspected,the originating file path is recorded
+  pt5,positionals,"a template body uses dollar-1 and dollar-at",expansion is called with args,the positional substitution behaves as before
