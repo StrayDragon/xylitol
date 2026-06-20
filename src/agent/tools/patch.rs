@@ -2,17 +2,46 @@
 //!
 //! Implements the fuzzy + patch fallback matching strategy:
 //! 1. Exact match
-//! 2. NFKC fuzzy match (handles smart quotes, dashes, etc.)
+//! 2. NFKC fuzzy match (handles smart quotes, dashes, Unicode spaces)
 //! 3. Line-based patch fallback
 //! 4. Return error if both fail
+//!
+//! Also provides line ending detection/restoration and structured diff output.
 
-/// Fuzzy-match `target` in `content` using NFKC normalization of smart quotes and dashes.
-/// Returns the byte range of the match in `content`.
+/// Fuzzy-match `target` in `content` using progressive normalization.
+///
+/// Tries in order:
+/// 1. Whitespace-normalized matching
+/// 2. Full Unicode normalization (smart quotes, dashes, spaces)
+/// 3. Line-based patch fallback
 pub(crate) fn fuzzy_find(content: &str, target: &str) -> Option<std::ops::Range<usize>> {
-    // Try whitespace-normalized matching first
+    // Level 1: whitespace-normalized matching
     if let Some(range) = whitespace_find(content, target) {
         return Some(range);
     }
+
+    // Level 2: full Unicode normalization
+    let norm_content = normalize_for_fuzzy_match(content);
+    let norm_target = normalize_for_fuzzy_match(target);
+    if let Some(pos) = norm_content.find(&norm_target) {
+        // Map back to original byte position
+        // Walk through original content to find the matching range
+        let mut orig_pos = 0usize;
+        let mut norm_pos = 0usize;
+        for ch in content.chars() {
+            if norm_pos >= pos {
+                break;
+            }
+            let ch_str = ch.to_string();
+            let norm_ch = normalize_for_fuzzy_match(&ch_str);
+            orig_pos += ch_str.len();
+            norm_pos += norm_ch.len();
+        }
+        let end_pos = orig_pos + target.len().min(content.len().saturating_sub(orig_pos));
+        return Some(orig_pos..end_pos);
+    }
+
+    // Level 3: line-based patch fallback (already exists separately)
     None
 }
 
@@ -105,6 +134,67 @@ fn normalize_ws(s: &str) -> String {
         }
     }
     result
+}
+
+/// Normalize text for fuzzy matching with progressive transformations.
+///
+/// - NFKC normalize
+/// - Smart single quotes → '
+/// - Smart double quotes → "
+/// - Various dashes/hyphens → -
+/// - Special Unicode spaces → regular space
+/// - Strip trailing whitespace from each line
+pub(crate) fn normalize_for_fuzzy_match(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            // Smart single quotes
+            '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' => result.push('\''),
+            // Smart double quotes
+            '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{201F}' => result.push('"'),
+            // Dashes and hyphens
+            '\u{2010}' | '\u{2011}' | '\u{2012}' | '\u{2013}'
+            | '\u{2014}' | '\u{2015}' | '\u{2212}' => result.push('-'),
+            // Special spaces
+            '\u{00A0}' | '\u{2002}' | '\u{2003}' | '\u{2009}'
+            | '\u{200A}' | '\u{202F}' | '\u{205F}' | '\u{3000}' => result.push(' '),
+            _ => result.push(ch),
+        }
+    }
+    // Strip trailing whitespace per line
+    result
+        .lines()
+        .map(|line| line.trim_end())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Detect whether a text uses CRLF or LF line endings.
+#[allow(dead_code)]
+pub(crate) fn detect_line_ending(content: &str) -> LineEnding {
+    if content.contains("\r\n") {
+        LineEnding::Crlf
+    } else {
+        LineEnding::Lf
+    }
+}
+
+/// Line ending style.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum LineEnding {
+    Crlf,
+    Lf,
+}
+
+/// Restore line endings to the specified style.
+#[allow(dead_code)]
+pub(crate) fn restore_line_endings(text: &str, ending: LineEnding) -> String {
+    // Normalize to LF first
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    match ending {
+        LineEnding::Crlf => normalized.replace('\n', "\r\n"),
+        LineEnding::Lf => normalized,
+    }
 }
 
 fn lines_match(a: &str, b: &str) -> bool {
@@ -228,5 +318,79 @@ mod tests {
         assert!(range.is_some());
         let r = range.unwrap();
         assert_eq!(&content[r], "line2");
+    }
+
+    #[test]
+    fn test_normalize_for_fuzzy_match_smart_quotes() {
+        let input = "\u{2018}hello\u{2019} \u{201C}world\u{201D}";
+        let result = normalize_for_fuzzy_match(input);
+        assert_eq!(result, "'hello' \"world\"");
+    }
+
+    #[test]
+    fn test_normalize_for_fuzzy_match_dashes() {
+        let input = "a\u{2013}b\u{2014}c";
+        let result = normalize_for_fuzzy_match(input);
+        assert_eq!(result, "a-b-c");
+    }
+
+    #[test]
+    fn test_normalize_for_fuzzy_match_spaces() {
+        let input = "a\u{00A0}b\u{3000}c";
+        let result = normalize_for_fuzzy_match(input);
+        assert_eq!(result, "a b c");
+    }
+
+    #[test]
+    fn test_normalize_for_fuzzy_match_trailing_whitespace() {
+        let input = "hello   \nworld  ";
+        let result = normalize_for_fuzzy_match(input);
+        assert_eq!(result, "hello\nworld");
+    }
+
+    #[test]
+    fn test_normalize_for_fuzzy_match_no_change() {
+        let input = "hello world";
+        let result = normalize_for_fuzzy_match(input);
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn test_detect_line_ending_crlf() {
+        let result = detect_line_ending("line1\r\nline2\r\n");
+        assert_eq!(result, LineEnding::Crlf);
+    }
+
+    #[test]
+    fn test_detect_line_ending_lf() {
+        let result = detect_line_ending("line1\nline2\n");
+        assert_eq!(result, LineEnding::Lf);
+    }
+
+    #[test]
+    fn test_detect_line_ending_lf_fallback() {
+        let result = detect_line_ending("no newlines here");
+        assert_eq!(result, LineEnding::Lf);
+    }
+
+    #[test]
+    fn test_restore_line_endings_lf_to_crlf() {
+        let input = "line1\nline2\n";
+        let result = restore_line_endings(input, LineEnding::Crlf);
+        assert_eq!(result, "line1\r\nline2\r\n");
+    }
+
+    #[test]
+    fn test_restore_line_endings_crlf_to_lf() {
+        let input = "line1\r\nline2\r\n";
+        let result = restore_line_endings(input, LineEnding::Lf);
+        assert_eq!(result, "line1\nline2\n");
+    }
+
+    #[test]
+    fn test_restore_line_endings_preserves_lf_when_already_lf() {
+        let input = "line1\nline2\n";
+        let result = restore_line_endings(input, LineEnding::Lf);
+        assert_eq!(result, "line1\nline2\n");
     }
 }
