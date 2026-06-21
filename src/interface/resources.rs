@@ -63,8 +63,8 @@ fn list(loader: &DefaultResourceLoader, cwd: &Path, agent_dir: &Path) -> (ExitCo
             out.push_str(&format!(
                 "  {} [{}] {}\n",
                 s.name,
-                scope_of(&s.source_path, agent_dir, cwd),
-                s.source_path.display()
+                scope_of(&s.source_info.path, agent_dir, cwd),
+                s.source_info.path.display()
             ));
             if let Some(desc) = &s.description {
                 out.push_str(&format!("      {desc}\n"));
@@ -80,8 +80,8 @@ fn list(loader: &DefaultResourceLoader, cwd: &Path, agent_dir: &Path) -> (ExitCo
             out.push_str(&format!(
                 "  {} [{}] {}\n",
                 p.name,
-                scope_of(&p.source_path, agent_dir, cwd),
-                p.source_path.display()
+                scope_of(&p.source_info.path, agent_dir, cwd),
+                p.source_info.path.display()
             ));
         }
     }
@@ -94,8 +94,8 @@ fn list(loader: &DefaultResourceLoader, cwd: &Path, agent_dir: &Path) -> (ExitCo
             out.push_str(&format!(
                 "  {} [{}] {}\n",
                 t.name,
-                scope_of(&t.source_path, agent_dir, cwd),
-                t.source_path.display()
+                scope_of(&t.source_info.path, agent_dir, cwd),
+                t.source_info.path.display()
             ));
         }
     }
@@ -161,9 +161,9 @@ fn format_skill(s: &SkillInfo, agent_dir: &Path, cwd: &Path) -> String {
     out.push_str(&format!("name:    {}\n", s.name));
     out.push_str(&format!(
         "scope:   {}\n",
-        scope_of(&s.source_path, agent_dir, cwd)
+        scope_of(&s.source_info.path, agent_dir, cwd)
     ));
-    out.push_str(&format!("path:    {}\n", s.source_path.display()));
+    out.push_str(&format!("path:    {}\n", s.source_info.path.display()));
     match &s.description {
         Some(d) => out.push_str(&format!("desc:    {d}\n")),
         None => out.push_str("desc:    (none)\n"),
@@ -177,9 +177,9 @@ fn format_prompt(p: &PromptTemplate, agent_dir: &Path, cwd: &Path) -> String {
     out.push_str(&format!("name:    {}\n", p.name));
     out.push_str(&format!(
         "scope:   {}\n",
-        scope_of(&p.source_path, agent_dir, cwd)
+        scope_of(&p.source_info.path, agent_dir, cwd)
     ));
-    out.push_str(&format!("path:    {}\n", p.source_path.display()));
+    out.push_str(&format!("path:    {}\n", p.source_info.path.display()));
     out
 }
 
@@ -189,9 +189,9 @@ fn format_theme(t: &ThemeInfo, agent_dir: &Path, cwd: &Path) -> String {
     out.push_str(&format!("name:    {}\n", t.name));
     out.push_str(&format!(
         "scope:   {}\n",
-        scope_of(&t.source_path, agent_dir, cwd)
+        scope_of(&t.source_info.path, agent_dir, cwd)
     ));
-    out.push_str(&format!("path:    {}\n", t.source_path.display()));
+    out.push_str(&format!("path:    {}\n", t.source_info.path.display()));
     out
 }
 

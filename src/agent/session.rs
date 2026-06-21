@@ -11,66 +11,22 @@
 
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
-
-use crate::agent::commands::{DispatchResult, SlashCommandInfo, get_all_commands};
-use crate::agent::model::ModelConfig;
+use crate::agent::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::output_guard;
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::queue::MessageQueue;
 use crate::agent::templates::{PromptTemplate, is_template_line, parse_template_line};
 use crate::agent::tools::ToolRegistry;
 use crate::agent::traits::XyModel;
-use crate::agent::types::{XyContent, XyPart};
+use crate::agent::types::{ModelMeta, ThinkingLevel, XyContent, XyPart};
 use crate::infra::session::compaction::{CompactionSettings, compact_session};
 use crate::infra::session::manager::SessionManager;
-
-// ── Thinking Level ──────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[derive(Default)]
-pub enum ThinkingLevel {
-    Off,
-    Minimal,
-    Low,
-    #[default]
-    Medium,
-    High,
-}
-
-impl ThinkingLevel {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ThinkingLevel::Off => "off",
-            ThinkingLevel::Minimal => "minimal",
-            ThinkingLevel::Low => "low",
-            ThinkingLevel::Medium => "medium",
-            ThinkingLevel::High => "high",
-        }
-    }
-
-    /// Clamp to what the model supports.
-    pub fn clamp(self, model_supports_thinking: bool) -> Self {
-        if !model_supports_thinking {
-            return ThinkingLevel::Off;
-        }
-        self
-    }
-}
+#[cfg(test)]
+use crate::infra::source_info::{SourceInfo, SourceOrigin, SourceScope};
 
 // ── Model Registry ──────────────────────────────────────────────────
 
 pub use crate::agent::registry::ModelRegistry;
-
-#[derive(Debug, Clone)]
-pub struct ModelMeta {
-    pub id: String,
-    pub config: ModelConfig,
-    pub display_name: String,
-    pub thinking: bool,
-    pub context_window: u64,
-}
 
 // ── AgentSession ────────────────────────────────────────────────────
 
@@ -251,7 +207,7 @@ impl AgentSession {
                 body: t.content.clone(),
                 description: t.description.clone(),
                 argument_hint: t.argument_hint.clone(),
-                source_path: Some(t.source_path.clone()),
+                source_info: Some(t.source_info.clone()),
             });
         }
     }
@@ -275,37 +231,12 @@ impl AgentSession {
                     .unwrap_or_else(|| "prompt template".into()),
                 crate::agent::commands::SlashCommandSource::Prompt,
             );
-            if let Some(ref path) = t.source_path {
-                cmd.source_path = Some(path.clone());
+            if let Some(ref si) = t.source_info {
+                cmd.source_info = Some(si.clone());
             }
             all.push(cmd);
         }
         all
-    }
-
-    /// Routes the behaviour of a recognised slash command into the concrete
-    /// handler on AgentSession. The caller (AgentLoop or RPC mode) must hold
-    /// a mutably borrowed session to call async handlers.
-    ///
-    /// Returns [`DispatchResult`] synchronously so the caller can decide
-    /// whether to break a loop, fall through to LLM, or show a guidance message.
-    pub(crate) fn dispatch_slash_command(&mut self, name: &str, _args: &str) -> DispatchResult {
-        if crate::agent::commands::is_tui_command(name) {
-            return DispatchResult::NotAvailable {
-                reason: format!("`/{name}` requires TUI mode"),
-            };
-        }
-
-        // Commands whose dispatch is purely synchronous and doesn't need
-        // AgentSession state mutations (delegated to the caller loop).
-        match name {
-            "quit" => {
-                // The caller (AgentLoop / RPC) will break the loop.
-                DispatchResult::Handled
-            }
-            _ if crate::agent::commands::has_handler(name) => DispatchResult::Handled,
-            _ => DispatchResult::NotFound,
-        }
     }
 
     /// Process user input: intercept /commands and /template:name.
@@ -792,16 +723,16 @@ impl AgentSession {
                 .to_string(),
         };
         self.session_manager
-            .append_bash_execution(
-                &sid,
+            .append_bash_execution(crate::infra::session::manager::BashExecutionParams {
+                session_id: &sid,
                 command,
-                &result.output,
-                result.exit_code,
-                result.cancelled,
-                result.truncated,
-                result.full_output_path.as_deref(),
+                output: &result.output,
+                exit_code: result.exit_code,
+                cancelled: result.cancelled,
+                truncated: result.truncated,
+                full_output_path: result.full_output_path.as_deref(),
                 exclude_from_context,
-            )
+            })
             .await
     }
 
@@ -1025,7 +956,13 @@ mod tests {
             content: body.into(),
             description: None,
             argument_hint: None,
-            source_path: PathBuf::from(source),
+            source_info: SourceInfo {
+                path: PathBuf::from(source),
+                source: "test".into(),
+                scope: SourceScope::Temporary,
+                origin: SourceOrigin::TopLevel,
+                base_dir: None,
+            },
         }
     }
 
@@ -1077,26 +1014,6 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_slash_command_routes_correctly() {
-        let mut session = make_session();
-        // Known handler
-        match session.dispatch_slash_command("compact", "") {
-            DispatchResult::Handled => {}
-            other => panic!("expected Handled, got {other:?}"),
-        }
-        // TUI command
-        match session.dispatch_slash_command("settings", "") {
-            DispatchResult::NotAvailable { ref reason } => assert!(reason.contains("TUI")),
-            other => panic!("expected NotAvailable, got {other:?}"),
-        }
-        // Unknown command
-        match session.dispatch_slash_command("nonexistent", "") {
-            DispatchResult::NotFound => {}
-            other => panic!("expected NotFound, got {other:?}"),
-        }
-    }
-
-    #[test]
     fn source_path_preserved_after_registration() {
         let mut session = make_session();
         session.register_prompt_commands(&[loader_template(
@@ -1110,7 +1027,7 @@ mod tests {
             .find(|t| t.name == "greet")
             .unwrap();
         assert_eq!(
-            t.source_path.as_deref(),
+            t.source_info.as_ref().map(|si| si.path.as_path()),
             Some(std::path::Path::new("/home/u/.xylitol/prompts/greet.md"))
         );
     }

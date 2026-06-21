@@ -2,11 +2,14 @@
 //!
 //! Stores OAuth credentials to `~/.xylitol/auth.json` with expiration tracking.
 //! Supports automatic token refresh when within 5-minute expiry window.
+//! API keys can use config-value resolution ($ENV_VAR, !shell-cmd) via ConfigValueResolver.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+
+use crate::agent::config_value;
 
 /// OAuth credentials for a provider/model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +120,31 @@ impl AuthStorage {
     /// Check if any credentials are stored for a provider.
     pub fn has_auth(&self, provider_name: &str) -> bool {
         self.read_store().contains_key(provider_name)
+    }
+
+    /// Resolve an API key config value to its actual string value.
+    ///
+    /// Supports:
+    /// - Literal: `sk-...`
+    /// - Env var: `$MY_API_KEY` or `${MY_API_KEY}`
+    /// - Shell command: `!pass show api-key`
+    /// - Template: `prefix_${VAR}_suffix`
+    pub fn resolve_api_key(
+        &self,
+        config_value: &str,
+        env: Option<&HashMap<String, String>>,
+    ) -> Option<String> {
+        config_value::resolve_config_value(config_value, env)
+    }
+
+    /// Resolve a config value or return an error message.
+    pub fn resolve_api_key_or_throw(
+        &self,
+        config_value: &str,
+        description: &str,
+        env: Option<&HashMap<String, String>>,
+    ) -> Result<String, String> {
+        config_value::resolve_config_value_or_throw(config_value, description, env)
     }
 }
 

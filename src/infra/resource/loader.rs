@@ -61,8 +61,8 @@ pub struct PromptTemplate {
     pub description: Option<String>,
     /// Optional argument hint from frontmatter.
     pub argument_hint: Option<String>,
-    /// Source path for display.
-    pub source_path: PathBuf,
+    /// Provenance info for display.
+    pub source_info: crate::infra::source_info::SourceInfo,
 }
 
 // ── AgentsFile ────────────────────────────────────────────────────────
@@ -111,14 +111,14 @@ pub struct DefaultResourceLoader {
 pub struct SkillInfo {
     pub name: String,
     pub description: Option<String>,
-    pub source_path: PathBuf,
+    pub source_info: crate::infra::source_info::SourceInfo,
 }
 
 /// Theme metadata returned by the resource loader.
 #[derive(Debug, Clone)]
 pub struct ThemeInfo {
     pub name: String,
-    pub source_path: PathBuf,
+    pub source_info: crate::infra::source_info::SourceInfo,
 }
 
 impl DefaultResourceLoader {
@@ -463,8 +463,29 @@ impl DefaultResourceLoader {
             content: body,
             description,
             argument_hint,
-            source_path: path.to_path_buf(),
+            source_info: self.source_info_for_path(path),
         })
+    }
+
+    /// Build SourceInfo for a resource path, determining scope from directory.
+    fn source_info_for_path(
+        &self,
+        path: &std::path::Path,
+    ) -> crate::infra::source_info::SourceInfo {
+        let scope = if path.starts_with(&self.agent_dir) {
+            crate::infra::source_info::SourceScope::User
+        } else if path.starts_with(&self.cwd) {
+            crate::infra::source_info::SourceScope::Project
+        } else {
+            crate::infra::source_info::SourceScope::Temporary
+        };
+        crate::infra::source_info::create_source_info(
+            path.to_path_buf(),
+            "local".into(),
+            scope,
+            crate::infra::source_info::SourceOrigin::TopLevel,
+            Some(self.agent_dir.clone()),
+        )
     }
 
     // ── Skills ────────────────────────────────────────────────────────
@@ -505,7 +526,7 @@ impl DefaultResourceLoader {
                         self.skills.push(SkillInfo {
                             name,
                             description,
-                            source_path: skill_file,
+                            source_info: self.source_info_for_path(&skill_file),
                         });
                     } else {
                         self.skills_diagnostics.push(ResourceDiagnostic::warning(
@@ -572,7 +593,7 @@ impl DefaultResourceLoader {
                 .to_string();
             self.themes.push(ThemeInfo {
                 name,
-                source_path: path,
+                source_info: self.source_info_for_path(&path),
             });
         }
     }

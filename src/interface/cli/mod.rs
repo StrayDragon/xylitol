@@ -2,13 +2,17 @@
 
 use clap::{Parser, Subcommand};
 
+use crate::agent::auth_guidance;
 use crate::agent::r#loop::AgentLoop;
 use crate::agent::model::{ModelConfig, ModelKind};
 use crate::agent::registry;
-use crate::agent::session::{AgentSession, ModelMeta, ModelRegistry};
+use crate::agent::resolver;
+use crate::agent::session::{AgentSession, ModelRegistry};
 use crate::agent::tools::ToolRegistry;
+use crate::agent::types::ModelMeta;
 use crate::infra::config::loader::load_app_config;
 use crate::infra::session::SessionManager;
+use crate::infra::timing;
 use crate::interface::resources::ResourcesAction;
 
 /// Top-level subcommand. When absent, the flat flags/positional below drive
@@ -60,6 +64,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         None => {}
     }
 
+    timing::reset_timings();
+
     let cli_config_path = args.config.as_deref().map(std::path::Path::new);
 
     // ── Step 1: try loading YAML config ──────────────────────────
@@ -70,6 +76,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             None
         }
     };
+
+    timing::time("config.load");
 
     // ── Step 2: build ModelRegistry ──────────────────────────────
     let mut model_registry = ModelRegistry::new();
@@ -128,6 +136,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    timing::time("model_registry.load");
+
     if args.list_models {
         for m in model_registry.list() {
             println!(
@@ -140,8 +150,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     if model_registry.is_empty() {
         eprintln!(
-            "Error: no models configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY, \
-             or create a config.yaml with model entries."
+            "Error: {}",
+            auth_guidance::format_no_models_available_message()
         );
         return Err("no models available".into());
     }
@@ -149,7 +159,24 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let tool_registry = ToolRegistry::builtins();
     let sessions_dir = SessionManager::default_dir();
     std::fs::create_dir_all(&sessions_dir).ok();
-    let session_mgr = SessionManager::new(sessions_dir);
+    let session_mgr = SessionManager::new(sessions_dir.clone());
+
+    // Check session CWD if restoring a session
+    let fallback_cwd = std::env::current_dir().unwrap_or_default();
+    if let Some(ref session_arg) = args.session
+        && session_mgr.exists(session_arg)
+    {
+        eprintln!(
+            "Info: Restoring session '{}' from {}",
+            session_arg,
+            sessions_dir.display()
+        );
+        // Full CWD validation happens on async session load in run_print()
+        // If the stored CWD no longer exists, the agent falls back to fallback_cwd.
+        let _ = fallback_cwd; // keep for future async validation
+    }
+
+    timing::time("session.restore");
 
     // ── Step 3: determine system prompt ──────────────────────────
     let system_prompt = app_config
@@ -192,6 +219,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     );
     agent_session.register_prompt_commands(&discovered_templates);
 
+    timing::time("session.create");
+
     // ── Step 4: RPC mode (early return) ────────────────────────
     if args.rpc {
         return crate::interface::rpc::run(agent_session)
@@ -201,10 +230,21 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Step 5: select model ─────────────────────────────────────
     if let Some(ref mid) = args.model {
-        if agent_session.model_registry().find(mid).is_none() {
-            eprintln!("Warning: model '{mid}' not found in registry");
-        } else {
-            let _ = agent_session.select_model(mid);
+        let available: Vec<&ModelMeta> = agent_session.model_registry().list().iter().collect();
+        match resolver::resolve_model(mid, &available, None) {
+            Ok(resolved) => {
+                if let Some(ref warning) = resolved.warning {
+                    eprintln!("Warning: {warning}");
+                }
+                let _ = agent_session.select_model(&resolved.model.id);
+            }
+            Err(msg) => {
+                eprintln!(
+                    "Warning: {}\n{}",
+                    msg,
+                    auth_guidance::format_no_model_selected_message()
+                );
+            }
         }
     }
 
@@ -224,6 +264,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     crate::interface::print::run_print(&mut agent_loop, &prompt, &session_id).await?;
+
+    timing::print_timings();
     Ok(())
 }
 
