@@ -882,7 +882,7 @@ fn extract_single_message_file_ops(msg: &crate::agent::message::AgentMessage, op
     for part in msg.content() {
         let (name, path) = match part {
             crate::agent::message::AgentPart::ToolCall {
-                     name, arguments, .. 
+                     name, arguments, ..
                 } => {
                 match arguments.get("path").and_then(|v| v.as_str()) {
                     Some(p) => (name.as_str(), p.to_string()),
@@ -1250,7 +1250,7 @@ mod tests {
                     content: vec![
                 crate::agent::message::AgentPart::Text("Let me read that.".into()),
                 crate::agent::message::AgentPart::ToolCall {
-                    
+
                     name: "read".into(),
                     arguments: json!({"path": "/tmp/test.txt"
                 }),
@@ -1289,7 +1289,7 @@ mod tests {
         let msgs = vec![
             crate::agent::message::AgentMessage::AssistantMessage {
                     content: vec![crate::agent::message::AgentPart::ToolCall {
-                    
+
                 name: "read".into(),
                 arguments: json!({"path": "src/main.rs"
                 }),
@@ -1308,14 +1308,14 @@ mod tests {
             crate::agent::message::AgentMessage::AssistantMessage {
                     content: vec![
                 crate::agent::message::AgentPart::ToolCall {
-                    
+
                     name: "write".into(),
                     arguments: json!({"path": "src/new.rs", "content": "x"
                 }),
                     id: "c2".into(),
                 },
                 crate::agent::message::AgentPart::ToolCall {
-                    
+
                     name: "edit".into(),
                     arguments: json!({"path": "src/old.rs", "oldText": "a", "newText": "b"
                 }),
