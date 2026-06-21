@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,s1,"code-highlight","System MUST provide highlight(code language) that returns syntax-highlighted text for common programming languages.",null,null,null
+  add_requirement,s2,"language-auto","System MUST support auto-detecting language when not specified.",null,null,null
+  add_requirement,s3,"theme-support","System MUST support configurable theme mapping syntax scopes to ANSI style formatters.",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  s1,rust,"a Rust code snippet is provided with language set to rust","highlight is called","output contains ANSI-colored tokens for keywords strings and comments"
+  s2,auto-detect,"a Python code snippet is provided without language","highlight is called with auto-detect","output contains correct highlighting for Python syntax"
+  s3,theme-dark,"a dark theme is configured with keyword=cyan","highlight is called","Rust keywords in output are wrapped in cyan ANSI escape codes"
