@@ -1,11 +1,14 @@
+pub mod auth_guidance;
 pub mod auth_storage;
 pub mod bash_executor;
 pub mod commands;
+pub mod config_value;
 pub mod defaults;
 pub mod diagnostics;
 pub mod error;
 pub mod event;
 pub mod extensions;
+pub mod http_dispatcher;
 pub mod r#loop;
 pub mod model;
 pub mod output_guard;
