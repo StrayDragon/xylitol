@@ -38,6 +38,9 @@ uuid = { version = "1.23.1", features = ["v4"] }
 ratatui = { version = "0.30", optional = true, default-features = false, features = ["crossterm", "scrolling-regions", "unstable-backend-writer"] }
 crossterm = { version = "0.29", optional = true, features = ["bracketed-paste", "event-stream"] }
 
+# ── image processing (optional, infra-image) ──
+image = { version = "0.25", optional = true, default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+
 # ── acp dependencies (optional, infra-acp) ─────
 agent-client-protocol = { version = "0.12.1", optional = true }
 async-openai = { version = "0.40.2", default-features = false, features = ["chat-completion", "rustls"] }
@@ -64,6 +67,7 @@ agent-model-lock = []
 # ── infra/ layer ──────────────────────────────
 infra-acp = ["dep:agent-client-protocol"]
 infra-clipboard = []
+infra-image = ["dep:image"]
 infra-skills = []
 infra-session = []
 infra-sandbox = []
