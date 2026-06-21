@@ -21,5 +21,8 @@ pub mod clipboard;
 #[cfg(feature = "infra-image")]
 pub mod image;
 
+#[cfg(feature = "infra-git")]
+pub mod git;
+
 #[cfg(feature = "infra-skills")]
 pub(crate) mod skills;
