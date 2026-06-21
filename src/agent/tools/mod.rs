@@ -77,7 +77,7 @@ impl ToolRegistry {
         reg.register(Arc::new(read::ReadTool));
         reg.register(Arc::new(write::WriteTool::new(mq.clone())));
         reg.register(Arc::new(edit::EditTool::new(mq.clone())));
-        reg.register(Arc::new(bash::BashTool));
+        reg.register(Arc::new(bash::BashTool::default()));
         reg.register(Arc::new(grep::GrepTool));
         reg.register(Arc::new(find::FindTool));
         reg.register(Arc::new(ls::LsTool));
