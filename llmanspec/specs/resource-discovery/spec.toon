@@ -2,13 +2,17 @@ kind: llman.sdd.spec
 name: "resource-discovery"
 purpose: "TBD - created by archiving change c120-add-resource-diagnostics. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[5]{req_id,title,statement}:
+requirements[9]{req_id,title,statement}:
   rd1,"resource-listing","System MUST provide a read-only command that lists all discovered skills prompts and themes with their source scope and path."
   rd2,"resource-info","System MUST provide a command that shows details for a single named resource and exits non-zero when not found."
   rd3,"resource-doctor","System MUST provide a command that surfaces ResourceLoader diagnostics and exits non-zero when issues exist."
   rd4,"read-only",The resource commands MUST NOT create modify or delete any files or installed package state.
   rd5,"loader-reuse",The resource commands MUST reuse DefaultResourceLoader discovery rather than rescanning independently.
-scenarios[8]{req_id,id,given,when,then}:
+  rd6,"unified-source-type",System MUST provide a common SourceInfo type with path source scope origin and base_dir fields.
+  rd7,"source-factories",System MUST provide create_source_info and create_synthetic_source_info factory functions.
+  rd8,"source-migration",Skills PromptTemplate and SlashCommandInfo MUST use the unified SourceInfo type.
+  rd9,"scope-enum",SourceScope MUST support user project and temporary variants matching pi.
+scenarios[13]{req_id,id,given,when,then}:
   rd1,list,ResourceLoader has skills and prompts loaded,list is invoked,output shows each resource with scope and path
   rd1,"list-empty",no resources are installed,list is invoked,output is empty and exit code is zero
   rd2,"info-found",a skill named foo exists,info foo is invoked,details for foo are shown and exit zero
@@ -17,3 +21,8 @@ scenarios[8]{req_id,id,given,when,then}:
   rd3,"doctor-issues",a SKILL.md with missing frontmatter exists,doctor is invoked,"the issue is listed and exit non-zero"
   rd4,"read-only",any resource command is invoked,the command completes,no files are created or modified
   rd5,reuse,ResourceLoader already discovered resources,list is invoked,the same set is shown without an independent rescan
+  rd6,create,resource metadata is provided,create_source_info is called,a SourceInfo with all fields populated is returned
+  rd7,"factory-create",resource metadata is provided with path and scope,create_source_info is called,a fully populated SourceInfo is returned
+  rd8,"migration-skills",a skill is loaded from a project directory,its SourceInfo is created,scope is project
+  rd8,"migration-commands",a slash command is registered,its source_info is set,origin is TopLevel if not from a package
+  rd9,"scope-variants",a resource is loaded from user scope,its SourceInfo is created,scope is User

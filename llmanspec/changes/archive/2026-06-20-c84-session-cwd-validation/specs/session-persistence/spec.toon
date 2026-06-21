@@ -1,0 +1,12 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,sc1,cwd-validation,"System MUST validate that the stored cwd exists when restoring a session and return a SessionCwdIssue on mismatch.",null,null,null
+  add_requirement,sc2,cwd-error,"System MUST provide MissingSessionCwdError carrying the session file path stored cwd and fallback cwd.",null,null,null
+  add_requirement,sc3,cwd-format,"System MUST provide format_missing_session_cwd_error and format_missing_session_cwd_prompt for user-facing messages.",null,null,null
+  add_requirement,sc4,cwd-integration,"CLI and RPC modes MUST call assert_session_cwd_exists before resuming a session.",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  sc1,exists,the stored cwd exists on disk,assert_session_cwd_exists is called,the call succeeds
+  sc1,missing,the stored cwd does not exist on disk,assert_session_cwd_exists is called,a MissingSessionCwdError is returned
+  sc2,cwd-error,"the stored cwd does not exist on disk",MissingSessionCwdError is created,"the error carries the session file path and both cwds"
+  sc3,cwd-format,"a MissingSessionCwdError is available",format_missing_session_cwd_error is called,"a user-facing message with both cwds is returned"
+  sc4,cli-missing,"CLI starts with a session whose cwd is missing",the error is formatted and displayed,the user is guided to the fallback cwd

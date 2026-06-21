@@ -1,0 +1,15 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,cv1,config-value-parser,"System MUST provide a ConfigValueResolver that parses literal env-var template and shell-command config values.",null,null,null
+  add_requirement,cv2,env-var-interpolation,"ConfigValueResolver MUST interpolate $VAR and ${VAR} and ${VAR:-default} environment variable references.",null,null,null
+  add_requirement,cv3,shell-command-execution,"ConfigValueResolver MUST execute commands prefixed with ! via std::process::Command with 10-second timeout and cache results for process lifetime.",null,null,null
+  add_requirement,cv4,header-resolution,"ConfigValueResolver MUST provide resolve_headers that applies resolution to all values in a header map.",null,null,null
+  add_requirement,cv5,auth-integration,"AuthStorage and ProviderConfig MUST use ConfigValueResolver when resolving API keys and custom headers.",null,null,null
+op_scenarios[7]{req_id,id,given,when,then}:
+  cv1,literal,"a config value is a plain string",it is resolved,the literal string is returned
+  cv2,env-var,"a config value is MY_KEY and MY_KEY is set in env",the value is resolved,the env var value is returned
+  cv2,missing-env,"a config value is MISSING and the var is unset",the value is resolved,None is returned
+  cv3,shell-cmd,'a config value is "!echo hello"',"the command executes within 10 seconds",hello is returned
+  cv3,shell-cache,"same command is resolved twice",the value is cached,"the second call does not re-execute"
+  cv4,headers-map,"a header map with env refs is provided",resolve_headers is called,"only resolved values appear in the result"
+  cv5,header-map,"ProviderConfig has custom headers with env references",headers are resolved before request,resolved values appear in the HTTP request

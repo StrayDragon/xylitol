@@ -1,0 +1,15 @@
+kind: llman.sdd.spec
+name: diagnostics
+purpose: Diagnostics — startup timing instrumentation and performance profiling.
+valid_scope[1]: src
+requirements[4]{req_id,title,statement}:
+  d0,placeholder,"System SHALL provide opt-in startup timing instrumentation."
+  d1,"timing-collector",System MUST provide reset_timings time label and print_timings gated behind XYLITOL_TIMING env var.
+  d2,"timing-points",System MUST insert timing points at config load ResourceLoader reload ModelRegistry load session restore and session create.
+  d3,"timing-output","print_timings MUST output to stderr with per-step ms and total."
+scenarios[5]{req_id,id,given,when,then}:
+  d0,placeholder,no diagnostics are enabled,nothing happens,nothing changes
+  d1,enabled,XYLITOL_TIMING is set to 1,startup runs,timing data is collected and printed
+  d1,disabled,XYLITOL_TIMING is unset or 0,startup runs,no timing output is printed
+  d2,points,startup proceeds through all stages,each stage calls time,all 5 timing points are recorded
+  d3,"stderr-output",timing data is collected,print_timings is called,"output goes to stderr with per-step ms and total"

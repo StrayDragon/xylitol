@@ -1,0 +1,16 @@
+kind: llman.sdd.spec
+name: "user-experience"
+purpose: "User experience — auth guidance messages, error messages, and startup diagnostics."
+valid_scope[1]: src
+requirements[5]{req_id,title,statement}:
+  ux0,placeholder,"System SHALL provide user-friendly guidance for common configuration issues."
+  ux1,"login-help",System MUST provide get_provider_login_help that returns guidance referencing /login and doc paths.
+  ux2,"no-models",System MUST provide format_no_models_available_message when no models are available.
+  ux3,"no-model-selected",System MUST provide format_no_model_selected_message when no model is selected.
+  ux4,"no-api-key",System MUST provide format_no_api_key_found_message with the provider name.
+scenarios[5]{req_id,id,given,when,then}:
+  ux0,placeholder,no user interaction happens,nothing happens,nothing changes
+  ux1,"login-help",user needs provider setup guidance,get_provider_login_help is called,the message contains /login and doc paths
+  ux2,"no-models",model registry is empty,format_no_models_available_message is called,"'the message contains \"/login\" and \"providers.md\"'"
+  ux3,"no-selection",no model is selected,format_no_model_selected_message is called,"'the message contains \"Use /login\" and \"/model\"'"
+  ux4,"no-key",provider anthropic has no API key,format_no_api_key_found_message is called,"'the message contains \"anthropic\" and \"/login\"'"
