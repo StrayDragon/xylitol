@@ -30,5 +30,17 @@ pub(crate) mod tools;
 #[cfg(feature = "infra-syntax")]
 pub mod syntax;
 
+#[cfg(feature = "infra-platform")]
+pub mod browser;
+
+#[cfg(feature = "infra-platform")]
+pub mod changelog;
+
+#[cfg(feature = "infra-platform")]
+pub mod fs_watch;
+
+#[cfg(feature = "infra-platform")]
+pub mod update;
+
 #[cfg(feature = "infra-skills")]
 pub(crate) mod skills;
