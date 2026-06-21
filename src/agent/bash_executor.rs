@@ -22,13 +22,16 @@ use crate::agent::tools::accumulator::OutputAccumulator;
 use crate::agent::tools::process::kill_tree;
 use crate::agent::tools::truncate::DEFAULT_MAX_BYTES;
 
+/// Streaming output chunk callback for bash execution.
+pub(crate) type OnChunkCallback<'a> = Box<dyn FnMut(&str) + Send + 'a>;
+
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 const MAX_TIMEOUT_SECS: u64 = 120;
 
 /// Options for executing a bash command.
 pub struct BashExecutorOptions<'a> {
     /// Streaming callback for output chunks (combined stdout+stderr).
-    pub on_chunk: Option<Box<dyn FnMut(&str) + Send + 'a>>,
+    pub on_chunk: Option<OnChunkCallback<'a>>,
     /// Cancellation token; aborts execution and kills the process group.
     pub cancel: Option<CancellationToken>,
     /// Timeout in seconds (clamped to [`MAX_TIMEOUT_SECS`], default [`DEFAULT_TIMEOUT_SECS`]).

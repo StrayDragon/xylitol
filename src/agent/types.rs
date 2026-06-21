@@ -1,3 +1,4 @@
+use crate::agent::model::ModelConfig;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -86,4 +87,49 @@ pub struct XyToolSchema {
     pub name: String,
     pub description: String,
     pub parameters: Value,
+}
+
+// ── Thinking Level ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[derive(Default)]
+pub enum ThinkingLevel {
+    Off,
+    Minimal,
+    Low,
+    #[default]
+    Medium,
+    High,
+}
+
+impl ThinkingLevel {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ThinkingLevel::Off => "off",
+            ThinkingLevel::Minimal => "minimal",
+            ThinkingLevel::Low => "low",
+            ThinkingLevel::Medium => "medium",
+            ThinkingLevel::High => "high",
+        }
+    }
+
+    /// Clamp to what the model supports.
+    pub fn clamp(self, model_supports_thinking: bool) -> Self {
+        if !model_supports_thinking {
+            return ThinkingLevel::Off;
+        }
+        self
+    }
+}
+
+// ── Model Metadata ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct ModelMeta {
+    pub id: String,
+    pub config: ModelConfig,
+    pub display_name: String,
+    pub thinking: bool,
+    pub context_window: u64,
 }
