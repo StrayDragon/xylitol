@@ -63,6 +63,7 @@ agent-model-lock = []
 
 # ── infra/ layer ──────────────────────────────
 infra-acp = ["dep:agent-client-protocol"]
+infra-clipboard = []
 infra-skills = []
 infra-session = []
 infra-sandbox = []
