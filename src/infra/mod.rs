@@ -1,6 +1,8 @@
 pub mod config;
 pub mod event;
 pub mod hooks;
+pub mod source_info;
+pub mod timing;
 pub mod trust;
 
 // ── settings manager (c35) ──
