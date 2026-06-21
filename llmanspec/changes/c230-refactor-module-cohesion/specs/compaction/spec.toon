@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,c13,"module-split","The compaction subsystem MUST be split into cohesive modules by responsibility covering token estimation and cut-point detection and file-operation tracking and LLM summarization and branch summary instead of a single oversized file.",null,null,null
+  add_requirement,c14,"config-single-source","Compaction configuration MUST have exactly one source of truth and the duplicate CompactionConfig definition MUST be removed.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  c13,"split-by-responsibility","the compaction module responsibilities are enumerated","the module is split","each resulting file owns one responsibility and is independently testable"
+  c14,"single-config-type","the codebase is searched for CompactionConfig definitions","exactly one definition remains","the duplicate is removed and runtime compaction reads the canonical type"
