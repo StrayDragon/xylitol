@@ -1,0 +1,13 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ar1,"react-loop","Agent runtime MUST execute a ReAct loop: send messages to model, collect response, execute tool calls, append results, repeat until stop or max iterations.",null,null,null
+  add_requirement,ar2,streaming,"Agent runtime MUST stream model responses token-by-token via an event stream (TextDelta, ThinkingDelta, FunctionCall).",null,null,null
+  add_requirement,ar3,"tool-execution","Agent runtime MUST execute all tool calls from a single model response before the next model call, supporting both sequential and parallel execution modes.",null,null,null
+  add_requirement,ar4,"iteration-limit","Agent runtime MUST enforce a configurable max_iterations limit, terminating with error when reached.",null,null,null
+  add_requirement,ar5,"event-stream",Agent runtime MUST expose the loop as an async Stream<AgentEvent> for consumer layers (Print/TUI/RPC).,null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  ar1,"text-only",a model that returns text with no tool calls,prompt is sent,text is streamed and loop terminates
+  ar2,streaming,model streams chunks,each chunk is processed,"TextDelta events are emitted in real-time"
+  ar3,"parallel-tools",model returns 3 tool calls with parallel execution mode,tools execute concurrently,all results are appended before next model call
+  ar4,"max-iterations",max_iterations is set to 2,model keeps calling tools for 3 iterations,loop terminates with error after 2nd iteration
+  ar5,consumer,an event stream consumer subscribes,loop runs,consumer receives all AgentEvent variants

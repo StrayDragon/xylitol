@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r1,"faux-provider","System MUST provide FauxProvider that returns pre-configured response steps without network calls for deterministic agent testing.",null,null,null
+  add_requirement,r2,"test-harness","System MUST provide TestHarness Builder that wires all dependencies as mock or in-memory implementations for full-stack agent testing.",null,null,null
+  add_requirement,r3,"vt100-backend","System MUST provide VT100Backend feature-gated terminal emulator for pixel-accurate TUI rendering verification via insta snapshots.",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  r1,happy,FauxProvider is configured with text and tool call responses,agent loop runs with FauxProvider,all responses are returned without network calls and call_count is tracked
+  r2,happy,HarnessBuilder is configured with mock responses and tools,build() is called,TestHarness contains wired AgentSession with captured events
+  r3,happy,VT100Backend is created at 80x24,a ratatui widget is rendered,screen_contents() returns accurate text matching the rendered output

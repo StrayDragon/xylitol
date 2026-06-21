@@ -1,0 +1,12 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,s9,"session-fork","SessionManager MUST support fork(parent_id, child_id, at_entry_id) that copies parent entries up to the fork point into a new child session file and appends a branch_summary entry.",null,null,null
+  add_requirement,s10,"branch-summary-impl","System MUST generate a branch summary when forking that describes the skipped entries: count of entries, entry types, last user message, and notable actions from tool calls.",null,null,null
+  add_requirement,s11,"agent-fork","AgentSession MUST expose fork_session(at_entry_id) that creates a new child session via SessionManager::fork() and returns the child session id.",null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  s9,"basic-fork",session A has 10 entries with id running from e0 to e9,fork at entry e4,child session has 5 entries (e0..e4) plus a branch_summary entry
+  s9,"full-fork",session A has 5 entries,fork at last entry e4,child has all 5 entries with no branch_summary
+  s9,"parent-link",child session is created via fork,child session header is loaded,parent_session field matches parent id
+  s10,summary,parent session has 3 user messages and 7 assistant messages with 5 tool calls,branch summary is generated,summary includes total entries count and tool call count
+  s10,"empty-summary",no entries remain after fork point,branch summary is generated,summary is empty string or indicates nothing skipped
+  s11,"agent-fork",agent session is active,AgentSession.fork_session(e4) is called,new child session id is returned and child session file exists on disk

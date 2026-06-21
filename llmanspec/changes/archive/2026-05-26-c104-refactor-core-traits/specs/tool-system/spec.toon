@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r1,"tool-trait","System MUST define a XyTool trait as the primary tool interface; adk-core Tool compatibility MUST be provided via adapter only.",null,null,null
+  add_requirement,r11,"tool-error-types","System MUST define XyToolError with structured error categories (invalid_args / execution_failed / permission_denied / timeout) independent of adk-core.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r1,"xy-tool-impl","all 7 built-in tools implement XyTool",each tool is invoked,each returns Result<String> without any adk_core types in the call chain
+  r11,"error-mapping","a tool returns XyToolError::InvalidArgs",error is propagated to agent loop,error category is preserved and displayed to user

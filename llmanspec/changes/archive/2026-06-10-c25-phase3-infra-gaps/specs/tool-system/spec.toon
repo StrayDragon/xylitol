@@ -1,0 +1,10 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,t14,"output-accumulator","Tool execution MUST support OutputAccumulator: incremental buffer receiving streaming data, keeping a configurable tail window in memory, transparently spilling to temp file when total output exceeds rolling threshold, and producing a final snapshot with truncation info.",null,null,null
+  add_requirement,t15,"bash-accumulator","Bash tool MUST use OutputAccumulator for stdout and stderr streaming, replacing String concatenation. Configured with max_lines 100 and max_bytes DEFAULT_MAX_BYTES.",null,null,null
+  add_requirement,t16,"bdd-tool-v3",BDD tests for OutputAccumulator and bash accumulator integration MUST all pass.,null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  t14,"small-output",accumulator receives 100 bytes,finish is called,"snapshot.content contains the 100 bytes, no temp file created"
+  t14,"overflow-temp-file",accumulator receives 2x max_bytes,finish is called,"snapshot content is truncated tail, full_output_path points to temp file with complete output"
+  t15,"bash-uses-accumulator",bash tool executes echo hello,output is captured via OutputAccumulator,result.output is hello and result.full_output_path is None for small output
+  t16,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all tool-v3 scenarios pass"

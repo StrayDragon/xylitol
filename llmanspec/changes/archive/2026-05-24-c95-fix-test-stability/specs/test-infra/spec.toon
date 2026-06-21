@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r4,"temp-file-raii","All tests that create temporary files MUST use RAII-based cleanup (tempfile crate) and MUST NOT leave artifacts after execution.",null,null,null
+  add_requirement,r5,"async-test-timeout",Async integration tests MUST wrap their body with a timeout (default 10s) to prevent CI hangs on deadlock or mock failure.,null,null,null
+  add_requirement,r6,"no-fixed-tmp-paths","Tests MUST NOT use hardcoded /tmp paths with fixed names; MUST use unique auto-generated paths to support parallel execution.",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  r4,"lsp-cleanup",LSP test creates a temp .rs file,test completes (success or panic),temp file is automatically deleted
+  r5,"timeout-deadlock",async test encounters a deadlocked mock,timeout fires at 10s,test fails with timeout error instead of hanging
+  r6,"parallel-safe",two instances of config loader tests run in parallel,both use unique temp directories,no file collision or test interference

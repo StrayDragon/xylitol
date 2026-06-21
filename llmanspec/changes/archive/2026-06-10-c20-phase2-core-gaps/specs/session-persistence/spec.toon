@@ -1,0 +1,28 @@
+kind: llman.sdd.delta
+ops[9]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,s1,"jsonl-storage","SessionManager MUST persist sessions as JSONL files with one JSON object per line, version-tagged (current: v4 with id/parentId tree structure), in ~/.xylitol/sessions/.",null,null,null
+  add_requirement,s10,"entry-id-parent","Every session entry MUST have a unique id (UUID v4 string) and a parent_id field (string or null) forming a tree structure, generated on append.",null,null,null
+  add_requirement,s11,"build-session-context","SessionManager MUST provide build_session_context(session_id) that walks the tree from leaf to root, collecting messages in chronological order and reconstructing Vec<XyContent>.",null,null,null
+  add_requirement,s12,"branch-navigation","SessionManager MUST maintain leaf_id and support branch(entry_id) to move leaf, reset_leaf() to move to root, with get_leaf_id() and get_branch(leaf_id).",null,null,null
+  modify_requirement,s3,crud,"SessionManager MUST support: create(id), append(id,entry) generating id+parent_id, load(id), list(), exists(id). Also get_entry(id) and get_leaf_entry().",null,null,null
+  add_requirement,s13,"model-change-tracking",SessionManager MUST persist ModelChangeEntry with provider and model_id on each model switch.,null,null,null
+  add_requirement,s14,"thinking-change-tracking",SessionManager MUST persist ThinkingLevelChangeEntry on each thinking level change.,null,null,null
+  add_requirement,s15,"session-stats","SessionManager MUST support get_session_stats(session_id) returning user/assistant/tool counts, token totals, cost, and context usage.",null,null,null
+  modify_requirement,s6,"branch-summary","System MUST support LLM-powered generate_branch_summary(entries) producing structured summary with Goal/Progress/Next Steps format, falling back to plain-text when no LLM available.",null,null,null
+op_scenarios[16]{req_id,id,given,when,then}:
+  s10,"entry-ids",entries are appended to a session,the session is loaded,each entry has unique id and parent_id forms a chain
+  s10,"tree-link",entry B is appended after entry A,B.parent_id equals A.id,tree is reconstructable
+  s11,"build-context",session with user/assistant/tool_result/compaction entries,build_session_context is called,chronological XyContent vec returned with compaction summaries in sequence
+  s11,"branch-cutoff",session has a branch_summary entry after fork point,build_session_context from new leaf,only messages from the new branch appear
+  s12,"branch-move",session has leaf at entry 10,branch of entry 5 is called,"leaf_id is now entry 5 and get_branch returns entries 0-5"
+  s12,"reset-root",leaf is at entry 5,reset_leaf is called,leaf_id is null and get_branch returns root path
+  s3,"get-entry",session has entries with ids,get_entry for an id is called,correct entry is returned
+  s13,"model-change","model is switched from gpt4o to claude-sonnet",session is loaded,ModelChangeEntry exists with provider and model_id
+  s14,"thinking-change",thinking is toggled from medium to high,session is loaded,ThinkingLevelChangeEntry exists with new level
+  s15,stats,session has 5 user and 8 assistant and 3 tool_result entries,get_session_stats is called,counts match expected values
+  s15,"context-usage",session messages total 30000 tokens with 100000 context window,get_session_stats is called,contextUsage shows 30 percent
+  s6,"llm-summary",a branch has 15 entries to summarize and LLM model is available,generate_branch_summary is called,structured summary with Goal and Progress and Next sections is produced
+  s6,"fallback-summary",a branch has 10 entries to summarize but no LLM model,generate_branch_summary is called,"plain-text stats fallback summary is used"
+  s1,"v4-format",a new session is created in v4 format,"session header shows version:4",entries have id and parentId fields
+  s1,"v3-migration",existing v3 session file without id/parentId fields is loaded,load is called,migration adds id and parentId and header version becomes 4
+  s1,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all session-persistence scenarios pass"

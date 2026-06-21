@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r9,"tool-args-helper",Tool system MUST provide a shared argument extraction helper that eliminates repetitive JSON field parsing across tool implementations.,null,null,null
+  add_requirement,r10,"no-global-dead-code-allow","Crate root MUST NOT use global #![allow(dead_code)]; dead code suppression MUST be scoped to individual items with justification.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r9,happy,a tool needs a required string argument,tool calls require_str(args and 'file_path'),returns Ok(value) or Err(AdkError) with consistent error code
+  r10,happy,crate compiles with dead_code lint enabled,cargo clippy runs,no dead_code warnings in production code paths

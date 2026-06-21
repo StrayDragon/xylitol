@@ -1,0 +1,14 @@
+kind: llman.sdd.spec
+name: "image-utils"
+purpose: "TBD - created by archiving change c130-add-image-utils. Update purpose after archive."
+valid_scope[2]: src/,tests/
+requirements[4]{req_id,title,statement}:
+  i1,"image-resize",System MUST provide resize_image() that scales images to fit within configurable max width/height/bytes while preserving aspect ratio.
+  i2,"exif-orientation",System MUST apply EXIF orientation metadata when loading images and correct the pixel data accordingly.
+  i3,"format-convert","System MUST support converting between common image formats (PNG JPEG WebP) and auto-select JPEG with configurable quality when size reduction is needed."
+  i4,"multi-modal-prep","System MUST produce output suitable for multimodal LLM input: base64-encoded JPEG/PNG under 4.5MB payload limit with original dimension metadata."
+scenarios[4]{req_id,id,given,when,then}:
+  i1,"scale-down",a 4000x3000 PNG image is provided with max 2000px limit,resize_image is called,output is 2000x1500 and was_resized is true
+  i2,"exif-rotate",a JPEG with EXIF orientation 6 (rotate 90) is provided,resize_image is called,pixel data is rotated 90 degrees and was_resized is true
+  i3,"format-auto",a PNG larger than 4.5MB is provided with max 4.5MB limit,resize_image is called,output is JPEG with quality 80 and is under 4.5MB
+  i4,payload,image is processed,resize_image returns,result contains base64 data MIME type original dimensions and final dimensions

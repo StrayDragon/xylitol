@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r1,"domain-layers","System MUST organize source code into three domain layers: agent/ infra/ interface/ under src/. Built-in modules (tools, hooks, security, print) compile unconditionally; feature-gated modules use #[cfg(feature = '...')] guards with domain-prefixed names (agent-*, infra-*, ui-*, dev-*).",null,null,null
+  add_requirement,r2,"feature-flags","System MUST define feature flags with domain prefixes for each optional capability so that non-default features compile out with zero overhead. Built-in capabilities (tools, hooks, security, repeat-detection, print-mode) have no feature flag and are controlled via config.yaml at runtime. ACP mode uses feature flag infra-acp.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r1,happy,"",cargo check is run,"all three layers compile with only default features; built-in modules compile without feature gates"
+  r2,happy,"","cargo check --all-features is run","all feature-gated modules compile without error"

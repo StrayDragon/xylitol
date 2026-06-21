@@ -1,0 +1,22 @@
+kind: llman.sdd.delta
+ops[8]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r1,"yaml-parse","System MUST parse YAML configuration from three layers (global/project/user) and deep-merge them with later layers overriding earlier ones.",null,null,null
+  add_requirement,r2,"schema-gen","System MUST generate JSON Schema from Rust config types via schemars for IDE auto-completion.",null,null,null
+  add_requirement,r3,"runtime-validate","System MUST validate merged config against JSON Schema at runtime and report human-readable errors.",null,null,null
+  add_requirement,r4,"template-render","System MUST render {{ env.KEY }} and {{ secret.KEY }} template expressions in YAML files before parsing, using minijinja.",null,null,null
+  add_requirement,r5,"secret-env",System MUST load secret.env dotenv files from each config location and inject their values as the secret.* namespace in template rendering.,null,null,null
+  add_requirement,r6,"local-overlay","System MUST support an optional config.local.yaml overlay at global and project config locations, merged on top of the base config.yaml at the same location.",null,null,null
+  add_requirement,r7,"config-dir-env",System MUST respect XYLITOL_CONFIG_DIR and XYLITOL_PROJECT_DIR environment variables for config directory resolution.,null,null,null
+  add_requirement,r8,"agents-dir-discovery",System MUST discover .agents/ directory alongside .xylitol/ during project root detection and expose its path via ConfigPaths for downstream consumers.,null,null,null
+op_scenarios[11]{req_id,id,given,when,then}:
+  r1,happy,a project config overrides model field,config is loaded,merged config contains project model value
+  r2,happy,AppConfig struct is defined,"schemars::schema_for is called",valid JSON Schema is generated to configs/config.schema.json
+  r3,happy,a config file has invalid field,config is loaded,a descriptive error is returned with field path
+  r4,happy,"a config file contains {{ env.MODEL_NAME }} with MODEL_NAME set",config is loaded,rendered config contains the env var value
+  r4,sad,"a config file contains {{ env.MISSING_KEY }} with no default",config is loaded,a descriptive template error is returned listing the missing key and file to edit
+  r5,happy,".xylitol/secret.env contains ANTHROPIC_API_KEY=sk-xxx and config references {{ secret.ANTHROPIC_API_KEY }}",config is loaded,"rendered config contains sk-xxx"
+  r6,happy,project config.local.yaml overrides model field,config is loaded,merged config contains local model value overriding base config
+  r7,happy,XYLITOL_CONFIG_DIR=/custom/dir is set,config is loaded,global config loaded from /custom/dir/config.yaml
+  r7,sad,XYLITOL_PROJECT_DIR is not set and no .xylitol/ directory found in CWD ancestry,config is loaded,"system proceeds with global config only (zero-config works)"
+  r8,happy,project root contains .agents/ directory,project root is discovered,ConfigPaths.agents_dir is set to the .agents/ path
+  r8,sad,project root has no .agents/ directory,project root is discovered,ConfigPaths.agents_dir is None and system proceeds normally

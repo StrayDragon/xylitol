@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r1,"planner-executor-split",System MUST separate planning and execution into distinct roles with configurable model bindings.,null,null,null
+  add_requirement,r2,"fallback-switch",System MUST support fallback model switching (OpenAI ↔ Anthropic) when primary model fails or loops.,null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r1,happy,"planning model is claude-opus execution model is gpt-4o-mini",complex task is submitted,"planner decomposes task then executor runs each step with gpt-4o-mini"
+  r2,happy,execution model enters repeat loop,"fallback specifies claude-opus","system switches to claude-opus automatically"

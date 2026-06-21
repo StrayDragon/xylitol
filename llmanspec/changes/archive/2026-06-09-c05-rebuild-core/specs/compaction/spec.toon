@@ -1,0 +1,15 @@
+kind: llman.sdd.delta
+ops[6]{op,req_id,title,statement,from,to,name}:
+  add_requirement,c1,"token-estimation",System MUST estimate context window usage from current messages using a configurable token estimator.,null,null,null
+  add_requirement,c2,"should-compact",System MUST trigger compaction when estimated token usage exceeds a configurable threshold percentage of the context window.,null,null,null
+  add_requirement,c3,"compact-summarize",Compaction MUST summarize older messages into a CompactionEntry while preserving the N most recent turns.,null,null,null
+  add_requirement,c4,"compact-session",Compaction MUST persist the CompactionEntry to the session file and update the session tree.,null,null,null
+  add_requirement,c5,"branch-summary","When navigating to a session tree branch, System MUST generate a branch summary entry bridging the context gap.",null,null,null
+  add_requirement,c6,"bdd-compaction",BDD tests under tests/features/compaction.feature MUST all pass.,null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  c1,estimate,messages contain 1000 tokens of text,estimateTokens is called,result is approximately 1000 tokens
+  c2,trigger,tokens exceed 80% of context window,shouldCompact is called,returns true
+  c3,summarize,session has 50 turns,compact is called,first 40 turns are summarized into one CompactionEntry
+  c4,persist,compaction completes,session is loaded,CompactionEntry is present with summary and cut point
+  c5,branch,user navigates to earlier branch point,branch summary is generated,summary entry bridges the context gap
+  c6,"bdd-pass",BDD runner invoked,"cargo test --test bdd",all compaction scenarios pass

@@ -1,0 +1,18 @@
+kind: llman.sdd.delta
+ops[6]{op,req_id,title,statement,from,to,name}:
+  add_requirement,a21,"prompt-template","System MUST support forward-slash template colon name args syntax with positional arg substitution and all-args placeholder and default-value syntax.",null,null,null
+  add_requirement,a22,"template-loader","System MUST load md files as prompt templates from global and project dot-xylitol-prompts directories and CLI-specified paths. Frontmatter provides description.",null,null,null
+  add_requirement,a23,"slash-commands","AgentSession MUST expose get_commands returning builtin commands including model compact session fork stats export new resume plus extension-registered commands.",null,null,null
+  add_requirement,a24,"command-dispatch","AgentSession prompt MUST intercept forward-slash prefix input dispatching to command handler or template expander before sending to LLM.",null,null,null
+  add_requirement,a25,"resource-loader",System MUST provide ResourceLoader aggregating project context files from AGENTS.md and CLAUDE.md plus skills and prompts and system prompt from CLI.,null,null,null
+  add_requirement,a26,"bdd-agent-v3",BDD tests for prompt templates and slash commands MUST all pass.,null,null,null
+op_scenarios[9]{req_id,id,given,when,then}:
+  a21,"template-expand",template has placeholder for first arg,template expanded with main.rs,content has main.rs substituted
+  a21,"default-value",template has default for first arg,template expanded without args,content has default value
+  a22,"load-global",prompts dir has review.md,templates are loaded,review template returned with description
+  a23,"builtin-commands",get_commands called at startup,result is returned,result includes model compact session fork commands
+  a23,"extension-commands",extension registers command analyze,get_commands called,result includes analyze command
+  a24,"slash-dispatch","user sends forward-slash compact",prompt is intercepted,compact handler invoked
+  a24,"template-dispatch","user sends forward-slash review with args",prompt is intercepted,template expanded and sent to LLM
+  a25,"context-files-found",AGENTS.md exists in cwd tree,load_context_files called,returns AGENTS.md content as first entry
+  a26,"bdd-pass",BDD runner invoked,cargo test runs,"all agent-v3 scenarios pass"

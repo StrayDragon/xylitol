@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r5,"async-test-timeout",Async integration tests MUST wrap their body with with_test_timeout helper (default 10s) to prevent CI hangs on deadlock or mock failure.,null,null,null
+  modify_requirement,r2,"test-harness","System MUST provide TestHarness Builder that wires all dependencies as mock or in-memory implementations for full-stack agent testing; MockToolContext MUST include workspace_root field.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r5,"timeout-helper","async test uses with_test_timeout(10, future)",future exceeds 10s,test panics with timeout message instead of hanging indefinitely
+  r2,"mock-workspace-root",MockToolContext is created via mock_context(),workspace_root() is called,returns CARGO_MANIFEST_DIR path

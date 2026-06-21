@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,b1,"bash-trait","System MUST abstract bash execution behind a BashOperations trait supporting real and mock implementations for testing.",null,null,null
+  add_requirement,b2,"bash-hooks","System MUST support pre-spawn and post-spawn hooks on bash execution for extension integration.",null,null,null
+  add_requirement,b3,"timeout-esc","System MUST implement graduated timeout: SIGTERM then 5-second grace then SIGKILL on bash commands.",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  b1,mock,"a mock BashOperations is registered","execute_bash is called","mock implementation runs instead of real shell"
+  b2,pre-hook,"a pre-spawn hook is registered","bash command is executed","hook is called with the command string before spawn"
+  b3,timeout,"a command exceeds the timeout","execute_bash is called with timeout","process receives SIGTERM first then SIGKILL after grace period"

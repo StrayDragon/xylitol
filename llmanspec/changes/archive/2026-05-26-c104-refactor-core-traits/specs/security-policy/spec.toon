@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r1,"security-wrapper","SecurityToolWrapper MUST wrap XyTool (not adk_core::Tool) and MUST enforce approval policy before tool execution.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r1,"xy-tool-approval",a tool requiring approval is wrapped with SecurityToolWrapper,tool is invoked,"approval check runs before XyTool::execute and blocks if denied"

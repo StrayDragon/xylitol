@@ -1,0 +1,10 @@
+kind: llman.sdd.spec
+name: "repeat-guard"
+purpose: "TBD - created by archiving change c35-add-repeat-detection. Update purpose after archive."
+valid_scope[2]: src/,tests/
+requirements[2]{req_id,title,statement}:
+  r1,"ngram-detection","System MUST detect repetitive token loops via sliding window n-gram analysis and interrupt generation."
+  r2,"recovery-chain",System MUST attempt configurable recovery strategies (alter_prompt switch_model adjust_params delegate_to_planner) in sequence.
+scenarios[2]{req_id,id,given,when,then}:
+  r1,happy,a mock model outputs repeated token pattern,detection threshold is exceeded,generation is interrupted and recovery triggered
+  r2,happy,recovery alter_prompt fails,switch_model strategy is attempted,model is switched to alternate provider (OpenAI ↔ Anthropic)

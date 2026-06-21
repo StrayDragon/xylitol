@@ -1,0 +1,12 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ar8,"session-cwd","Agent runtime MUST validate session working directory exists on session creation and import, returning an error with the missing path when CWD is not accessible.",null,null,null
+  add_requirement,ar9,diagnostics,"Agent runtime MUST collect non-fatal diagnostics (info/warning/error) during session creation covering: missing API keys, unknown model references, extension load failures, and CWD issues.",null,null,null
+  add_requirement,ar10,defaults,"System MUST centralize default values: DEFAULT_THINKING_LEVEL = medium, DEFAULT_MODEL for each known provider, DEFAULT_MAX_ITERATIONS = 50, DEFAULT_COMPACTION_THRESHOLD = 0.8.",null,null,null
+  add_requirement,ar11,"bdd-runtime-v3","BDD tests for session-cwd validation and defaults MUST all pass.",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  ar8,"cwd-exists",a session has cwd /home/user/project and directory exists,session is loaded,no error returned
+  ar8,"cwd-missing",a session has cwd /nonexistent/path,session is loaded,error message includes the missing path
+  ar9,"diag-missing-key",no API key configured for openai,session is created,diagnostics list contains warning about missing openai API key
+  ar10,"default-thinking",no thinking level explicitly set,thinking_level is queried,returns medium
+  ar11,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all runtime-v3 scenarios pass"

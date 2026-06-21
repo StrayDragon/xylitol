@@ -1,0 +1,17 @@
+kind: llman.sdd.delta
+ops[7]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r3,"unified-path-field-check",SecurityEngine MUST check both 'file_path' and 'path' argument fields when evaluating filesystem tool access.,null,null,null
+  add_requirement,r4,"mcp-tool-security-policy","SecurityEngine MUST apply a dedicated policy branch for MCP tools (name prefix 'mcp:') with explicit server/tool allowlist and default-deny semantics.",null,null,null
+  add_requirement,r5,"security-enabled-default",SecurityConfig.enabled MUST default to true in production builds.,null,null,null
+  add_requirement,r6,"hook-timeout-kill","Hook executor MUST kill the child process on timeout and MUST support configurable fail-open or fail-closed behavior.",null,null,null
+  add_requirement,r7,"network-domain-enforcement",SecurityEngine MUST enforce network.allowed_domains and network.blocked_domains for bash/curl and MCP SSE URLs.,null,null,null
+  add_requirement,r8,"bash-timeout-cap",Bash tool MUST cap timeout to min(requested_timeout and config.security.bash.timeout_secs).,null,null,null
+  add_requirement,r9,"bash-approval-required",TUI approval MUST cover bash tool execution when security is enabled.,null,null,null
+op_scenarios[7]{req_id,id,given,when,then}:
+  r3,"path-field-bypass","security enabled with forbidden_patterns=['/etc/**']",grep tool called with path='/etc/passwd',SecurityEngine returns Blocked
+  r4,"mcp-default-deny",security enabled with no MCP allowlist,"agent calls mcp:server:tool",SecurityEngine returns Blocked with reason
+  r5,"default-enabled",fresh install with no config override,SecurityEngine initializes,enabled field is true
+  r6,"hook-kill-on-timeout",hook configured with timeout=100ms,hook script runs 'sleep 999',"child process is killed and action is Block (fail-closed default)"
+  r7,"network-domain-block",blocked_domains contains 'evil.com',bash executes 'curl evil.com',SecurityEngine returns Blocked
+  r8,"timeout-cap",config.security.bash.timeout_secs=30,LLM requests timeout=99999,actual timeout used is 30 seconds
+  r9,"bash-needs-approval",security enabled in TUI mode,agent invokes bash tool,TUI shows approval overlay before execution

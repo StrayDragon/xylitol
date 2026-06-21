@@ -1,0 +1,17 @@
+kind: llman.sdd.delta
+ops[7]{op,req_id,title,statement,from,to,name}:
+  add_requirement,rc1,"three-tier","Config MUST merge three tiers in priority order: user (~/.xylitol/config.yaml) > project (./.xylitol/config.yaml) > global (built-in defaults).",null,null,null
+  add_requirement,rc2,"model-config","Config MUST support model entries with: provider, model-id, base_url override, api_key env reference, thinking support, context_window.",null,null,null
+  add_requirement,rc3,"provider-config","Config MUST support provider entries with: base_url, api_key, headers, api (openai-compatible or anthropic-messages).",null,null,null
+  add_requirement,rc4,settings,"Config MUST support settings: max_iterations, compaction_threshold, default_model, thinking_level, tools (allow/deny list).",null,null,null
+  add_requirement,rc5,"env-interpolation","Config MUST support ${ENV_VAR} and $ENV_VAR interpolation in api_key and base_url fields.",null,null,null
+  add_requirement,rc6,"secret-backend",Config MUST support external secret resolution via !command prefix for api_key values.,null,null,null
+  add_requirement,rc7,"bdd-config",BDD tests under tests/features/config.feature MUST all pass.,null,null,null
+op_scenarios[7]{req_id,id,given,when,then}:
+  rc1,merge,"user config has default_model: gpt-4o and project config has default_model: claude",config is loaded,"default_model is gpt-4o (user wins)"
+  rc2,"model-entry","a model entry with provider anthropic and model claude-sonnet-4-20250514",model is resolved,"provider and model-id are available"
+  rc3,"provider-override","a provider entry overrides base_url to https://proxy.example.com",model builds client,requests go to the overridden URL
+  rc4,settings,compaction_threshold is set to 0.7,agent session starts,compaction triggers at 70% context usage
+  rc5,"env-interpolation","api_key: $OPENAI_API_KEY with OPENAI_API_KEY=sk-abc",config loads,"resolved api_key is sk-abc"
+  rc6,"secret-command","api_key: !pass show api/openai",config loads,api_key is resolved from external command
+  rc7,"bdd-pass",BDD runner invoked,"cargo test --test bdd",all config scenarios pass

@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,t13,"process-cancel","Grep and Find tools MUST kill their child processes when the cancellation token fires, preventing orphaned long-running rg/fd processes.",null,null,null
+  add_requirement,t14,"shared-kill","System MUST provide a shared kill_tree(pid) helper accessible to all external-process tools, killing the process group to ensure grandchildren are terminated.",null,null,null
+  add_requirement,t15,"cancel-test",BDD tests for bash/grep/find cancel scenarios MUST verify that cancelled tools do not leave orphaned child processes and return Aborted error.,null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  t13,"grep-cancel",grep is searching a large directory tree,cancellation is triggered,grep returns Aborted and no rg process remains
+  t13,"find-cancel",find is searching a large directory tree,cancellation is triggered,find returns Aborted and no fd process remains
+  t15,"bdd-pass","BDD runner invoked with `cargo test --test bdd -- bash_cancel`",bash cancel test runs,bash scenario passes
