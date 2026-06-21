@@ -64,6 +64,71 @@ pub struct Settings {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<ToolsAllowDeny>,
+
+    // ── New fields (c89) ──
+    /// Transport mode (auto / sse / direct).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transport: Option<Transport>,
+
+    /// Steering mode for follow-up messages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub steering_mode: Option<SteeringMode>,
+
+    /// Follow-up mode for queue processing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub follow_up_mode: Option<SteeringMode>,
+
+    /// Custom shell path (e.g., for Cygwin users on Windows).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shell_path: Option<String>,
+
+    /// Prefix prepended to every bash command.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shell_command_prefix: Option<String>,
+
+    /// Command used for npm package operations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub npm_command: Option<Vec<String>>,
+
+    /// Default project trust behaviour.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_project_trust: Option<DefaultProjectTrust>,
+
+    /// Register skills as /skill:name commands.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_skill_commands: Option<bool>,
+
+    /// Custom prompt template paths.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompts: Option<Vec<String>>,
+
+    /// Custom theme paths.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub themes: Option<Vec<String>>,
+
+    /// Custom session storage directory.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_dir: Option<String>,
+
+    /// HTTP proxy URL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub http_proxy: Option<String>,
+
+    /// HTTP idle timeout in milliseconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub http_idle_timeout_ms: Option<u64>,
+
+    /// WebSocket connect timeout in milliseconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub websocket_connect_timeout_ms: Option<u64>,
+
+    /// Markdown rendering options.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub markdown: Option<MarkdownSettings>,
+
+    /// Warning toggles.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warnings: Option<WarningSettings>,
 }
 
 /// Compaction behavior settings.
@@ -155,6 +220,54 @@ pub struct ThinkingBudgets {
     pub medium: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub high: Option<u64>,
+}
+
+/// Transport mode.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Transport {
+    #[default]
+    Auto,
+    Sse,
+    Direct,
+}
+
+/// Steering / follow-up mode.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum SteeringMode {
+    #[default]
+    All,
+    #[serde(rename = "one-at-a-time")]
+    OneAtATime,
+}
+
+/// Default project trust policy.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum DefaultProjectTrust {
+    #[default]
+    Ask,
+    Always,
+    Never,
+}
+
+/// Markdown rendering options.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(default, rename_all = "camelCase")]
+#[derive(Default)]
+pub struct MarkdownSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code_block_indent: Option<String>,
+}
+
+/// Warning toggles.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(default, rename_all = "camelCase")]
+#[derive(Default)]
+pub struct WarningSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anthropic_extra_usage: Option<bool>,
 }
 
 /// Tool allow/deny lists for scope control.

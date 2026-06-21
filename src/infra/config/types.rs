@@ -213,16 +213,16 @@ impl AppConfig {
         })
     }
 
-    /// Resolve a model alias to [`ModelMeta`](crate::agent::session::ModelMeta) for the registry.
+    /// Resolve a model alias to [`ModelMeta`](crate::agent::types::ModelMeta) for the registry.
     ///
     /// Composes [`resolve_model`](Self::resolve_model) with per‑model metadata (thinking support,
     /// context window size) from [`ModelEntry`] or sensible defaults.
     pub fn resolve_model_meta(
         &self,
         model_id: &str,
-    ) -> Result<crate::agent::session::ModelMeta, String> {
+    ) -> Result<crate::agent::types::ModelMeta, String> {
         use crate::agent::registry::default_context_window_for;
-        use crate::agent::session::ModelMeta;
+        use crate::agent::types::ModelMeta;
 
         let model_config = self.resolve_model(model_id)?;
         let entry = self.model.models.get(model_id);

@@ -143,7 +143,61 @@ impl SettingsManager {
             result.last_changelog_version = overrides.last_changelog_version.clone();
         }
 
+        // ── New fields (c89) ──
+        if overrides.transport.is_some() {
+            result.transport = overrides.transport.clone();
+        }
+        if overrides.steering_mode.is_some() {
+            result.steering_mode = overrides.steering_mode.clone();
+        }
+        if overrides.follow_up_mode.is_some() {
+            result.follow_up_mode = overrides.follow_up_mode.clone();
+        }
+        if overrides.shell_path.is_some() {
+            result.shell_path = overrides.shell_path.clone();
+        }
+        if overrides.shell_command_prefix.is_some() {
+            result.shell_command_prefix = overrides.shell_command_prefix.clone();
+        }
+        if overrides.npm_command.is_some() {
+            result.npm_command = overrides.npm_command.clone();
+        }
+        if overrides.default_project_trust.is_some() {
+            result.default_project_trust = overrides.default_project_trust.clone();
+        }
+        if overrides.enable_skill_commands.is_some() {
+            result.enable_skill_commands = overrides.enable_skill_commands;
+        }
+        if overrides.prompts.is_some() {
+            result.prompts = overrides.prompts.clone();
+        }
+        if overrides.themes.is_some() {
+            result.themes = overrides.themes.clone();
+        }
+        if overrides.session_dir.is_some() {
+            result.session_dir = overrides.session_dir.clone();
+        }
+        if overrides.http_proxy.is_some() {
+            result.http_proxy = overrides.http_proxy.clone();
+        }
+        if overrides.http_idle_timeout_ms.is_some() {
+            result.http_idle_timeout_ms = overrides.http_idle_timeout_ms;
+        }
+        if overrides.websocket_connect_timeout_ms.is_some() {
+            result.websocket_connect_timeout_ms = overrides.websocket_connect_timeout_ms;
+        }
+
         // Nested object merges
+        merge_markdown(
+            &mut result.markdown,
+            base.markdown.as_ref(),
+            overrides.markdown.as_ref(),
+        );
+        merge_warnings(
+            &mut result.warnings,
+            base.warnings.as_ref(),
+            overrides.warnings.as_ref(),
+        );
         merge_compaction(
             &mut result.compaction,
             base.compaction.as_ref(),
@@ -395,6 +449,67 @@ impl SettingsManager {
     pub fn get_project_settings(&self) -> &Settings {
         &self.project_settings
     }
+
+    // ── New accessors (c89) ──
+
+    pub fn get_transport(&self) -> Transport {
+        self.settings.transport.clone().unwrap_or_default()
+    }
+
+    pub fn get_steering_mode(&self) -> SteeringMode {
+        self.settings.steering_mode.clone().unwrap_or_default()
+    }
+
+    pub fn get_follow_up_mode(&self) -> SteeringMode {
+        self.settings.follow_up_mode.clone().unwrap_or_default()
+    }
+
+    pub fn get_shell_path(&self) -> Option<&str> {
+        self.settings.shell_path.as_deref()
+    }
+
+    pub fn get_shell_command_prefix(&self) -> Option<&str> {
+        self.settings.shell_command_prefix.as_deref()
+    }
+
+    pub fn get_npm_command(&self) -> Option<&[String]> {
+        self.settings.npm_command.as_deref()
+    }
+
+    pub fn get_default_project_trust(&self) -> DefaultProjectTrust {
+        self.settings
+            .default_project_trust
+            .clone()
+            .unwrap_or_default()
+    }
+
+    pub fn get_enable_skill_commands(&self) -> bool {
+        self.settings.enable_skill_commands.unwrap_or(true)
+    }
+
+    pub fn get_prompts(&self) -> Option<&[String]> {
+        self.settings.prompts.as_deref()
+    }
+
+    pub fn get_themes(&self) -> Option<&[String]> {
+        self.settings.themes.as_deref()
+    }
+
+    pub fn get_session_dir(&self) -> Option<&str> {
+        self.settings.session_dir.as_deref()
+    }
+
+    pub fn get_http_proxy(&self) -> Option<&str> {
+        self.settings.http_proxy.as_deref()
+    }
+
+    pub fn get_http_idle_timeout_ms(&self) -> Option<u64> {
+        self.settings.http_idle_timeout_ms
+    }
+
+    pub fn get_websocket_connect_timeout_ms(&self) -> Option<u64> {
+        self.settings.websocket_connect_timeout_ms
+    }
 }
 
 // ── Private: nested merge helpers ─────────────────────────────────
@@ -568,6 +683,57 @@ fn merge_thinking_budgets(
         low: o.low.or(b.low),
         medium: o.medium.or(b.medium),
         high: o.high.or(b.high),
+    });
+}
+
+fn merge_markdown(
+    target: &mut Option<MarkdownSettings>,
+    base: Option<&MarkdownSettings>,
+    overrides: Option<&MarkdownSettings>,
+) {
+    let b = match base {
+        Some(b) => b,
+        None => {
+            *target = overrides.cloned();
+            return;
+        }
+    };
+    let o = match overrides {
+        Some(o) => o,
+        None => {
+            *target = Some(b.clone());
+            return;
+        }
+    };
+    *target = Some(MarkdownSettings {
+        code_block_indent: o
+            .code_block_indent
+            .clone()
+            .or_else(|| b.code_block_indent.clone()),
+    });
+}
+
+fn merge_warnings(
+    target: &mut Option<WarningSettings>,
+    base: Option<&WarningSettings>,
+    overrides: Option<&WarningSettings>,
+) {
+    let b = match base {
+        Some(b) => b,
+        None => {
+            *target = overrides.cloned();
+            return;
+        }
+    };
+    let o = match overrides {
+        Some(o) => o,
+        None => {
+            *target = Some(b.clone());
+            return;
+        }
+    };
+    *target = Some(WarningSettings {
+        anthropic_extra_usage: o.anthropic_extra_usage.or(b.anthropic_extra_usage),
     });
 }
 

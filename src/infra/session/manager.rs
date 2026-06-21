@@ -50,6 +50,18 @@ impl Default for SessionManager {
     }
 }
 
+/// Parameters for [`SessionManager::append_bash_execution`].
+pub struct BashExecutionParams<'a> {
+    pub session_id: &'a str,
+    pub command: &'a str,
+    pub output: &'a str,
+    pub exit_code: Option<i32>,
+    pub cancelled: bool,
+    pub truncated: bool,
+    pub full_output_path: Option<&'a str>,
+    pub exclude_from_context: bool,
+}
+
 impl SessionManager {
     /// Create a new SessionManager with the given sessions directory.
     pub fn new(sessions_dir: PathBuf) -> Self {
@@ -1026,14 +1038,7 @@ impl SessionManager {
     /// participates in LLM context (see `build_session_context`).
     pub async fn append_bash_execution(
         &self,
-        session_id: &str,
-        command: &str,
-        output: &str,
-        exit_code: Option<i32>,
-        cancelled: bool,
-        truncated: bool,
-        full_output_path: Option<&str>,
-        exclude_from_context: bool,
+        params: BashExecutionParams<'_>,
     ) -> Result<(), String> {
         let entry = SessionEntry::BashExecution(BashExecutionEntry {
             base: EntryBase {
@@ -1042,15 +1047,15 @@ impl SessionManager {
                 parent_id: None,
                 timestamp: String::new(),
             },
-            command: command.to_string(),
-            output: output.to_string(),
-            exit_code,
-            cancelled,
-            truncated,
-            full_output_path: full_output_path.map(|s| s.to_string()),
-            exclude_from_context,
+            command: params.command.to_string(),
+            output: params.output.to_string(),
+            exit_code: params.exit_code,
+            cancelled: params.cancelled,
+            truncated: params.truncated,
+            full_output_path: params.full_output_path.map(|s| s.to_string()),
+            exclude_from_context: params.exclude_from_context,
         });
-        self.append(session_id, &entry).await
+        self.append(params.session_id, &entry).await
     }
 
     /// Get the current session name from the latest session_info entry.

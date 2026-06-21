@@ -15,14 +15,7 @@ use serde::{Deserialize, Serialize};
 // ── Skill types ───────────────────────────────────────────────────
 
 /// Source information for a skill.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SourceInfo {
-    pub source: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scope: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub base_dir: Option<String>,
-}
+pub use crate::infra::source_info::SourceInfo;
 
 /// YAML frontmatter parsed from SKILL.md.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -367,10 +360,9 @@ fn load_skill_file(path: &Path, source: &str, base_dir: &Path) -> Option<Discove
 
     // Determine scope
     let scope = match source {
-        "user" => Some("user".into()),
-        "project" => Some("project".into()),
-        "path" => Some("path".into()),
-        _ => None,
+        "user" => crate::infra::source_info::SourceScope::User,
+        "project" => crate::infra::source_info::SourceScope::Project,
+        _ => crate::infra::source_info::SourceScope::Temporary,
     };
 
     Some(DiscoveredSkill {
@@ -379,9 +371,11 @@ fn load_skill_file(path: &Path, source: &str, base_dir: &Path) -> Option<Discove
         file_path: path.to_path_buf(),
         base_dir: base_dir.to_path_buf(),
         source_info: SourceInfo {
+            path: path.to_path_buf(),
             source: source.to_string(),
             scope,
-            base_dir: Some(base_dir.to_string_lossy().to_string()),
+            origin: crate::infra::source_info::SourceOrigin::TopLevel,
+            base_dir: Some(base_dir.to_path_buf()),
         },
         disable_model_invocation: fm.disable_model_invocation,
         content,
@@ -447,8 +441,8 @@ mod tests {
         assert_eq!(result.skills[0].name, "python");
         assert_eq!(result.skills[0].description, "Python development");
         assert_eq!(
-            result.skills[0].source_info.scope.as_deref(),
-            Some("project")
+            result.skills[0].source_info.scope,
+            crate::infra::source_info::SourceScope::Project
         );
     }
 

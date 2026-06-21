@@ -10,13 +10,11 @@
 //! - AgentSession owns the dispatch logic (`dispatch_slash_command` in session.rs).
 //! - TUI-only commands return `NotAvailable` when invoked outside TUI mode.
 
-use std::path::PathBuf;
+use crate::infra::source_info::SourceInfo;
 
 /// Source of a registered (non-builtin) slash command.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum SlashCommandSource {
-    /// Registered by an extension.
-    Extension,
     /// Registered from a prompt template (`/template:name`).
     Prompt,
     /// Registered from a discovered SKILL.md.
@@ -31,9 +29,10 @@ pub(crate) struct SlashCommandInfo {
     /// Human-readable description.
     pub(crate) description: String,
     /// Source of the command.
+    #[allow(dead_code)]
     pub(crate) source: SlashCommandSource,
-    /// Path to the originating resource, if applicable.
-    pub(crate) source_path: Option<PathBuf>,
+    /// Provenance info for the originating resource, if applicable.
+    pub(crate) source_info: Option<SourceInfo>,
 }
 
 impl SlashCommandInfo {
@@ -46,28 +45,15 @@ impl SlashCommandInfo {
             name: name.into(),
             description: description.into(),
             source,
-            source_path: None,
+            source_info: None,
         }
     }
 
-    pub(crate) fn with_path(mut self, path: PathBuf) -> Self {
-        self.source_path = Some(path);
+    #[cfg(test)]
+    pub(crate) fn with_source_info(mut self, info: SourceInfo) -> Self {
+        self.source_info = Some(info);
         self
     }
-}
-
-/// Outcome of attempting to dispatch a slash command.
-#[derive(Debug, Clone)]
-pub(crate) enum DispatchResult {
-    /// The command was handled. No further LLM action is needed.
-    Handled,
-    /// This command requires a TUI or interactive mode.
-    NotAvailable {
-        /// Reason the command is unavailable (e.g., "requires TUI mode").
-        reason: String,
-    },
-    /// No command with that name was found.
-    NotFound,
 }
 
 /// Full builtin slash command table.
@@ -159,28 +145,6 @@ pub(crate) fn is_tui_command(name: &str) -> bool {
     matches!(name, "settings" | "scoped-models" | "changelog" | "hotkeys")
 }
 
-/// Check whether a command has a concrete handler that can be dispatched now.
-/// Returns `true` for commands with working implementations.
-pub(crate) fn has_handler(name: &str) -> bool {
-    matches!(
-        name,
-        "model"
-            | "compact"
-            | "session"
-            | "fork"
-            | "new"
-            | "export"
-            | "import"
-            | "tree"
-            | "resume"
-            | "quit"
-            | "name"
-            | "reload"
-            | "login"
-            | "logout"
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,11 +197,11 @@ mod tests {
     }
 
     #[test]
-    fn test_get_all_commands_includes_extensions() {
+    fn test_get_all_commands_includes_non_builtins() {
         let ext = vec![SlashCommandInfo::new(
             "analyze",
             "Analyze code",
-            SlashCommandSource::Extension,
+            SlashCommandSource::Skill,
         )];
         let all = get_all_commands(&ext);
         assert!(all.iter().any(|c| c.name == "analyze"));
@@ -253,29 +217,28 @@ mod tests {
     }
 
     #[test]
-    fn test_has_handler() {
-        assert!(has_handler("model"));
-        assert!(has_handler("compact"));
-        assert!(has_handler("export"));
-        assert!(!has_handler("settings"));
-    }
-
-    #[test]
-    fn test_slash_command_info_with_path() {
-        let cmd = SlashCommandInfo::new("x", "desc", SlashCommandSource::Skill)
-            .with_path(PathBuf::from("/a/b/c.md"));
-        assert_eq!(cmd.source_path, Some(PathBuf::from("/a/b/c.md")));
+    fn test_slash_command_info_with_source_info() {
+        use crate::infra::source_info::{SourceInfo, SourceOrigin, SourceScope};
+        let si = SourceInfo {
+            path: std::path::PathBuf::from("/a/b/c.md"),
+            source: "local".into(),
+            scope: SourceScope::Temporary,
+            origin: SourceOrigin::TopLevel,
+            base_dir: None,
+        };
+        let cmd =
+            SlashCommandInfo::new("x", "desc", SlashCommandSource::Skill).with_source_info(si);
+        assert_eq!(
+            cmd.source_info.as_ref().map(|s| s.path.as_path()),
+            Some(std::path::Path::new("/a/b/c.md"))
+        );
         assert_eq!(cmd.source, SlashCommandSource::Skill);
     }
 
     #[test]
     fn test_slash_command_source_variants() {
-        let ext = SlashCommandSource::Extension;
-        let prompt = SlashCommandSource::Prompt;
         let skill = SlashCommandSource::Skill;
-        // All three variants exist (no builtin variant — builtins use Skill as
-        // a placeholder so get_all_commands can return a uniform Vec).
-        assert_ne!(format!("{ext:?}"), format!("{prompt:?}"));
-        assert_ne!(format!("{prompt:?}"), format!("{skill:?}"));
+        let prompt = SlashCommandSource::Prompt;
+        assert_ne!(format!("{skill:?}"), format!("{prompt:?}"));
     }
 }
