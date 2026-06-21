@@ -1,0 +1,12 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,rc11,transport-field,"Settings MUST include transport field with auto sse direct enum options.",null,null,null
+  add_requirement,rc12,mode-fields,"Settings MUST include steering_mode and follow_up_mode with all one-at-a-time enum options.",null,null,null
+  add_requirement,rc13,misc-fields,"Settings MUST include shell_path shell_command_prefix npm_command default_project_trust enable_skill_commands session_dir markdown warnings and the http-related fields from c83.",null,null,null
+  add_requirement,rc14,list-fields,"Settings MUST include prompts and themes as Option Vec String for resource path configuration.",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  rc11,transport,transport is set to sse in settings.json,settings are loaded,Settings.transport is Some sse
+  rc13,shell-path,'shell_path is set to "/usr/local/bin/bash" in settings.json',SettingsManager.get_shell_path is called,Some /usr/local/bin/bash is returned
+  rc13,trust-default,default_project_trust is set to always,SettingsManager.get_default_project_trust is called,always is returned
+  rc12,mode-set,"steering_mode is set to one-at-a-time in settings.json",settings are loaded,Settings.steering_mode is OneAtATime
+  rc14,prompts-list,prompts has two paths,settings are merged,Settings.prompts has 2 entries

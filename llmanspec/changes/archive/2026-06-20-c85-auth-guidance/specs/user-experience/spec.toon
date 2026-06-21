@@ -1,0 +1,11 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ux1,login-help,"System MUST provide get_provider_login_help that returns guidance referencing /login and doc paths.",null,null,null
+  add_requirement,ux2,no-models,"System MUST provide format_no_models_available_message when no models are available.",null,null,null
+  add_requirement,ux3,no-model-selected,"System MUST provide format_no_model_selected_message when no model is selected.",null,null,null
+  add_requirement,ux4,no-api-key,"System MUST provide format_no_api_key_found_message with the provider name.",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  ux2,no-models,model registry is empty,format_no_models_available_message is called,'the message contains "/login" and "providers.md"'
+  ux3,no-selection,no model is selected,format_no_model_selected_message is called,'the message contains "Use /login" and "/model"'
+  ux1,login-help,"user needs provider setup guidance",get_provider_login_help is called,"the message contains /login and doc paths"
+  ux4,no-key,"provider anthropic has no API key",format_no_api_key_found_message is called,'the message contains "anthropic" and "/login"'

@@ -1,0 +1,13 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,pa1,attribution-headers,"System MUST inject provider-specific attribution headers for OpenRouter NVIDIA NIM Cloudflare and Vercel AI Gateway.",null,null,null
+  add_requirement,pa2,opencode-session-headers,"System MUST inject x-opencode-session and x-opencode-client headers for OpenCode providers.",null,null,null
+  add_requirement,pa3,provider-display-names,"System MUST provide a display-name lookup table covering all 27+ built-in providers.",null,null,null
+  add_requirement,pa4,attribution-integration,"The model resolver MUST call merge_provider_attribution_headers when building HTTP requests.",null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  pa1,openrouter,"a request targets an OpenRouter model",attribution headers are merged,"HTTP-Referer https://pi.dev and X-OpenRouter-Title pi are present"
+  pa1,nvidia,"a request targets an NVIDIA NIM model",attribution headers are merged,"X-BILLING-INVOKE-ORIGIN Pi is present"
+  pa2,opencode,"a request targets an OpenCode model with a session ID",attribution headers are merged,"x-opencode-session and x-opencode-client are present"
+  pa3,lookup,"provider id is openrouter",provider_display_name is called,OpenRouter is returned
+  pa3,fallback,"provider id is unknown",provider_display_name is called,the raw id is returned
+  pa4,integration,"a model request is being built",merge_provider_attribution_headers is called,"headers are injected into the HTTP request"

@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "session-persistence"
 purpose: "Session persistence — JSONL file-based session storage with tree operations, compaction, fork, and CWD validation."
 valid_scope[1]: src
-requirements[20]{req_id,title,statement}:
+requirements[24]{req_id,title,statement}:
   r1,"snapshot-ops",System MUST support snapshot restore spawn list prune diff and merge operations on immutable session snapshots.
   r2,compaction,System MUST automatically compact context when conversation token count exceeds configured window threshold.
   s1,"jsonl-storage","SessionManager MUST persist sessions as JSONL files with one JSON object per line version-tagged in ~/.xylitol/sessions/."
@@ -23,7 +23,11 @@ requirements[20]{req_id,title,statement}:
   ex3,"import-jsonl",AgentSession MUST support importing a session from a JSONL file into a new session.
   ex4,"html-tool-render",HTML export MUST render tool and assistant content into readable blocks.
   ex5,"share-guidance",System MUST return configuration guidance when sharing is invoked without a token.
-scenarios[24]{req_id,id,given,when,then}:
+  sc1,"cwd-validation",System MUST validate that the stored cwd exists when restoring a session and return a SessionCwdIssue on mismatch.
+  sc2,"cwd-error",System MUST provide MissingSessionCwdError carrying the session file path stored cwd and fallback cwd.
+  sc3,"cwd-format","System MUST provide format_missing_session_cwd_error and format_missing_session_cwd_prompt for user-facing messages."
+  sc4,"cwd-integration",CLI and RPC modes MUST call assert_session_cwd_exists before resuming a session.
+scenarios[29]{req_id,id,given,when,then}:
   r1,happy,a snapshot exists,spawn is called with snapshot_id and new prompt,new agent instance starts with inherited context from snapshot
   r2,happy,conversation exceeds 75% of context window,compaction is triggered,older turns are summarized and replaced with compact system message
   s1,"create-load",a new session is created,entries are appended and session is loaded,all entries are returned in order
@@ -48,3 +52,8 @@ scenarios[24]{req_id,id,given,when,then}:
   ex3,import,a valid JSONL file exists,import_from_jsonl is called,entries are loaded into a new session
   ex4,"html-tools",a session contains tool calls,the exported HTML is opened,tool results are rendered as readable blocks
   ex5,"share-unconfigured",share is invoked without a token,share is called,a configuration guidance message is returned
+  sc1,exists,the stored cwd exists on disk,assert_session_cwd_exists is called,the call succeeds
+  sc1,missing,the stored cwd does not exist on disk,assert_session_cwd_exists is called,a MissingSessionCwdError is returned
+  sc2,"cwd-error",the stored cwd does not exist on disk,MissingSessionCwdError is created,the error carries the session file path and both cwds
+  sc3,"cwd-format",a MissingSessionCwdError is available,format_missing_session_cwd_error is called,"a user-facing message with both cwds is returned"
+  sc4,"cli-missing",CLI starts with a session whose cwd is missing,the error is formatted and displayed,the user is guided to the fallback cwd

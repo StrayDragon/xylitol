@@ -1,0 +1,12 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,rd6,unified-source-type,"System MUST provide a common SourceInfo type with path source scope origin and base_dir fields.",null,null,null
+  add_requirement,rd7,source-factories,"System MUST provide create_source_info and create_synthetic_source_info factory functions.",null,null,null
+  add_requirement,rd8,source-migration,"Skills PromptTemplate and SlashCommandInfo MUST use the unified SourceInfo type.",null,null,null
+  add_requirement,rd9,scope-enum,"SourceScope MUST support user project and temporary variants matching pi.",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  rd6,create,resource metadata is provided,create_source_info is called,"a SourceInfo with all fields populated is returned"
+  rd8,migration-skills,"a skill is loaded from a project directory",its SourceInfo is created,scope is project
+  rd7,factory-create,"resource metadata is provided with path and scope",create_source_info is called,"a fully populated SourceInfo is returned"
+  rd9,scope-variants,"a resource is loaded from user scope",its SourceInfo is created,scope is User
+  rd8,migration-commands,"a slash command is registered",its source_info is set,origin is TopLevel if not from a package

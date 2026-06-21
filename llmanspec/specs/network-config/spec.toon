@@ -1,0 +1,19 @@
+kind: llman.sdd.spec
+name: "network-config"
+purpose: "Network configuration — HTTP proxy settings, idle timeouts, and dispatcher configuration."
+valid_scope[1]: src
+requirements[6]{req_id,title,statement}:
+  nc0,placeholder,System SHALL support configurable HTTP proxy and idle timeout settings.
+  nc1,"proxy-config",System MUST apply HTTP_PROXY and HTTPS_PROXY environment variables from the httpProxy setting.
+  nc2,"idle-timeout",System MUST configure reqwest Client with configurable connect_timeout read_timeout and pool_idle_timeout.
+  nc3,"timeout-parser",System MUST provide parse_http_idle_timeout_ms that accepts string 30 sec or numeric milliseconds.
+  nc4,"timeout-choices",System MUST provide HTTP_IDLE_TIMEOUT_CHOICES constant with presets 30s 1min 2min 5min disabled.
+  nc5,"settings-stubs",System SHALL add httpProxy httpIdleTimeoutMs websocketConnectTimeoutMs fields to Settings.
+scenarios[7]{req_id,id,given,when,then}:
+  nc0,placeholder,no network is configured,nothing happens,nothing changes
+  nc1,proxy,"'httpProxy is set to \"http://proxy.example:8080\"'",apply_http_proxy_settings is called,HTTP_PROXY and HTTPS_PROXY env vars are set
+  nc2,timeout,httpIdleTimeoutMs is 120000,configure_http_client is called,client has 120s read timeout
+  nc3,"parse-string","'value is \"5 min\"'",parse is called,300000 is returned
+  nc3,"parse-numeric",value is 30000,parse is called,30000 is returned
+  nc4,presets,the timeout choices are accessed,HTTP_IDLE_TIMEOUT_CHOICES is read,all 5 presets are present
+  nc5,"stub-settings",httpProxy and httpIdleTimeoutMs are set in settings,Settings is serialized to JSON,both fields appear in camelCase
