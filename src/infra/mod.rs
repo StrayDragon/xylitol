@@ -14,5 +14,8 @@ pub(crate) mod resource;
 // ── session is always-on core ──
 pub mod session;
 
+#[cfg(feature = "infra-clipboard")]
+pub mod clipboard;
+
 #[cfg(feature = "infra-skills")]
 pub(crate) mod skills;
