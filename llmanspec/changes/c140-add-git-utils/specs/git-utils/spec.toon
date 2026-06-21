@@ -1,0 +1,11 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,g1,"repo-detection","System MUST provide find_git_repo(cwd) that walks up directories to find .git directory or worktree file and returns repo path common git dir and HEAD path.",null,null,null
+  add_requirement,g2,"branch-detection","System MUST provide get_current_branch(git_dir) that reads HEAD reference and returns the current branch name or null for detached HEAD.",null,null,null
+  add_requirement,g3,"branch-watch","System MUST support watching for branch changes via file system watcher on HEAD file.",null,null,null
+  add_requirement,g4,"url-parsing","System MUST provide parse_git_url(url) that handles SCP-like HTTPS SSH and git protocol URLs with ref extraction.",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  g1,discovery,"cwd is inside a git repo or worktree","find_git_repo is called","repo path common git dir and HEAD path are returned correctly"
+  g2,branch,"HEAD points to refs/heads/main or is detached","get_current_branch is called","branch name is main for named refs and null for detached"
+  g3,watch,"a file watcher is set on HEAD","the HEAD file is modified","the branch change callback is invoked"
+  g4,urls,"URLs in SCP HTTPS SSH and git formats are provided","parse_git_url is called","host and path are correctly extracted for each format"

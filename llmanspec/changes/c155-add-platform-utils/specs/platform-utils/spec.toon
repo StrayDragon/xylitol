@@ -1,0 +1,13 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,u1,"version-check","System MUST provide check_for_new_version(current_version) that fetches latest version from an API endpoint.",null,null,null
+  add_requirement,u2,"changelog-parse","System MUST provide parse_changelog(path) that reads CHANGELOG.md and returns versioned entries with content.",null,null,null
+  add_requirement,u3,"fs-watch","System MUST provide watch_file(path callback) that calls the callback when the file changes with automatic retry on error.",null,null,null
+  add_requirement,u4,"frontmatter","System MUST provide parse_frontmatter(content) that extracts YAML frontmatter from markdown files returning metadata and body.",null,null,null
+  add_requirement,u5,"open-browser","System MUST provide open_browser(url) that opens a URL in the default system browser cross-platform.",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  u1,version,"current version is 0.1.0 and latest is 0.2.0 or same","check_for_new_version is called","returns Some for newer and None for current"
+  u2,parse,"a valid CHANGELOG.md with 3 version entries exists","parse_changelog is called","3 ChangelogEntry values are returned with correct version numbers"
+  u3,watch,"a config file is being watched","file is modified","callback is invoked with the changed filename"
+  u4,yaml,"a markdown file with YAML frontmatter delimited by ---","parse_frontmatter is called","metadata map and body string are returned"
+  u5,open,"a URL https://example.com is provided","open_browser is called","system default browser opens the URL"
