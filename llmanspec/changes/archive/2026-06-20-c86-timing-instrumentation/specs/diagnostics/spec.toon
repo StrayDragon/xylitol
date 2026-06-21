@@ -1,0 +1,10 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,d1,timing-collector,"System MUST provide reset_timings time label and print_timings gated behind XYLITOL_TIMING env var.",null,null,null
+  add_requirement,d2,timing-points,"System MUST insert timing points at config load ResourceLoader reload ModelRegistry load session restore and session create.",null,null,null
+  add_requirement,d3,timing-output,print_timings MUST output to stderr with per-step ms and total.,null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  d1,enabled,XYLITOL_TIMING is set to 1,startup runs,timing data is collected and printed
+  d1,disabled,XYLITOL_TIMING is unset or 0,startup runs,no timing output is printed
+  d2,points,startup proceeds through all stages,each stage calls time,"all 5 timing points are recorded"
+  d3,stderr-output,"timing data is collected",print_timings is called,"output goes to stderr with per-step ms and total"
