@@ -27,11 +27,6 @@ pub struct AppConfig {
     pub tools: ToolsConfig,
 
     // ── feature-gated ────────────────────────────────────────────────
-    #[cfg(feature = "agent-planning")]
-    pub planning: Option<PlanningConfig>,
-    #[cfg(feature = "agent-planning")]
-    pub validation: Option<ValidationConfig>,
-
     #[cfg(feature = "infra-session")]
     pub session: Option<SessionConfig>,
     #[cfg(feature = "infra-session")]
@@ -44,9 +39,6 @@ pub struct AppConfig {
 
     #[cfg(feature = "ui-review")]
     pub review: Option<ReviewConfig>,
-
-    #[cfg(feature = "infra-acp")]
-    pub acp: Option<AcpConfig>,
 }
 
 // ---------------------------------------------------------------------------
@@ -716,53 +708,6 @@ fn default_max_dir_entries() -> u32 {
 }
 
 // ---------------------------------------------------------------------------
-// Feature-gated: agent-planning
-// ---------------------------------------------------------------------------
-
-#[cfg(feature = "agent-planning")]
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub struct PlanningConfig {
-    #[serde(default)]
-    pub model: Option<String>,
-    #[serde(default)]
-    pub system_prompt: Option<String>,
-    #[serde(default = "default_max_steps")]
-    pub max_steps: u16,
-    #[serde(default = "default_reasoning_depth")]
-    pub reasoning_depth: String,
-}
-
-#[cfg(feature = "agent-planning")]
-impl Default for PlanningConfig {
-    fn default() -> Self {
-        Self {
-            model: None,
-            system_prompt: None,
-            max_steps: default_max_steps(),
-            reasoning_depth: default_reasoning_depth(),
-        }
-    }
-}
-
-#[cfg(feature = "agent-planning")]
-fn default_max_steps() -> u16 {
-    10
-}
-
-#[cfg(feature = "agent-planning")]
-fn default_reasoning_depth() -> String {
-    "medium".into()
-}
-
-#[cfg(feature = "agent-planning")]
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
-pub struct ValidationConfig {
-    #[serde(default)]
-    pub enabled: bool,
-}
-
-// ---------------------------------------------------------------------------
 // Feature-gated: infra-session
 // ---------------------------------------------------------------------------
 
@@ -916,32 +861,4 @@ fn default_review_mode() -> String {
 #[cfg(feature = "ui-review")]
 fn default_review_backend() -> String {
     "cli".into()
-}
-
-// ---------------------------------------------------------------------------
-// Feature-gated: infra-acp
-// ---------------------------------------------------------------------------
-
-#[cfg(feature = "infra-acp")]
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub struct AcpConfig {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default = "default_acp_port")]
-    pub port: u16,
-}
-
-#[cfg(feature = "infra-acp")]
-impl Default for AcpConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            port: default_acp_port(),
-        }
-    }
-}
-
-#[cfg(feature = "infra-acp")]
-fn default_acp_port() -> u16 {
-    8080
 }
