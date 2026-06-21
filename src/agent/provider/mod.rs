@@ -7,6 +7,7 @@
 //! - [`MockXyModel`] (test-only): returns a fixed text response
 
 pub(crate) mod anthropic;
+pub(crate) mod attribution;
 pub(crate) mod openai;
 
 #[cfg(feature = "dev-fake-provider")]
