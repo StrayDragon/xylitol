@@ -1,0 +1,11 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,t1,"github-download","System MUST provide ensure_tool(name) that downloads fd and rg precompiled binaries from GitHub Releases when not found on PATH.",null,null,null
+  add_requirement,t2,"platform-detection","System MUST auto-detect platform (macOS Linux Windows arm64 x86_64) and select the correct release asset name.",null,null,null
+  add_requirement,t3,"archive-extraction","System MUST support extracting both tar.gz and zip archives with fallback methods per platform.",null,null,null
+  add_requirement,t4,"offline-mode","System MUST skip download when PI_OFFLINE environment variable is set and return a clear message.",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  t1,download,"fd or rg is not found on PATH","ensure_tool is called","binary is downloaded from GitHub Releases and made executable"
+  t2,asset-arm,"platform is macOS arm64","asset name resolution runs","asset name contains aarch64-apple-darwin"
+  t3,extract,"downloaded file is tar.gz or zip","archive extraction runs","binary is found and extracted successfully"
+  t4,offline,"PI_OFFLINE is set to 1 and tool is missing","ensure_tool is called","function returns None without downloading"
