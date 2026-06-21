@@ -5,11 +5,13 @@
 //! - API key / OAuth auth availability checks
 //! - Available model listing sorted by provider priority
 //! - Default model ID per provider
+//! - Header resolution via ConfigValueResolver
 
 use std::collections::HashMap;
 
+use crate::agent::config_value;
 use crate::agent::model::{ModelConfig, ModelKind};
-use crate::agent::session::ModelMeta;
+use crate::agent::types::ModelMeta;
 
 // ── Provider Config ─────────────────────────────────────────────────
 
@@ -86,8 +88,44 @@ impl ProviderConfig {
 // ── Default Model IDs ───────────────────────────────────────────────
 
 const DEFAULT_MODEL_PER_PROVIDER: &[(&str, &str)] = &[
-    ("openai", "gpt-4o"),
-    ("anthropic", "claude-sonnet-4-20250514"),
+    ("openai", "gpt-5.4"),
+    ("anthropic", "claude-opus-4-8"),
+    ("amazon-bedrock", "us.anthropic.claude-opus-4-6-v1"),
+    ("ant-ling", "Ring-2.6-1T"),
+    ("azure-openai-responses", "gpt-5.4"),
+    ("openai-codex", "gpt-5.5"),
+    ("nvidia", "nvidia/nemotron-3-super-120b-a12b"),
+    ("deepseek", "deepseek-v4-pro"),
+    ("google", "gemini-3.1-pro-preview"),
+    ("google-vertex", "gemini-3.1-pro-preview"),
+    ("github-copilot", "gpt-5.4"),
+    ("openrouter", "moonshotai/kimi-k2.6"),
+    ("vercel-ai-gateway", "zai/glm-5.1"),
+    ("xai", "grok-4.20-0309-reasoning"),
+    ("groq", "openai/gpt-oss-120b"),
+    ("cerebras", "zai-glm-4.7"),
+    ("zai", "glm-5.1"),
+    ("zai-coding-cn", "glm-5.1"),
+    ("mistral", "devstral-medium-latest"),
+    ("minimax", "MiniMax-M2.7"),
+    ("minimax-cn", "MiniMax-M2.7"),
+    ("moonshotai", "kimi-k2.6"),
+    ("moonshotai-cn", "kimi-k2.6"),
+    ("huggingface", "moonshotai/Kimi-K2.6"),
+    ("fireworks", "accounts/fireworks/models/kimi-k2p6"),
+    ("together", "moonshotai/Kimi-K2.6"),
+    ("opencode", "kimi-k2.6"),
+    ("opencode-go", "kimi-k2.6"),
+    ("kimi-coding", "kimi-for-coding"),
+    ("cloudflare-workers-ai", "@cf/moonshotai/kimi-k2.6"),
+    (
+        "cloudflare-ai-gateway",
+        "workers-ai/@cf/moonshotai/kimi-k2.6",
+    ),
+    ("xiaomi", "mimo-v2.5-pro"),
+    ("xiaomi-token-plan-cn", "mimo-v2.5-pro"),
+    ("xiaomi-token-plan-ams", "mimo-v2.5-pro"),
+    ("xiaomi-token-plan-sgp", "mimo-v2.5-pro"),
 ];
 
 pub fn default_model_id_for_provider(provider_name: &str) -> Option<&'static str> {
@@ -129,11 +167,41 @@ impl ModelRegistry {
         self.providers.get(name)
     }
 
+    /// Check if a provider has configured auth (API key or OAuth).
+    /// For API keys, this also resolves config values ($ENV, !cmd) to check actual availability.
     pub fn has_configured_auth(&self, provider_name: &str) -> bool {
         self.providers
             .get(provider_name)
             .map(|p| p.has_credentials())
             .unwrap_or(false)
+    }
+
+    /// Check if a provider has actually resolved credentials at runtime.
+    /// Unlike `has_configured_auth` (which checks if a config value is present),
+    /// this resolves $ENV and !cmd values to verify the actual secret is available.
+    pub fn has_resolved_auth(&self, provider_name: &str) -> bool {
+        self.providers.get(provider_name).is_some_and(|p| {
+            if p.is_oauth {
+                return true;
+            }
+            if let Some(ref key) = p.api_key {
+                config_value::resolve_config_value(key, None).is_some()
+            } else {
+                false
+            }
+        })
+    }
+
+    /// Resolve custom headers for a provider, interpolating env vars and executing shell commands.
+    /// Returns None if the provider has no headers or all headers fail to resolve.
+    pub fn resolve_provider_headers(
+        &self,
+        provider_name: &str,
+        env: Option<&HashMap<String, String>>,
+    ) -> Option<HashMap<String, String>> {
+        let provider = self.providers.get(provider_name)?;
+        let headers = provider.headers.as_ref()?;
+        config_value::resolve_headers(headers, env)
     }
 
     pub fn has_configured_auth_for_model(&self, model: &ModelMeta) -> bool {
@@ -384,10 +452,14 @@ mod tests {
 
     #[test]
     fn test_default_model_id() {
-        assert_eq!(default_model_id_for_provider("openai"), Some("gpt-4o"));
+        assert_eq!(default_model_id_for_provider("openai"), Some("gpt-5.4"));
         assert_eq!(
             default_model_id_for_provider("anthropic"),
-            Some("claude-sonnet-4-20250514")
+            Some("claude-opus-4-8")
+        );
+        assert_eq!(
+            default_model_id_for_provider("deepseek"),
+            Some("deepseek-v4-pro")
         );
         assert_eq!(default_model_id_for_provider("unknown"), None);
     }

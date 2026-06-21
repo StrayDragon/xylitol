@@ -11,7 +11,7 @@
 use crate::agent::model::ModelConfig;
 #[cfg(test)]
 use crate::agent::model::ModelKind;
-use crate::agent::session::{ModelMeta, ThinkingLevel};
+use crate::agent::types::{ModelMeta, ThinkingLevel};
 
 // ── Resolved Model ──────────────────────────────────────────────────
 
