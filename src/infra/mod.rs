@@ -1,4 +1,5 @@
 pub mod config;
+pub mod process;
 pub mod event;
 pub mod hooks;
 pub mod source_info;
