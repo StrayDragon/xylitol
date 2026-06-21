@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r1,"mcp-adapter","McpToolAdapter MUST bridge rmcp tool results to XyTool interface (not adk_core::Tool).",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r1,"mcp-as-xytool",an MCP server exposes a tool,McpToolAdapter wraps it as XyTool,tool can be registered in ToolRegistry and executed by agent loop

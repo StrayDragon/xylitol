@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r1,"hook-dispatcher",System MUST implement a HookDispatcher that executes registered hooks for 10+ event types.,null,null,null
+  add_requirement,r2,"three-tier-config","System MUST support global/project/user three-tier hook configuration with later layers overriding earlier.",null,null,null
+  add_requirement,r3,"script-execution",System MUST execute hook scripts via stdin JSON context and parse stdout for block/allow control.,null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  r1,happy,a pre.tool_call hook is registered,tool is about to execute,hook script runs and receives event context via stdin
+  r2,happy,global hook and project hook both exist for same event,hook dispatcher runs,project hook overrides global hook
+  r3,happy,hook script returns block action,tool execution is pending,tool execution is blocked with reason

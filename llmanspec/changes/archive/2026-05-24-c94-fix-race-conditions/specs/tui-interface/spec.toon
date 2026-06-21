@@ -1,0 +1,11 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r37,"approval-no-race",TUI approval mechanism MUST ensure the approval channel is registered before the tool wrapper attempts to receive a decision.,null,null,null
+  add_requirement,r38,"atomic-file-write",Write and edit tools MUST use atomic write (temp file + rename) to prevent partial writes on crash or concurrent access.,null,null,null
+  add_requirement,r39,"hook-process-cleanup",Hook executor MUST terminate child processes on timeout via kill() and MUST wait for process exit before returning.,null,null,null
+  add_requirement,r40,"mcp-lock-granularity",MCP client manager MUST NOT hold its mutex across await points to avoid serializing concurrent tool calls.,null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  r37,"no-spurious-reject",TUI mode with approval enabled,agent calls a tool requiring approval immediately after stream yields,tool waits for user decision without 'missing approval prompt' error
+  r38,"crash-safe-write",write tool is called,"process crashes mid-write",original file remains intact (no partial content)
+  r39,"hook-zombie-prevention",hook script exceeds timeout,timeout fires,child process is killed and no zombie remains
+  r40,"concurrent-mcp",two MCP tools are called concurrently,both execute,neither blocks waiting for the other's completion

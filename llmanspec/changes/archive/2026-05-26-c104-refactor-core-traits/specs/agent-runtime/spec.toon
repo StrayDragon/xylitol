@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r3,"provider-interface",System MUST define XyModel trait as the primary LLM interface; providers MUST implement XyModel directly.,null,null,null
+  add_requirement,r6,"content-types","System MUST define XyContent and XyPart types (Text / Thinking / FunctionCall / FunctionResponse) independent of adk-core.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r3,"xy-model-stream",a provider implements XyModel,generate_stream is called,it returns Stream<Item = Result<XyChunk>> without adk_core types
+  r6,"part-roundtrip","an XyPart::FunctionCall is created",it is serialized and deserialized,all fields (name / args / id) are preserved

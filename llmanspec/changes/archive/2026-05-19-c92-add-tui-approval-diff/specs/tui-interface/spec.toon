@@ -1,0 +1,15 @@
+kind: llman.sdd.delta
+ops[6]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r18,"approval-wiring",System SHALL wire ApprovalOverlay to agent SecurityPolicy such that tool calls requiring approval show a modal with Allow/Deny/AllowOnce/DenyOnce options.,null,null,null
+  add_requirement,r19,"diff-preview-wiring","System SHALL wire DiffPreviewOverlay to StepComplete events, collecting diffs from ReviewEngine and displaying them via Ctrl+R toggle.",null,null,null
+  add_requirement,r20,"diff-type-reuse","System SHALL reuse diff_review::types::{DiffHunk, DiffLine, DiffLineKind} in diff_preview.rs, eliminating duplicate type definitions.",null,null,null
+  add_requirement,r21,"tool-call-cards","System SHALL render tool calls as collapsible cards with status badge (running/success/failed), argument preview, and Enter to expand.",null,null,null
+  add_requirement,r22,"thinking-blocks","System SHALL detect and render agent reasoning as collapsible dim-styled blocks, collapsed by default with Enter to expand.",null,null,null
+  add_requirement,r23,"approval-with-diff","System SHALL show the diff of proposed tool changes inline within the approval overlay for edit-type tools.",null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  r18,happy,agent calls a tool that SecurityPolicy flags as needing approval,ToolCallStart triggers ApprovalOverlay.prompt(),overlay shows tool name and args; user selects Allow; tool executes
+  r19,happy,agent completes a step with file edits,StepComplete event fires with diffs,DiffPreviewOverlay.set_diff() is called; Ctrl+R shows the diff
+  r20,happy,diff_preview.rs renders a diff,"it imports DiffHunk from diff_review::types",no duplicate DiffLineKind enum exists in the codebase
+  r21,happy,agent starts a tool call during streaming,chat receives ToolCallStart event,"a collapsible card renders with a spinner; on ToolCallEnd, spinner changes to checkmark; Enter toggles details"
+  r22,happy,assistant message contains thinking content delimited by markers,chat component detects the pattern,content renders as a collapsed dim block; Enter expands to full text
+  r23,happy,a write/edit tool requires approval,ApprovalOverlay shows with diff preview,the diff of the file change is visible within the overlay before user decides

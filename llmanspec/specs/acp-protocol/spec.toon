@@ -1,0 +1,12 @@
+kind: llman.sdd.spec
+name: "acp-protocol"
+purpose: "TBD - created by archiving change c87-add-acp-mode. Update purpose after archive."
+valid_scope[2]: src/,tests/
+requirements[3]{req_id,title,statement}:
+  r1,"acp-stdio",System MUST implement ACP (Agent Client Protocol) Agent over stdio for IDE integration.
+  r2,"session-streaming",System MUST stream agent events as ACP session/update notifications during a turn.
+  r3,"session-lifecycle","System MUST support ACP session lifecycle: initialize, session/new, session/prompt, session/cancel, session/close."
+scenarios[3]{req_id,id,given,when,then}:
+  r1,happy,"IDE spawns xylitol with --mode acp and sends initialize request",ACP Agent responds with agent info,"IDE receives agent name, version, and capabilities"
+  r2,happy,IDE sends session/prompt and agent emits TextDelta events,events are converted to ACP format,session/update notifications with AgentMessageChunk are sent to IDE
+  r3,happy,IDE sends session/new then session/prompt then session/cancel,agent loop is started then interrupted,agent responds with cancelled status and session remains usable

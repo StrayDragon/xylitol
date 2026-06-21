@@ -1,0 +1,17 @@
+kind: llman.sdd.delta
+ops[6]{op,req_id,title,statement,from,to,name}:
+  add_requirement,c1,"text-copy","System MUST provide copy_to_clipboard(text) that copies UTF-8 text to system clipboard through platform-native tools.",null,null,null
+  add_requirement,c2,"platform-order","System MUST try platform-native clipboard in order: native addon greater pbcopy/clip greater wl-copy greater xclip/xsel greater termux-clipboard-set greater OSC 52.",null,null,null
+  add_requirement,c3,"image-clipboard","System MUST support reading image data from clipboard with MIME type detection on supported platforms.",null,null,null
+  add_requirement,c4,"osc52-remote","System MUST fall back to OSC 52 escape sequence for remote sessions (SSH) when native clipboard is unavailable.",null,null,null
+  add_requirement,c5,"osc52-limit","System MUST respect OSC 52 payload size limit (100KB encoded) and skip OSC 52 fallback when payload exceeds limit.",null,null,null
+  add_requirement,c6,"clipboard-error","System MUST return a descriptive error when all clipboard methods fail instead of silently swallowing the failure.",null,null,null
+op_scenarios[8]{req_id,id,given,when,then}:
+  c1,macos,"macOS system with pbcopy available","copy_to_clipboard is called with text","pbcopy process receives text on stdin and clipboard contains text"
+  c1,linux-wayland,"Wayland Linux with wl-copy available","copy_to_clipboard is called with text","wl-copy process receives text via stdin pipe and clipboard contains text"
+  c1,linux-x11,"X11 Linux with xclip available","copy_to_clipboard is called with text","xclip process receives text and clipboard contains text"
+  c2,fallback-chain,"all native clipboard tools fail","copy_to_clipboard is called with small text","OSC 52 escape sequence is emitted on stdout"
+  c3,image-read,"wl-paste or xclip reports an image MIME type","read_clipboard_image is called","ClipboardImage with bytes and mime_type is returned"
+  c4,ssh-session,"SSH_CONNECTION is set and native clipboard tools unavailable","copy_to_clipboard is called with small text","OSC 52 sequence is emitted to stdout"
+  c5,oversize,"text exceeds 100KB base64 encoded","copy_to_clipboard is called with large text","OSC 52 fallback is skipped and error is returned"
+  c6,all-fail,"no clipboard tool exists on the system and no terminal","copy_to_clipboard is called","a descriptive error string is returned"

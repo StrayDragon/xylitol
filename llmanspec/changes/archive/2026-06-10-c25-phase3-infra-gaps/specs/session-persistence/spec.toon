@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,s16,"session-cwd-validate","SessionManager MUST validate that the stored CWD exists and is accessible when loading a session from disk, returning an actionable error message when not found.",null,null,null
+  add_requirement,s17,"bdd-session-v3",BDD tests for CWD validation MUST pass.,null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  s16,"cwd-ok",session file has cwd /tmp and directory exists,load is called,entries are returned normally
+  s16,"cwd-missing",session file has cwd /nonexistent,load is called,error references missing directory /nonexistent
+  s17,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all session-v3 scenarios pass"

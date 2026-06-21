@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r3,"provider-factory","System MUST instantiate LLM providers via direct SDK integration (async-openai for OpenAI, reqwest for Anthropic) without adk-model.",null,null,null
+  add_requirement,r4,"openai-provider","System MUST support OpenAI chat completions and streaming via async-openai with tool calling and base_url override.",null,null,null
+  add_requirement,r5,"anthropic-provider",System MUST support Anthropic messages API and streaming via reqwest with tool_use and base_url override.,null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  r3,"no-adk-model","adk-model is not in Cargo.toml dependencies",cargo build succeeds,no adk_model imports exist in src/
+  r4,"openai-streaming","an OpenAI-compatible endpoint is configured",agent sends a prompt,"streaming text and tool_call chunks are emitted as adk_core::LlmResponse"
+  r5,"anthropic-streaming",an Anthropic endpoint is configured,agent sends a prompt,"streaming content_block_delta events are mapped to adk_core::LlmResponse"

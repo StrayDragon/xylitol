@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r1,"declarative-rules",System MUST enforce declarative security rules for bash/filesystem/network access before any tool execution.,null,null,null
+  add_requirement,r2,"tighten-only","System MUST only allow three-tier config overrides to tighten rules never to relax them.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r1,happy,"bash tool called with rm -rf /","security policy has forbidden pattern for rm -rf",tool call is blocked and tool_call_blocked event emitted
+  r2,happy,user config tries to allow a forbidden pattern,config is merged,the forbidden pattern remains blocked
