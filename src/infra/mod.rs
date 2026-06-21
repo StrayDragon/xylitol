@@ -27,5 +27,8 @@ pub mod git;
 #[cfg(feature = "infra-tools")]
 pub(crate) mod tools;
 
+#[cfg(feature = "infra-syntax")]
+pub mod syntax;
+
 #[cfg(feature = "infra-skills")]
 pub(crate) mod skills;

@@ -2,20 +2,19 @@
 
 ## Implementation
 
-- [ ] 创建 `src/infra/syntax/mod.rs` — 模块入口
-- [ ] 创建 `src/infra/syntax/theme.rs` — 主题定义
-- [ ] 创建 `src/infra/syntax/render.rs` — 高亮渲染输出
-- [ ] 添加 feature flag `infra-syntax` 到 `Cargo.toml`
-- [ ] 添加 `syntect` 依赖
+- [x] 创建 `src/infra/syntax/mod.rs` — 模块入口（highlight, supports_language, html_to_ansi）
+- [x] 添加 feature flag `infra-syntax` 到 `Cargo.toml`
+- [x] 添加 `syntect` 依赖（default-syntaxes, default-themes, regex-onig, html）
 
 ## Testing
 
-- [ ] 单元测试 — Rust 代码高亮（关键字、字符串、注释）
-- [ ] 单元测试 — 语言自动检测
-- [ ] 单元测试 — 主题映射正确性
+- [x] 单元测试 — Rust 代码高亮
+- [x] 单元测试 — 语言自动检测
+- [x] 单元测试 — HTML 标签剥离
+- [x] 单元测试 — HTML 实体解码
+- [x] `cargo check --features infra-syntax` — 0 errors
+- [x] `cargo test --lib --features infra-syntax` — 7 passed
 
 ## Verification
 
-- [ ] `cargo check --features infra-syntax`
-- [ ] `cargo test --lib --features infra-syntax`
-- [ ] `llman sdd validate c150-add-syntax-highlight`
+- [x] `llman sdd validate c150-add-syntax-highlight`

@@ -44,6 +44,7 @@ url = { version = "2", optional = true }
 flate2 = { version = "1", optional = true }
 tar = { version = "0.4", optional = true }
 zip = { version = "2", optional = true }
+syntect = { version = "5", optional = true, default-features = false, features = ["default-syntaxes", "default-themes", "regex-onig", "html"] }
 
 # ── acp dependencies (optional, infra-acp) ─────
 agent-client-protocol = { version = "0.12.1", optional = true }
@@ -74,6 +75,7 @@ infra-clipboard = []
 infra-image = ["dep:image"]
 infra-git = ["dep:url"]
 infra-tools = ["dep:flate2", "dep:tar", "dep:zip"]
+infra-syntax = ["dep:syntect"]
 infra-skills = []
 infra-session = []
 infra-sandbox = []
