@@ -1,0 +1,15 @@
+kind: llman.sdd.delta
+ops[6]{op,req_id,title,statement,from,to,name}:
+  add_requirement,c7,"llm-summarize","Compaction MUST call a configured LLM to generate a structured summary using format: ## Goal / ## Constraints & Preferences / ## Progress (Done, In Progress, Blocked) / ## Key Decisions / ## Next Steps / ## Critical Context.",null,null,null
+  add_requirement,c8,"cut-point","System MUST find a cut point in session entries that preserves approximately keepRecent tokens of recent context, walking backwards from newest entries and cutting at valid entry types (user/assistant/custom/branch_summary, never tool results).",null,null,null
+  add_requirement,c9,"iterative-summary","When a previous CompactionEntry exists, System MUST use an update prompt that preserves existing structured information and merges new progress, rather than starting from scratch.",null,null,null
+  add_requirement,c10,"file-tracking","Compaction summary MUST append <read-files> and <modified-files> XML tags listing files referenced in tool calls within the summarized messages.",null,null,null
+  add_requirement,c11,"compact-entry","Compaction MUST produce a CompactionEntry containing summary string, firstKeptEntryId referencing the first retained entry after the cut point, tokensBefore count, and details object with readFiles and modifiedFiles lists.",null,null,null
+  add_requirement,c12,"agent-integration","AgentSession MUST expose compact_current_session() that: estimates context usage, finds cut point, calls LLM summarization, writes CompactionEntry, and reloads session state.",null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  c7,summarize,session has 30 user+assistant turns with file edits,generate_summary is called,response contains Goal Progress Next Steps sections with specific file paths
+  c8,"find-cut",session has 50 entries totaling 80000 tokens with keepRecent=20000,find_cut_point is called,the cut index preserves roughly the last 20000 tokens of context
+  c9,iterative,"a previous CompactionEntry exists with summary, new messages are accumulated",generate_summary is called with previousSummary,result preserves previous Done items and adds new ones
+  c10,files,"messages contain tool calls: read a.txt, write b.rs, edit c.py",compact_session is called,"CompactionEntry summary ends with <read-files>a.txt</read-files> and <modified-files>b.rs c.py</modified-files>"
+  c11,entry,compact_session completes and session is loaded,CompactionEntry is present,"summary non-empty, firstKeptEntryId valid, tokensBefore positive, details contains file lists"
+  c12,agent,agent session has messages exceeding threshold,compact_current_session is called,"CompactionEntry written to session, session state reloaded"

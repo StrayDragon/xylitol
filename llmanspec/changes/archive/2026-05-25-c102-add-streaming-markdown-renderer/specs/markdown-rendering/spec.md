@@ -1,9 +1,0 @@
-```toon
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,r7,"streaming-render","System MUST use debounced incremental rendering for Markdown during LLM token streaming to avoid per-frame full reparse.",null,null,null
-  add_requirement,r8,"streaming-dual-phase","System MUST support dual-phase rendering where completed paragraphs receive full Markdown precision while in-progress tail receives lightweight styling.",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  r7,debounced-tick,"streaming tokens arrive at high rate","renderer tick is called within debounce interval","no reparse occurs and previous output is reused"
-  r8,dual-phase-split,"dual-phase is enabled and buffer contains completed paragraph followed by in-progress text","renderer tick fires","completed paragraphs show full Markdown styling and tail shows approximate inline styling"
-```

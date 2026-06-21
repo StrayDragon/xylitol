@@ -1,0 +1,10 @@
+kind: llman.sdd.spec
+name: "lsp-integration"
+purpose: "TBD - created by archiving change c45-add-lsp-layer. Update purpose after archive."
+valid_scope[2]: src/,tests/
+requirements[2]{req_id,title,statement}:
+  r1,"lspz-integration","System MUST integrate lspz agent-sdk to spawn and manage LSP server subprocesses."
+  r2,"compressed-queries",System MUST return compressed TOON text from LSP queries for direct injection into LLM prompts.
+scenarios[2]{req_id,id,given,when,then}:
+  r1,happy,a rust project is opened,get_diagnostics is called for a .rs file,"rust-analyzer subprocess is spawned and diagnostics returned"
+  r2,happy,LSP server returns full diagnostics,result is processed,output is compressed TOON text suitable for prompt injection

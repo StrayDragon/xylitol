@@ -1,0 +1,10 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ar12,"output-guard-takeover","Agent runtime MUST support stdout takeover that redirects all process.stdout.write calls to stderr, enabling clean output in print mode. The takeover state must be queryable via is_stdout_taken_over().",null,null,null
+  add_requirement,ar13,"output-guard-restore","Agent runtime MUST support stdout restore returning process.stdout.write to its original implementation, and write_raw_stdout that bypasses the takeover for direct output.",null,null,null
+  add_requirement,ar14,"bdd-runtime-v4",BDD tests for OutputGuard stdout takeover and restore MUST all pass.,null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  ar12,"takeover-redirects",stdout is not taken over,take_over_stdout is called,is_stdout_taken_over returns true
+  ar12,"double-takeover-noop",stdout is already taken over,take_over_stdout is called again,no error and is_stdout_taken_over still true
+  ar13,restore,stdout is taken over,restore_stdout is called,is_stdout_taken_over returns false and original stdout is restored
+  ar14,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all runtime-v4 scenarios pass"

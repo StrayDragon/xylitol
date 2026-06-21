@@ -1,0 +1,14 @@
+kind: llman.sdd.spec
+name: "process-mgmt"
+purpose: "TBD - created by archiving change c135-add-shell-process-mgmt. Update purpose after archive."
+valid_scope[2]: src/,tests/
+requirements[4]{req_id,title,statement}:
+  p1,"bash-discovery","System MUST provide find_bash() that locates bash across platforms: Git Bash on Windows /bin/bash on Unix with fallback to sh."
+  p2,"shell-env",System MUST provide build_shell_env() that injects the agent bin directory into PATH.
+  p3,"process-group",System MUST support kill_process_tree(pid) that terminates a process and all its children on all platforms.
+  p4,"child-wait",System MUST provide wait_for_child() that waits for process exit without hanging on detached descendant processes holding inherited stdio handles open.
+scenarios[4]{req_id,id,given,when,then}:
+  p1,macos,macOS with /bin/bash exists,find_bash is called,"bash path is /bin/bash and shell config uses -c"
+  p2,path,agent bin dir is /home/user/.xylitol/bin,build_shell_env is called,resulting PATH contains /home/user/.xylitol/bin
+  p3,"kill-tree",a process with children is running,kill_process_tree(pid) is called,process and all children receive SIGKILL
+  p4,wait,child process exits but stdout pipe stays open,wait_for_child is called,function waits for pipe idle before returning exit code

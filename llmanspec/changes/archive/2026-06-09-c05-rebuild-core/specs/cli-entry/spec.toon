@@ -1,0 +1,13 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,cli1,"parse-args","CLI MUST parse arguments matching pi: --model, --session, --print, --rpc, --prompt, positional prompt, --resume.",null,null,null
+  add_requirement,cli2,"initial-message","CLI MUST support initial message from: positional argument, --prompt flag, or piped stdin.",null,null,null
+  add_requirement,cli3,"session-picker","When no --session is given and sessions exist, CLI MUST offer a selector to create new or resume existing sessions.",null,null,null
+  add_requirement,cli4,"project-trust","On first run in a directory, CLI MUST prompt for project trust confirmation.",null,null,null
+  add_requirement,cli5,"run-modes","CLI MUST route to the appropriate mode handler: interactive (default), print (--print), or RPC (--rpc).",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  cli1,positional,./xylitol 'fix the bug',args are parsed,prompt contains 'fix the bug'
+  cli2,stdin,echo 'review this' | ./xylitol,args are parsed,prompt contains 'review this'
+  cli3,picker,"sessions exist and no --session given",CLI starts,"a session picker is shown (print-mode skips this)"
+  cli4,trust,first run in /home/user/project,CLI starts,a project trust prompt is shown
+  cli5,print,"./xylitol --print 'fix'",CLI runs,output goes to stdout without TUI

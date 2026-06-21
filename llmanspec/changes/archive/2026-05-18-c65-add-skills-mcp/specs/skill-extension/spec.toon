@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r1,"skill-yaml",System MUST load Skill definitions from YAML with name description system_prompt_addon and allowed_tools.,null,null,null
+  add_requirement,r2,"mcp-client",System MUST connect to MCP servers via stdio or SSE transport and register their tools dynamically.,null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r1,happy,a skill YAML file is configured,session starts with skill activated,skill system_prompt_addon is injected into agent context
+  r2,happy,MCP server configured with stdio transport,agent starts,MCP tools are registered and callable as normal tools

@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r1,BDD steps MUST pass all 77 scenarios,"All 77 BDD scenarios MUST pass (currently 41/77, 36 failed) using rstest-bdd runner.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r1,"all-pass",all 77 scenarios exist in feature files,"cargo test --test bdd -- --test-threads=1","all 77 pass, 0 fail"

@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r2,"test-harness-tools","System MUST test tools via rstest-bdd scenario/test functions with given/when/then typed-placeholder steps, one scenario per test function.",null,null,null
+  add_requirement,r7,"bdd-framework","System MUST use rstest-bdd (not cucumber-rs) for BDD tests; each feature scenario MUST be bound to a test function; step definitions MUST use typed placeholders instead of regex.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r2,scenario,"rstest-bdd step definition exists","cargo test -- test_read_file",test passes using typed placeholder steps with scenario binding
+  r7,"compiles-with-rstest","project has rstest and rstest-bdd dev-dependencies",cargo test bdd,all scenarios pass with cargo test syntax without custom runner

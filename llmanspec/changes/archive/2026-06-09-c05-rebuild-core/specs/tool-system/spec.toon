@@ -1,0 +1,29 @@
+kind: llman.sdd.delta
+ops[13]{op,req_id,title,statement,from,to,name}:
+  add_requirement,t1,traits,System MUST define a XyTool trait with execute accepting CancellationToken.,null,null,null
+  add_requirement,t2,"seven-tools","System MUST implement 7 pi-equivalent tools: read bash edit write grep find ls.",null,null,null
+  add_requirement,t3,"edit-multi",Edit tool MUST accept path and edits array of oldText and newText matching against original content.,null,null,null
+  add_requirement,t4,"edit-validation","Edit tool MUST reject overlapping edits and non-unique oldText and empty oldText and no-change edits.",null,null,null
+  add_requirement,t5,"edit-unicode","Edit tool MUST normalize CRLF to LF and strip UTF-8 BOM and fuzzy-match via NFKC normalization.",null,null,null
+  add_requirement,t6,"edit-diff",Edit tool MUST return both a unified patch and a display diff with line numbers.,null,null,null
+  add_requirement,t7,"grep-ripgrep",Grep tool MUST use ripgrep supporting regex and glob and ignoreCase and literal and context and limit.,null,null,null
+  add_requirement,t8,"find-fd","Find tool MUST use fd respecting gitignore and returning Posix-relative paths with limit.",null,null,null
+  add_requirement,t9,"bash-abort",Bash tool MUST support CancellationToken killing process tree and merge streaming output.,null,null,null
+  add_requirement,t10,"read-trunc","Read tool MUST truncate at 2000 lines or 50KB and report offset-out-of-bounds with remaining lines hint.",null,null,null
+  add_requirement,t11,infra,System MUST provide TruncationResult and XxxOperations traits and FileMutationQueue and CancellationToken.,null,null,null
+  add_requirement,t12,registry,ToolRegistry MUST provide builtins and get and list and filtered and wrap_with_hooks methods.,null,null,null
+  add_requirement,t13,"bdd-tools",BDD tests under tests/features/ for all 7 tools MUST pass.,null,null,null
+op_scenarios[13]{req_id,id,given,when,then}:
+  t1,cancel,all tools implement XyTool,cancel triggered,abort error returned
+  t2,registry,ToolRegistry builtins called,list() invoked,seven tools returned
+  t3,"multi-edit",file with 3 distinct regions,"multi-edit called",all 3 regions replaced
+  t4,overlap,two overlapping edits,edit called,error contains overlap with indices
+  t5,bom,"file with UTF-8 BOM",text replaced,BOM retained and content updated
+  t6,diff,file edited,result returned,"unified patch and line-numbered diff present"
+  t7,"grep-basic",files with matches,grep called with pattern,rg returns matching lines with paths
+  t8,"find-basic",files match glob,find called,fd returns Posix paths respecting gitignore
+  t9,"bash-kill",long bash command runs,CancellationToken fires,process killed and abort error
+  t10,"read-trunc","10000-line file exists",read called without limits,truncated with hint
+  t11,"infra-works",infra structures defined,all tools use them,behavior matches pi exactly
+  t12,filter,registry has 7 tools,filtered called,only requested tools returned
+  t13,"bdd-pass",BDD runner invoked,"cargo test --test bdd",all tool scenarios pass

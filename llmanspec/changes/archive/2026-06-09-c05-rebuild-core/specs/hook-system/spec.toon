@@ -1,0 +1,23 @@
+kind: llman.sdd.delta
+ops[10]{op,req_id,title,statement,from,to,name}:
+  add_requirement,h1,"hook-events","Hook system MUST support event types: tool_call (pre/post), model_query (pre), after_provider_request, after_provider_response, turn_end, message_end, compaction, session_start.",null,null,null
+  add_requirement,h2,"hook-matching",Hook dispatcher MUST match hooks by event_type.phase.qualifier pattern (e.g. pre.tool_call.bash matches bash tool calls in pre phase).,null,null,null
+  add_requirement,h3,"hook-actions","Hook scripts MUST return JSON with action: allow/block/modify; block stops the chain, modify updates args for subsequent hooks.",null,null,null
+  add_requirement,h4,"three-tier-hooks","Hook entries MUST merge from three tiers: user > project > global, with same-pattern overrides.",null,null,null
+  add_requirement,h5,"hook-timeout","Each hook script MUST execute with a configurable timeout (default 5s), killed if exceeded.",null,null,null
+  add_requirement,h6,"hook-env",Hook scripts MUST receive event context as JSON on stdin and inherit configured env vars.,null,null,null
+  add_requirement,h7,"prefix-caching-hook","after_provider_request hook MUST allow modifying the provider request payload for prefix-caching optimizations (e.g. deepseek v4 cache_control).",null,null,null
+  add_requirement,h8,"after-provider-response","after_provider_response hook MUST fire after provider responds but before streaming, receiving status and headers.",null,null,null
+  add_requirement,h9,"noop-empty","When no hooks are configured, dispatch MUST be a zero-overhead no-op.",null,null,null
+  add_requirement,h10,"bdd-hooks",BDD tests under tests/features/hooks.feature MUST all pass.,null,null,null
+op_scenarios[10]{req_id,id,given,when,then}:
+  h1,"tool-call-pre",a hook matches pre.tool_call.bash,bash tool is about to execute,hook script receives event JSON on stdin
+  h2,"pattern-match","hook entry has events: [\"pre.tool_call.bash\",\"post.step_complete\"]",step_complete event fires in post phase,hook matches
+  h3,block,"hook returns {\"action\":\"block\",\"reason\":\"forbidden\"}",dispatch processes result,"DispatchResult::Blocked is returned"
+  h4,merge,user config has hook for pre.tool_call overriding global,hooks are loaded,user's hook command is used
+  h5,timeout,hook script hangs for 10s with 2s timeout,dispatch waits,"hook is killed and result is Allow (fail-open)"
+  h6,env,"hook entry has env: {\"DEBUG\":\"1\"}",hook runs,"the script sees DEBUG=1 in environment\""
+  h7,"prefix-cache",after_provider_request hook fires for deepseek model,hook modifies payload,cache_control field is added to request
+  h8,"after-response",provider responds with status 200,after_provider_response hook fires,hook receives status=200 and headers
+  h9,empty,no hooks are configured,dispatch is called,result is Allowed with zero overhead
+  h10,"bdd-pass",BDD runner invoked,"cargo test --test bdd",all hook scenarios pass

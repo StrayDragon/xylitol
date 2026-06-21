@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r1,"lspz-integration","System MUST integrate lspz agent-sdk to spawn and manage LSP server subprocesses.",null,null,null
+  add_requirement,r2,"compressed-queries",System MUST return compressed TOON text from LSP queries for direct injection into LLM prompts.,null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r1,happy,a rust project is opened,get_diagnostics is called for a .rs file,"rust-analyzer subprocess is spawned and diagnostics returned"
+  r2,happy,LSP server returns full diagnostics,result is processed,output is compressed TOON text suitable for prompt injection

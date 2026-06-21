@@ -1,0 +1,12 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r1,ModelRegistry,System MUST implement ModelRegistry for model instance lifecycle management and Provider registration.,null,null,null
+  add_requirement,r2,LockManager,System MUST implement LockManager with Idle/Busy/Preemptible/Preempting state machine for model instance preemption.,null,null,null
+  add_requirement,r3,CheckpointManager,"System MUST implement CheckpointManager to save and restore task context when a low-priority task is preempted.",null,null,null
+  add_requirement,r4,SchedulerHint,System MUST provide SchedulerHint trait for tasks to declare expected resource usage.,null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  r1,"registry-create",a Provider is registered,"ModelRegistry::new() is called",ModelRegistry instance is created with the provider
+  r2,"state-transition","low-priority task holds model lock","high-priority task requests lock",lock transitions from Busy to Preemptible then to Preempting then transferred
+  r3,"checkpoint-save",task is preempted at step 3,"high-priority task requests lock",task context is saved to checkpoint
+  r3,"checkpoint-restore","high-priority task completes",preempted task resumes,original task restores from checkpoint and resumes at step 3
+  r4,"scheduler-declare",a task starts execution,"task calls SchedulerHint::declare()",resource usage is recorded for scheduler decision

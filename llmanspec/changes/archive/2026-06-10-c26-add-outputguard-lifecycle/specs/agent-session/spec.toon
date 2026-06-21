@@ -1,0 +1,10 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,as27,"event-bus-lifecycle","AgentSession MUST integrate AgentEventBus to emit turn_start and turn_end events with auto-persistence of agent messages to session storage during the turn lifecycle.",null,null,null
+  add_requirement,as28,"session-lifecycle","AgentSession MUST support start_new_session creating a fresh session with optional parent reference, and resume_session loading and validating an existing session including CWD assertion.",null,null,null
+  add_requirement,as29,"bdd-agent-v4",BDD tests for AgentSession lifecycle and event bus integration MUST all pass.,null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  as27,"turn-events-emitted",AgentSession has event bus subscriber,a turn starts and completes,turn_start and turn_end events are received by subscriber
+  as27,"auto-persist",AgentSession has enabled session,agent message is received,message is persisted to session file
+  as28,"resume-validates-cwd",a session file has cwd set to existing directory,resume_session is called,session loads successfully
+  as29,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all agent-v4 scenarios pass"

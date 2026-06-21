@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r10,"provider-tag","System MUST accept `openai` (not `open_a_i`) as the provider tag for OpenAI-compatible models in configuration. System MUST validate provider tags via JSON Schema and return a descriptive error for unknown values.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r10,happy,config provider tag is openai,config is loaded,"provider is parsed as ProviderKind::OpenAI"
+  r10,sad,config provider tag is invalid,config is loaded,a schema validation error is returned pointing to the provider field

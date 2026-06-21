@@ -1,0 +1,27 @@
+kind: llman.sdd.delta
+ops[9]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r2,"event-system","Agent runtime MUST emit AgentEvent variants via a multi-listener subscription model: subscribe(fn) returns UnsubscribeHandle allowing multiple consumers.",null,null,null
+  add_requirement,r8,"auto-compaction","Agent runtime MUST check compaction after each assistant turn: context overflow triggers auto-compact plus retry once, threshold triggers auto-compact. Must be abortable.",null,null,null
+  add_requirement,r9,"overflow-recovery","When context overflow is detected, Agent runtime MUST remove error message, run compaction, retry the turn once. If recovery fails, emit compaction_end with error and stop.",null,null,null
+  add_requirement,r10,"auto-retry","Agent runtime MUST detect transient errors (rate limit, overloaded, 5xx, network) and auto-retry with exponential backoff. Configurable maxRetries (default 3) and baseDelayMs (default 1000). Must be abortable.",null,null,null
+  add_requirement,r11,"retry-pattern","Auto-retry MUST match error patterns: overloaded, rate limit, 429, 5xx, service unavailable, network error, connection refused, timeout, terminated. Excludes: usage_limit, insufficient_quota, billing.",null,null,null
+  add_requirement,r12,"retry-state","Retry MUST remove errored assistant message, emit retry_start, wait with exponential backoff (abortable), re-send prompt. On success emit retry_end(success=true). On max retries emit retry_end(success=false,finalError).",null,null,null
+  add_requirement,r13,"queue-modes","Agent runtime MUST support configurable steering mode (all or one-at-a-time) and followUp mode (all or one-at-a-time) controlling queued message delivery.",null,null,null
+  modify_requirement,ar2,streaming,"Agent runtime MUST stream model responses token-by-token via the event subscription bus (TextDelta, ThinkingDelta, FunctionCall). Internal compaction/retry handlers also use subscriptions.",null,null,null
+  add_requirement,ar6,unsubscribe,"The event bus MUST allow individual subscribers to unsubscribe via returned handle without affecting others. Drop-based cleanup is acceptable.",null,null,null
+op_scenarios[15]{req_id,id,given,when,then}:
+  r2,"subscription-model",two consumers subscribe to events,the agent runs,both consumers receive all events in order
+  r2,unsubscribe,a consumer subscribes then unsubscribes,events are emitted,unsubscribed consumer receives no more events
+  r8,"auto-compact-threshold",tokens exceed compaction threshold,assistant turn completes,"auto-compaction fires and CompactionEntry is persisted"
+  r9,"overflow-recovery",model returns context overflow error,agent detects overflow,"error message removed, compaction runs, prompt retried, assistent responds with answer"
+  r9,"overflow-failure",overflow detected and compaction succeeds but retry also overflows,second overflow detected,compaction_end emitted with error message and no further retry
+  r10,"retry-success",model returns 502 error,"auto-retry with 1s backoff fires",second attempt succeeds and user sees response
+  r10,"retry-exhausted",model keeps returning 503 error,retries 3 times at 1s/2s/4s,emits retry_end with success false and finalError after third failure
+  r11,"retryable-match",error message is rate limit exceeded,is_retryable_error is called,returns true
+  r11,"non-retryable-quota",error message is insufficient_quota,is_retryable_error is called,returns false
+  r13,"steering-all",steering mode is all and multiple steering messages are queued,messages are delivered,all are delivered together before next LLM call
+  r13,"followup-sequential","followUp mode is one-at-a-time and two followUp messages are queued",messages are delivered,first is delivered and turn processes then second is delivered
+  r12,"retry-start-end",model returns a retryable error,retry is initiated,retry_start event emitted then retry_end event after second attempt
+  ar2,"bus-streaming",model streams 5 token chunks,subscription consumers listen,all 5 TextDelta events received by both consumers
+  ar6,"drop-unsubscribe",a consumer subscribes and then drops the handle,more events are emitted,no events go to the dropped consumer
+  r8,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all agent-runtime-v2 scenarios pass"

@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r9,"model-resolution","System MUST resolve the effective model ID from user-provided sources (CLI override, agent profile, execution config, model.default_model). System MUST NOT embed environment-specific local model IDs as code defaults. If no model is configured, system MUST return a clear error describing how to configure one.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r9,happy,a config provides model.default_model,a resolved profile is built,the model id resolves to model.default_model
+  r9,sad,no model is configured in CLI or config,a resolved profile is built,a descriptive configuration error is returned

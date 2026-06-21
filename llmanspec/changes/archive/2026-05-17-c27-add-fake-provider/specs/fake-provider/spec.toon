@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r1,"fake-provider","System MUST implement FakeProvider that implements adk_core::Llm, returning predetermined responses configured via ScenarioStep sequences.",null,null,null
+  add_requirement,r2,"scenario-orchestration","System MUST support orchestrating multi-step scenarios: text -> tool_call -> tool_result -> text, with configurable delays and error injection via ScenarioStep.",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  r1,happy,"FakeProvider is configured with a text-only ScenarioStep::Text",generate_content() is called,response stream yields a single LlmResponse containing the predetermined text
+  r1,"tool-call","FakeProvider is configured with ScenarioStep::ToolCall including preset name and args",generate_content() is called,"response contains Part::FunctionCall with the configured name and args"
+  r2,"multi-turn","FakeProvider is configured with a multi-turn scenario (text, tool_call, tool_result, text)",generate_content() is called across conversation turns,each call returns the expected step in order; tool_result steps are consumed without producing a response
+  r1,delay,"FakeProvider is configured with ScenarioStep::Delay(50ms) followed by text",generate_content() is called,call takes at least 50ms before returning the text response

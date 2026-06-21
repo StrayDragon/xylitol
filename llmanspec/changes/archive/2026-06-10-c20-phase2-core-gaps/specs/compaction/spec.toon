@@ -1,0 +1,12 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,c5,"branch-summary","When navigating to a session tree branch, System MUST generate an LLM-powered branch_summary entry using structured summary format (Goal, Constraints, Progress, Key Decisions, Next Steps, Critical Context), appending read_files and modified_files XML blocks. Falls back to plain-text stats when LLM unavailable.",null,null,null
+  add_requirement,c6,"branch-summary-budget","Branch summarization MUST apply a token budget (context_window minus reserve_tokens) and walk entries from newest to oldest, stopping when budget exceeded.",null,null,null
+  add_requirement,c7,"branch-summary-iterative","When generating branch_summary for a path that contains previous compaction or branch_summary entries, the system MUST preserve their summary content and update it iteratively with new messages.",null,null,null
+  add_requirement,c8,"bdd-compaction-v2",BDD tests under tests/features/compaction.feature for LLM branch_summary MUST all pass.,null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  c5,"llm-branch-summary",a branch with 10 entries is being left and LLM model is available,generate_branch_summary is called,structured summary with Goal and Progress and NextSteps sections is generated
+  c5,"fallback-plaintext",a branch with 5 entries is being left but no LLM model configured,generate_branch_summary is called,"plain-text fallback summary with entry counts and files is used"
+  c6,"budget-respected",context_window is 128000 and reserve_tokens is 16384 and entries contain 200000 tokens of messages,prepare_branch_entries is called,only the newest messages within token budget are included in the LLM prompt
+  c7,"iterative-update",a previous compaction summary exists and 5 new entries need summarization,generate_branch_summary is called,previous summary is preserved and new progress is added
+  c8,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all compaction-v2 scenarios pass"

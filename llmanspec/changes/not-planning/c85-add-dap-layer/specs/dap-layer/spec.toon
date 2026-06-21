@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r1,DapClientTrait,System MUST define DapClient trait with attach/set_breakpoints/continue/get_variables/get_stack_trace/disconnect methods as architecture placeholder.,null,null,null
+  add_requirement,r2,DapConfig,"System MUST provide YAML configuration entry (dap.enabled, dap.backends) for DAP backend selection.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r1,"trait-compile",dap feature flag is enabled,crate compiles,DapClient trait is defined with all required methods and compiles without external dap backend
+  r2,"config-parse","YAML config contains dap.enabled: false and dap.backends",application starts,dap config is parsed and backends are registered

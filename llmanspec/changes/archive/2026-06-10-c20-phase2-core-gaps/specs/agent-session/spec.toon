@@ -1,0 +1,29 @@
+kind: llman.sdd.delta
+ops[11]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,a9,"prompt-construction",AgentSession MUST dynamically construct messages using build_system_prompt that composes custom prompt plus project context files plus skill blocks with selected tools and guidelines per turn.,null,null,null
+  add_requirement,a11,"dynamic-system-prompt",AgentSession MUST rebuild the system prompt when active tool names change.,null,null,null
+  add_requirement,a12,"steer-queue",AgentSession MUST support steer(text) to queue an interrupting message delivered after current tool execution round completes.,null,null,null
+  add_requirement,a13,"followup-queue",AgentSession MUST support followUp(text) to queue a message delivered when agent has no pending tool calls or steering messages.,null,null,null
+  add_requirement,a14,"queue-visibility","AgentSession MUST expose get_steering_messages and get_followup_messages returning read-only arrays of pending messages plus clear_queue to drain both queues.",null,null,null
+  add_requirement,a15,"session-stats",AgentSession MUST expose get_session_stats returning user and assistant and tool counts plus token usage and cost and context usage.,null,null,null
+  add_requirement,a16,"change-tracking",AgentSession MUST persist ModelChangeEntry and ThinkingLevelChangeEntry whenever model or thinking level changes.,null,null,null
+  modify_requirement,a8,"session-persistence","AgentSession MUST auto-persist messages and change tracking entries to SessionManager after each turn and after tool execution.",null,null,null
+  add_requirement,a17,"custom-message",AgentSession MUST support send_custom_message for extensions to inject typed messages into session context.,null,null,null
+  add_requirement,a18,"next-turn-inject",AgentSession MUST support send_message_for_next_turn to prepend context before the next user prompt.,null,null,null
+  add_requirement,a19,"system-prompt-append",AgentSession MUST accept an optional append_system_prompt string appended to the base system prompt every turn.,null,null,null
+op_scenarios[15]{req_id,id,given,when,then}:
+  a9,"prompt-build",system prompt with context files and skills,agent starts a turn,messages array has system prompt with history and user message with skill blocks and project context
+  a11,"tools-change",active tools are read and bash,set_active_tools is called with read write edit,systemPrompt contains write and edit snippets and no longer has bash
+  a11,"snippet-inclusion",a tool has a prompt_snippet,system prompt is built,the snippet text appears in Available tools section
+  a12,"steer-streaming",agent is streaming a response,steer of check the logs is called,after current tool calls finish steer message appears before next LLM call
+  a13,"followup-done",agent has no pending operations,followUp of run tests is called,message is delivered immediately triggering a new turn
+  a13,"followup-delayed",agent is streaming,followUp of review is called,message waits until all tool calls and steer messages process then delivers
+  a14,"queue-read",steer and followUp queues have messages,get_steering_messages and get_followup_messages are called,pending messages are returned without modifying queues
+  a14,"clear-queue",queues have A and B steering plus C followUp,clear_queue is called,both queues empty and returned object has all messages
+  a15,"session-stats",a session with mixed messages is active,get_session_stats is called,userMessages and assistantMessages and toolCalls and tokens are all populated
+  a16,"model-persist",model is switched from gpt4o to claude,load session,ModelChangeEntry exists
+  a16,"thinking-persist",thinking level is toggled,load session,ThinkingLevelChangeEntry exists
+  a8,"auto-save-v2",a turn completes with model_change and messages,session is loaded from disk,ModelChangeEntry and message entries are all persisted in order
+  a17,"custom-msg",send_custom_message called with type artifact,session is loaded,CustomMessageEntry is present with correct type and content
+  a18,"next-turn",send_message_for_next_turn is called with a context note,next user prompt is sent,context note appears before the user message in the LLM request
+  a19,"append-prompt",append_system_prompt is set to a guideline,the system prompt is built,the guideline appears at the end of the base prompt
