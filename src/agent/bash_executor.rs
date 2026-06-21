@@ -84,10 +84,9 @@ pub async fn execute(command: &str, opts: BashExecutorOptions<'_>) -> BashResult
         };
     }
 
-    let shell = if is_executable("bash") { "bash" } else { "sh" };
-
-    let mut child = match Command::new(shell)
-        .arg("-c")
+    let shell_cfg = crate::infra::process::shell::find_bash(None);
+    let mut child = match Command::new(&shell_cfg.shell)
+        .args(&shell_cfg.args)
         .arg(command)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -189,16 +188,6 @@ async fn cancelled_event(cancel: &Option<CancellationToken>) -> () {
         Some(c) => c.cancelled().await,
         None => std::future::pending::<()>().await,
     }
-}
-
-fn is_executable(name: &str) -> bool {
-    std::process::Command::new("which")
-        .arg(name)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
 }
 
 /// Returns `(exclude_from_context, command_without_prefix)` for a `!`/`!!` line.
