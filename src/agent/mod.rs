@@ -15,6 +15,7 @@ pub mod provider;
 pub mod queue;
 pub mod retry;
 pub mod session;
+pub mod skill_manager;
 pub mod templates;
 pub mod tool_manager;
 pub mod tools;
