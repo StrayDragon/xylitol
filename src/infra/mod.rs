@@ -33,6 +33,9 @@ pub mod syntax;
 #[cfg(feature = "infra-platform")]
 pub mod browser;
 
+#[cfg(feature = "infra-sandbox")]
+pub mod sandbox;
+
 #[cfg(feature = "infra-platform")]
 pub mod changelog;
 

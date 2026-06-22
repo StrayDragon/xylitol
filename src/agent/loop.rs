@@ -27,6 +27,9 @@ use crate::agent::session::AgentSession;
 use crate::agent::traits::{ToolExecutionMode, XyModel, XyToolCtx};
 use crate::agent::types::{XyChunk, XyToolSchema};
 
+#[cfg(feature = "infra-sandbox")]
+use crate::infra::sandbox::SandboxVerdict;
+
 // ── AgentEvent ──────────────────────────────────────────────────────
 
 /// Events emitted during agent execution.
@@ -177,7 +180,39 @@ impl AgentLoop {
     }
 
     /// Run the agent loop with a user prompt.
+    #[allow(clippy::type_complexity)]
     pub async fn run(&mut self, prompt: &str, session_id: &str) -> AgentEventStream {
+        // Build sandbox check callback from session (no-op when infra-sandbox disabled)
+        let sandbox_check: Option<
+            std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>,
+        >;
+        #[cfg(feature = "infra-sandbox")]
+        {
+            let engine = self.session.get_sandbox_engine();
+            sandbox_check = Some(std::sync::Arc::new(
+                move |tool_name: &str, tool_path: &str| -> Option<String> {
+                    match tool_name {
+                        "read" => match engine.check_read(tool_path) {
+                            SandboxVerdict::Deny { reason } => Some(reason),
+                            _ => None,
+                        },
+                        "write" | "edit" => match engine.check_write(tool_path) {
+                            SandboxVerdict::Deny { reason } => Some(reason),
+                            _ => None,
+                        },
+                        "bash" => match engine.check_network(tool_path) {
+                            SandboxVerdict::Deny { reason } => Some(reason),
+                            _ => None,
+                        },
+                        _ => None,
+                    }
+                },
+            ));
+        }
+        #[cfg(not(feature = "infra-sandbox"))]
+        {
+            sandbox_check = None;
+        }
         // Ensure session exists
         let sid = session_id.to_string();
         self.session.set_session(sid.clone());
@@ -217,6 +252,7 @@ impl AgentLoop {
                 max_iterations: max_iterations as usize,
                 user_prompt: prompt,
                 cancel,
+                sandbox_check,
             }));
 
         AgentEventStream {
@@ -238,6 +274,10 @@ struct ReActConfig {
     max_iterations: usize,
     user_prompt: String,
     cancel: CancellationToken,
+    /// Optional sandbox check. Called with (tool_name, target_path_or_domain).
+    /// Returns Some(reason) if the operation is denied.
+    #[allow(clippy::type_complexity)]
+    sandbox_check: Option<std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>>,
 }
 
 // ── Core ReAct loop ─────────────────────────────────────────────────
@@ -251,6 +291,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
         max_iterations,
         user_prompt,
         cancel,
+        sandbox_check,
     } = cfg;
     async_stream::stream! {
         let mut history: Vec<AgentMessage> = Vec::new();
@@ -383,6 +424,28 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
                 let tool = tools.get(name);
                 let ctx = XyToolCtx::with_cancel(id, cancel.clone());
 
+                // ── Sandbox check ─────────────────────────────────
+                if let Some(ref check) = sandbox_check {
+                    let target = sandbox_target(name, args);
+                    if let Some(reason) = check(name, &target) {
+                        let err = format!("Tool '{name}' blocked by sandbox: {reason}");
+                        yield AgentEvent::ToolExecutionEnd {
+                            id: id.clone(),
+                            name: name.clone(),
+                            result: err.clone(),
+                        };
+                        history.push(AgentMessage::ToolResultMessage {
+                            tool_use_id: id.clone(),
+                            tool_name: name.clone(),
+                            content: vec![AgentPart::Text(err.clone())],
+                            details: None,
+                            is_error: true,
+                            timestamp: crate::agent::message::now_ms(),
+                        });
+                        continue;
+                    }
+                }
+
                 let result = match tool {
                     Some(t) => match t.execute(&ctx, args.clone()).await {
                         Ok(output) => output,
@@ -453,6 +516,42 @@ async fn call_with_retry(
 }
 
 use crate::agent::tools::ToolRegistry;
+
+/// Extract the sandbox-relevant target (path or domain) from tool arguments.
+fn sandbox_target(name: &str, args: &serde_json::Value) -> String {
+    match name {
+        "read" | "write" | "edit" => {
+            args.get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        }
+        "bash" => {
+            // Extract the first URL domain from the command, if any
+            args.get("command")
+                .and_then(|v| v.as_str())
+                .map(extract_first_domain)
+                .unwrap_or_default()
+        }
+        _ => String::new(),
+    }
+}
+
+/// Extract the first domain from a shell command containing a URL.
+fn extract_first_domain(command: &str) -> String {
+    // Look for common URL patterns: https://, http://, //
+    for word in command.split_whitespace() {
+        let word = word.trim_matches('\'').trim_matches('"');
+        if let Some(rest) = word.strip_prefix("https://")
+            .or_else(|| word.strip_prefix("http://"))
+        {
+            // Extract domain (stop at first /, :, or ?)
+            let domain = rest.split(['/', ':', '?']).next().unwrap_or(rest);
+            return domain.to_string();
+        }
+    }
+    String::new()
+}
 
 // ── AgentEventStream ────────────────────────────────────────────────
 

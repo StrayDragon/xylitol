@@ -474,8 +474,84 @@ fn default_max_disk() -> u64 {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct SandboxConfig {
+    /// Master toggle.
     #[serde(default)]
     pub enabled: bool,
+    /// Backend selection. "fallback" (app-level) is always available;
+    /// "landlock" requires Linux >=5.13; "macos" requires macOS.
+    /// Default: "fallback".
+    #[serde(default = "default_sandbox_backend")]
+    pub backend: SandboxBackend,
+    /// Filesystem sandbox rules.
+    #[serde(default)]
+    pub filesystem: SandboxFilesystemConfig,
+    /// Network sandbox rules (applied to bash URLs).
+    #[serde(default)]
+    pub network: SandboxNetworkConfig,
+    /// Process execution rules.
+    #[serde(default)]
+    pub process: SandboxProcessConfig,
+}
+
+#[cfg(feature = "infra-sandbox")]
+fn default_sandbox_backend() -> SandboxBackend {
+    SandboxBackend::Fallback
+}
+
+#[cfg(feature = "infra-sandbox")]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SandboxBackend {
+    /// Pure application-level pattern matching (default).
+    Fallback,
+    /// Linux Landlock LSM (requires kernel >=5.13).
+    Landlock,
+    /// macOS sandbox-init / Seatbelt.
+    MacOs,
+}
+
+#[cfg(feature = "infra-sandbox")]
+impl Default for SandboxBackend {
+    fn default() -> Self {
+        Self::Fallback
+    }
+}
+
+#[cfg(feature = "infra-sandbox")]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub struct SandboxFilesystemConfig {
+    /// Paths allowed for read. Empty = allow all.
+    #[serde(default)]
+    pub read_allowed: Vec<String>,
+    /// Paths denied for write. Write always denied when read_allowed is set
+    /// and path is not in read_allowed (default-deny).
+    #[serde(default)]
+    pub write_allowed: Vec<String>,
+    /// Paths explicitly denied for write (takes precedence over allowed).
+    #[serde(default)]
+    pub write_denied: Vec<String>,
+}
+
+#[cfg(feature = "infra-sandbox")]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub struct SandboxNetworkConfig {
+    /// Domains allowed for network requests. Empty = allow all.
+    #[serde(default)]
+    pub allowed_domains: Vec<String>,
+    /// Domains explicitly denied.
+    #[serde(default)]
+    pub denied_domains: Vec<String>,
+}
+
+#[cfg(feature = "infra-sandbox")]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub struct SandboxProcessConfig {
+    /// Paths where subprocess execution is allowed. Empty = allow all.
+    #[serde(default)]
+    pub allowed_paths: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
