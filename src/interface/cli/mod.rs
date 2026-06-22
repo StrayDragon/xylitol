@@ -233,6 +233,17 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         0.8,
         cwd,
     );
+    // ── Step 3c: initialize sandbox engine ────────────────────
+    #[cfg(feature = "infra-sandbox")]
+    if let Some(ref cfg) = app_config {
+        if let Some(ref sandbox_cfg) = cfg.security.sandbox {
+            if sandbox_cfg.enabled {
+                let engine = crate::infra::sandbox::build_engine(sandbox_cfg);
+                agent_session.set_sandbox_engine(Some(engine));
+            }
+        }
+    }
+
     agent_session.register_prompt_commands(&discovered_templates);
 
     timing::time("session.create");

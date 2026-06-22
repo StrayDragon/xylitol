@@ -11,6 +11,8 @@
 
 use std::sync::Arc;
 
+#[cfg(feature = "infra-sandbox")]
+use crate::infra::sandbox::{SandboxEngine, SandboxVerdict, noop_engine};
 use crate::agent::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::output_guard;
 use crate::agent::prompt::{self, SystemPromptOpts};
@@ -75,6 +77,10 @@ pub struct AgentSession {
     retry_state: Option<RetryState>,
     /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
     bash_cancel: Option<tokio_util::sync::CancellationToken>,
+
+    /// Sandbox engine for tool execution isolation.
+    #[cfg(feature = "infra-sandbox")]
+    sandbox_engine: Option<std::sync::Arc<dyn SandboxEngine>>,
 }
 
 impl AgentSession {
@@ -110,6 +116,8 @@ impl AgentSession {
             lifecycle_handle: None,
             retry_state: None,
             bash_cancel: None,
+            #[cfg(feature = "infra-sandbox")]
+            sandbox_engine: None,
         }
     }
 
@@ -957,6 +965,38 @@ References are relative to {escaped_base}.
                 exclude_from_context,
             })
             .await
+    }
+
+    /// Set the sandbox engine for tool execution isolation.
+    #[cfg(feature = "infra-sandbox")]
+    pub fn set_sandbox_engine(&mut self, engine: Option<std::sync::Arc<dyn SandboxEngine>>) {
+        self.sandbox_engine = engine;
+    }
+
+    /// Get a reference to the sandbox engine, or a no-op engine if not set.
+    #[cfg(feature = "infra-sandbox")]
+    pub fn get_sandbox_engine(&self) -> std::sync::Arc<dyn SandboxEngine> {
+        self.sandbox_engine
+            .clone()
+            .unwrap_or_else(noop_engine)
+    }
+
+    /// Check whether a file read is allowed by the sandbox.
+    #[cfg(feature = "infra-sandbox")]
+    pub fn check_sandbox_read(&self, path: &str) -> SandboxVerdict {
+        self.get_sandbox_engine().check_read(path)
+    }
+
+    /// Check whether a file write is allowed by the sandbox.
+    #[cfg(feature = "infra-sandbox")]
+    pub fn check_sandbox_write(&self, path: &str) -> SandboxVerdict {
+        self.get_sandbox_engine().check_write(path)
+    }
+
+    /// Check whether a network request is allowed by the sandbox.
+    #[cfg(feature = "infra-sandbox")]
+    pub fn check_sandbox_network(&self, domain: &str) -> SandboxVerdict {
+        self.get_sandbox_engine().check_network(domain)
     }
 
     /// Abort any in-flight bash execution.
