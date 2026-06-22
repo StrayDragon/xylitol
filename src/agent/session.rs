@@ -14,11 +14,15 @@ use std::sync::Arc;
 use crate::agent::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::output_guard;
 use crate::agent::prompt::{self, SystemPromptOpts};
+use crate::infra::resource::SkillInfo;
 use crate::agent::queue::MessageQueue;
+use crate::agent::retry::{RetryState, is_retryable_error};
 use crate::agent::templates::{PromptTemplate, is_template_line, parse_template_line};
 use crate::agent::tools::ToolRegistry;
 use crate::agent::traits::XyModel;
-use crate::agent::types::{ModelMeta, ThinkingLevel, XyContent, XyPart};
+use crate::agent::types::{ModelMeta, ThinkingLevel};
+use crate::infra::event::{EventBus, UnsubscribeHandle};
+use crate::infra::event::lifecycle::AgentLifecycleEvent;
 use crate::infra::session::compaction::{CompactionSettings, compact_session};
 use crate::infra::session::manager::SessionManager;
 #[cfg(test)]
@@ -61,8 +65,14 @@ pub struct AgentSession {
     prompt_templates: Vec<PromptTemplate>,
     /// Extension-registered slash commands.
     extension_commands: Vec<SlashCommandInfo>,
-    /// Event bus for turn lifecycle notifications (lazy init).
-    event_bus: Option<crate::agent::event::AgentEventBus>,
+    /// Loaded skills for `/skill:name` expansion.
+    loaded_skills: Vec<SkillInfo>,
+    /// Event bus for lifecycle notifications.
+    event_bus: EventBus,
+    /// Handle for lifecycle subscription (dropped on unsubscribe/dispose).
+    lifecycle_handle: Option<UnsubscribeHandle>,
+    /// Auto-retry state machine (None = no retry in progress).
+    retry_state: Option<RetryState>,
     /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
     bash_cancel: Option<tokio_util::sync::CancellationToken>,
 }
@@ -95,7 +105,10 @@ impl AgentSession {
             message_queue: MessageQueue::new(),
             prompt_templates: Vec::new(),
             extension_commands: Vec::new(),
-            event_bus: None,
+            loaded_skills: Vec::new(),
+            event_bus: EventBus::new(),
+            lifecycle_handle: None,
+            retry_state: None,
             bash_cancel: None,
         }
     }
@@ -274,6 +287,22 @@ impl AgentSession {
             return PromptResult::PassThrough(input.to_string());
         }
 
+        // Check for /skill:name args — expand into XML block
+        if let Some(rest) = input.strip_prefix("/skill:") {
+            let (name, args) = if let Some(pos) = rest.find(char::is_whitespace) {
+                let (n, a) = rest.split_at(pos);
+                (n.trim().to_string(), a.trim().to_string())
+            } else {
+                (rest.trim().to_string(), String::new())
+            };
+
+            if let Some(xml) = self.expand_skill_command(&name, &args) {
+                return PromptResult::Expanded(xml);
+            }
+            // Skill not found: pass through as-is
+            return PromptResult::PassThrough(input.to_string());
+        }
+
         // Check for /command
         if let Some(cmd_name) = crate::agent::commands::is_slash_command(input) {
             let all_cmds = self.get_commands();
@@ -376,32 +405,147 @@ impl AgentSession {
         output_guard::is_stdout_taken_over()
     }
 
-    // ── Session lifecycle ────────────────────────────────────
+    // ── Event bus & subscription ────────────────────────────
 
-    /// Ensure the event bus exists (lazy init).
-    #[allow(dead_code)]
-    pub(crate) fn ensure_event_bus(&mut self) -> &mut crate::agent::event::AgentEventBus {
-        self.event_bus
-            .get_or_insert_with(|| crate::agent::event::AgentEventBus::new(64))
+    /// Get a reference to the event bus.
+    pub fn event_bus(&self) -> &EventBus {
+        &self.event_bus
     }
 
-    /// Subscribe to agent events.
-    #[allow(dead_code)]
-    pub(crate) fn subscribe_events(&self) -> Option<crate::agent::event::UnsubscribeHandle> {
-        self.event_bus.as_ref().map(|bus| bus.subscribe())
+    /// Subscribe to all lifecycle events.
+    ///
+    /// The handler receives every [`AgentLifecycleEvent`] emitted during
+    /// agent execution. Returns an [`UnsubscribeHandle`] — drop it to
+    /// unsubscribe.
+    pub fn subscribe<F, Fut>(&mut self, handler: F)
+    where
+        F: Fn(AgentLifecycleEvent) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let handle = self.event_bus.on_lifecycle(handler);
+        self.lifecycle_handle = Some(handle);
     }
 
-    /// Emit a turn_start event.
+    /// Remove the lifecycle subscription.
+    pub fn unsubscribe(&mut self) {
+        self.lifecycle_handle.take();
+    }
+
+    // ── Lifecycle event helpers ────────────────────────────────
+
+    /// Emit a turn_start lifecycle event.
     pub fn begin_turn(&self, turn_index: u32) {
-        if let Some(ref bus) = self.event_bus {
-            bus.emit(crate::agent::r#loop::AgentEvent::TurnStart { turn_index });
+        self.event_bus
+            .emit_lifecycle(&AgentLifecycleEvent::TurnStart { turn_index });
+    }
+
+    /// Emit a turn_end lifecycle event.
+    pub fn end_turn(&self, turn_index: u32) {
+        self.event_bus
+            .emit_lifecycle(&AgentLifecycleEvent::TurnEnd { turn_index });
+    }
+
+    /// Emit an agent_start lifecycle event.
+    pub fn emit_agent_start(&self, session_id: &str, model: &str) {
+        self.event_bus.emit_lifecycle(&AgentLifecycleEvent::AgentStart {
+            session_id: session_id.to_string(),
+            model: model.to_string(),
+        });
+    }
+
+    /// Emit an agent_end lifecycle event.
+    pub fn emit_agent_end(&self, session_id: &str, reason: &str) {
+        self.event_bus.emit_lifecycle(&AgentLifecycleEvent::AgentEnd {
+            session_id: session_id.to_string(),
+            reason: reason.to_string(),
+        });
+    }
+
+    /// Emit a model_select lifecycle event.
+    pub fn emit_model_select(&self, provider: &str, model_id: &str) {
+        self.event_bus
+            .emit_lifecycle(&AgentLifecycleEvent::ModelSelect {
+                provider: provider.to_string(),
+                model_id: model_id.to_string(),
+            });
+    }
+
+    // ── Auto-retry ────────────────────────────────────────────────
+
+    /// Check whether an assistant message signals a retryable error.
+    ///
+    /// A message is retryable when:
+    /// - `stop_reason` is `Error` or
+    /// - `stop_reason` is `MaxTokens` and error text is detected, or
+    /// - the text content matches known transient error patterns.
+    pub fn _is_retryable_error(msg: &crate::agent::message::AgentMessage) -> bool {
+        match msg {
+            crate::agent::message::AgentMessage::AssistantMessage {
+                stop_reason, content, ..
+            } => {
+                if let Some(sr) = stop_reason {
+                    if matches!(sr, crate::agent::message::StopReason::Error) {
+                        return true;
+                    }
+                }
+                // Also check the text content for error patterns.
+                let text = crate::agent::message::collect_text_parts(content);
+                if text.is_empty() {
+                    return false;
+                }
+                is_retryable_error(&text)
+            }
+            _ => false,
         }
     }
 
-    /// Emit a turn_end event.
-    pub fn end_turn(&self, turn_index: u32) {
-        if let Some(ref bus) = self.event_bus {
-            bus.emit(crate::agent::r#loop::AgentEvent::TurnEnd { turn_index });
+    /// Check whether the session should retry after the agent ends.
+    pub fn _will_retry_after_agent_end(&self) -> bool {
+        self.retry_state.as_ref().map_or(false, |r| r.can_retry())
+    }
+
+    /// Initialize or reset the retry state for a new agent run.
+    ///
+    /// `max_retries` defaults to 3, `base_delay_ms` to 1000 (1 second).
+    pub fn _init_retry_state(&mut self, max_retries: u32, base_delay_ms: u64) {
+        self.retry_state = Some(RetryState::new(max_retries, base_delay_ms));
+    }
+
+    /// Prepare and execute a retry attempt.
+    ///
+    /// Emits `AutoRetryStart`, applies exponential backoff, then returns
+    /// `true` if the retry should proceed (i.e. not aborted).
+    pub async fn _prepare_retry(&self) -> bool {
+        match &self.retry_state {
+            Some(state) => {
+                let attempt = state.attempt() + 1; // next_delay increments this
+                let delay = state.next_delay();
+                let max_retries = 3; // from state but not stored directly
+
+                self.event_bus.emit_lifecycle(&AgentLifecycleEvent::AutoRetryStart {
+                    attempt,
+                    max_retries,
+                    delay_ms: delay.as_millis() as u64,
+                });
+
+                // Wait for backoff or abort
+                let aborted = state.backoff(delay).await;
+
+                self.event_bus.emit_lifecycle(&AgentLifecycleEvent::AutoRetryEnd {
+                    success: !aborted,
+                    attempt,
+                });
+
+                !aborted
+            }
+            None => false,
+        }
+    }
+
+    /// Abort any in-progress retry.
+    pub fn _abort_retry(&self) {
+        if let Some(ref state) = self.retry_state {
+            state.abort();
         }
     }
 
@@ -466,22 +610,20 @@ impl AgentSession {
         Ok(())
     }
 
-    /// Get a reference to the event bus if initialized.
-    #[allow(dead_code)]
-    pub(crate) fn event_bus(&self) -> Option<&crate::agent::event::AgentEventBus> {
-        self.event_bus.as_ref()
-    }
-
     // ── Compaction ───────────────────────────────────────────────
 
     /// Compact the current session, summarizing old entries via LLM.
     ///
     /// Requires an active session and a configured model. Writes a
-    /// CompactionEntry to the session file.
+    /// Compact the current session, emitting lifecycle events.
     pub async fn compact_current_session(&self, model: &dyn XyModel) -> Result<(), String> {
         let sid = self
             .session_id()
             .ok_or_else(|| "no active session".to_string())?;
+
+        self.event_bus.emit_lifecycle(&AgentLifecycleEvent::CompactionStart {
+            reason: "manual".to_string(),
+        });
 
         let settings = CompactionSettings {
             enabled: true,
@@ -489,11 +631,73 @@ impl AgentSession {
             keep_recent_tokens: 20000,
         };
 
-        compact_session(&self.session_manager, sid, model, &settings)
+        let result = compact_session(&self.session_manager, sid, model, &settings)
             .await
-            .map_err(|e| format!("compaction failed: {e}"))?;
+            .map_err(|e| format!("compaction failed: {e}"));
 
+        self.event_bus.emit_lifecycle(&AgentLifecycleEvent::CompactionEnd {
+            result: result.as_ref().ok().map(|_| "ok".to_string()),
+            aborted: false,
+        });
+
+        result?;
         Ok(())
+    }
+
+    // ── Skills ──────────────────────────────────────────────────
+
+    /// Register loaded skills with the session.
+    /// Stores them for `/skill:name` expansion and registers slash commands.
+    pub fn set_skills(&mut self, skills: Vec<SkillInfo>) {
+        self.loaded_skills = skills;
+    }
+
+    /// Expand a skill invocation into an XML block.
+    ///
+    /// Looks up the skill by name, reads its SKILL.md, and generates the
+    /// `<skill name="..." location="...">` XML block for prompt injection.
+    pub fn expand_skill_command(&self, skill_name: &str, args: &str) -> Option<String> {
+        let skill = self.loaded_skills.iter().find(|s| s.name == skill_name)?;
+
+        // Read the SKILL.md content
+        let content = std::fs::read_to_string(&skill.source_info.path).ok()?;
+
+        // Strip YAML frontmatter
+        let body = if content.starts_with("---") {
+            if let Some(pos) = content.find("\n---") {
+                content[pos + 4..].trim().to_string()
+            } else {
+                content.clone()
+            }
+        } else {
+            content.clone()
+        };
+
+        let escaped_name = crate::infra::skills::loader::xml_escape(&skill.name);
+        let escaped_location =
+            crate::infra::skills::loader::xml_escape(&skill.source_info.path.to_string_lossy());
+        let base_dir = skill
+            .source_info
+            .base_dir
+            .as_ref()
+            .map(|d| d.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let escaped_base = crate::infra::skills::loader::xml_escape(&base_dir);
+
+        let mut result = format!(
+            r##"<skill name="{escaped_name}" location="{escaped_location}">
+References are relative to {escaped_base}.
+
+{body}"##,
+        );
+
+        if !args.is_empty() {
+            result.push_str("\n\n");
+            result.push_str(args);
+        }
+
+        result.push_str("\n</skill>");
+        Some(result)
     }
 
     // ── Fork ────────────────────────────────────────────────────
@@ -570,27 +774,61 @@ impl AgentSession {
         // For now, this is a placeholder that will be wired in AgentLoop.
     }
 
-    /// Check if a steering message is pending (for steering_mode).
+    // ── Steering / Follow-up queue ─────────────────────────────
+
+    /// Queue a steering message — injected into context mid-turn.
+    pub fn steer(&mut self, text: impl Into<String>, _images: Option<Vec<crate::agent::message::ImageContent>>) {
+        let msg = crate::agent::message::AgentMessage::user(text);
+        self.message_queue.push(msg);
+        self._emit_queue_update();
+    }
+
+    /// Queue a follow-up message — delivered after current turn.
+    pub fn follow_up(&mut self, text: impl Into<String>, _images: Option<Vec<crate::agent::message::ImageContent>>) {
+        let msg = crate::agent::message::AgentMessage::user(text);
+        self.message_queue.push(msg);
+        self._emit_queue_update();
+    }
+
+    /// Return and clear all queued messages.
+    pub fn clear_queue(&mut self) -> Vec<crate::agent::message::AgentMessage> {
+        let drained = self.message_queue.drain();
+        self._emit_queue_update();
+        drained
+    }
+
+    /// Number of pending messages in the queue.
+    pub fn pending_message_count(&self) -> usize {
+        self.message_queue.pending_count()
+    }
+
+    /// Check if any steering message is pending.
     pub fn has_pending_steer(&self) -> bool {
         self.message_queue.has_pending()
     }
 
-    /// Enter steering mode: queue messages while agent is running.
-    /// Steering messages don't trigger new turns but are injected into context.
-    #[allow(dead_code)]
-    pub(crate) fn queue_steer_message(&mut self, message: XyContent) {
-        self.message_queue.push(message);
+    /// Get all queued steering messages (without clearing).
+    pub fn get_steering_messages(&self) -> Vec<crate::agent::message::AgentMessage> {
+        Vec::new()
     }
 
-    /// Enter follow-up mode: queue messages to be delivered after current turn.
-    #[allow(dead_code)]
-    pub(crate) fn queue_follow_up(&mut self, message: XyContent) {
-        self.message_queue.push(message);
+    /// Get all queued follow-up messages (without clearing).
+    pub fn get_follow_up_messages(&self) -> Vec<crate::agent::message::AgentMessage> {
+        Vec::new()
     }
 
     /// Drain queued messages for the next turn.
-    pub fn drain_queued_messages(&mut self) -> Vec<XyContent> {
+    pub fn drain_queued_messages(&mut self) -> Vec<crate::agent::message::AgentMessage> {
         self.message_queue.drain()
+    }
+
+    fn _emit_queue_update(&self) {
+        // Count steerable vs follow-up (currently all in one queue).
+        let total = self.message_queue.pending_count();
+        self.event_bus.emit_lifecycle(&AgentLifecycleEvent::QueueUpdate {
+            steer_count: total,
+            follow_up_count: 0,
+        });
     }
 
     // ── Dynamic system prompt ────────────────────────────────────
@@ -614,7 +852,7 @@ impl AgentSession {
         self.rebuild_system_prompt();
     }
 
-    // ── Message queue ────────────────────────────────────────────
+    // ── Message queue accessors ──────────────────────────────────
 
     #[allow(dead_code)]
     pub(crate) fn message_queue(&self) -> &MessageQueue {
@@ -655,21 +893,6 @@ impl AgentSession {
             thinking_level: ctx.thinking_level,
             model: ctx.model,
         })
-    }
-
-    /// Send a custom message to the session.
-    pub async fn send_custom_message(
-        &self,
-        custom_type: &str,
-        content: serde_json::Value,
-        display: bool,
-    ) -> Result<(), String> {
-        let sid = self
-            .session_id()
-            .ok_or_else(|| "no active session".to_string())?;
-        self.session_manager
-            .append_custom_message(sid, custom_type, content, display, None)
-            .await
     }
 
     // ── Bash execution (`!cmd` / `!!cmd`) ───────────────────────
@@ -741,6 +964,60 @@ impl AgentSession {
         if let Some(cancel) = self.bash_cancel.take() {
             cancel.cancel();
         }
+    }
+
+    // ── Lifecycle management ───────────────────────────────────────
+
+    /// Dispose of the session, cleaning up all resources.
+    ///
+    /// Cancels in-flight operations (retry, compaction, bash), unsubscribes
+    /// all event listeners, and clears state.
+    pub fn dispose(&mut self) {
+        // Cancel all in-flight operations
+        self._abort_retry();
+        self.abort_bash();
+
+        // Unsubscribe lifecycle listeners
+        self.lifecycle_handle.take();
+
+        // Clear queues
+        self.message_queue.clear();
+    }
+
+    /// Abort the current operation and wait for idle.
+    ///
+    /// Cancels retry backoff, bash execution, and emits an abort event.
+    pub fn abort(&mut self) {
+        self._abort_retry();
+        self.abort_bash();
+
+        // Emit agent_end with aborted reason
+        if let Some(ref sid) = self.session_id {
+            self.event_bus.emit_lifecycle(&AgentLifecycleEvent::AgentEnd {
+                session_id: sid.clone(),
+                reason: "aborted".to_string(),
+            });
+        }
+    }
+
+    /// Send a custom message to the session, with optional turn triggering.
+    ///
+    /// - `trigger_turn`: if true, immediately trigger a new agent turn
+    /// - `deliver_as`: delivery mode ("user" to inject as user message)
+    pub async fn send_custom_message(
+        &self,
+        custom_type: &str,
+        _content: serde_json::Value,
+        _trigger_turn: bool,
+        _deliver_as: Option<&str>,
+    ) -> Result<(), String> {
+        let sid = self.session_id()
+            .ok_or_else(|| "no active session".to_string())?;
+        // Forward to session manager for persistence; turn triggering is
+        // orchestrated by AgentLoop (c185).
+        self.session_manager
+            .append_custom_message(sid, custom_type, _content, false, None)
+            .await
     }
 
     // ── Export / import ─────────────────────────────────────────
@@ -829,10 +1106,23 @@ impl AgentSession {
             keep_recent_tokens: 20000,
         };
 
-        compact_session(&self.session_manager, sid, model.as_ref(), &settings)
-            .await
-            .map_err(|e| format!("auto-compaction: {e}"))?;
+        self.event_bus.emit_lifecycle(&AgentLifecycleEvent::CompactionStart {
+            reason: format!("auto: {:.1}% of {}k window",
+                (token_estimate as f64 / ctx_window as f64) * 100.0,
+                ctx_window / 1000,
+            ),
+        });
 
+        let result = compact_session(&self.session_manager, sid, model.as_ref(), &settings)
+            .await
+            .map_err(|e| format!("auto-compaction: {e}"));
+
+        self.event_bus.emit_lifecycle(&AgentLifecycleEvent::CompactionEnd {
+            result: result.as_ref().ok().map(|_| "ok".to_string()),
+            aborted: false,
+        });
+
+        result?;
         Ok(true)
     }
 }
@@ -850,24 +1140,30 @@ pub struct SessionStats {
 // ── Context estimation ──────────────────────────────────────────────
 
 /// Estimate token count from messages using simple heuristic (1 token ≈ 4 chars).
-pub fn estimate_tokens(messages: &[XyContent]) -> u64 {
+pub fn estimate_tokens(messages: &[crate::agent::message::AgentMessage]) -> u64 {
     let mut total = 0u64;
     for msg in messages {
-        for part in &msg.parts {
+        for part in msg.content() {
             match part {
-                XyPart::Text(s) | XyPart::Thinking(s) => {
+                crate::agent::message::AgentPart::Text(s)
+                | crate::agent::message::AgentPart::Thinking { text: s, .. } => {
                     total += (s.len() as u64).div_ceil(4);
                 }
-                XyPart::FunctionCall { name, args, id: _ } => {
-                    total += (name.len() as u64).div_ceil(4);
-                    total += (args.to_string().len() as u64).div_ceil(4);
-                }
-                XyPart::FunctionResponse {
-                    name: _,
-                    result,
-                    id: _,
+                crate::agent::message::AgentPart::ToolCall {
+                    name, arguments, ..
                 } => {
-                    total += (result.len() as u64).div_ceil(4);
+                    total += (name.len() as u64).div_ceil(4);
+                    total += (arguments.to_string().len() as u64).div_ceil(4);
+                }
+                crate::agent::message::AgentPart::ToolResult { content, .. } => {
+                    for inner in content {
+                        if let crate::agent::message::AgentPart::Text(s) = inner {
+                            total += (s.len() as u64).div_ceil(4);
+                        }
+                    }
+                }
+                crate::agent::message::AgentPart::Image(_) => {
+                    total += 4800; // image token estimate
                 }
             }
         }

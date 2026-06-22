@@ -238,6 +238,14 @@ impl AppConfig {
             display_name: model_id.to_string(),
             thinking,
             context_window,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
         })
     }
 

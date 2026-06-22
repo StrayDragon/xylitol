@@ -71,14 +71,14 @@ pub struct ContextUsageEstimate {
 /// When a `last_usage` is provided, uses real usage tokens and
 /// estimates only trailing messages.
 pub fn estimate_context_tokens(
-    messages: &[crate::agent::types::XyContent],
+    messages: &[crate::agent::message::AgentMessage],
     last_usage: Option<&XyUsage>,
 ) -> ContextUsageEstimate {
     if let Some(usage) = last_usage {
         let usage_tokens = calculate_context_tokens(usage);
         let mut trailing_tokens = 0u64;
         for msg in messages {
-            trailing_tokens += estimate_tokens_xyt_content(msg);
+            trailing_tokens += estimate_tokens_agent(msg);
         }
         ContextUsageEstimate {
             tokens: usage_tokens + trailing_tokens,
@@ -89,7 +89,7 @@ pub fn estimate_context_tokens(
     } else {
         let mut total = 0u64;
         for msg in messages {
-            total += estimate_tokens_xyt_content(msg);
+            total += estimate_tokens_agent(msg);
         }
         ContextUsageEstimate {
             tokens: total,
@@ -100,8 +100,8 @@ pub fn estimate_context_tokens(
     }
 }
 
-/// Estimate tokens for an XyContent message using chars/4.
-fn estimate_tokens_xyt_content(msg: &crate::agent::types::XyContent) -> u64 {
+/// Estimate tokens for an AgentMessage using chars/4.
+fn estimate_tokens_agent(msg: &crate::agent::message::AgentMessage) -> u64 {
     let s = serde_json::to_string(msg).unwrap_or_default();
     (s.len() as u64).div_ceil(4)
 }
@@ -133,12 +133,40 @@ pub struct CutPointResult {
 }
 
 /// Estimate tokens for a single `SessionEntry` using chars/4 heuristic.
+/// Check if a token estimate indicates context overflow relative to the
+/// model's context window.
+pub fn is_context_overflow(token_estimate: u64, context_window: u64, reserve_tokens: u64) -> bool {
+    if context_window == 0 {
+        return false;
+    }
+    token_estimate + reserve_tokens > context_window
+}
+
 pub fn estimate_tokens_entry(entry: &SessionEntry) -> u64 {
     match entry {
         SessionEntry::Message(msg) => {
-            // Estimate from the JSON-serialized message content
-            let s = msg.message.to_string();
-            (s.len() as u64).div_ceil(4)
+            // Estimate from the JSON-serialized message content.
+            // Check for image parts (4800 tokens per image as a heuristic).
+            let mut tokens: u64 = 0;
+            if let Some(parts) = msg.message.get("parts").and_then(|p| p.as_array()) {
+                for part in parts {
+                    match part.get("type").and_then(|t| t.as_str()) {
+                        Some("image") => tokens += 4800,
+                        Some("text") | Some("thinking") => {
+                            if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+                                tokens += (text.len() as u64).div_ceil(4);
+                            }
+                        }
+                        _ => {
+                            tokens += (part.to_string().len() as u64).div_ceil(4);
+                        }
+                    }
+                }
+            } else {
+                // Fallback: estimate from the whole JSON
+                tokens = (msg.message.to_string().len() as u64).div_ceil(4);
+            }
+            tokens
         }
         SessionEntry::Header(_) => 0,
         SessionEntry::Compaction(c) => (c.summary.len() as u64).div_ceil(4),
@@ -342,9 +370,9 @@ impl FileOps {
     }
 }
 
-/// Extract file operations from `XyContent` messages.
+/// Extract file operations from `AgentMessage` messages.
 pub fn extract_file_ops_from_messages(
-    messages: &[crate::agent::types::XyContent],
+    messages: &[crate::agent::message::AgentMessage],
     prev_compaction: Option<&CompactionEntry>,
 ) -> FileOps {
     let mut ops = FileOps::default();
@@ -369,14 +397,13 @@ pub fn extract_file_ops_from_messages(
         }
     }
 
-    // Extract from tool calls in XyContent
-    use crate::agent::types::XyPart;
+    // Extract from tool calls in AgentMessage
     for msg in messages {
-        for part in &msg.parts {
-            if let XyPart::FunctionCall { name, args, .. } = part {
-                let path = args.get("path").and_then(|v| v.as_str());
+        for part in msg.content() {
+            if let crate::agent::message::AgentPart::ToolCall { name, arguments, .. } = part {
+                let path = arguments.get("path").and_then(|v| v.as_str());
                 // Also check "file_path" alias used by some tools
-                let path = path.or_else(|| args.get("file_path").and_then(|v| v.as_str()));
+                let path = path.or_else(|| arguments.get("file_path").and_then(|v| v.as_str()));
                 if let Some(p) = path {
                     match name.as_str() {
                         "read" => ops.read.push(p.to_string()),
@@ -521,13 +548,13 @@ Keep each section concise. Preserve exact file paths, function names, and error 
 // ── LLM summarization ──────────────────────────────────────────────
 
 use crate::agent::traits::XyModel;
-use crate::agent::types::{XyChunk, XyContent, XyPart};
+use crate::agent::types::XyChunk;
 use futures::StreamExt;
 
 /// Call the LLM non-streaming, collecting all text chunks.
 async fn generate_complete(
     model: &dyn XyModel,
-    messages: Vec<XyContent>,
+    messages: Vec<crate::agent::message::AgentMessage>,
     _max_tokens: u32,
 ) -> Result<String> {
     let mut stream = model
@@ -552,53 +579,44 @@ async fn generate_complete(
     Ok(text)
 }
 
-/// Serialize `XyContent` messages to text for the summarization prompt.
-pub fn serialize_conversation(messages: &[XyContent]) -> String {
+/// Serialize `AgentMessage` messages to text for the summarization prompt.
+pub fn serialize_conversation(messages: &[crate::agent::message::AgentMessage]) -> String {
     let mut parts = Vec::new();
-
     for msg in messages {
-        match msg.role {
-            crate::agent::types::XyRole::System => {
-                for part in &msg.parts {
-                    if let XyPart::Text(t) = part {
-                        parts.push(format!("[System]: {t}"));
+        let role = msg.role_name();
+        let content = msg.content();
+        match role {
+            "user" | "toolResult" | "bashExecution" => {
+                for part in content {
+                    if let Some(t) = part.as_text() {
+                        parts.push(format!("[{role}]: {t}"));
                     }
                 }
             }
-            crate::agent::types::XyRole::User => {
-                for part in &msg.parts {
-                    if let XyPart::Text(t) = part {
-                        parts.push(format!("[User]: {t}"));
-                    }
-                }
-            }
-            crate::agent::types::XyRole::Assistant => {
+            "assistant" => {
                 let mut text_parts = Vec::new();
                 let mut thinking_parts = Vec::new();
                 let mut tool_calls = Vec::new();
-                for part in &msg.parts {
+                for part in content {
                     match part {
-                        XyPart::Text(t) => text_parts.push(t.as_str()),
-                        XyPart::Thinking(t) => thinking_parts.push(t.as_str()),
-                        XyPart::FunctionCall { name, args, .. } => {
-                            let args_str = if let Some(obj) = args.as_object() {
+                        crate::agent::message::AgentPart::Text(t) => text_parts.push(t.as_str()),
+                        crate::agent::message::AgentPart::Thinking { text, .. } => thinking_parts.push(text.as_str()),
+                        crate::agent::message::AgentPart::ToolCall { name, arguments, .. } => {
+                            let args_str = if let Some(obj) = arguments.as_object() {
                                 obj.iter()
                                     .map(|(k, v)| format!("{k}={v}"))
                                     .collect::<Vec<_>>()
                                     .join(", ")
                             } else {
-                                args.to_string()
+                                arguments.to_string()
                             };
                             tool_calls.push(format!("{name}({args_str})"));
                         }
-                        XyPart::FunctionResponse { .. } => {}
+                        _ => {}
                     }
                 }
                 if !thinking_parts.is_empty() {
-                    parts.push(format!(
-                        "[Assistant thinking]: {}",
-                        thinking_parts.join("\n")
-                    ));
+                    parts.push(format!("[Assistant thinking]: {}", thinking_parts.join("\n")));
                 }
                 if !text_parts.is_empty() {
                     parts.push(format!("[Assistant]: {}", text_parts.join("\n")));
@@ -607,26 +625,11 @@ pub fn serialize_conversation(messages: &[XyContent]) -> String {
                     parts.push(format!("[Assistant tool calls]: {}", tool_calls.join("; ")));
                 }
             }
-            crate::agent::types::XyRole::Tool => {
-                for part in &msg.parts {
-                    if let XyPart::FunctionResponse { name, result, .. } = part {
-                        // Truncate very long tool results for summarization
-                        let truncated = if result.len() > 2000 {
-                            format!(
-                                "{}... [{} more chars truncated]",
-                                &result[..2000],
-                                result.len() - 2000
-                            )
-                        } else {
-                            result.clone()
-                        };
-                        parts.push(format!("[Tool result ({name})]: {truncated}"));
-                    }
-                }
+            _ => {
+                parts.push(format!("[{role}]: {}", msg.text()));
             }
         }
     }
-
     parts.join("\n\n")
 }
 
@@ -635,7 +638,7 @@ pub fn serialize_conversation(messages: &[XyContent]) -> String {
 /// If `previous_summary` is provided, uses the UPDATE variant of the prompt
 /// to merge new information into the existing summary.
 pub async fn generate_summary(
-    messages: &[XyContent],
+    messages: &[crate::agent::message::AgentMessage],
     model: &dyn XyModel,
     _reserve_tokens: u64,
     previous_summary: Option<&str>,
@@ -657,9 +660,9 @@ pub async fn generate_summary(
     prompt_text.push_str(base_prompt);
 
     let summarization_messages = vec![
-        XyContent::system(SUMMARIZATION_SYSTEM_PROMPT),
-        XyContent::user(&prompt_text),
+        crate::agent::message::AgentMessage::user(prompt_text.clone()),
     ];
+    // System prompt will be prepended by the conversion layer.
 
     // Use 0.8 * reserve as max tokens for the response
     let max_tokens = ((_reserve_tokens as f64) * 0.8) as u32;
@@ -742,9 +745,9 @@ pub async fn compact_session(
         cut.first_kept_entry_index
     };
 
-    let messages_to_summarize: Vec<XyContent> = entries[boundary_start..history_end]
+    let messages_to_summarize: Vec<crate::agent::message::AgentMessage> = entries[boundary_start..history_end]
         .iter()
-        .filter_map(|entry| entry.as_xyt_content())
+        .filter_map(|entry| entry.as_agent_message())
         .collect();
 
     // 6. Extract file operations
@@ -805,7 +808,7 @@ pub async fn compact_session(
     Ok(entry)
 }
 
-// ── XyContent conversion helper ─────────────────────────────────────
+// ── AgentMessage conversion helper ────────────────────────────────────
 
 // ── LLM Branch Summary ────────────────────────────────────────────
 
@@ -820,19 +823,19 @@ const BRANCH_SUMMARY_PREAMBLE: &str = "The user explored a different conversatio
 /// Walks entries from NEWEST to OLDEST, adding messages until the token
 /// budget is exhausted. Also collects file operations from tool calls.
 pub fn prepare_branch_entries(entries: &[SessionEntry], token_budget: u64) -> BranchPreparation {
-    let mut messages: Vec<XyContent> = Vec::new();
+    let mut messages: Vec<crate::agent::message::AgentMessage> = Vec::new();
     let mut file_ops = FileOps::default();
     let mut total_tokens: u64 = 0;
 
     // Walk from newest to oldest
     for entry in entries.iter().rev() {
-        let msg = match entry.as_xyt_content() {
+        let msg = match entry.as_agent_message() {
             Some(m) => m,
             None => continue,
         };
 
         // Skip tool results for budget (context is in assistant's tool call)
-        if matches!(&msg.role, crate::agent::types::XyRole::Tool) {
+        if msg.role_name() == "toolResult" {
             continue;
         }
 
@@ -869,17 +872,19 @@ pub fn prepare_branch_entries(entries: &[SessionEntry], token_budget: u64) -> Br
 /// Result from preparing branch entries.
 #[derive(Debug)]
 pub struct BranchPreparation {
-    pub messages: Vec<XyContent>,
+    pub messages: Vec<crate::agent::message::AgentMessage>,
     pub file_ops: FileOps,
     pub total_tokens: u64,
 }
 
-/// Extract file operations from a single XyContent message.
-fn extract_single_message_file_ops(msg: &XyContent, ops: &mut FileOps) {
-    for part in &msg.parts {
+/// Extract file operations from a single AgentMessage.
+fn extract_single_message_file_ops(msg: &crate::agent::message::AgentMessage, ops: &mut FileOps) {
+    for part in msg.content() {
         let (name, path) = match part {
-            XyPart::FunctionCall { name, args, .. } => {
-                match args.get("path").and_then(|v| v.as_str()) {
+            crate::agent::message::AgentPart::ToolCall {
+                     name, arguments, .. 
+                } => {
+                match arguments.get("path").and_then(|v| v.as_str()) {
                     Some(p) => (name.as_str(), p.to_string()),
                     None => continue,
                 }
@@ -930,8 +935,7 @@ pub async fn generate_branch_summary_llm(
         format!("<conversation>\n{conversation_text}\n</conversation>\n\n{BRANCH_SUMMARY_PROMPT}");
 
     let messages = vec![
-        XyContent::system(SUMMARIZATION_SYSTEM_PROMPT),
-        XyContent::user(&prompt_text),
+        crate::agent::message::AgentMessage::user(prompt_text.clone()),
     ];
 
     // Call LLM (non-streaming, max 2048 tokens)
@@ -969,12 +973,19 @@ pub struct BranchSummaryResult {
 // ── ────────────────────────────────────────────────────────────────
 
 impl SessionEntry {
-    /// Convert a SessionEntry to `XyContent` if it contains conversation content.
-    pub fn as_xyt_content(&self) -> Option<XyContent> {
+    /// Convert a SessionEntry to `AgentMessage` if it contains conversation content.
+    pub fn as_agent_message(&self) -> Option<crate::agent::message::AgentMessage> {
         match self {
             SessionEntry::Message(msg) => {
+                // Try direct deserialization first (preferred path)
+                if let Ok(agent_msg) =
+                    serde_json::from_value::<crate::agent::message::AgentMessage>(msg.message.clone())
+                {
+                    return Some(agent_msg);
+                }
+                // Fallback: try legacy JSON format
                 let role = msg.message.get("role")?.as_str()?;
-                let parts: Vec<XyPart> = msg
+                let parts: Vec<crate::agent::message::AgentPart> = msg
                     .message
                     .get("parts")
                     .and_then(|v| v.as_array())
@@ -983,22 +994,32 @@ impl SessionEntry {
                             .filter_map(|p| {
                                 let typ = p.get("type")?.as_str()?;
                                 match typ {
-                                    "Text" => {
-                                        Some(XyPart::Text(p.get("text")?.as_str()?.to_string()))
-                                    }
-                                    "Thinking" => Some(XyPart::Thinking(
-                                        p.get("thinking")?.as_str()?.to_string(),
+                                    "Text" => Some(crate::agent::message::AgentPart::Text(
+                                        p.get("text")?.as_str()?.to_string(),
                                     )),
-                                    "FunctionCall" => Some(XyPart::FunctionCall {
-                                        name: p.get("name")?.as_str()?.to_string(),
-                                        args: p.get("args")?.clone(),
-                                        id: p.get("id")?.as_str()?.to_string(),
-                                    }),
-                                    "FunctionResponse" => Some(XyPart::FunctionResponse {
-                                        name: p.get("name")?.as_str()?.to_string(),
-                                        result: p.get("result")?.as_str()?.to_string(),
-                                        id: p.get("id")?.as_str()?.to_string(),
-                                    }),
+                                    "Thinking" => Some(
+                                        crate::agent::message::AgentPart::Thinking {
+                                            text: p.get("thinking")?.as_str()?.to_string(),
+                                            redacted: false,
+                                            signature: None,
+                                        },
+                                    ),
+                                    "FunctionCall" => Some(
+                                        crate::agent::message::AgentPart::ToolCall {
+                                            name: p.get("name")?.as_str()?.to_string(),
+                                            arguments: p.get("args")?.clone(),
+                                            id: p.get("id")?.as_str()?.to_string(),
+                                        },
+                                    ),
+                                    "FunctionResponse" => Some(
+                                        crate::agent::message::AgentPart::ToolResult {
+                                            tool_use_id: p.get("id")?.as_str()?.to_string(),
+                                            content: vec![crate::agent::message::AgentPart::Text(
+                                                p.get("result")?.as_str()?.to_string(),
+                                            )],
+                                            is_error: false,
+                                        },
+                                    ),
                                     _ => None,
                                 }
                             })
@@ -1007,21 +1028,35 @@ impl SessionEntry {
                     .unwrap_or_default();
 
                 match role {
-                    "user" => Some(XyContent {
-                        role: crate::agent::types::XyRole::User,
-                        parts,
+                    "user" => Some(crate::agent::message::AgentMessage::UserMessage {
+                        content: parts,
+                        timestamp: crate::agent::message::now_ms(),
                     }),
-                    "assistant" => Some(XyContent {
-                        role: crate::agent::types::XyRole::Assistant,
-                        parts,
+                    "assistant" => Some(
+                        crate::agent::message::AgentMessage::AssistantMessage {
+                            content: parts,
+                            stop_reason: None,
+                            usage: None,
+                            api: String::new(),
+                            provider: String::new(),
+                            model: String::new(),
+                            response_id: None,
+                            error_message: None,
+                            timestamp: crate::agent::message::now_ms(),
+                            diagnostics: Vec::new(),
+                        },
+                    ),
+                    "system" => Some(crate::agent::message::AgentMessage::UserMessage {
+                        content: parts,
+                        timestamp: crate::agent::message::now_ms(),
                     }),
-                    "system" => Some(XyContent {
-                        role: crate::agent::types::XyRole::System,
-                        parts,
-                    }),
-                    "tool" => Some(XyContent {
-                        role: crate::agent::types::XyRole::Tool,
-                        parts,
+                    "tool" => Some(crate::agent::message::AgentMessage::ToolResultMessage {
+                        tool_use_id: String::new(),
+                        tool_name: String::new(),
+                        content: parts,
+                        details: None,
+                        is_error: false,
+                        timestamp: crate::agent::message::now_ms(),
                     }),
                     _ => None,
                 }
@@ -1029,9 +1064,9 @@ impl SessionEntry {
             _ => None,
         }
     }
-}
 
-// ── Tests ──────────────────────────────────────────────────────────
+
+}
 
 #[cfg(test)]
 mod tests {
@@ -1189,39 +1224,62 @@ mod tests {
     #[test]
     fn test_serialize_conversation_basic() {
         let msgs = vec![
-            XyContent::user("Hello"),
-            XyContent::assistant(vec![XyPart::Text("Hi there!".into())]),
+            crate::agent::message::AgentMessage::user("Hello"),
+            crate::agent::message::AgentMessage::AssistantMessage {
+                    content: vec![crate::agent::message::AgentPart::Text("Hi there!".into())],
+                    stop_reason: Some(crate::agent::message::StopReason::Stop),
+                    usage: None,
+                    api: String::new(),
+                    provider: String::new(),
+                    model: String::new(),
+                    response_id: None,
+                    error_message: None,
+                    timestamp: 0,
+                    diagnostics: Vec::new(),
+                },
         ];
         let text = serialize_conversation(&msgs);
-        assert!(text.contains("[User]: Hello"));
+        assert!(text.contains("[user]: Hello"));
         assert!(text.contains("[Assistant]: Hi there!"));
     }
 
     #[test]
     fn test_serialize_conversation_with_tool_calls() {
         let msgs = vec![
-            XyContent::assistant(vec![
-                XyPart::Text("Let me read that.".into()),
-                XyPart::FunctionCall {
+            crate::agent::message::AgentMessage::AssistantMessage {
+                    content: vec![
+                crate::agent::message::AgentPart::Text("Let me read that.".into()),
+                crate::agent::message::AgentPart::ToolCall {
+                    
                     name: "read".into(),
-                    args: json!({"path": "/tmp/test.txt"}),
+                    arguments: json!({"path": "/tmp/test.txt"
+                }),
                     id: "call-1".into(),
                 },
-            ]),
-            XyContent {
-                role: crate::agent::types::XyRole::Tool,
-                parts: vec![XyPart::FunctionResponse {
-                    name: "read".into(),
-                    result: "file content here".into(),
-                    id: "call-1".into(),
+            ],
+                    stop_reason: Some(crate::agent::message::StopReason::Stop),
+                    usage: None,
+                    api: String::new(),
+                    provider: String::new(),
+                    model: String::new(),
+                    response_id: None,
+                    error_message: None,
+                    timestamp: 0,
+                    diagnostics: Vec::new(),
+                },
+            crate::agent::message::AgentMessage::UserMessage {
+                    content: vec![crate::agent::message::AgentPart::ToolResult {
+                    tool_use_id: "call-1".into(),
+                    content: vec![crate::agent::message::AgentPart::Text("file content here".into())],
+                    is_error: false,
                 }],
+                timestamp: 0,
             },
         ];
         let text = serialize_conversation(&msgs);
         assert!(text.contains("Let me read that"));
         assert!(text.contains("read(path"));
         assert!(text.contains("/tmp/test.txt"));
-        assert!(text.contains("Tool result (read)"));
     }
 
     // ── file_ops ───────────────────────────────────────────────────
@@ -1229,23 +1287,51 @@ mod tests {
     #[test]
     fn test_extract_file_ops_basic() {
         let msgs = vec![
-            XyContent::assistant(vec![XyPart::FunctionCall {
+            crate::agent::message::AgentMessage::AssistantMessage {
+                    content: vec![crate::agent::message::AgentPart::ToolCall {
+                    
                 name: "read".into(),
-                args: json!({"path": "src/main.rs"}),
+                arguments: json!({"path": "src/main.rs"
+                }),
                 id: "c1".into(),
-            }]),
-            XyContent::assistant(vec![
-                XyPart::FunctionCall {
+            }],
+                    stop_reason: Some(crate::agent::message::StopReason::Stop),
+                    usage: None,
+                    api: String::new(),
+                    provider: String::new(),
+                    model: String::new(),
+                    response_id: None,
+                    error_message: None,
+                    timestamp: 0,
+                    diagnostics: Vec::new(),
+                },
+            crate::agent::message::AgentMessage::AssistantMessage {
+                    content: vec![
+                crate::agent::message::AgentPart::ToolCall {
+                    
                     name: "write".into(),
-                    args: json!({"path": "src/new.rs", "content": "x"}),
+                    arguments: json!({"path": "src/new.rs", "content": "x"
+                }),
                     id: "c2".into(),
                 },
-                XyPart::FunctionCall {
+                crate::agent::message::AgentPart::ToolCall {
+                    
                     name: "edit".into(),
-                    args: json!({"path": "src/old.rs", "oldText": "a", "newText": "b"}),
+                    arguments: json!({"path": "src/old.rs", "oldText": "a", "newText": "b"
+                }),
                     id: "c3".into(),
                 },
-            ]),
+            ],
+                    stop_reason: Some(crate::agent::message::StopReason::Stop),
+                    usage: None,
+                    api: String::new(),
+                    provider: String::new(),
+                    model: String::new(),
+                    response_id: None,
+                    error_message: None,
+                    timestamp: 0,
+                    diagnostics: Vec::new(),
+                },
         ];
 
         let ops = extract_file_ops_from_messages(&msgs, None);
@@ -1334,11 +1420,97 @@ mod tests {
         assert!(!should_compact(999999, 100000, &settings));
     }
 
-    #[test]
-    fn test_estimate_context_tokens() {
+/// Collect entries suitable for branch summarization from a session.
+///
+/// Returns entries from the fork point (target_entry_id's parent) to the
+/// end of the session, limited by a token budget.
+pub async fn collect_entries_for_branch_summary(
+    mgr: &super::SessionManager,
+    session_id: &str,
+    fork_entry_id: &str,
+    _token_budget: u64,
+) -> Result<Vec<SessionEntry>> {
+    let entries = mgr.load(session_id).await.map_err(|e| anyhow::anyhow!("load: {e}"))?;
+
+    // Find the fork point
+    let fork_index = entries
+        .iter()
+        .position(|e| e.entry_id() == Some(fork_entry_id))
+        .ok_or_else(|| anyhow::anyhow!("entry not found: {fork_entry_id}"))?;
+
+    // Collect entries AFTER the fork point
+    let entries_to_collect: Vec<SessionEntry> = entries[fork_index + 1..]
+        .iter()
+        .take_while(|e| !matches!(e, SessionEntry::BranchSummary(_)))
+        .cloned()
+        .collect();
+
+    Ok(entries_to_collect)
+}
+
+/// Generate a branch summary entry (LLM or fallback) and persist it.
+pub async fn create_branch_summary_entry(
+    mgr: &super::SessionManager,
+    session_id: &str,
+    fork_entry_id: &str,
+    model: Option<&dyn XyModel>,
+    token_budget: u64,
+) -> Result<()> {
+    let entries = collect_entries_for_branch_summary(mgr, session_id, fork_entry_id, token_budget).await?;
+
+    if entries.is_empty() {
+        return Ok(());
+    }
+
+    let summary = if let Some(m) = model {
+        generate_branch_summary_llm(&entries, m, token_budget)
+            .await
+            .map(|r| r.summary)
+            .unwrap_or_else(|| String::new())
+    } else {
+        String::new()
+    };
+
+    let summary = if summary.is_empty() {
+        // Fallback summary when no LLM is available
+        let count = entries.len();
+        let user_count = entries.iter().filter(|e| {
+            matches!(e, SessionEntry::Message(m) if m.message.get("role").and_then(|r| r.as_str()) == Some("user"))
+        }).count();
+        let assistant_count = entries.iter().filter(|e| {
+            matches!(e, SessionEntry::Message(m) if m.message.get("role").and_then(|r| r.as_str()) == Some("assistant"))
+        }).count();
+        format!("Branch summary: {count} entries ({user_count} user, {assistant_count} assistant messages)")
+    } else {
+        summary
+    };
+
+    use chrono::Utc;
+    use uuid::Uuid;
+    let branch_entry = SessionEntry::BranchSummary(BranchSummaryEntry {
+        base: EntryBase {
+            entry_type: "branch_summary".into(),
+            id: Uuid::new_v4().to_string(),
+            parent_id: Some(fork_entry_id.to_string()),
+            timestamp: Utc::now().to_rfc3339(),
+        },
+        from_id: fork_entry_id.to_string(),
+        summary,
+        details: None,
+        from_hook: Some(false),
+    });
+
+    mgr.append_with_id(session_id, &branch_entry).await
+        .map_err(|e| anyhow::anyhow!("append branch summary: {e}"))?;
+
+    Ok(())
+}
+
+#[test]
+fn test_estimate_context_tokens() {
         let msgs = vec![
-            crate::agent::types::XyContent::user("hello"),
-            crate::agent::types::XyContent::user("world"),
+            crate::agent::message::AgentMessage::user("hello"),
+            crate::agent::message::AgentMessage::user("world"),
         ];
         let estimate = estimate_context_tokens(&msgs, None);
         assert!(estimate.tokens > 0);

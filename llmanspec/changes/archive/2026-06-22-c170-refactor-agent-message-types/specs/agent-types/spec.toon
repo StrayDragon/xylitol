@@ -1,0 +1,17 @@
+kind: llman.sdd.delta
+ops[7]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r6,"content-types","System MUST define AgentMessage and AgentPart types covering all message roles and part types used in the agent loop, matching pi's AgentMessage type system.",null,null,null
+  add_requirement,r7,"message-roles","AgentMessage SHALL support roles: user|assistant|toolResult|custom|bashExecution|compactionSummary|branchSummary.",null,null,null
+  add_requirement,r8,"image-content","System MUST support ImageContent as a first-class content part for user and toolResult messages.",null,null,null
+  add_requirement,r9,"usage-tracking","AssistantMessage SHALL carry an optional Usage struct with input/output/cacheRead/cacheWrite/totalTokens fields.",null,null,null
+  add_requirement,r10,"stop-reason","AssistantMessage SHALL carry stopReason: stop|maxTokens|error|aborted|toolUse plus optional errorMessage.",null,null,null
+  add_requirement,r11,"llm-conversion","System MUST provide AgentMessage to LlmMessage conversion layer for each provider, transforming typed messages into provider-native request formats.",null,null,null
+  add_requirement,r12,"session-migration","Session persistence SHALL support v3 to v4 migration where message entries use the new AgentMessage format.",null,null,null
+op_scenarios[7]{req_id,id,given,when,then}:
+  r7,all-roles,"all 7 AgentMessage roles are constructed","each role is serialized and deserialized","role field is preserved"
+  r8,image,"an ImageContent with url and media_type is created","it is embedded in a user message","the message serializes correctly"
+  r9,usage,"an AssistantMessage has usage with 100 input and 50 output tokens","the message is persisted and reloaded","usage fields are preserved"
+  r10,error,"an AssistantMessage with stopReason error and errorMessage","it is handled by the retry logic","error is detected as retryable"
+  r11,openai-convert,"an AgentMessage list is created with user text and toolResult","convert_to_llm is called for OpenAI","output is valid OpenAI Messages format"
+  r11,anthropic-convert,"an AgentMessage list with image content","convert_to_llm is called for Anthropic","output is valid Anthropic Messages format"
+  r12,migrate,"a v3 session file has old XyContent format","session is loaded with migration","entries are readable as AgentMessage"

@@ -29,8 +29,8 @@ pub(crate) struct SystemPromptOpts {
     pub(crate) cwd: String,
     /// Project-specific context files (path => content).
     pub(crate) context_files: Vec<(String, String)>,
-    /// Available skills.
-    pub(crate) skills: Vec<String>,
+    /// Available skills (name + description + source info for XML rendering).
+    pub(crate) skills: Vec<crate::infra::resource::SkillInfo>,
     /// System prompt from SYSTEM.md (will be prepended to the output).
     pub(crate) system_prompt: Option<String>,
     /// Append system prompt lines from APPEND_SYSTEM.md.
@@ -82,11 +82,20 @@ pub(crate) fn build_system_prompt(opts: &SystemPromptOpts) -> String {
         }
     }
 
-    // Skills section
+    // Skills section — XML format with name, description, location
     if !opts.skills.is_empty() {
         prompt.push_str("\n<available_skills>\n");
         for skill in &opts.skills {
-            prompt.push_str(&format!("  <skill>\n    {skill}\n  </skill>\n"));
+            let name = crate::infra::skills::loader::xml_escape(&skill.name);
+            let desc = crate::infra::skills::loader::xml_escape(
+                skill.description.as_deref().unwrap_or(""),
+            );
+            let loc = crate::infra::skills::loader::xml_escape(
+                &skill.source_info.path.to_string_lossy(),
+            );
+            prompt.push_str(&format!(
+                "  <skill>\n    <name>{name}</name>\n    <description>{desc}</description>\n    <location>{loc}</location>\n  </skill>\n"
+            ));
         }
         prompt.push_str("</available_skills>\n");
     }
@@ -186,9 +195,7 @@ pub(crate) fn build_system_prompt_from_loader(
         skills: loader
             .get_skills()
             .0
-            .iter()
-            .map(|s| s.name.clone())
-            .collect(),
+            .to_vec(),
         system_prompt: loader.get_system_prompt().map(String::from),
         append_system_prompt: loader.get_append_system_prompt().to_vec(),
     };
@@ -243,13 +250,29 @@ mod tests {
 
     #[test]
     fn test_skills_section() {
+        use std::path::PathBuf;
+        use crate::infra::resource::SkillInfo;
         let opts = SystemPromptOpts {
             cwd: ".".into(),
-            skills: vec!["rust-cli-tui-developer".into()],
+            skills: vec![SkillInfo {
+                name: "rust-cli-tui-developer".into(),
+                description: Some("Build Rust CLI tools".into()),
+                source_info: crate::infra::source_info::SourceInfo {
+                    path: PathBuf::from("/home/u/.xylitol/skills/SKILL.md"),
+                    source: "user".into(),
+                    scope: crate::infra::source_info::SourceScope::User,
+                    origin: crate::infra::source_info::SourceOrigin::TopLevel,
+                    base_dir: Some(PathBuf::from("/home/u/.xylitol/skills")),
+                },
+            }],
             ..Default::default()
         };
         let prompt = build_system_prompt(&opts);
         assert!(prompt.contains("rust-cli-tui-developer"));
+        assert!(prompt.contains("Build Rust CLI tools"));
+        assert!(prompt.contains("SKILL.md"));
+        assert!(prompt.contains("<available_skills>"));
+        assert!(prompt.contains("</available_skills>"));
     }
 
     #[test]

@@ -1,0 +1,15 @@
+kind: llman.sdd.delta
+ops[6]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,agt-01,"AssistantMessage has all pi metadata fields","AssistantMessage SHALL carry api provider model response_id error_message timestamp and diagnostics fields",null,null,null
+  modify_requirement,agt-02,"AgentPart aligns with pi content types","AgentPart::Thinking SHALL carry redacted and signature fields matching pi ThinkingContent",null,null,null
+  modify_requirement,agt-03,"Usage includes cost and cache metadata","Usage SHALL include cache_write_1h and a cost sub-object UsageCost with input output cache_read cache_write total",null,null,null
+  modify_requirement,agt-04,"AgentState and AgentContext exist as structs","AgentState SHALL expose systemPrompt model thinkingLevel tools messages isStreaming streamingMessage pendingToolCalls errorMessage",null,null,null
+  modify_requirement,agt-05,"ModelMeta carries full provider metadata","ModelMeta SHALL carry api provider cost_input cost_output cost_cache_read cost_cache_write max_tokens thinking_levels",null,null,null
+  remove_requirement,agt-06,null,null,null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  agt-01,happy,"AssistantMessage has content and stop_reason","api provider model timestamp are populated","the message round-trips through serde_json"
+  agt-01,error,"AssistantMessage encounters a provider error","error_message is populated","stop_reason is Error and error_message is non-empty"
+  agt-02,happy,"A thinking block from the provider has redacted content","redacted is true and signature is present","the AgentPart preserves both fields"
+  agt-03,happy,"Usage is parsed from an OpenAI response","cost is computed from model per-token rates","cost.total is positive and non-zero"
+  agt-04,happy,"AgentState is constructed during a run","isStreaming is true while the loop is active","all AgentState fields are accessible"
+  agt-05,happy,"ModelMeta is loaded from model_manifest.json","api provider and cost fields are populated","the struct round-trips through serde_json"

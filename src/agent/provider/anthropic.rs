@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::agent::error::XyError;
 use crate::agent::traits::{XyModel, XyStream};
-use crate::agent::types::{XyChunk, XyContent, XyFinishReason, XyPart, XyRole, XyToolSchema};
+use crate::agent::types::{XyChunk, XyFinishReason, XyToolSchema};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
@@ -21,7 +21,11 @@ pub(crate) struct AnthropicProvider {
 }
 
 impl AnthropicProvider {
-    pub(crate) fn new(api_key: String, model: String, base_url: Option<String>) -> Self {
+    pub(crate) fn new(
+        api_key: String,
+        model: String,
+        base_url: Option<String>,
+    ) -> Self {
         Self {
             client: reqwest::Client::new(),
             api_key,
@@ -43,18 +47,25 @@ impl AnthropicProvider {
         );
         headers
     }
+}
 
-    fn build_request_body(
+#[async_trait]
+impl XyModel for AnthropicProvider {
+    fn name(&self) -> &str {
+        &self.model
+    }
+
+    async fn generate_stream(
         &self,
-        messages: &[XyContent],
+        messages: Vec<AgentMessage>,
         tools: &[XyToolSchema],
         stream: bool,
-    ) -> Value {
-        let (system_prompt, msgs) = xy_to_anthropic(messages);
+    ) -> Result<XyStream, XyError> {
+        let (system_prompt, anthropic_msgs) = convert_agent_messages_for_anthropic(&messages);
 
         let mut body = serde_json::json!({
             "model": self.model,
-            "messages": msgs,
+            "messages": anthropic_msgs,
             "max_tokens": self.max_tokens,
             "stream": stream,
         });
@@ -76,24 +87,6 @@ impl AnthropicProvider {
                 .collect();
             body["tools"] = Value::Array(tool_defs);
         }
-
-        body
-    }
-}
-
-#[async_trait]
-impl XyModel for AnthropicProvider {
-    fn name(&self) -> &str {
-        &self.model
-    }
-
-    async fn generate_stream(
-        &self,
-        messages: Vec<XyContent>,
-        tools: &[XyToolSchema],
-        stream: bool,
-    ) -> Result<XyStream, XyError> {
-        let body = self.build_request_body(&messages, tools, stream);
         let url = format!("{}/v1/messages", self.base_url);
 
         let response = self
@@ -138,6 +131,8 @@ fn anthropic_stream(
 
         let mut tool_accumulators: HashMap<usize, (String, String, String)> = HashMap::new();
         let mut current_block_index: Option<usize> = None;
+        let mut usage_input: u64 = 0;
+        let mut usage_output: u64 = 0;
 
         while let Some(event_result) = event_stream.next().await {
             let event = match event_result {
@@ -208,6 +203,11 @@ fn anthropic_stream(
                         .and_then(|d| d.get("stop_reason"))
                         .and_then(|v| v.as_str());
 
+                    // Capture output tokens from message_delta
+                    if let Some(u) = data.get("usage").and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()) {
+                        usage_output = u;
+                    }
+
                     if stop_reason.is_some() {
                         let mut sorted: Vec<_> = tool_accumulators.drain().collect();
                         sorted.sort_by_key(|(idx, _)| *idx);
@@ -220,11 +220,34 @@ fn anthropic_stream(
                             Some("max_tokens") => XyFinishReason::MaxTokens,
                             _ => XyFinishReason::Stop,
                         };
-                        yield XyChunk::Done { finish_reason: finish };
+
+                        let usage_total = usage_input + usage_output;
+                        let usage = if usage_total > 0 {
+                            Some(crate::agent::message::Usage {
+                                input: usage_input,
+                                output: usage_output,
+                                cache_read: 0,
+                                cache_write: 0,
+                                total_tokens: usage_total,
+                                cache_write_1h: 0,
+                                cost: None,
+                            })
+                        } else {
+                            None
+                        };
+                        yield XyChunk::Done { finish_reason: finish, usage };
                     }
                 }
 
-                "message_stop" | "ping" | "message_start" => {}
+                "message_start" => {
+                    // Capture input tokens from message_start
+                    if let Some(msg) = data.get("message") {
+                        if let Some(u) = msg.get("usage").and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()) {
+                            usage_input = u;
+                        }
+                    }
+                }
+                "message_stop" | "ping" => {}
                 _ => {}
             }
         }
@@ -271,73 +294,145 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
         Some("max_tokens") => XyFinishReason::MaxTokens,
         _ => XyFinishReason::Stop,
     };
+
+    // Parse usage from non-streaming response
+    let usage = json.get("usage").and_then(|u| {
+        let input = u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        let output = u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        let total = input + output;
+        if total > 0 {
+            Some(crate::agent::message::Usage {
+                input,
+                output,
+                cache_read: 0,
+                cache_write: 0,
+                total_tokens: total,
+                cache_write_1h: 0,
+                cost: None,
+            })
+        } else {
+            None
+        }
+    });
+
     chunks.push(XyChunk::Done {
         finish_reason: finish,
+        usage,
     });
 
     chunks
 }
 
-fn xy_to_anthropic(contents: &[XyContent]) -> (Option<String>, Vec<Value>) {
-    let mut system_parts: Vec<String> = Vec::new();
-    let mut messages: Vec<Value> = Vec::new();
+// ── AgentMessage conversion ────────────────────────────────────
 
-    for content in contents {
-        match content.role {
-            XyRole::System => {
-                for part in &content.parts {
-                    if let XyPart::Text(text) = part {
-                        system_parts.push(text.clone());
-                    }
-                }
-            }
-            _ => {
-                let role = match content.role {
-                    XyRole::Assistant => "assistant",
-                    _ => "user",
-                };
+use crate::agent::message::{AgentMessage, AgentPart};
 
-                let blocks: Vec<Value> = content
-                    .parts
-                    .iter()
-                    .map(|part| match part {
-                        XyPart::Text(text) => serde_json::json!({
-                            "type": "text",
-                            "text": text,
-                        }),
-                        XyPart::Thinking(thinking) => serde_json::json!({
-                            "type": "text",
-                            "text": thinking,
-                        }),
-                        XyPart::FunctionCall { name, args, id } => serde_json::json!({
-                            "type": "tool_use",
-                            "id": id,
-                            "name": name,
-                            "input": args,
-                        }),
-                        XyPart::FunctionResponse {
-                            name: _,
-                            result,
-                            id,
-                        } => serde_json::json!({
-                            "type": "tool_result",
-                            "tool_use_id": id,
-                            "content": result,
-                        }),
-                    })
-                    .collect();
+/// Convert a slice of [`AgentMessage`] values to Anthropic request body
+/// (returns `(system_prompt, messages)` tuple).
+pub fn convert_agent_messages_for_anthropic(
+    messages: &[AgentMessage],
+) -> (Option<String>, Vec<Value>) {
+    let system_parts: Vec<String> = Vec::new();
+    let mut msgs: Vec<Value> = Vec::new();
 
+    for msg in messages {
+        match msg {
+            AgentMessage::UserMessage { content, .. } => {
+                let blocks = agent_parts_to_anthropic_blocks(content);
                 if !blocks.is_empty() {
-                    messages.push(serde_json::json!({
-                        "role": role,
+                    msgs.push(serde_json::json!({
+                        "role": "user",
                         "content": blocks,
                     }));
                 }
             }
+            AgentMessage::AssistantMessage {
+                content,
+                ..
+            } => {
+                let blocks = agent_parts_to_anthropic_blocks(content);
+                if !blocks.is_empty() {
+                    msgs.push(serde_json::json!({
+                        "role": "assistant",
+                        "content": blocks,
+                    }));
+                }
+            }
+            AgentMessage::ToolResultMessage {
+                tool_use_id,
+                content,
+                is_error,
+                ..
+            } => {
+                let inner: Vec<Value> = content
+                    .iter()
+                    .map(|p| match p {
+                        AgentPart::Text(t) => serde_json::json!({"type": "text", "text": t}),
+                        AgentPart::Image(img) => serde_json::json!({
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": img.media_type,
+                                "data": img.data.as_deref().unwrap_or(""),
+                            },
+                        }),
+                        _ => serde_json::json!({"type": "text", "text": ""}),
+                    })
+                    .collect();
+
+                msgs.push(serde_json::json!({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": inner,
+                        "is_error": *is_error,
+                    }],
+                }));
+            }
+            AgentMessage::BashExecutionMessage {
+                command,
+                output,
+                exclude_from_context,
+                ..
+            } => {
+                if *exclude_from_context {
+                    continue;
+                }
+                let text = format!("$ {command}\n{output}");
+                msgs.push(serde_json::json!({
+                    "role": "user",
+                    "content": [{"type": "text", "text": text}],
+                }));
+            }
+            AgentMessage::CompactionSummaryMessage { summary, .. }
+            | AgentMessage::BranchSummaryMessage { summary, .. } => {
+                msgs.push(serde_json::json!({
+                    "role": "user",
+                    "content": [{
+                        "type": "text",
+                        "text": format!("[Context summary: {summary}]")
+                    }],
+                }));
+            }
+            AgentMessage::CustomMessage {
+                custom_type: _,
+                content,
+                ..
+            } => {
+                let text = content.as_str().unwrap_or("").to_string();
+                if text.is_empty() {
+                    continue;
+                }
+                msgs.push(serde_json::json!({
+                    "role": "user",
+                    "content": [{"type": "text", "text": text}],
+                }));
+            }
         }
     }
 
-    merge_consecutive_messages(&mut messages);
+    merge_consecutive_messages(&mut msgs);
 
     let system = if system_parts.is_empty() {
         None
@@ -345,7 +440,56 @@ fn xy_to_anthropic(contents: &[XyContent]) -> (Option<String>, Vec<Value>) {
         Some(system_parts.join("\n"))
     };
 
-    (system, messages)
+    (system, msgs)
+}
+
+fn agent_parts_to_anthropic_blocks(parts: &[AgentPart]) -> Vec<Value> {
+    parts
+        .iter()
+        .map(|part| match part {
+            AgentPart::Text(text) => serde_json::json!({
+                "type": "text",
+                "text": text,
+            }),
+            AgentPart::Thinking { text: thinking, .. } => serde_json::json!({
+                "type": "text",
+                "text": thinking,
+            }),
+            AgentPart::Image(img) => serde_json::json!({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": img.media_type,
+                    "data": img.data.as_deref().unwrap_or(""),
+                },
+            }),
+            AgentPart::ToolCall { id, name, arguments } => serde_json::json!({
+                "type": "tool_use",
+                "id": id,
+                "name": name,
+                "input": arguments,
+            }),
+            AgentPart::ToolResult {
+                tool_use_id,
+                content,
+                is_error,
+            } => {
+                let inner: Vec<Value> = content
+                    .iter()
+                    .map(|p| match p {
+                        AgentPart::Text(t) => serde_json::json!({"type": "text", "text": t}),
+                        _ => serde_json::json!({"type": "text", "text": ""}),
+                    })
+                    .collect();
+                serde_json::json!({
+                    "type": "tool_result",
+                    "tool_use_id": tool_use_id,
+                    "content": inner,
+                    "is_error": *is_error,
+                })
+            }
+        })
+        .collect()
 }
 
 fn merge_consecutive_messages(messages: &mut Vec<Value>) {
@@ -382,4 +526,84 @@ fn extract_error_message(body: &str) -> Option<String> {
         .get("message")?
         .as_str()
         .map(String::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::message::{AgentMessage, AgentPart};
+
+    #[test]
+    fn convert_user_message() {
+        let msgs = vec![AgentMessage::user("hello")];
+        let (system, msgs) = convert_agent_messages_for_anthropic(&msgs);
+        assert!(system.is_none());
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0]["role"], "user");
+    }
+
+    #[test]
+    fn convert_assistant_with_tool_call() {
+        let msgs = vec![AgentMessage::AssistantMessage {
+            content: vec![
+                AgentPart::Text("Let me check".into()),
+                AgentPart::ToolCall {
+                    id: "call-1".into(),
+                    name: "read".into(),
+                    arguments: serde_json::json!({"path": "/tmp"}),
+                },
+            ],
+            stop_reason: Some(crate::agent::message::StopReason::ToolUse),
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        }];
+        let (_, msgs) = convert_agent_messages_for_anthropic(&msgs);
+        assert_eq!(msgs.len(), 1);
+        let content = msgs[0]["content"].as_array().unwrap();
+        assert_eq!(content.len(), 2);
+        assert_eq!(content[1]["type"], "tool_use");
+        assert_eq!(content[1]["id"], "call-1");
+    }
+
+    #[test]
+    fn convert_tool_result() {
+        let msgs = vec![AgentMessage::tool_result(
+            "call-1",
+            "",
+            vec![AgentPart::Text("result here".into())],
+            false,
+        )];
+        let (_, msgs) = convert_agent_messages_for_anthropic(&msgs);
+        assert_eq!(msgs.len(), 1);
+        let content = msgs[0]["content"].as_array().unwrap();
+        assert_eq!(content[0]["type"], "tool_result");
+        assert_eq!(content[0]["tool_use_id"], "call-1");
+    }
+
+    #[test]
+    fn convert_bash_execution() {
+        let msgs = vec![AgentMessage::bash("ls", "output", Some(0))];
+        let (_, msgs) = convert_agent_messages_for_anthropic(&msgs);
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0]["role"], "user");
+    }
+
+    #[test]
+    fn convert_compaction_summary() {
+        let msgs = vec![AgentMessage::CompactionSummaryMessage {
+            summary: "Compressed".into(),
+            tokens_before: 100,
+            tokens_after: 10,
+            read_files: None,
+            modified_files: None,
+        }];
+        let (_, msgs) = convert_agent_messages_for_anthropic(&msgs);
+        assert_eq!(msgs.len(), 1);
+    }
 }

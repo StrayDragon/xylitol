@@ -1,0 +1,13 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ts21,"tool-allow-deny","ToolRegistry MUST support allowedToolNames and excludedToolNames filters. When allowedToolNames is set, only those tools are exposed. When excludedToolNames is set, those tools are removed from exposure.",null,null,null
+  add_requirement,ts22,"argument-validation","Tool execution pipeline MUST validate tool call arguments against the tool's JSON parameter schema before execution, rejecting invalid arguments with a descriptive error.",null,null,null
+  add_requirement,ts23,"per-tool-exec-mode","Each tool SHALL declare its preferred execution mode (sequential or parallel) via execution_mode. When any tool in a batch declares sequential, the entire batch falls back to sequential execution.",null,null,null
+  add_requirement,ts24,"definition-wrapper","System MUST provide a ToolDefinition struct (name, description, parameters, promptGuidelines, sourceInfo) and a conversion from XyTool to ToolDefinition.",null,null,null
+  add_requirement,ts25,"prepare-arguments","Tool trait SHALL support an optional prepare_arguments method for argument preprocessing (e.g., format conversion, default injection) before validation.",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  ts21,allow,"allowedToolNames is set to read and bash","agent starts","only read and bash tools are available"
+  ts21,deny,"excludedToolNames is set to edit","agent starts","edit tool is not available"
+  ts22,"invalid-args","a tool call has missing required args","validate_tool_arguments runs","error is returned with descriptive message"
+  ts23,"sequential-tool","edit tool has execution_mode sequential in a batch with read","tool batch executes","all tools run sequentially"
+  ts24,wrapper,"a custom tool is registered","ToolDefinition is created from the tool","all fields are correctly populated"

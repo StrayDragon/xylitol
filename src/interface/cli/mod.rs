@@ -107,6 +107,14 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 display_name: alias.clone(),
                 thinking: entry.thinking,
                 context_window,
+                api: String::new(),
+                provider: String::new(),
+                cost_input: 0.0,
+                cost_output: 0.0,
+                cost_cache_read: 0.0,
+                cost_cache_write: 0.0,
+                max_tokens: 0,
+                thinking_levels: Vec::new(),
             });
         }
     }
@@ -131,6 +139,14 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     display_name: model_id.to_string(),
                     thinking: true,
                     context_window: registry::default_context_window_for(kind),
+                    api: String::new(),
+                    provider: String::new(),
+                    cost_input: 0.0,
+                    cost_output: 0.0,
+                    cost_cache_read: 0.0,
+                    cost_cache_write: 0.0,
+                    max_tokens: 0,
+                    thinking_levels: Vec::new(),
                 });
             }
         }

@@ -3,13 +3,19 @@
 //! Supports:
 //! - `emit(channel, data)` — string channel + JSON Value payload
 //! - `on(channel, handler)` → `UnsubscribeHandle` (drop to unsubscribe)
+//! - `emit_lifecycle(event)` — typed lifecycle event dispatch
+//! - `on_lifecycle(handler)` → `UnsubscribeHandle` (drop to unsubscribe)
 //! - `clear()` — remove all listeners
 //! - Error isolation — panicking handlers don't break the bus (tokio task boundary)
+
+pub mod lifecycle;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
+
+use self::lifecycle::{AgentLifecycleEvent, LifecycleHandler};
 
 /// Type alias for async event handlers.
 pub type Handler = Arc<
@@ -128,6 +134,50 @@ impl EventBus {
             .expect("EventBus lock poisoned")
             .clear();
     }
+
+    // ── Lifecycle event dispatch ───────────────────────────────────
+
+    /// Emit a typed lifecycle event.
+    ///
+    /// The event is serialized to JSON and dispatched on channel
+    /// `lifecycle:<description>` (e.g. `lifecycle:turn_start`).
+    /// All subscribers of `lifecycle:*` also receive it.
+    pub fn emit_lifecycle(&self, event: &AgentLifecycleEvent) {
+        let channel = format!("lifecycle:{}", event.description());
+        let data = serde_json::to_value(event).unwrap_or_default();
+        self.emit(&channel, data.clone());
+        // Also emit on the wildcard channel so `on_lifecycle` subscribers
+        // receive all lifecycle events.
+        self.emit("lifecycle:*", data);
+    }
+
+    /// Subscribe to all typed lifecycle events.
+    ///
+    /// The handler receives every [`AgentLifecycleEvent`] that is emitted.
+    /// Returns an [`UnsubscribeHandle`] — drop it to unsubscribe.
+    pub fn on_lifecycle<F, Fut>(&self, handler: F) -> UnsubscribeHandle
+    where
+        F: Fn(AgentLifecycleEvent) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let wrapped: LifecycleHandler = Arc::new(move |event: AgentLifecycleEvent| {
+            let fut = handler(event);
+            Box::pin(fut)
+        });
+
+        // Store the handler in a separate listener set keyed by the
+        // description so per-event subscribers and wildcard subscribers
+        // coexist.
+        let w = wrapped.clone();
+        self.on("lifecycle:*", move |data: Value| {
+            let handler = w.clone();
+            async move {
+                if let Ok(event) = serde_json::from_value::<AgentLifecycleEvent>(data) {
+                    handler(event).await;
+                }
+            }
+        })
+    }
 }
 
 // ── Standard channel names (align with pi) ────────────────────────
@@ -218,6 +268,76 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         assert!(received.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_lifecycle_emit_and_receive() {
+        let bus = EventBus::new();
+        let received = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let r = received.clone();
+
+        let _handle = bus.on_lifecycle(move |event| {
+            r.lock().unwrap().push(event.description().to_string());
+            async {}
+        });
+
+        bus.emit_lifecycle(&AgentLifecycleEvent::TurnStart { turn_index: 1 });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let events = received.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0], "turn_start");
+    }
+
+    #[tokio::test]
+    async fn test_lifecycle_unsubscribe_on_drop() {
+        let bus = EventBus::new();
+        let received = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let r = received.clone();
+
+        let handle = bus.on_lifecycle(move |_event| {
+            r.lock().unwrap().push("got".to_string());
+            async {}
+        });
+        drop(handle);
+
+        bus.emit_lifecycle(&AgentLifecycleEvent::TurnEnd { turn_index: 1 });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        assert!(received.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_lifecycle_typed_payload() {
+        let bus = EventBus::new();
+        let received = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let r = received.clone();
+
+        let _handle = bus.on_lifecycle(move |event| {
+            match &event {
+                AgentLifecycleEvent::TurnStart { turn_index } => {
+                    r.lock().unwrap().push(format!("turn-{turn_index}"));
+                }
+                AgentLifecycleEvent::MessageStart { role, .. } => {
+                    r.lock().unwrap().push(format!("msg-{role}"));
+                }
+                _ => {}
+            }
+            async {}
+        });
+
+        bus.emit_lifecycle(&AgentLifecycleEvent::TurnStart { turn_index: 42 });
+        bus.emit_lifecycle(&AgentLifecycleEvent::MessageStart {
+            role: "user".into(),
+            message: None,
+        });
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let events = received.lock().unwrap();
+        assert_eq!(events.len(), 2);
+        assert!(events.contains(&"turn-42".to_string()));
+        assert!(events.contains(&"msg-user".to_string()));
     }
 
     #[tokio::test]
