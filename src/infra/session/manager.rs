@@ -14,24 +14,35 @@ use uuid::Uuid;
 use super::compaction;
 use super::types::*;
 
-/// Manages session persistence using JSONL files.
+/// Manages session persistence using JSONL files or in-memory storage.
 #[derive(Debug)]
 pub struct SessionManager {
     sessions_dir: PathBuf,
+    /// Storage backend.
+    backend: SessionBackend,
     /// Per-session leaf node tracking (in-memory).
     /// session_id -> current leaf entry id (None = root).
     leaf_ids: RwLock<HashMap<String, Option<String>>>,
     /// Active session tracking.
     active_session: RwLock<Option<String>>,
+    /// In-memory entry storage (used when backend is InMemory).
+    in_memory_store: RwLock<HashMap<String, Vec<SessionEntry>>>,
 }
 
 impl Clone for SessionManager {
     fn clone(&self) -> Self {
         Self {
             sessions_dir: self.sessions_dir.clone(),
+            backend: self.backend.clone(),
             leaf_ids: RwLock::new(self.leaf_ids.read().expect("RwLock not poisoned").clone()),
             active_session: RwLock::new(
                 self.active_session
+                    .read()
+                    .expect("RwLock not poisoned")
+                    .clone(),
+            ),
+            in_memory_store: RwLock::new(
+                self.in_memory_store
                     .read()
                     .expect("RwLock not poisoned")
                     .clone(),
@@ -44,8 +55,12 @@ impl Default for SessionManager {
     fn default() -> Self {
         Self {
             sessions_dir: PathBuf::from("."),
+            backend: SessionBackend::Persisted {
+                sessions_dir: PathBuf::from("."),
+            },
             leaf_ids: RwLock::new(HashMap::new()),
             active_session: RwLock::new(None),
+            in_memory_store: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -66,9 +81,27 @@ impl SessionManager {
     /// Create a new SessionManager with the given sessions directory.
     pub fn new(sessions_dir: PathBuf) -> Self {
         Self {
-            sessions_dir,
+            sessions_dir: sessions_dir.clone(),
+            backend: SessionBackend::Persisted {
+                sessions_dir: sessions_dir.clone(),
+            },
             leaf_ids: RwLock::new(HashMap::new()),
             active_session: RwLock::new(None),
+            in_memory_store: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// Create an in-memory SessionManager (no disk writes).
+    /// All entries are stored in a Vec, suitable for ephemeral sessions.
+    pub fn in_memory() -> Self {
+        Self {
+            sessions_dir: PathBuf::from("."),
+            backend: SessionBackend::InMemory {
+                entries: Vec::new(),
+            },
+            leaf_ids: RwLock::new(HashMap::new()),
+            active_session: RwLock::new(None),
+            in_memory_store: RwLock::new(HashMap::new()),
         }
     }
 
@@ -102,12 +135,26 @@ impl SessionManager {
 
     /// Get the file path for a session.
     fn session_path(&self, id: &str) -> PathBuf {
-        self.sessions_dir.join(format!("{id}.jsonl"))
+        match &self.backend {
+            SessionBackend::Persisted { sessions_dir } => sessions_dir.join(format!("{id}.jsonl")),
+            SessionBackend::InMemory { .. } => PathBuf::from("/dev/null"),
+        }
+    }
+
+    /// Get the session file, if persisted.
+    pub fn get_session_file(&self, id: &str) -> Option<PathBuf> {
+        match &self.backend {
+            SessionBackend::Persisted { .. } => Some(self.session_path(id)),
+            SessionBackend::InMemory { .. } => None,
+        }
     }
 
     /// Check if a session exists.
     pub fn exists(&self, id: &str) -> bool {
-        self.session_path(id).exists()
+        match &self.backend {
+            SessionBackend::Persisted { .. } => self.session_path(id).exists(),
+            SessionBackend::InMemory { entries } => entries.iter().any(|e| e.entry_id() == Some(id)),
+        }
     }
 
     /// Create a new session and write the header entry.
@@ -147,28 +194,42 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Append an entry to a session's JSONL file.
+    /// Append an entry to a session.
     /// Automatically generates id and links parent_id from current leaf.
+    /// For persisted sessions, writes to the JSONL file.
+    /// For in-memory sessions, stores in a Vec.
     pub async fn append(&self, session_id: &str, entry: &SessionEntry) -> Result<(), String> {
-        let path = self.session_path(session_id);
-
-        // Build entry with auto-generated id and parent link
         let entry_with_ids = self.inject_ids(session_id, entry);
 
-        let line =
-            serde_json::to_string(&entry_with_ids).map_err(|e| format!("serialize entry: {e}"))?;
-        let content = format!("{line}\n");
+        match &self.backend {
+            SessionBackend::Persisted { .. } => {
+                let path = self.session_path(session_id);
+                let line = serde_json::to_string(&entry_with_ids)
+                    .map_err(|e| format!("serialize entry: {e}"))?;
+                let content = format!("{line}\n");
 
-        use tokio::io::AsyncWriteExt;
-        let mut file = tokio::fs::OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&path)
-            .await
-            .map_err(|e| format!("open for append: {e}"))?;
-        file.write_all(content.as_bytes())
-            .await
-            .map_err(|e| format!("write entry: {e}"))?;
+                use tokio::io::AsyncWriteExt;
+                let mut file = tokio::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&path)
+                    .await
+                    .map_err(|e| format!("open for append: {e}"))?;
+                file.write_all(content.as_bytes())
+                    .await
+                    .map_err(|e| format!("write entry: {e}"))?;
+            }
+            SessionBackend::InMemory { .. } => {
+                let mut store = self
+                    .in_memory_store
+                    .write()
+                    .expect("RwLock not poisoned");
+                store
+                    .entry(session_id.to_string())
+                    .or_default()
+                    .push(entry_with_ids.clone());
+            }
+        }
 
         // Update leaf pointer
         if let Some(new_id) = entry_with_ids.entry_id() {
@@ -302,51 +363,75 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Load all entries from a session file (with v3→v4 migration if needed).
+    /// Load all entries from a session (with v3→v4 migration if needed).
+    /// For persisted sessions, reads from the JSONL file.
+    /// For in-memory sessions, returns from the Vec.
     pub async fn load(&self, session_id: &str) -> Result<Vec<SessionEntry>, String> {
-        let path = self.session_path(session_id);
-        if !path.exists() {
-            return Err(format!("session not found: {session_id}"));
-        }
-
-        let content = tokio::fs::read_to_string(&path)
-            .await
-            .map_err(|e| format!("read session: {e}"))?;
-
-        let mut entries: Vec<SessionEntry> = Vec::new();
-        let mut needs_migration = false;
-
-        for line in content.lines() {
-            if line.trim().is_empty() {
-                continue;
+        match &self.backend {
+            SessionBackend::InMemory { .. } => {
+                let store = self
+                    .in_memory_store
+                    .read()
+                    .expect("RwLock not poisoned");
+                let entries = store
+                    .get(session_id)
+                    .cloned()
+                    .ok_or_else(|| format!("session not found: {session_id}"))?;
+                // Update leaf tracking
+                if let Some(last) = entries.last() {
+                    if let Some(id) = last.entry_id() {
+                        self.set_leaf(session_id, Some(id.to_string()));
+                    }
+                } else {
+                    self.set_leaf(session_id, None);
+                }
+                return Ok(entries);
             }
-            let entry: SessionEntry =
-                serde_json::from_str(line).map_err(|e| format!("parse entry: {e}"))?;
+            SessionBackend::Persisted { .. } => {
+                let path = self.session_path(session_id);
+                if !path.exists() {
+                    return Err(format!("session not found: {session_id}"));
+                }
 
-            // Check header version
-            if let SessionEntry::Header(ref h) = entry
-                && h.version < 4
-            {
-                needs_migration = true;
+                let content = tokio::fs::read_to_string(&path)
+                    .await
+                    .map_err(|e| format!("read session: {e}"))?;
+
+                let mut entries: Vec<SessionEntry> = Vec::new();
+                let mut needs_migration = false;
+
+                for line in content.lines() {
+                    if line.trim().is_empty() {
+                        continue;
+                    }
+                    let entry: SessionEntry =
+                        serde_json::from_str(line).map_err(|e| format!("parse entry: {e}"))?;
+
+                    if let SessionEntry::Header(ref h) = entry
+                        && h.version < 4
+                    {
+                        needs_migration = true;
+                    }
+
+                    entries.push(entry);
+                }
+
+                if needs_migration {
+                    entries = self.migrate_v3_to_v4(entries);
+                }
+
+                // Update leaf tracking
+                if let Some(last) = entries.last() {
+                    if let Some(id) = last.entry_id() {
+                        self.set_leaf(session_id, Some(id.to_string()));
+                    }
+                } else {
+                    self.set_leaf(session_id, None);
+                }
+
+                Ok(entries)
             }
-
-            entries.push(entry);
         }
-
-        if needs_migration {
-            entries = self.migrate_v3_to_v4(entries);
-        }
-
-        // Update leaf tracking: last entry's id
-        if let Some(last) = entries.last() {
-            if let Some(id) = last.entry_id() {
-                self.set_leaf(session_id, Some(id.to_string()));
-            }
-        } else {
-            self.set_leaf(session_id, None);
-        }
-
-        Ok(entries)
     }
 
     /// Load and validate that the session's CWD exists.
@@ -574,6 +659,146 @@ impl SessionManager {
             thinking_level,
             model,
         })
+    }
+
+    /// Build session context as `Vec<AgentMessage>` (type-safe version).
+    /// Walks from leaf to root, reconstructing messages in chronological order.
+    /// Handles compaction summaries, bash execution, and branch summaries.
+    pub async fn build_session_context_v2(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<crate::agent::message::AgentMessage>, String> {
+        let leaf_id = self.get_leaf(session_id);
+        let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
+
+        let mut messages = Vec::new();
+        use crate::agent::message::AgentMessage;
+
+        for entry in &branch {
+            match entry {
+                SessionEntry::Compaction(c) => {
+                    messages.push(AgentMessage::CompactionSummaryMessage {
+                        summary: c.summary.clone(),
+                        tokens_before: c.tokens_before,
+                        tokens_after: 0,
+                        read_files: None,
+                        modified_files: None,
+                    });
+                }
+                SessionEntry::BranchSummary(b) => {
+                    messages.push(AgentMessage::BranchSummaryMessage {
+                        summary: b.summary.clone(),
+                        from_id: b.from_id.clone(),
+                    });
+                }
+                SessionEntry::CustomMessage(cm) => {
+                    if cm.display {
+                        let text = cm
+                            .content
+                            .as_str()
+                            .unwrap_or("")
+                            .to_string();
+                        messages.push(AgentMessage::user(text));
+                    }
+                }
+                SessionEntry::BashExecution(b) => {
+                    if b.exclude_from_context {
+                        continue;
+                    }
+                    messages.push(AgentMessage::bash(
+                        &b.command,
+                        &b.output,
+                        b.exit_code,
+                    ));
+                }
+                SessionEntry::Message(m) => {
+                    // Try to parse message JSON into AgentMessage
+                    if let Ok(msg) = serde_json::from_value::<AgentMessage>(m.message.clone()) {
+                        messages.push(msg);
+                    }
+                }
+                // Non-context entries: skip
+                SessionEntry::Header(_)
+                | SessionEntry::Custom(_)
+                | SessionEntry::Label(_)
+                | SessionEntry::SessionInfo(_)
+                | SessionEntry::ModelChange(_)
+                | SessionEntry::ThinkingLevelChange(_) => {}
+            }
+        }
+
+        Ok(messages)
+    }
+
+    /// Get a range of branch entries between two entry IDs.
+    /// Returns entries from `start_id` (inclusive) to `end_id` (exclusive).
+    pub async fn get_branch_entries(
+        &self,
+        session_id: &str,
+        start_id: &str,
+        end_id: &str,
+    ) -> Result<Vec<SessionEntry>, String> {
+        let leaf_id = self.get_leaf(session_id);
+        let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
+
+        let mut in_range = false;
+        let mut result = Vec::new();
+        for entry in &branch {
+            let Some(eid) = entry.entry_id() else { continue };
+            if eid == start_id {
+                in_range = true;
+            }
+            if in_range {
+                result.push(entry.clone());
+            }
+            if eid == end_id {
+                break;
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Create a branched (forked) session from a parent session up to a given entry.
+    /// This is a cleaner alias for `fork()` that creates the child explicitly.
+    pub async fn create_branched_session(
+        &self,
+        parent_id: &str,
+        child_id: &str,
+        target_entry_id: &str,
+    ) -> Result<(), String> {
+        self.fork(parent_id, child_id, target_entry_id).await
+    }
+
+    /// Append a label to an entry.
+    pub async fn append_label(
+        &self,
+        session_id: &str,
+        target_id: &str,
+        label: &str,
+        description: Option<&str>,
+    ) -> Result<(), String> {
+        // Verify target exists
+        let _ = self
+            .get_entry(session_id, target_id)
+            .await?
+            .ok_or_else(|| format!("target entry not found: {target_id}"))?;
+
+        let entry = SessionEntry::Label(LabelEntry {
+            base: EntryBase {
+                entry_type: "label".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: String::new(),
+            },
+            target_id: target_id.to_string(),
+            label: Some(if let Some(desc) = description {
+                format!("{label}: {desc}")
+            } else {
+                label.to_string()
+            }),
+        });
+        self.append(session_id, &entry).await
     }
 
     // ── Change tracking helpers ─────────────────────────────────

@@ -1,0 +1,15 @@
+kind: llman.sdd.delta
+ops[6]{op,req_id,title,statement,from,to,name}:
+  add_requirement,sp21,"session-fork","SessionManager MUST support create_branched_session(target_entry_id) creating a new session file that copies all entries up to and including the target entry, setting parent_session in the header.",null,null,null
+  add_requirement,sp22,"tree-navigation","SessionManager MUST support build_tree() returning a tree structure and get_branch() returning the linear path of entries from root to current leaf.",null,null,null
+  add_requirement,sp23,"context-building","SessionManager MUST support build_session_context() converting persisted entries (messages, compactions, branch summaries, custom messages) into a flat Vec of AgentMessage suitable for LLM consumption. Compaction summaries MUST replace the entries they summarize.",null,null,null
+  add_requirement,sp24,"in-memory","SessionManager MUST support an in_memory(cwd) constructor producing a non-persisted session that stores entries in memory Vec instead of JSONL files.",null,null,null
+  add_requirement,sp25,"version-migration","SessionManager MUST detect stale SESSION_VERSION on session file open and apply automatic migration (with backup) before loading entries.",null,null,null
+  add_requirement,sp26,"labels","SessionManager MUST support append_label() writing a LabelEntry with name and optional description for annotating session tree nodes.",null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  sp21,fork,"a session has 10 entries from root to leaf","create_branched_session(entry-5) is called","a new session file is created with 6 entries (header + entry-0 through entry-5)"
+  sp22,build-tree,"a session has 3 branches from different forks","build_tree is called","returned tree has 3 leaf nodes under root"
+  sp23,with-compaction,"a session has a compaction entry after 100 old messages","build_session_context is called","context contains the compaction summary + recent messages, NOT the old 100 messages"
+  sp24,in-memory,"a session is created with in_memory","entries are appended","no file is written, entries are retrievable via get_branch"
+  sp25,migrate,"a v3 session file has old XyContent message format","session file is opened","entries are migrated to v4 format, backup file is created"
+  sp26,label,"a user marks a specific entry","append_label(label-name) is called","LabelEntry is persisted and visible in the tree"

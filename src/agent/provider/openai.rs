@@ -2,7 +2,7 @@
 //!
 //! Delegates HTTP, SSE parsing, tool definitions, and error handling to
 //! the [`async_openai`] crate. Converts between xylitol's internal types
-//! (`XyContent` / `XyChunk`) and async-openai's chat types.
+//! (`AgentMessage` / `XyChunk`) and async-openai's chat types.
 
 use async_openai::{
     Client,
@@ -22,7 +22,7 @@ use serde_json::Value;
 
 use crate::agent::error::XyError;
 use crate::agent::traits::{XyModel, XyStream};
-use crate::agent::types::{XyChunk, XyContent, XyFinishReason, XyPart, XyRole, XyToolSchema};
+use crate::agent::types::{XyChunk, XyFinishReason, XyToolSchema};
 
 pub(crate) struct OpenAIProvider {
     client: Client<OpenAIConfig>,
@@ -49,11 +49,11 @@ impl XyModel for OpenAIProvider {
 
     async fn generate_stream(
         &self,
-        messages: Vec<XyContent>,
+        messages: Vec<AgentMessage>,
         tools: &[XyToolSchema],
         stream: bool,
     ) -> Result<XyStream, XyError> {
-        let msgs = convert_messages(&messages);
+        let msgs = convert_agent_messages(&messages, None);
         let tool_defs = convert_tools(tools);
 
         if stream {
@@ -87,123 +87,6 @@ impl XyModel for OpenAIProvider {
             }
         }
     }
-}
-
-// ── Message conversion ─────────────────────────────────────────────
-
-fn convert_messages(contents: &[XyContent]) -> Vec<ChatCompletionRequestMessage> {
-    contents
-        .iter()
-        .filter_map(|content| match content.role {
-            XyRole::System => {
-                let text = collect_text(&content.parts);
-                if text.is_empty() {
-                    return None;
-                }
-                Some(ChatCompletionRequestMessage::System(
-                    ChatCompletionRequestSystemMessage {
-                        content:
-                            async_openai::types::chat::ChatCompletionRequestSystemMessageContent::Text(
-                                text,
-                            ),
-                        name: None,
-                    },
-                ))
-            }
-            XyRole::User => {
-                let text = collect_text(&content.parts);
-                if text.is_empty() {
-                    return None;
-                }
-                Some(ChatCompletionRequestMessage::User(
-                    ChatCompletionRequestUserMessage {
-                        content: ChatCompletionRequestUserMessageContent::Text(text),
-                        name: None,
-                    },
-                ))
-            }
-            XyRole::Assistant => {
-                let text = collect_text(&content.parts);
-                let tool_calls: Vec<ChatCompletionMessageToolCalls> = content
-                    .parts
-                    .iter()
-                    .filter_map(|p| {
-                        if let XyPart::FunctionCall { name, args, id } = p {
-                            let args_str = args.to_string();
-                            Some(ChatCompletionMessageToolCalls::Function(
-                                async_openai::types::chat::ChatCompletionMessageToolCall {
-                                    id: id.clone(),
-                                    function: FunctionCall {
-                                        name: name.clone(),
-                                        arguments: args_str,
-                                    },
-                                },
-                            ))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-
-                let content = if text.is_empty() && tool_calls.is_empty() {
-                    text_to_assistant_content(Some(" ".into()))
-                } else if text.is_empty() {
-                    None
-                } else {
-                    Some(ChatCompletionRequestAssistantMessageContent::Text(text))
-                };
-
-                Some(ChatCompletionRequestMessage::Assistant(
-                    ChatCompletionRequestAssistantMessage {
-                        content,
-                        refusal: None,
-                        name: None,
-                        audio: None,
-                        tool_calls: if tool_calls.is_empty() {
-                            None
-                        } else {
-                            Some(tool_calls)
-                        },
-                        ..Default::default()
-                    },
-                ))
-            }
-            XyRole::Tool => {
-                for part in &content.parts {
-                    if let XyPart::FunctionResponse { name: _, result, id } = part {
-                        return Some(ChatCompletionRequestMessage::Tool(
-                            ChatCompletionRequestToolMessage {
-                                content: ChatCompletionRequestToolMessageContent::Text(
-                                    result.clone(),
-                                ),
-                                tool_call_id: id.clone(),
-                            },
-                        ));
-                    }
-                }
-                None
-            }
-        })
-        .collect()
-}
-
-fn collect_text(parts: &[XyPart]) -> String {
-    parts
-        .iter()
-        .filter_map(|p| match p {
-            XyPart::Text(t) | XyPart::Thinking(t) => Some(t.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// Convert XyPart::Text content to `ChatCompletionRequestAssistantMessageContent`.
-fn text_to_assistant_content(
-    text: Option<String>,
-) -> Option<ChatCompletionRequestAssistantMessageContent> {
-    text.filter(|t| !t.is_empty())
-        .map(ChatCompletionRequestAssistantMessageContent::Text)
 }
 
 // ── Tool conversion ────────────────────────────────────────────────
@@ -287,6 +170,7 @@ fn map_stream(
                     };
                     yield XyChunk::Done {
                         finish_reason: reason,
+                        usage: None,
                     };
                 }
             }
@@ -296,10 +180,24 @@ fn map_stream(
 
 // ── Non-streaming response ─────────────────────────────────────────
 
+/// Extract Usage from OpenAI response.
+fn openai_usage(usage: &Option<async_openai::types::chat::CompletionUsage>) -> Option<crate::agent::message::Usage> {
+    usage.as_ref().map(|u| crate::agent::message::Usage {
+        input: u.prompt_tokens as u64,
+        output: u.completion_tokens as u64,
+        cache_read: 0,
+        cache_write: 0,
+        total_tokens: u.total_tokens as u64,
+        cache_write_1h: 0,
+        cost: None,
+    })
+}
+
 fn parse_nonstream_response(
     response: &async_openai::types::chat::CreateChatCompletionResponse,
 ) -> Vec<XyChunk> {
     let mut chunks = Vec::new();
+    let usage = openai_usage(&response.usage);
 
     for choice in &response.choices {
         let msg = &choice.message;
@@ -335,8 +233,291 @@ fn parse_nonstream_response(
         };
         chunks.push(XyChunk::Done {
             finish_reason: reason,
+            usage: usage.clone(),
         });
     }
 
     chunks
+}
+
+// ── AgentMessage conversion ────────────────────────────────────
+
+use crate::agent::message::{AgentMessage, AgentPart, collect_text_parts};
+
+/// Convert a slice of [`AgentMessage`] values to OpenAI chat request
+/// messages.
+pub fn convert_agent_messages(
+    messages: &[AgentMessage],
+    system_prompt: Option<&str>,
+) -> Vec<ChatCompletionRequestMessage> {
+    let mut out = Vec::new();
+
+    if let Some(sp) = system_prompt
+        && !sp.is_empty()
+    {
+        out.push(ChatCompletionRequestMessage::System(
+            ChatCompletionRequestSystemMessage {
+                content:
+                    async_openai::types::chat::ChatCompletionRequestSystemMessageContent::Text(
+                        sp.to_string(),
+                    ),
+                name: None,
+            },
+        ));
+    }
+
+    for msg in messages {
+        match msg {
+            AgentMessage::UserMessage { content, .. } => {
+                let text = collect_text_parts(content);
+                if text.is_empty() {
+                    continue;
+                }
+                out.push(ChatCompletionRequestMessage::User(
+                    ChatCompletionRequestUserMessage {
+                        content: ChatCompletionRequestUserMessageContent::Text(text),
+                        name: None,
+                    },
+                ));
+            }
+            AgentMessage::AssistantMessage {
+                content,
+                ..
+            } => {
+                let text = collect_text_parts(content);
+                let tool_calls: Vec<ChatCompletionMessageToolCalls> = content
+                    .iter()
+                    .filter_map(|p| match p {
+                        AgentPart::ToolCall { id, name, arguments } => {
+                            Some(ChatCompletionMessageToolCalls::Function(
+                                async_openai::types::chat::ChatCompletionMessageToolCall {
+                                    id: id.clone(),
+                                    function: FunctionCall {
+                                        name: name.clone(),
+                                        arguments: arguments.to_string(),
+                                    },
+                                },
+                            ))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+
+                let msg_content = if text.is_empty() {
+                    None
+                } else {
+                    Some(ChatCompletionRequestAssistantMessageContent::Text(text))
+                };
+
+                out.push(ChatCompletionRequestMessage::Assistant(
+                    ChatCompletionRequestAssistantMessage {
+                        content: msg_content,
+                        refusal: None,
+                        name: None,
+                        audio: None,
+                        tool_calls: if tool_calls.is_empty() {
+                            None
+                        } else {
+                            Some(tool_calls)
+                        },
+                        ..Default::default()
+                    },
+                ));
+            }
+            AgentMessage::ToolResultMessage {
+                tool_use_id,
+                content,
+                ..
+            } => {
+                let text = collect_text_parts(content);
+                out.push(ChatCompletionRequestMessage::Tool(
+                    ChatCompletionRequestToolMessage {
+                        content: ChatCompletionRequestToolMessageContent::Text(text),
+                        tool_call_id: tool_use_id.clone(),
+                    },
+                ));
+            }
+            AgentMessage::BashExecutionMessage {
+                command,
+                output,
+                exclude_from_context,
+                ..
+            } => {
+                if *exclude_from_context {
+                    continue;
+                }
+                let text = format!("$ {command}\n{output}");
+                out.push(ChatCompletionRequestMessage::User(
+                    ChatCompletionRequestUserMessage {
+                        content: ChatCompletionRequestUserMessageContent::Text(text),
+                        name: None,
+                    },
+                ));
+            }
+            AgentMessage::CompactionSummaryMessage { summary, .. }
+            | AgentMessage::BranchSummaryMessage { summary, .. } => {
+                let text = format!("[Context summary: {summary}]");
+                out.push(ChatCompletionRequestMessage::User(
+                    ChatCompletionRequestUserMessage {
+                        content: ChatCompletionRequestUserMessageContent::Text(text),
+                        name: None,
+                    },
+                ));
+            }
+            AgentMessage::CustomMessage {
+                custom_type: _,
+                content,
+                ..
+            } => {
+                let text = content.as_str().unwrap_or("").to_string();
+                if text.is_empty() {
+                    continue;
+                }
+                out.push(ChatCompletionRequestMessage::User(
+                    ChatCompletionRequestUserMessage {
+                        content: ChatCompletionRequestUserMessageContent::Text(text),
+                        name: None,
+                    },
+                ));
+            }
+        }
+    }
+
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::message::{AgentMessage, StopReason};
+
+    #[test]
+    fn convert_user_message() {
+        let msgs = vec![AgentMessage::user("hello world")];
+        let result = convert_agent_messages(&msgs, None);
+        assert_eq!(result.len(), 1);
+        match &result[0] {
+            ChatCompletionRequestMessage::User(m) => {
+                match &m.content {
+                    ChatCompletionRequestUserMessageContent::Text(t) => {
+                        assert_eq!(t, "hello world");
+                    }
+                    _ => panic!("expected Text content"),
+                }
+            }
+            _ => panic!("expected User message"),
+        }
+    }
+
+    #[test]
+    fn convert_system_prompt() {
+        let msgs = vec![AgentMessage::user("hi")];
+        let result = convert_agent_messages(&msgs, Some("You are helpful"));
+        assert_eq!(result.len(), 2);
+        match &result[0] {
+            ChatCompletionRequestMessage::System(m) => {
+                match &m.content {
+                    async_openai::types::chat::ChatCompletionRequestSystemMessageContent::Text(t) => {
+                        assert_eq!(t, "You are helpful");
+                    }
+                    _ => panic!("expected Text content"),
+                }
+            }
+            _ => panic!("expected System message"),
+        }
+    }
+
+    #[test]
+    fn convert_assistant_with_tool_call() {
+        let msgs = vec![AgentMessage::AssistantMessage {
+            content: vec![
+                AgentPart::Text("Let me check".into()),
+                AgentPart::ToolCall {
+                    id: "call-1".into(),
+                    name: "read".into(),
+                    arguments: serde_json::json!({}),
+                },
+            ],
+            stop_reason: Some(StopReason::ToolUse),
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        }];
+        let result = convert_agent_messages(&msgs, None);
+        assert_eq!(result.len(), 1);
+        match &result[0] {
+            ChatCompletionRequestMessage::Assistant(m) => {
+                assert!(m.tool_calls.is_some());
+                assert_eq!(m.tool_calls.as_ref().unwrap().len(), 1);
+            }
+            _ => panic!("expected Assistant message"),
+        }
+    }
+
+    #[test]
+    fn convert_tool_result() {
+        let msgs = vec![AgentMessage::tool_result(
+            "call-1",
+            "",
+            vec![AgentPart::Text("done".into())],
+            false,
+        )];
+        let result = convert_agent_messages(&msgs, None);
+        assert_eq!(result.len(), 1);
+        match &result[0] {
+            ChatCompletionRequestMessage::Tool(m) => {
+                assert_eq!(m.tool_call_id, "call-1");
+            }
+            _ => panic!("expected Tool message"),
+        }
+    }
+
+    #[test]
+    fn convert_bash_execution() {
+        let msgs = vec![AgentMessage::bash("ls -la", "total 42", Some(0))];
+        let result = convert_agent_messages(&msgs, None);
+        assert_eq!(result.len(), 1);
+        match &result[0] {
+            ChatCompletionRequestMessage::User(m) => {
+                match &m.content {
+                    ChatCompletionRequestUserMessageContent::Text(t) => {
+                        assert!(t.contains("ls -la"));
+                        assert!(t.contains("total 42"));
+                    }
+                    _ => panic!("expected Text content"),
+                }
+            }
+            _ => panic!("expected User message"),
+        }
+    }
+
+    #[test]
+    fn convert_custom_message() {
+        let msgs = vec![AgentMessage::CustomMessage {
+            custom_type: "diag".into(),
+            content: serde_json::json!("diagnostic info"),
+            display: serde_json::json!({}),
+            details: serde_json::json!({}),
+        }];
+        let result = convert_agent_messages(&msgs, None);
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn convert_compaction_summary() {
+        let msgs = vec![AgentMessage::CompactionSummaryMessage {
+            summary: "Compressed 50 entries".into(),
+            tokens_before: 100000,
+            tokens_after: 5000,
+            read_files: None,
+            modified_files: None,
+        }];
+        let result = convert_agent_messages(&msgs, None);
+        assert_eq!(result.len(), 1);
+    }
 }

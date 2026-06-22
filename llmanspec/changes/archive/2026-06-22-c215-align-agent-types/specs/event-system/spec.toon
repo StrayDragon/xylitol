@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,evt-01,Lifecycle events include message_start and message_update,"AgentLifecycleEvent SHALL include MessageStart { message: AgentMessage } and MessageUpdate { message: AgentMessage, delta: Value } variants. The loop SHALL emit MessageStart when a new message begins streaming and MessageUpdate for each streaming delta.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  evt-01,start,"the loop begins streaming an assistant message","MessageStart is emitted with the initial message","the event payload contains a non-empty message"
+  evt-01,delta,"the loop receives a TextDelta chunk","MessageUpdate is emitted with the delta field","the update is observable via EventBus::on_lifecycle"

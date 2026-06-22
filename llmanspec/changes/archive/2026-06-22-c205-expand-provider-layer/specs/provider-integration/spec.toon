@@ -1,0 +1,15 @@
+kind: llman.sdd.delta
+ops[6]{op,req_id,title,statement,from,to,name}:
+  add_requirement,pi21,"bedrock-provider","System MUST support Amazon Bedrock as a provider: AWS SigV4 signing, Converse API with tool_use and thinking, model ID resolution.",null,null,null
+  add_requirement,pi22,"google-provider","System MUST support Google/Vertex AI as a provider: Gemini API, image content, thinking blocks with signature validation.",null,null,null
+  add_requirement,pi23,"copilot-provider","System MUST support GitHub Copilot as a provider: OpenAI Responses API compatible layer, OAuth device code flow for authentication.",null,null,null
+  add_requirement,pi24,"azure-provider","System MUST support Azure OpenAI as a provider: custom base URL, Azure AD authentication.",null,null,null
+  add_requirement,pi25,"oauth-flow","System MUST implement OAuth device code authorization flow with secure token storage and automatic token refresh.",null,null,null
+  add_requirement,pi26,"usage-tracking","Provider responses MUST carry usage information (input/output/cacheRead/cacheWrite/totalTokens) that is populated into AssistantMessage.usage.",null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  pi21,"bedrock-converse","AWS credentials are configured for Bedrock","a prompt is sent via Bedrock Converse API","response is received with text and tool_use content"
+  pi22,"google-gemini","Google API key is configured","a prompt with image is sent to Gemini","response includes analysis of the image"
+  pi23,"copilot","GitHub Copilot token is configured","a prompt is sent via Copilot provider","response is received via OpenAI Responses API"
+  pi24,"azure","Azure endpoint and key are configured","a prompt is sent to Azure OpenAI","response is received"
+  pi25,"oauth-device","GitHub Copilot requires OAuth","device code flow is initiated","token is obtained and stored in auth storage"
+  pi26,"usage-populated","Anthropic returns a response with usage","AssistantMessage is constructed","message.usage contains input and output tokens from response"

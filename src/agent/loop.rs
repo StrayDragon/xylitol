@@ -21,11 +21,11 @@ use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::error::XyError;
-use crate::agent::event::AgentEventBus;
+use crate::agent::message::{AgentMessage, AgentPart};
 use crate::agent::retry::{RetryState, is_retryable_error};
 use crate::agent::session::AgentSession;
-use crate::agent::traits::{XyModel, XyToolCtx};
-use crate::agent::types::{XyChunk, XyContent, XyPart, XyToolSchema};
+use crate::agent::traits::{ToolExecutionMode, XyModel, XyToolCtx};
+use crate::agent::types::{XyChunk, XyToolSchema};
 
 // ── AgentEvent ──────────────────────────────────────────────────────
 
@@ -66,7 +66,7 @@ pub enum AgentEvent {
     /// Error occurred.
     Error(String),
     /// Agent loop completed.
-    AgentEnd { messages: Vec<XyContent> },
+    AgentEnd { messages: Vec<AgentMessage> },
     /// Compaction started.
     CompactionStart { reason: String },
     /// Compaction ended.
@@ -86,8 +86,8 @@ pub enum AgentEvent {
 pub type BeforeToolHook = Box<dyn Fn(&str, &str, &Value) -> Option<String> + Send + Sync>;
 pub type AfterToolHook =
     Box<dyn Fn(&str, &str, Value, bool) -> Option<(Value, bool)> + Send + Sync>;
-pub type TransformCtxHook = Box<dyn Fn(Vec<XyContent>) -> Vec<XyContent> + Send + Sync>;
-pub type GetMessagesHook = Box<dyn Fn() -> Vec<XyContent> + Send + Sync>;
+pub type TransformCtxHook = Box<dyn Fn(Vec<AgentMessage>) -> Vec<AgentMessage> + Send + Sync>;
+pub type GetMessagesHook = Box<dyn Fn() -> Vec<AgentMessage> + Send + Sync>;
 
 /// Hooks for customizing the agent loop.
 pub struct AgentHooks {
@@ -110,12 +110,6 @@ impl Default for AgentHooks {
             max_retries: 3,
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ToolExecutionMode {
-    Sequential,
-    Parallel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -259,15 +253,21 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
         cancel,
     } = cfg;
     async_stream::stream! {
-        let mut history: Vec<XyContent> = Vec::new();
+        let mut history: Vec<AgentMessage> = Vec::new();
 
-        // Add system prompt to history
+        // Add system prompt to history (as user message — AgentMessage has no system variant)
         if let Some(ref sp) = system_prompt {
-            history.push(XyContent::system(sp));
+            history.push(AgentMessage::UserMessage {
+                content: vec![AgentPart::Text(sp.clone())],
+                timestamp: crate::agent::message::now_ms(),
+            });
         }
 
         // Add user message
-        history.push(XyContent::user(&user_prompt));
+        history.push(AgentMessage::UserMessage {
+            content: vec![AgentPart::Text(user_prompt.clone())],
+            timestamp: crate::agent::message::now_ms(),
+        });
 
         let retry_state = RetryState::new(3, 1000);
 
@@ -345,20 +345,31 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
             // Build assistant message
             let mut assistant_parts = Vec::new();
             if !thinking_acc.is_empty() {
-                assistant_parts.push(XyPart::Thinking(thinking_acc));
+                assistant_parts.push(AgentPart::Thinking { text: thinking_acc, redacted: false, signature: None });
             }
             if !text_acc.is_empty() {
-                assistant_parts.push(XyPart::Text(text_acc));
+                assistant_parts.push(AgentPart::Text(text_acc));
             }
             for (id, name, args) in &tool_calls {
-                assistant_parts.push(XyPart::FunctionCall {
+                assistant_parts.push(AgentPart::ToolCall {
                     id: id.clone(),
                     name: name.clone(),
-                    args: args.clone(),
+                    arguments: args.clone(),
                 });
             }
             if !assistant_parts.is_empty() {
-                history.push(XyContent::assistant(assistant_parts));
+                history.push(AgentMessage::AssistantMessage {
+                    content: assistant_parts,
+                    stop_reason: None,
+                    usage: None,
+                    api: String::new(),
+                    provider: String::new(),
+                    model: String::new(),
+                    response_id: None,
+                    error_message: None,
+                    timestamp: crate::agent::message::now_ms(),
+                    diagnostics: Vec::new(),
+                });
             }
 
             // If no tool calls, done
@@ -394,11 +405,14 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
                     result: result.clone(),
                 };
 
-                history.push(XyContent::tool_result(
-                    name.clone(),
-                    result,
-                    id.clone(),
-                ));
+                history.push(AgentMessage::ToolResultMessage {
+                    tool_use_id: id.clone(),
+                    tool_name: name.clone(),
+                    content: vec![AgentPart::Text(result.clone())],
+                    details: None,
+                    is_error: false,
+                    timestamp: crate::agent::message::now_ms(),
+                });
             }
 
             yield AgentEvent::TurnEnd { turn_index: turn as u32 };
@@ -415,7 +429,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
 /// Helper: call model with retry for transient errors.
 async fn call_with_retry(
     model: &Arc<dyn XyModel>,
-    messages: Vec<XyContent>,
+    messages: Vec<AgentMessage>,
     tool_schemas: &[XyToolSchema],
     retry_state: &RetryState,
 ) -> Result<Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>, String> {
@@ -463,14 +477,7 @@ impl AgentEventStream {
         }
     }
 
-    /// Bridge this stream to an EventBus, returning a handle.
-    #[allow(dead_code)]
-    pub(crate) async fn fan_out(self, bus: &AgentEventBus) {
-        let mut stream = self;
-        while let Some(event) = stream.next().await {
-            bus.emit(event);
-        }
-    }
+
 }
 
 impl Stream for AgentEventStream {
@@ -519,6 +526,14 @@ mod tests {
             display_name: "Mock".into(),
             thinking: false,
             context_window: 128000,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
         });
 
         let session_mgr = SessionManager::new(SessionManager::default_dir());
@@ -550,6 +565,14 @@ mod tests {
             display_name: "Mock".into(),
             thinking: false,
             context_window: 128000,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
         });
 
         let session_mgr = SessionManager::new(SessionManager::default_dir());
