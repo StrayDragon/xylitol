@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,rc15,"compaction-config-mapping","Runtime config MUST define a single documented mapping from the YAML load-time compaction surface into the canonical runtime compaction settings with no parallel duplicate type.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  rc15,"mapping-documented","a user sets compaction fields in config.yaml","config is loaded and resolved into runtime settings","the canonical runtime compaction settings reflect the YAML values via one documented mapping"

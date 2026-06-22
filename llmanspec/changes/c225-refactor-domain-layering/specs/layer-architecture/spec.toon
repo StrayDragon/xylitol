@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,la1,"core-layer","System MUST provide a base core/ layer hosting domain-core vocabulary types including AgentMessage and XyModel and XyTool and ModelKind and XyChunk consumable by both agent/ and infra/.",null,null,null
+  add_requirement,la2,"downward-dependency","infra/ modules MUST NOT import any crate::agent symbol; infra/ and agent/ MAY depend on crate::core for domain-core types only.",null,null,null
+  add_requirement,la3,"arch-guard","System MUST enforce via a guard test that no file under src/infra imports crate::agent.",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  la1,"types-relocated","agent and infra both need AgentMessage","they import crate::core::message::AgentMessage","neither depends on agent/ for the type"
+  la2,"no-reverse-import","a file under src/infra is compiled","it references crate::agent","the build or guard rejects it"
+  la3,"guard-catches-violation","a new src/infra file adds use crate::agent::session","the architecture guard runs","the guard fails and reports the offending file path"

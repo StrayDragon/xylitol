@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,as30,"cohesion-decomposition","AgentSession MUST be decomposed into focused collaborator components covering model management and tool management and compaction orchestration and skill activation rather than a single object mixing many unrelated responsibilities.",null,null,null
+  add_requirement,as31,"facade-retained","AgentSession MUST remain the single public facade composing the decomposed components while preserving its existing event stream and public API.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  as30,"responsibilities-separated","the session module responsibilities are enumerated","component boundaries are drawn","each component owns a single responsibility class"
+  as31,"public-api-unchanged","AgentSession public methods are invoked after decomposition","the existing test suite runs","all lib tests and agent BDD scenarios still pass without API changes"
