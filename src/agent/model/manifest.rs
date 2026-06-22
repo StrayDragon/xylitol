@@ -22,8 +22,8 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::agent::model::{ModelConfig, ModelKind};
-use crate::agent::registry::ModelRegistry;
+use super::config::{ModelConfig, ModelKind};
+use super::registry::ModelRegistry;
 use crate::agent::types::ModelMeta;
 
 /// A single model definition from a manifest file.

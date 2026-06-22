@@ -13,7 +13,7 @@
 //! future wiring. The core resolution logic is fully functional.
 
 #![allow(dead_code)]
-use crate::agent::trust::{self, TrustStore};
+use super::store::{TrustOption, TrustStore, get_project_trust_options, has_project_trust_inputs};
 
 // ── Configuration ──────────────────────────────────────────────────
 
@@ -89,7 +89,7 @@ pub(crate) fn resolve_project_trusted<F>(
     on_prompt: F,
 ) -> TrustResolution
 where
-    F: FnOnce(&[trust::TrustOption]) -> Option<usize>,
+    F: FnOnce(&[TrustOption]) -> Option<usize>,
 {
     // 1. Explicit override
     if let Some(overridden) = options.trust_override {
@@ -100,7 +100,7 @@ where
     }
 
     // 2. No trust inputs → auto-trust
-    if !trust::has_project_trust_inputs(&options.cwd) {
+    if !has_project_trust_inputs(&options.cwd) {
         return TrustResolution {
             trusted: true,
             reason: TrustReason::NoTrustInputs,
@@ -141,7 +141,7 @@ where
         };
     }
 
-    let trust_options = trust::get_project_trust_options(&options.cwd);
+    let trust_options = get_project_trust_options(&options.cwd);
     if let Some(selected_idx) = on_prompt(&trust_options)
         && let Some(selected) = trust_options.get(selected_idx)
     {

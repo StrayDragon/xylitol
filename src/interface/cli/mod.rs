@@ -2,11 +2,11 @@
 
 use clap::{Parser, Subcommand};
 
-use crate::agent::auth_guidance;
+use crate::agent::auth;
 use crate::agent::r#loop::AgentLoop;
 use crate::agent::model::{ModelConfig, ModelKind};
-use crate::agent::registry;
-use crate::agent::resolver;
+use crate::agent::model::registry;
+use crate::agent::model::resolver;
 use crate::agent::session::{AgentSession, ModelRegistry};
 use crate::agent::tools::ToolRegistry;
 use crate::agent::types::ModelMeta;
@@ -167,7 +167,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if model_registry.is_empty() {
         eprintln!(
             "Error: {}",
-            auth_guidance::format_no_models_available_message()
+            auth::format_no_models_available_message()
         );
         return Err("no models available".into());
     }
@@ -269,7 +269,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!(
                     "Warning: {}\n{}",
                     msg,
-                    auth_guidance::format_no_model_selected_message()
+                    auth::format_no_model_selected_message()
                 );
             }
         }

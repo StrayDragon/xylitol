@@ -114,13 +114,13 @@ impl ModelConfig {
                 use crate::agent::provider::{FakeProvider, ScenarioStep};
                 let steps = {
                     // Check thread-local mock configuration first.
-                    let tool = crate::agent::model::FAKE_TOOL_CALL.with(|c| c.borrow_mut().take());
-                    let text = crate::agent::model::FAKE_TEXT.with(|c| c.borrow_mut().take());
+                    let tool = FAKE_TOOL_CALL.with(|c| c.borrow_mut().take());
+                    let text = FAKE_TEXT.with(|c| c.borrow_mut().take());
                     if let Some((tool_name, tool_args)) = tool {
                         let args: serde_json::Value =
                             serde_json::from_str(&tool_args).unwrap_or(serde_json::json!({}));
                         let tool_result =
-                            crate::agent::model::FAKE_TOOL_RESULT.with(|c| c.borrow_mut().take());
+                            FAKE_TOOL_RESULT.with(|c| c.borrow_mut().take());
                         vec![
                             ScenarioStep::tool_call(tool_name, args),
                             ScenarioStep::tool_result(

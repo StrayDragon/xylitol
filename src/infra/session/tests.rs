@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::infra::session::compaction::CompactionKind;
+use crate::agent::compaction::CompactionKind;
 use crate::infra::session::config::{SessionConfig, StorageConfig};
 use crate::infra::session::gc::PruneStrategy;
 use crate::infra::session::manager::{ContextFilter, SnapshotBuilder, SnapshotManager};
