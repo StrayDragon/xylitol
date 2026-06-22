@@ -67,7 +67,6 @@ default = [
 ]
 
 # ── agent/ layer ──────────────────────────────
-agent-planning = []
 agent-model-lock = []
 
 # ── infra/ layer ──────────────────────────────

@@ -103,16 +103,6 @@ impl ToolRegistry {
         }
     }
 
-    /// Wrap every registered tool with a hook-checking wrapper.
-    /// TODO: implement in hook-system phase — for now it's a no-op passthrough.
-    pub fn wrap_with_hooks<F>(&mut self, _hook_cb: F)
-    where
-        F: Fn(&str, &serde_json::Value) -> bool + Send + Sync + 'static,
-    {
-        // Placeholder: will implement proper hook tool wrapper in Phase 5.
-        // For now, tools are passed through as-is.
-    }
-
     /// Create a registry with all built-in tools registered.
     pub fn builtins() -> Self {
         let mq = Arc::new(mutation::FileMutationQueue::new());
@@ -175,9 +165,7 @@ pub fn validate_tool_arguments(
                     return Err(ToolValidationError::UnexpectedField(key.clone()));
                 }
                 if let Some(prop_schema) = properties.get(key) {
-                    if let Some(expected_type) =
-                        prop_schema.get("type").and_then(|t| t.as_str())
-                    {
+                    if let Some(expected_type) = prop_schema.get("type").and_then(|t| t.as_str()) {
                         let val = &obj[key];
                         let type_ok = match expected_type {
                             "string" => val.is_string(),
