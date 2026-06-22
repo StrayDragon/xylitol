@@ -13,7 +13,7 @@
 ```rust
 pub enum AgentMessage {
     UserMessage { content: Vec<AgentPart>, timestamp: i64 },
-    AssistantMessage { 
+    AssistantMessage {
         content: Vec<AgentPart>,
         stop_reason: StopReason,
         usage: Option<Usage>,
