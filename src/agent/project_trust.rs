@@ -107,10 +107,7 @@ where
         };
     }
 
-    // 3. Extension event — stubbed for future extension wire-up
-    // TODO: Call emit_project_trust_event when extension system is integrated.
-
-    // 4. TrustStore lookup
+    // 3. TrustStore lookup
     let store_decision = options.trust_store.get(&options.cwd);
     if let Some(decision) = store_decision {
         return TrustResolution {
@@ -119,7 +116,7 @@ where
         };
     }
 
-    // 5. Default policy
+    // 4. Default policy
     match options.default_policy {
         DefaultProjectTrust::Always => {
             return TrustResolution {
@@ -136,7 +133,7 @@ where
         DefaultProjectTrust::Ask => { /* continue to UI */ }
     }
 
-    // 6. UI prompt (only if has_ui)
+    // 5. UI prompt (only if has_ui)
     if !options.has_ui {
         return TrustResolution {
             trusted: false,

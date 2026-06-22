@@ -1,9 +1,8 @@
-//! HTTP dispatcher — proxy settings and idle timeout configuration.
+//! HTTP dispatcher — proxy and timeout configuration for reqwest clients.
 //!
 //! Aligns with pi's http-dispatcher.ts. Provides:
-//! - Proxy configuration via HTTP_PROXY / HTTPS_PROXY env vars
-//! - Idle timeout configuration for reqwest::Client
-//! - Timeout value parsing from config strings
+//! - reqwest::Client configuration (builder-level proxy + timeouts)
+//! - Idle timeout value parsing from config strings
 
 use std::time::Duration;
 
@@ -89,37 +88,6 @@ pub fn format_http_idle_timeout_ms(timeout_ms: u64) -> String {
     format!("{} sec", timeout_ms / 1000)
 }
 
-// ── Proxy Configuration ────────────────────────────────────────────
-
-/// Apply HTTP proxy settings by setting `HTTP_PROXY` and `HTTPS_PROXY`
-/// environment variables.
-///
-/// Only sets a variable if it is not already set, matching pi's behavior.
-pub fn apply_http_proxy_settings(http_proxy: Option<&str>) {
-    let proxy = match http_proxy {
-        Some(p) => p.trim(),
-        None => return,
-    };
-
-    if proxy.is_empty() {
-        return;
-    }
-
-    // Use std::env::set_var — but only if the env var is not already set
-    if std::env::var("HTTP_PROXY").is_err() {
-        // SAFETY: single-threaded startup; env var is not yet set
-        unsafe {
-            std::env::set_var("HTTP_PROXY", proxy);
-        }
-    }
-    if std::env::var("HTTPS_PROXY").is_err() {
-        // SAFETY: single-threaded startup; env var is not yet set
-        unsafe {
-            std::env::set_var("HTTPS_PROXY", proxy);
-        }
-    }
-}
-
 // ── Client Configuration ───────────────────────────────────────────
 
 /// Configure a `reqwest::ClientBuilder` with proxy and timeout settings.
@@ -128,7 +96,7 @@ pub fn apply_http_proxy_settings(http_proxy: Option<&str>) {
 /// - `connect_timeout` if timeout > 0
 /// - `read_timeout` if timeout > 0
 /// - `pool_idle_timeout` (half of the idle timeout, min 30s)
-/// - No proxy if `http_proxy` is None or empty
+/// - Proxy via `reqwest::Proxy::all` when `http_proxy` is non-empty
 pub fn configure_http_client(
     builder: reqwest::ClientBuilder,
     timeout_ms: Option<u64>,
@@ -163,7 +131,6 @@ pub fn configure_http_client(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
 
     #[test]
     fn test_parse_timeout_presets() {
@@ -209,83 +176,6 @@ mod tests {
     #[test]
     fn test_format_timeout_disabled() {
         assert_eq!(format_http_idle_timeout_ms(0), "disabled");
-    }
-
-    #[test]
-    #[serial]
-    fn test_apply_proxy_sets_env() {
-        // Save original env
-        let original_http = std::env::var("HTTP_PROXY").ok();
-        let original_https = std::env::var("HTTPS_PROXY").ok();
-
-        // Clear for clean test
-        // SAFETY: test environment, single-threaded
-        unsafe {
-            std::env::remove_var("HTTP_PROXY");
-        }
-        unsafe {
-            std::env::remove_var("HTTPS_PROXY");
-        }
-
-        apply_http_proxy_settings(Some("http://proxy.example:8080"));
-
-        assert_eq!(
-            std::env::var("HTTP_PROXY").unwrap_or_default(),
-            "http://proxy.example:8080"
-        );
-        assert_eq!(
-            std::env::var("HTTPS_PROXY").unwrap_or_default(),
-            "http://proxy.example:8080"
-        );
-
-        // Restore
-        // SAFETY: test environment, single-threaded
-        if let Some(val) = original_http {
-            unsafe {
-                std::env::set_var("HTTP_PROXY", val);
-            }
-        } else {
-            unsafe {
-                std::env::remove_var("HTTP_PROXY");
-            }
-        }
-        if let Some(val) = original_https {
-            unsafe {
-                std::env::set_var("HTTPS_PROXY", val);
-            }
-        } else {
-            unsafe {
-                std::env::remove_var("HTTPS_PROXY");
-            }
-        }
-    }
-
-    #[test]
-    #[serial]
-    fn test_apply_proxy_does_not_override() {
-        // SAFETY: test environment, single-threaded
-        unsafe {
-            std::env::set_var("HTTP_PROXY", "http://existing:3128");
-        }
-
-        apply_http_proxy_settings(Some("http://new:8080"));
-
-        assert_eq!(
-            std::env::var("HTTP_PROXY").unwrap_or_default(),
-            "http://existing:3128"
-        );
-
-        // SAFETY: test environment, single-threaded
-        unsafe {
-            std::env::remove_var("HTTP_PROXY");
-        }
-    }
-
-    #[test]
-    fn test_apply_proxy_none() {
-        // Should not panic
-        apply_http_proxy_settings(None);
-        apply_http_proxy_settings(Some(""));
     }
 
     #[test]
