@@ -1,0 +1,13 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r2,"event-system","System MUST emit AgentLifecycleEvent variants from AgentSession without using broadcast-based AgentEventBus. Variants SHALL cover: turn_start turn_end message_start message_update message_end tool_execution_start tool_execution_update tool_execution_end compaction_start compaction_end model_select thinking_level_changed queue_update session_info_changed auto_retry_start auto_retry_end agent_start agent_end.",null,null,null
+  add_requirement,er1,"lifecycle-event-types","AgentLifecycleEvent SHALL be a typed enum with payloads matching pi's AgentSessionEvent, covering all lifecycle phases.",null,null,null
+  add_requirement,er2,"typed-dispatch","EventBus SHALL provide emit_lifecycle(event) and on_lifecycle(handler) to UnsubscribeHandle for type-safe lifecycle event dispatch.",null,null,null
+  add_requirement,er3,"drop-unsubscribe","EventBus.on_lifecycle() SHALL return an UnsubscribeHandle that automatically unsubscribes on drop.",null,null,null
+  add_requirement,er4,"agent-session-subscribe","AgentSession SHALL subscribe to its own EventBus via subscribe(AgentSessionEventListener) for persistence and listener forwarding.",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  er1,"turn-events","AgentSession starts a turn","lifecycle events are emitted","turn_start and turn_end are received by subscriber"
+  er1,"tool-events","AgentSession executes a tool","lifecycle events are emitted","tool_execution_start and tool_execution_end are received"
+  er2,"typed-emit","a lifecycle event is constructed as AgentLifecycleEvent::TurnStart","emit_lifecycle is called","subscribers receive typed event"
+  er3,drop,"a handler subscribes via on_lifecycle","the returned handle is dropped","the handler is not called on subsequent emits"
+  er4,persist,"AgentSession has subscriber for persistence","a message_end event occurs","session file is updated"

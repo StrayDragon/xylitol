@@ -1,0 +1,13 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,s21,"skill-expansion","AgentSession MUST detect forward-slash skill colon name in user input and expand it to a skill XML block containing the full SKILL.md content and optional args.",null,null,null
+  add_requirement,s22,"skills-xml-system-prompt","System prompt builder MUST render available skills in XML format using available_skills tags with name description and location sub-elements. XML special characters in values MUST be escaped.",null,null,null
+  add_requirement,s23,"skill-sourcing","Skill loader MUST support loadSourcedSkills() attaching source metadata (path origin and scope) to each discovered skill.",null,null,null
+  add_requirement,s24,"skill-invocation","formatSkillInvocation(skill, additionalInstructions) MUST generate a skill XML block with name and location attributes containing the skill body.",null,null,null
+  add_requirement,s25,"xml-escaping","XML escaping SHALL be applied to skill name, description, and file path values in all generated XML blocks: ampersand, less-than, greater-than, double-quote, and single-quote.",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  s21,expand,"user sends forward-slash skill colon rust-cli-tui-developer setup","_expandSkillCommand runs","output has skill XML block with SKILL.md content and setup args"
+  s22,"system-prompt","3 skills are loaded with names containing XML chars","system prompt is built","skills are inside available_skills tags with escaped values"
+  s23,sourced,"skills are loaded from project dot-xylitol-skills and global dot-xylitol-skills","loadSourcedSkills runs","each skill carries a source field indicating its origin"
+  s24,invoke,"a skill is loaded with body content","formatSkillInvocation is called","output has skill name and location attributes with full body"
+  s25,"escape-amp","a skill description contains amp and lt","XML rendering runs","amp is rendered as amp and lt as lt"

@@ -180,6 +180,10 @@ impl XyTool for EditTool {
         })
     }
 
+    fn execution_mode(&self) -> crate::agent::traits::ToolExecutionMode {
+        crate::agent::traits::ToolExecutionMode::Sequential
+    }
+
     async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
         let file_path = args["path"]
             .as_str()

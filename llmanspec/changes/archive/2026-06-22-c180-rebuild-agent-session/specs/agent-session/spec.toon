@@ -1,0 +1,19 @@
+kind: llman.sdd.delta
+ops[8]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,a1,"agent-session","AgentSession MUST be an event-driven state machine integrating: prompt dispatch with slash-command interception and skill expansion and template expansion, steering/followUp queue management, auto-retry, auto-compaction trigger, bash execution lifecycle, and extension command dispatch.",null,null,null
+  modify_requirement,as28,"session-lifecycle","AgentSession MUST support startup creating a fresh session, newSession creating a fresh session with optional parent reference, resumeSession loading an existing session, dispose cleanly terminating the session and releasing resources.",null,null,null
+  add_requirement,as30,"prompt-dispatch","AgentSession.prompt() MUST intercept forward-slash prefix, dispatching to extension commands or skill commands or template expanders before sending to LLM.",null,null,null
+  add_requirement,as31,"steer-followup","AgentSession MUST provide steer() and followUp() methods that queue messages with status events, AND consume them in concert with AgentLoop.",null,null,null
+  add_requirement,as32,"auto-retry","AgentSession MUST auto-retry transient LLM errors with exponential backoff emitting auto_retry_start and auto_retry_end events. Max retries and delay configurable via SettingsManager.",null,null,null
+  add_requirement,as33,"auto-compaction","AgentSession MUST check context token usage after each agent_end, triggering automatic compaction when exceeding threshold. Emit compaction_start and compaction_end events.",null,null,null
+  add_requirement,as34,"bash-lifecycle","AgentSession MUST integrate bash execution with output collection, pending message queuing, and flush-on-idle behavior matching pi's bash-executor integration.",null,null,null
+  add_requirement,as35,"dispose-lifecycle","AgentSession.dispose() MUST cancel all in-flight operations (retry abort controller, compaction abort controller, bash abort controller, branch summary abort controller) and clean up event listeners.",null,null,null
+op_scenarios[8]{req_id,id,given,when,then}:
+  as30,"slash-command","user sends forward-slash compact","prompt dispatches to compact handler","compact handler runs, no LLM call made"
+  as30,"skill-command","user sends forward-slash skill colon rust-cli-tui-developer","prompt dispatches to skill expansion","skill XML block is produced and sent to LLM"
+  as30,"template-command","user sends forward-slash review main.rs","prompt dispatches to template expansion","expanded template text is sent to LLM"
+  as31,"steer-works","agent is streaming a response","steer(enter new prompt) is called","steering message is queued and queue_update event emitted"
+  as32,"retry-fires","LLM returns overloaded error","agent_end fires","auto_retry_start event emitted, retry proceeds with backoff"
+  as32,"retry-succeeds","retry attempt succeeds","assistant message with valid stopReason received","auto_retry_end with success true emitted"
+  as33,"auto-compact","context tokens exceed threshold after agent_end","compaction is triggered","compaction_start event is emitted"
+  as35,dispose,"AgentSession has active retry and bash","dispose() is called","all controllers cancelled, event listeners removed"

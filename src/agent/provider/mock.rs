@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 
 use crate::agent::error::XyError;
+use crate::agent::message::AgentMessage;
 use crate::agent::traits::{XyModel, XyStream};
-use crate::agent::types::{XyChunk, XyContent, XyFinishReason, XyToolSchema};
+use crate::agent::types::{XyChunk, XyFinishReason, XyToolSchema};
 
 /// Drop-in mock for tests. Returns a fixed text response.
 pub struct MockXyModel {
@@ -32,7 +33,7 @@ impl XyModel for MockXyModel {
 
     async fn generate_stream(
         &self,
-        _messages: Vec<XyContent>,
+        _messages: Vec<AgentMessage>,
         _tools: &[XyToolSchema],
         _stream: bool,
     ) -> Result<XyStream, XyError> {
@@ -41,6 +42,7 @@ impl XyModel for MockXyModel {
             Ok(XyChunk::TextDelta(text)),
             Ok(XyChunk::Done {
                 finish_reason: XyFinishReason::Stop,
+                usage: None,
             }),
         ])))
     }

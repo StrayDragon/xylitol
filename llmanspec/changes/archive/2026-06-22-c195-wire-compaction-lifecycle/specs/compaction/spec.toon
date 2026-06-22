@@ -1,0 +1,13 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,comp21,"lifecycle-integration","AgentSession MUST integrate compaction into the agent lifecycle: automatic trigger on context token threshold, manual trigger via forward-slash compact, and overflow recovery when input exceeds context window.",null,null,null
+  add_requirement,comp22,"branch-summarization","System MUST support branch summarization: when a session fork occurs, the non-forked branch SHALL be summarized via LLM call and stored as BranchSummaryEntry.",null,null,null
+  add_requirement,comp23,"file-tracking","Compaction details SHALL track readFiles and modifiedFiles extracted from tool calls (bash cat/read/edit/write patched between compactions. These SHALL be persisted in CompactionEntry.details.",null,null,null
+  add_requirement,comp24,"extension-compaction","System MUST support extension-driven compaction via session_before_compact event. Extensions can provide custom compaction content or cancel compaction.",null,null,null
+  add_requirement,comp25,"token-estimation","Compaction token estimation SHALL account for image content (4800 chars per image) and use message-type-specific heuristics matching pi's estimateTokens().",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  comp21,"auto-trigger","context token usage exceeds 85% of window after agent_end","checkCompaction runs","compaction_start and compaction_end events fire"
+  comp21,"manual-trigger","user sends forward-slash compact","compact handler called with manual reason","compaction produces a summary, session continues"
+  comp21,"overflow","model returns context overflow error","agent session detects context overflow","compaction runs, then retry"
+  comp22,"branch-fork","user forks at a message in a multi-branch tree","the non-forked branch is summarized","BranchSummaryEntry is created"
+  comp23,"file-tracking","a tool reads main.rs then edits lib.rs","compact is triggered","CompactionEntry.details has readFiles hyphen main.rs and modifiedFiles hyphen lib.rs"

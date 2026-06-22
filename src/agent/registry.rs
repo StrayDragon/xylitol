@@ -337,6 +337,14 @@ pub fn build_default_model_meta(provider: &ProviderConfig) -> Option<ModelMeta> 
         display_name: format!("{} ({})", model_id, provider.name),
         thinking: matches!(kind, ModelKind::OpenAi | ModelKind::Anthropic),
         context_window: default_context_window_for(kind),
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
     })
 }
 
@@ -379,6 +387,14 @@ mod tests {
             display_name: "GPT-4o".into(),
             thinking: true,
             context_window: 128_000,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
         });
         reg.register(ModelMeta {
             id: "openai/gpt-4o-mini".into(),
@@ -391,6 +407,14 @@ mod tests {
             display_name: "GPT-4o Mini".into(),
             thinking: true,
             context_window: 128_000,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
         });
         reg.register(ModelMeta {
             id: "claude-sonnet-4-20250514".into(),
@@ -403,6 +427,14 @@ mod tests {
             display_name: "Claude Sonnet 4".into(),
             thinking: true,
             context_window: 200_000,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
         });
         reg
     }

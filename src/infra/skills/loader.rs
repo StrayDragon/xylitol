@@ -384,10 +384,76 @@ fn load_skill_file(path: &Path, source: &str, base_dir: &Path) -> Option<Discove
 
 // ── Load skills from multiple dirs ────────────────────────────────
 
+// ── XML utilities ──────────────────────────────────────────────
+
+/// Escape XML special characters in a string.
+pub fn xml_escape(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => result.push_str("&amp;"),
+            '<' => result.push_str("&lt;"),
+            '>' => result.push_str("&gt;"),
+            '"' => result.push_str("&quot;"),
+            '\'' => result.push_str("&apos;"),
+            _ => result.push(c),
+        }
+    }
+    result
+}
+
+/// Format a skill invocation XML block for injection into the prompt.
+///
+/// ```xml
+/// <skill name="skill-name" location="/path/to/SKILL.md">
+/// References are relative to /path/to.
+///
+/// <skill body>
+/// </skill>
+/// ```
+pub fn format_skill_invocation(
+    skill: &DiscoveredSkill,
+    additional_instructions: Option<&str>,
+) -> String {
+    let base_dir = skill.base_dir.to_string_lossy();
+    let escaped_name = xml_escape(&skill.name);
+    let escaped_location = xml_escape(&skill.file_path.to_string_lossy());
+
+    let mut result = format!(
+        r#"<skill name="{escaped_name}" location="{escaped_location}">
+References are relative to {base_dir}.
+
+"#,
+    );
+
+    result.push_str(&skill.content);
+
+    if let Some(extra) = additional_instructions {
+        result.push('\n');
+        result.push('\n');
+        result.push_str(extra);
+    }
+
+    result.push_str("\n</skill>");
+    result
+}
+
 /// Load skills from multiple directories.
 pub fn load_skills(dirs: &[PathBuf], source: &str) -> LoadSkillsResult {
     let mut result = LoadSkillsResult::empty();
     for dir in dirs {
+        let r = load_skills_from_dir(dir, source);
+        result.skills.extend(r.skills);
+        result.diagnostics.extend(r.diagnostics);
+    }
+    result
+}
+
+/// Load skills from multiple (path, source) pairs.
+/// Each entry in `inputs` is a `(directory_path, source_label)` tuple.
+pub fn load_sourced_skills(inputs: &[(PathBuf, &str)]) -> LoadSkillsResult {
+    let mut result = LoadSkillsResult::empty();
+    for (dir, source) in inputs {
         let r = load_skills_from_dir(dir, source);
         result.skills.extend(r.skills);
         result.diagnostics.extend(r.diagnostics);

@@ -1,0 +1,15 @@
+kind: llman.sdd.delta
+ops[6]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ar1,"react-loop","Agent runtime MUST execute a dual-loop ReAct: inner loop processes tool calls and steering messages; outer loop drains follow-up messages and continues until no more queued messages.",null,null,null
+  modify_requirement,ar3,"tool-execution","Agent runtime MUST support both sequential and parallel tool execution modes. Parallel mode executes independent tool calls concurrently. When any tool has executionMode sequential, fall back to sequential for the whole batch.",null,null,null
+  add_requirement,ar15,"turn-prepare","Agent runtime MUST support prepareNextTurn callback after each turn, allowing model/thinking level/context snapshot changes before the next LLM call.",null,null,null
+  add_requirement,ar16,"turn-stop","Agent runtime MUST support shouldStopAfterTurn callback, allowing early termination based on message analysis.",null,null,null
+  add_requirement,ar17,"context-transform","Agent runtime MUST support transformContext callback that preprocesses messages before sending to LLM (e.g., for extension context transforms).",null,null,null
+  add_requirement,ar18,"tool-hooks","Agent runtime MUST invoke beforeToolCall (with ability to block or modify) and afterToolCall (with ability to modify result) for every tool execution.",null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  ar1,"steer-during-loop","agent is executing tool calls in inner loop","a steering message arrives","inner loop drains tools then processes steering before next LLM call"
+  ar1,"followup-after-loop","inner loop completes with no tool calls and no steering","follow-up message is present","outer loop processes it as new turn"
+  ar3,"parallel-3-tools","model returns 3 tool calls all with executionMode parallel","tools execute concurrently","all results appended before next model call"
+  ar3,"mixed-mode","model returns 3 tool calls, one with sequential mode","all tools execute sequentially","fallback to sequential for the batch"
+  ar15,"prepare-next-turn","prepareNextTurn changes model after turn","next LLM call uses new model","model switch occurs seamlessly"
+  ar17,"context-transform","transformContext adds system message before LLM call","LLM receives transformed context","original context is not modified"

@@ -13,7 +13,7 @@
 #![allow(dead_code)]
 
 // New SKILL.md loader (c45-align-skills-system)
-mod loader;
+pub(crate) mod loader;
 // Old YAML-config loader (to be removed by c75)
 mod manager;
 pub(crate) use manager::*;

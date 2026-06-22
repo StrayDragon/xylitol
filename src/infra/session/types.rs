@@ -2,7 +2,19 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const SESSION_VERSION: u32 = 3;
+/// Current session format version.
+/// v3: legacy (no id/parentId tree)
+/// v4: tree-aware with id/parentId
+pub const SESSION_VERSION: u32 = 4;
+
+/// Storage backend for a session.
+#[derive(Debug, Clone)]
+pub enum SessionBackend {
+    /// Persisted to a JSONL file in a directory.
+    Persisted { sessions_dir: std::path::PathBuf },
+    /// In-memory only (no disk writes).
+    InMemory { entries: Vec<SessionEntry> },
+}
 
 // ── Header ──────────────────────────────────────────────────────────
 
@@ -173,7 +185,7 @@ pub struct BashExecutionEntry {
 /// Messages use Value to avoid circular agent dependency in types.
 #[derive(Debug, Clone)]
 pub struct SessionContext {
-    pub messages: Vec<serde_json::Value>, // Vec<XyContent> in JSON form
+    pub messages: Vec<serde_json::Value>, // Vec<AgentMessage> in JSON form
     pub thinking_level: String,
     pub model: Option<(String, String)>, // (provider, model_id)
 }

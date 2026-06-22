@@ -5,8 +5,9 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::agent::error::XyError;
+use crate::agent::message::AgentMessage;
 use crate::agent::traits::{XyModel, XyStream};
-use crate::agent::types::{XyChunk, XyContent, XyFinishReason, XyToolSchema};
+use crate::agent::types::{XyChunk, XyFinishReason, XyToolSchema};
 
 // ---------------------------------------------------------------------------
 // ScenarioStep
@@ -213,7 +214,7 @@ impl XyModel for FakeProvider {
 
     async fn generate_stream(
         &self,
-        _messages: Vec<XyContent>,
+        _messages: Vec<AgentMessage>,
         _tools: &[XyToolSchema],
         _stream: bool,
     ) -> Result<XyStream, XyError> {
@@ -231,6 +232,7 @@ impl XyModel for FakeProvider {
                 Ok(XyChunk::TextDelta(text)),
                 Ok(XyChunk::Done {
                     finish_reason: XyFinishReason::Stop,
+                    usage: None,
                 }),
             ]))),
             ScenarioStep::ToolCall { name, args } => {
@@ -239,6 +241,7 @@ impl XyModel for FakeProvider {
                     Ok(XyChunk::FunctionCall { name, args, id }),
                     Ok(XyChunk::Done {
                         finish_reason: XyFinishReason::Stop,
+                        usage: None,
                     }),
                 ])))
             }
