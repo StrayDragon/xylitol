@@ -15,13 +15,13 @@ use crate::agent::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::compaction_orchestrator::CompactionOrchestrator;
 use crate::agent::model_manager::ModelManager;
 use crate::agent::output_guard;
-use crate::agent::session_io::SessionIO;
-use crate::agent::skill_manager::SkillManager;
-use crate::agent::tool_manager::ToolManager;
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::queue::MessageQueue;
 use crate::agent::retry::{RetryState, is_retryable_error};
+use crate::agent::session_io::SessionIO;
+use crate::agent::skill_manager::SkillManager;
 use crate::agent::templates::{PromptTemplate, is_template_line, parse_template_line};
+use crate::agent::tool_manager::ToolManager;
 use crate::agent::tools::ToolRegistry;
 use crate::core::traits::XyModel;
 use crate::core::types::{ModelMeta, ThinkingLevel};
@@ -342,7 +342,8 @@ impl AgentSession {
     pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), String> {
         if !self.session_io.manager().exists(id) {
             let cwd_clone = self.cwd.clone();
-            self.session_io.manager()
+            self.session_io
+                .manager()
                 .create(id, Some(&cwd_clone), parent)
                 .await?;
         }
@@ -866,7 +867,8 @@ impl AgentSession {
                 .ok_or_else(|| "no active session".to_string())?
                 .to_string(),
         };
-        self.session_io.manager()
+        self.session_io
+            .manager()
             .append_bash_execution(crate::infra::session::manager::BashExecutionParams {
                 session_id: &sid,
                 command,
@@ -968,7 +970,8 @@ impl AgentSession {
             .ok_or_else(|| "no active session".to_string())?;
         // Forward to session manager for persistence; turn triggering is
         // orchestrated by AgentLoop (c185).
-        self.session_io.manager()
+        self.session_io
+            .manager()
             .append_custom_message(sid, custom_type, _content, false, None)
             .await
     }

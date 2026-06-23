@@ -1,9 +1,9 @@
 //! Branch summarization — LLM-powered summaries for session forks.
 
-use crate::agent::compaction::file_ops::{compute_file_lists, format_file_ops_xml, FileOps};
+use crate::agent::compaction::file_ops::{FileOps, compute_file_lists, format_file_ops_xml};
 use crate::agent::compaction::llm_summarizer::{generate_complete, serialize_conversation};
-use crate::core::traits::XyModel;
 use crate::core::message::AgentMessage;
+use crate::core::traits::XyModel;
 use crate::infra::session::types::SessionEntry;
 
 const BRANCH_SUMMARY_PROMPT: &str = "Create a structured summary of this conversation branch for context when returning later.\n\nUse this EXACT format:\n\n## Goal\n[What was the user trying to accomplish in this branch?]\n\n## Constraints & Preferences\n- [Any constraints, preferences, or requirements mentioned]\n- [Or \"(none)\" if none were mentioned]\n\n## Progress\n### Done\n- [x] [Completed tasks/changes]\n\n### In Progress\n- [ ] [Work that was started but not finished]\n\n### Blocked\n- [Issues preventing progress, if any]\n\n## Key Decisions\n- **[Decision]**: [Brief rationale]\n\n## Next Steps\n1. [What should happen next to continue this work]\n\nKeep each section concise. Preserve exact file paths, function names, and error messages.";
@@ -44,8 +44,7 @@ pub fn prepare_branch_entries(entries: &[SessionEntry], token_budget: u64) -> Br
 
         extract_single_message_file_ops(&msg, &mut file_ops);
 
-        let tokens =
-            (serde_json::to_string(&msg).unwrap_or_default().len() as u64).div_ceil(4);
+        let tokens = (serde_json::to_string(&msg).unwrap_or_default().len() as u64).div_ceil(4);
 
         if token_budget > 0 && total_tokens + tokens > token_budget {
             if matches!(
@@ -75,11 +74,12 @@ fn extract_single_message_file_ops(msg: &AgentMessage, ops: &mut FileOps) {
 
     for part in msg.content() {
         let (name, path) = match part {
-            AgentPart::ToolCall { name, arguments, .. } =>
-                match arguments.get("path").and_then(|v| v.as_str()) {
-                    Some(p) => (name.as_str(), p.to_string()),
-                    None => continue,
-                },
+            AgentPart::ToolCall {
+                name, arguments, ..
+            } => match arguments.get("path").and_then(|v| v.as_str()) {
+                Some(p) => (name.as_str(), p.to_string()),
+                None => continue,
+            },
             _ => continue,
         };
         match name {
@@ -144,5 +144,3 @@ pub async fn generate_branch_summary_llm(
         Err(_) => None,
     }
 }
-
-

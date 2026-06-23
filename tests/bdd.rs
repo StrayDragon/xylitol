@@ -10,14 +10,12 @@ use std::future::Future;
 use std::sync::Arc;
 
 use futures::StreamExt;
+use xylitol::agent::compaction_orchestrator::should_compact;
 use xylitol::agent::r#loop::{AgentEvent, AgentLoop};
 use xylitol::agent::model::config::{
     reset_fake_state, set_fake_text, set_fake_tool_call, set_fake_tool_result,
 };
-use xylitol::agent::session::{
-    AgentSession, ContextUsage, ModelRegistry, get_context_usage,
-};
-use xylitol::agent::compaction_orchestrator::should_compact;
+use xylitol::agent::session::{AgentSession, ContextUsage, ModelRegistry, get_context_usage};
 use xylitol::agent::tools::{
     ToolRegistry, bash::BashTool, edit::EditTool, find::FindTool, grep::GrepTool, ls::LsTool,
     mutation::FileMutationQueue, read::ReadTool, write::WriteTool,

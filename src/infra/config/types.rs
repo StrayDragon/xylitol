@@ -30,6 +30,9 @@ pub struct AppConfig {
     #[cfg(feature = "infra-session")]
     pub session: Option<SessionConfig>,
     #[cfg(feature = "infra-session")]
+    /// YAML loading-phase compaction config. Mapped to runtime
+    /// `CompactionSettings` (in `agent::compaction::settings`)
+    /// via `From<CompactionConfig>`.
     pub compaction: Option<CompactionConfig>,
 
     #[cfg(feature = "infra-skills")]
@@ -750,6 +753,11 @@ fn default_storage_backend() -> String {
 #[cfg(feature = "infra-session")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
+/// Compaction configuration from YAML — load-time representation.
+///
+/// Mapped to runtime `CompactionSettings` (in `agent::compaction::settings`)
+/// via `From<CompactionConfig>`. Reserve tokens and keep-recent thresholds
+/// are hardcoded in the runtime defaults.
 pub struct CompactionConfig {
     #[serde(default)]
     pub enabled: bool,

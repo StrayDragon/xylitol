@@ -445,7 +445,7 @@ pi-tui 扩展是运行时加载的 TS 模块，返回"活组件对象"。xylitol
 | **P5 diff_review 迁移** | 现有 `diff_review/cli.rs` 复位为 overlay，复用 `types.rs` | Ctrl+R 进 diff review overlay；旧全屏入口废弃 |
 | **P6 图片 + 高级** | ratatui-image 接入；transcript overlay（Ctrl+T）；history search（Ctrl+R 已被 diff 占用，需重新分配，见 §11 注） | 图片在 kitty/iTerm2 显示；overlay 全套 |
 
-> 注: pi-tui 里 Ctrl+R 是 history search，本 PRD 里 diff preview 也想用 Ctrl+R。需在 P3 Keymap 设计阶段统一分配（建议 diff preview = Ctrl+Shift+D，history search = Ctrl+R）。
+> 注: pi-tui 里 Ctrl+R 是 history search。鉴于 `ui-review`/diff preview 是实验性，默认 keymap 不为它预留 Ctrl+R；history search 用 Ctrl+R，diff preview 若需要再单独分配。
 
 ## 12. 测试策略
 
@@ -472,9 +472,9 @@ ui-tui = [
 ]
 ```
 
-`ui-review`（diff_review）保留，但 P5 后其渲染代码迁入 `ui-tui` 的 overlay 层；`ui-review` feature 可降级为"diff 采集逻辑"的数据层，渲染依赖 `ui-tui`。或合并为单一 `ui` feature，P5 决定。
+`ui-review`（diff_review）是实验性 feature，边界随时可调整，本 PRD 不固化它与 `ui-tui` 的关系。P5 迁移时按当时情况决定是复位为 overlay、保留独立全屏入口，还是合并 feature——不作为阻塞项。
 
-`default` 是否包含 `ui-tui` 待定（倾向包含，对齐 `default` 含 `ui-review` 现状）。
+`default` 倾向包含 `ui-tui`（对齐现状 `default` 含 `ui-review`），最终在 P0 定。
 
 ## 14. 对比 pi-tui 的取舍总结
 
