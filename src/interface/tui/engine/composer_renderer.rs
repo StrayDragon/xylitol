@@ -33,8 +33,10 @@ pub(crate) fn render_composer(
     };
 
     if draft.is_empty() {
+        // Cursor sits right after the prompt; the dimmed placeholder is
+        // rendered AFTER the cursor so typing replaces the visual cue.
         let placeholder = ansi::dim_text("Type a message...");
-        let line = format!("  {prompt}{placeholder}{}", ansi::CURSOR_MARKER);
+        let line = format!("  {prompt}{}{placeholder}", ansi::CURSOR_MARKER);
         lines.push(ansi::pad_to_width(&line, max_width));
     } else {
         // Wrapped continuation lines use "    " prefix (6 total with "  ")
@@ -115,6 +117,25 @@ mod tests {
         assert_eq!(lines.len(), COMPOSER_HEIGHT as usize);
         assert!(lines[0].contains("Type a message"));
         assert!(lines.last().unwrap().contains("idle"));
+    }
+
+    #[test]
+    fn test_empty_composer_cursor_before_placeholder() {
+        // r4 empty-cursor: on empty draft the cursor marker MUST precede the
+        // placeholder so the hardware cursor lands right after the prompt,
+        // not after the dimmed "Type a message..." cue.
+        let c = Composer::new();
+        let lines = visual_lines(&c, false);
+        let line = &lines[0];
+        let marker_pos = line
+            .find(ansi::CURSOR_MARKER)
+            .expect("cursor marker present on empty draft");
+        let placeholder_pos = line.find("Type a message").expect("placeholder present");
+        assert!(
+            marker_pos < placeholder_pos,
+            "cursor marker must come before the placeholder, got line: {}",
+            ansi::strip_ansi(line)
+        );
     }
 
     #[test]
