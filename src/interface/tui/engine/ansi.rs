@@ -199,16 +199,32 @@ pub(crate) fn visible_width(s: &str) -> usize {
 }
 
 /// Strip ANSI escape sequences from a string.
-/// Handles SGR (`\x1b[...m`) and CSI (`\x1b[...`) sequences.
+/// Handles SGR (`\x1b[...m`), CSI (`\x1b[...` letter-terminated), and the
+/// custom CURSOR_MARKER (`\x1b...\x07`, BEL-terminated) used to mark the
+/// composer's hardware-cursor position. Without the BEL-terminated branch the
+/// marker's trailing bytes would be counted as visible width, corrupting row
+/// padding and overflow math.
 pub(crate) fn strip_ansi(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
-    let mut chars = s.chars();
+    let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '\x1b' {
-            // Consume until we hit a final byte (letter)
-            for esc in chars.by_ref() {
-                if esc.is_ascii_alphabetic() || esc == '~' {
-                    break;
+            match chars.peek() {
+                // CURSOR_MARKER / OSC-style: consume until BEL (\x07).
+                Some('_') | Some(']') => {
+                    for esc in chars.by_ref() {
+                        if esc == '\x07' {
+                            break;
+                        }
+                    }
+                }
+                // CSI-style: consume until a final byte (letter or ~).
+                _ => {
+                    for esc in chars.by_ref() {
+                        if esc.is_ascii_alphabetic() || esc == '~' {
+                            break;
+                        }
+                    }
                 }
             }
         } else {
@@ -216,6 +232,37 @@ pub(crate) fn strip_ansi(s: &str) -> String {
         }
     }
     result
+}
+
+/// Truncate `text` to at most `max_width` visible columns, appending "..." when truncated.
+///
+/// ANSI escapes are stripped first so the measurement matches rendered width.
+/// Unlike [`wrap_text`], this preserves leading/trailing whitespace verbatim,
+/// which is required for composer input where every typed space matters.
+pub(crate) fn truncate_visible(text: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+    if visible_width(text) <= max_width {
+        return text.to_string();
+    }
+    if max_width <= 3 {
+        return "...".chars().take(max_width).collect();
+    }
+    let plain = strip_ansi(text);
+    let mut out = String::new();
+    let mut width = 0usize;
+    let target = max_width - 3;
+    for ch in plain.chars() {
+        let cw = ch.to_string().width();
+        if width + cw > target {
+            break;
+        }
+        out.push(ch);
+        width += cw;
+    }
+    out.push_str("...");
+    out
 }
 
 /// Wrap text to fit within `max_width` columns.
