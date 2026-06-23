@@ -15,8 +15,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::infra::skills::SkillManager;
-
 // ── ResourceDiagnostic ────────────────────────────────────────────────
 
 /// Diagnostic collected during resource loading.
@@ -92,7 +90,6 @@ pub struct DefaultResourceLoader {
     context_files: Vec<AgentsFile>,
     prompt_templates: Vec<PromptTemplate>,
     skills: Vec<SkillInfo>,
-    skill_manager: SkillManager,
     themes: Vec<ThemeInfo>,
     system_prompt: Option<String>,
     append_system_prompt: Vec<String>,
@@ -133,7 +130,6 @@ impl DefaultResourceLoader {
             context_files: Vec::new(),
             prompt_templates: Vec::new(),
             skills: Vec::new(),
-            skill_manager: SkillManager::new(),
             themes: Vec::new(),
             system_prompt: None,
             append_system_prompt: Vec::new(),
@@ -225,11 +221,6 @@ impl DefaultResourceLoader {
             .chain(&self.prompts_diagnostics)
             .chain(&self.themes_diagnostics)
             .collect()
-    }
-
-    /// Get the skill manager (needed for command registration etc.).
-    pub fn skill_manager(&self) -> &SkillManager {
-        &self.skill_manager
     }
 
     // ── Context files ─────────────────────────────────────────────────
