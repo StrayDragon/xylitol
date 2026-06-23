@@ -607,7 +607,7 @@ impl Stream for AgentEventStream {
 mod tests {
     use super::*;
 
-    use crate::agent::registry::ModelRegistry;
+    use crate::agent::model::registry::ModelRegistry;
     use crate::agent::types::ModelMeta;
     use crate::infra::session::SessionManager;
 

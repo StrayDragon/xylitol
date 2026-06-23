@@ -8,9 +8,9 @@
 //! - Fallback model construction
 
 #![allow(dead_code)]
-use crate::agent::model::ModelConfig;
+use super::config::ModelConfig;
 #[cfg(test)]
-use crate::agent::model::ModelKind;
+use super::config::ModelKind;
 use crate::agent::types::{ModelMeta, ThinkingLevel};
 
 // ── Resolved Model ──────────────────────────────────────────────────
@@ -355,7 +355,7 @@ impl ResolvedModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::model::ModelConfig;
+    use crate::agent::model::config::ModelConfig;
 
     fn make_available() -> Vec<ModelMeta> {
         vec![

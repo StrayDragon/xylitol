@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 
 use crate::agent::config_value;
-use crate::agent::model::{ModelConfig, ModelKind};
+use super::config::{ModelConfig, ModelKind};
 use crate::agent::types::ModelMeta;
 
 // ── Provider Config ─────────────────────────────────────────────────

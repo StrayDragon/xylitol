@@ -106,5 +106,3 @@ fn resolve_project_dirs() -> (Option<PathBuf>, Option<PathBuf>) {
 
     (None, None)
 }
-
-
