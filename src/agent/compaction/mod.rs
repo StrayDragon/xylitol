@@ -163,7 +163,7 @@ pub async fn compact_session(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::session::{SessionEntry, types::*};
+    use crate::infra::session::SessionEntry;
 
     // ── Helpers for building test entries ──────────────────────────
 

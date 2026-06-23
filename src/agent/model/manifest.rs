@@ -93,7 +93,6 @@ pub fn load_models_from_manifest(
         let kind = match m.provider.as_str() {
             "openai" => ModelKind::OpenAi,
             "anthropic" => ModelKind::Anthropic,
-            #[cfg(feature = "dev-fake-provider")]
             "fake" => ModelKind::Fake,
             // Default to OpenAI-compatible for unknown providers
             _ => ModelKind::OpenAi,

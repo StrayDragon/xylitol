@@ -3,9 +3,6 @@
 //! Provides shared data structures ([`types`]), a CLI terminal review backend
 //! ([`cli`]), and a Web browser review backend ([`web`]).
 //!
-//! ## Feature flag
-//!
-//! * `ui-review` — enables this entire module (default on).
 //!
 //! ## Architecture
 //!
@@ -162,21 +159,12 @@ impl ReviewEngine {
 
     /// Run CLI (ratatui) review.
     async fn run_cli_review(&self, session: &mut ReviewSession) -> ReviewVerdict {
-        #[cfg(feature = "ui-review")]
-        {
-            match cli::run_cli_review(session).await {
-                Ok(verdict) => verdict,
-                Err(e) => {
-                    tracing::error!("CLI review error: {e}");
-                    ReviewVerdict::AcceptAll(session.comments.clone())
-                }
+        match cli::run_cli_review(session).await {
+            Ok(verdict) => verdict,
+            Err(e) => {
+                tracing::error!("CLI review error: {e}");
+                ReviewVerdict::AcceptAll(session.comments.clone())
             }
-        }
-        #[cfg(not(feature = "ui-review"))]
-        {
-            let _ = session;
-            tracing::warn!("CLI review not available (ui-review feature disabled)");
-            ReviewVerdict::AcceptAll(Vec::new())
         }
     }
 }

@@ -27,7 +27,6 @@ use crate::core::types::{ModelMeta, ThinkingLevel};
 use crate::infra::event::lifecycle::AgentLifecycleEvent;
 use crate::infra::event::{EventBus, UnsubscribeHandle};
 use crate::infra::resource::SkillInfo;
-#[cfg(feature = "infra-sandbox")]
 use crate::infra::sandbox::{SandboxEngine, SandboxVerdict, noop_engine};
 use crate::infra::session::manager::SessionManager;
 #[cfg(test)]
@@ -80,7 +79,6 @@ pub struct AgentSession {
     bash_cancel: Option<tokio_util::sync::CancellationToken>,
 
     /// Sandbox engine for tool execution isolation.
-    #[cfg(feature = "infra-sandbox")]
     sandbox_engine: Option<std::sync::Arc<dyn SandboxEngine>>,
 }
 
@@ -116,7 +114,6 @@ impl AgentSession {
             lifecycle_handle: None,
             retry_state: None,
             bash_cancel: None,
-            #[cfg(feature = "infra-sandbox")]
             sandbox_engine: None,
         }
     }
@@ -489,10 +486,10 @@ impl AgentSession {
                 content,
                 ..
             } => {
-                if let Some(sr) = stop_reason {
-                    if matches!(sr, crate::core::message::StopReason::Error) {
-                        return true;
-                    }
+                if let Some(sr) = stop_reason
+                    && matches!(sr, crate::core::message::StopReason::Error)
+                {
+                    return true;
                 }
                 // Also check the text content for error patterns.
                 let text = crate::core::message::collect_text_parts(content);
@@ -507,7 +504,7 @@ impl AgentSession {
 
     /// Check whether the session should retry after the agent ends.
     pub fn _will_retry_after_agent_end(&self) -> bool {
-        self.retry_state.as_ref().map_or(false, |r| r.can_retry())
+        self.retry_state.as_ref().is_some_and(|r| r.can_retry())
     }
 
     /// Initialize or reset the retry state for a new agent run.
@@ -885,31 +882,26 @@ impl AgentSession {
     }
 
     /// Set the sandbox engine for tool execution isolation.
-    #[cfg(feature = "infra-sandbox")]
     pub fn set_sandbox_engine(&mut self, engine: Option<std::sync::Arc<dyn SandboxEngine>>) {
         self.sandbox_engine = engine;
     }
 
     /// Get a reference to the sandbox engine, or a no-op engine if not set.
-    #[cfg(feature = "infra-sandbox")]
     pub fn get_sandbox_engine(&self) -> std::sync::Arc<dyn SandboxEngine> {
         self.sandbox_engine.clone().unwrap_or_else(noop_engine)
     }
 
     /// Check whether a file read is allowed by the sandbox.
-    #[cfg(feature = "infra-sandbox")]
     pub fn check_sandbox_read(&self, path: &str) -> SandboxVerdict {
         self.get_sandbox_engine().check_read(path)
     }
 
     /// Check whether a file write is allowed by the sandbox.
-    #[cfg(feature = "infra-sandbox")]
     pub fn check_sandbox_write(&self, path: &str) -> SandboxVerdict {
         self.get_sandbox_engine().check_write(path)
     }
 
     /// Check whether a network request is allowed by the sandbox.
-    #[cfg(feature = "infra-sandbox")]
     pub fn check_sandbox_network(&self, domain: &str) -> SandboxVerdict {
         self.get_sandbox_engine().check_network(domain)
     }

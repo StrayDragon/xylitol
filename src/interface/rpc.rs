@@ -343,7 +343,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: RpcCommand) {
         }
         RpcCommand::CycleModel { .. } => {
             let mut s = state.lock().await;
-            let list: Vec<ModelMeta> = s.model_registry.list().iter().cloned().collect();
+            let list: Vec<ModelMeta> = s.model_registry.list().to_vec();
             if list.is_empty() {
                 emit(&RpcEvent::Error {
                     id,

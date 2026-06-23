@@ -237,11 +237,10 @@ fn anthropic_stream(
 
                 "message_start" => {
                     // Capture input tokens from message_start
-                    if let Some(msg) = data.get("message") {
-                        if let Some(u) = msg.get("usage").and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()) {
+                    if let Some(msg) = data.get("message")
+                        && let Some(u) = msg.get("usage").and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()) {
                             usage_input = u;
                         }
-                    }
                 }
                 "message_stop" | "ping" => {}
                 _ => {}

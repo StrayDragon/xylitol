@@ -34,21 +34,18 @@ chrono = { version = "0.4.44", features = ["serde"] }
 hex = "0.4.3"
 uuid = { version = "1.23.1", features = ["v4"] }
 
-# ── ui-review dependencies (optional) ──
-ratatui = { version = "0.30", optional = true, default-features = false, features = ["crossterm", "scrolling-regions", "unstable-backend-writer"] }
-crossterm = { version = "0.29", optional = true, features = ["bracketed-paste", "event-stream"] }
+# ── TUI dependencies ──
+ratatui = { version = "0.30", default-features = false, features = ["crossterm", "scrolling-regions", "unstable-backend-writer"] }
+crossterm = { version = "0.29", features = ["bracketed-paste", "event-stream"] }
 
-# ── image processing (optional, infra-image) ──
-image = { version = "0.25", optional = true, default-features = false, features = ["png", "jpeg", "gif", "webp"] }
-url = { version = "2", optional = true }
-flate2 = { version = "1", optional = true }
-tar = { version = "0.4", optional = true }
-zip = { version = "2", optional = true }
-syntect = { version = "5", optional = true, default-features = false, features = ["default-syntaxes", "default-themes", "regex-onig", "html"] }
-notify = { version = "7", optional = true }
-
-# ── acp dependencies (optional, infra-acp) ─────
-agent-client-protocol = { version = "0.12.1", optional = true }
+# ── image processing ──
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+url = { version = "2" }
+flate2 = { version = "1" }
+tar = { version = "0.4" }
+zip = { version = "2" }
+syntect = { version = "5", default-features = false, features = ["default-syntaxes", "default-themes", "regex-onig", "html"] }
+notify = { version = "7" }
 async-openai = { version = "0.40.2", default-features = false, features = ["chat-completion", "rustls"] }
 reqwest = { version = "0.13.4", features = ["stream", "json"] }
 eventsource-stream = "0.2.3"
@@ -59,35 +56,7 @@ serde_yaml = "0.9.34"
 pathdiff = "0.2.3"
 
 [features]
-default = [
-    "infra-skills",
-    "infra-session",
-    "ui-review",
-    "dev-fake-provider",
-]
-
-# ── agent/ layer ──────────────────────────────
-agent-model-lock = []
-
-# ── infra/ layer ──────────────────────────────
-infra-acp = ["dep:agent-client-protocol"]
-infra-clipboard = []
-infra-image = ["dep:image"]
-infra-git = ["dep:url"]
-infra-tools = ["dep:flate2", "dep:tar", "dep:zip"]
-infra-syntax = ["dep:syntect"]
-infra-platform = ["dep:notify"]
-infra-skills = []
-infra-session = []
-infra-sandbox = []
-infra-rtk = []
-
-# ── interface/ layer ──────────────────────────
-ui-review = ["dep:ratatui", "dep:crossterm"]
-
-# ── development only ──────────────────────────
-dev-e2e = []
-dev-fake-provider = []
+default = []
 
 [profile.dev]
 opt-level = 0

@@ -151,37 +151,37 @@ pub fn validate_tool_arguments(
     if let Some(required) = schema.get("required").and_then(|r| r.as_array()) {
         for field in required {
             let field_name = field.as_str().unwrap_or("");
-            if !args.get(field_name).filter(|v| !v.is_null()).is_some() {
+            if args.get(field_name).filter(|v| !v.is_null()).is_none() {
                 return Err(ToolValidationError::MissingField(field_name.to_string()));
             }
         }
     }
 
     // Check types and unexpected fields
-    if let Some(properties) = schema.get("properties").and_then(|p| p.as_object()) {
-        if let Some(obj) = args.as_object() {
-            for key in obj.keys() {
-                if !properties.contains_key(key) {
-                    return Err(ToolValidationError::UnexpectedField(key.clone()));
-                }
-                if let Some(prop_schema) = properties.get(key) {
-                    if let Some(expected_type) = prop_schema.get("type").and_then(|t| t.as_str()) {
-                        let val = &obj[key];
-                        let type_ok = match expected_type {
-                            "string" => val.is_string(),
-                            "integer" | "number" => val.is_number(),
-                            "boolean" => val.is_boolean(),
-                            "array" => val.is_array(),
-                            "object" => val.is_object(),
-                            _ => true,
-                        };
-                        if !type_ok {
-                            return Err(ToolValidationError::TypeError {
-                                field: key.clone(),
-                                expected: expected_type.to_string(),
-                            });
-                        }
-                    }
+    if let Some(properties) = schema.get("properties").and_then(|p| p.as_object())
+        && let Some(obj) = args.as_object()
+    {
+        for key in obj.keys() {
+            if !properties.contains_key(key) {
+                return Err(ToolValidationError::UnexpectedField(key.clone()));
+            }
+            if let Some(prop_schema) = properties.get(key)
+                && let Some(expected_type) = prop_schema.get("type").and_then(|t| t.as_str())
+            {
+                let val = &obj[key];
+                let type_ok = match expected_type {
+                    "string" => val.is_string(),
+                    "integer" | "number" => val.is_number(),
+                    "boolean" => val.is_boolean(),
+                    "array" => val.is_array(),
+                    "object" => val.is_object(),
+                    _ => true,
+                };
+                if !type_ok {
+                    return Err(ToolValidationError::TypeError {
+                        field: key.clone(),
+                        expected: expected_type.to_string(),
+                    });
                 }
             }
         }
