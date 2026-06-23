@@ -11,7 +11,7 @@ use chrono::Utc;
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::compaction;
+use crate::agent::compaction;
 use super::types::*;
 
 /// Manages session persistence using JSONL files or in-memory storage.

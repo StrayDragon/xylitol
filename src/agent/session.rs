@@ -25,14 +25,14 @@ use crate::agent::traits::XyModel;
 use crate::agent::types::{ModelMeta, ThinkingLevel};
 use crate::infra::event::{EventBus, UnsubscribeHandle};
 use crate::infra::event::lifecycle::AgentLifecycleEvent;
-use crate::infra::session::compaction::{CompactionSettings, compact_session};
+use crate::agent::compaction::{CompactionSettings, compact_session};
 use crate::infra::session::manager::SessionManager;
 #[cfg(test)]
 use crate::infra::source_info::{SourceInfo, SourceOrigin, SourceScope};
 
 // ── Model Registry ──────────────────────────────────────────────────
 
-pub use crate::agent::registry::ModelRegistry;
+pub use crate::agent::model::registry::ModelRegistry;
 
 // ── AgentSession ────────────────────────────────────────────────────
 

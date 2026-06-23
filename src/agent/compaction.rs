@@ -11,7 +11,7 @@
 use anyhow::Result;
 use serde_json::json;
 
-use super::types::*;
+use crate::infra::session::types::*;
 
 // ── Compaction Settings ────────────────────────────────────────────
 
@@ -671,7 +671,7 @@ pub async fn generate_summary(
 
 // ── Main compaction function ───────────────────────────────────────
 
-use super::manager::SessionManager;
+use crate::infra::session::manager::SessionManager;
 
 /// Compact a session by summarizing old entries and writing a CompactionEntry.
 ///
@@ -1425,7 +1425,7 @@ mod tests {
 /// Returns entries from the fork point (target_entry_id's parent) to the
 /// end of the session, limited by a token budget.
 pub async fn collect_entries_for_branch_summary(
-    mgr: &super::SessionManager,
+    mgr: &SessionManager,
     session_id: &str,
     fork_entry_id: &str,
     _token_budget: u64,
@@ -1450,7 +1450,7 @@ pub async fn collect_entries_for_branch_summary(
 
 /// Generate a branch summary entry (LLM or fallback) and persist it.
 pub async fn create_branch_summary_entry(
-    mgr: &super::SessionManager,
+    mgr: &SessionManager,
     session_id: &str,
     fork_entry_id: &str,
     model: Option<&dyn XyModel>,

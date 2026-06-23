@@ -2145,5 +2145,3 @@ async fn test_hook_provider_request(agent: AgentState) {}
 async fn test_hook_provider_response(agent: AgentState) {}
 #[scenario(path = "tests/features/hooks.feature", name = "空 hook 配置为零开销")]
 async fn test_hook_empty_noop(agent: AgentState) {}
-
-

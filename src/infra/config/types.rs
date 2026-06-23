@@ -213,7 +213,7 @@ impl AppConfig {
         &self,
         model_id: &str,
     ) -> Result<crate::agent::types::ModelMeta, String> {
-        use crate::agent::registry::default_context_window_for;
+        use crate::agent::model::registry::default_context_window_for;
         use crate::agent::types::ModelMeta;
 
         let model_config = self.resolve_model(model_id)?;
