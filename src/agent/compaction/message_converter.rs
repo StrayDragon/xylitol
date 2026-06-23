@@ -11,9 +11,7 @@ impl SessionEntry {
     pub fn as_agent_message(&self) -> Option<AgentMessage> {
         match self {
             SessionEntry::Message(msg) => {
-                if let Ok(agent_msg) =
-                    serde_json::from_value::<AgentMessage>(msg.message.clone())
-                {
+                if let Ok(agent_msg) = serde_json::from_value::<AgentMessage>(msg.message.clone()) {
                     return Some(agent_msg);
                 }
                 let role = msg.message.get("role")?.as_str()?;
@@ -26,9 +24,9 @@ impl SessionEntry {
                             .filter_map(|p| {
                                 let typ = p.get("type")?.as_str()?;
                                 match typ {
-                                    "Text" => Some(AgentPart::Text(
-                                        p.get("text")?.as_str()?.to_string(),
-                                    )),
+                                    "Text" => {
+                                        Some(AgentPart::Text(p.get("text")?.as_str()?.to_string()))
+                                    }
                                     "Thinking" => Some(AgentPart::Thinking {
                                         text: p.get("thinking")?.as_str()?.to_string(),
                                         redacted: false,

@@ -162,10 +162,7 @@ pub fn serialize_conversation(messages: &[AgentMessage]) -> String {
                     parts.push(format!("[Assistant]: {}", text_parts.join("\n")));
                 }
                 if !tool_calls.is_empty() {
-                    parts.push(format!(
-                        "[Assistant tool calls]: {}",
-                        tool_calls.join("; ")
-                    ));
+                    parts.push(format!("[Assistant tool calls]: {}", tool_calls.join("; ")));
                 }
             }
             _ => {
@@ -201,11 +198,8 @@ pub async fn generate_summary(
     }
     prompt_text.push_str(base_prompt);
 
-    let summarization_messages =
-        vec![AgentMessage::user(prompt_text.clone())];
+    let summarization_messages = vec![AgentMessage::user(prompt_text.clone())];
 
     let max_tokens = ((_reserve_tokens as f64) * 0.8) as u32;
     generate_complete(model, summarization_messages, max_tokens.max(256)).await
 }
-
-

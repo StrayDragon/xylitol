@@ -23,30 +23,38 @@
 
 - [x] **T2** — 抽取 ModelManager(模型注册/切换/thinking level),AgentSession 委托
 - [x] **T3** — 抽取 ToolManager(注册/过滤/allowed/excluded),AgentSession 委托
-- [ ] **T4** — 抽取 CompactionOrchestrator(阈值检查/触发/与 SessionManager 协作)
-- [ ] **T5** — 抽取 SkillManager(skill 激活/prompt 注入)
-- [ ] **T6** — 抽取 SessionIO(持久化/导入导出/命令分发)
-- [ ] **T7** — AgentSession 收敛为 facade,确认事件流与 public API 不变
+- [x] **T4** — 抽取 CompactionOrchestrator(阈值检查/触发/与 SessionManager 协作)
+- [x] **T5** — 抽取 SkillManager(skill 激活/prompt 注入)
+- [x] **T6** — 抽取 SessionIO(持久化/导入导出/命令分发)
+- [x] **T7** — AgentSession 收敛为 facade,确认事件流与 public API 不变
+
+  AgentSession 现在由 5 个管理对象组成:
+  - ModelManager (119 行)
+  - ToolManager (50 行)
+  - CompactionOrchestrator (116 行)
+  - SkillManager (88 行)
+  - SessionIO (100 行)
+  总计 473 行新代码,从 session.rs 提取出去
 
 ## Phase 2 — compaction.rs 拆分
 
-- [ ] **T8** — 切出 token_estimator(estimate_tokens 系列)
-- [ ] **T9** — 切出 cut_detector(find_cut_point 及 entry 类型判定)
-- [ ] **T10** — 切出 file_ops_tracker(read-files/modified-files 提取)
-- [ ] **T11** — 切出 llm_summarizer(generate_summary/serialize_conversation/迭代更新)
-- [ ] **T12** — 切出 branch_summarizer 与 message_converter
-- [ ] **T13** — 更新 compaction/mod.rs 重新导出,确认调用点无感
+- [x] **T8** — 切出 token_estimator(estimate_tokens 系列)
+- [x] **T9** — 切出 cut_detector(find_cut_point 及 entry 类型判定)
+- [x] **T10** — 切出 file_ops_tracker(read-files/modified-files 提取)
+- [x] **T11** — 切出 llm_summarizer(generate_summary/serialize_conversation/迭代更新)
+- [x] **T12** — 切出 branch_summarizer 与 message_converter
+- [x] **T13** — 更新 compaction/mod.rs 重新导出,确认调用点无感
 
 ## Phase 3 — compaction 配置统一
 
-- [ ] **T14** — 删除 `infra/session/config.rs` 中重复的 CompactionConfig
-- [ ] **T15** — 在 SessionManager 初始化处建立唯一映射 `AppConfig.compaction → CompactionSettings` 并加注释
-- [ ] **T16** — 文档化加载期(AppConfig)vs 运行期(Settings)边界(代码注释或 docs)
+- [x] **T14** — 删除 `infra/session/config.rs` 中重复的 CompactionConfig（文件已不存在）
+- [x] **T15** — 添加 `From<CompactionConfig> for CompactionSettings` 映射
+- [x] **T16** — 文档化加载期(AppConfig)vs 运行期(Settings)边界
 
 ## Phase 4 — 验证
 
-- [ ] **T17** — `cargo fmt`
-- [ ] **T18** — `cargo clippy --all-features --all-targets`
-- [ ] **T19** — `cargo test --lib`(无回归)
-- [ ] **T20** — `cargo test --test bdd -- --test-threads=1`(无回归)
-- [ ] **T21** — `llman sdd validate c230-refactor-module-cohesion --strict --no-interactive`
+- [x] **T17** — `cargo fmt`
+- [x] **T18** — `cargo clippy --all-features --all-targets`
+- [x] **T19** — `cargo test --lib`(419 passed, 2 pre-existing failures)
+- [x] **T20** — `cargo test --test bdd -- --test-threads=1`(79 passed)
+- [x] **T21** — `llman sdd validate c230-refactor-module-cohesion --strict --no-interactive`

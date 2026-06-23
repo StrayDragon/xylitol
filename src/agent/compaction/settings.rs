@@ -20,3 +20,12 @@ impl Default for CompactionSettings {
         }
     }
 }
+
+impl From<crate::infra::config::types::CompactionConfig> for CompactionSettings {
+    fn from(config: crate::infra::config::types::CompactionConfig) -> Self {
+        Self {
+            enabled: config.enabled,
+            ..Self::default()
+        }
+    }
+}
