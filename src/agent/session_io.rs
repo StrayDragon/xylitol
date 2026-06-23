@@ -23,12 +23,7 @@ impl SessionIO {
     }
 
     /// Create a new session.
-    pub async fn create(
-        &self,
-        id: &str,
-        cwd: &str,
-        parent: Option<&str>,
-    ) -> Result<(), String> {
+    pub async fn create(&self, id: &str, cwd: &str, parent: Option<&str>) -> Result<(), String> {
         self.manager.create(id, Some(cwd), parent).await
     }
 
@@ -42,7 +37,12 @@ impl SessionIO {
     }
 
     /// Fork a session at a given entry.
-    pub async fn fork(&self, parent_id: &str, child_id: &str, at_entry_id: &str) -> Result<(), String> {
+    pub async fn fork(
+        &self,
+        parent_id: &str,
+        child_id: &str,
+        at_entry_id: &str,
+    ) -> Result<(), String> {
         self.manager
             .fork(parent_id, child_id, at_entry_id)
             .await
@@ -60,10 +60,7 @@ impl SessionIO {
     }
 
     /// Get session stats.
-        pub async fn stats(
-        &self,
-        _session_id: &str,
-    ) -> Result<super::session::SessionStats, String> {
+    pub async fn stats(&self, _session_id: &str) -> Result<super::session::SessionStats, String> {
         // Simplified: return empty stats for now
         Ok(super::session::SessionStats {
             session_id: _session_id.to_string(),

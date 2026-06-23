@@ -17,12 +17,18 @@ pub mod message_converter;
 pub mod settings;
 pub mod token_estimator;
 
-pub use settings::CompactionSettings;
-pub use token_estimator::{calculate_context_tokens, estimate_context_tokens, should_compact, XyUsage};
-pub use cut_detector::{estimate_tokens_entry, find_cut_point, CutPointResult, is_context_overflow};
-pub use file_ops::{FileOps, extract_file_ops_from_messages, compute_file_lists, format_file_ops_xml};
-pub use llm_summarizer::{generate_summary, serialize_conversation};
 pub use branch_summarizer::{BranchPreparation, BranchSummaryResult, generate_branch_summary_llm};
+pub use cut_detector::{
+    CutPointResult, estimate_tokens_entry, find_cut_point, is_context_overflow,
+};
+pub use file_ops::{
+    FileOps, compute_file_lists, extract_file_ops_from_messages, format_file_ops_xml,
+};
+pub use llm_summarizer::{generate_summary, serialize_conversation};
+pub use settings::CompactionSettings;
+pub use token_estimator::{
+    XyUsage, calculate_context_tokens, estimate_context_tokens, should_compact,
+};
 
 use anyhow::Result;
 use serde_json::json;
@@ -249,8 +255,16 @@ mod tests {
     fn test_cut_point_keeps_all_when_under_threshold() {
         let mut entries = Vec::new();
         for i in 0..5 {
-            entries.push(make_message_entry(&format!("u{i}"), "user", &format!("msg {i}")));
-            entries.push(make_message_entry(&format!("a{i}"), "assistant", &format!("resp {i}")));
+            entries.push(make_message_entry(
+                &format!("u{i}"),
+                "user",
+                &format!("msg {i}"),
+            ));
+            entries.push(make_message_entry(
+                &format!("a{i}"),
+                "assistant",
+                &format!("resp {i}"),
+            ));
         }
         // Very high keep_tokens should keep everything
         let result = find_cut_point(&entries, 0, entries.len(), 1_000_000);
@@ -261,8 +275,16 @@ mod tests {
     fn test_cut_point_triggers_cut() {
         let mut entries = Vec::new();
         for i in 0..100 {
-            entries.push(make_message_entry(&format!("u{i}"), "user", &format!("msg {i}")));
-            entries.push(make_message_entry(&format!("a{i}"), "assistant", &format!("resp {i}")));
+            entries.push(make_message_entry(
+                &format!("u{i}"),
+                "user",
+                &format!("msg {i}"),
+            ));
+            entries.push(make_message_entry(
+                &format!("a{i}"),
+                "assistant",
+                &format!("resp {i}"),
+            ));
         }
         // Low keep_tokens should trigger a cut
         let result = find_cut_point(&entries, 0, entries.len(), 50);
@@ -273,8 +295,16 @@ mod tests {
     fn test_cut_point_with_start_index() {
         let mut entries = Vec::new();
         for i in 0..10 {
-            entries.push(make_message_entry(&format!("u{i}"), "user", &format!("msg {i}")));
-            entries.push(make_message_entry(&format!("a{i}"), "assistant", &format!("resp {i}")));
+            entries.push(make_message_entry(
+                &format!("u{i}"),
+                "user",
+                &format!("msg {i}"),
+            ));
+            entries.push(make_message_entry(
+                &format!("a{i}"),
+                "assistant",
+                &format!("resp {i}"),
+            ));
         }
         // Start at index 10 (skip first 10 entries)
         let result = find_cut_point(&entries, 10, entries.len(), 10);
