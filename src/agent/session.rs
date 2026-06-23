@@ -15,6 +15,7 @@ use crate::agent::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::compaction_orchestrator::CompactionOrchestrator;
 use crate::agent::model_manager::ModelManager;
 use crate::agent::output_guard;
+use crate::agent::session_io::SessionIO;
 use crate::agent::skill_manager::SkillManager;
 use crate::agent::tool_manager::ToolManager;
 use crate::agent::prompt::{self, SystemPromptOpts};
@@ -45,8 +46,8 @@ pub struct AgentSession {
     model_manager: ModelManager,
     /// Tool management (registry, filtering).
     tool_manager: ToolManager,
-    /// Session persistence manager.
-    session_manager: SessionManager,
+    /// Session persistence and navigation.
+    session_io: SessionIO,
     /// System prompt to prepend to every turn.
     system_prompt: Option<String>,
     /// Current session ID.
@@ -95,7 +96,7 @@ impl AgentSession {
         Self {
             model_manager: ModelManager::new(model_registry),
             tool_manager: ToolManager::new(tool_registry),
-            session_manager,
+            session_io: SessionIO::new(session_manager),
             system_prompt,
             session_id: None,
             max_iterations,
@@ -140,11 +141,11 @@ impl AgentSession {
         self.model_manager.set_thinking_level(level);
         // Fire-and-forget persistence
         if let Some(ref sid) = self.session_id {
-            let mgr = self.session_manager.clone();
+            let io = self.session_io.clone();
             let sid = sid.clone();
             let level_str = level.as_str().to_string();
             tokio::spawn(async move {
-                let _ = mgr.append_thinking_level_change(&sid, &level_str).await;
+                let _ = io.append_thinking_level_change(&sid, &level_str).await;
             });
         }
     }
@@ -178,11 +179,11 @@ impl AgentSession {
         self.model_manager.select_model(model_id)?;
         // Fire-and-forget persistence
         if let Some(ref sid) = self.session_id {
-            let mgr = self.session_manager.clone();
+            let io = self.session_io.clone();
             let sid = sid.clone();
             let mid = model_id.to_string();
             tokio::spawn(async move {
-                let _ = mgr.append_model_change(&sid, &mid, &mid).await;
+                let _ = io.append_model_change(&sid, &mid, &mid).await;
             });
         }
         Ok(())
@@ -339,9 +340,9 @@ impl AgentSession {
 
     /// Ensure a session exists (create if needed).
     pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), String> {
-        if !self.session_manager.exists(id) {
+        if !self.session_io.manager().exists(id) {
             let cwd_clone = self.cwd.clone();
-            self.session_manager
+            self.session_io.manager()
                 .create(id, Some(&cwd_clone), parent)
                 .await?;
         }
@@ -355,7 +356,7 @@ impl AgentSession {
     }
 
     pub fn session_manager(&self) -> &SessionManager {
-        &self.session_manager
+        self.session_io.manager()
     }
 
     pub fn system_prompt(&self) -> Option<&str> {
@@ -564,19 +565,17 @@ impl AgentSession {
             .map(String::from)
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        self.session_manager
-            .create(&id, Some(&self.cwd), parent)
-            .await?;
+        self.session_io.create(&id, &self.cwd, parent).await?;
         self.session_id = Some(id.clone());
 
         // Emit initial model state
         if let Some(model) = self.current_model() {
-            let mgr = self.session_manager.clone();
+            let io = self.session_io.clone();
             let sid = id.clone();
             let provider = model.config.provider_name().to_string();
             let model_id = model.config.model.clone();
             tokio::spawn(async move {
-                let _ = mgr.append_model_change(&sid, &provider, &model_id).await;
+                let _ = io.append_model_change(&sid, &provider, &model_id).await;
             });
         }
 
@@ -586,7 +585,7 @@ impl AgentSession {
     /// Resume an existing session, loading its entries and validating CWD.
     pub async fn resume_session(&mut self, id: &str) -> Result<(), String> {
         // Load + validate CWD
-        let entries = self.session_manager.load_validated(id, &self.cwd).await?;
+        let entries = self.session_io.load_validated(id, &self.cwd).await?;
 
         self.session_id = Some(id.to_string());
 
@@ -623,7 +622,7 @@ impl AgentSession {
             .session_id()
             .ok_or_else(|| "no active session".to_string())?;
         self.compaction_orchestrator
-            .compact(&self.session_manager, sid, model, &self.event_bus)
+            .compact(self.session_io.manager(), sid, model, &self.event_bus)
             .await
     }
 
@@ -649,10 +648,9 @@ impl AgentSession {
 
         let child_id = uuid::Uuid::new_v4().to_string();
 
-        self.session_manager
+        self.session_io
             .fork(parent_id, &child_id, at_entry_id)
-            .await
-            .map_err(|e| format!("fork failed: {e}"))?;
+            .await?;
 
         Ok(child_id)
     }
@@ -663,7 +661,7 @@ impl AgentSession {
         let sid = self
             .session_id()
             .ok_or_else(|| "no active session".to_string())?;
-        self.session_manager.navigate_tree(sid, Some(target_id));
+        self.session_io.navigate(sid, target_id);
         Ok(())
     }
 
@@ -673,10 +671,8 @@ impl AgentSession {
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
-        self.session_manager
-            .switch_session(new_id, new_path)
-            .await?;
-        self.session_manager.set_active_session(new_id);
+        self.session_io.switch(new_id, new_path).await?;
+        self.session_io.manager().set_active_session(new_id);
         Ok(())
     }
 
@@ -796,7 +792,7 @@ impl AgentSession {
         let sid = self
             .session_id()
             .ok_or_else(|| "no active session".to_string())?;
-        let ctx = self.session_manager.build_session_context(sid).await?;
+        let ctx = self.session_io.manager().build_session_context(sid).await?;
 
         let user_messages = ctx
             .messages
@@ -870,7 +866,7 @@ impl AgentSession {
                 .ok_or_else(|| "no active session".to_string())?
                 .to_string(),
         };
-        self.session_manager
+        self.session_io.manager()
             .append_bash_execution(crate::infra::session::manager::BashExecutionParams {
                 session_id: &sid,
                 command,
@@ -972,7 +968,7 @@ impl AgentSession {
             .ok_or_else(|| "no active session".to_string())?;
         // Forward to session manager for persistence; turn triggering is
         // orchestrated by AgentLoop (c185).
-        self.session_manager
+        self.session_io.manager()
             .append_custom_message(sid, custom_type, _content, false, None)
             .await
     }
@@ -985,7 +981,7 @@ impl AgentSession {
         path: &std::path::Path,
     ) -> Result<std::path::PathBuf, String> {
         let sid = self.session_id().ok_or("no active session")?.to_string();
-        let entries = self.session_manager.load(&sid).await?;
+        let entries = self.session_io.manager().load(&sid).await?;
         let html = crate::infra::session::export::render_html(&sid, &entries);
         crate::infra::session::export::write_to(path, &html)?;
         Ok(path.to_path_buf())
@@ -997,7 +993,7 @@ impl AgentSession {
         path: &std::path::Path,
     ) -> Result<std::path::PathBuf, String> {
         let sid = self.session_id().ok_or("no active session")?.to_string();
-        let entries = self.session_manager.load(&sid).await?;
+        let entries = self.session_io.manager().load(&sid).await?;
         let jsonl = crate::infra::session::export::render_jsonl(&entries)?;
         crate::infra::session::export::write_to(path, &jsonl)?;
         Ok(path.to_path_buf())
@@ -1015,12 +1011,12 @@ impl AgentSession {
             Some(crate::infra::session::SessionEntry::Header(h)) => h.id.clone(),
             _ => return Err("import: missing header".into()),
         };
-        if self.session_manager.exists(&new_id) {
+        if self.session_io.manager().exists(&new_id) {
             return Err(format!("session already exists: {new_id}"));
         }
         // Append all entries into a fresh session file.
         for entry in &entries {
-            self.session_manager.append(&new_id, entry).await?;
+            self.session_io.manager().append(&new_id, entry).await?;
         }
         Ok(new_id)
     }
@@ -1048,7 +1044,7 @@ impl AgentSession {
 
         self.compaction_orchestrator
             .maybe_auto_compact(
-                &self.session_manager,
+                self.session_io.manager(),
                 sid,
                 model.as_ref(),
                 &self.event_bus,
