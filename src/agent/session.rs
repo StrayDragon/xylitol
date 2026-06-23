@@ -15,6 +15,7 @@ use crate::agent::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::compaction_orchestrator::CompactionOrchestrator;
 use crate::agent::model_manager::ModelManager;
 use crate::agent::output_guard;
+use crate::agent::skill_manager::SkillManager;
 use crate::agent::tool_manager::ToolManager;
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::queue::MessageQueue;
@@ -65,8 +66,8 @@ pub struct AgentSession {
     prompt_templates: Vec<PromptTemplate>,
     /// Extension-registered slash commands.
     extension_commands: Vec<SlashCommandInfo>,
-    /// Loaded skills for `/skill:name` expansion.
-    loaded_skills: Vec<SkillInfo>,
+    /// Skill management (activation, XML expansion).
+    skill_manager: SkillManager,
     /// Event bus for lifecycle notifications.
     event_bus: EventBus,
     /// Handle for lifecycle subscription (dropped on unsubscribe/dispose).
@@ -107,7 +108,7 @@ impl AgentSession {
             message_queue: MessageQueue::new(),
             prompt_templates: Vec::new(),
             extension_commands: Vec::new(),
-            loaded_skills: Vec::new(),
+            skill_manager: SkillManager::new(),
             event_bus: EventBus::new(),
             lifecycle_handle: None,
             retry_state: None,
@@ -626,60 +627,14 @@ impl AgentSession {
             .await
     }
 
-    // ── Skills ──────────────────────────────────────────────────
+    // ── Skills (delegated to SkillManager) ─────────
 
-    /// Register loaded skills with the session.
-    /// Stores them for `/skill:name` expansion and registers slash commands.
     pub fn set_skills(&mut self, skills: Vec<SkillInfo>) {
-        self.loaded_skills = skills;
+        self.skill_manager.set_skills(skills);
     }
 
-    /// Expand a skill invocation into an XML block.
-    ///
-    /// Looks up the skill by name, reads its SKILL.md, and generates the
-    /// `<skill name="..." location="...">` XML block for prompt injection.
     pub fn expand_skill_command(&self, skill_name: &str, args: &str) -> Option<String> {
-        let skill = self.loaded_skills.iter().find(|s| s.name == skill_name)?;
-
-        // Read the SKILL.md content
-        let content = std::fs::read_to_string(&skill.source_info.path).ok()?;
-
-        // Strip YAML frontmatter
-        let body = if content.starts_with("---") {
-            if let Some(pos) = content.find("\n---") {
-                content[pos + 4..].trim().to_string()
-            } else {
-                content.clone()
-            }
-        } else {
-            content.clone()
-        };
-
-        let escaped_name = crate::infra::skills::loader::xml_escape(&skill.name);
-        let escaped_location =
-            crate::infra::skills::loader::xml_escape(&skill.source_info.path.to_string_lossy());
-        let base_dir = skill
-            .source_info
-            .base_dir
-            .as_ref()
-            .map(|d| d.to_string_lossy().to_string())
-            .unwrap_or_default();
-        let escaped_base = crate::infra::skills::loader::xml_escape(&base_dir);
-
-        let mut result = format!(
-            r##"<skill name="{escaped_name}" location="{escaped_location}">
-References are relative to {escaped_base}.
-
-{body}"##,
-        );
-
-        if !args.is_empty() {
-            result.push_str("\n\n");
-            result.push_str(args);
-        }
-
-        result.push_str("\n</skill>");
-        Some(result)
+        self.skill_manager.expand_command(skill_name, args)
     }
 
     // ── Fork ────────────────────────────────────────────────────
@@ -729,16 +684,9 @@ References are relative to {escaped_base}.
 
     /// Register skill commands from loaded skills.
     /// When a skill is loaded, `/skill:name` slash command is auto-registered.
-    pub fn register_skill_commands(&mut self, skills: &[crate::infra::resource::SkillInfo]) {
-        for skill in skills {
-            let name = skill.name.clone();
-            let desc = skill.description.clone().unwrap_or_default();
-            self.extension_commands.push(SlashCommandInfo::new(
-                format!("skill:{name}"),
-                format!("Activate skill: {desc}"),
-                crate::agent::commands::SlashCommandSource::Skill,
-            ));
-        }
+    pub fn register_skill_commands(&mut self, _skills: &[crate::infra::resource::SkillInfo]) {
+        let cmds = self.skill_manager.register_commands();
+        self.extension_commands.extend(cmds);
     }
 
     // ── Steering / Follow-up queue ─────────────────────────────
