@@ -5,9 +5,24 @@
 
 ## Phase 1 — session.rs 分解(facade + 协作组件)
 
-- [ ] **T1** — 盘点 AgentSession 的 12 类职责与各自的 public/private 方法边界
-- [ ] **T2** — 抽取 ModelManager(模型注册/切换/thinking level),AgentSession 委托
-- [ ] **T3** — 抽取 ToolManager(注册/过滤/allowed/excluded),AgentSession 委托
+- [x] **T1** — 盘点 AgentSession 的 12 类职责与各自的 public/private 方法边界
+
+  职责清单 (79 个 pub 方法):
+  1. ModelManager — 模型注册/切换/thinking level (~8 方法)
+  2. ToolManager — 工具注册/过滤 (~1 方法 + 接入)
+  3. CompactionOrchestrator — 压缩触发 (~2 方法)
+  4. SkillManager — skill 激活/命令 (~3 方法)
+  5. SessionIO — 持久化/分叉/导航/统计 (~10 方法)
+  6. EventBus — 生命周期事件/订阅 (~6 方法)
+  7. RetryManager — 自动重试 (~5 方法)
+  8. MessageQueue — steer/followUp (~6 方法)
+  9. PromptDispatcher — prompt 处理/斜杠命令/模板 (~3 方法)
+  10. BashExecutor — bash 执行 (~2 方法)
+  11. Sandbox — sandbox 引擎 (~3 方法)
+  12. Accessors — 通用 getter/setter (~10 方法)
+
+- [x] **T2** — 抽取 ModelManager(模型注册/切换/thinking level),AgentSession 委托
+- [x] **T3** — 抽取 ToolManager(注册/过滤/allowed/excluded),AgentSession 委托
 - [ ] **T4** — 抽取 CompactionOrchestrator(阈值检查/触发/与 SessionManager 协作)
 - [ ] **T5** — 抽取 SkillManager(skill 激活/prompt 注入)
 - [ ] **T6** — 抽取 SessionIO(持久化/导入导出/命令分发)

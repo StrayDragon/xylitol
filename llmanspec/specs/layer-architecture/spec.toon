@@ -1,0 +1,12 @@
+kind: llman.sdd.spec
+name: "layer-architecture"
+purpose: "TBD - created by archiving change c225-refactor-domain-layering. Update purpose after archive."
+valid_scope[2]: src/,tests/
+requirements[3]{req_id,title,statement}:
+  la1,"core-layer","System MUST provide a base core/ layer hosting domain-core vocabulary types including AgentMessage and XyModel and XyTool and ModelKind and XyChunk consumable by both agent/ and infra/."
+  la2,"downward-dependency","infra/ modules MUST NOT import any crate::agent symbol; infra/ and agent/ MAY depend on crate::core for domain-core types only."
+  la3,"arch-guard","System MUST enforce via a guard test that no file under src/infra imports crate::agent."
+scenarios[3]{req_id,id,given,when,then}:
+  la1,"types-relocated",agent and infra both need AgentMessage,"they import crate::core::message::AgentMessage",neither depends on agent/ for the type
+  la2,"no-reverse-import",a file under src/infra is compiled,"it references crate::agent",the build or guard rejects it
+  la3,"guard-catches-violation","a new src/infra file adds use crate::agent::session",the architecture guard runs,the guard fails and reports the offending file path
