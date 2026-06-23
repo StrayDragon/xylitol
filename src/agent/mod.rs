@@ -2,6 +2,7 @@ pub mod auth;
 pub mod bash_executor;
 pub mod commands;
 pub mod compaction;
+pub mod compaction_orchestrator;
 pub mod config_value;
 pub mod http_dispatcher;
 pub mod r#loop;

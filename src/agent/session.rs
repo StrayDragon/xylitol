@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use crate::agent::commands::{SlashCommandInfo, get_all_commands};
-use crate::agent::compaction::{CompactionSettings, compact_session};
+use crate::agent::compaction_orchestrator::CompactionOrchestrator;
 use crate::agent::model_manager::ModelManager;
 use crate::agent::output_guard;
 use crate::agent::tool_manager::ToolManager;
@@ -52,8 +52,8 @@ pub struct AgentSession {
     session_id: Option<String>,
     /// Max ReAct loop iterations per turn.
     max_iterations: u32,
-    /// Context window threshold for compaction (0.0-1.0).
-    compaction_threshold: f64,
+    /// Compaction orchestration (threshold check, trigger).
+    compaction_orchestrator: CompactionOrchestrator,
     /// CWD for session header.
     cwd: String,
     /// System prompt options for dynamic building.
@@ -98,7 +98,7 @@ impl AgentSession {
             system_prompt,
             session_id: None,
             max_iterations,
-            compaction_threshold,
+            compaction_orchestrator: CompactionOrchestrator::new(compaction_threshold),
             cwd: cwd.clone(),
             prompt_opts: SystemPromptOpts {
                 cwd,
@@ -366,7 +366,7 @@ impl AgentSession {
     }
 
     pub fn compaction_threshold(&self) -> f64 {
-        self.compaction_threshold
+        self.compaction_orchestrator.threshold()
     }
 
     pub fn model_registry(&self) -> &ModelRegistry {
@@ -621,30 +621,9 @@ impl AgentSession {
         let sid = self
             .session_id()
             .ok_or_else(|| "no active session".to_string())?;
-
-        self.event_bus
-            .emit_lifecycle(&AgentLifecycleEvent::CompactionStart {
-                reason: "manual".to_string(),
-            });
-
-        let settings = CompactionSettings {
-            enabled: true,
-            reserve_tokens: 16384,
-            keep_recent_tokens: 20000,
-        };
-
-        let result = compact_session(&self.session_manager, sid, model, &settings)
+        self.compaction_orchestrator
+            .compact(&self.session_manager, sid, model, &self.event_bus)
             .await
-            .map_err(|e| format!("compaction failed: {e}"));
-
-        self.event_bus
-            .emit_lifecycle(&AgentLifecycleEvent::CompactionEnd {
-                result: result.as_ref().ok().map(|_| "ok".to_string()),
-                aborted: false,
-            });
-
-        result?;
-        Ok(())
     }
 
     // ── Skills ──────────────────────────────────────────────────
@@ -1119,44 +1098,15 @@ References are relative to {escaped_base}.
             .map(|m| m.context_window)
             .unwrap_or(128000);
 
-        let session_ctx = self.session_manager.build_session_context(sid).await?;
-        let token_estimate: u64 = session_ctx
-            .messages
-            .iter()
-            .map(|m| (m.to_string().len() as u64).div_ceil(4))
-            .sum();
-
-        if !should_compact(token_estimate, ctx_window, self.compaction_threshold) {
-            return Ok(false);
-        }
-
-        let settings = CompactionSettings {
-            enabled: true,
-            reserve_tokens: 16384,
-            keep_recent_tokens: 20000,
-        };
-
-        self.event_bus
-            .emit_lifecycle(&AgentLifecycleEvent::CompactionStart {
-                reason: format!(
-                    "auto: {:.1}% of {}k window",
-                    (token_estimate as f64 / ctx_window as f64) * 100.0,
-                    ctx_window / 1000,
-                ),
-            });
-
-        let result = compact_session(&self.session_manager, sid, model.as_ref(), &settings)
+        self.compaction_orchestrator
+            .maybe_auto_compact(
+                &self.session_manager,
+                sid,
+                model.as_ref(),
+                &self.event_bus,
+                ctx_window,
+            )
             .await
-            .map_err(|e| format!("auto-compaction: {e}"));
-
-        self.event_bus
-            .emit_lifecycle(&AgentLifecycleEvent::CompactionEnd {
-                result: result.as_ref().ok().map(|_| "ok".to_string()),
-                aborted: false,
-            });
-
-        result?;
-        Ok(true)
     }
 }
 
@@ -1204,14 +1154,7 @@ pub fn estimate_tokens(messages: &[crate::core::message::AgentMessage]) -> u64 {
     total
 }
 
-/// Check if compaction should be triggered.
-pub fn should_compact(token_estimate: u64, context_window: u64, threshold: f64) -> bool {
-    if context_window == 0 {
-        return false;
-    }
-    let usage_ratio = token_estimate as f64 / context_window as f64;
-    usage_ratio >= threshold
-}
+pub use crate::agent::compaction_orchestrator::should_compact;
 
 #[derive(Debug, Clone)]
 pub struct ContextUsage {
