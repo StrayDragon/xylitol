@@ -1,6 +1,6 @@
 //! Resource loading — unified resource discovery and caching.
 //!
-//! Aligns with pi's resource-loader.ts. Central resource layer that discovers:
+//! Central resource layer that discovers:
 //! - Project context files (AGENTS.md, CLAUDE.md)
 //! - Prompt templates
 //! - Skills

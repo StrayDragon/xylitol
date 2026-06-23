@@ -117,3 +117,82 @@ impl ModelManager {
             .map(|m| m.config.clone())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ModelManager;
+    use crate::agent::model::registry::ModelRegistry;
+
+    fn empty_registry() -> ModelRegistry {
+        ModelRegistry::new()
+    }
+
+    #[test]
+    fn new_model_manager_empty_registry() {
+        let mm = ModelManager::new(empty_registry());
+        assert!(mm.current_model().is_none());
+        assert_eq!(mm.current_index(), 0);
+        // No model means no thinking support → clamped to Off
+        assert_eq!(mm.thinking_level(), crate::core::types::ThinkingLevel::Off);
+    }
+
+    #[test]
+    fn new_model_manager_default_thinking() {
+        let mm = ModelManager::new(empty_registry());
+        assert_eq!(mm.thinking_level, crate::core::types::ThinkingLevel::Medium);
+    }
+
+    #[test]
+    fn set_thinking_level() {
+        let mut mm = ModelManager::new(empty_registry());
+        mm.set_thinking_level(crate::core::types::ThinkingLevel::Low);
+        assert_eq!(mm.thinking_level, crate::core::types::ThinkingLevel::Low);
+    }
+
+    #[test]
+    fn set_thinking_level_high() {
+        let mut mm = ModelManager::new(empty_registry());
+        mm.set_thinking_level(crate::core::types::ThinkingLevel::High);
+        assert_eq!(mm.thinking_level, crate::core::types::ThinkingLevel::High);
+    }
+
+    #[test]
+    fn cycle_forward_empty_registry_returns_none() {
+        let mut mm = ModelManager::new(empty_registry());
+        assert!(mm.cycle_forward().is_none());
+    }
+
+    #[test]
+    fn select_model_empty_registry_returns_error() {
+        let mut mm = ModelManager::new(empty_registry());
+        let result = mm.select_model("nonexistent");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("model not found"));
+    }
+
+    #[test]
+    fn registry_accessor() {
+        let mm = ModelManager::new(empty_registry());
+        assert_eq!(mm.registry().list().len(), 0);
+    }
+
+    #[test]
+    fn registry_clone() {
+        let mm = ModelManager::new(empty_registry());
+        let cloned = mm.registry_clone();
+        assert_eq!(cloned.list().len(), 0);
+    }
+
+    #[test]
+    fn current_config_empty_returns_none() {
+        let mm = ModelManager::new(empty_registry());
+        assert!(mm.current_config().is_none());
+    }
+
+    #[test]
+    fn build_current_model_empty_registry_returns_error() {
+        let mm = ModelManager::new(empty_registry());
+        let result = mm.build_current_model();
+        assert_eq!(result.err().as_deref(), Some("no model configured"));
+    }
+}

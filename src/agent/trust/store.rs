@@ -1,7 +1,7 @@
 //! Project trust store — persists trust decisions for project directories.
 //!
-//! Aligns with pi's trust-manager.ts. Manages a JSON trust file
-//! (`~/.xylitol/trust.json`) that maps canonical directory paths to
+//! Manages a JSON trust file (`~/.xylitol/trust.json`) that maps
+//! canonical directory paths to
 //! boolean trust decisions. Supports directory-walk ancestor lookup and
 //! file-based locking for concurrent access safety.
 

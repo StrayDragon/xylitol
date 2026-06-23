@@ -1,7 +1,5 @@
 //! Provider attribution — provider-specific HTTP headers and display names.
 //!
-//! Aligns with pi's provider-attribution.ts and provider-display-names.ts.
-//!
 //! When making LLM API requests, certain providers (OpenRouter, NVIDIA NIM,
 //! Cloudflare, Vercel AI Gateway, OpenCode) require or prefer attribution
 //! headers for analytics, billing, or session tracking.

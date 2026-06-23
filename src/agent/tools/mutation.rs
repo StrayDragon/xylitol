@@ -1,7 +1,7 @@
 //! File mutation queue — serializes concurrent writes/edits to the same file path.
 //!
-//! Aligns with pi's `file-mutation-queue.ts`. Operations targeting different files run in
-//! parallel; operations targeting the same file are serialized via per-path locks.
+//! Operations targeting different files run in parallel; operations targeting
+//! the same file are serialized via per-path locks.
 
 use std::collections::HashMap;
 use std::future::Future;

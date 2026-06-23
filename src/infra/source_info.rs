@@ -1,6 +1,4 @@
 //! Unified SourceInfo type for all resources (skills, prompts, themes, commands).
-//!
-//! Aligns with pi's source-info.ts.
 
 use std::path::PathBuf;
 

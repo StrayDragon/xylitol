@@ -1,6 +1,4 @@
 //! Auth guidance — user-facing messages for authentication and model selection.
-//!
-//! Aligns with pi's auth-guidance.ts.
 
 /// Get help text for provider login, referencing available documentation.
 pub fn get_provider_login_help() -> String {

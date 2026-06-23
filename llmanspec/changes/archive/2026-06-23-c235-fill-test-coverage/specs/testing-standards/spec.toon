@@ -1,0 +1,11 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement}:
+  add_requirement,ts01,BDD-vs-Unit 测试分界,"The project MUST maintain a documented boundary: BDD scenarios cover end-to-end orchestration (agent loop, tool execution, session lifecycle, CLI CLI dispatch); unit tests cover pure algorithms, data structure contracts, component internal state machines, and error type behaviors. Tests MUST NOT duplicate coverage across the two layers."
+  add_requirement,ts02,核心数据类型测试覆盖,"All types in core/ (error, message, model, traits, types) MUST have #[cfg(test)] module verifying: (1) serialization round-trip, (2) Display/From conversions, (3) constructor invariants."
+  add_requirement,ts03,纯逻辑组件测试覆盖,"The following agent/ modules MUST have #[cfg(test)] verifying their pure-logic behavior: queue.rs (MessageQueue all operations), retry.rs (state transitions), commands.rs (slash parsing), templates.rs (prompt template expansion), config_value.rs (resolution)."
+  add_requirement,ts04,Session 子组件测试覆盖,"The following agent/ sub-components extracted by c230 MUST have #[cfg(test)]: model_manager.rs (cycle/select/thinking), tool_manager.rs (register/filter), skill_manager.rs (activation/XML expansion)."
+op_scenarios[4]{req_id,id,given,when,then}:
+  ts01,boundary-defined,"a new test is being added","the PR author checks docs/testing-strategy.md for which layer to use","the test avoids duplicating coverage across BDD and unit test layers"
+  ts02,core-types-covered,"core/ source files exist","running cargo test","all core type modules report passing tests for serialize/Display/From behaviors"
+  ts03,pure-logic-covered,"agent/queue.rs, agent/retry.rs, agent/commands.rs, agent/templates.rs, agent/config_value.rs exist","running cargo test","all five modules report passing tests for their pure-logic behaviors"
+  ts04,sub-components-covered,"agent/model_manager.rs, agent/tool_manager.rs, agent/skill_manager.rs exist","running cargo test","all three sub-components report passing tests for their extracted responsibilities"

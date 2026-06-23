@@ -18,7 +18,6 @@ pub mod session;
 pub mod session_io;
 pub mod skill_manager;
 pub mod templates;
-pub mod tool_manager;
 pub mod tools;
 pub mod traits;
 pub mod trust;

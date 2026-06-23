@@ -1,6 +1,6 @@
 //! ConfigValueResolver — shell command + env var template resolution for API keys and headers.
 //!
-//! Aligns with pi's resolve-config-value.ts. Supports:
+//! Supports:
 //! - Literal strings (passthrough)
 //! - `$ENV_VAR` / `${ENV_VAR}` environment variable interpolation
 //! - `${VAR:-default}` with fallback default

@@ -1,6 +1,7 @@
 //! Auto-retry for transient LLM errors.
 //!
-//! Aligns with pi's _isRetryableError / _prepareRetry / exponential backoff logic.
+//! Uses regex-based pattern matching for retryable error detection,
+//! plus exponential backoff with cancellation support.
 
 use regex::Regex;
 use std::sync::LazyLock;

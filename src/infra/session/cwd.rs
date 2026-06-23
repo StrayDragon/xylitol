@@ -1,7 +1,5 @@
 //! Session CWD validation — checks that the stored session working directory
 //! still exists when restoring a session.
-//!
-//! Aligns with pi's session-cwd.ts.
 
 use std::path::{Path, PathBuf};
 

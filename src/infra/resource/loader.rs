@@ -1,6 +1,6 @@
 //! DefaultResourceLoader — unified resource discovery and caching.
 //!
-//! Aligns with pi's resource-loader.ts. Central resource layer that discovers:
+//! Central resource layer that discovers:
 //! - Project context files (AGENTS.md, CLAUDE.md) by walking cwd → root
 //! - Skills via skills loader integration
 //! - Prompt templates from global and project directories

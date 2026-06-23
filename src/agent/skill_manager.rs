@@ -86,3 +86,89 @@ References are relative to {escaped_base}.
             .collect()
     }
 }
+
+impl Default for SkillManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SkillManager;
+    use crate::infra::resource::SkillInfo;
+    use crate::infra::source_info::{SourceInfo, SourceOrigin, SourceScope};
+
+    fn make_skill(name: &str, path: &str) -> SkillInfo {
+        SkillInfo {
+            name: name.into(),
+            description: Some(format!("{name} description")),
+            source_info: SourceInfo {
+                path: std::path::PathBuf::from(path),
+                source: "test".into(),
+                scope: SourceScope::Project,
+                origin: SourceOrigin::TopLevel,
+                base_dir: Some(std::path::PathBuf::from("/base")),
+            },
+        }
+    }
+
+    #[test]
+    fn new_skill_manager_empty() {
+        let sm = SkillManager::new();
+        assert!(sm.skills().is_empty());
+    }
+
+    #[test]
+    fn set_skills_and_access() {
+        let mut sm = SkillManager::new();
+        let skills = vec![
+            make_skill("review", "/path/to/review.md"),
+            make_skill("test", "/path/to/test.md"),
+        ];
+        sm.set_skills(skills);
+        assert_eq!(sm.skills().len(), 2);
+        assert_eq!(sm.skills()[0].name, "review");
+        assert_eq!(sm.skills()[1].name, "test");
+    }
+
+    #[test]
+    fn expand_nonexistent_skill_returns_none() {
+        let sm = SkillManager::new();
+        assert!(sm.expand_command("nonexistent", "args").is_none());
+    }
+
+    #[test]
+    fn expand_unreadable_skill_returns_none() {
+        let mut sm = SkillManager::new();
+        sm.set_skills(vec![make_skill("broken", "/nonexistent/path.md")]);
+        // File doesn't exist, so expand returns None
+        let result = sm.expand_command("broken", "some args");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn register_commands_empty() {
+        let sm = SkillManager::new();
+        let cmds = sm.register_commands();
+        assert!(cmds.is_empty());
+    }
+
+    #[test]
+    fn register_commands_with_skills() {
+        let mut sm = SkillManager::new();
+        sm.set_skills(vec![make_skill("my-skill", "/p.md")]);
+        let cmds = sm.register_commands();
+        assert_eq!(cmds.len(), 1);
+        assert!(cmds[0].name.contains("my-skill"));
+        assert!(cmds[0].description.contains("my-skill description"));
+    }
+
+    #[test]
+    fn register_commands_uses_skill_source() {
+        let mut sm = SkillManager::new();
+        sm.set_skills(vec![make_skill("x", "/x.md")]);
+        let cmds = sm.register_commands();
+        assert_eq!(cmds[0].name, "skill:x");
+    }
+}
