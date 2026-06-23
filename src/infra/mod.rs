@@ -37,9 +37,6 @@ pub mod browser;
 pub mod sandbox;
 
 #[cfg(feature = "infra-platform")]
-pub mod changelog;
-
-#[cfg(feature = "infra-platform")]
 pub mod fs_watch;
 
 #[cfg(feature = "infra-platform")]

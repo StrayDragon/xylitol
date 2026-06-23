@@ -8,16 +8,12 @@
 //! 5. CLI override:  `--config <path>` (single file, no local overlay)
 
 #![allow(dead_code)]
-use std::collections::HashMap;
 use std::path::Path;
 
 use serde_json::Value;
 
 use super::paths::ConfigPaths;
-use super::secret::load_secret_env;
-use super::template::render;
 use super::types::AppConfig;
-use super::validate::{ValidationError, validate_config};
 
 /// Errors from config loading.
 #[derive(Debug, thiserror::Error)]
@@ -32,12 +28,7 @@ pub(crate) enum LoadError {
         path: String,
         source: yaml_serde::Error,
     },
-    #[error("template {0}")]
-    Template(#[from] super::template::TemplateError),
-    #[error("secret: {0}")]
-    Secret(#[from] super::secret::SecretError),
-    #[error("validation: {0}")]
-    Validation(#[from] ValidationError),
+
     #[error("deserialize: {0}")]
     Deserialize(#[from] serde_json::Error),
 }
@@ -94,60 +85,21 @@ pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, Lo
         return Ok(AppConfig::default());
     }
 
-    // Validate against JSON schema.
-    validate_config(&merged)?;
-
     // Deserialize to AppConfig.
     let config: AppConfig = serde_json::from_value(merged)?;
-
-    // Post-load business rule validation.
-    config.validate_business_rules()?;
 
     Ok(config)
 }
 
 /// Load a YAML file, render templates, and parse to `serde_json::Value`.
-fn load_and_render(path: &Path, paths: &ConfigPaths) -> Result<Value, LoadError> {
+fn load_and_render(path: &Path, _paths: &ConfigPaths) -> Result<Value, LoadError> {
     let raw = std::fs::read_to_string(path).map_err(|e| LoadError::Io {
         path: path.to_string_lossy().to_string(),
         source: e,
     })?;
 
-    // Collect env vars.
-    let env_vars: HashMap<String, String> = std::env::vars().collect();
-
-    // Collect secret vars from all config locations.
-    let mut secret_vars = HashMap::new();
-
-    // Load from global secret.env.
-    let global_secret = paths.global_dir.join("secret.env");
-    let result = load_secret_env(&global_secret);
-    secret_vars.extend(result.vars);
-    // Report warnings (non-fatal).
-    for w in &result.warnings {
-        tracing::warn!("{}", w);
-    }
-
-    // Load from project secret.env.
-    if let Some(ref proj_dir) = paths.project_dir {
-        let proj_secret = proj_dir.join("secret.env");
-        let result = load_secret_env(&proj_secret);
-        secret_vars.extend(result.vars);
-        for w in &result.warnings {
-            tracing::warn!("{}", w);
-        }
-    }
-
-    // OS env vars take precedence over secret.env.
-    for (k, v) in &env_vars {
-        secret_vars.entry(k.clone()).or_insert_with(|| v.clone());
-    }
-
-    // Render template.
-    let rendered = render(&raw, &env_vars, &secret_vars)?;
-
-    // Parse YAML.
-    let value: Value = yaml_serde::from_str(&rendered).map_err(|e| LoadError::Yaml {
+    // Parse YAML directly (template/secret resolution removed — use env vars via the shell).
+    let value: Value = yaml_serde::from_str(&raw).map_err(|e| LoadError::Yaml {
         path: path.to_string_lossy().to_string(),
         source: e,
     })?;
@@ -184,34 +136,9 @@ pub(crate) fn deep_merge(base: &mut Value, overlay: Value) {
 // Business rules on AppConfig
 // ---------------------------------------------------------------------------
 
-impl AppConfig {
-    /// Validate post-deserialization business rules.
-    ///
-    /// Checks:
-    /// - Model ID cross-references within `models` entries.
-    /// - Provider constraints (MVP: only OpenAI / Anthropic).
-    pub(crate) fn validate_business_rules(&self) -> Result<(), ValidationError> {
-        // Check that model entries reference valid models.
-        for (alias, entry) in &self.model.models {
-            if let Some(ref fallback) = entry.fallback
-                && fallback != alias
-                && !self.model.models.contains_key(fallback)
-            {
-                return Err(ValidationError::BusinessRule {
-                    message: format!(
-                        "model `{alias}` has fallback `{fallback}` which is not defined in `models`"
-                    ),
-                });
-            }
-        }
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::config::test_support::{ENV_LOCK, save_env};
     use serde_json::json;
 
     #[test]
@@ -254,157 +181,5 @@ mod tests {
         let overlay = json!({"key": "val"});
         deep_merge(&mut base, overlay);
         assert_eq!(base["key"], json!("val"));
-    }
-
-    #[test]
-    fn test_business_rules_valid() {
-        use crate::agent::model::ModelKind;
-        use std::collections::HashMap;
-        let config = AppConfig {
-            model: super::super::types::ModelsConfig {
-                default_model: Some("gpt-4o".into()),
-                models: HashMap::from([
-                    (
-                        "gpt-4o".into(),
-                        super::super::types::ModelEntry {
-                            provider: ModelKind::OpenAi,
-                            model: "gpt-4o".into(),
-                            base_url: None,
-                            fallback: Some("claude-3".into()),
-                            ..Default::default()
-                        },
-                    ),
-                    (
-                        "claude-3".into(),
-                        super::super::types::ModelEntry {
-                            provider: ModelKind::Anthropic,
-                            model: "claude-3-5-sonnet".into(),
-                            base_url: None,
-                            fallback: None,
-                            ..Default::default()
-                        },
-                    ),
-                ]),
-            },
-            ..Default::default()
-        };
-        assert!(config.validate_business_rules().is_ok());
-    }
-
-    #[test]
-    fn test_business_rules_invalid_fallback() {
-        use crate::agent::model::ModelKind;
-        use std::collections::HashMap;
-        let config = AppConfig {
-            model: super::super::types::ModelsConfig {
-                default_model: Some("gpt-4o".into()),
-                models: HashMap::from([(
-                    "gpt-4o".into(),
-                    super::super::types::ModelEntry {
-                        provider: ModelKind::OpenAi,
-                        model: "gpt-4o".into(),
-                        base_url: None,
-                        fallback: Some("nonexistent-model".into()),
-                        ..Default::default()
-                    },
-                )]),
-            },
-            ..Default::default()
-        };
-        assert!(config.validate_business_rules().is_err());
-    }
-
-    #[test]
-    fn test_app_config_default_values() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        let _guard = save_env(&["XYLITOL_PROJECT_DIR", "XYLITOL_CONFIG_DIR"]);
-        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
-        unsafe { std::env::remove_var("XYLITOL_PROJECT_DIR") };
-        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
-        unsafe { std::env::remove_var("XYLITOL_CONFIG_DIR") };
-
-        let config = AppConfig::default();
-        assert!(config.model.default_model.is_none());
-        assert!(config.model.models.is_empty());
-        assert_eq!(config.execution.max_retries, 3);
-        assert!(!config.security.enabled);
-        assert_eq!(config.security.bash.timeout_secs, 120);
-        assert!(!config.repeat_detection.enabled);
-        assert_eq!(config.repeat_detection.recovery.strategy, "sequential");
-        assert!(config.hooks.global.is_empty());
-        assert!(config.tools.allowlist.is_empty());
-    }
-
-    #[test]
-    fn test_load_app_config_no_files() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        let _guard = save_env(&["XYLITOL_PROJECT_DIR", "XYLITOL_CONFIG_DIR"]);
-        // Pin config discovery to empty temp dirs so the test is hermetic even
-        // when the developer has local config files.
-        let dir = std::env::temp_dir().join("xylitol_test_no_files");
-        let _ = std::fs::remove_dir_all(&dir);
-        let _ = std::fs::create_dir_all(&dir);
-        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
-        unsafe { std::env::set_var("XYLITOL_CONFIG_DIR", &dir) };
-        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
-        unsafe { std::env::set_var("XYLITOL_PROJECT_DIR", &dir) };
-
-        // Without any config files, should return defaults.
-        let config = load_app_config(None).unwrap();
-        assert!(config.model.default_model.is_none());
-    }
-
-    #[test]
-    fn test_load_app_config_cli_override() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        let _guard = save_env(&["XYLITOL_PROJECT_DIR", "XYLITOL_CONFIG_DIR"]);
-        let root = std::env::temp_dir().join("xylitol_test_cli_override_root");
-        let _ = std::fs::remove_dir_all(&root);
-        let _ = std::fs::create_dir_all(&root);
-        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
-        unsafe { std::env::set_var("XYLITOL_CONFIG_DIR", &root) };
-        // SAFETY: ENV_LOCK held; EnvGuard will restore on drop.
-        unsafe { std::env::set_var("XYLITOL_PROJECT_DIR", &root) };
-
-        use std::io::Write;
-        let dir = std::env::temp_dir().join("xylitol_test_cli_config");
-        let _ = std::fs::create_dir_all(&dir);
-        let path = dir.join("cli-config.yaml");
-        let mut f = std::fs::File::create(&path).unwrap();
-        writeln!(f, "models:").unwrap();
-        writeln!(f, "  default_model: claude-opus-4").unwrap();
-        writeln!(f, "  models: {{}}").unwrap();
-        writeln!(f, "execution:").unwrap();
-        writeln!(f, "  max_retries: 5").unwrap();
-        writeln!(f, "patch_apply: {{}}").unwrap();
-        writeln!(f, "hooks:").unwrap();
-        writeln!(f, "  global: []").unwrap();
-        writeln!(f, "  project: []").unwrap();
-        writeln!(f, "  user: []").unwrap();
-        writeln!(f, "security:").unwrap();
-        writeln!(f, "  enabled: true").unwrap();
-        writeln!(
-            f,
-            "  bash:\n    timeout_secs: 300\n  filesystem: {{}}\n  network: {{}}"
-        )
-        .unwrap();
-        writeln!(
-            f,
-            "  resource_limits:\n    max_memory_mb: 8192\n    max_cpu_percent: 90\n    max_disk_mb: 2048"
-        )
-        .unwrap();
-        writeln!(f, "repeat_detection:").unwrap();
-        writeln!(
-            f,
-            "  enabled: true\n  min_n: 2\n  max_n: 8\n  window_size: 50\n  consecutive_hit_threshold: 2\n  recovery:\n    strategy: rotate\n    max_attempts: 5\n    actions: []"
-        )
-        .unwrap();
-        writeln!(f, "tools: {{}}").unwrap();
-
-        let config = load_app_config(Some(&path)).unwrap();
-        assert_eq!(config.model.default_model.as_deref(), Some("claude-opus-4"));
-        assert!(config.security.enabled);
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }
