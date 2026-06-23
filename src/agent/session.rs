@@ -767,21 +767,6 @@ References are relative to {escaped_base}.
         }
     }
 
-    // ── Extension tool wrapping ─────────────────────────────────
-
-    /// Wrap built-in tools with extension hooks (before_tool_call / after_tool_call).
-    ///
-    /// Each built-in tool is wrapped so that before execution, extensions can block it,
-    /// and after execution, extensions can modify the result.
-    #[allow(dead_code)]
-    pub(crate) fn wrap_registered_tools(
-        &mut self,
-        _loader: &crate::agent::extensions::ExtensionLoader,
-    ) {
-        // Tool wrapping happens at the ToolRegistry level in c80.
-        // For now, this is a placeholder that will be wired in AgentLoop.
-    }
-
     // ── Steering / Follow-up queue ─────────────────────────────
 
     /// Queue a steering message — injected into context mid-turn.
