@@ -61,6 +61,7 @@ pub enum BashError {
 
 /// Hooks that fire before and after bash execution.
 #[derive(Default, Clone)]
+#[allow(clippy::type_complexity)]
 pub struct BashHooks {
     /// Called with the command string just before spawning.
     pub pre_spawn: Option<Arc<dyn Fn(&str) + Send + Sync>>,

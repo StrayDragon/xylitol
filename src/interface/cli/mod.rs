@@ -231,14 +231,12 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         cwd,
     );
     // ── Step 3c: initialize sandbox engine ────────────────────
-    #[cfg(feature = "infra-sandbox")]
-    if let Some(ref cfg) = app_config {
-        if let Some(ref sandbox_cfg) = cfg.security.sandbox {
-            if sandbox_cfg.enabled {
-                let engine = crate::infra::sandbox::build_engine(sandbox_cfg);
-                agent_session.set_sandbox_engine(Some(engine));
-            }
-        }
+    if let Some(ref cfg) = app_config
+        && let Some(ref sandbox_cfg) = cfg.security.sandbox
+        && sandbox_cfg.enabled
+    {
+        let engine = crate::infra::sandbox::build_engine(sandbox_cfg);
+        agent_session.set_sandbox_engine(Some(engine));
     }
 
     agent_session.register_prompt_commands(&discovered_templates);
@@ -302,7 +300,6 @@ fn resolve_api_key(kind: ModelKind) -> Option<String> {
         ModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
             .or_else(|_| std::env::var("ANTHROPIC_KEY"))
             .ok(),
-        #[cfg(feature = "dev-fake-provider")]
         ModelKind::Fake => Some(String::new()),
     }
 }

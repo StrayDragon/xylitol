@@ -10,12 +10,10 @@ pub(crate) mod anthropic;
 pub(crate) mod attribution;
 pub(crate) mod openai;
 
-#[cfg(feature = "dev-fake-provider")]
 mod fake;
 #[cfg(test)]
 mod mock;
 
-#[cfg(feature = "dev-fake-provider")]
 pub use fake::*;
 #[cfg(test)]
 pub use mock::MockXyModel;

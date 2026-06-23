@@ -15,32 +15,13 @@ pub(crate) mod resource;
 // ── session is always-on core ──
 pub mod session;
 
-#[cfg(feature = "infra-clipboard")]
-pub mod clipboard;
-
-#[cfg(feature = "infra-image")]
-pub mod image;
-
-#[cfg(feature = "infra-git")]
-pub mod git;
-
-#[cfg(feature = "infra-tools")]
-pub(crate) mod tools;
-
-#[cfg(feature = "infra-syntax")]
-pub mod syntax;
-
-#[cfg(feature = "infra-platform")]
 pub mod browser;
-
-#[cfg(feature = "infra-sandbox")]
-pub mod sandbox;
-
-#[cfg(feature = "infra-platform")]
+pub mod clipboard;
 pub mod fs_watch;
-
-#[cfg(feature = "infra-platform")]
-pub mod update;
-
-#[cfg(feature = "infra-skills")]
+pub mod git;
+pub mod image;
+pub mod sandbox;
 pub(crate) mod skills;
+pub mod syntax;
+pub(crate) mod tools;
+pub mod update;

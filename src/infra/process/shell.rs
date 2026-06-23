@@ -34,10 +34,10 @@ pub enum CommandTransport {
 ///    - Windows: Git Bash in ProgramFiles → bash on PATH
 ///    - Unix: /bin/bash → which bash → sh fallback
 pub fn find_bash(custom_shell: Option<&std::path::Path>) -> ShellConfig {
-    if let Some(path) = custom_shell {
-        if path.exists() {
-            return bash_config(path);
-        }
+    if let Some(path) = custom_shell
+        && path.exists()
+    {
+        return bash_config(path);
     }
 
     if cfg!(target_os = "windows") {

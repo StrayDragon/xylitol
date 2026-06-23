@@ -15,7 +15,6 @@ pub enum ModelKind {
     OpenAi,
     #[serde(rename = "anthropic")]
     Anthropic,
-    #[cfg(feature = "dev-fake-provider")]
     #[serde(rename = "fake")]
     Fake,
 }
@@ -26,7 +25,6 @@ impl ModelKind {
         match name.to_lowercase().as_str() {
             "openai" => Some(Self::OpenAi),
             "anthropic" => Some(Self::Anthropic),
-            #[cfg(feature = "dev-fake-provider")]
             "fake" => Some(Self::Fake),
             _ => None,
         }
@@ -37,7 +35,6 @@ impl ModelKind {
         match self {
             Self::OpenAi => "openai",
             Self::Anthropic => "anthropic",
-            #[cfg(feature = "dev-fake-provider")]
             Self::Fake => "fake",
         }
     }
@@ -87,7 +84,6 @@ pub fn default_context_window_for(kind: ModelKind) -> u64 {
     match kind {
         ModelKind::OpenAi => 128_000,
         ModelKind::Anthropic => 200_000,
-        #[cfg(feature = "dev-fake-provider")]
         ModelKind::Fake => 8_000,
     }
 }

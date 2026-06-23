@@ -484,7 +484,6 @@ impl DefaultResourceLoader {
     /// Load skills via SkillManager.
     fn load_skills_internal(&mut self) {
         // Use the skill loader integration from c45
-        #[cfg(feature = "infra-skills")]
         {
             let project_skills = self.cwd.join(".xylitol").join("skills");
             let global_skills = self.agent_dir.join("skills");
@@ -493,7 +492,6 @@ impl DefaultResourceLoader {
         }
     }
 
-    #[cfg(feature = "infra-skills")]
     fn load_skills_from_skills_dir(&mut self, dir: &Path, _source: &str) {
         if !dir.is_dir() {
             return;
@@ -535,9 +533,6 @@ impl DefaultResourceLoader {
             }
         }
     }
-
-    #[cfg(not(feature = "infra-skills"))]
-    fn load_skills_from_skills_dir(&mut self, _dir: &Path, _source: &str) {}
 
     // ── Themes ────────────────────────────────────────────────────────
 
@@ -871,13 +866,8 @@ mod tests {
         let loader = DefaultResourceLoader::new(tmp.path().to_path_buf(), PathBuf::from("/tmp"));
         let (skills, diags) = loader.get_skills();
 
-        if cfg!(feature = "infra-skills") {
-            assert!(diags.is_empty());
-            assert!(skills.iter().any(|s| s.name == "python"));
-        } else {
-            // Without feature, skills will be empty
-            assert!(skills.is_empty());
-        }
+        assert!(diags.is_empty());
+        assert!(skills.iter().any(|s| s.name == "python"));
     }
 
     // ── Themes ─────────────────────────────────────────────────────

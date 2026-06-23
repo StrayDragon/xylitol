@@ -25,7 +25,6 @@ use crate::core::message::{AgentMessage, AgentPart};
 use crate::core::traits::{ToolExecutionMode, XyModel, XyToolCtx};
 use crate::core::types::{XyChunk, XyToolSchema};
 
-#[cfg(feature = "infra-sandbox")]
 use crate::infra::sandbox::SandboxVerdict;
 
 // ── AgentEvent ──────────────────────────────────────────────────────
@@ -180,11 +179,10 @@ impl AgentLoop {
     /// Run the agent loop with a user prompt.
     #[allow(clippy::type_complexity)]
     pub async fn run(&mut self, prompt: &str, session_id: &str) -> AgentEventStream {
-        // Build sandbox check callback from session (no-op when infra-sandbox disabled)
+        // Build sandbox check callback from session
         let sandbox_check: Option<
             std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>,
         >;
-        #[cfg(feature = "infra-sandbox")]
         {
             let engine = self.session.get_sandbox_engine();
             sandbox_check = Some(std::sync::Arc::new(
@@ -206,10 +204,6 @@ impl AgentLoop {
                     }
                 },
             ));
-        }
-        #[cfg(not(feature = "infra-sandbox"))]
-        {
-            sandbox_check = None;
         }
         // Ensure session exists
         let sid = session_id.to_string();

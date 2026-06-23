@@ -6,16 +6,15 @@
 #![allow(dead_code)]
 
 use syntect::easy::HighlightLines;
-use syntect::highlighting::{Theme, ThemeSet};
+use syntect::highlighting::ThemeSet;
 use syntect::html::styled_line_to_highlighted_html;
 use syntect::parsing::SyntaxSet;
 use syntect::util::LinesWithEndings;
 
 static SYNTAX_SET: std::sync::LazyLock<SyntaxSet> =
-    std::sync::LazyLock::new(|| SyntaxSet::load_defaults_newlines());
+    std::sync::LazyLock::new(SyntaxSet::load_defaults_newlines);
 
-static THEME_SET: std::sync::LazyLock<ThemeSet> =
-    std::sync::LazyLock::new(|| ThemeSet::load_defaults());
+static THEME_SET: std::sync::LazyLock<ThemeSet> = std::sync::LazyLock::new(ThemeSet::load_defaults);
 
 /// Highlight code with automatic or specified language detection.
 ///
