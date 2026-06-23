@@ -2,8 +2,6 @@
 
 #![allow(dead_code)]
 //!
-//! Aligns with pi's agent-loop.ts.
-//!
 //! Key features:
 //! - ReAct loop with turn-based execution
 //! - `AgentHooks`: before_tool_call, after_tool_call, transform_context

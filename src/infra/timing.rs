@@ -1,6 +1,4 @@
 //! Startup timing instrumentation — gated behind XYLITOL_TIMING=1 env var.
-//!
-//! Aligns with pi's timings.ts.
 
 use std::time::Instant;
 

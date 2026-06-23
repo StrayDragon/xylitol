@@ -29,3 +29,117 @@ pub enum XyToolError {
     #[error("aborted")]
     Aborted,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── XyError Display ────────────────────────────────────────────
+
+    #[test]
+    fn xy_error_display_provider() {
+        let err = XyError::Provider(anyhow::anyhow!("API returned 500"));
+        assert_eq!(err.to_string(), "provider error: API returned 500");
+    }
+
+    #[test]
+    fn xy_error_display_tool() {
+        let err = XyError::Tool(XyToolError::ExecutionFailed(anyhow::anyhow!("disk full")));
+        assert_eq!(err.to_string(), "tool error: execution failed: disk full");
+    }
+
+    #[test]
+    fn xy_error_display_session() {
+        let err = XyError::Session(anyhow::anyhow!("session not found"));
+        assert_eq!(err.to_string(), "session error: session not found");
+    }
+
+    #[test]
+    fn xy_error_display_config() {
+        let err = XyError::Config("missing api key".into());
+        assert_eq!(err.to_string(), "agent config error: missing api key");
+    }
+
+    #[test]
+    fn xy_error_display_max_iterations() {
+        let err = XyError::MaxIterations(42);
+        assert_eq!(err.to_string(), "max iterations reached (42)");
+    }
+
+    #[test]
+    fn xy_error_display_aborted() {
+        let err = XyError::Aborted;
+        assert_eq!(err.to_string(), "aborted");
+    }
+
+    // ── XyToolError Display ─────────────────────────────────────────
+
+    #[test]
+    fn xy_tool_error_display_invalid_args() {
+        let err = XyToolError::InvalidArgs("missing 'path'".into());
+        assert_eq!(err.to_string(), "invalid arguments: missing 'path'");
+    }
+
+    #[test]
+    fn xy_tool_error_display_execution_failed() {
+        let err = XyToolError::ExecutionFailed(anyhow::anyhow!("permission denied"));
+        assert_eq!(err.to_string(), "execution failed: permission denied");
+    }
+
+    #[test]
+    fn xy_tool_error_display_permission_denied() {
+        let err = XyToolError::PermissionDenied("/etc/shadow".into());
+        assert_eq!(err.to_string(), "permission denied: /etc/shadow");
+    }
+
+    #[test]
+    fn xy_tool_error_display_timeout() {
+        let err = XyToolError::Timeout(Duration::from_secs(30));
+        assert_eq!(err.to_string(), "timeout after 30s");
+    }
+
+    #[test]
+    fn xy_tool_error_display_aborted() {
+        let err = XyToolError::Aborted;
+        assert_eq!(err.to_string(), "aborted");
+    }
+
+    // ── From conversion ─────────────────────────────────────────────
+
+    #[test]
+    fn xy_tool_error_into_xy_error() {
+        let tool_err = XyToolError::Aborted;
+        let err: XyError = tool_err.into();
+        assert_eq!(err.to_string(), "tool error: aborted");
+    }
+
+    #[test]
+    fn xy_tool_error_via_question_mark() {
+        fn inner() -> Result<(), XyError> {
+            Err(XyToolError::InvalidArgs("bad".into()))?
+        }
+        let result = inner();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "tool error: invalid arguments: bad"
+        );
+    }
+
+    // ── Debug ───────────────────────────────────────────────────────
+
+    #[test]
+    fn xy_error_debug_format() {
+        let err = XyError::Config("oops".into());
+        let debug = format!("{err:?}");
+        assert!(debug.contains("Config"));
+        assert!(debug.contains("oops"));
+    }
+
+    #[test]
+    fn xy_tool_error_debug_format() {
+        let err = XyToolError::Timeout(Duration::from_millis(500));
+        let debug = format!("{err:?}");
+        assert!(debug.contains("Timeout"));
+    }
+}

@@ -91,3 +91,136 @@ pub fn default_context_window_for(kind: ModelKind) -> u64 {
         ModelKind::Fake => 8_000,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── ModelKind ───────────────────────────────────────────────────
+
+    #[test]
+    fn model_kind_from_provider_name_openai() {
+        assert_eq!(
+            ModelKind::from_provider_name("openai"),
+            Some(ModelKind::OpenAi)
+        );
+    }
+
+    #[test]
+    fn model_kind_from_provider_name_anthropic() {
+        assert_eq!(
+            ModelKind::from_provider_name("anthropic"),
+            Some(ModelKind::Anthropic)
+        );
+    }
+
+    #[test]
+    fn model_kind_from_provider_name_case_insensitive() {
+        assert_eq!(
+            ModelKind::from_provider_name("OpenAI"),
+            Some(ModelKind::OpenAi)
+        );
+        assert_eq!(
+            ModelKind::from_provider_name("ANTHROPIC"),
+            Some(ModelKind::Anthropic)
+        );
+    }
+
+    #[test]
+    fn model_kind_from_provider_name_unknown() {
+        assert_eq!(ModelKind::from_provider_name("google"), None);
+        assert_eq!(ModelKind::from_provider_name(""), None);
+    }
+
+    #[test]
+    fn model_kind_provider_name() {
+        assert_eq!(ModelKind::OpenAi.provider_name(), "openai");
+        assert_eq!(ModelKind::Anthropic.provider_name(), "anthropic");
+    }
+
+    #[test]
+    fn model_kind_default_is_openai() {
+        assert_eq!(ModelKind::default(), ModelKind::OpenAi);
+    }
+
+    #[test]
+    fn model_kind_serde_round_trip() {
+        let kinds = [ModelKind::OpenAi, ModelKind::Anthropic];
+        for kind in &kinds {
+            let json = serde_json::to_string(kind).unwrap();
+            let deserialized: ModelKind = serde_json::from_str(&json).unwrap();
+            assert_eq!(*kind, deserialized);
+        }
+    }
+
+    #[test]
+    fn model_kind_eq() {
+        assert_eq!(ModelKind::OpenAi, ModelKind::OpenAi);
+        assert_ne!(ModelKind::OpenAi, ModelKind::Anthropic);
+    }
+
+    // ── ModelConfig ─────────────────────────────────────────────────
+
+    #[test]
+    fn model_config_provider_name() {
+        let config = ModelConfig {
+            kind: ModelKind::Anthropic,
+            api_key: "sk-test".into(),
+            model: "claude-3".into(),
+            base_url: None,
+        };
+        assert_eq!(config.provider_name(), "anthropic");
+    }
+
+    #[test]
+    fn model_config_with_base_url() {
+        let config = ModelConfig {
+            kind: ModelKind::OpenAi,
+            api_key: "sk-test".into(),
+            model: "gpt-4".into(),
+            base_url: Some("https://proxy.example.com/v1".into()),
+        };
+        assert_eq!(
+            config.base_url.as_deref(),
+            Some("https://proxy.example.com/v1")
+        );
+        assert_eq!(config.provider_name(), "openai");
+    }
+
+    // ── default_context_window_for ──────────────────────────────────
+
+    #[test]
+    fn default_context_window_openai() {
+        assert_eq!(default_context_window_for(ModelKind::OpenAi), 128_000);
+    }
+
+    #[test]
+    fn default_context_window_anthropic() {
+        assert_eq!(default_context_window_for(ModelKind::Anthropic), 200_000);
+    }
+
+    // ── ResolvedProfile ─────────────────────────────────────────────
+
+    #[test]
+    fn resolved_profile_construct() {
+        let config = ModelConfig {
+            kind: ModelKind::OpenAi,
+            api_key: "sk-test".into(),
+            model: "gpt-4o".into(),
+            base_url: None,
+        };
+        let profile = ResolvedProfile {
+            model_config: config,
+            system_prompt: Some("You are an AI".into()),
+            allowed_tools: Some(vec!["read".into(), "write".into()]),
+            max_iterations: 50,
+            name: "default".into(),
+        };
+        assert_eq!(profile.name, "default");
+        assert_eq!(profile.max_iterations, 50);
+        assert_eq!(
+            profile.allowed_tools.as_ref().map(|v| v.as_slice()),
+            Some(&["read".to_string(), "write".to_string()][..])
+        );
+    }
+}

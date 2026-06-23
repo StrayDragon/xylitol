@@ -1,7 +1,7 @@
 //! System prompt construction.
 //!
-//! Aligns with pi's buildSystemPrompt() — dynamically composes
-//! custom prompt, tool snippets, guidelines, skills, context files, date, and CWD.
+//! Dynamically composes custom prompt, tool snippets, guidelines,
+//! skills, context files, date, and CWD.
 //!
 //! Key functions:
 //! - `build_system_prompt(opts)` — explicit options

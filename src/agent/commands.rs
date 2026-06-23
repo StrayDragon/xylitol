@@ -1,7 +1,7 @@
 //! Slash commands — `/model`, `/compact`, `/export`, etc.
 //!
-//! Aligns with pi's slash-commands.ts. Provides a full builtin command table,
-//! slash-command detection, and `DispatchResult` for routing.
+//! Provides a full builtin command table, slash-command detection,
+//! and slash-command info types for routing.
 //!
 //! ## Architecture
 //! - **Builtins** are defined as simple `(&str, &str)` tuples (name, description).

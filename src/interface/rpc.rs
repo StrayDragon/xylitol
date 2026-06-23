@@ -1,6 +1,6 @@
 //! RPC mode — JSONL over stdin/stdout protocol for headless control.
 //!
-//! Aligns with pi's `modes/rpc/`. Protocol:
+//! Protocol:
 //! - stdin: one JSON object per line, [`RpcCommand`].
 //! - stdout: one JSON object per line, [`RpcEvent`] (response or streaming event).
 //! - stderr: diagnostics only (never protocol).

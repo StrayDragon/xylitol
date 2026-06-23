@@ -1,6 +1,6 @@
 //! OutputAccumulator — streaming output buffer with temp file spillover.
 //!
-//! Aligns with pi's output-accumulator.ts. Provides:
+//! Provides:
 //! - Incremental data append (raw bytes)
 //! - Rolling memory buffer (configurable max bytes)
 //! - Transparent temp file spillover when buffer exceeds threshold

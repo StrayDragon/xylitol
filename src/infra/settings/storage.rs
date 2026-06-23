@@ -1,7 +1,7 @@
 //! File-backed settings storage with retry-locking.
 //!
-//! Aligns with pi's FileSettingsStorage: global.~/.xylitol/settings.json
-//! and project <cwd>/.xylitol/settings.json with proper-lockfile semantics.
+//! Supports global `~/.xylitol/settings.json` and project `<cwd>/.xylitol/settings.json`
+//! with proper-lockfile semantics.
 //! Rust doesn't have proper-lockfile, so we use atomic temp-file + rename.
 
 use std::path::{Path, PathBuf};
