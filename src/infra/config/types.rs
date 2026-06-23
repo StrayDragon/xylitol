@@ -46,7 +46,7 @@ pub struct AppConfig {
 // ---------------------------------------------------------------------------
 
 /// Top-level model configuration section.
-/// Split from agent-level [`ModelConfig`](crate::agent::model::ModelConfig) —
+/// Split from agent-level [`ModelConfig`](crate::core::model::ModelConfig) —
 /// this is YAML-facing; [`ModelEntry`] aliases resolve into runtime config.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -59,11 +59,11 @@ pub struct ModelsConfig {
 
 /// A single model alias entry.
 ///
-/// References [`ModelKind`](crate::agent::model::ModelKind) for the provider;
+/// References [`ModelKind`](crate::core::model::ModelKind) for the provider;
 /// the kind's serde representation is the YAML wire format.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct ModelEntry {
-    pub provider: crate::agent::model::ModelKind,
+    pub provider: crate::core::model::ModelKind,
     pub model: String,
     /// Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.
     #[serde(default)]
@@ -173,12 +173,9 @@ fn default_max_iterations() -> u32 {
 }
 
 impl AppConfig {
-    /// Resolve a model alias to a runtime [`ModelConfig`](crate::agent::model::ModelConfig).
-    pub fn resolve_model(
-        &self,
-        model_id: &str,
-    ) -> Result<crate::agent::model::ModelConfig, String> {
-        use crate::agent::model::{ModelConfig, ModelKind};
+    /// Resolve a model alias to a runtime [`ModelConfig`](crate::core::model::ModelConfig).
+    pub fn resolve_model(&self, model_id: &str) -> Result<crate::core::model::ModelConfig, String> {
+        use crate::core::model::{ModelConfig, ModelKind};
 
         let (kind, model_name, base_url) = if let Some(entry) = self.model.models.get(model_id) {
             (entry.provider, entry.model.clone(), entry.base_url.clone())
@@ -205,16 +202,16 @@ impl AppConfig {
         })
     }
 
-    /// Resolve a model alias to [`ModelMeta`](crate::agent::types::ModelMeta) for the registry.
+    /// Resolve a model alias to [`ModelMeta`](crate::core::types::ModelMeta) for the registry.
     ///
     /// Composes [`resolve_model`](Self::resolve_model) with per‑model metadata (thinking support,
     /// context window size) from [`ModelEntry`] or sensible defaults.
     pub fn resolve_model_meta(
         &self,
         model_id: &str,
-    ) -> Result<crate::agent::types::ModelMeta, String> {
-        use crate::agent::model::registry::default_context_window_for;
-        use crate::agent::types::ModelMeta;
+    ) -> Result<crate::core::types::ModelMeta, String> {
+        use crate::core::model::default_context_window_for;
+        use crate::core::types::ModelMeta;
 
         let model_config = self.resolve_model(model_id)?;
         let entry = self.model.models.get(model_id);
@@ -245,7 +242,7 @@ impl AppConfig {
     pub fn resolve_profile(
         &self,
         name: &str,
-    ) -> Result<crate::agent::profile::ResolvedProfile, String> {
+    ) -> Result<crate::core::model::ResolvedProfile, String> {
         let profile = self.agents.profiles.get(name);
 
         let (model_ref, system_prompt, allowed_tools, max_iterations) = match profile {
@@ -268,7 +265,7 @@ impl AppConfig {
             })?;
         let model_config = self.resolve_model(model_id)?;
 
-        Ok(crate::agent::profile::ResolvedProfile {
+        Ok(crate::core::model::ResolvedProfile {
             model_config,
             system_prompt,
             allowed_tools,
@@ -278,9 +275,7 @@ impl AppConfig {
     }
 
     /// Resolve the default agent profile.
-    pub fn resolve_default_profile(
-        &self,
-    ) -> Result<crate::agent::profile::ResolvedProfile, String> {
+    pub fn resolve_default_profile(&self) -> Result<crate::core::model::ResolvedProfile, String> {
         let name = if self.agents.default_profile.is_empty() {
             "default"
         } else {

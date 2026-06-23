@@ -71,7 +71,7 @@ pub struct ContextUsageEstimate {
 /// When a `last_usage` is provided, uses real usage tokens and
 /// estimates only trailing messages.
 pub fn estimate_context_tokens(
-    messages: &[crate::agent::message::AgentMessage],
+    messages: &[crate::core::message::AgentMessage],
     last_usage: Option<&XyUsage>,
 ) -> ContextUsageEstimate {
     if let Some(usage) = last_usage {
@@ -101,7 +101,7 @@ pub fn estimate_context_tokens(
 }
 
 /// Estimate tokens for an AgentMessage using chars/4.
-fn estimate_tokens_agent(msg: &crate::agent::message::AgentMessage) -> u64 {
+fn estimate_tokens_agent(msg: &crate::core::message::AgentMessage) -> u64 {
     let s = serde_json::to_string(msg).unwrap_or_default();
     (s.len() as u64).div_ceil(4)
 }
@@ -372,7 +372,7 @@ impl FileOps {
 
 /// Extract file operations from `AgentMessage` messages.
 pub fn extract_file_ops_from_messages(
-    messages: &[crate::agent::message::AgentMessage],
+    messages: &[crate::core::message::AgentMessage],
     prev_compaction: Option<&CompactionEntry>,
 ) -> FileOps {
     let mut ops = FileOps::default();
@@ -400,7 +400,10 @@ pub fn extract_file_ops_from_messages(
     // Extract from tool calls in AgentMessage
     for msg in messages {
         for part in msg.content() {
-            if let crate::agent::message::AgentPart::ToolCall { name, arguments, .. } = part {
+            if let crate::core::message::AgentPart::ToolCall {
+                name, arguments, ..
+            } = part
+            {
                 let path = arguments.get("path").and_then(|v| v.as_str());
                 // Also check "file_path" alias used by some tools
                 let path = path.or_else(|| arguments.get("file_path").and_then(|v| v.as_str()));
@@ -547,14 +550,14 @@ Keep each section concise. Preserve exact file paths, function names, and error 
 
 // ── LLM summarization ──────────────────────────────────────────────
 
-use crate::agent::traits::XyModel;
-use crate::agent::types::XyChunk;
+use crate::core::traits::XyModel;
+use crate::core::types::XyChunk;
 use futures::StreamExt;
 
 /// Call the LLM non-streaming, collecting all text chunks.
 async fn generate_complete(
     model: &dyn XyModel,
-    messages: Vec<crate::agent::message::AgentMessage>,
+    messages: Vec<crate::core::message::AgentMessage>,
     _max_tokens: u32,
 ) -> Result<String> {
     let mut stream = model
@@ -580,7 +583,7 @@ async fn generate_complete(
 }
 
 /// Serialize `AgentMessage` messages to text for the summarization prompt.
-pub fn serialize_conversation(messages: &[crate::agent::message::AgentMessage]) -> String {
+pub fn serialize_conversation(messages: &[crate::core::message::AgentMessage]) -> String {
     let mut parts = Vec::new();
     for msg in messages {
         let role = msg.role_name();
@@ -599,9 +602,13 @@ pub fn serialize_conversation(messages: &[crate::agent::message::AgentMessage]) 
                 let mut tool_calls = Vec::new();
                 for part in content {
                     match part {
-                        crate::agent::message::AgentPart::Text(t) => text_parts.push(t.as_str()),
-                        crate::agent::message::AgentPart::Thinking { text, .. } => thinking_parts.push(text.as_str()),
-                        crate::agent::message::AgentPart::ToolCall { name, arguments, .. } => {
+                        crate::core::message::AgentPart::Text(t) => text_parts.push(t.as_str()),
+                        crate::core::message::AgentPart::Thinking { text, .. } => {
+                            thinking_parts.push(text.as_str())
+                        }
+                        crate::core::message::AgentPart::ToolCall {
+                            name, arguments, ..
+                        } => {
                             let args_str = if let Some(obj) = arguments.as_object() {
                                 obj.iter()
                                     .map(|(k, v)| format!("{k}={v}"))
@@ -616,7 +623,10 @@ pub fn serialize_conversation(messages: &[crate::agent::message::AgentMessage]) 
                     }
                 }
                 if !thinking_parts.is_empty() {
-                    parts.push(format!("[Assistant thinking]: {}", thinking_parts.join("\n")));
+                    parts.push(format!(
+                        "[Assistant thinking]: {}",
+                        thinking_parts.join("\n")
+                    ));
                 }
                 if !text_parts.is_empty() {
                     parts.push(format!("[Assistant]: {}", text_parts.join("\n")));
@@ -638,7 +648,7 @@ pub fn serialize_conversation(messages: &[crate::agent::message::AgentMessage]) 
 /// If `previous_summary` is provided, uses the UPDATE variant of the prompt
 /// to merge new information into the existing summary.
 pub async fn generate_summary(
-    messages: &[crate::agent::message::AgentMessage],
+    messages: &[crate::core::message::AgentMessage],
     model: &dyn XyModel,
     _reserve_tokens: u64,
     previous_summary: Option<&str>,
@@ -659,9 +669,9 @@ pub async fn generate_summary(
     }
     prompt_text.push_str(base_prompt);
 
-    let summarization_messages = vec![
-        crate::agent::message::AgentMessage::user(prompt_text.clone()),
-    ];
+    let summarization_messages = vec![crate::core::message::AgentMessage::user(
+        prompt_text.clone(),
+    )];
     // System prompt will be prepended by the conversion layer.
 
     // Use 0.8 * reserve as max tokens for the response
@@ -745,7 +755,8 @@ pub async fn compact_session(
         cut.first_kept_entry_index
     };
 
-    let messages_to_summarize: Vec<crate::agent::message::AgentMessage> = entries[boundary_start..history_end]
+    let messages_to_summarize: Vec<crate::core::message::AgentMessage> = entries
+        [boundary_start..history_end]
         .iter()
         .filter_map(|entry| entry.as_agent_message())
         .collect();
@@ -823,7 +834,7 @@ const BRANCH_SUMMARY_PREAMBLE: &str = "The user explored a different conversatio
 /// Walks entries from NEWEST to OLDEST, adding messages until the token
 /// budget is exhausted. Also collects file operations from tool calls.
 pub fn prepare_branch_entries(entries: &[SessionEntry], token_budget: u64) -> BranchPreparation {
-    let mut messages: Vec<crate::agent::message::AgentMessage> = Vec::new();
+    let mut messages: Vec<crate::core::message::AgentMessage> = Vec::new();
     let mut file_ops = FileOps::default();
     let mut total_tokens: u64 = 0;
 
@@ -872,23 +883,21 @@ pub fn prepare_branch_entries(entries: &[SessionEntry], token_budget: u64) -> Br
 /// Result from preparing branch entries.
 #[derive(Debug)]
 pub struct BranchPreparation {
-    pub messages: Vec<crate::agent::message::AgentMessage>,
+    pub messages: Vec<crate::core::message::AgentMessage>,
     pub file_ops: FileOps,
     pub total_tokens: u64,
 }
 
 /// Extract file operations from a single AgentMessage.
-fn extract_single_message_file_ops(msg: &crate::agent::message::AgentMessage, ops: &mut FileOps) {
+fn extract_single_message_file_ops(msg: &crate::core::message::AgentMessage, ops: &mut FileOps) {
     for part in msg.content() {
         let (name, path) = match part {
-            crate::agent::message::AgentPart::ToolCall {
-                     name, arguments, ..
-                } => {
-                match arguments.get("path").and_then(|v| v.as_str()) {
-                    Some(p) => (name.as_str(), p.to_string()),
-                    None => continue,
-                }
-            }
+            crate::core::message::AgentPart::ToolCall {
+                name, arguments, ..
+            } => match arguments.get("path").and_then(|v| v.as_str()) {
+                Some(p) => (name.as_str(), p.to_string()),
+                None => continue,
+            },
             _ => continue,
         };
         match name {
@@ -934,9 +943,9 @@ pub async fn generate_branch_summary_llm(
     let prompt_text =
         format!("<conversation>\n{conversation_text}\n</conversation>\n\n{BRANCH_SUMMARY_PROMPT}");
 
-    let messages = vec![
-        crate::agent::message::AgentMessage::user(prompt_text.clone()),
-    ];
+    let messages = vec![crate::core::message::AgentMessage::user(
+        prompt_text.clone(),
+    )];
 
     // Call LLM (non-streaming, max 2048 tokens)
     let result = generate_complete(model, messages, 2048).await;
@@ -974,18 +983,18 @@ pub struct BranchSummaryResult {
 
 impl SessionEntry {
     /// Convert a SessionEntry to `AgentMessage` if it contains conversation content.
-    pub fn as_agent_message(&self) -> Option<crate::agent::message::AgentMessage> {
+    pub fn as_agent_message(&self) -> Option<crate::core::message::AgentMessage> {
         match self {
             SessionEntry::Message(msg) => {
                 // Try direct deserialization first (preferred path)
-                if let Ok(agent_msg) =
-                    serde_json::from_value::<crate::agent::message::AgentMessage>(msg.message.clone())
-                {
+                if let Ok(agent_msg) = serde_json::from_value::<crate::core::message::AgentMessage>(
+                    msg.message.clone(),
+                ) {
                     return Some(agent_msg);
                 }
                 // Fallback: try legacy JSON format
                 let role = msg.message.get("role")?.as_str()?;
-                let parts: Vec<crate::agent::message::AgentPart> = msg
+                let parts: Vec<crate::core::message::AgentPart> = msg
                     .message
                     .get("parts")
                     .and_then(|v| v.as_array())
@@ -994,32 +1003,30 @@ impl SessionEntry {
                             .filter_map(|p| {
                                 let typ = p.get("type")?.as_str()?;
                                 match typ {
-                                    "Text" => Some(crate::agent::message::AgentPart::Text(
+                                    "Text" => Some(crate::core::message::AgentPart::Text(
                                         p.get("text")?.as_str()?.to_string(),
                                     )),
-                                    "Thinking" => Some(
-                                        crate::agent::message::AgentPart::Thinking {
-                                            text: p.get("thinking")?.as_str()?.to_string(),
-                                            redacted: false,
-                                            signature: None,
-                                        },
-                                    ),
-                                    "FunctionCall" => Some(
-                                        crate::agent::message::AgentPart::ToolCall {
+                                    "Thinking" => Some(crate::core::message::AgentPart::Thinking {
+                                        text: p.get("thinking")?.as_str()?.to_string(),
+                                        redacted: false,
+                                        signature: None,
+                                    }),
+                                    "FunctionCall" => {
+                                        Some(crate::core::message::AgentPart::ToolCall {
                                             name: p.get("name")?.as_str()?.to_string(),
                                             arguments: p.get("args")?.clone(),
                                             id: p.get("id")?.as_str()?.to_string(),
-                                        },
-                                    ),
-                                    "FunctionResponse" => Some(
-                                        crate::agent::message::AgentPart::ToolResult {
+                                        })
+                                    }
+                                    "FunctionResponse" => {
+                                        Some(crate::core::message::AgentPart::ToolResult {
                                             tool_use_id: p.get("id")?.as_str()?.to_string(),
-                                            content: vec![crate::agent::message::AgentPart::Text(
+                                            content: vec![crate::core::message::AgentPart::Text(
                                                 p.get("result")?.as_str()?.to_string(),
                                             )],
                                             is_error: false,
-                                        },
-                                    ),
+                                        })
+                                    }
                                     _ => None,
                                 }
                             })
@@ -1028,35 +1035,33 @@ impl SessionEntry {
                     .unwrap_or_default();
 
                 match role {
-                    "user" => Some(crate::agent::message::AgentMessage::UserMessage {
+                    "user" => Some(crate::core::message::AgentMessage::UserMessage {
                         content: parts,
-                        timestamp: crate::agent::message::now_ms(),
+                        timestamp: crate::core::message::now_ms(),
                     }),
-                    "assistant" => Some(
-                        crate::agent::message::AgentMessage::AssistantMessage {
-                            content: parts,
-                            stop_reason: None,
-                            usage: None,
-                            api: String::new(),
-                            provider: String::new(),
-                            model: String::new(),
-                            response_id: None,
-                            error_message: None,
-                            timestamp: crate::agent::message::now_ms(),
-                            diagnostics: Vec::new(),
-                        },
-                    ),
-                    "system" => Some(crate::agent::message::AgentMessage::UserMessage {
+                    "assistant" => Some(crate::core::message::AgentMessage::AssistantMessage {
                         content: parts,
-                        timestamp: crate::agent::message::now_ms(),
+                        stop_reason: None,
+                        usage: None,
+                        api: String::new(),
+                        provider: String::new(),
+                        model: String::new(),
+                        response_id: None,
+                        error_message: None,
+                        timestamp: crate::core::message::now_ms(),
+                        diagnostics: Vec::new(),
                     }),
-                    "tool" => Some(crate::agent::message::AgentMessage::ToolResultMessage {
+                    "system" => Some(crate::core::message::AgentMessage::UserMessage {
+                        content: parts,
+                        timestamp: crate::core::message::now_ms(),
+                    }),
+                    "tool" => Some(crate::core::message::AgentMessage::ToolResultMessage {
                         tool_use_id: String::new(),
                         tool_name: String::new(),
                         content: parts,
                         details: None,
                         is_error: false,
-                        timestamp: crate::agent::message::now_ms(),
+                        timestamp: crate::core::message::now_ms(),
                     }),
                     _ => None,
                 }
@@ -1064,8 +1069,6 @@ impl SessionEntry {
             _ => None,
         }
     }
-
-
 }
 
 #[cfg(test)]
@@ -1224,19 +1227,19 @@ mod tests {
     #[test]
     fn test_serialize_conversation_basic() {
         let msgs = vec![
-            crate::agent::message::AgentMessage::user("Hello"),
-            crate::agent::message::AgentMessage::AssistantMessage {
-                    content: vec![crate::agent::message::AgentPart::Text("Hi there!".into())],
-                    stop_reason: Some(crate::agent::message::StopReason::Stop),
-                    usage: None,
-                    api: String::new(),
-                    provider: String::new(),
-                    model: String::new(),
-                    response_id: None,
-                    error_message: None,
-                    timestamp: 0,
-                    diagnostics: Vec::new(),
-                },
+            crate::core::message::AgentMessage::user("Hello"),
+            crate::core::message::AgentMessage::AssistantMessage {
+                content: vec![crate::core::message::AgentPart::Text("Hi there!".into())],
+                stop_reason: Some(crate::core::message::StopReason::Stop),
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: Vec::new(),
+            },
         ];
         let text = serialize_conversation(&msgs);
         assert!(text.contains("[user]: Hello"));
@@ -1246,31 +1249,32 @@ mod tests {
     #[test]
     fn test_serialize_conversation_with_tool_calls() {
         let msgs = vec![
-            crate::agent::message::AgentMessage::AssistantMessage {
-                    content: vec![
-                crate::agent::message::AgentPart::Text("Let me read that.".into()),
-                crate::agent::message::AgentPart::ToolCall {
-
-                    name: "read".into(),
-                    arguments: json!({"path": "/tmp/test.txt"
-                }),
-                    id: "call-1".into(),
-                },
-            ],
-                    stop_reason: Some(crate::agent::message::StopReason::Stop),
-                    usage: None,
-                    api: String::new(),
-                    provider: String::new(),
-                    model: String::new(),
-                    response_id: None,
-                    error_message: None,
-                    timestamp: 0,
-                    diagnostics: Vec::new(),
-                },
-            crate::agent::message::AgentMessage::UserMessage {
-                    content: vec![crate::agent::message::AgentPart::ToolResult {
+            crate::core::message::AgentMessage::AssistantMessage {
+                content: vec![
+                    crate::core::message::AgentPart::Text("Let me read that.".into()),
+                    crate::core::message::AgentPart::ToolCall {
+                        name: "read".into(),
+                        arguments: json!({"path": "/tmp/test.txt"
+                        }),
+                        id: "call-1".into(),
+                    },
+                ],
+                stop_reason: Some(crate::core::message::StopReason::Stop),
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: Vec::new(),
+            },
+            crate::core::message::AgentMessage::UserMessage {
+                content: vec![crate::core::message::AgentPart::ToolResult {
                     tool_use_id: "call-1".into(),
-                    content: vec![crate::agent::message::AgentPart::Text("file content here".into())],
+                    content: vec![crate::core::message::AgentPart::Text(
+                        "file content here".into(),
+                    )],
                     is_error: false,
                 }],
                 timestamp: 0,
@@ -1287,51 +1291,48 @@ mod tests {
     #[test]
     fn test_extract_file_ops_basic() {
         let msgs = vec![
-            crate::agent::message::AgentMessage::AssistantMessage {
-                    content: vec![crate::agent::message::AgentPart::ToolCall {
-
-                name: "read".into(),
-                arguments: json!({"path": "src/main.rs"
-                }),
-                id: "c1".into(),
-            }],
-                    stop_reason: Some(crate::agent::message::StopReason::Stop),
-                    usage: None,
-                    api: String::new(),
-                    provider: String::new(),
-                    model: String::new(),
-                    response_id: None,
-                    error_message: None,
-                    timestamp: 0,
-                    diagnostics: Vec::new(),
-                },
-            crate::agent::message::AgentMessage::AssistantMessage {
-                    content: vec![
-                crate::agent::message::AgentPart::ToolCall {
-
-                    name: "write".into(),
-                    arguments: json!({"path": "src/new.rs", "content": "x"
-                }),
-                    id: "c2".into(),
-                },
-                crate::agent::message::AgentPart::ToolCall {
-
-                    name: "edit".into(),
-                    arguments: json!({"path": "src/old.rs", "oldText": "a", "newText": "b"
-                }),
-                    id: "c3".into(),
-                },
-            ],
-                    stop_reason: Some(crate::agent::message::StopReason::Stop),
-                    usage: None,
-                    api: String::new(),
-                    provider: String::new(),
-                    model: String::new(),
-                    response_id: None,
-                    error_message: None,
-                    timestamp: 0,
-                    diagnostics: Vec::new(),
-                },
+            crate::core::message::AgentMessage::AssistantMessage {
+                content: vec![crate::core::message::AgentPart::ToolCall {
+                    name: "read".into(),
+                    arguments: json!({"path": "src/main.rs"
+                    }),
+                    id: "c1".into(),
+                }],
+                stop_reason: Some(crate::core::message::StopReason::Stop),
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: Vec::new(),
+            },
+            crate::core::message::AgentMessage::AssistantMessage {
+                content: vec![
+                    crate::core::message::AgentPart::ToolCall {
+                        name: "write".into(),
+                        arguments: json!({"path": "src/new.rs", "content": "x"
+                        }),
+                        id: "c2".into(),
+                    },
+                    crate::core::message::AgentPart::ToolCall {
+                        name: "edit".into(),
+                        arguments: json!({"path": "src/old.rs", "oldText": "a", "newText": "b"
+                        }),
+                        id: "c3".into(),
+                    },
+                ],
+                stop_reason: Some(crate::core::message::StopReason::Stop),
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: Vec::new(),
+            },
         ];
 
         let ops = extract_file_ops_from_messages(&msgs, None);
@@ -1420,97 +1421,105 @@ mod tests {
         assert!(!should_compact(999999, 100000, &settings));
     }
 
-/// Collect entries suitable for branch summarization from a session.
-///
-/// Returns entries from the fork point (target_entry_id's parent) to the
-/// end of the session, limited by a token budget.
-pub async fn collect_entries_for_branch_summary(
-    mgr: &SessionManager,
-    session_id: &str,
-    fork_entry_id: &str,
-    _token_budget: u64,
-) -> Result<Vec<SessionEntry>> {
-    let entries = mgr.load(session_id).await.map_err(|e| anyhow::anyhow!("load: {e}"))?;
+    /// Collect entries suitable for branch summarization from a session.
+    ///
+    /// Returns entries from the fork point (target_entry_id's parent) to the
+    /// end of the session, limited by a token budget.
+    pub async fn collect_entries_for_branch_summary(
+        mgr: &SessionManager,
+        session_id: &str,
+        fork_entry_id: &str,
+        _token_budget: u64,
+    ) -> Result<Vec<SessionEntry>> {
+        let entries = mgr
+            .load(session_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("load: {e}"))?;
 
-    // Find the fork point
-    let fork_index = entries
-        .iter()
-        .position(|e| e.entry_id() == Some(fork_entry_id))
-        .ok_or_else(|| anyhow::anyhow!("entry not found: {fork_entry_id}"))?;
+        // Find the fork point
+        let fork_index = entries
+            .iter()
+            .position(|e| e.entry_id() == Some(fork_entry_id))
+            .ok_or_else(|| anyhow::anyhow!("entry not found: {fork_entry_id}"))?;
 
-    // Collect entries AFTER the fork point
-    let entries_to_collect: Vec<SessionEntry> = entries[fork_index + 1..]
-        .iter()
-        .take_while(|e| !matches!(e, SessionEntry::BranchSummary(_)))
-        .cloned()
-        .collect();
+        // Collect entries AFTER the fork point
+        let entries_to_collect: Vec<SessionEntry> = entries[fork_index + 1..]
+            .iter()
+            .take_while(|e| !matches!(e, SessionEntry::BranchSummary(_)))
+            .cloned()
+            .collect();
 
-    Ok(entries_to_collect)
-}
-
-/// Generate a branch summary entry (LLM or fallback) and persist it.
-pub async fn create_branch_summary_entry(
-    mgr: &SessionManager,
-    session_id: &str,
-    fork_entry_id: &str,
-    model: Option<&dyn XyModel>,
-    token_budget: u64,
-) -> Result<()> {
-    let entries = collect_entries_for_branch_summary(mgr, session_id, fork_entry_id, token_budget).await?;
-
-    if entries.is_empty() {
-        return Ok(());
+        Ok(entries_to_collect)
     }
 
-    let summary = if let Some(m) = model {
-        generate_branch_summary_llm(&entries, m, token_budget)
-            .await
-            .map(|r| r.summary)
-            .unwrap_or_else(|| String::new())
-    } else {
-        String::new()
-    };
+    /// Generate a branch summary entry (LLM or fallback) and persist it.
+    pub async fn create_branch_summary_entry(
+        mgr: &SessionManager,
+        session_id: &str,
+        fork_entry_id: &str,
+        model: Option<&dyn XyModel>,
+        token_budget: u64,
+    ) -> Result<()> {
+        let entries =
+            collect_entries_for_branch_summary(mgr, session_id, fork_entry_id, token_budget)
+                .await?;
 
-    let summary = if summary.is_empty() {
-        // Fallback summary when no LLM is available
-        let count = entries.len();
-        let user_count = entries.iter().filter(|e| {
+        if entries.is_empty() {
+            return Ok(());
+        }
+
+        let summary = if let Some(m) = model {
+            generate_branch_summary_llm(&entries, m, token_budget)
+                .await
+                .map(|r| r.summary)
+                .unwrap_or_else(|| String::new())
+        } else {
+            String::new()
+        };
+
+        let summary = if summary.is_empty() {
+            // Fallback summary when no LLM is available
+            let count = entries.len();
+            let user_count = entries.iter().filter(|e| {
             matches!(e, SessionEntry::Message(m) if m.message.get("role").and_then(|r| r.as_str()) == Some("user"))
         }).count();
-        let assistant_count = entries.iter().filter(|e| {
+            let assistant_count = entries.iter().filter(|e| {
             matches!(e, SessionEntry::Message(m) if m.message.get("role").and_then(|r| r.as_str()) == Some("assistant"))
         }).count();
-        format!("Branch summary: {count} entries ({user_count} user, {assistant_count} assistant messages)")
-    } else {
-        summary
-    };
+            format!(
+                "Branch summary: {count} entries ({user_count} user, {assistant_count} assistant messages)"
+            )
+        } else {
+            summary
+        };
 
-    use chrono::Utc;
-    use uuid::Uuid;
-    let branch_entry = SessionEntry::BranchSummary(BranchSummaryEntry {
-        base: EntryBase {
-            entry_type: "branch_summary".into(),
-            id: Uuid::new_v4().to_string(),
-            parent_id: Some(fork_entry_id.to_string()),
-            timestamp: Utc::now().to_rfc3339(),
-        },
-        from_id: fork_entry_id.to_string(),
-        summary,
-        details: None,
-        from_hook: Some(false),
-    });
+        use chrono::Utc;
+        use uuid::Uuid;
+        let branch_entry = SessionEntry::BranchSummary(BranchSummaryEntry {
+            base: EntryBase {
+                entry_type: "branch_summary".into(),
+                id: Uuid::new_v4().to_string(),
+                parent_id: Some(fork_entry_id.to_string()),
+                timestamp: Utc::now().to_rfc3339(),
+            },
+            from_id: fork_entry_id.to_string(),
+            summary,
+            details: None,
+            from_hook: Some(false),
+        });
 
-    mgr.append_with_id(session_id, &branch_entry).await
-        .map_err(|e| anyhow::anyhow!("append branch summary: {e}"))?;
+        mgr.append_with_id(session_id, &branch_entry)
+            .await
+            .map_err(|e| anyhow::anyhow!("append branch summary: {e}"))?;
 
-    Ok(())
-}
+        Ok(())
+    }
 
-#[test]
-fn test_estimate_context_tokens() {
+    #[test]
+    fn test_estimate_context_tokens() {
         let msgs = vec![
-            crate::agent::message::AgentMessage::user("hello"),
-            crate::agent::message::AgentMessage::user("world"),
+            crate::core::message::AgentMessage::user("hello"),
+            crate::core::message::AgentMessage::user("world"),
         ];
         let estimate = estimate_context_tokens(&msgs, None);
         assert!(estimate.tokens > 0);

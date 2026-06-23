@@ -50,10 +50,7 @@ pub fn watch_file(
             // Check for file events with timeout
             match event_rx.recv_timeout(Duration::from_millis(500)) {
                 Ok(Ok(event)) => {
-                    if matches!(
-                        event.kind,
-                        EventKind::Modify(_) | EventKind::Create(_)
-                    ) {
+                    if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
                         // Debounce: small delay to avoid double triggers
                         std::thread::sleep(Duration::from_millis(100));
                         callback();

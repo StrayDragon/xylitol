@@ -12,9 +12,7 @@ pub struct VersionInfo {
 
 /// Check for a newer version of the application.
 pub async fn check_for_new_version(current: &str) -> Option<VersionInfo> {
-    if std::env::var("PI_SKIP_VERSION_CHECK").is_ok()
-        || std::env::var("PI_OFFLINE").is_ok()
-    {
+    if std::env::var("PI_SKIP_VERSION_CHECK").is_ok() || std::env::var("PI_OFFLINE").is_ok() {
         return None;
     }
 

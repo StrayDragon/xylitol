@@ -19,7 +19,7 @@ use tokio_util::sync::CancellationToken;
 use crate::agent::r#loop::{AgentEvent, AgentLoop};
 use crate::agent::session::{AgentSession, ModelRegistry};
 use crate::agent::tools::ToolRegistry;
-use crate::agent::types::{ModelMeta, ThinkingLevel};
+use crate::core::types::{ModelMeta, ThinkingLevel};
 use crate::infra::session::SessionManager;
 
 // ── Types ─────────────────────────────────────────────────────────

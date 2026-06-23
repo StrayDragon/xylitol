@@ -6,9 +6,9 @@ use futures::Stream;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::Value;
 
-use crate::agent::error::XyError;
-use crate::agent::traits::{XyModel, XyStream};
-use crate::agent::types::{XyChunk, XyFinishReason, XyToolSchema};
+use crate::core::error::XyError;
+use crate::core::traits::{XyModel, XyStream};
+use crate::core::types::{XyChunk, XyFinishReason, XyToolSchema};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
@@ -21,11 +21,7 @@ pub(crate) struct AnthropicProvider {
 }
 
 impl AnthropicProvider {
-    pub(crate) fn new(
-        api_key: String,
-        model: String,
-        base_url: Option<String>,
-    ) -> Self {
+    pub(crate) fn new(api_key: String, model: String, base_url: Option<String>) -> Self {
         Self {
             client: reqwest::Client::new(),
             api_key,
@@ -223,7 +219,7 @@ fn anthropic_stream(
 
                         let usage_total = usage_input + usage_output;
                         let usage = if usage_total > 0 {
-                            Some(crate::agent::message::Usage {
+                            Some(crate::core::message::Usage {
                                 input: usage_input,
                                 output: usage_output,
                                 cache_read: 0,
@@ -301,7 +297,7 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
         let output = u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
         let total = input + output;
         if total > 0 {
-            Some(crate::agent::message::Usage {
+            Some(crate::core::message::Usage {
                 input,
                 output,
                 cache_read: 0,
@@ -325,7 +321,7 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
 
 // ── AgentMessage conversion ────────────────────────────────────
 
-use crate::agent::message::{AgentMessage, AgentPart};
+use crate::core::message::{AgentMessage, AgentPart};
 
 /// Convert a slice of [`AgentMessage`] values to Anthropic request body
 /// (returns `(system_prompt, messages)` tuple).
@@ -346,10 +342,7 @@ pub fn convert_agent_messages_for_anthropic(
                     }));
                 }
             }
-            AgentMessage::AssistantMessage {
-                content,
-                ..
-            } => {
+            AgentMessage::AssistantMessage { content, .. } => {
                 let blocks = agent_parts_to_anthropic_blocks(content);
                 if !blocks.is_empty() {
                     msgs.push(serde_json::json!({
@@ -463,7 +456,11 @@ fn agent_parts_to_anthropic_blocks(parts: &[AgentPart]) -> Vec<Value> {
                     "data": img.data.as_deref().unwrap_or(""),
                 },
             }),
-            AgentPart::ToolCall { id, name, arguments } => serde_json::json!({
+            AgentPart::ToolCall {
+                id,
+                name,
+                arguments,
+            } => serde_json::json!({
                 "type": "tool_use",
                 "id": id,
                 "name": name,
@@ -531,7 +528,7 @@ fn extract_error_message(body: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::message::{AgentMessage, AgentPart};
+    use crate::core::message::{AgentMessage, AgentPart};
 
     #[test]
     fn convert_user_message() {
@@ -553,7 +550,7 @@ mod tests {
                     arguments: serde_json::json!({"path": "/tmp"}),
                 },
             ],
-            stop_reason: Some(crate::agent::message::StopReason::ToolUse),
+            stop_reason: Some(crate::core::message::StopReason::ToolUse),
             usage: None,
             api: String::new(),
             provider: String::new(),

@@ -15,7 +15,7 @@ pub mod write;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::agent::traits::XyTool;
+use crate::core::traits::XyTool;
 
 // ── ToolRegistry ───────────────────────────────────────────────────
 

@@ -153,11 +153,11 @@ pub(crate) fn normalize_for_fuzzy_match(text: &str) -> String {
             // Smart double quotes
             '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{201F}' => result.push('"'),
             // Dashes and hyphens
-            '\u{2010}' | '\u{2011}' | '\u{2012}' | '\u{2013}'
-            | '\u{2014}' | '\u{2015}' | '\u{2212}' => result.push('-'),
+            '\u{2010}' | '\u{2011}' | '\u{2012}' | '\u{2013}' | '\u{2014}' | '\u{2015}'
+            | '\u{2212}' => result.push('-'),
             // Special spaces
-            '\u{00A0}' | '\u{2002}' | '\u{2003}' | '\u{2009}'
-            | '\u{200A}' | '\u{202F}' | '\u{205F}' | '\u{3000}' => result.push(' '),
+            '\u{00A0}' | '\u{2002}' | '\u{2003}' | '\u{2009}' | '\u{200A}' | '\u{202F}'
+            | '\u{205F}' | '\u{3000}' => result.push(' '),
             _ => result.push(ch),
         }
     }

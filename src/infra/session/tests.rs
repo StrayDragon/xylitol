@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::agent::compaction::CompactionKind;
+
 use crate::infra::session::config::{SessionConfig, StorageConfig};
 use crate::infra::session::gc::PruneStrategy;
 use crate::infra::session::manager::{ContextFilter, SnapshotBuilder, SnapshotManager};
@@ -238,16 +238,8 @@ fn test_compact_snapshot() {
     }
     let id = mgr.snapshot(builder).unwrap();
 
-    let compacted_id = mgr.compact(&id, CompactionKind::Intra).unwrap();
-    let compacted = mgr.restore(&compacted_id).unwrap();
-
-    // Conversation should be reduced (11 turns → compacted down)
-    assert!(compacted.conversation.len() < 11);
-    // First turn should be a system summary
-    assert!(matches!(
-        compacted.conversation[0].role,
-        ConversationRole::System
-    ));
+    // Compaction is handled at the agent layer via compact_session();
+    // infra/session simply persists the resulting CompactionEntry.
 }
 
 // ── Serialisation round-trip ──────────────────────────────────────────

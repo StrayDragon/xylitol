@@ -91,18 +91,12 @@ mod tests {
 
     #[test]
     fn test_path_glob_star() {
-        assert!(path_matches(
-            "/home/user/file.txt",
-            "/home/user/*.txt"
-        ));
+        assert!(path_matches("/home/user/file.txt", "/home/user/*.txt"));
     }
 
     #[test]
     fn test_path_glob_double_star() {
-        assert!(path_matches(
-            "/home/user/src/main.rs",
-            "/home/user/**"
-        ));
+        assert!(path_matches("/home/user/src/main.rs", "/home/user/**"));
     }
 
     #[test]

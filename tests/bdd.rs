@@ -11,17 +11,19 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use xylitol::agent::r#loop::{AgentEvent, AgentLoop};
-use xylitol::agent::model::{
-    ModelConfig, ModelKind, reset_fake_state, set_fake_text, set_fake_tool_call,
-    set_fake_tool_result,
+use xylitol::agent::model::config::{
+    reset_fake_state, set_fake_text, set_fake_tool_call, set_fake_tool_result,
 };
-use xylitol::agent::session::{AgentSession, ContextUsage, ModelRegistry, get_context_usage, should_compact};
-use xylitol::agent::types::{ModelMeta, ThinkingLevel};
+use xylitol::agent::session::{
+    AgentSession, ContextUsage, ModelRegistry, get_context_usage, should_compact,
+};
 use xylitol::agent::tools::{
     ToolRegistry, bash::BashTool, edit::EditTool, find::FindTool, grep::GrepTool, ls::LsTool,
     mutation::FileMutationQueue, read::ReadTool, write::WriteTool,
 };
-use xylitol::agent::traits::{XyTool, XyToolCtx};
+use xylitol::core::model::{ModelConfig, ModelKind};
+use xylitol::core::traits::{XyTool, XyToolCtx};
+use xylitol::core::types::{ModelMeta, ThinkingLevel};
 use xylitol::infra::config::types::HookEntry;
 use xylitol::infra::hooks::{DispatchResult, HookDispatcher, HookEvent, HookPhase};
 use xylitol::infra::session::{
@@ -421,14 +423,14 @@ fn _g_agent_mock_model(agent: &AgentState, ws: &Workspace, name: String) {
         display_name: "Fake Mock".into(),
         thinking: false,
         context_window: 200000,
-            api: String::new(),
-            provider: String::new(),
-            cost_input: 0.0,
-            cost_output: 0.0,
-            cost_cache_read: 0.0,
-            cost_cache_write: 0.0,
-            max_tokens: 0,
-            thinking_levels: Vec::new(),
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: Vec::new(),
     });
 }
 
@@ -504,14 +506,14 @@ fn _g_agent_thinking_level(agent: &AgentState, level: String) {
         display_name: "Fake".into(),
         thinking: level != "off",
         context_window: 128000,
-    api: String::new(),
-    provider: String::new(),
-    cost_input: 0.0,
-    cost_output: 0.0,
-    cost_cache_read: 0.0,
-    cost_cache_write: 0.0,
-    max_tokens: 0,
-    thinking_levels: Vec::new(),
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: Vec::new(),
     });
     agent.registry.replace(r);
 }
@@ -530,14 +532,14 @@ fn _g_agent_no_thinking(agent: &AgentState) {
         display_name: "Fake".into(),
         thinking: false,
         context_window: 128000,
-    api: String::new(),
-    provider: String::new(),
-    cost_input: 0.0,
-    cost_output: 0.0,
-    cost_cache_read: 0.0,
-    cost_cache_write: 0.0,
-    max_tokens: 0,
-    thinking_levels: Vec::new(),
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: Vec::new(),
     });
     agent.registry.replace(r);
 }
@@ -1075,7 +1077,12 @@ async fn _w_edit_single(ws: &Workspace, path: String, old: String, new: String) 
 #[when("调用bash命令 {cmd:string}")]
 async fn _w_bash_cmd(ws: &Workspace, cmd: String) {
     let ctx = XyToolCtx::new("test");
-    tool_call!(BashTool::default(), ctx, serde_json::json!({"command": cmd}), ws);
+    tool_call!(
+        BashTool::default(),
+        ctx,
+        serde_json::json!({"command": cmd}),
+        ws
+    );
 }
 
 #[when("调用read工具 路径 {path:string}")]
@@ -1455,7 +1462,12 @@ async fn _w_write_no_content(ws: &Workspace, path: String) {
 
 #[when("调用bash 不传命令参数")]
 async fn _w_bash_no_cmd(ws: &Workspace) {
-    tool_call!(BashTool::default(), XyToolCtx::new("test"), serde_json::json!({}), ws);
+    tool_call!(
+        BashTool::default(),
+        XyToolCtx::new("test"),
+        serde_json::json!({}),
+        ws
+    );
 }
 
 #[when("调用bash命令 {cmd:string} 超时 {secs:u64} 秒")]
@@ -1842,8 +1854,8 @@ fn _g_file_with_content_string(ws: &Workspace, path: String, content: String) {
 // ── Sandbox steps (infra-sandbox feature) ────────────────────
 #[cfg(feature = "infra-sandbox")]
 mod sandbox_bdd {
+    use rstest_bdd_macros::{given, scenario, then, when};
     use std::sync::Arc;
-    use rstest_bdd_macros::{given, when, then, scenario};
     use xylitol::infra::sandbox::{SandboxEngine, SandboxVerdict};
 
     thread_local! {
@@ -1853,7 +1865,10 @@ mod sandbox_bdd {
             std::cell::RefCell::new(None);
     }
 
-    use xylitol::infra::config::types::{SandboxBackend, SandboxConfig, SandboxFilesystemConfig, SandboxNetworkConfig, SandboxProcessConfig};
+    use xylitol::infra::config::types::{
+        SandboxBackend, SandboxConfig, SandboxFilesystemConfig, SandboxNetworkConfig,
+        SandboxProcessConfig,
+    };
 
     fn default_sandbox() -> SandboxConfig {
         SandboxConfig {
@@ -1868,7 +1883,9 @@ mod sandbox_bdd {
                 allowed_domains: vec!["github.com".into()],
                 denied_domains: vec!["evil.com".into()],
             },
-            process: SandboxProcessConfig { allowed_paths: vec![] },
+            process: SandboxProcessConfig {
+                allowed_paths: vec![],
+            },
         }
     }
 
@@ -1910,8 +1927,10 @@ mod sandbox_bdd {
     fn sandbox_assert_denied() {
         LAST_VERDICT.with(|v| {
             let verdict = v.borrow();
-            assert!(!verdict.as_ref().unwrap().is_allowed(),
-                "Expected sandbox verdict to be Deny, but got Allow");
+            assert!(
+                !verdict.as_ref().unwrap().is_allowed(),
+                "Expected sandbox verdict to be Deny, but got Allow"
+            );
         });
     }
 
@@ -1920,8 +1939,11 @@ mod sandbox_bdd {
         LAST_VERDICT.with(|v| {
             let guard = v.borrow();
             let verdict = guard.as_ref().unwrap();
-            assert!(verdict.is_allowed(),
-                "Expected sandbox verdict to be Allow, but got {:?}", verdict);
+            assert!(
+                verdict.is_allowed(),
+                "Expected sandbox verdict to be Allow, but got {:?}",
+                verdict
+            );
         });
     }
 
@@ -1930,8 +1952,10 @@ mod sandbox_bdd {
         LAST_VERDICT.with(|v| {
             let verdict = v.borrow();
             let reason = verdict.as_ref().unwrap().deny_reason().unwrap_or("");
-            assert!(reason.contains(&text),
-                "Expected deny reason to contain '{text}', got '{reason}'");
+            assert!(
+                reason.contains(&text),
+                "Expected deny reason to contain '{text}', got '{reason}'"
+            );
         });
     }
 
