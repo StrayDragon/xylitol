@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 
-use crate::agent::error::XyError;
-use crate::agent::message::AgentMessage;
-use crate::agent::traits::{XyModel, XyStream};
-use crate::agent::types::{XyChunk, XyFinishReason, XyToolSchema};
+use crate::core::error::XyError;
+use crate::core::message::AgentMessage;
+use crate::core::traits::{XyModel, XyStream};
+use crate::core::types::{XyChunk, XyFinishReason, XyToolSchema};
 
 /// Drop-in mock for tests. Returns a fixed text response.
 pub struct MockXyModel {

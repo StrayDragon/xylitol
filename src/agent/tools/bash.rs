@@ -11,12 +11,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::agent::error::XyToolError;
-use crate::agent::traits::{XyTool, XyToolCtx};
+use crate::core::error::XyToolError;
+use crate::core::traits::{XyTool, XyToolCtx};
 
 use super::accumulator::OutputAccumulator;
 
@@ -143,7 +143,9 @@ impl BashOperations for RealBashOperations {
             stderr: stderr_raw,
             exit_code,
             combined: snapshot.display_content(),
-            full_output_path: snapshot.full_output_path.and_then(|p| p.to_str().map(|s| s.to_string())),
+            full_output_path: snapshot
+                .full_output_path
+                .and_then(|p| p.to_str().map(|s| s.to_string())),
         };
 
         // Post-spawn hook

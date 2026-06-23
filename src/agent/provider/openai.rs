@@ -20,9 +20,9 @@ use async_trait::async_trait;
 use futures::Stream;
 use serde_json::Value;
 
-use crate::agent::error::XyError;
-use crate::agent::traits::{XyModel, XyStream};
-use crate::agent::types::{XyChunk, XyFinishReason, XyToolSchema};
+use crate::core::error::XyError;
+use crate::core::traits::{XyModel, XyStream};
+use crate::core::types::{XyChunk, XyFinishReason, XyToolSchema};
 
 pub(crate) struct OpenAIProvider {
     client: Client<OpenAIConfig>,
@@ -181,8 +181,10 @@ fn map_stream(
 // ── Non-streaming response ─────────────────────────────────────────
 
 /// Extract Usage from OpenAI response.
-fn openai_usage(usage: &Option<async_openai::types::chat::CompletionUsage>) -> Option<crate::agent::message::Usage> {
-    usage.as_ref().map(|u| crate::agent::message::Usage {
+fn openai_usage(
+    usage: &Option<async_openai::types::chat::CompletionUsage>,
+) -> Option<crate::core::message::Usage> {
+    usage.as_ref().map(|u| crate::core::message::Usage {
         input: u.prompt_tokens as u64,
         output: u.completion_tokens as u64,
         cache_read: 0,
@@ -242,7 +244,7 @@ fn parse_nonstream_response(
 
 // ── AgentMessage conversion ────────────────────────────────────
 
-use crate::agent::message::{AgentMessage, AgentPart, collect_text_parts};
+use crate::core::message::{AgentMessage, AgentPart, collect_text_parts};
 
 /// Convert a slice of [`AgentMessage`] values to OpenAI chat request
 /// messages.
@@ -257,10 +259,9 @@ pub fn convert_agent_messages(
     {
         out.push(ChatCompletionRequestMessage::System(
             ChatCompletionRequestSystemMessage {
-                content:
-                    async_openai::types::chat::ChatCompletionRequestSystemMessageContent::Text(
-                        sp.to_string(),
-                    ),
+                content: async_openai::types::chat::ChatCompletionRequestSystemMessageContent::Text(
+                    sp.to_string(),
+                ),
                 name: None,
             },
         ));
@@ -280,25 +281,24 @@ pub fn convert_agent_messages(
                     },
                 ));
             }
-            AgentMessage::AssistantMessage {
-                content,
-                ..
-            } => {
+            AgentMessage::AssistantMessage { content, .. } => {
                 let text = collect_text_parts(content);
                 let tool_calls: Vec<ChatCompletionMessageToolCalls> = content
                     .iter()
                     .filter_map(|p| match p {
-                        AgentPart::ToolCall { id, name, arguments } => {
-                            Some(ChatCompletionMessageToolCalls::Function(
-                                async_openai::types::chat::ChatCompletionMessageToolCall {
-                                    id: id.clone(),
-                                    function: FunctionCall {
-                                        name: name.clone(),
-                                        arguments: arguments.to_string(),
-                                    },
+                        AgentPart::ToolCall {
+                            id,
+                            name,
+                            arguments,
+                        } => Some(ChatCompletionMessageToolCalls::Function(
+                            async_openai::types::chat::ChatCompletionMessageToolCall {
+                                id: id.clone(),
+                                function: FunctionCall {
+                                    name: name.clone(),
+                                    arguments: arguments.to_string(),
                                 },
-                            ))
-                        }
+                            },
+                        )),
                         _ => None,
                     })
                     .collect();
@@ -389,7 +389,7 @@ pub fn convert_agent_messages(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::message::{AgentMessage, StopReason};
+    use crate::core::message::{AgentMessage, StopReason};
 
     #[test]
     fn convert_user_message() {
@@ -397,14 +397,12 @@ mod tests {
         let result = convert_agent_messages(&msgs, None);
         assert_eq!(result.len(), 1);
         match &result[0] {
-            ChatCompletionRequestMessage::User(m) => {
-                match &m.content {
-                    ChatCompletionRequestUserMessageContent::Text(t) => {
-                        assert_eq!(t, "hello world");
-                    }
-                    _ => panic!("expected Text content"),
+            ChatCompletionRequestMessage::User(m) => match &m.content {
+                ChatCompletionRequestUserMessageContent::Text(t) => {
+                    assert_eq!(t, "hello world");
                 }
-            }
+                _ => panic!("expected Text content"),
+            },
             _ => panic!("expected User message"),
         }
     }
@@ -415,14 +413,12 @@ mod tests {
         let result = convert_agent_messages(&msgs, Some("You are helpful"));
         assert_eq!(result.len(), 2);
         match &result[0] {
-            ChatCompletionRequestMessage::System(m) => {
-                match &m.content {
-                    async_openai::types::chat::ChatCompletionRequestSystemMessageContent::Text(t) => {
-                        assert_eq!(t, "You are helpful");
-                    }
-                    _ => panic!("expected Text content"),
+            ChatCompletionRequestMessage::System(m) => match &m.content {
+                async_openai::types::chat::ChatCompletionRequestSystemMessageContent::Text(t) => {
+                    assert_eq!(t, "You are helpful");
                 }
-            }
+                _ => panic!("expected Text content"),
+            },
             _ => panic!("expected System message"),
         }
     }
@@ -483,15 +479,13 @@ mod tests {
         let result = convert_agent_messages(&msgs, None);
         assert_eq!(result.len(), 1);
         match &result[0] {
-            ChatCompletionRequestMessage::User(m) => {
-                match &m.content {
-                    ChatCompletionRequestUserMessageContent::Text(t) => {
-                        assert!(t.contains("ls -la"));
-                        assert!(t.contains("total 42"));
-                    }
-                    _ => panic!("expected Text content"),
+            ChatCompletionRequestMessage::User(m) => match &m.content {
+                ChatCompletionRequestUserMessageContent::Text(t) => {
+                    assert!(t.contains("ls -la"));
+                    assert!(t.contains("total 42"));
                 }
-            }
+                _ => panic!("expected Text content"),
+            },
             _ => panic!("expected User message"),
         }
     }

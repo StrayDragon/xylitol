@@ -1,7 +1,7 @@
 pub mod config;
-pub mod process;
 pub mod event;
 pub mod hooks;
+pub mod process;
 pub mod source_info;
 pub mod timing;
 pub mod trust;

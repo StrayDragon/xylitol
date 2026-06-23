@@ -114,9 +114,7 @@ impl SandboxEngine for FallbackBackend {
             && !policy::path_matches_any(path, &self.filesystem.read_allowed)
         {
             return SandboxVerdict::Deny {
-                reason: format!(
-                    "path '{path}' is not in sandbox read_allowed list"
-                ),
+                reason: format!("path '{path}' is not in sandbox read_allowed list"),
             };
         }
         SandboxVerdict::Allow
@@ -126,9 +124,7 @@ impl SandboxEngine for FallbackBackend {
         // Check write_denied first (most specific deny wins).
         if policy::path_matches_any(path, &self.filesystem.write_denied) {
             return SandboxVerdict::Deny {
-                reason: format!(
-                    "path '{path}' matches sandbox write_denied"
-                ),
+                reason: format!("path '{path}' matches sandbox write_denied"),
             };
         }
 
@@ -137,9 +133,7 @@ impl SandboxEngine for FallbackBackend {
             && !policy::path_matches_any(path, &self.filesystem.write_allowed)
         {
             return SandboxVerdict::Deny {
-                reason: format!(
-                    "path '{path}' is not in sandbox write_allowed list"
-                ),
+                reason: format!("path '{path}' is not in sandbox write_allowed list"),
             };
         }
 
@@ -150,9 +144,7 @@ impl SandboxEngine for FallbackBackend {
         // Check denied_domains first.
         if policy::domain_matches_any(domain, &self.network.denied_domains) {
             return SandboxVerdict::Deny {
-                reason: format!(
-                    "domain '{domain}' matches sandbox denied_domains"
-                ),
+                reason: format!("domain '{domain}' matches sandbox denied_domains"),
             };
         }
 
@@ -161,9 +153,7 @@ impl SandboxEngine for FallbackBackend {
             && !policy::domain_matches_any(domain, &self.network.allowed_domains)
         {
             return SandboxVerdict::Deny {
-                reason: format!(
-                    "domain '{domain}' is not in sandbox allowed_domains list"
-                ),
+                reason: format!("domain '{domain}' is not in sandbox allowed_domains list"),
             };
         }
 
@@ -175,9 +165,7 @@ impl SandboxEngine for FallbackBackend {
             && !policy::path_matches_any(path, &self.process.allowed_paths)
         {
             return SandboxVerdict::Deny {
-                reason: format!(
-                    "process path '{path}' is not in sandbox process allowed_paths"
-                ),
+                reason: format!("process path '{path}' is not in sandbox process allowed_paths"),
             };
         }
         SandboxVerdict::Allow
@@ -230,16 +218,20 @@ mod tests {
                 allowed_domains: vec!["github.com".into(), "*.github.com".into()],
                 denied_domains: vec!["evil.com".into()],
             },
-            process: SandboxProcessConfig { allowed_paths: vec![] },
+            process: SandboxProcessConfig {
+                allowed_paths: vec![],
+            },
         }
     }
 
     #[test]
     fn test_fallback_allows_project_read() {
         let engine = FallbackBackend::new(&make_config());
-        assert!(engine
-            .check_read("/home/user/project/src/main.rs")
-            .is_allowed());
+        assert!(
+            engine
+                .check_read("/home/user/project/src/main.rs")
+                .is_allowed()
+        );
     }
 
     #[test]
@@ -261,9 +253,11 @@ mod tests {
     #[test]
     fn test_fallback_allows_project_write() {
         let engine = FallbackBackend::new(&make_config());
-        assert!(engine
-            .check_write("/home/user/project/src/lib.rs")
-            .is_allowed());
+        assert!(
+            engine
+                .check_write("/home/user/project/src/lib.rs")
+                .is_allowed()
+        );
     }
 
     #[test]

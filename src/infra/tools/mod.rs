@@ -99,11 +99,7 @@ async fn extract_binary(
     Some(binary_path)
 }
 
-fn extract_tar_gz(
-    data: &[u8],
-    binary_name: &str,
-    bin_dir: &std::path::Path,
-) -> Option<PathBuf> {
+fn extract_tar_gz(data: &[u8], binary_name: &str, bin_dir: &std::path::Path) -> Option<PathBuf> {
     let decoder = flate2::read::GzDecoder::new(data);
     let mut archive = tar::Archive::new(decoder);
     let tmp_dir = bin_dir.join(format!("extract_{}", std::process::id()));

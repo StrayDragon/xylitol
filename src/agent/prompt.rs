@@ -90,9 +90,8 @@ pub(crate) fn build_system_prompt(opts: &SystemPromptOpts) -> String {
             let desc = crate::infra::skills::loader::xml_escape(
                 skill.description.as_deref().unwrap_or(""),
             );
-            let loc = crate::infra::skills::loader::xml_escape(
-                &skill.source_info.path.to_string_lossy(),
-            );
+            let loc =
+                crate::infra::skills::loader::xml_escape(&skill.source_info.path.to_string_lossy());
             prompt.push_str(&format!(
                 "  <skill>\n    <name>{name}</name>\n    <description>{desc}</description>\n    <location>{loc}</location>\n  </skill>\n"
             ));
@@ -192,10 +191,7 @@ pub(crate) fn build_system_prompt_from_loader(
             .iter()
             .map(|f| (f.path.to_string_lossy().to_string(), f.content.clone()))
             .collect(),
-        skills: loader
-            .get_skills()
-            .0
-            .to_vec(),
+        skills: loader.get_skills().0.to_vec(),
         system_prompt: loader.get_system_prompt().map(String::from),
         append_system_prompt: loader.get_append_system_prompt().to_vec(),
     };
@@ -250,8 +246,8 @@ mod tests {
 
     #[test]
     fn test_skills_section() {
-        use std::path::PathBuf;
         use crate::infra::resource::SkillInfo;
+        use std::path::PathBuf;
         let opts = SystemPromptOpts {
             cwd: ".".into(),
             skills: vec![SkillInfo {

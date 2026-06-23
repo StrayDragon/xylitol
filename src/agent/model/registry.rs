@@ -10,8 +10,8 @@
 use std::collections::HashMap;
 
 use crate::agent::config_value;
-use super::config::{ModelConfig, ModelKind};
-use crate::agent::types::ModelMeta;
+use crate::core::model::{ModelConfig, ModelKind};
+use crate::core::types::ModelMeta;
 
 // ── Provider Config ─────────────────────────────────────────────────
 
@@ -337,25 +337,18 @@ pub fn build_default_model_meta(provider: &ProviderConfig) -> Option<ModelMeta> 
         display_name: format!("{} ({})", model_id, provider.name),
         thinking: matches!(kind, ModelKind::OpenAi | ModelKind::Anthropic),
         context_window: default_context_window_for(kind),
-            api: String::new(),
-            provider: String::new(),
-            cost_input: 0.0,
-            cost_output: 0.0,
-            cost_cache_read: 0.0,
-            cost_cache_write: 0.0,
-            max_tokens: 0,
-            thinking_levels: Vec::new(),
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: Vec::new(),
     })
 }
 
-pub fn default_context_window_for(kind: ModelKind) -> u64 {
-    match kind {
-        ModelKind::OpenAi => 128_000,
-        ModelKind::Anthropic => 200_000,
-        #[cfg(feature = "dev-fake-provider")]
-        ModelKind::Fake => 8_000,
-    }
-}
+pub use crate::core::model::default_context_window_for;
 
 #[cfg(test)]
 mod tests {

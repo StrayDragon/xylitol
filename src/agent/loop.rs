@@ -20,12 +20,12 @@ use futures::StreamExt;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::error::XyError;
-use crate::agent::message::{AgentMessage, AgentPart};
 use crate::agent::retry::{RetryState, is_retryable_error};
 use crate::agent::session::AgentSession;
-use crate::agent::traits::{ToolExecutionMode, XyModel, XyToolCtx};
-use crate::agent::types::{XyChunk, XyToolSchema};
+use crate::core::error::XyError;
+use crate::core::message::{AgentMessage, AgentPart};
+use crate::core::traits::{ToolExecutionMode, XyModel, XyToolCtx};
+use crate::core::types::{XyChunk, XyToolSchema};
 
 #[cfg(feature = "infra-sandbox")]
 use crate::infra::sandbox::SandboxVerdict;
@@ -300,14 +300,14 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
         if let Some(ref sp) = system_prompt {
             history.push(AgentMessage::UserMessage {
                 content: vec![AgentPart::Text(sp.clone())],
-                timestamp: crate::agent::message::now_ms(),
+                timestamp: crate::core::message::now_ms(),
             });
         }
 
         // Add user message
         history.push(AgentMessage::UserMessage {
             content: vec![AgentPart::Text(user_prompt.clone())],
-            timestamp: crate::agent::message::now_ms(),
+            timestamp: crate::core::message::now_ms(),
         });
 
         let retry_state = RetryState::new(3, 1000);
@@ -408,7 +408,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
                     model: String::new(),
                     response_id: None,
                     error_message: None,
-                    timestamp: crate::agent::message::now_ms(),
+                    timestamp: crate::core::message::now_ms(),
                     diagnostics: Vec::new(),
                 });
             }
@@ -440,7 +440,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
                             content: vec![AgentPart::Text(err.clone())],
                             details: None,
                             is_error: true,
-                            timestamp: crate::agent::message::now_ms(),
+                            timestamp: crate::core::message::now_ms(),
                         });
                         continue;
                     }
@@ -474,7 +474,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
                     content: vec![AgentPart::Text(result.clone())],
                     details: None,
                     is_error: false,
-                    timestamp: crate::agent::message::now_ms(),
+                    timestamp: crate::core::message::now_ms(),
                 });
             }
 
@@ -520,12 +520,11 @@ use crate::agent::tools::ToolRegistry;
 /// Extract the sandbox-relevant target (path or domain) from tool arguments.
 fn sandbox_target(name: &str, args: &serde_json::Value) -> String {
     match name {
-        "read" | "write" | "edit" => {
-            args.get("path")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string()
-        }
+        "read" | "write" | "edit" => args
+            .get("path")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
         "bash" => {
             // Extract the first URL domain from the command, if any
             args.get("command")
@@ -542,7 +541,8 @@ fn extract_first_domain(command: &str) -> String {
     // Look for common URL patterns: https://, http://, //
     for word in command.split_whitespace() {
         let word = word.trim_matches('\'').trim_matches('"');
-        if let Some(rest) = word.strip_prefix("https://")
+        if let Some(rest) = word
+            .strip_prefix("https://")
             .or_else(|| word.strip_prefix("http://"))
         {
             // Extract domain (stop at first /, :, or ?)
@@ -575,8 +575,6 @@ impl AgentEventStream {
             turn_index: 0,
         }
     }
-
-
 }
 
 impl Stream for AgentEventStream {
@@ -608,7 +606,7 @@ mod tests {
     use super::*;
 
     use crate::agent::model::registry::ModelRegistry;
-    use crate::agent::types::ModelMeta;
+    use crate::core::types::ModelMeta;
     use crate::infra::session::SessionManager;
 
     #[tokio::test]
@@ -616,8 +614,8 @@ mod tests {
         let mut reg = ModelRegistry::new();
         reg.register(ModelMeta {
             id: "mock".into(),
-            config: crate::agent::model::ModelConfig {
-                kind: crate::agent::model::ModelKind::OpenAi,
+            config: crate::core::model::ModelConfig {
+                kind: crate::core::model::ModelKind::OpenAi,
                 api_key: "sk-test".into(),
                 model: "mock-model".into(),
                 base_url: None,
@@ -655,8 +653,8 @@ mod tests {
         let mut reg = ModelRegistry::new();
         reg.register(ModelMeta {
             id: "mock".into(),
-            config: crate::agent::model::ModelConfig {
-                kind: crate::agent::model::ModelKind::OpenAi,
+            config: crate::core::model::ModelConfig {
+                kind: crate::core::model::ModelKind::OpenAi,
                 api_key: "sk-test".into(),
                 model: "mock-model".into(),
                 base_url: None,

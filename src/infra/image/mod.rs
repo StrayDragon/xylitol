@@ -11,4 +11,4 @@ mod orientation;
 mod resize;
 
 pub use resize::resize_image;
-pub use resize::{ResizedImage, ImageResizeOptions};
+pub use resize::{ImageResizeOptions, ResizedImage};

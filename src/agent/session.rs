@@ -11,21 +11,22 @@
 
 use std::sync::Arc;
 
-#[cfg(feature = "infra-sandbox")]
-use crate::infra::sandbox::{SandboxEngine, SandboxVerdict, noop_engine};
 use crate::agent::commands::{SlashCommandInfo, get_all_commands};
+use crate::agent::compaction::{CompactionSettings, compact_session};
+use crate::agent::model::config::ModelConfigExt;
 use crate::agent::output_guard;
 use crate::agent::prompt::{self, SystemPromptOpts};
-use crate::infra::resource::SkillInfo;
 use crate::agent::queue::MessageQueue;
 use crate::agent::retry::{RetryState, is_retryable_error};
 use crate::agent::templates::{PromptTemplate, is_template_line, parse_template_line};
 use crate::agent::tools::ToolRegistry;
-use crate::agent::traits::XyModel;
-use crate::agent::types::{ModelMeta, ThinkingLevel};
-use crate::infra::event::{EventBus, UnsubscribeHandle};
+use crate::core::traits::XyModel;
+use crate::core::types::{ModelMeta, ThinkingLevel};
 use crate::infra::event::lifecycle::AgentLifecycleEvent;
-use crate::agent::compaction::{CompactionSettings, compact_session};
+use crate::infra::event::{EventBus, UnsubscribeHandle};
+use crate::infra::resource::SkillInfo;
+#[cfg(feature = "infra-sandbox")]
+use crate::infra::sandbox::{SandboxEngine, SandboxVerdict, noop_engine};
 use crate::infra::session::manager::SessionManager;
 #[cfg(test)]
 use crate::infra::source_info::{SourceInfo, SourceOrigin, SourceScope};
@@ -455,18 +456,20 @@ impl AgentSession {
 
     /// Emit an agent_start lifecycle event.
     pub fn emit_agent_start(&self, session_id: &str, model: &str) {
-        self.event_bus.emit_lifecycle(&AgentLifecycleEvent::AgentStart {
-            session_id: session_id.to_string(),
-            model: model.to_string(),
-        });
+        self.event_bus
+            .emit_lifecycle(&AgentLifecycleEvent::AgentStart {
+                session_id: session_id.to_string(),
+                model: model.to_string(),
+            });
     }
 
     /// Emit an agent_end lifecycle event.
     pub fn emit_agent_end(&self, session_id: &str, reason: &str) {
-        self.event_bus.emit_lifecycle(&AgentLifecycleEvent::AgentEnd {
-            session_id: session_id.to_string(),
-            reason: reason.to_string(),
-        });
+        self.event_bus
+            .emit_lifecycle(&AgentLifecycleEvent::AgentEnd {
+                session_id: session_id.to_string(),
+                reason: reason.to_string(),
+            });
     }
 
     /// Emit a model_select lifecycle event.
@@ -486,18 +489,20 @@ impl AgentSession {
     /// - `stop_reason` is `Error` or
     /// - `stop_reason` is `MaxTokens` and error text is detected, or
     /// - the text content matches known transient error patterns.
-    pub fn _is_retryable_error(msg: &crate::agent::message::AgentMessage) -> bool {
+    pub fn _is_retryable_error(msg: &crate::core::message::AgentMessage) -> bool {
         match msg {
-            crate::agent::message::AgentMessage::AssistantMessage {
-                stop_reason, content, ..
+            crate::core::message::AgentMessage::AssistantMessage {
+                stop_reason,
+                content,
+                ..
             } => {
                 if let Some(sr) = stop_reason {
-                    if matches!(sr, crate::agent::message::StopReason::Error) {
+                    if matches!(sr, crate::core::message::StopReason::Error) {
                         return true;
                     }
                 }
                 // Also check the text content for error patterns.
-                let text = crate::agent::message::collect_text_parts(content);
+                let text = crate::core::message::collect_text_parts(content);
                 if text.is_empty() {
                     return false;
                 }
@@ -530,19 +535,21 @@ impl AgentSession {
                 let delay = state.next_delay();
                 let max_retries = 3; // from state but not stored directly
 
-                self.event_bus.emit_lifecycle(&AgentLifecycleEvent::AutoRetryStart {
-                    attempt,
-                    max_retries,
-                    delay_ms: delay.as_millis() as u64,
-                });
+                self.event_bus
+                    .emit_lifecycle(&AgentLifecycleEvent::AutoRetryStart {
+                        attempt,
+                        max_retries,
+                        delay_ms: delay.as_millis() as u64,
+                    });
 
                 // Wait for backoff or abort
                 let aborted = state.backoff(delay).await;
 
-                self.event_bus.emit_lifecycle(&AgentLifecycleEvent::AutoRetryEnd {
-                    success: !aborted,
-                    attempt,
-                });
+                self.event_bus
+                    .emit_lifecycle(&AgentLifecycleEvent::AutoRetryEnd {
+                        success: !aborted,
+                        attempt,
+                    });
 
                 !aborted
             }
@@ -629,9 +636,10 @@ impl AgentSession {
             .session_id()
             .ok_or_else(|| "no active session".to_string())?;
 
-        self.event_bus.emit_lifecycle(&AgentLifecycleEvent::CompactionStart {
-            reason: "manual".to_string(),
-        });
+        self.event_bus
+            .emit_lifecycle(&AgentLifecycleEvent::CompactionStart {
+                reason: "manual".to_string(),
+            });
 
         let settings = CompactionSettings {
             enabled: true,
@@ -643,10 +651,11 @@ impl AgentSession {
             .await
             .map_err(|e| format!("compaction failed: {e}"));
 
-        self.event_bus.emit_lifecycle(&AgentLifecycleEvent::CompactionEnd {
-            result: result.as_ref().ok().map(|_| "ok".to_string()),
-            aborted: false,
-        });
+        self.event_bus
+            .emit_lifecycle(&AgentLifecycleEvent::CompactionEnd {
+                result: result.as_ref().ok().map(|_| "ok".to_string()),
+                aborted: false,
+            });
 
         result?;
         Ok(())
@@ -770,21 +779,29 @@ References are relative to {escaped_base}.
     // ── Steering / Follow-up queue ─────────────────────────────
 
     /// Queue a steering message — injected into context mid-turn.
-    pub fn steer(&mut self, text: impl Into<String>, _images: Option<Vec<crate::agent::message::ImageContent>>) {
-        let msg = crate::agent::message::AgentMessage::user(text);
+    pub fn steer(
+        &mut self,
+        text: impl Into<String>,
+        _images: Option<Vec<crate::core::message::ImageContent>>,
+    ) {
+        let msg = crate::core::message::AgentMessage::user(text);
         self.message_queue.push(msg);
         self._emit_queue_update();
     }
 
     /// Queue a follow-up message — delivered after current turn.
-    pub fn follow_up(&mut self, text: impl Into<String>, _images: Option<Vec<crate::agent::message::ImageContent>>) {
-        let msg = crate::agent::message::AgentMessage::user(text);
+    pub fn follow_up(
+        &mut self,
+        text: impl Into<String>,
+        _images: Option<Vec<crate::core::message::ImageContent>>,
+    ) {
+        let msg = crate::core::message::AgentMessage::user(text);
         self.message_queue.push(msg);
         self._emit_queue_update();
     }
 
     /// Return and clear all queued messages.
-    pub fn clear_queue(&mut self) -> Vec<crate::agent::message::AgentMessage> {
+    pub fn clear_queue(&mut self) -> Vec<crate::core::message::AgentMessage> {
         let drained = self.message_queue.drain();
         self._emit_queue_update();
         drained
@@ -801,27 +818,28 @@ References are relative to {escaped_base}.
     }
 
     /// Get all queued steering messages (without clearing).
-    pub fn get_steering_messages(&self) -> Vec<crate::agent::message::AgentMessage> {
+    pub fn get_steering_messages(&self) -> Vec<crate::core::message::AgentMessage> {
         Vec::new()
     }
 
     /// Get all queued follow-up messages (without clearing).
-    pub fn get_follow_up_messages(&self) -> Vec<crate::agent::message::AgentMessage> {
+    pub fn get_follow_up_messages(&self) -> Vec<crate::core::message::AgentMessage> {
         Vec::new()
     }
 
     /// Drain queued messages for the next turn.
-    pub fn drain_queued_messages(&mut self) -> Vec<crate::agent::message::AgentMessage> {
+    pub fn drain_queued_messages(&mut self) -> Vec<crate::core::message::AgentMessage> {
         self.message_queue.drain()
     }
 
     fn _emit_queue_update(&self) {
         // Count steerable vs follow-up (currently all in one queue).
         let total = self.message_queue.pending_count();
-        self.event_bus.emit_lifecycle(&AgentLifecycleEvent::QueueUpdate {
-            steer_count: total,
-            follow_up_count: 0,
-        });
+        self.event_bus
+            .emit_lifecycle(&AgentLifecycleEvent::QueueUpdate {
+                steer_count: total,
+                follow_up_count: 0,
+            });
     }
 
     // ── Dynamic system prompt ────────────────────────────────────
@@ -961,9 +979,7 @@ References are relative to {escaped_base}.
     /// Get a reference to the sandbox engine, or a no-op engine if not set.
     #[cfg(feature = "infra-sandbox")]
     pub fn get_sandbox_engine(&self) -> std::sync::Arc<dyn SandboxEngine> {
-        self.sandbox_engine
-            .clone()
-            .unwrap_or_else(noop_engine)
+        self.sandbox_engine.clone().unwrap_or_else(noop_engine)
     }
 
     /// Check whether a file read is allowed by the sandbox.
@@ -1018,10 +1034,11 @@ References are relative to {escaped_base}.
 
         // Emit agent_end with aborted reason
         if let Some(ref sid) = self.session_id {
-            self.event_bus.emit_lifecycle(&AgentLifecycleEvent::AgentEnd {
-                session_id: sid.clone(),
-                reason: "aborted".to_string(),
-            });
+            self.event_bus
+                .emit_lifecycle(&AgentLifecycleEvent::AgentEnd {
+                    session_id: sid.clone(),
+                    reason: "aborted".to_string(),
+                });
         }
     }
 
@@ -1036,7 +1053,8 @@ References are relative to {escaped_base}.
         _trigger_turn: bool,
         _deliver_as: Option<&str>,
     ) -> Result<(), String> {
-        let sid = self.session_id()
+        let sid = self
+            .session_id()
             .ok_or_else(|| "no active session".to_string())?;
         // Forward to session manager for persistence; turn triggering is
         // orchestrated by AgentLoop (c185).
@@ -1131,21 +1149,24 @@ References are relative to {escaped_base}.
             keep_recent_tokens: 20000,
         };
 
-        self.event_bus.emit_lifecycle(&AgentLifecycleEvent::CompactionStart {
-            reason: format!("auto: {:.1}% of {}k window",
-                (token_estimate as f64 / ctx_window as f64) * 100.0,
-                ctx_window / 1000,
-            ),
-        });
+        self.event_bus
+            .emit_lifecycle(&AgentLifecycleEvent::CompactionStart {
+                reason: format!(
+                    "auto: {:.1}% of {}k window",
+                    (token_estimate as f64 / ctx_window as f64) * 100.0,
+                    ctx_window / 1000,
+                ),
+            });
 
         let result = compact_session(&self.session_manager, sid, model.as_ref(), &settings)
             .await
             .map_err(|e| format!("auto-compaction: {e}"));
 
-        self.event_bus.emit_lifecycle(&AgentLifecycleEvent::CompactionEnd {
-            result: result.as_ref().ok().map(|_| "ok".to_string()),
-            aborted: false,
-        });
+        self.event_bus
+            .emit_lifecycle(&AgentLifecycleEvent::CompactionEnd {
+                result: result.as_ref().ok().map(|_| "ok".to_string()),
+                aborted: false,
+            });
 
         result?;
         Ok(true)
@@ -1165,29 +1186,29 @@ pub struct SessionStats {
 // ── Context estimation ──────────────────────────────────────────────
 
 /// Estimate token count from messages using simple heuristic (1 token ≈ 4 chars).
-pub fn estimate_tokens(messages: &[crate::agent::message::AgentMessage]) -> u64 {
+pub fn estimate_tokens(messages: &[crate::core::message::AgentMessage]) -> u64 {
     let mut total = 0u64;
     for msg in messages {
         for part in msg.content() {
             match part {
-                crate::agent::message::AgentPart::Text(s)
-                | crate::agent::message::AgentPart::Thinking { text: s, .. } => {
+                crate::core::message::AgentPart::Text(s)
+                | crate::core::message::AgentPart::Thinking { text: s, .. } => {
                     total += (s.len() as u64).div_ceil(4);
                 }
-                crate::agent::message::AgentPart::ToolCall {
+                crate::core::message::AgentPart::ToolCall {
                     name, arguments, ..
                 } => {
                     total += (name.len() as u64).div_ceil(4);
                     total += (arguments.to_string().len() as u64).div_ceil(4);
                 }
-                crate::agent::message::AgentPart::ToolResult { content, .. } => {
+                crate::core::message::AgentPart::ToolResult { content, .. } => {
                     for inner in content {
-                        if let crate::agent::message::AgentPart::Text(s) = inner {
+                        if let crate::core::message::AgentPart::Text(s) = inner {
                             total += (s.len() as u64).div_ceil(4);
                         }
                     }
                 }
-                crate::agent::message::AgentPart::Image(_) => {
+                crate::core::message::AgentPart::Image(_) => {
                     total += 4800; // image token estimate
                 }
             }

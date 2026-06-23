@@ -166,9 +166,7 @@ fn which(name: &str) -> Option<PathBuf> {
         .ok()?;
 
     if output.status.success() {
-        let path = String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .to_string();
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
         if !path.is_empty() {
             return Some(PathBuf::from(path));
         }
@@ -185,7 +183,10 @@ mod tests {
         if cfg!(not(target_os = "windows")) {
             let config = find_bash(None);
             let name = config.shell.file_name().unwrap().to_string_lossy();
-            assert!(name == "bash" || name == "sh", "expected bash or sh, got {name}");
+            assert!(
+                name == "bash" || name == "sh",
+                "expected bash or sh, got {name}"
+            );
             assert_eq!(config.args, vec!["-c"]);
         }
     }

@@ -22,9 +22,9 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use super::config::{ModelConfig, ModelKind};
 use super::registry::ModelRegistry;
-use crate::agent::types::ModelMeta;
+use crate::core::model::{ModelConfig, ModelKind};
+use crate::core::types::ModelMeta;
 
 /// A single model definition from a manifest file.
 #[derive(Debug, Clone, Deserialize)]
@@ -113,10 +113,7 @@ pub fn load_models_from_manifest(
                 model: m.id.clone(),
                 base_url: m.base_url.clone(),
             },
-            display_name: m
-                .display_name
-                .clone()
-                .unwrap_or_else(|| m.id.clone()),
+            display_name: m.display_name.clone().unwrap_or_else(|| m.id.clone()),
             thinking: m.thinking,
             context_window: m.context_window,
             api: m.api.clone(),

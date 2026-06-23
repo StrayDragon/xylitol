@@ -1,103 +1,14 @@
-use std::pin::Pin;
+//! Agent-level tool presentation.
+//!
+//! Contains [`ToolDefinition`] — a presentation wrapper around
+//! [`XyTool`](crate::core::traits::XyTool) that includes prompt metadata
+//! and source information. The core abstractions ([`XyModel`](crate::core::traits::XyModel),
+//! [`XyTool`](crate::core::traits::XyTool), etc.) live in [`crate::core::traits`].
 
-use async_trait::async_trait;
-use futures::Stream;
 use serde::Serialize;
 use serde_json::Value;
-use tokio_util::sync::CancellationToken;
 
-use super::error::{XyError, XyToolError};
-use super::message::AgentMessage;
-use super::types::{XyChunk, XyToolSchema};
-
-pub type XyStream = Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
-
-#[async_trait]
-pub trait XyModel: Send + Sync {
-    fn name(&self) -> &str;
-
-    /// Generate a streaming response from AgentMessage history.
-    /// This is the canonical provider interface.
-    async fn generate_stream(
-        &self,
-        messages: Vec<AgentMessage>,
-        tools: &[XyToolSchema],
-        stream: bool,
-    ) -> Result<XyStream, XyError>;
-}
-
-/// Context passed to tool execution.
-#[derive(Clone)]
-pub struct XyToolCtx {
-    /// Unique identifier for this tool call.
-    pub call_id: String,
-    /// Cancellation token — tools should check this and abort if cancelled.
-    pub cancel: CancellationToken,
-}
-
-impl XyToolCtx {
-    pub fn new(call_id: impl Into<String>) -> Self {
-        Self {
-            call_id: call_id.into(),
-            cancel: CancellationToken::new(),
-        }
-    }
-
-    pub fn with_cancel(call_id: impl Into<String>, cancel: CancellationToken) -> Self {
-        Self {
-            call_id: call_id.into(),
-            cancel,
-        }
-    }
-}
-
-/// Whether a tool prefers sequential or parallel execution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
-pub enum ToolExecutionMode {
-    /// Execute in parallel with other tools (default).
-    #[default]
-    Parallel,
-    /// Execute sequentially (entire batch falls back to sequential).
-    Sequential,
-}
-
-/// Tool trait — all tools must implement this.
-///
-/// The `execute` method receives a `XyToolCtx` which contains a `CancellationToken`.
-/// Tools MUST:
-/// 1. Check `ctx.cancel.is_cancelled()` at appropriate checkpoints
-/// 2. Return `XyToolError::Aborted` when cancellation is detected
-#[async_trait]
-pub trait XyTool: Send + Sync {
-    fn name(&self) -> &str;
-    fn description(&self) -> &str;
-    fn parameters_schema(&self) -> Value;
-    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError>;
-
-    /// One-line prompt snippet for system prompt construction.
-    /// Default returns a trimmed version of the description.
-    fn prompt_snippet(&self) -> Option<&str> {
-        None
-    }
-
-    /// Prompt guidelines for system prompt (e.g. usage examples).
-    fn prompt_guidelines(&self) -> &[&str] {
-        &[]
-    }
-
-    /// Whether this tool prefers sequential execution.
-    /// When any tool in a batch declares `Sequential`, the entire batch
-    /// falls back to sequential execution.
-    fn execution_mode(&self) -> ToolExecutionMode {
-        ToolExecutionMode::Parallel
-    }
-
-    /// Optional argument preprocessing before execution.
-    /// Default: pass through unchanged (identity).
-    fn prepare_arguments(&self, args: Value) -> Value {
-        args
-    }
-}
+use crate::core::traits::{ToolExecutionMode, XyTool};
 
 // ── ToolDefinition ──────────────────────────────────────────────────
 
@@ -129,23 +40,19 @@ impl Default for ToolDefinition {
 
 impl<'a> From<&'a dyn XyTool> for ToolDefinition {
     fn from(tool: &'a dyn XyTool) -> Self {
-        let prompt_snippet = tool
-            .prompt_snippet()
-            .map(|s| s.to_string())
-            .or_else(|| {
-                let desc = tool.description();
-                if desc.is_empty() {
-                    None
+        let prompt_snippet = tool.prompt_snippet().map(|s| s.to_string()).or_else(|| {
+            let desc = tool.description();
+            if desc.is_empty() {
+                None
+            } else {
+                let snippet: String = desc.chars().take(80).collect();
+                if desc.len() > 80 {
+                    Some(format!("{snippet}…"))
                 } else {
-                    // Truncate to first 80 chars as snippet
-                    let snippet: String = desc.chars().take(80).collect();
-                    if desc.len() > 80 {
-                        Some(format!("{snippet}…"))
-                    } else {
-                        Some(snippet)
-                    }
+                    Some(snippet)
                 }
-            });
+            }
+        });
 
         let prompt_guidelines = tool
             .prompt_guidelines()
