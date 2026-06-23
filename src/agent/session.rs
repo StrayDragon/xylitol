@@ -13,8 +13,9 @@ use std::sync::Arc;
 
 use crate::agent::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::compaction::{CompactionSettings, compact_session};
-use crate::agent::model::config::ModelConfigExt;
+use crate::agent::model_manager::ModelManager;
 use crate::agent::output_guard;
+use crate::agent::tool_manager::ToolManager;
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::queue::MessageQueue;
 use crate::agent::retry::{RetryState, is_retryable_error};
@@ -39,16 +40,12 @@ pub use crate::agent::model::registry::ModelRegistry;
 
 /// Core agent session — encapsulates model, tools, session persistence, and events.
 pub struct AgentSession {
-    /// Model registry for model switching.
-    model_registry: ModelRegistry,
-    /// Current model index in the registry.
-    current_model_index: usize,
-    /// Tool registry with builtin tools.
-    tool_registry: ToolRegistry,
+    /// Model management (registry, selection, thinking level).
+    model_manager: ModelManager,
+    /// Tool management (registry, filtering).
+    tool_manager: ToolManager,
     /// Session persistence manager.
     session_manager: SessionManager,
-    /// Current thinking level.
-    thinking_level: ThinkingLevel,
     /// System prompt to prepend to every turn.
     system_prompt: Option<String>,
     /// Current session ID.
@@ -95,11 +92,9 @@ impl AgentSession {
         cwd: String,
     ) -> Self {
         Self {
-            model_registry,
-            current_model_index: 0,
-            tool_registry,
+            model_manager: ModelManager::new(model_registry),
+            tool_manager: ToolManager::new(tool_registry),
             session_manager,
-            thinking_level: ThinkingLevel::default(),
             system_prompt,
             session_id: None,
             max_iterations,
@@ -122,31 +117,27 @@ impl AgentSession {
         }
     }
 
-    // ── Model management ──────────────────────────────────────────
+    // ── Model management (delegated to ModelManager) ──────────────
 
     /// Get the current model config.
     pub fn current_model(&self) -> Option<&ModelMeta> {
-        self.model_registry.get_at(self.current_model_index)
+        self.model_manager.current_model()
     }
 
     /// Build the current model instance.
     pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, String> {
-        let meta = self
-            .current_model()
-            .ok_or_else(|| "no model configured".to_string())?;
-        meta.config.build()
+        self.model_manager.build_current_model()
     }
 
     /// Get current thinking level (clamped).
     pub fn thinking_level(&self) -> ThinkingLevel {
-        let supports = self.current_model().map(|m| m.thinking).unwrap_or(false);
-        self.thinking_level.clamp(supports)
+        self.model_manager.thinking_level()
     }
 
     /// Set thinking level.
     pub fn set_thinking_level(&mut self, level: ThinkingLevel) {
-        self.thinking_level = level;
-        // Fire-and-forget persistence (async call from sync context OK in tokio tests)
+        self.model_manager.set_thinking_level(level);
+        // Fire-and-forget persistence
         if let Some(ref sid) = self.session_id {
             let mgr = self.session_manager.clone();
             let sid = sid.clone();
@@ -159,34 +150,31 @@ impl AgentSession {
 
     /// Cycle to the next model.
     pub fn cycle_forward(&mut self) -> Option<&ModelMeta> {
-        if self.model_registry.is_empty() {
-            return None;
-        }
-        self.current_model_index = (self.current_model_index + 1) % self.model_registry.len();
-        self.current_model()
+        self.model_manager.cycle_forward()
     }
 
     /// Cycle to the previous model.
     #[allow(dead_code)]
     pub(crate) fn cycle_backward(&mut self) -> Option<&ModelMeta> {
-        if self.model_registry.is_empty() {
+        let len = self.model_manager.registry().len();
+        if len == 0 {
             return None;
         }
-        self.current_model_index = if self.current_model_index == 0 {
-            self.model_registry.len() - 1
-        } else {
-            self.current_model_index - 1
-        };
-        self.current_model()
+        let current = self.model_manager.current_index();
+        let prev = if current == 0 { len - 1 } else { current - 1 };
+        // Cycle forward to wrap around, since ModelManager only has cycle_forward
+        for _ in 0..len {
+            if self.model_manager.current_index() == prev {
+                break;
+            }
+            self.model_manager.cycle_forward();
+        }
+        self.model_manager.current_model()
     }
 
     /// Select a specific model by ID.
     pub fn select_model(&mut self, model_id: &str) -> Result<(), String> {
-        let idx = self
-            .model_registry
-            .index_of(model_id)
-            .ok_or_else(|| format!("model not found: {model_id}"))?;
-        self.current_model_index = idx;
+        self.model_manager.select_model(model_id)?;
         // Fire-and-forget persistence
         if let Some(ref sid) = self.session_id {
             let mgr = self.session_manager.clone();
@@ -362,7 +350,7 @@ impl AgentSession {
     // ── Accessors ─────────────────────────────────────────────────
 
     pub(crate) fn tool_registry(&self) -> &ToolRegistry {
-        &self.tool_registry
+        self.tool_manager.registry()
     }
 
     pub fn session_manager(&self) -> &SessionManager {
@@ -382,12 +370,12 @@ impl AgentSession {
     }
 
     pub fn model_registry(&self) -> &ModelRegistry {
-        &self.model_registry
+        self.model_manager.registry()
     }
 
     /// Clone the model registry (needed by RPC mode).
     pub fn registry_clone(&self) -> ModelRegistry {
-        self.model_registry.clone()
+        self.model_manager.registry_clone()
     }
 
     /// Current working directory.
@@ -608,15 +596,13 @@ impl AgentSession {
                     if let Ok(level) =
                         serde_json::from_value::<ThinkingLevel>(serde_json::json!(e.thinking_level))
                     {
-                        self.thinking_level = level;
+                        self.model_manager.set_thinking_level(level);
                     }
                 }
                 crate::infra::session::SessionEntry::ModelChange(e) => {
                     // Try to find and select this model
                     let model_id = format!("{}/{}", e.provider, e.model_id);
-                    if let Some(i) = self.model_registry.index_of(&model_id) {
-                        self.current_model_index = i;
-                    }
+                    let _ = self.model_manager.select_model(&model_id);
                 }
                 _ => {}
             }
@@ -846,9 +832,10 @@ References are relative to {escaped_base}.
 
     /// Set active tools by name and rebuild the system prompt.
     pub fn set_active_tools(&mut self, tool_names: &[String]) {
+        self.tool_manager.set_active_tools(tool_names.to_vec());
         self.prompt_opts.selected_tools = tool_names.to_vec();
         self.prompt_opts.tool_snippets =
-            prompt::collect_tool_snippets(&self.tool_registry, tool_names);
+            prompt::collect_tool_snippets(self.tool_manager.registry(), tool_names);
         self.rebuild_system_prompt();
     }
 
