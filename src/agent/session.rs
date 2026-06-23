@@ -1,6 +1,6 @@
 //! AgentSession — core agent lifecycle management.
 //!
-//! Aligns with pi's AgentSession class. Handles:
+//! Handles:
 //! - Model registry and current model tracking
 //! - Thinking level toggle (low/medium/high, clamped to model)
 //! - Tool registry management
@@ -21,7 +21,6 @@ use crate::agent::retry::{RetryState, is_retryable_error};
 use crate::agent::session_io::SessionIO;
 use crate::agent::skill_manager::SkillManager;
 use crate::agent::templates::{PromptTemplate, is_template_line, parse_template_line};
-use crate::agent::tool_manager::ToolManager;
 use crate::agent::tools::ToolRegistry;
 use crate::core::traits::XyModel;
 use crate::core::types::{ModelMeta, ThinkingLevel};
@@ -44,8 +43,10 @@ pub use crate::agent::model::registry::ModelRegistry;
 pub struct AgentSession {
     /// Model management (registry, selection, thinking level).
     model_manager: ModelManager,
-    /// Tool management (registry, filtering).
-    tool_manager: ToolManager,
+    /// Tool registry (all available tools).
+    tool_registry: ToolRegistry,
+    /// Names of currently active tools (empty = all allowed).
+    active_tools: Vec<String>,
     /// Session persistence and navigation.
     session_io: SessionIO,
     /// System prompt to prepend to every turn.
@@ -95,7 +96,8 @@ impl AgentSession {
     ) -> Self {
         Self {
             model_manager: ModelManager::new(model_registry),
-            tool_manager: ToolManager::new(tool_registry),
+            tool_registry,
+            active_tools: Vec::new(),
             session_io: SessionIO::new(session_manager),
             system_prompt,
             session_id: None,
@@ -353,7 +355,7 @@ impl AgentSession {
     // ── Accessors ─────────────────────────────────────────────────
 
     pub(crate) fn tool_registry(&self) -> &ToolRegistry {
-        self.tool_manager.registry()
+        &self.tool_registry
     }
 
     pub fn session_manager(&self) -> &SessionManager {
@@ -756,10 +758,10 @@ impl AgentSession {
 
     /// Set active tools by name and rebuild the system prompt.
     pub fn set_active_tools(&mut self, tool_names: &[String]) {
-        self.tool_manager.set_active_tools(tool_names.to_vec());
+        self.active_tools = tool_names.to_vec();
         self.prompt_opts.selected_tools = tool_names.to_vec();
         self.prompt_opts.tool_snippets =
-            prompt::collect_tool_snippets(self.tool_manager.registry(), tool_names);
+            prompt::collect_tool_snippets(&self.tool_registry, tool_names);
         self.rebuild_system_prompt();
     }
 

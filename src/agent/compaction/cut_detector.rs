@@ -71,13 +71,17 @@ pub fn estimate_tokens_entry(entry: &SessionEntry) -> u64 {
 }
 
 /// Check whether `entry_type` is a valid cut point.
+///
+/// Only `user` messages (start of a turn), branch summaries, and custom
+/// messages are valid boundaries. Assistant messages are excluded because
+/// cutting at an assistant message would split a turn.
 fn is_valid_cut_point(entry: &SessionEntry) -> bool {
     match entry {
         SessionEntry::Message(msg) => msg
             .message
             .get("role")
             .and_then(|r| r.as_str())
-            .map(|role| role == "user" || role == "assistant")
+            .map(|role| role == "user")
             .unwrap_or(false),
         SessionEntry::BranchSummary(_) => true,
         SessionEntry::Custom(c) => c.custom_type == "custom_message",
@@ -181,6 +185,11 @@ pub fn find_cut_point(
         }
     }
 
+    // Remember the original cut point before including preceding non-messages.
+    // If the original cut was at a user-turn boundary, we want to preserve
+    // the "non-split" semantics even though `include_preceding_non_messages`
+    // moved the index backwards to include metadata entries.
+    let original_cut_index = cut_index;
     cut_index = include_preceding_non_messages(entries, cut_index, start_index);
 
     let cut_entry = &entries[cut_index];
@@ -193,7 +202,14 @@ pub fn find_cut_point(
             .and_then(|r| r.as_str())
             .map(|r| r == "user")
             .unwrap_or(false),
-        _ => false,
+        _ => {
+            // If the adjusted cut_index is no longer at a user message, check
+            // whether the original cut point was a user-turn boundary.
+            (cut_index..=original_cut_index).any(|i| {
+                matches!(&entries[i], SessionEntry::Message(msg) if msg.message.get("role")
+                    .and_then(|r| r.as_str()) == Some("user"))
+            })
+        }
     };
 
     if is_user_turn_start {

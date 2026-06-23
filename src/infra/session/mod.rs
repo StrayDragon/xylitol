@@ -1,6 +1,6 @@
 //! Session persistence — JSONL file-based session storage.
 //!
-//! Aligns with pi's session-manager.ts. Key behaviors:
+//! Key behaviors:
 //! - JSONL format (one JSON object per line, append-only)
 //! - Stored in ~/.xylitol/sessions/<id>.jsonl
 //! - Entry types: message, compaction, branch_summary, model_change, thinking_level_change, custom

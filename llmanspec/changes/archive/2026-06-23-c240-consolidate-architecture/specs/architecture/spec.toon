@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement}:
+  add_requirement,ar01,清除 pi 文档引用,"All source files in src/ MUST NOT reference pi coding agent or its TypeScript modules in doc comments. References to pi's design rationale MUST be replaced with independent descriptions of the module's actual responsibilities."
+  add_requirement,ar02,微系统合并评估,"Components with fewer than 100 lines or 5 methods and no behavioral logic MUST be inlined into their parent struct (AgentSession). This change MUST merge ToolManager (50 lines, 4 methods) into AgentSession fields and methods."
+  add_requirement,ar03,宏系统评估文档,"The project MUST produce docs/architecture/macro-registration.md analyzing the feasibility and ROI of replacing runtime registration (tools, commands, providers) with Rust proc-macro or declarative macro alternatives. This is a design evaluation only — no macro code shall be produced in this change."
+op_scenarios[3]{req_id,id,given,when,then}:
+  ar01,pi-refs-cleared,"src/ files exist with 'Aligns with pi' comments","running rg 'Aligns with pi' src/","zero matches found"
+  ar02,tool-manager-inlined,"src/agent/tool_manager.rs exists as a separate file","the ToolManager is inlined into AgentSession","src/agent/tool_manager.rs is removed and its functionality is directly in AgentSession fields"
+  ar03,macro-eval-doc,"llmanspec/changes/c240-consolidate-architecture/ is open","running the macro evaluation task","docs/architecture/macro-registration.md exists with ROI analysis for #[tool], #[command], #[provider]"

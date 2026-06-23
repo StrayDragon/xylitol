@@ -1,6 +1,6 @@
 //! ModelRegistry — provider registration, auth checks, and model discovery.
 //!
-//! Aligns with pi's model-registry.ts. Provides:
+//! Provides:
 //! - ProviderConfig registration with priority ordering
 //! - API key / OAuth auth availability checks
 //! - Available model listing sorted by provider priority

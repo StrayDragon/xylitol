@@ -1,6 +1,4 @@
 //! SettingsManager — three-tier deep merge, reload, lock-based persistence.
-//!
-//! Aligns with pi's SettingsManager in settings-manager.ts.
 
 use std::sync::{Arc, Mutex};
 

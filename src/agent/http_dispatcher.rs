@@ -1,6 +1,6 @@
 //! HTTP dispatcher — proxy and timeout configuration for reqwest clients.
 //!
-//! Aligns with pi's http-dispatcher.ts. Provides:
+//! Provides:
 //! - reqwest::Client configuration (builder-level proxy + timeouts)
 //! - Idle timeout value parsing from config strings
 

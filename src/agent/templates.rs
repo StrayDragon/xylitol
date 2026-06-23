@@ -1,6 +1,6 @@
 //! Prompt templates — `/template:name args` expansion system.
 //!
-//! Aligns with pi's prompt-templates.ts. Provides:
+//! Provides:
 //! - Template loading from .md files with YAML frontmatter
 //! - Positional argument substitution ($1, $2, ...)
 //! - All-args placeholder ($@, $ARGUMENTS)

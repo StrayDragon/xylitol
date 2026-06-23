@@ -1,7 +1,7 @@
 //! Persistent bash executor — user/RPC-initiated shell execution with recording.
 //!
-//! Aligns with pi's `core/bash-executor.ts`. Unlike `tools/bash.rs` (the LLM
-//! tool-call entry point), this serves interactive/RPC `!cmd` and `!!cmd`
+//! Unlike `tools/bash.rs` (the LLM tool-call entry point), this serves
+//! interactive/RPC `!cmd` and `!!cmd`
 //! execution: it streams sanitized output via an `on_chunk` callback, supports
 //! cancellation via a [`CancellationToken`], truncates output, and spills the
 //! full output to a temp file when the rolling buffer overflows.

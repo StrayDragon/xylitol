@@ -1,7 +1,7 @@
 //! OutputGuard — stdout takeover for print mode.
 //!
-//! Aligns with pi's output-guard.ts. In print mode, agent/tool output
-//! must be suppressed from stdout so the final result is clean.
+//! In print mode, agent/tool output must be suppressed from stdout
+//! so the final result is clean.
 //!
 //! Since Rust does not allow replacing the global stdout writer at runtime,
 //! this module uses an atomic flag as a semantic takeover marker:

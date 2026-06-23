@@ -1,6 +1,6 @@
 //! ModelResolver — pattern-based model resolution.
 //!
-//! Aligns with pi's model-resolver.ts. Provides:
+//! Provides:
 //! - Exact match: `provider/modelId` or bare `id`
 //! - Fuzzy match: partial id or name substring match
 //! - Alias preference: shorter/cleaner ids over dated versions

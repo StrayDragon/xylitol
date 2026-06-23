@@ -1,6 +1,6 @@
 //! Project trust resolution — determines whether a project directory is trusted.
 //!
-//! Aligns with pi's project-trust.ts. Resolution order:
+//! Resolution order:
 //! 1. Explicit `trust_override` (CLI flag `--trust` / `--no-trust`)
 //! 2. No trust inputs needed → auto-trust
 //! 3. Extension event: ask extensions for `project_trust` decision
