@@ -1,9 +1,0 @@
-kind: llman.sdd.delta
-ops[3]{op,req_id,title,statement,from,to,name}:
-  add_requirement,r1,"ratatui-rendering","System MUST render the TUI using ratatui Terminal::draw with ratatui Widgets (Paragraph, List, Scrollbar) instead of the custom ANSI diff engine. state/ layer MUST remain ratatui-independent.",null,null,null
-  add_requirement,r47,"alternate-screen",System MUST use crossterm alternate screen (EnterAlternateScreen/LeaveAlternateScreen) for TUI mode and MUST restore the terminal on quit.,null,null,null
-  add_requirement,r48,"no-premature-agent","System MUST NOT call agent_loop.run() until the user submits their first message. On TUI startup, the agent stream MUST be None/pending until the first user input is submitted.",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  r1,happy,"",TUI starts,"the first frame is drawn using ratatui Terminal::draw with alternate screen"
-  r47,"quit-cleanup","",user quits the TUI,"terminal is restored (alternate screen left, raw mode disabled, cursor shown)"
-  r48,"no-call","",TUI starts,no agent_loop.run() call is made; agent_fut is pending() until user submits a message
