@@ -3,8 +3,6 @@ pub mod bash_executor;
 pub mod commands;
 pub mod compaction;
 pub mod config_value;
-pub mod error;
-pub mod message;
 pub mod http_dispatcher;
 pub mod r#loop;
 pub mod model;

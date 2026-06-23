@@ -11,7 +11,6 @@ use chrono::Utc;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::agent::compaction;
 use super::types::*;
 
 /// Manages session persistence using JSONL files or in-memory storage.
@@ -153,7 +152,9 @@ impl SessionManager {
     pub fn exists(&self, id: &str) -> bool {
         match &self.backend {
             SessionBackend::Persisted { .. } => self.session_path(id).exists(),
-            SessionBackend::InMemory { entries } => entries.iter().any(|e| e.entry_id() == Some(id)),
+            SessionBackend::InMemory { entries } => {
+                entries.iter().any(|e| e.entry_id() == Some(id))
+            }
         }
     }
 
@@ -220,10 +221,7 @@ impl SessionManager {
                     .map_err(|e| format!("write entry: {e}"))?;
             }
             SessionBackend::InMemory { .. } => {
-                let mut store = self
-                    .in_memory_store
-                    .write()
-                    .expect("RwLock not poisoned");
+                let mut store = self.in_memory_store.write().expect("RwLock not poisoned");
                 store
                     .entry(session_id.to_string())
                     .or_default()
@@ -369,10 +367,7 @@ impl SessionManager {
     pub async fn load(&self, session_id: &str) -> Result<Vec<SessionEntry>, String> {
         match &self.backend {
             SessionBackend::InMemory { .. } => {
-                let store = self
-                    .in_memory_store
-                    .read()
-                    .expect("RwLock not poisoned");
+                let store = self.in_memory_store.read().expect("RwLock not poisoned");
                 let entries = store
                     .get(session_id)
                     .cloned()
@@ -667,12 +662,12 @@ impl SessionManager {
     pub async fn build_session_context_v2(
         &self,
         session_id: &str,
-    ) -> Result<Vec<crate::agent::message::AgentMessage>, String> {
+    ) -> Result<Vec<crate::core::message::AgentMessage>, String> {
         let leaf_id = self.get_leaf(session_id);
         let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
 
         let mut messages = Vec::new();
-        use crate::agent::message::AgentMessage;
+        use crate::core::message::AgentMessage;
 
         for entry in &branch {
             match entry {
@@ -693,11 +688,7 @@ impl SessionManager {
                 }
                 SessionEntry::CustomMessage(cm) => {
                     if cm.display {
-                        let text = cm
-                            .content
-                            .as_str()
-                            .unwrap_or("")
-                            .to_string();
+                        let text = cm.content.as_str().unwrap_or("").to_string();
                         messages.push(AgentMessage::user(text));
                     }
                 }
@@ -705,11 +696,7 @@ impl SessionManager {
                     if b.exclude_from_context {
                         continue;
                     }
-                    messages.push(AgentMessage::bash(
-                        &b.command,
-                        &b.output,
-                        b.exit_code,
-                    ));
+                    messages.push(AgentMessage::bash(&b.command, &b.output, b.exit_code));
                 }
                 SessionEntry::Message(m) => {
                     // Try to parse message JSON into AgentMessage
@@ -744,7 +731,9 @@ impl SessionManager {
         let mut in_range = false;
         let mut result = Vec::new();
         for entry in &branch {
-            let Some(eid) = entry.entry_id() else { continue };
+            let Some(eid) = entry.entry_id() else {
+                continue;
+            };
             if eid == start_id {
                 in_range = true;
             }
@@ -988,17 +977,15 @@ impl SessionManager {
         child_id: &str,
         at_entry_id: &str,
     ) -> Result<(), String> {
-        self.fork_with_model(parent_id, child_id, at_entry_id, None)
-            .await
+        self.fork_inner(parent_id, child_id, at_entry_id).await
     }
 
-    /// Fork with optional LLM model for branch summary.
-    pub async fn fork_with_model(
+    /// Fork implementation (uses text-based branch summary).
+    pub async fn fork_inner(
         &self,
         parent_id: &str,
         child_id: &str,
         at_entry_id: &str,
-        model: Option<&dyn crate::agent::traits::XyModel>,
     ) -> Result<(), String> {
         let parent_entries = self.load(parent_id).await?;
 
@@ -1021,14 +1008,7 @@ impl SessionManager {
         }
 
         if !skipped.is_empty() {
-            let summary = if let Some(m) = model {
-                match compaction::generate_branch_summary_llm(skipped, m, 16384).await {
-                    Some(r) => r.summary,
-                    None => self.generate_branch_summary(skipped), // fallback
-                }
-            } else {
-                self.generate_branch_summary(skipped)
-            };
+            let summary = self.generate_branch_summary(skipped);
             let now = Utc::now().to_rfc3339();
             let branch_entry = SessionEntry::BranchSummary(BranchSummaryEntry {
                 base: EntryBase {

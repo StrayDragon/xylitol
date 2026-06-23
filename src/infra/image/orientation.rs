@@ -37,14 +37,21 @@ pub fn read_orientation(data: &[u8]) -> Option<Orientation> {
 
 /// Apply EXIF orientation to pixel data.
 #[allow(dead_code)]
-pub fn apply_orientation(img: &image::DynamicImage, orientation: Orientation) -> image::DynamicImage {
+pub fn apply_orientation(
+    img: &image::DynamicImage,
+    orientation: Orientation,
+) -> image::DynamicImage {
     use image::imageops;
     match orientation {
         Orientation::Rotate90 => image::DynamicImage::ImageRgba8(imageops::rotate90(img)),
         Orientation::Rotate180 => image::DynamicImage::ImageRgba8(imageops::rotate180(img)),
         Orientation::Rotate270 => image::DynamicImage::ImageRgba8(imageops::rotate270(img)),
-        Orientation::MirrorHorizontal => image::DynamicImage::ImageRgba8(imageops::flip_horizontal(img)),
-        Orientation::MirrorVertical => image::DynamicImage::ImageRgba8(imageops::flip_vertical(img)),
+        Orientation::MirrorHorizontal => {
+            image::DynamicImage::ImageRgba8(imageops::flip_horizontal(img))
+        }
+        Orientation::MirrorVertical => {
+            image::DynamicImage::ImageRgba8(imageops::flip_vertical(img))
+        }
         _ => img.clone(),
     }
 }

@@ -6,7 +6,7 @@
 
 use std::collections::VecDeque;
 
-use crate::agent::message::AgentMessage;
+use crate::core::message::AgentMessage;
 
 /// Manages queued messages during streaming and idle periods.
 #[derive(Debug, Clone, Default)]

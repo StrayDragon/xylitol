@@ -4,12 +4,12 @@ use clap::{Parser, Subcommand};
 
 use crate::agent::auth;
 use crate::agent::r#loop::AgentLoop;
-use crate::agent::model::{ModelConfig, ModelKind};
 use crate::agent::model::registry;
 use crate::agent::model::resolver;
 use crate::agent::session::{AgentSession, ModelRegistry};
 use crate::agent::tools::ToolRegistry;
-use crate::agent::types::ModelMeta;
+use crate::core::model::{ModelConfig, ModelKind};
+use crate::core::types::ModelMeta;
 use crate::infra::config::loader::load_app_config;
 use crate::infra::session::SessionManager;
 use crate::infra::timing;
@@ -165,10 +165,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if model_registry.is_empty() {
-        eprintln!(
-            "Error: {}",
-            auth::format_no_models_available_message()
-        );
+        eprintln!("Error: {}", auth::format_no_models_available_message());
         return Err("no models available".into());
     }
 

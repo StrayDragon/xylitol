@@ -78,7 +78,8 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
     let mut png_bytes = Vec::new();
     {
         let mut cursor = Cursor::new(&mut png_bytes);
-        resized.write_to(&mut cursor, image::ImageFormat::Png)
+        resized
+            .write_to(&mut cursor, image::ImageFormat::Png)
             .map_err(|e| format!("failed to encode PNG: {e}"))?;
     }
     let png_b64 = base64_encode(&png_bytes);
@@ -101,7 +102,8 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
     let mut jpeg_bytes = Vec::new();
     {
         let mut cursor = Cursor::new(&mut jpeg_bytes);
-        let mut jpeg_enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, options.jpeg_quality);
+        let mut jpeg_enc =
+            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, options.jpeg_quality);
         jpeg_enc
             .encode(raw, w, h, image::ExtendedColorType::Rgba8)
             .map_err(|e| format!("failed to encode JPEG: {e}"))?;

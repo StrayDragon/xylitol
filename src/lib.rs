@@ -3,6 +3,7 @@
 //! LLM-Augmented Development Toolkit.
 
 pub mod agent;
+pub mod core;
 pub mod infra;
 pub mod interface;
 

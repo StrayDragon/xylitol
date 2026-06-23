@@ -1,16 +1,19 @@
-/// LLM provider configuration and model registry.
+/// LLM provider construction and mock model state for testing.
 ///
-/// Supports OpenAI-compatible and Anthropic providers via direct HTTP integration.
-use serde::{Deserialize, Serialize};
+/// The [`ModelConfig`] data struct lives in [`crate::core::model`];
+/// this module extends it with the [`build`](ModelConfigExt::build) method
+/// that creates provider instances, plus thread-local helpers for BDD tests.
+use std::cell::RefCell;
 use std::sync::Arc;
+
+use crate::core::model::{ModelConfig, ModelKind};
+use crate::core::traits::XyModel;
 
 // ── Mock model state (BDD tests only) ──────────────────────────────
 //
 // Thread-locals let FakeProvider scenarios be configured from BDD step
 // functions without refactoring the provider construction pipeline.
 // Every test that touches mock state should call reset_fake_state() first.
-
-use std::cell::RefCell;
 
 thread_local! {
     static FAKE_TEXT: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -40,58 +43,15 @@ pub fn set_fake_tool_result(text: &str) {
     FAKE_TOOL_RESULT.with(|c| c.replace(Some(text.to_string())));
 }
 
-use crate::agent::traits::XyModel;
-use schemars::JsonSchema;
+// ── Extension trait: ModelConfig → provider ───────────────────────
 
-/// Supported LLM providers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum ModelKind {
-    #[serde(rename = "openai")]
-    #[default]
-    OpenAi,
-    #[serde(rename = "anthropic")]
-    Anthropic,
-    #[cfg(feature = "dev-fake-provider")]
-    #[serde(rename = "fake")]
-    Fake,
+/// Extension trait adding provider construction to [`ModelConfig`].
+pub trait ModelConfigExt {
+    fn build(&self) -> Result<Arc<dyn XyModel>, String>;
 }
 
-impl ModelKind {
-    /// Parse from a provider name string (case-insensitive).
-    pub fn from_provider_name(name: &str) -> Option<Self> {
-        match name.to_lowercase().as_str() {
-            "openai" => Some(Self::OpenAi),
-            "anthropic" => Some(Self::Anthropic),
-            #[cfg(feature = "dev-fake-provider")]
-            "fake" => Some(Self::Fake),
-            _ => None,
-        }
-    }
-
-    /// Provider identifier for display and serialization.
-    pub fn provider_name(&self) -> &'static str {
-        match self {
-            Self::OpenAi => "openai",
-            Self::Anthropic => "anthropic",
-            #[cfg(feature = "dev-fake-provider")]
-            Self::Fake => "fake",
-        }
-    }
-}
-
-/// Configuration for building an LLM provider instance.
-#[derive(Debug, Clone)]
-pub struct ModelConfig {
-    pub kind: ModelKind,
-    pub api_key: String,
-    pub model: String,
-    pub base_url: Option<String>,
-}
-
-impl ModelConfig {
-    /// Build the LLM provider from this configuration.
-    pub fn build(&self) -> Result<Arc<dyn XyModel>, String> {
+impl ModelConfigExt for ModelConfig {
+    fn build(&self) -> Result<Arc<dyn XyModel>, String> {
         match self.kind {
             ModelKind::OpenAi => {
                 let provider = crate::agent::provider::openai::OpenAIProvider::new(
@@ -113,14 +73,12 @@ impl ModelConfig {
             ModelKind::Fake => {
                 use crate::agent::provider::{FakeProvider, ScenarioStep};
                 let steps = {
-                    // Check thread-local mock configuration first.
                     let tool = FAKE_TOOL_CALL.with(|c| c.borrow_mut().take());
                     let text = FAKE_TEXT.with(|c| c.borrow_mut().take());
                     if let Some((tool_name, tool_args)) = tool {
                         let args: serde_json::Value =
                             serde_json::from_str(&tool_args).unwrap_or(serde_json::json!({}));
-                        let tool_result =
-                            FAKE_TOOL_RESULT.with(|c| c.borrow_mut().take());
+                        let tool_result = FAKE_TOOL_RESULT.with(|c| c.borrow_mut().take());
                         vec![
                             ScenarioStep::tool_call(tool_name, args),
                             ScenarioStep::tool_result(
@@ -139,10 +97,5 @@ impl ModelConfig {
                 Ok(Arc::new(fake) as Arc<dyn XyModel>)
             }
         }
-    }
-
-    /// Provider identifier for display purposes.
-    pub fn provider_name(&self) -> &'static str {
-        self.kind.provider_name()
     }
 }

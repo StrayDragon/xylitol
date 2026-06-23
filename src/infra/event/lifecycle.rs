@@ -40,20 +40,20 @@ pub enum AgentLifecycleEvent {
         role: String,
         /// Full agent message, when available.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        message: Option<crate::agent::message::AgentMessage>,
+        message: Option<crate::core::message::AgentMessage>,
     },
     MessageUpdate {
         text: String,
         thinking: Option<String>,
         /// Partial agent message with current streaming state.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        message: Option<crate::agent::message::AgentMessage>,
+        message: Option<crate::core::message::AgentMessage>,
     },
     MessageEnd {
         role: String,
         /// Complete agent message after streaming finishes.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        message: Option<crate::agent::message::AgentMessage>,
+        message: Option<crate::core::message::AgentMessage>,
     },
 
     // ── Tool execution ───────────────────────────────────────────
@@ -144,5 +144,8 @@ impl AgentLifecycleEvent {
 }
 
 /// A type-safe handler for [`AgentLifecycleEvent`].
-pub type LifecycleHandler =
-    Arc<dyn Fn(AgentLifecycleEvent) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync>;
+pub type LifecycleHandler = Arc<
+    dyn Fn(AgentLifecycleEvent) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+        + Send
+        + Sync,
+>;

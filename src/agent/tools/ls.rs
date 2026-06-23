@@ -11,8 +11,8 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::path_utils::resolve_to_cwd;
-use crate::agent::error::XyToolError;
-use crate::agent::traits::{XyTool, XyToolCtx};
+use crate::core::error::XyToolError;
+use crate::core::traits::{XyTool, XyToolCtx};
 
 const DEFAULT_LS_LIMIT: usize = 200;
 

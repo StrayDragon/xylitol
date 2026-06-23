@@ -125,10 +125,7 @@ pub enum AgentMessage {
 
     /// A branch summary message (summarises a forked branch).
     #[serde(rename = "branchSummary")]
-    BranchSummaryMessage {
-        summary: String,
-        from_id: String,
-    },
+    BranchSummaryMessage { summary: String, from_id: String },
 }
 
 impl AgentMessage {
@@ -167,20 +164,18 @@ impl AgentMessage {
                 let mut buf = String::new();
                 for part in content {
                     match part {
-                        AgentPart::Text(t) | AgentPart::Thinking { text: t, .. } => {
-                            buf.push_str(t)
-                        }
+                        AgentPart::Text(t) | AgentPart::Thinking { text: t, .. } => buf.push_str(t),
                         _ => {}
                     }
                 }
                 buf
             }
-            Self::BashExecutionMessage { command, output, .. } => {
+            Self::BashExecutionMessage {
+                command, output, ..
+            } => {
                 format!("$ {command}\n{output}")
             }
-            Self::CustomMessage { content, .. } => {
-                content.as_str().unwrap_or("").to_string()
-            }
+            Self::CustomMessage { content, .. } => content.as_str().unwrap_or("").to_string(),
             Self::CompactionSummaryMessage { summary, .. } => summary.clone(),
             Self::BranchSummaryMessage { summary, .. } => summary.clone(),
         }
@@ -469,10 +464,7 @@ impl AgentMessage {
 pub trait LlmMessageConverter: Send + Sync {
     type Output;
 
-    fn convert_to_llm(
-        messages: &[AgentMessage],
-        system_prompt: Option<&str>,
-    ) -> Self::Output;
+    fn convert_to_llm(messages: &[AgentMessage], system_prompt: Option<&str>) -> Self::Output;
 }
 
 /// Helper: collect text content from a slice of [`AgentPart`], skipping
@@ -554,10 +546,7 @@ mod tests {
             }],
         };
         assert!(msg.is_error());
-        assert_eq!(
-            msg.text(),
-            ""
-        );
+        assert_eq!(msg.text(), "");
     }
 
     #[test]
@@ -602,7 +591,11 @@ mod tests {
         let json = serde_json::to_string(&part).unwrap();
         let deserialized: AgentPart = serde_json::from_str(&json).unwrap();
         match deserialized {
-            AgentPart::Thinking { text, redacted, signature } => {
+            AgentPart::Thinking {
+                text,
+                redacted,
+                signature,
+            } => {
                 assert_eq!(text, "Let me reason...");
                 assert!(!redacted);
                 assert_eq!(signature, Some("sig-abc".into()));
@@ -616,7 +609,12 @@ mod tests {
         let messages = vec![
             AgentMessage::user("hi"),
             AgentMessage::assistant("hello"),
-            AgentMessage::tool_result("t1", "read_file", vec![AgentPart::Text("done".into())], false),
+            AgentMessage::tool_result(
+                "t1",
+                "read_file",
+                vec![AgentPart::Text("done".into())],
+                false,
+            ),
             AgentMessage::bash("pwd", "/home", Some(0)),
             AgentMessage::CustomMessage {
                 custom_type: "x".into(),

@@ -8,10 +8,10 @@
 //! - Fallback model construction
 
 #![allow(dead_code)]
-use super::config::ModelConfig;
+use crate::core::model::ModelConfig;
 #[cfg(test)]
-use super::config::ModelKind;
-use crate::agent::types::{ModelMeta, ThinkingLevel};
+use crate::core::model::ModelKind;
+use crate::core::types::{ModelMeta, ThinkingLevel};
 
 // ── Resolved Model ──────────────────────────────────────────────────
 
@@ -300,14 +300,14 @@ pub(crate) fn build_fallback_model(
         display_name: format!("{} (fallback)", pattern),
         thinking: template.thinking,
         context_window: template.context_window,
-            api: String::new(),
-            provider: String::new(),
-            cost_input: 0.0,
-            cost_output: 0.0,
-            cost_cache_read: 0.0,
-            cost_cache_write: 0.0,
-            max_tokens: 0,
-            thinking_levels: Vec::new(),
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: Vec::new(),
     })
 }
 
@@ -355,7 +355,7 @@ impl ResolvedModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::model::config::ModelConfig;
+    use crate::core::model::ModelConfig;
 
     fn make_available() -> Vec<ModelMeta> {
         vec![
@@ -370,14 +370,14 @@ mod tests {
                 display_name: "GPT-4o".into(),
                 thinking: true,
                 context_window: 128_000,
-            api: String::new(),
-            provider: String::new(),
-            cost_input: 0.0,
-            cost_output: 0.0,
-            cost_cache_read: 0.0,
-            cost_cache_write: 0.0,
-            max_tokens: 0,
-            thinking_levels: Vec::new(),
+                api: String::new(),
+                provider: String::new(),
+                cost_input: 0.0,
+                cost_output: 0.0,
+                cost_cache_read: 0.0,
+                cost_cache_write: 0.0,
+                max_tokens: 0,
+                thinking_levels: Vec::new(),
             },
             ModelMeta {
                 id: "openai/gpt-4o-mini".into(),
@@ -390,14 +390,14 @@ mod tests {
                 display_name: "GPT-4o Mini".into(),
                 thinking: true,
                 context_window: 128_000,
-            api: String::new(),
-            provider: String::new(),
-            cost_input: 0.0,
-            cost_output: 0.0,
-            cost_cache_read: 0.0,
-            cost_cache_write: 0.0,
-            max_tokens: 0,
-            thinking_levels: Vec::new(),
+                api: String::new(),
+                provider: String::new(),
+                cost_input: 0.0,
+                cost_output: 0.0,
+                cost_cache_read: 0.0,
+                cost_cache_write: 0.0,
+                max_tokens: 0,
+                thinking_levels: Vec::new(),
             },
             ModelMeta {
                 id: "claude-sonnet-4-20250514".into(),
@@ -410,14 +410,14 @@ mod tests {
                 display_name: "Claude Sonnet 4".into(),
                 thinking: true,
                 context_window: 200_000,
-            api: String::new(),
-            provider: String::new(),
-            cost_input: 0.0,
-            cost_output: 0.0,
-            cost_cache_read: 0.0,
-            cost_cache_write: 0.0,
-            max_tokens: 0,
-            thinking_levels: Vec::new(),
+                api: String::new(),
+                provider: String::new(),
+                cost_input: 0.0,
+                cost_output: 0.0,
+                cost_cache_read: 0.0,
+                cost_cache_write: 0.0,
+                max_tokens: 0,
+                thinking_levels: Vec::new(),
             },
             ModelMeta {
                 id: "anthropic/claude-sonnet-4-20250514".into(),
@@ -430,14 +430,14 @@ mod tests {
                 display_name: "Claude Sonnet 4".into(),
                 thinking: true,
                 context_window: 200_000,
-            api: String::new(),
-            provider: String::new(),
-            cost_input: 0.0,
-            cost_output: 0.0,
-            cost_cache_read: 0.0,
-            cost_cache_write: 0.0,
-            max_tokens: 0,
-            thinking_levels: Vec::new(),
+                api: String::new(),
+                provider: String::new(),
+                cost_input: 0.0,
+                cost_output: 0.0,
+                cost_cache_read: 0.0,
+                cost_cache_write: 0.0,
+                max_tokens: 0,
+                thinking_levels: Vec::new(),
             },
         ]
     }
@@ -584,14 +584,14 @@ mod tests {
                 display_name: "Claude Sonnet".into(),
                 thinking: true,
                 context_window: 200_000,
-            api: String::new(),
-            provider: String::new(),
-            cost_input: 0.0,
-            cost_output: 0.0,
-            cost_cache_read: 0.0,
-            cost_cache_write: 0.0,
-            max_tokens: 0,
-            thinking_levels: Vec::new(),
+                api: String::new(),
+                provider: String::new(),
+                cost_input: 0.0,
+                cost_output: 0.0,
+                cost_cache_read: 0.0,
+                cost_cache_write: 0.0,
+                max_tokens: 0,
+                thinking_levels: Vec::new(),
             },
             ModelMeta {
                 id: "claude-sonnet-4-20250514".into(),
@@ -604,14 +604,14 @@ mod tests {
                 display_name: "Claude Sonnet 4 (2025-05-14)".into(),
                 thinking: true,
                 context_window: 200_000,
-            api: String::new(),
-            provider: String::new(),
-            cost_input: 0.0,
-            cost_output: 0.0,
-            cost_cache_read: 0.0,
-            cost_cache_write: 0.0,
-            max_tokens: 0,
-            thinking_levels: Vec::new(),
+                api: String::new(),
+                provider: String::new(),
+                cost_input: 0.0,
+                cost_output: 0.0,
+                cost_cache_read: 0.0,
+                cost_cache_write: 0.0,
+                max_tokens: 0,
+                thinking_levels: Vec::new(),
             },
         ];
         let available = refs(&models);

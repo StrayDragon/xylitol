@@ -6,7 +6,7 @@
 #![allow(dead_code)]
 
 use syntect::easy::HighlightLines;
-use syntect::highlighting::{ThemeSet, Theme};
+use syntect::highlighting::{Theme, ThemeSet};
 use syntect::html::styled_line_to_highlighted_html;
 use syntect::parsing::SyntaxSet;
 use syntect::util::LinesWithEndings;
@@ -37,7 +37,9 @@ pub fn highlight(code: &str, language: Option<&str>) -> String {
 
     for line in LinesWithEndings::from(code) {
         let ranges = highlighter.highlight_line(line, &SYNTAX_SET).unwrap();
-        if let Ok(html) = styled_line_to_highlighted_html(&ranges, syntect::html::IncludeBackground::No) {
+        if let Ok(html) =
+            styled_line_to_highlighted_html(&ranges, syntect::html::IncludeBackground::No)
+        {
             result.push_str(&html_to_ansi(&html));
         }
     }

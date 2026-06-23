@@ -200,7 +200,7 @@ impl McpToolAdapter {
 }
 
 #[async_trait]
-impl crate::agent::traits::XyTool for McpToolAdapter {
+impl crate::core::traits::XyTool for McpToolAdapter {
     fn name(&self) -> &str {
         &self.full_name
     }
@@ -217,9 +217,9 @@ impl crate::agent::traits::XyTool for McpToolAdapter {
 
     async fn execute(
         &self,
-        _ctx: &crate::agent::traits::XyToolCtx,
+        _ctx: &crate::core::traits::XyToolCtx,
         args: Value,
-    ) -> Result<String, crate::agent::error::XyToolError> {
+    ) -> Result<String, crate::core::error::XyToolError> {
         let parts: Vec<&str> = self.full_name.splitn(3, ':').collect();
         let server_id = parts.get(1).unwrap_or(&"unknown");
         let tool_name = parts.get(2).unwrap_or(&"unknown");
@@ -229,7 +229,7 @@ impl crate::agent::traits::XyTool for McpToolAdapter {
             .call_tool(server_id, tool_name, args)
             .await
             .map_err(|e| {
-                crate::agent::error::XyToolError::ExecutionFailed(anyhow::anyhow!(
+                crate::core::error::XyToolError::ExecutionFailed(anyhow::anyhow!(
                     "MCP call to {} failed: {}",
                     self.full_name,
                     e
@@ -237,7 +237,7 @@ impl crate::agent::traits::XyTool for McpToolAdapter {
             })?;
 
         serde_json::to_string(&result).map_err(|e| {
-            crate::agent::error::XyToolError::ExecutionFailed(anyhow::anyhow!(
+            crate::core::error::XyToolError::ExecutionFailed(anyhow::anyhow!(
                 "failed to serialize MCP result: {}",
                 e
             ))
@@ -248,7 +248,7 @@ impl crate::agent::traits::XyTool for McpToolAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::traits::XyTool;
+    use crate::core::traits::XyTool;
 
     #[test]
     fn test_mcp_tool_adapter_name_format() {

@@ -15,7 +15,11 @@ pub fn open_browser(url: &str) -> Result<(), String> {
         std::process::Command::new("xdg-open")
             .arg(url)
             .status()
-            .or_else(|_| std::process::Command::new("sensible-browser").arg(url).status())
+            .or_else(|_| {
+                std::process::Command::new("sensible-browser")
+                    .arg(url)
+                    .status()
+            })
     };
 
     match result {
