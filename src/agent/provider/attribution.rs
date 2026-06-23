@@ -104,12 +104,12 @@ fn get_default_attribution_headers(
     let mut headers = HashMap::new();
 
     match provider {
-        "openrouter" | _ if base_url.contains(OPENROUTER_HOST) => {
+        _ if base_url.contains(OPENROUTER_HOST) => {
             headers.insert("HTTP-Referer".into(), "https://pi.dev".into());
             headers.insert("X-OpenRouter-Title".into(), "pi".into());
             headers.insert("X-OpenRouter-Categories".into(), "cli-agent".into());
         }
-        "nvidia" | _ if matches_host(base_url, NVIDIA_NIM_HOST) => {
+        _ if matches_host(base_url, NVIDIA_NIM_HOST) => {
             headers.insert("X-BILLING-INVOKE-ORIGIN".into(), "Pi".into());
         }
         "cloudflare-workers-ai" | "cloudflare-ai-gateway"
@@ -118,7 +118,7 @@ fn get_default_attribution_headers(
         {
             headers.insert("User-Agent".into(), "pi-coding-agent".into());
         }
-        "vercel-ai-gateway" | _ if matches_host(base_url, VERCEL_GATEWAY_HOST) => {
+        _ if matches_host(base_url, VERCEL_GATEWAY_HOST) => {
             headers.insert("http-referer".into(), "https://pi.dev".into());
             headers.insert("x-title".into(), "pi".into());
         }

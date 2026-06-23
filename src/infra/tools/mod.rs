@@ -23,7 +23,7 @@ pub async fn ensure_tool(name: &str) -> Option<PathBuf> {
 
     // Download
     let config = platform::tool_config(name)?;
-    let version = get_latest_version(&config.repo).await?;
+    let version = get_latest_version(config.repo).await?;
     let asset_name = (config.get_asset_name)(&version, &config)?;
     let download_url = format!(
         "https://github.com/{}/releases/download/{}{}/{}",
@@ -41,7 +41,7 @@ pub async fn ensure_tool(name: &str) -> Option<PathBuf> {
     tokio::fs::write(&archive_path, &bytes).await.ok()?;
 
     // Extract
-    let binary_path = extract_binary(&archive_path, &config.binary_name, &bin_dir).await?;
+    let binary_path = extract_binary(&archive_path, config.binary_name, &bin_dir).await?;
 
     // Remove archive
     let _ = tokio::fs::remove_file(&archive_path).await;
@@ -122,16 +122,16 @@ fn extract_zip(data: &[u8], binary_name: &str, bin_dir: &std::path::Path) -> Opt
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).ok()?;
-        if let Some(name) = file.name().split('/').last() {
-            if name == binary_name {
-                let dest = tmp_dir.join(name);
-                let mut out = std::fs::File::create(&dest).ok()?;
-                std::io::copy(&mut file, &mut out).ok()?;
-                let final_dest = bin_dir.join(binary_name);
-                std::fs::rename(&dest, &final_dest).ok()?;
-                let _ = std::fs::remove_dir_all(&tmp_dir);
-                return Some(final_dest);
-            }
+        if let Some(name) = file.name().split('/').next_back()
+            && name == binary_name
+        {
+            let dest = tmp_dir.join(name);
+            let mut out = std::fs::File::create(&dest).ok()?;
+            std::io::copy(&mut file, &mut out).ok()?;
+            let final_dest = bin_dir.join(binary_name);
+            std::fs::rename(&dest, &final_dest).ok()?;
+            let _ = std::fs::remove_dir_all(&tmp_dir);
+            return Some(final_dest);
         }
     }
     let _ = std::fs::remove_dir_all(&tmp_dir);
@@ -145,10 +145,10 @@ fn find_binary_recursive(dir: &std::path::Path, name: &str) -> Option<PathBuf> {
         if path.is_file() && path.file_name().and_then(|s| s.to_str()) == Some(name) {
             return Some(path);
         }
-        if path.is_dir() {
-            if let Some(found) = find_binary_recursive(&path, name) {
-                return Some(found);
-            }
+        if path.is_dir()
+            && let Some(found) = find_binary_recursive(&path, name)
+        {
+            return Some(found);
         }
     }
     None

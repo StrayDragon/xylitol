@@ -380,7 +380,7 @@ impl SessionManager {
                 } else {
                     self.set_leaf(session_id, None);
                 }
-                return Ok(entries);
+                Ok(entries)
             }
             SessionBackend::Persisted { .. } => {
                 let path = self.session_path(session_id);

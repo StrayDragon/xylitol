@@ -69,7 +69,6 @@ impl ModelConfigExt for ModelConfig {
                 );
                 Ok(Arc::new(provider) as Arc<dyn XyModel>)
             }
-            #[cfg(feature = "dev-fake-provider")]
             ModelKind::Fake => {
                 use crate::agent::provider::{FakeProvider, ScenarioStep};
                 let steps = {

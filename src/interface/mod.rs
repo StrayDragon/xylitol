@@ -3,5 +3,4 @@ pub mod print;
 pub mod resources;
 pub mod rpc;
 
-#[cfg(feature = "ui-review")]
 pub mod diff_review;

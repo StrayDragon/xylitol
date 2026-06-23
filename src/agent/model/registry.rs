@@ -321,7 +321,6 @@ pub fn build_default_model_meta(provider: &ProviderConfig) -> Option<ModelMeta> 
     let kind = match provider.name.as_str() {
         "openai" => ModelKind::OpenAi,
         "anthropic" => ModelKind::Anthropic,
-        #[cfg(feature = "dev-fake-provider")]
         "fake" => ModelKind::Fake,
         _ => return None,
     };

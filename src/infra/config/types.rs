@@ -26,21 +26,16 @@ pub struct AppConfig {
     pub repeat_detection: RepeatDetectionConfig,
     pub tools: ToolsConfig,
 
-    // ── feature-gated ────────────────────────────────────────────────
-    #[cfg(feature = "infra-session")]
+    // ── always compiled ────────────────────────────────────────────────
     pub session: Option<SessionConfig>,
-    #[cfg(feature = "infra-session")]
     /// YAML loading-phase compaction config. Mapped to runtime
     /// `CompactionSettings` (in `agent::compaction::settings`)
     /// via `From<CompactionConfig>`.
     pub compaction: Option<CompactionConfig>,
 
-    #[cfg(feature = "infra-skills")]
     pub skills: Option<Vec<SkillConfig>>,
-    #[cfg(feature = "infra-skills")]
     pub mcp_servers: Option<Vec<McpServerConfig>>,
 
-    #[cfg(feature = "ui-review")]
     pub review: Option<ReviewConfig>,
 }
 
@@ -193,7 +188,6 @@ impl AppConfig {
             ModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
                 .or_else(|_| std::env::var("ANTHROPIC_KEY"))
                 .map_err(|_| "ANTHROPIC_API_KEY environment variable is not set".to_string())?,
-            #[cfg(feature = "dev-fake-provider")]
             ModelKind::Fake => String::new(),
         };
 
@@ -372,8 +366,6 @@ pub struct SecurityConfig {
     pub filesystem: FilesystemSecurityConfig,
     pub network: NetworkSecurityConfig,
     pub resource_limits: ResourceLimits,
-    /// Only present when `infra-sandbox` feature is enabled.
-    #[cfg(feature = "infra-sandbox")]
     pub sandbox: Option<SandboxConfig>,
 }
 
@@ -460,7 +452,6 @@ fn default_max_disk() -> u64 {
     1024
 }
 
-#[cfg(feature = "infra-sandbox")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct SandboxConfig {
@@ -483,16 +474,16 @@ pub struct SandboxConfig {
     pub process: SandboxProcessConfig,
 }
 
-#[cfg(feature = "infra-sandbox")]
 fn default_sandbox_backend() -> SandboxBackend {
     SandboxBackend::Fallback
 }
 
-#[cfg(feature = "infra-sandbox")]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum SandboxBackend {
     /// Pure application-level pattern matching (default).
+    #[default]
     Fallback,
     /// Linux Landlock LSM (requires kernel >=5.13).
     Landlock,
@@ -500,14 +491,6 @@ pub enum SandboxBackend {
     MacOs,
 }
 
-#[cfg(feature = "infra-sandbox")]
-impl Default for SandboxBackend {
-    fn default() -> Self {
-        Self::Fallback
-    }
-}
-
-#[cfg(feature = "infra-sandbox")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct SandboxFilesystemConfig {
@@ -523,7 +506,6 @@ pub struct SandboxFilesystemConfig {
     pub write_denied: Vec<String>,
 }
 
-#[cfg(feature = "infra-sandbox")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct SandboxNetworkConfig {
@@ -535,7 +517,6 @@ pub struct SandboxNetworkConfig {
     pub denied_domains: Vec<String>,
 }
 
-#[cfg(feature = "infra-sandbox")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct SandboxProcessConfig {
@@ -706,10 +687,9 @@ fn default_max_dir_entries() -> u32 {
 }
 
 // ---------------------------------------------------------------------------
-// Feature-gated: infra-session
+// Session & Compaction
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "infra-session")]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SessionConfig {
     #[serde(default)]
@@ -719,7 +699,6 @@ pub struct SessionConfig {
     pub storage: SessionStorageConfig,
 }
 
-#[cfg(feature = "infra-session")]
 impl Default for SessionConfig {
     fn default() -> Self {
         Self {
@@ -730,12 +709,10 @@ impl Default for SessionConfig {
     }
 }
 
-#[cfg(feature = "infra-session")]
 fn default_max_snapshots() -> u16 {
     50
 }
 
-#[cfg(feature = "infra-session")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct SessionStorageConfig {
@@ -745,12 +722,10 @@ pub struct SessionStorageConfig {
     pub path: Option<String>,
 }
 
-#[cfg(feature = "infra-session")]
 fn default_storage_backend() -> String {
     "file".into()
 }
 
-#[cfg(feature = "infra-session")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 /// Compaction configuration from YAML — load-time representation.
@@ -764,10 +739,9 @@ pub struct CompactionConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Feature-gated: infra-skills
+// Skills & MCP
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "infra-skills")]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct SkillConfig {
@@ -782,7 +756,6 @@ pub struct SkillConfig {
     pub allowed_tools: Option<Vec<String>>,
 }
 
-#[cfg(feature = "infra-skills")]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct McpServerConfig {
     pub name: String,
@@ -803,7 +776,6 @@ pub struct McpServerConfig {
     pub env: Option<HashMap<String, String>>,
 }
 
-#[cfg(feature = "infra-skills")]
 impl Default for McpServerConfig {
     fn default() -> Self {
         Self {
@@ -817,12 +789,10 @@ impl Default for McpServerConfig {
     }
 }
 
-#[cfg(feature = "infra-skills")]
 fn default_mcp_transport() -> McpTransportKind {
     McpTransportKind::Stdio
 }
 
-#[cfg(feature = "infra-skills")]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum McpTransportKind {
@@ -831,10 +801,9 @@ pub enum McpTransportKind {
 }
 
 // ---------------------------------------------------------------------------
-// Feature-gated: ui-review
+// Review
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "ui-review")]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReviewConfig {
     #[serde(default)]
@@ -845,7 +814,6 @@ pub struct ReviewConfig {
     pub backend: String,
 }
 
-#[cfg(feature = "ui-review")]
 impl Default for ReviewConfig {
     fn default() -> Self {
         Self {
@@ -856,12 +824,10 @@ impl Default for ReviewConfig {
     }
 }
 
-#[cfg(feature = "ui-review")]
 fn default_review_mode() -> String {
     "diff".into()
 }
 
-#[cfg(feature = "ui-review")]
 fn default_review_backend() -> String {
     "cli".into()
 }

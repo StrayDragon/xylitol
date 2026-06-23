@@ -10,12 +10,9 @@ use std::path::Path;
 pub fn get_current_branch(head_path: &Path) -> Option<String> {
     let content = std::fs::read_to_string(head_path).ok()?;
     let trimmed = content.trim();
-    if let Some(ref_name) = trimmed.strip_prefix("ref: refs/heads/") {
-        Some(ref_name.trim().to_string())
-    } else {
-        // Detached HEAD — contains a commit hash
-        None
-    }
+    trimmed
+        .strip_prefix("ref: refs/heads/")
+        .map(|ref_name| ref_name.trim().to_string())
 }
 
 #[cfg(test)]

@@ -1850,8 +1850,7 @@ fn _g_file_with_content_string(ws: &Workspace, path: String, content: String) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// ── Sandbox steps (infra-sandbox feature) ────────────────────
-#[cfg(feature = "infra-sandbox")]
+// ── Sandbox steps ────────────────────────────────────────────
 mod sandbox_bdd {
     use rstest_bdd_macros::{given, scenario, then, when};
     use std::sync::Arc;

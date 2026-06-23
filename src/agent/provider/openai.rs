@@ -235,7 +235,7 @@ fn parse_nonstream_response(
         };
         chunks.push(XyChunk::Done {
             finish_reason: reason,
-            usage: usage.clone(),
+            usage,
         });
     }
 
