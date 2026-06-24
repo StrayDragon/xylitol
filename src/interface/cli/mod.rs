@@ -24,6 +24,8 @@ pub enum Command {
         #[command(subcommand)]
         action: ResourcesAction,
     },
+    /// Interactive TUI mode (requires `ui-tui` feature).
+    Tui,
 }
 
 #[derive(Parser, Debug)]
@@ -52,16 +54,16 @@ pub struct CliArgs {
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = CliArgs::parse();
 
+    // ── Subcommands requiring model loading (handled below) ────────
+    let _is_tui_mode = matches!(args.command, Some(Command::Tui));
+
     // ── Subcommands: handled early, no model loading needed ─────────
-    match args.command {
-        Some(Command::Resources { action }) => {
-            let code = crate::interface::resources::run(action);
-            if code == std::process::ExitCode::FAILURE {
-                std::process::exit(1);
-            }
-            return Ok(());
+    if let Some(Command::Resources { action }) = args.command {
+        let code = crate::interface::resources::run(action);
+        if code == std::process::ExitCode::FAILURE {
+            std::process::exit(1);
         }
-        None => {}
+        return Ok(());
     }
 
     timing::reset_timings();
@@ -274,6 +276,20 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .session
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let mut agent_loop = AgentLoop::new(agent_session);
+
+    // ── Step 6: dispatch by mode ─────────────────────────────
+    #[cfg(feature = "ui-tui")]
+    if _is_tui_mode {
+        let model_name = agent_loop
+            .session()
+            .current_model()
+            .map(|m| m.display_name.clone())
+            .unwrap_or_else(|| "unknown".to_string());
+        crate::interface::tui::run_tui_engine(&mut agent_loop, "", &session_id, &model_name)
+            .await?;
+        timing::print_timings();
+        return Ok(());
+    }
 
     let prompt = args.prompt.unwrap_or_else(|| {
         use std::io::Read;

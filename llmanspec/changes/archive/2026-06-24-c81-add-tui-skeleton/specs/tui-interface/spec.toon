@@ -1,0 +1,25 @@
+kind: llman.sdd.delta
+ops[11]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r1,component-architecture,"System MUST implement a two-layer architecture: Layer A (state/) holds retained domain state (Transcript, Composer, FocusCtx) and does NOT depend on ratatui; Layer B (render/) projects Layer A into ratatui widgets every frame. No Component trait with is_dirty/mark_clean is required.",null,null,null
+  modify_requirement,r2,event-driven-ui,"System MUST consume AgentEvent stream via tokio::select! with three branches: agent_rx (transcript.apply), input_rx (keyboard dispatch), and frame_timer (throttled redraw). Dirty flag controls whether draw is scheduled, NOT what draws within a frame.",null,null,null
+  modify_requirement,r27,codex-parity-keymap,"System MUST implement a three-layer keyboard model: Layer 1 (input/decode.rs) normalizes crossterm Event to InputKey; Layer 2 (input/keymap.rs) maps (InputKey, FocusCtx, AgentState) to Option<Action> via table-driven lookup; Layer 3 (input/action.rs) applies Action to state. All three layers MUST be pure functions, testable without a real terminal.",null,null,null
+  modify_requirement,r24,initial-paint,"System MUST render the first TUI frame immediately after entering the alternate screen, before waiting for the first user input or tick event, so the user never sees a blank screen at startup.",null,null,null
+  modify_requirement,r25,full-frame-render,"System MUST render all visible TUI components on every Terminal::draw frame; dirty flags MUST only control whether a draw is scheduled, not whether individual components render within a frame.",null,null,null
+  add_requirement,r41,state-ratatui-independence,"state/ layer (Transcript, Composer, FocusCtx) MUST NOT depend on ratatui or crossterm. It MUST be a pure Rust domain layer that only depends on crate::core and crate::agent::loop::AgentEvent.",null,null,null
+  add_requirement,r42,keymap-testability,"input/keymap.rs MUST be a pure function that maps (InputKey, FocusCtx, &AgentState) to Option<Action>. It MUST be unit-testable by feeding (InputKey, FocusCtx, AgentState) tuples and asserting expected Action, without a real terminal.",null,null,null
+  add_requirement,r43,composer-tab-semantics,"Composer MUST implement Codex-style Tab semantics: when agent is running and user presses Tab, the current draft is queued (not submitted); when agent is idle and draft does NOT start with bang, Tab submits; when agent is idle and draft starts with bang, Tab does NOT submit. These rules MUST be expressed in input/keymap.rs as pure function mappings.",null,null,null
+  add_requirement,r44,composer-esc-semantics,"Composer MUST implement Codex-style Esc semantics: Esc with non-empty draft clears the draft; Esc with empty draft primes backtrack; Esc+Esc with empty draft loads the last user message into the composer.",null,null,null
+  add_requirement,r45,p0-text-only,"In P0 the transcript MUST render message text as plain ratatui Paragraph with no markdown parsing and no syntax highlighting. Markdown rendering is deferred to a later change.",null,null,null
+  add_requirement,r46,text-selection,"System MUST support mouse-driven text selection in the transcript area. Selection range is tracked as start and end coordinates. On selection end, selected text MUST be copied to the system clipboard via OSC 52 escape sequence with a fallback to xclip/pbcopy/wl-copy external command.",null,null,null
+op_scenarios[11]{req_id,id,given,when,then}:
+  r1,happy,"","state/ module is compiled without ratatui dependency","cargo check --lib succeeds for state/ module code"
+  r2,happy,"","select! receives agent_rx event while input is idle","transcript is updated and dirty flag is set; next frame_tick triggers draw"
+  r27,tab-queue,"","agent is running and Tab is pressed","input/keymap.rs maps to Action::QueueInput; draft is queued"
+  r24,happy,"","TUI starts","first frame is drawn immediately showing composer and empty transcript"
+  r25,happy,"","no new events arrive for 1 second","frame_timer ticks but dirty=false so draw is skipped"
+  r41,pure-state,"","Transcript::apply() is called with AgentEvent","returned Transcript uses no ratatui types"
+  r42,happy,"","keymap resolver is called with known inputs","assert_eq!(resolve(InputKey::Enter, composer, idle_state), Some(Action::Submit))"
+  r43,happy,"","agent is running and Tab is pressed","draft is moved to queue; composer is cleared"
+  r44,happy,"","composer has draft text and Esc is pressed","composer becomes empty"
+  r45,happy,"","transcript receives TextDelta","text is rendered verbatim into Paragraph widget with no markdown parsing"
+  r46,happy,"","user drags mouse to select text in transcript","on mouse release, selected text is copied via OSC 52"
