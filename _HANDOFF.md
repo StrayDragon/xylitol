@@ -1,129 +1,139 @@
-# Handoff: c82-fix-tui-core 实现
+# Handoff: c84-refactor-tui-diff-engine 实现
 
 ## 现状
 
-c81 骨架已归档，旧 ratatui 路径（`render/` + `theme.rs` + `run_tui()`）已清理。
-当前活跃变更：**c82-fix-tui-core** — 修复 TUI 完全不可用的三个阻塞性 Bug。
+**方向已反转**:c83-migrate-tui-to-ratatui 被废弃删除(经用户确认,不进 not-planning)。
+当前活跃变更:**c84-refactor-tui-diff-engine** —— 保留并巩固 pi 式差分 ANSI 渲染引擎,
+拒绝 ratatui 现成组件 + alternate screen 方向,并修复 c82 遗留的"启动即调 agent"缺陷。
 
-**变更路径**：`llmanspec/changes/c82-fix-tui-core/`
-**实现前请阅读**：`proposal.md`、`design.md`、`tasks.md`
+**变更路径**:`llmanspec/changes/c84-refactor-tui-diff-engine/`
+**实现前请阅读**:`proposal.md`、`design.md`、`tasks.md`
 
----
+> 注:c84 的代码任务**已全部完成**(见下方"已完成"),strict 校验已过。
+> 本文档保留供后续验证 / 归档 / 接力时参考。
 
-## 必须修复的三个 Bug
+## 架构决策(为何选 pi 式而非 ratatui)
 
-### Bug 1：事件循环饥饿（P0 · 最严重）
+| 维度 | pi 式差分(保留) | ratatui(放弃) |
+|------|----------------|---------------|
+| 原生文本选择 | ✅ 终端原生 | ❌ alternate screen 接管 |
+| scrollback | ✅ 进正常历史 | ❌ 退出即清空 |
+| 渲染开销 | 行级 diff(仅写改动行) | 全帧 diff(ratatui Buffer) |
+| 参考 | `../pi/packages/tui/src/tui.ts:doRender()` | — |
 
-**症状**：键盘无响应，屏幕不刷新。整个 TUI 像死了一样。
+**结论**:`engine/`(diff.rs/renderer.rs/ansi.rs/composer_renderer.rs/
+transcript_renderer.rs)**完全不动**。只修事件循环里"启动即调 agent"这一处。
 
-**根因**：`src/interface/tui/mod.rs` 的 `run_tui_engine()` 事件循环中，
-agent 流结束后 `agent_stream.next()` 永远立即返回 `Poll::Ready(None)`。
-由于它是 `tokio::select!` 的**首个分支**，在多个分支同时就绪时优先选中它，
-导致 `input_stream` 和 `frame_interval` 永远不被轮询。
+## 已完成的代码改动
 
-代码中已预埋 FIXME 注释（第 67–76 行）：
+### 1. `src/interface/tui/mod.rs` —— 移除 premature agent 启动
 
+**旧行为**(c82 实现):
 ```rust
-// ══ FIXME(c82): agent_done flag to prevent select! starvation ══
-```
-
-**修复方案**：引入 `let mut agent_done = false`，流结束后替换为 `futures::future::pending().boxed()`：
-
-```rust
-let agent_fut: Pin<Box<dyn Future<Output = Option<AgentEvent>> + Send>> = if agent_done {
-    futures::future::pending().boxed()
-} else {
-    agent_stream.next().boxed()
-};
-
-tokio::select! {
-    event = agent_fut => { ... }
+pub(crate) async fn run_tui_engine(
+    agent_loop: &mut AgentLoop,
+    prompt: &str,                  // ← cli 传 ""
+    ...
+) -> ... {
+    // ❌ 启动即调 agent,触发一次空 prompt 的模型 API 调用
+    let mut agent_stream = agent_loop.run(prompt, session_id).await;
+    let mut agent_done = false;    // c82 的饥饿修复标志
     ...
 }
 ```
 
-需要引入 `use std::pin::Pin;` 和 `use futures::Future;`。
-
----
-
-### Bug 2：用户消息不显示（P0）
-
-**症状**：用户输入文字并回车提交后，转录区看不到自己的消息。
-
-**根因**：`src/interface/tui/state/transcript.rs` 中 `MessageStart { role: "user" }`
-分支什么也不做（仅注释 `// Will be populated by TextDelta`），而 `TextDelta`
-处理只在 `streaming_idx.is_some()` 或最后一个条目是 Assistant 时才追加。
-
-**修复**：在 `"user"` 分支中创建 `TranscriptEntry::User { text: String::new() }`
-并设置 `streaming_idx`：
-
+**新行为**(c84):
 ```rust
-"user" => {
-    let idx = self.entries.len();
-    self.entries.push(TranscriptEntry::User { text: String::new() });
-    self.streaming_idx = Some(idx);
+pub(crate) async fn run_tui_engine(
+    agent_loop: &mut AgentLoop,
+    session_id: &str,              // ← 去掉 prompt
+    ...
+) -> ... {
+    let mut agent_stream: Option<AgentEventStream> = None;  // ← None,不调 run
+    let mut pending_prompt: Option<String> = None;
+    loop {
+        // 懒触发:有 pending 才创建/重建 stream
+        if let Some(next_prompt) = pending_prompt.take() {
+            agent_stream = Some(agent_loop.run(&next_prompt, session_id).await);
+        }
+        // None 时 pending(),复用 c82 的饥饿修复(用 Option 表达,等价于旧 agent_done)
+        let agent_fut = match agent_stream.as_mut() {
+            Some(s) => s.next().boxed(),
+            None => futures::future::pending::<Option<AgentEvent>>().boxed(),
+        };
+        ...
+        // 流结束时: agent_stream = None; (而非 agent_done = true)
+    }
 }
 ```
 
----
-
-### Bug 3：无渐进滚动显示（P0）
-
-**症状**：transcript 内容被简单截断到视口高度，新消息写在视口之外，用户看不到。
-
-**根因**：`engine/mod.rs` 的 `compose_layout()` 中：
+### 2. `src/interface/cli/mod.rs` —— 调用点去 prompt
 
 ```rust
-lines.truncate(transcript_h as usize);
+// 旧: run_tui_engine(&mut agent_loop, "", &session_id, &model_name)
+// 新:
+crate::interface::tui::run_tui_engine(&mut agent_loop, &session_id, &model_name)
 ```
 
-没有偏移量，新内容超出视口即被丢弃。
+### 验证结果
 
-**修复方案**（详见 `design.md`）：
-1. `state/transcript.rs` 新增 `scroll_offset: usize` + 方法
-2. `engine/transcript_renderer.rs` 从 `entries.len() - scroll_offset` 开始取行
-3. `input/action.rs` 新增 `Action::ScrollUp` / `ScrollDown`
-4. `input/keymap.rs` 新增 PgUp/PgDn、Up/Down 绑定
+| 检查 | 结果 |
+|------|------|
+| `cargo build --features ui-tui` | ✅ |
+| TUI 单测(c82 的 112 条) | ✅ 全过,零修改 |
+| BDD 回归(82 条) | ✅ 全过 |
+| `just fmt && just lint && just test`(632 测试) | ✅ |
+| r48 结构性验证(strace:无 TTY 启动无 `connect`) | ✅ 无 API 调用 |
+| `llman sdd validate c84 ... --strict` | ✅ |
 
----
+## 已知遗留(future.md 候选,不在 c84 做)
 
-## 次要修复
+1. **composer 的 `ratatui-textarea`**:c82 用它做输入控件,与"裸终端"理念有张力。
+   自实现 pi 式 editor(`editor.ts`+`undo-stack.ts`+`kill-ring.ts`+`word-navigation.ts`)
+   是独立大工程,留 future。注意 spec r41 要求 `state/` 不依赖 ratatui —— composer 用
+   textarea 是已知妥协。
+2. **清理 `Cargo.toml` 的 ratatui 依赖**:差分渲染路径已不需要 ratatui,但 textarea
+   还在用,等(1)完成后可彻底移除。
+3. **改进 `compose_layout()` 行裁剪**:transcript 行超出视口时仍是简单 truncate,
+   可做更精细的 viewport 偏移(非阻塞优化)。
 
-### 状态栏模型名
+## 配置 bug(独立问题,与 c84 无关)
 
-`src/interface/cli/mod.rs` 当前调用 `run_tui_engine(&mut agent_loop, "", &session_id)`。
-应获取模型名并传递，composer 状态栏硬编码的 `"xylitol TUI"` 需替换。
+用户报告"似乎没用 .xylitol 配置,默认还是 gpt5.4"。已定位:
+- **主因**:`<project>/.xylitol/config.local.yaml` 顶层 key 写成 `model:`(单数),
+  但代码是 `#[serde(rename = "models")]`(复数),导致 `qwen` 条目被静默丢弃,
+  回退到环境变量兜底 `default_model_id_for_provider("openai") = "gpt-5.4"`。
+- **次因**:`registry.rs:90` 的兜底默认值本身是错误占位符(`gpt-5.4`/
+  `claude-opus-4-8` 都不存在)。
+- **隐患**:本地无鉴权 provider(`http://tufa:50256/v1`)不应强制要 OPENAI_API_KEY。
 
----
+建议另开变更(如 `c85-fix-config-model-loading`)处理,**不在 c84 混做**。
 
 ## 代码入口
 
 | 文件 | 用途 |
 |------|------|
-| `src/interface/tui/mod.rs` | 事件循环（主修复点） |
-| `src/interface/tui/state/transcript.rs` | JSON 状态机（用户消息 + 滚动） |
-| `src/interface/tui/engine/mod.rs` | 布局组合 |
-| `src/interface/tui/engine/transcript_renderer.rs` | 转录 ANSI 渲染 |
-| `src/interface/tui/engine/composer_renderer.rs` | 输入区 ANSI 渲染 |
-| `src/interface/tui/input/action.rs` | Action 枚举 |
-| `src/interface/tui/input/keymap.rs` | 按键映射 |
-| `src/interface/cli/mod.rs` | CLI 入口（传模型名） |
+| `src/interface/tui/mod.rs` | 事件循环(已改) |
+| `src/interface/cli/mod.rs` | CLI 入口(已改调用点) |
+| `src/interface/tui/engine/*` | 差分渲染(不动) |
+| `src/interface/tui/state/*` | 纯状态层(不动) |
+| `src/interface/tui/input/*` | 纯输入层(不动) |
 
 ## 验证
 
 ```bash
-# 编译
 cargo build --features ui-tui
-
-# 手动测试（需要 API key）
+cargo test --features ui-tui --lib -- interface::tui    # 112 条
+cargo test --test bdd -- --test-threads=1               # 82 条
+# 无 TTY 下启动应立即报错退出,无 API 调用:
+./target/debug/xylitol tui </dev/null
+# 交互式(需真终端 + API key):
 cargo run --features ui-tui -- tui
-
-# 单元测试
-cargo test --lib --features ui-tui -- tui
 ```
 
-成功标准：
-1. 键入字符后立即显示在 composer 中 ⬅️ 目前完全不显示
-2. 回车提交后，用户消息出现在转录区，助手回复紧跟其后
-3. 转录区可以 PgUp/PgDn 滚动浏览历史
-4. Ctrl+C/D 正常退出
+成功标准:
+1. 启动后看到 composer + 空 transcript(首帧即绘)
+2. **启动瞬间无任何网络请求 / agent 活动**(r48)
+3. 键入回车提交后,用户消息出现,agent 响应紧跟
+4. Ctrl+D 退出,终端恢复光标,scrollback 中可见本次 TUI 输出
+5. 鼠标可原生选择文本(r47)
