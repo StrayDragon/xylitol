@@ -34,6 +34,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "opens the system browser; run manually with -- --ignored"]
     fn test_open_browser_invalid_url_no_panic() {
         // Should not panic — may fail on CI without a browser
         let _ = open_browser("https://example.com");
