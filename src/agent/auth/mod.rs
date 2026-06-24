@@ -1,10 +1,8 @@
-//! Authentication and authorization — guidance messages and credential storage.
+//! Authentication and authorization — guidance messages for model configuration.
 //!
-//! Provides user-facing guidance for model/auth configuration and
-//! OAuth credential persistence.
+//! Provides user-facing guidance for API-key-based model configuration.
+//! OAuth-based login is not supported until after 1.0.0.
 
 mod guidance;
-mod storage;
 
 pub use guidance::*;
-pub use storage::*;
