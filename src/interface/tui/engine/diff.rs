@@ -54,7 +54,7 @@ pub(crate) fn compute_diff(old: &[String], new: &[String]) -> DiffResult {
 pub(crate) fn build_diff_output(
     old: &[String],
     new: &[String],
-    cursor_row: u16,
+    _cursor_row: u16,
     _viewport_top: u16,
 ) -> Vec<u8> {
     let diff = compute_diff(old, new);
@@ -69,40 +69,27 @@ pub(crate) fn build_diff_output(
     // Begin synchronized output (avoid flicker)
     output.push_str(ansi::begin_sync());
 
-    let target_row = diff.first_changed as u16;
-
-    // Move cursor to the first changed line
-    if target_row != cursor_row {
-        if target_row > cursor_row {
-            output.push_str(&ansi::cursor_down(target_row - cursor_row));
-        } else if cursor_row > target_row {
-            output.push_str(&ansi::cursor_up(cursor_row - target_row));
-        }
-    }
-
-    // Write each changed line
+    // Write each changed line using ABSOLUTE cursor positioning (cursor_goto).
+    // We deliberately do NOT use relative cursor_up/down + \r\n here: relative
+    // positioning drifts when the hardware cursor and the assumed baseline
+    // (the old `cursor_row` argument) disagree, which produced ghosting where
+    // a new composer line was written over the wrong row and stale text from
+    // the previous frame lingered. Absolute positioning per row is robust to
+    // any prior cursor state — the same approach pi's doRender uses.
     for i in diff.first_changed..=diff.last_changed {
-        let line_idx = (i - diff.first_changed) as u16;
-        if line_idx > 0 {
-            output.push_str("\r\n");
-        }
+        // Terminal rows are 1-based in cursor_goto.
+        output.push_str(&ansi::cursor_goto((i as u16) + 1, 1));
         output.push_str(ansi::erase_line());
-
         if let Some(line) = new.get(i) {
             output.push_str(line);
         }
     }
 
-    // If content shrank, clear remaining lines
+    // If content shrank, clear the now-empty trailing lines absolutely too.
     if new.len() < old.len() {
-        let extra = old.len() - new.len();
-        for _ in 0..extra {
-            output.push_str("\r\n");
+        for i in new.len()..old.len() {
+            output.push_str(&ansi::cursor_goto((i as u16) + 1, 1));
             output.push_str(ansi::erase_line());
-        }
-        // Move cursor back
-        if extra > 0 {
-            output.push_str(&ansi::cursor_up(extra as u16));
         }
     }
 
@@ -180,5 +167,29 @@ mod tests {
         assert!(s.contains("world"));
         assert!(s.contains(ansi::begin_sync()));
         assert!(s.contains(ansi::end_sync()));
+    }
+
+    /// r5 no-leftover (regression): the diff writer MUST position each changed
+    /// line ABSOLUTELY (cursor_goto) so a stale/wrong `cursor_row` baseline
+    /// cannot move writes to the wrong row. The old relative-positioning
+    /// implementation drifted when the baseline disagreed with the real
+    /// hardware cursor, ghosting composer lines. Passing a deliberately wrong
+    /// cursor_row here must not affect WHERE lines are written.
+    #[test]
+    fn test_diff_ignores_stale_cursor_row_baseline() {
+        let old = vec!["keep".into(), "old composer".into()];
+        let new = vec!["keep".into(), "new composer".into()];
+        // Pass a wildly wrong cursor_row baseline (5 vs the changed row 1).
+        let out = build_diff_output(&old, &new, 5, 0);
+        let s = String::from_utf8(out).unwrap();
+        // Must address row 2 absolutely (cursor_goto uses 1-based rows).
+        assert!(
+            s.contains(&ansi::cursor_goto(2, 1)),
+            "changed line 1 must be written with absolute cursor_goto(2,1), \
+             regardless of the cursor_row baseline; got: {s:?}"
+        );
+        assert!(s.contains("new composer"));
+        // Must not contain any relative up/down movement sequences.
+        assert!(!s.contains("\u{1b}[5A") && !s.contains("\u{1b}[5B"));
     }
 }

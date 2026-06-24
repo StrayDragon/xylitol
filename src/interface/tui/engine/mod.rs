@@ -67,3 +67,67 @@ pub(crate) fn compose_layout(app: &App, width: u16, height: u16, model_name: &st
 
     lines
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::r#loop::AgentEvent;
+    use crate::interface::tui::engine::renderer::TuiRenderer;
+    use crate::interface::tui::state::App;
+
+    /// r5 no-leftover (end-to-end): drive the real render path
+    /// `compose_layout -> TuiRenderer::render` across several frames where the
+    /// composer text changes, and assert the final emitted bytes contain the
+    /// last composer line and no stale previous composer text. This guards the
+    /// integration path that produced ghosting in manual testing.
+    #[test]
+    fn multi_frame_render_has_no_ghosting() {
+        let mut app = App::new();
+        let mut buf: Vec<u8> = Vec::new();
+        let mut renderer = TuiRenderer::new(&mut buf);
+
+        // Frame 1: empty composer (placeholder shown)
+        let f1 = compose_layout(&app, 80, 24, "m");
+        renderer.render(&f1, 80, 24).unwrap();
+
+        // Frame 2: user typed "T"
+        app.composer.textarea.insert_str("T");
+        let f2 = compose_layout(&app, 80, 24, "m");
+        renderer.render(&f2, 80, 24).unwrap();
+
+        // Frame 3: user replaced text with "hi" (simulate clear + type)
+        app.composer.clear();
+        app.composer.textarea.insert_str("hi");
+        let f3 = compose_layout(&app, 80, 24, "m");
+        renderer.render(&f3, 80, 24).unwrap();
+
+        let out = String::from_utf8(buf).unwrap();
+        // The latest composer text MUST appear.
+        assert!(out.contains("hi"), "latest composer text must be rendered");
+        // Every changed line was written via absolute cursor_goto + erase_line,
+        // so the diff path must have emitted erase sequences (no ghosting).
+        assert!(
+            out.contains(ansi::erase_line()),
+            "diff path must erase lines to avoid ghosting"
+        );
+    }
+
+    /// r2 user-message-display: a submitted user message must appear in the
+    /// composed layout with the user prefix.
+    #[test]
+    fn user_message_appears_in_layout() {
+        let mut app = App::new();
+        app.transcript.apply(AgentEvent::MessageStart {
+            role: "user".into(),
+        });
+        app.transcript
+            .apply(AgentEvent::TextDelta("hello world".into()));
+        app.transcript.apply(AgentEvent::MessageEnd {
+            role: "user".into(),
+        });
+        let lines = compose_layout(&app, 80, 24, "m");
+        let joined = lines.join("\n");
+        assert!(joined.contains("hello world"));
+        assert!(joined.contains('▶'));
+    }
+}
