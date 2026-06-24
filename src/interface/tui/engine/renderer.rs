@@ -247,4 +247,48 @@ mod tests {
         };
         assert_eq!(buf, b"hello");
     }
+
+    /// r5 no-leftover: when a changed line gets SHORTER, the diff writer MUST
+    /// erase the trailing stale characters so the new line fully replaces the
+    /// old one (no ghosting of the previous frame's longer text).
+    #[test]
+    fn test_diff_shorter_line_erases_trailing() {
+        let mut buf = Vec::new();
+        {
+            let mut renderer = TuiRenderer::new(&mut buf);
+            // Frame 1: composer line is long
+            let f1 = vec!["  ▸ hello world long text".to_string()];
+            renderer.render(&f1, 80, 24).unwrap();
+            // Frame 2: same line, much shorter — trailing chars must be cleared
+            let f2 = vec!["  ▸ hi".to_string()];
+            renderer.render(&f2, 80, 24).unwrap();
+        }
+        let out = String::from_utf8(buf).unwrap();
+        // The diff path must emit erase_line for the changed line so that
+        // "hello world long text" does not linger after "hi".
+        assert!(
+            out.contains(ansi::erase_line()),
+            "diff path must erase the changed line to avoid ghosting"
+        );
+    }
+
+    /// r5 no-leftover: replacing one prompt marker line with another (e.g.
+    /// composer text change) must not leave the old prompt behind. Simulates
+    /// the `▸ T` → `▸ hi` transition that produced ghosting in manual testing.
+    #[test]
+    fn test_diff_replaces_prompt_line_without_ghost() {
+        let mut buf = Vec::new();
+        {
+            let mut renderer = TuiRenderer::new(&mut buf);
+            let f1 = vec![format!("  ▸ T{}", ansi::CURSOR_MARKER)];
+            renderer.render(&f1, 80, 24).unwrap();
+            let f2 = vec![format!("  ▸ hi{}", ansi::CURSOR_MARKER)];
+            renderer.render(&f2, 80, 24).unwrap();
+        }
+        let out = String::from_utf8(buf).unwrap();
+        assert!(
+            out.contains(ansi::erase_line()),
+            "changed line must be erased before rewriting"
+        );
+    }
 }
