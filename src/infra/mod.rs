@@ -2,6 +2,7 @@ pub mod config;
 pub mod constants;
 pub mod event;
 pub mod hooks;
+pub mod mcp;
 pub mod process;
 pub mod source_info;
 pub mod timing;
