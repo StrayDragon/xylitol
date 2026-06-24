@@ -2,7 +2,7 @@
 //!
 //! Provides:
 //! - ProviderConfig registration with priority ordering
-//! - API key / OAuth auth availability checks
+//! - API key auth availability checks
 //! - Available model listing sorted by provider priority
 //! - Default model ID per provider
 //! - Header resolution via ConfigValueResolver
@@ -16,14 +16,16 @@ use crate::core::types::ModelMeta;
 // ── Provider Config ─────────────────────────────────────────────────
 
 /// Configuration for a model provider.
+///
+/// Only `openai`-compatible and `anthropic` providers are supported
+/// until after 1.0.0.
 #[derive(Debug, Clone)]
 pub struct ProviderConfig {
     pub name: String,
     pub api_key: Option<String>,
     pub base_url: Option<String>,
     pub priority: u32,
-    pub is_oauth: bool,
-    /// Provider compatibility mode (openai-compatible / anthropic-messages / openai-responses).
+    /// Provider compatibility mode (openai-compatible / anthropic-messages).
     pub api: Option<ProviderApi>,
     /// Additional HTTP headers for this provider.
     pub headers: Option<std::collections::HashMap<String, String>>,
@@ -34,7 +36,6 @@ pub struct ProviderConfig {
 pub enum ProviderApi {
     OpenAiCompatible,
     AnthropicMessages,
-    OpenAiResponses,
 }
 
 impl ProviderConfig {
@@ -44,7 +45,6 @@ impl ProviderConfig {
             api_key,
             base_url: None,
             priority: 10,
-            is_oauth: false,
             api: Some(ProviderApi::OpenAiCompatible),
             headers: None,
         }
@@ -56,13 +56,13 @@ impl ProviderConfig {
             api_key,
             base_url: None,
             priority: 20,
-            is_oauth: false,
             api: Some(ProviderApi::AnthropicMessages),
             headers: None,
         }
     }
 
     /// Create a custom provider config (user-defined provider like LM Studio, Ollama).
+    /// Custom providers default to OpenAI-compatible API.
     pub fn custom(
         name: &str,
         api: ProviderApi,
@@ -74,59 +74,20 @@ impl ProviderConfig {
             api_key,
             base_url: Some(base_url.into()),
             priority: 30,
-            is_oauth: false,
             api: Some(api),
             headers: None,
         }
     }
 
     pub fn has_credentials(&self) -> bool {
-        self.is_oauth || self.api_key.is_some()
+        self.api_key.is_some()
     }
 }
 
 // ── Default Model IDs ───────────────────────────────────────────────
 
-const DEFAULT_MODEL_PER_PROVIDER: &[(&str, &str)] = &[
-    ("openai", "gpt-5.4"),
-    ("anthropic", "claude-opus-4-8"),
-    ("amazon-bedrock", "us.anthropic.claude-opus-4-6-v1"),
-    ("ant-ling", "Ring-2.6-1T"),
-    ("azure-openai-responses", "gpt-5.4"),
-    ("openai-codex", "gpt-5.5"),
-    ("nvidia", "nvidia/nemotron-3-super-120b-a12b"),
-    ("deepseek", "deepseek-v4-pro"),
-    ("google", "gemini-3.1-pro-preview"),
-    ("google-vertex", "gemini-3.1-pro-preview"),
-    ("github-copilot", "gpt-5.4"),
-    ("openrouter", "moonshotai/kimi-k2.6"),
-    ("vercel-ai-gateway", "zai/glm-5.1"),
-    ("xai", "grok-4.20-0309-reasoning"),
-    ("groq", "openai/gpt-oss-120b"),
-    ("cerebras", "zai-glm-4.7"),
-    ("zai", "glm-5.1"),
-    ("zai-coding-cn", "glm-5.1"),
-    ("mistral", "devstral-medium-latest"),
-    ("minimax", "MiniMax-M2.7"),
-    ("minimax-cn", "MiniMax-M2.7"),
-    ("moonshotai", "kimi-k2.6"),
-    ("moonshotai-cn", "kimi-k2.6"),
-    ("huggingface", "moonshotai/Kimi-K2.6"),
-    ("fireworks", "accounts/fireworks/models/kimi-k2p6"),
-    ("together", "moonshotai/Kimi-K2.6"),
-    ("opencode", "kimi-k2.6"),
-    ("opencode-go", "kimi-k2.6"),
-    ("kimi-coding", "kimi-for-coding"),
-    ("cloudflare-workers-ai", "@cf/moonshotai/kimi-k2.6"),
-    (
-        "cloudflare-ai-gateway",
-        "workers-ai/@cf/moonshotai/kimi-k2.6",
-    ),
-    ("xiaomi", "mimo-v2.5-pro"),
-    ("xiaomi-token-plan-cn", "mimo-v2.5-pro"),
-    ("xiaomi-token-plan-ams", "mimo-v2.5-pro"),
-    ("xiaomi-token-plan-sgp", "mimo-v2.5-pro"),
-];
+const DEFAULT_MODEL_PER_PROVIDER: &[(&str, &str)] =
+    &[("openai", "gpt-5.4"), ("anthropic", "claude-opus-4-8")];
 
 pub fn default_model_id_for_provider(provider_name: &str) -> Option<&'static str> {
     DEFAULT_MODEL_PER_PROVIDER
@@ -167,28 +128,21 @@ impl ModelRegistry {
         self.providers.get(name)
     }
 
-    /// Check if a provider has configured auth (API key or OAuth).
-    /// For API keys, this also resolves config values ($ENV, !cmd) to check actual availability.
+    /// Check if a provider has an API key configured (literal or config-value reference).
     pub fn has_configured_auth(&self, provider_name: &str) -> bool {
         self.providers
             .get(provider_name)
-            .map(|p| p.has_credentials())
-            .unwrap_or(false)
+            .is_some_and(|p| p.api_key.is_some())
     }
 
-    /// Check if a provider has actually resolved credentials at runtime.
-    /// Unlike `has_configured_auth` (which checks if a config value is present),
-    /// this resolves $ENV and !cmd values to verify the actual secret is available.
+    /// Check if a provider has a *resolvable* API key — one that can
+    /// actually be used at runtime (env var is set, shell command succeeds, etc.).
     pub fn has_resolved_auth(&self, provider_name: &str) -> bool {
         self.providers.get(provider_name).is_some_and(|p| {
-            if p.is_oauth {
-                return true;
-            }
-            if let Some(ref key) = p.api_key {
-                config_value::resolve_config_value(key, None).is_some()
-            } else {
-                false
-            }
+            p.api_key
+                .as_ref()
+                .and_then(|key| config_value::resolve_config_value(key, None))
+                .is_some()
         })
     }
 
@@ -275,7 +229,7 @@ impl ModelRegistry {
 
         Some(format!(
             "No API key configured for {provider_name}. \
-             Set {env_var} environment variable or use /login to configure.",
+             Set {env_var} environment variable.",
             env_var = env_var_for_provider(provider_name)
         ))
     }
@@ -287,7 +241,7 @@ impl ModelRegistry {
             if !provider.has_credentials() {
                 let env_var = env_var_for_provider(name);
                 diags.push(format!(
-                    "Warning: No API key configured for {name}. Set {env_var} or use /login."
+                    "Warning: No API key configured for {name}. Set {env_var}."
                 ));
             }
         }
@@ -363,7 +317,6 @@ mod tests {
                 api_key: None,
                 base_url: None,
                 priority: 20,
-                is_oauth: false,
                 api: Some(ProviderApi::AnthropicMessages),
                 headers: None,
             },
@@ -447,21 +400,25 @@ mod tests {
     }
 
     #[test]
-    fn test_has_configured_auth_oauth() {
+    fn test_has_configured_auth_config_value_present() {
         let mut reg = ModelRegistry::new();
         reg.register_provider(
             "openai",
-            ProviderConfig {
-                name: "openai".into(),
-                api_key: None,
-                base_url: None,
-                priority: 10,
-                is_oauth: true,
-                api: None,
-                headers: None,
-            },
+            ProviderConfig::openai(Some("$OPENAI_API_KEY".into())),
         );
+        // Config value is present (even though env var may not be set)
         assert!(reg.has_configured_auth("openai"));
+    }
+
+    #[test]
+    fn test_has_resolved_auth_checks_env_var() {
+        let mut reg = ModelRegistry::new();
+        reg.register_provider(
+            "openai",
+            ProviderConfig::openai(Some("$THIS_ENV_VAR_SHOULD_NOT_EXIST_XYZ".into())),
+        );
+        // Without the env var set, should be false
+        assert!(!reg.has_resolved_auth("openai"));
     }
 
     #[test]
@@ -480,10 +437,6 @@ mod tests {
         assert_eq!(
             default_model_id_for_provider("anthropic"),
             Some("claude-opus-4-8")
-        );
-        assert_eq!(
-            default_model_id_for_provider("deepseek"),
-            Some("deepseek-v4-pro")
         );
         assert_eq!(default_model_id_for_provider("unknown"), None);
     }

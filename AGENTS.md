@@ -36,6 +36,20 @@ Use `cargo test` or `just test` for the full suite. BDD scenarios are defined in
 
 History and hooks expect Conventional Commits, for example `feat(cli): ...`, `fix(agent): ...`, `refactor(config): ...`, `docs: ...`, or `chore: ...`. Before opening a PR, run `just qa`. PR descriptions should summarize behavior changes, list test coverage, link related issues or `llmanspec/changes/...` items, and include screenshots or terminal output for CLI/TUI-visible changes.
 
+## Provider Support Scope (Pre-1.0.0)
+
+Only two provider APIs are supported:
+- **OpenAI-compatible** (OpenAI Chat Completions format)
+- **Anthropic** (Anthropic Messages API)
+
+Other providers (Google, DeepSeek, NVIDIA, Groq, Mistral, OpenRouter, etc.), OAuth
+credential storage, and provider-specific attribution headers are **not supported
+until after 1.0.0**. Custom user-defined providers are accepted only if they
+speak OpenAI-compatible or Anthropic-compatible APIs.
+
+Code changes that add provider-specific logic for unsupported providers should
+be rejected during review.
+
 ## Agent-Specific Instructions
 
 For new feature iterations or refactors, do not add backwards-compatibility shims unless explicitly requested; update old call sites and formats to the new approach in one pass. Keep llman SDD artifacts synchronized when implementing planned changes.
