@@ -2,6 +2,8 @@
 
 #![allow(dead_code)]
 
+use super::constants::{ENV_OFFLINE, ENV_SKIP_VERSION_CHECK, HTTP_USER_AGENT, VERSION_CHECK_URL};
+
 /// Information about a new version.
 #[derive(Debug, Clone)]
 pub struct VersionInfo {
@@ -12,17 +14,16 @@ pub struct VersionInfo {
 
 /// Check for a newer version of the application.
 pub async fn check_for_new_version(current: &str) -> Option<VersionInfo> {
-    if std::env::var("PI_SKIP_VERSION_CHECK").is_ok() || std::env::var("PI_OFFLINE").is_ok() {
+    if std::env::var(ENV_SKIP_VERSION_CHECK).is_ok() || std::env::var(ENV_OFFLINE).is_ok() {
         return None;
     }
 
-    let url = "https://pi.dev/api/latest-version";
     let client = reqwest::Client::builder()
-        .user_agent("xylitol")
+        .user_agent(HTTP_USER_AGENT)
         .build()
         .ok()?;
 
-    let resp = client.get(url).send().await.ok()?;
+    let resp = client.get(VERSION_CHECK_URL).send().await.ok()?;
     let data: serde_json::Value = resp.json().await.ok()?;
 
     let version = data.get("version")?.as_str()?.to_string();
