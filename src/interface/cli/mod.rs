@@ -81,6 +81,12 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     timing::time("config.load");
 
+    // Track whether a config file was successfully loaded. Used later to detect
+    // the "config present but zero models loaded" case (likely a typo like
+    // `model:` instead of `models:`) and report it instead of silently falling
+    // back to environment-variable defaults.
+    let config_loaded = app_config.is_some();
+
     // ── Step 2: build ModelRegistry ──────────────────────────────
     let mut model_registry = ModelRegistry::new();
 
@@ -119,6 +125,19 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 thinking_levels: Vec::new(),
             });
         }
+    }
+
+    if config_loaded && model_registry.is_empty() {
+        // A config file was loaded but contributed zero models. The most common
+        // cause is a structural typo (e.g. `model:` instead of `models:`),
+        // which serde silently drops under `#[serde(default)]`). Warn loudly so
+        // the user knows their config did not apply; do not abort, since the
+        // environment-variable discovery below may still rescue the run.
+        eprintln!(
+            "Warning: config file present but loaded 0 models. \
+             A structural typo such as `model:` (singular) instead of `models:` \
+             (plural) is silently ignored. See configs/example.yaml."
+        );
     }
 
     // Fallback: env-var discovery if no models from config
@@ -194,15 +213,18 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     timing::time("session.restore");
 
     // ── Step 3: determine system prompt ──────────────────────────
-    let system_prompt = app_config
+    // Resolve the default profile once; it drives system_prompt, max_iterations,
+    // and the startup model (Step 5). Avoids resolving repeatedly below.
+    let resolved_profile = app_config
         .as_ref()
-        .and_then(|cfg| cfg.resolve_default_profile().ok())
-        .and_then(|p| p.system_prompt)
+        .and_then(|cfg| cfg.resolve_default_profile().ok());
+    let system_prompt = resolved_profile
+        .as_ref()
+        .and_then(|p| p.system_prompt.clone())
         .unwrap_or_else(|| "You are a helpful AI assistant.".into());
 
-    let max_iterations = app_config
+    let max_iterations = resolved_profile
         .as_ref()
-        .and_then(|cfg| cfg.resolve_default_profile().ok())
         .map(|p| p.max_iterations)
         .unwrap_or(50);
 
@@ -252,10 +274,18 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|e| e.into());
     }
 
-    // ── Step 5: select model ─────────────────────────────────────
-    if let Some(ref mid) = args.model {
+    // ── Step 5: select model ────────────────────────────────
+    // Priority: explicit `--model` flag > resolved default profile's model
+    // (agents.profiles.<default>.model > execution.model > models.default_model).
+    let target_model: Option<String> = args.model.clone().or_else(|| {
+        resolved_profile
+            .as_ref()
+            .map(|p| p.model_config.model.clone())
+    });
+
+    if let Some(mid) = target_model {
         let available: Vec<&ModelMeta> = agent_session.model_registry().list().iter().collect();
-        match resolver::resolve_model(mid, &available, None) {
+        match resolver::resolve_model(&mid, &available, None) {
             Ok(resolved) => {
                 if let Some(ref warning) = resolved.warning {
                     eprintln!("Warning: {warning}");

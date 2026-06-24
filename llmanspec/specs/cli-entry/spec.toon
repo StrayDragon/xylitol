@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "cli-entry"
 purpose: "TBD - created by archiving change c110-update-slash-commands. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[10]{req_id,title,statement}:
+requirements[12]{req_id,title,statement}:
   sc1,"info-fields",SlashCommandInfo MUST carry name description source and source_info fields.
   sc2,"source-enum",SlashCommandSource MUST be exactly one of extension prompt or skill.
   sc3,"builtin-table",System MUST provide the full builtin slash command table matching pi semantics including export compact tree fork and reload.
@@ -13,7 +13,9 @@ requirements[10]{req_id,title,statement}:
   rpc3,"event-streaming",RPC mode MUST subscribe to the AgentEvent stream and emit corresponding RpcEvent lines on stdout.
   rpc4,"signal-shutdown",RPC mode MUST handle SIGINT and SIGTERM with graceful abort and clean process exit.
   rpc5,"id-correlation",Each RPC command and its response MUST carry an optional id field for request correlation.
-scenarios[12]{req_id,id,given,when,then}:
+  ce1,"startup-model-resolution","On startup, if no --model flag is given, the CLI MUST select the model resolved from config via resolve_default_profile() (profile.model, then execution.model, then models.default_model). The resolved model MUST be applied via select_model before entering any agent execution."
+  ce2,"no-silent-fallback","When a config file is present but yields zero loadable models (e.g. wrong key like 'model:' instead of 'models:'), the CLI MUST emit a clear error pointing at the config instead of silently falling back to environment-variable defaults. Silent fall-through to placeholder defaults is forbidden."
+scenarios[14]{req_id,id,given,when,then}:
   sc1,fields,a command originates from a skill,the command is queried,source is skill and source_info is set
   sc2,"source-values",command sources are enumerated,the set is inspected,values are extension prompt or skill only
   sc3,"builtin-table",builtin commands are listed,the table is inspected,it includes export compact tree fork and reload
@@ -26,3 +28,5 @@ scenarios[12]{req_id,id,given,when,then}:
   rpc3,events,the agent streams text deltas,TextDelta events occur,jsonl event lines are emitted on stdout
   rpc4,sigint,a long running prompt is active,SIGINT is received,an abort is emitted and the process exits cleanly
   rpc5,id,a command with id 42 is sent,the response is produced,the response carries id 42
+  ce1,happy,"","the CLI starts without --model and config declares agents.profiles.default.model or models.default_model","the resolved model is selected automatically without requiring an explicit --model flag"
+  ce2,"typo-error","","config.yaml is present but its models map is empty due to a typo (model: vs models:)",the CLI errors out with a message referencing the config file rather than silently using a placeholder default

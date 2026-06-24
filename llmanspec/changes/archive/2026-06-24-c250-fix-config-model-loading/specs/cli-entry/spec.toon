@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ce1,"startup-model-resolution","On startup, if no --model flag is given, the CLI MUST select the model resolved from config via resolve_default_profile() (profile.model, then execution.model, then models.default_model). The resolved model MUST be applied via select_model before entering any agent execution.",null,null,null
+  add_requirement,ce2,"no-silent-fallback","When a config file is present but yields zero loadable models (e.g. wrong key like 'model:' instead of 'models:'), the CLI MUST emit a clear error pointing at the config instead of silently falling back to environment-variable defaults. Silent fall-through to placeholder defaults is forbidden.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ce1,happy,"","the CLI starts without --model and config declares agents.profiles.default.model or models.default_model","the resolved model is selected automatically without requiring an explicit --model flag"
+  ce2,"typo-error","","config.yaml is present but its models map is empty due to a typo (model: vs models:)",the CLI errors out with a message referencing the config file rather than silently using a placeholder default
