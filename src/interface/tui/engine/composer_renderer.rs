@@ -39,24 +39,25 @@ pub(crate) fn render_composer(
         let line = format!("  {prompt}{}{placeholder}", ansi::CURSOR_MARKER);
         lines.push(ansi::pad_to_width(&line, max_width));
     } else {
-        // Wrapped continuation lines use "    " prefix (6 total with "  ")
-        let content_width = max_width.saturating_sub(6);
-        let draft_lines: Vec<&str> = draft.lines().collect();
-        let last_idx = draft_lines.len().saturating_sub(1);
-        for (i, dl) in draft_lines.iter().enumerate() {
-            let is_last = i == last_idx;
-
-            let wrapped = ansi::wrap_text(dl, content_width);
-            for (wi, wl) in wrapped.iter().enumerate() {
-                let wprefix = if i == 0 && wi == 0 { &prompt } else { "    " };
-                let marker = if is_last && wi == wrapped.len() - 1 {
-                    ansi::CURSOR_MARKER
-                } else {
-                    ""
-                };
-                let line = format!("  {wprefix}{wl}{marker}");
-                lines.push(ansi::pad_to_width(&line, max_width));
-            }
+        // Composer is a single-line input area; render the draft verbatim so the
+        // user's typed whitespace (leading/trailing spaces, tabs) is preserved.
+        // We deliberately do NOT use `ansi::wrap_text` here: that function is a
+        // word-wrapper for transcript paragraphs and skips whitespace runs,
+        // which would swallow spaces/tabs the user typed one at a time. When the
+        // draft exceeds the available width, hard-truncate to the visible width
+        // instead of reflowing words.
+        // Prefix is "  " + prompt("▸ ") = up to 4 visible columns, plus the
+        // CURSOR_MARKER on the last line (zero visible width). Reserve the
+        // full 4-column prefix so the truncated content never overflows the row.
+        let content_width = max_width.saturating_sub(4) as usize;
+        let draft_line_count = draft.lines().count();
+        for (i, dl) in draft.lines().enumerate() {
+            let is_last = i + 1 == draft_line_count;
+            let truncated = ansi::truncate_visible(dl, content_width);
+            let wprefix = if i == 0 { &prompt } else { "    " };
+            let marker = if is_last { ansi::CURSOR_MARKER } else { "" };
+            let line = format!("  {wprefix}{truncated}{marker}");
+            lines.push(ansi::pad_to_width(&line, max_width));
         }
     }
 
@@ -135,6 +136,30 @@ mod tests {
             marker_pos < placeholder_pos,
             "cursor marker must come before the placeholder, got line: {}",
             ansi::strip_ansi(line)
+        );
+    }
+
+    /// Regression: typed whitespace (leading/trailing spaces) MUST be rendered
+    /// verbatim. The old `wrap_text`-based path skipped whitespace runs, so a
+    /// draft like "a " or "  " rendered as if the user had typed nothing.
+    #[test]
+    fn test_draft_whitespace_preserved() {
+        let mut c = Composer::new();
+        c.set_draft("a ");
+        let lines = visual_lines(&c, false);
+        let visible = ansi::strip_ansi(&lines[0]);
+        assert!(
+            visible.contains("a "),
+            "trailing space must be preserved, got: {visible:?}"
+        );
+
+        let mut c2 = Composer::new();
+        c2.set_draft("  ");
+        let lines2 = visual_lines(&c2, false);
+        let visible2 = ansi::strip_ansi(&lines2[0]);
+        assert!(
+            visible2.contains("  "),
+            "leading-only spaces must be preserved, got: {visible2:?}"
         );
     }
 
