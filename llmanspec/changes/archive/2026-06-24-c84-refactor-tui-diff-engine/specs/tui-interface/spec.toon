@@ -1,0 +1,19 @@
+kind: llman.sdd.delta
+ops[8]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r47,"no-alternate-screen","System MUST NOT use crossterm EnterAlternateScreen/LeaveAlternateScreen for TUI mode. It MUST operate in raw mode only (enable_raw_mode on start, disable_raw_mode on quit) so native terminal text selection and scrollback are preserved.",null,null,null
+  add_requirement,r48,"no-premature-agent","System MUST NOT call agent_loop.run() until the user submits their first message. On TUI startup, the agent stream MUST be None/pending until the first user input is submitted.",null,null,null
+  add_requirement,r49,"differential-rendering","System MUST render the TUI by producing Vec<String> of ANSI-styled lines from App state and writing only changed lines via a line-differential renderer. It MUST NOT use ratatui Terminal::draw; rendering goes directly to stdout wrapped in BeginSynchronizedUpdate/EndSynchronizedUpdate.",null,null,null
+  modify_requirement,r1,"component-architecture","System MUST implement a two-layer architecture: Layer A (state/) holds retained domain state (Transcript, Composer, FocusCtx) and does NOT depend on ratatui; Layer B (engine/) projects Layer A into Vec<String> of ANSI-styled lines and writes them via a line-differential renderer to stdout. No ratatui Terminal/Widget rendering is used.",null,null,null
+  modify_requirement,r24,"initial-paint","System MUST render the first TUI frame immediately after entering raw mode, before waiting for the first user input or tick event, so the user never sees a blank screen at startup.",null,null,null
+  modify_requirement,r25,"full-frame-render","System MUST render all visible TUI components on every draw; dirty flags MUST only control whether a draw is scheduled, not whether individual components render within a frame. Each draw produces a full Vec<String> layout that is diffed against the previous frame and written to stdout.",null,null,null
+  modify_requirement,r26,"quit-cleanup","System MUST exit interactive mode on Ctrl+D (or /quit) without hanging and MUST restore the terminal (disable raw mode, show cursor). It does NOT use an alternate screen.",null,null,null
+  modify_requirement,r45,"p0-text-only","In P0 the transcript MUST render message text as plain ANSI-styled lines with no markdown parsing and no syntax highlighting. Markdown rendering is deferred to a later change.",null,null,null
+op_scenarios[8]{req_id,id,given,when,then}:
+  r47,happy,"",TUI starts and stops,enable_raw_mode/disable_raw_mode are called but EnterAlternateScreen/LeaveAlternateScreen are never emitted
+  r48,"no-call","",TUI starts,no agent_loop.run() call is made; the agent stream is None/pending until the user submits a message
+  r49,happy,"",a frame is drawn,Vec<String> lines are produced and only changed lines are written to stdout inside BeginSynchronizedUpdate/EndSynchronizedUpdate
+  r1,happy,"",the render layer is compiled,engine/ produces Vec<String> and does not import ratatui Terminal or widgets
+  r24,happy,"",TUI starts,"the first frame is drawn immediately after enable_raw_mode, before any user input"
+  r25,happy,"",dirty is true and the frame timer ticks,a full Vec<String> layout is generated and diffed against the previous frame before being written
+  r26,happy,"",user quits the TUI,raw mode is disabled and the cursor is shown; no alternate screen was used
+  r45,happy,"",transcript receives TextDelta,"text is rendered verbatim into ANSI-styled lines with no markdown parsing"
