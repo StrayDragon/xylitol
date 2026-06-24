@@ -285,8 +285,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .current_model()
             .map(|m| m.display_name.clone())
             .unwrap_or_else(|| "unknown".to_string());
-        crate::interface::tui::run_tui_engine(&mut agent_loop, "", &session_id, &model_name)
-            .await?;
+        crate::interface::tui::run_tui_engine(&mut agent_loop, &session_id, &model_name).await?;
         timing::print_timings();
         return Ok(());
     }

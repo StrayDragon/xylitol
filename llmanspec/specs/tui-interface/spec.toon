@@ -2,8 +2,8 @@ kind: llman.sdd.spec
 name: "tui-interface"
 purpose: "TBD - created by archiving change c80-add-tui. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[46]{req_id,title,statement}:
-  r1,"component-architecture","System MUST implement a two-layer architecture: Layer A (state/) holds retained domain state (Transcript, Composer, FocusCtx) and does NOT depend on ratatui; Layer B (render/) projects Layer A into ratatui widgets every frame. No Component trait with is_dirty/mark_clean is required."
+requirements[49]{req_id,title,statement}:
+  r1,"component-architecture","System MUST implement a two-layer architecture: Layer A (state/) holds retained domain state (Transcript, Composer, FocusCtx) and does NOT depend on ratatui; Layer B (engine/) projects Layer A into Vec<String> of ANSI-styled lines and writes them via a line-differential renderer to stdout. No ratatui Terminal/Widget rendering is used."
   r2,"event-driven-ui","System MUST consume AgentEvent stream via tokio::select! with three branches: agent_rx (transcript.apply), input_rx (keyboard dispatch), and frame_timer (throttled redraw). Dirty flag controls whether draw is scheduled, NOT what draws within a frame."
   r3,"markdown-rendering","System MUST render markdown via pulldown-cmark (CommonMark spec) with syntect syntax highlighting for code blocks."
   r4,"multi-line-input","System SHALL provide multi-line text input via tui-textarea with Shift+Enter for newline, Enter to submit, and readline keybindings (Ctrl+K/U/W/A/E)."
@@ -26,9 +26,9 @@ requirements[46]{req_id,title,statement}:
   r21,"tool-call-cards","System SHALL render tool calls as collapsible cards with status badge (running/success/failed), argument preview, and Enter to expand."
   r22,"thinking-blocks","System SHALL detect and render agent reasoning as collapsible dim-styled blocks, collapsed by default with Enter to expand."
   r23,"approval-with-diff","System SHALL show the diff of proposed tool changes inline within the approval overlay for edit-type tools."
-  r24,"initial-paint","System MUST render the first TUI frame immediately after entering the alternate screen, before waiting for the first user input or tick event, so the user never sees a blank screen at startup."
-  r25,"full-frame-render","System MUST render all visible TUI components on every Terminal::draw frame; dirty flags MUST only control whether a draw is scheduled, not whether individual components render within a frame."
-  r26,"quit-cleanup","System MUST exit interactive mode on Ctrl+D (or /quit) without hanging and MUST restore the terminal (leave alternate screen, disable raw mode, show cursor)."
+  r24,"initial-paint","System MUST render the first TUI frame immediately after entering raw mode, before waiting for the first user input or tick event, so the user never sees a blank screen at startup."
+  r25,"full-frame-render","System MUST render all visible TUI components on every draw; dirty flags MUST only control whether a draw is scheduled, not whether individual components render within a frame. Each draw produces a full Vec<String> layout that is diffed against the previous frame and written to stdout."
+  r26,"quit-cleanup","System MUST exit interactive mode on Ctrl+D (or /quit) without hanging and MUST restore the terminal (disable raw mode, show cursor). It does NOT use an alternate screen."
   r27,"codex-parity-keymap","System MUST implement a three-layer keyboard model: Layer 1 (input/decode.rs) normalizes crossterm Event to InputKey; Layer 2 (input/keymap.rs) maps (InputKey, FocusCtx, AgentState) to Option<Action> via table-driven lookup; Layer 3 (input/action.rs) applies Action to state. All three layers MUST be pure functions, testable without a real terminal."
   r28,"composer-tab-queue","System MUST implement Codex-style composer semantics where Tab queues the current draft while an agent task is running; when idle it behaves as submit except for bang-shell drafts."
   r29,"bang-shell-special-case","System MUST treat drafts starting with '!' as shell-mode drafts; when idle, Tab MUST NOT submit bang-shell drafts."
@@ -47,10 +47,13 @@ requirements[46]{req_id,title,statement}:
   r42,"keymap-testability","input/keymap.rs MUST be a pure function that maps (InputKey, FocusCtx, &AgentState) to Option<Action>. It MUST be unit-testable by feeding (InputKey, FocusCtx, AgentState) tuples and asserting expected Action, without a real terminal."
   r43,"composer-tab-semantics","Composer MUST implement Codex-style Tab semantics: when agent is running and user presses Tab, the current draft is queued (not submitted); when agent is idle and draft does NOT start with bang, Tab submits; when agent is idle and draft starts with bang, Tab does NOT submit. These rules MUST be expressed in input/keymap.rs as pure function mappings."
   r44,"composer-esc-semantics","Composer MUST implement Codex-style Esc semantics: Esc with non-empty draft clears the draft; Esc with empty draft primes backtrack; Esc+Esc with empty draft loads the last user message into the composer."
-  r45,"p0-text-only",In P0 the transcript MUST render message text as plain ratatui Paragraph with no markdown parsing and no syntax highlighting. Markdown rendering is deferred to a later change.
+  r45,"p0-text-only","In P0 the transcript MUST render message text as plain ANSI-styled lines with no markdown parsing and no syntax highlighting. Markdown rendering is deferred to a later change."
   r46,"text-selection","System MUST support mouse-driven text selection in the transcript area. Selection range is tracked as start and end coordinates. On selection end, selected text MUST be copied to the system clipboard via OSC 52 escape sequence with a fallback to xclip/pbcopy/wl-copy external command."
-scenarios[46]{req_id,id,given,when,then}:
-  r1,happy,"",state/ module is compiled without ratatui dependency,"cargo check --lib succeeds for state/ module code"
+  r47,"no-alternate-screen","System MUST NOT use crossterm EnterAlternateScreen/LeaveAlternateScreen for TUI mode. It MUST operate in raw mode only (enable_raw_mode on start, disable_raw_mode on quit) so native terminal text selection and scrollback are preserved."
+  r48,"no-premature-agent","System MUST NOT call agent_loop.run() until the user submits their first message. On TUI startup, the agent stream MUST be None/pending until the first user input is submitted."
+  r49,"differential-rendering","System MUST render the TUI by producing Vec<String> of ANSI-styled lines from App state and writing only changed lines via a line-differential renderer. It MUST NOT use ratatui Terminal::draw; rendering goes directly to stdout wrapped in BeginSynchronizedUpdate/EndSynchronizedUpdate."
+scenarios[49]{req_id,id,given,when,then}:
+  r1,happy,"",the render layer is compiled,engine/ produces Vec<String> and does not import ratatui Terminal or widgets
   r2,happy,"",select! receives agent_rx event while input is idle,transcript is updated and dirty flag is set; next frame_tick triggers draw
   r3,happy,"assistant message contains markdown with code blocks, lists, links","MarkdownRenderer::render() is called",output contains correctly styled ratatui Lines with syntax highlighting
   r4,happy,"user types multi-line text with Shift+Enter",text area grows vertically,"Enter submits full text, Ctrl+K deletes to end of line"
@@ -73,9 +76,9 @@ scenarios[46]{req_id,id,given,when,then}:
   r21,happy,agent starts a tool call during streaming,chat receives ToolCallStart event,"a collapsible card renders with a spinner; on ToolCallEnd, spinner changes to checkmark; Enter toggles details"
   r22,happy,assistant message contains thinking content delimited by markers,chat component detects the pattern,content renders as a collapsed dim block; Enter expands to full text
   r23,happy,a write/edit tool requires approval,ApprovalOverlay shows with diff preview,the diff of the file change is visible within the overlay before user decides
-  r24,happy,"",TUI starts,first frame is drawn immediately showing composer and empty transcript
-  r25,happy,"",no new events arrive for 1 second,frame_timer ticks but dirty=false so draw is skipped
-  r26,happy,user is in interactive mode,Ctrl+D is pressed,process exits cleanly and returns to shell prompt without requiring Ctrl+C
+  r24,happy,"",TUI starts,"the first frame is drawn immediately after enable_raw_mode, before any user input"
+  r25,happy,"",dirty is true and the frame timer ticks,a full Vec<String> layout is generated and diffed against the previous frame before being written
+  r26,happy,"",user quits the TUI,raw mode is disabled and the cursor is shown; no alternate screen was used
   r27,"tab-queue","",agent is running and Tab is pressed,"input/keymap.rs maps to Action::QueueInput; draft is queued"
   r28,happy,"",agent is running and user presses Tab,draft is queued (not submitted) and status bar queue length increments
   r29,happy,"",agent is idle and composer starts with '!',pressing Tab does not submit or clear the draft
@@ -94,5 +97,8 @@ scenarios[46]{req_id,id,given,when,then}:
   r42,happy,"",keymap resolver is called with known inputs,"assert_eq!(resolve(InputKey::Enter, composer, idle_state), Some(Action::Submit))"
   r43,happy,"",agent is running and Tab is pressed,draft is moved to queue; composer is cleared
   r44,happy,"",composer has draft text and Esc is pressed,composer becomes empty
-  r45,happy,"",transcript receives TextDelta,text is rendered verbatim into Paragraph widget with no markdown parsing
+  r45,happy,"",transcript receives TextDelta,"text is rendered verbatim into ANSI-styled lines with no markdown parsing"
   r46,happy,"",user drags mouse to select text in transcript,"on mouse release, selected text is copied via OSC 52"
+  r47,happy,"",TUI starts and stops,enable_raw_mode/disable_raw_mode are called but EnterAlternateScreen/LeaveAlternateScreen are never emitted
+  r48,"no-call","",TUI starts,no agent_loop.run() call is made; the agent stream is None/pending until the user submits a message
+  r49,happy,"",a frame is drawn,Vec<String> lines are produced and only changed lines are written to stdout inside BeginSynchronizedUpdate/EndSynchronizedUpdate

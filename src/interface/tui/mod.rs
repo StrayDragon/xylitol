@@ -15,7 +15,7 @@ pub(crate) mod state;
 use std::io::{self, Write};
 use std::time::Duration;
 
-use crate::agent::r#loop::{AgentEvent, AgentLoop};
+use crate::agent::r#loop::{AgentEvent, AgentEventStream, AgentLoop};
 use crate::interface::tui::engine::ansi;
 use crate::interface::tui::engine::renderer::TuiRenderer;
 use crate::interface::tui::input::action::Action;
@@ -32,9 +32,10 @@ use futures::{FutureExt, StreamExt};
 /// - Uses `TuiRenderer` instead of `Terminal<CrosstermBackend>`
 /// - Does NOT use alternate screen (native text selection works!)
 /// - Renders directly to stdout with diff-based updates
+/// - Does NOT call `agent_loop.run()` until the user submits their first
+///   message (see `no-premature-agent`).
 pub(crate) async fn run_tui_engine(
     agent_loop: &mut AgentLoop,
-    prompt: &str,
     session_id: &str,
     model_name: &str,
 ) -> Result<(), String> {
@@ -43,7 +44,13 @@ pub(crate) async fn run_tui_engine(
     let mut renderer = TuiRenderer::new(io::stdout());
 
     // ── Agent stream ────────────────────────────────────────────────
-    let mut agent_stream = agent_loop.run(prompt, session_id).await;
+    // `None` until the user submits their first message (`no-premature-agent`).
+    // Once a stream is exhausted it is reset to `None`, which makes the agent
+    // branch of `select!` pending — the same effect as c82's `agent_done`
+    // flag, preventing starvation when `next()` would otherwise keep yielding
+    // `Poll::Ready(None)`.
+    let mut agent_stream: Option<AgentEventStream> = None;
+    let mut pending_prompt: Option<String> = None;
 
     // ── Input channel ───────────────────────────────────────────────
     let mut input_stream = EventStream::new();
@@ -55,13 +62,6 @@ pub(crate) async fn run_tui_engine(
     let mut frame_interval = tokio::time::interval(Duration::from_millis(16));
     let mut dirty = true;
 
-    // Tracks last submitted prompt for restart scenarios
-    let mut pending_prompt: Option<String> = None;
-
-    // Whether the agent stream has been exhausted. Prevents select! starvation
-    // by replacing the agent future with pending() once done.
-    let mut agent_done = false;
-
     // Get terminal size
     let (mut width, mut height) = terminal_size();
 
@@ -70,20 +70,20 @@ pub(crate) async fn run_tui_engine(
 
     // ── Main event loop ─────────────────────────────────────────────
     loop {
-        // Check if we need to restart the agent
+        // Lazily (re)start the agent when a user-submitted prompt is pending.
+        // On startup `pending_prompt` is `None`, so no `agent_loop.run()` call
+        // is made until the first message is submitted.
         if let Some(next_prompt) = pending_prompt.take() {
-            agent_stream = agent_loop.run(&next_prompt, session_id).await;
-            agent_done = false;
+            agent_stream = Some(agent_loop.run(&next_prompt, session_id).await);
             dirty = true;
         }
 
-        // When agent stream is exhausted, use pending() so select! doesn't
-        // keep polling an always-ready None future, which would starve
-        // the input and frame timer branches.
-        let agent_fut = if agent_done {
-            futures::future::pending::<Option<AgentEvent>>().boxed()
-        } else {
-            agent_stream.next().boxed()
+        // When there is no active agent stream, use `pending()` so `select!`
+        // does not spin on an always-ready `Poll::Ready(None)` future, which
+        // would starve the input and frame timer branches (c82 Bug 1).
+        let agent_fut = match agent_stream.as_mut() {
+            Some(s) => s.next().boxed(),
+            None => futures::future::pending::<Option<AgentEvent>>().boxed(),
         };
 
         tokio::select! {
@@ -103,7 +103,9 @@ pub(crate) async fn run_tui_engine(
                         }
                     }
                     None => {
-                        agent_done = true;
+                        // Stream exhausted — drop it so the agent branch
+                        // becomes pending and does not starve the loop.
+                        agent_stream = None;
                         dirty = true;
                     }
                 }
