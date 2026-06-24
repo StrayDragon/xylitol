@@ -5,20 +5,21 @@ valid_scope[2]: src/,tests/
 requirements[8]{req_id,title,statement}:
   m1,"model-registry-providers","ModelRegistry MUST support register_provider(name, config) and has_configured_auth(model) / has_resolved_auth(model) for checking API key availability."
   m2,"model-discovery","ModelRegistry MUST support get_available() returning all configured models across registered providers, sorted by provider priority."
-  m3,"model-defaults","ModelRegistry MUST maintain default model IDs for openai and anthropic providers only. Other providers MUST NOT have default model entries pre-1.0.0."
+  m3,"model-defaults","ModelRegistry MUST maintain default model IDs for openai and anthropic providers only. Other providers MUST NOT have default model entries pre-1.0.0. The default model IDs MUST be valid, currently-shipping model identifiers (e.g. gpt-4o, claude-sonnet-4-20250514), never placeholder or non-existent model names."
   m4,"model-resolver","System MUST provide resolve_model(pattern, available) supporting provider/modelId canonical form, bare id matching, alias preference over dated versions, and thinking-level:model pattern parsing."
   m5,"scoped-models","AgentSession MUST support scoped_models (from CLI --models flag) for Ctrl+P model cycling, limiting available models to a user-specified subset with optional per-model thinking levels."
   m6,"model-fallback","ModelResolver MUST build a fallback Model when target model ID is not in the provider's available list, preserving user intent while falling back to a base model from same provider."
   m7,"auth-guidance","ModelRegistry MUST return user-facing error messages when no API key is configured for a model, guiding to the correct environment variable name."
   m8,"bdd-model",BDD tests for model registry and resolution MUST all pass.
-scenarios[10]{req_id,id,given,when,then}:
+scenarios[11]{req_id,id,given,when,then}:
   m1,"register-provider",a provider is registered with name openai and api key,has_configured_auth for an openai model,returns true
   m1,"no-auth",no api key is configured for anthropic,has_configured_auth for a claude model,returns false
-  m1,"resolved-auth","api key is an env var reference $MY_KEY that is set",has_resolved_auth for the provider,returns true
-  m1,"unresolved-auth","api key is an env var reference $MY_KEY that is unset",has_resolved_auth for the provider,returns false
+  m1,"resolved-auth",api key is an env var reference $MY_KEY that is set,has_resolved_auth for the provider,returns true
+  m1,"unresolved-auth",api key is an env var reference $MY_KEY that is unset,has_resolved_auth for the provider,returns false
   m2,"available-models",two providers each have 2 models,get_available is called,returns 4 models sorted by priority
-  m3,"default-model",provider is openai with no explicit model,default model resolution runs,"picks gpt-5.4"
+  m3,"real-values","",default_model_id_for_provider is called for a supported provider,"the returned id is a real, usable model identifier, not a placeholder like gpt-5.4"
   m4,"exact-match","available models include openai/gpt-4o","resolve_model of openai/gpt-4o is called",returns the matching model
   m5,"scoped-cycle",scoped_models has 3 entries,cycle_model is called,cycles through only those 3 models
   m6,"fallback-model","user requests nonexistent-model on openai provider",model is resolved,fallback uses base openai model with the requested id as name
   m7,"auth-guidance-message",no API key configured for anthropic model,auth_guidance_message is called,message includes ANTHROPIC_API_KEY
+  m8,"bdd-pass",the model registry and resolver BDD suite is run,all scenarios execute,every scenario passes without regression

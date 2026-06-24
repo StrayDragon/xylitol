@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,m3,"model-defaults","ModelRegistry MUST maintain default model IDs for openai and anthropic providers only. Other providers MUST NOT have default model entries pre-1.0.0. The default model IDs MUST be valid, currently-shipping model identifiers (e.g. gpt-4o, claude-sonnet-4-20250514), never placeholder or non-existent model names.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  m3,"real-values","",default_model_id_for_provider is called for a supported provider,"the returned id is a real, usable model identifier, not a placeholder like gpt-5.4"

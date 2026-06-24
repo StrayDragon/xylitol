@@ -86,8 +86,10 @@ impl ProviderConfig {
 
 // ── Default Model IDs ───────────────────────────────────────────────
 
-const DEFAULT_MODEL_PER_PROVIDER: &[(&str, &str)] =
-    &[("openai", "gpt-5.4"), ("anthropic", "claude-opus-4-8")];
+const DEFAULT_MODEL_PER_PROVIDER: &[(&str, &str)] = &[
+    ("openai", "gpt-4o"),
+    ("anthropic", "claude-sonnet-4-20250514"),
+];
 
 pub fn default_model_id_for_provider(provider_name: &str) -> Option<&'static str> {
     DEFAULT_MODEL_PER_PROVIDER
@@ -433,11 +435,13 @@ mod tests {
 
     #[test]
     fn test_default_model_id() {
-        assert_eq!(default_model_id_for_provider("openai"), Some("gpt-5.4"));
-        assert_eq!(
-            default_model_id_for_provider("anthropic"),
-            Some("claude-opus-4-8")
-        );
+        let openai = default_model_id_for_provider("openai").expect("openai default");
+        let anthropic = default_model_id_for_provider("anthropic").expect("anthropic default");
+        // Defaults MUST be real, currently-shipping model identifiers — never
+        // placeholders or non-existent model names (regression guard for the
+        // gpt-5.4 / claude-opus-4-8 placeholder bug).
+        assert_eq!(openai, "gpt-4o");
+        assert_eq!(anthropic, "claude-sonnet-4-20250514");
         assert_eq!(default_model_id_for_provider("unknown"), None);
     }
 
