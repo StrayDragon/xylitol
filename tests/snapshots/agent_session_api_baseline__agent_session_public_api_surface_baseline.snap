@@ -8,8 +8,8 @@ pub async fn append_thinking_level_change( &self, session_id: &str, level: &str,
 pub async fn compact_current_session(&self, model: &dyn XyModel) -> Result<(), String>
 pub async fn create(&self, id: &str, cwd: &str, parent: Option<&str>) -> Result<(), String>
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), String>
-pub async fn execute_bash( &mut self, command: &str, exclude_from_context: bool, ) -> Result<crate::agent::bash_executor::BashResult, String>
-pub async fn execute_raw(&mut self, command: &str) -> crate::agent::bash_executor::BashResult
+pub async fn execute_bash( &mut self, command: &str, exclude_from_context: bool, ) -> Result<crate::agent::runtime::bash::BashResult, String>
+pub async fn execute_raw(&mut self, command: &str) -> crate::agent::runtime::bash::BashResult
 pub async fn export_to_html( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
 pub async fn export_to_html( manager: &SessionManager, session_id: &str, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
 pub async fn export_to_jsonl( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
@@ -21,7 +21,7 @@ pub async fn import_from_jsonl( manager: &SessionManager, path: &std::path::Path
 pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String>
 pub async fn load_validated( &self, id: &str, cwd: &str, ) -> Result<Vec<crate::infra::session::SessionEntry>, String>
 pub async fn maybe_auto_compact(&self) -> Result<bool, String>
-pub async fn record_bash_result( &self, command: &str, result: &crate::agent::bash_executor::BashResult, exclude_from_context: bool, session_id: Option<&str>, ) -> Result<(), String>
+pub async fn record_bash_result( &self, command: &str, result: &crate::agent::runtime::bash::BashResult, exclude_from_context: bool, session_id: Option<&str>, ) -> Result<(), String>
 pub async fn resume_session(&mut self, id: &str) -> Result<(), String>
 pub async fn send_custom_message( &self, custom_type: &str, _content: serde_json::Value, _trigger_turn: bool, _deliver_as: Option<&str>, ) -> Result<(), String>
 pub async fn start_new_session( &mut self, name: Option<&str>, parent: Option<&str>, ) -> Result<(), String>

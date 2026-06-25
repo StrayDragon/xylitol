@@ -23,15 +23,15 @@ pub use self::io::SessionIO;
 pub use self::prompt_result::PromptResult;
 pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_usage};
 
-use crate::agent::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::compaction::orchestrator::CompactionOrchestrator;
 use crate::agent::model::manager::ModelManager;
+use crate::agent::prompt::commands::{SlashCommandInfo, get_all_commands};
+use crate::agent::prompt::skills::SkillManager;
+use crate::agent::prompt::templates::{PromptTemplate, is_template_line, parse_template_line};
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::MessageQueue;
 use crate::agent::runtime::stdout_guard;
-use crate::agent::skills::SkillManager;
-use crate::agent::templates::{PromptTemplate, is_template_line, parse_template_line};
 use crate::agent::tools::ToolRegistry;
 use crate::core::traits::XyModel;
 use crate::core::types::{ModelMeta, ThinkingLevel};
@@ -253,7 +253,7 @@ impl AgentSession {
                 t.description
                     .clone()
                     .unwrap_or_else(|| "prompt template".into()),
-                crate::agent::commands::SlashCommandSource::Prompt,
+                crate::agent::prompt::commands::SlashCommandSource::Prompt,
             );
             if let Some(ref si) = t.source_info {
                 cmd.source_info = Some(si.clone());
@@ -278,7 +278,7 @@ impl AgentSession {
         let input = input.trim();
 
         // Check for `!cmd` / `!!cmd` first (before slash/template handling).
-        if let Some((exclude, command)) = crate::agent::bash_executor::parse_bang_prefix(input)
+        if let Some((exclude, command)) = crate::agent::runtime::bash::parse_bang_prefix(input)
             && !command.is_empty()
         {
             return PromptResult::Bash {
@@ -315,10 +315,10 @@ impl AgentSession {
         }
 
         // Check for /command
-        if let Some(cmd_name) = crate::agent::commands::is_slash_command(input) {
+        if let Some(cmd_name) = crate::agent::prompt::commands::is_slash_command(input) {
             let all_cmds = self.get_commands();
-            if crate::agent::commands::find_command(cmd_name, &all_cmds).is_some() {
-                let args = crate::agent::commands::get_command_args(input)
+            if crate::agent::prompt::commands::find_command(cmd_name, &all_cmds).is_some() {
+                let args = crate::agent::prompt::commands::get_command_args(input)
                     .unwrap_or("")
                     .to_string();
                 return PromptResult::Handled {
@@ -642,7 +642,7 @@ impl AgentSession {
         &mut self,
         command: &str,
         exclude_from_context: bool,
-    ) -> Result<crate::agent::bash_executor::BashResult, String> {
+    ) -> Result<crate::agent::runtime::bash::BashResult, String> {
         let result = self.bash_handler.execute_raw(command).await;
 
         // Record on disk.
@@ -659,7 +659,7 @@ impl AgentSession {
     pub async fn record_bash_result(
         &self,
         command: &str,
-        result: &crate::agent::bash_executor::BashResult,
+        result: &crate::agent::runtime::bash::BashResult,
         exclude_from_context: bool,
         session_id: Option<&str>,
     ) -> Result<(), String> {
@@ -829,7 +829,7 @@ impl AgentSession {
 pub(crate) async fn record_bash_result(
     io: &crate::agent::session::io::SessionIO,
     command: &str,
-    result: &crate::agent::bash_executor::BashResult,
+    result: &crate::agent::runtime::bash::BashResult,
     exclude_from_context: bool,
     session_id: &str,
 ) -> Result<(), String> {

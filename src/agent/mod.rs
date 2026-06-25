@@ -1,12 +1,8 @@
 pub mod auth;
-pub mod bash_executor;
-pub mod commands;
 pub mod compaction;
 pub mod model;
 pub mod prompt;
 pub mod provider;
 pub mod runtime;
 pub mod session;
-pub mod skills;
-pub mod templates;
 pub mod tools;
