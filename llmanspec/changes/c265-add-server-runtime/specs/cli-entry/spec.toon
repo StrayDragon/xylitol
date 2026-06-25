@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ce7,"composition-root-ports","The in-process composition root (interactive::cli) MUST construct Arc<dyn SessionStore> and Arc<dyn EventSink> from concrete infra types and pass them to facade::Agent::new; the RPC run entry MUST also accept the store and sink for constructing Agent.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ce7,"cli-constructs-ports","interactive::cli::run is traced","the agent construction is inspected","Agent::new receives Arc<dyn SessionStore> and Arc<dyn EventSink>"

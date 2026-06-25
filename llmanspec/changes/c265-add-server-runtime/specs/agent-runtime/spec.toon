@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ar4,"ports-only-construction","Agent construction MUST accept only Arc<dyn Port> trait objects via facade::Agent::new (store: Arc<dyn SessionStore>, sink: Arc<dyn EventSink>, providers: Vec<Arc<dyn XyModel>>).",null,null,null
+  add_requirement,ar17,"sessionstore-port","System MUST define core::ports::SessionStore with load_context (returns SessionContext), append, and exists methods — the minimal surface the ReAct loop and compaction call; SessionManager MUST implement it.",null,null,null
+  add_requirement,ar18,"eventsink-port","System MUST define core::ports::EventSink with emit_lifecycle; EventBus MUST implement it.",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  ar4,"construct-with-ports","Agent::new is called","the arguments are inspected","every argument is an Arc<dyn SomePort> trait object"
+  ar17,"store-in-memory","a test constructs Agent with InMemoryStore","a turn runs","the test passes without creating a real SessionManager"
+  ar18,"sink-records-events","a test constructs Agent with RecordingSink","compaction triggers lifecycle events","the sink contains the expected events"
