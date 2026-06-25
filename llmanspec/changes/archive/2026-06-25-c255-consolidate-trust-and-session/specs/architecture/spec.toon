@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ar02,组件粒度边界（修订：补上限）,"Components with fewer than 100 lines or 5 methods and no behavioral logic MUST be inlined into their parent struct. Conversely, inlined blocks that exceed approximately 100 lines, have independent behavioral logic, and are conceptually cohesive MUST be extracted as named collaborator objects (per agent-session.as30). The AgentSession facade MUST NOT grow unboundedly as a single struct or single file.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ar02,"upper-bound-extraction","AgentSession contains an inlined block exceeding ~100 lines with independent behavioral logic (e.g. auto-retry state machine, bash-exec handling, session export)",the change is applied,that block is extracted into a named collaborator object and AgentSession composes it rather than inlining the logic

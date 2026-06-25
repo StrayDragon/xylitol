@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,as32,AgentSession 协作对象提取（落地 as30）,"AgentSession MUST be decomposed into named collaborator objects covering auto-retry (AutoRetryEngine), bash execution (BashExecHandler), and session export/import (SessionExporter). AgentSession MUST compose these collaborators as fields and MUST retain its existing public API and event stream (per as31). The session module MUST be reorganized into a session/ directory with focused submodules (io, retry, bash_exec, export, stats, prompt, steering) and AgentSession single-file size MUST drop below 600 lines.",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  as32,"retry-extracted","AgentSession holds retry_state and inline auto-retry logic exceeding 100 lines",the change is applied,"AutoRetryEngine collaborator exists, AgentSession composes it, and public retry behavior is unchanged"
+  as32,"bash-extracted",AgentSession holds bash_cancel and inline !cmd / !!cmd handling,the change is applied,"BashExecHandler collaborator exists, AgentSession composes it, and bash-execution slash commands behave identically"
+  as32,"export-extracted",AgentSession has inline export/import methods,the change is applied,"SessionExporter collaborator exists, AgentSession composes it, and export produces byte-identical output"
+  as32,"api-retained",AgentSession public API (per as31),the session module is reorganized into a directory with submodules,all existing public method signatures and emitted events remain unchanged

@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-session"
 purpose: "TBD - created by archiving change c05-rebuild-core. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[21]{req_id,title,statement}:
+requirements[22]{req_id,title,statement}:
   a1,"agent-session","System MUST provide AgentSession encapsulating: prompt→model→tools→loop with full event stream."
   a2,"turn-events","AgentSession MUST emit: turn_start, message_start, message_update (streaming), message_end events per turn."
   a3,"tool-events","AgentSession MUST emit: tool_execution_start, tool_execution_update (streaming partials), tool_execution_end events per tool call."
@@ -24,7 +24,8 @@ requirements[21]{req_id,title,statement}:
   as29,"bdd-agent-v4",BDD tests for AgentSession lifecycle and event bus integration MUST all pass.
   as30,"cohesion-decomposition",AgentSession MUST be decomposed into focused collaborator components covering model management and tool management and compaction orchestration and skill activation rather than a single object mixing many unrelated responsibilities.
   as31,"facade-retained",AgentSession MUST remain the single public facade composing the decomposed components while preserving its existing event stream and public API.
-scenarios[25]{req_id,id,given,when,then}:
+  as32,AgentSession 协作对象提取（落地 as30）,"AgentSession MUST be decomposed into named collaborator objects covering auto-retry (AutoRetryEngine), bash execution (BashExecHandler), and session export/import (SessionExporter). AgentSession MUST compose these collaborators as fields and MUST retain its existing public API and event stream (per as31). The session module MUST be reorganized into a session/ directory with focused submodules (io, retry, bash_exec, export, stats, prompt, steering) and AgentSession single-file size MUST drop below 600 lines."
+scenarios[29]{req_id,id,given,when,then}:
   a1,run,a model and tools are configured,agent is started with a prompt,text response is streamed via events
   a2,"turn-events","agent processes a tool-calling turn",turn starts,"events are emitted in order: turn_start message_start message_update* message_end turn_end"
   a3,"tool-stream",bash tool streams output,tool_execution_start fires,tool_execution_update fires multiple times then tool_execution_end
@@ -50,3 +51,7 @@ scenarios[25]{req_id,id,given,when,then}:
   as29,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all agent-v4 scenarios pass"
   as30,"responsibilities-separated",the session module responsibilities are enumerated,component boundaries are drawn,each component owns a single responsibility class
   as31,"public-api-unchanged",AgentSession public methods are invoked after decomposition,the existing test suite runs,all lib tests and agent BDD scenarios still pass without API changes
+  as32,"retry-extracted","AgentSession holds retry_state and inline auto-retry logic exceeding 100 lines",the change is applied,"AutoRetryEngine collaborator exists, AgentSession composes it, and public retry behavior is unchanged"
+  as32,"bash-extracted",AgentSession holds bash_cancel and inline !cmd / !!cmd handling,the change is applied,"BashExecHandler collaborator exists, AgentSession composes it, and bash-execution slash commands behave identically"
+  as32,"export-extracted",AgentSession has inline export/import methods,the change is applied,"SessionExporter collaborator exists, AgentSession composes it, and export produces byte-identical output"
+  as32,"api-retained",AgentSession public API (per as31),the session module is reorganized into a directory with submodules,all existing public method signatures and emitted events remain unchanged
