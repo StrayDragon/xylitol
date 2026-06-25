@@ -8,6 +8,20 @@ depends_on: []
 >
 > **前置依赖**（已全部 archive）：`c260-refactor-domain-architecture` → `c265-add-server-runtime`。
 
+## c265 未完成项（c270 必须先落地）
+
+c265-add-server-runtime 的 tasks.md 全勾选，但部分项仅**部分完成**。c270 在推进 server 前必须先完成这些，否则 server 装配会断裂：
+
+| c265 任务 | 实际完成度 | c270 需补完 |
+|---|---|---|
+| T7 facade HC-2 | `with_ports` 构造器已加，但 `Agent::run` 的 `_session_id` 参数兼容保留。server 需要干净的 `run(prompt)` | 移除残留的 `run_with_id`，`run` 完全负责 session_id 内部生成 |
+| T8 cli 组合根 | cli 仍用 `Agent::new(agent_session)` 而非 `Agent::with_ports`。server 需要纯 port 构造路径 | cli 改用 `Agent::with_ports`（model_registry/tool_registry 已就位） |
+| T9 rpc 接收 Driver | rpc.rs 的 `run()` 仍接收 `AgentSession` 而非 `Driver`/`Agent` | rpc 改用 `InProcessDriver` 或直接 `Agent`；RPC 状态机不应触及 `AgentSession` 内部 |
+| T12 interactive 全量迁移 Driver | print 和 cli 已迁移，但 rpc 未动 | rpc 完成迁移 |
+| T14 arch guard interactive 断言 | 实际未添加测试——仅更新了 NOTE 说明 | 添加 `interactive_only_from_driver` 测试（仅 driver.rs 可 import agent/infra） |
+
+此外，server 进程化（HTTP/WS 框架、锁、journal、反向 RPC、RemoteDriver、CLI 子命令、BDD）是全新工作，此前在 c260/c265 中仅有 `defer → c270` 的占位。
+
 ## Why
 
 c260 + c265 完成了以下铺垫：
