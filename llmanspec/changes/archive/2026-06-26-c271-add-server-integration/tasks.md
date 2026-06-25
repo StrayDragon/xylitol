@@ -30,10 +30,10 @@
 
 ## P5 — 集成测试
 
-- [ ] T15 在 `tests/bdd.rs` 添加 step definitions 对应 `server.feature`（server start → healthz → run → events → stop）
-- [ ] T16 在 `tests/bdd.rs` 添加 step definitions 对应 `approval.feature`（tool approval round-trip via FakeProvider）
+- [x] T15 在 `tests/bdd.rs` 添加 step definitions 对应 `server.feature`（server start → healthz → run → events → stop）
+- [x] T16 在 `tests/bdd.rs` 添加 step definitions 对应 `approval.feature`（tool approval round-trip via FakeProvider）
 
 ## 收尾
 
-- [ ] T17 全量 QA：`cargo build --all-features && cargo nextest run --profile ci && cargo test --test bdd -- --test-threads=1 && cargo fmt --check`
-- [ ] T18 `llman sdd validate c271-add-server-integration --strict --no-interactive` 通过
+- [x] T17 全量 QA：`cargo build --all-features && cargo nextest run --profile ci && cargo test --test bdd -- --test-threads=1 && cargo fmt --check`
+- [x] T18 `llman sdd validate c271-add-server-integration --strict --no-interactive` 通过
