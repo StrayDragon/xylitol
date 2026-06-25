@@ -3,9 +3,9 @@
 use clap::{Parser, Subcommand};
 
 use crate::agent::auth;
+use crate::agent::facade::Agent;
 use crate::agent::model::registry;
 use crate::agent::model::resolver;
-use crate::agent::runtime::AgentLoop;
 use crate::agent::session::{AgentSession, ModelRegistry};
 use crate::agent::tools::ToolRegistry;
 use crate::core::model::{ModelConfig, ModelKind};
@@ -375,7 +375,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let session_id = args
         .session
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let mut agent_loop = AgentLoop::new(agent_session);
+    let mut agent = Agent::new(agent_session);
 
     // ── Step 6: dispatch by mode ─────────────────────────────
     let prompt = args.prompt.unwrap_or_else(|| {
@@ -388,7 +388,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    crate::interactive::print::run_print(&mut agent_loop, &prompt, &session_id).await?;
+    crate::interactive::print::run_print(&mut agent, &prompt, &session_id).await?;
 
     timing::print_timings();
     Ok(())
