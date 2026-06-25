@@ -15,11 +15,11 @@
 
 ## P1 — 杀 `r#loop` + runtime 目录（行为不变）
 
-- [ ] T9 建 `src/agent/runtime/` + `mod.rs`（声明 queue/react/retry/stdout_guard 并 re-export）
-- [ ] T10 `git mv` loop.rs→react.rs、queue.rs、retry.rs、output_guard.rs→stdout_guard.rs
-- [ ] T11 `agent/mod.rs` 删 4 个旧 `pub mod`，加 `pub mod runtime;`
-- [ ] T12 全局替换：`crate::agent::r#loop::{...}`→`crate::agent::runtime::{...}`；retry/queue/output_guard 引用改走 runtime re-export
-- [ ] T13 验证：`grep -rn "r#loop" src/` = 0；build + nextest + clippy + BDD 全绿
+- [x] T9 建 `src/agent/runtime/` + `mod.rs`（声明 queue/react/retry/stdout_guard 并 re-export）
+- [x] T10 `git mv` loop.rs→react.rs、queue.rs、retry.rs、output_guard.rs→stdout_guard.rs
+- [x] T11 `agent/mod.rs` 删 4 个旧 `pub mod`，加 `pub mod runtime;`
+- [x] T12 全局替换：`crate::agent::r#loop::{...}`→`crate::agent::runtime::{...}`；retry/queue/output_guard 引用改走 runtime re-export
+- [x] T13 验证：`grep -rn "r#loop" src/` = 0；build + nextest + clippy + BDD 全绿
 
 ## P2 — agent 瘦身 + facade（行为不变）
 

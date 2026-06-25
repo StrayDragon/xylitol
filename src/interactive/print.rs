@@ -4,7 +4,7 @@
 
 use std::io::{self, Write};
 
-use crate::agent::r#loop::{AgentEvent, AgentLoop};
+use crate::agent::runtime::{AgentEvent, AgentLoop};
 use futures::StreamExt;
 
 /// Run the agent in print mode with the given prompt.

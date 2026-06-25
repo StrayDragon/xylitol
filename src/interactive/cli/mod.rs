@@ -3,9 +3,9 @@
 use clap::{Parser, Subcommand};
 
 use crate::agent::auth;
-use crate::agent::r#loop::AgentLoop;
 use crate::agent::model::registry;
 use crate::agent::model::resolver;
+use crate::agent::runtime::AgentLoop;
 use crate::agent::session::{AgentSession, ModelRegistry};
 use crate::agent::tools::ToolRegistry;
 use crate::core::model::{ModelConfig, ModelKind};
