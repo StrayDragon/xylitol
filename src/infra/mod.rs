@@ -22,6 +22,5 @@ pub mod git;
 pub mod image;
 pub mod sandbox;
 pub(crate) mod skills;
-pub mod syntax;
 pub(crate) mod tools;
 pub mod update;

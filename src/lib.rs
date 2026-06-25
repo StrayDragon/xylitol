@@ -13,6 +13,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Run the interactive diff review demo.
+///
+/// Requires the `ui-review` feature (terminal rendering backend).
+#[cfg(feature = "ui-review")]
 pub async fn run_review_demo() -> Result<(), String> {
     interface::diff_review::run_demo().await
 }

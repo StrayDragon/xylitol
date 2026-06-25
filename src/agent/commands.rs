@@ -8,7 +8,6 @@
 //! - **Non-builtin commands** (from skills, prompts, extensions) carry a
 //!   [`SlashCommandSource`] and optional `source_path` for provenance.
 //! - AgentSession owns the dispatch logic (`dispatch_slash_command` in session.rs).
-//! - TUI-only commands return `NotAvailable` when invoked outside TUI mode.
 
 use crate::infra::source_info::SourceInfo;
 
@@ -58,8 +57,8 @@ impl SlashCommandInfo {
 
 /// Full builtin slash command table.
 ///
-/// Commands that require TUI interaction are marked with `[requires TUI]` in
-/// their description so callers can distinguish them without a separate flag.
+/// Command descriptions use `[requires ...]` tags to indicate optional feature
+/// requirements so callers can distinguish them without a separate flag.
 pub(crate) const BUILTIN_COMMANDS: &[(&str, &str)] = &[
     ("model", "Select model"),
     ("compact", "Manually compact the session context"),
@@ -71,11 +70,8 @@ pub(crate) const BUILTIN_COMMANDS: &[(&str, &str)] = &[
     ("tree", "Navigate session tree (switch branches)"),
     ("resume", "Resume a different session"),
     ("quit", "Quit the agent"),
-    ("settings", "Open settings menu [requires TUI]"),
-    (
-        "scoped-models",
-        "Enable/disable models for cycling [requires TUI]",
-    ),
+    ("settings", "Open settings menu"),
+    ("scoped-models", "Enable/disable models for cycling"),
     ("share", "Share session as a gist"),
     (
         "copy",
@@ -83,7 +79,7 @@ pub(crate) const BUILTIN_COMMANDS: &[(&str, &str)] = &[
     ),
     ("name", "Set session display name"),
     ("changelog", "Show changelog entries"),
-    ("hotkeys", "Show all keyboard shortcuts [requires TUI]"),
+    ("hotkeys", "Show all keyboard shortcuts"),
     ("clone", "Clone the current session"),
     ("trust", "Save project trust decision"),
     ("login", "Configure provider authentication"),
@@ -138,11 +134,6 @@ pub(crate) fn find_command<'a>(
     commands: &'a [SlashCommandInfo],
 ) -> Option<&'a SlashCommandInfo> {
     commands.iter().find(|c| c.name.eq_ignore_ascii_case(name))
-}
-
-/// Check whether a command is a TUI-only builtin.
-pub(crate) fn is_tui_command(name: &str) -> bool {
-    matches!(name, "settings" | "scoped-models" | "changelog" | "hotkeys")
 }
 
 #[cfg(test)]
@@ -206,14 +197,6 @@ mod tests {
         let all = get_all_commands(&ext);
         assert!(all.iter().any(|c| c.name == "analyze"));
         assert!(all.iter().any(|c| c.name == "model"));
-    }
-
-    #[test]
-    fn test_is_tui_command() {
-        assert!(is_tui_command("settings"));
-        assert!(is_tui_command("hotkeys"));
-        assert!(!is_tui_command("model"));
-        assert!(!is_tui_command("export"));
     }
 
     #[test]

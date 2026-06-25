@@ -1,5 +1,0 @@
----
-source: tests/support/mod.rs
-expression: screen
----
-Hello

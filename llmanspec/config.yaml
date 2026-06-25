@@ -7,7 +7,7 @@ context: |
   Current state (2026-06-10): c05-rebuild-core completed — adk-rust fully removed, self-owned XyModel/XyTool/XyRunner ReAct loop with 7 built-in tools, hooks, session, and CLI.
   c06-update-bdd-framework: cucumber-rs → rstest-bdd migration completed.
   c07-fix-bdd-scenarios: all 77 BDD scenarios passing.
-  Design principle: pluggable/configurable architecture. Core (agent loop + tools + provider + CLI) is always present; built-in enhancements (hooks, security, repeat detection) are runtime-toggled; everything else (LSP, DAP, skills, MCP, diff review, TUI, session snapshots, planning) is opt-in via feature flag.
+  Design principle: pluggable/configurable architecture. Core (agent loop + tools + provider + CLI) is always present; built-in enhancements (hooks, security, repeat detection) are runtime-toggled; everything else (LSP, DAP, skills, MCP, diff review, session snapshots, planning) is opt-in via feature flag.
   Dependency tracking: each proposal.md frontmatter contains depends_on. Read proposal.md files to determine execution order. For DAG visualization run: llman sdd graph
 
 bdd:
