@@ -72,7 +72,7 @@
 
 ## 收尾
 
-- [ ] T49 确认主 `docs/` 不含重构临时文档（refactor-notes 已在本 change 内）；内容核对无误后无需额外动作
-- [ ] T50 更新 `AGENTS.md` 的 Project Structure 段，同步新模块树（protocol/server/interactive/runtime 迁移）；refactor-notes 保留在 change 内随归档冻结
-- [ ] T51 `llman sdd validate c260-refactor-domain-architecture --strict --no-interactive` 通过
-- [ ] T52 全量校验：`cargo build --all-features && cargo nextest run --profile ci && cargo clippy --all-features -- -D warnings && cargo test --test bdd -- --test-threads=1 && cargo fmt --check`
+- [x] T49 确认主 `docs/` 不含重构临时文档（refactor-notes 已在本 change 内）；内容核对无误后无需额外动作
+- [x] T50 更新 `AGENTS.md` 的 Project Structure 段，同步新模块树（protocol/server/interactive/runtime 迁移）；refactor-notes 保留在 change 内随归档冻结
+- [x] T51 `llman sdd validate c260-refactor-domain-architecture --strict --no-interactive` 通过
+- [x] T52 全量校验：`cargo build --all-features && cargo nextest run --profile ci && cargo clippy --all-features -- -D warnings && cargo test --test bdd -- --test-threads=1 && cargo fmt --check`

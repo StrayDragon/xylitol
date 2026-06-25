@@ -12,7 +12,16 @@
 
 ## Project Structure & Module Organization
 
-`xylitol` is a Rust 2024 CLI/agent toolkit. Core code lives in `src/`: `agent/` contains the agent loop, model/provider logic, tools, prompts, and output handling; `infra/` contains config, hooks, sessions, resources, and skills; `interface/` contains the CLI and diff review UI. Integration and behavior tests live in `tests/`, with BDD feature files in `tests/features/`, shared harness code in `tests/support/`, and snapshot fixtures in `tests/support/snapshots/`. Example config and schema files are in `configs/`; architecture notes and assets are in `docs/`; active and archived SDD specs are under `llmanspec/`.
+`xylitol` is a Rust 2024 CLI/agent toolkit structured as a thin orchestration core (`agent/`) over a large runtime domain (`infra/`), with swappable interaction surfaces (`interactive/`) speaking a single wire vocabulary (`protocol/`). See `llmanspec/changes/c260-refactor-domain-architecture/design.md` for the layering invariants (HC-1…HC-6) enforced by `src/tests.rs::arch_guard`.
+
+Source under `src/`:
+- `core/` — domain vocabulary + ports (`XyModel`/`XyTool` traits) + pure types. Zero crate-internal deps.
+- `infra/` — **runtime domain**: `provider/` (LLM adapters, impl `XyModel`), `tools/` (built-in tool impls), `session/`, `sandbox/`, `process/`, `config/` (incl. `value.rs` secret resolution), `event/`, `hooks/`, `mcp/`, `skills/`, `resource/`, `trust/`, `git/`, `clipboard/`, `image/`, `tool_downloader/`.
+- `agent/` — **thin orchestration**: `runtime/` (ReAct loop `react.rs`, `event.rs`, `hooks.rs`, queue/retry/stdout_guard), `facade.rs` (single public entry for interactive layers), `session/`, `model/` (registry + manager), `tools/` (`ToolRegistry` only — impls live in infra), `compaction/`, `prompt/` (system/commands/templates/skills), `auth/`.
+- `protocol/` — client↔core wire vocabulary SSOT (`Command`/`Event` enums), transport-agnostic.
+- `interactive/` — interaction surfaces: `cli/`, `print.rs`, `rpc.rs` (stdio transport over `protocol`), `diff_review/`.
+
+Integration and behavior tests live in `tests/`, with BDD feature files in `tests/features/`, shared harness code in `tests/support/`, and snapshot fixtures in `tests/support/snapshots/`. Architecture-layer guards live in `src/tests.rs::arch_guard`. Example config and schema files are in `configs/`; assets in `docs/assets/`; active and archived SDD specs are under `llmanspec/`.
 
 ## Build, Test, and Development Commands
 
