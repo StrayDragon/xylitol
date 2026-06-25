@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,as34,"sessionstore-port","System MUST define a core::ports::SessionStore abstracting session persistence; infra::session::SessionManager MUST implement it and a test in-memory double MUST exist under tests/support/; agent/ MUST hold the store as Arc<dyn SessionStore>.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  as34,"store-is-trait","the agent holds a session backend","the field type is inspected","it is Arc<dyn SessionStore> not Arc<SessionManager>"

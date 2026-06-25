@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-session"
 purpose: "TBD - created by archiving change c05-rebuild-core. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[23]{req_id,title,statement}:
+requirements[24]{req_id,title,statement}:
   a1,"agent-session","System MUST provide AgentSession encapsulating: prompt→model→tools→loop with full event stream."
   a2,"turn-events","AgentSession MUST emit: turn_start, message_start, message_update (streaming), message_end events per turn."
   a3,"tool-events","AgentSession MUST emit: tool_execution_start, tool_execution_update (streaming partials), tool_execution_end events per tool call."
@@ -26,7 +26,8 @@ requirements[23]{req_id,title,statement}:
   as31,"facade-retained",AgentSession MUST remain the single public facade composing the decomposed components while preserving its existing event stream and public API.
   as32,AgentSession 协作对象提取（落地 as30）,"AgentSession MUST be decomposed into named collaborator objects covering auto-retry (AutoRetryEngine), bash execution (BashExecHandler), and session export/import (SessionExporter). AgentSession MUST compose these collaborators as fields and MUST retain its existing public API and event stream (per as31). The session module MUST be reorganized into a session/ directory with focused submodules (io, retry, bash_exec, export, stats, prompt, steering) and AgentSession single-file size MUST drop below 600 lines."
   as33,"managers-extracted-to-siblings","AgentSession collaborators (ModelManager, CompactionOrchestrator, SkillManager) MUST live in dedicated modules under their owning subsystem (model/manager.rs, compaction/orchestrator.rs, prompt/skills.rs), not as orphan top-level files in agent/; AgentSession composes them as fields."
-scenarios[30]{req_id,id,given,when,then}:
+  as34,"sessionstore-port","System MUST define a core::ports::SessionStore abstracting session persistence; infra::session::SessionManager MUST implement it and a test in-memory double MUST exist under tests/support/; agent/ MUST hold the store as Arc<dyn SessionStore>."
+scenarios[31]{req_id,id,given,when,then}:
   a1,run,a model and tools are configured,agent is started with a prompt,text response is streamed via events
   a2,"turn-events","agent processes a tool-calling turn",turn starts,"events are emitted in order: turn_start message_start message_update* message_end turn_end"
   a3,"tool-stream",bash tool streams output,tool_execution_start fires,tool_execution_update fires multiple times then tool_execution_end
@@ -57,3 +58,4 @@ scenarios[30]{req_id,id,given,when,then}:
   as32,"export-extracted",AgentSession has inline export/import methods,the change is applied,"SessionExporter collaborator exists, AgentSession composes it, and export produces byte-identical output"
   as32,"api-retained",AgentSession public API (per as31),the session module is reorganized into a directory with submodules,all existing public method signatures and emitted events remain unchanged
   as33,"no-orphan-managers",src/agent/ is inspected,"the top-level files are listed","model_manager.rs, compaction_orchestrator.rs, and skill_manager.rs do not exist (they live under model/, compaction/, prompt/ respectively)"
+  as34,"store-is-trait",the agent holds a session backend,the field type is inspected,it is Arc<dyn SessionStore> not Arc<SessionManager>
