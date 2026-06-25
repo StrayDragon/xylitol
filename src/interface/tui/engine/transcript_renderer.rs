@@ -3,52 +3,77 @@
 //! Converts the pure `Transcript` state into `Vec<String>` lines,
 //! where each line may contain ANSI escape sequences for styling.
 //!
-//! This replaces `render/transcript.rs` (ratatui widgets) for the new engine.
+//! The transcript grows UPWARD from the input area: the newest entries
+//! appear at the bottom of the transcript (closest to the input separator).
+//! Older entries scroll off the top of the screen.
+//!
+//! Pure characters only — no emoji. User messages use `>` prefix.
 
 use crate::interface::tui::engine::ansi;
+
 use crate::interface::tui::state::{ToolStatus, Transcript, TranscriptEntry};
 
-/// Render a Transcript into ANSI-styled lines fitting `max_width`.
+/// Render a Transcript into ANSI-styled lines that grow upward from the bottom.
 ///
-/// Each `TranscriptEntry` produces one or more lines.
-/// Entry boundaries are separated by an empty line for readability.
+/// Returns all lines for the visible entries (oldest first).
+/// The caller is expected to take only the LAST `max_lines` lines when
+/// displaying in a fixed-height transcript area.
 ///
-/// `scroll_offset` controls scrollback. 0 = show all entries (latest at bottom).
+/// `scroll_offset` controls scrollback. 0 = show all entries.
 /// N = skip the last N entries so older content comes into view.
 pub(crate) fn render_transcript(
     transcript: &Transcript,
     max_width: u16,
     scroll_offset: usize,
 ) -> Vec<String> {
-    let mut lines: Vec<String> = Vec::new();
+    fn wrap_indent(text: &str, prefix: &str, indent: &str, max_width: u16) -> Vec<String> {
+        let mut lines = Vec::new();
+        for (i, src_line) in text.lines().enumerate() {
+            let pfx = if i == 0 { prefix } else { indent };
+            let available = max_width.saturating_sub(ansi::visible_width(pfx) as u16);
+            let wrapped = ansi::wrap_text(src_line, available);
+            for w in wrapped {
+                let styled = format!("{pfx}{}", ansi::assistant(&w));
+                lines.push(ansi::pad_to_width(&styled, max_width));
+            }
+        }
+        if text.is_empty() {
+            let styled = format!("{prefix}");
+            lines.push(ansi::pad_to_width(&styled, max_width));
+        }
+        lines
+    }
 
     // Apply scroll offset: render only entries up to `entries.len() - scroll_offset`.
-    // scroll_offset=0 → all entries; scroll_offset=N → exclude last N entries.
     let visible_count = transcript.entries.len().saturating_sub(scroll_offset);
     let visible_entries = &transcript.entries[..visible_count];
+
+    let mut lines: Vec<String> = Vec::new();
 
     for entry in visible_entries {
         match entry {
             TranscriptEntry::User { text } => {
-                let prefix = ansi::user("▶ ");
-                for line_text in text.lines() {
-                    let wrapped = ansi::wrap_text(line_text, max_width.saturating_sub(4));
+                // Single line: "> text"
+                for (i, src_line) in text.lines().enumerate() {
+                    let pfx = if i == 0 {
+                        ansi::user("> ")
+                    } else {
+                        "  ".to_string()
+                    };
+                    let available = max_width.saturating_sub(2);
+                    let wrapped = ansi::wrap_text(src_line, available);
                     for w in wrapped {
-                        let styled = format!("  {prefix}{}", ansi::user(&w));
+                        let styled = format!("{pfx}{}", ansi::user(&w));
                         lines.push(ansi::pad_to_width(&styled, max_width));
                     }
                 }
+                // Blank line after user message for readability
+                lines.push(String::new());
             }
-            TranscriptEntry::Assistant { text, streaming } => {
-                let prefix_str = if *streaming { "▸ " } else { "  " };
-                let prefix = ansi::assistant(prefix_str);
-                for line_text in text.lines() {
-                    let wrapped = ansi::wrap_text(line_text, max_width.saturating_sub(4));
-                    for w in wrapped {
-                        let styled = format!("  {prefix}{}", ansi::assistant(&w));
-                        lines.push(ansi::pad_to_width(&styled, max_width));
-                    }
-                }
+            TranscriptEntry::Assistant { text, .. } => {
+                let wrapped = wrap_indent(text, "  ", "  ", max_width);
+                lines.extend(wrapped);
+                lines.push(String::new());
             }
             TranscriptEntry::ToolCall {
                 name,
@@ -56,17 +81,21 @@ pub(crate) fn render_transcript(
                 output,
                 ..
             } => {
-                let (icon, style_fn): (&str, fn(&str) -> String) = match status {
-                    ToolStatus::Running => ("● ", ansi::hint),
-                    ToolStatus::Success => ("✓ ", ansi::success),
-                    ToolStatus::Failed => ("✗ ", ansi::error),
+                let (label, style_fn): (&str, fn(&str) -> String) = match status {
+                    ToolStatus::Running => ("running", ansi::hint),
+                    ToolStatus::Success => ("ok", ansi::success),
+                    ToolStatus::Failed => ("FAIL", ansi::error),
                 };
-                let tool_part = ansi::tool(&format!("[{name}]"));
-                let line = format!("  {}{}{}", style_fn(icon), tool_part, ansi::reset());
+                // "[tool:name] status"
+                let tool_part = ansi::tool(&format!("[tool:{name}]"));
+                let status_part = style_fn(&format!(" {label}"));
+                let line = format!("  {tool_part}{status_part}");
                 lines.push(ansi::pad_to_width(&line, max_width));
 
-                // Show first line of output if present
-                if let Some(first_line) = output.lines().next() {
+                // First line of output (if any)
+                if let Some(first_line) = output.lines().next()
+                    && !first_line.trim().is_empty()
+                {
                     let truncated = if first_line.len() > max_width.saturating_sub(6) as usize {
                         format!("{}...", &first_line[..max_width.saturating_sub(9) as usize])
                     } else {
@@ -75,36 +104,47 @@ pub(crate) fn render_transcript(
                     let out_line = format!("    {}", ansi::dim_text(&truncated));
                     lines.push(ansi::pad_to_width(&out_line, max_width));
                 }
+                lines.push(String::new());
             }
             TranscriptEntry::Compaction { reason } => {
-                let line = format!(
-                    "  {} {}",
-                    ansi::hint("⚡"),
-                    ansi::dim_text(&format!("[compaction: {reason}]"))
-                );
+                let line = format!("  {}", ansi::dim_text(&format!("[compact: {reason}]")));
                 lines.push(ansi::pad_to_width(&line, max_width));
+                lines.push(String::new());
             }
             TranscriptEntry::Error(msg) => {
-                let line = format!("  {}", ansi::error(msg));
+                let line = format!("  {}", ansi::error(&format!("[error: {msg}]")));
                 lines.push(ansi::pad_to_width(&line, max_width));
+                lines.push(String::new());
             }
             TranscriptEntry::Info(msg) => {
-                let line = format!("  {}", ansi::hint(msg));
+                let line = format!("  {}", ansi::dim_text(&format!("[info: {msg}]")));
                 lines.push(ansi::pad_to_width(&line, max_width));
+                lines.push(String::new());
             }
         }
-
-        // Blank line between entries
-        lines.push(String::new());
     }
 
     // If empty, show placeholder
     if lines.is_empty() || lines.iter().all(|l| l.trim().is_empty()) {
-        let placeholder = ansi::dim_text("  No messages yet. Type a message to start.");
-        lines.push(ansi::pad_to_width(&placeholder, max_width));
+        let placeholder = "  No messages yet.";
+        let truncated = ansi::truncate_visible(placeholder, max_width.saturating_sub(1) as usize);
+        let styled = ansi::dim_text(&truncated);
+        lines.push(ansi::pad_to_width(&styled, max_width));
+        lines.push(String::new());
     }
 
     lines
+}
+
+/// Take only the last `max_lines` lines from a rendered transcript.
+/// This implements the "newest at bottom" layout — the oldest lines
+/// scroll off the top when the transcript is longer than available space.
+pub(crate) fn trim_to_viewport(lines: Vec<String>, max_lines: usize) -> Vec<String> {
+    let len = lines.len();
+    if len <= max_lines {
+        return lines;
+    }
+    lines[len.saturating_sub(max_lines)..].to_vec()
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -128,7 +168,7 @@ mod tests {
         let t = Transcript::new();
         let lines = render_transcript(&t, 80, 0);
         assert!(!lines.is_empty());
-        assert!(lines[0].contains("No messages yet"));
+        assert!(lines.iter().any(|l| l.contains("No messages yet")));
     }
 
     #[test]
@@ -144,7 +184,9 @@ mod tests {
         ]);
         let lines = render_transcript(&t, 80, 0);
         assert!(lines.iter().any(|l| l.contains("Hello!")));
-        assert!(lines.iter().any(|l| l.contains("▶")));
+        assert!(lines.iter().any(|l| l.contains(">")));
+        // No emoji
+        assert!(!lines.iter().any(|l| l.contains('▶')));
     }
 
     #[test]
@@ -158,7 +200,6 @@ mod tests {
         ]);
         let lines = render_transcript(&t, 80, 0);
         assert!(lines.iter().any(|l| l.contains("Hello from AI")));
-        assert!(lines.iter().any(|l| l.contains("▸")));
     }
 
     #[test]
@@ -176,7 +217,11 @@ mod tests {
             },
         ]);
         let lines = render_transcript(&t, 80, 0);
-        assert!(lines.iter().any(|l| l.contains("[bash]")));
+        assert!(lines.iter().any(|l| l.contains("[tool:bash]")));
+        assert!(lines.iter().any(|l| l.contains("ok")));
+        // No emoji
+        assert!(!lines.iter().any(|l| l.contains('✓')));
+        assert!(!lines.iter().any(|l| l.contains('●')));
     }
 
     #[test]
@@ -184,6 +229,7 @@ mod tests {
         let t = make_transcript(vec![AgentEvent::Error("oops".into())]);
         let lines = render_transcript(&t, 80, 0);
         assert!(lines.iter().any(|l| l.contains("oops")));
+        assert!(lines.iter().any(|l| l.contains("[error:")));
     }
 
     #[test]
@@ -192,7 +238,9 @@ mod tests {
             reason: "window full".into(),
         }]);
         let lines = render_transcript(&t, 80, 0);
-        assert!(lines.iter().any(|l| l.contains("compaction")));
+        assert!(lines.iter().any(|l| l.contains("compact")));
+        // No emoji
+        assert!(!lines.iter().any(|l| l.contains('⚡')));
     }
 
     #[test]
@@ -203,6 +251,7 @@ mod tests {
         }]);
         let lines = render_transcript(&t, 80, 0);
         assert!(lines.iter().any(|l| l.contains("gpt-4")));
+        assert!(lines.iter().any(|l| l.contains("[info:")));
     }
 
     #[test]
@@ -269,5 +318,57 @@ mod tests {
         let lines = render_transcript(&t, 80, 0);
         assert!(lines.iter().any(|l| l.contains("alpha")));
         assert!(lines.iter().any(|l| l.contains("beta")));
+    }
+
+    #[test]
+    fn test_trim_to_viewport_keeps_last_n() {
+        let lines: Vec<String> = vec!["a".into(), "b".into(), "c".into(), "d".into()];
+        let trimmed = trim_to_viewport(lines, 2);
+        assert_eq!(trimmed.len(), 2);
+        assert_eq!(trimmed[0], "c");
+        assert_eq!(trimmed[1], "d");
+    }
+
+    #[test]
+    fn test_trim_to_viewport_shorter_than_max() {
+        let lines: Vec<String> = vec!["a".into(), "b".into()];
+        let trimmed = trim_to_viewport(lines, 5);
+        assert_eq!(trimmed.len(), 2);
+    }
+
+    #[test]
+    fn test_failed_tool_call() {
+        let t = make_transcript(vec![
+            AgentEvent::ToolExecutionStart {
+                id: "t1".into(),
+                name: "bash".into(),
+                args: serde_json::json!({"cmd": "ls"}),
+            },
+            AgentEvent::ToolExecutionEnd {
+                id: "t1".into(),
+                name: "bash".into(),
+                result: "error: not found".into(),
+            },
+        ]);
+        // Manually set to failed
+        let mut t2 = t.clone();
+        if let Some(entry) = t2.entries.last_mut() {
+            if let TranscriptEntry::ToolCall { status, .. } = entry {
+                *status = ToolStatus::Failed;
+            }
+        }
+        let lines = render_transcript(&t2, 80, 0);
+        assert!(lines.iter().any(|l| l.contains("FAIL")));
+    }
+
+    #[test]
+    fn test_running_tool_call() {
+        let t = make_transcript(vec![AgentEvent::ToolExecutionStart {
+            id: "t1".into(),
+            name: "read".into(),
+            args: serde_json::json!({"path": "file.rs"}),
+        }]);
+        let lines = render_transcript(&t, 80, 0);
+        assert!(lines.iter().any(|l| l.contains("running")));
     }
 }
