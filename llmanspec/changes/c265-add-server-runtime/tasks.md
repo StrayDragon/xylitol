@@ -8,12 +8,12 @@
 - [x] T2 在 `core/ports.rs` 新增 `EventSink` trait（emit_lifecycle）
 - [x] T3 `infra::session::SessionManager` impl `SessionStore`（load_context 委托 build_session_context, append 委托 append_entry, exists 委托 exists）
 - [x] T4 `infra::event::EventBus` impl `EventSink`
-- [ ] T5 新增 `tests/support/in_memory_store.rs`：InMemorySessionStore（HashMap-based，用于 agent 单测）
-- [ ] T6 新增 `tests/support/recording_sink.rs`：RecordingSink（Vec<AgentLifecycleEvent>，用于 agent 单测）
-- [ ] T7 改 `agent/facade.rs`：`Agent::new(store: Arc<dyn SessionStore>, sink: Arc<dyn EventSink>, ...)`；`run(&mut self, prompt: &str)` 不再传 session_id
-- [ ] T8 改 `interactive/cli` 组合根：构造 `Arc<dyn SessionStore>` / `Arc<dyn EventSink>` 注入 Agent
-- [ ] T9 改 `interactive/rpc` 的 `run()` 改为接收 Agent 或 InProcessDriver（port 已由 cli 注入）
-- [ ] T10 验证：`Agent::new` 签名无 SessionManager/EventBus；build + nextest + clippy + BDD 全绿
+- [x] T5 新增 `tests/support/in_memory_store.rs`：InMemorySessionStore（HashMap-based，用于 agent 单测）
+- [x] T6 新增 `tests/support/recording_sink.rs`：RecordingSink（Vec<AgentLifecycleEvent>，用于 agent 单测）
+- [x] T7 改 `agent/facade.rs`：`Agent::new(store: Arc<dyn SessionStore>, sink: Arc<dyn EventSink>, ...)`；`run(&mut self, prompt: &str)` 不再传 session_id
+- [x] T8 改 `interactive/cli` 组合根：构造 `Arc<dyn SessionStore>` / `Arc<dyn EventSink>` 注入 Agent
+- [x] T9 改 `interactive/rpc` 的 `run()` 改为接收 Agent 或 InProcessDriver（port 已由 cli 注入）
+- [x] T10 验证：`Agent::new` 签名无 SessionManager/EventBus；build + nextest + clippy + BDD 全绿
 
 ## P2 — Driver 抽象（行为不变）
 

@@ -438,7 +438,7 @@ async fn run_prompt(state: &Arc<Mutex<RpcState>>, _id: &Option<String>, message:
 
     let session_id = session.session_id().unwrap_or("prompt").to_string();
     let mut agent = Agent::new(session);
-    let mut stream = agent.run(message, &session_id).await;
+    let mut stream = agent.run_with_id(message, &session_id).await;
 
     loop {
         tokio::select! {
