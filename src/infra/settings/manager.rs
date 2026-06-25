@@ -882,4 +882,43 @@ mod tests {
         assert!(mgr.is_project_trusted());
         assert_eq!(mgr.get_default_model(), Some("gpt-4o"));
     }
+
+    #[test]
+    fn test_project_trust_untrusted_clears_project_settings() {
+        // t5 characterization: when project becomes untrusted, the project-scoped
+        // settings MUST be dropped and the effective settings MUST reflect only
+        // global settings (no project merge). This locks the behavior that 2.B.6
+        // will wire to the resolved trust decision.
+        use crate::infra::settings::storage::InMemorySettingsStorage;
+
+        let storage = InMemorySettingsStorage::default();
+        // Populate global and project scopes separately.
+        let global_json = serde_json::to_string(&Settings {
+            default_model: Some("global-model".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        let project_json = serde_json::to_string(&Settings {
+            default_model: Some("project-model".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        storage.global.lock().unwrap().replace(global_json);
+        storage.project.lock().unwrap().replace(project_json);
+
+        let mut mgr = SettingsManager::from_storage(Box::new(storage), true);
+        // Initially trusted: effective default_model comes from project merge.
+        assert!(mgr.is_project_trusted());
+        assert_eq!(mgr.get_default_model(), Some("project-model".into()));
+
+        // Flip to untrusted: project settings cleared, global wins.
+        mgr.set_project_trusted(false);
+        assert!(!mgr.is_project_trusted());
+        assert_eq!(
+            mgr.get_default_model(),
+            Some("global-model".into()),
+            "untrusted project MUST NOT contribute to effective settings"
+        );
+        assert_eq!(mgr.get_project_settings(), &Settings::default());
+    }
 }

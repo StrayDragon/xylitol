@@ -1,0 +1,111 @@
+---
+source: tests/agent_session_api_baseline.rs
+assertion_line: 138
+expression: "all_items.join(\"\\n\")"
+---
+pub async fn _prepare_retry(&self) -> bool
+pub async fn append_model_change( &self, session_id: &str, provider: &str, model_id: &str, ) -> Result<(), String>
+pub async fn append_thinking_level_change( &self, session_id: &str, level: &str, ) -> Result<(), String>
+pub async fn compact_current_session(&self, model: &dyn XyModel) -> Result<(), String>
+pub async fn create(&self, id: &str, cwd: &str, parent: Option<&str>) -> Result<(), String>
+pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), String>
+pub async fn execute_bash( &mut self, command: &str, exclude_from_context: bool, ) -> Result<crate::agent::bash_executor::BashResult, String>
+pub async fn execute_raw(&mut self, command: &str) -> crate::agent::bash_executor::BashResult
+pub async fn export_to_html( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
+pub async fn export_to_html( manager: &SessionManager, session_id: &str, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
+pub async fn export_to_jsonl( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
+pub async fn export_to_jsonl( manager: &SessionManager, session_id: &str, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
+pub async fn fork( &self, parent_id: &str, child_id: &str, at_entry_id: &str, ) -> Result<(), String>
+pub async fn fork_session(&self, at_entry_id: &str) -> Result<String, String>
+pub async fn get_session_stats(&self) -> Result<SessionStats, String>
+pub async fn import_from_jsonl( manager: &SessionManager, path: &std::path::Path, ) -> Result<String, String>
+pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String>
+pub async fn load_validated( &self, id: &str, cwd: &str, ) -> Result<Vec<crate::infra::session::SessionEntry>, String>
+pub async fn maybe_auto_compact(&self) -> Result<bool, String>
+pub async fn prepare_retry(&self, event_bus: &EventBus) -> bool
+pub async fn record_bash_result( &self, command: &str, result: &crate::agent::bash_executor::BashResult, exclude_from_context: bool, session_id: Option<&str>, ) -> Result<(), String>
+pub async fn resume_session(&mut self, id: &str) -> Result<(), String>
+pub async fn send_custom_message( &self, custom_type: &str, _content: serde_json::Value, _trigger_turn: bool, _deliver_as: Option<&str>, ) -> Result<(), String>
+pub async fn start_new_session( &mut self, name: Option<&str>, parent: Option<&str>, ) -> Result<(), String>
+pub async fn switch(&self, new_id: &str, new_path: &str) -> Result<(), String>
+pub async fn switch_session(&self, new_path: &str) -> Result<(), String>
+pub enum PromptResult
+pub fn _abort_retry(&self)
+pub fn _init_retry_state(&mut self, max_retries: u32, base_delay_ms: u64)
+pub fn _is_retryable_error(msg: &crate::core::message::AgentMessage) -> bool
+pub fn _will_retry_after_agent_end(&self) -> bool
+pub fn abort(&mut self)
+pub fn abort(&self)
+pub fn abort_bash(&mut self)
+pub fn begin_turn(&self, turn_index: u32)
+pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, String>
+pub fn check_sandbox_network(&self, domain: &str) -> SandboxVerdict
+pub fn check_sandbox_read(&self, path: &str) -> SandboxVerdict
+pub fn check_sandbox_write(&self, path: &str) -> SandboxVerdict
+pub fn clear_queue(&mut self) -> Vec<crate::core::message::AgentMessage>
+pub fn compaction_threshold(&self) -> f64
+pub fn current_model(&self) -> Option<&ModelMeta>
+pub fn cwd(&self) -> &str
+pub fn cycle_forward(&mut self) -> Option<&ModelMeta>
+pub fn dispose(&mut self)
+pub fn drain_queued_messages(&mut self) -> Vec<crate::core::message::AgentMessage>
+pub fn emit_agent_end(&self, session_id: &str, reason: &str)
+pub fn emit_agent_start(&self, session_id: &str, model: &str)
+pub fn emit_model_select(&self, provider: &str, model_id: &str)
+pub fn end_turn(&self, turn_index: u32)
+pub fn estimate_tokens(messages: &[crate::core::message::AgentMessage]) -> u64
+pub fn event_bus(&self) -> &EventBus
+pub fn expand_skill_command(&self, skill_name: &str, args: &str) -> Option<String>
+pub fn follow_up( &mut self, text: impl Into<String>, _images: Option<Vec<crate::core::message::ImageContent>>, )
+pub fn get_context_usage(token_estimate: u64, context_window: u64, threshold: f64) -> ContextUsage
+pub fn get_follow_up_messages(&self) -> Vec<crate::core::message::AgentMessage>
+pub fn get_sandbox_engine(&self) -> std::sync::Arc<dyn SandboxEngine>
+pub fn get_steering_messages(&self) -> Vec<crate::core::message::AgentMessage>
+pub fn has_pending_steer(&self) -> bool
+pub fn init_state(&mut self, max_retries: u32, base_delay_ms: u64)
+pub fn is_in_print_mode(&self) -> bool
+pub fn is_retryable_error(msg: &crate::core::message::AgentMessage) -> bool
+pub fn leave_print_mode(&self)
+pub fn manager(&self) -> &SessionManager
+pub fn max_iterations(&self) -> u32
+pub fn model_registry(&self) -> &ModelRegistry
+pub fn navigate(&self, session_id: &str, target_id: &str)
+pub fn navigate_tree(&self, target_id: &str) -> Result<(), String>
+pub fn new( model_registry: ModelRegistry, tool_registry: ToolRegistry, session_manager: SessionManager, system_prompt: Option<String>, max_iterations: u32, compaction_threshold: f64, cwd: String, ) -> Self
+pub fn new() -> Self
+pub fn new(manager: SessionManager) -> Self
+pub fn pending_message_count(&self) -> usize
+pub fn process_prompt(&self, input: &str) -> PromptResult
+pub fn rebuild_system_prompt(&mut self)
+pub fn register_prompt_commands( &mut self, templates: &[crate::infra::resource::PromptTemplate], )
+pub fn register_skill_commands(&mut self, _skills: &[crate::infra::resource::SkillInfo])
+pub fn registry_clone(&self) -> ModelRegistry
+pub fn save_trust_decision( &self, trust_manager: &crate::infra::trust::TrustManager, trusted: bool, ) -> Result<bool, String>
+pub fn select_model(&mut self, model_id: &str) -> Result<(), String>
+pub fn session_id(&self) -> Option<&str>
+pub fn session_manager(&self) -> &SessionManager
+pub fn set_active_tools(&mut self, tool_names: &[String])
+pub fn set_append_prompt(&mut self, text: Option<String>)
+pub fn set_sandbox_engine(&mut self, engine: Option<std::sync::Arc<dyn SandboxEngine>>)
+pub fn set_session(&mut self, session_id: String)
+pub fn set_skills(&mut self, skills: Vec<SkillInfo>)
+pub fn set_thinking_level(&mut self, level: ThinkingLevel)
+pub fn share_as_gist(&self, path: &std::path::Path) -> String
+pub fn share_as_gist(path: &std::path::Path) -> String
+pub fn steer( &mut self, text: impl Into<String>, _images: Option<Vec<crate::core::message::ImageContent>>, )
+pub fn subscribe<F, Fut>(&mut self, handler: F) where F: Fn(AgentLifecycleEvent) -> Fut + Send + Sync + 'static, Fut: std::future::Future<Output = ()> + Send + 'static,
+pub fn system_prompt(&self) -> Option<&str>
+pub fn thinking_level(&self) -> ThinkingLevel
+pub fn unsubscribe(&mut self)
+pub fn will_retry_after_agent_end(&self) -> bool
+pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Context usage summary for compaction decisions. #[derive(Debug, Clone)] pub struct ContextUsage
+pub struct AgentSession
+pub struct AutoRetryEngine
+pub struct BashExecHandler
+pub struct SessionIO
+pub struct SessionStats
+pub tokens: u64, pub context_window: u64, pub percent: u64, pub should_compact: bool, } pub use crate::agent::compaction_orchestrator::should_compact
+pub use crate::agent::model::registry::ModelRegistry
+pub use self::io::SessionIO
+pub use self::prompt_result::PromptResult
+pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_usage}

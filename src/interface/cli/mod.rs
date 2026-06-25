@@ -47,6 +47,12 @@ pub struct CliArgs {
     pub list_models: bool,
     #[arg(long)]
     pub no_color: bool,
+    /// Trust the project directory and load its `.xylitol/` resources.
+    #[arg(long)]
+    pub trust: bool,
+    /// Do not trust the project directory; skip its `.xylitol/` resources.
+    #[arg(long)]
+    pub no_trust: bool,
 }
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -228,15 +234,55 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .to_string_lossy()
         .to_string();
 
-    // ── Step 3b: discover prompt templates (read-only scan) ─────
+    // ── Step 3b: resolve project trust and discover resources ─────
+    //
+    // The project's `.xylitol/` resources (prompts, skills, settings) are only
+    // loaded when the project CWD is trusted (spec c255 / t5). Trust is decided
+    // here via the resolution pipeline (t3): CLI override → store → default.
+    // There is no interactive REPL yet, so the UI prompt callback is a no-op
+    // that denies (t4 wiring point for a future interactive loop).
+    let trust_override = match (args.trust, args.no_trust) {
+        (true, _) => Some(true),
+        (_, true) => Some(false),
+        _ => None,
+    };
+    let trust_manager =
+        crate::infra::trust::TrustManager::new(crate::infra::trust::TrustManager::default_dir());
+    let trust_resolution = crate::infra::trust::resolve_project_trusted(
+        &trust_manager,
+        &cwd,
+        trust_override,
+        crate::infra::trust::DefaultProjectTrust::default(),
+        false, // no interactive UI in print mode
+        |_| None,
+    );
+    let project_trusted = trust_resolution.trusted;
+    if !project_trusted {
+        eprintln!(
+            "Project not trusted ({}); skipping `.xylitol/` project resources.",
+            match trust_resolution.reason {
+                crate::infra::trust::TrustReason::Override => "overridden via --no-trust",
+                crate::infra::trust::TrustReason::Store => "denied in trust store",
+                crate::infra::trust::TrustReason::FallbackNoUi => "no interactive prompt available",
+                _ => "policy",
+            }
+        );
+    }
+
     // DefaultResourceLoader scans ~/.xylitol/prompts and <cwd>/.xylitol/prompts.
     // Each becomes a /template:name command after the session is built.
+    // When untrusted, point cwd at a throwaway dir so no project `.xylitol/`
+    // resources are discovered (spec t5 gate).
     let discovered_templates = {
         let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
-        let loader = crate::infra::resource::DefaultResourceLoader::new(
-            std::path::PathBuf::from(&cwd),
-            agent_dir,
-        );
+        let loader_cwd = if project_trusted {
+            std::path::PathBuf::from(&cwd)
+        } else {
+            // An empty dir cannot contain `.xylitol/`, so project resources
+            // are skipped while global resources still load.
+            std::env::temp_dir()
+        };
+        let loader = crate::infra::resource::DefaultResourceLoader::new(loader_cwd, agent_dir);
         loader.get_prompts().0.to_vec()
     };
 
