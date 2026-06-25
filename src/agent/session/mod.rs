@@ -25,12 +25,12 @@ pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_u
 
 use crate::agent::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::compaction::CompactionSettings;
-use crate::agent::compaction_orchestrator::CompactionOrchestrator;
-use crate::agent::model_manager::ModelManager;
+use crate::agent::compaction::orchestrator::CompactionOrchestrator;
+use crate::agent::model::manager::ModelManager;
 use crate::agent::output_guard;
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::queue::MessageQueue;
-use crate::agent::skill_manager::SkillManager;
+use crate::agent::skills::SkillManager;
 use crate::agent::templates::{PromptTemplate, is_template_line, parse_template_line};
 use crate::agent::tools::ToolRegistry;
 use crate::core::traits::XyModel;

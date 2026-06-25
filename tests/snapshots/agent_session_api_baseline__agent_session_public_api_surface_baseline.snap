@@ -94,7 +94,7 @@ pub struct AgentSession
 pub struct BashExecHandler
 pub struct SessionIO
 pub struct SessionStats
-pub tokens: u64, pub context_window: u64, pub percent: u64, pub should_compact: bool, } pub use crate::agent::compaction_orchestrator::should_compact
+pub tokens: u64, pub context_window: u64, pub percent: u64, pub should_compact: bool, } pub use crate::agent::compaction::orchestrator::should_compact
 pub use crate::agent::model::registry::ModelRegistry
 pub use self::io::SessionIO
 pub use self::prompt_result::PromptResult

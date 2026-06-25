@@ -15,7 +15,7 @@
 #[cfg(feature = "ui-review")]
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    xylitol::interface::diff_review::run_demo().await
+    xylitol::interactive::diff_review::run_demo().await
 }
 
 #[cfg(not(feature = "ui-review"))]
