@@ -1,8 +1,13 @@
 //! Version checking against a remote API.
+//!
+//! The update URL can be configured via the `XYLITOL_UPDATE_URL` environment variable.
+//! If not set, uses the placeholder constant from `constants.rs`.
 
 #![allow(dead_code)]
 
-use super::constants::{ENV_OFFLINE, ENV_SKIP_VERSION_CHECK, HTTP_USER_AGENT, VERSION_CHECK_URL};
+use super::constants::{
+    ENV_OFFLINE, ENV_SKIP_VERSION_CHECK, ENV_UPDATE_URL, HTTP_USER_AGENT, VERSION_CHECK_URL,
+};
 
 /// Information about a new version.
 #[derive(Debug, Clone)]
@@ -12,18 +17,24 @@ pub struct VersionInfo {
     pub note: Option<String>,
 }
 
+/// Get the update URL, checking environment variable first.
+fn get_update_url() -> String {
+    std::env::var(ENV_UPDATE_URL).unwrap_or_else(|_| VERSION_CHECK_URL.to_string())
+}
+
 /// Check for a newer version of the application.
 pub async fn check_for_new_version(current: &str) -> Option<VersionInfo> {
     if std::env::var(ENV_SKIP_VERSION_CHECK).is_ok() || std::env::var(ENV_OFFLINE).is_ok() {
         return None;
     }
 
+    let url = get_update_url();
     let client = reqwest::Client::builder()
         .user_agent(HTTP_USER_AGENT)
         .build()
         .ok()?;
 
-    let resp = client.get(VERSION_CHECK_URL).send().await.ok()?;
+    let resp = client.get(&url).send().await.ok()?;
     let data: serde_json::Value = resp.json().await.ok()?;
 
     let version = data.get("version")?.as_str()?.to_string();
