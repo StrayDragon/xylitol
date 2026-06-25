@@ -2,14 +2,15 @@ kind: llman.sdd.spec
 name: "runtime-config"
 purpose: "Runtime configuration — settings manager with deep merge, file locking, camelCase serialization, and full Settings interface."
 valid_scope[1]: src
-requirements[6]{req_id,title,statement}:
+requirements[7]{req_id,title,statement}:
   rc0,placeholder,System SHALL support the full pi Settings interface with camelCase JSON serialization.
   rc11,"transport-field",Settings MUST include transport field with auto sse direct enum options.
   rc12,"mode-fields","Settings MUST include steering_mode and follow_up_mode with all one-at-a-time enum options."
   rc13,"misc-fields","Settings MUST include shell_path shell_command_prefix npm_command default_project_trust enable_skill_commands session_dir markdown warnings and the http-related fields from c83."
   rc14,"list-fields",Settings MUST include prompts and themes as Option Vec String for resource path configuration.
   rc15,"compaction-config-mapping","Runtime config MUST define a single documented mapping from the YAML load-time compaction surface into the canonical runtime compaction settings with no parallel duplicate type."
-scenarios[7]{req_id,id,given,when,then}:
+  rc1,"config-value-in-infra","The ConfigValueResolver (env var and shell command and ${VAR:-default} resolution, formerly agent/config_value.rs) MUST live under infra/config/value.rs; it MUST have zero crate:: internal dependencies outside of infra/config; agent/ MUST NOT contain config_value.rs."
+scenarios[8]{req_id,id,given,when,then}:
   rc0,placeholder,no settings are configured,nothing happens,nothing changes
   rc11,transport,transport is set to sse in settings.json,settings are loaded,Settings.transport is Some sse
   rc12,"mode-set","steering_mode is set to one-at-a-time in settings.json",settings are loaded,Settings.steering_mode is OneAtATime
@@ -17,3 +18,4 @@ scenarios[7]{req_id,id,given,when,then}:
   rc13,"trust-default",default_project_trust is set to always,SettingsManager.get_default_project_trust is called,always is returned
   rc14,"prompts-list",prompts has two paths,settings are merged,Settings.prompts has 2 entries
   rc15,"mapping-documented",a user sets compaction fields in config.yaml,config is loaded and resolved into runtime settings,the canonical runtime compaction settings reflect the YAML values via one documented mapping
+  rc1,"value-relocated",src/agent/config_value.rs is checked for existence,the path is inspected,it does not exist and src/infra/config/value.rs does

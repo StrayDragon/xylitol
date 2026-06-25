@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ar1,"thin-agent-loop","The agent/ layer MUST contain only the ReAct loop (runtime/react.rs), hook cut-points (runtime/hooks.rs), event types (runtime/event.rs), and orchestration state (current model/tool selection); it MUST NOT inline prompt formatting, bash execution logic, or output guarding logic in the loop file.",null,null,null
+  add_requirement,ar15,"no-rloop-keyword","No source file under src/ MUST use the r#loop raw identifier; the ReAct loop module MUST be named runtime::react.",null,null,null
+  add_requirement,ar16,"agent-facade","System MUST provide a single public entry point agent::facade::Agent that interactive layers import for construction and turn execution; reaching into agent::runtime from interactive/ is a layering violation.",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  ar1,"loop-file-thin","runtime/react.rs is inspected","it is read","it contains only the ReAct algorithm and delegates formatting and execution"
+  ar15,"grep-no-rloop","the source tree is grepped for r#loop","the grep runs","zero matches are found"
+  ar16,"interactive-via-facade","an interactive/ file imports an Agent type from agent/","the import is inspected","it imports agent::facade symbols (not agent::runtime)"

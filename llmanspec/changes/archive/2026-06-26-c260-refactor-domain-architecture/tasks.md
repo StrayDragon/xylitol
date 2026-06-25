@@ -43,32 +43,34 @@
 
 > **P4 范围调整（HC-5 触发纪律）**: T26-T30（SessionStore/EventSink port + facade 重构）经评估为**投机抽象**：当前 593 测试用真实后端全绿、无 test-double 痛点，AgentSession 的全量 surface（fork/navigate/switch/stats/export/append_*）无法用窄 port 覆盖而不变成 god-trait。按 design §6.3「port 方法集应由真实需求驱动」与总览 HC-5，这些 port **推迟到 P5 server 托管暴露真实 API 需求时再立**（TDD-reverse：server 需要什么，port 就定义什么）。本阶段只做架构断言固化（T31），锁定 P0-P3 成果。
 
-- [ ] T26 （推迟到 P5 触发）在 `core/ports.rs` 新增 `SessionStore` trait — 见上方 HC-5 说明
-- [ ] T27 （推迟到 P5 触发）`infra/session::SessionManager` impl `SessionStore` + 内存双
-- [ ] T28 （推迟到 P5 触发）`EventSink` trait + EventBus impl + 收集器双
-- [ ] T29 （推迟到 P5 触发）facade 改 port 注入、去 session_id（HC-2）
-- [ ] T30 （推迟到 P5 触发）cli 组合根注入 port
+- [ ] T26 在 `core/ports.rs` 新增 `SessionStore` trait — 见上方 HC-5 说明 (defer → c265-add-server-runtime)
+- [ ] T27 `infra/session::SessionManager` impl `SessionStore` + 内存双 (defer → c265-add-server-runtime)
+- [ ] T28 `EventSink` trait + EventBus impl + 收集器双 (defer → c265-add-server-runtime)
+- [ ] T29 facade 改 port 注入、去 session_id（HC-2） (defer → c265-add-server-runtime)
+- [ ] T30 cli 组合根注入 port (defer → c265-add-server-runtime)
 - [x] T31 扩展架构断言（src/tests.rs::arch_guard）：固化 (1) infra 不 import agent (2) agent 不 import provider 具体实现；未断言项（SessionManager/EventBus 具体耦合）标注 NOTE 待 P5 port 落地后启用
-- [ ] T32 验证：arch_guard 绿（infra→agent=0, agent→provider 具体=0）；build + nextest + clippy + BDD 全绿
+- [x] T32 验证：arch_guard 绿（infra→agent=0, agent→provider 具体=0）；build + nextest + clippy + BDD 全绿
 
 ## P5 — server 常驻 + protocol 统一交互（行为新增）
 
-- [x] T33 新建 `src/protocol/` + `lib.rs` 声明；建 `command.rs`/`event.rs`/`envelope.rs`/`error.rs`
-- [x] T34 把 `interactive/rpc.rs` 的 `RpcCommand`/`RpcEvent` 类型搬到 `protocol/`，整理为 `Command`/`Event` enum（含 Run/Cancel/SwitchModel/.../ApprovalRequired/...）
-- [x] T35 `interactive/rpc.rs` 退化为 stdio transport：解析 stdin→Command，序列化 Event→stdout
-- [ ] T36 新建 `interactive/driver.rs`：`Driver` trait（send/subscribe）+ `InProcessDriver`（持有 Agent 直接调）
-- [ ] T37 `interactive/{cli,print}` 改用 `Driver`（先只 InProcessDriver）
-- [ ] T38 `Cargo.toml` 加 HTTP/WS 框架（候选 axum + tokio-tungstenite）；新增 `src/server/` + `lib.rs` 声明
-- [ ] T39 `server/runtime.rs`：装配 infra 运行时注入 agent ports（第二个组合根）
-- [ ] T40 `server/rest.rs`：`/api/v1` control 路由 + 统一 envelope
-- [ ] T41 `server/ws.rs`：WS 帧协议（hello/ack/event/resync_required）+ 每 session 单调 seq
-- [ ] T42 `server/lock.rs`：单实例锁 + port-retry
-- [ ] T43 重连 journal：server 维护事件 journal，`subscribe(sid, last_seq)` 回放，溢出推 resync_required
-- [ ] T44 反向 RPC gateway：approval/question 推送 + call_id 匹配挂起 turn 恢复
-- [ ] T45 `interactive/driver.rs` 加 `RemoteDriver`（WS+REST），验证与 InProcessDriver 事件序列一致
-- [ ] T46 CLI 加 `server run` / `server install` 子命令
-- [ ] T47 新增/更新 BDD：rpc.feature 适配 protocol 演进；新增 server 重连、反向 RPC 场景
-- [ ] T48 验证：`grep -rn "crate::agent\|crate::infra" src/interactive/` 仅出现在 driver 组合根；architecture.rs 含 interactive 断言；build + nextest + clippy + BDD 全绿
+> **P5 拆分**: protocol 抽取（T33-T35）属重构、已在本 change 完成。server 进程化（T36-T48）与 HC-2 port（T26-T30）属新功能开发，按 SDD 原子性原则拆出到 `c265-add-server-runtime`（`depends_on: [c260]`）。本 change 到此 archive-ready。
+
+- [x] T33 新建 `src/protocol.rs`（Command/Event enum 单文件 SSOT；envelope/error-code typing 推迟到 server 落地）
+- [x] T34 把 `interactive/rpc.rs` 的 `RpcCommand`/`RpcEvent` 类型搬到 `protocol/`，重命名为 `Command`/`Event`
+- [x] T35 `interactive/rpc.rs` 退化为 stdio transport：解析 stdin→Command，序列化 Event→stdout（0 enum 定义）
+- [ ] T36 新建 `interactive/driver.rs`：`Driver` trait + `InProcessDriver` (defer → c265-add-server-runtime)
+- [ ] T37 `interactive/{cli,print}` 改用 `Driver` (defer → c265-add-server-runtime)
+- [ ] T38 `Cargo.toml` 加 HTTP/WS 框架；新增 `src/server/` + `lib.rs` 声明 (defer → c265-add-server-runtime)
+- [ ] T39 `server/runtime.rs`：装配 infra 运行时注入 agent ports (defer → c265-add-server-runtime)
+- [ ] T40 `server/rest.rs`：`/api/v1` control 路由 + 统一 envelope (defer → c265-add-server-runtime)
+- [ ] T41 `server/ws.rs`：WS 帧协议 + 每 session 单调 seq (defer → c265-add-server-runtime)
+- [ ] T42 `server/lock.rs`：单实例锁 + port-retry (defer → c265-add-server-runtime)
+- [ ] T43 重连 journal + resync_required (defer → c265-add-server-runtime)
+- [ ] T44 反向 RPC gateway（approval/question） (defer → c265-add-server-runtime)
+- [ ] T45 `RemoteDriver`（WS+REST），与 InProcessDriver 事件序列一致 (defer → c265-add-server-runtime)
+- [ ] T46 CLI 加 `server run` / `server install` 子命令 (defer → c265-add-server-runtime)
+- [ ] T47 新增/更新 BDD：rpc.feature 适配 protocol 演进；新增 server 重连、反向 RPC 场景 (defer → c265-add-server-runtime)
+- [ ] T48 验证：`grep -rn "crate::agent\|crate::infra" src/interactive/` 仅出现在 driver 组合根；architecture.rs 含 interactive 断言；build + nextest + clippy + BDD 全绿 (defer → c265-add-server-runtime)
 
 ## 收尾
 

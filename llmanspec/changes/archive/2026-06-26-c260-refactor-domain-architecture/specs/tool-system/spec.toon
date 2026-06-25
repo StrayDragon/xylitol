@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,t17,"tool-impls-in-infra","Built-in tool implementations (bash, read, write, edit, grep, find, ls, patch, and helpers accumulator/truncate/process/path_utils/mutation) MUST live under infra/tools/ and implement core::ports::XyTool; agent/tools/ MUST retain only the ToolRegistry and the ToolDefinition presentation type.",null,null,null
+  add_requirement,t18,"tool-registry-in-agent","The ToolRegistry MUST remain in agent/ as the orchestration selection state (Vec<Arc<dyn XyTool>>); concrete tools are injected into it at the composition root from infra::tools::default_tools().",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  t17,"tools-moved","src/agent/tools is inspected","only registry and definition remain","the built-in tool files live under src/infra/tools/"
+  t18,"registry-stays","the ToolRegistry type is located","its module path is checked","it is agent::tools not infra::tools"

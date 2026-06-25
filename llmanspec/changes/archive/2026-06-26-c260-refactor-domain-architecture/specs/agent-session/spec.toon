@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,as33,"managers-extracted-to-siblings","AgentSession collaborators (ModelManager, CompactionOrchestrator, SkillManager) MUST live in dedicated modules under their owning subsystem (model/manager.rs, compaction/orchestrator.rs, prompt/skills.rs), not as orphan top-level files in agent/; AgentSession composes them as fields.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  as33,"no-orphan-managers","src/agent/ is inspected","the top-level files are listed","model_manager.rs, compaction_orchestrator.rs, and skill_manager.rs do not exist (they live under model/, compaction/, prompt/ respectively)"
