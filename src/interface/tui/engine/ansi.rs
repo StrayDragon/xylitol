@@ -188,6 +188,14 @@ pub(crate) fn status_text(text: &str) -> String {
     styled(text, dim())
 }
 
+/// Horizontal rule filling the full width with `─` (U+2500) characters.
+pub(crate) fn horizontal_rule(width: u16) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    dim_text(&"─".repeat(width as usize))
+}
+
 // ── String utilities ──────────────────────────────────────────────────────────
 
 /// Compute the **visible** (display) width of a string by stripping ANSI escape
@@ -583,5 +591,17 @@ mod tests {
     fn test_begin_end_sync() {
         assert_eq!(begin_sync(), "\x1b[?2026h");
         assert_eq!(end_sync(), "\x1b[?2026l");
+    }
+
+    #[test]
+    fn test_horizontal_rule() {
+        let rule = horizontal_rule(10);
+        assert_eq!(visible_width(&rule), 10);
+        assert!(rule.contains("─"));
+    }
+
+    #[test]
+    fn test_horizontal_rule_zero() {
+        assert_eq!(horizontal_rule(0), "");
     }
 }

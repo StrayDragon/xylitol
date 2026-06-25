@@ -17,6 +17,7 @@ use std::time::Duration;
 
 use crate::agent::r#loop::{AgentEvent, AgentEventStream, AgentLoop};
 use crate::interface::tui::engine::ansi;
+use crate::interface::tui::engine::composer_renderer::StatusInfo;
 use crate::interface::tui::engine::renderer::TuiRenderer;
 use crate::interface::tui::input::action::Action;
 use crate::interface::tui::input::decode::DecodedInput;
@@ -65,8 +66,22 @@ pub(crate) async fn run_tui_engine(
     // Get terminal size
     let (mut width, mut height) = terminal_size();
 
-    // Model name for status bar
-    let model_name_owned = model_name.to_string();
+    // ── Status info for status bar ────────────────────────────────
+    let cwd = agent_loop.session().cwd().to_string();
+    let branch = get_git_branch().unwrap_or_default();
+    let provider = agent_loop
+        .session()
+        .current_model()
+        .map(|m| m.config.kind.provider_name().to_string())
+        .unwrap_or_default();
+    let status_info = StatusInfo {
+        cwd,
+        branch,
+        context_progress: String::new(),
+        provider,
+        model_name: model_name.to_string(),
+        thinking: String::new(),
+    };
 
     // ── Main event loop ─────────────────────────────────────────────
     loop {
@@ -228,7 +243,7 @@ pub(crate) async fn run_tui_engine(
                         &app,
                         width,
                         height,
-                        &model_name_owned,
+                        &status_info,
                     );
                     let _ = renderer.render(&lines, width, height);
                     dirty = false;
@@ -266,5 +281,23 @@ fn terminal_size() -> (u16, u16) {
         (w, h)
     } else {
         (80, 24)
+    }
+}
+
+/// Get the current git branch name, or `None` if not in a git repo.
+fn get_git_branch() -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["branch", "--show-current"])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if branch.is_empty() {
+            None
+        } else {
+            Some(branch)
+        }
+    } else {
+        None
     }
 }
