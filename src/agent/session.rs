@@ -308,12 +308,6 @@ impl AgentSession {
                 let args = crate::agent::commands::get_command_args(input)
                     .unwrap_or("")
                     .to_string();
-                // Check for TUI-only commands before returning Handled.
-                if crate::agent::commands::is_tui_command(cmd_name) {
-                    return PromptResult::Expanded(format!(
-                        "`/{cmd_name}` requires TUI mode. Run the agent interactively."
-                    ));
-                }
                 return PromptResult::Handled {
                     command: cmd_name.to_string(),
                     args,
@@ -1209,21 +1203,6 @@ mod tests {
         assert!(names.iter().any(|n| n == "model"));
         assert!(names.iter().any(|n| n == "export"));
         assert!(names.iter().any(|n| n == "compact"));
-    }
-
-    #[test]
-    fn tui_commands_return_guidance_in_non_tui_mode() {
-        let session = make_session();
-        let result = session.process_prompt("/settings");
-        match result {
-            PromptResult::Expanded(text) => assert!(text.contains("TUI")),
-            other => panic!("expected Expanded for TUI command, got {other:?}"),
-        }
-        let result = session.process_prompt("/hotkeys");
-        match result {
-            PromptResult::Expanded(text) => assert!(text.contains("TUI")),
-            other => panic!("expected Expanded for TUI command, got {other:?}"),
-        }
     }
 
     #[test]

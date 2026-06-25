@@ -34,12 +34,6 @@ chrono = { version = "0.4.44", features = ["serde"] }
 hex = "0.4.3"
 uuid = { version = "1.23.1", features = ["v4"] }
 
-# ── TUI dependencies ──
-ratatui = { version = "0.30.2", default-features = false, features = ["crossterm", "scrolling-regions", "unstable-backend-writer"] }
-crossterm = { version = "0.29.0", features = ["bracketed-paste", "event-stream"] }
-ratatui-textarea = { version = "0.9.2", default-features = false, features = ["crossterm"] }
-unicode-width = "0.2.2"
-unicode-segmentation = "1.13.3"
 base64 = "0.22.1"
 
 # ── image processing ──
@@ -48,7 +42,6 @@ url = { version = "2" }
 flate2 = { version = "1" }
 tar = { version = "0.4" }
 zip = { version = "2" }
-syntect = { version = "5", default-features = false, features = ["default-syntaxes", "default-themes", "regex-onig", "html"] }
 notify = { version = "7" }
 async-openai = { version = "0.40.2", default-features = false, features = ["chat-completion", "rustls"] }
 reqwest = { version = "0.13.4", features = ["stream", "json"] }
@@ -59,9 +52,16 @@ yaml_serde = "0.10.4"
 serde_yaml = "0.9.34"
 pathdiff = "0.2.3"
 
+# ── terminal rendering (optional diff_review backend) ──
+# ratatui/crossterm are pulled in only when the `ui-review` feature is on.
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm"], optional = true }
+crossterm = { version = "0.29.0", optional = true }
+
 [features]
 default = []
-ui-tui = []
+# Interactive diff-review UI (terminal ratatui/crossterm backend).
+# Off by default to keep the main build free of terminal-rendering deps.
+ui-review = ["dep:ratatui", "dep:crossterm"]
 
 [profile.dev]
 opt-level = 0

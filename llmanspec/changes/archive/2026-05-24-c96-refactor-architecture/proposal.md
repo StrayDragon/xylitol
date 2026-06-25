@@ -1,5 +1,5 @@
 ---
-depends_on: [c50-add-security, c80-add-tui]
+depends_on: [c50-add-security]
 ---
 
 # c96-refactor-architecture

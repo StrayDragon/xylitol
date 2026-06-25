@@ -251,8 +251,8 @@ mod tests {
         let opts = SystemPromptOpts {
             cwd: ".".into(),
             skills: vec![SkillInfo {
-                name: "rust-cli-tui-developer".into(),
-                description: Some("Build Rust CLI tools".into()),
+                name: "code-review".into(),
+                description: Some("Automated code review".into()),
                 source_info: crate::infra::source_info::SourceInfo {
                     path: PathBuf::from("/home/u/.xylitol/skills/SKILL.md"),
                     source: "user".into(),
@@ -264,8 +264,8 @@ mod tests {
             ..Default::default()
         };
         let prompt = build_system_prompt(&opts);
-        assert!(prompt.contains("rust-cli-tui-developer"));
-        assert!(prompt.contains("Build Rust CLI tools"));
+        assert!(prompt.contains("code-review"));
+        assert!(prompt.contains("Automated code review"));
         assert!(prompt.contains("SKILL.md"));
         assert!(prompt.contains("<available_skills>"));
         assert!(prompt.contains("</available_skills>"));

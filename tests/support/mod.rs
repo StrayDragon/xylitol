@@ -1,3 +1,3 @@
 //! Test support module.
 
-pub(crate) mod vt100_backend;
+pub(crate) mod in_memory;

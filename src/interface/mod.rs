@@ -3,7 +3,7 @@ pub mod print;
 pub mod resources;
 pub mod rpc;
 
+/// Interactive diff review (terminal ratatui backend).
+/// Requires the `ui-review` feature.
+#[cfg(feature = "ui-review")]
 pub mod diff_review;
-
-#[cfg(feature = "ui-tui")]
-pub(crate) mod tui;

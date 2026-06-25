@@ -13,7 +13,7 @@ requirements[18]{req_id,title,statement}:
   ar2,streaming,"Agent runtime MUST stream model responses token-by-token via an event stream (TextDelta, ThinkingDelta, FunctionCall)."
   ar3,"tool-execution","Agent runtime MUST execute all tool calls from a single model response before the next model call, supporting both sequential and parallel execution modes."
   ar4,"iteration-limit","Agent runtime MUST enforce a configurable max_iterations limit, terminating with error when reached."
-  ar5,"event-stream",Agent runtime MUST expose the loop as an async Stream<AgentEvent> for consumer layers (Print/TUI/RPC).
+  ar5,"event-stream",Agent runtime MUST expose the loop as an async Stream<AgentEvent> for consumer layers (Print/RPC).
   ar8,"session-cwd","Agent runtime MUST validate session working directory exists on session creation and import, returning an error with the missing path when CWD is not accessible."
   ar9,diagnostics,"Agent runtime MUST collect non-fatal diagnostics (info/warning/error) during session creation covering: missing API keys, unknown model references, extension load failures, and CWD issues."
   ar10,defaults,"System MUST centralize default values: DEFAULT_THINKING_LEVEL = medium, DEFAULT_MODEL for each known provider, DEFAULT_MAX_ITERATIONS = 50, DEFAULT_COMPACTION_THRESHOLD = 0.8."
