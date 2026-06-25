@@ -376,7 +376,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let session_id = args
         .session
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let mut agent = Agent::new(agent_session);
+    let agent = Agent::new(agent_session);
     let mut driver = InProcessDriver::new(agent);
 
     // ── Step 6: dispatch by mode ─────────────────────────────

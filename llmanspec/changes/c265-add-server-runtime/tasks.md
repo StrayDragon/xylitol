@@ -23,11 +23,11 @@
 
 ## P3 — 架构断言扩展
 
-- [ ] T14 扩展 `src/tests.rs::arch_guard`：新增 `interactive_only_from_driver` 测试（interactive/ 文件仅 driver.rs 可 import agent/infra）
-- [ ] T15 更新 arch_guard 的 NOTE 移除"待 P5 port 落地后启用"说明
-- [ ] T16 验证：arch_guard 全 3 个测试绿；全量 QA 绿
+- [x] T14 扩展 `src/tests.rs::arch_guard`：新增 `interactive_only_from_driver` 测试（interactive/ 文件仅 driver.rs 可 import agent/infra）
+- [x] T15 更新 arch_guard 的 NOTE 移除"待 P5 port 落地后启用"说明
+- [x] T16 验证：arch_guard 全 3 个测试绿；全量 QA 绿
 
 ## 收尾
 
-- [ ] T17 `llman sdd validate c265-add-server-runtime --strict --no-interactive` 通过
-- [ ] T18 全量校验：cargo build --all-features && cargo nextest run --profile ci && cargo clippy --all-features -- -D warnings && cargo test --test bdd -- --test-threads=1 && cargo fmt --check
+- [x] T17 `llman sdd validate c265-add-server-runtime --strict --no-interactive` 通过
+- [x] T18 全量校验：cargo build --all-features && cargo nextest run --profile ci && cargo clippy --all-features -- -D warnings && cargo test --test bdd -- --test-threads=1 && cargo fmt --check
