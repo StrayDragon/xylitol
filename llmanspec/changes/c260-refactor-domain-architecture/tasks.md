@@ -41,13 +41,15 @@
 
 ## P4 — HC-2 修正 + 架构断言（行为不变）
 
-- [ ] T26 在 `core/ports.rs` 新增 `SessionStore` trait（append/load/exists，仅 agent loop/compaction 调用的方法）
-- [ ] T27 `infra/session::SessionManager` impl `SessionStore`；新增 `tests/support/in_memory_store.rs`（或 cfg(test) 双）
-- [ ] T28 在 `core/ports.rs` 新增 `EventSink` trait；`infra::event::EventBus` impl 之；新增 test 收集器双
-- [ ] T29 改 `agent/facade.rs`：`Agent::new(store: Arc<dyn SessionStore>, sink: Arc<dyn EventSink>, ...)`；`run(&mut self, prompt: &str)` 不再传 session_id（session_id 在 interactive 层绑定 store）
-- [ ] T30 改 `interactive/cli` 组合根：构造 `Arc<dyn SessionStore>`/`Arc<dyn EventSink>` 注入 Agent
-- [ ] T31 新增 `tests/architecture.rs`：固化 HC-1 全部 grep 断言（infra 不 import agent；agent 不 import infra 具体类型；interactive 不 import agent/infra 非 driver 根）
-- [ ] T32 验证：architecture.rs 绿；`Agent::new` 签名无 Session/session_id；build + nextest + clippy + BDD 全绿
+> **P4 范围调整（HC-5 触发纪律）**: T26-T30（SessionStore/EventSink port + facade 重构）经评估为**投机抽象**：当前 593 测试用真实后端全绿、无 test-double 痛点，AgentSession 的全量 surface（fork/navigate/switch/stats/export/append_*）无法用窄 port 覆盖而不变成 god-trait。按 design §6.3「port 方法集应由真实需求驱动」与总览 HC-5，这些 port **推迟到 P5 server 托管暴露真实 API 需求时再立**（TDD-reverse：server 需要什么，port 就定义什么）。本阶段只做架构断言固化（T31），锁定 P0-P3 成果。
+
+- [ ] T26 （推迟到 P5 触发）在 `core/ports.rs` 新增 `SessionStore` trait — 见上方 HC-5 说明
+- [ ] T27 （推迟到 P5 触发）`infra/session::SessionManager` impl `SessionStore` + 内存双
+- [ ] T28 （推迟到 P5 触发）`EventSink` trait + EventBus impl + 收集器双
+- [ ] T29 （推迟到 P5 触发）facade 改 port 注入、去 session_id（HC-2）
+- [ ] T30 （推迟到 P5 触发）cli 组合根注入 port
+- [x] T31 扩展架构断言（src/tests.rs::arch_guard）：固化 (1) infra 不 import agent (2) agent 不 import provider 具体实现；未断言项（SessionManager/EventBus 具体耦合）标注 NOTE 待 P5 port 落地后启用
+- [ ] T32 验证：arch_guard 绿（infra→agent=0, agent→provider 具体=0）；build + nextest + clippy + BDD 全绿
 
 ## P5 — server 常驻 + protocol 统一交互（行为新增）
 
