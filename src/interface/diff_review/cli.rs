@@ -19,6 +19,7 @@
 //! | `?` | Toggle help |
 
 use std::io;
+use std::io::IsTerminal;
 
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
@@ -784,6 +785,11 @@ fn handle_comment_input(app: &mut ReviewApp, key: KeyCode, modifiers: KeyModifie
 ///
 /// Returns the user's [`ReviewVerdict`].
 pub async fn run_cli_review(session: &mut ReviewSession) -> io::Result<ReviewVerdict> {
+    // Check if stdin is a terminal
+    if !io::stdin().is_terminal() {
+        eprintln!("stdin is not a terminal, skipping interactive review");
+        return Ok(ReviewVerdict::AcceptAll(session.comments.clone()));
+    }
     // Setup terminal
     terminal::enable_raw_mode()?;
     let mut stdout = io::stdout();

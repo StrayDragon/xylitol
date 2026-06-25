@@ -162,7 +162,7 @@ impl ReviewEngine {
         match cli::run_cli_review(session).await {
             Ok(verdict) => verdict,
             Err(e) => {
-                tracing::error!("CLI review error: {e}");
+                eprintln!("CLI review error: {e}");
                 ReviewVerdict::AcceptAll(session.comments.clone())
             }
         }
