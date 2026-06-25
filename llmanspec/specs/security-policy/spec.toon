@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "security-policy"
 purpose: "TBD - created by archiving change c50-add-security. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[14]{req_id,title,statement}:
+requirements[13]{req_id,title,statement}:
   r1,"security-wrapper","SecurityToolWrapper MUST wrap XyTool (not adk_core::Tool) and MUST enforce approval policy before tool execution."
   r2,"tighten-only","System MUST only allow three-tier config overrides to tighten rules never to relax them."
   r3,"unified-path-field-check",SecurityEngine MUST check both 'file_path' and 'path' argument fields when evaluating filesystem tool access.
@@ -11,13 +11,12 @@ requirements[14]{req_id,title,statement}:
   r6,"hook-timeout-kill","Hook executor MUST kill the child process on timeout and MUST support configurable fail-open or fail-closed behavior."
   r7,"network-domain-enforcement",SecurityEngine MUST enforce network.allowed_domains and network.blocked_domains for bash/curl and MCP SSE URLs.
   r8,"bash-timeout-cap",Bash tool MUST cap timeout to min(requested_timeout and config.security.bash.timeout_secs).
-  r9,"bash-approval-required",TUI approval MUST cover bash tool execution when security is enabled.
   s10,"sandbox-config-struct","System MUST define a SandboxConfig struct with enabled, filesystem (read_allowed, read_denied, write_allowed, write_denied), network (allowed_domains, denied_domains), and process (allowed_paths) fields, loadable from config.yaml tiered merge."
   s11,"sandbox-fs-enforcement","Filesystem tools (read, write, edit) SHALL check SandboxEngine before execution. When a path matches write_denied or does not match read_allowed (when read_allowed is non-empty), the tool SHALL return an access-denied error."
   s12,"sandbox-network-enforcement","Bash execution SHALL check network.allowed_domains and network.denied_domains for URLs appearing in command text. When a domain is denied or not in allowed_domains (when allowed_domains is non-empty), the execution SHALL be blocked."
   s13,"sandbox-engine-trait","System MUST provide a SandboxEngine trait with check_read(path), check_write(path), check_network(domain), check_process(path) methods. A platform-specific backend (Landlock on Linux >=5.13) MAY provide OS-level enforcement; a fallback backend SHALL do application-level pattern matching."
   s14,"sandbox-default-deny-unlisted","When sandbox.filesystem.read_allowed is non-empty, any path not matching an allowed pattern SHALL be treated as denied (default-deny). When network.allowed_domains is non-empty, any domain not matching an allowed pattern SHALL be treated as denied."
-scenarios[14]{req_id,id,given,when,then}:
+scenarios[13]{req_id,id,given,when,then}:
   r1,"xy-tool-approval",a tool requiring approval is wrapped with SecurityToolWrapper,tool is invoked,"approval check runs before XyTool::execute and blocks if denied"
   r2,happy,user config tries to allow a forbidden pattern,config is merged,the forbidden pattern remains blocked
   r3,"path-field-bypass","security enabled with forbidden_patterns=['/etc/**']",grep tool called with path='/etc/passwd',SecurityEngine returns Blocked
@@ -26,7 +25,6 @@ scenarios[14]{req_id,id,given,when,then}:
   r6,"hook-kill-on-timeout",hook configured with timeout=100ms,hook script runs 'sleep 999',"child process is killed and action is Block (fail-closed default)"
   r7,"network-domain-block",blocked_domains contains 'evil.com',bash executes 'curl evil.com',SecurityEngine returns Blocked
   r8,"timeout-cap",config.security.bash.timeout_secs=30,LLM requests timeout=99999,actual timeout used is 30 seconds
-  r9,"bash-needs-approval",security enabled in TUI mode,agent invokes bash tool,TUI shows approval overlay before execution
   s10,"load-config","config.yaml has sandbox.filesystem.deny_write=['.env']",config loads,SandboxConfig.write_denied contains '.env'
   s11,"block-env-write","sandbox enabled with deny_write=['.env']",edit tool writes to '.env',"engine returns access-denied error"
   s12,"block-evil-domain","sandbox enabled with denied_domains=['evil.com']","bash runs 'curl https://evil.com/pwn'","execution is blocked with domain-denied reason"

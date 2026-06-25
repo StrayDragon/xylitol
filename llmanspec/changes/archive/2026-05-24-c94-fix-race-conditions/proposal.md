@@ -1,5 +1,5 @@
 ---
-depends_on: [c80-add-tui, c50-add-security, c40-add-hooks]
+depends_on: [c50-add-security, c40-add-hooks]
 ---
 
 # c94-fix-race-conditions

@@ -34,7 +34,7 @@ Use `cargo test` or `just test` for the full suite. BDD scenarios are defined in
 
 ## Commit & Pull Request Guidelines
 
-History and hooks expect Conventional Commits, for example `feat(cli): ...`, `fix(agent): ...`, `refactor(config): ...`, `docs: ...`, or `chore: ...`. Before opening a PR, run `just qa`. PR descriptions should summarize behavior changes, list test coverage, link related issues or `llmanspec/changes/...` items, and include screenshots or terminal output for CLI/TUI-visible changes.
+History and hooks expect Conventional Commits, for example `feat(cli): ...`, `fix(agent): ...`, `refactor(config): ...`, `docs: ...`, or `chore: ...`. Before opening a PR, run `just qa`. PR descriptions should summarize behavior changes, list test coverage, link related issues or `llmanspec/changes/...` items, and include screenshots or terminal output for CLI-visible changes.
 
 ## Provider Support Scope (Pre-1.0.0)
 

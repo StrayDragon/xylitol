@@ -34,5 +34,5 @@ scenarios[11]{req_id,id,given,when,then}:
   cli2,stdin,echo 'review this' | ./xylitol,args are parsed,prompt contains 'review this'
   cli3,picker,"sessions exist and no --session given",CLI starts,"a session picker is shown (print-mode skips this)"
   cli4,trust,first run in /home/user/project,CLI starts,a project trust prompt is shown
-  cli5,print,"./xylitol --print 'fix'",CLI runs,output goes to stdout without TUI
+  cli5,print,"./xylitol --print 'fix'",CLI runs,output goes to stdout
 ```

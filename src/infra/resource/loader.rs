@@ -927,10 +927,10 @@ mod tests {
 
     #[test]
     fn test_parse_skill_frontmatter() {
-        let content = "---\nname: rust-cli-tui\ndescription: Rust CLI/TUI development\n---\n# Body";
+        let content = "---\nname: code-review\ndescription: Automated code review\n---\n# Body";
         let (name, desc) = parse_skill_frontmatter(content);
-        assert_eq!(name, Some("rust-cli-tui".into()));
-        assert_eq!(desc, Some("Rust CLI/TUI development".into()));
+        assert_eq!(name, Some("code-review".into()));
+        assert_eq!(desc, Some("Automated code review".into()));
     }
 
     #[test]
