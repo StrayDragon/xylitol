@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "security-policy"
 purpose: "TBD - created by archiving change c50-add-security. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[13]{req_id,title,statement}:
+requirements[19]{req_id,title,statement}:
   r1,"security-wrapper","SecurityToolWrapper MUST wrap XyTool (not adk_core::Tool) and MUST enforce approval policy before tool execution."
   r2,"tighten-only","System MUST only allow three-tier config overrides to tighten rules never to relax them."
   r3,"unified-path-field-check",SecurityEngine MUST check both 'file_path' and 'path' argument fields when evaluating filesystem tool access.
@@ -16,7 +16,13 @@ requirements[13]{req_id,title,statement}:
   s12,"sandbox-network-enforcement","Bash execution SHALL check network.allowed_domains and network.denied_domains for URLs appearing in command text. When a domain is denied or not in allowed_domains (when allowed_domains is non-empty), the execution SHALL be blocked."
   s13,"sandbox-engine-trait","System MUST provide a SandboxEngine trait with check_read(path), check_write(path), check_network(domain), check_process(path) methods. A platform-specific backend (Landlock on Linux >=5.13) MAY provide OS-level enforcement; a fallback backend SHALL do application-level pattern matching."
   s14,"sandbox-default-deny-unlisted","When sandbox.filesystem.read_allowed is non-empty, any path not matching an allowed pattern SHALL be treated as denied (default-deny). When network.allowed_domains is non-empty, any domain not matching an allowed pattern SHALL be treated as denied."
-scenarios[13]{req_id,id,given,when,then}:
+  t1,信任单一事实来源,"Project trust state MUST have a single source of truth in infra/trust/. The agent/ layer MUST NOT contain its own trust store or trust resolver. The duplicate implementations at src/agent/trust/ (store.rs, resolve.rs) MUST be removed."
+  t2,信任持久化格式,"Trust decisions MUST be persisted as a JSON file mapping canonical absolute directory paths to a boolean trust decision (true=trusted, false=untrusted) or null (cleared). The store MUST support parent-directory inheritance: a trust decision on an ancestor directory applies to all descendant project directories unless overridden."
+  t3,信任解析管线,"Project trust resolution MUST follow a fixed precedence: (1) explicit CLI override (--trust / --no-trust); (2) when no trust-requiring inputs exist, auto-trust; (3) persistent store lookup with parent inheritance; (4) configured default policy (always / never / ask); (5) interactive UI prompt only when has_ui is true; (6) fallback deny. The resolution MUST return both the decision and the reason."
+  t4,信任 UI 回调注入,"The trust resolver MUST accept an on_prompt callback for the interactive step and MUST NOT perform terminal I/O directly. The interface/ layer is responsible for supplying the prompt callback; the agent/ and infra/ layers MUST remain UI-agnostic for trust decisions."
+  t5,信任状态接线,"At agent startup the resolved trust decision for the project CWD MUST be applied to gate project-scoped settings and resources. SettingsManager MUST reject loading project-scoped settings when the project is not trusted. The standalone project_trusted bool toggle on SettingsManager MUST be replaced by the resolved trust decision (single source of truth per t1)."
+  t6,信任命令接线,"The trust slash command (commands.rs) MUST be wired to persist a trust decision via the infra/trust/ store, replacing the current dead entry. Running /trust or /no-trust in a session MUST persist the decision for the current project CWD."
+scenarios[22]{req_id,id,given,when,then}:
   r1,"xy-tool-approval",a tool requiring approval is wrapped with SecurityToolWrapper,tool is invoked,"approval check runs before XyTool::execute and blocks if denied"
   r2,happy,user config tries to allow a forbidden pattern,config is merged,the forbidden pattern remains blocked
   r3,"path-field-bypass","security enabled with forbidden_patterns=['/etc/**']",grep tool called with path='/etc/passwd',SecurityEngine returns Blocked
@@ -30,3 +36,12 @@ scenarios[13]{req_id,id,given,when,then}:
   s12,"block-evil-domain","sandbox enabled with denied_domains=['evil.com']","bash runs 'curl https://evil.com/pwn'","execution is blocked with domain-denied reason"
   s13,"landlock-available",Linux kernel >=5.13 with Landlock enabled,engine initializes,"backend is LandlockBackend, not FallbackBackend"
   s14,"default-deny-read","read_allowed=['/home/user/project']",read tool reads '/etc/passwd',"engine returns access-denied"
+  t1,"no-agent-trust",the change is applied,"rg 'agent::trust' src/ tests/ is run excluding the removed module",zero matches are found and src/agent/trust/ directory does not exist
+  t2,"parent-inheritance",trust store has /home/user set to true,is_trusted('/home/user/projects/foo') is queried,the query returns true via parent inheritance
+  t2,"child-override",trust store has /home/user set to true and /home/user/evil set to false,is_trusted('/home/user/evil') is queried,the query returns false (nearest ancestor wins)
+  t3,"override-wins",trust store has the project marked untrusted,resolution is called with trust_override=Some(true),the result is trusted with reason Override
+  t3,"no-inputs-auto-trust",a directory with no .xylitol/ and no .agents/skills/,resolution is called without an override,the result is trusted with reason NoTrustInputs
+  t3,"fallback-deny-no-ui","a directory with trust-requiring inputs, no stored decision, default policy Ask, and has_ui=false",resolution is called,the result is not trusted with reason FallbackNoUi
+  t4,"callback-invoked",resolution reaches the Ask step with has_ui=true,the user callback selects the Trust option,the decision is trusted with reason UserPrompt and the choice is persisted to the store
+  t5,"untrusted-blocks-project-settings",a project with .xylitol/settings.json and the project resolved as not trusted,SettingsManager loads settings,"project-scoped settings are NOT merged into the effective settings"
+  t6,"command-persists",an active session in a project CWD,the user runs the trust command,the infra/trust/ store records the decision and subsequent resolution returns the persisted value

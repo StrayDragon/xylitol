@@ -11,14 +11,25 @@
 
 use std::sync::Arc;
 
+mod bash_exec;
+mod events;
+mod export;
+mod io;
+mod prompt_result;
+mod retry;
+mod stats;
+mod steering;
+
+pub use self::io::SessionIO;
+pub use self::prompt_result::PromptResult;
+pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_usage};
+
 use crate::agent::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::compaction_orchestrator::CompactionOrchestrator;
 use crate::agent::model_manager::ModelManager;
 use crate::agent::output_guard;
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::queue::MessageQueue;
-use crate::agent::retry::{RetryState, is_retryable_error};
-use crate::agent::session_io::SessionIO;
 use crate::agent::skill_manager::SkillManager;
 use crate::agent::templates::{PromptTemplate, is_template_line, parse_template_line};
 use crate::agent::tools::ToolRegistry;
@@ -74,9 +85,9 @@ pub struct AgentSession {
     /// Handle for lifecycle subscription (dropped on unsubscribe/dispose).
     lifecycle_handle: Option<UnsubscribeHandle>,
     /// Auto-retry state machine (None = no retry in progress).
-    retry_state: Option<RetryState>,
+    retry_engine: crate::agent::session::retry::AutoRetryEngine,
     /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
-    bash_cancel: Option<tokio_util::sync::CancellationToken>,
+    bash_handler: crate::agent::session::bash_exec::BashExecHandler,
 
     /// Sandbox engine for tool execution isolation.
     sandbox_engine: Option<std::sync::Arc<dyn SandboxEngine>>,
@@ -112,8 +123,8 @@ impl AgentSession {
             skill_manager: SkillManager::new(),
             event_bus: EventBus::new(),
             lifecycle_handle: None,
-            retry_state: None,
-            bash_cancel: None,
+            retry_engine: crate::agent::session::retry::AutoRetryEngine::new(),
+            bash_handler: crate::agent::session::bash_exec::BashExecHandler::new(),
             sandbox_engine: None,
         }
     }
@@ -398,154 +409,33 @@ impl AgentSession {
         output_guard::is_stdout_taken_over()
     }
 
-    // ── Event bus & subscription ────────────────────────────
+    // ── Event bus & subscription (methods live in events.rs) ──
 
-    /// Get a reference to the event bus.
-    pub fn event_bus(&self) -> &EventBus {
-        &self.event_bus
-    }
-
-    /// Subscribe to all lifecycle events.
-    ///
-    /// The handler receives every [`AgentLifecycleEvent`] emitted during
-    /// agent execution. Returns an [`UnsubscribeHandle`] — drop it to
-    /// unsubscribe.
-    pub fn subscribe<F, Fut>(&mut self, handler: F)
-    where
-        F: Fn(AgentLifecycleEvent) -> Fut + Send + Sync + 'static,
-        Fut: std::future::Future<Output = ()> + Send + 'static,
-    {
-        let handle = self.event_bus.on_lifecycle(handler);
-        self.lifecycle_handle = Some(handle);
-    }
-
-    /// Remove the lifecycle subscription.
-    pub fn unsubscribe(&mut self) {
-        self.lifecycle_handle.take();
-    }
-
-    // ── Lifecycle event helpers ────────────────────────────────
-
-    /// Emit a turn_start lifecycle event.
-    pub fn begin_turn(&self, turn_index: u32) {
-        self.event_bus
-            .emit_lifecycle(&AgentLifecycleEvent::TurnStart { turn_index });
-    }
-
-    /// Emit a turn_end lifecycle event.
-    pub fn end_turn(&self, turn_index: u32) {
-        self.event_bus
-            .emit_lifecycle(&AgentLifecycleEvent::TurnEnd { turn_index });
-    }
-
-    /// Emit an agent_start lifecycle event.
-    pub fn emit_agent_start(&self, session_id: &str, model: &str) {
-        self.event_bus
-            .emit_lifecycle(&AgentLifecycleEvent::AgentStart {
-                session_id: session_id.to_string(),
-                model: model.to_string(),
-            });
-    }
-
-    /// Emit an agent_end lifecycle event.
-    pub fn emit_agent_end(&self, session_id: &str, reason: &str) {
-        self.event_bus
-            .emit_lifecycle(&AgentLifecycleEvent::AgentEnd {
-                session_id: session_id.to_string(),
-                reason: reason.to_string(),
-            });
-    }
-
-    /// Emit a model_select lifecycle event.
-    pub fn emit_model_select(&self, provider: &str, model_id: &str) {
-        self.event_bus
-            .emit_lifecycle(&AgentLifecycleEvent::ModelSelect {
-                provider: provider.to_string(),
-                model_id: model_id.to_string(),
-            });
-    }
-
-    // ── Auto-retry ────────────────────────────────────────────────
+    // ── Auto-retry (delegated to AutoRetryEngine) ─────────────
 
     /// Check whether an assistant message signals a retryable error.
-    ///
-    /// A message is retryable when:
-    /// - `stop_reason` is `Error` or
-    /// - `stop_reason` is `MaxTokens` and error text is detected, or
-    /// - the text content matches known transient error patterns.
     pub fn _is_retryable_error(msg: &crate::core::message::AgentMessage) -> bool {
-        match msg {
-            crate::core::message::AgentMessage::AssistantMessage {
-                stop_reason,
-                content,
-                ..
-            } => {
-                if let Some(sr) = stop_reason
-                    && matches!(sr, crate::core::message::StopReason::Error)
-                {
-                    return true;
-                }
-                // Also check the text content for error patterns.
-                let text = crate::core::message::collect_text_parts(content);
-                if text.is_empty() {
-                    return false;
-                }
-                is_retryable_error(&text)
-            }
-            _ => false,
-        }
+        crate::agent::session::retry::AutoRetryEngine::is_retryable_error(msg)
     }
 
     /// Check whether the session should retry after the agent ends.
     pub fn _will_retry_after_agent_end(&self) -> bool {
-        self.retry_state.as_ref().is_some_and(|r| r.can_retry())
+        self.retry_engine.will_retry_after_agent_end()
     }
 
     /// Initialize or reset the retry state for a new agent run.
-    ///
-    /// `max_retries` defaults to 3, `base_delay_ms` to 1000 (1 second).
     pub fn _init_retry_state(&mut self, max_retries: u32, base_delay_ms: u64) {
-        self.retry_state = Some(RetryState::new(max_retries, base_delay_ms));
+        self.retry_engine.init_state(max_retries, base_delay_ms);
     }
 
     /// Prepare and execute a retry attempt.
-    ///
-    /// Emits `AutoRetryStart`, applies exponential backoff, then returns
-    /// `true` if the retry should proceed (i.e. not aborted).
     pub async fn _prepare_retry(&self) -> bool {
-        match &self.retry_state {
-            Some(state) => {
-                let attempt = state.attempt() + 1; // next_delay increments this
-                let delay = state.next_delay();
-                let max_retries = 3; // from state but not stored directly
-
-                self.event_bus
-                    .emit_lifecycle(&AgentLifecycleEvent::AutoRetryStart {
-                        attempt,
-                        max_retries,
-                        delay_ms: delay.as_millis() as u64,
-                    });
-
-                // Wait for backoff or abort
-                let aborted = state.backoff(delay).await;
-
-                self.event_bus
-                    .emit_lifecycle(&AgentLifecycleEvent::AutoRetryEnd {
-                        success: !aborted,
-                        attempt,
-                    });
-
-                !aborted
-            }
-            None => false,
-        }
+        self.retry_engine.prepare_retry(&self.event_bus).await
     }
 
     /// Abort any in-progress retry.
     pub fn _abort_retry(&self) {
-        if let Some(ref state) = self.retry_state {
-            state.abort();
-        }
+        self.retry_engine.abort();
     }
 
     /// Start a new session, creating it in the session manager.
@@ -630,6 +520,21 @@ impl AgentSession {
         self.skill_manager.expand_command(skill_name, args)
     }
 
+    // ── Project trust (spec c255 / t6) ─────────────────────────
+
+    /// Persist a project trust decision for the current CWD via the trust
+    /// store (single source of truth). Used by the `/trust` and `/no-trust`
+    /// commands; the decision takes effect on the next resolution / restart.
+    /// Returns the persisted decision.
+    pub fn save_trust_decision(
+        &self,
+        trust_manager: &crate::infra::trust::TrustManager,
+        trusted: bool,
+    ) -> Result<bool, String> {
+        trust_manager.set_trust(&self.cwd, Some(trusted))?;
+        Ok(trusted)
+    }
+
     // ── Fork ────────────────────────────────────────────────────
 
     /// Fork the current session at a given entry, creating a child session.
@@ -680,70 +585,7 @@ impl AgentSession {
     }
 
     // ── Steering / Follow-up queue ─────────────────────────────
-
-    /// Queue a steering message — injected into context mid-turn.
-    pub fn steer(
-        &mut self,
-        text: impl Into<String>,
-        _images: Option<Vec<crate::core::message::ImageContent>>,
-    ) {
-        let msg = crate::core::message::AgentMessage::user(text);
-        self.message_queue.push(msg);
-        self._emit_queue_update();
-    }
-
-    /// Queue a follow-up message — delivered after current turn.
-    pub fn follow_up(
-        &mut self,
-        text: impl Into<String>,
-        _images: Option<Vec<crate::core::message::ImageContent>>,
-    ) {
-        let msg = crate::core::message::AgentMessage::user(text);
-        self.message_queue.push(msg);
-        self._emit_queue_update();
-    }
-
-    /// Return and clear all queued messages.
-    pub fn clear_queue(&mut self) -> Vec<crate::core::message::AgentMessage> {
-        let drained = self.message_queue.drain();
-        self._emit_queue_update();
-        drained
-    }
-
-    /// Number of pending messages in the queue.
-    pub fn pending_message_count(&self) -> usize {
-        self.message_queue.pending_count()
-    }
-
-    /// Check if any steering message is pending.
-    pub fn has_pending_steer(&self) -> bool {
-        self.message_queue.has_pending()
-    }
-
-    /// Get all queued steering messages (without clearing).
-    pub fn get_steering_messages(&self) -> Vec<crate::core::message::AgentMessage> {
-        Vec::new()
-    }
-
-    /// Get all queued follow-up messages (without clearing).
-    pub fn get_follow_up_messages(&self) -> Vec<crate::core::message::AgentMessage> {
-        Vec::new()
-    }
-
-    /// Drain queued messages for the next turn.
-    pub fn drain_queued_messages(&mut self) -> Vec<crate::core::message::AgentMessage> {
-        self.message_queue.drain()
-    }
-
-    fn _emit_queue_update(&self) {
-        // Count steerable vs follow-up (currently all in one queue).
-        let total = self.message_queue.pending_count();
-        self.event_bus
-            .emit_lifecycle(&AgentLifecycleEvent::QueueUpdate {
-                steer_count: total,
-                follow_up_count: 0,
-            });
-    }
+    // (methods live in steering.rs)
 
     // ── Dynamic system prompt ────────────────────────────────────
 
@@ -821,19 +663,7 @@ impl AgentSession {
         command: &str,
         exclude_from_context: bool,
     ) -> Result<crate::agent::bash_executor::BashResult, String> {
-        let cancel = tokio_util::sync::CancellationToken::new();
-        self.bash_cancel = Some(cancel.clone());
-
-        let result = crate::agent::bash_executor::execute(
-            command,
-            crate::agent::bash_executor::BashExecutorOptions {
-                cancel: Some(cancel),
-                ..Default::default()
-            },
-        )
-        .await;
-
-        self.bash_cancel = None;
+        let result = self.bash_handler.execute_raw(command).await;
 
         // Record on disk.
         if let Some(sid) = self.session_id() {
@@ -860,19 +690,14 @@ impl AgentSession {
                 .ok_or_else(|| "no active session".to_string())?
                 .to_string(),
         };
-        self.session_io
-            .manager()
-            .append_bash_execution(crate::infra::session::manager::BashExecutionParams {
-                session_id: &sid,
-                command,
-                output: &result.output,
-                exit_code: result.exit_code,
-                cancelled: result.cancelled,
-                truncated: result.truncated,
-                full_output_path: result.full_output_path.as_deref(),
-                exclude_from_context,
-            })
-            .await
+        record_bash_result(
+            &self.session_io,
+            command,
+            result,
+            exclude_from_context,
+            &sid,
+        )
+        .await
     }
 
     /// Set the sandbox engine for tool execution isolation.
@@ -902,9 +727,7 @@ impl AgentSession {
 
     /// Abort any in-flight bash execution.
     pub fn abort_bash(&mut self) {
-        if let Some(cancel) = self.bash_cancel.take() {
-            cancel.cancel();
-        }
+        self.bash_handler.abort();
     }
 
     // ── Lifecycle management ───────────────────────────────────────
@@ -964,7 +787,7 @@ impl AgentSession {
             .await
     }
 
-    // ── Export / import ─────────────────────────────────────────
+    // ── Export / import (delegated to SessionExporter) ─────────
 
     /// Export the active session's entries to an HTML file. Returns the path.
     pub async fn export_to_html(
@@ -972,10 +795,7 @@ impl AgentSession {
         path: &std::path::Path,
     ) -> Result<std::path::PathBuf, String> {
         let sid = self.session_id().ok_or("no active session")?.to_string();
-        let entries = self.session_io.manager().load(&sid).await?;
-        let html = crate::infra::session::export::render_html(&sid, &entries);
-        crate::infra::session::export::write_to(path, &html)?;
-        Ok(path.to_path_buf())
+        crate::agent::session::export::export_to_html(self.session_io.manager(), &sid, path).await
     }
 
     /// Export the active session's entries as JSONL. Returns the path.
@@ -984,37 +804,17 @@ impl AgentSession {
         path: &std::path::Path,
     ) -> Result<std::path::PathBuf, String> {
         let sid = self.session_id().ok_or("no active session")?.to_string();
-        let entries = self.session_io.manager().load(&sid).await?;
-        let jsonl = crate::infra::session::export::render_jsonl(&entries)?;
-        crate::infra::session::export::write_to(path, &jsonl)?;
-        Ok(path.to_path_buf())
+        crate::agent::session::export::export_to_jsonl(self.session_io.manager(), &sid, path).await
     }
 
     /// Import a JSONL file into a brand-new session. Returns the new session id.
-    ///
-    /// The new session id is derived from the source header (re-used) to keep
-    /// identities stable across export/import, but the file lands in this
-    /// manager's sessions dir without overwriting an existing session.
     pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String> {
-        let bytes = std::fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        let entries = crate::infra::session::export::parse_jsonl(&bytes)?;
-        let new_id = match entries.first() {
-            Some(crate::infra::session::SessionEntry::Header(h)) => h.id.clone(),
-            _ => return Err("import: missing header".into()),
-        };
-        if self.session_io.manager().exists(&new_id) {
-            return Err(format!("session already exists: {new_id}"));
-        }
-        // Append all entries into a fresh session file.
-        for entry in &entries {
-            self.session_io.manager().append(&new_id, entry).await?;
-        }
-        Ok(new_id)
+        crate::agent::session::export::import_from_jsonl(self.session_io.manager(), path).await
     }
 
     /// Share guidance stub — returns a configuration hint (no network upload).
     pub fn share_as_gist(&self, path: &std::path::Path) -> String {
-        crate::infra::session::export::share_guidance_message(path)
+        crate::agent::session::export::share_as_gist(path)
     }
 
     /// Check and perform auto-compaction if the context is full.
@@ -1045,93 +845,28 @@ impl AgentSession {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct SessionStats {
-    pub session_id: String,
-    pub user_messages: usize,
-    pub assistant_messages: usize,
-    pub total_messages: usize,
-    pub thinking_level: String,
-    pub model: Option<(String, String)>,
-}
-
-// ── Context estimation ──────────────────────────────────────────────
-
-/// Estimate token count from messages using simple heuristic (1 token ≈ 4 chars).
-pub fn estimate_tokens(messages: &[crate::core::message::AgentMessage]) -> u64 {
-    let mut total = 0u64;
-    for msg in messages {
-        for part in msg.content() {
-            match part {
-                crate::core::message::AgentPart::Text(s)
-                | crate::core::message::AgentPart::Thinking { text: s, .. } => {
-                    total += (s.len() as u64).div_ceil(4);
-                }
-                crate::core::message::AgentPart::ToolCall {
-                    name, arguments, ..
-                } => {
-                    total += (name.len() as u64).div_ceil(4);
-                    total += (arguments.to_string().len() as u64).div_ceil(4);
-                }
-                crate::core::message::AgentPart::ToolResult { content, .. } => {
-                    for inner in content {
-                        if let crate::core::message::AgentPart::Text(s) = inner {
-                            total += (s.len() as u64).div_ceil(4);
-                        }
-                    }
-                }
-                crate::core::message::AgentPart::Image(_) => {
-                    total += 4800; // image token estimate
-                }
-            }
-        }
-    }
-    total
-}
-
-pub use crate::agent::compaction_orchestrator::should_compact;
-
-#[derive(Debug, Clone)]
-pub struct ContextUsage {
-    pub tokens: u64,
-    pub context_window: u64,
-    pub percent: u64,
-    pub should_compact: bool,
-}
-
-/// Get context usage info for the current session state.
-pub fn get_context_usage(token_estimate: u64, context_window: u64, threshold: f64) -> ContextUsage {
-    let percent = if context_window > 0 {
-        ((token_estimate as f64 / context_window as f64) * 100.0) as u64
-    } else {
-        0
-    };
-    ContextUsage {
-        tokens: token_estimate,
-        context_window,
-        percent,
-        should_compact: should_compact(token_estimate, context_window, threshold),
-    }
-}
-
-// ── Prompt Result ───────────────────────────────────────────────────
-
-/// Result of processing user input through the prompt interceptor.
-#[derive(Debug, Clone)]
-pub enum PromptResult {
-    /// A slash command was matched and handled. No LLM call needed.
-    Handled { command: String, args: String },
-    /// A /template:name was expanded. The caller should send the content to the LLM.
-    Expanded(String),
-    /// A `!cmd` / `!!cmd` bash execution request. The caller should invoke
-    /// `execute_bash` with the parsed command; `exclude_from_context` reflects
-    /// the bang prefix.
-    Bash {
-        exclude_from_context: bool,
-        command: String,
-    },
-    /// Normal input — pass through to LLM unchanged.
-    PassThrough(String),
+/// Persist a bash result as a `BashExecution` session entry (free helper used
+/// by both [`AgentSession::record_bash_result`](super::AgentSession::record_bash_result)
+/// and the bash-execution collaborator).
+pub(crate) async fn record_bash_result(
+    io: &crate::agent::session::io::SessionIO,
+    command: &str,
+    result: &crate::agent::bash_executor::BashResult,
+    exclude_from_context: bool,
+    session_id: &str,
+) -> Result<(), String> {
+    io.manager()
+        .append_bash_execution(crate::infra::session::manager::BashExecutionParams {
+            session_id,
+            command,
+            output: &result.output,
+            exit_code: result.exit_code,
+            cancelled: result.cancelled,
+            truncated: result.truncated,
+            full_output_path: result.full_output_path.as_deref(),
+            exclude_from_context,
+        })
+        .await
 }
 
 #[cfg(test)]

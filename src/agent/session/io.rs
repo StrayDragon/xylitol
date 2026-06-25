@@ -1,14 +1,13 @@
-//! SessionIO — session persistence, forking, navigation, and statistics.
+//! SessionIO — session persistence, forking, navigation (spec c255 / as32).
 //!
-//! Extracted from [`AgentSession`](super::session::AgentSession) to isolate
-//! session-persistence concerns into a focused component.
+//! Thin wrapper around [`SessionManager`] isolating session-persistence
+//! operations. The stub `stats()` was removed — statistics are computed in
+//! [`stats`](super::stats) from the session context.
 
 use crate::infra::session::manager::SessionManager;
 
 /// Session persistence and navigation operations.
 #[derive(Clone)]
-
-/// Session persistence and navigation operations.
 pub struct SessionIO {
     manager: SessionManager,
 }
@@ -57,19 +56,6 @@ impl SessionIO {
     /// Switch to a different session file.
     pub async fn switch(&self, new_id: &str, new_path: &str) -> Result<(), String> {
         self.manager.switch_session(new_id, new_path).await
-    }
-
-    /// Get session stats.
-    pub async fn stats(&self, _session_id: &str) -> Result<super::session::SessionStats, String> {
-        // Simplified: return empty stats for now
-        Ok(super::session::SessionStats {
-            session_id: _session_id.to_string(),
-            user_messages: 0,
-            assistant_messages: 0,
-            total_messages: 0,
-            thinking_level: String::new(),
-            model: None,
-        })
     }
 
     /// Persist a model change entry.
