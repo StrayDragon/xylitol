@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ic1,"driver-trait","interactive/ MUST define a Driver trait with a send method (command to event stream) and a subscribe method (per-session event stream from last_seq); all interactive clients (cli and future tui/web) MUST depend on Driver, never on agent or infra.",null,null,null
+  add_requirement,ic2,"inprocess-driver","interactive/ MUST provide InProcessDriver that holds an Agent and invokes it directly; it is the only interactive module permitted to import agent::facade and to wire infra ports at construction.",null,null,null
+  add_requirement,ic3,"remote-driver","interactive/ MUST provide RemoteDriver that speaks protocol over WebSocket (streaming) and REST (control); it MUST produce event sequences identical to InProcessDriver for the same commands.",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  ic1,"clients-depend-on-driver","an interactive client module is inspected","its imports are checked","it imports interactive::Driver, not agent or infra"
+  ic2,"inprocess-wires-agent","InProcessDriver is constructed","its body is inspected","it holds an Agent and imports agent::facade only from the agent layer"
+  ic3,"remote-matches-local","a fixed command sequence is run against both drivers","the event sequences are diffed","they are identical"
