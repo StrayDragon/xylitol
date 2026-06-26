@@ -16,6 +16,7 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
+use crate::agent::compaction::CompactionSettings;
 use crate::agent::r#loop::{AgentEvent, AgentLoop};
 use crate::agent::session::{AgentSession, ModelRegistry};
 use crate::agent::tools::ToolRegistry;
@@ -162,6 +163,7 @@ struct RpcState {
     system_prompt: Option<String>,
     max_iterations: u32,
     compaction_threshold: f64,
+    compaction_settings: CompactionSettings,
     /// Cancellation token for the active prompt loop.
     active_cancel: Option<CancellationToken>,
 }
@@ -177,6 +179,7 @@ impl RpcState {
             system_prompt: s.system_prompt().map(|s| s.to_string()),
             max_iterations: s.max_iterations(),
             compaction_threshold: s.compaction_threshold(),
+            compaction_settings: s.compaction_settings().clone(),
             active_cancel: None,
         }
     }
@@ -196,6 +199,7 @@ impl RpcState {
             self.max_iterations,
             self.compaction_threshold,
             self.cwd.clone(),
+            Some(self.compaction_settings.clone()),
         );
         session.set_thinking_level(self.thinking_level);
         if let Some(ref mid) = self.current_model_id {

@@ -402,42 +402,6 @@ pub fn xml_escape(s: &str) -> String {
     result
 }
 
-/// Format a skill invocation XML block for injection into the prompt.
-///
-/// ```xml
-/// <skill name="skill-name" location="/path/to/SKILL.md">
-/// References are relative to /path/to.
-///
-/// <skill body>
-/// </skill>
-/// ```
-pub fn format_skill_invocation(
-    skill: &DiscoveredSkill,
-    additional_instructions: Option<&str>,
-) -> String {
-    let base_dir = skill.base_dir.to_string_lossy();
-    let escaped_name = xml_escape(&skill.name);
-    let escaped_location = xml_escape(&skill.file_path.to_string_lossy());
-
-    let mut result = format!(
-        r#"<skill name="{escaped_name}" location="{escaped_location}">
-References are relative to {base_dir}.
-
-"#,
-    );
-
-    result.push_str(&skill.content);
-
-    if let Some(extra) = additional_instructions {
-        result.push('\n');
-        result.push('\n');
-        result.push_str(extra);
-    }
-
-    result.push_str("\n</skill>");
-    result
-}
-
 /// Load skills from multiple directories.
 pub fn load_skills(dirs: &[PathBuf], source: &str) -> LoadSkillsResult {
     let mut result = LoadSkillsResult::empty();

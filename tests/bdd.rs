@@ -171,6 +171,7 @@ fn make_agent(agent: &AgentState) -> AgentLoop {
         50,
         0.8,
         ".".into(),
+        None,
     );
     AgentLoop::new(session)
 }
@@ -556,6 +557,7 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         50,
         0.8,
         ".".into(),
+        None,
     );
     let tl = match level.as_str() {
         "high" => ThinkingLevel::High,
@@ -653,6 +655,7 @@ fn _w_agent_cycle_forward(agent: &AgentState) {
         50,
         0.8,
         ".".into(),
+        None,
     );
     let next = session
         .cycle_forward()
