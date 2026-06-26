@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ip5,"envelope-deferred","A REST response envelope ({code, msg, data, request_id}) and error-code type SHALL be deferred to c270 (server process); stdio transport MUST continue to serialize Event lines directly.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ip5,"stdio-unchanged","a client sends a prompt command over stdio","the response is inspected","it is an Event line, not an envelope"

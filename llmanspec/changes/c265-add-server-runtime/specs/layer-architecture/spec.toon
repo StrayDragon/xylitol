@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,la9,"arch-guard-expanded","System MUST enforce via a guard test (src/tests.rs::arch_guard) all of: no infra file imports crate::agent, no agent file imports concrete infra::provider types (openai/anthropic/fake/mock), and no interactive file imports crate::agent or crate::infra except the in-process driver composition root.",null,null,null
+  add_requirement,la11,"arch-guard-interactive","The architecture guard MUST also verify that interactive/ (excluding the driver composition root) does not import crate::agent or crate::infra types.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  la9,"guard-catches-agent-leak","a new agent/ file adds use crate::infra::tools::BashTool","the architecture guard runs","the guard fails and reports the offending file path"
+  la11,"guard-catches-interactive-leak","a new interactive/ file (non-driver) adds use crate::agent::facade::Agent","the architecture guard runs","the guard fails and reports the offending file path"
