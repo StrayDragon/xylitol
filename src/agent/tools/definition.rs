@@ -1,14 +1,14 @@
 //! Agent-level tool presentation.
 //!
 //! Contains [`ToolDefinition`] — a presentation wrapper around
-//! [`XyTool`](crate::core::traits::XyTool) that includes prompt metadata
-//! and source information. The core abstractions ([`XyModel`](crate::core::traits::XyModel),
-//! [`XyTool`](crate::core::traits::XyTool), etc.) live in [`crate::core::traits`].
+//! [`XyTool`](crate::core::ports::XyTool) that includes prompt metadata
+//! and source information. The core abstractions ([`XyModel`](crate::core::ports::XyModel),
+//! [`XyTool`](crate::core::ports::XyTool), etc.) live in [`crate::core::ports`].
 
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::core::traits::{ToolExecutionMode, XyTool};
+use crate::core::ports::{ToolExecutionMode, XyTool};
 
 // ── ToolDefinition ──────────────────────────────────────────────────
 

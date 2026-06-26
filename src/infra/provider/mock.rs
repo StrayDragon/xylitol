@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use crate::core::error::XyError;
 use crate::core::message::AgentMessage;
-use crate::core::traits::{XyModel, XyStream};
+use crate::core::ports::{XyModel, XyStream};
 use crate::core::types::{XyChunk, XyFinishReason, XyToolSchema};
 
 /// Drop-in mock for tests. Returns a fixed text response.

@@ -4,7 +4,7 @@
 //! compaction orchestration into a focused component.
 
 use crate::agent::compaction::{CompactionSettings, compact_session};
-use crate::core::traits::XyModel;
+use crate::core::ports::XyModel;
 use crate::infra::event::EventBus;
 use crate::infra::event::lifecycle::AgentLifecycleEvent;
 use crate::infra::session::manager::SessionManager;

@@ -186,7 +186,7 @@ impl RpcState {
 
     fn build_session(&self) -> Result<AgentSession, String> {
         let model_registry = self.model_registry.clone();
-        let tool_registry = ToolRegistry::builtins();
+        let tool_registry = ToolRegistry::from_tools(crate::infra::tools::default_tools());
         let session_dir = SessionManager::default_dir();
         std::fs::create_dir_all(&session_dir).map_err(|e| format!("session dir: {e}"))?;
         let session_mgr = SessionManager::new(session_dir);

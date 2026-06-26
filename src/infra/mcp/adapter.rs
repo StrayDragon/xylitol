@@ -37,7 +37,7 @@ impl McpToolAdapter {
 }
 
 #[async_trait]
-impl crate::core::traits::XyTool for McpToolAdapter {
+impl crate::core::ports::XyTool for McpToolAdapter {
     fn name(&self) -> &str {
         &self.full_name
     }
@@ -54,7 +54,7 @@ impl crate::core::traits::XyTool for McpToolAdapter {
 
     async fn execute(
         &self,
-        _ctx: &crate::core::traits::XyToolCtx,
+        _ctx: &crate::core::ports::XyToolCtx,
         args: Value,
     ) -> Result<String, crate::core::error::XyToolError> {
         let parts: Vec<&str> = self.full_name.splitn(3, ':').collect();
@@ -85,7 +85,7 @@ impl crate::core::traits::XyTool for McpToolAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::traits::XyTool;
+    use crate::core::ports::XyTool;
 
     #[test]
     fn test_mcp_tool_adapter_name_format() {

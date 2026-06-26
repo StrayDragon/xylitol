@@ -31,7 +31,7 @@ pub use token_estimator::{XyUsage, calculate_context_tokens, estimate_context_to
 use anyhow::Result;
 use serde_json::json;
 
-use crate::core::traits::XyModel;
+use crate::core::ports::XyModel;
 use crate::infra::session::manager::SessionManager;
 use crate::infra::session::types::{CompactionEntry, EntryBase, SessionEntry};
 

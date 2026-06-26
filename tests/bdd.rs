@@ -11,22 +11,23 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use xylitol::agent::compaction::should_compact;
-use xylitol::agent::model::config::{
-    reset_fake_state, set_fake_text, set_fake_tool_call, set_fake_tool_result,
-};
 use xylitol::agent::runtime::{AgentEvent, AgentLoop};
 use xylitol::agent::session::{AgentSession, ContextUsage, ModelRegistry, get_context_usage};
-use xylitol::agent::tools::{
-    ToolRegistry, bash::BashTool, edit::EditTool, find::FindTool, grep::GrepTool, ls::LsTool,
-    mutation::FileMutationQueue, read::ReadTool, write::WriteTool,
-};
+use xylitol::agent::tools::ToolRegistry;
 use xylitol::core::model::{ModelConfig, ModelKind};
-use xylitol::core::traits::{XyTool, XyToolCtx};
+use xylitol::core::ports::{XyTool, XyToolCtx};
 use xylitol::core::types::{ModelMeta, ThinkingLevel};
 use xylitol::infra::config::types::HookEntry;
 use xylitol::infra::hooks::{DispatchResult, HookDispatcher, HookEvent, HookPhase};
+use xylitol::infra::provider::factory::{
+    reset_fake_state, set_fake_text, set_fake_tool_call, set_fake_tool_result,
+};
 use xylitol::infra::session::{
     CompactionEntry, EntryBase, MessageEntry, SessionEntry, SessionManager,
+};
+use xylitol::infra::tools::{
+    bash::BashTool, edit::EditTool, find::FindTool, grep::GrepTool, ls::LsTool,
+    mutation::FileMutationQueue, read::ReadTool, write::WriteTool,
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -165,7 +166,7 @@ fn make_agent(agent: &AgentState) -> AgentLoop {
     let mgr = SessionManager::new(dir.keep());
     let session = AgentSession::new(
         agent.registry.borrow().clone(),
-        ToolRegistry::builtins(),
+        ToolRegistry::from_tools(xylitol::infra::tools::default_tools()),
         mgr,
         Some("you are helpful".into()),
         50,
@@ -551,7 +552,7 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
     let mgr = SessionManager::new(dir.keep());
     let mut session = AgentSession::new(
         agent.registry.borrow().clone(),
-        ToolRegistry::builtins(),
+        ToolRegistry::from_tools(xylitol::infra::tools::default_tools()),
         mgr,
         None,
         50,
@@ -649,7 +650,7 @@ fn _w_agent_cycle_forward(agent: &AgentState) {
     let mgr = SessionManager::new(dir.keep());
     let mut session = AgentSession::new(
         agent.registry.borrow().clone(),
-        ToolRegistry::builtins(),
+        ToolRegistry::from_tools(xylitol::infra::tools::default_tools()),
         mgr,
         None,
         50,

@@ -28,7 +28,7 @@ use crate::agent::session::AgentSession;
 use crate::agent::tools::ToolRegistry;
 use crate::core::error::XyError;
 use crate::core::message::{AgentMessage, AgentPart};
-use crate::core::traits::{ToolExecutionMode, XyModel, XyToolCtx};
+use crate::core::ports::{ToolExecutionMode, XyModel, XyToolCtx};
 use crate::core::types::{XyChunk, XyToolSchema};
 
 use crate::infra::sandbox::SandboxVerdict;
@@ -451,7 +451,7 @@ mod tests {
         let session_mgr = SessionManager::new(SessionManager::default_dir());
         let session = AgentSession::new(
             reg,
-            ToolRegistry::builtins(),
+            ToolRegistry::from_tools(crate::infra::tools::default_tools()),
             session_mgr,
             Some("You are helpful.".into()),
             50,
@@ -491,7 +491,7 @@ mod tests {
         let session_mgr = SessionManager::new(SessionManager::default_dir());
         let session = AgentSession::new(
             reg,
-            ToolRegistry::builtins(),
+            ToolRegistry::from_tools(crate::infra::tools::default_tools()),
             session_mgr,
             Some("You are helpful.".into()),
             50,

@@ -1,22 +1,9 @@
-pub(crate) mod accumulator;
-pub mod bash;
 pub mod definition;
-pub mod edit;
-pub mod find;
-pub mod grep;
-pub mod ls;
-pub mod mutation;
-pub(crate) mod patch;
-pub(crate) mod path_utils;
-pub(crate) mod process;
-pub mod read;
-pub(crate) mod truncate;
-pub mod write;
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::core::traits::XyTool;
+use crate::core::ports::XyTool;
 
 // ── ToolRegistry ───────────────────────────────────────────────────
 
@@ -39,12 +26,23 @@ impl Default for ToolRegistry {
 }
 
 impl ToolRegistry {
+    /// Create an empty registry. Use `infra::tools::default_tools() (then wrapped via ToolRegistry::from_tools)` at the
+    /// composition root to get one pre-loaded with built-in tools.
     pub fn new() -> Self {
         Self {
             tools: Vec::new(),
             allowed: None,
             excluded: None,
         }
+    }
+
+    /// Build a registry from an iterable of tools (e.g. `infra::tools::default_tools()`).
+    pub fn from_tools<I: IntoIterator<Item = Arc<dyn XyTool>>>(tools: I) -> Self {
+        let mut reg = Self::new();
+        for t in tools {
+            reg.register(t);
+        }
+        reg
     }
 
     pub fn register(&mut self, tool: Arc<dyn XyTool>) {
@@ -104,18 +102,13 @@ impl ToolRegistry {
         }
     }
 
-    /// Create a registry with all built-in tools registered.
+    /// Create an empty registry (alias of [`new`](Self::new)).
+    ///
+    /// Historically this registered all built-in tools; that construction now
+    /// lives in `infra::tools::default_tools() (then wrapped via ToolRegistry::from_tools)` so the agent layer does not
+    /// name concrete tool types. Existing call sites should switch to that.
     pub fn builtins() -> Self {
-        let mq = Arc::new(mutation::FileMutationQueue::new());
-        let mut reg = Self::new();
-        reg.register(Arc::new(read::ReadTool));
-        reg.register(Arc::new(write::WriteTool::new(mq.clone())));
-        reg.register(Arc::new(edit::EditTool::new(mq.clone())));
-        reg.register(Arc::new(bash::BashTool::default()));
-        reg.register(Arc::new(grep::GrepTool));
-        reg.register(Arc::new(find::FindTool));
-        reg.register(Arc::new(ls::LsTool));
-        reg
+        Self::new()
     }
 }
 
@@ -204,16 +197,36 @@ mod tests {
 
     #[test]
     fn test_registry_register_and_get() {
+        struct DummyTool;
+        #[async_trait::async_trait]
+        impl crate::core::ports::XyTool for DummyTool {
+            fn name(&self) -> &str {
+                "dummy"
+            }
+            fn description(&self) -> &str {
+                "dummy"
+            }
+            fn parameters_schema(&self) -> serde_json::Value {
+                serde_json::json!({})
+            }
+            async fn execute(
+                &self,
+                _: &crate::core::ports::XyToolCtx,
+                _: serde_json::Value,
+            ) -> Result<String, crate::core::error::XyToolError> {
+                Ok("ok".into())
+            }
+        }
         let mut reg = ToolRegistry::new();
-        reg.register(Arc::new(read::ReadTool));
-        let tool = reg.get("read");
+        reg.register(Arc::new(DummyTool));
+        let tool = reg.get("dummy");
         assert!(tool.is_some());
-        assert_eq!(tool.unwrap().name(), "read");
+        assert_eq!(tool.unwrap().name(), "dummy");
     }
 
     #[test]
     fn test_registry_builtins_contains_all() {
-        let reg = ToolRegistry::builtins();
+        let reg = ToolRegistry::from_tools(crate::infra::tools::default_tools());
         let names: Vec<&str> = reg.list().iter().map(|t| t.name()).collect();
         assert!(names.contains(&"read"));
         assert!(names.contains(&"write"));
@@ -227,7 +240,7 @@ mod tests {
 
     #[test]
     fn test_registry_filtered_subset() {
-        let reg = ToolRegistry::builtins();
+        let reg = ToolRegistry::from_tools(crate::infra::tools::default_tools());
         let allowed: Vec<String> = vec!["read".into(), "bash".into()];
         let filtered = reg.filtered(Some(&allowed));
         assert_eq!(filtered.len(), 2);
@@ -238,7 +251,7 @@ mod tests {
 
     #[test]
     fn test_registry_filtered_all_when_none() {
-        let reg = ToolRegistry::builtins();
+        let reg = ToolRegistry::from_tools(crate::infra::tools::default_tools());
         let filtered = reg.filtered(None);
         assert_eq!(filtered.len(), 7);
     }

@@ -18,9 +18,13 @@ use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::tools::accumulator::OutputAccumulator;
-use crate::agent::tools::process::kill_tree;
-use crate::agent::tools::truncate::DEFAULT_MAX_BYTES;
+// NOTE: runtime/bash shares exec primitives with infra::tools::bash (the LLM tool).
+// These are low-level utilities (rolling buffer, process kill, byte cap), not
+// provider/tool ports, so agent depending on them is acceptable. ceiling: if a
+// second agent-side exec facility needs them, lift to core or a shared crate.
+use crate::infra::tools::accumulator::OutputAccumulator;
+use crate::infra::tools::process::kill_tree;
+use crate::infra::tools::truncate::DEFAULT_MAX_BYTES;
 
 /// Streaming output chunk callback for bash execution.
 pub(crate) type OnChunkCallback<'a> = Box<dyn FnMut(&str) + Send + 'a>;

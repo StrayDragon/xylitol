@@ -15,7 +15,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use crate::core::error::XyToolError;
-use crate::core::traits::{XyTool, XyToolCtx};
+use crate::core::ports::{XyTool, XyToolCtx};
 
 use super::mutation::FileMutationQueue;
 use super::patch;
@@ -180,8 +180,8 @@ impl XyTool for EditTool {
         })
     }
 
-    fn execution_mode(&self) -> crate::core::traits::ToolExecutionMode {
-        crate::core::traits::ToolExecutionMode::Sequential
+    fn execution_mode(&self) -> crate::core::ports::ToolExecutionMode {
+        crate::core::ports::ToolExecutionMode::Sequential
     }
 
     async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {

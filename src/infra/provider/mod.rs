@@ -7,6 +7,7 @@
 //! - [`MockXyModel`] (test-only): returns a fixed text response
 
 pub(crate) mod anthropic;
+pub mod factory;
 pub(crate) mod openai;
 
 mod fake;
