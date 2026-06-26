@@ -2,7 +2,9 @@ kind: llman.sdd.spec
 name: "bdd-tests"
 purpose: "TBD - created by archiving change c07-fix-bdd-scenarios. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[1]{req_id,title,statement}:
+requirements[2]{req_id,title,statement}:
   r1,BDD steps MUST pass all 77 scenarios,"All 77 BDD scenarios MUST pass (currently 41/77, 36 failed) using rstest-bdd runner."
-scenarios[1]{req_id,id,given,when,then}:
+  bt1,"server-integration-scenarios","The BDD test suite MUST include step definitions for server.feature (server start, health check, prompt submission, event streaming, shutdown) and approval.feature (tool approval round-trip via reverse RPC)."
+scenarios[2]{req_id,id,given,when,then}:
   r1,"all-pass",all 77 scenarios exist in feature files,"cargo test --test bdd -- --test-threads=1","all 77 pass, 0 fail"
+  bt1,"server-feature-steps",server.feature scenarios have Gherkin steps,the BDD runner parses them,all server.feature and approval.feature scenarios run and pass
