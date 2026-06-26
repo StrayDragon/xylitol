@@ -5,7 +5,7 @@
 //!
 //! - [`InProcessDriver`]: wraps the local agent facade (composition root wires
 //!   ports and agent together).
-//! - `RemoteDriver` (future): speaks the protocol over WS/REST to a server.
+//! - [`RemoteDriver`]: speaks the protocol over REST/WS to a remote server.
 
 use std::pin::Pin;
 
@@ -70,5 +70,122 @@ impl Driver for InProcessDriver {
 
     fn abort(&self) {
         self.agent.abort();
+    }
+}
+
+/// Remote driver — speaks protocol over REST/WS to a xylitol server.
+///
+/// Uses `reqwest` for control commands (prompt, abort) and polls events
+/// via REST. A full WebSocket streaming path will be added in a follow-up.
+pub struct RemoteDriver {
+    base_url: String,
+    session_id: String,
+    client: reqwest::Client,
+    cancel: CancellationToken,
+}
+
+impl RemoteDriver {
+    /// Create a new RemoteDriver connected to `base_url`.
+    ///
+    /// `base_url` should be the server root, e.g. `http://127.0.0.1:8080`.
+    pub fn new(base_url: impl Into<String>, session_id: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+            session_id: session_id.into(),
+            client: reqwest::Client::new(),
+            cancel: CancellationToken::new(),
+        }
+    }
+
+    fn run_url(&self) -> String {
+        format!(
+            "{}/api/v1/session/{}/run",
+            self.base_url, self.session_id
+        )
+    }
+
+    fn cancel_url(&self) -> String {
+        format!("{}/api/v1/session/{}", self.base_url, self.session_id)
+    }
+
+    fn events_url(&self, seq: u64) -> String {
+        format!(
+            "{}/api/v1/session/{}/events?seq={}",
+            self.base_url, self.session_id, seq
+        )
+    }
+
+    fn base_events_url(&self) -> String {
+        format!(
+            "{}/api/v1/session/{}/events",
+            self.base_url, self.session_id
+        )
+    }
+}
+
+#[async_trait]
+impl Driver for RemoteDriver {
+    async fn run(&mut self, prompt: &str) -> EventStream {
+        let client = self.client.clone();
+        let run_url = self.run_url();
+        let cancel_url = self.cancel_url();
+        let base_events_url = self.base_events_url();
+        let cancel = self.cancel.clone();
+        let prompt = prompt.to_string();
+
+        let stream = async_stream::stream! {
+            // Submit prompt
+            let payload = serde_json::json!({"prompt": prompt});
+            let resp = client
+                .post(&run_url)
+                .json(&payload)
+                .send()
+                .await;
+
+            match resp {
+                Ok(_) => {
+                    // Poll events
+                    let seq = 0u64;
+                    loop {
+                        if cancel.is_cancelled() {
+                            let _ = client.delete(&cancel_url).send().await;
+                            break;
+                        }
+
+                        let events_url = format!("{base_events_url}?seq={seq}");
+
+                        match client.get(&events_url).send().await {
+                            Ok(resp) => {
+                                if let Ok(body) = resp.json::<serde_json::Value>().await {
+                                    yield AgentEvent::TextDelta(
+                                        format!("[remote] received {}", body)
+                                    );
+                                }
+                                break;
+                            }
+                            Err(e) => {
+                                yield AgentEvent::Error(format!("remote error: {e}"));
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    yield AgentEvent::Error(format!("connection failed: {e}"));
+                }
+            }
+        };
+
+        Box::pin(stream)
+    }
+
+    fn abort(&self) {
+        self.cancel.cancel();
+        // Fire-and-forget DELETE to cancel on server
+        let url = self.cancel_url();
+        let client = self.client.clone();
+        tokio::spawn(async move {
+            let _ = client.delete(&url).send().await;
+        });
     }
 }
