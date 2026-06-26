@@ -20,7 +20,7 @@ dirs = "6"
 thiserror = "2"
 tracing = "0.1"
 clap = { version = "4.6.1", features = ["derive"] }
-tokio = { version = "1.52.3", features = ["fs", "process", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1.52.3", features = ["fs", "process", "io-util", "macros", "rt", "rt-multi-thread", "signal", "sync", "time"] }
 async-trait = "0.1.89"
 similar = "3.1.0"
 glob = "0.3.3"
@@ -52,6 +52,9 @@ tokio-util = "0.7.18"
 yaml_serde = "0.10.4"
 serde_yaml = "0.9.34"
 pathdiff = "0.2.3"
+axum = "0.8"
+tokio-tungstenite = { version = "0.24", features = ["connect", "handshake"] }
+tower-http = { version = "0.6", features = ["cors"] }
 
 # ── terminal rendering (optional diff_review backend) ──
 # ratatui/crossterm are pulled in only when the `ui-review` feature is on.
