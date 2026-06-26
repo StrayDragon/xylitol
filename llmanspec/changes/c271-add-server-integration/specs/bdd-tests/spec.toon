@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,bt1,"server-integration-scenarios","The BDD test suite MUST include step definitions for server.feature (server start, health check, prompt submission, event streaming, shutdown) and approval.feature (tool approval round-trip via reverse RPC).",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  bt1,"server-feature-steps","server.feature scenarios have Gherkin steps","the BDD runner parses them","all server.feature and approval.feature scenarios run and pass"

@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,w3,"ws-handshake","On WS connect the server MUST wait for Subscribe, then respond with ServerHello + Ack; the server MUST mount a WebSocket upgrade handler under /api/v1/session/{id}/ws that carries this handshake.",null,null,null
+  add_requirement,w7,"ws-event-push","After the handshake, the server MUST push Event frames for every new event emitted by the agent, tagged with the session's monotonic seq; Event frames MUST be sent as JSON over the WS connection.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  w3,"ws-upgrade-mounted","a client connects to /api/v1/session/x/ws","the server accepts the upgrade","the client receives ServerHello then can send Subscribe"
+  w7,"ws-events-pushed","a client subscribes and a prompt runs","the agent emits TextDelta events","the client receives Event frames on the WS connection"
