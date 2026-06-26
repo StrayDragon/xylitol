@@ -2,11 +2,26 @@ kind: llman.sdd.spec
 name: "layer-architecture"
 purpose: "TBD - created by archiving change c225-refactor-domain-layering. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[3]{req_id,title,statement}:
+requirements[10]{req_id,title,statement}:
   la1,"core-layer","System MUST provide a base core/ layer hosting domain-core vocabulary types including AgentMessage and XyModel and XyTool and ModelKind and XyChunk consumable by both agent/ and infra/."
-  la2,"downward-dependency","infra/ modules MUST NOT import any crate::agent symbol; infra/ and agent/ MAY depend on crate::core for domain-core types only."
+  la2,"downward-dependency","infra/ modules MUST NOT import any crate::agent symbol; agent/ modules MUST NOT import any concrete infra/ type (only via core ports); interactive/ modules MUST NOT import crate::agent or crate::infra except in the in-process composition root. core/ MUST have zero crate:: internal dependencies."
   la3,"arch-guard","System MUST enforce via a guard test that no file under src/infra imports crate::agent."
-scenarios[3]{req_id,id,given,when,then}:
+  la4,"interactive-rename",The interactive surface directory MUST be named interactive/ (not interface/); interface is reserved for the Rust trait concept.
+  la5,"protocol-module","System MUST provide a protocol/ module as the single source of truth for client-core interaction: command enum (client to core), event enum (core to client), response envelope, and error codes."
+  la6,"server-module","System MUST provide a server/ module that hosts agent + infra runtimes and exposes protocol/ over REST (/api/v1) and WebSocket; the server MUST enforce a single-instance lock."
+  la7,"runtime-residence","All runtimes (provider, tool, session storage, exec-env) MUST live under infra/; agent/ MUST hold them only as Arc<dyn Port> injected at the composition root."
+  la8,"agent-independence","The Agent facade constructor MUST NOT require a Session, MUST NOT hold a session_id, and MUST NOT depend on Session persistence lifecycle; session_id is a SessionStore query key bound in the interactive layer."
+  la9,"arch-guard-expanded","System MUST enforce via a guard test (tests/architecture.rs) all of: no infra file imports crate::agent, no agent file imports a concrete infra/ type, no interactive file imports crate::agent or crate::infra except the in-process driver composition root."
+  la10,"note-convention","Deliberate simplifications MUST be marked with a tool-agnostic comment of the form '// NOTE: <what>. ceiling: <when it breaks>. upgrade: <trigger>.' so they can be grepped and reaped."
+scenarios[11]{req_id,id,given,when,then}:
   la1,"types-relocated",agent and infra both need AgentMessage,"they import crate::core::message::AgentMessage",neither depends on agent/ for the type
-  la2,"no-reverse-import",a file under src/infra is compiled,"it references crate::agent",the build or guard rejects it
+  la2,"agent-no-infra-concrete",an agent/ source file is compiled,"it references crate::infra::provider::OpenAIProvider or crate::infra::tools::BashTool",the build or guard rejects it
+  la2,"interactive-isolation",an interactive/ source file is compiled,"it references crate::agent:: or crate::infra::","the build or guard rejects it unless it is the in-process driver root"
   la3,"guard-catches-violation","a new src/infra file adds use crate::agent::session",the architecture guard runs,the guard fails and reports the offending file path
+  la4,"dir-named-interactive",the source tree is inspected,src/interface no longer exists and src/interactive exists,the rename is complete
+  la5,"protocol-commands",a client sends a command to the core,the command is serialized,"it deserializes into the protocol::Command enum defined in protocol/"
+  la6,"single-instance",a second server process starts against the same lock path,it calls acquire_lock,it receives ServerLockedError
+  la7,"runtime-in-infra",a new LLM provider is added,the provider file is placed,"it lives under infra/provider/ and implements core::ports::XyModel"
+  la8,"facade-no-session",the Agent facade is constructed,only port trait objects are passed,construction succeeds without a Session instance or session_id
+  la9,"guard-catches-agent-leak","a new agent/ file adds use crate::infra::tools::BashTool",the architecture guard runs,the guard fails and reports the offending file path
+  la10,"note-greppable",a deliberate simplification is made in code,the author marks it,"the line contains '// NOTE: ... ceiling: ... upgrade: ...' and is grep-findable"
