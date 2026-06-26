@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,sp6,"journal-access","The session store MUST expose read_recent(session_id, limit) -> Vec<Event> for the server's journal; journal capacity MUST be configurable (default 10000).",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  sp6,"journal-reads-recent","a session has 50 events and journal limit is 10000","read_recent(s0, 10) is called","it returns the last 10 events in seq order"

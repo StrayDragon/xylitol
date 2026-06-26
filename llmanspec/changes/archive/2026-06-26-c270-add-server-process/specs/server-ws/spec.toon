@@ -1,0 +1,15 @@
+kind: llman.sdd.delta
+ops[6]{op,req_id,title,statement,from,to,name}:
+  add_requirement,w1,"ws-frame-protocol","Server → Client frames MUST be ServerFrame enum with ServerHello {version}, Ack {seq, request_id}, Event {session_id, seq, event}, and ResyncRequired {session_id} variants.",null,null,null
+  add_requirement,w2,"ws-client-frames","Client → Server frames MUST be ClientFrame enum with Subscribe {session_id, last_seq}, ApproveTool {call_id, approved}, AnswerQuestion {call_id, answer}, and Ping variants.",null,null,null
+  add_requirement,w3,"ws-handshake","On WS connect the server MUST wait for Subscribe, then respond with ServerHello + Ack; the client MUST send Subscribe before any events flow.",null,null,null
+  add_requirement,w4,"monotonic-seq","Each session MUST maintain a monotonic u64 sequence number that increments with every appended event; seq MUST be monotonically increasing per session.",null,null,null
+  add_requirement,w5,"journal-ring","The server MUST maintain a ring-buffer journal of the most recent N events per session (default 10000); when the journal wraps past a client's last_seq, the server MUST emit ResyncRequired to that client.",null,null,null
+  add_requirement,w6,"resync-flow","On receiving ResyncRequired, the client MUST resubscribe with an updated last_seq (e.g. 0 for full replay) to resume the event stream.",null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  w1,"frame-serialize","a ServerFrame::ServerHello is constructed","it is serialized to JSON","the JSON contains version field"
+  w2,"subscribe-frame","a client wants to subscribe to session s0 with last_seq 5","a ClientFrame::Subscribe is created","it has session_id=s0 and last_seq=5"
+  w3,"handshake-flow","a WS connection is accepted by the server","the client sends Subscribe then receives ServerHello+Ack","the handshake completes in that order"
+  w4,"seq-monotonic","3 events are appended to a session","the events are read back","their seq values are 1,2,3 (strictly increasing)"
+  w5,"resync-on-wrap","10001 events are appended to a session (journal capacity=10000)","a client with last_seq=0 subscribes","the server sends ResyncRequired because events 0..1 are gone"
+  w6,"resync-recover","a client receives ResyncRequired","the client resubscribes with last_seq=0","the server replays all available events from the journal"

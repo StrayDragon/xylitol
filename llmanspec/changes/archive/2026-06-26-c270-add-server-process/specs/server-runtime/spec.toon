@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  remove_requirement,sr6,null,null,null,null,null
+  add_requirement,sr7,"lock-file-content","The server lock file MUST contain a JSON payload with port (u16), pid (u32), and hostname (String); the file MUST be deleted on ServerLock drop (graceful shutdown).",null,null,null
+  add_requirement,sr8,"port-retry","If the configured port is busy (EADDRINUSE), the server MUST try port+1 up to PORT_RETRY_LIMIT (10) times and update the lock file with the actual port.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  sr7,"lock-file-json","a server acquires the lock","the lock file is read","it contains a valid JSON with port pid and hostname fields"
+  sr8,"port-retry-binds","port 8080 is in use by another process","the server starts on port 8080","it retries and binds to 8081 then updates the lock file"

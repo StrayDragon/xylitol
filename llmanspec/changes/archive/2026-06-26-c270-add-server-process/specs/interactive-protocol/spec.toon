@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  remove_requirement,ip5,null,null,null,null,null
+  modify_requirement,ip3,"envelope-and-errors","protocol/ MUST define a uniform REST response envelope {code, msg, data, request_id} and a typed error-code set; envelope types live in protocol/ and MUST be transport-agnostic (no HTTP or WS types inside).",null,null,null
+  add_requirement,ip6,"subscribe-command","protocol/ MUST define Command::Subscribe {session_id, last_seq} for WS subscription and Event::Subscribed {session_id, seq} as the acknowledgment.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ip3,"envelope-serializes","an Envelope with code Ok and data is constructed","it is serialized to JSON","the JSON has code, msg, data, and request_id fields"
+  ip6,"subscribe-command-serializes","a Command::Subscribe {session_id: s0, last_seq: 5} is serialized to JSON","it is deserialized back","it matches original session_id and last_seq"
