@@ -2,8 +2,6 @@
 //!
 //! Wraps the `notify` crate for file change monitoring.
 
-#![allow(dead_code)]
-
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;

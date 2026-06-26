@@ -10,7 +10,6 @@
 //! - Callers check `is_stdout_taken_over()` before writing to stdout
 //! - `write_raw_stdout()` always writes to stdout regardless of the flag
 
-#![allow(dead_code)]
 #[allow(dead_code)]
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
