@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tower_http::cors::CorsLayer;
 
@@ -20,6 +21,7 @@ use crate::infra::session::SessionManager;
 use crate::server::lock::{LockInfo, ServerLock};
 use crate::server::port_retry::{self, PORT_RETRY_LIMIT};
 use crate::server::rest::{self, AppState};
+use crate::server::ws::{EventJournal, ReverseRpcGateway};
 
 /// Handle to a running server. Dropping this triggers graceful shutdown.
 pub struct RunningServer {
@@ -102,8 +104,8 @@ pub async fn start(config: ServerConfig) -> Result<(RunningServer, u16), Box<dyn
         .to_string_lossy()
         .to_string();
 
-    let _agent = Agent::with_ports(
-        config.model_registry,
+    let agent = Agent::with_ports(
+        config.model_registry.clone(),
         tool_registry,
         store,
         sink,
@@ -116,7 +118,15 @@ pub async fn start(config: ServerConfig) -> Result<(RunningServer, u16), Box<dyn
     );
 
     // ── Server state ──────────────────────────────────────────────
-    let state = Arc::new(AppState {});
+    let session_id = format!("srv-{}", uuid::Uuid::new_v4());
+    let journal = EventJournal::with_default_capacity(&session_id);
+    let gateway = Arc::new(ReverseRpcGateway::new());
+    let state = Arc::new(AppState {
+        agent: Arc::new(Mutex::new(agent)),
+        journal: Arc::new(Mutex::new(journal)),
+        gateway,
+        model_registry: config.model_registry,
+    });
 
     // ── Lock acquisition ──────────────────────────────────────────
     let lock_path = config

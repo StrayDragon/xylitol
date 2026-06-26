@@ -470,12 +470,41 @@ async fn run_server(action: ServerSubcommand) -> Result<(), Box<dyn std::error::
         }
         ServerSubcommand::Stop { lock } => {
             let path = std::path::Path::new(&lock);
-            if path.exists() {
-                std::fs::remove_file(path)?;
-                eprintln!("Removed lock file: {lock}");
-            } else {
+            if !path.exists() {
                 eprintln!("No lock file found at: {lock}");
+                return Ok(());
             }
+
+            // Read lock file to get the PID
+            match crate::server::lock::ServerLock::probe(path) {
+                Ok(info) => {
+                    eprintln!(
+                        "Sending SIGTERM to server (pid {}, port {})",
+                        info.pid, info.port
+                    );
+                    #[cfg(unix)]
+                    {
+                        use std::process::Command;
+                        let _ = Command::new("kill")
+                            .arg("-TERM")
+                            .arg(info.pid.to_string())
+                            .status();
+                        // Give it a moment, then remove the lock
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    }
+                    #[cfg(not(unix))]
+                    {
+                        eprintln!("Warning: server stop requires Unix (SIGTERM)");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Could not read lock file: {e}");
+                }
+            }
+
+            // Clean up lock file
+            std::fs::remove_file(path).ok();
+            eprintln!("Lock file removed: {lock}");
             Ok(())
         }
     }

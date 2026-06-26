@@ -146,7 +146,7 @@ impl Command {
 
 /// An event from the core: either a response to a command or a streamed
 /// occurrence during a turn.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
     Error {

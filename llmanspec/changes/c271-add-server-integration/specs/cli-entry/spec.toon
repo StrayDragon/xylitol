@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ce8,"server-subcommands","The CLI MUST provide subcommands under server: run (start the server process with optional --port), install (register as launchd/systemd service), and stop (signal the running server via SIGTERM to its PID from the lock file).",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ce8,"server-stop-signals","a server is running with a lock file containing PID 12345","xylitol server stop is run","SIGTERM is sent to PID 12345 and the lock file is cleaned up"
