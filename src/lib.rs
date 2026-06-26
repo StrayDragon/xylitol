@@ -7,6 +7,7 @@ pub mod core;
 pub mod infra;
 pub mod interactive;
 pub mod protocol;
+pub mod server;
 
 /// Application entry point.
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
