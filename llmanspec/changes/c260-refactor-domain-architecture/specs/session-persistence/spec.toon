@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,sp1,"sessionstore-impl","infra::session::SessionManager MUST implement core::ports::SessionStore with append, load, and exists methods covering only what the agent loop and compaction call; the full SessionManager surface (fork, navigate, export) MAY remain on the concrete struct for the composition root to use directly.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  sp1,"manager-impls-store","SessionManager is checked against SessionStore","the impl is inspected","it implements the trait and compiles"

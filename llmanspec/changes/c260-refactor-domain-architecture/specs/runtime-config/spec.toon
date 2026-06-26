@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,rc1,"config-value-in-infra","The ConfigValueResolver (env var and shell command and ${VAR:-default} resolution, formerly agent/config_value.rs) MUST live under infra/config/value.rs; it MUST have zero crate:: internal dependencies outside of infra/config; agent/ MUST NOT contain config_value.rs.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  rc1,"value-relocated","src/agent/config_value.rs is checked for existence","the path is inspected","it does not exist and src/infra/config/value.rs does"

@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,as1,"session-not-god-object","session/mod.rs MUST contain only state fields and delegate methods; sandbox, bash execution, and lifecycle logic MUST live in dedicated sibling files (session/sandbox.rs, session/bash_exec.rs, session/lifecycle.rs). session/mod.rs MUST stay under 600 lines.",null,null,null
+  add_requirement,as2,"sessionstore-port","System MUST define a core::ports::SessionStore trait abstracting session persistence; infra::session::SessionManager MUST implement it and a test in-memory double MUST exist; agent/ MUST hold the store as Arc<dyn SessionStore> and never call SessionManager concretely.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  as1,"mod-rs-thin","session/mod.rs is measured","its line count is checked","it is under 600 lines and contains only fields and delegates"
+  as2,"store-is-trait","the agent holds a session backend","the field type is inspected","it is Arc<dyn SessionStore> not Arc<SessionManager>"
