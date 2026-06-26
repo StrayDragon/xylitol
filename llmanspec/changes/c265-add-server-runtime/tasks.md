@@ -17,9 +17,9 @@
 
 ## P2 — Driver 抽象（行为不变）
 
-- [ ] T11 新建 `interactive/driver.rs`：`Driver` trait（send + subscribe）+ `InProcessDriver`（持有 Arc<dyn SessionStore> + Arc<dyn EventSink> + ...，获取 Agent）
-- [ ] T12 `interactive/{print,rpc,cli}` 的运行时改为用 `InProcessDriver`
-- [ ] T13 验证：interactive 代码接 InProcessDriver 前后事件序列不变；BDD 全绿
+- [x] T11 新建 `interactive/driver.rs`：`Driver` trait（send + subscribe）+ `InProcessDriver`（持有 Arc<dyn SessionStore> + Arc<dyn EventSink> + ...，获取 Agent）
+- [x] T12 `interactive/{print,rpc,cli}` 的运行时改为用 `InProcessDriver`
+- [x] T13 验证：interactive 代码接 InProcessDriver 前后事件序列不变；BDD 全绿
 
 ## P3 — 架构断言扩展
 
