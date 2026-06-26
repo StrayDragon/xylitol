@@ -1,4 +1,8 @@
 //! Agent execution loop — core ReAct loop with full event stream, hooks, and tool execution modes.
+//!
+//! NOTE: 本文件聚焦 ReAct 算法主体. 天花板: ~500 行 (含 inline tests), 因 run_react_loop
+//! 的 async_stream 宏块是原子逻辑单元, 跨函数 yield 不可行. 升级: 当工具执行/流处理逻辑
+//! 显著膨胀时, 考虑引入 sub-turn state machine 替代单宏块.
 
 #![allow(dead_code)]
 //!
@@ -11,7 +15,6 @@
 
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
 use futures::Stream;
 use futures::StreamExt;
@@ -19,110 +22,16 @@ use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 use super::retry::{RetryState, is_retryable_error};
+use super::sandbox_router::sandbox_target;
+use super::{AgentEvent, AgentEventStream, AgentHooks};
 use crate::agent::session::AgentSession;
+use crate::agent::tools::ToolRegistry;
 use crate::core::error::XyError;
 use crate::core::message::{AgentMessage, AgentPart};
 use crate::core::traits::{ToolExecutionMode, XyModel, XyToolCtx};
 use crate::core::types::{XyChunk, XyToolSchema};
 
 use crate::infra::sandbox::SandboxVerdict;
-
-// ── AgentEvent ──────────────────────────────────────────────────────
-
-/// Events emitted during agent execution.
-#[derive(Debug, Clone)]
-pub enum AgentEvent {
-    /// Turn started.
-    TurnStart { turn_index: u32 },
-    /// Message started (a new message block).
-    MessageStart { role: String },
-    /// Streaming text delta from the LLM.
-    TextDelta(String),
-    /// Streaming thinking delta.
-    ThinkingDelta(String),
-    /// Message content updated.
-    MessageUpdate {
-        text: String,
-        thinking: Option<String>,
-    },
-    /// Message completed.
-    MessageEnd { role: String },
-    /// Tool execution started.
-    ToolExecutionStart {
-        id: String,
-        name: String,
-        args: Value,
-    },
-    /// Tool execution update (streaming partial output).
-    ToolExecutionUpdate { id: String, output: String },
-    /// Tool execution completed.
-    ToolExecutionEnd {
-        id: String,
-        name: String,
-        result: String,
-    },
-    /// Turn ended.
-    TurnEnd { turn_index: u32 },
-    /// Error occurred.
-    Error(String),
-    /// Agent loop completed.
-    AgentEnd { messages: Vec<AgentMessage> },
-    /// Compaction started.
-    CompactionStart { reason: String },
-    /// Compaction ended.
-    CompactionEnd {
-        result: Option<String>,
-        aborted: bool,
-    },
-    /// Model switched.
-    ModelSelect { provider: String, model_id: String },
-    /// Thinking level changed.
-    ThinkingLevelChanged { level: String },
-}
-
-// ── AgentHooks ────────────────────────────────────────────────
-
-/// Type alias for hook callbacks to simplify declarations.
-pub type BeforeToolHook = Box<dyn Fn(&str, &str, &Value) -> Option<String> + Send + Sync>;
-pub type AfterToolHook =
-    Box<dyn Fn(&str, &str, Value, bool) -> Option<(Value, bool)> + Send + Sync>;
-pub type TransformCtxHook = Box<dyn Fn(Vec<AgentMessage>) -> Vec<AgentMessage> + Send + Sync>;
-pub type GetMessagesHook = Box<dyn Fn() -> Vec<AgentMessage> + Send + Sync>;
-
-/// Hooks for customizing the agent loop.
-pub struct AgentHooks {
-    pub before_tool_call: Option<BeforeToolHook>,
-    pub after_tool_call: Option<AfterToolHook>,
-    pub transform_context: Option<TransformCtxHook>,
-    pub get_steering_messages: Option<GetMessagesHook>,
-    pub get_follow_up_messages: Option<GetMessagesHook>,
-    pub max_retries: usize,
-}
-
-impl Default for AgentHooks {
-    fn default() -> Self {
-        Self {
-            before_tool_call: None,
-            after_tool_call: None,
-            transform_context: None,
-            get_steering_messages: None,
-            get_follow_up_messages: None,
-            max_retries: 3,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SteeringMode {
-    All,
-    OneAtATime,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FollowUpMode {
-    Stop,
-    Continue,
-}
 
 // ── AgentLoop ───────────────────────────────────────────────────────
 
@@ -503,92 +412,6 @@ async fn call_with_retry(
                 }
                 return Err(err_msg);
             }
-        }
-    }
-}
-
-use crate::agent::tools::ToolRegistry;
-
-/// Extract the sandbox-relevant target (path or domain) from tool arguments.
-fn sandbox_target(name: &str, args: &serde_json::Value) -> String {
-    match name {
-        "read" | "write" | "edit" => args
-            .get("path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        "bash" => {
-            // Extract the first URL domain from the command, if any
-            args.get("command")
-                .and_then(|v| v.as_str())
-                .map(extract_first_domain)
-                .unwrap_or_default()
-        }
-        _ => String::new(),
-    }
-}
-
-/// Extract the first domain from a shell command containing a URL.
-fn extract_first_domain(command: &str) -> String {
-    // Look for common URL patterns: https://, http://, //
-    for word in command.split_whitespace() {
-        let word = word.trim_matches('\'').trim_matches('"');
-        if let Some(rest) = word
-            .strip_prefix("https://")
-            .or_else(|| word.strip_prefix("http://"))
-        {
-            // Extract domain (stop at first /, :, or ?)
-            let domain = rest.split(['/', ':', '?']).next().unwrap_or(rest);
-            return domain.to_string();
-        }
-    }
-    String::new()
-}
-
-// ── AgentEventStream ────────────────────────────────────────────────
-
-pub struct AgentEventStream {
-    inner: Pin<Box<dyn Stream<Item = AgentEvent> + Send>>,
-    done: bool,
-    /// Track turn number (set externally via event wrapping).
-    #[allow(dead_code)]
-    turn_index: u32,
-}
-
-impl AgentEventStream {
-    fn error(msg: String) -> Self {
-        let inner: Pin<Box<dyn Stream<Item = AgentEvent> + Send>> =
-            Box::pin(async_stream::stream! {
-                yield AgentEvent::Error(msg);
-            });
-        Self {
-            inner,
-            done: false,
-            turn_index: 0,
-        }
-    }
-}
-
-impl Stream for AgentEventStream {
-    type Item = AgentEvent;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if self.done {
-            return Poll::Ready(None);
-        }
-
-        match self.inner.as_mut().poll_next(cx) {
-            Poll::Ready(Some(event)) => {
-                if matches!(event, AgentEvent::AgentEnd { .. }) {
-                    self.done = true;
-                }
-                Poll::Ready(Some(event))
-            }
-            Poll::Ready(None) => {
-                self.done = true;
-                Poll::Ready(None)
-            }
-            Poll::Pending => Poll::Pending,
         }
     }
 }
