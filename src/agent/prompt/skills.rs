@@ -3,7 +3,7 @@
 //! Extracted from [`AgentSession`](super::session::AgentSession) to isolate
 //! skill-related responsibilities into a focused component.
 
-use crate::agent::commands::SlashCommandInfo;
+use crate::agent::prompt::commands::SlashCommandInfo;
 use crate::infra::resource::SkillInfo;
 
 /// Manages loaded skills — lookup, XML expansion, and slash command registration.
@@ -80,7 +80,7 @@ References are relative to {escaped_base}.
                 SlashCommandInfo::new(
                     format!("skill:{name}"),
                     format!("Activate skill: {desc}"),
-                    crate::agent::commands::SlashCommandSource::Skill,
+                    crate::agent::prompt::commands::SlashCommandSource::Skill,
                 )
             })
             .collect()

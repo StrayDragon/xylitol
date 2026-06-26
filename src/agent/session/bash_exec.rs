@@ -22,13 +22,13 @@ impl BashExecHandler {
 
     /// Run a bash command under a fresh cancellation token, returning the
     /// raw result. Persistence is the caller's responsibility.
-    pub async fn execute_raw(&mut self, command: &str) -> crate::agent::bash_executor::BashResult {
+    pub async fn execute_raw(&mut self, command: &str) -> crate::agent::runtime::bash::BashResult {
         let cancel = CancellationToken::new();
         self.bash_cancel = Some(cancel.clone());
 
-        let result = crate::agent::bash_executor::execute(
+        let result = crate::agent::runtime::bash::execute(
             command,
-            crate::agent::bash_executor::BashExecutorOptions {
+            crate::agent::runtime::bash::BashExecutorOptions {
                 cancel: Some(cancel),
                 ..Default::default()
             },
