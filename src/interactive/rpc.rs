@@ -1,8 +1,13 @@
-//! RPC mode — JSONL over stdin/stdout protocol for headless control.
+//! RPC mode — stdio transport over the [`protocol`](crate::protocol) vocabulary.
+//!
+//! This module is a *transport*: it reads [`Command`] lines from stdin and
+//! writes [`Event`] lines to stdout. The command/event types live in
+//! [`protocol`](crate::protocol) (the SSOT); a future WebSocket/REST transport
+//! and a server will speak the same types without touching this file.
 //!
 //! Protocol:
-//! - stdin: one JSON object per line, [`RpcCommand`].
-//! - stdout: one JSON object per line, [`RpcEvent`] (response or streaming event).
+//! - stdin: one JSON object per line, [`Command`].
+//! - stdout: one JSON object per line, [`Event`] (response or streaming event).
 //! - stderr: diagnostics only (never protocol).
 //! - Each command carries an optional `id` echoed in the response.
 
@@ -11,7 +16,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use futures::StreamExt;
-use serde::{Deserialize, Serialize};
+
 use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -22,132 +27,7 @@ use crate::agent::session::{AgentSession, ModelRegistry};
 use crate::agent::tools::ToolRegistry;
 use crate::core::types::{ModelMeta, ThinkingLevel};
 use crate::infra::session::SessionManager;
-
-// ── Types ─────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum RpcCommand {
-    Prompt {
-        #[serde(default)]
-        id: Option<String>,
-        message: String,
-    },
-    Abort {
-        #[serde(default)]
-        id: Option<String>,
-    },
-    GetState {
-        #[serde(default)]
-        id: Option<String>,
-    },
-    SetModel {
-        #[serde(default)]
-        id: Option<String>,
-        provider: String,
-        model_id: String,
-    },
-    CycleModel {
-        #[serde(default)]
-        id: Option<String>,
-    },
-    GetAvailableModels {
-        #[serde(default)]
-        id: Option<String>,
-    },
-    SetThinkingLevel {
-        #[serde(default)]
-        id: Option<String>,
-        level: String,
-    },
-    Bash {
-        #[serde(default)]
-        id: Option<String>,
-        command: String,
-        #[serde(default)]
-        exclude_from_context: bool,
-    },
-    Compact {
-        #[serde(default)]
-        id: Option<String>,
-    },
-    GetSessionStats {
-        #[serde(default)]
-        id: Option<String>,
-    },
-    ExportHtml {
-        #[serde(default)]
-        id: Option<String>,
-        #[serde(default)]
-        output_path: Option<String>,
-    },
-    SwitchSession {
-        #[serde(default)]
-        id: Option<String>,
-        session_path: String,
-    },
-    Fork {
-        #[serde(default)]
-        id: Option<String>,
-        entry_id: String,
-    },
-    GetMessages {
-        #[serde(default)]
-        id: Option<String>,
-    },
-    GetCommands {
-        #[serde(default)]
-        id: Option<String>,
-    },
-    Quit {
-        #[serde(default)]
-        id: Option<String>,
-    },
-}
-
-#[derive(Debug, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum RpcEvent {
-    Error {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        id: Option<String>,
-        message: String,
-    },
-    Response {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        payload: Option<Value>,
-    },
-    TextDelta {
-        text: String,
-    },
-    ToolStart {
-        id: String,
-        name: String,
-    },
-    ToolEnd {
-        id: String,
-        name: String,
-        result: String,
-    },
-    AgentEnd,
-    ModelSelect {
-        provider: String,
-        model_id: String,
-    },
-    CompactionStart {
-        reason: String,
-    },
-    BashResult {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        id: Option<String>,
-        output: String,
-        exit_code: Option<i32>,
-        cancelled: bool,
-        truncated: bool,
-    },
-}
+use crate::protocol::{Command, Event};
 
 // ── State ─────────────────────────────────────────────────────────
 
@@ -222,7 +102,7 @@ pub async fn run(initial_session: AgentSession) -> Result<(), String> {
         let line = match line_result {
             Ok(l) => l,
             Err(e) => {
-                emit(&RpcEvent::Error {
+                emit(&Event::Error {
                     id: None,
                     message: format!("stdin read error: {e}"),
                 });
@@ -234,10 +114,10 @@ pub async fn run(initial_session: AgentSession) -> Result<(), String> {
             continue;
         }
 
-        let cmd: RpcCommand = match serde_json::from_str(&trimmed) {
+        let cmd: Command = match serde_json::from_str(&trimmed) {
             Ok(c) => c,
             Err(e) => {
-                emit(&RpcEvent::Error {
+                emit(&Event::Error {
                     id: None,
                     message: format!("parse error: {e}"),
                 });
@@ -245,7 +125,7 @@ pub async fn run(initial_session: AgentSession) -> Result<(), String> {
             }
         };
 
-        if matches!(&cmd, RpcCommand::Quit { .. }) {
+        if matches!(&cmd, Command::Quit { .. }) {
             break;
         }
         dispatch(&state, cmd).await;
@@ -260,40 +140,40 @@ pub async fn run(initial_session: AgentSession) -> Result<(), String> {
     Ok(())
 }
 
-async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: RpcCommand) {
+async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
     let id = match &cmd {
-        RpcCommand::Prompt { id, .. }
-        | RpcCommand::Abort { id, .. }
-        | RpcCommand::GetState { id, .. }
-        | RpcCommand::SetModel { id, .. }
-        | RpcCommand::CycleModel { id, .. }
-        | RpcCommand::GetAvailableModels { id, .. }
-        | RpcCommand::SetThinkingLevel { id, .. }
-        | RpcCommand::Bash { id, .. }
-        | RpcCommand::Compact { id, .. }
-        | RpcCommand::GetSessionStats { id, .. }
-        | RpcCommand::ExportHtml { id, .. }
-        | RpcCommand::SwitchSession { id, .. }
-        | RpcCommand::Fork { id, .. }
-        | RpcCommand::GetMessages { id, .. }
-        | RpcCommand::GetCommands { id, .. }
-        | RpcCommand::Quit { id, .. } => id.clone(),
+        Command::Prompt { id, .. }
+        | Command::Abort { id, .. }
+        | Command::GetState { id, .. }
+        | Command::SetModel { id, .. }
+        | Command::CycleModel { id, .. }
+        | Command::GetAvailableModels { id, .. }
+        | Command::SetThinkingLevel { id, .. }
+        | Command::Bash { id, .. }
+        | Command::Compact { id, .. }
+        | Command::GetSessionStats { id, .. }
+        | Command::ExportHtml { id, .. }
+        | Command::SwitchSession { id, .. }
+        | Command::Fork { id, .. }
+        | Command::GetMessages { id, .. }
+        | Command::GetCommands { id, .. }
+        | Command::Quit { id, .. } => id.clone(),
     };
 
     match cmd {
-        RpcCommand::Prompt { message, .. } => {
+        Command::Prompt { message, .. } => {
             run_prompt(state, &id, &message).await;
         }
-        RpcCommand::Abort { .. } => {
+        Command::Abort { .. } => {
             let mut s = state.lock().await;
             if let Some(cancel) = s.active_cancel.take() {
                 cancel.cancel();
-                emit(&RpcEvent::Response {
+                emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({"aborted": true})),
                 });
             } else {
-                emit(&RpcEvent::Response {
+                emit(&Event::Response {
                     id,
                     payload: Some(
                         serde_json::json!({"aborted": false, "reason": "no active loop"}),
@@ -301,7 +181,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: RpcCommand) {
                 });
             }
         }
-        RpcCommand::GetState { .. } => {
+        Command::GetState { .. } => {
             let s = state.lock().await;
             let session = s.build_session();
             match session {
@@ -309,7 +189,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: RpcCommand) {
                     let model = sess
                         .current_model()
                         .map(|m| serde_json::json!({"id": m.id, "display_name": m.display_name}));
-                    emit(&RpcEvent::Response {
+                    emit(&Event::Response {
                         id,
                         payload: Some(serde_json::json!({
                             "session_id": s.session_id,
@@ -318,10 +198,10 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: RpcCommand) {
                         })),
                     });
                 }
-                Err(e) => emit(&RpcEvent::Error { id, message: e }),
+                Err(e) => emit(&Event::Error { id, message: e }),
             }
         }
-        RpcCommand::SetModel {
+        Command::SetModel {
             provider, model_id, ..
         } => {
             let mut s = state.lock().await;
@@ -334,22 +214,22 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: RpcCommand) {
             match found {
                 Some(mid) => {
                     s.current_model_id = Some(mid.clone());
-                    emit(&RpcEvent::Response {
+                    emit(&Event::Response {
                         id,
                         payload: Some(serde_json::json!({"model": mid})),
                     });
                 }
-                None => emit(&RpcEvent::Error {
+                None => emit(&Event::Error {
                     id,
                     message: format!("model not found: {provider}/{model_id}"),
                 }),
             }
         }
-        RpcCommand::CycleModel { .. } => {
+        Command::CycleModel { .. } => {
             let mut s = state.lock().await;
             let list: Vec<ModelMeta> = s.model_registry.list().to_vec();
             if list.is_empty() {
-                emit(&RpcEvent::Error {
+                emit(&Event::Error {
                     id,
                     message: "no models available".into(),
                 });
@@ -362,22 +242,22 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: RpcCommand) {
                 .unwrap_or(0);
             let next_idx = (current_idx + 1) % list.len();
             s.current_model_id = Some(list[next_idx].id.clone());
-            emit(&RpcEvent::Response {
+            emit(&Event::Response {
                 id,
                 payload: Some(serde_json::json!({"model": list[next_idx].id})),
             });
         }
-        RpcCommand::GetAvailableModels { .. } => {
+        Command::GetAvailableModels { .. } => {
             let s = state.lock().await;
             let models: Vec<Value> = s.model_registry.list().iter().map(|m| {
                 serde_json::json!({"id": m.id, "display_name": m.display_name, "thinking": m.thinking, "context_window": m.context_window})
             }).collect();
-            emit(&RpcEvent::Response {
+            emit(&Event::Response {
                 id,
                 payload: Some(serde_json::json!({"models": models})),
             });
         }
-        RpcCommand::SetThinkingLevel { level, .. } => {
+        Command::SetThinkingLevel { level, .. } => {
             let mut s = state.lock().await;
             let tl = match level.to_lowercase().as_str() {
                 "off" => ThinkingLevel::Off,
@@ -386,7 +266,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: RpcCommand) {
                 "medium" => ThinkingLevel::Medium,
                 "high" => ThinkingLevel::High,
                 _ => {
-                    emit(&RpcEvent::Error {
+                    emit(&Event::Error {
                         id,
                         message: format!("unknown thinking level: {level}"),
                     });
@@ -394,12 +274,12 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: RpcCommand) {
                 }
             };
             s.thinking_level = tl;
-            emit(&RpcEvent::Response {
+            emit(&Event::Response {
                 id,
                 payload: Some(serde_json::json!({"thinking_level": level})),
             });
         }
-        RpcCommand::Bash {
+        Command::Bash {
             command,
             exclude_from_context,
             ..
@@ -408,50 +288,50 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: RpcCommand) {
             let mut session = match s.build_session() {
                 Ok(s) => s,
                 Err(e) => {
-                    emit(&RpcEvent::Error { id, message: e });
+                    emit(&Event::Error { id, message: e });
                     return;
                 }
             };
             let result = session.execute_bash(&command, exclude_from_context).await;
             match result {
-                Ok(br) => emit(&RpcEvent::BashResult {
+                Ok(br) => emit(&Event::BashResult {
                     id: id.clone(),
                     output: br.output,
                     exit_code: br.exit_code,
                     cancelled: br.cancelled,
                     truncated: br.truncated,
                 }),
-                Err(e) => emit(&RpcEvent::Error { id, message: e }),
+                Err(e) => emit(&Event::Error { id, message: e }),
             }
         }
-        RpcCommand::Compact { .. } => {
+        Command::Compact { .. } => {
             let s = state.lock().await;
             let session = match s.build_session() {
                 Ok(s) => s,
                 Err(e) => {
-                    emit(&RpcEvent::Error { id, message: e });
+                    emit(&Event::Error { id, message: e });
                     return;
                 }
             };
             match session.maybe_auto_compact().await {
-                Ok(did) => emit(&RpcEvent::Response {
+                Ok(did) => emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({"compacted": did})),
                 }),
-                Err(e) => emit(&RpcEvent::Error { id, message: e }),
+                Err(e) => emit(&Event::Error { id, message: e }),
             }
         }
-        RpcCommand::GetSessionStats { .. } => {
+        Command::GetSessionStats { .. } => {
             let s = state.lock().await;
             let session = match s.build_session() {
                 Ok(s) => s,
                 Err(e) => {
-                    emit(&RpcEvent::Error { id, message: e });
+                    emit(&Event::Error { id, message: e });
                     return;
                 }
             };
             match session.get_session_stats().await {
-                Ok(stats) => emit(&RpcEvent::Response {
+                Ok(stats) => emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({
                         "session_id": stats.session_id, "user_messages": stats.user_messages,
@@ -459,15 +339,15 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: RpcCommand) {
                         "thinking_level": stats.thinking_level,
                     })),
                 }),
-                Err(e) => emit(&RpcEvent::Error { id, message: e }),
+                Err(e) => emit(&Event::Error { id, message: e }),
             }
         }
-        RpcCommand::ExportHtml { output_path, .. } => {
+        Command::ExportHtml { output_path, .. } => {
             let s = state.lock().await;
             let session = match s.build_session() {
                 Ok(s) => s,
                 Err(e) => {
-                    emit(&RpcEvent::Error { id, message: e });
+                    emit(&Event::Error { id, message: e });
                     return;
                 }
             };
@@ -475,52 +355,52 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: RpcCommand) {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("export.html"));
             match session.export_to_html(&path).await {
-                Ok(_) => emit(&RpcEvent::Response {
+                Ok(_) => emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({"path": path.to_string_lossy()})),
                 }),
-                Err(e) => emit(&RpcEvent::Error { id, message: e }),
+                Err(e) => emit(&Event::Error { id, message: e }),
             }
         }
-        RpcCommand::SwitchSession { session_path, .. } => {
+        Command::SwitchSession { session_path, .. } => {
             let mut s = state.lock().await;
             s.session_id = session_path.clone();
-            emit(&RpcEvent::Response {
+            emit(&Event::Response {
                 id,
                 payload: Some(serde_json::json!({"session": session_path})),
             });
         }
-        RpcCommand::Fork { entry_id, .. } => {
+        Command::Fork { entry_id, .. } => {
             let s = state.lock().await;
             let session = match s.build_session() {
                 Ok(s) => s,
                 Err(e) => {
-                    emit(&RpcEvent::Error { id, message: e });
+                    emit(&Event::Error { id, message: e });
                     return;
                 }
             };
             match session.fork_session(&entry_id).await {
-                Ok(new_id) => emit(&RpcEvent::Response {
+                Ok(new_id) => emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({"new_session": new_id})),
                 }),
-                Err(e) => emit(&RpcEvent::Error { id, message: e }),
+                Err(e) => emit(&Event::Error { id, message: e }),
             }
         }
-        RpcCommand::GetMessages { .. } => {
+        Command::GetMessages { .. } => {
             let _s = state.lock().await;
             // Stub: session manager can load entries.
-            emit(&RpcEvent::Error {
+            emit(&Event::Error {
                 id,
                 message: "get_messages not yet implemented in RPC".into(),
             });
         }
-        RpcCommand::GetCommands { .. } => {
+        Command::GetCommands { .. } => {
             let s = state.lock().await;
             let session = match s.build_session() {
                 Ok(s) => s,
                 Err(e) => {
-                    emit(&RpcEvent::Error { id, message: e });
+                    emit(&Event::Error { id, message: e });
                     return;
                 }
             };
@@ -529,12 +409,12 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: RpcCommand) {
                 .iter()
                 .map(|c| serde_json::json!({"name": c.name, "description": c.description}))
                 .collect();
-            emit(&RpcEvent::Response {
+            emit(&Event::Response {
                 id,
                 payload: Some(serde_json::json!({"commands": payload})),
             });
         }
-        RpcCommand::Quit { .. } => {} // handled in loop
+        Command::Quit { .. } => {} // handled in loop
     }
 }
 
@@ -544,7 +424,7 @@ async fn run_prompt(state: &Arc<Mutex<RpcState>>, _id: &Option<String>, message:
         let session = match s.build_session() {
             Ok(s) => s,
             Err(e) => {
-                emit(&RpcEvent::Error {
+                emit(&Event::Error {
                     id: _id.clone(),
                     message: e,
                 });
@@ -566,14 +446,14 @@ async fn run_prompt(state: &Arc<Mutex<RpcState>>, _id: &Option<String>, message:
                 match event {
                     Some(evt) => {
                         let emitted = match &evt {
-                            AgentEvent::TextDelta(t) => { emit(&RpcEvent::TextDelta { text: t.clone() }); true }
+                            AgentEvent::TextDelta(t) => { emit(&Event::TextDelta { text: t.clone() }); true }
                             AgentEvent::ThinkingDelta(_) => false,
-                            AgentEvent::ToolExecutionStart { id, name, .. } => { emit(&RpcEvent::ToolStart { id: id.clone(), name: name.clone() }); true }
-                            AgentEvent::ToolExecutionEnd { id, name, result, .. } => { emit(&RpcEvent::ToolEnd { id: id.clone(), name: name.clone(), result: result.clone() }); true }
-                            AgentEvent::ModelSelect { provider, model_id } => { emit(&RpcEvent::ModelSelect { provider: provider.clone(), model_id: model_id.clone() }); true }
-                            AgentEvent::CompactionStart { reason } => { emit(&RpcEvent::CompactionStart { reason: reason.clone() }); true }
-                            AgentEvent::AgentEnd { .. } => { emit(&RpcEvent::AgentEnd); false }
-                            AgentEvent::Error(msg) => { emit(&RpcEvent::Error { id: None, message: msg.clone() }); true }
+                            AgentEvent::ToolExecutionStart { id, name, .. } => { emit(&Event::ToolStart { id: id.clone(), name: name.clone() }); true }
+                            AgentEvent::ToolExecutionEnd { id, name, result, .. } => { emit(&Event::ToolEnd { id: id.clone(), name: name.clone(), result: result.clone() }); true }
+                            AgentEvent::ModelSelect { provider, model_id } => { emit(&Event::ModelSelect { provider: provider.clone(), model_id: model_id.clone() }); true }
+                            AgentEvent::CompactionStart { reason } => { emit(&Event::CompactionStart { reason: reason.clone() }); true }
+                            AgentEvent::AgentEnd { .. } => { emit(&Event::AgentEnd); false }
+                            AgentEvent::Error(msg) => { emit(&Event::Error { id: None, message: msg.clone() }); true }
                             _ => false,
                         };
                         if !emitted && matches!(evt, AgentEvent::AgentEnd { .. }) {
@@ -588,7 +468,7 @@ async fn run_prompt(state: &Arc<Mutex<RpcState>>, _id: &Option<String>, message:
             }
             _ = cancel_token.cancelled() => {
                 agent.abort();
-                emit(&RpcEvent::AgentEnd);
+                emit(&Event::AgentEnd);
                 break;
             }
         }
@@ -601,8 +481,8 @@ async fn run_prompt(state: &Arc<Mutex<RpcState>>, _id: &Option<String>, message:
 
 // ── I/O helpers ─────────────────────────────────────────────────
 
-fn emit(event: &RpcEvent) {
-    let line = serde_json::to_string(event).expect("RpcEvent serialization never fails");
+fn emit(event: &Event) {
+    let line = serde_json::to_string(event).expect("Event serialization never fails");
     let stdout = io::stdout();
     let mut handle = stdout.lock();
     let _ = writeln!(handle, "{line}");
