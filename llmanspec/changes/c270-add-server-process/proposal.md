@@ -1,5 +1,7 @@
 ---
-depends_on: []
+depends_on:
+  - c260-refactor-domain-architecture
+  - c265-add-server-runtime
 ---
 
 # c270-add-server-process
