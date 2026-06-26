@@ -10,7 +10,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 use futures::StreamExt;
-use xylitol::agent::compaction_orchestrator::should_compact;
+use xylitol::agent::compaction::should_compact;
 use xylitol::agent::r#loop::{AgentEvent, AgentLoop};
 use xylitol::agent::model::config::{
     reset_fake_state, set_fake_text, set_fake_tool_call, set_fake_tool_result,

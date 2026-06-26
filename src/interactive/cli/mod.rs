@@ -13,7 +13,7 @@ use crate::core::types::ModelMeta;
 use crate::infra::config::loader::load_app_config;
 use crate::infra::session::SessionManager;
 use crate::infra::timing;
-use crate::interface::resources::ResourcesAction;
+use crate::interactive::resources::ResourcesAction;
 
 /// Top-level subcommand. When absent, the flat flags/positional below drive
 /// the default print-mode flow (backward compatible).
@@ -60,7 +60,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Subcommands: handled early, no model loading needed ─────────
     if let Some(Command::Resources { action }) = args.command {
-        let code = crate::interface::resources::run(action);
+        let code = crate::interactive::resources::run(action);
         if code == std::process::ExitCode::FAILURE {
             std::process::exit(1);
         }
@@ -339,7 +339,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Step 4: RPC mode (early return) ────────────────────────
     if args.rpc {
-        return crate::interface::rpc::run(agent_session)
+        return crate::interactive::rpc::run(agent_session)
             .await
             .map_err(|e| e.into());
     }
@@ -388,7 +388,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    crate::interface::print::run_print(&mut agent_loop, &prompt, &session_id).await?;
+    crate::interactive::print::run_print(&mut agent_loop, &prompt, &session_id).await?;
 
     timing::print_timings();
     Ok(())

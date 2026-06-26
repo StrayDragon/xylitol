@@ -4,7 +4,7 @@
 //! # Layering
 //!
 //! ```text
-//! interface/ → agent/ → core/ ← infra/
+//! interactive/ → agent/ → core/ ← infra/
 //! ```
 //!
 //! - `core/` depends on **nothing** else in the crate (only external crates).

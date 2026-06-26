@@ -8,9 +8,11 @@
 //! - [`ModelManifest`](manifest::ModelManifest) — loads model definitions from files
 
 pub mod config;
+pub mod manager;
 pub mod manifest;
 pub mod registry;
 pub mod resolver;
 
+pub use manager::ModelManager;
 pub use manifest::ModelManifest;
 pub use registry::*;

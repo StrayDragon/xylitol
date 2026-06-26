@@ -4,14 +4,14 @@
 
 ## P0 — 收敛归位 + 词汇改名（行为不变）
 
-- [ ] T1 `git rm src/agent/types.rs`；从 `agent/mod.rs` 删 `pub mod types;`（0 引用，先 grep 确认）
-- [ ] T2 `git mv src/agent/model_manager.rs src/agent/model/manager.rs`；更新 `model/mod.rs` re-export；改 `session/mod.rs` 的 use 路径
-- [ ] T3 `git mv src/agent/compaction_orchestrator.rs src/agent/compaction/orchestrator.rs`；更新 `compaction/mod.rs` re-export；改 `session/mod.rs` + `session/stats.rs` 的 use 路径
-- [ ] T4 `git mv src/agent/skill_manager.rs src/agent/skills.rs`；改 `agent/mod.rs`；全局替换 `crate::agent::skill_manager`→`crate::agent::skills`
-- [ ] T5 `git mv src/agent/config_value.rs src/infra/config/value.rs`；`infra/config/mod.rs` 加 `pub mod value;`；全局替换 `crate::agent::config_value`→`crate::infra::config::value`
-- [ ] T6 `git mv src/agent/traits.rs src/agent/tools/definition.rs`；`tools/mod.rs` re-export；全局替换 `crate::agent::traits`（若残留）
-- [ ] T7 `git mv src/interface src/interactive`；`lib.rs` 改 `pub mod interactive;`；全局替换 `crate::interface::`→`crate::interactive::`；更新 feature flag/diff_review 注释
-- [ ] T8 验证：`grep -rn "agent::types\|r#loop\|crate::agent::config_value\|crate::agent::(model_manager|compaction_orchestrator|skill_manager|traits)\|crate::interface" src/` 全 0；build + nextest + clippy + BDD 全绿
+- [x] T1 `git rm src/agent/types.rs`；从 `agent/mod.rs` 删 `pub mod types;`（0 引用，先 grep 确认）
+- [x] T2 `git mv src/agent/model_manager.rs src/agent/model/manager.rs`；更新 `model/mod.rs` re-export；改 `session/mod.rs` 的 use 路径
+- [x] T3 `git mv src/agent/compaction_orchestrator.rs src/agent/compaction/orchestrator.rs`；更新 `compaction/mod.rs` re-export；改 `session/mod.rs` + `session/stats.rs` 的 use 路径
+- [x] T4 `git mv src/agent/skill_manager.rs src/agent/skills.rs`；改 `agent/mod.rs`；全局替换 `crate::agent::skill_manager`→`crate::agent::skills`
+- [x] T5 `git mv src/agent/config_value.rs src/infra/config/value.rs`；`infra/config/mod.rs` 加 `pub mod value;`；全局替换 `crate::agent::config_value`→`crate::infra::config::value`
+- [x] T6 `git mv src/agent/traits.rs src/agent/tools/definition.rs`；`tools/mod.rs` re-export；全局替换 `crate::agent::traits`（若残留）
+- [x] T7 `git mv src/interface src/interactive`；`lib.rs` 改 `pub mod interactive;`；全局替换 `crate::interface::`→`crate::interactive::`；更新 feature flag/diff_review 注释
+- [x] T8 验证：`grep -rn "agent::types\|r#loop\|crate::agent::config_value\|crate::agent::(model_manager|compaction_orchestrator|skill_manager|traits)\|crate::interface" src/` 全 0；build + nextest + clippy + BDD 全绿
 
 ## P1 — 杀 `r#loop` + runtime 目录（行为不变）
 

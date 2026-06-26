@@ -9,9 +9,9 @@
 
 use std::collections::HashMap;
 
-use crate::agent::config_value;
 use crate::core::model::{ModelConfig, ModelKind};
 use crate::core::types::ModelMeta;
+use crate::infra::config::value;
 
 // ── Provider Config ─────────────────────────────────────────────────
 
@@ -143,7 +143,7 @@ impl ModelRegistry {
         self.providers.get(provider_name).is_some_and(|p| {
             p.api_key
                 .as_ref()
-                .and_then(|key| config_value::resolve_config_value(key, None))
+                .and_then(|key| value::resolve_config_value(key, None))
                 .is_some()
         })
     }
@@ -157,7 +157,7 @@ impl ModelRegistry {
     ) -> Option<HashMap<String, String>> {
         let provider = self.providers.get(provider_name)?;
         let headers = provider.headers.as_ref()?;
-        config_value::resolve_headers(headers, env)
+        value::resolve_headers(headers, env)
     }
 
     pub fn has_configured_auth_for_model(&self, model: &ModelMeta) -> bool {
