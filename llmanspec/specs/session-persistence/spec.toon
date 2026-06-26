@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "session-persistence"
 purpose: "Session persistence — JSONL file-based session storage with tree operations, compaction, fork, and CWD validation."
 valid_scope[1]: src
-requirements[25]{req_id,title,statement}:
+requirements[26]{req_id,title,statement}:
   r1,"snapshot-ops",System MUST support snapshot restore spawn list prune diff and merge operations on immutable session snapshots.
   r2,compaction,System MUST automatically compact context when conversation token count exceeds configured window threshold.
   s1,"jsonl-storage","SessionManager MUST persist sessions as JSONL files with one JSON object per line version-tagged in ~/.xylitol/sessions/."
@@ -28,7 +28,8 @@ requirements[25]{req_id,title,statement}:
   sc3,"cwd-format","System MUST provide format_missing_session_cwd_error and format_missing_session_cwd_prompt for user-facing messages."
   sc4,"cwd-integration",CLI and RPC modes MUST call assert_session_cwd_exists before resuming a session.
   sp1,"sessionstore-impl","infra::session::SessionManager MUST implement core::ports::SessionStore with append, load, and exists methods covering only what the agent loop and compaction call; the full SessionManager surface (fork, navigate, export) MAY remain on the concrete struct for the composition root to use directly."
-scenarios[30]{req_id,id,given,when,then}:
+  sp2,"sessionstore-impl","infra::session::SessionManager MUST implement core::ports::SessionStore with load_context, append, and exists covering only what the agent loop and compaction call; the full SessionManager surface (fork/navigate/export) MAY remain on the concrete struct for the interactive composition root."
+scenarios[31]{req_id,id,given,when,then}:
   r1,happy,a snapshot exists,spawn is called with snapshot_id and new prompt,new agent instance starts with inherited context from snapshot
   r2,happy,conversation exceeds 75% of context window,compaction is triggered,older turns are summarized and replaced with compact system message
   s1,"create-load",a new session is created,entries are appended and session is loaded,all entries are returned in order
@@ -59,3 +60,4 @@ scenarios[30]{req_id,id,given,when,then}:
   sc3,"cwd-format",a MissingSessionCwdError is available,format_missing_session_cwd_error is called,"a user-facing message with both cwds is returned"
   sc4,"cli-missing",CLI starts with a session whose cwd is missing,the error is formatted and displayed,the user is guided to the fallback cwd
   sp1,"manager-impls-store",SessionManager is checked against SessionStore,the impl is inspected,it implements the trait and compiles
+  sp2,"manager-impls-store",SessionManager is tested against SessionStore,the trait boundary is checked,all three methods compile and roundtrip data

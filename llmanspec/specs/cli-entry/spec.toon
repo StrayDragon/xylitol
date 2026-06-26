@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "cli-entry"
 purpose: "TBD - created by archiving change c110-update-slash-commands. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[12]{req_id,title,statement}:
+requirements[13]{req_id,title,statement}:
   sc1,"info-fields",SlashCommandInfo MUST carry name description source and source_info fields.
   sc2,"source-enum",SlashCommandSource MUST be exactly one of extension prompt or skill.
   sc3,"builtin-table",System MUST provide the full builtin slash command table matching pi semantics including export compact tree fork and reload.
@@ -15,7 +15,8 @@ requirements[12]{req_id,title,statement}:
   ce1,"interactive-directory","The CLI and print modules MUST live under src/interactive/cli/ and src/interactive/print/; the directory MUST NOT be named interface/; interactive/ modules MUST depend only on agent::facade and protocol/, never on agent::runtime, agent::session, or agent::tools directly."
   ce2,"no-silent-fallback","When a config file is present but yields zero loadable models (e.g. wrong key like 'model:' instead of 'models:'), the CLI MUST emit a clear error pointing at the config instead of silently falling back to environment-variable defaults. Silent fall-through to placeholder defaults is forbidden."
   ce6,"driver-abstraction","System MUST provide an interactive::Driver trait that interactive/cli (and future tui/web) depend on; an InProcessDriver (composition root wiring agent ports) and a RemoteDriver (WebSocket+REST client) MUST both implement it; switching local vs remote MUST require changing only the Driver constructor, not the event-handling code."
-scenarios[14]{req_id,id,given,when,then}:
+  ce7,"composition-root-ports","The in-process composition root (interactive::cli) MUST construct Arc<dyn SessionStore> and Arc<dyn EventSink> from concrete infra types and pass them to facade::Agent::new; the RPC run entry MUST also accept the store and sink for constructing Agent."
+scenarios[15]{req_id,id,given,when,then}:
   sc1,fields,a command originates from a skill,the command is queried,source is skill and source_info is set
   sc2,"source-values",command sources are enumerated,the set is inspected,values are extension prompt or skill only
   sc3,"builtin-table",builtin commands are listed,the table is inspected,it includes export compact tree fork and reload
@@ -30,3 +31,4 @@ scenarios[14]{req_id,id,given,when,then}:
   ce1,"cli-under-interactive",the source tree is inspected,src/interactive/cli exists and src/interface does not,the rename and dependency isolation are complete
   ce2,"typo-error","","config.yaml is present but its models map is empty due to a typo (model: vs models:)",the CLI errors out with a message referencing the config file rather than silently using a placeholder default
   ce6,"same-handler-both-drivers",an interactive client event handler is written once,it is run against InProcessDriver then RemoteDriver,both produce identical event sequences for the same input
+  ce7,"cli-constructs-ports","interactive::cli::run is traced",the agent construction is inspected,"Agent::new receives Arc<dyn SessionStore> and Arc<dyn EventSink>"
