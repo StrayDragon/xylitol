@@ -2,15 +2,11 @@
 //!
 //! Defines the command (client → core) and event (core → client) vocabularies.
 //! Transport-agnostic: the same `Command`/`Event` types are spoken over the
-//! stdio RPC transport today and over WebSocket/REST once the server lands.
+//! stdio RPC transport, WebSocket, and REST.
 //!
 //! Wire format is stable: serde `tag = "type"` + `snake_case` variants. Adding
 //! a command/event = adding a variant; unknown variants are tolerated by serde
 //! defaults on the receiver side.
-//!
-//! NOTE: envelope/error-code typing and a REST `{code,msg,data,request_id}`
-//! envelope are deferred until the server (P5 server phase) needs them; the
-//! stdio transport currently serializes `Event` lines directly.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -18,7 +14,7 @@ use serde_json::Value;
 // ── Command (client → core) ────────────────────────────────────────
 
 /// A command from the client. Each carries an optional `id` for correlation.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Command {
     Prompt {
@@ -92,6 +88,27 @@ pub enum Command {
         #[serde(default)]
         id: Option<String>,
     },
+    /// Subscribe to a session's event stream (WebSocket).
+    Subscribe {
+        #[serde(default)]
+        id: Option<String>,
+        session_id: String,
+        last_seq: u64,
+    },
+    /// Approve a tool execution (reverse RPC response).
+    ApproveTool {
+        #[serde(default)]
+        id: Option<String>,
+        call_id: String,
+        approved: bool,
+    },
+    /// Answer a user question (reverse RPC response).
+    AnswerQuestion {
+        #[serde(default)]
+        id: Option<String>,
+        call_id: String,
+        answer: String,
+    },
     Quit {
         #[serde(default)]
         id: Option<String>,
@@ -117,6 +134,9 @@ impl Command {
             | Command::Fork { id, .. }
             | Command::GetMessages { id }
             | Command::GetCommands { id }
+            | Command::Subscribe { id, .. }
+            | Command::ApproveTool { id, .. }
+            | Command::AnswerQuestion { id, .. }
             | Command::Quit { id } => id.as_deref(),
         }
     }
@@ -126,7 +146,7 @@ impl Command {
 
 /// An event from the core: either a response to a command or a streamed
 /// occurrence during a turn.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
     Error {
@@ -160,6 +180,11 @@ pub enum Event {
     CompactionStart {
         reason: String,
     },
+    /// Acknowledgment of a Subscribe command.
+    Subscribed {
+        session_id: String,
+        seq: u64,
+    },
     BashResult {
         #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
@@ -168,4 +193,62 @@ pub enum Event {
         cancelled: bool,
         truncated: bool,
     },
+}
+
+// ── REST envelope types ────────────────────────────────────────────
+
+/// Error codes for REST envelope responses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorCode {
+    Ok,
+    BadRequest,
+    NotFound,
+    ServerLocked,
+    SessionNotFound,
+    InternalError,
+    Timeout,
+}
+
+impl Default for ErrorCode {
+    fn default() -> Self {
+        Self::Ok
+    }
+}
+
+/// Uniform REST response envelope.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Envelope<T: Serialize> {
+    pub code: ErrorCode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub msg: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<T>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+}
+
+impl<T: Serialize> Envelope<T> {
+    pub fn ok(data: T) -> Self {
+        Self {
+            code: ErrorCode::Ok,
+            msg: None,
+            data: Some(data),
+            request_id: None,
+        }
+    }
+
+    pub fn error(code: ErrorCode, msg: impl Into<String>) -> Self {
+        Self {
+            code,
+            msg: Some(msg.into()),
+            data: None,
+            request_id: None,
+        }
+    }
+
+    pub fn with_request_id(mut self, id: Option<String>) -> Self {
+        self.request_id = id;
+        self
+    }
 }
