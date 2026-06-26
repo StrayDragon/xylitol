@@ -2,6 +2,8 @@
 
 > 前置设计：c260 design.md（层定义、HC 约束、部署形态）和 c265 design.md（port 边界、Driver 抽象）是本设计的前置。
 > 参考实现：kimi-code `packages/server`（REST + WS 架构）、`packages/protocol`（线协议定义）。
+>
+> **c265 基础不完整，c270 必须先落地**：c265 的 T7/T8/T9/T12/T14 仅部分完成（见 proposal.md 的「c265 未完成项」表）。c270 在推进 server 进程化前必须先补完这些——尤其是 cli 组合根改用 `Agent::with_ports`、rpc 改用 Driver、arch guard interactive 断言。server 装配（build_agent）依赖这些完整后才能工作。
 
 ---
 
@@ -155,6 +157,10 @@ impl ServerLock {
 
 ## 5. Agent runtime 装配（server 组合根）
 
+> ⚠️ 本步骤依赖于「c265 未完成项」中 T8 和 T9 的补完——cli 组合根必须改用 `Agent::with_ports`，rpc 必须改用 Driver。
+
+server 的 agent 构造路径（第二个组合根，与 cli 并列）：
+
 server 的 agent 构造路径（第二个组合根，与 cli 并列）：
 
 ```rust
@@ -225,3 +231,22 @@ impl Driver for RemoteDriver {
 - **auth/ 认证**：c270 server 不内置认证——假设运行在可信网络或本地。认证层（API key / OAuth）作为未来独立 feature。
 - **web/tui client 实现**：c270 只做 server + RemoteDriver。web/tui 作为交互形态后续独立开发。
 - **远程日志/监控**：server 日志走标准 stderr/tracing，不内置远程上报。
+
+## 9. 任务溯源（对独立 agent 的导航）
+
+下行表列出 c270 每项工作的原始定义位置，便于无上下文的 agent 快速定位前置设计：
+
+| c270 任务 | 原始定义 | 设计决策位置 | 前置依赖 |
+|---|---|---|---|
+| 补完 c265 T7：facade HC-2 完全去 session_id | c260 T29 / c265 T7 | c260 design §6.3 / c265 design §2 | core::ports::SessionStore（c265 T1-T4） |
+| 补完 c265 T8：cli 组合根改用 with_ports | c260 T30 / c265 T8 | c265 design §2 | Agent::with_ports（c265 T7） |
+| 补完 c265 T9：rpc 改用 Driver | c260 T36-T37 / c265 T9 | c265 design §3 | Driver trait + InProcessDriver（c265 T11） |
+| 补完 c265 T12：rpc 交互迁移 Driver | c260 T37 / c265 T12 | c265 design §3 | 同上 |
+| 补完 c265 T14：arch guard interactive 断言 | c260 T31 NOTE / c265 T14 | c260 design §1 HC-1 / c265 design §2 | 无 |
+| P1：HTTP/WS 框架 + 单实例锁 | c260 T38 / c260 T42 | c270 design §4 | 无（新依赖引入） |
+| P2：protocol envelope + REST 路由 | c260 T33 (envelope) / c260 T40 | c270 design §2 | protocol.rs（c260 T33-T35） |
+| P3：WS 帧协议 + seq + journal + resync | c260 T41 / c260 T43 | c270 design §2-3 | 同上 |
+| P4：server 运行时装配 | c260 T39 | c270 design §5 | Agent::with_ports + 补完 T8 |
+| P5：反向 RPC | c260 T44 | c270 design §3 | P3 WS 通道 |
+| P6：RemoteDriver + CLI 子命令 | c260 T45 / c260 T46 | c270 design §6 | Driver trait（c265 T11） |
+| P7：BDD server 场景 | c260 T47 | c270 proposal What Changes P7 | 所有上述实现 |
