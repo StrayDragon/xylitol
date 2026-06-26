@@ -7,7 +7,7 @@ use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::Value;
 
 use crate::core::error::XyError;
-use crate::core::traits::{XyModel, XyStream};
+use crate::core::ports::{XyModel, XyStream};
 use crate::core::types::{XyChunk, XyFinishReason, XyToolSchema};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";

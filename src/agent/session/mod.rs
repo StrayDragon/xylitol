@@ -33,7 +33,7 @@ use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::MessageQueue;
 use crate::agent::runtime::stdout_guard;
 use crate::agent::tools::ToolRegistry;
-use crate::core::traits::XyModel;
+use crate::core::ports::XyModel;
 use crate::core::types::{ModelMeta, ThinkingLevel};
 use crate::infra::event::lifecycle::AgentLifecycleEvent;
 use crate::infra::event::{EventBus, UnsubscribeHandle};
@@ -850,14 +850,13 @@ pub(crate) async fn record_bash_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::tools::ToolRegistry;
     use std::path::PathBuf;
 
     fn make_session() -> AgentSession {
         let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
         AgentSession::new(
             ModelRegistry::new(),
-            ToolRegistry::builtins(),
+            ToolRegistry::from_tools(crate::infra::tools::default_tools()),
             mgr,
             Some("you are helpful".into()),
             50,

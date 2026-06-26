@@ -32,12 +32,12 @@
 
 ## P3 — port 收口 + 运行时迁 infra（行为不变）
 
-- [ ] T20 `git mv src/core/traits.rs src/core/ports.rs`；`core/mod.rs` 改 `pub mod ports;`；全局替换 `crate::core::traits`→`crate::core::ports`
-- [ ] T21 `git mv src/agent/provider src/infra/provider`；`agent/mod.rs` 删声明、`infra/mod.rs` 加声明；全局替换 `crate::agent::provider`→`crate::infra::provider`
-- [ ] T22 provider 工厂移位：`agent/model/registry.rs` 若含 provider 构造逻辑，移到 `infra/provider/factory.rs` 或 cli 组合根
-- [ ] T23 `git mv` 内置工具 `agent/tools/{bash,read,write,edit,grep,find,ls,patch,mutation,accumulator,truncate,process,path_utils}.rs`→`infra/tools/`；`agent/tools/` 仅留 registry + definition
-- [ ] T24 组合根（cli）改为从 `infra::tools` 收集工具注入 `ToolRegistry`、从 `infra::provider` 构造 providers 注入 registry
-- [ ] T25 验证：`grep -rn "crate::agent::provider" src/` = 0；`grep -rn "infra::(provider|tools)::[A-Z]" src/agent/` = 0；build + nextest + clippy + BDD 全绿
+- [x] T20 `git mv src/core/traits.rs src/core/ports.rs`；`core/mod.rs` 改 `pub mod ports;`；全局替换 `crate::core::traits`→`crate::core::ports`
+- [x] T21 `git mv src/agent/provider src/infra/provider`；`agent/mod.rs` 删声明、`infra/mod.rs` 加声明；全局替换 `crate::agent::provider`→`crate::infra::provider`
+- [x] T22 provider 工厂移位：`agent/model/registry.rs` 若含 provider 构造逻辑，移到 `infra/provider/factory.rs` 或 cli 组合根
+- [x] T23 `git mv` 内置工具 `agent/tools/{bash,read,write,edit,grep,find,ls,patch,mutation,accumulator,truncate,process,path_utils}.rs`→`infra/tools/`；`agent/tools/` 仅留 registry + definition
+- [x] T24 组合根（cli）改为从 `infra::tools` 收集工具注入 `ToolRegistry`、从 `infra::provider` 构造 providers 注入 registry
+- [x] T25 验证：`grep -rn "crate::agent::provider" src/` = 0；`grep -rn "infra::(provider|tools)::[A-Z]" src/agent/` = 0；build + nextest + clippy + BDD 全绿
 
 ## P4 — HC-2 修正 + 架构断言（行为不变）
 

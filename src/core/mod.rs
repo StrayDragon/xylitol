@@ -14,5 +14,5 @@
 pub mod error;
 pub mod message;
 pub mod model;
-pub mod traits;
+pub mod ports;
 pub mod types;

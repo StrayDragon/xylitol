@@ -195,7 +195,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Err("no models available".into());
     }
 
-    let tool_registry = ToolRegistry::builtins();
+    let tool_registry = ToolRegistry::from_tools(crate::infra::tools::default_tools());
     let sessions_dir = SessionManager::default_dir();
     std::fs::create_dir_all(&sessions_dir).ok();
     let session_mgr = SessionManager::new(sessions_dir.clone());

@@ -15,7 +15,7 @@ use tokio::time::{Duration, timeout};
 use super::path_utils::resolve_to_cwd;
 use super::truncate::{DEFAULT_MAX_BYTES, TruncationOptions, format_size, truncate_head};
 use crate::core::error::XyToolError;
-use crate::core::traits::{XyTool, XyToolCtx};
+use crate::core::ports::{XyTool, XyToolCtx};
 
 const DEFAULT_LIMIT: usize = 1000;
 const FD_TIMEOUT: Duration = Duration::from_secs(30);

@@ -4,7 +4,7 @@ use anyhow::Result;
 use futures::StreamExt;
 
 use crate::core::message::{AgentMessage, AgentPart};
-use crate::core::traits::XyModel;
+use crate::core::ports::XyModel;
 use crate::core::types::XyChunk;
 
 // ── Prompt constants ───────────────────────────────────────────────

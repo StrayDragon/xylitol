@@ -5,11 +5,11 @@
 
 use std::sync::Arc;
 
-use crate::agent::model::config::ModelConfigExt;
 use crate::agent::model::registry::ModelRegistry;
 use crate::core::model::ModelConfig;
-use crate::core::traits::XyModel;
+use crate::core::ports::XyModel;
 use crate::core::types::{ModelMeta, ThinkingLevel};
+use crate::infra::provider::factory::build_provider;
 
 /// Manages model registry, current model selection, and thinking level.
 ///
@@ -46,7 +46,7 @@ impl ModelManager {
         let meta = self
             .current_model()
             .ok_or_else(|| "no model configured".to_string())?;
-        meta.config.build()
+        build_provider(&meta.config)
     }
 
     // ── Thinking level ───────────────────────────────────────────

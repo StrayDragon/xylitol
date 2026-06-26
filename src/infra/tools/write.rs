@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use crate::core::error::XyToolError;
-use crate::core::traits::{XyTool, XyToolCtx};
+use crate::core::ports::{XyTool, XyToolCtx};
 
 use super::mutation::FileMutationQueue;
 
