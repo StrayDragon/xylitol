@@ -18,7 +18,7 @@ use futures::StreamExt;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::retry::{RetryState, is_retryable_error};
+use super::retry::{RetryState, is_retryable_error};
 use crate::agent::session::AgentSession;
 use crate::core::error::XyError;
 use crate::core::message::{AgentMessage, AgentPart};

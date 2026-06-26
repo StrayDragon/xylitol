@@ -27,9 +27,9 @@ use crate::agent::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::compaction::orchestrator::CompactionOrchestrator;
 use crate::agent::model::manager::ModelManager;
-use crate::agent::output_guard;
 use crate::agent::prompt::{self, SystemPromptOpts};
-use crate::agent::queue::MessageQueue;
+use crate::agent::runtime::MessageQueue;
+use crate::agent::runtime::stdout_guard;
 use crate::agent::skills::SkillManager;
 use crate::agent::templates::{PromptTemplate, is_template_line, parse_template_line};
 use crate::agent::tools::ToolRegistry;
@@ -402,18 +402,18 @@ impl AgentSession {
     /// Enter print mode: take over stdout so agent/tool output is suppressed.
     /// Returns a guard that restores stdout when dropped.
     #[allow(dead_code)]
-    pub(crate) fn enter_print_mode(&self) -> output_guard::OutputGuard {
-        output_guard::take_over_stdout()
+    pub(crate) fn enter_print_mode(&self) -> stdout_guard::OutputGuard {
+        stdout_guard::take_over_stdout()
     }
 
     /// Leave print mode: restore stdout.
     pub fn leave_print_mode(&self) {
-        output_guard::restore_stdout();
+        stdout_guard::restore_stdout();
     }
 
     /// Check if stdout is currently taken over (print mode active).
     pub fn is_in_print_mode(&self) -> bool {
-        output_guard::is_stdout_taken_over()
+        stdout_guard::is_stdout_taken_over()
     }
 
     // ── Event bus & subscription (methods live in events.rs) ──

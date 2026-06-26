@@ -17,7 +17,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::compaction::CompactionSettings;
-use crate::agent::r#loop::{AgentEvent, AgentLoop};
+use crate::agent::runtime::{AgentEvent, AgentLoop};
 use crate::agent::session::{AgentSession, ModelRegistry};
 use crate::agent::tools::ToolRegistry;
 use crate::core::types::{ModelMeta, ThinkingLevel};
