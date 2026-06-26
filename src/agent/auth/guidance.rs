@@ -6,12 +6,14 @@
 use crate::core::model::ModelKind;
 
 /// Get help text for provider auth configuration.
+///
+/// References the `/login` command and the provider/model docs (ux1).
 pub fn get_provider_login_help() -> String {
-    "Configure an API key via environment variable:\n\
+    "Run /login to configure an API key, or set one of these environment variables:\n\
      \x20 OPENAI_API_KEY=sk-...  (for OpenAI-like providers)\n\
-     \x20 ANTHROPIC_API_KEY=...   (for Anthropic)\n\n\
-     Or via config file:\n\
-     \x20 xylitol config set api_key <your-key>"
+     \x20 ANTHROPIC_API_KEY=...   (for Anthropic)\n\
+     \x20 Or edit providers.md / models.md (see /login docs).\n\
+     \x20 You can also use `xylitol config set api_key <your-key>` to persist a key."
         .to_string()
 }
 
@@ -37,7 +39,8 @@ pub fn format_no_api_key_found_message(provider: &str) -> String {
     };
     format!(
         "No API key found for {provider}.\n\n\
-         Set the {env_var} environment variable and restart xylitol.",
+         Run /login to configure a key, or set the {env_var} environment variable\n\
+         and restart xylitol (see providers.md / models.md).",
     )
 }
 
@@ -50,14 +53,16 @@ mod tests {
         let help = get_provider_login_help();
         assert!(help.contains("API key"));
         assert!(!help.contains("OAuth"));
-        assert!(!help.contains("/login"));
+        assert!(help.contains("/login"));
+        assert!(help.contains("providers.md"));
     }
 
     #[test]
     fn test_no_models_message() {
         let msg = format_no_models_available_message();
         assert!(msg.contains("No models"));
-        assert!(msg.contains("API key"));
+        assert!(msg.contains("/login"));
+        assert!(msg.contains("providers.md"));
     }
 
     #[test]
@@ -65,6 +70,7 @@ mod tests {
         let msg = format_no_model_selected_message();
         assert!(msg.contains("No model selected"));
         assert!(msg.contains("/model"));
+        assert!(msg.contains("/login"));
     }
 
     #[test]
@@ -72,6 +78,7 @@ mod tests {
         let msg = format_no_api_key_found_message("openai");
         assert!(msg.contains("openai"));
         assert!(msg.contains("OPENAI_API_KEY"));
+        assert!(msg.contains("/login"));
     }
 
     #[test]
@@ -79,6 +86,7 @@ mod tests {
         let msg = format_no_api_key_found_message("anthropic");
         assert!(msg.contains("anthropic"));
         assert!(msg.contains("ANTHROPIC_API_KEY"));
+        assert!(msg.contains("/login"));
     }
 
     #[test]

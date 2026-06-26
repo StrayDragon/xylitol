@@ -6,10 +6,8 @@
 //! - [`cut_detector`] — cut-point detection
 //! - [`file_ops`] — file operation tracking
 //! - [`llm_summarizer`] — LLM-based summarization
-//! - [`branch_summarizer`] — branch summaries
 //! - [`message_converter`] — SessionEntry → AgentMessage
 
-pub mod branch_summarizer;
 pub mod cut_detector;
 pub mod file_ops;
 pub mod llm_summarizer;
@@ -17,7 +15,6 @@ pub mod message_converter;
 pub mod settings;
 pub mod token_estimator;
 
-pub use branch_summarizer::{BranchPreparation, BranchSummaryResult, generate_branch_summary_llm};
 pub use cut_detector::{
     CutPointResult, estimate_tokens_entry, find_cut_point, is_context_overflow,
 };
@@ -26,9 +23,7 @@ pub use file_ops::{
 };
 pub use llm_summarizer::{generate_summary, serialize_conversation};
 pub use settings::CompactionSettings;
-pub use token_estimator::{
-    XyUsage, calculate_context_tokens, estimate_context_tokens, should_compact,
-};
+pub use token_estimator::{XyUsage, calculate_context_tokens, estimate_context_tokens};
 
 use anyhow::Result;
 use serde_json::json;
@@ -439,14 +434,18 @@ mod tests {
             enabled: false,
             ..Default::default()
         };
-        assert!(!token_estimator::should_compact(100_000, 200_000, &s));
+        assert!(!token_estimator::should_compact_by_reserve(
+            100_000, 200_000, &s
+        ));
     }
 
     #[test]
     fn test_should_compact_enabled_not_exceeded() {
         let s = CompactionSettings::default();
         // 50_000 tokens + 16384 reserve = 66384, under 200K
-        assert!(!token_estimator::should_compact(50_000, 200_000, &s));
+        assert!(!token_estimator::should_compact_by_reserve(
+            50_000, 200_000, &s
+        ));
     }
 
     #[test]
@@ -463,7 +462,9 @@ mod tests {
         // context_tokens = 190_000, threshold = 199_000, so 190_000 > 199_000 is false
         // Hmm the test says "exceeded" but the math doesn't work.
         // Let me use 200_000 tokens: 200_000 > 199_000 = true
-        assert!(token_estimator::should_compact(200_000, 200_000, &s));
+        assert!(token_estimator::should_compact_by_reserve(
+            200_000, 200_000, &s
+        ));
     }
 
     #[test]
@@ -471,7 +472,9 @@ mod tests {
         let s = CompactionSettings::default();
         // threshold = 200_000 - 16384 = 183_616
         // 183_617 > 183_616 = true
-        assert!(token_estimator::should_compact(183_617, 200_000, &s));
+        assert!(token_estimator::should_compact_by_reserve(
+            183_617, 200_000, &s
+        ));
     }
 
     // ── XyUsage tests ─────────────────────────────────────────────

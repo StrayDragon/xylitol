@@ -68,8 +68,12 @@ fn estimate_tokens_agent(msg: &crate::core::message::AgentMessage) -> u64 {
     (s.len() as u64).div_ceil(4)
 }
 
-/// Check if compaction should trigger based on context token usage.
-pub fn should_compact(
+/// Check if compaction should trigger based on a token reserve threshold.
+///
+/// Compacts once `context_tokens` exceed `context_window - reserve_tokens`.
+/// Currently exercised by the compaction test suite.
+#[cfg(test)]
+pub(crate) fn should_compact_by_reserve(
     context_tokens: u64,
     context_window: u64,
     settings: &super::settings::CompactionSettings,
