@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ce1,"interactive-directory","The CLI and print modules MUST live under src/interactive/cli/ and src/interactive/print/; the directory MUST NOT be named interface/; interactive/ modules MUST depend only on agent::facade and protocol/, never on agent::runtime, agent::session, or agent::tools directly.",null,null,null
+  add_requirement,ce6,"driver-abstraction","System MUST provide an interactive::Driver trait that interactive/cli (and future tui/web) depend on; an InProcessDriver (composition root wiring agent ports) and a RemoteDriver (WebSocket+REST client) MUST both implement it; switching local vs remote MUST require changing only the Driver constructor, not the event-handling code.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ce1,"cli-under-interactive","the source tree is inspected","src/interactive/cli exists and src/interface does not","the rename and dependency isolation are complete"
+  ce6,"same-handler-both-drivers","an interactive client event handler is written once","it is run against InProcessDriver then RemoteDriver","both produce identical event sequences for the same input"

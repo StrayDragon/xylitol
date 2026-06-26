@@ -1,0 +1,13 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  add_requirement,sr1,"server-hosts-agent","server/ MUST assemble infra runtimes and inject them into agent ports at startup; server/ MUST be a composition root (the other being the in-process interactive driver).",null,null,null
+  add_requirement,sr2,"rest-and-ws","server/ MUST expose protocol/ over REST under a /api/v1 prefix (control commands and state queries) and over WebSocket (streaming events); both MUST speak the protocol::Command and protocol::Event types.",null,null,null
+  add_requirement,sr3,"single-instance-lock","server/ MUST acquire a single-instance lock before binding; a second server against the same lock path MUST receive a ServerLockedError.",null,null,null
+  add_requirement,sr4,"reconnect-journal","server/ MUST maintain a monotonic per-session event sequence number and an event journal; on reconnect a client subscribing with last_seq MUST receive replayed events from last_seq+1; if the journal is truncated past last_seq, server MUST emit resync_required.",null,null,null
+  add_requirement,sr5,"reverse-rpc","server/ MUST support reverse RPC for ApprovalRequired and QuestionRequired events: it pushes the request over WebSocket to a connected client holding the session, suspends the turn, and resumes on ApproveTool or AnswerQuestion matched by call_id.",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  sr1,"server-wires-ports","server startup is traced","the agent is constructed","all arguments are Arc<dyn Port> from infra"
+  sr2,"ws-streams-events","a client subscribes over WS to a session","a turn produces Delta events","the events arrive on the WS as protocol::Event frames"
+  sr3,"second-instance-rejected","a server is already running"," a second server starts against the same lock path","the second receives ServerLockedError"
+  sr4,"reconnect-replay","a client disconnects for N seconds then reconnects with last_seq","the server has produced events during the gap","the client receives all missed events from last_seq+1 then live events"
+  sr5,"approval-roundtrip","a tool needs approval","an ApprovalRequired is pushed","the client answers ApproveTool and the turn resumes"

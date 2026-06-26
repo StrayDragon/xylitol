@@ -1,0 +1,11 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ip1,"command-enum","protocol/ MUST define a Command enum covering at minimum Run, Cancel, SwitchModel, SetThinking, ListCommands, ApproveTool, and AnswerQuestion; every client-to-core message MUST deserialize into this enum.",null,null,null
+  add_requirement,ip2,"event-enum","protocol/ MUST define an Event enum covering at minimum TurnStart, Delta, ToolCall, ApprovalRequired, QuestionRequired, TurnEnd, and Usage; every core-to-client message MUST deserialize into this enum.",null,null,null
+  add_requirement,ip3,"envelope-and-errors","protocol/ MUST define a uniform REST response envelope {code, msg, data, request_id} and a typed error-code set; protocol/ MUST be transport-agnostic (no HTTP or WS types inside).",null,null,null
+  add_requirement,ip4,"rpc-becomes-transport","The existing interactive/rpc.rs MUST be reduced to a stdio transport that parses stdin into protocol::Command and serializes protocol::Event to stdout; its command/event types MUST move to protocol/ and MUST NOT be redefined locally.",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  ip1,"command-roundtrip","a Run command is serialized","it is deserialized on the core side","it matches the original Command variant"
+  ip2,"approval-event","the agent needs a tool approved","an ApprovalRequired event is emitted","it carries a call_id and tool summary"
+  ip3,"envelope-shape","a REST response is produced","its JSON is inspected","it has code, msg, data, request_id fields"
+  ip4,"rpc-thin","interactive/rpc.rs is inspected","its content is read","it contains only stdio framing and delegates to protocol types"
