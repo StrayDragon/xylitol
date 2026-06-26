@@ -200,3 +200,4 @@ yarn-debug.log*
 
 dist/
 coverage/
+/llmanspec/.context
