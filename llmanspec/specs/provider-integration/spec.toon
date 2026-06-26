@@ -2,16 +2,20 @@ kind: llman.sdd.spec
 name: "provider-integration"
 purpose: "Provider integration — API key resolution, model registry integration, and OpenAI/Anthropic provider construction. Attribution headers, OAuth storage, and non-OpenAI/Anthropic provider integrations are out of scope until after 1.0.0."
 valid_scope[1]: src
-requirements[4]{req_id,title,statement}:
-  pi0,provider-registration,System SHALL support provider registration with configurable API keys base URLs and headers for OpenAI-compatible and Anthropic providers.
+requirements[6]{req_id,title,statement}:
+  pi0,"provider-registration","System SHALL support provider registration with configurable API keys base URLs and headers for OpenAI-compatible and Anthropic providers."
   cv1,"config-value-parser","System MUST provide a ConfigValueResolver that parses literal env-var template and shell-command config values."
   cv2,"env-var-interpolation","ConfigValueResolver MUST interpolate $VAR and ${VAR} and ${VAR:-default} environment variable references."
   cv3,"shell-command-execution","ConfigValueResolver MUST execute commands prefixed with ! via std::process::Command with 10-second timeout and cache results for process lifetime."
-scenarios[4]{req_id,id,given,when,then}:
-  pi0,provider-construction,a ModelConfig with kind OpenAi is provided,build is called,an OpenAIProvider instance is returned
-  pi0,anthropic-construction,a ModelConfig with kind Anthropic is provided,build is called,an AnthropicProvider instance is returned
+  pi2,"provider-in-infra","All LLM provider implementations (OpenAI, Anthropic, Fake, Mock) MUST live under infra/provider/ and implement core::ports::XyModel; agent/ MUST NOT contain a provider/ subdirectory; provider construction (the factory from ModelConfig to Arc<dyn XyModel>) MUST live in infra::provider::factory, not in agent/."
+  pi3,"provider-port-injection",The model registry held by the agent MUST store providers as Arc<dyn XyModel>; selecting a provider MUST NOT require the agent to name a concrete provider struct.
+scenarios[9]{req_id,id,given,when,then}:
+  pi0,"provider-construction",a ModelConfig with kind OpenAi is provided,build is called,an OpenAIProvider instance is returned
+  pi0,"anthropic-construction",a ModelConfig with kind Anthropic is provided,build is called,an AnthropicProvider instance is returned
   cv1,literal,a config value is a plain string,it is resolved,the literal string is returned
   cv2,"env-var",a config value is MY_KEY and MY_KEY is set in env,the value is resolved,the env var value is returned
   cv2,"missing-env",a config value is MISSING and the var is unset,the value is resolved,None is returned
   cv3,"shell-cmd","'a config value is \"!echo hello\"'",the command executes within 10 seconds,hello is returned
   cv3,"shell-cache",same command is resolved twice,the value is cached,"the second call does not re-execute"
+  pi2,"provider-moved",src/agent/provider is checked for existence,the path is inspected,it does not exist and src/infra/provider/ does
+  pi3,"no-concrete-provider",the agent references a provider,the reference type is inspected,it is the XyModel trait object not OpenAIProvider

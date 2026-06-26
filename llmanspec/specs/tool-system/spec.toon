@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "tool-system"
 purpose: "TBD - created by archiving change c20-add-tools. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[31]{req_id,title,statement}:
+requirements[33]{req_id,title,statement}:
   r1,"tool-trait","System MUST define a XyTool trait as the primary tool interface; adk-core Tool compatibility MUST be provided via adapter only."
   r2,"seven-tools","System MUST implement 7 built-in tools: read bash edit write grep find ls."
   r3,"patch-apply","System MUST apply AI-generated patches using fudiff fuzzy matching with patch crate exact fallback."
@@ -34,7 +34,9 @@ requirements[31]{req_id,title,statement}:
   e2,"line-ending",System MUST detect file line ending (CRLF vs LF) before editing and restore original style after applying changes.
   e3,"span-match","System MUST support matching multi-line oldText spans across different line segments when exact match fails."
   e4,"diff-output",System MUST compute structured diff output for review purposes after edit operations using the similar crate.
-scenarios[32]{req_id,id,given,when,then}:
+  t17,"tool-impls-in-infra","Built-in tool implementations (bash, read, write, edit, grep, find, ls, patch, and helpers accumulator/truncate/process/path_utils/mutation) MUST live under infra/tools/ and implement core::ports::XyTool; agent/tools/ MUST retain only the ToolRegistry and the ToolDefinition presentation type."
+  t18,"tool-registry-in-agent","The ToolRegistry MUST remain in agent/ as the orchestration selection state (Vec<Arc<dyn XyTool>>); concrete tools are injected into it at the composition root from infra::tools::default_tools()."
+scenarios[34]{req_id,id,given,when,then}:
   r1,"xy-tool-impl","all 7 built-in tools implement XyTool",each tool is invoked,each returns Result<String> without any adk_core types in the call chain
   r2,happy,a tool registry with all 7 tools,each tool is invoked with valid args,each returns a successful ToolResult
   r3,happy,"an AI-generated unified diff with slight line offset",patch is applied via fudiff,fudiff successfully applies despite line offset
@@ -67,3 +69,5 @@ scenarios[32]{req_id,id,given,when,then}:
   e2,"line-ending",file uses CRLF or LF line endings,edit is applied,output file preserves the original line ending style
   e3,span,oldText spans 5 lines but exact match fails on one middle line,edit is applied with span matching,match succeeds via sliding window
   e4,diff,edit applies a change,diff is computed,result contains before and after lines with change markers
+  t17,"tools-moved",src/agent/tools is inspected,only registry and definition remain,"the built-in tool files live under src/infra/tools/"
+  t18,"registry-stays",the ToolRegistry type is located,its module path is checked,"it is agent::tools not infra::tools"

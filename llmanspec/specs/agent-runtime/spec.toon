@@ -2,14 +2,14 @@ kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "TBD - created by archiving change c25-add-agent-loop. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[18]{req_id,title,statement}:
+requirements[20]{req_id,title,statement}:
   r1,"execution-loop","System MUST implement a self-contained ReAct loop (XyRunner) that calls XyModel for generation and dispatches XyTool calls until completion or max_iterations."
   r2,"event-system","System MUST emit AgentEvent variants (TextDelta / ThinkingDelta / ToolCallStart / ToolCallEnd / StepComplete / Error) from XyRunner without any adk-core Event dependency."
   r3,"session-runtime",System MUST manage session history via XySession trait with InMemorySession as default backend.
   r4,"openai-provider","System MUST support OpenAI chat completions and streaming via async-openai with tool calling and base_url override."
   r5,"anthropic-provider",System MUST support Anthropic messages API and streaming via reqwest with tool_use and base_url override.
   r6,"content-types","System MUST define XyContent and XyPart types (Text / Thinking / FunctionCall / FunctionResponse) independent of adk-core."
-  ar1,"react-loop","Agent runtime MUST execute a ReAct loop: send messages to model, collect response, execute tool calls, append results, repeat until stop or max iterations."
+  ar1,"thin-agent-loop","The agent/ layer MUST contain only the ReAct loop (runtime/react.rs), hook cut-points (runtime/hooks.rs), event types (runtime/event.rs), and orchestration state (current model/tool selection); it MUST NOT inline prompt formatting, bash execution logic, or output guarding logic in the loop file."
   ar2,streaming,"Agent runtime MUST stream model responses token-by-token via an event stream (TextDelta, ThinkingDelta, FunctionCall)."
   ar3,"tool-execution","Agent runtime MUST execute all tool calls from a single model response before the next model call, supporting both sequential and parallel execution modes."
   ar4,"iteration-limit","Agent runtime MUST enforce a configurable max_iterations limit, terminating with error when reached."
@@ -21,7 +21,9 @@ requirements[18]{req_id,title,statement}:
   ar12,"output-guard-takeover","Agent runtime MUST support stdout takeover that redirects all process.stdout.write calls to stderr, enabling clean output in print mode. The takeover state must be queryable via is_stdout_taken_over()."
   ar13,"output-guard-restore","Agent runtime MUST support stdout restore returning process.stdout.write to its original implementation, and write_raw_stdout that bypasses the takeover for direct output."
   ar14,"bdd-runtime-v4",BDD tests for OutputGuard stdout takeover and restore MUST all pass.
-scenarios[21]{req_id,id,given,when,then}:
+  ar15,"no-rloop-keyword","No source file under src/ MUST use the r#loop raw identifier; the ReAct loop module MUST be named runtime::react."
+  ar16,"agent-facade","System MUST provide a single public entry point agent::facade::Agent that interactive layers import for construction and turn execution; reaching into agent::runtime from interactive/ is a layering violation."
+scenarios[23]{req_id,id,given,when,then}:
   r1,"react-loop",a mock XyModel returns text then tool call then final text,XyRunner executes,all events are emitted and loop terminates after tool response
   r1,"max-iterations",XyModel always returns tool calls,XyRunner reaches max_iterations,loop terminates with MaxIterationsReached error
   r2,"no-adk-events",agent is executing,events are emitted,"no adk_core::Event or adk_runner types appear in the event stream"
@@ -29,7 +31,7 @@ scenarios[21]{req_id,id,given,when,then}:
   r4,"openai-streaming","an OpenAI-compatible endpoint is configured",agent sends a prompt,"streaming text and tool_call chunks are emitted as adk_core::LlmResponse"
   r5,"anthropic-streaming",an Anthropic endpoint is configured,agent sends a prompt,"streaming content_block_delta events are mapped to adk_core::LlmResponse"
   r6,"part-roundtrip","an XyPart::FunctionCall is created",it is serialized and deserialized,all fields (name / args / id) are preserved
-  ar1,"text-only",a model that returns text with no tool calls,prompt is sent,text is streamed and loop terminates
+  ar1,"loop-file-thin",runtime/react.rs is inspected,it is read,it contains only the ReAct algorithm and delegates formatting and execution
   ar2,streaming,model streams chunks,each chunk is processed,"TextDelta events are emitted in real-time"
   ar3,"parallel-tools",model returns 3 tool calls with parallel execution mode,tools execute concurrently,all results are appended before next model call
   ar4,"max-iterations",max_iterations is set to 2,model keeps calling tools for 3 iterations,loop terminates with error after 2nd iteration
@@ -43,3 +45,5 @@ scenarios[21]{req_id,id,given,when,then}:
   ar12,"double-takeover-noop",stdout is already taken over,take_over_stdout is called again,no error and is_stdout_taken_over still true
   ar13,restore,stdout is taken over,restore_stdout is called,is_stdout_taken_over returns false and original stdout is restored
   ar14,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all runtime-v4 scenarios pass"
+  ar15,"grep-no-rloop",the source tree is grepped for r#loop,the grep runs,zero matches are found
+  ar16,"interactive-via-facade",an interactive/ file imports an Agent type from agent/,the import is inspected,"it imports agent::facade symbols (not agent::runtime)"
