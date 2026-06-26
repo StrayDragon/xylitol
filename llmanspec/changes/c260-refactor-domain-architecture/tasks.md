@@ -53,9 +53,9 @@
 
 ## P5 — server 常驻 + protocol 统一交互（行为新增）
 
-- [ ] T33 新建 `src/protocol/` + `lib.rs` 声明；建 `command.rs`/`event.rs`/`envelope.rs`/`error.rs`
-- [ ] T34 把 `interactive/rpc.rs` 的 `RpcCommand`/`RpcEvent` 类型搬到 `protocol/`，整理为 `Command`/`Event` enum（含 Run/Cancel/SwitchModel/.../ApprovalRequired/...）
-- [ ] T35 `interactive/rpc.rs` 退化为 stdio transport：解析 stdin→Command，序列化 Event→stdout
+- [x] T33 新建 `src/protocol/` + `lib.rs` 声明；建 `command.rs`/`event.rs`/`envelope.rs`/`error.rs`
+- [x] T34 把 `interactive/rpc.rs` 的 `RpcCommand`/`RpcEvent` 类型搬到 `protocol/`，整理为 `Command`/`Event` enum（含 Run/Cancel/SwitchModel/.../ApprovalRequired/...）
+- [x] T35 `interactive/rpc.rs` 退化为 stdio transport：解析 stdin→Command，序列化 Event→stdout
 - [ ] T36 新建 `interactive/driver.rs`：`Driver` trait（send/subscribe）+ `InProcessDriver`（持有 Agent 直接调）
 - [ ] T37 `interactive/{cli,print}` 改用 `Driver`（先只 InProcessDriver）
 - [ ] T38 `Cargo.toml` 加 HTTP/WS 框架（候选 axum + tokio-tungstenite）；新增 `src/server/` + `lib.rs` 声明
