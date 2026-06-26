@@ -13,6 +13,7 @@ use crate::core::types::ModelMeta;
 use crate::infra::config::loader::load_app_config;
 use crate::infra::session::SessionManager;
 use crate::infra::timing;
+use crate::interactive::driver::InProcessDriver;
 use crate::interactive::resources::ResourcesAction;
 
 /// Top-level subcommand. When absent, the flat flags/positional below drive
@@ -376,6 +377,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .session
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let mut agent = Agent::new(agent_session);
+    let mut driver = InProcessDriver::new(agent);
 
     // ── Step 6: dispatch by mode ─────────────────────────────
     let prompt = args.prompt.unwrap_or_else(|| {
@@ -388,7 +390,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    crate::interactive::print::run_print(&mut agent, &prompt, &session_id).await?;
+    crate::interactive::print::run_print(&mut driver, &prompt, &session_id).await?;
 
     timing::print_timings();
     Ok(())

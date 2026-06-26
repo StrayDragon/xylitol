@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod driver;
 pub mod print;
 pub mod resources;
 pub mod rpc;
