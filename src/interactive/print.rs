@@ -13,7 +13,7 @@ pub(crate) async fn run_print(
     prompt: &str,
     session_id: &str,
 ) -> Result<(), String> {
-    let mut stream = agent.run(prompt, session_id).await;
+    let mut stream = agent.run_with_id(prompt, session_id).await;
 
     let stdout = io::stdout();
     let mut handle = stdout.lock();

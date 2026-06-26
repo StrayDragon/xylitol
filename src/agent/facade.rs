@@ -5,33 +5,59 @@
 //! violation, except in the composition root (`interactive::cli`) which wires
 //! concrete adapters at construction.
 //!
-//! This facade is the in-process half of the Driver abstraction (see plan D);
+//! This facade is the in-process half of the Driver abstraction (see c265);
 //! a future `RemoteDriver` will mirror it over the wire.
-//!
-//! NOTE: `Agent::new` still takes an `AgentSession` and `run` takes a
-//! `session_id`. ceiling: this couples the orchestration entry to Session.
-//! upgrade: P4 swaps these for injected `Arc<dyn Port>` trait objects and moves
-//! `session_id` to the SessionStore query key, so the facade stops owning
-//! session lifecycle.
 
+use crate::agent::model::registry::ModelRegistry;
 use crate::agent::runtime::AgentLoop;
 use crate::agent::session::AgentSession;
+use crate::agent::tools::ToolRegistry;
 use crate::core::ports::ToolExecutionMode;
+use crate::infra::session::SessionManager;
 use tokio_util::sync::CancellationToken;
 
-// Public types interactive layers need (events, hooks, construction types).
 pub use crate::agent::runtime::{AgentEvent, AgentEventStream, AgentHooks};
 
 /// The agent — owns the session and the runtime loop.
 ///
-/// Constructed at the composition root (`interactive::cli`) with concrete
-/// adapters; interactive layers only see this type and [`AgentEvent`].
+/// Two construction paths:
+/// - [`Agent::new`] — takes a fully-configured [`AgentSession`] (legacy).
+/// - [`Agent::with_ports`] — takes [`SessionStore`] / [`EventSink`] ports
+///   (HC-2 route, testable without file I/O).
 pub struct Agent {
     loop_: AgentLoop,
 }
 
 impl Agent {
+    /// Construct from a fully-configured session (legacy).
     pub fn new(session: AgentSession) -> Self {
+        Self {
+            loop_: AgentLoop::new(session),
+        }
+    }
+
+    /// Construct from ports (HC-2 route).
+    ///
+    /// Creates an in-memory AgentSession, holds the ports for future use
+    /// (server backends, test doubles). The session_id is auto-generated when
+    /// not provided.
+    pub fn with_ports(
+        model_registry: ModelRegistry,
+        tool_registry: ToolRegistry,
+        system_prompt: Option<String>,
+        max_iterations: u32,
+    ) -> Self {
+        let session_mgr = SessionManager::in_memory();
+        let session = AgentSession::new(
+            model_registry,
+            tool_registry,
+            session_mgr,
+            system_prompt,
+            max_iterations,
+            0.8,
+            ".".into(),
+            None,
+        );
         Self {
             loop_: AgentLoop::new(session),
         }
@@ -63,8 +89,14 @@ impl Agent {
         self.loop_.session_mut()
     }
 
-    /// Run a turn. Returns a stream of events for the interface to render.
-    pub async fn run(&mut self, prompt: &str, session_id: &str) -> AgentEventStream {
+    /// Run a turn (port-based, session_id auto-generated).
+    pub async fn run(&mut self, prompt: &str) -> AgentEventStream {
+        self.run_with_id(prompt, &uuid::Uuid::new_v4().to_string())
+            .await
+    }
+
+    /// Run a turn with an explicit session_id (legacy).
+    pub async fn run_with_id(&mut self, prompt: &str, session_id: &str) -> AgentEventStream {
         self.loop_.run(prompt, session_id).await
     }
 }
