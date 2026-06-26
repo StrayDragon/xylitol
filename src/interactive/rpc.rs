@@ -17,7 +17,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::compaction::CompactionSettings;
-use crate::agent::runtime::{AgentEvent, AgentLoop};
+use crate::agent::facade::{Agent, AgentEvent};
 use crate::agent::session::{AgentSession, ModelRegistry};
 use crate::agent::tools::ToolRegistry;
 use crate::core::types::{ModelMeta, ThinkingLevel};
@@ -557,8 +557,8 @@ async fn run_prompt(state: &Arc<Mutex<RpcState>>, _id: &Option<String>, message:
     };
 
     let session_id = session.session_id().unwrap_or("prompt").to_string();
-    let mut agent_loop = AgentLoop::new(session);
-    let mut stream = agent_loop.run(message, &session_id).await;
+    let mut agent = Agent::new(session);
+    let mut stream = agent.run(message, &session_id).await;
 
     loop {
         tokio::select! {
@@ -587,7 +587,7 @@ async fn run_prompt(state: &Arc<Mutex<RpcState>>, _id: &Option<String>, message:
                 }
             }
             _ = cancel_token.cancelled() => {
-                agent_loop.abort();
+                agent.abort();
                 emit(&RpcEvent::AgentEnd);
                 break;
             }
