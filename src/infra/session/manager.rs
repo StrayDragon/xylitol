@@ -12,6 +12,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::types::*;
+use crate::core::ports::{EventSink, LifecycleEvent, SessionStore};
 
 /// Manages session persistence using JSONL files or in-memory storage.
 #[derive(Debug)]
@@ -1321,4 +1322,48 @@ pub fn assert_session_cwd_exists(
         "Session working directory '{}' does not exist. Fallback '{}' also not found.",
         cwd, fallback_cwd
     ))
+}
+
+// ── SessionStore impl ───────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl SessionStore for SessionManager {
+    async fn load_context(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<crate::core::message::AgentMessage>, String> {
+        self.build_session_context_v2(session_id).await
+    }
+
+    async fn append_entry(&self, session_id: &str, entry: serde_json::Value) -> Result<(), String> {
+        let entry: super::types::SessionEntry =
+            serde_json::from_value(entry).map_err(|e| format!("deserialize session entry: {e}"))?;
+        self.append(session_id, &entry).await
+    }
+
+    async fn exists(&self, session_id: &str) -> bool {
+        self.exists(session_id)
+    }
+}
+
+// ── EventSink impl ───────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl EventSink for crate::infra::event::EventBus {
+    async fn emit(&self, event: &LifecycleEvent) {
+        let infra_event = match event {
+            LifecycleEvent::CompactionStarted { reason, .. } => {
+                crate::infra::event::lifecycle::AgentLifecycleEvent::CompactionStart {
+                    reason: reason.clone(),
+                }
+            }
+            LifecycleEvent::CompactionEnded {
+                result, aborted, ..
+            } => crate::infra::event::lifecycle::AgentLifecycleEvent::CompactionEnd {
+                result: result.clone(),
+                aborted: *aborted,
+            },
+        };
+        self.emit_lifecycle(&infra_event);
+    }
 }
