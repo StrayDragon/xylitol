@@ -16,7 +16,6 @@ mod events;
 mod export;
 mod io;
 mod prompt_result;
-mod retry;
 mod stats;
 mod steering;
 
@@ -25,6 +24,7 @@ pub use self::prompt_result::PromptResult;
 pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_usage};
 
 use crate::agent::commands::{SlashCommandInfo, get_all_commands};
+use crate::agent::compaction::CompactionSettings;
 use crate::agent::compaction_orchestrator::CompactionOrchestrator;
 use crate::agent::model_manager::ModelManager;
 use crate::agent::output_guard;
@@ -84,8 +84,6 @@ pub struct AgentSession {
     event_bus: EventBus,
     /// Handle for lifecycle subscription (dropped on unsubscribe/dispose).
     lifecycle_handle: Option<UnsubscribeHandle>,
-    /// Auto-retry state machine (None = no retry in progress).
-    retry_engine: crate::agent::session::retry::AutoRetryEngine,
     /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
     bash_handler: crate::agent::session::bash_exec::BashExecHandler,
 
@@ -94,6 +92,7 @@ pub struct AgentSession {
 }
 
 impl AgentSession {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         model_registry: ModelRegistry,
         tool_registry: ToolRegistry,
@@ -102,6 +101,7 @@ impl AgentSession {
         max_iterations: u32,
         compaction_threshold: f64,
         cwd: String,
+        compaction_settings: Option<CompactionSettings>,
     ) -> Self {
         Self {
             model_manager: ModelManager::new(model_registry),
@@ -111,7 +111,10 @@ impl AgentSession {
             system_prompt,
             session_id: None,
             max_iterations,
-            compaction_orchestrator: CompactionOrchestrator::new(compaction_threshold),
+            compaction_orchestrator: CompactionOrchestrator::new(
+                compaction_threshold,
+                compaction_settings.unwrap_or_default(),
+            ),
             cwd: cwd.clone(),
             prompt_opts: SystemPromptOpts {
                 cwd,
@@ -123,7 +126,6 @@ impl AgentSession {
             skill_manager: SkillManager::new(),
             event_bus: EventBus::new(),
             lifecycle_handle: None,
-            retry_engine: crate::agent::session::retry::AutoRetryEngine::new(),
             bash_handler: crate::agent::session::bash_exec::BashExecHandler::new(),
             sandbox_engine: None,
         }
@@ -376,6 +378,11 @@ impl AgentSession {
         self.compaction_orchestrator.threshold()
     }
 
+    /// Compaction tuning in use (reserve / keep-recent tokens, master toggle).
+    pub fn compaction_settings(&self) -> &CompactionSettings {
+        self.compaction_orchestrator.settings()
+    }
+
     pub fn model_registry(&self) -> &ModelRegistry {
         self.model_manager.registry()
     }
@@ -410,33 +417,6 @@ impl AgentSession {
     }
 
     // ── Event bus & subscription (methods live in events.rs) ──
-
-    // ── Auto-retry (delegated to AutoRetryEngine) ─────────────
-
-    /// Check whether an assistant message signals a retryable error.
-    pub fn _is_retryable_error(msg: &crate::core::message::AgentMessage) -> bool {
-        crate::agent::session::retry::AutoRetryEngine::is_retryable_error(msg)
-    }
-
-    /// Check whether the session should retry after the agent ends.
-    pub fn _will_retry_after_agent_end(&self) -> bool {
-        self.retry_engine.will_retry_after_agent_end()
-    }
-
-    /// Initialize or reset the retry state for a new agent run.
-    pub fn _init_retry_state(&mut self, max_retries: u32, base_delay_ms: u64) {
-        self.retry_engine.init_state(max_retries, base_delay_ms);
-    }
-
-    /// Prepare and execute a retry attempt.
-    pub async fn _prepare_retry(&self) -> bool {
-        self.retry_engine.prepare_retry(&self.event_bus).await
-    }
-
-    /// Abort any in-progress retry.
-    pub fn _abort_retry(&self) {
-        self.retry_engine.abort();
-    }
 
     /// Start a new session, creating it in the session manager.
     /// Sets the active session ID and persists model/thinking state.
@@ -734,11 +714,10 @@ impl AgentSession {
 
     /// Dispose of the session, cleaning up all resources.
     ///
-    /// Cancels in-flight operations (retry, compaction, bash), unsubscribes
-    /// all event listeners, and clears state.
+    /// Cancels in-flight bash execution, unsubscribes all event listeners,
+    /// and clears state.
     pub fn dispose(&mut self) {
         // Cancel all in-flight operations
-        self._abort_retry();
         self.abort_bash();
 
         // Unsubscribe lifecycle listeners
@@ -750,9 +729,8 @@ impl AgentSession {
 
     /// Abort the current operation and wait for idle.
     ///
-    /// Cancels retry backoff, bash execution, and emits an abort event.
+    /// Cancels bash execution and emits an abort event.
     pub fn abort(&mut self) {
-        self._abort_retry();
         self.abort_bash();
 
         // Emit agent_end with aborted reason
@@ -885,6 +863,7 @@ mod tests {
             50,
             0.8,
             ".".into(),
+            None,
         )
     }
 

@@ -634,6 +634,7 @@ mod tests {
             50,
             0.8,
             ".".into(),
+            None,
         );
 
         assert!(session.current_model().is_some());
@@ -673,6 +674,7 @@ mod tests {
             50,
             0.8,
             ".".into(),
+            None,
         );
 
         let mut loop_runner = AgentLoop::new(session);

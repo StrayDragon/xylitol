@@ -15,15 +15,25 @@ use crate::infra::session::manager::SessionManager;
 pub struct CompactionOrchestrator {
     /// Context window threshold for compaction (0.0–1.0).
     threshold: f64,
+    /// Compaction tuning (reserve / keep-recent tokens, master toggle).
+    settings: CompactionSettings,
 }
 
 impl CompactionOrchestrator {
-    pub fn new(threshold: f64) -> Self {
-        Self { threshold }
+    pub fn new(threshold: f64, settings: CompactionSettings) -> Self {
+        Self {
+            threshold,
+            settings,
+        }
     }
 
     pub fn threshold(&self) -> f64 {
         self.threshold
+    }
+
+    /// Compaction tuning in use (reserve / keep-recent tokens, master toggle).
+    pub fn settings(&self) -> &CompactionSettings {
+        &self.settings
     }
 
     /// Manually compact the current session.
@@ -38,13 +48,7 @@ impl CompactionOrchestrator {
             reason: "manual".to_string(),
         });
 
-        let settings = CompactionSettings {
-            enabled: true,
-            reserve_tokens: 16384,
-            keep_recent_tokens: 20000,
-        };
-
-        let result = compact_session(session_manager, sid, model, &settings)
+        let result = compact_session(session_manager, sid, model, &self.settings)
             .await
             .map_err(|e| format!("compaction failed: {e}"));
 
@@ -78,12 +82,6 @@ impl CompactionOrchestrator {
             return Ok(false);
         }
 
-        let settings = CompactionSettings {
-            enabled: true,
-            reserve_tokens: 16384,
-            keep_recent_tokens: 20000,
-        };
-
         event_bus.emit_lifecycle(&AgentLifecycleEvent::CompactionStart {
             reason: format!(
                 "auto: {:.1}% of {}k window",
@@ -92,7 +90,7 @@ impl CompactionOrchestrator {
             ),
         });
 
-        let result = compact_session(session_manager, sid, model, &settings)
+        let result = compact_session(session_manager, sid, model, &self.settings)
             .await
             .map_err(|e| format!("auto-compaction: {e}"));
 

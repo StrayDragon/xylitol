@@ -96,6 +96,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         for (alias, entry) in &cfg.model.models {
             let api_key = resolve_api_key(entry.provider);
             if api_key.is_none() {
+                eprintln!(
+                    "Warning: {}",
+                    auth::format_no_api_key_found_message(entry.provider.provider_name())
+                );
                 continue;
             }
 
@@ -286,6 +290,30 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         loader.get_prompts().0.to_vec()
     };
 
+    // ── Step 3b2: load compaction settings (settings.json) ───────
+    //
+    // The agent's compaction tuning (reserve / keep-recent tokens) is read
+    // from the merged settings.json (global + project). When no compaction
+    // block is configured, pass `None` so the orchestrator uses its defaults.
+    let compaction_settings = {
+        let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
+        let settings_cwd = if project_trusted {
+            std::path::PathBuf::from(&cwd)
+        } else {
+            std::env::temp_dir()
+        };
+        let settings_mgr = crate::infra::settings::SettingsManager::from_files(
+            &settings_cwd,
+            &agent_dir,
+            project_trusted,
+        );
+        settings_mgr
+            .get_settings()
+            .compaction
+            .as_ref()
+            .map(|c| crate::agent::compaction::CompactionSettings::from(c.clone()))
+    };
+
     let mut agent_session = AgentSession::new(
         model_registry,
         tool_registry,
@@ -294,6 +322,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         max_iterations,
         0.8,
         cwd,
+        compaction_settings,
     );
     // ── Step 3c: initialize sandbox engine ────────────────────
     if let Some(ref cfg) = app_config
