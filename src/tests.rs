@@ -6,10 +6,21 @@
 #[path = "../tests/support/mod.rs"]
 pub mod support;
 
-// ── Architecture guard: infra must not depend on agent ────────────
+// ── Architecture guards ───────────────────────────────────────────
 //
-// This test grep-checks that no file under `src/infra/` imports anything
-// from `crate::agent` — a dependency direction violation.
+// These tests grep source files to enforce layering invariants (HC-1).
+// They codify wins from the c260 refactor so regressions fail the build.
+//
+// Currently enforced (all green as of P3):
+//   1. infra/ must not import crate::agent (no reverse dependency)
+//   2. agent/ must not import concrete provider implementations
+//      (infra::provider::{openai,anthropic,fake,mock}) — agent holds
+//      providers only as `Arc<dyn XyModel>` via the factory.
+//
+// NOTE: not yet enforced (deferred to when ports land, HC-5 trigger):
+//   - agent holding concrete SessionManager/EventBus (needs SessionStore/
+//     EventSink ports; introduced when server hosting or test doubles demand)
+//   - interactive importing agent/infra outside the driver composition root
 
 #[cfg(test)]
 mod arch_guard {
@@ -27,21 +38,19 @@ mod arch_guard {
         }
     }
 
-    #[test]
-    fn infra_does_not_import_agent() {
-        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/infra");
+    /// Scan `dir` for lines matching `needle`, returning "relpath:line: trim" strings.
+    fn scan(dir: &str, needle: &str) -> Vec<String> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(dir);
         let mut files = Vec::new();
-        walk_rs_files(&src_dir, &mut files);
-
-        let mut violations: Vec<String> = Vec::new();
-
+        walk_rs_files(&root, &mut files);
+        let mut hits = Vec::new();
         for path in &files {
             if let Ok(content) = std::fs::read_to_string(path) {
                 for (i, line) in content.lines().enumerate() {
-                    if line.contains("crate::agent") {
-                        violations.push(format!(
+                    if line.contains(needle) {
+                        hits.push(format!(
                             "{}:{}: {}",
-                            path.strip_prefix(&src_dir).unwrap_or(path).display(),
+                            path.strip_prefix(&root).unwrap_or(path).display(),
                             i + 1,
                             line.trim(),
                         ));
@@ -49,10 +58,35 @@ mod arch_guard {
                 }
             }
         }
+        hits
+    }
 
+    #[test]
+    fn infra_does_not_import_agent() {
+        let violations = scan("src/infra", "crate::agent");
         assert!(
             violations.is_empty(),
             "infra/ must not depend on agent/ — found violations:\n  {}",
+            violations.join("\n  "),
+        );
+    }
+
+    #[test]
+    fn agent_does_not_import_concrete_providers() {
+        // agent must hold providers as Arc<dyn XyModel> only; naming a concrete
+        // provider impl (openai/anthropic/fake/mock) is an HC-1 violation.
+        let mut violations = Vec::new();
+        for concrete in [
+            "infra::provider::openai",
+            "infra::provider::anthropic",
+            "infra::provider::fake",
+            "infra::provider::mock",
+        ] {
+            violations.extend(scan("src/agent", concrete));
+        }
+        assert!(
+            violations.is_empty(),
+            "agent/ must not import concrete provider implementations — found violations:\n  {}",
             violations.join("\n  "),
         );
     }
