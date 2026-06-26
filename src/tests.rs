@@ -11,16 +11,16 @@ pub mod support;
 // These tests grep source files to enforce layering invariants (HC-1).
 // They codify wins from the c260 refactor so regressions fail the build.
 //
-// Currently enforced (all green as of P3):
+// Currently enforced (all green):
 //   1. infra/ must not import crate::agent (no reverse dependency)
 //   2. agent/ must not import concrete provider implementations
 //      (infra::provider::{openai,anthropic,fake,mock}) — agent holds
 //      providers only as `Arc<dyn XyModel>` via the factory.
 //
-// NOTE: not yet enforced (deferred to when ports land, HC-5 trigger):
-//   - agent holding concrete SessionManager/EventBus (needs SessionStore/
-//     EventSink ports; introduced when server hosting or test doubles demand)
-//   - interactive importing agent/infra outside the driver composition root
+// Known exceptions not yet guarded (TODO):
+//   - interactive/{cli,rpc,resources} still import agent/infra types
+//     (cli=composition root, rpc being migrated to Driver, resources=read-only)
+//   - interactive/print.rs is clean (only facade::AgentEvent)
 
 #[cfg(test)]
 mod arch_guard {

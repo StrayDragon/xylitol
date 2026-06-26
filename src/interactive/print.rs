@@ -5,14 +5,14 @@
 use std::io::{self, Write};
 
 use crate::agent::facade::AgentEvent;
-use crate::interactive::driver::{Driver, EventStream};
+use crate::interactive::driver::Driver;
 use futures::StreamExt;
 
 /// Run the agent in print mode with the given prompt.
 pub(crate) async fn run_print(
     driver: &mut dyn Driver,
     prompt: &str,
-    session_id: &str,
+    _session_id: &str, // reserved for future Driver.subscribe
 ) -> Result<(), String> {
     let mut stream = driver.run(prompt).await;
 
