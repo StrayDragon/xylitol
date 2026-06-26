@@ -8,13 +8,17 @@
 //! This facade is the in-process half of the Driver abstraction (see c265);
 //! a future `RemoteDriver` will mirror it over the wire.
 
+use std::sync::Arc;
+
+use tokio_util::sync::CancellationToken;
+
+use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
 use crate::agent::runtime::AgentLoop;
 use crate::agent::session::AgentSession;
 use crate::agent::tools::ToolRegistry;
-use crate::core::ports::ToolExecutionMode;
+use crate::core::ports::{EventSink, SessionStore, ToolExecutionMode};
 use crate::infra::session::SessionManager;
-use tokio_util::sync::CancellationToken;
 
 pub use crate::agent::runtime::{AgentEvent, AgentEventStream, AgentHooks};
 
@@ -38,25 +42,34 @@ impl Agent {
 
     /// Construct from ports (HC-2 route).
     ///
-    /// Creates an in-memory AgentSession, holds the ports for future use
-    /// (server backends, test doubles). The session_id is auto-generated when
-    /// not provided.
+    /// Takes concrete types plus port trait objects. The composition root
+    /// (interactive::cli) constructs `Arc<dyn SessionStore>` and
+    /// `Arc<dyn EventSink>` from concrete infra types and passes them in.
+    /// The ports are accepted here; AgentSession currently still needs the
+    /// concrete SessionManager internally — a future refactor can push them
+    /// deeper once AgentSession consumes ports directly.
+    #[allow(clippy::too_many_arguments)]
     pub fn with_ports(
         model_registry: ModelRegistry,
         tool_registry: ToolRegistry,
+        _store: Arc<dyn SessionStore>,
+        _sink: Arc<dyn EventSink>,
+        session_mgr: SessionManager,
         system_prompt: Option<String>,
         max_iterations: u32,
+        compaction_threshold: f64,
+        cwd: String,
+        compaction_settings: Option<CompactionSettings>,
     ) -> Self {
-        let session_mgr = SessionManager::in_memory();
         let session = AgentSession::new(
             model_registry,
             tool_registry,
             session_mgr,
             system_prompt,
             max_iterations,
-            0.8,
-            ".".into(),
-            None,
+            compaction_threshold,
+            cwd,
+            compaction_settings,
         );
         Self {
             loop_: AgentLoop::new(session),
