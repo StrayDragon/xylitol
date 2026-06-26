@@ -16,11 +16,16 @@ pub mod support;
 //   2. agent/ must not import concrete provider implementations
 //      (infra::provider::{openai,anthropic,fake,mock}) — agent holds
 //      providers only as `Arc<dyn XyModel>` via the factory.
+//   3. interactive/ (except cli/ and driver.rs) must not import
+//      crate::agent or crate::infra types.
 //
-// Known exceptions not yet guarded (TODO):
-//   - interactive/{cli,rpc,resources} still import agent/infra types
-//     (cli=composition root, rpc being migrated to Driver, resources=read-only)
-//   - interactive/print.rs is clean (only facade::AgentEvent)
+// Known exceptions (all documented with c270 rationale, tracked for cleanup):
+//   - interactive/cli/ = composition root (wires ports + Agent)
+//   - interactive/driver.rs = Driver trait + InProcessDriver
+//   - interactive/rpc.rs = builds Agent via with_ports (T2 c270)
+//   - interactive/print.rs = imports AgentEvent for stream matching
+//   - interactive/resources.rs = read-only resource listing
+//   - interactive/diff_review/ = review engine (infra config import)
 
 #[cfg(test)]
 mod arch_guard {
@@ -87,6 +92,48 @@ mod arch_guard {
         assert!(
             violations.is_empty(),
             "agent/ must not import concrete provider implementations — found violations:\n  {}",
+            violations.join("\n  "),
+        );
+    }
+
+    #[test]
+    fn interactive_only_from_driver() {
+        // interactive/ (except cli/ and driver.rs) must not import
+        // crate::agent or crate::infra types directly.
+        //
+        // Known exceptions documented above (cli=composition root,
+        // driver.rs=Driver trait def). The intent is to prevent new
+        // interactive modules from leaking agent/infra internals.
+        // Scan results are paths relative to src/interactive/.
+        // Allowed: cli/ (composition root) and driver.rs (Driver trait).
+        // Known exceptions (not yet refactored, tracked by c270):
+        //   resources.rs — read-only resource listing
+        //   rpc.rs — builds Agent via with_ports (T2 c270)
+        //   print.rs — imports AgentEvent for stream matching
+        let exempt_prefixes = [
+            "cli/",
+            "diff_review/",
+        ];
+        let exempt_files = [
+            "driver.rs",
+            "resources.rs",
+            "rpc.rs",
+            "print.rs",
+        ];
+
+        let mut violations = Vec::new();
+        for needle in ["crate::agent", "crate::infra"] {
+            for hit in scan("src/interactive", needle) {
+                let is_exempt = exempt_prefixes.iter().any(|p| hit.starts_with(p))
+                    || exempt_files.iter().any(|f| hit.starts_with(f));
+                if !is_exempt {
+                    violations.push(hit);
+                }
+            }
+        }
+        assert!(
+            violations.is_empty(),
+            "interactive/ (except cli/ and driver.rs) must not import agent or infra — found violations:\n  {}",
             violations.join("\n  "),
         );
     }

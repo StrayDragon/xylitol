@@ -1,16 +1,20 @@
 //! CLI argument parsing and mode dispatch.
 
+use std::sync::Arc;
+
 use clap::{Parser, Subcommand};
 
 use crate::agent::auth;
 use crate::agent::facade::Agent;
 use crate::agent::model::registry;
 use crate::agent::model::resolver;
-use crate::agent::session::{AgentSession, ModelRegistry};
+use crate::agent::session::ModelRegistry;
 use crate::agent::tools::ToolRegistry;
 use crate::core::model::{ModelConfig, ModelKind};
+use crate::core::ports::{EventSink, SessionStore};
 use crate::core::types::ModelMeta;
 use crate::infra::config::loader::load_app_config;
+use crate::infra::event::EventBus;
 use crate::infra::session::SessionManager;
 use crate::infra::timing;
 use crate::interactive::driver::InProcessDriver;
@@ -19,11 +23,35 @@ use crate::interactive::resources::ResourcesAction;
 /// Top-level subcommand. When absent, the flat flags/positional below drive
 /// the default print-mode flow (backward compatible).
 #[derive(Subcommand, Debug)]
-pub enum Command {
+pub enum CliCommand {
     /// Read-only resource listing and diagnostics.
     Resources {
         #[command(subcommand)]
         action: ResourcesAction,
+    },
+    /// Server lifecycle management.
+    Server {
+        #[command(subcommand)]
+        action: ServerSubcommand,
+    },
+}
+
+/// Server lifecycle subcommands.
+#[derive(Subcommand, Debug)]
+pub enum ServerSubcommand {
+    /// Start the xylitol server.
+    Run {
+        /// Port to bind to.
+        #[arg(long, default_value = "8080")]
+        port: u16,
+    },
+    /// Register the server as a launchd/systemd service (macOS/Linux).
+    Install,
+    /// Stop a running server by removing its lock file.
+    Stop {
+        /// Path to the lock file.
+        #[arg(long, default_value = "/tmp/xylitol-server.lock")]
+        lock: String,
     },
 }
 
@@ -31,7 +59,7 @@ pub enum Command {
 #[command(name = "xylitol", version, about)]
 pub struct CliArgs {
     #[command(subcommand)]
-    pub command: Option<Command>,
+    pub command: Option<CliCommand>,
 
     pub prompt: Option<String>,
     #[arg(long)]
@@ -60,12 +88,18 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = CliArgs::parse();
 
     // ── Subcommands: handled early, no model loading needed ─────────
-    if let Some(Command::Resources { action }) = args.command {
-        let code = crate::interactive::resources::run(action);
-        if code == std::process::ExitCode::FAILURE {
-            std::process::exit(1);
+    match args.command {
+        Some(CliCommand::Resources { action }) => {
+            let code = crate::interactive::resources::run(action);
+            if code == std::process::ExitCode::FAILURE {
+                std::process::exit(1);
+            }
+            return Ok(());
         }
-        return Ok(());
+        Some(CliCommand::Server { action }) => {
+            return run_server(action).await;
+        }
+        None => {} // continue to default print-mode flow
     }
 
     timing::reset_timings();
@@ -315,37 +349,56 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .map(|c| crate::agent::compaction::CompactionSettings::from(c.clone()))
     };
 
-    let mut agent_session = AgentSession::new(
+    // ── Step 3c: initialize sandbox engine ────────────────────
+    let sandbox_engine = app_config.as_ref().and_then(|cfg| {
+        cfg.security
+            .sandbox
+            .as_ref()
+            .filter(|sc| sc.enabled)
+            .map(|sc| crate::infra::sandbox::build_engine(sc))
+    });
+
+    // ── Step 4: RPC mode ────────────────────────────────────────
+    if args.rpc {
+        return crate::interactive::rpc::run(
+            model_registry,
+            session_mgr,
+            Some(system_prompt),
+            max_iterations,
+            0.8,
+            cwd,
+            compaction_settings,
+            args.session,
+            sandbox_engine,
+        )
+        .await
+        .map_err(|e| e.into());
+    }
+
+    // ── Step 5: construct Agent via with_ports (HC-2 route) ────
+    let store: Arc<dyn SessionStore> = Arc::new(session_mgr.clone());
+    let sink: Arc<dyn EventSink> = Arc::new(EventBus::new());
+    let mut agent = Agent::with_ports(
         model_registry,
         tool_registry,
-        session_mgr.clone(),
+        store,
+        sink,
+        session_mgr,
         Some(system_prompt),
         max_iterations,
         0.8,
         cwd,
         compaction_settings,
     );
-    // ── Step 3c: initialize sandbox engine ────────────────────
-    if let Some(ref cfg) = app_config
-        && let Some(ref sandbox_cfg) = cfg.security.sandbox
-        && sandbox_cfg.enabled
-    {
-        let engine = crate::infra::sandbox::build_engine(sandbox_cfg);
-        agent_session.set_sandbox_engine(Some(engine));
-    }
 
-    agent_session.register_prompt_commands(&discovered_templates);
+    if let Some(ref engine) = sandbox_engine {
+        agent.session_mut().set_sandbox_engine(Some(engine.clone()));
+    }
+    agent.session_mut().register_prompt_commands(&discovered_templates);
 
     timing::time("session.create");
 
-    // ── Step 4: RPC mode (early return) ────────────────────────
-    if args.rpc {
-        return crate::interactive::rpc::run(agent_session)
-            .await
-            .map_err(|e| e.into());
-    }
-
-    // ── Step 5: select model ────────────────────────────────
+    // ── Step 6: select model ────────────────────────────────
     // Priority: explicit `--model` flag > resolved default profile's model
     // (agents.profiles.<default>.model > execution.model > models.default_model).
     let target_model: Option<String> = args.model.clone().or_else(|| {
@@ -355,13 +408,14 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     if let Some(mid) = target_model {
-        let available: Vec<&ModelMeta> = agent_session.model_registry().list().iter().collect();
+        let available: Vec<&ModelMeta> =
+            agent.session().model_registry().list().iter().collect();
         match resolver::resolve_model(&mid, &available, None) {
             Ok(resolved) => {
                 if let Some(ref warning) = resolved.warning {
                     eprintln!("Warning: {warning}");
                 }
-                let _ = agent_session.select_model(&resolved.model.id);
+                let _ = agent.session_mut().select_model(&resolved.model.id);
             }
             Err(msg) => {
                 eprintln!(
@@ -376,7 +430,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let session_id = args
         .session
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let agent = Agent::new(agent_session);
     let mut driver = InProcessDriver::new(agent);
 
     // ── Step 6: dispatch by mode ─────────────────────────────
@@ -394,6 +447,38 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     timing::print_timings();
     Ok(())
+}
+
+/// Run a server subcommand.
+async fn run_server(action: ServerSubcommand) -> Result<(), Box<dyn std::error::Error>> {
+    match action {
+        ServerSubcommand::Run { port } => {
+            let config = crate::server::runtime::ServerConfig {
+                port,
+                ..Default::default()
+            };
+            let (_handle, actual_port) = crate::server::runtime::start(config).await?;
+            eprintln!("Server started on port {}", actual_port);
+            // Keep running until Ctrl+C
+            tokio::signal::ctrl_c().await?;
+            eprintln!("Shutting down...");
+            Ok(())
+        }
+        ServerSubcommand::Install => {
+            eprintln!("Server install not yet implemented");
+            Ok(())
+        }
+        ServerSubcommand::Stop { lock } => {
+            let path = std::path::Path::new(&lock);
+            if path.exists() {
+                std::fs::remove_file(path)?;
+                eprintln!("Removed lock file: {lock}");
+            } else {
+                eprintln!("No lock file found at: {lock}");
+            }
+            Ok(())
+        }
+    }
 }
 
 /// Read the API key for a provider from environment variables.

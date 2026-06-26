@@ -23,19 +23,23 @@ use tokio_util::sync::CancellationToken;
 
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::facade::{Agent, AgentEvent};
-use crate::agent::session::{AgentSession, ModelRegistry};
+use crate::agent::model::registry::ModelRegistry;
 use crate::agent::tools::ToolRegistry;
+use crate::core::ports::{EventSink, SessionStore};
 use crate::core::types::{ModelMeta, ThinkingLevel};
+use crate::infra::event::EventBus;
+use crate::infra::sandbox::SandboxEngine;
 use crate::infra::session::SessionManager;
 use crate::protocol::{Command, Event};
 
 // ── State ─────────────────────────────────────────────────────────
 
-/// Holds the components needed to construct AgentSession for each prompt.
-/// After a prompt, the session auto-persists to disk (c75); we reconstruct
-/// it from these components (plus the on-disk session file) next time.
+/// Holds the components needed to construct an Agent for each command.
+/// After a prompt, the session auto-persists to disk; we reconstruct
+/// a new Agent from these components next time.
 struct RpcState {
     model_registry: ModelRegistry,
+    session_mgr: SessionManager,
     current_model_id: Option<String>,
     thinking_level: ThinkingLevel,
     session_id: String,
@@ -44,56 +48,68 @@ struct RpcState {
     max_iterations: u32,
     compaction_threshold: f64,
     compaction_settings: CompactionSettings,
+    sandbox_engine: Option<Arc<dyn SandboxEngine>>,
     /// Cancellation token for the active prompt loop.
     active_cancel: Option<CancellationToken>,
 }
 
 impl RpcState {
-    fn from_session(s: &AgentSession) -> Self {
-        Self {
-            model_registry: s.registry_clone(),
-            current_model_id: s.current_model().map(|m| m.id.clone()),
-            thinking_level: s.thinking_level(),
-            session_id: s.session_id().unwrap_or("rpc").to_string(),
-            cwd: s.cwd().to_string(),
-            system_prompt: s.system_prompt().map(|s| s.to_string()),
-            max_iterations: s.max_iterations(),
-            compaction_threshold: s.compaction_threshold(),
-            compaction_settings: s.compaction_settings().clone(),
-            active_cancel: None,
-        }
-    }
-
-    fn build_session(&self) -> Result<AgentSession, String> {
-        let model_registry = self.model_registry.clone();
+    fn build_agent(&self) -> Result<Agent, String> {
         let tool_registry = ToolRegistry::from_tools(crate::infra::tools::default_tools());
-        let session_dir = SessionManager::default_dir();
-        std::fs::create_dir_all(&session_dir).map_err(|e| format!("session dir: {e}"))?;
-        let session_mgr = SessionManager::new(session_dir);
+        let store: Arc<dyn SessionStore> = Arc::new(self.session_mgr.clone());
+        let sink: Arc<dyn EventSink> = Arc::new(EventBus::new());
 
-        let mut session = AgentSession::new(
-            model_registry,
+        let mut agent = Agent::with_ports(
+            self.model_registry.clone(),
             tool_registry,
-            session_mgr,
+            store,
+            sink,
+            self.session_mgr.clone(),
             self.system_prompt.clone(),
             self.max_iterations,
             self.compaction_threshold,
             self.cwd.clone(),
             Some(self.compaction_settings.clone()),
         );
-        session.set_thinking_level(self.thinking_level);
-        if let Some(ref mid) = self.current_model_id {
-            let _ = session.select_model(mid);
+        if let Some(ref engine) = self.sandbox_engine {
+            agent.session_mut().set_sandbox_engine(Some(engine.clone()));
         }
-        session.set_session(self.session_id.clone());
-        Ok(session)
+        agent.session_mut().set_thinking_level(self.thinking_level);
+        if let Some(ref mid) = self.current_model_id {
+            let _ = agent.session_mut().select_model(mid);
+        }
+        agent.session_mut().set_session(self.session_id.clone());
+        Ok(agent)
     }
 }
 
 // ── Main loop ─────────────────────────────────────────────────────
 
-pub async fn run(initial_session: AgentSession) -> Result<(), String> {
-    let state = Arc::new(Mutex::new(RpcState::from_session(&initial_session)));
+pub async fn run(
+    model_registry: ModelRegistry,
+    session_mgr: SessionManager,
+    system_prompt: Option<String>,
+    max_iterations: u32,
+    compaction_threshold: f64,
+    cwd: String,
+    compaction_settings: Option<CompactionSettings>,
+    session_id: Option<String>,
+    sandbox_engine: Option<Arc<dyn SandboxEngine>>,
+) -> Result<(), String> {
+    let state = Arc::new(Mutex::new(RpcState {
+        model_registry,
+        session_mgr,
+        current_model_id: None,
+        thinking_level: ThinkingLevel::Medium,
+        session_id: session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        cwd,
+        system_prompt,
+        max_iterations,
+        compaction_threshold,
+        compaction_settings: compaction_settings.unwrap_or_default(),
+        sandbox_engine,
+        active_cancel: None,
+    }));
 
     let stdin = io::stdin();
     let reader = stdin.lock();
@@ -157,6 +173,9 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
         | Command::Fork { id, .. }
         | Command::GetMessages { id, .. }
         | Command::GetCommands { id, .. }
+        | Command::Subscribe { id, .. }
+        | Command::ApproveTool { id, .. }
+        | Command::AnswerQuestion { id, .. }
         | Command::Quit { id, .. } => id.clone(),
     };
 
@@ -183,9 +202,10 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
         }
         Command::GetState { .. } => {
             let s = state.lock().await;
-            let session = s.build_session();
-            match session {
-                Ok(sess) => {
+            let agent = s.build_agent();
+            match agent {
+                Ok(agent) => {
+                    let sess = agent.session();
                     let model = sess
                         .current_model()
                         .map(|m| serde_json::json!({"id": m.id, "display_name": m.display_name}));
@@ -285,14 +305,14 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
             ..
         } => {
             let s = state.lock().await;
-            let mut session = match s.build_session() {
-                Ok(s) => s,
+            let mut agent = match s.build_agent() {
+                Ok(a) => a,
                 Err(e) => {
                     emit(&Event::Error { id, message: e });
                     return;
                 }
             };
-            let result = session.execute_bash(&command, exclude_from_context).await;
+            let result = agent.session_mut().execute_bash(&command, exclude_from_context).await;
             match result {
                 Ok(br) => emit(&Event::BashResult {
                     id: id.clone(),
@@ -306,14 +326,14 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
         }
         Command::Compact { .. } => {
             let s = state.lock().await;
-            let session = match s.build_session() {
-                Ok(s) => s,
+            let mut agent = match s.build_agent() {
+                Ok(a) => a,
                 Err(e) => {
                     emit(&Event::Error { id, message: e });
                     return;
                 }
             };
-            match session.maybe_auto_compact().await {
+            match agent.session_mut().maybe_auto_compact().await {
                 Ok(did) => emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({"compacted": did})),
@@ -323,14 +343,14 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
         }
         Command::GetSessionStats { .. } => {
             let s = state.lock().await;
-            let session = match s.build_session() {
-                Ok(s) => s,
+            let mut agent = match s.build_agent() {
+                Ok(a) => a,
                 Err(e) => {
                     emit(&Event::Error { id, message: e });
                     return;
                 }
             };
-            match session.get_session_stats().await {
+            match agent.session_mut().get_session_stats().await {
                 Ok(stats) => emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({
@@ -344,8 +364,8 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
         }
         Command::ExportHtml { output_path, .. } => {
             let s = state.lock().await;
-            let session = match s.build_session() {
-                Ok(s) => s,
+            let mut agent = match s.build_agent() {
+                Ok(a) => a,
                 Err(e) => {
                     emit(&Event::Error { id, message: e });
                     return;
@@ -354,7 +374,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
             let path = output_path
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("export.html"));
-            match session.export_to_html(&path).await {
+            match agent.session_mut().export_to_html(&path).await {
                 Ok(_) => emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({"path": path.to_string_lossy()})),
@@ -372,14 +392,14 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
         }
         Command::Fork { entry_id, .. } => {
             let s = state.lock().await;
-            let session = match s.build_session() {
-                Ok(s) => s,
+            let mut agent = match s.build_agent() {
+                Ok(a) => a,
                 Err(e) => {
                     emit(&Event::Error { id, message: e });
                     return;
                 }
             };
-            match session.fork_session(&entry_id).await {
+            match agent.session_mut().fork_session(&entry_id).await {
                 Ok(new_id) => emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({"new_session": new_id})),
@@ -397,14 +417,14 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
         }
         Command::GetCommands { .. } => {
             let s = state.lock().await;
-            let session = match s.build_session() {
-                Ok(s) => s,
+            let agent = match s.build_agent() {
+                Ok(a) => a,
                 Err(e) => {
                     emit(&Event::Error { id, message: e });
                     return;
                 }
             };
-            let cmds = session.get_commands();
+            let cmds = agent.session().get_commands();
             let payload: Vec<Value> = cmds
                 .iter()
                 .map(|c| serde_json::json!({"name": c.name, "description": c.description}))
@@ -414,15 +434,39 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
                 payload: Some(serde_json::json!({"commands": payload})),
             });
         }
+        Command::Subscribe { .. } => {
+            emit(&Event::Error {
+                id,
+                message: "subscribe requires WebSocket connection (not stdio RPC)".into(),
+            });
+        }
+        Command::ApproveTool { call_id, approved, .. } => {
+            emit(&Event::Error {
+                id,
+                message: format!(
+                    "approve_tool requires WebSocket connection (call_id={}, approved={})",
+                    call_id, approved
+                ),
+            });
+        }
+        Command::AnswerQuestion { call_id, answer: _, .. } => {
+            emit(&Event::Error {
+                id,
+                message: format!(
+                    "answer_question requires WebSocket connection (call_id={})",
+                    call_id
+                ),
+            });
+        }
         Command::Quit { .. } => {} // handled in loop
     }
 }
 
 async fn run_prompt(state: &Arc<Mutex<RpcState>>, _id: &Option<String>, message: &str) {
-    let (session, cancel_token) = {
+    let (mut agent, cancel_token, session_id) = {
         let mut s = state.lock().await;
-        let session = match s.build_session() {
-            Ok(s) => s,
+        let agent = match s.build_agent() {
+            Ok(a) => a,
             Err(e) => {
                 emit(&Event::Error {
                     id: _id.clone(),
@@ -431,13 +475,12 @@ async fn run_prompt(state: &Arc<Mutex<RpcState>>, _id: &Option<String>, message:
                 return;
             }
         };
+        let session_id = agent.session().session_id().unwrap_or("prompt").to_string();
         let cancel = CancellationToken::new();
         s.active_cancel = Some(cancel.clone());
-        (session, cancel)
+        (agent, cancel, session_id)
     };
 
-    let session_id = session.session_id().unwrap_or("prompt").to_string();
-    let mut agent = Agent::new(session);
     let mut stream = agent.run_with_id(message, &session_id).await;
 
     loop {
