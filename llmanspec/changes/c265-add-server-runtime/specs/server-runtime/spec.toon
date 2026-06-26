@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,sr6,"server-deferred","Full server process (REST/WS/lock/journal/reverse-RPC) SHALL be deferred to c270; c265 MUST only establish the port boundaries (SessionStore/EventSink) and Driver abstraction that server hosting depends on.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  sr6,"ports-ready-for-server","a future c270 server needs to host an agent","it constructs SessionStore/EventSink ports","the port interfaces are available and tested"

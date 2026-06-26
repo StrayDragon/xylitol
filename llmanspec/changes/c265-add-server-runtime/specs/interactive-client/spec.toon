@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ic1,"driver-trait","interactive/ MUST define a Driver trait with a send method (Command to EventStream); all interactive clients (cli, print, rpc) MUST depend on Driver, never on agent or infra. InProcessDriver wraps the agent facade; RemoteDriver wraps WS/REST transport.",null,null,null
+  add_requirement,ic4,"driver-inprocess","interactive/ MUST provide InProcessDriver that holds Agent ports and invokes the facade directly; it is the only interactive module permitted to import agent::facade.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ic1,"clients-depend-on-driver","an interactive client module is inspected","its imports are checked","it imports interactive::Driver, not agent or infra"
+  ic4,"inprocess-wires-agent","InProcessDriver is constructed","its body is inspected","it holds Agent and imports agent::facade only"
