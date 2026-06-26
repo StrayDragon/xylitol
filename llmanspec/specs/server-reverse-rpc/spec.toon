@@ -1,0 +1,14 @@
+kind: llman.sdd.spec
+name: "server-reverse-rpc"
+purpose: "TBD - created by archiving change c270-add-server-process. Update purpose after archive."
+valid_scope[2]: src/,tests/
+requirements[4]{req_id,title,statement}:
+  rr1,"reverse-rpc-approval","On ApprovalRequired event, the server MUST broadcast ServerFrame::ReverseRpc {type: approval, call_id, ...} to all WS connections holding this session; the first client response wins."
+  rr2,"reverse-rpc-question","On QuestionRequired event, the server MUST broadcast ServerFrame::ReverseRpc {type: question, call_id, ...} to all WS connections; same first-response-wins semantics."
+  rr3,"call-id-lifecycle",Each reverse RPC MUST have a UUID call_id registered with a oneshot channel in a HashMap; on timeout (60s default) the channel receives ApprovalTimeout error; on answer the channel receives the result; the entry MUST be removed after consumed.
+  rr4,"no-conflict-arbitration",v1 MUST NOT implement conflict arbitration between multiple clients; the first ApproveTool or AnswerQuestion for a given call_id wins; subsequent responses for the same call_id MUST be silently ignored.
+scenarios[4]{req_id,id,given,when,then}:
+  rr1,"approval-broadcast",agent emits ApprovalRequired with call_id xyz,server checks WS connections for the session,all 3 connected clients receive the ReverseRpc frame
+  rr2,"first-wins","2 clients answer ApproveTool for call_id xyz (first: true, 50ms later: false)",the server processes the first answer,the agent resumes with approved=true; the second answer is ignored
+  rr3,"timeout-error",no client answers ApproveTool within 60s,the server marks call_id as expired,the agent receives ApprovalTimeout error
+  rr4,"second-answer-ignored","a second client answers ApproveTool for an already-consumed call_id",the server receives the answer,"the answer is silently ignored (no state change, no error)"
