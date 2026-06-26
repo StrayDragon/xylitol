@@ -12,7 +12,10 @@ pub mod cut_detector;
 pub mod file_ops;
 pub mod llm_summarizer;
 pub mod message_converter;
+pub mod orchestrator;
 pub mod settings;
+
+pub use orchestrator::{CompactionOrchestrator, should_compact};
 pub mod token_estimator;
 
 pub use cut_detector::{

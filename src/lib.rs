@@ -5,11 +5,11 @@
 pub mod agent;
 pub mod core;
 pub mod infra;
-pub mod interface;
+pub mod interactive;
 
 /// Application entry point.
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    interface::cli::run().await
+    interactive::cli::run().await
 }
 
 /// Run the interactive diff review demo.
@@ -17,7 +17,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// Requires the `ui-review` feature (terminal rendering backend).
 #[cfg(feature = "ui-review")]
 pub async fn run_review_demo() -> Result<(), String> {
-    interface::diff_review::run_demo().await
+    interactive::diff_review::run_demo().await
 }
 
 #[cfg(test)]

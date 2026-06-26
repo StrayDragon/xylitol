@@ -20,7 +20,7 @@ pub struct ContextUsage {
     pub should_compact: bool,
 }
 
-pub use crate::agent::compaction_orchestrator::should_compact;
+pub use crate::agent::compaction::orchestrator::should_compact;
 
 /// Estimate token count from messages using simple heuristic (1 token ≈ 4 chars).
 pub fn estimate_tokens(messages: &[crate::core::message::AgentMessage]) -> u64 {

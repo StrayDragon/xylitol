@@ -1,5 +1,6 @@
 pub(crate) mod accumulator;
 pub mod bash;
+pub mod definition;
 pub mod edit;
 pub mod find;
 pub mod grep;
