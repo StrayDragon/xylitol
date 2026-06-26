@@ -24,8 +24,8 @@
 ## P2 — agent 瘦身 + facade（行为不变）
 
 - [x] T14 拆 `runtime/react.rs`：剪 `AgentEvent`/`AgentEventStream`→`runtime/event.rs`；剪 `AgentHooks`/`SteeringMode`/`FollowUpMode`→`runtime/hooks.rs`；react.rs 只留算法
-- [ ] T15 `git mv src/agent/bash_executor.rs src/agent/runtime/bash.rs`；全局替换引用
-- [ ] T16 建 `src/agent/prompt/`：mv prompt.rs→system.rs、commands.rs、templates.rs、skills.rs→prompt/{system,commands,templates,skills}.rs；建 `prompt/mod.rs` re-export；`agent/mod.rs` 改声明
+- [x] T15 `git mv src/agent/bash_executor.rs src/agent/runtime/bash.rs`；全局替换引用
+- [x] T16 建 `src/agent/prompt/`：mv prompt.rs→system.rs、commands.rs、templates.rs、skills.rs→prompt/{system,commands,templates,skills}.rs；建 `prompt/mod.rs` re-export；`agent/mod.rs` 改声明
 - [ ] T17 新增 `src/agent/facade.rs`：`pub struct Agent` 包装 `AgentLoop`，re-export `AgentEvent`/`AgentHooks`，提供 `new`/`with_hooks`/`run`/`session`/`abort`
 - [ ] T18 收口 `interactive/{rpc,print,cli}.rs`：改 `use crate::agent::facade::{Agent, AgentEvent}`；删对 `agent::runtime`/`session`/`tools` 的直接 import（cli 组合根构造期除外）
 - [ ] T19 验证：`grep -rn "crate::agent::runtime\|crate::agent::session::" src/interactive/` 仅出现在构造期；`wc -l runtime/react.rs` ≤350；build + nextest + clippy + BDD 全绿
