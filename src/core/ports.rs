@@ -99,6 +99,59 @@ pub trait XyTool: Send + Sync {
     }
 }
 
+// ── Agent lifecycle event (core-level representation) ───────────
+
+/// Lifecycle event emitted by the agent runtime.
+///
+/// Core-level representation so EventSink and SessionStore ports don't
+/// depend on infra::event. The enriched infra-level event types live in
+/// `infra::event::lifecycle::AgentLifecycleEvent`.
+///
+/// NOTE: Currently covers only compaction events — the events that the
+/// compaction orchestrator emits. Turn/agent lifecycle events remain on
+/// `EventBus` directly until the port migration is completed.
+#[derive(Debug, Clone)]
+pub enum LifecycleEvent {
+    CompactionStarted {
+        session_id: String,
+        reason: String,
+    },
+    CompactionEnded {
+        session_id: String,
+        result: Option<String>,
+        aborted: bool,
+    },
+}
+
+// ── SessionStore port ───────────────────────────────────────────
+
+/// Persistence port — abstracts session storage so the agent can be
+/// unit-tested without a real filesystem and the server can host
+/// sessions without coupling to the file store.
+///
+/// Methods are the **minimum** the ReAct loop and compaction call.
+/// Full session management (fork/navigate/export) stays on the concrete
+/// `infra::session::SessionManager` for the composition root.
+#[async_trait]
+pub trait SessionStore: Send + Sync {
+    /// Load session context (messages, model, CWD) for building turn state.
+    async fn load_context(&self, session_id: &str) -> Result<Vec<AgentMessage>, String>;
+    /// Append an opaque JSON entry to the session log.
+    async fn append_entry(&self, session_id: &str, entry: serde_json::Value) -> Result<(), String>;
+    /// Check whether a session exists.
+    async fn exists(&self, session_id: &str) -> bool;
+}
+
+// ── EventSink port ─────────────────────────────────────────────
+
+/// Event emission port — abstracts lifecycle event delivery so the
+/// loop can emit lifecycle events without knowing the concrete bus.
+#[async_trait]
+pub trait EventSink: Send + Sync {
+    /// Emit a lifecycle event.
+    async fn emit(&self, event: &LifecycleEvent);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

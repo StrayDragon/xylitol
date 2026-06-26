@@ -4,10 +4,10 @@
 
 ## P1 — HC-2 port 定义 + 实现（行为不变）
 
-- [ ] T1 在 `core/ports.rs` 新增 `SessionStore` trait（load_context, append, exists）——仅 agent loop/compaction 调用的方法，不抄 SessionManager 全量 surface
-- [ ] T2 在 `core/ports.rs` 新增 `EventSink` trait（emit_lifecycle）
-- [ ] T3 `infra::session::SessionManager` impl `SessionStore`（load_context 委托 build_session_context, append 委托 append_entry, exists 委托 exists）
-- [ ] T4 `infra::event::EventBus` impl `EventSink`
+- [x] T1 在 `core/ports.rs` 新增 `SessionStore` trait（load_context, append, exists）——仅 agent loop/compaction 调用的方法，不抄 SessionManager 全量 surface
+- [x] T2 在 `core/ports.rs` 新增 `EventSink` trait（emit_lifecycle）
+- [x] T3 `infra::session::SessionManager` impl `SessionStore`（load_context 委托 build_session_context, append 委托 append_entry, exists 委托 exists）
+- [x] T4 `infra::event::EventBus` impl `EventSink`
 - [ ] T5 新增 `tests/support/in_memory_store.rs`：InMemorySessionStore（HashMap-based，用于 agent 单测）
 - [ ] T6 新增 `tests/support/recording_sink.rs`：RecordingSink（Vec<AgentLifecycleEvent>，用于 agent 单测）
 - [ ] T7 改 `agent/facade.rs`：`Agent::new(store: Arc<dyn SessionStore>, sink: Arc<dyn EventSink>, ...)`；`run(&mut self, prompt: &str)` 不再传 session_id
