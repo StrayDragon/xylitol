@@ -1,17 +1,16 @@
-Feature: Server process lifecycle
+Feature: 服务端进程生命周期
 
-  The xylitol server starts, acquires a single-instance lock, exposes
-  REST and WebSocket endpoints, and supports reconnection with event replay.
+  xylitol 服务端启动时获取单实例锁，暴露 REST 和 WebSocket 端点。
 
   Background:
-    Given a clean lock path
+    Given 锁路径已清理
 
-  Scenario: Server starts and serves health check
-    When the server starts on a free port
-    Then the healthz endpoint returns 200 OK
-    And the lock file exists with port, pid, and hostname
+  Scenario: 服务端启动并通过健康检查
+    When 服务端在空闲端口上启动
+    Then healthz 端点返回 200 OK
+    And 锁文件包含 port, pid, hostname
 
-  Scenario: Second instance is rejected
-    Given a running server with a lock file
-    When a second server starts against the same lock path
-    Then the second server receives a ServerLockedError
+  Scenario: 第二实例被拒绝
+    Given 服务端已在运行（锁文件存在）
+    When 第二个服务端启动（相同锁路径）
+    Then 第二个实例收到 ServerLockedError
