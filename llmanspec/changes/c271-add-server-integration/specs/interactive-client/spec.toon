@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ic3,"remote-driver","interactive/ MUST provide RemoteDriver that speaks protocol over WebSocket (streaming) and REST (control); RemoteDriver::run MUST connect to the server's WS for event streaming and return a real AgentEvent stream, not a stub.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ic3,"remote-streams-events","a RemoteDriver is pointed at a running server and sends a prompt","the driver connects over WS","the event stream contains real TextDelta and AgentEnd events from the server"

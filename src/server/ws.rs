@@ -30,7 +30,7 @@ use crate::protocol::Event;
 // ── Frame types ────────────────────────────────────────────────────
 
 /// Frame sent from server to client.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerFrame {
     ServerHello {
@@ -52,7 +52,7 @@ pub enum ServerFrame {
 }
 
 /// Frame sent from client to server.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientFrame {
     Subscribe {

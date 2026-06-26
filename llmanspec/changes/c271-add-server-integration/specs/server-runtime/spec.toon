@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,sr1,"server-hosts-agent","server/ MUST assemble infra runtimes and inject them into agent ports at startup; server/ MUST pass the Agent into AppState so route handlers can invoke it.",null,null,null
+  add_requirement,sr9,"rest-routes-functional","server/ MUST respond to POST /api/v1/session/{id}/run by invoking Agent::run and returning session_id; DELETE /api/v1/session/{id} MUST abort the agent; GET /api/v1/session/{id}/events MUST pull from the journal.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  sr1,"agent-in-appstate","the server starts with an Agent configured","a GET /api/v1/healthz returns 200 and POST /api/v1/session/x/run returns a session_id","the Agent is reachable from route handlers"
+  sr9,"run-endpoint-works","a prompt is POSTed to /api/v1/session/x/run","the server processes the prompt","the endpoint returns a 200 with a session_id"

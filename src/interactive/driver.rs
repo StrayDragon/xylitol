@@ -10,11 +10,14 @@
 use std::pin::Pin;
 
 use async_trait::async_trait;
-use futures::Stream;
+use futures::{SinkExt, Stream, StreamExt};
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::facade::{Agent, AgentEvent, AgentHooks};
 use crate::core::ports::ToolExecutionMode;
+use crate::protocol::Event as ProtoEvent;
+use crate::server::ws::{ClientFrame, ServerFrame};
 
 /// A stream of [`AgentEvent`] items.
 pub type EventStream = Pin<Box<dyn Stream<Item = AgentEvent> + Send>>;
@@ -75,8 +78,8 @@ impl Driver for InProcessDriver {
 
 /// Remote driver — speaks protocol over REST/WS to a xylitol server.
 ///
-/// Uses `reqwest` for control commands (prompt, abort) and polls events
-/// via REST. A full WebSocket streaming path will be added in a follow-up.
+/// Uses `reqwest` for control commands (prompt, abort) and `tokio-tungstenite`
+/// for WebSocket event streaming.
 pub struct RemoteDriver {
     base_url: String,
     session_id: String,
@@ -108,18 +111,13 @@ impl RemoteDriver {
         format!("{}/api/v1/session/{}", self.base_url, self.session_id)
     }
 
-    fn events_url(&self, seq: u64) -> String {
-        format!(
-            "{}/api/v1/session/{}/events?seq={}",
-            self.base_url, self.session_id, seq
-        )
-    }
-
-    fn base_events_url(&self) -> String {
-        format!(
-            "{}/api/v1/session/{}/events",
-            self.base_url, self.session_id
-        )
+    fn ws_url(&self) -> String {
+        // Convert http:// to ws://, https:// to wss://
+        let ws_base = self
+            .base_url
+            .replace("https://", "wss://")
+            .replace("http://", "ws://");
+        format!("{ws_base}/api/v1/session/{}/ws", self.session_id)
     }
 }
 
@@ -129,49 +127,83 @@ impl Driver for RemoteDriver {
         let client = self.client.clone();
         let run_url = self.run_url();
         let cancel_url = self.cancel_url();
-        let base_events_url = self.base_events_url();
+        let ws_url = self.ws_url();
         let cancel = self.cancel.clone();
         let prompt = prompt.to_string();
 
         let stream = async_stream::stream! {
-            // Submit prompt
+            // 1. Submit prompt via REST (triggers agent execution)
             let payload = serde_json::json!({"prompt": prompt});
-            let resp = client
-                .post(&run_url)
-                .json(&payload)
-                .send()
-                .await;
-
-            match resp {
-                Ok(_) => {
-                    // Poll events
-                    let seq = 0u64;
-                    loop {
-                        if cancel.is_cancelled() {
-                            let _ = client.delete(&cancel_url).send().await;
-                            break;
-                        }
-
-                        let events_url = format!("{base_events_url}?seq={seq}");
-
-                        match client.get(&events_url).send().await {
-                            Ok(resp) => {
-                                if let Ok(body) = resp.json::<serde_json::Value>().await {
-                                    yield AgentEvent::TextDelta(
-                                        format!("[remote] received {}", body)
-                                    );
-                                }
-                                break;
-                            }
-                            Err(e) => {
-                                yield AgentEvent::Error(format!("remote error: {e}"));
-                                break;
-                            }
-                        }
-                    }
+            match client.post(&run_url).json(&payload).send().await {
+                Ok(resp) if !resp.status().is_success() => {
+                    let status = resp.status();
+                    yield AgentEvent::Error(format!("server returned {status}"));
+                    return;
                 }
                 Err(e) => {
                     yield AgentEvent::Error(format!("connection failed: {e}"));
+                    return;
+                }
+                _ => {} // success
+            }
+
+            // 2. Connect to WS for event streaming
+            let ws_stream = match connect_async(&ws_url).await {
+                Ok((ws, _)) => ws,
+                Err(e) => {
+                    yield AgentEvent::Error(format!("WS connect failed: {e}"));
+                    return;
+                }
+            };
+
+            let (mut ws_writer, mut ws_reader) = ws_stream.split();
+
+            // 3. Send Subscribe
+            let subscribe = serde_json::to_string(&ClientFrame::Subscribe {
+                session_id: String::new(), // server knows from URL
+                last_seq: 0,
+            })
+            .unwrap();
+            if ws_writer.send(Message::Text(subscribe.into())).await.is_err() {
+                yield AgentEvent::Error("WS send failed".into());
+                return;
+            }
+
+            // 4. Read events until AgentEnd or abort
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => {
+                        let _ = client.delete(&cancel_url).send().await;
+                        break;
+                    }
+                    msg = ws_reader.next() => {
+                        match msg {
+                            Some(Ok(Message::Text(text))) => {
+                                if let Ok(frame) = serde_json::from_str::<ServerFrame>(&text) {
+                                    match frame {
+                                        ServerFrame::ServerHello { .. } | ServerFrame::Ack { .. } => {
+                                            // Handshake frames, ignore
+                                        }
+                                        ServerFrame::Event { event, .. } => {
+                                            if let Some(agent_event) = proto_to_agent(&event) {
+                                                let is_end = matches!(agent_event, AgentEvent::AgentEnd { .. });
+                                                yield agent_event;
+                                                if is_end {
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        ServerFrame::ResyncRequired { .. } => {
+                                            yield AgentEvent::Error("journal truncated, resync required".into());
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            Some(Ok(Message::Close(_))) | None => break,
+                            _ => {}
+                        }
+                    }
                 }
             }
         };
@@ -181,11 +213,45 @@ impl Driver for RemoteDriver {
 
     fn abort(&self) {
         self.cancel.cancel();
-        // Fire-and-forget DELETE to cancel on server
         let url = self.cancel_url();
         let client = self.client.clone();
         tokio::spawn(async move {
             let _ = client.delete(&url).send().await;
         });
+    }
+}
+
+// ── Protocol event → AgentEvent conversion ────────────────────────
+
+fn proto_to_agent(event: &ProtoEvent) -> Option<AgentEvent> {
+    match event {
+        ProtoEvent::TextDelta { text } => Some(AgentEvent::TextDelta(text.clone())),
+        ProtoEvent::ToolStart { id, name } => Some(AgentEvent::ToolExecutionStart {
+            id: id.clone(),
+            name: name.clone(),
+            args: serde_json::Value::Null,
+        }),
+        ProtoEvent::ToolEnd { id, name, result } => Some(AgentEvent::ToolExecutionEnd {
+            id: id.clone(),
+            name: name.clone(),
+            result: result.clone(),
+        }),
+        ProtoEvent::ModelSelect {
+            provider,
+            model_id,
+        } => Some(AgentEvent::ModelSelect {
+            provider: provider.clone(),
+            model_id: model_id.clone(),
+        }),
+        ProtoEvent::CompactionStart { reason } => {
+            Some(AgentEvent::CompactionStart {
+                reason: reason.clone(),
+            })
+        }
+        ProtoEvent::AgentEnd => Some(AgentEvent::AgentEnd {
+            messages: Vec::new(),
+        }),
+        ProtoEvent::Error { message, .. } => Some(AgentEvent::Error(message.clone())),
+        _ => None,
     }
 }
