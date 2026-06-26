@@ -16,7 +16,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::core::error::XyToolError;
-use crate::core::traits::{XyTool, XyToolCtx};
+use crate::core::ports::{XyTool, XyToolCtx};
 
 use super::accumulator::OutputAccumulator;
 
@@ -30,6 +30,7 @@ const SIGTERM_GRACE_SECS: u64 = 5;
 ///
 /// Supports mock implementations for testing and hook injection.
 #[async_trait]
+#[allow(dead_code)] // test-only construction seam (MockBash in cfg(test))
 pub trait BashOperations: Send + Sync {
     /// Execute a shell command and return its output.
     async fn execute(
@@ -224,12 +225,14 @@ impl Default for BashTool {
 }
 
 impl BashTool {
+    #[allow(dead_code)] // test-only construction seam
     pub fn with_operations(ops: impl BashOperations + 'static) -> Self {
         Self {
             operations: Arc::new(ops),
         }
     }
 
+    #[allow(dead_code)] // test-only construction seam
     pub fn with_hooks(hooks: BashHooks) -> Self {
         Self {
             operations: Arc::new(RealBashOperations { hooks }),

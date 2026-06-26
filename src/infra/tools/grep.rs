@@ -18,7 +18,7 @@ use super::truncate::{
     truncate_line,
 };
 use crate::core::error::XyToolError;
-use crate::core::traits::{XyTool, XyToolCtx};
+use crate::core::ports::{XyTool, XyToolCtx};
 
 const DEFAULT_LIMIT: usize = 100;
 const RG_TIMEOUT: Duration = Duration::from_secs(30);

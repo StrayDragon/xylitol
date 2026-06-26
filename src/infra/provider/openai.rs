@@ -21,7 +21,7 @@ use futures::Stream;
 use serde_json::Value;
 
 use crate::core::error::XyError;
-use crate::core::traits::{XyModel, XyStream};
+use crate::core::ports::{XyModel, XyStream};
 use crate::core::types::{XyChunk, XyFinishReason, XyToolSchema};
 
 pub(crate) struct OpenAIProvider {

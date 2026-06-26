@@ -7,7 +7,6 @@
 //! - [`ModelResolver`](resolver) — resolves model IDs to configs
 //! - [`ModelManifest`](manifest::ModelManifest) — loads model definitions from files
 
-pub mod config;
 pub mod manager;
 pub mod manifest;
 pub mod registry;

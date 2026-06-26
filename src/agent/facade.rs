@@ -16,7 +16,7 @@
 
 use crate::agent::runtime::AgentLoop;
 use crate::agent::session::AgentSession;
-use crate::core::traits::ToolExecutionMode;
+use crate::core::ports::ToolExecutionMode;
 use tokio_util::sync::CancellationToken;
 
 // Public types interactive layers need (events, hooks, construction types).
