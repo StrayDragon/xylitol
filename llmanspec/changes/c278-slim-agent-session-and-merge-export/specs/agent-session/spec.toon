@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,a1,"agent-session","System MUST provide AgentSession encapsulating prompt to model to tools to loop with full event stream, holding ONLY orchestration state (current model and tool selection, thinking level, lifecycle event dispatch); persistence, stats, export, and bash execution handlers MUST NOT be owned as concrete infra implementations but consumed via injected ports or delegated to the composition root.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  a1,"no-export-forwarding-layer","the source tree is inspected for session export","agent/session/export.rs is checked","no one-hop forwarding wrapper to infra::session::export remains; callers use infra directly or an injected port"

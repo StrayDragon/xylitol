@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,la7,"runtime-residence","All runtimes (provider, tool, session storage, exec-env) MUST live under infra/; agent/ MUST hold them only as Arc<dyn Port> injected at the composition root (interactive::cli or server::runtime); agent/ MUST NOT call any infra constructor (e.g. build_provider, default_tools, SessionManager::new, EventBus::new) directly.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  la7,"no-build-provider-in-agent","an agent/ source file is compiled","it references crate::infra::provider::factory::build_provider","the build or guard rejects it"
+  la7,"ports-injected-at-root","the Agent facade is constructed","its constructor is inspected","all concrete infra runtimes are built in interactive::cli or server::runtime and passed to the facade as Arc<dyn Port>"
