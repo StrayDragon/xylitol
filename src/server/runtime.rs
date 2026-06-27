@@ -114,7 +114,6 @@ pub async fn start(
         tool_registry,
         store,
         sink,
-        session_mgr,
         config.system_prompt,
         config.max_iterations,
         config.compaction_threshold,

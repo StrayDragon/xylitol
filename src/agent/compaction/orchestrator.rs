@@ -4,8 +4,7 @@
 //! compaction orchestration into a focused component.
 
 use crate::agent::compaction::{CompactionSettings, compact_session};
-use crate::core::ports::{EventSink, LifecycleEvent, XyModel};
-use crate::infra::session::manager::SessionManager;
+use crate::core::ports::{EventSink, LifecycleEvent, SessionStore, XyModel};
 
 /// Orchestrates session compaction — threshold checks and execution.
 ///
@@ -37,7 +36,7 @@ impl CompactionOrchestrator {
     /// Manually compact the current session.
     pub async fn compact(
         &self,
-        session_manager: &SessionManager,
+        store: &dyn SessionStore,
         sid: &str,
         model: &dyn XyModel,
         event_sink: &dyn EventSink,
@@ -49,7 +48,7 @@ impl CompactionOrchestrator {
             })
             .await;
 
-        let result = compact_session(session_manager, sid, model, &self.settings)
+        let result = compact_session(store, sid, model, &self.settings)
             .await
             .map_err(|e| format!("compaction failed: {e}"));
 
@@ -69,13 +68,13 @@ impl CompactionOrchestrator {
     /// Returns true if compaction was performed.
     pub async fn maybe_auto_compact(
         &self,
-        session_manager: &SessionManager,
+        store: &dyn SessionStore,
         sid: &str,
         model: &dyn XyModel,
         event_sink: &dyn EventSink,
         context_window: u64,
     ) -> Result<bool, String> {
-        let session_ctx = session_manager.build_session_context(sid).await?;
+        let session_ctx = store.build_session_context(sid).await?;
         let token_estimate: u64 = session_ctx
             .messages
             .iter()
@@ -97,7 +96,7 @@ impl CompactionOrchestrator {
             })
             .await;
 
-        let result = compact_session(session_manager, sid, model, &self.settings)
+        let result = compact_session(store, sid, model, &self.settings)
             .await
             .map_err(|e| format!("auto-compaction: {e}"));
 

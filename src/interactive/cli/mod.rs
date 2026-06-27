@@ -410,7 +410,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         tool_registry,
         store,
         sink,
-        session_mgr,
         Some(system_prompt),
         max_iterations,
         0.8,

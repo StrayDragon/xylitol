@@ -172,7 +172,6 @@ fn make_agent(agent: &AgentState) -> AgentLoop {
     let session = AgentSession::new(
         agent.registry.borrow().clone(),
         ToolRegistry::from_tools(xylitol::infra::tools::default_tools()),
-        mgr,
         store,
         sink,
         Some("you are helpful".into()),
@@ -567,7 +566,6 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
     let mut session = AgentSession::new(
         agent.registry.borrow().clone(),
         ToolRegistry::from_tools(xylitol::infra::tools::default_tools()),
-        mgr,
         store,
         sink,
         None,
@@ -674,7 +672,6 @@ fn _w_agent_cycle_forward(agent: &AgentState) {
     let mut session = AgentSession::new(
         agent.registry.borrow().clone(),
         ToolRegistry::from_tools(xylitol::infra::tools::default_tools()),
-        mgr,
         store,
         sink,
         None,

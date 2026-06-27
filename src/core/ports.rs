@@ -12,6 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::core::error::{XyError, XyToolError};
 use crate::core::message::AgentMessage;
+use crate::core::session_types::{SessionContext, SessionEntry};
 use crate::core::types::{XyChunk, XyToolSchema};
 
 /// Streaming response from an LLM provider.
@@ -140,6 +141,23 @@ pub trait SessionStore: Send + Sync {
     async fn append_entry(&self, session_id: &str, entry: serde_json::Value) -> Result<(), String>;
     /// Check whether a session exists.
     async fn exists(&self, session_id: &str) -> bool;
+
+    /// Load the raw typed session entries (for compaction / export).
+    async fn load_entries(&self, session_id: &str) -> Result<Vec<SessionEntry>, String>;
+    /// Append a typed session entry (compaction summary, bash exec, etc.).
+    async fn append_session_entry(
+        &self,
+        session_id: &str,
+        entry: &SessionEntry,
+    ) -> Result<(), String>;
+    /// Build the full session context (messages, thinking level, model).
+    async fn build_session_context(&self, session_id: &str) -> Result<SessionContext, String>;
+
+    /// Create a new session (writes header, initializes leaf tracking).
+    async fn create(&self, id: &str, cwd: Option<&str>, parent: Option<&str>)
+    -> Result<(), String>;
+    /// Fork a session at a given entry into a new child session.
+    async fn fork(&self, parent_id: &str, child_id: &str, at_entry_id: &str) -> Result<(), String>;
 }
 
 // ── EventSink port ─────────────────────────────────────────────

@@ -1344,6 +1344,41 @@ impl SessionStore for SessionManager {
     async fn exists(&self, session_id: &str) -> bool {
         self.exists(session_id)
     }
+
+    async fn load_entries(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<super::types::SessionEntry>, String> {
+        SessionManager::load(self, session_id).await
+    }
+
+    async fn append_session_entry(
+        &self,
+        session_id: &str,
+        entry: &super::types::SessionEntry,
+    ) -> Result<(), String> {
+        SessionManager::append(self, session_id, entry).await
+    }
+
+    async fn build_session_context(
+        &self,
+        session_id: &str,
+    ) -> Result<crate::core::session_types::SessionContext, String> {
+        SessionManager::build_session_context(self, session_id).await
+    }
+
+    async fn create(
+        &self,
+        id: &str,
+        cwd: Option<&str>,
+        parent: Option<&str>,
+    ) -> Result<(), String> {
+        SessionManager::create(self, id, cwd, parent).await
+    }
+
+    async fn fork(&self, parent_id: &str, child_id: &str, at_entry_id: &str) -> Result<(), String> {
+        SessionManager::fork(self, parent_id, child_id, at_entry_id).await
+    }
 }
 
 // ── EventSink impl ───────────────────────────────────────────────────
