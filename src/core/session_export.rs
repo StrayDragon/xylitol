@@ -1,14 +1,17 @@
-//! Session export — HTML / JSONL / import.
+//! Session export — HTML / JSONL rendering and JSONL import.
 //!
-//! Aligns with c105-add-export-capabilities. Read-only transformations over a
-//! loaded session's entries. No file mutation outside the explicit
-//! `export_to_*` writers; import creates a brand-new session.
+//! Pure transformations over a loaded session's entries (relocated from
+//! `infra::session::export` per c278 — these helpers depend only on core
+//! vocabulary types + std, so they live here and the agent layer calls them
+//! directly instead of through an infra forwarding wrapper). No file mutation
+//! outside the explicit `export_to_*` writers; import creates a brand-new
+//! session.
 
 use std::path::Path;
 
 use serde_json::Value;
 
-use crate::infra::session::types::{MessageEntry, SessionEntry};
+use crate::core::session_types::{MessageEntry, SessionEntry};
 
 /// Render a session's entries to a standalone HTML document.
 ///
@@ -175,7 +178,7 @@ pub fn share_guidance_message(_path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::session::types::{BashExecutionEntry, EntryBase, SessionHeader};
+    use crate::core::session_types::{BashExecutionEntry, EntryBase, SessionHeader};
     use std::path::PathBuf;
 
     fn header(id: &str) -> SessionEntry {

@@ -19,6 +19,7 @@ pub mod message;
 pub mod model;
 pub mod ports;
 pub mod resource_types;
+pub mod session_export;
 pub mod session_types;
 pub mod source_info;
 pub mod types;

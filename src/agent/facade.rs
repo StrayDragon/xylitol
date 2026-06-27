@@ -19,7 +19,6 @@ use crate::agent::runtime::AgentLoop;
 use crate::agent::session::AgentSession;
 use crate::agent::tools::ToolRegistry;
 use crate::core::ports::{BashExecutor, EventSink, SessionStore, ToolExecutionMode};
-use crate::infra::session::SessionManager;
 
 pub use crate::agent::runtime::{AgentEvent, AgentEventStream, AgentHooks};
 
@@ -43,18 +42,16 @@ impl Agent {
 
     /// Construct from ports (HC-2 route).
     ///
-    /// Accepts both concrete types (SessionManager for SessionIO operations)
-    /// and port trait objects (SessionStore/EventSink for the ReAct loop),
-    /// plus an injected model builder and sandbox engine (HC-1: agent must not
-    /// construct infra providers/sandboxes itself; the composition root supplies them).
-    /// The ports are passed to AgentSession and wired into the loop.
+    /// Takes [`SessionStore`] / [`EventSink`] port trait objects (the agent
+    /// holds no concrete infra session type), plus an injected model builder
+    /// and sandbox engine (HC-1: agent must not construct infra
+    /// providers/sandboxes itself; the composition root supplies them).
     #[allow(clippy::too_many_arguments)]
     pub fn with_ports(
         model_registry: ModelRegistry,
         tool_registry: ToolRegistry,
         store: Arc<dyn SessionStore>,
         sink: Arc<dyn EventSink>,
-        session_mgr: SessionManager,
         system_prompt: Option<String>,
         max_iterations: u32,
         compaction_threshold: f64,
@@ -73,7 +70,6 @@ impl Agent {
         let session = AgentSession::new(
             model_registry,
             tool_registry,
-            session_mgr,
             store,
             sink,
             system_prompt,

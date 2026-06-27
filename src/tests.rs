@@ -88,63 +88,9 @@ mod arch_guard {
     /// production import requires either eliminating it or registering it here
     /// with a follow-up change id (error-on-new, warn-on-existing).
     const AGENT_INFRA_ALLOWLIST: &[(&str, &str, &str)] = &[
-        // c276 — hoist shared vocabulary types to core/ (ALL CLEARED)
-        //
-        // c277 — sink assembly to composition root
-        // (c277 cleared 3 entries via injection: model/manager build_provider,
-        //  runtime/react sandbox, session/mod sandbox. Remaining c277-tagged
-        //  entries retagged: SessionManager/EventBus holdings -> c278 (session
-        //  decoupling), bash exec primitives + config::value + resource loader
-        //  + trust -> c279 (executor/config/resource relocation).)
-        //
-        // c279 — relocate executor + config resolution + resource loader + trust
-        // (ALL CLEARED)
-        //
-        // c278 — agent/session decoupling + export merge (SessionManager/EventBus)
-        (
-            "compaction/mod.rs",
-            "crate::infra::session::manager",
-            "c278",
-        ),
-        (
-            "compaction/orchestrator.rs",
-            "crate::infra::session::manager",
-            "c278",
-        ),
-        ("facade.rs", "crate::infra::session", "c278"),
-        ("session/events.rs", "crate::infra::event", "c278"),
-        (
-            "session/export.rs",
-            "crate::infra::session::manager",
-            "c278",
-        ),
-        ("session/mod.rs", "crate::infra::event", "c278"),
-        ("session/mod.rs", "crate::infra::session::manager", "c278"),
-        (
-            "session/export.rs",
-            "crate::infra::session::export::parse_jsonl",
-            "c278",
-        ),
-        (
-            "session/export.rs",
-            "crate::infra::session::export::render_html",
-            "c278",
-        ),
-        (
-            "session/export.rs",
-            "crate::infra::session::export::render_jsonl",
-            "c278",
-        ),
-        (
-            "session/export.rs",
-            "crate::infra::session::export::share_guidance_message",
-            "c278",
-        ),
-        (
-            "session/export.rs",
-            "crate::infra::session::export::write_to",
-            "c278",
-        ),
+        // All prior exemptions (c276/c277/c278/c279) have been cleared.
+        // agent/ production code must not import any crate::infra::* type;
+        // any new violation fails the guard immediately (no allowlist entry).
     ];
 
     /// Extract `crate::infra::...` import tokens from the PRODUCTION region of each

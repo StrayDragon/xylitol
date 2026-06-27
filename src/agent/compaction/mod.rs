@@ -31,13 +31,12 @@ pub use token_estimator::{XyUsage, calculate_context_tokens, estimate_context_to
 use anyhow::Result;
 use serde_json::json;
 
-use crate::core::ports::XyModel;
+use crate::core::ports::{SessionStore, XyModel};
 use crate::core::session_types::{CompactionEntry, EntryBase, SessionEntry};
-use crate::infra::session::manager::SessionManager;
 
 /// Compact a session by summarizing old entries and writing a CompactionEntry.
 pub async fn compact_session(
-    mgr: &SessionManager,
+    store: &dyn SessionStore,
     session_id: &str,
     model: &dyn XyModel,
     settings: &CompactionSettings,
@@ -46,10 +45,7 @@ pub async fn compact_session(
         return Err("compaction disabled".to_string());
     }
 
-    let entries = mgr
-        .load(session_id)
-        .await
-        .map_err(|e| format!("load session: {e}"))?;
+    let entries = store.load_entries(session_id).await?;
 
     if entries.is_empty() {
         return Err("empty session, nothing to compact".to_string());
@@ -151,7 +147,8 @@ pub async fn compact_session(
         from_hook: Some(false),
     };
 
-    mgr.append(session_id, &SessionEntry::Compaction(entry.clone()))
+    store
+        .append_session_entry(session_id, &SessionEntry::Compaction(entry.clone()))
         .await
         .map_err(|e| format!("write compaction entry: {e}"))?;
 
