@@ -21,13 +21,35 @@ pub(crate) async fn run_print(
 
     while let Some(event) = stream.next().await {
         match event {
+            AgentEvent::TurnStart { turn_index } => {
+                eprintln!("\n[Turn {turn_index}]");
+            }
+            AgentEvent::TurnEnd { turn_index } => {
+                eprintln!("\n[Turn {turn_index} end]");
+            }
+            AgentEvent::MessageStart { .. } => {
+                // Silent: don't interrupt the output stream.
+            }
+            AgentEvent::MessageEnd { .. } => {
+                // Silent: don't interrupt the output stream.
+            }
             AgentEvent::TextDelta(text) => {
                 let _ = write!(handle, "{text}");
                 let _ = handle.flush();
             }
             AgentEvent::ThinkingDelta(_) => {}
+            AgentEvent::MessageUpdate { text, .. } => {
+                // Overwrite the current line with the accumulated text
+                // (similar to TextDelta, streamed incrementally).
+                let _ = write!(handle, "{text}");
+                let _ = handle.flush();
+            }
             AgentEvent::ToolExecutionStart { name, .. } => {
                 eprintln!("\n[Tool: {name}]");
+            }
+            AgentEvent::ToolExecutionUpdate { output, .. } => {
+                eprint!("{output}");
+                let _ = io::stderr().flush();
             }
             AgentEvent::ToolExecutionEnd { name, result, .. } => {
                 // Summarize result
@@ -45,11 +67,16 @@ pub(crate) async fn run_print(
             AgentEvent::CompactionStart { reason } => {
                 eprintln!("\n[Compaction] {reason}");
             }
+            AgentEvent::CompactionEnd { .. } => {
+                eprintln!("\n[Compaction complete]");
+            }
             AgentEvent::ModelSelect { model_id, .. } => {
                 eprintln!("\n[Model] switched to {model_id}");
             }
+            AgentEvent::ThinkingLevelChanged { level } => {
+                eprintln!("\n[Thinking] level set to {level}");
+            }
             AgentEvent::AgentEnd { .. } => break,
-            _ => {}
         }
     }
     let _ = writeln!(handle);

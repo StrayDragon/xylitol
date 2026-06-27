@@ -11,6 +11,8 @@
 
 use std::sync::Arc;
 
+pub(crate) use crate::core::ports::{EventSink, SessionStore};
+
 mod bash_exec;
 mod events;
 mod export;
@@ -57,7 +59,10 @@ pub struct AgentSession {
     tool_registry: ToolRegistry,
     /// Names of currently active tools (empty = all allowed).
     active_tools: Vec<String>,
-    /// Session persistence and navigation.
+    /// Session persistence via the SessionStore port (HC-2). Held for the
+    /// ReAct loop to consume load_context/append_entry/exists; the loop
+    /// currently builds history inline (c185) and will migrate to this port.
+    #[allow(dead_code)]
     session_io: SessionIO,
     /// System prompt to prepend to every turn.
     system_prompt: Option<String>,
@@ -80,15 +85,22 @@ pub struct AgentSession {
     extension_commands: Vec<SlashCommandInfo>,
     /// Skill management (activation, XML expansion).
     skill_manager: SkillManager,
-    /// Event bus for lifecycle notifications.
+    /// Event bus for lifecycle notifications (kept for subscribe/unsubscribe).
     event_bus: EventBus,
     /// Handle for lifecycle subscription (dropped on unsubscribe/dispose).
     lifecycle_handle: Option<UnsubscribeHandle>,
+    /// Concrete session manager (for management ops beyond the store port).
+    session_manager: SessionManager,
     /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
     bash_handler: crate::agent::session::bash_exec::BashExecHandler,
 
     /// Sandbox engine for tool execution isolation.
     sandbox_engine: Option<std::sync::Arc<dyn SandboxEngine>>,
+    /// Session store port (HC-2) — actively used by the ReAct loop.
+    #[allow(dead_code)]
+    store: Arc<dyn SessionStore>,
+    /// Event sink port (HC-2) — actively used for lifecycle events.
+    sink: Arc<dyn EventSink>,
 }
 
 impl AgentSession {
@@ -97,6 +109,8 @@ impl AgentSession {
         model_registry: ModelRegistry,
         tool_registry: ToolRegistry,
         session_manager: SessionManager,
+        store: Arc<dyn SessionStore>,
+        sink: Arc<dyn EventSink>,
         system_prompt: Option<String>,
         max_iterations: u32,
         compaction_threshold: f64,
@@ -107,7 +121,7 @@ impl AgentSession {
             model_manager: ModelManager::new(model_registry),
             tool_registry,
             active_tools: Vec::new(),
-            session_io: SessionIO::new(session_manager),
+            session_io: SessionIO::new(store.clone()),
             system_prompt,
             session_id: None,
             max_iterations,
@@ -126,7 +140,10 @@ impl AgentSession {
             skill_manager: SkillManager::new(),
             event_bus: EventBus::new(),
             lifecycle_handle: None,
+            session_manager,
             bash_handler: crate::agent::session::bash_exec::BashExecHandler::new(),
+            store,
+            sink,
             sandbox_engine: None,
         }
     }
@@ -151,13 +168,13 @@ impl AgentSession {
     /// Set thinking level.
     pub fn set_thinking_level(&mut self, level: ThinkingLevel) {
         self.model_manager.set_thinking_level(level);
-        // Fire-and-forget persistence
+        // Fire-and-forget persistence via session_manager
         if let Some(ref sid) = self.session_id {
-            let io = self.session_io.clone();
+            let mgr = self.session_manager.clone();
             let sid = sid.clone();
             let level_str = level.as_str().to_string();
             tokio::spawn(async move {
-                let _ = io.append_thinking_level_change(&sid, &level_str).await;
+                let _ = mgr.append_thinking_level_change(&sid, &level_str).await;
             });
         }
     }
@@ -189,13 +206,13 @@ impl AgentSession {
     /// Select a specific model by ID.
     pub fn select_model(&mut self, model_id: &str) -> Result<(), String> {
         self.model_manager.select_model(model_id)?;
-        // Fire-and-forget persistence
+        // Fire-and-forget persistence via session_manager
         if let Some(ref sid) = self.session_id {
-            let io = self.session_io.clone();
+            let mgr = self.session_manager.clone();
             let sid = sid.clone();
             let mid = model_id.to_string();
             tokio::spawn(async move {
-                let _ = io.append_model_change(&sid, &mid, &mid).await;
+                let _ = mgr.append_model_change(&sid, &mid, &mid).await;
             });
         }
         Ok(())
@@ -346,10 +363,9 @@ impl AgentSession {
 
     /// Ensure a session exists (create if needed).
     pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), String> {
-        if !self.session_io.manager().exists(id) {
+        if !self.session_manager.exists(id) {
             let cwd_clone = self.cwd.clone();
-            self.session_io
-                .manager()
+            self.session_manager
                 .create(id, Some(&cwd_clone), parent)
                 .await?;
         }
@@ -363,7 +379,7 @@ impl AgentSession {
     }
 
     pub fn session_manager(&self) -> &SessionManager {
-        self.session_io.manager()
+        &self.session_manager
     }
 
     pub fn system_prompt(&self) -> Option<&str> {
@@ -429,17 +445,19 @@ impl AgentSession {
             .map(String::from)
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        self.session_io.create(&id, &self.cwd, parent).await?;
+        self.session_manager
+            .create(&id, Some(&self.cwd), parent)
+            .await?;
         self.session_id = Some(id.clone());
 
         // Emit initial model state
         if let Some(model) = self.current_model() {
-            let io = self.session_io.clone();
+            let mgr = self.session_manager.clone();
             let sid = id.clone();
             let provider = model.config.provider_name().to_string();
             let model_id = model.config.model.clone();
             tokio::spawn(async move {
-                let _ = io.append_model_change(&sid, &provider, &model_id).await;
+                let _ = mgr.append_model_change(&sid, &provider, &model_id).await;
             });
         }
 
@@ -449,7 +467,7 @@ impl AgentSession {
     /// Resume an existing session, loading its entries and validating CWD.
     pub async fn resume_session(&mut self, id: &str) -> Result<(), String> {
         // Load + validate CWD
-        let entries = self.session_io.load_validated(id, &self.cwd).await?;
+        let entries = self.session_manager.load_validated(id, &self.cwd).await?;
 
         self.session_id = Some(id.to_string());
 
@@ -486,7 +504,7 @@ impl AgentSession {
             .session_id()
             .ok_or_else(|| "no active session".to_string())?;
         self.compaction_orchestrator
-            .compact(self.session_io.manager(), sid, model, &self.event_bus)
+            .compact(&self.session_manager, sid, model, self.sink.as_ref())
             .await
     }
 
@@ -527,9 +545,10 @@ impl AgentSession {
 
         let child_id = uuid::Uuid::new_v4().to_string();
 
-        self.session_io
+        self.session_manager
             .fork(parent_id, &child_id, at_entry_id)
-            .await?;
+            .await
+            .map_err(|e| format!("fork failed: {e}"))?;
 
         Ok(child_id)
     }
@@ -540,7 +559,7 @@ impl AgentSession {
         let sid = self
             .session_id()
             .ok_or_else(|| "no active session".to_string())?;
-        self.session_io.navigate(sid, target_id);
+        self.session_manager.navigate_tree(sid, Some(target_id));
         Ok(())
     }
 
@@ -550,8 +569,10 @@ impl AgentSession {
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
-        self.session_io.switch(new_id, new_path).await?;
-        self.session_io.manager().set_active_session(new_id);
+        self.session_manager
+            .switch_session(new_id, new_path)
+            .await?;
+        self.session_manager.set_active_session(new_id);
         Ok(())
     }
 
@@ -608,7 +629,7 @@ impl AgentSession {
         let sid = self
             .session_id()
             .ok_or_else(|| "no active session".to_string())?;
-        let ctx = self.session_io.manager().build_session_context(sid).await?;
+        let ctx = self.session_manager.build_session_context(sid).await?;
 
         let user_messages = ctx
             .messages
@@ -671,7 +692,7 @@ impl AgentSession {
                 .to_string(),
         };
         record_bash_result(
-            &self.session_io,
+            &self.session_manager,
             command,
             result,
             exclude_from_context,
@@ -759,8 +780,7 @@ impl AgentSession {
             .ok_or_else(|| "no active session".to_string())?;
         // Forward to session manager for persistence; turn triggering is
         // orchestrated by AgentLoop (c185).
-        self.session_io
-            .manager()
+        self.session_manager
             .append_custom_message(sid, custom_type, _content, false, None)
             .await
     }
@@ -773,7 +793,7 @@ impl AgentSession {
         path: &std::path::Path,
     ) -> Result<std::path::PathBuf, String> {
         let sid = self.session_id().ok_or("no active session")?.to_string();
-        crate::agent::session::export::export_to_html(self.session_io.manager(), &sid, path).await
+        crate::agent::session::export::export_to_html(&self.session_manager, &sid, path).await
     }
 
     /// Export the active session's entries as JSONL. Returns the path.
@@ -782,12 +802,12 @@ impl AgentSession {
         path: &std::path::Path,
     ) -> Result<std::path::PathBuf, String> {
         let sid = self.session_id().ok_or("no active session")?.to_string();
-        crate::agent::session::export::export_to_jsonl(self.session_io.manager(), &sid, path).await
+        crate::agent::session::export::export_to_jsonl(&self.session_manager, &sid, path).await
     }
 
     /// Import a JSONL file into a brand-new session. Returns the new session id.
     pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String> {
-        crate::agent::session::export::import_from_jsonl(self.session_io.manager(), path).await
+        crate::agent::session::export::import_from_jsonl(&self.session_manager, path).await
     }
 
     /// Share guidance stub — returns a configuration hint (no network upload).
@@ -813,10 +833,10 @@ impl AgentSession {
 
         self.compaction_orchestrator
             .maybe_auto_compact(
-                self.session_io.manager(),
+                &self.session_manager,
                 sid,
                 model.as_ref(),
-                &self.event_bus,
+                self.sink.as_ref(),
                 ctx_window,
             )
             .await
@@ -827,24 +847,23 @@ impl AgentSession {
 /// by both [`AgentSession::record_bash_result`](super::AgentSession::record_bash_result)
 /// and the bash-execution collaborator).
 pub(crate) async fn record_bash_result(
-    io: &crate::agent::session::io::SessionIO,
+    mgr: &SessionManager,
     command: &str,
     result: &crate::agent::runtime::bash::BashResult,
     exclude_from_context: bool,
     session_id: &str,
 ) -> Result<(), String> {
-    io.manager()
-        .append_bash_execution(crate::infra::session::manager::BashExecutionParams {
-            session_id,
-            command,
-            output: &result.output,
-            exit_code: result.exit_code,
-            cancelled: result.cancelled,
-            truncated: result.truncated,
-            full_output_path: result.full_output_path.as_deref(),
-            exclude_from_context,
-        })
-        .await
+    mgr.append_bash_execution(crate::infra::session::manager::BashExecutionParams {
+        session_id,
+        command,
+        output: &result.output,
+        exit_code: result.exit_code,
+        cancelled: result.cancelled,
+        truncated: result.truncated,
+        full_output_path: result.full_output_path.as_deref(),
+        exclude_from_context,
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -854,10 +873,16 @@ mod tests {
 
     fn make_session() -> AgentSession {
         let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+        let store: std::sync::Arc<dyn crate::core::ports::SessionStore> =
+            std::sync::Arc::new(mgr.clone());
+        let sink: std::sync::Arc<dyn crate::core::ports::EventSink> =
+            std::sync::Arc::new(crate::infra::event::EventBus::new());
         AgentSession::new(
             ModelRegistry::new(),
             ToolRegistry::from_tools(crate::infra::tools::default_tools()),
             mgr,
+            store,
+            sink,
             Some("you are helpful".into()),
             50,
             0.8,

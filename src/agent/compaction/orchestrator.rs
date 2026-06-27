@@ -4,9 +4,7 @@
 //! compaction orchestration into a focused component.
 
 use crate::agent::compaction::{CompactionSettings, compact_session};
-use crate::core::ports::XyModel;
-use crate::infra::event::EventBus;
-use crate::infra::event::lifecycle::AgentLifecycleEvent;
+use crate::core::ports::{EventSink, LifecycleEvent, XyModel};
 use crate::infra::session::manager::SessionManager;
 
 /// Orchestrates session compaction — threshold checks and execution.
@@ -42,20 +40,26 @@ impl CompactionOrchestrator {
         session_manager: &SessionManager,
         sid: &str,
         model: &dyn XyModel,
-        event_bus: &EventBus,
+        event_sink: &dyn EventSink,
     ) -> Result<(), String> {
-        event_bus.emit_lifecycle(&AgentLifecycleEvent::CompactionStart {
-            reason: "manual".to_string(),
-        });
+        event_sink
+            .emit(&LifecycleEvent::CompactionStarted {
+                session_id: sid.to_string(),
+                reason: "manual".to_string(),
+            })
+            .await;
 
         let result = compact_session(session_manager, sid, model, &self.settings)
             .await
             .map_err(|e| format!("compaction failed: {e}"));
 
-        event_bus.emit_lifecycle(&AgentLifecycleEvent::CompactionEnd {
-            result: result.as_ref().ok().map(|_| "ok".to_string()),
-            aborted: false,
-        });
+        event_sink
+            .emit(&LifecycleEvent::CompactionEnded {
+                session_id: sid.to_string(),
+                result: result.as_ref().ok().map(|_| "ok".to_string()),
+                aborted: false,
+            })
+            .await;
 
         result?;
         Ok(())
@@ -68,7 +72,7 @@ impl CompactionOrchestrator {
         session_manager: &SessionManager,
         sid: &str,
         model: &dyn XyModel,
-        event_bus: &EventBus,
+        event_sink: &dyn EventSink,
         context_window: u64,
     ) -> Result<bool, String> {
         let session_ctx = session_manager.build_session_context(sid).await?;
@@ -82,22 +86,28 @@ impl CompactionOrchestrator {
             return Ok(false);
         }
 
-        event_bus.emit_lifecycle(&AgentLifecycleEvent::CompactionStart {
-            reason: format!(
-                "auto: {:.1}% of {}k window",
-                (token_estimate as f64 / context_window as f64) * 100.0,
-                context_window / 1000,
-            ),
-        });
+        event_sink
+            .emit(&LifecycleEvent::CompactionStarted {
+                session_id: sid.to_string(),
+                reason: format!(
+                    "auto: {:.1}% of {}k window",
+                    (token_estimate as f64 / context_window as f64) * 100.0,
+                    context_window / 1000,
+                ),
+            })
+            .await;
 
         let result = compact_session(session_manager, sid, model, &self.settings)
             .await
             .map_err(|e| format!("auto-compaction: {e}"));
 
-        event_bus.emit_lifecycle(&AgentLifecycleEvent::CompactionEnd {
-            result: result.as_ref().ok().map(|_| "ok".to_string()),
-            aborted: false,
-        });
+        event_sink
+            .emit(&LifecycleEvent::CompactionEnded {
+                session_id: sid.to_string(),
+                result: result.as_ref().ok().map(|_| "ok".to_string()),
+                aborted: false,
+            })
+            .await;
 
         result?;
         Ok(true)

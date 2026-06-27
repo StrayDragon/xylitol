@@ -419,10 +419,11 @@ async fn call_with_retry(
 #[cfg(test)]
 mod tests {
     use super::*;
-
     use crate::agent::model::registry::ModelRegistry;
+    use crate::core::ports::{EventSink, SessionStore};
     use crate::core::types::ModelMeta;
     use crate::infra::session::SessionManager;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_agent_session_builds_model() {
@@ -449,10 +450,14 @@ mod tests {
         });
 
         let session_mgr = SessionManager::new(SessionManager::default_dir());
+        let store: Arc<dyn SessionStore> = Arc::new(session_mgr.clone());
+        let sink: Arc<dyn EventSink> = Arc::new(crate::infra::event::EventBus::new());
         let session = AgentSession::new(
             reg,
             ToolRegistry::from_tools(crate::infra::tools::default_tools()),
             session_mgr,
+            store,
+            sink,
             Some("You are helpful.".into()),
             50,
             0.8,
@@ -489,10 +494,14 @@ mod tests {
         });
 
         let session_mgr = SessionManager::new(SessionManager::default_dir());
+        let store: Arc<dyn SessionStore> = Arc::new(session_mgr.clone());
+        let sink: Arc<dyn EventSink> = Arc::new(crate::infra::event::EventBus::new());
         let session = AgentSession::new(
             reg,
             ToolRegistry::from_tools(crate::infra::tools::default_tools()),
             session_mgr,
+            store,
+            sink,
             Some("You are helpful.".into()),
             50,
             0.8,

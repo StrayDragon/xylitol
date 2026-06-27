@@ -164,10 +164,16 @@ fn check_or_contains(haystack: &str, or_clause: &str) -> bool {
 fn make_agent(agent: &AgentState) -> AgentLoop {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
+    use std::sync::Arc;
+    let store: Arc<dyn xylitol::core::ports::SessionStore> = Arc::new(mgr.clone());
+    let sink: Arc<dyn xylitol::core::ports::EventSink> =
+        Arc::new(xylitol::infra::event::EventBus::new());
     let session = AgentSession::new(
         agent.registry.borrow().clone(),
         ToolRegistry::from_tools(xylitol::infra::tools::default_tools()),
         mgr,
+        store,
+        sink,
         Some("you are helpful".into()),
         50,
         0.8,
@@ -550,10 +556,16 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
     let _ = verb;
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
+    let store: std::sync::Arc<dyn xylitol::core::ports::SessionStore> =
+        std::sync::Arc::new(mgr.clone());
+    let sink: std::sync::Arc<dyn xylitol::core::ports::EventSink> =
+        std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut session = AgentSession::new(
         agent.registry.borrow().clone(),
         ToolRegistry::from_tools(xylitol::infra::tools::default_tools()),
         mgr,
+        store,
+        sink,
         None,
         50,
         0.8,
@@ -648,10 +660,16 @@ fn _g_agent_current_model(_agent: &AgentState, model: String) {
 fn _w_agent_cycle_forward(agent: &AgentState) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
+    let store: std::sync::Arc<dyn xylitol::core::ports::SessionStore> =
+        std::sync::Arc::new(mgr.clone());
+    let sink: std::sync::Arc<dyn xylitol::core::ports::EventSink> =
+        std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut session = AgentSession::new(
         agent.registry.borrow().clone(),
         ToolRegistry::from_tools(xylitol::infra::tools::default_tools()),
         mgr,
+        store,
+        sink,
         None,
         50,
         0.8,
@@ -2245,18 +2263,22 @@ fn handle_rpc_command(cmd: &Command) -> Option<Event> {
         }),
         Command::ApproveTool { call_id, .. } => Some(Event::Error {
             id: None,
-            message: format!(
-                "approve_tool requires WebSocket connection (call_id={call_id})"
-            ),
+            message: format!("approve_tool requires WebSocket connection (call_id={call_id})"),
         }),
         _ => None,
     }
 }
 
 // rpc.feature scenarios
-#[scenario(path = "tests/features/rpc.feature", name = "Subscribe 命令在 stdio 下被拒绝")]
+#[scenario(
+    path = "tests/features/rpc.feature",
+    name = "Subscribe 命令在 stdio 下被拒绝"
+)]
 fn test_rpc_subscribe_rejected(mut rpc_test: RpcTest) {}
-#[scenario(path = "tests/features/rpc.feature", name = "ApproveTool 命令在 stdio 下被拒绝")]
+#[scenario(
+    path = "tests/features/rpc.feature",
+    name = "ApproveTool 命令在 stdio 下被拒绝"
+)]
 fn test_rpc_approvetool_rejected(mut rpc_test: RpcTest) {}
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2385,7 +2407,10 @@ fn second_instance_rejected(server_test: &mut ServerTest) {
 }
 
 // server.feature scenarios
-#[scenario(path = "tests/features/server.feature", name = "服务端启动并通过健康检查")]
+#[scenario(
+    path = "tests/features/server.feature",
+    name = "服务端启动并通过健康检查"
+)]
 fn test_server_start_healthz(mut server_test: ServerTest) {}
 #[scenario(path = "tests/features/server.feature", name = "第二实例被拒绝")]
 fn test_server_second_instance_rejected(mut server_test: ServerTest) {}
@@ -2441,7 +2466,9 @@ fn client_approves(mut approval_test: &mut ApprovalTest) {
 
 #[when("客户端发送 ApproveTool approved=false")]
 fn client_denies(mut approval_test: &mut ApprovalTest) {
-    let consumed = approval_test.gateway.handle_approve("call-approve-1", false);
+    let consumed = approval_test
+        .gateway
+        .handle_approve("call-approve-1", false);
     assert!(consumed, "call_id should be consumed");
 }
 

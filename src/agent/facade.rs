@@ -42,18 +42,15 @@ impl Agent {
 
     /// Construct from ports (HC-2 route).
     ///
-    /// Takes concrete types plus port trait objects. The composition root
-    /// (interactive::cli) constructs `Arc<dyn SessionStore>` and
-    /// `Arc<dyn EventSink>` from concrete infra types and passes them in.
-    /// The ports are accepted here; AgentSession currently still needs the
-    /// concrete SessionManager internally — a future refactor can push them
-    /// deeper once AgentSession consumes ports directly.
+    /// Accepts both concrete types (SessionManager for SessionIO operations)
+    /// and port trait objects (SessionStore/EventSink for the ReAct loop).
+    /// The ports are passed to AgentSession and wired into the loop.
     #[allow(clippy::too_many_arguments)]
     pub fn with_ports(
         model_registry: ModelRegistry,
         tool_registry: ToolRegistry,
-        _store: Arc<dyn SessionStore>,
-        _sink: Arc<dyn EventSink>,
+        store: Arc<dyn SessionStore>,
+        sink: Arc<dyn EventSink>,
         session_mgr: SessionManager,
         system_prompt: Option<String>,
         max_iterations: u32,
@@ -65,6 +62,8 @@ impl Agent {
             model_registry,
             tool_registry,
             session_mgr,
+            store,
+            sink,
             system_prompt,
             max_iterations,
             compaction_threshold,

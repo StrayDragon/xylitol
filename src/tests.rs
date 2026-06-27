@@ -110,16 +110,8 @@ mod arch_guard {
         //   resources.rs — read-only resource listing
         //   rpc.rs — builds Agent via with_ports (T2 c270)
         //   print.rs — imports AgentEvent for stream matching
-        let exempt_prefixes = [
-            "cli/",
-            "diff_review/",
-        ];
-        let exempt_files = [
-            "driver.rs",
-            "resources.rs",
-            "rpc.rs",
-            "print.rs",
-        ];
+        let exempt_prefixes = ["cli/", "diff_review/"];
+        let exempt_files = ["driver.rs", "resources.rs", "rpc.rs", "print.rs"];
 
         let mut violations = Vec::new();
         for needle in ["crate::agent", "crate::infra"] {

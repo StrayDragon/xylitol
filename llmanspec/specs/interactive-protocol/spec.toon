@@ -2,15 +2,17 @@ kind: llman.sdd.spec
 name: "interactive-protocol"
 purpose: "TBD - created by archiving change c260-refactor-domain-architecture. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[5]{req_id,title,statement}:
+requirements[6]{req_id,title,statement}:
   ip1,"command-enum","protocol/ MUST define a Command enum covering at minimum Run, Cancel, SwitchModel, SetThinking, ListCommands, ApproveTool, and AnswerQuestion; every client-to-core message MUST deserialize into this enum."
   ip2,"event-enum","protocol/ MUST define an Event enum covering at minimum TurnStart, Delta, ToolCall, ApprovalRequired, QuestionRequired, TurnEnd, and Usage; every core-to-client message MUST deserialize into this enum."
   ip3,"envelope-and-errors","protocol/ MUST define a uniform REST response envelope {code, msg, data, request_id} and a typed error-code set; envelope types live in protocol/ and MUST be transport-agnostic (no HTTP or WS types inside)."
   ip4,"rpc-becomes-transport","The existing interactive/rpc.rs MUST be reduced to a stdio transport that parses stdin into protocol::Command and serializes protocol::Event to stdout; its command/event types MUST move to protocol/ and MUST NOT be redefined locally."
   ip6,"subscribe-command","protocol/ MUST define Command::Subscribe {session_id, last_seq} for WS subscription and Event::Subscribed {session_id, seq} as the acknowledgment."
-scenarios[5]{req_id,id,given,when,then}:
+  ip7,"event-variants-complete","protocol::Event MUST cover all AgentEvent variants: TurnStart, TurnEnd, MessageStart, MessageEnd, MessageUpdate, ToolExecutionUpdate, and CompactionEnd in addition to the existing variants."
+scenarios[6]{req_id,id,given,when,then}:
   ip1,"command-roundtrip",a Run command is serialized,it is deserialized on the core side,it matches the original Command variant
   ip2,"approval-event",the agent needs a tool approved,an ApprovalRequired event is emitted,it carries a call_id and tool summary
   ip3,"envelope-serializes",an Envelope with code Ok and data is constructed,it is serialized to JSON,"the JSON has code, msg, data, and request_id fields"
   ip4,"rpc-thin",interactive/rpc.rs is inspected,its content is read,it contains only stdio framing and delegates to protocol types
   ip6,"subscribe-command-serializes","a Command::Subscribe {session_id: s0, last_seq: 5} is serialized to JSON",it is deserialized back,it matches original session_id and last_seq
+  ip7,"event-roundtrip",all 7 new event variants are serialized to JSON,they are deserialized back,all fields match the original values
