@@ -145,7 +145,10 @@ mod tests {
         // Request the occupied port; it should retry to the next free port.
         let (listener, actual_port, lock) =
             acquire_lock_and_bind(&path, "test", occupied_port).expect("bind with retry");
-        assert_ne!(actual_port, occupied_port, "should have retried to a different port");
+        assert_ne!(
+            actual_port, occupied_port,
+            "should have retried to a different port"
+        );
         drop(listener);
         drop(lock);
         drop(occupied);
@@ -170,7 +173,11 @@ mod tests {
 
         // But bind_with_retry should find a free port nearby
         let result = bind_with_retry(port);
-        assert!(result.is_ok(), "bind_with_retry should find a free port: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "bind_with_retry should find a free port: {:?}",
+            result.err()
+        );
 
         let (_, free_port) = result.unwrap();
         assert_ne!(free_port, port);

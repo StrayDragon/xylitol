@@ -36,7 +36,8 @@ use crate::protocol::{Command, Event};
 
 /// Holds the components needed to construct an Agent for each command.
 /// After a prompt, the session auto-persists to disk; we reconstruct
-/// a new Agent from these components next time.
+/// a new Agent from these components next time — unless the cache is
+/// still valid, in which case we reuse the previously-built [`Agent`].
 struct RpcState {
     model_registry: ModelRegistry,
     session_mgr: SessionManager,
@@ -51,10 +52,19 @@ struct RpcState {
     sandbox_engine: Option<Arc<dyn SandboxEngine>>,
     /// Cancellation token for the active prompt loop.
     active_cancel: Option<CancellationToken>,
+    /// Cached Agent, reused across commands until a rebuild trigger fires.
+    cached_agent: Option<Agent>,
+    /// Snapshot of session_id used to build `cached_agent`.
+    cache_session_id: Option<String>,
+    /// Snapshot of model_id used to build `cached_agent`.
+    cache_model_id: Option<String>,
+    /// Snapshot of thinking_level used to build `cached_agent`.
+    cache_thinking_level: Option<ThinkingLevel>,
 }
 
 impl RpcState {
-    fn build_agent(&self) -> Result<Agent, String> {
+    /// Build a brand-new Agent from current state (no cache).
+    fn build_agent_fresh(&self) -> Result<Agent, String> {
         let tool_registry = ToolRegistry::from_tools(crate::infra::tools::default_tools());
         let store: Arc<dyn SessionStore> = Arc::new(self.session_mgr.clone());
         let sink: Arc<dyn EventSink> = Arc::new(EventBus::new());
@@ -80,6 +90,65 @@ impl RpcState {
         }
         agent.session_mut().set_session(self.session_id.clone());
         Ok(agent)
+    }
+
+    /// Whether the cached Agent is still valid for the current state.
+    ///
+    /// Rebuild triggers (T12): `session_id`, `current_model_id`, or
+    /// `thinking_level` changed since the cache was populated.
+    fn cache_is_valid(&self) -> bool {
+        match &self.cached_agent {
+            None => false,
+            Some(_) => {
+                self.cache_session_id.as_deref() == Some(self.session_id.as_str())
+                    && self.cache_model_id == self.current_model_id
+                    && self.cache_thinking_level == Some(self.thinking_level)
+            }
+        }
+    }
+
+    /// Record the build parameters so the next `cache_is_valid()` reflects
+    /// what was used to construct the current cache.
+    fn stamp_cache(&mut self) {
+        self.cache_session_id = Some(self.session_id.clone());
+        self.cache_model_id = self.current_model_id.clone();
+        self.cache_thinking_level = Some(self.thinking_level);
+    }
+
+    /// Ensure a valid cached Agent exists and borrow it.
+    ///
+    /// Use this for commands that hold the lock for their entire duration
+    /// (Bash, Compact, GetState, …). For `run_prompt` use [`take_agent`]
+    /// so the lock can be released during streaming.
+    fn ensure_agent(&mut self) -> Result<&mut Agent, String> {
+        if !self.cache_is_valid() {
+            let agent = self.build_agent_fresh()?;
+            self.cached_agent = Some(agent);
+            self.stamp_cache();
+        }
+        // SAFETY: cache_is_valid just confirmed Some, or we just set Some.
+        Ok(self.cached_agent.as_mut().expect("cache populated above"))
+    }
+
+    /// Take the cached Agent out of the cache (for `run_prompt`, which needs
+    /// ownership so the lock can be released during streaming).
+    ///
+    /// Rebuilds if the cache is invalid. Pair with [`return_agent`].
+    fn take_agent(&mut self) -> Result<Agent, String> {
+        if !self.cache_is_valid() {
+            // Build fresh; cache stays None until return_agent restores it.
+            let agent = self.build_agent_fresh()?;
+            self.stamp_cache();
+            return Ok(agent);
+        }
+        self.cached_agent
+            .take()
+            .ok_or_else(|| "agent cache inconsistency (valid but empty)".into())
+    }
+
+    /// Restore an Agent previously taken via [`take_agent`].
+    fn return_agent(&mut self, agent: Agent) {
+        self.cached_agent = Some(agent);
     }
 }
 
@@ -109,6 +178,10 @@ pub async fn run(
         compaction_settings: compaction_settings.unwrap_or_default(),
         sandbox_engine,
         active_cancel: None,
+        cached_agent: None,
+        cache_session_id: None,
+        cache_model_id: None,
+        cache_thinking_level: None,
     }));
 
     let stdin = io::stdin();
@@ -201,20 +274,22 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
             }
         }
         Command::GetState { .. } => {
-            let s = state.lock().await;
-            let agent = s.build_agent();
-            match agent {
+            let mut s = state.lock().await;
+            // Capture scalar state first so the agent borrow doesn't conflict.
+            let session_id = s.session_id.clone();
+            let thinking_level = s.thinking_level;
+            match s.ensure_agent() {
                 Ok(agent) => {
-                    let sess = agent.session();
-                    let model = sess
+                    let model = agent
+                        .session()
                         .current_model()
                         .map(|m| serde_json::json!({"id": m.id, "display_name": m.display_name}));
                     emit(&Event::Response {
                         id,
                         payload: Some(serde_json::json!({
-                            "session_id": s.session_id,
+                            "session_id": session_id,
                             "model": model,
-                            "thinking_level": s.thinking_level.as_str(),
+                            "thinking_level": thinking_level.as_str(),
                         })),
                     });
                 }
@@ -304,15 +379,18 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
             exclude_from_context,
             ..
         } => {
-            let s = state.lock().await;
-            let mut agent = match s.build_agent() {
+            let mut s = state.lock().await;
+            let agent = match s.ensure_agent() {
                 Ok(a) => a,
                 Err(e) => {
                     emit(&Event::Error { id, message: e });
                     return;
                 }
             };
-            let result = agent.session_mut().execute_bash(&command, exclude_from_context).await;
+            let result = agent
+                .session_mut()
+                .execute_bash(&command, exclude_from_context)
+                .await;
             match result {
                 Ok(br) => emit(&Event::BashResult {
                     id: id.clone(),
@@ -325,8 +403,8 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
             }
         }
         Command::Compact { .. } => {
-            let s = state.lock().await;
-            let mut agent = match s.build_agent() {
+            let mut s = state.lock().await;
+            let agent = match s.ensure_agent() {
                 Ok(a) => a,
                 Err(e) => {
                     emit(&Event::Error { id, message: e });
@@ -342,8 +420,8 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
             }
         }
         Command::GetSessionStats { .. } => {
-            let s = state.lock().await;
-            let mut agent = match s.build_agent() {
+            let mut s = state.lock().await;
+            let agent = match s.ensure_agent() {
                 Ok(a) => a,
                 Err(e) => {
                     emit(&Event::Error { id, message: e });
@@ -363,8 +441,8 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
             }
         }
         Command::ExportHtml { output_path, .. } => {
-            let s = state.lock().await;
-            let mut agent = match s.build_agent() {
+            let mut s = state.lock().await;
+            let agent = match s.ensure_agent() {
                 Ok(a) => a,
                 Err(e) => {
                     emit(&Event::Error { id, message: e });
@@ -391,8 +469,8 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
             });
         }
         Command::Fork { entry_id, .. } => {
-            let s = state.lock().await;
-            let mut agent = match s.build_agent() {
+            let mut s = state.lock().await;
+            let agent = match s.ensure_agent() {
                 Ok(a) => a,
                 Err(e) => {
                     emit(&Event::Error { id, message: e });
@@ -416,8 +494,8 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
             });
         }
         Command::GetCommands { .. } => {
-            let s = state.lock().await;
-            let agent = match s.build_agent() {
+            let mut s = state.lock().await;
+            let agent = match s.ensure_agent() {
                 Ok(a) => a,
                 Err(e) => {
                     emit(&Event::Error { id, message: e });
@@ -440,7 +518,9 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
                 message: "subscribe requires WebSocket connection (not stdio RPC)".into(),
             });
         }
-        Command::ApproveTool { call_id, approved, .. } => {
+        Command::ApproveTool {
+            call_id, approved, ..
+        } => {
             emit(&Event::Error {
                 id,
                 message: format!(
@@ -449,7 +529,9 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
                 ),
             });
         }
-        Command::AnswerQuestion { call_id, answer: _, .. } => {
+        Command::AnswerQuestion {
+            call_id, answer: _, ..
+        } => {
             emit(&Event::Error {
                 id,
                 message: format!(
@@ -465,7 +547,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
 async fn run_prompt(state: &Arc<Mutex<RpcState>>, _id: &Option<String>, message: &str) {
     let (mut agent, cancel_token, session_id) = {
         let mut s = state.lock().await;
-        let agent = match s.build_agent() {
+        let agent = match s.take_agent() {
             Ok(a) => a,
             Err(e) => {
                 emit(&Event::Error {
@@ -517,8 +599,9 @@ async fn run_prompt(state: &Arc<Mutex<RpcState>>, _id: &Option<String>, message:
         }
     }
 
-    // Clear active cancel.
+    // Restore the cached agent and clear the active cancel token.
     let mut s = state.lock().await;
+    s.return_agent(agent);
     s.active_cancel = None;
 }
 
@@ -530,4 +613,120 @@ fn emit(event: &Event) {
     let mut handle = stdout.lock();
     let _ = writeln!(handle, "{line}");
     let _ = handle.flush();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::types::{ModelMeta, ThinkingLevel};
+
+    fn make_state() -> RpcState {
+        let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().keep());
+        let mut reg = ModelRegistry::new();
+        reg.register(ModelMeta {
+            id: "mock".into(),
+            config: crate::core::model::ModelConfig {
+                kind: crate::core::model::ModelKind::OpenAi,
+                api_key: "sk-test".into(),
+                model: "mock-model".into(),
+                base_url: None,
+            },
+            display_name: "Mock".into(),
+            thinking: false,
+            context_window: 128000,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
+        });
+        RpcState {
+            model_registry: reg,
+            session_mgr,
+            current_model_id: None,
+            thinking_level: ThinkingLevel::Medium,
+            session_id: "test-session".into(),
+            cwd: ".".into(),
+            system_prompt: None,
+            max_iterations: 50,
+            compaction_threshold: 0.8,
+            compaction_settings: CompactionSettings::default(),
+            sandbox_engine: None,
+            active_cancel: None,
+            cached_agent: None,
+            cache_session_id: None,
+            cache_model_id: None,
+            cache_thinking_level: None,
+        }
+    }
+
+    #[test]
+    fn cache_invalid_when_empty() {
+        let state = make_state();
+        assert!(!state.cache_is_valid());
+    }
+
+    #[test]
+    fn cache_valid_after_ensure_agent() {
+        let mut state = make_state();
+        // First ensure_agent builds + stamps the cache.
+        assert!(state.ensure_agent().is_ok());
+        assert!(state.cache_is_valid());
+    }
+
+    #[test]
+    fn cache_invalidated_by_session_id_change() {
+        let mut state = make_state();
+        assert!(state.ensure_agent().is_ok());
+        assert!(state.cache_is_valid());
+        state.session_id = "different-session".into();
+        assert!(!state.cache_is_valid());
+    }
+
+    #[test]
+    fn cache_invalidated_by_model_id_change() {
+        let mut state = make_state();
+        assert!(state.ensure_agent().is_ok());
+        assert!(state.cache_is_valid());
+        state.current_model_id = Some("mock".into());
+        assert!(!state.cache_is_valid());
+    }
+
+    #[test]
+    fn cache_invalidated_by_thinking_level_change() {
+        let mut state = make_state();
+        assert!(state.ensure_agent().is_ok());
+        assert!(state.cache_is_valid());
+        state.thinking_level = ThinkingLevel::High;
+        assert!(!state.cache_is_valid());
+    }
+
+    /// T13: three sequential commands construct the Agent only once.
+    #[test]
+    fn three_commands_build_agent_once() {
+        let mut state = make_state();
+        // Simulate three commands reusing the cache.
+        let a1 = state.ensure_agent().unwrap() as *const Agent;
+        let a2 = state.ensure_agent().unwrap() as *const Agent;
+        let a3 = state.ensure_agent().unwrap() as *const Agent;
+        // Same underlying Agent object (reused, not rebuilt).
+        assert_eq!(a1, a2);
+        assert_eq!(a2, a3);
+    }
+
+    /// T13: take_agent + return_agent preserves the cache across a prompt.
+    #[test]
+    fn take_and_return_preserves_cache() {
+        let mut state = make_state();
+        assert!(state.ensure_agent().is_ok());
+        let agent = state.take_agent().unwrap();
+        // While taken, the slot is empty → not reusable until restored.
+        assert!(!state.cache_is_valid());
+        // After return_agent, the cache is valid again (same params).
+        state.return_agent(agent);
+        assert!(state.cache_is_valid());
+    }
 }

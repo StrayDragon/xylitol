@@ -117,7 +117,10 @@ impl ServerLock {
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
         serde_json::from_str(&contents).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, format!("lock file parse: {e}"))
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("lock file parse: {e}"),
+            )
         })
     }
 

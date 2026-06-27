@@ -2,13 +2,17 @@ kind: llman.sdd.spec
 name: "interactive-client"
 purpose: "TBD - created by archiving change c260-refactor-domain-architecture. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[4]{req_id,title,statement}:
+requirements[6]{req_id,title,statement}:
   ic1,"driver-trait","interactive/ MUST define a Driver trait with a send method (Command to EventStream); all interactive clients (cli, print, rpc) MUST depend on Driver, never on agent or infra. InProcessDriver wraps the agent facade; RemoteDriver wraps WS/REST transport."
   ic2,"inprocess-driver","interactive/ MUST provide InProcessDriver that holds an Agent and invokes it directly; it is the only interactive module permitted to import agent::facade and to wire infra ports at construction."
   ic3,"remote-driver","interactive/ MUST provide RemoteDriver that speaks protocol over WebSocket (streaming) and REST (control); RemoteDriver::run MUST connect to the server's WS for event streaming and return a real AgentEvent stream, not a stub."
   ic4,"driver-inprocess","interactive/ MUST provide InProcessDriver that holds Agent ports and invokes the facade directly; it is the only interactive module permitted to import agent::facade."
-scenarios[4]{req_id,id,given,when,then}:
+  ic5,"rpc-agent-cache",RPC mode MUST cache the Agent across commands instead of rebuilding ToolRegistry + SessionManager + Agent on each dispatch; cache invalidation MUST happen when model/thinking/session parameters change.
+  ic6,"print-event-completeness","interactive::print MUST handle all AgentEvent variants including TurnStart, TurnEnd, MessageStart, MessageEnd, MessageUpdate, ToolExecutionUpdate, and CompactionEnd."
+scenarios[6]{req_id,id,given,when,then}:
   ic1,"clients-depend-on-driver",an interactive client module is inspected,its imports are checked,"it imports interactive::Driver, not agent or infra"
   ic2,"inprocess-wires-agent",InProcessDriver is constructed,its body is inspected,"it holds an Agent and imports agent::facade only from the agent layer"
   ic3,"remote-streams-events",a RemoteDriver is pointed at a running server and sends a prompt,the driver connects over WS,the event stream contains real TextDelta and AgentEnd events from the server
   ic4,"inprocess-wires-agent",InProcessDriver is constructed,its body is inspected,"it holds Agent and imports agent::facade only"
+  ic5,"rpc-cached-agent",an RPC prompt is sent followed by a bash command,the second command reuses the cached Agent,no new SessionManager or ToolRegistry is created for the second command
+  ic6,"print-all-events",the agent emits a TurnStart then a MessageUpdate then a TurnEnd,print.rs renders them,all three events produce visible output (not silently dropped)
