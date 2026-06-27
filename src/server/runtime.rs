@@ -117,6 +117,9 @@ pub async fn start(
         config.compaction_threshold,
         cwd,
         config.compaction_settings,
+        // HC-1: model builder + sandbox supplied by the composition root.
+        Arc::new(crate::infra::provider::factory::build_provider),
+        crate::infra::sandbox::noop_engine(),
     );
 
     // ── Server state ──────────────────────────────────────────────

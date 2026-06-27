@@ -80,10 +80,12 @@ impl RpcState {
             self.compaction_threshold,
             self.cwd.clone(),
             Some(self.compaction_settings.clone()),
+            // HC-1: model builder + sandbox supplied by the composition root.
+            Arc::new(crate::infra::provider::factory::build_provider),
+            self.sandbox_engine
+                .clone()
+                .unwrap_or_else(|| crate::infra::sandbox::noop_engine()),
         );
-        if let Some(ref engine) = self.sandbox_engine {
-            agent.session_mut().set_sandbox_engine(Some(engine.clone()));
-        }
         agent.session_mut().set_thinking_level(self.thinking_level);
         if let Some(ref mid) = self.current_model_id {
             let _ = agent.session_mut().select_model(mid);
