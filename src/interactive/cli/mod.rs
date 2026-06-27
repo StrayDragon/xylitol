@@ -1,10 +1,15 @@
 //! CLI argument parsing and mode dispatch.
+//!
+//! Provider-guidance messages (login help, no-model/no-api-key text) live in
+//! [`provider_guidance`] — they are pure CLI-surface presentation, not agent
+//! orchestration (la13).
+
+mod provider_guidance;
 
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
 
-use crate::agent::auth;
 use crate::agent::facade::Agent;
 use crate::agent::model::registry;
 use crate::agent::model::resolver;
@@ -133,7 +138,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             if api_key.is_none() {
                 eprintln!(
                     "Warning: {}",
-                    auth::format_no_api_key_found_message(entry.provider.provider_name())
+                    provider_guidance::format_no_api_key_found_message(
+                        entry.provider.provider_name()
+                    )
                 );
                 continue;
             }
@@ -226,7 +233,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if model_registry.is_empty() {
-        eprintln!("Error: {}", auth::format_no_models_available_message());
+        eprintln!(
+            "Error: {}",
+            provider_guidance::format_no_models_available_message()
+        );
         return Err("no models available".into());
     }
 
@@ -422,7 +432,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!(
                     "Warning: {}\n{}",
                     msg,
-                    auth::format_no_model_selected_message()
+                    provider_guidance::format_no_model_selected_message()
                 );
             }
         }

@@ -6,7 +6,8 @@
 //! concrete adapters at construction.
 //!
 //! This facade is the in-process half of the Driver abstraction (see c265);
-//! a future `RemoteDriver` will mirror it over the wire.
+//! the remote half is `server::ws` / `server::rest` (ClientFrame/ServerFrame
+//! speak the same protocol over the wire).
 
 use std::sync::Arc;
 

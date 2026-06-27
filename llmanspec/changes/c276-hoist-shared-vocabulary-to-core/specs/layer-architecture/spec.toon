@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,la1,"core-layer","System MUST provide a base core/ layer hosting domain-core vocabulary types including AgentMessage and XyModel and XyTool and ModelKind and XyChunk and ALL pure data types consumed by two or more layers (such as SessionEntry variants, SourceInfo, SkillInfo, PromptTemplate, CompactionSettings, AgentLifecycleEvent) so that no layer must import crate::infra merely to reference a shared data type.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  la1,"shared-types-in-core","a pure data type (e.g. SessionEntry or SourceInfo) is needed by both agent/ and infra/","the type is declared and imported","both layers import it from crate::core and neither depends on crate::infra for the type"
