@@ -16,9 +16,11 @@ use crate::agent::model::resolver;
 use crate::agent::session::ModelRegistry;
 use crate::agent::tools::ToolRegistry;
 use crate::core::model::{ModelConfig, ModelKind};
-use crate::core::ports::{EventSink, SessionStore};
+use crate::core::ports::{BashExecutor, EventSink, SessionStore};
 use crate::core::types::ModelMeta;
+use crate::infra::bash_exec::InfraBashExecutor;
 use crate::infra::config::loader::load_app_config;
+use crate::infra::config::value::InfraSecretResolver;
 use crate::infra::event::EventBus;
 use crate::infra::session::SessionManager;
 use crate::infra::timing;
@@ -129,7 +131,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config_loaded = app_config.is_some();
 
     // ── Step 2: build ModelRegistry ──────────────────────────────
-    let mut model_registry = ModelRegistry::new();
+    let secret_resolver: Arc<dyn crate::core::ports::SecretResolver> =
+        Arc::new(InfraSecretResolver::new());
+    let mut model_registry = ModelRegistry::new(secret_resolver);
 
     if let Some(ref cfg) = app_config {
         // YAML models first
@@ -400,6 +404,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let sandbox: Arc<dyn crate::core::ports::SandboxEngine> = sandbox_engine
         .clone()
         .unwrap_or_else(|| crate::infra::sandbox::noop_engine());
+    let bash_executor: Arc<dyn BashExecutor> = Arc::new(InfraBashExecutor::new());
     let mut agent = Agent::with_ports(
         model_registry,
         tool_registry,
@@ -413,6 +418,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         compaction_settings,
         model_builder,
         sandbox,
+        bash_executor,
     );
 
     agent

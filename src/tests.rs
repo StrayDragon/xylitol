@@ -97,6 +97,9 @@ mod arch_guard {
         //  decoupling), bash exec primitives + config::value + resource loader
         //  + trust -> c279 (executor/config/resource relocation).)
         //
+        // c279 — relocate executor + config resolution + resource loader + trust
+        // (ALL CLEARED)
+        //
         // c278 — agent/session decoupling + export merge (SessionManager/EventBus)
         (
             "compaction/mod.rs",
@@ -142,26 +145,6 @@ mod arch_guard {
             "crate::infra::session::export::write_to",
             "c278",
         ),
-        // c279 — relocate executor + config resolution + resource loader + trust
-        ("prompt/system.rs", "crate::infra::resource", "c279"),
-        ("model/registry.rs", "crate::infra::config::value", "c279"),
-        (
-            "runtime/bash.rs",
-            "crate::infra::process::shell::find_bash",
-            "c279",
-        ),
-        (
-            "runtime/bash.rs",
-            "crate::infra::tools::accumulator",
-            "c279",
-        ),
-        (
-            "runtime/bash.rs",
-            "crate::infra::tools::process::kill_tree",
-            "c279",
-        ),
-        ("runtime/bash.rs", "crate::infra::tools::truncate", "c279"),
-        ("session/mod.rs", "crate::infra::trust", "c279"),
     ];
 
     /// Extract `crate::infra::...` import tokens from the PRODUCTION region of each

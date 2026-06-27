@@ -437,7 +437,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_agent_session_builds_model() {
-        let mut reg = ModelRegistry::new();
+        let mut reg = ModelRegistry::new(std::sync::Arc::new(
+            crate::infra::config::value::InfraSecretResolver::new(),
+        ));
         reg.register(ModelMeta {
             id: "mock".into(),
             config: crate::core::model::ModelConfig {
@@ -475,6 +477,7 @@ mod tests {
             None,
             fake_model_builder(),
             crate::infra::sandbox::noop_engine(),
+            std::sync::Arc::new(crate::infra::bash_exec::InfraBashExecutor::new()),
         );
 
         assert!(session.current_model().is_some());
@@ -483,7 +486,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_agent_loop_emits_events() {
-        let mut reg = ModelRegistry::new();
+        let mut reg = ModelRegistry::new(std::sync::Arc::new(
+            crate::infra::config::value::InfraSecretResolver::new(),
+        ));
         reg.register(ModelMeta {
             id: "mock".into(),
             config: crate::core::model::ModelConfig {
@@ -521,6 +526,7 @@ mod tests {
             None,
             fake_model_builder(),
             crate::infra::sandbox::noop_engine(),
+            std::sync::Arc::new(crate::infra::bash_exec::InfraBashExecutor::new()),
         );
 
         let mut loop_runner = AgentLoop::new(session);

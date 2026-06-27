@@ -138,7 +138,9 @@ mod tests {
     use crate::core::ports::XyModel;
 
     fn empty_registry() -> ModelRegistry {
-        ModelRegistry::new()
+        ModelRegistry::new(Arc::new(
+            crate::infra::config::value::InfraSecretResolver::new(),
+        ))
     }
 
     /// A fake model builder that always reports "no model configured";

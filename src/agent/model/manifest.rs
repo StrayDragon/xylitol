@@ -135,7 +135,14 @@ pub fn load_models_from_manifest(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
     use tempfile::NamedTempFile;
+
+    fn empty_registry() -> ModelRegistry {
+        ModelRegistry::new(Arc::new(
+            crate::infra::config::value::InfraSecretResolver::new(),
+        ))
+    }
 
     #[test]
     fn test_load_basic_manifest() {
@@ -162,7 +169,7 @@ mod tests {
         let file = NamedTempFile::new().unwrap();
         std::fs::write(file.path(), json).unwrap();
 
-        let mut reg = ModelRegistry::new();
+        let mut reg = empty_registry();
         let count = load_models_from_manifest(file.path(), &mut reg, None).unwrap();
         assert_eq!(count, 2);
         assert_eq!(reg.len(), 2);
@@ -194,7 +201,7 @@ mod tests {
         let file = NamedTempFile::new().unwrap();
         std::fs::write(file.path(), json).unwrap();
 
-        let mut reg = ModelRegistry::new();
+        let mut reg = empty_registry();
         let count = load_models_from_manifest(file.path(), &mut reg, Some("sk-default")).unwrap();
         assert_eq!(count, 1);
 
@@ -212,14 +219,14 @@ mod tests {
         let file = NamedTempFile::new().unwrap();
         std::fs::write(file.path(), json).unwrap();
 
-        let mut reg = ModelRegistry::new();
+        let mut reg = empty_registry();
         let count = load_models_from_manifest(file.path(), &mut reg, None).unwrap();
         assert_eq!(count, 0);
     }
 
     #[test]
     fn test_load_nonexistent_file() {
-        let mut reg = ModelRegistry::new();
+        let mut reg = empty_registry();
         let result = load_models_from_manifest(Path::new("/nonexistent/file.json"), &mut reg, None);
         assert!(result.is_err());
     }

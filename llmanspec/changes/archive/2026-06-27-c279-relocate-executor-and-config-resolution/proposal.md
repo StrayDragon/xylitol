@@ -22,6 +22,8 @@ c277 调研发现 6 项白名单的修法各自牵连较大，不宜与 c277 的
    `ModelRegistry::new` 有 **8 处调用点**，注入成本高，单独做更安全。
 3. **`prompt/system.rs` DefaultResourceLoader（1 项）**——`DefaultResourceLoader` 是 resource loader
    具体服务，应在组合根构造注入，而非 agent prompt 内直接 `use`。
+4. **`session/mod.rs` TrustManager（1 项，c277 修守卫后新暴露）**——`save_trust_decision` 直接引用
+   `infra::trust::TrustManager`。应抽象为 `TrustStore` port 注入，与 c255 的信任 SSoT 解耦。
 
 ## What Changes
 
@@ -33,6 +35,8 @@ c277 调研发现 6 项白名单的修法各自牵连较大，不宜与 c277 的
   `ModelRegistry` 持有 `Arc<dyn SecretResolver>`（构造注入，8 处调用点更新）。消 1 项白名单。
 - **P3 resource loader 下沉**：`prompt/system.rs` 的 `DefaultResourceLoader` 依赖改为构造时注入
   （组合根构建 loader，传入 agent）。消 1 项白名单。
+- **P4 trust store 下沉**：`session/mod.rs` 的 `TrustManager` 依赖抽象为 `TrustStore` port；
+  `AgentSession::save_trust_decision` 改为接收 `&dyn TrustStore`。消 1 项白名单。
 
 ## Capabilities
 
@@ -40,6 +44,7 @@ c277 调研发现 6 项白名单的修法各自牵连较大，不宜与 c277 的
 
 ## Impact
 
-- **白名单收缩 6 项**（c277 retag 过来的 6 项）。
-- **HC-2 进一步落地**：agent 不再借 exec 原语、不再在 prompt 内直接持 loader。
+- **白名单收缩 7 项**（c277 retag 过来的 bash exec 4 项 + config::value 1 项 + resource loader 1 项 +
+  c277 修守卫后新暴露的 trust 1 项）。
+- **HC-2 进一步落地**：agent 不再借 exec 原语、不再在 prompt 内直接持 loader/trust store。
 - **零行为变更**：迁移 + 注入；BDD 不受影响。
