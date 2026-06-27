@@ -3,8 +3,6 @@
 //! The update URL can be configured via the `XYLITOL_UPDATE_URL` environment variable.
 //! If not set, uses the placeholder constant from `constants.rs`.
 
-#![allow(dead_code)]
-
 use super::constants::{
     ENV_OFFLINE, ENV_SKIP_VERSION_CHECK, ENV_UPDATE_URL, HTTP_USER_AGENT, VERSION_CHECK_URL,
 };

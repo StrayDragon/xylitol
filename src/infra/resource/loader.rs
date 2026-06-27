@@ -10,8 +10,6 @@
 //!
 //! All resources are loaded once and cached. `reload()` refreshes everything.
 
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 

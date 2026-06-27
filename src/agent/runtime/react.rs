@@ -4,7 +4,6 @@
 //! 的 async_stream 宏块是原子逻辑单元, 跨函数 yield 不可行. 升级: 当工具执行/流处理逻辑
 //! 显著膨胀时, 考虑引入 sub-turn state machine 替代单宏块.
 
-#![allow(dead_code)]
 //!
 //! Key features:
 //! - ReAct loop with turn-based execution

@@ -7,8 +7,6 @@
 //! - `build_system_prompt(opts)` — explicit options
 //! - `build_system_prompt_from_loader(loader, tools_opts)` — integrates with ResourceLoader
 
-#![allow(dead_code)]
-
 use crate::agent::tools::ToolRegistry;
 use crate::core::ports::ResourceLoader;
 

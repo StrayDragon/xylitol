@@ -7,7 +7,6 @@
 //! - `model:thinkingLevel` suffix parsing
 //! - Fallback model construction
 
-#![allow(dead_code)]
 use crate::core::model::ModelConfig;
 #[cfg(test)]
 use crate::core::model::ModelKind;
