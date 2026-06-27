@@ -10,7 +10,7 @@
 #![allow(dead_code)]
 
 use crate::agent::tools::ToolRegistry;
-use crate::infra::resource::DefaultResourceLoader;
+use crate::core::ports::ResourceLoader;
 
 /// Options for building the system prompt.
 #[derive(Debug, Clone, Default)]
@@ -175,7 +175,7 @@ pub(crate) struct PromptToolsOpts {
 /// 4. Active skills
 /// 5. Tools and guidelines
 pub(crate) fn build_system_prompt_from_loader(
-    loader: &DefaultResourceLoader,
+    loader: &dyn ResourceLoader,
     tools_opts: &PromptToolsOpts,
 ) -> String {
     let opts = SystemPromptOpts {

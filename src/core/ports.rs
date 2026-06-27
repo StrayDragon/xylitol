@@ -197,6 +197,79 @@ pub trait SandboxEngine: Send + Sync {
     fn check_process(&self, path: &str) -> SandboxVerdict;
 }
 
+// ── Bash executor port ────────────────────────────────────────────────
+
+/// Result of executing a bash command.
+#[derive(Debug, Clone, Default)]
+pub struct BashResult {
+    /// Combined stdout + stderr output (possibly truncated; tail kept).
+    pub output: String,
+    /// Process exit code (`None` if killed/cancelled before exit).
+    pub exit_code: Option<i32>,
+    /// Whether the command was cancelled via the cancel token.
+    pub cancelled: bool,
+    /// Whether the output was truncated.
+    pub truncated: bool,
+    /// Path to a temp file containing the full output, if spilled.
+    pub full_output_path: Option<String>,
+}
+
+/// Bash executor port — abstracts process spawn + output streaming so the
+/// agent need not depend on infra exec primitives.
+#[async_trait]
+pub trait BashExecutor: Send + Sync {
+    /// Execute a bash command with an optional cancellation token.
+    async fn execute(&self, command: &str, cancel: Option<CancellationToken>) -> BashResult;
+}
+
+// ── Secret resolver port ──────────────────────────────────────────────
+
+/// Secret/config-value resolver port — abstracts env-var interpolation,
+/// shell-command resolution, and header resolution.
+pub trait SecretResolver: Send + Sync + std::fmt::Debug {
+    /// Resolve a config value to its actual string value.
+    fn resolve_config_value(
+        &self,
+        config: &str,
+        env: Option<&std::collections::HashMap<String, String>>,
+    ) -> Option<String>;
+
+    /// Resolve all values in a header map using the same resolution logic.
+    fn resolve_headers(
+        &self,
+        headers: &std::collections::HashMap<String, String>,
+        env: Option<&std::collections::HashMap<String, String>>,
+    ) -> Option<std::collections::HashMap<String, String>>;
+}
+
+// ── Resource loader port ──────────────────────────────────────────────
+
+/// Resource loader port — abstracts discovery of project context files,
+/// prompt templates, skills, themes, and system prompts.
+pub trait ResourceLoader: Send + Sync {
+    /// Get the loaded context files (AGENTS.md, CLAUDE.md).
+    fn get_agents_files(&self) -> &[crate::core::resource_types::AgentsFile];
+    /// Get loaded skills and their diagnostics.
+    fn get_skills(
+        &self,
+    ) -> (
+        &[crate::core::resource_types::SkillInfo],
+        &[crate::core::resource_types::ResourceDiagnostic],
+    );
+    /// Get the discovered system prompt content.
+    fn get_system_prompt(&self) -> Option<&str>;
+    /// Get the discovered append system prompt content.
+    fn get_append_system_prompt(&self) -> &[String];
+}
+
+// ── Trust store port ──────────────────────────────────────────────────
+
+/// Trust store port — abstracts persistence of project trust decisions.
+pub trait TrustStore: Send + Sync {
+    /// Persist a trust decision for a path.
+    fn set_trust(&self, path: &str, trusted: Option<bool>) -> Result<(), String>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

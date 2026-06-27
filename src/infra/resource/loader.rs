@@ -15,22 +15,15 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::core::ports::ResourceLoader;
+
 // ── ResourceDiagnostic ────────────────────────────────────────────────
 
 // Resource metadata types relocated to `core::resource_types` (shared vocabulary).
 // `DefaultResourceLoader` (the runtime/loader impl) stays here in infra.
-pub use crate::core::resource_types::{PromptTemplate, ResourceDiagnostic, SkillInfo, ThemeInfo};
-
-// ── AgentsFile ────────────────────────────────────────────────────────
-
-/// A discovered project context file.
-#[derive(Debug, Clone)]
-pub struct AgentsFile {
-    /// Absolute file path.
-    pub path: PathBuf,
-    /// File content.
-    pub content: String,
-}
+pub use crate::core::resource_types::{
+    AgentsFile, PromptTemplate, ResourceDiagnostic, SkillInfo, ThemeInfo,
+};
 
 // ── DefaultResourceLoader ─────────────────────────────────────────────
 
@@ -525,6 +518,24 @@ impl DefaultResourceLoader {
                 source_info: self.source_info_for_path(&path),
             });
         }
+    }
+}
+
+impl ResourceLoader for DefaultResourceLoader {
+    fn get_agents_files(&self) -> &[AgentsFile] {
+        &self.context_files
+    }
+
+    fn get_skills(&self) -> (&[SkillInfo], &[ResourceDiagnostic]) {
+        (&self.skills, &self.skills_diagnostics)
+    }
+
+    fn get_system_prompt(&self) -> Option<&str> {
+        self.system_prompt.as_deref()
+    }
+
+    fn get_append_system_prompt(&self) -> &[String] {
+        &self.append_system_prompt
     }
 }
 

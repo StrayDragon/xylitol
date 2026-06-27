@@ -1,13 +1,25 @@
 //! Resource metadata vocabulary — pure data types for loaded resources.
 //!
-//! `SkillInfo`, `PromptTemplate`, `ThemeInfo`, and `ResourceDiagnostic` are
-//! shared by `agent` (prompt assembly, session) and `infra` (resource loader).
-//! The `DefaultResourceLoader` runtime (file I/O, caching) stays in
-//! `infra::resource`; this module holds only the metadata shapes.
+//! `AgentsFile`, `SkillInfo`, `PromptTemplate`, `ThemeInfo`, and
+//! `ResourceDiagnostic` are shared by `agent` (prompt assembly, session) and
+//! `infra` (resource loader). The `DefaultResourceLoader` runtime (file I/O,
+//! caching) stays in `infra::resource`; this module holds only the metadata
+//! shapes.
 
 use std::path::PathBuf;
 
 use crate::core::source_info::SourceInfo;
+
+// ── AgentsFile ────────────────────────────────────────────────────────
+
+/// A discovered project context file.
+#[derive(Debug, Clone)]
+pub struct AgentsFile {
+    /// Absolute file path.
+    pub path: PathBuf,
+    /// File content.
+    pub content: String,
+}
 
 /// Diagnostic collected during resource loading.
 #[derive(Debug, Clone)]
