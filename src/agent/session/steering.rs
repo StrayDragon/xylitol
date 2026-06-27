@@ -4,7 +4,7 @@
 //! queue and are grouped here to keep `mod.rs` focused. They remain methods on
 //! `AgentSession` (preserving the public API per as31).
 
-use crate::infra::event::lifecycle::AgentLifecycleEvent;
+use crate::core::lifecycle::AgentLifecycleEvent;
 
 impl super::AgentSession {
     /// Queue a steering message — injected into context mid-turn.

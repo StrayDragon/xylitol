@@ -3,8 +3,8 @@
 //! Grouped here to keep `mod.rs` focused. These remain methods on
 //! [`AgentSession`](super::AgentSession) (preserving the public API per as31).
 
+use crate::core::lifecycle::AgentLifecycleEvent;
 use crate::infra::event::EventBus;
-use crate::infra::event::lifecycle::AgentLifecycleEvent;
 
 impl super::AgentSession {
     /// Get a reference to the event bus.

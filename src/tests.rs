@@ -89,61 +89,11 @@ mod arch_guard {
     /// with a follow-up change id (error-on-new, warn-on-existing).
     const AGENT_INFRA_ALLOWLIST: &[(&str, &str, &str)] = &[
         // c276 — hoist shared vocabulary types to core/
-        (
-            "compaction/cut_detector.rs",
-            "crate::infra::session::types",
-            "c276",
-        ),
-        (
-            "compaction/file_ops.rs",
-            "crate::infra::session::types",
-            "c276",
-        ),
-        (
-            "compaction/message_converter.rs",
-            "crate::infra::session::types",
-            "c276",
-        ),
-        ("compaction/mod.rs", "crate::infra::session::types", "c276"),
-        (
-            "compaction/settings.rs",
-            "crate::infra::config::types",
-            "c276",
-        ),
-        (
-            "compaction/settings.rs",
-            "crate::infra::settings::types",
-            "c276",
-        ),
-        ("prompt/commands.rs", "crate::infra::source_info", "c276"),
-        ("prompt/skills.rs", "crate::infra::resource", "c276"),
-        (
-            "prompt/skills.rs",
-            "crate::infra::skills::loader::xml_escape",
-            "c276",
-        ),
-        ("prompt/system.rs", "crate::infra::resource", "c276"),
-        (
-            "prompt/system.rs",
-            "crate::infra::skills::loader::xml_escape",
-            "c276",
-        ),
-        ("prompt/templates.rs", "crate::infra::source_info", "c276"),
-        (
-            "session/events.rs",
-            "crate::infra::event::lifecycle",
-            "c276",
-        ),
-        ("session/export.rs", "crate::infra::session", "c276"),
-        ("session/mod.rs", "crate::infra::event::lifecycle", "c276"),
-        ("session/mod.rs", "crate::infra::resource", "c276"),
-        (
-            "session/steering.rs",
-            "crate::infra::event::lifecycle",
-            "c276",
-        ),
-        ("tools/definition.rs", "crate::infra::source_info", "c276"),
+        // (c276 cleared all type-hoisting entries; the lone remaining
+        //  prompt/system.rs resource usage is the DefaultResourceLoader
+        //  concrete service, which is an assembly concern → tracked under c277)
         // c277 — sink assembly to composition root
+        ("prompt/system.rs", "crate::infra::resource", "c277"),
         (
             "compaction/mod.rs",
             "crate::infra::session::manager",

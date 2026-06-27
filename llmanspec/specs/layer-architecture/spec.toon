@@ -3,7 +3,7 @@ name: "layer-architecture"
 purpose: "TBD - created by archiving change c225-refactor-domain-layering. Update purpose after archive."
 valid_scope[2]: src/,tests/
 requirements[13]{req_id,title,statement}:
-  la1,"core-layer","System MUST provide a base core/ layer hosting domain-core vocabulary types including AgentMessage and XyModel and XyTool and ModelKind and XyChunk consumable by both agent/ and infra/."
+  la1,"core-layer","System MUST provide a base core/ layer hosting domain-core vocabulary types including AgentMessage and XyModel and XyTool and ModelKind and XyChunk and ALL pure data types consumed by two or more layers (such as SessionEntry variants, SourceInfo, SkillInfo, PromptTemplate, CompactionSettings, AgentLifecycleEvent) so that no layer must import crate::infra merely to reference a shared data type."
   la2,"downward-dependency","infra/ modules MUST NOT import any crate::agent symbol; agent/ modules MUST NOT import any concrete infra/ type (only via core ports); interactive/ modules MUST NOT import crate::agent or crate::infra except in the in-process composition root. core/ MUST have zero crate:: internal dependencies."
   la3,"arch-guard","System MUST enforce via a guard test that no file under src/infra imports crate::agent."
   la4,"interactive-rename",The interactive surface directory MUST be named interactive/ (not interface/); interface is reserved for the Rust trait concept.
@@ -17,7 +17,7 @@ requirements[13]{req_id,title,statement}:
   la12,"arch-guard-allowlist","System MUST maintain a documented allowlist of pre-existing agent to infra import violations inside arch_guard; each allowlist entry MUST cite a follow-up change id that will remove it, and any NEW agent to infra production import not present in the allowlist MUST fail the guard."
   la13,"agent-thin-no-presentation","agent/ MUST NOT host pure presentation or user-guidance logic such as static help text or message formatting; such logic MUST live under interactive/ (the client surface), and agent/ MUST contain only the orchestration loop, hook points, and orchestration state."
 scenarios[15]{req_id,id,given,when,then}:
-  la1,"types-relocated",agent and infra both need AgentMessage,"they import crate::core::message::AgentMessage",neither depends on agent/ for the type
+  la1,"shared-types-in-core",a pure data type (e.g. SessionEntry or SourceInfo) is needed by both agent/ and infra/,the type is declared and imported,"both layers import it from crate::core and neither depends on crate::infra for the type"
   la2,"agent-no-infra-concrete",an agent/ source file is compiled,"it references crate::infra::provider::OpenAIProvider or crate::infra::tools::BashTool",the build or guard rejects it
   la2,"interactive-isolation",an interactive/ source file is compiled,"it references crate::agent:: or crate::infra::","the build or guard rejects it unless it is the in-process driver root"
   la3,"guard-catches-violation","a new src/infra file adds use crate::agent::session",the architecture guard runs,the guard fails and reports the offending file path

@@ -17,51 +17,9 @@ use std::path::{Path, PathBuf};
 
 // ── ResourceDiagnostic ────────────────────────────────────────────────
 
-/// Diagnostic collected during resource loading.
-#[derive(Debug, Clone)]
-pub struct ResourceDiagnostic {
-    /// "error" or "warning"
-    pub level: String,
-    /// Human-readable message
-    pub message: String,
-    /// Optional path that caused the diagnostic
-    pub path: Option<PathBuf>,
-}
-
-impl ResourceDiagnostic {
-    pub fn error(message: impl Into<String>, path: Option<PathBuf>) -> Self {
-        Self {
-            level: "error".into(),
-            message: message.into(),
-            path,
-        }
-    }
-
-    pub fn warning(message: impl Into<String>, path: Option<PathBuf>) -> Self {
-        Self {
-            level: "warning".into(),
-            message: message.into(),
-            path,
-        }
-    }
-}
-
-// ── PromptTemplate ────────────────────────────────────────────────────
-
-/// A loaded prompt template.
-#[derive(Debug, Clone)]
-pub struct PromptTemplate {
-    /// Template name (filename without .md extension).
-    pub name: String,
-    /// Template content (markdown body, after frontmatter).
-    pub content: String,
-    /// Optional description from frontmatter.
-    pub description: Option<String>,
-    /// Optional argument hint from frontmatter.
-    pub argument_hint: Option<String>,
-    /// Provenance info for display.
-    pub source_info: crate::infra::source_info::SourceInfo,
-}
+// Resource metadata types relocated to `core::resource_types` (shared vocabulary).
+// `DefaultResourceLoader` (the runtime/loader impl) stays here in infra.
+pub use crate::core::resource_types::{PromptTemplate, ResourceDiagnostic, SkillInfo, ThemeInfo};
 
 // ── AgentsFile ────────────────────────────────────────────────────────
 
@@ -101,22 +59,7 @@ pub struct DefaultResourceLoader {
     themes_diagnostics: Vec<ResourceDiagnostic>,
 }
 
-// ── SkillInfo / ThemeInfo (lightweight wrappers) ──────────────────────
-
-/// Skill metadata returned by the resource loader.
-#[derive(Debug, Clone)]
-pub struct SkillInfo {
-    pub name: String,
-    pub description: Option<String>,
-    pub source_info: crate::infra::source_info::SourceInfo,
-}
-
-/// Theme metadata returned by the resource loader.
-#[derive(Debug, Clone)]
-pub struct ThemeInfo {
-    pub name: String,
-    pub source_info: crate::infra::source_info::SourceInfo,
-}
+// ── DefaultResourceLoader ─────────────────────────────────────────
 
 impl DefaultResourceLoader {
     /// Create a new DefaultResourceLoader and load all resources eagerly.

@@ -21,7 +21,7 @@ pub struct ToolDefinition {
     pub prompt_snippet: Option<String>,
     pub prompt_guidelines: Vec<String>,
     pub execution_mode: ToolExecutionMode,
-    pub source_info: Option<crate::infra::source_info::SourceInfo>,
+    pub source_info: Option<crate::core::source_info::SourceInfo>,
 }
 
 impl Default for ToolDefinition {

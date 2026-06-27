@@ -25,7 +25,7 @@ pub(crate) struct PromptTemplate {
     pub(crate) argument_hint: Option<String>,
     /// Provenance info for the template.
     #[allow(dead_code)]
-    pub(crate) source_info: Option<crate::infra::source_info::SourceInfo>,
+    pub(crate) source_info: Option<crate::core::source_info::SourceInfo>,
 }
 
 impl PromptTemplate {

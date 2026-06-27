@@ -9,7 +9,7 @@
 //!   [`SlashCommandSource`] and optional `source_path` for provenance.
 //! - AgentSession owns the dispatch logic (`dispatch_slash_command` in session.rs).
 
-use crate::infra::source_info::SourceInfo;
+use crate::core::source_info::SourceInfo;
 
 /// Source of a registered (non-builtin) slash command.
 #[derive(Debug, Clone, PartialEq)]
@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn test_slash_command_info_with_source_info() {
-        use crate::infra::source_info::{SourceInfo, SourceOrigin, SourceScope};
+        use crate::core::source_info::{SourceInfo, SourceOrigin, SourceScope};
         let si = SourceInfo {
             path: std::path::PathBuf::from("/a/b/c.md"),
             source: "local".into(),
