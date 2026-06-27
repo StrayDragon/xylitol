@@ -44,7 +44,9 @@ impl Agent {
     /// Construct from ports (HC-2 route).
     ///
     /// Accepts both concrete types (SessionManager for SessionIO operations)
-    /// and port trait objects (SessionStore/EventSink for the ReAct loop).
+    /// and port trait objects (SessionStore/EventSink for the ReAct loop),
+    /// plus an injected model builder and sandbox engine (HC-1: agent must not
+    /// construct infra providers/sandboxes itself; the composition root supplies them).
     /// The ports are passed to AgentSession and wired into the loop.
     #[allow(clippy::too_many_arguments)]
     pub fn with_ports(
@@ -58,6 +60,14 @@ impl Agent {
         compaction_threshold: f64,
         cwd: String,
         compaction_settings: Option<CompactionSettings>,
+        model_builder: std::sync::Arc<
+            dyn Fn(
+                    &crate::core::model::ModelConfig,
+                ) -> Result<Arc<dyn crate::core::ports::XyModel>, String>
+                + Send
+                + Sync,
+        >,
+        sandbox: Arc<dyn crate::core::ports::SandboxEngine>,
     ) -> Self {
         let session = AgentSession::new(
             model_registry,
@@ -70,6 +80,8 @@ impl Agent {
             compaction_threshold,
             cwd,
             compaction_settings,
+            model_builder,
+            sandbox,
         );
         Self {
             loop_: AgentLoop::new(session),

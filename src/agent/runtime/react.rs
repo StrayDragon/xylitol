@@ -31,7 +31,7 @@ use crate::core::message::{AgentMessage, AgentPart};
 use crate::core::ports::{ToolExecutionMode, XyModel, XyToolCtx};
 use crate::core::types::{XyChunk, XyToolSchema};
 
-use crate::infra::sandbox::SandboxVerdict;
+use crate::core::ports::SandboxVerdict;
 
 // ── AgentLoop ───────────────────────────────────────────────────────
 
@@ -418,12 +418,22 @@ async fn call_with_retry(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::agent::model::registry::ModelRegistry;
-    use crate::core::ports::{EventSink, SessionStore};
+    use crate::core::model::ModelConfig;
+    use crate::core::ports::{EventSink, SessionStore, XyModel};
     use crate::core::types::ModelMeta;
     use crate::infra::session::SessionManager;
-    use std::sync::Arc;
+
+    /// Model builder for tests — the real factory (tests register `Fake`/`OpenAi`
+    /// model configs and rely on `build_provider` constructing the provider struct;
+    /// no real network calls are made in unit assertions).
+    fn fake_model_builder()
+    -> Arc<dyn Fn(&ModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync> {
+        Arc::new(crate::infra::provider::factory::build_provider)
+    }
 
     #[tokio::test]
     async fn test_agent_session_builds_model() {
@@ -463,6 +473,8 @@ mod tests {
             0.8,
             ".".into(),
             None,
+            fake_model_builder(),
+            crate::infra::sandbox::noop_engine(),
         );
 
         assert!(session.current_model().is_some());
@@ -507,6 +519,8 @@ mod tests {
             0.8,
             ".".into(),
             None,
+            fake_model_builder(),
+            crate::infra::sandbox::noop_engine(),
         );
 
         let mut loop_runner = AgentLoop::new(session);
