@@ -25,7 +25,5 @@ pub mod fs_watch;
 pub mod git;
 pub mod image;
 pub mod sandbox;
-pub(crate) mod skills;
-pub(crate) mod tool_downloader;
 pub mod tools;
 pub mod update;

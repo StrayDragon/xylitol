@@ -4,8 +4,13 @@ Harness to programmatically clean up `#![allow(dead_code)]` crate-level attribut
 
 Strategy:
 1. Find all Rust files with `#![allow(dead_code)]`.
-2. For each file, remove the attribute and run `cargo check --lib`.
-3. If the build introduces new dead_code/unused warnings that originate from
+2. For each file, remove the attribute and run `cargo check` under BOTH the
+   lib+bins target set (matches `cargo clippy` as run by `just lint`) AND
+   `--all-targets` (tests/examples); union the warnings. Checking both is
+   required because a symbol referenced ONLY from tests is "alive" under
+   `--all-targets` yet DEAD under the lib/bins view that CI's clippy
+   enforces — checking only `--all-targets` yields false "safe to remove".
+3. If either view introduces new dead_code/unused warnings originating from
    this file, restore the attribute.
 4. Otherwise keep the removal and report it as cleaned.
 
@@ -41,15 +46,24 @@ def find_candidates() -> list[Candidate]:
 
 
 def run_cargo_check() -> tuple[int, str]:
-    # Use --all-targets so that test-only consumers are also considered.
-    proc = subprocess.run(
-        ["cargo", "check", "--all-targets", "--message-format=short"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-    )
-    output = proc.stdout + proc.stderr
-    return proc.returncode, output
+    # Run BOTH the lib+bins target set (matches `cargo clippy` / `just lint`)
+    # AND `--all-targets`, unioning the output. A symbol referenced only from
+    # tests is "alive" under --all-targets but DEAD under the lib/bins view CI
+    # enforces; checking only --all-targets masks such test-only dead code and
+    # yields false "safe to remove" verdicts. Non-zero if either run fails.
+    outputs: list[str] = []
+    rc = 0
+    for extra in (["--lib", "--bins"], ["--all-targets"]):
+        proc = subprocess.run(
+            ["cargo", "check", *extra, "--message-format=short"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        rc = rc or proc.returncode
+        outputs.append(proc.stdout)
+        outputs.append(proc.stderr)
+    return rc, "\n".join(outputs)
 
 
 def warnings_for_file(output: str, rel_path: str) -> list[str]:
