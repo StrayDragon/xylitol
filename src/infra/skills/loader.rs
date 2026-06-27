@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 // ── Skill types ───────────────────────────────────────────────────
 
 /// Source information for a skill.
-pub use crate::infra::source_info::SourceInfo;
+pub use crate::core::source_info::SourceInfo;
 
 /// YAML frontmatter parsed from SKILL.md.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -385,22 +385,8 @@ fn load_skill_file(path: &Path, source: &str, base_dir: &Path) -> Option<Discove
 // ── Load skills from multiple dirs ────────────────────────────────
 
 // ── XML utilities ──────────────────────────────────────────────
-
-/// Escape XML special characters in a string.
-pub fn xml_escape(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => result.push_str("&amp;"),
-            '<' => result.push_str("&lt;"),
-            '>' => result.push_str("&gt;"),
-            '"' => result.push_str("&quot;"),
-            '\'' => result.push_str("&apos;"),
-            _ => result.push(c),
-        }
-    }
-    result
-}
+// xml_escape relocated to `core::source_info` (shared vocabulary); use
+// `crate::core::source_info::xml_escape` directly.
 
 /// Load skills from multiple directories.
 pub fn load_skills(dirs: &[PathBuf], source: &str) -> LoadSkillsResult {

@@ -4,7 +4,7 @@
 //! bound) into pure transformation helpers over a [`SessionManager`].
 //! `AgentSession` delegates to these, preserving the public API (as31).
 
-use crate::infra::session::SessionEntry;
+use crate::core::session_types::SessionEntry;
 use crate::infra::session::manager::SessionManager;
 
 /// Export the entries of `session_id` to an HTML file. Returns the written path.

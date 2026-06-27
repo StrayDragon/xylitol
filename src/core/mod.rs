@@ -11,8 +11,13 @@
 //! - Both `agent/` and `infra/` depend on `core/`.
 //! - `infra/` must **never** depend on `agent/`.
 
+pub mod compaction_config;
 pub mod error;
+pub mod lifecycle;
 pub mod message;
 pub mod model;
 pub mod ports;
+pub mod resource_types;
+pub mod session_types;
+pub mod source_info;
 pub mod types;

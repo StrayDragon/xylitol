@@ -4,7 +4,7 @@
 //! session entries back into runtime agent messages.
 
 use crate::core::message::{AgentMessage, AgentPart, now_ms};
-use crate::infra::session::types::SessionEntry;
+use crate::core::session_types::SessionEntry;
 
 impl SessionEntry {
     /// Convert a SessionEntry to `AgentMessage` if it contains conversation content.

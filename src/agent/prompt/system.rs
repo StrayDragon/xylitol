@@ -30,7 +30,7 @@ pub(crate) struct SystemPromptOpts {
     /// Project-specific context files (path => content).
     pub(crate) context_files: Vec<(String, String)>,
     /// Available skills (name + description + source info for XML rendering).
-    pub(crate) skills: Vec<crate::infra::resource::SkillInfo>,
+    pub(crate) skills: Vec<crate::core::resource_types::SkillInfo>,
     /// System prompt from SYSTEM.md (will be prepended to the output).
     pub(crate) system_prompt: Option<String>,
     /// Append system prompt lines from APPEND_SYSTEM.md.
@@ -86,12 +86,11 @@ pub(crate) fn build_system_prompt(opts: &SystemPromptOpts) -> String {
     if !opts.skills.is_empty() {
         prompt.push_str("\n<available_skills>\n");
         for skill in &opts.skills {
-            let name = crate::infra::skills::loader::xml_escape(&skill.name);
-            let desc = crate::infra::skills::loader::xml_escape(
-                skill.description.as_deref().unwrap_or(""),
-            );
+            let name = crate::core::source_info::xml_escape(&skill.name);
+            let desc =
+                crate::core::source_info::xml_escape(skill.description.as_deref().unwrap_or(""));
             let loc =
-                crate::infra::skills::loader::xml_escape(&skill.source_info.path.to_string_lossy());
+                crate::core::source_info::xml_escape(&skill.source_info.path.to_string_lossy());
             prompt.push_str(&format!(
                 "  <skill>\n    <name>{name}</name>\n    <description>{desc}</description>\n    <location>{loc}</location>\n  </skill>\n"
             ));
@@ -246,18 +245,18 @@ mod tests {
 
     #[test]
     fn test_skills_section() {
-        use crate::infra::resource::SkillInfo;
+        use crate::core::resource_types::SkillInfo;
         use std::path::PathBuf;
         let opts = SystemPromptOpts {
             cwd: ".".into(),
             skills: vec![SkillInfo {
                 name: "code-review".into(),
                 description: Some("Automated code review".into()),
-                source_info: crate::infra::source_info::SourceInfo {
+                source_info: crate::core::source_info::SourceInfo {
                     path: PathBuf::from("/home/u/.xylitol/skills/SKILL.md"),
                     source: "user".into(),
-                    scope: crate::infra::source_info::SourceScope::User,
-                    origin: crate::infra::source_info::SourceOrigin::TopLevel,
+                    scope: crate::core::source_info::SourceScope::User,
+                    origin: crate::core::source_info::SourceOrigin::TopLevel,
                     base_dir: Some(PathBuf::from("/home/u/.xylitol/skills")),
                 },
             }],

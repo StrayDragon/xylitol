@@ -131,18 +131,8 @@ pub struct Settings {
     pub warnings: Option<WarningSettings>,
 }
 
-/// Compaction behavior settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(default, rename_all = "camelCase")]
-#[derive(Default)]
-pub struct CompactionSettings {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reserve_tokens: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub keep_recent_tokens: Option<u64>,
-}
+/// Compaction behavior settings — relocated to `core::compaction_config`.
+pub use crate::core::compaction_config::CompactionSettings;
 
 /// Branch summary settings for forked conversations.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
