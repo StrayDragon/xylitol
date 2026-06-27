@@ -76,7 +76,6 @@ impl RpcState {
             tool_registry,
             store,
             sink,
-            self.session_mgr.clone(),
             self.system_prompt.clone(),
             self.max_iterations,
             self.compaction_threshold,

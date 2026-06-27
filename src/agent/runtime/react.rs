@@ -466,7 +466,6 @@ mod tests {
         let session = AgentSession::new(
             reg,
             ToolRegistry::from_tools(crate::infra::tools::default_tools()),
-            session_mgr,
             store,
             sink,
             Some("You are helpful.".into()),
@@ -515,7 +514,6 @@ mod tests {
         let session = AgentSession::new(
             reg,
             ToolRegistry::from_tools(crate::infra::tools::default_tools()),
-            session_mgr,
             store,
             sink,
             Some("You are helpful.".into()),
