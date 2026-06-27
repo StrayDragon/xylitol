@@ -13,52 +13,11 @@ use super::config::types::{
     SandboxProcessConfig,
 };
 
-// ── Verdict ─────────────────────────────────────────────────────────
-
-/// The result of a sandbox access check.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SandboxVerdict {
-    /// Access is allowed.
-    Allow,
-    /// Access is denied with a reason.
-    Deny { reason: String },
-}
-
-impl SandboxVerdict {
-    /// Returns `true` if access is allowed.
-    pub fn is_allowed(&self) -> bool {
-        matches!(self, SandboxVerdict::Allow)
-    }
-
-    /// Returns the deny reason, or `None` if allowed.
-    pub fn deny_reason(&self) -> Option<&str> {
-        match self {
-            SandboxVerdict::Deny { reason } => Some(reason.as_str()),
-            SandboxVerdict::Allow => None,
-        }
-    }
-}
-
-// ── SandboxEngine trait ─────────────────────────────────────────────
-
-/// The core sandbox engine trait.
-///
-/// Each method checks whether the given operation is allowed under the
-/// current sandbox policy. The check is purely advisory at the application
-/// level (`FallbackBackend`); platform backends may enforce at the OS level.
-pub trait SandboxEngine: Send + Sync {
-    /// Check whether a file read at `path` is allowed.
-    fn check_read(&self, path: &str) -> SandboxVerdict;
-
-    /// Check whether a file write at `path` is allowed.
-    fn check_write(&self, path: &str) -> SandboxVerdict;
-
-    /// Check whether a network request to `domain` is allowed.
-    fn check_network(&self, domain: &str) -> SandboxVerdict;
-
-    /// Check whether spawning a process at `path` is allowed.
-    fn check_process(&self, path: &str) -> SandboxVerdict;
-}
+// SandboxVerdict + SandboxEngine trait relocated to `core::ports` (shared port
+// vocabulary). Concrete backends below (NoopEngine, FallbackBackend, platform)
+// implement the port; re-exported here for existing `crate::infra::sandbox::*`
+// references.
+pub use crate::core::ports::{SandboxEngine, SandboxVerdict};
 
 /// A no-op engine that allows everything. Used when sandbox is disabled.
 #[derive(Clone, Debug)]

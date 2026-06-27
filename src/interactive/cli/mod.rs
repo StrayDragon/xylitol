@@ -388,6 +388,18 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // ── Step 5: construct Agent via with_ports (HC-2 route) ────
     let store: Arc<dyn SessionStore> = Arc::new(session_mgr.clone());
     let sink: Arc<dyn EventSink> = Arc::new(EventBus::new());
+    // HC-1: the model builder and sandbox engine are infra constructs supplied
+    // by the composition root (here), not built inside agent/.
+    let model_builder: Arc<
+        dyn Fn(
+                &crate::core::model::ModelConfig,
+            ) -> Result<Arc<dyn crate::core::ports::XyModel>, String>
+            + Send
+            + Sync,
+    > = Arc::new(crate::infra::provider::factory::build_provider);
+    let sandbox: Arc<dyn crate::core::ports::SandboxEngine> = sandbox_engine
+        .clone()
+        .unwrap_or_else(|| crate::infra::sandbox::noop_engine());
     let mut agent = Agent::with_ports(
         model_registry,
         tool_registry,
@@ -399,11 +411,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         0.8,
         cwd,
         compaction_settings,
+        model_builder,
+        sandbox,
     );
 
-    if let Some(ref engine) = sandbox_engine {
-        agent.session_mut().set_sandbox_engine(Some(engine.clone()));
-    }
     agent
         .session_mut()
         .register_prompt_commands(&discovered_templates);

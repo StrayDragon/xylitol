@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,la7,"runtime-residence","All runtimes (provider, tool, session storage, exec-env, bash executor, secret resolution, resource loader) MUST live under infra/; agent/ MUST hold them only as Arc<dyn Port> injected at the composition root; agent/ MUST NOT call any infra constructor or borrow infra exec primitives directly.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  la7,"executor-not-in-agent","the bash executor (process spawn + output streaming) is located","its source file is inspected","it lives under infra/ and agent/ reaches it only via an injected port or the composition root"

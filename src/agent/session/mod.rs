@@ -36,13 +36,12 @@ use crate::agent::runtime::MessageQueue;
 use crate::agent::runtime::stdout_guard;
 use crate::agent::tools::ToolRegistry;
 use crate::core::lifecycle::AgentLifecycleEvent;
-use crate::core::ports::XyModel;
+use crate::core::ports::{SandboxEngine, SandboxVerdict, XyModel};
 use crate::core::resource_types::SkillInfo;
 #[cfg(test)]
 use crate::core::source_info::{SourceInfo, SourceOrigin, SourceScope};
 use crate::core::types::{ModelMeta, ThinkingLevel};
 use crate::infra::event::{EventBus, UnsubscribeHandle};
-use crate::infra::sandbox::{SandboxEngine, SandboxVerdict, noop_engine};
 use crate::infra::session::manager::SessionManager;
 
 // ── Model Registry ──────────────────────────────────────────────────
@@ -94,8 +93,8 @@ pub struct AgentSession {
     /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
     bash_handler: crate::agent::session::bash_exec::BashExecHandler,
 
-    /// Sandbox engine for tool execution isolation.
-    sandbox_engine: Option<std::sync::Arc<dyn SandboxEngine>>,
+    /// Sandbox engine for tool execution isolation (injected at construction).
+    sandbox_engine: std::sync::Arc<dyn SandboxEngine>,
     /// Session store port (HC-2) — actively used by the ReAct loop.
     #[allow(dead_code)]
     store: Arc<dyn SessionStore>,
@@ -116,9 +115,15 @@ impl AgentSession {
         compaction_threshold: f64,
         cwd: String,
         compaction_settings: Option<CompactionSettings>,
+        model_builder: std::sync::Arc<
+            dyn Fn(&crate::core::model::ModelConfig) -> Result<Arc<dyn XyModel>, String>
+                + Send
+                + Sync,
+        >,
+        sandbox: Arc<dyn SandboxEngine>,
     ) -> Self {
         Self {
-            model_manager: ModelManager::new(model_registry),
+            model_manager: ModelManager::new(model_registry, model_builder),
             tool_registry,
             active_tools: Vec::new(),
             session_io: SessionIO::new(store.clone()),
@@ -144,7 +149,7 @@ impl AgentSession {
             bash_handler: crate::agent::session::bash_exec::BashExecHandler::new(),
             store,
             sink,
-            sandbox_engine: None,
+            sandbox_engine: sandbox,
         }
     }
 
@@ -240,7 +245,7 @@ impl AgentSession {
     /// command.
     pub fn register_prompt_commands(
         &mut self,
-        templates: &[crate::infra::resource::PromptTemplate],
+        templates: &[crate::core::resource_types::PromptTemplate],
     ) {
         for t in templates {
             self.prompt_templates.push(PromptTemplate {
@@ -474,14 +479,14 @@ impl AgentSession {
         // Restore thinking level and model from session entries
         for entry in &entries {
             match entry {
-                crate::infra::session::SessionEntry::ThinkingLevelChange(e) => {
+                crate::core::session_types::SessionEntry::ThinkingLevelChange(e) => {
                     if let Ok(level) =
                         serde_json::from_value::<ThinkingLevel>(serde_json::json!(e.thinking_level))
                     {
                         self.model_manager.set_thinking_level(level);
                     }
                 }
-                crate::infra::session::SessionEntry::ModelChange(e) => {
+                crate::core::session_types::SessionEntry::ModelChange(e) => {
                     // Try to find and select this model
                     let model_id = format!("{}/{}", e.provider, e.model_id);
                     let _ = self.model_manager.select_model(&model_id);
@@ -701,14 +706,9 @@ impl AgentSession {
         .await
     }
 
-    /// Set the sandbox engine for tool execution isolation.
-    pub fn set_sandbox_engine(&mut self, engine: Option<std::sync::Arc<dyn SandboxEngine>>) {
-        self.sandbox_engine = engine;
-    }
-
-    /// Get a reference to the sandbox engine, or a no-op engine if not set.
+    /// Get a reference to the sandbox engine (injected at construction).
     pub fn get_sandbox_engine(&self) -> std::sync::Arc<dyn SandboxEngine> {
-        self.sandbox_engine.clone().unwrap_or_else(noop_engine)
+        self.sandbox_engine.clone()
     }
 
     /// Check whether a file read is allowed by the sandbox.
@@ -888,6 +888,8 @@ mod tests {
             0.8,
             ".".into(),
             None,
+            std::sync::Arc::new(crate::infra::provider::factory::build_provider),
+            crate::infra::sandbox::noop_engine(),
         )
     }
 
@@ -895,8 +897,8 @@ mod tests {
         name: &str,
         body: &str,
         source: &str,
-    ) -> crate::infra::resource::PromptTemplate {
-        crate::infra::resource::PromptTemplate {
+    ) -> crate::core::resource_types::PromptTemplate {
+        crate::core::resource_types::PromptTemplate {
             name: name.into(),
             content: body.into(),
             description: None,

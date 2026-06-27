@@ -179,6 +179,8 @@ fn make_agent(agent: &AgentState) -> AgentLoop {
         0.8,
         ".".into(),
         None,
+        std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
+        xylitol::infra::sandbox::noop_engine(),
     );
     AgentLoop::new(session)
 }
@@ -571,6 +573,8 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         0.8,
         ".".into(),
         None,
+        std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
+        xylitol::infra::sandbox::noop_engine(),
     );
     let tl = match level.as_str() {
         "high" => ThinkingLevel::High,
@@ -675,6 +679,8 @@ fn _w_agent_cycle_forward(agent: &AgentState) {
         0.8,
         ".".into(),
         None,
+        std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
+        xylitol::infra::sandbox::noop_engine(),
     );
     let next = session
         .cycle_forward()

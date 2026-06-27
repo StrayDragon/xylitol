@@ -88,56 +88,35 @@ mod arch_guard {
     /// production import requires either eliminating it or registering it here
     /// with a follow-up change id (error-on-new, warn-on-existing).
     const AGENT_INFRA_ALLOWLIST: &[(&str, &str, &str)] = &[
-        // c276 — hoist shared vocabulary types to core/
-        // (c276 cleared all type-hoisting entries; the lone remaining
-        //  prompt/system.rs resource usage is the DefaultResourceLoader
-        //  concrete service, which is an assembly concern → tracked under c277)
+        // c276 — hoist shared vocabulary types to core/ (ALL CLEARED)
+        //
         // c277 — sink assembly to composition root
-        ("prompt/system.rs", "crate::infra::resource", "c277"),
+        // (c277 cleared 3 entries via injection: model/manager build_provider,
+        //  runtime/react sandbox, session/mod sandbox. Remaining c277-tagged
+        //  entries retagged: SessionManager/EventBus holdings -> c278 (session
+        //  decoupling), bash exec primitives + config::value + resource loader
+        //  + trust -> c279 (executor/config/resource relocation).)
+        //
+        // c278 — agent/session decoupling + export merge (SessionManager/EventBus)
         (
             "compaction/mod.rs",
             "crate::infra::session::manager",
-            "c277",
+            "c278",
         ),
         (
             "compaction/orchestrator.rs",
             "crate::infra::session::manager",
-            "c277",
+            "c278",
         ),
-        ("facade.rs", "crate::infra::session", "c277"),
-        (
-            "model/manager.rs",
-            "crate::infra::provider::factory::build_provider",
-            "c277",
-        ),
-        ("model/registry.rs", "crate::infra::config::value", "c277"),
-        (
-            "runtime/bash.rs",
-            "crate::infra::process::shell::find_bash",
-            "c277",
-        ),
-        (
-            "runtime/bash.rs",
-            "crate::infra::tools::accumulator",
-            "c277",
-        ),
-        (
-            "runtime/bash.rs",
-            "crate::infra::tools::process::kill_tree",
-            "c277",
-        ),
-        ("runtime/bash.rs", "crate::infra::tools::truncate", "c277"),
-        ("runtime/react.rs", "crate::infra::sandbox", "c277"),
-        ("session/events.rs", "crate::infra::event", "c277"),
+        ("facade.rs", "crate::infra::session", "c278"),
+        ("session/events.rs", "crate::infra::event", "c278"),
         (
             "session/export.rs",
             "crate::infra::session::manager",
-            "c277",
+            "c278",
         ),
-        ("session/mod.rs", "crate::infra::event", "c277"),
-        ("session/mod.rs", "crate::infra::sandbox", "c277"),
-        ("session/mod.rs", "crate::infra::session::manager", "c277"),
-        // c278 — merge export forwarding layer
+        ("session/mod.rs", "crate::infra::event", "c278"),
+        ("session/mod.rs", "crate::infra::session::manager", "c278"),
         (
             "session/export.rs",
             "crate::infra::session::export::parse_jsonl",
@@ -163,12 +142,34 @@ mod arch_guard {
             "crate::infra::session::export::write_to",
             "c278",
         ),
+        // c279 — relocate executor + config resolution + resource loader + trust
+        ("prompt/system.rs", "crate::infra::resource", "c279"),
+        ("model/registry.rs", "crate::infra::config::value", "c279"),
+        (
+            "runtime/bash.rs",
+            "crate::infra::process::shell::find_bash",
+            "c279",
+        ),
+        (
+            "runtime/bash.rs",
+            "crate::infra::tools::accumulator",
+            "c279",
+        ),
+        (
+            "runtime/bash.rs",
+            "crate::infra::tools::process::kill_tree",
+            "c279",
+        ),
+        ("runtime/bash.rs", "crate::infra::tools::truncate", "c279"),
+        ("session/mod.rs", "crate::infra::trust", "c279"),
     ];
 
     /// Extract `crate::infra::...` import tokens from the PRODUCTION region of each
     /// `.rs` file under `dir`. Production = everything before the first
-    /// `#[cfg(test)]` line; test code may freely assemble concrete types (HC-1
-    /// targets production coupling only). Returns `(rel_path, import, line)`.
+    /// `#[cfg(test)] mod <name>` test MODULE; a `#[cfg(test)]` attribute on a
+    /// single item (e.g. a gated `use`) does NOT end the production region. Test
+    /// code may freely assemble concrete types (HC-1 targets production coupling
+    /// only). Returns `(rel_path, import, line)`.
     fn scan_prod_infra(dir: &str) -> Vec<(String, String, usize)> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(dir);
         let mut files = Vec::new();
@@ -178,12 +179,28 @@ mod arch_guard {
             let Ok(content) = std::fs::read_to_string(path) else {
                 continue;
             };
-            let cfg_test_line = content
-                .lines()
-                .position(|l| l.contains("#[cfg(test)]"))
-                .unwrap_or(usize::MAX);
-            for (i, raw) in content.lines().enumerate() {
-                if i >= cfg_test_line {
+            let lines: Vec<&str> = content.lines().collect();
+            // Find the test-MODULE boundary: first `#[cfg(test)]` whose next
+            // non-empty line starts with `mod `. A `#[cfg(test)]` on a single
+            // `use`/`fn`/`const` is a gated item, not the test region.
+            let mut cfg_test_line = usize::MAX;
+            let mut i = 0;
+            while i < lines.len() {
+                if lines[i].contains("#[cfg(test)]") {
+                    // peek ahead for `mod `
+                    let mut j = i + 1;
+                    while j < lines.len() && lines[j].trim().is_empty() {
+                        j += 1;
+                    }
+                    if j < lines.len() && lines[j].trim().starts_with("mod ") {
+                        cfg_test_line = i;
+                        break;
+                    }
+                }
+                i += 1;
+            }
+            for (idx, raw) in lines.iter().enumerate() {
+                if idx >= cfg_test_line {
                     break;
                 }
                 // strip line comments
@@ -204,7 +221,7 @@ mod arch_guard {
                             .unwrap_or(path)
                             .display()
                             .to_string();
-                        hits.push((rel, token, i + 1));
+                        hits.push((rel, token, idx + 1));
                     }
                     rest = &rest[start + "crate::infra::".len()..];
                 }

@@ -24,11 +24,22 @@ c275 review 发现两个结构性问题：
 
 - 删除 `agent/session/export.rs`（5 处 `infra::session::export::*` 转发）。
 - 调用方（AgentSession）直接调用 `infra::session::export`，或由组合根装配时注入。
-- 对应 5 项 c275 白名单条目删除。
+- 对应 5 项白名单条目删除。
 
-### P2 — AgentSession 瘦身
+### P2 — SessionManager/EventBus 具体持有 -> port（从 c277 retag 过来，7 项）
 
-- 评估将非编排职责（stats / export / bash_exec handler）从 `agent/session` 剥离到 infra 或组合根。
+- `SessionStore` port 扩容：新增 `load`（原始 entries）/`build_session_context`/
+  `get_tree` 等方法（compaction/export 当前用 SessionManager 特有 API）。
+- `AgentSession.session_manager` + `facade` + `compaction/{mod,orchestrator}` +
+  `session/export` 的 `SessionManager` 具体持有 -> `Arc<dyn SessionStore>`。
+- `EventBus` 具体持有（`session/{mod,events}`）：emit 流从 sync
+  `event_bus.emit_lifecycle` 迁到 async `sink.emit`；移除死 API `subscribe()`/
+  `event_bus()`/`unsubscribe()`（零外部调用者）。
+- 对应 7 项白名单条目删除。
+
+### P3 — AgentSession 瘦身
+
+- 评估将非编排职责（stats / bash_exec handler）从 `agent/session` 剥离到 infra 或组合根。
 - 保留 AgentSession 为"编排状态持有者"（当前 model/tools 选择 + 生命周期事件），符合 HC-2。
 
 ## Capabilities
@@ -37,6 +48,6 @@ c275 review 发现两个结构性问题：
 
 ## Impact
 
-- **白名单清零**（c275 白名单最后 5 项 export 条目删除）——arch_guard 达成"全量扫描、零豁免"终态。
+- **白名单收缩 12 项**（5 export + 7 SessionManager/EventBus）——arch_guard 趋近“全量扫描、零豁免”终态。
 - **agent/ 瘦身**：`agent/session` LOC 下降，职责单一化。
 - **零行为变更**：export 函数签名不变，仅去转发层；BDD 不受影响。
