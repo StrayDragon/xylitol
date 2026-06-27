@@ -35,15 +35,15 @@ use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::MessageQueue;
 use crate::agent::runtime::stdout_guard;
 use crate::agent::tools::ToolRegistry;
+use crate::core::lifecycle::AgentLifecycleEvent;
 use crate::core::ports::XyModel;
+use crate::core::resource_types::SkillInfo;
+#[cfg(test)]
+use crate::core::source_info::{SourceInfo, SourceOrigin, SourceScope};
 use crate::core::types::{ModelMeta, ThinkingLevel};
-use crate::infra::event::lifecycle::AgentLifecycleEvent;
 use crate::infra::event::{EventBus, UnsubscribeHandle};
-use crate::infra::resource::SkillInfo;
 use crate::infra::sandbox::{SandboxEngine, SandboxVerdict, noop_engine};
 use crate::infra::session::manager::SessionManager;
-#[cfg(test)]
-use crate::infra::source_info::{SourceInfo, SourceOrigin, SourceScope};
 
 // ── Model Registry ──────────────────────────────────────────────────
 
@@ -580,7 +580,7 @@ impl AgentSession {
 
     /// Register skill commands from loaded skills.
     /// When a skill is loaded, `/skill:name` slash command is auto-registered.
-    pub fn register_skill_commands(&mut self, _skills: &[crate::infra::resource::SkillInfo]) {
+    pub fn register_skill_commands(&mut self, _skills: &[crate::core::resource_types::SkillInfo]) {
         let cmds = self.skill_manager.register_commands();
         self.extension_commands.extend(cmds);
     }

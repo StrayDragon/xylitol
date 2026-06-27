@@ -1,6 +1,6 @@
 //! File operation tracking — extract read/write/edit ops from tool calls.
 
-use crate::infra::session::types::CompactionEntry;
+use crate::core::session_types::CompactionEntry;
 
 /// Tracked file operations from tool calls.
 #[derive(Debug, Clone, Default)]

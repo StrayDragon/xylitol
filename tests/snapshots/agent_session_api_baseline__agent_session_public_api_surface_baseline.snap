@@ -1,5 +1,6 @@
 ---
 source: tests/agent_session_api_baseline.rs
+assertion_line: 138
 expression: "all_items.join(\"\\n\")"
 ---
 pub async fn append_entry( &self, session_id: &str, entry: serde_json::Value, ) -> Result<(), String>
@@ -64,7 +65,7 @@ pub fn pending_message_count(&self) -> usize
 pub fn process_prompt(&self, input: &str) -> PromptResult
 pub fn rebuild_system_prompt(&mut self)
 pub fn register_prompt_commands( &mut self, templates: &[crate::infra::resource::PromptTemplate], )
-pub fn register_skill_commands(&mut self, _skills: &[crate::infra::resource::SkillInfo])
+pub fn register_skill_commands(&mut self, _skills: &[crate::core::resource_types::SkillInfo])
 pub fn registry_clone(&self) -> ModelRegistry
 pub fn save_trust_decision( &self, trust_manager: &crate::infra::trust::TrustManager, trusted: bool, ) -> Result<bool, String>
 pub fn select_model(&mut self, model_id: &str) -> Result<(), String>

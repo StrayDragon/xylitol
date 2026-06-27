@@ -32,8 +32,8 @@ use anyhow::Result;
 use serde_json::json;
 
 use crate::core::ports::XyModel;
+use crate::core::session_types::{CompactionEntry, EntryBase, SessionEntry};
 use crate::infra::session::manager::SessionManager;
-use crate::infra::session::types::{CompactionEntry, EntryBase, SessionEntry};
 
 /// Compact a session by summarizing old entries and writing a CompactionEntry.
 pub async fn compact_session(

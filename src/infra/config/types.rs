@@ -726,17 +726,8 @@ fn default_storage_backend() -> String {
     "file".into()
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
-/// Compaction configuration from YAML — load-time representation.
-///
-/// Mapped to runtime `CompactionSettings` (in `agent::compaction::settings`)
-/// via `From<CompactionConfig>`. Reserve tokens and keep-recent thresholds
-/// are hardcoded in the runtime defaults.
-pub struct CompactionConfig {
-    #[serde(default)]
-    pub enabled: bool,
-}
+// CompactionConfig relocated to `core::compaction_config` (shared vocabulary).
+pub use crate::core::compaction_config::CompactionConfig;
 
 // ---------------------------------------------------------------------------
 // Skills & MCP
