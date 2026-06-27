@@ -7,7 +7,6 @@
 //! 4. Project local: `<project>/.xylitol/config.local.yaml`
 //! 5. CLI override:  `--config <path>` (single file, no local overlay)
 
-#![allow(dead_code)]
 use std::path::Path;
 
 use serde_json::Value;

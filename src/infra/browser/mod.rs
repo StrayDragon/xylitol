@@ -1,7 +1,5 @@
 //! Open a URL in the system default browser.
 
-#![allow(dead_code)]
-
 /// Open a URL in the default system browser.
 pub fn open_browser(url: &str) -> Result<(), String> {
     let result = if cfg!(target_os = "macos") {

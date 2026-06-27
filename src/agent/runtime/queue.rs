@@ -2,8 +2,6 @@
 //!
 //! Supports steer (interrupting) and follow-up (non-interrupting) message queues.
 
-#![allow(dead_code)]
-
 use std::collections::VecDeque;
 
 use crate::core::message::AgentMessage;

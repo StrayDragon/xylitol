@@ -1,6 +1,4 @@
 //! Tool downloader — auto-downloads fd and rg binaries from GitHub Releases.
-#![allow(dead_code)]
-
 mod platform;
 
 use std::path::PathBuf;

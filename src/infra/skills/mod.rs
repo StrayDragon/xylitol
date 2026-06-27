@@ -7,7 +7,5 @@
 //! Note: MCP (Model Context Protocol) client integration has been moved to
 //! [`crate::infra::mcp`] as it is an independent protocol.
 
-#![allow(dead_code)]
-
 // SKILL.md loader
 pub(crate) mod loader;
