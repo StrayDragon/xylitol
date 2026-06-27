@@ -1,3 +1,4 @@
+pub mod bash_exec;
 pub mod config;
 pub mod constants;
 pub mod event;

@@ -8,10 +8,11 @@
 //! - Header resolution via ConfigValueResolver
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::core::model::{ModelConfig, ModelKind};
+use crate::core::ports::SecretResolver;
 use crate::core::types::ModelMeta;
-use crate::infra::config::value;
 
 // ── Provider Config ─────────────────────────────────────────────────
 
@@ -102,17 +103,19 @@ pub fn default_model_id_for_provider(provider_name: &str) -> Option<&'static str
 
 /// Registry of model providers and their available models.
 /// This is the canonical `ModelRegistry` used throughout the agent.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct ModelRegistry {
     providers: HashMap<String, ProviderConfig>,
     models: Vec<ModelMeta>,
+    secret_resolver: Arc<dyn SecretResolver>,
 }
 
 impl ModelRegistry {
-    pub fn new() -> Self {
+    pub fn new(secret_resolver: Arc<dyn SecretResolver>) -> Self {
         Self {
             providers: HashMap::new(),
             models: Vec::new(),
+            secret_resolver,
         }
     }
 
@@ -143,7 +146,7 @@ impl ModelRegistry {
         self.providers.get(provider_name).is_some_and(|p| {
             p.api_key
                 .as_ref()
-                .and_then(|key| value::resolve_config_value(key, None))
+                .and_then(|key| self.secret_resolver.resolve_config_value(key, None))
                 .is_some()
         })
     }
@@ -157,7 +160,7 @@ impl ModelRegistry {
     ) -> Option<HashMap<String, String>> {
         let provider = self.providers.get(provider_name)?;
         let headers = provider.headers.as_ref()?;
-        value::resolve_headers(headers, env)
+        self.secret_resolver.resolve_headers(headers, env)
     }
 
     pub fn has_configured_auth_for_model(&self, model: &ModelMeta) -> bool {
@@ -309,8 +312,14 @@ pub use crate::core::model::default_context_window_for;
 mod tests {
     use super::*;
 
+    fn empty_registry() -> ModelRegistry {
+        ModelRegistry::new(Arc::new(
+            crate::infra::config::value::InfraSecretResolver::new(),
+        ))
+    }
+
     fn make_test_registry() -> ModelRegistry {
-        let mut reg = ModelRegistry::new();
+        let mut reg = empty_registry();
         reg.register_provider("openai", ProviderConfig::openai(Some("sk-test".into())));
         reg.register_provider(
             "anthropic",
@@ -388,7 +397,7 @@ mod tests {
 
     #[test]
     fn test_register_provider() {
-        let mut reg = ModelRegistry::new();
+        let mut reg = empty_registry();
         reg.register_provider("openai", ProviderConfig::openai(Some("sk-key".into())));
         assert!(reg.has_provider("openai"));
         assert!(reg.has_configured_auth("openai"));
@@ -396,14 +405,14 @@ mod tests {
 
     #[test]
     fn test_has_configured_auth_false() {
-        let mut reg = ModelRegistry::new();
+        let mut reg = empty_registry();
         reg.register_provider("anthropic", ProviderConfig::anthropic(None));
         assert!(!reg.has_configured_auth("anthropic"));
     }
 
     #[test]
     fn test_has_configured_auth_config_value_present() {
-        let mut reg = ModelRegistry::new();
+        let mut reg = empty_registry();
         reg.register_provider(
             "openai",
             ProviderConfig::openai(Some("$OPENAI_API_KEY".into())),
@@ -414,7 +423,7 @@ mod tests {
 
     #[test]
     fn test_has_resolved_auth_checks_env_var() {
-        let mut reg = ModelRegistry::new();
+        let mut reg = empty_registry();
         reg.register_provider(
             "openai",
             ProviderConfig::openai(Some("$THIS_ENV_VAR_SHOULD_NOT_EXIST_XYZ".into())),

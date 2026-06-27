@@ -15,7 +15,9 @@ use crate::agent::compaction::CompactionSettings;
 use crate::agent::facade::Agent;
 use crate::agent::model::registry::ModelRegistry;
 use crate::agent::tools::ToolRegistry;
-use crate::core::ports::{EventSink, SessionStore};
+use crate::core::ports::{BashExecutor, EventSink, SessionStore};
+use crate::infra::bash_exec::InfraBashExecutor;
+use crate::infra::config::value::InfraSecretResolver;
 use crate::infra::event::EventBus;
 use crate::infra::session::SessionManager;
 use crate::server::lock::{LockInfo, ServerLock};
@@ -67,7 +69,7 @@ impl Default for ServerConfig {
             port: 8080,
             lock_path: None,
             sessions_dir: None,
-            model_registry: ModelRegistry::new(),
+            model_registry: ModelRegistry::new(Arc::new(InfraSecretResolver::new())),
             system_prompt: None,
             max_iterations: 50,
             compaction_threshold: 0.8,
@@ -106,6 +108,7 @@ pub async fn start(
         .to_string_lossy()
         .to_string();
 
+    let bash_executor: Arc<dyn BashExecutor> = Arc::new(InfraBashExecutor::new());
     let agent = Agent::with_ports(
         config.model_registry.clone(),
         tool_registry,
@@ -120,6 +123,7 @@ pub async fn start(
         // HC-1: model builder + sandbox supplied by the composition root.
         Arc::new(crate::infra::provider::factory::build_provider),
         crate::infra::sandbox::noop_engine(),
+        bash_executor,
     );
 
     // ── Server state ──────────────────────────────────────────────

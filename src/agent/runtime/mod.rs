@@ -5,7 +5,6 @@
 //! transient-error retry, and stdout takeover guard. The agent facade is the
 //! public entry; modules here are the loop's internals.
 
-pub mod bash;
 pub mod event;
 pub mod hooks;
 pub mod queue;

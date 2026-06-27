@@ -10,6 +10,8 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use crate::core::ports::SecretResolver;
+
 // ── Types ──────────────────────────────────────────────────────────
 
 /// A parsed configuration value reference.
@@ -278,6 +280,38 @@ fn execute_shell_command(command: &str) -> Option<String> {
         None
     } else {
         Some(stdout)
+    }
+}
+
+// ── Infra implementation of SecretResolver port ─────────────────────
+
+/// Default [`SecretResolver`] backed by env-var interpolation and shell-command
+/// execution (see [`resolve_config_value`] / [`resolve_headers`]).
+#[derive(Debug, Clone, Default)]
+pub struct InfraSecretResolver;
+
+impl InfraSecretResolver {
+    /// Create a new infra secret resolver.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl SecretResolver for InfraSecretResolver {
+    fn resolve_config_value(
+        &self,
+        config: &str,
+        env: Option<&HashMap<String, String>>,
+    ) -> Option<String> {
+        resolve_config_value(config, env)
+    }
+
+    fn resolve_headers(
+        &self,
+        headers: &HashMap<String, String>,
+        env: Option<&HashMap<String, String>>,
+    ) -> Option<HashMap<String, String>> {
+        resolve_headers(headers, env)
     }
 }
 

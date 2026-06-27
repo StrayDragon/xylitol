@@ -11,9 +11,10 @@
 
 use std::sync::Arc;
 
+use tokio_util::sync::CancellationToken;
+
 pub(crate) use crate::core::ports::{EventSink, SessionStore};
 
-mod bash_exec;
 mod events;
 mod export;
 mod io;
@@ -35,8 +36,9 @@ use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::MessageQueue;
 use crate::agent::runtime::stdout_guard;
 use crate::agent::tools::ToolRegistry;
+use crate::core::bash::parse_bang_prefix;
 use crate::core::lifecycle::AgentLifecycleEvent;
-use crate::core::ports::{SandboxEngine, SandboxVerdict, XyModel};
+use crate::core::ports::{BashExecutor, SandboxEngine, SandboxVerdict, TrustStore, XyModel};
 use crate::core::resource_types::SkillInfo;
 #[cfg(test)]
 use crate::core::source_info::{SourceInfo, SourceOrigin, SourceScope};
@@ -90,8 +92,10 @@ pub struct AgentSession {
     lifecycle_handle: Option<UnsubscribeHandle>,
     /// Concrete session manager (for management ops beyond the store port).
     session_manager: SessionManager,
+    /// Injected bash executor port (HC-2).
+    bash_executor: Arc<dyn BashExecutor>,
     /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
-    bash_handler: crate::agent::session::bash_exec::BashExecHandler,
+    bash_cancel: Option<CancellationToken>,
 
     /// Sandbox engine for tool execution isolation (injected at construction).
     sandbox_engine: std::sync::Arc<dyn SandboxEngine>,
@@ -121,6 +125,7 @@ impl AgentSession {
                 + Sync,
         >,
         sandbox: Arc<dyn SandboxEngine>,
+        bash_executor: Arc<dyn BashExecutor>,
     ) -> Self {
         Self {
             model_manager: ModelManager::new(model_registry, model_builder),
@@ -146,7 +151,8 @@ impl AgentSession {
             event_bus: EventBus::new(),
             lifecycle_handle: None,
             session_manager,
-            bash_handler: crate::agent::session::bash_exec::BashExecHandler::new(),
+            bash_executor,
+            bash_cancel: None,
             store,
             sink,
             sandbox_engine: sandbox,
@@ -300,7 +306,7 @@ impl AgentSession {
         let input = input.trim();
 
         // Check for `!cmd` / `!!cmd` first (before slash/template handling).
-        if let Some((exclude, command)) = crate::agent::runtime::bash::parse_bang_prefix(input)
+        if let Some((exclude, command)) = parse_bang_prefix(input)
             && !command.is_empty()
         {
             return PromptResult::Bash {
@@ -531,10 +537,10 @@ impl AgentSession {
     /// Returns the persisted decision.
     pub fn save_trust_decision(
         &self,
-        trust_manager: &crate::infra::trust::TrustManager,
+        trust_store: &dyn TrustStore,
         trusted: bool,
     ) -> Result<bool, String> {
-        trust_manager.set_trust(&self.cwd, Some(trusted))?;
+        trust_store.set_trust(&self.cwd, Some(trusted))?;
         Ok(trusted)
     }
 
@@ -668,8 +674,13 @@ impl AgentSession {
         &mut self,
         command: &str,
         exclude_from_context: bool,
-    ) -> Result<crate::agent::runtime::bash::BashResult, String> {
-        let result = self.bash_handler.execute_raw(command).await;
+    ) -> Result<crate::core::ports::BashResult, String> {
+        let cancel = CancellationToken::new();
+        self.bash_cancel = Some(cancel.clone());
+
+        let result = self.bash_executor.execute(command, Some(cancel)).await;
+
+        self.bash_cancel = None;
 
         // Record on disk.
         if let Some(sid) = self.session_id() {
@@ -685,7 +696,7 @@ impl AgentSession {
     pub async fn record_bash_result(
         &self,
         command: &str,
-        result: &crate::agent::runtime::bash::BashResult,
+        result: &crate::core::ports::BashResult,
         exclude_from_context: bool,
         session_id: Option<&str>,
     ) -> Result<(), String> {
@@ -728,7 +739,9 @@ impl AgentSession {
 
     /// Abort any in-flight bash execution.
     pub fn abort_bash(&mut self) {
-        self.bash_handler.abort();
+        if let Some(cancel) = self.bash_cancel.take() {
+            cancel.cancel();
+        }
     }
 
     // ── Lifecycle management ───────────────────────────────────────
@@ -849,7 +862,7 @@ impl AgentSession {
 pub(crate) async fn record_bash_result(
     mgr: &SessionManager,
     command: &str,
-    result: &crate::agent::runtime::bash::BashResult,
+    result: &crate::core::ports::BashResult,
     exclude_from_context: bool,
     session_id: &str,
 ) -> Result<(), String> {
@@ -878,7 +891,9 @@ mod tests {
         let sink: std::sync::Arc<dyn crate::core::ports::EventSink> =
             std::sync::Arc::new(crate::infra::event::EventBus::new());
         AgentSession::new(
-            ModelRegistry::new(),
+            ModelRegistry::new(std::sync::Arc::new(
+                crate::infra::config::value::InfraSecretResolver::new(),
+            )),
             ToolRegistry::from_tools(crate::infra::tools::default_tools()),
             mgr,
             store,
@@ -890,6 +905,7 @@ mod tests {
             None,
             std::sync::Arc::new(crate::infra::provider::factory::build_provider),
             crate::infra::sandbox::noop_engine(),
+            std::sync::Arc::new(crate::infra::bash_exec::InfraBashExecutor::new()),
         )
     }
 

@@ -18,6 +18,7 @@ use xylitol::core::model::{ModelConfig, ModelKind};
 use xylitol::core::ports::{XyTool, XyToolCtx};
 use xylitol::core::types::{ModelMeta, ThinkingLevel};
 use xylitol::infra::config::types::HookEntry;
+use xylitol::infra::config::value::InfraSecretResolver;
 use xylitol::infra::hooks::{DispatchResult, HookDispatcher, HookEvent, HookPhase};
 use xylitol::infra::provider::factory::{
     reset_fake_state, set_fake_text, set_fake_tool_call, set_fake_tool_result,
@@ -104,7 +105,7 @@ pub struct AgentState {
 impl AgentState {
     fn new() -> Self {
         Self {
-            registry: RefCell::new(ModelRegistry::new()),
+            registry: RefCell::new(ModelRegistry::new(Arc::new(InfraSecretResolver::new()))),
             events: RefCell::new(Vec::new()),
             last_result: RefCell::new(None),
             context_usage: RefCell::new(None),
@@ -181,6 +182,7 @@ fn make_agent(agent: &AgentState) -> AgentLoop {
         None,
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
         xylitol::infra::sandbox::noop_engine(),
+        std::sync::Arc::new(xylitol::infra::bash_exec::InfraBashExecutor::new()),
     );
     AgentLoop::new(session)
 }
@@ -503,7 +505,7 @@ fn _t_agent_event_order(agent: &AgentState) {
 // Thinking
 #[given("当前思考级别为 {level:string}")]
 fn _g_agent_thinking_level(agent: &AgentState, level: String) {
-    let mut r = ModelRegistry::new();
+    let mut r = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
     r.register(ModelMeta {
         id: "test".into(),
         config: ModelConfig {
@@ -529,7 +531,7 @@ fn _g_agent_thinking_level(agent: &AgentState, level: String) {
 
 #[given("当前模型不支持思考")]
 fn _g_agent_no_thinking(agent: &AgentState) {
-    let mut r = ModelRegistry::new();
+    let mut r = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
     r.register(ModelMeta {
         id: "test".into(),
         config: ModelConfig {
@@ -575,6 +577,7 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         None,
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
         xylitol::infra::sandbox::noop_engine(),
+        std::sync::Arc::new(xylitol::infra::bash_exec::InfraBashExecutor::new()),
     );
     let tl = match level.as_str() {
         "high" => ThinkingLevel::High,
@@ -624,7 +627,7 @@ fn _t_agent_thinking_clamped(agent: &AgentState, level: String) {
 // Model switching
 #[given("注册了模型 {m1:string} 和 {m2:string}")]
 fn _g_agent_models_registered(agent: &AgentState, m1: String, m2: String) {
-    let mut r = ModelRegistry::new();
+    let mut r = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
     for name in [m1, m2] {
         let kind = if name.contains("claude") {
             ModelKind::Anthropic
@@ -681,6 +684,7 @@ fn _w_agent_cycle_forward(agent: &AgentState) {
         None,
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
         xylitol::infra::sandbox::noop_engine(),
+        std::sync::Arc::new(xylitol::infra::bash_exec::InfraBashExecutor::new()),
     );
     let next = session
         .cycle_forward()

@@ -11,6 +11,7 @@
 //! - Both `agent/` and `infra/` depend on `core/`.
 //! - `infra/` must **never** depend on `agent/`.
 
+pub mod bash;
 pub mod compaction_config;
 pub mod error;
 pub mod lifecycle;
