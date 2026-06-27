@@ -193,6 +193,35 @@ pub enum Event {
         cancelled: bool,
         truncated: bool,
     },
+    /// Turn started.
+    TurnStart {
+        turn_index: u32,
+    },
+    /// Turn ended.
+    TurnEnd {
+        turn_index: u32,
+    },
+    /// Message started.
+    MessageStart {
+        role: String,
+    },
+    /// Message ended.
+    MessageEnd {
+        role: String,
+    },
+    /// Streaming message update (replaces previous text/thinking for this message).
+    MessageUpdate {
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        thinking: Option<String>,
+    },
+    /// Streaming tool execution output.
+    ToolExecutionUpdate {
+        id: String,
+        output: String,
+    },
+    /// Compaction completed.
+    CompactionEnd,
 }
 
 // ── REST envelope types ────────────────────────────────────────────

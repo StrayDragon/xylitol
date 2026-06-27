@@ -1,83 +1,47 @@
-//! SessionIO — session persistence, forking, navigation (spec c255 / as32).
+//! SessionIO — session persistence via SessionStore port (HC-2).
 //!
-//! Thin wrapper around [`SessionManager`] isolating session-persistence
-//! operations. The stub `stats()` was removed — statistics are computed in
-//! [`stats`](super::stats) from the session context.
+//! Thin wrapper around [`Arc<dyn SessionStore>`] isolating session-persistence
+//! operations for the ReAct loop. Session management operations (create, fork,
+//! navigate, export, etc.) use the concrete [`SessionManager`] directly.
 
-use crate::infra::session::manager::SessionManager;
+use std::sync::Arc;
 
-/// Session persistence and navigation operations.
+use crate::core::message::AgentMessage;
+use crate::core::ports::SessionStore;
+
+/// Session persistence via the SessionStore port (HC-2).
+///
+/// Provides only the operations the ReAct loop needs:
+/// [`load_context`](Self::load_context),
+/// [`append_entry`](Self::append_entry), and [`exists`](Self::exists).
+/// Full session management (create, fork, navigate, export) uses the
+/// concrete `SessionManager` directly through AgentSession.
 #[derive(Clone)]
 pub struct SessionIO {
-    manager: SessionManager,
+    store: Arc<dyn SessionStore>,
 }
 
 impl SessionIO {
-    pub fn new(manager: SessionManager) -> Self {
-        Self { manager }
+    pub fn new(store: Arc<dyn SessionStore>) -> Self {
+        Self { store }
     }
 
-    pub fn manager(&self) -> &SessionManager {
-        &self.manager
+    /// Load session context for building turn state.
+    pub async fn load_context(&self, session_id: &str) -> Result<Vec<AgentMessage>, String> {
+        self.store.load_context(session_id).await
     }
 
-    /// Create a new session.
-    pub async fn create(&self, id: &str, cwd: &str, parent: Option<&str>) -> Result<(), String> {
-        self.manager.create(id, Some(cwd), parent).await
-    }
-
-    /// Resume an existing session (load + validate CWD).
-    pub async fn load_validated(
-        &self,
-        id: &str,
-        cwd: &str,
-    ) -> Result<Vec<crate::infra::session::SessionEntry>, String> {
-        self.manager.load_validated(id, cwd).await
-    }
-
-    /// Fork a session at a given entry.
-    pub async fn fork(
-        &self,
-        parent_id: &str,
-        child_id: &str,
-        at_entry_id: &str,
-    ) -> Result<(), String> {
-        self.manager
-            .fork(parent_id, child_id, at_entry_id)
-            .await
-            .map_err(|e| format!("fork failed: {e}"))
-    }
-
-    /// Navigate the session tree.
-    pub fn navigate(&self, session_id: &str, target_id: &str) {
-        self.manager.navigate_tree(session_id, Some(target_id));
-    }
-
-    /// Switch to a different session file.
-    pub async fn switch(&self, new_id: &str, new_path: &str) -> Result<(), String> {
-        self.manager.switch_session(new_id, new_path).await
-    }
-
-    /// Persist a model change entry.
-    pub async fn append_model_change(
+    /// Append an opaque JSON entry to the session log.
+    pub async fn append_entry(
         &self,
         session_id: &str,
-        provider: &str,
-        model_id: &str,
+        entry: serde_json::Value,
     ) -> Result<(), String> {
-        self.manager
-            .append_model_change(session_id, provider, model_id)
-            .await
+        self.store.append_entry(session_id, entry).await
     }
 
-    /// Persist a thinking level change entry.
-    pub async fn append_thinking_level_change(
-        &self,
-        session_id: &str,
-        level: &str,
-    ) -> Result<(), String> {
-        self.manager
-            .append_thinking_level_change(session_id, level)
-            .await
+    /// Check whether a session exists.
+    pub async fn exists(&self, session_id: &str) -> bool {
+        self.store.exists(session_id).await
     }
 }

@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ic5,"rpc-agent-cache","RPC mode MUST cache the Agent across commands instead of rebuilding ToolRegistry + SessionManager + Agent on each dispatch; cache invalidation MUST happen when model/thinking/session parameters change.",null,null,null
+  add_requirement,ic6,"print-event-completeness","interactive::print MUST handle all AgentEvent variants including TurnStart, TurnEnd, MessageStart, MessageEnd, MessageUpdate, ToolExecutionUpdate, and CompactionEnd.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ic5,"rpc-cached-agent","an RPC prompt is sent followed by a bash command","the second command reuses the cached Agent","no new SessionManager or ToolRegistry is created for the second command"
+  ic6,"print-all-events","the agent emits a TurnStart then a MessageUpdate then a TurnEnd","print.rs renders them","all three events produce visible output (not silently dropped)"

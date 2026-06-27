@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ar4,"ports-only-construction","Agent::new MUST accept Arc<dyn SessionStore> and Arc<dyn EventSink> in place of concrete SessionManager; AgentSession MUST consume ports directly, removing the need for a concrete SessionManager parameter.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ar4,"no-concrete-sessionmanager","Agent is constructed via facade::Agent::new","the arguments are inspected","all runtime dependencies are Arc<dyn Port> trait objects; no concrete SessionManager is passed"

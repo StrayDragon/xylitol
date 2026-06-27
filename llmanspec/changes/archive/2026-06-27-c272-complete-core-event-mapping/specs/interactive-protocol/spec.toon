@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ip7,"event-variants-complete","protocol::Event MUST cover all AgentEvent variants: TurnStart, TurnEnd, MessageStart, MessageEnd, MessageUpdate, ToolExecutionUpdate, and CompactionEnd in addition to the existing variants.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ip7,"event-roundtrip","all 7 new event variants are serialized to JSON","they are deserialized back","all fields match the original values"

@@ -101,10 +101,7 @@ impl RemoteDriver {
     }
 
     fn run_url(&self) -> String {
-        format!(
-            "{}/api/v1/session/{}/run",
-            self.base_url, self.session_id
-        )
+        format!("{}/api/v1/session/{}/run", self.base_url, self.session_id)
     }
 
     fn cancel_url(&self) -> String {
@@ -226,6 +223,18 @@ impl Driver for RemoteDriver {
 fn proto_to_agent(event: &ProtoEvent) -> Option<AgentEvent> {
     match event {
         ProtoEvent::TextDelta { text } => Some(AgentEvent::TextDelta(text.clone())),
+        ProtoEvent::TurnStart { turn_index } => Some(AgentEvent::TurnStart {
+            turn_index: *turn_index,
+        }),
+        ProtoEvent::TurnEnd { turn_index } => Some(AgentEvent::TurnEnd {
+            turn_index: *turn_index,
+        }),
+        ProtoEvent::MessageStart { role } => Some(AgentEvent::MessageStart { role: role.clone() }),
+        ProtoEvent::MessageEnd { role } => Some(AgentEvent::MessageEnd { role: role.clone() }),
+        ProtoEvent::MessageUpdate { text, thinking } => Some(AgentEvent::MessageUpdate {
+            text: text.clone(),
+            thinking: thinking.clone(),
+        }),
         ProtoEvent::ToolStart { id, name } => Some(AgentEvent::ToolExecutionStart {
             id: id.clone(),
             name: name.clone(),
@@ -236,18 +245,21 @@ fn proto_to_agent(event: &ProtoEvent) -> Option<AgentEvent> {
             name: name.clone(),
             result: result.clone(),
         }),
-        ProtoEvent::ModelSelect {
-            provider,
-            model_id,
-        } => Some(AgentEvent::ModelSelect {
+        ProtoEvent::ToolExecutionUpdate { id, output } => Some(AgentEvent::ToolExecutionUpdate {
+            id: id.clone(),
+            output: output.clone(),
+        }),
+        ProtoEvent::ModelSelect { provider, model_id } => Some(AgentEvent::ModelSelect {
             provider: provider.clone(),
             model_id: model_id.clone(),
         }),
-        ProtoEvent::CompactionStart { reason } => {
-            Some(AgentEvent::CompactionStart {
-                reason: reason.clone(),
-            })
-        }
+        ProtoEvent::CompactionStart { reason } => Some(AgentEvent::CompactionStart {
+            reason: reason.clone(),
+        }),
+        ProtoEvent::CompactionEnd => Some(AgentEvent::CompactionEnd {
+            result: None,
+            aborted: false,
+        }),
         ProtoEvent::AgentEnd => Some(AgentEvent::AgentEnd {
             messages: Vec::new(),
         }),

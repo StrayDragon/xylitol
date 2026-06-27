@@ -85,7 +85,9 @@ impl Default for ServerConfig {
 /// - REST router with shared state
 /// - Single-instance lock
 /// - Port retry
-pub async fn start(config: ServerConfig) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
+pub async fn start(
+    config: ServerConfig,
+) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
     let cancel = CancellationToken::new();
 
     // ── Port construction ──────────────────────────────────────────
@@ -137,15 +139,10 @@ pub async fn start(config: ServerConfig) -> Result<(RunningServer, u16), Box<dyn
         .or_else(|_| std::env::var("COMPUTERNAME"))
         .unwrap_or_else(|_| "localhost".into());
 
-    let (listener, actual_port, lock) = acquire_lock_and_bind(
-        &lock_path,
-        &hostname,
-        config.port,
-    )?;
+    let (listener, actual_port, lock) = acquire_lock_and_bind(&lock_path, &hostname, config.port)?;
 
     // ── Router ────────────────────────────────────────────────────
-    let app = rest::router(state)
-        .layer(CorsLayer::permissive());
+    let app = rest::router(state).layer(CorsLayer::permissive());
 
     // ── Start server ──────────────────────────────────────────────
     let server_cancel = cancel.clone();

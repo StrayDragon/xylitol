@@ -12,7 +12,7 @@ requirements[22]{req_id,title,statement}:
   ar1,"thin-agent-loop","The agent/ layer MUST contain only the ReAct loop (runtime/react.rs), hook cut-points (runtime/hooks.rs), event types (runtime/event.rs), and orchestration state (current model/tool selection); it MUST NOT inline prompt formatting, bash execution logic, or output guarding logic in the loop file."
   ar2,streaming,"Agent runtime MUST stream model responses token-by-token via an event stream (TextDelta, ThinkingDelta, FunctionCall)."
   ar3,"tool-execution","Agent runtime MUST execute all tool calls from a single model response before the next model call, supporting both sequential and parallel execution modes."
-  ar4,"ports-only-construction","Agent construction MUST accept only Arc<dyn Port> trait objects via facade::Agent::new (store: Arc<dyn SessionStore>, sink: Arc<dyn EventSink>, providers: Vec<Arc<dyn XyModel>>)."
+  ar4,"ports-only-construction","Agent::new MUST accept Arc<dyn SessionStore> and Arc<dyn EventSink> in place of concrete SessionManager; AgentSession MUST consume ports directly, removing the need for a concrete SessionManager parameter."
   ar5,"event-stream",Agent runtime MUST expose the loop as an async Stream<AgentEvent> for consumer layers (Print/RPC).
   ar8,"session-cwd","Agent runtime MUST validate session working directory exists on session creation and import, returning an error with the missing path when CWD is not accessible."
   ar9,diagnostics,"Agent runtime MUST collect non-fatal diagnostics (info/warning/error) during session creation covering: missing API keys, unknown model references, extension load failures, and CWD issues."
@@ -36,7 +36,7 @@ scenarios[25]{req_id,id,given,when,then}:
   ar1,"loop-file-thin",runtime/react.rs is inspected,it is read,it contains only the ReAct algorithm and delegates formatting and execution
   ar2,streaming,model streams chunks,each chunk is processed,"TextDelta events are emitted in real-time"
   ar3,"parallel-tools",model returns 3 tool calls with parallel execution mode,tools execute concurrently,all results are appended before next model call
-  ar4,"construct-with-ports","Agent::new is called",the arguments are inspected,every argument is an Arc<dyn SomePort> trait object
+  ar4,"no-concrete-sessionmanager","Agent is constructed via facade::Agent::new",the arguments are inspected,all runtime dependencies are Arc<dyn Port> trait objects; no concrete SessionManager is passed
   ar5,consumer,an event stream consumer subscribes,loop runs,consumer receives all AgentEvent variants
   ar8,"cwd-exists",a session has cwd /home/user/project and directory exists,session is loaded,no error returned
   ar8,"cwd-missing",a session has cwd /nonexistent/path,session is loaded,error message includes the missing path

@@ -394,7 +394,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(ref engine) = sandbox_engine {
         agent.session_mut().set_sandbox_engine(Some(engine.clone()));
     }
-    agent.session_mut().register_prompt_commands(&discovered_templates);
+    agent
+        .session_mut()
+        .register_prompt_commands(&discovered_templates);
 
     timing::time("session.create");
 
@@ -408,8 +410,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     if let Some(mid) = target_model {
-        let available: Vec<&ModelMeta> =
-            agent.session().model_registry().list().iter().collect();
+        let available: Vec<&ModelMeta> = agent.session().model_registry().list().iter().collect();
         match resolver::resolve_model(&mid, &available, None) {
             Ok(resolved) => {
                 if let Some(ref warning) = resolved.warning {

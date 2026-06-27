@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,la11,"arch-guard-interactive","The architecture guard MUST verify that interactive/ (excluding the driver composition root and rpc.rs) does not import crate::agent or crate::infra types; once rpc.rs no longer needs AgentSession, remove it from exempt_files.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  la11,"rpc-exception-removed","after P3, rpc.rs is inspected","its agent/infra imports are checked","rpc.rs no longer imports crate::agent or crate::infra and can be removed from arch_guard's exempt_files list"

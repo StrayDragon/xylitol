@@ -17,8 +17,8 @@
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use tokio::sync::oneshot;
@@ -55,18 +55,9 @@ pub enum ServerFrame {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientFrame {
-    Subscribe {
-        session_id: String,
-        last_seq: u64,
-    },
-    ApproveTool {
-        call_id: String,
-        approved: bool,
-    },
-    AnswerQuestion {
-        call_id: String,
-        answer: String,
-    },
+    Subscribe { session_id: String, last_seq: u64 },
+    ApproveTool { call_id: String, approved: bool },
+    AnswerQuestion { call_id: String, answer: String },
     Ping,
 }
 
@@ -139,10 +130,7 @@ impl EventJournal {
     /// replays all available events (initial subscription).
     pub fn replay_from(&self, from_seq: u64) -> Option<Vec<(u64, Event)>> {
         let min = self.min_seq();
-        if from_seq > 0
-            && from_seq < min
-            && self.buffer.len() >= self.capacity
-        {
+        if from_seq > 0 && from_seq < min && self.buffer.len() >= self.capacity {
             return None; // ResyncRequired — journal wrapped past from_seq
         }
         Some(
@@ -388,10 +376,7 @@ mod tests {
         let mut rx = gw.register("call-2".into());
 
         assert!(gw.handle_answer("call-2", "42".into()));
-        assert_eq!(
-            rx.try_recv(),
-            Ok(ReverseRpcResult::Answered("42".into()))
-        );
+        assert_eq!(rx.try_recv(), Ok(ReverseRpcResult::Answered("42".into())));
 
         // Second answer ignored
         assert!(!gw.handle_answer("call-2", "43".into()));

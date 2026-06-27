@@ -9,8 +9,8 @@ use std::sync::Arc;
 use axum::{
     Router,
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
         Path, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
     },
     response::{IntoResponse, Json},
     routing::{delete, get, post},
@@ -24,7 +24,7 @@ use tokio::sync::Mutex;
 use crate::agent::facade::{Agent, AgentEvent};
 use crate::agent::session::ModelRegistry;
 use crate::protocol::{Envelope, ErrorCode, Event};
-use crate::server::ws::{EventJournal, ReverseRpcGateway, ServerFrame, ClientFrame};
+use crate::server::ws::{ClientFrame, EventJournal, ReverseRpcGateway, ServerFrame};
 
 // ── Shared application state ───────────────────────────────────────
 
@@ -163,31 +163,43 @@ fn agent_event_to_protocol(event: &AgentEvent) -> Option<Event> {
     match event {
         AgentEvent::TextDelta(text) => Some(Event::TextDelta { text: text.clone() }),
         AgentEvent::ThinkingDelta(_) => None,
-        AgentEvent::ToolExecutionStart { id, name, .. } => {
-            Some(Event::ToolStart {
-                id: id.clone(),
-                name: name.clone(),
-            })
-        }
-        AgentEvent::ToolExecutionEnd { id, name, result, .. } => {
-            Some(Event::ToolEnd {
-                id: id.clone(),
-                name: name.clone(),
-                result: result.clone(),
-            })
-        }
+        AgentEvent::TurnStart { turn_index } => Some(Event::TurnStart {
+            turn_index: *turn_index,
+        }),
+        AgentEvent::TurnEnd { turn_index } => Some(Event::TurnEnd {
+            turn_index: *turn_index,
+        }),
+        AgentEvent::MessageStart { role } => Some(Event::MessageStart { role: role.clone() }),
+        AgentEvent::MessageEnd { role } => Some(Event::MessageEnd { role: role.clone() }),
+        AgentEvent::MessageUpdate { text, thinking, .. } => Some(Event::MessageUpdate {
+            text: text.clone(),
+            thinking: thinking.clone(),
+        }),
+        AgentEvent::ToolExecutionStart { id, name, .. } => Some(Event::ToolStart {
+            id: id.clone(),
+            name: name.clone(),
+        }),
+        AgentEvent::ToolExecutionEnd {
+            id, name, result, ..
+        } => Some(Event::ToolEnd {
+            id: id.clone(),
+            name: name.clone(),
+            result: result.clone(),
+        }),
+        AgentEvent::ToolExecutionUpdate { id, output } => Some(Event::ToolExecutionUpdate {
+            id: id.clone(),
+            output: output.clone(),
+        }),
         AgentEvent::ModelSelect {
-            provider,
-            model_id, ..
+            provider, model_id, ..
         } => Some(Event::ModelSelect {
             provider: provider.clone(),
             model_id: model_id.clone(),
         }),
-        AgentEvent::CompactionStart { reason } => {
-            Some(Event::CompactionStart {
-                reason: reason.clone(),
-            })
-        }
+        AgentEvent::CompactionStart { reason } => Some(Event::CompactionStart {
+            reason: reason.clone(),
+        }),
+        AgentEvent::CompactionEnd { .. } => Some(Event::CompactionEnd),
         AgentEvent::AgentEnd { .. } => Some(Event::AgentEnd),
         AgentEvent::Error(msg) => Some(Event::Error {
             id: None,
