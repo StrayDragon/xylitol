@@ -1,7 +1,9 @@
-//! Auth guidance — user-facing messages for model configuration.
+//! Provider-guidance messages — user-facing text for model configuration.
 //!
-//! Kept minimal: only API-key-based configuration for OpenAI and Anthropic.
-//! OAuth-based login is not supported until after 1.0.0.
+//! Pure CLI-surface presentation (la13): login help, no-model, and
+//! no-API-key messages. Not authentication logic — API-key-based only;
+//! OAuth login is not supported until after 1.0.0. Lives under interactive/cli/
+//! because it is presentation, not agent orchestration.
 
 use crate::core::model::ModelKind;
 

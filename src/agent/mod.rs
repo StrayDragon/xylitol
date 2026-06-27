@@ -1,4 +1,3 @@
-pub mod auth;
 pub mod compaction;
 pub mod facade;
 pub mod model;
