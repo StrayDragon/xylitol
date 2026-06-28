@@ -93,6 +93,11 @@ impl DefaultResourceLoader {
 
     // ── Getters ───────────────────────────────────────────────────────
 
+    /// Get the loaded context files (AGENTS.md, CLAUDE.md).
+    pub fn get_agents_files(&self) -> &[AgentsFile] {
+        &self.context_files
+    }
+
     /// Get loaded prompt templates.
     pub fn get_prompts(&self) -> (&[PromptTemplate], &[ResourceDiagnostic]) {
         (&self.prompt_templates, &self.prompts_diagnostics)
@@ -106,6 +111,16 @@ impl DefaultResourceLoader {
     /// Get loaded themes.
     pub fn get_themes(&self) -> (&[ThemeInfo], &[ResourceDiagnostic]) {
         (&self.themes, &self.themes_diagnostics)
+    }
+
+    /// Get the discovered system prompt content (SYSTEM.md).
+    pub fn get_system_prompt(&self) -> Option<&str> {
+        self.system_prompt.as_deref()
+    }
+
+    /// Get the discovered append system prompt lines (APPEND_SYSTEM.md).
+    pub fn get_append_system_prompt(&self) -> &[String] {
+        &self.append_system_prompt
     }
 
     /// Get all diagnostics aggregated.

@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ip1,"command-enum","protocol MUST define a Command enum covering at minimum Run Cancel SwitchModel SetThinking ListCommands ApproveTool AnswerQuestion SwitchSession GetMessages ExportHtml ExportJsonl and ImportJsonl; every client-to-core message MUST deserialize into this enum.",null,null,null
+  add_requirement,ip8,"session-commands-dispatch","The RPC dispatch MUST implement SwitchSession by validating the target session exists via SessionStore and switching context; GetMessages by returning loaded SessionEntry records; ExportJsonl and ImportJsonl by delegating to AgentSession; stub or string-only implementations MUST NOT be shipped.",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  ip1,"jsonl-commands-in-enum","the Command enum is inspected","ExportJsonl and ImportJsonl variants are checked","both variants are present and deserialize from client messages"
+  ip8,"switch-validates-target","a client sends SwitchSession for a non-existent session id","the RPC dispatch handles it","an error is returned and the active session is NOT changed"
+  ip8,"get-messages-returns-entries","an active session with persisted entries exists","a GetMessages command is dispatched","the loaded SessionEntry records are returned (not a stub error)"
