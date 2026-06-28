@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "server-runtime"
 purpose: "TBD - created by archiving change c260-refactor-domain-architecture. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[8]{req_id,title,statement}:
+requirements[9]{req_id,title,statement}:
   sr1,"server-hosts-agent",server/ MUST assemble infra runtimes and inject them into agent ports at startup; server/ MUST pass the Agent into AppState so route handlers can invoke it.
   sr2,"rest-and-ws","server/ MUST expose protocol/ over REST under a /api/v1 prefix (control commands and state queries) and over WebSocket (streaming events); both MUST speak the protocol::Command and protocol::Event types."
   sr3,"single-instance-lock","server/ MUST acquire a single-instance lock before binding; a second server against the same lock path MUST receive a ServerLockedError."
@@ -11,7 +11,8 @@ requirements[8]{req_id,title,statement}:
   sr7,"lock-file-content","The server lock file MUST contain a JSON payload with port (u16), pid (u32), and hostname (String); the file MUST be deleted on ServerLock drop (graceful shutdown)."
   sr8,"port-retry","If the configured port is busy (EADDRINUSE), the server MUST try port+1 up to PORT_RETRY_LIMIT (10) times and update the lock file with the actual port."
   sr9,"rest-routes-functional","server/ MUST respond to POST /api/v1/session/{id}/run by invoking Agent::run and returning session_id; DELETE /api/v1/session/{id} MUST abort the agent; GET /api/v1/session/{id}/events MUST pull from the journal."
-scenarios[8]{req_id,id,given,when,then}:
+  sr10,"export-io-wiring","The server runtime composition root MUST construct an infra-provided StdExportIo and inject it as Arc<dyn runtime_protocol::export::ExportIo> when assembling the Agent hosted in AppState."
+scenarios[9]{req_id,id,given,when,then}:
   sr1,"agent-in-appstate",the server starts with an Agent configured,a GET /api/v1/healthz returns 200 and POST /api/v1/session/x/run returns a session_id,the Agent is reachable from route handlers
   sr2,"ws-streams-events",a client subscribes over WS to a session,a turn produces Delta events,"the events arrive on the WS as protocol::Event frames"
   sr3,"second-instance-rejected",a server is already running," a second server starts against the same lock path",the second receives ServerLockedError
@@ -20,3 +21,4 @@ scenarios[8]{req_id,id,given,when,then}:
   sr7,"lock-file-json",a server acquires the lock,the lock file is read,it contains a valid JSON with port pid and hostname fields
   sr8,"port-retry-binds",port 8080 is in use by another process,the server starts on port 8080,it retries and binds to 8081 then updates the lock file
   sr9,"run-endpoint-works",a prompt is POSTed to /api/v1/session/x/run,the server processes the prompt,the endpoint returns a 200 with a session_id
+  sr10,"server-injects-export-io",the server runtime assembles the Agent,its constructor arguments are inspected,an Arc<dyn ExportIo> is passed
