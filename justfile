@@ -11,9 +11,11 @@ setup:
 fmt:
     cargo fmt
 
-# Run cargo clippy with strict lints.
+# Run cargo clippy with warnings denied (lib + bins). Tests/integration
+# crates are not linted by this gate (run `cargo clippy --all-targets` to
+# inspect them).
 lint:
-    cargo clippy
+    cargo clippy -- -D warnings
 
 # Run cargo test.
 test:

@@ -5,10 +5,8 @@
 //!
 //! Key functions:
 //! - `build_system_prompt(opts)` — explicit options
-//! - `build_system_prompt_from_loader(loader, tools_opts)` — integrates with ResourceLoader
 
 use crate::agent::tools::ToolRegistry;
-use crate::core::ports::ResourceLoader;
 
 /// Options for building the system prompt.
 #[derive(Debug, Clone, Default)]
@@ -153,52 +151,9 @@ pub(crate) fn collect_tool_snippets(
         .collect()
 }
 
-/// Options for the tools/skills part of prompt construction.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct PromptToolsOpts {
-    pub(crate) custom_prompt: Option<String>,
-    pub(crate) selected_tools: Vec<String>,
-    pub(crate) tool_snippets: Vec<(String, String)>,
-    pub(crate) prompt_guidelines: Vec<String>,
-    pub(crate) append_prompt: Option<String>,
-    pub(crate) cwd: String,
-}
-
-/// Build a system prompt from a ResourceLoader and tools options.
-///
-/// Assembles:
-/// 1. System prompt (SYSTEM.md) from the loader
-/// 2. AGENTS.md/CLAUDE.md context files
-/// 3. APPEND_SYSTEM.md
-/// 4. Active skills
-/// 5. Tools and guidelines
-pub(crate) fn build_system_prompt_from_loader(
-    loader: &dyn ResourceLoader,
-    tools_opts: &PromptToolsOpts,
-) -> String {
-    let opts = SystemPromptOpts {
-        custom_prompt: tools_opts.custom_prompt.clone(),
-        selected_tools: tools_opts.selected_tools.clone(),
-        tool_snippets: tools_opts.tool_snippets.clone(),
-        prompt_guidelines: tools_opts.prompt_guidelines.clone(),
-        append_prompt: tools_opts.append_prompt.clone(),
-        cwd: tools_opts.cwd.clone(),
-        context_files: loader
-            .get_agents_files()
-            .iter()
-            .map(|f| (f.path.to_string_lossy().to_string(), f.content.clone()))
-            .collect(),
-        skills: loader.get_skills().0.to_vec(),
-        system_prompt: loader.get_system_prompt().map(String::from),
-        append_system_prompt: loader.get_append_system_prompt().to_vec(),
-    };
-    build_system_prompt(&opts)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn test_build_basic_prompt() {
@@ -290,26 +245,5 @@ mod tests {
         };
         let prompt = build_system_prompt(&opts);
         assert!(prompt.contains("Extra safety rules"));
-    }
-
-    #[test]
-    fn test_build_from_loader() {
-        use crate::infra::resource::DefaultResourceLoader;
-        use tempfile::TempDir;
-        let tmp = TempDir::new().unwrap();
-        std::fs::write(tmp.path().join("AGENTS.md"), "# Project rules").unwrap();
-
-        let loader = DefaultResourceLoader::new(tmp.path().to_path_buf(), PathBuf::from("/tmp"));
-        let tools_opts = PromptToolsOpts {
-            selected_tools: vec!["read".into()],
-            tool_snippets: vec![("read".into(), "Read files".into())],
-            cwd: tmp.path().to_string_lossy().to_string(),
-            ..Default::default()
-        };
-        let prompt = build_system_prompt_from_loader(&loader, &tools_opts);
-        // Should include project rules from AGENTS.md
-        assert!(prompt.contains("Project rules"));
-        // Should include tools
-        assert!(prompt.contains("read: Read files"));
     }
 }

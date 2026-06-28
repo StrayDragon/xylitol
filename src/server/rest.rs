@@ -225,8 +225,10 @@ async fn handle_ws(socket: WebSocket, session_id: String, state: Arc<AppState>) 
     let (mut sender, mut receiver) = socket.split();
 
     // Wait for Subscribe frame.
+    // Initial 0 is always overwritten by the Subscribe frame's `seq` before
+    // the first `replay_from` read; retained for the borrow checker.
+    #[allow(unused_assignments)]
     let mut last_seq = 0u64;
-    let mut subscribed = false;
 
     while let Some(msg) = receiver.next().await {
         let msg = match msg {
@@ -243,7 +245,6 @@ async fn handle_ws(socket: WebSocket, session_id: String, state: Arc<AppState>) 
         match frame {
             ClientFrame::Subscribe { last_seq: seq, .. } => {
                 last_seq = seq;
-                subscribed = true;
 
                 // Send ServerHello + Ack
                 let hello = serde_json::to_string(&ServerFrame::ServerHello {

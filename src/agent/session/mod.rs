@@ -32,7 +32,6 @@ use crate::agent::prompt::skills::SkillManager;
 use crate::agent::prompt::templates::{PromptTemplate, is_template_line, parse_template_line};
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::MessageQueue;
-use crate::agent::runtime::stdout_guard;
 use crate::agent::tools::ToolRegistry;
 use crate::core::bash::parse_bang_prefix;
 use crate::core::ports::{BashExecutor, SandboxEngine, SandboxVerdict, TrustStore, XyModel};
@@ -110,11 +109,7 @@ impl AgentSession {
         compaction_threshold: f64,
         cwd: String,
         compaction_settings: Option<CompactionSettings>,
-        model_builder: std::sync::Arc<
-            dyn Fn(&crate::core::model::ModelConfig) -> Result<Arc<dyn XyModel>, String>
-                + Send
-                + Sync,
-        >,
+        model_builder: crate::core::ports::ModelBuilder,
         sandbox: Arc<dyn SandboxEngine>,
         bash_executor: Arc<dyn BashExecutor>,
     ) -> Self {
@@ -425,25 +420,6 @@ impl AgentSession {
         &self.cwd
     }
 
-    // ── OutputGuard ──────────────────────────────────────────
-
-    /// Enter print mode: take over stdout so agent/tool output is suppressed.
-    /// Returns a guard that restores stdout when dropped.
-    #[allow(dead_code)]
-    pub(crate) fn enter_print_mode(&self) -> stdout_guard::OutputGuard {
-        stdout_guard::take_over_stdout()
-    }
-
-    /// Leave print mode: restore stdout.
-    pub fn leave_print_mode(&self) {
-        stdout_guard::restore_stdout();
-    }
-
-    /// Check if stdout is currently taken over (print mode active).
-    pub fn is_in_print_mode(&self) -> bool {
-        stdout_guard::is_stdout_taken_over()
-    }
-
     // ── Compaction ───────────────────────────────────────────────
 
     /// Compact the current session, summarizing old entries via LLM.
@@ -672,7 +648,7 @@ impl AgentSession {
         self.abort_bash();
 
         // Clear queues
-        self.message_queue.clear();
+        self.message_queue.drain();
     }
 
     /// Abort the current operation.

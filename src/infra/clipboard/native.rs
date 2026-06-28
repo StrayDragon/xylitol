@@ -127,17 +127,6 @@ fn copy_linux(_text: &str) -> ClipboardResult {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/// Check if a binary is available on PATH.
-fn tool_exists(name: &str) -> bool {
-    Command::new("which")
-        .arg(name)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
 /// Pipe text to a command via stdin and wait for it to complete.
 fn pipe_to_command(cmd: &str, args: &[&str], text: &str) -> ClipboardResult {
     use std::io::Write;
@@ -204,11 +193,6 @@ mod tests {
     #[test]
     fn test_clipboard_result_copied() {
         assert_eq!(ClipboardResult::Copied, ClipboardResult::Copied);
-    }
-
-    #[test]
-    fn test_tool_exists_on_nonexistent() {
-        assert!(!tool_exists("this-command-definitely-does-not-exist-12345"));
     }
 
     #[test]
