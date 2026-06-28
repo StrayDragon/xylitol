@@ -105,6 +105,8 @@ impl AgentSession {
         store: Arc<dyn SessionStore>,
         sink: Arc<dyn EventSink>,
         system_prompt: Option<String>,
+        context_files: Vec<(String, String)>,
+        append_system_prompt: Vec<String>,
         max_iterations: u32,
         compaction_threshold: f64,
         cwd: String,
@@ -118,7 +120,7 @@ impl AgentSession {
             tool_registry,
             active_tools: Vec::new(),
             session_io: SessionIO::new(store.clone()),
-            system_prompt,
+            system_prompt: system_prompt.clone(),
             session_id: None,
             max_iterations,
             compaction_orchestrator: CompactionOrchestrator::new(
@@ -128,6 +130,9 @@ impl AgentSession {
             cwd: cwd.clone(),
             prompt_opts: SystemPromptOpts {
                 cwd,
+                system_prompt,
+                context_files,
+                append_system_prompt,
                 ..Default::default()
             },
             message_queue: MessageQueue::new(),
@@ -342,20 +347,6 @@ impl AgentSession {
             }
             // Skill not found: pass through as-is
             return PromptResult::PassThrough(input.to_string());
-        }
-
-        // Check for /command
-        if let Some(cmd_name) = crate::agent::prompt::commands::is_slash_command(input) {
-            let all_cmds = self.get_commands();
-            if crate::agent::prompt::commands::find_command(cmd_name, &all_cmds).is_some() {
-                let args = crate::agent::prompt::commands::get_command_args(input)
-                    .unwrap_or("")
-                    .to_string();
-                return PromptResult::Handled {
-                    command: cmd_name.to_string(),
-                    args,
-                };
-            }
         }
 
         // Normal pass-through
@@ -788,6 +779,8 @@ mod tests {
             store,
             sink,
             Some("you are helpful".into()),
+            Vec::new(),
+            Vec::new(),
             50,
             0.8,
             ".".into(),

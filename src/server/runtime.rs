@@ -119,6 +119,10 @@ pub async fn start(
         store,
         sink,
         config.system_prompt,
+        // Server mode: no AGENTS.md context_files / append_system_prompt
+        // wired (server is headless; resource discovery is the caller's job).
+        Vec::new(),
+        Vec::new(),
         config.max_iterations,
         config.compaction_threshold,
         cwd,

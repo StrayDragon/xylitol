@@ -70,6 +70,17 @@ pub enum Command {
         #[serde(default)]
         output_path: Option<String>,
     },
+    ExportJsonl {
+        #[serde(default)]
+        id: Option<String>,
+        #[serde(default)]
+        output_path: Option<String>,
+    },
+    ImportJsonl {
+        #[serde(default)]
+        id: Option<String>,
+        input_path: String,
+    },
     SwitchSession {
         #[serde(default)]
         id: Option<String>,
@@ -130,6 +141,8 @@ impl Command {
             | Command::Compact { id }
             | Command::GetSessionStats { id }
             | Command::ExportHtml { id, .. }
+            | Command::ExportJsonl { id, .. }
+            | Command::ImportJsonl { id, .. }
             | Command::SwitchSession { id, .. }
             | Command::Fork { id, .. }
             | Command::GetMessages { id }

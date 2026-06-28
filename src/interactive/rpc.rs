@@ -47,6 +47,8 @@ struct RpcState {
     session_id: String,
     cwd: String,
     system_prompt: Option<String>,
+    context_files: Vec<(String, String)>,
+    append_system_prompt: Vec<String>,
     max_iterations: u32,
     compaction_threshold: f64,
     compaction_settings: CompactionSettings,
@@ -77,6 +79,8 @@ impl RpcState {
             store,
             sink,
             self.system_prompt.clone(),
+            self.context_files.clone(),
+            self.append_system_prompt.clone(),
             self.max_iterations,
             self.compaction_threshold,
             self.cwd.clone(),
@@ -163,6 +167,8 @@ pub async fn run(
     model_registry: ModelRegistry,
     session_mgr: SessionManager,
     system_prompt: Option<String>,
+    context_files: Vec<(String, String)>,
+    append_system_prompt: Vec<String>,
     max_iterations: u32,
     compaction_threshold: f64,
     cwd: String,
@@ -178,6 +184,8 @@ pub async fn run(
         session_id: session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
         cwd,
         system_prompt,
+        context_files,
+        append_system_prompt,
         max_iterations,
         compaction_threshold,
         compaction_settings: compaction_settings.unwrap_or_default(),
@@ -247,6 +255,8 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
         | Command::Compact { id, .. }
         | Command::GetSessionStats { id, .. }
         | Command::ExportHtml { id, .. }
+        | Command::ExportJsonl { id, .. }
+        | Command::ImportJsonl { id, .. }
         | Command::SwitchSession { id, .. }
         | Command::Fork { id, .. }
         | Command::GetMessages { id, .. }
@@ -465,12 +475,65 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
                 Err(e) => emit(&Event::Error { id, message: e }),
             }
         }
+        Command::ExportJsonl { output_path, .. } => {
+            let mut s = state.lock().await;
+            let agent = match s.ensure_agent() {
+                Ok(a) => a,
+                Err(e) => {
+                    emit(&Event::Error { id, message: e });
+                    return;
+                }
+            };
+            let path = output_path
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("export.jsonl"));
+            match agent.session_mut().export_to_jsonl(&path).await {
+                Ok(_) => emit(&Event::Response {
+                    id,
+                    payload: Some(serde_json::json!({"path": path.to_string_lossy()})),
+                }),
+                Err(e) => emit(&Event::Error { id, message: e }),
+            }
+        }
+        Command::ImportJsonl { input_path, .. } => {
+            let mut s = state.lock().await;
+            let agent = match s.ensure_agent() {
+                Ok(a) => a,
+                Err(e) => {
+                    emit(&Event::Error { id, message: e });
+                    return;
+                }
+            };
+            let path = PathBuf::from(&input_path);
+            match agent.session_mut().import_from_jsonl(&path).await {
+                Ok(new_id) => emit(&Event::Response {
+                    id,
+                    payload: Some(serde_json::json!({"new_session": new_id})),
+                }),
+                Err(e) => emit(&Event::Error { id, message: e }),
+            }
+        }
         Command::SwitchSession { session_path, .. } => {
             let mut s = state.lock().await;
-            s.session_id = session_path.clone();
+            // Derive session id from path (file stem), validate existence.
+            let new_id = std::path::Path::new(&session_path)
+                .file_stem()
+                .and_then(|st| st.to_str())
+                .unwrap_or(&session_path)
+                .to_string();
+            if !s.session_mgr.exists(&new_id) {
+                emit(&Event::Error {
+                    id,
+                    message: format!("session not found: {new_id}"),
+                });
+                return;
+            }
+            // Switching session_id invalidates the cached agent (cache_is_valid
+            // compares against session_id), so the next ensure_agent rebuilds.
+            s.session_id = new_id.clone();
             emit(&Event::Response {
                 id,
-                payload: Some(serde_json::json!({"session": session_path})),
+                payload: Some(serde_json::json!({"session": new_id})),
             });
         }
         Command::Fork { entry_id, .. } => {
@@ -491,12 +554,17 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
             }
         }
         Command::GetMessages { .. } => {
-            let _s = state.lock().await;
-            // Stub: session manager can load entries.
-            emit(&Event::Error {
-                id,
-                message: "get_messages not yet implemented in RPC".into(),
-            });
+            let s = state.lock().await;
+            match s.session_mgr.load_entries(&s.session_id).await {
+                Ok(entries) => emit(&Event::Response {
+                    id,
+                    payload: Some(serde_json::json!({
+                        "session_id": s.session_id,
+                        "messages": entries,
+                    })),
+                }),
+                Err(e) => emit(&Event::Error { id, message: e }),
+            }
         }
         Command::GetCommands { .. } => {
             let mut s = state.lock().await;
@@ -657,6 +725,8 @@ mod tests {
             session_id: "test-session".into(),
             cwd: ".".into(),
             system_prompt: None,
+            context_files: Vec::new(),
+            append_system_prompt: Vec::new(),
             max_iterations: 50,
             compaction_threshold: 0.8,
             compaction_settings: CompactionSettings::default(),

@@ -98,36 +98,6 @@ pub(crate) fn get_all_commands(extensions: &[SlashCommandInfo]) -> Vec<SlashComm
     all
 }
 
-/// Check if a line starts with a slash command.
-///
-/// Returns `Some(command_name)` if detected, stripping the leading `/`.
-/// Excludes `/template:` (handled separately by the template system) and
-/// `!`/`!!` lines (handled by bash executor).
-pub(crate) fn is_slash_command(line: &str) -> Option<&str> {
-    let line = line.trim();
-    if !line.starts_with('/') {
-        return None;
-    }
-    // Exclude `/template:` which is handled separately
-    if line.starts_with("/template:") {
-        return None;
-    }
-    // Extract command name (up to first space or end)
-    let cmd = &line[1..]; // skip /
-    let name = cmd.split_whitespace().next().unwrap_or(cmd);
-    Some(name)
-}
-
-/// Get the args part of a slash command line (everything after the command name).
-pub(crate) fn get_command_args(line: &str) -> Option<&str> {
-    let line = line.trim();
-    let rest = line.strip_prefix('/')?;
-    match rest.find(char::is_whitespace) {
-        Some(pos) => Some(rest[pos + 1..].trim()),
-        None => Some(""),
-    }
-}
-
 /// Find a command by name (case-insensitive).
 pub(crate) fn find_command<'a>(
     name: &str,
@@ -152,39 +122,6 @@ mod tests {
         assert!(names.contains(&"reload"));
         assert!(names.contains(&"quit"));
         assert!(!names.contains(&"stats"));
-    }
-
-    #[test]
-    fn test_is_slash_command_detects() {
-        assert_eq!(is_slash_command("/model"), Some("model"));
-        assert_eq!(is_slash_command("/compact"), Some("compact"));
-        assert_eq!(is_slash_command("/model gpt-4o"), Some("model"));
-    }
-
-    #[test]
-    fn test_is_slash_command_excludes_template() {
-        assert_eq!(is_slash_command("/template:review"), None);
-    }
-
-    #[test]
-    fn test_is_slash_command_normal_text() {
-        assert_eq!(is_slash_command("hello world"), None);
-        assert_eq!(is_slash_command("not a /command"), None);
-    }
-
-    #[test]
-    fn test_get_command_args() {
-        assert_eq!(get_command_args("/model gpt-4o"), Some("gpt-4o"));
-        assert_eq!(get_command_args("/model"), Some(""));
-        assert_eq!(get_command_args("hello"), None);
-    }
-
-    #[test]
-    fn test_find_command_case_insensitive() {
-        let cmds = get_all_commands(&[]);
-        assert!(find_command("MODEL", &cmds).is_some());
-        assert!(find_command("Model", &cmds).is_some());
-        assert!(find_command("nonexistent", &cmds).is_none());
     }
 
     #[test]
