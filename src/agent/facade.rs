@@ -57,13 +57,7 @@ impl Agent {
         compaction_threshold: f64,
         cwd: String,
         compaction_settings: Option<CompactionSettings>,
-        model_builder: std::sync::Arc<
-            dyn Fn(
-                    &crate::core::model::ModelConfig,
-                ) -> Result<Arc<dyn crate::core::ports::XyModel>, String>
-                + Send
-                + Sync,
-        >,
+        model_builder: crate::core::ports::ModelBuilder,
         sandbox: Arc<dyn crate::core::ports::SandboxEngine>,
         bash_executor: Arc<dyn BashExecutor>,
     ) -> Self {

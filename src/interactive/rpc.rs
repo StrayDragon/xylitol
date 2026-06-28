@@ -158,6 +158,7 @@ impl RpcState {
 
 // ── Main loop ─────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     model_registry: ModelRegistry,
     session_mgr: SessionManager,

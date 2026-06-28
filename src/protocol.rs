@@ -229,7 +229,9 @@ pub enum Event {
 /// Error codes for REST envelope responses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ErrorCode {
+    #[default]
     Ok,
     BadRequest,
     NotFound,
@@ -237,12 +239,6 @@ pub enum ErrorCode {
     SessionNotFound,
     InternalError,
     Timeout,
-}
-
-impl Default for ErrorCode {
-    fn default() -> Self {
-        Self::Ok
-    }
 }
 
 /// Uniform REST response envelope.

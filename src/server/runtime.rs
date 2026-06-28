@@ -28,6 +28,10 @@ use crate::server::ws::{EventJournal, ReverseRpcGateway};
 /// Handle to a running server. Dropping this triggers graceful shutdown.
 pub struct RunningServer {
     cancel: CancellationToken,
+    /// Single-instance lock; held for the struct's lifetime so the OS lock
+    /// stays acquired, and released when `RunningServer` is dropped. Never
+    /// read directly.
+    #[allow(dead_code)]
     lock: Option<ServerLock>,
 }
 
