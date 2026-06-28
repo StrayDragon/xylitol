@@ -272,10 +272,13 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let resolved_profile = app_config
         .as_ref()
         .and_then(|cfg| cfg.resolve_default_profile().ok());
-    let system_prompt = resolved_profile
+    // System prompt precedence: loader's SYSTEM.md (from resource discovery
+    // below) > config profile's system_prompt > None (let build_system_prompt
+    // supply its built-in default). The hardcoded "You are a helpful AI
+    // assistant." fallback was removed in c280 in favor of the loader path.
+    let config_system_prompt = resolved_profile
         .as_ref()
-        .and_then(|p| p.system_prompt.clone())
-        .unwrap_or_else(|| "You are a helpful AI assistant.".into());
+        .and_then(|p| p.system_prompt.clone());
 
     let max_iterations = resolved_profile
         .as_ref()
@@ -326,7 +329,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Each becomes a /template:name command after the session is built.
     // When untrusted, point cwd at a throwaway dir so no project `.xylitol/`
     // resources are discovered (spec t5 gate).
-    let discovered_templates = {
+    //
+    // The same loader also supplies the system-prompt context (AGENTS.md /
+    // CLAUDE.md context files, SYSTEM.md, APPEND_SYSTEM.md) wired into the
+    // agent's prompt_opts (c280).
+    let (discovered_templates, context_files, loader_system_prompt, append_system_prompt) = {
         let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
         let loader_cwd = if project_trusted {
             std::path::PathBuf::from(&cwd)
@@ -336,7 +343,15 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             std::env::temp_dir()
         };
         let loader = crate::infra::resource::DefaultResourceLoader::new(loader_cwd, agent_dir);
-        loader.get_prompts().0.to_vec()
+        let templates = loader.get_prompts().0.to_vec();
+        let ctx: Vec<(String, String)> = loader
+            .get_agents_files()
+            .iter()
+            .map(|f| (f.path.to_string_lossy().into_owned(), f.content.clone()))
+            .collect();
+        let sys = loader.get_system_prompt().map(String::from);
+        let append = loader.get_append_system_prompt().to_vec();
+        (templates, ctx, sys, append)
     };
 
     // ── Step 3b2: load compaction settings (settings.json) ───────
@@ -372,12 +387,17 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .map(|sc| crate::infra::sandbox::build_engine(sc))
     });
 
-    // ── Step 4: RPC mode ────────────────────────────────────────
+    // ── Step 3c1: merge system-prompt sources (loader SYSTEM.md > config) ──
+    let system_prompt = loader_system_prompt.or(config_system_prompt);
+
+    // ── Step 4: RPC mode ─────────────────────────────────────────
     if args.rpc {
         return crate::interactive::rpc::run(
             model_registry,
             session_mgr,
-            Some(system_prompt),
+            system_prompt,
+            context_files,
+            append_system_prompt,
             max_iterations,
             0.8,
             cwd,
@@ -405,7 +425,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         tool_registry,
         store,
         sink,
-        Some(system_prompt),
+        system_prompt,
+        context_files,
+        append_system_prompt,
         max_iterations,
         0.8,
         cwd,

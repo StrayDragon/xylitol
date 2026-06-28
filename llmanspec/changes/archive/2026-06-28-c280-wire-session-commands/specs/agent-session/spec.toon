@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,a1,"agent-session","System MUST provide AgentSession encapsulating prompt to model to tools to loop with full event stream, holding ONLY orchestration state; the system prompt MUST be assembled from injected context (AGENTS.md files, configured system prompt, append prompts) supplied by the composition root, NOT from a hardcoded fallback.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  a1,"prompt-from-loader","a project containing AGENTS.md and the CLI composition root constructs the agent","the agent builds its system prompt","the system prompt MUST include the AGENTS.md content and MUST NOT default to a hardcoded placeholder when the loader provides values"
