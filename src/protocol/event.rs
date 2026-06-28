@@ -46,7 +46,7 @@ pub enum Event {
         session_id: String,
         seq: u64,
     },
-    XyBashResult {
+    BashResult {
         #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
         output: String,
@@ -85,58 +85,65 @@ pub enum Event {
     CompactionEnd,
 }
 
-impl From<&XyEvent> for Event {
-    fn from(event: &XyEvent) -> Self {
-        match event {
-            XyEvent::TextDelta(text) => Event::TextDelta { text: text.clone() },
-            XyEvent::TurnStart { turn_index } => Event::TurnStart {
+impl XyEvent {
+    /// Convert a domain lifecycle event to its wire-protocol representation.
+    ///
+    /// Returns `None` for internal-only events that should not cross the
+    /// client boundary (queue updates, auto-retry bookkeeping, etc.).
+    pub fn to_wire_event(&self) -> Option<Event> {
+        match self {
+            XyEvent::TextDelta(text) => Some(Event::TextDelta { text: text.clone() }),
+            XyEvent::TurnStart { turn_index } => Some(Event::TurnStart {
                 turn_index: *turn_index,
-            },
-            XyEvent::TurnEnd { turn_index } => Event::TurnEnd {
+            }),
+            XyEvent::TurnEnd { turn_index } => Some(Event::TurnEnd {
                 turn_index: *turn_index,
-            },
-            XyEvent::MessageStart { role, .. } => Event::MessageStart { role: role.clone() },
-            XyEvent::MessageEnd { role, .. } => Event::MessageEnd { role: role.clone() },
-            XyEvent::MessageUpdate { text, thinking, .. } => Event::MessageUpdate {
+            }),
+            XyEvent::MessageStart { role, .. } => Some(Event::MessageStart { role: role.clone() }),
+            XyEvent::MessageEnd { role, .. } => Some(Event::MessageEnd { role: role.clone() }),
+            XyEvent::MessageUpdate { text, thinking, .. } => Some(Event::MessageUpdate {
                 text: text.clone(),
                 thinking: thinking.clone(),
-            },
-            XyEvent::ThinkingDelta(_) => Event::MessageUpdate {
+            }),
+            XyEvent::ThinkingDelta(_) => Some(Event::MessageUpdate {
                 text: String::new(),
                 thinking: None,
-            },
-            XyEvent::ToolExecutionStart { id, name, .. } => Event::ToolStart {
+            }),
+            XyEvent::ToolExecutionStart { id, name, .. } => Some(Event::ToolStart {
                 id: id.clone(),
                 name: name.clone(),
-            },
+            }),
             XyEvent::ToolExecutionEnd {
                 id, name, result, ..
-            } => Event::ToolEnd {
+            } => Some(Event::ToolEnd {
                 id: id.clone(),
                 name: name.clone(),
                 result: result.clone(),
-            },
-            XyEvent::ToolExecutionUpdate { id, output } => Event::ToolExecutionUpdate {
+            }),
+            XyEvent::ToolExecutionUpdate { id, output } => Some(Event::ToolExecutionUpdate {
                 id: id.clone(),
                 output: output.clone(),
-            },
-            XyEvent::ModelSelect { provider, model_id } => Event::ModelSelect {
+            }),
+            XyEvent::ModelSelect { provider, model_id } => Some(Event::ModelSelect {
                 provider: provider.clone(),
                 model_id: model_id.clone(),
-            },
-            XyEvent::CompactionStart { reason } => Event::CompactionStart {
+            }),
+            XyEvent::CompactionStart { reason } => Some(Event::CompactionStart {
                 reason: reason.clone(),
-            },
-            XyEvent::CompactionEnd { .. } => Event::CompactionEnd,
-            XyEvent::AgentEnd { .. } => Event::AgentEnd,
-            XyEvent::Error(msg) => Event::Error {
+            }),
+            XyEvent::CompactionEnd { .. } => Some(Event::CompactionEnd),
+            XyEvent::AgentEnd { .. } => Some(Event::AgentEnd),
+            XyEvent::Error(msg) => Some(Event::Error {
                 id: None,
                 message: msg.clone(),
-            },
-            _ => Event::Response {
-                id: None,
-                payload: None,
-            },
+            }),
+            // Internal-only lifecycle events: not exposed on the wire.
+            XyEvent::AgentStart { .. }
+            | XyEvent::QueueUpdate { .. }
+            | XyEvent::AutoRetryStart { .. }
+            | XyEvent::AutoRetryEnd { .. }
+            | XyEvent::SessionInfoChanged { .. }
+            | XyEvent::ThinkingLevelChanged { .. } => None,
         }
     }
 }
