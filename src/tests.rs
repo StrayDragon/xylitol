@@ -19,16 +19,20 @@ pub mod support;
 //      cites a follow-up change (c276/c277/c278) that will remove it. Any NEW
 //      violation not in the allowlist fails the build. The allowlist shrinks as
 //      those follow-ups land, tightening the guard toward zero exemptions.
-//   3. app/ (except the composition root + driver) must not import
-//      crate::agent or crate::infra types.
+//   3. app/ (except the documented seams: the cross-surface seam layer
+//      app/core/{composition,driver}.rs and the composition-root surfaces
+//      cli/, server/, rpc.rs) must not import crate::agent or crate::infra types.
 //
 // Known app exceptions (composition roots or documented seams):
-//   - app/cli/ = composition root (wires ports + Agent)
-//   - app/driver.rs = Driver trait + InProcessDriver (must NOT import crate::infra)
+//   - app/cli/ = composition root (wires ports + Agent); also hosts print.rs,
+//     the CLI default render sub-mode (moved from top-level app/ in c310)
 //   - app/rpc.rs = builds Agent via composition
-//   - app/print.rs = imports XyEvent for stream matching
-//   - app/server/ = composition root (hosts Agent + infra runtimes)
-//   - app/composition.rs = shared Agent construction
+//   - app/server/ = composition root (hosts Agent + infra runtimes) + server
+//     lifecycle (subcommand.rs: Run/Install/Stop, moved from cli in c310)
+//   - app/core/composition.rs = shared Agent construction (HC-1 root: the only
+//     module permitted to import both agent and infra)
+//   - app/core/driver.rs = Driver trait + InProcessDriver (must NOT import
+//     crate::infra per la11)
 //   - app/tui/diff_review/ = review engine (infra config import)
 
 #[cfg(test)]
@@ -191,17 +195,17 @@ mod arch_guard {
         // crate::agent or crate::infra types directly.
         //
         // Scan results are paths relative to src/app/.
-        // Allowed composition roots:
-        //   cli/     — CLI entry point
-        //   server/  — HTTP/WebSocket server entry point
+        // Composition-root surfaces (may import agent+infra):
+        //   cli/     — CLI entry point (also hosts print.rs, the CLI render mode)
+        //   server/  — HTTP/WebSocket server + lifecycle (subcommand.rs)
         //   rpc.rs   — stdio RPC transport
-        //   composition.rs — shared Agent construction
-        // Documented seams:
-        //   driver.rs — Driver trait + InProcessDriver
-        //   print.rs  — imports XyEvent for stream matching
+        // Cross-surface seams under app/core/ (the privileged seam layer):
+        //   core/composition.rs — shared Agent construction (agent+infra root)
+        //   core/driver.rs      — Driver trait + InProcessDriver (agent-only)
+        // Other documented seam:
         //   tui/diff_review/ — review engine (infra config import)
-        let exempt_prefixes = ["cli/", "server/", "tui/diff_review/"];
-        let exempt_files = ["driver.rs", "rpc.rs", "composition.rs", "print.rs"];
+        let exempt_prefixes = ["cli/", "server/", "core/", "tui/diff_review/"];
+        let exempt_files = ["rpc.rs"];
 
         let mut violations = Vec::new();
         for needle in ["crate::agent", "crate::infra"] {
@@ -222,14 +226,14 @@ mod arch_guard {
 
     #[test]
     fn app_driver_does_not_import_infra() {
-        // app/driver.rs is the Driver trait definition + InProcessDriver.
+        // app/core/driver.rs is the Driver trait definition + InProcessDriver.
         // It must depend only on agent::facade and runtime_protocol, never
         // on concrete infra types (the RemoteDriver half is feature-gated
         // under `server` and lives in the same file only for locality).
-        let hits = scan("src/app/driver.rs", "crate::infra");
+        let hits = scan("src/app/core/driver.rs", "crate::infra");
         assert!(
             hits.is_empty(),
-            "app/driver.rs must not import crate::infra — found violations:\n  {}",
+            "app/core/driver.rs must not import crate::infra — found violations:\n  {}",
             hits.join("\n  "),
         );
     }

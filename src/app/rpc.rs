@@ -24,7 +24,7 @@ use tokio_util::sync::CancellationToken;
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::facade::{Agent, XyEvent};
 use crate::agent::model::registry::ModelRegistry;
-use crate::app::composition::{BuildAgentOptions, build_agent};
+use crate::app::core::composition::{BuildAgentOptions, build_agent};
 use crate::domain::types::{ThinkingLevel, XyModelMeta};
 use crate::infra::sandbox::XySandboxEngine;
 use crate::infra::session::SessionManager;
