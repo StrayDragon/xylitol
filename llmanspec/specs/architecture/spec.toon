@@ -2,13 +2,15 @@ kind: llman.sdd.spec
 name: architecture
 purpose: "TBD - created by archiving change c240-consolidate-architecture. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[4]{req_id,title,statement}:
+requirements[5]{req_id,title,statement}:
   ar01,清除 pi 文档引用,All source files in src/ MUST NOT reference pi coding agent or its TypeScript modules in doc comments. References to pi's design rationale MUST be replaced with independent descriptions of the module's actual responsibilities.
   ar02,组件粒度边界（修订：补上限）,"Components with fewer than 100 lines or 5 methods and no behavioral logic MUST be inlined into their parent struct. Conversely, inlined blocks that exceed approximately 100 lines, have independent behavioral logic, and are conceptually cohesive MUST be extracted as named collaborator objects (per agent-session.as30). The AgentSession facade MUST NOT grow unboundedly as a single struct or single file."
   ar03,宏系统评估文档,"The project MUST produce docs/architecture/macro-registration.md analyzing the feasibility and ROI of replacing runtime registration (tools, commands, providers) with Rust proc-macro or declarative macro alternatives. This is a design evaluation only — no macro code shall be produced in this change."
   ar04,"module-map-domain-runtime-protocol","System MUST update the module map so that src/domain/ hosts pure domain vocabulary (data types and errors with zero crate-internal dependencies), src/runtime_protocol/ hosts the agent↔infra runtime protocol contracts (traits) and their signature types, and src/agent/ hosts orchestration mechanisms that were previously misplaced in core/."
-scenarios[4]{req_id,id,given,when,then}:
+  ar05,"app-layer-module-map","System MUST update the module map so that src/app/ hosts all user-facing entry points (cli/, rpc.rs, print.rs, server/, tui/, gui.rs), src/protocol/ hosts the client↔core wire vocabulary split into command.rs/event.rs/transport.rs, and src/app/composition.rs centralizes Agent construction."
+scenarios[5]{req_id,id,given,when,then}:
   ar01,"pi-refs-cleared",src/ files exist with 'Aligns with pi' comments,running rg 'Aligns with pi' src/,zero matches found
   ar02,"upper-bound-extraction","AgentSession contains an inlined block exceeding ~100 lines with independent behavioral logic (e.g. auto-retry state machine, bash-exec handling, session export)",the change is applied,that block is extracted into a named collaborator object and AgentSession composes it rather than inlining the logic
   ar03,"macro-eval-doc","llmanspec/changes/c240-consolidate-architecture/ is open",running the macro evaluation task,"docs/architecture/macro-registration.md exists with ROI analysis for #[tool], #[command], #[provider]"
   ar04,"domain-runtime-protocol-exist",the source tree is inspected after the change,src/domain and src/runtime_protocol directories exist,no domain vocabulary remains under src/runtime_protocol and no trait contracts remain under src/domain
+  ar05,"app-layer-module-map-exists","",the source tree is inspected after the change,"src/app exists, src/interactive and src/server no longer exist, and src/protocol is a directory"
