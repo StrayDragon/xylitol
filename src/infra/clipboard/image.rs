@@ -183,17 +183,6 @@ fn read_windows_clipboard_image() -> Result<Option<ClipboardImage>, String> {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/// Pick the first supported image MIME type from a newline-separated list.
-fn pick_image_mime_type(types: &str) -> Result<String, String> {
-    for line in types.lines() {
-        let mt = line.trim();
-        if mt.starts_with("image/") {
-            return Ok(mt.to_string());
-        }
-    }
-    Err("No image MIME type found in clipboard".to_string())
-}
-
 /// Minimal base64 decoder — mirrors the encoder in osc52.rs.
 #[allow(dead_code)]
 fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
@@ -245,18 +234,6 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_pick_image_mime_type_found() {
-        let types = "text/plain\nimage/png\napplication/json\n";
-        assert_eq!(pick_image_mime_type(types).unwrap(), "image/png");
-    }
-
-    #[test]
-    fn test_pick_image_mime_type_none() {
-        let types = "text/plain\napplication/json\n";
-        assert!(pick_image_mime_type(types).is_err());
-    }
 
     #[test]
     fn test_base64_decode_roundtrip() {

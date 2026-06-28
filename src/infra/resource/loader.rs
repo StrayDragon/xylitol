@@ -83,25 +83,6 @@ impl DefaultResourceLoader {
             .join(".xylitol")
     }
 
-    // ── reload ────────────────────────────────────────────────────────
-
-    /// Reload all resources and return fresh data.
-    /// Diagnostics are cleared and re-populated.
-    pub fn reload(&mut self) {
-        self.context_files.clear();
-        self.prompt_templates.clear();
-        self.skills.clear();
-        self.themes.clear();
-        self.system_prompt = None;
-        self.append_system_prompt.clear();
-        self.context_diagnostics.clear();
-        self.skills_diagnostics.clear();
-        self.prompts_diagnostics.clear();
-        self.themes_diagnostics.clear();
-
-        self.load_all();
-    }
-
     fn load_all(&mut self) {
         self.load_context_files();
         self.load_prompt_templates();
@@ -111,11 +92,6 @@ impl DefaultResourceLoader {
     }
 
     // ── Getters ───────────────────────────────────────────────────────
-
-    /// Get the loaded context files (AGENTS.md, CLAUDE.md).
-    pub fn get_agents_files(&self) -> &[AgentsFile] {
-        &self.context_files
-    }
 
     /// Get loaded prompt templates.
     pub fn get_prompts(&self) -> (&[PromptTemplate], &[ResourceDiagnostic]) {
@@ -130,21 +106,6 @@ impl DefaultResourceLoader {
     /// Get loaded themes.
     pub fn get_themes(&self) -> (&[ThemeInfo], &[ResourceDiagnostic]) {
         (&self.themes, &self.themes_diagnostics)
-    }
-
-    /// Get extensions (placeholder — will be populated in c70).
-    pub fn get_extensions(&self) -> &[String] {
-        &[] // placeholder
-    }
-
-    /// Get the discovered system prompt content.
-    pub fn get_system_prompt(&self) -> Option<&str> {
-        self.system_prompt.as_deref()
-    }
-
-    /// Get the discovered append system prompt content.
-    pub fn get_append_system_prompt(&self) -> &[String] {
-        &self.append_system_prompt
     }
 
     /// Get all diagnostics aggregated.
@@ -519,6 +480,12 @@ impl DefaultResourceLoader {
     }
 }
 
+// ResourceLoader port impl. The trait currently has no `dyn` consumer in
+// production (the loader-based prompt assembly path was never wired into
+// AgentSession.prompt_opts); concrete callers in interactive/resources.rs
+// use inherent methods directly. Kept as a port abstraction for the
+// prompt-assembly wiring planned in c280 (session commands / system prompt).
+#[allow(dead_code)]
 impl ResourceLoader for DefaultResourceLoader {
     fn get_agents_files(&self) -> &[AgentsFile] {
         &self.context_files
@@ -604,15 +571,6 @@ fn parse_skill_frontmatter(content: &str) -> (Option<String>, Option<String>) {
 }
 
 // ── Convenience function ──────────────────────────────────────────────
-
-/// Load project context files from `cwd` and `agent_dir`.
-///
-/// Walks from cwd to root, also checks agent_dir.
-/// Returns `Vec<AgentsFile>` in consistent order (AGENTS.md first).
-pub fn load_project_context_files(cwd: &Path, agent_dir: &Path) -> Vec<AgentsFile> {
-    let loader = DefaultResourceLoader::new(cwd.to_path_buf(), agent_dir.to_path_buf());
-    loader.context_files.clone()
-}
 
 #[cfg(test)]
 mod tests {
@@ -847,25 +805,6 @@ mod tests {
         let (themes, diags) = loader.get_themes();
         assert!(diags.is_empty());
         assert!(themes.is_empty());
-    }
-
-    // ── Reload ─────────────────────────────────────────────────────
-
-    #[test]
-    fn test_reload_detects_new_files() {
-        let tmp = TempDir::new().unwrap();
-        // Initially empty
-        let mut loader =
-            DefaultResourceLoader::new(tmp.path().to_path_buf(), PathBuf::from("/tmp"));
-        assert!(loader.get_agents_files().is_empty());
-
-        // Add an AGENTS.md after initial load
-        std::fs::write(tmp.path().join("AGENTS.md"), "New content after reload").unwrap();
-        loader.reload();
-
-        let files = loader.get_agents_files();
-        assert_eq!(files.len(), 1);
-        assert!(files[0].content.contains("New content after reload"));
     }
 
     #[test]

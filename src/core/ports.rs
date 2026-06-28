@@ -18,6 +18,17 @@ use crate::core::types::{XyChunk, XyToolSchema};
 /// Streaming response from an LLM provider.
 pub type XyStream = Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
 
+/// Factory that builds an [`XyModel`] instance from a [`ModelConfig`].
+///
+/// Supplied by the composition root (HC-1: agent/ must not construct providers
+/// itself). Aliased because the closure signature is repeated across the
+/// agent facade, session, model manager, and composition roots.
+pub type ModelBuilder = std::sync::Arc<
+    dyn Fn(&crate::core::model::ModelConfig) -> Result<std::sync::Arc<dyn XyModel>, String>
+        + Send
+        + Sync,
+>;
+
 /// LLM provider contract.
 ///
 /// Implementations connect to a remote API (OpenAI, Anthropic, etc.) and

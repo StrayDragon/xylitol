@@ -24,17 +24,13 @@ pub struct ModelManager {
     /// Current thinking level (clamped to model capabilities).
     pub(crate) thinking_level: ThinkingLevel,
     /// Injected provider factory (composition-root-supplied).
-    pub(crate) model_builder:
-        Arc<dyn Fn(&ModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync>,
+    pub(crate) model_builder: crate::core::ports::ModelBuilder,
 }
 
 impl ModelManager {
     /// Create a new ModelManager with the given registry, default index, and
     /// injected provider builder.
-    pub fn new(
-        registry: ModelRegistry,
-        model_builder: Arc<dyn Fn(&ModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync>,
-    ) -> Self {
+    pub fn new(registry: ModelRegistry, model_builder: crate::core::ports::ModelBuilder) -> Self {
         Self {
             registry,
             current_index: 0,

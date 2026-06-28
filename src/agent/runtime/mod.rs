@@ -11,7 +11,6 @@ pub mod queue;
 pub mod react;
 pub mod retry;
 pub(crate) mod sandbox_router;
-pub mod stdout_guard;
 
 // Public surface of the loop (AgentEvent/AgentLoop/AgentHooks are `pub`).
 pub use event::{AgentEvent, AgentEventStream};
