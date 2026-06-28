@@ -5,7 +5,7 @@
 use std::io::{self, Write};
 
 use crate::agent::facade::XyEvent;
-use crate::app::driver::Driver;
+use crate::app::driver::{Driver, EventStream};
 use futures::StreamExt;
 
 /// Run the agent in print mode with the given prompt.
@@ -19,6 +19,14 @@ pub(crate) async fn run_print(
     let stdout = io::stdout();
     let mut handle = stdout.lock();
 
+    render_stream(&mut stream, &mut handle).await
+}
+
+/// Render a stream of [`XyEvent`]s to a writer.
+///
+/// Extracted so print-mode event handling can be unit-tested without
+/// capturing the real stdout.
+async fn render_stream<W: Write>(stream: &mut EventStream, writer: &mut W) -> Result<(), String> {
     while let Some(event) = stream.next().await {
         match event {
             XyEvent::TurnStart { turn_index } => {
@@ -34,15 +42,16 @@ pub(crate) async fn run_print(
                 // Silent: don't interrupt the output stream.
             }
             XyEvent::TextDelta(text) => {
-                let _ = write!(handle, "{text}");
-                let _ = handle.flush();
+                let _ = write!(writer, "{text}");
+                let _ = writer.flush();
             }
             XyEvent::ThinkingDelta(_) => {}
-            XyEvent::MessageUpdate { text, .. } => {
-                // Overwrite the current line with the accumulated text
-                // (similar to TextDelta, streamed incrementally).
-                let _ = write!(handle, "{text}");
-                let _ = handle.flush();
+            XyEvent::MessageUpdate { .. } => {
+                // MessageUpdate carries the *accumulated* full message state
+                // (not a delta). In print mode we stream only TextDelta
+                // increments to stdout; writing this variant would repeat
+                // every prefix and produce garbled output like
+                // "HelloHello!Hello! How...".
             }
             XyEvent::ToolExecutionStart { name, .. } => {
                 eprintln!("\n[Tool: {name}]");
@@ -86,6 +95,48 @@ pub(crate) async fn run_print(
             XyEvent::AgentEnd { .. } => break,
         }
     }
-    let _ = writeln!(handle);
+    let _ = writeln!(writer);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::driver::EventStream;
+
+    fn mock_stream(events: Vec<XyEvent>) -> EventStream {
+        Box::pin(futures::stream::iter(events))
+    }
+
+    #[tokio::test]
+    async fn text_delta_only_is_written_once() {
+        let events = vec![
+            XyEvent::TextDelta("Hello".into()),
+            XyEvent::MessageUpdate {
+                text: "Hello".into(),
+                thinking: None,
+                message: None,
+            },
+            XyEvent::TextDelta("!".into()),
+            XyEvent::MessageUpdate {
+                text: "Hello!".into(),
+                thinking: None,
+                message: None,
+            },
+            XyEvent::TextDelta(" How".into()),
+            XyEvent::MessageUpdate {
+                text: "Hello! How".into(),
+                thinking: None,
+                message: None,
+            },
+            XyEvent::AgentEnd { messages: vec![] },
+        ];
+        let mut stream = mock_stream(events);
+        let mut buf: Vec<u8> = Vec::new();
+
+        render_stream(&mut stream, &mut buf).await.unwrap();
+
+        let output = String::from_utf8(buf).unwrap();
+        assert_eq!(output, "Hello! How\n");
+    }
 }
