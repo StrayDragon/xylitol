@@ -27,6 +27,9 @@ pub(crate) async fn run_print(
 /// Extracted so print-mode event handling can be unit-tested without
 /// capturing the real stdout.
 async fn render_stream<W: Write>(stream: &mut EventStream, writer: &mut W) -> Result<(), String> {
+    let mut in_thinking_block = false;
+    let mut thinking_has_tags = false;
+
     while let Some(event) = stream.next().await {
         match event {
             XyEvent::TurnStart { turn_index } => {
@@ -36,16 +39,48 @@ async fn render_stream<W: Write>(stream: &mut EventStream, writer: &mut W) -> Re
                 eprintln!("\n[Turn {turn_index} end]");
             }
             XyEvent::MessageStart { .. } => {
-                // Silent: don't interrupt the output stream.
+                // Reset thinking state for a new assistant message.
+                in_thinking_block = false;
+                thinking_has_tags = false;
             }
             XyEvent::MessageEnd { .. } => {
-                // Silent: don't interrupt the output stream.
+                if in_thinking_block {
+                    if !thinking_has_tags {
+                        let _ = write!(io::stderr(), "</think>");
+                        let _ = io::stderr().flush();
+                    }
+                    in_thinking_block = false;
+                    thinking_has_tags = false;
+                }
             }
             XyEvent::TextDelta(text) => {
+                if in_thinking_block {
+                    if !thinking_has_tags {
+                        let _ = write!(io::stderr(), "</think>");
+                        let _ = io::stderr().flush();
+                    }
+                    in_thinking_block = false;
+                    thinking_has_tags = false;
+                }
                 let _ = write!(writer, "{text}");
                 let _ = writer.flush();
             }
-            XyEvent::ThinkingDelta(_) => {}
+            XyEvent::ThinkingDelta(text) => {
+                if !in_thinking_block {
+                    // Some models (e.g. Qwen with chat-template thinking) emit
+                    // their own <think>...</think> tags inside the reasoning
+                    // stream. If we see a <think> tag, do not wrap the block
+                    // again; otherwise add our own tags so stderr viewers can
+                    // distinguish reasoning from the final answer.
+                    thinking_has_tags = text.contains("<think>");
+                    if !thinking_has_tags {
+                        let _ = write!(io::stderr(), "<think>");
+                    }
+                    in_thinking_block = true;
+                }
+                let _ = write!(io::stderr(), "{text}");
+                let _ = io::stderr().flush();
+            }
             XyEvent::MessageUpdate { .. } => {
                 // MessageUpdate carries the *accumulated* full message state
                 // (not a delta). In print mode we stream only TextDelta
@@ -95,6 +130,10 @@ async fn render_stream<W: Write>(stream: &mut EventStream, writer: &mut W) -> Re
             XyEvent::AgentEnd { .. } => break,
         }
     }
+    if in_thinking_block && !thinking_has_tags {
+        let _ = write!(io::stderr(), "</think>");
+        let _ = io::stderr().flush();
+    }
     let _ = writeln!(writer);
     Ok(())
 }
@@ -138,5 +177,48 @@ mod tests {
 
         let output = String::from_utf8(buf).unwrap();
         assert_eq!(output, "Hello! How\n");
+    }
+
+    #[tokio::test]
+    async fn thinking_delta_does_not_pollute_stdout() {
+        let events = vec![
+            XyEvent::MessageStart {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::ThinkingDelta("I need to ".into()),
+            XyEvent::ThinkingDelta("greet.".into()),
+            XyEvent::TextDelta("Hi".into()),
+            XyEvent::AgentEnd { messages: vec![] },
+        ];
+        let mut stream = mock_stream(events);
+        let mut buf: Vec<u8> = Vec::new();
+
+        render_stream(&mut stream, &mut buf).await.unwrap();
+
+        let output = String::from_utf8(buf).unwrap();
+        assert_eq!(output, "Hi\n");
+    }
+
+    #[tokio::test]
+    async fn thinking_delta_with_embedded_tags_is_not_double_wrapped() {
+        let events = vec![
+            XyEvent::MessageStart {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::ThinkingDelta("<think>".into()),
+            XyEvent::ThinkingDelta("reasoning...".into()),
+            XyEvent::ThinkingDelta("</think>".into()),
+            XyEvent::TextDelta("Hi".into()),
+            XyEvent::AgentEnd { messages: vec![] },
+        ];
+        let mut stream = mock_stream(events);
+        let mut buf: Vec<u8> = Vec::new();
+
+        render_stream(&mut stream, &mut buf).await.unwrap();
+
+        let output = String::from_utf8(buf).unwrap();
+        assert_eq!(output, "Hi\n");
     }
 }
