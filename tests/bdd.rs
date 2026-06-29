@@ -2211,7 +2211,6 @@ async fn test_hook_empty_noop(agent: AgentState) {}
 // ═══════════════════════════════════════════════════════════════════
 
 use xylitol::app::server::lock::{LockInfo, ServerLock, ServerLockedError};
-use xylitol::app::server::port_retry;
 use xylitol::protocol::{Command, Event};
 
 /// Fixture for RPC tests — captures emitted events.
@@ -2290,12 +2289,12 @@ fn handle_rpc_command(cmd: &Command) -> Option<Event> {
     path = "tests/features/rpc.feature",
     name = "Subscribe 命令在 stdio 下被拒绝"
 )]
-fn test_rpc_subscribe_rejected(mut rpc_test: RpcTest) {}
+fn test_rpc_subscribe_rejected(rpc_test: RpcTest) {}
 #[scenario(
     path = "tests/features/rpc.feature",
     name = "ApproveTool 命令在 stdio 下被拒绝"
 )]
-fn test_rpc_approvetool_rejected(mut rpc_test: RpcTest) {}
+fn test_rpc_approvetool_rejected(rpc_test: RpcTest) {}
 
 // ═══════════════════════════════════════════════════════════════════
 // server.feature — Server lifecycle
@@ -2345,7 +2344,7 @@ fn clean_lock(server_test: &mut ServerTest) {
 }
 
 #[when("服务端在空闲端口上启动")]
-fn server_start(mut server_test: &mut ServerTest) {
+fn server_start(server_test: &mut ServerTest) {
     let path = server_test
         .lock_path
         .borrow()
@@ -2365,7 +2364,7 @@ fn server_start(mut server_test: &mut ServerTest) {
 }
 
 #[given("服务端已在运行（锁文件存在）")]
-fn server_running(mut server_test: &mut ServerTest) {
+fn server_running(server_test: &mut ServerTest) {
     let path = server_test
         .lock_path
         .borrow()
@@ -2379,7 +2378,7 @@ fn server_running(mut server_test: &mut ServerTest) {
 }
 
 #[when("第二个服务端启动（相同锁路径）")]
-fn second_server_start(mut server_test: &mut ServerTest) {
+fn second_server_start(server_test: &mut ServerTest) {
     let path = server_test
         .lock_path
         .borrow()
@@ -2427,9 +2426,9 @@ fn second_instance_rejected(server_test: &mut ServerTest) {
     path = "tests/features/server.feature",
     name = "服务端启动并通过健康检查"
 )]
-fn test_server_start_healthz(mut server_test: ServerTest) {}
+fn test_server_start_healthz(server_test: ServerTest) {}
 #[scenario(path = "tests/features/server.feature", name = "第二实例被拒绝")]
-fn test_server_second_instance_rejected(mut server_test: ServerTest) {}
+fn test_server_second_instance_rejected(server_test: ServerTest) {}
 
 // ═══════════════════════════════════════════════════════════════════
 // approval.feature — Reverse RPC tool approval
@@ -2457,31 +2456,31 @@ fn approval_test() -> ApprovalTest {
 }
 
 #[given("服务端和已连接的 WebSocket 客户端")]
-fn server_and_ws_client(mut approval_test: &mut ApprovalTest) {
+fn server_and_ws_client(_approval_test: &mut ApprovalTest) {
     // Gateway initialized in fixture; represents the server side.
     // WS client is implied by the ability to call handle_approve.
 }
 
 #[when("agent 执行需要审批的工具")]
-fn agent_executes_approvable_tool(mut approval_test: &mut ApprovalTest) {
+fn agent_executes_approvable_tool(approval_test: &mut ApprovalTest) {
     // Register a pending call (simulates agent emitting ApprovalRequired).
     approval_test.gateway.register("call-approve-1".into());
 }
 
 #[then("客户端收到带有 call_id 的审批请求")]
-fn client_receives_approval_request(mut approval_test: &mut ApprovalTest) {
+fn client_receives_approval_request(approval_test: &mut ApprovalTest) {
     // The gateway has a pending call registered.
     assert_eq!(approval_test.gateway.pending_count(), 1);
 }
 
 #[when("客户端发送 ApproveTool approved=true")]
-fn client_approves(mut approval_test: &mut ApprovalTest) {
+fn client_approves(approval_test: &mut ApprovalTest) {
     let consumed = approval_test.gateway.handle_approve("call-approve-1", true);
     assert!(consumed, "call_id should be consumed");
 }
 
 #[when("客户端发送 ApproveTool approved=false")]
-fn client_denies(mut approval_test: &mut ApprovalTest) {
+fn client_denies(approval_test: &mut ApprovalTest) {
     let consumed = approval_test
         .gateway
         .handle_approve("call-approve-1", false);
@@ -2489,7 +2488,7 @@ fn client_denies(mut approval_test: &mut ApprovalTest) {
 }
 
 #[then("工具执行继续")]
-fn tool_execution_continues(mut approval_test: &mut ApprovalTest) {
+fn tool_execution_continues(approval_test: &mut ApprovalTest) {
     // Call was consumed; no pending calls remain.
     assert_eq!(approval_test.gateway.pending_count(), 0);
 }
@@ -2498,7 +2497,7 @@ fn tool_execution_continues(mut approval_test: &mut ApprovalTest) {
 fn turn_completes(_approval_test: &mut ApprovalTest) {}
 
 #[then("工具被拒绝")]
-fn tool_denied(mut approval_test: &mut ApprovalTest) {
+fn tool_denied(approval_test: &mut ApprovalTest) {
     assert_eq!(approval_test.gateway.pending_count(), 0);
 }
 
@@ -2507,6 +2506,6 @@ fn turn_continues_without_tool(_approval_test: &mut ApprovalTest) {}
 
 // approval.feature scenarios
 #[scenario(path = "tests/features/approval.feature", name = "工具审批往返")]
-fn test_approval_roundtrip(mut approval_test: ApprovalTest) {}
+fn test_approval_roundtrip(approval_test: ApprovalTest) {}
 #[scenario(path = "tests/features/approval.feature", name = "工具被拒绝")]
-fn test_approval_denied(mut approval_test: ApprovalTest) {}
+fn test_approval_denied(approval_test: ApprovalTest) {}
