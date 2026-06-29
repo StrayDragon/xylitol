@@ -23,8 +23,8 @@ use tokio::sync::Mutex;
 
 use crate::agent::facade::{Agent, AgentEvent};
 use crate::agent::session::ModelRegistry;
+use crate::app::server::ws::{ClientFrame, EventJournal, ReverseRpcGateway, ServerFrame};
 use crate::protocol::{Envelope, ErrorCode, Event};
-use crate::server::ws::{ClientFrame, EventJournal, ReverseRpcGateway, ServerFrame};
 
 // ── Shared application state ───────────────────────────────────────
 

@@ -3,24 +3,24 @@
 //! LLM-Augmented Development Toolkit.
 
 pub mod agent;
+pub mod app;
 pub mod domain;
 pub mod infra;
-pub mod interactive;
 pub mod protocol;
 pub mod runtime_protocol;
-pub mod server;
 
 /// Application entry point.
+#[cfg(feature = "cli")]
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    interactive::cli::run().await
+    app::cli::run().await
 }
 
 /// Run the interactive diff review demo.
 ///
-/// Requires the `ui-review` feature (terminal rendering backend).
-#[cfg(feature = "ui-review")]
+/// Requires the `tui` feature (terminal rendering backend).
+#[cfg(feature = "tui")]
 pub async fn run_review_demo() -> Result<(), String> {
-    interactive::diff_review::run_demo().await
+    app::tui::diff_review::run_demo().await
 }
 
 #[cfg(test)]
