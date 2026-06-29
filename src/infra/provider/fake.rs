@@ -4,10 +4,10 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::core::error::XyError;
-use crate::core::message::AgentMessage;
-use crate::core::ports::{XyModel, XyStream};
-use crate::core::types::{XyChunk, XyFinishReason, XyToolSchema};
+use crate::domain::error::XyError;
+use crate::domain::message::AgentMessage;
+use crate::domain::types::{XyChunk, XyFinishReason, XyToolSchema};
+use crate::runtime_protocol::{XyModel, XyStream};
 
 // ---------------------------------------------------------------------------
 // ScenarioStep

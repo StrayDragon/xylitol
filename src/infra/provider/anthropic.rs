@@ -6,9 +6,9 @@ use futures::Stream;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::Value;
 
-use crate::core::error::XyError;
-use crate::core::ports::{XyModel, XyStream};
-use crate::core::types::{XyChunk, XyFinishReason, XyToolSchema};
+use crate::domain::error::XyError;
+use crate::domain::types::{XyChunk, XyFinishReason, XyToolSchema};
+use crate::runtime_protocol::{XyModel, XyStream};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
@@ -219,7 +219,7 @@ fn anthropic_stream(
 
                         let usage_total = usage_input + usage_output;
                         let usage = if usage_total > 0 {
-                            Some(crate::core::message::Usage {
+                            Some(crate::domain::message::Usage {
                                 input: usage_input,
                                 output: usage_output,
                                 cache_read: 0,
@@ -296,7 +296,7 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
         let output = u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
         let total = input + output;
         if total > 0 {
-            Some(crate::core::message::Usage {
+            Some(crate::domain::message::Usage {
                 input,
                 output,
                 cache_read: 0,
@@ -320,7 +320,7 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
 
 // ── AgentMessage conversion ────────────────────────────────────
 
-use crate::core::message::{AgentMessage, AgentPart};
+use crate::domain::message::{AgentMessage, AgentPart};
 
 /// Convert a slice of [`AgentMessage`] values to Anthropic request body
 /// (returns `(system_prompt, messages)` tuple).
@@ -527,7 +527,7 @@ fn extract_error_message(body: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::message::{AgentMessage, AgentPart};
+    use crate::domain::message::{AgentMessage, AgentPart};
 
     #[test]
     fn convert_user_message() {
@@ -549,7 +549,7 @@ mod tests {
                     arguments: serde_json::json!({"path": "/tmp"}),
                 },
             ],
-            stop_reason: Some(crate::core::message::StopReason::ToolUse),
+            stop_reason: Some(crate::domain::message::StopReason::ToolUse),
             usage: None,
             api: String::new(),
             provider: String::new(),

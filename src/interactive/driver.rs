@@ -15,8 +15,8 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::facade::{Agent, AgentEvent, AgentHooks};
-use crate::core::ports::ToolExecutionMode;
 use crate::protocol::Event as ProtoEvent;
+use crate::runtime_protocol::ToolExecutionMode;
 use crate::server::ws::{ClientFrame, ServerFrame};
 
 /// A stream of [`AgentEvent`] items.

@@ -127,6 +127,16 @@ fn copy_linux(_text: &str) -> ClipboardResult {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
+/// Check whether an executable is available on PATH.
+fn tool_exists(cmd: &str) -> bool {
+    Command::new(cmd)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// Pipe text to a command via stdin and wait for it to complete.
 fn pipe_to_command(cmd: &str, args: &[&str], text: &str) -> ClipboardResult {
     use std::io::Write;

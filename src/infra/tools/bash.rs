@@ -15,8 +15,8 @@ use serde_json::{Value, json};
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::core::error::XyToolError;
-use crate::core::ports::{XyTool, XyToolCtx};
+use crate::domain::error::XyToolError;
+use crate::runtime_protocol::{XyTool, XyToolCtx};
 
 use super::accumulator::OutputAccumulator;
 

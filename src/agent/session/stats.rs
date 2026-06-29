@@ -23,29 +23,29 @@ pub struct ContextUsage {
 pub use crate::agent::compaction::orchestrator::should_compact;
 
 /// Estimate token count from messages using simple heuristic (1 token ≈ 4 chars).
-pub fn estimate_tokens(messages: &[crate::core::message::AgentMessage]) -> u64 {
+pub fn estimate_tokens(messages: &[crate::domain::message::AgentMessage]) -> u64 {
     let mut total = 0u64;
     for msg in messages {
         for part in msg.content() {
             match part {
-                crate::core::message::AgentPart::Text(s)
-                | crate::core::message::AgentPart::Thinking { text: s, .. } => {
+                crate::domain::message::AgentPart::Text(s)
+                | crate::domain::message::AgentPart::Thinking { text: s, .. } => {
                     total += (s.len() as u64).div_ceil(4);
                 }
-                crate::core::message::AgentPart::ToolCall {
+                crate::domain::message::AgentPart::ToolCall {
                     name, arguments, ..
                 } => {
                     total += (name.len() as u64).div_ceil(4);
                     total += (arguments.to_string().len() as u64).div_ceil(4);
                 }
-                crate::core::message::AgentPart::ToolResult { content, .. } => {
+                crate::domain::message::AgentPart::ToolResult { content, .. } => {
                     for inner in content {
-                        if let crate::core::message::AgentPart::Text(s) = inner {
+                        if let crate::domain::message::AgentPart::Text(s) = inner {
                             total += (s.len() as u64).div_ceil(4);
                         }
                     }
                 }
-                crate::core::message::AgentPart::Image(_) => {
+                crate::domain::message::AgentPart::Image(_) => {
                     total += 4800; // image token estimate
                 }
             }

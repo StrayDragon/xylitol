@@ -15,9 +15,8 @@ use crate::agent::model::registry;
 use crate::agent::model::resolver;
 use crate::agent::session::ModelRegistry;
 use crate::agent::tools::ToolRegistry;
-use crate::core::model::{ModelConfig, ModelKind};
-use crate::core::ports::{BashExecutor, EventSink, SessionStore};
-use crate::core::types::ModelMeta;
+use crate::domain::model::{ModelConfig, ModelKind};
+use crate::domain::types::ModelMeta;
 use crate::infra::bash_exec::InfraBashExecutor;
 use crate::infra::config::loader::load_app_config;
 use crate::infra::config::value::InfraSecretResolver;
@@ -26,6 +25,7 @@ use crate::infra::session::SessionManager;
 use crate::infra::timing;
 use crate::interactive::driver::InProcessDriver;
 use crate::interactive::resources::ResourcesAction;
+use crate::runtime_protocol::{BashExecutor, EventSink, ExportIo, SessionStore};
 
 /// Top-level subcommand. When absent, the flat flags/positional below drive
 /// the default print-mode flow (backward compatible).
@@ -131,7 +131,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config_loaded = app_config.is_some();
 
     // ── Step 2: build ModelRegistry ──────────────────────────────
-    let secret_resolver: Arc<dyn crate::core::ports::SecretResolver> =
+    let secret_resolver: Arc<dyn crate::runtime_protocol::SecretResolver> =
         Arc::new(InfraSecretResolver::new());
     let mut model_registry = ModelRegistry::new(secret_resolver);
 
@@ -414,12 +414,13 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let sink: Arc<dyn EventSink> = Arc::new(EventBus::new());
     // HC-1: the model builder and sandbox engine are infra constructs supplied
     // by the composition root (here), not built inside agent/.
-    let model_builder: crate::core::ports::ModelBuilder =
+    let model_builder: crate::runtime_protocol::ModelBuilder =
         Arc::new(crate::infra::provider::factory::build_provider);
-    let sandbox: Arc<dyn crate::core::ports::SandboxEngine> = sandbox_engine
+    let sandbox: Arc<dyn crate::runtime_protocol::SandboxEngine> = sandbox_engine
         .clone()
         .unwrap_or_else(|| crate::infra::sandbox::noop_engine());
     let bash_executor: Arc<dyn BashExecutor> = Arc::new(InfraBashExecutor::new());
+    let export_io: Arc<dyn ExportIo> = Arc::new(crate::infra::export::StdExportIo::new());
     let mut agent = Agent::with_ports(
         model_registry,
         tool_registry,
@@ -435,6 +436,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         model_builder,
         sandbox,
         bash_executor,
+        export_io,
     );
 
     agent

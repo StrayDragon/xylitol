@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,sp1,"sessionstore-impl","infra::session::SessionManager MUST implement runtime_protocol::SessionStore with append, load, and exists methods covering only what the agent loop and compaction call; the full SessionManager surface (fork, navigate, export) MAY remain on the concrete struct for the composition root to use directly.",null,null,null
+  modify_requirement,sp2,"sessionstore-impl","infra::session::SessionManager MUST implement runtime_protocol::SessionStore with load_context, append, and exists covering only what the agent loop and compaction call; the full SessionManager surface (fork/navigate/export) MAY remain on the concrete struct for the interactive composition root.",null,null,null
+  add_requirement,sp3,"export-io-impl","infra/ MUST provide an implementation of runtime_protocol::export::ExportIo (StdExportIo) using tokio::fs for write_text and read_bytes; it MUST be injected into AgentSession by the composition root.",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  sp1,"manager-impls-store",SessionManager is checked against SessionStore,the impl is inspected,it implements the trait and compiles
+  sp2,"manager-impls-store",SessionManager is tested against SessionStore,the trait boundary is checked,all three methods compile and roundtrip data
+  sp3,"std-export-io",the composition root constructs an Agent for export,ExportIo is injected,the concrete type is StdExportIo from infra/

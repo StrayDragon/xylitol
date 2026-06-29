@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::core::ports::TrustStore;
+use crate::runtime_protocol::TrustStore;
 
 /// In-memory trust file: canonical path → decision. Sorted for deterministic output.
 type TrustFile = BTreeMap<String, Option<bool>>;

@@ -8,7 +8,7 @@
 //!
 //! This module lives under `infra/` because it is a runtime facility
 //! (process spawn + output streaming). The agent consumes it only through the
-//! `BashExecutor` port in `core::ports`.
+//! `BashExecutor` port in `runtime_protocol`.
 
 use std::time::Duration;
 
@@ -17,10 +17,10 @@ use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::core::ports::{BashExecutor, BashResult};
 use crate::infra::tools::accumulator::OutputAccumulator;
 use crate::infra::tools::process::kill_tree;
 use crate::infra::tools::truncate::DEFAULT_MAX_BYTES;
+use crate::runtime_protocol::{BashExecutor, BashResult};
 
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 

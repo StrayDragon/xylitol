@@ -9,9 +9,9 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::core::message::AgentMessage;
-use crate::core::ports::SessionStore;
-use crate::core::session_types::{SessionContext, SessionEntry};
+use crate::domain::message::AgentMessage;
+use crate::domain::session_types::{SessionContext, SessionEntry};
+use crate::runtime_protocol::SessionStore;
 
 /// In-memory session storage backed by a `HashMap<session_id, Vec<AgentMessage>>`.
 pub struct InMemorySessionStore {

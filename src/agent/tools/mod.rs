@@ -3,7 +3,7 @@ pub mod definition;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::core::ports::XyTool;
+use crate::runtime_protocol::XyTool;
 
 // ── ToolRegistry ───────────────────────────────────────────────────
 
@@ -199,7 +199,7 @@ mod tests {
     fn test_registry_register_and_get() {
         struct DummyTool;
         #[async_trait::async_trait]
-        impl crate::core::ports::XyTool for DummyTool {
+        impl crate::runtime_protocol::XyTool for DummyTool {
             fn name(&self) -> &str {
                 "dummy"
             }
@@ -211,9 +211,9 @@ mod tests {
             }
             async fn execute(
                 &self,
-                _: &crate::core::ports::XyToolCtx,
+                _: &crate::runtime_protocol::XyToolCtx,
                 _: serde_json::Value,
-            ) -> Result<String, crate::core::error::XyToolError> {
+            ) -> Result<String, crate::domain::error::XyToolError> {
                 Ok("ok".into())
             }
         }

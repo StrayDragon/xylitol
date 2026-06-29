@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::core::message::Usage;
-use crate::core::model::ModelConfig;
+use crate::domain::message::Usage;
+use crate::domain::model::ModelConfig;
 
 // ── Streaming Chunk ──────────────────────────────────────────────
 
@@ -31,8 +31,8 @@ pub enum XyFinishReason {
     MaxTokens,
 }
 
-/// Alias for [`StopReason`](crate::core::message::StopReason).
-pub use crate::core::message::StopReason as XyStopReason;
+/// Alias for [`StopReason`](crate::domain::message::StopReason).
+pub use crate::domain::message::StopReason as XyStopReason;
 
 /// JSON schema describing a tool's parameters.
 pub struct XyToolSchema {
@@ -99,7 +99,7 @@ pub struct ModelMeta {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::message::Usage;
+    use crate::domain::message::Usage;
 
     // ── XyChunk ─────────────────────────────────────────────────────
 
@@ -265,8 +265,8 @@ mod tests {
 
     #[test]
     fn model_meta_construct() {
-        let config = crate::core::model::ModelConfig {
-            kind: crate::core::model::ModelKind::Anthropic,
+        let config = crate::domain::model::ModelConfig {
+            kind: crate::domain::model::ModelKind::Anthropic,
             api_key: "sk-test".into(),
             model: "claude-3".into(),
             base_url: None,
@@ -297,10 +297,10 @@ mod tests {
     #[test]
     fn xy_stop_reason_is_stop_reason() {
         // Compile-time: XyStopReason is just a re-export
-        let _: XyStopReason = crate::core::message::StopReason::Stop;
+        let _: XyStopReason = crate::domain::message::StopReason::Stop;
         assert_eq!(
             format!("{:?}", XyStopReason::Stop),
-            format!("{:?}", crate::core::message::StopReason::Stop),
+            format!("{:?}", crate::domain::message::StopReason::Stop),
         );
     }
 }

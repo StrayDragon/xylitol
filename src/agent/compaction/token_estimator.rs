@@ -33,7 +33,7 @@ pub struct ContextUsageEstimate {
 /// When a `last_usage` is provided, uses real usage tokens and
 /// estimates only trailing messages.
 pub fn estimate_context_tokens(
-    messages: &[crate::core::message::AgentMessage],
+    messages: &[crate::domain::message::AgentMessage],
     last_usage: Option<&XyUsage>,
 ) -> ContextUsageEstimate {
     if let Some(usage) = last_usage {
@@ -63,7 +63,7 @@ pub fn estimate_context_tokens(
 }
 
 /// Estimate tokens for an AgentMessage using chars/4.
-fn estimate_tokens_agent(msg: &crate::core::message::AgentMessage) -> u64 {
+fn estimate_tokens_agent(msg: &crate::domain::message::AgentMessage) -> u64 {
     let s = serde_json::to_string(msg).unwrap_or_default();
     (s.len() as u64).div_ceil(4)
 }

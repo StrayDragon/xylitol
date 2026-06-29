@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ic7,"export-io-wiring","The interactive composition root (CLI and RPC) MUST construct an infra-provided StdExportIo and inject it as Arc<dyn runtime_protocol::export::ExportIo> when building the Agent or AgentSession.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ic7,"cli-injects-export-io",the CLI composition root builds an Agent,the constructor arguments are inspected,an Arc<dyn ExportIo> is passed

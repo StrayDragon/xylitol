@@ -34,7 +34,7 @@ requirements[33]{req_id,title,statement}:
   e2,"line-ending",System MUST detect file line ending (CRLF vs LF) before editing and restore original style after applying changes.
   e3,"span-match","System MUST support matching multi-line oldText spans across different line segments when exact match fails."
   e4,"diff-output",System MUST compute structured diff output for review purposes after edit operations using the similar crate.
-  t17,"tool-impls-in-infra","Built-in tool implementations (bash, read, write, edit, grep, find, ls, patch, and helpers accumulator/truncate/process/path_utils/mutation) MUST live under infra/tools/ and implement core::ports::XyTool; agent/tools/ MUST retain only the ToolRegistry and the ToolDefinition presentation type."
+  t17,"tool-impls-in-infra","Built-in tool implementations (bash, read, write, edit, grep, find, ls, patch, and helpers accumulator/truncate/process/path_utils/mutation) MUST live under infra/tools/ and implement runtime_protocol::XyTool; agent/tools/ MUST retain only the ToolRegistry and the ToolDefinition presentation type."
   t18,"tool-registry-in-agent","The ToolRegistry MUST remain in agent/ as the orchestration selection state (Vec<Arc<dyn XyTool>>); concrete tools are injected into it at the composition root from infra::tools::default_tools()."
 scenarios[34]{req_id,id,given,when,then}:
   r1,"xy-tool-impl","all 7 built-in tools implement XyTool",each tool is invoked,each returns Result<String> without any adk_core types in the call chain

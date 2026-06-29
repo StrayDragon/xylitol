@@ -18,7 +18,7 @@ use crate::agent::model::registry::ModelRegistry;
 use crate::agent::runtime::AgentLoop;
 use crate::agent::session::AgentSession;
 use crate::agent::tools::ToolRegistry;
-use crate::core::ports::{BashExecutor, EventSink, SessionStore, ToolExecutionMode};
+use crate::runtime_protocol::{BashExecutor, EventSink, ExportIo, SessionStore, ToolExecutionMode};
 
 pub use crate::agent::runtime::{AgentEvent, AgentEventStream, AgentHooks};
 
@@ -59,9 +59,10 @@ impl Agent {
         compaction_threshold: f64,
         cwd: String,
         compaction_settings: Option<CompactionSettings>,
-        model_builder: crate::core::ports::ModelBuilder,
-        sandbox: Arc<dyn crate::core::ports::SandboxEngine>,
+        model_builder: crate::runtime_protocol::ModelBuilder,
+        sandbox: Arc<dyn crate::runtime_protocol::SandboxEngine>,
         bash_executor: Arc<dyn BashExecutor>,
+        export_io: Arc<dyn ExportIo>,
     ) -> Self {
         let session = AgentSession::new(
             model_registry,
@@ -78,6 +79,7 @@ impl Agent {
             model_builder,
             sandbox,
             bash_executor,
+            export_io,
         );
         Self {
             loop_: AgentLoop::new(session),

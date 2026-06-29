@@ -10,7 +10,7 @@ use std::task::{Context, Poll};
 use futures::Stream;
 use serde_json::Value;
 
-use crate::core::message::AgentMessage;
+use crate::domain::message::AgentMessage;
 
 // ── AgentEvent ──────────────────────────────────────────────────────
 

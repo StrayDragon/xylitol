@@ -1,8 +1,8 @@
-//! Resource source-info vocabulary + shared text utilities.
+//! Resource source-info vocabulary.
 //!
 //! Pure data types describing where a loaded resource (skill, prompt, theme,
-//! command) came from, plus small string helpers shared across layers. Zero
-//! crate-internal dependencies — both `agent` and `infra` reference these.
+//! command) came from. Zero crate-internal dependencies — both `agent` and
+//! `infra` reference these.
 
 use std::path::PathBuf;
 
@@ -75,23 +75,4 @@ pub fn create_synthetic_source_info(
         origin: origin.unwrap_or(SourceOrigin::TopLevel),
         base_dir,
     }
-}
-
-/// Escape a string for safe inclusion in XML/HTML text content.
-///
-/// Pure function shared by prompt assembly (`agent`) and skill loading
-/// (`infra`); hence lives in the shared vocabulary layer.
-pub fn xml_escape(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => result.push_str("&amp;"),
-            '<' => result.push_str("&lt;"),
-            '>' => result.push_str("&gt;"),
-            '"' => result.push_str("&quot;"),
-            '\'' => result.push_str("&apos;"),
-            _ => result.push(c),
-        }
-    }
-    result
 }

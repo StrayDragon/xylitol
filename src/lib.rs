@@ -3,10 +3,11 @@
 //! LLM-Augmented Development Toolkit.
 
 pub mod agent;
-pub mod core;
+pub mod domain;
 pub mod infra;
 pub mod interactive;
 pub mod protocol;
+pub mod runtime_protocol;
 pub mod server;
 
 /// Application entry point.

@@ -44,7 +44,7 @@ pub struct AppConfig {
 // ---------------------------------------------------------------------------
 
 /// Top-level model configuration section.
-/// Split from agent-level [`ModelConfig`](crate::core::model::ModelConfig) —
+/// Split from agent-level [`ModelConfig`](crate::domain::model::ModelConfig) —
 /// this is YAML-facing; [`ModelEntry`] aliases resolve into runtime config.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -57,11 +57,11 @@ pub struct ModelsConfig {
 
 /// A single model alias entry.
 ///
-/// References [`ModelKind`](crate::core::model::ModelKind) for the provider;
+/// References [`ModelKind`](crate::domain::model::ModelKind) for the provider;
 /// the kind's serde representation is the YAML wire format.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct ModelEntry {
-    pub provider: crate::core::model::ModelKind,
+    pub provider: crate::domain::model::ModelKind,
     pub model: String,
     /// Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.
     #[serde(default)]
@@ -171,9 +171,12 @@ fn default_max_iterations() -> u32 {
 }
 
 impl AppConfig {
-    /// Resolve a model alias to a runtime [`ModelConfig`](crate::core::model::ModelConfig).
-    pub fn resolve_model(&self, model_id: &str) -> Result<crate::core::model::ModelConfig, String> {
-        use crate::core::model::{ModelConfig, ModelKind};
+    /// Resolve a model alias to a runtime [`ModelConfig`](crate::domain::model::ModelConfig).
+    pub fn resolve_model(
+        &self,
+        model_id: &str,
+    ) -> Result<crate::domain::model::ModelConfig, String> {
+        use crate::domain::model::{ModelConfig, ModelKind};
 
         let (kind, model_name, base_url) = if let Some(entry) = self.model.models.get(model_id) {
             (entry.provider, entry.model.clone(), entry.base_url.clone())
@@ -199,16 +202,16 @@ impl AppConfig {
         })
     }
 
-    /// Resolve a model alias to [`ModelMeta`](crate::core::types::ModelMeta) for the registry.
+    /// Resolve a model alias to [`ModelMeta`](crate::domain::types::ModelMeta) for the registry.
     ///
     /// Composes [`resolve_model`](Self::resolve_model) with per‑model metadata (thinking support,
     /// context window size) from [`ModelEntry`] or sensible defaults.
     pub fn resolve_model_meta(
         &self,
         model_id: &str,
-    ) -> Result<crate::core::types::ModelMeta, String> {
-        use crate::core::model::default_context_window_for;
-        use crate::core::types::ModelMeta;
+    ) -> Result<crate::domain::types::ModelMeta, String> {
+        use crate::domain::model::default_context_window_for;
+        use crate::domain::types::ModelMeta;
 
         let model_config = self.resolve_model(model_id)?;
         let entry = self.model.models.get(model_id);
@@ -239,7 +242,7 @@ impl AppConfig {
     pub fn resolve_profile(
         &self,
         name: &str,
-    ) -> Result<crate::core::model::ResolvedProfile, String> {
+    ) -> Result<crate::domain::model::ResolvedProfile, String> {
         let profile = self.agents.profiles.get(name);
 
         let (model_ref, system_prompt, allowed_tools, max_iterations) = match profile {
@@ -262,7 +265,7 @@ impl AppConfig {
             })?;
         let model_config = self.resolve_model(model_id)?;
 
-        Ok(crate::core::model::ResolvedProfile {
+        Ok(crate::domain::model::ResolvedProfile {
             model_config,
             system_prompt,
             allowed_tools,
@@ -272,7 +275,7 @@ impl AppConfig {
     }
 
     /// Resolve the default agent profile.
-    pub fn resolve_default_profile(&self) -> Result<crate::core::model::ResolvedProfile, String> {
+    pub fn resolve_default_profile(&self) -> Result<crate::domain::model::ResolvedProfile, String> {
         let name = if self.agents.default_profile.is_empty() {
             "default"
         } else {
@@ -726,8 +729,8 @@ fn default_storage_backend() -> String {
     "file".into()
 }
 
-// CompactionConfig relocated to `core::compaction_config` (shared vocabulary).
-pub use crate::core::compaction_config::CompactionConfig;
+// CompactionConfig relocated to `domain::compaction_config` (shared vocabulary).
+pub use crate::domain::compaction_config::CompactionConfig;
 
 // ---------------------------------------------------------------------------
 // Skills & MCP

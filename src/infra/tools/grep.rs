@@ -17,8 +17,8 @@ use super::truncate::{
     DEFAULT_MAX_BYTES, GREP_MAX_LINE_LENGTH, TruncationOptions, format_size, truncate_head,
     truncate_line,
 };
-use crate::core::error::XyToolError;
-use crate::core::ports::{XyTool, XyToolCtx};
+use crate::domain::error::XyToolError;
+use crate::runtime_protocol::{XyTool, XyToolCtx};
 
 const DEFAULT_LIMIT: usize = 100;
 const RG_TIMEOUT: Duration = Duration::from_secs(30);

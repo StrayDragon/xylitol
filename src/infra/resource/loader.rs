@@ -13,13 +13,13 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::core::ports::ResourceLoader;
+use crate::runtime_protocol::ResourceLoader;
 
 // ── ResourceDiagnostic ────────────────────────────────────────────────
 
-// Resource metadata types relocated to `core::resource_types` (shared vocabulary).
+// Resource metadata types relocated to `domain::resource_types` (shared vocabulary).
 // `DefaultResourceLoader` (the runtime/loader impl) stays here in infra.
-pub use crate::core::resource_types::{
+pub use crate::domain::resource_types::{
     AgentsFile, PromptTemplate, ResourceDiagnostic, SkillInfo, ThemeInfo,
 };
 

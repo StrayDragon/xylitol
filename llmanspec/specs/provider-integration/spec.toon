@@ -7,7 +7,7 @@ requirements[6]{req_id,title,statement}:
   cv1,"config-value-parser","System MUST provide a ConfigValueResolver that parses literal env-var template and shell-command config values."
   cv2,"env-var-interpolation","ConfigValueResolver MUST interpolate $VAR and ${VAR} and ${VAR:-default} environment variable references."
   cv3,"shell-command-execution","ConfigValueResolver MUST execute commands prefixed with ! via std::process::Command with 10-second timeout and cache results for process lifetime."
-  pi2,"provider-in-infra","All LLM provider implementations (OpenAI, Anthropic, Fake, Mock) MUST live under infra/provider/ and implement core::ports::XyModel; agent/ MUST NOT contain a provider/ subdirectory; provider construction (the factory from ModelConfig to Arc<dyn XyModel>) MUST live in infra::provider::factory, not in agent/."
+  pi2,"provider-in-infra","All LLM provider implementations (OpenAI, Anthropic, Fake, Mock) MUST live under infra/provider/ and implement runtime_protocol::XyModel; agent/ MUST NOT contain a provider/ subdirectory; provider construction (the factory from ModelConfig to Arc<dyn XyModel>) MUST live in infra::provider::factory, not in agent/."
   pi3,"provider-port-injection",The model registry held by the agent MUST store providers as Arc<dyn XyModel>; selecting a provider MUST NOT require the agent to name a concrete provider struct.
 scenarios[9]{req_id,id,given,when,then}:
   pi0,"provider-construction",a ModelConfig with kind OpenAi is provided,build is called,an OpenAIProvider instance is returned
