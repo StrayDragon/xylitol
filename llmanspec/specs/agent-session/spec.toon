@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-session"
 purpose: "TBD - created by archiving change c05-rebuild-core. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[29]{req_id,title,statement}:
+requirements[34]{req_id,title,statement}:
   a1,"agent-session","System MUST provide AgentSession encapsulating prompt to model to tools to loop with full event stream, holding ONLY orchestration state; the system prompt MUST be assembled from injected context (AGENTS.md files, configured system prompt, append prompts) supplied by the composition root, NOT from a hardcoded fallback."
   a2,"turn-events","AgentSession MUST emit: turn_start, message_start, message_update (streaming), message_end events per turn."
   a3,"tool-events","AgentSession MUST emit: tool_execution_start, tool_execution_update (streaming partials), tool_execution_end events per tool call."
@@ -23,7 +23,7 @@ requirements[29]{req_id,title,statement}:
   as28,"session-lifecycle","AgentSession MUST support start_new_session creating a fresh session with optional parent reference, and resume_session loading and validating an existing session including CWD assertion."
   as29,"bdd-agent-v4",BDD tests for AgentSession lifecycle and event bus integration MUST all pass.
   as30,"cohesion-decomposition",AgentSession MUST be decomposed into focused collaborator components covering model management and tool management and compaction orchestration and skill activation rather than a single object mixing many unrelated responsibilities.
-  as31,"facade-retained",AgentSession MUST remain the single public facade composing the decomposed components while preserving its existing event stream and public API.
+  as31,"agent-renamed-from-session",AgentSession MUST be renamed Agent to reflect that it is the pluggable capability aggregate (models + io + tools + orchestration state) rather than a session persistence object; Agent MUST compose the decomposed collaborator components per as32 and MUST retain its existing event stream and public API surface so call sites only change the type name.
   as32,AgentSession 协作对象提取（落地 as30）,"AgentSession MUST be decomposed into named collaborator objects covering auto-retry (AutoRetryEngine), bash execution (BashExecHandler), and session export/import (SessionExporter). AgentSession MUST compose these collaborators as fields and MUST retain its existing public API and event stream (per as31). The session module MUST be reorganized into a session/ directory with focused submodules (io, retry, bash_exec, export, stats, prompt, steering) and AgentSession single-file size MUST drop below 600 lines."
   as33,"managers-extracted-to-siblings","AgentSession collaborators (ModelManager, CompactionOrchestrator, SkillManager) MUST live in dedicated modules under their owning subsystem (model/manager.rs, compaction/orchestrator.rs, prompt/skills.rs), not as orphan top-level files in agent/; AgentSession composes them as fields."
   as34,"sessionstore-port","System MUST define runtime_protocol::SessionStore abstracting session persistence; infra::session::SessionManager MUST implement it and a test in-memory double MUST exist under tests/support/; agent/ MUST hold the store as Arc<dyn SessionStore>."
@@ -32,7 +32,12 @@ requirements[29]{req_id,title,statement}:
   as37,"session-exporter-in-agent","Session export/import render and parse helpers (render_html, render_jsonl, parse_jsonl) MUST live under agent::session::export, not in the domain layer, because they are part of the export command orchestration."
   as38,"optional-bash-export","AgentSession MUST hold bash_executor and export_io as Option of Arc of the port trait; execute_bash and the export_to_html, export_to_jsonl, and import_from_jsonl methods MUST return a clear not-configured error when the corresponding slot is None, so a minimal conversation agent is not forced to carry bash or export capability."
   as39,"capability-state-on-session","AgentSession MUST own the runtime-mutable capability state (tools ToolSet, permission engine, hooks, active system prompt) so that Agent facade setters can mutate them and run can snapshot them per turn; AgentLoop MUST NOT duplicate this state, and the current duplication of hooks and tool_mode fields on AgentLoop MUST be removed."
-scenarios[36]{req_id,id,given,when,then}:
+  as40,"agent-rename-call-sites","The AgentSession to Agent rename MUST update every call site including agent/builder.rs, agent/runtime/react.rs, app/core/composition.rs, app/core/driver.rs, app/rpc.rs, app/server/rest.rs, tests/bdd.rs, and the public-API snapshot test; the snapshot MUST be regenerated and the rename MUST NOT change any behavior."
+  as41,"permission-gate-extracted",A PermissionGate collaborator MUST hold the permission port and expose get_permission returning Arc<dyn XyPermission> so react.rs can keep doing tool_name to capability routing; the three dead check_permission_read/write/network wrapper methods (zero production call sites) MUST be removed.
+  as42,"stats-compute-moved","The get_session_stats aggregation logic MUST move out of the Agent body into a compute function under agent/session/stats.rs taking the session store and session id; the Agent method MUST become a one-line delegate so the body holds no aggregation logic."
+  as43,"trust-demoted-to-free-fn","The save_trust_decision method (which only reads self.cwd and does not hold a trust store) MUST be demoted to a free function under agent/session/trust.rs taking cwd, trust_store, and trusted; Agent MUST NOT carry this method since it has no cohesive reason to live on the capability aggregate."
+  as44,"dead-code-cleared","After confirming zero production call sites via grep, the dead methods MUST be removed from Agent: the whole steering domain (steer, follow_up, clear_queue, pending_message_count, has_pending_steer, get_steering_messages, get_follow_up_messages, drain_queued_messages, message_queue, message_queue_mut), process_prompt, cycle_forward, cycle_backward, share_as_gist, registry_clone, set_append_prompt, compact_current_session, compaction_threshold, compaction_settings, register_template, register_templates, register_command, and register_skill_commands; dead #[allow(dead_code)] attributes MUST be removed alongside."
+scenarios[42]{req_id,id,given,when,then}:
   a1,"prompt-from-loader",a project containing AGENTS.md and the CLI composition root constructs the agent,the agent builds its system prompt,the system prompt MUST include the AGENTS.md content and MUST NOT default to a hardcoded placeholder when the loader provides values
   a2,"turn-events","agent processes a tool-calling turn",turn starts,"events are emitted in order: turn_start message_start message_update* message_end turn_end"
   a3,"tool-stream",bash tool streams output,tool_execution_start fires,tool_execution_update fires multiple times then tool_execution_end
@@ -57,7 +62,7 @@ scenarios[36]{req_id,id,given,when,then}:
   as28,"resume-validates-cwd",a session file has cwd set to existing directory,resume_session is called,session loads successfully
   as29,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all agent-v4 scenarios pass"
   as30,"responsibilities-separated",the session module responsibilities are enumerated,component boundaries are drawn,each component owns a single responsibility class
-  as31,"public-api-unchanged",AgentSession public methods are invoked after decomposition,the existing test suite runs,all lib tests and agent BDD scenarios still pass without API changes
+  as31,"agent-renamed-from-session","AgentSession was the 25-field capability aggregate called Session",the change is applied,"it is named Agent, composes the as32 collaborators, and retains its event stream and public API"
   as32,"retry-extracted","AgentSession holds retry_state and inline auto-retry logic exceeding 100 lines",the change is applied,"AutoRetryEngine collaborator exists, AgentSession composes it, and public retry behavior is unchanged"
   as32,"bash-extracted",AgentSession holds bash_cancel and inline !cmd / !!cmd handling,the change is applied,"BashExecHandler collaborator exists, AgentSession composes it, and bash-execution slash commands behave identically"
   as32,"export-extracted",AgentSession has inline export/import methods,the change is applied,"SessionExporter collaborator exists, AgentSession composes it, and export produces byte-identical output"
@@ -69,3 +74,9 @@ scenarios[36]{req_id,id,given,when,then}:
   as37,"exporter-in-agent",export render helpers are located,their module is inspected,they are defined under src/agent/session/export.rs
   as38,"no-bash-configured",an agent is built without a bash executor,execute_bash is called,it returns an error mentioning bash executor not configured without panicking
   as39,"loop-no-dup-state",AgentLoop fields are inspected,the change is applied,hooks and tool_mode live on AgentSession only and AgentLoop holds only session and cancel
+  as40,"agent-session-renamed",the source tree after the rename,"rg '\\bAgentSession\\b' src/ tests/ runs",zero matches remain and Agent is the capability aggregate
+  as40,"snapshot-regenerated","the public-API snapshot existed for AgentSession",the snapshot test runs,it passes against the renamed Agent type after regeneration
+  as41,"permission-gate-exists",the permission port was a bare field on the Agent,the change is applied,a PermissionGate struct holds it and get_permission still returns the Arc for react routing
+  as42,"stats-delegate",get_session_stats held inline aggregation,the Agent method is inspected,"its body is a one-line delegate to stats::compute"
+  as43,"trust-free-fn",save_trust_decision lived on the Agent,the change is applied,it is a free function in agent/session/trust.rs and the Agent no longer carries it
+  as44,"dead-methods-gone",the steering domain and other dead methods existed,rg for those method names in src/agent/ runs,no production dead methods remain (only legitimately used methods survive)
