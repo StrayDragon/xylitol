@@ -51,6 +51,8 @@ pub struct XyModelConfig {
     pub api_key: String,
     pub model: String,
     pub base_url: Option<String>,
+    /// Adapter API type, e.g. `openai-responses` or `anthropic-messages`.
+    pub api: Option<String>,
 }
 
 impl XyModelConfig {
@@ -164,6 +166,7 @@ mod tests {
             api_key: "sk-test".into(),
             model: "claude-3".into(),
             base_url: None,
+            api: None,
         };
         assert_eq!(config.provider_name(), "anthropic");
     }
@@ -175,6 +178,7 @@ mod tests {
             api_key: "sk-test".into(),
             model: "gpt-4".into(),
             base_url: Some("https://proxy.example.com/v1".into()),
+            api: None,
         };
         assert_eq!(
             config.base_url.as_deref(),
@@ -204,6 +208,7 @@ mod tests {
             api_key: "sk-test".into(),
             model: "gpt-4o".into(),
             base_url: None,
+            api: None,
         };
         let profile = ResolvedProfile {
             model_config: config,

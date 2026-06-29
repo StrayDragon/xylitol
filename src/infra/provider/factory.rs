@@ -9,8 +9,7 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use crate::domain::model::{XyModelConfig, XyModelKind};
-use crate::infra::provider::anthropic::AnthropicProvider;
-use crate::infra::provider::openai::OpenAIProvider;
+use crate::infra::provider::adapter::{AdapterXyModel, factory::build_adapter};
 use crate::infra::provider::{FakeProvider, ScenarioStep};
 use crate::runtime_protocol::XyModel;
 
@@ -56,21 +55,9 @@ pub fn set_fake_tool_result(text: &str) {
 /// `Arc<dyn XyModel>`. Add new providers by extending this match.
 pub fn build_provider(config: &XyModelConfig) -> Result<Arc<dyn XyModel>, String> {
     match config.kind {
-        XyModelKind::OpenAi => {
-            let provider = OpenAIProvider::new(
-                config.api_key.clone(),
-                config.model.clone(),
-                config.base_url.clone(),
-            );
-            Ok(Arc::new(provider) as Arc<dyn XyModel>)
-        }
-        XyModelKind::Anthropic => {
-            let provider = AnthropicProvider::new(
-                config.api_key.clone(),
-                config.model.clone(),
-                config.base_url.clone(),
-            );
-            Ok(Arc::new(provider) as Arc<dyn XyModel>)
+        XyModelKind::OpenAi | XyModelKind::Anthropic => {
+            let adapter = build_adapter(config)?;
+            Ok(Arc::new(AdapterXyModel::new(adapter)) as Arc<dyn XyModel>)
         }
         XyModelKind::Fake => {
             let steps = {

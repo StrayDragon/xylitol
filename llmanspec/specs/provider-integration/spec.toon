@@ -3,15 +3,14 @@ name: "provider-integration"
 purpose: "Provider integration — API key resolution, model registry integration, and OpenAI/Anthropic provider construction. Attribution headers, OAuth storage, and non-OpenAI/Anthropic provider integrations are out of scope until after 1.0.0."
 valid_scope[1]: src
 requirements[6]{req_id,title,statement}:
-  pi0,"provider-registration","System SHALL support provider registration with configurable API keys base URLs and headers for OpenAI-compatible and Anthropic providers."
+  pi0,"provider-registration","System SHALL support provider registration with configurable API keys base URLs headers and adapter api type for OpenAI-compatible and Anthropic providers."
   cv1,"config-value-parser","System MUST provide a ConfigValueResolver that parses literal env-var template and shell-command config values."
   cv2,"env-var-interpolation","ConfigValueResolver MUST interpolate $VAR and ${VAR} and ${VAR:-default} environment variable references."
   cv3,"shell-command-execution","ConfigValueResolver MUST execute commands prefixed with ! via std::process::Command with 10-second timeout and cache results for process lifetime."
   pi2,"provider-in-infra","All LLM provider implementations (OpenAI, Anthropic, Fake, Mock) MUST live under infra/provider/ and implement runtime_protocol::XyModel; agent/ MUST NOT contain a provider/ subdirectory; provider construction (the factory from ModelConfig to Arc<dyn XyModel>) MUST live in infra::provider::factory, not in agent/."
   pi3,"provider-port-injection",The model registry held by the agent MUST store providers as Arc<dyn XyModel>; selecting a provider MUST NOT require the agent to name a concrete provider struct.
-scenarios[9]{req_id,id,given,when,then}:
-  pi0,"provider-construction",a ModelConfig with kind OpenAi is provided,build is called,an OpenAIProvider instance is returned
-  pi0,"anthropic-construction",a ModelConfig with kind Anthropic is provided,build is called,an AnthropicProvider instance is returned
+scenarios[8]{req_id,id,given,when,then}:
+  pi0,"config-api",a model config includes an api field,the factory builds the provider,the correct adapter is injected into the provider
   cv1,literal,a config value is a plain string,it is resolved,the literal string is returned
   cv2,"env-var",a config value is MY_KEY and MY_KEY is set in env,the value is resolved,the env var value is returned
   cv2,"missing-env",a config value is MISSING and the var is unset,the value is resolved,None is returned
