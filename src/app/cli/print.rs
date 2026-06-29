@@ -5,7 +5,7 @@
 use std::io::{self, Write};
 
 use crate::agent::facade::XyEvent;
-use crate::app::driver::{Driver, EventStream};
+use crate::app::core::driver::{Driver, EventStream};
 use futures::StreamExt;
 
 /// Run the agent in print mode with the given prompt.
@@ -141,7 +141,7 @@ async fn render_stream<W: Write>(stream: &mut EventStream, writer: &mut W) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::driver::EventStream;
+    use crate::app::core::driver::EventStream;
 
     fn mock_stream(events: Vec<XyEvent>) -> EventStream {
         Box::pin(futures::stream::iter(events))
