@@ -17,5 +17,5 @@ scenarios[9]{req_id,id,given,when,then}:
   cv2,"missing-env",a config value is MISSING and the var is unset,the value is resolved,None is returned
   cv3,"shell-cmd","'a config value is \"!echo hello\"'",the command executes within 10 seconds,hello is returned
   cv3,"shell-cache",same command is resolved twice,the value is cached,"the second call does not re-execute"
-  pi2,"provider-moved",src/agent/provider is checked for existence,the path is inspected,it does not exist and src/infra/provider/ does
+  pi2,"provider-moved",src/agent/provider is checked for existence,the path is inspected,"it does not exist and src/infra/provider/ does and XyModel is imported from crate::runtime_protocol"
   pi3,"no-concrete-provider",the agent references a provider,the reference type is inspected,it is the XyModel trait object not OpenAIProvider

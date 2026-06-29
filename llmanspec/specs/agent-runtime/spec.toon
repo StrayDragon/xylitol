@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "TBD - created by archiving change c25-add-agent-loop. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[22]{req_id,title,statement}:
+requirements[23]{req_id,title,statement}:
   r1,"execution-loop","System MUST implement a self-contained ReAct loop (XyRunner) that calls XyModel for generation and dispatches XyTool calls until completion or max_iterations."
   r2,"event-system","System MUST emit AgentEvent variants (TextDelta / ThinkingDelta / ToolCallStart / ToolCallEnd / StepComplete / Error) from XyRunner without any adk-core Event dependency."
   r3,"session-runtime",System MUST manage session history via XySession trait with InMemorySession as default backend.
@@ -25,7 +25,8 @@ requirements[22]{req_id,title,statement}:
   ar16,"agent-facade","System MUST provide a single public entry point agent::facade::Agent that interactive layers import for construction and turn execution; reaching into agent::runtime from interactive/ is a layering violation."
   ar17,"sessionstore-port","System MUST define runtime_protocol::SessionStore with load_context (returns SessionContext), append, and exists methods — the minimal surface the ReAct loop and compaction call; SessionManager MUST implement it."
   ar18,"eventsink-port","System MUST define runtime_protocol::EventSink with emit_lifecycle; EventBus MUST implement it."
-scenarios[25]{req_id,id,given,when,then}:
+  ar19,"lifecyclehandler-in-runtime-protocol","The LifecycleHandler type alias for async event subscriptions MUST reside in runtime_protocol::event, not in domain::lifecycle, because it is a contract detail of the event runtime protocol rather than domain vocabulary."
+scenarios[26]{req_id,id,given,when,then}:
   r1,"react-loop",a mock XyModel returns text then tool call then final text,XyRunner executes,all events are emitted and loop terminates after tool response
   r1,"max-iterations",XyModel always returns tool calls,XyRunner reaches max_iterations,loop terminates with MaxIterationsReached error
   r2,"no-adk-events",agent is executing,events are emitted,"no adk_core::Event or adk_runner types appear in the event stream"
@@ -51,3 +52,4 @@ scenarios[25]{req_id,id,given,when,then}:
   ar16,"interactive-via-facade",an interactive/ file imports an Agent type from agent/,the import is inspected,"it imports agent::facade symbols (not agent::runtime)"
   ar17,"store-in-memory",a test constructs Agent with InMemoryStore,a turn runs,the test passes without creating a real SessionManager
   ar18,"sink-records-events",a test constructs Agent with RecordingSink,compaction triggers lifecycle events,the sink contains the expected events
+  ar19,"handler-in-runtime-protocol",the source tree is inspected for LifecycleHandler,its definition is located,it is defined under src/runtime_protocol/event.rs

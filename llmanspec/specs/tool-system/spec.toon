@@ -69,5 +69,5 @@ scenarios[34]{req_id,id,given,when,then}:
   e2,"line-ending",file uses CRLF or LF line endings,edit is applied,output file preserves the original line ending style
   e3,span,oldText spans 5 lines but exact match fails on one middle line,edit is applied with span matching,match succeeds via sliding window
   e4,diff,edit applies a change,diff is computed,result contains before and after lines with change markers
-  t17,"tools-moved",src/agent/tools is inspected,only registry and definition remain,"the built-in tool files live under src/infra/tools/"
+  t17,"tools-moved",src/agent/tools is inspected,only registry and definition remain,"the built-in tool files live under src/infra/tools/ and import XyTool from crate::runtime_protocol"
   t18,"registry-stays",the ToolRegistry type is located,its module path is checked,"it is agent::tools not infra::tools"
