@@ -392,7 +392,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
                 .execute_bash(&command, exclude_from_context)
                 .await;
             match result {
-                Ok(br) => emit(&Event::XyBashResult {
+                Ok(br) => emit(&Event::BashResult {
                     id: id.clone(),
                     output: br.output,
                     exit_code: br.exit_code,
@@ -628,19 +628,8 @@ async fn run_prompt(state: &Arc<Mutex<RpcState>>, _id: &Option<String>, message:
             event = stream.next() => {
                 match event {
                     Some(evt) => {
-                        let emitted = match &evt {
-                            XyEvent::TextDelta(t) => { emit(&Event::TextDelta { text: t.clone() }); true }
-                            XyEvent::ThinkingDelta(_) => false,
-                            XyEvent::ToolExecutionStart { id, name, .. } => { emit(&Event::ToolStart { id: id.clone(), name: name.clone() }); true }
-                            XyEvent::ToolExecutionEnd { id, name, result, .. } => { emit(&Event::ToolEnd { id: id.clone(), name: name.clone(), result: result.clone() }); true }
-                            XyEvent::ModelSelect { provider, model_id } => { emit(&Event::ModelSelect { provider: provider.clone(), model_id: model_id.clone() }); true }
-                            XyEvent::CompactionStart { reason } => { emit(&Event::CompactionStart { reason: reason.clone() }); true }
-                            XyEvent::AgentEnd { .. } => { emit(&Event::AgentEnd); false }
-                            XyEvent::Error(msg) => { emit(&Event::Error { id: None, message: msg.clone() }); true }
-                            _ => false,
-                        };
-                        if !emitted && matches!(evt, XyEvent::AgentEnd { .. }) {
-                            break;
+                        if let Some(pe) = evt.to_wire_event() {
+                            emit(&pe);
                         }
                         if matches!(evt, XyEvent::AgentEnd { .. }) {
                             break;
