@@ -27,8 +27,8 @@ requirements[27]{req_id,title,statement}:
   sc2,"cwd-error",System MUST provide MissingSessionCwdError carrying the session file path stored cwd and fallback cwd.
   sc3,"cwd-format","System MUST provide format_missing_session_cwd_error and format_missing_session_cwd_prompt for user-facing messages."
   sc4,"cwd-integration",CLI and RPC modes MUST call assert_session_cwd_exists before resuming a session.
-  sp1,"sessionstore-impl","infra::session::SessionManager MUST implement core::ports::SessionStore with append, load, and exists methods covering only what the agent loop and compaction call; the full SessionManager surface (fork, navigate, export) MAY remain on the concrete struct for the composition root to use directly."
-  sp2,"sessionstore-impl","infra::session::SessionManager MUST implement core::ports::SessionStore with load_context, append, and exists covering only what the agent loop and compaction call; the full SessionManager surface (fork/navigate/export) MAY remain on the concrete struct for the interactive composition root."
+  sp1,"sessionstore-impl","infra::session::SessionManager MUST implement runtime_protocol::SessionStore with append, load, and exists methods covering only what the agent loop and compaction call; the full SessionManager surface (fork, navigate, export) MAY remain on the concrete struct for the composition root to use directly."
+  sp2,"sessionstore-impl","infra::session::SessionManager MUST implement runtime_protocol::SessionStore with load_context, append, and exists covering only what the agent loop and compaction call; the full SessionManager surface (fork/navigate/export) MAY remain on the concrete struct for the interactive composition root."
   sp6,"journal-access","The session store MUST expose read_recent(session_id, limit) -> Vec<Event> for the server's journal; journal capacity MUST be configurable (default 10000)."
 scenarios[32]{req_id,id,given,when,then}:
   r1,happy,a snapshot exists,spawn is called with snapshot_id and new prompt,new agent instance starts with inherited context from snapshot

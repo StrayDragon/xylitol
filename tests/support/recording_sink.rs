@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 
-use crate::core::ports::{EventSink, LifecycleEvent};
+use crate::runtime_protocol::{EventSink, LifecycleEvent};
 
 /// Collects lifecycle events into a `Vec` for later assertion.
 pub struct RecordingSink {

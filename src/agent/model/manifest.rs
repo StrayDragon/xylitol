@@ -23,8 +23,8 @@ use std::path::Path;
 use serde::Deserialize;
 
 use super::registry::ModelRegistry;
-use crate::core::model::{ModelConfig, ModelKind};
-use crate::core::types::ModelMeta;
+use crate::domain::model::{ModelConfig, ModelKind};
+use crate::domain::types::ModelMeta;
 
 /// A single model definition from a manifest file.
 #[derive(Debug, Clone, Deserialize)]

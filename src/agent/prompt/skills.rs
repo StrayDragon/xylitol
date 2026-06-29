@@ -4,7 +4,7 @@
 //! skill-related responsibilities into a focused component.
 
 use crate::agent::prompt::commands::SlashCommandInfo;
-use crate::core::resource_types::SkillInfo;
+use crate::domain::resource_types::SkillInfo;
 
 /// Manages loaded skills — lookup, XML expansion, and slash command registration.
 pub struct SkillManager {
@@ -43,16 +43,16 @@ impl SkillManager {
             content.clone()
         };
 
-        let escaped_name = crate::core::source_info::xml_escape(&skill.name);
+        let escaped_name = crate::domain::text::xml_escape(&skill.name);
         let escaped_location =
-            crate::core::source_info::xml_escape(&skill.source_info.path.to_string_lossy());
+            crate::domain::text::xml_escape(&skill.source_info.path.to_string_lossy());
         let base_dir = skill
             .source_info
             .base_dir
             .as_ref()
             .map(|d| d.to_string_lossy().to_string())
             .unwrap_or_default();
-        let escaped_base = crate::core::source_info::xml_escape(&base_dir);
+        let escaped_base = crate::domain::text::xml_escape(&base_dir);
 
         let mut result = format!(
             r##"<skill name="{escaped_name}" location="{escaped_location}">
@@ -96,8 +96,8 @@ impl Default for SkillManager {
 #[cfg(test)]
 mod tests {
     use super::SkillManager;
-    use crate::core::resource_types::SkillInfo;
-    use crate::core::source_info::{SourceInfo, SourceOrigin, SourceScope};
+    use crate::domain::resource_types::SkillInfo;
+    use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
 
     fn make_skill(name: &str, path: &str) -> SkillInfo {
         SkillInfo {

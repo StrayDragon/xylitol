@@ -2,6 +2,7 @@ pub mod bash_exec;
 pub mod config;
 pub mod constants;
 pub mod event;
+pub mod export;
 pub mod hooks;
 pub mod mcp;
 pub mod process;

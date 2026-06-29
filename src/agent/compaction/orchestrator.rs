@@ -4,7 +4,7 @@
 //! compaction orchestration into a focused component.
 
 use crate::agent::compaction::{CompactionSettings, compact_session};
-use crate::core::ports::{EventSink, LifecycleEvent, SessionStore, XyModel};
+use crate::runtime_protocol::{EventSink, LifecycleEvent, SessionStore, XyModel};
 
 /// Orchestrates session compaction — threshold checks and execution.
 ///

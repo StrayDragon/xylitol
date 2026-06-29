@@ -1,4 +1,4 @@
-//! Bash execution vocabulary — pure functions shared by agent and infra.
+//! Bang-prefix parsing for user-initiated bash commands.
 
 /// Returns `(exclude_from_context, command_without_prefix)` for a `!`/`!!` line.
 ///

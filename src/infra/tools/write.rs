@@ -11,8 +11,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use crate::core::error::XyToolError;
-use crate::core::ports::{XyTool, XyToolCtx};
+use crate::domain::error::XyToolError;
+use crate::runtime_protocol::{XyTool, XyToolCtx};
 
 use super::mutation::FileMutationQueue;
 

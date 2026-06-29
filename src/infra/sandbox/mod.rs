@@ -13,11 +13,10 @@ use super::config::types::{
     SandboxProcessConfig,
 };
 
-// SandboxVerdict + SandboxEngine trait relocated to `core::ports` (shared port
-// vocabulary). Concrete backends below (NoopEngine, FallbackBackend, platform)
-// implement the port; re-exported here for existing `crate::infra::sandbox::*`
-// references.
-pub use crate::core::ports::{SandboxEngine, SandboxVerdict};
+// SandboxVerdict + SandboxEngine trait live in `runtime_protocol::sandbox`.
+// Concrete backends below (NoopEngine, FallbackBackend, platform) implement the
+// port; re-exported here for existing `crate::infra::sandbox::*` references.
+pub use crate::runtime_protocol::{SandboxEngine, SandboxVerdict};
 
 /// A no-op engine that allows everything. Used when sandbox is disabled.
 #[derive(Clone, Debug)]

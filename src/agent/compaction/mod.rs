@@ -31,8 +31,8 @@ pub use token_estimator::{XyUsage, calculate_context_tokens, estimate_context_to
 use anyhow::Result;
 use serde_json::json;
 
-use crate::core::ports::{SessionStore, XyModel};
-use crate::core::session_types::{CompactionEntry, EntryBase, SessionEntry};
+use crate::domain::session_types::{CompactionEntry, EntryBase, SessionEntry};
+use crate::runtime_protocol::{SessionStore, XyModel};
 
 /// Compact a session by summarizing old entries and writing a CompactionEntry.
 pub async fn compact_session(
@@ -95,7 +95,7 @@ pub async fn compact_session(
         cut.first_kept_entry_index
     };
 
-    let messages_to_summarize: Vec<crate::core::message::AgentMessage> = entries
+    let messages_to_summarize: Vec<crate::domain::message::AgentMessage> = entries
         [boundary_start..history_end]
         .iter()
         .filter_map(|entry| entry.as_agent_message())

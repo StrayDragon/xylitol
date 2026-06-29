@@ -15,11 +15,11 @@ use crate::agent::compaction::CompactionSettings;
 use crate::agent::facade::Agent;
 use crate::agent::model::registry::ModelRegistry;
 use crate::agent::tools::ToolRegistry;
-use crate::core::ports::{BashExecutor, EventSink, SessionStore};
 use crate::infra::bash_exec::InfraBashExecutor;
 use crate::infra::config::value::InfraSecretResolver;
 use crate::infra::event::EventBus;
 use crate::infra::session::SessionManager;
+use crate::runtime_protocol::{BashExecutor, EventSink, ExportIo, SessionStore};
 use crate::server::lock::{LockInfo, ServerLock};
 use crate::server::port_retry::{self, PORT_RETRY_LIMIT};
 use crate::server::rest::{self, AppState};
@@ -113,6 +113,7 @@ pub async fn start(
         .to_string();
 
     let bash_executor: Arc<dyn BashExecutor> = Arc::new(InfraBashExecutor::new());
+    let export_io: Arc<dyn ExportIo> = Arc::new(crate::infra::export::StdExportIo::new());
     let agent = Agent::with_ports(
         config.model_registry.clone(),
         tool_registry,
@@ -131,6 +132,7 @@ pub async fn start(
         Arc::new(crate::infra::provider::factory::build_provider),
         crate::infra::sandbox::noop_engine(),
         bash_executor,
+        export_io,
     );
 
     // ── Server state ──────────────────────────────────────────────

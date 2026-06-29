@@ -6,8 +6,8 @@
 
 use std::sync::Arc;
 
-use crate::core::message::AgentMessage;
-use crate::core::ports::SessionStore;
+use crate::domain::message::AgentMessage;
+use crate::runtime_protocol::SessionStore;
 
 /// Session persistence via the SessionStore port (HC-2).
 ///

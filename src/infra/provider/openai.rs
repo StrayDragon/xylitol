@@ -20,9 +20,9 @@ use async_trait::async_trait;
 use futures::Stream;
 use serde_json::Value;
 
-use crate::core::error::XyError;
-use crate::core::ports::{XyModel, XyStream};
-use crate::core::types::{XyChunk, XyFinishReason, XyToolSchema};
+use crate::domain::error::XyError;
+use crate::domain::types::{XyChunk, XyFinishReason, XyToolSchema};
+use crate::runtime_protocol::{XyModel, XyStream};
 
 pub(crate) struct OpenAIProvider {
     client: Client<OpenAIConfig>,
@@ -183,8 +183,8 @@ fn map_stream(
 /// Extract Usage from OpenAI response.
 fn openai_usage(
     usage: &Option<async_openai::types::chat::CompletionUsage>,
-) -> Option<crate::core::message::Usage> {
-    usage.as_ref().map(|u| crate::core::message::Usage {
+) -> Option<crate::domain::message::Usage> {
+    usage.as_ref().map(|u| crate::domain::message::Usage {
         input: u.prompt_tokens as u64,
         output: u.completion_tokens as u64,
         cache_read: 0,
@@ -244,7 +244,7 @@ fn parse_nonstream_response(
 
 // ── AgentMessage conversion ────────────────────────────────────
 
-use crate::core::message::{AgentMessage, AgentPart, collect_text_parts};
+use crate::domain::message::{AgentMessage, AgentPart, collect_text_parts};
 
 /// Convert a slice of [`AgentMessage`] values to OpenAI chat request
 /// messages.
@@ -389,7 +389,7 @@ pub fn convert_agent_messages(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::message::{AgentMessage, StopReason};
+    use crate::domain::message::{AgentMessage, StopReason};
 
     #[test]
     fn convert_user_message() {

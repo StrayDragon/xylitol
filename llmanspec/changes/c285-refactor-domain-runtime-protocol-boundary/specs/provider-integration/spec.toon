@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,pi2,"provider-in-infra","All LLM provider implementations (OpenAI, Anthropic, Fake, Mock) MUST live under infra/provider/ and implement runtime_protocol::XyModel; agent/ MUST NOT contain a provider/ subdirectory; provider construction (the factory from ModelConfig to Arc<dyn XyModel>) MUST live in infra::provider::factory, not in agent/.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  pi2,"provider-moved",src/agent/provider is checked for existence,the path is inspected,it does not exist and src/infra/provider/ does and XyModel is imported from crate::runtime_protocol

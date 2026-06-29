@@ -1,17 +1,12 @@
 //! Session export — HTML / JSONL rendering and JSONL import.
 //!
-//! Pure transformations over a loaded session's entries (relocated from
-//! `infra::session::export` per c278 — these helpers depend only on core
-//! vocabulary types + std, so they live here and the agent layer calls them
-//! directly instead of through an infra forwarding wrapper). No file mutation
-//! outside the explicit `export_to_*` writers; import creates a brand-new
-//! session.
-
-use std::path::Path;
+//! Pure transformations over a loaded session's entries. No file mutation
+//! outside the injected [`ExportIo`] port; import creates a brand-new session.
 
 use serde_json::Value;
 
-use crate::core::session_types::{MessageEntry, SessionEntry};
+use crate::domain::session_types::{MessageEntry, SessionEntry};
+use crate::domain::text::xml_escape;
 
 /// Render a session's entries to a standalone HTML document.
 ///
@@ -35,7 +30,7 @@ pub fn render_html(session_id: &str, entries: &[SessionEntry]) -> String {
          .kind{{font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em;color:#666;margin-bottom:0.4em;}}\
          pre{{white-space:pre-wrap;word-break:break-word;margin:0;}}\
          </style></head><body>\n{body}\n</body></html>",
-        sid = html_escape(session_id),
+        sid = xml_escape(session_id),
         body = body,
     )
 }
@@ -79,7 +74,7 @@ fn block(kind: &str, content: &str) -> String {
     format!(
         "<div class=\"entry {kind}\"><div class=\"kind\">{kind}</div><pre>{content}</pre></div>\n",
         kind = kind,
-        content = html_escape(content),
+        content = xml_escape(content),
     )
 }
 
@@ -106,12 +101,6 @@ fn message_text(msg: &Value) -> String {
         return out;
     }
     msg.to_string()
-}
-
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }
 
 /// Render a session's entries as JSONL (one JSON object per line).
@@ -154,21 +143,11 @@ pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, String> {
     Ok(entries)
 }
 
-/// Write a rendered string to `path`, creating parent directories as needed.
-pub fn write_to(path: &Path, content: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        std::fs::create_dir_all(parent).map_err(|e| format!("create dirs: {e}"))?;
-    }
-    std::fs::write(path, content).map_err(|e| format!("write {}: {e}", path.display()))
-}
-
 /// Human-readable guidance shown when the user invokes `share` without a token.
 ///
 /// The actual gist upload is intentionally not implemented here (requires HTTP
 /// + token management); this stub keeps the call site stable for future wiring.
-pub fn share_guidance_message(_path: &Path) -> String {
+pub fn share_guidance_message(_path: &std::path::Path) -> String {
     "Sharing as a GitHub gist requires a token. Set GITHUB_GIST_TOKEN (or the \
      equivalent in your config), then re-run. \
      See: https://docs.github.com/en/rest/gists"
@@ -178,7 +157,7 @@ pub fn share_guidance_message(_path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::session_types::{BashExecutionEntry, EntryBase, SessionHeader};
+    use crate::domain::session_types::{BashExecutionEntry, EntryBase, SessionHeader};
     use std::path::PathBuf;
 
     fn header(id: &str) -> SessionEntry {
@@ -268,14 +247,6 @@ mod tests {
     #[test]
     fn jsonl_rejects_empty() {
         assert!(parse_jsonl(b"   \n\n").is_err());
-    }
-
-    #[test]
-    fn write_to_creates_parent_dirs() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("a/b/c/session.html");
-        write_to(&path, "<html></html>").unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "<html></html>");
     }
 
     #[test]

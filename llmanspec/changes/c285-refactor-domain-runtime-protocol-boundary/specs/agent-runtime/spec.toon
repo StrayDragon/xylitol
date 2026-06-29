@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ar17,"sessionstore-port","System MUST define runtime_protocol::SessionStore with load_context (returns SessionContext), append, and exists methods — the minimal surface the ReAct loop and compaction call; SessionManager MUST implement it.",null,null,null
+  modify_requirement,ar18,"eventsink-port","System MUST define runtime_protocol::EventSink with emit_lifecycle; EventBus MUST implement it.",null,null,null
+  add_requirement,ar19,"lifecyclehandler-in-runtime-protocol","The LifecycleHandler type alias for async event subscriptions MUST reside in runtime_protocol::event, not in domain::lifecycle, because it is a contract detail of the event runtime protocol rather than domain vocabulary.",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  ar17,"store-in-memory",a test constructs Agent with InMemoryStore,a turn runs,the test passes without creating a real SessionManager
+  ar18,"sink-records-events",a test constructs Agent with RecordingSink,compaction triggers lifecycle events,the sink contains the expected events
+  ar19,"handler-in-runtime-protocol",the source tree is inspected for LifecycleHandler,its definition is located,it is defined under src/runtime_protocol/event.rs
