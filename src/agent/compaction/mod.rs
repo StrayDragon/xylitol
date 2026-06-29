@@ -26,17 +26,17 @@ pub use file_ops::{
 };
 pub use llm_summarizer::{generate_summary, serialize_conversation};
 pub use settings::CompactionSettings;
-pub use token_estimator::{XyUsage, calculate_context_tokens, estimate_context_tokens};
+pub use token_estimator::{calculate_context_tokens, estimate_context_tokens};
 
 use anyhow::Result;
 use serde_json::json;
 
 use crate::domain::session_types::{CompactionEntry, EntryBase, SessionEntry};
-use crate::runtime_protocol::{SessionStore, XyModel};
+use crate::runtime_protocol::{XyModel, XySessionStore};
 
 /// Compact a session by summarizing old entries and writing a CompactionEntry.
 pub async fn compact_session(
-    store: &dyn SessionStore,
+    store: &dyn XySessionStore,
     session_id: &str,
     model: &dyn XyModel,
     settings: &CompactionSettings,
@@ -477,28 +477,32 @@ mod tests {
         ));
     }
 
-    // ── XyUsage tests ─────────────────────────────────────────────
+    // ── XyUsage tests ───────────────────────────────────────────────
 
     #[test]
     fn test_calculate_context_tokens_uses_total() {
-        let usage = XyUsage {
+        let usage = crate::domain::message::XyUsage {
             total_tokens: 500,
-            input_tokens: 200,
-            output_tokens: 300,
-            cache_read_tokens: 100,
-            cache_write_tokens: 50,
+            input: 200,
+            output: 300,
+            cache_read: 100,
+            cache_write: 50,
+            cache_write_1h: 0,
+            cost: None,
         };
         assert_eq!(token_estimator::calculate_context_tokens(&usage), 500);
     }
 
     #[test]
     fn test_calculate_context_tokens_fallback() {
-        let usage = XyUsage {
+        let usage = crate::domain::message::XyUsage {
             total_tokens: 0,
-            input_tokens: 200,
-            output_tokens: 300,
-            cache_read_tokens: 100,
-            cache_write_tokens: 50,
+            input: 200,
+            output: 300,
+            cache_read: 100,
+            cache_write: 50,
+            cache_write_1h: 0,
+            cost: None,
         };
         assert_eq!(token_estimator::calculate_context_tokens(&usage), 650);
     }

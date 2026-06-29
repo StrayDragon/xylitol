@@ -1,10 +1,10 @@
 //! Print mode — non-interactive, streaming stdout output.
 //!
-//! Subscribes to an AgentEvent stream and renders text/tool output.
+//! Subscribes to an XyEvent stream and renders text/tool output.
 
 use std::io::{self, Write};
 
-use crate::agent::facade::AgentEvent;
+use crate::agent::facade::XyEvent;
 use crate::app::driver::Driver;
 use futures::StreamExt;
 
@@ -21,37 +21,37 @@ pub(crate) async fn run_print(
 
     while let Some(event) = stream.next().await {
         match event {
-            AgentEvent::TurnStart { turn_index } => {
+            XyEvent::TurnStart { turn_index } => {
                 eprintln!("\n[Turn {turn_index}]");
             }
-            AgentEvent::TurnEnd { turn_index } => {
+            XyEvent::TurnEnd { turn_index } => {
                 eprintln!("\n[Turn {turn_index} end]");
             }
-            AgentEvent::MessageStart { .. } => {
+            XyEvent::MessageStart { .. } => {
                 // Silent: don't interrupt the output stream.
             }
-            AgentEvent::MessageEnd { .. } => {
+            XyEvent::MessageEnd { .. } => {
                 // Silent: don't interrupt the output stream.
             }
-            AgentEvent::TextDelta(text) => {
+            XyEvent::TextDelta(text) => {
                 let _ = write!(handle, "{text}");
                 let _ = handle.flush();
             }
-            AgentEvent::ThinkingDelta(_) => {}
-            AgentEvent::MessageUpdate { text, .. } => {
+            XyEvent::ThinkingDelta(_) => {}
+            XyEvent::MessageUpdate { text, .. } => {
                 // Overwrite the current line with the accumulated text
                 // (similar to TextDelta, streamed incrementally).
                 let _ = write!(handle, "{text}");
                 let _ = handle.flush();
             }
-            AgentEvent::ToolExecutionStart { name, .. } => {
+            XyEvent::ToolExecutionStart { name, .. } => {
                 eprintln!("\n[Tool: {name}]");
             }
-            AgentEvent::ToolExecutionUpdate { output, .. } => {
+            XyEvent::ToolExecutionUpdate { output, .. } => {
                 eprint!("{output}");
                 let _ = io::stderr().flush();
             }
-            AgentEvent::ToolExecutionEnd { name, result, .. } => {
+            XyEvent::ToolExecutionEnd { name, result, .. } => {
                 // Summarize result
                 let preview: String = result.lines().take(3).collect::<Vec<_>>().join("\n");
                 let suffix = if result.lines().count() > 3 {
@@ -61,22 +61,29 @@ pub(crate) async fn run_print(
                 };
                 eprintln!("[Tool: {name}] result:\n{preview}{suffix}");
             }
-            AgentEvent::Error(msg) => {
+            XyEvent::Error(msg) => {
                 eprintln!("\n[Error] {msg}");
             }
-            AgentEvent::CompactionStart { reason } => {
+            XyEvent::CompactionStart { reason } => {
                 eprintln!("\n[Compaction] {reason}");
             }
-            AgentEvent::CompactionEnd { .. } => {
+            XyEvent::CompactionEnd { .. } => {
                 eprintln!("\n[Compaction complete]");
             }
-            AgentEvent::ModelSelect { model_id, .. } => {
+            XyEvent::ModelSelect { model_id, .. } => {
                 eprintln!("\n[Model] switched to {model_id}");
             }
-            AgentEvent::ThinkingLevelChanged { level } => {
+            XyEvent::ThinkingLevelChanged { level } => {
                 eprintln!("\n[Thinking] level set to {level}");
             }
-            AgentEvent::AgentEnd { .. } => break,
+            XyEvent::AgentStart { .. }
+            | XyEvent::QueueUpdate { .. }
+            | XyEvent::AutoRetryStart { .. }
+            | XyEvent::AutoRetryEnd { .. }
+            | XyEvent::SessionInfoChanged { .. } => {
+                // Lifecycle metadata: silent in print mode.
+            }
+            XyEvent::AgentEnd { .. } => break,
         }
     }
     let _ = writeln!(handle);

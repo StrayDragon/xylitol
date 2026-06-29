@@ -21,17 +21,8 @@ impl Default for CompactionSettings {
     }
 }
 
-impl From<crate::domain::compaction_config::CompactionConfig> for CompactionSettings {
-    fn from(config: crate::domain::compaction_config::CompactionConfig) -> Self {
-        Self {
-            enabled: config.enabled,
-            ..Self::default()
-        }
-    }
-}
-
-impl From<crate::domain::compaction_config::CompactionSettings> for CompactionSettings {
-    fn from(s: crate::domain::compaction_config::CompactionSettings) -> Self {
+impl From<crate::domain::compaction_config::XyCompactionSettingsConfig> for CompactionSettings {
+    fn from(s: crate::domain::compaction_config::XyCompactionSettingsConfig) -> Self {
         Self {
             enabled: s.enabled.unwrap_or(true),
             reserve_tokens: s.reserve_tokens.unwrap_or(16384),
@@ -47,7 +38,7 @@ mod tests {
     #[test]
     fn from_settings_uses_defaults_when_none() {
         let s: CompactionSettings =
-            crate::domain::compaction_config::CompactionSettings::default().into();
+            crate::domain::compaction_config::XyCompactionSettingsConfig::default().into();
         assert!(s.enabled);
         assert_eq!(s.reserve_tokens, 16384);
         assert_eq!(s.keep_recent_tokens, 20000);
@@ -55,7 +46,7 @@ mod tests {
 
     #[test]
     fn from_settings_applies_overrides() {
-        let src = crate::domain::compaction_config::CompactionSettings {
+        let src = crate::domain::compaction_config::XyCompactionSettingsConfig {
             enabled: Some(false),
             reserve_tokens: Some(1000),
             keep_recent_tokens: Some(5000),

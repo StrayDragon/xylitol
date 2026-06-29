@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::runtime_protocol::ResourceLoader;
+use crate::runtime_protocol::XyResourceLoader;
 
 // ── ResourceDiagnostic ────────────────────────────────────────────────
 
@@ -495,13 +495,13 @@ impl DefaultResourceLoader {
     }
 }
 
-// ResourceLoader port impl. The trait currently has no `dyn` consumer in
+// XyResourceLoader port impl. The trait currently has no `dyn` consumer in
 // production (the loader-based prompt assembly path was never wired into
 // AgentSession.prompt_opts); concrete callers in interactive/resources.rs
 // use inherent methods directly. Kept as a port abstraction for the
 // prompt-assembly wiring planned in c280 (session commands / system prompt).
 #[allow(dead_code)]
-impl ResourceLoader for DefaultResourceLoader {
+impl XyResourceLoader for DefaultResourceLoader {
     fn get_agents_files(&self) -> &[AgentsFile] {
         &self.context_files
     }

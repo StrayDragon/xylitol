@@ -2,7 +2,8 @@ use async_trait::async_trait;
 
 use crate::domain::error::XyError;
 use crate::domain::message::AgentMessage;
-use crate::domain::types::{XyChunk, XyFinishReason, XyToolSchema};
+use crate::domain::message::XyStopReason;
+use crate::domain::types::{XyChunk, XyToolSchema};
 use crate::runtime_protocol::{XyModel, XyStream};
 
 /// Drop-in mock for tests. Returns a fixed text response.
@@ -41,7 +42,7 @@ impl XyModel for MockXyModel {
         Ok(Box::pin(futures::stream::iter(vec![
             Ok(XyChunk::TextDelta(text)),
             Ok(XyChunk::Done {
-                finish_reason: XyFinishReason::Stop,
+                finish_reason: XyStopReason::Stop,
                 usage: None,
             }),
         ])))

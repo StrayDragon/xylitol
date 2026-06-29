@@ -6,19 +6,19 @@ use async_trait::async_trait;
 
 use crate::domain::error::XyError;
 use crate::domain::message::AgentMessage;
-use crate::domain::model::ModelConfig;
+use crate::domain::model::XyModelConfig;
 use crate::domain::types::XyChunk;
 
 /// Streaming response from an LLM provider.
 pub type XyStream = Pin<Box<dyn futures::Stream<Item = Result<XyChunk, XyError>> + Send>>;
 
-/// Factory that builds an [`XyModel`] instance from a [`ModelConfig`].
+/// Factory that builds an [`XyModel`] instance from a [`XyModelConfig`].
 ///
 /// Supplied by the composition root (HC-1: agent/ must not construct providers
 /// itself). Aliased because the closure signature is repeated across the
 /// agent facade, session, model manager, and composition roots.
-pub type ModelBuilder = std::sync::Arc<
-    dyn Fn(&ModelConfig) -> Result<std::sync::Arc<dyn XyModel>, String> + Send + Sync,
+pub type XyModelBuilder = std::sync::Arc<
+    dyn Fn(&XyModelConfig) -> Result<std::sync::Arc<dyn XyModel>, String> + Send + Sync,
 >;
 
 /// LLM provider contract.

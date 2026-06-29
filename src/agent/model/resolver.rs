@@ -7,10 +7,10 @@
 //! - `model:thinkingLevel` suffix parsing
 //! - Fallback model construction
 
-use crate::domain::model::ModelConfig;
+use crate::domain::model::XyModelConfig;
 #[cfg(test)]
-use crate::domain::model::ModelKind;
-use crate::domain::types::{ModelMeta, ThinkingLevel};
+use crate::domain::model::XyModelKind;
+use crate::domain::types::{ThinkingLevel, XyModelMeta};
 
 // ── Resolved Model ──────────────────────────────────────────────────
 
@@ -18,7 +18,7 @@ use crate::domain::types::{ModelMeta, ThinkingLevel};
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedModel {
     /// The resolved model metadata.
-    pub(crate) model: ModelMeta,
+    pub(crate) model: XyModelMeta,
     /// Optional thinking level parsed from `model:level` suffix.
     pub(crate) thinking_level: Option<ThinkingLevel>,
     /// Warning message, e.g., when using a fallback.
@@ -26,7 +26,7 @@ pub(crate) struct ResolvedModel {
 }
 
 impl ResolvedModel {
-    pub(crate) fn new(model: ModelMeta) -> Self {
+    pub(crate) fn new(model: XyModelMeta) -> Self {
         Self {
             model,
             thinking_level: None,
@@ -53,7 +53,7 @@ impl ResolvedModel {
 /// 6. Fallback to first available model
 pub(crate) fn resolve_model(
     pattern: &str,
-    available: &[&ModelMeta],
+    available: &[&XyModelMeta],
     default_provider: Option<&str>,
 ) -> Result<ResolvedModel, String> {
     if available.is_empty() {
@@ -145,8 +145,8 @@ fn parse_thinking_level(s: &str) -> Option<ThinkingLevel> {
 /// Splits pattern on "/", then matches provider name and model id parts.
 fn exact_match_provider_model<'a>(
     pattern: &str,
-    available: &'a [&'a ModelMeta],
-) -> Option<&'a ModelMeta> {
+    available: &'a [&'a XyModelMeta],
+) -> Option<&'a XyModelMeta> {
     // Try "provider/modelId" exact match
     if let Some(slash_pos) = pattern.find('/') {
         let provider = &pattern[..slash_pos];
@@ -159,7 +159,7 @@ fn exact_match_provider_model<'a>(
 
         // Provider + model part match: e.g., "openai/gpt-4o" matches when
         // the model's config.provider_name() == "openai" and id contains "gpt-4o"
-        let candidates: Vec<&&ModelMeta> = available
+        let candidates: Vec<&&XyModelMeta> = available
             .iter()
             .filter(|m| m.config.provider_name() == provider)
             .collect();
@@ -190,7 +190,10 @@ fn exact_match_provider_model<'a>(
 }
 
 /// Exact match by bare model id (no provider prefix).
-fn exact_match_bare_id<'a>(pattern: &str, available: &'a [&'a ModelMeta]) -> Option<&'a ModelMeta> {
+fn exact_match_bare_id<'a>(
+    pattern: &str,
+    available: &'a [&'a XyModelMeta],
+) -> Option<&'a XyModelMeta> {
     // Match against config.model (the provider-specific id part)
     let found = available.iter().find(|m| m.config.model == pattern);
     if let Some(m) = found {
@@ -207,10 +210,10 @@ fn exact_match_bare_id<'a>(pattern: &str, available: &'a [&'a ModelMeta]) -> Opt
 ///
 /// Prefers shorter ids (aliases without version/date suffixes) over
 /// longer dated versions when both match the same pattern.
-fn fuzzy_match<'a>(pattern: &str, available: &'a [&'a ModelMeta]) -> Option<&'a ModelMeta> {
+fn fuzzy_match<'a>(pattern: &str, available: &'a [&'a XyModelMeta]) -> Option<&'a XyModelMeta> {
     let pattern_lower = pattern.to_lowercase();
 
-    let mut candidates: Vec<&&ModelMeta> = available
+    let mut candidates: Vec<&&XyModelMeta> = available
         .iter()
         .filter(|m| {
             let id_lower = m.id.to_lowercase();
@@ -249,9 +252,9 @@ fn fuzzy_match<'a>(pattern: &str, available: &'a [&'a ModelMeta]) -> Option<&'a 
 /// The fallback model preserves the user's requested id as a reference name.
 pub(crate) fn build_fallback_model(
     pattern: &str,
-    available: &[&ModelMeta],
+    available: &[&XyModelMeta],
     default_provider: Option<&str>,
-) -> Option<ModelMeta> {
+) -> Option<XyModelMeta> {
     // Try to determine the intended provider from the pattern
     let provider_hint = if let Some(slash_pos) = pattern.find('/') {
         Some(&pattern[..slash_pos])
@@ -265,9 +268,9 @@ pub(crate) fn build_fallback_model(
             .iter()
             .find(|m| m.config.provider_name() == provider)
     {
-        return Some(ModelMeta {
+        return Some(XyModelMeta {
             id: pattern.to_string(),
-            config: ModelConfig {
+            config: XyModelConfig {
                 kind: template.config.kind,
                 api_key: template.config.api_key.clone(),
                 model: template.config.model.clone(),
@@ -288,7 +291,7 @@ pub(crate) fn build_fallback_model(
     }
 
     // Last resort: clone first available with user's requested id
-    available.first().map(|template| ModelMeta {
+    available.first().map(|template| XyModelMeta {
         id: pattern.to_string(),
         config: template.config.clone(),
         display_name: format!("{} (fallback)", pattern),
@@ -319,14 +322,14 @@ impl ResolvedModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::ModelConfig;
+    use crate::domain::model::XyModelConfig;
 
-    fn make_available() -> Vec<ModelMeta> {
+    fn make_available() -> Vec<XyModelMeta> {
         vec![
-            ModelMeta {
+            XyModelMeta {
                 id: "openai/gpt-4o".into(),
-                config: ModelConfig {
-                    kind: ModelKind::OpenAi,
+                config: XyModelConfig {
+                    kind: XyModelKind::OpenAi,
                     api_key: "sk-test".into(),
                     model: "gpt-4o".into(),
                     base_url: None,
@@ -343,10 +346,10 @@ mod tests {
                 max_tokens: 0,
                 thinking_levels: Vec::new(),
             },
-            ModelMeta {
+            XyModelMeta {
                 id: "openai/gpt-4o-mini".into(),
-                config: ModelConfig {
-                    kind: ModelKind::OpenAi,
+                config: XyModelConfig {
+                    kind: XyModelKind::OpenAi,
                     api_key: "sk-test".into(),
                     model: "gpt-4o-mini".into(),
                     base_url: None,
@@ -363,10 +366,10 @@ mod tests {
                 max_tokens: 0,
                 thinking_levels: Vec::new(),
             },
-            ModelMeta {
+            XyModelMeta {
                 id: "claude-sonnet-4-20250514".into(),
-                config: ModelConfig {
-                    kind: ModelKind::Anthropic,
+                config: XyModelConfig {
+                    kind: XyModelKind::Anthropic,
                     api_key: "".into(),
                     model: "claude-sonnet-4-20250514".into(),
                     base_url: None,
@@ -383,10 +386,10 @@ mod tests {
                 max_tokens: 0,
                 thinking_levels: Vec::new(),
             },
-            ModelMeta {
+            XyModelMeta {
                 id: "anthropic/claude-sonnet-4-20250514".into(),
-                config: ModelConfig {
-                    kind: ModelKind::Anthropic,
+                config: XyModelConfig {
+                    kind: XyModelKind::Anthropic,
                     api_key: "".into(),
                     model: "claude-sonnet-4-20250514".into(),
                     base_url: None,
@@ -406,7 +409,7 @@ mod tests {
         ]
     }
 
-    fn refs(models: &[ModelMeta]) -> Vec<&ModelMeta> {
+    fn refs(models: &[XyModelMeta]) -> Vec<&XyModelMeta> {
         models.iter().collect()
     }
 
@@ -447,7 +450,7 @@ mod tests {
 
     #[test]
     fn test_resolve_empty_available() {
-        let available: Vec<&ModelMeta> = vec![];
+        let available: Vec<&XyModelMeta> = vec![];
         let result = resolve_model("any", &available, None);
         assert!(result.is_err());
     }
@@ -501,16 +504,16 @@ mod tests {
         let available = refs(&models);
         let fallback = build_fallback_model("missing-model", &available, Some("openai")).unwrap();
         assert_eq!(fallback.id, "missing-model");
-        assert_eq!(fallback.config.kind, ModelKind::OpenAi);
+        assert_eq!(fallback.config.kind, XyModelKind::OpenAi);
     }
 
     #[test]
     fn test_alias_preference() {
         let models = vec![
-            ModelMeta {
+            XyModelMeta {
                 id: "claude-sonnet".into(),
-                config: ModelConfig {
-                    kind: ModelKind::Anthropic,
+                config: XyModelConfig {
+                    kind: XyModelKind::Anthropic,
                     api_key: "".into(),
                     model: "claude-sonnet-4-20250514".into(),
                     base_url: None,
@@ -527,10 +530,10 @@ mod tests {
                 max_tokens: 0,
                 thinking_levels: Vec::new(),
             },
-            ModelMeta {
+            XyModelMeta {
                 id: "claude-sonnet-4-20250514".into(),
-                config: ModelConfig {
-                    kind: ModelKind::Anthropic,
+                config: XyModelConfig {
+                    kind: XyModelKind::Anthropic,
                     api_key: "".into(),
                     model: "claude-sonnet-4-20250514".into(),
                     base_url: None,

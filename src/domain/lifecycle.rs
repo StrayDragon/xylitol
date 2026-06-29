@@ -9,22 +9,23 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-// ── AgentLifecycleEvent ─────────────────────────────────────────────
+use crate::domain::message::AgentMessage;
 
-/// All possible lifecycle events emitted during agent execution.
+// ── XyEvent ─────────────────────────────────────────────
+
+/// All possible events emitted during agent execution.
 ///
 /// Each variant carries a typed payload — no generic `Value` here.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub enum AgentLifecycleEvent {
+pub enum XyEvent {
     // ── Agent lifecycle ──────────────────────────────────────────
     AgentStart {
         session_id: String,
         model: String,
     },
     AgentEnd {
-        session_id: String,
-        reason: String,
+        messages: Vec<AgentMessage>,
     },
 
     // ── Turn lifecycle ───────────────────────────────────────────
@@ -40,21 +41,23 @@ pub enum AgentLifecycleEvent {
         role: String,
         /// Full agent message, when available.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        message: Option<crate::domain::message::AgentMessage>,
+        message: Option<AgentMessage>,
     },
     MessageUpdate {
         text: String,
         thinking: Option<String>,
         /// Partial agent message with current streaming state.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        message: Option<crate::domain::message::AgentMessage>,
+        message: Option<AgentMessage>,
     },
     MessageEnd {
         role: String,
         /// Complete agent message after streaming finishes.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        message: Option<crate::domain::message::AgentMessage>,
+        message: Option<AgentMessage>,
     },
+    TextDelta(String),
+    ThinkingDelta(String),
 
     // ── Tool execution ───────────────────────────────────────────
     ToolExecutionStart {
@@ -110,6 +113,9 @@ pub enum AgentLifecycleEvent {
         attempt: u32,
     },
 
+    // ── Error ────────────────────────────────────────────────────
+    Error(String),
+
     // ── Session info ─────────────────────────────────────────────
     SessionInfoChanged {
         key: String,
@@ -117,28 +123,31 @@ pub enum AgentLifecycleEvent {
     },
 }
 
-impl AgentLifecycleEvent {
+impl XyEvent {
     /// A short human-readable description of the event.
     pub fn description(&self) -> &'static str {
         match self {
-            Self::AgentStart { .. } => "agent_start",
-            Self::AgentEnd { .. } => "agent_end",
-            Self::TurnStart { .. } => "turn_start",
-            Self::TurnEnd { .. } => "turn_end",
-            Self::MessageStart { .. } => "message_start",
-            Self::MessageUpdate { .. } => "message_update",
-            Self::MessageEnd { .. } => "message_end",
-            Self::ToolExecutionStart { .. } => "tool_execution_start",
-            Self::ToolExecutionUpdate { .. } => "tool_execution_update",
-            Self::ToolExecutionEnd { .. } => "tool_execution_end",
-            Self::CompactionStart { .. } => "compaction_start",
-            Self::CompactionEnd { .. } => "compaction_end",
-            Self::ModelSelect { .. } => "model_select",
-            Self::ThinkingLevelChanged { .. } => "thinking_level_changed",
-            Self::QueueUpdate { .. } => "queue_update",
-            Self::AutoRetryStart { .. } => "auto_retry_start",
-            Self::AutoRetryEnd { .. } => "auto_retry_end",
-            Self::SessionInfoChanged { .. } => "session_info_changed",
+            XyEvent::AgentStart { .. } => "agent_start",
+            XyEvent::AgentEnd { .. } => "agent_end",
+            XyEvent::TurnStart { .. } => "turn_start",
+            XyEvent::TurnEnd { .. } => "turn_end",
+            XyEvent::MessageStart { .. } => "message_start",
+            XyEvent::MessageUpdate { .. } => "message_update",
+            XyEvent::MessageEnd { .. } => "message_end",
+            XyEvent::TextDelta(_) => "text_delta",
+            XyEvent::ThinkingDelta(_) => "thinking_delta",
+            XyEvent::ToolExecutionStart { .. } => "tool_execution_start",
+            XyEvent::ToolExecutionUpdate { .. } => "tool_execution_update",
+            XyEvent::ToolExecutionEnd { .. } => "tool_execution_end",
+            XyEvent::CompactionStart { .. } => "compaction_start",
+            XyEvent::CompactionEnd { .. } => "compaction_end",
+            XyEvent::ModelSelect { .. } => "model_select",
+            XyEvent::ThinkingLevelChanged { .. } => "thinking_level_changed",
+            XyEvent::QueueUpdate { .. } => "queue_update",
+            XyEvent::AutoRetryStart { .. } => "auto_retry_start",
+            XyEvent::AutoRetryEnd { .. } => "auto_retry_end",
+            XyEvent::SessionInfoChanged { .. } => "session_info_changed",
+            XyEvent::Error(_) => "error",
         }
     }
 }

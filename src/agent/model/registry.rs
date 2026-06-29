@@ -10,9 +10,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::domain::model::{ModelConfig, ModelKind};
-use crate::domain::types::ModelMeta;
-use crate::runtime_protocol::SecretResolver;
+use crate::domain::model::{XyModelConfig, XyModelKind};
+use crate::domain::types::XyModelMeta;
+use crate::runtime_protocol::XySecretResolver;
 
 // ── Provider Config ─────────────────────────────────────────────────
 
@@ -106,12 +106,12 @@ pub fn default_model_id_for_provider(provider_name: &str) -> Option<&'static str
 #[derive(Clone, Debug)]
 pub struct ModelRegistry {
     providers: HashMap<String, ProviderConfig>,
-    models: Vec<ModelMeta>,
-    secret_resolver: Arc<dyn SecretResolver>,
+    models: Vec<XyModelMeta>,
+    secret_resolver: Arc<dyn XySecretResolver>,
 }
 
 impl ModelRegistry {
-    pub fn new(secret_resolver: Arc<dyn SecretResolver>) -> Self {
+    pub fn new(secret_resolver: Arc<dyn XySecretResolver>) -> Self {
         Self {
             providers: HashMap::new(),
             models: Vec::new(),
@@ -163,19 +163,19 @@ impl ModelRegistry {
         self.secret_resolver.resolve_headers(headers, env)
     }
 
-    pub fn has_configured_auth_for_model(&self, model: &ModelMeta) -> bool {
+    pub fn has_configured_auth_for_model(&self, model: &XyModelMeta) -> bool {
         let provider_name = model.config.provider_name();
         self.has_configured_auth(provider_name)
     }
 
     // ── Model management ──────────────────────────────────────────
 
-    pub fn register(&mut self, meta: ModelMeta) {
+    pub fn register(&mut self, meta: XyModelMeta) {
         self.models.push(meta);
     }
 
-    pub fn get_available(&self) -> Vec<&ModelMeta> {
-        let mut models: Vec<&ModelMeta> = self.models.iter().collect();
+    pub fn get_available(&self) -> Vec<&XyModelMeta> {
+        let mut models: Vec<&XyModelMeta> = self.models.iter().collect();
         models.sort_by(|a, b| {
             let pa = self
                 .providers
@@ -196,11 +196,11 @@ impl ModelRegistry {
         default_model_id_for_provider(provider_name)
     }
 
-    pub fn find(&self, id: &str) -> Option<&ModelMeta> {
+    pub fn find(&self, id: &str) -> Option<&XyModelMeta> {
         self.models.iter().find(|m| m.id == id)
     }
 
-    pub fn list(&self) -> &[ModelMeta] {
+    pub fn list(&self) -> &[XyModelMeta] {
         &self.models
     }
 
@@ -212,11 +212,11 @@ impl ModelRegistry {
         self.models.is_empty()
     }
 
-    pub fn first_model(&self) -> Option<&ModelMeta> {
+    pub fn first_model(&self) -> Option<&XyModelMeta> {
         self.models.first()
     }
 
-    pub fn get_at(&self, index: usize) -> Option<&ModelMeta> {
+    pub fn get_at(&self, index: usize) -> Option<&XyModelMeta> {
         self.models.get(index)
     }
 
@@ -226,7 +226,7 @@ impl ModelRegistry {
 
     // ── Diagnostics ───────────────────────────────────────────────
 
-    pub fn auth_guidance_message(&self, model: &ModelMeta) -> Option<String> {
+    pub fn auth_guidance_message(&self, model: &XyModelMeta) -> Option<String> {
         let provider_name = model.config.provider_name();
         if self.has_configured_auth(provider_name) {
             return None;
@@ -275,25 +275,25 @@ fn env_var_for_provider(name: &str) -> &'static str {
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-pub fn build_default_model_meta(provider: &ProviderConfig) -> Option<ModelMeta> {
+pub fn build_default_model_meta(provider: &ProviderConfig) -> Option<XyModelMeta> {
     let model_id = default_model_id_for_provider(&provider.name)?;
     let kind = match provider.name.as_str() {
-        "openai" => ModelKind::OpenAi,
-        "anthropic" => ModelKind::Anthropic,
-        "fake" => ModelKind::Fake,
+        "openai" => XyModelKind::OpenAi,
+        "anthropic" => XyModelKind::Anthropic,
+        "fake" => XyModelKind::Fake,
         _ => return None,
     };
 
-    Some(ModelMeta {
+    Some(XyModelMeta {
         id: format!("{}/{}", provider.name, model_id),
-        config: ModelConfig {
+        config: XyModelConfig {
             kind,
             api_key: provider.api_key.clone()?,
             model: model_id.to_string(),
             base_url: provider.base_url.clone(),
         },
         display_name: format!("{} ({})", model_id, provider.name),
-        thinking: matches!(kind, ModelKind::OpenAi | ModelKind::Anthropic),
+        thinking: matches!(kind, XyModelKind::OpenAi | XyModelKind::Anthropic),
         context_window: default_context_window_for(kind),
         api: String::new(),
         provider: String::new(),
@@ -332,10 +332,10 @@ mod tests {
                 headers: None,
             },
         );
-        reg.register(ModelMeta {
+        reg.register(XyModelMeta {
             id: "openai/gpt-4o".into(),
-            config: ModelConfig {
-                kind: ModelKind::OpenAi,
+            config: XyModelConfig {
+                kind: XyModelKind::OpenAi,
                 api_key: "sk-test".into(),
                 model: "gpt-4o".into(),
                 base_url: None,
@@ -352,10 +352,10 @@ mod tests {
             max_tokens: 0,
             thinking_levels: Vec::new(),
         });
-        reg.register(ModelMeta {
+        reg.register(XyModelMeta {
             id: "openai/gpt-4o-mini".into(),
-            config: ModelConfig {
-                kind: ModelKind::OpenAi,
+            config: XyModelConfig {
+                kind: XyModelKind::OpenAi,
                 api_key: "sk-test".into(),
                 model: "gpt-4o-mini".into(),
                 base_url: None,
@@ -372,10 +372,10 @@ mod tests {
             max_tokens: 0,
             thinking_levels: Vec::new(),
         });
-        reg.register(ModelMeta {
+        reg.register(XyModelMeta {
             id: "claude-sonnet-4-20250514".into(),
-            config: ModelConfig {
-                kind: ModelKind::Anthropic,
+            config: XyModelConfig {
+                kind: XyModelKind::Anthropic,
                 api_key: String::new(),
                 model: "claude-sonnet-4-20250514".into(),
                 base_url: None,

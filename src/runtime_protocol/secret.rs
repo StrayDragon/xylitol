@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 /// Secret/config-value resolver port — abstracts env-var interpolation,
 /// shell-command resolution, and header resolution.
-pub trait SecretResolver: Send + Sync + std::fmt::Debug {
+pub trait XySecretResolver: Send + Sync + std::fmt::Debug {
     /// Resolve a config value to its actual string value.
     fn resolve_config_value(
         &self,

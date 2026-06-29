@@ -1,6 +1,6 @@
 //! In-memory session store for agent unit tests.
 //!
-//! Implements [`SessionStore`] with a `HashMap` so the agent loop can be
+//! Implements [`XySessionStore`] with a `HashMap` so the agent loop can be
 //! tested without creating a real session directory.
 
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use crate::domain::message::AgentMessage;
 use crate::domain::session_types::{SessionContext, SessionEntry};
-use crate::runtime_protocol::SessionStore;
+use crate::runtime_protocol::XySessionStore;
 
 /// In-memory session storage backed by a `HashMap<session_id, Vec<AgentMessage>>`.
 pub struct InMemorySessionStore {
@@ -43,7 +43,7 @@ impl InMemorySessionStore {
 }
 
 #[async_trait]
-impl SessionStore for InMemorySessionStore {
+impl XySessionStore for InMemorySessionStore {
     async fn load_context(&self, session_id: &str) -> Result<Vec<AgentMessage>, String> {
         let map = self.sessions.lock().unwrap();
         map.get(session_id)

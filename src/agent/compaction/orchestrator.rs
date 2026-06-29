@@ -4,7 +4,8 @@
 //! compaction orchestration into a focused component.
 
 use crate::agent::compaction::{CompactionSettings, compact_session};
-use crate::runtime_protocol::{EventSink, LifecycleEvent, SessionStore, XyModel};
+use crate::domain::lifecycle::XyEvent;
+use crate::runtime_protocol::{XyEventSink, XyModel, XySessionStore};
 
 /// Orchestrates session compaction — threshold checks and execution.
 ///
@@ -36,14 +37,13 @@ impl CompactionOrchestrator {
     /// Manually compact the current session.
     pub async fn compact(
         &self,
-        store: &dyn SessionStore,
+        store: &dyn XySessionStore,
         sid: &str,
         model: &dyn XyModel,
-        event_sink: &dyn EventSink,
+        event_sink: &dyn XyEventSink,
     ) -> Result<(), String> {
         event_sink
-            .emit(&LifecycleEvent::CompactionStarted {
-                session_id: sid.to_string(),
+            .emit(&XyEvent::CompactionStart {
                 reason: "manual".to_string(),
             })
             .await;
@@ -53,8 +53,7 @@ impl CompactionOrchestrator {
             .map_err(|e| format!("compaction failed: {e}"));
 
         event_sink
-            .emit(&LifecycleEvent::CompactionEnded {
-                session_id: sid.to_string(),
+            .emit(&XyEvent::CompactionEnd {
                 result: result.as_ref().ok().map(|_| "ok".to_string()),
                 aborted: false,
             })
@@ -68,10 +67,10 @@ impl CompactionOrchestrator {
     /// Returns true if compaction was performed.
     pub async fn maybe_auto_compact(
         &self,
-        store: &dyn SessionStore,
+        store: &dyn XySessionStore,
         sid: &str,
         model: &dyn XyModel,
-        event_sink: &dyn EventSink,
+        event_sink: &dyn XyEventSink,
         context_window: u64,
     ) -> Result<bool, String> {
         let session_ctx = store.build_session_context(sid).await?;
@@ -86,8 +85,7 @@ impl CompactionOrchestrator {
         }
 
         event_sink
-            .emit(&LifecycleEvent::CompactionStarted {
-                session_id: sid.to_string(),
+            .emit(&XyEvent::CompactionStart {
                 reason: format!(
                     "auto: {:.1}% of {}k window",
                     (token_estimate as f64 / context_window as f64) * 100.0,
@@ -101,8 +99,7 @@ impl CompactionOrchestrator {
             .map_err(|e| format!("auto-compaction: {e}"));
 
         event_sink
-            .emit(&LifecycleEvent::CompactionEnded {
-                session_id: sid.to_string(),
+            .emit(&XyEvent::CompactionEnd {
                 result: result.as_ref().ok().map(|_| "ok".to_string()),
                 aborted: false,
             })

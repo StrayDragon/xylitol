@@ -22,15 +22,15 @@ use tokio_util::sync::CancellationToken;
 
 use super::retry::{RetryState, is_retryable_error};
 use super::sandbox_router::sandbox_target;
-use super::{AgentEvent, AgentEventStream, AgentHooks};
+use super::{AgentHooks, XyEvent, XyEventStream};
 use crate::agent::session::AgentSession;
 use crate::agent::tools::ToolRegistry;
 use crate::domain::error::XyError;
 use crate::domain::message::{AgentMessage, AgentPart};
 use crate::domain::types::{XyChunk, XyToolSchema};
-use crate::runtime_protocol::{ToolExecutionMode, XyModel, XyToolCtx};
+use crate::runtime_protocol::{XyModel, XyToolCtx, XyToolExecutionMode};
 
-use crate::runtime_protocol::SandboxVerdict;
+use crate::runtime_protocol::XySandboxVerdict;
 
 // ── AgentLoop ───────────────────────────────────────────────────────
 
@@ -41,7 +41,7 @@ pub struct AgentLoop {
     /// Agent hooks.
     hooks: AgentHooks,
     /// Tool execution mode.
-    tool_mode: ToolExecutionMode,
+    tool_mode: XyToolExecutionMode,
 }
 
 impl AgentLoop {
@@ -50,7 +50,7 @@ impl AgentLoop {
             session,
             cancel: CancellationToken::new(),
             hooks: AgentHooks::default(),
-            tool_mode: ToolExecutionMode::Sequential,
+            tool_mode: XyToolExecutionMode::Sequential,
         }
     }
 
@@ -61,7 +61,7 @@ impl AgentLoop {
     }
 
     /// Set tool execution mode.
-    pub fn with_tool_mode(mut self, mode: ToolExecutionMode) -> Self {
+    pub fn with_tool_mode(mut self, mode: XyToolExecutionMode) -> Self {
         self.tool_mode = mode;
         self
     }
@@ -86,7 +86,7 @@ impl AgentLoop {
 
     /// Run the agent loop with a user prompt.
     #[allow(clippy::type_complexity)]
-    pub async fn run(&mut self, prompt: &str, session_id: &str) -> AgentEventStream {
+    pub async fn run(&mut self, prompt: &str, session_id: &str) -> XyEventStream {
         // Build sandbox check callback from session
         let sandbox_check: Option<
             std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>,
@@ -97,15 +97,15 @@ impl AgentLoop {
                 move |tool_name: &str, tool_path: &str| -> Option<String> {
                     match tool_name {
                         "read" => match engine.check_read(tool_path) {
-                            SandboxVerdict::Deny { reason } => Some(reason),
+                            XySandboxVerdict::Deny { reason } => Some(reason),
                             _ => None,
                         },
                         "write" | "edit" => match engine.check_write(tool_path) {
-                            SandboxVerdict::Deny { reason } => Some(reason),
+                            XySandboxVerdict::Deny { reason } => Some(reason),
                             _ => None,
                         },
                         "bash" => match engine.check_network(tool_path) {
-                            SandboxVerdict::Deny { reason } => Some(reason),
+                            XySandboxVerdict::Deny { reason } => Some(reason),
                             _ => None,
                         },
                         _ => None,
@@ -117,12 +117,12 @@ impl AgentLoop {
         let sid = session_id.to_string();
         self.session.set_session(sid.clone());
         if let Err(e) = self.session.ensure_session(&sid, None).await {
-            return AgentEventStream::error(format!("session error: {e}"));
+            return XyEventStream::error(format!("session error: {e}"));
         }
 
         let model = match self.session.build_current_model() {
             Ok(m) => m,
-            Err(e) => return AgentEventStream::error(format!("model build error: {e}")),
+            Err(e) => return XyEventStream::error(format!("model build error: {e}")),
         };
 
         let tools = self.session.tool_registry().clone();
@@ -143,7 +143,7 @@ impl AgentLoop {
 
         let cancel = self.cancel.clone();
 
-        let inner: Pin<Box<dyn Stream<Item = AgentEvent> + Send>> =
+        let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> =
             Box::pin(run_react_loop(ReActConfig {
                 model,
                 tools,
@@ -155,7 +155,7 @@ impl AgentLoop {
                 sandbox_check,
             }));
 
-        AgentEventStream {
+        XyEventStream {
             inner,
             done: false,
             turn_index: 0,
@@ -182,7 +182,7 @@ struct ReActConfig {
 
 // ── Core ReAct loop ─────────────────────────────────────────────────
 
-fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
+fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
     let ReActConfig {
         model,
         tools,
@@ -215,11 +215,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
         for turn in 0..max_iterations {
             // Check for cancellation before each turn
             if cancel.is_cancelled() {
-                yield AgentEvent::Error("aborted".to_string());
+                yield XyEvent::Error("aborted".to_string());
                 break;
             }
 
-            yield AgentEvent::TurnStart { turn_index: turn as u32 };
+            yield XyEvent::TurnStart { turn_index: turn as u32 };
 
             // Send accumulated history to the model.
             // History includes system prompt, user messages, assistant responses,
@@ -235,12 +235,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
             match stream_result {
                 Ok(s) => chunk_stream = s,
                 Err(e) => {
-                    yield AgentEvent::Error(e);
+                    yield XyEvent::Error(e);
                     break;
                 }
             }
 
-            yield AgentEvent::MessageStart { role: "assistant".to_string() };
+            yield XyEvent::MessageStart {
+                role: "assistant".to_string(),
+                message: None,
+            };
 
             let mut text_acc = String::new();
             let mut thinking_acc = String::new();
@@ -252,18 +255,19 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
                     Ok(chunk) => match chunk {
                         XyChunk::TextDelta(text) => {
                             text_acc.push_str(&text);
-                            yield AgentEvent::TextDelta(text.clone());
-                            yield AgentEvent::MessageUpdate {
+                            yield XyEvent::TextDelta(text.clone());
+                            yield XyEvent::MessageUpdate {
                                 text: text_acc.clone(),
                                 thinking: if thinking_acc.is_empty() { None } else { Some(thinking_acc.clone()) },
+                                message: None,
                             };
                         }
                         XyChunk::ThinkingDelta(text) => {
                             thinking_acc.push_str(&text);
-                            yield AgentEvent::ThinkingDelta(text);
+                            yield XyEvent::ThinkingDelta(text);
                         }
                         XyChunk::FunctionCall { name, args, id } => {
-                            yield AgentEvent::ToolExecutionStart {
+                            yield XyEvent::ToolExecutionStart {
                                 id: id.clone(),
                                 name: name.clone(),
                                 args: args.clone(),
@@ -275,13 +279,16 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
                         }
                     },
                     Err(e) => {
-                        yield AgentEvent::Error(format!("stream error: {e}"));
+                        yield XyEvent::Error(format!("stream error: {e}"));
                         break;
                     }
                 }
             }
 
-            yield AgentEvent::MessageEnd { role: "assistant".to_string() };
+            yield XyEvent::MessageEnd {
+                role: "assistant".to_string(),
+                message: None,
+            };
 
             // Build assistant message
             let mut assistant_parts = Vec::new();
@@ -315,7 +322,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
 
             // If no tool calls, done
             if tool_calls.is_empty() {
-                yield AgentEvent::TurnEnd { turn_index: turn as u32 };
+                yield XyEvent::TurnEnd { turn_index: turn as u32 };
                 break;
             }
 
@@ -329,10 +336,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
                     let target = sandbox_target(name, args);
                     if let Some(reason) = check(name, &target) {
                         let err = format!("Tool '{name}' blocked by sandbox: {reason}");
-                        yield AgentEvent::ToolExecutionEnd {
+                        yield XyEvent::ToolExecutionEnd {
                             id: id.clone(),
                             name: name.clone(),
                             result: err.clone(),
+                            is_error: true,
                         };
                         history.push(AgentMessage::ToolResultMessage {
                             tool_use_id: id.clone(),
@@ -351,21 +359,22 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
                         Ok(output) => output,
                         Err(e) => {
                             let err = format!("Tool '{name}' error: {e}");
-                            yield AgentEvent::Error(err.clone());
+                            yield XyEvent::Error(err.clone());
                             err
                         }
                     },
                     None => {
                         let err = format!("Unknown tool: {name}");
-                        yield AgentEvent::Error(err.clone());
+                        yield XyEvent::Error(err.clone());
                         err
                     }
                 };
 
-                yield AgentEvent::ToolExecutionEnd {
+                yield XyEvent::ToolExecutionEnd {
                     id: id.clone(),
                     name: name.clone(),
                     result: result.clone(),
+                    is_error: false,
                 };
 
                 history.push(AgentMessage::ToolResultMessage {
@@ -378,14 +387,14 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
                 });
             }
 
-            yield AgentEvent::TurnEnd { turn_index: turn as u32 };
+            yield XyEvent::TurnEnd { turn_index: turn as u32 };
 
             if done {
                 break;
             }
         }
 
-        yield AgentEvent::AgentEnd { messages: history };
+        yield XyEvent::AgentEnd { messages: history };
     }
 }
 
@@ -421,16 +430,16 @@ mod tests {
 
     use super::*;
     use crate::agent::model::registry::ModelRegistry;
-    use crate::domain::model::ModelConfig;
-    use crate::domain::types::ModelMeta;
+    use crate::domain::model::XyModelConfig;
+    use crate::domain::types::XyModelMeta;
     use crate::infra::session::SessionManager;
-    use crate::runtime_protocol::{EventSink, SessionStore, XyModel};
+    use crate::runtime_protocol::{XyEventSink, XyModel, XySessionStore};
 
     /// Model builder for tests — the real factory (tests register `Fake`/`OpenAi`
     /// model configs and rely on `build_provider` constructing the provider struct;
     /// no real network calls are made in unit assertions).
     fn fake_model_builder()
-    -> Arc<dyn Fn(&ModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync> {
+    -> Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync> {
         Arc::new(crate::infra::provider::factory::build_provider)
     }
 
@@ -439,10 +448,10 @@ mod tests {
         let mut reg = ModelRegistry::new(std::sync::Arc::new(
             crate::infra::config::value::InfraSecretResolver::new(),
         ));
-        reg.register(ModelMeta {
+        reg.register(XyModelMeta {
             id: "mock".into(),
-            config: crate::domain::model::ModelConfig {
-                kind: crate::domain::model::ModelKind::OpenAi,
+            config: crate::domain::model::XyModelConfig {
+                kind: crate::domain::model::XyModelKind::OpenAi,
                 api_key: "sk-test".into(),
                 model: "mock-model".into(),
                 base_url: None,
@@ -461,8 +470,8 @@ mod tests {
         });
 
         let session_mgr = SessionManager::new(SessionManager::default_dir());
-        let store: Arc<dyn SessionStore> = Arc::new(session_mgr.clone());
-        let sink: Arc<dyn EventSink> = Arc::new(crate::infra::event::EventBus::new());
+        let store: Arc<dyn XySessionStore> = Arc::new(session_mgr.clone());
+        let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
         let session = AgentSession::new(
             reg,
             ToolRegistry::from_tools(crate::infra::tools::default_tools()),
@@ -490,10 +499,10 @@ mod tests {
         let mut reg = ModelRegistry::new(std::sync::Arc::new(
             crate::infra::config::value::InfraSecretResolver::new(),
         ));
-        reg.register(ModelMeta {
+        reg.register(XyModelMeta {
             id: "mock".into(),
-            config: crate::domain::model::ModelConfig {
-                kind: crate::domain::model::ModelKind::OpenAi,
+            config: crate::domain::model::XyModelConfig {
+                kind: crate::domain::model::XyModelKind::OpenAi,
                 api_key: "sk-test".into(),
                 model: "mock-model".into(),
                 base_url: None,
@@ -512,8 +521,8 @@ mod tests {
         });
 
         let session_mgr = SessionManager::new(SessionManager::default_dir());
-        let store: Arc<dyn SessionStore> = Arc::new(session_mgr.clone());
-        let sink: Arc<dyn EventSink> = Arc::new(crate::infra::event::EventBus::new());
+        let store: Arc<dyn XySessionStore> = Arc::new(session_mgr.clone());
+        let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
         let session = AgentSession::new(
             reg,
             ToolRegistry::from_tools(crate::infra::tools::default_tools()),

@@ -2,8 +2,8 @@ kind: llman.sdd.spec
 name: compaction
 purpose: "TBD - created by archiving change c05-rebuild-core. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[14]{req_id,title,statement}:
-  c1,"token-estimation",System MUST estimate context window usage from current messages using a configurable token estimator.
+requirements[15]{req_id,title,statement}:
+  c1,token 估算使用统一 Usage,System MUST estimate context window usage from current messages using XyUsage and a configurable token estimator without defining a separate usage struct.
   c2,"should-compact",System MUST trigger compaction when estimated token usage exceeds a configurable threshold percentage of the context window.
   c3,"compact-summarize",Compaction MUST summarize older messages into a CompactionEntry while preserving the N most recent turns.
   c4,"compact-session",Compaction MUST persist the CompactionEntry to the session file and update the session tree.
@@ -16,9 +16,10 @@ requirements[14]{req_id,title,statement}:
   c11,"compact-entry","Compaction MUST produce a CompactionEntry containing summary string, firstKeptEntryId referencing the first retained entry after the cut point, tokensBefore count, and details object with readFiles and modifiedFiles lists."
   c12,"agent-integration","AgentSession MUST expose compact_current_session() that: estimates context usage, finds cut point, calls LLM summarization, writes CompactionEntry, and reloads session state."
   c13,"module-split","The compaction subsystem MUST be split into cohesive modules by responsibility covering token estimation and cut-point detection and file-operation tracking and LLM summarization and branch summary instead of a single oversized file."
-  c14,"config-single-source",Compaction configuration MUST have exactly one source of truth and the duplicate CompactionConfig definition MUST be removed.
-scenarios[14]{req_id,id,given,when,then}:
-  c1,estimate,messages contain 1000 tokens of text,estimateTokens is called,result is approximately 1000 tokens
+  c14,单一配置来源,"Compaction configuration MUST have exactly one serde-facing type named XyCompactionSettingsConfig and one runtime type named XyCompactionSettings; the duplicate CompactionConfig definition MUST be removed."
+  c15,token 使用量类型统一,Compaction token estimation MUST use the canonical XyUsage type from domain/; the duplicate XyUsage in token_estimator.rs MUST be removed.
+scenarios[15]{req_id,id,given,when,then}:
+  c1,"estimate-with-xyusage",messages are passed to estimate_context_tokens,the function runs,it reads total_tokens from XyUsage or falls back to summing fields
   c2,trigger,tokens exceed 80% of context window,shouldCompact is called,returns true
   c3,summarize,session has 50 turns,compact is called,first 40 turns are summarized into one CompactionEntry
   c4,persist,compaction completes,session is loaded,CompactionEntry is present with summary and cut point
@@ -31,4 +32,5 @@ scenarios[14]{req_id,id,given,when,then}:
   c11,entry,compact_session completes and session is loaded,CompactionEntry is present,"summary non-empty, firstKeptEntryId valid, tokensBefore positive, details contains file lists"
   c12,agent,agent session has messages exceeding threshold,compact_current_session is called,"CompactionEntry written to session, session state reloaded"
   c13,"split-by-responsibility",the compaction module responsibilities are enumerated,the module is split,each resulting file owns one responsibility and is independently testable
-  c14,"single-config-type",the codebase is searched for CompactionConfig definitions,exactly one definition remains,the duplicate is removed and runtime compaction reads the canonical type
+  c14,"single-compaction-config",the codebase is searched for CompactionConfig,"rg \"struct CompactionConfig\"",zero matches remain
+  c15,"usage-unified",token_estimator.rs is inspected,the change is applied,it imports XyUsage from domain instead of defining a local struct

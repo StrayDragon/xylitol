@@ -21,7 +21,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::Mutex;
 
-use crate::agent::facade::{Agent, AgentEvent};
+use crate::agent::facade::{Agent, XyEvent};
 use crate::agent::session::ModelRegistry;
 use crate::app::server::ws::{ClientFrame, EventJournal, ReverseRpcGateway, ServerFrame};
 use crate::protocol::{Envelope, ErrorCode, Event};
@@ -81,13 +81,13 @@ async fn run_prompt(
         };
         let mut stream = stream;
         while let Some(event) = stream.next().await {
-            let proto_event = agent_event_to_protocol(&event);
+            let proto_event = Some(Event::from(&event));
             if let Some(pe) = proto_event {
                 let mut j = journal.lock().await;
                 j.append(pe);
             }
             // If the stream ended, break.
-            if matches!(event, AgentEvent::AgentEnd { .. }) {
+            if matches!(event, XyEvent::AgentEnd { .. }) {
                 break;
             }
         }
@@ -155,58 +155,6 @@ async fn get_events(
         }
     };
     Json(Envelope::ok(events))
-}
-
-// ── AgentEvent → protocol::Event conversion ───────────────────────
-
-fn agent_event_to_protocol(event: &AgentEvent) -> Option<Event> {
-    match event {
-        AgentEvent::TextDelta(text) => Some(Event::TextDelta { text: text.clone() }),
-        AgentEvent::ThinkingDelta(_) => None,
-        AgentEvent::TurnStart { turn_index } => Some(Event::TurnStart {
-            turn_index: *turn_index,
-        }),
-        AgentEvent::TurnEnd { turn_index } => Some(Event::TurnEnd {
-            turn_index: *turn_index,
-        }),
-        AgentEvent::MessageStart { role } => Some(Event::MessageStart { role: role.clone() }),
-        AgentEvent::MessageEnd { role } => Some(Event::MessageEnd { role: role.clone() }),
-        AgentEvent::MessageUpdate { text, thinking, .. } => Some(Event::MessageUpdate {
-            text: text.clone(),
-            thinking: thinking.clone(),
-        }),
-        AgentEvent::ToolExecutionStart { id, name, .. } => Some(Event::ToolStart {
-            id: id.clone(),
-            name: name.clone(),
-        }),
-        AgentEvent::ToolExecutionEnd {
-            id, name, result, ..
-        } => Some(Event::ToolEnd {
-            id: id.clone(),
-            name: name.clone(),
-            result: result.clone(),
-        }),
-        AgentEvent::ToolExecutionUpdate { id, output } => Some(Event::ToolExecutionUpdate {
-            id: id.clone(),
-            output: output.clone(),
-        }),
-        AgentEvent::ModelSelect {
-            provider, model_id, ..
-        } => Some(Event::ModelSelect {
-            provider: provider.clone(),
-            model_id: model_id.clone(),
-        }),
-        AgentEvent::CompactionStart { reason } => Some(Event::CompactionStart {
-            reason: reason.clone(),
-        }),
-        AgentEvent::CompactionEnd { .. } => Some(Event::CompactionEnd),
-        AgentEvent::AgentEnd { .. } => Some(Event::AgentEnd),
-        AgentEvent::Error(msg) => Some(Event::Error {
-            id: None,
-            message: msg.clone(),
-        }),
-        _ => None,
-    }
 }
 
 // ── WebSocket handler ─────────────────────────────────────────────

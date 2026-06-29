@@ -8,7 +8,7 @@
 //!
 //! This module lives under `infra/` because it is a runtime facility
 //! (process spawn + output streaming). The agent consumes it only through the
-//! `BashExecutor` port in `runtime_protocol`.
+//! `XyBashExecutor` port in `runtime_protocol`.
 
 use std::time::Duration;
 
@@ -20,7 +20,7 @@ use tokio_util::sync::CancellationToken;
 use crate::infra::tools::accumulator::OutputAccumulator;
 use crate::infra::tools::process::kill_tree;
 use crate::infra::tools::truncate::DEFAULT_MAX_BYTES;
-use crate::runtime_protocol::{BashExecutor, BashResult};
+use crate::runtime_protocol::{XyBashExecutor, XyBashResult};
 
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
@@ -36,13 +36,13 @@ impl InfraBashExecutor {
 }
 
 #[async_trait::async_trait]
-impl BashExecutor for InfraBashExecutor {
-    async fn execute(&self, command: &str, cancel: Option<CancellationToken>) -> BashResult {
+impl XyBashExecutor for InfraBashExecutor {
+    async fn execute(&self, command: &str, cancel: Option<CancellationToken>) -> XyBashResult {
         let timeout_secs = DEFAULT_TIMEOUT_SECS;
         let timeout_dur = Duration::from_secs(timeout_secs);
 
         if cancel.as_ref().is_some_and(|c| c.is_cancelled()) {
-            return BashResult {
+            return XyBashResult {
                 output: String::new(),
                 exit_code: None,
                 cancelled: true,
@@ -61,7 +61,7 @@ impl BashExecutor for InfraBashExecutor {
         {
             Ok(c) => c,
             Err(_) => {
-                return BashResult {
+                return XyBashResult {
                     output: String::from("[failed to spawn shell]"),
                     exit_code: None,
                     cancelled: false,
@@ -115,7 +115,7 @@ impl BashExecutor for InfraBashExecutor {
 
         let snapshot = acc.finish();
 
-        BashResult {
+        XyBashResult {
             output: snapshot.content,
             exit_code: if cancelled { None } else { exit_code },
             cancelled,

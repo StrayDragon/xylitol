@@ -355,7 +355,7 @@ impl SettingsManager {
     pub fn set_compaction_enabled(&mut self, enabled: bool) {
         self.global_settings
             .compaction
-            .get_or_insert_with(CompactionSettings::default)
+            .get_or_insert_with(XyCompactionSettingsConfig::default)
             .enabled = Some(enabled);
         self.settings = Self::deep_merge(&self.global_settings, &self.project_settings);
         self.save_global();
@@ -513,9 +513,9 @@ impl SettingsManager {
 // ── Private: nested merge helpers ─────────────────────────────────
 
 fn merge_compaction(
-    target: &mut Option<CompactionSettings>,
-    base: Option<&CompactionSettings>,
-    overrides: Option<&CompactionSettings>,
+    target: &mut Option<XyCompactionSettingsConfig>,
+    base: Option<&XyCompactionSettingsConfig>,
+    overrides: Option<&XyCompactionSettingsConfig>,
 ) {
     let b = match base {
         Some(b) => b,
@@ -531,7 +531,7 @@ fn merge_compaction(
             return;
         }
     };
-    *target = Some(CompactionSettings {
+    *target = Some(XyCompactionSettingsConfig {
         enabled: o.enabled.or(b.enabled),
         reserve_tokens: o.reserve_tokens.or(b.reserve_tokens),
         keep_recent_tokens: o.keep_recent_tokens.or(b.keep_recent_tokens),
@@ -767,7 +767,7 @@ mod tests {
     #[test]
     fn test_deep_merge_override() {
         let base = Settings {
-            compaction: Some(CompactionSettings {
+            compaction: Some(XyCompactionSettingsConfig {
                 enabled: Some(true),
                 reserve_tokens: Some(16384),
                 keep_recent_tokens: Some(20000),
@@ -775,7 +775,7 @@ mod tests {
             ..Default::default()
         };
         let overrides = Settings {
-            compaction: Some(CompactionSettings {
+            compaction: Some(XyCompactionSettingsConfig {
                 enabled: Some(false),
                 reserve_tokens: None,
                 keep_recent_tokens: None,

@@ -26,7 +26,7 @@ pub mod support;
 //   - app/cli/ = composition root (wires ports + Agent)
 //   - app/driver.rs = Driver trait + InProcessDriver (must NOT import crate::infra)
 //   - app/rpc.rs = builds Agent via composition
-//   - app/print.rs = imports AgentEvent for stream matching
+//   - app/print.rs = imports XyEvent for stream matching
 //   - app/server/ = composition root (hosts Agent + infra runtimes)
 //   - app/composition.rs = shared Agent construction
 //   - app/tui/diff_review/ = review engine (infra config import)
@@ -198,7 +198,7 @@ mod arch_guard {
         //   composition.rs — shared Agent construction
         // Documented seams:
         //   driver.rs — Driver trait + InProcessDriver
-        //   print.rs  — imports AgentEvent for stream matching
+        //   print.rs  — imports XyEvent for stream matching
         //   tui/diff_review/ — review engine (infra config import)
         let exempt_prefixes = ["cli/", "server/", "tui/diff_review/"];
         let exempt_files = ["driver.rs", "rpc.rs", "composition.rs", "print.rs"];

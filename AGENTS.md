@@ -16,7 +16,7 @@
 
 Source under `src/`:
 - `domain/` — pure domain vocabulary + errors + serde types. Zero crate-internal deps.
-- `runtime_protocol/` — agent↔infra boundary traits (`XyModel`, `XyTool`, `SessionStore`, `EventSink`, `BashExecutor`, `ExportIo`, …) + signature-only types. Depends only on `domain/`.
+- `runtime_protocol/` — agent↔infra boundary traits (`XyModel`, `XyTool`, `XySessionStore`, `XyEventSink`, `XyBashExecutor`, `XyExportIo`, …) + signature-only types. Depends only on `domain/`.
 - `infra/` — **runtime domain**: `provider/` (LLM adapters, impl `XyModel`), `tools/` (built-in tool impls), `session/`, `sandbox/`, `process/`, `config/` (incl. `value.rs` secret resolution), `event/`, `hooks/`, `mcp/`, `skills/`, `resource/`, `trust/`, `git/`, `clipboard/`, `image/`, `tool_downloader/`, `export/` (`StdExportIo`).
 - `agent/` — **thin orchestration**: `runtime/` (ReAct loop `react.rs`, `event.rs`, `hooks.rs`, queue/retry/stdout_guard), `facade.rs` (single public entry for interactive layers), `session/`, `model/` (registry + manager), `tools/` (`ToolRegistry` only — impls live in infra), `compaction/`, `prompt/` (system/commands/templates/skills).
 - `protocol/` — client↔core wire vocabulary SSOT (`Command`/`Event` enums + transport helpers), transport-agnostic.

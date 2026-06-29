@@ -1,7 +1,7 @@
 //! Session export — HTML / JSONL rendering and JSONL import.
 //!
 //! Pure transformations over a loaded session's entries. No file mutation
-//! outside the injected [`ExportIo`] port; import creates a brand-new session.
+//! outside the injected [`XyExportIo`] port; import creates a brand-new session.
 
 use serde_json::Value;
 
