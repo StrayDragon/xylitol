@@ -180,8 +180,8 @@ impl XyTool for EditTool {
         })
     }
 
-    fn execution_mode(&self) -> crate::runtime_protocol::ToolExecutionMode {
-        crate::runtime_protocol::ToolExecutionMode::Sequential
+    fn execution_mode(&self) -> crate::runtime_protocol::XyToolExecutionMode {
+        crate::runtime_protocol::XyToolExecutionMode::Sequential
     }
 
     async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {

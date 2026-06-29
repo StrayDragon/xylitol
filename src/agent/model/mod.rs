@@ -1,6 +1,6 @@
 //! Model management — configuration, registry, resolution, and manifest loading.
 //!
-//! Model config types ([`ModelConfig`], [`ModelKind`]) live in [`crate::domain::model`];
+//! Model config types ([`XyModelConfig`], [`XyModelKind`]) live in [`crate::domain::model`];
 //! this module provides the runtime orchestration layer:
 //!
 //! - [`ModelRegistry`](registry::ModelRegistry) — manages available models

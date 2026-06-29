@@ -1,6 +1,6 @@
 //! Sandbox execution isolation — tools/processes run in a policy-constrained environment.
 //!
-//! Provides the [`SandboxEngine`] trait and a [`FallbackBackend`] that enforces
+//! Provides the [`XySandboxEngine`] trait and a [`FallbackBackend`] that enforces
 //! application-level path/domain matching. Platform-specific backends (Landlock,
 //! macOS sandbox) are added as separate modules.
 
@@ -13,30 +13,30 @@ use super::config::types::{
     SandboxProcessConfig,
 };
 
-// SandboxVerdict + SandboxEngine trait live in `runtime_protocol::sandbox`.
+// XySandboxVerdict + XySandboxEngine trait live in `runtime_protocol::sandbox`.
 // Concrete backends below (NoopEngine, FallbackBackend, platform) implement the
 // port; re-exported here for existing `crate::infra::sandbox::*` references.
-pub use crate::runtime_protocol::{SandboxEngine, SandboxVerdict};
+pub use crate::runtime_protocol::{XySandboxEngine, XySandboxVerdict};
 
 /// A no-op engine that allows everything. Used when sandbox is disabled.
 #[derive(Clone, Debug)]
 pub struct NoopEngine;
 
-impl SandboxEngine for NoopEngine {
-    fn check_read(&self, _path: &str) -> SandboxVerdict {
-        SandboxVerdict::Allow
+impl XySandboxEngine for NoopEngine {
+    fn check_read(&self, _path: &str) -> XySandboxVerdict {
+        XySandboxVerdict::Allow
     }
 
-    fn check_write(&self, _path: &str) -> SandboxVerdict {
-        SandboxVerdict::Allow
+    fn check_write(&self, _path: &str) -> XySandboxVerdict {
+        XySandboxVerdict::Allow
     }
 
-    fn check_network(&self, _domain: &str) -> SandboxVerdict {
-        SandboxVerdict::Allow
+    fn check_network(&self, _domain: &str) -> XySandboxVerdict {
+        XySandboxVerdict::Allow
     }
 
-    fn check_process(&self, _path: &str) -> SandboxVerdict {
-        SandboxVerdict::Allow
+    fn check_process(&self, _path: &str) -> XySandboxVerdict {
+        XySandboxVerdict::Allow
     }
 }
 
@@ -65,23 +65,23 @@ impl FallbackBackend {
     }
 }
 
-impl SandboxEngine for FallbackBackend {
-    fn check_read(&self, path: &str) -> SandboxVerdict {
+impl XySandboxEngine for FallbackBackend {
+    fn check_read(&self, path: &str) -> XySandboxVerdict {
         // When read_allowed is non-empty, default-deny for unlisted paths.
         if !self.filesystem.read_allowed.is_empty()
             && !policy::path_matches_any(path, &self.filesystem.read_allowed)
         {
-            return SandboxVerdict::Deny {
+            return XySandboxVerdict::Deny {
                 reason: format!("path '{path}' is not in sandbox read_allowed list"),
             };
         }
-        SandboxVerdict::Allow
+        XySandboxVerdict::Allow
     }
 
-    fn check_write(&self, path: &str) -> SandboxVerdict {
+    fn check_write(&self, path: &str) -> XySandboxVerdict {
         // Check write_denied first (most specific deny wins).
         if policy::path_matches_any(path, &self.filesystem.write_denied) {
-            return SandboxVerdict::Deny {
+            return XySandboxVerdict::Deny {
                 reason: format!("path '{path}' matches sandbox write_denied"),
             };
         }
@@ -90,18 +90,18 @@ impl SandboxEngine for FallbackBackend {
         if !self.filesystem.write_allowed.is_empty()
             && !policy::path_matches_any(path, &self.filesystem.write_allowed)
         {
-            return SandboxVerdict::Deny {
+            return XySandboxVerdict::Deny {
                 reason: format!("path '{path}' is not in sandbox write_allowed list"),
             };
         }
 
-        SandboxVerdict::Allow
+        XySandboxVerdict::Allow
     }
 
-    fn check_network(&self, domain: &str) -> SandboxVerdict {
+    fn check_network(&self, domain: &str) -> XySandboxVerdict {
         // Check denied_domains first.
         if policy::domain_matches_any(domain, &self.network.denied_domains) {
-            return SandboxVerdict::Deny {
+            return XySandboxVerdict::Deny {
                 reason: format!("domain '{domain}' matches sandbox denied_domains"),
             };
         }
@@ -110,23 +110,23 @@ impl SandboxEngine for FallbackBackend {
         if !self.network.allowed_domains.is_empty()
             && !policy::domain_matches_any(domain, &self.network.allowed_domains)
         {
-            return SandboxVerdict::Deny {
+            return XySandboxVerdict::Deny {
                 reason: format!("domain '{domain}' is not in sandbox allowed_domains list"),
             };
         }
 
-        SandboxVerdict::Allow
+        XySandboxVerdict::Allow
     }
 
-    fn check_process(&self, path: &str) -> SandboxVerdict {
+    fn check_process(&self, path: &str) -> XySandboxVerdict {
         if !self.process.allowed_paths.is_empty()
             && !policy::path_matches_any(path, &self.process.allowed_paths)
         {
-            return SandboxVerdict::Deny {
+            return XySandboxVerdict::Deny {
                 reason: format!("process path '{path}' is not in sandbox process allowed_paths"),
             };
         }
-        SandboxVerdict::Allow
+        XySandboxVerdict::Allow
     }
 }
 
@@ -135,7 +135,7 @@ impl SandboxEngine for FallbackBackend {
 /// Build a sandbox engine from config.
 ///
 /// Returns `NoopEngine` when sandbox is disabled or the feature is not enabled.
-pub fn build_engine(config: &SandboxConfig) -> Arc<dyn SandboxEngine> {
+pub fn build_engine(config: &SandboxConfig) -> Arc<dyn XySandboxEngine> {
     if !config.enabled {
         return Arc::new(NoopEngine);
     }
@@ -155,7 +155,7 @@ pub fn build_engine(config: &SandboxConfig) -> Arc<dyn SandboxEngine> {
 }
 
 /// Build a no-op engine (sandbox disabled).
-pub fn noop_engine() -> Arc<dyn SandboxEngine> {
+pub fn noop_engine() -> Arc<dyn XySandboxEngine> {
     Arc::new(NoopEngine)
 }
 

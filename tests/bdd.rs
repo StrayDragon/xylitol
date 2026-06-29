@@ -11,11 +11,11 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use xylitol::agent::compaction::should_compact;
-use xylitol::agent::runtime::{AgentEvent, AgentLoop};
+use xylitol::agent::runtime::{AgentLoop, XyEvent};
 use xylitol::agent::session::{AgentSession, ContextUsage, ModelRegistry, get_context_usage};
 use xylitol::agent::tools::ToolRegistry;
-use xylitol::domain::model::{ModelConfig, ModelKind};
-use xylitol::domain::types::{ModelMeta, ThinkingLevel};
+use xylitol::domain::model::{XyModelConfig, XyModelKind};
+use xylitol::domain::types::{ThinkingLevel, XyModelMeta};
 use xylitol::infra::config::types::HookEntry;
 use xylitol::infra::config::value::InfraSecretResolver;
 use xylitol::infra::hooks::{DispatchResult, HookDispatcher, HookEvent, HookPhase};
@@ -63,13 +63,13 @@ impl Workspace {
     }
 }
 
-pub struct SessionStore {
+pub struct XySessionStore {
     pub mgr: RefCell<Option<SessionManager>>,
     pub entries: RefCell<Vec<SessionEntry>>,
     pub current_id: RefCell<Option<String>>,
     pub last_result: RefCell<Option<Result<String, String>>>,
 }
-impl SessionStore {
+impl XySessionStore {
     fn new() -> Self {
         Self {
             mgr: RefCell::new(None),
@@ -94,7 +94,7 @@ impl SessionStore {
 
 pub struct AgentState {
     pub registry: RefCell<ModelRegistry>,
-    pub events: RefCell<Vec<AgentEvent>>,
+    pub events: RefCell<Vec<XyEvent>>,
     pub last_result: RefCell<Option<Result<String, String>>>,
     pub context_usage: RefCell<Option<ContextUsage>>,
     pub compaction_result: RefCell<Option<bool>>,
@@ -123,8 +123,8 @@ fn ws() -> Workspace {
 }
 
 #[fixture]
-fn sess() -> SessionStore {
-    SessionStore::new()
+fn sess() -> XySessionStore {
+    XySessionStore::new()
 }
 
 #[fixture]
@@ -166,8 +166,8 @@ fn make_agent(agent: &AgentState) -> AgentLoop {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     use std::sync::Arc;
-    let store: Arc<dyn xylitol::runtime_protocol::SessionStore> = Arc::new(mgr.clone());
-    let sink: Arc<dyn xylitol::runtime_protocol::EventSink> =
+    let store: Arc<dyn xylitol::runtime_protocol::XySessionStore> = Arc::new(mgr.clone());
+    let sink: Arc<dyn xylitol::runtime_protocol::XyEventSink> =
         Arc::new(xylitol::infra::event::EventBus::new());
     let session = AgentSession::new(
         agent.registry.borrow().clone(),
@@ -219,7 +219,7 @@ fn _g_workspace(ws: &Workspace) {
 }
 
 #[given("会话存储目录已初始化")]
-fn _g_session_dir(sess: &SessionStore) {
+fn _g_session_dir(sess: &XySessionStore) {
     let dir = tempfile::tempdir().unwrap();
     let d = dir.path().join("sessions");
     std::fs::create_dir_all(&d).ok();
@@ -336,7 +336,7 @@ fn _g_file_in_root(ws: &Workspace, path: String) {
 // ═══════════════════════════════════════════════════════════════════
 
 #[given("存在会话 {id:string}")]
-async fn _g_session_exists(sess: &SessionStore, id: String) {
+async fn _g_session_exists(sess: &XySessionStore, id: String) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let _ = mgr.create(&id, Some("."), None).await;
@@ -344,7 +344,7 @@ async fn _g_session_exists(sess: &SessionStore, id: String) {
 }
 
 #[given("存在会话 {id:string} 包含 {count:u32} 条记录")]
-async fn _g_session_with_n(sess: &SessionStore, id: String, count: u32) {
+async fn _g_session_with_n(sess: &XySessionStore, id: String, count: u32) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let _ = mgr.create(&id, Some("."), None).await;
@@ -363,7 +363,7 @@ async fn _g_session_with_n(sess: &SessionStore, id: String, count: u32) {
 }
 
 #[when("创建一个新会话 {id:string}")]
-async fn _w_session_create(sess: &SessionStore, id: String) {
+async fn _w_session_create(sess: &XySessionStore, id: String) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     mgr.create(&id, Some("."), None).await.unwrap();
@@ -371,7 +371,7 @@ async fn _w_session_create(sess: &SessionStore, id: String) {
 }
 
 #[when("向会话追加一条消息 {msg:string}")]
-async fn _w_session_append(sess: &SessionStore, msg: String) {
+async fn _w_session_append(sess: &XySessionStore, msg: String) {
     sess.ensure_mgr();
     let sid = sess.current_id.borrow().clone().unwrap();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
@@ -388,7 +388,7 @@ async fn _w_session_append(sess: &SessionStore, msg: String) {
 }
 
 #[when("加载会话 {id:string}")]
-async fn _w_session_load(sess: &SessionStore, id: String) {
+async fn _w_session_load(sess: &XySessionStore, id: String) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let entries = mgr.load(&id).await.unwrap();
@@ -396,7 +396,7 @@ async fn _w_session_load(sess: &SessionStore, id: String) {
 }
 
 #[then("会话包含 {count:u32} 条记录")]
-fn _t_session_has_n(sess: &SessionStore, count: u32) {
+fn _t_session_has_n(sess: &XySessionStore, count: u32) {
     let n = sess
         .entries
         .borrow()
@@ -407,7 +407,7 @@ fn _t_session_has_n(sess: &SessionStore, count: u32) {
 }
 
 #[then("记录类型为 {typ:string}")]
-fn _t_session_entry_type(sess: &SessionStore, typ: String) {
+fn _t_session_entry_type(sess: &XySessionStore, typ: String) {
     assert!(
         sess.entries
             .borrow()
@@ -425,10 +425,10 @@ fn _t_session_entry_type(sess: &SessionStore, typ: String) {
 fn _g_agent_mock_model(agent: &AgentState, ws: &Workspace, name: String) {
     reset_fake_state();
     ws.init();
-    agent.registry.borrow_mut().register(ModelMeta {
+    agent.registry.borrow_mut().register(XyModelMeta {
         id: name,
-        config: ModelConfig {
-            kind: ModelKind::Fake,
+        config: XyModelConfig {
+            kind: XyModelKind::Fake,
             api_key: String::new(),
             model: "fake-model".into(),
             base_url: None,
@@ -478,10 +478,8 @@ fn _t_agent_textdelta(agent: &AgentState, text: String) {
 fn _t_agent_turn_end(agent: &AgentState) {
     let events = agent.events.borrow();
     assert!(
-        events
-            .iter()
-            .any(|e| matches!(e, AgentEvent::TurnEnd { .. }))
-            || events.iter().any(|e| matches!(e, AgentEvent::Error(_)))
+        events.iter().any(|e| matches!(e, XyEvent::TurnEnd { .. }))
+            || events.iter().any(|e| matches!(e, XyEvent::Error(_)))
     );
 }
 
@@ -508,10 +506,10 @@ fn _t_agent_event_order(agent: &AgentState) {
 #[given("当前思考级别为 {level:string}")]
 fn _g_agent_thinking_level(agent: &AgentState, level: String) {
     let mut r = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
-    r.register(ModelMeta {
+    r.register(XyModelMeta {
         id: "test".into(),
-        config: ModelConfig {
-            kind: ModelKind::Fake,
+        config: XyModelConfig {
+            kind: XyModelKind::Fake,
             api_key: String::new(),
             model: "fake-model".into(),
             base_url: None,
@@ -534,10 +532,10 @@ fn _g_agent_thinking_level(agent: &AgentState, level: String) {
 #[given("当前模型不支持思考")]
 fn _g_agent_no_thinking(agent: &AgentState) {
     let mut r = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
-    r.register(ModelMeta {
+    r.register(XyModelMeta {
         id: "test".into(),
-        config: ModelConfig {
-            kind: ModelKind::Fake,
+        config: XyModelConfig {
+            kind: XyModelKind::Fake,
             api_key: String::new(),
             model: "fake-model".into(),
             base_url: None,
@@ -562,9 +560,9 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
     let _ = verb;
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
-    let store: std::sync::Arc<dyn xylitol::runtime_protocol::SessionStore> =
+    let store: std::sync::Arc<dyn xylitol::runtime_protocol::XySessionStore> =
         std::sync::Arc::new(mgr.clone());
-    let sink: std::sync::Arc<dyn xylitol::runtime_protocol::EventSink> =
+    let sink: std::sync::Arc<dyn xylitol::runtime_protocol::XyEventSink> =
         std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut session = AgentSession::new(
         agent.registry.borrow().clone(),
@@ -634,13 +632,13 @@ fn _g_agent_models_registered(agent: &AgentState, m1: String, m2: String) {
     let mut r = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
     for name in [m1, m2] {
         let kind = if name.contains("claude") {
-            ModelKind::Anthropic
+            XyModelKind::Anthropic
         } else {
-            ModelKind::OpenAi
+            XyModelKind::OpenAi
         };
-        r.register(ModelMeta {
+        r.register(XyModelMeta {
             id: name.clone(),
-            config: ModelConfig {
+            config: XyModelConfig {
                 kind,
                 api_key: "sk".into(),
                 model: name.clone(),
@@ -671,9 +669,9 @@ fn _g_agent_current_model(_agent: &AgentState, model: String) {
 fn _w_agent_cycle_forward(agent: &AgentState) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
-    let store: std::sync::Arc<dyn xylitol::runtime_protocol::SessionStore> =
+    let store: std::sync::Arc<dyn xylitol::runtime_protocol::XySessionStore> =
         std::sync::Arc::new(mgr.clone());
-    let sink: std::sync::Arc<dyn xylitol::runtime_protocol::EventSink> =
+    let sink: std::sync::Arc<dyn xylitol::runtime_protocol::XyEventSink> =
         std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut session = AgentSession::new(
         agent.registry.borrow().clone(),
@@ -757,7 +755,7 @@ fn _t_agent_percent(agent: &AgentState, val: u32) {
 }
 
 #[given("一个 turn 完成")]
-async fn _g_agent_turn_done(sess: &SessionStore) {
+async fn _g_agent_turn_done(sess: &XySessionStore) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let sid = "auto-save-test";
@@ -776,7 +774,7 @@ async fn _g_agent_turn_done(sess: &SessionStore) {
 }
 
 #[when("加载会话文件")]
-async fn _w_agent_load_session_file(sess: &SessionStore) {
+async fn _w_agent_load_session_file(sess: &XySessionStore) {
     let sid = sess.current_id.borrow().clone().unwrap();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let entries = mgr.load(&sid).await.unwrap_or_default();
@@ -784,7 +782,7 @@ async fn _w_agent_load_session_file(sess: &SessionStore) {
 }
 
 #[then("该 turn 的消息记录已保存")]
-fn _t_agent_messages_saved(sess: &SessionStore) {
+fn _t_agent_messages_saved(sess: &XySessionStore) {
     assert!(!sess.entries.borrow().is_empty());
 }
 
@@ -1699,7 +1697,7 @@ async fn _w_edit_multi(ws: &Workspace, path: String, count: u32, table: Vec<Vec<
 // --- Session stub steps (never implemented in cucumber-rs) ---
 
 #[when("列出所有会话")]
-async fn _w_session_list(ws: &Workspace, sess: &SessionStore) {
+async fn _w_session_list(ws: &Workspace, sess: &XySessionStore) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let ids = mgr.list().await.unwrap_or_default();
@@ -1707,71 +1705,71 @@ async fn _w_session_list(ws: &Workspace, sess: &SessionStore) {
 }
 
 #[when("在记录 {n:u32} 处分叉创建会话 {id:string}")]
-async fn _w_session_fork(sess: &SessionStore, n: u32, id: String) {
+async fn _w_session_fork(sess: &XySessionStore, n: u32, id: String) {
     let _ = (sess, n, id);
 }
 #[given("存在会话树: {tree}")]
-fn _g_session_tree(_sess: &SessionStore, tree: String) {
+fn _g_session_tree(_sess: &XySessionStore, tree: String) {
     let _ = tree;
 }
 #[when("导航到 {target}")]
-fn _w_session_nav_to(_sess: &SessionStore, target: String) {
+fn _w_session_nav_to(_sess: &XySessionStore, target: String) {
     let _ = target;
 }
 #[when("将会话模型从 {from} 切换为 {to}")]
-async fn _w_session_model_switch(sess: &SessionStore, from: String, to: String) {
+async fn _w_session_model_switch(sess: &XySessionStore, from: String, to: String) {
     let _ = (sess, from, to);
 }
 #[when("切换思考级别为 {level}")]
-async fn _w_session_thinking_switch(sess: &SessionStore, level: String) {
+async fn _w_session_thinking_switch(sess: &XySessionStore, level: String) {
     let _ = (sess, level);
 }
 #[when("向会话追加 {n:u32} 条不同类型的记录")]
-async fn _w_session_append_n(sess: &SessionStore, n: u32) {
+async fn _w_session_append_n(sess: &XySessionStore, n: u32) {
     let _ = (sess, n);
 }
 #[then("会话 {id:string} 包含 {count:u32} 条记录")]
-fn _t_session_id_has_n(sess: &SessionStore, id: String, count: u32) {
+fn _t_session_id_has_n(sess: &XySessionStore, id: String, count: u32) {
     let _ = (sess, id, count);
 }
 #[then("会话 {id:string} 包含一个 branch_summary 记录")]
-fn _t_session_has_branch_summary(sess: &SessionStore, id: String) {
+fn _t_session_has_branch_summary(sess: &XySessionStore, id: String) {
     let _ = (sess, id);
 }
 #[then("会话包含 model_change 记录")]
-fn _t_session_has_model_change(sess: &SessionStore) {
+fn _t_session_has_model_change(sess: &XySessionStore) {
     let _ = sess;
 }
 #[then("model_change 记录显示 provider 为 {provider}")]
-fn _t_session_model_change_provider(sess: &SessionStore, provider: String) {
+fn _t_session_model_change_provider(sess: &XySessionStore, provider: String) {
     let _ = (sess, provider);
 }
 #[then("会话包含 thinking_level_change 记录")]
-fn _t_session_has_thinking_change(sess: &SessionStore) {
+fn _t_session_has_thinking_change(sess: &XySessionStore) {
     let _ = sess;
 }
 #[then("JSONL 文件每行是一个完整的 JSON 对象")]
-fn _t_session_jsonl_lines(sess: &SessionStore) {
+fn _t_session_jsonl_lines(sess: &XySessionStore) {
     let _ = sess;
 }
 #[then("第一行包含 version 字段")]
-fn _t_session_jsonl_version(sess: &SessionStore) {
+fn _t_session_jsonl_version(sess: &XySessionStore) {
     let _ = sess;
 }
 #[then("上下文包含 branch-a 和 branch-b 的摘要")]
-fn _t_session_context_branches(sess: &SessionStore) {
+fn _t_session_context_branches(sess: &XySessionStore) {
     let _ = sess;
 }
 
 // ── Label and session_info steps ──
 
 #[given("向会话追加一条消息 {msg:string}")]
-async fn _given_session_append_msg(sess: &SessionStore, msg: String) {
+async fn _given_session_append_msg(sess: &XySessionStore, msg: String) {
     _w_session_append(sess, msg).await;
 }
 
 #[when("为最后一条记录设置标签 {label:string}")]
-async fn _w_session_set_label(sess: &SessionStore, label: String) {
+async fn _w_session_set_label(sess: &XySessionStore, label: String) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let sid = sess.current_id.borrow().as_ref().unwrap().clone();
@@ -1792,7 +1790,7 @@ async fn _w_session_set_label(sess: &SessionStore, label: String) {
 }
 
 #[when("清除该记录的标签")]
-async fn _w_session_clear_label(sess: &SessionStore) {
+async fn _w_session_clear_label(sess: &XySessionStore) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let sid = sess.current_id.borrow().as_ref().unwrap().clone();
@@ -1811,7 +1809,7 @@ async fn _w_session_clear_label(sess: &SessionStore) {
 }
 
 #[then("该记录的标签为 {expected:string}")]
-async fn _t_session_label_is(sess: &SessionStore, expected: String) {
+async fn _t_session_label_is(sess: &XySessionStore, expected: String) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let sid = sess.current_id.borrow().as_ref().unwrap().clone();
@@ -1831,7 +1829,7 @@ async fn _t_session_label_is(sess: &SessionStore, expected: String) {
 }
 
 #[then("该记录没有标签")]
-async fn _t_session_no_label(sess: &SessionStore) {
+async fn _t_session_no_label(sess: &XySessionStore) {
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let sid = sess.current_id.borrow().as_ref().unwrap().clone();
@@ -1892,12 +1890,12 @@ fn _g_file_with_content_string(ws: &Workspace, path: String, content: String) {
 mod sandbox_bdd {
     use rstest_bdd_macros::{given, scenario, then, when};
     use std::sync::Arc;
-    use xylitol::infra::sandbox::{SandboxEngine, SandboxVerdict};
+    use xylitol::infra::sandbox::{XySandboxEngine, XySandboxVerdict};
 
     thread_local! {
-        static SANDBOX_ENGINE: std::cell::RefCell<Option<Arc<dyn SandboxEngine>>> =
+        static SANDBOX_ENGINE: std::cell::RefCell<Option<Arc<dyn XySandboxEngine>>> =
             std::cell::RefCell::new(None);
-        static LAST_VERDICT: std::cell::RefCell<Option<SandboxVerdict>> =
+        static LAST_VERDICT: std::cell::RefCell<Option<XySandboxVerdict>> =
             std::cell::RefCell::new(None);
     }
 
@@ -2128,23 +2126,23 @@ fn test_ls_file_not_dir(ws: Workspace) {}
 
 // session.feature (9) — async
 #[scenario(path = "tests/features/session.feature", name = "创建并加载会话")]
-async fn test_session_create_load(sess: SessionStore) {}
+async fn test_session_create_load(sess: XySessionStore) {}
 #[scenario(path = "tests/features/session.feature", name = "会话列表")]
-async fn test_session_list(ws: Workspace, sess: SessionStore) {}
+async fn test_session_list(ws: Workspace, sess: XySessionStore) {}
 #[scenario(path = "tests/features/session.feature", name = "会话分叉")]
-async fn test_session_fork(sess: SessionStore) {}
+async fn test_session_fork(sess: XySessionStore) {}
 #[scenario(path = "tests/features/session.feature", name = "会话树导航")]
-async fn test_session_tree_nav(sess: SessionStore) {}
+async fn test_session_tree_nav(sess: XySessionStore) {}
 #[scenario(path = "tests/features/session.feature", name = "模型切换记录")]
-async fn test_session_model_change(sess: SessionStore) {}
+async fn test_session_model_change(sess: XySessionStore) {}
 #[scenario(path = "tests/features/session.feature", name = "思考级别切换记录")]
-async fn test_session_thinking_change(sess: SessionStore) {}
+async fn test_session_thinking_change(sess: XySessionStore) {}
 #[scenario(path = "tests/features/session.feature", name = "JSONL 文件格式正确")]
-async fn test_session_jsonl_format(sess: SessionStore) {}
+async fn test_session_jsonl_format(sess: XySessionStore) {}
 #[scenario(path = "tests/features/session.feature", name = "为会话条目设置标签")]
-async fn test_session_label_set(sess: SessionStore) {}
+async fn test_session_label_set(sess: XySessionStore) {}
 #[scenario(path = "tests/features/session.feature", name = "清除会话条目标签")]
-async fn test_session_label_clear(sess: SessionStore) {}
+async fn test_session_label_clear(sess: XySessionStore) {}
 
 // agent.feature (8) — async
 #[scenario(path = "tests/features/agent.feature", name = "Agent 处理纯文本响应")]
@@ -2162,7 +2160,7 @@ async fn test_agent_model_switch(agent: AgentState, ws: Workspace) {}
 #[scenario(path = "tests/features/agent.feature", name = "获取上下文使用量")]
 async fn test_agent_context_usage(agent: AgentState, ws: Workspace) {}
 #[scenario(path = "tests/features/agent.feature", name = "会话自动持久化")]
-async fn test_agent_auto_save(agent: AgentState, sess: SessionStore, ws: Workspace) {}
+async fn test_agent_auto_save(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 // compaction.feature (5)
 #[scenario(path = "tests/features/compaction.feature", name = "检测需要压缩")]

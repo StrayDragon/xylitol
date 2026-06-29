@@ -9,7 +9,7 @@ use async_trait::async_trait;
 /// Async from day one so backends like gist, S3, or clipboard can be
 /// plugged in without touching the agent layer.
 #[async_trait]
-pub trait ExportIo: Send + Sync {
+pub trait XyExportIo: Send + Sync {
     /// Write `content` as UTF-8 text to `path`.
     async fn write_text(&self, path: &Path, content: &str) -> Result<(), String>;
 

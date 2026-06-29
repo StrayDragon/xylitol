@@ -13,7 +13,7 @@ use crate::domain::session_types::{SessionContext, SessionEntry};
 /// Full session management (fork/navigate/export) stays on the concrete
 /// `infra::session::SessionManager` for the composition root.
 #[async_trait]
-pub trait SessionStore: Send + Sync {
+pub trait XySessionStore: Send + Sync {
     /// Load session context (messages, model, CWD) for building turn state.
     async fn load_context(&self, session_id: &str) -> Result<Vec<AgentMessage>, String>;
     /// Append an opaque JSON entry to the session log.

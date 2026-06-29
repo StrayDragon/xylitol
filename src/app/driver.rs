@@ -13,11 +13,10 @@ use async_trait::async_trait;
 use futures::Stream;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::facade::{Agent, AgentEvent, AgentHooks};
-use crate::runtime_protocol::ToolExecutionMode;
+use crate::agent::facade::{Agent, AgentHooks, XyEvent};
+use crate::runtime_protocol::XyToolExecutionMode;
 
 #[cfg(feature = "server")]
-use crate::protocol::Event as ProtoEvent;
 #[cfg(feature = "server")]
 use futures::{SinkExt, StreamExt};
 #[cfg(feature = "server")]
@@ -26,8 +25,8 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 #[cfg(feature = "server")]
 use crate::app::server::ws::{ClientFrame, ServerFrame};
 
-/// A stream of [`AgentEvent`] items.
-pub type EventStream = Pin<Box<dyn Stream<Item = AgentEvent> + Send>>;
+/// A stream of [`XyEvent`] items.
+pub type EventStream = Pin<Box<dyn Stream<Item = XyEvent> + Send>>;
 
 /// Driver — interact with the core without knowing its internals.
 ///
@@ -61,7 +60,7 @@ impl InProcessDriver {
         self
     }
 
-    pub fn with_tool_mode(mut self, mode: ToolExecutionMode) -> Self {
+    pub fn with_tool_mode(mut self, mode: XyToolExecutionMode) -> Self {
         self.agent = self.agent.with_tool_mode(mode);
         self
     }
@@ -144,11 +143,11 @@ impl Driver for RemoteDriver {
             match client.post(&run_url).json(&payload).send().await {
                 Ok(resp) if !resp.status().is_success() => {
                     let status = resp.status();
-                    yield AgentEvent::Error(format!("server returned {status}"));
+                    yield XyEvent::Error(format!("server returned {status}"));
                     return;
                 }
                 Err(e) => {
-                    yield AgentEvent::Error(format!("connection failed: {e}"));
+                    yield XyEvent::Error(format!("connection failed: {e}"));
                     return;
                 }
                 _ => {} // success
@@ -158,7 +157,7 @@ impl Driver for RemoteDriver {
             let ws_stream = match connect_async(&ws_url).await {
                 Ok((ws, _)) => ws,
                 Err(e) => {
-                    yield AgentEvent::Error(format!("WS connect failed: {e}"));
+                    yield XyEvent::Error(format!("WS connect failed: {e}"));
                     return;
                 }
             };
@@ -172,7 +171,7 @@ impl Driver for RemoteDriver {
             })
             .unwrap();
             if ws_writer.send(Message::Text(subscribe.into())).await.is_err() {
-                yield AgentEvent::Error("WS send failed".into());
+                yield XyEvent::Error("WS send failed".into());
                 return;
             }
 
@@ -192,8 +191,8 @@ impl Driver for RemoteDriver {
                                             // Handshake frames, ignore
                                         }
                                         ServerFrame::Event { event, .. } => {
-                                            if let Some(agent_event) = proto_to_agent(&event) {
-                                                let is_end = matches!(agent_event, AgentEvent::AgentEnd { .. });
+                                            if let Ok(agent_event) = XyEvent::try_from(&event) {
+                                                let is_end = matches!(agent_event, XyEvent::AgentEnd { .. });
                                                 yield agent_event;
                                                 if is_end {
                                                     break;
@@ -201,7 +200,7 @@ impl Driver for RemoteDriver {
                                             }
                                         }
                                         ServerFrame::ResyncRequired { .. } => {
-                                            yield AgentEvent::Error("journal truncated, resync required".into());
+                                            yield XyEvent::Error("journal truncated, resync required".into());
                                             break;
                                         }
                                     }
@@ -225,56 +224,5 @@ impl Driver for RemoteDriver {
         tokio::spawn(async move {
             let _ = client.delete(&url).send().await;
         });
-    }
-}
-
-// ── Protocol event → AgentEvent conversion ────────────────────────
-
-#[cfg(feature = "server")]
-fn proto_to_agent(event: &ProtoEvent) -> Option<AgentEvent> {
-    match event {
-        ProtoEvent::TextDelta { text } => Some(AgentEvent::TextDelta(text.clone())),
-        ProtoEvent::TurnStart { turn_index } => Some(AgentEvent::TurnStart {
-            turn_index: *turn_index,
-        }),
-        ProtoEvent::TurnEnd { turn_index } => Some(AgentEvent::TurnEnd {
-            turn_index: *turn_index,
-        }),
-        ProtoEvent::MessageStart { role } => Some(AgentEvent::MessageStart { role: role.clone() }),
-        ProtoEvent::MessageEnd { role } => Some(AgentEvent::MessageEnd { role: role.clone() }),
-        ProtoEvent::MessageUpdate { text, thinking } => Some(AgentEvent::MessageUpdate {
-            text: text.clone(),
-            thinking: thinking.clone(),
-        }),
-        ProtoEvent::ToolStart { id, name } => Some(AgentEvent::ToolExecutionStart {
-            id: id.clone(),
-            name: name.clone(),
-            args: serde_json::Value::Null,
-        }),
-        ProtoEvent::ToolEnd { id, name, result } => Some(AgentEvent::ToolExecutionEnd {
-            id: id.clone(),
-            name: name.clone(),
-            result: result.clone(),
-        }),
-        ProtoEvent::ToolExecutionUpdate { id, output } => Some(AgentEvent::ToolExecutionUpdate {
-            id: id.clone(),
-            output: output.clone(),
-        }),
-        ProtoEvent::ModelSelect { provider, model_id } => Some(AgentEvent::ModelSelect {
-            provider: provider.clone(),
-            model_id: model_id.clone(),
-        }),
-        ProtoEvent::CompactionStart { reason } => Some(AgentEvent::CompactionStart {
-            reason: reason.clone(),
-        }),
-        ProtoEvent::CompactionEnd => Some(AgentEvent::CompactionEnd {
-            result: None,
-            aborted: false,
-        }),
-        ProtoEvent::AgentEnd => Some(AgentEvent::AgentEnd {
-            messages: Vec::new(),
-        }),
-        ProtoEvent::Error { message, .. } => Some(AgentEvent::Error(message.clone())),
-        _ => None,
     }
 }

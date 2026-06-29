@@ -30,8 +30,8 @@ pub struct AppConfig {
     pub session: Option<SessionConfig>,
     /// YAML loading-phase compaction config. Mapped to runtime
     /// `CompactionSettings` (in `agent::compaction::settings`)
-    /// via `From<CompactionConfig>`.
-    pub compaction: Option<CompactionConfig>,
+    /// via `From<XyCompactionSettingsConfig>`.
+    pub compaction: Option<crate::domain::compaction_config::XyCompactionSettingsConfig>,
 
     pub skills: Option<Vec<SkillConfig>>,
     pub mcp_servers: Option<Vec<McpServerConfig>>,
@@ -44,7 +44,7 @@ pub struct AppConfig {
 // ---------------------------------------------------------------------------
 
 /// Top-level model configuration section.
-/// Split from agent-level [`ModelConfig`](crate::domain::model::ModelConfig) —
+/// Split from agent-level [`XyModelConfig`](crate::domain::model::XyModelConfig) —
 /// this is YAML-facing; [`ModelEntry`] aliases resolve into runtime config.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -57,11 +57,11 @@ pub struct ModelsConfig {
 
 /// A single model alias entry.
 ///
-/// References [`ModelKind`](crate::domain::model::ModelKind) for the provider;
+/// References [`XyModelKind`](crate::domain::model::XyModelKind) for the provider;
 /// the kind's serde representation is the YAML wire format.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct ModelEntry {
-    pub provider: crate::domain::model::ModelKind,
+    pub provider: crate::domain::model::XyModelKind,
     pub model: String,
     /// Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.
     #[serde(default)]
@@ -171,30 +171,30 @@ fn default_max_iterations() -> u32 {
 }
 
 impl AppConfig {
-    /// Resolve a model alias to a runtime [`ModelConfig`](crate::domain::model::ModelConfig).
+    /// Resolve a model alias to a runtime [`XyModelConfig`](crate::domain::model::XyModelConfig).
     pub fn resolve_model(
         &self,
         model_id: &str,
-    ) -> Result<crate::domain::model::ModelConfig, String> {
-        use crate::domain::model::{ModelConfig, ModelKind};
+    ) -> Result<crate::domain::model::XyModelConfig, String> {
+        use crate::domain::model::{XyModelConfig, XyModelKind};
 
         let (kind, model_name, base_url) = if let Some(entry) = self.model.models.get(model_id) {
             (entry.provider, entry.model.clone(), entry.base_url.clone())
         } else {
-            (ModelKind::OpenAi, model_id.to_string(), None)
+            (XyModelKind::OpenAi, model_id.to_string(), None)
         };
 
         let api_key = match kind {
-            ModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
+            XyModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
                 .or_else(|_| std::env::var("OPENAI_KEY"))
                 .map_err(|_| "OPENAI_API_KEY environment variable is not set".to_string())?,
-            ModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
+            XyModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
                 .or_else(|_| std::env::var("ANTHROPIC_KEY"))
                 .map_err(|_| "ANTHROPIC_API_KEY environment variable is not set".to_string())?,
-            ModelKind::Fake => String::new(),
+            XyModelKind::Fake => String::new(),
         };
 
-        Ok(ModelConfig {
+        Ok(XyModelConfig {
             kind,
             api_key,
             model: model_name,
@@ -202,16 +202,16 @@ impl AppConfig {
         })
     }
 
-    /// Resolve a model alias to [`ModelMeta`](crate::domain::types::ModelMeta) for the registry.
+    /// Resolve a model alias to [`XyModelMeta`](crate::domain::types::XyModelMeta) for the registry.
     ///
     /// Composes [`resolve_model`](Self::resolve_model) with per‑model metadata (thinking support,
     /// context window size) from [`ModelEntry`] or sensible defaults.
     pub fn resolve_model_meta(
         &self,
         model_id: &str,
-    ) -> Result<crate::domain::types::ModelMeta, String> {
+    ) -> Result<crate::domain::types::XyModelMeta, String> {
         use crate::domain::model::default_context_window_for;
-        use crate::domain::types::ModelMeta;
+        use crate::domain::types::XyModelMeta;
 
         let model_config = self.resolve_model(model_id)?;
         let entry = self.model.models.get(model_id);
@@ -221,7 +221,7 @@ impl AppConfig {
             .and_then(|e| (e.context_window > 0).then_some(e.context_window))
             .unwrap_or_else(|| default_context_window_for(model_config.kind));
 
-        Ok(ModelMeta {
+        Ok(XyModelMeta {
             id: model_id.to_string(),
             config: model_config,
             display_name: model_id.to_string(),
@@ -729,8 +729,8 @@ fn default_storage_backend() -> String {
     "file".into()
 }
 
-// CompactionConfig relocated to `domain::compaction_config` (shared vocabulary).
-pub use crate::domain::compaction_config::CompactionConfig;
+// XyCompactionSettingsConfig re-exported from domain::compaction_config.
+pub use crate::domain::compaction_config::XyCompactionSettingsConfig;
 
 // ---------------------------------------------------------------------------
 // Skills & MCP

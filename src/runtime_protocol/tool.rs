@@ -33,7 +33,7 @@ impl XyToolCtx {
 
 /// Whether a tool prefers sequential or parallel execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
-pub enum ToolExecutionMode {
+pub enum XyToolExecutionMode {
     /// Execute in parallel with other tools (default).
     #[default]
     Parallel,
@@ -62,8 +62,8 @@ pub trait XyTool: Send + Sync {
         &[]
     }
 
-    fn execution_mode(&self) -> ToolExecutionMode {
-        ToolExecutionMode::Parallel
+    fn execution_mode(&self) -> XyToolExecutionMode {
+        XyToolExecutionMode::Parallel
     }
 
     fn prepare_arguments(&self, args: Value) -> Value {
@@ -102,21 +102,27 @@ mod tests {
 
     #[test]
     fn tool_execution_mode_default_is_parallel() {
-        assert_eq!(ToolExecutionMode::default(), ToolExecutionMode::Parallel);
+        assert_eq!(
+            XyToolExecutionMode::default(),
+            XyToolExecutionMode::Parallel
+        );
     }
 
     #[test]
     fn tool_execution_mode_serialize() {
-        let json = serde_json::to_string(&ToolExecutionMode::Parallel).unwrap();
+        let json = serde_json::to_string(&XyToolExecutionMode::Parallel).unwrap();
         assert_eq!(json, "\"Parallel\"");
-        let json = serde_json::to_string(&ToolExecutionMode::Sequential).unwrap();
+        let json = serde_json::to_string(&XyToolExecutionMode::Sequential).unwrap();
         assert_eq!(json, "\"Sequential\"");
     }
 
     #[test]
     fn tool_execution_mode_eq() {
-        assert_eq!(ToolExecutionMode::Parallel, ToolExecutionMode::Parallel);
-        assert_ne!(ToolExecutionMode::Parallel, ToolExecutionMode::Sequential);
+        assert_eq!(XyToolExecutionMode::Parallel, XyToolExecutionMode::Parallel);
+        assert_ne!(
+            XyToolExecutionMode::Parallel,
+            XyToolExecutionMode::Sequential
+        );
     }
 
     struct MockTool;
@@ -152,7 +158,7 @@ mod tests {
         assert_eq!(tool.description(), "A mock tool for testing");
         assert!(tool.prompt_snippet().is_none());
         assert!(tool.prompt_guidelines().is_empty());
-        assert_eq!(tool.execution_mode(), ToolExecutionMode::Parallel);
+        assert_eq!(tool.execution_mode(), XyToolExecutionMode::Parallel);
 
         let schema = tool.parameters_schema();
         assert_eq!(schema["type"], "object");

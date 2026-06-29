@@ -17,8 +17,8 @@ use crate::agent::session::ModelRegistry;
 use crate::app::cli::resources::ResourcesAction;
 use crate::app::composition::{BuildAgentOptions, build_agent};
 use crate::app::driver::InProcessDriver;
-use crate::domain::model::{ModelConfig, ModelKind};
-use crate::domain::types::ModelMeta;
+use crate::domain::model::{XyModelConfig, XyModelKind};
+use crate::domain::types::XyModelMeta;
 use crate::infra::config::loader::load_app_config;
 use crate::infra::config::value::InfraSecretResolver;
 use crate::infra::session::SessionManager;
@@ -131,7 +131,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let config_loaded = app_config.is_some();
 
     // ── Step 2: build ModelRegistry ──────────────────────────────
-    let secret_resolver: Arc<dyn crate::runtime_protocol::SecretResolver> =
+    let secret_resolver: Arc<dyn crate::runtime_protocol::XySecretResolver> =
         Arc::new(InfraSecretResolver::new());
     let mut model_registry = ModelRegistry::new(secret_resolver);
 
@@ -155,9 +155,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 registry::default_context_window_for(entry.provider)
             };
 
-            model_registry.register(ModelMeta {
+            model_registry.register(XyModelMeta {
                 id: alias.clone(),
-                config: ModelConfig {
+                config: XyModelConfig {
                     kind: entry.provider,
                     api_key: api_key.expect("checked above"),
                     model: entry.model.clone(),
@@ -194,15 +194,15 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Fallback: env-var discovery if no models from config
     if model_registry.is_empty() {
         for (provider_name, env_var, kind) in [
-            ("openai", "OPENAI_API_KEY", ModelKind::OpenAi),
-            ("anthropic", "ANTHROPIC_API_KEY", ModelKind::Anthropic),
+            ("openai", "OPENAI_API_KEY", XyModelKind::OpenAi),
+            ("anthropic", "ANTHROPIC_API_KEY", XyModelKind::Anthropic),
         ] {
             if let Ok(key) = std::env::var(env_var)
                 && let Some(model_id) = registry::default_model_id_for_provider(provider_name)
             {
-                model_registry.register(ModelMeta {
+                model_registry.register(XyModelMeta {
                     id: model_id.to_string(),
-                    config: ModelConfig {
+                    config: XyModelConfig {
                         kind,
                         api_key: key,
                         model: model_id.to_string(),
@@ -437,7 +437,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     if let Some(mid) = target_model {
-        let available: Vec<&ModelMeta> = agent.session().model_registry().list().iter().collect();
+        let available: Vec<&XyModelMeta> = agent.session().model_registry().list().iter().collect();
         match resolver::resolve_model(&mid, &available, None) {
             Ok(resolved) => {
                 if let Some(ref warning) = resolved.warning {
@@ -540,14 +540,14 @@ async fn run_server(action: ServerSubcommand) -> Result<(), Box<dyn std::error::
 }
 
 /// Read the API key for a provider from environment variables.
-fn resolve_api_key(kind: ModelKind) -> Option<String> {
+fn resolve_api_key(kind: XyModelKind) -> Option<String> {
     match kind {
-        ModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
+        XyModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
             .or_else(|_| std::env::var("OPENAI_KEY"))
             .ok(),
-        ModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
+        XyModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
             .or_else(|_| std::env::var("ANTHROPIC_KEY"))
             .ok(),
-        ModelKind::Fake => Some(String::new()),
+        XyModelKind::Fake => Some(String::new()),
     }
 }

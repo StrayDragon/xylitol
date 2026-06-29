@@ -23,8 +23,8 @@ use std::path::Path;
 use serde::Deserialize;
 
 use super::registry::ModelRegistry;
-use crate::domain::model::{ModelConfig, ModelKind};
-use crate::domain::types::ModelMeta;
+use crate::domain::model::{XyModelConfig, XyModelKind};
+use crate::domain::types::XyModelMeta;
 
 /// A single model definition from a manifest file.
 #[derive(Debug, Clone, Deserialize)]
@@ -91,11 +91,11 @@ pub fn load_models_from_manifest(
     let mut count = 0;
     for m in &manifest.models {
         let kind = match m.provider.as_str() {
-            "openai" => ModelKind::OpenAi,
-            "anthropic" => ModelKind::Anthropic,
-            "fake" => ModelKind::Fake,
+            "openai" => XyModelKind::OpenAi,
+            "anthropic" => XyModelKind::Anthropic,
+            "fake" => XyModelKind::Fake,
             // Default to OpenAI-compatible for unknown providers
-            _ => ModelKind::OpenAi,
+            _ => XyModelKind::OpenAi,
         };
 
         let api_key = m
@@ -104,9 +104,9 @@ pub fn load_models_from_manifest(
             .or_else(|| default_api_key.map(String::from))
             .unwrap_or_default();
 
-        let meta = ModelMeta {
+        let meta = XyModelMeta {
             id: m.id.clone(),
-            config: ModelConfig {
+            config: XyModelConfig {
                 kind,
                 api_key,
                 model: m.id.clone(),

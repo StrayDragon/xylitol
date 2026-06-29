@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::runtime_protocol::SecretResolver;
+use crate::runtime_protocol::XySecretResolver;
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -283,9 +283,9 @@ fn execute_shell_command(command: &str) -> Option<String> {
     }
 }
 
-// ── Infra implementation of SecretResolver port ─────────────────────
+// ── Infra implementation of XySecretResolver port ─────────────────────
 
-/// Default [`SecretResolver`] backed by env-var interpolation and shell-command
+/// Default [`XySecretResolver`] backed by env-var interpolation and shell-command
 /// execution (see [`resolve_config_value`] / [`resolve_headers`]).
 #[derive(Debug, Clone, Default)]
 pub struct InfraSecretResolver;
@@ -297,7 +297,7 @@ impl InfraSecretResolver {
     }
 }
 
-impl SecretResolver for InfraSecretResolver {
+impl XySecretResolver for InfraSecretResolver {
     fn resolve_config_value(
         &self,
         config: &str,

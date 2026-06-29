@@ -12,8 +12,9 @@ pub mod react;
 pub mod retry;
 pub(crate) mod sandbox_router;
 
-// Public surface of the loop (AgentEvent/AgentLoop/AgentHooks are `pub`).
-pub use event::{AgentEvent, AgentEventStream};
+// Public surface of the loop (XyEvent/XyEventStream/AgentLoop/AgentHooks are `pub`).
+pub use crate::domain::lifecycle::XyEvent;
+pub use event::XyEventStream;
 pub use hooks::AgentHooks;
 pub use react::AgentLoop;
 

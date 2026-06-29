@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
 
-pub(crate) use crate::runtime_protocol::{EventSink, SessionStore};
+pub(crate) use crate::runtime_protocol::{XyEventSink, XySessionStore};
 
 mod bang;
 mod export;
@@ -42,9 +42,9 @@ use crate::domain::session_types::{
 };
 #[cfg(test)]
 use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
-use crate::domain::types::{ModelMeta, ThinkingLevel};
+use crate::domain::types::{ThinkingLevel, XyModelMeta};
 use crate::runtime_protocol::{
-    BashExecutor, ExportIo, SandboxEngine, SandboxVerdict, TrustStore, XyModel,
+    XyBashExecutor, XyExportIo, XyModel, XySandboxEngine, XySandboxVerdict, XyTrustStore,
 };
 
 // ── Model Registry ──────────────────────────────────────────────────
@@ -61,7 +61,7 @@ pub struct AgentSession {
     tool_registry: ToolRegistry,
     /// Names of currently active tools (empty = all allowed).
     active_tools: Vec<String>,
-    /// Session persistence via the SessionStore port (HC-2). Held for the
+    /// Session persistence via the XySessionStore port (HC-2). Held for the
     /// ReAct loop to consume load_context/append_entry/exists; the loop
     /// currently builds history inline (c185) and will migrate to this port.
     #[allow(dead_code)]
@@ -88,19 +88,19 @@ pub struct AgentSession {
     /// Skill management (activation, XML expansion).
     skill_manager: SkillManager,
     /// Injected bash executor port (HC-2).
-    bash_executor: Arc<dyn BashExecutor>,
+    bash_executor: Arc<dyn XyBashExecutor>,
     /// Injected export/import I/O port (HC-2).
-    export_io: Arc<dyn ExportIo>,
+    export_io: Arc<dyn XyExportIo>,
     /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
     bash_cancel: Option<CancellationToken>,
 
     /// Sandbox engine for tool execution isolation (injected at construction).
-    sandbox_engine: std::sync::Arc<dyn SandboxEngine>,
+    sandbox_engine: std::sync::Arc<dyn XySandboxEngine>,
     /// Session store port (HC-2) — actively used by the ReAct loop.
     #[allow(dead_code)]
-    store: Arc<dyn SessionStore>,
+    store: Arc<dyn XySessionStore>,
     /// Event sink port (HC-2) — actively used for lifecycle events.
-    sink: Arc<dyn EventSink>,
+    sink: Arc<dyn XyEventSink>,
 }
 
 impl AgentSession {
@@ -108,8 +108,8 @@ impl AgentSession {
     pub fn new(
         model_registry: ModelRegistry,
         tool_registry: ToolRegistry,
-        store: Arc<dyn SessionStore>,
-        sink: Arc<dyn EventSink>,
+        store: Arc<dyn XySessionStore>,
+        sink: Arc<dyn XyEventSink>,
         system_prompt: Option<String>,
         context_files: Vec<(String, String)>,
         append_system_prompt: Vec<String>,
@@ -117,10 +117,10 @@ impl AgentSession {
         compaction_threshold: f64,
         cwd: String,
         compaction_settings: Option<CompactionSettings>,
-        model_builder: crate::runtime_protocol::ModelBuilder,
-        sandbox: Arc<dyn SandboxEngine>,
-        bash_executor: Arc<dyn BashExecutor>,
-        export_io: Arc<dyn ExportIo>,
+        model_builder: crate::runtime_protocol::XyModelBuilder,
+        sandbox: Arc<dyn XySandboxEngine>,
+        bash_executor: Arc<dyn XyBashExecutor>,
+        export_io: Arc<dyn XyExportIo>,
     ) -> Self {
         Self {
             model_manager: ModelManager::new(model_registry, model_builder),
@@ -158,7 +158,7 @@ impl AgentSession {
     // ── Model management (delegated to ModelManager) ──────────────
 
     /// Get the current model config.
-    pub fn current_model(&self) -> Option<&ModelMeta> {
+    pub fn current_model(&self) -> Option<&XyModelMeta> {
         self.model_manager.current_model()
     }
 
@@ -196,13 +196,13 @@ impl AgentSession {
     }
 
     /// Cycle to the next model.
-    pub fn cycle_forward(&mut self) -> Option<&ModelMeta> {
+    pub fn cycle_forward(&mut self) -> Option<&XyModelMeta> {
         self.model_manager.cycle_forward()
     }
 
     /// Cycle to the previous model.
     #[allow(dead_code)]
-    pub(crate) fn cycle_backward(&mut self) -> Option<&ModelMeta> {
+    pub(crate) fn cycle_backward(&mut self) -> Option<&XyModelMeta> {
         let len = self.model_manager.registry().len();
         if len == 0 {
             return None;
@@ -258,7 +258,7 @@ impl AgentSession {
         self.prompt_templates.extend(templates);
     }
 
-    /// Register prompt templates discovered by the ResourceLoader.
+    /// Register prompt templates discovered by the XyResourceLoader.
     ///
     /// Converts the loader's `PromptTemplate` (content field) into the runtime
     /// `agent::templates::PromptTemplate` (body field) and records the source
@@ -452,7 +452,7 @@ impl AgentSession {
     /// Returns the persisted decision.
     pub fn save_trust_decision(
         &self,
-        trust_store: &dyn TrustStore,
+        trust_store: &dyn XyTrustStore,
         trusted: bool,
     ) -> Result<bool, String> {
         trust_store.set_trust(&self.cwd, Some(trusted))?;
@@ -569,7 +569,7 @@ impl AgentSession {
         &mut self,
         command: &str,
         exclude_from_context: bool,
-    ) -> Result<crate::runtime_protocol::BashResult, String> {
+    ) -> Result<crate::runtime_protocol::XyBashResult, String> {
         let cancel = CancellationToken::new();
         self.bash_cancel = Some(cancel.clone());
 
@@ -591,7 +591,7 @@ impl AgentSession {
     pub async fn record_bash_result(
         &self,
         command: &str,
-        result: &crate::runtime_protocol::BashResult,
+        result: &crate::runtime_protocol::XyBashResult,
         exclude_from_context: bool,
         session_id: Option<&str>,
     ) -> Result<(), String> {
@@ -613,22 +613,22 @@ impl AgentSession {
     }
 
     /// Get a reference to the sandbox engine (injected at construction).
-    pub fn get_sandbox_engine(&self) -> std::sync::Arc<dyn SandboxEngine> {
+    pub fn get_sandbox_engine(&self) -> std::sync::Arc<dyn XySandboxEngine> {
         self.sandbox_engine.clone()
     }
 
     /// Check whether a file read is allowed by the sandbox.
-    pub fn check_sandbox_read(&self, path: &str) -> SandboxVerdict {
+    pub fn check_sandbox_read(&self, path: &str) -> XySandboxVerdict {
         self.get_sandbox_engine().check_read(path)
     }
 
     /// Check whether a file write is allowed by the sandbox.
-    pub fn check_sandbox_write(&self, path: &str) -> SandboxVerdict {
+    pub fn check_sandbox_write(&self, path: &str) -> XySandboxVerdict {
         self.get_sandbox_engine().check_write(path)
     }
 
     /// Check whether a network request is allowed by the sandbox.
-    pub fn check_sandbox_network(&self, domain: &str) -> SandboxVerdict {
+    pub fn check_sandbox_network(&self, domain: &str) -> XySandboxVerdict {
         self.get_sandbox_engine().check_network(domain)
     }
 
@@ -658,7 +658,7 @@ impl AgentSession {
     /// Cancels in-flight bash execution. (Lifecycle emission removed: the
     /// in-process EventBus had zero subscribers — `subscribe` was dead API.
     /// If abort notifications are needed later, extend
-    /// `runtime_protocol::event::LifecycleEvent` and emit via the `EventSink` port.)
+    /// `XyEvent` and emit via the `XyEventSink` port.)
     pub fn abort(&mut self) {
         self.abort_bash();
     }
@@ -747,9 +747,9 @@ impl AgentSession {
 /// by both [`AgentSession::record_bash_result`](super::AgentSession::record_bash_result)
 /// and the bash-execution collaborator).
 pub(crate) async fn record_bash_result(
-    store: &dyn SessionStore,
+    store: &dyn XySessionStore,
     command: &str,
-    result: &crate::runtime_protocol::BashResult,
+    result: &crate::runtime_protocol::XyBashResult,
     exclude_from_context: bool,
     session_id: &str,
 ) -> Result<(), String> {
@@ -779,9 +779,9 @@ mod tests {
 
     fn make_session() -> AgentSession {
         let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
-        let store: std::sync::Arc<dyn crate::runtime_protocol::SessionStore> =
+        let store: std::sync::Arc<dyn crate::runtime_protocol::XySessionStore> =
             std::sync::Arc::new(mgr);
-        let sink: std::sync::Arc<dyn crate::runtime_protocol::EventSink> =
+        let sink: std::sync::Arc<dyn crate::runtime_protocol::XyEventSink> =
             std::sync::Arc::new(crate::infra::event::EventBus::new());
         AgentSession::new(
             ModelRegistry::new(std::sync::Arc::new(

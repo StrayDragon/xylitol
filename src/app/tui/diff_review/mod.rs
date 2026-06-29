@@ -176,7 +176,7 @@ impl ReviewEngine {
 /// Run the review demo — generates a realistic temp project, simulates agent
 /// modifications, and enters the CLI review UI for interactive smoke-testing.
 ///
-/// # Usage
+/// # XyUsage
 ///
 /// ```bash
 /// cargo run --example review-demo
@@ -212,7 +212,7 @@ def subtract(a: int, b: int) -> int:
 
 def main():
     if len(sys.argv) < 4:
-        print("Usage: calc.py <op> <a> <b>")
+        print("XyUsage: calc.py <op> <a> <b>")
         sys.exit(1)
     op = sys.argv[1]
     a = int(sys.argv[2])
@@ -267,7 +267,7 @@ def divide(a: int, b: int) -> float:
 
 def main():
     if len(sys.argv) < 4:
-        print("Usage: calc.py <op> <a> <b>")
+        print("XyUsage: calc.py <op> <a> <b>")
         print("  op: add | sub | mul | div")
         sys.exit(1)
     op = sys.argv[1]
@@ -310,7 +310,7 @@ DATABASE_URL = "sqlite:///data.db"
 
 A simple calculator.
 
-## Usage
+## XyUsage
 
 ```
 python main.py add 1 2
@@ -326,7 +326,7 @@ A simple calculator with extended operations.
 - Structured logging
 - Error handling
 
-## Usage
+## XyUsage
 
 ```
 python main.py add 1 2

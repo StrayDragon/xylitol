@@ -18,15 +18,18 @@ use crate::agent::model::registry::ModelRegistry;
 use crate::agent::runtime::AgentLoop;
 use crate::agent::session::AgentSession;
 use crate::agent::tools::ToolRegistry;
-use crate::runtime_protocol::{BashExecutor, EventSink, ExportIo, SessionStore, ToolExecutionMode};
+use crate::runtime_protocol::{
+    XyBashExecutor, XyEventSink, XyExportIo, XySessionStore, XyToolExecutionMode,
+};
 
-pub use crate::agent::runtime::{AgentEvent, AgentEventStream, AgentHooks};
+pub use crate::agent::runtime::{AgentHooks, XyEventStream};
+pub use crate::domain::lifecycle::XyEvent;
 
 /// The agent — owns the session and the runtime loop.
 ///
 /// Two construction paths:
 /// - [`Agent::new`] — takes a fully-configured [`AgentSession`] (legacy).
-/// - [`Agent::with_ports`] — takes [`SessionStore`] / [`EventSink`] ports
+/// - [`Agent::with_ports`] — takes [`XySessionStore`] / [`XyEventSink`] ports
 ///   (HC-2 route, testable without file I/O).
 pub struct Agent {
     loop_: AgentLoop,
@@ -42,7 +45,7 @@ impl Agent {
 
     /// Construct from ports (HC-2 route).
     ///
-    /// Takes [`SessionStore`] / [`EventSink`] port trait objects (the agent
+    /// Takes [`XySessionStore`] / [`XyEventSink`] port trait objects (the agent
     /// holds no concrete infra session type), plus an injected model builder
     /// and sandbox engine (HC-1: agent must not construct infra
     /// providers/sandboxes itself; the composition root supplies them).
@@ -50,8 +53,8 @@ impl Agent {
     pub fn with_ports(
         model_registry: ModelRegistry,
         tool_registry: ToolRegistry,
-        store: Arc<dyn SessionStore>,
-        sink: Arc<dyn EventSink>,
+        store: Arc<dyn XySessionStore>,
+        sink: Arc<dyn XyEventSink>,
         system_prompt: Option<String>,
         context_files: Vec<(String, String)>,
         append_system_prompt: Vec<String>,
@@ -59,10 +62,10 @@ impl Agent {
         compaction_threshold: f64,
         cwd: String,
         compaction_settings: Option<CompactionSettings>,
-        model_builder: crate::runtime_protocol::ModelBuilder,
-        sandbox: Arc<dyn crate::runtime_protocol::SandboxEngine>,
-        bash_executor: Arc<dyn BashExecutor>,
-        export_io: Arc<dyn ExportIo>,
+        model_builder: crate::runtime_protocol::XyModelBuilder,
+        sandbox: Arc<dyn crate::runtime_protocol::XySandboxEngine>,
+        bash_executor: Arc<dyn XyBashExecutor>,
+        export_io: Arc<dyn XyExportIo>,
     ) -> Self {
         let session = AgentSession::new(
             model_registry,
@@ -91,7 +94,7 @@ impl Agent {
         self
     }
 
-    pub fn with_tool_mode(mut self, mode: ToolExecutionMode) -> Self {
+    pub fn with_tool_mode(mut self, mode: XyToolExecutionMode) -> Self {
         self.loop_ = self.loop_.with_tool_mode(mode);
         self
     }
@@ -113,13 +116,13 @@ impl Agent {
     }
 
     /// Run a turn (port-based, session_id auto-generated).
-    pub async fn run(&mut self, prompt: &str) -> AgentEventStream {
+    pub async fn run(&mut self, prompt: &str) -> XyEventStream {
         self.run_with_id(prompt, &uuid::Uuid::new_v4().to_string())
             .await
     }
 
     /// Run a turn with an explicit session_id (legacy).
-    pub async fn run_with_id(&mut self, prompt: &str, session_id: &str) -> AgentEventStream {
+    pub async fn run_with_id(&mut self, prompt: &str, session_id: &str) -> XyEventStream {
         self.loop_.run(prompt, session_id).await
     }
 }
