@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "session-persistence"
 purpose: "Session persistence — JSONL file-based session storage with tree operations, compaction, fork, and CWD validation."
 valid_scope[1]: src
-requirements[27]{req_id,title,statement}:
+requirements[28]{req_id,title,statement}:
   r1,"snapshot-ops",System MUST support snapshot restore spawn list prune diff and merge operations on immutable session snapshots.
   r2,compaction,System MUST automatically compact context when conversation token count exceeds configured window threshold.
   s1,"jsonl-storage","SessionManager MUST persist sessions as JSONL files with one JSON object per line version-tagged in ~/.xylitol/sessions/."
@@ -30,7 +30,8 @@ requirements[27]{req_id,title,statement}:
   sp1,"sessionstore-impl","infra::session::SessionManager MUST implement runtime_protocol::SessionStore with append, load, and exists methods covering only what the agent loop and compaction call; the full SessionManager surface (fork, navigate, export) MAY remain on the concrete struct for the composition root to use directly."
   sp2,"sessionstore-impl","infra::session::SessionManager MUST implement runtime_protocol::SessionStore with load_context, append, and exists covering only what the agent loop and compaction call; the full SessionManager surface (fork/navigate/export) MAY remain on the concrete struct for the interactive composition root."
   sp6,"journal-access","The session store MUST expose read_recent(session_id, limit) -> Vec<Event> for the server's journal; journal capacity MUST be configurable (default 10000)."
-scenarios[32]{req_id,id,given,when,then}:
+  sp3,"export-io-impl","infra/ MUST provide an implementation of runtime_protocol::export::ExportIo (StdExportIo) using tokio::fs for write_text and read_bytes; it MUST be injected into AgentSession by the composition root."
+scenarios[33]{req_id,id,given,when,then}:
   r1,happy,a snapshot exists,spawn is called with snapshot_id and new prompt,new agent instance starts with inherited context from snapshot
   r2,happy,conversation exceeds 75% of context window,compaction is triggered,older turns are summarized and replaced with compact system message
   s1,"create-load",a new session is created,entries are appended and session is loaded,all entries are returned in order
@@ -63,3 +64,4 @@ scenarios[32]{req_id,id,given,when,then}:
   sp1,"manager-impls-store",SessionManager is checked against SessionStore,the impl is inspected,it implements the trait and compiles
   sp2,"manager-impls-store",SessionManager is tested against SessionStore,the trait boundary is checked,all three methods compile and roundtrip data
   sp6,"journal-reads-recent",a session has 50 events and journal limit is 10000,"read_recent(s0, 10) is called",it returns the last 10 events in seq order
+  sp3,"std-export-io",the composition root constructs an Agent for export,ExportIo is injected,the concrete type is StdExportIo from infra/
