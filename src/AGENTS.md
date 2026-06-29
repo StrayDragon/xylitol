@@ -6,7 +6,7 @@
 
 ## 分层不变量（硬约束）
 
-下列依赖方向由 `src/tests.rs::arch_guard` 强制（代码是真值）。每条用自解释标题，**不依赖编号**——代码注释里偶见的 `HC-1`/`HC-2` 等是同一约束的历史缩写，对照下方标题即可。
+下列依赖方向由 `src/tests.rs::arch_guard` 强制（代码是真值）。
 
 - **组合根集中装配**（arch_guard 强制）：只有组合根允许同时 import `agent` 与 `infra`——`app/core/composition.rs`（主组合根，唯一集中装配 `Agent`），以及次级组合根 `app/cli/mod.rs`、`app/server/subcommand.rs`、`app/rpc.rs`，在构造期注入 adapter。
 - **agent 层不依赖 infra**（arch_guard 强制）：`agent` 永不 import `infra` 具体类型；只依赖 `domain` + `runtime_protocol`。

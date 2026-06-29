@@ -58,7 +58,7 @@ pub struct Agent {
     hooks: AgentHooks,
     /// Tool execution mode for the current turn.
     tool_mode: XyToolExecutionMode,
-    /// Session persistence via the XySessionStore port (HC-2). Held for the
+    /// Session persistence via the XySessionStore port. Held for the
     /// ReAct loop to consume load_context/append_entry/exists; the loop
     /// currently builds history inline (c185) and will migrate to this port.
     #[allow(dead_code)]
@@ -79,18 +79,18 @@ pub struct Agent {
     prompt_templates: Vec<PromptTemplate>,
     /// Extension-registered slash commands.
     extension_commands: Vec<SlashCommandInfo>,
-    /// Bash-execution collaborator (HC-2). Holds the optional [`XyBashExecutor`]
+    /// Bash-execution collaborator. Holds the optional [`XyBashExecutor`]
     /// port and the in-flight cancellation token.
     bash: crate::agent::session::bash::BashExecHandler,
-    /// Export/import collaborator (HC-2). Holds the optional [`XyExportIo`] port.
+    /// Export/import collaborator. Holds the optional [`XyExportIo`] port.
     exporter: crate::agent::session::export::SessionExporter,
 
-    /// Permission gate collaborator (HC-2). Holds the advisory [`XyPermission`]
+    /// Permission gate collaborator. Holds the advisory [`XyPermission`]
     /// engine consulted by the ReAct loop for tool routing.
     permission: crate::agent::session::permission::PermissionGate,
-    /// Session store port (HC-2) — actively used by the ReAct loop.
+    /// Session store port — actively used by the ReAct loop.
     store: Arc<dyn XySessionStore>,
-    /// Event sink port (HC-2) — actively used for lifecycle events.
+    /// Event sink port — actively used for lifecycle events.
     sink: Arc<dyn XyEventSink>,
 }
 

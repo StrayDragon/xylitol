@@ -14,7 +14,7 @@ use crate::runtime_protocol::{XyBashExecutor, XyBashResult, XySessionStore};
 
 /// Stateful bash-execution collaborator.
 pub struct BashExecHandler {
-    /// Injected bash executor port (HC-2). `None` means `!cmd` is unavailable.
+    /// Injected bash executor port. `None` means `!cmd` is unavailable.
     executor: Option<Arc<dyn XyBashExecutor>>,
     /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
     cancel: Option<CancellationToken>,
