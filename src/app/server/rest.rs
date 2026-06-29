@@ -24,7 +24,7 @@ use tokio::sync::Mutex;
 use crate::agent::facade::{Agent, XyEvent};
 use crate::agent::session::ModelRegistry;
 use crate::app::server::ws::{ClientFrame, EventJournal, ReverseRpcGateway, ServerFrame};
-use crate::protocol::{Envelope, ErrorCode, Event};
+use crate::protocol::{Envelope, ErrorCode};
 
 // ── Shared application state ───────────────────────────────────────
 
@@ -81,8 +81,7 @@ async fn run_prompt(
         };
         let mut stream = stream;
         while let Some(event) = stream.next().await {
-            let proto_event = Some(Event::from(&event));
-            if let Some(pe) = proto_event {
+            if let Some(pe) = event.to_wire_event() {
                 let mut j = journal.lock().await;
                 j.append(pe);
             }
