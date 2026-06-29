@@ -13,7 +13,8 @@
       ".uv-cache": true,
       ".coverage": true,
       "**/*.pyc": true,
-      "**/*.pyo": true
+      "**/*.pyo": true,
+      ".xlens/": true,
     },
     "files.watcherExclude": {
       "**/__pycache__": true,
@@ -29,6 +30,7 @@
       ".uv-cache": true,
       ".coverage": true,
       "**/*.pyc": true,
-      "**/*.pyo": true
+      "**/*.pyo": true,
+      ".xlens/": true,
     }
 }
