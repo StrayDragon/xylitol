@@ -183,6 +183,18 @@ fn read_windows_clipboard_image() -> Result<Option<ClipboardImage>, String> {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
+/// Pick the first supported image MIME type from a newline-separated list.
+fn pick_image_mime_type(mime_types: &str) -> Result<String, String> {
+    let supported = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+    for line in mime_types.lines() {
+        let mt = line.trim();
+        if supported.contains(&mt) {
+            return Ok(mt.to_string());
+        }
+    }
+    Err("clipboard does not contain a supported image MIME type".to_string())
+}
+
 /// Minimal base64 decoder — mirrors the encoder in osc52.rs.
 #[allow(dead_code)]
 fn base64_decode(input: &str) -> Result<Vec<u8>, String> {

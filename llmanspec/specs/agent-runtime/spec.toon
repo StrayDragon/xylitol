@@ -23,8 +23,8 @@ requirements[22]{req_id,title,statement}:
   ar14,"bdd-runtime-v4",BDD tests for OutputGuard stdout takeover and restore MUST all pass.
   ar15,"no-rloop-keyword","No source file under src/ MUST use the r#loop raw identifier; the ReAct loop module MUST be named runtime::react."
   ar16,"agent-facade","System MUST provide a single public entry point agent::facade::Agent that interactive layers import for construction and turn execution; reaching into agent::runtime from interactive/ is a layering violation."
-  ar17,"sessionstore-port","System MUST define core::ports::SessionStore with load_context (returns SessionContext), append, and exists methods — the minimal surface the ReAct loop and compaction call; SessionManager MUST implement it."
-  ar18,"eventsink-port","System MUST define core::ports::EventSink with emit_lifecycle; EventBus MUST implement it."
+  ar17,"sessionstore-port","System MUST define runtime_protocol::SessionStore with load_context (returns SessionContext), append, and exists methods — the minimal surface the ReAct loop and compaction call; SessionManager MUST implement it."
+  ar18,"eventsink-port","System MUST define runtime_protocol::EventSink with emit_lifecycle; EventBus MUST implement it."
 scenarios[25]{req_id,id,given,when,then}:
   r1,"react-loop",a mock XyModel returns text then tool call then final text,XyRunner executes,all events are emitted and loop terminates after tool response
   r1,"max-iterations",XyModel always returns tool calls,XyRunner reaches max_iterations,loop terminates with MaxIterationsReached error

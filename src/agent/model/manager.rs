@@ -6,9 +6,9 @@
 use std::sync::Arc;
 
 use crate::agent::model::registry::ModelRegistry;
-use crate::core::model::ModelConfig;
-use crate::core::ports::XyModel;
-use crate::core::types::{ModelMeta, ThinkingLevel};
+use crate::domain::model::ModelConfig;
+use crate::domain::types::{ModelMeta, ThinkingLevel};
+use crate::runtime_protocol::XyModel;
 
 /// Manages model registry, current model selection, and thinking level.
 ///
@@ -24,13 +24,16 @@ pub struct ModelManager {
     /// Current thinking level (clamped to model capabilities).
     pub(crate) thinking_level: ThinkingLevel,
     /// Injected provider factory (composition-root-supplied).
-    pub(crate) model_builder: crate::core::ports::ModelBuilder,
+    pub(crate) model_builder: crate::runtime_protocol::ModelBuilder,
 }
 
 impl ModelManager {
     /// Create a new ModelManager with the given registry, default index, and
     /// injected provider builder.
-    pub fn new(registry: ModelRegistry, model_builder: crate::core::ports::ModelBuilder) -> Self {
+    pub fn new(
+        registry: ModelRegistry,
+        model_builder: crate::runtime_protocol::ModelBuilder,
+    ) -> Self {
         Self {
             registry,
             current_index: 0,
@@ -130,8 +133,8 @@ mod tests {
 
     use super::ModelManager;
     use crate::agent::model::registry::ModelRegistry;
-    use crate::core::model::ModelConfig;
-    use crate::core::ports::XyModel;
+    use crate::domain::model::ModelConfig;
+    use crate::runtime_protocol::XyModel;
 
     fn empty_registry() -> ModelRegistry {
         ModelRegistry::new(Arc::new(
@@ -152,27 +155,33 @@ mod tests {
         assert!(mm.current_model().is_none());
         assert_eq!(mm.current_index(), 0);
         // No model means no thinking support → clamped to Off
-        assert_eq!(mm.thinking_level(), crate::core::types::ThinkingLevel::Off);
+        assert_eq!(
+            mm.thinking_level(),
+            crate::domain::types::ThinkingLevel::Off
+        );
     }
 
     #[test]
     fn new_model_manager_default_thinking() {
         let mm = ModelManager::new(empty_registry(), fake_builder());
-        assert_eq!(mm.thinking_level, crate::core::types::ThinkingLevel::Medium);
+        assert_eq!(
+            mm.thinking_level,
+            crate::domain::types::ThinkingLevel::Medium
+        );
     }
 
     #[test]
     fn set_thinking_level() {
         let mut mm = ModelManager::new(empty_registry(), fake_builder());
-        mm.set_thinking_level(crate::core::types::ThinkingLevel::Low);
-        assert_eq!(mm.thinking_level, crate::core::types::ThinkingLevel::Low);
+        mm.set_thinking_level(crate::domain::types::ThinkingLevel::Low);
+        assert_eq!(mm.thinking_level, crate::domain::types::ThinkingLevel::Low);
     }
 
     #[test]
     fn set_thinking_level_high() {
         let mut mm = ModelManager::new(empty_registry(), fake_builder());
-        mm.set_thinking_level(crate::core::types::ThinkingLevel::High);
-        assert_eq!(mm.thinking_level, crate::core::types::ThinkingLevel::High);
+        mm.set_thinking_level(crate::domain::types::ThinkingLevel::High);
+        assert_eq!(mm.thinking_level, crate::domain::types::ThinkingLevel::High);
     }
 
     #[test]

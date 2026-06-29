@@ -13,8 +13,10 @@ use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
 
-pub(crate) use crate::core::ports::{EventSink, SessionStore};
+pub(crate) use crate::runtime_protocol::{EventSink, SessionStore};
 
+mod bang;
+mod export;
 mod io;
 mod prompt_result;
 mod stats;
@@ -32,16 +34,18 @@ use crate::agent::prompt::skills::SkillManager;
 use crate::agent::prompt::templates::{PromptTemplate, is_template_line, parse_template_line};
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::MessageQueue;
+use crate::agent::session::bang::parse_bang_prefix;
 use crate::agent::tools::ToolRegistry;
-use crate::core::bash::parse_bang_prefix;
-use crate::core::ports::{BashExecutor, SandboxEngine, SandboxVerdict, TrustStore, XyModel};
-use crate::core::resource_types::SkillInfo;
-use crate::core::session_types::{
+use crate::domain::resource_types::SkillInfo;
+use crate::domain::session_types::{
     BashExecutionEntry, EntryBase, ModelChangeEntry, SessionEntry, ThinkingLevelChangeEntry,
 };
 #[cfg(test)]
-use crate::core::source_info::{SourceInfo, SourceOrigin, SourceScope};
-use crate::core::types::{ModelMeta, ThinkingLevel};
+use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
+use crate::domain::types::{ModelMeta, ThinkingLevel};
+use crate::runtime_protocol::{
+    BashExecutor, ExportIo, SandboxEngine, SandboxVerdict, TrustStore, XyModel,
+};
 
 // ── Model Registry ──────────────────────────────────────────────────
 
@@ -85,6 +89,8 @@ pub struct AgentSession {
     skill_manager: SkillManager,
     /// Injected bash executor port (HC-2).
     bash_executor: Arc<dyn BashExecutor>,
+    /// Injected export/import I/O port (HC-2).
+    export_io: Arc<dyn ExportIo>,
     /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
     bash_cancel: Option<CancellationToken>,
 
@@ -111,9 +117,10 @@ impl AgentSession {
         compaction_threshold: f64,
         cwd: String,
         compaction_settings: Option<CompactionSettings>,
-        model_builder: crate::core::ports::ModelBuilder,
+        model_builder: crate::runtime_protocol::ModelBuilder,
         sandbox: Arc<dyn SandboxEngine>,
         bash_executor: Arc<dyn BashExecutor>,
+        export_io: Arc<dyn ExportIo>,
     ) -> Self {
         Self {
             model_manager: ModelManager::new(model_registry, model_builder),
@@ -141,6 +148,7 @@ impl AgentSession {
             skill_manager: SkillManager::new(),
             bash_executor,
             bash_cancel: None,
+            export_io,
             store,
             sink,
             sandbox_engine: sandbox,
@@ -258,7 +266,7 @@ impl AgentSession {
     /// command.
     pub fn register_prompt_commands(
         &mut self,
-        templates: &[crate::core::resource_types::PromptTemplate],
+        templates: &[crate::domain::resource_types::PromptTemplate],
     ) {
         for t in templates {
             self.prompt_templates.push(PromptTemplate {
@@ -475,7 +483,10 @@ impl AgentSession {
 
     /// Register skill commands from loaded skills.
     /// When a skill is loaded, `/skill:name` slash command is auto-registered.
-    pub fn register_skill_commands(&mut self, _skills: &[crate::core::resource_types::SkillInfo]) {
+    pub fn register_skill_commands(
+        &mut self,
+        _skills: &[crate::domain::resource_types::SkillInfo],
+    ) {
         let cmds = self.skill_manager.register_commands();
         self.extension_commands.extend(cmds);
     }
@@ -558,7 +569,7 @@ impl AgentSession {
         &mut self,
         command: &str,
         exclude_from_context: bool,
-    ) -> Result<crate::core::ports::BashResult, String> {
+    ) -> Result<crate::runtime_protocol::BashResult, String> {
         let cancel = CancellationToken::new();
         self.bash_cancel = Some(cancel.clone());
 
@@ -580,7 +591,7 @@ impl AgentSession {
     pub async fn record_bash_result(
         &self,
         command: &str,
-        result: &crate::core::ports::BashResult,
+        result: &crate::runtime_protocol::BashResult,
         exclude_from_context: bool,
         session_id: Option<&str>,
     ) -> Result<(), String> {
@@ -647,7 +658,7 @@ impl AgentSession {
     /// Cancels in-flight bash execution. (Lifecycle emission removed: the
     /// in-process EventBus had zero subscribers — `subscribe` was dead API.
     /// If abort notifications are needed later, extend
-    /// `core::ports::LifecycleEvent` and emit via the `EventSink` port.)
+    /// `runtime_protocol::event::LifecycleEvent` and emit via the `EventSink` port.)
     pub fn abort(&mut self) {
         self.abort_bash();
     }
@@ -661,8 +672,8 @@ impl AgentSession {
     ) -> Result<std::path::PathBuf, String> {
         let sid = self.session_id().ok_or("no active session")?.to_string();
         let entries = self.store.load_entries(&sid).await?;
-        let html = crate::core::session_export::render_html(&sid, &entries);
-        crate::core::session_export::write_to(path, &html)?;
+        let html = crate::agent::session::export::render_html(&sid, &entries);
+        self.export_io.write_text(path, &html).await?;
         Ok(path.to_path_buf())
     }
 
@@ -673,8 +684,8 @@ impl AgentSession {
     ) -> Result<std::path::PathBuf, String> {
         let sid = self.session_id().ok_or("no active session")?.to_string();
         let entries = self.store.load_entries(&sid).await?;
-        let jsonl = crate::core::session_export::render_jsonl(&entries)?;
-        crate::core::session_export::write_to(path, &jsonl)?;
+        let jsonl = crate::agent::session::export::render_jsonl(&entries)?;
+        self.export_io.write_text(path, &jsonl).await?;
         Ok(path.to_path_buf())
     }
 
@@ -684,8 +695,8 @@ impl AgentSession {
     /// identities stable across export/import; the file lands without
     /// overwriting an existing session.
     pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String> {
-        let bytes = std::fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-        let entries = crate::core::session_export::parse_jsonl(&bytes)?;
+        let bytes = self.export_io.read_bytes(path).await?;
+        let entries = crate::agent::session::export::parse_jsonl(&bytes)?;
         let new_id = match entries.first() {
             Some(SessionEntry::Header(h)) => h.id.clone(),
             _ => return Err("import: missing header".into()),
@@ -701,7 +712,7 @@ impl AgentSession {
 
     /// Share guidance stub — returns a configuration hint (no network upload).
     pub fn share_as_gist(&self, path: &std::path::Path) -> String {
-        crate::core::session_export::share_guidance_message(path)
+        crate::agent::session::export::share_guidance_message(path)
     }
 
     /// Check and perform auto-compaction if the context is full.
@@ -738,7 +749,7 @@ impl AgentSession {
 pub(crate) async fn record_bash_result(
     store: &dyn SessionStore,
     command: &str,
-    result: &crate::core::ports::BashResult,
+    result: &crate::runtime_protocol::BashResult,
     exclude_from_context: bool,
     session_id: &str,
 ) -> Result<(), String> {
@@ -768,8 +779,9 @@ mod tests {
 
     fn make_session() -> AgentSession {
         let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
-        let store: std::sync::Arc<dyn crate::core::ports::SessionStore> = std::sync::Arc::new(mgr);
-        let sink: std::sync::Arc<dyn crate::core::ports::EventSink> =
+        let store: std::sync::Arc<dyn crate::runtime_protocol::SessionStore> =
+            std::sync::Arc::new(mgr);
+        let sink: std::sync::Arc<dyn crate::runtime_protocol::EventSink> =
             std::sync::Arc::new(crate::infra::event::EventBus::new());
         AgentSession::new(
             ModelRegistry::new(std::sync::Arc::new(
@@ -788,6 +800,7 @@ mod tests {
             std::sync::Arc::new(crate::infra::provider::factory::build_provider),
             crate::infra::sandbox::noop_engine(),
             std::sync::Arc::new(crate::infra::bash_exec::InfraBashExecutor::new()),
+            std::sync::Arc::new(crate::infra::export::StdExportIo::new()),
         )
     }
 
@@ -795,8 +808,8 @@ mod tests {
         name: &str,
         body: &str,
         source: &str,
-    ) -> crate::core::resource_types::PromptTemplate {
-        crate::core::resource_types::PromptTemplate {
+    ) -> crate::domain::resource_types::PromptTemplate {
+        crate::domain::resource_types::PromptTemplate {
             name: name.into(),
             content: body.into(),
             description: None,

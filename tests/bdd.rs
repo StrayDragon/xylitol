@@ -14,9 +14,8 @@ use xylitol::agent::compaction::should_compact;
 use xylitol::agent::runtime::{AgentEvent, AgentLoop};
 use xylitol::agent::session::{AgentSession, ContextUsage, ModelRegistry, get_context_usage};
 use xylitol::agent::tools::ToolRegistry;
-use xylitol::core::model::{ModelConfig, ModelKind};
-use xylitol::core::ports::{XyTool, XyToolCtx};
-use xylitol::core::types::{ModelMeta, ThinkingLevel};
+use xylitol::domain::model::{ModelConfig, ModelKind};
+use xylitol::domain::types::{ModelMeta, ThinkingLevel};
 use xylitol::infra::config::types::HookEntry;
 use xylitol::infra::config::value::InfraSecretResolver;
 use xylitol::infra::hooks::{DispatchResult, HookDispatcher, HookEvent, HookPhase};
@@ -30,6 +29,7 @@ use xylitol::infra::tools::{
     bash::BashTool, edit::EditTool, find::FindTool, grep::GrepTool, ls::LsTool,
     mutation::FileMutationQueue, read::ReadTool, write::WriteTool,
 };
+use xylitol::runtime_protocol::{XyTool, XyToolCtx};
 
 // ═══════════════════════════════════════════════════════════════════
 // Fixture types (one-level RefCell for interior mutability)
@@ -166,8 +166,8 @@ fn make_agent(agent: &AgentState) -> AgentLoop {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     use std::sync::Arc;
-    let store: Arc<dyn xylitol::core::ports::SessionStore> = Arc::new(mgr.clone());
-    let sink: Arc<dyn xylitol::core::ports::EventSink> =
+    let store: Arc<dyn xylitol::runtime_protocol::SessionStore> = Arc::new(mgr.clone());
+    let sink: Arc<dyn xylitol::runtime_protocol::EventSink> =
         Arc::new(xylitol::infra::event::EventBus::new());
     let session = AgentSession::new(
         agent.registry.borrow().clone(),
@@ -184,6 +184,7 @@ fn make_agent(agent: &AgentState) -> AgentLoop {
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
         xylitol::infra::sandbox::noop_engine(),
         std::sync::Arc::new(xylitol::infra::bash_exec::InfraBashExecutor::new()),
+        std::sync::Arc::new(xylitol::infra::export::StdExportIo::new()),
     );
     AgentLoop::new(session)
 }
@@ -561,9 +562,9 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
     let _ = verb;
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
-    let store: std::sync::Arc<dyn xylitol::core::ports::SessionStore> =
+    let store: std::sync::Arc<dyn xylitol::runtime_protocol::SessionStore> =
         std::sync::Arc::new(mgr.clone());
-    let sink: std::sync::Arc<dyn xylitol::core::ports::EventSink> =
+    let sink: std::sync::Arc<dyn xylitol::runtime_protocol::EventSink> =
         std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut session = AgentSession::new(
         agent.registry.borrow().clone(),
@@ -580,6 +581,7 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
         xylitol::infra::sandbox::noop_engine(),
         std::sync::Arc::new(xylitol::infra::bash_exec::InfraBashExecutor::new()),
+        std::sync::Arc::new(xylitol::infra::export::StdExportIo::new()),
     );
     let tl = match level.as_str() {
         "high" => ThinkingLevel::High,
@@ -669,9 +671,9 @@ fn _g_agent_current_model(_agent: &AgentState, model: String) {
 fn _w_agent_cycle_forward(agent: &AgentState) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
-    let store: std::sync::Arc<dyn xylitol::core::ports::SessionStore> =
+    let store: std::sync::Arc<dyn xylitol::runtime_protocol::SessionStore> =
         std::sync::Arc::new(mgr.clone());
-    let sink: std::sync::Arc<dyn xylitol::core::ports::EventSink> =
+    let sink: std::sync::Arc<dyn xylitol::runtime_protocol::EventSink> =
         std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut session = AgentSession::new(
         agent.registry.borrow().clone(),
@@ -688,6 +690,7 @@ fn _w_agent_cycle_forward(agent: &AgentState) {
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
         xylitol::infra::sandbox::noop_engine(),
         std::sync::Arc::new(xylitol::infra::bash_exec::InfraBashExecutor::new()),
+        std::sync::Arc::new(xylitol::infra::export::StdExportIo::new()),
     );
     let next = session
         .cycle_forward()

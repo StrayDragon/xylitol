@@ -1,0 +1,11 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,as34,"sessionstore-port","System MUST define runtime_protocol::SessionStore abstracting session persistence; infra::session::SessionManager MUST implement it and a test in-memory double MUST exist under tests/support/; agent/ MUST hold the store as Arc<dyn SessionStore>.",null,null,null
+  add_requirement,as35,"export-io-port","AgentSession's export_to_html, export_to_jsonl, and import_from_jsonl MUST perform file I/O through an injected Arc<dyn runtime_protocol::export::ExportIo> rather than calling std::fs directly, so that the agent layer remains free of filesystem side effects and future backends (gist, S3) can be added without changing agent code.",null,null,null
+  add_requirement,as36,"bang-prefix-in-agent","The user-input bang-prefix parser (!cmd / !!cmd) MUST live under agent::session::bang, not in the domain layer, because it encodes CLI/agent interaction syntax rather than universal domain vocabulary.",null,null,null
+  add_requirement,as37,"session-exporter-in-agent","Session export/import render and parse helpers (render_html, render_jsonl, parse_jsonl) MUST live under agent::session::export, not in the domain layer, because they are part of the export command orchestration.",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  as34,"store-is-trait",the agent holds a session backend,the field type is inspected,it is Arc<dyn SessionStore> not Arc<SessionManager>
+  as35,"export-io-injected",AgentSession is constructed for export,a write is performed,"the write goes through the injected ExportIo implementation, not direct fs calls in agent/"
+  as36,"bang-in-agent",the bang parser is located,its module is inspected,it is defined under src/agent/session/bang.rs
+  as37,"exporter-in-agent",export render helpers are located,their module is inspected,they are defined under src/agent/session/export.rs

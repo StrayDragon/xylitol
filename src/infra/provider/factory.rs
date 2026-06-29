@@ -8,11 +8,11 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use crate::core::model::{ModelConfig, ModelKind};
-use crate::core::ports::XyModel;
+use crate::domain::model::{ModelConfig, ModelKind};
 use crate::infra::provider::anthropic::AnthropicProvider;
 use crate::infra::provider::openai::OpenAIProvider;
 use crate::infra::provider::{FakeProvider, ScenarioStep};
+use crate::runtime_protocol::XyModel;
 
 // ── Mock model state (BDD tests only) ──────────────────────────────
 //

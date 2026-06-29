@@ -4,7 +4,7 @@
 //! and context transforms. The loop consults them when present; absent hooks
 //! are no-ops. This is the "open for extension" seam of the runtime.
 
-use crate::core::message::AgentMessage;
+use crate::domain::message::AgentMessage;
 use serde_json::Value;
 
 // ── Hook callback type aliases ──────────────────────────────────────

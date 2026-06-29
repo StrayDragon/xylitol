@@ -15,8 +15,9 @@
 `xylitol` is a Rust 2024 CLI/agent toolkit structured as a thin orchestration core (`agent/`) over a large runtime domain (`infra/`), with swappable interaction surfaces (`interactive/`) speaking a single wire vocabulary (`protocol.rs`), plus an optional always-on core (`server/`). See `llmanspec/changes/archive/2026-06-26-c260-refactor-domain-architecture/design.md` for the layering invariants (HC-1…HC-6) enforced by `src/tests.rs::arch_guard`.
 
 Source under `src/`:
-- `core/` — domain vocabulary + ports (`XyModel`/`XyTool` traits) + pure types. Zero crate-internal deps.
-- `infra/` — **runtime domain**: `provider/` (LLM adapters, impl `XyModel`), `tools/` (built-in tool impls), `session/`, `sandbox/`, `process/`, `config/` (incl. `value.rs` secret resolution), `event/`, `hooks/`, `mcp/`, `skills/`, `resource/`, `trust/`, `git/`, `clipboard/`, `image/`, `tool_downloader/`.
+- `domain/` — pure domain vocabulary + errors + serde types. Zero crate-internal deps.
+- `runtime_protocol/` — agent↔infra boundary traits (`XyModel`, `XyTool`, `SessionStore`, `EventSink`, `BashExecutor`, `ExportIo`, …) + signature-only types. Depends only on `domain/`.
+- `infra/` — **runtime domain**: `provider/` (LLM adapters, impl `XyModel`), `tools/` (built-in tool impls), `session/`, `sandbox/`, `process/`, `config/` (incl. `value.rs` secret resolution), `event/`, `hooks/`, `mcp/`, `skills/`, `resource/`, `trust/`, `git/`, `clipboard/`, `image/`, `tool_downloader/`, `export/` (`StdExportIo`).
 - `agent/` — **thin orchestration**: `runtime/` (ReAct loop `react.rs`, `event.rs`, `hooks.rs`, queue/retry/stdout_guard), `facade.rs` (single public entry for interactive layers), `session/`, `model/` (registry + manager), `tools/` (`ToolRegistry` only — impls live in infra), `compaction/`, `prompt/` (system/commands/templates/skills).
 - `protocol.rs` — client↔core wire vocabulary SSOT (`Command`/`Event` enums), transport-agnostic.
 - `server/` — **always-on core**: hosts `agent` + `infra` runtimes, exposes `protocol.rs` over REST (`/api/v1`) + WebSocket; single-instance lock. The second composition root (the first being `interactive/cli`).

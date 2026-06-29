@@ -3,8 +3,8 @@
 //! Provides [`SessionEntry::as_agent_message()`] for converting persisted
 //! session entries back into runtime agent messages.
 
-use crate::core::message::{AgentMessage, AgentPart, now_ms};
-use crate::core::session_types::SessionEntry;
+use crate::domain::message::{AgentMessage, AgentPart, now_ms};
+use crate::domain::session_types::SessionEntry;
 
 impl SessionEntry {
     /// Convert a SessionEntry to `AgentMessage` if it contains conversation content.

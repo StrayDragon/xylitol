@@ -25,13 +25,13 @@ use crate::agent::compaction::CompactionSettings;
 use crate::agent::facade::{Agent, AgentEvent};
 use crate::agent::model::registry::ModelRegistry;
 use crate::agent::tools::ToolRegistry;
-use crate::core::ports::{BashExecutor, EventSink, SessionStore};
-use crate::core::types::{ModelMeta, ThinkingLevel};
+use crate::domain::types::{ModelMeta, ThinkingLevel};
 use crate::infra::bash_exec::InfraBashExecutor;
 use crate::infra::event::EventBus;
 use crate::infra::sandbox::SandboxEngine;
 use crate::infra::session::SessionManager;
 use crate::protocol::{Command, Event};
+use crate::runtime_protocol::{BashExecutor, EventSink, ExportIo, SessionStore};
 
 // ── State ─────────────────────────────────────────────────────────
 
@@ -73,6 +73,7 @@ impl RpcState {
         let sink: Arc<dyn EventSink> = Arc::new(EventBus::new());
 
         let bash_executor: Arc<dyn BashExecutor> = Arc::new(InfraBashExecutor::new());
+        let export_io: Arc<dyn ExportIo> = Arc::new(crate::infra::export::StdExportIo::new());
         let mut agent = Agent::with_ports(
             self.model_registry.clone(),
             tool_registry,
@@ -91,6 +92,7 @@ impl RpcState {
                 .clone()
                 .unwrap_or_else(|| crate::infra::sandbox::noop_engine()),
             bash_executor,
+            export_io,
         );
         agent.session_mut().set_thinking_level(self.thinking_level);
         if let Some(ref mid) = self.current_model_id {
@@ -691,7 +693,7 @@ fn emit(event: &Event) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::{ModelMeta, ThinkingLevel};
+    use crate::domain::types::{ModelMeta, ThinkingLevel};
     use crate::infra::config::value::InfraSecretResolver;
 
     fn make_state() -> RpcState {
@@ -699,8 +701,8 @@ mod tests {
         let mut reg = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
         reg.register(ModelMeta {
             id: "mock".into(),
-            config: crate::core::model::ModelConfig {
-                kind: crate::core::model::ModelKind::OpenAi,
+            config: crate::domain::model::ModelConfig {
+                kind: crate::domain::model::ModelKind::OpenAi,
                 api_key: "sk-test".into(),
                 model: "mock-model".into(),
                 base_url: None,

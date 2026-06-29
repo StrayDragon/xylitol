@@ -12,7 +12,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::types::*;
-use crate::core::ports::{EventSink, LifecycleEvent, SessionStore};
+use crate::runtime_protocol::{EventSink, LifecycleEvent, SessionStore};
 
 /// Manages session persistence using JSONL files or in-memory storage.
 #[derive(Debug)]
@@ -663,12 +663,12 @@ impl SessionManager {
     pub async fn build_session_context_v2(
         &self,
         session_id: &str,
-    ) -> Result<Vec<crate::core::message::AgentMessage>, String> {
+    ) -> Result<Vec<crate::domain::message::AgentMessage>, String> {
         let leaf_id = self.get_leaf(session_id);
         let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
 
         let mut messages = Vec::new();
-        use crate::core::message::AgentMessage;
+        use crate::domain::message::AgentMessage;
 
         for entry in &branch {
             match entry {
@@ -1331,7 +1331,7 @@ impl SessionStore for SessionManager {
     async fn load_context(
         &self,
         session_id: &str,
-    ) -> Result<Vec<crate::core::message::AgentMessage>, String> {
+    ) -> Result<Vec<crate::domain::message::AgentMessage>, String> {
         self.build_session_context_v2(session_id).await
     }
 
@@ -1363,7 +1363,7 @@ impl SessionStore for SessionManager {
     async fn build_session_context(
         &self,
         session_id: &str,
-    ) -> Result<crate::core::session_types::SessionContext, String> {
+    ) -> Result<crate::domain::session_types::SessionContext, String> {
         SessionManager::build_session_context(self, session_id).await
     }
 

@@ -9,7 +9,7 @@
 //!   [`SlashCommandSource`] and optional `source_path` for provenance.
 //! - AgentSession owns the dispatch logic (`dispatch_slash_command` in session.rs).
 
-use crate::core::source_info::SourceInfo;
+use crate::domain::source_info::SourceInfo;
 
 /// Source of a registered (non-builtin) slash command.
 #[derive(Debug, Clone, PartialEq)]
@@ -98,14 +98,6 @@ pub(crate) fn get_all_commands(extensions: &[SlashCommandInfo]) -> Vec<SlashComm
     all
 }
 
-/// Find a command by name (case-insensitive).
-pub(crate) fn find_command<'a>(
-    name: &str,
-    commands: &'a [SlashCommandInfo],
-) -> Option<&'a SlashCommandInfo> {
-    commands.iter().find(|c| c.name.eq_ignore_ascii_case(name))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,7 +130,7 @@ mod tests {
 
     #[test]
     fn test_slash_command_info_with_source_info() {
-        use crate::core::source_info::{SourceInfo, SourceOrigin, SourceScope};
+        use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
         let si = SourceInfo {
             path: std::path::PathBuf::from("/a/b/c.md"),
             source: "local".into(),

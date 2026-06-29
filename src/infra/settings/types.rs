@@ -131,8 +131,8 @@ pub struct Settings {
     pub warnings: Option<WarningSettings>,
 }
 
-/// Compaction behavior settings — relocated to `core::compaction_config`.
-pub use crate::core::compaction_config::CompactionSettings;
+/// Compaction behavior settings — relocated to `domain::compaction_config`.
+pub use crate::domain::compaction_config::CompactionSettings;
 
 /// Branch summary settings for forked conversations.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

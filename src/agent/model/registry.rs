@@ -10,9 +10,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::core::model::{ModelConfig, ModelKind};
-use crate::core::ports::SecretResolver;
-use crate::core::types::ModelMeta;
+use crate::domain::model::{ModelConfig, ModelKind};
+use crate::domain::types::ModelMeta;
+use crate::runtime_protocol::SecretResolver;
 
 // ── Provider Config ─────────────────────────────────────────────────
 
@@ -306,7 +306,7 @@ pub fn build_default_model_meta(provider: &ProviderConfig) -> Option<ModelMeta> 
     })
 }
 
-pub use crate::core::model::default_context_window_for;
+pub use crate::domain::model::default_context_window_for;
 
 #[cfg(test)]
 mod tests {

@@ -9,9 +9,9 @@ impl super::AgentSession {
     pub fn steer(
         &mut self,
         text: impl Into<String>,
-        _images: Option<Vec<crate::core::message::ImageContent>>,
+        _images: Option<Vec<crate::domain::message::ImageContent>>,
     ) {
-        let msg = crate::core::message::AgentMessage::user(text);
+        let msg = crate::domain::message::AgentMessage::user(text);
         self.message_queue.push(msg);
     }
 
@@ -19,14 +19,14 @@ impl super::AgentSession {
     pub fn follow_up(
         &mut self,
         text: impl Into<String>,
-        _images: Option<Vec<crate::core::message::ImageContent>>,
+        _images: Option<Vec<crate::domain::message::ImageContent>>,
     ) {
-        let msg = crate::core::message::AgentMessage::user(text);
+        let msg = crate::domain::message::AgentMessage::user(text);
         self.message_queue.push(msg);
     }
 
     /// Return and clear all queued messages.
-    pub fn clear_queue(&mut self) -> Vec<crate::core::message::AgentMessage> {
+    pub fn clear_queue(&mut self) -> Vec<crate::domain::message::AgentMessage> {
         self.message_queue.drain()
     }
 
@@ -41,17 +41,17 @@ impl super::AgentSession {
     }
 
     /// Get all queued steering messages (without clearing).
-    pub fn get_steering_messages(&self) -> Vec<crate::core::message::AgentMessage> {
+    pub fn get_steering_messages(&self) -> Vec<crate::domain::message::AgentMessage> {
         Vec::new()
     }
 
     /// Get all queued follow-up messages (without clearing).
-    pub fn get_follow_up_messages(&self) -> Vec<crate::core::message::AgentMessage> {
+    pub fn get_follow_up_messages(&self) -> Vec<crate::domain::message::AgentMessage> {
         Vec::new()
     }
 
     /// Drain queued messages for the next turn.
-    pub fn drain_queued_messages(&mut self) -> Vec<crate::core::message::AgentMessage> {
+    pub fn drain_queued_messages(&mut self) -> Vec<crate::domain::message::AgentMessage> {
         self.message_queue.drain()
     }
 }

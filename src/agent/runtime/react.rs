@@ -25,12 +25,12 @@ use super::sandbox_router::sandbox_target;
 use super::{AgentEvent, AgentEventStream, AgentHooks};
 use crate::agent::session::AgentSession;
 use crate::agent::tools::ToolRegistry;
-use crate::core::error::XyError;
-use crate::core::message::{AgentMessage, AgentPart};
-use crate::core::ports::{ToolExecutionMode, XyModel, XyToolCtx};
-use crate::core::types::{XyChunk, XyToolSchema};
+use crate::domain::error::XyError;
+use crate::domain::message::{AgentMessage, AgentPart};
+use crate::domain::types::{XyChunk, XyToolSchema};
+use crate::runtime_protocol::{ToolExecutionMode, XyModel, XyToolCtx};
 
-use crate::core::ports::SandboxVerdict;
+use crate::runtime_protocol::SandboxVerdict;
 
 // ── AgentLoop ───────────────────────────────────────────────────────
 
@@ -200,14 +200,14 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
         if let Some(ref sp) = system_prompt {
             history.push(AgentMessage::UserMessage {
                 content: vec![AgentPart::Text(sp.clone())],
-                timestamp: crate::core::message::now_ms(),
+                timestamp: crate::domain::message::now_ms(),
             });
         }
 
         // Add user message
         history.push(AgentMessage::UserMessage {
             content: vec![AgentPart::Text(user_prompt.clone())],
-            timestamp: crate::core::message::now_ms(),
+            timestamp: crate::domain::message::now_ms(),
         });
 
         let retry_state = RetryState::new(3, 1000);
@@ -308,7 +308,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
                     model: String::new(),
                     response_id: None,
                     error_message: None,
-                    timestamp: crate::core::message::now_ms(),
+                    timestamp: crate::domain::message::now_ms(),
                     diagnostics: Vec::new(),
                 });
             }
@@ -340,7 +340,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
                             content: vec![AgentPart::Text(err.clone())],
                             details: None,
                             is_error: true,
-                            timestamp: crate::core::message::now_ms(),
+                            timestamp: crate::domain::message::now_ms(),
                         });
                         continue;
                     }
@@ -374,7 +374,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = AgentEvent> + Send {
                     content: vec![AgentPart::Text(result.clone())],
                     details: None,
                     is_error: false,
-                    timestamp: crate::core::message::now_ms(),
+                    timestamp: crate::domain::message::now_ms(),
                 });
             }
 
@@ -421,10 +421,10 @@ mod tests {
 
     use super::*;
     use crate::agent::model::registry::ModelRegistry;
-    use crate::core::model::ModelConfig;
-    use crate::core::ports::{EventSink, SessionStore, XyModel};
-    use crate::core::types::ModelMeta;
+    use crate::domain::model::ModelConfig;
+    use crate::domain::types::ModelMeta;
     use crate::infra::session::SessionManager;
+    use crate::runtime_protocol::{EventSink, SessionStore, XyModel};
 
     /// Model builder for tests — the real factory (tests register `Fake`/`OpenAi`
     /// model configs and rely on `build_provider` constructing the provider struct;
@@ -441,8 +441,8 @@ mod tests {
         ));
         reg.register(ModelMeta {
             id: "mock".into(),
-            config: crate::core::model::ModelConfig {
-                kind: crate::core::model::ModelKind::OpenAi,
+            config: crate::domain::model::ModelConfig {
+                kind: crate::domain::model::ModelKind::OpenAi,
                 api_key: "sk-test".into(),
                 model: "mock-model".into(),
                 base_url: None,
@@ -478,6 +478,7 @@ mod tests {
             fake_model_builder(),
             crate::infra::sandbox::noop_engine(),
             std::sync::Arc::new(crate::infra::bash_exec::InfraBashExecutor::new()),
+            std::sync::Arc::new(crate::infra::export::StdExportIo::new()),
         );
 
         assert!(session.current_model().is_some());
@@ -491,8 +492,8 @@ mod tests {
         ));
         reg.register(ModelMeta {
             id: "mock".into(),
-            config: crate::core::model::ModelConfig {
-                kind: crate::core::model::ModelKind::OpenAi,
+            config: crate::domain::model::ModelConfig {
+                kind: crate::domain::model::ModelKind::OpenAi,
                 api_key: "sk-test".into(),
                 model: "mock-model".into(),
                 base_url: None,
@@ -528,6 +529,7 @@ mod tests {
             fake_model_builder(),
             crate::infra::sandbox::noop_engine(),
             std::sync::Arc::new(crate::infra::bash_exec::InfraBashExecutor::new()),
+            std::sync::Arc::new(crate::infra::export::StdExportIo::new()),
         );
 
         let mut loop_runner = AgentLoop::new(session);

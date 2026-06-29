@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,t17,"tool-impls-in-infra","Built-in tool implementations (bash, read, write, edit, grep, find, ls, patch, and helpers accumulator/truncate/process/path_utils/mutation) MUST live under infra/tools/ and implement runtime_protocol::XyTool; agent/tools/ MUST retain only the ToolRegistry and the ToolDefinition presentation type.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  t17,"tools-moved",src/agent/tools is inspected,only registry and definition remain,"the built-in tool files live under src/infra/tools/ and import XyTool from crate::runtime_protocol"
