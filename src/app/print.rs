@@ -5,7 +5,7 @@
 use std::io::{self, Write};
 
 use crate::agent::facade::AgentEvent;
-use crate::interactive::driver::Driver;
+use crate::app::driver::Driver;
 use futures::StreamExt;
 
 /// Run the agent in print mode with the given prompt.

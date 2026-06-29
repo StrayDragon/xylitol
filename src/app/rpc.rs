@@ -24,14 +24,12 @@ use tokio_util::sync::CancellationToken;
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::facade::{Agent, AgentEvent};
 use crate::agent::model::registry::ModelRegistry;
-use crate::agent::tools::ToolRegistry;
+use crate::app::composition::{BuildAgentOptions, build_agent};
 use crate::domain::types::{ModelMeta, ThinkingLevel};
-use crate::infra::bash_exec::InfraBashExecutor;
-use crate::infra::event::EventBus;
 use crate::infra::sandbox::SandboxEngine;
 use crate::infra::session::SessionManager;
 use crate::protocol::{Command, Event};
-use crate::runtime_protocol::{BashExecutor, EventSink, ExportIo, SessionStore};
+use crate::runtime_protocol::SessionStore;
 
 // ── State ─────────────────────────────────────────────────────────
 
@@ -68,32 +66,17 @@ struct RpcState {
 impl RpcState {
     /// Build a brand-new Agent from current state (no cache).
     fn build_agent_fresh(&self) -> Result<Agent, String> {
-        let tool_registry = ToolRegistry::from_tools(crate::infra::tools::default_tools());
-        let store: Arc<dyn SessionStore> = Arc::new(self.session_mgr.clone());
-        let sink: Arc<dyn EventSink> = Arc::new(EventBus::new());
-
-        let bash_executor: Arc<dyn BashExecutor> = Arc::new(InfraBashExecutor::new());
-        let export_io: Arc<dyn ExportIo> = Arc::new(crate::infra::export::StdExportIo::new());
-        let mut agent = Agent::with_ports(
-            self.model_registry.clone(),
-            tool_registry,
-            store,
-            sink,
-            self.system_prompt.clone(),
-            self.context_files.clone(),
-            self.append_system_prompt.clone(),
-            self.max_iterations,
-            self.compaction_threshold,
-            self.cwd.clone(),
-            Some(self.compaction_settings.clone()),
-            // HC-1: model builder + sandbox supplied by the composition root.
-            Arc::new(crate::infra::provider::factory::build_provider),
-            self.sandbox_engine
-                .clone()
-                .unwrap_or_else(|| crate::infra::sandbox::noop_engine()),
-            bash_executor,
-            export_io,
-        );
+        let mut agent = build_agent(BuildAgentOptions {
+            model_registry: self.model_registry.clone(),
+            system_prompt: self.system_prompt.clone(),
+            context_files: self.context_files.clone(),
+            append_system_prompt: self.append_system_prompt.clone(),
+            max_iterations: self.max_iterations,
+            compaction_threshold: self.compaction_threshold,
+            cwd: self.cwd.clone(),
+            compaction_settings: Some(self.compaction_settings.clone()),
+            sandbox_engine: self.sandbox_engine.clone(),
+        })?;
         agent.session_mut().set_thinking_level(self.thinking_level);
         if let Some(ref mid) = self.current_model_id {
             let _ = agent.session_mut().select_model(mid);

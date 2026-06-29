@@ -10,14 +10,21 @@
 use std::pin::Pin;
 
 use async_trait::async_trait;
-use futures::{SinkExt, Stream, StreamExt};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use futures::Stream;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::facade::{Agent, AgentEvent, AgentHooks};
-use crate::protocol::Event as ProtoEvent;
 use crate::runtime_protocol::ToolExecutionMode;
-use crate::server::ws::{ClientFrame, ServerFrame};
+
+#[cfg(feature = "server")]
+use crate::protocol::Event as ProtoEvent;
+#[cfg(feature = "server")]
+use futures::{SinkExt, StreamExt};
+#[cfg(feature = "server")]
+use tokio_tungstenite::{connect_async, tungstenite::Message};
+
+#[cfg(feature = "server")]
+use crate::app::server::ws::{ClientFrame, ServerFrame};
 
 /// A stream of [`AgentEvent`] items.
 pub type EventStream = Pin<Box<dyn Stream<Item = AgentEvent> + Send>>;
@@ -37,7 +44,7 @@ pub trait Driver {
 
 /// In-process driver wrapping the local agent facade.
 ///
-/// Constructed at the composition root (`interactive::cli`) which wires ports
+/// Constructed at the composition root (`app::cli`) which wires ports
 /// and agent together. This is the **only** place in `interactive/` that
 /// imports `agent::facade`.
 pub struct InProcessDriver {
@@ -80,6 +87,7 @@ impl Driver for InProcessDriver {
 ///
 /// Uses `reqwest` for control commands (prompt, abort) and `tokio-tungstenite`
 /// for WebSocket event streaming.
+#[cfg(feature = "server")]
 pub struct RemoteDriver {
     base_url: String,
     session_id: String,
@@ -87,6 +95,7 @@ pub struct RemoteDriver {
     cancel: CancellationToken,
 }
 
+#[cfg(feature = "server")]
 impl RemoteDriver {
     /// Create a new RemoteDriver connected to `base_url`.
     ///
@@ -118,6 +127,7 @@ impl RemoteDriver {
     }
 }
 
+#[cfg(feature = "server")]
 #[async_trait]
 impl Driver for RemoteDriver {
     async fn run(&mut self, prompt: &str) -> EventStream {
@@ -220,6 +230,7 @@ impl Driver for RemoteDriver {
 
 // ── Protocol event → AgentEvent conversion ────────────────────────
 
+#[cfg(feature = "server")]
 fn proto_to_agent(event: &ProtoEvent) -> Option<AgentEvent> {
     match event {
         ProtoEvent::TextDelta { text } => Some(AgentEvent::TextDelta(text.clone())),

@@ -4,7 +4,7 @@
 use std::net::TcpListener;
 use std::path::Path;
 
-use crate::server::lock::{LockInfo, ServerLock};
+use crate::app::server::lock::{LockInfo, ServerLock};
 
 /// Maximum number of port increments before giving up.
 pub const PORT_RETRY_LIMIT: u16 = 10;

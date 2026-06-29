@@ -12,18 +12,13 @@ use tokio_util::sync::CancellationToken;
 use tower_http::cors::CorsLayer;
 
 use crate::agent::compaction::CompactionSettings;
-use crate::agent::facade::Agent;
 use crate::agent::model::registry::ModelRegistry;
-use crate::agent::tools::ToolRegistry;
-use crate::infra::bash_exec::InfraBashExecutor;
+use crate::app::composition::{BuildAgentOptions, build_agent};
+use crate::app::server::lock::{LockInfo, ServerLock};
+use crate::app::server::port_retry::{self, PORT_RETRY_LIMIT};
+use crate::app::server::rest::{self, AppState};
+use crate::app::server::ws::{EventJournal, ReverseRpcGateway};
 use crate::infra::config::value::InfraSecretResolver;
-use crate::infra::event::EventBus;
-use crate::infra::session::SessionManager;
-use crate::runtime_protocol::{BashExecutor, EventSink, ExportIo, SessionStore};
-use crate::server::lock::{LockInfo, ServerLock};
-use crate::server::port_retry::{self, PORT_RETRY_LIMIT};
-use crate::server::rest::{self, AppState};
-use crate::server::ws::{EventJournal, ReverseRpcGateway};
 
 /// Handle to a running server. Dropping this triggers graceful shutdown.
 pub struct RunningServer {
@@ -96,44 +91,24 @@ pub async fn start(
 ) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
     let cancel = CancellationToken::new();
 
-    // ── Port construction ──────────────────────────────────────────
-    let sessions_dir = config
-        .sessions_dir
-        .unwrap_or_else(SessionManager::default_dir);
-    std::fs::create_dir_all(&sessions_dir)?;
-    let session_mgr = SessionManager::new(sessions_dir);
-    let store: Arc<dyn SessionStore> = Arc::new(session_mgr.clone());
-    let sink: Arc<dyn EventSink> = Arc::new(EventBus::new());
-
     // ── Agent construction ─────────────────────────────────────────
-    let tool_registry = ToolRegistry::from_tools(crate::infra::tools::default_tools());
     let cwd = std::env::current_dir()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
-
-    let bash_executor: Arc<dyn BashExecutor> = Arc::new(InfraBashExecutor::new());
-    let export_io: Arc<dyn ExportIo> = Arc::new(crate::infra::export::StdExportIo::new());
-    let agent = Agent::with_ports(
-        config.model_registry.clone(),
-        tool_registry,
-        store,
-        sink,
-        config.system_prompt,
+    let agent = build_agent(BuildAgentOptions {
+        model_registry: config.model_registry.clone(),
+        system_prompt: config.system_prompt,
         // Server mode: no AGENTS.md context_files / append_system_prompt
         // wired (server is headless; resource discovery is the caller's job).
-        Vec::new(),
-        Vec::new(),
-        config.max_iterations,
-        config.compaction_threshold,
+        context_files: Vec::new(),
+        append_system_prompt: Vec::new(),
+        max_iterations: config.max_iterations,
+        compaction_threshold: config.compaction_threshold,
         cwd,
-        config.compaction_settings,
-        // HC-1: model builder + sandbox supplied by the composition root.
-        Arc::new(crate::infra::provider::factory::build_provider),
-        crate::infra::sandbox::noop_engine(),
-        bash_executor,
-        export_io,
-    );
+        compaction_settings: config.compaction_settings,
+        sandbox_engine: None,
+    })?;
 
     // ── Server state ──────────────────────────────────────────────
     let session_id = format!("srv-{}", uuid::Uuid::new_v4());
