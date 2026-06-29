@@ -4,17 +4,17 @@ purpose: "TBD - created by archiving change c260-refactor-domain-architecture. U
 valid_scope[2]: src/,tests/
 requirements[7]{req_id,title,statement}:
   ic1,"driver-trait","app/ MUST define a Driver trait with a send method (Command to EventStream); all app clients (cli, print, rpc) MUST depend on Driver, never on agent or infra directly. InProcessDriver wraps the agent facade; RemoteDriver wraps WS/REST transport."
-  ic2,"inprocess-driver","app/ MUST provide InProcessDriver under app::driver that holds an Agent and invokes it directly; it is the only app module permitted to import agent::facade and to wire infra ports at construction."
+  ic2,"inprocess-driver","app/ MUST provide InProcessDriver under app::core::driver that holds an Agent and invokes it directly; it is the only app module permitted to import agent::facade and to wire infra ports at construction."
   ic3,"remote-driver","app/ MUST provide RemoteDriver that speaks protocol over WebSocket (streaming) and REST (control); RemoteDriver::run MUST connect to the server's WS for event streaming and return a real AgentEvent stream, not a stub."
-  ic4,"driver-inprocess","app/ MUST provide InProcessDriver under app::driver that holds Agent ports and invokes the facade directly; it is the only app module permitted to import agent::facade."
+  ic4,"driver-inprocess","app/ MUST provide InProcessDriver under app::core::driver that holds Agent ports and invokes the facade directly; it is the only app module permitted to import agent::facade."
   ic5,"rpc-agent-cache",RPC mode MUST cache the Agent across commands instead of rebuilding ToolRegistry + SessionManager + Agent on each dispatch; cache invalidation MUST happen when model/thinking/session parameters change.
-  ic6,"print-event-completeness","app::print MUST handle all AgentEvent variants including TurnStart, TurnEnd, MessageStart, MessageEnd, MessageUpdate, ToolExecutionUpdate, and CompactionEnd."
-  ic7,"export-io-wiring","The app composition roots (CLI, RPC, and Server) MUST construct an infra-provided StdExportIo and inject it as Arc<dyn runtime_protocol::export::ExportIo> when building the Agent or AgentSession, preferably via app::composition::build_agent."
+  ic6,"print-event-completeness","app::cli::print MUST handle all AgentEvent variants including TurnStart, TurnEnd, MessageStart, MessageEnd, MessageUpdate, ToolExecutionUpdate, and CompactionEnd."
+  ic7,"export-io-wiring","The app composition roots (CLI, RPC, and Server) MUST construct an infra-provided StdExportIo and inject it as Arc<dyn runtime_protocol::export::ExportIo> when building the Agent or AgentSession, preferably via app::core::composition::build_agent."
 scenarios[7]{req_id,id,given,when,then}:
   ic1,"driver-under-app","",an app client module is inspected,"it imports app::Driver, and src/interactive no longer exists"
-  ic2,"inprocess-under-app","",InProcessDriver is constructed under src/app/driver.rs,"it holds an Agent and imports agent::facade only from the agent layer"
+  ic2,"inprocess-under-app","",InProcessDriver is constructed under src/app/core/driver.rs,"it holds an Agent and imports agent::facade only from the agent layer"
   ic3,"remote-streams-events",a RemoteDriver is pointed at a running server and sends a prompt,the driver connects over WS,the event stream contains real TextDelta and AgentEnd events from the server
-  ic4,"driver-allowed-agent","",app/driver.rs is inspected,"it is the only app module permitted to import agent::facade"
+  ic4,"driver-allowed-agent","",app/core/driver.rs is inspected,"it is the only app module permitted to import agent::facade"
   ic5,"rpc-cached-agent",an RPC prompt is sent followed by a bash command,the second command reuses the cached Agent,no new SessionManager or ToolRegistry is created for the second command
-  ic6,"print-all-events",the agent emits a TurnStart then a MessageUpdate then a TurnEnd,print.rs renders them,all three events produce visible output (not silently dropped)
-  ic7,"composition-injects-export-io","","app::composition::build_agent is called",it constructs and injects Arc<dyn ExportIo> via StdExportIo
+  ic6,"print-all-events",the agent emits a TurnStart then a MessageUpdate then a TurnEnd,cli/print.rs renders them,all three events produce visible output (not silently dropped)
+  ic7,"composition-injects-export-io","","app::core::composition::build_agent is called",it constructs and injects Arc<dyn ExportIo> via StdExportIo
