@@ -171,7 +171,7 @@ impl Driver for RemoteDriver {
                 last_seq: 0,
             })
             .unwrap();
-            if ws_writer.send(Message::Text(subscribe)).await.is_err() {
+            if ws_writer.send(Message::Text(subscribe.into())).await.is_err() {
                 yield AgentEvent::Error("WS send failed".into());
                 return;
             }
