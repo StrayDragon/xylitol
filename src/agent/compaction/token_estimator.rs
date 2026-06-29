@@ -1,22 +1,14 @@
 //! Token estimation — heuristic token counting for compaction decisions.
 
-/// Provider usage information from an assistant message.
-#[derive(Debug, Clone, Copy)]
-pub struct XyUsage {
-    pub total_tokens: u64,
-    pub input_tokens: u64,
-    pub output_tokens: u64,
-    pub cache_read_tokens: u64,
-    pub cache_write_tokens: u64,
-}
+use crate::domain::message::XyUsage;
 
-/// Calculate total context tokens from a Usage struct.
+/// Calculate total context tokens from a XyUsage struct.
 /// Priority: total_tokens > input+output+cache_read+cache_write sum.
 pub fn calculate_context_tokens(usage: &XyUsage) -> u64 {
     if usage.total_tokens > 0 {
         return usage.total_tokens;
     }
-    usage.input_tokens + usage.output_tokens + usage.cache_read_tokens + usage.cache_write_tokens
+    usage.input + usage.output + usage.cache_read + usage.cache_write
 }
 
 /// Structure returned by [`estimate_context_tokens`].

@@ -22,14 +22,14 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::compaction::CompactionSettings;
-use crate::agent::facade::{Agent, AgentEvent};
+use crate::agent::facade::{Agent, XyEvent};
 use crate::agent::model::registry::ModelRegistry;
 use crate::app::composition::{BuildAgentOptions, build_agent};
-use crate::domain::types::{ModelMeta, ThinkingLevel};
-use crate::infra::sandbox::SandboxEngine;
+use crate::domain::types::{ThinkingLevel, XyModelMeta};
+use crate::infra::sandbox::XySandboxEngine;
 use crate::infra::session::SessionManager;
 use crate::protocol::{Command, Event};
-use crate::runtime_protocol::SessionStore;
+use crate::runtime_protocol::XySessionStore;
 
 // ── State ─────────────────────────────────────────────────────────
 
@@ -50,7 +50,7 @@ struct RpcState {
     max_iterations: u32,
     compaction_threshold: f64,
     compaction_settings: CompactionSettings,
-    sandbox_engine: Option<Arc<dyn SandboxEngine>>,
+    sandbox_engine: Option<Arc<dyn XySandboxEngine>>,
     /// Cancellation token for the active prompt loop.
     active_cancel: Option<CancellationToken>,
     /// Cached Agent, reused across commands until a rebuild trigger fires.
@@ -159,7 +159,7 @@ pub async fn run(
     cwd: String,
     compaction_settings: Option<CompactionSettings>,
     session_id: Option<String>,
-    sandbox_engine: Option<Arc<dyn SandboxEngine>>,
+    sandbox_engine: Option<Arc<dyn XySandboxEngine>>,
 ) -> Result<(), String> {
     let state = Arc::new(Mutex::new(RpcState {
         model_registry,
@@ -322,7 +322,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
         }
         Command::CycleModel { .. } => {
             let mut s = state.lock().await;
-            let list: Vec<ModelMeta> = s.model_registry.list().to_vec();
+            let list: Vec<XyModelMeta> = s.model_registry.list().to_vec();
             if list.is_empty() {
                 emit(&Event::Error {
                     id,
@@ -392,7 +392,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
                 .execute_bash(&command, exclude_from_context)
                 .await;
             match result {
-                Ok(br) => emit(&Event::BashResult {
+                Ok(br) => emit(&Event::XyBashResult {
                     id: id.clone(),
                     output: br.output,
                     exit_code: br.exit_code,
@@ -629,20 +629,20 @@ async fn run_prompt(state: &Arc<Mutex<RpcState>>, _id: &Option<String>, message:
                 match event {
                     Some(evt) => {
                         let emitted = match &evt {
-                            AgentEvent::TextDelta(t) => { emit(&Event::TextDelta { text: t.clone() }); true }
-                            AgentEvent::ThinkingDelta(_) => false,
-                            AgentEvent::ToolExecutionStart { id, name, .. } => { emit(&Event::ToolStart { id: id.clone(), name: name.clone() }); true }
-                            AgentEvent::ToolExecutionEnd { id, name, result, .. } => { emit(&Event::ToolEnd { id: id.clone(), name: name.clone(), result: result.clone() }); true }
-                            AgentEvent::ModelSelect { provider, model_id } => { emit(&Event::ModelSelect { provider: provider.clone(), model_id: model_id.clone() }); true }
-                            AgentEvent::CompactionStart { reason } => { emit(&Event::CompactionStart { reason: reason.clone() }); true }
-                            AgentEvent::AgentEnd { .. } => { emit(&Event::AgentEnd); false }
-                            AgentEvent::Error(msg) => { emit(&Event::Error { id: None, message: msg.clone() }); true }
+                            XyEvent::TextDelta(t) => { emit(&Event::TextDelta { text: t.clone() }); true }
+                            XyEvent::ThinkingDelta(_) => false,
+                            XyEvent::ToolExecutionStart { id, name, .. } => { emit(&Event::ToolStart { id: id.clone(), name: name.clone() }); true }
+                            XyEvent::ToolExecutionEnd { id, name, result, .. } => { emit(&Event::ToolEnd { id: id.clone(), name: name.clone(), result: result.clone() }); true }
+                            XyEvent::ModelSelect { provider, model_id } => { emit(&Event::ModelSelect { provider: provider.clone(), model_id: model_id.clone() }); true }
+                            XyEvent::CompactionStart { reason } => { emit(&Event::CompactionStart { reason: reason.clone() }); true }
+                            XyEvent::AgentEnd { .. } => { emit(&Event::AgentEnd); false }
+                            XyEvent::Error(msg) => { emit(&Event::Error { id: None, message: msg.clone() }); true }
                             _ => false,
                         };
-                        if !emitted && matches!(evt, AgentEvent::AgentEnd { .. }) {
+                        if !emitted && matches!(evt, XyEvent::AgentEnd { .. }) {
                             break;
                         }
-                        if matches!(evt, AgentEvent::AgentEnd { .. }) {
+                        if matches!(evt, XyEvent::AgentEnd { .. }) {
                             break;
                         }
                     }
@@ -676,16 +676,16 @@ fn emit(event: &Event) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::types::{ModelMeta, ThinkingLevel};
+    use crate::domain::types::{ThinkingLevel, XyModelMeta};
     use crate::infra::config::value::InfraSecretResolver;
 
     fn make_state() -> RpcState {
         let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().keep());
         let mut reg = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
-        reg.register(ModelMeta {
+        reg.register(XyModelMeta {
             id: "mock".into(),
-            config: crate::domain::model::ModelConfig {
-                kind: crate::domain::model::ModelKind::OpenAi,
+            config: crate::domain::model::XyModelConfig {
+                kind: crate::domain::model::XyModelKind::OpenAi,
                 api_key: "sk-test".into(),
                 model: "mock-model".into(),
                 base_url: None,

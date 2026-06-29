@@ -27,7 +27,7 @@ pub struct Settings {
     pub theme: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub compaction: Option<CompactionSettings>,
+    pub compaction: Option<XyCompactionSettingsConfig>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch_summary: Option<BranchSummarySettings>,
@@ -132,7 +132,7 @@ pub struct Settings {
 }
 
 /// Compaction behavior settings — relocated to `domain::compaction_config`.
-pub use crate::domain::compaction_config::CompactionSettings;
+pub use crate::domain::compaction_config::XyCompactionSettingsConfig;
 
 /// Branch summary settings for forked conversations.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -279,7 +279,7 @@ mod tests {
     fn test_serialize_settings_camelcase() {
         let settings = Settings {
             default_provider: Some("anthropic".into()),
-            compaction: Some(CompactionSettings {
+            compaction: Some(XyCompactionSettingsConfig {
                 enabled: Some(false),
                 reserve_tokens: None,
                 keep_recent_tokens: Some(32768),

@@ -1,7 +1,7 @@
 //! Typed agent message types — fully aligned with pi coding agent's type system.
 //!
 //! Provides [`AgentMessage`] (7 roles), [`AgentPart`] (5 part types),
-//! [`Usage`] (with cost), [`StopReason`], [`AgentState`], and
+//! [`XyUsage`] (with cost), [`XyStopReason`], [`AgentState`], and
 //! [`AgentContext`] as the canonical agent data model.
 
 use serde::{Deserialize, Serialize};
@@ -41,9 +41,9 @@ pub enum AgentMessage {
     AssistantMessage {
         content: Vec<AgentPart>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        stop_reason: Option<StopReason>,
+        stop_reason: Option<XyStopReason>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        usage: Option<Usage>,
+        usage: Option<XyUsage>,
         /// Provider API name (e.g. "openai", "anthropic").
         #[serde(default)]
         api: String,
@@ -186,7 +186,7 @@ impl AgentMessage {
         matches!(
             self,
             Self::AssistantMessage {
-                stop_reason: Some(StopReason::Error | StopReason::Aborted),
+                stop_reason: Some(XyStopReason::Error | XyStopReason::Aborted),
                 ..
             }
         )
@@ -269,11 +269,11 @@ pub struct ImageContent {
     pub media_type: String,
 }
 
-// ── Usage & UsageCost ───────────────────────────────────────────────
+// ── XyUsage & XyUsageCost ───────────────────────────────────────────────
 
 /// Token usage statistics for a model invocation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct Usage {
+pub struct XyUsage {
     pub input: u64,
     pub output: u64,
     #[serde(default)]
@@ -287,12 +287,12 @@ pub struct Usage {
     pub total_tokens: u64,
     /// Estimated cost in USD.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cost: Option<UsageCost>,
+    pub cost: Option<XyUsageCost>,
 }
 
 /// Estimated cost breakdown in USD.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct UsageCost {
+pub struct XyUsageCost {
     pub input: f64,
     pub output: f64,
     pub cache_read: f64,
@@ -300,7 +300,7 @@ pub struct UsageCost {
     pub total: f64,
 }
 
-impl Usage {
+impl XyUsage {
     /// Recompute `total_tokens` from input + output.
     pub fn compute_total(&mut self) {
         self.total_tokens = self.input + self.output;
@@ -319,7 +319,7 @@ impl Usage {
         let output_c = to_cost(self.output, per_m_output);
         let cache_read_c = to_cost(self.cache_read, per_m_cache_read);
         let cache_write_c = to_cost(self.cache_write, per_m_cache_write);
-        self.cost = Some(UsageCost {
+        self.cost = Some(XyUsageCost {
             input: input_c,
             output: output_c,
             cache_read: cache_read_c,
@@ -329,12 +329,12 @@ impl Usage {
     }
 }
 
-// ── StopReason ──────────────────────────────────────────────────────
+// ── XyStopReason ──────────────────────────────────────────────────────
 
 /// Why the assistant stopped generating.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum StopReason {
+pub enum XyStopReason {
     /// Normal stop — model finished its response.
     Stop,
     /// Hit the max_tokens limit.
@@ -411,7 +411,7 @@ impl AgentMessage {
     pub fn assistant(text: impl Into<String>) -> Self {
         Self::AssistantMessage {
             content: vec![AgentPart::Text(text.into())],
-            stop_reason: Some(StopReason::Stop),
+            stop_reason: Some(XyStopReason::Stop),
             usage: None,
             api: String::new(),
             provider: String::new(),
@@ -498,15 +498,15 @@ mod tests {
     fn assistant_message_has_new_fields() {
         let msg = AgentMessage::AssistantMessage {
             content: vec![AgentPart::Text("response".into())],
-            stop_reason: Some(StopReason::Stop),
-            usage: Some(Usage {
+            stop_reason: Some(XyStopReason::Stop),
+            usage: Some(XyUsage {
                 input: 100,
                 output: 50,
                 cache_read: 0,
                 cache_write: 0,
                 cache_write_1h: 0,
                 total_tokens: 150,
-                cost: Some(UsageCost {
+                cost: Some(XyUsageCost {
                     input: 0.001,
                     output: 0.002,
                     cache_read: 0.0,
@@ -532,7 +532,7 @@ mod tests {
     fn assistant_error_message() {
         let msg = AgentMessage::AssistantMessage {
             content: vec![],
-            stop_reason: Some(StopReason::Error),
+            stop_reason: Some(XyStopReason::Error),
             usage: None,
             api: String::new(),
             provider: String::new(),
@@ -564,7 +564,7 @@ mod tests {
 
     #[test]
     fn usage_with_cost() {
-        let mut usage = Usage {
+        let mut usage = XyUsage {
             input: 1000,
             output: 500,
             cache_read: 200,

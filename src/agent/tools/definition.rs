@@ -1,44 +1,45 @@
 //! Agent-level tool presentation.
 //!
-//! Contains [`ToolDefinition`] — a presentation wrapper around
+//! Contains [`XyToolDefinition`] — a presentation wrapper around
 //! [`XyTool`](crate::runtime_protocol::XyTool) that includes prompt metadata
 //! and source information. The core abstractions ([`XyModel`](crate::runtime_protocol::XyModel),
 //! [`XyTool`](crate::runtime_protocol::XyTool), etc.) live in [`crate::runtime_protocol`].
 
 use serde::Serialize;
-use serde_json::Value;
 
-use crate::runtime_protocol::{ToolExecutionMode, XyTool};
+use crate::domain::source_info::SourceInfo;
+use crate::domain::types::XyToolSchema;
+use crate::runtime_protocol::{XyTool, XyToolExecutionMode};
 
-// ── ToolDefinition ──────────────────────────────────────────────────
+// ── XyToolDefinition ──────────────────────────────────────────────────
 
 /// Unified tool definition — standardises prompt display for all tools.
 #[derive(Debug, Clone, Serialize)]
-pub struct ToolDefinition {
-    pub name: String,
-    pub description: String,
-    pub parameters: Value,
+pub struct XyToolDefinition {
+    pub schema: XyToolSchema,
     pub prompt_snippet: Option<String>,
     pub prompt_guidelines: Vec<String>,
-    pub execution_mode: ToolExecutionMode,
-    pub source_info: Option<crate::domain::source_info::SourceInfo>,
+    pub execution_mode: XyToolExecutionMode,
+    pub source_info: Option<SourceInfo>,
 }
 
-impl Default for ToolDefinition {
+impl Default for XyToolDefinition {
     fn default() -> Self {
         Self {
-            name: String::new(),
-            description: String::new(),
-            parameters: Value::Null,
+            schema: XyToolSchema {
+                name: String::new(),
+                description: String::new(),
+                parameters: serde_json::Value::Null,
+            },
             prompt_snippet: None,
             prompt_guidelines: Vec::new(),
-            execution_mode: ToolExecutionMode::Parallel,
+            execution_mode: XyToolExecutionMode::Parallel,
             source_info: None,
         }
     }
 }
 
-impl<'a> From<&'a dyn XyTool> for ToolDefinition {
+impl<'a> From<&'a dyn XyTool> for XyToolDefinition {
     fn from(tool: &'a dyn XyTool) -> Self {
         let prompt_snippet = tool.prompt_snippet().map(|s| s.to_string()).or_else(|| {
             let desc = tool.description();
@@ -61,9 +62,11 @@ impl<'a> From<&'a dyn XyTool> for ToolDefinition {
             .collect();
 
         Self {
-            name: tool.name().to_string(),
-            description: tool.description().to_string(),
-            parameters: tool.parameters_schema(),
+            schema: XyToolSchema {
+                name: tool.name().to_string(),
+                description: tool.description().to_string(),
+                parameters: tool.parameters_schema(),
+            },
             prompt_snippet,
             prompt_guidelines,
             execution_mode: tool.execution_mode(),

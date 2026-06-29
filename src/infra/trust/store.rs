@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::runtime_protocol::TrustStore;
+use crate::runtime_protocol::XyTrustStore;
 
 /// In-memory trust file: canonical path → decision. Sorted for deterministic output.
 type TrustFile = BTreeMap<String, Option<bool>>;
@@ -315,7 +315,7 @@ impl TrustManager {
     }
 }
 
-impl TrustStore for TrustManager {
+impl XyTrustStore for TrustManager {
     fn set_trust(&self, path: &str, trusted: Option<bool>) -> Result<(), String> {
         self.set_trust(path, trusted)
     }

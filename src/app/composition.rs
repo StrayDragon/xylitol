@@ -12,7 +12,7 @@ use crate::infra::export::StdExportIo;
 use crate::infra::sandbox;
 use crate::infra::session::SessionManager;
 use crate::runtime_protocol::{
-    BashExecutor, EventSink, ExportIo, ModelBuilder, SandboxEngine, SessionStore,
+    XyBashExecutor, XyEventSink, XyExportIo, XyModelBuilder, XySandboxEngine, XySessionStore,
 };
 
 /// Options for [`build_agent`].
@@ -25,7 +25,7 @@ pub struct BuildAgentOptions {
     pub compaction_threshold: f64,
     pub cwd: String,
     pub compaction_settings: Option<CompactionSettings>,
-    pub sandbox_engine: Option<Arc<dyn SandboxEngine>>,
+    pub sandbox_engine: Option<Arc<dyn XySandboxEngine>>,
 }
 
 impl Default for BuildAgentOptions {
@@ -58,12 +58,12 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<Agent, String> {
     std::fs::create_dir_all(&sessions_dir).map_err(|e| format!("create sessions dir: {e}"))?;
     let session_mgr = SessionManager::new(sessions_dir);
 
-    let store: Arc<dyn SessionStore> = Arc::new(session_mgr);
-    let sink: Arc<dyn EventSink> = Arc::new(EventBus::new());
-    let bash_executor: Arc<dyn BashExecutor> = Arc::new(InfraBashExecutor::new());
-    let export_io: Arc<dyn ExportIo> = Arc::new(StdExportIo::new());
+    let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
+    let sink: Arc<dyn XyEventSink> = Arc::new(EventBus::new());
+    let bash_executor: Arc<dyn XyBashExecutor> = Arc::new(InfraBashExecutor::new());
+    let export_io: Arc<dyn XyExportIo> = Arc::new(StdExportIo::new());
 
-    let model_builder: ModelBuilder = Arc::new(crate::infra::provider::factory::build_provider);
+    let model_builder: XyModelBuilder = Arc::new(crate::infra::provider::factory::build_provider);
     let sandbox = options.sandbox_engine.unwrap_or_else(sandbox::noop_engine);
 
     let agent = Agent::with_ports(

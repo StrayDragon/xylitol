@@ -1,6 +1,6 @@
 //! Server runtime — second composition root for xylitol.
 //!
-//! Constructs the agent with port injections (SessionStore/EventSink), builds
+//! Constructs the agent with port injections (XySessionStore/XyEventSink), builds
 //! the REST and WS routers, acquires the single-instance lock, and starts
 //! the HTTP server with graceful shutdown.
 
@@ -80,8 +80,8 @@ impl Default for ServerConfig {
 /// Start the server. Returns a `RunningServer` handle and the bound port.
 ///
 /// This is the server's composition root — it wires:
-/// - SessionStore (infra::session::SessionManager)
-/// - EventSink (infra::event::EventBus)
+/// - XySessionStore (infra::session::SessionManager)
+/// - XyEventSink (infra::event::EventBus)
 /// - ModelRegistry / ToolRegistry
 /// - REST router with shared state
 /// - Single-instance lock

@@ -7,7 +7,8 @@ use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::Value;
 
 use crate::domain::error::XyError;
-use crate::domain::types::{XyChunk, XyFinishReason, XyToolSchema};
+use crate::domain::message::XyStopReason;
+use crate::domain::types::{XyChunk, XyToolSchema};
 use crate::runtime_protocol::{XyModel, XyStream};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
@@ -213,13 +214,13 @@ fn anthropic_stream(
                         }
 
                         let finish = match stop_reason {
-                            Some("max_tokens") => XyFinishReason::MaxTokens,
-                            _ => XyFinishReason::Stop,
+                            Some("max_tokens") => XyStopReason::MaxTokens,
+                            _ => XyStopReason::Stop,
                         };
 
                         let usage_total = usage_input + usage_output;
                         let usage = if usage_total > 0 {
-                            Some(crate::domain::message::Usage {
+                            Some(crate::domain::message::XyUsage {
                                 input: usage_input,
                                 output: usage_output,
                                 cache_read: 0,
@@ -286,8 +287,8 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
     }
 
     let finish = match json.get("stop_reason").and_then(|v| v.as_str()) {
-        Some("max_tokens") => XyFinishReason::MaxTokens,
-        _ => XyFinishReason::Stop,
+        Some("max_tokens") => XyStopReason::MaxTokens,
+        _ => XyStopReason::Stop,
     };
 
     // Parse usage from non-streaming response
@@ -296,7 +297,7 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
         let output = u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
         let total = input + output;
         if total > 0 {
-            Some(crate::domain::message::Usage {
+            Some(crate::domain::message::XyUsage {
                 input,
                 output,
                 cache_read: 0,
@@ -549,7 +550,7 @@ mod tests {
                     arguments: serde_json::json!({"path": "/tmp"}),
                 },
             ],
-            stop_reason: Some(crate::domain::message::StopReason::ToolUse),
+            stop_reason: Some(crate::domain::message::XyStopReason::ToolUse),
             usage: None,
             api: String::new(),
             provider: String::new(),

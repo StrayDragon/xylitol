@@ -5,7 +5,7 @@
 //! OAuth login is not supported until after 1.0.0. Lives under interactive/cli/
 //! because it is presentation, not agent orchestration.
 
-use crate::domain::model::ModelKind;
+use crate::domain::model::XyModelKind;
 
 /// Get help text for provider auth configuration.
 ///
@@ -34,9 +34,9 @@ pub fn format_no_model_selected_message() -> String {
 
 /// Format a message when no API key is found for a provider.
 pub fn format_no_api_key_found_message(provider: &str) -> String {
-    let env_var = match ModelKind::from_provider_name(provider) {
-        Some(ModelKind::OpenAi) => "OPENAI_API_KEY",
-        Some(ModelKind::Anthropic) => "ANTHROPIC_API_KEY",
+    let env_var = match XyModelKind::from_provider_name(provider) {
+        Some(XyModelKind::OpenAi) => "OPENAI_API_KEY",
+        Some(XyModelKind::Anthropic) => "ANTHROPIC_API_KEY",
         _ => "<PROVIDER>_API_KEY",
     };
     format!(

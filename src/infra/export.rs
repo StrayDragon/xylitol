@@ -1,12 +1,12 @@
-//! Standard filesystem implementation of the [`ExportIo`] port.
+//! Standard filesystem implementation of the [`XyExportIo`] port.
 
 use std::path::Path;
 
 use async_trait::async_trait;
 
-use crate::runtime_protocol::ExportIo;
+use crate::runtime_protocol::XyExportIo;
 
-/// Filesystem-backed [`ExportIo`] using `tokio::fs`.
+/// Filesystem-backed [`XyExportIo`] using `tokio::fs`.
 #[derive(Debug, Default, Clone)]
 pub struct StdExportIo;
 
@@ -17,7 +17,7 @@ impl StdExportIo {
 }
 
 #[async_trait]
-impl ExportIo for StdExportIo {
+impl XyExportIo for StdExportIo {
     async fn write_text(&self, path: &Path, content: &str) -> Result<(), String> {
         if let Some(parent) = path.parent()
             && !parent.as_os_str().is_empty()

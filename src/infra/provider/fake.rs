@@ -6,7 +6,8 @@ use serde_json::Value;
 
 use crate::domain::error::XyError;
 use crate::domain::message::AgentMessage;
-use crate::domain::types::{XyChunk, XyFinishReason, XyToolSchema};
+use crate::domain::message::XyStopReason;
+use crate::domain::types::{XyChunk, XyToolSchema};
 use crate::runtime_protocol::{XyModel, XyStream};
 
 // ---------------------------------------------------------------------------
@@ -231,7 +232,7 @@ impl XyModel for FakeProvider {
             ScenarioStep::Text(text) => Ok(Box::pin(futures::stream::iter(vec![
                 Ok(XyChunk::TextDelta(text)),
                 Ok(XyChunk::Done {
-                    finish_reason: XyFinishReason::Stop,
+                    finish_reason: XyStopReason::Stop,
                     usage: None,
                 }),
             ]))),
@@ -240,7 +241,7 @@ impl XyModel for FakeProvider {
                 Ok(Box::pin(futures::stream::iter(vec![
                     Ok(XyChunk::FunctionCall { name, args, id }),
                     Ok(XyChunk::Done {
-                        finish_reason: XyFinishReason::Stop,
+                        finish_reason: XyStopReason::Stop,
                         usage: None,
                     }),
                 ])))

@@ -6,8 +6,8 @@
 use std::sync::Arc;
 
 use crate::agent::model::registry::ModelRegistry;
-use crate::domain::model::ModelConfig;
-use crate::domain::types::{ModelMeta, ThinkingLevel};
+use crate::domain::model::XyModelConfig;
+use crate::domain::types::{ThinkingLevel, XyModelMeta};
 use crate::runtime_protocol::XyModel;
 
 /// Manages model registry, current model selection, and thinking level.
@@ -24,7 +24,7 @@ pub struct ModelManager {
     /// Current thinking level (clamped to model capabilities).
     pub(crate) thinking_level: ThinkingLevel,
     /// Injected provider factory (composition-root-supplied).
-    pub(crate) model_builder: crate::runtime_protocol::ModelBuilder,
+    pub(crate) model_builder: crate::runtime_protocol::XyModelBuilder,
 }
 
 impl ModelManager {
@@ -32,7 +32,7 @@ impl ModelManager {
     /// injected provider builder.
     pub fn new(
         registry: ModelRegistry,
-        model_builder: crate::runtime_protocol::ModelBuilder,
+        model_builder: crate::runtime_protocol::XyModelBuilder,
     ) -> Self {
         Self {
             registry,
@@ -45,7 +45,7 @@ impl ModelManager {
     // ── Current model ────────────────────────────────────────────
 
     /// Get the currently selected model metadata.
-    pub fn current_model(&self) -> Option<&ModelMeta> {
+    pub fn current_model(&self) -> Option<&XyModelMeta> {
         self.registry.list().get(self.current_index)
     }
 
@@ -74,7 +74,7 @@ impl ModelManager {
     // ── Model switching ──────────────────────────────────────────
 
     /// Cycle to the next model in the registry.
-    pub fn cycle_forward(&mut self) -> Option<&ModelMeta> {
+    pub fn cycle_forward(&mut self) -> Option<&XyModelMeta> {
         let len = self.registry.len();
         if len == 0 {
             return None;
@@ -118,8 +118,8 @@ impl ModelManager {
         self.current_index
     }
 
-    /// Get the ModelConfig for the current model.
-    pub fn current_config(&self) -> Option<ModelConfig> {
+    /// Get the XyModelConfig for the current model.
+    pub fn current_config(&self) -> Option<XyModelConfig> {
         self.registry
             .list()
             .get(self.current_index)
@@ -133,7 +133,7 @@ mod tests {
 
     use super::ModelManager;
     use crate::agent::model::registry::ModelRegistry;
-    use crate::domain::model::ModelConfig;
+    use crate::domain::model::XyModelConfig;
     use crate::runtime_protocol::XyModel;
 
     fn empty_registry() -> ModelRegistry {
@@ -144,9 +144,9 @@ mod tests {
 
     /// A fake model builder that always reports "no model configured";
     /// tests don't build real providers.
-    fn fake_builder() -> Arc<dyn Fn(&ModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync>
-    {
-        Arc::new(|_cfg: &ModelConfig| Err("test: no provider".to_string()))
+    fn fake_builder()
+    -> Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync> {
+        Arc::new(|_cfg: &XyModelConfig| Err("test: no provider".to_string()))
     }
 
     #[test]

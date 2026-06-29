@@ -1,5 +1,5 @@
 //! Provider factory — constructs a concrete provider (`Arc<dyn XyModel>`) from
-//! a [`ModelConfig`]. This is the only place that names concrete provider
+//! a [`XyModelConfig`]. This is the only place that names concrete provider
 //! types; the agent holds the result as a trait object.
 //!
 //! Also hosts the thread-local fake-model state used by BDD tests to script
@@ -8,7 +8,7 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use crate::domain::model::{ModelConfig, ModelKind};
+use crate::domain::model::{XyModelConfig, XyModelKind};
 use crate::infra::provider::anthropic::AnthropicProvider;
 use crate::infra::provider::openai::OpenAIProvider;
 use crate::infra::provider::{FakeProvider, ScenarioStep};
@@ -54,9 +54,9 @@ pub fn set_fake_tool_result(text: &str) {
 ///
 /// The agent never names concrete provider types; it receives the result as
 /// `Arc<dyn XyModel>`. Add new providers by extending this match.
-pub fn build_provider(config: &ModelConfig) -> Result<Arc<dyn XyModel>, String> {
+pub fn build_provider(config: &XyModelConfig) -> Result<Arc<dyn XyModel>, String> {
     match config.kind {
-        ModelKind::OpenAi => {
+        XyModelKind::OpenAi => {
             let provider = OpenAIProvider::new(
                 config.api_key.clone(),
                 config.model.clone(),
@@ -64,7 +64,7 @@ pub fn build_provider(config: &ModelConfig) -> Result<Arc<dyn XyModel>, String> 
             );
             Ok(Arc::new(provider) as Arc<dyn XyModel>)
         }
-        ModelKind::Anthropic => {
+        XyModelKind::Anthropic => {
             let provider = AnthropicProvider::new(
                 config.api_key.clone(),
                 config.model.clone(),
@@ -72,7 +72,7 @@ pub fn build_provider(config: &ModelConfig) -> Result<Arc<dyn XyModel>, String> 
             );
             Ok(Arc::new(provider) as Arc<dyn XyModel>)
         }
-        ModelKind::Fake => {
+        XyModelKind::Fake => {
             let steps = {
                 let tool = FAKE_TOOL_CALL.with(|c| c.borrow_mut().take());
                 let text = FAKE_TEXT.with(|c| c.borrow_mut().take());

@@ -1,15 +1,15 @@
-//! SessionIO — session persistence via SessionStore port (HC-2).
+//! SessionIO — session persistence via XySessionStore port (HC-2).
 //!
-//! Thin wrapper around [`Arc<dyn SessionStore>`] isolating session-persistence
+//! Thin wrapper around [`Arc<dyn XySessionStore>`] isolating session-persistence
 //! operations for the ReAct loop. Session management operations (create, fork,
 //! navigate, export, etc.) use the concrete [`SessionManager`] directly.
 
 use std::sync::Arc;
 
 use crate::domain::message::AgentMessage;
-use crate::runtime_protocol::SessionStore;
+use crate::runtime_protocol::XySessionStore;
 
-/// Session persistence via the SessionStore port (HC-2).
+/// Session persistence via the XySessionStore port (HC-2).
 ///
 /// Provides only the operations the ReAct loop needs:
 /// [`load_context`](Self::load_context),
@@ -18,11 +18,11 @@ use crate::runtime_protocol::SessionStore;
 /// concrete `SessionManager` directly through AgentSession.
 #[derive(Clone)]
 pub struct SessionIO {
-    store: Arc<dyn SessionStore>,
+    store: Arc<dyn XySessionStore>,
 }
 
 impl SessionIO {
-    pub fn new(store: Arc<dyn SessionStore>) -> Self {
+    pub fn new(store: Arc<dyn XySessionStore>) -> Self {
         Self { store }
     }
 

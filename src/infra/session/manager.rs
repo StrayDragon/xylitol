@@ -12,7 +12,8 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::types::*;
-use crate::runtime_protocol::{EventSink, LifecycleEvent, SessionStore};
+use crate::domain::lifecycle::XyEvent;
+use crate::runtime_protocol::{XyEventSink, XySessionStore};
 
 /// Manages session persistence using JSONL files or in-memory storage.
 #[derive(Debug)]
@@ -1324,10 +1325,10 @@ pub fn assert_session_cwd_exists(
     ))
 }
 
-// ── SessionStore impl ───────────────────────────────────────────────
+// ── XySessionStore impl ───────────────────────────────────────────────
 
 #[async_trait::async_trait]
-impl SessionStore for SessionManager {
+impl XySessionStore for SessionManager {
     async fn load_context(
         &self,
         session_id: &str,
@@ -1381,24 +1382,11 @@ impl SessionStore for SessionManager {
     }
 }
 
-// ── EventSink impl ───────────────────────────────────────────────────
+// ── XyEventSink impl ───────────────────────────────────────────────────
 
 #[async_trait::async_trait]
-impl EventSink for crate::infra::event::EventBus {
-    async fn emit(&self, event: &LifecycleEvent) {
-        let infra_event = match event {
-            LifecycleEvent::CompactionStarted { reason, .. } => {
-                crate::infra::event::lifecycle::AgentLifecycleEvent::CompactionStart {
-                    reason: reason.clone(),
-                }
-            }
-            LifecycleEvent::CompactionEnded {
-                result, aborted, ..
-            } => crate::infra::event::lifecycle::AgentLifecycleEvent::CompactionEnd {
-                result: result.clone(),
-                aborted: *aborted,
-            },
-        };
-        self.emit_lifecycle(&infra_event);
+impl XyEventSink for crate::infra::event::EventBus {
+    async fn emit(&self, event: &XyEvent) {
+        self.emit_lifecycle(event);
     }
 }

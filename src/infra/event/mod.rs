@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
-use self::lifecycle::{AgentLifecycleEvent, LifecycleHandler};
+use self::lifecycle::{LifecycleHandler, XyEvent};
 
 /// Type alias for async event handlers.
 pub type Handler = Arc<
@@ -142,7 +142,7 @@ impl EventBus {
     /// The event is serialized to JSON and dispatched on channel
     /// `lifecycle:<description>` (e.g. `lifecycle:turn_start`).
     /// All subscribers of `lifecycle:*` also receive it.
-    pub fn emit_lifecycle(&self, event: &AgentLifecycleEvent) {
+    pub fn emit_lifecycle(&self, event: &XyEvent) {
         let channel = format!("lifecycle:{}", event.description());
         let data = serde_json::to_value(event).unwrap_or_default();
         self.emit(&channel, data.clone());
@@ -153,14 +153,14 @@ impl EventBus {
 
     /// Subscribe to all typed lifecycle events.
     ///
-    /// The handler receives every [`AgentLifecycleEvent`] that is emitted.
+    /// The handler receives every [`XyEvent`] that is emitted.
     /// Returns an [`UnsubscribeHandle`] — drop it to unsubscribe.
     pub fn on_lifecycle<F, Fut>(&self, handler: F) -> UnsubscribeHandle
     where
-        F: Fn(AgentLifecycleEvent) -> Fut + Send + Sync + 'static,
+        F: Fn(XyEvent) -> Fut + Send + Sync + 'static,
         Fut: std::future::Future<Output = ()> + Send + 'static,
     {
-        let wrapped: LifecycleHandler = Arc::new(move |event: AgentLifecycleEvent| {
+        let wrapped: LifecycleHandler = Arc::new(move |event: XyEvent| {
             let fut = handler(event);
             Box::pin(fut)
         });
@@ -172,7 +172,7 @@ impl EventBus {
         self.on("lifecycle:*", move |data: Value| {
             let handler = w.clone();
             async move {
-                if let Ok(event) = serde_json::from_value::<AgentLifecycleEvent>(data) {
+                if let Ok(event) = serde_json::from_value::<XyEvent>(data) {
                     handler(event).await;
                 }
             }
@@ -281,7 +281,7 @@ mod tests {
             async {}
         });
 
-        bus.emit_lifecycle(&AgentLifecycleEvent::TurnStart { turn_index: 1 });
+        bus.emit_lifecycle(&XyEvent::TurnStart { turn_index: 1 });
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         let events = received.lock().unwrap();
@@ -301,7 +301,7 @@ mod tests {
         });
         drop(handle);
 
-        bus.emit_lifecycle(&AgentLifecycleEvent::TurnEnd { turn_index: 1 });
+        bus.emit_lifecycle(&XyEvent::TurnEnd { turn_index: 1 });
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         assert!(received.lock().unwrap().is_empty());
@@ -315,10 +315,10 @@ mod tests {
 
         let _handle = bus.on_lifecycle(move |event| {
             match &event {
-                AgentLifecycleEvent::TurnStart { turn_index } => {
+                XyEvent::TurnStart { turn_index } => {
                     r.lock().unwrap().push(format!("turn-{turn_index}"));
                 }
-                AgentLifecycleEvent::MessageStart { role, .. } => {
+                XyEvent::MessageStart { role, .. } => {
                     r.lock().unwrap().push(format!("msg-{role}"));
                 }
                 _ => {}
@@ -326,8 +326,8 @@ mod tests {
             async {}
         });
 
-        bus.emit_lifecycle(&AgentLifecycleEvent::TurnStart { turn_index: 42 });
-        bus.emit_lifecycle(&AgentLifecycleEvent::MessageStart {
+        bus.emit_lifecycle(&XyEvent::TurnStart { turn_index: 42 });
+        bus.emit_lifecycle(&XyEvent::MessageStart {
             role: "user".into(),
             message: None,
         });

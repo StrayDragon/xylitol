@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::domain::message::Usage;
-use crate::domain::model::ModelConfig;
+use crate::domain::message::{XyStopReason, XyUsage};
+use crate::domain::model::XyModelConfig;
 
 // ── Streaming Chunk ──────────────────────────────────────────────
 
@@ -19,22 +19,13 @@ pub enum XyChunk {
         id: String,
     },
     Done {
-        finish_reason: XyFinishReason,
-        usage: Option<Usage>,
+        finish_reason: XyStopReason,
+        usage: Option<XyUsage>,
     },
 }
 
-/// Reason an LLM response finished.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum XyFinishReason {
-    Stop,
-    MaxTokens,
-}
-
-/// Alias for [`StopReason`](crate::domain::message::StopReason).
-pub use crate::domain::message::StopReason as XyStopReason;
-
 /// JSON schema describing a tool's parameters.
+#[derive(Debug, Clone, Serialize)]
 pub struct XyToolSchema {
     pub name: String,
     pub description: String,
@@ -80,9 +71,9 @@ impl ThinkingLevel {
 
 /// Metadata describing a model variant available from a provider.
 #[derive(Debug, Clone)]
-pub struct ModelMeta {
+pub struct XyModelMeta {
     pub id: String,
-    pub config: ModelConfig,
+    pub config: XyModelConfig,
     pub display_name: String,
     pub thinking: bool,
     pub context_window: u64,
@@ -99,7 +90,7 @@ pub struct ModelMeta {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::message::Usage;
+    use crate::domain::message::XyUsage;
 
     // ── XyChunk ─────────────────────────────────────────────────────
 
@@ -140,7 +131,7 @@ mod tests {
     #[test]
     fn xy_chunk_done_stop() {
         let chunk = XyChunk::Done {
-            finish_reason: XyFinishReason::Stop,
+            finish_reason: XyStopReason::Stop,
             usage: None,
         };
         match chunk {
@@ -149,7 +140,7 @@ mod tests {
                 usage,
                 ..
             } => {
-                assert_eq!(finish_reason, XyFinishReason::Stop);
+                assert_eq!(finish_reason, XyStopReason::Stop);
                 assert!(usage.is_none());
             }
             _ => panic!("expected Done"),
@@ -158,7 +149,7 @@ mod tests {
 
     #[test]
     fn xy_chunk_done_max_tokens() {
-        let usage = Usage {
+        let usage = XyUsage {
             input: 100,
             output: 50,
             cache_read: 0,
@@ -168,7 +159,7 @@ mod tests {
             cost: None,
         };
         let chunk = XyChunk::Done {
-            finish_reason: XyFinishReason::MaxTokens,
+            finish_reason: XyStopReason::MaxTokens,
             usage: Some(usage),
         };
         match chunk {
@@ -177,20 +168,11 @@ mod tests {
                 usage: Some(u),
                 ..
             } => {
-                assert_eq!(finish_reason, XyFinishReason::MaxTokens);
+                assert_eq!(finish_reason, XyStopReason::MaxTokens);
                 assert_eq!(u.total_tokens, 150);
             }
             _ => panic!("expected Done with usage"),
         }
-    }
-
-    // ── XyFinishReason ──────────────────────────────────────────────
-
-    #[test]
-    fn xy_finish_reason_eq() {
-        assert_eq!(XyFinishReason::Stop, XyFinishReason::Stop);
-        assert_eq!(XyFinishReason::MaxTokens, XyFinishReason::MaxTokens);
-        assert_ne!(XyFinishReason::Stop, XyFinishReason::MaxTokens);
     }
 
     // ── ThinkingLevel ───────────────────────────────────────────────
@@ -261,17 +243,17 @@ mod tests {
         assert_eq!(schema.parameters["type"], "object");
     }
 
-    // ── ModelMeta ───────────────────────────────────────────────────
+    // ── XyModelMeta ───────────────────────────────────────────────────
 
     #[test]
     fn model_meta_construct() {
-        let config = crate::domain::model::ModelConfig {
-            kind: crate::domain::model::ModelKind::Anthropic,
+        let config = crate::domain::model::XyModelConfig {
+            kind: crate::domain::model::XyModelKind::Anthropic,
             api_key: "sk-test".into(),
             model: "claude-3".into(),
             base_url: None,
         };
-        let meta = ModelMeta {
+        let meta = XyModelMeta {
             id: "claude-3".into(),
             config,
             display_name: "Claude 3".into(),
@@ -290,17 +272,5 @@ mod tests {
         assert!(meta.thinking);
         assert_eq!(meta.context_window, 200_000);
         assert_eq!(meta.max_tokens, 8192);
-    }
-
-    // ── XyStopReason alias ──────────────────────────────────────────
-
-    #[test]
-    fn xy_stop_reason_is_stop_reason() {
-        // Compile-time: XyStopReason is just a re-export
-        let _: XyStopReason = crate::domain::message::StopReason::Stop;
-        assert_eq!(
-            format!("{:?}", XyStopReason::Stop),
-            format!("{:?}", crate::domain::message::StopReason::Stop),
-        );
     }
 }

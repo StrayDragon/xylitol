@@ -21,7 +21,8 @@ use futures::Stream;
 use serde_json::Value;
 
 use crate::domain::error::XyError;
-use crate::domain::types::{XyChunk, XyFinishReason, XyToolSchema};
+use crate::domain::message::XyStopReason;
+use crate::domain::types::{XyChunk, XyToolSchema};
 use crate::runtime_protocol::{XyModel, XyStream};
 
 pub(crate) struct OpenAIProvider {
@@ -164,9 +165,9 @@ fn map_stream(
                     }
 
                     let reason = match finish_reason {
-                        FinishReason::Stop => XyFinishReason::Stop,
-                        FinishReason::Length => XyFinishReason::MaxTokens,
-                        _ => XyFinishReason::Stop,
+                        FinishReason::Stop => XyStopReason::Stop,
+                        FinishReason::Length => XyStopReason::MaxTokens,
+                        _ => XyStopReason::Stop,
                     };
                     yield XyChunk::Done {
                         finish_reason: reason,
@@ -180,11 +181,11 @@ fn map_stream(
 
 // ── Non-streaming response ─────────────────────────────────────────
 
-/// Extract Usage from OpenAI response.
+/// Extract XyUsage from OpenAI response.
 fn openai_usage(
     usage: &Option<async_openai::types::chat::CompletionUsage>,
-) -> Option<crate::domain::message::Usage> {
-    usage.as_ref().map(|u| crate::domain::message::Usage {
+) -> Option<crate::domain::message::XyUsage> {
+    usage.as_ref().map(|u| crate::domain::message::XyUsage {
         input: u.prompt_tokens as u64,
         output: u.completion_tokens as u64,
         cache_read: 0,
@@ -229,9 +230,9 @@ fn parse_nonstream_response(
         }
 
         let reason = match choice.finish_reason {
-            Some(async_openai::types::chat::FinishReason::Stop) => XyFinishReason::Stop,
-            Some(async_openai::types::chat::FinishReason::Length) => XyFinishReason::MaxTokens,
-            _ => XyFinishReason::Stop,
+            Some(async_openai::types::chat::FinishReason::Stop) => XyStopReason::Stop,
+            Some(async_openai::types::chat::FinishReason::Length) => XyStopReason::MaxTokens,
+            _ => XyStopReason::Stop,
         };
         chunks.push(XyChunk::Done {
             finish_reason: reason,
@@ -389,7 +390,7 @@ pub fn convert_agent_messages(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::message::{AgentMessage, StopReason};
+    use crate::domain::message::{AgentMessage, XyStopReason};
 
     #[test]
     fn convert_user_message() {
@@ -434,7 +435,7 @@ mod tests {
                     arguments: serde_json::json!({}),
                 },
             ],
-            stop_reason: Some(StopReason::ToolUse),
+            stop_reason: Some(XyStopReason::ToolUse),
             usage: None,
             api: String::new(),
             provider: String::new(),
