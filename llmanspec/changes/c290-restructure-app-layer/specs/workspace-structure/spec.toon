@@ -1,0 +1,11 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r1,"app-layer","System MUST organize the user-facing surface under a single src/app/ layer containing cli/, rpc.rs, print.rs, server/, tui/, and gui.rs. Built-in modules (tools, hooks, security, print) compile unconditionally; feature-gated app modes (server, tui, gui) use #[cfg(feature = \"...\")] guards with app-prefixed feature names (server, tui, gui).",null,null,null
+  modify_requirement,r3,"no-circular-layer-dependency","Agent layer MUST NOT be imported by infra layer; dependency direction MUST be app -> agent -> infra only, with app being the sole composition root allowed to import both agent and infra.",null,null,null
+  modify_requirement,r4,"unified-bootstrap","App modes (CLI, RPC, Server, TUI) MUST share a single composition function (app::composition::build_agent) for Agent construction to eliminate duplicated initialization logic.",null,null,null
+  modify_requirement,r5,"minimal-default-features","Default feature set MUST only include features required for basic CLI operation (cli, rpc); extended app modes (server, tui, gui) MUST be opt-in or grouped under a full alias.",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  r5,"server-feature-gated","","cargo check --no-default-features is run",server and tui code are not compiled and axum/ratatui dependencies are not pulled
+  r1,"app-layer-contains-entries","",the source tree is inspected after the change,"src/app contains cli/, rpc.rs, print.rs, server/, tui/, gui.rs"
+  r3,"app-composes-agent-and-infra","",a new app composition root wires Agent,"it is the only app module importing both crate::agent and crate::infra"
+  r4,"modes-use-build-agent","","CLI, RPC, Server, or TUI needs an Agent","they call app::composition::build_agent instead of duplicating wiring"

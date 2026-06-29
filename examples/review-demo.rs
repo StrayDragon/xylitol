@@ -12,16 +12,16 @@
 //!
 //! CLI keys: j/k navigate, c comment, a accept, r reject, ? help, q quit.
 
-#[cfg(feature = "ui-review")]
+#[cfg(feature = "tui")]
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    xylitol::interactive::diff_review::run_demo().await
+    xylitol::app::tui::diff_review::run_demo().await
 }
 
-#[cfg(not(feature = "ui-review"))]
+#[cfg(not(feature = "tui"))]
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    println!("Review demo requires the `ui-review` feature.");
-    println!("Run with: cargo run --example review-demo --features ui-review");
+    println!("Review demo requires the `tui` feature.");
+    println!("Run with: cargo run --example review-demo --features tui");
     Ok(())
 }

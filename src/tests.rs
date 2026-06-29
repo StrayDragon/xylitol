@@ -19,16 +19,17 @@ pub mod support;
 //      cites a follow-up change (c276/c277/c278) that will remove it. Any NEW
 //      violation not in the allowlist fails the build. The allowlist shrinks as
 //      those follow-ups land, tightening the guard toward zero exemptions.
-//   3. interactive/ (except the composition root + driver) must not import
+//   3. app/ (except the composition root + driver) must not import
 //      crate::agent or crate::infra types.
 //
-// Known interactive exceptions (composition root or documented seams):
-//   - interactive/cli/ = composition root (wires ports + Agent)
-//   - interactive/driver.rs = Driver trait + InProcessDriver
-//   - interactive/rpc.rs = builds Agent via with_ports
-//   - interactive/print.rs = imports AgentEvent for stream matching
-//   - interactive/resources.rs = read-only resource listing
-//   - interactive/diff_review/ = review engine (infra config import)
+// Known app exceptions (composition roots or documented seams):
+//   - app/cli/ = composition root (wires ports + Agent)
+//   - app/driver.rs = Driver trait + InProcessDriver (must NOT import crate::infra)
+//   - app/rpc.rs = builds Agent via composition
+//   - app/print.rs = imports AgentEvent for stream matching
+//   - app/server/ = composition root (hosts Agent + infra runtimes)
+//   - app/composition.rs = shared Agent construction
+//   - app/tui/diff_review/ = review engine (infra config import)
 
 #[cfg(test)]
 mod arch_guard {
@@ -185,25 +186,26 @@ mod arch_guard {
     }
 
     #[test]
-    fn interactive_only_from_driver() {
-        // interactive/ (except cli/ and driver.rs) must not import
+    fn app_only_from_driver() {
+        // app/ (except composition roots and documented seams) must not import
         // crate::agent or crate::infra types directly.
         //
-        // Known exceptions documented above (cli=composition root,
-        // driver.rs=Driver trait def). The intent is to prevent new
-        // interactive modules from leaking agent/infra internals.
-        // Scan results are paths relative to src/interactive/.
-        // Allowed: cli/ (composition root) and driver.rs (Driver trait).
-        // Documented seams (not composition root, but pinned exceptions):
-        //   resources.rs — read-only resource listing
-        //   rpc.rs — builds Agent via with_ports
-        //   print.rs — imports AgentEvent for stream matching
-        let exempt_prefixes = ["cli/", "diff_review/"];
-        let exempt_files = ["driver.rs", "resources.rs", "rpc.rs", "print.rs"];
+        // Scan results are paths relative to src/app/.
+        // Allowed composition roots:
+        //   cli/     — CLI entry point
+        //   server/  — HTTP/WebSocket server entry point
+        //   rpc.rs   — stdio RPC transport
+        //   composition.rs — shared Agent construction
+        // Documented seams:
+        //   driver.rs — Driver trait + InProcessDriver
+        //   print.rs  — imports AgentEvent for stream matching
+        //   tui/diff_review/ — review engine (infra config import)
+        let exempt_prefixes = ["cli/", "server/", "tui/diff_review/"];
+        let exempt_files = ["driver.rs", "rpc.rs", "composition.rs", "print.rs"];
 
         let mut violations = Vec::new();
         for needle in ["crate::agent", "crate::infra"] {
-            for hit in scan("src/interactive", needle) {
+            for hit in scan("src/app", needle) {
                 let is_exempt = exempt_prefixes.iter().any(|p| hit.starts_with(p))
                     || exempt_files.iter().any(|f| hit.starts_with(f));
                 if !is_exempt {
@@ -213,8 +215,22 @@ mod arch_guard {
         }
         assert!(
             violations.is_empty(),
-            "interactive/ (except cli/ and driver.rs) must not import agent or infra — found violations:\n  {}",
+            "app/ (except composition roots and documented seams) must not import agent or infra — found violations:\n  {}",
             violations.join("\n  "),
+        );
+    }
+
+    #[test]
+    fn app_driver_does_not_import_infra() {
+        // app/driver.rs is the Driver trait definition + InProcessDriver.
+        // It must depend only on agent::facade and runtime_protocol, never
+        // on concrete infra types (the RemoteDriver half is feature-gated
+        // under `server` and lives in the same file only for locality).
+        let hits = scan("src/app/driver.rs", "crate::infra");
+        assert!(
+            hits.is_empty(),
+            "app/driver.rs must not import crate::infra — found violations:\n  {}",
+            hits.join("\n  "),
         );
     }
 }

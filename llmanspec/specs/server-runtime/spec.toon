@@ -3,14 +3,14 @@ name: "server-runtime"
 purpose: "TBD - created by archiving change c260-refactor-domain-architecture. Update purpose after archive."
 valid_scope[2]: src/,tests/
 requirements[9]{req_id,title,statement}:
-  sr1,"server-hosts-agent",server/ MUST assemble infra runtimes and inject them into agent ports at startup; server/ MUST pass the Agent into AppState so route handlers can invoke it.
-  sr2,"rest-and-ws","server/ MUST expose protocol/ over REST under a /api/v1 prefix (control commands and state queries) and over WebSocket (streaming events); both MUST speak the protocol::Command and protocol::Event types."
-  sr3,"single-instance-lock","server/ MUST acquire a single-instance lock before binding; a second server against the same lock path MUST receive a ServerLockedError."
-  sr4,"reconnect-journal","server/ MUST maintain a monotonic per-session event sequence number and an event journal; on reconnect a client subscribing with last_seq MUST receive replayed events from last_seq+1; if the journal is truncated past last_seq, server MUST emit resync_required."
-  sr5,"reverse-rpc","server/ MUST support reverse RPC for ApprovalRequired and QuestionRequired events: it pushes the request over WebSocket to a connected client holding the session, suspends the turn, and resumes on ApproveTool or AnswerQuestion matched by call_id."
+  sr1,"server-hosts-agent",app/server/ MUST assemble infra runtimes and inject them into agent ports at startup; app/server/ MUST pass the Agent into AppState so route handlers can invoke it.
+  sr2,"rest-and-ws","app/server/ MUST expose protocol/ over REST under a /api/v1 prefix (control commands and state queries) and over WebSocket (streaming events); both MUST speak the protocol::Command and protocol::Event types."
+  sr3,"single-instance-lock","app/server/ MUST acquire a single-instance lock before binding; a second server against the same lock path MUST receive a ServerLockedError."
+  sr4,"reconnect-journal","app/server/ MUST maintain a monotonic per-session event sequence number and an event journal; on reconnect a client subscribing with last_seq MUST receive replayed events from last_seq+1; if the journal is truncated past last_seq, server MUST emit resync_required."
+  sr5,"reverse-rpc","app/server/ MUST support reverse RPC for ApprovalRequired and QuestionRequired events: it pushes the request over WebSocket to a connected client holding the session, suspends the turn, and resumes on ApproveTool or AnswerQuestion matched by call_id."
   sr7,"lock-file-content","The server lock file MUST contain a JSON payload with port (u16), pid (u32), and hostname (String); the file MUST be deleted on ServerLock drop (graceful shutdown)."
   sr8,"port-retry","If the configured port is busy (EADDRINUSE), the server MUST try port+1 up to PORT_RETRY_LIMIT (10) times and update the lock file with the actual port."
-  sr9,"rest-routes-functional","server/ MUST respond to POST /api/v1/session/{id}/run by invoking Agent::run and returning session_id; DELETE /api/v1/session/{id} MUST abort the agent; GET /api/v1/session/{id}/events MUST pull from the journal."
+  sr9,"rest-routes-functional","app/server/ MUST respond to POST /api/v1/session/{id}/run by invoking Agent::run and returning session_id; DELETE /api/v1/session/{id} MUST abort the agent; GET /api/v1/session/{id}/events MUST pull from the journal."
   sr10,"export-io-wiring","The server runtime composition root MUST construct an infra-provided StdExportIo and inject it as Arc<dyn runtime_protocol::export::ExportIo> when assembling the Agent hosted in AppState."
 scenarios[9]{req_id,id,given,when,then}:
   sr1,"agent-in-appstate",the server starts with an Agent configured,a GET /api/v1/healthz returns 200 and POST /api/v1/session/x/run returns a session_id,the Agent is reachable from route handlers

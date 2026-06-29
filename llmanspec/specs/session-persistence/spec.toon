@@ -28,7 +28,7 @@ requirements[28]{req_id,title,statement}:
   sc3,"cwd-format","System MUST provide format_missing_session_cwd_error and format_missing_session_cwd_prompt for user-facing messages."
   sc4,"cwd-integration",CLI and RPC modes MUST call assert_session_cwd_exists before resuming a session.
   sp1,"sessionstore-impl","infra::session::SessionManager MUST implement runtime_protocol::SessionStore with append, load, and exists methods covering only what the agent loop and compaction call; the full SessionManager surface (fork, navigate, export) MAY remain on the concrete struct for the composition root to use directly."
-  sp2,"sessionstore-impl","infra::session::SessionManager MUST implement runtime_protocol::SessionStore with load_context, append, and exists covering only what the agent loop and compaction call; the full SessionManager surface (fork/navigate/export) MAY remain on the concrete struct for the interactive composition root."
+  sp2,"sessionstore-impl","infra::session::SessionManager MUST implement runtime_protocol::SessionStore with load_context, append, and exists covering only what the agent loop and compaction call; the full SessionManager surface (fork/navigate/export) MAY remain on the concrete struct for the app composition root."
   sp6,"journal-access","The session store MUST expose read_recent(session_id, limit) -> Vec<Event> for the server's journal; journal capacity MUST be configurable (default 10000)."
   sp3,"export-io-impl","infra/ MUST provide an implementation of runtime_protocol::export::ExportIo (StdExportIo) using tokio::fs for write_text and read_bytes; it MUST be injected into AgentSession by the composition root."
 scenarios[33]{req_id,id,given,when,then}:

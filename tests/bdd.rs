@@ -2210,9 +2210,9 @@ async fn test_hook_empty_noop(agent: AgentState) {}
 // rpc.feature — RPC protocol over stdio
 // ═══════════════════════════════════════════════════════════════════
 
+use xylitol::app::server::lock::{LockInfo, ServerLock, ServerLockedError};
+use xylitol::app::server::port_retry;
 use xylitol::protocol::{Command, Event};
-use xylitol::server::lock::{LockInfo, ServerLock, ServerLockedError};
-use xylitol::server::port_retry;
 
 /// Fixture for RPC tests — captures emitted events.
 pub struct RpcTest {
@@ -2435,7 +2435,7 @@ fn test_server_second_instance_rejected(mut server_test: ServerTest) {}
 // approval.feature — Reverse RPC tool approval
 // ═══════════════════════════════════════════════════════════════════
 
-use xylitol::server::ws::ReverseRpcGateway;
+use xylitol::app::server::ws::ReverseRpcGateway;
 
 /// Fixture for approval tests.
 pub struct ApprovalTest {

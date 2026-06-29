@@ -5,27 +5,24 @@
 //! orchestration (la13).
 
 mod provider_guidance;
+pub mod resources;
 
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
 
-use crate::agent::facade::Agent;
 use crate::agent::model::registry;
 use crate::agent::model::resolver;
 use crate::agent::session::ModelRegistry;
-use crate::agent::tools::ToolRegistry;
+use crate::app::cli::resources::ResourcesAction;
+use crate::app::composition::{BuildAgentOptions, build_agent};
+use crate::app::driver::InProcessDriver;
 use crate::domain::model::{ModelConfig, ModelKind};
 use crate::domain::types::ModelMeta;
-use crate::infra::bash_exec::InfraBashExecutor;
 use crate::infra::config::loader::load_app_config;
 use crate::infra::config::value::InfraSecretResolver;
-use crate::infra::event::EventBus;
 use crate::infra::session::SessionManager;
 use crate::infra::timing;
-use crate::interactive::driver::InProcessDriver;
-use crate::interactive::resources::ResourcesAction;
-use crate::runtime_protocol::{BashExecutor, EventSink, ExportIo, SessionStore};
 
 /// Top-level subcommand. When absent, the flat flags/positional below drive
 /// the default print-mode flow (backward compatible).
@@ -37,6 +34,7 @@ pub enum CliCommand {
         action: ResourcesAction,
     },
     /// Server lifecycle management.
+    #[cfg(feature = "server")]
     Server {
         #[command(subcommand)]
         action: ServerSubcommand,
@@ -44,6 +42,7 @@ pub enum CliCommand {
 }
 
 /// Server lifecycle subcommands.
+#[cfg(feature = "server")]
 #[derive(Subcommand, Debug)]
 pub enum ServerSubcommand {
     /// Start the xylitol server.
@@ -97,12 +96,13 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // ── Subcommands: handled early, no model loading needed ─────────
     match args.command {
         Some(CliCommand::Resources { action }) => {
-            let code = crate::interactive::resources::run(action);
+            let code = crate::app::cli::resources::run(action);
             if code == std::process::ExitCode::FAILURE {
                 std::process::exit(1);
             }
             return Ok(());
         }
+        #[cfg(feature = "server")]
         Some(CliCommand::Server { action }) => {
             return run_server(action).await;
         }
@@ -244,7 +244,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Err("no models available".into());
     }
 
-    let tool_registry = ToolRegistry::from_tools(crate::infra::tools::default_tools());
     let sessions_dir = SessionManager::default_dir();
     std::fs::create_dir_all(&sessions_dir).ok();
     let session_mgr = SessionManager::new(sessions_dir.clone());
@@ -392,7 +391,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Step 4: RPC mode ─────────────────────────────────────────
     if args.rpc {
-        return crate::interactive::rpc::run(
+        return crate::app::rpc::run(
             model_registry,
             session_mgr,
             system_prompt,
@@ -409,35 +408,18 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| e.into());
     }
 
-    // ── Step 5: construct Agent via with_ports (HC-2 route) ────
-    let store: Arc<dyn SessionStore> = Arc::new(session_mgr.clone());
-    let sink: Arc<dyn EventSink> = Arc::new(EventBus::new());
-    // HC-1: the model builder and sandbox engine are infra constructs supplied
-    // by the composition root (here), not built inside agent/.
-    let model_builder: crate::runtime_protocol::ModelBuilder =
-        Arc::new(crate::infra::provider::factory::build_provider);
-    let sandbox: Arc<dyn crate::runtime_protocol::SandboxEngine> = sandbox_engine
-        .clone()
-        .unwrap_or_else(|| crate::infra::sandbox::noop_engine());
-    let bash_executor: Arc<dyn BashExecutor> = Arc::new(InfraBashExecutor::new());
-    let export_io: Arc<dyn ExportIo> = Arc::new(crate::infra::export::StdExportIo::new());
-    let mut agent = Agent::with_ports(
+    // ── Step 5: construct Agent via composition root helper ────
+    let mut agent = build_agent(BuildAgentOptions {
         model_registry,
-        tool_registry,
-        store,
-        sink,
         system_prompt,
         context_files,
         append_system_prompt,
         max_iterations,
-        0.8,
+        compaction_threshold: 0.8,
         cwd,
         compaction_settings,
-        model_builder,
-        sandbox,
-        bash_executor,
-        export_io,
-    );
+        sandbox_engine,
+    })?;
 
     agent
         .session_mut()
@@ -489,21 +471,22 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    crate::interactive::print::run_print(&mut driver, &prompt, &session_id).await?;
+    crate::app::print::run_print(&mut driver, &prompt, &session_id).await?;
 
     timing::print_timings();
     Ok(())
 }
 
 /// Run a server subcommand.
+#[cfg(feature = "server")]
 async fn run_server(action: ServerSubcommand) -> Result<(), Box<dyn std::error::Error>> {
     match action {
         ServerSubcommand::Run { port } => {
-            let config = crate::server::runtime::ServerConfig {
+            let config = crate::app::server::runtime::ServerConfig {
                 port,
                 ..Default::default()
             };
-            let (_handle, actual_port) = crate::server::runtime::start(config).await?;
+            let (_handle, actual_port) = crate::app::server::runtime::start(config).await?;
             eprintln!("Server started on port {}", actual_port);
             // Keep running until Ctrl+C
             tokio::signal::ctrl_c().await?;
@@ -522,7 +505,7 @@ async fn run_server(action: ServerSubcommand) -> Result<(), Box<dyn std::error::
             }
 
             // Read lock file to get the PID
-            match crate::server::lock::ServerLock::probe(path) {
+            match crate::app::server::lock::ServerLock::probe(path) {
                 Ok(info) => {
                     eprintln!(
                         "Sending SIGTERM to server (pid {}, port {})",

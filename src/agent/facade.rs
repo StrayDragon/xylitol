@@ -2,11 +2,11 @@
 //!
 //! Interactive code (cli/print/rpc) should import only from here. Reaching into
 //! `agent::runtime` / `agent::session` / `agent::tools` directly is a layering
-//! violation, except in the composition root (`interactive::cli`) which wires
+//! violation, except in the composition root (`app::cli`) which wires
 //! concrete adapters at construction.
 //!
 //! This facade is the in-process half of the Driver abstraction (see c265);
-//! the remote half is `server::ws` / `server::rest` (ClientFrame/ServerFrame
+//! the remote half is `app::server::ws` / `app::server::rest` (ClientFrame/ServerFrame
 //! speak the same protocol over the wire).
 
 use std::sync::Arc;
