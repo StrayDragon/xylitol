@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ar05,"app-layer-module-map","System MUST update the module map so that src/app/ hosts all user-facing entry points (cli/, rpc.rs, server/, tui/, gui.rs) plus a src/app/core/ sublayer for cross-surface seams (composition, driver), src/protocol/ hosts the client↔core wire vocabulary split into command.rs/event.rs/transport.rs, and src/app/core/composition.rs centralizes Agent construction.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ar05,"app-layer-module-map-exists","",the source tree is inspected after the change,"src/app exists with a core/ sublayer, src/interactive and src/server no longer exist, and src/protocol is a directory"
