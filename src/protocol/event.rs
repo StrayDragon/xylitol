@@ -24,6 +24,10 @@ pub enum Event {
     TextDelta {
         text: String,
     },
+    /// Streaming thinking / reasoning text (e.g. Anthropic extended thinking).
+    ThinkingDelta {
+        text: String,
+    },
     ToolStart {
         id: String,
         name: String,
@@ -93,6 +97,7 @@ impl XyEvent {
     pub fn to_wire_event(&self) -> Option<Event> {
         match self {
             XyEvent::TextDelta(text) => Some(Event::TextDelta { text: text.clone() }),
+            XyEvent::ThinkingDelta(text) => Some(Event::ThinkingDelta { text: text.clone() }),
             XyEvent::TurnStart { turn_index } => Some(Event::TurnStart {
                 turn_index: *turn_index,
             }),
@@ -104,10 +109,6 @@ impl XyEvent {
             XyEvent::MessageUpdate { text, thinking, .. } => Some(Event::MessageUpdate {
                 text: text.clone(),
                 thinking: thinking.clone(),
-            }),
-            XyEvent::ThinkingDelta(_) => Some(Event::MessageUpdate {
-                text: String::new(),
-                thinking: None,
             }),
             XyEvent::ToolExecutionStart { id, name, .. } => Some(Event::ToolStart {
                 id: id.clone(),
@@ -154,6 +155,7 @@ impl TryFrom<&Event> for XyEvent {
     fn try_from(event: &Event) -> Result<Self, <Self as TryFrom<&Event>>::Error> {
         match event {
             Event::TextDelta { text } => Ok(XyEvent::TextDelta(text.clone())),
+            Event::ThinkingDelta { text } => Ok(XyEvent::ThinkingDelta(text.clone())),
             Event::TurnStart { turn_index } => Ok(XyEvent::TurnStart {
                 turn_index: *turn_index,
             }),
@@ -207,5 +209,30 @@ impl TryFrom<&Event> for XyEvent {
                 "event variant not convertible to XyEvent: {other:?}"
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thinking_delta_roundtrips_through_wire_event() {
+        let domain = XyEvent::ThinkingDelta("reasoning...".into());
+        let wire = domain
+            .to_wire_event()
+            .expect("thinking delta is wire-visible");
+        assert!(matches!(
+            wire,
+            Event::ThinkingDelta {
+                ref text,
+            } if text == "reasoning..."
+        ));
+
+        let back = XyEvent::try_from(&wire).expect("roundtrip succeeds");
+        assert!(matches!(
+            back,
+            XyEvent::ThinkingDelta(text) if text == "reasoning..."
+        ));
     }
 }
