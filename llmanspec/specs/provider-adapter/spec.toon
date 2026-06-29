@@ -1,0 +1,14 @@
+kind: llman.sdd.spec
+name: "provider-adapter"
+purpose: "Provider adapter layer — isolates vendor-specific LLM API shapes (OpenAI Responses, Anthropic Messages, OpenAI Chat Completions) behind a unified LlmAdapter trait that emits the internal XyChunk stream."
+valid_scope[2]: src/,tests/
+requirements[4]{req_id,title,statement}:
+  pa1,"adapter-trait",System SHALL define an LlmAdapter trait in infra/provider/adapter that exposes generate_stream and generate methods returning XyStream.
+  pa2,"openai-responses-adapter","System SHALL provide an OpenAiResponsesAdapter that calls /v1/responses and emits XyChunk::ThinkingDelta for reasoning items and XyChunk::TextDelta for message items."
+  pa3,"anthropic-messages-adapter","System SHALL provide an AnthropicMessagesAdapter that preserves existing Anthropic SSE parsing behavior and emits XyChunk::ThinkingDelta for thinking content blocks."
+  pa4,"adapter-selection",System SHALL select the concrete adapter based on XyModelConfig kind and api fields with sensible defaults.
+scenarios[4]{req_id,id,given,when,then}:
+  pa1,"trait-exists",a new adapter layer is introduced,the LlmAdapter trait is defined,agent loop can call generate_stream on any adapter without naming concrete types
+  pa2,"responses-reasoning","a reasoning-capable model is served via /v1/responses",OpenAiResponsesAdapter streams the response,"XyChunk::ThinkingDelta items are emitted before XyChunk::TextDelta items"
+  pa3,"anthropic-thinking",a model returns thinking content blocks,AnthropicMessagesAdapter streams the response,"XyChunk::ThinkingDelta items are emitted for thinking blocks"
+  pa4,"default-selection",a model config omits the api field,the config loader resolves defaults,"openai kind defaults to openai-responses and anthropic kind defaults to anthropic-messages"

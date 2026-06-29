@@ -66,6 +66,9 @@ pub struct ModelEntry {
     /// Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.
     #[serde(default)]
     pub base_url: Option<String>,
+    /// Optional adapter API type, e.g. `openai-responses` or `openai-completions`.
+    #[serde(default)]
+    pub api: Option<String>,
     /// Optional fallback model ID (must be another key in `models`).
     #[serde(default)]
     pub fallback: Option<String>,
@@ -178,10 +181,16 @@ impl AppConfig {
     ) -> Result<crate::domain::model::XyModelConfig, String> {
         use crate::domain::model::{XyModelConfig, XyModelKind};
 
-        let (kind, model_name, base_url) = if let Some(entry) = self.model.models.get(model_id) {
-            (entry.provider, entry.model.clone(), entry.base_url.clone())
+        let (kind, model_name, base_url, api) = if let Some(entry) = self.model.models.get(model_id)
+        {
+            (
+                entry.provider,
+                entry.model.clone(),
+                entry.base_url.clone(),
+                entry.api.clone(),
+            )
         } else {
-            (XyModelKind::OpenAi, model_id.to_string(), None)
+            (XyModelKind::OpenAi, model_id.to_string(), None, None)
         };
 
         let api_key = match kind {
@@ -199,6 +208,7 @@ impl AppConfig {
             api_key,
             model: model_name,
             base_url,
+            api,
         })
     }
 
