@@ -407,7 +407,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     agent
-        .session_mut()
+        .inner_mut()
         .register_prompt_commands(&discovered_templates);
 
     timing::time("session.create");
@@ -422,13 +422,13 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     if let Some(mid) = target_model {
-        let available: Vec<&XyModelMeta> = agent.session().model_registry().list().iter().collect();
+        let available: Vec<&XyModelMeta> = agent.inner().model_registry().list().iter().collect();
         match resolver::resolve_model(&mid, &available, None) {
             Ok(resolved) => {
                 if let Some(ref warning) = resolved.warning {
                     eprintln!("Warning: {warning}");
                 }
-                let _ = agent.session_mut().select_model(&resolved.model.id);
+                let _ = agent.inner_mut().select_model(&resolved.model.id);
             }
             Err(msg) => {
                 eprintln!(

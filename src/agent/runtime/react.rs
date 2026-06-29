@@ -35,15 +35,15 @@ use crate::runtime_protocol::XyPermissionVerdict;
 // ── ReActAgent ───────────────────────────────────────────────────────
 
 pub struct ReActAgent {
-    pub(crate) session: Agent,
+    pub(crate) inner: Agent,
     /// Cancellation token.
     cancel: CancellationToken,
 }
 
 impl ReActAgent {
-    pub fn new(session: Agent) -> Self {
+    pub fn new(inner: Agent) -> Self {
         Self {
-            session,
+            inner,
             cancel: CancellationToken::new(),
         }
     }
@@ -58,42 +58,42 @@ impl ReActAgent {
         self.cancel.cancel();
     }
 
-    pub fn session(&self) -> &Agent {
-        &self.session
+    pub fn inner(&self) -> &Agent {
+        &self.inner
     }
 
-    pub fn session_mut(&mut self) -> &mut Agent {
-        &mut self.session
+    pub fn inner_mut(&mut self) -> &mut Agent {
+        &mut self.inner
     }
 
     /// Replace the tool set. Takes effect on the next [`run`](Self::run) call.
     pub fn set_tools(&mut self, tools: ToolSet) {
-        self.session.set_tools(tools);
+        self.inner.set_tools(tools);
     }
 
     /// Replace the hook set. Takes effect on the next [`run`](Self::run) call.
     pub fn replace_hooks(&mut self, hooks: AgentHooks) {
-        self.session.replace_hooks(hooks);
+        self.inner.replace_hooks(hooks);
     }
 
     /// Add a before-tool hook. Takes effect on the next [`run`](Self::run) call.
     pub fn add_hook(&mut self, hook: super::hooks::BeforeToolHook) {
-        self.session.hooks_mut().add_before(hook);
+        self.inner.hooks_mut().add_before(hook);
     }
 
     /// Set the permission port. Takes effect on the next [`run`](Self::run) call.
     pub fn set_permission(&mut self, permission: Arc<dyn crate::runtime_protocol::XyPermission>) {
-        self.session.set_permission(permission);
+        self.inner.set_permission(permission);
     }
 
     /// Set the tool execution mode. Takes effect on the next [`run`](Self::run) call.
     pub fn set_tool_mode(&mut self, mode: crate::runtime_protocol::XyToolExecutionMode) {
-        self.session.set_tool_mode(mode);
+        self.inner.set_tool_mode(mode);
     }
 
     /// Set the system prompt. Takes effect on the next [`run`](Self::run) call.
     pub fn set_system_prompt(&mut self, prompt: Option<String>) {
-        self.session.set_system_prompt(prompt);
+        self.inner.set_system_prompt(prompt);
     }
 
     /// Run a turn with an auto-generated session_id.
@@ -110,7 +110,7 @@ impl ReActAgent {
             std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>,
         >;
         {
-            let engine = self.session.get_permission();
+            let engine = self.inner.get_permission();
             permission_check = Some(std::sync::Arc::new(
                 move |tool_name: &str, tool_path: &str| -> Option<String> {
                     // NOTE: tool_name → permission check dispatch is hard-coded here.
@@ -137,21 +137,21 @@ impl ReActAgent {
         }
         // Ensure session exists
         let sid = session_id.to_string();
-        self.session.set_session(sid.clone());
-        if let Err(e) = self.session.ensure_session(&sid, None).await {
+        self.inner.set_session(sid.clone());
+        if let Err(e) = self.inner.ensure_session(&sid, None).await {
             return XyEventStream::error(format!("session error: {e}"));
         }
 
-        let model = match self.session.build_current_model() {
+        let model = match self.inner.build_current_model() {
             Ok(m) => m,
             Err(e) => return XyEventStream::error(format!("model build error: {e}")),
         };
 
-        let tools = self.session.tools().clone();
-        let max_iterations = self.session.max_iterations();
-        let system_prompt = self.session.system_prompt().map(|s| s.to_string());
-        let hooks = self.session.hooks().clone();
-        let tool_mode = self.session.tool_mode();
+        let tools = self.inner.tools().clone();
+        let max_iterations = self.inner.max_iterations();
+        let system_prompt = self.inner.system_prompt().map(|s| s.to_string());
+        let hooks = self.inner.hooks().clone();
+        let tool_mode = self.inner.tool_mode();
         let prompt = prompt.to_string();
 
         // Build tool schemas

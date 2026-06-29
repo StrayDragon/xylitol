@@ -118,7 +118,7 @@ async fn switch_model(
     axum::extract::Query(params): axum::extract::Query<SwitchModelParams>,
 ) -> Json<Envelope<Value>> {
     let mut agent = state.agent.lock().await;
-    let _ = agent.session_mut().select_model(&params.model_id);
+    let _ = agent.inner_mut().select_model(&params.model_id);
     Json(Envelope::ok(serde_json::json!({"model": params.model_id})))
 }
 
