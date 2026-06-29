@@ -678,6 +678,7 @@ mod tests {
                 api_key: "sk-test".into(),
                 model: "mock-model".into(),
                 base_url: None,
+                api: None,
             },
             display_name: "Mock".into(),
             thinking: false,

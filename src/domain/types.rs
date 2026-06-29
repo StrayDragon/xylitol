@@ -252,6 +252,7 @@ mod tests {
             api_key: "sk-test".into(),
             model: "claude-3".into(),
             base_url: None,
+            api: None,
         };
         let meta = XyModelMeta {
             id: "claude-3".into(),

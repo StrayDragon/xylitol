@@ -9,11 +9,14 @@ use serde_json::Value;
 use crate::domain::error::XyError;
 use crate::domain::message::XyStopReason;
 use crate::domain::types::{XyChunk, XyToolSchema};
-use crate::runtime_protocol::{XyModel, XyStream};
+use crate::runtime_protocol::XyStream;
+
+use super::LlmAdapter;
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
-pub(crate) struct AnthropicProvider {
+/// Anthropic Messages API adapter.
+pub struct AnthropicMessagesAdapter {
     client: reqwest::Client,
     api_key: String,
     model: String,
@@ -21,8 +24,9 @@ pub(crate) struct AnthropicProvider {
     max_tokens: u32,
 }
 
-impl AnthropicProvider {
-    pub(crate) fn new(api_key: String, model: String, base_url: Option<String>) -> Self {
+impl AnthropicMessagesAdapter {
+    /// Create a new Anthropic Messages adapter.
+    pub fn new(api_key: String, model: String, base_url: Option<String>) -> Self {
         Self {
             client: reqwest::Client::new(),
             api_key,
@@ -47,12 +51,30 @@ impl AnthropicProvider {
 }
 
 #[async_trait]
-impl XyModel for AnthropicProvider {
+impl LlmAdapter for AnthropicMessagesAdapter {
     fn name(&self) -> &str {
         &self.model
     }
 
     async fn generate_stream(
+        &self,
+        messages: Vec<AgentMessage>,
+        tools: &[XyToolSchema],
+    ) -> Result<XyStream, XyError> {
+        self.execute(messages, tools, true).await
+    }
+
+    async fn generate(
+        &self,
+        messages: Vec<AgentMessage>,
+        tools: &[XyToolSchema],
+    ) -> Result<XyStream, XyError> {
+        self.execute(messages, tools, false).await
+    }
+}
+
+impl AnthropicMessagesAdapter {
+    async fn execute(
         &self,
         messages: Vec<AgentMessage>,
         tools: &[XyToolSchema],
