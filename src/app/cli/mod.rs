@@ -4,6 +4,7 @@
 //! [`provider_guidance`] — they are pure CLI-surface presentation, not agent
 //! orchestration (la13).
 
+mod print;
 mod provider_guidance;
 pub mod resources;
 
@@ -15,8 +16,10 @@ use crate::agent::model::registry;
 use crate::agent::model::resolver;
 use crate::agent::session::ModelRegistry;
 use crate::app::cli::resources::ResourcesAction;
-use crate::app::composition::{BuildAgentOptions, build_agent};
-use crate::app::driver::InProcessDriver;
+use crate::app::core::composition::{BuildAgentOptions, build_agent};
+use crate::app::core::driver::InProcessDriver;
+#[cfg(feature = "server")]
+use crate::app::server::subcommand::ServerSubcommand;
 use crate::domain::model::{XyModelConfig, XyModelKind};
 use crate::domain::types::XyModelMeta;
 use crate::infra::config::loader::load_app_config;
@@ -38,26 +41,6 @@ pub enum CliCommand {
     Server {
         #[command(subcommand)]
         action: ServerSubcommand,
-    },
-}
-
-/// Server lifecycle subcommands.
-#[cfg(feature = "server")]
-#[derive(Subcommand, Debug)]
-pub enum ServerSubcommand {
-    /// Start the xylitol server.
-    Run {
-        /// Port to bind to.
-        #[arg(long, default_value = "8080")]
-        port: u16,
-    },
-    /// Register the server as a launchd/systemd service (macOS/Linux).
-    Install,
-    /// Stop a running server by removing its lock file.
-    Stop {
-        /// Path to the lock file.
-        #[arg(long, default_value = "/tmp/xylitol-server.lock")]
-        lock: String,
     },
 }
 
@@ -104,7 +87,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         #[cfg(feature = "server")]
         Some(CliCommand::Server { action }) => {
-            return run_server(action).await;
+            return crate::app::server::subcommand::run(action).await;
         }
         None => {} // continue to default print-mode flow
     }
@@ -473,72 +456,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    crate::app::print::run_print(&mut driver, &prompt, &session_id).await?;
+    crate::app::cli::print::run_print(&mut driver, &prompt, &session_id).await?;
 
     timing::print_timings();
     Ok(())
-}
-
-/// Run a server subcommand.
-#[cfg(feature = "server")]
-async fn run_server(action: ServerSubcommand) -> Result<(), Box<dyn std::error::Error>> {
-    match action {
-        ServerSubcommand::Run { port } => {
-            let config = crate::app::server::runtime::ServerConfig {
-                port,
-                ..Default::default()
-            };
-            let (_handle, actual_port) = crate::app::server::runtime::start(config).await?;
-            eprintln!("Server started on port {}", actual_port);
-            // Keep running until Ctrl+C
-            tokio::signal::ctrl_c().await?;
-            eprintln!("Shutting down...");
-            Ok(())
-        }
-        ServerSubcommand::Install => {
-            eprintln!("Server install not yet implemented");
-            Ok(())
-        }
-        ServerSubcommand::Stop { lock } => {
-            let path = std::path::Path::new(&lock);
-            if !path.exists() {
-                eprintln!("No lock file found at: {lock}");
-                return Ok(());
-            }
-
-            // Read lock file to get the PID
-            match crate::app::server::lock::ServerLock::probe(path) {
-                Ok(info) => {
-                    eprintln!(
-                        "Sending SIGTERM to server (pid {}, port {})",
-                        info.pid, info.port
-                    );
-                    #[cfg(unix)]
-                    {
-                        use std::process::Command;
-                        let _ = Command::new("kill")
-                            .arg("-TERM")
-                            .arg(info.pid.to_string())
-                            .status();
-                        // Give it a moment, then remove the lock
-                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                    }
-                    #[cfg(not(unix))]
-                    {
-                        eprintln!("Warning: server stop requires Unix (SIGTERM)");
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Could not read lock file: {e}");
-                }
-            }
-
-            // Clean up lock file
-            std::fs::remove_file(path).ok();
-            eprintln!("Lock file removed: {lock}");
-            Ok(())
-        }
-    }
 }
 
 /// Read the API key for a provider from environment variables.

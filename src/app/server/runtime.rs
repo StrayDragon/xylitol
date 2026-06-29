@@ -13,7 +13,7 @@ use tower_http::cors::CorsLayer;
 
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
-use crate::app::composition::{BuildAgentOptions, build_agent};
+use crate::app::core::composition::{BuildAgentOptions, build_agent};
 use crate::app::server::lock::{LockInfo, ServerLock};
 use crate::app::server::port_retry::{self, PORT_RETRY_LIMIT};
 use crate::app::server::rest::{self, AppState};

@@ -1,6 +1,4 @@
-pub mod composition;
-pub mod driver;
-pub mod print;
+pub(crate) mod core;
 
 #[cfg(feature = "cli")]
 pub mod cli;

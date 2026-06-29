@@ -12,4 +12,7 @@ pub mod rest;
 #[cfg(feature = "server")]
 pub mod runtime;
 
+#[cfg(feature = "server")]
+pub mod subcommand;
+
 pub mod ws;
