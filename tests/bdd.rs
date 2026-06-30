@@ -637,99 +637,6 @@ fn _t_agent_thinking_clamped(agent: &AgentState, level: String) {
     );
 }
 
-// Model switching
-#[given("注册了模型 {m1:string} 和 {m2:string}")]
-fn _g_agent_models_registered(agent: &AgentState, m1: String, m2: String) {
-    let mut r = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
-    for name in [m1, m2] {
-        let kind = if name.contains("claude") {
-            XyModelKind::Anthropic
-        } else {
-            XyModelKind::OpenAi
-        };
-        r.register(XyModelMeta {
-            id: name.clone(),
-            config: XyModelConfig {
-                kind,
-                api_key: "sk".into(),
-                model: name.clone(),
-                base_url: None,
-                api: None,
-            },
-            api: String::new(),
-            provider: String::new(),
-            cost_input: 0.0,
-            cost_output: 0.0,
-            cost_cache_read: 0.0,
-            cost_cache_write: 0.0,
-            max_tokens: 0,
-            thinking_levels: Vec::new(),
-            display_name: name.clone(),
-            thinking: true,
-            context_window: 128000,
-        });
-    }
-    agent.registry.replace(r);
-}
-
-#[given("当前模型为 {model}")]
-fn _g_agent_current_model(_agent: &AgentState, model: String) {
-    let _ = model;
-}
-
-#[when("执行 cycleForward")]
-fn _w_agent_cycle_forward(agent: &AgentState) {
-    let dir = tempfile::tempdir().unwrap();
-    let mgr = SessionManager::new(dir.keep());
-    let store: std::sync::Arc<dyn xylitol::runtime_protocol::XySessionStore> =
-        std::sync::Arc::new(mgr.clone());
-    let sink: std::sync::Arc<dyn xylitol::runtime_protocol::XyEventSink> =
-        std::sync::Arc::new(xylitol::infra::event::EventBus::new());
-    let mut session = Agent::new(
-        agent.registry.borrow().clone(),
-        ToolSet::from_iter(xylitol::infra::tools::default_tools()),
-        store,
-        sink,
-        None,
-        Vec::new(),
-        Vec::new(),
-        50,
-        0.8,
-        ".".into(),
-        None,
-        std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
-        xylitol::infra::permission::allow_all_permission(),
-        Some(std::sync::Arc::new(
-            xylitol::infra::bash_exec::InfraBashExecutor::new(),
-        )),
-        Some(std::sync::Arc::new(
-            xylitol::infra::export::StdExportIo::new(),
-        )),
-    );
-    let next = session
-        .cycle_forward()
-        .map(|m| m.id.clone())
-        .unwrap_or_default();
-    agent.last_result.replace(Some(Ok(next)));
-}
-
-#[then("当前模型变为 {model:string}")]
-fn _t_agent_model_changed_to(agent: &AgentState, model: String) {
-    assert_eq!(
-        agent
-            .last_result
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .as_ref()
-            .unwrap(),
-        &model
-    );
-}
-
-#[then("model_select 事件触发")]
-fn _t_agent_model_select_event(_agent: &AgentState) {}
-
 #[given("会话包含 {tokens:u32} 个 token 的消息")]
 fn _g_agent_tokens(agent: &AgentState, tokens: u32) {
     agent
@@ -2173,8 +2080,6 @@ async fn test_agent_event_order(agent: AgentState, ws: Workspace) {}
 async fn test_agent_thinking_switch(agent: AgentState, ws: Workspace) {}
 #[scenario(path = "tests/features/agent.feature", name = "思考级别限制为模型能力")]
 async fn test_agent_thinking_limit(agent: AgentState, ws: Workspace) {}
-#[scenario(path = "tests/features/agent.feature", name = "运行时模型切换")]
-async fn test_agent_model_switch(agent: AgentState, ws: Workspace) {}
 #[scenario(path = "tests/features/agent.feature", name = "获取上下文使用量")]
 async fn test_agent_context_usage(agent: AgentState, ws: Workspace) {}
 #[scenario(path = "tests/features/agent.feature", name = "会话自动持久化")]

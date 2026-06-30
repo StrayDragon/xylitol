@@ -1,6 +1,6 @@
 //! ModelManager — model registry, selection, and thinking level.
 //!
-//! Extracted from [`Agent`](super::session::Agent) to isolate
+//! Extracted from [`Agent`](crate::agent::session::Agent) to isolate
 //! model-related responsibilities into a focused component.
 
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use crate::runtime_protocol::XyModel;
 
 /// Manages model registry, current model selection, and thinking level.
 ///
-/// Owned by [`Agent`](super::session::Agent) as a composed field.
+/// Owned by [`Agent`](crate::agent::session::Agent) as a composed field.
 /// The provider is built via an injected `model_builder` (HC-1: agent must not
 /// call `infra::provider::factory::build_provider` directly; the composition
 /// root supplies the builder).
@@ -73,17 +73,6 @@ impl ModelManager {
 
     // ── Model switching ──────────────────────────────────────────
 
-    /// Cycle to the next model in the registry.
-    pub fn cycle_forward(&mut self) -> Option<&XyModelMeta> {
-        let len = self.registry.len();
-        if len == 0 {
-            return None;
-        }
-        let next = (self.current_index + 1) % len;
-        self.current_index = next;
-        self.registry.list().get(next)
-    }
-
     /// Select a model by its ID.
     pub fn select_model(&mut self, model_id: &str) -> Result<(), String> {
         let model = self
@@ -106,11 +95,6 @@ impl ModelManager {
     /// Get the model registry (read-only).
     pub fn registry(&self) -> &ModelRegistry {
         &self.registry
-    }
-
-    /// Clone the underlying model registry.
-    pub fn registry_clone(&self) -> ModelRegistry {
-        self.registry.clone()
     }
 
     /// Get the index of the currently selected model.
@@ -185,12 +169,6 @@ mod tests {
     }
 
     #[test]
-    fn cycle_forward_empty_registry_returns_none() {
-        let mut mm = ModelManager::new(empty_registry(), fake_builder());
-        assert!(mm.cycle_forward().is_none());
-    }
-
-    #[test]
     fn select_model_empty_registry_returns_error() {
         let mut mm = ModelManager::new(empty_registry(), fake_builder());
         let result = mm.select_model("nonexistent");
@@ -202,13 +180,6 @@ mod tests {
     fn registry_accessor() {
         let mm = ModelManager::new(empty_registry(), fake_builder());
         assert_eq!(mm.registry().list().len(), 0);
-    }
-
-    #[test]
-    fn registry_clone() {
-        let mm = ModelManager::new(empty_registry(), fake_builder());
-        let cloned = mm.registry_clone();
-        assert_eq!(cloned.list().len(), 0);
     }
 
     #[test]

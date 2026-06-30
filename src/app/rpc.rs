@@ -21,11 +21,11 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::compaction::CompactionSettings;
 use crate::agent::ReActAgent;
-use crate::domain::lifecycle::XyEvent;
+use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
 use crate::app::core::composition::{BuildAgentOptions, build_agent};
+use crate::domain::lifecycle::XyEvent;
 use crate::domain::types::{ThinkingLevel, XyModelMeta};
 use crate::infra::permission::XyPermission;
 use crate::infra::session::SessionManager;
