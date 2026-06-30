@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use crate::agent::compaction::CompactionSettings;
-use crate::agent::ReActAgent;
 use crate::agent::AgentBuilder;
+use crate::agent::ReActAgent;
+use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
 use crate::agent::tools::ToolSet;
 use crate::infra::bash_exec::InfraBashExecutor;

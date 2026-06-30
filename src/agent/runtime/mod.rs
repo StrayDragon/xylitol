@@ -2,7 +2,7 @@
 //!
 //! Houses the ReAct loop (`react`), its event vocabulary (`event`), hook
 //! extension points (`hooks`), transient-error retry, and stdout takeover
-//! guard. The agent facade is the public entry; modules here are the loop's
+//! guard. The `agent` module is the public entry; modules here are the loop's
 //! internals.
 
 pub mod event;

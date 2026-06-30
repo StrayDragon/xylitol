@@ -667,7 +667,7 @@ mod tests {
         }
     }
 
-    fn mock_model_registry(chunks: Vec<crate::domain::types::XyChunk>) -> ModelRegistry {
+    fn mock_model_registry() -> ModelRegistry {
         let mut reg = ModelRegistry::new(std::sync::Arc::new(
             crate::infra::config::value::InfraSecretResolver::new(),
         ));
@@ -709,7 +709,7 @@ mod tests {
         chunks: Vec<crate::domain::types::XyChunk>,
         tools: ToolSet,
     ) -> ReActAgent {
-        let reg = mock_model_registry(chunks.clone());
+        let reg = mock_model_registry();
         let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());

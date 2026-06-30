@@ -1,6 +1,6 @@
 //! CompactionOrchestrator — threshold checking and compaction triggering.
 //!
-//! Extracted from [`Agent`](super::session::Agent) to isolate
+//! Extracted from [`Agent`](crate::agent::session::Agent) to isolate
 //! compaction orchestration into a focused component.
 
 use crate::agent::compaction::{CompactionSettings, compact_session};
@@ -9,7 +9,7 @@ use crate::runtime_protocol::{XyEventSink, XyModel, XySessionStore};
 
 /// Orchestrates session compaction — threshold checks and execution.
 ///
-/// Used by [`Agent`](super::session::Agent) as a composed helper.
+/// Used by [`Agent`](crate::agent::session::Agent) as a composed helper.
 pub struct CompactionOrchestrator {
     /// Context window threshold for compaction (0.0–1.0).
     threshold: f64,

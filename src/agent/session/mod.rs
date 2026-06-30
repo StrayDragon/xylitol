@@ -13,17 +13,14 @@ use std::sync::Arc;
 
 pub(crate) use crate::runtime_protocol::{XyEventSink, XySessionStore};
 
-mod bang;
 mod bash;
 mod export;
 mod io;
 mod permission;
-mod prompt_result;
 mod stats;
 mod trust;
 
 pub use self::io::SessionIO;
-pub use self::prompt_result::PromptResult;
 pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_usage};
 pub use self::trust::save_trust_decision;
 
@@ -31,11 +28,9 @@ use crate::agent::compaction::CompactionSettings;
 use crate::agent::compaction::orchestrator::CompactionOrchestrator;
 use crate::agent::model::manager::ModelManager;
 use crate::agent::prompt::commands::{SlashCommandInfo, get_all_commands};
-use crate::agent::prompt::skills::SkillManager;
-use crate::agent::prompt::templates::{PromptTemplate, is_template_line, parse_template_line};
+use crate::agent::prompt::templates::PromptTemplate;
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::AgentHooks;
-use crate::agent::session::bang::parse_bang_prefix;
 use crate::agent::tools::ToolSet;
 use crate::domain::session_types::{
     EntryBase, ModelChangeEntry, SessionEntry, ThinkingLevelChangeEntry,
@@ -84,8 +79,6 @@ pub struct Agent {
     prompt_templates: Vec<PromptTemplate>,
     /// Extension-registered slash commands.
     extension_commands: Vec<SlashCommandInfo>,
-    /// Skill management (activation, XML expansion).
-    skill_manager: SkillManager,
     /// Bash-execution collaborator (HC-2). Holds the optional [`XyBashExecutor`]
     /// port and the in-flight cancellation token.
     bash: crate::agent::session::bash::BashExecHandler,
@@ -149,7 +142,6 @@ impl Agent {
             },
             prompt_templates: Vec::new(),
             extension_commands: Vec::new(),
-            skill_manager: SkillManager::new(),
             bash: crate::agent::session::bash::BashExecHandler::new(bash_executor),
             exporter: crate::agent::session::export::SessionExporter::new(export_io),
             store,
@@ -198,11 +190,6 @@ impl Agent {
         }
     }
 
-    /// Cycle to the next model.
-    pub fn cycle_forward(&mut self) -> Option<&XyModelMeta> {
-        self.model_manager.cycle_forward()
-    }
-
     /// Select a specific model by ID.
     pub fn select_model(&mut self, model_id: &str) -> Result<(), String> {
         self.model_manager.select_model(model_id)?;
@@ -243,9 +230,7 @@ impl Agent {
         for t in templates {
             self.prompt_templates.push(PromptTemplate {
                 name: t.name.clone(),
-                body: t.content.clone(),
                 description: t.description.clone(),
-                argument_hint: t.argument_hint.clone(),
                 source_info: Some(t.source_info.clone()),
             });
         }
@@ -270,61 +255,6 @@ impl Agent {
             all.push(cmd);
         }
         all
-    }
-
-    /// Process user input: intercept /commands and /template:name.
-    ///
-    /// Returns `Some(expanded_text)` if the input was intercepted and should
-    /// be sent to the LLM as expanded prompt text (template expansion).
-    /// Returns `None` if the input was handled entirely (command dispatched)
-    /// or should pass through unchanged.
-    ///
-    /// The caller should check `result.is_handled()` first:
-    /// - `PromptResult::Handled` means the command was dispatched, no LLM call needed.
-    /// - `PromptResult::Expanded(text)` means the template was expanded, send `text` to LLM.
-    /// - `PromptResult::PassThrough(text)` means normal input, send `text` to LLM.
-    pub fn process_prompt(&self, input: &str) -> PromptResult {
-        let input = input.trim();
-
-        // Check for `!cmd` / `!!cmd` first (before slash/template handling).
-        if let Some((exclude, command)) = parse_bang_prefix(input)
-            && !command.is_empty()
-        {
-            return PromptResult::Bash {
-                exclude_from_context: exclude,
-                command: command.to_string(),
-            };
-        }
-
-        // Check for /template:name
-        if is_template_line(input) {
-            if let Some((name, args)) = parse_template_line(input)
-                && let Some(tmpl) = self.prompt_templates.iter().find(|t| t.name == name)
-            {
-                let expanded = tmpl.expand(&args);
-                return PromptResult::Expanded(expanded);
-            }
-            return PromptResult::PassThrough(input.to_string());
-        }
-
-        // Check for /skill:name args — expand into XML block
-        if let Some(rest) = input.strip_prefix("/skill:") {
-            let (name, args) = if let Some(pos) = rest.find(char::is_whitespace) {
-                let (n, a) = rest.split_at(pos);
-                (n.trim().to_string(), a.trim().to_string())
-            } else {
-                (rest.trim().to_string(), String::new())
-            };
-
-            if let Some(xml) = self.expand_skill_command(&name, &args) {
-                return PromptResult::Expanded(xml);
-            }
-            // Skill not found: pass through as-is
-            return PromptResult::PassThrough(input.to_string());
-        }
-
-        // Normal pass-through
-        PromptResult::PassThrough(input.to_string())
     }
 
     // ── Session management ────────────────────────────────────────
@@ -385,12 +315,6 @@ impl Agent {
     /// Current working directory.
     pub fn cwd(&self) -> &str {
         &self.cwd
-    }
-
-    // ── Skills (delegated to SkillManager) ─────────
-
-    pub fn expand_skill_command(&self, skill_name: &str, args: &str) -> Option<String> {
-        self.skill_manager.expand_command(skill_name, args)
     }
 
     // ── Fork ────────────────────────────────────────────────────
@@ -524,7 +448,9 @@ impl Agent {
         path: &std::path::Path,
     ) -> Result<std::path::PathBuf, String> {
         let sid = self.session_id().ok_or("no active session")?.to_string();
-        self.exporter.export_to_html(self.store.as_ref(), &sid, path).await
+        self.exporter
+            .export_to_html(self.store.as_ref(), &sid, path)
+            .await
     }
 
     /// Export the active session's entries as JSONL. Returns the path.
@@ -533,7 +459,9 @@ impl Agent {
         path: &std::path::Path,
     ) -> Result<std::path::PathBuf, String> {
         let sid = self.session_id().ok_or("no active session")?.to_string();
-        self.exporter.export_to_jsonl(self.store.as_ref(), &sid, path).await
+        self.exporter
+            .export_to_jsonl(self.store.as_ref(), &sid, path)
+            .await
     }
 
     /// Import a JSONL file into a brand-new session. Returns the new session id.
@@ -542,7 +470,9 @@ impl Agent {
     /// identities stable across export/import; the file lands without
     /// overwriting an existing session.
     pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String> {
-        self.exporter.import_from_jsonl(self.store.as_ref(), path).await
+        self.exporter
+            .import_from_jsonl(self.store.as_ref(), path)
+            .await
     }
 
     /// Check and perform auto-compaction if the context is full.
@@ -629,22 +559,6 @@ mod tests {
     }
 
     #[test]
-    fn register_prompt_commands_injects_templates() {
-        let mut session = make_session();
-        session.register_prompt_commands(&[loader_template(
-            "review",
-            "Review: $1",
-            "/home/u/.xylitol/prompts/review.md",
-        )]);
-        // Wired: process_prompt expands /template:review.
-        let result = session.process_prompt("/template:review main.rs");
-        match result {
-            PromptResult::Expanded(text) => assert!(text.contains("Review: main.rs")),
-            other => panic!("expected Expanded, got {other:?}"),
-        }
-    }
-
-    #[test]
     fn registered_templates_appear_in_commands() {
         let mut session = make_session();
         session.register_prompt_commands(&[
@@ -677,24 +591,5 @@ mod tests {
             t.source_info.as_ref().map(|si| si.path.as_path()),
             Some(std::path::Path::new("/home/u/.xylitol/prompts/greet.md"))
         );
-    }
-
-    #[test]
-    fn positional_args_still_substituted() {
-        let mut session = make_session();
-        session.register_prompt_commands(&[loader_template(
-            "multi",
-            "a=$1 b=$@ d=${2:-x}",
-            "/x/multi.md",
-        )]);
-        let result = session.process_prompt("/template:multi foo bar");
-        match result {
-            PromptResult::Expanded(text) => {
-                assert!(text.contains("a=foo"));
-                assert!(text.contains("b=foo bar"));
-                assert!(text.contains("d=bar"));
-            }
-            other => panic!("expected Expanded, got {other:?}"),
-        }
     }
 }
