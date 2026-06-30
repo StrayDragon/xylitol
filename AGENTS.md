@@ -8,58 +8,51 @@
 保留此托管块，便于 `llman sdd update` 刷新。
 <!-- LLMANSPEC:END -->
 
-# Repository Guidelines
+# 仓库级 Agent 指南
 
-## Project Structure & Module Organization
+用与用户相同的语言回复。`xylitol` 是 Rust 2024 单 crate 的 LLM 增强开发工具包，用 llman SDD 驱动开发。
 
-`xylitol` is a Rust 2024 CLI/agent toolkit structured as a thin orchestration core (`agent/`) over a large runtime domain (`infra/`), with swappable application surfaces (`app/`) speaking a single wire vocabulary (`protocol/`), plus an optional always-on server mode (`app/server/`). See `llmanspec/changes/archive/2026-06-26-c260-refactor-domain-architecture/design.md` for the layering invariants (HC-1…HC-6) enforced by `src/tests.rs::arch_guard`.
+## 工作原则
 
-Source under `src/`:
-- `domain/` — pure domain vocabulary + errors + serde types. Zero crate-internal deps.
-- `runtime_protocol/` — agent↔infra boundary traits (`XyModel`, `XyTool`, `XySessionStore`, `XyEventSink`, `XyBashExecutor`, `XyExportIo`, …) + signature-only types. Depends only on `domain/`.
-- `infra/` — **runtime domain**: `provider/` (LLM adapters, impl `XyModel`), `tools/` (built-in tool impls), `session/`, `sandbox/`, `process/`, `config/` (incl. `value.rs` secret resolution), `event/`, `hooks/`, `mcp/`, `skills/`, `resource/`, `trust/`, `git/`, `clipboard/`, `image/`, `tool_downloader/`, `export/` (`StdExportIo`).
-- `agent/` — **thin orchestration**: `runtime/` (ReAct loop `react.rs`, `event.rs`, `hooks.rs`, queue/retry/stdout_guard), `facade.rs` (single public entry for interactive layers), `session/`, `model/` (registry + manager), `tools/` (`ToolRegistry` only — impls live in infra), `compaction/`, `prompt/` (system/commands/templates/skills).
-- `protocol/` — client↔core wire vocabulary SSOT (`Command`/`Event` enums + transport helpers), transport-agnostic.
-- `app/` — **application surfaces** (clients and entry points) plus a cross-surface seam layer (`app/core/`): `cli/` (incl. `provider_guidance.rs` presentation text and `print.rs`, the CLI default render sub-mode), `rpc.rs` (stdio transport over `protocol/`), `tui/` (feature-gated terminal UI incl. `diff_review/`), `gui.rs` (future GUI placeholder), and `server/` (feature-gated always-on HTTP/WebSocket server, incl. `subcommand.rs` for Run/Install/Stop lifecycle); `app/core/composition.rs` (shared Agent construction — the HC-1 composition root) and `app/core/driver.rs` (`Driver` trait + `InProcessDriver`) are the privileged seams shared by all surfaces. Application surfaces depend only on `protocol/` + a `Driver`; only the composition roots (`cli/`, `server/`, `rpc.rs`, `core/composition.rs`) import `agent`/`infra` together, and `core/driver.rs` imports `agent::facade` only (never `infra`).
+- 从第一性原理出发，先看真实需求、代码事实、验证结果；目标不清先和用户对齐。
+- 代码是真值源，不是文档。分层与历史的真值在 `src/AGENTS.md` 与 `llmanspec/changes/archive/<变更>/design.md`。
+- 动代码前读相关代码，沿目录树遵循最近的 `AGENTS.md`。
+- 改动聚焦，不夹带无关重构。
+- 提交不加 co-author 归因，不在 commit/PR/说明里暴露 agent 身份。
 
-Integration and behavior tests live in `tests/`, with BDD feature files in `tests/features/`, shared harness code in `tests/support/`, and snapshot fixtures in `tests/support/snapshots/`. Architecture-layer guards live in `src/tests.rs::arch_guard`. Example config and schema files are in `configs/`; assets in `docs/assets/`; active and archived SDD specs are under `llmanspec/`.
+## 项目结构
 
-## Build, Test, and Development Commands
+单 crate 分层架构（`domain` → `runtime_protocol` → `agent`/`infra` → `protocol` → `app`），跨层依赖方向由 `src/tests.rs::arch_guard` 强制。分层地图与不变量见 `src/AGENTS.md`；应用面见 `src/app/AGENTS.md`。
 
-- `just setup`: install `prek` hooks.
-- `just fmt`: run `cargo fmt`.
-- `just lint`: run `cargo clippy`.
-- `just test`: run `cargo nextest run --profile ci` when available, otherwise `cargo test`.
-- `just qa` or `just ci`: run format check, Clippy, tests, docs, and all `prek` hooks.
-- `cargo run -- --help`: run the CLI locally and inspect available commands.
-- `cargo doc --no-deps --all-features`: verify API docs build.
+## 编码规则
 
-## Coding Style & Naming Conventions
+- 遵循 `rustfmt.toml`：Rust 2024、行宽 100、4 空格、field init shorthand、`?` 简写。TOML/YAML 用 2 空格（`.editorconfig`）。
+- snake_case 用于模块/文件/函数/变量，PascalCase 用于类型与 trait。
+- 模块边界贴合 `src/AGENTS.md` 的分层。
+- 单行能内联就别套 wrapper；一两行函数不两层封装。
+- 不加向后兼容 shim，除非明确要求；一次性改完旧调用点与格式。
 
-Follow `rustfmt.toml`: Rust 2024 edition, 4-space indentation, Unix newlines, max width 100, reordered imports/modules, field init shorthand, and `?` shorthand. TOML/YAML files use 2-space indentation per `.editorconfig`. Prefer clear module boundaries that match the existing `agent`, `infra`, and `app` layers. Use snake_case for Rust modules, files, functions, and variables; use PascalCase for types and traits.
+## Provider 支持范围（Pre-1.0.0）
 
-## Testing Guidelines
+只支持两类 provider API：**OpenAI 兼容**（Chat Completions）与 **Anthropic**（Messages）。其它 provider（Google、DeepSeek、NVIDIA、Groq、Mistral、OpenRouter 等）、OAuth 凭据存储、provider 专属 attribution header 在 1.0.0 前不支持。用户自定义 provider 仅当说 OpenAI/Anthropic 兼容 API 时才接受。给不支持 provider 加专属逻辑的改动，review 时拒绝。
 
-Use `cargo test` or `just test` for the full suite. BDD scenarios are defined in `tests/features/*.feature` and implemented in `tests/bdd.rs` with `rstest-bdd`; run targeted BDD tests with `cargo test bdd -- --test-threads=1` when ordering or shared state matters. Snapshot tests use `insta`; review snapshot changes before accepting them. Regression references belong in `tests/regression/` using `{issue_number}-{short-description}.rs`.
+## 命令
 
-## Commit & Pull Request Guidelines
+`just setup`（prek hooks）、`just fmt`、`just lint`（clippy）、`just test`（nextest 或 cargo test）、`just qa`/`just ci`（fmt+clippy+test+docs+prek）。本地探查 `cargo run -- --help`。API 文档 `cargo doc --no-deps --all-features`。
 
-History and hooks expect Conventional Commits, for example `feat(cli): ...`, `fix(agent): ...`, `refactor(config): ...`, `docs: ...`, or `chore: ...`. Before opening a PR, run `just qa`. PR descriptions should summarize behavior changes, list test coverage, link related issues or `llmanspec/changes/...` items, and include screenshots or terminal output for CLI-visible changes.
+## 提交与测试
 
-## Provider Support Scope (Pre-1.0.0)
+- 提交用 Conventional Commits：`feat(cli): …`/`fix(agent): …`/`refactor(config): …`/`docs: …`/`chore: …`。开 PR 前跑 `just qa`。
+- BDD 场景在 `tests/features/*.feature`，rstest-bdd 实现在 `tests/bdd.rs`；需顺序/共享状态时 `cargo test bdd -- --test-threads=1`。快照用 `insta`，接受前复核。回归放 `tests/regression/{issue号}-{简述}.rs`。优先扩既有测试文件，别为小特性新建。
+- 实现计划变更后同步 `llmanspec/` 工件（`/llman-sdd-*` 技能）。读代码优先 `rg`。
 
-Only two provider APIs are supported:
-- **OpenAI-compatible** (OpenAI Chat Completions format)
-- **Anthropic** (Anthropic Messages API)
+## Skills
 
-Other providers (Google, DeepSeek, NVIDIA, Groq, Mistral, OpenRouter, etc.), OAuth
-credential storage, and provider-specific attribution headers are **not supported
-until after 1.0.0**. Custom user-defined providers are accepted only if they
-speak OpenAI-compatible or Anthropic-compatible APIs.
+SDD 工作流见 `.agents/skills/llman-sdd-*`。架构与新增面相关：`write-surface`（新增应用面方法论）、`audit-dead-code`（死代码分诊）、`write-tui`（TUI 面改造）。
 
-Code changes that add provider-specific logic for unsupported providers should
-be rejected during review.
+## 指南更新放哪
 
-## Agent-Specific Instructions
-
-For new feature iterations or refactors, do not add backwards-compatibility shims unless explicitly requested; update old call sites and formats to the new approach in one pass. Keep llman SDD artifacts synchronized when implementing planned changes.
+- 影响几乎所有任务的硬规则：本根文件。
+- 只影响某目录的规则：最近的子目录 `AGENTS.md`（如 `src/AGENTS.md`、`src/app/AGENTS.md`、`src/app/tui/AGENTS.md`）。
+- 流程性 how-to：`.agents/skills/<name>/SKILL.md`，并在对应 `AGENTS.md` 引用。
+- 更新要聚焦、有代码事实支撑。
