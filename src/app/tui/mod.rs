@@ -53,7 +53,7 @@ enum Msg {
     /// A timed tick (drives the spinner animation at a steady cadence).
     Tick,
     /// An agent XyEvent for the current turn.
-    Xy(crate::domain::lifecycle::XyEvent),
+    Xy(Box<crate::domain::lifecycle::XyEvent>),
 }
 
 /// Run the inline TUI REPL against a constructed driver.
@@ -169,7 +169,7 @@ async fn repl_loop(
                         let main_tx = tx.clone();
                         tokio::spawn(async move {
                             while let Some(ev) = xy_rx.recv().await {
-                                if main_tx.send(Msg::Xy(ev)).is_err() {
+                                if main_tx.send(Msg::Xy(Box::new(ev))).is_err() {
                                     break;
                                 }
                             }
@@ -208,7 +208,7 @@ async fn repl_loop(
             }
             Msg::Xy(ev) => {
                 let is_end = app.turn_done(&ev);
-                let lines = app.handle_xy_event(ev);
+                let lines = app.handle_xy_event(*ev);
                 if !lines.is_empty() {
                     term.commit_to_scrollback(&lines)
                         .map_err(|e| format!("commit: {e}"))?;

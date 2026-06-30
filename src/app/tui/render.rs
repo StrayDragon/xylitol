@@ -12,6 +12,7 @@
 //! unit-tested without a real terminal.
 
 use ratatui::Frame;
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
@@ -52,7 +53,7 @@ pub fn draw_tail_frame(frame: &mut Frame, app: &TuiApp) {
     // can type at any time — even mid-stream (Enter interrupts + sends a new
     // prompt). Cursor always sits here, never on the streaming text.
     let prompt_text = format!("❯ {}", app.input_buffer());
-    let input_style = p.primary().bg(p.input_bg());
+    let input_style = Style::default().bg(p.input_bg());
     lines.push(Line::styled(prompt_text, input_style));
 
     // ── Bottom-align and render ───────────────────────────────────

@@ -18,7 +18,7 @@ use crate::app::tui::render;
 ///   [streaming assistant text]   ← only while a turn streams
 ///   [thinking/loading indicator] ← only while a turn streams (italic, dimmed)
 ///   [❯ input prompt]             ← always; background block
-const TAIL_HEIGHT: u16 = 4;
+const TAIL_HEIGHT: u16 = 3;
 
 /// Owns the inline terminal. Dropping restores raw mode + leaves scrollback.
 pub struct InlineTerminal {
@@ -43,6 +43,11 @@ impl InlineTerminal {
     }
 
     /// Commit finalized lines into the scrollback (never touched again).
+    ///
+    /// Renders each line cell by cell (instead of `Line::render`) to prevent
+    /// ratatui's CJK filler cells from appearing as visible spaces — when a
+    /// CJK character occupies 2 terminal columns, the second cell has an empty
+    /// symbol that `cell.symbol()` returns as `" "`, producing a visible space.
     pub fn commit_to_scrollback(&mut self, lines: &[Line]) -> io::Result<()> {
         if lines.is_empty() {
             return Ok(());
@@ -51,17 +56,36 @@ impl InlineTerminal {
         self.term.insert_before(height, |buf| {
             let area = buf.area;
             for (i, line) in lines.iter().enumerate() {
-                let y = i as u16;
-                if y >= area.height {
+                let y = area.y + i as u16;
+                if y >= area.bottom() {
                     break;
                 }
-                let row_area = ratatui::layout::Rect {
-                    x: area.x,
-                    y: area.y + y,
-                    width: area.width,
-                    height: 1,
-                };
-                line.clone().render(row_area, buf);
+                // Reset row, then render spans cell by cell.
+                for x in area.x..area.right() {
+                    buf[(x, y)].reset();
+                }
+                let mut x = area.x;
+                for span in &line.spans {
+                    for ch in span.content.chars() {
+                        let w = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                        if w == 0 || w > 2 {
+                            continue;
+                        }
+                        if x >= area.right() {
+                            break;
+                        }
+                        buf[(x, y)].set_char(ch);
+                        buf[(x, y)].set_style(span.style);
+                        x += 1;
+                        // For double-width (CJK), second column gets
+                        // empty symbol so terminal outputs nothing.
+                        if w == 2 && x < area.right() {
+                            buf[(x, y)].set_symbol("");
+                            buf[(x, y)].set_style(span.style);
+                            x += 1;
+                        }
+                    }
+                }
             }
         })?;
         Ok(())
@@ -76,11 +100,3 @@ impl Drop for InlineTerminal {
         let _ = crossterm::terminal::disable_raw_mode();
     }
 }
-
-// Re-export the ratatui Line rendering helper bound for use in commit. ratatui
-// 0.30.2 exposes `Line::render` via the Widget API; we rely on it above. The
-// import below keeps the trait in scope without an `extern`-style path.
-use ratatui::widgets::Widget;
-
-// `Widget::render` is called as `line.clone().render(area, buf)` in
-// `commit_to_scrollback`; the `use` above brings the trait into scope.
