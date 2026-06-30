@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "TBD - created by archiving change c25-add-agent-loop. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[28]{req_id,title,statement}:
+requirements[30]{req_id,title,statement}:
   r1,"execution-loop","System MUST implement a self-contained ReAct loop (XyRunner) that calls XyModel for generation and dispatches XyTool calls until completion or max_iterations."
   r2,"event-system","System MUST emit AgentEvent variants (TextDelta / ThinkingDelta / ToolCallStart / ToolCallEnd / StepComplete / Error) from XyRunner without any adk-core Event dependency."
   r3,"session-runtime",System MUST manage session history via XySession trait with InMemorySession as default backend.
@@ -22,7 +22,7 @@ requirements[28]{req_id,title,statement}:
   ar13,"output-guard-restore","Agent runtime MUST support stdout restore returning process.stdout.write to its original implementation, and write_raw_stdout that bypasses the takeover for direct output."
   ar14,"bdd-runtime-v4",BDD tests for OutputGuard stdout takeover and restore MUST all pass.
   ar15,"no-rloop-keyword","No source file under src/ MUST use the r#loop raw identifier; the ReAct loop module MUST be named runtime::react."
-  ar16,"agent-facade","System MUST provide a single public entry point agent::facade::Agent that app layers import for construction and turn execution; reaching into agent::runtime from app/ is a layering violation."
+  ar16,"agent-entry-direct","System MUST define ReActAgent (the ReAct-strategy driver) and Agent (the pluggable capability aggregate) directly under agent/ and re-export them from agent/mod.rs; app layers MUST import agent symbols from agent/mod (not from an agent::facade hub); the previous single facade re-export module MUST be removed."
   ar17,"sessionstore-port","System MUST define runtime_protocol::SessionStore with load_context (returns SessionContext), append, and exists methods — the minimal surface the ReAct loop and compaction call; SessionManager MUST implement it."
   ar18,"eventsink-port","System MUST define runtime_protocol::EventSink with emit_lifecycle; EventBus MUST implement it."
   ar19,"lifecyclehandler-in-runtime-protocol","The LifecycleHandler type alias for async event subscriptions MUST reside in runtime_protocol::event, not in domain::lifecycle, because it is a contract detail of the event runtime protocol rather than domain vocabulary."
@@ -31,7 +31,9 @@ requirements[28]{req_id,title,statement}:
   ar22,"runtime-mutable-slots","Agent MUST expose turn-level setters set_tools, set_hooks, add_hook, set_sandbox, and set_system_prompt that mutate session-backed capability state and take effect on the NEXT run call; an in-flight turn MUST be unaffected because run snapshots tools, prompt, cancel, and hooks at turn start, so the app or tui layer MAY switch configuration between turns (plan or edit mode) without locks."
   ar23,"hooks-invoked","The ReAct loop MUST consult AgentHooks at the tool-call boundary: before executing a tool it MUST run the before chain where any hook MAY deny the call with a reason that short-circuits to a tool-error result, and after a tool returns it MUST run the after chain where hooks MAY observe or transform the result; when no hooks are registered the loop MUST incur zero overhead. The previous self.hooks field was never read; this requirement wires it."
   ar24,"hook-chains-not-slots","AgentHooks MUST hold before, after, and transform_context as Vec of callbacks appendable at runtime via add_hook, not single Option slots; the steering and follow-up message callbacks MUST be separated into a distinct struct because they are message-injection, not tool-execution interception."
-scenarios[31]{req_id,id,given,when,then}:
+  ar25,"react-agent-naming","AgentLoop MUST be renamed ReActAgent to express it is the ReAct-strategy driver of the Agent capability aggregate; the hollow Agent shell (a single loop_ field with pure delegation methods and zero behavioral increment) MUST be removed and its methods merged into ReActAgent so there is exactly one type that drives a ReAct turn."
+  ar26,"facade-layer-removed","The agent::facade intermediate module MUST be removed; ReActAgent and Agent MUST be defined directly under agent/ (for example agent/core.rs or agent/mod.rs) with the builder/hooks/event re-export surface moved to agent/mod.rs; reaching into agent::runtime or agent::session internals from app/ remains a layering violation, but the single public hub MUST be agent/mod, not agent::facade."
+scenarios[34]{req_id,id,given,when,then}:
   r1,"react-loop",a mock XyModel returns text then tool call then final text,XyRunner executes,all events are emitted and loop terminates after tool response
   r1,"max-iterations",XyModel always returns tool calls,XyRunner reaches max_iterations,loop terminates with MaxIterationsReached error
   r2,"no-adk-events",agent is executing,events are emitted,"no adk_core::Event or adk_runner types appear in the event stream"
@@ -54,7 +56,7 @@ scenarios[31]{req_id,id,given,when,then}:
   ar13,restore,stdout is taken over,restore_stdout is called,is_stdout_taken_over returns false and original stdout is restored
   ar14,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all runtime-v4 scenarios pass"
   ar15,"grep-no-rloop",the source tree is grepped for r#loop,the grep runs,zero matches are found
-  ar16,"app-via-facade",an app/ file imports an Agent type from agent/,the import is inspected,"it imports agent::facade symbols (not agent::runtime)"
+  ar16,"app-imports-agent-mod",an app/ file imports an Agent type from agent/,the import is inspected,"it imports agent:: (mod-level) symbols, not agent::facade"
   ar17,"store-in-memory",a test constructs Agent with InMemoryStore,a turn runs,the test passes without creating a real SessionManager
   ar18,"sink-records-events",a test constructs Agent with RecordingSink,compaction triggers lifecycle events,the sink contains the expected events
   ar19,"handler-in-runtime-protocol",the source tree is inspected for LifecycleHandler,its definition is located,it is defined under src/runtime_protocol/event.rs
@@ -63,3 +65,6 @@ scenarios[31]{req_id,id,given,when,then}:
   ar22,"turn-snapshot",a turn N is in flight,"set_tools is called mid-turn",turn N still uses the old tool set and turn N+1 uses the new set with no lock
   ar23,"before-chain-denies",a before hook denies the bash tool,the loop reaches the bash call,"execute is skipped and a tool-error result is recorded for the LLM"
   ar24,"add-hook-runtime",an agent is already built,add_hook pushes a second before callback,both callbacks run on the next tool call in registration order
+  ar25,"react-agent-named",the source tree after the change,"rg '\\bAgentLoop\\b' src/ runs",zero matches remain and ReActAgent exists as the turn driver
+  ar25,"shell-removed",the hollow Agent shell existed as pure delegation,the change is applied,no Agent struct with a single loop_ field remains; its methods live on ReActAgent
+  ar26,"facade-gone","agent/facade.rs existed as the re-export hub",the source tree is inspected,"agent/facade.rs no longer exists and agent/mod.rs re-exports ReActAgent and Agent"
