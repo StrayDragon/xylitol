@@ -160,6 +160,12 @@ async fn repl_loop(
                             cancel.cancel();
                             app.end_stream();
                         }
+                        // Echo the user's prompt to scrollback BEFORE the reply
+                        // stream starts (修复 c340 §7 #3: user message was never
+                        // committed). input_buffer is already cleared by
+                        // take_input, so no double-display in the tail.
+                        term.commit_to_scrollback(&[render::user_message_line(&prompt)])
+                            .map_err(|e| format!("commit user msg: {e}"))?;
                         let stream = driver.run(&prompt).await;
                         app.start_stream();
                         // Bridge the agent's async XyEvent stream into the main
