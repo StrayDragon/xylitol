@@ -26,7 +26,7 @@ use crate::agent::facade::{Agent, XyEvent};
 use crate::agent::model::registry::ModelRegistry;
 use crate::app::core::composition::{BuildAgentOptions, build_agent};
 use crate::domain::types::{ThinkingLevel, XyModelMeta};
-use crate::infra::sandbox::XySandboxEngine;
+use crate::infra::permission::XyPermission;
 use crate::infra::session::SessionManager;
 use crate::protocol::{Command, Event};
 use crate::runtime_protocol::XySessionStore;
@@ -50,7 +50,7 @@ struct RpcState {
     max_iterations: u32,
     compaction_threshold: f64,
     compaction_settings: CompactionSettings,
-    sandbox_engine: Option<Arc<dyn XySandboxEngine>>,
+    permission: Option<Arc<dyn XyPermission>>,
     /// Cancellation token for the active prompt loop.
     active_cancel: Option<CancellationToken>,
     /// Cached Agent, reused across commands until a rebuild trigger fires.
@@ -75,7 +75,7 @@ impl RpcState {
             compaction_threshold: self.compaction_threshold,
             cwd: self.cwd.clone(),
             compaction_settings: Some(self.compaction_settings.clone()),
-            sandbox_engine: self.sandbox_engine.clone(),
+            permission: self.permission.clone(),
         })?;
         agent.session_mut().set_thinking_level(self.thinking_level);
         if let Some(ref mid) = self.current_model_id {
@@ -159,7 +159,7 @@ pub async fn run(
     cwd: String,
     compaction_settings: Option<CompactionSettings>,
     session_id: Option<String>,
-    sandbox_engine: Option<Arc<dyn XySandboxEngine>>,
+    permission: Option<Arc<dyn XyPermission>>,
 ) -> Result<(), String> {
     let state = Arc::new(Mutex::new(RpcState {
         model_registry,
@@ -174,7 +174,7 @@ pub async fn run(
         max_iterations,
         compaction_threshold,
         compaction_settings: compaction_settings.unwrap_or_default(),
-        sandbox_engine,
+        permission,
         active_cancel: None,
         cached_agent: None,
         cache_session_id: None,
@@ -705,7 +705,7 @@ mod tests {
             max_iterations: 50,
             compaction_threshold: 0.8,
             compaction_settings: CompactionSettings::default(),
-            sandbox_engine: None,
+            permission: None,
             active_cancel: None,
             cached_agent: None,
             cache_session_id: None,

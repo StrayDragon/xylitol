@@ -20,26 +20,20 @@ execution:
 
 security:
   enabled: true
-  bash:
-    blocked_commands:
-      - "rm -rf /"
-      - ":(){ :|:& };:"
-    allowed_directories:
-      - "."
-      - "/tmp"
-  filesystem:
-    allowed_globs:
-      - "**/*"
-    blocked_globs:
-      - "**/.env"
-      - "**/secrets/**"
-  network:
-    allowed_domains:
-      - "api.anthropic.com"
-      - "api.openai.com"
-    blocked_domains: []
-  tool_allowlist: []
-  mcp_allowlist: []
+  permission:
+    enabled: false
+    backend: glob  # glob (default) | landlock (Linux ≥5.13) | macos
+    filesystem:
+      read_allowed: []   # non-empty = default-deny for unlisted paths
+      write_allowed: []
+      write_denied:
+        - "**/.env"
+        - "**/secrets/**"
+    network:
+      allowed_domains: []  # non-empty = default-deny for unlisted domains
+      denied_domains: []
+    process:
+      allowed_paths: []
 
 tools:
   allowlist: []

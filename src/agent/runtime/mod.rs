@@ -7,10 +7,10 @@
 
 pub mod event;
 pub mod hooks;
+pub(crate) mod permission_router;
 pub mod queue;
 pub mod react;
 pub mod retry;
-pub(crate) mod sandbox_router;
 
 // Public surface of the loop (XyEvent/XyEventStream/AgentLoop/AgentHooks are `pub`).
 pub use crate::domain::lifecycle::XyEvent;

@@ -3,16 +3,16 @@
 use std::sync::Arc;
 
 use crate::agent::compaction::CompactionSettings;
-use crate::agent::facade::Agent;
+use crate::agent::facade::{Agent, AgentBuilder};
 use crate::agent::model::registry::ModelRegistry;
-use crate::agent::tools::ToolRegistry;
+use crate::agent::tools::ToolSet;
 use crate::infra::bash_exec::InfraBashExecutor;
 use crate::infra::event::EventBus;
 use crate::infra::export::StdExportIo;
-use crate::infra::sandbox;
+use crate::infra::permission;
 use crate::infra::session::SessionManager;
 use crate::runtime_protocol::{
-    XyBashExecutor, XyEventSink, XyExportIo, XyModelBuilder, XySandboxEngine, XySessionStore,
+    XyBashExecutor, XyEventSink, XyExportIo, XyModelBuilder, XyPermission, XySessionStore,
 };
 
 /// Options for [`build_agent`].
@@ -25,7 +25,7 @@ pub struct BuildAgentOptions {
     pub compaction_threshold: f64,
     pub cwd: String,
     pub compaction_settings: Option<CompactionSettings>,
-    pub sandbox_engine: Option<Arc<dyn XySandboxEngine>>,
+    pub permission: Option<Arc<dyn XyPermission>>,
 }
 
 impl Default for BuildAgentOptions {
@@ -41,7 +41,7 @@ impl Default for BuildAgentOptions {
             compaction_threshold: 0.8,
             cwd: ".".into(),
             compaction_settings: None,
-            sandbox_engine: None,
+            permission: None,
         }
     }
 }
@@ -53,7 +53,6 @@ impl Default for BuildAgentOptions {
 /// (`SessionManager`, `EventBus`, `InfraBashExecutor`, `StdExportIo`) into the
 /// agent without letting `agent/` know about `infra/` types (HC-1/HC-2).
 pub fn build_agent(options: BuildAgentOptions) -> Result<Agent, String> {
-    let tool_registry = ToolRegistry::from_tools(crate::infra::tools::default_tools());
     let sessions_dir = SessionManager::default_dir();
     std::fs::create_dir_all(&sessions_dir).map_err(|e| format!("create sessions dir: {e}"))?;
     let session_mgr = SessionManager::new(sessions_dir);
@@ -64,25 +63,30 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<Agent, String> {
     let export_io: Arc<dyn XyExportIo> = Arc::new(StdExportIo::new());
 
     let model_builder: XyModelBuilder = Arc::new(crate::infra::provider::factory::build_provider);
-    let sandbox = options.sandbox_engine.unwrap_or_else(sandbox::noop_engine);
+    let permission = options
+        .permission
+        .unwrap_or_else(permission::allow_all_permission);
 
-    let agent = Agent::with_ports(
+    let mut builder = AgentBuilder::new(
         options.model_registry,
-        tool_registry,
+        model_builder,
         store,
         sink,
-        options.system_prompt,
-        options.context_files,
-        options.append_system_prompt,
-        options.max_iterations,
-        options.compaction_threshold,
-        options.cwd,
-        options.compaction_settings,
-        model_builder,
-        sandbox,
-        bash_executor,
-        export_io,
-    );
+        permission,
+    )
+    .tools(ToolSet::from_iter(crate::infra::tools::default_tools()))
+    .context_files(options.context_files)
+    .append_system_prompt(options.append_system_prompt)
+    .max_iterations(options.max_iterations)
+    .compaction_threshold(options.compaction_threshold)
+    .compaction_settings(options.compaction_settings)
+    .cwd(options.cwd)
+    .bash(bash_executor)
+    .export_io(export_io);
 
-    Ok(agent)
+    if let Some(sp) = options.system_prompt {
+        builder = builder.system_prompt(sp);
+    }
+
+    builder.build()
 }

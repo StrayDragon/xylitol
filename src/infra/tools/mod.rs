@@ -25,8 +25,8 @@ use crate::runtime_protocol::XyTool;
 /// Return all built-in tools as trait objects.
 ///
 /// The composition root (`app::cli`) passes this list to
-/// `ToolRegistry::new()` + `register()`. The agent never constructs concrete
-/// tool types; infra never names the agent's `ToolRegistry`.
+/// `ToolSet::new()` + `register()`. The agent never constructs concrete
+/// tool types; infra never names the agent's `ToolSet`.
 pub fn default_tools() -> Vec<Arc<dyn XyTool>> {
     let mq = Arc::new(mutation::FileMutationQueue::new());
     vec![

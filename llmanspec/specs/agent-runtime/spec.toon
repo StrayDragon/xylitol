@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "TBD - created by archiving change c25-add-agent-loop. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[24]{req_id,title,statement}:
+requirements[28]{req_id,title,statement}:
   r1,"execution-loop","System MUST implement a self-contained ReAct loop (XyRunner) that calls XyModel for generation and dispatches XyTool calls until completion or max_iterations."
   r2,"event-system","System MUST emit AgentEvent variants (TextDelta / ThinkingDelta / ToolCallStart / ToolCallEnd / StepComplete / Error) from XyRunner without any adk-core Event dependency."
   r3,"session-runtime",System MUST manage session history via XySession trait with InMemorySession as default backend.
@@ -12,7 +12,7 @@ requirements[24]{req_id,title,statement}:
   ar1,"thin-agent-loop","The agent/ layer MUST contain only the ReAct loop (runtime/react.rs), hook cut-points (runtime/hooks.rs), event types (runtime/event.rs), and orchestration state (current model/tool selection); it MUST NOT inline prompt formatting, bash execution logic, or output guarding logic in the loop file."
   ar2,统一事件输出,Agent runtime MUST emit XyEvent variants from the ReAct loop; the legacy AgentEvent enum MUST be removed.
   ar3,"tool-execution","Agent runtime MUST execute all tool calls from a single model response before the next model call, supporting both sequential and parallel execution modes."
-  ar4,端口类型统一命名,"Agent::new and Agent::with_ports MUST accept Arc<dyn XySessionStore> and Arc<dyn XyEventSink> using the Xy-prefixed port names."
+  ar4,"ports-via-builder","Agent construction MUST go through an AgentBuilder that takes the minimal required ports (ModelRegistry, model builder, Arc<dyn XySessionStore>, Arc<dyn XyEventSink>, Arc<dyn XyPermission>) in its constructor and adds every other capability via consuming builder methods with defaults; the Agent::new(session) and Agent::with_ports(...) positional constructors MUST be removed."
   ar5,统一事件流类型,Agent runtime MUST expose the loop as an async Stream<XyEvent> for consumer layers via XyEventStream.
   ar8,"session-cwd","Agent runtime MUST validate session working directory exists on session creation and import, returning an error with the missing path when CWD is not accessible."
   ar9,diagnostics,"Agent runtime MUST collect non-fatal diagnostics (info/warning/error) during session creation covering: missing API keys, unknown model references, extension load failures, and CWD issues."
@@ -27,7 +27,11 @@ requirements[24]{req_id,title,statement}:
   ar18,"eventsink-port","System MUST define runtime_protocol::EventSink with emit_lifecycle; EventBus MUST implement it."
   ar19,"lifecyclehandler-in-runtime-protocol","The LifecycleHandler type alias for async event subscriptions MUST reside in runtime_protocol::event, not in domain::lifecycle, because it is a contract detail of the event runtime protocol rather than domain vocabulary."
   ar20,事件映射自动化,"System MUST provide From<&XyEvent> for protocol::Event and TryFrom<&protocol::Event> for XyEvent to replace hand-written proto_to_agent conversions."
-scenarios[27]{req_id,id,given,when,then}:
+  ar21,"agent-builder","System MUST provide an AgentBuilder in agent/ that depends only on runtime_protocol port trait objects and plain data (no concrete infra types, HC-1), defaults tools to an empty ToolSet and bash_executor and export_io to None so a conversation-only agent carries no file or bash or export capability, provides consuming methods tools, system_prompt, hooks, bash, export_io, sandbox, context_files, compaction, max_iterations, and a build method returning Result<Agent, String>."
+  ar22,"runtime-mutable-slots","Agent MUST expose turn-level setters set_tools, set_hooks, add_hook, set_sandbox, and set_system_prompt that mutate session-backed capability state and take effect on the NEXT run call; an in-flight turn MUST be unaffected because run snapshots tools, prompt, cancel, and hooks at turn start, so the app or tui layer MAY switch configuration between turns (plan or edit mode) without locks."
+  ar23,"hooks-invoked","The ReAct loop MUST consult AgentHooks at the tool-call boundary: before executing a tool it MUST run the before chain where any hook MAY deny the call with a reason that short-circuits to a tool-error result, and after a tool returns it MUST run the after chain where hooks MAY observe or transform the result; when no hooks are registered the loop MUST incur zero overhead. The previous self.hooks field was never read; this requirement wires it."
+  ar24,"hook-chains-not-slots","AgentHooks MUST hold before, after, and transform_context as Vec of callbacks appendable at runtime via add_hook, not single Option slots; the steering and follow-up message callbacks MUST be separated into a distinct struct because they are message-injection, not tool-execution interception."
+scenarios[31]{req_id,id,given,when,then}:
   r1,"react-loop",a mock XyModel returns text then tool call then final text,XyRunner executes,all events are emitted and loop terminates after tool response
   r1,"max-iterations",XyModel always returns tool calls,XyRunner reaches max_iterations,loop terminates with MaxIterationsReached error
   r2,"no-adk-events",agent is executing,events are emitted,"no adk_core::Event or adk_runner types appear in the event stream"
@@ -38,7 +42,7 @@ scenarios[27]{req_id,id,given,when,then}:
   ar1,"loop-file-thin",runtime/react.rs is inspected,it is read,it contains only the ReAct algorithm and delegates formatting and execution
   ar2,"no-agent-event",the codebase is searched for AgentEvent enum,"rg \"enum AgentEvent\"",zero matches remain
   ar3,"parallel-tools",model returns 3 tool calls with parallel execution mode,tools execute concurrently,all results are appended before next model call
-  ar4,"ports-renamed",Agent facade signature is inspected,the change is applied,parameters use XySessionStore and XyEventSink
+  ar4,"builder-replaces-ctors","Agent::new and Agent::with_ports existed",the change is applied,only AgentBuilder constructs an Agent and the old positional constructors are gone
   ar5,"stream-xy-event",a consumer polls the agent runtime stream,the loop emits events,each item is XyEvent
   ar8,"cwd-exists",a session has cwd /home/user/project and directory exists,session is loaded,no error returned
   ar8,"cwd-missing",a session has cwd /nonexistent/path,session is loaded,error message includes the missing path
@@ -55,3 +59,7 @@ scenarios[27]{req_id,id,given,when,then}:
   ar18,"sink-records-events",a test constructs Agent with RecordingSink,compaction triggers lifecycle events,the sink contains the expected events
   ar19,"handler-in-runtime-protocol",the source tree is inspected for LifecycleHandler,its definition is located,it is defined under src/runtime_protocol/event.rs
   ar20,"auto-mapping",a protocol Event is converted back to domain,TryFrom is used,the conversion succeeds for all supported variants
+  ar21,"builder-minimal-core","a conversation-only agent is desired",AgentBuilder is called with ports and a system prompt only,the agent runs turns with an empty tool set and no bash or export capability and never names a concrete infra type
+  ar22,"turn-snapshot",a turn N is in flight,"set_tools is called mid-turn",turn N still uses the old tool set and turn N+1 uses the new set with no lock
+  ar23,"before-chain-denies",a before hook denies the bash tool,the loop reaches the bash call,"execute is skipped and a tool-error result is recorded for the LLM"
+  ar24,"add-hook-runtime",an agent is already built,add_hook pushes a second before callback,both callbacks run on the next tool call in registration order

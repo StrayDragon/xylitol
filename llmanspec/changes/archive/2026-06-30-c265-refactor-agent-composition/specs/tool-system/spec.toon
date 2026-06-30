@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,t12,"toolset-unit-ops","The tool container ToolSet MUST provide build-time unit operations only: empty, from_iter, plus, remove, merge, and retain with a predicate; it MUST NOT provide a runtime allow or exclude filter API or a wrap_with_hooks method. get by name and iteration over the final set remain available.",null,null,null
+  modify_requirement,t18,"toolset-in-agent-final","The ToolSet, renamed from ToolRegistry, MUST remain in agent/ as build-time-final orchestration state holding Vec of Arc of dyn XyTool; concrete tools are injected at the composition root from infra::tools::default_tools and composed via ToolSet unit operations; once built, the set handed to a turn is final with no runtime filtering.",null,null,null
+  add_requirement,t20,"no-dead-filter","The previous runtime filter API (set_allowed_tool_names, set_excluded_tool_names, list_filtered, the builtins no-op alias, and AgentSession::set_active_tools) MUST be removed; the ReAct loop MUST consume the final tool set directly. The previous loop called list and bypassed filtering; removing the filter API eliminates this bypass class of bug.",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  t12,"toolset-unit-ops","a ToolSet is constructed","plus, remove, merge, and retain are chained","the resulting set reflects only the unit operations applied with no runtime filter state"
+  t18,"toolset-in-agent-final","the tool container type is located","its module path is checked","it is agent::tools as ToolSet and a turn receives the final set"
+  t20,"loop-uses-final-set","the loop source is inspected","the change is applied","no set_allowed or list_filtered symbols exist and the loop iterates the ToolSet directly"

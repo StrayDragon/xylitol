@@ -1,7 +1,7 @@
 //! Policy matching utilities for sandbox access control.
 //!
 //! Provides glob-based path matching and wildcard domain matching used by
-//! [`FallbackBackend`](super::FallbackBackend).
+//! [`GlobPolicy`](super::GlobPolicy).
 
 /// Check whether `path` matches any of the given glob patterns.
 ///

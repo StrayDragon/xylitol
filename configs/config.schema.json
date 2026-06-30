@@ -12,9 +12,10 @@
       }
     },
     "compaction": {
+      "description": "YAML loading-phase compaction config. Mapped to runtime\n`CompactionSettings` (in `agent::compaction::settings`)\nvia `From<XyCompactionSettingsConfig>`.",
       "anyOf": [
         {
-          "$ref": "#/$defs/CompactionConfig"
+          "$ref": "#/$defs/XyCompactionSettingsConfig"
         },
         {
           "type": "null"
@@ -106,28 +107,8 @@
     "security": {
       "$ref": "#/$defs/SecurityConfig",
       "default": {
-        "bash": {
-          "allowed_paths": [],
-          "forbidden_patterns": [],
-          "timeout_secs": 120
-        },
         "enabled": false,
-        "filesystem": {
-          "allowed_patterns": [],
-          "forbidden_patterns": []
-        },
-        "mcp_allowlist": [],
-        "network": {
-          "allowed_domains": [],
-          "blocked_domains": []
-        },
-        "resource_limits": {
-          "max_cpu_percent": 80,
-          "max_disk_mb": 1024,
-          "max_memory_mb": 4096,
-          "max_subprocesses": 16
-        },
-        "tool_allowlist": []
+        "permission": null
       }
     },
     "session": {
@@ -222,40 +203,6 @@
         }
       }
     },
-    "BashSecurityConfig": {
-      "type": "object",
-      "properties": {
-        "allowed_paths": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        },
-        "forbidden_patterns": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        },
-        "timeout_secs": {
-          "type": "integer",
-          "format": "uint64",
-          "default": 120,
-          "minimum": 0
-        }
-      }
-    },
-    "CompactionConfig": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": false
-        }
-      }
-    },
     "ExecutionConfig": {
       "type": "object",
       "properties": {
@@ -282,25 +229,6 @@
             "null"
           ],
           "default": null
-        }
-      }
-    },
-    "FilesystemSecurityConfig": {
-      "type": "object",
-      "properties": {
-        "allowed_patterns": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        },
-        "forbidden_patterns": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
         }
       }
     },
@@ -437,9 +365,17 @@
       ]
     },
     "ModelEntry": {
-      "description": "A single model alias entry.\n\nReferences [`ModelKind`](crate::agent::model::ModelKind) for the provider;\nthe kind's serde representation is the YAML wire format.",
+      "description": "A single model alias entry.\n\nReferences [`XyModelKind`](crate::domain::model::XyModelKind) for the provider;\nthe kind's serde representation is the YAML wire format.",
       "type": "object",
       "properties": {
+        "api": {
+          "description": "Optional adapter API type, e.g. `openai-responses` or `openai-completions`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
         "base_url": {
           "description": "Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.",
           "type": [
@@ -467,7 +403,7 @@
           "type": "string"
         },
         "provider": {
-          "$ref": "#/$defs/ModelKind"
+          "$ref": "#/$defs/XyModelKind"
         },
         "thinking": {
           "description": "Whether this model supports thinking/reasoning. Default: true for all.",
@@ -480,16 +416,8 @@
         "model"
       ]
     },
-    "ModelKind": {
-      "description": "Supported LLM providers.",
-      "type": "string",
-      "enum": [
-        "openai",
-        "anthropic"
-      ]
-    },
     "ModelsConfig": {
-      "description": "Top-level model configuration section.\nSplit from agent-level [`ModelConfig`](crate::agent::model::ModelConfig) —\nthis is YAML-facing; [`ModelEntry`] aliases resolve into runtime config.",
+      "description": "Top-level model configuration section.\nSplit from agent-level [`XyModelConfig`](crate::domain::model::XyModelConfig) —\nthis is YAML-facing; [`ModelEntry`] aliases resolve into runtime config.",
       "type": "object",
       "properties": {
         "default_model": {
@@ -510,17 +438,95 @@
         }
       }
     },
-    "NetworkSecurityConfig": {
+    "PatchApplyConfig": {
       "type": "object",
       "properties": {
-        "allowed_domains": {
+        "auto_apply": {
+          "description": "Whether to automatically apply patches without prompting.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "PermissionBackend": {
+      "oneOf": [
+        {
+          "description": "Pure application-level glob pattern matching (default).",
+          "type": "string",
+          "const": "glob"
+        },
+        {
+          "description": "Linux Landlock LSM (requires kernel >=5.13).",
+          "type": "string",
+          "const": "landlock"
+        },
+        {
+          "description": "macOS sandbox-init / Seatbelt.",
+          "type": "string",
+          "const": "mac_os"
+        }
+      ]
+    },
+    "PermissionConfig": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "description": "Backend selection. \"glob\" (app-level) is always available;\n\"landlock\" requires Linux >=5.13; \"macos\" requires macOS.\nDefault: \"glob\".",
+          "$ref": "#/$defs/PermissionBackend",
+          "default": "glob"
+        },
+        "enabled": {
+          "description": "Master toggle.",
+          "type": "boolean",
+          "default": false
+        },
+        "filesystem": {
+          "description": "Filesystem permission rules.",
+          "$ref": "#/$defs/PermissionFilesystemConfig",
+          "default": {
+            "read_allowed": [],
+            "write_allowed": [],
+            "write_denied": []
+          }
+        },
+        "network": {
+          "description": "Network permission rules (applied to bash URLs).",
+          "$ref": "#/$defs/PermissionNetworkConfig",
+          "default": {
+            "allowed_domains": [],
+            "denied_domains": []
+          }
+        },
+        "process": {
+          "description": "Process execution rules.",
+          "$ref": "#/$defs/PermissionProcessConfig",
+          "default": {
+            "allowed_paths": []
+          }
+        }
+      }
+    },
+    "PermissionFilesystemConfig": {
+      "type": "object",
+      "properties": {
+        "read_allowed": {
+          "description": "Paths allowed for read. Empty = allow all.",
           "type": "array",
           "default": [],
           "items": {
             "type": "string"
           }
         },
-        "blocked_domains": {
+        "write_allowed": {
+          "description": "Paths denied for write. Write always denied when read_allowed is set\nand path is not in read_allowed (default-deny).",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "write_denied": {
+          "description": "Paths explicitly denied for write (takes precedence over allowed).",
           "type": "array",
           "default": [],
           "items": {
@@ -529,13 +535,37 @@
         }
       }
     },
-    "PatchApplyConfig": {
+    "PermissionNetworkConfig": {
       "type": "object",
       "properties": {
-        "auto_apply": {
-          "description": "Whether to automatically apply patches without prompting.",
-          "type": "boolean",
-          "default": false
+        "allowed_domains": {
+          "description": "Domains allowed for network requests. Empty = allow all.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "denied_domains": {
+          "description": "Domains explicitly denied.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "PermissionProcessConfig": {
+      "type": "object",
+      "properties": {
+        "allowed_paths": {
+          "description": "Paths where subprocess execution is allowed. Empty = allow all.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -718,37 +748,6 @@
         }
       }
     },
-    "ResourceLimits": {
-      "type": "object",
-      "properties": {
-        "max_cpu_percent": {
-          "type": "integer",
-          "format": "uint8",
-          "default": 80,
-          "maximum": 255,
-          "minimum": 0
-        },
-        "max_disk_mb": {
-          "type": "integer",
-          "format": "uint64",
-          "default": 1024,
-          "minimum": 0
-        },
-        "max_memory_mb": {
-          "type": "integer",
-          "format": "uint64",
-          "default": 4096,
-          "minimum": 0
-        },
-        "max_subprocesses": {
-          "type": "integer",
-          "format": "uint16",
-          "default": 16,
-          "maximum": 65535,
-          "minimum": 0
-        }
-      }
-    },
     "ReviewConfig": {
       "type": "object",
       "properties": {
@@ -769,46 +768,22 @@
     "SecurityConfig": {
       "type": "object",
       "properties": {
-        "bash": {
-          "$ref": "#/$defs/BashSecurityConfig"
-        },
         "enabled": {
           "description": "Master toggle — enabled by default for safety.",
           "type": "boolean",
           "default": true
         },
-        "filesystem": {
-          "$ref": "#/$defs/FilesystemSecurityConfig"
-        },
-        "mcp_allowlist": {
-          "description": "MCP servers/tools allowed (entries: \"server_name\" or \"server:tool\").\nEmpty = deny all MCP tools when security is enabled.",
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        },
-        "network": {
-          "$ref": "#/$defs/NetworkSecurityConfig"
-        },
-        "resource_limits": {
-          "$ref": "#/$defs/ResourceLimits"
-        },
-        "tool_allowlist": {
-          "description": "Tools explicitly allowed (empty = allow all not in blocklist).",
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
+        "permission": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PermissionConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
-      },
-      "required": [
-        "bash",
-        "filesystem",
-        "network",
-        "resource_limits"
-      ]
+      }
     },
     "SessionConfig": {
       "type": "object",
@@ -919,6 +894,43 @@
           "minimum": 0
         }
       }
+    },
+    "XyCompactionSettingsConfig": {
+      "description": "Compaction settings as loaded from YAML/JSON files (all-optional form).\n\nMapped to the runtime `CompactionSettings` (in `agent::compaction::settings`)\nvia `From<XyCompactionSettingsConfig>`.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "keepRecentTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "reserveTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        }
+      }
+    },
+    "XyModelKind": {
+      "description": "Supported LLM provider kinds.",
+      "type": "string",
+      "enum": [
+        "openai",
+        "anthropic",
+        "fake"
+      ]
     }
   }
 }

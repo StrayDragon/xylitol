@@ -1,13 +1,13 @@
-//! Sandbox routing — extract the sandbox-relevant target from tool arguments.
+//! Permission routing — extract the permission-relevant target from tool arguments.
 //!
-//! The ReAct loop calls [`sandbox_target`] before executing a tool so the
-//! sandbox engine can veto dangerous paths/domains. Kept separate from the
+//! The ReAct loop calls [`permission_target`] before executing a tool so the
+//! permission port can veto dangerous paths/domains. Kept separate from the
 //! loop so the loop file stays focused on the turn algorithm.
 
 use serde_json::Value;
 
-/// Extract the sandbox-relevant target (path or domain) from tool arguments.
-pub(crate) fn sandbox_target(name: &str, args: &Value) -> String {
+/// Extract the permission-relevant target (path or domain) from tool arguments.
+pub(crate) fn permission_target(name: &str, args: &Value) -> String {
     match name {
         "read" | "write" | "edit" => args
             .get("path")

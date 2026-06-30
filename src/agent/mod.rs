@@ -1,3 +1,4 @@
+pub mod builder;
 pub mod compaction;
 pub mod facade;
 pub mod model;
