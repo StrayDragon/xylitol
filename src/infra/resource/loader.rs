@@ -497,7 +497,7 @@ impl DefaultResourceLoader {
 
 // XyResourceLoader port impl. The trait currently has no `dyn` consumer in
 // production (the loader-based prompt assembly path was never wired into
-// AgentSession.prompt_opts); concrete callers in interactive/resources.rs
+// Agent.prompt_opts); concrete callers in interactive/resources.rs
 // use inherent methods directly. Kept as a port abstraction for the
 // prompt-assembly wiring planned in c280 (session commands / system prompt).
 #[allow(dead_code)]

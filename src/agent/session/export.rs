@@ -2,11 +2,88 @@
 //!
 //! Pure transformations over a loaded session's entries. No file mutation
 //! outside the injected [`XyExportIo`] port; import creates a brand-new session.
+//!
+//! [`SessionExporter`] is the stateful collaborator holding the [`XyExportIo`]
+//! port; the free functions below are the pure rendering/parsing layer.
+
+use std::sync::Arc;
 
 use serde_json::Value;
 
 use crate::domain::session_types::{MessageEntry, SessionEntry};
 use crate::domain::text::xml_escape;
+use crate::runtime_protocol::{XyExportIo, XySessionStore};
+
+/// Stateful export/import collaborator — owns the [`XyExportIo`] port.
+///
+/// The session store is borrowed per call (passed as `&dyn XySessionStore` +
+/// session id) so the [`crate::agent::session::Agent`] remains the single
+/// holder of session context (design §4.1).
+pub struct SessionExporter {
+    io: Option<Arc<dyn XyExportIo>>,
+}
+
+impl SessionExporter {
+    /// Construct with an optional export I/O port (`None` ⇒ export unavailable).
+    pub fn new(io: Option<Arc<dyn XyExportIo>>) -> Self {
+        Self { io }
+    }
+
+    /// Export a session's entries to an HTML file. Returns the written path.
+    pub async fn export_to_html(
+        &self,
+        store: &dyn XySessionStore,
+        session_id: &str,
+        path: &std::path::Path,
+    ) -> Result<std::path::PathBuf, String> {
+        let io = self.io.as_ref().ok_or("export io not configured")?;
+        let entries = store.load_entries(session_id).await?;
+        let html = render_html(session_id, &entries);
+        io.write_text(path, &html).await?;
+        Ok(path.to_path_buf())
+    }
+
+    /// Export a session's entries as JSONL. Returns the written path.
+    pub async fn export_to_jsonl(
+        &self,
+        store: &dyn XySessionStore,
+        session_id: &str,
+        path: &std::path::Path,
+    ) -> Result<std::path::PathBuf, String> {
+        let io = self.io.as_ref().ok_or("export io not configured")?;
+        let entries = store.load_entries(session_id).await?;
+        let jsonl = render_jsonl(&entries)?;
+        io.write_text(path, &jsonl).await?;
+        Ok(path.to_path_buf())
+    }
+
+    /// Import a JSONL file into a brand-new session. Returns the new session id.
+    ///
+    /// The new session id is derived from the source header (re-used) to keep
+    /// identities stable across export/import; the file lands without
+    /// overwriting an existing session.
+    pub async fn import_from_jsonl(
+        &self,
+        store: &dyn XySessionStore,
+        path: &std::path::Path,
+    ) -> Result<String, String> {
+        let io = self.io.as_ref().ok_or("export io not configured")?;
+        let bytes = io.read_bytes(path).await?;
+        let entries = parse_jsonl(&bytes)?;
+        let new_id = match entries.first() {
+            Some(SessionEntry::Header(h)) => h.id.clone(),
+            _ => return Err("import: missing header".into()),
+        };
+        if store.exists(&new_id).await {
+            return Err(format!("session already exists: {new_id}"));
+        }
+        for entry in &entries {
+            store.append_session_entry(&new_id, entry).await?;
+        }
+        Ok(new_id)
+    }
+}
+
 
 /// Render a session's entries to a standalone HTML document.
 ///
@@ -147,6 +224,12 @@ pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, String> {
 ///
 /// The actual gist upload is intentionally not implemented here (requires HTTP
 /// + token management); this stub keeps the call site stable for future wiring.
+///
+/// NOTE: pre-wired for the `/share` command (c320 removed the last production
+/// caller `Agent::share_as_gist`). ceiling: until `/share` dispatch routes
+/// here this has no production caller (test-only). upgrade: wire `/share` to
+/// call this, or remove it if gist sharing is dropped from scope.
+#[allow(dead_code)]
 pub fn share_guidance_message(_path: &std::path::Path) -> String {
     "Sharing as a GitHub gist requires a token. Set GITHUB_GIST_TOKEN (or the \
      equivalent in your config), then re-run. \

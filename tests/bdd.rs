@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use xylitol::agent::compaction::should_compact;
-use xylitol::agent::runtime::{AgentLoop, XyEvent};
-use xylitol::agent::session::{AgentSession, ContextUsage, ModelRegistry, get_context_usage};
+use xylitol::agent::runtime::{ReActAgent, XyEvent};
+use xylitol::agent::session::{Agent, ContextUsage, ModelRegistry, get_context_usage};
 use xylitol::agent::tools::ToolSet;
 use xylitol::domain::model::{XyModelConfig, XyModelKind};
 use xylitol::domain::types::{ThinkingLevel, XyModelMeta};
@@ -162,14 +162,14 @@ fn check_or_contains(haystack: &str, or_clause: &str) -> bool {
 }
 
 /// Borrow result as &str — callers must keep the Ref alive
-fn make_agent(agent: &AgentState) -> AgentLoop {
+fn make_agent(agent: &AgentState) -> ReActAgent {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     use std::sync::Arc;
     let store: Arc<dyn xylitol::runtime_protocol::XySessionStore> = Arc::new(mgr.clone());
     let sink: Arc<dyn xylitol::runtime_protocol::XyEventSink> =
         Arc::new(xylitol::infra::event::EventBus::new());
-    let session = AgentSession::new(
+    let session = Agent::new(
         agent.registry.borrow().clone(),
         ToolSet::from_iter(xylitol::infra::tools::default_tools()),
         store,
@@ -190,7 +190,7 @@ fn make_agent(agent: &AgentState) -> AgentLoop {
             xylitol::infra::export::StdExportIo::new(),
         )),
     );
-    AgentLoop::new(session)
+    ReActAgent::new(session)
 }
 
 async fn dispatch_hook(agent: &AgentState, event: HookEvent, phase: HookPhase) {
@@ -458,7 +458,7 @@ fn _g_agent_tools_ready(_agent: &AgentState) {}
 #[when("启动 agent 会话并发送提示 {prompt:string}")]
 async fn _w_agent_start(agent: &AgentState, prompt: String) {
     let mut runner = make_agent(agent);
-    let mut stream = runner.run(&prompt, &uuid::Uuid::new_v4().to_string()).await;
+    let mut stream = runner.run(&prompt).await;
     let mut local_events = Vec::new();
     while let Some(e) = stream.next().await {
         local_events.push(e);
@@ -571,7 +571,7 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         std::sync::Arc::new(mgr.clone());
     let sink: std::sync::Arc<dyn xylitol::runtime_protocol::XyEventSink> =
         std::sync::Arc::new(xylitol::infra::event::EventBus::new());
-    let mut session = AgentSession::new(
+    let mut session = Agent::new(
         agent.registry.borrow().clone(),
         ToolSet::from_iter(xylitol::infra::tools::default_tools()),
         store,
@@ -685,7 +685,7 @@ fn _w_agent_cycle_forward(agent: &AgentState) {
         std::sync::Arc::new(mgr.clone());
     let sink: std::sync::Arc<dyn xylitol::runtime_protocol::XyEventSink> =
         std::sync::Arc::new(xylitol::infra::event::EventBus::new());
-    let mut session = AgentSession::new(
+    let mut session = Agent::new(
         agent.registry.borrow().clone(),
         ToolSet::from_iter(xylitol::infra::tools::default_tools()),
         store,

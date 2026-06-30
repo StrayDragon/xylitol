@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use crate::agent::compaction::CompactionSettings;
-use crate::agent::facade::{Agent, AgentBuilder};
+use crate::agent::ReActAgent;
+use crate::agent::AgentBuilder;
 use crate::agent::model::registry::ModelRegistry;
 use crate::agent::tools::ToolSet;
 use crate::infra::bash_exec::InfraBashExecutor;
@@ -46,13 +47,13 @@ impl Default for BuildAgentOptions {
     }
 }
 
-/// Construct a fully-wired [`Agent`] from the given options.
+/// Construct a fully-wired [`ReActAgent`] from the given options.
 ///
 /// This is the single composition-root helper used by CLI, RPC, server, and
 /// future TUI/GUI modes. It injects the concrete infra implementations
 /// (`SessionManager`, `EventBus`, `InfraBashExecutor`, `StdExportIo`) into the
 /// agent without letting `agent/` know about `infra/` types (HC-1/HC-2).
-pub fn build_agent(options: BuildAgentOptions) -> Result<Agent, String> {
+pub fn build_agent(options: BuildAgentOptions) -> Result<ReActAgent, String> {
     let sessions_dir = SessionManager::default_dir();
     std::fs::create_dir_all(&sessions_dir).map_err(|e| format!("create sessions dir: {e}"))?;
     let session_mgr = SessionManager::new(sessions_dir);

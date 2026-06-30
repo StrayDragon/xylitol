@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,la8,"agent-independence","The Agent (capability aggregate) constructor MUST NOT require a Session, MUST NOT hold a session_id, and MUST NOT depend on Session persistence lifecycle; session_id is a SessionStore query key bound in the app layer. The former facade wording is reconciled because the agent::facade hub is removed by c320.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  la8,"facade-wording-reconciled",la8 previously referenced the Agent facade constructor,the requirement is read after the change,it refers to the Agent capability aggregate constructor and still forbids requiring a Session or holding a session_id

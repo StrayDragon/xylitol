@@ -1,5 +1,7 @@
 //! Session statistics and context-usage estimation (spec c255 / as32).
 
+use crate::runtime_protocol::XySessionStore;
+
 /// Statistics for a session.
 #[derive(Debug, Clone)]
 pub struct SessionStats {
@@ -9,6 +11,34 @@ pub struct SessionStats {
     pub total_messages: usize,
     pub thinking_level: String,
     pub model: Option<(String, String)>,
+}
+
+/// Aggregate message counts for a session by reading the session store.
+///
+/// Moved out of the `Agent` body (spec as32 / c320 T24) so the capability
+/// aggregate holds no aggregation logic.
+pub async fn compute(store: &dyn XySessionStore, session_id: &str) -> Result<SessionStats, String> {
+    let ctx = store.build_session_context(session_id).await?;
+    let user_messages = ctx
+        .messages
+        .iter()
+        .filter(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+        .count();
+    let assistant_messages = ctx
+        .messages
+        .iter()
+        .filter(|m| m.get("role").and_then(|r| r.as_str()) == Some("assistant"))
+        .count();
+    let total_messages = ctx.messages.len();
+
+    Ok(SessionStats {
+        session_id: session_id.to_string(),
+        user_messages,
+        assistant_messages,
+        total_messages,
+        thinking_level: ctx.thinking_level,
+        model: ctx.model,
+    })
 }
 
 /// Context usage summary for compaction decisions.

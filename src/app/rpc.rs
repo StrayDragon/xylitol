@@ -22,7 +22,8 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::compaction::CompactionSettings;
-use crate::agent::facade::{Agent, XyEvent};
+use crate::agent::ReActAgent;
+use crate::domain::lifecycle::XyEvent;
 use crate::agent::model::registry::ModelRegistry;
 use crate::app::core::composition::{BuildAgentOptions, build_agent};
 use crate::domain::types::{ThinkingLevel, XyModelMeta};
@@ -33,10 +34,10 @@ use crate::runtime_protocol::XySessionStore;
 
 // ── State ─────────────────────────────────────────────────────────
 
-/// Holds the components needed to construct an Agent for each command.
+/// Holds the components needed to construct an ReActAgent for each command.
 /// After a prompt, the session auto-persists to disk; we reconstruct
-/// a new Agent from these components next time — unless the cache is
-/// still valid, in which case we reuse the previously-built [`Agent`].
+/// a new ReActAgent from these components next time — unless the cache is
+/// still valid, in which case we reuse the previously-built [`ReActAgent`].
 struct RpcState {
     model_registry: ModelRegistry,
     session_mgr: SessionManager,
@@ -53,8 +54,8 @@ struct RpcState {
     permission: Option<Arc<dyn XyPermission>>,
     /// Cancellation token for the active prompt loop.
     active_cancel: Option<CancellationToken>,
-    /// Cached Agent, reused across commands until a rebuild trigger fires.
-    cached_agent: Option<Agent>,
+    /// Cached ReActAgent, reused across commands until a rebuild trigger fires.
+    cached_agent: Option<ReActAgent>,
     /// Snapshot of session_id used to build `cached_agent`.
     cache_session_id: Option<String>,
     /// Snapshot of model_id used to build `cached_agent`.
@@ -64,8 +65,8 @@ struct RpcState {
 }
 
 impl RpcState {
-    /// Build a brand-new Agent from current state (no cache).
-    fn build_agent_fresh(&self) -> Result<Agent, String> {
+    /// Build a brand-new ReActAgent from current state (no cache).
+    fn build_agent_fresh(&self) -> Result<ReActAgent, String> {
         let mut agent = build_agent(BuildAgentOptions {
             model_registry: self.model_registry.clone(),
             system_prompt: self.system_prompt.clone(),
@@ -85,7 +86,7 @@ impl RpcState {
         Ok(agent)
     }
 
-    /// Whether the cached Agent is still valid for the current state.
+    /// Whether the cached ReActAgent is still valid for the current state.
     ///
     /// Rebuild triggers (T12): `session_id`, `current_model_id`, or
     /// `thinking_level` changed since the cache was populated.
@@ -108,12 +109,12 @@ impl RpcState {
         self.cache_thinking_level = Some(self.thinking_level);
     }
 
-    /// Ensure a valid cached Agent exists and borrow it.
+    /// Ensure a valid cached ReActAgent exists and borrow it.
     ///
     /// Use this for commands that hold the lock for their entire duration
     /// (Bash, Compact, GetState, …). For `run_prompt` use [`take_agent`]
     /// so the lock can be released during streaming.
-    fn ensure_agent(&mut self) -> Result<&mut Agent, String> {
+    fn ensure_agent(&mut self) -> Result<&mut ReActAgent, String> {
         if !self.cache_is_valid() {
             let agent = self.build_agent_fresh()?;
             self.cached_agent = Some(agent);
@@ -123,11 +124,11 @@ impl RpcState {
         Ok(self.cached_agent.as_mut().expect("cache populated above"))
     }
 
-    /// Take the cached Agent out of the cache (for `run_prompt`, which needs
+    /// Take the cached ReActAgent out of the cache (for `run_prompt`, which needs
     /// ownership so the lock can be released during streaming).
     ///
     /// Rebuilds if the cache is invalid. Pair with [`return_agent`].
-    fn take_agent(&mut self) -> Result<Agent, String> {
+    fn take_agent(&mut self) -> Result<ReActAgent, String> {
         if !self.cache_is_valid() {
             // Build fresh; cache stays None until return_agent restores it.
             let agent = self.build_agent_fresh()?;
@@ -139,8 +140,8 @@ impl RpcState {
             .ok_or_else(|| "agent cache inconsistency (valid but empty)".into())
     }
 
-    /// Restore an Agent previously taken via [`take_agent`].
-    fn return_agent(&mut self, agent: Agent) {
+    /// Restore an ReActAgent previously taken via [`take_agent`].
+    fn return_agent(&mut self, agent: ReActAgent) {
         self.cached_agent = Some(agent);
     }
 }
@@ -755,15 +756,15 @@ mod tests {
         assert!(!state.cache_is_valid());
     }
 
-    /// T13: three sequential commands construct the Agent only once.
+    /// T13: three sequential commands construct the ReActAgent only once.
     #[test]
     fn three_commands_build_agent_once() {
         let mut state = make_state();
         // Simulate three commands reusing the cache.
-        let a1 = state.ensure_agent().unwrap() as *const Agent;
-        let a2 = state.ensure_agent().unwrap() as *const Agent;
-        let a3 = state.ensure_agent().unwrap() as *const Agent;
-        // Same underlying Agent object (reused, not rebuilt).
+        let a1 = state.ensure_agent().unwrap() as *const ReActAgent;
+        let a2 = state.ensure_agent().unwrap() as *const ReActAgent;
+        let a3 = state.ensure_agent().unwrap() as *const ReActAgent;
+        // Same underlying ReActAgent object (reused, not rebuilt).
         assert_eq!(a1, a2);
         assert_eq!(a2, a3);
     }

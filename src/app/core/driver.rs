@@ -13,7 +13,8 @@ use async_trait::async_trait;
 use futures::Stream;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::facade::{Agent, XyEvent};
+use crate::agent::ReActAgent;
+use crate::domain::lifecycle::XyEvent;
 
 #[cfg(feature = "server")]
 #[cfg(feature = "server")]
@@ -29,7 +30,7 @@ pub type EventStream = Pin<Box<dyn Stream<Item = XyEvent> + Send>>;
 
 /// Driver — interact with the core without knowing its internals.
 ///
-/// [`InProcessDriver`] keeps a cached `Agent` and is the local (single-process)
+/// [`InProcessDriver`] keeps a cached `ReActAgent` and is the local (single-process)
 /// implementation. A future `RemoteDriver` will speak the protocol over WS/REST.
 #[async_trait]
 #[allow(dead_code)]
@@ -47,12 +48,12 @@ pub trait Driver {
 /// and agent together. This is the **only** place in `interactive/` that
 /// imports `agent::facade`.
 pub struct InProcessDriver {
-    agent: Agent,
+    agent: ReActAgent,
 }
 
 #[allow(dead_code)]
 impl InProcessDriver {
-    pub fn new(agent: Agent) -> Self {
+    pub fn new(agent: ReActAgent) -> Self {
         Self { agent }
     }
 
