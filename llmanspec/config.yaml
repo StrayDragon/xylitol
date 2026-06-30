@@ -3,7 +3,7 @@ schema: spec-driven
 locale: zh-CN
 
 context: |
-  Project conventions: see AGENTS.md (SSOT).
+  Project conventions: 根 AGENTS.md 仅全局基本约束；代码架构 SSOT（分层地图 + 分层不变量 + 各层职责 + 应用面状态表 + seam 定义）在 src/AGENTS.md；应用面方法论见 write-surface skill，TUI 见 src/app/tui/AGENTS.md。子目录 AGENTS.md 只做路径引用，不重复架构事实。
   Current state (2026-06-10): c05-rebuild-core completed — adk-rust fully removed, self-owned XyModel/XyTool/XyRunner ReAct loop with 7 built-in tools, hooks, session, and CLI.
   c06-update-bdd-framework: cucumber-rs → rstest-bdd migration completed.
   c07-fix-bdd-scenarios: all 77 BDD scenarios passing.
