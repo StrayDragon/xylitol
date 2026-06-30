@@ -78,11 +78,11 @@ impl RpcState {
             compaction_settings: Some(self.compaction_settings.clone()),
             permission: self.permission.clone(),
         })?;
-        agent.session_mut().set_thinking_level(self.thinking_level);
+        agent.inner_mut().set_thinking_level(self.thinking_level);
         if let Some(ref mid) = self.current_model_id {
-            let _ = agent.session_mut().select_model(mid);
+            let _ = agent.inner_mut().select_model(mid);
         }
-        agent.session_mut().set_session(self.session_id.clone());
+        agent.inner_mut().set_session(self.session_id.clone());
         Ok(agent)
     }
 
@@ -282,7 +282,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
             match s.ensure_agent() {
                 Ok(agent) => {
                     let model = agent
-                        .session()
+                        .inner()
                         .current_model()
                         .map(|m| serde_json::json!({"id": m.id, "display_name": m.display_name}));
                     emit(&Event::Response {
@@ -389,7 +389,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
                 }
             };
             let result = agent
-                .session_mut()
+                .inner_mut()
                 .execute_bash(&command, exclude_from_context)
                 .await;
             match result {
@@ -412,7 +412,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
                     return;
                 }
             };
-            match agent.session_mut().maybe_auto_compact().await {
+            match agent.inner_mut().maybe_auto_compact().await {
                 Ok(did) => emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({"compacted": did})),
@@ -429,7 +429,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
                     return;
                 }
             };
-            match agent.session_mut().get_session_stats().await {
+            match agent.inner_mut().get_session_stats().await {
                 Ok(stats) => emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({
@@ -453,7 +453,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
             let path = output_path
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("export.html"));
-            match agent.session_mut().export_to_html(&path).await {
+            match agent.inner_mut().export_to_html(&path).await {
                 Ok(_) => emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({"path": path.to_string_lossy()})),
@@ -473,7 +473,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
             let path = output_path
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("export.jsonl"));
-            match agent.session_mut().export_to_jsonl(&path).await {
+            match agent.inner_mut().export_to_jsonl(&path).await {
                 Ok(_) => emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({"path": path.to_string_lossy()})),
@@ -491,7 +491,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
                 }
             };
             let path = PathBuf::from(&input_path);
-            match agent.session_mut().import_from_jsonl(&path).await {
+            match agent.inner_mut().import_from_jsonl(&path).await {
                 Ok(new_id) => emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({"new_session": new_id})),
@@ -531,7 +531,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
                     return;
                 }
             };
-            match agent.session_mut().fork_session(&entry_id).await {
+            match agent.inner_mut().fork_session(&entry_id).await {
                 Ok(new_id) => emit(&Event::Response {
                     id,
                     payload: Some(serde_json::json!({"new_session": new_id})),
@@ -561,7 +561,7 @@ async fn dispatch(state: &Arc<Mutex<RpcState>>, cmd: Command) {
                     return;
                 }
             };
-            let cmds = agent.session().get_commands();
+            let cmds = agent.inner().get_commands();
             let payload: Vec<Value> = cmds
                 .iter()
                 .map(|c| serde_json::json!({"name": c.name, "description": c.description}))
@@ -616,7 +616,7 @@ async fn run_prompt(state: &Arc<Mutex<RpcState>>, _id: &Option<String>, message:
                 return;
             }
         };
-        let session_id = agent.session().session_id().unwrap_or("prompt").to_string();
+        let session_id = agent.inner().session_id().unwrap_or("prompt").to_string();
         let cancel = CancellationToken::new();
         s.active_cancel = Some(cancel.clone());
         (agent, cancel, session_id)
