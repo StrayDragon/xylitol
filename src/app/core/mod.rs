@@ -6,7 +6,7 @@
 //! `gui.rs`) and are the only `app/` modules allowed to import `agent` and/or
 //! `infra`.
 //!
-//! - [`composition`] — the HC-1 composition root: the single module permitted
+//! - [`composition`] — the composition root: the single module permitted
 //!   to import both `agent` and `infra`, centralizing Agent wiring so CLI/RPC/
 //!   Server/TUI never duplicate it.
 //! - [`driver`] — the runtime boundary (`Driver` trait + `InProcessDriver`/
