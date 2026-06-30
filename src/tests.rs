@@ -8,13 +8,13 @@ pub mod support;
 
 // ── Architecture guards ───────────────────────────────────────────
 //
-// These tests grep source files to enforce layering invariants (HC-1).
+// These tests grep source files to enforce the layering invariants in src/AGENTS.md.
 // They codify wins from the c260 refactor so regressions fail the build.
 //
 // Currently enforced:
 //   1. infra/ must not import crate::agent (no reverse dependency)
 //   2. agent/ production code must not import ANY concrete crate::infra type
-//      (full scan of `crate::infra::`, per la2/la9). Pre-existing violations are
+//      (full scan of `crate::infra::`). Pre-existing violations are
 //      tracked in `AGENT_INFRA_ALLOWLIST` (c275 baseline snapshot); each entry
 //      cites a follow-up change (c276/c277/c278) that will remove it. Any NEW
 //      violation not in the allowlist fails the build. The allowlist shrinks as
@@ -29,10 +29,10 @@ pub mod support;
 //   - app/rpc.rs = builds Agent via composition
 //   - app/server/ = composition root (hosts Agent + infra runtimes) + server
 //     lifecycle (subcommand.rs: Run/Install/Stop, moved from cli in c310)
-//   - app/core/composition.rs = shared Agent construction (HC-1 root: the only
+//   - app/core/composition.rs = shared Agent construction (the composition root: the only
 //     module permitted to import both agent and infra)
 //   - app/core/driver.rs = Driver trait + InProcessDriver (must NOT import
-//     crate::infra per la11)
+//     crate::infra)
 //   - app/tui/diff_review/ = review engine (infra config import)
 
 #[cfg(test)]
@@ -102,7 +102,7 @@ mod arch_guard {
     /// `.rs` file under `dir`. Production = everything before the first
     /// `#[cfg(test)] mod <name>` test MODULE; a `#[cfg(test)]` attribute on a
     /// single item (e.g. a gated `use`) does NOT end the production region. Test
-    /// code may freely assemble concrete types (HC-1 targets production coupling
+    /// code may freely assemble concrete types (the layering guard targets production coupling
     /// only). Returns `(rel_path, import, line)`.
     fn scan_prod_infra(dir: &str) -> Vec<(String, String, usize)> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(dir);
@@ -166,7 +166,7 @@ mod arch_guard {
 
     #[test]
     fn agent_does_not_import_infra_in_production() {
-        // HC-1 (la2/la9): agent/ must not import ANY concrete crate::infra type
+        // Layering invariant: agent/ must not import ANY concrete crate::infra type
         // in production code — full scan, not limited to four named providers.
         // Pre-existing violations are grandfathered in AGENT_INFRA_ALLOWLIST;
         // any NEW violation not listed here fails.
@@ -182,7 +182,7 @@ mod arch_guard {
         }
         assert!(
             new_violations.is_empty(),
-            "agent/ production code imports crate::infra (HC-1 violation, not in allowlist):\n  {}
+            "agent/ production code imports crate::infra (layering violation, not in allowlist):\n  {}
 \
              Register it in AGENT_INFRA_ALLOWLIST with a follow-up change id, or eliminate the import.",
             new_violations.join("\n  "),

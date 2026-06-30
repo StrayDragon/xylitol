@@ -52,7 +52,7 @@ impl Default for BuildAgentOptions {
 /// This is the single composition-root helper used by CLI, RPC, server, and
 /// future TUI/GUI modes. It injects the concrete infra implementations
 /// (`SessionManager`, `EventBus`, `InfraBashExecutor`, `StdExportIo`) into the
-/// agent without letting `agent/` know about `infra/` types (HC-1/HC-2).
+/// agent without letting `agent/` know about `infra/` types.
 pub fn build_agent(options: BuildAgentOptions) -> Result<ReActAgent, String> {
     let sessions_dir = SessionManager::default_dir();
     std::fs::create_dir_all(&sessions_dir).map_err(|e| format!("create sessions dir: {e}"))?;

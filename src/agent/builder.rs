@@ -3,7 +3,7 @@
 //! [`AgentBuilder`] takes only the minimal runtime-protocol ports in its
 //! constructor. Every other capability is attached via consuming builder
 //! methods, with safe defaults (empty tool set, no bash executor, no export
-//! I/O). This keeps the agent layer free of concrete `infra/` types (HC-1).
+//! I/O). This keeps the agent layer free of concrete `infra/` types.
 
 use std::sync::Arc;
 

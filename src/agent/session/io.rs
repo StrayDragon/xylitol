@@ -1,4 +1,4 @@
-//! SessionIO — session persistence via XySessionStore port (HC-2).
+//! SessionIO — session persistence via XySessionStore port.
 //!
 //! Thin wrapper around [`Arc<dyn XySessionStore>`] isolating session-persistence
 //! operations for the ReAct loop. Session management operations (create, fork,
@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::domain::message::AgentMessage;
 use crate::runtime_protocol::XySessionStore;
 
-/// Session persistence via the XySessionStore port (HC-2).
+/// Session persistence via the XySessionStore port.
 ///
 /// Provides only the operations the ReAct loop needs:
 /// [`load_context`](Self::load_context),
