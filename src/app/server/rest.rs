@@ -21,7 +21,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::Mutex;
 
-use crate::agent::facade::{Agent, XyEvent};
+use crate::agent::ReActAgent;
+use crate::domain::lifecycle::XyEvent;
 use crate::agent::session::ModelRegistry;
 use crate::app::server::ws::{ClientFrame, EventJournal, ReverseRpcGateway, ServerFrame};
 use crate::protocol::{Envelope, ErrorCode};
@@ -31,7 +32,7 @@ use crate::protocol::{Envelope, ErrorCode};
 /// Shared state available to all route handlers.
 #[derive(Clone)]
 pub struct AppState {
-    pub agent: Arc<Mutex<Agent>>,
+    pub agent: Arc<Mutex<ReActAgent>>,
     pub journal: Arc<Mutex<EventJournal>>,
     pub gateway: Arc<ReverseRpcGateway>,
     pub model_registry: ModelRegistry,

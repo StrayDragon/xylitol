@@ -4,7 +4,7 @@
 
 use std::io::{self, Write};
 
-use crate::agent::facade::XyEvent;
+use crate::agent::XyEvent;
 use crate::app::core::driver::{Driver, EventStream};
 use futures::StreamExt;
 

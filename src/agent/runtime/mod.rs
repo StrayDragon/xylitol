@@ -1,22 +1,18 @@
 //! Agent runtime — the thin orchestration loop and its collaborators.
 //!
 //! Houses the ReAct loop (`react`), its event vocabulary (`event`), hook
-//! extension points (`hooks`), the steer/follow-up message queue,
-//! transient-error retry, and stdout takeover guard. The agent facade is the
-//! public entry; modules here are the loop's internals.
+//! extension points (`hooks`), transient-error retry, and stdout takeover
+//! guard. The agent facade is the public entry; modules here are the loop's
+//! internals.
 
 pub mod event;
 pub mod hooks;
 pub(crate) mod permission_router;
-pub mod queue;
 pub mod react;
 pub mod retry;
 
-// Public surface of the loop (XyEvent/XyEventStream/AgentLoop/AgentHooks are `pub`).
+// Public surface of the loop (XyEvent/XyEventStream/ReActAgent/AgentHooks are `pub`).
 pub use crate::domain::lifecycle::XyEvent;
 pub use event::XyEventStream;
 pub use hooks::AgentHooks;
-pub use react::AgentLoop;
-
-// Crate-internal collaborators consumed via the runtime path.
-pub(crate) use queue::MessageQueue;
+pub use react::ReActAgent;

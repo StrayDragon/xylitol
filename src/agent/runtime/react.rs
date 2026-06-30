@@ -23,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 use super::permission_router::permission_target;
 use super::retry::{RetryState, is_retryable_error};
 use super::{AgentHooks, XyEvent, XyEventStream};
-use crate::agent::session::AgentSession;
+use crate::agent::session::Agent;
 use crate::agent::tools::ToolSet;
 use crate::domain::error::XyError;
 use crate::domain::message::{AgentMessage, AgentPart};
@@ -32,16 +32,16 @@ use crate::runtime_protocol::{XyModel, XyToolCtx, XyToolExecutionMode};
 
 use crate::runtime_protocol::XyPermissionVerdict;
 
-// ── AgentLoop ───────────────────────────────────────────────────────
+// ── ReActAgent ───────────────────────────────────────────────────────
 
-pub struct AgentLoop {
-    pub(crate) session: AgentSession,
+pub struct ReActAgent {
+    pub(crate) session: Agent,
     /// Cancellation token.
     cancel: CancellationToken,
 }
 
-impl AgentLoop {
-    pub fn new(session: AgentSession) -> Self {
+impl ReActAgent {
+    pub fn new(session: Agent) -> Self {
         Self {
             session,
             cancel: CancellationToken::new(),
@@ -58,17 +58,53 @@ impl AgentLoop {
         self.cancel.cancel();
     }
 
-    pub fn session(&self) -> &AgentSession {
+    pub fn session(&self) -> &Agent {
         &self.session
     }
 
-    pub fn session_mut(&mut self) -> &mut AgentSession {
+    pub fn session_mut(&mut self) -> &mut Agent {
         &mut self.session
     }
 
-    /// Run the agent loop with a user prompt.
+    /// Replace the tool set. Takes effect on the next [`run`](Self::run) call.
+    pub fn set_tools(&mut self, tools: ToolSet) {
+        self.session.set_tools(tools);
+    }
+
+    /// Replace the hook set. Takes effect on the next [`run`](Self::run) call.
+    pub fn replace_hooks(&mut self, hooks: AgentHooks) {
+        self.session.replace_hooks(hooks);
+    }
+
+    /// Add a before-tool hook. Takes effect on the next [`run`](Self::run) call.
+    pub fn add_hook(&mut self, hook: super::hooks::BeforeToolHook) {
+        self.session.hooks_mut().add_before(hook);
+    }
+
+    /// Set the permission port. Takes effect on the next [`run`](Self::run) call.
+    pub fn set_permission(&mut self, permission: Arc<dyn crate::runtime_protocol::XyPermission>) {
+        self.session.set_permission(permission);
+    }
+
+    /// Set the tool execution mode. Takes effect on the next [`run`](Self::run) call.
+    pub fn set_tool_mode(&mut self, mode: crate::runtime_protocol::XyToolExecutionMode) {
+        self.session.set_tool_mode(mode);
+    }
+
+    /// Set the system prompt. Takes effect on the next [`run`](Self::run) call.
+    pub fn set_system_prompt(&mut self, prompt: Option<String>) {
+        self.session.set_system_prompt(prompt);
+    }
+
+    /// Run a turn with an auto-generated session_id.
+    pub async fn run(&mut self, prompt: &str) -> XyEventStream {
+        self.run_with_id(prompt, &uuid::Uuid::new_v4().to_string())
+            .await
+    }
+
+    /// Run a turn with an explicit session_id.
     #[allow(clippy::type_complexity)]
-    pub async fn run(&mut self, prompt: &str, session_id: &str) -> XyEventStream {
+    pub async fn run_with_id(&mut self, prompt: &str, session_id: &str) -> XyEventStream {
         // Build permission check callback from session
         let permission_check: Option<
             std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>,
@@ -500,7 +536,7 @@ mod tests {
         let session_mgr = SessionManager::new(SessionManager::default_dir());
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr.clone());
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-        let session = AgentSession::new(
+        let session = Agent::new(
             reg,
             ToolSet::from_iter(crate::infra::tools::default_tools()),
             store,
@@ -554,7 +590,7 @@ mod tests {
         let session_mgr = SessionManager::new(SessionManager::default_dir());
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr.clone());
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-        let session = AgentSession::new(
+        let session = Agent::new(
             reg,
             ToolSet::from_iter(crate::infra::tools::default_tools()),
             store,
@@ -574,8 +610,8 @@ mod tests {
             Some(std::sync::Arc::new(crate::infra::export::StdExportIo::new())),
         );
 
-        let mut loop_runner = AgentLoop::new(session);
-        let _stream = loop_runner.run("hello", "test-session").await;
+        let mut loop_runner = ReActAgent::new(session);
+        let _stream = loop_runner.run_with_id("hello", "test-session").await;
     }
 
     // ── Mock model / tool helpers for hook and snapshot tests ───────
@@ -672,12 +708,12 @@ mod tests {
     fn make_agent_with_tools(
         chunks: Vec<crate::domain::types::XyChunk>,
         tools: ToolSet,
-    ) -> crate::agent::facade::Agent {
+    ) -> ReActAgent {
         let reg = mock_model_registry(chunks.clone());
         let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-        let session = AgentSession::new(
+        let session = Agent::new(
             reg,
             tools,
             store,
@@ -694,9 +730,7 @@ mod tests {
             None,
             None,
         );
-        crate::agent::facade::Agent {
-            loop_: AgentLoop::new(session),
-        }
+        ReActAgent::new(session)
     }
 
     #[tokio::test]
