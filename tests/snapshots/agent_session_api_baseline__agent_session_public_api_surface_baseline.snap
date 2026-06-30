@@ -1,17 +1,20 @@
 ---
 source: tests/agent_session_api_baseline.rs
-assertion_line: 138
 expression: "all_items.join(\"\\n\")"
 ---
 pub async fn append_entry( &self, session_id: &str, entry: serde_json::Value, ) -> Result<(), String>
 pub async fn compact_current_session(&self, model: &dyn XyModel) -> Result<(), String>
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), String>
+pub async fn execute( &mut self, store: &dyn XySessionStore, session_id: Option<&str>, command: &str, exclude_from_context: bool, ) -> Result<XyBashResult, String>
 pub async fn execute_bash( &mut self, command: &str, exclude_from_context: bool, ) -> Result<crate::runtime_protocol::XyBashResult, String>
 pub async fn exists(&self, session_id: &str) -> bool
 pub async fn export_to_html( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
+pub async fn export_to_html( &self, store: &dyn XySessionStore, session_id: &str, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
 pub async fn export_to_jsonl( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
+pub async fn export_to_jsonl( &self, store: &dyn XySessionStore, session_id: &str, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
 pub async fn fork_session(&self, at_entry_id: &str) -> Result<String, String>
 pub async fn get_session_stats(&self) -> Result<SessionStats, String>
+pub async fn import_from_jsonl( &self, store: &dyn XySessionStore, path: &std::path::Path, ) -> Result<String, String>
 pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String>
 pub async fn load_context(&self, session_id: &str) -> Result<Vec<AgentMessage>, String>
 pub async fn maybe_auto_compact(&self) -> Result<bool, String>
@@ -20,9 +23,6 @@ pub enum PromptResult
 pub fn abort(&mut self)
 pub fn abort_bash(&mut self)
 pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, String>
-pub fn check_permission_network(&self, domain: &str) -> XyPermissionVerdict
-pub fn check_permission_read(&self, path: &str) -> XyPermissionVerdict
-pub fn check_permission_write(&self, path: &str) -> XyPermissionVerdict
 pub fn clear_queue(&mut self) -> Vec<crate::domain::message::AgentMessage>
 pub fn compaction_settings(&self) -> &CompactionSettings
 pub fn compaction_threshold(&self) -> f64
@@ -34,6 +34,7 @@ pub fn drain_queued_messages(&mut self) -> Vec<crate::domain::message::AgentMess
 pub fn estimate_tokens(messages: &[crate::domain::message::AgentMessage]) -> u64
 pub fn expand_skill_command(&self, skill_name: &str, args: &str) -> Option<String>
 pub fn follow_up( &mut self, text: impl Into<String>, _images: Option<Vec<crate::domain::message::ImageContent>>, )
+pub fn get(&self) -> Arc<dyn XyPermission>
 pub fn get_context_usage(token_estimate: u64, context_window: u64, threshold: f64) -> ContextUsage
 pub fn get_follow_up_messages(&self) -> Vec<crate::domain::message::AgentMessage>
 pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission>
@@ -42,6 +43,9 @@ pub fn has_pending_steer(&self) -> bool
 pub fn max_iterations(&self) -> u32
 pub fn model_registry(&self) -> &ModelRegistry
 pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dyn XySessionStore>, sink: Arc<dyn XyEventSink>, system_prompt: Option<String>, context_files: Vec<(String, String)>, append_system_prompt: Vec<String>, max_iterations: u32, compaction_threshold: f64, cwd: String, compaction_settings: Option<CompactionSettings>, model_builder: crate::runtime_protocol::XyModelBuilder, permission: Arc<dyn XyPermission>, bash_executor: Option<Arc<dyn XyBashExecutor>>, export_io: Option<Arc<dyn XyExportIo>>, ) -> Self
+pub fn new(engine: Arc<dyn XyPermission>) -> Self
+pub fn new(executor: Option<Arc<dyn XyBashExecutor>>) -> Self
+pub fn new(io: Option<Arc<dyn XyExportIo>>) -> Self
 pub fn new(store: Arc<dyn XySessionStore>) -> Self
 pub fn parse_bang_prefix(input: &str) -> Option<(bool, &str)>
 pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, String>
@@ -54,9 +58,10 @@ pub fn registry_clone(&self) -> ModelRegistry
 pub fn render_html(session_id: &str, entries: &[SessionEntry]) -> String
 pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, String>
 pub fn replace_hooks(&mut self, hooks: AgentHooks)
-pub fn save_trust_decision( &self, trust_store: &dyn XyTrustStore, trusted: bool, ) -> Result<bool, String>
+pub fn save_trust_decision( cwd: &str, trust_store: &dyn XyTrustStore, trusted: bool, ) -> Result<bool, String>
 pub fn select_model(&mut self, model_id: &str) -> Result<(), String>
 pub fn session_id(&self) -> Option<&str>
+pub fn set(&mut self, engine: Arc<dyn XyPermission>)
 pub fn set_append_prompt(&mut self, text: Option<String>)
 pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>)
 pub fn set_session(&mut self, session_id: String)
@@ -69,8 +74,12 @@ pub fn share_guidance_message(_path: &std::path::Path) -> String
 pub fn steer( &mut self, text: impl Into<String>, _images: Option<Vec<crate::domain::message::ImageContent>>, )
 pub fn system_prompt(&self) -> Option<&str>
 pub fn thinking_level(&self) -> ThinkingLevel
-pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Context usage summary for compaction decisions. #[derive(Debug, Clone)] pub struct ContextUsage
-pub struct AgentSession
+pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Aggregate message counts for a session by reading the session store. /// /// Moved out of the `Agent` body (spec as32 / c320 T24) so the capability /// aggregate holds no aggregation logic. pub async fn compute(store: &dyn XySessionStore, session_id: &str) -> Result<SessionStats, String>
+pub struct Agent
+pub struct BashExecHandler
+pub struct ContextUsage
+pub struct PermissionGate
+pub struct SessionExporter
 pub struct SessionIO
 pub struct SessionStats
 pub tokens: u64, pub context_window: u64, pub percent: u64, pub should_compact: bool, } pub use crate::agent::compaction::orchestrator::should_compact
@@ -78,3 +87,4 @@ pub use crate::agent::model::registry::ModelRegistry
 pub use self::io::SessionIO
 pub use self::prompt_result::PromptResult
 pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_usage}
+pub use self::trust::save_trust_decision

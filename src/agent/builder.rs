@@ -8,10 +8,9 @@
 use std::sync::Arc;
 
 use crate::agent::compaction::CompactionSettings;
-use crate::agent::facade::Agent;
 use crate::agent::model::registry::ModelRegistry;
-use crate::agent::runtime::AgentLoop;
-use crate::agent::session::AgentSession;
+use crate::agent::runtime::ReActAgent;
+use crate::agent::session::Agent;
 use crate::agent::tools::ToolSet;
 use crate::runtime_protocol::{
     XyBashExecutor, XyEventSink, XyExportIo, XyModelBuilder, XyPermission, XySessionStore,
@@ -133,9 +132,9 @@ impl AgentBuilder {
         self
     }
 
-    /// Build the [`Agent`].
-    pub fn build(self) -> Result<Agent, String> {
-        let session = AgentSession::new(
+    /// Build the [`ReActAgent`] (the ReAct-strategy driver over an [`Agent`]).
+    pub fn build(self) -> Result<ReActAgent, String> {
+        let session = Agent::new(
             self.model_registry,
             self.tools,
             self.store,
@@ -152,8 +151,6 @@ impl AgentBuilder {
             self.bash_executor,
             self.export_io,
         );
-        Ok(Agent {
-            loop_: AgentLoop::new(session),
-        })
+        Ok(ReActAgent::new(session))
     }
 }

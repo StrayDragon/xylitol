@@ -1,6 +1,6 @@
 //! SkillManager — skill activation, expansion, and command registration.
 //!
-//! Extracted from [`AgentSession`](super::session::AgentSession) to isolate
+//! Extracted from [`Agent`](super::session::Agent) to isolate
 //! skill-related responsibilities into a focused component.
 
 use crate::agent::prompt::commands::SlashCommandInfo;

@@ -15,7 +15,7 @@ use crate::runtime_protocol::XySessionStore;
 /// [`load_context`](Self::load_context),
 /// [`append_entry`](Self::append_entry), and [`exists`](Self::exists).
 /// Full session management (create, fork, navigate, export) uses the
-/// concrete `SessionManager` directly through AgentSession.
+/// concrete `SessionManager` directly through Agent.
 #[derive(Clone)]
 pub struct SessionIO {
     store: Arc<dyn XySessionStore>,

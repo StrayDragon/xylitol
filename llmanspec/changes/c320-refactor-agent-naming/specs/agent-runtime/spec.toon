@@ -1,0 +1,10 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ar16,"agent-entry-direct","System MUST define ReActAgent (the ReAct-strategy driver) and Agent (the pluggable capability aggregate) directly under agent/ and re-export them from agent/mod.rs; app layers MUST import agent symbols from agent/mod (not from an agent::facade hub); the previous single facade re-export module MUST be removed.",null,null,null
+  add_requirement,ar25,"react-agent-naming","AgentLoop MUST be renamed ReActAgent to express it is the ReAct-strategy driver of the Agent capability aggregate; the hollow Agent shell (a single loop_ field with pure delegation methods and zero behavioral increment) MUST be removed and its methods merged into ReActAgent so there is exactly one type that drives a ReAct turn.",null,null,null
+  add_requirement,ar26,"facade-layer-removed","The agent::facade intermediate module MUST be removed; ReActAgent and Agent MUST be defined directly under agent/ (for example agent/core.rs or agent/mod.rs) with the builder/hooks/event re-export surface moved to agent/mod.rs; reaching into agent::runtime or agent::session internals from app/ remains a layering violation, but the single public hub MUST be agent/mod, not agent::facade.",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  ar25,"react-agent-named",the source tree after the change,"rg '\\bAgentLoop\\b' src/ runs",zero matches remain and ReActAgent exists as the turn driver
+  ar25,"shell-removed",the hollow Agent shell existed as pure delegation,the change is applied,no Agent struct with a single loop_ field remains; its methods live on ReActAgent
+  ar26,"facade-gone","agent/facade.rs existed as the re-export hub",the source tree is inspected,"agent/facade.rs no longer exists and agent/mod.rs re-exports ReActAgent and Agent"
+  ar16,"app-imports-agent-mod",an app/ file imports an Agent type from agent/,the import is inspected,"it imports agent:: (mod-level) symbols, not agent::facade"

@@ -1,4 +1,4 @@
-//! AgentSession — core agent lifecycle management.
+//! Agent — core agent lifecycle management.
 //!
 //! Handles:
 //! - Model registry and current model tracking
@@ -11,20 +11,21 @@
 
 use std::sync::Arc;
 
-use tokio_util::sync::CancellationToken;
-
 pub(crate) use crate::runtime_protocol::{XyEventSink, XySessionStore};
 
 mod bang;
+mod bash;
 mod export;
 mod io;
+mod permission;
 mod prompt_result;
 mod stats;
-mod steering;
+mod trust;
 
 pub use self::io::SessionIO;
 pub use self::prompt_result::PromptResult;
 pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_usage};
+pub use self::trust::save_trust_decision;
 
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::compaction::orchestrator::CompactionOrchestrator;
@@ -34,29 +35,26 @@ use crate::agent::prompt::skills::SkillManager;
 use crate::agent::prompt::templates::{PromptTemplate, is_template_line, parse_template_line};
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::AgentHooks;
-use crate::agent::runtime::MessageQueue;
 use crate::agent::session::bang::parse_bang_prefix;
 use crate::agent::tools::ToolSet;
-use crate::domain::resource_types::SkillInfo;
 use crate::domain::session_types::{
-    BashExecutionEntry, EntryBase, ModelChangeEntry, SessionEntry, ThinkingLevelChangeEntry,
+    EntryBase, ModelChangeEntry, SessionEntry, ThinkingLevelChangeEntry,
 };
 #[cfg(test)]
 use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
 use crate::domain::types::{ThinkingLevel, XyModelMeta};
 use crate::runtime_protocol::{
-    XyBashExecutor, XyExportIo, XyModel, XyPermission, XyPermissionVerdict, XyToolExecutionMode,
-    XyTrustStore,
+    XyBashExecutor, XyExportIo, XyModel, XyPermission, XyToolExecutionMode,
 };
 
 // ── Model Registry ──────────────────────────────────────────────────
 
 pub use crate::agent::model::registry::ModelRegistry;
 
-// ── AgentSession ────────────────────────────────────────────────────
+// ── Agent ────────────────────────────────────────────────────
 
 /// Core agent session — encapsulates model, tools, session persistence, and events.
-pub struct AgentSession {
+pub struct Agent {
     /// Model management (registry, selection, thinking level).
     model_manager: ModelManager,
     /// Tools available to the agent (construct-time final set).
@@ -82,30 +80,28 @@ pub struct AgentSession {
     cwd: String,
     /// System prompt options for dynamic building.
     prompt_opts: SystemPromptOpts,
-    /// Message queue for steer/followUp.
-    message_queue: MessageQueue,
     /// Registered prompt templates for /template:name expansion.
     prompt_templates: Vec<PromptTemplate>,
     /// Extension-registered slash commands.
     extension_commands: Vec<SlashCommandInfo>,
     /// Skill management (activation, XML expansion).
     skill_manager: SkillManager,
-    /// Injected bash executor port (HC-2). `None` means `!cmd` is unavailable.
-    bash_executor: Option<Arc<dyn XyBashExecutor>>,
-    /// Injected export/import I/O port (HC-2). `None` means export is unavailable.
-    export_io: Option<Arc<dyn XyExportIo>>,
-    /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
-    bash_cancel: Option<CancellationToken>,
+    /// Bash-execution collaborator (HC-2). Holds the optional [`XyBashExecutor`]
+    /// port and the in-flight cancellation token.
+    bash: crate::agent::session::bash::BashExecHandler,
+    /// Export/import collaborator (HC-2). Holds the optional [`XyExportIo`] port.
+    exporter: crate::agent::session::export::SessionExporter,
 
-    /// Sandbox engine for tool execution isolation (injected at construction).
-    permission: std::sync::Arc<dyn XyPermission>,
+    /// Permission gate collaborator (HC-2). Holds the advisory [`XyPermission`]
+    /// engine consulted by the ReAct loop for tool routing.
+    permission: crate::agent::session::permission::PermissionGate,
     /// Session store port (HC-2) — actively used by the ReAct loop.
     store: Arc<dyn XySessionStore>,
     /// Event sink port (HC-2) — actively used for lifecycle events.
     sink: Arc<dyn XyEventSink>,
 }
 
-impl AgentSession {
+impl Agent {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         model_registry: ModelRegistry,
@@ -151,16 +147,14 @@ impl AgentSession {
                 tool_snippets,
                 ..Default::default()
             },
-            message_queue: MessageQueue::new(),
             prompt_templates: Vec::new(),
             extension_commands: Vec::new(),
             skill_manager: SkillManager::new(),
-            bash_executor,
-            bash_cancel: None,
-            export_io,
+            bash: crate::agent::session::bash::BashExecHandler::new(bash_executor),
+            exporter: crate::agent::session::export::SessionExporter::new(export_io),
             store,
             sink,
-            permission,
+            permission: crate::agent::session::permission::PermissionGate::new(permission),
         }
     }
 
@@ -209,25 +203,6 @@ impl AgentSession {
         self.model_manager.cycle_forward()
     }
 
-    /// Cycle to the previous model.
-    #[allow(dead_code)]
-    pub(crate) fn cycle_backward(&mut self) -> Option<&XyModelMeta> {
-        let len = self.model_manager.registry().len();
-        if len == 0 {
-            return None;
-        }
-        let current = self.model_manager.current_index();
-        let prev = if current == 0 { len - 1 } else { current - 1 };
-        // Cycle forward to wrap around, since ModelManager only has cycle_forward
-        for _ in 0..len {
-            if self.model_manager.current_index() == prev {
-                break;
-            }
-            self.model_manager.cycle_forward();
-        }
-        self.model_manager.current_model()
-    }
-
     /// Select a specific model by ID.
     pub fn select_model(&mut self, model_id: &str) -> Result<(), String> {
         self.model_manager.select_model(model_id)?;
@@ -255,18 +230,6 @@ impl AgentSession {
 
     // ── Prompt templates and commands ───────────────────────────
 
-    /// Register a prompt template.
-    #[allow(dead_code)]
-    pub(crate) fn register_template(&mut self, template: PromptTemplate) {
-        self.prompt_templates.push(template);
-    }
-
-    /// Register prompt templates.
-    #[allow(dead_code)]
-    pub(crate) fn register_templates(&mut self, templates: Vec<PromptTemplate>) {
-        self.prompt_templates.extend(templates);
-    }
-
     /// Register prompt templates discovered by the XyResourceLoader.
     ///
     /// Converts the loader's `PromptTemplate` (content field) into the runtime
@@ -286,12 +249,6 @@ impl AgentSession {
                 source_info: Some(t.source_info.clone()),
             });
         }
-    }
-
-    /// Register an extension slash command.
-    #[allow(dead_code)]
-    pub(crate) fn register_command(&mut self, cmd: SlashCommandInfo) {
-        self.extension_commands.push(cmd);
     }
 
     /// Get all available commands (builtin + extension + prompt templates).
@@ -421,22 +378,8 @@ impl AgentSession {
         self.max_iterations
     }
 
-    pub fn compaction_threshold(&self) -> f64 {
-        self.compaction_orchestrator.threshold()
-    }
-
-    /// Compaction tuning in use (reserve / keep-recent tokens, master toggle).
-    pub fn compaction_settings(&self) -> &CompactionSettings {
-        self.compaction_orchestrator.settings()
-    }
-
     pub fn model_registry(&self) -> &ModelRegistry {
         self.model_manager.registry()
-    }
-
-    /// Clone the model registry (needed by RPC mode).
-    pub fn registry_clone(&self) -> ModelRegistry {
-        self.model_manager.registry_clone()
     }
 
     /// Current working directory.
@@ -444,44 +387,10 @@ impl AgentSession {
         &self.cwd
     }
 
-    // ── Compaction ───────────────────────────────────────────────
-
-    /// Compact the current session, summarizing old entries via LLM.
-    ///
-    /// Requires an active session and a configured model. Writes a
-    /// Compact the current session, emitting lifecycle events.
-    pub async fn compact_current_session(&self, model: &dyn XyModel) -> Result<(), String> {
-        let sid = self
-            .session_id()
-            .ok_or_else(|| "no active session".to_string())?;
-        self.compaction_orchestrator
-            .compact(self.store.as_ref(), sid, model, self.sink.as_ref())
-            .await
-    }
-
     // ── Skills (delegated to SkillManager) ─────────
-
-    pub fn set_skills(&mut self, skills: Vec<SkillInfo>) {
-        self.skill_manager.set_skills(skills);
-    }
 
     pub fn expand_skill_command(&self, skill_name: &str, args: &str) -> Option<String> {
         self.skill_manager.expand_command(skill_name, args)
-    }
-
-    // ── Project trust (spec c255 / t6) ─────────────────────────
-
-    /// Persist a project trust decision for the current CWD via the trust
-    /// store (single source of truth). Used by the `/trust` and `/no-trust`
-    /// commands; the decision takes effect on the next resolution / restart.
-    /// Returns the persisted decision.
-    pub fn save_trust_decision(
-        &self,
-        trust_store: &dyn XyTrustStore,
-        trusted: bool,
-    ) -> Result<bool, String> {
-        trust_store.set_trust(&self.cwd, Some(trusted))?;
-        Ok(trusted)
     }
 
     // ── Fork ────────────────────────────────────────────────────
@@ -506,30 +415,11 @@ impl AgentSession {
 
     // ── Skill commands ──────────────────────────────────────
 
-    /// Register skill commands from loaded skills.
-    /// When a skill is loaded, `/skill:name` slash command is auto-registered.
-    pub fn register_skill_commands(
-        &mut self,
-        _skills: &[crate::domain::resource_types::SkillInfo],
-    ) {
-        let cmds = self.skill_manager.register_commands();
-        self.extension_commands.extend(cmds);
-    }
-
-    // ── Steering / Follow-up queue ─────────────────────────────
-    // (methods live in steering.rs)
-
     // ── Dynamic system prompt ────────────────────────────────────
 
     /// Rebuild the system prompt from current options.
     pub fn rebuild_system_prompt(&mut self) {
         self.system_prompt = Some(prompt::build_system_prompt(&self.prompt_opts));
-    }
-
-    /// Set append system prompt text.
-    pub fn set_append_prompt(&mut self, text: Option<String>) {
-        self.prompt_opts.append_prompt = text;
-        self.rebuild_system_prompt();
     }
 
     /// Set the active system prompt text and rebuild.
@@ -555,19 +445,7 @@ impl AgentSession {
 
     /// Set the permission port.
     pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>) {
-        self.permission = permission;
-    }
-
-    // ── Message queue accessors ──────────────────────────────────
-
-    #[allow(dead_code)]
-    pub(crate) fn message_queue(&self) -> &MessageQueue {
-        &self.message_queue
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn message_queue_mut(&mut self) -> &mut MessageQueue {
-        &mut self.message_queue
+        self.permission.set(permission);
     }
 
     // ── Session stats ────────────────────────────────────────────
@@ -577,28 +455,7 @@ impl AgentSession {
         let sid = self
             .session_id()
             .ok_or_else(|| "no active session".to_string())?;
-        let ctx = self.store.build_session_context(sid).await?;
-
-        let user_messages = ctx
-            .messages
-            .iter()
-            .filter(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
-            .count();
-        let assistant_messages = ctx
-            .messages
-            .iter()
-            .filter(|m| m.get("role").and_then(|r| r.as_str()) == Some("assistant"))
-            .count();
-        let total_messages = ctx.messages.len();
-
-        Ok(SessionStats {
-            session_id: sid.to_string(),
-            user_messages,
-            assistant_messages,
-            total_messages,
-            thinking_level: ctx.thinking_level,
-            model: ctx.model,
-        })
+        crate::agent::session::stats::compute(self.store.as_ref(), sid).await
     }
 
     // ── Bash execution (`!cmd` / `!!cmd`) ───────────────────────
@@ -612,26 +469,14 @@ impl AgentSession {
         command: &str,
         exclude_from_context: bool,
     ) -> Result<crate::runtime_protocol::XyBashResult, String> {
-        let executor = self
-            .bash_executor
-            .as_ref()
-            .ok_or("bash executor not configured")?;
-
-        let cancel = CancellationToken::new();
-        self.bash_cancel = Some(cancel.clone());
-
-        let result = executor.execute(command, Some(cancel)).await;
-
-        self.bash_cancel = None;
-
-        // Record on disk.
-        if let Some(sid) = self.session_id() {
-            let sid = sid.to_string();
-            self.record_bash_result(command, &result, exclude_from_context, Some(&sid))
-                .await?;
-        }
-
-        Ok(result)
+        // Snapshot the immutable borrows first so `self.bash` (mut) does not
+        // conflict with `self.store` / `self.session_id` (shared) within one
+        // call expression (design §6 borrow risk).
+        let store: &dyn XySessionStore = self.store.as_ref();
+        let sid = self.session_id().map(str::to_string);
+        self.bash
+            .execute(store, sid.as_deref(), command, exclude_from_context)
+            .await
     }
 
     /// Persist a bash result as a `BashExecution` session entry.
@@ -649,7 +494,7 @@ impl AgentSession {
                 .ok_or_else(|| "no active session".to_string())?
                 .to_string(),
         };
-        record_bash_result(
+        crate::agent::session::bash::record_bash_result(
             self.store.as_ref(),
             command,
             result,
@@ -659,56 +504,17 @@ impl AgentSession {
         .await
     }
 
-    /// Get a reference to the sandbox engine (injected at construction).
+    /// Get a reference to the permission engine (injected at construction).
     pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission> {
-        self.permission.clone()
-    }
-
-    /// Check whether a file read is allowed by the sandbox.
-    pub fn check_permission_read(&self, path: &str) -> XyPermissionVerdict {
-        self.get_permission().check_read(path)
-    }
-
-    /// Check whether a file write is allowed by the sandbox.
-    pub fn check_permission_write(&self, path: &str) -> XyPermissionVerdict {
-        self.get_permission().check_write(path)
-    }
-
-    /// Check whether a network request is allowed by the sandbox.
-    pub fn check_permission_network(&self, domain: &str) -> XyPermissionVerdict {
-        self.get_permission().check_network(domain)
+        self.permission.get()
     }
 
     /// Abort any in-flight bash execution.
     pub fn abort_bash(&mut self) {
-        if let Some(cancel) = self.bash_cancel.take() {
-            cancel.cancel();
-        }
+        self.bash.abort();
     }
 
     // ── Lifecycle management ───────────────────────────────────────
-
-    /// Dispose of the session, cleaning up all resources.
-    ///
-    /// Cancels in-flight bash execution, unsubscribes all event listeners,
-    /// and clears state.
-    pub fn dispose(&mut self) {
-        // Cancel all in-flight operations
-        self.abort_bash();
-
-        // Clear queues
-        self.message_queue.drain();
-    }
-
-    /// Abort the current operation.
-    ///
-    /// Cancels in-flight bash execution. (Lifecycle emission removed: the
-    /// in-process EventBus had zero subscribers — `subscribe` was dead API.
-    /// If abort notifications are needed later, extend
-    /// `XyEvent` and emit via the `XyEventSink` port.)
-    pub fn abort(&mut self) {
-        self.abort_bash();
-    }
 
     // ── Export / import (delegated to SessionExporter) ─────────
 
@@ -717,12 +523,8 @@ impl AgentSession {
         &self,
         path: &std::path::Path,
     ) -> Result<std::path::PathBuf, String> {
-        let io = self.export_io.as_ref().ok_or("export io not configured")?;
         let sid = self.session_id().ok_or("no active session")?.to_string();
-        let entries = self.store.load_entries(&sid).await?;
-        let html = crate::agent::session::export::render_html(&sid, &entries);
-        io.write_text(path, &html).await?;
-        Ok(path.to_path_buf())
+        self.exporter.export_to_html(self.store.as_ref(), &sid, path).await
     }
 
     /// Export the active session's entries as JSONL. Returns the path.
@@ -730,12 +532,8 @@ impl AgentSession {
         &self,
         path: &std::path::Path,
     ) -> Result<std::path::PathBuf, String> {
-        let io = self.export_io.as_ref().ok_or("export io not configured")?;
         let sid = self.session_id().ok_or("no active session")?.to_string();
-        let entries = self.store.load_entries(&sid).await?;
-        let jsonl = crate::agent::session::export::render_jsonl(&entries)?;
-        io.write_text(path, &jsonl).await?;
-        Ok(path.to_path_buf())
+        self.exporter.export_to_jsonl(self.store.as_ref(), &sid, path).await
     }
 
     /// Import a JSONL file into a brand-new session. Returns the new session id.
@@ -744,25 +542,7 @@ impl AgentSession {
     /// identities stable across export/import; the file lands without
     /// overwriting an existing session.
     pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String> {
-        let io = self.export_io.as_ref().ok_or("export io not configured")?;
-        let bytes = io.read_bytes(path).await?;
-        let entries = crate::agent::session::export::parse_jsonl(&bytes)?;
-        let new_id = match entries.first() {
-            Some(SessionEntry::Header(h)) => h.id.clone(),
-            _ => return Err("import: missing header".into()),
-        };
-        if self.store.exists(&new_id).await {
-            return Err(format!("session already exists: {new_id}"));
-        }
-        for entry in &entries {
-            self.store.append_session_entry(&new_id, entry).await?;
-        }
-        Ok(new_id)
-    }
-
-    /// Share guidance stub — returns a configuration hint (no network upload).
-    pub fn share_as_gist(&self, path: &std::path::Path) -> String {
-        crate::agent::session::export::share_guidance_message(path)
+        self.exporter.import_from_jsonl(self.store.as_ref(), path).await
     }
 
     /// Check and perform auto-compaction if the context is full.
@@ -793,47 +573,19 @@ impl AgentSession {
     }
 }
 
-/// Persist a bash result as a `BashExecution` session entry (free helper used
-/// by both [`AgentSession::record_bash_result`](super::AgentSession::record_bash_result)
-/// and the bash-execution collaborator).
-pub(crate) async fn record_bash_result(
-    store: &dyn XySessionStore,
-    command: &str,
-    result: &crate::runtime_protocol::XyBashResult,
-    exclude_from_context: bool,
-    session_id: &str,
-) -> Result<(), String> {
-    let entry = SessionEntry::BashExecution(BashExecutionEntry {
-        base: EntryBase {
-            entry_type: "bash".into(),
-            id: String::new(),
-            parent_id: None,
-            timestamp: String::new(),
-        },
-        command: command.to_string(),
-        output: result.output.clone(),
-        exit_code: result.exit_code,
-        cancelled: result.cancelled,
-        truncated: result.truncated,
-        full_output_path: result.full_output_path.clone(),
-        exclude_from_context,
-    });
-    store.append_session_entry(session_id, &entry).await
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::infra::session::SessionManager;
     use std::path::PathBuf;
 
-    fn make_session() -> AgentSession {
+    fn make_session() -> Agent {
         let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
         let store: std::sync::Arc<dyn crate::runtime_protocol::XySessionStore> =
             std::sync::Arc::new(mgr);
         let sink: std::sync::Arc<dyn crate::runtime_protocol::XyEventSink> =
             std::sync::Arc::new(crate::infra::event::EventBus::new());
-        AgentSession::new(
+        Agent::new(
             ModelRegistry::new(std::sync::Arc::new(
                 crate::infra::config::value::InfraSecretResolver::new(),
             )),

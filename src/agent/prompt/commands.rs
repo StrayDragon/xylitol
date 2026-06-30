@@ -7,7 +7,7 @@
 //! - **Builtins** are defined as simple `(&str, &str)` tuples (name, description).
 //! - **Non-builtin commands** (from skills, prompts, extensions) carry a
 //!   [`SlashCommandSource`] and optional `source_path` for provenance.
-//! - AgentSession owns the dispatch logic (`dispatch_slash_command` in session.rs).
+//! - Agent owns the dispatch logic (`dispatch_slash_command` in session.rs).
 
 use crate::domain::source_info::SourceInfo;
 
