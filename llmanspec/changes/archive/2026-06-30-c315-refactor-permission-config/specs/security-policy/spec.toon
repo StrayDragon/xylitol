@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,s10,"permission-config-struct","System MUST define a PermissionConfig struct (renamed from SandboxConfig) with enabled, backend (PermissionBackend with Glob default, Landlock, MacOs), filesystem (read_allowed, write_allowed, write_denied), network (allowed_domains, denied_domains), and process (allowed_paths) fields, loadable from the config.yaml security.permission key (renamed from security.sandbox).",null,null,null
+  modify_requirement,s14,"permission-default-deny-unlisted","When permission.filesystem.read_allowed is non-empty, any path not matching an allowed pattern SHALL be treated as denied (default-deny). When permission.network.allowed_domains is non-empty, any domain not matching an allowed pattern SHALL be treated as denied.",null,null,null
+  remove_requirement,r8,null,null,null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  s10,"permission-config","config.yaml has security.permission.filesystem.write_denied=['.env']",config loads,"PermissionConfig.write_denied contains '.env' and no SandboxConfig type exists"
+  s14,"default-deny-read","permission.filesystem.read_allowed=['/home/user/project']",read tool reads '/etc/passwd',"the permission engine returns access-denied"

@@ -25,6 +25,6 @@ pub mod clipboard;
 pub mod fs_watch;
 pub mod git;
 pub mod image;
-pub mod sandbox;
+pub mod permission;
 pub mod tools;
 pub mod update;

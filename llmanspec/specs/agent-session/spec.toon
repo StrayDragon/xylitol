@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-session"
 purpose: "TBD - created by archiving change c05-rebuild-core. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[27]{req_id,title,statement}:
+requirements[29]{req_id,title,statement}:
   a1,"agent-session","System MUST provide AgentSession encapsulating prompt to model to tools to loop with full event stream, holding ONLY orchestration state; the system prompt MUST be assembled from injected context (AGENTS.md files, configured system prompt, append prompts) supplied by the composition root, NOT from a hardcoded fallback."
   a2,"turn-events","AgentSession MUST emit: turn_start, message_start, message_update (streaming), message_end events per turn."
   a3,"tool-events","AgentSession MUST emit: tool_execution_start, tool_execution_update (streaming partials), tool_execution_end events per tool call."
@@ -30,7 +30,9 @@ requirements[27]{req_id,title,statement}:
   as35,"export-io-port","AgentSession's export_to_html, export_to_jsonl, and import_from_jsonl MUST perform file I/O through an injected Arc<dyn runtime_protocol::export::ExportIo> rather than calling std::fs directly, so that the agent layer remains free of filesystem side effects and future backends (gist, S3) can be added without changing agent code."
   as36,"bang-prefix-in-agent","The user-input bang-prefix parser (!cmd / !!cmd) MUST live under agent::session::bang, not in the domain layer, because it encodes CLI/agent interaction syntax rather than universal domain vocabulary."
   as37,"session-exporter-in-agent","Session export/import render and parse helpers (render_html, render_jsonl, parse_jsonl) MUST live under agent::session::export, not in the domain layer, because they are part of the export command orchestration."
-scenarios[34]{req_id,id,given,when,then}:
+  as38,"optional-bash-export","AgentSession MUST hold bash_executor and export_io as Option of Arc of the port trait; execute_bash and the export_to_html, export_to_jsonl, and import_from_jsonl methods MUST return a clear not-configured error when the corresponding slot is None, so a minimal conversation agent is not forced to carry bash or export capability."
+  as39,"capability-state-on-session","AgentSession MUST own the runtime-mutable capability state (tools ToolSet, permission engine, hooks, active system prompt) so that Agent facade setters can mutate them and run can snapshot them per turn; AgentLoop MUST NOT duplicate this state, and the current duplication of hooks and tool_mode fields on AgentLoop MUST be removed."
+scenarios[36]{req_id,id,given,when,then}:
   a1,"prompt-from-loader",a project containing AGENTS.md and the CLI composition root constructs the agent,the agent builds its system prompt,the system prompt MUST include the AGENTS.md content and MUST NOT default to a hardcoded placeholder when the loader provides values
   a2,"turn-events","agent processes a tool-calling turn",turn starts,"events are emitted in order: turn_start message_start message_update* message_end turn_end"
   a3,"tool-stream",bash tool streams output,tool_execution_start fires,tool_execution_update fires multiple times then tool_execution_end
@@ -65,3 +67,5 @@ scenarios[34]{req_id,id,given,when,then}:
   as35,"export-io-injected",AgentSession is constructed for export,a write is performed,"the write goes through the injected ExportIo implementation, not direct fs calls in agent/"
   as36,"bang-in-agent",the bang parser is located,its module is inspected,it is defined under src/agent/session/bang.rs
   as37,"exporter-in-agent",export render helpers are located,their module is inspected,they are defined under src/agent/session/export.rs
+  as38,"no-bash-configured",an agent is built without a bash executor,execute_bash is called,it returns an error mentioning bash executor not configured without panicking
+  as39,"loop-no-dup-state",AgentLoop fields are inspected,the change is applied,hooks and tool_mode live on AgentSession only and AgentLoop holds only session and cancel

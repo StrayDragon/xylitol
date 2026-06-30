@@ -82,7 +82,7 @@ impl Default for ServerConfig {
 /// This is the server's composition root — it wires:
 /// - XySessionStore (infra::session::SessionManager)
 /// - XyEventSink (infra::event::EventBus)
-/// - ModelRegistry / ToolRegistry
+/// - ModelRegistry / ToolSet
 /// - REST router with shared state
 /// - Single-instance lock
 /// - Port retry
@@ -107,7 +107,7 @@ pub async fn start(
         compaction_threshold: config.compaction_threshold,
         cwd,
         compaction_settings: config.compaction_settings,
-        sandbox_engine: None,
+        permission: None,
     })?;
 
     // ── Server state ──────────────────────────────────────────────

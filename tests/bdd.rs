@@ -13,7 +13,7 @@ use futures::StreamExt;
 use xylitol::agent::compaction::should_compact;
 use xylitol::agent::runtime::{AgentLoop, XyEvent};
 use xylitol::agent::session::{AgentSession, ContextUsage, ModelRegistry, get_context_usage};
-use xylitol::agent::tools::ToolRegistry;
+use xylitol::agent::tools::ToolSet;
 use xylitol::domain::model::{XyModelConfig, XyModelKind};
 use xylitol::domain::types::{ThinkingLevel, XyModelMeta};
 use xylitol::infra::config::types::HookEntry;
@@ -171,7 +171,7 @@ fn make_agent(agent: &AgentState) -> AgentLoop {
         Arc::new(xylitol::infra::event::EventBus::new());
     let session = AgentSession::new(
         agent.registry.borrow().clone(),
-        ToolRegistry::from_tools(xylitol::infra::tools::default_tools()),
+        ToolSet::from_iter(xylitol::infra::tools::default_tools()),
         store,
         sink,
         Some("you are helpful".into()),
@@ -182,9 +182,13 @@ fn make_agent(agent: &AgentState) -> AgentLoop {
         ".".into(),
         None,
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
-        xylitol::infra::sandbox::noop_engine(),
-        std::sync::Arc::new(xylitol::infra::bash_exec::InfraBashExecutor::new()),
-        std::sync::Arc::new(xylitol::infra::export::StdExportIo::new()),
+        xylitol::infra::permission::allow_all_permission(),
+        Some(std::sync::Arc::new(
+            xylitol::infra::bash_exec::InfraBashExecutor::new(),
+        )),
+        Some(std::sync::Arc::new(
+            xylitol::infra::export::StdExportIo::new(),
+        )),
     );
     AgentLoop::new(session)
 }
@@ -569,7 +573,7 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut session = AgentSession::new(
         agent.registry.borrow().clone(),
-        ToolRegistry::from_tools(xylitol::infra::tools::default_tools()),
+        ToolSet::from_iter(xylitol::infra::tools::default_tools()),
         store,
         sink,
         None,
@@ -580,9 +584,13 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         ".".into(),
         None,
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
-        xylitol::infra::sandbox::noop_engine(),
-        std::sync::Arc::new(xylitol::infra::bash_exec::InfraBashExecutor::new()),
-        std::sync::Arc::new(xylitol::infra::export::StdExportIo::new()),
+        xylitol::infra::permission::allow_all_permission(),
+        Some(std::sync::Arc::new(
+            xylitol::infra::bash_exec::InfraBashExecutor::new(),
+        )),
+        Some(std::sync::Arc::new(
+            xylitol::infra::export::StdExportIo::new(),
+        )),
     );
     let tl = match level.as_str() {
         "high" => ThinkingLevel::High,
@@ -679,7 +687,7 @@ fn _w_agent_cycle_forward(agent: &AgentState) {
         std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut session = AgentSession::new(
         agent.registry.borrow().clone(),
-        ToolRegistry::from_tools(xylitol::infra::tools::default_tools()),
+        ToolSet::from_iter(xylitol::infra::tools::default_tools()),
         store,
         sink,
         None,
@@ -690,9 +698,13 @@ fn _w_agent_cycle_forward(agent: &AgentState) {
         ".".into(),
         None,
         std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
-        xylitol::infra::sandbox::noop_engine(),
-        std::sync::Arc::new(xylitol::infra::bash_exec::InfraBashExecutor::new()),
-        std::sync::Arc::new(xylitol::infra::export::StdExportIo::new()),
+        xylitol::infra::permission::allow_all_permission(),
+        Some(std::sync::Arc::new(
+            xylitol::infra::bash_exec::InfraBashExecutor::new(),
+        )),
+        Some(std::sync::Arc::new(
+            xylitol::infra::export::StdExportIo::new(),
+        )),
     );
     let next = session
         .cycle_forward()
@@ -1894,34 +1906,34 @@ fn _g_file_with_content_string(ws: &Workspace, path: String, content: String) {
 mod sandbox_bdd {
     use rstest_bdd_macros::{given, scenario, then, when};
     use std::sync::Arc;
-    use xylitol::infra::sandbox::{XySandboxEngine, XySandboxVerdict};
+    use xylitol::infra::permission::{XyPermission, XyPermissionVerdict};
 
     thread_local! {
-        static SANDBOX_ENGINE: std::cell::RefCell<Option<Arc<dyn XySandboxEngine>>> =
+        static SANDBOX_ENGINE: std::cell::RefCell<Option<Arc<dyn XyPermission>>> =
             std::cell::RefCell::new(None);
-        static LAST_VERDICT: std::cell::RefCell<Option<XySandboxVerdict>> =
+        static LAST_VERDICT: std::cell::RefCell<Option<XyPermissionVerdict>> =
             std::cell::RefCell::new(None);
     }
 
     use xylitol::infra::config::types::{
-        SandboxBackend, SandboxConfig, SandboxFilesystemConfig, SandboxNetworkConfig,
-        SandboxProcessConfig,
+        PermissionBackend, PermissionConfig, PermissionFilesystemConfig, PermissionNetworkConfig,
+        PermissionProcessConfig,
     };
 
-    fn default_sandbox() -> SandboxConfig {
-        SandboxConfig {
+    fn default_sandbox() -> PermissionConfig {
+        PermissionConfig {
             enabled: true,
-            backend: SandboxBackend::Fallback,
-            filesystem: SandboxFilesystemConfig {
+            backend: PermissionBackend::Glob,
+            filesystem: PermissionFilesystemConfig {
                 read_allowed: vec!["/project/**".into()],
                 write_allowed: vec!["/project/**".into()],
                 write_denied: vec!["**/.env".into()],
             },
-            network: SandboxNetworkConfig {
+            network: PermissionNetworkConfig {
                 allowed_domains: vec!["github.com".into()],
                 denied_domains: vec!["evil.com".into()],
             },
-            process: SandboxProcessConfig {
+            process: PermissionProcessConfig {
                 allowed_paths: vec![],
             },
         }
@@ -1930,7 +1942,9 @@ mod sandbox_bdd {
     #[given("沙箱引擎已初始化")]
     fn sandbox_engine_init() {
         SANDBOX_ENGINE.with(|e| {
-            *e.borrow_mut() = Some(xylitol::infra::sandbox::build_engine(&default_sandbox()));
+            *e.borrow_mut() = Some(xylitol::infra::permission::build_permission(
+                &default_sandbox(),
+            ));
         });
     }
 

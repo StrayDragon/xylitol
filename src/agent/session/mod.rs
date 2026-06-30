@@ -33,9 +33,10 @@ use crate::agent::prompt::commands::{SlashCommandInfo, get_all_commands};
 use crate::agent::prompt::skills::SkillManager;
 use crate::agent::prompt::templates::{PromptTemplate, is_template_line, parse_template_line};
 use crate::agent::prompt::{self, SystemPromptOpts};
+use crate::agent::runtime::AgentHooks;
 use crate::agent::runtime::MessageQueue;
 use crate::agent::session::bang::parse_bang_prefix;
-use crate::agent::tools::ToolRegistry;
+use crate::agent::tools::ToolSet;
 use crate::domain::resource_types::SkillInfo;
 use crate::domain::session_types::{
     BashExecutionEntry, EntryBase, ModelChangeEntry, SessionEntry, ThinkingLevelChangeEntry,
@@ -44,7 +45,8 @@ use crate::domain::session_types::{
 use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
 use crate::domain::types::{ThinkingLevel, XyModelMeta};
 use crate::runtime_protocol::{
-    XyBashExecutor, XyExportIo, XyModel, XySandboxEngine, XySandboxVerdict, XyTrustStore,
+    XyBashExecutor, XyExportIo, XyModel, XyPermission, XyPermissionVerdict, XyToolExecutionMode,
+    XyTrustStore,
 };
 
 // ── Model Registry ──────────────────────────────────────────────────
@@ -57,10 +59,12 @@ pub use crate::agent::model::registry::ModelRegistry;
 pub struct AgentSession {
     /// Model management (registry, selection, thinking level).
     model_manager: ModelManager,
-    /// Tool registry (all available tools).
-    tool_registry: ToolRegistry,
-    /// Names of currently active tools (empty = all allowed).
-    active_tools: Vec<String>,
+    /// Tools available to the agent (construct-time final set).
+    tools: ToolSet,
+    /// Runtime-mutable hooks consulted at tool-call boundaries.
+    hooks: AgentHooks,
+    /// Tool execution mode for the current turn.
+    tool_mode: XyToolExecutionMode,
     /// Session persistence via the XySessionStore port (HC-2). Held for the
     /// ReAct loop to consume load_context/append_entry/exists; the loop
     /// currently builds history inline (c185) and will migrate to this port.
@@ -79,7 +83,6 @@ pub struct AgentSession {
     /// System prompt options for dynamic building.
     prompt_opts: SystemPromptOpts,
     /// Message queue for steer/followUp.
-    #[allow(dead_code)]
     message_queue: MessageQueue,
     /// Registered prompt templates for /template:name expansion.
     prompt_templates: Vec<PromptTemplate>,
@@ -87,17 +90,16 @@ pub struct AgentSession {
     extension_commands: Vec<SlashCommandInfo>,
     /// Skill management (activation, XML expansion).
     skill_manager: SkillManager,
-    /// Injected bash executor port (HC-2).
-    bash_executor: Arc<dyn XyBashExecutor>,
-    /// Injected export/import I/O port (HC-2).
-    export_io: Arc<dyn XyExportIo>,
+    /// Injected bash executor port (HC-2). `None` means `!cmd` is unavailable.
+    bash_executor: Option<Arc<dyn XyBashExecutor>>,
+    /// Injected export/import I/O port (HC-2). `None` means export is unavailable.
+    export_io: Option<Arc<dyn XyExportIo>>,
     /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
     bash_cancel: Option<CancellationToken>,
 
     /// Sandbox engine for tool execution isolation (injected at construction).
-    sandbox_engine: std::sync::Arc<dyn XySandboxEngine>,
+    permission: std::sync::Arc<dyn XyPermission>,
     /// Session store port (HC-2) — actively used by the ReAct loop.
-    #[allow(dead_code)]
     store: Arc<dyn XySessionStore>,
     /// Event sink port (HC-2) — actively used for lifecycle events.
     sink: Arc<dyn XyEventSink>,
@@ -107,7 +109,7 @@ impl AgentSession {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         model_registry: ModelRegistry,
-        tool_registry: ToolRegistry,
+        tool_registry: ToolSet,
         store: Arc<dyn XySessionStore>,
         sink: Arc<dyn XyEventSink>,
         system_prompt: Option<String>,
@@ -118,14 +120,19 @@ impl AgentSession {
         cwd: String,
         compaction_settings: Option<CompactionSettings>,
         model_builder: crate::runtime_protocol::XyModelBuilder,
-        sandbox: Arc<dyn XySandboxEngine>,
-        bash_executor: Arc<dyn XyBashExecutor>,
-        export_io: Arc<dyn XyExportIo>,
+        permission: Arc<dyn XyPermission>,
+        bash_executor: Option<Arc<dyn XyBashExecutor>>,
+        export_io: Option<Arc<dyn XyExportIo>>,
     ) -> Self {
+        let selected_tools: Vec<String> =
+            tool_registry.iter().map(|t| t.name().to_string()).collect();
+        let tool_snippets = prompt::collect_tool_snippets(&tool_registry, &selected_tools);
+
         Self {
             model_manager: ModelManager::new(model_registry, model_builder),
-            tool_registry,
-            active_tools: Vec::new(),
+            tools: tool_registry,
+            hooks: AgentHooks::empty(),
+            tool_mode: XyToolExecutionMode::Sequential,
             session_io: SessionIO::new(store.clone()),
             system_prompt: system_prompt.clone(),
             session_id: None,
@@ -140,6 +147,8 @@ impl AgentSession {
                 system_prompt,
                 context_files,
                 append_system_prompt,
+                selected_tools,
+                tool_snippets,
                 ..Default::default()
             },
             message_queue: MessageQueue::new(),
@@ -151,7 +160,7 @@ impl AgentSession {
             export_io,
             store,
             sink,
-            sandbox_engine: sandbox,
+            permission,
         }
     }
 
@@ -384,8 +393,24 @@ impl AgentSession {
 
     // ── Accessors ─────────────────────────────────────────────────
 
-    pub(crate) fn tool_registry(&self) -> &ToolRegistry {
-        &self.tool_registry
+    pub(crate) fn tools(&self) -> &ToolSet {
+        &self.tools
+    }
+
+    pub(crate) fn hooks(&self) -> &AgentHooks {
+        &self.hooks
+    }
+
+    pub(crate) fn hooks_mut(&mut self) -> &mut AgentHooks {
+        &mut self.hooks
+    }
+
+    pub(crate) fn tool_mode(&self) -> XyToolExecutionMode {
+        self.tool_mode
+    }
+
+    pub(crate) fn set_tool_mode(&mut self, mode: XyToolExecutionMode) {
+        self.tool_mode = mode;
     }
 
     pub fn system_prompt(&self) -> Option<&str> {
@@ -496,15 +521,6 @@ impl AgentSession {
 
     // ── Dynamic system prompt ────────────────────────────────────
 
-    /// Set active tools by name and rebuild the system prompt.
-    pub fn set_active_tools(&mut self, tool_names: &[String]) {
-        self.active_tools = tool_names.to_vec();
-        self.prompt_opts.selected_tools = tool_names.to_vec();
-        self.prompt_opts.tool_snippets =
-            prompt::collect_tool_snippets(&self.tool_registry, tool_names);
-        self.rebuild_system_prompt();
-    }
-
     /// Rebuild the system prompt from current options.
     pub fn rebuild_system_prompt(&mut self) {
         self.system_prompt = Some(prompt::build_system_prompt(&self.prompt_opts));
@@ -514,6 +530,32 @@ impl AgentSession {
     pub fn set_append_prompt(&mut self, text: Option<String>) {
         self.prompt_opts.append_prompt = text;
         self.rebuild_system_prompt();
+    }
+
+    /// Set the active system prompt text and rebuild.
+    pub fn set_system_prompt(&mut self, prompt: Option<String>) {
+        self.prompt_opts.system_prompt = prompt.clone();
+        self.system_prompt = prompt;
+        self.rebuild_system_prompt();
+    }
+
+    /// Set the active tool set and rebuild the system prompt to reflect it.
+    pub fn set_tools(&mut self, tools: ToolSet) {
+        self.prompt_opts.selected_tools = tools.iter().map(|t| t.name().to_string()).collect();
+        self.prompt_opts.tool_snippets =
+            prompt::collect_tool_snippets(&tools, &self.prompt_opts.selected_tools);
+        self.tools = tools;
+        self.rebuild_system_prompt();
+    }
+
+    /// Replace the active hooks.
+    pub fn replace_hooks(&mut self, hooks: AgentHooks) {
+        self.hooks = hooks;
+    }
+
+    /// Set the permission port.
+    pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>) {
+        self.permission = permission;
     }
 
     // ── Message queue accessors ──────────────────────────────────
@@ -570,10 +612,15 @@ impl AgentSession {
         command: &str,
         exclude_from_context: bool,
     ) -> Result<crate::runtime_protocol::XyBashResult, String> {
+        let executor = self
+            .bash_executor
+            .as_ref()
+            .ok_or("bash executor not configured")?;
+
         let cancel = CancellationToken::new();
         self.bash_cancel = Some(cancel.clone());
 
-        let result = self.bash_executor.execute(command, Some(cancel)).await;
+        let result = executor.execute(command, Some(cancel)).await;
 
         self.bash_cancel = None;
 
@@ -613,23 +660,23 @@ impl AgentSession {
     }
 
     /// Get a reference to the sandbox engine (injected at construction).
-    pub fn get_sandbox_engine(&self) -> std::sync::Arc<dyn XySandboxEngine> {
-        self.sandbox_engine.clone()
+    pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission> {
+        self.permission.clone()
     }
 
     /// Check whether a file read is allowed by the sandbox.
-    pub fn check_sandbox_read(&self, path: &str) -> XySandboxVerdict {
-        self.get_sandbox_engine().check_read(path)
+    pub fn check_permission_read(&self, path: &str) -> XyPermissionVerdict {
+        self.get_permission().check_read(path)
     }
 
     /// Check whether a file write is allowed by the sandbox.
-    pub fn check_sandbox_write(&self, path: &str) -> XySandboxVerdict {
-        self.get_sandbox_engine().check_write(path)
+    pub fn check_permission_write(&self, path: &str) -> XyPermissionVerdict {
+        self.get_permission().check_write(path)
     }
 
     /// Check whether a network request is allowed by the sandbox.
-    pub fn check_sandbox_network(&self, domain: &str) -> XySandboxVerdict {
-        self.get_sandbox_engine().check_network(domain)
+    pub fn check_permission_network(&self, domain: &str) -> XyPermissionVerdict {
+        self.get_permission().check_network(domain)
     }
 
     /// Abort any in-flight bash execution.
@@ -670,10 +717,11 @@ impl AgentSession {
         &self,
         path: &std::path::Path,
     ) -> Result<std::path::PathBuf, String> {
+        let io = self.export_io.as_ref().ok_or("export io not configured")?;
         let sid = self.session_id().ok_or("no active session")?.to_string();
         let entries = self.store.load_entries(&sid).await?;
         let html = crate::agent::session::export::render_html(&sid, &entries);
-        self.export_io.write_text(path, &html).await?;
+        io.write_text(path, &html).await?;
         Ok(path.to_path_buf())
     }
 
@@ -682,10 +730,11 @@ impl AgentSession {
         &self,
         path: &std::path::Path,
     ) -> Result<std::path::PathBuf, String> {
+        let io = self.export_io.as_ref().ok_or("export io not configured")?;
         let sid = self.session_id().ok_or("no active session")?.to_string();
         let entries = self.store.load_entries(&sid).await?;
         let jsonl = crate::agent::session::export::render_jsonl(&entries)?;
-        self.export_io.write_text(path, &jsonl).await?;
+        io.write_text(path, &jsonl).await?;
         Ok(path.to_path_buf())
     }
 
@@ -695,7 +744,8 @@ impl AgentSession {
     /// identities stable across export/import; the file lands without
     /// overwriting an existing session.
     pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String> {
-        let bytes = self.export_io.read_bytes(path).await?;
+        let io = self.export_io.as_ref().ok_or("export io not configured")?;
+        let bytes = io.read_bytes(path).await?;
         let entries = crate::agent::session::export::parse_jsonl(&bytes)?;
         let new_id = match entries.first() {
             Some(SessionEntry::Header(h)) => h.id.clone(),
@@ -787,7 +837,7 @@ mod tests {
             ModelRegistry::new(std::sync::Arc::new(
                 crate::infra::config::value::InfraSecretResolver::new(),
             )),
-            ToolRegistry::from_tools(crate::infra::tools::default_tools()),
+            ToolSet::from_iter(crate::infra::tools::default_tools()),
             store,
             sink,
             Some("you are helpful".into()),
@@ -798,9 +848,11 @@ mod tests {
             ".".into(),
             None,
             std::sync::Arc::new(crate::infra::provider::factory::build_provider),
-            crate::infra::sandbox::noop_engine(),
-            std::sync::Arc::new(crate::infra::bash_exec::InfraBashExecutor::new()),
-            std::sync::Arc::new(crate::infra::export::StdExportIo::new()),
+            crate::infra::permission::allow_all_permission(),
+            Some(std::sync::Arc::new(
+                crate::infra::bash_exec::InfraBashExecutor::new(),
+            )),
+            Some(std::sync::Arc::new(crate::infra::export::StdExportIo::new())),
         )
     }
 

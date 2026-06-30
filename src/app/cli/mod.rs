@@ -362,13 +362,13 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .map(|c| crate::agent::compaction::CompactionSettings::from(c.clone()))
     };
 
-    // ── Step 3c: initialize sandbox engine ────────────────────
-    let sandbox_engine = app_config.as_ref().and_then(|cfg| {
+    // ── Step 3c: initialize permission engine ────────────────────
+    let permission = app_config.as_ref().and_then(|cfg| {
         cfg.security
-            .sandbox
+            .permission
             .as_ref()
             .filter(|sc| sc.enabled)
-            .map(|sc| crate::infra::sandbox::build_engine(sc))
+            .map(|sc| crate::infra::permission::build_permission(sc))
     });
 
     // ── Step 3c1: merge system-prompt sources (loader SYSTEM.md > config) ──
@@ -387,7 +387,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             cwd,
             compaction_settings,
             args.session,
-            sandbox_engine,
+            permission,
         )
         .await
         .map_err(|e| e.into());
@@ -403,7 +403,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         compaction_threshold: 0.8,
         cwd,
         compaction_settings,
-        sandbox_engine,
+        permission,
     })?;
 
     agent
