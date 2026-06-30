@@ -227,7 +227,7 @@ mod arch_guard {
     #[test]
     fn app_driver_does_not_import_infra() {
         // app/core/driver.rs is the Driver trait definition + InProcessDriver.
-        // It must depend only on agent::facade and runtime_protocol, never
+        // It must depend only on `agent` (mod-level) and runtime_protocol, never
         // on concrete infra types (the RemoteDriver half is feature-gated
         // under `server` and lives in the same file only for locality).
         let hits = scan("src/app/core/driver.rs", "crate::infra");

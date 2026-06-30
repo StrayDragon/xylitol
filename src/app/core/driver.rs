@@ -1,9 +1,10 @@
 //! Driver abstraction — the single dependency of interactive layers.
 //!
 //! All interactive clients (cli/print/rpc) interact with the core through a
-//! [`Driver`]; they never import `agent::facade` or `infra` directly.
+//! [`Driver`]; they import agent symbols only from `agent` (mod-level),
+//! never reaching into `agent::session`/`agent::runtime` internals or `infra`.
 //!
-//! - [`InProcessDriver`]: wraps the local agent facade (composition root wires
+//! - [`InProcessDriver`]: wraps the local agent module (composition root wires
 //!   ports and agent together).
 //! - [`RemoteDriver`]: speaks the protocol over REST/WS to a remote server.
 
@@ -42,11 +43,11 @@ pub trait Driver {
     fn abort(&self);
 }
 
-/// In-process driver wrapping the local agent facade.
+/// In-process driver wrapping the local agent module.
 ///
 /// Constructed at the composition root (`app::cli`) which wires ports
 /// and agent together. This is the **only** place in `interactive/` that
-/// imports `agent::facade`.
+/// imports `agent`.
 pub struct InProcessDriver {
     agent: ReActAgent,
 }

@@ -84,7 +84,6 @@ impl SessionExporter {
     }
 }
 
-
 /// Render a session's entries to a standalone HTML document.
 ///
 /// Each entry is rendered to a readable block; messages and bash executions are
@@ -220,28 +219,10 @@ pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, String> {
     Ok(entries)
 }
 
-/// Human-readable guidance shown when the user invokes `share` without a token.
-///
-/// The actual gist upload is intentionally not implemented here (requires HTTP
-/// + token management); this stub keeps the call site stable for future wiring.
-///
-/// NOTE: pre-wired for the `/share` command (c320 removed the last production
-/// caller `Agent::share_as_gist`). ceiling: until `/share` dispatch routes
-/// here this has no production caller (test-only). upgrade: wire `/share` to
-/// call this, or remove it if gist sharing is dropped from scope.
-#[allow(dead_code)]
-pub fn share_guidance_message(_path: &std::path::Path) -> String {
-    "Sharing as a GitHub gist requires a token. Set GITHUB_GIST_TOKEN (or the \
-     equivalent in your config), then re-run. \
-     See: https://docs.github.com/en/rest/gists"
-        .to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::session_types::{BashExecutionEntry, EntryBase, SessionHeader};
-    use std::path::PathBuf;
 
     fn header(id: &str) -> SessionEntry {
         SessionEntry::Header(SessionHeader {
@@ -330,14 +311,5 @@ mod tests {
     #[test]
     fn jsonl_rejects_empty() {
         assert!(parse_jsonl(b"   \n\n").is_err());
-    }
-
-    #[test]
-    fn share_stub_returns_guidance_without_token() {
-        // No GitHub token configured → share returns a configuration hint,
-        // never attempts a network upload.
-        let msg = share_guidance_message(&PathBuf::from("/tmp/x.html"));
-        assert!(msg.to_lowercase().contains("token") || msg.to_lowercase().contains("gist"));
-        assert!(msg.contains("https://"));
     }
 }

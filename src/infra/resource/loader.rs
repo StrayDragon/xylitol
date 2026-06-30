@@ -391,7 +391,7 @@ impl DefaultResourceLoader {
 
     // ── Skills ────────────────────────────────────────────────────────
 
-    /// Load skills via SkillManager.
+    /// Load skills discovered under `.xylitol/skills` (project + user).
     fn load_skills_internal(&mut self) {
         // Use the skill loader integration from c45
         {

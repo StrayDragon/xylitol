@@ -30,10 +30,10 @@ pub mod tools;
 // ── 公共入口（mod 级 re-export）──────────────────────────────────
 // 库用户应从 `crate::agent::*` import，而非 reach into 子模块。
 
-/// ReAct 策略驱动器（原 `AgentLoop`）。
 pub use crate::agent::builder::AgentBuilder;
-pub use crate::agent::runtime::hooks::BeforeToolHook;
+/// ReAct 策略驱动器（跑 ReAct 循环，驱动 [`Agent`]）。
 pub use crate::agent::runtime::ReActAgent;
+pub use crate::agent::runtime::hooks::BeforeToolHook;
 pub use crate::agent::runtime::{AgentHooks, XyEventStream};
 pub use crate::agent::session::Agent;
 pub use crate::domain::lifecycle::XyEvent;

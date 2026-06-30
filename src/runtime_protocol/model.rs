@@ -16,7 +16,7 @@ pub type XyStream = Pin<Box<dyn futures::Stream<Item = Result<XyChunk, XyError>>
 ///
 /// Supplied by the composition root (HC-1: agent/ must not construct providers
 /// itself). Aliased because the closure signature is repeated across the
-/// agent facade, session, model manager, and composition roots.
+/// agent module, session, model manager, and composition roots.
 pub type XyModelBuilder = std::sync::Arc<
     dyn Fn(&XyModelConfig) -> Result<std::sync::Arc<dyn XyModel>, String> + Send + Sync,
 >;

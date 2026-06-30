@@ -1,4 +1,4 @@
-//! Regression baseline for `AgentSession` public API surface (spec c255 / as31).
+//! Regression baseline for the `Agent` public API surface (spec as31 / c320).
 //!
 //! This is NOT behavioral coverage. It snapshots the *normalized textual
 //! signature list* of every `pub` item exposed by `agent::session`. After the

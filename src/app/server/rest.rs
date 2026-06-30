@@ -22,9 +22,9 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::agent::ReActAgent;
-use crate::domain::lifecycle::XyEvent;
 use crate::agent::session::ModelRegistry;
 use crate::app::server::ws::{ClientFrame, EventJournal, ReverseRpcGateway, ServerFrame};
+use crate::domain::lifecycle::XyEvent;
 use crate::protocol::{Envelope, ErrorCode};
 
 // ── Shared application state ───────────────────────────────────────

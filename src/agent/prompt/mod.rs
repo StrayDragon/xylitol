@@ -1,9 +1,8 @@
-//! Prompt/input shaping — system prompt assembly, slash commands, templates,
-//! and skill activation. The agent loop consumes these to build the input it
-//! sends to the model.
+//! Prompt/input shaping — system prompt assembly, slash commands, and
+//! templates. The agent loop consumes these to build the input it sends to the
+//! model.
 
 pub mod commands;
-pub mod skills;
 pub mod system;
 pub mod templates;
 

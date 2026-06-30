@@ -10,8 +10,8 @@
 //!   to import both `agent` and `infra`, centralizing Agent wiring so CLI/RPC/
 //!   Server/TUI never duplicate it.
 //! - [`driver`] — the runtime boundary (`Driver` trait + `InProcessDriver`/
-//!   `RemoteDriver`). It imports `agent::facade` only (never `infra`, per
-//!   la11); every surface depends on this, never on `agent` directly.
+//!   `RemoteDriver`). It imports `agent` (mod-level) only (never `infra`, per
+//!   la11); every surface depends on this, never on `agent` internals.
 
 pub(crate) mod composition;
 pub(crate) mod driver;
