@@ -20,17 +20,17 @@ use futures::StreamExt;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
+use super::permission_router::permission_target;
 use super::retry::{RetryState, is_retryable_error};
-use super::sandbox_router::sandbox_target;
 use super::{AgentHooks, XyEvent, XyEventStream};
 use crate::agent::session::AgentSession;
-use crate::agent::tools::ToolRegistry;
+use crate::agent::tools::ToolSet;
 use crate::domain::error::XyError;
 use crate::domain::message::{AgentMessage, AgentPart};
 use crate::domain::types::{XyChunk, XyToolSchema};
 use crate::runtime_protocol::{XyModel, XyToolCtx, XyToolExecutionMode};
 
-use crate::runtime_protocol::XySandboxVerdict;
+use crate::runtime_protocol::XyPermissionVerdict;
 
 // ── AgentLoop ───────────────────────────────────────────────────────
 
@@ -38,10 +38,6 @@ pub struct AgentLoop {
     pub(crate) session: AgentSession,
     /// Cancellation token.
     cancel: CancellationToken,
-    /// Agent hooks.
-    hooks: AgentHooks,
-    /// Tool execution mode.
-    tool_mode: XyToolExecutionMode,
 }
 
 impl AgentLoop {
@@ -49,21 +45,7 @@ impl AgentLoop {
         Self {
             session,
             cancel: CancellationToken::new(),
-            hooks: AgentHooks::default(),
-            tool_mode: XyToolExecutionMode::Sequential,
         }
-    }
-
-    /// Set agent hooks.
-    pub fn with_hooks(mut self, hooks: AgentHooks) -> Self {
-        self.hooks = hooks;
-        self
-    }
-
-    /// Set tool execution mode.
-    pub fn with_tool_mode(mut self, mode: XyToolExecutionMode) -> Self {
-        self.tool_mode = mode;
-        self
     }
 
     /// Get a reference to the cancellation token.
@@ -87,25 +69,29 @@ impl AgentLoop {
     /// Run the agent loop with a user prompt.
     #[allow(clippy::type_complexity)]
     pub async fn run(&mut self, prompt: &str, session_id: &str) -> XyEventStream {
-        // Build sandbox check callback from session
-        let sandbox_check: Option<
+        // Build permission check callback from session
+        let permission_check: Option<
             std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>,
         >;
         {
-            let engine = self.session.get_sandbox_engine();
-            sandbox_check = Some(std::sync::Arc::new(
+            let engine = self.session.get_permission();
+            permission_check = Some(std::sync::Arc::new(
                 move |tool_name: &str, tool_path: &str| -> Option<String> {
+                    // NOTE: tool_name → permission check dispatch is hard-coded here.
+                    // Ceiling: adding a new sandbox-sensitive tool requires editing this match.
+                    // Upgrade: when xylitol matures as a harness, introduce tool-declared
+                    // capability categories and replace this match with a capability-driven router.
                     match tool_name {
                         "read" => match engine.check_read(tool_path) {
-                            XySandboxVerdict::Deny { reason } => Some(reason),
+                            XyPermissionVerdict::Deny { reason } => Some(reason),
                             _ => None,
                         },
                         "write" | "edit" => match engine.check_write(tool_path) {
-                            XySandboxVerdict::Deny { reason } => Some(reason),
+                            XyPermissionVerdict::Deny { reason } => Some(reason),
                             _ => None,
                         },
                         "bash" => match engine.check_network(tool_path) {
-                            XySandboxVerdict::Deny { reason } => Some(reason),
+                            XyPermissionVerdict::Deny { reason } => Some(reason),
                             _ => None,
                         },
                         _ => None,
@@ -125,14 +111,15 @@ impl AgentLoop {
             Err(e) => return XyEventStream::error(format!("model build error: {e}")),
         };
 
-        let tools = self.session.tool_registry().clone();
+        let tools = self.session.tools().clone();
         let max_iterations = self.session.max_iterations();
         let system_prompt = self.session.system_prompt().map(|s| s.to_string());
+        let hooks = self.session.hooks().clone();
+        let tool_mode = self.session.tool_mode();
         let prompt = prompt.to_string();
 
         // Build tool schemas
         let tool_schemas: Vec<XyToolSchema> = tools
-            .list()
             .iter()
             .map(|t| XyToolSchema {
                 name: t.name().to_string(),
@@ -152,7 +139,9 @@ impl AgentLoop {
                 max_iterations: max_iterations as usize,
                 user_prompt: prompt,
                 cancel,
-                sandbox_check,
+                permission_check,
+                hooks,
+                tool_mode,
             }));
 
         XyEventStream {
@@ -168,16 +157,21 @@ impl AgentLoop {
 /// Parameters for the ReAct agent loop.
 struct ReActConfig {
     model: Arc<dyn XyModel>,
-    tools: ToolRegistry,
+    tools: ToolSet,
     tool_schemas: Vec<XyToolSchema>,
     system_prompt: Option<String>,
     max_iterations: usize,
     user_prompt: String,
     cancel: CancellationToken,
-    /// Optional sandbox check. Called with (tool_name, target_path_or_domain).
+    /// Optional permission check. Called with (tool_name, target_path_or_domain).
     /// Returns Some(reason) if the operation is denied.
     #[allow(clippy::type_complexity)]
-    sandbox_check: Option<std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>>,
+    permission_check: Option<std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>>,
+    /// Hooks consulted at tool-call boundaries.
+    hooks: AgentHooks,
+    /// Tool execution mode (currently advisory; sequential execution is the
+    /// conservative default).
+    tool_mode: XyToolExecutionMode,
 }
 
 // ── Core ReAct loop ─────────────────────────────────────────────────
@@ -191,7 +185,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         max_iterations,
         user_prompt,
         cancel,
-        sandbox_check,
+        permission_check,
+        hooks,
+        tool_mode: _tool_mode,
     } = cfg;
     async_stream::stream! {
         let mut history: Vec<AgentMessage> = Vec::new();
@@ -331,58 +327,89 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let tool = tools.get(name);
                 let ctx = XyToolCtx::with_cancel(id, cancel.clone());
 
-                // ── Sandbox check ─────────────────────────────────
-                if let Some(ref check) = sandbox_check {
-                    let target = sandbox_target(name, args);
-                    if let Some(reason) = check(name, &target) {
-                        let err = format!("Tool '{name}' blocked by sandbox: {reason}");
-                        yield XyEvent::ToolExecutionEnd {
-                            id: id.clone(),
-                            name: name.clone(),
-                            result: err.clone(),
-                            is_error: true,
-                        };
-                        history.push(AgentMessage::ToolResultMessage {
-                            tool_use_id: id.clone(),
-                            tool_name: name.clone(),
-                            content: vec![AgentPart::Text(err.clone())],
-                            details: None,
-                            is_error: true,
-                            timestamp: crate::domain::message::now_ms(),
-                        });
-                        continue;
+                // ── Before-tool hooks ─────────────────────────────
+                let mut denied_reason: Option<String> = None;
+                if !hooks.before_tool_call.is_empty() {
+                    for hook in &hooks.before_tool_call {
+                        if let Some(reason) = hook(name, id, args) {
+                            denied_reason = Some(reason);
+                            break;
+                        }
                     }
                 }
 
-                let result = match tool {
+                // ── Permission check ──────────────────────────────
+                if denied_reason.is_none()
+                    && let Some(ref check) = permission_check
+                {
+                    let target = permission_target(name, args);
+                    if let Some(reason) = check(name, &target) {
+                        denied_reason = Some(format!("permission denied: {reason}"));
+                    }
+                }
+
+                if let Some(reason) = denied_reason {
+                    let err = format!("Tool '{name}' blocked: {reason}");
+                    yield XyEvent::ToolExecutionEnd {
+                        id: id.clone(),
+                        name: name.clone(),
+                        result: err.clone(),
+                        is_error: true,
+                    };
+                    history.push(AgentMessage::ToolResultMessage {
+                        tool_use_id: id.clone(),
+                        tool_name: name.clone(),
+                        content: vec![AgentPart::Text(err.clone())],
+                        details: None,
+                        is_error: true,
+                        timestamp: crate::domain::message::now_ms(),
+                    });
+                    continue;
+                }
+
+                let mut result = match tool {
                     Some(t) => match t.execute(&ctx, args.clone()).await {
-                        Ok(output) => output,
+                        Ok(output) => (serde_json::Value::String(output), false),
                         Err(e) => {
                             let err = format!("Tool '{name}' error: {e}");
                             yield XyEvent::Error(err.clone());
-                            err
+                            (serde_json::Value::String(err), true)
                         }
                     },
                     None => {
                         let err = format!("Unknown tool: {name}");
                         yield XyEvent::Error(err.clone());
-                        err
+                        (serde_json::Value::String(err), true)
                     }
+                };
+
+                // ── After-tool hooks ──────────────────────────────
+                if !hooks.after_tool_call.is_empty() {
+                    for hook in &hooks.after_tool_call {
+                        if let Some((new_value, new_is_error)) = hook(name, id, result.0.clone(), result.1) {
+                            result = (new_value, new_is_error);
+                        }
+                    }
+                }
+
+                let result_text = match result.0 {
+                    serde_json::Value::String(s) => s,
+                    other => other.to_string(),
                 };
 
                 yield XyEvent::ToolExecutionEnd {
                     id: id.clone(),
                     name: name.clone(),
-                    result: result.clone(),
-                    is_error: false,
+                    result: result_text.clone(),
+                    is_error: result.1,
                 };
 
                 history.push(AgentMessage::ToolResultMessage {
                     tool_use_id: id.clone(),
                     tool_name: name.clone(),
-                    content: vec![AgentPart::Text(result.clone())],
+                    content: vec![AgentPart::Text(result_text.clone())],
                     details: None,
-                    is_error: false,
+                    is_error: result.1,
                     timestamp: crate::domain::message::now_ms(),
                 });
             }
@@ -433,7 +460,7 @@ mod tests {
     use crate::domain::model::XyModelConfig;
     use crate::domain::types::XyModelMeta;
     use crate::infra::session::SessionManager;
-    use crate::runtime_protocol::{XyEventSink, XyModel, XySessionStore};
+    use crate::runtime_protocol::{XyEventSink, XyModel, XySessionStore, XyStream};
 
     /// Model builder for tests — the real factory (tests register `Fake`/`OpenAi`
     /// model configs and rely on `build_provider` constructing the provider struct;
@@ -475,7 +502,7 @@ mod tests {
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
         let session = AgentSession::new(
             reg,
-            ToolRegistry::from_tools(crate::infra::tools::default_tools()),
+            ToolSet::from_iter(crate::infra::tools::default_tools()),
             store,
             sink,
             Some("You are helpful.".into()),
@@ -486,9 +513,11 @@ mod tests {
             ".".into(),
             None,
             fake_model_builder(),
-            crate::infra::sandbox::noop_engine(),
-            std::sync::Arc::new(crate::infra::bash_exec::InfraBashExecutor::new()),
-            std::sync::Arc::new(crate::infra::export::StdExportIo::new()),
+            crate::infra::permission::allow_all_permission(),
+            Some(std::sync::Arc::new(
+                crate::infra::bash_exec::InfraBashExecutor::new(),
+            )),
+            Some(std::sync::Arc::new(crate::infra::export::StdExportIo::new())),
         );
 
         assert!(session.current_model().is_some());
@@ -527,7 +556,7 @@ mod tests {
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
         let session = AgentSession::new(
             reg,
-            ToolRegistry::from_tools(crate::infra::tools::default_tools()),
+            ToolSet::from_iter(crate::infra::tools::default_tools()),
             store,
             sink,
             Some("You are helpful.".into()),
@@ -538,12 +567,281 @@ mod tests {
             ".".into(),
             None,
             fake_model_builder(),
-            crate::infra::sandbox::noop_engine(),
-            std::sync::Arc::new(crate::infra::bash_exec::InfraBashExecutor::new()),
-            std::sync::Arc::new(crate::infra::export::StdExportIo::new()),
+            crate::infra::permission::allow_all_permission(),
+            Some(std::sync::Arc::new(
+                crate::infra::bash_exec::InfraBashExecutor::new(),
+            )),
+            Some(std::sync::Arc::new(crate::infra::export::StdExportIo::new())),
         );
 
         let mut loop_runner = AgentLoop::new(session);
         let _stream = loop_runner.run("hello", "test-session").await;
+    }
+
+    // ── Mock model / tool helpers for hook and snapshot tests ───────
+
+    struct MockModel {
+        chunks: Vec<crate::domain::types::XyChunk>,
+    }
+
+    #[async_trait::async_trait]
+    impl XyModel for MockModel {
+        fn name(&self) -> &str {
+            "mock"
+        }
+
+        async fn generate_stream(
+            &self,
+            _messages: Vec<AgentMessage>,
+            _tools: &[crate::domain::types::XyToolSchema],
+            _stream: bool,
+        ) -> Result<XyStream, XyError> {
+            let chunks = self.chunks.clone();
+            Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
+        }
+    }
+
+    struct MockTool;
+
+    #[async_trait::async_trait]
+    impl crate::runtime_protocol::XyTool for MockTool {
+        fn name(&self) -> &str {
+            "mock_tool"
+        }
+
+        fn description(&self) -> &str {
+            "mock"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "input": {"type": "string"}
+                }
+            })
+        }
+
+        async fn execute(
+            &self,
+            _ctx: &crate::runtime_protocol::XyToolCtx,
+            _args: serde_json::Value,
+        ) -> Result<String, crate::domain::error::XyToolError> {
+            Ok("executed".into())
+        }
+    }
+
+    fn mock_model_registry(chunks: Vec<crate::domain::types::XyChunk>) -> ModelRegistry {
+        let mut reg = ModelRegistry::new(std::sync::Arc::new(
+            crate::infra::config::value::InfraSecretResolver::new(),
+        ));
+        reg.register(XyModelMeta {
+            id: "mock".into(),
+            config: XyModelConfig {
+                kind: crate::domain::model::XyModelKind::Fake,
+                api_key: String::new(),
+                model: "mock".into(),
+                base_url: None,
+                api: None,
+            },
+            display_name: "Mock".into(),
+            thinking: false,
+            context_window: 128000,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
+        });
+        reg
+    }
+
+    fn mock_model_builder(
+        chunks: Vec<crate::domain::types::XyChunk>,
+    ) -> Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync> {
+        Arc::new(move |_| {
+            Ok(Arc::new(MockModel {
+                chunks: chunks.clone(),
+            }) as Arc<dyn XyModel>)
+        })
+    }
+
+    fn make_agent_with_tools(
+        chunks: Vec<crate::domain::types::XyChunk>,
+        tools: ToolSet,
+    ) -> crate::agent::facade::Agent {
+        let reg = mock_model_registry(chunks.clone());
+        let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+        let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
+        let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
+        let session = AgentSession::new(
+            reg,
+            tools,
+            store,
+            sink,
+            None,
+            Vec::new(),
+            Vec::new(),
+            50,
+            0.8,
+            ".".into(),
+            None,
+            mock_model_builder(chunks),
+            crate::infra::permission::allow_all_permission(),
+            None,
+            None,
+        );
+        crate::agent::facade::Agent {
+            loop_: AgentLoop::new(session),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_before_hook_denies_tool_call() {
+        use crate::agent::runtime::hooks::BeforeToolHook;
+        use crate::domain::lifecycle::XyEvent;
+        use futures::StreamExt;
+
+        let chunks = vec![crate::domain::types::XyChunk::FunctionCall {
+            id: "call-1".into(),
+            name: "mock_tool".into(),
+            args: serde_json::json!({"input": "x"}),
+        }];
+        let mut agent = make_agent_with_tools(
+            chunks,
+            ToolSet::from_iter(vec![
+                Arc::new(MockTool) as Arc<dyn crate::runtime_protocol::XyTool>
+            ]),
+        );
+
+        let hook: BeforeToolHook = Arc::new(|name, _id, _args| {
+            if name == "mock_tool" {
+                Some("denied by test hook".into())
+            } else {
+                None
+            }
+        });
+        agent.add_hook(hook);
+
+        let mut stream = agent.run("go").await;
+        let mut found = false;
+        while let Some(evt) = stream.next().await {
+            if let XyEvent::ToolExecutionEnd {
+                name,
+                result,
+                is_error,
+                id: _,
+            } = evt
+            {
+                assert_eq!(name, "mock_tool");
+                assert!(is_error);
+                assert!(result.contains("denied by test hook"));
+                found = true;
+            }
+        }
+        assert!(found, "expected a denied tool execution event");
+    }
+
+    #[tokio::test]
+    async fn test_after_hook_modifies_tool_result() {
+        use crate::agent::runtime::hooks::AfterToolHook;
+        use crate::domain::lifecycle::XyEvent;
+        use futures::StreamExt;
+
+        let chunks = vec![crate::domain::types::XyChunk::FunctionCall {
+            id: "call-1".into(),
+            name: "mock_tool".into(),
+            args: serde_json::json!({"input": "x"}),
+        }];
+        let hooks = {
+            let mut h = AgentHooks::empty();
+            let after: AfterToolHook = Arc::new(|_name, _id, _result, _is_error| {
+                Some((serde_json::Value::String("modified".into()), false))
+            });
+            h.add_after(after);
+            h
+        };
+
+        let mut agent = make_agent_with_tools(
+            chunks,
+            ToolSet::from_iter(vec![
+                Arc::new(MockTool) as Arc<dyn crate::runtime_protocol::XyTool>
+            ]),
+        );
+        agent.replace_hooks(hooks);
+
+        let mut stream = agent.run("go").await;
+        let mut found = false;
+        while let Some(evt) = stream.next().await {
+            if let XyEvent::ToolExecutionEnd {
+                name,
+                result,
+                is_error,
+                id: _,
+            } = evt
+            {
+                assert_eq!(name, "mock_tool");
+                assert!(!is_error);
+                assert_eq!(result, "modified");
+                found = true;
+            }
+        }
+        assert!(found, "expected a modified tool execution event");
+    }
+
+    #[tokio::test]
+    async fn test_set_tools_takes_effect_on_next_turn() {
+        use crate::domain::lifecycle::XyEvent;
+        use futures::StreamExt;
+
+        let chunks = vec![crate::domain::types::XyChunk::FunctionCall {
+            id: "call-1".into(),
+            name: "mock_tool".into(),
+            args: serde_json::json!({"input": "x"}),
+        }];
+        let mut agent = make_agent_with_tools(
+            chunks.clone(),
+            ToolSet::from_iter(vec![
+                Arc::new(MockTool) as Arc<dyn crate::runtime_protocol::XyTool>
+            ]),
+        );
+
+        // First turn: mock_tool is available.
+        let mut stream = agent.run("go").await;
+        let mut first_turn_executed = false;
+        while let Some(evt) = stream.next().await {
+            if let XyEvent::ToolExecutionEnd {
+                ref name, is_error, ..
+            } = evt
+            {
+                assert_eq!(name, "mock_tool");
+                assert!(!is_error);
+                first_turn_executed = true;
+            }
+        }
+        assert!(first_turn_executed);
+
+        // Replace tools with an empty set between turns.
+        agent.set_tools(ToolSet::empty());
+
+        // Second turn: the loop still saw mock_tool in the original snapshot if
+        // we had mutated it mid-stream, but because setters apply to the next
+        // turn, this turn should report the tool as unknown.
+        let mut stream = agent.run("go").await;
+        let mut second_turn_error = false;
+        while let Some(evt) = stream.next().await {
+            if let XyEvent::ToolExecutionEnd {
+                ref name, is_error, ..
+            } = evt
+            {
+                assert_eq!(name, "mock_tool");
+                assert!(is_error);
+                second_turn_error = true;
+            }
+        }
+        assert!(second_turn_error);
     }
 }

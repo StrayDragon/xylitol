@@ -6,7 +6,7 @@
 //! Key functions:
 //! - `build_system_prompt(opts)` — explicit options
 
-use crate::agent::tools::ToolRegistry;
+use crate::agent::tools::ToolSet;
 
 /// Options for building the system prompt.
 #[derive(Debug, Clone, Default)]
@@ -133,9 +133,9 @@ fn default_prompt_base(selected_tools: &[String], snippets: &[(String, String)])
     )
 }
 
-/// Collect tool snippets from a ToolRegistry.
+/// Collect tool snippets from a ToolSet.
 pub(crate) fn collect_tool_snippets(
-    tool_registry: &ToolRegistry,
+    tool_registry: &ToolSet,
     selected: &[String],
 ) -> Vec<(String, String)> {
     selected

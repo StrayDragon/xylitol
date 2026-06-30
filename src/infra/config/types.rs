@@ -368,136 +368,46 @@ pub struct SecurityConfig {
     /// Master toggle — enabled by default for safety.
     #[serde(default = "default_security_enabled")]
     pub enabled: bool,
-    /// Tools explicitly allowed (empty = allow all not in blocklist).
-    #[serde(default)]
-    pub tool_allowlist: Vec<String>,
-    /// MCP servers/tools allowed (entries: "server_name" or "server:tool").
-    /// Empty = deny all MCP tools when security is enabled.
-    #[serde(default)]
-    pub mcp_allowlist: Vec<String>,
-    pub bash: BashSecurityConfig,
-    pub filesystem: FilesystemSecurityConfig,
-    pub network: NetworkSecurityConfig,
-    pub resource_limits: ResourceLimits,
-    pub sandbox: Option<SandboxConfig>,
+    pub permission: Option<PermissionConfig>,
 }
 
 fn default_security_enabled() -> bool {
     true
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
-pub struct BashSecurityConfig {
-    #[serde(default)]
-    pub allowed_paths: Vec<String>,
-    #[serde(default)]
-    pub forbidden_patterns: Vec<String>,
-    #[serde(default = "default_bash_timeout")]
-    pub timeout_secs: u64,
-}
-
-impl Default for BashSecurityConfig {
-    fn default() -> Self {
-        Self {
-            allowed_paths: Vec::new(),
-            forbidden_patterns: Vec::new(),
-            timeout_secs: 120,
-        }
-    }
-}
-
-fn default_bash_timeout() -> u64 {
-    120
-}
-
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub struct FilesystemSecurityConfig {
-    #[serde(default)]
-    pub allowed_patterns: Vec<String>,
-    #[serde(default)]
-    pub forbidden_patterns: Vec<String>,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
-pub struct NetworkSecurityConfig {
-    #[serde(default)]
-    pub allowed_domains: Vec<String>,
-    #[serde(default)]
-    pub blocked_domains: Vec<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub struct ResourceLimits {
-    #[serde(default = "default_max_subprocesses")]
-    pub max_subprocesses: u16,
-    #[serde(default = "default_max_memory")]
-    pub max_memory_mb: u64,
-    #[serde(default = "default_max_cpu")]
-    pub max_cpu_percent: u8,
-    #[serde(default = "default_max_disk")]
-    pub max_disk_mb: u64,
-}
-
-impl Default for ResourceLimits {
-    fn default() -> Self {
-        Self {
-            max_subprocesses: default_max_subprocesses(),
-            max_memory_mb: default_max_memory(),
-            max_cpu_percent: default_max_cpu(),
-            max_disk_mb: default_max_disk(),
-        }
-    }
-}
-
-fn default_max_subprocesses() -> u16 {
-    16
-}
-fn default_max_memory() -> u64 {
-    4096
-}
-fn default_max_cpu() -> u8 {
-    80
-}
-fn default_max_disk() -> u64 {
-    1024
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
-pub struct SandboxConfig {
+pub struct PermissionConfig {
     /// Master toggle.
     #[serde(default)]
     pub enabled: bool,
-    /// Backend selection. "fallback" (app-level) is always available;
+    /// Backend selection. "glob" (app-level) is always available;
     /// "landlock" requires Linux >=5.13; "macos" requires macOS.
-    /// Default: "fallback".
-    #[serde(default = "default_sandbox_backend")]
-    pub backend: SandboxBackend,
-    /// Filesystem sandbox rules.
+    /// Default: "glob".
+    #[serde(default = "default_permission_backend")]
+    pub backend: PermissionBackend,
+    /// Filesystem permission rules.
     #[serde(default)]
-    pub filesystem: SandboxFilesystemConfig,
-    /// Network sandbox rules (applied to bash URLs).
+    pub filesystem: PermissionFilesystemConfig,
+    /// Network permission rules (applied to bash URLs).
     #[serde(default)]
-    pub network: SandboxNetworkConfig,
+    pub network: PermissionNetworkConfig,
     /// Process execution rules.
     #[serde(default)]
-    pub process: SandboxProcessConfig,
+    pub process: PermissionProcessConfig,
 }
 
-fn default_sandbox_backend() -> SandboxBackend {
-    SandboxBackend::Fallback
+fn default_permission_backend() -> PermissionBackend {
+    PermissionBackend::Glob
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 #[derive(Default)]
-pub enum SandboxBackend {
-    /// Pure application-level pattern matching (default).
+pub enum PermissionBackend {
+    /// Pure application-level glob pattern matching (default).
     #[default]
-    Fallback,
+    Glob,
     /// Linux Landlock LSM (requires kernel >=5.13).
     Landlock,
     /// macOS sandbox-init / Seatbelt.
@@ -506,7 +416,7 @@ pub enum SandboxBackend {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub struct SandboxFilesystemConfig {
+pub struct PermissionFilesystemConfig {
     /// Paths allowed for read. Empty = allow all.
     #[serde(default)]
     pub read_allowed: Vec<String>,
@@ -521,7 +431,7 @@ pub struct SandboxFilesystemConfig {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub struct SandboxNetworkConfig {
+pub struct PermissionNetworkConfig {
     /// Domains allowed for network requests. Empty = allow all.
     #[serde(default)]
     pub allowed_domains: Vec<String>,
@@ -532,7 +442,7 @@ pub struct SandboxNetworkConfig {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub struct SandboxProcessConfig {
+pub struct PermissionProcessConfig {
     /// Paths where subprocess execution is allowed. Empty = allow all.
     #[serde(default)]
     pub allowed_paths: Vec<String>,

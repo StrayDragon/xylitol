@@ -13,8 +13,7 @@ use async_trait::async_trait;
 use futures::Stream;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::facade::{Agent, AgentHooks, XyEvent};
-use crate::runtime_protocol::XyToolExecutionMode;
+use crate::agent::facade::{Agent, XyEvent};
 
 #[cfg(feature = "server")]
 #[cfg(feature = "server")]
@@ -33,6 +32,7 @@ pub type EventStream = Pin<Box<dyn Stream<Item = XyEvent> + Send>>;
 /// [`InProcessDriver`] keeps a cached `Agent` and is the local (single-process)
 /// implementation. A future `RemoteDriver` will speak the protocol over WS/REST.
 #[async_trait]
+#[allow(dead_code)]
 pub trait Driver {
     /// Submit a prompt and receive a stream of events.
     async fn run(&mut self, prompt: &str) -> EventStream;
@@ -50,19 +50,10 @@ pub struct InProcessDriver {
     agent: Agent,
 }
 
+#[allow(dead_code)]
 impl InProcessDriver {
     pub fn new(agent: Agent) -> Self {
         Self { agent }
-    }
-
-    pub fn with_hooks(mut self, hooks: AgentHooks) -> Self {
-        self.agent = self.agent.with_hooks(hooks);
-        self
-    }
-
-    pub fn with_tool_mode(mut self, mode: XyToolExecutionMode) -> Self {
-        self.agent = self.agent.with_tool_mode(mode);
-        self
     }
 
     pub fn cancel_token(&self) -> CancellationToken {
@@ -87,6 +78,7 @@ impl Driver for InProcessDriver {
 /// Uses `reqwest` for control commands (prompt, abort) and `tokio-tungstenite`
 /// for WebSocket event streaming.
 #[cfg(feature = "server")]
+#[allow(dead_code)]
 pub struct RemoteDriver {
     base_url: String,
     session_id: String,
@@ -95,6 +87,7 @@ pub struct RemoteDriver {
 }
 
 #[cfg(feature = "server")]
+#[allow(dead_code)]
 impl RemoteDriver {
     /// Create a new RemoteDriver connected to `base_url`.
     ///
@@ -128,6 +121,7 @@ impl RemoteDriver {
 
 #[cfg(feature = "server")]
 #[async_trait]
+#[allow(dead_code)]
 impl Driver for RemoteDriver {
     async fn run(&mut self, prompt: &str) -> EventStream {
         let client = self.client.clone();
