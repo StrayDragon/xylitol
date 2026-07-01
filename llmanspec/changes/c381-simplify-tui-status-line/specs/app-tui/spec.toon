@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement}:
+  modify_requirement,tui53,"always-on-status-line","The TUI MUST render a fixed always-present status line between the mutable streaming line and the bottom input panel, occupying exactly one row every frame (idle and streaming). The status line shows a spinner glyph (animated by the existing Tick-driven spinner_idx) followed by a single left-aligned activity label: Working while streaming with no tool, Running {tool} while a tool executes, Ready while idle. The status line MUST NOT show a turn count or model name (the model name was never populated because the agent layer never emits XyEvent::ModelSelect; the turn count is not needed). The status line MUST be data-driven: TuiApp exposes a status_segments() accessor and the widget renders it without matching business state itself. The spinner widget MUST be wired into this line."
+op_scenarios[3]{req_id,id,given,when,then}:
+  tui53,"status-line-present-idle","the TUI is idle with no turn streaming","the tail frame is rendered","a status line row is present showing a Ready label and no spinner"
+  tui53,"status-line-streaming-spinner","a turn is streaming with no tool running","the tail frame is rendered over several ticks","the status line shows an animated spinner glyph and a Working label"
+  tui53,"status-line-no-turn-or-model","the status line source and rendered output are inspected","the segments and widget are read","the status line shows only a spinner and an activity label and does not render a turn count or a model name"
