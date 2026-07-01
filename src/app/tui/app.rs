@@ -7,7 +7,8 @@
 
 use std::sync::Arc;
 
-use ratatui::text::Line;
+use ratatui_core::style::Style;
+use ratatui_core::text::Line;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -127,7 +128,7 @@ impl TuiApp {
                 if !self.pending.is_empty() {
                     let line = self.pending.clone();
                     self.pending.clear();
-                    out.push(Line::styled(line, ratatui::style::Style::default()));
+                    out.push(Line::styled(line, Style::default()));
                 }
                 out
             }
@@ -183,10 +184,7 @@ impl TuiApp {
         while let Some(idx) = self.pending.find('\n') {
             let line: String = self.pending.drain(..=idx).collect();
             let trimmed = line.trim_end_matches('\n');
-            out.push(Line::styled(
-                trimmed.to_string(),
-                ratatui::style::Style::default(),
-            ));
+            out.push(Line::styled(trimmed.to_string(), Style::default()));
         }
         out
     }

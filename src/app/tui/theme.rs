@@ -4,9 +4,9 @@
 //! Mirrors kimi-code `theme/colors.ts`: a small set of semantic tokens mapped
 //! to ratatui `Style`, so the whole surface restyles from one place.
 
-use ratatui::style::Color;
-use ratatui::style::Modifier;
-use ratatui::style::Style;
+use ratatui_core::style::Color;
+use ratatui_core::style::Modifier;
+use ratatui_core::style::Style;
 
 /// Semantic palette. Add tokens here, never inline `Color::...` in components.
 pub fn palette() -> Palette {
