@@ -17,6 +17,7 @@ pub struct Palette;
 
 impl Palette {
     /// Primary accent (titles, selected pointer, focus).
+    #[allow(dead_code)]
     pub fn primary(&self) -> Style {
         Style::default().fg(Color::Cyan)
     }
@@ -42,6 +43,7 @@ impl Palette {
     }
 
     /// Spinner / in-progress indicator.
+    #[allow(dead_code)]
     pub fn spinner(&self) -> Style {
         Style::default().fg(Color::Cyan)
     }

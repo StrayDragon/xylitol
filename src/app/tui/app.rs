@@ -18,6 +18,7 @@ use crate::domain::lifecycle::XyEvent;
 const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /// The live TUI state.
+#[derive(Default)]
 pub struct TuiApp {
     input: String,
     /// Accumulated finalized assistant text for the current turn (committed to
@@ -28,19 +29,6 @@ pub struct TuiApp {
     streaming: bool,
     spinner_idx: usize,
     status: Option<StatusLine>,
-}
-
-impl Default for TuiApp {
-    fn default() -> Self {
-        Self {
-            input: String::new(),
-            finalized: String::new(),
-            pending: String::new(),
-            streaming: false,
-            spinner_idx: 0,
-            status: None,
-        }
-    }
 }
 
 impl TuiApp {
@@ -185,7 +173,7 @@ impl TuiApp {
     }
 
     // ── internals ───────────────────────────────────────────────
-    fn tick_spinner(&mut self) {
+    pub(crate) fn tick_spinner(&mut self) {
         self.spinner_idx = (self.spinner_idx + 1) % SPINNER.len();
     }
 
