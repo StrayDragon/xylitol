@@ -62,6 +62,10 @@ enum Msg {
 /// The caller (cli dispatch) assembles the driver via the shared composition
 /// root, identical to print mode. This function owns the terminal lifecycle.
 pub async fn run(driver: &mut dyn Driver) -> Result<(), String> {
+    // Install the panic-safety hook BEFORE entering the viewport (c355): if
+    // enter() itself panics, or any later panic occurs (incl. in spawned tasks
+    // or under panic=abort), this hook restores the terminal. Drop alone cannot.
+    init::install_terminal_restore_hook();
     let mut term = InlineTerminal::enter().map_err(|e| format!("enter terminal: {e}"))?;
 
     let greeting = "xylitol — type a prompt and press Enter. /exit to quit.";
