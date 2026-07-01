@@ -63,10 +63,10 @@ match app_mode {
 - print ✅（已通）
 - interactive（REPL）：未建。建成标准 = `cargo run --` 进入 REPL，多轮对话，`XyEvent` 流式渲染，至少 `/exit` `/model` 两条 slash 命令。
 - server（REST/WS）：服务端 ✅、客户端（`RemoteDriver`）🟡 预留。建成标准 = 用 `RemoteDriver` 连上 server，走完一个 prompt 的完整事件流。
-- TUI：未建（当前 `app/tui/diff_review/` 是无关 demo，见 `src/app/tui/AGENTS.md`）。
+- TUI ✅（已落地，c340-c365）：inline REPL 经 `InProcessDriver` 驱动，流式 mutable-last-line + 组件化渲染。细则见 `src/app/tui/AGENTS.md`。
 - GUI：空占位。
 
-铁律：**一个面没有端到端可跑通的入口，就不算存在** —— 它会立刻开始腐烂。所以顺序是 print → interactive → server-client → TUI，逐个跑通再开下一个，不要并行铺骨架。
+铁律：**一个面没有端到端可跑通的入口，就不算存在** —— 它会立刻开始腐烂。
 
 ## 3. 何时该「重写」而非「复用」
 

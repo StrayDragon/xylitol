@@ -4,16 +4,16 @@
 
 `xylitol` 是单 crate：薄编排核心（`agent/`）架在大型运行时域（`infra/`）之上，可插拔应用面（`app/`）说同一种线协议（`protocol/`），底层是纯领域词汇（`domain/`）与 agent↔infra 边界 traits（`runtime_protocol/`）。
 
-## 分层不变量（硬约束）
+## 分层不变量（normative）
 
-下列依赖方向由 `src/tests.rs::arch_guard` 强制（代码是真值）。
+下列依赖方向由 `src/tests.rs::arch_guard` 强制（代码是真值）。每条标注对应的守卫测试。
 
-- **组合根集中装配**（arch_guard 强制）：只有组合根允许同时 import `agent` 与 `infra`——`app/core/composition.rs`（主组合根，唯一集中装配 `Agent`），以及次级组合根 `app/cli/mod.rs`、`app/server/subcommand.rs`、`app/rpc.rs`，在构造期注入 adapter。
-- **agent 层不依赖 infra**（arch_guard 强制）：`agent` 永不 import `infra` 具体类型；只依赖 `domain` + `runtime_protocol`。
-- **infra 层不依赖 agent**（arch_guard 强制）：`infra` 永不 import `agent`；只依赖 `domain` + `runtime_protocol`。
+- **组合根集中装配**（arch_guard `composition_root` 类约束）：只有组合根允许同时 import `agent` 与 `infra`——`app/core/composition.rs`（主组合根，唯一集中装配 `Agent`），以及次级组合根 `app/cli/mod.rs`、`app/server/subcommand.rs`、`app/rpc.rs`，在构造期注入 adapter。
+- **agent 层不依赖 infra**（守卫：`arch_guard::agent_does_not_import_infra_in_production`）：`agent` 永不 import `infra` 具体类型；只依赖 `domain` + `runtime_protocol`。
+- **infra 层不依赖 agent**（守卫：`arch_guard::infra_does_not_import_agent`）：`infra` 永不 import `agent`；只依赖 `domain` + `runtime_protocol`。
 - **domain 零内部依赖**：`domain` 不依赖任何 crate 内模块。
 - **runtime_protocol 只依赖 domain**。
-- **应用面走 seam、不 reach 内部**（靠 review；arch_guard 不拦）：应用面禁止 reach into `agent::session::*`/`agent::runtime::*`/`infra::*`，只从 `crate::agent`（mod 级）与 `crate::app::core`（`Driver`/`composition`）import。所有应用面共享同一 seam：`composition::build_agent` → `Driver::run(prompt)` → `XyEvent` 流 → 该面渲染；seam 不够就扩 seam（`Driver` trait / `XyEvent` 枚举），不绕过。新增/改造应用面的方法论见 `write-surface` skill。
+- **应用面走 seam、不 reach 内部**（部分守卫：`arch_guard::app_driver_does_not_import_infra`；session/runtime 内部 reach 靠 review）：应用面禁止 reach into `agent::session::*`/`agent::runtime::*`/`infra::*`，只从 `crate::agent`（mod 级）与 `crate::app::core`（`Driver`/`composition`）import。所有应用面共享同一 seam：`composition::build_agent` → `Driver::run(prompt)` → `XyEvent` 流 → 该面渲染；seam 不够就扩 seam（`Driver` trait / `XyEvent` 枚举），不绕过。新增/改造应用面的方法论见 `write-surface` skill。
 
 依赖方向图：
 
