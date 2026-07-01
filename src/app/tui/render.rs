@@ -43,7 +43,9 @@ pub fn draw_tail_frame(frame: &mut Frame, app: &TuiApp) {
         }
     }
 
-    // ── Compose lines top-to-bottom ───────────────────────────────
+    // ── Compose lines top-to-bottom, with wrapping ────────────────
+    // Wrap streaming text to the viewport width so long lines flow to multiple
+    // rows instead of being truncated at the right edge (fix: text wrap bug).
     let mut lines: Vec<Line> = Vec::new();
 
     if app.is_streaming() {
@@ -51,7 +53,9 @@ pub fn draw_tail_frame(frame: &mut Frame, app: &TuiApp) {
         if let Some(text) = app.current_streaming_line()
             && !text.is_empty()
         {
-            lines.push(Line::styled((*text).to_string(), p.assistant()));
+            for row in wrap_to_width(text, area.width) {
+                lines.push(Line::styled(row, p.assistant()));
+            }
         }
 
         // Thinking/loading indicator: spinner glyph + italic dim label.
@@ -70,9 +74,15 @@ pub fn draw_tail_frame(frame: &mut Frame, app: &TuiApp) {
     lines.push(Line::styled(prompt_text, input_style));
 
     // ── Bottom-align and render ───────────────────────────────────
-    // Render each line directly via `Line::render` (Line implements Widget in
-    // ratatui-core) instead of the Paragraph built-in widget (c341: drop all
-    // built-in widgets; hand-roll for inline mode).
+    // Keep only as many rows as fit in the tail area (bottom-aligned). The
+    // input line MUST stay at the bottom (last row); the indicator and the
+    // tail end of streaming text fill the rows above. If streaming text wraps
+    // to more rows than fit, the TOP (oldest) rows are dropped — the full
+    // history is already in the scrollback.
+    let capacity = area.height as usize;
+    if lines.len() > capacity {
+        lines.drain(..lines.len() - capacity);
+    }
     let n = u16::try_from(lines.len()).unwrap_or(area.height);
     let top = area.y + area.height.saturating_sub(n);
     let buf = frame.buffer_mut();
@@ -141,6 +151,57 @@ pub fn user_message_line(prompt: &str) -> Line<'static> {
     Line::styled(format!("❯ {prompt}"), theme::palette().user_prompt())
 }
 
+/// Wrap a single logical line of text into multiple physical lines that each
+/// fit within `width` display columns. Honors CJK double-width characters via
+/// `unicode_width`.
+///
+/// This is needed because the inline TUI does NOT use ratatui's built-in
+/// `Paragraph` (with its `Wrap` option) — we hand-roll rendering (c341: drop
+/// all built-in widgets). Without explicit wrapping, long lines get truncated
+/// at the terminal right edge instead of flowing to the next row.
+pub fn wrap_to_width(text: &str, width: u16) -> Vec<String> {
+    use unicode_width::UnicodeWidthChar;
+    let max_w = width as usize;
+    if max_w == 0 {
+        return vec![text.to_string()];
+    }
+    let mut rows: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut cur_w: usize = 0;
+    for ch in text.chars() {
+        let w = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if w == 0 {
+            // Zero-width (combining marks etc.) — append without advancing.
+            cur.push(ch);
+            continue;
+        }
+        if cur_w + w > max_w && !cur.is_empty() {
+            rows.push(std::mem::take(&mut cur));
+            cur_w = 0;
+        }
+        cur.push(ch);
+        cur_w += w;
+    }
+    rows.push(cur);
+    // Filter out completely empty vec only if input was empty.
+    if rows.is_empty() {
+        rows.push(String::new());
+    }
+    rows
+}
+
+/// Wrap a styled [`Line`] into multiple [`Line`]s that each fit `width`.
+/// Preserves the original style on every wrapped row.
+pub fn wrap_line_to_width(line: &Line<'_>, width: u16) -> Vec<Line<'static>> {
+    // Reconstruct the plain text, then wrap, then re-style each row.
+    let full: String = line.spans.iter().map(|s| s.content.to_string()).collect();
+    let style = line.spans.first().map(|s| s.style).unwrap_or_default();
+    wrap_to_width(&full, width)
+        .into_iter()
+        .map(|row| Line::styled(row, style))
+        .collect()
+}
+
 /// Internal helper: a status line carries a glyph + label.
 pub struct StatusLine {
     glyph: &'static str,
@@ -170,7 +231,7 @@ impl StatusLine {
 
 #[cfg(test)]
 mod user_message_tests {
-    use super::user_message_line;
+    use super::{user_message_line, wrap_to_width};
 
     #[test]
     fn user_message_contains_prompt_with_prefix() {
@@ -186,6 +247,31 @@ mod user_message_tests {
         let line = user_message_line("");
         let text = line.to_string();
         assert!(text.contains('❯'), "prefix present even for empty: {text}");
+    }
+
+    #[test]
+    fn wrap_short_text_one_row() {
+        let rows = wrap_to_width("hello", 80);
+        assert_eq!(rows, vec!["hello"]);
+    }
+
+    #[test]
+    fn wrap_long_text_splits_at_width() {
+        let rows = wrap_to_width("abcdefghij", 4);
+        assert_eq!(rows, vec!["abcd", "efgh", "ij"]);
+    }
+
+    #[test]
+    fn wrap_cjk_uses_display_width_not_char_count() {
+        // Each CJK char is 2 display cols. width=4 fits 2 CJK chars per row.
+        let rows = wrap_to_width("你好世界再见", 4);
+        assert_eq!(rows, vec!["你好", "世界", "再见"]);
+    }
+
+    #[test]
+    fn wrap_empty_text_returns_one_empty_row() {
+        let rows = wrap_to_width("", 80);
+        assert_eq!(rows, vec![""]);
     }
 }
 
