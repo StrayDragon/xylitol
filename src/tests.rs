@@ -33,7 +33,6 @@ pub mod support;
 //     module permitted to import both agent and infra)
 //   - app/core/driver.rs = Driver trait + InProcessDriver (must NOT import
 //     crate::infra)
-//   - app/tui/diff_review/ = review engine (infra config import)
 
 #[cfg(test)]
 mod arch_guard {
@@ -202,9 +201,7 @@ mod arch_guard {
         // Cross-surface seams under app/core/ (the privileged seam layer):
         //   core/composition.rs — shared Agent construction (agent+infra root)
         //   core/driver.rs      — Driver trait + InProcessDriver (agent-only)
-        // Other documented seam:
-        //   tui/diff_review/ — review engine (infra config import)
-        let exempt_prefixes = ["cli/", "server/", "core/", "tui/diff_review/"];
+        let exempt_prefixes = ["cli/", "server/", "core/"];
         let exempt_files = ["rpc.rs"];
 
         let mut violations = Vec::new();

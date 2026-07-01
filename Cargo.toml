@@ -57,9 +57,12 @@ tokio-tungstenite = { version = "0.29", features = ["connect", "handshake"], opt
 tower-http = { version = "0.7", features = ["cors"], optional = true }
 
 # ── terminal rendering (optional diff_review backend) ──
-# ratatui/crossterm are pulled in only when the `tui` feature is on.
-ratatui = { version = "0.30.2", default-features = false, features = ["crossterm"], optional = true }
-crossterm = { version = "0.29.0", optional = true, features = ["event-stream"] }
+# ratatui-core/crossterm are pulled in only when the `tui` feature is on.
+# We depend on ratatui-core + ratatui-crossterm directly (not the umbrella
+# ratatui crate) because inline mode uses no built-in widgets — see c341.
+ratatui-core = { version = "0.1.2", default-features = false, features = ["std"], optional = true }
+ratatui-crossterm = { version = "0.1.2", default-features = false, features = ["crossterm_0_29", "scrolling-regions"], optional = true }
+crossterm = { version = "0.29.0", optional = true }
 # Display-width for CJK cursor alignment (ratatui uses it too; we need it directly).
 unicode-width = { version = "0.2", optional = true }
 
@@ -71,8 +74,8 @@ cli = ["rpc"]
 rpc = []
 # Always-on HTTP/WebSocket server.
 server = ["dep:axum", "dep:tokio-tungstenite", "dep:tower-http"]
-# Terminal UI (ratatui/crossterm backend).
-tui = ["dep:ratatui", "dep:crossterm", "dep:unicode-width"]
+# Terminal UI (ratatui-core/crossterm backend).
+tui = ["dep:ratatui-core", "dep:ratatui-crossterm", "dep:crossterm", "dep:unicode-width"]
 # Future GUI placeholder.
 gui = []
 

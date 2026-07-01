@@ -17,24 +17,25 @@
 //! Architecture constraints (spec c325 / `app-tui`):
 //! - inline render (`Viewport::Inline`, NOT alt-screen);
 //! - driven by `InProcessDriver` (same path as print);
+//! - depends on `ratatui-core` + `ratatui-crossterm` directly (not the
+//!   umbrella `ratatui` crate); uses no built-in widgets — components are
+//!   hand-rolled via `Line::render` or direct `Buffer` writes (c341);
 //! - imports only `app::core` (Driver/composition), `protocol`, `domain` —
 //!   never `agent::*` internals or `infra`.
 
 pub mod app;
 mod commands;
+mod init;
 mod input;
 mod render;
 mod terminal;
 mod theme;
 
-// The diff_review demo is retained pending integration into the TUI (c350).
-pub mod diff_review;
-
 use std::sync::Arc;
 use std::time::Duration;
 
 use crossterm::event::{self, Event};
-use ratatui::text::Line;
+use ratatui_core::text::Line;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
