@@ -138,9 +138,16 @@ impl TuiApp {
     }
 
     /// Called when the turn stream ends; resets streaming state.
+    ///
+    /// Also clears `pending` defensively (修复 c340 §7 #4): if the stream ended
+    /// without a TurnEnd (e.g. abort mid-stream), leftover pending text would
+    /// otherwise linger in the tail until the next submit. The normal TurnEnd
+    /// path already drains pending via `handle_xy_event`, so this is a no-op in
+    /// the common case.
     pub fn end_stream(&mut self) {
         self.streaming = false;
         self.status = None;
+        self.pending.clear();
     }
 
     pub fn turn_done(&self, event: &XyEvent) -> bool {
@@ -214,6 +221,22 @@ mod tests {
         app.handle_xy_event(XyEvent::TextDelta("partial".into()));
         let end = app.handle_xy_event(XyEvent::TurnEnd { turn_index: 0 });
         assert_eq!(end.len(), 1);
+        // 修复 c340 §7 #4: after TurnEnd the pending buffer must be empty so
+        // nothing lingers in the tail.
+        assert!(app.current_streaming_line().is_none());
+    }
+
+    #[test]
+    fn end_stream_clears_pending() {
+        // 修复 c340 §7 #4: end_stream (called on abort without TurnEnd) must
+        // also clear pending so no reply text lingers in the tail.
+        let mut app = TuiApp::default();
+        app.start_stream();
+        app.handle_xy_event(XyEvent::TextDelta("partial".into()));
+        assert!(app.current_streaming_line().is_some());
+        app.end_stream();
+        assert!(app.current_streaming_line().is_none());
+        assert!(!app.is_streaming());
     }
 
     #[test]
