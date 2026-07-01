@@ -6,11 +6,11 @@
 
 use std::io;
 
-use ratatui::TerminalOptions;
-use ratatui::Viewport;
-use ratatui::text::Line;
+use ratatui_core::terminal::{TerminalOptions, Viewport};
+use ratatui_core::text::Line;
 
 use crate::app::tui::app::TuiApp;
+use crate::app::tui::init;
 use crate::app::tui::render;
 
 /// Height (in rows) of the mutable tail region reserved by `Viewport::Inline`.
@@ -22,14 +22,14 @@ const TAIL_HEIGHT: u16 = 3;
 
 /// Owns the inline terminal. Dropping restores raw mode + leaves scrollback.
 pub struct InlineTerminal {
-    term: ratatui::DefaultTerminal,
+    term: init::DefaultTerminal,
 }
 
 impl InlineTerminal {
     /// Enable raw mode and create an inline viewport (no alt screen).
     pub fn enter() -> io::Result<Self> {
         crossterm::terminal::enable_raw_mode()?;
-        let term = ratatui::try_init_with_options(TerminalOptions {
+        let term = init::try_init_with_options(TerminalOptions {
             viewport: Viewport::Inline(TAIL_HEIGHT),
         })?;
         Ok(Self { term })
@@ -95,8 +95,9 @@ impl InlineTerminal {
 impl Drop for InlineTerminal {
     fn drop(&mut self) {
         // Order matters: restore ratatui state, then raw mode. Best-effort —
-        // never panic in Drop.
-        ratatui::restore();
+        // never panic in Drop. (init::restore already disables raw mode; the
+        // explicit call below is a belt-and-suspenders redundancy.)
+        init::restore();
         let _ = crossterm::terminal::disable_raw_mode();
     }
 }

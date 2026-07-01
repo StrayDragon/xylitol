@@ -11,10 +11,11 @@
 //! Pure functions are preferred (no terminal side effects) so they can be
 //! unit-tested without a real terminal.
 
-use ratatui::Frame;
-use ratatui::style::Style;
-use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui_core::layout::Rect;
+use ratatui_core::style::Style;
+use ratatui_core::terminal::Frame;
+use ratatui_core::text::{Line, Span};
+use ratatui_core::widgets::Widget;
 
 use crate::app::tui::app::TuiApp;
 use crate::app::tui::theme;
@@ -57,15 +58,25 @@ pub fn draw_tail_frame(frame: &mut Frame, app: &TuiApp) {
     lines.push(Line::styled(prompt_text, input_style));
 
     // ── Bottom-align and render ───────────────────────────────────
+    // Render each line directly via `Line::render` (Line implements Widget in
+    // ratatui-core) instead of the Paragraph built-in widget (c341: drop all
+    // built-in widgets; hand-roll for inline mode).
     let n = u16::try_from(lines.len()).unwrap_or(area.height);
-    let content_area = ratatui::layout::Rect {
-        x: area.x,
-        y: area.y + area.height.saturating_sub(n),
-        width: area.width,
-        height: n.min(area.height),
-    };
-    let para = Paragraph::new(lines);
-    frame.render_widget(para, content_area);
+    let top = area.y + area.height.saturating_sub(n);
+    let buf = frame.buffer_mut();
+    for (i, line) in lines.iter().enumerate() {
+        let row_y = top.saturating_add(i as u16);
+        if row_y >= area.bottom() {
+            break;
+        }
+        let row_area = Rect {
+            x: area.x,
+            y: row_y,
+            width: area.width,
+            height: 1,
+        };
+        line.render(row_area, buf);
+    }
 
     // ── Cursor placement (always, on the input line) ──────────────
     // The cursor ALWAYS sits on the input prompt — never on streaming text.
@@ -128,11 +139,7 @@ impl StatusLine {
         &self.label
     }
 
-    pub fn render(
-        &self,
-        glyph_style: ratatui::style::Style,
-        label_style: ratatui::style::Style,
-    ) -> Line<'static> {
+    pub fn render(&self, glyph_style: Style, label_style: Style) -> Line<'static> {
         Line::from(vec![
             Span::styled(self.glyph.to_string(), glyph_style),
             Span::styled(self.label.clone(), label_style),
@@ -141,10 +148,31 @@ impl StatusLine {
 }
 
 #[cfg(test)]
+mod user_message_tests {
+    use super::user_message_line;
+
+    #[test]
+    fn user_message_contains_prompt_with_prefix() {
+        let line = user_message_line("fix the bug");
+        // The line carries the ❯ prefix and the prompt text.
+        let text = line.to_string();
+        assert!(text.contains('❯'), "prefix present: {text}");
+        assert!(text.contains("fix the bug"), "prompt text present: {text}");
+    }
+
+    #[test]
+    fn user_message_empty_prompt_still_has_prefix() {
+        let line = user_message_line("");
+        let text = line.to_string();
+        assert!(text.contains('❯'), "prefix present even for empty: {text}");
+    }
+}
+
+#[cfg(test)]
 mod cursor_tests {
     use super::*;
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
+    use ratatui_core::backend::TestBackend;
+    use ratatui_core::terminal::Terminal;
 
     fn render_term(app: &TuiApp) -> Terminal<TestBackend> {
         let mut term = Terminal::new(TestBackend::new(80, 24)).unwrap();

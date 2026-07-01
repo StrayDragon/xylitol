@@ -13,7 +13,7 @@
 - [x] `InlineTerminal::enter(tail_height)` → raw mode + `try_init_with_options(Viewport::Inline)`
 - [x] `draw_tail` / `commit_to_scrollback`
 - [x] `Drop` 调 `restore()` + `disable_raw_mode()`（spec tui15）
-- [ ] panic 安全：主循环包 catch_unwind 或 panic hook 确保 Drop 运行 — InlineTerminal::Drop 已保证 raw mode 恢复；显式 panic hook 作为后续小变更(defer → c355-switch-to-ratatui-core-backend)
+- [ ] panic 安全：主循环包 catch_unwind 或 panic hook 确保 Drop 运行 — InlineTerminal::Drop 已保证 raw mode 恢复；显式 panic hook 作为后续小变更(defer → c355-ensure-terminal-restore-on-panic)
 
 ## 2. 状态机 `app.rs`
 
