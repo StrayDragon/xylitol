@@ -49,7 +49,7 @@ pub trait Driver {
 /// and agent together. This is the **only** place in `interactive/` that
 /// imports `agent`.
 pub struct InProcessDriver {
-    agent: ReActAgent,
+    agent: ReActAgent, // FIXME(@agent): 这里不应该使用一个最基础的 ReActAgent作为core 而应该使用 AgentBuilder 构建的 Agent
 }
 
 #[allow(dead_code)]
