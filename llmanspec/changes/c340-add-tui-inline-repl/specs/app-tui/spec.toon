@@ -1,0 +1,18 @@
+kind: llman.sdd.delta
+ops[6]{op,req_id,title,statement,from,to,name}:
+  add_requirement,tui10,"repl-entry","The CLI MUST dispatch to app::tui::run when no prompt is provided and stdin is a TTY (mirroring pi resolveAppMode), entering an inline REPL driven by InProcessDriver; a --tui flag MAY force the TUI even with a prompt.",null,null,null
+  add_requirement,tui11,"event-loop","The TUI MUST run a tokio::select! event loop multiplexing three sources: the XyEvent stream from Driver::run, crossterm keyboard input via EventStream (requires crossterm event-stream feature), and a cancellation signal that calls Driver::abort.",null,null,null
+  add_requirement,tui12,"inline-render-pipeline","The TUI MUST render finalized content to the scrollback via Terminal::insert_before and redraw only the mutable tail (current streaming line, spinner, tool status) via Terminal::draw over a Viewport::Inline region; the tail MUST be freely redrawable each frame without disturbing committed scrollback.",null,null,null
+  add_requirement,tui13,"xyevent-coverage","The TUI render MUST handle at minimum these XyEvent variants: TextDelta (stream to tail then commit on boundary), ThinkingDelta, ToolExecutionStart/Update/End, ModelSelect, Error, TurnStart/TurnEnd; unhandled variants MUST degrade gracefully (e.g. log) not panic.",null,null,null
+  add_requirement,tui14,"slash-commands","The TUI MUST parse slash commands /exit (maps to Quit) and /model (maps to SetModel or CycleModel) reusing protocol::Command semantics; unknown slash input MUST show an inline error not crash.",null,null,null
+  add_requirement,tui15,"terminal-lifecycle","The TUI MUST enable raw mode and Viewport::Inline on entry and MUST restore the terminal on exit via Drop or explicit teardown even on panic or error, so the user's terminal is never left in a broken raw-mode state.",null,null,null
+op_scenarios[9]{req_id,id,given,when,then}:
+  tui10,"tty-default","xylitol is run with no arguments and stdin is a TTY","the process starts","app::tui::run is entered and an inline REPL is shown"
+  tui10,"prompt-stays-print","xylitol 'fix the bug' is run","the process starts","print mode runs (not the TUI) because a prompt was given"
+  tui11,"abort-on-cancel","a long agent turn is streaming","the user presses the cancel key","Driver::abort is called and the loop breaks cleanly"
+  tui12,"scrollback-commit","a finalized text line exists","insert_before is called","the line appears in the terminal scrollback above the live viewport and is not redrawn on subsequent frames"
+  tui13,"textdelta-stream","a TextDelta event arrives","the tail is redrawn","the partial text is visible in the tail region and on a newline boundary is committed to scrollback"
+  tui13,"tool-status","a ToolExecutionStart then ToolExecutionEnd occur","the events are rendered","tool name and result preview appear without panicking"
+  tui14,"exit-command","the user types /exit","the command is parsed","the REPL exits cleanly restoring the terminal"
+  tui14,"model-command","the user types /model","the user types /model","the model is switched via protocol::Command SetModel/CycleModel semantics"
+  tui15,"restore-on-panic","the TUI panics during a turn","the panic unwinds","raw mode is disabled and the terminal is usable"
