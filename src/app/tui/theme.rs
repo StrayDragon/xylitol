@@ -32,6 +32,15 @@ impl Palette {
         Style::default().fg(Color::Reset)
     }
 
+    /// User prompt echo (the `❯ <input>` line committed to scrollback on
+    /// submit). Bold so the user can distinguish their input from the
+    /// assistant reply in the scrollback history.
+    pub fn user_prompt(&self) -> Style {
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    }
+
     /// Tool execution labels.
     pub fn tool(&self) -> Style {
         Style::default().fg(Color::Yellow)

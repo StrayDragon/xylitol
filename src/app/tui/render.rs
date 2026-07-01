@@ -31,6 +31,18 @@ pub fn draw_tail_frame(frame: &mut Frame, app: &TuiApp) {
     let area = frame.area();
     let p = theme::palette();
 
+    // ── Fill the entire tail region with the input background (修复 c340 §7 #1)
+    // ── so it reads as a continuous bottom-anchored block with no floating
+    // gap. Without this, Viewport::Inline(3) leaves visually-empty rows above
+    // the bottom-aligned content, giving a "not anchored to bottom"错觉.
+    let bg = p.input_bg();
+    let buf = frame.buffer_mut();
+    for y in area.y..area.bottom() {
+        for x in area.x..area.right() {
+            buf[(x, y)].set_bg(bg);
+        }
+    }
+
     // ── Compose lines top-to-bottom ───────────────────────────────
     let mut lines: Vec<Line> = Vec::new();
 
@@ -118,6 +130,15 @@ pub fn commit_lines_for(event: &XyEvent) -> Vec<Line<'static>> {
         }
         _ => Vec::new(),
     }
+}
+
+/// Format the user's submitted prompt as a scrollback line (修复 c340 §7 #3).
+///
+/// Called on Enter before `driver.run`, so the user sees their own message in
+/// the conversation history above the streaming reply. Styled distinctly
+/// (bold cyan `❯` prefix) to distinguish from the assistant reply.
+pub fn user_message_line(prompt: &str) -> Line<'static> {
+    Line::styled(format!("❯ {prompt}"), theme::palette().user_prompt())
 }
 
 /// Internal helper: a status line carries a glyph + label.
@@ -308,8 +329,29 @@ mod cursor_tests {
         let cell = &buf[(0, 23)];
         assert_ne!(
             cell.bg,
-            ratatui::style::Color::Reset,
+            ratatui_core::style::Color::Reset,
             "input line cell should have a background block"
         );
+    }
+
+    /// 修复 c340 §7 #1: the entire tail region (all 3 rows of Viewport::Inline(3))
+    /// carries the input background, so the area reads as one continuous
+    /// bottom-anchored block with no floating gap.
+    #[test]
+    fn tail_region_fully_filled_with_background() {
+        let app = TuiApp::default();
+        let term = render_term(&app);
+        let buf = term.backend().buffer();
+        let expected_bg = crate::app::tui::theme::palette().input_bg();
+        // Tail = bottom 3 rows of a 24-row terminal: rows 21, 22, 23.
+        for y in 21..24u16 {
+            for x in 0..80u16 {
+                assert_eq!(
+                    buf[(x, y)].bg,
+                    expected_bg,
+                    "row {y} col {x} should have input_bg (filled tail)"
+                );
+            }
+        }
     }
 }

@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,tui30,"user-message-echo","The TUI MUST commit the user's submitted prompt text to the scrollback immediately on Enter (before or during driver.run), styled distinctly (e.g. ❯ prefix) so the user sees their own message in the conversation history. Evidence: c340 §7 leftover #3 noted user input never reached scrollback; pi/kimi-code user-message components (kimi-code/apps/kimi-code/src/tui/components/messages/user-message.ts) echo user input on submit.",null,null,null
+  add_requirement,tui31,"turn-end-flush-consistent","The TUI MUST flush the final streaming line to scrollback and clear the tail in the same frame on TurnEnd, so no reply text lingers in the mutable tail after a turn completes. Evidence: c340 §7 leftover #4 noted the last reply line stayed in the tail until the next submit.",null,null,null
+  add_requirement,tui32,"input-anchored-visual","The TUI input region MUST appear visually anchored to the bottom (no floating/gap错觉); unused tail rows MUST be filled (background block or divider) so the input area reads as a continuous bottom-anchored region. Evidence: c340 §7 leftover #1 noted Viewport::Inline(3) left a perceived gap; kimi-code footer uses background fill.",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  tui30,"user-input-visible","the user types a prompt and presses Enter","the scrollback is inspected","the user's prompt text appears as a committed line above the live tail region"
+  tui31,"no-tail-linger","a streaming turn reaches TurnEnd","the frame after TurnEnd is rendered","the tail contains no leftover assistant text from the finished turn and the final line is in scrollback"
+  tui32,"no-floating-input","the TUI is idle with an empty input","the tail region is observed","the input area is visually anchored to the bottom edge with no ambiguous gap above it"
