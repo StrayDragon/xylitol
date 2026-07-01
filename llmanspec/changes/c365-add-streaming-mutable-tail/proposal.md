@@ -59,14 +59,16 @@ c360 是渲染基础设施变更（harness + widget 解禁 + RenderedLine seam�
 
 ## 反降级护栏（防止本变更被降级）
 
-- [ ] 流式 TextDelta 的完整行 MUST 增量 commit 到 scrollback（每来一个换行边界即 commit，非 turn 结束才批量）。
-- [ ] tail 区 MUST NOT 渲染 pending 流式文字（只留 thinking + 输入框）——draw_tail_frame 移除 current_streaming_line 渲染。
-- [ ] 未换行的尾部（pending_tail）MUST 在 scrollback 最后一行位置增量显示（每帧重绘），视觉上"打字机在上行区"。
-- [ ] mutable last line MUST 在 ratatui buffer 内渲染（Viewport::Inline），透明背景融进 scrollback；MUST NOT 用 escape 直写终端绕过 buffer（raw_render.rs 必须删除）。
-- [ ] mutable last line 超宽 MUST wrap 到多行（CJK 按显示宽度），超出 tail capacity 的顶部行丢弃（不丢内容，换行后进 scrollback）。
-- [ ] TurnEnd MUST 把残留 pending_tail commit 到 scrollback（无丢失）。
-- [ ] 渲染层 MUST 组件化为 src/app/tui/components/ 下的可复用 widget（TranscriptLine/MutableLine/ThinkingIndicator/InputPrompt/Tail），每个自包含、消费 UI 数据类型、TestBackend 可独立验证；draw_tail_frame 退化为 Tail::render；commit_to_scrollback 改吃 &[RenderedLine] 经 TranscriptLine 渲染。
-- [ ] 现有 c360 harness 测试 + 既有 TUI 测试 MUST 回归通过；新增 harness 覆盖每个 widget + mutable-last-line。
-- [ ] 本变更 MUST NOT 引入 codex 的 table_holdback / chunking / consolidation / 动画线程（纯文本场景不需要，scope creep）。
-- [ ] 本变更 MUST NOT 破坏 tui42 边界分离（增量 commit 仍经 RenderedLine seam）。
-- [ ] 本变更 MUST NOT 预先实现未来布局组件（StatusBar / border / 多行编辑）——无数据源即空壳死码（tui5），仅为未来留扩展位。
+- [x] 流式 TextDelta 的完整行 MUST 增量 commit 到 scrollback（每来一个换行边界即 commit，非 turn 结束才批量）。
+- [x] 未换行的尾部（pending_tail）MUST 在 panel 上方紧贴显示（每帧重绘），视觉上"打字机在上行区"。
+- [x] mutable last line MUST 在 ratatui buffer 内渲染（Viewport::Inline），透明背景融进 scrollback；MUST NOT 用 escape 直写终端绕过 buffer（raw_render.rs 已删除）。
+- [x] mutable last line 超宽 MUST wrap 到多行（CJK 按显示宽度），超出 tail capacity 的顶部行丢弃（不丢内容，换行后进 scrollback）。
+- [x] TurnEnd MUST 把残留 pending_tail commit 到 scrollback（无丢失）。
+- [x] 渲染层 MUST 组件化为 components/ 下可复用 widget（TranscriptLine/MutableLine/InputPrompt/BottomPanel/Tail/Spinner），每个 TestBackend 可独立验证；draw_tail_frame 退化为 Tail::render；commit_to_scrollback 改吃 &[RenderedLine]。
+- [x] Thinking MUST 是正文（灰色 ThinkingText），thinking_buf 独立流式 + commit；不在面板内。
+- [x] 面板 MUST 固定 3 行（border+input+border），idle 不填满 tail 区。
+- [x] 输入框 MUST NOT 含 ❯ 前缀。
+- [x] 现有 harness 测试 + 既有 TUI 测试 MUST 回归通过。
+- [x] 本变更 MUST NOT 引入 codex 的 table_holdback / chunking / consolidation / 动画线程。
+- [x] 本变更 MUST NOT 破坏 tui42 边界分离。
+- [x] 本变更 MUST NOT 预先实现多行编辑 / StatusBar（后续独立变更）。

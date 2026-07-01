@@ -1,177 +1,87 @@
-# c365 Design — 流式 mutable-last-line
+# c365 Design — 流式 mutable-last-line + 组件化
 
-> 涉及流式渲染架构调整 + ratatui inline 模式下的可变行实现，按 propose skill 要求写 design。
+## 1. 核心思路
 
-## 1. 核心难点：inline 模式下怎么实现"scrollback 最后一行可变"
+`Viewport::Inline` + `insert_before` 是单向的：commit 进 scrollback 就永久固定。mutable（未换行的尾部）**不进 scrollback**，而在 viewport 内每帧重绘——旧内容被新帧覆盖，视觉上原地生长。
 
-ratatui 的 `Viewport::Inline` + `insert_before` 是**单向不可变**的——一行 insert_before 进 scrollback 就永久固定，不能改。codex 用自定义 terminal 绕过这个限制（`insert_history::*` 直接操作终端 buffer）。xylitol 用标准 ratatui，不能改 scrollback 里的行。
-
-**解法**：mutable last line **不进 scrollback**，而在 tail 区（viewport 内）渲染。tail 区每帧重绘，旧内容自动被覆盖——这就是 codex 的 `sync_active_stream_tail` 机制本质。具体布局（流式时）：
+布局（ratatui buffer 内，非 escape 路线）：
 
 ```
-[已 commit 的稳定行]      ← 终端原生 scrollback（insert_before 写入，永久）
-─────────────────────  ← viewport 顶部（tail 区上边界）
-[mutable last line]       ← pending_tail()，每帧重绘（tail 区第 1 行）
-[thinking 指示器]         ← tail 区第 2 行（spinner + label）
-[❯ 输入框]                ← tail 区最后一行（底锚）
-─────────────────────  ← viewport 底部
+…scrollback（已 commit 正文）…
+[mutable 未换行尾部]        ← viewport 顶，透明 bg，紧贴 scrollback，每帧重绘
+─── panel 上 border ───
+<输入框>                    ← panel 底锚
+─── panel 下 border ───
 ```
 
-流式时每帧：pending_tail 变长 → 第 1 行内容更新（视觉上"打字机在上行区生长"）。换行到达 → 该行 insert_before 进 scrollback（永久），pending_tail 重置为空，tail 区第 1 行变空等下一句。
+## 2. 流程
 
-**关键**：用户看到的"打字机在上行区"本质是 tail 区第 1 行（viewport 内最顶行），它紧贴 scrollback 最后一行，视觉上连成一体——就像文字在 scrollback 里生长。但它其实是 viewport 内每帧重绘的，不是真改 scrollback。
+### 2.1 思考阶段（ThinkingDelta）
 
-## 2. StreamBuffer 状态机（换行门控，对标 codex 极简版）
+1. Turn 开始 → `thinking_phase = true`，mutable 显示 `Thinking…`（灰色占位）
+2. `ThinkingDelta` 到达 → `thinking_buf` 累积，完整行 drain 为 `RenderedLine::ThinkingText`（灰色）立即 `insert_before` commit 到 scrollback
+3. 未换行尾部 = mutable 行（灰色，`MutableKind::Thinking` → `palette.thinking()`）
 
-```rust
-/// 换行门控的流式 buffer（对标 codex MarkdownStreamCollector 极简版）。
-/// 累积 token；换行边界内的完整行可 drain 为稳定行；未换行尾部是 mutable tail。
-pub struct StreamBuffer {
-    buffer: String,
-    committed_len: usize,  // 上次换行边界
-}
+### 2.2 文字阶段（TextDelta）
 
-impl StreamBuffer {
-    pub fn push(&mut self, delta: &str) { self.buffer.push_str(delta); }
+1. 首个 `TextDelta` → flush `thinking_buf` 残留为最后一行 `ThinkingText`，`thinking_phase = false`
+2. 后续 `TextDelta` → `stream_buf` 累积，完整行 drain 为 `RenderedLine::AssistantText`（正常色）commit
+3. 未换行尾部 = mutable 行（正常色，`MutableKind::Text` → `palette.assistant()`）
 
-    /// 取出新完成的换行行（推进 committed_len）。无新换行则返回空。
-    pub fn drain_complete_lines(&mut self) -> Vec<String> {
-        let mut out = Vec::new();
-        while let Some(nl) = self.buffer[self.committed_len..].find('\n') {
-            let abs = self.committed_len + nl;
-            let line: String = self.buffer[self.committed_len..abs].to_string();
-            self.committed_len = abs + 1;
-            out.push(line);
-        }
-        out
-    }
+### 2.3 工具执行
 
-    /// 未换行的尾部（mutable last line 内容）。每帧重绘用。
-    pub fn pending_tail(&self) -> &str { &self.buffer[self.committed_len..] }
+无流式文字时 mutable 显示 `tool_status`（`MutableKind::Tool` → `palette.tool()`）：`⚙ running bash` / `✓ bash done`。
 
-    /// TurnEnd：把残留尾部作为最后一行取出，重置。
-    pub fn finalize(&mut self) -> Option<String> {
-        let tail = self.pending_tail().to_string();
-        self.buffer.clear();
-        self.committed_len = 0;
-        if tail.is_empty() { None } else { Some(tail) }
-    }
-}
-```
+### 2.4 TurnEnd
 
-**对比 codex**：codex 的 `MarkdownStreamCollector`（`markdown_stream.rs:87-96`）逻辑完全一致（`rfind('\n')` 切边界 + `committed_source_len`），只是 codex 还做 markdown 增量解析。xylitol 纯文本，省掉解析。
+Flush `thinking_buf` 和 `stream_buf` 的残留，mutable 消失，面板恢复 3 行固定底部。
 
-## 3. TextDelta 处理改为增量 commit
+### 2.5 换行门控
 
-当前（c360 后）`handle_xy_event` 的 TextDelta 分支：累积进 `pending`，换行时 `flush_complete_pending` 返回完整行（一次性 commit）。
+`StreamBuffer { buffer, committed_len }`：`push(delta)` 累积 token，`drain_complete_lines()` 返回换行边界内的完整行，`pending_tail()` 返回未换行尾部。codex 极简版（无 markdown 解析、无 table holdback）。
 
-c365 改为：用 `StreamBuffer`，每来 TextDelta 就 `drain_complete_lines()`，**产出的完整行立即返回**（mod.rs 立即 commit_to_scrollback）。pending_tail 不进 commit，留给 draw_tail_frame 每帧重绘。
+## 3. 组件（src/app/tui/components/）
 
-```rust
-XyEvent::TextDelta(text) => {
-    self.stream_buf.push(text);
-    let complete = self.stream_buf.drain_complete_lines();
-    rendered.extend(complete.into_iter().map(RenderedLine::AssistantText));
-}
-```
+| widget | 职责 | 注 |
+|---|---|---|
+| `TranscriptLine` | `RenderedLine → Buffer`（wrap + CJK，含 `ThinkingText` 灰） | insert_before 与 TestBackend 共用 |
+| `MutableLine` | 未换行尾部，caller 传 `Style`，透明 bg，top-anchored | thinking 灰 / text 正常 / tool 黄 |
+| `InputPrompt` | 输入框，无 `❯` 前缀，MVP 单行 | CJK 显示宽度光标 |
+| `BottomPanel` | bordered + panel_bg 容器，只含 InputPrompt | 固定 3 行（border+input+border） |
+| `Tail` | 组合 MutableLine（顶）+ BottomPanel（底） | `draw_tail_frame` 退化为此 |
+| `Spinner` | 单 glyph spinner（底层可复用） | 当前未接线，备后续用 |
 
-mod.rs 的 `Msg::Xy` 分支已经对 `handle_xy_event` 返回的 lines 立即 `commit_to_scrollback`——所以**无需改 mod.rs**，只需 app.rs 把换行行实时返回。
+`RenderedLine` 变体：`UserInput` / `AssistantText` / `ThinkingText` / `ToolSummary` / `Status`。`ThinkingText` 是 c365 新增的灰色思考行。
 
-## 4. draw_tail_frame 调整 → 组件化渲染（buffer 路线）
+## 4. 常量
 
-### 实施偏差纠正
+- `TAIL_HEIGHT = 5`（mutable 最大 2 行 + 面板 3 行）
+- 面板始终固定 3 行（idle 不填满）
+- 面板上方行 = 透明终端底色（正文区）
 
-c365 首次实施走了 "escape 直写终端 + DECSTBM scroll-region" 路线（`raw_render.rs`），绕过 ratatui buffer。该路线与多条 spec 冲突：tui41（TestBackend 可验证——escape 写的内容 TestBackend 看不到）、tui42（渲染层消费 RenderedLine 经 buffer）、tui21/tui5（escape 绑死物理坐标 + 自设滚动区，无法 widget 化、无法重定位）。且实测导致 commit 行与 mutable 行写同一物理行（`viewport_top - 1`）互相覆盖、TurnEnd `clear_mutable` 擦掉已 commit 内容——即用户观察到的 "正文 stream 后被清空"。**纠正回 design 原定的 ratatui-buffer 路线**：mutable 行在 tail 区顶行每帧重绘（buffer 内），背景透明融进 scrollback；所有 commit 走 `insert_before`。删 `raw_render.rs`。
+## 5. app 状态（TuiApp）
 
-### 渲染布局（buffer 路线）
+- `thinking_phase: bool` — 首个 TextDelta 前为 true
+- `thinking_buf: StreamBuffer` — 思考内容流式
+- `stream_buf: StreamBuffer` — 主回复流式
+- `tool_status: Option<String>` — 工具执行状态标
+- `pending_tail() -> Option<(&str, MutableKind)>` — thinking 阶段无内容时返回 `("Thinking…", Thinking)` 占位
+- `MutableKind` enum：`Thinking` / `Text` / `Tool` — Tail 据此选 style
 
-流式时 tail 区（ratatui buffer，`Viewport::Inline` 内）从上到下：
+## 6. 边界分离
 
-```
-[mutable last line（pending_tail，可能 wrap 多行）]  ← 顶行，透明 bg，融进 scrollback
-[thinking 指示器]                                    ← input_bg
-[❯ 输入框]                                           ← 底锚，input_bg
-```
+- `handle_xy_event` 返回 `Vec<RenderedLine>`（全是 finalized 行），mod.rs 无条件 `commit_to_scrollback`
+- mutable 不进返回值，由 `Tail` 每帧读 `app.pending_tail()` 渲染
+- 渲染层 widget 只消费 UI 数据类型，不 match `XyEvent`（spec tui42）
+- 每个 widget 有独立 TestBackend 测试（spec tui41）
 
-非流式时只有 `[❯ 输入框]`。mutable 行每帧重绘（buffer diff 自动只刷变化的 cell），换行时该完整行 `insert_before` 进 scrollback（永久），pending_tail 重置。**视觉上文字在正文区生长**：mutable 顶行紧贴 scrollback 最后一行、透明背景无缝衔接；换行只上移一行（非 c360 的多行块整体跳动）。
+## 7. 不做的事
 
-### wrap 策略
+- ❌ markdown 增量解析、table holdback、动画线程（纯文本场景不需要）
+- ❌ 多行编辑器（后续独立变更）
+- ❌ 动态 viewport 高度
+- ❌ escape 直写终端（已弃，buffer 路线）
 
-pending_tail 超宽时 **wrap 到多行**（`wrap_to_width`，CJK 按显示宽度），Tail 布局 bottom-anchored：`[MutableLine wrapped rows][Thinking][Input]` 从底往上排，capacity = tail height，超出 capacity 的 mutable **顶部行丢弃**（完整内容换行后进 scrollback，不丢失）。满足 "到宽度自动换行"，且不破坏生长视觉（wrap 出的多行中只有最后一行在生长，前面的是已稳定的 wrap 结果）。
+## 8. 已知问题（延迟修复）
 
-### mutable line 锡定：top-anchored（二次纠正）
-
-首版组件化把 `MutableLine` 实现为 **bottom-anchored**（贴 mutable_area 底部），真终端冒烟发现：单行 mutable 坐在 mutable_area 底行（`indicator_y - 1`），和 viewport 上方的 scrollback 之间空出多行——即用户观察到的 "正在打的字和 ❯ 你好 之间有空行"。**纠正为 top-anchored**：mutable 从 `mutable_area.y`（viewport 顶行）向下生长，单行时紧贴 scrollback 最后一行。超容量（wrap 行数 > mutable_area 高度）时仍**丢弃顶部**：`start = total - fit`，从 `area.y` 画保留的底部行——这样 mutable 始终锡定 scrollback（area.y 不空），同时最新字符（底部）可见。完整内容换行后进 scrollback，不丢失。
-
-### inline viewport 固定高度限制 → route B（底部面板 border + bg）
-
-`Viewport::Inline(N)` 是**固定 N 行的保留区**：流式时塞得满，turn 结束后 mutable 进 scrollback、thinking 消失，viewport 内只剩底部 input，上方 `N - 1` 行是**保留区空行**。route B 用一个带 border + bg 填充的 `BottomPanel` 包裹 status/thinking/input：idle 时面板填充整个 tail 区，空行变 "面板内部"（不再是空终端行）。
-
-### Thinking 是正文（二次纠正）
-
-Thinking（reasoning）是 agent LLM 的输出正文，用灰色/暗色与主回复区分。它**不是**面板里的独立 widget，而是在正文区流式生长 + 换行固化，位于主回复之前。流程：
-
-1. Turn 开始 → thinking 阶段，mutable 行显示 `Thinking…` 占位（灰色）。`Thinking…` 本身是活动指示器（不再需要 spinner widget）。
-2. `ThinkingDelta` 到达 → `thinking_buf` 累积，完整行 drain 为 `RenderedLine::ThinkingText`（灰色）立即 commit 到 scrollback；未换行尾部是 mutable 行。
-3. 首个 `TextDelta` 到达 → flush `thinking_buf` 残留为最后一行 `ThinkingText`，切到 text 阶段；`stream_buf` 累积，完整行 drain 为 `RenderedLine::AssistantText` commit。
-4. TurnEnd → flush 两个 buf 的残留。
-
-工具执行时（无流式文字）mutable 行显示 `tool_status`（`⚙ running bash` / `✓ bash done`）。
-
-删 `StatusIndicator`、`ThinkingBlock`、`StatusLine`——不再需要。`MutableKind` enum（Thinking/Text/Tool）从 `app.pending_tail() -> Option<(&str, MutableKind)>` 返回，`Tail` 据此选 style。删 `❯` 前缀——面板 border 是视觉 affordance。`TAIL_HEIGHT` = 5（mutable 2 + 面板 3）。
-
-### 最终组件清单
-
-| widget | 职责 |
-|---|---|
-| `TranscriptLine` | `RenderedLine → Buffer`（wrap + CJK，含 `ThinkingText` 灰色变体） |
-| `MutableLine` | pending_tail 顶行，caller 传 `Style`（thinking 灰 / text 正常 / tool 黄），透明 bg，top-anchored |
-| `InputPrompt` | 输入框（无 `❯` 前缀，MVP 单行；多行编辑后续） |
-| `BottomPanel` | bordered + panel_bg 容器，只含 InputPrompt |
-| `Tail` | 组合 MutableLine（顶）+ BottomPanel（底） |
-
-### 未来布局扩展
-
-用户未来多行输入（最多 3 行，方向键编辑）→ `InputPrompt` 升级 + `BottomPanel inner_rows` 动态。面板 border + input 基础已就位。未来 `StatusBar` 在面板底部 border 之上 push 一行。本次不做——无数据源即空壳（tui5）。
-
-## 5. Tail 高度调整
-
-当前 `TAIL_HEIGHT = 8`（terminal.rs:26）。c365 布局：mutable line(1) + thinking(1) + 输入(1) = 最少 3 行，加缓冲可设 4-5 行。流式时 pending_tail 单行不 wrap，8 行绰绰有余。**保持 8 不变**（留余量给未来多行场景）。
-
-## 6. harness 覆盖（扩展 c360 的 TestBackend harness，组件化后每个 widget 独立可测）
-
-StreamBuffer 状态机单测（`app.rs` 内）：
-- `stream_push_drains_complete_lines_on_newline`：push "a\nb" → drain ["a"]，pending_tail "b"
-- `stream_pending_tail_grows_without_commit`：push "abc"（无换行）→ drain 空，pending_tail "abc"
-- `stream_finalize_flushes_residual`：push "a\nb" → finalize "b"
-
-组件 TestBackend 测试（`components/` 各 widget 内或 `render.rs` harness）：
-- `TranscriptLine`：ASCII / CJK / 长 wrap 多行，渲染进 buffer 断言（复用 c360 `row_text` 工具）
-- `MutableLine`：pending_tail wrap 多行、透明 bg（`Color::Reset`）
-- `ThinkingIndicator`：spinner glyph + label 出现在指定行
-- `InputPrompt`：`❯` 前缀 + 输入内容 + input_bg block + 光标位置（CJK 显示宽度）
-- `Tail` 组合：流式时顺序 [MutableLine wrapped][Thinking][Input] bottom-anchored；非流式时只有 [Input]；mutable 超容量顶部丢弃；TurnEnd 后 tail 无残留 reply 文本
-
-**关键回归**：`streaming_text_not_in_ratatui_buffer_*`（c365 escape 时期的反向测试，断言 buffer 里 "没有" streaming 文字）**删除**，替换为正向测试（buffer 里 "有" mutable 文字）——escape 路线已弃。
-
-## 7. 不做的事（防 scope creep）
-
-- ❌ 不实现 codex table_holdback（纯文本无表格）
-- ❌ 不实现 AdaptiveChunkingPolicy / commit_tick 动画线程（换行即固化，无动画需求）
-- ❌ 不实现 consolidation（finalize 重排，inline 场景不需要）
-- ❌ 不做 markdown 增量解析（纯文本）
-- ❌ pending_tail 超宽时不 wrap（MVP 截断，记 design 待后续）
-
-## 8. 风险
-
-### R1：wrap 丢弃顶部 mutable 行【低】
-pending_tail 超宽 wrap 多行后超出 tail capacity 的顶部行被丢弃，但**不丢失**——换行后完整内容进 scrollback 自然 wrap。用户只是暂时看不到行首。可接受。
-
-### R2：mutable 顶行与 scrollback 最后一行视觉断裂【低】
-两者紧邻但背景色可能不同（scrollback 终端默认色，tail 区有 input_bg）。mutable 顶行用透明 bg（`Color::Reset`）融进 scrollback；只有 thinking + input 行带 input_bg。c365 已明确此分工。
-
-### R3：增量 commit 的 insert_before 频率【低】
-每来一个换行就 insert_before 一次。ratatui insert_before 有 scrolling-regions 优化（tui22 已启用），单行 insert 开销极小。可接受。
-
-### R4：组件边界划分不当【低】
-5 个 widget 的职责边界若模糊会导致循环依赖或重复逻辑。缓解：每个 widget 只消费 UI 数据类型（`RenderedLine`/`&str`/spinner idx），不持有 app 引用；`Tail` 是唯一组合点，其余 widget 互不引用。TestBackend 独立测试强制每个 widget 自包含。
+工具调用（如 bash）完成后 REPL 退出不继续 loop → `future.md`，需用 `FakeModel` 定位 drain/TurnEnd 路径问题。
