@@ -61,6 +61,10 @@ pub struct CliArgs {
     pub config: Option<String>,
     #[arg(long)]
     pub rpc: bool,
+    /// Enter the interactive inline TUI (ratatui). Implied when no prompt is
+    /// given and stdin is a TTY.
+    #[arg(long)]
+    pub tui: bool,
     #[arg(long)]
     pub list_models: bool,
     #[arg(long)]
@@ -446,6 +450,20 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut driver = InProcessDriver::new(agent);
 
     // ── Step 6: dispatch by mode ─────────────────────────────
+    // TUI: when no prompt is supplied and stdin is a TTY (mirroring pi's
+    // resolveAppMode), enter the inline REPL. `--tui` forces it even with a
+    // prompt. Rpc was handled earlier (Step 4).
+    #[cfg(feature = "tui")]
+    {
+        use std::io::IsTerminal;
+        let want_tui = args.tui || (args.prompt.is_none() && std::io::stdin().is_terminal());
+        if want_tui {
+            return crate::app::tui::run(&mut driver)
+                .await
+                .map_err(|e| e.into());
+        }
+    }
+
     let prompt = args.prompt.unwrap_or_else(|| {
         use std::io::Read;
         let mut buf = String::new();
