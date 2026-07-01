@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,dl1,"tui-debug-pipeline","System MUST provide a debug observation pipeline that does not interfere with TUI rendering.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  dl1,"file-log","--debug flag is set and TUI is active","a debug event is emitted","trace appears in ~/.xylitol/logs/ without corrupting the TUI display"
