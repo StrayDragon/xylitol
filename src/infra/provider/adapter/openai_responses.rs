@@ -350,9 +350,14 @@ fn convert_messages_to_input_items(messages: &[AgentMessage]) -> Vec<Value> {
             AgentMessage::UserMessage { content, .. } => {
                 let text = collect_text_parts(content);
                 if !text.is_empty() {
+                    // Responses API requires each input item to declare its
+                    // `type`; a bare {role, content} object yields
+                    // "Cannot determine type of 'item'" once non-message items
+                    // (function_call / function_call_output) are mixed in.
                     items.push(serde_json::json!({
+                        "type": "message",
                         "role": "user",
-                        "content": text,
+                        "content": [{"type": "input_text", "text": text}],
                     }));
                 }
             }
@@ -377,10 +382,15 @@ fn convert_messages_to_input_items(messages: &[AgentMessage]) -> Vec<Value> {
                     .collect();
 
                 if !text.is_empty() || !tool_calls.is_empty() {
-                    items.push(serde_json::json!({
-                        "role": "assistant",
-                        "content": text,
-                    }));
+                    // Only emit a message item when there is assistant text;
+                    // a tool-call round may have no text (pure function_call).
+                    if !text.is_empty() {
+                        items.push(serde_json::json!({
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": text}],
+                        }));
+                    }
                     items.extend(tool_calls);
                 }
             }
@@ -407,15 +417,20 @@ fn convert_messages_to_input_items(messages: &[AgentMessage]) -> Vec<Value> {
                 }
                 let text = format!("$ {command}\n{output}");
                 items.push(serde_json::json!({
+                    "type": "message",
                     "role": "user",
-                    "content": text,
+                    "content": [{"type": "input_text", "text": text}],
                 }));
             }
             AgentMessage::CompactionSummaryMessage { summary, .. }
             | AgentMessage::BranchSummaryMessage { summary, .. } => {
                 items.push(serde_json::json!({
+                    "type": "message",
                     "role": "user",
-                    "content": format!("[Context summary: {summary}]"),
+                    "content": [{
+                        "type": "input_text",
+                        "text": format!("[Context summary: {summary}]"),
+                    }],
                 }));
             }
             AgentMessage::CustomMessage {
@@ -428,8 +443,9 @@ fn convert_messages_to_input_items(messages: &[AgentMessage]) -> Vec<Value> {
                     continue;
                 }
                 items.push(serde_json::json!({
+                    "type": "message",
                     "role": "user",
-                    "content": text,
+                    "content": [{"type": "input_text", "text": text}],
                 }));
             }
         }
@@ -446,4 +462,114 @@ fn collect_text_parts(parts: &[AgentPart]) -> String {
         }
     }
     buf
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::message::{AgentMessage, AgentPart};
+
+    /// Every Responses API input item MUST declare a `type`, or OpenAI rejects
+    /// the request with "Cannot determine type of 'item'" once non-message
+    /// items (function_call / function_call_output) are mixed in.
+    #[test]
+    fn all_items_have_type_field() {
+        let msgs = vec![
+            AgentMessage::user("hello"),
+            AgentMessage::assistant("hi there"),
+        ];
+        let items = convert_messages_to_input_items(&msgs);
+        for item in &items {
+            assert!(item.get("type").is_some(), "item missing `type`: {item}");
+        }
+    }
+
+    /// Regression: a tool-calling continuation round (user → assistant with a
+    /// tool_call → tool result) must produce well-typed items: message,
+    /// function_call, function_call_output. This is exactly the sequence that
+    /// failed before c375 (no continuation) and then hit the Responses API
+    /// "Cannot determine type of 'item'" error after c375 enabled it.
+    #[test]
+    fn tool_round_items_are_well_typed() {
+        let msgs = vec![
+            AgentMessage::user("list files"),
+            AgentMessage::AssistantMessage {
+                content: vec![
+                    AgentPart::Text("let me check".into()),
+                    AgentPart::ToolCall {
+                        id: "call-1".into(),
+                        name: "ls".into(),
+                        arguments: serde_json::json!({"path": "."}),
+                    },
+                ],
+                stop_reason: None,
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: Vec::new(),
+            },
+            AgentMessage::tool_result(
+                "call-1",
+                "ls",
+                vec![AgentPart::Text("file.txt".into())],
+                false,
+            ),
+        ];
+        let items = convert_messages_to_input_items(&msgs);
+        // user message, assistant message, function_call, function_call_output
+        let types: Vec<&str> = items
+            .iter()
+            .map(|i| i.get("type").and_then(|v| v.as_str()).unwrap_or("(none)"))
+            .collect();
+        assert_eq!(
+            types,
+            vec![
+                "message",
+                "message",
+                "function_call",
+                "function_call_output"
+            ],
+            "item types in order: {types:?}"
+        );
+        // function_call_output must carry the call_id matching the call.
+        let output = items
+            .iter()
+            .find(|i| i.get("type").and_then(|v| v.as_str()) == Some("function_call_output"))
+            .unwrap();
+        assert_eq!(output["call_id"], "call-1");
+        assert_eq!(output["output"], "file.txt");
+    }
+
+    #[test]
+    fn assistant_tool_only_round_emits_function_call_not_empty_message() {
+        // Assistant round with a tool_call and NO text must not emit an empty
+        // message item (would confuse the API); only the function_call item.
+        let msgs = vec![AgentMessage::AssistantMessage {
+            content: vec![AgentPart::ToolCall {
+                id: "c1".into(),
+                name: "ls".into(),
+                arguments: serde_json::json!({}),
+            }],
+            stop_reason: None,
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        }];
+        let items = convert_messages_to_input_items(&msgs);
+        assert_eq!(
+            items.len(),
+            1,
+            "only the function_call item, no empty message"
+        );
+        assert_eq!(items[0]["type"], "function_call");
+    }
 }
