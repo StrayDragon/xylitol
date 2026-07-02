@@ -1,8 +1,11 @@
-//! `ThinkingIndicator` widget — animated spinner glyph + status label, one
-//! row filled with the input background block. Shown only while a turn streams.
+//! `StatusIndicator` widget — animated spinner + a short status label, one
+//! row. This is the generic "working" indicator (NOT the thinking block): its
+//! label defaults to `Working` and is overridden by a concrete tool status
+//! while a tool runs (e.g. `running read_file`).
 //!
-//! The spinner glyph cycle (`SPINNER`) is owned by the app state machine and
-//! reused here so the tick-driven `spinner_idx` and the rendered glyph stay in sync.
+//! Reasoning/thinking display is a separate concern (`ThinkingBlock`) so the
+//! two can evolve independently — the spinner tracks execution progress,
+//! the thinking block will carry expandable reasoning content later.
 
 use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
@@ -13,14 +16,14 @@ use crate::app::tui::app::SPINNER;
 use crate::app::tui::render::StatusLine;
 use crate::app::tui::theme;
 
-/// Renders the thinking/status indicator: spinner glyph + label, on a row
-/// filled with the input background block.
-pub struct ThinkingIndicator<'a> {
+/// Renders the working/status indicator: spinner glyph + label. The label is
+/// the active tool status if any, else `Working`.
+pub struct StatusIndicator<'a> {
     spinner_idx: usize,
     status: Option<&'a StatusLine>,
 }
 
-impl<'a> ThinkingIndicator<'a> {
+impl<'a> StatusIndicator<'a> {
     pub fn new(spinner_idx: usize, status: Option<&'a StatusLine>) -> Self {
         Self {
             spinner_idx,
@@ -28,14 +31,12 @@ impl<'a> ThinkingIndicator<'a> {
         }
     }
 
-    fn label(&self) -> String {
-        self.status
-            .map(|s| s.label().to_string())
-            .unwrap_or_else(|| "Thinking…".to_string())
+    fn label(&self) -> &str {
+        self.status.map(|s| s.label()).unwrap_or("Working")
     }
 }
 
-impl Widget for ThinkingIndicator<'_> {
+impl Widget for StatusIndicator<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let p = theme::palette();
         let spinner = SPINNER[self.spinner_idx % SPINNER.len()];
@@ -43,11 +44,8 @@ impl Widget for ThinkingIndicator<'_> {
             Span::styled(spinner.to_string(), p.spinner()),
             Span::styled(format!(" {}", self.label()), p.thinking()),
         ]);
-        // Fill the whole row with the input background block (pi-style).
-        let bg = p.input_bg();
-        for x in area.x..area.right() {
-            buf[(x, area.y)].set_bg(bg);
-        }
+        // No per-row bg here: the BottomPanel fills its inner area with the
+        // panel background; the indicator just paints its text on top.
         line.render(area, buf);
     }
 }
@@ -61,7 +59,7 @@ mod tests {
     fn render(idx: usize, status: Option<&StatusLine>) -> ratatui_core::buffer::Buffer {
         let mut term = Terminal::new(TestBackend::new(40, 1)).unwrap();
         term.draw(|f| {
-            ThinkingIndicator::new(idx, status).render(Rect::new(0, 0, 40, 1), f.buffer_mut());
+            StatusIndicator::new(idx, status).render(Rect::new(0, 0, 40, 1), f.buffer_mut());
         })
         .unwrap();
         term.backend().buffer().clone()
@@ -76,11 +74,11 @@ mod tests {
     }
 
     #[test]
-    fn default_label_is_thinking() {
+    fn default_label_is_working() {
         let buf = render(0, None);
         let row = row_text(&buf);
         assert!(row.starts_with(SPINNER[0]), "spinner glyph: {row}");
-        assert!(row.contains("Thinking…"), "default label: {row}");
+        assert!(row.contains("Working"), "default label: {row}");
     }
 
     #[test]
@@ -90,14 +88,5 @@ mod tests {
         let row = row_text(&buf);
         assert!(row.starts_with(SPINNER[2]), "spinner glyph idx 2: {row}");
         assert!(row.contains("running read_file"), "status label: {row}");
-    }
-
-    #[test]
-    fn carries_input_background_block() {
-        let buf = render(0, None);
-        let expected_bg = theme::palette().input_bg();
-        for x in 0..40u16 {
-            assert_eq!(buf[(x, 0)].bg, expected_bg, "col {x} should carry input_bg");
-        }
     }
 }

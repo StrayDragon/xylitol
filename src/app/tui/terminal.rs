@@ -18,13 +18,13 @@ use crate::app::tui::init;
 use crate::app::tui::render::{self, RenderedLine};
 
 /// Height (in rows) of the mutable tail region reserved by `Viewport::Inline`.
-/// Layout (bottom-anchored, c365 buffer route, rendered by the `Tail` widget):
-/// the mutable streaming line (transparent bg, blends into scrollback), the
-/// thinking indicator, and the input prompt. Kept compact (4) so the inline
-/// viewport's reserved area leaves few empty rows when idle; the mutable line
-/// wraps up to 2 rows before overflowing (top rows dropped, full text commits
-/// on the next newline).
-const TAIL_HEIGHT: u16 = 4;
+/// Layout (c365 route B): a transparent mutable line at the top (flush against
+/// scrollback) + a bordered, bg-filled `BottomPanel` below it carrying the
+/// working spinner, the thinking block, and the input prompt. When idle the
+/// panel fills the whole area (no empty terminal rows above the input).
+/// 6 = mutable(1) + panel(5: top border + status + thinking + input + bottom
+/// border); the mutable line wraps top-dropped if it exceeds 1 row.
+const TAIL_HEIGHT: u16 = 6;
 
 /// Owns the inline terminal. Dropping restores raw mode + leaves scrollback.
 pub struct InlineTerminal {

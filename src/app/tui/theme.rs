@@ -68,4 +68,16 @@ impl Palette {
     pub fn input_bg(&self) -> Color {
         Color::Black
     }
+
+    /// Background fill for the bottom panel (chrome container). Distinct from
+    /// `input_bg` so the panel can read as a framed surface; both are dark so
+    /// the transition is calm. (c365 bottom-panel route.)
+    pub fn panel_bg(&self) -> Color {
+        Color::Black
+    }
+
+    /// Border style for the bottom panel (dim, so the frame is calm not loud).
+    pub fn panel_border(&self) -> Style {
+        Style::default().fg(Color::DarkGray)
+    }
 }
