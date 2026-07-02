@@ -22,9 +22,9 @@ use crate::app::tui::render::{self, RenderedLine};
 /// scrollback, up to 2 wrapped rows) + a bordered, bg-filled `BottomPanel`
 /// below it carrying the input prompt (no spinner, no thinking block — the
 /// streaming text itself is the activity indicator). When idle the panel
-/// fills the whole area. 5 = mutable(2) + panel(3: top border + input +
-/// bottom border).
-const TAIL_HEIGHT: u16 = 5;
+/// fills the whole area. 6 = mutable(2) + status(1, c380) + panel(3: top border
+/// + input + bottom border).
+const TAIL_HEIGHT: u16 = 6;
 
 /// Owns the inline terminal. Dropping restores raw mode + leaves scrollback.
 pub struct InlineTerminal {
