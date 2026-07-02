@@ -3,27 +3,28 @@
 //! Enters raw mode + `Viewport::Inline` on construction (NOT the alternate
 //! screen) and restores the terminal on [`Drop`], so the user's terminal is
 //! never left in a broken raw-mode state — even on panic (spec tui15).
+//!
+//! Before entering, the cursor is pushed to the bottom of the terminal so the
+//! inline viewport anchors to the bottom edge (otherwise `Viewport::Inline(N)`
+//! reserves N rows at the current cursor position, which may be mid-terminal
+//! on startup, leaving the input box "floating" above the bottom).
 
 use std::io;
 
 use ratatui_core::terminal::{TerminalOptions, Viewport};
-use ratatui_core::text::Line;
 
 use crate::app::tui::app::TuiApp;
 use crate::app::tui::init;
-use crate::app::tui::render;
+use crate::app::tui::render::{self, RenderedLine};
 
 /// Height (in rows) of the mutable tail region reserved by `Viewport::Inline`.
-/// Layout (pi-style, bottom-aligned within this height):
-///   [streaming assistant text]   ← only while a turn streams (may wrap to
-///   [  ...wrapped rows...]       ←   several rows when text exceeds width)
-///   [thinking/loading indicator] ← only while a turn streams (italic, dimmed)
-///   [❯ input prompt]             ← always; background block
-///
-/// Tall enough to show a few wrapped rows of streaming text plus the indicator
-/// and input line. The full reply history lives in the scrollback above; the
-/// tail only shows the in-progress tail end.
-const TAIL_HEIGHT: u16 = 8;
+/// Layout (bottom-anchored, c365 buffer route, rendered by the `Tail` widget):
+/// the mutable streaming line (transparent bg, blends into scrollback), the
+/// thinking indicator, and the input prompt. Kept compact (4) so the inline
+/// viewport's reserved area leaves few empty rows when idle; the mutable line
+/// wraps up to 2 rows before overflowing (top rows dropped, full text commits
+/// on the next newline).
+const TAIL_HEIGHT: u16 = 4;
 
 /// Owns the inline terminal. Dropping restores raw mode + leaves scrollback.
 pub struct InlineTerminal {
@@ -32,16 +33,8 @@ pub struct InlineTerminal {
 
 impl InlineTerminal {
     /// Enable raw mode and create an inline viewport (no alt screen).
-    ///
-    /// Before entering, scroll the terminal so the cursor sits at the bottom
-    /// row. Without this, `Viewport::Inline(N)` reserves N rows at the CURRENT
-    /// cursor position — which may be mid-terminal on startup (e.g. right after
-    /// the shell prompt), leaving empty rows below the viewport (fix: input box
-    /// appeared to "float" above the bottom). Pushing the cursor down first
-    /// guarantees the viewport anchors to the terminal bottom.
     pub fn enter() -> io::Result<Self> {
-        // Print enough newlines to push the cursor to the bottom of the
-        // terminal, then let ratatui's inline viewport reserve its height there.
+        // Push the cursor to the bottom so the viewport anchors there.
         if let Ok((_, h)) = crossterm::terminal::size() {
             use std::io::Write;
             let mut stdout = std::io::stdout();
@@ -57,66 +50,25 @@ impl InlineTerminal {
         Ok(Self { term })
     }
 
-    /// Redraw the mutable tail region from the app state.
+    /// Redraw the mutable tail region from app state via the `Tail` widget
+    /// (`MutableLine` / `ThinkingIndicator` / `InputPrompt`).
     pub fn draw_tail(&mut self, app: &TuiApp) -> io::Result<()> {
         self.term
             .draw(|frame| render::draw_tail_frame(frame, app))?;
         Ok(())
     }
 
-    /// Commit finalized lines into the scrollback (never touched again).
-    ///
-    /// Lines are wrapped to the terminal width BEFORE committing so long text
-    /// flows to multiple physical rows instead of being truncated at the right
-    /// edge. Renders each cell manually (instead of `Line::render`) to prevent
-    /// ratatui's CJK filler cells from appearing as visible spaces.
-    pub fn commit_to_scrollback(&mut self, lines: &[Line]) -> io::Result<()> {
+    /// Commit finalized [`RenderedLine`]s into the scrollback (never touched
+    /// again). Lines are wrapped CJK-aware via the `TranscriptLine` widget; the
+    /// `insert_before` area is sized to the wrapped row count (spec tui12/tui41).
+    pub fn commit_to_scrollback(&mut self, lines: &[RenderedLine]) -> io::Result<()> {
         if lines.is_empty() {
             return Ok(());
         }
-        // Wrap each logical line to the terminal width (fix: text was truncated
-        // at the right edge instead of wrapping). crossterm::terminal::size()
-        // gives the full terminal width, which equals the inline viewport width.
         let width = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
-        let wrapped: Vec<Line<'static>> = lines
-            .iter()
-            .flat_map(|line| render::wrap_line_to_width(line, width))
-            .collect();
-        let height = u16::try_from(wrapped.len()).unwrap_or(u16::MAX);
+        let height = render::commit_height(lines, width);
         self.term.insert_before(height, |buf| {
-            let area = buf.area;
-            for (i, line) in wrapped.iter().enumerate() {
-                let y = area.y + i as u16;
-                if y >= area.bottom() {
-                    break;
-                }
-                // Reset row, then render spans cell by cell.
-                for x in area.x..area.right() {
-                    buf[(x, y)].reset();
-                }
-                let mut x = area.x;
-                for span in &line.spans {
-                    for ch in span.content.chars() {
-                        let w = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
-                        if w == 0 || w > 2 {
-                            continue;
-                        }
-                        if x >= area.right() {
-                            break;
-                        }
-                        buf[(x, y)].set_char(ch);
-                        buf[(x, y)].set_style(span.style);
-                        x += 1;
-                        // For double-width (CJK), second column gets
-                        // empty symbol so terminal outputs nothing.
-                        if w == 2 && x < area.right() {
-                            buf[(x, y)].set_symbol("");
-                            buf[(x, y)].set_style(span.style);
-                            x += 1;
-                        }
-                    }
-                }
-            }
+            render::render_commit_lines_into_buf(lines, width, buf)
         })?;
         Ok(())
     }

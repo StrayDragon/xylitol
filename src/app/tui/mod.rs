@@ -25,6 +25,7 @@
 
 pub mod app;
 mod commands;
+mod components;
 mod init;
 mod input;
 mod render;
@@ -35,7 +36,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crossterm::event::{self, Event};
-use ratatui_core::text::Line;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -43,6 +43,7 @@ use crate::app::core::driver::Driver;
 use crate::app::tui::app::TuiApp;
 use crate::app::tui::commands::{CommandOutcome, dispatch};
 use crate::app::tui::input::{InputOutcome, handle as handle_key};
+use crate::app::tui::render::RenderedLine;
 use crate::app::tui::terminal::InlineTerminal;
 
 /// Messages delivered to the main loop.
@@ -69,7 +70,7 @@ pub async fn run(driver: &mut dyn Driver) -> Result<(), String> {
     let mut term = InlineTerminal::enter().map_err(|e| format!("enter terminal: {e}"))?;
 
     let greeting = "xylitol — type a prompt and press Enter. /exit to quit.";
-    term.commit_to_scrollback(&[Line::styled(greeting, theme::palette().text_dim())])
+    term.commit_to_scrollback(&[RenderedLine::Status(greeting.to_string())])
         .map_err(|e| format!("greeting: {e}"))?;
 
     let mut app = TuiApp::default();
@@ -168,7 +169,7 @@ async fn repl_loop(
                         // stream starts (修复 c340 §7 #3: user message was never
                         // committed). input_buffer is already cleared by
                         // take_input, so no double-display in the tail.
-                        term.commit_to_scrollback(&[render::user_message_line(&prompt)])
+                        term.commit_to_scrollback(&[render::user_message_rendered(&prompt)])
                             .map_err(|e| format!("commit user msg: {e}"))?;
                         let stream = driver.run(&prompt).await;
                         app.start_stream();
@@ -192,11 +193,8 @@ async fn repl_loop(
                             CommandOutcome::Quit => break,
                             CommandOutcome::Handled => {}
                             CommandOutcome::Unknown(msg) => {
-                                term.commit_to_scrollback(&[Line::styled(
-                                    msg,
-                                    theme::palette().error(),
-                                )])
-                                .map_err(|e| format!("commit: {e}"))?;
+                                term.commit_to_scrollback(&[RenderedLine::Status(msg)])
+                                    .map_err(|e| format!("commit: {e}"))?;
                             }
                         }
                         term.draw_tail(app).map_err(|e| format!("draw: {e}"))?;
@@ -220,12 +218,21 @@ async fn repl_loop(
             Msg::Xy(ev) => {
                 let is_end = app.turn_done(&ev);
                 let lines = app.handle_xy_event(*ev);
+                // c365 buffer route: all returned lines are finalized (streaming
+                // complete AssistantText, ToolSummary, Status) → commit to
+                // scrollback via insert_before. The un-terminated mutable tail is
+                // NOT returned here — it lives in `pending_tail()` and is rendered
+                // by the `MutableLine` widget (via `Tail`) each draw_tail. No
+                // escape direct-write; everything is in the ratatui buffer
+                // (TestBackend-verifiable, spec tui41/tui42).
                 if !lines.is_empty() {
                     term.commit_to_scrollback(&lines)
                         .map_err(|e| format!("commit: {e}"))?;
                 }
                 term.draw_tail(app).map_err(|e| format!("draw: {e}"))?;
                 if is_end {
+                    // Turn ended: the mutable tail vanishes because `Tail` clears
+                    // its area each frame and `end_stream` resets `pending_tail`.
                     app.end_stream();
                     term.draw_tail(app).map_err(|e| format!("draw: {e}"))?;
                 }
