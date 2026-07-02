@@ -1,15 +1,21 @@
-//! XyEvent → ratatui rendering for the inline TUI.
+//! XyEvent → UI rendering for the inline TUI.
 //!
-//! Two responsibilities:
-//! - [`draw_tail_frame`]: paint the mutable tail region (input line, spinner,
-//!   current streaming line, last tool status) via `Terminal::draw`. This is
-//!   freely redrawable each frame.
-//! - committed scrollback lines are produced by [`app::TuiApp`] (see
-//!   `commit_lines_for`) and flushed via `Terminal::insert_before`; this module
-//!   only formats them into [`Line`] values.
+//! Responsibilities after c365 componentization:
+//! - [`draw_tail_frame`]: a thin wrapper that delegates to the [`Tail`] widget
+//!   (which composes `MutableLine` / `ThinkingIndicator` / `InputPrompt`) and
+//!   positions the frame cursor on the input line. All tail rendering logic
+//!   lives in `components/`.
+//! - the [`RenderedLine`] UI-data type + the single `xyevent_to_rendered` seam
+//!   (spec tui42: rendering consumes only `RenderedLine`, never `XyEvent`).
+//! - wrapping helpers (`wrap_to_width` / `wrap_line_to_width`) shared by the
+//!   commit path and the widgets.
+//! - [`StatusLine`] (spinner glyph + label carrier).
 //!
 //! Pure functions are preferred (no terminal side effects) so they can be
-//! unit-tested without a real terminal.
+//! unit-tested without a real terminal. The c365 escape-sequence path
+//! (`raw_render.rs`) was removed: streaming text now grows in the ratatui
+//! buffer (transparent-bg mutable line at the tail top), verifiable via
+//! TestBackend.
 
 use ratatui_core::layout::Rect;
 use ratatui_core::style::Style;
@@ -18,106 +24,78 @@ use ratatui_core::text::{Line, Span};
 use ratatui_core::widgets::Widget;
 
 use crate::app::tui::app::TuiApp;
+use crate::app::tui::components::tail::input_cursor_position;
+use crate::app::tui::components::{Tail, TranscriptLine};
 use crate::app::tui::theme;
 use crate::domain::lifecycle::XyEvent;
 
 /// Render the mutable tail region (the `Viewport::Inline` area).
 ///
-/// pi-style layout, bottom-aligned within the tail area:
-///   - streaming assistant text   (only while a turn streams)
-///   - thinking/loading indicator (only while a turn streams; spinner + dim italic)
-///   - ❯ input prompt             (always; subtle background block)
+/// Delegates to the [`Tail`] widget (c365 componentization): `MutableLine`
+/// (pending streaming text, transparent bg) → `ThinkingIndicator` →
+/// `InputPrompt`, bottom-anchored. The cursor is positioned on the input line.
 pub fn draw_tail_frame(frame: &mut Frame, app: &TuiApp) {
     let area = frame.area();
-    let p = theme::palette();
-
-    // ── Fill the entire tail region with the input background (修复 c340 §7 #1)
-    // ── so it reads as a continuous bottom-anchored block with no floating
-    // gap. Without this, Viewport::Inline(3) leaves visually-empty rows above
-    // the bottom-aligned content, giving a "not anchored to bottom"错觉.
-    let bg = p.input_bg();
-    let buf = frame.buffer_mut();
-    for y in area.y..area.bottom() {
-        for x in area.x..area.right() {
-            buf[(x, y)].set_bg(bg);
-        }
-    }
-
-    // ── Compose lines top-to-bottom, with wrapping ────────────────
-    // Wrap streaming text to the viewport width so long lines flow to multiple
-    // rows instead of being truncated at the right edge (fix: text wrap bug).
-    let mut lines: Vec<Line> = Vec::new();
-
-    if app.is_streaming() {
-        // Streaming assistant text (the in-progress line), normal style.
-        if let Some(text) = app.current_streaming_line()
-            && !text.is_empty()
-        {
-            for row in wrap_to_width(text, area.width) {
-                lines.push(Line::styled(row, p.assistant()));
-            }
-        }
-
-        // Thinking/loading indicator: spinner glyph + italic dim label.
-        // Prefers a concrete tool/status line when one is active, else shows
-        // the generic "Thinking…" label so the user sees activity.
-        let indicator = app.indicator_label();
-        lines.push(Line::styled(indicator, p.thinking()));
-    }
-
-    // ── Input prompt line (pi-style background block) ─────────────
-    // The input line is ALWAYS active and pinned to the bottom row so the user
-    // can type at any time — even mid-stream (Enter interrupts + sends a new
-    // prompt). Cursor always sits here, never on the streaming text.
-    let prompt_text = format!("❯ {}", app.input_buffer());
-    let input_style = Style::default().bg(p.input_bg());
-    lines.push(Line::styled(prompt_text, input_style));
-
-    // ── Bottom-align and render ───────────────────────────────────
-    // Keep only as many rows as fit in the tail area (bottom-aligned). The
-    // input line MUST stay at the bottom (last row); the indicator and the
-    // tail end of streaming text fill the rows above. If streaming text wraps
-    // to more rows than fit, the TOP (oldest) rows are dropped — the full
-    // history is already in the scrollback.
-    let capacity = area.height as usize;
-    if lines.len() > capacity {
-        lines.drain(..lines.len() - capacity);
-    }
-    let n = u16::try_from(lines.len()).unwrap_or(area.height);
-    let top = area.y + area.height.saturating_sub(n);
-    let buf = frame.buffer_mut();
-    for (i, line) in lines.iter().enumerate() {
-        let row_y = top.saturating_add(i as u16);
-        if row_y >= area.bottom() {
-            break;
-        }
-        let row_area = Rect {
-            x: area.x,
-            y: row_y,
-            width: area.width,
-            height: 1,
-        };
-        line.render(row_area, buf);
-    }
-
-    // ── Cursor placement (always, on the input line) ──────────────
-    // The cursor ALWAYS sits on the input prompt — never on streaming text.
-    // Absolute terminal coords; display width so CJK aligns correctly.
-    use unicode_width::UnicodeWidthStr;
-    let prefix_len = UnicodeWidthStr::width("❯ ") as u16;
-    let input_len = UnicodeWidthStr::width(app.input_buffer()) as u16;
-    let y = area.y + area.height.saturating_sub(1);
-    let x = area.x + prefix_len + input_len;
-    frame.set_cursor_position((x.min(area.right().saturating_sub(1)), y));
+    let width = area.width;
+    Tail::new(app, width).render(area, frame.buffer_mut());
+    let (x, y) = input_cursor_position(area, app);
+    frame.set_cursor_position((x, y));
 }
 
-/// Decide whether an [`XyEvent`] finalizes one or more scrollback lines.
+// ── UI/UX ↔ business-flow boundary (spec tui42) ──────────────────────────
+//
+// `RenderedLine` is the UI-only data type. Business events (`XyEvent`) are
+// translated into `RenderedLine` at a SINGLE seam (`xyevent_to_rendered`); the
+// rendering layer (widgets) consumes only `RenderedLine` and never matches
+// `XyEvent` variants or calls Driver/agent methods.
+
+/// A UI-only representation of one finalized scrollback line.
 ///
-/// Returns the formatted lines to commit (then `insert_before` flushes them).
-/// TextDelta is accumulated by `TuiApp`; here we only emit lines for events
-/// that complete a block: ToolExecutionEnd (summary), Error, ModelSelect.
-pub fn commit_lines_for(event: &XyEvent) -> Vec<Line<'static>> {
-    let p = theme::palette();
+/// This is the type the rendering layer consumes. Adding a new message kind is
+/// a new variant + a `to_line` arm; business-event churn does not touch the
+/// rendering layer (the seam function absorbs it).
+pub enum RenderedLine {
+    /// The user's submitted prompt, echoed into history.
+    UserInput(String),
+    /// A finalized assistant text line (streamed text committed on boundary).
+    AssistantText(String),
+    /// A tool-execution summary line (name + result preview + error flag).
+    ToolSummary {
+        name: String,
+        preview: String,
+        is_error: bool,
+    },
+    /// A status/notification line (model switch, generic error, etc.).
+    Status(String),
+}
+
+impl RenderedLine {
+    /// Render this UI data into a styled ratatui `Line`. The styling lives here
+    /// (UI concern), not in the business layer.
+    pub fn to_line(&self) -> Line<'static> {
+        let p = theme::palette();
+        match self {
+            RenderedLine::UserInput(prompt) => Line::styled(format!("❯ {prompt}"), p.user_prompt()),
+            RenderedLine::AssistantText(text) => Line::styled(text.clone(), p.assistant()),
+            RenderedLine::ToolSummary {
+                name,
+                preview,
+                is_error,
+            } => {
+                let style = if *is_error { p.error() } else { p.tool() };
+                Line::styled(format!("[{name}] {preview}"), style)
+            }
+            RenderedLine::Status(msg) => Line::styled(msg.clone(), p.text_dim()),
+        }
+    }
+}
+
+/// The SINGLE seam: translate a business `XyEvent` into UI-only `RenderedLine`s.
+///
+/// This is the only place the rendering layer learns about `XyEvent`. Everything
+/// downstream (`to_line`, the widgets) consumes `RenderedLine` and is insulated
+/// from domain-event vocabulary churn (spec tui42).
+pub fn xyevent_to_rendered(event: &XyEvent) -> Vec<RenderedLine> {
     match event {
         XyEvent::ToolExecutionEnd {
             name,
@@ -125,40 +103,41 @@ pub fn commit_lines_for(event: &XyEvent) -> Vec<Line<'static>> {
             is_error,
             ..
         } => {
-            let style = if *is_error { p.error() } else { p.tool() };
             let preview: String = result.lines().take(3).collect::<Vec<_>>().join("\n");
-            let suffix = if result.lines().count() > 3 {
-                "…"
+            let preview = if result.lines().count() > 3 {
+                format!("{preview}…")
             } else {
-                ""
+                preview
             };
-            vec![Line::styled(format!("[{name}] {preview}{suffix}"), style)]
+            vec![RenderedLine::ToolSummary {
+                name: name.clone(),
+                preview,
+                is_error: *is_error,
+            }]
         }
-        XyEvent::Error(msg) => vec![Line::styled(format!("error: {msg}"), p.error())],
+        XyEvent::Error(msg) => vec![RenderedLine::Status(format!("error: {msg}"))],
         XyEvent::ModelSelect { model_id, .. } => {
-            vec![Line::styled(format!("model: {model_id}"), p.text_dim())]
+            vec![RenderedLine::Status(format!("model: {model_id}"))]
         }
+        // TextDelta/ThinkingDelta/ToolStart/ToolUpdate/TurnStart/TurnEnd do not
+        // produce finalized scrollback lines here — TextDelta is accumulated by
+        // TuiApp and committed on boundaries; others update tail status only.
         _ => Vec::new(),
     }
 }
 
-/// Format the user's submitted prompt as a scrollback line (修复 c340 §7 #3).
+/// The user's submitted prompt as a [`RenderedLine`] (修复 c340 §7 #3).
 ///
 /// Called on Enter before `driver.run`, so the user sees their own message in
-/// the conversation history above the streaming reply. Styled distinctly
-/// (bold cyan `❯` prefix) to distinguish from the assistant reply.
-pub fn user_message_line(prompt: &str) -> Line<'static> {
-    Line::styled(format!("❯ {prompt}"), theme::palette().user_prompt())
+/// the conversation history above the streaming reply. Committed via the same
+/// `insert_before` path as assistant/tool lines (c365: unified commit).
+pub fn user_message_rendered(prompt: &str) -> RenderedLine {
+    RenderedLine::UserInput(prompt.to_string())
 }
 
 /// Wrap a single logical line of text into multiple physical lines that each
 /// fit within `width` display columns. Honors CJK double-width characters via
 /// `unicode_width`.
-///
-/// This is needed because the inline TUI does NOT use ratatui's built-in
-/// `Paragraph` (with its `Wrap` option) — we hand-roll rendering (c341: drop
-/// all built-in widgets). Without explicit wrapping, long lines get truncated
-/// at the terminal right edge instead of flowing to the next row.
 pub fn wrap_to_width(text: &str, width: u16) -> Vec<String> {
     use unicode_width::UnicodeWidthChar;
     let max_w = width as usize;
@@ -183,7 +162,6 @@ pub fn wrap_to_width(text: &str, width: u16) -> Vec<String> {
         cur_w += w;
     }
     rows.push(cur);
-    // Filter out completely empty vec only if input was empty.
     if rows.is_empty() {
         rows.push(String::new());
     }
@@ -193,7 +171,6 @@ pub fn wrap_to_width(text: &str, width: u16) -> Vec<String> {
 /// Wrap a styled [`Line`] into multiple [`Line`]s that each fit `width`.
 /// Preserves the original style on every wrapped row.
 pub fn wrap_line_to_width(line: &Line<'_>, width: u16) -> Vec<Line<'static>> {
-    // Reconstruct the plain text, then wrap, then re-style each row.
     let full: String = line.spans.iter().map(|s| s.content.to_string()).collect();
     let style = line.spans.first().map(|s| s.style).unwrap_or_default();
     wrap_to_width(&full, width)
@@ -216,9 +193,15 @@ impl StatusLine {
         }
     }
 
-    /// The label text (used by the TUI app to build the indicator).
+    /// The label text (used by the ThinkingIndicator widget to build the label).
     pub fn label(&self) -> &str {
         &self.label
+    }
+
+    /// The glyph (e.g. "⚙", "✓"). Kept for future richer status rendering.
+    #[allow(dead_code)]
+    pub fn glyph(&self) -> &'static str {
+        self.glyph
     }
 
     pub fn render(&self, glyph_style: Style, label_style: Style) -> Line<'static> {
@@ -229,14 +212,45 @@ impl StatusLine {
     }
 }
 
+/// Total physical row count a slice of [`RenderedLine`]s occupies at `width`
+/// (each wrapped CJK-aware via [`TranscriptLine`]). Used by the commit path to
+/// size the `insert_before` area before rendering.
+pub fn commit_height(lines: &[RenderedLine], width: u16) -> u16 {
+    lines
+        .iter()
+        .map(|l| TranscriptLine::new(l, width).row_count())
+        .sum::<u16>()
+        .max(1)
+}
+
+/// Render a slice of finalized [`RenderedLine`]s directly into a [`Buffer`],
+/// stacked top-to-bottom, each wrapped to `width` via [`TranscriptLine`].
+///
+/// This is the pure rendering core for the `insert_before` commit path, shared
+/// with the `TestBackend` harness (spec tui41). `InlineTerminal::commit_to_scrollback`
+/// calls this inside its `insert_before` closure; tests call it on a
+/// `TestBackend` buffer.
+pub fn render_commit_lines_into_buf(
+    lines: &[RenderedLine],
+    width: u16,
+    buf: &mut ratatui_core::buffer::Buffer,
+) {
+    let mut y = 0u16;
+    for line in lines {
+        let widget = TranscriptLine::new(line, width);
+        let h = widget.row_count().max(1);
+        widget.render(Rect::new(0, y, width, h), buf);
+        y = y.saturating_add(h);
+    }
+}
+
 #[cfg(test)]
 mod user_message_tests {
-    use super::{user_message_line, wrap_to_width};
+    use super::{user_message_rendered, wrap_to_width};
 
     #[test]
     fn user_message_contains_prompt_with_prefix() {
-        let line = user_message_line("fix the bug");
-        // The line carries the ❯ prefix and the prompt text.
+        let line = user_message_rendered("fix the bug").to_line();
         let text = line.to_string();
         assert!(text.contains('❯'), "prefix present: {text}");
         assert!(text.contains("fix the bug"), "prompt text present: {text}");
@@ -244,7 +258,7 @@ mod user_message_tests {
 
     #[test]
     fn user_message_empty_prompt_still_has_prefix() {
-        let line = user_message_line("");
+        let line = user_message_rendered("").to_line();
         let text = line.to_string();
         assert!(text.contains('❯'), "prefix present even for empty: {text}");
     }
@@ -263,7 +277,6 @@ mod user_message_tests {
 
     #[test]
     fn wrap_cjk_uses_display_width_not_char_count() {
-        // Each CJK char is 2 display cols. width=4 fits 2 CJK chars per row.
         let rows = wrap_to_width("你好世界再见", 4);
         assert_eq!(rows, vec!["你好", "世界", "再见"]);
     }
@@ -272,6 +285,136 @@ mod user_message_tests {
     fn wrap_empty_text_returns_one_empty_row() {
         let rows = wrap_to_width("", 80);
         assert_eq!(rows, vec![""]);
+    }
+}
+
+#[cfg(test)]
+mod commit_harness {
+    //! TestBackend harness for the insert_before commit path (spec tui41),
+    //! now via the `TranscriptLine` widget (c365 componentization).
+    //!
+    //! Covers `render_commit_lines_into_buf` via `Terminal::insert_before` +
+    //! `Viewport::Inline` — the path that commits finalized scrollback lines.
+    //! These tests PIN the CJK + wrapping behavior so the widget selection
+    //! decision stays safe: whichever rendering implementation is chosen, the
+    //! assertions (behavior, not implementation) must still pass.
+
+    use super::*;
+    use ratatui_core::backend::TestBackend;
+    use ratatui_core::buffer::CellWidth;
+    use ratatui_core::terminal::{Terminal, TerminalOptions, Viewport};
+
+    /// Build an inline terminal (width × height), draw the tail from `app`,
+    /// commit `lines` via `insert_before` + `render_commit_lines_into_buf`,
+    /// then redraw the tail. Returns the terminal for scrollback assertions.
+    fn commit_and_render(
+        app: &TuiApp,
+        width: u16,
+        height: u16,
+        lines: &[RenderedLine],
+    ) -> Terminal<TestBackend> {
+        let backend = TestBackend::new(width, height);
+        let mut term = Terminal::with_options(
+            backend,
+            TerminalOptions {
+                viewport: Viewport::Inline(height),
+            },
+        )
+        .unwrap();
+        term.draw(|f| draw_tail_frame(f, app)).unwrap();
+        let commit_height: u16 = lines
+            .iter()
+            .map(|l| TranscriptLine::new(l, width).row_count())
+            .sum::<u16>()
+            .max(1);
+        term.insert_before(commit_height, |buf| {
+            render_commit_lines_into_buf(lines, width, buf)
+        })
+        .unwrap();
+        term.draw(|f| draw_tail_frame(f, app)).unwrap();
+        term
+    }
+
+    /// Read a buffer row as plain text, collapsing ratatui double-width filler
+    /// cells (implementation-agnostic: works whether rendering uses a library
+    /// widget or a hand-roll).
+    fn row_text(buf: &ratatui_core::buffer::Buffer, y: u16, width: u16) -> String {
+        let mut out = String::new();
+        let mut prev_width: u16 = 1;
+        for x in 0..width {
+            let cell = &buf[(x, y)];
+            let sym = cell.symbol();
+            let is_filler =
+                sym.is_empty() || (sym == " " && prev_width == 2) || cell.cell_width() == 0;
+            if is_filler {
+                continue;
+            }
+            if let Some(ch) = sym.chars().next() {
+                out.push(ch);
+            }
+            prev_width = cell.cell_width().max(1) as u16;
+        }
+        out.trim_end().to_string()
+    }
+
+    #[test]
+    fn commit_ascii_line_appears_in_scrollback() {
+        let app = TuiApp::default();
+        let line = RenderedLine::AssistantText("hello world".into());
+        let term = commit_and_render(&app, 40, 10, &[line]);
+        let sb = term.backend().scrollback();
+        let found = (0..sb.area.height).any(|y| row_text(sb, y, 40).contains("hello world"));
+        assert!(found, "committed ASCII line missing from scrollback");
+    }
+
+    #[test]
+    fn commit_cjk_line_double_width_visible() {
+        let app = TuiApp::default();
+        let line = RenderedLine::AssistantText("你好".into());
+        let term = commit_and_render(&app, 40, 10, &[line]);
+        let sb = term.backend().scrollback();
+        let found = (0..sb.area.height).any(|y| row_text(sb, y, sb.area.width).contains("你好"));
+        assert!(found, "committed CJK line missing from scrollback");
+    }
+
+    #[test]
+    fn commit_long_line_wraps_to_width() {
+        let app = TuiApp::default();
+        let line = RenderedLine::AssistantText("abcdefghij".into());
+        let term = commit_and_render(&app, 4, 10, &[line]);
+        let sb = term.backend().scrollback();
+        assert_eq!(row_text(sb, 0, 4), "abcd");
+        assert_eq!(row_text(sb, 1, 4), "efgh");
+        assert_eq!(row_text(sb, 2, 4), "ij");
+    }
+
+    #[test]
+    fn commit_cjk_long_line_wraps_by_display_width() {
+        let app = TuiApp::default();
+        let line = RenderedLine::AssistantText("你好世界再见".into());
+        let term = commit_and_render(&app, 4, 10, &[line]);
+        let sb = term.backend().scrollback();
+        let w = sb.area.width;
+        assert_eq!(row_text(sb, 0, w), "你好");
+        assert_eq!(row_text(sb, 1, w), "世界");
+        assert_eq!(row_text(sb, 2, w), "再见");
+    }
+
+    #[test]
+    fn after_commit_tail_shows_only_input_prompt() {
+        let app = TuiApp::default();
+        let line = RenderedLine::AssistantText("assistant reply".into());
+        let term = commit_and_render(&app, 40, 10, &[line]);
+        let buf = term.backend().buffer();
+        let last_row = row_text(buf, 9, 40);
+        assert!(
+            last_row.contains('❯'),
+            "tail input line missing prompt: {last_row}"
+        );
+        assert!(
+            !last_row.contains("assistant reply"),
+            "tail should not show committed reply text: {last_row}"
+        );
     }
 }
 
@@ -287,7 +430,14 @@ mod cursor_tests {
         term
     }
 
-    /// Idle + empty input: cursor sits right after the "❯ " prompt prefix.
+    fn row_text(buf: &ratatui_core::buffer::Buffer, y: u16) -> String {
+        (0..80u16)
+            .map(|x| buf[(x, y)].symbol().chars().next().unwrap_or(' '))
+            .collect::<String>()
+            .trim_end()
+            .to_string()
+    }
+
     #[test]
     fn cursor_after_prompt_prefix_when_idle_empty() {
         let app = TuiApp::default();
@@ -295,8 +445,6 @@ mod cursor_tests {
         term.backend_mut().assert_cursor_position((2u16, 23u16));
     }
 
-    /// Diagnostic: render Chinese input and dump the raw input-row cells to see
-    /// whether CJK chars are stored with spurious spacing.
     #[test]
     fn diag_chinese_input_row_cells() {
         let mut app = TuiApp::default();
@@ -308,17 +456,12 @@ mod cursor_tests {
         let cells: Vec<String> = (0..12u16)
             .map(|x| buf[(x, 23)].symbol().to_string())
             .collect();
-        // CJK chars occupy 2 cells each in the buffer: "你" at x=2 (with its
-        // second column as an empty filler at x=3), "好" at x=4. This is
-        // ratatui's correct double-width handling; a real terminal renders
-        // them contiguously without visible gaps.
         assert_eq!(cells[0], "❯");
         assert_eq!(cells[1], " ");
         assert_eq!(cells[2], "你");
         assert_eq!(cells[4], "好", "cells: {cells:?}");
     }
 
-    /// With typed input "abc", the cursor sits after "❯ abc" (col 5).
     #[test]
     fn cursor_after_typed_input() {
         let mut app = TuiApp::default();
@@ -329,8 +472,6 @@ mod cursor_tests {
         term.backend_mut().assert_cursor_position((5u16, 23u16));
     }
 
-    /// Chinese input "你好" (2 chars, each 2 display cols wide): cursor sits
-    /// after "❯ 你好" → col 2 + 4 = 6. Guards the CJK display-width fix.
     #[test]
     fn cursor_after_chinese_input() {
         let mut app = TuiApp::default();
@@ -341,77 +482,74 @@ mod cursor_tests {
         term.backend_mut().assert_cursor_position((6u16, 23u16));
     }
 
-    /// The prompt glyph must be present in the rendered grid's last line.
     #[test]
     fn last_row_contains_prompt() {
         let app = TuiApp::default();
         let term = render_term(&app);
         let buf = term.backend().buffer();
-        // Dump every non-empty row to see where content actually landed.
-        let mut dump = String::new();
-        for y in 0..24u16 {
-            let row: String = (0..80u16)
-                .map(|x| buf[(x, y)].symbol().chars().next().unwrap_or(' '))
-                .collect();
-            let trimmed = row.trim_end();
-            if !trimmed.is_empty() {
-                dump.push_str(&format!("row {y:>2}: {trimmed:?}\n"));
-            }
-        }
         let last_row: String = (0..80u16)
             .map(|x| buf[(x, 23)].symbol().chars().next().unwrap_or(' '))
             .collect();
-        assert!(
-            last_row.contains('❯'),
-            "last row: {last_row:?}\nfull grid dump:\n{dump}"
-        );
+        assert!(last_row.contains('❯'), "last row: {last_row:?}");
     }
 
-    /// While streaming, the tail shows a thinking indicator line ABOVE the
-    /// input line (pi-style). The indicator carries the spinner glyph.
     #[test]
     fn streaming_shows_thinking_above_input() {
         let mut app = TuiApp::default();
         app.start_stream();
         let term = render_term(&app);
         let buf = term.backend().buffer();
-        let row_text = |y: u16| -> String {
-            (0..80u16)
-                .map(|x| buf[(x, y)].symbol().chars().next().unwrap_or(' '))
-                .collect::<String>()
-                .trim_end()
-                .to_string()
-        };
-        // Input line is the last row (23) and stays active (❯); indicator must
-        // be the row directly above it (22).
-        let input = row_text(23);
-        let indicator = row_text(22);
+        let input = row_text(buf, 23);
+        let indicator = row_text(buf, 22);
         assert!(indicator.starts_with('⠋'), "indicator row: {indicator:?}");
         assert!(input.starts_with('❯'), "input row: {input:?}");
     }
 
-    /// While idle, there is NO thinking indicator — only the input line.
+    /// c365 buffer route: streaming text IS in the ratatui buffer (the mutable
+    /// line at the tail top), NOT escape-written outside it. This reverses the
+    /// escape-era test that asserted the buffer had NO streaming text. The
+    /// mutable line is top-anchored (row 20 — the viewport top in a 24-row
+    /// terminal with TAIL_HEIGHT=4), flush against the scrollback above.
+    #[test]
+    fn streaming_text_is_in_ratatui_buffer_mutable_row() {
+        let mut app = TuiApp::default();
+        app.start_stream();
+        app.handle_xy_event(XyEvent::TextDelta("typing-stream-text".into()));
+        let term = render_term(&app);
+        let buf = term.backend().buffer();
+        let full: String = (0..24u16)
+            .map(|y| row_text(buf, y))
+            .collect::<Vec<_>>()
+            .join("|");
+        assert!(
+            full.contains("typing-stream-text"),
+            "streaming text must be in the ratatui buffer (mutable row): {full:?}"
+        );
+    }
+
+    #[test]
+    fn idle_tail_has_no_pending_or_thinking() {
+        let app = TuiApp::default();
+        let term = render_term(&app);
+        let buf = term.backend().buffer();
+        let any_spinner = (0..24u16).any(|y| row_text(buf, y).contains('⠋'));
+        assert!(!any_spinner, "idle should show no spinner");
+    }
+
     #[test]
     fn idle_has_no_thinking_indicator() {
         let app = TuiApp::default();
         let term = render_term(&app);
         let buf = term.backend().buffer();
-        let any_thinking = (0..24u16).any(|y| {
-            (0..80u16)
-                .map(|x| buf[(x, y)].symbol().chars().next().unwrap_or(' '))
-                .collect::<String>()
-                .contains("Thinking")
-        });
+        let any_thinking = (0..24u16).any(|y| row_text(buf, y).contains("Thinking"));
         assert!(!any_thinking, "idle should not show Thinking indicator");
     }
 
-    /// The input line carries a background color (pi-style Box block).
     #[test]
     fn input_line_has_background() {
         let app = TuiApp::default();
         let term = render_term(&app);
         let buf = term.backend().buffer();
-        // The prompt cell should have a non-default background.
         let cell = &buf[(0, 23)];
         assert_ne!(
             cell.bg,
@@ -420,24 +558,50 @@ mod cursor_tests {
         );
     }
 
-    /// 修复 c340 §7 #1: the entire tail region (all 3 rows of Viewport::Inline(3))
-    /// carries the input background, so the area reads as one continuous
-    /// bottom-anchored block with no floating gap.
     #[test]
-    fn tail_region_fully_filled_with_background() {
+    fn input_row_carries_background_block() {
         let app = TuiApp::default();
         let term = render_term(&app);
         let buf = term.backend().buffer();
         let expected_bg = crate::app::tui::theme::palette().input_bg();
-        // Tail = bottom 3 rows of a 24-row terminal: rows 21, 22, 23.
-        for y in 21..24u16 {
-            for x in 0..80u16 {
-                assert_eq!(
-                    buf[(x, y)].bg,
-                    expected_bg,
-                    "row {y} col {x} should have input_bg (filled tail)"
-                );
-            }
+        for x in 0..80u16 {
+            assert_eq!(
+                buf[(x, 23)].bg,
+                expected_bg,
+                "input row 23 col {x} should have input_bg"
+            );
         }
+    }
+
+    /// c365 buffer route: the mutable streaming row is transparent (no
+    /// input_bg) so it blends into the scrollback; the thinking + input rows
+    /// below carry input_bg. Top-anchored: mutable at the tail area top
+    /// (row 0 in this Fullscreen-test render; in a real inline viewport it is
+    /// the viewport top, flush against the scrollback above).
+    #[test]
+    fn streaming_mutable_transparent_thinking_input_have_bg() {
+        let mut app = TuiApp::default();
+        app.start_stream();
+        app.handle_xy_event(XyEvent::TextDelta("abcdefghij".into()));
+        let term = render_term(&app);
+        let buf = term.backend().buffer();
+        let bg = crate::app::tui::theme::palette().input_bg();
+        // Input row (23) and thinking row (22) carry input_bg.
+        assert_eq!(buf[(0, 23)].bg, bg, "input row has bg");
+        assert_eq!(buf[(0, 22)].bg, bg, "thinking row has bg");
+        // Mutable row (0, area top) does NOT carry input_bg — it blends into
+        // the scrollback body.
+        assert_eq!(
+            buf[(0, 0)].bg,
+            ratatui_core::style::Color::Reset,
+            "mutable row 0 should be transparent, text={:?}",
+            row_text(buf, 0)
+        );
+        // The mutable row carries the streaming text.
+        assert!(
+            row_text(buf, 0).contains("abcdefghij"),
+            "mutable row has the streaming text: {:?}",
+            row_text(buf, 0)
+        );
     }
 }
