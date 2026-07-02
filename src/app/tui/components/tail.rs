@@ -1,9 +1,11 @@
-//! `Tail` widget — composes [`MutableLine`] (top, transparent) and
-//! [`BottomPanel`] (bottom, bordered + bg-filled) into the inline tail region.
+//! `Tail` widget — composes [`MutableLine`] (top, transparent), [`StatusLine`]
+//! (middle, fixed 1 row), and [`BottomPanel`] (bottom, bordered + bg-filled)
+//! into the inline tail region.
 //!
 //! Layout while streaming (top → bottom):
 //! ```text
 //! [MutableLine: thinking or reply text]  ← transparent, flush against scrollback
+//! {spinner} Working…      Turn 2     gpt-4o  ← StatusLine (c380), always present
 //! ────────────────                       ← panel top border
 //! <input>                                ← InputPrompt (no ❯ prefix)
 //! ────────────────                       ← panel bottom border
@@ -14,21 +16,23 @@
 //! - **Text phase**: streaming reply text (normal color, from `TextDelta`).
 //! - **Tool running** (no pending text): the tool status label (dim).
 //!
-//! When idle, the panel fills the WHOLE tail area (its inner rows carry the
-//! panel bg) — no empty terminal rows above the input (c365 route B).
+//! When idle, the status line shows `Ready` + model name; the mutable line is
+//! absent and the panel fills the bottom 3 rows.
 
 use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 use ratatui_core::widgets::Widget;
 
 use crate::app::tui::app::{MutableKind, TuiApp};
+use crate::app::tui::components::StatusLine;
 use crate::app::tui::components::bottom_panel::BottomPanel;
 use crate::app::tui::components::input_prompt::cursor_x;
 use crate::app::tui::components::mutable_line::MutableLine;
 use crate::app::tui::theme;
 
 /// Renders the whole tail region from app state. Owns no state; reads the app
-/// each frame (input buffer, pending tail + kind, streaming flag).
+/// each frame (input buffer, pending tail + kind, streaming flag, status
+/// segments, spinner index).
 pub struct Tail<'a> {
     app: &'a TuiApp,
     width: u16,
@@ -46,20 +50,18 @@ impl Widget for Tail<'_> {
         let pending = self.app.pending_tail();
         let has_mutable = streaming && pending.is_some();
 
-        // Panel height: always 3 rows (top border + input + bottom border).
-        // The mutable line (thinking/reply text) fills the rows ABOVE the panel,
-        // up to the available space. When idle or streaming with no pending
-        // content, the panel still sits at its fixed 3-row bottom; the rows
-        // above it are transparent terminal background (belongs to the body).
+        // Fixed bottom stack: panel (3 rows) + status line (1 row) sit at the
+        // bottom; the mutable line fills whatever remains above.
         let panel_h = BottomPanel::height();
-        let available_above = area.height.saturating_sub(panel_h);
+        let status_h: u16 = 1;
+        let available_for_mutable = area.height.saturating_sub(panel_h + status_h);
 
         // Mutable line: sized to its wrapped rows (capped to available space),
-        // placed flush above the panel top border. Top-anchored within that
-        // small area → text sits right above the panel, growing downward.
+        // placed flush above the status line. Top-anchored within that small
+        // area → text sits right above the status line, growing downward.
         if let Some((text, kind)) = pending
             && has_mutable
-            && available_above > 0
+            && available_for_mutable > 0
         {
             let p = theme::palette();
             let style = match kind {
@@ -68,8 +70,8 @@ impl Widget for Tail<'_> {
                 MutableKind::Tool => p.tool(),
             };
             let rows = MutableLine::new(text, self.width, style).rows().len() as u16;
-            let mutable_h = rows.min(available_above);
-            let mutable_y = area.y + available_above - mutable_h;
+            let mutable_h = rows.min(available_for_mutable);
+            let mutable_y = area.y + available_for_mutable - mutable_h;
             MutableLine::new(text, self.width, style).render(
                 Rect {
                     x: area.x,
@@ -81,10 +83,22 @@ impl Widget for Tail<'_> {
             );
         }
 
-        // Bottom panel fills the rest.
+        // Status line: fixed 1 row, sitting directly above the panel.
+        let status_y = area.y + area.height - panel_h - status_h;
+        StatusLine::new(&self.app.status_segments(), self.app.spinner_idx()).render(
+            Rect {
+                x: area.x,
+                y: status_y,
+                width: area.width,
+                height: status_h,
+            },
+            buf,
+        );
+
+        // Bottom panel fills the bottom `panel_h` rows.
         let panel_area = Rect {
             x: area.x,
-            y: area.y + available_above,
+            y: area.y + area.height - panel_h,
             width: area.width,
             height: panel_h,
         };
@@ -162,9 +176,15 @@ mod tests {
         let mut app = TuiApp::default();
         app.start_stream();
         // No ThinkingDelta yet → placeholder "Thinking…" (gray).
+        // height=5: mutable@0, status@1, panel border@2/input@3/border@4 (c380).
         let buf = render(&app, 30, 5);
-        // mutable at row 1 (flush above panel border@2), panel rows 2-4.
-        assert_eq!(row_text(&buf, 1, 30), "Thinking…", "placeholder row 1");
+        assert_eq!(row_text(&buf, 0, 30), "Thinking…", "placeholder row 0");
+        // Status line at row 1 (always present while streaming, c380).
+        assert!(
+            row_text(&buf, 1, 30).contains("Working"),
+            "status row 1: {:?}",
+            row_text(&buf, 1, 30)
+        );
         assert!(
             row_text(&buf, 2, 30).starts_with('─'),
             "panel top border row 2"
@@ -181,10 +201,11 @@ mod tests {
         app.start_stream();
         app.handle_xy_event(XyEvent::ThinkingDelta("reasoning here".into()));
         let buf = render(&app, 30, 5);
+        // mutable@0 (status line pushed it up by one, c380).
         assert_eq!(
-            row_text(&buf, 1, 30),
+            row_text(&buf, 0, 30),
             "reasoning here",
-            "thinking content row 1"
+            "thinking content row 0"
         );
     }
 
@@ -195,7 +216,7 @@ mod tests {
         // Transition to text phase: a TextDelta flushes thinking.
         app.handle_xy_event(XyEvent::TextDelta("reply text".into()));
         let buf = render(&app, 30, 5);
-        assert_eq!(row_text(&buf, 1, 30), "reply text", "reply content row 1");
+        assert_eq!(row_text(&buf, 0, 30), "reply text", "reply content row 0");
     }
 
     #[test]

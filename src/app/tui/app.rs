@@ -11,10 +11,9 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::app::core::driver::EventStream;
+use crate::app::tui::components::spinner::SPINNER;
 use crate::app::tui::render::{RenderedLine, xyevent_to_rendered};
 use crate::domain::lifecycle::XyEvent;
-
-const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /// What the mutable line is currently showing, and how to style it.
 /// Read by the `Tail` widget to pick the style for `MutableLine`.
@@ -81,6 +80,20 @@ impl StreamBuffer {
 }
 
 /// The live TUI state.
+/// Three-segment status content for the status line (c380). Pure data — the
+/// `StatusLine` widget renders by alignment. See [`TuiApp::status_segments`].
+pub struct StatusSegments {
+    /// Whether a turn is streaming (controls spinner rendering).
+    pub streaming: bool,
+    /// Left-segment label following the spinner (e.g. "Working…", "Running
+    /// bash", "Ready").
+    pub left_label: String,
+    /// Center segment (e.g. "Turn 2"); None when empty.
+    pub center: Option<String>,
+    /// Right segment (model name); None when empty.
+    pub right: Option<String>,
+}
+
 #[derive(Default)]
 pub struct TuiApp {
     input: String,
@@ -103,6 +116,12 @@ pub struct TuiApp {
     /// streaming text/thinking is pending (e.g. while a tool runs between
     /// text chunks).
     tool_status: Option<String>,
+    /// Current ReAct iteration index (from TurnStart). Shown in the status
+    /// line center segment while streaming. None before the first turn.
+    turn_index: Option<u32>,
+    /// Current model name (from ModelSelect). Shown in the status line right
+    /// segment. None until the first ModelSelect event.
+    model_name: Option<String>,
 }
 
 impl TuiApp {
@@ -214,9 +233,14 @@ impl TuiApp {
                     rendered.push(RenderedLine::AssistantText(tail));
                 }
             }
-            XyEvent::ModelSelect { .. } | XyEvent::Error(_) | XyEvent::TurnStart { .. } => {
-                // No additional business state; render lines already produced by
-                // the seam (ModelSelect/Error) or intentionally none (the rest).
+            XyEvent::TurnStart { turn_index } => {
+                self.turn_index = Some(*turn_index);
+            }
+            XyEvent::ModelSelect { model_id, .. } => {
+                self.model_name = Some(model_id.clone());
+            }
+            XyEvent::Error(_) => {
+                // Render lines already produced by the seam; no business state.
             }
             _ => {}
         }
@@ -282,6 +306,42 @@ impl TuiApp {
     /// Active tool status label, if any.
     pub fn tool_status(&self) -> Option<&str> {
         self.tool_status.as_deref()
+    }
+
+    /// Three-segment status content for the status line (c380). Data-driven:
+    /// the `StatusLine` widget renders these by alignment and does NOT match
+    /// business state itself. Extensible — future items (token count, elapsed
+    /// time) slot into a segment without touching the widget.
+    ///
+    /// - `left_label`: activity label after the spinner (Working / Running X /
+    ///   Ready). The spinner glyph itself is rendered by the widget from
+    ///   `spinner_idx()` (only meaningful while streaming).
+    /// - `center`: `Turn {n}` while streaming, else None.
+    /// - `right`: model name, else None.
+    pub fn status_segments(&self) -> StatusSegments {
+        let left_label = if !self.streaming {
+            "Ready".to_string()
+        } else if let Some(status) = &self.tool_status {
+            // tool_status is already "⚙ running bash" / "✓ bash done"; strip
+            // the leading glyph for the status line (the spinner replaces it).
+            status
+                .trim_start_matches(['⚙', ' ', '✓'])
+                .trim()
+                .to_string()
+        } else {
+            "Working…".to_string()
+        };
+        let center = if self.streaming {
+            self.turn_index.map(|n| format!("Turn {n}"))
+        } else {
+            None
+        };
+        StatusSegments {
+            streaming: self.streaming,
+            left_label,
+            center,
+            right: self.model_name.clone(),
+        }
     }
 
     // ── internals ───────────────────────────────────────────────
