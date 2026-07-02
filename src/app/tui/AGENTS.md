@@ -18,12 +18,13 @@
 - `input.rs` — crossterm 键位 → `InputOutcome`（Submit/Slash/Abort/Quit/Idle）。MVP 单行输入。
 - `commands.rs` — slash 解析 `/exit` `/model`，复用 `protocol::Command` 语义。
 - `theme.rs` — 语义颜色 token 单一真值源（含 `panel_bg`/`panel_border`）。
-- `components/` — 可复用 widget（c365 组件化 + route B，每个 TestBackend 可独立验证，消费 UI 数据类型不碰 `XyEvent`/agent/infra）：
-  - `transcript_line.rs` — `TranscriptLine`：`RenderedLine → Buffer`（wrap + CJK，含 `ThinkingText` 灰色变体），insert_before commit 与 TestBackend 共用。
-  - `mutable_line.rs` — `MutableLine`：pending_tail 顶行（caller 传 `Style`，thinking 灰/text 正常/tool 黄，透明 bg 融进 scrollback，紧贴面板 top-anchored，超容量顶部丢弃）。
-  - `input_prompt.rs` — `InputPrompt`：输入框（无 `❯` 前缀，MVP 单行；多行编辑后续）。
-  - `bottom_panel.rs` — `BottomPanel`：带 border + panel_bg 的 chrome 容器，只含 InputPrompt；idle 填充整个 tail 区（无空终端行）。
+- `components/` — 可复用 widget（c365 组件化，每个 TestBackend 可独立验证，消费 UI 数据类型不碰 `XyEvent`/agent/infra）：
+  - `transcript_line.rs` — `TranscriptLine`：`RenderedLine → Buffer`（wrap + CJK，含 `ThinkingText` 灰），insert_before commit 与 TestBackend 共用。
+  - `mutable_line.rs` — `MutableLine`：pending_tail 顶行（caller 传 `Style`，thinking 灰/text 正常/tool 黄，透明 bg 融进 scrollback，紧贴面板 top-anchored）。
+  - `input_prompt.rs` — `InputPrompt`：输入框（无 `❯` 前缀，MVP 单行）。
+  - `bottom_panel.rs` — `BottomPanel`：带 border + panel_bg 的 chrome 容器，只含 InputPrompt，固定 3 行。
   - `tail.rs` — `Tail`：组合 MutableLine（顶）+ BottomPanel（底），用 `MutableKind` 选 style；`draw_tail_frame` 退化为此。
+  - `spinner.rs` — `Spinner`：单 glyph spinner（底层可复用，当前未接线）。
 
 后续扩展（按需，不预先铺骨架）：多行编辑器（最多 3 行方向键）、`StatusBar`（统计+模型）、FrameScheduler、EventBroker pause/resume。
 

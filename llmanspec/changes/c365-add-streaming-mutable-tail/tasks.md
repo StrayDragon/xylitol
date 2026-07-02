@@ -1,56 +1,48 @@
 # c365-add-streaming-mutable-tail — Tasks
 
-> 流式 mutable-last-line（buffer 路线 + 组件化）：文字增量生长在 tail 顶行（buffer 内，透明 bg 融进 scrollback），换行即 insert_before 固化进 scrollback，tail 只留 thinking+输入。换行门控 StreamBuffer（codex 极简版）。渲染层拆 5 个可复用 widget，每个 TestBackend 可独立验证。
+> 流式 mutable-last-line（buffer 路线 + 组件化）：文字增量生长在 tail 顶行（buffer 内，透明 bg 融进 scrollback），换行即 insert_before 固化。Thinking 是正文（灰色），面板固定 3 行。渲染层拆 6 个可复用 widget。
 
-## 0. 新增 StreamBuffer 换行门控状态机
+## 0. StreamBuffer + 事件处理
 
-- [x] 在 `src/app/tui/app.rs` 新增 `StreamBuffer { buffer: String, committed_len: usize }`
-- [x] 实现 `push(delta)` / `drain_complete_lines() -> Vec<String>` / `pending_tail() -> &str` / `finalize() -> Option<String>`
-- [x] TuiApp 用 StreamBuffer 替代旧的 `pending: String` + `flush_complete_pending`
+- [x] `StreamBuffer { buffer, committed_len }` → `push` / `drain_complete_lines` / `pending_tail` / `finalize`
+- [x] `handle_xy_event` 返回 `Vec<RenderedLine>`（finalized 行）
+- [x] `ThinkingDelta` → thinking_buf 流式 + commit `ThinkingText`（灰色）
+- [x] 首个 `TextDelta` → flush thinking_buf + 切 `thinking_phase=false`
+- [x] `TextDelta` → stream_buf 流式 + commit `AssistantText`
+- [x] `TurnEnd` → flush 双 buf 残留
+- [x] `MutableKind` enum（Thinking/Text/Tool）→ `pending_tail() -> Option<(&str, MutableKind)>`
+- [x] `tool_status` 工具状态标
 
-## 1. TextDelta 改增量 commit（返回 RenderedLine 语义修正）
+## 1. 删 escape 路线
 
-- [x] `handle_xy_event` 返回 `Vec<RenderedLine>`（**全是 finalized 行**：流式完整行 AssistantText、ToolSummary、Status），不再返回 `Vec<Line>`
-- [x] TextDelta 分支：push 后 drain_complete_lines，完整行即时返回为 `RenderedLine::AssistantText`（mod.rs 立即 commit）
-- [x] pending_tail **不进返回值**（留给 MutableLine widget 每帧读 app.state 渲染）
-- [x] TurnEnd：finalize() 残留尾部作为 `RenderedLine::AssistantText` 返回
-- [x] Submit 时 user message 也走 `RenderedLine::UserInput`（和非流式 commit 同路 insert_before）
+- [x] 删 `raw_render.rs`
+- [x] `terminal.rs` 删 `redraw_mutable` / `clear_mutable` / `commit_line_raw`
+- [x] `commit_to_scrollback` 改吃 `&[RenderedLine]`
 
-## 2. 删 escape 路线，回 ratatui-buffer
+## 2. 组件化
 
-- [x] 删 `src/app/tui/raw_render.rs`（escape 直写 + DECSTBM）
-- [x] `terminal.rs` 删 `redraw_mutable` / `clear_mutable` / `commit_line_raw` 及 `size_and_viewport_top`
-- [x] `terminal.rs` `commit_to_scrollback` 改吃 `&[RenderedLine]`（不是 `&[Line]`），内部用 `TranscriptLine` widget 渲染进 insert_before buffer
-- [x] `mod.rs` `Msg::Xy` 分支简化：无条件 `commit_to_scrollback(&lines)`（不再按 is_streaming 分流 escape vs insert_before）
-- [x] 删 escape 时期的反向测试 `streaming_text_not_in_ratatui_buffer_*`，替换为正向（buffer 里有 mutable 文字）
+- [x] `transcript_line.rs` — `RenderedLine → Buffer`（含 `ThinkingText` 灰）
+- [x] `mutable_line.rs` — 未换行尾部，caller 传 `Style`，透明 bg，top-anchored
+- [x] `input_prompt.rs` — 输入框，无 `❯`，CJK 光标
+- [x] `bottom_panel.rs` — bordered + panel_bg，只含 InputPrompt，固定 3 行
+- [x] `tail.rs` — 组合 MutableLine（顶）+ BottomPanel（底）
+- [x] `spinner.rs` — 单 glyph spinner（底层可复用，当前未接线）
 
-## 3. 组件化：widget 拆分（src/app/tui/components/）
+## 3. harness
 
-- [x] `components/mod.rs` re-export
-- [x] `components/transcript_line.rs`：`TranscriptLine` widget，`&RenderedLine` + width → Buffer（wrap + CJK + 样式）；insert_before 与 TestBackend 共用
-- [x] `components/mutable_line.rs`：`MutableLine` widget，pending_tail + width + style → tail buffer 顶区（wrap 多行，透明 bg，caller 传 style）
-- [x] `components/input_prompt.rs`：`InputPrompt` widget，input buffer + area → 底行（无 `❯` 前缀，MVP 单行）
-- [x] `components/bottom_panel.rs`：`BottomPanel` widget，带 border + panel_bg 的 chrome 容器，只含 InputPrompt；idle 填充整个 tail 区
-- [x] `components/tail.rs`：`Tail` widget，组合 MutableLine（顶，styled by MutableKind）+ BottomPanel（底）；`draw_tail_frame` 退化为 `Tail::render`
-- [x] `app.rs`：`pending_tail()` 返回 `Option<(&str, MutableKind)>`；`ThinkingDelta` → thinking_buf 流式 + commit ThinkingText；首个 TextDelta flush thinking_buf 切 text 阶段；TurnEnd flush 双 buf
-- [x] 删 `StatusIndicator`、`ThinkingBlock`、`StatusLine`（thinking 是正文，不是面板 widget）
-- [x] 去 `❯` 前缀（面板 border 是 visual affordance）；`TAIL_HEIGHT` = 5（mutable 2 + 面板 3）
+- [x] `TranscriptLine` — ASCII / CJK / wrap
+- [x] `MutableLine` — wrap 多行 + 透明 bg
+- [x] `BottomPanel` — border+input / panel_bg 填充 / height=3
+- [x] `InputPrompt` — 无 `❯` + CJK 光标
+- [x] `Tail` — idle 面板 3 行固定底部 / thinking placeholder / thinking 内容 / text 内容 / 透明 vs panel_bg / TurnEnd 无残留
+- [x] `Spinner` — glyph 渲染
+- [x] StreamBuffer 单测
 
-## 4. harness 覆盖（每个 widget 独立 TestBackend 可测）
+## 4. 校验
 
-- [x] `TranscriptLine`：ASCII / CJK / 长 wrap 多行
-- [x] `MutableLine`：wrap 多行 + 透明 bg 断言
-- [x] `BottomPanel`：border+input / 多行输入显示 / 内部 panel_bg 填充 / height helper
-- [x] `InputPrompt`：无 `❯` 前缀 + 光标位置（含 CJK）
-- [x] `Tail` 组合：idle 面板填充无空行 / thinking placeholder / thinking 内容 / text 内容 / 透明 vs panel_bg / TurnEnd 无残留 / 无 ❯ 在 input
-- [x] StreamBuffer 状态机单测（app.rs 内）
+- [x] `cargo test --features tui` 全绿
+- [x] `cargo test --test bdd` 无回退
+- [x] `just qa` 绿
+- [x] `llman sdd validate` 通过
 
-## 5. 校验
-
-- [x] `cargo test --features tui --lib tui::` 全过（66 passed）
-- [x] `cargo test --features tui` 全套绿（lib 541 + integration 87）
-- [x] `cargo test --test bdd -- --test-threads=1` 无回退（87 passed）
-- [x] `just qa` 绿（fmt + clippy + test + docs + prek；含 `cargo clippy --features tui -- -D warnings` 零 warning）
-- [x] `llman sdd validate c365-add-streaming-mutable-tail --strict --no-interactive` 通过（自举，见下）
-
-真终端冒烟（用户验证，非代码任务）：`cargo run --features tui`，确认文字在正文区生长、换行固化、到宽度自动换行、thinking+输入在底部不受影响。
+真终端冒烟（用户验证）：`cargo run --features tui`
