@@ -137,8 +137,11 @@ impl TuiApp {
     }
 
     /// Spawn a task draining `stream` into `tx`, one `XyEvent` per message,
-    /// until `TurnEnd` or cancellation. This decouples the async `EventStream`
-    /// from the synchronous render loop.
+    /// until the stream ends (`None`) or cancellation. The drain runs to
+    /// stream end: a multi-round tool-calling turn emits one `TurnEnd` per
+    /// ReAct iteration, and only the final stream `None` marks the whole
+    /// user turn done (c370). Breaking on the first `TurnEnd` would drop the
+    /// model's continuation events after a tool call and hang the REPL.
     pub fn spawn_drain(
         stream: EventStream,
         tx: mpsc::UnboundedSender<XyEvent>,
@@ -150,20 +153,14 @@ impl TuiApp {
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => break,
-                    item = stream.next() => {
-                        match item {
-                            Some(ev) => {
-                                let is_end = matches!(ev, XyEvent::TurnEnd { .. });
-                                if tx.send(ev).is_err() {
-                                    break;
-                                }
-                                if is_end {
-                                    break;
-                                }
+                    item = stream.next() => match item {
+                        Some(ev) => {
+                            if tx.send(ev).is_err() {
+                                break;
                             }
-                            None => break,
                         }
-                    }
+                        None => break,
+                    },
                 }
             }
         });
@@ -239,10 +236,6 @@ impl TuiApp {
         self.tool_status = None;
         self.stream_buf = StreamBuffer::default();
         self.thinking_buf = StreamBuffer::default();
-    }
-
-    pub fn turn_done(&self, event: &XyEvent) -> bool {
-        matches!(event, XyEvent::TurnEnd { .. })
     }
 
     // ── tail presentation ───────────────────────────────────────
@@ -395,5 +388,119 @@ mod tests {
         buf.push("a\n");
         let _ = buf.drain_complete_lines();
         assert_eq!(buf.finalize(), None);
+    }
+
+    // ── Multi-round tool-turn drain (c370) ──────────────────────────
+    //
+    // react.rs emits one TurnEnd per ReAct iteration; a tool-calling turn
+    // spans multiple iterations. spawn_drain MUST run to stream end (None),
+    // not stop at the first (intermediate) TurnEnd, or the model's
+    // continuation events after a tool call are dropped.
+
+    /// Build an EventStream from a fixed event sequence (for deterministic tests).
+    fn event_stream(events: Vec<XyEvent>) -> EventStream {
+        Box::pin(futures::stream::iter(events))
+    }
+
+    #[tokio::test]
+    async fn drain_runs_past_intermediate_turnend_to_stream_end() {
+        // A tool-calling turn: text → (tool round) intermediate TurnEnd →
+        // continuation text → final TurnEnd. Before c370, drain broke on the
+        // first TurnEnd and the continuation never arrived.
+        let events = vec![
+            XyEvent::TextDelta("let me check\n".into()),
+            XyEvent::ToolExecutionEnd {
+                id: "t1".into(),
+                name: "bash".into(),
+                result: "ok".into(),
+                is_error: false,
+            },
+            XyEvent::TurnEnd { turn_index: 0 }, // intermediate (react.rs:453)
+            XyEvent::TextDelta("the answer is 42\n".into()), // continuation
+            XyEvent::TurnEnd { turn_index: 1 }, // final
+        ];
+        let stream = event_stream(events.clone());
+        let (tx, mut rx) = mpsc::unbounded_channel::<XyEvent>();
+        let cancel = Arc::new(CancellationToken::new());
+
+        TuiApp::spawn_drain(stream, tx, cancel);
+        // Give the spawned drain task time to finish.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let mut received = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            received.push(ev);
+        }
+        assert_eq!(
+            received.len(),
+            events.len(),
+            "drain MUST forward every event including those after the intermediate TurnEnd"
+        );
+        // The continuation text after the tool round must survive.
+        assert!(
+            received.iter().any(|ev| matches!(
+                ev,
+                XyEvent::TextDelta(t) if t.contains("the answer is 42")
+            )),
+            "continuation text after the tool call must reach the TUI"
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_stops_on_cancel() {
+        // cancel is cooperative: a cancelled token makes the drain's select!
+        // take the cancel branch and stop. With a pre-cancelled token and a
+        // stream that yields one event, select! may race and forward 0 or 1
+        // events before breaking — the invariant is that the drain task ends
+        // promptly (does not hang waiting on stream end).
+        let stream = event_stream(vec![XyEvent::TextDelta("maybe\n".into())]);
+        let (tx, mut rx) = mpsc::unbounded_channel::<XyEvent>();
+        let cancel = Arc::new(CancellationToken::new());
+        cancel.cancel();
+
+        TuiApp::spawn_drain(stream, tx, cancel);
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        // Drain at most 1 event (cooperative cancel may let the single ready
+        // item through before observing cancel). The point is it terminates.
+        let mut received = 0;
+        while rx.try_recv().is_ok() {
+            received += 1;
+        }
+        assert!(
+            received <= 1,
+            "cancelled drain must not run the whole stream"
+        );
+    }
+
+    #[tokio::test]
+    async fn fresh_token_drains_after_a_prior_cancel() {
+        // Regression for the cancel-reuse bug (c370): a global token stayed
+        // cancelled after the first abort, starving every later turn. With a
+        // fresh per-turn token, a turn started after a previous cancel must
+        // drain its stream normally.
+        let stale = Arc::new(CancellationToken::new());
+        stale.cancel(); // a prior abort
+
+        // A new turn creates its own token (not the stale one).
+        let fresh = Arc::new(CancellationToken::new());
+        let stream = event_stream(vec![
+            XyEvent::TextDelta("after abort\n".into()),
+            XyEvent::TurnEnd { turn_index: 0 },
+        ]);
+        let (tx, mut rx) = mpsc::unbounded_channel::<XyEvent>();
+        TuiApp::spawn_drain(stream, tx, fresh);
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let mut received = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            received.push(ev);
+        }
+        assert_eq!(
+            received.len(),
+            2,
+            "a fresh token must drain the stream even after a prior cancel"
+        );
+        let _ = stale; // keep the intent explicit
     }
 }

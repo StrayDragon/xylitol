@@ -132,4 +132,14 @@ tokio::spawn(async move {
 
 ## 风险
 
-低-中。改动局限在 TUI 事件循环，不动协议/agent。主要风险是 cancel 路径：`cancel.cancelled()` 触发 drain break 时，也要正确发 `XyDone`（或主循环已有 abort 分支处理）。需测试覆盖 cancel 场景。
+低-中。改动局限在 TUI 事件循环，不动协议/agent。
+
+### 连带修复：cancel token 每 turn 重建（必须）
+
+修复 drain 语义时暴露一个既存缺陷：`cancel: Arc<CancellationToken>` 在 `run()` 全局创建一次（`mod.rs:82`），整个 REPL 生命周期复用。一旦 `InputOutcome::Abort` 或 Submit 中断执行 `cancel.cancel()`（`mod.rs:170/215`），该 token **永久 cancelled**。
+
+旧行为下 `spawn_drain` 在第一个 `TurnEnd` 就 break，cancel 复用的危害被掩盖（drain 几乎不依赖 cancel 分支）。c370 把 drain 改为跑到 stream `None` 后，cancel 分支成为正常终止路径之一——若 token 永久 cancelled，**abort 后的每个后续 turn 的 drain 会在启动时立即 break**，事件全丢，TUI 形同死掉。这是 c370 引入的回归，必须同变更修复。
+
+**修法**：`cancel` 从「全局一个」改为「每 turn 一个」。Submit 分支内在 `driver.run` 后、`spawn_drain` 前创建新的 `Arc<CancellationToken>`，传给该 turn 的 drain；abort 时 cancel 当前 turn 的 token。全局 cancel 的概念移除（Abort 分支直接 cancel 当前 turn 的 token + `driver.abort()`）。
+
+这要求 `repl_loop` 持有一个可替换的「当前 turn cancel」而非固定 `&cancel`。实现上用一个 `Option<Arc<CancellationToken>>` 或 `Arc<Mutex<Option<...>>>` 由 Submit 设置、Abort 读取取消。需测试：abort 后下一个 turn 的 drain 正常消费事件。
