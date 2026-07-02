@@ -4,7 +4,7 @@
 
 > **写或改 TUI？** 先读 `src/AGENTS.md` 的分层不变量，再用 `write-tui` skill（`.agents/skills/write-tui/SKILL.md`，覆盖目标文件布局、新特性落点、测试放置、约定）。新增应用面的方法论总纲见 `write-surface` skill。
 
-> **现状（2026-07-02）**：TUI 已落地（c340），依赖瘦身（c341：`ratatui-core` + `ratatui-crossterm` 直依），渲染 harness + RenderedLine seam（c360），流式 mutable-last-line + 组件化（c365）。`mod.rs` 的 inline REPL 经 `InProcessDriver` 驱动；流式文字在 tail 顶行每帧重绘（ratatui buffer 内，透明 bg 融进 scrollback），换行即 `insert_before` 固化进 scrollback；渲染层拆 `components/` 下 5 个可复用 widget（每个 TestBackend 可独立验证）。`/exit` `/model` 两条 slash 命令可用。原 `diff_review/` demo 已打包移除（alt-screen 死码，与 spec tui1 冲突）。
+> **现状（2026-07-02）**：TUI 已落地（c340），依赖瘦身（c341：`ratatui-core` + `ratatui-crossterm` 直依），渲染 harness + RenderedLine seam（c360），流式 mutable-last-line + 组件化 + route B 底部面板（c365）。`mod.rs` 的 inline REPL 经 `InProcessDriver` 驱动；流式文字在 mutable 顶行每帧重绘（ratatui buffer 内，透明 bg 融进 scrollback），换行即 `insert_before` 固化进 scrollback；底部 `BottomPanel`（border + bg）包裹 `StatusIndicator`（spinner `Working`）+ `ThinkingBlock`（独立 reasoning 块，未来可展开）+ `InputPrompt`，idle 填充整个 tail 区（无空终端行）。渲染层拆 `components/` 下 7 个可复用 widget（每个 TestBackend 可独立验证）。`/exit` `/model` 两条 slash 命令可用。原 `diff_review/` demo 已打包移除（alt-screen 死码，与 spec tui1 冲突）。
 
 ## 文件布局（已落地）
 
@@ -17,15 +17,17 @@
 - `render.rs` — `XyEvent → RenderedLine` 单一 seam（`xyevent_to_rendered`）+ `RenderedLine` UI 数据类型 + wrap 工具 + `draw_tail_frame`（thin wrapper 委托 `Tail` widget + 设光标）+ `StatusLine`。
 - `input.rs` — crossterm 键位 → `InputOutcome`（Submit/Slash/Abort/Quit/Idle）。MVP 单行输入。
 - `commands.rs` — slash 解析 `/exit` `/model`，复用 `protocol::Command` 语义。
-- `theme.rs` — 语义颜色 token 单一真值源。
-- `components/` — 可复用 widget（c365 组件化，每个 TestBackend 可独立验证，消费 UI 数据类型不碰 `XyEvent`/agent/infra）：
+- `theme.rs` — 语义颜色 token 单一真值源（含 `panel_bg`/`panel_border`）。
+- `components/` — 可复用 widget（c365 组件化 + route B 底部面板，每个 TestBackend 可独立验证，消费 UI 数据类型不碰 `XyEvent`/agent/infra）：
   - `transcript_line.rs` — `TranscriptLine`：`RenderedLine → Buffer`（wrap + CJK），insert_before commit 与 TestBackend 测试共用。
-  - `mutable_line.rs` — `MutableLine`：pending_tail 顶行（wrap 多行，透明 bg 融进 scrollback，超容量顶部丢弃）。
-  - `thinking_indicator.rs` — `ThinkingIndicator`：spinner + label（input_bg）。
-  - `input_prompt.rs` — `InputPrompt`：`❯` + 输入 + 光标 + input_bg block（CJK 显示宽度）。
-  - `tail.rs` — `Tail`：组合上述 bottom-anchored 布局；`draw_tail_frame` 退化为此。未来状态栏/多行输入从底部往上 push 即可扩展。
+  - `mutable_line.rs` — `MutableLine`：pending_tail 顶行（wrap 多行，透明 bg 融进 scrollback，紧贴面板 top-anchored，超容量顶部丢弃）。
+  - `status_indicator.rs` — `StatusIndicator`：spinner + `Working`/工具状态 label（执行进度）。
+  - `thinking_block.rs` — `ThinkingBlock`：reasoning 显示（`Thinking…` 占位，未来收 ThinkingDelta 可热切换展开）。
+  - `input_prompt.rs` — `InputPrompt`：`❯` + 输入 + 光标（CJK 显示宽度）。
+  - `bottom_panel.rs` — `BottomPanel`：带 border + panel_bg 的 chrome 容器，组合 StatusIndicator + ThinkingBlock + InputPrompt；idle 填充整个 tail 区（无空终端行）。
+  - `tail.rs` — `Tail`：组合 MutableLine（顶）+ BottomPanel（底）；`draw_tail_frame` 退化为此。未来状态栏/多行输入从底部往上 push 即可扩展。
 
-后续扩展（按需，不预先铺骨架）：多行编辑器、`StatusBar`（统计+模型）、FrameScheduler、EventBroker pause/resume。
+后续扩展（按需，不预先铺骨架）：多行编辑器、`StatusBar`（统计+模型）、ThinkingBlock 展开/折叠、FrameScheduler、EventBroker pause/resume。
 
 ## TUI 专属约束
 

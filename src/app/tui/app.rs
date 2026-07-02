@@ -81,6 +81,10 @@ pub struct TuiApp {
     streaming: bool,
     spinner_idx: usize,
     status: Option<StatusLine>,
+    /// Accumulated reasoning text (from `ThinkingDelta`), shown by the
+    /// `ThinkingBlock` widget. Future: collapsed/expanded toggle. Empty while
+    /// no reasoning has arrived → the block shows a `Thinking…` placeholder.
+    reasoning: String,
 }
 
 impl TuiApp {
@@ -109,7 +113,8 @@ impl TuiApp {
         self.streaming = true;
         self.finalized.clear();
         self.stream_buf = StreamBuffer::default();
-        self.status = Some(StatusLine::new(" ", "thinking…"));
+        self.reasoning.clear();
+        self.status = None;
     }
 
     /// Spawn a task draining `stream` into `tx`, one `XyEvent` per message,
@@ -182,10 +187,14 @@ impl TuiApp {
                     rendered.push(RenderedLine::AssistantText(tail));
                 }
             }
-            XyEvent::ThinkingDelta(_)
-            | XyEvent::ModelSelect { .. }
-            | XyEvent::Error(_)
-            | XyEvent::TurnStart { .. } => {
+            XyEvent::ThinkingDelta(text) => {
+                // Accumulate reasoning for the ThinkingBlock (future:
+                // collapsed/expanded toggle). Does not produce a finalized
+                // scrollback line — reasoning is shown live in the panel, not
+                // committed to history.
+                self.reasoning.push_str(text);
+            }
+            XyEvent::ModelSelect { .. } | XyEvent::Error(_) | XyEvent::TurnStart { .. } => {
                 // No additional business state; render lines already produced by
                 // the seam (ModelSelect/Error) or intentionally none (the rest).
             }
@@ -205,6 +214,7 @@ impl TuiApp {
     pub fn end_stream(&mut self) {
         self.streaming = false;
         self.status = None;
+        self.reasoning.clear();
         self.stream_buf = StreamBuffer::default();
     }
 
@@ -229,6 +239,16 @@ impl TuiApp {
 
     pub fn status_line(&self) -> Option<&StatusLine> {
         self.status.as_ref()
+    }
+
+    /// Accumulated reasoning text (from `ThinkingDelta`), shown by the
+    /// `ThinkingBlock` widget. Empty when no reasoning has arrived.
+    pub fn reasoning(&self) -> Option<&str> {
+        if self.reasoning.is_empty() {
+            None
+        } else {
+            Some(&self.reasoning)
+        }
     }
 
     // ── internals ───────────────────────────────────────────────
