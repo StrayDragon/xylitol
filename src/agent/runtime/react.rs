@@ -280,7 +280,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             let mut text_acc = String::new();
             let mut thinking_acc = String::new();
             let mut tool_calls: Vec<(String, String, Value)> = Vec::new();
-            let mut done = false;
 
             while let Some(chunk_result) = chunk_stream.next().await {
                 match chunk_result {
@@ -307,7 +306,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             tool_calls.push((id, name, args));
                         }
                         XyChunk::Done { .. } => {
-                            done = true;
+                            // Stream-end marker for this single model call.
+                            // Does NOT end the turn — the loop continues so the
+                            // model can see tool results in the next round.
                         }
                     },
                     Err(e) => {
@@ -451,10 +452,13 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             }
 
             yield XyEvent::TurnEnd { turn_index: turn as u32 };
-
-            if done {
-                break;
-            }
+            // NOTE: do NOT break on `done` here. XyChunk::Done only marks the
+            // end of ONE model stream — providers emit it right after a
+            // FunctionCall (openai.rs:172), so breaking here would abort a
+            // tool-calling turn before the model's continuation round. The
+            // loop continues so the model sees the tool results and decides
+            // whether to call more tools or produce a final text reply. The
+            // real turn-end is `tool_calls.is_empty()` above (react.rs:356).
         }
 
         yield XyEvent::AgentEnd { messages: history };
@@ -877,5 +881,128 @@ mod tests {
             }
         }
         assert!(second_turn_error);
+    }
+
+    // ── Multi-round tool ReAct (真 bug 复现) ──────────────────────
+    //
+    // The bug: react.rs:455 `if done { break }` treated XyChunk::Done (which
+    // just marks the end of ONE model stream) as the end of the whole turn.
+    // Providers emit Done right after a FunctionCall (openai.rs:172), so a
+    // tool-calling turn broke out of the for-loop after executing the tool,
+    // and the model never got a continuation round with the tool result.
+    // Correct ReAct: keep looping while the model calls tools; stop only when
+    // a round produces NO tool call (pure text reply = done).
+
+    /// A stateful mock that returns a DIFFERENT chunk sequence per model call,
+    /// so a multi-round turn (tool call → text reply) can be exercised. Each
+    /// `generate_stream` call pops the front sequence.
+    struct StatefulMockModel {
+        rounds: std::sync::Mutex<Vec<Vec<crate::domain::types::XyChunk>>>,
+    }
+    #[async_trait::async_trait]
+    impl XyModel for StatefulMockModel {
+        fn name(&self) -> &str {
+            "stateful-mock"
+        }
+        async fn generate_stream(
+            &self,
+            _messages: Vec<AgentMessage>,
+            _tools: &[crate::domain::types::XyToolSchema],
+            _stream: bool,
+        ) -> Result<XyStream, XyError> {
+            let chunks = self.rounds.lock().unwrap().remove(0);
+            Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
+        }
+    }
+
+    fn make_agent_with_rounds(
+        rounds: Vec<Vec<crate::domain::types::XyChunk>>,
+        tools: ToolSet,
+    ) -> ReActAgent {
+        use crate::runtime_protocol::XyModelBuilder;
+        let reg = mock_model_registry();
+        let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+        let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
+        let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
+        let builder: XyModelBuilder = Arc::new(move |_| {
+            Ok(Arc::new(StatefulMockModel {
+                rounds: std::sync::Mutex::new(rounds.clone()),
+            }) as Arc<dyn XyModel>)
+        });
+        let session = Agent::new(
+            reg,
+            tools,
+            store,
+            sink,
+            None,
+            Vec::new(),
+            Vec::new(),
+            50,
+            0.8,
+            ".".into(),
+            None,
+            builder,
+            crate::infra::permission::allow_all_permission(),
+            None,
+            None,
+        );
+        ReActAgent::new(session)
+    }
+
+    #[tokio::test]
+    async fn tool_call_then_continuation_round_reaches_final_text() {
+        use crate::domain::lifecycle::XyEvent;
+        use futures::StreamExt;
+
+        // Round 1: model calls a tool. The provider appends Done after the
+        // FunctionCall (openai.rs:156-176), so Done sets `done=true` — this is
+        // exactly the case where the old `if done { break }` wrongly aborted.
+        // Round 2: model gives the final text reply (no tool call) + Done.
+        let done_stop = || crate::domain::types::XyChunk::Done {
+            finish_reason: crate::domain::message::XyStopReason::Stop,
+            usage: None,
+        };
+        let rounds = vec![
+            vec![
+                crate::domain::types::XyChunk::FunctionCall {
+                    id: "call-1".into(),
+                    name: "mock_tool".into(),
+                    args: serde_json::json!({"input": "x"}),
+                },
+                done_stop(),
+            ],
+            vec![
+                crate::domain::types::XyChunk::TextDelta("the answer is 42".into()),
+                done_stop(),
+            ],
+        ];
+        let mut agent = make_agent_with_rounds(
+            rounds,
+            ToolSet::from_iter(vec![
+                Arc::new(MockTool) as Arc<dyn crate::runtime_protocol::XyTool>
+            ]),
+        );
+
+        let mut stream = agent.run("go").await;
+        let mut saw_tool = false;
+        let mut saw_final_text = false;
+        let mut turn_end_count = 0;
+        while let Some(evt) = stream.next().await {
+            match evt {
+                XyEvent::ToolExecutionEnd { .. } => saw_tool = true,
+                XyEvent::TextDelta(t) if t.contains("the answer is 42") => saw_final_text = true,
+                XyEvent::TurnEnd { .. } => turn_end_count += 1,
+                _ => {}
+            }
+        }
+        assert!(saw_tool, "tool must execute in round 1");
+        assert!(
+            saw_final_text,
+            "continuation text after the tool call MUST reach the caller (the bug dropped it)"
+        );
+        assert_eq!(
+            turn_end_count, 2,
+            "two ReAct iterations → two TurnEnd events"
+        );
     }
 }
