@@ -20,9 +20,20 @@
 - 改动聚焦，不夹带无关重构。
 - 提交不加 co-author 归因，不在 commit/PR/说明里暴露 agent 身份。
 
-## 项目结构
+## 项目结构（分层地图）
 
-单 crate 分层架构（`domain` → `runtime_protocol` → `agent`/`infra` → `protocol` → `app`），跨层依赖方向由 `src/tests.rs::arch_guard` 强制。分层地图与不变量见 `src/AGENTS.md`；应用面见 `src/app/AGENTS.md`。
+单 crate 分层架构，跨层依赖方向由 `src/tests.rs::arch_guard` 强制。分层不变量、各层职责、应用面状态表的 SSOT 见 `src/AGENTS.md`；本表只给一行角色 + 关键约束，避免跳转即可定位。
+
+| 层 | 角色 | 关键约束 |
+|---|---|---|
+| `domain/` | 纯领域词汇（`XyEvent`/`XyModel`/`XyTool`/消息类型） | 零 crate 内依赖 |
+| `runtime_protocol/` | agent↔infra 边界 traits（ports） | 只依赖 `domain/` |
+| `agent/` | 薄编排核心（ReAct 循环、session、model、tools 聚合） | 不依赖 `infra`（arch_guard 强制） |
+| `infra/` | 运行时域（provider adapter、工具实现、config、session 等） | 不依赖 `agent`（arch_guard 强制） |
+| `protocol/` | client↔core 线协议 SSOT（`Command`/`Event`） | 传输无关，只依赖 `domain/` |
+| `app/` | 应用面（`cli` print / `rpc` / `server` / `tui`）+ 跨面 seam（`core/`） | 走 seam 不 reach 内部，细则见 `src/app/AGENTS.md` |
+
+依赖方向：`app → agent → runtime_protocol → domain`，`infra → runtime_protocol → domain`，`protocol → domain`。
 
 ## 编码规则
 
