@@ -79,21 +79,18 @@ impl StreamBuffer {
     }
 }
 
-/// The live TUI state.
-/// Three-segment status content for the status line (c380). Pure data — the
-/// `StatusLine` widget renders by alignment. See [`TuiApp::status_segments`].
+/// Status content for the status line (c380). Pure data — the `StatusLine`
+/// widget renders it without matching business state. See
+/// [`TuiApp::status_segments`].
 pub struct StatusSegments {
     /// Whether a turn is streaming (controls spinner rendering).
     pub streaming: bool,
-    /// Left-segment label following the spinner (e.g. "Working…", "Running
-    /// bash", "Ready").
+    /// Activity label following the spinner (e.g. "Working…", "Running bash",
+    /// "Ready").
     pub left_label: String,
-    /// Center segment (e.g. "Turn 2"); None when empty.
-    pub center: Option<String>,
-    /// Right segment (model name); None when empty.
-    pub right: Option<String>,
 }
 
+/// The live TUI state.
 #[derive(Default)]
 pub struct TuiApp {
     input: String,
@@ -116,12 +113,6 @@ pub struct TuiApp {
     /// streaming text/thinking is pending (e.g. while a tool runs between
     /// text chunks).
     tool_status: Option<String>,
-    /// Current ReAct iteration index (from TurnStart). Shown in the status
-    /// line center segment while streaming. None before the first turn.
-    turn_index: Option<u32>,
-    /// Current model name (from ModelSelect). Shown in the status line right
-    /// segment. None until the first ModelSelect event.
-    model_name: Option<String>,
 }
 
 impl TuiApp {
@@ -233,14 +224,9 @@ impl TuiApp {
                     rendered.push(RenderedLine::AssistantText(tail));
                 }
             }
-            XyEvent::TurnStart { turn_index } => {
-                self.turn_index = Some(*turn_index);
-            }
-            XyEvent::ModelSelect { model_id, .. } => {
-                self.model_name = Some(model_id.clone());
-            }
-            XyEvent::Error(_) => {
-                // Render lines already produced by the seam; no business state.
+            XyEvent::TurnStart { .. } | XyEvent::ModelSelect { .. } | XyEvent::Error(_) => {
+                // No additional business state; render lines already produced by
+                // the seam (ModelSelect/Error) or intentionally none (TurnStart).
             }
             _ => {}
         }
@@ -331,16 +317,9 @@ impl TuiApp {
         } else {
             "Working…".to_string()
         };
-        let center = if self.streaming {
-            self.turn_index.map(|n| format!("Turn {n}"))
-        } else {
-            None
-        };
         StatusSegments {
             streaming: self.streaming,
             left_label,
-            center,
-            right: self.model_name.clone(),
         }
     }
 

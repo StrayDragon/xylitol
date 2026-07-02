@@ -24,7 +24,7 @@
   - `input_prompt.rs` — `InputPrompt`：输入框（无 `❯` 前缀，MVP 单行）。
   - `bottom_panel.rs` — `BottomPanel`：带 border + panel_bg 的 chrome 容器，**只含 InputPrompt**，固定 3 行（idle 不填满 tail 区）。
   - `tail.rs` — `Tail`：组合 MutableLine（顶）+ StatusLine（中）+ BottomPanel（底）；`draw_tail_frame` 退化为此。
-  - `status_line.rs` — `StatusLine`：固定 1 行三段式状态栏（c380，left=spinner+活动标签 / center=Turn 轮数 / right=模型名），数据驱动消费 `status_segments()`，可扩展骨架。
+  - `status_line.rs` — `StatusLine`：固定 1 行状态栏（c380，spinner + 活动标签 Working/Running/Ready），数据驱动消费 `status_segments()`。原三段式（含 Turn 轮数/模型名）在 c381 简化为单标签——ModelSelect 事件 agent 层从不发出，Turn 轮数非必需。
   - `spinner.rs` — `Spinner`：单 glyph spinner（被 StatusLine 接线渲染，帧由 Tick 推进的 `spinner_idx` 驱动）。
 
 ## TUI 专属约束（normative）
