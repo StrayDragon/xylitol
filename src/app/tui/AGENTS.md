@@ -14,20 +14,18 @@
 - `init.rs` — 本地终端初始化（替代 umbrella `ratatui::init`）：`DefaultTerminal` 类型别名 + `try_init_with_options` + `restore`（c341）。
 - `terminal.rs` — `InlineTerminal`：`Viewport::Inline` 生命周期，RAII `Drop` 恢复 raw mode（spec tui15）。
 - `app.rs` — `TuiApp` 状态机：输入缓冲 / 流式累积 / spinner / streaming 态；spawn 任务 drain `EventStream` → mpsc。
-- `render.rs` — `XyEvent → RenderedLine` 单一 seam（`xyevent_to_rendered`）+ `RenderedLine` UI 数据类型 + wrap 工具 + `draw_tail_frame`（thin wrapper 委托 `Tail` widget + 设光标）+ `StatusLine`。
+- `render.rs` — `XyEvent → RenderedLine` 单一 seam（`xyevent_to_rendered`）+ `RenderedLine` UI 数据类型 + wrap 工具 + `draw_tail_frame`（thin wrapper 委托 `Tail` widget + 设光标）。
 - `input.rs` — crossterm 键位 → `InputOutcome`（Submit/Slash/Abort/Quit/Idle）。MVP 单行输入。
 - `commands.rs` — slash 解析 `/exit` `/model`，复用 `protocol::Command` 语义。
 - `theme.rs` — 语义颜色 token 单一真值源（含 `panel_bg`/`panel_border`）。
-- `components/` — 可复用 widget（c365 组件化 + route B 底部面板，每个 TestBackend 可独立验证，消费 UI 数据类型不碰 `XyEvent`/agent/infra）：
-  - `transcript_line.rs` — `TranscriptLine`：`RenderedLine → Buffer`（wrap + CJK），insert_before commit 与 TestBackend 测试共用。
-  - `mutable_line.rs` — `MutableLine`：pending_tail 顶行（wrap 多行，透明 bg 融进 scrollback，紧贴面板 top-anchored，超容量顶部丢弃）。
-  - `status_indicator.rs` — `StatusIndicator`：spinner + `Working`/工具状态 label（执行进度）。
-  - `thinking_block.rs` — `ThinkingBlock`：reasoning 显示（`Thinking…` 占位，未来收 ThinkingDelta 可热切换展开）。
-  - `input_prompt.rs` — `InputPrompt`：`❯` + 输入 + 光标（CJK 显示宽度）。
-  - `bottom_panel.rs` — `BottomPanel`：带 border + panel_bg 的 chrome 容器，组合 StatusIndicator + ThinkingBlock + InputPrompt；idle 填充整个 tail 区（无空终端行）。
-  - `tail.rs` — `Tail`：组合 MutableLine（顶）+ BottomPanel（底）；`draw_tail_frame` 退化为此。未来状态栏/多行输入从底部往上 push 即可扩展。
+- `components/` — 可复用 widget（c365 组件化 + route B，每个 TestBackend 可独立验证，消费 UI 数据类型不碰 `XyEvent`/agent/infra）：
+  - `transcript_line.rs` — `TranscriptLine`：`RenderedLine → Buffer`（wrap + CJK，含 `ThinkingText` 灰色变体），insert_before commit 与 TestBackend 共用。
+  - `mutable_line.rs` — `MutableLine`：pending_tail 顶行（caller 传 `Style`，thinking 灰/text 正常/tool 黄，透明 bg 融进 scrollback，紧贴面板 top-anchored，超容量顶部丢弃）。
+  - `input_prompt.rs` — `InputPrompt`：输入框（无 `❯` 前缀，MVP 单行；多行编辑后续）。
+  - `bottom_panel.rs` — `BottomPanel`：带 border + panel_bg 的 chrome 容器，只含 InputPrompt；idle 填充整个 tail 区（无空终端行）。
+  - `tail.rs` — `Tail`：组合 MutableLine（顶）+ BottomPanel（底），用 `MutableKind` 选 style；`draw_tail_frame` 退化为此。
 
-后续扩展（按需，不预先铺骨架）：多行编辑器、`StatusBar`（统计+模型）、ThinkingBlock 展开/折叠、FrameScheduler、EventBroker pause/resume。
+后续扩展（按需，不预先铺骨架）：多行编辑器（最多 3 行方向键）、`StatusBar`（统计+模型）、FrameScheduler、EventBroker pause/resume。
 
 ## TUI 专属约束
 
