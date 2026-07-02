@@ -5,7 +5,7 @@
 ## 0. 规划工件
 
 - [x] proposal.md（含 c370 误诊说明）
-- [x] specs/agent-runtime/spec.toon（delta：add ar17 react-loop-continues-after-tool-call）
+- [x] specs/agent-runtime/spec.toon（delta：add ar27 react-loop-continues-after-tool-call）
 - [x] `llman sdd validate c375 --strict` 通过
 
 ## 1. 复现测试（红→绿）
