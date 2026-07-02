@@ -59,9 +59,11 @@ tower-http = { version = "0.7", features = ["cors"], optional = true }
 # ── terminal rendering (optional diff_review backend) ──
 # ratatui-core/crossterm are pulled in only when the `tui` feature is on.
 # We depend on ratatui-core + ratatui-crossterm directly (not the umbrella
-# ratatui crate) because inline mode uses no built-in widgets — see c341.
+# ratatui crate) — see c341. c360放宽了c341的widget禁令：ratatui-widgets
+# 子集（Paragraph/Block/List/Clear）能复用就复用，不符合则基于 core 自建。
 ratatui-core = { version = "0.1.2", default-features = false, features = ["std"], optional = true }
-ratatui-crossterm = { version = "0.1.2", default-features = false, features = ["crossterm_0_29", "scrolling-regions"], optional = true }
+ratatui-crossterm = { version = "0.1.2", default-features = false, features = ["crossterm_0_29", "scrolling-regions", "unstable-backend-writer"], optional = true }
+ratatui-widgets = { version = "0.3", default-features = false, optional = true }
 crossterm = { version = "0.29.0", optional = true }
 # Display-width for CJK cursor alignment (ratatui uses it too; we need it directly).
 unicode-width = { version = "0.2", optional = true }
@@ -74,8 +76,8 @@ cli = ["rpc"]
 rpc = []
 # Always-on HTTP/WebSocket server.
 server = ["dep:axum", "dep:tokio-tungstenite", "dep:tower-http"]
-# Terminal UI (ratatui-core/crossterm backend).
-tui = ["dep:ratatui-core", "dep:ratatui-crossterm", "dep:crossterm", "dep:unicode-width"]
+# Terminal UI (ratatui-core/crossterm backend; ratatui-widgets optional subset — c360).
+tui = ["dep:ratatui-core", "dep:ratatui-crossterm", "dep:ratatui-widgets", "dep:crossterm", "dep:unicode-width"]
 # Future GUI placeholder.
 gui = []
 
