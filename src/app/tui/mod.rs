@@ -56,6 +56,11 @@ enum Msg {
     Tick,
     /// An agent XyEvent for the current turn.
     Xy(Box<crate::domain::lifecycle::XyEvent>),
+    /// The agent event stream ended (stream `None` or drain cancel) — the
+    /// whole user turn is done. This is distinct from an intermediate
+    /// `XyEvent::TurnEnd`, which only marks a single ReAct iteration
+    /// boundary in a multi-round tool-calling turn (c370).
+    XyDone,
 }
 
 /// Run the inline TUI REPL against a constructed driver.
@@ -74,7 +79,12 @@ pub async fn run(driver: &mut dyn Driver) -> Result<(), String> {
         .map_err(|e| format!("greeting: {e}"))?;
 
     let mut app = TuiApp::default();
-    let cancel: Arc<CancellationToken> = Arc::new(CancellationToken::new());
+    // Per-turn cancellation token. A fresh token is created for each turn in
+    // the Submit branch; aborting cancels the current one. A single global
+    // token would stay cancelled forever after the first abort, so every
+    // later turn's drain (which runs to stream end, c370) would break
+    // immediately and drop all events.
+    let mut current_cancel: Option<Arc<CancellationToken>> = None;
 
     // Channel feeding the main loop. The keyboard reader runs as a blocking
     // task; agent events are spawned per-turn by TuiApp; a steady timer drives
@@ -84,7 +94,15 @@ pub async fn run(driver: &mut dyn Driver) -> Result<(), String> {
     spawn_tick(tx.clone(), Duration::from_millis(120));
 
     term.draw_tail(&app).map_err(|e| format!("draw: {e}"))?;
-    let result = repl_loop(driver, &mut term, &mut app, &mut rx, &tx, &cancel).await;
+    let result = repl_loop(
+        driver,
+        &mut term,
+        &mut app,
+        &mut rx,
+        &tx,
+        &mut current_cancel,
+    )
+    .await;
 
     // Terminal restoration happens in InlineTerminal::Drop regardless of result.
     result
@@ -139,7 +157,7 @@ async fn repl_loop(
     app: &mut TuiApp,
     rx: &mut mpsc::UnboundedReceiver<Msg>,
     tx: &mpsc::UnboundedSender<Msg>,
-    cancel: &Arc<CancellationToken>,
+    current_cancel: &mut Option<Arc<CancellationToken>>,
 ) -> Result<(), String> {
     while let Some(msg) = rx.recv().await {
         match msg {
@@ -162,7 +180,9 @@ async fn repl_loop(
                         // starting the new one (the input box is always active).
                         if app.is_streaming() {
                             driver.abort();
-                            cancel.cancel();
+                            if let Some(c) = current_cancel.take() {
+                                c.cancel();
+                            }
                             app.end_stream();
                         }
                         // Echo the user's prompt to scrollback BEFORE the reply
@@ -173,18 +193,28 @@ async fn repl_loop(
                             .map_err(|e| format!("commit user msg: {e}"))?;
                         let stream = driver.run(&prompt).await;
                         app.start_stream();
+                        // Fresh per-turn cancel token (c370): a global token
+                        // would stay cancelled after the first abort and starve
+                        // every later turn's drain.
+                        let cancel = Arc::new(CancellationToken::new());
+                        *current_cancel = Some(cancel.clone());
                         // Bridge the agent's async XyEvent stream into the main
                         // loop's Msg channel via a per-turn XyEvent channel.
                         let (xy_tx, mut xy_rx) =
                             mpsc::unbounded_channel::<crate::domain::lifecycle::XyEvent>();
-                        TuiApp::spawn_drain(stream, xy_tx, cancel.clone());
+                        TuiApp::spawn_drain(stream, xy_tx, cancel);
                         let main_tx = tx.clone();
                         tokio::spawn(async move {
                             while let Some(ev) = xy_rx.recv().await {
                                 if main_tx.send(Msg::Xy(Box::new(ev))).is_err() {
-                                    break;
+                                    return;
                                 }
                             }
+                            // drain task ended (stream `None` or cancel) and
+                            // dropped xy_tx → recv returned None → the whole
+                            // user turn is done. Signal the main loop to clear
+                            // the mutable tail / reset streaming state (c370).
+                            let _ = main_tx.send(Msg::XyDone);
                         });
                         term.draw_tail(app).map_err(|e| format!("draw: {e}"))?;
                     }
@@ -202,7 +232,9 @@ async fn repl_loop(
                     InputOutcome::Abort => {
                         if app.is_streaming() {
                             driver.abort();
-                            cancel.cancel();
+                            if let Some(c) = current_cancel.take() {
+                                c.cancel();
+                            }
                             app.end_stream();
                         } else {
                             break;
@@ -216,7 +248,6 @@ async fn repl_loop(
                 }
             }
             Msg::Xy(ev) => {
-                let is_end = app.turn_done(&ev);
                 let lines = app.handle_xy_event(*ev);
                 // c365 buffer route: all returned lines are finalized (streaming
                 // complete AssistantText, ToolSummary, Status) → commit to
@@ -225,17 +256,21 @@ async fn repl_loop(
                 // by the `MutableLine` widget (via `Tail`) each draw_tail. No
                 // escape direct-write; everything is in the ratatui buffer
                 // (TestBackend-verifiable, spec tui41/tui42).
+                // An intermediate XyEvent::TurnEnd is handled here like any other
+                // event (it flushes the current iteration's complete lines); it
+                // does NOT end the turn — only Msg::XyDone does (c370).
                 if !lines.is_empty() {
                     term.commit_to_scrollback(&lines)
                         .map_err(|e| format!("commit: {e}"))?;
                 }
                 term.draw_tail(app).map_err(|e| format!("draw: {e}"))?;
-                if is_end {
-                    // Turn ended: the mutable tail vanishes because `Tail` clears
-                    // its area each frame and `end_stream` resets `pending_tail`.
-                    app.end_stream();
-                    term.draw_tail(app).map_err(|e| format!("draw: {e}"))?;
-                }
+            }
+            Msg::XyDone => {
+                // The agent stream ended: the whole user turn is done. Clear the
+                // mutable tail and reset streaming state. (`Tail` clears its area
+                // each frame and `end_stream` resets `pending_tail`.)
+                app.end_stream();
+                term.draw_tail(app).map_err(|e| format!("draw: {e}"))?;
             }
         }
     }
