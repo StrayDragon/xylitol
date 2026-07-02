@@ -2,14 +2,13 @@
 //!
 //! Responsibilities after c365 componentization:
 //! - [`draw_tail_frame`]: a thin wrapper that delegates to the [`Tail`] widget
-//!   (which composes `MutableLine` / `ThinkingIndicator` / `InputPrompt`) and
+//!   (which composes `MutableLine` / `BottomPanel` / `InputPrompt`) and
 //!   positions the frame cursor on the input line. All tail rendering logic
 //!   lives in `components/`.
 //! - the [`RenderedLine`] UI-data type + the single `xyevent_to_rendered` seam
 //!   (spec tui42: rendering consumes only `RenderedLine`, never `XyEvent`).
 //! - wrapping helpers (`wrap_to_width` / `wrap_line_to_width`) shared by the
 //!   commit path and the widgets.
-//! - [`StatusLine`] (spinner glyph + label carrier).
 //!
 //! Pure functions are preferred (no terminal side effects) so they can be
 //! unit-tested without a real terminal. The c365 escape-sequence path
@@ -18,9 +17,8 @@
 //! TestBackend.
 
 use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
 use ratatui_core::terminal::Frame;
-use ratatui_core::text::{Line, Span};
+use ratatui_core::text::Line;
 use ratatui_core::widgets::Widget;
 
 use crate::app::tui::app::TuiApp;
@@ -59,6 +57,9 @@ pub enum RenderedLine {
     UserInput(String),
     /// A finalized assistant text line (streamed text committed on boundary).
     AssistantText(String),
+    /// A finalized reasoning/thinking text line (streamed from ThinkingDelta,
+    /// committed on boundary; gray/dim to distinguish from the main reply).
+    ThinkingText(String),
     /// A tool-execution summary line (name + result preview + error flag).
     ToolSummary {
         name: String,
@@ -77,6 +78,7 @@ impl RenderedLine {
         match self {
             RenderedLine::UserInput(prompt) => Line::styled(format!("❯ {prompt}"), p.user_prompt()),
             RenderedLine::AssistantText(text) => Line::styled(text.clone(), p.assistant()),
+            RenderedLine::ThinkingText(text) => Line::styled(text.clone(), p.thinking()),
             RenderedLine::ToolSummary {
                 name,
                 preview,
@@ -177,39 +179,6 @@ pub fn wrap_line_to_width(line: &Line<'_>, width: u16) -> Vec<Line<'static>> {
         .into_iter()
         .map(|row| Line::styled(row, style))
         .collect()
-}
-
-/// Internal helper: a status line carries a glyph + label.
-pub struct StatusLine {
-    glyph: &'static str,
-    label: String,
-}
-
-impl StatusLine {
-    pub fn new(glyph: &'static str, label: impl Into<String>) -> Self {
-        Self {
-            glyph,
-            label: label.into(),
-        }
-    }
-
-    /// The label text (used by the ThinkingIndicator widget to build the label).
-    pub fn label(&self) -> &str {
-        &self.label
-    }
-
-    /// The glyph (e.g. "⚙", "✓"). Kept for future richer status rendering.
-    #[allow(dead_code)]
-    pub fn glyph(&self) -> &'static str {
-        self.glyph
-    }
-
-    pub fn render(&self, glyph_style: Style, label_style: Style) -> Line<'static> {
-        Line::from(vec![
-            Span::styled(self.glyph.to_string(), glyph_style),
-            Span::styled(self.label.clone(), label_style),
-        ])
-    }
 }
 
 /// Total physical row count a slice of [`RenderedLine`]s occupies at `width`
@@ -401,22 +370,17 @@ mod commit_harness {
     }
 
     #[test]
-    fn after_commit_tail_shows_only_input_prompt() {
+    fn after_commit_tail_shows_input_no_reply() {
         let app = TuiApp::default();
         let line = RenderedLine::AssistantText("assistant reply".into());
         let term = commit_and_render(&app, 40, 10, &[line]);
         let buf = term.backend().buffer();
-        // With TAIL_HEIGHT=6 the tail is rows 4-9: border@4, input@8, border@9.
-        // The input row (8) must contain the ❯ prompt, and must NOT contain the
-        // committed reply text (that lives in scrollback above).
+        // With TAIL_HEIGHT=5 the tail is rows 5-9: border@5, input@8, border@9.
+        // The input row (8) must NOT contain the committed reply text.
         let input_row = row_text(buf, 8, 40);
         assert!(
-            input_row.contains('❯'),
-            "tail input line missing prompt: {input_row}"
-        );
-        assert!(
             !input_row.contains("assistant reply"),
-            "tail should not show committed reply text: {input_row}"
+            "no reply in tail: {input_row}"
         );
     }
 }
@@ -442,12 +406,12 @@ mod cursor_tests {
     }
 
     #[test]
-    fn cursor_after_prompt_prefix_when_idle_empty() {
+    fn cursor_idle_empty_at_origin() {
         let app = TuiApp::default();
         let mut term = render_term(&app);
-        // Idle panel fills the 6-row tail (rows 18-23): border@18, input@22,
-        // border@23. Cursor sits after the `❯ ` prefix on the input row.
-        term.backend_mut().assert_cursor_position((2u16, 22u16));
+        // Idle panel fills rows 19-23: border@19, input@22, border@23. No ❯ prefix
+        // → cursor at x=0 on the input row.
+        term.backend_mut().assert_cursor_position((0u16, 22u16));
     }
 
     #[test]
@@ -458,14 +422,12 @@ mod cursor_tests {
         }
         let term = render_term(&app);
         let buf = term.backend().buffer();
-        // Input is on row 22 (panel inner bottom, above the bottom border@23).
-        let cells: Vec<String> = (0..12u16)
+        // Input on row 22, no ❯ prefix: 你 at x=0, 好 at x=2.
+        let cells: Vec<String> = (0..6u16)
             .map(|x| buf[(x, 22)].symbol().to_string())
             .collect();
-        assert_eq!(cells[0], "❯");
-        assert_eq!(cells[1], " ");
-        assert_eq!(cells[2], "你");
-        assert_eq!(cells[4], "好", "cells: {cells:?}");
+        assert_eq!(cells[0], "你", "cells: {cells:?}");
+        assert_eq!(cells[2], "好", "cells: {cells:?}");
     }
 
     #[test]
@@ -475,8 +437,8 @@ mod cursor_tests {
             app.push_char(c);
         }
         let mut term = render_term(&app);
-        // `❯ abc` on row 22: cursor at col 2 + 3 = 5.
-        term.backend_mut().assert_cursor_position((5u16, 22u16));
+        // `abc` on row 22 (no prefix): cursor at col 3.
+        term.backend_mut().assert_cursor_position((3u16, 22u16));
     }
 
     #[test]
@@ -486,21 +448,21 @@ mod cursor_tests {
             app.push_char(c);
         }
         let mut term = render_term(&app);
-        // `❯ 你好` on row 22: 2 + 4 = 6.
-        term.backend_mut().assert_cursor_position((6u16, 22u16));
+        // `你好` on row 22 (no prefix): 4 display cols → cursor at col 4.
+        term.backend_mut().assert_cursor_position((4u16, 22u16));
     }
 
     #[test]
-    fn input_row_contains_prompt() {
+    fn input_row_has_no_prefix() {
         let app = TuiApp::default();
         let term = render_term(&app);
         let buf = term.backend().buffer();
-        // Input sits on row 22 (panel inner bottom, above the bottom border@23).
+        // Input sits on row 22, no ❯ prefix.
         let input_row: String = (0..80u16)
             .map(|x| buf[(x, 22)].symbol().chars().next().unwrap_or(' '))
             .collect();
-        assert!(input_row.contains('❯'), "input row 22: {input_row:?}");
-        // The bottom border is on row 23.
+        assert!(!input_row.contains('❯'), "no prefix: {input_row:?}");
+        // Bottom border on row 23.
         let border_row: String = (0..80u16)
             .map(|x| buf[(x, 23)].symbol().chars().next().unwrap_or(' '))
             .collect();
@@ -511,21 +473,17 @@ mod cursor_tests {
     }
 
     #[test]
-    fn streaming_shows_status_and_thinking_above_input() {
+    fn streaming_thinking_placeholder_above_panel() {
         let mut app = TuiApp::default();
         app.start_stream();
-        // Push a pending tail so the panel anchors to the bottom (rows 19-23):
-        // mutable@18, border@19, status@20, thinking@21, input@22, border@23.
-        app.handle_xy_event(XyEvent::TextDelta("x".into()));
+        // Thinking phase, no content yet → placeholder on mutable row 20.
         let term = render_term(&app);
         let buf = term.backend().buffer();
-        let status = row_text(buf, 20);
-        let thinking = row_text(buf, 21);
-        let input = row_text(buf, 22);
-        assert!(status.starts_with('⠋'), "status row 20: {status:?}");
-        assert!(status.contains("Working"), "status label: {status:?}");
-        assert_eq!(thinking, "Thinking…", "thinking row 21: {thinking:?}");
-        assert!(input.starts_with('❯'), "input row 22: {input:?}");
+        let mutable = row_text(buf, 20);
+        assert_eq!(mutable, "Thinking…", "mutable row 20: {mutable:?}");
+        // Panel below: border@21, input@22, border@23.
+        assert!(row_text(buf, 21).starts_with('─'), "panel top border");
+        assert!(row_text(buf, 23).starts_with('─'), "panel bottom border");
     }
 
     /// c365 buffer route: streaming text IS in the ratatui buffer (the mutable
@@ -598,9 +556,9 @@ mod cursor_tests {
     }
 
     /// c365 route B: the mutable streaming row is transparent (no panel bg)
-    /// so it blends into the scrollback; the panel inner rows (status,
-    /// thinking, input) carry the panel bg. In an 80×24 terminal with
-    /// TAIL_HEIGHT=6: mutable@18, border@19, status@20, thinking@21, input@22.
+    /// so it blends into the scrollback; the panel input row carries the panel
+    /// bg. In an 80×24 terminal with TAIL_HEIGHT=5: mutable@20, border@21,
+    /// input@22, border@23. No spinner/thinking rows in the panel anymore.
     #[test]
     fn streaming_mutable_transparent_panel_inner_has_bg() {
         let mut app = TuiApp::default();
@@ -609,23 +567,20 @@ mod cursor_tests {
         let term = render_term(&app);
         let buf = term.backend().buffer();
         let bg = crate::app::tui::theme::palette().panel_bg();
-        // Panel inner rows (status 20, thinking 21, input 22) carry panel bg.
-        assert_eq!(buf[(0, 20)].bg, bg, "status row has bg");
-        assert_eq!(buf[(0, 21)].bg, bg, "thinking row has bg");
+        // Panel input row (22) carries panel bg.
         assert_eq!(buf[(0, 22)].bg, bg, "input row has bg");
-        // Mutable row (18, flush above the panel border) does NOT carry panel
-        // bg — it blends into the scrollback body.
+        // Mutable row (20) does NOT carry panel bg — transparent.
         assert_eq!(
-            buf[(0, 18)].bg,
+            buf[(0, 20)].bg,
             ratatui_core::style::Color::Reset,
-            "mutable row 18 should be transparent, text={:?}",
-            row_text(buf, 18)
+            "mutable row 20 should be transparent, text={:?}",
+            row_text(buf, 20)
         );
         // The mutable row carries the streaming text.
         assert!(
-            row_text(buf, 18).contains("abcdefghij"),
+            row_text(buf, 20).contains("abcdefghij"),
             "mutable row has the streaming text: {:?}",
-            row_text(buf, 18)
+            row_text(buf, 20)
         );
     }
 }

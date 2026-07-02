@@ -107,43 +107,32 @@ pending_tail 超宽时 **wrap 到多行**（`wrap_to_width`，CJK 按显示宽�
 
 `Viewport::Inline(N)` 是**固定 N 行的保留区**：流式时塞得满，turn 结束后 mutable 进 scrollback、thinking 消失，viewport 内只剩底部 input，上方 `N - 1` 行是**保留区空行**。route B 用一个带 border + bg 填充的 `BottomPanel` 包裹 status/thinking/input：idle 时面板填充整个 tail 区，空行变 "面板内部"（不再是空终端行）。
 
-### 组件拆分（route B 后）
+### Thinking 是正文（二次纠正）
 
-`ThinkingIndicator` 拆为两个独立 widget（spinner 与 reasoning 解耦）：
+Thinking（reasoning）是 agent LLM 的输出正文，用灰色/暗色与主回复区分。它**不是**面板里的独立 widget，而是在正文区流式生长 + 换行固化，位于主回复之前。流程：
+
+1. Turn 开始 → thinking 阶段，mutable 行显示 `Thinking…` 占位（灰色）。`Thinking…` 本身是活动指示器（不再需要 spinner widget）。
+2. `ThinkingDelta` 到达 → `thinking_buf` 累积，完整行 drain 为 `RenderedLine::ThinkingText`（灰色）立即 commit 到 scrollback；未换行尾部是 mutable 行。
+3. 首个 `TextDelta` 到达 → flush `thinking_buf` 残留为最后一行 `ThinkingText`，切到 text 阶段；`stream_buf` 累积，完整行 drain 为 `RenderedLine::AssistantText` commit。
+4. TurnEnd → flush 两个 buf 的残留。
+
+工具执行时（无流式文字）mutable 行显示 `tool_status`（`⚙ running bash` / `✓ bash done`）。
+
+删 `StatusIndicator`、`ThinkingBlock`、`StatusLine`——不再需要。`MutableKind` enum（Thinking/Text/Tool）从 `app.pending_tail() -> Option<(&str, MutableKind)>` 返回，`Tail` 据此选 style。删 `❯` 前缀——面板 border 是视觉 affordance。`TAIL_HEIGHT` = 5（mutable 2 + 面板 3）。
+
+### 最终组件清单
 
 | widget | 职责 |
 |---|---|
-| `StatusIndicator` | spinner + `Working`/工具状态 label（执行进度） |
-| `ThinkingBlock` | reasoning 显示（当前 `Thinking…` 占位，未来收 ThinkingDelta 可展开） |
+| `TranscriptLine` | `RenderedLine → Buffer`（wrap + CJK，含 `ThinkingText` 灰色变体） |
+| `MutableLine` | pending_tail 顶行，caller 传 `Style`（thinking 灰 / text 正常 / tool 黄），透明 bg，top-anchored |
+| `InputPrompt` | 输入框（无 `❯` 前缀，MVP 单行；多行编辑后续） |
+| `BottomPanel` | bordered + panel_bg 容器，只含 InputPrompt |
+| `Tail` | 组合 MutableLine（顶）+ BottomPanel（底） |
 
-新增 `BottomPanel`：带 border + panel_bg 的 chrome 容器，组合 `StatusIndicator` + `ThinkingBlock` + `InputPrompt`。`Tail` 改为组合 `MutableLine`（顶，透明，紧贴 scrollback）+ `BottomPanel`（底，bordered+bg）。`TAIL_HEIGHT` 调到 6（mutable 1 + 面板 5：顶 border + status + thinking + input + 底 border）。
+### 未来布局扩展
 
-### mutable line 锡定（top-anchored + 紧贴面板）
-
-mutable 区域大小 = 实际 wrap 行数（capped 到面板上方可用空间），位置在面板顶 border 上方紧贴（available-above 区的底部）。`MutableLine` 在这个小区域内 top-anchored → 文字紧贴面板顶 border 往下生长，透明 bg 融进 scrollback。超容量从顶部丢弃（最新字符可见，完整内容换行后进 scrollback）。
-
-### 组件化（widget 拆分）
-
-渲染层拆成可复用、可单独 TestBackend 验证的 widget，每个是自包含的 "给我一块 area 我画好" 组件（tui21：自建 widget on ratatui-core primitives）。落在 `src/app/tui/components/`：
-
-| widget | 职责 | 输入 | 渲染目标 |
-|---|---|---|---|
-| `TranscriptLine` | 把单个 `RenderedLine` 渲染进 Buffer（wrap + CJK + 样式） | `&RenderedLine`, width | insert_before buffer / TestBackend buffer |
-| `MutableLine` | pending_tail 顶行，wrap 多行，透明 bg | `&str`, area | tail buffer 顶区 |
-| `ThinkingIndicator` | spinner + label | spinner_idx, status | tail buffer 一行 |
-| `InputPrompt` | `❯` + input buffer + 光标 + input_bg block | `&str`, area | tail buffer 底行 |
-| `Tail` | 组合上述，bottom-anchored 布局，算 capacity/丢弃 | `&TuiApp`, area | 整个 tail buffer |
-
-`draw_tail_frame` 退化为 `Tail::render(area, buf, app)`；`commit_to_scrollback` 改吃 `&[RenderedLine]`（不是 `&[Line]`），内部用 `TranscriptLine` widget 渲染进 insert_before buffer。每个 widget 有独立 TestBackend 测试（tui41 扩展）。
-
-### 未来布局扩展位
-
-用户未来目标底部操作区（带 border 的多行输入 + 状态行 + 统计行，类 pi）。当前组件为它留位但**不预先实现**（避免空壳死码，tui5）：
-
-- `InputPrompt`（单行）→ 未来包 border + 多行编辑升级为 `InputArea`，是扩展非重写。
-- `ThinkingIndicator` → 未来进状态行左槽。
-- `Tail` 用 **bottom-anchored 布局**（从底往上排），未来底部加 `StatusBar`（统计+模型）只是再往上 push 一个 widget。
-- `StatusBar` / border / 多行编辑 **本次不做**（无数据源即空壳）。
+用户未来多行输入（最多 3 行，方向键编辑）→ `InputPrompt` 升级 + `BottomPanel inner_rows` 动态。面板 border + input 基础已就位。未来 `StatusBar` 在面板底部 border 之上 push 一行。本次不做——无数据源即空壳（tui5）。
 
 ## 5. Tail 高度调整
 

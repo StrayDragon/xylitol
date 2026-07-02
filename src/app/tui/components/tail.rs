@@ -3,32 +3,32 @@
 //!
 //! Layout while streaming (top → bottom):
 //! ```text
-//! [MutableLine wrapped rows]   ← transparent bg, blends into scrollback
-//! ╭──────────────────────╮     ← panel top border
-//! │ ⠧ Working            │     ← StatusIndicator
-//! │ Thinking…            │     ← ThinkingBlock (independent, future-expandable)
-//! │ ❯ input              │     ← InputPrompt (bottom-anchored)
-//! ╰──────────────────────╯     ← panel bottom border
+//! [MutableLine: thinking or reply text]  ← transparent, flush against scrollback
+//! ────────────────                       ← panel top border
+//! <input>                                ← InputPrompt (no ❯ prefix)
+//! ────────────────                       ← panel bottom border
 //! ```
-//! When idle, the mutable line is gone and the panel fills the WHOLE tail area
-//! (its inner rows carry the panel bg) — so there are no empty terminal rows
-//! above the input; the reserved viewport reads as a deliberate input panel
-//! (c365 route B, fixes the post-turn empty-row artifact).
+//! The mutable line shows whichever phase is active:
+//! - **Thinking phase** (before first TextDelta): `Thinking…` placeholder (gray)
+//!   or streaming reasoning content (gray, from `ThinkingDelta`).
+//! - **Text phase**: streaming reply text (normal color, from `TextDelta`).
+//! - **Tool running** (no pending text): the tool status label (dim).
 //!
-//! `draw_tail_frame` delegates here; the frame cursor is positioned separately
-//! via [`input_cursor_position`] (a `Widget` cannot set the frame cursor).
+//! When idle, the panel fills the WHOLE tail area (its inner rows carry the
+//! panel bg) — no empty terminal rows above the input (c365 route B).
 
 use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 use ratatui_core::widgets::Widget;
 
-use crate::app::tui::app::TuiApp;
+use crate::app::tui::app::{MutableKind, TuiApp};
 use crate::app::tui::components::bottom_panel::BottomPanel;
 use crate::app::tui::components::input_prompt::cursor_x;
 use crate::app::tui::components::mutable_line::MutableLine;
+use crate::app::tui::theme;
 
 /// Renders the whole tail region from app state. Owns no state; reads the app
-/// each frame (input buffer, spinner idx, pending tail, streaming flag).
+/// each frame (input buffer, pending tail + kind, streaming flag).
 pub struct Tail<'a> {
     app: &'a TuiApp,
     width: u16,
@@ -46,30 +46,31 @@ impl Widget for Tail<'_> {
         let pending = self.app.pending_tail();
         let has_mutable = streaming && pending.is_some();
 
-        // Panel height: while streaming it needs its chrome rows + borders;
-        // when idle (no mutable) it fills the WHOLE area so no empty terminal
-        // rows sit above the input (c365 route B).
-        let panel_p = if has_mutable {
-            BottomPanel::height(true)
+        let panel_h = if has_mutable {
+            BottomPanel::height()
         } else {
+            // Idle, or streaming with no pending content: panel fills all.
             area.height
         };
-        let available_above = area.height.saturating_sub(panel_p);
+        let available_above = area.height.saturating_sub(panel_h);
 
-        // Mutable line: sized to exactly the rows it wraps (capped to the
-        // available space above the panel), placed flush against the panel top
-        // (bottom of the available-above region). Top-anchored within that
-        // small area → the text sits right above the panel border, growing
-        // downward, transparent so it blends into the scrollback. Overflowing
-        // wrap rows drop from the top (newest text stays visible).
-        if let Some(tail) = pending
+        // Mutable line: sized to its wrapped rows (capped to available space),
+        // placed flush above the panel top border. Top-anchored within that
+        // small area → text sits right above the panel, growing downward.
+        if let Some((text, kind)) = pending
             && has_mutable
             && available_above > 0
         {
-            let rows = MutableLine::new(tail, self.width).rows().len() as u16;
+            let p = theme::palette();
+            let style = match kind {
+                MutableKind::Thinking => p.thinking(),
+                MutableKind::Text => p.assistant(),
+                MutableKind::Tool => p.tool(),
+            };
+            let rows = MutableLine::new(text, self.width, style).rows().len() as u16;
             let mutable_h = rows.min(available_above);
             let mutable_y = area.y + available_above - mutable_h;
-            MutableLine::new(tail, self.width).render(
+            MutableLine::new(text, self.width, style).render(
                 Rect {
                     x: area.x,
                     y: mutable_y,
@@ -80,13 +81,12 @@ impl Widget for Tail<'_> {
             );
         }
 
-        // Bottom panel fills the rest (its area starts right below the
-        // available-above region).
+        // Bottom panel fills the rest.
         let panel_area = Rect {
             x: area.x,
             y: area.y + available_above,
             width: area.width,
-            height: panel_p,
+            height: panel_h,
         };
         BottomPanel::new(self.app).render(panel_area, buf);
     }
@@ -94,13 +94,13 @@ impl Widget for Tail<'_> {
 
 /// Absolute cursor position for the input prompt within `area`, for the frame
 /// to call `frame.set_cursor_position`. Always on the input (bottom inner) row
-/// of the panel: panel bottom border is the last area row, the input sits one
-/// row above it.
+/// of the panel. With TOP|BOTTOM borders only, the panel inner x equals the
+/// panel area x (no left inset).
 pub fn input_cursor_position(area: Rect, app: &TuiApp) -> (u16, u16) {
     let streaming = app.is_streaming();
     let has_mutable = streaming && app.pending_tail().is_some();
     let panel_h = if has_mutable {
-        BottomPanel::height(true)
+        BottomPanel::height()
     } else {
         area.height
     };
@@ -111,10 +111,7 @@ pub fn input_cursor_position(area: Rect, app: &TuiApp) -> (u16, u16) {
         width: area.width,
         height: panel_h,
     };
-    // Input is the last inner row of the panel (one row above the bottom
-    // border). With TOP|BOTTOM borders only, the panel inner x equals the
-    // panel area x (no left inset), so the cursor sits at panel_area.x +
-    // the `❯ ` prefix width + the input display width.
+    // Input is the last inner row of the panel (one row above the bottom border).
     let y = panel_area.bottom().saturating_sub(2);
     let x = panel_area.x + cursor_x(app.input_buffer());
     (x.min(panel_area.right().saturating_sub(1)), y)
@@ -146,41 +143,58 @@ mod tests {
     }
 
     #[test]
-    fn idle_panel_fills_whole_area_no_empty_rows_above() {
+    fn idle_panel_fills_whole_area_no_empty_rows() {
         let app = TuiApp::default();
-        let buf = render(&app, 30, 6);
+        let buf = render(&app, 30, 5);
         let bg = crate::app::tui::theme::palette().panel_bg();
-        // Top border at row 0, bottom border at row 5, input at row 4.
+        // Top border at row 0, bottom border at row 4, input at row 3.
         assert!(row_text(&buf, 0, 30).starts_with('─'), "top border");
-        assert!(row_text(&buf, 5, 30).starts_with('─'), "bottom border");
-        assert!(row_text(&buf, 4, 30).starts_with('❯'), "input row 4");
-        // All inner rows carry panel bg (no empty terminal rows).
-        for y in 1..5u16 {
+        assert!(row_text(&buf, 4, 30).starts_with('─'), "bottom border");
+        // All inner rows carry panel bg.
+        for y in 1..4u16 {
             assert_eq!(buf[(0, y)].bg, bg, "inner row {y} carries panel_bg");
         }
     }
 
     #[test]
-    fn streaming_mutable_top_then_panel_with_status_thinking_input() {
+    fn streaming_thinking_phase_shows_placeholder_above_panel() {
         let mut app = TuiApp::default();
         app.start_stream();
-        app.handle_xy_event(XyEvent::TextDelta("typing".into()));
-        let buf = render(&app, 30, 6);
-        // mutable at row 0 (top, transparent), panel below it.
-        assert_eq!(row_text(&buf, 0, 30), "typing", "mutable row 0");
-        // Panel (height 5) starts at row 1: border@1, status@2, thinking@3,
-        // input@4, border@5.
+        // No ThinkingDelta yet → placeholder "Thinking…" (gray).
+        let buf = render(&app, 30, 5);
+        // mutable at row 1 (flush above panel border@2), panel rows 2-4.
+        assert_eq!(row_text(&buf, 1, 30), "Thinking…", "placeholder row 1");
         assert!(
-            row_text(&buf, 1, 30).starts_with('─'),
-            "panel top border row 1"
+            row_text(&buf, 2, 30).starts_with('─'),
+            "panel top border row 2"
         );
-        assert!(row_text(&buf, 2, 30).starts_with('⠋'), "status row 2");
-        assert_eq!(row_text(&buf, 3, 30), "Thinking…", "thinking row 3");
-        assert!(row_text(&buf, 4, 30).starts_with('❯'), "input row 4");
         assert!(
-            row_text(&buf, 5, 30).starts_with('─'),
-            "panel bottom border row 5"
+            row_text(&buf, 4, 30).starts_with('─'),
+            "panel bottom border row 4"
         );
+    }
+
+    #[test]
+    fn streaming_thinking_content_shows_gray_above_panel() {
+        let mut app = TuiApp::default();
+        app.start_stream();
+        app.handle_xy_event(XyEvent::ThinkingDelta("reasoning here".into()));
+        let buf = render(&app, 30, 5);
+        assert_eq!(
+            row_text(&buf, 1, 30),
+            "reasoning here",
+            "thinking content row 1"
+        );
+    }
+
+    #[test]
+    fn streaming_text_phase_shows_reply_above_panel() {
+        let mut app = TuiApp::default();
+        app.start_stream();
+        // Transition to text phase: a TextDelta flushes thinking.
+        app.handle_xy_event(XyEvent::TextDelta("reply text".into()));
+        let buf = render(&app, 30, 5);
+        assert_eq!(row_text(&buf, 1, 30), "reply text", "reply content row 1");
     }
 
     #[test]
@@ -188,18 +202,16 @@ mod tests {
         let mut app = TuiApp::default();
         app.start_stream();
         app.handle_xy_event(XyEvent::TextDelta("typing".into()));
-        let buf = render(&app, 30, 6);
+        let buf = render(&app, 30, 5);
         let bg = crate::app::tui::theme::palette().panel_bg();
-        // Mutable row 0 is transparent (blends into scrollback).
+        // Mutable row 1 is transparent.
         assert_eq!(
-            buf[(0, 0)].bg,
+            buf[(0, 1)].bg,
             ratatui_core::style::Color::Reset,
             "mutable transparent"
         );
-        // Panel inner rows (status 2, thinking 3, input 4) carry panel bg.
-        assert_eq!(buf[(0, 2)].bg, bg, "status row bg");
-        assert_eq!(buf[(0, 3)].bg, bg, "thinking row bg");
-        assert_eq!(buf[(0, 4)].bg, bg, "input row bg");
+        // Panel inner row 3 carries panel bg.
+        assert_eq!(buf[(0, 3)].bg, bg, "input row bg");
     }
 
     #[test]
@@ -209,17 +221,25 @@ mod tests {
         app.handle_xy_event(XyEvent::TextDelta("partial".into()));
         app.handle_xy_event(XyEvent::TurnEnd { turn_index: 0 });
         app.end_stream();
-        let buf = render(&app, 30, 6);
-        for y in 0..6u16 {
+        let buf = render(&app, 30, 5);
+        for y in 0..5u16 {
             assert!(
                 !row_text(&buf, y, 30).contains("partial"),
                 "row {y} lingers"
             );
         }
-        // Idle panel fills the area; input present, no spinner.
-        assert!(row_text(&buf, 4, 30).starts_with('❯'), "input row");
-        for y in 0..6u16 {
-            assert!(!row_text(&buf, y, 30).contains('⠋'), "row {y} spinner");
+    }
+
+    #[test]
+    fn no_prompt_prefix_in_input() {
+        let mut app = TuiApp::default();
+        for c in "hello".chars() {
+            app.push_char(c);
         }
+        let buf = render(&app, 30, 5);
+        // Input row (3) has the text but no ❯.
+        let input = row_text(&buf, 3, 30);
+        assert_eq!(input, "hello");
+        assert!(!input.contains('❯'), "no prefix");
     }
 }

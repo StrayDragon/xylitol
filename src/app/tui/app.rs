@@ -11,10 +11,22 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::app::core::driver::EventStream;
-use crate::app::tui::render::{RenderedLine, StatusLine, xyevent_to_rendered};
+use crate::app::tui::render::{RenderedLine, xyevent_to_rendered};
 use crate::domain::lifecycle::XyEvent;
 
-pub(crate) const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/// What the mutable line is currently showing, and how to style it.
+/// Read by the `Tail` widget to pick the style for `MutableLine`.
+#[derive(Clone, Copy)]
+pub enum MutableKind {
+    /// Reasoning/thinking content (dim/gray).
+    Thinking,
+    /// Main assistant reply text (normal).
+    Text,
+    /// Tool execution status (tool/dim).
+    Tool,
+}
 
 // ── StreamBuffer: newline-gated streaming buffer (c365, codex 极简版) ──────
 //
@@ -72,19 +84,25 @@ impl StreamBuffer {
 #[derive(Default)]
 pub struct TuiApp {
     input: String,
-    /// Newline-gated streaming buffer (c365): complete lines drain to scrollback
-    /// immediately; the un-terminated tail is the mutable last line.
+    /// Newline-gated streaming buffer for main reply text (TextDelta).
     stream_buf: StreamBuffer,
+    /// Newline-gated streaming buffer for reasoning text (ThinkingDelta).
+    /// Thinking is part of the conversation body (gray, above the reply), not
+    /// a separate panel widget — it streams and commits like the reply.
+    thinking_buf: StreamBuffer,
     /// Accumulated finalized assistant text for the current turn (kept for
     /// compatibility; the live streaming view comes from stream_buf.pending_tail).
     finalized: String,
     streaming: bool,
+    /// True while in the thinking phase (before the first TextDelta). The
+    /// mutable line shows thinking content (or a `Thinking…` placeholder);
+    /// the first TextDelta flushes the thinking buffer and switches to text.
+    thinking_phase: bool,
     spinner_idx: usize,
-    status: Option<StatusLine>,
-    /// Accumulated reasoning text (from `ThinkingDelta`), shown by the
-    /// `ThinkingBlock` widget. Future: collapsed/expanded toggle. Empty while
-    /// no reasoning has arrived → the block shows a `Thinking…` placeholder.
-    reasoning: String,
+    /// Active tool execution status label, shown as the mutable line when no
+    /// streaming text/thinking is pending (e.g. while a tool runs between
+    /// text chunks).
+    tool_status: Option<String>,
 }
 
 impl TuiApp {
@@ -111,10 +129,11 @@ impl TuiApp {
     /// `XyEvent`s into the shared `Msg` channel.
     pub fn start_stream(&mut self) {
         self.streaming = true;
+        self.thinking_phase = true;
         self.finalized.clear();
         self.stream_buf = StreamBuffer::default();
-        self.reasoning.clear();
-        self.status = None;
+        self.thinking_buf = StreamBuffer::default();
+        self.tool_status = None;
     }
 
     /// Spawn a task draining `stream` into `tx`, one `XyEvent` per message,
@@ -160,45 +179,48 @@ impl TuiApp {
     /// (spec tui42). Spinner animation is driven by the steady Tick message
     /// (see `mod.rs`), NOT here.
     pub fn handle_xy_event(&mut self, event: XyEvent) -> Vec<RenderedLine> {
-        // Translate via the seam first: the only place XyEvent is matched for
-        // rendering purposes. Business state updates below consume the event by
-        // reference without re-deriving render lines.
         let mut rendered = xyevent_to_rendered(&event);
         match &event {
+            XyEvent::ThinkingDelta(text) => {
+                // Thinking is conversation body (gray): stream + commit like
+                // the reply, but via the thinking buffer and ThinkingText lines.
+                self.thinking_buf.push(text);
+                let complete = self.thinking_buf.drain_complete_lines();
+                rendered.extend(complete.into_iter().map(RenderedLine::ThinkingText));
+            }
             XyEvent::TextDelta(text) => {
-                // Newline-gated incremental commit (c365): push the delta, drain
-                // complete lines immediately (they commit to scrollback now, not
-                // at turn end). The un-terminated tail stays in stream_buf and is
-                // redrawn each frame as the mutable last line.
+                // Transition from thinking to text: flush the thinking buffer's
+                // pending tail as a final ThinkingText line, then switch phase.
+                if self.thinking_phase {
+                    if let Some(tail) = self.thinking_buf.finalize() {
+                        rendered.push(RenderedLine::ThinkingText(tail));
+                    }
+                    self.thinking_phase = false;
+                }
                 self.stream_buf.push(text);
                 let complete = self.stream_buf.drain_complete_lines();
                 rendered.extend(complete.into_iter().map(RenderedLine::AssistantText));
             }
             XyEvent::ToolExecutionStart { name, .. } => {
-                self.status = Some(StatusLine::new("⚙", format!(" running {name}")));
+                self.tool_status = Some(format!("⚙ running {name}"));
             }
             XyEvent::ToolExecutionUpdate { .. } => {}
             XyEvent::ToolExecutionEnd { name, .. } => {
-                self.status = Some(StatusLine::new("✓", format!(" {name} done")));
+                self.tool_status = Some(format!("✓ {name} done"));
             }
             XyEvent::TurnEnd { .. } => {
-                // Flush any residual un-terminated text as a final line.
+                // Flush any residual from both buffers.
+                if let Some(tail) = self.thinking_buf.finalize() {
+                    rendered.push(RenderedLine::ThinkingText(tail));
+                }
                 if let Some(tail) = self.stream_buf.finalize() {
                     rendered.push(RenderedLine::AssistantText(tail));
                 }
-            }
-            XyEvent::ThinkingDelta(text) => {
-                // Accumulate reasoning for the ThinkingBlock (future:
-                // collapsed/expanded toggle). Does not produce a finalized
-                // scrollback line — reasoning is shown live in the panel, not
-                // committed to history.
-                self.reasoning.push_str(text);
             }
             XyEvent::ModelSelect { .. } | XyEvent::Error(_) | XyEvent::TurnStart { .. } => {
                 // No additional business state; render lines already produced by
                 // the seam (ModelSelect/Error) or intentionally none (the rest).
             }
-            // Degrade gracefully on unhandled variants: no panic.
             _ => {}
         }
         rendered
@@ -213,9 +235,10 @@ impl TuiApp {
     /// common case.
     pub fn end_stream(&mut self) {
         self.streaming = false;
-        self.status = None;
-        self.reasoning.clear();
+        self.thinking_phase = false;
+        self.tool_status = None;
         self.stream_buf = StreamBuffer::default();
+        self.thinking_buf = StreamBuffer::default();
     }
 
     pub fn turn_done(&self, event: &XyEvent) -> bool {
@@ -223,32 +246,49 @@ impl TuiApp {
     }
 
     // ── tail presentation ───────────────────────────────────────
-    /// The un-terminated streaming tail (mutable last line). Redrawn each frame
+    /// The mutable line content + its kind (for styling). Redrawn each frame
     /// at the top of the tail region, visually continuous with the scrollback.
-    /// Returns None when the tail is empty.
-    pub fn pending_tail(&self) -> Option<&str> {
-        let tail = self.stream_buf.pending_tail();
-        if tail.is_empty() { None } else { Some(tail) }
+    /// Returns `None` when there is nothing to show (e.g. between phases with
+    /// no pending content and no tool status).
+    ///
+    /// While in the thinking phase with an empty thinking buffer, returns the
+    /// `Thinking…` placeholder (gray) — this is the activity indicator (no
+    /// separate spinner; the streaming text itself shows the agent is alive).
+    pub fn pending_tail(&self) -> Option<(&str, MutableKind)> {
+        use MutableKind as K;
+        if self.thinking_phase {
+            let tail = self.thinking_buf.pending_tail();
+            if !tail.is_empty() {
+                return Some((tail, K::Thinking));
+            }
+            return Some(("Thinking…", K::Thinking));
+        }
+        let text_tail = self.stream_buf.pending_tail();
+        if !text_tail.is_empty() {
+            return Some((text_tail, K::Text));
+        }
+        if let Some(status) = self.tool_status.as_deref() {
+            return Some((status, K::Tool));
+        }
+        None
     }
 
-    /// The current spinner animation frame index (advanced by `tick_spinner`).
-    /// Read by the `ThinkingIndicator` widget to pick the glyph.
+    /// Whether the turn is currently in the thinking phase (before the first
+    /// TextDelta). Read by `Tail` to style the mutable line.
+    pub fn is_thinking_phase(&self) -> bool {
+        self.thinking_phase
+    }
+
+    /// The current spinner animation frame index (kept for future use; the
+    /// spinner is not currently rendered — `Thinking…` / streaming text serves
+    /// as the activity indicator).
     pub fn spinner_idx(&self) -> usize {
         self.spinner_idx
     }
 
-    pub fn status_line(&self) -> Option<&StatusLine> {
-        self.status.as_ref()
-    }
-
-    /// Accumulated reasoning text (from `ThinkingDelta`), shown by the
-    /// `ThinkingBlock` widget. Empty when no reasoning has arrived.
-    pub fn reasoning(&self) -> Option<&str> {
-        if self.reasoning.is_empty() {
-            None
-        } else {
-            Some(&self.reasoning)
-        }
+    /// Active tool status label, if any.
+    pub fn tool_status(&self) -> Option<&str> {
+        self.tool_status.as_deref()
     }
 
     // ── internals ───────────────────────────────────────────────
@@ -266,7 +306,7 @@ mod tests {
         let mut app = TuiApp::default();
         let a = app.handle_xy_event(XyEvent::TextDelta("hello\nworld".into()));
         assert_eq!(a.len(), 1, "one complete line committed");
-        assert!(app.pending_tail().unwrap().contains("world"));
+        assert!(app.pending_tail().unwrap().0.contains("world"));
     }
 
     #[test]

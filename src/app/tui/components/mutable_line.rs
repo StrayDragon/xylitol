@@ -10,31 +10,32 @@
 
 use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
-use ratatui_core::style::Color;
+use ratatui_core::style::{Color, Style};
 use ratatui_core::text::Line;
 use ratatui_core::widgets::Widget;
 
 use crate::app::tui::render::wrap_to_width;
-use crate::app::tui::theme;
 
 /// Renders the pending (un-terminated) streaming text, wrapped to `width`,
-/// transparent background, bottom-anchored within its area (top rows dropped
-/// on overflow).
+/// transparent background, top-anchored within its area (top rows dropped on
+/// overflow). The style is caller-supplied so the same widget renders both
+/// thinking content (gray) and main reply text (normal).
 pub struct MutableLine<'a> {
     text: &'a str,
     width: u16,
+    style: Style,
 }
 
 impl<'a> MutableLine<'a> {
-    pub fn new(text: &'a str, width: u16) -> Self {
-        Self { text, width }
+    pub fn new(text: &'a str, width: u16, style: Style) -> Self {
+        Self { text, width, style }
     }
 
-    /// Wrapped physical rows at `width`, styled as assistant text.
+    /// Wrapped physical rows at `width`, styled with the caller-supplied style.
     pub fn rows(&self) -> Vec<Line<'static>> {
         wrap_to_width(self.text, self.width)
             .into_iter()
-            .map(|row| Line::styled(row, theme::palette().assistant()))
+            .map(|row| Line::styled(row, self.style))
             .collect()
     }
 }
@@ -88,7 +89,8 @@ mod tests {
     fn render(text: &str, width: u16, area_h: u16) -> ratatui_core::buffer::Buffer {
         let mut term = Terminal::new(TestBackend::new(width, area_h)).unwrap();
         term.draw(|f| {
-            MutableLine::new(text, width).render(Rect::new(0, 0, width, area_h), f.buffer_mut());
+            MutableLine::new(text, width, Style::default())
+                .render(Rect::new(0, 0, width, area_h), f.buffer_mut());
         })
         .unwrap();
         term.backend().buffer().clone()
