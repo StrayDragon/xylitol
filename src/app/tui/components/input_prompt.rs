@@ -1,19 +1,20 @@
-//! `InputPrompt` widget — the `❯` prompt + current input buffer + input
-//! background block, bottom-anchored. The cursor column is computed by
-//! [`cursor_x`] and applied by the frame (`draw_tail_frame`), since a `Widget`
-//! cannot set the frame cursor itself.
+//! `InputPrompt` widget — the input area (no `❯` prefix), rendered inside the
+//! bottom panel. The cursor column is computed by [`cursor_x`] and applied by
+//! the frame (`draw_tail_frame`), since a `Widget` cannot set the frame cursor
+//! itself.
+//!
+//! MVP: single-line. A multi-line editor (up to 3 rows, arrow-key cursor) is a
+//! planned follow-up — the widget API will grow a height/lines parameter then.
 
 use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
-use ratatui_core::style::Style;
 use ratatui_core::text::Line;
 use ratatui_core::widgets::Widget;
 
-use crate::app::tui::theme;
-
-/// Renders the input prompt line: `❯ <input>` on a row filled with the input
-/// background block. Always active (the user can type at any time, even
-/// mid-stream — Enter interrupts + sends a new prompt).
+/// Renders the input line: the current input buffer text on a row filled with
+/// the panel background. Always active (the user can type at any time, even
+/// mid-stream — Enter interrupts + sends a new prompt). No `❯` prefix — the
+/// bordered panel frame is the visual affordance (c365).
 pub struct InputPrompt<'a> {
     input: &'a str,
 }
@@ -26,28 +27,18 @@ impl<'a> InputPrompt<'a> {
 
 impl Widget for InputPrompt<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let p = theme::palette();
-        let prompt = format!("❯ {}", self.input);
-        let style = Style::default().bg(p.input_bg());
-        let line = Line::styled(prompt, style);
-        // Fill the whole row with the input background block.
-        let bg = p.input_bg();
-        for x in area.x..area.right() {
-            buf[(x, area.y)].set_bg(bg);
-        }
-        line.render(area, buf);
+        // The panel block already fills the row bg; just paint the text.
+        Line::raw(self.input).render(area, buf);
     }
 }
 
-/// Column offset of the cursor within an input prompt row: the `❯ ` prefix
-/// width plus the display width of the input buffer (CJK-aware). The caller
-/// adds the row's x origin to get the absolute column for
-/// `frame.set_cursor_position`.
+/// Column offset of the cursor within an input prompt row: the display width
+/// of the input buffer (CJK-aware). The caller adds the row's x origin to get
+/// the absolute column for `frame.set_cursor_position`. No `❯` prefix offset
+/// (c365: the prefix was removed).
 pub fn cursor_x(input: &str) -> u16 {
     use unicode_width::UnicodeWidthStr;
-    let prefix = UnicodeWidthStr::width("❯ ") as u16;
-    let input_w = UnicodeWidthStr::width(input) as u16;
-    prefix + input_w
+    UnicodeWidthStr::width(input) as u16
 }
 
 #[cfg(test)]
@@ -74,40 +65,36 @@ mod tests {
     }
 
     #[test]
-    fn empty_input_shows_prefix() {
+    fn empty_input_shows_blank() {
         let buf = render("");
-        assert_eq!(row_text(&buf), "❯");
+        assert_eq!(row_text(&buf), "");
     }
 
     #[test]
-    fn shows_prefix_and_input() {
+    fn shows_input_text() {
         let buf = render("hello");
-        assert_eq!(row_text(&buf), "❯ hello");
+        assert_eq!(row_text(&buf), "hello");
     }
 
     #[test]
-    fn carries_input_background_block() {
-        let buf = render("x");
-        let expected_bg = theme::palette().input_bg();
-        for x in 0..40u16 {
-            assert_eq!(buf[(x, 0)].bg, expected_bg, "col {x} should carry input_bg");
-        }
+    fn no_prompt_prefix() {
+        let buf = render("hello");
+        assert!(!row_text(&buf).contains('❯'), "no ❯ prefix: {buf:?}");
     }
 
     #[test]
-    fn cursor_x_empty_is_prefix_width() {
-        // "❯ " is 2 display cols.
-        assert_eq!(cursor_x(""), 2);
+    fn cursor_x_empty_is_zero() {
+        assert_eq!(cursor_x(""), 0);
     }
 
     #[test]
     fn cursor_x_ascii_after_input() {
-        assert_eq!(cursor_x("abc"), 2 + 3);
+        assert_eq!(cursor_x("abc"), 3);
     }
 
     #[test]
     fn cursor_x_cjk_uses_display_width() {
-        // "你好" = 4 display cols; cursor sits at 2 + 4 = 6.
-        assert_eq!(cursor_x("你好"), 6);
+        // "你好" = 4 display cols.
+        assert_eq!(cursor_x("你好"), 4);
     }
 }

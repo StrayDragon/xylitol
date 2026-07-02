@@ -64,14 +64,8 @@ impl Palette {
             .add_modifier(Modifier::ITALIC)
     }
 
-    /// Subtle background for the input prompt line (pi-style Box bg block).
-    pub fn input_bg(&self) -> Color {
-        Color::Black
-    }
-
-    /// Background fill for the bottom panel (chrome container). Distinct from
-    /// `input_bg` so the panel can read as a framed surface; both are dark so
-    /// the transition is calm. (c365 bottom-panel route.)
+    /// Background fill for the bottom panel (chrome container). The panel
+    /// bg is the single surface fill for the input area (c365 route B).
     pub fn panel_bg(&self) -> Color {
         Color::Black
     }

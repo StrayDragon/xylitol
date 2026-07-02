@@ -28,26 +28,22 @@
 
 - [x] `components/mod.rs` re-export
 - [x] `components/transcript_line.rs`：`TranscriptLine` widget，`&RenderedLine` + width → Buffer（wrap + CJK + 样式）；insert_before 与 TestBackend 共用
-- [x] `components/mutable_line.rs`：`MutableLine` widget，pending_tail + width + area → tail buffer 顶区（wrap 多行，透明 bg `Color::Reset`，紧贴面板 top-anchored）
-- [x] `components/status_indicator.rs`：`StatusIndicator` widget，spinner_idx + status → `Working`/工具状态 label（执行进度，原 ThinkingIndicator 改名+拆分）
-- [x] `components/thinking_block.rs`：`ThinkingBlock` widget，reasoning 显示（`Thinking…` 占位，未来收 ThinkingDelta 可展开热切换）
-- [x] `components/input_prompt.rs`：`InputPrompt` widget，input buffer + area → 底行（`❯` + 内容 + 光标，CJK 显示宽度）
-- [x] `components/bottom_panel.rs`：`BottomPanel` widget，带 border + panel_bg 的 chrome 容器，组合 StatusIndicator + ThinkingBlock + InputPrompt；idle 填充整个 tail 区（无空终端行）
-- [x] `components/tail.rs`：`Tail` widget，组合 MutableLine（顶）+ BottomPanel（底）；`draw_tail_frame` 退化为 `Tail::render`
-- [x] `app.rs` 新增 `reasoning` 字段 + 处理 `ThinkingDelta`（累积进 reasoning，不产 scrollback 行）+ `reasoning()` 取值
-- [x] `theme.rs` 新增 `panel_bg` / `panel_border` token
-- [x] `TAIL_HEIGHT` 调到 6（mutable 1 + 面板 5）
+- [x] `components/mutable_line.rs`：`MutableLine` widget，pending_tail + width + style → tail buffer 顶区（wrap 多行，透明 bg，caller 传 style）
+- [x] `components/input_prompt.rs`：`InputPrompt` widget，input buffer + area → 底行（无 `❯` 前缀，MVP 单行）
+- [x] `components/bottom_panel.rs`：`BottomPanel` widget，带 border + panel_bg 的 chrome 容器，只含 InputPrompt；idle 填充整个 tail 区
+- [x] `components/tail.rs`：`Tail` widget，组合 MutableLine（顶，styled by MutableKind）+ BottomPanel（底）；`draw_tail_frame` 退化为 `Tail::render`
+- [x] `app.rs`：`pending_tail()` 返回 `Option<(&str, MutableKind)>`；`ThinkingDelta` → thinking_buf 流式 + commit ThinkingText；首个 TextDelta flush thinking_buf 切 text 阶段；TurnEnd flush 双 buf
+- [x] 删 `StatusIndicator`、`ThinkingBlock`、`StatusLine`（thinking 是正文，不是面板 widget）
+- [x] 去 `❯` 前缀（面板 border 是 visual affordance）；`TAIL_HEIGHT` = 5（mutable 2 + 面板 3）
 
 ## 4. harness 覆盖（每个 widget 独立 TestBackend 可测）
 
 - [x] `TranscriptLine`：ASCII / CJK / 长 wrap 多行
 - [x] `MutableLine`：wrap 多行 + 透明 bg 断言
-- [x] `StatusIndicator`：`Working` 默认 label / 工具状态覆盖
-- [x] `ThinkingBlock`：无 reasoning 显示 `Thinking…` 占位 / 有 reasoning 显示文本
-- [x] `BottomPanel`：idle border+input / streaming status+thinking+input / 内部 panel_bg 填充 / height helper
-- [x] `InputPrompt`：`❯` + 内容 + 光标位置（含 CJK）
-- [x] `Tail` 组合：idle 面板填充无空行 / streaming mutable 顶+面板底 / 透明 vs panel_bg / TurnEnd 无残留
-- [x] StreamBuffer 状态机单测（app.rs 内，c365 原有保留）
+- [x] `BottomPanel`：border+input / 多行输入显示 / 内部 panel_bg 填充 / height helper
+- [x] `InputPrompt`：无 `❯` 前缀 + 光标位置（含 CJK）
+- [x] `Tail` 组合：idle 面板填充无空行 / thinking placeholder / thinking 内容 / text 内容 / 透明 vs panel_bg / TurnEnd 无残留 / 无 ❯ 在 input
+- [x] StreamBuffer 状态机单测（app.rs 内）
 
 ## 5. 校验
 
