@@ -48,7 +48,6 @@ rg -n 'cfg\(feature\s*=\s*"server"\)' src --type rust   # 换 server/tui/rpc/gui
 |---|---|---|
 | `app/core/driver.rs::RemoteDriver` | 完整实现，全仓库零实例化 | 预留（server 客户端面落地时激活；见 `write-surface`） |
 | `app/gui.rs` + `gui` feature | 3 行空占位，feature 编译不出任何东西 | 真死 → 删（除非本变更内就建 GUI 面） |
-| `app/tui/diff_review/` + `lib::run_review_demo` | 与 agent 主线零关联的独立 demo，`run_demo()` 无外部调用方 | 真死或剥离成独立子命令；见 `src/app/tui/AGENTS.md` |
 | `app/rpc.rs::Command` 全集（20 变体） | dispatch 多数有实现，但仓库内无 RPC 客户端消费 | 预留/逻辑死：interactive 面的 slash 命令应复用这套语义来激活它 |
 | 全仓库 31 处 `#[allow(dead_code)]` | 见步骤 1(a)，逐条分诊 | 多数为逻辑死，少数为预留；逐个审 |
 
