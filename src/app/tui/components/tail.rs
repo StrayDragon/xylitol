@@ -46,12 +46,12 @@ impl Widget for Tail<'_> {
         let pending = self.app.pending_tail();
         let has_mutable = streaming && pending.is_some();
 
-        let panel_h = if has_mutable {
-            BottomPanel::height()
-        } else {
-            // Idle, or streaming with no pending content: panel fills all.
-            area.height
-        };
+        // Panel height: always 3 rows (top border + input + bottom border).
+        // The mutable line (thinking/reply text) fills the rows ABOVE the panel,
+        // up to the available space. When idle or streaming with no pending
+        // content, the panel still sits at its fixed 3-row bottom; the rows
+        // above it are transparent terminal background (belongs to the body).
+        let panel_h = BottomPanel::height();
         let available_above = area.height.saturating_sub(panel_h);
 
         // Mutable line: sized to its wrapped rows (capped to available space),
@@ -94,27 +94,14 @@ impl Widget for Tail<'_> {
 
 /// Absolute cursor position for the input prompt within `area`, for the frame
 /// to call `frame.set_cursor_position`. Always on the input (bottom inner) row
-/// of the panel. With TOP|BOTTOM borders only, the panel inner x equals the
-/// panel area x (no left inset).
+/// of the panel. Panel is fixed 3 rows; cursor sits one row above the area
+/// bottom (above the bottom border).
 pub fn input_cursor_position(area: Rect, app: &TuiApp) -> (u16, u16) {
-    let streaming = app.is_streaming();
-    let has_mutable = streaming && app.pending_tail().is_some();
-    let panel_h = if has_mutable {
-        BottomPanel::height()
-    } else {
-        area.height
-    };
-    let available_above = area.height.saturating_sub(panel_h);
-    let panel_area = Rect {
-        x: area.x,
-        y: area.y + available_above,
-        width: area.width,
-        height: panel_h,
-    };
-    // Input is the last inner row of the panel (one row above the bottom border).
-    let y = panel_area.bottom().saturating_sub(2);
-    let x = panel_area.x + cursor_x(app.input_buffer());
-    (x.min(panel_area.right().saturating_sub(1)), y)
+    // Panel is always at the bottom: bottom border = area.bottom()-1,
+    // input = area.bottom()-2.
+    let y = area.bottom().saturating_sub(2);
+    let x = area.x + cursor_x(app.input_buffer());
+    (x.min(area.right().saturating_sub(1)), y)
 }
 
 #[cfg(test)]
@@ -143,17 +130,31 @@ mod tests {
     }
 
     #[test]
-    fn idle_panel_fills_whole_area_no_empty_rows() {
+    fn idle_panel_fixed_3_rows_at_bottom() {
         let app = TuiApp::default();
         let buf = render(&app, 30, 5);
-        let bg = crate::app::tui::theme::palette().panel_bg();
-        // Top border at row 0, bottom border at row 4, input at row 3.
-        assert!(row_text(&buf, 0, 30).starts_with('─'), "top border");
-        assert!(row_text(&buf, 4, 30).starts_with('─'), "bottom border");
-        // All inner rows carry panel bg.
-        for y in 1..4u16 {
-            assert_eq!(buf[(0, y)].bg, bg, "inner row {y} carries panel_bg");
-        }
+        // Panel always 3 rows at the bottom: border@2, input@3, border@4.
+        // Rows 0-1 are transparent terminal background (body area).
+        assert!(
+            row_text(&buf, 2, 30).starts_with('─'),
+            "panel top border row 2"
+        );
+        assert!(
+            row_text(&buf, 4, 30).starts_with('─'),
+            "panel bottom border row 4"
+        );
+        // Input row (3) has the cursor-ready position.
+        // Rows 0-1 should be transparent (not panel bg).
+        assert_eq!(
+            buf[(0, 0)].bg,
+            ratatui_core::style::Color::Reset,
+            "row 0 transparent"
+        );
+        assert_eq!(
+            buf[(0, 1)].bg,
+            ratatui_core::style::Color::Reset,
+            "row 1 transparent"
+        );
     }
 
     #[test]
