@@ -103,14 +103,24 @@ pending_tail 超宽时 **wrap 到多行**（`wrap_to_width`，CJK 按显示宽�
 
 首版组件化把 `MutableLine` 实现为 **bottom-anchored**（贴 mutable_area 底部），真终端冒烟发现：单行 mutable 坐在 mutable_area 底行（`indicator_y - 1`），和 viewport 上方的 scrollback 之间空出多行——即用户观察到的 "正在打的字和 ❯ 你好 之间有空行"。**纠正为 top-anchored**：mutable 从 `mutable_area.y`（viewport 顶行）向下生长，单行时紧贴 scrollback 最后一行。超容量（wrap 行数 > mutable_area 高度）时仍**丢弃顶部**：`start = total - fit`，从 `area.y` 画保留的底部行——这样 mutable 始终锡定 scrollback（area.y 不空），同时最新字符（底部）可见。完整内容换行后进 scrollback，不丢失。
 
-### inline viewport 固定高度限制（已知余量）
+### inline viewport 固定高度限制 → route B（底部面板 border + bg）
 
-`Viewport::Inline(N)` 是**固定 N 行的保留区**：流式时塞得满（mutable + thinking + input），turn 结束后 mutable 进 scrollback、thinking 消失，viewport 内只剩底部 input，上方 `N - 1` 行是**保留区空行**。这不是 bug 是 inline 模式的本质限制——viewport 高度在 init 时固定，不能动态收缩（ratatui resize 可改但时序敏感、可能闪烁，列为后续）。`TAIL_HEIGHT` 从初版 8 调到 4：空行从 7 减到 3，给 mutable wrap 留 2 行余量（超 2 行丢顶部）。彻底消掉空行的两条路（均非小改，待用户拍板）：
+`Viewport::Inline(N)` 是**固定 N 行的保留区**：流式时塞得满，turn 结束后 mutable 进 scrollback、thinking 消失，viewport 内只剩底部 input，上方 `N - 1` 行是**保留区空行**。route B 用一个带 border + bg 填充的 `BottomPanel` 包裹 status/thinking/input：idle 时面板填充整个 tail 区，空行变 "面板内部"（不再是空终端行）。
 
-- **动态 viewport 高度**：流式时 N=4、非流式时 N=1。彻底无空行。需调 `Terminal::resize`，时序敏感、可能闪烁，需加 resize 测试。
-- **底部面板 border + 背景**：viewport 空区填 input_bg/border，空行变 "输入面板内部"（不再是空，是面板）。这是用户未来底部操作区布局的第一步，提前做部分未来布局。
+### 组件拆分（route B 后）
 
-MVP 取 `TAIL_HEIGHT=4` + top-anchored：mutable 紧贴 scrollback（现象 1 修复），完成后 3 行保留区空行（现象 2 缓解，彻底解决待上述二选一）。
+`ThinkingIndicator` 拆为两个独立 widget（spinner 与 reasoning 解耦）：
+
+| widget | 职责 |
+|---|---|
+| `StatusIndicator` | spinner + `Working`/工具状态 label（执行进度） |
+| `ThinkingBlock` | reasoning 显示（当前 `Thinking…` 占位，未来收 ThinkingDelta 可展开） |
+
+新增 `BottomPanel`：带 border + panel_bg 的 chrome 容器，组合 `StatusIndicator` + `ThinkingBlock` + `InputPrompt`。`Tail` 改为组合 `MutableLine`（顶，透明，紧贴 scrollback）+ `BottomPanel`（底，bordered+bg）。`TAIL_HEIGHT` 调到 6（mutable 1 + 面板 5：顶 border + status + thinking + input + 底 border）。
+
+### mutable line 锡定（top-anchored + 紧贴面板）
+
+mutable 区域大小 = 实际 wrap 行数（capped 到面板上方可用空间），位置在面板顶 border 上方紧贴（available-above 区的底部）。`MutableLine` 在这个小区域内 top-anchored → 文字紧贴面板顶 border 往下生长，透明 bg 融进 scrollback。超容量从顶部丢弃（最新字符可见，完整内容换行后进 scrollback）。
 
 ### 组件化（widget 拆分）
 
