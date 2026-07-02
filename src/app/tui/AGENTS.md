@@ -4,6 +4,8 @@
 
 > **写或改 TUI？** 先读 `src/AGENTS.md` 的分层不变量，再用 `write-tui` skill（`.agents/skills/write-tui/SKILL.md`，覆盖目标文件布局、新特性落点、测试放置、约定）。新增应用面的方法论总纲见 `write-surface` skill。
 
+> **排查 TUI 问题？** 禁止 `println!`/`eprintln!`/`dbg!`（会毁 inline viewport）。走文件日志：`XYLITOL_DEBUG=1 cargo run --features tui --`，`tail -f ~/.xylitol/logs/xylitol.log`。完整指引（env 级别、埋点位置、加新埋点）见 `write-tui` skill 第 7 节。
+
 > **现状（2026-07-02）**：TUI 已落地（c340），依赖瘦身（c341：`ratatui-core` + `ratatui-crossterm` 直依），渲染 harness + RenderedLine seam（c360），流式 mutable-last-line + 组件化 + route B 底部面板（c365）。`mod.rs` 的 inline REPL 经 `InProcessDriver` 驱动；流式文字在 mutable 顶行每帧重绘（ratatui buffer 内，透明 bg 融进 scrollback），换行即 `insert_before` 固化进 scrollback。**thinking 是正文**（灰色，由 `thinking_buf` 独立流式 + commit 为 `ThinkingText` 行，显示在 mutable 顶行而非独立块）；首个 `TextDelta` 切到回复流（commit `AssistantText` 行）。底部 `BottomPanel`（border + bg）**只含 `InputPrompt`**，固定 3 行，idle 不填满 tail 区。`Spinner` 是底层组件但**当前未接线**——`Thinking…` 占位符 / 流式文字本身即活动指示。渲染层拆 `components/` 下 6 个可复用 widget。`/exit` `/model` 两条 slash 命令可用。
 
 ## 文件布局（已落地）

@@ -79,3 +79,39 @@ TUI 出现第一个 dialog / selector / 复杂输入框时，在本目录建 `DE
 - 确认没有为「暂时没用」的 TUI 骨架加 `#[allow(dead_code)]`（见 `audit-dead-code`）。
 - 渲染层改动有 TestBackend 覆盖（不只是手写 cell 断言）。
 - 若有 dialog/selector，走 `DESIGN.md` 自查清单。
+
+## 7. 排查 TUI 问题（debug 日志）
+
+**核心约束：TUI 下禁止 `println!`/`eprintln!`/`dbg!`。** TUI 用 `Viewport::Inline` + raw mode，每帧做 DSR 光标查询；任何 stdout/stderr 输出都会与光标响应交错、毁屏，且把转义序列固化进 scrollback。debug 必须走文件日志。
+
+### 日志管线（c390 落地）
+
+- 装配点：`src/app/cli/logging.rs::init_logging()`，在组合根 `app::cli::run()` 内、`CliArgs::parse()` 之后、模式分发之前装一次，覆盖所有面。
+- 激活（env-only，无 CLI flag、无 settings 字段）：
+  - `RUST_LOG=<directive>` → 用该 directive（非空才生效；空 `RUST_LOG=` 视为未设）。
+  - `XYLITOL_DEBUG=1` → 装默认 filter `xylitol=debug,warn`。
+  - 都不设 → 不装 subscriber，所有 `tracing::` 宏 no-op（生产默认，零开销）。
+- 落点：`~/.xylitol/logs/xylitol.log`，**同步** append（非 non_blocking，避免 `panic="abort"` 丢日志），unix `mode 0o600`，`with_ansi(false)`。file-only 永不碰 stdout/stderr。
+- `tail -f ~/.xylitol/logs/xylitol.log` 实时看。
+
+### 怎么排查
+
+```bash
+# 一键开（最常用）：覆盖 xylitol 全部 debug + 所有 warn
+XYLITOL_DEBUG=1 cargo run --features tui --
+
+# 想看每个 XyEvent 的流转（turn 提交是 debug，事件桥接是 trace）
+RUST_LOG=xylitol=trace cargo run --features tui --
+
+# 只看特定模块
+RUST_LOG=xylitol::tui=debug,xylitol::agent=debug cargo run --features tui --
+```
+
+已埋点位置（仅 emit，不跨 seam）：
+- `app/cli/logging.rs` — init 时 `info!` 记录路径。
+- `app/tui/mod.rs` — `driver.run` 提交（`debug!`，`turn submitted len=N`）、XyEvent 桥接（`trace!`，`xy event kind=...`）。
+- `infra/*` + `agent/*` — ~12 处既有 `warn!/info!/debug!`（event、permission、mcp、settings、hooks、compaction），subscriber 装上即自动激活。
+
+### 加新埋点
+
+TUI 代码里加埋点**只调 `tracing::` 宏**（`debug!`/`trace!`/`warn!`），用 `target: "xylitol::tui"` 或子模块名；**不要** import `infra` 或装 subscriber（分层不变量，`agent/` 同理只 emit）。热点：mpsc 流控、stream cancel、render seam 状态迁移。
