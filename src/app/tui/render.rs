@@ -92,9 +92,10 @@ impl RenderedLine {
     }
 
     /// Render this UI data into styled ratatui `Line`s, multi-line for markdown
-    /// variants (c355). `UserInput` and `AssistantText` render through the
-    /// shared `MarkdownRenderer` (spec tui60), differing only in the injected
-    /// `MarkdownStyle`; the other variants are single-line (`vec![self.to_line()]`).
+    /// variants (c355 + c366). `UserInput`, `AssistantText`, and `ThinkingText`
+    /// all render through the shared `MarkdownRenderer`, differing only in the
+    /// injected `MarkdownStyle` (spec tui60/tui65); the other variants are
+    /// single-line (`vec![self.to_line()]`).
     ///
     /// `width` is used for CJK-aware paragraph wrapping inside the renderer.
     pub fn to_lines(&self, width: u16) -> Vec<Line<'static>> {
@@ -117,6 +118,12 @@ impl RenderedLine {
             }
             RenderedLine::AssistantText(text) => {
                 let style = MarkdownStyle::for_assistant(&p);
+                render_markdown(text, width, &style)
+            }
+            RenderedLine::ThinkingText(text) => {
+                // c366: thinking renders through the same markdown pipeline,
+                // dimmed via for_thinking so reasoning stays subordinate.
+                let style = MarkdownStyle::for_thinking(&p);
                 render_markdown(text, width, &style)
             }
             // Single-line variants: no markdown.

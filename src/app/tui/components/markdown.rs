@@ -72,6 +72,23 @@ impl MarkdownStyle {
             strong: Style::default().add_modifier(ratatui_core::style::Modifier::BOLD),
         }
     }
+
+    /// Style for rendering finalized thinking/reasoning text (c366). Same
+    /// structural rendering as assistant (markdown parsed), but the whole
+    /// palette is dimmed so reasoning stays visually subordinate to the reply.
+    pub fn for_thinking(p: &Palette) -> Self {
+        Self {
+            text: p.thinking(),
+            // No BOLD on heading — keep thinking visually quiet.
+            heading: p.thinking(),
+            code_inline: p.text_dim(),
+            code_block_bg: Some(Color::Black),
+            code_block_lang: p.text_dim(),
+            list_marker: p.text_dim(),
+            quote: p.text_dim(),
+            strong: Style::default().add_modifier(ratatui_core::style::Modifier::ITALIC),
+        }
+    }
 }
 
 /// Render a finalized markdown string into wrapped `Line`s at `width` (CJK-aware
@@ -121,6 +138,9 @@ struct Renderer {
     /// Whether the current code block has not yet emitted its language-label
     /// line (set on CodeBlock start, cleared after the first Text/flush).
     code_lang_pending: Option<Option<String>>,
+    /// Current blockquote nesting depth (0 = not in a quote). Each level adds
+    /// a `▎ ` prefix to every rendered row (c366).
+    quote_depth: usize,
 }
 
 impl Renderer {
@@ -133,6 +153,7 @@ impl Renderer {
             blocks: Vec::new(),
             inline_mods: Vec::new(),
             code_lang_pending: None,
+            quote_depth: 0,
         }
     }
 
@@ -157,7 +178,7 @@ impl Renderer {
             Event::SoftBreak | Event::HardBreak => self.flush_inline(),
             Event::Rule => {
                 self.flush_inline();
-                self.lines.push(Line::styled(
+                self.emit_line(Line::styled(
                     "─".repeat(self.width.max(1) as usize),
                     self.style.quote,
                 ));
@@ -187,6 +208,7 @@ impl Renderer {
             }
             Tag::BlockQuote(_) => {
                 self.flush_inline();
+                self.quote_depth += 1;
                 self.blocks.push(Block::Quote);
             }
             Tag::List(None) => {
@@ -228,6 +250,7 @@ impl Renderer {
             TagEnd::BlockQuote(_) => {
                 self.flush_inline();
                 self.blocks.pop();
+                self.quote_depth = self.quote_depth.saturating_sub(1);
             }
             TagEnd::List(_) => { /* container close — no per-line action */ }
             TagEnd::Strong | TagEnd::Emphasis => {
@@ -235,6 +258,19 @@ impl Renderer {
             }
             _ => {}
         }
+    }
+
+    /// Push a completed line into `self.lines`, prefixing it with the
+    /// blockquote bar (`▎ ` × depth) when inside a quote (c366). The prefix
+    /// goes on every physical row so wrapped continuation rows carry it too.
+    fn emit_line(&mut self, mut line: Line<'static>) {
+        if self.quote_depth > 0 {
+            let prefix = "▎ ".repeat(self.quote_depth);
+            let mut spans = vec![Span::styled(prefix, self.style.quote)];
+            spans.append(&mut line.spans);
+            line.spans = spans;
+        }
+        self.lines.push(line);
     }
 
     /// Append text with a style. If inside a code block, wrap each line of the
@@ -261,7 +297,7 @@ impl Renderer {
             if let Some(bg) = self.style.code_block_bg {
                 label_line = label_line.style(Style::default().bg(bg));
             }
-            self.lines.push(label_line);
+            self.emit_line(label_line);
         }
         // Emit each line of the code text with indent + background.
         let indent = "  ";
@@ -275,7 +311,7 @@ impl Renderer {
                 if let Some(bg) = self.style.code_block_bg {
                     line = line.style(Style::default().bg(bg));
                 }
-                self.lines.push(line);
+                self.emit_line(line);
             }
         }
     }
@@ -314,7 +350,9 @@ impl Renderer {
                 .map(|l| l.style(Style::default().bg(bg)))
                 .collect();
         }
-        self.lines.extend(made_lines);
+        for line in made_lines {
+            self.emit_line(line);
+        }
     }
 
     fn finish(&mut self) {
@@ -439,11 +477,45 @@ mod tests {
     }
 
     #[test]
-    fn blockquote_renders() {
+    fn blockquote_renders_with_prefix() {
+        // c366: blockquote carries a `▎` prefix on every row (spec tui66).
         let md = "> a quote\n";
         let (buf, _) = render_to_buf(md, 40);
         let row = row_text(&buf, 0, 40);
         assert!(row.contains("a quote"), "quote body visible: {row}");
+        assert!(row.contains('▎'), "blockquote prefix visible: {row}");
+    }
+
+    #[test]
+    fn nested_blockquote_indents_prefix() {
+        // c366: nested blockquote carries an extra prefix (spec tui66).
+        let md = ">> nested\n";
+        let (buf, _) = render_to_buf(md, 40);
+        let row = row_text(&buf, 0, 40);
+        // Two prefix glyphs for depth-2 quote.
+        let prefix_count = row.chars().filter(|&c| c == '▎').count();
+        assert!(
+            prefix_count >= 2,
+            "nested blockquote has >=2 prefix glyphs, got {prefix_count}: {row}"
+        );
+    }
+
+    #[test]
+    fn thinking_text_renders_markdown() {
+        // c366: ThinkingText renders through markdown (spec tui65). A code
+        // block in thinking content renders with structure, not flat text.
+        let p = palette();
+        let style = MarkdownStyle::for_thinking(&p);
+        let md = "```\nfn think() {}\n```\n";
+        let lines = render_markdown(md, 40, &style);
+        let text: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.to_string()))
+            .collect();
+        assert!(
+            text.contains("fn think()"),
+            "thinking code block body parsed (not flat): {text}"
+        );
     }
 
     #[test]

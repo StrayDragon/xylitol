@@ -6,7 +6,7 @@
 
 > **排查 TUI 问题？** 禁止 `println!`/`eprintln!`/`dbg!`（会毁 inline viewport）。走文件日志：`XYLITOL_DEBUG=1 cargo run --features tui --`，`tail -f ~/.xylitol/logs/xylitol.log`。完整指引（env 级别、埋点位置、加新埋点）见 `write-tui` skill 第 7 节。
 
-> **现状（2026-07-03）**：TUI 已落地（c340），依赖瘦身（c341：`ratatui-core` + `ratatui-crossterm` 直依），渲染 harness + RenderedLine seam（c360），流式 mutable-last-line + 组件化 + route B 底部面板（c365），正文 markdown 渲染（c355：`RenderedLine::UserInput`/`AssistantText` 经 `MarkdownRenderer`，pulldown-cmark 驱动，user/assistant 共用组件差异在 `MarkdownStyle`；流式文字仍是纯文本，仅 finalized 行渲染 markdown）。`mod.rs` 的 inline REPL 经 `InProcessDriver` 驱动；流式文字在 mutable 顶行每帧重绘（ratatui buffer 内，透明 bg 融进 scrollback），换行即 `insert_before` 固化进 scrollback。**thinking 是正文**（灰色，由 `thinking_buf` 独立流式 + commit 为 `ThinkingText` 行，显示在 mutable 顶行而非独立块）；首个 `TextDelta` 切到回复流（commit `AssistantText` 行）。底部 `BottomPanel`（border + bg）**只含 `InputPrompt`**，固定 3 行，idle 不填满 tail 区。`Spinner` 是底层组件但**当前未接线**——`Thinking…` 占位符 / 流式文字本身即活动指示。渲染层拆 `components/` 下 7 个可复用 widget。`/exit` `/model` 两条 slash 命令可用。
+> **现状（2026-07-03）**：TUI 已落地（c340），依赖瘦身（c341：`ratatui-core` + `ratatui-crossterm` 直依），渲染 harness + RenderedLine seam（c360），流式 mutable-last-line + 组件化 + route B 底部面板（c365），正文 markdown 渲染（c355：`RenderedLine::UserInput`/`AssistantText` 经 `MarkdownRenderer`，pulldown-cmark 驱动，user/assistant 共用组件差异在 `MarkdownStyle`；c366：`ThinkingText` 也接入，引用块加 `▎` 前缀；流式文字仍是纯文本，仅 finalized 行渲染 markdown）。`mod.rs` 的 inline REPL 经 `InProcessDriver` 驱动；流式文字在 mutable 顶行每帧重绘（ratatui buffer 内，透明 bg 融进 scrollback），换行即 `insert_before` 固化进 scrollback。**thinking 是正文**（灰色，由 `thinking_buf` 独立流式 + commit 为 `ThinkingText` 行，显示在 mutable 顶行而非独立块）；首个 `TextDelta` 切到回复流（commit `AssistantText` 行）。底部 `BottomPanel`（border + bg）**只含 `InputPrompt`**，固定 3 行，idle 不填满 tail 区。`Spinner` 是底层组件但**当前未接线**——`Thinking…` 占位符 / 流式文字本身即活动指示。渲染层拆 `components/` 下 7 个可复用 widget。`/exit` `/model` 两条 slash 命令可用。
 
 ## 文件布局（已落地）
 
@@ -21,7 +21,7 @@
 - `commands.rs` — slash 解析 `/exit` `/model`，转 `protocol::Command` 经 `app::core::dispatch` 共享分发（c336 落地，backed by `Driver` trait）。
 - `theme.rs` — 语义颜色 token SSOT（`Palette`：primary/text_dim/assistant/user_prompt/tool/error/spinner/thinking + `panel_bg`/`panel_border`）。
 - `components/` — 可复用 widget（c365 组件化，每个 TestBackend 可独立验证，消费 UI 数据类型不碰 `XyEvent`/agent/infra）：
-  - `transcript_line.rs` — `TranscriptLine`：`RenderedLine → Buffer`（经 `to_lines` 多行，markdown 变体由 `MarkdownRenderer` 产多行、其余单行，wrap + CJK，含 `ThinkingText` 灰），insert_before commit 与 TestBackend 共用。
+  - `transcript_line.rs` — `TranscriptLine`：`RenderedLine → Buffer`（经 `to_lines` 多行，UserInput/AssistantText/ThinkingText 三类正文变体由 `MarkdownRenderer` 产多行、其余单行，wrap + CJK），insert_before commit 与 TestBackend 共用。
   - `markdown.rs` — `MarkdownRenderer`（c355）：`render_markdown(text, width, style) -> Vec<Line>`，pulldown-cmark 驱动；`MarkdownStyle` 由 `for_user`/`for_assistant` 注入（user/assistant 共用，spec tui60）。MVP：标题/粗体/inline code/代码块（语言标签+背景，无 syntect）/列表/引用/CJK 换行（spec tui61）。流式文字不进此组件。
   - `mutable_line.rs` — `MutableLine`：pending_tail 顶行（caller 经 `MutableKind` 选 style：thinking 灰/text 正常/tool 黄，透明 bg 融进 scrollback，紧贴面板 top-anchored）。
   - `input_prompt.rs` — `InputPrompt`：输入框（无 `❯` 前缀，MVP 单行）。
