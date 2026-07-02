@@ -476,11 +476,18 @@ mod cursor_tests {
     fn streaming_thinking_placeholder_above_panel() {
         let mut app = TuiApp::default();
         app.start_stream();
-        // Thinking phase, no content yet → placeholder on mutable row 20.
+        // Thinking phase, no content yet → placeholder on mutable row 19
+        // (TAIL_HEIGHT=6 in a 24-row terminal: mutable@19, status@20, panel@21-23).
         let term = render_term(&app);
         let buf = term.backend().buffer();
-        let mutable = row_text(buf, 20);
-        assert_eq!(mutable, "Thinking…", "mutable row 20: {mutable:?}");
+        let mutable = row_text(buf, 19);
+        assert_eq!(mutable, "Thinking…", "mutable row 19: {mutable:?}");
+        // Status line at row 20 (always present, c380).
+        assert!(
+            row_text(buf, 20).contains("Working"),
+            "status row 20: {:?}",
+            row_text(buf, 20)
+        );
         // Panel below: border@21, input@22, border@23.
         assert!(row_text(buf, 21).starts_with('─'), "panel top border");
         assert!(row_text(buf, 23).starts_with('─'), "panel bottom border");
@@ -557,8 +564,8 @@ mod cursor_tests {
 
     /// c365 route B: the mutable streaming row is transparent (no panel bg)
     /// so it blends into the scrollback; the panel input row carries the panel
-    /// bg. In an 80×24 terminal with TAIL_HEIGHT=5: mutable@20, border@21,
-    /// input@22, border@23. No spinner/thinking rows in the panel anymore.
+    /// bg. In an 80×24 terminal with TAIL_HEIGHT=6: mutable@19, status@20,
+    /// border@21, input@22, border@23 (c380 added the status row).
     #[test]
     fn streaming_mutable_transparent_panel_inner_has_bg() {
         let mut app = TuiApp::default();
@@ -569,18 +576,18 @@ mod cursor_tests {
         let bg = crate::app::tui::theme::palette().panel_bg();
         // Panel input row (22) carries panel bg.
         assert_eq!(buf[(0, 22)].bg, bg, "input row has bg");
-        // Mutable row (20) does NOT carry panel bg — transparent.
+        // Mutable row (19) does NOT carry panel bg — transparent.
         assert_eq!(
-            buf[(0, 20)].bg,
+            buf[(0, 19)].bg,
             ratatui_core::style::Color::Reset,
-            "mutable row 20 should be transparent, text={:?}",
-            row_text(buf, 20)
+            "mutable row 19 should be transparent, text={:?}",
+            row_text(buf, 19)
         );
         // The mutable row carries the streaming text.
         assert!(
-            row_text(buf, 20).contains("abcdefghij"),
+            row_text(buf, 19).contains("abcdefghij"),
             "mutable row has the streaming text: {:?}",
-            row_text(buf, 20)
+            row_text(buf, 19)
         );
     }
 }

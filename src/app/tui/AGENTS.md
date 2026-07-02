@@ -23,8 +23,9 @@
   - `mutable_line.rs` — `MutableLine`：pending_tail 顶行（caller 经 `MutableKind` 选 style：thinking 灰/text 正常/tool 黄，透明 bg 融进 scrollback，紧贴面板 top-anchored）。
   - `input_prompt.rs` — `InputPrompt`：输入框（无 `❯` 前缀，MVP 单行）。
   - `bottom_panel.rs` — `BottomPanel`：带 border + panel_bg 的 chrome 容器，**只含 InputPrompt**，固定 3 行（idle 不填满 tail 区）。
-  - `tail.rs` — `Tail`：组合 MutableLine（顶）+ BottomPanel（底）；`draw_tail_frame` 退化为此。
-  - `spinner.rs` — `Spinner`：单 glyph spinner（底层可复用，**当前未接线**——活动指示靠 `Thinking…` / 流式文字）。
+  - `tail.rs` — `Tail`：组合 MutableLine（顶）+ StatusLine（中）+ BottomPanel（底）；`draw_tail_frame` 退化为此。
+  - `status_line.rs` — `StatusLine`：固定 1 行三段式状态栏（c380，left=spinner+活动标签 / center=Turn 轮数 / right=模型名），数据驱动消费 `status_segments()`，可扩展骨架。
+  - `spinner.rs` — `Spinner`：单 glyph spinner（被 StatusLine 接线渲染，帧由 Tick 推进的 `spinner_idx` 驱动）。
 
 ## TUI 专属约束（normative）
 
@@ -43,8 +44,7 @@
 已知但**故意暂不做**的事，登记在此避免重复评估。需做时开独立变更。
 
 - **多行编辑器**：当前 `input.rs` 是 MVP 单行；未来支持方向键 + 最多 3 行。
-- **`StatusBar`（统计 + 模型名）**：底部信息栏，待 TUI 主体稳定后加。
-- **Spinner 接线**：`spinner.rs` + `app.rs::spinner_idx` 已就位但未渲染（活动指示靠 `Thinking…`/流式文字）；接不接由真实体验决定。
+- **状态栏扩展项**：`StatusLine`（c380）三段骨架已就位，未来可加 token 计数 / 耗时 / 上下文窗口占用等（往 `status_segments()` 对应段加内容，不改 widget）。
 - **FrameScheduler / EventBroker pause-resume**：codex 的帧调度与事件暂停机制，当前每帧全量重绘够用，未引入。
 - **统一 dispatch（c335）**：TUI 的 slash 命令当前是本地 MVP 分发（`commands.rs`），等 c335 落地共享 dispatch 后切换。
 

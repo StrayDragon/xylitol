@@ -12,9 +12,11 @@ pub mod bottom_panel;
 pub mod input_prompt;
 pub mod mutable_line;
 pub mod spinner;
+pub mod status_line;
 pub mod tail;
 pub mod transcript_line;
 
 pub use spinner::Spinner;
+pub use status_line::StatusLine;
 pub use tail::Tail;
 pub use transcript_line::TranscriptLine;
