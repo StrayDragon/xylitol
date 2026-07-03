@@ -170,7 +170,10 @@ fn pipe_to_command(cmd: &str, args: &[&str], text: &str) -> ClipboardResult {
 
 /// Spawn a command asynchronously (detached stdin pipe).
 ///
-/// Used for wl-copy which daemonizes and would hang a synchronous wait.
+/// Used for wl-copy which daemonizes and would hang a synchronous wait. We
+/// poll for up to ~500ms; if the child is still alive by then, we treat it as
+/// daemonized (wl-copy holds the selection in the background by design) and
+/// report success without blocking forever.
 #[cfg(target_os = "linux")]
 fn spawn_detached(cmd: &str, text: &str) -> ClipboardResult {
     use std::io::Write;
@@ -190,8 +193,25 @@ fn spawn_detached(cmd: &str, text: &str) -> ClipboardResult {
         let _ = stdin.write_all(text.as_bytes());
     }
 
-    // Do wait briefly — wl-copy on most systems exits after processing stdin
-    let _ = child.wait();
+    // Poll briefly. wl-copy exits promptly on most systems after taking the
+    // selection; where it daemonizes (holding the selection), it stays alive
+    // until replaced — a blocking wait() would hang forever (the
+    // test_copy_to_clipboard_no_panic regression). Give it 500ms, then let go.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_status)) => break,
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Ok(None) => {
+                // Still running after the deadline — daemonized. Best-effort
+                // kill is wrong (would lose the selection); leave it be.
+                break;
+            }
+            Err(_e) => break,
+        }
+    }
 
     ClipboardResult::Copied
 }
