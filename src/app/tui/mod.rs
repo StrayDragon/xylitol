@@ -223,7 +223,12 @@ async fn repl_loop(
                     InputOutcome::Slash(body) => {
                         match dispatch(&body, driver).await {
                             CommandOutcome::Quit => break,
-                            CommandOutcome::Handled => {}
+                            CommandOutcome::Handled(msg) => {
+                                if let Some(text) = msg {
+                                    term.commit_to_scrollback(&[RenderedLine::Status(text)])
+                                        .map_err(|e| format!("commit: {e}"))?;
+                                }
+                            }
                             CommandOutcome::Unknown(msg) => {
                                 term.commit_to_scrollback(&[RenderedLine::Status(msg)])
                                     .map_err(|e| format!("commit: {e}"))?;

@@ -1,6 +1,7 @@
 //! Server runtime — second composition root for xylitol.
 //!
-//! Constructs the agent with port injections (XySessionStore/XyEventSink), builds
+//! Constructs the agent via the shared [`bootstrap`](crate::app::core::bootstrap)
+//! path (config → registry → trust → resource discovery → build_agent), builds
 //! the REST and WS routers, acquires the single-instance lock, and starts
 //! the HTTP server with graceful shutdown.
 
@@ -11,14 +12,11 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tower_http::cors::CorsLayer;
 
-use crate::agent::compaction::CompactionSettings;
-use crate::agent::model::registry::ModelRegistry;
-use crate::app::core::composition::{BuildAgentOptions, build_agent};
+use crate::app::core::bootstrap::{BootstrapError, BootstrapInput, bootstrap};
 use crate::app::server::lock::{LockInfo, ServerLock};
 use crate::app::server::port_retry::{self, PORT_RETRY_LIMIT};
 use crate::app::server::rest::{self, AppState};
 use crate::app::server::ws::{EventJournal, ReverseRpcGateway};
-use crate::infra::config::value::InfraSecretResolver;
 
 /// Handle to a running server. Dropping this triggers graceful shutdown.
 pub struct RunningServer {
@@ -49,16 +47,16 @@ impl Drop for RunningServer {
 }
 
 /// Configuration for starting the server.
+///
+/// Agent assembly fields (model registry, system prompt, compaction, ...) are
+/// intentionally absent: the server shares the [`bootstrap`] assembly path with
+/// print/tui (spec ce9), so it discovers config, resources, and trust from the
+/// current environment just like print mode. Only transport-level knobs live here.
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
     pub lock_path: Option<std::path::PathBuf>,
     pub sessions_dir: Option<std::path::PathBuf>,
-    pub model_registry: ModelRegistry,
-    pub system_prompt: Option<String>,
-    pub max_iterations: u32,
-    pub compaction_threshold: f64,
-    pub compaction_settings: Option<CompactionSettings>,
 }
 
 impl Default for ServerConfig {
@@ -68,11 +66,6 @@ impl Default for ServerConfig {
             port: 8080,
             lock_path: None,
             sessions_dir: None,
-            model_registry: ModelRegistry::new(Arc::new(InfraSecretResolver::new())),
-            system_prompt: None,
-            max_iterations: 50,
-            compaction_threshold: 0.8,
-            compaction_settings: None,
         }
     }
 }
@@ -91,24 +84,28 @@ pub async fn start(
 ) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
     let cancel = CancellationToken::new();
 
-    // ── Agent construction ─────────────────────────────────────────
-    let cwd = std::env::current_dir()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-    let agent = build_agent(BuildAgentOptions {
-        model_registry: config.model_registry.clone(),
-        system_prompt: config.system_prompt,
-        // Server mode: no AGENTS.md context_files / append_system_prompt
-        // wired (server is headless; resource discovery is the caller's job).
-        context_files: Vec::new(),
-        append_system_prompt: Vec::new(),
-        max_iterations: config.max_iterations,
-        compaction_threshold: config.compaction_threshold,
-        cwd,
-        compaction_settings: config.compaction_settings,
-        permission: None,
+    // ── Agent construction (shared bootstrap path — spec ce9) ──────
+    // The server assembles the agent via the same bootstrap as print/tui, so
+    // config load, resource discovery (AGENTS.md context_files,
+    // append_system_prompt), trust resolution, and compaction settings all
+    // apply identically. The previous headless shortcut (empty context_files,
+    // caller-supplied registry) is removed: server no longer ships a
+    // simplified copy of the assembly path.
+    let bootstrapped = bootstrap(BootstrapInput {
+        config_path: None,
+        session: None,
+        model: None,
+        trust_override: None,
+        interactive: false,
+    })
+    .map_err(|e| match e {
+        BootstrapError::NoModelsAvailable => {
+            "no models available: set OPENAI_API_KEY/ANTHROPIC_API_KEY or a config file".to_string()
+        }
+        BootstrapError::BuildFailed(msg) => msg,
     })?;
+    let agent = bootstrapped.agent;
+    let model_registry = agent.inner().model_registry().clone();
 
     // ── Server state ──────────────────────────────────────────────
     let session_id = format!("srv-{}", uuid::Uuid::new_v4());
@@ -118,7 +115,7 @@ pub async fn start(
         agent: Arc::new(Mutex::new(agent)),
         journal: Arc::new(Mutex::new(journal)),
         gateway,
-        model_registry: config.model_registry,
+        model_registry,
     });
 
     // ── Lock acquisition ──────────────────────────────────────────

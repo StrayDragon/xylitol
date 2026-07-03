@@ -1,6 +1,7 @@
 kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ip9,"dispatch-residence","The execution semantics of protocol::Command variants (what a Command does when dispatched) MUST live in app::core::dispatch and MUST be consumed identically by rpc and tui; transport-specific Command variants (Subscribe, ApproveTool, AnswerQuestion that require a live WS session) MUST remain in the server/ws layer and MUST NOT leak into app::core::dispatch.",null,null,null
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ip9,"dispatch-residence","The execution semantics of protocol::Command variants (what a Command does when dispatched) MUST live in app::core::dispatch and MUST be consumed by tui; transport-specific Command variants (Subscribe, ApproveTool, AnswerQuestion that require a live WS session) MUST remain in the server/ws layer and MUST NOT leak into app::core::dispatch.",null,null,null
+  remove_requirement,ip4,null,null,null,null,null
 op_scenarios[2]{req_id,id,given,when,then}:
   ip9,"ws-variants-stay-in-server","","app::core::dispatch source is inspected","it does NOT contain Subscribe, ApproveTool, or AnswerQuestion handling; those remain in server/ws.rs"
-  ip9,"single-dispatch-impl","rpc and tui both dispatch Command::SetModel",the execution path is traced,"both reach the same app::core::dispatch function, not two parallel implementations"
+  ip9,"tui-dispatch-path",tui dispatches Command::SetModel,the execution path is traced,"it reaches app::core::dispatch backed by the Driver, not a parallel tui-local implementation"

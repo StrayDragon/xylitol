@@ -2128,98 +2128,10 @@ async fn test_hook_provider_response(agent: AgentState) {}
 async fn test_hook_empty_noop(agent: AgentState) {}
 
 // ═══════════════════════════════════════════════════════════════════
-// rpc.feature — RPC protocol over stdio
+// server.feature — Server lifecycle
 // ═══════════════════════════════════════════════════════════════════
 
 use xylitol::app::server::lock::{LockInfo, ServerLock, ServerLockedError};
-use xylitol::protocol::{Command, Event};
-
-/// Fixture for RPC tests — captures emitted events.
-pub struct RpcTest {
-    pub last_event: RefCell<Option<Event>>,
-}
-impl RpcTest {
-    fn new() -> Self {
-        Self {
-            last_event: RefCell::new(None),
-        }
-    }
-}
-
-#[fixture]
-fn rpc_test() -> RpcTest {
-    RpcTest::new()
-}
-
-#[given("RPC 传输已启动")]
-fn rpc_started() -> RpcTest {
-    RpcTest::new()
-}
-
-#[when("发送 Subscribe 命令")]
-fn send_subscribe(rpc_test: &mut RpcTest) {
-    let event = handle_rpc_command(&Command::Subscribe {
-        id: None,
-        session_id: "test-session".into(),
-        last_seq: 0,
-    });
-    rpc_test.last_event.replace(event);
-}
-
-#[when("发送 ApproveTool 命令")]
-fn send_approvetool(rpc_test: &mut RpcTest) {
-    let event = handle_rpc_command(&Command::ApproveTool {
-        id: None,
-        call_id: "call-1".into(),
-        approved: true,
-    });
-    rpc_test.last_event.replace(event);
-}
-
-#[then("错误事件包含 requires WebSocket connection")]
-fn check_error_websocket(rpc_test: &mut RpcTest) {
-    let event = rpc_test.last_event.borrow();
-    match event.as_ref() {
-        Some(Event::Error { message, .. }) => {
-            assert!(
-                message.contains("requires WebSocket connection"),
-                "expected error containing 'requires WebSocket connection', got: {message}"
-            );
-        }
-        other => panic!("expected Error event, got: {other:?}"),
-    }
-}
-
-/// Simulate RPC command dispatch inline (mirrors interactive::rpc::dispatch logic).
-fn handle_rpc_command(cmd: &Command) -> Option<Event> {
-    match cmd {
-        Command::Subscribe { .. } => Some(Event::Error {
-            id: None,
-            message: "subscribe requires WebSocket connection (not stdio RPC)".into(),
-        }),
-        Command::ApproveTool { call_id, .. } => Some(Event::Error {
-            id: None,
-            message: format!("approve_tool requires WebSocket connection (call_id={call_id})"),
-        }),
-        _ => None,
-    }
-}
-
-// rpc.feature scenarios
-#[scenario(
-    path = "tests/features/rpc.feature",
-    name = "Subscribe 命令在 stdio 下被拒绝"
-)]
-fn test_rpc_subscribe_rejected(rpc_test: RpcTest) {}
-#[scenario(
-    path = "tests/features/rpc.feature",
-    name = "ApproveTool 命令在 stdio 下被拒绝"
-)]
-fn test_rpc_approvetool_rejected(rpc_test: RpcTest) {}
-
-// ═══════════════════════════════════════════════════════════════════
-// server.feature — Server lifecycle
-// ═══════════════════════════════════════════════════════════════════
 
 /// Fixture for server tests.
 pub struct ServerTest {
