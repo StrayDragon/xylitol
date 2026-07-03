@@ -108,6 +108,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         model: args.model.clone(),
         trust_override,
         interactive: false, // print mode has no interactive trust UI
+        caller: "cli",
     };
 
     // `--list-models` needs the resolved registry before any agent build; it
