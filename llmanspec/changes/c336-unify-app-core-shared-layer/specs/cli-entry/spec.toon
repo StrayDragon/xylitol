@@ -1,9 +1,15 @@
 kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
+ops[8]{op,req_id,title,statement,from,to,name}:
   add_requirement,ce9,"assembly-via-bootstrap","cli/mod.rs::run MUST NOT inline agent assembly; it MUST call app::core::bootstrap to obtain a constructed agent, and server/runtime.rs MUST also call app::core::bootstrap with resource discovery (context_files, append_system_prompt) enabled so server no longer ships a simplified headless copy.",null,null,null
-  add_requirement,ce10,"dispatch-via-shared","rpc.rs and tui/commands.rs MUST NOT carry their own Command variant execution logic; both MUST delegate to app::core::dispatch, so that SetModel/CycleModel/Abort/Compact/GetState and all other Command variants execute identically across rpc and tui surfaces.",null,null,null
+  add_requirement,ce10,"dispatch-via-shared","tui/commands.rs MUST NOT carry its own Command variant execution logic; it MUST delegate to app::core::dispatch so that SetModel/CycleModel/Abort/Compact/GetState and all other Command variants execute via the shared Driver-backed dispatcher.",null,null,null
+  add_requirement,ce11,"rpc-removed","The stdio RPC mode (src/app/rpc.rs, the --rpc CLI flag, the rpc cargo feature, and rpc1-rpc5 requirements) MUST be removed; the prior rpc implementation violated spec ip4 (it was a 784-line heavy dispatcher, not the thin stdio transport ip4 mandated) and had zero external consumers and zero real dispatch test coverage. Server WS/REST covers the remote/embedded use case rpc claimed.",null,null,null
+  remove_requirement,rpc1,null,null,null,null,null
+  remove_requirement,rpc2,null,null,null,null,null
+  remove_requirement,rpc3,null,null,null,null,null
+  remove_requirement,rpc4,null,null,null,null,null
+  remove_requirement,rpc5,null,null,null,null,null
 op_scenarios[4]{req_id,id,given,when,then}:
   ce9,"server-gets-resource-discovery",a server run with an AGENTS.md present in cwd,"server/runtime.rs calls app::core::bootstrap","context_files and append_system_prompt are discovered and injected into the agent, matching print mode behavior (no longer headless-skipped)"
   ce9,"print-unchanged",print mode before and after c336,the same prompt is run,"the output is byte-identical (assembly path下沉 does not change print behavior)"
-  ce10,"tui-model-works",the TUI is running,the user types /model to cycle or /model <id> to set,"the model is switched via app::core::dispatch (not a stub error) and the rpc /model path produces identical results"
-  ce10,"rpc-dispatch-unchanged",rpc mode before and after c336,SetModel/CycleModel/Abort/Compact/GetState commands are dispatched,each behaves identically (dispatch下沉 does not change rpc command behavior)
+  ce10,"tui-model-works",the TUI is running,the user types /model to cycle or /model <id> to set,"the model is switched via app::core::dispatch (not a stub error)"
+  ce11,"rpc-files-gone",the source tree is inspected after c336,"src/app/rpc.rs, the --rpc flag in CliArgs, the rpc cargo feature, and tests/features/rpc.feature are checked","none of them exist (rpc mode fully removed)"

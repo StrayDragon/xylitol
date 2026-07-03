@@ -74,10 +74,8 @@ unicode-width = { version = "0.2", optional = true }
 
 [features]
 default = ["cli"]
-# CLI composition root (implies rpc because the CLI can dispatch to stdio RPC mode).
-cli = ["rpc"]
-# stdio RPC transport.
-rpc = []
+# CLI composition root.
+cli = []
 # Always-on HTTP/WebSocket server.
 server = ["dep:axum", "dep:tokio-tungstenite", "dep:tower-http"]
 # Terminal UI (ratatui-core/crossterm backend; ratatui-widgets optional subset — c360).
