@@ -55,6 +55,10 @@ pub struct BootstrapInput {
     /// Whether to run interactively (affects trust UI callback). print/server
     /// pass `false`; a future interactive trust prompt would pass `true`.
     pub interactive: bool,
+    /// Diagnostic label identifying the calling surface (e.g. "print", "server",
+    /// "tui", "list-models"). Appears in tracing spans so log readers can tell
+    /// which surface triggered an assembly. Not used for control flow.
+    pub caller: &'static str,
 }
 
 /// Structured diagnostics produced during assembly, surfaced to the caller for
@@ -355,6 +359,23 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         let append = loader.get_append_system_prompt().to_vec();
         (templates, ctx, sys, append)
     };
+    tracing::debug!(
+        caller = %input.caller,
+        trusted = project_trusted,
+        cwd = %cwd,
+        context_files = context_files.len(),
+        templates = discovered_templates.len(),
+        append_system_prompt = append_system_prompt.len(),
+        loader_system_prompt = loader_system_prompt.is_some(),
+        "resource discovery resolved"
+    );
+    for (path, content) in &context_files {
+        tracing::debug!(
+            context_file = %path,
+            bytes = content.len(),
+            "context file discovered"
+        );
+    }
 
     // ── Step 3b2: compaction settings ─────────────────────────────
     let compaction_settings = {

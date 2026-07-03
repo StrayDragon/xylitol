@@ -97,6 +97,7 @@ pub async fn start(
         model: None,
         trust_override: None,
         interactive: false,
+        caller: "server",
     })
     .map_err(|e| match e {
         BootstrapError::NoModelsAvailable => {
