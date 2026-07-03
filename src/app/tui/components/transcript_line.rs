@@ -5,15 +5,17 @@
 //! by the `insert_before` commit path (`InlineTerminal::commit_to_scrollback`)
 //! and by `TestBackend` tests. Splitting it out as a widget (c365) lets the
 //! commit path and the render harness share one verified implementation
-//! instead of duplicating a cell loop.
+//! instead of duplicating a cell loop. Since c355, `UserInput`/`AssistantText`
+//! render through `MarkdownRenderer` (`to_lines`), so this widget may produce
+//! multiple styled lines per `RenderedLine`.
 
 use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 use ratatui_core::text::Line;
 use ratatui_core::widgets::Widget;
-use ratatui_widgets::paragraph::{Paragraph, Wrap};
+use ratatui_widgets::paragraph::Paragraph;
 
-use crate::app::tui::render::{RenderedLine, wrap_line_to_width};
+use crate::app::tui::render::RenderedLine;
 
 /// Renders a single finalized [`RenderedLine`] into a buffer area, wrapping at
 /// `width` (CJK-aware). The caller MUST size the area height to
@@ -29,9 +31,12 @@ impl<'a> TranscriptLine<'a> {
     }
 
     /// The wrapped physical rows at `width`. Used by the commit path to size
-    /// the `insert_before` area before rendering.
+    /// the `insert_before` area before rendering. Since c355, markdown variants
+    /// (`UserInput`/`AssistantText`) yield multiple already-wrapped lines via
+    /// `to_lines`; other variants return a single line (wrapped by `Paragraph`
+    /// at render time).
     pub fn rows(&self) -> Vec<Line<'static>> {
-        wrap_line_to_width(&self.rendered.to_line(), self.width)
+        self.rendered.to_lines(self.width)
     }
 
     /// Number of physical rows this line occupies at `width`.
@@ -42,13 +47,10 @@ impl<'a> TranscriptLine<'a> {
 
 impl Widget for TranscriptLine<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        // Paragraph::wrap reflows the line to the area width, handling CJK
-        // double-width filler correctly (ratatui-widgets reflow). This matches
-        // the c360 commit-harness behavior pinned by the CJK regression tests.
-        let text = ratatui_core::text::Text::from(vec![self.rendered.to_line()]);
-        Paragraph::new(text)
-            .wrap(Wrap { trim: false })
-            .render(area, buf);
+        // `rows()` already wraps markdown variants to `width`; non-markdown
+        // single-line variants get reflowed by `Paragraph` (CJK-correct).
+        let text = ratatui_core::text::Text::from(self.rows());
+        Paragraph::new(text).render(area, buf);
     }
 }
 

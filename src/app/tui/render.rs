@@ -7,8 +7,7 @@
 //!   lives in `components/`.
 //! - the [`RenderedLine`] UI-data type + the single `xyevent_to_rendered` seam
 //!   (spec tui42: rendering consumes only `RenderedLine`, never `XyEvent`).
-//! - wrapping helpers (`wrap_to_width` / `wrap_line_to_width`) shared by the
-//!   commit path and the widgets.
+//! - wrapping helpers (`wrap_to_width`, shared with the markdown renderer).
 //!
 //! Pure functions are preferred (no terminal side effects) so they can be
 //! unit-tested without a real terminal. The c365 escape-sequence path
@@ -18,10 +17,11 @@
 
 use ratatui_core::layout::Rect;
 use ratatui_core::terminal::Frame;
-use ratatui_core::text::Line;
+use ratatui_core::text::{Line, Span};
 use ratatui_core::widgets::Widget;
 
 use crate::app::tui::app::TuiApp;
+use crate::app::tui::components::markdown::{MarkdownStyle, render_markdown};
 use crate::app::tui::components::tail::input_cursor_position;
 use crate::app::tui::components::{Tail, TranscriptLine};
 use crate::app::tui::theme;
@@ -88,6 +88,39 @@ impl RenderedLine {
                 Line::styled(format!("[{name}] {preview}"), style)
             }
             RenderedLine::Status(msg) => Line::styled(msg.clone(), p.text_dim()),
+        }
+    }
+
+    /// Render this UI data into styled ratatui `Line`s, multi-line for markdown
+    /// variants (c355). `UserInput` and `AssistantText` render through the
+    /// shared `MarkdownRenderer` (spec tui60), differing only in the injected
+    /// `MarkdownStyle`; the other variants are single-line (`vec![self.to_line()]`).
+    ///
+    /// `width` is used for CJK-aware paragraph wrapping inside the renderer.
+    pub fn to_lines(&self, width: u16) -> Vec<Line<'static>> {
+        let p = theme::palette();
+        match self {
+            RenderedLine::UserInput(prompt) => {
+                let style = MarkdownStyle::for_user(&p);
+                let mut lines = render_markdown(prompt, width, &style);
+                // Prepend the `❯ ` marker as a leading span on the first line
+                // (kept out of markdown parsing so `#` in user input still
+                // renders structurally but stays visually marked as user echo).
+                if let Some(first) = lines.first_mut() {
+                    first
+                        .spans
+                        .insert(0, Span::styled("❯ ".to_string(), p.user_prompt()));
+                } else {
+                    lines.push(Line::styled("❯ ".to_string(), p.user_prompt()));
+                }
+                lines
+            }
+            RenderedLine::AssistantText(text) => {
+                let style = MarkdownStyle::for_assistant(&p);
+                render_markdown(text, width, &style)
+            }
+            // Single-line variants: no markdown.
+            _ => vec![self.to_line()],
         }
     }
 }
@@ -168,17 +201,6 @@ pub fn wrap_to_width(text: &str, width: u16) -> Vec<String> {
         rows.push(String::new());
     }
     rows
-}
-
-/// Wrap a styled [`Line`] into multiple [`Line`]s that each fit `width`.
-/// Preserves the original style on every wrapped row.
-pub fn wrap_line_to_width(line: &Line<'_>, width: u16) -> Vec<Line<'static>> {
-    let full: String = line.spans.iter().map(|s| s.content.to_string()).collect();
-    let style = line.spans.first().map(|s| s.style).unwrap_or_default();
-    wrap_to_width(&full, width)
-        .into_iter()
-        .map(|row| Line::styled(row, style))
-        .collect()
 }
 
 /// Total physical row count a slice of [`RenderedLine`]s occupies at `width`
