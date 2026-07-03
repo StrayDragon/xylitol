@@ -18,7 +18,7 @@
 - `app.rs` — `TuiApp` 状态机：输入缓冲 / 双 stream buffer（text + thinking）/ spinner frame / streaming 态；spawn 任务 drain `EventStream` → mpsc。
 - `render.rs` — `XyEvent → RenderedLine` 单一 seam + `RenderedLine` UI 数据类型 + wrap 工具 + `draw_tail_frame`（thin wrapper 委托 `Tail` widget + 设光标）。
 - `input.rs` — crossterm 键位 → `InputOutcome`（Submit/Slash/Abort/Quit/Idle）。MVP 单行输入。
-- `commands.rs` — slash 解析 `/exit` `/model`，复用 `protocol::Command` 语义（MVP 本地分发；统一 dispatch 是 c335 的职责）。
+- `commands.rs` — slash 解析 `/exit` `/model`，转 `protocol::Command` 经 `app::core::dispatch` 共享分发（c336 落地，backed by `Driver` trait）。
 - `theme.rs` — 语义颜色 token SSOT（`Palette`：primary/text_dim/assistant/user_prompt/tool/error/spinner/thinking + `panel_bg`/`panel_border`）。
 - `components/` — 可复用 widget（c365 组件化，每个 TestBackend 可独立验证，消费 UI 数据类型不碰 `XyEvent`/agent/infra）：
   - `transcript_line.rs` — `TranscriptLine`：`RenderedLine → Buffer`（wrap + CJK，含 `ThinkingText` 灰），insert_before commit 与 TestBackend 共用。
@@ -33,7 +33,7 @@
 
 下列是分层不变量之外的 TUI 局部约定：
 
-- **slash 命令语义复用** `crate::protocol::Command` 同名变体（对标 `app/rpc.rs::dispatch`），不另造命令体系。
+- **slash 命令语义复用** `crate::protocol::Command` 同名变体，经 `app::core::dispatch`（c336 共享分发，backed by `Driver` trait），不另造命令体系。
 - **颜色一律走** `theme.rs` 语义 token，组件不得硬编码颜色字面量。
 - **组件只负责呈现与局部交互**，禁止直接调 `Driver`、读写 agent/session 状态（即应用面 seam 约束的具体化，见 `src/AGENTS.md`）。
 - **依赖直依 ratatui-core + ratatui-crossterm**（c341），MUST NOT 引入 umbrella `ratatui` crate。c360 放宽了 widget 选型：`ratatui-widgets` 子集（`Paragraph`/`Block`/`List`/`ListState`/`Clear`）能复用就复用；当库 widget 不符合 inline 渲染需求（如特定 CJK/emoji 行为、自定义交互）时，MAY 基于 `ratatui-core` 原语（`Buffer`/`Layout`/`Style`/`Text`/`Widget` trait）自建独立 widget。选型由适配度驱动，不是一刀切。注意：`Widget` trait 在 `ratatui_core::widgets::Widget`，不在 `ratatui_widgets`。
@@ -48,7 +48,7 @@
 - **多行编辑器**：当前 `input.rs` 是 MVP 单行；未来支持方向键 + 最多 3 行。
 - **状态栏扩展项**：`StatusLine`（c380）三段骨架已就位，未来可加 token 计数 / 耗时 / 上下文窗口占用等（往 `status_segments()` 对应段加内容，不改 widget）。
 - **FrameScheduler / EventBroker pause-resume**：codex 的帧调度与事件暂停机制，当前每帧全量重绘够用，未引入。
-- **统一 dispatch（c335）**：TUI 的 slash 命令当前是本地 MVP 分发（`commands.rs`），等 c335 落地共享 dispatch 后切换。
+- **更多 slash 命令接入**：`/compact` `/export` `/session` 等经共享 dispatch（c336 已落地 dispatch + Driver trait 全套方法）逐步暴露，需配 TUI 交互组件（c355）。
 
 ## 编码约定
 
