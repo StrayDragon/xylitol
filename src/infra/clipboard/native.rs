@@ -226,6 +226,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "touches the real system clipboard (spawns wl-copy/xclip/pbcopy); \
+        run explicitly with --ignored. Skipped in the normal gate because \
+        Wayland wl-copy daemonizes and its background child inherits the test \
+        harness stdout/stderr pipes, deadlocking cargo test on a real desktop"]
     fn test_copy_to_clipboard_no_panic() {
         // In CI/headless environments, this will likely fall through to
         // an error or OSC 52 write (captured by test harness). No panic.
