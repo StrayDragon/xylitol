@@ -203,9 +203,11 @@ async fn repl_loop(
                         let (xy_tx, mut xy_rx) =
                             mpsc::unbounded_channel::<crate::domain::lifecycle::XyEvent>();
                         TuiApp::spawn_drain(stream, xy_tx, cancel);
+                        tracing::debug!(target: "xylitol::tui", len = prompt.len(), "turn submitted");
                         let main_tx = tx.clone();
                         tokio::spawn(async move {
                             while let Some(ev) = xy_rx.recv().await {
+                                tracing::trace!(target: "xylitol::tui", kind = ?std::mem::discriminant(&ev), "xy event");
                                 if main_tx.send(Msg::Xy(Box::new(ev))).is_err() {
                                     return;
                                 }
