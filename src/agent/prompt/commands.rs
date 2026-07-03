@@ -8,6 +8,15 @@
 //! - **Non-builtin commands** (from skills, prompts, extensions) carry a
 //!   [`SlashCommandSource`] and optional `source_path` for provenance.
 //! - Agent owns the dispatch logic (`dispatch_slash_command` in session.rs).
+//!
+//! NOTE: the builtin table + get_all_commands are currently consumed only via
+//! Driver::get_commands (backing GetCommands dispatch). The stdio rpc consumer
+//! that previously drove these was removed in c336 (zero external users, spec
+//! ip4 violation); tui/server slash-command surfaces will reactivate them as
+//! commands are exposed. ceiling: commands stay unused. upgrade: tui adds
+//! `/compact` `/export` etc. (c355 tui interactive components).
+
+#![allow(dead_code)]
 
 use crate::domain::source_info::SourceInfo;
 

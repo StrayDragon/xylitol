@@ -103,6 +103,34 @@ server/runtime.rs 当前**跳过** context_files / append_system_prompt（注释
 
 如果用户场景里 server 明确需要 headless（如远程纯计算），可在 `BootstrapInput` 加 `resource_discovery: ResourceDiscoveryMode::{Enabled, Skip}` 开关——但**默认 Enabled**（与 print 一致），server 若要 headless 显式传入 Skip。先不预制开关，等真有 headless 需求再加（YAGNI）。
 
+## rpc 模式的移除（实现期决策转向）
+
+原 design 设想把 rpc 也切换到共享 dispatch（选项 A 全量化）。但实现期调查发现 rpc 的真实状态：
+
+- **零外部消费者**：全仓库无 editor plugin / daemon / 文档引用 `--rpc`。README 无提及，configs 无 rpc 配置。spec tui3/c325 调研里 rpc 的设计意图是「嵌入 IDE/编辑器插件」，但目前没有这样的消费者。
+- **零真实测试覆盖**：`tests/features/rpc.feature` 的 2 个 scenario 是纯 mock（`bdd.rs:2194 handle_rpc_command` 是测试内本地函数，不调 rpc.rs）；rpc.rs 的 7 个单元测试只测 RpcState 缓存结构，不测 dispatch 执行。**rpc.rs 的 784 行 dispatch 核心逻辑无任何端到端测试**。
+- **现状已违反 spec ip4**：ip4 明确「rpc.rs MUST be reduced to a stdio transport」（薄传输层），但现状是 784 行的重实现（含无状态重建模型 + 全套命令执行）。
+- **执行模型根本冲突**：rpc 的 RpcState 持裸 agent + 元数据做「无状态按命令重建」（stdin 命令间隔久时释放 agent 省内存），与 InProcessDriver 的长驻有状态模型不兼容。强行统一需放弃 rpc 的重建机制 + 重写无测试网保护的 784 行。
+
+**决策：移除 rpc 模式，而非重写。**
+
+理由：
+1. 移除 784 行违反 spec 的重实现 > 重写它（无消费者、无测试网）。
+2. 消除 app-protocol spec ip4 的违反（rpc 本该是薄传输，删了反而合规）。
+3. 三面并存降为两面（print/tui 经 InProcessDriver + server 经 RemoteDriver），架构更聚焦。
+4. rpc 声称的「IDE 嵌入」用例，server (WS/REST) 能更好服务（多会话、远程、reverse-RPC 审批），且 server 已实现。rpc 的 stdio 传输是 server 出现前的过渡方案。
+5. 若将来真有 stdio 嵌入需求，可基于共享 dispatch + 薄 stdio 传输层重新实现（那时才有真实消费者驱动设计）。
+
+**移除范围**：
+- 删 `src/app/rpc.rs`（784 行）
+- 删 cli/mod.rs 的 `--rpc` flag + dispatch 分支
+- 删 `tests/features/rpc.feature` + bdd.rs 的 RpcTest/handle_rpc_command/rpc scenario
+- 删 `cli-entry` spec 的 rpc1-5（stdio-transport/command-coverage/event-streaming/signal-shutdown/id-correlation）
+- 删 `app-protocol` spec 的 ip4（rpc-becomes-transport）相关
+- 更新 c336 的 ce10：从「rpc 和 tui 都调共享 dispatch」改为「tui 调共享 dispatch；rpc 已移除」
+
+**保留**：protocol::Command/Event 词表不变（server/ws.rs 和 tui 仍消费）。
+
 ## 不在本变更范围
 
 - server/ws.rs 协议靠拢 protocol SSOT（`ClientFrame`/`ServerFrame` 与 `Command`/`Event` 的统一）——属 c345 范畴，待 remote/web 客户端真启动时做。
