@@ -10,6 +10,7 @@
 
 pub mod bottom_panel;
 pub mod input_prompt;
+pub mod markdown;
 pub mod mutable_line;
 pub mod spinner;
 pub mod status_line;
