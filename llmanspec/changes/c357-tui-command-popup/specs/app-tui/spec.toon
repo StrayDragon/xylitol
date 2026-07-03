@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,tui64,"command-popup","The TUI MUST provide a CommandPopup component (src/app/tui/components/command_popup.rs) that activates when the input starts with /, consumes the available slash commands from Driver::get_commands() (CommandInfo list), filters by the text after / using prefix matching, renders a dropdown of name plus description with the selected item highlighted, and composes ListSelection (from c356) for its list rendering. While the popup is active, key routing MUST be exclusive (arrow keys navigate the popup, not edit the input line); Tab or Enter completes the command into the input or executes it. Evidence: codex CommandPopup (bottom_pane/command_popup.rs) is a composer-embedded dropdown filtering by first token after /, reusing selection_popup_common row rendering; xylitol commands already come from Driver::get_commands() (c336 dispatch).",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  tui64,"activates-on-slash",the input buffer is empty,the user types /,"the CommandPopup activates showing available commands from Driver::get_commands()"
+  tui64,"composes-list-selection",the CommandPopup source is inspected,list rendering is checked,it composes ListSelection (c356) rather than reimplementing list row rendering
+  tui64,"key-routing-exclusive",the CommandPopup is active,the user presses arrow keys,they navigate the popup selection (not move the cursor in the input line)
+  tui64,"prefix-filter",the user has typed /mod,the popup filter is applied,only commands whose name starts with mod are shown (e.g. model)
