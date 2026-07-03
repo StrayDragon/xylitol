@@ -1,7 +1,7 @@
 ---
 change_id: c355-tui-markdown-render
 title: TUI Markdown 渲染组件（用户输入与 LLM 回复共用）
-status: draft
+status: proposed
 priority: 355
 depends_on: []
 author: agent
@@ -21,16 +21,32 @@ author: agent
 
 本变更新增 `MarkdownRenderer` 组件，消费已 finalize 的字符串产出 `Vec<Line<'static>>`（ratatui buffer 路径，沿 tui42/tui51）。**用户输入与 LLM 回复共用此组件**，差异只在样式 token（`palette.user_prompt()` vs `palette.assistant()`），保证两者视觉结构一致。
 
-## What Changes（草案，full 化时细化）
+## What Changes
 
-1. 新增 `src/app/tui/components/markdown.rs`，定义 `MarkdownRenderer`：
-   - 入口 `pub fn render_markdown(text: &str, width: u16, style: MarkdownStyle) -> Vec<Line<'static>>`
-   - `MarkdownStyle { text: Style, code_block_bg: Option<Color>, ... }` 由调用方注入（user/assistant 各一份）
-   - 基于 `pulldown-cmark`（Cargo.toml 加依赖；tui21 允许 fit-driven 库依赖）
-2. 支持的元素（阶段 1）：标题（#）、**粗体**/`code`、```` ``` 代码块 ````（背景色 + 缩进 + 语言标签，**不做语法高亮**）、`- 无序列表`、`> 引用`、段落换行（CJK 宽度，复用现有 unicode-width）
-3. `RenderedLine::UserInput` / `AssistantText` 的 `to_line` 改为经 `MarkdownRenderer` 产出**多行**（当前是单行 `Line`，需调整为 `Vec<Line>` 或在 commit 路径展开）
-4. 流式渲染：**阶段 1 只做 finalize 后的全量渲染**。mutable 顶行的流式文字仍走纯文本（现状），TurnEnd 提交到 scrollback 时才经 markdown 渲染。流式增量 markdown（codex 的「流式纯文本→结束后重渲替换」或 pi 的「全量重解析+缓存」）留后续
-5. 不做（阶段 1）：语法高亮（syntect）、表格、OSC8 超链接、流式增量解析
+### 1. 新增 `src/app/tui/components/markdown.rs` — MarkdownRenderer
+
+```rust
+pub struct MarkdownStyle { /* text/code_block_bg/code_inline/heading/list/quote 样式 token */ }
+pub fn render_markdown(text: &str, width: u16, style: &MarkdownStyle) -> Vec<Line<'static>>
+```
+
+基于 `pulldown-cmark`（Cargo.toml 加依赖，`tui` feature gate）。消费已 finalize 的字符串 + `MarkdownStyle`，产出 `Vec<Line<'static>>`（ratatui buffer 路径，沿 tui42/tui51）。MVP 支持元素（spec tui61）：标题（#）、**粗体**/`code` inline、```` ``` 代码块 ````（语言标签 + 背景色，**无 syntect 高亮**）、`- 无序列表`、`> 引用`、CJK 段落换行（复用现有 `unicode-width`）。
+
+### 2. user/assistant 共用 MarkdownRenderer（spec tui60）
+
+`RenderedLine::UserInput` 和 `AssistantText` 的渲染路径都经 `render_markdown(...)`，差异只在注入的 `MarkdownStyle`（`user_prompt()` palette vs `assistant()` palette）。用户输入的 `❯ ` 前缀作为首行独立 Span（不进 markdown 解析），避免 `# 标题` 被当成 heading。
+
+### 3. RenderedLine 渲染路径从单行改多行
+
+`to_line(&self) -> Line` 改为 `to_lines(&self, width: u16) -> Vec<Line<'static>>`（或新增 `to_lines` 保留 `to_line` 给非 markdown 变体）。`TranscriptLine::rows()` / `commit_height` / `render_commit_lines_into_buf` 同步调整为消费 `Vec<Line>`。
+
+### 4. 流式渲染不变（finalize 后才渲染 markdown）
+
+mutable 顶行的流式文字仍走纯文本（现状，spec tui61 streaming-stays-plain）；TextDelta 经 `insert_before` 提交到 scrollback 时才经 markdown 渲染。流式增量 markdown 留后续。
+
+## Capabilities
+
+- `app-tui`（修改）：新增 markdown 渲染约束（tui60 user/assistant 共用 + pulldown-cmark；tui61 MVP 元素范围 + 不做 syntect/表格/流式增量）。
 
 ## Capabilities
 
@@ -38,9 +54,13 @@ author: agent
 
 ## Impact
 
-- 新增 `src/app/tui/components/markdown.rs` + `pulldown-cmark` 依赖
-- 修改 `render.rs`（RenderedLine 渲染路径）、`Cargo.toml`
-- 风险：低-中。pulldown-cmark 是纯解析无 IO。RenderedLine 从单行变多行可能影响 commit 路径，需回归 CJK 换行（tui41）
+- **受影响代码**：
+  - 新增 `src/app/tui/components/markdown.rs`（MarkdownStyle + render_markdown + pulldown-cmark Event 遍历状态机）
+  - `src/app/tui/render.rs`：`RenderedLine::UserInput` / `AssistantText` 渲染路径改经 `render_markdown`，产出多行
+  - `src/app/tui/components/transcript_line.rs`：`rows()` / `row_count()` 消费 `Vec<Line>`（原消费单 `Line`）
+  - `Cargo.toml`：加 `pulldown-cmark`（`tui` feature gate）
+- **受影响规范**：`app-tui`（新增 tui60/tui61）。
+- **风险**：低-中。pulldown-cmark 是纯解析无 IO。`RenderedLine` 从单行变多行影响 commit 路径（`commit_height` / `render_commit_lines_into_buf`），需回归 CJK 换行（tui41 的 `commit_cjk_long_line_wraps_by_display_width` 等测试必须仍绿）。
 
 ## 调研证据（三家对比）
 
@@ -56,12 +76,3 @@ author: agent
 - 表格渲染——独立后续
 - 流式增量 markdown——独立后续
 - 列表选择器/审批浮层/命令面板——c356/c357
-
-## 约束草案（full 化时落 spec.toon）
-
-- user/assistant MUST 共用 MarkdownRenderer，差异只在 MarkdownStyle
-- MUST 基于 pulldown-cmark（不自写 parser）
-- 每个 markdown 元素渲染 MUST 可经 TestBackend 独立验证（tui41）
-- 渲染函数 MUST 消费 UI-only 数据（字符串 + MarkdownStyle），不 match XyEvent（tui42）
-- 阶段 1 MUST NOT 引入 syntect（代码块只做结构化：背景+缩进+语言标签）
-- 阶段 1 MUST NOT 做流式增量 markdown（finalize 后全量渲染即可）
