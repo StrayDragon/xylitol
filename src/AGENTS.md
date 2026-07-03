@@ -8,7 +8,7 @@
 
 下列依赖方向由 `src/tests.rs::arch_guard` 强制（代码是真值）。每条标注对应的守卫测试。
 
-- **组合根集中装配**（arch_guard `composition_root` 类约束）：只有组合根允许同时 import `agent` 与 `infra`——`app/core/composition.rs`（主组合根，唯一集中装配 `Agent`），以及次级组合根 `app/cli/mod.rs`、`app/server/subcommand.rs`、`app/rpc.rs`，在构造期注入 adapter。
+- **组合根集中装配**（arch_guard `composition_root` 类约束）：只有组合根允许同时 import `agent` 与 `infra`——`app/core/composition.rs`（主组合根，唯一集中装配 `Agent`），以及次级组合根 `app/cli/mod.rs`、`app/server/subcommand.rs`，在构造期注入 adapter。
 - **agent 层不依赖 infra**（守卫：`arch_guard::agent_does_not_import_infra_in_production`）：`agent` 永不 import `infra` 具体类型；只依赖 `domain` + `runtime_protocol`。
 - **infra 层不依赖 agent**（守卫：`arch_guard::infra_does_not_import_agent`）：`infra` 永不 import `agent`；只依赖 `domain` + `runtime_protocol`。
 - **domain 零内部依赖**：`domain` 不依赖任何 crate 内模块。
@@ -31,7 +31,7 @@ protocol ───────────────────────�
 - `infra/` — 运行时域，实现 `runtime_protocol/` 的 ports：`provider/`（LLM adapter，`adapter/` 含 anthropic/openai-completions/openai-responses + `factory`）、`tools/`（内建工具实现）、`session/`、`process/`、`config/`（`value.rs` 密钥解析）、`event/`、`hooks/`、`mcp/`、`resource/`、`trust/`、`permission/`、`settings/`、`git/`、`clipboard/`、`image/`、`bash_exec/`、`browser/`、`fs_watch/`、`update/`、`export/`（`StdExportIo`）。
 - `agent/` — 薄编排：`runtime/`（ReAct 循环 `react.rs`、`event.rs`、`hooks.rs`、`permission_router.rs`、`retry.rs`）、`session/`（`Agent` 可插拔能力聚合体）、`model/`（`registry`+`manager`+`resolver`+`manifest`）、`tools/`（`ToolSet`+`definition`，实现不在本层）、`compaction/`、`prompt/`（`system`/`commands`/`templates`）、`builder.rs`（`AgentBuilder`）。mod 级 re-export 是公共入口：`AgentBuilder`/`ReActAgent`/`Agent`/`AgentHooks`/`BeforeToolHook`/`XyEventStream`/`XyEvent`。交互层只从 `crate::agent::*` import。
 - `protocol/` — client↔core 线协议 SSOT：`command.rs`（`Command` 枚举）、`event.rs`（`Event` 枚举）、`transport.rs`。传输无关。
-- `app/` — 应用面 + 跨面 seam（`core/`）。**应用面状态**：`cli/print.rs` ✅（print 模式，默认，一次性 prompt → 流式 stdout）；`cli/mod.rs` 组合根 + mode 分发；`rpc.rs` 🟡（stdio 服务端在，仓库内无客户端消费）；`server/` 🟡（feature 门控 REST/WS，`RemoteDriver` 预留，`subcommand.rs` 管生命周期）；`tui/` ✅（inline REPL，`Viewport::Inline` + Driver seam，c340 落地 + c341 依赖瘦身 + c360 渲染 harness/RenderedLine seam + c365 流式 mutable-last-line/组件化，见 `src/app/tui/AGENTS.md`）；`gui.rs` 🔴 空占位。落地顺序 print → interactive → server-client → TUI，逐个端到端跑通再开下一个，禁止并行铺骨架。子目录细则见 `src/app/tui/AGENTS.md`。
+- `app/` — 应用面 + 跨面 seam（`core/`）。**应用面状态**：`cli/print.rs` ✅（print 模式，默认，一次性 prompt → 流式 stdout）；`cli/mod.rs` 组合根 + mode 分发 + 调 `app::core::bootstrap`（c336，装配集中化）；`server/` 🟡（feature 门控 REST/WS，`subcommand.rs` 管生命周期，经 `bootstrap` 装配）；`tui/` ✅（inline REPL，`Viewport::Inline` + Driver seam，c340 落地 + c341 依赖瘦身 + c360 渲染 harness/RenderedLine seam + c365 流式 mutable-last-line/组件化 + c336 `/model` 经共享 dispatch，见 `src/app/tui/AGENTS.md`）；`gui.rs` 🔴 空占位。rpc 已移除（c336：零消费者 + 784 行违反 spec ip4「薄传输」，remote 用例由 server WS/REST 承担）。`core/bootstrap.rs`（共享装配）+ `core/dispatch.rs`（共享 Command 分发，经 Driver trait）+ `core/composition.rs`（注入 ports）+ `core/driver.rs`（`InProcessDriver`/`RemoteDriver`）是跨面 seam，其余面经它们，不 reach agent/infra 内部。落地顺序 print → server → TUI，逐个端到端跑通再开下一个，禁止并行铺骨架。子目录细则见 `src/app/tui/AGENTS.md`。
 
 ## 跨层测试与守卫
 
