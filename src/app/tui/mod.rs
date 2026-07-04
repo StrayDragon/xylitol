@@ -31,6 +31,7 @@ mod input;
 mod render;
 mod terminal;
 mod theme;
+pub(crate) mod vendor;
 
 use std::sync::Arc;
 use std::time::Duration;
