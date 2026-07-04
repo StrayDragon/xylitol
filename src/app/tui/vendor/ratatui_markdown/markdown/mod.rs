@@ -1,0 +1,33 @@
+mod hooks;
+#[cfg(feature = "image")]
+pub mod image;
+mod inline;
+mod parser;
+mod render;
+mod text;
+mod types;
+
+pub use hooks::RenderHooks;
+#[cfg(feature = "image")]
+pub use image::{CropRect, ImagePlacement, ImageResolver, MarkdownRenderOutput, NoopImageResolver};
+pub use types::MarkdownBlock;
+
+pub struct MarkdownRenderer {
+    pub(crate) max_width: usize,
+    pub(crate) hooks: Option<Box<dyn RenderHooks>>,
+}
+
+impl MarkdownRenderer {
+    pub fn new(max_width: usize) -> Self {
+        Self {
+            max_width,
+            hooks: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_render_hooks(mut self, hooks: Box<dyn RenderHooks>) -> Self {
+        self.hooks = Some(hooks);
+        self
+    }
+}
