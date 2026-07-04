@@ -52,6 +52,7 @@ pub fn draw_tail_frame(frame: &mut Frame, app: &TuiApp) {
 /// This is the type the rendering layer consumes. Adding a new message kind is
 /// a new variant + a `to_line` arm; business-event churn does not touch the
 /// rendering layer (the seam function absorbs it).
+#[derive(Debug)]
 pub enum RenderedLine {
     /// The user's submitted prompt, echoed into history.
     UserInput(String),
