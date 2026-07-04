@@ -12,7 +12,7 @@
 - [x] 2.1 新增 TestBackend 测试：`[text](url)` → text + url 都可见；`<url>` → url 可见无尖括号；`[](url)` → 只 url。
 - [x] 2.2 回归现有 12 个 markdown 测试 + 全 lib 测试。
 - [x] 2.3 `just qa`（all-features）+ `arch_guard` 4 + `llman sdd validate --strict` 通过。
-- [ ] 2.4 归档 c371。
+- [x] 2.4 归档 c371。
 
 ## 反降级护栏
 
