@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,tui75,"defer-stream-commit-for-markdown-context","The TUI MUST defer committing assistant text (and thinking text) to scrollback until TurnEnd, accumulating the full turn text in the mutable region during streaming, so the markdown renderer receives complete fenced-code-block context and syntax highlighting is applied. Streaming text in the mutable region stays plain text during the turn; markdown rendering (with highlighting) applies only when the full text is committed at TurnEnd. Intermediate TurnEnds in a multi-round tool-calling turn each commit their own accumulated segment independently.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  tui75,"code-block-highlighted-after-turnend",an assistant reply containing a fenced code block streams in via TextDelta then TurnEnd arrives,the committed scrollback is inspected via TestBackend,"the code block renders with syntax highlighting (non-default styled spans), because the full text with fence context was rendered at TurnEnd"
+  tui75,"streaming-stays-plain-during-turn","TextDelta events are arriving mid-turn",the mutable region is rendered,the accumulated text shows as plain text (no markdown highlighting) in the mutable region
