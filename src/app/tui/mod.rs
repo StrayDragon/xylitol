@@ -184,7 +184,10 @@ async fn repl_loop(
                             if let Some(c) = current_cancel.take() {
                                 c.cancel();
                             }
-                            app.end_stream();
+                            let residual = app.end_stream();
+                            if !residual.is_empty() {
+                                let _ = term.commit_to_scrollback(&residual);
+                            }
                         }
                         // Echo the user's prompt to scrollback BEFORE the reply
                         // stream starts (修复 c340 §7 #3: user message was never
@@ -243,7 +246,10 @@ async fn repl_loop(
                             if let Some(c) = current_cancel.take() {
                                 c.cancel();
                             }
-                            app.end_stream();
+                            let residual = app.end_stream();
+                            if !residual.is_empty() {
+                                let _ = term.commit_to_scrollback(&residual);
+                            }
                         } else {
                             break;
                         }
@@ -274,10 +280,15 @@ async fn repl_loop(
                 term.draw_tail(app).map_err(|e| format!("draw: {e}"))?;
             }
             Msg::XyDone => {
-                // The agent stream ended: the whole user turn is done. Clear the
-                // mutable tail and reset streaming state. (`Tail` clears its area
-                // each frame and `end_stream` resets `pending_tail`.)
-                app.end_stream();
+                // The agent stream ended: the whole user turn is done. Commit
+                // any residual accumulated text (defensive — normal TurnEnd
+                // already committed; this catches abort-without-TurnEnd), then
+                // clear the mutable tail and reset streaming state.
+                let residual = app.end_stream();
+                if !residual.is_empty() {
+                    term.commit_to_scrollback(&residual)
+                        .map_err(|e| format!("commit: {e}"))?;
+                }
                 term.draw_tail(app).map_err(|e| format!("draw: {e}"))?;
             }
         }

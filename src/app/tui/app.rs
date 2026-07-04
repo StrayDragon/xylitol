@@ -17,7 +17,7 @@ use crate::domain::lifecycle::XyEvent;
 
 /// What the mutable line is currently showing, and how to style it.
 /// Read by the `Tail` widget to pick the style for `MutableLine`.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum MutableKind {
     /// Reasoning/thinking content (dim/gray).
     Thinking,
@@ -94,15 +94,14 @@ pub struct StatusSegments {
 #[derive(Default)]
 pub struct TuiApp {
     input: String,
-    /// Newline-gated streaming buffer for main reply text (TextDelta).
-    stream_buf: StreamBuffer,
-    /// Newline-gated streaming buffer for reasoning text (ThinkingDelta).
-    /// Thinking is part of the conversation body (gray, above the reply), not
-    /// a separate panel widget — it streams and commits like the reply.
-    thinking_buf: StreamBuffer,
-    /// Accumulated finalized assistant text for the current turn (kept for
-    /// compatibility; the live streaming view comes from stream_buf.pending_tail).
+    /// Accumulated assistant text for the current turn (c375: deferred commit).
+    /// TextDelta appends here during streaming; the full text is committed as
+    /// a single `AssistantText` at TurnEnd so render_markdown gets complete
+    /// fenced-code-block context for syntax highlighting.
     finalized: String,
+    /// Accumulated reasoning text for the current turn (c375: deferred commit,
+    /// same rationale as `finalized`).
+    thinking_finalized: String,
     streaming: bool,
     /// True while in the thinking phase (before the first TextDelta). The
     /// mutable line shows thinking content (or a `Thinking…` placeholder);
@@ -141,8 +140,7 @@ impl TuiApp {
         self.streaming = true;
         self.thinking_phase = true;
         self.finalized.clear();
-        self.stream_buf = StreamBuffer::default();
-        self.thinking_buf = StreamBuffer::default();
+        self.thinking_finalized.clear();
         self.tool_status = None;
     }
 
@@ -189,24 +187,17 @@ impl TuiApp {
         let mut rendered = xyevent_to_rendered(&event);
         match &event {
             XyEvent::ThinkingDelta(text) => {
-                // Thinking is conversation body (gray): stream + commit like
-                // the reply, but via the thinking buffer and ThinkingText lines.
-                self.thinking_buf.push(text);
-                let complete = self.thinking_buf.drain_complete_lines();
-                rendered.extend(complete.into_iter().map(RenderedLine::ThinkingText));
+                // c375: accumulate full thinking text; commit at TurnEnd so
+                // render_markdown gets complete context (code blocks, lists).
+                self.thinking_finalized.push_str(text);
             }
             XyEvent::TextDelta(text) => {
-                // Transition from thinking to text: flush the thinking buffer's
-                // pending tail as a final ThinkingText line, then switch phase.
-                if self.thinking_phase {
-                    if let Some(tail) = self.thinking_buf.finalize() {
-                        rendered.push(RenderedLine::ThinkingText(tail));
-                    }
-                    self.thinking_phase = false;
-                }
-                self.stream_buf.push(text);
-                let complete = self.stream_buf.drain_complete_lines();
-                rendered.extend(complete.into_iter().map(RenderedLine::AssistantText));
+                // Transition from thinking to text phase (no commit here —
+                // thinking text is committed at TurnEnd with the rest).
+                self.thinking_phase = false;
+                // c375: accumulate full assistant text; commit at TurnEnd so
+                // render_markdown gets complete fenced-code-block context.
+                self.finalized.push_str(text);
             }
             XyEvent::ToolExecutionStart { name, .. } => {
                 self.tool_status = Some(format!("⚙ running {name}"));
@@ -216,12 +207,18 @@ impl TuiApp {
                 self.tool_status = Some(format!("✓ {name} done"));
             }
             XyEvent::TurnEnd { .. } => {
-                // Flush any residual from both buffers.
-                if let Some(tail) = self.thinking_buf.finalize() {
-                    rendered.push(RenderedLine::ThinkingText(tail));
+                // c375: commit accumulated text as single blocks (full markdown
+                // context → highlighting works). Each intermediate TurnEnd in a
+                // multi-round tool-calling turn commits its own segment.
+                if !self.thinking_finalized.is_empty() {
+                    rendered.push(RenderedLine::ThinkingText(std::mem::take(
+                        &mut self.thinking_finalized,
+                    )));
                 }
-                if let Some(tail) = self.stream_buf.finalize() {
-                    rendered.push(RenderedLine::AssistantText(tail));
+                if !self.finalized.is_empty() {
+                    rendered.push(RenderedLine::AssistantText(std::mem::take(
+                        &mut self.finalized,
+                    )));
                 }
             }
             XyEvent::TurnStart { .. } | XyEvent::ModelSelect { .. } | XyEvent::Error(_) => {
@@ -240,12 +237,26 @@ impl TuiApp {
     /// otherwise linger until the next submit. The normal TurnEnd path already
     /// drains via `handle_xy_event` → `finalize`, so this is a no-op in the
     /// common case.
-    pub fn end_stream(&mut self) {
+    /// Called when the turn stream ends; resets streaming state. Returns any
+    /// residual accumulated text as finalized `RenderedLine`s (defensive — the
+    /// normal TurnEnd path already committed via `handle_xy_event`; this only
+    /// fires if the stream ended without a TurnEnd, e.g. abort mid-stream).
+    pub fn end_stream(&mut self) -> Vec<RenderedLine> {
+        let mut rendered = Vec::new();
+        if !self.thinking_finalized.is_empty() {
+            rendered.push(RenderedLine::ThinkingText(std::mem::take(
+                &mut self.thinking_finalized,
+            )));
+        }
+        if !self.finalized.is_empty() {
+            rendered.push(RenderedLine::AssistantText(std::mem::take(
+                &mut self.finalized,
+            )));
+        }
         self.streaming = false;
         self.thinking_phase = false;
         self.tool_status = None;
-        self.stream_buf = StreamBuffer::default();
-        self.thinking_buf = StreamBuffer::default();
+        rendered
     }
 
     // ── tail presentation ───────────────────────────────────────
@@ -260,15 +271,13 @@ impl TuiApp {
     pub fn pending_tail(&self) -> Option<(&str, MutableKind)> {
         use MutableKind as K;
         if self.thinking_phase {
-            let tail = self.thinking_buf.pending_tail();
-            if !tail.is_empty() {
-                return Some((tail, K::Thinking));
+            if !self.thinking_finalized.is_empty() {
+                return Some((&self.thinking_finalized, K::Thinking));
             }
             return Some(("Thinking…", K::Thinking));
         }
-        let text_tail = self.stream_buf.pending_tail();
-        if !text_tail.is_empty() {
-            return Some((text_tail, K::Text));
+        if !self.finalized.is_empty() {
+            return Some((&self.finalized, K::Text));
         }
         if let Some(status) = self.tool_status.as_deref() {
             return Some((status, K::Tool));
@@ -334,11 +343,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn textdelta_commits_on_newline_and_keeps_partial() {
+    fn textdelta_accumulates_without_committing() {
+        // c375: TextDelta defers commit to TurnEnd. During streaming, nothing
+        // is committed (empty Vec); the full text accumulates in pending_tail.
         let mut app = TuiApp::default();
         let a = app.handle_xy_event(XyEvent::TextDelta("hello\nworld".into()));
-        assert_eq!(a.len(), 1, "one complete line committed");
-        assert!(app.pending_tail().unwrap().0.contains("world"));
+        assert!(
+            a.is_empty(),
+            "no commit during streaming (deferred to TurnEnd)"
+        );
+        assert!(
+            app.pending_tail().unwrap().0.contains("hello\nworld"),
+            "full text in pending_tail: {:?}",
+            app.pending_tail()
+        );
     }
 
     #[test]
@@ -355,14 +373,43 @@ mod tests {
     #[test]
     fn end_stream_clears_pending() {
         // 修复 c340 §7 #4: end_stream (called on abort without TurnEnd) must
-        // also clear pending so no reply text lingers in the tail.
+        // also clear pending so no reply text lingers in the tail. c375: it
+        // also returns residual accumulated text for defensive commit.
         let mut app = TuiApp::default();
         app.start_stream();
         app.handle_xy_event(XyEvent::TextDelta("partial".into()));
         assert!(app.pending_tail().is_some());
-        app.end_stream();
+        let residual = app.end_stream();
+        assert_eq!(residual.len(), 1, "residual text returned for commit");
         assert!(app.pending_tail().is_none());
         assert!(!app.is_streaming());
+    }
+
+    #[test]
+    fn turnend_commits_full_code_block_with_fence_context() {
+        // c375 core: a fenced code block streamed across multiple TextDeltas
+        // must be committed as a SINGLE AssistantText at TurnEnd (full fence
+        // context), not line-by-line. This is what makes syntax highlighting work.
+        let mut app = TuiApp::default();
+        app.start_stream();
+        // Simulate the LLM streaming a code block in chunks:
+        for chunk in ["```rs\n", "fn main() ", "{}\n", "```\n"] {
+            app.handle_xy_event(XyEvent::TextDelta(chunk.into()));
+        }
+        // Nothing committed yet (deferred).
+        assert!(app.pending_tail().is_some(), "text accumulated in mutable");
+        // TurnEnd commits the full text as one block.
+        let end = app.handle_xy_event(XyEvent::TurnEnd { turn_index: 0 });
+        assert_eq!(end.len(), 1, "single AssistantText with full text");
+        match &end[0] {
+            RenderedLine::AssistantText(text) => {
+                assert!(text.contains("```rs"), "fence open preserved: {text}");
+                assert!(text.contains("fn main()"), "code body: {text}");
+                assert!(text.ends_with("```\n"), "fence close preserved: {text}");
+            }
+            other => panic!("expected AssistantText, got {other:?}"),
+        }
+        assert!(app.pending_tail().is_none(), "cleared after TurnEnd");
     }
 
     #[test]
