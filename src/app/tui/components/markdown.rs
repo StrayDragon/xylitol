@@ -150,13 +150,22 @@ mod tests {
     }
 
     #[test]
-    fn fenced_code_block_has_language_label() {
+    fn fenced_code_block_renders_content() {
+        // c371 follow-up: code blocks render with syntax highlighting only —
+        // no border frame (╭─/╰─) and no language label. The code body is the
+        // only content, visually set off by surrounding blank lines.
         let md = "```rs\nfn main() {}\n```\n";
         let (buf, h) = render_to_buf(md, 40);
-        // The vendored renderer draws a bordered code block; the language label
-        // appears on the header row. Find any row mentioning the language.
-        let found = (0..h).any(|y| row_text(&buf, y, 40).contains("rs"));
-        assert!(found, "language label 'rs' present somewhere: rows 0..{h}");
+        let found = (0..h).any(|y| row_text(&buf, y, 40).contains("fn main()"));
+        assert!(found, "code body renders: rows 0..{h}");
+        // No border frame glyphs anywhere.
+        for y in 0..h {
+            let row = row_text(&buf, y, 40);
+            assert!(
+                !row.contains('╭') && !row.contains('╰') && !row.contains('│'),
+                "no border frame on row {y}: {row}"
+            );
+        }
     }
 
     #[test]
