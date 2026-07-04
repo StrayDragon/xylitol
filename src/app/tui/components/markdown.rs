@@ -278,4 +278,46 @@ mod tests {
             "nested blockquote has >=2 prefix glyphs, got {prefix_count}: {row}"
         );
     }
+
+    #[test]
+    fn inline_link_renders_text_and_url() {
+        // spec tui72: [text](url) -> "text (url)" so URL is visible + copyable.
+        let md = "see [GitHub](https://github.com) now";
+        let (buf, _) = render_to_buf(md, 60);
+        let row = row_text(&buf, 0, 60);
+        assert!(row.contains("GitHub"), "link text visible: {row}");
+        assert!(
+            row.contains("https://github.com"),
+            "url visible for copy: {row}"
+        );
+        assert!(row.contains('(') && row.contains(')'), "parentheses: {row}");
+    }
+
+    #[test]
+    fn autolink_renders_bare_url() {
+        // spec tui72: <url> -> bare url (no angle brackets).
+        let md = "visit <https://example.com> today";
+        let (buf, _) = render_to_buf(md, 60);
+        let row = row_text(&buf, 0, 60);
+        assert!(
+            row.contains("https://example.com"),
+            "autolink url visible: {row}"
+        );
+        assert!(
+            !row.contains('<') && !row.contains('>'),
+            "no angle brackets: {row}"
+        );
+    }
+
+    #[test]
+    fn empty_link_text_just_url() {
+        // spec tui72: [](url) -> just the url.
+        let md = "[](https://bare.example)";
+        let (buf, _) = render_to_buf(md, 60);
+        let row = row_text(&buf, 0, 60);
+        assert!(
+            row.contains("https://bare.example"),
+            "url visible for empty link text: {row}"
+        );
+    }
 }
