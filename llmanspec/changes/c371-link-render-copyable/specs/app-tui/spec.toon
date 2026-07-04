@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,tui72,"link-renders-copyable-url","The TUI markdown renderer MUST render inline links in a copyable form: a [text](url) link MUST render as the link text followed by the full URL in parentheses (text (url)), and an angle-bracket autolink MUST render as the bare URL, so users can see and manually select-copy the URL in terminals where OSC8 clickable links are unsupported. The URL MUST be visually distinct (primary color plus underline); the wrapping parentheses MUST be dimmed. Empty link text MUST render just the URL.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  tui72,"inline-link-shows-url","an assistant reply containing a text-plus-url link is rendered via TestBackend",the buffer is inspected,"both the link text and the full URL are visible (URL in parentheses, suitable for manual copy)"
+  tui72,"autolink-renders-bare-url","a reply containing an angle-bracket autolink is rendered via TestBackend",the buffer is inspected,the URL renders without angle brackets and is copyable
