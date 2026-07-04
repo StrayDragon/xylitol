@@ -177,6 +177,10 @@ site/
 *.exe
 *.test
 vendor/
+# Keep Rust vendored sources (src/app/tui/vendor/, see c370). The bare
+# `vendor/` rule above is for Go; this un-ignores our TUI vendored crate.
+!src/app/tui/vendor/
+!src/app/tui/vendor/**
 *.out
 go.work
 
