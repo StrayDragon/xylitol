@@ -37,7 +37,7 @@
 - [x] 5.1 `just qa`（all-features）：lib + bdd + clippy/fmt 零 warning + doc 无 error。
 - [x] 5.2 `arch_guard` 4 通过（vendor 目录属 app::tui，无跨层违规）。
 - [x] 5.3 `llman sdd validate c370 --strict` 通过。
-- [ ] 5.4 归档 c370（tui70/tui71 合并；tui61 修订）。
+- [x] 5.4 归档 c370（tui70/tui71 合并；tui61 修订）。
 
 ## 反降级护栏自检
 
