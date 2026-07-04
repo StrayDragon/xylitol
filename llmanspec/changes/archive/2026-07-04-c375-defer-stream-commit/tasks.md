@@ -22,8 +22,8 @@
 
 ## 阶段 4：校验 + 归档
 
-- [ ] 4.1 `just qa`（all-features）+ `arch_guard` 4 + `llman sdd validate --strict` 通过。
-- [ ] 4.2 归档 c375。
+- [x] 4.1 `just qa`（all-features）+ `arch_guard` 4 + `llman sdd validate --strict` 通过。
+- [x] 4.2 归档 c375。
 
 ## 反降级护栏
 
