@@ -16,3 +16,4 @@
 //! 6. `virtual_terminal` — in-memory cell-grid test harness
 
 pub mod style;
+pub mod width;
