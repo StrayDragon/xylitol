@@ -54,6 +54,11 @@ impl InlineTerminal {
         Ok(())
     }
 
+    /// Terminal width in columns (for markdown rendering sizing).
+    pub fn width(&self) -> u16 {
+        crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80)
+    }
+
     /// Commit finalized [`RenderedLine`]s into the scrollback (never touched
     /// again). Lines are wrapped CJK-aware via the `TranscriptLine` widget; the
     /// `insert_before` area is sized to the wrapped row count (spec tui12/tui41).

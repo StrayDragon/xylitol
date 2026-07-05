@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,tui75,"stream-incremental-highlight","The TUI MUST render streaming assistant text incrementally: each TextDelta triggers a full re-render of the accumulated turn source via render_markdown, lines up to the last newline boundary (stable) are committed to scrollback WITH syntax highlighting, and the unstable tail stays in the mutable region (also highlighted, not plain text). This gives streaming-time line-by-line scrollback updates with full markdown/highlight context, unlike deferred-commit which blocks until TurnEnd. Code blocks render highlighted even with unclosed fences (verified: vendored parser tolerates unclosed fences).",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  tui75,"stream-lines-commit-with-highlight",TextDelta events stream a fenced code block line by line,each newline boundary is reached during streaming,"the completed line commits to scrollback with syntax highlighting (not deferred to TurnEnd, not plain text)"
+  tui75,"mutable-tail-highlighted",streaming text is in progress with an unterminated tail,the mutable region is rendered,"the tail shows markdown-highlighted content (not plain text)"
