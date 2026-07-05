@@ -75,8 +75,10 @@ impl RenderStyle {
 /// `width` is used for code-block line wrapping. Streaming text MUST NOT pass
 /// here (only finalized, committed text).
 pub fn render_markdown(text: &str, width: u16, style: RenderStyle) -> Vec<Line<'static>> {
+    use pulldown_cmark::Options;
+    let opts = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH;
     let mut writer = Writer::new(width as usize, style);
-    for event in Parser::new(text) {
+    for event in Parser::new_ext(text, opts) {
         writer.handle_event(event);
     }
     writer.finish();
@@ -107,6 +109,11 @@ struct Writer {
     pending_link_url: Option<String>,
     /// Display width of the current pending line (for paragraph wrapping).
     pending_width: usize,
+    /// Table cell accumulator: cells of the current row (plain text).
+    table_row_cells: Vec<String>,
+    /// All rows of the current table (header first). Each row is a Vec of
+    /// cell strings; rendered as aligned columns at End(Table).
+    table_rows: Vec<Vec<String>>,
 }
 
 #[derive(Clone, Copy)]
@@ -133,6 +140,8 @@ impl Writer {
             code_buf: String::new(),
             pending_link_url: None,
             pending_width: 0,
+            table_row_cells: Vec::new(),
+            table_rows: Vec::new(),
         }
     }
 
@@ -255,6 +264,16 @@ impl Writer {
                 self.blocks.push(Block::ListItem);
                 self.push_span(Span::styled("• ".to_string(), self.style.text));
             }
+            Tag::Table(_) => {
+                self.flush_line();
+                self.table_rows.clear();
+            }
+            Tag::TableHead | Tag::TableRow => {
+                self.table_row_cells.clear();
+            }
+            Tag::TableCell => {
+                // Cell text accumulates into pending; we capture it at End(TableCell).
+            }
             Tag::Strong => self.inline_mods.push(Modifier::BOLD),
             Tag::Emphasis => self.inline_mods.push(Modifier::ITALIC),
             Tag::Link { dest_url, .. } => {
@@ -285,6 +304,21 @@ impl Writer {
                 self.blocks.pop();
             }
             TagEnd::List(_) => {}
+            TagEnd::Table => {
+                self.flush_table();
+            }
+            TagEnd::TableHead | TagEnd::TableRow => {
+                // Collect the row's cells (pending held cell text sequentially).
+                let row = std::mem::take(&mut self.table_row_cells);
+                self.table_rows.push(row);
+            }
+            TagEnd::TableCell => {
+                // Capture cell text: join pending spans.
+                let cell: String = self.pending.iter().map(|s| s.content.to_string()).collect();
+                self.pending.clear();
+                self.pending_width = 0;
+                self.table_row_cells.push(cell.trim().to_string());
+            }
             TagEnd::Strong | TagEnd::Emphasis => {
                 self.inline_mods.pop();
             }
@@ -317,6 +351,49 @@ impl Writer {
         );
         self.lines.extend(code_lines);
         self.code_buf.clear();
+    }
+
+    /// Render accumulated table rows as aligned columns (no border lines).
+    /// Each column is padded to its max cell width; header row is bold.
+    fn flush_table(&mut self) {
+        let rows = std::mem::take(&mut self.table_rows);
+        if rows.is_empty() {
+            return;
+        }
+        // Compute column widths (max cell display width per column).
+        let n_cols = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+        if n_cols == 0 {
+            return;
+        }
+        let col_widths: Vec<usize> = (0..n_cols)
+            .map(|c| {
+                rows.iter()
+                    .filter_map(|r| r.get(c).map(|cell| unicode_width::UnicodeWidthStr::width(cell.as_str())))
+                    .max()
+                    .unwrap_or(0)
+            })
+            .collect();
+        for (row_idx, row) in rows.iter().enumerate() {
+            let is_header = row_idx == 0;
+            let style = if is_header {
+                self.style.heading
+            } else {
+                self.style.text
+            };
+            let mut spans: Vec<Span<'static>> = Vec::new();
+            for (c, cell) in row.iter().enumerate() {
+                if c > 0 {
+                    spans.push(Span::styled("  ".to_string(), style));
+                }
+                let cw = col_widths.get(c).copied().unwrap_or(0);
+                let cell_w = unicode_width::UnicodeWidthStr::width(cell.as_str());
+                spans.push(Span::styled(cell.clone(), style));
+                if cell_w < cw {
+                    spans.push(Span::styled(" ".repeat(cw - cell_w), style));
+                }
+            }
+            self.lines.push(Line::from(spans));
+        }
     }
 
     fn finish(&mut self) {
@@ -428,3 +505,5 @@ mod tests {
         assert!(row.contains("GitHub") && row.contains("https://github.com"));
     }
 }
+
+
