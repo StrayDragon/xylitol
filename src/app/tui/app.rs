@@ -40,8 +40,12 @@ pub enum MutableKind {
 #[derive(Default)]
 pub struct StreamBuffer {
     buffer: String,
-    /// Byte offset of the last drained newline boundary.
+    /// Byte offset of the last drained paragraph boundary.
     committed_len: usize,
+    /// Whether we are currently inside a fenced code block (c377). While true,
+    /// blank lines do NOT split paragraphs — the whole code block accumulates
+    /// until the closing fence, so render_markdown gets complete fence context.
+    in_fence: bool,
 }
 
 impl StreamBuffer {
@@ -50,17 +54,74 @@ impl StreamBuffer {
         self.buffer.push_str(delta);
     }
 
-    /// Drain all complete (newline-terminated) lines since the last call, advancing
-    /// the committed boundary. Returns the line texts (without the trailing newline).
-    pub fn drain_complete_lines(&mut self) -> Vec<String> {
+    /// Drain complete lines/paragraphs since the last call, advancing the
+    /// committed boundary. Fence-aware (c377):
+    /// - **Outside a code fence**: behaves like the legacy line-at-a-time
+    ///   drain — each newline-terminated line commits immediately. This keeps
+    ///   streaming text flowing to scrollback line-by-line (spec: timely
+    ///   scrollback updates) and works because non-code lines need no fence
+    ///   context for markdown rendering.
+    /// - **Inside a code fence** (opened by a ``` line): lines accumulate
+    ///   until the matching closing ``` line, then the whole block commits
+    ///   as ONE unit. This gives render_markdown complete fence context so
+    ///   syntax highlighting applies (the root cause fix for c377).
+    ///
+    /// Only fully newline-terminated content is considered; the un-terminated
+    /// tail stays for the mutable region (pending_tail).
+    pub fn drain_complete_paragraphs(&mut self) -> Vec<String> {
         let mut out = Vec::new();
-        while let Some(rel) = self.buffer[self.committed_len..].find('\n') {
-            let abs = self.committed_len + rel;
-            let line: String = self.buffer[self.committed_len..abs].to_string();
-            self.committed_len = abs + 1;
-            out.push(line);
+        // Find the last newline at/after committed_len — content beyond it is
+        // the un-terminated tail and must stay.
+        let scan_end = match self.buffer[self.committed_len..].rfind('\n') {
+            Some(rel) => self.committed_len + rel + 1,
+            None => return out, // no complete line yet
+        };
+        // Re-derive fence state from the buffer each call (don't trust a
+        // stored in_fence flag, because committed_len doesn't advance past
+        // an unclosed fence — the fence lines would be re-scanned and
+        // double-toggle the flag). We scan from committed_len; the flag
+        // persists in `self.in_fence` only to reflect the state at the END of
+        // this call (so the mutable tail knows if it's inside a fence).
+        let mut local_in_fence = false;
+        let mut i = self.committed_len;
+        while i < scan_end {
+            let line_end = self.buffer[i..scan_end]
+                .find('\n')
+                .map(|rel| i + rel)
+                .unwrap_or(scan_end);
+            let line = self.buffer[i..line_end].to_string();
+            let is_fence = line.trim_start().starts_with("```");
+            if is_fence && !local_in_fence {
+                // Opening fence: start accumulating (don't commit yet).
+                local_in_fence = true;
+            } else if is_fence && local_in_fence {
+                // Closing fence: flush from committed_len to here as one block.
+                local_in_fence = false;
+                let block = self.buffer[self.committed_len..line_end + 1]
+                    .trim_end()
+                    .to_string();
+                out.push(block);
+                self.committed_len = line_end + 1;
+            } else if !local_in_fence {
+                // Outside fence: commit each line immediately (legacy behavior).
+                if !line.trim().is_empty() {
+                    out.push(line);
+                }
+                self.committed_len = line_end + 1;
+            }
+            // else: inside fence (non-fence line) — keep accumulating.
+            i = line_end + 1;
         }
+        // Persist the end-of-scan fence state (so the caller / mutable tail
+        // knows whether the pending content is mid-code-block).
+        self.in_fence = local_in_fence;
         out
+    }
+
+    /// Drain all complete lines (legacy, c365). Kept for backward-compat with
+    /// tests that exercise the newline-gated boundary directly.
+    pub fn drain_complete_lines(&mut self) -> Vec<String> {
+        self.drain_complete_paragraphs()
     }
 
     /// The un-terminated tail (mutable last line content). Redrawn each frame in
@@ -75,6 +136,7 @@ impl StreamBuffer {
         let tail = self.pending_tail().to_string();
         self.buffer.clear();
         self.committed_len = 0;
+        self.in_fence = false;
         if tail.is_empty() { None } else { Some(tail) }
     }
 }
@@ -94,6 +156,10 @@ pub struct StatusSegments {
 #[derive(Default)]
 pub struct TuiApp {
     input: String,
+    /// Byte offset of the insert cursor within `input` (c377). Characters
+    /// insert here; Backspace deletes the char before it. Left/Right move by
+    /// char boundary (CJK-safe via char_indices).
+    input_cursor: usize,
     /// Newline-gated streaming buffer for main reply text (TextDelta).
     stream_buf: StreamBuffer,
     /// Newline-gated streaming buffer for reasoning text (ThinkingDelta).
@@ -120,13 +186,56 @@ impl TuiApp {
     pub fn input_buffer(&self) -> &str {
         &self.input
     }
+    /// Current cursor byte offset (for rendering `input[..cursor]` width).
+    pub fn input_cursor(&self) -> usize {
+        self.input_cursor
+    }
     pub fn push_char(&mut self, c: char) {
-        self.input.push(c);
+        self.input.insert(self.input_cursor, c);
+        self.input_cursor += c.len_utf8();
     }
     pub fn backspace(&mut self) {
-        self.input.pop();
+        if self.input_cursor > 0 {
+            // Find the previous char boundary.
+            let prev = self.input[..self.input_cursor]
+                .char_indices()
+                .last()
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            self.input.replace_range(prev..self.input_cursor, "");
+            self.input_cursor = prev;
+        }
+    }
+    pub fn cursor_left(&mut self) {
+        if self.input_cursor > 0 {
+            self.input_cursor = self.input[..self.input_cursor]
+                .char_indices()
+                .last()
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+        }
+    }
+    pub fn cursor_right(&mut self) {
+        if self.input_cursor < self.input.len() {
+            // Advance by one char's byte length.
+            let mut chars = self.input[self.input_cursor..].char_indices();
+            chars.next(); // skip the char at cursor
+            if let Some((next_off, _)) = chars.next() {
+                self.input_cursor += next_off;
+            } else {
+                // Single char at cursor — move to end.
+                self.input_cursor = self.input.len();
+            }
+        }
+    }
+    pub fn cursor_home(&mut self) {
+        self.input_cursor = 0;
+    }
+    pub fn cursor_end(&mut self) {
+        self.input_cursor = self.input.len();
     }
     pub fn take_input(&mut self) -> String {
+        self.input_cursor = 0;
         std::mem::take(&mut self.input)
     }
 
@@ -427,6 +536,95 @@ mod tests {
         buf.push("a\n");
         let _ = buf.drain_complete_lines();
         assert_eq!(buf.finalize(), None);
+    }
+
+    #[test]
+    fn fence_aware_commit_accumulates_code_block_until_close() {
+        // c377: a fenced code block streamed in chunks must accumulate and
+        // commit as ONE unit when the closing fence arrives — not line by
+        // line (which loses fence context for highlighting).
+        let mut buf = StreamBuffer::default();
+        // Stream: opening fence + code line + (no close yet)
+        buf.push("```rs\nfn main() {}\n");
+        let mid = buf.drain_complete_paragraphs();
+        assert!(
+            mid.is_empty(),
+            "no commit while fence unclosed (accumulating): {mid:?}"
+        );
+        // Now the closing fence arrives.
+        buf.push("```\n");
+        let closed = buf.drain_complete_paragraphs();
+        assert_eq!(closed.len(), 1, "code block commits as one unit");
+        let block = &closed[0];
+        assert!(block.contains("```rs"), "opening fence in block: {block}");
+        assert!(block.contains("fn main()"), "code body: {block}");
+        assert!(block.contains("```"), "closing fence: {block}");
+    }
+
+    #[test]
+    fn fence_aware_blank_line_inside_code_block_does_not_split() {
+        // c377: blank lines inside a code block are content, not paragraph
+        // boundaries — they must NOT split the block.
+        let mut buf = StreamBuffer::default();
+        buf.push("```rs\nlet a = 1;\n\nlet b = 2;\n```\n");
+        let out = buf.drain_complete_paragraphs();
+        assert_eq!(
+            out.len(),
+            1,
+            "whole block is one unit despite internal blank"
+        );
+        assert!(out[0].contains("let a = 1;"));
+        assert!(out[0].contains("let b = 2;"));
+    }
+
+    #[test]
+    fn outside_fence_lines_commit_immediately() {
+        // c377: outside a fence, lines still commit immediately (legacy
+        // streaming behavior — timely scrollback updates).
+        let mut buf = StreamBuffer::default();
+        buf.push("hello\nworld\n");
+        let out = buf.drain_complete_paragraphs();
+        assert_eq!(out, vec!["hello".to_string(), "world".to_string()]);
+    }
+
+    #[test]
+    fn cursor_inserts_in_middle() {
+        // c377: push_char inserts at cursor, not always at the end.
+        let mut app = TuiApp::default();
+        for c in "abc".chars() {
+            app.push_char(c);
+        }
+        // Move cursor left once (now between 'b' and 'c').
+        app.cursor_left();
+        assert_eq!(app.input_cursor(), 2);
+        app.push_char('X');
+        assert_eq!(app.input_buffer(), "abXc");
+    }
+
+    #[test]
+    fn cursor_left_right_cjk_boundaries() {
+        // c377: cursor moves by char boundary, not byte.
+        let mut app = TuiApp::default();
+        for c in "你好".chars() {
+            app.push_char(c);
+        }
+        assert_eq!(app.input_cursor(), 6, "two CJK chars = 6 bytes");
+        app.cursor_left();
+        assert_eq!(app.input_cursor(), 3, "left moves to char boundary");
+        app.cursor_right();
+        assert_eq!(app.input_cursor(), 6, "right back to end");
+    }
+
+    #[test]
+    fn backspace_at_cursor_middle() {
+        let mut app = TuiApp::default();
+        for c in "abc".chars() {
+            app.push_char(c);
+        }
+        app.cursor_left(); // cursor at 2 (between 'b' and 'c')
+        app.backspace(); // deletes 'b'
+        assert_eq!(app.input_buffer(), "ac");
+        assert_eq!(app.input_cursor(), 1);
     }
 
     // ── Multi-round tool-turn drain (c370) ──────────────────────────
