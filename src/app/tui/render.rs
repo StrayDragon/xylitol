@@ -34,7 +34,8 @@ use crate::domain::lifecycle::XyEvent;
 /// `InputPrompt`, bottom-anchored. The cursor is positioned on the input line.
 pub fn draw_tail_frame(frame: &mut Frame, app: &TuiApp) {
     let area = frame.area();
-    Tail::new(app).render(area, frame.buffer_mut());
+    let width = area.width;
+    Tail::new(app, width).render(area, frame.buffer_mut());
     let (x, y) = input_cursor_position(area, app);
     frame.set_cursor_position((x, y));
 }
@@ -51,7 +52,6 @@ pub fn draw_tail_frame(frame: &mut Frame, app: &TuiApp) {
 /// This is the type the rendering layer consumes. Adding a new message kind is
 /// a new variant + a `to_line` arm; business-event churn does not touch the
 /// rendering layer (the seam function absorbs it).
-#[derive(Debug)]
 pub enum RenderedLine {
     /// The user's submitted prompt, echoed into history.
     UserInput(String),
@@ -68,11 +68,6 @@ pub enum RenderedLine {
     },
     /// A status/notification line (model switch, generic error, etc.).
     Status(String),
-    /// Pre-rendered lines (c376): already-styled `Vec<Line>` produced by the
-    /// streaming incremental highlighter. `to_lines` returns them as-is (no
-    /// re-render), preserving the syntax-highlight styling computed at stream
-    /// time. Used to commit stable streaming lines with full markdown context.
-    PreRendered(Vec<Line<'static>>),
 }
 
 impl RenderedLine {
@@ -93,10 +88,6 @@ impl RenderedLine {
                 Line::styled(format!("[{name}] {preview}"), style)
             }
             RenderedLine::Status(msg) => Line::styled(msg.clone(), p.text_dim()),
-            // PreRendered is multi-line; to_line returns the first row (or empty).
-            RenderedLine::PreRendered(lines) => {
-                lines.first().cloned().unwrap_or_else(|| Line::raw(""))
-            }
         }
     }
 
@@ -135,8 +126,6 @@ impl RenderedLine {
                 let style = MarkdownStyle::for_thinking(&p);
                 render_markdown(text, width, &style)
             }
-            // c376: pre-rendered lines pass through unchanged (preserve highlighting).
-            RenderedLine::PreRendered(lines) => lines.clone(),
             // Single-line variants: no markdown.
             _ => vec![self.to_line()],
         }
@@ -515,7 +504,7 @@ mod cursor_tests {
     #[test]
     fn streaming_thinking_placeholder_above_panel() {
         let mut app = TuiApp::default();
-        app.start_stream(80);
+        app.start_stream();
         // Thinking phase, no content yet → placeholder on mutable row 19
         // (TAIL_HEIGHT=6 in a 24-row terminal: mutable@19, status@20, panel@21-23).
         let term = render_term(&app);
@@ -541,7 +530,7 @@ mod cursor_tests {
     #[test]
     fn streaming_text_is_in_ratatui_buffer_mutable_row() {
         let mut app = TuiApp::default();
-        app.start_stream(80);
+        app.start_stream();
         app.handle_xy_event(XyEvent::TextDelta("typing-stream-text".into()));
         let term = render_term(&app);
         let buf = term.backend().buffer();
@@ -609,7 +598,7 @@ mod cursor_tests {
     #[test]
     fn streaming_mutable_transparent_panel_inner_has_bg() {
         let mut app = TuiApp::default();
-        app.start_stream(80);
+        app.start_stream();
         app.handle_xy_event(XyEvent::TextDelta("abcdefghij".into()));
         let term = render_term(&app);
         let buf = term.backend().buffer();
