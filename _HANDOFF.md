@@ -1,8 +1,8 @@
 # _HANDOFF — TUI 渲染层重写（c399 pi-tui line-array 引擎）
 
-> 交接日期：2026-07-06（阶段 2.3 更新）
-> 分支：`feat/tui-dev`（11 个未 push commit，远端停在 `4c724c1`）
-> 变更：`c399-tui-rewrite-pi-render-engine`（active，42/68 tasks 完成）
+> 交接日期：2026-07-06（阶段 2 完成）
+> 分支：`feat/tui-dev`（13 个未 push commit，远端停在 `4c724c1`）
+> 变更：`c399-tui-rewrite-pi-render-engine`（active，43/68 tasks 完成，**阶段 1+2 全部就位**）
 > 接手者：用 `/llman-sdd-apply c399-tui-rewrite-pi-render-engine` 续做。
 
 ---
@@ -17,7 +17,7 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 
 ---
 
-## 二、已完成（42/68 tasks，~4015 行新代码，113 单测全过）
+## 二、已完成（43/68 tasks，~4120 行新代码，127 单测全过；阶段 1+2 完成）
 
 ### SDD 重组（commit `2cdbd89`）
 - propose `c399-tui-rewrite-pi-render-engine`（proposal/design/delta spec/tasks 全工件，spec modify tui1/tui12/tui41/tui50/tui70 + add tui82 硬宽度/tui83 resize）。
@@ -51,7 +51,7 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 | `text.rs` | 160 | `Text`（wrap+cache）/`TruncatedText`（单行截断）/`Spacer`（N 空行）。 |
 | `markdown.rs` | 449 | **Markdown widget**：pulldown-cmark 解析，**纯文本透传 + 只有代码块高亮**（见下）。 |
 | `input.rs` | 777 | **Input widget**（阶段 2.3 落地，见下）。 |
-| `loader.rs` | 8 | 骨架（阶段 2.4 待实现）。 |
+| `loader.rs` | 243 | **Loader widget**（阶段 2.4 落地，见下）。 |
 
 `engine_ratatui_style_adapter.rs`（82 行）：过渡适配器，ratatui `Style` → `CellStyle`。**阶段 4 删 ratatui 后此模块删除**（syntect 直接产 CellStyle）。
 
@@ -74,13 +74,20 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 
 **遗留**：`TuiApp` 的 `input`/`input_cursor` 字段 + 旧 `input.rs::handle` 自由函数**不动**（阶段 4 接入时再迁移状态到 widget，阶段 3 建路由层时 `handle` 被路由替代）。
 
+### 阶段 2.4：Loader widget（14 单测）✅
+路径 `src/app/tui/widgets/loader.rs`（243 行）。pi `components/loader.ts` 的 Rust 移植。
+
+**核心设计决策**：
+1. **host tick 驱动，无内部 timer**。pi Loader 持 `NodeJS.Timeout` + 每 80ms 调 `ui.requestRender()`（"widgets don't schedule renders" 的唯一例外）。c399 改为 widget 暴露 `advance()` 方法，host 主循环在 `Msg::Tick`（已存在，驱动旧 spinner）时调用 + requestRender。语义一致（steady cadence 推进帧），但 widget 保持纯（无 I/O/async/timer）——timer 是 host 关注点。
+2. **SPINNER const 自带**（10 帧 braille，与 c380 `components::spinner::SPINNER` 和 pi `DEFAULT_FRAMES` 一致）。阶段 4 删 `components/` 后此 widget 自包含。
+3. **spinner 颜色**：`SPINNER_COLOR = Color::Cyan`（对应 c396 `theme::Palette::spinner`）。阶段 4 把 ratatui `Style` 迁到 CellStyle 后，改为走 theme 回调。
+4. **render 单行**：`<frame> <message>`，超宽用 `truncate(..., "…")`。pi Loader 前置空行做垂直分隔——c399 Container 垂直栈，调用方加 `Spacer` 即可，widget 只出内容行。
+
+**阶段 2 完成标志**：widget 系统全部就位（text/markdown/input/loader 四模块，阶段 2.1-2.4 共 58 单测）。待阶段 3 UX 路由 + 阶段 4 接入后可用。
+
 ---
 
-## 三、未完成（26/68 tasks，阶段 2.4-5）
-
-### 阶段 2.4：Loader widget（spinner）⏳
-- 路径 `src/app/tui/widgets/loader.rs`（现骨架）。
-- 复用 `components/spinner.rs` 的 `SPINNER` const（10 帧 braille）+ 自调度（host loop tick）。
+## 三、未完成（25/68 tasks，阶段 3-5）
 
 ### 阶段 3：UX/交互（crossterm 大幅缩减）⏳
 - `keybindings.rs`：`KeyId` + `KeybindingsManager`（可配置 + 冲突检测），替换现 hardcoded key 检查。
@@ -141,6 +148,7 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 - `src/app/tui/widgets/text.rs` — Text/TruncatedText/Spacer
 - `src/app/tui/widgets/markdown.rs` — Markdown widget（passthrough + code 高亮 + 扣子）
 - `src/app/tui/widgets/input.rs` — **Input widget**（单行 Focusable + grapheme 光标 + 横向滚动 + take_outcome）
+- `src/app/tui/widgets/loader.rs` — **Loader widget**（spinner + advance + host tick 驱动）
 - `src/app/tui/engine/style.rs` — CellStyle/Color/Span/StyledLine + ANSI 序列化（`width()` 用 `marker_aware_width`，2.3 修复）
 - `src/app/tui/engine_ratatui_style_adapter.rs` — 过渡适配器（阶段 4 删）
 
@@ -162,9 +170,9 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 
 ## 六、给接手者的建议
 
-1. **先跑测试确认基线**：`just test`（既有 684 + 新增 113 = ~797 全绿）、`just lint`（0 警告）。
-2. **从阶段 2.4 开始**（Loader widget）——`/llman-sdd-apply c399-tui-rewrite-pi-render-engine`，tasks.md 已精细拆分。阶段 2.3（Input）已落地，widget 层只剩 Loader。
-3. **阶段 3 路由层接 Input widget 的 take_outcome**：`engine/tui.rs::route_event` 是 stub，阶段 3 建单焦点路由时，在 `focused.handle_input()` 之后调 `input.take_outcome()` 把 Submit/Slash/Abort/Quit 传给主循环（参考 pi `tui.ts:827-833`）。
+1. **先跑测试确认基线**：`just test`（既有 684 + 新增 127 = ~811 全绿）、`just lint`（0 警告）。
+2. **从阶段 3 开始**（UX/路由层）——`/llman-sdd-apply c399-tui-rewrite-pi-render-engine`。**阶段 1+2 已全部完成**（引擎六模块 + widget 四模块）。阶段 3 是把引擎和 widget 连起来的交互层。
+3. **阶段 3 路由层接 Input widget 的 take_outcome**：`engine/tui.rs::route_event` 是 stub，阶段 3 建单焦点路由时，在 `focused.handle_input()` 之后调 `input.take_outcome()` 把 Submit/Slash/Abort/Quit 传给主循环（参考 pi `tui.ts:827-833`）。Loader widget 的 `advance()` 也在此层接线（host 在 `Msg::Tick` 时调）。
 4. **阶段 4 是关键转折点**：接入主循环 + 删 ratatui。建议在阶段 3（UX）完成后单独评估，确保引擎 + widget + 输入交互都就位再动接入。
 5. **Markdown 扣子启用顺序**（用户提到）：标题分级 → 加粗/斜体 → 引用 → 链接 → 媒体预览 → 脚注 → 表格列对齐。每个在 `MarkdownTheme` flip 一个开关 + 在 `widgets/markdown.rs` 的 Renderer 加对应事件处理。
 6. **token 节省原则不可破**：表格永远 tab/空格对齐（不画 Unicode 边框），代码块只颜色无框——用户明确要求复制干净。

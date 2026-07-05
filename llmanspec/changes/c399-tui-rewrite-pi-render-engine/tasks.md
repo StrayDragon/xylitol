@@ -78,7 +78,9 @@
 - [x] 单测：光标移动（ASCII/CJK/emoji-ZWJ）、CJK 边界、insert at cursor、outcome（Submit/Slash/Abort/Quit）、render 横向滚动（cursor 末尾/中间/开头）、width 不变量。
 
 ### 2.4 Loader widget
-- [ ] spinner（复用 SPINNER const）+ 自调度（setInterval 等价：tokio interval + requestRender）。
+- [x] spinner（复用 SPINNER const）+ host tick 驱动（`advance()` 方法，无内部 timer——主循环已有 `Msg::Tick`）。
+
+**阶段 2 完成标志**：widget 系统全部就位（text/markdown/input/loader 四模块，阶段 2.1-2.4 共 58 单测）。待阶段 3 UX 路由 + 阶段 4 接入后可用。
 
 ## 阶段 3：模块 3 UX/交互
 
