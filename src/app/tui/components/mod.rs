@@ -11,9 +11,11 @@
 pub mod bottom_panel;
 pub mod input_prompt;
 pub mod markdown;
+pub mod markdown_render;
 pub mod mutable_line;
 pub mod spinner;
 pub mod status_line;
+pub mod syntect_highlight;
 pub mod tail;
 pub mod transcript_line;
 
