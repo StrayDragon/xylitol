@@ -246,6 +246,11 @@ impl Writer {
             }
             Tag::CodeBlock(kind) => {
                 self.flush_line();
+                // codex-style blank-line separation before the code block so it
+                // doesn't visually merge into the preceding paragraph.
+                if !self.lines.is_empty() {
+                    self.lines.push(Line::raw(""));
+                }
                 let lang = match kind {
                     CodeBlockKind::Fenced(s) if !s.is_empty() => Some(s.into_string()),
                     _ => None,
@@ -350,6 +355,8 @@ impl Writer {
             self.width,
         );
         self.lines.extend(code_lines);
+        // Trailing blank line for visual separation from following content.
+        self.lines.push(Line::raw(""));
         self.code_buf.clear();
     }
 
@@ -505,5 +512,6 @@ mod tests {
         assert!(row.contains("GitHub") && row.contains("https://github.com"));
     }
 }
+
 
 
