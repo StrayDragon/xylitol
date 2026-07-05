@@ -52,11 +52,27 @@ pub fn handle(event: KeyEvent, app: &mut TuiApp) -> InputOutcome {
             app.backspace();
             InputOutcome::Idle
         }
+        KeyCode::Left => {
+            app.cursor_left();
+            InputOutcome::Idle
+        }
+        KeyCode::Right => {
+            app.cursor_right();
+            InputOutcome::Idle
+        }
+        KeyCode::Home => {
+            app.cursor_home();
+            InputOutcome::Idle
+        }
+        KeyCode::End => {
+            app.cursor_end();
+            InputOutcome::Idle
+        }
         KeyCode::Char(c) => {
             app.push_char(c);
             InputOutcome::Idle
         }
-        // Arrow keys, modifiers alone, etc. — ignored in MVP.
+        // Other keys (modifiers alone, etc.) — ignored.
         _ => InputOutcome::Idle,
     }
 }
