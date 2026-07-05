@@ -33,12 +33,22 @@ impl Widget for InputPrompt<'_> {
 }
 
 /// Column offset of the cursor within an input prompt row: the display width
-/// of the input buffer (CJK-aware). The caller adds the row's x origin to get
-/// the absolute column for `frame.set_cursor_position`. No `❯` prefix offset
-/// (c365: the prefix was removed).
-pub fn cursor_x(input: &str) -> u16 {
+/// of `input[..cursor_byte]` (CJK-aware). The caller adds the row's x origin
+/// to get the absolute column for `frame.set_cursor_position`. No `❯` prefix
+/// offset (c365: the prefix was removed).
+///
+/// c377: takes a `cursor_byte` so the cursor can sit anywhere in the buffer
+/// (not just at the end). `cursor_byte` MUST be a char boundary of `input`.
+pub fn cursor_x_at(input: &str, cursor_byte: usize) -> u16 {
     use unicode_width::UnicodeWidthStr;
-    UnicodeWidthStr::width(input) as u16
+    let safe = cursor_byte.min(input.len());
+    UnicodeWidthStr::width(&input[..safe]) as u16
+}
+
+/// Convenience: cursor at the end of the buffer (legacy callers).
+#[allow(dead_code)]
+pub fn cursor_x(input: &str) -> u16 {
+    cursor_x_at(input, input.len())
 }
 
 #[cfg(test)]

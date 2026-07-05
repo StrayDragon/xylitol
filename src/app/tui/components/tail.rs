@@ -26,7 +26,7 @@ use ratatui_core::widgets::Widget;
 use crate::app::tui::app::{MutableKind, TuiApp};
 use crate::app::tui::components::StatusLine;
 use crate::app::tui::components::bottom_panel::BottomPanel;
-use crate::app::tui::components::input_prompt::cursor_x;
+use crate::app::tui::components::input_prompt::cursor_x_at;
 use crate::app::tui::components::mutable_line::MutableLine;
 use crate::app::tui::theme;
 
@@ -114,7 +114,7 @@ pub fn input_cursor_position(area: Rect, app: &TuiApp) -> (u16, u16) {
     // Panel is always at the bottom: bottom border = area.bottom()-1,
     // input = area.bottom()-2.
     let y = area.bottom().saturating_sub(2);
-    let x = area.x + cursor_x(app.input_buffer());
+    let x = area.x + cursor_x_at(app.input_buffer(), app.input_cursor());
     (x.min(area.right().saturating_sub(1)), y)
 }
 
