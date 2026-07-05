@@ -23,24 +23,22 @@ use ratatui_core::buffer::Buffer;
 use ratatui_core::layout::Rect;
 use ratatui_core::widgets::Widget;
 
-use crate::app::tui::app::{MutableKind, TuiApp};
+use crate::app::tui::app::TuiApp;
 use crate::app::tui::components::StatusLine;
 use crate::app::tui::components::bottom_panel::BottomPanel;
 use crate::app::tui::components::input_prompt::cursor_x;
 use crate::app::tui::components::mutable_line::MutableLine;
-use crate::app::tui::theme;
 
 /// Renders the whole tail region from app state. Owns no state; reads the app
 /// each frame (input buffer, pending tail + kind, streaming flag, status
 /// segments, spinner index).
 pub struct Tail<'a> {
     app: &'a TuiApp,
-    width: u16,
 }
 
 impl<'a> Tail<'a> {
-    pub fn new(app: &'a TuiApp, width: u16) -> Self {
-        Self { app, width }
+    pub fn new(app: &'a TuiApp) -> Self {
+        Self { app }
     }
 }
 
@@ -56,23 +54,18 @@ impl Widget for Tail<'_> {
         let status_h: u16 = 1;
         let available_for_mutable = area.height.saturating_sub(panel_h + status_h);
 
-        // Mutable line: sized to its wrapped rows (capped to available space),
+        // Mutable line: sized to its rendered rows (capped to available space),
         // placed flush above the status line. Top-anchored within that small
         // area → text sits right above the status line, growing downward.
-        if let Some((text, kind)) = pending
+        // c376: pending_tail returns pre-highlighted Vec<Line> (not plain text).
+        if let Some(lines) = pending
             && has_mutable
             && available_for_mutable > 0
         {
-            let p = theme::palette();
-            let style = match kind {
-                MutableKind::Thinking => p.thinking(),
-                MutableKind::Text => p.assistant(),
-                MutableKind::Tool => p.tool(),
-            };
-            let rows = MutableLine::new(text, self.width, style).rows().len() as u16;
+            let rows = lines.len() as u16;
             let mutable_h = rows.min(available_for_mutable);
             let mutable_y = area.y + available_for_mutable - mutable_h;
-            MutableLine::new(text, self.width, style).render(
+            MutableLine::from_lines(&lines).render(
                 Rect {
                     x: area.x,
                     y: mutable_y,
@@ -129,7 +122,7 @@ mod tests {
     fn render(app: &TuiApp, width: u16, height: u16) -> ratatui_core::buffer::Buffer {
         let mut term = Terminal::new(TestBackend::new(width, height)).unwrap();
         term.draw(|f| {
-            Tail::new(app, width).render(Rect::new(0, 0, width, height), f.buffer_mut());
+            Tail::new(app).render(Rect::new(0, 0, width, height), f.buffer_mut());
         })
         .unwrap();
         term.backend().buffer().clone()
@@ -174,7 +167,7 @@ mod tests {
     #[test]
     fn streaming_thinking_phase_shows_placeholder_above_panel() {
         let mut app = TuiApp::default();
-        app.start_stream();
+        app.start_stream(80);
         // No ThinkingDelta yet → placeholder "Thinking…" (gray).
         // height=5: mutable@0, status@1, panel border@2/input@3/border@4 (c380).
         let buf = render(&app, 30, 5);
@@ -198,7 +191,7 @@ mod tests {
     #[test]
     fn streaming_thinking_content_shows_gray_above_panel() {
         let mut app = TuiApp::default();
-        app.start_stream();
+        app.start_stream(80);
         app.handle_xy_event(XyEvent::ThinkingDelta("reasoning here".into()));
         let buf = render(&app, 30, 5);
         // mutable@0 (status line pushed it up by one, c380).
@@ -212,7 +205,7 @@ mod tests {
     #[test]
     fn streaming_text_phase_shows_reply_above_panel() {
         let mut app = TuiApp::default();
-        app.start_stream();
+        app.start_stream(80);
         // Transition to text phase: a TextDelta flushes thinking.
         app.handle_xy_event(XyEvent::TextDelta("reply text".into()));
         let buf = render(&app, 30, 5);
@@ -222,7 +215,7 @@ mod tests {
     #[test]
     fn mutable_row_transparent_panel_inner_has_bg() {
         let mut app = TuiApp::default();
-        app.start_stream();
+        app.start_stream(80);
         app.handle_xy_event(XyEvent::TextDelta("typing".into()));
         let buf = render(&app, 30, 5);
         let bg = crate::app::tui::theme::palette().panel_bg();
@@ -239,7 +232,7 @@ mod tests {
     #[test]
     fn after_turn_end_panel_fills_area_no_reply_lingers() {
         let mut app = TuiApp::default();
-        app.start_stream();
+        app.start_stream(80);
         app.handle_xy_event(XyEvent::TextDelta("partial".into()));
         app.handle_xy_event(XyEvent::TurnEnd { turn_index: 0 });
         app.end_stream();

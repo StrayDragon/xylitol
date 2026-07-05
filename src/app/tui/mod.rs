@@ -196,7 +196,8 @@ async fn repl_loop(
                         term.commit_to_scrollback(&[render::user_message_rendered(&prompt)])
                             .map_err(|e| format!("commit user msg: {e}"))?;
                         let stream = driver.run(&prompt).await;
-                        app.start_stream();
+                        let render_width = term.width();
+                        app.start_stream(render_width);
                         // Fresh per-turn cancel token (c370): a global token
                         // would stay cancelled after the first abort and starve
                         // every later turn's drain.
