@@ -1,11 +1,6 @@
 //! `MutableLine` widget — the un-terminated streaming tail rendered at the
 //! top of the tail region, wrapped to width, with a transparent (default)
 //! background so it blends into the scrollback above — visually the text
-//!
-//! c376: the streaming path uses `from_lines` (pre-highlighted Vec<Line>);
-//! the legacy `new` (plain text + style) is retained for future non-markdown
-//! tail content but currently unused — silenced via module-level allow.
-#![allow(dead_code)]
 //! "grows in the body" rather than in a separate typing zone (c365 buffer route).
 //!
 //! When the wrapped rows exceed the given area height, the TOP (oldest) rows
@@ -25,40 +20,23 @@ use crate::app::tui::render::wrap_to_width;
 /// transparent background, top-anchored within its area (top rows dropped on
 /// overflow). The style is caller-supplied so the same widget renders both
 /// thinking content (gray) and main reply text (normal).
-///
-/// c376: `from_lines` takes pre-highlighted `Vec<Line>` (from the streaming
-/// incremental renderer); `new` takes plain text + style (legacy, for
-/// non-markdown tails — currently unused but kept for future non-markdown
-/// tail content like plain status lines).
-pub enum MutableLine<'a> {
-    /// Plain text wrapped + single style (legacy path).
-    Text {
-        text: &'a str,
-        width: u16,
-        style: Style,
-    },
-    /// Pre-rendered highlighted lines (c376 streaming path).
-    Lines(&'a [Line<'static>]),
+pub struct MutableLine<'a> {
+    text: &'a str,
+    width: u16,
+    style: Style,
 }
 
 impl<'a> MutableLine<'a> {
     pub fn new(text: &'a str, width: u16, style: Style) -> Self {
-        Self::Text { text, width, style }
-    }
-
-    pub fn from_lines(lines: &'a [Line<'static>]) -> Self {
-        Self::Lines(lines)
+        Self { text, width, style }
     }
 
     /// Wrapped physical rows at `width`, styled with the caller-supplied style.
     pub fn rows(&self) -> Vec<Line<'static>> {
-        match self {
-            MutableLine::Text { text, width, style } => wrap_to_width(text, *width)
-                .into_iter()
-                .map(|row| Line::styled(row, *style))
-                .collect(),
-            MutableLine::Lines(lines) => lines.to_vec(),
-        }
+        wrap_to_width(self.text, self.width)
+            .into_iter()
+            .map(|row| Line::styled(row, self.style))
+            .collect()
     }
 }
 
