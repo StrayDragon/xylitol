@@ -17,6 +17,15 @@ use crate::app::tui::app::TuiApp;
 use crate::app::tui::init;
 use crate::app::tui::render::{self, RenderedLine};
 
+/// Height (in rows) of the mutable tail region reserved by `Viewport::Inline`.
+/// Layout (c365 route B): a transparent mutable line at the top (flush against
+/// scrollback, up to 2 wrapped rows) + a bordered, bg-filled `BottomPanel`
+/// below it carrying the input prompt (no spinner, no thinking block — the
+/// streaming text itself is the activity indicator). When idle the panel
+/// fills the whole area. 6 = mutable(2) + status(1, c380) + panel(3: top border
+/// + input + bottom border).
+const TAIL_HEIGHT: u16 = 6;
+
 /// Owns the inline terminal. Dropping restores raw mode + leaves scrollback.
 pub struct InlineTerminal {
     term: init::DefaultTerminal,
@@ -25,11 +34,6 @@ pub struct InlineTerminal {
 impl InlineTerminal {
     /// Enable raw mode and create an inline viewport (no alt screen).
     pub fn enter() -> io::Result<Self> {
-        // c375: size the mutable tail to half the terminal height (min 6 to
-        // fit panel+status+mutable) so streaming text has room to accumulate
-        // before TurnEnd commits it.
-        let term_h = crossterm::terminal::size().map(|(_, h)| h).unwrap_or(24);
-        let tail_height = (term_h / 2).max(6);
         // Push the cursor to the bottom so the viewport anchors there.
         if let Ok((_, h)) = crossterm::terminal::size() {
             use std::io::Write;
@@ -41,7 +45,7 @@ impl InlineTerminal {
         }
         crossterm::terminal::enable_raw_mode()?;
         let term = init::try_init_with_options(TerminalOptions {
-            viewport: Viewport::Inline(tail_height),
+            viewport: Viewport::Inline(TAIL_HEIGHT),
         })?;
         Ok(Self { term })
     }
@@ -52,11 +56,6 @@ impl InlineTerminal {
         self.term
             .draw(|frame| render::draw_tail_frame(frame, app))?;
         Ok(())
-    }
-
-    /// Terminal width in columns (for markdown rendering sizing).
-    pub fn width(&self) -> u16 {
-        crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80)
     }
 
     /// Commit finalized [`RenderedLine`]s into the scrollback (never touched
