@@ -76,6 +76,9 @@ unicode-width = { version = "0.2", optional = true }
 # at compile time. Gated behind `tui`.
 syntect = { version = "5", default-features = false, features = ["default-fancy"], optional = true }
 two-face = { version = "0.5", default-features = false, features = ["syntect-default-fancy"], optional = true }
+# Markdown parser for the self-researched TUI renderer (c395). Pull parser,
+# pure parsing. Gated behind `tui`.
+pulldown-cmark = { version = "0.13", default-features = false, optional = true }
 
 [features]
 default = ["cli"]
@@ -84,7 +87,7 @@ cli = []
 # Always-on HTTP/WebSocket server.
 server = ["dep:axum", "dep:tokio-tungstenite", "dep:tower-http"]
 # Terminal UI (ratatui-core/crossterm backend; ratatui-widgets optional subset — c360).
-tui = ["dep:ratatui-core", "dep:ratatui-crossterm", "dep:ratatui-widgets", "dep:crossterm", "dep:unicode-width", "dep:syntect", "dep:two-face"]
+tui = ["dep:ratatui-core", "dep:ratatui-crossterm", "dep:ratatui-widgets", "dep:crossterm", "dep:unicode-width", "dep:syntect", "dep:two-face", "dep:pulldown-cmark"]
 # Future GUI placeholder.
 gui = []
 

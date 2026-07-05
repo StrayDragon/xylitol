@@ -1,54 +1,44 @@
-//! `MarkdownRenderer` adapter — render finalized markdown into `Vec<Line>`
-//! for the ratatui buffer (c355/c366/c370).
+//! Markdown style adapter (c395) — thin seam over the self-researched
+//! renderer (`markdown_render`).
+#![allow(clippy::doc_lazy_continuation)]
 //!
-//! Since c370, the actual parsing + rendering is backed by the vendored
-//! ratatui-markdown core (`crate::app::tui::vendor::ratatui_markdown`), which
-//! provides full CommonMark/GFM coverage (tables, task lists, nested
-//! blockquotes) plus syntect code highlighting. This module is the thin
-//! **style adapter**: it maps xylitol's `Palette` to the vendored `ThemeConfig`
-//! (user/assistant/thinking each get their own theme) and wires the syntect
-//! highlighter into the renderer's `RenderHooks`.
+//! `MarkdownStyle` maps each role (user/assistant/thinking) to a
+//! `markdown_render::RenderStyle`. The actual parsing + rendering (pulldown-cmark
+//! + syntect, no borders/tree-connectors) lives in `markdown_render`. This
+//! module keeps the `render_markdown(text, width, &MarkdownStyle) -> Vec<Line>`
+//! signature stable so `render.rs` and its behavior tests are unaffected by
+//! the renderer swap.
 //!
 //! Both user input and assistant replies share this same code path, differing
 //! only in the injected [`MarkdownStyle`] (spec tui60). Streaming text MUST
 //! NOT pass through here (spec tui61 streaming-stays-plain); only finalized
 //! text committed to scrollback is rendered.
 
-use std::sync::Arc;
-
-use ratatui_core::style::Color;
 use ratatui_core::text::Line;
 
+use crate::app::tui::components::markdown_render::RenderStyle;
 use crate::app::tui::theme::Palette;
-use crate::app::tui::vendor::ratatui_markdown::highlight::{
-    CodeHighlighter, HighlightHooks, SyntectHighlighter,
-};
-use crate::app::tui::vendor::ratatui_markdown::markdown::MarkdownRenderer;
-use crate::app::tui::vendor::ratatui_markdown::theme::ThemeConfig;
 
 /// The style seam `RenderedLine::to_lines` consumes. Each variant maps to a
-/// vendored `ThemeConfig` so user input, assistant replies, and thinking share
-/// the same renderer and differ only in colors.
+/// `RenderStyle` so user input, assistant replies, and thinking share the same
+/// self-researched renderer and differ only in colors.
 #[derive(Clone, Copy)]
 pub struct MarkdownStyle {
-    theme: ThemeConfig,
+    rs: RenderStyle,
 }
 
 impl MarkdownStyle {
     /// Style for rendering user input (cyan/bold, matches `Palette::user_prompt`).
     pub fn for_user(_p: &Palette) -> Self {
-        // Palette currently unused (fixed Cyan); kept for API symmetry + future tuning.
-        let theme = ThemeConfig::default()
-            .with_text_color(Color::Cyan)
-            .with_primary_color(Color::Cyan);
-        Self { theme }
+        Self {
+            rs: RenderStyle::for_user(),
+        }
     }
 
-    /// Style for rendering assistant replies (default/reset, matches `Palette::assistant`).
+    /// Style for rendering assistant replies (default/reset).
     pub fn for_assistant(_p: &Palette) -> Self {
-        // Default theme: normal-brightness text, standard code colors.
         Self {
-            theme: ThemeConfig::default(),
+            rs: RenderStyle::for_assistant(),
         }
     }
 
@@ -56,29 +46,20 @@ impl MarkdownStyle {
     /// structural rendering as assistant (markdown parsed), but dimmed so
     /// reasoning stays visually subordinate to the reply.
     pub fn for_thinking(_p: &Palette) -> Self {
-        // Dim everything: muted text + muted accents. Palette currently unused
-        // (fixed DarkGray dim); kept in the signature for API symmetry with
-        // for_user/for_assistant and future per-token tuning.
-        let dim = Color::DarkGray;
-        let theme = ThemeConfig::default()
-            .with_text_color(dim)
-            .with_muted_text_color(dim)
-            .with_primary_color(dim);
-        Self { theme }
+        Self {
+            rs: RenderStyle::for_thinking(),
+        }
     }
 }
 
 /// Render a finalized markdown string into styled `Line`s at `width`,
-/// using the given `style` and syntect code highlighting (c370).
+/// using the given `style` and syntect code highlighting (c395: self-researched
+/// renderer — no borders, terminal-friendly styling only).
 ///
 /// Streaming text MUST NOT pass through here (spec tui61 streaming-stays-plain);
 /// only finalized text committed to scrollback is rendered.
 pub fn render_markdown(text: &str, width: u16, style: &MarkdownStyle) -> Vec<Line<'static>> {
-    let highlighter: Arc<dyn CodeHighlighter> = Arc::new(SyntectHighlighter::new());
-    let hooks = HighlightHooks::new(highlighter, width as usize);
-    let renderer = MarkdownRenderer::new(width as usize).with_render_hooks(Box::new(hooks));
-    let blocks = renderer.parse(text);
-    renderer.render(&blocks, &style.theme)
+    crate::app::tui::components::markdown_render::render_markdown(text, width, style.rs)
 }
 
 #[cfg(test)]
@@ -194,16 +175,14 @@ mod tests {
 
     #[test]
     fn blockquote_renders() {
-        // spec tui66: blockquote has a visible prefix (the vendored renderer
-        // uses a `│` left-bar; c366's `▎` was superseded by the richer
-        // vendored blockquote rendering in c370).
+        // c395: blockquote renders italic + dim, no border/pipe prefix.
         let md = "> a quote\n";
         let (buf, _) = render_to_buf(md, 40);
         let row = row_text(&buf, 0, 40);
         assert!(row.contains("a quote"), "quote body visible: {row}");
         assert!(
-            row.contains('│') || row.contains('▎'),
-            "blockquote prefix visible: {row}"
+            !row.contains('│') && !row.contains('▎'),
+            "no border prefix (c395 self-researched renderer): {row}"
         );
     }
 
@@ -275,16 +254,15 @@ mod tests {
     }
 
     #[test]
-    fn nested_blockquote_indents() {
-        // spec tui66 nested-blockquote: deeper nesting carries more prefix.
+    fn nested_blockquote_renders() {
+        // c395: nested blockquote renders italic + dim, no border pipes.
         let md = ">> nested\n";
         let (buf, _) = render_to_buf(md, 40);
         let row = row_text(&buf, 0, 40);
-        // Nested quote has at least 2 prefix glyphs.
-        let prefix_count = row.chars().filter(|&c| c == '│' || c == '▎').count();
+        assert!(row.contains("nested"), "nested quote body: {row}");
         assert!(
-            prefix_count >= 2,
-            "nested blockquote has >=2 prefix glyphs, got {prefix_count}: {row}"
+            !row.contains('│') && !row.contains('▎'),
+            "no border prefix: {row}"
         );
     }
 
