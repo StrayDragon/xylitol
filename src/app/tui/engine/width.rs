@@ -12,8 +12,70 @@
 //! wider than `width` is a hard error. Widgets use `truncate`/`wrap` to honor it.
 
 use unicode_width::UnicodeWidthChar;
+use unicode_width::UnicodeWidthStr;
 
 use super::style::{Span, StyledLine};
+
+/// Display width of text that may contain ANSI escape sequences (SGR/OSC/APC).
+/// Escape sequences contribute 0 width. Used by the engine to compute the IME
+/// cursor column from the text before a `CURSOR_MARKER` (which is itself an APC,
+/// so it's correctly zero-width here).
+pub fn marker_aware_width(s: &str) -> usize {
+    // Strip ANSI escape sequences (CSI/OSC/APC/other), then measure visible text.
+    let mut clean = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '\x1b' {
+            clean.push(ch);
+            continue;
+        }
+        match chars.peek() {
+            Some('[') => {
+                chars.next();
+                for c in chars.by_ref() {
+                    if c.is_ascii() && (0x40..=0x7E).contains(&(c as u32)) {
+                        break;
+                    }
+                }
+            }
+            Some(']') => {
+                chars.next();
+                for c in chars.by_ref() {
+                    if c == '\x07' {
+                        break;
+                    }
+                    if c == '\x1b' {
+                        if chars.peek() == Some(&'\\') {
+                            chars.next();
+                        }
+                        break;
+                    }
+                }
+            }
+            Some('_') => {
+                // APC: ESC _ ... terminated by ST (ESC \) OR BEL (\x07).
+                // CURSOR_MARKER uses BEL termination; some DCS/APC use ST.
+                chars.next();
+                for c in chars.by_ref() {
+                    if c == '\x07' {
+                        break;
+                    }
+                    if c == '\x1b' {
+                        if chars.peek() == Some(&'\\') {
+                            chars.next();
+                        }
+                        break;
+                    }
+                }
+            }
+            Some(_) => {
+                chars.next();
+            }
+            None => {}
+        }
+    }
+    UnicodeWidthStr::width(clean.as_str())
+}
 
 /// Truncate a line to at most `max_width` display columns, appending `ellipsis`
 /// (default `…`) if any content was cut. Wide chars (CJK/emoji) are never split:
@@ -277,5 +339,35 @@ mod tests {
         let rows = wrap_plain("", 80);
         assert_eq!(rows.len(), 1);
         assert!(rows[0].is_empty());
+    }
+
+    // ── marker_aware_width (ANSI stripping for IME cursor column) ─────────
+
+    #[test]
+    fn marker_aware_width_plain_ascii() {
+        assert_eq!(marker_aware_width("hello"), 5);
+    }
+
+    #[test]
+    fn marker_aware_width_cjk() {
+        assert_eq!(marker_aware_width("你好"), 4);
+    }
+
+    #[test]
+    fn marker_aware_width_strips_sgr() {
+        // \x1b[31m + "hi" = width 2 (color adds nothing).
+        assert_eq!(marker_aware_width("\x1b[31mhi"), 2);
+    }
+
+    #[test]
+    fn marker_aware_width_strips_apc_cursor_marker() {
+        // "ab" + CURSOR_MARKER (APC) + "cd" = width 4; the marker is zero-width.
+        const CURSOR_MARKER: &str = "\x1b_pi:c\x07";
+        assert_eq!(marker_aware_width(&format!("ab{CURSOR_MARKER}cd")), 4);
+    }
+
+    #[test]
+    fn marker_aware_width_only_escapes() {
+        assert_eq!(marker_aware_width("\x1b[1m\x1b[0m"), 0);
     }
 }
