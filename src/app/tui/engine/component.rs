@@ -25,7 +25,7 @@ use super::style::StyledLine;
 /// it requests a render. Most widgets return `Handled` (consumed, request render)
 /// or `NotHandled` (pass through). Special cases (submit, quit) bubble up via
 /// the UX layer's routing, not here.
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputResult {
     #[default]
     NotHandled,

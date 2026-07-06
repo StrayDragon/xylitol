@@ -1,8 +1,8 @@
 # _HANDOFF — TUI 渲染层重写（c399 pi-tui line-array 引擎）
 
-> 交接日期：2026-07-06
+> 交接日期：2026-07-06（阶段 2.3 更新）
 > 分支：`feat/tui-dev`（11 个未 push commit，远端停在 `4c724c1`）
-> 变更：`c399-tui-rewrite-pi-render-engine`（active，38/68 tasks 完成）
+> 变更：`c399-tui-rewrite-pi-render-engine`（active，42/68 tasks 完成）
 > 接手者：用 `/llman-sdd-apply c399-tui-rewrite-pi-render-engine` 续做。
 
 ---
@@ -17,7 +17,7 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 
 ---
 
-## 二、已完成（38/68 tasks，3238 行新代码，87 单测全过）
+## 二、已完成（42/68 tasks，~4015 行新代码，113 单测全过）
 
 ### SDD 重组（commit `2cdbd89`）
 - propose `c399-tui-rewrite-pi-render-engine`（proposal/design/delta spec/tasks 全工件，spec modify tui1/tui12/tui41/tui50/tui70 + add tui82 硬宽度/tui83 resize）。
@@ -50,7 +50,7 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 |---|---|---|
 | `text.rs` | 160 | `Text`（wrap+cache）/`TruncatedText`（单行截断）/`Spacer`（N 空行）。 |
 | `markdown.rs` | 449 | **Markdown widget**：pulldown-cmark 解析，**纯文本透传 + 只有代码块高亮**（见下）。 |
-| `input.rs` | 8 | 骨架（阶段 2.3 待实现）。 |
+| `input.rs` | 777 | **Input widget**（阶段 2.3 落地，见下）。 |
 | `loader.rs` | 8 | 骨架（阶段 2.4 待实现）。 |
 
 `engine_ratatui_style_adapter.rs`（82 行）：过渡适配器，ratatui `Style` → `CellStyle`。**阶段 4 删 ratatui 后此模块删除**（syntect 直接产 CellStyle）。
@@ -61,15 +61,22 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 - **不换 comrak**（用户确认继续用 pulldown-cmark；comrak README 作为「扣子」参考——脚注/wikilink/alerts/CJK emphasis 等未来可探索）。
 - 块级元素 End 事件插空行分隔；finish 去尾部空行。
 
+### 阶段 2.3：Input widget（26 单测）✅
+路径 `src/app/tui/widgets/input.rs`（777 行）。pi `components/input.ts` 的 Rust 移植。
+
+**核心设计决策**：
+1. **Outcome 通道 = `take_outcome()` 轮询**（参考 pi）。pi 的 Input/Editor 用可变回调字段 `onSubmit?: (value) => void`——widget 在 `handleInput` 内命中 submit 时**主动调 host 回调**（`input.ts:22-23,101-103`，路由 `tui.ts:761-835`）。Rust 里回调会形成 widget↔host 循环引用，惯用等价物是**轮询**：widget 内部记 `pending_outcome: Option<InputOutcome>`，host 在 `handle_input` 后调 `take_outcome()` 取走。语义一致（"handleInput 后取走 submit"），形态不同。`Component::handle_input` 契约不改（仍返回 `InputResult{Handled,NotHandled}`），submit/abort/quit 旁路。
+2. **grapheme 级光标**（用户确认）。新增 `unicode-segmentation` 依赖（Cargo.toml + tui feature），光标按 grapheme cluster 边界移动，正确处理 `👨‍👩‍👧` 这类 ZWJ 序列（pi 用 `Intl.Segmenter`，Rust 对应 `UnicodeSegmentation::graphemes`）。**原计划阶段 4 加此依赖，提前到 2.3**，阶段 4 Cargo.toml 任务相应简化。
+3. **横向滚动**（pi `input.ts:378-445`）：half-width bias 让 cursor 居中；窗口计算用 grapheme + `unicode-width`；`CURSOR_MARKER`（focused 时）+ reverse-video 假光标。
+4. **不在范围**（design.md 已定）：kill-ring/undo/word-navigation/bracketed-paste/Kitty CSI-u 解码——留扣子。
+
+**顺带修的引擎 bug**：`StyledLine::width()` 原用裸 `UnicodeWidthStr::width`，对 `CURSOR_MARKER`（APC 序列 `\x1b_pi:c\x07`）算成 5 宽（中间 `_pi:c` 是可见 ASCII），但终端实际 0 宽。改用 `marker_aware_width`（剥离 ANSI/APC）。这影响引擎硬宽度不变量检查（`tui.rs:198`）和 IME 光标定位——**任何 Focusable widget 发射 marker 都受益**。
+
+**遗留**：`TuiApp` 的 `input`/`input_cursor` 字段 + 旧 `input.rs::handle` 自由函数**不动**（阶段 4 接入时再迁移状态到 widget，阶段 3 建路由层时 `handle` 被路由替代）。
+
 ---
 
-## 三、未完成（30/68 tasks，阶段 2.3-5）
-
-### 阶段 2.3：Input widget（单行 Focusable）⏳
-- 路径 `src/app/tui/widgets/input.rs`（现骨架）。
-- 单行 Focusable：横向滚动 + grapheme 光标 + `CURSOR_MARKER` 发射 + 复用现有 `cursor_x_at` CJK 逻辑。
-- `handle_input`：crossterm `KeyEvent` → `InputResult`（Submit/Slash/Abort/Quit/Idle，对接现有 `input.rs` 的 `InputOutcome`）。
-- **不做** kill-ring/undo（后续按需）。
+## 三、未完成（26/68 tasks，阶段 2.4-5）
 
 ### 阶段 2.4：Loader widget（spinner）⏳
 - 路径 `src/app/tui/widgets/loader.rs`（现骨架）。
@@ -89,7 +96,7 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 - StreamBuffer 简化（line-array 天然整源上下文，fence-aware drain 可大幅简化或移除）。
 - `render.rs::RenderedLine` seam 保留；`to_lines` 改产出 `Vec<StyledLine>`。
 - **删除**：`components/` 目录、`terminal.rs`(旧)、`init.rs`(旧 ratatui 部分)、`InlineTerminal`/`commit_to_scrollback`/`draw_tail_frame`/`insert_before`。
-- **Cargo.toml**：删 `ratatui-core`/`ratatui-crossterm`/`ratatui-widgets`，加 `unicode-segmentation`，`tui` feature 重定义。
+- **Cargo.toml**：删 `ratatui-core`/`ratatui-crossterm`/`ratatui-widgets`，`tui` feature 重定义（`unicode-segmentation` 已在 2.3 加入）。
 - `engine_ratatui_style_adapter.rs` 删除（syntect_highlight 改产 CellStyle）。
 
 ### 阶段 5：回归 + QA + 手动验证 ⏳
@@ -133,6 +140,8 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 - `src/app/tui/engine/virtual_terminal.rs` — 测试 oracle
 - `src/app/tui/widgets/text.rs` — Text/TruncatedText/Spacer
 - `src/app/tui/widgets/markdown.rs` — Markdown widget（passthrough + code 高亮 + 扣子）
+- `src/app/tui/widgets/input.rs` — **Input widget**（单行 Focusable + grapheme 光标 + 横向滚动 + take_outcome）
+- `src/app/tui/engine/style.rs` — CellStyle/Color/Span/StyledLine + ANSI 序列化（`width()` 用 `marker_aware_width`，2.3 修复）
 - `src/app/tui/engine_ratatui_style_adapter.rs` — 过渡适配器（阶段 4 删）
 
 ### 旧代码（阶段 4 删除，现共存）
@@ -153,12 +162,13 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 
 ## 六、给接手者的建议
 
-1. **先跑测试确认基线**：`just test`（既有 684 + 新增 87 = ~771 全绿）、`just lint`（0 警告）。
-2. **从阶段 2.3 开始**（Input widget）——`/llman-sdd-apply c399-tui-rewrite-pi-render-engine`，tasks.md 已精细拆分。
-3. **阶段 4 是关键转折点**：接入主循环 + 删 ratatui。建议在阶段 3（UX）完成后单独评估，确保引擎 + widget + 输入交互都就位再动接入。
-4. **Markdown 扣子启用顺序**（用户提到）：标题分级 → 加粗/斜体 → 引用 → 链接 → 媒体预览 → 脚注 → 表格列对齐。每个在 `MarkdownTheme` flip 一个开关 + 在 `widgets/markdown.rs` 的 Renderer 加对应事件处理。
-5. **token 节省原则不可破**：表格永远 tab/空格对齐（不画 Unicode 边框），代码块只颜色无框——用户明确要求复制干净。
-6. **differential render 调试**：tui.rs 有 `last_changed_range`/`last_full_redraw_reason` 测试访问器；若 diff 行为难调，在 do_render 加 `PI_DEBUG_REDRAW` 式日志（技能强调无可见性无法调 diff 引擎）。
+1. **先跑测试确认基线**：`just test`（既有 684 + 新增 113 = ~797 全绿）、`just lint`（0 警告）。
+2. **从阶段 2.4 开始**（Loader widget）——`/llman-sdd-apply c399-tui-rewrite-pi-render-engine`，tasks.md 已精细拆分。阶段 2.3（Input）已落地，widget 层只剩 Loader。
+3. **阶段 3 路由层接 Input widget 的 take_outcome**：`engine/tui.rs::route_event` 是 stub，阶段 3 建单焦点路由时，在 `focused.handle_input()` 之后调 `input.take_outcome()` 把 Submit/Slash/Abort/Quit 传给主循环（参考 pi `tui.ts:827-833`）。
+4. **阶段 4 是关键转折点**：接入主循环 + 删 ratatui。建议在阶段 3（UX）完成后单独评估，确保引擎 + widget + 输入交互都就位再动接入。
+5. **Markdown 扣子启用顺序**（用户提到）：标题分级 → 加粗/斜体 → 引用 → 链接 → 媒体预览 → 脚注 → 表格列对齐。每个在 `MarkdownTheme` flip 一个开关 + 在 `widgets/markdown.rs` 的 Renderer 加对应事件处理。
+6. **token 节省原则不可破**：表格永远 tab/空格对齐（不画 Unicode 边框），代码块只颜色无框——用户明确要求复制干净。
+7. **differential render 调试**：tui.rs 有 `last_changed_range`/`last_full_redraw_reason` 测试访问器；若 diff 行为难调，在 do_render 加 `PI_DEBUG_REDRAW` 式日志（技能强调无可见性无法调 diff 引擎）。
 
 ---
 

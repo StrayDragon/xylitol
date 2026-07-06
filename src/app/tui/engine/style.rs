@@ -158,6 +158,12 @@ impl CellStyle {
         self.dim = true;
         self
     }
+    /// Reverse video (SGR 7). Used by the Input widget's fake cursor (pi emits
+    /// `\x1b[7m<glyph>\x1b[27m` at the cursor position).
+    pub fn reverse(mut self) -> Self {
+        self.reverse = true;
+        self
+    }
 
     /// Serialize to an SGR escape sequence that APPLIES this style from a reset
     /// state. Empty style -> empty string (caller wraps line end with reset).
@@ -265,12 +271,15 @@ impl StyledLine {
         self.spans.iter().map(|s| s.text.as_str()).collect()
     }
 
-    /// Display width of the line (CJK-aware, via `unicode_width`).
+    /// Display width of the line (CJK-aware, ANSI/APC-aware). Uses
+    /// [`marker_aware_width`](super::width::marker_aware_width) so embedded
+    /// zero-width sequences — `CURSOR_MARKER` (APC), SGR escapes — contribute 0,
+    /// matching what the terminal actually renders. The engine's hard-width
+    /// invariant check and the IME cursor positioning both rely on this.
     pub fn width(&self) -> usize {
-        use unicode_width::UnicodeWidthStr;
         self.spans
             .iter()
-            .map(|s| UnicodeWidthStr::width(s.text.as_str()))
+            .map(|s| super::width::marker_aware_width(s.text.as_str()))
             .sum()
     }
 

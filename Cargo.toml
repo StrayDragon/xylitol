@@ -71,6 +71,10 @@ ratatui-widgets = { version = "0.3", default-features = false, optional = true }
 crossterm = { version = "0.29.0", optional = true }
 # Display-width for CJK cursor alignment (ratatui uses it too; we need it directly).
 unicode-width = { version = "0.2", optional = true }
+# Grapheme cluster segmentation for grapheme-level cursor movement in the Input
+# widget (c399 stage 2.3). unicode-width alone is not enough for emoji+ZWJ
+# sequences (e.g. 👨‍👩‍👧) — cursor must move by whole grapheme, not by char.
+unicode-segmentation = { version = "1", optional = true }
 # Syntax highlighting for the vendored markdown renderer (c370). Pure-Rust
 # (fancy regex, no oniguruma C dep). two-face bundles ~250 grammars + themes
 # at compile time. Gated behind `tui`.
@@ -87,7 +91,7 @@ cli = []
 # Always-on HTTP/WebSocket server.
 server = ["dep:axum", "dep:tokio-tungstenite", "dep:tower-http"]
 # Terminal UI (ratatui-core/crossterm backend; ratatui-widgets optional subset — c360).
-tui = ["dep:ratatui-core", "dep:ratatui-crossterm", "dep:ratatui-widgets", "dep:crossterm", "dep:unicode-width", "dep:syntect", "dep:two-face", "dep:pulldown-cmark"]
+tui = ["dep:ratatui-core", "dep:ratatui-crossterm", "dep:ratatui-widgets", "dep:crossterm", "dep:unicode-width", "dep:unicode-segmentation", "dep:syntect", "dep:two-face", "dep:pulldown-cmark"]
 # Future GUI placeholder.
 gui = []
 
