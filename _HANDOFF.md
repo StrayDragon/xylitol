@@ -262,9 +262,10 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 
 ---
 
-## 七、commit 历史（18 个未 push）
+## 七、commit 历史（19 个未 push）
 
 ```
+03c0b73 fix(tui): c399 loader 状态机 bug — 对话结束渲染被 16ms 节流跳过
 272eead fix(tui): c399 CJK 输入修复 — 末尾光标覆盖最后一个字符而非丢字
 3d47a66 fix(tui): c399 阶段 4 手动验证 bug 修复（背景色/spinner/输入/thinking）
 3d23965 feat(tui): c399 阶段 4 — 接入新引擎主循环 + 删除 ratatui（line-array 重写）
