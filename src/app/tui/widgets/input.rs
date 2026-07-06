@@ -902,13 +902,14 @@ mod tests {
         let line: &StyledLine = &input.render(10)[0];
         let ansi = line.to_ansi();
         // Cursor styling lands on 好 (the grapheme at col 2). Input::new()
-        // defaults to the dark-theme cursor: bg=Indexed(238) → SGR "48;5;238".
-        // No raw reverse ("7m") — the cursor uses explicit fg+bg.
+        // defaults to the dark-theme cursor: fg=White (SGR "97") + bold ("1"),
+        // fg-only (no bg — no "48;5;...") so the bg never leaks past the glyph.
         assert!(ansi.contains('好'));
         assert!(
-            ansi.contains("48;5;238"),
-            "dark-theme cursor bg present: {ansi:?}"
+            ansi.contains("97"),
+            "dark-theme cursor fg=White present: {ansi:?}"
         );
+        assert!(!ansi.contains("48;5;"), "fg-only: no bg SGR");
         assert!(!ansi.contains("\x1b[7m"), "no raw reverse");
     }
 
@@ -929,12 +930,13 @@ mod tests {
         let line = &input.render(10)[0];
         let ansi = line.to_ansi();
         // Empty value → cursor glyph is a space, styled with the theme cursor
-        // (dark default: bg=Indexed(238)). Marker present for IME positioning.
+        // (dark default: fg=White + bold, fg-only). Marker present for IME.
         assert!(ansi.contains(CURSOR_MARKER));
         assert!(
-            ansi.contains("48;5;238"),
-            "dark-theme cursor bg present: {ansi:?}"
+            ansi.contains("97"),
+            "dark-theme cursor fg=White present: {ansi:?}"
         );
+        assert!(!ansi.contains("48;5;"), "fg-only: no bg SGR");
         assert!(!ansi.contains("\x1b[7m"), "no raw reverse");
     }
 
