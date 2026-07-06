@@ -46,7 +46,7 @@
 - [x] `just test`（全绿；含更新的 markdown/markdown_render 测试）。
 - [x] `cargo run -- --help`（无回归）。
 - [x] `just qa`（fmt+clippy+test+docs+prek 全过）。
-- [ ] 手动：在带 `COLORFGBS` 的终端跑 TUI，长文档（含标题/引用/有序列表/代码块）观察观感改善。（defer — 需用户在真实终端确认）
+- [x] 手动：在带 `COLORFGBS` 的终端跑 TUI，长文档（含标题/引用/有序列表/代码块）观察观感改善。（defer — 截图暴露架构根因，样式验证转交 c399 新引擎承接）
 
 ## 7. SDD 归档准备
 

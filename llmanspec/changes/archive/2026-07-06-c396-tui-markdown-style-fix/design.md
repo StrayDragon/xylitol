@@ -117,3 +117,11 @@ fn pick_theme() -> EmbeddedThemeName {
 - 嵌套列表缩进/悬挂缩进（c397 解耦后）
 - OSC 11 背景查询（future.md）
 - 表格 Unicode 边框（c395 已决定空格对齐，不改）
+
+## 归档说明（2026-07-06 补）
+
+c396 的样式代码（commit 19b115e）已落地并通过单测，但截图暴露：在 ratatui inline-viewport 模型下，流式段落切分会破坏 markdown 结构（代码块围栏原样显示、无高亮、无空行），样式修复的完整效果无法体现。
+
+决策：**归档 c396，样式资产转入 c399**（TUI 渲染层重写为 pi-tui line-array + differential render）。c399 的 Markdown widget 会复用本变更的样式逻辑（标题分级 / 引用 `>` 前缀 / 有序列表数字 / COLORFGBS 主题自适应），产出类型从 ratatui `Line` 改为自有 `StyledLine`（~50 行样式映射）。
+
+c397（渲染粒度解耦）/ c398（resize 自适应）删除——两者需求在 c399 的 line-array 模型里天然满足（整源 render + width-change full redraw）。
