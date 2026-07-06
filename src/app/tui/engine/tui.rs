@@ -467,6 +467,10 @@ impl<T: Terminal> Tui<T> {
     pub(crate) fn previous_line_count(&self) -> usize {
         self.previous_lines.len()
     }
+    #[cfg(test)]
+    pub(crate) fn set_root(&mut self, root: Box<dyn Component>) {
+        self.root = root;
+    }
 }
 
 /// Output of `post_process_lines`: serialized ANSI lines + optional IME cursor
@@ -572,7 +576,7 @@ mod tests {
                 StyledLine::raw("c"),
             ],
         };
-        tui.root = Box::new(widget2);
+        tui.set_root(Box::new(widget2));
         tui.render_now().unwrap();
         let out = tui.term_mut().written.clone();
         assert!(out.contains("c"), "new line written");
@@ -603,7 +607,7 @@ mod tests {
                 StyledLine::raw("c"),
             ],
         };
-        tui.root = Box::new(widget2);
+        tui.set_root(Box::new(widget2));
         tui.render_now().unwrap();
         let out = tui.term_mut().written.clone();
         assert!(out.contains("CHANGED"), "changed line written");
@@ -655,7 +659,7 @@ mod tests {
         let widget2 = LinesWidget {
             lines: vec![StyledLine::raw("a"), StyledLine::raw("b")],
         };
-        tui.root = Box::new(widget2);
+        tui.set_root(Box::new(widget2));
         tui.render_now().unwrap();
         let out = tui.term_mut().written.clone();
         // Orphan clearing uses \x1b[2K; two orphan rows (c, d removed).
@@ -753,7 +757,7 @@ mod tests {
                 CellStyle::default().bold(),
             )])],
         };
-        tui.root = Box::new(widget2);
+        tui.set_root(Box::new(widget2));
         tui.render_now().unwrap();
         assert_eq!(
             tui.last_changed_range(),

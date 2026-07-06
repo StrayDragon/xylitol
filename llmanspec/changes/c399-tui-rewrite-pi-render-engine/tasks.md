@@ -50,9 +50,11 @@
 - [x] `stop()` clean exit（移到内容末尾 + 换行 + restore）。
 
 ### 1.6 测试 harness（virtual_terminal.rs）
-- [ ] 内存 cell-grid + `feed(ansi)` 解析（SGR/cursor/clear/sync）+ assert_row/assert_contains/assert_cursor。
-- [ ] ANSI 解析器（vte crate 或手写状态机）。
-- [ ] 单测：diff 不变量（append-only 只写新行、in-place 只写该行、width change 全量、shrink 清孤立）。
+- [x] 内存 cell-grid + `feed(ansi)` 解析（SGR/cursor/clear/sync）+ assert_row/assert_contains/assert_cursor。
+- [x] ANSI 解析器（vte crate 或手写状态机）。
+- [x] 单测：diff 不变量（append-only 只写新行、in-place 只写该行、width change 全量、shrink 清孤立）。
+
+**阶段 1 完成标志**：渲染引擎全部就位（style/width/terminal/component/tui/virtual_terminal 六模块，69 单测全过）。引擎可独立验证，待阶段 2 widget + 阶段 4 接入后可用。
 
 ## 阶段 2：模块 2 widget 系统（`src/app/tui/widgets/`）
 
