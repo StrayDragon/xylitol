@@ -26,6 +26,7 @@
 pub mod app;
 mod commands;
 mod components;
+pub mod engine;
 mod init;
 mod input;
 mod render;
