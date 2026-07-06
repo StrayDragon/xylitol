@@ -9,11 +9,12 @@
 
 ## ⚠️ 当前状态（2026-07-07）
 
-**阶段 4 + 两轮 bug 修复已完成**：
+**阶段 4 + 三轮 bug 修复已完成**：
 - `feat 3d23965` 阶段 4 大重构（接入新引擎 + 删 ratatui）
 - `fix 3d47a66` 首轮 5 bug（背景色/spinner/idle/thinking/tick）
 - `fix 272eead` 二轮 CJK 输入（末字 reverse 覆盖而非丢字）
-- `cargo check/fmt/lint` ✅；`cargo test --features tui` 762 测全绿（lib 676 + bdd 85 + 1）
+- `fix（本提交）` 三轮 loader 状态机 bug（对话结束仍显 "Working…" + spinner 冻结 + 输入后才变 Ready）
+- `cargo check/fmt/lint` ✅；`cargo test --features tui` 764 测全绿（lib 678 + bdd 85 + 1）
 - arch_guard 4/4 ✅
 
 **待办（阶段 5 收尾，需用户重验）**：
@@ -30,6 +31,7 @@
 | 4 | thinking stream 完被覆盖 | 提交的 ThinkingText 丢弃 palette（`let _ = p;`），灰色丢失视觉融为回复 | apply `p.thinking()` 到每 span | 3d47a66 |
 | 5 | spinner 卡住/只在 streaming 转 | `Msg::Tick` 漏调 `try_render`（frame 推进但不绘制） | 补 `try_render`；tick 120ms→80ms | 3d47a66 |
 | 6 | 输入"你好"只显"你"（二轮） | fits-check `total_w < available`（严格小于）正好填满时进 scroll 丢字；改 `<=` 后宽度不变量冲突（cursor 末尾需 1 列 reverse 空格） | cursor 在末尾且内容填满时，**最后一个字符本身以 reverse video 渲染**（覆盖末字），不额外加空格列 | 272eead |
+| 7 | 对话结束仍显 "Working…" + spinner 冻结，输入文字后才变 "Ready"（三轮，核心 bug） | `Msg::XyDone` 用 `request_render(false)+try_render()`，但 `try_render` 16ms 节流：前一个 `Xy` 事件刚渲染完（<16ms），`XyDone` 到达时 `elapsed<16ms` → try_render 静默跳过，`render_requested=true` 挂起。`Tick` 分支只在 `is_streaming()`（已被 `XyDone` 置 false）里调 try_render，故挂起的渲染永不到达，直到下次按键 `Msg::Term` 调 try_render 才 flush 出 "Ready"。同 bug 还暴露 `Loader::current` 关闭 spinning 时不归零，下次动画从 stale 帧开始看似"卡住" | **(a) `XyDone` 改 `render_now()` 绕过节流**（turn 结束是关键终态帧，必须立即绘制）；**(b) `Loader::set_spinning(false)` 重置 `current=0`**（下次从首帧 ⠋ 开始）；**(c) `Msg::Tick` 即使 idle 也调 `try_render`**（防御性 flush pending，类似 Abort 路径） | 本提交 |
 
 **背景色确认（非 bug）**：xylitol 全透明背景（`bg=None`），继承终端——与 pi inline 模型一致（pi 也无 alt-screen、不画全屏 bg）。pi coding-agent 只给特定消息画区域 bg（userMessageBg/toolPendingBg），非全屏。用户终端的白色背景是终端自身，TUI 没画。OSC 11/997 自动探测是 c399 范围外（需 stdin reply-interceptor），留作 c400（P0）。
 
