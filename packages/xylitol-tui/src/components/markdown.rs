@@ -842,7 +842,9 @@ fn compute_column_widths(natural: &[usize], min_word: &[usize], available: usize
     let mut widths: Vec<usize> = (0..n).map(|i| min_word[i]).collect();
     if total_grow > 0 {
         for i in 0..n {
-            widths[i] += (natural[i].saturating_sub(min_word[i]) * extra) / total_grow;
+            widths[i] += (natural[i].saturating_sub(min_word[i]) * extra)
+                .checked_div(total_grow)
+                .unwrap_or(0);
         }
     }
     // Rounding
