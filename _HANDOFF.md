@@ -74,14 +74,14 @@ codex 的测试 `controller_loose_vs_tight_with_commit_ticks_matches_full`（con
 
 ## 三、最小可行改进路径（按 ROI 排序，非实施计划）
 
-### 第一梯队：纯样式修复（低风险，不改架构）
+### 第一梯队：纯样式修复（低风险，不改架构）— ✅ 已完成（c396）
 
 这一组改动在现有「按段落渲染」模型下即可完成，能立即改善观感：
 
-1. **标题分级**：`current_style` 按 `HeadingLevel` 返回不同样式（H1 粗+下划线，H2 粗，H3 粗斜，H4-6 斜）；可选加 `# ` 前缀。
-2. **引用块加 `> ` 前缀**：删除 `blockquote_italic_no_pipe` 测试的「no pipe」断言，改成断言「每行有 `> ` 前缀」。颜色从 DarkGray 改为 codex 的绿色，或保留灰但加前缀。
-3. **有序列表数字**：处理 `Tag::List(Some(start))`，按 `start` 递增输出 `{n}. `（light_blue）。
-4. **高亮主题自适应**：检测终端背景明暗（`COLORTERM` / 背景色查询），选 latte/mocha。或退一步先支持配置项。
+1. **标题分级** ✅：`current_style` 按 `HeadingLevel` 返回不同样式（H1 粗+下划线，H2 粗，H3 粗斜，H4-6 斜）；加 `# ` 前缀。
+2. **引用块加 `> ` 前缀** ✅：删除 `blockquote_italic_no_pipe` 测试的「no pipe」断言，改成断言「每行有 `> ` 前缀」。保留 quote 样式（灰斜）+ `> ` 前缀，嵌套 `>>` 产生 `> > `。
+3. **有序列表数字** ✅：处理 `Tag::List(Some(start))`，按 `start` 递增输出 `{n}. `（light_blue）。
+4. **高亮主题自适应** ✅：按 `COLORFGBS` 探测终端背景明暗选 CatppuccinLatte(亮)/CatppuccinMocha(暗)；OSC 11 因 inline viewport 竞态降级为 future。
 
 这一梯队覆盖了「症状对照表」里的 6/7 项，工作量集中在 `markdown_render.rs` 单文件。
 

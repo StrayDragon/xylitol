@@ -741,4 +741,3 @@ mod tests {
         let _ = stale; // keep the intent explicit
     }
 }
-
