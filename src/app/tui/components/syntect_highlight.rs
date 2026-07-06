@@ -71,10 +71,39 @@ pub fn highlight(lang: &str, code: &str) -> Vec<StyleSegment> {
     segments
 }
 
+/// Pick the highlight theme based on terminal background lightness (c396).
+///
+/// Probes the `COLORFGBS` environment variable (common to iTerm2/Alacritty/
+/// Tmux/Kitty/GNOME Terminal): format `"fg;bg"` where the background code
+/// `>= 7` indicates a light background → light theme (CatppuccinLatte); else
+/// dark theme (CatppuccinMocha). Falls back to dark when `COLORFGBS` is unset
+/// or unparseable.
+///
+/// OSC 11 background query is intentionally NOT used (would race with user
+/// input under the inline viewport); see c396 design D5.
+fn pick_theme_name(colorfgbs: Option<&str>) -> EmbeddedThemeName {
+    let Some(val) = colorfgbs else {
+        return EmbeddedThemeName::CatppuccinMocha;
+    };
+    let parts: Vec<&str> = val.split(';').collect();
+    if parts.len() >= 2
+        && let Ok(bg) = parts[1].trim().parse::<u8>()
+    {
+        return if bg >= 7 {
+            EmbeddedThemeName::CatppuccinLatte
+        } else {
+            EmbeddedThemeName::CatppuccinMocha
+        };
+    }
+    EmbeddedThemeName::CatppuccinMocha
+}
+
+static THEME_NAME: OnceLock<EmbeddedThemeName> = OnceLock::new();
+
 fn theme() -> syntect::highlighting::Theme {
-    two_face::theme::extra()
-        .get(EmbeddedThemeName::CatppuccinMocha)
-        .clone()
+    let name =
+        *THEME_NAME.get_or_init(|| pick_theme_name(std::env::var("COLORFGBS").ok().as_deref()));
+    two_face::theme::extra().get(name).clone()
 }
 
 /// syntect `Style` → ratatui `Style`. Skips background, keeps BOLD, skips
@@ -271,5 +300,50 @@ mod tests {
         let source = "line1\nline2\nline3";
         let lines = segments_to_lines(source, &[], "", Style::default(), 80);
         assert_eq!(lines.len(), 3);
+    }
+
+    // ── c396 theme selection (pure logic, no env races) ───────────────────
+
+    #[test]
+    fn pick_theme_light_when_colorfgbs_light() {
+        // bg code 15 (white) → light background → Latte.
+        assert_eq!(
+            pick_theme_name(Some("0;15")),
+            EmbeddedThemeName::CatppuccinLatte
+        );
+        assert_eq!(
+            pick_theme_name(Some("7;7")),
+            EmbeddedThemeName::CatppuccinLatte
+        );
+    }
+
+    #[test]
+    fn pick_theme_dark_when_colorfgbs_dark() {
+        // bg code 0 (black) → dark background → Mocha.
+        assert_eq!(
+            pick_theme_name(Some("15;0")),
+            EmbeddedThemeName::CatppuccinMocha
+        );
+        assert_eq!(
+            pick_theme_name(Some("default;0")),
+            EmbeddedThemeName::CatppuccinMocha
+        );
+    }
+
+    #[test]
+    fn pick_theme_dark_when_colorfgbs_unset() {
+        assert_eq!(pick_theme_name(None), EmbeddedThemeName::CatppuccinMocha);
+    }
+
+    #[test]
+    fn pick_theme_dark_when_colorfgbs_unparseable() {
+        assert_eq!(
+            pick_theme_name(Some("garbage")),
+            EmbeddedThemeName::CatppuccinMocha
+        );
+        assert_eq!(
+            pick_theme_name(Some("onlyonefield")),
+            EmbeddedThemeName::CatppuccinMocha
+        );
     }
 }
