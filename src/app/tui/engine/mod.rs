@@ -19,4 +19,5 @@ pub mod component;
 pub mod style;
 pub mod terminal;
 pub mod tui;
+pub mod virtual_terminal;
 pub mod width;
