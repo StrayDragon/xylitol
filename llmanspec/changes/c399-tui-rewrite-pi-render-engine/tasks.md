@@ -20,11 +20,11 @@
 - [x] 校验：`cargo test --features tui -- engine::style`。
 
 ### 1.2 ANSI-aware width utilities（width.rs）
-- [ ] `visible_width(line) -> usize`（ANSI/SGR = 0，CJK = 2，combining = 0）。
-- [ ] `truncate_to_width(line, width, ellipsis)`（不劈开宽字符）。
-- [ ] `wrap_text_with_ansi(text, width) -> Vec<StyledLine>`（跨行携带 SGR 状态）。
-- [ ] 单测：CJK width、ANSI 截断、wrap 保色。
-- [ ] 校验：`cargo test --features tui -- engine::width`。
+- [x] `visible_width(line) -> usize`（ANSI/SGR = 0，CJK = 2，combining = 0）。
+- [x] `truncate_to_width(line, width, ellipsis)`（不劈开宽字符）。
+- [x] `wrap_text_with_ansi(text, width) -> Vec<StyledLine>`（跨行携带 SGR 状态）。
+- [x] 单测：CJK width、ANSI 截断、wrap 保色。
+- [x] 校验：`cargo test --features tui -- engine::width`。
 
 ### 1.3 Terminal 抽象（terminal.rs）
 - [ ] `Terminal` struct（crossterm 包装：raw mode / size / event::poll+read / cursor / BeginSynchronizedUpdate / clean stop）。
