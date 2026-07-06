@@ -27,10 +27,11 @@
 - [x] 校验：`cargo test --features tui -- engine::width`。
 
 ### 1.3 Terminal 抽象（terminal.rs）
-- [ ] `Terminal` struct（crossterm 包装：raw mode / size / event::poll+read / cursor / BeginSynchronizedUpdate / clean stop）。
-- [ ] `start()` / `stop()` 生命周期 + bracketed paste + signal handlers（SIGINT/SIGTERM/SIGHUP）。
-- [ ] panic hook 保留（复用 c355 install_terminal_restore_hook 思路）。
-- [ ] 校验：手动 raw mode 进出 + 写一个字符串（集成测试）。
+- [x] `Terminal` struct（crossterm 包装：raw mode / size / event::poll+read / cursor / BeginSynchronizedUpdate / clean stop）。
+- [x] `start()` / `stop()` 生命周期 + bracketed paste + signal handlers（SIGINT/SIGTERM/SIGHUP）。
+- [x] panic hook 保留（复用 c355 install_terminal_restore_hook 思路）。
+- [x] 校验：手动 raw mode 进出 + 写一个字符串（集成测试）。
+  - CapturingTerminal 测试替身（捕获 write + 喂合成 event）覆盖 write/event/resize。
 
 ### 1.4 Component/Container/Focusable（component.rs）
 - [ ] `Component` trait（render/handle_input/invalidate）+ `Focusable` + `CURSOR_MARKER`。
