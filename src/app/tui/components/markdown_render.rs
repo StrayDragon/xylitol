@@ -23,8 +23,18 @@ use crate::app::tui::components::syntect_highlight;
 pub struct RenderStyle {
     /// Normal paragraph text.
     pub text: Style,
-    /// Headings (bold variant of text).
-    pub heading: Style,
+    /// H1 (bold + underlined).
+    pub h1: Style,
+    /// H2 (bold).
+    pub h2: Style,
+    /// H3 (bold + italic).
+    pub h3: Style,
+    /// H4 (italic).
+    pub h4: Style,
+    /// H5 (italic).
+    pub h5: Style,
+    /// H6 (italic).
+    pub h6: Style,
     /// Inline `code` foreground.
     pub code_fg: Color,
     /// Blockquote text (italic + dimmed).
@@ -32,11 +42,33 @@ pub struct RenderStyle {
 }
 
 impl RenderStyle {
+    /// Heading style for `level` (1-based). Matches codex MarkdownStyles grading
+    /// (c396): H1 bold+underlined, H2 bold, H3 bold+italic, H4-H6 italic.
+    fn heading(&self, level: HeadingLevel) -> Style {
+        match level {
+            HeadingLevel::H1 => self.h1,
+            HeadingLevel::H2 => self.h2,
+            HeadingLevel::H3 => self.h3,
+            HeadingLevel::H4 => self.h4,
+            HeadingLevel::H5 => self.h5,
+            HeadingLevel::H6 => self.h6,
+        }
+    }
+
     /// Style for assistant replies (default theme).
     pub fn for_assistant() -> Self {
         Self {
             text: Style::default(),
-            heading: Style::default().add_modifier(Modifier::BOLD),
+            h1: Style::default()
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(Modifier::UNDERLINED),
+            h2: Style::default().add_modifier(Modifier::BOLD),
+            h3: Style::default()
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(Modifier::ITALIC),
+            h4: Style::default().add_modifier(Modifier::ITALIC),
+            h5: Style::default().add_modifier(Modifier::ITALIC),
+            h6: Style::default().add_modifier(Modifier::ITALIC),
             code_fg: Color::Cyan,
             quote: Style::default()
                 .fg(Color::DarkGray)
@@ -46,11 +78,19 @@ impl RenderStyle {
 
     /// Style for user input echo (cyan/bold).
     pub fn for_user() -> Self {
+        let base = Style::default().fg(Color::Cyan);
         Self {
-            text: Style::default().fg(Color::Cyan),
-            heading: Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            text: base,
+            h1: base
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(Modifier::UNDERLINED),
+            h2: base.add_modifier(Modifier::BOLD),
+            h3: base
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(Modifier::ITALIC),
+            h4: base.add_modifier(Modifier::ITALIC),
+            h5: base.add_modifier(Modifier::ITALIC),
+            h6: base.add_modifier(Modifier::ITALIC),
             code_fg: Color::Cyan,
             quote: Style::default()
                 .fg(Color::DarkGray)
@@ -61,11 +101,21 @@ impl RenderStyle {
     /// Style for thinking/reasoning (dimmed).
     pub fn for_thinking() -> Self {
         let dim = Color::DarkGray;
+        let base = Style::default().fg(dim);
         Self {
-            text: Style::default().fg(dim),
-            heading: Style::default().fg(dim).add_modifier(Modifier::BOLD),
+            text: base,
+            h1: base
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(Modifier::UNDERLINED),
+            h2: base.add_modifier(Modifier::BOLD),
+            h3: base
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(Modifier::ITALIC),
+            h4: base.add_modifier(Modifier::ITALIC),
+            h5: base.add_modifier(Modifier::ITALIC),
+            h6: base.add_modifier(Modifier::ITALIC),
             code_fg: Color::DarkGray,
-            quote: Style::default().fg(dim).add_modifier(Modifier::ITALIC),
+            quote: base.add_modifier(Modifier::ITALIC),
         }
     }
 }
@@ -102,6 +152,18 @@ struct Writer {
     in_code: bool,
     /// Block context stack.
     blocks: Vec<Block>,
+    /// Current blockquote nesting depth (c396). Each level adds a "> " prefix
+    /// to every physical row of the blockquote, so `> > nested` carries a
+    /// doubled prefix. Reset to 0 outside any blockquote.
+    blockquote_depth: usize,
+    /// Whether the current pending line still needs its blockquote prefix
+    /// emitted (c396). Set by flush_line and BlockQuote start; cleared by
+    /// ensure_blockquote_prefix once emitted. Avoids doubled prefixes.
+    prefix_pending: bool,
+    /// Ordered-list counter (c396). `Some(n)` = current ordered list emits
+    /// `{n}. ` markers and increments; `None` = unordered list emits `• `.
+    /// Reset at `TagEnd::List`.
+    list_counter: Option<u64>,
     /// Code block accumulator.
     code_lang: Option<String>,
     code_buf: String,
@@ -117,7 +179,6 @@ struct Writer {
 }
 
 #[derive(Clone, Copy)]
-#[allow(dead_code)] // HeadingLevel retained for future per-level styling.
 enum Block {
     Paragraph,
     Heading(HeadingLevel),
@@ -136,6 +197,9 @@ impl Writer {
             inline_mods: Vec::new(),
             in_code: false,
             blocks: Vec::new(),
+            blockquote_depth: 0,
+            prefix_pending: false,
+            list_counter: None,
             code_lang: None,
             code_buf: String::new(),
             pending_link_url: None,
@@ -148,7 +212,7 @@ impl Writer {
     /// The current text style: base (paragraph/heading/quote) + inline mods.
     fn current_style(&self) -> Style {
         let base = match self.blocks.last() {
-            Some(Block::Heading(_)) => self.style.heading,
+            Some(Block::Heading(level)) => self.style.heading(*level),
             Some(Block::BlockQuote) => self.style.quote,
             _ => self.style.text,
         };
@@ -175,6 +239,11 @@ impl Writer {
             let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
             if cw > 0 && self.pending_width + cw > self.width && self.pending_width > 0 {
                 self.flush_line();
+            }
+            // c396: emit the blockquote prefix at the start of each physical
+            // line (flush sets prefix_pending; wrap and newline both flush).
+            if self.pending.is_empty() {
+                self.ensure_blockquote_prefix();
             }
             // Merge into last span if same style, else push new span.
             if let Some(last) = self.pending.last_mut()
@@ -207,6 +276,24 @@ impl Writer {
             let line = Line::from(std::mem::take(&mut self.pending));
             self.lines.push(line);
             self.pending_width = 0;
+        }
+        // c396: the blockquote prefix is emitted lazily by
+        // `ensure_blockquote_prefix()` on the next text push, so we do NOT
+        // emit it here (emitting here caused doubled prefixes on nested
+        // blockquotes because BlockQuote start also triggers a flush).
+        self.prefix_pending = self.blockquote_depth > 0;
+    }
+
+    /// Emit the blockquote "> " prefix for the current line if one is pending
+    /// (set by flush_line / BlockQuote start). Called lazily before the first
+    /// text/span lands on a fresh line, so the prefix appears exactly once per
+    /// physical row (including wrapped continuation rows — wrap calls flush,
+    /// which sets prefix_pending again).
+    fn ensure_blockquote_prefix(&mut self) {
+        if self.prefix_pending {
+            let prefix = "> ".repeat(self.blockquote_depth);
+            self.push_span(Span::styled(prefix, self.style.quote));
+            self.prefix_pending = false;
         }
     }
 
@@ -242,14 +329,22 @@ impl Writer {
             }
             Tag::Heading { level, .. } => {
                 self.flush_line();
+                // codex-style leading hash prefix (c396): "# " for H1, "## " for
+                // H2, etc. — keeps the document outline visible at a glance.
+                let prefix = format!("{} ", "#".repeat(level as usize));
+                let prefix_style = self.style.heading(level);
+                self.push_span(Span::styled(prefix, prefix_style));
                 self.blocks.push(Block::Heading(level));
             }
             Tag::CodeBlock(kind) => {
                 self.flush_line();
-                // Unconditional blank-line separation before the code block: each
-                // paragraph is render_markdown'd independently (streaming commit
-                // splits at paragraph boundaries), so we can't rely on prior
-                // lines existing — always pad so the block stands apart.
+                // Unconditional blank-line separation before the code block:
+                // streaming commit splits at paragraph boundaries (c377
+                // fence-aware), so each paragraph is render_markdown'd
+                // independently and the renderer can't rely on prior lines
+                // existing. Always pad so the block stands apart.
+                // TODO(c397): once render granularity decouples to full-message,
+                // gate this on `!self.lines.is_empty()` like codex's needs_newline.
                 self.lines.push(Line::raw(""));
                 let lang = match kind {
                     CodeBlockKind::Fenced(s) if !s.is_empty() => Some(s.into_string()),
@@ -260,14 +355,29 @@ impl Writer {
                 self.blocks.push(Block::CodeBlock);
             }
             Tag::BlockQuote(_) => {
-                self.flush_line();
+                self.flush_line(); // ends the prior line
+                self.blockquote_depth += 1;
                 self.blocks.push(Block::BlockQuote);
+                // The blockquote's first line needs its prefix emitted when
+                // the first text lands (lazy via ensure_blockquote_prefix).
+                self.prefix_pending = true;
             }
-            Tag::List(None) => { /* unordered list container */ }
+            Tag::List(start) => {
+                // c396: track ordered-list start. `Some(n)` → ordered, emit
+                // `{n}. ` markers and increment per item; `None` → unordered.
+                self.list_counter = start;
+            }
             Tag::Item => {
                 self.flush_line();
                 self.blocks.push(Block::ListItem);
-                self.push_span(Span::styled("• ".to_string(), self.style.text));
+                if let Some(n) = self.list_counter {
+                    // Ordered: "1. " / "2. " ... in light_blue (codex style).
+                    let marker = format!("{}. ", n);
+                    self.push_span(Span::styled(marker, Style::default().fg(Color::LightBlue)));
+                    self.list_counter = Some(n + 1);
+                } else {
+                    self.push_span(Span::styled("• ".to_string(), self.style.text));
+                }
             }
             Tag::Table(_) => {
                 self.flush_line();
@@ -305,10 +415,16 @@ impl Writer {
                 self.code_lang = None;
             }
             TagEnd::BlockQuote(_) => {
+                // Decrement depth BEFORE flushing so the post-flush prefix
+                // (for the line AFTER the blockquote) reflects the outer scope.
+                self.blockquote_depth = self.blockquote_depth.saturating_sub(1);
                 self.flush_line();
                 self.blocks.pop();
             }
-            TagEnd::List(_) => {}
+            TagEnd::List(_) => {
+                // Reset the ordered-list counter when the list ends.
+                self.list_counter = None;
+            }
             TagEnd::Table => {
                 self.flush_table();
             }
@@ -375,7 +491,10 @@ impl Writer {
         let col_widths: Vec<usize> = (0..n_cols)
             .map(|c| {
                 rows.iter()
-                    .filter_map(|r| r.get(c).map(|cell| unicode_width::UnicodeWidthStr::width(cell.as_str())))
+                    .filter_map(|r| {
+                        r.get(c)
+                            .map(|cell| unicode_width::UnicodeWidthStr::width(cell.as_str()))
+                    })
                     .max()
                     .unwrap_or(0)
             })
@@ -383,7 +502,7 @@ impl Writer {
         for (row_idx, row) in rows.iter().enumerate() {
             let is_header = row_idx == 0;
             let style = if is_header {
-                self.style.heading
+                self.style.h2
             } else {
                 self.style.text
             };
@@ -457,6 +576,67 @@ mod tests {
         assert!(row_text(&buf, 0, 40).contains("Title"));
     }
 
+    /// Read the ratatui Style of the first non-empty cell on row `y`.
+    fn row_style(
+        buf: &ratatui_core::buffer::Buffer,
+        y: u16,
+        width: u16,
+    ) -> ratatui_core::style::Style {
+        for x in 0..width {
+            let cell = &buf[(x, y)];
+            let sym = cell.symbol();
+            if !sym.is_empty() && sym != " " {
+                return cell.style();
+            }
+        }
+        ratatui_core::style::Style::default()
+    }
+
+    #[test]
+    fn heading_has_hash_prefix() {
+        // c396: headings carry a leading "# " / "## " prefix matching level.
+        let (buf, _) = render_to_buf("## Subsection", 40);
+        assert!(
+            row_text(&buf, 0, 40).starts_with("## "),
+            "H2 has ## prefix: {:?}",
+            row_text(&buf, 0, 40)
+        );
+    }
+
+    #[test]
+    fn heading_h1_is_bold_and_underlined() {
+        // c396/tui78: H1 MUST be bold + underlined.
+        let (buf, _) = render_to_buf("# Title", 40);
+        let style = row_style(&buf, 0, 40);
+        assert!(
+            style.add_modifier.contains(Modifier::BOLD),
+            "H1 has BOLD: {:?}",
+            style.add_modifier
+        );
+        assert!(
+            style.add_modifier.contains(Modifier::UNDERLINED),
+            "H1 has UNDERLINED: {:?}",
+            style.add_modifier
+        );
+    }
+
+    #[test]
+    fn heading_h3_is_bold_and_italic() {
+        // c396/tui78: H3 MUST be bold + italic.
+        let (buf, _) = render_to_buf("### Sub", 40);
+        let style = row_style(&buf, 0, 40);
+        assert!(
+            style.add_modifier.contains(Modifier::BOLD),
+            "H3 has BOLD: {:?}",
+            style.add_modifier
+        );
+        assert!(
+            style.add_modifier.contains(Modifier::ITALIC),
+            "H3 has ITALIC: {:?}",
+            style.add_modifier
+        );
+    }
+
     #[test]
     fn bold_inline_renders() {
         let (buf, _) = render_to_buf("some **bold** word", 40);
@@ -493,14 +673,65 @@ mod tests {
     }
 
     #[test]
-    fn blockquote_italic_no_pipe() {
+    fn ordered_list_renders_incrementing_numbers() {
+        // c396/tui79: ordered list items carry auto-incrementing "1. "/"2. " markers.
+        let md = "1. first\n2. second\n3. third\n";
+        let (buf, h) = render_to_buf(md, 40);
+        assert!(h >= 3, "three items -> at least 3 rows, got {h}");
+        assert!(
+            row_text(&buf, 0, 40).starts_with("1. "),
+            "row0 has 1. marker: {:?}",
+            row_text(&buf, 0, 40)
+        );
+        assert!(
+            row_text(&buf, 1, 40).starts_with("2. "),
+            "row1 has 2. marker: {:?}",
+            row_text(&buf, 1, 40)
+        );
+        assert!(
+            row_text(&buf, 2, 40).starts_with("3. "),
+            "row2 has 3. marker: {:?}",
+            row_text(&buf, 2, 40)
+        );
+    }
+
+    #[test]
+    fn ordered_list_custom_start() {
+        // c396/tui79: ordered list with explicit start value.
+        let md = "3. alpha\n4. beta\n";
+        let (buf, _h) = render_to_buf(md, 40);
+        assert!(
+            row_text(&buf, 0, 40).starts_with("3. "),
+            "row0 has 3. marker: {:?}",
+            row_text(&buf, 0, 40)
+        );
+        assert!(
+            row_text(&buf, 1, 40).starts_with("4. "),
+            "row1 has 4. marker: {:?}",
+            row_text(&buf, 1, 40)
+        );
+    }
+
+    #[test]
+    fn blockquote_has_gt_prefix() {
+        // c396/tui66: blockquote lines MUST carry a visible "> " prefix.
         let md = "> a quote\n";
         let (buf, _) = render_to_buf(md, 40);
         let row = row_text(&buf, 0, 40);
-        assert!(row.contains("a quote"));
+        assert!(row.contains("a quote"), "quote body: {row}");
+        assert!(row.starts_with("> "), "blockquote has > prefix: {row}");
+    }
+
+    #[test]
+    fn nested_blockquote_has_doubled_prefix() {
+        // c396/tui66: nested blockquote (>>) carries a doubled "> > " prefix.
+        let md = ">> nested\n";
+        let (buf, _) = render_to_buf(md, 40);
+        let row = row_text(&buf, 0, 40);
+        assert!(row.contains("nested"), "nested body: {row}");
         assert!(
-            !row.contains('│') && !row.contains('▎'),
-            "no pipe prefix: {row}"
+            row.starts_with("> > "),
+            "nested blockquote has > > prefix: {row}"
         );
     }
 
@@ -512,7 +743,3 @@ mod tests {
         assert!(row.contains("GitHub") && row.contains("https://github.com"));
     }
 }
-
-
-
-

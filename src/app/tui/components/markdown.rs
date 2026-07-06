@@ -175,14 +175,14 @@ mod tests {
 
     #[test]
     fn blockquote_renders() {
-        // c395: blockquote renders italic + dim, no border/pipe prefix.
+        // c396: blockquote renders italic + dim WITH a "> " prefix (spec tui66).
         let md = "> a quote\n";
         let (buf, _) = render_to_buf(md, 40);
         let row = row_text(&buf, 0, 40);
         assert!(row.contains("a quote"), "quote body visible: {row}");
         assert!(
-            !row.contains('│') && !row.contains('▎'),
-            "no border prefix (c395 self-researched renderer): {row}"
+            row.starts_with("> "),
+            "blockquote has > prefix (c396): {row}"
         );
     }
 
@@ -255,14 +255,14 @@ mod tests {
 
     #[test]
     fn nested_blockquote_renders() {
-        // c395: nested blockquote renders italic + dim, no border pipes.
+        // c396: nested blockquote renders with a doubled "> > " prefix.
         let md = ">> nested\n";
         let (buf, _) = render_to_buf(md, 40);
         let row = row_text(&buf, 0, 40);
         assert!(row.contains("nested"), "nested quote body: {row}");
         assert!(
-            !row.contains('│') && !row.contains('▎'),
-            "no border prefix: {row}"
+            row.starts_with("> > "),
+            "nested blockquote has doubled prefix (c396): {row}"
         );
     }
 
