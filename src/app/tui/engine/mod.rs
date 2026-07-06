@@ -16,6 +16,8 @@
 //! 6. `virtual_terminal` — in-memory cell-grid test harness
 
 pub mod component;
+pub mod keybindings;
+pub mod outcome;
 pub mod style;
 pub mod terminal;
 pub mod tui;

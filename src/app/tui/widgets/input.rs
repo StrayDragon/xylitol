@@ -6,7 +6,7 @@
 //! - **Outcome channel**: pi stores `onSubmit?: (value) => void` / `onEscape?`
 //!   callbacks on the widget and invokes them from inside `handleInput`. Rust
 //!   forbids that pattern cleanly (host ↔ widget callback cycle), so we record
-//!   `pending_outcome: Option<InputOutcome>` and the host polls
+//!   `pending_outcome: Option<UxOutcome>` and the host polls
 //!   [`Input::take_outcome`] after [`Component::handle_input`]. Same semantics
 //!   ("after handleInput, drain the submit/abort/quit intent"), different shape.
 //! - **Deferred features** (design.md "不在范围"): kill-ring, undo, word
@@ -24,9 +24,10 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::tui::engine::component::{Component, Focusable, InputResult};
+use crate::app::tui::engine::keybindings::KeybindingsManager;
+use crate::app::tui::engine::outcome::UxOutcome;
 use crate::app::tui::engine::style::{CURSOR_MARKER, CellStyle};
 use crate::app::tui::engine::width::marker_aware_width;
-use crate::app::tui::input::InputOutcome;
 
 /// Prompt prefix shown before the input text (pi uses `"> "`).
 const PROMPT: &str = "> ";
@@ -49,7 +50,11 @@ pub struct Input {
     /// inside `handle_input`, drained by `take_outcome`. At most one pending —
     /// a second submit before the host drains overwrites (the host drains every
     /// key, so this never happens in practice).
-    pending_outcome: Option<InputOutcome>,
+    pending_outcome: Option<UxOutcome>,
+    /// Keybinding registry — widgets query this instead of hardcoding keys
+    /// (stage 3). Defaults to [`KeybindingsManager::default`]; tests inject a
+    /// custom manager via [`with_keybindings`].
+    keybindings: KeybindingsManager,
 }
 
 impl Default for Input {
@@ -65,6 +70,15 @@ impl Input {
             cursor: 0,
             focused: false,
             pending_outcome: None,
+            keybindings: KeybindingsManager::default(),
+        }
+    }
+
+    /// Construct with a custom keybinding manager (tests / host override).
+    pub fn with_keybindings(keybindings: KeybindingsManager) -> Self {
+        Self {
+            keybindings,
+            ..Self::new()
         }
     }
 
@@ -94,7 +108,7 @@ impl Input {
 
     /// Drain the pending high-level outcome (Submit/Slash/Abort/Quit). The host
     /// calls this after [`Component::handle_input`] returns `Handled`.
-    pub fn take_outcome(&mut self) -> Option<InputOutcome> {
+    pub fn take_outcome(&mut self) -> Option<UxOutcome> {
         self.pending_outcome.take()
     }
 
@@ -255,58 +269,57 @@ impl Component for Input {
     }
 
     fn handle_input(&mut self, key: &KeyEvent) -> InputResult {
-        // Ctrl+C / Ctrl+D are app-level intents, but (like pi tui.ts:826) we let
-        // the focused widget decide — surfacing them as outcomes here keeps the
-        // stage-2.3 widget self-contained for testing before the stage-3 router
-        // adds global input listeners.
-        if key.modifiers.contains(KeyModifiers::CONTROL) {
-            return match key.code {
-                KeyCode::Char('c') => {
-                    self.pending_outcome = Some(InputOutcome::Abort);
-                    InputResult::Handled
-                }
-                KeyCode::Char('d') => {
-                    self.pending_outcome = Some(InputOutcome::Quit);
-                    InputResult::Handled
-                }
-                _ => InputResult::NotHandled,
-            };
+        let kb = &self.keybindings;
+        // App-level intents (pi model: the focused widget decides ctrl+c/d
+        // semantics — see ux.md Step 4 + tui.ts:825 comment). These stay on the
+        // widget path, not in a global input listener; keybindings make them
+        // user-configurable instead of hardcoded.
+        if kb.matches(key, "app.clear") {
+            self.pending_outcome = Some(UxOutcome::Abort);
+            return InputResult::Handled;
         }
-
+        if kb.matches(key, "app.exit") {
+            self.pending_outcome = Some(UxOutcome::Quit);
+            return InputResult::Handled;
+        }
+        if kb.matches(key, "tui.input.submit") {
+            let text = self.value.trim().to_string();
+            if text.is_empty() {
+                return InputResult::Handled;
+            }
+            if let Some(stripped) = text.strip_prefix('/') {
+                self.pending_outcome = Some(UxOutcome::Slash(stripped.to_string()));
+            } else {
+                self.pending_outcome = Some(UxOutcome::Submit(text));
+            }
+            return InputResult::Handled;
+        }
+        if kb.matches(key, "tui.editor.deleteCharBackward") {
+            self.backspace();
+            return InputResult::Handled;
+        }
+        if kb.matches(key, "tui.editor.cursorLeft") {
+            self.cursor_left();
+            return InputResult::Handled;
+        }
+        if kb.matches(key, "tui.editor.cursorRight") {
+            self.cursor_right();
+            return InputResult::Handled;
+        }
+        if kb.matches(key, "tui.editor.cursorLineStart") {
+            self.cursor_home();
+            return InputResult::Handled;
+        }
+        if kb.matches(key, "tui.editor.cursorLineEnd") {
+            self.cursor_end();
+            return InputResult::Handled;
+        }
+        // Printable char insert: a Char with no ctrl/alt (shift is OK — crossterm
+        // delivers shift+letter as the already-shifted glyph, e.g. 'A' not
+        // shift+'a'). control/alt combos are reserved for keybindings above.
+        let reserved = KeyModifiers::CONTROL.union(KeyModifiers::ALT);
         match key.code {
-            KeyCode::Enter => {
-                let text = self.value.trim().to_string();
-                if text.is_empty() {
-                    return InputResult::Handled;
-                }
-                if let Some(stripped) = text.strip_prefix('/') {
-                    self.pending_outcome = Some(InputOutcome::Slash(stripped.to_string()));
-                } else {
-                    self.pending_outcome = Some(InputOutcome::Submit(text));
-                }
-                InputResult::Handled
-            }
-            KeyCode::Backspace => {
-                self.backspace();
-                InputResult::Handled
-            }
-            KeyCode::Left => {
-                self.cursor_left();
-                InputResult::Handled
-            }
-            KeyCode::Right => {
-                self.cursor_right();
-                InputResult::Handled
-            }
-            KeyCode::Home => {
-                self.cursor_home();
-                InputResult::Handled
-            }
-            KeyCode::End => {
-                self.cursor_end();
-                InputResult::Handled
-            }
-            KeyCode::Char(c) => {
+            KeyCode::Char(c) if !key.modifiers.intersects(reserved) => {
                 self.insert_char(c);
                 InputResult::Handled
             }
@@ -321,12 +334,20 @@ impl Component for Input {
     fn focused(&self) -> bool {
         self.focused
     }
-}
 
-impl Focusable for Input {
     fn set_focused(&mut self, focused: bool) {
         self.focused = focused;
     }
+
+    fn take_outcome(&mut self) -> Option<UxOutcome> {
+        // Delegate to the inherent method so tests + host can use either path.
+        Input::take_outcome(self)
+    }
+}
+
+impl Focusable for Input {
+    // Marker only — set_focused/focused live on Component (see above) so they
+    // dispatch through `Box<dyn Component>` in a Container.
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
@@ -559,7 +580,7 @@ mod tests {
             InputResult::Handled
         );
         match input.take_outcome() {
-            Some(InputOutcome::Submit(s)) => assert_eq!(s, "hello"),
+            Some(UxOutcome::Submit(s)) => assert_eq!(s, "hello"),
             other => panic!("expected Submit, got {:?}", other_is(other)),
         }
         assert!(input.take_outcome().is_none(), "outcome drained");
@@ -573,7 +594,7 @@ mod tests {
         }
         input.handle_input(&key(KeyCode::Enter, KeyModifiers::NONE));
         match input.take_outcome() {
-            Some(InputOutcome::Slash(s)) => assert_eq!(s, "model"),
+            Some(UxOutcome::Slash(s)) => assert_eq!(s, "model"),
             other => panic!("expected Slash, got {:?}", other_is(other)),
         }
     }
@@ -595,14 +616,14 @@ mod tests {
     fn ctrl_c_aborts() {
         let mut input = Input::new();
         input.handle_input(&key(KeyCode::Char('c'), KeyModifiers::CONTROL));
-        assert!(matches!(input.take_outcome(), Some(InputOutcome::Abort)));
+        assert!(matches!(input.take_outcome(), Some(UxOutcome::Abort)));
     }
 
     #[test]
     fn ctrl_d_quits() {
         let mut input = Input::new();
         input.handle_input(&key(KeyCode::Char('d'), KeyModifiers::CONTROL));
-        assert!(matches!(input.take_outcome(), Some(InputOutcome::Quit)));
+        assert!(matches!(input.take_outcome(), Some(UxOutcome::Quit)));
     }
 
     #[test]
@@ -776,8 +797,8 @@ mod tests {
         assert_eq!(input.render(10).len(), 1);
     }
 
-    // Helper so panic! messages compile (InputOutcome has no Debug derive).
-    fn other_is(_: Option<InputOutcome>) -> &'static str {
+    // Helper so panic! messages compile (UxOutcome has no Debug derive).
+    fn other_is(_: Option<UxOutcome>) -> &'static str {
         "other"
     }
 }

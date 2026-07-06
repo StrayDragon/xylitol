@@ -84,12 +84,14 @@
 
 ## 阶段 3：模块 3 UX/交互
 
-- [ ] `keybindings.rs`：KeyId + KeybindingsManager（defaults + overrides + 冲突检测 + matches）。
-- [ ] 单焦点路由（handleInput: listeners → focus → focused.handle_input → requestRender）。
-- [ ] input listeners（Ctrl+C abort / Ctrl+D quit / Ctrl+L force redraw）。
-- [ ] bracketed paste（crossterm Event::Paste → Input 插入）。
-- [ ] Overlay 栈最小版（showOverlay/hide + preFocus restore，不做完整状态机）。
-- [ ] 适配现有 commands.rs（/exit /model /help 分发）。
+- [x] `keybindings.rs`：KeyId + KeybindingsManager（defaults + overrides + 冲突检测 + matches）。crossterm KeyEvent 已归一化协议，不做 pi 的三协议解码。
+- [x] 单焦点路由（`Tui::handle_event`：listeners → root.handle_input（Container 按 focused_index 转发）→ take_outcome → request_render）。
+- [x] input listeners（`InputListener` trait + `ListenerResult{Consume,Rewrite,Pass}`；Ctrl+L force redraw 由 host 注册 listener；Ctrl+C/D 是 widget keybinding 不是 listener，参考 pi tui.ts:825）。
+- [ ] bracketed paste（crossterm Event::Paste → Input 插入）——推迟到阶段 4 接入时（主循环才见 Event::Paste）。
+- [ ] Overlay 栈最小版——**推迟**（聊天 UI 当前不需要 modal；design.md 说最小版先行，留到真正需要 settings dialog 时）。
+- [ ] 适配现有 commands.rs——**推迟到阶段 4**（host loop 拿 `UxOutcome::Slash(body)` 调 `commands::dispatch`；engine 已返回纯 outcome，对接在 host loop 不在 engine）。
+
+**阶段 3 完成标志（核心）**：keybindings + 单焦点路由 + input listeners 就位（engine 自洽，UxOutcome 下沉，Container focus 转发）。bracketed paste / overlay / commands 对接随阶段 4 主循环接入落地。
 
 ## 阶段 4：接入
 
