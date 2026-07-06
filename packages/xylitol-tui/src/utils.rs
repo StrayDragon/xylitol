@@ -995,7 +995,12 @@ pub fn slice_by_column(line: &str, start_col: usize, length: usize) -> String {
     slice_with_width(line, start_col, length, false).0
 }
 
-fn slice_with_width(line: &str, start_col: usize, length: usize, strict: bool) -> (String, usize) {
+pub(crate) fn slice_with_width(
+    line: &str,
+    start_col: usize,
+    length: usize,
+    strict: bool,
+) -> (String, usize) {
     if length == 0 {
         return (String::new(), 0);
     }
