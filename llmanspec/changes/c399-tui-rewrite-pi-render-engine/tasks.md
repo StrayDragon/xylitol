@@ -72,10 +72,10 @@
 - [x] 单测：纯文本透传、代码块高亮（fence 消费 + span 带色）、未知语言 plain fallback、标题/粗体/链接 passthrough、段落分隔、CJK wrap、代码块与后续内容空行分隔。
 
 ### 2.3 Input widget
-- [ ] 单行 Focusable（横向滚动 + grapheme 光标 + CURSOR_MARKER）。
-- [ ] 复用现有 `cursor_x_at` CJK 逻辑 + `InputOutcome`（Submit/Slash/Abort/Quit/Idle）。
-- [ ] handle_input：crossterm KeyEvent → InputOutcome。
-- [ ] 单测：光标移动、CJK 边界、insert at cursor。
+- [x] 单行 Focusable（横向滚动 + grapheme 光标 + CURSOR_MARKER）。
+- [x] 复用现有 `cursor_x_at` CJK 逻辑 + `InputOutcome`（Submit/Slash/Abort/Quit/Idle）。
+- [x] handle_input：crossterm KeyEvent → InputResult + `take_outcome()` 旁路（参考 pi 回调模型）。
+- [x] 单测：光标移动（ASCII/CJK/emoji-ZWJ）、CJK 边界、insert at cursor、outcome（Submit/Slash/Abort/Quit）、render 横向滚动（cursor 末尾/中间/开头）、width 不变量。
 
 ### 2.4 Loader widget
 - [ ] spinner（复用 SPINNER const）+ 自调度（setInterval 等价：tokio interval + requestRender）。
@@ -97,7 +97,7 @@
 - [ ] `render.rs::RenderedLine` seam 保留；`to_lines` 改产出 `Vec<StyledLine>`。
 - [ ] 删除 `components/` 目录 + `terminal.rs`(旧) + `init.rs`(旧 ratatui 部分)。
 - [ ] 删除 `InlineTerminal`/`commit_to_scrollback`/`draw_tail_frame`/`insert_before` 路径。
-- [ ] Cargo.toml：删 ratatui-core/crossterm-ratatui/ratatui-widgets，加 unicode-segmentation，tui feature 重定义。
+- [ ] Cargo.toml：删 ratatui-core/crossterm-ratatui/ratatui-widgets，tui feature 重定义（unicode-segmentation 已在 2.3 加入）。
 
 ## 阶段 5：回归 + QA
 
