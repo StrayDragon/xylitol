@@ -59,17 +59,17 @@
 ## 阶段 2：模块 2 widget 系统（`src/app/tui/widgets/`）
 
 ### 2.1 基础 widget
-- [ ] `Text`（wrap + cache + invalidate）。
-- [ ] `Spacer`（n 空行）。
-- [ ] `TruncatedText`（单行截断，状态行用）。
-- [ ] 单测：wrap 宽度、cache 命中/失效。
+- [x] `Text`（wrap + cache + invalidate）。
+- [x] `Spacer`（n 空行）。
+- [x] `TruncatedText`（单行截断，状态行用）。
+- [x] 单测：wrap 宽度、cache 命中/失效。
 
-### 2.2 Markdown widget（复用 c396 样式逻辑）
-- [ ] `markdown_render.rs` 产出类型 ratatui `Line` → 自有 `StyledLine`（~50 行样式映射）。
-- [ ] `Markdown` widget 包 `render_markdown` + cache by (源签名, width) + invalidate。
-- [ ] `MarkdownTheme`（for_user/for_assistant/for_thinking），保留 c396 COLORFGBS 主题自适应。
-- [ ] token 节省：表格 tab 对齐、代码块无框、列表无树连接器（延续 c395/c396 原则）。
-- [ ] 单测：标题分级、引用 > 前缀、有序列表、代码块高亮（移植 c396 测试）。
+### 2.2 Markdown widget — 纯透传 + 代码块高亮 + 语法处理器扣子
+- [x] Markdown widget：pulldown-cmark 解析，纯文本透传（去语法字符）+ fenced code block 走 syntect 高亮。
+- [x] `MarkdownTheme`：per-element 开关（heading_grading/bold/italic/quote_prefix/link_expand/list_marker/table_align），全默认 false（passthrough），flip 即启用该元素处理器——渐进增强扣子。
+- [x] 复用 c396 syntect_highlight（经 engine_ratatui_style_adapter 适配 ratatui Style → CellStyle）。
+- [x] 块级元素（Paragraph/Heading/BlockQuote/List/Item）End 事件插空行分隔，SoftBreak/HardBreak 换行，finish 去尾部空行。
+- [x] 单测：纯文本透传、代码块高亮（fence 消费 + span 带色）、未知语言 plain fallback、标题/粗体/链接 passthrough、段落分隔、CJK wrap、代码块与后续内容空行分隔。
 
 ### 2.3 Input widget
 - [ ] 单行 Focusable（横向滚动 + grapheme 光标 + CURSOR_MARKER）。

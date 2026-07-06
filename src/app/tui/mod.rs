@@ -27,11 +27,13 @@ pub mod app;
 mod commands;
 mod components;
 pub mod engine;
+mod engine_ratatui_style_adapter;
 mod init;
 mod input;
 mod render;
 mod terminal;
 mod theme;
+pub mod widgets;
 
 use std::sync::Arc;
 use std::time::Duration;
