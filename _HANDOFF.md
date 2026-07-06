@@ -200,7 +200,7 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 ## 七、commit 历史（14 个未 push）
 
 ```
-（待提交）feat(tui): c399 阶段 3 — UX 层（keybindings + 单焦点路由 + input listeners）
+57d2e2d feat(tui): c399 阶段 3 — UX 层（keybindings + 单焦点路由 + input listeners）
 320332a feat(tui): c399 阶段 2.4 — Loader widget（spinner + host tick 驱动，阶段 2 完成）
 1529f95 feat(tui): c399 阶段 2.3 — Input widget（单行 Focusable + grapheme 光标 + 横向滚动）
 0507751 docs: update _HANDOFF — c399 pi-tui 重写进度交接（38/68 tasks，阶段 1 完成）
