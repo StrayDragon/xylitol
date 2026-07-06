@@ -475,18 +475,42 @@ impl<T: Terminal> TUI<T> {
         let width_changed = self.previous_width != 0 && self.previous_width != width;
         let height_changed = self.previous_height != 0 && self.previous_height != height;
 
+        // Compute the changed range up front so the full-vs-diff decision can
+        // consider it (pi decides after computing firstChanged/lastChanged).
+        let (first_changed, last_changed, appended) = self.compute_line_diff(&new_lines);
+
+        // Full redraw triggers (order matches pi tui.ts:1335-1459):
+        // 1. first frame / width change / height change (non-Termux)
+        // 2. clearOnShrink (content shrank below the historical high-water mark)
+        // 3. firstChanged < prevViewportTop — the change is above the visible
+        //    viewport, the diff path can't reach it, so repaint everything.
+        // 4. all-deletions with the new tail above the viewport — likewise can't
+        //    be expressed as a diff, fullRedraw to resync.
         let do_full = self.previous_lines.is_empty()
             || width_changed
             || height_changed
             || (self.clear_on_shrink
                 && new_lines.len() < self.max_lines_rendered
-                && self.overlays.is_empty());
+                && self.overlays.is_empty())
+            || (first_changed >= 0 && (first_changed as usize) < self.previous_viewport_top)
+            || (first_changed >= new_lines.len() as isize
+                && !new_lines.is_empty()
+                && new_lines.len() <= self.previous_viewport_top);
 
         if do_full {
             let clear = !(self.previous_lines.is_empty() && !width_changed && !height_changed);
             self.full_render(&new_lines, clear, height);
+        } else if first_changed < 0 {
+            // No change at all — just reposition the cursor (pi's no-op branch).
         } else {
-            self.differential_render(&new_lines);
+            self.differential_render(
+                &new_lines,
+                width,
+                height,
+                first_changed,
+                last_changed,
+                appended,
+            );
         }
 
         self.position_cursor(cursor_pos, new_lines.len());
@@ -526,11 +550,13 @@ impl<T: Terminal> TUI<T> {
         self.previous_viewport_top = height.max(len).saturating_sub(height);
     }
 
-    fn differential_render(&mut self, new_lines: &[String]) {
+    /// Find the first/last changed line index comparing new_lines to
+    /// previous_lines. Returns (first, last, appended) with -1 meaning "none".
+    /// Mirrors pi's firstChanged/lastChanged + append detection.
+    fn compute_line_diff(&self, new_lines: &[String]) -> (isize, isize, bool) {
         let mut first_changed: isize = -1;
         let mut last_changed: isize = -1;
         let max_lines = new_lines.len().max(self.previous_lines.len());
-
         for i in 0..max_lines {
             let old = self.previous_lines.get(i).map(|s| s.as_str()).unwrap_or("");
             let new = new_lines.get(i).map(|s| s.as_str()).unwrap_or("");
@@ -541,7 +567,6 @@ impl<T: Terminal> TUI<T> {
                 last_changed = i as isize;
             }
         }
-
         let appended = new_lines.len() > self.previous_lines.len();
         if appended {
             if first_changed == -1 {
@@ -549,11 +574,20 @@ impl<T: Terminal> TUI<T> {
             }
             last_changed = (new_lines.len() - 1) as isize;
         }
-        if first_changed == -1 {
-            return;
-        }
+        (first_changed, last_changed, appended)
+    }
 
-        if first_changed >= new_lines.len() as isize {
+    fn differential_render(
+        &mut self,
+        new_lines: &[String],
+        _width: usize,
+        height: usize,
+        first_changed_in: isize,
+        last_changed: isize,
+        appended: bool,
+    ) {
+        // All-deletions branch: content only shrank. Clear the surplus lines.
+        if first_changed_in >= new_lines.len() as isize {
             if self.previous_lines.len() > new_lines.len() {
                 let mut buf = String::from("\x1b[?2026h");
                 let target = new_lines.len().saturating_sub(1);
@@ -583,28 +617,58 @@ impl<T: Terminal> TUI<T> {
                 self.terminal.write(&buf);
                 self.cursor_row = target;
                 self.hardware_cursor_row = target;
+                self.previous_viewport_top = height.max(new_lines.len()).saturating_sub(height);
+                self.max_lines_rendered = self.max_lines_rendered.max(new_lines.len());
             }
             return;
         }
 
-        let mut buf = String::from("\x1b[?2026h");
+        let first_changed = first_changed_in as usize;
         let append_start =
-            appended && first_changed as usize == self.previous_lines.len() && first_changed > 0;
+            appended && first_changed == self.previous_lines.len() && first_changed > 0;
         let move_target = if append_start {
-            first_changed as usize - 1
+            first_changed - 1
         } else {
-            first_changed as usize
+            first_changed
         };
-        let diff = move_target as isize - self.hardware_cursor_row as isize;
-        if diff > 0 {
-            buf.push_str(&format!("\x1b[{}B", diff));
-        } else if diff < 0 {
-            buf.push_str(&format!("\x1b[{}A", -diff));
+
+        let mut buf = String::from("\x1b[?2026h");
+
+        // Viewport scroll (pi Step 5C, tui.ts:1466-1478): if the changed region
+        // falls below the previous viewport bottom, CUD to the screen's last row
+        // then emit `\r\n` to scroll the terminal — lifting prevViewportTop so
+        // the diff writes land on visible rows instead of past the screen edge.
+        let mut prev_viewport_top = self.previous_viewport_top;
+        let prev_viewport_bottom = prev_viewport_top + height.saturating_sub(1);
+        if move_target > prev_viewport_bottom {
+            let current_screen_row = (self.hardware_cursor_row as isize
+                - prev_viewport_top as isize)
+                .clamp(0, height as isize - 1) as usize;
+            let move_to_bottom = height - 1 - current_screen_row;
+            if move_to_bottom > 0 {
+                buf.push_str(&format!("\x1b[{}B", move_to_bottom));
+            }
+            let scroll = move_target - prev_viewport_bottom;
+            if scroll > 0 {
+                buf.push_str(&"\r\n".repeat(scroll));
+            }
+            prev_viewport_top += scroll;
+        }
+
+        // Move to the target row (relative to the current viewport top) and
+        // start the changed region.
+        let screen_row = move_target as isize - prev_viewport_top as isize;
+        let cursor_diff =
+            screen_row - (self.hardware_cursor_row as isize - prev_viewport_top as isize);
+        if cursor_diff > 0 {
+            buf.push_str(&format!("\x1b[{}B", cursor_diff));
+        } else if cursor_diff < 0 {
+            buf.push_str(&format!("\x1b[{}A", -cursor_diff));
         }
         buf.push_str(if append_start { "\r\n" } else { "\r" });
 
         let end = last_changed.min((new_lines.len() - 1) as isize) as usize;
-        let start = first_changed as usize;
+        let start = first_changed;
         for (i, line) in new_lines.iter().enumerate().take(end + 1).skip(start) {
             if i > start {
                 buf.push_str("\r\n");
@@ -614,8 +678,31 @@ impl<T: Terminal> TUI<T> {
         }
         buf.push_str("\x1b[?2026l");
         self.terminal.write(&buf);
-        self.cursor_row = end;
-        self.hardware_cursor_row = end;
+
+        // Shrink cleanup: if content got shorter, clear the surplus rows below
+        // the new tail (pi tui.ts:1555-1568). finalCursorRow tracks where the
+        // cursor physically ended so the cursor-positioning step stays accurate.
+        let mut final_cursor_row = end;
+        if self.previous_lines.len() > new_lines.len() && !appended {
+            let extra = self.previous_lines.len() - new_lines.len();
+            let mut tail = String::from("\x1b[?2026h");
+            // Move to one past the last rendered line, clear each surplus row.
+            for _ in 0..extra {
+                tail.push_str("\r\n\x1b[2K");
+            }
+            // Step back up to the content end.
+            if extra > 0 {
+                tail.push_str(&format!("\x1b[{}A", extra));
+            }
+            tail.push_str("\x1b[?2026l");
+            self.terminal.write(&tail);
+            final_cursor_row = new_lines.len().saturating_sub(1);
+        }
+
+        self.cursor_row = new_lines.len().saturating_sub(1);
+        self.hardware_cursor_row = final_cursor_row;
+        self.previous_viewport_top =
+            prev_viewport_top.max(final_cursor_row.saturating_sub(height.saturating_sub(1)));
         self.max_lines_rendered = self.max_lines_rendered.max(new_lines.len());
     }
 
