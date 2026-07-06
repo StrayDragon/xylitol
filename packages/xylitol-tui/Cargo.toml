@@ -13,6 +13,10 @@ unicode-segmentation = "1.12"
 
 [dev-dependencies]
 vte = "0.13"
+# tokio powers the async-driven test cases (try_render throttle, event loop).
+# The runtime itself stays optional; the core TUI is sync so it can be driven
+# from any host loop without forcing a runtime choice.
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "test-util"] }
 
 [[example]]
 name = "demo"
