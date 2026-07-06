@@ -34,9 +34,9 @@
   - CapturingTerminal 测试替身（捕获 write + 喂合成 event）覆盖 write/event/resize。
 
 ### 1.4 Component/Container/Focusable（component.rs）
-- [ ] `Component` trait（render/handle_input/invalidate）+ `Focusable` + `CURSOR_MARKER`。
-- [ ] `Container`（垂直栈 render = children 拼接）。
-- [ ] 单测：Container 拼接、invalidate 传播。
+- [x] `Component` trait（render/handle_input/invalidate）+ `Focusable` + `CURSOR_MARKER`。
+- [x] `Container`（垂直栈 render = children 拼接）。
+- [x] 单测：Container 拼接、invalidate 传播。
 
 ### 1.5 Tui 引擎核心（tui.rs）
 - [ ] 引擎状态（previous_lines/previous_width/height/viewportTop/cursorRow/hardwareCursorRow/focus/overlay/renderRequested/lastRenderAt）。
