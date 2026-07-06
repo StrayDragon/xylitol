@@ -134,7 +134,7 @@ fn tui_renders_component_lines_into_viewport() {
     let mut tui = TUI::new(term);
     tui.add_child(Box::new(LinesComponent::new(vec!["hello", "world"])));
 
-    tui.render_frame();
+    tui.render_frame().unwrap();
 
     let vp = tui.terminal.viewport();
     assert_eq!(vp[0], "hello");
@@ -153,11 +153,11 @@ fn tui_unchanged_frame_writes_nothing_on_diff_path() {
     let mut tui = TUI::new(term);
     tui.add_child(Box::new(LinesComponent::new(vec!["x"])));
 
-    tui.render_frame();
+    tui.render_frame().unwrap();
     tui.terminal.clear_writes();
 
     // Re-render with unchanged content: differential path should emit nothing.
-    tui.render_frame();
+    tui.render_frame().unwrap();
     assert_eq!(
         tui.terminal.write_count(),
         0,
@@ -171,7 +171,7 @@ fn tui_second_render_after_change_only_writes_changed_line() {
     let mut tui = TUI::new(term);
     let mut comp = LinesComponent::new(vec!["alpha", "beta"]);
     tui.add_child(Box::new(comp));
-    tui.render_frame();
+    tui.render_frame().unwrap();
     tui.terminal.clear_writes();
 
     // Change only the second line.
@@ -179,7 +179,7 @@ fn tui_second_render_after_change_only_writes_changed_line() {
     // Replace the child: the TUI owns a Box<dyn Component>, so we rebuild.
     let mut tui2 = TUI::new(LoggingVirtualTerminal::new(20, 5));
     tui2.add_child(Box::new(comp));
-    tui2.render_frame();
+    tui2.render_frame().unwrap();
     // Sanity: the second composition renders both lines on its first frame.
     assert_eq!(tui2.terminal.viewport()[1], "BETA");
 }
@@ -196,7 +196,7 @@ fn tui_dispatch_input_reaches_focused_component() {
     tui.set_focus(Some(0));
 
     tui.dispatch_input("a");
-    tui.render_frame();
+    tui.render_frame().unwrap();
 
     // The viewport's first line should now contain the typed 'a'.
     let first = tui.terminal.viewport()[0].clone();
@@ -240,7 +240,10 @@ fn try_render_skips_when_not_requested() {
     let mut tui = TUI::new(term);
     tui.add_child(Box::new(LinesComponent::new(vec!["x"])));
     // No request_render yet — try_render should no-op.
-    assert!(!tui.try_render(), "try_render without request should no-op");
+    assert!(
+        !tui.try_render().unwrap(),
+        "try_render without request should no-op"
+    );
     assert_eq!(tui.terminal.write_count(), 0);
 }
 
@@ -251,7 +254,7 @@ fn try_render_renders_after_request() {
     tui.add_child(Box::new(LinesComponent::new(vec!["x"])));
     tui.request_render(false);
     assert!(
-        tui.try_render(),
+        tui.try_render().unwrap(),
         "first try_render after request should fire"
     );
     assert_eq!(tui.terminal.write_count(), 1);
@@ -264,13 +267,13 @@ fn try_render_throttles_within_16ms() {
     tui.add_child(Box::new(LinesComponent::new(vec!["x"])));
 
     tui.request_render(false);
-    assert!(tui.try_render());
+    assert!(tui.try_render().unwrap());
     tui.terminal.clear_writes();
 
     // Immediately request again — should be throttled (within 16ms).
     tui.request_render(false);
     assert!(
-        !tui.try_render(),
+        !tui.try_render().unwrap(),
         "second render within 16ms should be throttled"
     );
     assert_eq!(tui.terminal.write_count(), 0);
@@ -283,13 +286,16 @@ async fn try_render_fires_after_throttle_window() {
     tui.add_child(Box::new(LinesComponent::new(vec!["x"])));
 
     tui.request_render(false);
-    assert!(tui.try_render());
+    assert!(tui.try_render().unwrap());
     tui.terminal.clear_writes();
 
     // Wait past the 16ms window, then a pending request should fire.
     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     tui.request_render(false);
-    assert!(tui.try_render(), "render after throttle window should fire");
+    assert!(
+        tui.try_render().unwrap(),
+        "render after throttle window should fire"
+    );
 }
 
 #[test]
@@ -297,15 +303,57 @@ fn request_render_force_resets_previous_state_for_full_redraw() {
     let term = LoggingVirtualTerminal::new(20, 5);
     let mut tui = TUI::new(term);
     tui.add_child(Box::new(LinesComponent::new(vec!["first"])));
-    tui.render_frame(); // establish previous_lines
+    tui.render_frame().unwrap(); // establish previous_lines
     assert!(tui.full_redraws() >= 1);
     let before = tui.full_redraws();
 
     // force=true resets previous state, so next render is a full redraw.
     tui.request_render(true);
-    tui.try_render();
+    tui.try_render().unwrap();
     assert!(
         tui.full_redraws() > before,
         "force request should trigger a full redraw"
     );
+}
+
+// ── width invariant (pi's crash guard) ──────────────────────────────────────
+
+#[test]
+fn render_errors_when_line_overflows_terminal_width() {
+    use xylitol_tui::tui::RenderError;
+
+    // 5-col terminal, but the component emits a 12-col line.
+    let term = LoggingVirtualTerminal::new(5, 3);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(LinesComponent::new(vec!["hello world!"])));
+
+    let err = tui
+        .render_frame()
+        .expect_err("overflowing line must error, not silently truncate");
+    let _: &RenderError = &err;
+    assert!(err.line_width > err.width, "reported width should overflow");
+    assert_eq!(err.line_index, 0);
+}
+
+#[test]
+fn render_allows_line_that_fits_width_exactly() {
+    // A line whose visible width equals the terminal width must NOT error.
+    let term = LoggingVirtualTerminal::new(5, 3);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(LinesComponent::new(vec!["hello"])));
+    tui.render_frame()
+        .expect("exact-width line should render fine");
+}
+
+#[test]
+fn render_exempts_image_lines_from_width_check() {
+    // Kitty APC image lines have visible width 0 but carry many payload bytes;
+    // they must not trip the width invariant.
+    let term = LoggingVirtualTerminal::new(5, 3);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(LinesComponent::new(vec![
+        "\x1b_Ga=f,t=d,f=99,s=very-long-payload-that-is-way-wider-than-five\x1b\\",
+    ])));
+    tui.render_frame()
+        .expect("Kitty image lines should be exempt from the width check");
 }
