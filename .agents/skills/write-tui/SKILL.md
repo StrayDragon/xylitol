@@ -5,7 +5,9 @@ description: "编写或改造 xylitol 终端 UI（src/app/tui/）时使用。覆
 
 # 编写 TUI（src/app/tui/）
 
-xylitol 的终端 UI 位于 `src/app/tui/`（`tui` feature 门控，已落地：c340 inline REPL → c341 依赖瘦身 → c360 渲染 harness + RenderedLine seam → c365 流式 mutable-last-line + 组件化）。**写或改 TUI 之前**先读 `src/app/tui/AGENTS.md`（地图 + 模块边界 + 硬约束 + Out of scope）与 `src/AGENTS.md` 的「分层不变量」。
+> ⚠️ **重写进行中（c399-tui-rewrite-pi-render-engine）**：TUI 渲染层正从 ratatui inline-viewport 模型重写为 pi-tui line-array + differential rendering 模型（基于 `.agents/skills/tui-pro-of-pi-tui/` 技能）。本 SKILL 的「复用契约」「文件布局」「依赖」段落描述的是**旧的 ratatui 模型**，将在 c399 实施过程中随代码同步更新。在新引擎落地前，写/改 TUI 渲染层前先读 c399 的 proposal/design（`llmanspec/changes/c399-tui-rewrite-pi-render-engine/`）与 pi-tui 技能。
+
+xylitol 的终端 UI 位于 `src/app/tui/`（`tui` feature 门控）。**写或改 TUI 之前**先读 `src/app/tui/AGENTS.md`（地图 + 模块边界 + 硬约束 + Out of scope）与 `src/AGENTS.md` 的「分层不变量」。
 
 本 skill 是 **how-to**：复用契约、新特性落点、测试放置、约定。它对标 kimi-code 的 `write-tui` skill，但适配 xylitol 的 Rust 单 crate + Driver seam 架构。
 
