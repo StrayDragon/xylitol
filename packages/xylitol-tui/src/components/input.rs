@@ -3,7 +3,7 @@ use crate::keys::decode_printable_key;
 use crate::kill_ring::{KillRing, KillRingOptions};
 use crate::tui::{CURSOR_MARKER, Component};
 use crate::undo_stack::UndoStack;
-use crate::utils::{is_whitespace_char, slice_by_column, visible_width};
+use crate::utils::{is_whitespace_char, slice_by_column_strict as slice_by_column, visible_width};
 use crate::word_navigation::{find_word_backward, find_word_forward};
 use unicode_segmentation::UnicodeSegmentation;
 

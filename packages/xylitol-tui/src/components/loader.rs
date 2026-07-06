@@ -129,4 +129,15 @@ impl Component for Loader {
     fn invalidate(&mut self) {
         self.text.invalidate();
     }
+    fn tick(&mut self) -> bool {
+        // Advance the spinner frame; signal a re-render so the host repaints.
+        // (Only meaningful when more than one frame exists — single-frame
+        // loaders are static.)
+        if self.frames.len() > 1 {
+            self.tick();
+            true
+        } else {
+            false
+        }
+    }
 }
