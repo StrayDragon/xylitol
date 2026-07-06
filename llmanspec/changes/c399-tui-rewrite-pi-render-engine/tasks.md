@@ -39,15 +39,15 @@
 - [x] 单测：Container 拼接、invalidate 传播。
 
 ### 1.5 Tui 引擎核心（tui.rs）
-- [ ] 引擎状态（previous_lines/previous_width/height/viewportTop/cursorRow/hardwareCursorRow/focus/overlay/renderRequested/lastRenderAt）。
-- [ ] `requestRender(force)` + `schedule`（16ms cap coalesce）。
-- [ ] `doRender` 管线：render tree → composite overlays（stub）→ extract cursor → applyLineResets → 选策略 → positionHardwareCursor → save。
-- [ ] 三策略：firstRender（不清屏）/ fullRender(true)（清屏+清scrollback）/ 正常 diff（move + `\x1b[2K` + line）。
-- [ ] 硬宽度不变量（diff 路径 + fullRender 都检查，修 pi-tui audit Finding 2）。
-- [ ] 同步输出包裹（CSI 2026）。
-- [ ] viewport/scrollback math（previousViewportTop 跟随末尾、maxLinesRendered、width/height change 触发 fullRender）。
-- [ ] 虚拟 IME 光标（positionHardwareCursor）。
-- [ ] `stop()` clean exit（移到内容末尾 + 换行 + restore）。
+- [x] 引擎状态（previous_lines/previous_width/height/viewportTop/cursorRow/hardwareCursorRow/focus/overlay/renderRequested/lastRenderAt）。
+- [x] `requestRender(force)` + `schedule`（16ms cap coalesce）。
+- [x] `doRender` 管线：render tree → composite overlays（stub）→ extract cursor → applyLineResets → 选策略 → positionHardwareCursor → save。
+- [x] 三策略：firstRender（不清屏）/ fullRender(true)（清屏+清scrollback）/ 正常 diff（move + `\x1b[2K` + line）。
+- [x] 硬宽度不变量（diff 路径 + fullRender 都检查，修 pi-tui audit Finding 2）。
+- [x] 同步输出包裹（CSI 2026）。
+- [x] viewport/scrollback math（previousViewportTop 跟随末尾、maxLinesRendered、width/height change 触发 fullRender）。
+- [x] 虚拟 IME 光标（positionHardwareCursor）。
+- [x] `stop()` clean exit（移到内容末尾 + 换行 + restore）。
 
 ### 1.6 测试 harness（virtual_terminal.rs）
 - [ ] 内存 cell-grid + `feed(ansi)` 解析（SGR/cursor/clear/sync）+ assert_row/assert_contains/assert_cursor。
