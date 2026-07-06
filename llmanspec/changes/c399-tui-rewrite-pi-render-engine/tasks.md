@@ -14,10 +14,10 @@
 ## 阶段 1：模块 1 渲染引擎（`src/app/tui/engine/`）
 
 ### 1.1 自有样式类型（style.rs）
-- [ ] `CellStyle { fg, bg, bold, italic, underline, dim, crossed_out }` + `Color` 枚举 + `Cell` + `StyledLine`。
-- [ ] `StyledLine::to_ansi_string(width)` 序列化（SGR 转义 + 行末 `\x1b[0m\x1b]8;;\x07`）。
-- [ ] 单测：style 相等/合并、ANSI 序列化往返、颜色枚举映射。
-- [ ] 校验：`cargo test --features tui -- engine::style`。
+- [x] `CellStyle { fg, bg, bold, italic, underline, dim, crossed_out }` + `Color` 枚举 + `Cell` + `StyledLine`。
+- [x] `StyledLine::to_ansi_string(width)` 序列化（SGR 转义 + 行末 `\x1b[0m\x1b]8;;\x07`）。
+- [x] 单测：style 相等/合并、ANSI 序列化往返、颜色枚举映射。
+- [x] 校验：`cargo test --features tui -- engine::style`。
 
 ### 1.2 ANSI-aware width utilities（width.rs）
 - [ ] `visible_width(line) -> usize`（ANSI/SGR = 0，CJK = 2，combining = 0）。
