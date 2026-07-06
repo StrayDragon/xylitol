@@ -1,8 +1,8 @@
 # _HANDOFF — TUI 渲染层重写（c399 pi-tui line-array 引擎）
 
-> 交接日期：2026-07-06（阶段 2 完成）
-> 分支：`feat/tui-dev`（13 个未 push commit，远端停在 `4c724c1`）
-> 变更：`c399-tui-rewrite-pi-render-engine`（active，43/68 tasks 完成，**阶段 1+2 全部就位**）
+> 交接日期：2026-07-06（阶段 3 核心完成）
+> 分支：`feat/tui-dev`（14 个未 push commit，远端停在 `4c724c1`）
+> 变更：`c399-tui-rewrite-pi-render-engine`（active，46/68 tasks 完成，**阶段 1+2+3 核心（路由/keybindings/listeners）就位**）
 > 接手者：用 `/llman-sdd-apply c399-tui-rewrite-pi-render-engine` 续做。
 
 ---
@@ -17,7 +17,7 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 
 ---
 
-## 二、已完成（43/68 tasks，~4120 行新代码，127 单测全过；阶段 1+2 完成）
+## 二、已完成（46/68 tasks，~4810 行新代码，156 单测全过；阶段 1+2+3 核心完成）
 
 ### SDD 重组（commit `2cdbd89`）
 - propose `c399-tui-rewrite-pi-render-engine`（proposal/design/delta spec/tasks 全工件，spec modify tui1/tui12/tui41/tui50/tui70 + add tui82 硬宽度/tui83 resize）。
@@ -85,17 +85,32 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 
 **阶段 2 完成标志**：widget 系统全部就位（text/markdown/input/loader 四模块，阶段 2.1-2.4 共 58 单测）。待阶段 3 UX 路由 + 阶段 4 接入后可用。
 
+### 阶段 3：UX/交互层核心（29 单测）✅
+引擎和 widget 的连接层。新建两个 engine 模块 + 改造 Component/Container/Input。**核心完成**（keybindings + 路由 + listeners）；bracketed paste / overlay / commands 对接随阶段 4 主循环接入。
+
+**新增模块**：
+| 文件 | 行 | 职责 |
+|---|---|---|
+| `engine/outcome.rs` | 60 | `UxOutcome { Submit, Slash, Abort, Quit, Idle }`——engine 自有的 UX outcome 枚举（下沉自上层 `input.rs`，避免 engine 反向依赖）。 |
+| `engine/keybindings.rs` | 280 | `KeybindingsManager`（KeyId + 默认表 + user overrides + `matches(KeyEvent, id)` + 冲突检测）。crossterm 已归一化协议，不做 pi 三协议解码。 |
+
+**核心设计决策**：
+1. **UxOutcome 下沉到 engine**（用户决策）。engine 不能反向依赖上层 `input.rs::InputOutcome`（arch_guard + 依赖方向）。新建 `engine/outcome.rs`，widgets/input.rs 改用它。旧 `InputOutcome` 保留（阶段 4 删）。两枚举形状一致，阶段 4 host loop 翻译层直接对译。
+2. **Container focus 寻址 = `focused_index`**（避免自引用借用）。pi 的 `focusedComponent` 是引用句柄（TS 引用语义），Rust 所有权模型无法让 Tui 同时拥有 root + 借用 child。Container 持 `focused_index: Option<usize>`，`handle_input`/`set_focused`/`take_outcome` 按 index 转发。与 component.rs 注释一致。
+3. **`set_focused` 提升到 Component trait**（默认 no-op），Focusable 变标记 trait。Rust trait object 限制：`Box<dyn Component>` 无法跨 trait 调 `Focusable::set_focused`，所以合并到 Component（Container/Input 覆盖转发）。
+4. **Ctrl+C/D 是 widget keybinding，不是 input listener**（pi 事实）。pi `tui.ts:825` 注释 + `interactive-mode.ts:2503`：ctrl+c→`app.clear`、ctrl+d→`app.exit` 是 widget action。input listeners 只做 consume/rewrite 级全局拦截（Ctrl+L force redraw）。keybindings.rs 让这些键可配置，Input widget 的 handle_input 改查 `kb.matches(key, "app.clear")`。
+5. **`Tui::handle_event`**（替换自由函数 route_event）：listeners → root.handle_input（Container 转发）→ take_outcome → request_render。返回 `Option<UxOutcome>`，host loop 翻译（不持 Driver）。
+
+**推迟到阶段 4**：bracketed paste（主循环才见 Event::Paste）、overlay（聊天 UI 不需要 modal）、commands 对接（host loop 拿 Slash 调 `commands::dispatch`）。
+
 ---
 
-## 三、未完成（25/68 tasks，阶段 3-5）
+## 三、未完成（22/68 tasks，阶段 4-5）
 
-### 阶段 3：UX/交互（crossterm 大幅缩减）⏳
-- `keybindings.rs`：`KeyId` + `KeybindingsManager`（可配置 + 冲突检测），替换现 hardcoded key 检查。
-- 单焦点路由（handleInput: listeners → focus → focused.handle_input → requestRender）。
-- input listeners（Ctrl+C abort / Ctrl+D quit / Ctrl+L force redraw）。
-- bracketed paste：crossterm `Event::Paste`。
-- Overlay 栈最小版（先不做完整 focus-restore 状态机）。
-- **crossterm 已吸收**：键模型（KeyEvent）、stdin 分割（event::read 一次一个）、bracketed paste（Event::Paste）——无需移植 keys.ts/stdin-buffer.ts。
+### 阶段 3 余项（随阶段 4 接入）⏳
+- bracketed paste（crossterm `Event::Paste` → Input 插入）。
+- Overlay 栈最小版（**推迟**——聊天 UI 当前不需要 modal；design.md 最小版先行，留到 settings dialog）。
+- 适配 commands.rs（host loop 拿 `UxOutcome::Slash(body)` 调 `commands::dispatch`）。
 
 ### 阶段 4：接入主循环 + 删除 ratatui ⏳（关键转折点）
 - `mod.rs::run` 改用新 `Tui` 引擎；保留 Driver 调用 + `spawn_drain` 语义 + `Msg` 通道骨架。
@@ -142,12 +157,14 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 - `src/app/tui/engine/style.rs` — CellStyle/Color/Span/StyledLine + ANSI 序列化
 - `src/app/tui/engine/width.rs` — truncate/wrap/marker_aware_width
 - `src/app/tui/engine/terminal.rs` — Terminal trait + ProcessTerminal + CapturingTerminal
-- `src/app/tui/engine/component.rs` — Component/Container/Focusable trait
-- `src/app/tui/engine/tui.rs` — **核心引擎**（do_render + 三策略 + 硬宽度 + IME）
+- `src/app/tui/engine/component.rs` — Component/Container/Focusable trait（**阶段 3**：Container 加 focused_index 转发，set_focused 提升到 Component，Focusable 变标记）
+- `src/app/tui/engine/outcome.rs` — **UxOutcome**（engine 自有 UX outcome，下沉自 input.rs）
+- `src/app/tui/engine/keybindings.rs` — **KeybindingsManager**（KeyId + 默认表 + matches + 冲突检测）
+- `src/app/tui/engine/tui.rs` — **核心引擎**（do_render + 三策略 + 硬宽度 + IME + **阶段 3** `handle_event` 路由 + input listeners）
 - `src/app/tui/engine/virtual_terminal.rs` — 测试 oracle
 - `src/app/tui/widgets/text.rs` — Text/TruncatedText/Spacer
 - `src/app/tui/widgets/markdown.rs` — Markdown widget（passthrough + code 高亮 + 扣子）
-- `src/app/tui/widgets/input.rs` — **Input widget**（单行 Focusable + grapheme 光标 + 横向滚动 + take_outcome）
+- `src/app/tui/widgets/input.rs` — **Input widget**（单行 Focusable + grapheme 光标 + 横向滚动 + take_outcome + **阶段 3** keybindings 查询替代硬编码）
 - `src/app/tui/widgets/loader.rs` — **Loader widget**（spinner + advance + host tick 驱动）
 - `src/app/tui/engine/style.rs` — CellStyle/Color/Span/StyledLine + ANSI 序列化（`width()` 用 `marker_aware_width`，2.3 修复）
 - `src/app/tui/engine_ratatui_style_adapter.rs` — 过渡适配器（阶段 4 删）
@@ -163,26 +180,30 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 - `.agents/skills/write-tui/SKILL.md` — 顶部有重写进行中标注
 
 ### SDD 工件
-- `llmanspec/changes/c399-tui-rewrite-pi-render-engine/` — proposal/design/spec/tasks（38/68 完成）
+- `llmanspec/changes/c399-tui-rewrite-pi-render-engine/` — proposal/design/spec/tasks（46/68 完成）
 - `llmanspec/specs/app-tui/spec.toon` — 已合并 c396 的 delta（tui61/tui66/tui71/tui78/tui79）
 
 ---
 
 ## 六、给接手者的建议
 
-1. **先跑测试确认基线**：`just test`（既有 684 + 新增 127 = ~811 全绿）、`just lint`（0 警告）。
-2. **从阶段 3 开始**（UX/路由层）——`/llman-sdd-apply c399-tui-rewrite-pi-render-engine`。**阶段 1+2 已全部完成**（引擎六模块 + widget 四模块）。阶段 3 是把引擎和 widget 连起来的交互层。
-3. **阶段 3 路由层接 Input widget 的 take_outcome**：`engine/tui.rs::route_event` 是 stub，阶段 3 建单焦点路由时，在 `focused.handle_input()` 之后调 `input.take_outcome()` 把 Submit/Slash/Abort/Quit 传给主循环（参考 pi `tui.ts:827-833`）。Loader widget 的 `advance()` 也在此层接线（host 在 `Msg::Tick` 时调）。
-4. **阶段 4 是关键转折点**：接入主循环 + 删 ratatui。建议在阶段 3（UX）完成后单独评估，确保引擎 + widget + 输入交互都就位再动接入。
+1. **先跑测试确认基线**：`just test`（既有 684 + 新增 156 = ~840 全绿）、`just lint`（0 警告）、arch_guard 4/4。
+2. **从阶段 4 开始**（接入主循环 + 删 ratatui）——`/llman-sdd-apply c399-tui-rewrite-pi-render-engine`。**阶段 1+2+3 核心已全部完成**（引擎 + widget + UX 路由层）。
+3. **阶段 4 接入要点**：`mod.rs::run` 改用 `Tui::handle_event` 替代旧 `handle_key` + `InputOutcome`；host loop 拿 `UxOutcome::{Submit,Slash,Abort,Quit}` 翻译（形状与旧 `InputOutcome` 一致，直接对译）；`commands::dispatch` 在 host loop 调（engine 不持 Driver）；Loader `advance()` 在 `Msg::Tick` 调；`app.rs::pending_tail` 改返回 `Vec<StyledLine>`；删 ratatui 依赖 + `components/` 目录。
+4. **UxOutcome 翻译层**（阶段 4）：`engine::outcome::UxOutcome` 与旧 `input::InputOutcome` 形状一致。host loop match `handle_event` 返回值，Submit/Slash 走原 `InputOutcome::Submit/Slash` 路径（driver.run / commands::dispatch），Abort/Quit 走原路径。旧 `InputOutcome` + `input.rs::handle` 接入后删。
 5. **Markdown 扣子启用顺序**（用户提到）：标题分级 → 加粗/斜体 → 引用 → 链接 → 媒体预览 → 脚注 → 表格列对齐。每个在 `MarkdownTheme` flip 一个开关 + 在 `widgets/markdown.rs` 的 Renderer 加对应事件处理。
 6. **token 节省原则不可破**：表格永远 tab/空格对齐（不画 Unicode 边框），代码块只颜色无框——用户明确要求复制干净。
 7. **differential render 调试**：tui.rs 有 `last_changed_range`/`last_full_redraw_reason` 测试访问器；若 diff 行为难调，在 do_render 加 `PI_DEBUG_REDRAW` 式日志（技能强调无可见性无法调 diff 引擎）。
 
 ---
 
-## 七、commit 历史（11 个未 push）
+## 七、commit 历史（14 个未 push）
 
 ```
+（待提交）feat(tui): c399 阶段 3 — UX 层（keybindings + 单焦点路由 + input listeners）
+320332a feat(tui): c399 阶段 2.4 — Loader widget（spinner + host tick 驱动，阶段 2 完成）
+1529f95 feat(tui): c399 阶段 2.3 — Input widget（单行 Focusable + grapheme 光标 + 横向滚动）
+0507751 docs: update _HANDOFF — c399 pi-tui 重写进度交接（38/68 tasks，阶段 1 完成）
 7939c44 feat(tui): c399 阶段 2.1+2.2 — 基础 widget + Markdown（纯透传 + 代码块高亮）
 4ac31fb feat(tui): c399 阶段 1.6 — virtual_terminal 测试 harness（阶段 1 完成）
 2fe9c56 feat(tui): c399 阶段 1.5 — engine tui.rs（differential render 核心引擎）
