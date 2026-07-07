@@ -36,11 +36,12 @@ const PROMPT: &str = "> ";
 /// cursor. Owns its buffer; the host reads outcomes via [`take_outcome`].
 ///
 /// Render emits one line of exactly `width` display columns: prompt + visible
-/// window (with `CURSOR_MARKER` + a styled cursor glyph at the cursor when
-/// focused) + right padding. The cursor style is an explicit fg+bg pair
-/// (theme-aware, injected via [`Input::with_cursor_style`]) rather than raw
-/// reverse video — raw reverse swaps the terminal's default fg/bg, which on a
-/// transparent dark terminal reads as a glaring block. Width contract honored
+/// window (with `CURSOR_MARKER` + a reverse-video cursor glyph at the cursor
+/// when focused) + right padding. The cursor is reverse video (same as pi
+/// `input.ts` and kimi-code) — reverse turns the end-of-input space into a
+/// visible block and inverts any char under the cursor. A trailing `\x1b[27m`
+/// (reverse off) is embedded in the glyph text so the reverse effect does not
+/// leak into following spans (SGR reverse is sticky). Width contract honored
 /// — the engine's hard-width check never trips.
 pub struct Input {
     value: String,
@@ -58,11 +59,6 @@ pub struct Input {
     /// (stage 3). Defaults to [`KeybindingsManager::default`]; tests inject a
     /// custom manager via [`with_keybindings`].
     keybindings: KeybindingsManager,
-    /// Style for the fake cursor glyph. Defaults to the dark-theme cursor
-    /// ([`crate::app::tui::theme::palette`] at `TerminalTheme::Dark`) so tests
-    /// stay `Input::new()`-free of theme plumbing; production injects the
-    /// detected theme's cursor via [`with_cursor_style`].
-    cursor_style: CellStyle,
 }
 
 impl Default for Input {
@@ -79,10 +75,6 @@ impl Input {
             focused: false,
             pending_outcome: None,
             keybindings: KeybindingsManager::default(),
-            cursor_style: crate::app::tui::theme::palette(
-                crate::app::tui::theme_detect::TerminalTheme::Dark,
-            )
-            .cursor(),
         }
     }
 
@@ -90,15 +82,6 @@ impl Input {
     pub fn with_keybindings(keybindings: KeybindingsManager) -> Self {
         Self {
             keybindings,
-            ..Self::new()
-        }
-    }
-
-    /// Construct with a custom cursor style (production: the host injects the
-    /// detected theme's cursor; tests that assert on cursor colors use this).
-    pub fn with_cursor_style(cursor_style: CellStyle) -> Self {
-        Self {
-            cursor_style,
             ..Self::new()
         }
     }
@@ -285,11 +268,15 @@ impl Component for Input {
         // Split the visible text at the cursor: before + glyph-at + after.
         let (before, at, after) = split_at_grapheme_col(&visible_text, cursor_col_in_visible);
         let marker = if self.focused { CURSOR_MARKER } else { "" };
-        // Theme-aware cursor: an explicit fg+bg pair (NOT raw reverse). Raw
-        // reverse swaps the terminal's default fg/bg, producing a glaring block
-        // on a transparent dark terminal. The host injects the detected
-        // theme's cursor style; tests default to the dark-theme pair.
-        let cursor_style = self.cursor_style;
+        // Cursor: reverse-video block (same as pi input.ts:437 and kimi-code's
+        // `'\x1b[7m \x1b[0m'`). reverse turns a space glyph into a visible block
+        // (essential for empty-input cursor) and inverts any char under the
+        // cursor. The glyph text carries a trailing `\x1b[27m` (reverse off) so
+        // the reverse effect is scoped to THIS glyph only — without it, SGR
+        // reverse is sticky and leaks into the following text/padding (the
+        // "background follows the cursor" bug).
+        let cursor_style = CellStyle::default().reverse();
+        let cursor_glyph_text = |g: char| format!("{g}\x1b[27m");
 
         // Cursor glyph: the char under the cursor (styled as a block), or a
         // space when at end-of-input. BUT when at end-of-input AND content
@@ -314,7 +301,7 @@ impl Component for Input {
             if !marker.is_empty() {
                 spans.push(Span::raw(marker));
             }
-            spans.push(Span::styled(last_char.to_string(), cursor_style));
+            spans.push(Span::styled(cursor_glyph_text(last_char), cursor_style));
             if !after.is_empty() {
                 spans.push(Span::raw(after));
             }
@@ -327,7 +314,7 @@ impl Component for Input {
             if !marker.is_empty() {
                 spans.push(Span::raw(marker));
             }
-            spans.push(Span::styled(cursor_glyph.to_string(), cursor_style));
+            spans.push(Span::styled(cursor_glyph_text(cursor_glyph), cursor_style));
             if !after.is_empty() {
                 spans.push(Span::raw(after));
             }
@@ -901,16 +888,12 @@ mod tests {
         input.cursor_right(); // after 你 (byte 3, col 2)
         let line: &StyledLine = &input.render(10)[0];
         let ansi = line.to_ansi();
-        // Cursor styling lands on 好 (the grapheme at col 2). Input::new()
-        // defaults to the dark-theme cursor: fg=White (SGR "97") + bold ("1"),
-        // fg-only (no bg — no "48;5;...") so the bg never leaks past the glyph.
+        // Cursor is reverse video on 好 (the grapheme at col 2). The reverse is
+        // opened (\x1b[7m) and — critically — closed right after the glyph
+        // (\x1b[27m) so it cannot leak into following spans.
         assert!(ansi.contains('好'));
-        assert!(
-            ansi.contains("97"),
-            "dark-theme cursor fg=White present: {ansi:?}"
-        );
-        assert!(!ansi.contains("48;5;"), "fg-only: no bg SGR");
-        assert!(!ansi.contains("\x1b[7m"), "no raw reverse");
+        assert!(ansi.contains("\x1b[7m"), "reverse on at cursor");
+        assert!(ansi.contains("\x1b[27m"), "reverse off after cursor glyph");
     }
 
     #[test]
@@ -929,15 +912,11 @@ mod tests {
         input.set_focused(true);
         let line = &input.render(10)[0];
         let ansi = line.to_ansi();
-        // Empty value → cursor glyph is a space, styled with the theme cursor
-        // (dark default: fg=White + bold, fg-only). Marker present for IME.
+        // Empty value → cursor glyph is a reverse-video space (visible block).
+        // reverse on/off both present so it is scoped to the single glyph.
         assert!(ansi.contains(CURSOR_MARKER));
-        assert!(
-            ansi.contains("97"),
-            "dark-theme cursor fg=White present: {ansi:?}"
-        );
-        assert!(!ansi.contains("48;5;"), "fg-only: no bg SGR");
-        assert!(!ansi.contains("\x1b[7m"), "no raw reverse");
+        assert!(ansi.contains("\x1b[7m"), "reverse on at cursor");
+        assert!(ansi.contains("\x1b[27m"), "reverse off after cursor glyph");
     }
 
     #[test]

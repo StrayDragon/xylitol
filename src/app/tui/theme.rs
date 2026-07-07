@@ -89,56 +89,17 @@ impl Palette {
         }
     }
 
-    /// The fake cursor style used by the Input widget. Returns a fg-only style
-    /// (NO bg) so the cursor highlights the glyph color without ever filling a
-    /// background. This is the kimi-code philosophy: the palette has fg tokens
-    /// only, the terminal background stays transparent throughout, and the
-    /// cursor is just a high-contrast-colored character.
-    ///
-    /// Why no bg: SGR bg is sticky — once emitted it persists across subsequent
-    /// spans until explicitly reset, so a bg on the cursor glyph would leak
-    /// into the text and padding after it (visible as the background "following
-    /// the cursor"). A fg-only cursor colors exactly one character and nothing
-    /// else, regardless of cursor position.
-    ///
-    /// The cursor is bold too, so even where the fg color is close to the
-    /// terminal default (rare), the weight distinguishes the cursor glyph.
-    pub fn cursor(&self) -> CellStyle {
-        match self.theme {
-            // Bright white glyph on the (transparent) dark terminal.
-            TerminalTheme::Dark => CellStyle::default().fg(Color::White).bold(),
-            // Dark glyph on the (transparent) light terminal.
-            TerminalTheme::Light => CellStyle::default().fg(Color::Black).bold(),
-        }
-    }
+    // Note: the Input widget's cursor is reverse video (theme-independent),
+    // owned entirely by `widgets::input::Input::render` — it does NOT live in
+    // the palette. reverse swaps the terminal's default fg/bg, which reads
+    // correctly on both dark and light themes without per-theme tuning, and a
+    // trailing `\x1b[27m` in the glyph text scopes the reverse to one char so
+    // it never leaks. This is the pi/kimi-code convention.
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn cursor_dark_is_fg_only_no_bg_no_reverse() {
-        // The whole point: cursor colors the glyph with fg ONLY — no bg (which
-        // would leak via sticky SGR into subsequent spans) and no reverse
-        // (which swaps the terminal's uncontrolled default fg/bg).
-        let p = palette(TerminalTheme::Dark);
-        let c = p.cursor();
-        assert_eq!(c.fg, Some(Color::White));
-        assert_eq!(c.bg, None, "fg-only: no bg to leak");
-        assert!(!c.reverse);
-        assert!(c.bold, "bold distinguishes the cursor glyph");
-    }
-
-    #[test]
-    fn cursor_light_is_fg_only_inverted() {
-        let p = palette(TerminalTheme::Light);
-        let c = p.cursor();
-        assert_eq!(c.fg, Some(Color::Black));
-        assert_eq!(c.bg, None, "fg-only: no bg to leak");
-        assert!(!c.reverse);
-        assert!(c.bold);
-    }
 
     #[test]
     fn text_dim_branches_on_theme() {

@@ -132,7 +132,7 @@ pub async fn run(driver: &mut dyn Driver) -> Result<(), String> {
 
     // Host-owned widgets, shared with the engine via Rc<RefCell>.
     let transcript = Rc::new(RefCell::new(TranscriptWidget::new()));
-    let input = Rc::new(RefCell::new(Input::with_cursor_style(pal.cursor())));
+    let input = Rc::new(RefCell::new(Input::new()));
     let loader = Rc::new(RefCell::new(Loader::new("Ready")));
 
     // Greeting line (committed finalized row).
