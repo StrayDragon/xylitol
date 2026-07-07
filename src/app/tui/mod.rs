@@ -283,8 +283,14 @@ async fn repl_loop(
                 if app.is_streaming() {
                     loader.borrow_mut().advance();
                     tui.request_render(false);
-                    tui.try_render().map_err(|e| format!("render: {e:?}"))?;
                 }
+                // Defensive flush: always pump a pending render frame on tick.
+                // Without this, a render that landed just before an XyDone (and
+                // was rate-limit-skipped) would stay pending forever once idle
+                // — because this very branch is the only thing that runs while
+                // waiting for the user's next keystroke. try_render is a cheap
+                // no-op when nothing is pending.
+                tui.try_render().map_err(|e| format!("render: {e:?}"))?;
             }
             Msg::Term(ev) => {
                 let outcome = handle_term_event(ev, tui, input, &mut width);
@@ -318,8 +324,13 @@ async fn repl_loop(
                 transcript.borrow_mut().clear_pending();
                 loader.borrow_mut().set_message("Ready");
                 loader.borrow_mut().set_spinning(false);
-                tui.request_render(false);
-                tui.try_render().map_err(|e| format!("render: {e:?}"))?;
+                // The final "turn done" frame MUST paint — it is the user's
+                // confirmation the turn is over. `request_render(false) +
+                // try_render()` was throttled (the preceding Xy event rendered
+                // <16ms ago, so try_render no-ops), leaving a stale "Working…"
+                // frame on screen until the user typed. render_now() bypasses
+                // the rate limit for this terminal turn-boundary.
+                tui.render_now().map_err(|e| format!("render: {e:?}"))?;
             }
         }
     }
