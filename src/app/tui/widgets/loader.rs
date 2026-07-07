@@ -48,28 +48,40 @@ pub struct Loader {
     frames: &'static [&'static str],
     current: usize,
     message: String,
+    /// Whether the spinner glyph is shown + advanced. When false (idle), the
+    /// line is just the message with no leading frame. Mirrors pi's model: pi
+    /// hides the spinner by not having an active Loader mounted; the faithful
+    /// translation for a persistent status line is a widget flag the host flips
+    /// on turn start/end (pi's loader.ts has no idle flag because it is
+    /// mount/unmount instead — c399 keeps the widget mounted for layout
+    /// stability, so the flag stands in for the mount).
+    spinning: bool,
 }
 
 impl Default for Loader {
     fn default() -> Self {
-        Self::new("Loading...")
+        Self::new("Ready")
     }
 }
 
 impl Loader {
-    /// New loader with a message; uses the default [`SPINNER`] frames.
+    /// New loader with a message; uses the default [`SPINNER`] frames. Starts
+    /// idle (`spinning = false`) — call [`set_spinning(true)`](Self::set_spinning)
+    /// when work starts.
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             frames: SPINNER,
             current: 0,
             message: message.into(),
+            spinning: false,
         }
     }
 
     /// Advance the spinner by one frame (wrap around). The host calls this on
-    /// its tick — there is no internal timer (see module docs).
+    /// its tick — there is no internal timer (see module docs). No-op when not
+    /// spinning (keeps `current` stable so resuming looks continuous).
     pub fn advance(&mut self) {
-        if self.frames.len() > 1 {
+        if self.spinning && self.frames.len() > 1 {
             self.current = (self.current + 1) % self.frames.len();
         }
     }
@@ -77,6 +89,12 @@ impl Loader {
     /// Replace the status message.
     pub fn set_message(&mut self, message: impl Into<String>) {
         self.message = message.into();
+    }
+
+    /// Toggle spinner visibility + animation. Host sets `true` on turn start,
+    /// `false` on turn end / abort. When false, render emits the message only.
+    pub fn set_spinning(&mut self, on: bool) {
+        self.spinning = on;
     }
 
     /// Current frame glyph.
@@ -89,8 +107,13 @@ impl Loader {
         self.current
     }
 
-    /// Build the one-line content: spinner span (styled) + " " + message span.
+    /// Build the one-line content: when spinning, `<frame> <message>`; when
+    /// idle, just `<message>` (no glyph, no leading space).
     fn build_line(&self, width: usize) -> StyledLine {
+        if !self.spinning {
+            let line = StyledLine::raw(&self.message);
+            return truncate(&line, width, "…");
+        }
         let frame = self.frame();
         let full = format!("{frame} {}", self.message);
         let line = StyledLine::from_spans(vec![
@@ -124,10 +147,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_message_is_loading() {
+    fn default_message_is_ready_and_idle() {
         let l = Loader::default();
-        assert_eq!(l.message, "Loading...");
+        assert_eq!(l.message, "Ready");
         assert_eq!(l.frame(), SPINNER[0]);
+        assert!(!l.spinning, "default is idle (no spinner)");
     }
 
     #[test]
@@ -144,8 +168,18 @@ mod tests {
     }
 
     #[test]
-    fn advance_cycles_through_all_frames() {
+    fn advance_is_noop_when_idle() {
+        // c399 fix: advance does nothing unless spinning (idle keeps frame stable).
         let mut l = Loader::default();
+        assert_eq!(l.current_frame(), 0);
+        l.advance();
+        assert_eq!(l.current_frame(), 0, "idle advance is a no-op");
+    }
+
+    #[test]
+    fn advance_cycles_through_all_frames_when_spinning() {
+        let mut l = Loader::default();
+        l.set_spinning(true);
         assert_eq!(l.current_frame(), 0);
         // advance len-1 times and confirm each frame lands in order
         for i in 0..SPINNER.len() {
@@ -158,8 +192,9 @@ mod tests {
     }
 
     #[test]
-    fn advance_is_stable_across_many_cycles() {
+    fn advance_is_stable_across_many_cycles_when_spinning() {
         let mut l = Loader::default();
+        l.set_spinning(true);
         for n in 0..(SPINNER.len() * 5) {
             assert_eq!(l.current_frame(), n % SPINNER.len());
             l.advance();
@@ -167,19 +202,29 @@ mod tests {
     }
 
     #[test]
-    fn render_shows_frame_and_message() {
+    fn render_idle_shows_message_only_no_glyph() {
         let l = Loader::new("Working");
+        let line = &l.render(40)[0];
+        let text = line.plain_text();
+        assert_eq!(text, "Working", "idle: message only, no spinner glyph");
+    }
+
+    #[test]
+    fn render_spinning_shows_frame_and_message() {
+        let mut l = Loader::new("Working");
+        l.set_spinning(true);
         let line = &l.render(40)[0];
         let text = line.plain_text();
         assert!(
             text.starts_with(&format!("{} Working", SPINNER[0])),
-            "got {text:?}"
+            "spinning: frame + message, got {text:?}"
         );
     }
 
     #[test]
-    fn render_advance_changes_frame() {
+    fn render_advance_changes_frame_when_spinning() {
         let mut l = Loader::new("x");
+        l.set_spinning(true);
         let f0 = l.render(40)[0].plain_text();
         l.advance();
         let f1 = l.render(40)[0].plain_text();
@@ -192,9 +237,6 @@ mod tests {
         let l = Loader::new("abcdefghij0123456789abcdefghij0123456789");
         let line = &l.render(10)[0];
         assert!(line.width() <= 10, "width invariant: got {}", line.width());
-        // truncated text keeps the spinner prefix + ellipsis marker
-        let text = line.plain_text();
-        assert!(text.starts_with(SPINNER[0]), "spinner kept: {text:?}");
     }
 
     #[test]
@@ -207,8 +249,9 @@ mod tests {
     }
 
     #[test]
-    fn render_spinner_is_styled() {
-        let l = Loader::default();
+    fn render_spinner_is_styled_when_spinning() {
+        let mut l = Loader::default();
+        l.set_spinning(true);
         let line = &l.render(40)[0];
         // First span is the spinner; it should carry the cyan fg.
         assert!(!line.spans.is_empty());

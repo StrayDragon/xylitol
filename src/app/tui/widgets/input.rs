@@ -226,16 +226,18 @@ impl Component for Input {
         let cursor_col = UnicodeWidthStr::width(&self.value[..self.cursor]);
 
         // Decide the window: a slice of the value (by display column) plus the
-        // cursor's column within that slice. The slice width budget is
-        // `available`; we reserve 1 column for the end-of-input cursor glyph
-        // when the cursor sits at the end (pi input.ts:397).
+        // cursor's column within that slice. The fits-check uses the full
+        // `available` budget (pi input.ts:391); the end-of-input cursor-glyph
+        // reservation (`available - 1`) applies ONLY inside the scroll branch
+        // (pi input.ts:397), where one column is held back for the reverse-video
+        // space at the cursor.
         let scroll_w = if self.cursor == self.value.len() {
             available.saturating_sub(1)
         } else {
             available
         };
 
-        let (visible_text, cursor_col_in_visible): (String, usize) = if total_w <= scroll_w {
+        let (visible_text, cursor_col_in_visible): (String, usize) = if total_w < available {
             // Fits entirely; no scroll.
             (self.value.clone(), cursor_col)
         } else if scroll_w == 0 {
@@ -720,6 +722,27 @@ mod tests {
                 line.width()
             );
         }
+    }
+
+    #[test]
+    fn render_fits_check_uses_full_available_not_scroll_width() {
+        // Regression for the off-by-one bug: typing "你能" (total_w=4, cursor at
+        // end) in a typical terminal where available=8 (width 10) must show
+        // BOTH chars. The old fits-check compared total_w against scroll_w
+        // (= available-1 when cursor at end), which would wrongly enter the
+        // scroll branch when total_w happened to equal scroll_w and drop chars.
+        // The fits-check MUST use the full `available` budget (pi input.ts:391).
+        let mut input = Input::new();
+        input.set_focused(true);
+        input.set_value("你能"); // 2 CJK chars = 4 display cols
+        input.cursor_end();
+        // PROMPT "> " = 2 cols → available = 10 - 2 = 8; total_w=4 < 8 → fits.
+        let line = &input.render(10)[0];
+        let text = line.plain_text();
+        assert!(
+            text.contains('你') && text.contains('能'),
+            "both CJK chars visible when they fit in available: got {text:?}"
+        );
     }
 
     #[test]

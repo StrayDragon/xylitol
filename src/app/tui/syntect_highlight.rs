@@ -8,7 +8,7 @@
 //!
 //! `SyntectHighlighter` is migrated from the vendored `highlight/syntect_bridge.rs`
 //! (derived from codex's `render/highlight.rs` minimal subset). Fixed
-//! CatppuccinMocha/Latte theme picked via `COLORFGBS`.
+//! CatppuccinMocha/Latte theme picked via `COLORFGBG`.
 
 use std::sync::OnceLock;
 
@@ -77,16 +77,19 @@ pub fn highlight(lang: &str, code: &str) -> Vec<StyleSegment> {
 
 /// Pick the highlight theme based on terminal background lightness (c396).
 ///
-/// Probes the `COLORFGBS` environment variable (common to iTerm2/Alacritty/
-/// Tmux/Kitty/GNOME Terminal): format `"fg;bg"` where the background code
-/// `>= 7` indicates a light background → light theme (CatppuccinLatte); else
-/// dark theme (CatppuccinMocha). Falls back to dark when `COLORFGBS` is unset
-/// or unparseable.
+/// Probes the `COLORFGBG` environment variable (the xterm-canonical spelling
+/// that iTerm2/Alacritty/Tmux/Kitty/GNOME Terminal set; common to all of them).
+/// Format `"fg;bg"` where the background code `>= 7` indicates a light
+/// background → light theme (CatppuccinLatte); else dark (CatppuccinMocha).
+/// Falls back to dark when `COLORFGBG` is unset or unparseable.
 ///
-/// OSC 11 background query is intentionally NOT used (would race with user
-/// input under the inline viewport); see c396 design D5.
-fn pick_theme_name(colorfgbs: Option<&str>) -> EmbeddedThemeName {
-    let Some(val) = colorfgbs else {
+/// (c399 fix: the prior code read `COLORFGBS` — a misspelling no terminal sets.
+/// pi's `coding-agent/.../theme.ts::detectTerminalBackgroundFromEnv` reads
+/// `COLORFGBG`. OSC 11 background query is a future enhancement — it needs the
+/// stdin reply-interceptor layer pi has in `tui.ts::consumeOsc11BackgroundResponse`,
+/// which the c399 engine deliberately omitted (design D4); see c396 design D5.)
+fn pick_theme_name(colorfgbg: Option<&str>) -> EmbeddedThemeName {
+    let Some(val) = colorfgbg else {
         return EmbeddedThemeName::CatppuccinMocha;
     };
     let parts: Vec<&str> = val.split(';').collect();
@@ -106,7 +109,7 @@ static THEME_NAME: OnceLock<EmbeddedThemeName> = OnceLock::new();
 
 fn theme() -> syntect::highlighting::Theme {
     let name =
-        *THEME_NAME.get_or_init(|| pick_theme_name(std::env::var("COLORFGBS").ok().as_deref()));
+        *THEME_NAME.get_or_init(|| pick_theme_name(std::env::var("COLORFGBG").ok().as_deref()));
     two_face::theme::extra().get(name).clone()
 }
 

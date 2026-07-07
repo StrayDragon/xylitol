@@ -157,7 +157,9 @@ pub async fn run(driver: &mut dyn Driver) -> Result<(), String> {
 
     let (tx, mut rx) = mpsc::unbounded_channel::<Msg>();
     spawn_keyboard_reader(tx.clone());
-    spawn_tick(tx.clone(), Duration::from_millis(120));
+    // pi's Loader ticks at 80ms (loader.ts DEFAULT_INTERVAL_MS); match that
+    // cadence so the spinner animates as smoothly as the reference.
+    spawn_tick(tx.clone(), Duration::from_millis(80));
 
     let result = repl_loop(
         driver,
@@ -274,10 +276,14 @@ async fn repl_loop(
             Msg::KeyEof => break,
             Msg::Tick => {
                 // Advance the spinner only while streaming; idle keeps a steady
-                // "Ready" with no animation.
+                // "Ready" with no animation. The Tick branch MUST pump its own
+                // render (try_render) — unlike Term/Xy, no sibling branch drives
+                // a frame here, so without this the spinner frame advances in
+                // memory but never paints, looking frozen during sparse streaming.
                 if app.is_streaming() {
                     loader.borrow_mut().advance();
                     tui.request_render(false);
+                    tui.try_render().map_err(|e| format!("render: {e:?}"))?;
                 }
             }
             Msg::Term(ev) => {
@@ -311,6 +317,7 @@ async fn repl_loop(
                 app.end_stream();
                 transcript.borrow_mut().clear_pending();
                 loader.borrow_mut().set_message("Ready");
+                loader.borrow_mut().set_spinning(false);
                 tui.request_render(false);
                 tui.try_render().map_err(|e| format!("render: {e:?}"))?;
             }
@@ -403,6 +410,7 @@ async fn apply_host_action(
             let stream = driver.run(&prompt).await;
             app.start_stream();
             loader.borrow_mut().set_message("Working…");
+            loader.borrow_mut().set_spinning(true);
             let cancel = Arc::new(CancellationToken::new());
             *current_cancel = Some(cancel.clone());
             let (xy_tx, mut xy_rx) = mpsc::unbounded_channel::<crate::domain::lifecycle::XyEvent>();
@@ -446,6 +454,7 @@ async fn apply_host_action(
                 app.end_stream();
                 transcript.borrow_mut().clear_pending();
                 loader.borrow_mut().set_message("Ready");
+                loader.borrow_mut().set_spinning(false);
             } else {
                 // Idle Ctrl+C → quit (matches legacy behavior).
                 return Ok(true);
