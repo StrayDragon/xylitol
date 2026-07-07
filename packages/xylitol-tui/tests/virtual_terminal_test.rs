@@ -357,3 +357,72 @@ fn render_exempts_image_lines_from_width_check() {
     tui.render_frame()
         .expect("Kitty image lines should be exempt from the width check");
 }
+
+// ── overlay compositing (extract_segments style inheritance) ────────────────
+
+#[test]
+fn overlay_preserves_trailing_content_styling() {
+    use xylitol_tui::{OverlayAnchor, OverlayOptions};
+
+    // Base line is fully bold "abcdefghij". Overlay sits in the middle cols.
+    // After compositing, the trailing content (after the overlay) must still
+    // be bold — this is the bug extract_segments fixes (style leak across the
+    // overlay boundary).
+    let term = LoggingVirtualTerminal::new(20, 5);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(LinesComponent::new(vec![
+        "\x1b[1mabcdefghij\x1b[0m",
+    ])));
+    tui.show_overlay(
+        Box::new(LinesComponent::new(vec!["XYZ"])),
+        OverlayOptions {
+            anchor: Some(OverlayAnchor::TopLeft),
+            margin: Some(xylitol_tui::OverlayMargin {
+                top: Some(0),
+                left: Some(3),
+                right: None,
+                bottom: None,
+            }),
+            ..Default::default()
+        },
+    );
+    tui.render_frame().unwrap();
+
+    // The 'g' at col 6 should still carry bold styling (col 3,4,5 = overlay).
+    let cell_after = tui.terminal.cell(0, 6);
+    assert!(
+        cell_after.bold,
+        "trailing content after overlay must keep bold, got cell: {:?}",
+        cell_after
+    );
+}
+
+#[test]
+fn overlay_replaces_its_region_content() {
+    use xylitol_tui::{OverlayAnchor, OverlayOptions};
+
+    let term = LoggingVirtualTerminal::new(20, 3);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(LinesComponent::new(vec!["hello world"])));
+    tui.show_overlay(
+        Box::new(LinesComponent::new(vec!["XYZ"])),
+        OverlayOptions {
+            anchor: Some(OverlayAnchor::TopLeft),
+            margin: Some(xylitol_tui::OverlayMargin {
+                top: Some(0),
+                left: Some(0),
+                right: None,
+                bottom: None,
+            }),
+            ..Default::default()
+        },
+    );
+    tui.render_frame().unwrap();
+
+    // Overlay at col 0 covers "hel" → first three cells are X,Y,Z.
+    assert_eq!(tui.terminal.cell(0, 0).ch, 'X');
+    assert_eq!(tui.terminal.cell(0, 2).ch, 'Z');
+    // Trailing content preserved: "lo world" starts at col 3.
+    assert_eq!(tui.terminal.cell(0, 3).ch, 'l');
+    assert_eq!(tui.terminal.cell(0, 4).ch, 'o');
+}
