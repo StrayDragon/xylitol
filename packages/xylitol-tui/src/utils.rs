@@ -6,7 +6,7 @@ use unicode_width::UnicodeWidthChar;
 pub type BgFn = Box<dyn Fn(&str) -> String>;
 
 /// Calculate the terminal width of a single grapheme cluster.
-fn grapheme_width(g: &str) -> usize {
+pub(crate) fn grapheme_width(g: &str) -> usize {
     if g == "\t" {
         return 3;
     }
@@ -159,6 +159,7 @@ pub fn extract_ansi_code(s: &str, pos: usize) -> Option<(&str, usize)> {
 }
 
 /// Track active ANSI SGR codes to preserve styling across line breaks.
+#[derive(Default)]
 struct AnsiCodeTracker {
     bold: bool,
     dim: bool,
@@ -321,7 +322,7 @@ impl AnsiCodeTracker {
         self.active_hyperlink = None;
     }
 
-    fn get_active_codes(&self) -> String {
+    pub(crate) fn get_active_codes(&self) -> String {
         let mut codes: Vec<String> = Vec::new();
         if self.bold {
             codes.push("1".to_string());
@@ -392,6 +393,122 @@ impl AnsiCodeTracker {
             result.push_str(&format!("\x1b]8;;{}", hl.terminator));
         }
         result
+    }
+}
+
+/// Result of splitting a line into the region before an overlay and the region
+/// after it, used by the engine's overlay compositing.
+pub struct ExtractedSegments {
+    pub before: String,
+    pub before_width: usize,
+    pub after: String,
+    pub after_width: usize,
+}
+
+/// Split `line` into two column-bounded regions: `before` covers `[0, beforeEnd)`
+/// and `after` covers `[afterStart, afterStart + afterLen)`. The `after` region
+/// inherits the SGR styling accumulated across `before` (so an overlay laid over
+/// the middle of a line doesn't leave the trailing content unstyled), and the
+/// first grapheme of `after` is preceded by the active SGR codes at that point.
+///
+/// Direct port of pi-tui's `extractSegments` (utils.ts:1117). `strict_after`
+/// rejects graphemes that would cross `afterEnd` (wide-char safety); when
+/// `afterLen == 0`, only `before` is extracted and we stop at `beforeEnd`.
+pub fn extract_segments(
+    line: &str,
+    before_end: usize,
+    after_start: usize,
+    after_len: usize,
+    strict_after: bool,
+) -> ExtractedSegments {
+    let mut before = String::new();
+    let mut before_width = 0usize;
+    let mut after = String::new();
+    let mut after_width = 0usize;
+
+    let mut current_col = 0usize;
+    let mut pending_ansi_before = String::new();
+    let mut after_started = false;
+    let after_end = after_start + after_len;
+    let stop_col = if after_len == 0 {
+        before_end
+    } else {
+        after_end
+    };
+
+    // Fresh tracker so the inherited styling reflects only this line's SGR.
+    let mut tracker = AnsiCodeTracker::default();
+
+    let mut i = 0;
+    while i < line.len() {
+        if let Some((code, len)) = extract_ansi_code(&line[i..], 0) {
+            // Track all SGR codes so we know styling at afterStart.
+            tracker.process(code);
+            // Route the raw code into whichever segment current_col falls in.
+            if current_col < before_end {
+                pending_ansi_before.push_str(code);
+            } else if current_col >= after_start && current_col < after_end && after_started {
+                // Only include ANSI in `after` once styling has been prepended;
+                // otherwise it would precede the inherited SGR blob.
+                after.push_str(code);
+            }
+            i += len;
+            continue;
+        }
+
+        // Consume the run of non-ANSI text up to the next escape, advancing by
+        // whole chars so multi-byte sequences (CJK/emoji) never split mid-char.
+        let mut text_end = i;
+        while text_end < line.len() {
+            // An ESC at text_end starts an ANSI sequence; stop here.
+            if line.as_bytes()[text_end] == 0x1b {
+                break;
+            }
+            // Advance one whole char (UTF-8 boundary safe).
+            match line[text_end..].chars().next() {
+                Some(c) => text_end += c.len_utf8(),
+                None => break,
+            }
+        }
+        let chunk = &line[i..text_end];
+        for grapheme in chunk.graphemes(true) {
+            let w = grapheme_width(grapheme);
+
+            if current_col < before_end && current_col + w <= before_end {
+                if !pending_ansi_before.is_empty() {
+                    before.push_str(&std::mem::take(&mut pending_ansi_before));
+                }
+                before.push_str(grapheme);
+                before_width += w;
+            } else if current_col >= after_start && current_col < after_end {
+                let fits = !strict_after || current_col + w <= after_end;
+                if fits {
+                    if !after_started {
+                        // Prepend inherited styling from before the overlay.
+                        after.push_str(&tracker.get_active_codes());
+                        after_started = true;
+                    }
+                    after.push_str(grapheme);
+                    after_width += w;
+                }
+            }
+
+            current_col += w;
+            if current_col >= stop_col {
+                break;
+            }
+        }
+        i = text_end;
+        if current_col >= stop_col {
+            break;
+        }
+    }
+
+    ExtractedSegments {
+        before,
+        before_width,
+        after,
+        after_width,
     }
 }
 

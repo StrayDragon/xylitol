@@ -115,3 +115,75 @@ fn test_is_punctuation_char() {
     assert!(is_punctuation_char(','));
     assert!(!is_punctuation_char('a'));
 }
+
+// ── extract_segments ───────────────────────────────────────────────────────
+// Direct port of pi-tui utils.ts extractSegments; these cases mirror the
+// scenarios pi relies on for overlay compositing (before/after split, SGR
+// inheritance, wide-char boundaries).
+
+#[test]
+fn extract_segments_plain_split_no_ansi() {
+    // Overlay covers cols [3,8) of "hello world" (width 11). before=[0,3),
+    // after=[8,11). No styling in play.
+    let s = extract_segments("hello world", 3, 8, 3, false);
+    assert_eq!(s.before, "hel");
+    assert_eq!(s.before_width, 3);
+    assert_eq!(s.after, "rld");
+    assert_eq!(s.after_width, 3);
+}
+
+#[test]
+fn extract_segments_after_inherits_before_sgr() {
+    // "abXYZde" where "ab" is bold and styling stays active through the overlay
+    // (no reset before afterStart). Overlay covers [2,5) (the XYZ region).
+    // after = "de" must inherit the bold from before the overlay.
+    let line = "\x1b[1mabXYZde";
+    let s = extract_segments(line, 2, 5, 2, false);
+    assert_eq!(s.before, "\x1b[1mab");
+    assert_eq!(s.before_width, 2);
+    // The after segment should begin with the active SGR (bold) so trailing
+    // content stays styled even though the overlay's own styling intervened.
+    assert!(
+        s.after.starts_with("\x1b[1m"),
+        "after must inherit bold SGR, got: {:?}",
+        s.after
+    );
+    assert!(
+        s.after.contains("de"),
+        "after must contain the trailing text"
+    );
+    assert_eq!(s.after_width, 2);
+}
+
+#[test]
+fn extract_segments_after_len_zero_only_extracts_before() {
+    // When afterLen == 0 we only want the before region; stop at beforeEnd.
+    let s = extract_segments("hello", 3, 0, 0, false);
+    assert_eq!(s.before, "hel");
+    assert_eq!(s.before_width, 3);
+    assert_eq!(s.after, "");
+    assert_eq!(s.after_width, 0);
+}
+
+#[test]
+fn extract_segments_strict_after_rejects_wide_char_overflow() {
+    // "ab中cd": cols are a=0,b=1,中=2-3,c=4,d=5. Overlay [2,5) leaves after
+    // starting at col 5 with width 1. Strict mode: the trailing 'd' (col 5,
+    // width 1) fits within afterEnd=6, so it's included.
+    let s = extract_segments("ab中cd", 2, 5, 1, true);
+    assert_eq!(s.before, "ab");
+    assert_eq!(s.before_width, 2);
+    assert_eq!(s.after, "d");
+    assert_eq!(s.after_width, 1);
+}
+
+#[test]
+fn extract_segments_cjk_in_before() {
+    // "中xyz": 中 occupies cols 0-1, beforeEnd=2 captures it fully.
+    // afterStart=2 afterLen=2 → after covers cols [2,4) = "xy".
+    let s = extract_segments("中xyz", 2, 2, 2, false);
+    assert_eq!(s.before, "中");
+    assert_eq!(s.before_width, 2);
+    assert_eq!(s.after, "xy");
+    assert_eq!(s.after_width, 2);
+}
