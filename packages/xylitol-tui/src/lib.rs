@@ -29,6 +29,11 @@ pub use components::spacer::Spacer;
 pub use components::text::Text;
 pub use components::truncated_text::TruncatedText;
 pub use components::editor::{AutocompleteMode, Editor, EditorOptions, EditorTheme, VisualLine};
+pub use components::markdown::{DefaultTextStyle, Markdown, MarkdownOptions, MarkdownTheme};
+pub use components::select_list::{
+    SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,
+    SelectListTruncatePrimaryContext,
+};
 pub use editor_component::EditorComponent;
 pub use autocomplete::{AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions, CombinedAutocompleteProvider, DebouncedAutocomplete, SlashCommand, parse_path_prefix};
 pub use autocomplete_fd::{build_fd_path_query, walk_directory_with_fd};
@@ -49,9 +54,11 @@ pub use terminal_colors::{
 };
 pub use terminal_image::{
     CellDimensions, ImageDimensions, ImageProtocol, TerminalCapabilities,
-    calculate_image_cell_size, calculate_image_rows, detect_capabilities, encode_iterm2,
-    encode_kitty, get_capabilities, hyperlink, is_image_line, render_image,
-    reset_capabilities_cache, set_capabilities, set_cell_dimensions,
+    calculate_image_cell_size, calculate_image_rows, delete_all_kitty_images,
+    delete_kitty_image, detect_capabilities, encode_iterm2, encode_kitty, get_capabilities,
+    get_cell_dimensions, get_gif_dimensions, get_image_dimensions, get_jpeg_dimensions,
+    get_png_dimensions, get_webp_dimensions, hyperlink, image_fallback, is_image_line,
+    render_image, reset_capabilities_cache, set_capabilities, set_cell_dimensions,
 };
 pub use tui::{
     Component, Focusable, OverlayAnchor, OverlayMargin, OverlayOptions, RenderError, SizeValue, TUI,
