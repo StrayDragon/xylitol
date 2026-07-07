@@ -116,7 +116,7 @@ impl<T: Terminal> TUI<T> {
             cursor_row: 0,
             hardware_cursor_row: 0,
             show_hardware_cursor: false,
-            clear_on_shrink: true,
+            clear_on_shrink: false,
             max_lines_rendered: 0,
             full_redraw_count: 0,
             focus_order_counter: 0,
@@ -200,6 +200,9 @@ impl<T: Terminal> TUI<T> {
                         }
                     }
                     Event::Resize(_, _) => {
+                        // Re-query size before rendering so we don't paint with
+                        // stale columns/rows (the CrosstermTerminal caches them).
+                        self.terminal.refresh_size();
                         self.do_render();
                     }
                     Event::Paste(data) => {

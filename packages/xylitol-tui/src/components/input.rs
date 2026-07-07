@@ -372,9 +372,10 @@ impl Component for Input {
         }
         if with_keybindings(|kb| kb.matches(data, "tui.input.submit")) || data == "\n" {
             if let Some(ref mut cb) = self.on_submit {
-                let value = std::mem::take(&mut self.value);
-                self.cursor = 0;
-                cb(value);
+                // pi fires onSubmit(this.value) WITHOUT clearing; the consumer
+                // owns reset. Clearing here would lose the submitted text, so we
+                // hand over a clone and leave value/cursor untouched.
+                cb(self.value.clone());
             }
             return;
         }

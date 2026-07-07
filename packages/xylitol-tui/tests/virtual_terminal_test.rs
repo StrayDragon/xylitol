@@ -205,3 +205,29 @@ fn tui_dispatch_input_reaches_focused_component() {
         "typed char should render: got {first:?}"
     );
 }
+
+#[test]
+fn input_submit_preserves_value_matching_pi() {
+    use std::sync::{Arc, Mutex};
+    use xylitol_tui::components::input::Input;
+
+    let mut input = Input::new();
+    let captured = Arc::new(Mutex::new(String::new()));
+    let cap = captured.clone();
+    input.on_submit = Some(Box::new(move |v| {
+        *cap.lock().unwrap() = v;
+    }));
+
+    for ch in "hello".chars() {
+        input.handle_input(&ch.to_string());
+    }
+    input.handle_input("\r");
+
+    // pi fires onSubmit(this.value) without clearing.
+    assert_eq!(*captured.lock().unwrap(), "hello");
+    assert_eq!(
+        input.value(),
+        "hello",
+        "value must survive submit (pi parity)"
+    );
+}
