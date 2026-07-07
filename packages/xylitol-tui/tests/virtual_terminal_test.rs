@@ -426,3 +426,85 @@ fn overlay_replaces_its_region_content() {
     assert_eq!(tui.terminal.cell(0, 3).ch, 'l');
     assert_eq!(tui.terminal.cell(0, 4).ch, 'o');
 }
+
+// ── differential render viewport scroll (pi Step 5C) ────────────────────────
+// When content grows past one screen, appending must scroll the terminal
+// (CUD to bottom + `\r\n`) so the new lines land on-screen instead of past the
+// edge. This is the c399-class bug the doRender rewrite targets.
+
+use std::cell::RefCell;
+use std::rc::Rc;
+
+/// Component whose lines can be swapped between frames (for cross-frame diff
+/// scenarios). Mirrors pi's mutable TestComponent.
+struct MutableComponent {
+    lines: Rc<RefCell<Vec<String>>>,
+}
+
+impl Component for MutableComponent {
+    fn render(&mut self, _width: usize) -> Vec<String> {
+        self.lines.borrow().clone()
+    }
+    fn handle_input(&mut self, _data: &str) {}
+    fn invalidate(&mut self) {}
+}
+
+#[test]
+fn viewport_scrolls_when_content_grows_past_screen_height() {
+    let lines = Rc::new(RefCell::new(vec!["line1".to_string(), "line2".to_string()]));
+    let term = LoggingVirtualTerminal::new(20, 3);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(MutableComponent {
+        lines: lines.clone(),
+    }));
+
+    // Frame 1: 2 lines fit in the 3-row screen.
+    tui.render_frame().unwrap();
+    let vp = tui.terminal.viewport();
+    assert_eq!(vp[0], "line1");
+    assert_eq!(vp[1], "line2");
+
+    // Frame 2: grow to 5 lines — exceeds the 3-row screen. The viewport must
+    // scroll so the last 3 rendered lines (line3/4/5) are visible.
+    *lines.borrow_mut() = vec![
+        "line1".to_string(),
+        "line2".to_string(),
+        "line3".to_string(),
+        "line4".to_string(),
+        "line5".to_string(),
+    ];
+    tui.render_frame().unwrap();
+
+    let vp = tui.terminal.viewport();
+    // After scrolling, the bottom of the viewport should show the tail content.
+    assert!(
+        vp.iter().any(|l| l.contains("line5")),
+        "last line should be visible after scroll, got viewport: {:?}",
+        vp
+    );
+    assert!(
+        vp.iter().any(|l| l.contains("line3")),
+        "mid content should be visible after scroll, got viewport: {:?}",
+        vp
+    );
+}
+
+#[test]
+fn viewport_append_keeps_unchanged_top_lines_stable() {
+    let lines = Rc::new(RefCell::new(vec!["stable".to_string()]));
+    let term = LoggingVirtualTerminal::new(20, 4);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(MutableComponent {
+        lines: lines.clone(),
+    }));
+    tui.render_frame().unwrap();
+
+    // Append a new line without touching the first.
+    *lines.borrow_mut() = vec!["stable".to_string(), "appended".to_string()];
+    tui.terminal.clear_writes();
+    tui.render_frame().unwrap();
+
+    let vp = tui.terminal.viewport();
+    assert_eq!(vp[0], "stable", "unchanged top line must stay");
+    assert_eq!(vp[1], "appended", "appended line must render");
+}
