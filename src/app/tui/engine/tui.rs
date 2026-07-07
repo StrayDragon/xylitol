@@ -65,6 +65,21 @@ pub struct Tui<T: Terminal> {
     /// (pi tui.ts:825 comment: "Pass input to focused component including
     /// Ctrl+C").
     input_listeners: Vec<Box<dyn InputListener>>,
+    /// Whether a shrink below `max_lines_rendered` triggers a full redraw
+    /// (pi tui.ts:1361-1365 `clearOnShrink`). Set at construction from
+    /// `$PI_CLEAR_ON_SHRINK` (default on); tests override via
+    /// [`set_clear_on_shrink`](Self::set_clear_on_shrink) to stay deterministic.
+    clear_on_shrink: bool,
+}
+
+/// Whether `clearOnShrink` (full redraw when content shrinks below the working
+/// area high-water) is enabled. Reads `$PI_CLEAR_ON_SHRINK`; defaults to
+/// enabled (pi's default). Set `PI_CLEAR_ON_SHRINK=0` to disable.
+fn clear_on_shrink_enabled() -> bool {
+    !matches!(
+        std::env::var("PI_CLEAR_ON_SHRINK").ok().as_deref(),
+        Some("0" | "false")
+    )
 }
 
 /// Result of an input listener inspecting a key (pi ux.md Step 4).
@@ -104,12 +119,20 @@ impl<T: Terminal> Tui<T> {
             last_changed_range: None,
             last_full_redraw_reason: None,
             input_listeners: Vec::new(),
+            clear_on_shrink: clear_on_shrink_enabled(),
         }
     }
 
     /// Access the underlying terminal (for event polling by the host loop).
     pub fn term_mut(&mut self) -> &mut T {
         &mut self.term
+    }
+
+    /// Override the `clearOnShrink` behavior (defaults from `$PI_CLEAR_ON_SHRINK`).
+    /// Tests use this for determinism; production leaves the default.
+    #[cfg(test)]
+    pub(crate) fn set_clear_on_shrink(&mut self, on: bool) {
+        self.clear_on_shrink = on;
     }
 
     /// Request a render frame. Coalesced: multiple calls in one tick → one
@@ -181,6 +204,14 @@ impl<T: Terminal> Tui<T> {
             && !width_changed
             && !height_changed
             && !self.force_clear;
+        // clearOnShrink (pi tui.ts:1361-1365): when content has shrunk below
+        // the working-area high water mark, a diff would leave stale orphan
+        // rows; force a full redraw to reclaim them. Toggleable via
+        // PI_CLEAR_ON_SHRINK (defaults on, like pi).
+        let n_new = new_lines.len();
+        let clear_on_shrink = self.previous_lines.len() > n_new
+            && n_new < self.max_lines_rendered
+            && self.clear_on_shrink;
         if self.force_clear {
             self.full_render(&new_lines, true, width, height, "forced full redraw")?;
             self.force_clear = false;
@@ -195,6 +226,14 @@ impl<T: Terminal> Tui<T> {
                 "no previous frame"
             };
             self.full_render(&new_lines, true, width, height, reason)?;
+        } else if clear_on_shrink {
+            self.full_render(
+                &new_lines,
+                true,
+                width,
+                height,
+                "clearOnShrink (content shrank)",
+            )?;
         } else {
             self.diff_render(&new_lines, width, height)?;
         }
@@ -287,113 +326,105 @@ impl<T: Terminal> Tui<T> {
 
     /// Strategy C: diff previous vs new, rewrite only the changed range.
     /// rendering-engine.md Step 5 C.
+    ///
+    /// Branches (mirroring pi `tui.ts::doDiff` + Step 5C spec):
+    /// - **No changes**: nothing to write.
+    /// - **All deletions** (`first >= n_new`): the changed range is entirely
+    ///   below the new content (a pure tail-shrink). Move to end-of-content,
+    ///   clear extras with `\r\n\x1b[2K`, move back. Falls back to fullRender
+    ///   when extras > height or the target row is above the viewport.
+    /// - **`first < previous_viewport_top`**: unreachable by diff → fullRender.
+    /// - **Otherwise**: the normal write loop (single buffered, with the shrink
+    ///   tail-clearing inlined so it shares one sync-output envelope + one
+    ///   `finalCursor` tracking).
     fn diff_render(
         &mut self,
         new_lines: &[String],
         width: usize,
         height: usize,
     ) -> Result<(), RenderError> {
-        // Find first/last changed line (treat missing as "").
+        use std::cmp::Ordering;
+
         let n_prev = self.previous_lines.len();
         let n_new = new_lines.len();
-        let mut first_changed: Option<usize> = None;
-        let mut last_changed: Option<usize> = None;
+        // Find first/last changed line (treat missing as "").
+        let mut first: Option<usize> = None;
+        let mut last: Option<usize> = None;
         let max_len = n_prev.max(n_new);
         for i in 0..max_len {
             let prev = self.previous_lines.get(i).map(|s| s.as_str()).unwrap_or("");
             let new = new_lines.get(i).map(|s| s.as_str()).unwrap_or("");
             if prev != new {
-                if first_changed.is_none() {
-                    first_changed = Some(i);
+                if first.is_none() {
+                    first = Some(i);
                 }
-                last_changed = Some(i);
+                last = Some(i);
             }
         }
+        let (Some(first), Some(last)) = (first, last) else {
+            // No changes — only cursor positioning (done in do_render).
+            self.last_changed_range = None;
+            self.last_full_redraw_reason = None;
+            return Ok(());
+        };
 
-        match (first_changed, last_changed) {
-            (None, _) => {
-                // No changes — only cursor positioning (done in do_render).
-                self.last_changed_range = None;
-                self.last_full_redraw_reason = None;
-                Ok(())
-            }
-            (Some(first), Some(last)) => {
-                // If the first changed line is above the viewport, we can't reach
-                // it by scrolling — fall back to full redraw.
-                if first < self.previous_viewport_top {
-                    self.full_render(
-                        new_lines,
-                        true,
-                        width,
-                        height,
-                        "firstChanged above viewport",
-                    )?;
-                    return Ok(());
-                }
-                self.write_diff_range(new_lines, first, last, height)?;
-                // Handle shrink: clear orphaned rows below the new content.
-                if n_prev > n_new {
-                    self.clear_orphan_rows(n_new, n_prev, height)?;
-                }
-                self.cursor_row = n_new.saturating_sub(1);
-                // Step 5C line 265: viewport follows the content end. The
-                // scroll block inside write_diff_range already advanced this for
-                // the append case; clamp up to the content-tail floor so any
-                // path that changed content without scrolling still keeps the
-                // viewport tracking the last row.
-                let floor = n_new.saturating_sub(height);
-                if self.previous_viewport_top < floor {
-                    self.previous_viewport_top = floor;
-                }
-                self.max_lines_rendered = self.max_lines_rendered.max(n_new);
-                self.last_changed_range = Some((first, last));
-                self.last_full_redraw_reason = None;
-                Ok(())
-            }
-            _ => Ok(()),
+        // firstChanged above the viewport → unreachable by diff → fullRender.
+        if first < self.previous_viewport_top {
+            return self.full_render(
+                new_lines,
+                true,
+                width,
+                height,
+                "firstChanged above viewport",
+            );
         }
-    }
 
-    /// Write the changed line range `[first, last]` via cursor moves + `\x1b[2K`
-    /// + line content. rendering-engine.md Step 5 C normal write loop.
-    ///
-    /// Three things the over-viewport append case MUST get right (verified
-    /// against pi `tui.ts::writeDiffRange` + Step 5C pseudocode):
-    /// 1. `move_target` for a pure append is `first - 1` (the last unchanged
-    ///    row), so the write loop's leading `\r\n` starts the new content on a
-    ///    fresh line. Otherwise the cursor lands one row too low.
-    /// 2. To scroll N rows into scrollback you MUST first move the cursor to
-    ///    the viewport BOTTOM row (CUD), then emit `\r\n` × N — `\r\n` only
-    ///    scrolls the terminal when issued from the bottom row. Emitting it
-    ///    from mid-screen just moves the cursor down, leaving old rows on
-    ///    screen and producing the "duplicated/overlapped text" bug.
-    /// 3. All relative cursor moves after the scroll are in SCREEN
-    ///    coordinates: `(target - viewport_top) - (hw_cursor - prev_top)`,
-    ///    not absolute row numbers (which inflate by 2×viewport_top and send
-    ///    the cursor off-screen once content grows past one screen).
-    fn write_diff_range(
-        &mut self,
-        new_lines: &[String],
-        first: usize,
-        last: usize,
-        height: usize,
-    ) -> Result<(), RenderError> {
-        use std::cmp::Ordering;
+        // All-deletions: the whole changed range is below the new content tail.
+        if first >= n_new {
+            // Step 5C: if extras > height, or target above viewport, fall back
+            // to B (full redraw). Clearing many rows one-by-one would push
+            // content into scrollback and desync viewport_top.
+            let extras = n_prev.saturating_sub(n_new);
+            let target = n_new.saturating_sub(1);
+            if extras > height || target < self.previous_viewport_top {
+                return self.full_render(new_lines, true, width, height, "all-deletions fallback");
+            }
+            let mut buf = String::from("\x1b[?2026h");
+            // Move to the end of the new content (screen-relative).
+            self.move_to_row(&mut buf, target, height);
+            for _ in 0..extras {
+                buf.push_str("\r\n\x1b[2K");
+            }
+            // Move back to end of new content.
+            if extras > 0 {
+                buf.push_str(&format!("\x1b[{extras}A"));
+            }
+            buf.push_str("\x1b[?2026l");
+            self.term.write(&buf);
+            self.hardware_cursor_row = target;
+            self.cursor_row = n_new.saturating_sub(1);
+            let floor = n_new.saturating_sub(height);
+            if self.previous_viewport_top < floor {
+                self.previous_viewport_top = floor;
+            }
+            self.max_lines_rendered = self.max_lines_rendered.max(n_new);
+            self.last_changed_range = Some((first, last));
+            self.last_full_redraw_reason = None;
+            return Ok(());
+        }
 
+        // Normal write loop (single buffer, shrink inlined).
         let mut buf = String::from("\x1b[?2026h");
         let prev_viewport_top = self.previous_viewport_top;
 
-        // appendStart: pure append starting exactly at the old tail. Per pi
-        // tui.ts:1394 — the write loop uses `\r\n` to open a fresh line and the
-        // scroll target backs up one row to the last unchanged line.
-        let append_start = new_lines.len() > self.previous_lines.len()
-            && first == self.previous_lines.len()
-            && first > 0;
+        // appendStart: pure append starting exactly at the old tail (pi
+        // tui.ts:1394). The write loop opens with `\r\n` and the scroll target
+        // backs up one row to the last unchanged line.
+        let append_start = n_new > n_prev && first == n_prev && first > 0;
         let move_target = if append_start { first - 1 } else { first };
 
-        // Scroll block: only when the target is below the current viewport
-        // bottom. Move to the bottom row FIRST, then `\r\n` × scroll (newline
-        // only scrolls when the cursor is on the bottom row).
+        // Scroll block: move cursor to viewport BOTTOM first, then `\r\n` ×
+        // scroll (newline only scrolls when issued from the bottom row).
         let prev_bottom = prev_viewport_top + height.saturating_sub(1);
         if move_target > prev_bottom {
             let current_screen_row = self
@@ -412,22 +443,13 @@ impl<T: Terminal> Tui<T> {
             self.hardware_cursor_row = move_target;
         }
 
-        // Relative move to move_target, in SCREEN coordinates (both sides minus
-        // viewport top). The skill's Step 5C lineDiff formula.
-        let current_screen =
-            self.hardware_cursor_row as isize - self.previous_viewport_top as isize;
-        let target_screen = move_target as isize - self.previous_viewport_top as isize;
-        let line_diff = target_screen - current_screen;
-        match line_diff.cmp(&0) {
-            Ordering::Greater => buf.push_str(&format!("\x1b[{}B", line_diff)),
-            Ordering::Less => buf.push_str(&format!("\x1b[{}A", -line_diff)),
-            Ordering::Equal => {}
-        }
+        // Relative move to move_target, SCREEN coordinates (Step 5C lineDiff).
+        self.move_to_row(&mut buf, move_target, height);
 
-        // Open the write loop: `\r\n` for append (fresh line after the last
-        // unchanged row), `\r` otherwise (re-write in place).
+        // Open the write loop: `\r\n` for append, `\r` otherwise.
         buf.push_str(if append_start { "\r\n" } else { "\r" });
-        for i in first..=last {
+        let render_end = last.min(n_new.saturating_sub(1));
+        for i in first..=render_end {
             if i > first {
                 buf.push_str("\r\n");
             }
@@ -436,42 +458,62 @@ impl<T: Terminal> Tui<T> {
                 buf.push_str(line);
             }
         }
-        self.hardware_cursor_row = last;
+
+        // Shrink tail-clearing (inlined, same buffer): if content shrank, clear
+        // the orphan rows below the new content. Per Step 5C: if the written
+        // range didn't reach the new tail, move down to the tail first so the
+        // orphan clear starts from the right place. finalCursor tracks where
+        // the cursor actually stops (the new content tail).
+        let mut final_cursor = render_end;
+        if n_prev > n_new {
+            // If the written range ended before the new tail, move down to it.
+            if render_end + 1 < n_new {
+                let down = (n_new - 1).saturating_sub(render_end);
+                buf.push_str(&format!("\x1b[{down}B"));
+                final_cursor = n_new - 1;
+            }
+            let extras = n_prev - n_new;
+            for _ in 0..extras {
+                buf.push_str("\r\n\x1b[2K");
+            }
+            if extras > 0 {
+                buf.push_str(&format!("\x1b[{extras}A"));
+            }
+        }
+
         buf.push_str("\x1b[?2026l");
         self.term.write(&buf);
+
+        // Step 5C save-state invariants.
+        self.hardware_cursor_row = final_cursor;
+        self.cursor_row = n_new.saturating_sub(1);
+        let floor = final_cursor.saturating_sub(height.saturating_sub(1));
+        if self.previous_viewport_top < floor {
+            self.previous_viewport_top = floor;
+        }
+        self.max_lines_rendered = self.max_lines_rendered.max(n_new);
+        self.last_changed_range = Some((first, last));
+        self.last_full_redraw_reason = None;
+        // Touch Ordering so the `use` stays even if both branches are currently
+        // equality (keeps the import meaningful for future additions).
+        let _ = Ordering::Equal;
         Ok(())
     }
 
-    /// Clear orphaned rows when content shrank (n_new < n_prev). Moves down,
-    /// clears each extra row with `\r\n\x1b[2K`, moves back.
-    fn clear_orphan_rows(
-        &mut self,
-        n_new: usize,
-        n_prev: usize,
-        _height: usize,
-    ) -> Result<(), RenderError> {
-        let extras = n_prev.saturating_sub(n_new);
-        if extras == 0 {
-            return Ok(());
-        }
-        let mut buf = String::from("\x1b[?2026h");
-        // Move to end of new content (one past last new line) then clear extras.
-        let target = n_new;
-        let line_diff = target as isize - self.hardware_cursor_row as isize;
+    /// Append a relative cursor-row move to `buf` so the hardware cursor lands
+    /// on logical `target_row`, using SCREEN coordinates (both sides minus the
+    /// current viewport top — pi `computeLineDiff`, Step 5C line 246). Emits
+    /// CUD (`\x1b[NB`) or CUU (`\x1b[NA`) as needed; nothing when already there.
+    fn move_to_row(&self, buf: &mut String, target_row: usize, _height: usize) {
+        let current_screen =
+            self.hardware_cursor_row as isize - self.previous_viewport_top as isize;
+        let target_screen = target_row as isize - self.previous_viewport_top as isize;
+        let line_diff = target_screen - current_screen;
         if line_diff > 0 {
-            buf.push_str(&format!("\x1b[{}B", line_diff));
+            buf.push_str(&format!("\x1b[{line_diff}B"));
         } else if line_diff < 0 {
             buf.push_str(&format!("\x1b[{}A", -line_diff));
         }
-        for _ in 0..extras {
-            buf.push_str("\r\n\x1b[2K");
-        }
-        // Move back to end of new content.
-        buf.push_str(&format!("\x1b[{}A", extras));
-        buf.push_str("\x1b[?2026l");
-        self.term.write(&buf);
-        self.hardware_cursor_row = n_new.saturating_sub(1);
-        Ok(())
     }
 
     /// Position the hardware cursor at the IME marker (rendering-engine.md
@@ -764,8 +806,11 @@ mod tests {
     }
 
     #[test]
-    fn shrink_clears_orphan_rows() {
-        // Content 4 lines -> 2 lines: orphan rows 2,3 must be cleared.
+    fn shrink_triggers_clear_on_shrink_full_redraw() {
+        // Content 4 lines -> 2 lines: with clearOnShrink ON, the engine does a
+        // full redraw (clears the working area) rather than diff-clearing orphan
+        // rows. This reclaims stale rows left by the previous taller content
+        // (pi tui.ts:1361-1365).
         let term = CapturingTerminal::new(80, 24);
         let widget = LinesWidget {
             lines: vec![
@@ -776,6 +821,7 @@ mod tests {
             ],
         };
         let mut tui = Tui::new(term, Box::new(widget));
+        tui.set_clear_on_shrink(true);
         tui.render_now().unwrap();
         tui.term_mut().written.clear();
 
@@ -785,14 +831,171 @@ mod tests {
         tui.set_root(Box::new(widget2));
         tui.render_now().unwrap();
         let out = tui.term_mut().written.clone();
-        // Orphan clearing uses \x1b[2K; two orphan rows (c, d removed).
-        // The diff writes the (unchanged) a,b range as None first, then clears.
-        // Count clear-line escapes as a proxy for orphan clearing activity.
+        // clearOnShrink → full redraw: screen-clear sequence present.
+        assert!(
+            out.contains("\x1b[2J"),
+            "full screen clear on shrink: {out:?}"
+        );
+        assert_eq!(
+            tui.last_full_redraw_reason(),
+            Some("clearOnShrink (content shrank)")
+        );
+    }
+
+    #[test]
+    fn shrink_with_clear_on_shrink_disabled_diffs_orphan_rows() {
+        // With clearOnShrink OFF, shrink goes through the diff path and clears
+        // orphan rows in-place via \x1b[2K (no full screen clear).
+        let term = CapturingTerminal::new(80, 24);
+        let widget = LinesWidget {
+            lines: vec![
+                StyledLine::raw("a"),
+                StyledLine::raw("b"),
+                StyledLine::raw("c"),
+                StyledLine::raw("d"),
+            ],
+        };
+        let mut tui = Tui::new(term, Box::new(widget));
+        tui.set_clear_on_shrink(false);
+        tui.render_now().unwrap();
+        tui.term_mut().written.clear();
+
+        let widget2 = LinesWidget {
+            lines: vec![StyledLine::raw("a"), StyledLine::raw("b")],
+        };
+        tui.set_root(Box::new(widget2));
+        tui.render_now().unwrap();
+        let out = tui.term_mut().written.clone();
+        // No full screen clear; orphan rows cleared in-place with \x1b[2K.
+        assert!(
+            !out.contains("\x1b[2J"),
+            "no full clear in diff path: {out:?}"
+        );
         let clear_count = out.matches("\x1b[2K").count();
         assert!(
             clear_count >= 2,
             "orphan rows cleared (>=2 \\x1b[2K), got {clear_count}: {out:?}"
         );
+    }
+
+    #[test]
+    fn deep_shrink_above_viewport_falls_back_to_full_redraw() {
+        // A shrink where the new content tail lands above the current viewport
+        // top is unreachable by in-place diff (you can't scroll UP into
+        // scrollback). Step 5C: fall back to full redraw. This is what actually
+        // fires for a large tail-shrink (the extras>height all-deletions check
+        // is a secondary guard; "firstChanged above viewport" fires first
+        // whenever the content tail recedes past the viewport top, which is the
+        // common case for a deep shrink).
+        let term = CapturingTerminal::new(80, 4);
+        let widget = LinesWidget {
+            lines: (0..10)
+                .map(|i| StyledLine::raw(format!("L{i}")))
+                .collect::<Vec<_>>(),
+        };
+        let mut tui = Tui::new(term, Box::new(widget));
+        tui.set_clear_on_shrink(false); // isolate the diff-path fallback
+        tui.render_now().unwrap();
+        // viewport_top is now 10-4=6.
+        tui.term_mut().written.clear();
+
+        // Shrink to 2 lines: first=2 < viewport_top=6 → "firstChanged above
+        // viewport" full redraw.
+        let widget2 = LinesWidget {
+            lines: vec![StyledLine::raw("L0"), StyledLine::raw("L1")],
+        };
+        tui.set_root(Box::new(widget2));
+        tui.render_now().unwrap();
+        assert_eq!(
+            tui.last_full_redraw_reason(),
+            Some("firstChanged above viewport"),
+            "deep shrink above viewport falls back to full redraw"
+        );
+    }
+
+    #[test]
+    fn all_deletions_in_viewport_clears_in_place() {
+        // Pure tail-shrink that stays within the viewport (first >= n_new but
+        // first >= viewport_top): the all-deletions branch clears extras in
+        // place via \r\n\x1b[2K. Construct: height=24 (large), content 5 lines
+        // (viewport_top=0), shrink to 3 (first=3 >= n_new=3, within viewport).
+        let term = CapturingTerminal::new(80, 24);
+        let widget = LinesWidget {
+            lines: vec![
+                StyledLine::raw("L0"),
+                StyledLine::raw("L1"),
+                StyledLine::raw("L2"),
+                StyledLine::raw("L3"),
+                StyledLine::raw("L4"),
+            ],
+        };
+        let mut tui = Tui::new(term, Box::new(widget));
+        tui.set_clear_on_shrink(false);
+        tui.render_now().unwrap();
+        tui.term_mut().written.clear();
+
+        let widget2 = LinesWidget {
+            lines: vec![
+                StyledLine::raw("L0"),
+                StyledLine::raw("L1"),
+                StyledLine::raw("L2"),
+            ],
+        };
+        tui.set_root(Box::new(widget2));
+        tui.render_now().unwrap();
+        let out = tui.term_mut().written.clone();
+        assert!(
+            !out.contains("\x1b[2J"),
+            "in-place clear, no full redraw: {out:?}"
+        );
+        assert!(tui.last_full_redraw_reason().is_none());
+        // 2 orphan rows cleared in place.
+        assert!(
+            out.matches("\x1b[2K").count() >= 2,
+            "orphan rows cleared: {out:?}"
+        );
+        assert_eq!(tui.hardware_cursor_row, 2, "cursor at new content tail");
+    }
+
+    #[test]
+    fn in_place_middle_change_keeps_cursor_at_content_tail() {
+        // Change a middle row (not append, not shrink). The write loop ends at
+        // `last`, but finalCursor must reflect the content tail so the NEXT
+        // frame's relative moves are correct. Here content is 5 rows, we change
+        // only row 1; after render hardware_cursor_row should let a subsequent
+        // append work without re-correction.
+        let term = CapturingTerminal::new(80, 24);
+        let widget = LinesWidget {
+            lines: vec![
+                StyledLine::raw("L0"),
+                StyledLine::raw("L1"),
+                StyledLine::raw("L2"),
+                StyledLine::raw("L3"),
+                StyledLine::raw("L4"),
+            ],
+        };
+        let mut tui = Tui::new(term, Box::new(widget));
+        tui.render_now().unwrap();
+        tui.term_mut().written.clear();
+
+        // Change row 1 only.
+        let widget2 = LinesWidget {
+            lines: vec![
+                StyledLine::raw("L0"),
+                StyledLine::raw("CHANGED"),
+                StyledLine::raw("L2"),
+                StyledLine::raw("L3"),
+                StyledLine::raw("L4"),
+            ],
+        };
+        tui.set_root(Box::new(widget2));
+        tui.render_now().unwrap();
+        let out = tui.term_mut().written.clone();
+        assert!(out.contains("CHANGED"));
+        // changed range was (1,1); hardware_cursor_row should be 1 (last written),
+        // and a following append should still render correctly (covered by the
+        // append tests). This guards against the old bug where cursor landed off.
+        assert_eq!(tui.last_changed_range(), Some((1, 1)));
     }
 
     #[test]
