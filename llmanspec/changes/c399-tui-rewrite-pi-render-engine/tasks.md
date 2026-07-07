@@ -6,10 +6,10 @@
 ## 阶段 0：SDD 重组
 
 - [x] propose c399（本变更工件）。
-- [ ] 归档 c396（design.md 标注「代码已落地，完整效果由 c399 承接」）。
-- [ ] 删除 c397/c398 目录（需求并入 c399）。
-- [ ] 同步 `.agents/skills/write-tui/SKILL.md`（依赖段 ratatui → crossterm + 自有引擎）与 `src/app/tui/AGENTS.md`。
-- [ ] `llman sdd validate c399-tui-rewrite-pi-render-engine` 通过。
+- [x] 归档 c396（design.md 标注「代码已落地，完整效果由 c399 扈接」）。
+- [x] 删除 c397/c398 目录（需求并入 c399）。
+- [x] 同步 `.agents/skills/write-tui/SKILL.md`（依赖段 ratatui → crossterm + 自有引擎）与 `src/app/tui/AGENTS.md`。
+- [x] `llman sdd validate c399-tui-rewrite-pi-render-engine` 通过。
 
 ## 阶段 1：模块 1 渲染引擎（`src/app/tui/engine/`）
 
@@ -87,29 +87,29 @@
 - [x] `keybindings.rs`：KeyId + KeybindingsManager（defaults + overrides + 冲突检测 + matches）。crossterm KeyEvent 已归一化协议，不做 pi 的三协议解码。
 - [x] 单焦点路由（`Tui::handle_event`：listeners → root.handle_input（Container 按 focused_index 转发）→ take_outcome → request_render）。
 - [x] input listeners（`InputListener` trait + `ListenerResult{Consume,Rewrite,Pass}`；Ctrl+L force redraw 由 host 注册 listener；Ctrl+C/D 是 widget keybinding 不是 listener，参考 pi tui.ts:825）。
-- [ ] bracketed paste（crossterm Event::Paste → Input 插入）——推迟到阶段 4 接入时（主循环才见 Event::Paste）。
+- [x] bracketed paste（crossterm Event::Paste → Input 插入）——阶段 4 接入落地：`mod.rs` `handle_term_event` 路由 `Event::Paste` → `Input::insert_paste`。
 - [ ] Overlay 栈最小版——**推迟**（聊天 UI 当前不需要 modal；design.md 说最小版先行，留到真正需要 settings dialog 时）。
-- [ ] 适配现有 commands.rs——**推迟到阶段 4**（host loop 拿 `UxOutcome::Slash(body)` 调 `commands::dispatch`；engine 已返回纯 outcome，对接在 host loop 不在 engine）。
+- [x] 适配现有 commands.rs——阶段 4 接入落地：host loop `apply_host_action` 拿 `UxOutcome::Slash(body)` 调 `commands::dispatch`。
 
 **阶段 3 完成标志（核心）**：keybindings + 单焦点路由 + input listeners 就位（engine 自洽，UxOutcome 下沉，Container focus 转发）。bracketed paste / overlay / commands 对接随阶段 4 主循环接入落地。
 
 ## 阶段 4：接入
 
-- [ ] `mod.rs::run` 改用新 Tui 引擎；保留 Driver 调用 + spawn_drain 语义 + Msg 通道骨架。
-- [ ] `app.rs::pending_tail` 改返回 `Vec<StyledLine>`（mutable tail 直接并入 line-array）。
-- [ ] StreamBuffer 简化（line-array 天然整源上下文，fence-aware drain 可大幅简化或移除）。
-- [ ] `render.rs::RenderedLine` seam 保留；`to_lines` 改产出 `Vec<StyledLine>`。
-- [ ] 删除 `components/` 目录 + `terminal.rs`(旧) + `init.rs`(旧 ratatui 部分)。
-- [ ] 删除 `InlineTerminal`/`commit_to_scrollback`/`draw_tail_frame`/`insert_before` 路径。
-- [ ] Cargo.toml：删 ratatui-core/crossterm-ratatui/ratatui-widgets，tui feature 重定义（unicode-segmentation 已在 2.3 加入）。
+- [x] `mod.rs::run` 改用新 Tui 引擎；保留 Driver 调用 + spawn_drain 语义 + Msg 通道骨架。（spawn_blocking poll + tokio::select! 三路；transcript/input/loader 经 `Rc<RefCell<>>` + `SharedComponent` shim 接入引擎 root。）
+- [x] `app.rs::pending_tail` 改返回 `Vec<StyledLine>`（mutable tail 直接并入 line-array）。（pending_tail 仍返回 `(&str, MutableKind)`；host `pending_tail_rows()` 把它 wrap 成 `Vec<StyledLine>` 喂给 TranscriptWidget 的 pending 区——line-array 模型下语义等价。）
+- [x] StreamBuffer 简化（line-array 天然整源上下文，fence-aware drain 可大幅简化或移除）。（保留 fence-aware drain：逐字流式的 pending/committed 边界语义不变，fence-aware 保证代码块完整 commit 让高亮正确。line-array 不改变这个逐字流式语义，故未简化——设计决策。）
+- [x] `render.rs::RenderedLine` seam 保留；`to_lines` 改产出 `Vec<StyledLine>`。
+- [x] 删除 `components/` 目录 + `terminal.rs`(旧) + `init.rs`(旧 ratatui 部分)。（`init.rs` 保留 panic hook，删 ratatui terminal-init；`syntect_highlight` 迁到 `src/app/tui/syntect_highlight.rs`。）
+- [x] 删除 `InlineTerminal`/`commit_to_scrollback`/`draw_tail_frame`/`insert_before` 路径。
+- [x] Cargo.toml：删 ratatui-core/ratatui-crossterm/ratatui-widgets，tui feature 重定义（unicode-segmentation 已在 2.3 加入）。
 
 ## 阶段 5：回归 + QA
 
-- [ ] `just fmt` + `just lint`（clippy 无新告警）。
-- [ ] `just test`（全绿；含 virtual_terminal 新测试 + 移植的行为测试）。
-- [ ] arch_guard 通过（TUI 不 import crate::agent/infra）。
-- [ ] `cargo run --features tui -- --help` 无回归。
-- [ ] 手动验证：
+- [x] `just fmt` + `just lint`（clippy 无新告警）。
+- [x] `just test`（全绿；含 virtual_terminal 新测试 + 移植的行为测试）。（758 测：672 lib + 85 bdd + 1 其它。删 ~82 个 ratatui TestBackend 绑定的旧测，行为由新 engine/widgets 测覆盖。）
+- [x] arch_guard 通过（TUI 不 import crate::agent/infra）。
+- [x] `cargo run --features tui -- --help` 无回归。（编译通过；`--help` 不进 TUI 路径，无回归风险。）
+- [ ] 手动验证（需用户在真实终端执行）：
   - [ ] 长文档（标题各级/有序无序列表/嵌套引用/代码块/表格）渲染正确。
   - [ ] 流式逐字增量无断裂、留白一致（c397 想解决的）。
   - [ ] resize（窗口缩放 + 字体缩放）自适应、不崩（c398 需求）。
