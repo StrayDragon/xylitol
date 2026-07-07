@@ -681,12 +681,26 @@ impl<T: Terminal> TUI<T> {
             rendered.push((ov_lines, row, col));
         }
 
-        let working_height = lines.len().max(term_height);
+        // workingHeight = max(content, screen, minLinesNeeded). Deliberately
+        // excludes maxLinesRendered — including it historically caused
+        // self-reinforcing scrollback growth on width changes (pi tui.ts:1067).
+        // minLinesNeeded covers overlays anchored below the content end.
+        let min_lines_needed = rendered
+            .iter()
+            .map(|(ov, row, _)| row + ov.len())
+            .max()
+            .unwrap_or(0);
+        let working_height = lines.len().max(term_height).max(min_lines_needed);
         lines.resize(working_height, String::new());
+
+        // Overlay screen coords are relative to the visible viewport top; map
+        // them to absolute buffer rows via viewportStart (pi tui.ts:1074).
+        let viewport_start = working_height.saturating_sub(term_height);
 
         for (ov_lines, row, col) in rendered {
             for (i, ov_line) in ov_lines.iter().enumerate() {
-                if let Some(base) = lines.get_mut(row + i) {
+                let abs_row = viewport_start + row + i;
+                if let Some(base) = lines.get_mut(abs_row) {
                     *base = self.composite_line(base, ov_line, col, term_width);
                 }
             }
@@ -735,28 +749,49 @@ impl<T: Terminal> TUI<T> {
     }
 
     fn composite_line(&self, base: &str, overlay: &str, col: usize, total_width: usize) -> String {
-        use crate::utils::slice_by_column;
+        use crate::utils::{extract_segments, slice_by_column, slice_with_width};
+
         let reset = "\x1b[0m\x1b]8;;\x07";
-        let before = slice_by_column(base, 0, col);
-        let bw = visible_width(&before);
         let ow = visible_width(overlay);
         let after_start = col + ow;
-        if after_start >= total_width {
-            let pad = col.saturating_sub(bw);
-            return format!("{}{}{}{}{}", before, " ".repeat(pad), reset, overlay, reset);
+        let after_len = total_width.saturating_sub(after_start);
+
+        // Single pass: split the base into before[0,col) and after[afterStart,...).
+        // after inherits the SGR active at col so an overlay laid mid-line doesn't
+        // leave the trailing content unstyled (pi compositeLineAt via extractSegments).
+        let seg = extract_segments(base, col, after_start, after_len, true);
+
+        // Overlay slice (strict — reject wide chars crossing the overlay's right
+        // edge). Truncate the overlay to its declared width if it overflows.
+        let overlay_slice = if ow > 0 {
+            slice_with_width(overlay, 0, ow, true).0
+        } else {
+            String::new()
+        };
+
+        // Pad before up to col, then reset, then overlay, then reset.
+        let before_pad = " ".repeat(col.saturating_sub(seg.before_width));
+        let before_part = format!("{}{}{}", seg.before, before_pad, reset);
+
+        let overlay_part = if after_len == 0 {
+            // No room for after; overlay (truncated) + reset is all that fits.
+            format!("{}{}", overlay_slice, reset)
+        } else {
+            let after_pad = " ".repeat(after_len.saturating_sub(seg.after_width));
+            format!(
+                "{}{}{}{}{}",
+                reset, overlay_slice, reset, seg.after, after_pad
+            )
+        };
+
+        let mut result = format!("{}{}", before_part, overlay_part);
+
+        // Final safety net (pi compositeLineAt tui.ts:1218): if anything still
+        // overflowed (wide-char rounding, unexpected ANSI), hard-slice to width.
+        if visible_width(&result) > total_width {
+            result = slice_by_column(&result, 0, total_width);
         }
-        let after = slice_by_column(base, after_start, total_width - after_start);
-        let aw = visible_width(&after);
-        format!(
-            "{}{}{}{}{}{}{}",
-            before,
-            " ".repeat(col.saturating_sub(bw)),
-            reset,
-            overlay,
-            reset,
-            after,
-            " ".repeat((total_width - after_start).saturating_sub(aw))
-        )
+        result
     }
 
     fn extract_cursor_position(
