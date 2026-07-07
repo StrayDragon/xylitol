@@ -1,8 +1,8 @@
 # _HANDOFF — TUI 转向：pi-tui 完整 Rust 重写
 
-> 最后更新：2026-07-07 18:00
+> 最后更新：2026-07-08
 > 分支：`feat/tui-dev`
-> 当前阶段：**✅ 阶段 0-4 完成（全线对齐 pi-tui）→ 下一步：阶段 5 对接 src/app/tui/**
+> 当前阶段：**✅ 阶段 0-4 完成 + c405 测试 harness 落地 → 下一步：补齐 editor/paste-burst/autocomplete 缺口（路线 B：先补齐 package 再替换 src/app/tui/engine/）**
 
 ---
 
@@ -10,10 +10,10 @@
 
 | 指标 | 数值 |
 |---|---|
-| commit 数（重写起） | 14（到 `7cefd64`） |
-| 测试数 | **183 全绿** |
-| clippy | `--all-targets -D warnings` **clean** |
-| Rust 源码行数 | **9,352 行** |
+| commit 数（重写起） | 16（到 `451e8c4`） |
+| 测试数 | **xylitol-tui 194 + workspace 479 全绿**；E2E 4 实跑通过（2 pty + 2 tmux） |
+| clippy | `-p xylitol-tui` + `tests/tui_e2e` clean（注：lib test 仍有 22 个 pre-existing useless_conversion，非本支线引入） |
+| Rust 源码行数 | **9,473 行** |
 | pi-tui 参考行数 | 12,144 行 |
 
 ### 已完成阶段
@@ -30,6 +30,7 @@
 | 2c | input strict slice + Component::tick + loader 自驱动 | +3 测试 |
 | 3 | 补齐 7 个缺失模块（terminal_colors/image/autocomplete/markdown/editor 等） | +7 模块 |
 | 4 | 修 clippy warnings，编辑器与 markdown 补测 | 183 全绿 |
+| **c405** | **五层 TUI 测试 harness（键序列/snapshot/时序/proptest/E2E）** | **+11 测试 + 4 E2E，spec tt01-06 落地** |
 
 ---
 
@@ -77,11 +78,25 @@
 
 ---
 
-## 二、之后规划（阶段 5：对接 src/app/tui/）
+## 二、之后规划（路线 B：先补齐 package 再替换 src/app/tui/engine/）
 
-### 优先级 P0：正确的 seam 设计（下周开始）
+用户明确决策（路线 B）：**必须先让 `packages/xylitol-tui` 与 pi-tui 完整对齐（含 editor/paste-burst/autocomplete 全套），再替换 `src/app/tui/engine/`**。c405 测试 harness 已就位，后续移植有配套验证机制。
 
-当前 `packages/xylitol-tui` 是独立可测的 TUI 引擎 crate。下一步是**替换 `src/app/tui/engine/` 和 `src/app/tui/widgets/`**，走 `write-surface` 方法论：
+### 阶段 6：补齐 package 缺口（按依赖顺序）
+
+| 子阶段 | 内容 | 估算 | 测试层 |
+|---|---|---|---|
+| 6.1 | **`terminal.rs` 扩到完整**（Kitty 协议协商 + stdin_buffer 接入 + modifyOtherKeys + Apple Terminal 归一化） | 大 | 第 5a 层验证 crossterm 真实事件解析 |
+| 6.2 | **`paste-burst` 移植**（pi 独有 61 行，非 bracketed paste 的 Enter 抑制） | 中 | 第 3 层 Clock/MockClock（窗口边界 8ms/120ms） |
+| 6.3 | **`autocomplete.rs` 补 debounce + `walkDirectoryWithFd`** | 中 | 第 3 层（debounce paused time）+ 第 4 层 |
+| 6.4 | **`editor.rs` 补全**（autocomplete 集成 + paste-burst + VisualLine 系统 + history 导航，408→~2400 行） | 大 | 第 1 层（交互）+ 第 4 层（editor 不变量） |
+| 6.5 | **`stdin_buffer.rs` 补 OSC reply 拦截 + turbo 模式** | 中 | 第 1 层 + 第 5a 层 |
+
+每个子阶段是独立 llman SDD 变更（c410+），配套测试随功能一起写（c405 已建好基建，不另起炉灶）。
+
+### 阶段 7：对接 src/app/tui/（package 补齐后）
+
+package 与 pi-tui 完整对齐后，走 `write-surface` 方法论替换 `src/app/tui/engine/`：
 
 **步骤 1：死代码分诊**（见 `.agents/skills/audit-dead-code/`）
 - 扫描 `src/app/tui/` 下当前自研引擎代码，区分「真死/逻辑死/预留」
@@ -93,25 +108,29 @@
 - 不破坏 `arch_guard`（TUI 层不经 `use crate::agent`）
 
 **步骤 3：替换并删除旧引擎**
-- 删除 `src/app/tui/engine/tui.rs`、`component.rs`、`keybindings.rs`、`outcome.rs`
+- 删除 `src/app/tui/engine/{tui,component,keybindings,outcome}.rs`
 - 删除 `src/app/tui/widgets/` 全部
 - 适配 `src/app/tui/mod.rs`（host loop）、`render.rs`（seam）、`app.rs`（StreamBuffer）
 
 **步骤 4：验证**
 - `cargo test` 全量通过
 - `just qa`（fmt + clippy + test + docs + prek）
+- `just test-tui-e2e`（真终端验证）
 - 手动验证 TUI 启动
 
-### 已知差距（Pre-1.0.0 之前不处理）
+### 已知差距（路线 B：先补齐 package 再替换 src/app/tui/engine/）
 
-| 事项 | 说明 | 风险 |
-|---|---|---|
-| `editor.rs` autocomplete 集成 | pi editor 内嵌了完整的 autocomplete 管线（AbortController、debounce、SelectList popup） | 中等（编辑体验影响小） |
-| fuzzy 评分公式 | pi 用连续匹配 -consecutive×5 / gap / word boundary，Rust 评分简化 | 低（补全排序细微差异） |
-| `stdin_buffer.rs` | 当前 158 行 vs pi 434 行，OSC reply 拦截、turbo 模式未完整移植 | 低（终端颜色探测基本工作） |
-| `terminal.rs` 偏薄 | 未做 Kitty 键盘协议协商、cell dimension 查询 | 低（crossterm 已归一化输入） |
-| Thai/Lao AM 规范化 | pi `normalizeTerminalOutput` | 极低（罕见 case） |
-| `run_event_loop` async wrapper | 目前同步驱动，async 包装留待需要 | 极低（host loop 可自主驱动） |
+c405 后这些缺口**已有配套测试机制**，不再是「不处理」，而是「待移植 + 测试已就位」。
+
+| 事项 | 说明 | 配套测试层 | 风险 |
+|---|---|---|---|
+| `editor.rs` autocomplete 集成 | pi editor 内嵌完整 autocomplete 管线（AbortController、debounce、SelectList popup），xy 当前 408 行 vs pi 2415 行，缺 autocomplete/paste-burst/VisualLine 三大类 | 移植后走第 1 层（交互）+ 第 3 层（debounce 时序）+ 第 4 层（editor 不变量）| 中等 |
+| `paste-burst` 未移植 | pi 独有（61 行），非 bracketed paste 的 Enter 抑制；xy 零实现 | 第 3 层 Clock/MockClock 已备好（窗口边界测试模式已验证）| 中等 |
+| `terminal.rs` 偏薄 | 85 行 vs pi 531 行，缺 Kitty 键盘协议协商、modifyOtherKeys、stdin buffer 接入、Apple Terminal 归一化 | 第 5a 层 portable-pty 验证 crossterm 真实事件解析 | 中等（影响 Ctrl+Shift 组合键） |
+| `stdin_buffer.rs` | 158 行 vs pi 434 行，OSC reply 拦截、turbo 模式未完整移植 | 第 1 层 + 第 5a 层 | 低 |
+| fuzzy 评分公式 | pi 用连续匹配 -consecutive×5 / gap / word boundary，Rust 评分简化 | 第 4 层 proptest | 低（补全排序细微差异） |
+| Thai/Lao AM 规范化 | pi `normalizeTerminalOutput` | — | 极低（罕见 case） |
+| `run_event_loop` async wrapper | 目前同步驱动，async 包装留待需要 | — | 极低（host loop 可自主驱动） |
 
 ### 设计决策总结
 
@@ -120,7 +139,7 @@
 | render 节流 | 同步 `request_render(force)` + `try_render()` 检查 16ms，host 驱动 |
 | 宽度保护 | 比 pi 更严：fullRender 和 diff 前都检查 |
 | markdown 高亮 | `syntax_highlight: Option<Box<dyn Fn(&str, Option<&str>) -> Vec<String>>>` — 包不依赖 syntect |
-| editor autocomplete | 延迟到对接阶段再集成（当前仅核心编辑基元） |
+| editor autocomplete | **路线 B**：先补齐 package（editor/paste-burst/autocomplete 完整移植）再替换 src/app/tui/engine/；c405 测试 harness 已就位 |
 | `native-modifiers.ts` | macOS 原生二进制，跳过，Rust 替代方案留待以后 |
 | keybindings | 沿用 pi 全局 pattern（`with_keybindings` 惰性初始化） |
 
@@ -129,6 +148,8 @@
 ## 三、commit 历史（重写期）
 
 ```
+451e8c4 feat(tui): 建立 c405 五层 TUI 测试 harness — 覆盖按键序列/快照/时序/状态机/真终端
+b0a22b5 docs(tui): 新增 showcase example 综合演示全部特性
 7cefd64 chore(tui): 修复全部 clippy warnings — 183 测试全绿，clippy clean
 d49edda feat(tui): 移植 editor 组件（pi editor.ts → Rust，~500 行）
 55063e8 feat(tui): 阶段 3 — 补齐 terminal_colors, editor_component, terminal_image, image, autocomplete, markdown
@@ -144,7 +165,7 @@ d0212e3 test(tui): 建 vte-backed VirtualTerminal cell-grid 测试 harness
 5c55d86 build(tui): 纳入 xylitol-tui workspace member 并对齐版本
 ```
 
-## 四、对接清单（阶段 5 执行时需要）
+## 四、对接清单（阶段 7 执行时需要，package 补齐后）
 
 ### 删除
 - `src/app/tui/engine/tui.rs`
