@@ -71,7 +71,7 @@ pub fn parse_osc11_background_color(data: &str) -> Option<RgbColor> {
         .trim();
 
     if value.starts_with('#') {
-        let hex = &value[1..];
+        let hex = value.strip_prefix('#').unwrap_or("");
         if hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
             return hex_to_rgb(value);
         }

@@ -121,7 +121,7 @@ impl AutocompleteProvider for CombinedAutocompleteProvider {
             let space_idx = before_cursor.find(' ');
             if space_idx.is_none() {
                 // Completing command name.
-                let prefix = &before_cursor[1..];
+                let prefix = before_cursor.strip_prefix('/').unwrap_or("");
                 let items: Vec<AutocompleteItem> = self
                     .commands
                     .iter()
@@ -255,10 +255,10 @@ impl CombinedAutocompleteProvider {
 
     fn extract_at_prefix(&self, text: &str) -> Option<String> {
         let quoted = extract_quoted_prefix(text);
-        if let Some(ref q) = quoted {
-            if q.starts_with("@\"") {
-                return quoted;
-            }
+        if let Some(ref q) = quoted
+            && q.starts_with("@\"")
+        {
+            return quoted;
         }
 
         let delim = find_last_delimiter(text);
@@ -290,7 +290,7 @@ impl CombinedAutocompleteProvider {
             .filter(|e| {
                 e.file_name()
                     .to_str()
-                    .map_or(false, |n| n.to_lowercase().starts_with(&lower))
+                    .is_some_and(|n| n.to_lowercase().starts_with(&lower))
             })
             .filter_map(|e| {
                 let is_dir = e.file_type().ok()?.is_dir();
@@ -449,7 +449,7 @@ fn build_completion_value(path: &str, _is_directory: bool, is_at: bool, is_quote
 fn expand_home_path(path: &str) -> String {
     if path.starts_with("~/") {
         if let Ok(home) = std::env::var("HOME") {
-            let rest = &path[2..];
+            let rest = path.strip_prefix("~/").unwrap_or("");
             if path.ends_with('/') {
                 format!("{home}/{rest}/")
             } else {
@@ -509,7 +509,7 @@ fn resolve_search_dir(base: &Path, expanded: &str, raw: &str) -> Result<ResolveR
         .parent()
         .and_then(|p| p.to_str())
         .map(|s| format!("{}/", s.trim_end_matches('/')))
-        .unwrap_or_else(|| String::new());
+        .unwrap_or_default();
 
     Ok((search_dir, file_prefix, display_prefix))
 }
