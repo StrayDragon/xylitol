@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use xylitol_tui::components::{
@@ -119,7 +118,7 @@ Performance: 12x faster on 100k files, results appear immediately"##,
     ),
 ];
 
-fn main() -> io::Result<()> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let defs = create_default_definitions();
     set_keybindings(KeybindingsManager::new(defs, HashMap::new()));
 
