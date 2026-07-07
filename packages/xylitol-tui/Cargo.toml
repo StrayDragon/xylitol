@@ -10,6 +10,7 @@ repository = "https://github.com/straydragon/xylitol"
 crossterm = "0.29"
 unicode-width = "0.2"
 unicode-segmentation = "1.12"
+pulldown-cmark = "0.13"
 
 [dev-dependencies]
 vte = "0.13"
