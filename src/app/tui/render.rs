@@ -67,11 +67,25 @@ impl RenderedLine {
                 render_markdown(text, width, MarkdownTheme::passthrough())
             }
             RenderedLine::ThinkingText(text) => {
-                // Thinking renders through the same markdown pipeline. Prose is
-                // passthrough (no char rewriting); a caller wishing to dim it
-                // can post-process. The palette is available for future styling.
-                let _ = p;
-                render_markdown(text, width, MarkdownTheme::passthrough())
+                // Thinking renders through the same markdown pipeline, then the
+                // dim-gray italic thinking style is applied to every span so
+                // committed thinking rows match the streaming pending-tail style
+                // (mod.rs::pending_tail_rows uses p.thinking() too). Without this,
+                // committed thinking renders unstyled and visually merges with the
+                // reply body, looking like it was "overwritten" when the reply
+                // streams right below. pi renders thinking as a themed `Markdown`
+                // child (assistant-message.ts:121-126).
+                let style = p.thinking();
+                let lines = render_markdown(text, width, MarkdownTheme::passthrough());
+                lines
+                    .into_iter()
+                    .map(|mut l| {
+                        for span in &mut l.spans {
+                            span.style = style;
+                        }
+                        l
+                    })
+                    .collect()
             }
             RenderedLine::ToolSummary {
                 name,
