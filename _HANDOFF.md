@@ -1,7 +1,7 @@
 # _HANDOFF — TUI 渲染层重写（c399 pi-tui line-array 引擎）
 
-> 交接日期：2026-07-07（阶段 4 + 首轮手动验证 bug 修复完成，待重验 + 归档）
-> 分支：`feat/tui-dev`（17 个未 push commit，远端停在 `4c724c1`）
+> 交接日期：2026-07-07（阶段 4 + 两轮 bug 修复完成，待重验 + 归档）
+> 分支：`feat/tui-dev`（18 个未 push commit，远端停在 `4c724c1`）
 > 变更：`c399-tui-rewrite-pi-render-engine`（active，阶段 1-4 + bug 修复完成；剩手动重验 + 归档）
 > 接手者：**阶段 5 收尾**——真实终端手动重验清单，全过后 `llman sdd validate --strict` + 归档。
 
@@ -9,10 +9,11 @@
 
 ## ⚠️ 当前状态（2026-07-07）
 
-**阶段 4 + 首轮手动验证 bug 修复已完成**：
+**阶段 4 + 两轮 bug 修复已完成**：
 - `feat 3d23965` 阶段 4 大重构（接入新引擎 + 删 ratatui）
-- `fix 3d47a66` 5 个手动验证 bug 修复（背景色/spinner/输入/thinking/tick）
-- `cargo check/fmt/lint` ✅；`cargo test --features tui` 761 测全绿（lib 675 + bdd 85 + 1）
+- `fix 3d47a66` 首轮 5 bug（背景色/spinner/idle/thinking/tick）
+- `fix 272eead` 二轮 CJK 输入（末字 reverse 覆盖而非丢字）
+- `cargo check/fmt/lint` ✅；`cargo test --features tui` 762 测全绿（lib 676 + bdd 85 + 1）
 - arch_guard 4/4 ✅
 
 **待办（阶段 5 收尾，需用户重验）**：
@@ -20,14 +21,17 @@
 2. 全过后 `llman sdd validate c399 --strict` + 勾手动项。
 3. 归档 c399。
 
-### 首轮手动验证 bug 记录（已修，供重验对照）
-| # | 症状 | 根因 | 修复 |
-|---|---|---|---|
-| 1 | 背景色高对比/不对 | `COLORFGBS` 拼写错误（无终端设此变量） | 改 `COLORFGBG`（xterm 规范，pi 同名） |
-| 2 | idle "Ready" 显示 spinner | Loader 无 idle 开关，恒发 glyph | 加 `spinning` flag + `set_spinning`，idle 只显 message |
-| 3 | 输入"你能"只显"你" | fits-check 用 `scroll_w`(=available-1) 而非 `available` | 改 `total_w < available` 对齐 pi input.ts:391 |
-| 4 | thinking stream 完被覆盖 | 提交的 ThinkingText 丢弃 palette（`let _ = p;`），灰色丢失视觉融为回复 | apply `p.thinking()` 到每 span |
-| 5 | spinner 卡住/只在 streaming 转 | `Msg::Tick` 漏调 `try_render`（frame 推进但不绘制） | 补 `try_render`；tick 120ms→80ms |
+### 手动验证 bug 记录（两轮，已修，供重验对照）
+| # | 症状 | 根因 | 修复 | commit |
+|---|---|---|---|---|
+| 1 | 背景色高对比/不对 | `COLORFGBS` 拼写错误（无终端设此变量） | 改 `COLORFGBG`（xterm 规范，pi 同名） | 3d47a66 |
+| 2 | idle "Ready" 显示 spinner | Loader 无 idle 开关，恒发 glyph | 加 `spinning` flag + `set_spinning`，idle 只显 message | 3d47a66 |
+| 3 | 输入"你能"只显"你" | fits-check 用 `scroll_w`(=available-1) 而非 `available` | 改 `total_w <= available` 对齐 pi input.ts:391 | 3d47a66(初) → 272eead(完善) |
+| 4 | thinking stream 完被覆盖 | 提交的 ThinkingText 丢弃 palette（`let _ = p;`），灰色丢失视觉融为回复 | apply `p.thinking()` 到每 span | 3d47a66 |
+| 5 | spinner 卡住/只在 streaming 转 | `Msg::Tick` 漏调 `try_render`（frame 推进但不绘制） | 补 `try_render`；tick 120ms→80ms | 3d47a66 |
+| 6 | 输入"你好"只显"你"（二轮） | fits-check `total_w < available`（严格小于）正好填满时进 scroll 丢字；改 `<=` 后宽度不变量冲突（cursor 末尾需 1 列 reverse 空格） | cursor 在末尾且内容填满时，**最后一个字符本身以 reverse video 渲染**（覆盖末字），不额外加空格列 | 272eead |
+
+**背景色确认（非 bug）**：xylitol 全透明背景（`bg=None`），继承终端——与 pi inline 模型一致（pi 也无 alt-screen、不画全屏 bg）。pi coding-agent 只给特定消息画区域 bg（userMessageBg/toolPendingBg），非全屏。用户终端的白色背景是终端自身，TUI 没画。OSC 11/997 自动探测是 c399 范围外（需 stdin reply-interceptor），留作 c400（P0）。
 
 ---
 
@@ -256,9 +260,10 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 
 ---
 
-## 七、commit 历史（17 个未 push）
+## 七、commit 历史（18 个未 push）
 
 ```
+272eead fix(tui): c399 CJK 输入修复 — 末尾光标覆盖最后一个字符而非丢字
 3d47a66 fix(tui): c399 阶段 4 手动验证 bug 修复（背景色/spinner/输入/thinking）
 3d23965 feat(tui): c399 阶段 4 — 接入新引擎主循环 + 删除 ratatui（line-array 重写）
 57d2e2d feat(tui): c399 阶段 3 — UX 层（keybindings + 单焦点路由 + input listeners）
