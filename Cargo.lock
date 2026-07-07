@@ -5117,6 +5117,7 @@ name = "xylitol-tui"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "tokio",
  "unicode-segmentation",
  "unicode-width",
  "vte 0.13.1",

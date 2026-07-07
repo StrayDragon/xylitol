@@ -90,8 +90,15 @@ pub struct TUI<T: Terminal> {
     previous_kitty_ids: HashSet<u32>,
     previous_width: usize,
     previous_height: usize,
+    /// Row index (in the rendered line buffer) of the top of the visible
+    /// viewport at the end of the previous frame. Differential rendering uses
+    /// this to translate buffer rows to screen rows when content exceeds one
+    /// screen. Mirrors pi's `previousViewportTop`.
+    previous_viewport_top: usize,
     focused_index: Option<usize>,
     stopped: bool,
+    /// Logical cursor row = content end (used for viewport math). Distinct from
+    /// `hardware_cursor_row` (where the terminal's cursor physically stopped).
     cursor_row: usize,
     hardware_cursor_row: usize,
     show_hardware_cursor: bool,
@@ -99,7 +106,16 @@ pub struct TUI<T: Terminal> {
     max_lines_rendered: usize,
     full_redraw_count: u64,
     focus_order_counter: u64,
+    // ── render scheduling (pi's requestRender/scheduleRender) ──
+    /// True when a render has been requested but not yet executed.
+    render_requested: bool,
+    /// Monotonic instant of the last actual render, for the 16ms throttle.
+    last_render_at: Option<std::time::Instant>,
 }
+
+/// Minimum spacing between throttled frames (~60fps). Mirrors pi's
+/// MIN_RENDER_INTERVAL_MS. `render_frame` bypasses this; `try_render` honors it.
+const MIN_RENDER_INTERVAL_MS: u64 = 16;
 
 impl<T: Terminal> TUI<T> {
     pub fn new(terminal: T) -> Self {
@@ -111,6 +127,7 @@ impl<T: Terminal> TUI<T> {
             previous_kitty_ids: HashSet::new(),
             previous_width: 0,
             previous_height: 0,
+            previous_viewport_top: 0,
             focused_index: None,
             stopped: false,
             cursor_row: 0,
@@ -120,6 +137,8 @@ impl<T: Terminal> TUI<T> {
             max_lines_rendered: 0,
             full_redraw_count: 0,
             focus_order_counter: 0,
+            render_requested: false,
+            last_render_at: None,
         }
     }
 
@@ -318,9 +337,55 @@ impl<T: Terminal> TUI<T> {
     ///
     /// Public so host loops (and tests) can drive single frames instead of the
     /// blocking `start()` loop. In a host-driven setup the host calls this after
-    /// state changes (input, async events, ticks).
+    /// state changes (input, async events, ticks). Bypasses the throttle — use
+    /// `try_render` to honor it, or `request_render` to mark + let a host loop
+    /// drive the actual frame.
     pub fn render_frame(&mut self) {
         self.do_render();
+    }
+
+    /// Mark a render as needed. The actual frame is driven by whoever calls
+    /// `try_render` (a host loop) or by `run_event_loop`'s internal timer. If
+    /// `force`, previous-frame state is reset so the next render is a full
+    /// redraw — mirrors pi's `requestRender(true)`.
+    pub fn request_render(&mut self, force: bool) {
+        if force {
+            self.previous_lines.clear();
+            self.previous_width = 0;
+            self.previous_height = 0;
+            self.previous_viewport_top = 0;
+            self.cursor_row = 0;
+            self.hardware_cursor_row = 0;
+            self.max_lines_rendered = 0;
+        }
+        self.render_requested = true;
+    }
+
+    /// Render only if one is pending AND the 16ms throttle has elapsed. Returns
+    /// true if a frame was actually rendered. Host loops call this on their tick.
+    pub fn try_render(&mut self) -> bool {
+        if !self.render_requested {
+            return false;
+        }
+        if let Some(last) = self.last_render_at {
+            let elapsed = last.elapsed();
+            if elapsed < std::time::Duration::from_millis(MIN_RENDER_INTERVAL_MS) {
+                return false;
+            }
+        }
+        self.render_requested = false;
+        self.last_render_at = Some(std::time::Instant::now());
+        self.do_render();
+        true
+    }
+
+    /// Render immediately, bypassing the throttle. Returns true always (a frame
+    /// was rendered) unless stopped.
+    pub fn render_now(&mut self) -> bool {
+        self.render_requested = false;
+        self.last_render_at = Some(std::time::Instant::now());
+        self.do_render();
+        !self.stopped
     }
 
     fn do_render(&mut self) {
