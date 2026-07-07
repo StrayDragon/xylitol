@@ -2,7 +2,53 @@
 
 > 最后更新：2026-07-07
 > 分支：`feat/tui-dev`
-> 当前阶段：**自研引擎存档，pi-tui 完整 Rust 实现 + 对接进行中**
+> 当前阶段：**xylitol-tui 前置准备进行中（对齐 pi + doRender 重写）**
+
+---
+
+## 〇、当前进度（前置准备，2026-07-07 起）
+
+本节记录「先对齐 xylitol-tui 到 pi，再迁移 src/app/tui/」的执行进度。目标是让 `packages/xylitol-tui` 能独立 `cargo test` 通过、行为对齐 pi，**本次完全不动 `src/`**。
+
+### 已完成（9 commit）
+
+| commit | 内容 |
+|---|---|
+| `5c55d86` | workspace 纳入（members=[packages/xylitol-tui]）+ edition 2024 + crossterm 0.29 + 主 crate path 依赖 |
+| `d0212e3` | vte-backed `VirtualTerminal` cell-grid 测试 harness（移植 pi test/virtual-terminal.ts）+ 13 smoke test |
+| `72eb70f` | 3 项独立高危修复：input.onSubmit 不清空 / clear_on_shrink 默认 false / Terminal::refresh_size 接通 Resize |
+| `8730968` | `extract_segments`（overlay 合成样式继承根源，移植 pi utils.ts:1117）+ 5 测试 |
+| `3b79fee` | render 节流调度（request_render/try_render/render_now，16ms 节流）+ viewport 状态字段 + 5 测试 |
+| `2fff0c2` | 宽度溢出保护（RenderError crash guard）+ fullRender previousViewportTop 对齐 + 3 测试 |
+| `0e75ee6` | overlay 合成重写：workingHeight 含 minLinesNeeded / viewportStart 偏移 / extract_segments 样式继承 + 2 测试 |
+
+测试总数：**158 个全绿**，clippy `--all-targets -D warnings` clean。
+
+### 进行中
+
+- **2b-3b**：differential render 的 viewport scroll（pi Step 5C：内容超一屏时 CUD 到底行 + `\r\n` 滚动）+ diff 策略补全（firstChanged<prevViewportTop 全屏、全删除分支 viewport 上移检查）。这是 doRender 最后一块。
+
+### 待办（剩余阶段）
+
+- **2c**：input.rs cursor 单位（CJK/emoji 用 grapheme/列宽而非字节）+ strict slice_by_column；loader 自驱动（随 render 调度，host tick 调 loader.tick）。
+- **3**：补齐缺失模块（pi 9 个：terminal_colors / native_modifiers / image + terminal_image / settings_list / autocomplete / markdown / editor / editor_component）。markdown 用 hook 方案（包不依赖 syntect，`syntax_highlight: Fn(lang,code)->String`）。
+- **4**：测试补齐（新模块测试 + stdin_buffer 59 case / kill_ring / undo_stack / overlay-non-capturing 1202 行 / overlay-options 541 行）。
+- **5**：验证（`cargo test/clippy/fmt` + 主 crate `just qa` 不回退）+ 文档（本文件 + packages/xylitol-tui/README）。
+
+### 已知未做（登记，本次不处理）
+
+- fuzzy 评分算法细化（pi 连续匹配 -consecutive*5 / gap / word boundary / 字母数字交换，Rust 评分公式不同）
+- word-navigation CJK 词级（pi 用 Intl.Segmenter word granularity，Rust 用 grapheme + 手写分类）
+- Thai/Lao AM 规范化（pi normalizeTerminalOutput，Rust 缺）
+- 终端 Kitty 键盘协议协商（terminal.rs 偏薄，运行时 keys.rs 路径未完全接通——当前用 crossterm key_event_to_string 近似）
+- `run_event_loop` async wrapper（节流状态已同步实现，async 驱动 wrapper 留待需要时加）
+
+### 关键设计决策（本次确定）
+
+- **render 节流**：同步节流状态 + host 驱动调用（Rust 所有权模型下包内 spawn 需 Arc<Mutex> 重构，侵入太大）。`request_render(force)` 标记 + `try_render()` 检查 16ms；`render_frame()` 同步强制入口（测试/host 用）。
+- **宽度保护比 pi 更严**：pi 的 fullRender 不检查（audit.md），Rust 在 fullRender 和 diff 前都检查（SKILL.md gotcha 建议）。
+- **overlay workingHeight 刻意不含 maxLinesRendered**（pi 注释：历史曾含导致 scrollback 自膨胀）。
+- **markdown 高亮 hook**：包不依赖 syntect，`syntax_highlight: Option<Box<dyn Fn(&str,&str)->String>>`，consumer（主 crate）注入。
 
 ---
 
