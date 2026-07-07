@@ -44,6 +44,12 @@ pub trait Component {
     fn wants_key_release(&self) -> bool {
         false
     }
+    /// Advance any time-driven state (e.g. a spinner frame). Called by the
+    /// event loop on its tick. Default no-op so non-animated components ignore it.
+    /// Returning true hints that a re-render is wanted (host decides).
+    fn tick(&mut self) -> bool {
+        false
+    }
 }
 
 pub trait Focusable: Component {
@@ -265,6 +271,14 @@ impl<T: Terminal> TUI<T> {
                         self.do_render()?;
                     }
                     _ => {}
+                }
+            } else {
+                // Idle tick: advance animated components (spinner). If any wants
+                // a repaint, drive a frame. This is how the Loader self-animates
+                // without each component owning its own timer.
+                let wants_render = self.components.iter_mut().any(|c| c.tick());
+                if wants_render {
+                    self.do_render()?;
                 }
             }
         }

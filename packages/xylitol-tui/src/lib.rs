@@ -33,5 +33,6 @@ pub use tui::{
 };
 pub use utils::{
     ExtractedSegments, extract_ansi_code, extract_segments, is_punctuation_char,
-    is_whitespace_char, slice_by_column, truncate_to_width, visible_width, wrap_text_with_ansi,
+    is_whitespace_char, slice_by_column, slice_by_column_strict, truncate_to_width, visible_width,
+    wrap_text_with_ansi,
 };

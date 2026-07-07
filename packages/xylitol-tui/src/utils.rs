@@ -995,6 +995,13 @@ pub fn slice_by_column(line: &str, start_col: usize, length: usize) -> String {
     slice_with_width(line, start_col, length, false).0
 }
 
+/// Like `slice_by_column` but rejects graphemes that would cross the end column
+/// (strict mode). Use this when a width-bound region must not split a wide
+/// char (e.g. an input field's visible window) — mirrors pi's strict=true calls.
+pub fn slice_by_column_strict(line: &str, start_col: usize, length: usize) -> String {
+    slice_with_width(line, start_col, length, true).0
+}
+
 pub(crate) fn slice_with_width(
     line: &str,
     start_col: usize,
