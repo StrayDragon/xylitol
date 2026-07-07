@@ -30,6 +30,6 @@ pub use stdin_buffer::{StdinBuffer, StdinBufferEvent};
 pub use terminal::{CrosstermTerminal, Terminal};
 pub use tui::{Component, Focusable, OverlayAnchor, OverlayMargin, OverlayOptions, SizeValue, TUI};
 pub use utils::{
-    extract_ansi_code, is_punctuation_char, is_whitespace_char, slice_by_column, truncate_to_width,
-    visible_width, wrap_text_with_ansi,
+    ExtractedSegments, extract_ansi_code, extract_segments, is_punctuation_char,
+    is_whitespace_char, slice_by_column, truncate_to_width, visible_width, wrap_text_with_ansi,
 };
