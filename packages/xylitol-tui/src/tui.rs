@@ -7,6 +7,36 @@ use std::sync::atomic::AtomicBool;
 
 pub const CURSOR_MARKER: &str = "\x1b_pi:c\x07";
 
+/// Error from a render pass. The engine hard-errors when a component emits a
+/// line wider than the terminal `width` — a widget that overflows desyncs the
+/// cursor and corrupts subsequent lines, so we surface it loudly instead of
+/// silently truncating (mirrors pi-tui's crash guard in the diff path).
+#[derive(Debug)]
+pub struct RenderError {
+    pub width: usize,
+    pub line_width: usize,
+    pub line_index: usize,
+    pub line_preview: String,
+}
+
+impl std::fmt::Display for RenderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "line {} is {} cols wide but terminal width is {}; use visible_width()/truncate_to_width(). preview: {:?}",
+            self.line_index, self.line_width, self.width, self.line_preview
+        )
+    }
+}
+
+impl std::error::Error for RenderError {}
+
+/// Heuristic for Kitty inline-image lines (APC `<_...ST`). Their visible width
+/// is 0 (all escape bytes), so they're exempt from the width invariant.
+fn is_image_line(line: &str) -> bool {
+    line.contains("\x1b_G") || line.contains("\x1b]1337;File")
+}
+
 pub trait Component {
     fn render(&mut self, width: usize) -> Vec<String>;
     fn handle_input(&mut self, data: &str);
@@ -183,17 +213,23 @@ impl<T: Terminal> TUI<T> {
         self.terminal.hide_cursor();
     }
 
-    pub fn start(&mut self) -> io::Result<()> {
+    pub fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.start_impl(None)
     }
 
     /// Like `start()` but polls an external quit flag in addition to `stopped`.
     /// The TUI cleanly restores the terminal even if the flag is set externally.
-    pub fn start_with_flag(&mut self, quit_flag: &Arc<AtomicBool>) -> io::Result<()> {
+    pub fn start_with_flag(
+        &mut self,
+        quit_flag: &Arc<AtomicBool>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         self.start_impl(Some(quit_flag))
     }
 
-    fn start_impl(&mut self, quit_flag: Option<&Arc<AtomicBool>>) -> io::Result<()> {
+    fn start_impl(
+        &mut self,
+        quit_flag: Option<&Arc<AtomicBool>>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         use crossterm::event::{self, Event};
         use crossterm::terminal::enable_raw_mode;
 
@@ -201,7 +237,7 @@ impl<T: Terminal> TUI<T> {
         self.terminal.hide_cursor();
         enable_raw_mode()?;
         io::stdout().write_all(b"\x1b[?2004h")?;
-        self.do_render();
+        self.do_render()?;
 
         while !self.stopped {
             if let Some(flag) = quit_flag
@@ -215,18 +251,18 @@ impl<T: Terminal> TUI<T> {
                         let data = self.key_event_to_string(&key_event);
                         if !data.is_empty() {
                             self.handle_input(&data);
-                            self.do_render();
+                            self.do_render()?;
                         }
                     }
                     Event::Resize(_, _) => {
                         // Re-query size before rendering so we don't paint with
                         // stale columns/rows (the CrosstermTerminal caches them).
                         self.terminal.refresh_size();
-                        self.do_render();
+                        self.do_render()?;
                     }
                     Event::Paste(data) => {
                         self.handle_input(&format!("\x1b[200~{}~\x1b[201~", data));
-                        self.do_render();
+                        self.do_render()?;
                     }
                     _ => {}
                 }
@@ -340,8 +376,8 @@ impl<T: Terminal> TUI<T> {
     /// state changes (input, async events, ticks). Bypasses the throttle — use
     /// `try_render` to honor it, or `request_render` to mark + let a host loop
     /// drive the actual frame.
-    pub fn render_frame(&mut self) {
-        self.do_render();
+    pub fn render_frame(&mut self) -> Result<(), RenderError> {
+        self.do_render()
     }
 
     /// Mark a render as needed. The actual frame is driven by whoever calls
@@ -362,40 +398,41 @@ impl<T: Terminal> TUI<T> {
     }
 
     /// Render only if one is pending AND the 16ms throttle has elapsed. Returns
-    /// true if a frame was actually rendered. Host loops call this on their tick.
-    pub fn try_render(&mut self) -> bool {
+    /// Ok(true) if a frame was actually rendered, Ok(false) if skipped, Err if
+    /// the render hit the width invariant. Host loops call this on their tick.
+    pub fn try_render(&mut self) -> Result<bool, RenderError> {
         if !self.render_requested {
-            return false;
+            return Ok(false);
         }
         if let Some(last) = self.last_render_at {
             let elapsed = last.elapsed();
             if elapsed < std::time::Duration::from_millis(MIN_RENDER_INTERVAL_MS) {
-                return false;
+                return Ok(false);
             }
         }
         self.render_requested = false;
         self.last_render_at = Some(std::time::Instant::now());
-        self.do_render();
-        true
+        self.do_render()?;
+        Ok(true)
     }
 
-    /// Render immediately, bypassing the throttle. Returns true always (a frame
-    /// was rendered) unless stopped.
-    pub fn render_now(&mut self) -> bool {
+    /// Render immediately, bypassing the throttle. Returns Ok(true) if a frame
+    /// was rendered (i.e. not stopped), Err on width-invariant violation.
+    pub fn render_now(&mut self) -> Result<bool, RenderError> {
         self.render_requested = false;
         self.last_render_at = Some(std::time::Instant::now());
-        self.do_render();
-        !self.stopped
+        self.do_render()?;
+        Ok(!self.stopped)
     }
 
-    fn do_render(&mut self) {
+    fn do_render(&mut self) -> Result<(), RenderError> {
         if self.stopped {
-            return;
+            return Ok(());
         }
         let width = self.terminal.columns() as usize;
         let height = self.terminal.rows() as usize;
         if width == 0 {
-            return;
+            return Ok(());
         }
 
         let mut new_lines = Vec::new();
@@ -416,6 +453,25 @@ impl<T: Terminal> TUI<T> {
 
         let cursor_pos = self.extract_cursor_position(&mut new_lines, height);
 
+        // Hard width invariant (pi's crash guard): every rendered line must fit
+        // the terminal width. An overflowing line desyncs the cursor and
+        // corrupts the diff, so we stop loudly rather than paint garbage.
+        // Image-bearing lines (Kitty APC) are exempt — their visible width is 0.
+        for (i, line) in new_lines.iter().enumerate() {
+            if line.contains(CURSOR_MARKER) || is_image_line(line) {
+                continue;
+            }
+            let lw = visible_width(line);
+            if lw > width {
+                return Err(RenderError {
+                    width,
+                    line_width: lw,
+                    line_index: i,
+                    line_preview: line.chars().take(40).collect(),
+                });
+            }
+        }
+
         let width_changed = self.previous_width != 0 && self.previous_width != width;
         let height_changed = self.previous_height != 0 && self.previous_height != height;
 
@@ -428,7 +484,7 @@ impl<T: Terminal> TUI<T> {
 
         if do_full {
             let clear = !(self.previous_lines.is_empty() && !width_changed && !height_changed);
-            self.full_render(&new_lines, clear);
+            self.full_render(&new_lines, clear, height);
         } else {
             self.differential_render(&new_lines);
         }
@@ -439,9 +495,10 @@ impl<T: Terminal> TUI<T> {
         self.previous_width = width;
         self.previous_height = height;
         self.terminal.flush();
+        Ok(())
     }
 
-    fn full_render(&mut self, new_lines: &[String], clear: bool) {
+    fn full_render(&mut self, new_lines: &[String], clear: bool, height: usize) {
         self.full_redraw_count += 1;
         let mut buf = String::from("\x1b[?2026h");
         if clear {
@@ -458,7 +515,15 @@ impl<T: Terminal> TUI<T> {
         let len = new_lines.len();
         self.cursor_row = len.saturating_sub(1);
         self.hardware_cursor_row = self.cursor_row;
-        self.max_lines_rendered = self.max_lines_rendered.max(len);
+        if clear {
+            self.max_lines_rendered = len;
+        } else {
+            self.max_lines_rendered = self.max_lines_rendered.max(len);
+        }
+        // Content-end aligned viewport: the bottom of the content sticks to the
+        // bottom of the screen when content exceeds one screen. Mirrors pi's
+        // `previousViewportTop = max(0, max(height, len) - height)`.
+        self.previous_viewport_top = height.max(len).saturating_sub(height);
     }
 
     fn differential_render(&mut self, new_lines: &[String]) {
