@@ -12,6 +12,10 @@ pub trait Terminal {
     fn clear_from_cursor(&mut self);
     fn clear_screen(&mut self);
     fn flush(&mut self);
+    /// Re-query the terminal size from the underlying backend. Called after a
+    /// resize event so the cached `columns`/`rows` stay in sync. Backends that
+    /// don't cache (e.g. test doubles) can rely on the default no-op.
+    fn refresh_size(&mut self) {}
 }
 
 /// Crossterm-based terminal output.
@@ -29,7 +33,7 @@ impl CrosstermTerminal {
         })
     }
 
-    pub fn refresh_size(&mut self) {
+    pub fn refresh_size_impl(&mut self) {
         if let Ok((cols, rows)) = terminal::size() {
             self.columns = cols;
             self.rows = rows;
@@ -73,5 +77,9 @@ impl Terminal for CrosstermTerminal {
 
     fn flush(&mut self) {
         let _ = io::stdout().flush();
+    }
+
+    fn refresh_size(&mut self) {
+        self.refresh_size_impl();
     }
 }
