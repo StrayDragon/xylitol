@@ -1,24 +1,33 @@
 # _HANDOFF — TUI 渲染层重写（c399 pi-tui line-array 引擎）
 
-> 交接日期：2026-07-07（阶段 4 完成，待手动验证 + 归档）
-> 分支：`feat/tui-dev`（15 个未 push commit，远端停在 `4c724c1`）
-> 变更：`c399-tui-rewrite-pi-render-engine`（active，阶段 1-4 完成；剩手动验证 + 归档）
-> 接手者：**阶段 5 收尾**——跑真实终端手动验证清单，全过后 `llman sdd validate --strict` + 归档。
+> 交接日期：2026-07-07（阶段 4 + 首轮手动验证 bug 修复完成，待重验 + 归档）
+> 分支：`feat/tui-dev`（17 个未 push commit，远端停在 `4c724c1`）
+> 变更：`c399-tui-rewrite-pi-render-engine`（active，阶段 1-4 + bug 修复完成；剩手动重验 + 归档）
+> 接手者：**阶段 5 收尾**——真实终端手动重验清单，全过后 `llman sdd validate --strict` + 归档。
 
 ---
 
 ## ⚠️ 当前状态（2026-07-07）
 
-**阶段 4 已完成**：新引擎已接入主循环，ratatui 完全删除。
-- `cargo check --features tui` ✅、`just fmt` ✅、`just lint`（clippy 无告警）✅
-- `cargo test --features tui` 758 测全绿（lib 672 + bdd 85 + 1）
-- arch_guard 4/4 ✅（TUI 不 import agent/infra）
-- `llman sdd validate`（非 strict）通过（剩 warning 是未勾的手动验证项 + overlay 推迟项 + 归档项）
+**阶段 4 + 首轮手动验证 bug 修复已完成**：
+- `feat 3d23965` 阶段 4 大重构（接入新引擎 + 删 ratatui）
+- `fix 3d47a66` 5 个手动验证 bug 修复（背景色/spinner/输入/thinking/tick）
+- `cargo check/fmt/lint` ✅；`cargo test --features tui` 761 测全绿（lib 675 + bdd 85 + 1）
+- arch_guard 4/4 ✅
 
-**待办（阶段 5 收尾，需用户）**：
-1. **手动验证清单**（tasks.md 阶段 5，需真实终端）：`cargo run --features tui` 后逐项验收。
-2. 全过后 `llman sdd validate c399-tui-rewrite-pi-render-engine --strict` + 勾手动项。
+**待办（阶段 5 收尾，需用户重验）**：
+1. **手动重验清单**（tasks.md 阶段 5）：`cargo run --features tui` 后逐项验收（首轮 5 bug 已修，需确认 + 验其余项）。
+2. 全过后 `llman sdd validate c399 --strict` + 勾手动项。
 3. 归档 c399。
+
+### 首轮手动验证 bug 记录（已修，供重验对照）
+| # | 症状 | 根因 | 修复 |
+|---|---|---|---|
+| 1 | 背景色高对比/不对 | `COLORFGBS` 拼写错误（无终端设此变量） | 改 `COLORFGBG`（xterm 规范，pi 同名） |
+| 2 | idle "Ready" 显示 spinner | Loader 无 idle 开关，恒发 glyph | 加 `spinning` flag + `set_spinning`，idle 只显 message |
+| 3 | 输入"你能"只显"你" | fits-check 用 `scroll_w`(=available-1) 而非 `available` | 改 `total_w < available` 对齐 pi input.ts:391 |
+| 4 | thinking stream 完被覆盖 | 提交的 ThinkingText 丢弃 palette（`let _ = p;`），灰色丢失视觉融为回复 | apply `p.thinking()` 到每 span |
+| 5 | spinner 卡住/只在 streaming 转 | `Msg::Tick` 漏调 `try_render`（frame 推进但不绘制） | 补 `try_render`；tick 120ms→80ms |
 
 ---
 
@@ -148,18 +157,39 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 
 ---
 
-## 三、未完成（阶段 5 收尾，需用户手动验证）
+## 三、未完成（阶段 5 收尾，需用户手动重验）
 
 ### 阶段 4 余项 ⏳（无——已完成，见上）
-- `just fmt`/`lint`/`test`/`qa` 全绿。
+- `just fmt`/`lint`/`test`/`qa` 全绿（`qa` 的 `prek` 步骤若未装会失败，非代码问题）。
 - arch_guard 通过（TUI 不 import crate::agent/infra）。
-- **手动验证清单**（给用户的验收指引）：
-  - 长文档（标题/列表/引用/代码块/表格）渲染正确。
-  - 流式逐字增量无断裂、留白一致。
-  - resize（窗口缩放 + 字体缩放）自适应、不崩。
-  - 表格/代码块复制 token 干净（D6 原则）。
-  - COLORFGBS 亮/暗主题切换。
-  - Ctrl+C abort / Ctrl+D quit / Ctrl+L redraw / 斜杠命令。
+- **手动重验清单**（首轮 5 bug 已修，需确认修复 + 验其余项）：
+  - ✅ 首轮已修待重验：背景色 / spinner idle 不显 / 输入不丢字 / thinking 灰色保留 / spinner 平滑转动。
+  - 待验：长文档（标题/列表/引用/代码块/表格）渲染；流式逐字增量；resize；复制 token 干净；Ctrl+C/D/L + 斜杠命令。
+
+## 三点五、后续规划（c399 归档后的增强方向，按优先级）
+
+### P0 — OSC 11/996 背景色探测（c399 范围外的已知缺口）
+**现状**：c399 只用 `COLORFGBG` 环境变量（首轮 bug 1 的修复）。pi 用三层探测：OSC 996/997（color-scheme）> OSC 11（bg color）> COLORFGBG > dark。
+**为什么 c399 没做**：OSC 11/997 的回复走 stdin，需要一个 reply-interceptor 层在路由到 widget 前拦截（pi 的 `tui.ts::consumeOsc11BackgroundResponse`）。c399 D4 故意省略了 pi 的 StdinBuffer/stdin 拦截层（crossterm「吸收了键模型」），所以目前 OSC 回复会被误当垃圾按键送给 focused widget。
+**怎么做**：在 `mod.rs` 主循环的 `handle_term_event` 加一个轻量拦截器——维护 `pending_osc11_query` 状态，`Event::Key` 序列累积匹配 `\e]11;...(\a|\e\\)` 时消费掉不路由。工作量中等（~100 行），独立变更，不阻塞 c399 归档。
+**何时做**：c399 归档后开 c400。
+
+### P1 — Markdown 扣子渐进启用（c399 design 明确的后续 increment）
+**现状**：`widgets/markdown.rs` 默认 passthrough（只代码块高亮），`MarkdownTheme` 8 个 per-element 开关全 false。用户提到标题/加粗/引用等样式期望。
+**启用顺序**（用户曾提）：标题分级 → 加粗/斜体 → 引用前缀 → 链接展开 → 列表 marker → 表格列对齐。每个 flip 一个开关 + 在 Renderer 加事件处理。
+**怎么做**：每个 increment 独立小变更（c401-c406 之类），渐进上线，不一次性全开（避免回归难定位）。
+
+### P2 — Overlay 栈（settings dialog 等 modal）
+**现状**：c399 design 明确推迟（聊天 UI 不需要 modal）。
+**何时做**：真正需要 settings/model 选择器/确认对话框时。技能 `ux.md` 有 overlay 栈 + focus-restore 状态机的完整设计。
+
+### P3 — Input widget 增强（kill-ring/undo/word-navigation/bracketed-paste 多行）
+**现状**：单行 grapheme 光标，扣子留好。bracketed paste 已接（单行，换行转空格）。
+**怎么做**：按需启用，每个独立。
+
+### P4 — 测试覆盖补强
+**现状**：删了 ~82 个 ratatui TestBackend 测，主循环集成行为（UxOutcome 翻译、transcript commit/pending）靠 `apply_host_action`/`apply_xy_event` 抽函数的单测 + 手动验证。
+**缺口**：端到端「输入→streaming→commit→显示」无自动化覆盖。可考虑：基于 `CapturingTerminal` + 合成 XyEvent 流的集成测（不依赖真实终端）。
 
 ---
 
@@ -226,9 +256,11 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 
 ---
 
-## 七、commit 历史（14 个未 push）
+## 七、commit 历史（17 个未 push）
 
 ```
+3d47a66 fix(tui): c399 阶段 4 手动验证 bug 修复（背景色/spinner/输入/thinking）
+3d23965 feat(tui): c399 阶段 4 — 接入新引擎主循环 + 删除 ratatui（line-array 重写）
 57d2e2d feat(tui): c399 阶段 3 — UX 层（keybindings + 单焦点路由 + input listeners）
 320332a feat(tui): c399 阶段 2.4 — Loader widget（spinner + host tick 驱动，阶段 2 完成）
 1529f95 feat(tui): c399 阶段 2.3 — Input widget（单行 Focusable + grapheme 光标 + 横向滚动）
