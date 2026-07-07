@@ -37,6 +37,7 @@ mod init;
 mod render;
 pub mod syntect_highlight;
 pub mod theme;
+pub mod theme_detect;
 mod transcript;
 pub mod widgets;
 
@@ -120,13 +121,25 @@ pub async fn run(driver: &mut dyn Driver) -> Result<(), String> {
     let term = ProcessTerminal::start().map_err(|e| format!("enter terminal: {e}"))?;
     let width = term.width() as usize;
 
+    // Detect the terminal theme ONCE at startup and build the palette. This
+    // drives every color decision: the cursor's explicit fg+bg pair (the fix
+    // for the "white block" on a transparent dark terminal — raw reverse swaps
+    // the terminal's default fg/bg, both uncontrolled), dim text, thinking
+    // style, etc. OSC 11 background probing is a future enhancement (c400);
+    // v1 reads COLORFGBG only (most terminals set it).
+    let theme = theme_detect::detect_from_colorfgbg();
+    let pal = theme::palette(theme);
+
     // Host-owned widgets, shared with the engine via Rc<RefCell>.
     let transcript = Rc::new(RefCell::new(TranscriptWidget::new()));
-    let input = Rc::new(RefCell::new(Input::new()));
+    let input = Rc::new(RefCell::new(Input::with_cursor_style(pal.cursor())));
     let loader = Rc::new(RefCell::new(Loader::new("Ready")));
 
     // Greeting line (committed finalized row).
-    let greeting = status_line("xylitol — type a prompt and press Enter. /exit to quit.");
+    let greeting = status_line(
+        &pal,
+        "xylitol — type a prompt and press Enter. /exit to quit.",
+    );
     transcript.borrow_mut().commit(greeting);
 
     // Build the render tree: transcript history + spacer + loader + input.
@@ -168,6 +181,7 @@ pub async fn run(driver: &mut dyn Driver) -> Result<(), String> {
         &transcript,
         &input,
         &loader,
+        &pal,
         &mut rx,
         &tx,
         &mut current_cancel,
@@ -189,8 +203,7 @@ impl Component for SpacerLine {
     }
 }
 
-fn status_line(msg: &str) -> Vec<StyledLine> {
-    let p = theme::palette();
+fn status_line(p: &theme::Palette, msg: &str) -> Vec<StyledLine> {
     let mut line = StyledLine::new();
     line.spans.push(Span::styled(msg.to_string(), p.text_dim()));
     vec![line]
@@ -198,12 +211,11 @@ fn status_line(msg: &str) -> Vec<StyledLine> {
 
 /// Render the current pending tail (streaming reply / thinking / tool status)
 /// into styled rows for the transcript's pending region.
-fn pending_tail_rows(app: &TuiApp, width: usize) -> Vec<StyledLine> {
+fn pending_tail_rows(p: &theme::Palette, app: &TuiApp, width: usize) -> Vec<StyledLine> {
     use crate::app::tui::app::MutableKind as K;
     let Some((text, kind)) = app.pending_tail() else {
         return Vec::new();
     };
-    let p = theme::palette();
     let style = match kind {
         K::Thinking => p.thinking(),
         K::Text => p.assistant(),
@@ -266,6 +278,7 @@ async fn repl_loop(
     transcript: &Rc<RefCell<TranscriptWidget>>,
     input: &Rc<RefCell<Input>>,
     loader: &Rc<RefCell<Loader>>,
+    pal: &theme::Palette,
     rx: &mut mpsc::UnboundedReceiver<Msg>,
     tx: &mpsc::UnboundedSender<Msg>,
     current_cancel: &mut Option<Arc<CancellationToken>>,
@@ -302,6 +315,7 @@ async fn repl_loop(
                         transcript,
                         input,
                         loader,
+                        pal,
                         tx,
                         current_cancel,
                         width,
@@ -315,7 +329,7 @@ async fn repl_loop(
             }
             Msg::Xy(ev) => {
                 let width_now = tui.term_mut().width() as usize;
-                apply_xy_event(*ev, app, transcript, loader, width_now);
+                apply_xy_event(*ev, app, transcript, loader, pal, width_now);
                 tui.request_render(false);
                 tui.try_render().map_err(|e| format!("render: {e:?}"))?;
             }
@@ -393,6 +407,7 @@ async fn apply_host_action(
     transcript: &Rc<RefCell<TranscriptWidget>>,
     input: &Rc<RefCell<Input>>,
     loader: &Rc<RefCell<Loader>>,
+    pal: &theme::Palette,
     tx: &mpsc::UnboundedSender<Msg>,
     current_cancel: &mut Option<Arc<CancellationToken>>,
     width: usize,
@@ -414,7 +429,7 @@ async fn apply_host_action(
                 transcript.borrow_mut().clear_pending();
             }
             // Echo the user's prompt into history, then start the turn.
-            let rows = user_message_rendered(&prompt).to_lines(width);
+            let rows = user_message_rendered(&prompt).to_lines(pal, width);
             transcript.borrow_mut().commit(rows);
             input.borrow_mut().clear();
 
@@ -447,12 +462,12 @@ async fn apply_host_action(
             CommandOutcome::Quit => Ok(true),
             CommandOutcome::Handled(msg) => {
                 if let Some(text) = msg {
-                    transcript.borrow_mut().commit(status_line(&text));
+                    transcript.borrow_mut().commit(status_line(pal, &text));
                 }
                 Ok(false)
             }
             CommandOutcome::Unknown(msg) => {
-                transcript.borrow_mut().commit(status_line(&msg));
+                transcript.borrow_mut().commit(status_line(pal, &msg));
                 Ok(false)
             }
         },
@@ -484,6 +499,7 @@ fn apply_xy_event(
     app: &mut TuiApp,
     transcript: &Rc<RefCell<TranscriptWidget>>,
     loader: &Rc<RefCell<Loader>>,
+    pal: &theme::Palette,
     width: usize,
 ) {
     // Drive the loader message from tool status.
@@ -498,13 +514,13 @@ fn apply_xy_event(
     // Commit finalized rows (complete lines + seam-produced tool/status lines).
     let mut rows = Vec::new();
     for line in rendered {
-        rows.extend(line.to_lines(width));
+        rows.extend(line.to_lines(pal, width));
     }
     if !rows.is_empty() {
         transcript.borrow_mut().commit(rows);
     }
     // Refresh the streaming pending tail.
-    let pending = pending_tail_rows(app, width);
+    let pending = pending_tail_rows(pal, app, width);
     if pending.is_empty() {
         transcript.borrow_mut().clear_pending();
     } else {

@@ -77,32 +77,19 @@ pub fn highlight(lang: &str, code: &str) -> Vec<StyleSegment> {
 
 /// Pick the highlight theme based on terminal background lightness (c396).
 ///
-/// Probes the `COLORFGBG` environment variable (the xterm-canonical spelling
-/// that iTerm2/Alacritty/Tmux/Kitty/GNOME Terminal set; common to all of them).
-/// Format `"fg;bg"` where the background code `>= 7` indicates a light
-/// background → light theme (CatppuccinLatte); else dark (CatppuccinMocha).
-/// Falls back to dark when `COLORFGBG` is unset or unparseable.
+/// Pick the embedded syntect theme (`Mocha` for dark, `Latte` for light) from
+/// a raw `COLORFGBG` value. Delegates the dark/light classification to the
+/// shared [`crate::app::tui::theme_detect::classify_colorfgbg`]; this function
+/// only maps [`TerminalTheme`] → [`EmbeddedThemeName`] (code-highlight theme).
 ///
-/// (c399 fix: the prior code read `COLORFGBS` — a misspelling no terminal sets.
-/// pi's `coding-agent/.../theme.ts::detectTerminalBackgroundFromEnv` reads
-/// `COLORFGBG`. OSC 11 background query is a future enhancement — it needs the
-/// stdin reply-interceptor layer pi has in `tui.ts::consumeOsc11BackgroundResponse`,
-/// which the c399 engine deliberately omitted (design D4); see c396 design D5.)
+/// The classification logic is shared so Palette/cursor and code-block
+/// highlighting agree on one theme. OSC 11 background probing is a future
+/// enhancement (see `theme_detect` module docs).
 fn pick_theme_name(colorfgbg: Option<&str>) -> EmbeddedThemeName {
-    let Some(val) = colorfgbg else {
-        return EmbeddedThemeName::CatppuccinMocha;
-    };
-    let parts: Vec<&str> = val.split(';').collect();
-    if parts.len() >= 2
-        && let Ok(bg) = parts[1].trim().parse::<u8>()
-    {
-        return if bg >= 7 {
-            EmbeddedThemeName::CatppuccinLatte
-        } else {
-            EmbeddedThemeName::CatppuccinMocha
-        };
+    match crate::app::tui::theme_detect::classify_colorfgbg(colorfgbg) {
+        crate::app::tui::theme_detect::TerminalTheme::Light => EmbeddedThemeName::CatppuccinLatte,
+        crate::app::tui::theme_detect::TerminalTheme::Dark => EmbeddedThemeName::CatppuccinMocha,
     }
-    EmbeddedThemeName::CatppuccinMocha
 }
 
 static THEME_NAME: OnceLock<EmbeddedThemeName> = OnceLock::new();

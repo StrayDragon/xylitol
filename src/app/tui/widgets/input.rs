@@ -36,9 +36,12 @@ const PROMPT: &str = "> ";
 /// cursor. Owns its buffer; the host reads outcomes via [`take_outcome`].
 ///
 /// Render emits one line of exactly `width` display columns: prompt + visible
-/// window (with `CURSOR_MARKER` + reverse-video glyph at the cursor when
-/// focused) + right padding. Width contract honored — the engine's hard-width
-/// check never trips.
+/// window (with `CURSOR_MARKER` + a styled cursor glyph at the cursor when
+/// focused) + right padding. The cursor style is an explicit fg+bg pair
+/// (theme-aware, injected via [`Input::with_cursor_style`]) rather than raw
+/// reverse video — raw reverse swaps the terminal's default fg/bg, which on a
+/// transparent dark terminal reads as a glaring block. Width contract honored
+/// — the engine's hard-width check never trips.
 pub struct Input {
     value: String,
     /// Byte offset of the insert cursor within `value`. Always lands on a
@@ -55,6 +58,11 @@ pub struct Input {
     /// (stage 3). Defaults to [`KeybindingsManager::default`]; tests inject a
     /// custom manager via [`with_keybindings`].
     keybindings: KeybindingsManager,
+    /// Style for the fake cursor glyph. Defaults to the dark-theme cursor
+    /// ([`crate::app::tui::theme::palette`] at `TerminalTheme::Dark`) so tests
+    /// stay `Input::new()`-free of theme plumbing; production injects the
+    /// detected theme's cursor via [`with_cursor_style`].
+    cursor_style: CellStyle,
 }
 
 impl Default for Input {
@@ -71,6 +79,10 @@ impl Input {
             focused: false,
             pending_outcome: None,
             keybindings: KeybindingsManager::default(),
+            cursor_style: crate::app::tui::theme::palette(
+                crate::app::tui::theme_detect::TerminalTheme::Dark,
+            )
+            .cursor(),
         }
     }
 
@@ -78,6 +90,15 @@ impl Input {
     pub fn with_keybindings(keybindings: KeybindingsManager) -> Self {
         Self {
             keybindings,
+            ..Self::new()
+        }
+    }
+
+    /// Construct with a custom cursor style (production: the host injects the
+    /// detected theme's cursor; tests that assert on cursor colors use this).
+    pub fn with_cursor_style(cursor_style: CellStyle) -> Self {
+        Self {
+            cursor_style,
             ..Self::new()
         }
     }
@@ -264,14 +285,19 @@ impl Component for Input {
         // Split the visible text at the cursor: before + glyph-at + after.
         let (before, at, after) = split_at_grapheme_col(&visible_text, cursor_col_in_visible);
         let marker = if self.focused { CURSOR_MARKER } else { "" };
-        let reverse = CellStyle::default().reverse();
+        // Theme-aware cursor: an explicit fg+bg pair (NOT raw reverse). Raw
+        // reverse swaps the terminal's default fg/bg, producing a glaring block
+        // on a transparent dark terminal. The host injects the detected
+        // theme's cursor style; tests default to the dark-theme pair.
+        let cursor_style = self.cursor_style;
 
-        // Cursor glyph: the char under the cursor (reverse video), or a space
-        // when at end-of-input. BUT when at end-of-input AND content fills the
-        // available width (no trailing column for the space), reverse-video the
-        // last content char instead of appending an extra space — otherwise the
-        // line would overflow `width` (width invariant violation). This is the
-        // case that bites CJK input: e.g. "你好" (4 cols) at available=4.
+        // Cursor glyph: the char under the cursor (styled as a block), or a
+        // space when at end-of-input. BUT when at end-of-input AND content
+        // fills the available width (no trailing column for the space), style
+        // the last content char instead of appending an extra space —
+        // otherwise the line would overflow `width` (width invariant
+        // violation). This is the case that bites CJK input: e.g. "你好"
+        // (4 cols) at available=4.
         let at_end = at.is_none();
         let content_fills =
             prompt_w + marker_aware_width(&before) + marker_aware_width(&after) >= width;
@@ -279,8 +305,8 @@ impl Component for Input {
         spans.push(Span::raw(PROMPT));
 
         if at_end && content_fills && !before.is_empty() {
-            // No room for a trailing reverse-space: render the last grapheme of
-            // `before` in reverse video so the cursor sits on the last typed char.
+            // No room for a trailing cursor-space: render the last grapheme of
+            // `before` as the cursor block so the cursor sits on the last char.
             let (head, last_char) = split_last_grapheme(&before);
             if let Some(head) = head {
                 spans.push(Span::raw(head));
@@ -288,12 +314,12 @@ impl Component for Input {
             if !marker.is_empty() {
                 spans.push(Span::raw(marker));
             }
-            spans.push(Span::styled(last_char.to_string(), reverse));
+            spans.push(Span::styled(last_char.to_string(), cursor_style));
             if !after.is_empty() {
                 spans.push(Span::raw(after));
             }
         } else {
-            // Normal: before + (marker) + reverse-glyph + after.
+            // Normal: before + (marker) + cursor-glyph + after.
             let cursor_glyph = at.unwrap_or(' ');
             if !before.is_empty() {
                 spans.push(Span::raw(before));
@@ -301,7 +327,7 @@ impl Component for Input {
             if !marker.is_empty() {
                 spans.push(Span::raw(marker));
             }
-            spans.push(Span::styled(cursor_glyph.to_string(), reverse));
+            spans.push(Span::styled(cursor_glyph.to_string(), cursor_style));
             if !after.is_empty() {
                 spans.push(Span::raw(after));
             }
@@ -875,9 +901,15 @@ mod tests {
         input.cursor_right(); // after 你 (byte 3, col 2)
         let line: &StyledLine = &input.render(10)[0];
         let ansi = line.to_ansi();
-        // Reverse-video should land on 好 (the grapheme at col 2).
-        assert!(ansi.contains("\x1b[7m"));
+        // Cursor styling lands on 好 (the grapheme at col 2). Input::new()
+        // defaults to the dark-theme cursor: bg=Indexed(238) → SGR "48;5;238".
+        // No raw reverse ("7m") — the cursor uses explicit fg+bg.
         assert!(ansi.contains('好'));
+        assert!(
+            ansi.contains("48;5;238"),
+            "dark-theme cursor bg present: {ansi:?}"
+        );
+        assert!(!ansi.contains("\x1b[7m"), "no raw reverse");
     }
 
     #[test]
@@ -896,9 +928,14 @@ mod tests {
         input.set_focused(true);
         let line = &input.render(10)[0];
         let ansi = line.to_ansi();
-        // Empty value → cursor glyph is a space (reverse-video space).
+        // Empty value → cursor glyph is a space, styled with the theme cursor
+        // (dark default: bg=Indexed(238)). Marker present for IME positioning.
         assert!(ansi.contains(CURSOR_MARKER));
-        assert!(ansi.contains("\x1b[7m"));
+        assert!(
+            ansi.contains("48;5;238"),
+            "dark-theme cursor bg present: {ansi:?}"
+        );
+        assert!(!ansi.contains("\x1b[7m"), "no raw reverse");
     }
 
     #[test]
