@@ -52,16 +52,16 @@ impl RenderedLine {
     /// Multi-line markdown variants (`UserInput`/`AssistantText`/`ThinkingText`)
     /// go through the shared markdown renderer (passthrough + code-block
     /// highlight); single-line variants produce one line. `width` is used for
-    /// CJK-aware wrapping inside the renderer.
-    pub fn to_lines(&self, width: usize) -> Vec<StyledLine> {
-        let p = theme::palette();
+    /// CJK-aware wrapping inside the renderer. `pal` supplies the theme-aware
+    /// tokens (user prompt prefix, thinking style, etc.).
+    pub fn to_lines(&self, pal: &theme::Palette, width: usize) -> Vec<StyledLine> {
         match self {
             RenderedLine::UserInput(prompt) => {
                 let lines = render_markdown(prompt, width, MarkdownTheme::passthrough());
                 // Prepend the `❯ ` marker as a leading span on the first line
                 // (kept out of markdown parsing so `#` in user input still
                 // renders structurally but stays visually marked as user echo).
-                prepend_prefix(lines, "❯ ", p.user_prompt())
+                prepend_prefix(lines, "❯ ", pal.user_prompt())
             }
             RenderedLine::AssistantText(text) => {
                 render_markdown(text, width, MarkdownTheme::passthrough())
@@ -75,7 +75,7 @@ impl RenderedLine {
                 // reply body, looking like it was "overwritten" when the reply
                 // streams right below. pi renders thinking as a themed `Markdown`
                 // child (assistant-message.ts:121-126).
-                let style = p.thinking();
+                let style = pal.thinking();
                 let lines = render_markdown(text, width, MarkdownTheme::passthrough());
                 lines
                     .into_iter()
@@ -92,12 +92,12 @@ impl RenderedLine {
                 preview,
                 is_error,
             } => {
-                let style = if *is_error { p.error() } else { p.tool() };
+                let style = if *is_error { pal.error() } else { pal.tool() };
                 let text = format!("[{name}] {preview}");
                 vec![styled_line(&text, style)]
             }
             RenderedLine::Status(msg) => {
-                vec![styled_line(msg, p.text_dim())]
+                vec![styled_line(msg, pal.text_dim())]
             }
         }
     }
@@ -182,10 +182,15 @@ pub fn user_message_rendered(prompt: &str) -> RenderedLine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::tui::theme_detect::TerminalTheme;
+
+    fn pal() -> theme::Palette {
+        theme::palette(TerminalTheme::Dark)
+    }
 
     #[test]
     fn user_message_renders_with_prefix_and_prompt() {
-        let lines = user_message_rendered("fix the bug").to_lines(80);
+        let lines = user_message_rendered("fix the bug").to_lines(&pal(), 80);
         let text = lines.first().map(|l| l.plain_text()).unwrap_or_default();
         assert!(text.contains('❯'), "prefix present: {text}");
         assert!(text.contains("fix the bug"), "prompt text present: {text}");
@@ -193,17 +198,17 @@ mod tests {
 
     #[test]
     fn user_message_empty_prompt_still_has_prefix() {
-        let lines = user_message_rendered("").to_lines(80);
+        let lines = user_message_rendered("").to_lines(&pal(), 80);
         let text = lines.first().map(|l| l.plain_text()).unwrap_or_default();
         assert!(text.contains('❯'), "prefix present even for empty: {text}");
     }
 
     #[test]
     fn status_line_carries_dim_style() {
-        let lines = RenderedLine::Status("hello".into()).to_lines(80);
+        let lines = RenderedLine::Status("hello".into()).to_lines(&pal(), 80);
         assert_eq!(lines.len(), 1);
-        // DarkGray fg per palette::text_dim.
-        assert_eq!(lines[0].spans[0].style.fg, theme::palette().text_dim().fg);
+        // DarkGray fg per palette::text_dim (dark theme).
+        assert_eq!(lines[0].spans[0].style.fg, pal().text_dim().fg);
     }
 
     #[test]
@@ -213,7 +218,7 @@ mod tests {
             preview: "boom".into(),
             is_error: true,
         }
-        .to_lines(80);
+        .to_lines(&pal(), 80);
         assert_eq!(lines.len(), 1);
         let text = lines[0].plain_text();
         assert!(text.contains("[bash]"), "tool name present: {text}");
@@ -223,7 +228,7 @@ mod tests {
     #[test]
     fn assistant_text_passthrough_keeps_prose() {
         // Passthrough markdown keeps prose text verbatim.
-        let lines = RenderedLine::AssistantText("hello world".into()).to_lines(80);
+        let lines = RenderedLine::AssistantText("hello world".into()).to_lines(&pal(), 80);
         let text: String = lines
             .iter()
             .map(|l| l.plain_text())
