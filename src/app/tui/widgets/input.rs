@@ -237,8 +237,14 @@ impl Component for Input {
             available
         };
 
-        let (visible_text, cursor_col_in_visible): (String, usize) = if total_w < available {
-            // Fits entirely; no scroll.
+        let (visible_text, cursor_col_in_visible): (String, usize) = if total_w <= available {
+            // Fits entirely; no scroll. The end-of-input cursor glyph is a
+            // reverse-video space appended after the content; when content
+            // exactly fills `available` there is no trailing column for it, so
+            // the last content grapheme is shown in reverse video instead (the
+            // cursor "covers" the last char). This keeps the width invariant
+            // while showing all typed chars for CJK (e.g. "你好" = 4 cols at
+            // available=4), matching what users expect.
             (self.value.clone(), cursor_col)
         } else if scroll_w == 0 {
             (String::new(), 0)
@@ -258,21 +264,47 @@ impl Component for Input {
         // Split the visible text at the cursor: before + glyph-at + after.
         let (before, at, after) = split_at_grapheme_col(&visible_text, cursor_col_in_visible);
         let marker = if self.focused { CURSOR_MARKER } else { "" };
-        let cursor_glyph = at.unwrap_or(' ');
         let reverse = CellStyle::default().reverse();
 
-        // Assemble spans: prompt + before + (marker) + reverse-glyph + after.
+        // Cursor glyph: the char under the cursor (reverse video), or a space
+        // when at end-of-input. BUT when at end-of-input AND content fills the
+        // available width (no trailing column for the space), reverse-video the
+        // last content char instead of appending an extra space — otherwise the
+        // line would overflow `width` (width invariant violation). This is the
+        // case that bites CJK input: e.g. "你好" (4 cols) at available=4.
+        let at_end = at.is_none();
+        let content_fills =
+            prompt_w + marker_aware_width(&before) + marker_aware_width(&after) >= width;
         let mut spans: Vec<Span> = Vec::new();
         spans.push(Span::raw(PROMPT));
-        if !before.is_empty() {
-            spans.push(Span::raw(before));
-        }
-        if !marker.is_empty() {
-            spans.push(Span::raw(marker));
-        }
-        spans.push(Span::styled(cursor_glyph.to_string(), reverse));
-        if !after.is_empty() {
-            spans.push(Span::raw(after));
+
+        if at_end && content_fills && !before.is_empty() {
+            // No room for a trailing reverse-space: render the last grapheme of
+            // `before` in reverse video so the cursor sits on the last typed char.
+            let (head, last_char) = split_last_grapheme(&before);
+            if let Some(head) = head {
+                spans.push(Span::raw(head));
+            }
+            if !marker.is_empty() {
+                spans.push(Span::raw(marker));
+            }
+            spans.push(Span::styled(last_char.to_string(), reverse));
+            if !after.is_empty() {
+                spans.push(Span::raw(after));
+            }
+        } else {
+            // Normal: before + (marker) + reverse-glyph + after.
+            let cursor_glyph = at.unwrap_or(' ');
+            if !before.is_empty() {
+                spans.push(Span::raw(before));
+            }
+            if !marker.is_empty() {
+                spans.push(Span::raw(marker));
+            }
+            spans.push(Span::styled(cursor_glyph.to_string(), reverse));
+            if !after.is_empty() {
+                spans.push(Span::raw(after));
+            }
         }
 
         // Right-pad to width so the line fills the terminal column. Width
@@ -455,6 +487,25 @@ fn split_at_grapheme_col(text: &str, col: usize) -> (String, Option<char>, Strin
     }
     // `col` is at or past the end: cursor is end-of-input, no glyph under it.
     (before, None, String::new())
+}
+
+/// Split `text` into `(head, last_grapheme_first_char)`: everything except the
+/// last grapheme cluster, plus the first char of that last grapheme. Used to
+/// render the last typed char in reverse video when the cursor sits at
+/// end-of-input and content fills the width (no room for a trailing cursor space).
+/// Returns `(None, first_char_of_last)` when `text` is a single grapheme.
+fn split_last_grapheme(text: &str) -> (Option<String>, char) {
+    let graphemes: Vec<&str> = text.graphemes(true).collect();
+    if graphemes.is_empty() {
+        return (None, ' ');
+    }
+    if graphemes.len() == 1 {
+        let c = graphemes[0].chars().next().unwrap_or(' ');
+        return (None, c);
+    }
+    let head = graphemes[..graphemes.len() - 1].concat();
+    let last_char = graphemes[graphemes.len() - 1].chars().next().unwrap_or(' ');
+    (Some(head), last_char)
 }
 
 #[cfg(test)]
@@ -736,12 +787,36 @@ mod tests {
         input.set_focused(true);
         input.set_value("你能"); // 2 CJK chars = 4 display cols
         input.cursor_end();
-        // PROMPT "> " = 2 cols → available = 10 - 2 = 8; total_w=4 < 8 → fits.
+        // PROMPT "> " = 2 cols → available = 10 - 2 = 8; total_w=4 <= 8 → fits.
         let line = &input.render(10)[0];
         let text = line.plain_text();
         assert!(
             text.contains('你') && text.contains('能'),
             "both CJK chars visible when they fit in available: got {text:?}"
+        );
+    }
+
+    #[test]
+    fn render_cjk_exactly_filling_width_shows_all_chars() {
+        // Regression: "你好" (4 cols) at width=6 (available=4) — content exactly
+        // fills `available`. The cursor sits at end-of-input with no room for a
+        // trailing reverse-video space, so the last char ("好") renders in
+        // reverse video instead. BOTH chars must remain visible AND the width
+        // invariant must hold (line width ≤ terminal width).
+        let mut input = Input::new();
+        input.set_focused(true);
+        input.set_value("你好");
+        input.cursor_end();
+        let line = &input.render(6)[0];
+        let text = line.plain_text();
+        assert!(
+            text.contains('你') && text.contains('好'),
+            "both CJK chars visible at exact-fill width: got {text:?}"
+        );
+        assert!(
+            line.width() <= 6,
+            "width invariant holds: got {}",
+            line.width()
         );
     }
 
