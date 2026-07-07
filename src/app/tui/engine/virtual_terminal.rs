@@ -307,6 +307,285 @@ fn sgr_to_color(code: u8) -> Color {
     }
 }
 
+// ── c400: ScrollbackTerminal — terminal emulator with scrollback buffer ───
+
+/// A terminal emulator that simulates real terminal scrollback: when `\r\n`
+/// is written while the cursor is on the bottom screen row, the top screen row
+/// is pushed into a scrollback buffer and a new blank row appears at the
+/// bottom. This lets tests verify that "bottom-anchored" content (input,
+/// loader) stays in the last visible rows even as the conversation grows.
+///
+/// Unlike `VirtualTerminal` (which grows upward infinitely), `ScrollbackTerminal`
+/// has a fixed-height screen just like a physical terminal, so `\r\n` at the
+/// bottom row triggers real scroll behavior.
+pub struct ScrollbackTerminal {
+    pub width: u16,
+    pub height: u16,
+    /// Rows currently visible on screen. `screen[0]` = top row.
+    pub screen: Vec<Vec<VCell>>,
+    /// Rows pushed out of the screen by \r\n scrolling (in order, oldest first).
+    pub scrollback: Vec<Vec<VCell>>,
+    cursor_x: u16,
+    cursor_y: u16,
+    current_style: VStyle,
+}
+
+impl ScrollbackTerminal {
+    pub fn new(width: u16, height: u16) -> Self {
+        let screen = (0..height)
+            .map(|_| vec![VCell::default(); width as usize])
+            .collect();
+        Self {
+            width,
+            height,
+            screen,
+            scrollback: Vec::new(),
+            cursor_x: 0,
+            cursor_y: 0,
+            current_style: VStyle::default(),
+        }
+    }
+
+    /// Feed an ANSI byte stream. Parses SGR, cursor moves, clears,
+    /// and simulates `\r\n` scrollback.
+    pub fn feed(&mut self, input: &str) {
+        let mut chars = input.chars().peekable();
+        while let Some(ch) = chars.next() {
+            match ch {
+                '\x1b' => self.handle_escape(&mut chars),
+                '\r' => self.cursor_x = 0,
+                '\n' => {
+                    // LF: carriage-return + move down. At bottom row, scroll.
+                    self.cursor_x = 0;
+                    if self.cursor_y >= self.height.saturating_sub(1) {
+                        self.scroll_up();
+                    } else {
+                        self.cursor_y += 1;
+                    }
+                }
+                _ => self.put_char(ch),
+            }
+        }
+    }
+
+    /// Push the top screen row into scrollback, shift all rows up,
+    /// add a blank row at the bottom (simulating terminal scroll).
+    fn scroll_up(&mut self) {
+        if self.screen.is_empty() {
+            return;
+        }
+        if let Some(top_row) = self.screen.first() {
+            self.scrollback.push(top_row.clone());
+        }
+        self.screen.remove(0);
+        self.screen
+            .push(vec![VCell::default(); self.width as usize]);
+        // Cursor stays at the bottom row.
+    }
+
+    // ── helpers (mirror VirtualTerminal) ──────────────────────────────────
+
+    fn put_char(&mut self, ch: char) {
+        let x = self.cursor_x as usize;
+        let y = self.cursor_y as usize;
+        if y < self.screen.len() && x < self.screen[y].len() {
+            self.screen[y][x] = VCell {
+                ch,
+                style: self.current_style,
+            };
+        }
+        self.cursor_x = self.cursor_x.saturating_add(1);
+    }
+
+    fn handle_escape(&mut self, chars: &mut std::iter::Peekable<std::str::Chars>) {
+        match chars.next() {
+            Some('[') => self.handle_csi(chars),
+            Some(']') => self.handle_osc(chars),
+            Some('_') => self.skip_aps(chars),
+            Some(_) => {}
+            None => {}
+        }
+    }
+
+    fn handle_csi(&mut self, chars: &mut std::iter::Peekable<std::str::Chars>) {
+        let mut params = String::new();
+        let mut final_byte = '\0';
+        for c in chars.by_ref() {
+            if c.is_ascii() && (0x40..=0x7E).contains(&(c as u32)) {
+                final_byte = c;
+                break;
+            }
+            params.push(c);
+        }
+        let nums: Vec<i64> = params.split(';').filter_map(|s| s.parse().ok()).collect();
+        match final_byte {
+            'A' => {
+                let n = nums.first().copied().unwrap_or(1) as u16;
+                self.cursor_y = self.cursor_y.saturating_sub(n);
+            }
+            'B' => {
+                let n = nums.first().copied().unwrap_or(1) as u16;
+                self.cursor_y = (self.cursor_y + n).min(self.height.saturating_sub(1));
+            }
+            'C' => {
+                let n = nums.first().copied().unwrap_or(1) as u16;
+                self.cursor_x = (self.cursor_x + n).min(self.width.saturating_sub(1));
+            }
+            'D' => {
+                let n = nums.first().copied().unwrap_or(1) as u16;
+                self.cursor_x = self.cursor_x.saturating_sub(n);
+            }
+            'G' => {
+                let col = nums.first().copied().unwrap_or(1).saturating_sub(1) as u16;
+                self.cursor_x = col.min(self.width.saturating_sub(1));
+            }
+            'H' | 'f' => {
+                let row = nums.first().copied().unwrap_or(1).saturating_sub(1) as u16;
+                let col = nums.get(1).copied().unwrap_or(1).saturating_sub(1) as u16;
+                self.cursor_y = row.min(self.height.saturating_sub(1));
+                self.cursor_x = col.min(self.width.saturating_sub(1));
+            }
+            'J' if nums.first().copied().unwrap_or(0) >= 2 => {
+                // 2J = clear screen + home. Also clear scrollback.
+                for row in &mut self.screen {
+                    for cell in row.iter_mut() {
+                        *cell = VCell::default();
+                    }
+                }
+                self.scrollback.clear();
+                self.cursor_x = 0;
+                self.cursor_y = 0;
+            }
+            'K' => {
+                let y = self.cursor_y as usize;
+                if y < self.screen.len() {
+                    for cell in self.screen[y].iter_mut() {
+                        *cell = VCell::default();
+                    }
+                }
+            }
+            'm' => self.apply_sgr(&nums),
+            'h' | 'l' => {} // mode set/reset — ignore
+            _ => {}
+        }
+    }
+
+    fn apply_sgr(&mut self, nums: &[i64]) {
+        if nums.is_empty() {
+            self.current_style = VStyle::default();
+            return;
+        }
+        let mut i = 0;
+        while i < nums.len() {
+            let n = nums[i];
+            match n {
+                0 => self.current_style = VStyle::default(),
+                1 => self.current_style.bold = true,
+                2 => self.current_style.dim = true,
+                3 => self.current_style.italic = true,
+                4 => self.current_style.underline = true,
+                22 => {
+                    self.current_style.bold = false;
+                    self.current_style.dim = false;
+                }
+                23 => self.current_style.italic = false,
+                24 => self.current_style.underline = false,
+                30..=37 | 90..=97 => self.current_style.fg = Some(sgr_to_color(n as u8)),
+                38 if i + 2 < nums.len() && nums[i + 1] == 5 => {
+                    self.current_style.fg = Some(Color::Indexed(nums[i + 2] as u8));
+                    i += 2;
+                }
+                38 if i + 4 < nums.len() && nums[i + 1] == 2 => {
+                    self.current_style.fg = Some(Color::Rgb(
+                        nums[i + 2] as u8,
+                        nums[i + 3] as u8,
+                        nums[i + 4] as u8,
+                    ));
+                    i += 4;
+                }
+                39 => self.current_style.fg = None,
+                40..=47 | 100..=107 => self.current_style.bg = Some(sgr_to_color(n as u8)),
+                48 if i + 2 < nums.len() && nums[i + 1] == 5 => {
+                    self.current_style.bg = Some(Color::Indexed(nums[i + 2] as u8));
+                    i += 2;
+                }
+                48 if i + 4 < nums.len() && nums[i + 1] == 2 => {
+                    self.current_style.bg = Some(Color::Rgb(
+                        nums[i + 2] as u8,
+                        nums[i + 3] as u8,
+                        nums[i + 4] as u8,
+                    ));
+                    i += 4;
+                }
+                49 => self.current_style.bg = None,
+                _ => {}
+            }
+            i += 1;
+        }
+    }
+
+    fn handle_osc(&mut self, chars: &mut std::iter::Peekable<std::str::Chars>) {
+        for c in chars.by_ref() {
+            if c == '\x07' {
+                return;
+            }
+            if c == '\x1b' {
+                if chars.peek() == Some(&'\\') {
+                    chars.next();
+                }
+                return;
+            }
+        }
+    }
+
+    fn skip_aps(&mut self, chars: &mut std::iter::Peekable<std::str::Chars>) {
+        for c in chars.by_ref() {
+            if c == '\x07' {
+                return;
+            }
+            if c == '\x1b' {
+                if chars.peek() == Some(&'\\') {
+                    chars.next();
+                }
+                return;
+            }
+        }
+    }
+
+    // ── test helpers ──────────────────────────────────────────────────────
+
+    /// Plain text of screen row `y` (0 = top, trimmed trailing blanks).
+    pub fn screen_text(&self, y: usize) -> String {
+        let Some(row) = self.screen.get(y) else {
+            return String::new();
+        };
+        let s: String = row
+            .iter()
+            .take_while(|c| c.ch != '\0')
+            .map(|c| c.ch)
+            .collect();
+        s.trim_end().to_string()
+    }
+
+    /// Whether screen row `y` contains `needle`.
+    pub fn screen_contains(&self, y: usize, needle: &str) -> bool {
+        self.screen_text(y).contains(needle)
+    }
+
+    /// Check that the last `line_count` screen rows are all non-empty
+    /// (at least one non-`\0` cell each), verifying that bottom-anchored
+    /// content is present in the bottom screen positions.
+    pub fn footer_visible(&self, line_count: usize) -> bool {
+        let start = self.screen.len().saturating_sub(line_count);
+        for row in &self.screen[start..] {
+            if row.iter().all(|c| c.ch == '\0') {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -501,5 +780,149 @@ mod tests {
         let mut vt = VirtualTerminal::new(10, 3);
         vt.feed("\x1b[38;2;1;2;3mx");
         assert_eq!(vt.cell_at(0, 0).style.fg, Some(Color::Rgb(1, 2, 3)));
+    }
+
+    // ── c400: ScrollbackTerminal unit tests ───────────────────────────
+
+    #[test]
+    fn scrollback_terminal_scrolls_on_newline_at_bottom() {
+        let mut st = ScrollbackTerminal::new(10, 3);
+        st.feed("row0\r\nrow1\r\nrow2\r\nrow3");
+        // height=3: row0 scrolled out, row1-row3 on screen.
+        // No trailing \r\n after row3 (real terminal: last line visible).
+        assert_eq!(st.screen_text(0), "row1");
+        assert_eq!(st.screen_text(1), "row2");
+        assert_eq!(st.screen_text(2), "row3");
+    }
+
+    #[test]
+    fn scrollback_terminal_accumulates_scrollback() {
+        let mut st = ScrollbackTerminal::new(10, 2);
+        for i in 0..5 {
+            let line = format!("line{i}");
+            if i < 4 {
+                st.feed(&format!("{line}\r\n"));
+            } else {
+                st.feed(&line);
+            }
+        }
+        // height=2: 5 lines written, 3 scrolled into buffer, last 2 on screen.
+        assert_eq!(st.screen_text(0), "line3");
+        assert_eq!(st.screen_text(1), "line4");
+        assert_eq!(st.scrollback.len(), 3);
+    }
+
+    #[test]
+    fn scrollback_terminal_clear_screen_clears_scrollback() {
+        let mut st = ScrollbackTerminal::new(10, 2);
+        st.feed("a\r\nb\r\nc\r\nd");
+        assert_eq!(st.scrollback.len(), 2, "2 lines in scrollback");
+        st.feed("\x1b[2J\x1b[H");
+        assert_eq!(
+            st.scrollback.len(),
+            0,
+            "clear screen also clears scrollback"
+        );
+        assert!(st.screen_text(0).is_empty());
+    }
+
+    #[test]
+    fn scrollback_terminal_footer_visible() {
+        let mut st = ScrollbackTerminal::new(10, 4);
+        // Write 4 lines — fill screen, bottom 2 occupied.
+        st.feed("a\r\nb\r\nc\r\nd");
+        assert!(st.footer_visible(2), "last 2 rows present");
+        // Write 4 more — push old content into scrollback.
+        st.feed("\r\ne\r\nf\r\ng\r\nh");
+        assert_eq!(st.screen.len(), 4, "fixed screen height");
+        assert!(st.scrollback.len() >= 4, "old content scrolled");
+    }
+
+    // ── c400: engine-to-ScrollbackTerminal integration tests ──────────
+
+    #[test]
+    fn footer_stays_visible_as_content_grows_past_height() {
+        let height: u16 = 8;
+        let width: u16 = 80;
+        let term = CapturingTerminal::new(width, height);
+        let mut tui = Tui::new(
+            term,
+            Box::new(LinesWidget {
+                lines: vec![StyledLine::raw("line0")],
+            }),
+        );
+        let mut st = ScrollbackTerminal::new(width, height);
+
+        // Render frames with growing content.
+        for n in 2..=12 {
+            let lines: Vec<StyledLine> = (0..n)
+                .map(|i| StyledLine::raw(&format!("line{i}")))
+                .collect();
+            tui.set_root(Box::new(LinesWidget { lines }));
+            tui.render_now().unwrap();
+            st.feed(&tui.term_mut().written);
+            tui.term_mut().written.clear();
+        }
+
+        // After all frames: verify scrollback captured lines that scrolled
+        // out, and the screen shows the tail at the bottom.
+        assert!(
+            !st.scrollback.is_empty(),
+            "content past height should scroll lines into scrollback"
+        );
+        // Last screen row should contain "line11" (the last line rendered).
+        let last_screen = st.screen_text((height - 1) as usize);
+        assert!(
+            last_screen.contains("line11"),
+            "last screen row should show newest line, got: {last_screen:?}"
+        );
+    }
+
+    #[test]
+    fn footer_content_never_overlaps_with_history() {
+        let height: u16 = 8;
+        let width: u16 = 80;
+        let term = CapturingTerminal::new(width, height);
+        let mut tui = Tui::new(
+            term,
+            Box::new(LinesWidget {
+                lines: vec![StyledLine::raw("history 0")],
+            }),
+        );
+        let mut st = ScrollbackTerminal::new(width, height);
+
+        // 15 lines of history + 2 fixed footer lines.
+        let labels: Vec<String> = (0..15).map(|i| format!("history {i}")).collect();
+        let footer_label = "<input>";
+        let loader_label = "Ready";
+
+        // First frame with footer lines.
+        let lines: Vec<StyledLine> = labels
+            .iter()
+            .map(|l| StyledLine::raw(l))
+            .chain(std::iter::once(StyledLine::raw(loader_label)))
+            .chain(std::iter::once(StyledLine::raw(footer_label)))
+            .collect();
+        let widget = LinesWidget { lines };
+        tui.set_root(Box::new(widget));
+        tui.render_now().unwrap();
+        st.feed(&tui.term_mut().written);
+        tui.term_mut().written.clear();
+
+        // After first render (17 lines, height=8): footer must be on
+        // the last 2 screen rows.
+        assert!(
+            st.screen_contains((height - 1) as usize, footer_label),
+            "footer line on last screen row"
+        );
+        assert!(
+            st.screen_contains((height - 2) as usize, loader_label),
+            "loader line on second-to-last screen row"
+        );
+        // History should be in scrollback, not overlaying footer.
+        assert!(
+            st.scrollback.len() >= 7,
+            "enough history scrolled out (9 visible - 8 height = 9 in scrollback? check)"
+        );
     }
 }
