@@ -336,6 +336,15 @@ impl<T: Terminal> Tui<T> {
                     self.clear_orphan_rows(n_new, n_prev, height)?;
                 }
                 self.cursor_row = n_new.saturating_sub(1);
+                // Step 5C line 265: viewport follows the content end. The
+                // scroll block inside write_diff_range already advanced this for
+                // the append case; clamp up to the content-tail floor so any
+                // path that changed content without scrolling still keeps the
+                // viewport tracking the last row.
+                let floor = n_new.saturating_sub(height);
+                if self.previous_viewport_top < floor {
+                    self.previous_viewport_top = floor;
+                }
                 self.max_lines_rendered = self.max_lines_rendered.max(n_new);
                 self.last_changed_range = Some((first, last));
                 self.last_full_redraw_reason = None;
@@ -347,6 +356,21 @@ impl<T: Terminal> Tui<T> {
 
     /// Write the changed line range `[first, last]` via cursor moves + `\x1b[2K`
     /// + line content. rendering-engine.md Step 5 C normal write loop.
+    ///
+    /// Three things the over-viewport append case MUST get right (verified
+    /// against pi `tui.ts::writeDiffRange` + Step 5C pseudocode):
+    /// 1. `move_target` for a pure append is `first - 1` (the last unchanged
+    ///    row), so the write loop's leading `\r\n` starts the new content on a
+    ///    fresh line. Otherwise the cursor lands one row too low.
+    /// 2. To scroll N rows into scrollback you MUST first move the cursor to
+    ///    the viewport BOTTOM row (CUD), then emit `\r\n` × N — `\r\n` only
+    ///    scrolls the terminal when issued from the bottom row. Emitting it
+    ///    from mid-screen just moves the cursor down, leaving old rows on
+    ///    screen and producing the "duplicated/overlapped text" bug.
+    /// 3. All relative cursor moves after the scroll are in SCREEN
+    ///    coordinates: `(target - viewport_top) - (hw_cursor - prev_top)`,
+    ///    not absolute row numbers (which inflate by 2×viewport_top and send
+    ///    the cursor off-screen once content grows past one screen).
     fn write_diff_range(
         &mut self,
         new_lines: &[String],
@@ -354,32 +378,56 @@ impl<T: Terminal> Tui<T> {
         last: usize,
         height: usize,
     ) -> Result<(), RenderError> {
+        use std::cmp::Ordering;
+
         let mut buf = String::from("\x1b[?2026h");
-        // Scroll the viewport if the changed range extends below the current
-        // viewport bottom (the append case: new content past the old end).
-        let prev_bottom = self.previous_viewport_top + height.saturating_sub(1);
-        let move_target = first;
+        let prev_viewport_top = self.previous_viewport_top;
+
+        // appendStart: pure append starting exactly at the old tail. Per pi
+        // tui.ts:1394 — the write loop uses `\r\n` to open a fresh line and the
+        // scroll target backs up one row to the last unchanged line.
+        let append_start = new_lines.len() > self.previous_lines.len()
+            && first == self.previous_lines.len()
+            && first > 0;
+        let move_target = if append_start { first - 1 } else { first };
+
+        // Scroll block: only when the target is below the current viewport
+        // bottom. Move to the bottom row FIRST, then `\r\n` × scroll (newline
+        // only scrolls when the cursor is on the bottom row).
+        let prev_bottom = prev_viewport_top + height.saturating_sub(1);
         if move_target > prev_bottom {
+            let current_screen_row = self
+                .hardware_cursor_row
+                .saturating_sub(prev_viewport_top)
+                .min(height.saturating_sub(1));
+            let to_bottom = height.saturating_sub(1).saturating_sub(current_screen_row);
+            if to_bottom > 0 {
+                buf.push_str(&format!("\x1b[{to_bottom}B"));
+            }
             let scroll = move_target - prev_bottom;
             for _ in 0..scroll {
-                buf.push_str("\r\n"); // newline scrolls the terminal
+                buf.push_str("\r\n");
             }
             self.previous_viewport_top += scroll;
             self.hardware_cursor_row = move_target;
         }
-        // Move to the target row (relative).
-        let line_diff = move_target as isize - self.hardware_cursor_row as isize;
-        if line_diff > 0 {
-            buf.push_str(&format!("\x1b[{}B", line_diff));
-        } else if line_diff < 0 {
-            buf.push_str(&format!("\x1b[{}A", -line_diff));
+
+        // Relative move to move_target, in SCREEN coordinates (both sides minus
+        // viewport top). The skill's Step 5C lineDiff formula.
+        let current_screen =
+            self.hardware_cursor_row as isize - self.previous_viewport_top as isize;
+        let target_screen = move_target as isize - self.previous_viewport_top as isize;
+        let line_diff = target_screen - current_screen;
+        match line_diff.cmp(&0) {
+            Ordering::Greater => buf.push_str(&format!("\x1b[{}B", line_diff)),
+            Ordering::Less => buf.push_str(&format!("\x1b[{}A", -line_diff)),
+            Ordering::Equal => {}
         }
-        // Move to the start of the line, then write each changed line with a
-        // leading clear-line.
-        let render_end = last;
-        let is_append = first >= self.previous_lines.len();
-        buf.push_str(if is_append { "\r\n" } else { "\r" });
-        for i in first..=render_end {
+
+        // Open the write loop: `\r\n` for append (fresh line after the last
+        // unchanged row), `\r` otherwise (re-write in place).
+        buf.push_str(if append_start { "\r\n" } else { "\r" });
+        for i in first..=last {
             if i > first {
                 buf.push_str("\r\n");
             }
@@ -388,7 +436,7 @@ impl<T: Terminal> Tui<T> {
                 buf.push_str(line);
             }
         }
-        self.hardware_cursor_row = render_end;
+        self.hardware_cursor_row = last;
         buf.push_str("\x1b[?2026l");
         self.term.write(&buf);
         Ok(())
@@ -839,6 +887,116 @@ mod tests {
             Some((0, 0)),
             "style change detected"
         );
+    }
+
+    // ── Over-viewport append / scrollback (rendering-engine.md Step 5C) ────
+
+    #[test]
+    fn append_past_viewport_scrolls_via_cursor_down_then_newline() {
+        // Regression for the "over-one-screen overlap" bug. Terminal height=3,
+        // start with exactly one screen (3 lines), then append 2 more. The
+        // changed range starts at line 3 — past the previous viewport bottom
+        // (2). Per rendering-engine.md Step 5C, the scroll block MUST move the
+        // cursor to the viewport BOTTOM row first (CUD), then emit "\r\n" to
+        // scroll. The old code emitted "\r\n" directly from wherever the cursor
+        // was, so on a real terminal the new content overwrote old rows instead
+        // of scrolling them into scrollback (visible as duplicated/overlapped
+        // text). Also the relative line_diff MUST be in screen coordinates
+        // (both sides minus viewport top), not absolute row numbers.
+        let term = CapturingTerminal::new(40, 3);
+        let widget = LinesWidget {
+            lines: vec![
+                StyledLine::raw("L0"),
+                StyledLine::raw("L1"),
+                StyledLine::raw("L2"),
+            ],
+        };
+        let mut tui = Tui::new(term, Box::new(widget));
+        tui.render_now().unwrap();
+        assert_eq!(tui.hardware_cursor_row, 2);
+        assert_eq!(tui.previous_viewport_top, 0);
+
+        // Append two lines → content (5) > height (3). firstChanged=3.
+        let widget2 = LinesWidget {
+            lines: vec![
+                StyledLine::raw("L0"),
+                StyledLine::raw("L1"),
+                StyledLine::raw("L2"),
+                StyledLine::raw("L3"),
+                StyledLine::raw("L4"),
+            ],
+        };
+        tui.set_root(Box::new(widget2));
+        tui.term_mut().written.clear();
+        tui.render_now().unwrap();
+        let out = tui.term_mut().written.clone();
+
+        // No CUD (cursor-down) count may exceed height-1 = 2. The buggy
+        // absolute-subtraction line_diff sent the cursor off-screen.
+        let cud_counts: Vec<usize> = out
+            .match_indices("\x1b[")
+            .filter_map(|(i, _)| {
+                out[i + 2..]
+                    .split('B')
+                    .next()
+                    .and_then(|n| n.parse::<usize>().ok())
+            })
+            .collect();
+        for c in &cud_counts {
+            assert!(*c <= 2, "CUD {c} exceeds height-1=2; out={out:?}");
+        }
+        assert!(out.contains("L3") && out.contains("L4"));
+        assert_eq!(tui.previous_viewport_top, 2);
+    }
+
+    #[test]
+    fn append_far_past_viewport_uses_relative_screen_diff() {
+        // Terminal height=4, fill the screen, append 3 lines (4 → 7).
+        // firstChanged=4 is 1 below prev_bottom(3) → scroll=1. The relative
+        // move after the scroll block MUST be computed in SCREEN coordinates
+        // (both sides minus viewport top), per Step 5C lineDiff formula.
+        let term = CapturingTerminal::new(40, 4);
+        let widget = LinesWidget {
+            lines: vec![
+                StyledLine::raw("L0"),
+                StyledLine::raw("L1"),
+                StyledLine::raw("L2"),
+                StyledLine::raw("L3"),
+            ],
+        };
+        let mut tui = Tui::new(term, Box::new(widget));
+        tui.render_now().unwrap();
+
+        let widget2 = LinesWidget {
+            lines: vec![
+                StyledLine::raw("L0"),
+                StyledLine::raw("L1"),
+                StyledLine::raw("L2"),
+                StyledLine::raw("L3"),
+                StyledLine::raw("L4"),
+                StyledLine::raw("L5"),
+                StyledLine::raw("L6"),
+            ],
+        };
+        tui.set_root(Box::new(widget2));
+        tui.term_mut().written.clear();
+        tui.render_now().unwrap();
+        let out = tui.term_mut().written.clone();
+
+        let cud_counts: Vec<usize> = out
+            .match_indices("\x1b[")
+            .filter_map(|(i, _)| {
+                out[i + 2..]
+                    .split('B')
+                    .next()
+                    .and_then(|n| n.parse::<usize>().ok())
+            })
+            .collect();
+        for c in &cud_counts {
+            assert!(*c <= 3, "CUD {c} exceeds height-1=3; out={out:?}");
+        }
+        assert!(out.contains("L6"));
+        assert_eq!(tui.previous_viewport_top, 3);
     }
 
     // ── UX routing (c399 stage 3) ───────────────────────────────────────────
