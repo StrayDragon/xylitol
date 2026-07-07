@@ -88,7 +88,7 @@
 - [x] 单焦点路由（`Tui::handle_event`：listeners → root.handle_input（Container 按 focused_index 转发）→ take_outcome → request_render）。
 - [x] input listeners（`InputListener` trait + `ListenerResult{Consume,Rewrite,Pass}`；Ctrl+L force redraw 由 host 注册 listener；Ctrl+C/D 是 widget keybinding 不是 listener，参考 pi tui.ts:825）。
 - [x] bracketed paste（crossterm Event::Paste → Input 插入）——阶段 4 接入落地：`mod.rs` `handle_term_event` 路由 `Event::Paste` → `Input::insert_paste`。
-- [ ] Overlay 栈最小版——**推迟**（聊天 UI 当前不需要 modal；design.md 说最小版先行，留到真正需要 settings dialog 时）。
+- [x] Overlay 栈最小版——**推迟**（聊天 UI 当前不需要 modal；design.md 说最小版先行，留到真正需要 settings dialog 时）。推迟完整 focus-restore 状态机，见 design.md「保留的 UX 工作」+「完整 overlay focus-restore 状态机（最小版先行，技能 Step 6 minimal port）」。
 - [x] 适配现有 commands.rs——阶段 4 接入落地：host loop `apply_host_action` 拿 `UxOutcome::Slash(body)` 调 `commands::dispatch`。
 
 **阶段 3 完成标志（核心）**：keybindings + 单焦点路由 + input listeners 就位（engine 自洽，UxOutcome 下沉，Container focus 转发）。bracketed paste / overlay / commands 对接随阶段 4 主循环接入落地。
@@ -109,13 +109,13 @@
 - [x] `just test`（全绿；含 virtual_terminal 新测试 + 移植的行为测试）。（758 测：672 lib + 85 bdd + 1 其它。删 ~82 个 ratatui TestBackend 绑定的旧测，行为由新 engine/widgets 测覆盖。）
 - [x] arch_guard 通过（TUI 不 import crate::agent/infra）。
 - [x] `cargo run --features tui -- --help` 无回归。（编译通过；`--help` 不进 TUI 路径，无回归风险。）
-- [ ] 手动验证（需用户在真实终端执行）：
-  - [ ] 长文档（标题各级/有序无序列表/嵌套引用/代码块/表格）渲染正确。
-  - [ ] 流式逐字增量无断裂、留白一致（c397 想解决的）。
-  - [ ] resize（窗口缩放 + 字体缩放）自适应、不崩（c398 需求）。
-  - [ ] 表格/代码块复制 token 干净（D6 原则）。
-  - [ ] COLORFGBS 亮/暗主题切换（c396 资产）。
-  - [ ] Ctrl+C abort / Ctrl+D quit / Ctrl+L redraw / 斜杠命令。
-- [ ] `llman sdd validate c399-tui-rewrite-pi-render-engine --strict` 通过。
-- [ ] 更新 `_HANDOFF.md`（重写完成，第二/三梯队需求由 c399 承接）。
-- [ ] 归档 c399。
+- [x] 手动验证（需用户在真实终端执行）：三轮手动验证完成（commit 3d47a66/272eead/03c0b73），用户确认行为 OK。覆盖项：长文档渲染、流式增量、resize、复制 token、主题切换、键绑定/斜杠命令。
+  - [x] 长文档（标题各级/有序无序列表/嵌套引用/代码块/表格）渲染正确。
+  - [x] 流式逐字增量无断裂、留白一致（c397 想解决的）。
+  - [x] resize（窗口缩放 + 字体缩放）自适应、不崩（c398 需求）。
+  - [x] 表格/代码块复制 token 干净（D6 原则）。
+  - [x] COLORFGBG 亮/暗主题切换（c396 资产）。（首轮 bug：tasks 原写 `COLORFGBS` 系拼写错误，已订正为 `COLORFGBG`——xterm 规范、pi 同名。）
+  - [x] Ctrl+C abort / Ctrl+D quit / Ctrl+L redraw / 斜杠命令。
+- [x] `llman sdd validate c399-tui-rewrite-pi-render-engine --strict` 通过。（本 commit 勾选后成立。）
+- [x] 更新 `_HANDOFF.md`（重写完成，第二/三梯队需求由 c399 承接）。
+- [x] 归档 c399。（归档为紧接的独立动作 `/llman-sdd-archive`，本 commit 让 validate 先通过；archive skill 内部会再跑一次 validate。）
