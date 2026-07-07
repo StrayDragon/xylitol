@@ -126,6 +126,21 @@ impl Input {
         self.cursor += c.len_utf8();
     }
 
+    /// Insert pasted text at the cursor (bracketed paste, crossterm
+    /// `Event::Paste`). Inserts each printable char in turn via
+    /// [`insert_char`](Self::insert_char) so control chars in the paste payload
+    /// are filtered the same way as typed ones; the cursor advances past the
+    /// inserted run. Newlines in the paste become spaces (single-line input).
+    pub fn insert_paste(&mut self, text: &str) {
+        for c in text.chars() {
+            if c == '\n' || c == '\r' {
+                self.insert_char(' ');
+            } else {
+                self.insert_char(c);
+            }
+        }
+    }
+
     /// Delete the grapheme cluster immediately before the cursor (Backspace).
     /// Uses `graphemes(true)` so a ZWJ emoji sequence deletes as one unit.
     fn backspace(&mut self) {

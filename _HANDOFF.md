@@ -1,9 +1,24 @@
 # _HANDOFF — TUI 渲染层重写（c399 pi-tui line-array 引擎）
 
-> 交接日期：2026-07-06（阶段 3 核心完成）
-> 分支：`feat/tui-dev`（14 个未 push commit，远端停在 `4c724c1`）
-> 变更：`c399-tui-rewrite-pi-render-engine`（active，46/68 tasks 完成，**阶段 1+2+3 核心（路由/keybindings/listeners）就位**）
-> 接手者：用 `/llman-sdd-apply c399-tui-rewrite-pi-render-engine` 续做。
+> 交接日期：2026-07-07（阶段 4 完成，待手动验证 + 归档）
+> 分支：`feat/tui-dev`（15 个未 push commit，远端停在 `4c724c1`）
+> 变更：`c399-tui-rewrite-pi-render-engine`（active，阶段 1-4 完成；剩手动验证 + 归档）
+> 接手者：**阶段 5 收尾**——跑真实终端手动验证清单，全过后 `llman sdd validate --strict` + 归档。
+
+---
+
+## ⚠️ 当前状态（2026-07-07）
+
+**阶段 4 已完成**：新引擎已接入主循环，ratatui 完全删除。
+- `cargo check --features tui` ✅、`just fmt` ✅、`just lint`（clippy 无告警）✅
+- `cargo test --features tui` 758 测全绿（lib 672 + bdd 85 + 1）
+- arch_guard 4/4 ✅（TUI 不 import agent/infra）
+- `llman sdd validate`（非 strict）通过（剩 warning 是未勾的手动验证项 + overlay 推迟项 + 归档项）
+
+**待办（阶段 5 收尾，需用户）**：
+1. **手动验证清单**（tasks.md 阶段 5，需真实终端）：`cargo run --features tui` 后逐项验收。
+2. 全过后 `llman sdd validate c399-tui-rewrite-pi-render-engine --strict` + 勾手动项。
+3. 归档 c399。
 
 ---
 
@@ -103,25 +118,39 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 
 **推迟到阶段 4**：bracketed paste（主循环才见 Event::Paste）、overlay（聊天 UI 不需要 modal）、commands 对接（host loop 拿 Slash 调 `commands::dispatch`）。
 
+### 阶段 4：接入主循环 + 删除 ratatui ✅
+单次大重构（合并原计划 4a/4b/4c，避免 ratatui/tui 双轨中间态）。**ratatui 完全删除**，新引擎全权接管。
+
+**核心设计决策**：
+1. **host ↔ engine 桥 = `Rc<RefCell<T>>` + `SharedComponent` shim**（关键）。引擎拥有 `root: Box<dyn Component>`，但 `set_root` 是 `#[cfg(test)]`、`root` 是 trait object 无法 downcast 到 `Container::add`——**引擎没有生产 API 让 host 增长渲染树**。技能明确「host 自己拥有 transcript surface」(`ux.md:285-301`)。解法：transcript/input/loader 三个 widget 各包 `Rc<RefCell<>>`，再包一层 `SharedComponent<T: Component>`（impl Component 转发到 borrow）塞进 root Container；host 保留 `Rc` 克隆直接 mutate，引擎 render 时 borrow。两者不重叠（host 在 select! 分支 mutate，引擎在 try_render 时 borrow）。
+2. **主循环 = spawn_blocking poll + tokio::select! 三路**（用户决策方案 A）。键盘任务用独立 `event::poll/read`（spawn_blocking），与 `ProcessTerminal::write` 到 stdout 不冲突——新引擎**不做 DSR 光标查询**（旧 ratatui inline 才有那个 stdin 争用），所以更安全。select! 在键盘 Msg/XyEvent/Tick 三路。保留 `spawn_drain` 语义。
+3. **`RenderedLine` seam 保留**（UI 数据类型仍是好设计）。`to_lines(width)` 改产 `Vec<StyledLine>`：markdown 变体调新 `widgets::markdown::render_markdown`（passthrough + 代码块高亮）；单行变体用 `theme::Palette` 的 `CellStyle`。`xyevent_to_rendered` seam 不变。
+4. **StreamBuffer 保留**（不简化）。line-array 不改变逐字流式的 pending/committed 边界语义；fence-aware drain 保证代码块完整 commit 让高亮正确——仍是必需。
+5. **theme.rs 迁到 CellStyle**。`Palette` 方法从返回 ratatui `Style` 改返回 `engine::style::CellStyle`。颜色枚举一一对应。
+6. **syntect_highlight 迁移**。`StyleSegment.style` 从 `ratatui_core::style::Style` 改 `engine::style::CellStyle`；`highlight()` 直接产 CellStyle，**删除** `engine_ratatui_style_adapter.rs`。文件从 `components/` 迁到 `src/app/tui/syntect_highlight.rs`。
+7. **pending_tail 双轨**。`app.rs::TuiApp::pending_tail()` 仍返回 `(&str, MutableKind)`；host 的 `pending_tail_rows(app, width)` helper 把它 wrap 成 `Vec<StyledLine>` 喂给 `TranscriptWidget::set_pending`——line-array 模型下语义等价（mutable tail 每帧覆盖 pending 区）。
+
+**删除**（~2700 行旧代码 + ~82 测）：
+- `src/app/tui/components/` 整个目录（bottom_panel/input_prompt/markdown/markdown_render/mod/mutable_line/spinner/status_line/tail/transcript_line；syntect_highlight 迁出后删）。
+- `src/app/tui/terminal.rs`（旧 InlineTerminal）、`src/app/tui/input.rs`（旧 `handle` + `InputOutcome`，被 `UxOutcome` + `widgets::input` 取代）。
+- `src/app/tui/engine_ratatui_style_adapter.rs`。
+- `init.rs` 的 ratatui 部分（`DefaultTerminal`/`try_init_with_options`/`restore`；raw mode 生命周期由 `ProcessTerminal` 接管；保留 panic hook）。
+- `app.rs` 的 input 字段 + 方法（`push_char`/`cursor_*`/`backspace`/`take_input`/`input_buffer`/`input_cursor` 等）——input 状态搬到 `widgets::input::Input`。
+- Cargo.toml：删 `ratatui-core`/`ratatui-crossterm`/`ratatui-widgets`；`tui` feature 重定义（`crossterm`/`unicode-width`/`unicode-segmentation`/`syntect`/`two-face`/`pulldown-cmark`）。
+
+**新增**：
+- `src/app/tui/transcript.rs`：`TranscriptWidget`（host 拥有的会话累积器，`lines` finalized + `pending` mutable tail；5 单测）。
+- `src/app/tui/mod.rs::SharedComponent<T>`：`Rc<RefCell<T>>` → `Component` 的转发 shim。
+- `src/app/tui/mod.rs::HostAction` + `handle_term_event` + `apply_host_action` + `apply_xy_event`：UxOutcome 翻译逻辑抽函数（可测，不持 Driver 的纯路由部分分离）。
+- `widgets/input.rs::insert_paste`：bracketed paste（Event::Paste → grapheme 级插入）。
+
+**测试变化**：840 → 758 测（删 ~82 ratatui TestBackend 绑定的旧测：render.rs 的 commit_harness/cursor_tests + components/* 的 widget 测）。行为覆盖转移：新 engine/widgets 的 156 测（virtual_terminal diff 不变量 + width CJK wrap + markdown 代码块高亮 + input grapheme 光标 + loader）已等价覆盖核心行为；markdown 扣子样式（c396 heading/bold/quote）是**有意降级**（c399 design：passthrough 默认，扣子留渐进增强），非回归。
+
 ---
 
-## 三、未完成（22/68 tasks，阶段 4-5）
+## 三、未完成（阶段 5 收尾，需用户手动验证）
 
-### 阶段 3 余项（随阶段 4 接入）⏳
-- bracketed paste（crossterm `Event::Paste` → Input 插入）。
-- Overlay 栈最小版（**推迟**——聊天 UI 当前不需要 modal；design.md 最小版先行，留到 settings dialog）。
-- 适配 commands.rs（host loop 拿 `UxOutcome::Slash(body)` 调 `commands::dispatch`）。
-
-### 阶段 4：接入主循环 + 删除 ratatui ⏳（关键转折点）
-- `mod.rs::run` 改用新 `Tui` 引擎；保留 Driver 调用 + `spawn_drain` 语义 + `Msg` 通道骨架。
-- `app.rs::pending_tail` 改返回 `Vec<StyledLine>`（mutable tail 直接并入 line-array）。
-- StreamBuffer 简化（line-array 天然整源上下文，fence-aware drain 可大幅简化或移除）。
-- `render.rs::RenderedLine` seam 保留；`to_lines` 改产出 `Vec<StyledLine>`。
-- **删除**：`components/` 目录、`terminal.rs`(旧)、`init.rs`(旧 ratatui 部分)、`InlineTerminal`/`commit_to_scrollback`/`draw_tail_frame`/`insert_before`。
-- **Cargo.toml**：删 `ratatui-core`/`ratatui-crossterm`/`ratatui-widgets`，`tui` feature 重定义（`unicode-segmentation` 已在 2.3 加入）。
-- `engine_ratatui_style_adapter.rs` 删除（syntect_highlight 改产 CellStyle）。
-
-### 阶段 5：回归 + QA + 手动验证 ⏳
+### 阶段 4 余项 ⏳（无——已完成，见上）
 - `just fmt`/`lint`/`test`/`qa` 全绿。
 - arch_guard 通过（TUI 不 import crate::agent/infra）。
 - **手动验证清单**（给用户的验收指引）：

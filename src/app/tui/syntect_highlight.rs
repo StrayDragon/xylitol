@@ -1,27 +1,31 @@
-//! syntect-based code highlighter + segment→line converter (c395).
+//! syntect-based code highlighter (c395, migrated to CellStyle in c399 stage 4).
 //!
-//! Self-contained module: no dependency on the vendored ratatui-markdown.
-//! `StyleSegment` + `segments_to_lines` are migrated from the vendored
-//! `highlight/segment.rs`; `SyntectHighlighter` is migrated from
-//! `highlight/syntect_bridge.rs` (derived from codex's
-//! `render/highlight.rs` minimal subset). Fixed CatppuccinMocha theme.
+//! Self-contained module: `highlight()` returns `Vec<StyleSegment>` whose style
+//! is the engine's own [`CellStyle`] (no ratatui dependency). The c396 layer
+//! previously emitted `ratatui_core::style::Style`; c399 stage 4 removed ratatui
+//! entirely, so this layer now emits `CellStyle` directly and the transitional
+//! `engine_ratatui_style_adapter` is gone.
+//!
+//! `SyntectHighlighter` is migrated from the vendored `highlight/syntect_bridge.rs`
+//! (derived from codex's `render/highlight.rs` minimal subset). Fixed
+//! CatppuccinMocha/Latte theme picked via `COLORFGBS`.
 
 use std::sync::OnceLock;
 
-use ratatui_core::style::{Color, Modifier, Style};
-use ratatui_core::text::{Line, Span};
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{FontStyle, Style as SyntectStyle};
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
 use two_face::theme::EmbeddedThemeName;
 
+use crate::app::tui::engine::style::{CellStyle, Color};
+
 /// A styled byte range within source code (global byte offsets).
 #[derive(Debug, Clone, Copy)]
 pub struct StyleSegment {
     pub start: usize,
     pub end: usize,
-    pub style: Style,
+    pub style: CellStyle,
 }
 
 /// Safety guardrails (from codex): reject oversized inputs to avoid
@@ -106,17 +110,17 @@ fn theme() -> syntect::highlighting::Theme {
     two_face::theme::extra().get(name).clone()
 }
 
-/// syntect `Style` → ratatui `Style`. Skips background, keeps BOLD, skips
+/// syntect `Style` → engine `CellStyle`. Skips background, keeps BOLD, skips
 /// italic/underline (poor terminal support, see codex comments).
-fn convert_style(syn_style: SyntectStyle) -> Style {
-    let mut rt_style = Style::default();
+fn convert_style(syn_style: SyntectStyle) -> CellStyle {
+    let mut style = CellStyle::default();
     if let Some(fg) = convert_syntect_color(syn_style.foreground) {
-        rt_style = rt_style.fg(fg);
+        style.fg = Some(fg);
     }
     if syn_style.font_style.contains(FontStyle::BOLD) {
-        rt_style.add_modifier |= Modifier::BOLD;
+        style.bold = true;
     }
-    rt_style
+    style
 }
 
 fn convert_syntect_color(color: syntect::highlighting::Color) -> Option<Color> {
@@ -167,114 +171,6 @@ fn find_syntax(lang: &str) -> Option<&'static SyntaxReference> {
     ss.find_syntax_by_extension(lang)
 }
 
-/// Convert highlighted segments into per-line `Vec<Line>` with width wrapping.
-/// `prefix` is prepended to every line (e.g. indent); pass "" for none.
-pub fn segments_to_lines(
-    source: &str,
-    segments: &[StyleSegment],
-    prefix: &str,
-    prefix_style: Style,
-    max_width: usize,
-) -> Vec<Line<'static>> {
-    let prefix_width = unicode_width::UnicodeWidthStr::width(prefix);
-    let mut lines: Vec<Line<'static>> = Vec::new();
-    let mut line_start: usize = 0;
-    for raw_line in source.split('\n') {
-        let line_end = line_start + raw_line.len();
-        let line_segs: Vec<StyleSegment> = segments
-            .iter()
-            .filter(|s| s.start < line_end && s.end > line_start)
-            .map(|s| StyleSegment {
-                start: s.start.saturating_sub(line_start),
-                end: s.end.min(line_end).saturating_sub(line_start),
-                style: s.style,
-            })
-            .filter(|s| s.start < s.end)
-            .collect();
-        let mut wrapped = wrap_line(
-            raw_line.replace('\t', "    ").as_str(),
-            &line_segs,
-            prefix,
-            prefix_width,
-            prefix_style,
-            max_width,
-        );
-        lines.append(&mut wrapped);
-        line_start = line_end + 1;
-    }
-    lines
-}
-
-fn wrap_line(
-    text: &str,
-    segments: &[StyleSegment],
-    prefix: &str,
-    prefix_width: usize,
-    prefix_style: Style,
-    max_width: usize,
-) -> Vec<Line<'static>> {
-    let mut result = Vec::new();
-    if text.is_empty() {
-        let mut spans: Vec<Span<'static>> = Vec::new();
-        if !prefix.is_empty() {
-            spans.push(Span::styled(prefix.to_string(), prefix_style));
-        }
-        result.push(Line::from(spans));
-        return result;
-    }
-    let sorted: Vec<(usize, usize, Style)> =
-        segments.iter().map(|s| (s.start, s.end, s.style)).collect();
-    let mut seg_idx = 0;
-    let mut current_spans: Vec<Span<'static>> = Vec::new();
-    if !prefix.is_empty() {
-        current_spans.push(Span::styled(prefix.to_string(), prefix_style));
-    }
-    let mut current_len = prefix_width;
-    let mut byte_pos: usize = 0;
-    for ch in text.chars() {
-        let char_byte_start = byte_pos;
-        byte_pos += ch.len_utf8();
-        let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
-        if current_len + cw > max_width && current_len > prefix_width {
-            result.push(Line::from(std::mem::take(&mut current_spans)));
-            current_spans = Vec::new();
-            if !prefix.is_empty() {
-                current_spans.push(Span::styled(prefix.to_string(), prefix_style));
-            }
-            current_len = prefix_width;
-        }
-        let style = style_at_byte(&sorted, &mut seg_idx, char_byte_start);
-        if let Some(last) = current_spans.last_mut()
-            && last.style == style
-        {
-            last.content = format!("{}{}", last.content, ch).into();
-            current_len += cw;
-            continue;
-        }
-        current_spans.push(Span::styled(ch.to_string(), style));
-        current_len += cw;
-    }
-    if !current_spans.is_empty() {
-        result.push(Line::from(current_spans));
-    }
-    result
-}
-
-fn style_at_byte(
-    segments: &[(usize, usize, Style)],
-    seg_idx: &mut usize,
-    byte_pos: usize,
-) -> Style {
-    while *seg_idx < segments.len() && segments[*seg_idx].1 <= byte_pos {
-        *seg_idx += 1;
-    }
-    if *seg_idx < segments.len() && segments[*seg_idx].0 <= byte_pos {
-        segments[*seg_idx].2
-    } else {
-        Style::default()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,10 +192,14 @@ mod tests {
     }
 
     #[test]
-    fn segments_to_lines_multiline() {
-        let source = "line1\nline2\nline3";
-        let lines = segments_to_lines(source, &[], "", Style::default(), 80);
-        assert_eq!(lines.len(), 3);
+    fn style_segment_carries_cell_style() {
+        // c399 stage 4: segments now carry CellStyle directly (no ratatui).
+        let segs = highlight("rs", "fn main() {}");
+        for s in &segs {
+            // CellStyle fields are accessible; fg is Option<Color>.
+            let _ = s.style.fg;
+            let _ = s.style.bold;
+        }
     }
 
     // ── c396 theme selection (pure logic, no env races) ───────────────────
