@@ -231,3 +231,81 @@ fn input_submit_preserves_value_matching_pi() {
         "value must survive submit (pi parity)"
     );
 }
+
+// ── render scheduling (request_render / try_render throttle) ────────────────
+
+#[test]
+fn try_render_skips_when_not_requested() {
+    let term = LoggingVirtualTerminal::new(20, 5);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(LinesComponent::new(vec!["x"])));
+    // No request_render yet — try_render should no-op.
+    assert!(!tui.try_render(), "try_render without request should no-op");
+    assert_eq!(tui.terminal.write_count(), 0);
+}
+
+#[test]
+fn try_render_renders_after_request() {
+    let term = LoggingVirtualTerminal::new(20, 5);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(LinesComponent::new(vec!["x"])));
+    tui.request_render(false);
+    assert!(
+        tui.try_render(),
+        "first try_render after request should fire"
+    );
+    assert_eq!(tui.terminal.write_count(), 1);
+}
+
+#[test]
+fn try_render_throttles_within_16ms() {
+    let term = LoggingVirtualTerminal::new(20, 5);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(LinesComponent::new(vec!["x"])));
+
+    tui.request_render(false);
+    assert!(tui.try_render());
+    tui.terminal.clear_writes();
+
+    // Immediately request again — should be throttled (within 16ms).
+    tui.request_render(false);
+    assert!(
+        !tui.try_render(),
+        "second render within 16ms should be throttled"
+    );
+    assert_eq!(tui.terminal.write_count(), 0);
+}
+
+#[tokio::test]
+async fn try_render_fires_after_throttle_window() {
+    let term = LoggingVirtualTerminal::new(20, 5);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(LinesComponent::new(vec!["x"])));
+
+    tui.request_render(false);
+    assert!(tui.try_render());
+    tui.terminal.clear_writes();
+
+    // Wait past the 16ms window, then a pending request should fire.
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    tui.request_render(false);
+    assert!(tui.try_render(), "render after throttle window should fire");
+}
+
+#[test]
+fn request_render_force_resets_previous_state_for_full_redraw() {
+    let term = LoggingVirtualTerminal::new(20, 5);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(LinesComponent::new(vec!["first"])));
+    tui.render_frame(); // establish previous_lines
+    assert!(tui.full_redraws() >= 1);
+    let before = tui.full_redraws();
+
+    // force=true resets previous state, so next render is a full redraw.
+    tui.request_render(true);
+    tui.try_render();
+    assert!(
+        tui.full_redraws() > before,
+        "force request should trigger a full redraw"
+    );
+}
