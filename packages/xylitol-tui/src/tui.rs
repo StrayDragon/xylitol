@@ -291,13 +291,33 @@ impl<T: Terminal> TUI<T> {
         }
     }
 
-    fn handle_input(&mut self, data: &str) {
+    /// Route one decoded key/escape sequence to the focused component.
+    ///
+    /// Public so host loops (and tests) can feed input without going through
+    /// the blocking `start()` event loop. The data is the raw byte sequence
+    /// (e.g. `"\r"` for Enter, `"\x1b[A"` for Up) — the same form `start_impl`
+    /// produces from crossterm KeyEvents.
+    pub fn dispatch_input(&mut self, data: &str) {
         if let Some(idx) = self.focused_index
             && idx < self.components.len()
         {
             let input = data.to_string();
             self.components[idx].handle_input(&input);
         }
+    }
+
+    fn handle_input(&mut self, data: &str) {
+        self.dispatch_input(data);
+    }
+
+    /// Run one render pass: composite children + overlays, diff against the
+    /// previous frame, and write only the changed lines to the terminal.
+    ///
+    /// Public so host loops (and tests) can drive single frames instead of the
+    /// blocking `start()` loop. In a host-driven setup the host calls this after
+    /// state changes (input, async events, ticks).
+    pub fn render_frame(&mut self) {
+        self.do_render();
     }
 
     fn do_render(&mut self) {
