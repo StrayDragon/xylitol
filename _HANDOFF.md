@@ -1,9 +1,9 @@
-# _HANDOFF — TUI 渲染层重写（c399 pi-tui line-array 引擎）
+# _HANDOFF — TUI 布局未解问题记录
 
-> 交接日期：2026-07-07（阶段 4 + 两轮 bug 修复完成，待重验 + 归档）
-> 分支：`feat/tui-dev`（18 个未 push commit，远端停在 `4c724c1`）
-> 变更：`c399-tui-rewrite-pi-render-engine`（active，阶段 1-4 + bug 修复完成；剩手动重验 + 归档）
-> 接手者：**阶段 5 收尾**——真实终端手动重验清单，全过后 `llman sdd validate --strict` + 归档。
+> 最后更新：2026-07-07（c399 ✅ 已归档于 `1871c0f`；后续多轮 diff/重叠修复完成，但仍有未解布局问题）
+> 分支：`feat/tui-dev`（25 个未 push commit，远端停在 `4c724c1`）
+> 变更：`c399-tui-rewrite-pi-render-engine`（✅ 已归档）
+> 当前聚焦：未解问题——超终端高度后输入区 + spinner 状态行未钉住（见 ⚠️ 当前状态 → 未解问题记录）
 
 ---
 
@@ -17,10 +17,34 @@
 - `cargo check/fmt/lint` ✅；`cargo test --features tui` 764 测全绿（lib 678 + bdd 85 + 1）
 - arch_guard 4/4 ✅
 
-**待办（阶段 5 收尾，需用户重验）**：
-1. **手动重验清单**（tasks.md 阶段 5）：`cargo run --features tui` 后逐项验收（首轮 5 bug 已修，需确认 + 验其余项）。
-2. 全过后 `llman sdd validate c399 --strict` + 勾手动项。
-3. 归档 c399。
+**✅ c399 已归档**（`1871c0f`，阶段 5 收尾 + sdd validate --strict 通过）。
+
+后续多轮修复（归档后追加）：
+- `5e11468` 修复超一屏输出重叠/重复——对齐 pi Step 5C scrollback 处理
+- `f635ee2` cursor 回到 reverse 反色块 + 防泄漏
+- `033139d` 彻底重写 diff 管线对齐 pi——修多行流式重叠/重复残存 bug
+- `971de64` 环境变量 PI_CLEAR_ON_SHRINK → XYLITOL_TUI_CLEAR_ON_SHRINK
+
+> **注意**：`5e11468` + `033139d` 虽针对超一屏重叠/重复修复，但用户反馈仍有类似情况。见下方「未解问题记录」。
+
+### 未解问题记录 🧩
+
+#### [U1] 超终端高度后输入区 + spinner 状态行未钉住（2026-07-07）
+
+**描述**：对话内容超过终端可见高度后，底部输入区（`>` 行）与上方对话历史重叠/错位，输入区上方的 spinner/状态行（Ready/Working…）缺失或被截断。输入区被内容推走，未固定在底部。
+
+**截图分析佐证**：输入区与对话历史直接相邻无分隔；spinner/状态行缺失；画面有重复文字（疑似 scrollback 残留）。
+
+**用户设想**：输入框 + 上方 spinner 状态行应**始终钉在底部**（sticky footer），无论对话多长都保持在可视区域底部，不参与内容区 scrollback。
+
+**可参考方向**（供后续设计评审）：
+- pi 的 scrollback 管理器 + `ensureBottom` 逻辑（tui.ts）
+- 将 line-array 拆为「内容区 + 底部固定区」
+- 或引入 viewport 偏移锚定机制
+
+**与 c399 引擎设计的关系**：当前单一 line-array 模型（c399 D2）缺乏固定底部区域概念，sticky footer 需要打破此模型。属架构级决策，需独立变更（c401+）。
+
+**注意**：已有 `5e11468`/`033139d` 针对超一屏重叠修复，但用户反馈仍有类似问题——根因可能是 scrollback 管线本身没解决「底部输入区被推走」的布局问题。
 
 ### 手动验证 bug 记录（两轮，已修，供重验对照）
 | # | 症状 | 根因 | 修复 | commit |
@@ -262,24 +286,31 @@ c396（已归档）修了 markdown 样式表（标题分级/引用前缀/有序�
 
 ---
 
-## 七、commit 历史（19 个未 push）
+## 七、commit 历史（25 个未 push）
 
 ```
+971de64 refactor(tui): 环境变量 PI_CLEAR_ON_SHRINK → XYLITOL_TUI_CLEAR_ON_SHRINK
+033139d fix(tui): 彻底重写 diff 管线对齐 pi —— 修多行流式重叠/重复残存 bug
+f635ee2 fix(tui): cursor 回到 reverse 反色块 + 防泄漏（对齐 pi/kimi）
+5e11468 fix(tui): 修复超一屏输出重叠/重复 —— 对齐 pi Step 5C scrollback 处理
+f1cc2b3 fix(tui): cursor 改纯 fg 不发 bg —— 修复光标 bg 泄漏到后续 span
+e3cb290 feat(tui): 输入区光标主题感知 + COLORFGBG 检测接通 Palette
+1871c0f docs(sdd): 归档 c399-tui-rewrite-pi-render-engine — TUI pi-render-engine 重写完成
+b2e54f4 docs(sdd): c399 阶段 5 收尾 — tasks 勾选 + sdd validate --strict 通过
+082acae docs: 补阶段 4 commit hash 到 _HANDOFF
 03c0b73 fix(tui): c399 loader 状态机 bug — 对话结束渲染被 16ms 节流跳过
+37308f7 docs: update _HANDOFF — CJK 修复记录 + 背景色透明确认（同 pi inline）
 272eead fix(tui): c399 CJK 输入修复 — 末尾光标覆盖最后一个字符而非丢字
+01da4dd docs: update _HANDOFF — 阶段 4 bug 修复记录 + 后续规划（OSC11/Markdown 扣子/Overlay）
 3d47a66 fix(tui): c399 阶段 4 手动验证 bug 修复（背景色/spinner/输入/thinking）
 3d23965 feat(tui): c399 阶段 4 — 接入新引擎主循环 + 删除 ratatui（line-array 重写）
+9e275a8 docs: 补阶段 3 commit hash 到 _HANDOFF
 57d2e2d feat(tui): c399 阶段 3 — UX 层（keybindings + 单焦点路由 + input listeners）
 320332a feat(tui): c399 阶段 2.4 — Loader widget（spinner + host tick 驱动，阶段 2 完成）
 1529f95 feat(tui): c399 阶段 2.3 — Input widget（单行 Focusable + grapheme 光标 + 横向滚动）
 0507751 docs: update _HANDOFF — c399 pi-tui 重写进度交接（38/68 tasks，阶段 1 完成）
 7939c44 feat(tui): c399 阶段 2.1+2.2 — 基础 widget + Markdown（纯透传 + 代码块高亮）
 4ac31fb feat(tui): c399 阶段 1.6 — virtual_terminal 测试 harness（阶段 1 完成）
-2fe9c56 feat(tui): c399 阶段 1.5 — engine tui.rs（differential render 核心引擎）
-0504288 feat(tui): c399 阶段 1.4 — engine component.rs（Component/Container/Focusable）
-e5659c2 feat(tui): c399 阶段 1.3 — engine terminal.rs（crossterm Terminal 抽象）
-5dd0f19 feat(tui): c399 阶段 1.2 — engine width.rs（StyledLine 截断/换行）
-c7ecb7d feat(tui): c399 阶段 1.1 — engine style.rs 自有样式类型 + ANSI 序列化
 2cdbd89 docs(sdd): propose c399 TUI pi-render-engine rewrite; archive c396; drop c397/c398
 971a379 agentdev: update skills（环境侧，非本任务）
 19b115e feat(tui): markdown 样式分级修复 (c396 第一梯队)
