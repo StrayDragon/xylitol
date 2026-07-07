@@ -195,7 +195,15 @@ impl<T: Terminal> Tui<T> {
         let height_changed = self.previous_height != 0 && self.previous_height as usize != height;
 
         // 1. widget tree → line array
-        let raw_lines = self.root.render(width);
+        let mut raw_lines = self.root.render(width);
+        // 1b. Pad to at least terminal height (pi tui.ts:1065-1068).
+        //     Without this, short content leaves blank rows below and the
+        //     footer (loader + input) drifts to the middle instead of
+        //     anchoring to the bottom. Extra empty StyledLines create blank
+        //     rows that push the footer down.
+        while raw_lines.len() < height {
+            raw_lines.push(StyledLine::empty());
+        }
         // 2. extract + strip CURSOR_MARKER, apply line resets, check widths
         let (new_lines, cursor_pos) = self.post_process_lines(&raw_lines, width)?;
 
@@ -593,6 +601,10 @@ impl<T: Terminal> Tui<T> {
     pub(crate) fn render_requested(&self) -> bool {
         self.render_requested
     }
+    #[cfg(test)]
+    pub(crate) fn viewport_top(&self) -> usize {
+        self.previous_viewport_top
+    }
 
     // ── UX routing (c399 stage 3) ───────────────────────────────────────────
 
@@ -693,6 +705,7 @@ mod tests {
     #[test]
     fn first_render_writes_all_lines_without_clearing() {
         // Strategy A: first render preserves scrollback above (no \x1b[2J).
+        // After c400 padding: render always pads to terminal height (24).
         let mut tui = make_tui(80, 24, vec!["hello", "world"]);
         tui.render_now().unwrap();
         let out = tui.term_mut().written.clone();
@@ -704,7 +717,8 @@ mod tests {
             "first render must NOT clear screen"
         );
         assert!(out.contains("\x1b[?2026l"), "sync end");
-        assert_eq!(tui.previous_line_count(), 2);
+        // Padded to terminal height (24).
+        assert_eq!(tui.previous_line_count(), 24);
     }
 
     #[test]
@@ -722,15 +736,16 @@ mod tests {
 
     #[test]
     fn append_only_writes_new_lines() {
-        // Append case: adding a line should rewrite only the new line region
-        // (not the whole screen). The changed range starts at the old length.
+        // Append after c400 padding: both frames padded to height=24.
+        // Changed range should be exactly the new-appended lines only.
         let term = CapturingTerminal::new(80, 24);
         let widget = LinesWidget {
             lines: vec![StyledLine::raw("a"), StyledLine::raw("b")],
         };
         let mut tui = Tui::new(term, Box::new(widget));
         tui.render_now().unwrap();
-        assert_eq!(tui.last_changed_range(), Some((0, 1)));
+        // First frame: all 24 lines are new (from empty prev).
+        assert_eq!(tui.last_changed_range(), Some((0, 23)));
         tui.term_mut().written.clear();
 
         // Swap widget to append a line.
@@ -746,7 +761,8 @@ mod tests {
         let out = tui.term_mut().written.clone();
         assert!(out.contains("c"), "new line written");
         assert!(!out.contains("\x1b[2J"), "no full clear on append");
-        // Changed range should start at index 2 (the new line).
+        // Only the changed line (index 2, the new "c") should be rewritten.
+        // Padded empty lines (3..23) are identical in both frames.
         assert_eq!(tui.last_changed_range(), Some((2, 2)));
     }
 
@@ -807,26 +823,19 @@ mod tests {
 
     #[test]
     fn shrink_triggers_clear_on_shrink_full_redraw() {
-        // Content 4 lines -> 2 lines: with clearOnShrink ON, the engine does a
-        // full redraw (clears the working area) rather than diff-clearing orphan
-        // rows. This reclaims stale rows left by the previous taller content
-        // (pi tui.ts:1361-1365).
-        let term = CapturingTerminal::new(80, 24);
-        let widget = LinesWidget {
-            lines: vec![
-                StyledLine::raw("a"),
-                StyledLine::raw("b"),
-                StyledLine::raw("c"),
-                StyledLine::raw("d"),
-            ],
-        };
-        let mut tui = Tui::new(term, Box::new(widget));
+        // After c400 padding: all content is padded to terminal height.
+        // clearOnShrink only triggers when content exceeds height. Use
+        // 30→20 lines with height=8 so un-padded shrink is detected.
+        let height: u16 = 8;
+        let term = CapturingTerminal::new(80, height);
+        let lines: Vec<StyledLine> = (0..30).map(|i| StyledLine::raw(&format!("L{i}"))).collect();
+        let mut tui = Tui::new(term, Box::new(LinesWidget { lines }));
         tui.set_clear_on_shrink(true);
         tui.render_now().unwrap();
         tui.term_mut().written.clear();
 
         let widget2 = LinesWidget {
-            lines: vec![StyledLine::raw("a"), StyledLine::raw("b")],
+            lines: (0..20).map(|i| StyledLine::raw(&format!("L{i}"))).collect(),
         };
         tui.set_root(Box::new(widget2));
         tui.render_now().unwrap();
@@ -915,31 +924,18 @@ mod tests {
 
     #[test]
     fn all_deletions_in_viewport_clears_in_place() {
-        // Pure tail-shrink that stays within the viewport (first >= n_new but
-        // first >= viewport_top): the all-deletions branch clears extras in
-        // place via \r\n\x1b[2K. Construct: height=24 (large), content 5 lines
-        // (viewport_top=0), shrink to 3 (first=3 >= n_new=3, within viewport).
-        let term = CapturingTerminal::new(80, 24);
-        let widget = LinesWidget {
-            lines: vec![
-                StyledLine::raw("L0"),
-                StyledLine::raw("L1"),
-                StyledLine::raw("L2"),
-                StyledLine::raw("L3"),
-                StyledLine::raw("L4"),
-            ],
-        };
-        let mut tui = Tui::new(term, Box::new(widget));
+        // After c400 padding: all content pads to height. Use 30→28 lines
+        // with height=8 so unpadded tail-shrink triggers all-deletions branch.
+        let height: u16 = 8;
+        let term = CapturingTerminal::new(80, height);
+        let lines: Vec<StyledLine> = (0..30).map(|i| StyledLine::raw(&format!("L{i}"))).collect();
+        let mut tui = Tui::new(term, Box::new(LinesWidget { lines }));
         tui.set_clear_on_shrink(false);
         tui.render_now().unwrap();
         tui.term_mut().written.clear();
 
         let widget2 = LinesWidget {
-            lines: vec![
-                StyledLine::raw("L0"),
-                StyledLine::raw("L1"),
-                StyledLine::raw("L2"),
-            ],
+            lines: (0..28).map(|i| StyledLine::raw(&format!("L{i}"))).collect(),
         };
         tui.set_root(Box::new(widget2));
         tui.render_now().unwrap();
@@ -954,7 +950,12 @@ mod tests {
             out.matches("\x1b[2K").count() >= 2,
             "orphan rows cleared: {out:?}"
         );
-        assert_eq!(tui.hardware_cursor_row, 2, "cursor at new content tail");
+        // Cursor ends at content tail after padding to height.
+        assert!(
+            tui.hardware_cursor_row == (height as usize).max(28).saturating_sub(1),
+            "cursor at new content tail (padded): got {}",
+            tui.hardware_cursor_row
+        );
     }
 
     #[test]
@@ -1364,5 +1365,82 @@ mod tests {
             !tui.render_requested(),
             "unhandled key should not request render"
         );
+    }
+
+    // ── c400: viewport anchoring tests ────────────────────────────────────
+
+    #[test]
+    fn viewport_top_follows_formula_when_growing_from_below_height() {
+        // Real scenario: content starts at 5 lines (below height=10),
+        // then grows to 15. Viewport must transition from 0 (all content
+        // visible) to tracking the tail (viewport_top = n - height).
+        //
+        // Expected:
+        //   n=5:  max(0, max(10,5)-10)  = 0
+        //   n=6:  max(0, max(10,6)-10)  = 0
+        //   ...
+        //   n=10: max(0, max(10,10)-10) = 0
+        //   n=11: max(0, max(10,11)-10) = 1
+        //   n=12: max(0, max(10,12)-10) = 2
+        //   n=13: max(0, max(10,13)-10) = 3
+        //   n=14: max(0, max(10,14)-10) = 4
+        //   n=15: max(0, max(10,15)-10) = 5
+
+        let height: u16 = 10;
+        let term = CapturingTerminal::new(80, height);
+        let mut tui = Tui::new(
+            term,
+            Box::new(LinesWidget {
+                lines: vec![StyledLine::raw("line0")],
+            }),
+        );
+        tui.render_now().unwrap();
+
+        for n in 2..=15 {
+            let lines: Vec<StyledLine> = (0..n)
+                .map(|i| StyledLine::raw(&format!("line{i}")))
+                .collect();
+            tui.set_root(Box::new(LinesWidget { lines }));
+            tui.render_now().unwrap();
+
+            let expected = (height as usize).max(n).saturating_sub(height as usize);
+            assert_eq!(
+                tui.viewport_top(),
+                expected,
+                "n={n}: viewport_top should be {expected} (max(height={height},n) - height)"
+            );
+        }
+    }
+
+    #[test]
+    fn viewport_top_follows_formula_when_growing_from_height_boundary() {
+        // Content grows from exactly height (10) → 15. Simpler variant
+        // of the above to isolate if the below→above transition matters.
+
+        let height: u16 = 10;
+        let term = CapturingTerminal::new(80, height);
+        let lines: Vec<StyledLine> = (0..10)
+            .map(|i| StyledLine::raw(&format!("line{i}")))
+            .collect();
+        let mut tui = Tui::new(term, Box::new(LinesWidget { lines }));
+        tui.render_now().unwrap();
+
+        assert_eq!(tui.viewport_top(), 0, "n=10 at height=10");
+
+        for delta in 1..=5 {
+            let n: usize = 10 + delta;
+            let lines: Vec<StyledLine> = (0..n)
+                .map(|i| StyledLine::raw(&format!("line{i}")))
+                .collect();
+            tui.set_root(Box::new(LinesWidget { lines }));
+            tui.render_now().unwrap();
+
+            let expected = (height as usize).max(n).saturating_sub(height as usize);
+            assert_eq!(
+                tui.viewport_top(),
+                expected,
+                "n={n}: viewport_top should be {expected}"
+            );
+        }
     }
 }
