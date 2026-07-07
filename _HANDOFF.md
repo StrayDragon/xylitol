@@ -10,7 +10,7 @@
 
 本节记录「先对齐 xylitol-tui 到 pi，再迁移 src/app/tui/」的执行进度。目标是让 `packages/xylitol-tui` 能独立 `cargo test` 通过、行为对齐 pi，**本次完全不动 `src/`**。
 
-### 已完成（9 commit）
+### 已完成（10 commit）
 
 | commit | 内容 |
 |---|---|
@@ -21,16 +21,18 @@
 | `3b79fee` | render 节流调度（request_render/try_render/render_now，16ms 节流）+ viewport 状态字段 + 5 测试 |
 | `2fff0c2` | 宽度溢出保护（RenderError crash guard）+ fullRender previousViewportTop 对齐 + 3 测试 |
 | `0e75ee6` | overlay 合成重写：workingHeight 含 minLinesNeeded / viewportStart 偏移 / extract_segments 样式继承 + 2 测试 |
+| `747939b` | differential render viewport scroll（pi Step 5C：CUD 到底行 + `\r\n` 滚动）+ diff 策略补全（firstChanged<viewport / 全删除上移 → fullRender）+ 3 测试 |
 
-测试总数：**158 个全绿**，clippy `--all-targets -D warnings` clean。
+**doRender 核心管线移植完成**：宽度保护 / fullRender viewport / overlay 合成 / differential viewport scroll / diff 策略 / render 节流全部对齐 pi。
+
+测试总数：**160 个全绿**，clippy `--all-targets -D warnings` clean。
 
 ### 进行中
 
-- **2b-3b**：differential render 的 viewport scroll（pi Step 5C：内容超一屏时 CUD 到底行 + `\r\n` 滚动）+ diff 策略补全（firstChanged<prevViewportTop 全屏、全删除分支 viewport 上移检查）。这是 doRender 最后一块。
+- **2c**：input.rs cursor 单位（CJK/emoji 用 grapheme/列宽而非字节）+ strict slice_by_column；loader 自驱动（随 render 调度）。
 
 ### 待办（剩余阶段）
 
-- **2c**：input.rs cursor 单位（CJK/emoji 用 grapheme/列宽而非字节）+ strict slice_by_column；loader 自驱动（随 render 调度，host tick 调 loader.tick）。
 - **3**：补齐缺失模块（pi 9 个：terminal_colors / native_modifiers / image + terminal_image / settings_list / autocomplete / markdown / editor / editor_component）。markdown 用 hook 方案（包不依赖 syntect，`syntax_highlight: Fn(lang,code)->String`）。
 - **4**：测试补齐（新模块测试 + stdin_buffer 59 case / kill_ring / undo_stack / overlay-non-capturing 1202 行 / overlay-options 541 行）。
 - **5**：验证（`cargo test/clippy/fmt` + 主 crate `just qa` 不回退）+ 文档（本文件 + packages/xylitol-tui/README）。

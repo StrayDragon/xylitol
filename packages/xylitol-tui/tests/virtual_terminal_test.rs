@@ -508,3 +508,74 @@ fn viewport_append_keeps_unchanged_top_lines_stable() {
     assert_eq!(vp[0], "stable", "unchanged top line must stay");
     assert_eq!(vp[1], "appended", "appended line must render");
 }
+
+// ── Component::tick (loader self-animation hook) ────────────────────────────
+
+#[test]
+fn loader_tick_advances_spinner_frame_and_signals_rerender() {
+    use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
+    use xylitol_tui::tui::Component;
+
+    let color = |s: &str| s.to_string();
+    let mut loader = Loader::new(
+        Box::new(color),
+        Box::new(color),
+        "loading".to_string(),
+        Some(LoaderIndicatorOptions {
+            frames: vec!["|".to_string(), "/".to_string(), "-".to_string()],
+            interval_ms: 80,
+        }),
+    );
+
+    // First render establishes frame 0.
+    let first = loader.render(20).join("");
+    let wants_render = Component::tick(&mut loader);
+    assert!(
+        wants_render,
+        "multi-frame loader tick should request rerender"
+    );
+    let second = loader.render(20).join("");
+    assert_ne!(first, second, "tick should advance the spinner frame");
+}
+
+#[test]
+fn single_frame_loader_tick_does_not_signal_rerender() {
+    use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
+    use xylitol_tui::tui::Component;
+
+    let color = |s: &str| s.to_string();
+    let mut loader = Loader::new(
+        Box::new(color),
+        Box::new(color),
+        "done".to_string(),
+        Some(LoaderIndicatorOptions {
+            frames: vec!["*".to_string()],
+            interval_ms: 80,
+        }),
+    );
+    assert!(
+        !Component::tick(&mut loader),
+        "single-frame loader should not request rerender"
+    );
+}
+
+// ── input strict slice (wide-char window boundary) ──────────────────────────
+
+#[test]
+fn input_render_handles_cjk_in_visible_window_without_panic() {
+    use xylitol_tui::components::input::Input;
+    use xylitol_tui::tui::Component;
+
+    // Narrow window (6 cols) with CJK content wider than the window — the
+    // strict slice must not split the wide char and must not panic.
+    let mut input = Input::new();
+    input.set_focused(true);
+    for ch in "你好世界测试".chars() {
+        input.handle_input(&ch.to_string());
+    }
+    // Render into a 10-col terminal ("> " prompt + 8-col window); should produce
+    // exactly one line without panicking.
+    let lines = input.render(10);
+    assert_eq!(lines.len(), 1, "input renders a single line");
+    assert!(!lines[0].is_empty());
+}
