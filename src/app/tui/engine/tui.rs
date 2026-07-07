@@ -67,17 +67,17 @@ pub struct Tui<T: Terminal> {
     input_listeners: Vec<Box<dyn InputListener>>,
     /// Whether a shrink below `max_lines_rendered` triggers a full redraw
     /// (pi tui.ts:1361-1365 `clearOnShrink`). Set at construction from
-    /// `$PI_CLEAR_ON_SHRINK` (default on); tests override via
+    /// `$XYLITOL_TUI_CLEAR_ON_SHRINK` (default on); tests override via
     /// [`set_clear_on_shrink`](Self::set_clear_on_shrink) to stay deterministic.
     clear_on_shrink: bool,
 }
 
 /// Whether `clearOnShrink` (full redraw when content shrinks below the working
-/// area high-water) is enabled. Reads `$PI_CLEAR_ON_SHRINK`; defaults to
-/// enabled (pi's default). Set `PI_CLEAR_ON_SHRINK=0` to disable.
+/// area high-water) is enabled. Reads `$XYLITOL_TUI_CLEAR_ON_SHRINK`; defaults
+/// to enabled (pi's default). Set `XYLITOL_TUI_CLEAR_ON_SHRINK=0` to disable.
 fn clear_on_shrink_enabled() -> bool {
     !matches!(
-        std::env::var("PI_CLEAR_ON_SHRINK").ok().as_deref(),
+        std::env::var("XYLITOL_TUI_CLEAR_ON_SHRINK").ok().as_deref(),
         Some("0" | "false")
     )
 }
@@ -128,7 +128,7 @@ impl<T: Terminal> Tui<T> {
         &mut self.term
     }
 
-    /// Override the `clearOnShrink` behavior (defaults from `$PI_CLEAR_ON_SHRINK`).
+    /// Override the `clearOnShrink` behavior (defaults from `$XYLITOL_TUI_CLEAR_ON_SHRINK`).
     /// Tests use this for determinism; production leaves the default.
     #[cfg(test)]
     pub(crate) fn set_clear_on_shrink(&mut self, on: bool) {
@@ -207,7 +207,7 @@ impl<T: Terminal> Tui<T> {
         // clearOnShrink (pi tui.ts:1361-1365): when content has shrunk below
         // the working-area high water mark, a diff would leave stale orphan
         // rows; force a full redraw to reclaim them. Toggleable via
-        // PI_CLEAR_ON_SHRINK (defaults on, like pi).
+        // XYLITOL_TUI_CLEAR_ON_SHRINK (defaults on, like pi).
         let n_new = new_lines.len();
         let clear_on_shrink = self.previous_lines.len() > n_new
             && n_new < self.max_lines_rendered
