@@ -223,11 +223,10 @@ impl Renderer {
         if code.is_empty() {
             return;
         }
-        // syntect highlight pass (reuses the c396 highlighter). The c396
-        // highlight() returns StyleSegment with ratatui Style; we convert to our
-        // CellStyle here. Unrecognized language or oversized -> plain fallback.
-        let segments =
-            crate::app::tui::components::syntect_highlight::highlight(lang.unwrap_or(""), code);
+        // syntect highlight pass. c399 stage 4: highlight() now returns
+        // StyleSegment with CellStyle directly (no ratatui). Unrecognized
+        // language or oversized -> plain fallback.
+        let segments = crate::app::tui::syntect_highlight::highlight(lang.unwrap_or(""), code);
         if segments.is_empty() {
             // Plain fallback: emit each code line unstyled, wrapped to width.
             for raw_line in code.split('\n') {
@@ -252,7 +251,7 @@ impl Renderer {
     fn emit_highlighted_code(
         &mut self,
         code: &str,
-        segments: &[crate::app::tui::components::syntect_highlight::StyleSegment],
+        segments: &[crate::app::tui::syntect_highlight::StyleSegment],
     ) {
         let mut current_line = StyledLine::new();
         let mut current_w = 0usize;
@@ -298,18 +297,17 @@ impl Renderer {
     }
 }
 
-/// Convert a ratatui-typed `StyleSegment`'s style to our `CellStyle`, looked up
-/// by byte position in the source. Mirrors c396's convert_style/convert_syntect_color.
+/// Look up the [`CellStyle`] for a byte position in the highlighted source.
+/// Segments are sorted, non-overlapping byte ranges produced by
+/// [`crate::app::tui::syntect_highlight::highlight`]. c399 stage 4: segments
+/// carry `CellStyle` directly, so this is a plain range lookup (no adapter).
 fn style_at_byte(
-    segments: &[crate::app::tui::components::syntect_highlight::StyleSegment],
+    segments: &[crate::app::tui::syntect_highlight::StyleSegment],
     byte_pos: usize,
 ) -> CellStyle {
-    // Find the segment covering byte_pos (segments are sorted, non-overlapping).
     for seg in segments {
         if seg.start <= byte_pos && byte_pos < seg.end {
-            // ratatui Style → CellStyle via the transitional adapter.
-            return crate::app::tui::engine_ratatui_style_adapter::RatatuiStyle(seg.style)
-                .into_cell_style();
+            return seg.style;
         }
     }
     CellStyle::default()

@@ -60,28 +60,23 @@ axum = { version = "0.8", features = ["ws"], optional = true }
 tokio-tungstenite = { version = "0.29", features = ["connect", "handshake"], optional = true }
 tower-http = { version = "0.7", features = ["cors"], optional = true }
 
-# ── terminal rendering (optional diff_review backend) ──
-# ratatui-core/crossterm are pulled in only when the `tui` feature is on.
-# We depend on ratatui-core + ratatui-crossterm directly (not the umbrella
-# ratatui crate) — see c341. c360放宽了c341的widget禁令：ratatui-widgets
-# 子集（Paragraph/Block/List/Clear）能复用就复用，不符合则基于 core 自建。
-ratatui-core = { version = "0.1.2", default-features = false, features = ["std"], optional = true }
-ratatui-crossterm = { version = "0.1.2", default-features = false, features = ["crossterm_0_29", "scrolling-regions", "unstable-backend-writer"], optional = true }
-ratatui-widgets = { version = "0.3", default-features = false, optional = true }
+# ── terminal rendering (c399: ratatui removed; crossterm + self-owned engine) ──
+# c399 rewrote the TUI from ratatui's inline-viewport model to a pi-tui style
+# line-array + differential-rendering engine (src/app/tui/engine/). crossterm
+# is the only terminal backend; unicode-width/segmentation, syntect/two-face,
+# and pulldown-cmark drive the self-owned style/markdown/highlight layers.
 crossterm = { version = "0.29.0", optional = true }
-# Display-width for CJK cursor alignment (ratatui uses it too; we need it directly).
+# Display-width for CJK cursor alignment and line wrapping.
 unicode-width = { version = "0.2", optional = true }
 # Grapheme cluster segmentation for grapheme-level cursor movement in the Input
 # widget (c399 stage 2.3). unicode-width alone is not enough for emoji+ZWJ
 # sequences (e.g. 👨‍👩‍👧) — cursor must move by whole grapheme, not by char.
 unicode-segmentation = { version = "1", optional = true }
-# Syntax highlighting for the vendored markdown renderer (c370). Pure-Rust
-# (fancy regex, no oniguruma C dep). two-face bundles ~250 grammars + themes
-# at compile time. Gated behind `tui`.
+# Syntax highlighting for code blocks (c370). Pure-Rust (fancy regex, no
+# oniguruma C dep). two-face bundles ~250 grammars + themes at compile time.
 syntect = { version = "5", default-features = false, features = ["default-fancy"], optional = true }
 two-face = { version = "0.5", default-features = false, features = ["syntect-default-fancy"], optional = true }
-# Markdown parser for the self-researched TUI renderer (c395). Pull parser,
-# pure parsing. Gated behind `tui`.
+# Markdown parser for the TUI markdown widget (c395/c399). Pull parser, pure parsing.
 pulldown-cmark = { version = "0.13", default-features = false, optional = true }
 
 [features]
@@ -90,8 +85,8 @@ default = ["cli"]
 cli = []
 # Always-on HTTP/WebSocket server.
 server = ["dep:axum", "dep:tokio-tungstenite", "dep:tower-http"]
-# Terminal UI (ratatui-core/crossterm backend; ratatui-widgets optional subset — c360).
-tui = ["dep:ratatui-core", "dep:ratatui-crossterm", "dep:ratatui-widgets", "dep:crossterm", "dep:unicode-width", "dep:unicode-segmentation", "dep:syntect", "dep:two-face", "dep:pulldown-cmark"]
+# Terminal UI (c399: crossterm backend + self-owned line-array engine; ratatui removed).
+tui = ["dep:crossterm", "dep:unicode-width", "dep:unicode-segmentation", "dep:syntect", "dep:two-face", "dep:pulldown-cmark"]
 # Future GUI placeholder.
 gui = []
 

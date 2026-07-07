@@ -1,12 +1,10 @@
 //! Semantic color tokens — the single source of truth for TUI color.
 //!
 //! Components MUST NOT hardcode color literals; they go through [`palette`].
-//! Mirrors kimi-code `theme/colors.ts`: a small set of semantic tokens mapped
-//! to ratatui `Style`, so the whole surface restyles from one place.
+//! c399 stage 4: tokens now return the engine's own [`CellStyle`] / [`Color`]
+//! (previously ratatui `Style`). The whole TUI no longer depends on ratatui.
 
-use ratatui_core::style::Color;
-use ratatui_core::style::Modifier;
-use ratatui_core::style::Style;
+use crate::app::tui::engine::style::{CellStyle, Color};
 
 /// Semantic palette. Add tokens here, never inline `Color::...` in components.
 pub fn palette() -> Palette {
@@ -18,60 +16,45 @@ pub struct Palette;
 impl Palette {
     /// Primary accent (titles, selected pointer, focus).
     #[allow(dead_code)]
-    pub fn primary(&self) -> Style {
-        Style::default().fg(Color::Cyan)
+    pub fn primary(&self) -> CellStyle {
+        CellStyle::default().fg(Color::Cyan)
     }
 
     /// Dimmed/secondary text (hints, metadata).
-    pub fn text_dim(&self) -> Style {
-        Style::default().fg(Color::DarkGray)
+    pub fn text_dim(&self) -> CellStyle {
+        CellStyle::default().fg(Color::DarkGray)
     }
 
     /// Assistant message body.
-    pub fn assistant(&self) -> Style {
-        Style::default().fg(Color::Reset)
+    pub fn assistant(&self) -> CellStyle {
+        CellStyle::default().fg(Color::Reset)
     }
 
     /// User prompt echo (the `❯ <input>` line committed to scrollback on
     /// submit). Bold so the user can distinguish their input from the
     /// assistant reply in the scrollback history.
-    pub fn user_prompt(&self) -> Style {
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
+    pub fn user_prompt(&self) -> CellStyle {
+        CellStyle::default().fg(Color::Cyan).bold()
     }
 
     /// Tool execution labels.
-    pub fn tool(&self) -> Style {
-        Style::default().fg(Color::Yellow)
+    pub fn tool(&self) -> CellStyle {
+        CellStyle::default().fg(Color::Yellow)
     }
 
     /// Error messages.
-    pub fn error(&self) -> Style {
-        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+    pub fn error(&self) -> CellStyle {
+        CellStyle::default().fg(Color::Red).bold()
     }
 
     /// Spinner / in-progress indicator.
     #[allow(dead_code)]
-    pub fn spinner(&self) -> Style {
-        Style::default().fg(Color::Cyan)
+    pub fn spinner(&self) -> CellStyle {
+        CellStyle::default().fg(Color::Cyan)
     }
 
     /// Thinking / reasoning indicator (italic, dimmed) — pi-style "Thinking…".
-    pub fn thinking(&self) -> Style {
-        Style::default()
-            .fg(Color::DarkGray)
-            .add_modifier(Modifier::ITALIC)
-    }
-
-    /// Background fill for the bottom panel (chrome container). The panel
-    /// bg is the single surface fill for the input area (c365 route B).
-    pub fn panel_bg(&self) -> Color {
-        Color::Black
-    }
-
-    /// Border style for the bottom panel (dim, so the frame is calm not loud).
-    pub fn panel_border(&self) -> Style {
-        Style::default().fg(Color::DarkGray)
+    pub fn thinking(&self) -> CellStyle {
+        CellStyle::default().fg(Color::DarkGray).italic()
     }
 }
