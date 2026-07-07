@@ -14,6 +14,9 @@ pub use components::cancellable_loader::CancellableLoader;
 pub use components::input::Input;
 pub use components::loader::{Loader, LoaderIndicatorOptions};
 pub use components::panel::Panel;
+pub use components::settings_list::{
+    SettingItem, SettingsList, SettingsListOptions, SettingsListTheme,
+};
 pub use components::spacer::Spacer;
 pub use components::text::Text;
 pub use components::truncated_text::TruncatedText;
