@@ -943,16 +943,40 @@ impl<T: Terminal> TUI<T> {
         None
     }
 
+    /// Position the hardware cursor for IME (pi `positionHardwareCursor`).
+    ///
+    /// Default `show_hardware_cursor == false`: still move to the marker so
+    /// IME candidate windows track the edit point, but keep the cursor
+    /// **hidden** — the Editor's reverse-video fake cursor is the visible cue.
+    /// Showing the hardware cursor during streaming redraws causes flicker.
     fn position_cursor(&mut self, cursor_pos: Option<(usize, usize)>, total_lines: usize) {
-        if let Some((row, col)) = cursor_pos {
-            let vp = total_lines.saturating_sub(self.terminal.rows() as usize);
-            let sr = row.saturating_sub(vp);
-            if self.show_hardware_cursor {
-                self.terminal
-                    .write(&format!("\x1b[{};{}H", sr + 1, col + 1));
-            }
+        if cursor_pos.is_none() || total_lines == 0 {
+            self.terminal.hide_cursor();
+            return;
+        }
+        let (row, col) = cursor_pos.expect("checked above");
+        let target_row = row.min(total_lines.saturating_sub(1));
+        let target_col = col;
+
+        // Relative row move from the last known hardware position (pi), then
+        // absolute column (CHA). Avoids CUP-from-origin which desyncs once
+        // content has scrolled into the terminal scrollback.
+        let row_delta = target_row as isize - self.hardware_cursor_row as isize;
+        let mut buf = String::new();
+        if row_delta > 0 {
+            buf.push_str(&format!("\x1b[{}B", row_delta));
+        } else if row_delta < 0 {
+            buf.push_str(&format!("\x1b[{}A", -row_delta));
+        }
+        buf.push_str(&format!("\x1b[{}G", target_col + 1));
+        if !buf.is_empty() {
+            self.terminal.write(&buf);
+        }
+        self.hardware_cursor_row = target_row;
+
+        if self.show_hardware_cursor {
             self.terminal.show_cursor();
-        } else if !self.show_hardware_cursor {
+        } else {
             self.terminal.hide_cursor();
         }
     }
