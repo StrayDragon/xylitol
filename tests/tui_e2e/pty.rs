@@ -139,6 +139,21 @@ impl PtySession {
             }
         }
     }
+
+    /// True if the raw byte stream received so far contains `needle` (a byte
+    /// substring, e.g. a CSI escape sequence emitted at startup). Used to
+    /// assert protocol-negotiation sequences were sent (c410 tp01).
+    pub fn raw_contains(&self, needle: &[u8]) -> bool {
+        windows_two(self.buf.as_slice(), needle)
+    }
+}
+
+/// Naive substring search (the `buf` is small in tests; no need for memchr).
+fn windows_two(haystack: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return false;
+    }
+    haystack.windows(needle.len()).any(|w| w == needle)
 }
 
 // ── Tests (all #[ignore] — spec test-infra r8) ─────────────────────────────
@@ -168,5 +183,35 @@ fn pty_demo_survives_keypresses() {
     assert!(
         !screen.text().trim().is_empty(),
         "screen non-empty after keys"
+    );
+}
+
+/// c410 tp01: the demo emits the Kitty keyboard protocol query (CSI >7u) at
+/// start. We verify by scanning the raw PTY byte stream for the push sequence.
+#[test]
+#[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e`"]
+fn pty_kitty_query_emitted_at_start() {
+    let mut session = PtySession::spawn_demo(60, 15).expect("spawn demo");
+    session
+        .wait_for("Quit", Duration::from_secs(60), 60, 15)
+        .expect("demo should render (so start() has run)");
+    // CSI >7u = \x1b[>7u — the Kitty enhancement push pi/xy emit at start.
+    assert!(
+        session.raw_contains(b"\x1b[>7u"),
+        "Kitty query sequence CSI >7u should be in the startup byte stream"
+    );
+}
+
+/// c410 tp04: bracketed paste is enabled at start (CSI ?2004h).
+#[test]
+#[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e`"]
+fn pty_bracketed_paste_enabled_at_start() {
+    let mut session = PtySession::spawn_demo(60, 15).expect("spawn demo");
+    session
+        .wait_for("Quit", Duration::from_secs(60), 60, 15)
+        .expect("demo should render");
+    assert!(
+        session.raw_contains(b"\x1b[?2004h"),
+        "bracketed paste enable (CSI ?2004h) should be in the startup stream"
     );
 }

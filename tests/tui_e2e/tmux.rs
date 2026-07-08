@@ -41,7 +41,11 @@ impl TmuxSession {
     /// given size. Sets `TERM=xterm-256color` so SGR color sequences are
     /// generated. The session name is PID-suffixed for parallel safety.
     pub fn spawn_demo(cols: u16, rows: u16) -> std::io::Result<Self> {
-        let name = format!("xyl_e2e_{}", std::process::id());
+        // Unique per call: PID + a monotonic counter, so parallel tests in the
+        // same process don't collide on the session name.
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let name = format!("xyl_e2e_{}_{}", std::process::id(), n);
         // The session command runs in the workspace root (tmux starts sessions
         // in the current cwd, but the test process cwd may be outside it).
         let workspace = env!("CARGO_MANIFEST_DIR");
