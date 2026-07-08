@@ -51,6 +51,7 @@ pub struct VirtualTerminal {
     /// Cursor row/col (0-based) in the same coordinate space as `grid`.
     cursor_row: usize,
     cursor_col: usize,
+    auto_wrap: bool,
     /// Pending SGR attributes applied to the next printed char.
     attrs: Cell,
     /// Last set window title (OSC 0/2), if any.
@@ -68,6 +69,7 @@ impl VirtualTerminal {
             grid: vec![vec![Cell::default(); cols_us]; rows_us],
             cursor_row: 0,
             cursor_col: 0,
+            auto_wrap: true,
             attrs: Cell::default(),
             title: None,
         }
@@ -186,11 +188,14 @@ impl VirtualTerminal {
             self.grid[row][col] = cell;
         }
         self.cursor_col += 1;
-        // Implicit wrap when writing past the last column: xterm scrolls rather
-        // than wraps eagerly, but for differential-render tests the engine
-        // always emits explicit `\r\n`, so a simple clamp suffices.
         if self.cursor_col >= self.cols as usize {
-            self.cursor_col = self.cols as usize - 1;
+            if self.auto_wrap {
+                self.cursor_col = 0;
+                self.cursor_row += 1;
+                self.ensure_row(self.cursor_row);
+            } else {
+                self.cursor_col = self.cols as usize - 1;
+            }
         }
     }
 
@@ -475,6 +480,9 @@ impl Perform for VTPerformer<'_> {
                 self.vt.erase_in_line(mode);
             }
             'm' => self.vt.apply_sgr(params),
+            'h' | 'l' if nth_param(params, 0) == Some(7) => {
+                self.vt.auto_wrap = byte == 'h';
+            }
             _ => {}
         }
     }
