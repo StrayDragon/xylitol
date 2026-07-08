@@ -1,8 +1,8 @@
 # _HANDOFF — xylitol-tui：pi-tui 完整 Rust 重写（交接给下一个 agent）
 
-> 最后更新：2026-07-09（examples 收敛为 agent_demo，支持矩阵明确后）
-> 分支：`feat/tui-dev`，working tree dirty（含未提交 RenderError/Markdown table 修复）
-> 最新 commit：`13845c7 feat(tui): align exports + add show_all kitchen-sink demo`
+> 最后更新：2026-07-09（agent_demo 收敛已提交，补 palette/settings/narrow-CJK 验收后）
+> 分支：`feat/tui-dev`，working tree dirty（当前为 acceptance smoke + handoff 刷新）
+> 最新 commit：`9a86f6a refactor(tui): consolidate examples into agent demo`
 
 ---
 
@@ -10,11 +10,11 @@
 
 **目标**：把 `packages/xylitol-tui` 完整对齐 pi-tui（`kimi-code/packages/pi-tui`），**不考虑障碍，做好底层支持**。对齐后才替换 `src/app/tui/engine/`（路线 B）。
 
-**当前状态**：阶段 0-4 + c405/c410/c415/c420/c425/c430 已完成并入 commit；examples 正收敛为单一 `agent_demo` fake coding-agent 主场景。**22/22 可移植模块已建，editor/autocomplete 已大幅补齐；stdin-buffer 走 crossterm 替代路线，不再移植独立模块**（见 §二）。
+**当前状态**：阶段 0-4 + c405/c410/c415/c420/c425/c430 已完成并入 commit；`c440-refactor-tui-examples` 也已 archive，并把 examples 收敛为单一 `agent_demo` fake coding-agent 主场景。**22/22 可移植模块已建，editor/autocomplete 已大幅补齐；stdin-buffer 走 crossterm 替代路线，不再移植独立模块**（见 §二）。
 
 **怎么工作**：每个移植任务 = 一个 llman SDD 变更（`/llman-sdd-propose` → apply → archive → commit）。测试走 c405 五层 harness（见 §四）。pi 源在 `../kimi-code/packages/pi-tui`。
 
-**下一步**：复核 Markdown/Editor/overlay 细节 parity，补窄宽/emoji/真实终端 E2E；以 `agent_demo` 为唯一 example surface 稳定后再进入 §五 的 src/app/tui 路线 B 对接。
+**下一步**：继续复核 Markdown/Editor/overlay 细节 parity，补齐 command palette / settings / 窄宽 CJK/emoji 的真实终端 E2E；`agent_demo` 稳定后再进入 §五 的 `src/app/tui` 路线 B 对接。
 
 ---
 
@@ -23,11 +23,11 @@
 | 指标 | 数值 |
 |---|---|
 | 源码行数 | **11,751 行**（packages/xylitol-tui/src）|
-| 测试数 | **246 全绿**（xylitol-tui，本轮新增满宽 diff + Markdown table 回归）|
-| E2E | **6+ E2E**（PTY/tmux 围绕 `agent_demo` 主场景；协议 smoke 仍保留 kitty query + bracketed paste） |
+| 测试数 | **255 全绿**（`cargo test -p xylitol-tui`；`agent_demo` package 回归已纳入）|
+| E2E | **14 ignored E2E**（PTY/tmux 围绕 `agent_demo` 主场景；协议 smoke + palette/settings + 窄宽 CJK） |
 | clippy | `-p xylitol-tui --all-targets -D warnings` clean |
 | 已落地 spec | `tui-testing`(tt01-06) / `terminal-protocol`(tp01-04) / `paste-burst`(pb01-03) / c420-c430 SDD artifacts |
-| commit（重写起）| 25（`5c55d86`→`13845c7`）|
+| commit（重写起）| 26（`5c55d86`→`9a86f6a`）|
 
 ### 已完成变更
 
@@ -40,8 +40,9 @@
 | **c420** | autocomplete debounce + fd + CancellationToken | `5d977da` |
 | **c425** | editor core VisualLine+stickyColumn+pageScroll+history+PasteBurst | `af656b7` |
 | **c430** | editor autocomplete SelectList 集成 + SDD artifacts | `9b2c18d` |
+| **c440** | examples 收敛到单一 `agent_demo`，验收 harness / E2E 指向主场景 | `9a86f6a` |
 | stdin-buffer 决策 | 删除独立 stdin_buffer，采用 crossterm 事件解码 | `a21b829` |
-| examples 收敛 | 移除 `demo/showcase/show_all`，改成单一 `agent_demo` fake coding-agent 场景 | working tree |
+| examples 收敛 | 移除 `demo/showcase/show_all`，改成单一 `agent_demo` fake coding-agent 场景 | `9a86f6a` |
 | 未提交修复 | render batch 临时关闭 DECAWM 自动换行；Markdown table 窄宽/表头/样式 cell 修复 | working tree |
 
 ---
@@ -89,7 +90,7 @@ just qa                   # fmt + clippy + test
 git commit
 ```
 
-- **change id**：`c{priority}-{verb}-{subject}`，priority 5 的倍数，递增（下一个 c420）
+- **change id**：`c{priority}-{verb}-{subject}`，priority 5 的倍数，递增；按当前序列继续往 `c445+` 分配
 - **spec 命名**：领域名词（如 `paste-burst`，不是 `add-paste-burst`）
 - **TOON 格式坑**：值含空格/逗号/冒号/方括号必须双引号；`\x1b` 转义不支持（写 `CSI`）；数组声明 `[N]` 必须匹配行数
 - **strict 校验**：提案阶段 tasks 未勾选会报 warning（正常），全部完成 + design.md 存在才 strict 过
@@ -107,8 +108,8 @@ git commit
 | 2. insta snapshot | `viewport_snapshot()` | 整屏渲染回归 | `tests/snapshot_test.rs` + `tests/snapshots/` | 布局/颜色/换行变化 |
 | 3. 时序 | `Clock`/`MockClock` 或 `Instant` 参数 + `#[tokio::test(start_paused)]` | 确定性时间测试 | `src/clock.rs` | debounce/paste-burst/动画 |
 | 4. proptest | 随机按键 + 不变量 | 状态机崩溃边界 | `tests/property_test.rs` | editor 移植后加不变量 |
-| 5a. E2E 主力 | portable-pty + `CapturedScreen` | crossterm 真 PTY | `tests/tui_e2e.rs` + `tests/tui_e2e/pty.rs` | 启动序列/协议验证 |
-| 5b. 真终端冒烟 | tmux 手写 wrapper | 真 SGR 颜色 | `tests/tui_e2e/tmux.rs` | 颜色回归（`#[ignore]`）|
+| 5a. E2E 主力 | portable-pty + `CapturedScreen` | crossterm 真 PTY | `tests/tui_e2e.rs` + `tests/tui_e2e/pty.rs` | 启动序列/协议验证/主场景交互 smoke |
+| 5b. 真终端冒烟 | tmux 手写 wrapper | 真 SGR 颜色 | `tests/tui_e2e/tmux.rs` | 颜色回归 + 主场景 overlay/CJK smoke（`#[ignore]`）|
 
 ## 终端支持矩阵（当前决策）
 
