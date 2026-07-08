@@ -1,7 +1,6 @@
 use crate::terminal::Terminal;
 use crate::utils::visible_width;
 use std::collections::HashSet;
-use std::io::{self, Write};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
@@ -237,12 +236,12 @@ impl<T: Terminal> TUI<T> {
         quit_flag: Option<&Arc<AtomicBool>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         use crossterm::event::{self, Event};
-        use crossterm::terminal::enable_raw_mode;
 
         self.stopped = false;
+        // terminal.start() owns: raw mode + bracketed paste + keyboard
+        // protocol negotiation (Kitty push / modifyOtherKeys fallback, c410).
         self.terminal.hide_cursor();
-        enable_raw_mode()?;
-        io::stdout().write_all(b"\x1b[?2004h")?;
+        self.terminal.start();
         self.do_render()?;
 
         while !self.stopped {
@@ -283,7 +282,10 @@ impl<T: Terminal> TUI<T> {
             }
         }
 
-        io::stdout().write_all(b"\x1b[?2004l")?;
+        // Move cursor past rendered content before tearing down (so the shell
+        // prompt lands below the TUI output). Protocol/raw-mode cleanup is
+        // delegated to terminal.stop() (c410: pops Kitty, disables
+        // modifyOtherKeys, drains stdin, disables raw mode, shows cursor).
         if !self.previous_lines.is_empty() {
             let target_row = self.previous_lines.len();
             if target_row > self.hardware_cursor_row {
@@ -293,9 +295,7 @@ impl<T: Terminal> TUI<T> {
             self.terminal.write("\r\n");
         }
         self.terminal.flush();
-        crossterm::terminal::disable_raw_mode()?;
-        self.terminal.show_cursor();
-        self.terminal.flush();
+        self.terminal.stop();
         Ok(())
     }
 

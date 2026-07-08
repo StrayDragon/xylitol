@@ -10,11 +10,10 @@
 
 | 指标 | 数值 |
 |---|---|
-| commit 数（重写起） | 16（到 `451e8c4`） |
-| 测试数 | **xylitol-tui 194 + workspace 479 全绿**；E2E 4 实跑通过（2 pty + 2 tmux） |
-| clippy | `-p xylitol-tui` + `tests/tui_e2e` clean（注：lib test 仍有 22 个 pre-existing useless_conversion，非本支线引入） |
-| Rust 源码行数 | **9,473 行** |
-| pi-tui 参考行数 | 12,144 行 |
+| commit 数（重写起） | 待 commit（c410）|
+| 测试数 | **xylitol-tui 198**（+4 parse_kitty_flags）+ workspace 全绿；E2E **6 实跑通过**（3 pty + 2 tmux + 1 kitty query） |
+| clippy | `-p xylitol-tui` + `tests/tui_e2e` clean |
+| Rust 源码行数 | terminal.rs 85 → ~280 行（c410）|
 
 ### 已完成阶段
 
@@ -31,6 +30,7 @@
 | 3 | 补齐 7 个缺失模块（terminal_colors/image/autocomplete/markdown/editor 等） | +7 模块 |
 | 4 | 修 clippy warnings，编辑器与 markdown 补测 | 183 全绿 |
 | **c405** | **五层 TUI 测试 harness（键序列/snapshot/时序/proptest/E2E）** | **+11 测试 + 4 E2E，spec tt01-06 落地** |
+| **c410** | **terminal 协议补齐（Kitty 探测 + modifyOtherKeys + OSC 标题/进度 + drainInput）** | **+4 单测 + 2 E2E，spec tp01-04 落地** |
 
 ---
 
@@ -126,7 +126,7 @@ c405 后这些缺口**已有配套测试机制**，不再是「不处理」，�
 |---|---|---|---|
 | `editor.rs` autocomplete 集成 | pi editor 内嵌完整 autocomplete 管线（AbortController、debounce、SelectList popup），xy 当前 408 行 vs pi 2415 行，缺 autocomplete/paste-burst/VisualLine 三大类 | 移植后走第 1 层（交互）+ 第 3 层（debounce 时序）+ 第 4 层（editor 不变量）| 中等 |
 | `paste-burst` 未移植 | pi 独有（61 行），非 bracketed paste 的 Enter 抑制；xy 零实现 | 第 3 层 Clock/MockClock 已备好（窗口边界测试模式已验证）| 中等 |
-| `terminal.rs` 偏薄 | 85 行 vs pi 531 行，缺 Kitty 键盘协议协商、modifyOtherKeys、stdin buffer 接入、Apple Terminal 归一化 | 第 5a 层 portable-pty 验证 crossterm 真实事件解析 | 中等（影响 Ctrl+Shift 组合键） |
+| ~~`terminal.rs` 偏薄~~ → ✅ c410 完成 | Kitty 协议探测（push flags + set_kitty_protocol_active）+ modifyOtherKeys 回退 + OSC 标题/进度 + drainInput 防泄漏。stdin buffer 接入/Apple Terminal 归一化仍跳过（crossterm 已覆盖） | 第 5a 层 E2E 验证启动序列含 `CSI >7u` | ~~中等~~ → 低 |
 | `stdin_buffer.rs` | 158 行 vs pi 434 行，OSC reply 拦截、turbo 模式未完整移植 | 第 1 层 + 第 5a 层 | 低 |
 | fuzzy 评分公式 | pi 用连续匹配 -consecutive×5 / gap / word boundary，Rust 评分简化 | 第 4 层 proptest | 低（补全排序细微差异） |
 | Thai/Lao AM 规范化 | pi `normalizeTerminalOutput` | — | 极低（罕见 case） |
