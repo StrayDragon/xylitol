@@ -1,4 +1,5 @@
 pub mod autocomplete;
+pub mod autocomplete_fd;
 pub mod clock;
 pub mod components;
 pub mod editor_component;
@@ -28,7 +29,10 @@ pub use components::settings_list::{
 pub use components::spacer::Spacer;
 pub use components::text::Text;
 pub use components::truncated_text::TruncatedText;
+pub use components::editor::{AutocompleteMode, Editor, EditorOptions, EditorTheme, VisualLine};
 pub use editor_component::EditorComponent;
+pub use autocomplete::{AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions, CombinedAutocompleteProvider, DebouncedAutocomplete, SlashCommand, parse_path_prefix};
+pub use autocomplete_fd::{build_fd_path_query, walk_directory_with_fd};
 pub use fuzzy::{FuzzyMatch, fuzzy_filter, fuzzy_match};
 pub use keybindings::{
     Keybinding, KeybindingConflict, KeybindingDefinition, KeybindingDefinitions, KeybindingsConfig,
