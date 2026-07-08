@@ -342,6 +342,11 @@ impl FakeCodingAgentApp {
     }
 
     fn seed_transcript(&mut self) {
+        // One-shot help in transcript (less chrome than a permanent shortcut wall).
+        self.push_message(
+            Role::System,
+            "keys: Enter submit · ^P palette · ^S settings · ^T thinking · ^E tools · ^G glyphs · ^O step · Esc close · ^C quit",
+        );
         self.push_message(
             Role::User,
             "Collapse examples into one fake coding-agent demo and keep foot interaction stable.",
@@ -478,6 +483,15 @@ impl FakeCodingAgentApp {
         min + (self.rng_state % (max - min + 1))
     }
 
+    /// Uneven delay: mostly short, sometimes a hitch (avoids metronome feel).
+    fn jitter_ticks(&mut self, short_lo: u64, short_hi: u64) -> u64 {
+        match self.random_between(0, 9) {
+            0 => self.random_between(short_hi.saturating_add(8), short_hi.saturating_add(28)),
+            1..=2 => self.random_between(short_hi.saturating_add(2), short_hi.saturating_add(10)),
+            _ => self.random_between(short_lo, short_hi),
+        }
+    }
+
     fn schedule_after_ticks(&mut self, delay_ticks: u64, action: TimedAction) {
         self.scheduled_tail_tick = self.scheduled_tail_tick.max(self.script_tick);
         self.scheduled_tail_tick += delay_ticks.max(1);
@@ -492,28 +506,38 @@ impl FakeCodingAgentApp {
     }
 
     fn queue_assistant_stream(&mut self, text: &str) {
-        let start_delay = self.random_between(4, 8);
+        // Pause before first token (model "spin up").
+        let start_delay = self.jitter_ticks(6, 14);
         self.schedule_after_ticks(start_delay, TimedAction::StreamStart);
 
         let chars: Vec<char> = text.chars().collect();
         let mut index = 0usize;
         while index < chars.len() {
             let current = chars[index];
+            // Burst vs drip: occasionally dump a longer run, often 1–3 chars.
             let take = if current == '\n' {
                 1
-            } else if current.is_ascii() {
-                self.random_between(2, 5) as usize
             } else {
-                self.random_between(1, 2) as usize
+                match self.random_between(0, 9) {
+                    0..=1 => self.random_between(6, 14) as usize, // burst
+                    2..=4 => self.random_between(3, 6) as usize,
+                    _ => {
+                        if current.is_ascii() {
+                            self.random_between(1, 3) as usize
+                        } else {
+                            1
+                        }
+                    }
+                }
             };
             let end = (index + take).min(chars.len());
             let chunk: String = chars[index..end].iter().collect();
-            let chunk_delay = self.random_between(1, 4);
+            let chunk_delay = self.jitter_ticks(1, 5);
             self.schedule_after_ticks(chunk_delay, TimedAction::StreamChunk(chunk));
             index = end;
         }
 
-        let finish_delay = self.random_between(3, 6);
+        let finish_delay = self.jitter_ticks(4, 10);
         self.schedule_after_ticks(finish_delay, TimedAction::StreamFinish);
     }
 
@@ -542,39 +566,37 @@ impl FakeCodingAgentApp {
         self.active_stream_entry = None;
         self.set_status("Thinking");
         self.push_thinking(format!(
-            "User asked: {prompt}\n\nI'll search the tree, run acceptance, then stream a reply."
+            "User asked: {prompt}\n\nI'll search the tree, run acceptance, then stream a reply.\n\n(hesitating on width budget vs scrollback…)"
         ));
 
-        let rg_status_delay = self.random_between(3, 8);
-        self.queue_event(
-            rg_status_delay,
-            ScriptEvent::Status("Running rg search".into()),
-        );
-        let rg_tool_delay = self.random_between(2, 5);
+        // Dwell on thinking before the first tool — not an even metronome.
+        let think_dwell = self.jitter_ticks(14, 28);
+        self.queue_event(think_dwell, ScriptEvent::Status("Running rg search".into()));
+        let rg_tool_delay = self.jitter_ticks(4, 12);
         self.queue_event(
             rg_tool_delay,
             ScriptEvent::Tool(format!("rg -n \"{}\" packages/xylitol-tui tests", prompt)),
         );
-        let mark_one_delay = self.random_between(1, 3);
+        let mark_one_delay = self.jitter_ticks(2, 8);
         self.queue_event(mark_one_delay, ScriptEvent::MarkPlan(1));
-        let file_delay = self.random_between(2, 4);
+        let file_delay = self.jitter_ticks(3, 10);
         self.queue_event(
             file_delay,
             ScriptEvent::File("tests/tui_e2e/pty.rs".to_string()),
         );
-        let test_status_delay = self.random_between(2, 5);
+        let test_status_delay = self.jitter_ticks(5, 14);
         self.queue_event(
             test_status_delay,
             ScriptEvent::Status("Running agent_demo acceptance".into()),
         );
-        let test_tool_delay = self.random_between(2, 4);
+        let test_tool_delay = self.jitter_ticks(4, 12);
         self.queue_event(
             test_tool_delay,
             ScriptEvent::Tool("cargo test -p xylitol-tui --test agent_demo_test".into()),
         );
-        let mark_two_delay = self.random_between(1, 3);
+        let mark_two_delay = self.jitter_ticks(2, 8);
         self.queue_event(mark_two_delay, ScriptEvent::MarkPlan(2));
-        let drafting_delay = self.random_between(2, 4);
+        let drafting_delay = self.jitter_ticks(6, 16);
         self.queue_event(drafting_delay, ScriptEvent::Status("Drafting reply".into()));
         let reply = self.build_assistant_reply(prompt);
         self.queue_assistant_stream(&reply);
@@ -742,11 +764,11 @@ impl FakeCodingAgentApp {
                 }
                 TranscriptEntry::Thinking { expanded, body } => {
                     if *expanded {
-                        let header = dim(&format!("{} thinking  (Ctrl+T collapse)", g.unfold()));
+                        let header = dim(&format!("{} thinking", g.unfold()));
                         Self::push_wrapped(&mut lines, &header, width);
                         Self::push_wrapped(&mut lines, &dim(body), width);
                     } else {
-                        let header = dim(&format!("{} thinking  (Ctrl+T expand)", g.fold()));
+                        let header = dim(&format!("{} thinking", g.fold()));
                         Self::push_wrapped(&mut lines, &header, width);
                     }
                 }
@@ -756,12 +778,7 @@ impl FakeCodingAgentApp {
                     detail,
                 } => {
                     let marker = if *expanded { g.unfold() } else { g.fold() };
-                    let hint = if *expanded {
-                        "Ctrl+E collapse"
-                    } else {
-                        "Ctrl+E expand"
-                    };
-                    let header = dim(&format!("{} {} {}  ({hint})", marker, g.tool(), summary));
+                    let header = dim(&format!("{} {} {}", marker, g.tool(), summary));
                     Self::push_wrapped(&mut lines, &header, width);
                     if *expanded {
                         Self::push_wrapped(&mut lines, &dim(detail), width);
@@ -835,10 +852,11 @@ impl Component for FakeCodingAgentApp {
         lines.extend(self.render_editor_slot(width));
         let footer_owned;
         let footer_ref = if self.palette_open || self.settings_open {
-            "esc close"
+            "esc close · ↑↓ · Enter"
         } else {
+            // Compact cue strip — full list is in the seed system line.
             footer_owned = format!(
-                "{} · glyphs:{} · ^T/^E/^G",
+                "{} · {} · ^P/^S/^T/^E/^G/^O",
                 self.footer_note,
                 self.glyph_set.label()
             );
