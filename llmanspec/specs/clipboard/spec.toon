@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: clipboard
-purpose: "TBD - created by archiving change c125-add-clipboard. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Clipboard integration — native clipboard, OSC 52, and image copy support."
+valid_scope[1]: src/infra/clipboard/
 requirements[6]{req_id,title,statement}:
   c1,"text-copy","System MUST provide copy_to_clipboard(text) that copies UTF-8 text to system clipboard through platform-native tools."
   c2,"platform-order","System MUST try platform-native clipboard in order: native addon greater pbcopy/clip greater wl-copy greater xclip/xsel greater termux-clipboard-set greater OSC 52."

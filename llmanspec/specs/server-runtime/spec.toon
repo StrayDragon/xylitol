@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "server-runtime"
-purpose: "TBD - created by archiving change c260-refactor-domain-architecture. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Server runtime — REST router, WebSocket handler, single-instance lock, and graceful shutdown."
+valid_scope[1]: src/app/server/
 requirements[9]{req_id,title,statement}:
   sr1,"server-hosts-agent","app::server MUST assemble infra runtimes and inject them into agent ports at startup; app::server MUST pass the Agent into AppState so route handlers can invoke it."
   sr2,"rest-and-ws","app::server MUST expose protocol/ over REST under a /api/v1 prefix (control commands and state queries) and over WebSocket (streaming events); both MUST speak the protocol::Command and protocol::Event types."

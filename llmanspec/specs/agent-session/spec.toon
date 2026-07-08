@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "agent-session"
-purpose: "TBD - created by archiving change c05-rebuild-core. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Agent session management — session lifecycle, capability state, prompt construction, and turn orchestration."
+valid_scope[3]: src/agent/session/,src/runtime_protocol/session.rs,src/domain/session_types.rs
 requirements[34]{req_id,title,statement}:
   a1,"agent-session","System MUST provide AgentSession encapsulating prompt to model to tools to loop with full event stream, holding ONLY orchestration state; the system prompt MUST be assembled from injected context (AGENTS.md files, configured system prompt, append prompts) supplied by the composition root, NOT from a hardcoded fallback."
   a2,"turn-events","AgentSession MUST emit: turn_start, message_start, message_update (streaming), message_end events per turn."

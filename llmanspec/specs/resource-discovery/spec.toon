@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "resource-discovery"
-purpose: "TBD - created by archiving change c120-add-resource-diagnostics. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Unified resource discovery — skills, prompts, themes, AGENTS.md, and system prompt loading."
+valid_scope[3]: src/infra/resource/,src/domain/resource_types.rs,src/runtime_protocol/resource.rs
 requirements[9]{req_id,title,statement}:
   rd1,"resource-listing","System MUST provide a read-only command that lists all discovered skills prompts and themes with their source scope and path."
   rd2,"resource-info","System MUST provide a command that shows details for a single named resource and exits non-zero when not found."

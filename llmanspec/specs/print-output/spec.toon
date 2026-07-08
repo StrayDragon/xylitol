@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "print-output"
 purpose: "Print mode (non-interactive) output rendering — streams TextDelta to stdout, reasoning to stderr, and tool summaries."
-valid_scope[2]: src/,tests/
+valid_scope[2]: src/app/cli/print.rs,src/app/cli/mod.rs
 requirements[4]{req_id,title,statement}:
   r1,"streaming-output","System MUST stream agent text output to stdout in real-time in Print mode."
   r2,"tool-display",System MUST display tool execution name and result summary in Print mode.

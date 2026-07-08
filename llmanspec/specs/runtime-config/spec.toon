@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "runtime-config"
 purpose: "Runtime configuration — settings manager with deep merge, file locking, camelCase serialization, and full Settings interface."
-valid_scope[1]: src
+valid_scope[2]: src/infra/config/,src/infra/settings/
 requirements[7]{req_id,title,statement}:
   rc0,placeholder,System SHALL support the full pi Settings interface with camelCase JSON serialization.
   rc11,"transport-field",Settings MUST include transport field with auto sse direct enum options.

@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "process-mgmt"
-purpose: "TBD - created by archiving change c135-add-shell-process-mgmt. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Shell process management — child process spawning, process groups, and cancellation."
+valid_scope[2]: src/infra/process/,src/runtime_protocol/bash.rs
 requirements[4]{req_id,title,statement}:
   p1,"bash-discovery","System MUST provide find_bash() that locates bash across platforms: Git Bash on Windows /bin/bash on Unix with fallback to sh."
   p2,"shell-env",System MUST provide build_shell_env() that injects the agent bin directory into PATH.

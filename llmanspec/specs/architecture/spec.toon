@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: architecture
-purpose: "TBD - created by archiving change c240-consolidate-architecture. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Architecture conventions — layering rules, dependency direction, and module organization enforced by arch_guard."
+valid_scope[1]: src/AGENTS.md
 requirements[8]{req_id,title,statement}:
   ar01,清除 pi 文档引用,All source files in src/ MUST NOT reference pi coding agent or its TypeScript modules in doc comments. References to pi's design rationale MUST be replaced with independent descriptions of the module's actual responsibilities.
   ar02,组件粒度边界（修订：补上限）,"Components with fewer than 100 lines or 5 methods and no behavioral logic MUST be inlined into their parent struct. Conversely, inlined blocks that exceed approximately 100 lines, have independent behavioral logic, and are conceptually cohesive MUST be extracted as named collaborator objects (per agent-session.as30). The Agent capability aggregate (formerly AgentSession) MUST NOT grow unboundedly as a single struct or single file; export, bash, permission, stats, and trust concerns MUST be extracted as named collaborators so the aggregate stays cohesive."

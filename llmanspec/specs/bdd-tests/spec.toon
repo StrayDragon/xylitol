@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "bdd-tests"
-purpose: "TBD - created by archiving change c07-fix-bdd-scenarios. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "BDD test framework using rstest-bdd — feature files, step definitions, and scenario verification."
+valid_scope[2]: tests/bdd.rs,tests/features/
 requirements[2]{req_id,title,statement}:
   r1,BDD steps MUST pass all 77 scenarios,"All 77 BDD scenarios MUST pass (currently 41/77, 36 failed) using rstest-bdd runner."
   bt1,"server-integration-scenarios","The BDD test suite MUST include step definitions for server.feature (server start, health check, prompt submission, event streaming, shutdown) and approval.feature (tool approval round-trip via reverse RPC)."

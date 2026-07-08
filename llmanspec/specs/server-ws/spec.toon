@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "server-ws"
-purpose: "TBD - created by archiving change c270-add-server-process. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Server WebSocket protocol — frame types, event journal, resync, and monotonic sequencing."
+valid_scope[1]: src/app/server/ws.rs
 requirements[7]{req_id,title,statement}:
   w1,"ws-frame-protocol","Server → Client frames MUST be ServerFrame enum with ServerHello {version}, Ack {seq, request_id}, Event {session_id, seq, event}, and ResyncRequired {session_id} variants."
   w2,"ws-client-frames","Client → Server frames MUST be ClientFrame enum with Subscribe {session_id, last_seq}, ApproveTool {call_id, approved}, AnswerQuestion {call_id, answer}, and Ping variants."

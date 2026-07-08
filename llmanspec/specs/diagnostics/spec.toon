@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: diagnostics
 purpose: Diagnostics — startup timing instrumentation and performance profiling.
-valid_scope[1]: src
+valid_scope[1]: src/infra/timing.rs
 requirements[4]{req_id,title,statement}:
   d0,placeholder,"System SHALL provide opt-in startup timing instrumentation."
   d1,"timing-collector",System MUST provide reset_timings time label and print_timings gated behind XYLITOL_TIMING env var.
