@@ -14,7 +14,7 @@
 
 **怎么工作**：每个移植任务 = 一个 llman SDD 变更（`/llman-sdd-propose` → apply → archive → commit）。测试走 c405 五层 harness（见 §四）。pi 源在 `../kimi-code/packages/pi-tui`。
 
-**下一步**：§二 的「待移植清单」，按依赖序从 stdin_buffer（6.5）→ autocomplete（6.3）→ editor（6.4，最大）推进。
+**下一步**：§二 的「待移植清单」，按依赖序从 stdin_buffer（6.5）→ editor（6.4，最大）推进。autocomplete（6.3）c420 已完成。
 
 ---
 
@@ -22,8 +22,8 @@
 
 | 指标 | 数值 |
 |---|---|
-| 源码行数 | **9,850 行**（packages/xylitol-tui/src）|
-| 测试数 | **207 全绿**（xylitol-tui）；workspace 全绿 |
+| 源码行数 | **10,650 行**（packages/xylitol-tui/src）|
+| 测试数 | **243 全绿**（xylitol-tui）；workspace 全绿 |
 | E2E | **6 实跑通过**（3 pty 含 kitty query + 2 tmux + bracketed paste）|
 | clippy | `-p xylitol-tui --all-targets -D warnings` clean |
 | 已落地 spec | `tui-testing`(tt01-06) / `terminal-protocol`(tp01-04) / `paste-burst`(pb01-03) |
@@ -37,6 +37,9 @@
 | **c405** | 五层 TUI 测试 harness | `451e8c4`/`0860818`/`3e9bc66` |
 | **c410** | terminal 协议（Kitty 探测 + modifyOtherKeys + OSC + drain）| `e7b0f8f` |
 | **c415** | paste-burst 移植 | `9495996` |
+| **c420** | autocomplete debounce + fd + CancellationToken | 待 commit |
+| **c425** | editor core VisualLine+stickyColumn+pageScroll+history+PasteBurst | 待 commit |
+| **c430** | editor autocomplete SelectList 集成 | 待 commit |
 
 ---
 
@@ -48,8 +51,8 @@
 
 | 模块 | pi 行 | xy 行 | 缺口 | 状态 |
 |---|---:|---:|---|---|
-| **components/editor** | 2415 | 408 | **-83%** 最大缺口 | ⏳ 6.4 待移植 |
-| autocomplete | 912 | 534 | -41% | ⏳ 6.3 待补 debounce + fd |
+| **components/editor** | 2415 | 408 | -83% | ✅ c425 VL/sticky/PasteBurst + c430 autocomplete 集成 |
+| autocomplete | 912 | 534 | -41% | ✅ c420 补齐 async + fd + debounce |
 | stdin-buffer | 434 | 158 | -64% | ⏳ 6.5 待补 OSC/turbo |
 | tui | 1710 | 940 | -45% | ✅ doRender 核心完整 |
 | keys | 1400 | 1163 | -17% | ✅ |
