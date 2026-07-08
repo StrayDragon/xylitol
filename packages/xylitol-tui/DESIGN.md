@@ -143,8 +143,8 @@ footer (快捷键, 1 行)
 - **StatusLine**：固定 1 行；idle=`Ready`；busy=spinner+短标签；不放 turn 计数/模型名（模型可放 footer 或 slash）。
 - **Editor**：多行草稿；反色假光标；默认 **隐藏硬件光标**（IME 仍可相对定位）。
 - **DebugStrip**：输入框下固定 N 行摘要（plan / 最近 tool / 文件数）；可 slash 关闭。
-- **SelectList / SettingsList**：overlay 或嵌入；选中 reverse；描述列 dim。
-- **Overlay**：命令面板/设置；Esc 关闭；由 `OverlayHandle` 控制。
+- **SelectList / SettingsList**：默认以 **editor-slot 替换**（pi `showSelector`）出现在输入区位置，保证 transcript 滚入 scrollback 后仍在可视底；真正的浮动 `show_overlay` 留给居中确认框等场景。选中 reverse；描述列 dim。
+- **Overlay**：居中叠层（确认/扩展）；Esc 关闭；由 `OverlayHandle` 控制。命令面板/设置优先用 editor-slot，不要 blit 到内容绝对顶部。
 - **Loader**：仅在 status 忙碌时出现；idle 不得残留 spinner 帧。
 
 ## Do's and Don'ts
@@ -154,6 +154,7 @@ footer (快捷键, 1 行)
 - Do 默认隐藏硬件光标；假光标表达编辑位置。
 - Do 固定 status/debug 行数，防止流式布局抖动。
 - Don't 用双栏 Workspace 挤占 transcript（demo 已移除；产品默认同）。
+- Don't blit 选择弹层到内容绝对顶部（transcript 一长就滚出视口）；命令/设置用 editor-slot 替换。
 - Don't 在应用层只渲染「最近 N 条」冒充滚动。
 - Don't 引入卡片阴影、圆角、多字体栈等 Web 范式。
 - Don't 混用「有时 show 硬件光标、有时 hide」而不经显式设置。
