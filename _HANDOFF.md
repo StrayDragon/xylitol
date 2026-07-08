@@ -62,44 +62,13 @@
 | terminal-colors | 73 | 179 | +145% | ✅ |
 | 其余 12 模块 | — | — | — | ✅ 全部对齐或超出 |
 
-### 待移植任务（按建议依赖序）
-
-#### 6.5 stdin_buffer 补齐（中，~280 行）
-- **pi 源**：`kimi-code/packages/pi-tui/src/stdin-buffer.ts`（434 行）
-- **xy 现状**：`packages/xylitol-tui/src/stdin_buffer.rs`（158 行，已有 bracketed-paste + CSI/OSC 拆分）
-- **缺什么**：OSC reply 拦截（终端颜色查询响应）、turbo 模式（批量输入合并）、pi 的 EventEmitter 事件模型（xy 用返回 `Vec<StdinBufferEvent>`，需确认是否够）
-- **测试**：第 1 层（单测拆分逻辑）+ 第 5a 层（E2E 验证终端响应处理）
-- **注意**：路线 A 下 xy 用 crossterm 读输入，stdin_buffer 是否还被 tui.rs 用？——查 `tui.rs::start_impl`，当前**直接用 crossterm event::read**，不经 stdin_buffer。移植前确认 stdin_buffer 的实际消费者（可能是 terminal.rs 未来接入，或仅作为库 API 保留对齐 pi）。
-
-#### 6.3 autocomplete 补齐（中，~380 行）
-- **pi 源**：`kimi-code/packages/pi-tui/src/autocomplete.ts`（912 行）
-- **xy 现状**：`packages/xylitol-tui/src/autocomplete.rs`（534 行，已有文件/命令补全）
-- **缺什么**：
-  - `walkDirectoryWithFd`（用 `fd` crate 做递归文件补全，pi 用子进程 fd）
-  - debounce 时序（pi 用 setTimeout 250ms，xy 用 c405 第 3 层 tokio `start_paused`）
-  - AbortController 等价物（pi 取消在途查询；xy 用 tokio CancellationToken）
-- **测试**：第 3 层（debounce 窗口）+ 第 4 层（proptest 补全列表一致性）
-- **依赖**：editor（6.4）会消费它
-
-#### 6.4 editor 补全（大，~2000 行）— 最大风险
-- **pi 源**：`kimi-code/packages/pi-tui/src/components/editor.ts`（2415 行）
-- **xy 现状**：`packages/xylitol-tui/src/components/editor.rs`（408 行，仅核心编辑基元）
-- **缺四大类**：
-  1. **autocomplete 集成**：AbortController + debounce + SelectList popup（依赖 6.3）
-  2. **paste-burst 接线**：`PasteBurst`（c415 已移植）的 5 个调用点（onPlainChar/shouldInsertNewline/extendWindow/reset）——pi editor.ts:705/720/733/900/973/982
-  3. **VisualLine 系统**：`buildVisualLineMap`/`moveCursor`/`pageScroll`/`computeVerticalMoveColumn`——多行编辑的垂直光标移动基础（pi 48 处引用，xy 零）
-  4. **history 导航**：`navigateHistory`/`exitHistoryBrowsing`/`addToHistory`/`setHistoryFilter`（pi 66 处引用，xy 29 处部分有）
-- **建议拆分**（避免单变更过大）：
-  - c420 editor 核心：VisualLine + history + paste-burst 接线
-  - c425 editor autocomplete 集成（依赖 6.3 完成）
-- **测试**：第 1 层（按键序列交互，大量）+ 第 4 层（proptest 不变量：光标在界内/undo 恒等/buffer 合法 UTF-8）
-
 ### 跳过项（有意不移植，已确认）
 
 | pi 模块 | 原因 |
 |---|---|
 | `native-modifiers.ts` | macOS 原生二进制，不可移植 |
 | `index.ts` | 纯导出索引，等价 xy `lib.rs` |
+| `stdin-buffer.ts` | crossterm 已处理 escape 拼接/bracketed paste/Kitty/OSC/mouse——stdin_buffer 是 pi 在 Node.js raw stdin 上必需的补丁，xy 不需要。已删 `stdin_buffer.rs` |
 | terminal.ts 的 `enableWindowsVTInput` | crossterm 已处理跨平台 |
 | terminal.ts 的 `normalizeAppleTerminalInput` | macOS 专属，xy 跑 Linux/crossterm |
 | terminal.ts 的 `writeLogPath` 调试日志 | xy 用 tracing |
