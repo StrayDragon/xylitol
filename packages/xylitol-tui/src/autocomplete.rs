@@ -4,11 +4,15 @@
 //! synchronously (via `std::fs`) and uses [`crate::fuzzy::fuzzy_match`] for
 //! filtering. An optional `fd`-based fuzzy search is left to the consumer.
 
+use crate::autocomplete_fd::walk_directory_with_fd;
 use crate::fuzzy::fuzzy_match;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+use tokio_util::sync::CancellationToken;
 
 // ── types ───────────────────────────────────────────────────────────────────
 
+#[derive(Clone)]
 pub struct AutocompleteItem {
     pub value: String,
     pub label: String,
@@ -74,9 +78,8 @@ pub trait AutocompleteProvider {
 
 pub struct CombinedAutocompleteProvider {
     commands: Vec<(String, String)>,
-    /// The command objects are passed as-is; we store just name+description for
-    /// easier search.
     base_path: PathBuf,
+    fd_path: Option<String>,
 }
 
 impl CombinedAutocompleteProvider {
@@ -85,10 +88,15 @@ impl CombinedAutocompleteProvider {
             .into_iter()
             .map(|c| (c.name, c.description.unwrap_or_default()))
             .collect();
-        Self {
-            commands: names,
-            base_path,
-        }
+        Self { commands: names, base_path, fd_path: None }
+    }
+
+    pub fn new_with_fd(commands: Vec<SlashCommand>, base_path: PathBuf, fd_path: String) -> Self {
+        let names = commands
+            .into_iter()
+            .map(|c| (c.name, c.description.unwrap_or_default()))
+            .collect();
+        Self { commands: names, base_path, fd_path: Some(fd_path) }
     }
 }
 
@@ -219,6 +227,241 @@ impl AutocompleteProvider for CombinedAutocompleteProvider {
         let mut new_lines = lines.to_vec();
         new_lines[cursor_line] = new_line;
         (new_lines, cursor_line, before.len() + cursor_offset)
+    }
+}
+
+// ── async methods ──────────────────────────────────────────────────────────
+
+impl CombinedAutocompleteProvider {
+    /// Async version of `get_suggestions` that supports CancellationToken-based
+    /// cancellation of in-flight fd queries. Falls back to the sync path when
+    /// fd_path is None or for slash-command completions.
+    pub async fn get_suggestions_async(
+        &self,
+        lines: &[String],
+        cursor_line: usize,
+        cursor_col: usize,
+        force: bool,
+        ct: CancellationToken,
+    ) -> Option<AutocompleteSuggestions> {
+        let current = lines.get(cursor_line)?.clone();
+        let before_cursor = &current[..cursor_col.min(current.len())];
+
+        // @ file attachments — async fuzzy with fd
+        if let Some(prefix) = self.extract_at_prefix(before_cursor) {
+            let (_raw, _is_at, is_quoted) = parse_path_prefix(&prefix);
+            let suggestions = self.get_fuzzy_file_suggestions_async(&prefix, is_quoted, ct).await;
+            if suggestions.is_empty() {
+                return None;
+            }
+            return Some(AutocompleteSuggestions { items: suggestions, prefix });
+        }
+
+        // Slash commands — sync (no I/O)
+        if before_cursor.starts_with('/') {
+            let space_idx = before_cursor.find(' ');
+            if space_idx.is_none() {
+                let prefix = before_cursor.strip_prefix('/').unwrap_or("");
+                let items: Vec<AutocompleteItem> = self
+                    .commands
+                    .iter()
+                    .filter_map(|(name, desc)| {
+                        fuzzy_match(prefix, name)?;
+                        Some(AutocompleteItem {
+                            value: name.clone(),
+                            label: name.clone(),
+                            description: if desc.is_empty() { None } else { Some(desc.clone()) },
+                        })
+                    })
+                    .collect();
+                if items.is_empty() {
+                    return None;
+                }
+                return Some(AutocompleteSuggestions { items, prefix: before_cursor.to_string() });
+            }
+            return None;
+        }
+
+        // File paths — sync read_dir (no fd needed for prefix completion)
+        if let Some(path_match) = self.extract_path_prefix(before_cursor, force) {
+            let suggestions = self.get_file_suggestions(&path_match);
+            if suggestions.is_empty() {
+                return None;
+            }
+            return Some(AutocompleteSuggestions { items: suggestions, prefix: path_match });
+        }
+
+        None
+    }
+
+    /// Fuzzy file search using fd subprocess (async), with CancellationToken
+    /// support. When fd_path is None, falls back to the sync read_dir stub.
+    async fn get_fuzzy_file_suggestions_async(
+        &self,
+        query: &str,
+        is_quoted: bool,
+        ct: CancellationToken,
+    ) -> Vec<AutocompleteItem> {
+        let (raw, is_at, _is_quoted_unused) = parse_path_prefix(query);
+        let _ = is_quoted;
+
+        if let Some(ref fd_path) = self.fd_path
+            && !ct.is_cancelled()
+        {
+            let base_dir = self.base_path.to_string_lossy().to_string();
+            let entries = walk_directory_with_fd(&base_dir, fd_path, raw, 100, ct);
+
+            if entries.is_empty() {
+                return self.get_fuzzy_file_suggestions(query, is_quoted);
+            }
+
+            // Score entries using fuzzy match (aligns with pi's scoreEntry)
+            let lower_query = raw.to_lowercase();
+            let mut scored: Vec<(usize, String, bool)> = entries
+                .into_iter()
+                .map(|(path, is_dir)| {
+                    let score = self.score_entry(&path, &lower_query, is_dir);
+                    (score, path, is_dir)
+                })
+                .filter(|(score, _, _)| *score > 0)
+                .collect();
+            scored.sort_by_key(|b| std::cmp::Reverse(b.0));
+
+            let top = scored.into_iter().take(20);
+            return top
+                .map(|(_, path, is_dir)| {
+                    let file_name = std::path::Path::new(&path)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(&path);
+                    let completion_path = if is_dir {
+                        format!("{}/", path)
+                    } else {
+                        path.to_string()
+                    };
+                    AutocompleteItem {
+                        value: build_completion_value(
+                            &completion_path, is_dir, is_at, is_quoted,
+                        ),
+                        label: format!("{}{}", file_name, if is_dir { "/" } else { "" }),
+                        description: Some(to_display_path(&completion_path)),
+                    }
+                })
+                .collect();
+        }
+
+        self.get_fuzzy_file_suggestions(query, is_quoted)
+    }
+
+    /// Score an entry against the query (higher = better).
+    /// Aligns with pi's `scoreEntry` in autocomplete.ts.
+    fn score_entry(&self, file_path: &str, query: &str, is_directory: bool) -> usize {
+        let file_name = std::path::Path::new(file_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(file_path);
+        let lower_name = file_name.to_lowercase();
+        let lower_query = query.to_lowercase();
+
+        let mut score = 0;
+
+        if lower_name == lower_query {
+            score = 100;
+        } else if lower_name.starts_with(&lower_query) {
+            score = 80;
+        } else if lower_name.contains(&lower_query) {
+            score = 50;
+        } else if file_path.to_lowercase().contains(&lower_query) {
+            score = 30;
+        }
+
+        if is_directory && score > 0 {
+            score += 10;
+        }
+
+        score
+    }
+}
+
+// ── DebouncedAutocomplete ───────────────────────────────────────────────────
+
+/// Wraps an autocomplete provider with debounce logic.
+///
+/// Successive calls to `get_suggestions` within `delay` cancel the previous
+/// in-flight query (via `CancellationToken`) and start a fresh timer. After
+/// `delay` elapses without a new call, the latest query actually executes.
+///
+/// ## Examples
+///
+/// ```ignore
+/// use std::time::Duration;
+/// use tokio_util::sync::CancellationToken;
+///
+/// let provider = CombinedAutocompleteProvider::new(vec![], PathBuf::from("."));
+/// let mut debounced = DebouncedAutocomplete::new(
+///     provider,
+///     Duration::from_millis(250),
+/// );
+/// let ct = CancellationToken::new();
+/// let result = debounced.get_suggestions(&lines, 0, 5, false, ct).await;
+/// ```
+pub struct DebouncedAutocomplete {
+    provider: CombinedAutocompleteProvider,
+    delay: Duration,
+    last_token: Option<CancellationToken>,
+}
+
+impl DebouncedAutocomplete {
+    pub fn new(provider: CombinedAutocompleteProvider, delay: Duration) -> Self {
+        Self { provider, delay, last_token: None }
+    }
+
+    /// Debounced async autocomplete. Cancels any in-flight query, waits
+    /// `delay`, then runs the latest query. The caller's `ct` can additionally
+    /// cancel the entire operation.
+    pub async fn get_suggestions(
+        &mut self,
+        lines: &[String],
+        cursor_line: usize,
+        cursor_col: usize,
+        force: bool,
+        ct: CancellationToken,
+    ) -> Option<AutocompleteSuggestions> {
+        // Cancel the previous in-flight query.
+        if let Some(ref token) = self.last_token {
+            token.cancel();
+        }
+        let new_token = CancellationToken::new();
+        self.last_token = Some(new_token.clone());
+
+        // Wait for the debounce delay, unless the upstream ct fires first.
+        tokio::select! {
+            _ = tokio::time::sleep(self.delay) => {},
+            _ = ct.cancelled() => return None,
+            _ = new_token.cancelled() => return None,
+        }
+
+        // Merge the upstream ct and our debounce token so either cancels
+        // the actual query.
+        let merged = CancellationToken::new();
+        let merged_ct = merged.clone();
+        let ct2 = ct.clone();
+        let nt2 = new_token.clone();
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = ct2.cancelled() => merged_ct.cancel(),
+                _ = nt2.cancelled() => merged_ct.cancel(),
+            }
+        });
+
+        self.provider
+            .get_suggestions_async(lines, cursor_line, cursor_col, force, merged)
+            .await
+    }
+
+    /// Returns a reference to the inner provider.
+    pub fn provider(&self) -> &CombinedAutocompleteProvider {
+        &self.provider
     }
 }
 
