@@ -1,0 +1,18 @@
+kind: llman.sdd.spec
+name: "package-tui-editor"
+purpose: "TBD - created by archiving change c425-port-editor-core. Update purpose after archive."
+valid_scope[2]: src/,tests/
+requirements[5]{req_id,title,statement}:
+  ed01,"visual-line-map","The Editor MUST build a visual-line map from logical lines via build_visual_line_map(width) that maps each wrapped visual segment to its logical line index, start column, and byte length. The map MUST account for word-wrap on lines wider than width, and empty lines MUST occupy one visual line. The map is the foundation for vertical cursor movement across wrapped lines."
+  ed02,"sticky-column-vertical-move","The Editor MUST implement sticky-column vertical cursor movement via compute_vertical_move_column(current_col, src_max, tgt_max) implementing the P/S/T/U decision table: (P=has preferred, S=cursor in middle, T=target shorter than current, U=target shorter than preferred). The editor MUST store preferred_visual_col and snapped_from_cursor_col fields. set_cursor_col MUST clear both. move_cursor(dl, dc) MUST delegate to move_to_visual_line when dl != 0."
+  ed03,"page-scroll","The Editor MUST implement pageScroll(direction) using build_visual_line_map width-dependent layout and a page size of max(5, terminal_rows * 30 / 100). The cursor MUST move by page-sized visual lines via move_to_visual_line, not by hard-coded logical-line offsets."
+  ed04,"paste-burst-integration","The Editor MUST integrate PasteBurst (c415). On every plain character insert, on_plain_char(now) MUST be called. On Enter (submit or newline), should_insert_newline_instead_of_submit(now) MUST be checked; if true, a newline MUST be inserted instead of submitting. On non-printable keys or explicit paste, reset() MUST be called. The now Instant MUST be passed as a parameter (not wall-clock) following c415's injectable-clock pattern."
+  ed05,"history-navigation","The Editor MUST provide navigate_history(direction: isize) that uses setTextInternal with cursorPlacement ('start' for up-arrow, 'end' for down-arrow). exitHistoryBrowsing() MUST be called at the entry of every edit action (insert, delete, yank, submit) that should break out of history mode. When entering history from a draft state, the current editor state MUST be saved as history_draft."
+scenarios[7]{req_id,id,given,when,then}:
+  ed01,"build-vl-map-wraps-long-lines","a 100-char line in a 30-col editor",build_visual_line_map(30) is called,"the map contains 4 visual line entries with correct logical_line, start_col, and len"
+  ed02,"sticky-col-up-arrow",cursor is at column 15 on line 2 which spans 3 visual lines,cursor up is pressed,cursor moves to column 15 on the corresponding visual line of the previous logical line (or line end if shorter)
+  ed02,"sticky-col-cleared-on-horizontal",cursor up from col 15 to col 8 (line shorter) sets preferred_visual_col to 15,word_left is pressed,preferred_visual_col is set to None
+  ed03,"page-scroll-moves-by-pagesize","terminal rows=40, page size=12",page_down is pressed,"cursor moves down 12 visual lines via move_to_visual_line, not 5 logical lines"
+  ed04,"paste-burst-enter-suppressed","9 fast chars are typed within 1ms each, triggering a paste burst, then Enter",handle_input receives Enter,"PasteBurst returns true for should_insert_newline_instead_of_submit, newline is inserted instead of submit"
+  ed04,"paste-burst-reset-on-nonprintable",a burst is in progress,"CursorLeft (non-printable) is pressed","paste_burst.reset() is called, clearing the burst state"
+  ed05,"history-draft-restored","user up-arrows through 2 history entries","down-arrow past the last entry returns to history_index=-1",the saved history_draft is restored with the original editor content
