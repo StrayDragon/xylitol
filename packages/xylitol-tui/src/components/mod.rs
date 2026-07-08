@@ -1,4 +1,5 @@
 pub mod cancellable_loader;
+pub mod editor;
 pub mod image;
 pub mod input;
 pub mod loader;

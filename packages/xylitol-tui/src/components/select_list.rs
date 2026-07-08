@@ -39,6 +39,7 @@ impl SelectItem {
 }
 
 /// Theme for SelectList styling.
+// Clone not derived — Box<dyn Fn> is not Clone
 pub struct SelectListTheme {
     pub selected_prefix: Box<dyn Fn(&str) -> String>,
     pub selected_text: Box<dyn Fn(&str) -> String>,
