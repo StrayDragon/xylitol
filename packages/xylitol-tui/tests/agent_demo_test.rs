@@ -26,7 +26,7 @@ fn agent_demo_submit_flow_stays_within_width_budget() {
 
 #[test]
 fn agent_demo_submit_flow_streams_reply_after_ticks() {
-    let mut h = TuiTestHarness::new(172, 40);
+    let mut h = TuiTestHarness::new(172, 48);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
     ))))
@@ -34,13 +34,31 @@ fn agent_demo_submit_flow_streams_reply_after_ticks() {
 
     h.render_result().expect("initial render should succeed");
     h.keys("\r");
-    for _ in 0..200 {
+    let mut saw_reply = false;
+    let mut saw_rg = false;
+    for _ in 0..1200 {
         h.tick();
         h.render_result()
             .expect("streaming scripted turn must stay within width budget");
+        let text = h.tui.terminal.viewport().join("\n");
+        if text.contains("rg -n") {
+            saw_rg = true;
+        }
+        if text.contains("收到，我已经接住") {
+            saw_reply = true;
+        }
+        if saw_rg && saw_reply {
+            break;
+        }
     }
-    h.assert_text_contains("rg -n");
-    h.assert_text_contains("收到，我已经接住");
+    assert!(
+        saw_rg,
+        "expected tool line with rg -n in viewport during turn"
+    );
+    assert!(
+        saw_reply,
+        "expected streamed assistant reply to appear after thinking typewriter"
+    );
 }
 
 #[test]
@@ -145,10 +163,14 @@ fn agent_demo_selector_stays_visible_after_long_transcript() {
     // Grow transcript past the viewport via scripted ticks, then open palette.
     h.render_result().expect("initial render should succeed");
     h.keys("\r");
-    for _ in 0..200 {
+    for _ in 0..1200 {
         h.tick();
         h.render_result()
             .expect("streaming must stay within width budget");
+        let text = h.tui.terminal.viewport().join("\n");
+        if text.contains("收到，我已经接住") {
+            break;
+        }
     }
     h.keys("\x10");
     h.render_result()
@@ -261,6 +283,46 @@ fn agent_demo_layout_is_minimal_single_column() {
     assert!(
         text.contains("^P") && text.contains("^S") && text.contains("keys:"),
         "seed should teach palette/settings keys without a permanent chrome wall; got:\n{text}"
+    );
+}
+
+#[test]
+fn agent_demo_thinking_typewriter_expands_then_collapses() {
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+
+    h.render_result().expect("initial render should succeed");
+    h.keys("\r");
+
+    let mut saw_streaming_body = false;
+    for _ in 0..120 {
+        h.tick();
+        h.render_result()
+            .expect("thinking typewriter frames must stay within width");
+        let text = h.tui.terminal.viewport().join("\n");
+        if text.contains("User asked:") || text.contains("hesitating on width") {
+            saw_streaming_body = true;
+            break;
+        }
+    }
+    assert!(
+        saw_streaming_body,
+        "thinking should typewriter with body visible while streaming"
+    );
+
+    // Finish the turn; thinking should collapse again.
+    for _ in 0..400 {
+        h.tick();
+        h.render_result()
+            .expect("remainder of turn must stay within width");
+    }
+    let after = h.tui.terminal.viewport().join("\n");
+    assert!(
+        after.contains("收到，我已经接住") || after.contains("rg -n"),
+        "turn should complete; got:\n{after}"
     );
 }
 
