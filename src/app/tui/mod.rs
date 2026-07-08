@@ -46,7 +46,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crossterm::event::{self, Event};
+use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -375,6 +375,9 @@ fn handle_term_event(
 ) -> Option<HostAction> {
     match ev {
         Event::Key(key) => {
+            if !is_actionable_key_event(&key) {
+                return None;
+            }
             let outcome = tui.handle_event(&key);
             outcome.map(HostAction::Ux)
         }
@@ -395,6 +398,10 @@ fn handle_term_event(
         }
         _ => Some(HostAction::None),
     }
+}
+
+fn is_actionable_key_event(key: &KeyEvent) -> bool {
+    matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat)
 }
 
 /// Apply a host action that touches the agent/driver layer. Returns `true` if
@@ -525,5 +532,35 @@ fn apply_xy_event(
         transcript.borrow_mut().clear_pending();
     } else {
         transcript.borrow_mut().set_pending(pending);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_actionable_key_event;
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+
+    fn key_with_kind(kind: KeyEventKind) -> KeyEvent {
+        KeyEvent {
+            code: KeyCode::Down,
+            modifiers: KeyModifiers::NONE,
+            kind,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    #[test]
+    fn treats_press_and_repeat_as_actionable() {
+        assert!(is_actionable_key_event(&key_with_kind(KeyEventKind::Press)));
+        assert!(is_actionable_key_event(&key_with_kind(
+            KeyEventKind::Repeat
+        )));
+    }
+
+    #[test]
+    fn ignores_release() {
+        assert!(!is_actionable_key_event(&key_with_kind(
+            KeyEventKind::Release
+        )));
     }
 }
