@@ -30,3 +30,7 @@ path = "examples/demo.rs"
 [[example]]
 name = "agent_demo"
 path = "examples/agent_demo.rs"
+
+[[example]]
+name = "show_all"
+path = "examples/show_all.rs"
