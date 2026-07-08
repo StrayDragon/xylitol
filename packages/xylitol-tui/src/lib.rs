@@ -8,7 +8,6 @@ pub mod keybindings;
 pub mod keys;
 pub mod kill_ring;
 pub mod paste_burst;
-pub mod stdin_buffer;
 pub mod terminal;
 pub mod terminal_colors;
 pub mod terminal_image;
@@ -43,7 +42,6 @@ pub use keys::{
     set_kitty_protocol_active,
 };
 pub use paste_burst::PasteBurst;
-pub use stdin_buffer::{StdinBuffer, StdinBufferEvent};
 pub use terminal::{CrosstermTerminal, Terminal, parse_kitty_flags};
 pub use terminal_colors::{
     RgbColor, TerminalColorScheme, is_osc11_background_color_response,
