@@ -18,6 +18,10 @@ vte = "0.13"
 # The runtime itself stays optional; the core TUI is sync so it can be driven
 # from any host loop without forcing a runtime choice.
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "test-util"] }
+# insta: whole-screen snapshot golden (c405 layer 2) — viewport output regression.
+insta = { version = "1", features = ["filters"] }
+# proptest: state-machine property tests (c405 layer 4) — random key sequences.
+proptest = "1"
 
 [[example]]
 name = "demo"

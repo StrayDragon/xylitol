@@ -1817,9 +1817,9 @@ mod sandbox_bdd {
 
     thread_local! {
         static SANDBOX_ENGINE: std::cell::RefCell<Option<Arc<dyn XyPermission>>> =
-            std::cell::RefCell::new(None);
+            const { std::cell::RefCell::new(None) };
         static LAST_VERDICT: std::cell::RefCell<Option<XyPermissionVerdict>> =
-            std::cell::RefCell::new(None);
+            const { std::cell::RefCell::new(None) };
     }
 
     use xylitol::infra::config::types::{
@@ -2238,7 +2238,7 @@ fn lock_file_contents(server_test: &mut ServerTest) {
         .cloned()
         .expect("lock path not set");
     let info = ServerLock::probe(&path).expect("probe lock file");
-    assert!(info.port > 0 || info.port == 0, "port should be set");
+    assert!(info.port > 0, "port should be set");
     assert!(info.pid > 0, "pid should be set");
     assert!(!info.hostname.is_empty(), "hostname should be set");
 }

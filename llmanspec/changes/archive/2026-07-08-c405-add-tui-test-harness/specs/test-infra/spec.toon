@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r8,"tui-e2e-isolation","TUI end-to-end tests (portable-pty and tmux based) MUST be isolated from the main test matrix: they MUST live in a workspace-level tests/tui_e2e/ directory (not packages/xylitol-tui/tests/), MUST be marked #[ignore] or gated behind a feature flag so they do not run under the default cargo test invocation, and MUST be invoked via a dedicated justfile target (test-tui-e2e). tmux-based smoke tests MUST additionally require the tmux binary to be present (skip with a clear message if absent) and set TERM=xterm-256color for the spawned session. Each tmux session MUST use a unique name (PID or timestamp based) to allow parallel execution, and MUST be killed via Drop guard even on test panic to avoid leaking sessions.",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r8,e2e-not-in-default,"the default cargo test invocation runs","tests/tui_e2e/ cases are present but #[ignore]","no portable-pty or tmux test executes during the default cargo test run (they only run via the dedicated target)"
+  r8,tmux-session-cleaned-on-panic,"a tmux smoke test panics mid-execution","the Drop guard runs","the tmux session is killed and no orphaned session named xyl_e2e_* remains (verifiable via tmux list-sessions)"

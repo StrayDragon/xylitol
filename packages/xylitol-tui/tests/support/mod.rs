@@ -57,6 +57,7 @@ pub struct VirtualTerminal {
     title: Option<String>,
 }
 
+#[allow(dead_code)] // harness API; methods used across different test targets
 impl VirtualTerminal {
     pub fn new(cols: u16, rows: u16) -> Self {
         let rows_us = rows as usize;
@@ -138,6 +139,23 @@ impl VirtualTerminal {
     pub fn cursor_position(&self) -> (usize, usize) {
         let top = self.viewport_top();
         (self.cursor_col, self.cursor_row.saturating_sub(top))
+    }
+
+    // ── c405 layer 2: snapshot helpers need grid introspection ──
+
+    /// Public viewport-top for the snapshot renderer.
+    pub fn viewport_top_pub(&self) -> usize {
+        self.viewport_top()
+    }
+
+    /// Number of grid rows (including scrollback).
+    pub fn grid_len(&self) -> usize {
+        self.grid.len()
+    }
+
+    /// Borrow a grid row (for the snapshot annotation helper).
+    pub fn grid_row(&self, row: usize) -> &[Cell] {
+        self.grid.get(row).map(|r| r.as_slice()).unwrap_or(&[])
     }
 
     #[allow(dead_code)]
@@ -481,6 +499,7 @@ pub struct LoggingVirtualTerminal {
     writes: Vec<String>,
 }
 
+#[allow(dead_code)] // harness API; methods used across different test targets
 impl LoggingVirtualTerminal {
     pub fn new(cols: u16, rows: u16) -> Self {
         Self {
@@ -561,4 +580,228 @@ impl std::ops::Deref for LoggingVirtualTerminal {
     fn deref(&self) -> &VirtualTerminal {
         &self.inner
     }
+}
+
+// ── c405 layer 1: generalized test harness ─────────────────────────────────
+
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use xylitol_tui::TUI;
+use xylitol_tui::tui::Component;
+
+/// A component whose render output is backed by shared mutable state, so a
+/// test can mutate the content between frames without rebuilding the TUI
+/// (the prior workaround in `virtual_terminal_test.rs:178-184` rebuilt a
+/// second TUI instance because `Box<dyn Component>` is owned). Generalized
+/// from the single-test-local definition so any test can mount a widget,
+/// drive keys, and mutate across frames.
+///
+/// Usage:
+/// ```
+/// let lines = Rc::new(RefCell::new(vec!["hello".to_string()]));
+/// harness.mount_shared(lines.clone());
+/// lines.borrow_mut().push("world".into());
+/// harness.render();
+/// ```
+pub struct MutableComponent {
+    /// Shared with the test; the component clones it on each `render`.
+    pub lines: Rc<RefCell<Vec<String>>>,
+}
+
+#[allow(dead_code)] // harness API; not every test target mounts a mutable component
+impl Component for MutableComponent {
+    fn render(&mut self, _width: usize) -> Vec<String> {
+        self.lines.borrow().clone()
+    }
+    fn handle_input(&mut self, _data: &str) {}
+    fn invalidate(&mut self) {}
+}
+
+/// A high-level test harness wrapping `TUI<LoggingVirtualTerminal>` with
+/// ergonomic key-sequence + assertion helpers (spec tt02). Drives the same
+/// TUI instance across multiple frames (no rebuild workaround).
+///
+/// Mirrors helix's `test_key_sequence` + pi's `sendInput/waitForRender`.
+pub struct TuiTestHarness {
+    /// Public so tests can access `terminal.viewport()` / `.cell()` directly
+    /// when the convenience helpers don't fit.
+    pub tui: TUI<LoggingVirtualTerminal>,
+}
+
+#[allow(dead_code)] // harness API shared across test targets; not every target uses every method
+impl TuiTestHarness {
+    /// Create a harness with a `cols x rows` logging virtual terminal.
+    pub fn new(cols: u16, rows: u16) -> Self {
+        Self {
+            tui: TUI::new(LoggingVirtualTerminal::new(cols, rows)),
+        }
+    }
+
+    /// Add a component to the render tree root.
+    pub fn mount(&mut self, component: Box<dyn Component>) -> &mut Self {
+        self.tui.add_child(component);
+        self
+    }
+
+    /// Mount a `MutableComponent` sharing `lines` with the test, and return
+    /// nothing (the test keeps its `Rc<RefCell<Vec<String>>>` handle).
+    #[allow(dead_code)] // harness API; used by harness_test, not every target
+    pub fn mount_shared(&mut self, lines: Rc<RefCell<Vec<String>>>) -> &mut Self {
+        self.tui.add_child(Box::new(MutableComponent { lines }));
+        self
+    }
+
+    /// Dispatch a byte-string key sequence through the engine to the focused
+    /// component (e.g. `"abc\x1b[D\x7f"` = type a,b,c then Left then Backspace).
+    pub fn keys(&mut self, seq: &str) -> &mut Self {
+        self.tui.dispatch_input(seq);
+        self
+    }
+
+    /// Set which child index is focused.
+    pub fn focus(&mut self, index: Option<usize>) -> &mut Self {
+        self.tui.set_focus(index);
+        self
+    }
+
+    /// Render one frame (no throttle).
+    pub fn render(&mut self) -> &mut Self {
+        self.tui
+            .render_frame()
+            .expect("render_frame failed in test");
+        self
+    }
+
+    // ── assertions (chainable) ──
+
+    /// Assert the concatenated viewport text contains `needle`.
+    pub fn assert_text_contains(&self, needle: &str) -> &Self {
+        let text = self.tui.terminal.viewport().join("\n");
+        assert!(
+            text.contains(needle),
+            "viewport should contain {needle:?}, got:\n{text}"
+        );
+        self
+    }
+
+    /// Assert the cursor is at viewport-relative `(col, row)`.
+    #[allow(dead_code)] // harness API; used by later editor-port tests
+    pub fn assert_cursor_at(&self, col: usize, row: usize) -> &Self {
+        let (c, r) = self.tui.terminal.cursor_position();
+        assert_eq!(
+            (c, r),
+            (col, row),
+            "cursor should be at ({col},{row}), got ({c},{r})"
+        );
+        self
+    }
+
+    /// Assert the cell at viewport-relative `(row, col)` has char `ch`.
+    #[allow(dead_code)] // harness API; used by later editor-port tests
+    pub fn assert_cell_text(&self, row: usize, col: usize, ch: char) -> &Self {
+        let cell = self.tui.terminal.cell(row, col);
+        assert_eq!(
+            cell.ch, ch,
+            "cell ({row},{col}) should be {ch:?}, got {cell:?}"
+        );
+        self
+    }
+}
+
+// ── c405 layer 2: insta snapshot helper (spec tt03) ────────────────────────
+// These helpers are shared across multiple test targets; a given target may
+// not reference every one, so they carry #[allow(dead_code)].
+
+#[allow(dead_code)]
+/// Render the harness viewport into a human-readable multi-line string with
+/// inline SGR annotations, suitable for `insta::assert_snapshot!`. Each row is
+/// prefixed with its index; styled runs are wrapped like `[bold]text[/]`.
+///
+/// Example output:
+/// ```text
+/// 0| [bold]Title[/]
+/// 1| body text
+/// 2|
+/// ```
+///
+/// This is the whole-screen regression oracle: a layout/color/wrap change
+/// surfaces as a snapshot diff for human review (`cargo insta review`).
+pub fn viewport_snapshot(harness: &TuiTestHarness) -> String {
+    let term = &harness.tui.terminal;
+    let top = term.viewport_top_pub();
+    let height = term.rows() as usize;
+    (top..top + height)
+        .enumerate()
+        .map(|(idx, r)| {
+            let row_text = if r < term.grid_len() {
+                render_row_annotated(term.grid_row(r))
+            } else {
+                String::new()
+            };
+            format!("{idx}| {row_text}")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Annotate a row's cells: wrap consecutive styled runs in `[bold]…[/]`-style
+/// tags so a snapshot diff highlights where styles change, not just text.
+#[allow(dead_code)]
+fn render_row_annotated(row: &[Cell]) -> String {
+    let mut out = String::new();
+    let mut cur_tag = String::new();
+    for cell in row {
+        let tag = style_tag(cell);
+        if tag != cur_tag {
+            if !cur_tag.is_empty() {
+                out.push_str("[/]");
+            }
+            if !tag.is_empty() {
+                out.push_str(&format!("[{tag}]"));
+            }
+            cur_tag = tag;
+        }
+        out.push(if cell.ch == '\0' { ' ' } else { cell.ch });
+    }
+    if !cur_tag.is_empty() {
+        out.push_str("[/]");
+    }
+    out.trim_end().to_string()
+}
+
+/// Compact style tag for a cell (empty if default). Order: bold,dim,italic,
+/// underline,reverse, then fg if non-default.
+#[allow(dead_code)]
+fn style_tag(cell: &Cell) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    if cell.bold {
+        parts.push("bold");
+    }
+    if cell.dim {
+        parts.push("dim");
+    }
+    if cell.italic {
+        parts.push("italic");
+    }
+    if cell.underline {
+        parts.push("underline");
+    }
+    if cell.reverse {
+        parts.push("reverse");
+    }
+    let mut s = parts.join("+");
+    if !matches!(cell.fg, Color::Default) {
+        if !s.is_empty() {
+            s.push('+');
+        }
+        s.push_str(&format!("fg:{:?}", cell.fg));
+    }
+    if !matches!(cell.bg, Color::Default) {
+        if !s.is_empty() {
+            s.push('+');
+        }
+        s.push_str(&format!("bg:{:?}", cell.bg));
+    }
+    s
 }

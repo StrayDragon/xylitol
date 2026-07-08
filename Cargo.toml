@@ -120,6 +120,11 @@ assert_cmd = "2.2.2"
 assert_matches = "1.5.0"
 
 insta = { version = "1.48.0", features = ["filters", "glob"] }
+# portable-pty: end-to-end TUI integration tests (c405 layer 5a) — spawn the
+# real binary under a PTY, inject keys, read bytes back into a vte cell grid.
+portable-pty = "0.9"
+# vte: ANSI parser for the E2E cell-grid oracle (shared by pty + tmux drivers).
+vte = "0.13"
 serial_test = "3.5.0"
 test-case = "3.3.1"
 wiremock = "0.6.5"
