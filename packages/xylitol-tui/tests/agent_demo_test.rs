@@ -94,16 +94,16 @@ fn agent_demo_command_palette_replaces_editor_slot() {
         .expect("command palette selector must stay within width budget");
     h.assert_text_contains("Command Palette");
     h.assert_text_contains("Run regression tests");
-    // Selector replaces the editor slot at the bottom of the stack (pi
-    // showSelector), so it remains in the viewport after transcript growth.
     let text = h.tui.terminal.viewport().join("\n");
     let palette_pos = text
         .find("Command Palette")
         .expect("palette title should be visible");
-    let dbg_pos = text.find("dbg").expect("debug strip should remain below");
+    let footer_pos = text
+        .find("esc close")
+        .expect("selector footer hint should remain below");
     assert!(
-        palette_pos < dbg_pos,
-        "palette must sit in the editor slot above the debug strip; got:\n{text}"
+        palette_pos < footer_pos,
+        "palette must sit in the editor slot above the footer; got:\n{text}"
     );
 }
 
@@ -125,10 +125,12 @@ fn agent_demo_settings_replaces_editor_slot() {
     let settings_pos = text
         .find("Session Settings")
         .expect("settings title should be visible");
-    let dbg_pos = text.find("dbg").expect("debug strip should remain below");
+    let footer_pos = text
+        .find("esc close")
+        .expect("selector footer hint should remain below");
     assert!(
-        settings_pos < dbg_pos,
-        "settings must sit in the editor slot above the debug strip; got:\n{text}"
+        settings_pos < footer_pos,
+        "settings must sit in the editor slot above the footer; got:\n{text}"
     );
 }
 
@@ -175,7 +177,7 @@ fn agent_demo_narrow_cjk_submit_flow_stays_within_width_budget() {
 }
 
 #[test]
-fn agent_demo_idle_ready_hides_spinner() {
+fn agent_demo_idle_omits_status_row() {
     let mut h = TuiTestHarness::new(172, 40);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
@@ -185,15 +187,19 @@ fn agent_demo_idle_ready_hides_spinner() {
     h.render_result().expect("initial render should succeed");
     let text = h.tui.terminal.viewport().join("\n");
     assert!(
-        text.contains("Ready  |  last: waiting for prompt"),
-        "idle status line should show Ready without spinner; got:\n{text}"
+        !text.contains("Ready  |  last:"),
+        "idle must not show a busy-style status chrome; got:\n{text}"
     );
     for prefix in ["- Ready", "\\ Ready", "| Ready", "/ Ready"] {
         assert!(
             !text.contains(prefix),
-            "idle status line must hide spinner frame {prefix:?}; got:\n{text}"
+            "idle must hide spinner frame {prefix:?}; got:\n{text}"
         );
     }
+    assert!(
+        text.contains("feat/tui-dev"),
+        "minimal footer should remain; got:\n{text}"
+    );
 }
 
 #[test]
@@ -227,7 +233,7 @@ fn agent_demo_default_hides_hardware_cursor_during_stream() {
 }
 
 #[test]
-fn agent_demo_layout_puts_debug_below_editor() {
+fn agent_demo_layout_is_minimal_single_column() {
     let mut h = TuiTestHarness::new(172, 40);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
@@ -237,16 +243,15 @@ fn agent_demo_layout_puts_debug_below_editor() {
     h.render_result().expect("initial render should succeed");
     let text = h.tui.terminal.viewport().join("\n");
     assert!(
-        text.contains("dbg") && text.contains("plan"),
-        "fixed debug strip should appear below the editor; got:\n{text}"
+        !text.contains("dbg") && !text.contains("Workspace") && !text.contains("Conversation"),
+        "no debug strip / sidebar / section title chrome; got:\n{text}"
     );
-    assert!(
-        !text.contains("Workspace"),
-        "right-hand Workspace sidebar must be removed; got:\n{text}"
-    );
-    // Seeded user message must remain in the full transcript (not truncated).
     assert!(
         text.contains("Collapse examples into one fake coding-agent demo"),
         "full transcript must render into the line-array for scrollback; got:\n{text}"
+    );
+    assert!(
+        text.contains("❯"),
+        "user messages use a short glyph prefix; got:\n{text}"
     );
 }

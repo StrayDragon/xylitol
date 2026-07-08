@@ -1,161 +1,173 @@
 ---
 version: alpha
 name: Xylitol Terminal
-description: Terminal-emulator design system for xylitol-tui and the product TUI surface.
+description: Minimal terminal design system for xylitol-tui — clean, copy-friendly, scrollback-native.
 colors:
-  surface: "#1e1e2e"
   on-surface: "#cdd6f4"
   muted: "#6c7086"
-  primary: "#89b4fa"
-  secondary: "#a6adc8"
-  accent: "#94e2d5"
-  success: "#a6e3a1"
-  warning: "#f9e2af"
+  accent: "#89b4fa"
+  user: "#cba6f7"
+  assistant: "#cdd6f4"
+  tool: "#6c7086"
   error: "#f38ba8"
-  user: "#f9e2af"
-  assistant: "#a6e3a1"
-  tool: "#89b4fa"
-  border: "#45475a"
-  selection-bg: "#45475a"
-  selection-fg: "#cdd6f4"
+  warning: "#f9e2af"
+  success: "#a6e3a1"
 typography:
   body:
     fontFamily: terminal-monospace
     fontSize: 1cell
     fontWeight: 400
     lineHeight: 1
-  label:
+  dim:
     fontFamily: terminal-monospace
     fontSize: 1cell
-    fontWeight: 500
-    lineHeight: 1
-  emphasis:
-    fontFamily: terminal-monospace
-    fontSize: 1cell
-    fontWeight: 700
+    fontWeight: 400
     lineHeight: 1
 spacing:
   xs: 0
   sm: 1
-  md: 2
-  lg: 4
-  gutter: 2
-  debug-strip-rows: 3
   status-rows: 1
+  footer-rows: 1
 rounded:
   none: 0
 components:
-  transcript-user:
+  user-prefix:
     textColor: "{colors.user}"
-    typography: "{typography.emphasis}"
-  transcript-assistant:
+  assistant-body:
     textColor: "{colors.assistant}"
-    typography: "{typography.body}"
-  transcript-tool:
+  tool-line:
     textColor: "{colors.tool}"
-    typography: "{typography.label}"
   status-line:
     textColor: "{colors.muted}"
     height: "{spacing.status-rows}"
-  editor-border:
-    textColor: "{colors.primary}"
-  debug-strip:
+  footer:
     textColor: "{colors.muted}"
-    height: "{spacing.debug-strip-rows}"
-  overlay-panel:
-    backgroundColor: "{colors.selection-bg}"
-    textColor: "{colors.selection-fg}"
+    height: "{spacing.footer-rows}"
+  editor-border:
+    textColor: "{colors.muted}"
 ---
 
 # Design System — Xylitol Terminal
 
 ## Overview
 
-面向 **终端模拟器** 的 coding-agent TUI：单列、高信息密度、低装饰。视觉语言依赖 ANSI 颜色与属性（bold / dim / reverse / underline），不依赖 Web 字体、圆角卡片或阴影。
+**少 chrome、多内容、可复制。** 这是跑在用户已有终端模拟器里的 coding-agent 界面，不是仪表盘。
 
-情绪：冷静、可滚动、可复制。对话历史进入终端 scrollback；输入与状态永远贴在可视区底部。
+对齐 pi interactive 的体感：对话进 scrollback，输入贴底，忙碌时一行 status，底部一行极简 footer。装饰、侧栏、常驻 debug、多行快捷键条默认都不要。
 
-默认调色板参考 Catppuccin Mocha 语义映射；产品面可用闭包主题覆盖，token 名保持稳定。
+情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
 
 ## Colors
 
-- **Surface** (`#1e1e2e`)：逻辑背景（多数终端由模拟器绘制；TUI 不强制清成 alt-screen）。
-- **On-surface** (`#cdd6f4`)：主文本。
-- **Muted** (`#6c7086`)：状态、footer、debug、分隔线。
-- **Primary** (`#89b4fa`)：焦点边框、链接感强调、工具名。
-- **User / Assistant / Tool**：角色前缀色，保持可区分且不过饱和。
-- **Error / Warning / Success**：校验与结果态。
-- **Selection**：列表选中用 reverse 或 `selection-bg`，避免依赖真鼠标选区。
+色板刻意短。默认偏 Catppuccin Mocha，但产品面只映射这些语义：
 
-实现：包内组件收 **闭包主题**；语义 token → SGR 的映射在 `src/app/tui/`（产品面）。
+| Token | 用途 |
+|---|---|
+| `on-surface` | 助手正文、默认文本 |
+| `muted` | status、footer、工具摘要、边框 |
+| `accent` | 忙碌 spinner、当前焦点边框（一屏最多一处） |
+| `user` | 用户消息前缀（短 glyph） |
+| `tool` | 工具一行摘要（dim） |
+| `error` / `warning` / `success` | 异常与结果，少用 |
+
+不要为 header / debug / 多角色长标签再扩一套色。选中列表用 **reverse**，不必单独 `selection-bg` 面板底。
+
+包内组件收闭包主题；语义 → SGR 在 `src/app/tui/`。
 
 ## Typography
 
-终端无自定义 fontFamily。层级只用属性：
+只有终端等宽 + ANSI 属性：
 
-- **Body**：常规文本、assistant markdown 主体。
-- **Emphasis**：bold 角色名、标题。
-- **Label**：dim 元数据、debug、快捷键提示。
-- **Code**：markdown fence 内 syntect 着色；无边框、无语言标签条。
+- **body**：助手 markdown / 用户正文
+- **dim**：元数据、footer、工具行
+- **bold**：极少用（错误标题、必要强调）
+- **reverse**：列表选中
+- **underline**：可复制 URL 展示时可用
 
-行高恒为 1 cell。禁止用空行堆「呼吸感」超过结构需要（段落间最多一空行）。
+段落间最多一空行。代码块：语法高亮即可，**无边框、无语言标签条、无树线装饰**。
 
 ## Layout
 
-单列垂直栈（对齐 pi interactive）：
+默认栈（比 pi 再克制一点）：
 
 ```
-header (可选, ≤2 行)
-transcript (全宽, 全量历史 → 引擎滚入 scrollback)
-status (固定 1 行)
-editor (输入区, 贴底可视)
-debug / widgets-below (固定行数, 默认 3)
-footer (快捷键, 1 行)
+transcript     全宽；全量历史 → 引擎滚入 scrollback
+status         0 或 1 行（仅 busy / retry / error）
+editor         贴底；选择器打开时替换此槽（showSelector）
+footer         1 行 dim（cwd · model · 可选 context%）
 ```
 
 硬规则：
 
-1. **Viewport 贴尾**：`previous_viewport_top = max(0, max(height, n) - height)`。
-2. **禁止双栏抢 transcript 宽度**（dashboard 侧栏不是默认）。
-3. **禁止应用层截断历史冒充滚动**——旧消息必须进入 line-array。
-4. **固定底栏高度**：status / debug / footer 行数稳定，避免流式时输入框抖动。
-5. Overlay 居中叠在内容上，不改底层栈结构。
+1. Viewport 贴尾：`previous_viewport_top = max(0, max(height, n) - height)`。
+2. **无双栏**；无常驻 Workspace / Plan / Files 侧栏。
+3. **不截断历史**冒充滚动。
+4. **无常驻 debug strip**；调试信息走 `/debug`、日志或临时一行，不占 3 行底栏。
+5. **无常驻多行 header**；需要会话名/路径时并进 footer，或 quiet 启动后省略。
+6. 命令面板 / 设置：**替换 editor 槽**，不要 blit 到内容顶部。
+7. 居中 `show_overlay` 只用于确认框等短交互。
 
-`spacing.*` 单位是 **cell / 行**，不是 px。
+`spacing.*` 单位是 cell / 行。
 
 ## Elevation & Depth
 
-无阴影。层次靠：
-
-- 角色色前缀
-- dim vs bold
-- reverse 选中
-- overlay 反色/高对比面板
-- 分隔线用 muted `-` 重复到宽（可选；能省则省）
+无阴影、无卡片。层次只靠：短前缀、dim/bold、reverse。分隔线能省则省；需要时用 muted 单行 `-`，不要双线框墙。
 
 ## Shapes
 
-终端无圆角。边框用 ASCII/ANSI 线（Editor 上下边）或纯空行分隔。`rounded.none = 0` 表示刻意不模拟圆角。
+无圆角。Editor 可用极简上下边（muted），或仅靠空行与 status 区分。`rounded.none = 0`。
 
 ## Components
 
-- **Transcript**：全宽消息流；User / Assistant / Tool / System 前缀；markdown 经共享渲染器。
-- **StatusLine**：固定 1 行；idle=`Ready`；busy=spinner+短标签；不放 turn 计数/模型名（模型可放 footer 或 slash）。
-- **Editor**：多行草稿；反色假光标；默认 **隐藏硬件光标**（IME 仍可相对定位）。
-- **DebugStrip**：输入框下固定 N 行摘要（plan / 最近 tool / 文件数）；可 slash 关闭。
-- **SelectList / SettingsList**：默认以 **editor-slot 替换**（pi `showSelector`）出现在输入区位置，保证 transcript 滚入 scrollback 后仍在可视底；真正的浮动 `show_overlay` 留给居中确认框等场景。选中 reverse；描述列 dim。
-- **Overlay**：居中叠层（确认/扩展）；Esc 关闭；由 `OverlayHandle` 控制。命令面板/设置优先用 editor-slot，不要 blit 到内容绝对顶部。
-- **Loader**：仅在 status 忙碌时出现；idle 不得残留 spinner 帧。
+### Transcript（主内容）
+
+- 用户：短前缀 `❯ `（或主题等价 glyph）+ 正文。避免 `USER>` / `You` 长标签——复制时噪音大。
+- 助手：正文直接出；不必每段加 `ASSISTANT>`。
+- 工具：一行 dim 摘要，例如 `⚙ read path` / `⚙ bash …`；详情进 scrollback 或展开，不默认堆多段。
+- System / 错误：短 dim 或 `error` 色一行。
+- Markdown：标题用 `#` 前缀字符（省 token、可复制）；列表用 `1.` / `-`；链接渲染为 `text (url)` 可复制形式。
+
+### status
+
+- idle：**不占行**（或与 footer 合并，不要空转 spinner）。
+- busy：一行 `spinner + 短词`（Working / Running tool / Retry…）。
+- 不放 turn 计数、耗时百分比、双列元数据。
+
+### editor
+
+- 多行草稿；反色假光标；默认隐藏硬件光标。
+- Ctrl+P / 设置等：pi `showSelector`——清空 editor 槽，放入 SelectList/SettingsList，Esc 还原。
+
+### footer
+
+- 一行 dim：`cwd (branch) · model · context%` 一类；放不下就截断右侧。
+- 快捷键提示：默认不列清单；需要时 `/help` 或极短 `?`。
+
+### overlay
+
+- 确认 / 扩展：居中短面板即可。
+- 不要把命令面板做成大仪表盘。
+
+## Token economy（复制友好）
+
+用户会把终端里的字贴回下一轮。因此：
+
+| Do | Don't |
+|---|---|
+| 短 glyph 前缀（`❯` `⚙`） | 长角色名每行重复 |
+| 表格用空格/tab 对齐纯文本 | Unicode 表格线、树连接符 |
+| 代码块只有高亮 | 边框、语言标签条、行号墙 |
+| 工具一行摘要 | 默认展开完整 JSON/diff |
+| footer 一行 | 底栏 3～5 行 debug + 快捷键墙 |
 
 ## Do's and Don'ts
 
-- Do 保持单列 + scrollback，让终端模拟器原生上下滚看历史。
-- Do 用语义色 sparingly：一屏一个主强调色（primary / 当前焦点边框）。
-- Do 默认隐藏硬件光标；假光标表达编辑位置。
-- Do 固定 status/debug 行数，防止流式布局抖动。
-- Don't 用双栏 Workspace 挤占 transcript（demo 已移除；产品默认同）。
-- Don't blit 选择弹层到内容绝对顶部（transcript 一长就滚出视口）；命令/设置用 editor-slot 替换。
-- Don't 在应用层只渲染「最近 N 条」冒充滚动。
-- Don't 引入卡片阴影、圆角、多字体栈等 Web 范式。
-- Don't 混用「有时 show 硬件光标、有时 hide」而不经显式设置。
-- Don't 在第一屏堆 stats / 多块营销式元数据；终端第一屏 = 对话 + 输入。
+- Do 像普通终端会话：向上翻、复制、再问。
+- Do 默认隐藏硬件光标；一屏一个 accent。
+- Do 选择器替换 editor 槽，保证贴底可见。
+- Do 忙碌才出 status；idle 让出垂直空间给对话。
+- Don't 常驻 Plan / Tools / Files / 快捷键墙。
+- Don't 双栏、卡片、圆角、多字体、阴影。
+- Don't blit 弹层到内容绝对顶部。
+- Don't 截断历史冒充滚动。
+- Don't 为「好看」增加无法复制或复制后无意义的装饰字符。
