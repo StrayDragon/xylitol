@@ -31,6 +31,7 @@
 | 4 | 修 clippy warnings，编辑器与 markdown 补测 | 183 全绿 |
 | **c405** | **五层 TUI 测试 harness（键序列/snapshot/时序/proptest/E2E）** | **+11 测试 + 4 E2E，spec tt01-06 落地** |
 | **c410** | **terminal 协议补齐（Kitty 探测 + modifyOtherKeys + OSC 标题/进度 + drainInput）** | **+4 单测 + 2 E2E，spec tp01-04 落地** |
+| **c415** | **paste-burst 移植（非 bracketed paste 的 Enter 抑制检测器）** | **+9 测试，spec pb01-03 落地** |
 
 ---
 
@@ -87,7 +88,7 @@
 | 子阶段 | 内容 | 估算 | 测试层 |
 |---|---|---|---|
 | 6.1 | **`terminal.rs` 扩到完整**（Kitty 协议协商 + stdin_buffer 接入 + modifyOtherKeys + Apple Terminal 归一化） | 大 | 第 5a 层验证 crossterm 真实事件解析 |
-| 6.2 | **`paste-burst` 移植**（pi 独有 61 行，非 bracketed paste 的 Enter 抑制） | 中 | 第 3 层 Clock/MockClock（窗口边界 8ms/120ms） |
+| ~~6.2~~ | ~~**`paste-burst` 移植**~~ → ✅ c415 完成 | ~~中~~ | 第 1+3 层（9 测试） |
 | 6.3 | **`autocomplete.rs` 补 debounce + `walkDirectoryWithFd`** | 中 | 第 3 层（debounce paused time）+ 第 4 层 |
 | 6.4 | **`editor.rs` 补全**（autocomplete 集成 + paste-burst + VisualLine 系统 + history 导航，408→~2400 行） | 大 | 第 1 层（交互）+ 第 4 层（editor 不变量） |
 | 6.5 | **`stdin_buffer.rs` 补 OSC reply 拦截 + turbo 模式** | 中 | 第 1 层 + 第 5a 层 |
@@ -125,7 +126,7 @@ c405 后这些缺口**已有配套测试机制**，不再是「不处理」，�
 | 事项 | 说明 | 配套测试层 | 风险 |
 |---|---|---|---|
 | `editor.rs` autocomplete 集成 | pi editor 内嵌完整 autocomplete 管线（AbortController、debounce、SelectList popup），xy 当前 408 行 vs pi 2415 行，缺 autocomplete/paste-burst/VisualLine 三大类 | 移植后走第 1 层（交互）+ 第 3 层（debounce 时序）+ 第 4 层（editor 不变量）| 中等 |
-| `paste-burst` 未移植 | pi 独有（61 行），非 bracketed paste 的 Enter 抑制；xy 零实现 | 第 3 层 Clock/MockClock 已备好（窗口边界测试模式已验证）| 中等 |
+| ~~`paste-burst` 未移植~~ → ✅ c415 完成 | pi 独有（61 行），非 bracketed paste 的 Enter 抑制；已移植为 `PasteBurst`（方法接受 `Instant` 参数注入时间源） | 第 1+3 层（9 测试，含 7ms/9ms 窗口边界）| ~~中等~~ → 低 |
 | ~~`terminal.rs` 偏薄~~ → ✅ c410 完成 | Kitty 协议探测（push flags + set_kitty_protocol_active）+ modifyOtherKeys 回退 + OSC 标题/进度 + drainInput 防泄漏。stdin buffer 接入/Apple Terminal 归一化仍跳过（crossterm 已覆盖） | 第 5a 层 E2E 验证启动序列含 `CSI >7u` | ~~中等~~ → 低 |
 | `stdin_buffer.rs` | 158 行 vs pi 434 行，OSC reply 拦截、turbo 模式未完整移植 | 第 1 层 + 第 5a 层 | 低 |
 | fuzzy 评分公式 | pi 用连续匹配 -consecutive×5 / gap / word boundary，Rust 评分简化 | 第 4 层 proptest | 低（补全排序细微差异） |
