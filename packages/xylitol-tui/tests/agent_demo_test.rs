@@ -254,4 +254,95 @@ fn agent_demo_layout_is_minimal_single_column() {
         text.contains("❯"),
         "user messages use a short glyph prefix; got:\n{text}"
     );
+    assert!(
+        text.contains("thinking") && text.contains("Ctrl+T"),
+        "seed transcript should include a collapsed thinking block; got:\n{text}"
+    );
+}
+
+#[test]
+fn agent_demo_ctrl_t_expands_thinking_block() {
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+
+    h.render_result().expect("initial render should succeed");
+    let before = h.tui.terminal.viewport().join("\n");
+    assert!(
+        before.contains("Ctrl+T expand"),
+        "thinking starts collapsed; got:\n{before}"
+    );
+    assert!(
+        !before.contains("Keep transcript in scrollback"),
+        "collapsed thinking must hide body; got:\n{before}"
+    );
+
+    h.keys("\x14"); // Ctrl+T
+    h.render_result()
+        .expect("expand thinking must stay within width");
+    let after = h.tui.terminal.viewport().join("\n");
+    assert!(
+        after.contains("Keep transcript in scrollback"),
+        "Ctrl+T should expand thinking body; got:\n{after}"
+    );
+    assert!(
+        after.contains("Ctrl+T collapse"),
+        "expanded header should offer collapse; got:\n{after}"
+    );
+}
+
+#[test]
+fn agent_demo_ctrl_e_expands_tool_block() {
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+
+    h.render_result().expect("initial render should succeed");
+    let before = h.tui.terminal.viewport().join("\n");
+    assert!(
+        before.contains("agent_demo.rs") && before.contains("Ctrl+E expand"),
+        "seed tool block starts collapsed; got:\n{before}"
+    );
+    assert!(
+        !before.contains("demo stub") && !before.contains("opened agent_demo"),
+        "collapsed tool must hide detail; got:\n{before}"
+    );
+
+    h.keys("\x05"); // Ctrl+E
+    h.render_result()
+        .expect("expand tools must stay within width");
+    let after = h.tui.terminal.viewport().join("\n");
+    assert!(
+        after.contains("opened agent_demo") || after.contains("FakeCodingAgentApp"),
+        "Ctrl+E should expand tool detail; got:\n{after}"
+    );
+}
+
+#[test]
+fn agent_demo_ctrl_g_cycles_glyph_set_to_ascii() {
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+
+    h.render_result().expect("initial render should succeed");
+    h.assert_text_contains("❯");
+    h.keys("\x07"); // Ctrl+G
+    h.render_result()
+        .expect("glyph cycle must stay within width");
+    let text = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text.contains("glyphs:ascii"),
+        "Ctrl+G should switch to ascii glyph set; got:\n{text}"
+    );
+    // New user/system lines use ascii; historical unicode lines may remain.
+    assert!(
+        text.contains("glyph_set=ascii"),
+        "system note should confirm the switch; got:\n{text}"
+    );
 }
