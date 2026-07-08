@@ -44,7 +44,9 @@ pub fn build_fd_path_query(query: &str) -> String {
 }
 
 fn regex_escape(value: &str) -> String {
-    let special: &[char] = &['.', '*', '+', '?', '^', '$', '{', '}', '(', ')', '|', '[', ']', '\\'];
+    let special: &[char] = &[
+        '.', '*', '+', '?', '^', '$', '{', '}', '(', ')', '|', '[', ']', '\\',
+    ];
     let mut out = String::with_capacity(value.len() * 2);
     for ch in value.chars() {
         if special.contains(&ch) {

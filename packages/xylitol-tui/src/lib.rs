@@ -16,27 +16,30 @@ pub mod undo_stack;
 pub mod utils;
 pub mod word_navigation;
 
+pub use autocomplete::{
+    AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions, CombinedAutocompleteProvider,
+    DebouncedAutocomplete, SlashCommand, parse_path_prefix,
+};
+pub use autocomplete_fd::{build_fd_path_query, walk_directory_with_fd};
 pub use clock::{Clock, MockClock, SystemClock};
 pub use components::cancellable_loader::CancellableLoader;
+pub use components::editor::{AutocompleteMode, Editor, EditorOptions, EditorTheme, VisualLine};
 pub use components::image::{Image, ImageOptions, ImageTheme};
 pub use components::input::Input;
 pub use components::loader::{Loader, LoaderIndicatorOptions};
+pub use components::markdown::{DefaultTextStyle, Markdown, MarkdownOptions, MarkdownTheme};
 pub use components::panel::Panel;
+pub use components::select_list::{
+    SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,
+    SelectListTruncatePrimaryContext,
+};
 pub use components::settings_list::{
     SettingItem, SettingsList, SettingsListOptions, SettingsListTheme,
 };
 pub use components::spacer::Spacer;
 pub use components::text::Text;
 pub use components::truncated_text::TruncatedText;
-pub use components::editor::{AutocompleteMode, Editor, EditorOptions, EditorTheme, VisualLine};
-pub use components::markdown::{DefaultTextStyle, Markdown, MarkdownOptions, MarkdownTheme};
-pub use components::select_list::{
-    SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,
-    SelectListTruncatePrimaryContext,
-};
 pub use editor_component::EditorComponent;
-pub use autocomplete::{AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions, CombinedAutocompleteProvider, DebouncedAutocomplete, SlashCommand, parse_path_prefix};
-pub use autocomplete_fd::{build_fd_path_query, walk_directory_with_fd};
 pub use fuzzy::{FuzzyMatch, fuzzy_filter, fuzzy_match};
 pub use keybindings::{
     Keybinding, KeybindingConflict, KeybindingDefinition, KeybindingDefinitions, KeybindingsConfig,
@@ -54,11 +57,11 @@ pub use terminal_colors::{
 };
 pub use terminal_image::{
     CellDimensions, ImageDimensions, ImageProtocol, TerminalCapabilities,
-    calculate_image_cell_size, calculate_image_rows, delete_all_kitty_images,
-    delete_kitty_image, detect_capabilities, encode_iterm2, encode_kitty, get_capabilities,
-    get_cell_dimensions, get_gif_dimensions, get_image_dimensions, get_jpeg_dimensions,
-    get_png_dimensions, get_webp_dimensions, hyperlink, image_fallback, is_image_line,
-    render_image, reset_capabilities_cache, set_capabilities, set_cell_dimensions,
+    calculate_image_cell_size, calculate_image_rows, delete_all_kitty_images, delete_kitty_image,
+    detect_capabilities, encode_iterm2, encode_kitty, get_capabilities, get_cell_dimensions,
+    get_gif_dimensions, get_image_dimensions, get_jpeg_dimensions, get_png_dimensions,
+    get_webp_dimensions, hyperlink, image_fallback, is_image_line, render_image,
+    reset_capabilities_cache, set_capabilities, set_cell_dimensions,
 };
 pub use tui::{
     Component, Focusable, OverlayAnchor, OverlayMargin, OverlayOptions, RenderError, SizeValue, TUI,

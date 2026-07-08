@@ -151,6 +151,8 @@ pub struct TUI<T: Terminal> {
 /// Minimum spacing between throttled frames (~60fps). Mirrors pi's
 /// MIN_RENDER_INTERVAL_MS. `render_frame` bypasses this; `try_render` honors it.
 const MIN_RENDER_INTERVAL_MS: u64 = 16;
+const BEGIN_RENDER_BATCH: &str = "\x1b[?2026h\x1b[?7l";
+const END_RENDER_BATCH: &str = "\x1b[?7h\x1b[?2026l";
 
 impl<T: Terminal> TUI<T> {
     pub fn new(terminal: T) -> Self {
@@ -538,7 +540,7 @@ impl<T: Terminal> TUI<T> {
 
     fn full_render(&mut self, new_lines: &[String], clear: bool, height: usize) {
         self.full_redraw_count += 1;
-        let mut buf = String::from("\x1b[?2026h");
+        let mut buf = String::from(BEGIN_RENDER_BATCH);
         if clear {
             buf.push_str("\x1b[2J\x1b[H\x1b[3J");
         }
@@ -548,7 +550,7 @@ impl<T: Terminal> TUI<T> {
             }
             buf.push_str(line);
         }
-        buf.push_str("\x1b[?2026l");
+        buf.push_str(END_RENDER_BATCH);
         self.terminal.write(&buf);
         let len = new_lines.len();
         self.cursor_row = len.saturating_sub(1);
@@ -603,7 +605,7 @@ impl<T: Terminal> TUI<T> {
         // All-deletions branch: content only shrank. Clear the surplus lines.
         if first_changed_in >= new_lines.len() as isize {
             if self.previous_lines.len() > new_lines.len() {
-                let mut buf = String::from("\x1b[?2026h");
+                let mut buf = String::from(BEGIN_RENDER_BATCH);
                 let target = new_lines.len().saturating_sub(1);
                 let diff = target as isize - self.hardware_cursor_row as isize;
                 if diff > 0 {
@@ -627,7 +629,7 @@ impl<T: Terminal> TUI<T> {
                 if back > 0 {
                     buf.push_str(&format!("\x1b[{}A", back));
                 }
-                buf.push_str("\x1b[?2026l");
+                buf.push_str(END_RENDER_BATCH);
                 self.terminal.write(&buf);
                 self.cursor_row = target;
                 self.hardware_cursor_row = target;
@@ -646,7 +648,7 @@ impl<T: Terminal> TUI<T> {
             first_changed
         };
 
-        let mut buf = String::from("\x1b[?2026h");
+        let mut buf = String::from(BEGIN_RENDER_BATCH);
 
         // Viewport scroll (pi Step 5C, tui.ts:1466-1478): if the changed region
         // falls below the previous viewport bottom, CUD to the screen's last row
@@ -690,7 +692,7 @@ impl<T: Terminal> TUI<T> {
             buf.push_str("\x1b[2K");
             buf.push_str(line);
         }
-        buf.push_str("\x1b[?2026l");
+        buf.push_str(END_RENDER_BATCH);
         self.terminal.write(&buf);
 
         // Shrink cleanup: if content got shorter, clear the surplus rows below
@@ -699,7 +701,7 @@ impl<T: Terminal> TUI<T> {
         let mut final_cursor_row = end;
         if self.previous_lines.len() > new_lines.len() && !appended {
             let extra = self.previous_lines.len() - new_lines.len();
-            let mut tail = String::from("\x1b[?2026h");
+            let mut tail = String::from(BEGIN_RENDER_BATCH);
             // Move to one past the last rendered line, clear each surplus row.
             for _ in 0..extra {
                 tail.push_str("\r\n\x1b[2K");
@@ -708,7 +710,7 @@ impl<T: Terminal> TUI<T> {
             if extra > 0 {
                 tail.push_str(&format!("\x1b[{}A", extra));
             }
-            tail.push_str("\x1b[?2026l");
+            tail.push_str(END_RENDER_BATCH);
             self.terminal.write(&tail);
             final_cursor_row = new_lines.len().saturating_sub(1);
         }

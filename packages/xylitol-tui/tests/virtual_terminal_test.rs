@@ -340,6 +340,39 @@ fn render_allows_line_that_fits_width_exactly() {
 }
 
 #[test]
+fn render_exact_width_changed_line_does_not_wrap_and_leave_stale_rows() {
+    use support::MutableComponent;
+
+    let lines = std::rc::Rc::new(std::cell::RefCell::new(vec![
+        "ABCDEFGH".to_string(),
+        "tail".to_string(),
+    ]));
+    let term = LoggingVirtualTerminal::new(8, 4);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(MutableComponent {
+        lines: lines.clone(),
+    }));
+
+    tui.render_frame().unwrap();
+    assert_eq!(tui.terminal.viewport()[0], "ABCDEFGH");
+    assert_eq!(tui.terminal.viewport()[1], "tail");
+    assert!(tui.terminal.all_writes().contains("\x1b[?7l"));
+    assert!(tui.terminal.all_writes().contains("\x1b[?7h"));
+
+    *lines.borrow_mut() = vec!["12345678".to_string(), "done".to_string()];
+    tui.terminal.clear_writes();
+    tui.render_frame().unwrap();
+
+    let vp = tui.terminal.viewport();
+    assert_eq!(vp[0], "12345678");
+    assert_eq!(vp[1], "done");
+    assert!(
+        !vp.iter().any(|line| line.contains("tail")),
+        "stale old rows must not remain after an exact-width diff: {vp:?}"
+    );
+}
+
+#[test]
 fn render_exempts_image_lines_from_width_check() {
     // Kitty APC image lines have visible width 0 but carry many payload bytes;
     // they must not trip the width invariant.

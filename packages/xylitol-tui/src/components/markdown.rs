@@ -415,28 +415,24 @@ fn collect_inline_until(
                 let inner = collect_inline_until(events, idx, default_fn, style_prefix);
                 parts.push(inner.concat());
                 parts.push(style_prefix.to_string());
-                skip_end_tag(events, idx);
             }
             Event::Start(Tag::Emphasis) => {
                 *idx += 1;
                 let inner = collect_inline_until(events, idx, default_fn, style_prefix);
                 parts.push(inner.concat());
                 parts.push(style_prefix.to_string());
-                skip_end_tag(events, idx);
             }
             Event::Start(Tag::Strikethrough) => {
                 *idx += 1;
                 let inner = collect_inline_until(events, idx, default_fn, style_prefix);
                 parts.push(inner.concat());
                 parts.push(style_prefix.to_string());
-                skip_end_tag(events, idx);
             }
             Event::Start(Tag::Link { dest_url, .. }) => {
                 *idx += 1;
                 let _inner = collect_inline_until(events, idx, default_fn, style_prefix);
                 parts.push(dest_url.clone().into_string());
                 parts.push(style_prefix.to_string());
-                skip_end_tag(events, idx);
             }
             Event::Code(code) => {
                 parts.push(code.to_string());
@@ -694,6 +690,7 @@ fn render_table(md: &Markdown, events: &[Event], idx: &mut usize, width: usize) 
     let mut headers: Vec<String> = Vec::new();
     let mut body_rows: Vec<Vec<String>> = Vec::new();
     let mut current_row: Vec<String> = Vec::new();
+    let mut in_header = false;
 
     while *idx < events.len() {
         match &events[*idx] {
@@ -701,14 +698,24 @@ fn render_table(md: &Markdown, events: &[Event], idx: &mut usize, width: usize) 
                 *idx += 1;
                 break;
             }
+            Event::Start(Tag::TableHead) => {
+                *idx += 1;
+                in_header = true;
+                current_row.clear();
+            }
             Event::End(TagEnd::TableHead) => {
                 *idx += 1;
+                if !current_row.is_empty() {
+                    headers = std::mem::take(&mut current_row);
+                }
+                in_header = false;
             }
             Event::End(TagEnd::TableRow) => {
                 *idx += 1;
-                if headers.is_empty() {
+                if in_header || headers.is_empty() {
                     headers = std::mem::take(&mut current_row);
-                } else {
+                    in_header = false;
+                } else if !current_row.is_empty() {
                     body_rows.push(std::mem::take(&mut current_row));
                 }
             }
@@ -725,7 +732,7 @@ fn render_table(md: &Markdown, events: &[Event], idx: &mut usize, width: usize) 
     if num_cols == 0 {
         return lines;
     }
-    let overhead = 3 * num_cols + 1;
+    let overhead = table_overhead(num_cols);
     let available = width.saturating_sub(overhead);
     if available < num_cols {
         return lines;
@@ -830,13 +837,61 @@ fn longest_word_width(text: &str, max: usize) -> usize {
         .min(max)
 }
 
+fn table_overhead(num_cols: usize) -> usize {
+    if num_cols == 0 {
+        return 0;
+    }
+
+    let empty = vec![String::new(); num_cols];
+    [
+        format!("┌─{}─┐", empty.join("─┬─")),
+        format!("│ {} │", empty.join(" │ ")),
+        format!("├─{}─┤", empty.join("─┼─")),
+        format!("└─{}─┘", empty.join("─┴─")),
+    ]
+    .iter()
+    .map(|line| visible_width(line))
+    .max()
+    .unwrap_or(0)
+}
+
 fn compute_column_widths(natural: &[usize], min_word: &[usize], available: usize) -> Vec<usize> {
     let n = natural.len();
+    if n == 0 {
+        return Vec::new();
+    }
+
+    let fit_to_available = |preferred: &[usize]| -> Vec<usize> {
+        let mut widths = vec![1; n];
+        let mut remaining = available.saturating_sub(n);
+        let mut grew = true;
+        while grew && remaining > 0 {
+            grew = false;
+            for i in 0..n {
+                if widths[i] < preferred[i].max(1) && remaining > 0 {
+                    widths[i] += 1;
+                    remaining -= 1;
+                    grew = true;
+                }
+            }
+        }
+        widths
+    };
+
     let total_natural: usize = natural.iter().sum();
     if total_natural <= available {
-        return (0..n).map(|i| natural[i].max(min_word[i])).collect();
+        let preferred: Vec<usize> = (0..n).map(|i| natural[i].max(min_word[i])).collect();
+        if preferred.iter().sum::<usize>() <= available {
+            return preferred;
+        }
+        return fit_to_available(&preferred);
     }
+
     let min_total: usize = min_word.iter().sum();
+    if min_total > available {
+        return fit_to_available(min_word);
+    }
+
     let extra = available.saturating_sub(min_total);
     let total_grow: usize = (0..n).map(|i| natural[i].saturating_sub(min_word[i])).sum();
     let mut widths: Vec<usize> = (0..n).map(|i| min_word[i]).collect();
@@ -947,5 +1002,49 @@ mod tests {
         assert!(lines.iter().any(|l| l.contains("┌")));
         assert!(lines.iter().any(|l| l.contains("a")));
         assert!(lines.iter().any(|l| l.contains("1")));
+    }
+
+    #[test]
+    fn table_respects_width_when_min_words_exceed_available_space() {
+        let mut md = Markdown::new(
+            "\
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Autocomplete | file-path + slash-command with fd recursive search | another-long-unbroken-token |
+"
+            .into(),
+            0,
+            0,
+            identity_theme(),
+            None,
+            None,
+        );
+
+        let lines = md.render(72);
+        for line in lines {
+            assert!(
+                visible_width(&line) <= 72,
+                "table line exceeds width: {} > 72: {line:?}",
+                visible_width(&line)
+            );
+        }
+    }
+
+    #[test]
+    fn table_keeps_styled_cells_separate() {
+        let mut md = Markdown::new(
+            "| Feature | Status |\n|---------|--------|\n| **Editor** | multi-line |\n".into(),
+            0,
+            0,
+            identity_theme(),
+            None,
+            None,
+        );
+
+        let text = md.render(48).join("\n");
+        assert!(
+            text.contains("│ Editor") && text.contains("│ multi-line"),
+            "styled first cell must not absorb the next cell:\n{text}"
+        );
     }
 }
