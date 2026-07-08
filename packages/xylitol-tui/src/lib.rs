@@ -38,7 +38,7 @@ pub use keys::{
     set_kitty_protocol_active,
 };
 pub use stdin_buffer::{StdinBuffer, StdinBufferEvent};
-pub use terminal::{CrosstermTerminal, Terminal};
+pub use terminal::{CrosstermTerminal, Terminal, parse_kitty_flags};
 pub use terminal_colors::{
     RgbColor, TerminalColorScheme, is_osc11_background_color_response,
     parse_osc11_background_color, parse_terminal_color_scheme_report,
