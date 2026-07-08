@@ -85,6 +85,7 @@ fn main() {
 
 // ── Main app ────────────────────────────────────────────────────────────────
 
+#[allow(dead_code)] // demo UI state: some fields/variants reserved for showcas
 struct ShowcaseApp {
     // Navigation
     current_view: View,
@@ -109,6 +110,7 @@ struct ShowcaseApp {
 }
 
 #[derive(Clone, PartialEq)]
+#[allow(dead_code)] // demo nav targets; some variants reserved for showcase
 enum View {
     Info,
     Components,
@@ -120,11 +122,11 @@ enum View {
 impl ShowcaseApp {
     fn new(quit_flag: Arc<AtomicBool>) -> Self {
         let nav_theme = SelectListTheme {
-            selected_prefix: Box::new(|s| cyan(s)),
+            selected_prefix: Box::new(cyan),
             selected_text: Box::new(|s| format!("\x1b[7m{s}\x1b[27m")),
-            description: Box::new(|s| dim(s)),
-            scroll_info: Box::new(|s| dim(s)),
-            no_match: Box::new(|s| dim(s)),
+            description: Box::new(dim),
+            scroll_info: Box::new(dim),
+            no_match: Box::new(dim),
         };
 
         let nav_list = SelectList::new(
@@ -151,18 +153,18 @@ impl ShowcaseApp {
         // ── Markdown ──
         let md_theme = MarkdownTheme {
             heading: Box::new(|s| bold(&cyan(s))),
-            link: Box::new(|s| cyan(s)),
-            link_url: Box::new(|s| dim(s)),
-            code: Box::new(|s| yellow(s)),
-            code_block: Box::new(|s| dim(s)),
-            code_block_border: Box::new(|s| dim(s)),
-            quote: Box::new(|s| dim(s)),
-            quote_border: Box::new(|s| dim(s)),
-            hr: Box::new(|s| dim(s)),
-            list_bullet: Box::new(|s| cyan(s)),
-            bold: Box::new(|s| bold(s)),
-            italic: Box::new(|s| dim(s)),
-            strikethrough: Box::new(|s| red(s)),
+            link: Box::new(cyan),
+            link_url: Box::new(dim),
+            code: Box::new(yellow),
+            code_block: Box::new(dim),
+            code_block_border: Box::new(dim),
+            quote: Box::new(dim),
+            quote_border: Box::new(dim),
+            hr: Box::new(dim),
+            list_bullet: Box::new(cyan),
+            bold: Box::new(bold),
+            italic: Box::new(dim),
+            strikethrough: Box::new(red),
             underline: Box::new(|s| format!("\x1b[4m{s}\x1b[24m")),
             highlight_code: None,
             code_block_indent: Some("  ".to_string()),
@@ -173,9 +175,9 @@ impl ShowcaseApp {
         let sl_theme = SettingsListTheme {
             label: Box::new(|s, _| s.to_string()),
             value: Box::new(|s, sel| if sel { cyan(s) } else { dim(s) }),
-            description: Box::new(|s| dim(s)),
+            description: Box::new(dim),
             cursor: "> ".to_string(),
-            hint: Box::new(|s| dim(s)),
+            hint: Box::new(dim),
         };
         let settings = SettingsList::new(
             vec![
@@ -234,8 +236,8 @@ impl ShowcaseApp {
 
         // ── Loader ──
         let loader = Loader::new(
-            Box::new(|s| cyan(s)),
-            Box::new(|s| dim(s)),
+            Box::new(cyan),
+            Box::new(dim),
             "Loading components...".to_string(),
             Some(LoaderIndicatorOptions {
                 frames: vec![
@@ -339,7 +341,7 @@ impl Component for ShowcaseApp {
             let left = sidebar_out
                 .get(i)
                 .cloned()
-                .unwrap_or_else(|| format!("{}", " ".repeat(sidebar_w)));
+                .unwrap_or_else(|| " ".repeat(sidebar_w).to_string());
             let right = content_lines.get(i).cloned().unwrap_or_default();
             lines.push(format!("{}{}", left, right));
         }
@@ -384,16 +386,16 @@ impl Component for ShowcaseApp {
                     self.nav_list.handle_input("\x1b[A");
                 } else if matches_key(data, "down") {
                     self.nav_list.handle_input("\x1b[B");
-                } else if matches_key(data, "enter") {
-                    if let Some(item) = self.nav_list.get_selected_item() {
-                        match item.value.as_str() {
-                            "info" => self.current_view = View::Info,
-                            "components" => self.current_view = View::Components,
-                            "input" => self.current_view = View::Input,
-                            "settings" => self.current_view = View::Settings,
-                            "quit" => self.quit_flag.store(true, Ordering::SeqCst),
-                            _ => {}
-                        }
+                } else if matches_key(data, "enter")
+                    && let Some(item) = self.nav_list.get_selected_item()
+                {
+                    match item.value.as_str() {
+                        "info" => self.current_view = View::Info,
+                        "components" => self.current_view = View::Components,
+                        "input" => self.current_view = View::Input,
+                        "settings" => self.current_view = View::Settings,
+                        "quit" => self.quit_flag.store(true, Ordering::SeqCst),
+                        _ => {}
                     }
                 }
             }

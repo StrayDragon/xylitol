@@ -1,4 +1,5 @@
 pub mod autocomplete;
+pub mod clock;
 pub mod components;
 pub mod editor_component;
 pub mod fuzzy;
@@ -14,6 +15,7 @@ pub mod undo_stack;
 pub mod utils;
 pub mod word_navigation;
 
+pub use clock::{Clock, MockClock, SystemClock};
 pub use components::cancellable_loader::CancellableLoader;
 pub use components::image::{Image, ImageOptions, ImageTheme};
 pub use components::input::Input;

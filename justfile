@@ -22,6 +22,19 @@ lint:
 test:
     if command -v cargo-nextest >/dev/null; then cargo nextest run --all-features --profile ci; else cargo test --all-features; fi
 
+# Run TUI end-to-end integration tests (c405 layer 5). Slow + needs a real PTY
+# and/or tmux; gated #[ignore] so they never run under the default `test`.
+test-tui-e2e:
+    cargo test --test tui_e2e -- --ignored
+
+# TUI E2E — portable-pty driver only (no tmux needed).
+test-tui-e2e-pty:
+    cargo test --test tui_e2e -- --ignored pty
+
+# TUI E2E — tmux driver only (requires the tmux binary on PATH).
+test-tui-e2e-tmux:
+    cargo test --test tui_e2e -- --ignored tmux
+
 # Run all checks (qa = fmt-check + lint + test + doc-check).
 qa: fmt-check lint test doc-check
     @echo "All checks passed!"

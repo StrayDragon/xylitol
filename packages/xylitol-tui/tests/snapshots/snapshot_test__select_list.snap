@@ -1,0 +1,9 @@
+---
+source: packages/xylitol-tui/tests/snapshot_test.rs
+expression: "support::viewport_snapshot(harness)"
+---
+0| [reverse]→ apple[/]
+1|   banana
+2|   cherry
+3|
+4|

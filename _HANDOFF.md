@@ -160,3 +160,25 @@ d0212e3 test(tui): 建 vte-backed VirtualTerminal cell-grid 测试 harness
 
 ### 新增
 - `src/app/tui/surface.rs` — `TuiSurface` 封装（新引擎 → RenderedLine 桥接）
+
+---
+
+## 五、TUI 测试 harness（c405，已落地）
+
+五层测试架构，覆盖从纯函数到真终端的全部动态行为。**后续 editor/paste-burst/autocomplete 移植必须配套用对应层测试**。
+
+| 层 | 工具 | 定位 | 落点 |
+|---|---|---|---|
+| 1. 按键序列→状态 | `TuiTestHarness` + `MutableComponent` | model 断言，抄 helix | `packages/xylitol-tui/tests/support/mod.rs` + `tests/harness_test.rs` |
+| 2. insta snapshot | `viewport_snapshot()` → `assert_snapshot!` | 整屏渲染回归 | `packages/xylitol-tui/tests/snapshot_test.rs` + `tests/snapshots/` |
+| 3. 时序 | `Clock`/`MockClock` + `#[tokio::test(start_paused)]` | paste-burst/debounce 确定性测试 | `packages/xylitol-tui/src/clock.rs` |
+| 4. proptest | 随机按键 + 不变量 | editor 状态机崩溃边界 | `packages/xylitol-tui/tests/property_test.rs` |
+| 5a. E2E 主力 | `portable-pty` + `CapturedScreen` | crossterm 真 PTY 事件解析 | `tests/tui_e2e.rs` + `tests/tui_e2e/pty.rs` |
+| 5b. 真终端冒烟 | tmux 手写 wrapper | 真 SGR 颜色回归 | `tests/tui_e2e/tmux.rs` |
+
+**关键约定**：
+- 第 1-4 层跑在 `cargo test -p xylitol-tui`（快、in-process、精确）
+- 第 5 层全 `#[ignore]`，只经 `just test-tui-e2e` 跑（慢、需真 PTY/tmux）
+- 时序测试**禁止** `thread::sleep`（必 flaky）；同步逻辑用 `MockClock`，async 用 `start_paused`
+- snapshot 变更用 `INSTA_UPDATE=always cargo test` 接受，人工复核
+- E2E spawn 的是 `xylitol-tui` demo example（非完整 `xylitol` 二进制），解耦 LLM provider 依赖

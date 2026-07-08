@@ -186,24 +186,18 @@ fn tui_second_render_after_change_only_writes_changed_line() {
 
 #[test]
 fn tui_dispatch_input_reaches_focused_component() {
+    // Rewritten (c405) to use TuiTestHarness instead of hand-wiring
+    // TUI + Terminal + set_focus per test (spec tt02).
+    use support::TuiTestHarness;
     use xylitol_tui::components::input::Input;
 
-    let term = LoggingVirtualTerminal::new(20, 3);
-    let mut tui = TUI::new(term);
     let mut input = Input::new();
     input.set_focused(true);
-    tui.add_child(Box::new(input));
-    tui.set_focus(Some(0));
-
-    tui.dispatch_input("a");
-    tui.render_frame().unwrap();
-
-    // The viewport's first line should now contain the typed 'a'.
-    let first = tui.terminal.viewport()[0].clone();
-    assert!(
-        first.contains('a'),
-        "typed char should render: got {first:?}"
-    );
+    let mut h = TuiTestHarness::new(20, 3);
+    h.mount(Box::new(input)).focus(Some(0));
+    h.keys("a");
+    h.render();
+    h.assert_text_contains("a");
 }
 
 #[test]
@@ -435,19 +429,7 @@ fn overlay_replaces_its_region_content() {
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// Component whose lines can be swapped between frames (for cross-frame diff
-/// scenarios). Mirrors pi's mutable TestComponent.
-struct MutableComponent {
-    lines: Rc<RefCell<Vec<String>>>,
-}
-
-impl Component for MutableComponent {
-    fn render(&mut self, _width: usize) -> Vec<String> {
-        self.lines.borrow().clone()
-    }
-    fn handle_input(&mut self, _data: &str) {}
-    fn invalidate(&mut self) {}
-}
+use support::MutableComponent;
 
 #[test]
 fn viewport_scrolls_when_content_grows_past_screen_height() {
