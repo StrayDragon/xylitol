@@ -6,6 +6,7 @@ pub mod fuzzy;
 pub mod keybindings;
 pub mod keys;
 pub mod kill_ring;
+pub mod paste_burst;
 pub mod stdin_buffer;
 pub mod terminal;
 pub mod terminal_colors;
@@ -37,6 +38,7 @@ pub use keys::{
     KeyId, decode_printable_key, is_key_release, is_key_repeat, matches_key, parse_key,
     set_kitty_protocol_active,
 };
+pub use paste_burst::PasteBurst;
 pub use stdin_buffer::{StdinBuffer, StdinBufferEvent};
 pub use terminal::{CrosstermTerminal, Terminal, parse_kitty_flags};
 pub use terminal_colors::{
