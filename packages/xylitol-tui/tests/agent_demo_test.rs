@@ -76,3 +76,36 @@ fn agent_demo_command_palette_overlay_renders_cleanly() {
     h.assert_text_contains("Command Palette");
     h.assert_text_contains("Run regression tests");
 }
+
+#[test]
+fn agent_demo_settings_overlay_renders_cleanly() {
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+
+    h.render_result().expect("initial render should succeed");
+    h.keys("\x13");
+    h.render_result()
+        .expect("settings overlay must stay within width budget");
+    h.assert_text_contains("Session Settings");
+    h.assert_text_contains("Approval");
+}
+
+#[test]
+fn agent_demo_narrow_cjk_submit_flow_stays_within_width_budget() {
+    let mut h = TuiTestHarness::new(96, 32);
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "把命令面板和设置面板的窄宽 CJK 回归补齐 🙂",
+    )))
+    .focus(Some(0));
+
+    h.render_result()
+        .expect("initial narrow CJK render should succeed");
+    h.keys("\r");
+    h.render_result()
+        .expect("submitting narrow CJK/emoji prompt must not overflow width");
+    h.assert_text_contains("窄宽 CJK");
+}
