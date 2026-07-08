@@ -127,37 +127,3 @@ git commit
 2. **写 TuiSurface seam**：`src/app/tui/surface.rs`，封装 `xylitol_tui::TUI`，提供 `push_event(XyEvent)` / `render()` → `Vec<RenderedLine>`，不破坏 arch_guard
 3. **替换**：删 `src/app/tui/engine/{tui,component,keybindings,outcome}.rs` + `widgets/`；适配 `mod.rs`/`render.rs`/`app.rs`
 4. **验证**：`just qa` + `just test-tui-e2e` + 手动启动
-
----
-
-## 六、commit 历史（重写期）
-
-```
-UNCOMMITTED fix(tui): show_all/Markdown table 渲染修复 — DECAWM 满宽行保护；Markdown table 窄宽列宽、TableHead、styled cell 分离
-13845c7 feat(tui): align exports + add show_all kitchen-sink demo
-a21b829 chore(tui): remove stdin_buffer — crossterm handles all escape-sequence buffering
-9b2c18d docs(tui): c425+c430 SDD artifacts + _HANDOFF update — editor port complete
-af656b7 feat(tui): c425 port editor core — VisualLine+stickyColumn+pageScroll+PasteBurst+history refinement
-5d977da feat(tui): c420 port autocomplete — async+CancellationToken+fd递归+DebouncedAutocomplete
-676b2ac docs: 重写 _HANDOFF 为交接文档 — 面向接手 agent 的移植清单 + 测试约定
-9495996 feat(tui): c415 paste-burst 移植 — 非 bracketed paste 的 Enter 抑制检测器
-e7b0f8f feat(tui): c410 terminal 协议补齐 — Kitty 键盘协议探测 + modifyOtherKeys + OSC
-3e9bc66 fix(tui): viewport_snapshot 空行去尾随空格，避免 prek trailing-whitespace 冲突
-0860818 docs: 更新 _HANDOFF — c405 完成，路线 B 两阶段规划（先补 package 再对接）
-451e8c4 feat(tui): 建立 c405 五层 TUI 测试 harness — 覆盖按键序列/快照/时序/状态机/真终端
-b0a22b5 docs(tui): 新增 showcase example 综合演示全部特性
-bac2054 docs: 更新 _HANDOFF — 阶段 0-4 完成，183 测试全绿，对齐 pi-tui 22/22 模块
-7cefd64 chore(tui): 修复全部 clippy warnings — 183 测试全绿，clippy clean
-d49edda feat(tui): 移植 editor 组件（pi editor.ts → Rust，~500 行）
-55063e8 feat(tui): 阶段 3 — 补齐 terminal_colors, editor_component, terminal_image, image, autocomplete, markdown
-886e633 feat(tui): 移植 settings_list（pi components/settings-list.ts → Rust）
-32398c4 feat(tui): input strict slice + Component::tick + loader 自驱动（2c 完成）
-747939b feat(tui): differential render viewport scroll + diff 策略补全（doRender 2b-3b 完成）
-0e75ee6 feat(tui): overlay 合成重写——样式继承 + workingHeight + viewportStart（2b-3a）
-2fff0c2 feat(tui): 宽度溢出保护 + fullRender viewport 状态（doRender 2b-2）
-3b79fee feat(tui): 加 render 节流调度 + viewport 状态字段（doRender 重写地基）
-8730968 feat(tui): 移植 extract_segments（overlay 合成样式继承根源）
-72eb70f fix(tui): 修 3 项独立高危偏差对齐 pi
-d0212e3 test(tui): 建 vte-backed VirtualTerminal cell-grid 测试 harness
-5c55d86 build(tui): 纳入 xylitol-tui workspace member 并对齐版本
-```
