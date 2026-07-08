@@ -739,7 +739,14 @@ pub fn viewport_snapshot(harness: &TuiTestHarness) -> String {
             } else {
                 String::new()
             };
-            format!("{idx}| {row_text}")
+            // Avoid a trailing space when the row is empty (e.g. "0| ") so the
+            // snapshot stays free of trailing whitespace (prek's hook strips it
+            // otherwise, causing snapshot churn).
+            if row_text.is_empty() {
+                format!("{idx}|")
+            } else {
+                format!("{idx}| {row_text}")
+            }
         })
         .collect::<Vec<_>>()
         .join("\n")
