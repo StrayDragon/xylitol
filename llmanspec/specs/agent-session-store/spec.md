@@ -10,7 +10,7 @@ llman_spec_evidence:
 
 ```toon
 kind: llman.sdd.spec
-name: "session-persistence"
+name: "agent-session-store"
 purpose: "TBD - created by archiving change c70-add-session-snapshot. Update purpose after archive."
 requirements[15]{req_id,title,statement}:
   r1,"snapshot-ops",System MUST support snapshot restore spawn list prune diff and merge operations on immutable session snapshots.
