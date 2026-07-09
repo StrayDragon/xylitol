@@ -75,7 +75,7 @@ Agent Edit 路径：优先 `DiffInput::from_edit_pair(old, new)`（或 `generate
 2. Side-by-side：仅当调用方显式设置 `side_by_side_min_width` 且宽度达标时启用；列宽按**内容打包**（cap 半宽）；多行 replace hunk（`similar` 的 DD…II…）MUST **按行 zip** 成 L|R 同行，**MUST NOT** 先堆全部删除再堆全部添加。
 3. **MUST NOT** 使用 Unicode 表线 / 树连接符装饰；对齐用空格。
 4. 行宽按 `visible_width`（CJK/emoji）；超宽行 MUST 按 ANSI 感知宽度折行或截断策略与 Text/Markdown 一致，**MUST NOT** 按字节硬切。
-5. 与 pi 整块 bg tint 的视觉对齐见 c462（本文件只定 Diff 行/列）。
+5. 与 pi 整块 bg tint 的视觉对齐见 c462；**落地约束**：expandable 壳的 `tool-*-bg` 只铺 Diff **header**，正文见上表行级着色（见 [`expandable.md`](./expandable.md) §6）。
 
 ## 复制友好 MUST
 

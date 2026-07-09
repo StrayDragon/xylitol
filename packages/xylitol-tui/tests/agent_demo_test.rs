@@ -908,6 +908,87 @@ fn agent_demo_idle_returns_to_ready_after_tool_flips() {
     );
 }
 
+#[test]
+fn agent_demo_diff_body_skips_tool_status_bg() {
+    use agent_demo_example::ToolBlockStatus;
+    use support::Color;
+
+    let mut h = TuiTestHarness::new(120, 80);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+
+    let success = Color::Rgb(
+        ToolBlockStatus::Success.rgb().0,
+        ToolBlockStatus::Success.rgb().1,
+        ToolBlockStatus::Success.rgb().2,
+    );
+    // SBS body row — must keep Diff coloring, not tool-success block tint.
+    let height = h.tui.terminal.viewport().len();
+    let top = h.tui.terminal.viewport_top_pub();
+    let mut found_body = false;
+    for row in 0..height {
+        let line = h.tui.terminal.viewport()[row].clone();
+        if !(line.contains("Ready") && line.contains("Working")) {
+            continue;
+        }
+        found_body = true;
+        let width = h.tui.terminal.grid_row(top + row).len();
+        for col in 0..width {
+            let cell = h.tui.terminal.viewport_cell(row, col);
+            assert_ne!(
+                cell.bg, success,
+                "diff body must not use tool-success-bg; cell({row},{col})={cell:?} line={line}"
+            );
+        }
+    }
+    assert!(
+        found_body,
+        "expected SBS Ready|Working body row in viewport"
+    );
+}
+
+#[test]
+fn agent_demo_tool_detail_does_not_echo_command() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))));
+    app.borrow_mut().freeze_script_for_test();
+    // Simulate a completed scripted tool via apply path: push like apply_event does.
+    {
+        let mut a = app.borrow_mut();
+        a.push_tool_for_test(
+            "cargo test -p xylitol-tui --test agent_demo_test · ok",
+            "(exit 0 — demo stub)",
+        );
+    }
+
+    let mut h = TuiTestHarness::new(120, 80);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app)))
+        .focus(Some(0));
+    h.render_result().ok();
+    let text = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text.contains("cargo test -p xylitol-tui --test agent_demo_test"),
+        "command stays on header; got:\n{text}"
+    );
+    assert!(
+        !text.contains("$ cargo test"),
+        "detail must not re-echo `$ cmd`; got:\n{text}"
+    );
+    assert!(
+        text.contains("exit 0"),
+        "detail keeps exit stub; got:\n{text}"
+    );
+}
+
 /// True if any viewport cell has truecolor background `rgb`.
 fn viewport_has_bg_rgb(h: &TuiTestHarness, rgb: (u8, u8, u8)) -> bool {
     use support::Color;

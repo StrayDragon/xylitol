@@ -449,6 +449,11 @@ impl FakeCodingAgentApp {
         index
     }
 
+    /// Harness: push an already-finished tool (header has cmd; detail has no `$` echo).
+    pub fn push_tool_for_test(&mut self, summary: impl Into<String>, detail: impl Into<String>) {
+        self.push_tool(summary, detail, ToolBlockStatus::Success);
+    }
+
     /// Harness: flip a specific tool/diff entry to success.
     pub fn complete_tool_at_for_test(&mut self, index: usize) {
         self.set_tool_status_at(index, ToolBlockStatus::Success);
@@ -1252,7 +1257,7 @@ impl FakeCodingAgentApp {
                 self.set_status("Working");
                 self.recent_tools.insert(0, text.clone());
                 self.recent_tools.truncate(4);
-                let detail = format!("$ {text}\n(exit 0 — demo stub)");
+                let detail = "(exit 0 — demo stub)".to_string();
                 let index = self.transcript.len();
                 self.push_tool(
                     format!("{text} · running"),
@@ -1411,8 +1416,13 @@ impl FakeCodingAgentApp {
                 } => {
                     let marker = if *expanded { g.unfold() } else { g.fold() };
                     let header = format!("{marker} {} {summary}  {}", g.tool(), key_hint("Alt+E"));
-                    let mut block = Vec::new();
-                    Self::push_wrapped(&mut block, &header, width);
+                    // Status tint on header only — Diff body keeps its own fg/bg
+                    // (painting tool-success-bg over red/green diff lines looks broken).
+                    let mut header_lines = Vec::new();
+                    Self::push_wrapped(&mut header_lines, &header, width);
+                    for line in header_lines {
+                        lines.push(paint_tool_bg(&line, width, *status));
+                    }
                     if *expanded {
                         let theme = DiffTheme::default();
                         let opts = DiffOptions {
@@ -1422,11 +1432,8 @@ impl FakeCodingAgentApp {
                         };
                         let rendered = render_diff_lines(input, width, &theme, &opts);
                         for line in rendered {
-                            block.push(Self::fit(&line, width));
+                            lines.push(Self::fit(&line, width));
                         }
-                    }
-                    for line in block {
-                        lines.push(paint_tool_bg(&line, width, *status));
                     }
                 }
             }
