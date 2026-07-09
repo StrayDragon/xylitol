@@ -505,6 +505,10 @@ impl Perform for VTPerformer<'_> {
 pub struct LoggingVirtualTerminal {
     inner: VirtualTerminal,
     writes: Vec<String>,
+    /// Tracks `show_cursor` / `hide_cursor` (DEC `?25h` / `?25l` semantics).
+    cursor_visible: bool,
+    show_cursor_calls: u32,
+    hide_cursor_calls: u32,
 }
 
 #[allow(dead_code)] // harness API; methods used across different test targets
@@ -513,6 +517,9 @@ impl LoggingVirtualTerminal {
         Self {
             inner: VirtualTerminal::new(cols, rows),
             writes: Vec::new(),
+            cursor_visible: true,
+            show_cursor_calls: 0,
+            hide_cursor_calls: 0,
         }
     }
 
@@ -536,6 +543,19 @@ impl LoggingVirtualTerminal {
 
     pub fn clear_writes(&mut self) {
         self.writes.clear();
+    }
+
+    /// Whether the last cursor visibility command left the cursor shown.
+    pub fn cursor_visible(&self) -> bool {
+        self.cursor_visible
+    }
+
+    pub fn show_cursor_calls(&self) -> u32 {
+        self.show_cursor_calls
+    }
+
+    pub fn hide_cursor_calls(&self) -> u32 {
+        self.hide_cursor_calls
     }
 
     /// Delegate to the inner virtual terminal for grid/cursor assertions when
@@ -563,9 +583,13 @@ impl Terminal for LoggingVirtualTerminal {
         self.inner.rows()
     }
     fn hide_cursor(&mut self) {
+        self.hide_cursor_calls = self.hide_cursor_calls.saturating_add(1);
+        self.cursor_visible = false;
         self.inner.hide_cursor();
     }
     fn show_cursor(&mut self) {
+        self.show_cursor_calls = self.show_cursor_calls.saturating_add(1);
+        self.cursor_visible = true;
         self.inner.show_cursor();
     }
     fn clear_line(&mut self) {
