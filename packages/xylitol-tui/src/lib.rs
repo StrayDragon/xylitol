@@ -30,7 +30,9 @@ pub use completion::{
 };
 pub use components::cancellable_loader::CancellableLoader;
 pub use components::container::Container;
-pub use components::diff::{Diff, DiffInput, DiffOptions, DiffTheme, render_diff_lines};
+pub use components::diff::{
+    Diff, DiffInput, DiffOptions, DiffTheme, generate_edit_text, render_diff_lines,
+};
 pub use components::editor::{AutocompleteMode, Editor, EditorOptions, EditorTheme, VisualLine};
 pub use components::input::Input;
 pub use components::loader::{Loader, LoaderIndicatorOptions};
