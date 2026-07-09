@@ -1,8 +1,16 @@
 kind: llman.sdd.spec
 name: "app-tui-host"
-purpose: "产品 TUI 宿主：host 驱动引擎、终端生命周期、即时日志与尺寸降级。"
+purpose: 产品 TUI 宿主：host 驱动引擎、终端生命周期、即时日志与尺寸降级。
 valid_scope[1]: src/app/tui/
-requirements[1]{req_id,title,statement}:
+requirements[5]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
-scenarios[1]{req_id,id,given,when,then}:
-  meta0,"shell-present","","列出 llmanspec/specs/app-tui-host","spec.toon 存在且 purpose 为中文"
+  ath1,"host-driven-engine","产品 TUI MUST 以 host 驱动 packages/xylitol-tui：使用 dispatch_event、request_render、try_render、idle_tick；产品路径 MUST NOT 调用 TUI::start()。"
+  ath2,"terminal-restore",产品 TUI MUST 在正常退出、错误退出与 panic 路径恢复终端（关闭 raw mode 等），不得把用户终端留在损坏状态；MUST 安装 panic hook（仅靠 Drop 不足）。
+  ath3,"debug-log-default","debug 构建下产品 TUI MUST 默认启用即时文件日志（人类与 agent 可用 tail -f 观察）；release 构建 MUST 默认关闭，仍可通过 XYLITOL_DEBUG 或 RUST_LOG 显式打开。src/app/tui/AGENTS.md MUST 写明日志路径与查看方式。"
+  ath4,"resize-and-min-size",终端 resize MUST 触发重绘且不得丢失输入焦点语义；当引擎因极端尺寸无法安全渲染时 MUST 干净恢复终端并退出进程，MUST NOT 卡死终端模拟器。宽度小于 40 或高度小于 6 时 MUST 显示友好提示而非 panic。
+scenarios[5]{req_id,id,given,when,then}:
+  meta0,"shell-present","","列出 llmanspec/specs/app-tui-host",spec.toon 存在且 purpose 为中文
+  ath1,"no-start","",审计产品 TUI 源码,"无 TUI::start；存在 host 驱动调用"
+  ath2,"panic-restore","",TUI 运行中发生 panic,panic hook 恢复终端后用户 shell 可用
+  ath3,"debug-tail","",以 debug 构建启动 TUI,日志文件持续写入且 AGENTS 记载路径
+  ath4,"tiny-terminal","",终端高度为 3,显示放大提示或干净退出，进程不挂死
