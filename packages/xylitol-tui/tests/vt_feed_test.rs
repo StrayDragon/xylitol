@@ -51,3 +51,11 @@ fn parses_ctrl_bytes_and_shift_tab() {
     assert_key(&evs[3], KeyCode::Char('w'), KeyModifiers::CONTROL);
     assert_key(&evs[4], KeyCode::Tab, KeyModifiers::SHIFT);
 }
+
+#[test]
+fn parses_alt_letter_meta_prefix() {
+    let evs = parse_vt_to_input_events("\x1be\x1bg");
+    assert_eq!(evs.len(), 2);
+    assert_key(&evs[0], KeyCode::Char('e'), KeyModifiers::ALT);
+    assert_key(&evs[1], KeyCode::Char('g'), KeyModifiers::ALT);
+}

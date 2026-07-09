@@ -1,6 +1,7 @@
 pub mod autocomplete;
 pub mod autocomplete_fd;
 pub mod clock;
+pub mod completion;
 pub mod components;
 pub mod editor_component;
 pub mod fuzzy;
@@ -18,10 +19,14 @@ pub mod word_navigation;
 
 pub use autocomplete::{
     AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions, CombinedAutocompleteProvider,
-    DebouncedAutocomplete, SlashCommand, parse_path_prefix,
+    DebouncedAutocomplete, SlashCommand, extract_at_prefix, parse_path_prefix,
 };
 pub use autocomplete_fd::{build_fd_path_query, walk_directory_with_fd};
 pub use clock::{Clock, MockClock, SystemClock};
+pub use completion::{
+    AtPathSource, CompletionContext, CompletionMatch, CompletionRegistry, CompletionSource,
+    SlashCommandSource, sources_from_combined,
+};
 pub use components::cancellable_loader::CancellableLoader;
 pub use components::container::Container;
 pub use components::editor::{AutocompleteMode, Editor, EditorOptions, EditorTheme, VisualLine};

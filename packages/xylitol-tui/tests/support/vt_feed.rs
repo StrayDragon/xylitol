@@ -18,7 +18,7 @@ fn key_mod(code: KeyCode, mods: KeyModifiers) -> InputEvent {
 ///
 /// Covers: printable chars, CSI arrows/home/end/delete, `\r` enter, `\x7f`
 /// backspace, `\x1b` escape, ctrl bytes (`\x10`=ctrl+p, …), `\t` tab,
-/// `\x1b[Z` shift+tab.
+/// `\x1b[Z` shift+tab, meta/alt letters (`\x1be` = alt+e).
 pub fn parse_vt_to_input_events(seq: &str) -> Vec<InputEvent> {
     let bytes = seq.as_bytes();
     let mut out = Vec::new();
@@ -30,6 +30,19 @@ pub fn parse_vt_to_input_events(seq: &str) -> Vec<InputEvent> {
             if let Some(ev) = parse_csi(rest) {
                 out.push(ev.0);
                 i += 2 + ev.1;
+                continue;
+            }
+        }
+        // Meta/Alt letter: ESC + ASCII letter/digit (classic VT meta prefix).
+        // Must run before lone-ESC so `\x1be` is Alt+E, not Esc then 'e'.
+        if bytes[i] == 0x1b && i + 1 < bytes.len() {
+            let next = bytes[i + 1];
+            if next.is_ascii_alphanumeric() {
+                out.push(key_mod(
+                    KeyCode::Char(next.to_ascii_lowercase() as char),
+                    KeyModifiers::ALT,
+                ));
+                i += 2;
                 continue;
             }
         }
