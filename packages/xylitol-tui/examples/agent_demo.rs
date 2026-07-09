@@ -585,26 +585,27 @@ impl FakeCodingAgentApp {
             "read packages/xylitol-tui/examples/agent_demo.rs · 42ms · 790 lines",
             "ok — opened agent_demo.rs\n(preview) FakeCodingAgentApp + scripted turn harness",
         );
+        // Seed blocks start expanded so SBS / edit / gutter are visible without Alt+E.
         // Primary Edit look: pi unified compact (seed + simulated Edit tool).
         self.push_diff_ex(
             "edited demo.rs (+2 -2) unified edit-format",
             sample_unified_pair(),
             None, // always unified — Edit tool path
-            false,
+            true,
         );
         // Optional wide layout (supported, uncommon); packed columns, not half-stretch.
         self.push_diff_ex(
             "edited ui_root.rs (+2 -2) side-by-side (optional)",
             sample_sbs_pair(),
             Some(60),
-            false,
+            true,
         );
-        // display_diff gutter path still covered (collapsed).
+        // display_diff gutter path still covered.
         self.push_diff_ex(
             "edited demo.rs (display_diff gutter)",
             DiffInput::DisplayText(sample_display_diff()),
             None,
-            false,
+            true,
         );
     }
 
@@ -617,14 +618,14 @@ impl FakeCodingAgentApp {
 
     fn push_thinking(&mut self, body: impl Into<String>) {
         self.transcript.push(TranscriptEntry::Thinking {
-            expanded: false,
+            expanded: true,
             body: body.into(),
         });
     }
 
     fn push_tool(&mut self, summary: impl Into<String>, detail: impl Into<String>) {
         self.transcript.push(TranscriptEntry::Tool {
-            expanded: false,
+            expanded: true,
             summary: summary.into(),
             detail: detail.into(),
         });
@@ -635,7 +636,7 @@ impl FakeCodingAgentApp {
             summary,
             DiffInput::DisplayText(display_diff.into()),
             None,
-            false,
+            true,
         );
     }
 

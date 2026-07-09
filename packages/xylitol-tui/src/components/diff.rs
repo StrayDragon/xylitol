@@ -739,78 +739,72 @@ fn render_side_by_side(
     _options: &DiffOptions,
     num_width: usize,
 ) -> Vec<String> {
-    // Pack columns to content width (capped), not half-terminal stretch.
-    // Multi-line replace hunks (DDD…III…) are zipped so each screen row is L|R.
-    let max_half = width.saturating_sub(2) / 2;
+    // Plain-text column math first, then color — keeps `│` gutter vertically aligned
+    // even when cells carry ANSI (pad-after-color drifted by 1 col with `·` etc.).
+    let max_half = width.saturating_sub(3) / 2;
     enum Row {
-        Meta(Vec<String>),
-        Pair(Vec<String>, Vec<String>),
+        Meta(String),
+        Pair {
+            left_plain: String,
+            right_plain: String,
+            left_styled: String,
+            right_styled: String,
+        },
     }
+
+    let style_cell = |sign: char, content: &str, no: Option<u32>, kind: LineKind| {
+        let plain = format_sbs_cell_plain(sign, content, no, num_width);
+        if visible_width(&plain) > max_half {
+            // Truncate plain then re-style so width math stays honest.
+            let t = truncate_to_width(&plain, max_half, "", false);
+            let styled = color_prefix(kind, &(theme.highlight_line)(&t), theme);
+            (t, styled)
+        } else {
+            let styled = color_prefix(kind, &(theme.highlight_line)(&plain), theme);
+            (plain, styled)
+        }
+    };
+
     let mut rows: Vec<Row> = Vec::new();
     let mut i = 0;
     while i < lines.len() {
         let line = &lines[i];
         if line.kind == LineKind::Meta {
-            rows.push(Row::Meta(wrap_text_with_ansi(
-                &(theme.meta)(&line.content),
-                width.max(1),
-            )));
+            rows.push(Row::Meta((theme.meta)(&line.content)));
             i += 1;
             continue;
         }
         if line.kind == LineKind::Equal {
-            rows.push(Row::Pair(
-                format_sbs_cell(
-                    ' ',
-                    &line.content,
-                    line.old_no,
-                    theme,
-                    LineKind::Equal,
-                    max_half,
-                    num_width,
-                ),
-                format_sbs_cell(
-                    ' ',
-                    &line.content,
-                    line.new_no,
-                    theme,
-                    LineKind::Equal,
-                    max_half,
-                    num_width,
-                ),
-            ));
+            let (lp, ls) = style_cell(' ', &line.content, line.old_no, LineKind::Equal);
+            let (rp, rs) = style_cell(' ', &line.content, line.new_no, LineKind::Equal);
+            rows.push(Row::Pair {
+                left_plain: lp,
+                right_plain: rp,
+                left_styled: ls,
+                right_styled: rs,
+            });
             i += 1;
             continue;
         }
-        // Replace / pure-delete / pure-insert hunk: gather runs, then zip.
         if line.kind == LineKind::Delete || line.kind == LineKind::Insert {
             let (deletes, inserts, next) = take_change_hunk(lines, i);
             i = next;
             let n = deletes.len().max(inserts.len());
             for k in 0..n {
-                let left = deletes.get(k).map_or_else(Vec::new, |d| {
-                    format_sbs_cell(
-                        '-',
-                        &d.content,
-                        d.old_no,
-                        theme,
-                        LineKind::Delete,
-                        max_half,
-                        num_width,
-                    )
+                let (lp, ls) = deletes.get(k).map_or_else(
+                    || (String::new(), String::new()),
+                    |d| style_cell('-', &d.content, d.old_no, LineKind::Delete),
+                );
+                let (rp, rs) = inserts.get(k).map_or_else(
+                    || (String::new(), String::new()),
+                    |ins| style_cell('+', &ins.content, ins.new_no, LineKind::Insert),
+                );
+                rows.push(Row::Pair {
+                    left_plain: lp,
+                    right_plain: rp,
+                    left_styled: ls,
+                    right_styled: rs,
                 });
-                let right = inserts.get(k).map_or_else(Vec::new, |ins| {
-                    format_sbs_cell(
-                        '+',
-                        &ins.content,
-                        ins.new_no,
-                        theme,
-                        LineKind::Insert,
-                        max_half,
-                        num_width,
-                    )
-                });
-                rows.push(Row::Pair(left, right));
             }
             continue;
         }
@@ -820,7 +814,9 @@ fn render_side_by_side(
     let left_w = rows
         .iter()
         .filter_map(|r| match r {
-            Row::Pair(l, _) if !l.is_empty() => l.iter().map(|s| visible_width(s)).max(),
+            Row::Pair { left_plain, .. } if !left_plain.is_empty() => {
+                Some(visible_width(left_plain))
+            }
             _ => None,
         })
         .max()
@@ -831,13 +827,23 @@ fn render_side_by_side(
     let mut out = Vec::new();
     for row in rows {
         match row {
-            Row::Meta(lines) => {
-                for line in lines {
-                    out.push(pad_to_width(&line, width));
-                }
+            Row::Meta(text) => {
+                out.extend(wrap_pad(&text, width));
             }
-            Row::Pair(left, right) => {
-                out.extend(zip_packed_columns(&left, &right, left_w, width));
+            Row::Pair {
+                left_plain,
+                right_plain,
+                left_styled,
+                right_styled,
+            } => {
+                out.push(zip_packed_columns(
+                    &left_plain,
+                    &right_plain,
+                    &left_styled,
+                    &right_styled,
+                    left_w,
+                    width,
+                ));
             }
         }
     }
@@ -845,8 +851,6 @@ fn render_side_by_side(
 }
 
 /// Collect a change hunk starting at `start`: all deletes, then all inserts (similar order).
-///
-/// Returns `(deletes, inserts, index_after_hunk)`.
 fn take_change_hunk(lines: &[DiffLine], start: usize) -> (&[DiffLine], &[DiffLine], usize) {
     let mut i = start;
     let del_start = i;
@@ -862,60 +866,43 @@ fn take_change_hunk(lines: &[DiffLine], start: usize) -> (&[DiffLine], &[DiffLin
     (&lines[del_start..del_end], &lines[ins_start..ins_end], i)
 }
 
-fn format_sbs_cell(
-    sign: char,
-    content: &str,
-    no: Option<u32>,
-    theme: &DiffTheme,
-    kind: LineKind,
-    max_col: usize,
-    num_width: usize,
-) -> Vec<String> {
-    let plain = compact_prefix(sign, no, num_width);
-    let prefix = color_prefix(kind, &plain, theme);
-    let body = color_content(kind, content, theme);
-    let combined = format!("{prefix}{body}");
-    wrap_text_with_ansi(&combined, max_col.max(1))
-        .into_iter()
-        .map(|l| {
-            if visible_width(&l) > max_col {
-                truncate_to_width(&l, max_col, "", false)
-            } else {
-                l
-            }
-        })
-        .collect()
+/// Plain (no ANSI) SBS cell text — used to compute stable column widths.
+fn format_sbs_cell_plain(sign: char, content: &str, no: Option<u32>, num_width: usize) -> String {
+    format!("{}{}", compact_prefix(sign, no, num_width), content)
 }
 
 fn zip_packed_columns(
-    left: &[String],
-    right: &[String],
+    left_plain: &str,
+    right_plain: &str,
+    left_styled: &str,
+    right_styled: &str,
     left_w: usize,
     width: usize,
-) -> Vec<String> {
-    let gap = 2;
-    let right_budget = width.saturating_sub(left_w + gap).max(1);
-    let n = left.len().max(right.len()).max(1);
-    let mut out = Vec::with_capacity(n);
-    for i in 0..n {
-        let l_raw = left.get(i).cloned().unwrap_or_default();
-        let r_raw = right.get(i).cloned().unwrap_or_default();
-        let l = pad_to_width(&l_raw, left_w);
-        let r = if visible_width(&r_raw) > right_budget {
-            truncate_to_width(&r_raw, right_budget, "", false)
-        } else {
-            r_raw
-        };
-        let row = if right.is_empty() {
-            l
-        } else if left.is_empty() {
-            format!("{}{r}", " ".repeat(left_w + gap))
-        } else {
-            format!("{l}{}{r}", " ".repeat(gap))
-        };
-        out.push(pad_to_width(&row, width));
-    }
-    out
+) -> String {
+    const SEP: &str = " │ ";
+    let sep_w = visible_width(SEP);
+    let pad = left_w.saturating_sub(visible_width(left_plain));
+    let left_part = if left_plain.is_empty() {
+        " ".repeat(left_w)
+    } else {
+        format!("{left_styled}{}", " ".repeat(pad))
+    };
+    let right_budget = width.saturating_sub(left_w + sep_w).max(1);
+    let right_part = if right_plain.is_empty() {
+        String::new()
+    } else if visible_width(right_styled) > right_budget {
+        truncate_to_width(right_styled, right_budget, "", false)
+    } else {
+        right_styled.to_string()
+    };
+    let row = if right_plain.is_empty() {
+        left_part
+    } else if left_plain.is_empty() {
+        format!("{}{SEP}{right_part}", " ".repeat(left_w))
+    } else {
+        format!("{left_part}{SEP}{right_part}")
+    };
+    pad_to_width(&row, width)
 }
 
 /// Diff component with render cache.
@@ -1303,6 +1290,87 @@ mod tests {
         assert!(
             joined.contains("only_old") || joined.contains('-'),
             "got:\n{joined}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod sbs_ansi_align_harness {
+    use super::*;
+    use unicode_width::UnicodeWidthChar;
+
+    /// Visible column of the first occurrence of `needle` (skips ANSI CSI).
+    fn visible_col_of(s: &str, needle: char) -> Option<usize> {
+        let mut col = 0usize;
+        let mut chars = s.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\u{1b}' {
+                if chars.peek() == Some(&'[') {
+                    chars.next();
+                    for x in chars.by_ref() {
+                        if x.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+            if c == needle {
+                return Some(col);
+            }
+            col += UnicodeWidthChar::width(c).unwrap_or(0);
+        }
+        None
+    }
+
+    #[test]
+    fn side_by_side_ansi_theme_keeps_gutter_and_plus_aligned() {
+        // Regression: pad-after-color drifted `+` by 1 col across rows (esp. with `·`).
+        let lines = render_diff_lines(
+            &DiffInput::LinePair {
+                old: "status: Ready\nfooter: cwd · model\n".into(),
+                new: "status: Working\nfooter: cwd · model · context%\n".into(),
+                path: Some("ui_root.rs".into()),
+            },
+            100,
+            &DiffTheme::default(),
+            &DiffOptions {
+                word_level: false,
+                side_by_side_min_width: Some(40),
+                ..DiffOptions::default()
+            },
+        );
+        let content: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains('│') && (l.contains('+') || l.contains('-')))
+            .collect();
+        assert!(
+            content.len() >= 2,
+            "need ≥2 SBS content rows; got:\n{}",
+            lines.join("\n")
+        );
+        let sep_cols: Vec<usize> = content
+            .iter()
+            .map(|l| visible_col_of(l, '│').expect("│ gutter"))
+            .collect();
+        assert!(
+            sep_cols.windows(2).all(|w| w[0] == w[1]),
+            "│ must share one visible column; cols={sep_cols:?}\n{}",
+            lines.join("\n")
+        );
+        let plus_cols: Vec<usize> = content
+            .iter()
+            .filter_map(|l| visible_col_of(l, '+'))
+            .collect();
+        assert!(
+            plus_cols.len() >= 2,
+            "need ≥2 `+` markers; got:\n{}",
+            lines.join("\n")
+        );
+        assert!(
+            plus_cols.windows(2).all(|w| w[0] == w[1]),
+            "`+` must share one visible column under ANSI theme; cols={plus_cols:?}\n{}",
+            lines.join("\n")
         );
     }
 }
