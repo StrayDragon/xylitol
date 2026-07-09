@@ -38,7 +38,9 @@ impl DiffInput {
 ///
 /// **Layering (mockup / pi-like):**
 /// - `added` / `removed` / `context`: **fg** (and optional span styling) for content.
-/// - `added_line_bg` / `removed_line_bg`: wrap the **full padded row** after layout.
+/// - `added_line_bg` / `removed_line_bg`: wrap the **full padded row** after layout
+///   on the **unified** path only. Side-by-side skips these so row tint does not
+///   collide with product `tool-*-bg` (execution status) semantics.
 /// - `word_change_added` / `word_change_removed`: brighter bg for changed spans;
 ///   SHOULD restore the line bg (not `\x1b[49m`) so the row tint stays continuous.
 pub struct DiffTheme {
@@ -793,21 +795,13 @@ fn render_side_by_side(
 
     let style_cell = |sign: char, content: &str, no: Option<u32>, kind: LineKind| {
         let plain = format_sbs_cell_plain(sign, content, no, num_width);
+        // SBS: fg + gutter only — no `added_line_bg` / `removed_line_bg` (c464).
         if visible_width(&plain) > max_half {
-            // Truncate plain then re-style so width math stays honest.
             let t = truncate_to_width(&plain, max_half, "", false);
-            let styled = paint_kind_line_bg(
-                theme,
-                kind,
-                &color_prefix(kind, &(theme.highlight_line)(&t), theme),
-            );
+            let styled = color_prefix(kind, &(theme.highlight_line)(&t), theme);
             (t, styled)
         } else {
-            let styled = paint_kind_line_bg(
-                theme,
-                kind,
-                &color_prefix(kind, &(theme.highlight_line)(&plain), theme),
-            );
+            let styled = color_prefix(kind, &(theme.highlight_line)(&plain), theme);
             (plain, styled)
         }
     };
@@ -1337,6 +1331,66 @@ mod tests {
         assert!(
             pos < 55,
             "packed SBS row should keep panes close; Working at {pos} in:\n{ready_line}"
+        );
+    }
+
+    #[test]
+    fn side_by_side_skips_row_background_tint() {
+        // Theme with unmistakable row-bg SGR — SBS must not apply it (c464).
+        let theme = DiffTheme {
+            added: Box::new(|s| format!("A{s}")),
+            removed: Box::new(|s| format!("R{s}")),
+            context: Box::new(|s| s.to_string()),
+            gutter: Box::new(|s| s.to_string()),
+            meta: Box::new(|s| s.to_string()),
+            word_change_added: Box::new(|s| s.to_string()),
+            word_change_removed: Box::new(|s| s.to_string()),
+            added_line_bg: Box::new(|s| format!("\x1b[48;2;1;2;3m{s}\x1b[49m")),
+            removed_line_bg: Box::new(|s| format!("\x1b[48;2;4;5;6m{s}\x1b[49m")),
+            highlight_line: Box::new(|s| s.to_string()),
+        };
+        let sbs = render_diff_lines(
+            &DiffInput::LinePair {
+                old: "old line\n".into(),
+                new: "new line\n".into(),
+                path: None,
+            },
+            100,
+            &theme,
+            &DiffOptions {
+                word_level: false,
+                side_by_side_min_width: Some(40),
+                ..DiffOptions::default()
+            },
+        );
+        let sbs_joined = sbs.join("\n");
+        assert!(
+            !sbs_joined.contains("48;2;1;2;3") && !sbs_joined.contains("48;2;4;5;6"),
+            "SBS must not paint row bg; got:\n{sbs_joined}"
+        );
+        assert!(
+            sbs_joined.contains("old line") && sbs_joined.contains("new line"),
+            "SBS body still present; got:\n{sbs_joined}"
+        );
+
+        let unified = render_diff_lines(
+            &DiffInput::LinePair {
+                old: "old line\n".into(),
+                new: "new line\n".into(),
+                path: None,
+            },
+            80,
+            &theme,
+            &DiffOptions {
+                word_level: false,
+                side_by_side_min_width: None,
+                ..DiffOptions::default()
+            },
+        );
+        let uni_joined = unified.join("\n");
+        assert!(
+            uni_joined.contains("48;2;1;2;3") || uni_joined.contains("48;2;4;5;6"),
+            "unified may still use row bg; got:\n{uni_joined}"
         );
     }
 
