@@ -21,7 +21,8 @@
 
 - 边界：`packages/xylitol-tui/AGENTS.md`、`src/app/tui/AGENTS.md`、`src/AGENTS.md`、根 `AGENTS.md`
 - How-to：`write-tui`、`test-tui-harness`、`write-surface`
-- 复核草稿：`packages/xylitol-tui/REPORT.tmp.md`（工作笔记，可删，勿当规范）
+- 复核草稿：`packages/xylitol-tui/REPORT.tmp.md`（已并入 `c445` 提案后删除）
+- 视觉/UX：`packages/xylitol-tui/DESIGN.md`
 
 **pi 源**：`../pi/packages/pi-tui`、`../kimi-code/packages/pi-tui`
 
