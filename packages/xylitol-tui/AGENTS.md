@@ -1,6 +1,6 @@
 # packages/xylitol-tui
 
-`pi-tui` 的 Rust 完整移植（differential rendering 引擎 + 组件库）。目标是替换 `src/app/tui/engine/`，所以**必须与 `kimi-code/packages/pi-tui` 对齐**，不夹带 xylitol 应用层耦合。
+`pi-tui` 的 Rust 完整移植（differential rendering 引擎 + 组件库）。目标是替换 `src/app/tui/engine/`，所以**必须与 `../kimi-code/packages/pi-tui` 和 `../pi/packages/pi-tui` 对齐**，不夹带 xylitol 应用层耦合。
 
 ## 测试约定（c405 五层架构）
 
@@ -27,6 +27,6 @@
 
 ## 移植规则
 
-- 对齐 `kimi-code/packages/pi-tui` 源（`@moonshot-ai/pi-tui`）。模块对照见 `_HANDOFF.md`。
+- 对齐 `../kimi-code/packages/pi-tui` 源（`@moonshot-ai/pi-tui`） `../pi/packages/pi-tui`。模块对照见 `_HANDOFF.md`。
 - `native-modifiers.ts` 跳过（macOS 原生二进制，不可移植）。
 - `lib.rs` 的 re-export 对齐 pi 的 `index.ts`（API 边界 SSOT）。
