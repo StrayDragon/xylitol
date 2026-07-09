@@ -1,6 +1,6 @@
 kind: llman.sdd.spec
 name: "app-tui"
-purpose: "TBD - created by archiving change c325-add-app-tui-spec. Update purpose after archive."
+purpose: "跨切面不变量索引：保留旧 app-tui 中与引擎/渲染解耦的架构约束（三面共存、reuse-contract、无 skeleton spray、Driver 契约等）。产品细节 req 已迁至 app-tui-* 各能力。本 spec 将在 c450 归档后合并至各子能力或退役。"
 valid_scope[2]: src/,tests/
 requirements[39]{req_id,title,statement}:
   tui1,"line-array-differential-render","The TUI MUST render using a self-built differential render engine over a line-array screen representation (previous_lines vs new_lines per-frame diff, writing only changed lines wrapped in synchronized output CSI 2026), driven by crossterm directly for raw mode/events/cursor. The TUI MUST NOT use ratatui (cell-grid Buffer, immediate-mode Widget trait, Viewport::Inline, or insert_before). The engine owns the whole conversation history as a single Vec of styled lines; streaming appends new lines via diff (no irreversible commit). The viewport MUST anchor to the content tail every frame: previous_viewport_top = max(0, max(terminal_height, total_lines) - terminal_height). Evidence: pi-tui line-array + viewport anchoring (tui.ts:1318-1319 bufferLength = max(height, newLines.length)); the prior ratatui inline-viewport model forced commit-unit = render-unit = paragraph, losing cross-paragraph markdown context (the c396 screenshot root cause)."
