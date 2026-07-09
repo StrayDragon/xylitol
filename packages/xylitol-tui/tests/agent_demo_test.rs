@@ -313,6 +313,28 @@ fn agent_demo_thinking_typewriter_expands_then_collapses() {
         "thinking should typewriter with body visible while streaming"
     );
 
+    // Mid-stream ^T must stick even as more chunks arrive.
+    h.keys("\x14"); // Ctrl+T → collapse (any_collapsed path)
+    let mut stayed_collapsed = true;
+    for _ in 0..40 {
+        h.tick();
+        h.render_result()
+            .expect("collapsed thinking stream must stay within width");
+        let text = h.tui.terminal.viewport().join("\n");
+        // While still in Thinking status, body of the *active* stream should stay hidden.
+        if text.contains("Drafting reply") || text.contains("收到，我已经接住") {
+            break;
+        }
+        if text.contains("User asked:") || text.contains("hesitating on width") {
+            stayed_collapsed = false;
+            break;
+        }
+    }
+    assert!(
+        stayed_collapsed,
+        "Ctrl+T during thinking stream must not be overridden by later chunks"
+    );
+
     // Finish the turn; thinking should collapse again.
     for _ in 0..400 {
         h.tick();
