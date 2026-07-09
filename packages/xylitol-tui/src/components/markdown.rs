@@ -344,7 +344,7 @@ impl Component for Markdown {
         result
     }
 
-    fn handle_input(&mut self, _data: &str) {}
+    fn handle_input(&mut self, _event: crate::tui::InputEvent) {}
     fn invalidate(&mut self) {
         self.cached_text = None;
         self.cached_width = None;

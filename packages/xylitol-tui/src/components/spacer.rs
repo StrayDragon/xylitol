@@ -20,7 +20,7 @@ impl Component for Spacer {
         vec![String::new(); self.lines]
     }
 
-    fn handle_input(&mut self, _data: &str) {}
+    fn handle_input(&mut self, _event: crate::tui::InputEvent) {}
 
     fn invalidate(&mut self) {}
 }

@@ -7,6 +7,14 @@ use std::sync::atomic::AtomicBool;
 
 pub const CURSOR_MARKER: &str = "\x1b_pi:c\x07";
 
+/// Decoded input delivered to components. Runtime path is crossterm-native —
+/// no KeyEvent→VT re-encode.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InputEvent {
+    Key(KeyEvent),
+    Paste(String),
+}
+
 /// Error from a render pass. The engine hard-errors when a component emits a
 /// line wider than the terminal `width` — a widget that overflows desyncs the
 /// cursor and corrupts subsequent lines, so we surface it loudly instead of
@@ -39,7 +47,7 @@ fn is_image_line(line: &str) -> bool {
 
 pub trait Component {
     fn render(&mut self, width: usize) -> Vec<String>;
-    fn handle_input(&mut self, data: &str);
+    fn handle_input(&mut self, event: InputEvent);
     fn invalidate(&mut self);
     fn wants_key_release(&self) -> bool {
         false
@@ -259,11 +267,8 @@ impl<T: Terminal> TUI<T> {
                         if !self.should_dispatch_key_event(&key_event) {
                             continue;
                         }
-                        let data = self.key_event_to_string(&key_event);
-                        if !data.is_empty() {
-                            self.handle_input(&data);
-                            self.do_render()?;
-                        }
+                        self.dispatch_event(InputEvent::Key(key_event));
+                        self.do_render()?;
                     }
                     Event::Resize(_, _) => {
                         // Re-query size before rendering so we don't paint with
@@ -272,7 +277,7 @@ impl<T: Terminal> TUI<T> {
                         self.do_render()?;
                     }
                     Event::Paste(data) => {
-                        self.handle_input(&format!("\x1b[200~{}~\x1b[201~", data));
+                        self.dispatch_event(InputEvent::Paste(data));
                         self.do_render()?;
                     }
                     _ => {}
@@ -308,78 +313,15 @@ impl<T: Terminal> TUI<T> {
         self.stopped = true;
     }
 
-    fn key_event_to_string(&self, key: &crossterm::event::KeyEvent) -> String {
-        use crossterm::event::{KeyCode, KeyModifiers};
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-        let alt = key.modifiers.contains(KeyModifiers::ALT);
-        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-
-        match key.code {
-            KeyCode::Char(c) => {
-                if ctrl && c.is_ascii_lowercase() {
-                    std::char::from_u32(c as u32 & 0x1f)
-                        .map(|c| c.to_string())
-                        .unwrap_or_default()
-                } else if ctrl && c == ' ' {
-                    "\x00".to_string()
-                } else if alt && !ctrl {
-                    format!("\x1b{}", c)
-                } else {
-                    c.to_string()
-                }
-            }
-            KeyCode::Enter => "\r".to_string(),
-            KeyCode::Tab => {
-                if shift {
-                    "\x1b[Z".to_string()
-                } else {
-                    "\t".to_string()
-                }
-            }
-            KeyCode::Backspace => "\x7f".to_string(),
-            KeyCode::Esc => "\x1b".to_string(),
-            KeyCode::Up => "\x1b[A".to_string(),
-            KeyCode::Down => "\x1b[B".to_string(),
-            KeyCode::Right => "\x1b[C".to_string(),
-            KeyCode::Left => "\x1b[D".to_string(),
-            KeyCode::Home => "\x1b[H".to_string(),
-            KeyCode::End => "\x1b[F".to_string(),
-            KeyCode::PageUp => "\x1b[5~".to_string(),
-            KeyCode::PageDown => "\x1b[6~".to_string(),
-            KeyCode::Delete => "\x1b[3~".to_string(),
-            KeyCode::Insert => "\x1b[2~".to_string(),
-            KeyCode::F(n) => match n {
-                1 => "\x1bOP",
-                2 => "\x1bOQ",
-                3 => "\x1bOR",
-                4 => "\x1bOS",
-                5 => "\x1b[15~",
-                6 => "\x1b[17~",
-                7 => "\x1b[18~",
-                8 => "\x1b[19~",
-                9 => "\x1b[20~",
-                10 => "\x1b[21~",
-                11 => "\x1b[23~",
-                12 => "\x1b[24~",
-                _ => "",
-            }
-            .to_string(),
-            _ => String::new(),
-        }
-    }
-
-    /// Route one decoded key/escape sequence to the focused component.
+    /// Route one decoded input event to the focused component.
     ///
     /// Public so host loops (and tests) can feed input without going through
-    /// the blocking `start()` event loop. The data is the raw byte sequence
-    /// (e.g. `"\r"` for Enter, `"\x1b[A"` for Up) — the same form `start_impl`
-    /// produces from crossterm KeyEvents.
-    pub fn dispatch_input(&mut self, data: &str) {
+    /// the blocking `start()` event loop.
+    pub fn dispatch_event(&mut self, event: InputEvent) {
         if let Some(idx) = self.focused_index
             && idx < self.components.len()
         {
-            let input = data.to_string();
-            self.components[idx].handle_input(&input);
+            self.components[idx].handle_input(event);
         }
     }
 
@@ -394,10 +336,6 @@ impl<T: Terminal> TUI<T> {
             .iter_mut()
             .any(|(component, _, _)| component.tick());
         changed
-    }
-
-    fn handle_input(&mut self, data: &str) {
-        self.dispatch_input(data);
     }
 
     fn should_dispatch_key_event(&self, key: &KeyEvent) -> bool {
@@ -1023,7 +961,7 @@ mod tests {
             Vec::new()
         }
 
-        fn handle_input(&mut self, _data: &str) {}
+        fn handle_input(&mut self, _event: InputEvent) {}
 
         fn invalidate(&mut self) {}
 

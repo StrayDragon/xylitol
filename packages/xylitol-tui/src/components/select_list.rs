@@ -242,11 +242,15 @@ impl Component for SelectList {
         lines
     }
 
-    fn handle_input(&mut self, data: &str) {
-        let up = with_keybindings(|kb| kb.matches(data, "tui.select.up"));
-        let down = with_keybindings(|kb| kb.matches(data, "tui.select.down"));
-        let confirm = with_keybindings(|kb| kb.matches(data, "tui.select.confirm"));
-        let cancel = with_keybindings(|kb| kb.matches(data, "tui.select.cancel"));
+    fn handle_input(&mut self, event: crate::tui::InputEvent) {
+        use crate::tui::InputEvent;
+        let InputEvent::Key(ref key) = event else {
+            return;
+        };
+        let up = with_keybindings(|kb| kb.matches_event(key, "tui.select.up"));
+        let down = with_keybindings(|kb| kb.matches_event(key, "tui.select.down"));
+        let confirm = with_keybindings(|kb| kb.matches_event(key, "tui.select.confirm"));
+        let cancel = with_keybindings(|kb| kb.matches_event(key, "tui.select.cancel"));
 
         if up {
             self.selected_index = if self.selected_index == 0 {
@@ -390,8 +394,15 @@ mod tests {
         );
     }
 
+    fn feed(list: &mut SelectList, code: crossterm::event::KeyCode) {
+        use crate::tui::InputEvent;
+        use crossterm::event::{KeyEvent, KeyModifiers};
+        list.handle_input(InputEvent::Key(KeyEvent::new(code, KeyModifiers::NONE)));
+    }
+
     #[test]
     fn test_select_list_moves_selection_down() {
+        use crossterm::event::KeyCode;
         let mut list = SelectList::new(
             items(),
             10,
@@ -402,12 +413,13 @@ mod tests {
                 truncate_primary: None,
             },
         );
-        list.handle_input("\x1b[B"); // down
+        feed(&mut list, KeyCode::Down);
         assert_eq!(list.selected_index, 1);
     }
 
     #[test]
     fn test_select_list_wraps_selection_up() {
+        use crossterm::event::KeyCode;
         let mut list = SelectList::new(
             items(),
             10,
@@ -418,12 +430,13 @@ mod tests {
                 truncate_primary: None,
             },
         );
-        list.handle_input("\x1b[A"); // up wraps to bottom
+        feed(&mut list, KeyCode::Up); // up wraps to bottom
         assert_eq!(list.selected_index, 2);
     }
 
     #[test]
     fn test_select_list_wraps_selection_down() {
+        use crossterm::event::KeyCode;
         let mut list = SelectList::new(
             items(),
             10,
@@ -434,14 +447,15 @@ mod tests {
                 truncate_primary: None,
             },
         );
-        list.handle_input("\x1b[B"); // 0->1
-        list.handle_input("\x1b[B"); // 1->2
-        list.handle_input("\x1b[B"); // wrap to 0
+        feed(&mut list, KeyCode::Down); // 0->1
+        feed(&mut list, KeyCode::Down); // 1->2
+        feed(&mut list, KeyCode::Down); // wrap to 0
         assert_eq!(list.selected_index, 0);
     }
 
     #[test]
     fn test_select_list_confirm_fires_callback() {
+        use crossterm::event::KeyCode;
         use std::sync::{Arc, Mutex};
         let mut list = SelectList::new(
             items(),
@@ -458,7 +472,7 @@ mod tests {
         list.on_select = Some(Box::new(move |item| {
             *s.lock().unwrap() = Some(item);
         }));
-        list.handle_input("\r");
+        feed(&mut list, KeyCode::Enter);
         let result = selected.lock().unwrap();
         assert!(result.is_some());
         assert_eq!(result.as_ref().unwrap().value, "apple");
@@ -466,6 +480,7 @@ mod tests {
 
     #[test]
     fn test_select_list_cancel() {
+        use crossterm::event::KeyCode;
         use std::sync::{Arc, Mutex};
         let mut list = SelectList::new(
             items(),
@@ -482,7 +497,7 @@ mod tests {
         list.on_cancel = Some(Box::new(move || {
             *c.lock().unwrap() = true;
         }));
-        list.handle_input("\x1b"); // escape
+        feed(&mut list, KeyCode::Esc);
         assert!(*cancelled.lock().unwrap());
     }
 
@@ -533,7 +548,7 @@ mod tests {
                 truncate_primary: None,
             },
         );
-        list.handle_input("\x1b[B"); // move to 1
+        feed(&mut list, crossterm::event::KeyCode::Down); // move to 1
         let selected = list.get_selected_item().unwrap();
         assert_eq!(selected.value, "banana");
     }

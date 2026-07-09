@@ -152,7 +152,7 @@ impl Component for Image {
         lines
     }
 
-    fn handle_input(&mut self, _data: &str) {}
+    fn handle_input(&mut self, _event: crate::tui::InputEvent) {}
     fn invalidate(&mut self) {
         self.cached_lines = None;
         self.cached_width = None;

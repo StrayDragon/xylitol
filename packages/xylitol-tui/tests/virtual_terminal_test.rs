@@ -7,8 +7,9 @@
 
 mod support;
 
+use support::vt_feed::feed_vt;
 use support::{LoggingVirtualTerminal, VirtualTerminal};
-use xylitol_tui::tui::Component;
+use xylitol_tui::tui::{Component, InputEvent};
 use xylitol_tui::{TUI, terminal::Terminal};
 
 /// Minimal component holding fixed lines; mirrors pi-tui's `TestComponent`.
@@ -28,7 +29,7 @@ impl Component for LinesComponent {
     fn render(&mut self, _width: usize) -> Vec<String> {
         self.lines.clone()
     }
-    fn handle_input(&mut self, _data: &str) {}
+    fn handle_input(&mut self, _event: InputEvent) {}
     fn invalidate(&mut self) {}
 }
 
@@ -212,10 +213,8 @@ fn input_submit_preserves_value_matching_pi() {
         *cap.lock().unwrap() = v;
     }));
 
-    for ch in "hello".chars() {
-        input.handle_input(&ch.to_string());
-    }
-    input.handle_input("\r");
+    feed_vt(&mut input, "hello");
+    feed_vt(&mut input, "\r");
 
     // pi fires onSubmit(this.value) without clearing.
     assert_eq!(*captured.lock().unwrap(), "hello");
@@ -585,9 +584,7 @@ fn input_render_handles_cjk_in_visible_window_without_panic() {
     // strict slice must not split the wide char and must not panic.
     let mut input = Input::new();
     input.set_focused(true);
-    for ch in "你好世界测试".chars() {
-        input.handle_input(&ch.to_string());
-    }
+    feed_vt(&mut input, "你好世界测试");
     // Render into a 10-col terminal ("> " prompt + 8-col window); should produce
     // exactly one line without panicking.
     let lines = input.render(10);

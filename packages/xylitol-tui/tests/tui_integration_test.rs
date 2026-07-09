@@ -1,3 +1,6 @@
+mod support;
+
+use support::vt_feed::feed_vt;
 use xylitol_tui::components::{
     input::Input,
     loader::Loader,
@@ -114,15 +117,15 @@ fn test_tui_select_list_navigation() {
     assert!(lines[0].contains("Alpha"));
 
     // Navigate down
-    list.handle_input("\x1b[B");
+    feed_vt(&mut list, "\x1b[B");
     assert_eq!(list.get_selected_item().unwrap().value, "b");
 
     // Navigate down
-    list.handle_input("\x1b[B");
+    feed_vt(&mut list, "\x1b[B");
     assert_eq!(list.get_selected_item().unwrap().value, "c");
 
     // Wrap around
-    list.handle_input("\x1b[B");
+    feed_vt(&mut list, "\x1b[B");
     assert_eq!(list.get_selected_item().unwrap().value, "a");
 }
 
@@ -158,24 +161,22 @@ fn test_tui_input_cursor_operations() {
     input.set_focused(true);
 
     // Type text
-    for c in "hello".chars() {
-        input.handle_input(&c.to_string());
-    }
+    feed_vt(&mut input, "hello");
     assert_eq!(input.value(), "hello");
 
     // Move left and insert
-    input.handle_input("\x1b[D");
-    input.handle_input("\x1b[D");
-    input.handle_input("X");
+    feed_vt(&mut input, "\x1b[D");
+    feed_vt(&mut input, "\x1b[D");
+    feed_vt(&mut input, "X");
     assert_eq!(input.value(), "helXlo");
 
     // Home and insert
-    input.handle_input("\x1b[H");
-    input.handle_input("Y");
+    feed_vt(&mut input, "\x1b[H");
+    feed_vt(&mut input, "Y");
     assert_eq!(input.value(), "YhelXlo");
 
     // Backspace
-    input.handle_input("\x7f");
+    feed_vt(&mut input, "\x7f");
     assert_eq!(input.value(), "helXlo");
 }
 
