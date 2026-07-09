@@ -1,6 +1,8 @@
 ---
 name: "llman-sdd-specs-compact"
 description: "压缩并重构 llman SDD specs，同时保持规范行为不变。"
+metadata:
+  version: "0.0.56"
 ---
 
 # LLMAN SDD Specs Compact
@@ -44,17 +46,18 @@ description: "压缩并重构 llman SDD specs，同时保持规范行为不变�
 在执行之前，请先阅读 `llmanspec/config.yaml`，若其中包含 `context` 与 `rules` 请遵循。
 
 常用命令：
+- `llman sdd context --task "<description>" --paths "<files>"`（获取相关 specs）。使用 pageindex agentic 树检索后端（需配置 `LLMAN_SDD_INDEX_CHAT_MODEL`）。可用 `LLMAN_SDD_INDEX_BACKEND` 预设。
 - `llman sdd list`（列出变更）
-- `llman sdd list --specs`（列出 specs）
+- `llman sdd list --specs`（列出 specs，含 purpose/scope 元数据）
 - `llman sdd show <id>`（查看 change/spec）
 - `llman sdd validate <id>`（校验变更或 spec）
 - `llman sdd validate --all`（批量校验）
-- `llman sdd migrate`（将旧版 `.md`+fence spec 一次性迁移为独立 `.toon`；幂等）
+- `llman sdd index rebuild`（重建 pageindex 树索引——无需模型）
+- `llman sdd index check`（检查索引新鲜度）
 - `llman sdd archive run <id>`（归档变更）
-- `llman sdd archive <id>`（`archive run` 的兼容别名）
-- `llman sdd archive freeze [--before YYYY-MM-DD] [--keep-recent N] [--dry-run]`（将已归档目录冻结到单一冷备文件）
-- `llman sdd archive thaw [--change <id> ...] [--dest <path>]`（从冷备文件恢复目录）
-- `llman sdd graph [CHANGE] [--format mermaid] [--scope active|archived|all] [--depth N]`（生成变更依赖图并输出到标准输出）
+- `llman sdd archive freeze [--before YYYY-MM-DD] [--keep-recent N] [--dry-run]`（冻结归档目录）
+- `llman sdd archive thaw [--change <id> ...] [--dest <path>]`（解冻归档）
+- `llman sdd graph [CHANGE] [--format mermaid] [--scope active|archived|all] [--depth N]`（生成变更依赖图）
 
 
 常见校验修复（TOON 独立文件 spec）：
@@ -103,6 +106,7 @@ r1,happy,"","a trigger happens","the outcome is observed"
 
 ## Context
 - 执行前先确认当前 change/spec 状态。
+- 优先使用 `llman sdd context --task --paths` 获取相关 specs，而非全量读取或猜测。
 
 ## Goal
 - 明确本次命令/skill 要达成的可验证结果。
@@ -110,10 +114,14 @@ r1,happy,"","a trigger happens","the outcome is observed"
 ## Constraints
 - 变更保持最小化且范围明确。
 - 标识符或意图不明确时禁止猜测。
+- 在读取 spec 全文前，先使用 `llman sdd context --task --paths` 获取相关 specs。
+- 判断变更规模后选择路径：行为合约变更走完整 SDD 流程，实现变更走快速路径。
 
 ## Workflow
 - 以 `llman sdd` 命令结果为事实来源。
 - 涉及文件/规范变更时执行校验。
+- 首选 `llman sdd context` 获取相关 specs，而非全量读取或猜测。
+- 当 context 不可用时，按错误提示处理（重建 index 或降级到 `list --specs --json`）。
 
 ## Decision Policy
 - 高影响歧义必须先澄清。
