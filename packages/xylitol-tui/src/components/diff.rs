@@ -740,6 +740,7 @@ fn render_side_by_side(
     num_width: usize,
 ) -> Vec<String> {
     // Pack columns to content width (capped), not half-terminal stretch.
+    // Multi-line replace hunks (DDD…III…) are zipped so each screen row is L|R.
     let max_half = width.saturating_sub(2) / 2;
     enum Row {
         Meta(Vec<String>),
@@ -757,89 +758,70 @@ fn render_side_by_side(
             i += 1;
             continue;
         }
-        if line.kind == LineKind::Delete
-            && i + 1 < lines.len()
-            && lines[i + 1].kind == LineKind::Insert
-        {
+        if line.kind == LineKind::Equal {
             rows.push(Row::Pair(
                 format_sbs_cell(
-                    '-',
+                    ' ',
                     &line.content,
                     line.old_no,
                     theme,
-                    LineKind::Delete,
+                    LineKind::Equal,
                     max_half,
                     num_width,
                 ),
                 format_sbs_cell(
-                    '+',
-                    &lines[i + 1].content,
-                    lines[i + 1].new_no,
+                    ' ',
+                    &line.content,
+                    line.new_no,
                     theme,
-                    LineKind::Insert,
+                    LineKind::Equal,
                     max_half,
                     num_width,
                 ),
             ));
-            i += 2;
+            i += 1;
             continue;
         }
-        let pair = match line.kind {
-            LineKind::Delete => Row::Pair(
-                format_sbs_cell(
-                    '-',
-                    &line.content,
-                    line.old_no,
-                    theme,
-                    LineKind::Delete,
-                    max_half,
-                    num_width,
-                ),
-                Vec::new(),
-            ),
-            LineKind::Insert => Row::Pair(
-                Vec::new(),
-                format_sbs_cell(
-                    '+',
-                    &line.content,
-                    line.new_no,
-                    theme,
-                    LineKind::Insert,
-                    max_half,
-                    num_width,
-                ),
-            ),
-            LineKind::Equal => Row::Pair(
-                format_sbs_cell(
-                    ' ',
-                    &line.content,
-                    line.old_no,
-                    theme,
-                    LineKind::Equal,
-                    max_half,
-                    num_width,
-                ),
-                format_sbs_cell(
-                    ' ',
-                    &line.content,
-                    line.new_no,
-                    theme,
-                    LineKind::Equal,
-                    max_half,
-                    num_width,
-                ),
-            ),
-            LineKind::Meta => unreachable!(),
-        };
-        rows.push(pair);
+        // Replace / pure-delete / pure-insert hunk: gather runs, then zip.
+        if line.kind == LineKind::Delete || line.kind == LineKind::Insert {
+            let (deletes, inserts, next) = take_change_hunk(lines, i);
+            i = next;
+            let n = deletes.len().max(inserts.len());
+            for k in 0..n {
+                let left = deletes.get(k).map_or_else(Vec::new, |d| {
+                    format_sbs_cell(
+                        '-',
+                        &d.content,
+                        d.old_no,
+                        theme,
+                        LineKind::Delete,
+                        max_half,
+                        num_width,
+                    )
+                });
+                let right = inserts.get(k).map_or_else(Vec::new, |ins| {
+                    format_sbs_cell(
+                        '+',
+                        &ins.content,
+                        ins.new_no,
+                        theme,
+                        LineKind::Insert,
+                        max_half,
+                        num_width,
+                    )
+                });
+                rows.push(Row::Pair(left, right));
+            }
+            continue;
+        }
         i += 1;
     }
 
     let left_w = rows
         .iter()
         .filter_map(|r| match r {
-            Row::Pair(l, _) => l.iter().map(|s| visible_width(s)).max(),
-            Row::Meta(_) => None,
+            Row::Pair(l, _) if !l.is_empty() => l.iter().map(|s| visible_width(s)).max(),
+            _ => None,
         })
         .max()
         .unwrap_or(0)
@@ -860,6 +842,24 @@ fn render_side_by_side(
         }
     }
     out
+}
+
+/// Collect a change hunk starting at `start`: all deletes, then all inserts (similar order).
+///
+/// Returns `(deletes, inserts, index_after_hunk)`.
+fn take_change_hunk(lines: &[DiffLine], start: usize) -> (&[DiffLine], &[DiffLine], usize) {
+    let mut i = start;
+    let del_start = i;
+    while i < lines.len() && lines[i].kind == LineKind::Delete {
+        i += 1;
+    }
+    let del_end = i;
+    let ins_start = i;
+    while i < lines.len() && lines[i].kind == LineKind::Insert {
+        i += 1;
+    }
+    let ins_end = i;
+    (&lines[del_start..del_end], &lines[ins_start..ins_end], i)
 }
 
 fn format_sbs_cell(
@@ -1239,15 +1239,47 @@ mod tests {
             joined.contains("Ready") && joined.contains("Working"),
             "SBS body should remain; got:\n{joined}"
         );
-        // Packed columns: right pane near left content (not mid-screen gap).
-        let data = lines
+        // Packed columns: each replace-hunk row is L|R (not all deletes then all inserts).
+        let ready_line = lines
             .iter()
-            .find(|l| l.contains("Working"))
-            .expect("Working line");
-        let pos = data.find("Working").expect("Working");
+            .find(|l| l.contains("Ready") && l.contains("Working"))
+            .expect("Ready|Working should share one SBS row");
+        let pos = ready_line.find("Working").expect("Working");
         assert!(
             pos < 55,
-            "packed SBS should not leave a huge mid-gap; Working at {pos} in:\n{data}"
+            "packed SBS row should keep panes close; Working at {pos} in:\n{ready_line}"
+        );
+    }
+
+    #[test]
+    fn side_by_side_zips_multiline_replace_hunk() {
+        // similar emits DDII for a 2-line replace — must zip, not stack.
+        let lines = render_diff_lines(
+            &DiffInput::LinePair {
+                old: "status: Ready\nfooter: cwd · model\n".into(),
+                new: "status: Working\nfooter: cwd · model · context%\n".into(),
+                path: None,
+            },
+            100,
+            &plain_theme(),
+            &DiffOptions {
+                word_level: false,
+                side_by_side_min_width: Some(40),
+                ..DiffOptions::default()
+            },
+        );
+        let joined = lines.join("\n");
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("Ready") && l.contains("Working")),
+            "row1 should pair Ready|Working; got:\n{joined}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("footer") && l.contains('-') && l.contains('+')),
+            "row2 should pair footer delete|insert; got:\n{joined}"
         );
     }
 
