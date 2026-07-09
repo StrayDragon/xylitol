@@ -15,10 +15,10 @@ use crate::components::select_list::{
     SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,
 };
 use crate::keybindings::with_keybindings;
-use crate::keys::{decode_printable_key, matches_key};
+use crate::keys::{matches_key_event, printable_from_key_event};
 use crate::kill_ring::{KillRing, KillRingOptions};
 use crate::paste_burst::PasteBurst;
-use crate::tui::{CURSOR_MARKER, Component, Focusable};
+use crate::tui::{CURSOR_MARKER, Component, Focusable, InputEvent};
 use crate::undo_stack::UndoStack;
 use crate::utils::{is_whitespace_char, truncate_to_width, visible_width};
 use crate::word_navigation::{find_word_backward, find_word_forward};
@@ -204,8 +204,6 @@ pub struct Editor {
     jump_mode: Option<bool>,
     pastes: HashMap<usize, String>,
     paste_counter: usize,
-    paste_buffer: String,
-    is_in_paste: bool,
     // c425 new fields
     preferred_visual_col: Option<usize>,
     snapped_from_cursor_col: Option<usize>,
@@ -243,8 +241,6 @@ impl Editor {
             jump_mode: None,
             pastes: HashMap::new(),
             paste_counter: 0,
-            paste_buffer: String::new(),
-            is_in_paste: false,
             preferred_visual_col: None,
             snapped_from_cursor_col: None,
             paste_burst: PasteBurst::new(),
@@ -1296,6 +1292,201 @@ impl Editor {
         self.cancel_autocomplete_request();
         self.clear_autocomplete_ui();
     }
+
+    fn handle_key(&mut self, key: &crossterm::event::KeyEvent) {
+        if let Some(dir) = self.jump_mode.take() {
+            if let Some(s) = printable_from_key_event(key).and_then(|s| s.chars().next()) {
+                self.jump_to(s, dir);
+            }
+            return;
+        }
+
+        macro_rules! k {
+            ($n:expr) => {
+                with_keybindings(|kb| kb.matches_event(key, $n))
+            };
+        }
+
+        // Undo
+        if k!("tui.editor.undo") {
+            self.undo();
+            return;
+        }
+
+        // ── c430: autocomplete active routing ────────────────────────
+        if self.autocomplete_state.is_some() && self.autocomplete_list.is_some() {
+            if k!("tui.select.cancel") {
+                self.cancel_autocomplete();
+                return;
+            }
+            if k!("tui.select.up") || k!("tui.select.down") {
+                if let Some(ref mut list) = self.autocomplete_list {
+                    list.handle_input(InputEvent::Key(*key));
+                }
+                return;
+            }
+            if k!("tui.input.tab") || k!("tui.select.confirm") {
+                // Extract apply data before the mutable self borrow
+                let apply_data = if let Some(ref list) = self.autocomplete_list {
+                    list.get_selected_item().map(|i| {
+                        (
+                            i.value.clone(),
+                            i.label.clone(),
+                            i.description.clone(),
+                            self.autocomplete_prefix.clone(),
+                        )
+                    })
+                } else {
+                    None
+                };
+                if let Some((val, lbl, desc, prefix)) = apply_data {
+                    let provider = self.autocomplete_provider.as_ref().unwrap();
+                    let ai = AutocompleteItem {
+                        value: val.clone(),
+                        label: lbl.clone(),
+                        description: desc.clone(),
+                    };
+                    let (new_lines, nl, nc) = provider.apply_completion(
+                        &self.state.lines,
+                        self.state.cursor_line,
+                        self.state.cursor_col,
+                        &ai,
+                        &prefix,
+                    );
+                    self.push_undo();
+                    self.last_action = None;
+                    self.state.lines = new_lines;
+                    self.state.cursor_line = nl;
+                    self.set_cursor_col(nc);
+                    self.cancel_autocomplete();
+                    self.on_changed();
+                } else {
+                    self.cancel_autocomplete();
+                }
+                return;
+            }
+        }
+        // ── end c430 autocomplete routing ────────────────────────────
+
+        // Deletion / kill ring
+        if k!("tui.editor.yankPop") {
+            self.yank_pop();
+        } else if k!("tui.editor.yank") {
+            self.yank();
+        } else if k!("tui.editor.deleteToLineStart") {
+            self.del_to_start();
+        } else if k!("tui.editor.deleteToLineEnd") {
+            self.del_to_end();
+        } else if k!("tui.editor.deleteWordBackward") {
+            self.del_word_back();
+        } else if k!("tui.editor.deleteWordForward") {
+            self.del_word_fwd();
+        } else if k!("tui.editor.deleteCharBackward") || matches_key_event(key, "shift+backspace") {
+            self.backspace();
+            self.handle_autocomplete_on_edit();
+        } else if k!("tui.editor.deleteCharForward") || matches_key_event(key, "shift+delete") {
+            self.fwd_delete();
+            self.handle_autocomplete_on_edit();
+        }
+        // Cursor movement
+        else if k!("tui.editor.cursorLineStart") {
+            self.line_start();
+        } else if k!("tui.editor.cursorLineEnd") {
+            self.line_end();
+        } else if k!("tui.editor.cursorWordLeft") {
+            self.word_left();
+            self.handle_autocomplete_on_edit();
+        } else if k!("tui.editor.cursorWordRight") {
+            self.word_right();
+            self.handle_autocomplete_on_edit();
+        } else if k!("tui.editor.jumpForward") {
+            self.jump_mode = Some(true);
+        } else if k!("tui.editor.jumpBackward") {
+            self.jump_mode = Some(false);
+        } else if k!("tui.editor.pageUp") {
+            self.page_scroll(-1);
+        } else if k!("tui.editor.pageDown") {
+            self.page_scroll(1);
+        }
+        // Tab — trigger completion (c430)
+        else if k!("tui.input.tab") && self.autocomplete_state.is_none() {
+            self.handle_tab_completion();
+        }
+        // Newline / Submit with PasteBurst
+        else if k!("tui.input.newLine") {
+            let now = self.clock.now();
+            if self
+                .paste_burst
+                .should_insert_newline_instead_of_submit(now)
+            {
+                self.paste_burst.extend_window(now);
+                self.newline();
+            } else {
+                self.newline();
+            }
+        } else if k!("tui.input.submit") {
+            if self.disable_submit {
+                return;
+            }
+            let now = self.clock.now();
+            let line = &self.state.lines[self.state.cursor_line];
+            // Backslash-Escape: insert newline instead of submit
+            if self.state.cursor_col > 0
+                && line.as_bytes().get(self.state.cursor_col - 1) == Some(&b'\\')
+            {
+                self.backspace();
+                self.newline();
+            }
+            // PasteBurst check: rapid paste → insert newline instead of submit
+            else if self
+                .paste_burst
+                .should_insert_newline_instead_of_submit(now)
+            {
+                self.paste_burst.extend_window(now);
+                self.newline();
+            } else {
+                self.submit();
+            }
+        }
+        // Arrow navigation with VisualLine+history
+        else if k!("tui.editor.cursorUp") {
+            if (self.is_on_first_visual_line() || self.state.cursor_col == 0)
+                && (self.is_editor_empty() || self.history_index > -1)
+            {
+                self.navigate_history(-1);
+            } else if self.is_on_first_visual_line() {
+                self.line_start();
+            } else {
+                self.move_cursor(-1, 0);
+                self.handle_autocomplete_on_edit();
+            }
+        } else if k!("tui.editor.cursorDown") {
+            if self.history_index > -1 && self.is_on_last_visual_line() {
+                self.navigate_history(1);
+            } else if self.is_on_last_visual_line() {
+                self.line_end();
+            } else {
+                self.move_cursor(1, 0);
+                self.handle_autocomplete_on_edit();
+            }
+        } else if k!("tui.editor.cursorLeft") {
+            self.move_cursor(0, -1);
+            self.handle_autocomplete_on_edit();
+        } else if k!("tui.editor.cursorRight") {
+            self.move_cursor(0, 1);
+            self.handle_autocomplete_on_edit();
+        }
+        // Printable chars
+        else if matches_key_event(key, "shift+space") {
+            self.insert_ch(" ");
+        } else if let Some(p) = printable_from_key_event(key) {
+            self.insert_ch(&p);
+        }
+        // Everything else → reset paste burst
+        else {
+            self.paste_burst.reset();
+        }
+    }
 }
 
 // ── Component impl ──────────────────────────────────────────────────────────
@@ -1393,222 +1584,15 @@ impl Component for Editor {
         result
     }
 
-    fn handle_input(&mut self, data: &str) {
-        if let Some(dir) = self.jump_mode.take() {
-            if let Some(s) = decode_printable_key(data).and_then(|s| s.chars().next()) {
-                self.jump_to(s, dir);
-            }
-            return;
-        }
-        if data.contains("\x1b[200~") {
-            self.is_in_paste = true;
-            self.paste_buffer = data.replace("\x1b[200~", "");
-            self.paste_burst.reset();
-            return;
-        }
-        if self.is_in_paste {
-            self.paste_buffer.push_str(data);
-            if let Some(end) = self.paste_buffer.find("\x1b[201~") {
-                let c = self.paste_buffer[..end].to_string();
-                let r = self.paste_buffer[end + 6..].to_string();
-                self.paste_buffer.clear();
-                self.is_in_paste = false;
-                if !c.is_empty() {
-                    self.paste(&c);
-                }
-                if !r.is_empty() {
-                    self.handle_input(&r);
+    fn handle_input(&mut self, event: InputEvent) {
+        match event {
+            InputEvent::Paste(content) => {
+                self.paste_burst.reset();
+                if !content.is_empty() {
+                    self.paste(&content);
                 }
             }
-            return;
-        }
-
-        macro_rules! k {
-            ($n:expr) => {
-                with_keybindings(|kb| kb.matches(data, $n))
-            };
-        }
-
-        // Undo
-        if k!("tui.editor.undo") {
-            self.undo();
-            return;
-        }
-
-        // ── c430: autocomplete active routing ────────────────────────
-        if self.autocomplete_state.is_some() && self.autocomplete_list.is_some() {
-            if k!("tui.select.cancel") {
-                self.cancel_autocomplete();
-                return;
-            }
-            if k!("tui.select.up") || k!("tui.select.down") {
-                if let Some(ref mut list) = self.autocomplete_list {
-                    list.handle_input(data);
-                }
-                return;
-            }
-            if k!("tui.input.tab") || k!("tui.select.confirm") {
-                // Extract apply data before the mutable self borrow
-                let apply_data = if let Some(ref list) = self.autocomplete_list {
-                    list.get_selected_item().map(|i| {
-                        (
-                            i.value.clone(),
-                            i.label.clone(),
-                            i.description.clone(),
-                            self.autocomplete_prefix.clone(),
-                        )
-                    })
-                } else {
-                    None
-                };
-                if let Some((val, lbl, desc, prefix)) = apply_data {
-                    let provider = self.autocomplete_provider.as_ref().unwrap();
-                    let ai = AutocompleteItem {
-                        value: val.clone(),
-                        label: lbl.clone(),
-                        description: desc.clone(),
-                    };
-                    let (new_lines, nl, nc) = provider.apply_completion(
-                        &self.state.lines,
-                        self.state.cursor_line,
-                        self.state.cursor_col,
-                        &ai,
-                        &prefix,
-                    );
-                    self.push_undo();
-                    self.last_action = None;
-                    self.state.lines = new_lines;
-                    self.state.cursor_line = nl;
-                    self.set_cursor_col(nc);
-                    self.cancel_autocomplete();
-                    self.on_changed();
-                } else {
-                    self.cancel_autocomplete();
-                }
-                return;
-            }
-        }
-        // ── end c430 autocomplete routing ────────────────────────────
-
-        // Deletion / kill ring
-        if k!("tui.editor.yankPop") {
-            self.yank_pop();
-        } else if k!("tui.editor.yank") {
-            self.yank();
-        } else if k!("tui.editor.deleteToLineStart") {
-            self.del_to_start();
-        } else if k!("tui.editor.deleteToLineEnd") {
-            self.del_to_end();
-        } else if k!("tui.editor.deleteWordBackward") {
-            self.del_word_back();
-        } else if k!("tui.editor.deleteWordForward") {
-            self.del_word_fwd();
-        } else if k!("tui.editor.deleteCharBackward") || matches_key(data, "shift+backspace") {
-            self.backspace();
-            self.handle_autocomplete_on_edit();
-        } else if k!("tui.editor.deleteCharForward") || matches_key(data, "shift+delete") {
-            self.fwd_delete();
-            self.handle_autocomplete_on_edit();
-        }
-        // Cursor movement
-        else if k!("tui.editor.cursorLineStart") {
-            self.line_start();
-        } else if k!("tui.editor.cursorLineEnd") {
-            self.line_end();
-        } else if k!("tui.editor.cursorWordLeft") {
-            self.word_left();
-            self.handle_autocomplete_on_edit();
-        } else if k!("tui.editor.cursorWordRight") {
-            self.word_right();
-            self.handle_autocomplete_on_edit();
-        } else if k!("tui.editor.jumpForward") {
-            self.jump_mode = Some(true);
-        } else if k!("tui.editor.jumpBackward") {
-            self.jump_mode = Some(false);
-        } else if k!("tui.editor.pageUp") {
-            self.page_scroll(-1);
-        } else if k!("tui.editor.pageDown") {
-            self.page_scroll(1);
-        }
-        // Tab — trigger completion (c430)
-        else if k!("tui.input.tab") && self.autocomplete_state.is_none() {
-            self.handle_tab_completion();
-        }
-        // Newline / Submit with PasteBurst
-        else if with_keybindings(|kb| kb.matches(data, "tui.input.newLine")) || data == "\n" {
-            let now = self.clock.now();
-            if self
-                .paste_burst
-                .should_insert_newline_instead_of_submit(now)
-            {
-                self.paste_burst.extend_window(now);
-                self.newline();
-            } else {
-                self.newline();
-            }
-        } else if with_keybindings(|kb| kb.matches(data, "tui.input.submit")) {
-            if self.disable_submit {
-                return;
-            }
-            let now = self.clock.now();
-            let line = &self.state.lines[self.state.cursor_line];
-            // Backslash-Escape: insert newline instead of submit
-            if self.state.cursor_col > 0
-                && line.as_bytes().get(self.state.cursor_col - 1) == Some(&b'\\')
-            {
-                self.backspace();
-                self.newline();
-            }
-            // PasteBurst check: rapid paste → insert newline instead of submit
-            else if self
-                .paste_burst
-                .should_insert_newline_instead_of_submit(now)
-            {
-                self.paste_burst.extend_window(now);
-                self.newline();
-            } else {
-                self.submit();
-            }
-        }
-        // Arrow navigation with VisualLine+history
-        else if k!("tui.editor.cursorUp") {
-            if (self.is_on_first_visual_line() || self.state.cursor_col == 0)
-                && (self.is_editor_empty() || self.history_index > -1)
-            {
-                self.navigate_history(-1);
-            } else if self.is_on_first_visual_line() {
-                self.line_start();
-            } else {
-                self.move_cursor(-1, 0);
-                self.handle_autocomplete_on_edit();
-            }
-        } else if k!("tui.editor.cursorDown") {
-            if self.history_index > -1 && self.is_on_last_visual_line() {
-                self.navigate_history(1);
-            } else if self.is_on_last_visual_line() {
-                self.line_end();
-            } else {
-                self.move_cursor(1, 0);
-                self.handle_autocomplete_on_edit();
-            }
-        } else if k!("tui.editor.cursorLeft") {
-            self.move_cursor(0, -1);
-            self.handle_autocomplete_on_edit();
-        } else if k!("tui.editor.cursorRight") {
-            self.move_cursor(0, 1);
-            self.handle_autocomplete_on_edit();
-        }
-        // Printable chars
-        else if matches_key(data, "shift+space") {
-            self.insert_ch(" ");
-        } else if let Some(p) = decode_printable_key(data) {
-            self.insert_ch(&p);
-        } else if let Some(c) = data.chars().next().filter(|c| (*c as u32) >= 32) {
-            self.insert_ch(&c.to_string());
-        }
-        // Everything else → reset paste burst
-        else {
-            self.paste_burst.reset();
+            InputEvent::Key(key) => self.handle_key(&key),
         }
     }
 

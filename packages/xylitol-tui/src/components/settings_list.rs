@@ -122,9 +122,13 @@ impl Component for SettingsList {
         self.render_main_list(width, &search_lines)
     }
 
-    fn handle_input(&mut self, data: &str) {
+    fn handle_input(&mut self, event: crate::tui::InputEvent) {
+        use crate::keys::printable_from_key_event;
+        use crate::tui::InputEvent;
+        use crossterm::event::KeyCode;
+
         if let Some(ref mut sub) = self.submenu {
-            sub.handle_input(data);
+            sub.handle_input(event);
             self.poll_submenu_close();
             return;
         }
@@ -135,10 +139,15 @@ impl Component for SettingsList {
             self.items.len()
         };
 
-        let up = with_keybindings(|kb| kb.matches(data, "tui.select.up"));
-        let down = with_keybindings(|kb| kb.matches(data, "tui.select.down"));
-        let confirm = with_keybindings(|kb| kb.matches(data, "tui.select.confirm")) || data == " ";
-        let cancel = with_keybindings(|kb| kb.matches(data, "tui.select.cancel"));
+        let InputEvent::Key(ref key) = event else {
+            return;
+        };
+
+        let up = with_keybindings(|kb| kb.matches_event(key, "tui.select.up"));
+        let down = with_keybindings(|kb| kb.matches_event(key, "tui.select.down"));
+        let confirm = with_keybindings(|kb| kb.matches_event(key, "tui.select.confirm"))
+            || matches!(key.code, KeyCode::Char(' '));
+        let cancel = with_keybindings(|kb| kb.matches_event(key, "tui.select.cancel"));
 
         if up {
             if item_count == 0 {
@@ -163,12 +172,15 @@ impl Component for SettingsList {
         } else if cancel {
             (self.on_cancel)();
         } else if self.search_enabled {
-            let sanitized = data.replace(' ', "");
-            if sanitized.is_empty() {
+            // Space is confirm above; other printable chars feed the search input.
+            let Some(ch) = printable_from_key_event(key) else {
+                return;
+            };
+            if ch == " " {
                 return;
             }
             if let Some(ref mut input) = self.search_input {
-                input.handle_input(&sanitized);
+                input.handle_input(InputEvent::Key(*key));
                 let query = input.value().to_string();
                 self.apply_filter(&query);
             }
@@ -477,8 +489,19 @@ mod tests {
         assert!(lines.iter().any(|l| l.contains("No settings")));
     }
 
+    fn feed(list: &mut SettingsList, code: crossterm::event::KeyCode) {
+        use crate::tui::InputEvent;
+        use crossterm::event::{KeyEvent, KeyModifiers};
+        list.handle_input(InputEvent::Key(KeyEvent::new(code, KeyModifiers::NONE)));
+    }
+
+    fn feed_char(list: &mut SettingsList, c: char) {
+        feed(list, crossterm::event::KeyCode::Char(c));
+    }
+
     #[test]
     fn up_down_wrap() {
+        use crossterm::event::KeyCode;
         let mut list = SettingsList::new(
             vec![make_item("a", "A", "1"), make_item("b", "B", "2")],
             10,
@@ -488,15 +511,16 @@ mod tests {
             SettingsListOptions::default(),
         );
         // Up from 0 wraps to last.
-        list.handle_input("\u{1b}[A");
+        feed(&mut list, KeyCode::Up);
         assert_eq!(list.selected_index, 1);
         // Down from last wraps to 0.
-        list.handle_input("\u{1b}[B");
+        feed(&mut list, KeyCode::Down);
         assert_eq!(list.selected_index, 0);
     }
 
     #[test]
     fn confirm_cycles_values() {
+        use crossterm::event::KeyCode;
         let on_change = std::rc::Rc::new(std::cell::RefCell::new(String::new()));
         let oc = on_change.clone();
         let mut list = SettingsList::new(
@@ -517,13 +541,14 @@ mod tests {
             || {},
             SettingsListOptions::default(),
         );
-        list.handle_input("\r"); // Enter → cycles a→b
+        feed(&mut list, KeyCode::Enter); // Enter → cycles a→b
         assert_eq!(*on_change.borrow(), "b=");
         assert_eq!(list.items[0].current_value, "b");
     }
 
     #[test]
     fn cancel_calls_on_cancel() {
+        use crossterm::event::KeyCode;
         let cancelled = std::rc::Rc::new(std::cell::RefCell::new(false));
         let cc = cancelled.clone();
         let mut list = SettingsList::new(
@@ -534,7 +559,7 @@ mod tests {
             move || *cc.borrow_mut() = true,
             SettingsListOptions::default(),
         );
-        list.handle_input("\u{1b}"); // escape
+        feed(&mut list, KeyCode::Esc);
         assert!(*cancelled.borrow());
     }
 
@@ -551,9 +576,9 @@ mod tests {
             },
         );
         // Type "alp"
-        list.handle_input("a");
-        list.handle_input("l");
-        list.handle_input("p");
+        feed_char(&mut list, 'a');
+        feed_char(&mut list, 'l');
+        feed_char(&mut list, 'p');
         let lines = list.render(40);
         assert!(
             lines.iter().any(|l| l.contains("Alpha")),
@@ -567,6 +592,7 @@ mod tests {
 
     #[test]
     fn submenu_open_and_close() {
+        use crossterm::event::KeyCode;
         let mut list = SettingsList::new(
             vec![SettingItem {
                 id: "s".into(),
@@ -588,7 +614,7 @@ mod tests {
             || {},
             SettingsListOptions::default(),
         );
-        list.handle_input("\r"); // open submenu
+        feed(&mut list, KeyCode::Enter); // open submenu
         assert!(list.submenu.is_some());
         let lines = list.render(40);
         assert!(lines.iter().any(|l| l.contains("submenu content")));

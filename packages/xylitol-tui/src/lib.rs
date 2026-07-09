@@ -46,8 +46,8 @@ pub use keybindings::{
     KeybindingsManager, create_default_definitions, set_keybindings, with_keybindings,
 };
 pub use keys::{
-    KeyId, decode_printable_key, is_key_release, is_key_repeat, matches_key, parse_key,
-    set_kitty_protocol_active,
+    KeyId, decode_printable_key, is_key_release, is_key_repeat, matches_key, matches_key_event,
+    parse_key, printable_from_key_event, set_kitty_protocol_active,
 };
 pub use paste_burst::PasteBurst;
 pub use terminal::{CrosstermTerminal, Terminal, parse_kitty_flags};
@@ -64,7 +64,8 @@ pub use terminal_image::{
     reset_capabilities_cache, set_capabilities, set_cell_dimensions,
 };
 pub use tui::{
-    Component, Focusable, OverlayAnchor, OverlayMargin, OverlayOptions, RenderError, SizeValue, TUI,
+    Component, Focusable, InputEvent, OverlayAnchor, OverlayMargin, OverlayOptions, RenderError,
+    SizeValue, TUI,
 };
 pub use utils::{
     ExtractedSegments, extract_ansi_code, extract_segments, is_punctuation_char,

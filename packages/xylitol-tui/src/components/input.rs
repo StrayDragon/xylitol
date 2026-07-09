@@ -1,7 +1,7 @@
 use crate::keybindings::with_keybindings;
-use crate::keys::decode_printable_key;
+use crate::keys::printable_from_key_event;
 use crate::kill_ring::{KillRing, KillRingOptions};
-use crate::tui::{CURSOR_MARKER, Component};
+use crate::tui::{CURSOR_MARKER, Component, InputEvent};
 use crate::undo_stack::UndoStack;
 use crate::utils::{is_whitespace_char, slice_by_column_strict as slice_by_column, visible_width};
 use crate::word_navigation::{find_word_backward, find_word_forward};
@@ -19,8 +19,6 @@ pub struct Input {
     pub on_submit: Option<Box<dyn FnMut(String) + Send>>,
     pub on_escape: Option<Box<dyn Fn() + Send>>,
     focused: bool,
-    paste_buffer: String,
-    is_in_paste: bool,
     kill_ring: KillRing,
     last_action: Option<String>,
     undo_stack: UndoStack<InputState>,
@@ -40,8 +38,6 @@ impl Input {
             on_submit: None,
             on_escape: None,
             focused: false,
-            paste_buffer: String::new(),
-            is_in_paste: false,
             kill_ring: KillRing::new(),
             last_action: None,
             undo_stack: UndoStack::new(),
@@ -268,6 +264,102 @@ impl Input {
         self.last_action = None;
         self.cursor = find_word_forward(&self.value, self.cursor);
     }
+
+    fn handle_key(&mut self, key: &crossterm::event::KeyEvent) {
+        if with_keybindings(|kb| kb.matches_event(key, "tui.select.cancel")) {
+            if let Some(ref mut cb) = self.on_escape {
+                cb();
+            }
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.undo")) {
+            self.undo();
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.input.submit")) {
+            if let Some(ref mut cb) = self.on_submit {
+                // pi fires onSubmit(this.value) WITHOUT clearing; the consumer
+                // owns reset. Clearing here would lose the submitted text, so we
+                // hand over a clone and leave value/cursor untouched.
+                cb(self.value.clone());
+            }
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.deleteCharBackward")) {
+            self.handle_backspace();
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.deleteCharForward")) {
+            self.handle_forward_delete();
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.deleteWordBackward")) {
+            self.delete_word_backwards();
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.deleteWordForward")) {
+            self.delete_word_forward();
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.deleteToLineStart")) {
+            self.delete_to_line_start();
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.deleteToLineEnd")) {
+            self.delete_to_line_end();
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.yank")) {
+            self.yank();
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.yankPop")) {
+            self.yank_pop();
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.cursorLeft")) {
+            self.last_action = None;
+            if self.cursor > 0 {
+                let before: Vec<&str> =
+                    UnicodeSegmentation::graphemes(&self.value[..self.cursor], true).collect();
+                let last = before.last().copied().unwrap_or("");
+                self.cursor = self.cursor.saturating_sub(last.len().max(1));
+            }
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.cursorRight")) {
+            self.last_action = None;
+            if self.cursor < self.value.len() {
+                let after: Vec<&str> =
+                    UnicodeSegmentation::graphemes(&self.value[self.cursor..], true).collect();
+                let first = after.first().copied().unwrap_or("");
+                self.cursor += first.len().max(1);
+            }
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.cursorLineStart")) {
+            self.last_action = None;
+            self.cursor = 0;
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.cursorLineEnd")) {
+            self.last_action = None;
+            self.cursor = self.value.len();
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.cursorWordLeft")) {
+            self.move_word_backwards();
+            return;
+        }
+        if with_keybindings(|kb| kb.matches_event(key, "tui.editor.cursorWordRight")) {
+            self.move_word_forwards();
+            return;
+        }
+
+        if let Some(ch) = printable_from_key_event(key) {
+            self.insert_char(&ch);
+        }
+    }
 }
 
 impl Component for Input {
@@ -334,133 +426,10 @@ impl Component for Input {
         vec![line]
     }
 
-    fn handle_input(&mut self, data: &str) {
-        if data.contains("\x1b[200~") {
-            self.is_in_paste = true;
-            self.paste_buffer.clear();
-            let remaining = data.replace("\x1b[200~", "");
-            if !remaining.is_empty() {
-                self.handle_input(&remaining);
-            }
-            return;
-        }
-
-        if self.is_in_paste {
-            self.paste_buffer.push_str(data);
-            if let Some(end_pos) = self.paste_buffer.find("\x1b[201~") {
-                let content = self.paste_buffer[..end_pos].to_string();
-                let rest = self.paste_buffer[end_pos + 6..].to_string();
-                self.paste_buffer.clear();
-                self.is_in_paste = false;
-                self.handle_paste(&content);
-                if !rest.is_empty() {
-                    self.handle_input(&rest);
-                }
-            }
-            return;
-        }
-
-        if with_keybindings(|kb| kb.matches(data, "tui.select.cancel")) {
-            if let Some(ref mut cb) = self.on_escape {
-                cb();
-            }
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.undo")) {
-            self.undo();
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.input.submit")) || data == "\n" {
-            if let Some(ref mut cb) = self.on_submit {
-                // pi fires onSubmit(this.value) WITHOUT clearing; the consumer
-                // owns reset. Clearing here would lose the submitted text, so we
-                // hand over a clone and leave value/cursor untouched.
-                cb(self.value.clone());
-            }
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.deleteCharBackward")) {
-            self.handle_backspace();
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.deleteCharForward")) {
-            self.handle_forward_delete();
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.deleteWordBackward")) {
-            self.delete_word_backwards();
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.deleteWordForward")) {
-            self.delete_word_forward();
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.deleteToLineStart")) {
-            self.delete_to_line_start();
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.deleteToLineEnd")) {
-            self.delete_to_line_end();
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.yank")) {
-            self.yank();
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.yankPop")) {
-            self.yank_pop();
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.cursorLeft")) {
-            self.last_action = None;
-            if self.cursor > 0 {
-                let before: Vec<&str> =
-                    UnicodeSegmentation::graphemes(&self.value[..self.cursor], true).collect();
-                let last = before.last().copied().unwrap_or("");
-                self.cursor = self.cursor.saturating_sub(last.len().max(1));
-            }
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.cursorRight")) {
-            self.last_action = None;
-            if self.cursor < self.value.len() {
-                let after: Vec<&str> =
-                    UnicodeSegmentation::graphemes(&self.value[self.cursor..], true).collect();
-                let first = after.first().copied().unwrap_or("");
-                self.cursor += first.len().max(1);
-            }
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.cursorLineStart")) {
-            self.last_action = None;
-            self.cursor = 0;
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.cursorLineEnd")) {
-            self.last_action = None;
-            self.cursor = self.value.len();
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.cursorWordLeft")) {
-            self.move_word_backwards();
-            return;
-        }
-        if with_keybindings(|kb| kb.matches(data, "tui.editor.cursorWordRight")) {
-            self.move_word_forwards();
-            return;
-        }
-
-        if let Some(ch) = decode_printable_key(data) {
-            self.insert_char(&ch);
-            return;
-        }
-
-        let has_control = data.chars().any(|c| {
-            let code = c as u32;
-            code < 32 || code == 0x7f || (0x80..=0x9f).contains(&code)
-        });
-        if !has_control && !data.is_empty() {
-            self.insert_char(data);
+    fn handle_input(&mut self, event: InputEvent) {
+        match event {
+            InputEvent::Paste(content) => self.handle_paste(&content),
+            InputEvent::Key(ref key) => self.handle_key(key),
         }
     }
 

@@ -18,8 +18,8 @@ use xylitol_tui::components::spacer::Spacer;
 use xylitol_tui::components::text::Text;
 use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, set_keybindings};
 use xylitol_tui::{
-    Component, CrosstermTerminal, Focusable, SystemClock, TUI, matches_key, truncate_to_width,
-    visible_width, wrap_text_with_ansi,
+    Component, CrosstermTerminal, Focusable, InputEvent, SystemClock, TUI, matches_key_event,
+    truncate_to_width, visible_width, wrap_text_with_ansi,
 };
 
 fn cyan(s: &str) -> String {
@@ -767,24 +767,34 @@ impl Component for FakeCodingAgentApp {
             .collect()
     }
 
-    fn handle_input(&mut self, data: &str) {
-        if matches_key(data, "ctrl+c") {
+    fn handle_input(&mut self, event: InputEvent) {
+        let key = match &event {
+            InputEvent::Key(k) => k,
+            InputEvent::Paste(_) => {
+                self.input.handle_input(event);
+                let submitted = { self.submit_slot.borrow_mut().take() };
+                if let Some(text) = submitted {
+                    self.process_submit(text);
+                }
+                return;
+            }
+        };
+
+        if matches_key_event(key, "ctrl+c") {
             self.quit_flag.store(true, Ordering::SeqCst);
             return;
         }
 
-        if matches_key(data, "escape") {
+        if matches_key_event(key, "escape") {
             self.palette_open = false;
             self.settings_open = false;
             return;
         }
 
         if self.palette_open {
-            if matches_key(data, "up") {
-                self.palette.handle_input("\x1b[A");
-            } else if matches_key(data, "down") {
-                self.palette.handle_input("\x1b[B");
-            } else if matches_key(data, "enter") {
+            if matches_key_event(key, "up") || matches_key_event(key, "down") {
+                self.palette.handle_input(event);
+            } else if matches_key_event(key, "enter") {
                 if let Some(item) = self.palette.get_selected_item() {
                     match item.value.as_str() {
                         "tests" => {
@@ -817,32 +827,31 @@ impl Component for FakeCodingAgentApp {
         }
 
         if self.settings_open {
-            if matches_key(data, "up") {
-                self.settings.handle_input("\x1b[A");
-            } else if matches_key(data, "down") {
-                self.settings.handle_input("\x1b[B");
-            } else if matches_key(data, "enter") {
-                self.settings.handle_input("\r");
+            if matches_key_event(key, "up")
+                || matches_key_event(key, "down")
+                || matches_key_event(key, "enter")
+            {
+                self.settings.handle_input(event);
             }
             return;
         }
 
-        if matches_key(data, "ctrl+p") {
+        if matches_key_event(key, "ctrl+p") {
             self.palette_open = true;
             self.settings_open = false;
             return;
         }
-        if matches_key(data, "ctrl+s") {
+        if matches_key_event(key, "ctrl+s") {
             self.settings_open = true;
             self.palette_open = false;
             return;
         }
-        if matches_key(data, "ctrl+o") {
+        if matches_key_event(key, "ctrl+o") {
             self.advance_script();
             return;
         }
 
-        self.input.handle_input(data);
+        self.input.handle_input(event);
         let submitted = { self.submit_slot.borrow_mut().take() };
         if let Some(text) = submitted {
             self.process_submit(text);

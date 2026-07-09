@@ -1,5 +1,14 @@
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::collections::HashMap;
 use xylitol_tui::keybindings::*;
+
+fn key(code: KeyCode) -> KeyEvent {
+    KeyEvent::new(code, KeyModifiers::NONE)
+}
+
+fn key_mod(code: KeyCode, mods: KeyModifiers) -> KeyEvent {
+    KeyEvent::new(code, mods)
+}
 
 #[test]
 fn test_default_keybindings_exist() {
@@ -15,13 +24,13 @@ fn test_keybindings_manager_default() {
     let kb = KeybindingsManager::new(defs, HashMap::new());
 
     // Test cursorUp (default: "up")
-    assert!(kb.matches("\x1b[A", "tui.editor.cursorUp"));
+    assert!(kb.matches_event(&key(KeyCode::Up), "tui.editor.cursorUp"));
 
     // Test deleteCharForward (default: ["delete", "ctrl+d"])
-    assert!(kb.matches("\x1b[3~", "tui.editor.deleteCharForward"));
+    assert!(kb.matches_event(&key(KeyCode::Delete), "tui.editor.deleteCharForward"));
 
     // Test cancel (default: ["escape", "ctrl+c"])
-    assert!(kb.matches("\x1b", "tui.select.cancel"));
+    assert!(kb.matches_event(&key(KeyCode::Esc), "tui.select.cancel"));
 }
 
 #[test]
@@ -42,9 +51,12 @@ fn test_keybindings_manager_custom_bindings() {
 
     let kb = KeybindingsManager::new(defs, custom);
     // Enter should no longer match submit (only ctrl+j should)
-    assert!(!kb.matches("\r", "tui.input.submit"));
+    assert!(!kb.matches_event(&key(KeyCode::Enter), "tui.input.submit"));
     // But ctrl+j should match
-    assert!(kb.matches("\n", "tui.input.submit"));
+    assert!(kb.matches_event(
+        &key_mod(KeyCode::Char('j'), KeyModifiers::CONTROL),
+        "tui.input.submit"
+    ));
 }
 
 #[test]

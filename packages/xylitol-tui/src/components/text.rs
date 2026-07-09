@@ -94,7 +94,7 @@ impl Component for Text {
         result
     }
 
-    fn handle_input(&mut self, _data: &str) {}
+    fn handle_input(&mut self, _event: crate::tui::InputEvent) {}
     fn invalidate(&mut self) {
         self.cache = None;
     }
