@@ -7,14 +7,12 @@ use std::time::Instant;
 
 use xylitol_tui::components::editor::{Editor, EditorOptions, EditorTheme};
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
-use xylitol_tui::components::panel::Panel;
 use xylitol_tui::components::select_list::{
     SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,
 };
 use xylitol_tui::components::settings_list::{
     SettingItem, SettingsList, SettingsListOptions, SettingsListTheme,
 };
-use xylitol_tui::components::text::Text;
 use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, set_keybindings};
 use xylitol_tui::{
     Component, CrosstermTerminal, Focusable, InputEvent, SystemClock, TUI, matches_key_event,
@@ -24,11 +22,8 @@ use xylitol_tui::{
 fn cyan(s: &str) -> String {
     format!("\x1b[36m{s}\x1b[39m")
 }
-fn green(s: &str) -> String {
-    format!("\x1b[32m{s}\x1b[39m")
-}
-fn yellow(s: &str) -> String {
-    format!("\x1b[33m{s}\x1b[39m")
+fn magenta(s: &str) -> String {
+    format!("\x1b[35m{s}\x1b[39m")
 }
 fn red(s: &str) -> String {
     format!("\x1b[31m{s}\x1b[39m")
@@ -38,9 +33,6 @@ fn dim(s: &str) -> String {
 }
 fn bold(s: &str) -> String {
     format!("\x1b[1m{s}\x1b[22m")
-}
-fn blue_bg(s: &str) -> String {
-    format!("\x1b[44m\x1b[37m{s}\x1b[49m\x1b[39m")
 }
 fn selected_text(s: &str) -> String {
     format!("\x1b[7m{s}\x1b[27m")
@@ -253,7 +245,7 @@ impl FakeCodingAgentApp {
             ],
             changed_files: vec!["packages/xylitol-tui/examples/agent_demo.rs".into()],
             recent_tools: vec!["read_file examples/agent_demo.rs".into()],
-            footer_note: "Ctrl+P command palette  |  Ctrl+S settings  |  Ctrl+C quit".into(),
+            footer_note: "~/xylitol (feat/tui-dev) · claude-sonnet-4".into(),
             last_submitted: String::new(),
             status_text: "Ready".into(),
             active_stream_entry: None,
@@ -270,10 +262,6 @@ impl FakeCodingAgentApp {
     }
 
     fn seed_transcript(&mut self) {
-        self.push_entry(
-            Role::System,
-            "Session restored in /home/l8ng/Projects/__straydragon__/xylitol on branch feat/tui-dev",
-        );
         self.push_entry(
             Role::User,
             "Collapse examples into one fake coding-agent demo and keep foot interaction stable.",
@@ -561,11 +549,12 @@ impl FakeCodingAgentApp {
     }
 
     fn role_prefix(role: Role) -> String {
+        // Short glyphs — copy-friendly (DESIGN.md token economy).
         match role {
-            Role::User => bold(&yellow("You")),
-            Role::Assistant => bold(&green("Agent")),
-            Role::Tool => cyan("tool"),
-            Role::System => dim("sys"),
+            Role::User => magenta("❯"),
+            Role::Assistant => String::new(),
+            Role::Tool => dim("⚙"),
+            Role::System => dim("·"),
         }
     }
 
@@ -583,12 +572,15 @@ impl FakeCodingAgentApp {
     }
 
     fn transcript_lines(&self, width: usize) -> Vec<String> {
-        // Full history: the engine scrolls older rows into terminal scrollback
-        // (pi chatContainer model). Do not truncate here — that would hide
-        // history from the emulator's scrollback.
-        let mut lines = vec![Self::fit(&bold("Conversation"), width), String::new()];
+        // Full history → scrollback. Short prefixes only (no section titles).
+        let mut lines = Vec::new();
         for entry in &self.transcript {
-            let raw = format!("{} {}", Self::role_prefix(entry.role), entry.text);
+            let prefix = Self::role_prefix(entry.role);
+            let raw = if prefix.is_empty() {
+                entry.text.clone()
+            } else {
+                format!("{prefix} {}", entry.text)
+            };
             for line in wrap_text_with_ansi(&raw, width) {
                 lines.push(Self::fit(&line, width));
             }
@@ -597,60 +589,18 @@ impl FakeCodingAgentApp {
         lines
     }
 
-    /// Fixed-height debug strip below the editor (pi: widgets-below / footer
-    /// density). Always exactly 3 content rows so streaming does not jitter
-    /// the input box height.
-    fn debug_strip_lines(&self, width: usize) -> Vec<String> {
-        let done = self.plan.iter().filter(|(d, _)| *d).count();
-        let next = self
-            .plan
-            .iter()
-            .find(|(d, _)| !*d)
-            .map(|(_, t)| t.as_str())
-            .unwrap_or("done");
-        let tool = self.recent_tools.first().map(String::as_str).unwrap_or("-");
-        let files = self.changed_files.len();
-        vec![
-            Self::fit(
-                &format!(
-                    "{} plan {done}/{}  next: {}",
-                    dim("dbg"),
-                    self.plan.len(),
-                    dim(next)
-                ),
-                width,
-            ),
-            Self::fit(&format!("{} tool {}", dim("dbg"), dim(tool)), width),
-            Self::fit(
-                &format!(
-                    "{} files {files}  {} {}",
-                    dim("dbg"),
-                    cyan("xylitol"),
-                    dim("feat/tui-dev")
-                ),
-                width,
-            ),
-        ]
-    }
-
-    fn status_line(&mut self, width: usize) -> String {
-        let activity = if self.spinner_active() {
-            self.loader
-                .render(width)
-                .into_iter()
-                .find(|line| !line.is_empty())
-                .unwrap_or_else(|| dim(&self.status_text))
-        } else {
-            dim("Ready")
-        };
-        let dynamic = if self.last_submitted.is_empty() {
-            dim("last: waiting for prompt")
-        } else {
-            let summary_w = width.saturating_sub(visible_width(&activity) + 10);
-            let summary = truncate_to_width(&self.last_submitted, summary_w.max(12), "...", false);
-            format!("last: {}", dim(&summary))
-        };
-        Self::fit(&format!("{activity}  |  {dynamic}"), width)
+    /// Busy-only status (DESIGN.md): idle returns None so the stack stays short.
+    fn status_line(&mut self, width: usize) -> Option<String> {
+        if !self.spinner_active() {
+            return None;
+        }
+        let activity = self
+            .loader
+            .render(width)
+            .into_iter()
+            .find(|line| !line.is_empty())
+            .unwrap_or_else(|| dim(&self.status_text));
+        Some(Self::fit(&activity, width))
     }
 
     /// pi `showSelector`: replace the editor slot (bottom of the stack) so the
@@ -692,39 +642,19 @@ impl FakeCodingAgentApp {
 
 impl Component for FakeCodingAgentApp {
     fn render(&mut self, width: usize) -> Vec<String> {
-        // Single-column stack (pi interactive): transcript → status → editor
-        // slot (or selector in place of editor) → debug → footer.
-        // Selectors replace the editor slot so they stay in the viewport as
-        // transcript grows into scrollback (pi showSelector / editorContainer).
+        // Minimal stack (DESIGN.md / pi): transcript → [status] → editor|selector → footer.
         let mut lines = Vec::new();
-
-        let mut header = Panel::new(1, 0, Some(Box::new(blue_bg)));
-        header.add_child(Box::new(Text::new(
-            format!(
-                "{}  transcript · editor · scrollback  |  Ctrl+P/S selector",
-                bold("agent_demo")
-            ),
-            0,
-            0,
-        )));
-        lines.extend(header.render(width));
-        lines.push(Self::fit(&dim(&"-".repeat(width)), width));
-
         lines.extend(self.transcript_lines(width));
-
-        lines.push(Self::fit(&dim(&"-".repeat(width)), width));
-        lines.push(self.status_line(width));
+        if let Some(status) = self.status_line(width) {
+            lines.push(status);
+        }
         lines.extend(self.render_editor_slot(width));
-
-        lines.push(Self::fit(&dim(&"-".repeat(width)), width));
-        lines.extend(self.debug_strip_lines(width));
         let footer = if self.palette_open || self.settings_open {
-            "Esc close selector  |  Ctrl+C quit"
+            "esc close"
         } else {
             self.footer_note.as_str()
         };
         lines.push(Self::fit(&dim(footer), width));
-
         lines
             .into_iter()
             .map(|line| Self::fit(&line, width))

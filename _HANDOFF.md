@@ -11,7 +11,7 @@
 | 已完成 | 进行中 / 下一步 |
 |---|---|
 | `packages/xylitol-tui`：pi-tui port + 五层测试 + `agent_demo` | **`c445`**：Container + OverlayHandle + 图片裁剪（已 propose） |
-| `agent_demo`：硬件光标默认隐藏、全量 scrollback、debug 底栏；crossterm Command | **`c450`**：App Shell（Driver + host 合流）；UX 见 `packages/xylitol-tui/DESIGN.md` |
+| `agent_demo`：极简单列（无 header/debug strip）；Ctrl+P/S 替换 editor 槽 | **`c450`**：App Shell；UX 见 `DESIGN.md`（少 chrome、可复制） |
 | 输入硬切：`InputEvent::{Key,Paste}`，无 KeyEvent→VT 运行时路径 | apply `c445` → 再 propose `c450` |
 | 旧 `src/app/tui` 已删占位；包 specs 用 `package-tui-*` | — |
 
