@@ -157,9 +157,15 @@ enum ScriptEvent {
 
 enum TimedAction {
     Event(ScriptEvent),
-    StreamStart,
-    StreamChunk(String),
-    StreamFinish,
+    StreamStart(StreamKind),
+    StreamChunk(StreamKind, String),
+    StreamFinish(StreamKind),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StreamKind {
+    Thinking,
+    Assistant,
 }
 
 struct ScheduledAction {
@@ -505,10 +511,10 @@ impl FakeCodingAgentApp {
         self.schedule_after_ticks(delay_ticks, TimedAction::Event(event));
     }
 
-    fn queue_assistant_stream(&mut self, text: &str) {
+    fn queue_stream(&mut self, kind: StreamKind, text: &str) {
         // Pause before first token (model "spin up").
         let start_delay = self.jitter_ticks(6, 14);
-        self.schedule_after_ticks(start_delay, TimedAction::StreamStart);
+        self.schedule_after_ticks(start_delay, TimedAction::StreamStart(kind));
 
         let chars: Vec<char> = text.chars().collect();
         let mut index = 0usize;
@@ -532,13 +538,25 @@ impl FakeCodingAgentApp {
             };
             let end = (index + take).min(chars.len());
             let chunk: String = chars[index..end].iter().collect();
-            let chunk_delay = self.jitter_ticks(1, 5);
-            self.schedule_after_ticks(chunk_delay, TimedAction::StreamChunk(chunk));
+            // Thinking streams a bit slower / hitchier than the final reply.
+            let chunk_delay = match kind {
+                StreamKind::Thinking => self.jitter_ticks(2, 7),
+                StreamKind::Assistant => self.jitter_ticks(1, 5),
+            };
+            self.schedule_after_ticks(chunk_delay, TimedAction::StreamChunk(kind, chunk));
             index = end;
         }
 
         let finish_delay = self.jitter_ticks(4, 10);
-        self.schedule_after_ticks(finish_delay, TimedAction::StreamFinish);
+        self.schedule_after_ticks(finish_delay, TimedAction::StreamFinish(kind));
+    }
+
+    fn queue_thinking_stream(&mut self, text: &str) {
+        self.queue_stream(StreamKind::Thinking, text);
+    }
+
+    fn queue_assistant_stream(&mut self, text: &str) {
+        self.queue_stream(StreamKind::Assistant, text);
     }
 
     fn build_assistant_reply(&mut self, prompt: &str) -> String {
@@ -565,12 +583,15 @@ impl FakeCodingAgentApp {
         self.scheduled_tail_tick = self.script_tick;
         self.active_stream_entry = None;
         self.set_status("Thinking");
-        self.push_thinking(format!(
-            "User asked: {prompt}\n\nI'll search the tree, run acceptance, then stream a reply.\n\n(hesitating on width budget vs scrollback…)"
-        ));
 
-        // Dwell on thinking before the first tool — not an even metronome.
-        let think_dwell = self.jitter_ticks(14, 28);
+        let thinking_body = format!(
+            "User asked: {prompt}\n\nI'll search the tree, run acceptance, then stream a reply.\n\n(hesitating on width budget vs scrollback…)"
+        );
+        // Typewriter the thinking block first (auto-expanded while streaming).
+        self.queue_thinking_stream(&thinking_body);
+
+        // After thinking finishes, dwell then tools — hitchy, not metronomic.
+        let think_dwell = self.jitter_ticks(8, 18);
         self.queue_event(think_dwell, ScriptEvent::Status("Running rg search".into()));
         let rg_tool_delay = self.jitter_ticks(4, 12);
         self.queue_event(
@@ -602,29 +623,57 @@ impl FakeCodingAgentApp {
         self.queue_assistant_stream(&reply);
     }
 
-    fn begin_assistant_stream(&mut self) {
+    fn begin_stream(&mut self, kind: StreamKind) {
         self.active_stream_entry = Some(self.transcript.len());
-        self.transcript.push(TranscriptEntry::Message {
-            role: Role::Assistant,
-            text: String::new(),
-        });
-        self.set_status("Drafting reply");
+        match kind {
+            StreamKind::Thinking => {
+                self.transcript.push(TranscriptEntry::Thinking {
+                    // Expanded while streaming so the typewriter is visible.
+                    expanded: true,
+                    body: String::new(),
+                });
+                self.set_status("Thinking");
+            }
+            StreamKind::Assistant => {
+                self.transcript.push(TranscriptEntry::Message {
+                    role: Role::Assistant,
+                    text: String::new(),
+                });
+                self.set_status("Drafting reply");
+            }
+        }
     }
 
-    fn append_assistant_stream(&mut self, chunk: &str) {
+    fn append_stream(&mut self, kind: StreamKind, chunk: &str) {
         if self.active_stream_entry.is_none() {
-            self.begin_assistant_stream();
+            self.begin_stream(kind);
         }
-        if let Some(index) = self.active_stream_entry
-            && let Some(TranscriptEntry::Message { text, .. }) = self.transcript.get_mut(index)
-        {
-            text.push_str(chunk);
+        if let Some(index) = self.active_stream_entry {
+            match (kind, self.transcript.get_mut(index)) {
+                (StreamKind::Thinking, Some(TranscriptEntry::Thinking { body, expanded, .. })) => {
+                    body.push_str(chunk);
+                    *expanded = true;
+                }
+                (StreamKind::Assistant, Some(TranscriptEntry::Message { text, .. })) => {
+                    text.push_str(chunk);
+                }
+                _ => {}
+            }
         }
     }
 
-    fn finish_assistant_stream(&mut self) {
+    fn finish_stream(&mut self, kind: StreamKind) {
+        if let Some(index) = self.active_stream_entry
+            && kind == StreamKind::Thinking
+            && let Some(TranscriptEntry::Thinking { expanded, .. }) = self.transcript.get_mut(index)
+        {
+            // Collapse when done — scrollback stays tidy; ^T reopens.
+            *expanded = false;
+        }
         self.active_stream_entry = None;
-        self.set_status("Ready");
+        if kind == StreamKind::Assistant {
+            self.set_status("Ready");
+        }
     }
 
     fn process_due_actions(&mut self) -> bool {
@@ -642,9 +691,9 @@ impl FakeCodingAgentApp {
                 .action;
             match action {
                 TimedAction::Event(event) => self.apply_event(event),
-                TimedAction::StreamStart => self.begin_assistant_stream(),
-                TimedAction::StreamChunk(chunk) => self.append_assistant_stream(&chunk),
-                TimedAction::StreamFinish => self.finish_assistant_stream(),
+                TimedAction::StreamStart(kind) => self.begin_stream(kind),
+                TimedAction::StreamChunk(kind, chunk) => self.append_stream(kind, &chunk),
+                TimedAction::StreamFinish(kind) => self.finish_stream(kind),
             }
             changed = true;
         }
