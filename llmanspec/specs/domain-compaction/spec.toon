@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: compaction
+name: domain-compaction
 purpose: "Conversation compaction — n-gram cut detection, LLM summarization, and token estimation."
 valid_scope[2]: src/agent/compaction/,src/domain/compaction_config.rs
 requirements[15]{req_id,title,statement}:

@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "print-output"
+name: "cli-print"
 purpose: "Print mode (non-interactive) output rendering — streams TextDelta to stdout, reasoning to stderr, and tool summaries."
 valid_scope[2]: src/app/cli/print.rs,src/app/cli/mod.rs
 requirements[4]{req_id,title,statement}:

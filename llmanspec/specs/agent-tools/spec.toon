@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "tool-system"
+name: "agent-tools"
 purpose: "Tool system — tool definitions, execution dispatch, bash/ls/grep/edit/write/read tools, and path utilities."
 valid_scope[3]: src/agent/tools/,src/infra/tools/,src/runtime_protocol/tool.rs
 requirements[35]{req_id,title,statement}:
