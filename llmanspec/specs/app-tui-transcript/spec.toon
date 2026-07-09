@@ -1,18 +1,24 @@
 kind: llman.sdd.spec
 name: "app-tui-transcript"
-purpose: "Live 输出进引擎 scrollback（非 Codex 式 transcript 浏览面）；分支回看走会话树。"
+purpose: Live 输出进引擎 scrollback（非 Codex 式 transcript 浏览面）；分支回看走会话树。
 valid_scope[1]: src/app/tui/
-requirements[6]{req_id,title,statement}:
+requirements[8]{req_id,title,statement}:
   meta0,"capability-shell",本 capability 约束 live scrollback 行呈现与相关积木复用；MUST NOT 被解读为要求 Codex 式 TranscriptView。本壳 MUST 保持非空以满足 BDD 护栏。
   att1,"live-scrollback-output",当前轮 live 用户/助手/系统输出 MUST 写入引擎 scrollback 历史；MUST NOT 截断历史冒充滚动；MUST NOT 以此要求实现 Codex 式可导航 transcript 浏览面（分支回看走会话树）。
   att3,"diff-via-package","文件编辑 diff 呈现 MUST 复用 packages/xylitol-tui 的 Diff 能力（含 word-level intra-line 与复制友好前缀）；MUST NOT 在应用面复制准通用 diff 渲染器。"
   att4,"tool-block-status-bg","thinking 以外的 tool 可展开块（若呈现）MUST 按执行状态（pending / success / error）为块内每一可见行套全行背景 tint；edit/diff 可展开块 MUST 仅对摘要/header 行套同一 tint，展开后的 Diff 正文 MUST NOT 再套 tool-*-bg；色值 MUST 对齐产品 DESIGN.md 的 tool-*-bg；ANSI MUST 仅用背景 SGR 并以 \\x1b[49m 复位，MUST NOT 用 \\x1b[0m 清 bg以免冲掉内容 fg。"
   att5,"tool-bg-via-package-helper","全行背景铺色 MUST 复用 packages/xylitol-tui 的 apply_background_to_line（或等价包 API）；MUST NOT 在应用面复制一套行宽 padding+bg 逻辑。"
   att6,"no-codex-transcript-view","产品 TUI MUST NOT 实现 Codex 风格的独立 transcript 浏览面或专用 TranscriptView 作为主 UX；历史/分支 travel MUST 经双 Esc 会话树（app-tui session-tree / package TreeSelector）。"
-scenarios[6]{req_id,id,given,when,then}:
+  att7,"expandable-block-fold","live scrollback 中的 thinking / tool / edit-diff 可展开块 MUST 支持折叠与展开两态；折叠态 MUST 保留可读摘要行（MUST NOT 仅图标）；展开态 MUST 显示完整正文或工具详情；状态机 MUST 落在应用面（demo/产品），MUST NOT 要求包内通用 Chat Expandable 组件。"
+  att8,"expandable-key-hints",可展开块旁 MUST 提示对应快捷键，格式为括号包裹的完整和弦（如 (Ctrl+T) 用于 thinking、(Alt+E) 用于 tool/diff）；agent_demo MUST 用 Ctrl+T 切换 thinking 展开态、Alt+E 同时切换 tool 与 diff 展开态；流式 thinking 期间 MUST 保持展开，结束后可折叠。
+scenarios[10]{req_id,id,given,when,then}:
   meta0,"shell-live-purpose","","列出 app-tui-transcript",purpose 描述 live scrollback 且禁 Codex 浏览面
   att1,"live-not-browser","",bridge 产出 live 行,写入 scrollback 且无专用 transcript 浏览器组件
   att3,"edit-diff","",edit 工具返回 display_diff,transcript 经包 Diff 组件着色显示
   att4,"diff-header-only-tint","",展开 edit/diff 块,仅 header 含 tool status bg
   att5,"reuse-apply-bg","",渲染 tool 块,调用 apply_background_to_line 而非手写 pad+bg
   att6,"tree-not-transcript-browser","",用户要回看分支,走双 Esc 会话树而非 TranscriptView
+  att7,"fold-shows-summary",transcript 含 thinking 块,块为折叠态,可见摘要行且不含完整长正文
+  att7,"expand-shows-body",thinking 已折叠,Ctrl+T 展开,可见完整 thinking 正文
+  att8,"alt-e-tools-and-diff",存在 tool 与 diff 块,Alt+E,两类块展开态一同翻转
+  att8,"hint-parenthesized",渲染折叠 thinking 头,行旁提示,含 (Ctrl+T) 而非裸 ^T
