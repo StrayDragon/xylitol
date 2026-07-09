@@ -1,6 +1,6 @@
 kind: llman.sdd.spec
 name: "app-tui-session-tree"
-purpose: 产品面双 Esc 会话树：editor 槽替换、travel stub（真 session/Driver 另批）。
+purpose: "产品面双 Esc 会话树 stub（c491 冻结）：仅槽替换与 travel 行；活树/真 Driver 等开闸。形态学见 agent_demo（ast3/ast4）。"
 valid_scope[1]: src/app/tui/
 requirements[5]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c491-add-app-tui-session-tree 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"

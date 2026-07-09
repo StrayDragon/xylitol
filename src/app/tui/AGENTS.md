@@ -6,9 +6,11 @@
 
 基于 `xylitol-tui` 的 **host 驱动空 UI**（c460）：`HostSession` + `UiRoot` + 终端 lifecycle。`run()` 可进入；XyEvent / slash / steer 接线在后续 change。当前空场景仅为框架占位，**未**按 `DESIGN.md` 实现产品视觉。
 
+**冻结（2026-07-10）**：本目录 **暂停扩展产品功能**，直至用户明确开闸。允许：修 c460 lifecycle / harness 回归、文档与 AGENTS。禁止：bridge、slash、真 travel、活树、DESIGN 视觉堆砌、在 c491 stub 上继续加产品行为。新能力先在 `agent_demo` / `packages/xylitol-tui` 验证。
+
 ## 优先路径（2026-07-10）
 
-**闸门**：相关原子/交互 MUST 先在 `packages/xylitol-tui` `agent_demo` 验证，再进本面接线。**禁止**在 demo 未齐时继续堆产品视觉/bridge/真 travel。
+**闸门**：相关原子/交互 MUST 先在 `packages/xylitol-tui` `agent_demo` 验证，再进本面接线。**禁止**在 demo 未齐或未开闸时继续堆产品视觉/bridge/真 travel。
 
 **不做 Codex 式 TranscriptView**（`c470` 已 `paused`；`app-tui-transcript` 已降级为 live scrollback）。
 
@@ -16,8 +18,8 @@
 |---|---|
 | 包 TreeSelector + demo 搜索/filter/fold/label/pan/活树/travel/steer | 已归档（至 c469 / c468） |
 | **c460** host 空壳 | 已落地（框架占位） |
-| **c491** 产品双 Esc **假树**槽替换 | 已落地（仅 stub；**超前于** demo 活树/真 travel） |
-| 产品真 session / Driver travel · bridge · slash · DESIGN 视觉 | **未做**；等 demo 闸门与后续 change |
+| **c491** 产品双 Esc **假树**槽替换 | **stub 冻结**：仅双 Esc 开/Esc 关/Enter `travel → id`；**MUST NOT** 在此 stub 上扩展活树/filter/Driver |
+| 产品真 session / Driver travel · bridge · slash · DESIGN 视觉 | **未做**；等开闸 + 后续 change |
 
 历史/分支 UX 以会话树为准；live 输出若有，只进 scrollback 行，见 `design/transcript.md` / `design/session-tree.md`。
 
@@ -41,6 +43,7 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 
 ## 硬约束
 
+- **产品面冻结**：未开闸前 MUST NOT 扩展 `UiRoot` / bridge / 真 travel；c491 假树保持 stub（见上表）。
 - 渲染/通用组件只用 `xylitol_tui`；禁止在本目录再实现差分引擎或通用 Editor/Markdown。
 - **需要底层 TUI 能力时**：先到 `packages/xylitol-tui` 查是否已有或可扩展；缺能力在包内补，再由本面接线。
 - 产品路径 **host 驱动**同步引擎；异步事件合流在本面；勿调 `TUI::start()`（demo 专用）。
