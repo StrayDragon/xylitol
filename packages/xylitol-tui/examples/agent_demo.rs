@@ -1,5 +1,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
+use std::io::IsTerminal;
+use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -216,10 +218,7 @@ fn travel_path_with_replies(roots: &[TreeNode], target: &str) -> Vec<String> {
         return path;
     };
     let mut cur_id = start;
-    loop {
-        let Some(node) = find_session_node(roots, &cur_id) else {
-            break;
-        };
+    while let Some(node) = find_session_node(roots, &cur_id) {
         if node.children.len() != 1 {
             break;
         }
@@ -460,6 +459,87 @@ fn selected_text(s: &str) -> String {
     format!("\x1b[7m{s}\x1b[27m")
 }
 
+fn env_flag(name: &str) -> bool {
+    std::env::var(name)
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// Interactive TTY → real `$EDITOR`; harness / non-TTY / explicit stub → stub.
+fn prefer_real_external_editor() -> bool {
+    if env_flag("XYLITOL_AGENT_DEMO_EDITOR_STUB") {
+        return false;
+    }
+    if env_flag("XYLITOL_AGENT_DEMO_REAL_EDITOR") {
+        return true;
+    }
+    std::io::stdin().is_terminal()
+}
+
+fn resolve_external_editor_command() -> Option<String> {
+    std::env::var("VISUAL")
+        .or_else(|_| std::env::var("EDITOR"))
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            if cfg!(windows) {
+                Some("notepad".into())
+            } else {
+                Some("nano".into())
+            }
+        })
+}
+
+/// Write `initial` to a tempfile, spawn `$VISUAL`/`$EDITOR`, return new text on
+/// exit 0 (pi-compatible). Terminal must already be suspended by the caller.
+fn run_external_editor_process(initial: &str) -> Result<Option<String>, String> {
+    let editor_cmd = resolve_external_editor_command()
+        .ok_or_else(|| "no editor configured (set VISUAL/EDITOR)".to_string())?;
+    let path = std::env::temp_dir().join(format!(
+        "xylitol-demo-editor-{}-{}.md",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    ));
+    std::fs::write(&path, initial).map_err(|e| format!("write tempfile: {e}"))?;
+
+    println!("Launching external editor: {editor_cmd}");
+    println!("Demo will resume when the editor exits.");
+
+    let mut parts = editor_cmd.split_whitespace();
+    let program = parts
+        .next()
+        .ok_or_else(|| "empty editor command".to_string())?;
+    let mut args: Vec<&str> = parts.collect();
+    let path_str = path.to_string_lossy();
+    args.push(path_str.as_ref());
+
+    let status = Command::new(program)
+        .args(&args)
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status()
+        .map_err(|e| format!("spawn {program}: {e}"))?;
+
+    let result = if status.success() {
+        let new_content = std::fs::read_to_string(&path).map_err(|e| format!("read back: {e}"))?;
+        // Match pi: drop a single trailing newline from the file.
+        Some(
+            new_content
+                .strip_suffix('\n')
+                .unwrap_or(&new_content)
+                .to_string(),
+        )
+    } else {
+        None
+    };
+    let _ = std::fs::remove_file(&path);
+    Ok(result)
+}
+
 #[allow(dead_code)]
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let defs = create_default_definitions();
@@ -476,6 +556,33 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         &initial_prompt,
     )));
     FakeCodingAgentApp::install_input_listeners(&app, &mut tui);
+
+    // After Ctrl+G sets pending: suspend terminal → `$EDITOR` → restore (pi shape).
+    let app_hook = app.clone();
+    tui.set_after_dispatch_hook(move |tui| {
+        let pending = app_hook.borrow_mut().take_pending_external_editor();
+        if !pending {
+            return;
+        }
+        let text = app_hook.borrow().input_text_for_test();
+        let outcome = tui.with_terminal_suspended(|| run_external_editor_process(&text));
+        match outcome {
+            Ok(Some(new_text)) => {
+                app_hook.borrow_mut().apply_external_editor_text(new_text);
+            }
+            Ok(None) => {
+                app_hook.borrow_mut().push_system_for_test(
+                    "external editor exited non-zero — keeping original text".to_string(),
+                );
+            }
+            Err(err) => {
+                app_hook
+                    .borrow_mut()
+                    .push_system_for_test(format!("external editor failed: {err}"));
+            }
+        }
+    });
+
     tui.add_child(Box::new(SharedFakeCodingAgentApp(app)));
     tui.set_focus(Some(0));
     tui.start_with_flag(&quit_flag)
@@ -712,6 +819,8 @@ pub struct FakeCodingAgentApp {
     bash_mode: bool,
     /// Ctrl+G external-editor stub invocation count (harness).
     external_editor_invocations: u32,
+    /// Set by Ctrl+G when real editor path is chosen; consumed by TUI after-dispatch hook.
+    pending_external_editor: bool,
     /// Opt-in theme auto-detect (`XYLITOL_AGENT_DEMO_THEME_AUTO=1` or harness).
     theme_auto: bool,
     /// Resolved Dark/Light token set (c458).
@@ -1037,6 +1146,39 @@ impl FakeCodingAgentApp {
         self.open_external_editor_stub();
     }
 
+    pub fn request_external_editor_for_test(&mut self) {
+        self.request_external_editor();
+    }
+
+    pub fn take_pending_external_editor(&mut self) -> bool {
+        let pending = self.pending_external_editor;
+        self.pending_external_editor = false;
+        pending
+    }
+
+    pub fn apply_external_editor_text(&mut self, text: String) {
+        self.input.set_text(text);
+        self.sync_editor_border();
+        self.push_message(
+            Role::System,
+            "external editor saved — buffer replaced (Ctrl+G)".to_string(),
+        );
+    }
+
+    pub fn push_system_for_test(&mut self, text: String) {
+        self.push_message(Role::System, text);
+    }
+
+    /// Ctrl+G: real `$EDITOR` when TTY (or REAL_EDITOR=1); else harness-safe stub.
+    fn request_external_editor(&mut self) {
+        if prefer_real_external_editor() {
+            self.external_editor_invocations = self.external_editor_invocations.saturating_add(1);
+            self.pending_external_editor = true;
+            return;
+        }
+        self.open_external_editor_stub();
+    }
+
     pub fn sync_editor_border_for_test(&mut self) {
         self.sync_editor_border();
     }
@@ -1123,7 +1265,7 @@ impl FakeCodingAgentApp {
         }
     }
 
-    /// Ctrl+G: external editor morphology (stub — no real `$EDITOR` spawn in demo/harness).
+    /// Ctrl+G: external editor — real `$EDITOR` on TTY via TUI suspend; stub in harness.
     fn open_external_editor_stub(&mut self) {
         self.external_editor_invocations = self.external_editor_invocations.saturating_add(1);
         let text = self.input.get_text();
@@ -1461,6 +1603,7 @@ impl FakeCodingAgentApp {
             tools_output_max_lines: 5,
             bash_mode: false,
             external_editor_invocations: 0,
+            pending_external_editor: false,
             theme_auto: std::env::var("XYLITOL_AGENT_DEMO_THEME_AUTO")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),
@@ -1477,7 +1620,7 @@ impl FakeCodingAgentApp {
         // One-shot help — fold keys live on blocks as `(Ctrl+T)` / `(Alt+E)`.
         self.push_message(
             Role::System,
-            "keys: Enter submit/steer · Alt+Enter follow-up · ! bash border · Ctrl+G $EDITOR stub · double Esc tree · Shift+F fork · /cmds · @path · (Ctrl+P)/(Ctrl+S) · (Alt+G) · (Ctrl+O tools) · Esc · (Ctrl+C) · theme auto via XYLITOL_AGENT_DEMO_THEME_AUTO",
+            "keys: Enter submit/steer · Alt+Enter follow-up · ! bash border · Ctrl+G $EDITOR · double Esc tree · Shift+F fork · /cmds · @path · (Ctrl+P)/(Ctrl+S) · (Alt+G) · (Ctrl+O tools) · Esc · (Ctrl+C) · theme auto via XYLITOL_AGENT_DEMO_THEME_AUTO",
         );
         self.push_message(
             Role::System,
@@ -2653,7 +2796,7 @@ impl Component for FakeCodingAgentApp {
         }
 
         if matches_key_event(key, "ctrl+g") {
-            self.open_external_editor_stub();
+            self.request_external_editor();
             return;
         }
 
