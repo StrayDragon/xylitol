@@ -1,138 +1,79 @@
-# _HANDOFF — xylitol-tui：pi-tui 完整 Rust 重写（交接给下一个 agent）
+# _HANDOFF — xylitol-tui：pi-tui Rust 移植与应用面接线
 
-> 最后更新：2026-07-09（agent_demo 收敛已提交，补 palette/settings/narrow-CJK 验收后）
-> 分支：`feat/tui-dev`，working tree dirty（当前为 acceptance smoke + handoff 刷新）
-> 最新 commit：`9a86f6a refactor(tui): consolidate examples into agent demo`
-
----
-
-## 〇、接手 agent 必读（30 秒）
-
-**目标**：把 `packages/xylitol-tui` 完整对齐 pi-tui（`kimi-code/packages/pi-tui`），**不考虑障碍，做好底层支持**。对齐后才替换 `src/app/tui/engine/`（路线 B）。
-
-**当前状态**：阶段 0-4 + c405/c410/c415/c420/c425/c430 已完成并入 commit；`c440-refactor-tui-examples` 也已 archive，并把 examples 收敛为单一 `agent_demo` fake coding-agent 主场景。**22/22 可移植模块已建，editor/autocomplete 已大幅补齐；stdin-buffer 走 crossterm 替代路线，不再移植独立模块**（见 §二）。
-
-**怎么工作**：每个移植任务 = 一个 llman SDD 变更（`/llman-sdd-propose` → apply → archive → commit）。测试走 c405 五层 harness（见 §四）。pi 源在 `../kimi-code/packages/pi-tui`。
-
-**下一步**：继续复核 Markdown/Editor/overlay 细节 parity，补齐 command palette / settings / 窄宽 CJK/emoji 的真实终端 E2E；`agent_demo` 稳定后再进入 §五 的 `src/app/tui` 路线 B 对接。
+> 最后更新：2026-07-09
+> 分支：`feat/tui-dev`
+> 阶段：**port 完成 → review/裁剪 → 基于 xylitol-tui 从零重做 `src/app/tui/`**
 
 ---
 
-## 一、当前进度总览
+## 〇、接手必读（30 秒）
+
+**目标**：`packages/xylitol-tui` 作为通用 TUI 库已完成初步 port；下一步是裁剪/补 API，然后 **作废旧应用面实现**，基于本 package **从零设计** `src/app/tui/`（不继承旧 UI/UX）。
+
+**怎么工作**：每个任务一个 llman SDD 变更。测试走 c405 五层（见 `packages/xylitol-tui/AGENTS.md`）。pi 源：`../pi/packages/pi-tui`、`../kimi-code/packages/pi-tui`。
+
+**已定架构（写入 AGENTS，预想能力不写）**：
+
+- 引擎同步；产品面 host 驱动（`dispatch_input` / `try_render` / …）。
+- 异步事件合流在应用面；`TUI::start()` 仅 demo。
+- 样式 `Vec<String>`；主题闭包在包、语义 token 在应用面；流式业务缓冲在应用面。
+- 旧 `src/app/tui` 实现删除并占位，待重做。
+
+详细边界 SSOT：`packages/xylitol-tui/AGENTS.md`、`src/app/tui/AGENTS.md`、`write-tui` skill。
+
+---
+
+## 一、当前进度
 
 | 指标 | 数值 |
 |---|---|
-| 源码行数 | **11,751 行**（packages/xylitol-tui/src）|
-| 测试数 | **255 全绿**（`cargo test -p xylitol-tui`；`agent_demo` package 回归已纳入）|
-| E2E | **14 ignored E2E**（PTY/tmux 围绕 `agent_demo` 主场景；协议 smoke + palette/settings + 窄宽 CJK） |
-| clippy | `-p xylitol-tui --all-targets -D warnings` clean |
-| 已落地 spec | `tui-testing`(tt01-06) / `terminal-protocol`(tp01-04) / `paste-burst`(pb01-03) / c420-c430 SDD artifacts |
-| commit（重写起）| 26（`5c55d86`→`9a86f6a`）|
+| 源码行数 | ~12k（`packages/xylitol-tui/src`） |
+| 测试 | 255 全绿（`cargo test -p xylitol-tui`） |
+| E2E | ignored PTY/tmux（`agent_demo`）；`just test-tui-e2e` |
+| 应用面 | 旧实现移除，占位 `run()`；待基于 xylitol-tui 重做 |
 
-### 已完成变更
+### 已完成变更（摘要）
 
-| 变更 | 内容 | commit |
-|---|---|---|
-| 阶段 0-4 | pi-tui 22/22 可移植模块移植 + doRender 核心管线 | `5c55d86`→`b0a22b5`（14 commits）|
-| **c405** | 五层 TUI 测试 harness | `451e8c4`/`0860818`/`3e9bc66` |
-| **c410** | terminal 协议（Kitty 探测 + modifyOtherKeys + OSC + drain）| `e7b0f8f` |
-| **c415** | paste-burst 移植 | `9495996` |
-| **c420** | autocomplete debounce + fd + CancellationToken | `5d977da` |
-| **c425** | editor core VisualLine+stickyColumn+pageScroll+history+PasteBurst | `af656b7` |
-| **c430** | editor autocomplete SelectList 集成 + SDD artifacts | `9b2c18d` |
-| **c440** | examples 收敛到单一 `agent_demo`，验收 harness / E2E 指向主场景 | `9a86f6a` |
-| stdin-buffer 决策 | 删除独立 stdin_buffer，采用 crossterm 事件解码 | `a21b829` |
-| examples 收敛 | 移除 `demo/showcase/show_all`，改成单一 `agent_demo` fake coding-agent 场景 | `9a86f6a` |
-| 未提交修复 | render batch 临时关闭 DECAWM 自动换行；Markdown table 窄宽/表头/样式 cell 修复 | working tree |
-
----
-
-## 二、待移植清单（核心交接内容）
-
-**原则**：完全对齐 pi，每个任务一个 SDD 变更（c420+），配套测试随功能写。
-
-### 完整模块对照表（pi .ts → xy .rs，按缺口大小排序）
-
-| 模块 | pi 行 | xy 行 | 缺口 | 状态 |
-|---|---:|---:|---|---|
-| **components/editor** | 2415 | 1914 | -21% | ✅ c425 VL/sticky/PasteBurst/history + c430 autocomplete 集成；仍需细节 parity 复核 |
-| autocomplete | 912 | 802 | -12% | ✅ c420 补齐 async + fd + debounce |
-| stdin-buffer | 434 | 0 | — | ✅ 不移植独立模块；`a21b829` 删除，crossterm 负责 escape/bracketed paste/Kitty 事件 |
-| tui | 1710 | 942 | -45% | ✅ doRender 核心完整；未提交修复补 DECAWM 满宽行保护 |
-| keys | 1400 | 1163 | -17% | ✅ |
-| utils | 1214 | 1087 | -10% | ✅ |
-| terminal | 531 | 354 | -33% | ✅ c410 补齐协议，stdin 接入跳过 |
-| markdown | — | 1050 | — | ✅ 表格已支持窄宽约束；未提交修复补 `TableHead`/styled cell 解析 |
-| terminal-image | 488 | 529 | +8% | ✅ |
-| terminal-colors | 73 | 179 | +145% | ✅ |
-| 其余 12 模块 | — | — | — | ✅ 全部对齐或超出 |
-
-### 跳过项（有意不移植，已确认）
-
-| pi 模块 | 原因 |
+| 变更 | 内容 |
 |---|---|
-| `native-modifiers.ts` | macOS 原生二进制，不可移植 |
-| `index.ts` | 纯导出索引，等价 xy `lib.rs` |
-| `stdin-buffer.ts` | crossterm 已处理 escape 拼接/bracketed paste/Kitty/OSC/mouse——stdin_buffer 是 pi 在 Node.js raw stdin 上必需的补丁，xy 不需要。已删 `stdin_buffer.rs` |
-| terminal.ts 的 `enableWindowsVTInput` | crossterm 已处理跨平台 |
-| terminal.ts 的 `normalizeAppleTerminalInput` | macOS 专属，xy 跑 Linux/crossterm |
-| terminal.ts 的 `writeLogPath` 调试日志 | xy 用 tracing |
+| 阶段 0–4 | 可移植模块 port + doRender 管线 |
+| c405–c430 | 五层 harness / terminal 协议 / paste-burst / autocomplete / editor |
+| c440 | examples → 单一 `agent_demo` |
+| stdin-buffer | 不移植；crossterm 替代 |
 
 ---
 
-## 三、llman SDD 工作流（每个移植任务必须走）
+## 二、跳过项与裁剪
+
+跳过项、裁剪策略、待补 API（`Container` / `OverlayHandle` / `InputListener`）的 SSOT 在 `packages/xylitol-tui/AGENTS.md`，此处不重复。
+
+复核细节见 `packages/xylitol-tui/REPORT.tmp.md`（工作笔记，勿当规范）。
+
+---
+
+## 三、llman SDD
 
 ```
-/llman-sdd-propose <id>   # 生成 proposal + spec + design + tasks
-# 实现...
-just qa                   # fmt + clippy + test
-/llman-sdd-archive <id>   # 归档（合并 spec）
+/llman-sdd-propose <id>
+# 实现…
+just qa
+/llman-sdd-archive <id>
 git commit
 ```
 
-- **change id**：`c{priority}-{verb}-{subject}`，priority 5 的倍数，递增；按当前序列继续往 `c445+` 分配
-- **spec 命名**：领域名词（如 `paste-burst`，不是 `add-paste-burst`）
-- **TOON 格式坑**：值含空格/逗号/冒号/方括号必须双引号；`\x1b` 转义不支持（写 `CSI`）；数组声明 `[N]` 必须匹配行数
-- **strict 校验**：提案阶段 tasks 未勾选会报 warning（正常），全部完成 + design.md 存在才 strict 过
-- 提案参考：`llmanspec/changes/archive/2026-07-08-c415-port-paste-burst/`（最新最简的范例）
+- change id：`c{priority}-{verb}-{subject}`，继续 `c445+`
+- 范例：`llmanspec/changes/archive/2026-07-08-c415-port-paste-burst/`
 
 ---
 
-## 四、测试 harness（c405 五层，已落地）
+## 四、测试
 
-**后续移植必须配套用对应层测试**。详见 `packages/xylitol-tui/AGENTS.md`。
-
-| 层 | 工具 | 定位 | 落点 | 何时用 |
-|---|---|---|---|---|
-| 1. 按键序列→状态 | `TuiTestHarness` | model 断言（抄 helix）| `tests/support/mod.rs` + `tests/harness_test.rs` | 组件交互测试主力 |
-| 2. insta snapshot | `viewport_snapshot()` | 整屏渲染回归 | `tests/snapshot_test.rs` + `tests/snapshots/` | 布局/颜色/换行变化 |
-| 3. 时序 | `Clock`/`MockClock` 或 `Instant` 参数 + `#[tokio::test(start_paused)]` | 确定性时间测试 | `src/clock.rs` | debounce/paste-burst/动画 |
-| 4. proptest | 随机按键 + 不变量 | 状态机崩溃边界 | `tests/property_test.rs` | editor 移植后加不变量 |
-| 5a. E2E 主力 | portable-pty + `CapturedScreen` | crossterm 真 PTY | `tests/tui_e2e.rs` + `tests/tui_e2e/pty.rs` | 启动序列/协议验证/主场景交互 smoke |
-| 5b. 真终端冒烟 | tmux 手写 wrapper | 真 SGR 颜色 | `tests/tui_e2e/tmux.rs` | 颜色回归 + 主场景 overlay/CJK smoke（`#[ignore]`）|
-
-## 终端支持矩阵（当前决策）
-
-- **主支持目标**：`foot`、`wezterm`、`ghostty`、`alacritty`、`kitty`、`tmux`
-- **默认依赖**：基础输入/Resize/Paste 交给 `crossterm`
-- **保留增强**：Kitty keyboard enhancement、`modifyOtherKeys` fallback、bracketed paste、少量 OSC
-- **暂缓/可裁剪**：iTerm2/Kitty 图片协议、macOS 专属输入归一化、展示型终端特化
-- **判断原则**：先排除布局和宽度预算问题，再判断是否真的是终端协议问题
-
-**关键约定**：
-- 1-4 层：`cargo test -p xylitol-tui`（快、in-process）
-- 5 层：全 `#[ignore]`，只经 `just test-tui-e2e` 跑
-- 时序**禁止** `thread::sleep`（必 flaky）；同步逻辑用 `Instant` 参数注入（c415 实战验证比 MockClock 更轻）或 `MockClock`；async 用 `start_paused`
-- snapshot 变更用 `INSTA_UPDATE=always cargo test --test <name>` 接受，人工复核
-- **prek trailing-whitespace hook 会删 .snap 尾空格**——snapshot 空行必须无尾空格（`viewport_snapshot` 已处理）
+见 `packages/xylitol-tui/AGENTS.md`（五层 + 终端矩阵）。时序禁止 `thread::sleep`。
 
 ---
 
-## 五、阶段 7：对接 src/app/tui/（package 完全对齐后）
+## 五、下一步（应用面）
 
-**前置**：§二 待移植清单全部完成。然后走 `write-surface` skill：
-
-1. **死代码分诊**（`.agents/skills/audit-dead-code/`）：扫 `src/app/tui/`，保留 seam（`RenderedLine`/`xyevent_to_rendered`/`commands.rs`/`Msg`/`HostAction`/`TuiApp`/`StreamBuffer`），删旧引擎
-2. **写 TuiSurface seam**：`src/app/tui/surface.rs`，封装 `xylitol_tui::TUI`，提供 `push_event(XyEvent)` / `render()` → `Vec<RenderedLine>`，不破坏 arch_guard
-3. **替换**：删 `src/app/tui/engine/{tui,component,keybindings,outcome}.rs` + `widgets/`；适配 `mod.rs`/`render.rs`/`app.rs`
-4. **验证**：`just qa` + `just test-tui-e2e` + 手动启动
+1. 裁剪 package + 补 `Container` / `OverlayHandle`（建议 `c445`）。
+2. 新建 SDD 重做 `src/app/tui/`（建议 `c450`）：异步 App Shell + `xylitol_tui` 驱动面；走 `write-surface`（先 `audit-dead-code`）。
+3. UI/UX **从零设计**，不以旧 `src/app/tui` 为参考。跨面 seam（`Driver` / `dispatch` / `composition` / `XyEvent`）保留。
