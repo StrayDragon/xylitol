@@ -793,7 +793,7 @@ fn agent_demo_scripted_tool_flips_pending_to_success_bg() {
     let app = Rc::new(RefCell::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
     ))));
-    app.borrow_mut().inject_pending_tool_for_test();
+    let idx = app.borrow_mut().inject_pending_tool_for_test();
 
     let mut h = TuiTestHarness::new(120, 80);
     h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
@@ -811,17 +811,100 @@ fn agent_demo_scripted_tool_flips_pending_to_success_bg() {
         "injected tool must start with pending tint {pending:?}"
     );
 
-    app.borrow_mut().complete_last_tool_for_test();
+    app.borrow_mut().complete_tool_at_for_test(idx);
     h.render_result().expect("after complete");
     let text1 = h.tui.terminal.viewport().join("\n");
     assert!(
         text1.contains("inject-tool") && text1.contains("· ok"),
         "summary should flip to · ok; got:\n{text1}"
     );
-    // Pending tint must be gone from the inject row (seed success tint may remain).
     assert!(
         !viewport_has_bg_rgb(&h, pending),
         "pending tint must clear after success flip"
+    );
+}
+
+#[test]
+fn agent_demo_parallel_tools_flip_by_index_not_last() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::{SharedFakeCodingAgentApp, ToolBlockStatus};
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))));
+    let (a, b) = app.borrow_mut().inject_parallel_pending_tools_for_test();
+
+    let mut h = TuiTestHarness::new(120, 80);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h.render_result().expect("initial");
+
+    let pending = ToolBlockStatus::Pending.rgb();
+    assert!(viewport_has_bg_rgb(&h, pending), "both tools start pending");
+
+    // Complete only A — B must stay · running (regression: old code flipped "last").
+    app.borrow_mut().complete_tool_at_for_test(a);
+    h.render_result().ok();
+    let text = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text.contains("inject-tool · ok"),
+        "A should be ok; got:\n{text}"
+    );
+    assert!(
+        text.contains("inject-tool-b · running"),
+        "B must remain running when only A completes; got:\n{text}"
+    );
+    assert!(
+        viewport_has_bg_rgb(&h, pending),
+        "B pending tint must remain"
+    );
+
+    app.borrow_mut().complete_tool_at_for_test(b);
+    h.render_result().ok();
+    let text2 = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text2.contains("inject-tool-b · ok"),
+        "B should flip independently; got:\n{text2}"
+    );
+    assert!(
+        !viewport_has_bg_rgb(&h, pending),
+        "no pending tint after both complete"
+    );
+}
+
+#[test]
+fn agent_demo_idle_returns_to_ready_after_tool_flips() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))));
+    let (a, b) = app.borrow_mut().inject_parallel_pending_tools_for_test();
+    // Drop scheduled flips — complete manually to assert Ready sync.
+    app.borrow_mut().clear_scheduled_actions_for_test();
+    app.borrow_mut().freeze_script_for_test();
+
+    let mut h = TuiTestHarness::new(120, 40);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h.render_result().ok();
+    assert!(
+        h.tui.terminal.viewport().join("\n").contains("Working")
+            || app.borrow().status_text_for_test() == "Working",
+        "pending tools keep Working"
+    );
+
+    app.borrow_mut().complete_tool_at_for_test(a);
+    app.borrow_mut().complete_tool_at_for_test(b);
+    assert_eq!(
+        app.borrow().status_text_for_test(),
+        "Ready",
+        "all tools terminal + idle script → Ready"
     );
 }
 
