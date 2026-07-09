@@ -2,8 +2,18 @@
 
 > 四个仓库的 TUI 实现横向对比，服务于 xylitol 的 TUI 基础设施打磨决策。
 > 生成日期：2026-07-02 ｜ 分支：feat/tui-inline-repl
+>
+> **注意（2026-07-10）**：下文「xylitol 家底 / ratatui 手写渲染」描述的是**已删除的旧 TUI**。
+> 现行产品面为 `packages/xylitol-tui` + `src/app/tui` host 空壳（冻结中）。
+> 现行 core 就绪度与命名债见：**[2026-07-10-src-core-tui-readiness.md](./2026-07-10-src-core-tui-readiness.md)**。
 
-## 单项报告
+## 现行审计（2026-07-10）
+
+| 报告 | 内容 |
+|---|---|
+| [src-core-tui-readiness](./2026-07-10-src-core-tui-readiness.md) | `src/` 相对产品 TUI：事件/队列/Driver/trust 就绪度 + 命名探索（只读） |
+
+## 历史对标报告（2026-07-02）
 
 | 仓库 | 技术栈 | 报告 | 一句话定位 |
 |---|---|---|---|
@@ -12,7 +22,9 @@
 | **pi** | Ink(TS，自研非 React) | [pi.md](./pi.md) | 30 个组件的交互范式；diff/选择器最全 |
 | **kimi-code** | Ink(TS，pi-tui) | [kimi-code.md](./kimi-code.md) | overlay 体系最复杂；30+ dialogs + 命令分发 |
 
-## 一、关键决策回顾：xylitol 当前 TUI 家底
+---
+
+## 一、关键决策回顾：xylitol 当时 TUI 家底（历史快照，已过时）
 
 ```
 src/app/tui/   1480 行，8 个文件
