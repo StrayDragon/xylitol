@@ -1,4 +1,5 @@
-use crate::keys::{KeyId, matches_key};
+use crate::keys::{KeyId, matches_key_event};
+use crossterm::event::KeyEvent;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -174,10 +175,10 @@ impl KeybindingsManager {
         }
     }
 
-    pub fn matches(&self, data: &str, keybinding: Keybinding) -> bool {
+    pub fn matches_event(&self, event: &KeyEvent, keybinding: Keybinding) -> bool {
         if let Some(keys) = self.keys_by_id.get(keybinding) {
             for key in keys {
-                if matches_key(data, key) {
+                if matches_key_event(event, key) {
                     return true;
                 }
             }

@@ -133,9 +133,9 @@ impl Component for Panel {
         result
     }
 
-    fn handle_input(&mut self, data: &str) {
+    fn handle_input(&mut self, event: crate::tui::InputEvent) {
         for child in &mut self.children {
-            child.handle_input(data);
+            child.handle_input(event.clone());
         }
     }
 

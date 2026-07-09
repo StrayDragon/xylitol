@@ -16,12 +16,12 @@
 
 ## 硬约束（不得回退）
 
-1. 产品路径用 `dispatch_input` / `request_render` / `try_render` / `idle_tick`；`TUI::start()` 仅 demo。
+1. 产品路径用 `dispatch_event` / `request_render` / `try_render` / `idle_tick`；`TUI::start()` 仅 demo。
 2. 异步事件合流在 `src/app/tui/`，不进本 package。
 3. `render` → `Vec<String>`（ANSI）；不引入结构化 `StyledLine` 层。
 4. 主题用闭包注入；语义 token 映射在应用面。
 5. **终端 I/O 优先 crossterm Command**：raw mode、bracketed paste、Kitty push/pop、`Clear`/`SetTitle`/`cursor::*`、同步输出等有库 API 就用库；仅 OSC 9;4 等库未暴露的序列才 `write_raw`。不移植 `stdin-buffer`（crossterm 已解码 `Event`）。
-6. **输入主路径 = `KeyEvent`**：运行时以 crossterm `Event::Key` / `Paste` / `Resize` 为准。`keys.rs` 的字节/Kitty 解析保留给配置字符串、`matches_key`、测试喂 raw 序列与兼容入口——**不要**把「KeyEvent → 再编码 VT → 再 parse」当成长期架构。
+6. **输入硬切 = `InputEvent`（`Key`/`Paste`）**：运行时只走 crossterm `Event::Key` / `Paste` / `Resize` → `dispatch_event`；组件 `handle_input(InputEvent)`。**禁止** KeyEvent→VT→parse 运行时路径（已删除 `dispatch_input` / `key_event_to_string`）。`matches_key`/`parse_key` 仅供 `keys_test` 与配置字符串；匹配用 `matches_key_event` / `KeybindingsManager::matches_event`。测试可用 `tests/support/vt_feed.rs` 把 VT 序列译成 `InputEvent`。
 7. 默认隐藏硬件光标（`show_hardware_cursor = false`）；Editor 用反色假光标。有 `CURSOR_MARKER` 时仍可相对定位 IME，但不得无条件 `show_cursor`（否则流式重绘闪烁）。
 8. 有意不移植：`stdin-buffer`、`native-modifiers`、Apple/Windows 专属输入、`writeLogPath`（用 tracing）。
 

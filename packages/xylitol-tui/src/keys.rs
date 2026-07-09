@@ -1161,3 +1161,90 @@ fn decode_modify_other_keys_printable(data: &str) -> Option<String> {
 pub fn decode_printable_key(data: &str) -> Option<String> {
     decode_kitty_printable(data).or_else(|| decode_modify_other_keys_printable(data))
 }
+
+/// Match a crossterm `KeyEvent` against a key id (`"ctrl+c"`, `"up"`, …).
+///
+/// Only `Press` and `Repeat` match. Compares `KeyCode` + `KeyModifiers` via
+/// [`parse_key_id`] — the runtime path; VT `matches_key` remains for unit tests.
+pub fn matches_key_event(event: &crossterm::event::KeyEvent, key_id: &str) -> bool {
+    use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+
+    if !matches!(event.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+        return false;
+    }
+
+    let parsed = match parse_key_id(key_id) {
+        Some(p) => p,
+        None => return false,
+    };
+
+    let has_ctrl = event.modifiers.contains(KeyModifiers::CONTROL);
+    let has_alt = event.modifiers.contains(KeyModifiers::ALT);
+    let has_shift = event.modifiers.contains(KeyModifiers::SHIFT);
+    let has_super = event.modifiers.contains(KeyModifiers::SUPER);
+
+    if has_ctrl != parsed.ctrl
+        || has_alt != parsed.alt
+        || has_shift != parsed.shift
+        || has_super != parsed.super_mod
+    {
+        return false;
+    }
+
+    match parsed.key.as_str() {
+        "escape" | "esc" => matches!(event.code, KeyCode::Esc),
+        "enter" | "return" => matches!(event.code, KeyCode::Enter),
+        "tab" => matches!(event.code, KeyCode::Tab),
+        "backspace" => matches!(event.code, KeyCode::Backspace),
+        "delete" => matches!(event.code, KeyCode::Delete),
+        "insert" => matches!(event.code, KeyCode::Insert),
+        "home" => matches!(event.code, KeyCode::Home),
+        "end" => matches!(event.code, KeyCode::End),
+        "pageup" => matches!(event.code, KeyCode::PageUp),
+        "pagedown" => matches!(event.code, KeyCode::PageDown),
+        "up" => matches!(event.code, KeyCode::Up),
+        "down" => matches!(event.code, KeyCode::Down),
+        "left" => matches!(event.code, KeyCode::Left),
+        "right" => matches!(event.code, KeyCode::Right),
+        "space" => matches!(event.code, KeyCode::Char(' ')),
+        "clear" => matches!(event.code, KeyCode::Null), // unused at runtime
+        k if k.starts_with('f') => {
+            if let Ok(n) = k[1..].parse::<u8>() {
+                matches!(event.code, KeyCode::F(m) if m == n)
+            } else {
+                false
+            }
+        }
+        k if k.len() == 1 => {
+            let expected = k.chars().next().unwrap();
+            match event.code {
+                KeyCode::Char(c) if expected.is_ascii_alphabetic() => {
+                    c.eq_ignore_ascii_case(&expected)
+                }
+                KeyCode::Char(c) => c == expected,
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+/// Printable text from a key event: `KeyCode::Char` with no ctrl/alt/super.
+/// Shift is allowed (uppercase / shifted symbols).
+pub fn printable_from_key_event(event: &crossterm::event::KeyEvent) -> Option<String> {
+    use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+
+    if !matches!(event.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+        return None;
+    }
+    if event
+        .modifiers
+        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+    {
+        return None;
+    }
+    match event.code {
+        KeyCode::Char(c) => Some(c.to_string()),
+        _ => None,
+    }
+}

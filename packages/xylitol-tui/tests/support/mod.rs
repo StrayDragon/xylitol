@@ -8,6 +8,8 @@
 //!
 //! Not part of the public API; `#[cfg(test)]` / test-crates only.
 
+pub mod vt_feed;
+
 use vte::{Params, Perform};
 
 use xylitol_tui::terminal::Terminal;
@@ -621,7 +623,7 @@ use std::rc::Rc;
 
 use xylitol_tui::RenderError;
 use xylitol_tui::TUI;
-use xylitol_tui::tui::Component;
+use xylitol_tui::tui::{Component, InputEvent};
 
 /// A component whose render output is backed by shared mutable state, so a
 /// test can mutate the content between frames without rebuilding the TUI
@@ -647,7 +649,7 @@ impl Component for MutableComponent {
     fn render(&mut self, _width: usize) -> Vec<String> {
         self.lines.borrow().clone()
     }
-    fn handle_input(&mut self, _data: &str) {}
+    fn handle_input(&mut self, _event: InputEvent) {}
     fn invalidate(&mut self) {}
 }
 
@@ -685,10 +687,12 @@ impl TuiTestHarness {
         self
     }
 
-    /// Dispatch a byte-string key sequence through the engine to the focused
-    /// component (e.g. `"abc\x1b[D\x7f"` = type a,b,c then Left then Backspace).
+    /// Parse a VT / control-byte sequence into `InputEvent`s and dispatch each
+    /// (e.g. `"abc\x1b[D\x7f"` = type a,b,c then Left then Backspace).
     pub fn keys(&mut self, seq: &str) -> &mut Self {
-        self.tui.dispatch_input(seq);
+        for ev in vt_feed::parse_vt_to_input_events(seq) {
+            self.tui.dispatch_event(ev);
+        }
         self
     }
 

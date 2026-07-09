@@ -5,7 +5,10 @@
 //! idempotence, buffer stays valid UTF-8); this change establishes the
 //! framework with two minimal invariants on `Input`.
 
+mod support;
+
 use proptest::prelude::*;
+use support::vt_feed::feed_vt;
 
 use xylitol_tui::components::input::Input;
 use xylitol_tui::tui::Component;
@@ -42,7 +45,7 @@ proptest! {
     fn input_never_panics_on_random_keys(seq in key_seq()) {
         let mut input = Input::new();
         input.set_focused(true);
-        input.handle_input(&seq);
+        feed_vt(&mut input, &seq);
         // Reaching here means no panic. Also assert render doesn't blow up.
         let _ = input.render(40);
     }
@@ -55,7 +58,7 @@ proptest! {
     fn input_render_always_non_empty(seq in key_seq()) {
         let mut input = Input::new();
         input.set_focused(true);
-        input.handle_input(&seq);
+        feed_vt(&mut input, &seq);
         let lines = input.render(40);
         prop_assert!(
             !lines.is_empty(),
