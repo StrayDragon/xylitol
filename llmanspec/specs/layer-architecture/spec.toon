@@ -45,4 +45,4 @@ scenarios[22]{req_id,id,given,when,then}:
   la18,"event-layer-check",event types and ports are located,src is inspected,XyEvent is in domain and XyEventSink is in runtime_protocol
   la19,"seams-under-core","",the source tree is inspected,"composition.rs and driver.rs live under app/core/, and no Driver-trait or build_agent seam lives directly under a surface directory (cli/, rpc.rs, server/, tui/, gui.rs)"
   la20,"bootstrap-shared",the source tree after c336,src/app/core/bootstrap.rs and src/app/core/dispatch.rs are inspected,"both exist and cli/mod.rs, server/runtime.rs call bootstrap while rpc.rs and tui/commands.rs call dispatch"
-  la20,"no-inlined-assembly","","cli/mod.rs::run and server/runtime.rs are inspected","neither contains inline config-load/registry-build/trust-resolution/resource-discovery logic; both delegate to app::core::bootstrap"
+  la20,"no-inlined-assembly","","cli/mod.rs::run and server/runtime.rs are inspected","neither contains inline config-load/registry-build/trust-resolution/runtime-resource-discovery logic; both delegate to app::core::bootstrap"

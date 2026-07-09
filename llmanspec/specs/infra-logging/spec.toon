@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "debug-log"
+name: "infra-logging"
 purpose: "Debug 观察管线：env 驱动激活的 tracing 文件日志（~/.xylitol/logs/xylitol.log），file-only 不毁 TUI 渲染，在组合根 app::cli::run 统一装配，激活既有 infra/agent 埋点。"
 valid_scope[1]: src/app/cli/logging.rs
 requirements[1]{req_id,title,statement}:

@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "resource-discovery"
+name: "runtime-resource-discovery"
 purpose: "Unified resource discovery — skills, prompts, themes, AGENTS.md, and system prompt loading."
 valid_scope[3]: src/infra/resource/,src/domain/resource_types.rs,src/runtime_protocol/resource.rs
 requirements[9]{req_id,title,statement}:
