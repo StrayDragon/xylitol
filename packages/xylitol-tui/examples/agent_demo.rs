@@ -57,17 +57,94 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     tui.start_with_flag(&quit_flag)
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Role {
     User,
     Assistant,
-    Tool,
     System,
 }
 
-struct TranscriptEntry {
-    role: Role,
-    text: String,
+/// App-layer glyph config (DESIGN.md): no font probing — env / Ctrl+G only.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum GlyphSet {
+    Unicode,
+    Ascii,
+}
+
+impl GlyphSet {
+    fn from_env() -> Self {
+        match std::env::var("XYLITOL_TUI_GLYPH_SET").ok().as_deref() {
+            Some("ascii") | Some("ASCII") => Self::Ascii,
+            _ => Self::Unicode,
+        }
+    }
+
+    fn cycle(self) -> Self {
+        match self {
+            Self::Unicode => Self::Ascii,
+            Self::Ascii => Self::Unicode,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Unicode => "unicode",
+            Self::Ascii => "ascii",
+        }
+    }
+
+    fn user(self) -> &'static str {
+        match self {
+            Self::Unicode => "❯",
+            Self::Ascii => ">",
+        }
+    }
+
+    fn tool(self) -> &'static str {
+        match self {
+            Self::Unicode => "⚙",
+            Self::Ascii => "*",
+        }
+    }
+
+    fn system(self) -> &'static str {
+        match self {
+            Self::Unicode => "·",
+            Self::Ascii => ".",
+        }
+    }
+
+    fn fold(self) -> &'static str {
+        match self {
+            Self::Unicode => "▶",
+            Self::Ascii => ">",
+        }
+    }
+
+    fn unfold(self) -> &'static str {
+        match self {
+            Self::Unicode => "▼",
+            Self::Ascii => "v",
+        }
+    }
+}
+
+enum TranscriptEntry {
+    Message {
+        role: Role,
+        text: String,
+    },
+    /// Collapsible thinking block (pi-style ExpandableText preview).
+    Thinking {
+        expanded: bool,
+        body: String,
+    },
+    /// Collapsible tool block: one-line summary; detail when expanded.
+    Tool {
+        expanded: bool,
+        summary: String,
+        detail: String,
+    },
 }
 
 enum ScriptEvent {
@@ -115,6 +192,7 @@ pub struct FakeCodingAgentApp {
     auto_started: bool,
     last_tick_at: Instant,
     quit_flag: Arc<AtomicBool>,
+    glyph_set: GlyphSet,
 }
 
 impl FakeCodingAgentApp {
@@ -131,7 +209,8 @@ impl FakeCodingAgentApp {
 
         let mut input = Editor::new(
             EditorTheme {
-                border_color: Box::new(cyan),
+                // Muted operation-zone border (DESIGN.md / fig2).
+                border_color: Box::new(dim),
                 select_list_theme: SelectListTheme::default(),
             },
             EditorOptions {
@@ -256,27 +335,95 @@ impl FakeCodingAgentApp {
             auto_started: false,
             last_tick_at: Instant::now(),
             quit_flag,
+            glyph_set: GlyphSet::from_env(),
         };
         app.seed_transcript();
         app
     }
 
     fn seed_transcript(&mut self) {
-        self.push_entry(
+        self.push_message(
             Role::User,
             "Collapse examples into one fake coding-agent demo and keep foot interaction stable.",
         );
-        self.push_entry(
+        self.push_thinking(
+            "Plan: read existing examples and the pi coding-agent ExpandableText flow, then rebuild one stable primary scenario with real terminal acceptance coverage.\n\nKeep transcript in scrollback; mark the editor as the operation zone with borders.",
+        );
+        self.push_message(
             Role::Assistant,
             "Read the existing examples and the pi coding-agent flow first, then rebuild one stable primary scenario with real terminal acceptance coverage.",
         );
+        self.push_tool(
+            "read packages/xylitol-tui/examples/agent_demo.rs · 42ms · 790 lines",
+            "ok — opened agent_demo.rs\n(preview) FakeCodingAgentApp + scripted turn harness",
+        );
     }
 
-    fn push_entry(&mut self, role: Role, text: impl Into<String>) {
-        self.transcript.push(TranscriptEntry {
+    fn push_message(&mut self, role: Role, text: impl Into<String>) {
+        self.transcript.push(TranscriptEntry::Message {
             role,
             text: text.into(),
         });
+    }
+
+    fn push_thinking(&mut self, body: impl Into<String>) {
+        self.transcript.push(TranscriptEntry::Thinking {
+            expanded: false,
+            body: body.into(),
+        });
+    }
+
+    fn push_tool(&mut self, summary: impl Into<String>, detail: impl Into<String>) {
+        self.transcript.push(TranscriptEntry::Tool {
+            expanded: false,
+            summary: summary.into(),
+            detail: detail.into(),
+        });
+    }
+
+    fn toggle_thinking_blocks(&mut self) {
+        let any_collapsed = self.transcript.iter().any(|e| {
+            matches!(
+                e,
+                TranscriptEntry::Thinking {
+                    expanded: false,
+                    ..
+                }
+            )
+        });
+        for entry in &mut self.transcript {
+            if let TranscriptEntry::Thinking { expanded, .. } = entry {
+                *expanded = any_collapsed;
+            }
+        }
+    }
+
+    fn toggle_tool_blocks(&mut self) {
+        let any_collapsed = self.transcript.iter().any(|e| {
+            matches!(
+                e,
+                TranscriptEntry::Tool {
+                    expanded: false,
+                    ..
+                }
+            )
+        });
+        for entry in &mut self.transcript {
+            if let TranscriptEntry::Tool { expanded, .. } = entry {
+                *expanded = any_collapsed;
+            }
+        }
+    }
+
+    fn cycle_glyph_set(&mut self) {
+        self.glyph_set = self.glyph_set.cycle();
+        self.push_message(
+            Role::System,
+            format!(
+                "glyph_set={} (Ctrl+G cycle; or XYLITOL_TUI_GLYPH_SET=ascii|unicode)",
+                self.glyph_set.label()
+            ),
+        );
     }
 
     fn process_submit(&mut self, text: String) {
@@ -303,7 +450,7 @@ impl FakeCodingAgentApp {
         }
 
         self.last_submitted = trimmed.clone();
-        self.push_entry(Role::User, trimmed.clone());
+        self.push_message(Role::User, trimmed.clone());
         self.input.set_text(String::new());
         self.auto_started = true;
         self.scripted_turn = self.scripted_turn.max(2);
@@ -394,6 +541,9 @@ impl FakeCodingAgentApp {
         self.scheduled_tail_tick = self.script_tick;
         self.active_stream_entry = None;
         self.set_status("Thinking");
+        self.push_thinking(format!(
+            "User asked: {prompt}\n\nI'll search the tree, run acceptance, then stream a reply."
+        ));
 
         let rg_status_delay = self.random_between(3, 8);
         self.queue_event(
@@ -432,7 +582,7 @@ impl FakeCodingAgentApp {
 
     fn begin_assistant_stream(&mut self) {
         self.active_stream_entry = Some(self.transcript.len());
-        self.transcript.push(TranscriptEntry {
+        self.transcript.push(TranscriptEntry::Message {
             role: Role::Assistant,
             text: String::new(),
         });
@@ -444,9 +594,9 @@ impl FakeCodingAgentApp {
             self.begin_assistant_stream();
         }
         if let Some(index) = self.active_stream_entry
-            && let Some(entry) = self.transcript.get_mut(index)
+            && let Some(TranscriptEntry::Message { text, .. }) = self.transcript.get_mut(index)
         {
-            entry.text.push_str(chunk);
+            text.push_str(chunk);
         }
     }
 
@@ -521,7 +671,8 @@ impl FakeCodingAgentApp {
                 self.set_status("Working");
                 self.recent_tools.insert(0, text.clone());
                 self.recent_tools.truncate(4);
-                self.push_entry(Role::Tool, text);
+                let detail = format!("$ {text}\n(exit 0 — demo stub)");
+                self.push_tool(format!("{} · ok", text), detail);
             }
             ScriptEvent::Assistant(text) => {
                 if self.pending_events.is_empty()
@@ -530,7 +681,7 @@ impl FakeCodingAgentApp {
                 {
                     self.set_status("Ready");
                 }
-                self.push_entry(Role::Assistant, text);
+                self.push_message(Role::Assistant, text);
             }
             ScriptEvent::MarkPlan(index) => {
                 if let Some((done, _)) = self.plan.get_mut(index) {
@@ -548,13 +699,11 @@ impl FakeCodingAgentApp {
         }
     }
 
-    fn role_prefix(role: Role) -> String {
-        // Short glyphs — copy-friendly (DESIGN.md token economy).
+    fn role_prefix(&self, role: Role) -> String {
         match role {
-            Role::User => magenta("❯"),
+            Role::User => magenta(self.glyph_set.user()),
             Role::Assistant => String::new(),
-            Role::Tool => dim("⚙"),
-            Role::System => dim("·"),
+            Role::System => dim(self.glyph_set.system()),
         }
     }
 
@@ -571,18 +720,53 @@ impl FakeCodingAgentApp {
         format!("{clipped}{}", " ".repeat(pad))
     }
 
+    fn push_wrapped(lines: &mut Vec<String>, raw: &str, width: usize) {
+        for line in wrap_text_with_ansi(raw, width) {
+            lines.push(Self::fit(&line, width));
+        }
+    }
+
     fn transcript_lines(&self, width: usize) -> Vec<String> {
-        // Full history → scrollback. Short prefixes only (no section titles).
         let mut lines = Vec::new();
+        let g = self.glyph_set;
         for entry in &self.transcript {
-            let prefix = Self::role_prefix(entry.role);
-            let raw = if prefix.is_empty() {
-                entry.text.clone()
-            } else {
-                format!("{prefix} {}", entry.text)
-            };
-            for line in wrap_text_with_ansi(&raw, width) {
-                lines.push(Self::fit(&line, width));
+            match entry {
+                TranscriptEntry::Message { role, text } => {
+                    let prefix = self.role_prefix(*role);
+                    let raw = if prefix.is_empty() {
+                        text.clone()
+                    } else {
+                        format!("{prefix} {text}")
+                    };
+                    Self::push_wrapped(&mut lines, &raw, width);
+                }
+                TranscriptEntry::Thinking { expanded, body } => {
+                    if *expanded {
+                        let header = dim(&format!("{} thinking  (Ctrl+T collapse)", g.unfold()));
+                        Self::push_wrapped(&mut lines, &header, width);
+                        Self::push_wrapped(&mut lines, &dim(body), width);
+                    } else {
+                        let header = dim(&format!("{} thinking  (Ctrl+T expand)", g.fold()));
+                        Self::push_wrapped(&mut lines, &header, width);
+                    }
+                }
+                TranscriptEntry::Tool {
+                    expanded,
+                    summary,
+                    detail,
+                } => {
+                    let marker = if *expanded { g.unfold() } else { g.fold() };
+                    let hint = if *expanded {
+                        "Ctrl+E collapse"
+                    } else {
+                        "Ctrl+E expand"
+                    };
+                    let header = dim(&format!("{} {} {}  ({hint})", marker, g.tool(), summary));
+                    Self::push_wrapped(&mut lines, &header, width);
+                    if *expanded {
+                        Self::push_wrapped(&mut lines, &dim(detail), width);
+                    }
+                }
             }
             lines.push(String::new());
         }
@@ -649,12 +833,18 @@ impl Component for FakeCodingAgentApp {
             lines.push(status);
         }
         lines.extend(self.render_editor_slot(width));
-        let footer = if self.palette_open || self.settings_open {
+        let footer_owned;
+        let footer_ref = if self.palette_open || self.settings_open {
             "esc close"
         } else {
-            self.footer_note.as_str()
+            footer_owned = format!(
+                "{} · glyphs:{} · ^T/^E/^G",
+                self.footer_note,
+                self.glyph_set.label()
+            );
+            footer_owned.as_str()
         };
-        lines.push(Self::fit(&dim(footer), width));
+        lines.push(Self::fit(&dim(footer_ref), width));
         lines
             .into_iter()
             .map(|line| Self::fit(&line, width))
@@ -700,13 +890,13 @@ impl Component for FakeCodingAgentApp {
                             ));
                         }
                         "diff" => {
-                            self.push_entry(
+                            self.push_message(
                                 Role::Assistant,
                                 "Current diff is concentrated in example consolidation, acceptance harness cleanup, and the E2E surface switch.",
                             );
                         }
                         "compact" => {
-                            self.push_entry(
+                            self.push_message(
                                 Role::System,
                                 "Compaction checkpoint: examples rewritten to a single fake coding-agent flow.",
                             );
@@ -742,6 +932,20 @@ impl Component for FakeCodingAgentApp {
         }
         if matches_key_event(key, "ctrl+o") {
             self.advance_script();
+            return;
+        }
+        // App-level toggles (DESIGN expandable blocks / glyph config). Not bare
+        // letters — those must stay available for typing in the editor.
+        if matches_key_event(key, "ctrl+t") {
+            self.toggle_thinking_blocks();
+            return;
+        }
+        if matches_key_event(key, "ctrl+e") {
+            self.toggle_tool_blocks();
+            return;
+        }
+        if matches_key_event(key, "ctrl+g") {
+            self.cycle_glyph_set();
             return;
         }
 
