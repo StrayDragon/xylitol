@@ -150,3 +150,58 @@ fn agent_demo_idle_ready_hides_spinner() {
         );
     }
 }
+
+#[test]
+fn agent_demo_default_hides_hardware_cursor_during_stream() {
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+
+    h.render_result().expect("initial render should succeed");
+    h.keys("\r");
+    for _ in 0..24 {
+        h.tick();
+        h.render_result()
+            .expect("streaming frames must stay within width budget");
+    }
+    assert!(
+        !h.tui.terminal.cursor_visible(),
+        "default show_hardware_cursor=false must leave hardware cursor hidden (pi parity)"
+    );
+    assert_eq!(
+        h.tui.terminal.show_cursor_calls(),
+        0,
+        "streaming redraws must not call show_cursor when hardware cursor is off"
+    );
+    assert!(
+        h.tui.terminal.hide_cursor_calls() > 0,
+        "engine should hide the hardware cursor after positioning for IME"
+    );
+}
+
+#[test]
+fn agent_demo_layout_puts_debug_below_editor() {
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+
+    h.render_result().expect("initial render should succeed");
+    let text = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text.contains("dbg") && text.contains("plan"),
+        "fixed debug strip should appear below the editor; got:\n{text}"
+    );
+    assert!(
+        !text.contains("Workspace"),
+        "right-hand Workspace sidebar must be removed; got:\n{text}"
+    );
+    // Seeded user message must remain in the full transcript (not truncated).
+    assert!(
+        text.contains("Collapse examples into one fake coding-agent demo"),
+        "full transcript must render into the line-array for scrollback; got:\n{text}"
+    );
+}

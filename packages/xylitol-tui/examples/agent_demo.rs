@@ -584,9 +584,11 @@ impl FakeCodingAgentApp {
     }
 
     fn transcript_lines(&self, width: usize) -> Vec<String> {
+        // Full history: the engine scrolls older rows into terminal scrollback
+        // (pi chatContainer model). Do not truncate here — that would hide
+        // history from the emulator's scrollback.
         let mut lines = vec![Self::fit(&bold("Conversation"), width), String::new()];
-        let start = self.transcript.len().saturating_sub(10);
-        for entry in &self.transcript[start..] {
+        for entry in &self.transcript {
             let raw = format!("{} {}", Self::role_prefix(entry.role), entry.text);
             for line in wrap_text_with_ansi(&raw, width) {
                 lines.push(Self::fit(&line, width));
@@ -596,52 +598,40 @@ impl FakeCodingAgentApp {
         lines
     }
 
-    fn sidebar_lines(&self, width: usize) -> Vec<String> {
-        let mut lines = vec![Self::fit(&bold("Workspace"), width)];
-        for raw in [
-            format!("repo   {}", cyan("xylitol")),
-            format!("branch {}", cyan("feat/tui-dev")),
-            format!("model  {}", cyan("claude-sonnet-4")),
-        ] {
-            lines.push(Self::fit(&raw, width));
-        }
-        lines.push(String::new());
-        lines.push(Self::fit(&bold("Plan"), width));
-        for (done, text) in &self.plan {
-            let marker = if *done { green("[x]") } else { yellow("[ ]") };
-            lines.push(Self::fit(&format!("{marker} {text}"), width));
-        }
-        lines.push(String::new());
-        lines.push(Self::fit(&bold("Changed Files"), width));
-        for path in self.changed_files.iter().rev().take(4) {
-            lines.push(Self::fit(&format!("- {path}"), width));
-        }
-        lines.push(String::new());
-        lines.push(Self::fit(&bold("Recent Tools"), width));
-        for tool in self.recent_tools.iter().take(4) {
-            lines.push(Self::fit(&format!("- {tool}"), width));
-        }
-        lines
-    }
-
-    fn merge_columns(
-        left: &[String],
-        right: &[String],
-        left_w: usize,
-        right_w: usize,
-    ) -> Vec<String> {
-        let mut out = Vec::new();
-        let rows = left.len().max(right.len());
-        for i in 0..rows {
-            let l = left.get(i).map(String::as_str).unwrap_or("");
-            let r = right.get(i).map(String::as_str).unwrap_or("");
-            out.push(format!(
-                "{}  {}",
-                Self::fit(l, left_w),
-                Self::fit(r, right_w)
-            ));
-        }
-        out
+    /// Fixed-height debug strip below the editor (pi: widgets-below / footer
+    /// density). Always exactly 3 content rows so streaming does not jitter
+    /// the input box height.
+    fn debug_strip_lines(&self, width: usize) -> Vec<String> {
+        let done = self.plan.iter().filter(|(d, _)| *d).count();
+        let next = self
+            .plan
+            .iter()
+            .find(|(d, _)| !*d)
+            .map(|(_, t)| t.as_str())
+            .unwrap_or("done");
+        let tool = self.recent_tools.first().map(String::as_str).unwrap_or("-");
+        let files = self.changed_files.len();
+        vec![
+            Self::fit(
+                &format!(
+                    "{} plan {done}/{}  next: {}",
+                    dim("dbg"),
+                    self.plan.len(),
+                    dim(next)
+                ),
+                width,
+            ),
+            Self::fit(&format!("{} tool {}", dim("dbg"), dim(tool)), width),
+            Self::fit(
+                &format!(
+                    "{} files {files}  {} {}",
+                    dim("dbg"),
+                    cyan("xylitol"),
+                    dim("feat/tui-dev")
+                ),
+                width,
+            ),
+        ]
     }
 
     fn status_line(&mut self, width: usize) -> String {
@@ -735,45 +725,34 @@ impl FakeCodingAgentApp {
 
 impl Component for FakeCodingAgentApp {
     fn render(&mut self, width: usize) -> Vec<String> {
+        // Single-column stack (pi interactive): transcript → status → editor
+        // → fixed debug strip → footer. Viewport anchors to the content tail.
         let mut lines = Vec::new();
 
-        let mut header = Panel::new(2, 0, Some(Box::new(blue_bg)));
+        let mut header = Panel::new(1, 0, Some(Box::new(blue_bg)));
         header.add_child(Box::new(Text::new(
-            format!("{} fake coding agent demo", bold("agent")),
-            0,
-            0,
-        )));
-        header.add_child(Box::new(Text::new(
-            "main scenario only: transcript, tools, plan sidebar, editor, PTY-safe widths".into(),
+            format!(
+                "{}  transcript · editor · scrollback  |  Ctrl+P/S overlay",
+                bold("agent_demo")
+            ),
             0,
             0,
         )));
         lines.extend(header.render(width));
-
-        let status = format!(
-            " {} | Ctrl+P palette  Ctrl+S settings  Enter submit  Ctrl+O advance ",
-            dim("agent_demo"),
-        );
-        lines.push(Self::fit(&status, width));
         lines.push(Self::fit(&dim(&"-".repeat(width)), width));
 
-        let sidebar_w = width.saturating_sub(56).clamp(24, 32);
-        let left_w = width.saturating_sub(sidebar_w + 9);
-        let body = Self::merge_columns(
-            &self.transcript_lines(left_w),
-            &self.sidebar_lines(sidebar_w),
-            left_w,
-            sidebar_w,
-        );
-        lines.extend(body);
+        lines.extend(self.transcript_lines(width));
 
         lines.push(Self::fit(&dim(&"-".repeat(width)), width));
         lines.push(self.status_line(width));
-        lines.push(Self::fit(&dim(&self.footer_note), width));
 
         for line in self.input.render(width) {
             lines.push(Self::fit(&line, width));
         }
+
+        lines.push(Self::fit(&dim(&"-".repeat(width)), width));
+        lines.extend(self.debug_strip_lines(width));
+        lines.push(Self::fit(&dim(&self.footer_note), width));
 
         if self.palette_open {
             self.render_palette_overlay(width, &mut lines);
