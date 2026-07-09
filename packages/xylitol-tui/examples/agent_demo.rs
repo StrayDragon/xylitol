@@ -393,35 +393,27 @@ impl FakeCodingAgentApp {
     }
 
     fn toggle_thinking_blocks(&mut self) {
-        let any_collapsed = self.transcript.iter().any(|e| {
-            matches!(
-                e,
-                TranscriptEntry::Thinking {
-                    expanded: false,
-                    ..
-                }
-            )
-        });
+        // If anything is open, close all (so mid-stream ^T can hide the live
+        // typewriter). Only expand when every thinking block is already closed.
+        let any_expanded = self
+            .transcript
+            .iter()
+            .any(|e| matches!(e, TranscriptEntry::Thinking { expanded: true, .. }));
         for entry in &mut self.transcript {
             if let TranscriptEntry::Thinking { expanded, .. } = entry {
-                *expanded = any_collapsed;
+                *expanded = !any_expanded;
             }
         }
     }
 
     fn toggle_tool_blocks(&mut self) {
-        let any_collapsed = self.transcript.iter().any(|e| {
-            matches!(
-                e,
-                TranscriptEntry::Tool {
-                    expanded: false,
-                    ..
-                }
-            )
-        });
+        let any_expanded = self
+            .transcript
+            .iter()
+            .any(|e| matches!(e, TranscriptEntry::Tool { expanded: true, .. }));
         for entry in &mut self.transcript {
             if let TranscriptEntry::Tool { expanded, .. } = entry {
-                *expanded = any_collapsed;
+                *expanded = !any_expanded;
             }
         }
     }
@@ -650,9 +642,9 @@ impl FakeCodingAgentApp {
         }
         if let Some(index) = self.active_stream_entry {
             match (kind, self.transcript.get_mut(index)) {
-                (StreamKind::Thinking, Some(TranscriptEntry::Thinking { body, expanded, .. })) => {
+                (StreamKind::Thinking, Some(TranscriptEntry::Thinking { body, .. })) => {
+                    // Append only — do not force expand. ^T during stream must stick.
                     body.push_str(chunk);
-                    *expanded = true;
                 }
                 (StreamKind::Assistant, Some(TranscriptEntry::Message { text, .. })) => {
                     text.push_str(chunk);
@@ -667,7 +659,8 @@ impl FakeCodingAgentApp {
             && kind == StreamKind::Thinking
             && let Some(TranscriptEntry::Thinking { expanded, .. }) = self.transcript.get_mut(index)
         {
-            // Collapse when done — scrollback stays tidy; ^T reopens.
+            // Default tidy: collapse when the stream ends. User can ^T reopen.
+            // (Does not fight mid-stream ^T — that only mattered while appending.)
             *expanded = false;
         }
         self.active_stream_entry = None;
