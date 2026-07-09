@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ast5,"demo-session-tree-fork","agent_demo 会话树打开时 MUST 支持 Shift+F fork：重建 root→选中节点路径（MUST NOT 自动纳入其后线性 assistant/tool 回复链）；history leaf MUST 等于选中 id；若选中为 user 消息 MUST 将其文本预填编辑器；关闭树后下一次用户提交 MUST 在该 leaf 下挂新子节点（与既有子树形成兄弟分叉）；MUST NOT 打开新会话文件或调用产品 Driver::fork。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ast5,"fork-stays-on-user","树选中样例 u1（其下已有 assistant 子节点）",Shift+F 或 fork_from_history,"leaf 为 u1、编辑器含原 user 文案、transcript 不含子 assistant 正文"
+  ast5,"submit-creates-sibling","fork 到 u1 之后",提交新 user 文本,"u1 的 children 数量加一且活树含新文案"

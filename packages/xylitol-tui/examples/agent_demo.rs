@@ -938,6 +938,60 @@ impl FakeCodingAgentApp {
         self.close_session_tree(); // Ready — banner lives in transcript, not a spinning status
     }
 
+    /// Shift+F: fork at selected node (same session). Unlike travel, does **not** follow
+    /// the linear reply spine — leaf stays on `id` so the next submit becomes a sibling branch.
+    pub fn fork_from_history(&mut self, id: &str) {
+        self.pending_events.clear();
+        self.scheduled_actions.clear();
+        self.active_stream_entry = None;
+        self.steer_queue.clear();
+
+        let path = path_ids_to(&self.session_tree, id).unwrap_or_else(|| vec![id.to_string()]);
+        let path_label = path.join(" → ");
+
+        self.transcript.clear();
+        self.push_message(
+            Role::System,
+            format!("forked @ {id} · path: {path_label} · edit & Enter to branch"),
+        );
+        for node_id in &path {
+            if let Some(entry) = self.history_entry_for(node_id) {
+                self.transcript.push(entry);
+            }
+        }
+
+        // Prefill editor from user payload at the fork point (pi /fork morphology).
+        if let Some(TranscriptEntry::Message {
+            role: Role::User,
+            text,
+        }) = self.history_entry_for(id)
+        {
+            let prefill = text
+                .strip_prefix("[steer] ")
+                .unwrap_or(text.as_str())
+                .to_string();
+            self.input.set_text(prefill);
+        } else {
+            self.input.set_text(String::new());
+        }
+
+        self.history_leaf_id = id.to_string();
+        self.close_session_tree();
+    }
+
+    pub fn fork_from_selected_for_test(&mut self) {
+        if let Some(id) = self.tree.selected_id().map(str::to_string) {
+            self.fork_from_history(&id);
+        }
+    }
+
+    /// Child count of a session-tree node (harness — fork creates siblings).
+    pub fn session_tree_child_count_for_test(&self, id: &str) -> usize {
+        find_session_node(&self.session_tree, id)
+            .map(|n| n.children.len())
+            .unwrap_or(0)
+    }
+
     /// Harness: submit text as if the editor fired on_submit (bypasses paste-burst).
     pub fn submit_text_for_test(&mut self, text: impl Into<String>) {
         self.process_submit(text.into());
@@ -2348,13 +2402,15 @@ impl FakeCodingAgentApp {
         }
         let search = self.tree.search_query();
         let search_line = if search.is_empty() {
-            dim(" Type search · ←→ page · Ctrl/Alt+←→ fold · Shift+L label · Shift+T time")
+            dim(
+                " Type search · ←→ page · Ctrl/Alt+←→ fold · Shift+L label · Shift+T time · Shift+F fork",
+            )
         } else {
             dim(&format!(" Search: {search}"))
         };
         lines.push(Self::fit(&search_line, width));
         lines.push(Self::fit(
-            &dim(" Up/Down  Enter travel  Esc close/clear  (double Esc)  Ctrl+D/T/U/L/A filter"),
+            &dim(" Up/Down  Enter travel  Shift+F fork  Esc close/clear  (double Esc)  Ctrl+D/T/U/L/A filter"),
             width,
         ));
         for line in self.tree.render(width) {
@@ -2489,6 +2545,11 @@ impl Component for FakeCodingAgentApp {
             }
             if matches_key_event(key, "shift+t") {
                 self.tree.toggle_annotation_timestamps();
+                return;
+            }
+            if matches_key_event(key, "shift+f") {
+                let id = self.tree.selected_id().unwrap_or("?").to_string();
+                self.fork_from_history(&id);
                 return;
             }
             if matches_key_event(key, "enter") {
