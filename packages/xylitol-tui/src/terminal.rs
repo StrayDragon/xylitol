@@ -9,7 +9,12 @@
 //! crossterm at start and lets keys.rs's incremental matcher handle both
 //! Kitty and legacy sequences, rather than intercepting the Kitty response.
 
-use crossterm::terminal;
+use crossterm::event::{
+    DisableBracketedPaste, EnableBracketedPaste, KeyboardEnhancementFlags,
+    PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+};
+use crossterm::terminal::{self, Clear, ClearType, SetTitle};
+use crossterm::{cursor, execute};
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
 
@@ -42,10 +47,6 @@ const KITTY_KEYBOARD_PROTOCOL_QUERY: &str = "\x1b[>7u\x1b[?u\x1b[c";
 #[allow(dead_code)]
 const MODIFY_OTHER_KEYS_ENABLE: &str = "\x1b[>4;2m";
 const MODIFY_OTHER_KEYS_DISABLE: &str = "\x1b[>4;0m";
-
-/// Bracketed paste enable/disable (pi terminal.ts:147/412).
-const BRACKETED_PASTE_ENABLE: &str = "\x1b[?2004h";
-const BRACKETED_PASTE_DISABLE: &str = "\x1b[?2004l";
 
 /// Terminal trait - abstract output/lifecycle interface for the TUI.
 ///
@@ -148,22 +149,22 @@ impl CrosstermTerminal {
     /// because keys.rs's matcher handles both Kitty and legacy sequences — a
     /// terminal that ignores the push simply keeps emitting legacy sequences.
     fn negotiate_keyboard_protocol(&mut self) {
-        // Emit pi's combined query so the terminal enters enhancement mode if
-        // it understands Kitty (push flags, pop-query, then DA sentinel).
-        self.write_raw(KITTY_KEYBOARD_PROTOCOL_QUERY);
-        // Ask crossterm to push the flags too (it emits the same CSI >Nu on
-        // unix; on Windows it may translate differently). We do NOT rely on
-        // crossterm's return value to detect support — execute! only fails on
-        // I/O errors, not "terminal doesn't understand".
-        let _ = crossterm::execute!(
+        // Prefer crossterm's push (same CSI >Nu on unix). Optionally emit pi's
+        // combined query for terminals that answer DA before Kitty flags —
+        // modifyOtherKeys fallback remains available but is not auto-armed
+        // on route A (keys.rs still matches legacy when the push is ignored).
+        let _ = execute!(
             io::stdout(),
-            crossterm::event::PushKeyboardEnhancementFlags(
-                crossterm::event::KeyboardEnhancementFlags::from_bits_truncate(KITTY_FLAGS_REQUEST),
-            )
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::from_bits_truncate(
+                KITTY_FLAGS_REQUEST,
+            ))
         );
+        // Best-effort DA/Kitty probe for parity with pi; response is not
+        // consumed here (crossterm owns the input layer).
+        self.write_raw(KITTY_KEYBOARD_PROTOCOL_QUERY);
         // keys.rs matches legacy sequences even when the kitty flag is set, so
-        // setting this active unconditionally is safe: terminals that ignore
-        // the push keep working via the legacy branches.
+        // setting this active is safe: terminals that ignore the push keep
+        // working via the legacy branches.
         set_kitty_protocol_active(true);
         self.kitty_pushed = true;
     }
@@ -227,23 +228,23 @@ impl Terminal for CrosstermTerminal {
     }
 
     fn hide_cursor(&mut self) {
-        let _ = crossterm::execute!(io::stdout(), crossterm::cursor::Hide);
+        let _ = execute!(io::stdout(), cursor::Hide);
     }
 
     fn show_cursor(&mut self) {
-        let _ = crossterm::execute!(io::stdout(), crossterm::cursor::Show);
+        let _ = execute!(io::stdout(), cursor::Show);
     }
 
     fn clear_line(&mut self) {
-        self.write_raw("\x1b[K");
+        let _ = execute!(io::stdout(), Clear(ClearType::UntilNewLine));
     }
 
     fn clear_from_cursor(&mut self) {
-        self.write_raw("\x1b[J");
+        let _ = execute!(io::stdout(), Clear(ClearType::FromCursorDown));
     }
 
     fn clear_screen(&mut self) {
-        self.write_raw("\x1b[2J\x1b[H");
+        let _ = execute!(io::stdout(), Clear(ClearType::All), cursor::MoveTo(0, 0));
     }
 
     fn flush(&mut self) {
@@ -260,7 +261,7 @@ impl Terminal for CrosstermTerminal {
         }
         self.started = true;
         let _ = terminal::enable_raw_mode();
-        self.write_raw(BRACKETED_PASTE_ENABLE);
+        let _ = execute!(io::stdout(), EnableBracketedPaste);
         self.negotiate_keyboard_protocol();
     }
 
@@ -271,14 +272,13 @@ impl Terminal for CrosstermTerminal {
         self.started = false;
 
         // Disable bracketed paste first.
-        self.write_raw(BRACKETED_PASTE_DISABLE);
+        let _ = execute!(io::stdout(), DisableBracketedPaste);
 
         // Pop Kitty enhancement flags BEFORE draining, so late key releases
         // do not generate new Kitty escape sequences.
         if self.kitty_pushed {
             self.write_raw(KITTY_POP_SEQUENCE);
-            let _ =
-                crossterm::execute!(io::stdout(), crossterm::event::PopKeyboardEnhancementFlags);
+            let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
             set_kitty_protocol_active(false);
             self.kitty_pushed = false;
         }
@@ -293,10 +293,7 @@ impl Terminal for CrosstermTerminal {
     }
 
     fn set_title(&mut self, title: &str) {
-        // OSC 0;title BEL — set both icon and window title (OSC 2 is equivalent
-        // on xterm; OSC 0 is the broader convention pi uses).
-        let _ = write!(io::stdout(), "\x1b]0;{title}\x07");
-        let _ = io::stdout().flush();
+        let _ = execute!(io::stdout(), SetTitle(title));
     }
 
     fn set_progress(&mut self, active: bool) {
@@ -311,11 +308,10 @@ impl Terminal for CrosstermTerminal {
 
     fn move_by(&mut self, lines: i32) {
         if lines > 0 {
-            let _ = write!(io::stdout(), "\x1b[{}B", lines);
+            let _ = execute!(io::stdout(), cursor::MoveDown(lines as u16));
         } else if lines < 0 {
-            let _ = write!(io::stdout(), "\x1b[{}A", -lines);
+            let _ = execute!(io::stdout(), cursor::MoveUp((-lines) as u16));
         }
-        let _ = io::stdout().flush();
     }
 }
 
