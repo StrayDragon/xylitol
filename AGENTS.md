@@ -59,11 +59,11 @@
 
 ## Skills
 
-SDD 工作流见 `.agents/skills/llman-sdd-*`。架构与新增面相关：`write-surface`（新增应用面方法论）、`audit-dead-code`（死代码分诊）、`write-tui`（TUI 面改造）。
+SDD：`.agents/skills/llman-sdd-*`。应用面：`write-surface`、`audit-dead-code`、`write-tui`。TUI 五层自动验证：`test-tui-harness`。
 
 ## 指南更新放哪
 
 - 影响几乎所有任务的硬规则：本根文件。
-- 只影响某目录的规则：最近的子目录 `AGENTS.md`（如 `src/AGENTS.md`、`src/app/AGENTS.md`、`src/app/tui/AGENTS.md`）。
-- 流程性 how-to：`.agents/skills/<name>/SKILL.md`，并在对应 `AGENTS.md` 引用。
-- 更新要聚焦、有代码事实支撑。
+- 只影响某目录的**稳定边界**：最近的子目录 `AGENTS.md`（短、少变；易变 how-to 不堆这里）。
+- 流程性 how-to / harness 方法论：`.agents/skills/<name>/SKILL.md`，AGENTS 只留指针。
+- 更新要聚焦、有代码事实支撑；避免把进度清单、裁剪表、预想能力写进 AGENTS。

@@ -10,16 +10,12 @@
 
 **目标**：`packages/xylitol-tui` 作为通用 TUI 库已完成初步 port；下一步是裁剪/补 API，然后 **作废旧应用面实现**，基于本 package **从零设计** `src/app/tui/`（不继承旧 UI/UX）。
 
-**怎么工作**：每个任务一个 llman SDD 变更。测试走 c405 五层（见 `packages/xylitol-tui/AGENTS.md`）。pi 源：`../pi/packages/pi-tui`、`../kimi-code/packages/pi-tui`。
+**怎么工作**：每个任务一个 llman SDD 变更。TUI 验证走 `test-tui-harness` skill。pi 源：`../pi/packages/pi-tui`、`../kimi-code/packages/pi-tui`。
 
-**已定架构（写入 AGENTS，预想能力不写）**：
+**稳定边界 SSOT**（AGENTS 只写边界；how-to 在 skills）：
 
-- 引擎同步；产品面 host 驱动（`dispatch_input` / `try_render` / …）。
-- 异步事件合流在应用面；`TUI::start()` 仅 demo。
-- 样式 `Vec<String>`；主题闭包在包、语义 token 在应用面；流式业务缓冲在应用面。
-- 旧 `src/app/tui` 实现删除并占位，待重做。
-
-详细边界 SSOT：`packages/xylitol-tui/AGENTS.md`、`src/app/tui/AGENTS.md`、`write-tui` skill。
+- `packages/xylitol-tui/AGENTS.md`、`src/app/tui/AGENTS.md`
+- `write-tui`、`test-tui-harness` skills
 
 ---
 
@@ -68,7 +64,7 @@ git commit
 
 ## 四、测试
 
-见 `packages/xylitol-tui/AGENTS.md`（五层 + 终端矩阵）。时序禁止 `thread::sleep`。
+见 `test-tui-harness` skill（五层验证回路）。时序禁止 `thread::sleep`。
 
 ---
 
