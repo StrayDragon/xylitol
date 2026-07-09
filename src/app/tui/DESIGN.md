@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: Xylitol Terminal
-description: Minimal terminal design system for xylitol-tui — clean, copy-friendly, scrollback-native.
+description: Minimal terminal design system for the xylitol product TUI — clean, copy-friendly, scrollback-native.
 colors:
   on-surface: "#cdd6f4"
   muted: "#6c7086"
@@ -45,17 +45,24 @@ components:
     height: "{spacing.footer-rows}"
   editor-border:
     textColor: "{colors.muted}"
+  operation-zone:
+    # Editor top/bottom `─` borders mark the input/operation area (agent_demo / fig2).
+    border: "{components.editor-border}"
 ---
 
 # Design System — Xylitol Terminal
 
+> SSOT 路径：`src/app/tui/DESIGN.md`（产品面）。包 `packages/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本面。
+
 ## Overview
 
-**少 chrome、多内容、可复制。** 这是跑在用户已有终端模拟器里的 coding-agent 界面，不是仪表盘。
+**少 chrome、多内容、可复制。** 跑在用户已有终端模拟器里的 coding-agent 界面，不是仪表盘。
 
 对齐 pi interactive 的体感：对话进 scrollback，输入贴底，忙碌时一行 status，底部一行极简 footer。装饰、侧栏、常驻 debug、多行快捷键条默认都不要。
 
 情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
+
+参考实现锚点：`packages/xylitol-tui` 的 `agent_demo`（图 2 布局）≈ 产品 TUI 目标形态。
 
 ## Colors
 
@@ -72,7 +79,7 @@ components:
 
 不要为 header / debug / 多角色长标签再扩一套色。选中列表用 **reverse**，不必单独 `selection-bg` 面板底。
 
-包内组件收闭包主题；语义 → SGR 在 `src/app/tui/`。
+包内组件收闭包主题；语义 → SGR 在本目录 theme 层。
 
 ## Typography
 
@@ -86,14 +93,32 @@ components:
 
 段落间最多一空行。代码块：语法高亮即可，**无边框、无语言标签条、无树线装饰**。
 
+## Glyphs（应用层配置，不做字体探测）
+
+短前缀 glyph（用户 / 工具 / 状态等）由**应用面配置**选择，例如：
+
+| 配置档 | 用户 | 工具 | 说明 |
+|---|---|---|---|
+| `unicode`（默认意向） | `❯` | `⚙` | 好看；依赖用户终端字体 |
+| `ascii` | `>` | `*` | 最大兼容；复制也干净 |
+
+规则：
+
+1. **不做运行时字体/emoji 能力探测**，避免缠绕逻辑与假阳性。
+2. 用户显式配置（settings / 环境 / 启动项）切换档位即可。
+3. 包内组件不硬编码产品 glyph；由本面注入字符串或闭包。
+
+缺字体出现方块时：换 `ascii` 档或装字体——产品不自动猜。
+
 ## Layout
 
-默认栈（比 pi 再克制一点）：
+默认栈（对齐 `agent_demo` / 图 2）：
 
 ```
 transcript     全宽；全量历史 → 引擎滚入 scrollback
 status         0 或 1 行（仅 busy / retry / error）
-editor         贴底；选择器打开时替换此槽（showSelector）
+editor         贴底；上下 muted `─` 边框标出操作区
+               选择器打开时替换此槽（showSelector）
 footer         1 行 dim（cwd · model · 可选 context%）
 ```
 
@@ -106,59 +131,69 @@ footer         1 行 dim（cwd · model · 可选 context%）
 5. **无常驻多行 header**；需要会话名/路径时并进 footer，或 quiet 启动后省略。
 6. 命令面板 / 设置：**替换 editor 槽**，不要 blit 到内容顶部。
 7. 居中 `show_overlay` 只用于确认框等短交互。
+8. **保留 editor 上下边框**作为操作区边界（图 2）；不要为了「更扁」去掉这层分区提示。
 
 `spacing.*` 单位是 cell / 行。
 
 ## Elevation & Depth
 
-无阴影、无卡片。层次只靠：短前缀、dim/bold、reverse。分隔线能省则省；需要时用 muted 单行 `-`，不要双线框墙。
+无阴影、无卡片。层次靠：短前缀、dim/bold、reverse、以及 **editor 操作区边框**。不要双线框墙或装饰性 Unicode 表格线。
 
 ## Shapes
 
-无圆角。Editor 可用极简上下边（muted），或仅靠空行与 status 区分。`rounded.none = 0`。
+无圆角。Editor 使用 muted 上下 `─`（`Editor` 组件已有 `border_color`）。`rounded.none = 0`。
 
 ## Components
 
 ### Transcript（主内容）
 
-- 用户：短前缀 `❯ `（或主题等价 glyph）+ 正文。避免 `USER>` / `You` 长标签——复制时噪音大。
+- 用户：配置档短前缀 + 正文。避免 `USER>` / `You` 长标签。
 - 助手：正文直接出；不必每段加 `ASSISTANT>`。
-- 工具：一行 dim 摘要，例如 `⚙ read path` / `⚙ bash …`；详情进 scrollback 或展开，不默认堆多段。
 - System / 错误：短 dim 或 `error` 色一行。
-- Markdown：标题用 `#` 前缀字符（省 token、可复制）；列表用 `1.` / `-`；链接渲染为 `text (url)` 可复制形式。
+- Markdown：标题用 `#` 前缀字符；列表用 `1.` / `-`；链接渲染为 `text (url)` 可复制形式。
+
+### 可展开块（thinking / tool，对齐 pi）
+
+默认 **详略得当**：折叠时一行（或短摘要）；展开后显示完整 thinking / 工具输出。
+
+- 形态参考 pi interactive：`ExpandableText`-式块 + 快捷键切换（如 thinking toggle、tools expand）。
+- 实现落在**应用面**（transcript 子块），不是包内通用 Chat 组件。
+- **展开策略**（默认折叠哪些、是否记住、快捷键绑定、是否全局一键展开工具）→ **c450 接线后再单独讨论**；本文件只锁定「需要可展开」，不锁具体策略。
+
+折叠态仍须复制友好：摘要行本身可读，不要只有图标。
 
 ### status
 
-- idle：**不占行**（或与 footer 合并，不要空转 spinner）。
+- idle：**不占行**（不要空转 spinner）。
 - busy：一行 `spinner + 短词`（Working / Running tool / Retry…）。
 - 不放 turn 计数、耗时百分比、双列元数据。
 
-### editor
+### editor（操作区）
 
 - 多行草稿；反色假光标；默认隐藏硬件光标。
-- Ctrl+P / 设置等：pi `showSelector`——清空 editor 槽，放入 SelectList/SettingsList，Esc 还原。
+- **上下 `─` 边框保留**，明确「这里是输入/操作区」。
+- Ctrl+P / 设置等：替换 editor 槽为 `SelectList` / `SettingsList`，Esc 还原（已验证路径）。
 
 ### footer
 
-- 一行 dim：`cwd (branch) · model · context%` 一类；放不下就截断右侧。
+- 一行 dim：`cwd (branch) · model · context%`；放不下截断右侧。
 - 快捷键提示：默认不列清单；需要时 `/help` 或极短 `?`。
 
 ### overlay
 
-- 确认 / 扩展：居中短面板即可。
-- 不要把命令面板做成大仪表盘。
+- 确认等短交互：居中短面板 + `OverlayHandle`。
+- 不要把命令面板做成大仪表盘（命令面板走 editor 槽替换）。
 
 ## Token economy（复制友好）
 
-用户会把终端里的字贴回下一轮。因此：
-
 | Do | Don't |
 |---|---|
-| 短 glyph 前缀（`❯` `⚙`） | 长角色名每行重复 |
+| 短 glyph（配置档） | 长角色名每行重复 |
 | 表格用空格/tab 对齐纯文本 | Unicode 表格线、树连接符 |
 | 代码块只有高亮 | 边框、语言标签条、行号墙 |
-| 工具一行摘要 | 默认展开完整 JSON/diff |
-| footer 一行 | 底栏 3～5 行 debug + 快捷键墙 |
+| 工具/thinking 默认折叠摘要 | 默认倾倒完整 JSON/长链 |
+| footer 一行 + editor 边框分区 | 底栏 3～5 行 debug + 快捷键墙 |
+| 显式 glyph 配置 | 运行时字体探测 / emoji 嗅探 |
 
 ## Do's and Don'ts
 
@@ -166,6 +201,9 @@ footer         1 行 dim（cwd · model · 可选 context%）
 - Do 默认隐藏硬件光标；一屏一个 accent。
 - Do 选择器替换 editor 槽，保证贴底可见。
 - Do 忙碌才出 status；idle 让出垂直空间给对话。
+- Do 用 editor 边框标出操作区（对齐 agent_demo）。
+- Do glyph 走应用配置，不探测字体。
+- Do thinking/tool 可展开（策略另议）。
 - Don't 常驻 Plan / Tools / Files / 快捷键墙。
 - Don't 双栏、卡片、圆角、多字体、阴影。
 - Don't blit 弹层到内容绝对顶部。
