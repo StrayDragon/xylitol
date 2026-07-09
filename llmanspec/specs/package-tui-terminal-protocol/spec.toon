@@ -1,13 +1,15 @@
 kind: llman.sdd.spec
 name: "package-tui-terminal-protocol"
 purpose: "Terminal protocol negotiation for packages/xylitol-tui (Kitty / modifyOtherKeys / OSC)."
-valid_scope[2]: packages/xylitol-tui/,tests/
-requirements[4]{req_id,title,statement}:
+valid_scope[2]: "packages/xylitol-tui/",tests/
+requirements[6]{req_id,title,statement}:
   tp01,"kitty-protocol-probe","The CrosstermTerminal MUST probe for Kitty keyboard protocol support at start: it sends the Kitty progressive-enhancement query (CSI >7u to request flags then CSI ?u to pop the current state then CSI c as a device-attributes sentinel) and reads the response within a short bounded window. The probe is best-effort (route A: crossterm retains the input layer; xy does NOT read raw stdin bytes like pi does). On a non-zero flags response the terminal MUST call set_kitty_protocol_active(true) (the keys.rs global that switches key parsing to Kitty disambiguation mode) and disable modifyOtherKeys. On zero flags, a device-attributes response, or window timeout, the terminal MUST fall back to enable_modify_other_keys()."
   tp02,"kitty-flags-parser","The terminal layer MUST provide a pure parser parse_kitty_flags(seq) that maps a Kitty protocol response (CSI ?Nu where N is the negotiated flags) to a non-negative integer, returning None for non-matching sequences. The parser MUST distinguish a zero-flags response (terminal understood the query but supports no Kitty flags) from no response (timeout). This parser is unit-testable without a real terminal (c405 layer 1)."
   tp03,"modify-other-keys-fallback","The terminal MUST manage the xterm modifyOtherKeys resource as a fallback when Kitty keyboard protocol is not available: enable_modify_other_keys() sends CSI >4;2m (mode 2), disable_modify_other_keys() sends CSI >4;0m (reset). The terminal MUST NOT enable modifyOtherKeys when Kitty protocol is active (Kitty supersedes it). On stop(), the terminal MUST reset whichever protocol it enabled (send CSI <u to pop Kitty state if it was pushed, then CSI >4;0m to clear modifyOtherKeys)."
   tp04,"osc-title-and-progress","The Terminal trait MUST expose set_title(title) emitting OSC 0;title BEL (or OSC 2 equivalently) and set_progress(active) emitting OSC 9;4;3 for active and OSC 9;4;0 for clear (the xterm/conpty progress convention pi uses). The VirtualTerminal test double MUST record these calls (or no-op) without emitting real escapes. Unlike pi, xy does NOT run a 1-second keepalive interval for progress (the TUI clears progress on stop); a single emission per state change suffices."
-scenarios[10]{req_id,id,given,when,then}:
+  tp05,"color-scheme-pure-helpers","packages/xylitol-tui 的 terminal_colors MUST 提供纯函数：从 OSC11 背景 RGB 经相对亮度判定 Dark/Light、解析 COLORFGBG（bg>=7 为 Light）、以及按优先级合成多源探测结果；MUST NOT 要求真实 TTY 或事件循环即可单测。"
+  tp06,"color-scheme-priority",多源合成 MUST 按显式注入 > OSC11 亮度 > CSI 997 报告 > COLORFGBG > 默认 Dark 的优先级选择 TerminalColorScheme。
+scenarios[14]{req_id,id,given,when,then}:
   tp01,"kitty-query-sent-at-start",the CrosstermTerminal is started in a real terminal (PTY E2E via c405 layer 5a),the byte stream the terminal writes is captured,it contains the Kitty query sequence CSI >7u
   tp01,"kitty-activated-on-flags-response",the probe receives a CSI ?7u response within the window,set_kitty_protocol_active is called,is_kitty_protocol_active() returns true and modifyOtherKeys is not enabled
   tp01,"fallback-on-timeout",the probe window elapses with no Kitty response,the terminal falls back,enable_modify_other_keys sent (CSI >4;2m) and is_kitty_protocol_active() stays false
@@ -18,3 +20,7 @@ scenarios[10]{req_id,id,given,when,then}:
   tp03,"protocols-reset-on-stop",the terminal stops after having enabled either protocol,stop() is called,the write stream contains the Kitty pop (if pushed) and CSI >4;0m
   tp04,"title-set-via-osc",set_title is called with a string,the OSC sequence is written,the captured bytes contain OSC 0; (the title) BEL
   tp04,"progress-active-then-clear",set_progress(true) then set_progress(false) are called,both are written,the stream contains OSC 9;4;3 then OSC 9;4;0
+  tp05,"osc11-light-bg",背景 RGB 近白,scheme_from_background_rgb,返回 Light
+  tp05,"colorfgbg-light",COLORFGBG=0;15,parse_colorfgbg,返回 Light
+  tp05,"colorfgbg-dark",COLORFGBG=15;0,parse_colorfgbg,返回 Dark
+  tp06,"priority-osc11-over-env",COLORFGBG 指示 Dark 且 OSC11 为亮背景,resolve_terminal_color_scheme,返回 Light

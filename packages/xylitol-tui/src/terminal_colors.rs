@@ -110,6 +110,59 @@ pub fn parse_terminal_color_scheme_report(data: &str) -> Option<TerminalColorSch
     }
 }
 
+/// ITU-R BT.601 relative luminance in `[0.0, 1.0]`.
+pub fn relative_luminance(rgb: RgbColor) -> f64 {
+    (0.299 * f64::from(rgb.r) + 0.587 * f64::from(rgb.g) + 0.114 * f64::from(rgb.b)) / 255.0
+}
+
+/// Map a background RGB to Dark/Light via relative luminance (threshold 0.5).
+pub fn scheme_from_background_rgb(rgb: RgbColor) -> TerminalColorScheme {
+    if relative_luminance(rgb) >= 0.5 {
+        TerminalColorScheme::Light
+    } else {
+        TerminalColorScheme::Dark
+    }
+}
+
+/// Parse `COLORFGBG` (`fg;bg` ANSI indices). Background index ≥ 7 → Light.
+pub fn parse_colorfgbg(value: &str) -> Option<TerminalColorScheme> {
+    let bg = value.split(';').nth(1)?.trim().parse::<u8>().ok()?;
+    Some(if bg >= 7 {
+        TerminalColorScheme::Light
+    } else {
+        TerminalColorScheme::Dark
+    })
+}
+
+/// Inputs for multi-source theme resolution (demo / future host).
+#[derive(Debug, Clone, Default)]
+pub struct ThemeDetectSources<'a> {
+    /// Highest priority when set (harness / explicit override).
+    pub explicit: Option<TerminalColorScheme>,
+    pub osc11_background: Option<RgbColor>,
+    pub color_scheme_report: Option<TerminalColorScheme>,
+    pub colorfgbg: Option<&'a str>,
+}
+
+/// Resolve scheme: explicit > OSC11 luminance > CSI 997 > COLORFGBG > Dark.
+pub fn resolve_terminal_color_scheme(sources: ThemeDetectSources<'_>) -> TerminalColorScheme {
+    if let Some(s) = sources.explicit {
+        return s;
+    }
+    if let Some(rgb) = sources.osc11_background {
+        return scheme_from_background_rgb(rgb);
+    }
+    if let Some(s) = sources.color_scheme_report {
+        return s;
+    }
+    if let Some(raw) = sources.colorfgbg
+        && let Some(s) = parse_colorfgbg(raw)
+    {
+        return s;
+    }
+    TerminalColorScheme::Dark
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,5 +228,61 @@ mod tests {
             Some(TerminalColorScheme::Dark)
         ));
         assert!(parse_terminal_color_scheme_report("hello").is_none());
+    }
+
+    #[test]
+    fn luminance_and_scheme_from_rgb() {
+        assert!(
+            relative_luminance(RgbColor {
+                r: 255,
+                g: 255,
+                b: 255
+            }) >= 0.5
+        );
+        assert!(
+            relative_luminance(RgbColor {
+                r: 30,
+                g: 30,
+                b: 46
+            }) < 0.5
+        );
+        assert_eq!(
+            scheme_from_background_rgb(RgbColor {
+                r: 239,
+                g: 241,
+                b: 245
+            }),
+            TerminalColorScheme::Light
+        );
+        assert_eq!(
+            scheme_from_background_rgb(RgbColor {
+                r: 30,
+                g: 30,
+                b: 46
+            }),
+            TerminalColorScheme::Dark
+        );
+    }
+
+    #[test]
+    fn colorfgbg_parse() {
+        assert_eq!(parse_colorfgbg("0;15"), Some(TerminalColorScheme::Light));
+        assert_eq!(parse_colorfgbg("15;0"), Some(TerminalColorScheme::Dark));
+        assert!(parse_colorfgbg("broken").is_none());
+    }
+
+    #[test]
+    fn resolve_priority_osc11_over_env() {
+        let scheme = resolve_terminal_color_scheme(ThemeDetectSources {
+            explicit: None,
+            osc11_background: Some(RgbColor {
+                r: 255,
+                g: 255,
+                b: 255,
+            }),
+            color_scheme_report: None,
+            colorfgbg: Some("15;0"),
+        });
+        assert_eq!(scheme, TerminalColorScheme::Light);
     }
 }

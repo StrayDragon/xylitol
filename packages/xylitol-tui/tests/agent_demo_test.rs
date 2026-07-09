@@ -1387,6 +1387,43 @@ fn agent_demo_ctrl_g_external_editor_stub() {
 }
 
 #[test]
+fn agent_demo_theme_defaults_dark() {
+    let app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    assert!(
+        !app.theme_auto_for_test(),
+        "auto must be off unless env enables it"
+    );
+    assert_eq!(
+        app.theme_mode_for_test(),
+        xylitol_tui::TerminalColorScheme::Dark
+    );
+}
+
+#[test]
+fn agent_demo_theme_auto_osc11_light() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.set_theme_auto_for_test(true);
+    app.apply_theme_detect_for_test(Some("\x1b]11;#eff1f5\x07"), Some("15;0"), None);
+    assert_eq!(
+        app.theme_mode_for_test(),
+        xylitol_tui::TerminalColorScheme::Light,
+        "OSC11 light bg must win over dark COLORFGBG"
+    );
+}
+
+#[test]
+fn agent_demo_theme_auto_off_ignores_sources() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    assert!(!app.theme_auto_for_test());
+    app.apply_theme_detect_for_test(Some("\x1b]11;#ffffff\x07"), Some("0;15"), None);
+    assert_eq!(
+        app.theme_mode_for_test(),
+        xylitol_tui::TerminalColorScheme::Dark,
+        "without auto, probes must not flip theme"
+    );
+}
+
+#[test]
 fn agent_demo_session_tree_fork_stays_on_node_and_branches() {
     let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
     app.freeze_script_for_test();

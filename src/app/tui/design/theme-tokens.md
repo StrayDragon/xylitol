@@ -25,4 +25,15 @@ components:
 
 ## 默认意向
 
-Catppuccin Mocha 短色板；用户主题切换后置（c458 demo / 产品 chrome）。
+Catppuccin Mocha 短色板；**产品 MVP 固定暗色**。
+
+## Demo 扩展点（c458 · `agent_demo`）
+
+| 项 | 约定 |
+|---|---|
+| 默认 | `theme:dark`（未开 auto 时忽略 COLORFGBG / OSC11） |
+| 启用 | `XYLITOL_AGENT_DEMO_THEME_AUTO=1` 或 harness `set_theme_auto` |
+| 解析 | 包 `terminal_colors`：`resolve_terminal_color_scheme`（explicit > OSC11 亮度 > CSI 997 > COLORFGBG > Dark） |
+| 可见 | footer 含 `theme:dark` / `theme:light`；muted chrome 用 Mocha/Latte 真彩 |
+
+产品 host **MUST NOT** 因本 demo 默认打开自动切换。
