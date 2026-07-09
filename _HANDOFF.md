@@ -21,7 +21,7 @@
 
 - 边界：`packages/xylitol-tui/AGENTS.md`、`src/app/tui/AGENTS.md`、`src/AGENTS.md`、根 `AGENTS.md`
 - How-to：`write-tui`、`test-tui-harness`、`write-surface`
-- 视觉/UX：`src/app/tui/DESIGN.md`
+- 视觉/UX：`src/app/tui/DESIGN.md`（glyph 配置档、editor 操作区边框、thinking/tool 可展开；展开策略待议）
 
 **pi 源**：`../pi/packages/tui`（及 kimi-code 同源）
 
