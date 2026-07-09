@@ -71,8 +71,8 @@ Agent Edit 路径：优先 `DiffInput::from_edit_pair(old, new)`（或 `generate
 
 ## 布局 MUST
 
-1. 默认 **unified**（单栏）。
-2. 当终端宽度 ≥ `{spacing.diff-side-by-side-min-cols}`（默认 **100**）且调用方开启 side-by-side 时，可渲染左右对照；否则 MUST 回退 unified。
+1. **Edit 工具 / 默认**：**unified compact**（pi `±N content`）。产品 Edit 结果块 MUST 用此形态，**MUST NOT** 默认 side-by-side。
+2. Side-by-side：仅当调用方显式设置 `side_by_side_min_width` 且宽度达标时启用；列宽按**内容打包**（cap 半宽），**MUST NOT** 把左右栏强制拉满半屏造成大空洞。
 3. **MUST NOT** 使用 Unicode 表线 / 树连接符装饰；对齐用空格。
 4. 行宽按 `visible_width`（CJK/emoji）；超宽行 MUST 按 ANSI 感知宽度折行或截断策略与 Text/Markdown 一致，**MUST NOT** 按字节硬切。
 
