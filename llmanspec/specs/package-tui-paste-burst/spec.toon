@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
-name: "paste-burst"
-purpose: "TBD - created by archiving change c415-port-paste-burst. Update purpose after archive."
-valid_scope[2]: src/,tests/
+name: "package-tui-paste-burst"
+purpose: "PasteBurst detector for packages/xylitol-tui (non-bracketed paste Enter suppression)."
+valid_scope[2]: packages/xylitol-tui/,tests/
 requirements[3]{req_id,title,statement}:
   pb01,"paste-burst-detector","The TUI MUST provide a PasteBurst detector (pure state machine) that recognizes a non-bracketed paste burst: 8 or more plain characters arriving within 8ms of each other. The detector MUST expose on_plain_char(now) to feed character arrivals and should_insert_newline_instead_of_submit(now) to query whether an imminent Enter should insert a newline rather than submit. The detector MUST NOT buffer characters (the editor inserts text normally); it only decides the Enter behavior. Mirrors pi paste-burst.ts."
   pb02,"time-injected","PasteBurst methods MUST accept an Instant parameter (now) rather than reading wall-clock time internally so tests advance time deterministically via c405 MockClock without thread::sleep. The editor (future port) will pass clock.now() at each call site. This realizes c405 spec tt04 (timing-injectable-clock) for the paste-burst case."

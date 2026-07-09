@@ -96,7 +96,7 @@ pi `editor.ts` 缺失部分：
 - `packages/xylitol-tui/src/components/editor.rs`（重写，~1200 行）
 - `packages/xylitol-tui/src/lib.rs`（导出 `VisualLine`）
 - `packages/xylitol-tui/tests/editor_test.rs`（新建，~20 测试）
-- `llmanspec/specs/editor/spec.toon`（新建）
+- `llmanspec/changes/c425-port-editor-core/specs/package-tui-editor/spec.toon`（delta；归档后合并为 `package-tui-editor`）
 
 ## Non-goals
 

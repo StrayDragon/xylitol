@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
-name: "terminal-protocol"
-purpose: "TBD - created by archiving change c410-complete-terminal-protocol. Update purpose after archive."
-valid_scope[2]: src/,tests/
+name: "package-tui-terminal-protocol"
+purpose: "Terminal protocol negotiation for packages/xylitol-tui (Kitty / modifyOtherKeys / OSC)."
+valid_scope[2]: packages/xylitol-tui/,tests/
 requirements[4]{req_id,title,statement}:
   tp01,"kitty-protocol-probe","The CrosstermTerminal MUST probe for Kitty keyboard protocol support at start: it sends the Kitty progressive-enhancement query (CSI >7u to request flags then CSI ?u to pop the current state then CSI c as a device-attributes sentinel) and reads the response within a short bounded window. The probe is best-effort (route A: crossterm retains the input layer; xy does NOT read raw stdin bytes like pi does). On a non-zero flags response the terminal MUST call set_kitty_protocol_active(true) (the keys.rs global that switches key parsing to Kitty disambiguation mode) and disable modifyOtherKeys. On zero flags, a device-attributes response, or window timeout, the terminal MUST fall back to enable_modify_other_keys()."
   tp02,"kitty-flags-parser","The terminal layer MUST provide a pure parser parse_kitty_flags(seq) that maps a Kitty protocol response (CSI ?Nu where N is the negotiated flags) to a non-negative integer, returning None for non-matching sequences. The parser MUST distinguish a zero-flags response (terminal understood the query but supports no Kitty flags) from no response (timeout). This parser is unit-testable without a real terminal (c405 layer 1)."

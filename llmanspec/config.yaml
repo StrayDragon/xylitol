@@ -27,5 +27,6 @@ rules:
     - "Keep changes atomic: each change must be independently validatable and archivable."
     - "Prefer pluggable/configurable design: features beyond core agent loop + basic tools should be opt-in via config or feature flag, not hard-coded."
     - "Spec naming: spec directory names MUST be domain nouns describing WHAT the spec governs, not actions. Examples: runtime-config (not add-config), tool-system (not add-tools), agent-runtime (not add-agent-loop). Use hyphenated lowercase noun phrases."
+    - "packages/xylitol-tui capability specs MUST use the `package-tui-` directory/name prefix (e.g. package-tui-testing, package-tui-paste-burst). Product-surface TUI specs stay under `app-tui` (no package-tui- prefix). This keeps package specs migratable if xylitol-tui is split out."
   tasks:
     - "Break tasks into chunks of max 2 hours."
