@@ -925,10 +925,14 @@ fn agent_demo_diff_body_skips_tool_status_bg() {
         ToolBlockStatus::Success.rgb().1,
         ToolBlockStatus::Success.rgb().2,
     );
-    // SBS body row — must keep Diff coloring, not tool-success block tint.
+    // DESIGN.md diff-removed-bg / diff-added-bg
+    let removed_bg = Color::Rgb(0x2b, 0x1e, 0x24);
+    let added_bg = Color::Rgb(0x1e, 0x2b, 0x22);
     let height = h.tui.terminal.viewport().len();
     let top = h.tui.terminal.viewport_top_pub();
     let mut found_body = false;
+    let mut saw_removed_bg = false;
+    let mut saw_added_bg = false;
     for row in 0..height {
         let line = h.tui.terminal.viewport()[row].clone();
         if !(line.contains("Ready") && line.contains("Working")) {
@@ -942,11 +946,21 @@ fn agent_demo_diff_body_skips_tool_status_bg() {
                 cell.bg, success,
                 "diff body must not use tool-success-bg; cell({row},{col})={cell:?} line={line}"
             );
+            if cell.bg == removed_bg {
+                saw_removed_bg = true;
+            }
+            if cell.bg == added_bg {
+                saw_added_bg = true;
+            }
         }
     }
     assert!(
         found_body,
         "expected SBS Ready|Working body row in viewport"
+    );
+    assert!(
+        saw_removed_bg && saw_added_bg,
+        "SBS body should use Mocha diff row tints (removed={saw_removed_bg} added={saw_added_bg})"
     );
 }
 
