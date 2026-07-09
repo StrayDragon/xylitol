@@ -109,3 +109,25 @@ fn agent_demo_narrow_cjk_submit_flow_stays_within_width_budget() {
         .expect("submitting narrow CJK/emoji prompt must not overflow width");
     h.assert_text_contains("窄宽 CJK");
 }
+
+#[test]
+fn agent_demo_idle_ready_hides_spinner() {
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+
+    h.render_result().expect("initial render should succeed");
+    let text = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text.contains("Ready  |  last: waiting for prompt"),
+        "idle status line should show Ready without spinner; got:\n{text}"
+    );
+    for prefix in ["- Ready", "\\ Ready", "| Ready", "/ Ready"] {
+        assert!(
+            !text.contains(prefix),
+            "idle status line must hide spinner frame {prefix:?}; got:\n{text}"
+        );
+    }
+}

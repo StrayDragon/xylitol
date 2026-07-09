@@ -97,6 +97,7 @@ pub struct FakeCodingAgentApp {
     recent_tools: Vec<String>,
     footer_note: String,
     last_submitted: String,
+    status_text: String,
     scripted_turn: usize,
     auto_started: bool,
     last_tick_at: Instant,
@@ -232,6 +233,7 @@ impl FakeCodingAgentApp {
             recent_tools: vec!["read_file examples/agent_demo.rs".into()],
             footer_note: "Ctrl+P command palette  |  Ctrl+S settings  |  Ctrl+C quit".into(),
             last_submitted: String::new(),
+            status_text: "Ready".into(),
             scripted_turn: 0,
             auto_started: false,
             last_tick_at: Instant::now(),
@@ -295,6 +297,15 @@ impl FakeCodingAgentApp {
         self.advance_script();
     }
 
+    fn set_status(&mut self, text: impl Into<String>) {
+        self.status_text = text.into();
+        self.loader.set_message(self.status_text.clone());
+    }
+
+    fn spinner_active(&self) -> bool {
+        self.status_text != "Ready" || !self.pending_events.is_empty()
+    }
+
     fn advance_script(&mut self) {
         if let Some(event) = self.pending_events.pop_front() {
             self.apply_event(event);
@@ -333,13 +344,15 @@ impl FakeCodingAgentApp {
     fn apply_event(&mut self, event: ScriptEvent) {
         match event {
             ScriptEvent::Tool(text) => {
-                self.loader.set_message("Working".to_string());
+                self.set_status("Working");
                 self.recent_tools.insert(0, text.clone());
                 self.recent_tools.truncate(4);
                 self.push_entry(Role::Tool, text);
             }
             ScriptEvent::Assistant(text) => {
-                self.loader.set_message("Ready".to_string());
+                if self.pending_events.is_empty() {
+                    self.set_status("Ready");
+                }
                 self.push_entry(Role::Assistant, text);
             }
             ScriptEvent::MarkPlan(index) => {
@@ -353,7 +366,7 @@ impl FakeCodingAgentApp {
                 }
             }
             ScriptEvent::Status(text) => {
-                self.loader.set_message(text);
+                self.set_status(text);
             }
         }
     }
@@ -442,12 +455,15 @@ impl FakeCodingAgentApp {
     }
 
     fn status_line(&mut self, width: usize) -> String {
-        let activity = self
-            .loader
-            .render(width)
-            .into_iter()
-            .find(|line| !line.is_empty())
-            .unwrap_or_else(|| dim("Ready"));
+        let activity = if self.spinner_active() {
+            self.loader
+                .render(width)
+                .into_iter()
+                .find(|line| !line.is_empty())
+                .unwrap_or_else(|| dim(&self.status_text))
+        } else {
+            dim("Ready")
+        };
         let dynamic = if self.last_submitted.is_empty() {
             dim("last: waiting for prompt")
         } else {
@@ -669,7 +685,9 @@ impl Component for FakeCodingAgentApp {
     fn tick(&mut self) -> bool {
         let mut changed = false;
 
-        if self.last_tick_at.elapsed().as_millis() >= self.loader.interval_ms() as u128 {
+        if self.spinner_active()
+            && self.last_tick_at.elapsed().as_millis() >= self.loader.interval_ms() as u128
+        {
             self.loader.tick();
             self.last_tick_at = Instant::now();
             changed = true;
