@@ -23,8 +23,8 @@ pub use autocomplete::{
 pub use autocomplete_fd::{build_fd_path_query, walk_directory_with_fd};
 pub use clock::{Clock, MockClock, SystemClock};
 pub use components::cancellable_loader::CancellableLoader;
+pub use components::container::Container;
 pub use components::editor::{AutocompleteMode, Editor, EditorOptions, EditorTheme, VisualLine};
-pub use components::image::{Image, ImageOptions, ImageTheme};
 pub use components::input::Input;
 pub use components::loader::{Loader, LoaderIndicatorOptions};
 pub use components::markdown::{DefaultTextStyle, Markdown, MarkdownOptions, MarkdownTheme};
@@ -55,17 +55,10 @@ pub use terminal_colors::{
     RgbColor, TerminalColorScheme, is_osc11_background_color_response,
     parse_osc11_background_color, parse_terminal_color_scheme_report,
 };
-pub use terminal_image::{
-    CellDimensions, ImageDimensions, ImageProtocol, TerminalCapabilities,
-    calculate_image_cell_size, calculate_image_rows, delete_all_kitty_images, delete_kitty_image,
-    detect_capabilities, encode_iterm2, encode_kitty, get_capabilities, get_cell_dimensions,
-    get_gif_dimensions, get_image_dimensions, get_jpeg_dimensions, get_png_dimensions,
-    get_webp_dimensions, hyperlink, image_fallback, is_image_line, render_image,
-    reset_capabilities_cache, set_capabilities, set_cell_dimensions,
-};
+pub use terminal_image::{hyperlink, is_image_line};
 pub use tui::{
-    Component, Focusable, InputEvent, OverlayAnchor, OverlayMargin, OverlayOptions, RenderError,
-    SizeValue, TUI,
+    Component, Focusable, InputEvent, OverlayAnchor, OverlayHandle, OverlayMargin, OverlayOptions,
+    RenderError, SizeValue, TUI,
 };
 pub use utils::{
     ExtractedSegments, extract_ansi_code, extract_segments, is_punctuation_char,
