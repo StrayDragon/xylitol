@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "security-policy"
-purpose: "TBD - created by archiving change c50-add-security. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Security policy — permission system with tool-level gating, trust store, and approval workflows."
+valid_scope[4]: src/infra/permission/,src/infra/trust/,src/runtime_protocol/permission.rs,src/runtime_protocol/trust.rs
 requirements[19]{req_id,title,statement}:
   r1,"security-wrapper","SecurityToolWrapper MUST wrap XyTool (not adk_core::Tool) and MUST enforce approval policy before tool execution."
   r2,"tighten-only","System MUST only allow three-tier config overrides to tighten rules never to relax them."

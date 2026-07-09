@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "image-utils"
-purpose: "TBD - created by archiving change c130-add-image-utils. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Image processing — format detection, resize, orientation, and terminal rendering."
+valid_scope[1]: src/infra/image/
 requirements[4]{req_id,title,statement}:
   i1,"image-resize",System MUST provide resize_image() that scales images to fit within configurable max width/height/bytes while preserving aspect ratio.
   i2,"exif-orientation",System MUST apply EXIF orientation metadata when loading images and correct the pixel data accordingly.

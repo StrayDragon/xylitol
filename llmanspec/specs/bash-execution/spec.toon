@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "bash-execution"
-purpose: "TBD - created by archiving change c95-add-bash-executor. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Bash command execution via shell subprocess with streaming output and cancellation."
+valid_scope[2]: src/infra/bash_exec/,src/runtime_protocol/bash.rs
 requirements[9]{req_id,title,statement}:
   be1,"streaming-executor",System MUST provide BashExecutor that executes shell commands emitting output chunks via an on_chunk callback.
   be2,"abort-cancellation",BashExecutor MUST support cancellation that kills the whole process group and marks the result cancelled.

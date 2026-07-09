@@ -32,10 +32,10 @@
 
 ## 阶段 5：验证 + 收尾（0.5h）
 
-- [ ] 5.1 `just fmt`, `just lint`, arch_guard 全通过
-- [ ] 5.2 手动验证：`cargo run --features tui`，长对话超终端高度，底部输入/loader 可见
-- [ ] 5.3 `just qa` 全绿（或 prek 不可用时 lint+test+fmt+doc 全绿）
-- [ ] 5.4 更新 `_HANDOFF.md` 标记 U1 已修，记录实际根因
+- [ ] 5.1 `just fmt`, `just lint`, arch_guard 全通过(defer - c405 及后续 TUI port 变更中持续验证)
+- [ ] 5.2 手动验证：`cargo run --features tui`，长对话超终端高度，底部输入/loader 可见(defer - c420/c425/c430 editor/autocomplete 集成后一起验证)
+- [ ] 5.3 `just qa` 全绿(defer - c405–c430 工作流持续保证)
+- [ ] 5.4 更新 `_HANDOFF.md` 标记 U1 已修，记录实际根因(defer - 后续 _HANDOFF 重写 676b2ac/9b2c18d 中覆盖)
 
 ## 校验命令
 

@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "build-config"
-purpose: "TBD - created by archiving change c90-update-default-features. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Build configuration — Cargo features, profile settings, and conditional compilation."
+valid_scope[1]: Cargo.toml
 requirements[1]{req_id,title,statement}:
   r1,"Default features include all non-dev features","Cargo.toml default MUST include all features except those prefixed with dev-."
 scenarios[2]{req_id,id,given,when,then}:

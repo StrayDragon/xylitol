@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "fake-provider"
-purpose: "TBD - created by archiving change c27-add-fake-provider. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Fake and mock providers for deterministic testing of agent behavior."
+valid_scope[2]: src/infra/provider/fake.rs,src/infra/provider/mock.rs
 requirements[2]{req_id,title,statement}:
   r1,"fake-provider","System MUST implement FakeProvider that implements adk_core::Llm, returning predetermined responses configured via ScenarioStep sequences."
   r2,"scenario-orchestration","System MUST support orchestrating multi-step scenarios: text -> tool_call -> tool_result -> text, with configurable delays and error injection via ScenarioStep."

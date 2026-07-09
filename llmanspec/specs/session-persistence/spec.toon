@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "session-persistence"
 purpose: "Session persistence — JSONL file-based session storage with tree operations, compaction, fork, and CWD validation."
-valid_scope[1]: src
+valid_scope[1]: src/infra/session/
 requirements[28]{req_id,title,statement}:
   r1,"snapshot-ops",System MUST support snapshot restore spawn list prune diff and merge operations on immutable session snapshots.
   r2,compaction,System MUST automatically compact context when conversation token count exceeds configured window threshold.

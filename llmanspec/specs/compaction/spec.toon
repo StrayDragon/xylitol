@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: compaction
-purpose: "TBD - created by archiving change c05-rebuild-core. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Conversation compaction — n-gram cut detection, LLM summarization, and token estimation."
+valid_scope[2]: src/agent/compaction/,src/domain/compaction_config.rs
 requirements[15]{req_id,title,statement}:
   c1,token 估算使用统一 Usage,System MUST estimate context window usage from current messages using XyUsage and a configurable token estimator without defining a separate usage struct.
   c2,"should-compact",System MUST trigger compaction when estimated token usage exceeds a configurable threshold percentage of the context window.

@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "user-experience"
 purpose: "User experience — auth guidance messages, error messages, and startup diagnostics."
-valid_scope[1]: src
+valid_scope[2]: src/app/cli/logging.rs,src/domain/types.rs
 requirements[5]{req_id,title,statement}:
   ux0,placeholder,"System SHALL provide user-friendly guidance for common configuration issues."
   ux1,"login-help",System MUST provide get_provider_login_help that returns guidance referencing /login and doc paths.

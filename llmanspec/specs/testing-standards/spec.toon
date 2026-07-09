@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "testing-standards"
-purpose: "TBD - created by archiving change c235-fill-test-coverage. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Testing standards and conventions — test organization, harness requirements, and coverage expectations."
+valid_scope[2]: tests/,src/tests.rs
 requirements[4]{req_id,title,statement}:
   ts01,"BDD-vs-Unit 测试分界","The project MUST maintain a documented boundary: BDD scenarios cover end-to-end orchestration (agent loop, tool execution, session lifecycle, CLI CLI dispatch); unit tests cover pure algorithms, data structure contracts, component internal state machines, and error type behaviors. Tests MUST NOT duplicate coverage across the two layers."
   ts02,核心数据类型测试覆盖,"All types in domain/ (error, message, model, types) and runtime_protocol/ (model, tool, session, event, sandbox, bash, secret, resource, trust, export) MUST have #[cfg(test)] modules verifying: (1) serialization round-trip, (2) Display/From conversions, (3) constructor invariants."
