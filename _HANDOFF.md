@@ -1,8 +1,8 @@
 # _HANDOFF — xylitol-tui：pi-tui 完整 Rust 重写（交接给下一个 agent）
 
-> 最后更新：2026-07-08（c415 后）
-> 分支：`feat/tui-dev`，working tree clean
-> 最新 commit：`9495996 feat(tui): c415 paste-burst 移植`
+> 最后更新：2026-07-09（show_all/Markdown table 修复后）
+> 分支：`feat/tui-dev`，working tree dirty（含未提交 RenderError/Markdown table 修复）
+> 最新 commit：`13845c7 feat(tui): align exports + add show_all kitchen-sink demo`
 
 ---
 
@@ -10,11 +10,11 @@
 
 **目标**：把 `packages/xylitol-tui` 完整对齐 pi-tui（`kimi-code/packages/pi-tui`），**不考虑障碍，做好底层支持**。对齐后才替换 `src/app/tui/engine/`（路线 B）。
 
-**当前状态**：阶段 0-4 + c405/c410/c415 完成。**22/22 可移植模块已建，但 editor/autocomplete/stdin_buffer 有内容缺口**（见 §二）。
+**当前状态**：阶段 0-4 + c405/c410/c415/c420/c425/c430 已完成并入 commit；`show_all` kitchen-sink demo 已加入。**22/22 可移植模块已建，editor/autocomplete 已大幅补齐；stdin-buffer 走 crossterm 替代路线，不再移植独立模块**（见 §二）。
 
 **怎么工作**：每个移植任务 = 一个 llman SDD 变更（`/llman-sdd-propose` → apply → archive → commit）。测试走 c405 五层 harness（见 §四）。pi 源在 `../kimi-code/packages/pi-tui`。
 
-**下一步**：§二 的「待移植清单」，按依赖序从 stdin_buffer（6.5）→ editor（6.4，最大）推进。autocomplete（6.3）c420 已完成。
+**下一步**：复核 Markdown/Editor/overlay 细节 parity，补窄宽/emoji/真实终端 E2E；package 稳定后再进入 §五 的 src/app/tui 路线 B 对接。
 
 ---
 
@@ -22,12 +22,12 @@
 
 | 指标 | 数值 |
 |---|---|
-| 源码行数 | **10,650 行**（packages/xylitol-tui/src）|
-| 测试数 | **243 全绿**（xylitol-tui）；workspace 全绿 |
-| E2E | **6 实跑通过**（3 pty 含 kitty query + 2 tmux + bracketed paste）|
+| 源码行数 | **11,751 行**（packages/xylitol-tui/src）|
+| 测试数 | **246 全绿**（xylitol-tui，本轮新增满宽 diff + Markdown table 回归）|
+| E2E | **6 既有 E2E**（3 pty 含 kitty query + 2 tmux + bracketed paste）；本轮手动 tmux 108x40 验证 `show_all` |
 | clippy | `-p xylitol-tui --all-targets -D warnings` clean |
-| 已落地 spec | `tui-testing`(tt01-06) / `terminal-protocol`(tp01-04) / `paste-burst`(pb01-03) |
-| commit（重写起）| 19（`5c55d86`→`9495996`）|
+| 已落地 spec | `tui-testing`(tt01-06) / `terminal-protocol`(tp01-04) / `paste-burst`(pb01-03) / c420-c430 SDD artifacts |
+| commit（重写起）| 25（`5c55d86`→`13845c7`）|
 
 ### 已完成变更
 
@@ -37,9 +37,12 @@
 | **c405** | 五层 TUI 测试 harness | `451e8c4`/`0860818`/`3e9bc66` |
 | **c410** | terminal 协议（Kitty 探测 + modifyOtherKeys + OSC + drain）| `e7b0f8f` |
 | **c415** | paste-burst 移植 | `9495996` |
-| **c420** | autocomplete debounce + fd + CancellationToken | 待 commit |
-| **c425** | editor core VisualLine+stickyColumn+pageScroll+history+PasteBurst | 待 commit |
-| **c430** | editor autocomplete SelectList 集成 | 待 commit |
+| **c420** | autocomplete debounce + fd + CancellationToken | `5d977da` |
+| **c425** | editor core VisualLine+stickyColumn+pageScroll+history+PasteBurst | `af656b7` |
+| **c430** | editor autocomplete SelectList 集成 + SDD artifacts | `9b2c18d` |
+| stdin-buffer 决策 | 删除独立 stdin_buffer，采用 crossterm 事件解码 | `a21b829` |
+| show_all demo | 对齐导出 + 新增 kitchen-sink demo | `13845c7` |
+| 未提交修复 | render batch 临时关闭 DECAWM 自动换行；Markdown table 窄宽/表头/样式 cell 修复 | working tree |
 
 ---
 
@@ -51,13 +54,14 @@
 
 | 模块 | pi 行 | xy 行 | 缺口 | 状态 |
 |---|---:|---:|---|---|
-| **components/editor** | 2415 | 408 | -83% | ✅ c425 VL/sticky/PasteBurst + c430 autocomplete 集成 |
-| autocomplete | 912 | 534 | -41% | ✅ c420 补齐 async + fd + debounce |
-| stdin-buffer | 434 | 158 | -64% | ⏳ 6.5 待补 OSC/turbo |
-| tui | 1710 | 940 | -45% | ✅ doRender 核心完整 |
+| **components/editor** | 2415 | 1914 | -21% | ✅ c425 VL/sticky/PasteBurst/history + c430 autocomplete 集成；仍需细节 parity 复核 |
+| autocomplete | 912 | 802 | -12% | ✅ c420 补齐 async + fd + debounce |
+| stdin-buffer | 434 | 0 | — | ✅ 不移植独立模块；`a21b829` 删除，crossterm 负责 escape/bracketed paste/Kitty 事件 |
+| tui | 1710 | 942 | -45% | ✅ doRender 核心完整；未提交修复补 DECAWM 满宽行保护 |
 | keys | 1400 | 1163 | -17% | ✅ |
 | utils | 1214 | 1087 | -10% | ✅ |
 | terminal | 531 | 354 | -33% | ✅ c410 补齐协议，stdin 接入跳过 |
+| markdown | — | 1050 | — | ✅ 表格已支持窄宽约束；未提交修复补 `TableHead`/styled cell 解析 |
 | terminal-image | 488 | 529 | +8% | ✅ |
 | terminal-colors | 73 | 179 | +145% | ✅ |
 | 其余 12 模块 | — | — | — | ✅ 全部对齐或超出 |
@@ -129,6 +133,13 @@ git commit
 ## 六、commit 历史（重写期）
 
 ```
+UNCOMMITTED fix(tui): show_all/Markdown table 渲染修复 — DECAWM 满宽行保护；Markdown table 窄宽列宽、TableHead、styled cell 分离
+13845c7 feat(tui): align exports + add show_all kitchen-sink demo
+a21b829 chore(tui): remove stdin_buffer — crossterm handles all escape-sequence buffering
+9b2c18d docs(tui): c425+c430 SDD artifacts + _HANDOFF update — editor port complete
+af656b7 feat(tui): c425 port editor core — VisualLine+stickyColumn+pageScroll+PasteBurst+history refinement
+5d977da feat(tui): c420 port autocomplete — async+CancellationToken+fd递归+DebouncedAutocomplete
+676b2ac docs: 重写 _HANDOFF 为交接文档 — 面向接手 agent 的移植清单 + 测试约定
 9495996 feat(tui): c415 paste-burst 移植 — 非 bracketed paste 的 Enter 抑制检测器
 e7b0f8f feat(tui): c410 terminal 协议补齐 — Kitty 键盘协议探测 + modifyOtherKeys + OSC
 3e9bc66 fix(tui): viewport_snapshot 空行去尾随空格，避免 prek trailing-whitespace 冲突

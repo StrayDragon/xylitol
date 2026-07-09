@@ -62,15 +62,20 @@ fn build_fd_path_query_with_slash() {
     // Should contain the separator pattern [\\\\/] and the segments
     assert!(q.contains("src"), "expected 'src' in query: {q}");
     assert!(q.contains("utils"), "expected 'utils' in query: {q}");
-    assert!(q.contains("[\\\\/]"), "expected path separator pattern in query: {q}");
+    assert!(
+        q.contains("[\\\\/]"),
+        "expected path separator pattern in query: {q}"
+    );
 }
 
 #[test]
 fn build_fd_path_query_escapes_special_chars() {
     let q = build_fd_path_query("src/utils.rs");
     // The dot should be escaped
-    assert!(q.contains("utils\\.rs") || !q.contains("utils.rs"),
-        "expected dot escaped or query=raw");
+    assert!(
+        q.contains("utils\\.rs") || !q.contains("utils.rs"),
+        "expected dot escaped or query=raw"
+    );
 }
 
 #[test]
@@ -117,19 +122,13 @@ fn fd_cancellation_kills_subprocess() {
     let ct = CancellationToken::new();
     ct.cancel();
     let results = walk_directory_with_fd(&base, "fd", ".", 100, ct);
-    assert!(
-        results.is_empty(),
-        "cancelled query should return empty"
-    );
+    assert!(results.is_empty(), "cancelled query should return empty");
 }
 
 #[test]
 fn fd_path_none_fallback() {
     let dir = make_temp_dir_with_files();
-    let p = CombinedAutocompleteProvider::new(
-        vec![],
-        dir.path().to_path_buf(),
-    );
+    let p = CombinedAutocompleteProvider::new(vec![], dir.path().to_path_buf());
     let lines = vec!["@mod".to_string()];
     let res = p.get_suggestions(&lines, 0, 4, false);
     // Without fd_path, should use non-recursive read_dir (no fd subprocess)
@@ -148,10 +147,11 @@ fn async_get_suggestions_with_fd() {
     let p = provider_with_fd(dir.path().to_path_buf());
     let lines = vec!["@Car".to_string()];
     let ct = CancellationToken::new();
-    let res = rt.block_on(async {
-        p.get_suggestions_async(&lines, 0, 4, false, ct).await
-    });
-    assert!(res.is_some(), "async fuzzy with fd should return suggestions");
+    let res = rt.block_on(async { p.get_suggestions_async(&lines, 0, 4, false, ct).await });
+    assert!(
+        res.is_some(),
+        "async fuzzy with fd should return suggestions"
+    );
 }
 
 // ── ac01: cancellation ─────────────────────────────────────────────────────
@@ -168,9 +168,7 @@ fn async_get_suggestions_respects_cancellation() {
     let lines = vec!["@Car".to_string()];
     let ct = CancellationToken::new();
     ct.cancel();
-    let res = rt.block_on(async {
-        p.get_suggestions_async(&lines, 0, 4, false, ct).await
-    });
+    let res = rt.block_on(async { p.get_suggestions_async(&lines, 0, 4, false, ct).await });
     // When cancelled before the query, should return None immediately
     // (the sync fallback in get_suggestions_async would still run if we
     // weren't checking ct before the fuzzy call)
@@ -198,9 +196,7 @@ async fn debounce_drops_intermediate_calls() {
     tokio::time::advance(Duration::from_millis(250)).await;
 
     let ct2 = CancellationToken::new();
-    let res = debounced
-        .get_suggestions(&lines, 0, 4, false, ct2)
-        .await;
+    let res = debounced.get_suggestions(&lines, 0, 4, false, ct2).await;
     // Should complete (doesn't panic/crash on cancelled previous)
     assert!(res.is_some() || res.is_none());
 }
@@ -250,10 +246,7 @@ async fn debounce_cancellation_by_upstream_ct() {
     // Cancel upstream token immediately
     ct.cancel();
     let res = debounced.get_suggestions(&lines, 0, 4, false, ct).await;
-    assert!(
-        res.is_none(),
-        "cancelled debounce should return None"
-    );
+    assert!(res.is_none(), "cancelled debounce should return None");
 }
 
 // ── sync regression ────────────────────────────────────────────────────────

@@ -88,7 +88,11 @@ impl CombinedAutocompleteProvider {
             .into_iter()
             .map(|c| (c.name, c.description.unwrap_or_default()))
             .collect();
-        Self { commands: names, base_path, fd_path: None }
+        Self {
+            commands: names,
+            base_path,
+            fd_path: None,
+        }
     }
 
     pub fn new_with_fd(commands: Vec<SlashCommand>, base_path: PathBuf, fd_path: String) -> Self {
@@ -96,7 +100,11 @@ impl CombinedAutocompleteProvider {
             .into_iter()
             .map(|c| (c.name, c.description.unwrap_or_default()))
             .collect();
-        Self { commands: names, base_path, fd_path: Some(fd_path) }
+        Self {
+            commands: names,
+            base_path,
+            fd_path: Some(fd_path),
+        }
     }
 }
 
@@ -250,11 +258,16 @@ impl CombinedAutocompleteProvider {
         // @ file attachments — async fuzzy with fd
         if let Some(prefix) = self.extract_at_prefix(before_cursor) {
             let (_raw, _is_at, is_quoted) = parse_path_prefix(&prefix);
-            let suggestions = self.get_fuzzy_file_suggestions_async(&prefix, is_quoted, ct).await;
+            let suggestions = self
+                .get_fuzzy_file_suggestions_async(&prefix, is_quoted, ct)
+                .await;
             if suggestions.is_empty() {
                 return None;
             }
-            return Some(AutocompleteSuggestions { items: suggestions, prefix });
+            return Some(AutocompleteSuggestions {
+                items: suggestions,
+                prefix,
+            });
         }
 
         // Slash commands — sync (no I/O)
@@ -270,14 +283,21 @@ impl CombinedAutocompleteProvider {
                         Some(AutocompleteItem {
                             value: name.clone(),
                             label: name.clone(),
-                            description: if desc.is_empty() { None } else { Some(desc.clone()) },
+                            description: if desc.is_empty() {
+                                None
+                            } else {
+                                Some(desc.clone())
+                            },
                         })
                     })
                     .collect();
                 if items.is_empty() {
                     return None;
                 }
-                return Some(AutocompleteSuggestions { items, prefix: before_cursor.to_string() });
+                return Some(AutocompleteSuggestions {
+                    items,
+                    prefix: before_cursor.to_string(),
+                });
             }
             return None;
         }
@@ -288,7 +308,10 @@ impl CombinedAutocompleteProvider {
             if suggestions.is_empty() {
                 return None;
             }
-            return Some(AutocompleteSuggestions { items: suggestions, prefix: path_match });
+            return Some(AutocompleteSuggestions {
+                items: suggestions,
+                prefix: path_match,
+            });
         }
 
         None
@@ -340,9 +363,7 @@ impl CombinedAutocompleteProvider {
                         path.to_string()
                     };
                     AutocompleteItem {
-                        value: build_completion_value(
-                            &completion_path, is_dir, is_at, is_quoted,
-                        ),
+                        value: build_completion_value(&completion_path, is_dir, is_at, is_quoted),
                         label: format!("{}{}", file_name, if is_dir { "/" } else { "" }),
                         description: Some(to_display_path(&completion_path)),
                     }
@@ -413,7 +434,11 @@ pub struct DebouncedAutocomplete {
 
 impl DebouncedAutocomplete {
     pub fn new(provider: CombinedAutocompleteProvider, delay: Duration) -> Self {
-        Self { provider, delay, last_token: None }
+        Self {
+            provider,
+            delay,
+            last_token: None,
+        }
     }
 
     /// Debounced async autocomplete. Cancels any in-flight query, waits
