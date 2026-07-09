@@ -13,7 +13,7 @@ requirements[34]{req_id,title,statement}:
   a8,"session-persistence","AgentSession MUST auto-persist messages to SessionManager after each turn and after tool execution."
   a9,"prompt-construction","AgentSession MUST construct the full messages array: system prompt + context files + history + user prompt, prepended per turn."
   a10,"bdd-agent",BDD tests under tests/features/agent.feature MUST all pass.
-  a21,"prompt-template","System MUST support forward-slash template colon name args syntax with positional arg substitution and all-args placeholder and default-value syntax."
+  a21,"agent-prompt","System MUST support forward-slash template colon name args syntax with positional arg substitution and all-args placeholder and default-value syntax."
   a22,"template-loader","System MUST load md files as prompt templates from global and project dot-xylitol-prompts directories and CLI-specified paths. Frontmatter provides description."
   a23,"slash-commands","AgentSession MUST expose get_commands returning builtin commands including model compact session fork stats export new resume plus extension-registered commands."
   a24,"command-dispatch","AgentSession prompt MUST intercept forward-slash prefix input dispatching to command handler or template expander before sending to LLM."

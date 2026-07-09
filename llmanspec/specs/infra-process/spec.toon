@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "process-mgmt"
+name: "infra-process"
 purpose: "Shell process management — child process spawning, process groups, and cancellation."
 valid_scope[2]: src/infra/process/,src/runtime_protocol/bash.rs
 requirements[4]{req_id,title,statement}:

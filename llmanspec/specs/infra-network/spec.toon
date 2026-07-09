@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "network-config"
+name: "infra-network"
 purpose: "Network configuration — HTTP proxy settings, idle timeouts, and dispatcher configuration."
 valid_scope[2]: src/infra/config/,src/infra/settings/
 requirements[6]{req_id,title,statement}:
