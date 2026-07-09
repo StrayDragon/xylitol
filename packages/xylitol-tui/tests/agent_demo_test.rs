@@ -34,7 +34,7 @@ fn agent_demo_submit_flow_streams_reply_after_ticks() {
 
     h.render_result().expect("initial render should succeed");
     h.keys("\r");
-    for _ in 0..48 {
+    for _ in 0..200 {
         h.tick();
         h.render_result()
             .expect("streaming scripted turn must stay within width budget");
@@ -145,7 +145,7 @@ fn agent_demo_selector_stays_visible_after_long_transcript() {
     // Grow transcript past the viewport via scripted ticks, then open palette.
     h.render_result().expect("initial render should succeed");
     h.keys("\r");
-    for _ in 0..48 {
+    for _ in 0..200 {
         h.tick();
         h.render_result()
             .expect("streaming must stay within width budget");
@@ -212,7 +212,7 @@ fn agent_demo_default_hides_hardware_cursor_during_stream() {
 
     h.render_result().expect("initial render should succeed");
     h.keys("\r");
-    for _ in 0..24 {
+    for _ in 0..80 {
         h.tick();
         h.render_result()
             .expect("streaming frames must stay within width budget");
@@ -255,8 +255,12 @@ fn agent_demo_layout_is_minimal_single_column() {
         "user messages use a short glyph prefix; got:\n{text}"
     );
     assert!(
-        text.contains("thinking") && text.contains("Ctrl+T"),
+        text.contains("thinking"),
         "seed transcript should include a collapsed thinking block; got:\n{text}"
+    );
+    assert!(
+        text.contains("^P") && text.contains("^S") && text.contains("keys:"),
+        "seed should teach palette/settings keys without a permanent chrome wall; got:\n{text}"
     );
 }
 
@@ -271,8 +275,8 @@ fn agent_demo_ctrl_t_expands_thinking_block() {
     h.render_result().expect("initial render should succeed");
     let before = h.tui.terminal.viewport().join("\n");
     assert!(
-        before.contains("Ctrl+T expand"),
-        "thinking starts collapsed; got:\n{before}"
+        before.contains("thinking"),
+        "thinking starts present; got:\n{before}"
     );
     assert!(
         !before.contains("Keep transcript in scrollback"),
@@ -287,10 +291,6 @@ fn agent_demo_ctrl_t_expands_thinking_block() {
         after.contains("Keep transcript in scrollback"),
         "Ctrl+T should expand thinking body; got:\n{after}"
     );
-    assert!(
-        after.contains("Ctrl+T collapse"),
-        "expanded header should offer collapse; got:\n{after}"
-    );
 }
 
 #[test]
@@ -304,7 +304,7 @@ fn agent_demo_ctrl_e_expands_tool_block() {
     h.render_result().expect("initial render should succeed");
     let before = h.tui.terminal.viewport().join("\n");
     assert!(
-        before.contains("agent_demo.rs") && before.contains("Ctrl+E expand"),
+        before.contains("agent_demo.rs"),
         "seed tool block starts collapsed; got:\n{before}"
     );
     assert!(
@@ -337,10 +337,9 @@ fn agent_demo_ctrl_g_cycles_glyph_set_to_ascii() {
         .expect("glyph cycle must stay within width");
     let text = h.tui.terminal.viewport().join("\n");
     assert!(
-        text.contains("glyphs:ascii"),
-        "Ctrl+G should switch to ascii glyph set; got:\n{text}"
+        text.contains("ascii") && text.contains("^P/^S"),
+        "Ctrl+G should switch glyph set and footer should keep palette/settings cues; got:\n{text}"
     );
-    // New user/system lines use ascii; historical unicode lines may remain.
     assert!(
         text.contains("glyph_set=ascii"),
         "system note should confirm the switch; got:\n{text}"
