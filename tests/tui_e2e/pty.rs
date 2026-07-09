@@ -245,3 +245,63 @@ fn pty_agent_demo_submit_flow_survives_enter() {
         "submit flow should remain visible after Enter; got:\n{text}"
     );
 }
+
+#[test]
+#[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e`"]
+fn pty_agent_demo_command_palette_smoke() {
+    let mut session = PtySession::spawn_demo(172, 40).expect("spawn agent_demo");
+    session
+        .wait_for("fake coding agent demo", Duration::from_secs(60), 172, 40)
+        .expect("agent_demo should render");
+    session.send_keys("\x10").expect("open command palette");
+    let screen = session
+        .wait_for("Command Palette", Duration::from_secs(10), 172, 40)
+        .expect("command palette should appear");
+    let text = screen.text();
+    assert!(
+        text.contains("Run regression tests"),
+        "command palette content should be visible; got:\n{text}"
+    );
+}
+
+#[test]
+#[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e`"]
+fn pty_agent_demo_settings_overlay_smoke() {
+    let mut session = PtySession::spawn_demo(172, 40).expect("spawn agent_demo");
+    session
+        .wait_for("fake coding agent demo", Duration::from_secs(60), 172, 40)
+        .expect("agent_demo should render");
+    session.send_keys("\x13").expect("open settings overlay");
+    let screen = session
+        .wait_for("Session Settings", Duration::from_secs(10), 172, 40)
+        .expect("settings overlay should appear");
+    let text = screen.text();
+    assert!(
+        text.contains("Approval"),
+        "settings overlay content should be visible; got:\n{text}"
+    );
+}
+
+#[test]
+#[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e`"]
+fn pty_agent_demo_narrow_cjk_submit_flow_survives_enter() {
+    let mut session = PtySession::spawn_example("agent_demo", 96, 32).expect("spawn agent_demo");
+    session
+        .wait_for("fake coding agent demo", Duration::from_secs(60), 96, 32)
+        .expect("agent_demo should render");
+    session
+        .send_keys("\x15把命令面板和设置面板的窄宽 CJK 回归补齐 🙂")
+        .expect("replace editor text with narrow CJK prompt");
+    session.send_keys("\r").expect("submit editor input");
+    session.drain(Duration::from_millis(500));
+    let screen = session.screen(96, 32);
+    let text = screen.text();
+    assert!(
+        !text.trim().is_empty(),
+        "screen must remain populated after narrow submit flow"
+    );
+    assert!(
+        text.contains("窄宽 CJK") || text.contains("Running rg and cargo test"),
+        "narrow submit flow should remain visible after Enter; got:\n{text}"
+    );
+}

@@ -193,3 +193,58 @@ fn tmux_agent_demo_cjk_submit_flow_survives_enter() {
         .expect("submitted CJK text should appear in captured pane");
     assert!(!screen.trim().is_empty());
 }
+
+#[test]
+#[ignore = "E2E: needs tmux; run via `just test-tui-e2e`"]
+fn tmux_agent_demo_command_palette_smoke() {
+    require_tmux!();
+    let session = TmuxSession::spawn_demo(172, 40).expect("spawn tmux session");
+    session
+        .wait_for("fake coding agent demo", Duration::from_secs(60))
+        .expect("agent_demo should render");
+    session.send(&["C-p"]).expect("open command palette");
+    let screen = session
+        .wait_for("Command Palette", Duration::from_secs(10))
+        .expect("command palette should appear");
+    assert!(
+        screen.contains("Run regression tests"),
+        "command palette content should be visible; got:\n{screen}"
+    );
+}
+
+#[test]
+#[ignore = "E2E: needs tmux; run via `just test-tui-e2e`"]
+fn tmux_agent_demo_settings_overlay_smoke() {
+    require_tmux!();
+    let session = TmuxSession::spawn_demo(172, 40).expect("spawn tmux session");
+    session
+        .wait_for("fake coding agent demo", Duration::from_secs(60))
+        .expect("agent_demo should render");
+    session.send(&["C-s"]).expect("open settings overlay");
+    let screen = session
+        .wait_for("Session Settings", Duration::from_secs(10))
+        .expect("settings overlay should appear");
+    assert!(
+        screen.contains("Approval"),
+        "settings overlay content should be visible; got:\n{screen}"
+    );
+}
+
+#[test]
+#[ignore = "E2E: needs tmux; run via `just test-tui-e2e`"]
+fn tmux_agent_demo_narrow_cjk_submit_flow_survives_enter() {
+    require_tmux!();
+    let session = TmuxSession::spawn_demo(96, 32).expect("spawn tmux session");
+    session
+        .wait_for("fake coding agent demo", Duration::from_secs(60))
+        .expect("agent_demo should render");
+    session.send(&["C-u"]).expect("clear editor line");
+    session
+        .send_text("把命令面板和设置面板的窄宽 CJK 回归补齐 🙂")
+        .expect("send narrow CJK text");
+    session.send(&["Enter"]).expect("submit");
+    let screen = session
+        .wait_for("窄宽 CJK", Duration::from_secs(10))
+        .expect("submitted narrow CJK text should appear in captured pane");
+    assert!(!screen.trim().is_empty());
+}
