@@ -595,6 +595,7 @@ impl std::ops::Deref for LoggingVirtualTerminal {
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use xylitol_tui::RenderError;
 use xylitol_tui::TUI;
 use xylitol_tui::tui::Component;
 
@@ -675,9 +676,19 @@ impl TuiTestHarness {
 
     /// Render one frame (no throttle).
     pub fn render(&mut self) -> &mut Self {
-        self.tui
-            .render_frame()
-            .expect("render_frame failed in test");
+        self.render_result().expect("render_frame failed in test")
+    }
+
+    /// Render one frame and return the engine result so acceptance tests can
+    /// assert "no RenderError" on a real flow without forcing an immediate panic.
+    pub fn render_result(&mut self) -> Result<&mut Self, RenderError> {
+        self.tui.render_frame()?;
+        Ok(self)
+    }
+
+    /// Advance the harness through one idle tick without injecting input.
+    pub fn tick(&mut self) -> &mut Self {
+        self.tui.idle_tick();
         self
     }
 

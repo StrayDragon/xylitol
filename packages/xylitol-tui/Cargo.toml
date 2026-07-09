@@ -24,13 +24,5 @@ proptest = "1"
 tempfile = "3"
 
 [[example]]
-name = "demo"
-path = "examples/demo.rs"
-
-[[example]]
 name = "agent_demo"
 path = "examples/agent_demo.rs"
-
-[[example]]
-name = "show_all"
-path = "examples/show_all.rs"

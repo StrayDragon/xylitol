@@ -278,10 +278,9 @@ impl<T: Terminal> TUI<T> {
                     _ => {}
                 }
             } else {
-                // Idle tick: advance animated components (spinner). If any wants
-                // a repaint, drive a frame. This is how the Loader self-animates
-                // without each component owning its own timer.
-                let wants_render = self.components.iter_mut().any(|c| c.tick());
+                // Idle tick: advance animated or scripted components. If any
+                // wants a repaint, drive a frame.
+                let wants_render = self.idle_tick();
                 if wants_render {
                     self.do_render()?;
                 }
@@ -382,6 +381,19 @@ impl<T: Terminal> TUI<T> {
             let input = data.to_string();
             self.components[idx].handle_input(&input);
         }
+    }
+
+    /// Advance time-driven component state once without reading input.
+    ///
+    /// Host-driven loops and test harnesses can call this to exercise the same
+    /// idle path that `start()` uses for spinner/script progress.
+    pub fn idle_tick(&mut self) -> bool {
+        let mut changed = self.components.iter_mut().any(|c| c.tick());
+        changed |= self
+            .overlays
+            .iter_mut()
+            .any(|(component, _, _)| component.tick());
+        changed
     }
 
     fn handle_input(&mut self, data: &str) {

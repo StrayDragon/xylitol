@@ -1,6 +1,6 @@
 # _HANDOFF — xylitol-tui：pi-tui 完整 Rust 重写（交接给下一个 agent）
 
-> 最后更新：2026-07-09（show_all/Markdown table 修复后）
+> 最后更新：2026-07-09（examples 收敛为 agent_demo，支持矩阵明确后）
 > 分支：`feat/tui-dev`，working tree dirty（含未提交 RenderError/Markdown table 修复）
 > 最新 commit：`13845c7 feat(tui): align exports + add show_all kitchen-sink demo`
 
@@ -10,11 +10,11 @@
 
 **目标**：把 `packages/xylitol-tui` 完整对齐 pi-tui（`kimi-code/packages/pi-tui`），**不考虑障碍，做好底层支持**。对齐后才替换 `src/app/tui/engine/`（路线 B）。
 
-**当前状态**：阶段 0-4 + c405/c410/c415/c420/c425/c430 已完成并入 commit；`show_all` kitchen-sink demo 已加入。**22/22 可移植模块已建，editor/autocomplete 已大幅补齐；stdin-buffer 走 crossterm 替代路线，不再移植独立模块**（见 §二）。
+**当前状态**：阶段 0-4 + c405/c410/c415/c420/c425/c430 已完成并入 commit；examples 正收敛为单一 `agent_demo` fake coding-agent 主场景。**22/22 可移植模块已建，editor/autocomplete 已大幅补齐；stdin-buffer 走 crossterm 替代路线，不再移植独立模块**（见 §二）。
 
 **怎么工作**：每个移植任务 = 一个 llman SDD 变更（`/llman-sdd-propose` → apply → archive → commit）。测试走 c405 五层 harness（见 §四）。pi 源在 `../kimi-code/packages/pi-tui`。
 
-**下一步**：复核 Markdown/Editor/overlay 细节 parity，补窄宽/emoji/真实终端 E2E；package 稳定后再进入 §五 的 src/app/tui 路线 B 对接。
+**下一步**：复核 Markdown/Editor/overlay 细节 parity，补窄宽/emoji/真实终端 E2E；以 `agent_demo` 为唯一 example surface 稳定后再进入 §五 的 src/app/tui 路线 B 对接。
 
 ---
 
@@ -24,7 +24,7 @@
 |---|---|
 | 源码行数 | **11,751 行**（packages/xylitol-tui/src）|
 | 测试数 | **246 全绿**（xylitol-tui，本轮新增满宽 diff + Markdown table 回归）|
-| E2E | **6 既有 E2E**（3 pty 含 kitty query + 2 tmux + bracketed paste）；本轮手动 tmux 108x40 验证 `show_all` |
+| E2E | **6+ E2E**（PTY/tmux 围绕 `agent_demo` 主场景；协议 smoke 仍保留 kitty query + bracketed paste） |
 | clippy | `-p xylitol-tui --all-targets -D warnings` clean |
 | 已落地 spec | `tui-testing`(tt01-06) / `terminal-protocol`(tp01-04) / `paste-burst`(pb01-03) / c420-c430 SDD artifacts |
 | commit（重写起）| 25（`5c55d86`→`13845c7`）|
@@ -41,7 +41,7 @@
 | **c425** | editor core VisualLine+stickyColumn+pageScroll+history+PasteBurst | `af656b7` |
 | **c430** | editor autocomplete SelectList 集成 + SDD artifacts | `9b2c18d` |
 | stdin-buffer 决策 | 删除独立 stdin_buffer，采用 crossterm 事件解码 | `a21b829` |
-| show_all demo | 对齐导出 + 新增 kitchen-sink demo | `13845c7` |
+| examples 收敛 | 移除 `demo/showcase/show_all`，改成单一 `agent_demo` fake coding-agent 场景 | working tree |
 | 未提交修复 | render batch 临时关闭 DECAWM 自动换行；Markdown table 窄宽/表头/样式 cell 修复 | working tree |
 
 ---
@@ -109,6 +109,14 @@ git commit
 | 4. proptest | 随机按键 + 不变量 | 状态机崩溃边界 | `tests/property_test.rs` | editor 移植后加不变量 |
 | 5a. E2E 主力 | portable-pty + `CapturedScreen` | crossterm 真 PTY | `tests/tui_e2e.rs` + `tests/tui_e2e/pty.rs` | 启动序列/协议验证 |
 | 5b. 真终端冒烟 | tmux 手写 wrapper | 真 SGR 颜色 | `tests/tui_e2e/tmux.rs` | 颜色回归（`#[ignore]`）|
+
+## 终端支持矩阵（当前决策）
+
+- **主支持目标**：`foot`、`wezterm`、`ghostty`、`alacritty`、`kitty`、`tmux`
+- **默认依赖**：基础输入/Resize/Paste 交给 `crossterm`
+- **保留增强**：Kitty keyboard enhancement、`modifyOtherKeys` fallback、bracketed paste、少量 OSC
+- **暂缓/可裁剪**：iTerm2/Kitty 图片协议、macOS 专属输入归一化、展示型终端特化
+- **判断原则**：先排除布局和宽度预算问题，再判断是否真的是终端协议问题
 
 **关键约定**：
 - 1-4 层：`cargo test -p xylitol-tui`（快、in-process）

@@ -23,7 +23,15 @@
 
 ### E2E（第 5 层）
 
-在 workspace 顶层 `tests/tui_e2e/`（非本 package）。spawn 本 package 的 `demo` example（解耦 LLM provider），验证 crossterm 真 PTY 行为 + tmux 真终端兼容性。全部 `#[ignore]`，经 `just test-tui-e2e` 跑。
+在 workspace 顶层 `tests/tui_e2e/`（非本 package）。spawn 本 package 的 `agent_demo` example（单一 fake coding-agent 主场景，避免 kitchen-sink surface 漂移），验证 crossterm 真 PTY 行为 + tmux 真终端兼容性。全部 `#[ignore]`，经 `just test-tui-e2e` 跑。
+
+## 终端支持矩阵（当前策略）
+
+- **主支持面**：Linux / xterm-compatible 终端，优先覆盖 `foot`、`wezterm`、`ghostty`、`alacritty`、`kitty`、`tmux`。
+- **输入/Resize/Paste 基线**：默认依赖 `crossterm`，不要在 package 层重复实现基础终端抽象。
+- **保留的增强调协**：Kitty keyboard enhancement / `modifyOtherKeys` fallback / bracketed paste / OSC 标题与进度。这些能力集中在 `terminal.rs`，不向组件层泄漏。
+- **暂缓或可裁剪项**：iTerm2/Kitty 图片协议、macOS 专属输入归一化、纯展示型终端专属逻辑。在 `src/app/tui/` 真正接线并确认无消费者前，不继续扩张支持面。
+- **规则**：新增终端兼容代码前，先证明 `crossterm` 不能覆盖；若只是某个 example 或 showcase 的问题，先修布局/宽度预算，不要把 demo 缺陷误判为终端协议缺陷。
 
 ## 移植规则
 
