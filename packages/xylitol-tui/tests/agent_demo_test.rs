@@ -81,7 +81,7 @@ fn agent_demo_idle_ticks_drive_script_without_input() {
 }
 
 #[test]
-fn agent_demo_command_palette_overlay_renders_cleanly() {
+fn agent_demo_command_palette_replaces_editor_slot() {
     let mut h = TuiTestHarness::new(172, 40);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
@@ -91,13 +91,24 @@ fn agent_demo_command_palette_overlay_renders_cleanly() {
     h.render_result().expect("initial render should succeed");
     h.keys("\x10");
     h.render_result()
-        .expect("command palette overlay must stay within width budget");
+        .expect("command palette selector must stay within width budget");
     h.assert_text_contains("Command Palette");
     h.assert_text_contains("Run regression tests");
+    // Selector replaces the editor slot at the bottom of the stack (pi
+    // showSelector), so it remains in the viewport after transcript growth.
+    let text = h.tui.terminal.viewport().join("\n");
+    let palette_pos = text
+        .find("Command Palette")
+        .expect("palette title should be visible");
+    let dbg_pos = text.find("dbg").expect("debug strip should remain below");
+    assert!(
+        palette_pos < dbg_pos,
+        "palette must sit in the editor slot above the debug strip; got:\n{text}"
+    );
 }
 
 #[test]
-fn agent_demo_settings_overlay_renders_cleanly() {
+fn agent_demo_settings_replaces_editor_slot() {
     let mut h = TuiTestHarness::new(172, 40);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
@@ -107,9 +118,43 @@ fn agent_demo_settings_overlay_renders_cleanly() {
     h.render_result().expect("initial render should succeed");
     h.keys("\x13");
     h.render_result()
-        .expect("settings overlay must stay within width budget");
+        .expect("settings selector must stay within width budget");
     h.assert_text_contains("Session Settings");
     h.assert_text_contains("Approval");
+    let text = h.tui.terminal.viewport().join("\n");
+    let settings_pos = text
+        .find("Session Settings")
+        .expect("settings title should be visible");
+    let dbg_pos = text.find("dbg").expect("debug strip should remain below");
+    assert!(
+        settings_pos < dbg_pos,
+        "settings must sit in the editor slot above the debug strip; got:\n{text}"
+    );
+}
+
+#[test]
+fn agent_demo_selector_stays_visible_after_long_transcript() {
+    let mut h = TuiTestHarness::new(80, 24);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+
+    // Grow transcript past the viewport via scripted ticks, then open palette.
+    h.render_result().expect("initial render should succeed");
+    h.keys("\r");
+    for _ in 0..48 {
+        h.tick();
+        h.render_result()
+            .expect("streaming must stay within width budget");
+    }
+    h.keys("\x10");
+    h.render_result()
+        .expect("palette after long transcript must stay within width");
+    // Viewport is only the last 24 rows; absolute-top blit would hide the
+    // palette. Editor-slot replacement keeps it in the visible bottom.
+    h.assert_text_contains("Command Palette");
+    h.assert_text_contains("Run regression tests");
 }
 
 #[test]

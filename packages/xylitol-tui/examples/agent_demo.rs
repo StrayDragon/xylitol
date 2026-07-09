@@ -14,7 +14,6 @@ use xylitol_tui::components::select_list::{
 use xylitol_tui::components::settings_list::{
     SettingItem, SettingsList, SettingsListOptions, SettingsListTheme,
 };
-use xylitol_tui::components::spacer::Spacer;
 use xylitol_tui::components::text::Text;
 use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, set_keybindings};
 use xylitol_tui::{
@@ -654,85 +653,55 @@ impl FakeCodingAgentApp {
         Self::fit(&format!("{activity}  |  {dynamic}"), width)
     }
 
-    fn render_palette_overlay(&mut self, width: usize, lines: &mut Vec<String>) {
-        let overlay_w = width.min(54).saturating_sub(4).max(24);
-        let mut panel = Panel::new(
-            1,
-            1,
-            Some(Box::new(|s: &str| {
-                format!("\x1b[47m\x1b[30m{s}\x1b[49m\x1b[39m")
-            })),
-        );
-        panel.add_child(Box::new(Text::new(
-            bold(" Command Palette").to_string(),
-            0,
-            0,
-        )));
-        panel.add_child(Box::new(Spacer::new(1)));
-        let mut overlay = panel.render(overlay_w);
-        overlay.extend(self.palette.render(overlay_w));
-        overlay.push(String::new());
-        overlay.push(Self::fit(
-            &dim("  Up/Down select  Enter run  Esc close"),
-            overlay_w,
-        ));
-        self.blit_overlay(lines, &overlay, width);
+    /// pi `showSelector`: replace the editor slot (bottom of the stack) so the
+    /// popup stays in the viewport as transcript grows into scrollback.
+    fn render_editor_slot(&mut self, width: usize) -> Vec<String> {
+        if self.palette_open {
+            return self.render_palette_slot(width);
+        }
+        if self.settings_open {
+            return self.render_settings_slot(width);
+        }
+        self.input
+            .render(width)
+            .into_iter()
+            .map(|line| Self::fit(&line, width))
+            .collect()
     }
 
-    fn render_settings_overlay(&mut self, width: usize, lines: &mut Vec<String>) {
-        let overlay_w = width.min(54).saturating_sub(4).max(24);
-        let mut panel = Panel::new(
-            1,
-            1,
-            Some(Box::new(|s: &str| {
-                format!("\x1b[47m\x1b[30m{s}\x1b[49m\x1b[39m")
-            })),
-        );
-        panel.add_child(Box::new(Text::new(
-            bold(" Session Settings").to_string(),
-            0,
-            0,
-        )));
-        panel.add_child(Box::new(Spacer::new(1)));
-        let mut overlay = panel.render(overlay_w);
-        overlay.extend(self.settings.render(overlay_w));
-        overlay.push(String::new());
-        overlay.push(Self::fit(
-            &dim("  Up/Down navigate  Enter confirm  Esc close"),
-            overlay_w,
-        ));
-        self.blit_overlay(lines, &overlay, width);
+    fn render_palette_slot(&mut self, width: usize) -> Vec<String> {
+        let mut lines = Vec::new();
+        lines.push(Self::fit(&bold(" Command Palette"), width));
+        lines.push(Self::fit(&dim(" Up/Down  Enter run  Esc close"), width));
+        for line in self.palette.render(width) {
+            lines.push(Self::fit(&line, width));
+        }
+        lines
     }
 
-    fn blit_overlay(&self, lines: &mut Vec<String>, overlay: &[String], width: usize) {
-        let overlay_w = overlay
-            .iter()
-            .map(|line| visible_width(line))
-            .max()
-            .unwrap_or(0);
-        let col_off = width.saturating_sub(overlay_w) / 2;
-        let row_off = 3usize;
-        while lines.len() < row_off + overlay.len() {
-            lines.push(String::new());
+    fn render_settings_slot(&mut self, width: usize) -> Vec<String> {
+        let mut lines = Vec::new();
+        lines.push(Self::fit(&bold(" Session Settings"), width));
+        lines.push(Self::fit(&dim(" Up/Down  Enter confirm  Esc close"), width));
+        for line in self.settings.render(width) {
+            lines.push(Self::fit(&line, width));
         }
-        for (i, line) in overlay.iter().enumerate() {
-            let row = row_off + i;
-            let merged = format!("{}{}", " ".repeat(col_off), Self::fit(line, overlay_w));
-            lines[row] = Self::fit(&merged, width);
-        }
+        lines
     }
 }
 
 impl Component for FakeCodingAgentApp {
     fn render(&mut self, width: usize) -> Vec<String> {
         // Single-column stack (pi interactive): transcript → status → editor
-        // → fixed debug strip → footer. Viewport anchors to the content tail.
+        // slot (or selector in place of editor) → debug → footer.
+        // Selectors replace the editor slot so they stay in the viewport as
+        // transcript grows into scrollback (pi showSelector / editorContainer).
         let mut lines = Vec::new();
 
         let mut header = Panel::new(1, 0, Some(Box::new(blue_bg)));
         header.add_child(Box::new(Text::new(
             format!(
-                "{}  transcript · editor · scrollback  |  Ctrl+P/S overlay",
+                "{}  transcript · editor · scrollback  |  Ctrl+P/S selector",
                 bold("agent_demo")
             ),
             0,
@@ -745,21 +714,16 @@ impl Component for FakeCodingAgentApp {
 
         lines.push(Self::fit(&dim(&"-".repeat(width)), width));
         lines.push(self.status_line(width));
-
-        for line in self.input.render(width) {
-            lines.push(Self::fit(&line, width));
-        }
+        lines.extend(self.render_editor_slot(width));
 
         lines.push(Self::fit(&dim(&"-".repeat(width)), width));
         lines.extend(self.debug_strip_lines(width));
-        lines.push(Self::fit(&dim(&self.footer_note), width));
-
-        if self.palette_open {
-            self.render_palette_overlay(width, &mut lines);
-        }
-        if self.settings_open {
-            self.render_settings_overlay(width, &mut lines);
-        }
+        let footer = if self.palette_open || self.settings_open {
+            "Esc close selector  |  Ctrl+C quit"
+        } else {
+            self.footer_note.as_str()
+        };
+        lines.push(Self::fit(&dim(footer), width));
 
         lines
             .into_iter()
