@@ -1,7 +1,6 @@
 use crate::terminal::Terminal;
 use crate::utils::visible_width;
 use crossterm::event::{KeyEvent, KeyEventKind};
-use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
@@ -117,13 +116,51 @@ pub struct OverlayOptions {
 
 #[derive(Debug, Clone, Copy)]
 struct OverlayStackEntry {
-    /// Focused index before the overlay opened; restored on overlay close.
-    /// Unused until the overlay focus-restore state machine is wired (see pi
-    /// tui.ts overlayFocusRestore); kept so the struct matches pi's shape.
-    #[allow(dead_code)]
+    overlay_id: u64,
+    /// Focused root-child index before the overlay opened; restored on hide.
     pre_focus: Option<usize>,
     hidden: bool,
     focus_order: u64,
+}
+
+/// Handle returned by [`TUI::show_overlay`] for controlling one overlay entry.
+///
+/// Operations take `&mut TUI` because the overlay component is owned by the
+/// TUI. After [`Self::hide`], further calls are no-ops (id no longer on stack).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OverlayHandle {
+    overlay_id: u64,
+}
+
+impl OverlayHandle {
+    pub fn overlay_id(self) -> u64 {
+        self.overlay_id
+    }
+
+    /// Permanently remove this overlay (cannot be shown again via this handle).
+    pub fn hide<T: Terminal>(self, tui: &mut TUI<T>) {
+        tui.hide_overlay(self);
+    }
+
+    pub fn set_hidden<T: Terminal>(self, tui: &mut TUI<T>, hidden: bool) {
+        tui.set_overlay_hidden(self, hidden);
+    }
+
+    pub fn is_hidden<T: Terminal>(self, tui: &TUI<T>) -> bool {
+        tui.is_overlay_hidden(self)
+    }
+
+    pub fn is_focused<T: Terminal>(self, tui: &TUI<T>) -> bool {
+        tui.is_overlay_focused(self)
+    }
+
+    pub fn focus<T: Terminal>(self, tui: &mut TUI<T>) {
+        tui.focus_overlay(self);
+    }
+
+    pub fn unfocus<T: Terminal>(self, tui: &mut TUI<T>) {
+        tui.unfocus_overlay(self);
+    }
 }
 
 pub struct TUI<T: Terminal> {
@@ -131,7 +168,6 @@ pub struct TUI<T: Terminal> {
     components: Vec<Box<dyn Component>>,
     overlays: Vec<(Box<dyn Component>, OverlayOptions, OverlayStackEntry)>,
     previous_lines: Vec<String>,
-    previous_kitty_ids: HashSet<u32>,
     previous_width: usize,
     previous_height: usize,
     /// Row index (in the rendered line buffer) of the top of the visible
@@ -140,6 +176,8 @@ pub struct TUI<T: Terminal> {
     /// screen. Mirrors pi's `previousViewportTop`.
     previous_viewport_top: usize,
     focused_index: Option<usize>,
+    /// When set, input routes to this overlay instead of a root child.
+    focused_overlay_id: Option<u64>,
     stopped: bool,
     /// Logical cursor row = content end (used for viewport math). Distinct from
     /// `hardware_cursor_row` (where the terminal's cursor physically stopped).
@@ -150,6 +188,7 @@ pub struct TUI<T: Terminal> {
     max_lines_rendered: usize,
     full_redraw_count: u64,
     focus_order_counter: u64,
+    next_overlay_id: u64,
     // ── render scheduling (pi's requestRender/scheduleRender) ──
     /// True when a render has been requested but not yet executed.
     render_requested: bool,
@@ -170,11 +209,11 @@ impl<T: Terminal> TUI<T> {
             components: Vec::new(),
             overlays: Vec::new(),
             previous_lines: Vec::new(),
-            previous_kitty_ids: HashSet::new(),
             previous_width: 0,
             previous_height: 0,
             previous_viewport_top: 0,
             focused_index: None,
+            focused_overlay_id: None,
             stopped: false,
             cursor_row: 0,
             hardware_cursor_row: 0,
@@ -183,6 +222,7 @@ impl<T: Terminal> TUI<T> {
             max_lines_rendered: 0,
             full_redraw_count: 0,
             focus_order_counter: 0,
+            next_overlay_id: 1,
             render_requested: false,
             last_render_at: None,
         }
@@ -215,18 +255,149 @@ impl<T: Terminal> TUI<T> {
         self.components.clear();
     }
     pub fn set_focus(&mut self, index: Option<usize>) {
+        self.focused_overlay_id = None;
         self.focused_index = index;
     }
 
-    pub fn show_overlay(&mut self, component: Box<dyn Component>, options: OverlayOptions) {
+    /// Show an overlay and return a handle for hide / focus control.
+    pub fn show_overlay(
+        &mut self,
+        component: Box<dyn Component>,
+        options: OverlayOptions,
+    ) -> OverlayHandle {
+        let overlay_id = self.next_overlay_id;
+        self.next_overlay_id = self.next_overlay_id.saturating_add(1);
         self.focus_order_counter += 1;
         let entry = OverlayStackEntry {
+            overlay_id,
             pre_focus: self.focused_index,
             hidden: false,
             focus_order: self.focus_order_counter,
         };
+        let capturing = !options.non_capturing;
         self.overlays.push((component, options, entry));
+        if capturing {
+            self.focused_overlay_id = Some(overlay_id);
+        }
         self.terminal.hide_cursor();
+        OverlayHandle { overlay_id }
+    }
+
+    fn overlay_index(&self, overlay_id: u64) -> Option<usize> {
+        self.overlays
+            .iter()
+            .position(|(_, _, e)| e.overlay_id == overlay_id)
+    }
+
+    fn topmost_visible_capturing_overlay_id(&self) -> Option<u64> {
+        self.overlays
+            .iter()
+            .filter(|(_, opts, e)| !e.hidden && !opts.non_capturing)
+            .max_by_key(|(_, _, e)| e.focus_order)
+            .map(|(_, _, e)| e.overlay_id)
+    }
+
+    fn restore_focus_after_overlay(&mut self, pre_focus: Option<usize>) {
+        if let Some(id) = self.topmost_visible_capturing_overlay_id() {
+            self.focused_overlay_id = Some(id);
+        } else {
+            self.focused_overlay_id = None;
+            self.focused_index = pre_focus;
+        }
+    }
+
+    /// Permanently remove the overlay identified by `handle`.
+    pub fn hide_overlay(&mut self, handle: OverlayHandle) {
+        let Some(index) = self.overlay_index(handle.overlay_id) else {
+            return;
+        };
+        let (_, _, entry) = self.overlays.remove(index);
+        let was_focused = self.focused_overlay_id == Some(handle.overlay_id);
+        if was_focused {
+            self.restore_focus_after_overlay(entry.pre_focus);
+        }
+        if self.overlays.is_empty() {
+            self.terminal.hide_cursor();
+        }
+        self.request_render(false);
+    }
+
+    pub fn set_overlay_hidden(&mut self, handle: OverlayHandle, hidden: bool) {
+        let Some(index) = self.overlay_index(handle.overlay_id) else {
+            return;
+        };
+        if self.overlays[index].2.hidden == hidden {
+            return;
+        }
+        self.overlays[index].2.hidden = hidden;
+        let non_capturing = self.overlays[index].1.non_capturing;
+        let pre_focus = self.overlays[index].2.pre_focus;
+        if hidden {
+            if self.focused_overlay_id == Some(handle.overlay_id) {
+                self.restore_focus_after_overlay(pre_focus);
+            }
+        } else if !non_capturing {
+            self.focus_order_counter += 1;
+            self.overlays[index].2.focus_order = self.focus_order_counter;
+            self.focused_overlay_id = Some(handle.overlay_id);
+        }
+        self.request_render(false);
+    }
+
+    pub fn is_overlay_hidden(&self, handle: OverlayHandle) -> bool {
+        self.overlay_index(handle.overlay_id)
+            .map(|i| self.overlays[i].2.hidden)
+            .unwrap_or(true)
+    }
+
+    pub fn is_overlay_focused(&self, handle: OverlayHandle) -> bool {
+        self.focused_overlay_id == Some(handle.overlay_id)
+            && self
+                .overlay_index(handle.overlay_id)
+                .is_some_and(|i| !self.overlays[i].2.hidden)
+    }
+
+    /// Bring overlay to the visual front and capture focus (if capturing).
+    pub fn focus_overlay(&mut self, handle: OverlayHandle) {
+        let Some(index) = self.overlay_index(handle.overlay_id) else {
+            return;
+        };
+        if self.overlays[index].2.hidden || self.overlays[index].1.non_capturing {
+            return;
+        }
+        self.focus_order_counter += 1;
+        self.overlays[index].2.focus_order = self.focus_order_counter;
+        self.focused_overlay_id = Some(handle.overlay_id);
+        self.request_render(false);
+    }
+
+    /// Release focus from this overlay to the next visible capturing overlay
+    /// or the stored `pre_focus` root child.
+    pub fn unfocus_overlay(&mut self, handle: OverlayHandle) {
+        let Some(index) = self.overlay_index(handle.overlay_id) else {
+            return;
+        };
+        if self.focused_overlay_id != Some(handle.overlay_id) {
+            return;
+        }
+        let pre_focus = self.overlays[index].2.pre_focus;
+        // Temporarily treat this overlay as non-candidate by clearing focus
+        // then picking the next topmost (excluding self via focus clear).
+        self.focused_overlay_id = None;
+        let next = self
+            .overlays
+            .iter()
+            .filter(|(_, opts, e)| {
+                e.overlay_id != handle.overlay_id && !e.hidden && !opts.non_capturing
+            })
+            .max_by_key(|(_, _, e)| e.focus_order)
+            .map(|(_, _, e)| e.overlay_id);
+        if let Some(id) = next {
+            self.focused_overlay_id = Some(id);
+        } else {
+            self.focused_index = pre_focus;
+        }
+        self.request_render(false);
     }
 
     pub fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -313,11 +484,19 @@ impl<T: Terminal> TUI<T> {
         self.stopped = true;
     }
 
-    /// Route one decoded input event to the focused component.
+    /// Route one decoded input event to the focused overlay (if any) or root child.
     ///
     /// Public so host loops (and tests) can feed input without going through
     /// the blocking `start()` event loop.
     pub fn dispatch_event(&mut self, event: InputEvent) {
+        if let Some(overlay_id) = self.focused_overlay_id
+            && let Some(index) = self.overlay_index(overlay_id)
+            && !self.overlays[index].2.hidden
+            && !self.overlays[index].1.non_capturing
+        {
+            self.overlays[index].0.handle_input(event);
+            return;
+        }
         if let Some(idx) = self.focused_index
             && idx < self.components.len()
         {
@@ -341,10 +520,16 @@ impl<T: Terminal> TUI<T> {
     fn should_dispatch_key_event(&self, key: &KeyEvent) -> bool {
         match key.kind {
             KeyEventKind::Press | KeyEventKind::Repeat => true,
-            KeyEventKind::Release => self
-                .focused_index
-                .and_then(|idx| self.components.get(idx))
-                .is_some_and(|component| component.wants_key_release()),
+            KeyEventKind::Release => {
+                if let Some(overlay_id) = self.focused_overlay_id
+                    && let Some(index) = self.overlay_index(overlay_id)
+                {
+                    return self.overlays[index].0.wants_key_release();
+                }
+                self.focused_index
+                    .and_then(|idx| self.components.get(idx))
+                    .is_some_and(|component| component.wants_key_release())
+            }
         }
     }
 
@@ -495,7 +680,6 @@ impl<T: Terminal> TUI<T> {
 
         self.position_cursor(cursor_pos, new_lines.len());
         self.previous_lines = new_lines;
-        self.previous_kitty_ids.clear();
         self.previous_width = width;
         self.previous_height = height;
         self.terminal.flush();

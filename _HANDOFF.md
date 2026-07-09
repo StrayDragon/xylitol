@@ -10,10 +10,10 @@
 
 | 已完成 | 进行中 / 下一步 |
 |---|---|
-| `packages/xylitol-tui`：pi-tui port + 五层测试 + `agent_demo` | **`c445`**：Container + OverlayHandle + 图片裁剪（已 propose） |
-| `agent_demo`：极简单列（无 header/debug strip）；Ctrl+P/S 替换 editor 槽 | **`c450`**：App Shell；UX 见 `DESIGN.md`（少 chrome、可复制） |
-| 输入硬切：`InputEvent::{Key,Paste}`，无 KeyEvent→VT 运行时路径 | apply `c445` → 再 propose `c450` |
-| 旧 `src/app/tui` 已删占位；包 specs 用 `package-tui-*` | — |
+| `packages/xylitol-tui`：pi-tui 引擎参考 port + 五层测试 + `agent_demo` | **`c445` 已 archive**（Container / OverlayHandle / Image 裁剪） |
+| `agent_demo`：极简单列；Ctrl+P/S 替换 editor 槽 | **`c450`**：App Shell；UX 见 `src/app/tui/DESIGN.md` |
+| 输入硬切：`InputEvent::{Key,Paste}` | propose `c450`（depends on c445） |
+| 包 API：`Container`、`OverlayHandle`；`is_image_line` 保留 | — |
 
 **架构（已写入 AGENTS，此处不重复长文）**：引擎同步 + 应用面 host 驱动异步合流；样式 `Vec<String>`；主题闭包在包、语义 token 在应用面；流式业务缓冲在应用面。
 
@@ -21,35 +21,33 @@
 
 - 边界：`packages/xylitol-tui/AGENTS.md`、`src/app/tui/AGENTS.md`、`src/AGENTS.md`、根 `AGENTS.md`
 - How-to：`write-tui`、`test-tui-harness`、`write-surface`
-- 复核草稿：`packages/xylitol-tui/REPORT.tmp.md`（已并入 `c445` 提案后删除）
-- 视觉/UX：`packages/xylitol-tui/DESIGN.md`
+- 视觉/UX：`src/app/tui/DESIGN.md`
 
-**pi 源**：`../pi/packages/pi-tui`、`../kimi-code/packages/pi-tui`
+**pi 源**：`../pi/packages/tui`（及 kimi-code 同源）
 
 ---
 
 ## 一、包侧快照（易变，以 `cargo test` 为准）
 
-- 包测试：`cargo test -p xylitol-tui`（五层 1–4 in-process）
+- 包测试：`cargo test -p xylitol-tui`（五层 1–4 in-process）— c445 后绿
 - E2E：`just test-tui-e2e`（`#[ignore]`，PTY/tmux + `agent_demo`）
 - 有意不移植：stdin-buffer（crossterm）、native-modifiers、Apple/Windows 专属输入等——见包 `AGENTS.md`
-
-历史变更摘要（已 archive / 已提交）：阶段 0–4 port；c405–c430 harness/协议/paste-burst/autocomplete/editor；c440 `agent_demo`；旧应用面移除（占位）。
+- 图片：已删 `Image` 组件与 Kitty/iTerm encode；保留 `is_image_line` + `hyperlink`
 
 ---
 
 ## 二、建议下一刀
 
-1. **`c445`（包）**：裁剪未用图片等；补 `Container` / `OverlayHandle`（及按需 `InputListener`）。验证：`test-tui-harness` + `cargo test -p xylitol-tui`。
-2. **`c450`（面）**：`write-surface`（先 `audit-dead-code`）→ 新 App Shell：`tokio` 合流 + host 驱动 `xylitol_tui`；UX 从零设计。保留 `Driver` / `dispatch` / `composition` / `XyEvent`。
-3. 缺底层能力 → **先改包再接线**（见 `src/app/tui/AGENTS.md`）。
+1. **`c450`（面）**：`write-surface`（先 `audit-dead-code`）→ App Shell：`tokio` 合流 + host 驱动；用 `Container` 组 transcript/status/editor；overlay 用 `OverlayHandle`；UX 对齐 `src/app/tui/DESIGN.md`
+2. 缺底层能力 → **先改包再接线**（见 `src/app/tui/AGENTS.md`）
+3. （可选）按需恢复 Image encode 为 feature-gate，非默认路径
 
 ---
 
 ## 三、SDD 习惯
 
 ```
-/llman-sdd-propose <id>   # c445+
+/llman-sdd-propose <id>   # c450+
 # 实现…
 just qa
 /llman-sdd-archive <id>
