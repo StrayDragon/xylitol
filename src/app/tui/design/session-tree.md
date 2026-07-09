@@ -29,5 +29,5 @@ components:
 | 层 | Change |
 |---|---|
 | 包 `TreeSelector` | **c454 已归档**；`agent_demo` 双 Esc 冒烟已通 |
-| demo 键位/文档收紧 | c456（可选） |
+| 相对 pi 的操作增强 | 见 `llmanspec/changes/c464-.../NOTES-session-tree-vs-pi.md`；落地 **c456**（先不归档更多树能力） |
 | 产品 `src/app/tui` | c491 |
