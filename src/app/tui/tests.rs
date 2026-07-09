@@ -1,7 +1,7 @@
 //! Host harness tests — no real TTY (ath5).
 
 use super::host::{HostEvent, HostSession, LayoutMode, TOO_SMALL_HINT, is_too_small};
-use super::scene::build_root;
+use super::ui_root::build_root;
 use xylitol_tui::{InputEvent, Terminal};
 
 /// Minimal in-memory terminal for host tests.
@@ -73,25 +73,23 @@ fn harness_min_size_shows_hint() {
 }
 
 #[test]
-fn harness_resize_to_scene() {
+fn harness_resize_to_ready() {
     let mut session = HostSession::new(TestTerminal::new(20, 3), build_root);
     assert_eq!(session.mode(), LayoutMode::TooSmall);
     session
         .step(HostEvent::Resize { cols: 80, rows: 24 })
         .unwrap();
-    // try_render may throttle; force a frame
     session.render_now().unwrap();
-    assert_eq!(session.mode(), LayoutMode::Scene);
+    assert_eq!(session.mode(), LayoutMode::Ready);
     let joined = session.tui.terminal.frames.concat();
     assert!(
         joined.contains("transcript") || joined.contains("esc abort"),
-        "expected scene chrome, got: {joined:?}"
+        "expected UI chrome, got: {joined:?}"
     );
 }
 
 #[test]
 fn harness_never_calls_terminal_start() {
-    // Product HostSession must not call Terminal::start (ath1 / ath5).
     let mut session = HostSession::new(TestTerminal::new(80, 24), build_root);
     session.render_now().unwrap();
     session
@@ -105,12 +103,10 @@ fn harness_never_calls_terminal_start() {
 
 #[test]
 fn product_tui_source_has_no_tui_start_call() {
-    // Static guard: product path must not invoke xylitol_tui::TUI::start as a call.
-    // Mentions in docs/comments are fine (ath1).
     let sources = [
         ("mod.rs", include_str!("mod.rs")),
         ("host.rs", include_str!("host.rs")),
-        ("scene.rs", include_str!("scene.rs")),
+        ("ui_root.rs", include_str!("ui_root.rs")),
         ("terminal_guard.rs", include_str!("terminal_guard.rs")),
     ];
     for (name, src) in sources {
@@ -136,10 +132,9 @@ fn quit_event_stops_session() {
     assert!(session.should_quit());
 }
 
-/// Compile-time / API smoke: build_root returns components.
 #[test]
-fn build_root_scene_is_component() {
-    let mut kids = build_root(LayoutMode::Scene);
+fn build_root_ready_is_component() {
+    let mut kids = build_root(LayoutMode::Ready);
     assert_eq!(kids.len(), 1);
     let lines = kids[0].render(80);
     assert!(!lines.is_empty());
@@ -157,9 +152,9 @@ fn ctrl_c_event() -> InputEvent {
 
 #[test]
 fn harness_ctrl_c_clears_editor_then_quits() {
-    let mut session = HostSession::new_product_scene(TestTerminal::new(80, 24));
-    let scene = session.scene().expect("product scene").clone();
-    scene.borrow_mut().set_editor_text("keep me");
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut().set_editor_text("keep me");
 
     session.step(HostEvent::Input(ctrl_c_event())).unwrap();
     assert!(
@@ -167,7 +162,7 @@ fn harness_ctrl_c_clears_editor_then_quits() {
         "non-empty editor must clear, not quit"
     );
     assert!(
-        scene.borrow().editor_text().is_empty(),
+        root.borrow().editor_text().is_empty(),
         "Ctrl+C should clear editor"
     );
 
@@ -180,11 +175,10 @@ fn harness_ctrl_c_clears_editor_then_quits() {
 
 #[test]
 fn harness_ctrl_c_consumed_before_editor_insert() {
-    // If Ctrl+C leaked to Editor, text might gain a 'c' or stay non-empty oddly.
-    let mut session = HostSession::new_product_scene(TestTerminal::new(80, 24));
-    let scene = session.scene().expect("product scene").clone();
-    scene.borrow_mut().set_editor_text("x");
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut().set_editor_text("x");
     session.step(HostEvent::Input(ctrl_c_event())).unwrap();
-    assert_eq!(scene.borrow().editor_text(), "");
+    assert_eq!(root.borrow().editor_text(), "");
     assert!(!session.should_quit());
 }

@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "glyphs"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Glyphs
 
 短前缀 glyph（用户 / 工具 / 状态等）由**应用面配置**选择。

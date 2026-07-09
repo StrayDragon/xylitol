@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "compaction-status"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Compaction status（草稿）
 
 后置：上下文压缩 / 重试状态（c493）。

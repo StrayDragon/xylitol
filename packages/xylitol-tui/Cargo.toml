@@ -18,8 +18,8 @@ syntect = { version = "5", default-features = false, features = ["default-fancy"
 two-face = { version = "0.5", default-features = false, features = ["syntect-default-fancy"], optional = true }
 
 [features]
-default = []
-# Real syntect highlighter for MarkdownTheme.highlight_code (demo + product opt-in).
+default = ["highlight"]
+# Real syntect highlighter for MarkdownTheme.highlight_code (demo + product).
 highlight = ["dep:syntect", "dep:two-face"]
 
 

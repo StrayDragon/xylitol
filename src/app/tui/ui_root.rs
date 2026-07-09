@@ -1,4 +1,7 @@
-//! Product TUI scene — transcript / editor / footer placeholders.
+//! Product TUI root layout — transcript / editor / footer placeholders.
+//!
+//! Named `UiRoot` (not `shell`/`scene`) to avoid clashing with bash /
+//! `infra::process::shell` and to read as the product component tree root.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -14,14 +17,14 @@ use xylitol_tui::{
 
 use super::host::{LayoutMode, TOO_SMALL_HINT};
 
-/// Root scene: transcript placeholder + bordered editor + footer.
-pub struct Scene {
+/// Root UI: transcript placeholder + bordered editor + footer.
+pub struct UiRoot {
     transcript: Text,
     editor: Editor,
     footer: Text,
 }
 
-impl Scene {
+impl UiRoot {
     pub fn new() -> Self {
         let mut editor = Editor::new(
             EditorTheme::default(),
@@ -60,13 +63,13 @@ impl Scene {
     }
 }
 
-impl Default for Scene {
+impl Default for UiRoot {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Component for Scene {
+impl Component for UiRoot {
     fn render(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
         lines.extend(self.transcript.render(width));
@@ -96,10 +99,10 @@ impl Component for Scene {
     }
 }
 
-/// Shared scene so InputListeners and the focused Component see the same state.
-pub struct SharedScene(pub Rc<RefCell<Scene>>);
+/// Shared root so InputListeners and the focused Component see the same state.
+pub struct SharedUiRoot(pub Rc<RefCell<UiRoot>>);
 
-impl Component for SharedScene {
+impl Component for SharedUiRoot {
     fn render(&mut self, width: usize) -> Vec<String> {
         self.0.borrow_mut().render(width)
     }
@@ -139,35 +142,35 @@ impl Component for TooSmallHint {
 #[cfg(test)]
 pub fn build_root(mode: LayoutMode) -> Vec<Box<dyn Component>> {
     match mode {
-        LayoutMode::Scene => vec![Box::new(Scene::new())],
+        LayoutMode::Ready => vec![Box::new(UiRoot::new())],
         LayoutMode::TooSmall => vec![Box::new(TooSmallHint)],
     }
 }
 
-/// Shared scene + rebuild closure that keeps the same `Scene` across min-size flips.
-pub fn shared_scene_rebuild(
-    scene: Rc<RefCell<Scene>>,
+/// Shared root + rebuild closure that keeps the same `UiRoot` across min-size flips.
+pub fn shared_ui_root_rebuild(
+    root: Rc<RefCell<UiRoot>>,
 ) -> impl FnMut(LayoutMode) -> Vec<Box<dyn Component>> + 'static {
     move |mode| match mode {
-        LayoutMode::Scene => vec![Box::new(SharedScene(scene.clone()))],
+        LayoutMode::Ready => vec![Box::new(SharedUiRoot(root.clone()))],
         LayoutMode::TooSmall => vec![Box::new(TooSmallHint)],
     }
 }
 
 /// Register pre-focus Ctrl+C (clear / quit). Esc abort waits for streaming (c480).
-pub fn install_scene_key_listeners<T: Terminal>(
-    scene: &Rc<RefCell<Scene>>,
+pub fn install_ui_root_key_listeners<T: Terminal>(
+    root: &Rc<RefCell<UiRoot>>,
     quit_flag: &Arc<AtomicBool>,
     tui: &mut TUI<T>,
 ) {
-    let scene = scene.clone();
+    let root = root.clone();
     let quit_flag = quit_flag.clone();
     tui.add_input_listener(move |event| {
         let InputEvent::Key(key) = &event else {
             return InputListenerResult::Continue;
         };
         if matches_key_event(key, "ctrl+c") {
-            scene.borrow_mut().on_ctrl_c(&quit_flag);
+            root.borrow_mut().on_ctrl_c(&quit_flag);
             return InputListenerResult::Consumed;
         }
         InputListenerResult::Continue

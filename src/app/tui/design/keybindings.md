@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "keybindings"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Keybindings
 
 已决议产品键位（实现：c480 / InputListener c455）。包 demo 应提前对齐以便验证。

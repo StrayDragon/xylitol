@@ -654,10 +654,51 @@ fn agent_demo_seed_rust_fence_is_highlighted() {
     .focus(Some(0));
     h.render_result().expect("initial render");
     h.assert_text_contains("println");
-    // Differential path writes ANSI; raw log should retain escapes from syntect.
     let raw = h.tui.terminal.all_writes();
     assert!(
         raw.contains('\u{1b}') || raw.contains("\x1b["),
         "highlighted fence should emit ANSI under feature highlight"
     );
+}
+
+#[cfg(feature = "highlight")]
+#[test]
+fn agent_demo_streaming_fence_emits_ansi_when_closed() {
+    let mut h = TuiTestHarness::new(120, 48);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+    // Clear seed writes; submit to start scripted turn with streamed fence.
+    h.tui.terminal.clear_writes();
+    h.keys("\r");
+    let mut saw_accept_fn = false;
+    for _ in 0..2000 {
+        h.tick();
+        h.render_result().ok();
+        let text = h.tui.terminal.viewport().join("\n");
+        if text.contains("fn accept") {
+            saw_accept_fn = true;
+            break;
+        }
+    }
+    assert!(saw_accept_fn, "streamed assistant fence should appear");
+    let raw = h.tui.terminal.all_writes();
+    assert!(
+        raw.contains('\u{1b}') || raw.contains("\x1b["),
+        "closed streamed fence should highlight with ANSI"
+    );
+}
+
+#[test]
+fn agent_demo_collapsible_headers_show_key_hints() {
+    let mut h = TuiTestHarness::new(120, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+    h.assert_text_contains("^T");
+    h.assert_text_contains("Alt+E");
 }

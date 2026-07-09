@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "markdown"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Markdown
 
 助手正文与可复制链接。包：`Markdown` + `MarkdownTheme.highlight_code` 回调。

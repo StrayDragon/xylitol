@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "overlay"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Overlay
 
 ## MUST
