@@ -1,21 +1,17 @@
 # src/ 分层架构（代码架构 SSOT）
 
-本文件是 `src/` 代码架构的**单一真值源**：分层地图、分层不变量、各层职责、应用面状态、seam 定义。同一事实不在此文件之外重复——子目录 `AGENTS.md`（如 `src/app/tui/AGENTS.md`）与 skills（`write-surface`/`audit-dead-code`/`write-tui`）只做路径引用。全局规则见根 `AGENTS.md`。
+本文件是 `src/` **代码架构**的单一真值源：分层不变量、各层职责、应用面状态、seam。全局工作方式与「如何写 AGENTS」见根 `AGENTS.md`。子目录 `AGENTS.md` 与 skills 只引用本文件，不重复长文。
 
-`xylitol` 是单 crate：薄编排核心（`agent/`）架在大型运行时域（`infra/`）之上，可插拔应用面（`app/`）说同一种线协议（`protocol/`），底层是纯领域词汇（`domain/`）与 agent↔infra 边界 traits（`runtime_protocol/`）。
+`xylitol` 主 crate：薄编排（`agent/`）+ 运行时域（`infra/`）+ 可插拔应用面（`app/`）+ 线协议（`protocol/`）+ 领域词（`domain/`）+ ports（`runtime_protocol/`）。通用 TUI 库在 workspace 包 `packages/xylitol-tui`（不在本文件展开）。
 
 ## 分层不变量（normative）
 
-下列依赖方向由 `src/tests.rs::arch_guard` 强制（代码是真值）。每条标注对应的守卫测试。
+由 `src/tests.rs::arch_guard` 强制（代码是真值）：
 
-- **组合根集中装配**（arch_guard `composition_root` 类约束）：只有组合根允许同时 import `agent` 与 `infra`——`app/core/composition.rs`（主组合根，唯一集中装配 `Agent`），以及次级组合根 `app/cli/mod.rs`、`app/server/subcommand.rs`，在构造期注入 adapter。
-- **agent 层不依赖 infra**（守卫：`arch_guard::agent_does_not_import_infra_in_production`）：`agent` 永不 import `infra` 具体类型；只依赖 `domain` + `runtime_protocol`。
-- **infra 层不依赖 agent**（守卫：`arch_guard::infra_does_not_import_agent`）：`infra` 永不 import `agent`；只依赖 `domain` + `runtime_protocol`。
-- **domain 零内部依赖**：`domain` 不依赖任何 crate 内模块。
-- **runtime_protocol 只依赖 domain**。
-- **应用面走 seam、不 reach 内部**（部分守卫：`arch_guard::app_driver_does_not_import_infra`；session/runtime 内部 reach 靠 review）：应用面禁止 reach into `agent::session::*`/`agent::runtime::*`/`infra::*`，只从 `crate::agent`（mod 级）与 `crate::app::core`（`Driver`/`composition`）import。所有应用面共享同一 seam：`composition::build_agent` → `Driver::run(prompt)` → `XyEvent` 流 → 该面渲染；seam 不够就扩 seam（`Driver` trait / `XyEvent` 枚举），不绕过。新增/改造应用面的方法论见 `write-surface` skill。
-
-依赖方向图：
+- **组合根集中装配**：仅 `app/core/composition.rs` 与次级组合根 `app/cli/mod.rs`、`app/server/subcommand.rs` 可同时 import `agent` 与 `infra`。
+- **agent 不依赖 infra**；**infra 不依赖 agent**。
+- **domain** 零 crate 内依赖；**runtime_protocol** 只依赖 `domain`。
+- **应用面走 seam、不 reach 内部**：禁止 `agent::session::*` / `agent::runtime::*` / `infra::*`；只从 `crate::agent`（mod 级）与 `crate::app::core` import。共享 seam：`composition::build_agent` → `Driver::run(prompt)` → `XyEvent` 流 → 该面渲染；不够就扩 seam，不绕过。方法论：`write-surface` skill。
 
 ```text
 app → agent → runtime_protocol → domain
@@ -24,18 +20,18 @@ app → agent → runtime_protocol → domain
 protocol ───────────────────────→ domain
 ```
 
-## 各层职责
+## 各层职责（摘要）
 
-- `domain/` — 纯领域词汇 + 错误 + serde 类型（`XyEvent` 在 `lifecycle.rs`）。零 crate 内依赖。
-- `runtime_protocol/` — agent↔infra 边界 traits：`XyModel`/`XyModelBuilder`/`XyStream`、`XyTool`/`XyToolCtx`/`XyToolExecutionMode`、`XySessionStore`、`XyEventSink`、`XyBashExecutor`、`XyExportIo`、`XyPermission`、`XyResourceLoader`、`XySecretResolver`、`XyTrustStore`。只依赖 `domain/`。
-- `infra/` — 运行时域，实现 `runtime_protocol/` 的 ports：`provider/`（LLM adapter，`adapter/` 含 anthropic/openai-completions/openai-responses + `factory`）、`tools/`（内建工具实现）、`session/`、`process/`、`config/`（`value.rs` 密钥解析）、`event/`、`hooks/`、`mcp/`、`resource/`、`trust/`、`permission/`、`settings/`、`git/`、`clipboard/`、`image/`、`bash_exec/`、`browser/`、`fs_watch/`、`update/`、`export/`（`StdExportIo`）。
-- `agent/` — 薄编排：`runtime/`（ReAct 循环 `react.rs`、`event.rs`、`hooks.rs`、`permission_router.rs`、`retry.rs`）、`session/`（`Agent` 可插拔能力聚合体）、`model/`（`registry`+`manager`+`resolver`+`manifest`）、`tools/`（`ToolSet`+`definition`，实现不在本层）、`compaction/`、`prompt/`（`system`/`commands`/`templates`）、`builder.rs`（`AgentBuilder`）。mod 级 re-export 是公共入口：`AgentBuilder`/`ReActAgent`/`Agent`/`AgentHooks`/`BeforeToolHook`/`XyEventStream`/`XyEvent`。交互层只从 `crate::agent::*` import。
-- `protocol/` — client↔core 线协议 SSOT：`command.rs`（`Command` 枚举）、`event.rs`（`Event` 枚举）、`transport.rs`。传输无关。
-- `app/` — 应用面 + 跨面 seam（`core/`）。**应用面状态**：`cli/print` ✅；`cli` 组合根 + mode 分发 + `bootstrap`；`server/` 🟡（feature）；`tui/` 🟡（占位，基于 `packages/xylitol-tui` 重做中，见 `src/app/tui/AGENTS.md`）；`gui` 🔴 占位。rpc 已移除。跨面 seam：`core/{bootstrap,dispatch,composition,driver}`。落地顺序 print → server → TUI，禁止并行铺骨架。
+- `domain/` — 纯领域词汇与 `XyEvent` 等；零内部依赖。
+- `runtime_protocol/` — agent↔infra ports（`XyModel`/`XyTool`/`XySessionStore`/…）。
+- `infra/` — ports 的实现（provider、tools、session、config、…）。
+- `agent/` — ReAct / session / model / tools 编排；公共入口为 mod 级 re-export。
+- `protocol/` — `Command` / `Event` 线协议，传输无关。
+- `app/` — 应用面 + `core/` seam。状态：`cli/print` ✅；`server/` 🟡；`tui/` 🟡（占位，基于 `xylitol-tui` 重做，见 `src/app/tui/AGENTS.md`）；`gui` 🔴。跨面：`core/{bootstrap,dispatch,composition,driver}`。落地顺序 print → server → TUI，禁止并行铺骨架。
+
+模块级文件地图以目录与代码为准；本文件不维护易变文件清单。
 
 ## 跨层测试与守卫
 
-- 架构守卫：`src/tests.rs::arch_guard`（拦截 `agent ↔ infra` 互引）。
-- BDD：`tests/features/*.feature` + `tests/bdd.rs`（rstest-bdd），harness 在 `tests/support/`，快照在 `tests/support/snapshots/`。
-- 回归：`tests/regression/{issue号}-{简述}.rs`。
-- 分层历史与设计依据：`llmanspec/changes/archive/<变更>/design.md`。
+- `arch_guard`；BDD（`tests/features` + `tests/bdd.rs`）；回归（`tests/regression/`）。
+- 设计史：`llmanspec/changes/archive/<变更>/design.md`。

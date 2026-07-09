@@ -1,75 +1,57 @@
-# _HANDOFF — xylitol-tui：pi-tui Rust 移植与应用面接线
+# _HANDOFF — xylitol TUI（交接笔记，非规范）
 
 > 最后更新：2026-07-09
 > 分支：`feat/tui-dev`
-> 阶段：**port 完成 → review/裁剪 → 基于 xylitol-tui 从零重做 `src/app/tui/`**
+> **本文是临时交接/进度板，不是 SSOT。** 稳定边界以各层 `AGENTS.md` 与 skills 为准。
 
 ---
 
-## 〇、接手必读（30 秒）
+## 〇、当前阶段（读这段即可开工）
 
-**目标**：`packages/xylitol-tui` 作为通用 TUI 库已完成初步 port；下一步是裁剪/补 API，然后 **作废旧应用面实现**，基于本 package **从零设计** `src/app/tui/`（不继承旧 UI/UX）。
-
-**怎么工作**：每个任务一个 llman SDD 变更。TUI 验证走 `test-tui-harness` skill。pi 源：`../pi/packages/pi-tui`、`../kimi-code/packages/pi-tui`。
-
-**稳定边界 SSOT**（AGENTS 只写边界；how-to 在 skills）：
-
-- `packages/xylitol-tui/AGENTS.md`、`src/app/tui/AGENTS.md`
-- `write-tui`、`test-tui-harness` skills
-
----
-
-## 一、当前进度
-
-| 指标 | 数值 |
+| 已完成 | 进行中 / 下一步 |
 |---|---|
-| 源码行数 | ~12k（`packages/xylitol-tui/src`） |
-| 测试 | 255 全绿（`cargo test -p xylitol-tui`） |
-| E2E | ignored PTY/tmux（`agent_demo`）；`just test-tui-e2e` |
-| 应用面 | 旧实现移除，占位 `run()`；待基于 xylitol-tui 重做 |
+| `packages/xylitol-tui`：pi-tui 可移植模块初步 port + 五层测试 + `agent_demo` | 按需裁剪包；补应用层所需 API（如 `Container` / `OverlayHandle`） |
+| 旧 `src/app/tui` in-tree engine/widgets **已删除**，`run()` 占位报错 | 基于 `xylitol-tui` **从零**重做产品 TUI（不继承旧 UI/UX） |
+| AGENTS 收成稳定边界；how-to 进 `write-tui` / `test-tui-harness` | 开 SDD（建议 `c445` 裁剪/API → `c450` App Shell） |
 
-### 已完成变更（摘要）
+**架构（已写入 AGENTS，此处不重复长文）**：引擎同步 + 应用面 host 驱动异步合流；样式 `Vec<String>`；主题闭包在包、语义 token 在应用面；流式业务缓冲在应用面。
 
-| 变更 | 内容 |
-|---|---|
-| 阶段 0–4 | 可移植模块 port + doRender 管线 |
-| c405–c430 | 五层 harness / terminal 协议 / paste-burst / autocomplete / editor |
-| c440 | examples → 单一 `agent_demo` |
-| stdin-buffer | 不移植；crossterm 替代 |
+**SSOT 指针**
 
----
+- 边界：`packages/xylitol-tui/AGENTS.md`、`src/app/tui/AGENTS.md`、`src/AGENTS.md`、根 `AGENTS.md`
+- How-to：`write-tui`、`test-tui-harness`、`write-surface`
+- 复核草稿：`packages/xylitol-tui/REPORT.tmp.md`（工作笔记，可删，勿当规范）
 
-## 二、跳过项与裁剪
-
-跳过项、裁剪策略、待补 API（`Container` / `OverlayHandle` / `InputListener`）的 SSOT 在 `packages/xylitol-tui/AGENTS.md`，此处不重复。
-
-复核细节见 `packages/xylitol-tui/REPORT.tmp.md`（工作笔记，勿当规范）。
+**pi 源**：`../pi/packages/pi-tui`、`../kimi-code/packages/pi-tui`
 
 ---
 
-## 三、llman SDD
+## 一、包侧快照（易变，以 `cargo test` 为准）
+
+- 包测试：`cargo test -p xylitol-tui`（五层 1–4 in-process）
+- E2E：`just test-tui-e2e`（`#[ignore]`，PTY/tmux + `agent_demo`）
+- 有意不移植：stdin-buffer（crossterm）、native-modifiers、Apple/Windows 专属输入等——见包 `AGENTS.md`
+
+历史变更摘要（已 archive / 已提交）：阶段 0–4 port；c405–c430 harness/协议/paste-burst/autocomplete/editor；c440 `agent_demo`；旧应用面移除（占位）。
+
+---
+
+## 二、建议下一刀
+
+1. **`c445`（包）**：裁剪未用图片等；补 `Container` / `OverlayHandle`（及按需 `InputListener`）。验证：`test-tui-harness` + `cargo test -p xylitol-tui`。
+2. **`c450`（面）**：`write-surface`（先 `audit-dead-code`）→ 新 App Shell：`tokio` 合流 + host 驱动 `xylitol_tui`；UX 从零设计。保留 `Driver` / `dispatch` / `composition` / `XyEvent`。
+3. 缺底层能力 → **先改包再接线**（见 `src/app/tui/AGENTS.md`）。
+
+---
+
+## 三、SDD 习惯
 
 ```
-/llman-sdd-propose <id>
+/llman-sdd-propose <id>   # c445+
 # 实现…
 just qa
 /llman-sdd-archive <id>
 git commit
 ```
 
-- change id：`c{priority}-{verb}-{subject}`，继续 `c445+`
-- 范例：`llmanspec/changes/archive/2026-07-08-c415-port-paste-burst/`
-
----
-
-## 四、测试
-
-见 `test-tui-harness` skill（五层验证回路）。时序禁止 `thread::sleep`。
-
----
-
-## 五、下一步（应用面）
-
-1. 裁剪 package + 补 `Container` / `OverlayHandle`（建议 `c445`）。
-2. 新建 SDD 重做 `src/app/tui/`（建议 `c450`）：异步 App Shell + `xylitol_tui` 驱动面；走 `write-surface`（先 `audit-dead-code`）。
-3. UI/UX **从零设计**，不以旧 `src/app/tui` 为参考。跨面 seam（`Driver` / `dispatch` / `composition` / `XyEvent`）保留。
+范例：`llmanspec/changes/archive/2026-07-08-c415-port-paste-burst/`
