@@ -106,6 +106,25 @@ impl CombinedAutocompleteProvider {
             fd_path: Some(fd_path),
         }
     }
+
+    /// Split into parts for [`crate::completion::CompletionRegistry`] wiring.
+    pub fn into_parts(self) -> (Vec<SlashCommand>, PathBuf, Option<String>) {
+        let commands = self
+            .commands
+            .into_iter()
+            .map(|(name, description)| SlashCommand {
+                name,
+                description: if description.is_empty() {
+                    None
+                } else {
+                    Some(description)
+                },
+                argument_hint: None,
+                get_argument_completions: None,
+            })
+            .collect();
+        (commands, self.base_path, self.fd_path)
+    }
 }
 
 impl AutocompleteProvider for CombinedAutocompleteProvider {
@@ -522,19 +541,7 @@ impl CombinedAutocompleteProvider {
     }
 
     fn extract_at_prefix(&self, text: &str) -> Option<String> {
-        let quoted = extract_quoted_prefix(text);
-        if let Some(ref q) = quoted
-            && q.starts_with("@\"")
-        {
-            return quoted;
-        }
-
-        let delim = find_last_delimiter(text);
-        let start = if delim < 0 { 0 } else { (delim + 1) as usize };
-        if text[start..].starts_with('@') {
-            return Some(text[start..].to_string());
-        }
-        None
+        extract_at_prefix(text)
     }
 
     fn get_file_suggestions(&self, prefix: &str) -> Vec<AutocompleteItem> {
@@ -654,8 +661,25 @@ impl CombinedAutocompleteProvider {
 
 const PATH_DELIMITERS: &[char] = &[' ', '\t', '"', '\'', '='];
 
-fn to_display_path(value: &str) -> String {
+pub(crate) fn to_display_path(value: &str) -> String {
     value.replace('\\', "/")
+}
+
+/// Extract `@…` / `@\"…` token before cursor (shared by Combined + AtPathSource).
+pub fn extract_at_prefix(text: &str) -> Option<String> {
+    let quoted = extract_quoted_prefix(text);
+    if let Some(ref q) = quoted
+        && q.starts_with("@\"")
+    {
+        return quoted;
+    }
+
+    let delim = find_last_delimiter(text);
+    let start = if delim < 0 { 0 } else { (delim + 1) as usize };
+    if text[start..].starts_with('@') {
+        return Some(text[start..].to_string());
+    }
+    None
 }
 
 fn find_last_delimiter(text: &str) -> isize {
@@ -704,7 +728,12 @@ pub fn parse_path_prefix(prefix: &str) -> (&str, bool, bool) {
     }
 }
 
-fn build_completion_value(path: &str, _is_directory: bool, is_at: bool, is_quoted: bool) -> String {
+pub(crate) fn build_completion_value(
+    path: &str,
+    _is_directory: bool,
+    is_at: bool,
+    is_quoted: bool,
+) -> String {
     let needs_quotes = is_quoted || path.contains(' ');
     let prefix = if is_at { "@" } else { "" };
     if !needs_quotes {
@@ -714,7 +743,7 @@ fn build_completion_value(path: &str, _is_directory: bool, is_at: bool, is_quote
     }
 }
 
-fn expand_home_path(path: &str) -> String {
+pub(crate) fn expand_home_path(path: &str) -> String {
     if path.starts_with("~/") {
         if let Ok(home) = std::env::var("HOME") {
             let rest = path.strip_prefix("~/").unwrap_or("");

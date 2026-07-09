@@ -5,6 +5,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+use xylitol_tui::autocomplete::SlashCommand;
+use xylitol_tui::completion::{AtPathSource, SlashCommandSource};
 use xylitol_tui::components::editor::{Editor, EditorOptions, EditorTheme};
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::select_list::{
@@ -18,6 +20,31 @@ use xylitol_tui::{
     Component, CrosstermTerminal, Focusable, InputEvent, SystemClock, TUI, matches_key_event,
     truncate_to_width, visible_width, wrap_text_with_ansi,
 };
+
+/// Demo slash commands (static; product would load from Driver / protocol).
+/// Names omit the leading `/` — Editor's CombinedAutocompleteProvider adds it.
+const SLASH_COMMANDS: &[(&str, &str)] = &[
+    ("help", "Show this help"),
+    ("model", "Switch execution model"),
+    ("compact", "Compact conversation history"),
+    ("export", "Export current session"),
+    ("session", "Session management"),
+    ("settings", "Open settings panel"),
+    ("palette", "Open command palette"),
+    ("diff", "Show workspace diff"),
+];
+
+fn slash_commands() -> Vec<SlashCommand> {
+    SLASH_COMMANDS
+        .iter()
+        .map(|(name, desc)| SlashCommand {
+            name: (*name).to_string(),
+            description: Some((*desc).to_string()),
+            argument_hint: None,
+            get_argument_completions: None,
+        })
+        .collect()
+}
 
 fn cyan(s: &str) -> String {
     format!("\x1b[36m{s}\x1b[39m")
@@ -64,7 +91,8 @@ enum Role {
     System,
 }
 
-/// App-layer glyph config (DESIGN.md): no font probing — env / Ctrl+G only.
+/// App-layer glyph config (DESIGN.md): no font probing — env / Alt+G only.
+/// (Avoid Ctrl+G: reserved for future external-editor open.)
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum GlyphSet {
     Unicode,
@@ -210,6 +238,16 @@ impl FakeCodingAgentApp {
     }
 
     pub fn new_with_prompt(quit_flag: Arc<AtomicBool>, initial_prompt: &str) -> Self {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        Self::new_with_prompt_at(quit_flag, initial_prompt, cwd)
+    }
+
+    /// Like [`new_with_prompt`] but pins `@` path completion to `cwd` (tests / demos).
+    pub fn new_with_prompt_at(
+        quit_flag: Arc<AtomicBool>,
+        initial_prompt: &str,
+        cwd: std::path::PathBuf,
+    ) -> Self {
         let submit_slot = Rc::new(RefCell::new(None));
         let submit_clone = submit_slot.clone();
 
@@ -229,6 +267,12 @@ impl FakeCodingAgentApp {
         input.on_submit = Some(Box::new(move |text| {
             *submit_clone.borrow_mut() = Some(text);
         }));
+        // Pluggable CompletionSources: `/` slash cmds + `@` path picker.
+        // Demo-only static lists — no Driver wiring. Future `$`/`^` = more sources.
+        input.set_completion_sources(vec![
+            Box::new(SlashCommandSource::new(slash_commands())),
+            Box::new(AtPathSource::new(cwd)),
+        ]);
         input.set_text(initial_prompt.to_string());
 
         let palette = SelectList::new(
@@ -330,7 +374,8 @@ impl FakeCodingAgentApp {
             ],
             changed_files: vec!["packages/xylitol-tui/examples/agent_demo.rs".into()],
             recent_tools: vec!["read_file examples/agent_demo.rs".into()],
-            footer_note: "~/xylitol (feat/tui-dev) · claude-sonnet-4".into(),
+            // Keep short: 80-col harness must fit note + glyph + key cues.
+            footer_note: "~/xylitol · sonnet-4".into(),
             last_submitted: String::new(),
             status_text: "Ready".into(),
             active_stream_entry: None,
@@ -351,7 +396,7 @@ impl FakeCodingAgentApp {
         // One-shot help in transcript (less chrome than a permanent shortcut wall).
         self.push_message(
             Role::System,
-            "keys: Enter submit · ^P palette · ^S settings · ^T thinking · ^E tools · ^G glyphs · ^O step · Esc close · ^C quit",
+            "keys: Enter submit · / cmds · @ path · ^P palette · ^S settings · ^T thinking · Alt+E tools · Alt+G glyphs · ^O step · Esc close · ^C quit",
         );
         self.push_message(
             Role::User,
@@ -423,7 +468,7 @@ impl FakeCodingAgentApp {
         self.push_message(
             Role::System,
             format!(
-                "glyph_set={} (Ctrl+G cycle; or XYLITOL_TUI_GLYPH_SET=ascii|unicode)",
+                "glyph_set={} (Alt+G cycle; or XYLITOL_TUI_GLYPH_SET=ascii|unicode)",
                 self.glyph_set.label()
             ),
         );
@@ -898,7 +943,8 @@ impl Component for FakeCodingAgentApp {
         } else {
             // Compact cue strip — full list is in the seed system line.
             footer_owned = format!(
-                "{} · {} · ^P/^S/^T/^E/^G/^O",
+                // Keep cue strip short — narrow terminals (80 cols) still fit.
+                "{} · {} · /@ ^P/^S/^T Alt+E/G ^O",
                 self.footer_note,
                 self.glyph_set.label()
             );
@@ -930,9 +976,12 @@ impl Component for FakeCodingAgentApp {
         }
 
         if matches_key_event(key, "escape") {
-            self.palette_open = false;
-            self.settings_open = false;
-            return;
+            if self.palette_open || self.settings_open {
+                self.palette_open = false;
+                self.settings_open = false;
+                return;
+            }
+            // Fall through so Editor can dismiss slash CommandPopup (Esc).
         }
 
         if self.palette_open {
@@ -1000,11 +1049,13 @@ impl Component for FakeCodingAgentApp {
             self.toggle_thinking_blocks();
             return;
         }
-        if matches_key_event(key, "ctrl+e") {
+        // Alt+E / Alt+G — not Ctrl+E (editor cursorLineEnd) or Ctrl+G (future
+        // external editor). App-level toggles stay off the Editor keybinding table.
+        if matches_key_event(key, "alt+e") {
             self.toggle_tool_blocks();
             return;
         }
-        if matches_key_event(key, "ctrl+g") {
+        if matches_key_event(key, "alt+g") {
             self.cycle_glyph_set();
             return;
         }

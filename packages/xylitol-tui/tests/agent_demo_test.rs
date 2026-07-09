@@ -99,6 +99,168 @@ fn agent_demo_idle_ticks_drive_script_without_input() {
 }
 
 #[test]
+fn agent_demo_slash_command_popup_filters_and_completes() {
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )))
+    .focus(Some(0));
+
+    h.render_result()
+        .expect("initial empty editor should render");
+    // Open CommandPopup by typing `/` on the first line.
+    h.keys("/");
+    h.render_result()
+        .expect("slash popup must stay within width budget");
+    h.assert_text_contains("help");
+    h.assert_text_contains("Show this help");
+    h.assert_text_contains("palette");
+
+    // Prefix filter: `/hel` should keep help, drop unrelated commands.
+    h.keys("hel");
+    h.render_result()
+        .expect("filtered slash popup must stay within width");
+    let filtered = h.tui.terminal.viewport().join("\n");
+    assert!(
+        filtered.contains("help") && filtered.contains("Show this help"),
+        "filtered popup should still show /help; got:\n{filtered}"
+    );
+    assert!(
+        !filtered.contains("Show workspace diff"),
+        "prefix /hel should hide /diff; got:\n{filtered}"
+    );
+
+    // Tab completes into the editor (does not submit); user submits with Enter later.
+    h.keys("\t");
+    h.render_result()
+        .expect("slash completion into editor must stay within width");
+    let after = h.tui.terminal.viewport().join("\n");
+    assert!(
+        after.contains("/help"),
+        "Tab should complete the slash command into the editor; got:\n{after}"
+    );
+    assert!(
+        !after.contains("Show this help"),
+        "popup should close after completion; got:\n{after}"
+    );
+}
+
+#[test]
+fn agent_demo_slash_command_popup_backspace_to_slash_closes() {
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )))
+    .focus(Some(0));
+
+    h.render_result()
+        .expect("initial empty editor should render");
+    h.keys("/h");
+    h.render_result().expect("slash popup with filter");
+    h.assert_text_contains("Show this help");
+    h.keys("\x7f"); // Backspace → `/` only → close popup, keep `/`
+    h.render_result()
+        .expect("backspace to lone slash must stay within width");
+    let text = h.tui.terminal.viewport().join("\n");
+    assert!(
+        !text.contains("Show this help"),
+        "backspacing to lone `/` should close CommandPopup; got:\n{text}"
+    );
+}
+
+#[test]
+fn agent_demo_slash_command_popup_esc_dismisses() {
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )))
+    .focus(Some(0));
+
+    h.render_result()
+        .expect("initial empty editor should render");
+    h.keys("/");
+    h.render_result().expect("slash popup open");
+    h.assert_text_contains("Switch execution model");
+    h.keys("\x1b"); // Esc → Editor cancels autocomplete
+    h.render_result().expect("Esc dismisses slash popup");
+    let dismissed = h.tui.terminal.viewport().join("\n");
+    assert!(
+        !dismissed.contains("Switch execution model"),
+        "Esc should close CommandPopup and leave `/` in the editor; got:\n{dismissed}"
+    );
+}
+
+#[test]
+fn agent_demo_at_path_popup_lists_and_completes() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(dir.path().join("demo_note.txt"), "hi").expect("write file");
+    std::fs::create_dir(dir.path().join("demo_subdir")).expect("mkdir");
+
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt_at(
+        Arc::new(AtomicBool::new(false)),
+        "",
+        dir.path().to_path_buf(),
+    )))
+    .focus(Some(0));
+
+    h.render_result()
+        .expect("initial empty editor should render");
+    h.keys("@");
+    h.render_result()
+        .expect("@ path popup must stay within width budget");
+    let open = h.tui.terminal.viewport().join("\n");
+    assert!(
+        open.contains("demo_note.txt") || open.contains("demo_subdir"),
+        "@ should list cwd entries; got:\n{open}"
+    );
+
+    h.keys("demo_n");
+    h.render_result()
+        .expect("filtered @ path popup must stay within width");
+    h.assert_text_contains("demo_note.txt");
+
+    h.keys("\t");
+    h.render_result()
+        .expect("@ path completion into editor must stay within width");
+    let after = h.tui.terminal.viewport().join("\n");
+    assert!(
+        after.contains("@demo_note.txt"),
+        "Tab should complete @path into the editor; got:\n{after}"
+    );
+}
+
+#[test]
+fn agent_demo_at_path_popup_esc_dismisses() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(dir.path().join("esc_target.rs"), "").expect("write file");
+
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt_at(
+        Arc::new(AtomicBool::new(false)),
+        "",
+        dir.path().to_path_buf(),
+    )))
+    .focus(Some(0));
+
+    h.render_result()
+        .expect("initial empty editor should render");
+    h.keys("@");
+    h.render_result().expect("@ path popup open");
+    h.assert_text_contains("esc_target.rs");
+    h.keys("\x1b");
+    h.render_result().expect("Esc dismisses @ path popup");
+    let dismissed = h.tui.terminal.viewport().join("\n");
+    assert!(
+        !dismissed.contains("esc_target.rs"),
+        "Esc should close @ path popup (file name only lived in SelectList); got:\n{dismissed}"
+    );
+}
+
+#[test]
 fn agent_demo_command_palette_replaces_editor_slot() {
     let mut h = TuiTestHarness::new(172, 40);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
@@ -219,7 +381,7 @@ fn agent_demo_idle_omits_status_row() {
         );
     }
     assert!(
-        text.contains("feat/tui-dev"),
+        text.contains("~/xylitol") && text.contains("sonnet-4"),
         "minimal footer should remain; got:\n{text}"
     );
 }
@@ -378,7 +540,7 @@ fn agent_demo_ctrl_t_expands_thinking_block() {
 }
 
 #[test]
-fn agent_demo_ctrl_e_expands_tool_block() {
+fn agent_demo_alt_e_expands_tool_block() {
     let mut h = TuiTestHarness::new(172, 40);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
@@ -396,18 +558,18 @@ fn agent_demo_ctrl_e_expands_tool_block() {
         "collapsed tool must hide detail; got:\n{before}"
     );
 
-    h.keys("\x05"); // Ctrl+E
+    h.keys("\x1be"); // Alt+E (not Ctrl+E — reserved for editor cursorLineEnd)
     h.render_result()
         .expect("expand tools must stay within width");
     let after = h.tui.terminal.viewport().join("\n");
     assert!(
         after.contains("opened agent_demo") || after.contains("FakeCodingAgentApp"),
-        "Ctrl+E should expand tool detail; got:\n{after}"
+        "Alt+E should expand tool detail; got:\n{after}"
     );
 }
 
 #[test]
-fn agent_demo_ctrl_g_cycles_glyph_set_to_ascii() {
+fn agent_demo_alt_g_cycles_glyph_set_to_ascii() {
     let mut h = TuiTestHarness::new(172, 40);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
@@ -416,13 +578,13 @@ fn agent_demo_ctrl_g_cycles_glyph_set_to_ascii() {
 
     h.render_result().expect("initial render should succeed");
     h.assert_text_contains("❯");
-    h.keys("\x07"); // Ctrl+G
+    h.keys("\x1bg"); // Alt+G (not Ctrl+G — reserved for future external editor)
     h.render_result()
         .expect("glyph cycle must stay within width");
     let text = h.tui.terminal.viewport().join("\n");
     assert!(
         text.contains("ascii") && text.contains("^P/^S"),
-        "Ctrl+G should switch glyph set and footer should keep palette/settings cues; got:\n{text}"
+        "Alt+G should switch glyph set and footer should keep palette/settings cues; got:\n{text}"
     );
     assert!(
         text.contains("glyph_set=ascii"),
