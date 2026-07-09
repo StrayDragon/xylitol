@@ -92,7 +92,7 @@ xy 现状：
 - `packages/xylitol-tui/src/lib.rs`（导出 `AutocompleteMode`）
 - `packages/xylitol-tui/Cargo.toml`（可能加 tokio rt feature for editor）
 - `packages/xylitol-tui/tests/autocomplete_test.rs`（追加或新建 editor_ac_test.rs）
-- `llmanspec/specs/editor-autocomplete/spec.toon`（新建）
+- `llmanspec/changes/c430-port-editor-autocomplete/specs/package-tui-editor-autocomplete/spec.toon`（delta；归档后合并为 `package-tui-editor-autocomplete`）
 
 ## Non-goals
 

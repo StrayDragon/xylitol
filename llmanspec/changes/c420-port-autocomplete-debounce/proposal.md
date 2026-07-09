@@ -68,7 +68,7 @@ xy `autocomplete.rs`:
 - `packages/xylitol-tui/src/autocomplete_fd.rs`（新建，~120 行）
 - `packages/xylitol-tui/src/lib.rs`（导出）
 - `packages/xylitol-tui/tests/autocomplete_test.rs`（新建，~15 测试）
-- `llmanspec/specs/autocomplete/spec.toon`（不存在则新建，否则 delta）
+- `llmanspec/changes/c420-port-autocomplete-debounce/specs/package-tui-autocomplete/spec.toon`（delta；归档后合并为 `package-tui-autocomplete`）
 
 ## Non-goals
 

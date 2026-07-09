@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
-name: "tui-testing"
-purpose: "TBD - created by archiving change c405-add-tui-test-harness. Update purpose after archive."
-valid_scope[2]: src/,tests/
+name: "package-tui-testing"
+purpose: "Five-layer test harness for packages/xylitol-tui."
+valid_scope[2]: packages/xylitol-tui/,tests/
 requirements[7]{req_id,title,statement}:
   tt01,"five-layer-test-architecture","The TUI test harness MUST be organized as five non-overlapping layers: layer 1 key-sequence-to-state assertions (drive Component::handle_input with byte sequences and assert on model state modeled on helix test_key_sequence); layer 2 insta snapshot golden (assert whole-screen viewport output via assert_snapshot!); layer 3 timing infrastructure (injectable Clock trait for synchronous logic like paste-burst and tokio start_paused for async logic like debounce); layer 4 proptest state-machine (random key sequences plus invariant assertions for editor state machines); layer 5 end-to-end terminal integration (portable-pty as primary driver plus tmux smoke for real-terminal compatibility). Each layer MUST have a distinct non-overlapping responsibility: layers 1-4 run in-process via the existing VirtualTerminal cell-grid oracle; layer 5 spawns the real binary."
   tt02,"key-sequence-helper","The TUI test support MUST provide a generic key-sequence driver that accepts a byte string of terminal input, dispatches it through Component::handle_input, and exposes state assertions (assert_text, assert_cursor, assert_screen_contains). The MutableComponent pattern (Rc<RefCell> injected as Component) MUST be generalized from its current single-test-local definition into tests/support/ so any test can mount a widget, drive keys, and assert across multiple frames without hand-wiring Rc/RefCell per test. Tests MUST NOT rebuild a second TUI instance to observe a second frame (the current workaround documented in virtual_terminal_test.rs:178-184); the helper MUST mutate the same instance in place."
