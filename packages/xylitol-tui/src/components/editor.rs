@@ -8,9 +8,12 @@
     clippy::module_inception
 )]
 use crate::autocomplete::{
-    AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions, CombinedAutocompleteProvider,
+    AutocompleteItem, AutocompleteSuggestions, CombinedAutocompleteProvider,
 };
 use crate::clock::Clock;
+use crate::completion::{
+    AtPathSource, CompletionContext, CompletionRegistry, CompletionSource, SlashCommandSource,
+};
 use crate::components::select_list::{
     SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,
 };
@@ -209,9 +212,8 @@ pub struct Editor {
     snapped_from_cursor_col: Option<usize>,
     paste_burst: PasteBurst,
     clock: Box<dyn Clock>,
-    // c430 autocomplete integration
-    autocomplete_provider: Option<CombinedAutocompleteProvider>,
-    autocomplete_trigger_chars: Vec<char>,
+    // c430 autocomplete integration (CompletionSource registry)
+    completion: CompletionRegistry,
     autocomplete_list: Option<SelectList>,
     autocomplete_state: Option<AutocompleteMode>,
     autocomplete_prefix: String,
@@ -245,8 +247,7 @@ impl Editor {
             snapped_from_cursor_col: None,
             paste_burst: PasteBurst::new(),
             clock,
-            autocomplete_provider: None,
-            autocomplete_trigger_chars: vec!['@', '#'],
+            completion: CompletionRegistry::new(),
             autocomplete_list: None,
             autocomplete_state: None,
             autocomplete_prefix: String::new(),
@@ -607,24 +608,9 @@ impl Editor {
         self.state.lines[self.state.cursor_line] = format!("{b}{ch}{a}");
         self.set_cursor_col(self.state.cursor_col + ch.len());
         self.paste_burst.on_plain_char(now);
-        // c430: auto-trigger autocomplete on / at line-start or trigger char
-        if !self.is_showing_autocomplete() {
-            if ch == "/" && self.is_at_start_of_message() {
-                self.try_trigger_autocomplete(false);
-            } else if self.autocomplete_trigger_chars.contains(&first) {
-                let current_line = &self.state.lines[self.state.cursor_line];
-                let before = &current_line[..self.state.cursor_col.min(current_line.len())];
-                #[allow(clippy::manual_pattern_char_comparison)]
-                let delim_at = before
-                    .rfind(|c: char| c == ' ' || c == '\t' || c == '"' || c == '\'')
-                    .map(|i| i + 1)
-                    .unwrap_or(0);
-                if before[delim_at..].starts_with(first) {
-                    self.try_trigger_autocomplete(false);
-                }
-            }
-        }
         self.on_changed();
+        // CompletionSource registry: refresh open popup, or probe for a new match.
+        self.handle_autocomplete_on_edit();
     }
     fn backspace(&mut self) {
         self.exit_history_browsing();
@@ -1069,121 +1055,121 @@ impl Editor {
         self.find_current_visual_line(&vls) == vls.len().saturating_sub(1)
     }
 
-    // ── c430: autocomplete integration ─────────────────────────────────
+    // ── c430: autocomplete via CompletionSource registry ───────────────
 
-    /// Set the autocomplete provider. Passing None disables autocomplete.
+    fn completion_ctx(&self) -> CompletionContext<'_> {
+        CompletionContext {
+            lines: &self.state.lines,
+            cursor_line: self.state.cursor_line,
+            cursor_col: self.state.cursor_col,
+        }
+    }
+
+    /// Primary API: register pluggable completion sources (`/`, `@`, future `$`/`^`).
+    pub fn set_completion_sources(&mut self, sources: Vec<Box<dyn CompletionSource>>) {
+        self.cancel_autocomplete();
+        self.completion.set_sources(sources);
+    }
+
+    /// Compatibility shim: split Combined into Slash + AtPath sources.
     pub fn set_autocomplete_provider(&mut self, provider: Option<CombinedAutocompleteProvider>) {
         self.cancel_autocomplete();
-        if let Some(ref p) = provider {
-            let trigger_chars: Vec<char> = p.trigger_characters().to_vec();
-            if !trigger_chars.is_empty() {
-                self.autocomplete_trigger_chars = trigger_chars;
+        match provider {
+            None => self.completion.clear(),
+            Some(p) => {
+                let (commands, base, fd) = p.into_parts();
+                let at: Box<dyn CompletionSource> = match fd {
+                    Some(fd_path) => Box::new(AtPathSource::new_with_fd(base, fd_path)),
+                    None => Box::new(AtPathSource::new(base)),
+                };
+                self.completion
+                    .set_sources(vec![Box::new(SlashCommandSource::new(commands)), at]);
             }
         }
-        self.autocomplete_provider = provider;
     }
 
     fn is_showing_autocomplete(&self) -> bool {
         self.autocomplete_state.is_some()
     }
 
+    /// After text/cursor edits: dismiss, refresh, or open a matching source.
     fn handle_autocomplete_on_edit(&mut self) {
-        if self.autocomplete_state.is_some() {
-            self.update_autocomplete();
+        if self.completion.is_empty() {
+            return;
+        }
+        if self.is_showing_autocomplete() {
+            let ctx = self.completion_ctx();
+            if self.completion.should_dismiss_active(&ctx) {
+                self.cancel_autocomplete();
+                return;
+            }
+            self.request_autocomplete(false, false);
+        } else {
+            let ctx = self.completion_ctx();
+            if self.completion.probe_first(&ctx).is_some() {
+                self.request_autocomplete(false, false);
+            }
         }
     }
 
     fn handle_tab_completion(&mut self) {
-        if self.autocomplete_provider.is_none() {
+        if self.completion.is_empty() {
             return;
         }
-        let current_line = self.state.lines[self.state.cursor_line].clone();
-        let before_cursor = &current_line[..self.state.cursor_col.min(current_line.len())];
-        if self.is_slash_menu_allowed()
-            && before_cursor.trim_start().starts_with('/')
-            && !before_cursor.trim_start().contains(' ')
-        {
-            self.request_autocomplete(false, true);
-        } else {
-            self.request_autocomplete(true, true);
-        }
-    }
-
-    fn is_slash_menu_allowed(&self) -> bool {
-        self.state.cursor_line == 0
-    }
-
-    fn is_at_start_of_message(&self) -> bool {
-        if !self.is_slash_menu_allowed() {
-            return false;
-        }
-        let current_line = &self.state.lines[self.state.cursor_line];
-        let before = &current_line[..self.state.cursor_col.min(current_line.len())];
-        before.trim().is_empty() || before.trim() == "/"
-    }
-
-    fn try_trigger_autocomplete(&mut self, explicit_tab: bool) {
-        self.request_autocomplete(false, explicit_tab);
+        // Force=true for non-slash probes (file path Tab); slash stays regular.
+        let ctx = self.completion_ctx();
+        let force = match self.completion.probe_first(&ctx) {
+            Some((_, m)) => !m.prefix.starts_with('/'),
+            None => true,
+        };
+        self.request_autocomplete(force, true);
     }
 
     fn request_autocomplete(&mut self, force: bool, explicit_tab: bool) {
-        if self.autocomplete_provider.is_none() {
+        if self.completion.is_empty() {
             return;
         }
-
-        // Discard any pending request
         self.autocomplete_start_token = self.autocomplete_start_token.wrapping_add(1);
         let start_token = self.autocomplete_start_token;
-
-        // Sync: no debounce, call immediately
         self.start_autocomplete_request(start_token, force, explicit_tab);
     }
 
-    #[allow(clippy::needless_return)]
     fn start_autocomplete_request(&mut self, start_token: usize, force: bool, explicit_tab: bool) {
         if start_token != self.autocomplete_start_token {
             return;
         }
-        let provider = match &self.autocomplete_provider {
-            Some(p) => p,
-            None => return,
+
+        let ctx = CompletionContext {
+            lines: &self.state.lines,
+            cursor_line: self.state.cursor_line,
+            cursor_col: self.state.cursor_col,
         };
+        let suggestions = self.completion.open_or_refresh(&ctx);
 
-        let suggestions = provider.get_suggestions(
-            &self.state.lines,
-            self.state.cursor_line,
-            self.state.cursor_col,
-            force,
-        );
-
-        // Check if this request is still valid
         if start_token != self.autocomplete_start_token {
             return;
         }
 
         match suggestions {
             Some(s) if !s.items.is_empty() => {
-                // Single result on explicit tab → auto-apply
                 if force && explicit_tab && s.items.len() == 1 {
                     let item = s.items[0].clone();
-                    let prefix = s.prefix;
+                    let prefix = s.prefix.clone();
+                    let source_index = self.completion.active_index().unwrap_or(0);
                     self.push_undo();
                     self.last_action = None;
-                    // provider is still borrowed — clone what we need
-                    let (new_lines, nl, nc) = self
-                        .autocomplete_provider
-                        .as_ref()
-                        .unwrap()
-                        .apply_completion(
-                            &self.state.lines,
-                            self.state.cursor_line,
-                            self.state.cursor_col,
-                            &item,
-                            &prefix,
-                        );
+                    let (new_lines, nl, nc) = self.completion.apply_probed(
+                        source_index,
+                        &self.state.lines,
+                        self.state.cursor_line,
+                        self.state.cursor_col,
+                        &item,
+                        &prefix,
+                    );
                     self.state.lines = new_lines;
                     self.state.cursor_line = nl;
                     self.set_cursor_col(nc);
+                    self.cancel_autocomplete();
                     self.on_changed();
                 } else {
                     self.apply_autocomplete_suggestions(
@@ -1199,11 +1185,6 @@ impl Editor {
             _ => {
                 self.cancel_autocomplete();
             }
-        }
-
-        // Check again after the call
-        if start_token != self.autocomplete_start_token {
-            return;
         }
     }
 
@@ -1254,12 +1235,19 @@ impl Editor {
         if prefix.is_empty() {
             return 0;
         }
+        // Strip leading trigger for value compare (slash items store bare names).
+        let needle = prefix
+            .strip_prefix('/')
+            .or_else(|| prefix.strip_prefix('@'))
+            .unwrap_or(prefix);
         let mut first_prefix = items.len();
         for (i, item) in items.iter().enumerate() {
-            if item.value == prefix {
+            if item.value == needle || item.value == prefix {
                 return i;
             }
-            if first_prefix == items.len() && item.value.starts_with(prefix) {
+            if first_prefix == items.len()
+                && (item.value.starts_with(needle) || item.value.starts_with(prefix))
+            {
                 first_prefix = i;
             }
         }
@@ -1270,14 +1258,6 @@ impl Editor {
         }
     }
 
-    fn update_autocomplete(&mut self) {
-        if !self.is_showing_autocomplete() || self.autocomplete_provider.is_none() {
-            return;
-        }
-        let force = self.autocomplete_state == Some(AutocompleteMode::Force);
-        self.request_autocomplete(force, false);
-    }
-
     fn cancel_autocomplete_request(&mut self) {
         self.autocomplete_start_token = self.autocomplete_start_token.wrapping_add(1);
     }
@@ -1286,6 +1266,7 @@ impl Editor {
         self.autocomplete_state = None;
         self.autocomplete_list = None;
         self.autocomplete_prefix.clear();
+        self.completion.clear_active();
     }
 
     fn cancel_autocomplete(&mut self) {
@@ -1340,26 +1321,28 @@ impl Editor {
                     None
                 };
                 if let Some((val, lbl, desc, prefix)) = apply_data {
-                    let provider = self.autocomplete_provider.as_ref().unwrap();
                     let ai = AutocompleteItem {
                         value: val.clone(),
                         label: lbl.clone(),
                         description: desc.clone(),
                     };
-                    let (new_lines, nl, nc) = provider.apply_completion(
+                    if let Some((new_lines, nl, nc)) = self.completion.apply_active(
                         &self.state.lines,
                         self.state.cursor_line,
                         self.state.cursor_col,
                         &ai,
                         &prefix,
-                    );
-                    self.push_undo();
-                    self.last_action = None;
-                    self.state.lines = new_lines;
-                    self.state.cursor_line = nl;
-                    self.set_cursor_col(nc);
-                    self.cancel_autocomplete();
-                    self.on_changed();
+                    ) {
+                        self.push_undo();
+                        self.last_action = None;
+                        self.state.lines = new_lines;
+                        self.state.cursor_line = nl;
+                        self.set_cursor_col(nc);
+                        self.cancel_autocomplete();
+                        self.on_changed();
+                    } else {
+                        self.cancel_autocomplete();
+                    }
                 } else {
                     self.cancel_autocomplete();
                 }
