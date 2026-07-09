@@ -10,10 +10,10 @@
 
 | 已完成 | 进行中 / 下一步 |
 |---|---|
-| `packages/xylitol-tui`：pi-tui 可移植模块初步 port + 五层测试 + `agent_demo` | 按需裁剪包；补应用层所需 API（如 `Container` / `OverlayHandle`） |
-| `agent_demo`：硬件光标默认隐藏、全量 transcript→scrollback、debug 固定底栏；crossterm Command hygiene | 输入主路径逐步改为 `KeyEvent`（见包 AGENTS） |
-| 旧 `src/app/tui` in-tree engine/widgets **已删除**，`run()` 占位报错 | 基于 `xylitol-tui` **从零**重做产品 TUI（不继承旧 UI/UX） |
-| AGENTS 收成稳定边界；how-to 进 `write-tui` / `test-tui-harness`；包 specs 用 `package-tui-*` 前缀 | 开 SDD（建议 `c445` 裁剪/API → `c450` App Shell）；DESIGN.md 待产品面重写时再成文 |
+| `packages/xylitol-tui`：pi-tui port + 五层测试 + `agent_demo` | **`c445`**：Container + OverlayHandle + 图片裁剪（已 propose） |
+| `agent_demo`：硬件光标默认隐藏、全量 scrollback、debug 底栏；crossterm Command | **`c450`**：App Shell（Driver + host 合流）；UX 见 `packages/xylitol-tui/DESIGN.md` |
+| 输入硬切：`InputEvent::{Key,Paste}`，无 KeyEvent→VT 运行时路径 | apply `c445` → 再 propose `c450` |
+| 旧 `src/app/tui` 已删占位；包 specs 用 `package-tui-*` | — |
 
 **架构（已写入 AGENTS，此处不重复长文）**：引擎同步 + 应用面 host 驱动异步合流；样式 `Vec<String>`；主题闭包在包、语义 token 在应用面；流式业务缓冲在应用面。
 

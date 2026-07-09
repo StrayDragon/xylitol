@@ -12,7 +12,7 @@
 | 同步库；产品面 host 驱动 | 绑定 tokio / 拥有产品事件循环 |
 | `lib.rs` re-export = API 边界 SSOT | 应用层 theme token / 流式业务缓冲 |
 
-对齐源：`../pi/packages/tui`（及 kimi-code 同源）。进度/裁剪笔记：根 `_HANDOFF.md`（非规范）。
+对齐源：`../pi/packages/tui`（及 kimi-code 同源）。进度/裁剪笔记：根 `_HANDOFF.md`（非规范）。视觉/UX：`DESIGN.md`（终端域 tokens）。
 
 ## 硬约束（不得回退）
 
@@ -41,6 +41,6 @@
 
 裁剪与待补 API 随接线演进，以代码与 `_HANDOFF.md` 为准，不在本文件维护清单。
 
-## DESIGN.md（约定，未成文）
+## DESIGN.md
 
-终端域视觉/UX 规范拟用 DESIGN.md 风格（YAML tokens + 中文 rationale），token 面向 ANSI/行距/固定底栏，而非 Web px。成文时机与路径待产品面重写时再定；在此之前以本文件硬约束 + `agent_demo` 为验收参考。
+终端域视觉/UX：本目录 `DESIGN.md`（YAML tokens + 中文 rationale）。产品面语义 token 映射仍在 `src/app/tui/`；包内只收闭包主题。
