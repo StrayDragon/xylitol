@@ -1,119 +1,89 @@
 ---
 name: "write-tui"
-description: "编写或改造 xylitol 终端 UI（src/app/tui/）时使用。覆盖复用契约（经 Driver + XyEvent，绝不 reach into agent/infra）、文件布局、新特性落点、测试放置、编码约定。TUI 已落地（c340-c365），本 skill 是 how-to。"
+description: "编写或改造 xylitol 终端 UI（src/app/tui/）时使用。覆盖复用契约（经 Driver + XyEvent，绝不 reach into agent/infra）、与 packages/xylitol-tui 的边界、新特性落点、测试放置。旧 ratatui/自研 engine 实现已移除；本 skill 描述基于 xylitol-tui 的重做方向。"
 ---
 
 # 编写 TUI（src/app/tui/）
 
-> ⚠️ **重写进行中（c399-tui-rewrite-pi-render-engine）**：TUI 渲染层正从 ratatui inline-viewport 模型重写为 pi-tui line-array + differential rendering 模型（基于 `.agents/skills/tui-pro-of-pi-tui/` 技能）。本 SKILL 的「复用契约」「文件布局」「依赖」段落描述的是**旧的 ratatui 模型**，将在 c399 实施过程中随代码同步更新。在新引擎落地前，写/改 TUI 渲染层前先读 c399 的 proposal/design（`llmanspec/changes/c399-tui-rewrite-pi-render-engine/`）与 pi-tui 技能。
+> **现状**：旧 `src/app/tui/` 实现已删除并占位。产品 TUI 将基于 `packages/xylitol-tui` **从零重做**（UI/UX 不继承旧面）。写/改前先读：
+>
+> 1. `src/app/tui/AGENTS.md`（本面地图 + 硬约束）
+> 2. `packages/xylitol-tui/AGENTS.md`（引擎/组件库边界与已定决议）
+> 3. `src/AGENTS.md`（分层不变量）
+>
+> 方法论总纲见 `write-surface` skill。本 skill 是 TUI how-to，不重复分层事实。
 
-xylitol 的终端 UI 位于 `src/app/tui/`（`tui` feature 门控）。**写或改 TUI 之前**先读 `src/app/tui/AGENTS.md`（地图 + 模块边界 + 硬约束 + Out of scope）与 `src/AGENTS.md` 的「分层不变量」。
-
-本 skill 是 **how-to**：复用契约、新特性落点、测试放置、约定。它对标 kimi-code 的 `write-tui` skill，但适配 xylitol 的 Rust 单 crate + Driver seam 架构。
-
-**方法论总纲见 `write-surface` skill**（`.agents/skills/write-surface/SKILL.md`）——改 TUI 面之前先做死代码分诊（`audit-dead-code`）、只在复用契约内接线、必须端到端可跑通才算存在。本 skill 不重复方法论，只讲 TUI 特有部分。
+xylitol 的终端 UI 位于 `src/app/tui/`（`tui` feature 门控）。渲染与通用组件来自 workspace 包 `xylitol-tui`，**禁止**在 `src/app/tui/` 再实现一套差分引擎或通用 Editor/Markdown。
 
 ## 1. 复用契约（TUI 专属硬约束）
 
-TUI 是 `app/` 的一个面，受 `write-surface` 复用契约约束。对 TUI 而言具体是：
+TUI 是 `app/` 的一个面，受 `write-surface` 复用契约约束。对 TUI 而言：
 
-- **输入采集**（行编辑 / 键位 / 终端原始模式）：TUI 内部，用 `crossterm`（阻塞 `event::poll`/`read`，**不用** `EventStream`——会吞掉 ratatui inline 光标查询的 DSR 响应，见 `mod.rs` 头注释）。
-- **渲染**（`XyEvent` 流 → transcript / mutable tail / 面板）：TUI 内部，直依 `ratatui-core` + `ratatui-crossterm`（**不引** umbrella `ratatui` crate，c341）。
-- **驱动 agent**：**只能**经 `app/core/driver::Driver`（`InProcessDriver` 本地，或将来 `RemoteDriver` 连 server）。TUI 代码**禁止** import `crate::agent::session::*`、`crate::agent::runtime::*`、`crate::infra::*`（部分守卫：`arch_guard::app_driver_does_not_import_infra`）。
-- **slash 命令**：TUI 内部解析（`commands.rs`）；执行语义复用 `protocol::Command` 同名变体（对标 `app/rpc.rs::dispatch`），当前是 MVP 本地分发，统一 dispatch 是 c335 的职责。
-- **构造 agent**：**只能**经 `app/core/composition::build_agent`。TUI 不自己拼 `AgentBuilder`。
+- **渲染 / 组件 / 键协议**：只用 `xylitol_tui`（`TUI`、`Component`、`Editor`/`Input`/`Markdown`/…）。本 package 是同步库；产品面 **host 驱动**（`dispatch_input` / `request_render` / `try_render` / `idle_tick`），**不要**在产品路径调用 `TUI::start()`（那是 demo 用）。
+- **事件合流**：应用面拥有异步 host 循环（如 `tokio::select!`），合流键盘、agent 事件、tick 等；不要把 tokio 绑进 `xylitol-tui`。
+- **驱动 agent**：**只能**经 `app/core/driver::Driver`。禁止 import `crate::agent::session::*`、`crate::agent::runtime::*`、`crate::infra::*`。
+- **slash 命令**：应用面解析；执行语义复用 `protocol::Command`，经 `app/core/dispatch`。
+- **构造 agent**：**只能**经 `app/core/composition::build_agent`。
 
-一句话：TUI 接收一个 `&mut dyn Driver`，对它 `run(prompt)`，把回来的 `XyEvent` 流喂给 ratatui buffer。除此之外不碰 core。
+一句话：TUI 拿 `&mut dyn Driver`，`run(prompt)`，把 `XyEvent` 流变成组件状态，再驱动 `xylitol_tui` 出帧。除此之外不碰 core。
 
-## 2. 文件布局（已落地）
+## 2. 与 packages/xylitol-tui 的分工
 
-对标 kimi-code `apps/kimi-code/src/tui/`，适配单 crate。地图与每个文件职责的 SSOT 是 `src/app/tui/AGENTS.md` 的「文件布局」段；本节只给一句话速览，细节不重复：
+| 放 `packages/xylitol-tui` | 放 `src/app/tui/` |
+|---|---|
+| 差分引擎、终端抽象、键解码、通用组件 | App Shell（host 循环）、UX 状态机 |
+| `Container` / Overlay / theme 闭包接口 | 语义 theme token → 闭包映射 |
+| 五层测试的 1–4 层 | Driver seam、slash、`XyEvent`→UI 状态 |
+
+已定决议（细节 SSOT：`packages/xylitol-tui/AGENTS.md`）：`Vec<String>` ANSI 样式；主题闭包在包层、语义 token 在应用面；流式业务缓冲在应用面。
+
+## 3. 文件布局（重做目标）
+
+旧 engine/widgets/ratatui 路径已作废，**不要**恢复。重做时沿此方向落子（具体文件名以落地 PR 为准，先读当时的 `src/app/tui/AGENTS.md`）：
 
 ```
 src/app/tui/
-├── AGENTS.md            # 地图 + 边界 + 硬约束 + Out of scope（本面 SSOT）
-├── mod.rs               # run() REPL 主循环（tokio::select! 多源）
-├── init.rs              # panic 恢复 hook + 本地终端初始化
-├── terminal.rs          # InlineTerminal（Viewport::Inline 生命周期）+ wrap_to_width
-├── app.rs               # TuiApp 状态机（双 stream buffer + MutableKind）
-├── render.rs            # XyEvent → RenderedLine 单一 seam + draw_tail_frame
-├── input.rs             # 键位 → InputOutcome（MVP 单行）
-├── commands.rs          # slash 解析 /exit /model（MVP 本地分发）
-├── theme.rs             # Palette 语义颜色 token SSOT
-└── components/          # 6 个可复用 widget（TestBackend 可独立验证）
-    ├── transcript_line.rs   # RenderedLine → Buffer（wrap + CJK）
-    ├── mutable_line.rs      # pending_tail 顶行（MutableKind 选 style）
-    ├── input_prompt.rs      # 输入框（无 ❯）
-    ├── bottom_panel.rs      # border + bg 容器（只含 InputPrompt，固定 3 行）
-    ├── tail.rs              # 组合 MutableLine + BottomPanel
-    └── spinner.rs           # 单 glyph spinner（底层组件，当前未接线）
+├── AGENTS.md       # 本面 SSOT
+├── mod.rs          # run()：异步 host 循环，驱动 xylitol_tui
+├── …               # surface / theme / commands / 状态机等按设计落地
 ```
 
-改 TUI 时**沿此布局落子**，新增文件前先确认无既有归属（见第 4 节）。
+新增文件前确认无既有归属；通用 widget 优先进 `packages/xylitol-tui`，不要在应用面复制。
 
-## 3. 新特性落点
+## 4. 新特性落点
 
-特性类型决定落点（对标 kimi-code write-tui 的 "Where new features go"）：
+- **新的 `XyEvent` 呈现** → 应用面 seam（事件→UI 状态），再更新组件。
+- **slash 命令** → 应用面 commands + `app/core/dispatch`。
+- **通用交互组件**（列表/编辑/markdown）→ `packages/xylitol-tui`；先查是否已有。
+- **颜色 / 语义样式** → 应用面 theme（token → xylitol-tui 闭包）。
+- **需要新的 agent 行为** → **不进 TUI**。先扩 `runtime_protocol/` / `agent/`，TUI 只消费。
 
-- **新的 `XyEvent` 渲染** → `render.rs` seam 函数加分支 + 必要时 `RenderedLine` 加变体。
-- **slash 命令** → `commands.rs` 声明 + 解析；执行复用 `protocol::Command` 语义。
-- **transcript 新消息类型** → `components/messages/` 下新增渲染组件（当前仅有 `transcript_line.rs`，按需拆）。
-- **selector / popup / dialog** → `components/dialogs/`，并按 `DESIGN.md`（见第 5 节）的交互规范。
-- **颜色 / 样式** → `theme.rs` 的 `Palette`，新增语义方法而非硬编码颜色。
-- **mutable 内容新类别** → `app.rs` 的 `MutableKind` 加变体 + `tail.rs` 选 style。
-- **需要新的 agent 行为** → **不进 TUI**。先在 `runtime_protocol/` 加 port、`agent/` 加实现，TUI 只消费。
+## 5. 测试放置
 
-## 4. 测试放置
-
-- **渲染行为**：`ratatui_core::backend::TestBackend` + `assert_buffer_lines`，测行为非实现（c360 spec tui41）。每个 `components/` widget 有独立 harness 测试。
-- **slash 命令解析**：`commands.rs` 内 `#[cfg(test)]`。
-- **端到端（Driver + 事件流）**：用 `infra/provider/fake.rs` 的 `FakeModel` 喂确定性事件，避免真实 provider。
-- 不为每个小特性新建测试文件，就近扩既有文件（对标 kimi-code "Test placement"）。
-
-## 5. DESIGN.md（交互规范，按需创建）
-
-TUI 出现第一个 dialog / selector / 复杂输入框时，在本目录建 `DESIGN.md`（对标 kimi-code `write-tui/DESIGN.md`），作为该面所有交互组件的单一真值源：选中指针、当前态标记、边框样式、hint 文案、颜色 token 对照、提交前自查清单。在此之前，复用契约 + `theme.rs` + 本 skill 即规范。
+- **通用组件 / 引擎**：`packages/xylitol-tui` 五层 harness（见该 package `AGENTS.md`）。
+- **应用面 seam / slash**：就近 `#[cfg(test)]` 或既有测试文件；优先扩既有，不为小特性新建。
+- **端到端**：`infra/provider/fake` 的确定性事件；真终端 E2E 走 `just test-tui-e2e`。
 
 ## 6. 提交前
 
-- `just qa` 通过，`arch_guard` 不报新增的 `agent ↔ infra` 违规。
-- 确认 TUI 代码没有 `crate::agent::session` / `crate::agent::runtime` / `crate::infra::*` 的 import。
-- 确认没有为「暂时没用」的 TUI 骨架加 `#[allow(dead_code)]`（见 `audit-dead-code`）。
-- 渲染层改动有 TestBackend 覆盖（不只是手写 cell 断言）。
-- 若有 dialog/selector，走 `DESIGN.md` 自查清单。
+- `just qa`；`arch_guard` 无新增违规。
+- TUI 无 `crate::agent::session` / `runtime` / `infra::*` import。
+- 不为「暂时没用」的骨架加 `#[allow(dead_code)]`（见 `audit-dead-code`）。
+- 渲染相关改动有对应层测试（包内或应用面）。
 
 ## 7. 排查 TUI 问题（debug 日志）
 
-**核心约束：TUI 下禁止 `println!`/`eprintln!`/`dbg!`。** TUI 用 `Viewport::Inline` + raw mode，每帧做 DSR 光标查询；任何 stdout/stderr 输出都会与光标响应交错、毁屏，且把转义序列固化进 scrollback。debug 必须走文件日志。
+**禁止**在 TUI 路径使用 `println!`/`eprintln!`/`dbg!`（会与 raw mode / 差分输出交错毁屏）。走文件日志。
 
-### 日志管线（c390 落地）
+### 日志管线
 
-- 装配点：`src/app/cli/logging.rs::init_logging()`，在组合根 `app::cli::run()` 内、`CliArgs::parse()` 之后、模式分发之前装一次，覆盖所有面。
-- 激活（env-only，无 CLI flag、无 settings 字段）：
-  - `RUST_LOG=<directive>` → 用该 directive（非空才生效；空 `RUST_LOG=` 视为未设）。
-  - `XYLITOL_DEBUG=1` → 装默认 filter `xylitol=debug,warn`。
-  - 都不设 → 不装 subscriber，所有 `tracing::` 宏 no-op（生产默认，零开销）。
-- 落点：`~/.xylitol/logs/xylitol.log`，**同步** append（非 non_blocking，避免 `panic="abort"` 丢日志），unix `mode 0o600`，`with_ansi(false)`。file-only 永不碰 stdout/stderr。
-- `tail -f ~/.xylitol/logs/xylitol.log` 实时看。
-
-### 怎么排查
+- 装配：`src/app/cli/logging.rs::init_logging()`（组合根内、模式分发前）。
+- 激活：`RUST_LOG=<directive>` 或 `XYLITOL_DEBUG=1`（默认 `xylitol=debug,warn`）；都不设则不装 subscriber。
+- 落点：`~/.xylitol/logs/xylitol.log`（file-only，不碰 stdout/stderr）。
 
 ```bash
-# 一键开（最常用）：覆盖 xylitol 全部 debug + 所有 warn
 XYLITOL_DEBUG=1 cargo run --features tui --
-
-# 想看每个 XyEvent 的流转（turn 提交是 debug，事件桥接是 trace）
 RUST_LOG=xylitol=trace cargo run --features tui --
-
-# 只看特定模块
-RUST_LOG=xylitol::tui=debug,xylitol::agent=debug cargo run --features tui --
 ```
 
-已埋点位置（仅 emit，不跨 seam）：
-- `app/cli/logging.rs` — init 时 `info!` 记录路径。
-- `app/tui/mod.rs` — `driver.run` 提交（`debug!`，`turn submitted len=N`）、XyEvent 桥接（`trace!`，`xy event kind=...`）。
-- `infra/*` + `agent/*` — ~12 处既有 `warn!/info!/debug!`（event、permission、mcp、settings、hooks、compaction），subscriber 装上即自动激活。
-
-### 加新埋点
-
-TUI 代码里加埋点**只调 `tracing::` 宏**（`debug!`/`trace!`/`warn!`），用 `target: "xylitol::tui"` 或子模块名；**不要** import `infra` 或装 subscriber（分层不变量，`agent/` 同理只 emit）。热点：mpsc 流控、stream cancel、render seam 状态迁移。
+埋点只用 `tracing::` 宏（`target: "xylitol::tui"` 等）；不要在 TUI 里装 subscriber 或 import `infra`。
