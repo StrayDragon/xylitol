@@ -21,7 +21,26 @@ fn agent_demo_submit_flow_stays_within_width_budget() {
     h.keys("\r");
     h.render_result()
         .expect("submitting edited prompt must not overflow width");
-    h.assert_text_contains("Running rg and cargo test");
+    h.assert_text_contains("Thinking");
+}
+
+#[test]
+fn agent_demo_submit_flow_streams_reply_after_ticks() {
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+
+    h.render_result().expect("initial render should succeed");
+    h.keys("\r");
+    for _ in 0..48 {
+        h.tick();
+        h.render_result()
+            .expect("streaming scripted turn must stay within width budget");
+    }
+    h.assert_text_contains("rg -n");
+    h.assert_text_contains("收到，我已经接住");
 }
 
 #[test]

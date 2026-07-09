@@ -55,8 +55,13 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let term = CrosstermTerminal::new()?;
     let mut tui = TUI::new(term);
     let quit_flag = Arc::new(AtomicBool::new(false));
+    let initial_prompt = std::env::var("XYLITOL_AGENT_DEMO_INITIAL_PROMPT")
+        .unwrap_or_else(|_| "tighten footer truncation and add a PTY acceptance test".into());
 
-    tui.add_child(Box::new(FakeCodingAgentApp::new(quit_flag.clone())));
+    tui.add_child(Box::new(FakeCodingAgentApp::new_with_prompt(
+        quit_flag.clone(),
+        &initial_prompt,
+    )));
     tui.set_focus(Some(0));
     tui.start_with_flag(&quit_flag)
 }
@@ -82,9 +87,22 @@ enum ScriptEvent {
     Status(String),
 }
 
+enum TimedAction {
+    Event(ScriptEvent),
+    StreamStart,
+    StreamChunk(String),
+    StreamFinish,
+}
+
+struct ScheduledAction {
+    at_tick: u64,
+    action: TimedAction,
+}
+
 pub struct FakeCodingAgentApp {
     transcript: Vec<TranscriptEntry>,
     pending_events: VecDeque<ScriptEvent>,
+    scheduled_actions: VecDeque<ScheduledAction>,
     input: Editor,
     submit_slot: Rc<RefCell<Option<String>>>,
     palette_open: bool,
@@ -98,7 +116,11 @@ pub struct FakeCodingAgentApp {
     footer_note: String,
     last_submitted: String,
     status_text: String,
+    active_stream_entry: Option<usize>,
     scripted_turn: usize,
+    script_tick: u64,
+    scheduled_tail_tick: u64,
+    rng_state: u64,
     auto_started: bool,
     last_tick_at: Instant,
     quit_flag: Arc<AtomicBool>,
@@ -216,6 +238,7 @@ impl FakeCodingAgentApp {
         let mut app = Self {
             transcript: Vec::new(),
             pending_events: VecDeque::new(),
+            scheduled_actions: VecDeque::new(),
             input,
             submit_slot,
             palette_open: false,
@@ -234,7 +257,11 @@ impl FakeCodingAgentApp {
             footer_note: "Ctrl+P command palette  |  Ctrl+S settings  |  Ctrl+C quit".into(),
             last_submitted: String::new(),
             status_text: "Ready".into(),
+            active_stream_entry: None,
             scripted_turn: 0,
+            script_tick: 0,
+            scheduled_tail_tick: 0,
+            rng_state: 0x5eed_c0de_u64,
             auto_started: false,
             last_tick_at: Instant::now(),
             quit_flag,
@@ -272,29 +299,28 @@ impl FakeCodingAgentApp {
             return;
         }
 
+        let last_line = trimmed.lines().last().unwrap_or_default();
+
+        if last_line == "/palette" || last_line == ":palette" {
+            self.input.set_text(String::new());
+            self.palette_open = true;
+            self.settings_open = false;
+            return;
+        }
+
+        if last_line == "/settings" || last_line == ":settings" {
+            self.input.set_text(String::new());
+            self.settings_open = true;
+            self.palette_open = false;
+            return;
+        }
+
         self.last_submitted = trimmed.clone();
         self.push_entry(Role::User, trimmed.clone());
         self.input.set_text(String::new());
-
-        let mut events = VecDeque::new();
-        events.push_back(ScriptEvent::Status("Running rg and cargo test".into()));
-        events.push_back(ScriptEvent::Tool(format!(
-            "rg -n \"{}\" packages/xylitol-tui tests",
-            trimmed
-        )));
-        events.push_back(ScriptEvent::MarkPlan(1));
-        events.push_back(ScriptEvent::File("tests/tui_e2e/pty.rs".to_string()));
-        events.push_back(ScriptEvent::Tool(
-            "cargo test -p xylitol-tui --test agent_demo_test".into(),
-        ));
-        events.push_back(ScriptEvent::MarkPlan(2));
-        events.push_back(ScriptEvent::Assistant(format!(
-            "Submitted your prompt as a task: `{}`. Next step: tighten footer truncation and fold the example flow into PTY smoke.",
-            trimmed
-        )));
-        events.push_back(ScriptEvent::Status("Ready".into()));
-        self.pending_events.extend(events);
-        self.advance_script();
+        self.auto_started = true;
+        self.scripted_turn = self.scripted_turn.max(2);
+        self.queue_simulated_turn(&trimmed);
     }
 
     fn set_status(&mut self, text: impl Into<String>) {
@@ -303,7 +329,168 @@ impl FakeCodingAgentApp {
     }
 
     fn spinner_active(&self) -> bool {
-        self.status_text != "Ready" || !self.pending_events.is_empty()
+        self.status_text != "Ready"
+            || !self.pending_events.is_empty()
+            || !self.scheduled_actions.is_empty()
+            || self.active_stream_entry.is_some()
+    }
+
+    fn random_between(&mut self, min: u64, max: u64) -> u64 {
+        debug_assert!(min <= max);
+        self.rng_state = self
+            .rng_state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1);
+        min + (self.rng_state % (max - min + 1))
+    }
+
+    fn schedule_after_ticks(&mut self, delay_ticks: u64, action: TimedAction) {
+        self.scheduled_tail_tick = self.scheduled_tail_tick.max(self.script_tick);
+        self.scheduled_tail_tick += delay_ticks.max(1);
+        self.scheduled_actions.push_back(ScheduledAction {
+            at_tick: self.scheduled_tail_tick,
+            action,
+        });
+    }
+
+    fn queue_event(&mut self, delay_ticks: u64, event: ScriptEvent) {
+        self.schedule_after_ticks(delay_ticks, TimedAction::Event(event));
+    }
+
+    fn queue_assistant_stream(&mut self, text: &str) {
+        let start_delay = self.random_between(4, 8);
+        self.schedule_after_ticks(start_delay, TimedAction::StreamStart);
+
+        let chars: Vec<char> = text.chars().collect();
+        let mut index = 0usize;
+        while index < chars.len() {
+            let current = chars[index];
+            let take = if current == '\n' {
+                1
+            } else if current.is_ascii() {
+                self.random_between(2, 5) as usize
+            } else {
+                self.random_between(1, 2) as usize
+            };
+            let end = (index + take).min(chars.len());
+            let chunk: String = chars[index..end].iter().collect();
+            let chunk_delay = self.random_between(1, 4);
+            self.schedule_after_ticks(chunk_delay, TimedAction::StreamChunk(chunk));
+            index = end;
+        }
+
+        let finish_delay = self.random_between(3, 6);
+        self.schedule_after_ticks(finish_delay, TimedAction::StreamFinish);
+    }
+
+    fn build_assistant_reply(&mut self, prompt: &str) -> String {
+        let focus = if prompt.contains("CJK") || prompt.contains("emoji") {
+            "我会先盯住 CJK/emoji 的宽度预算，再看真实终端回放。"
+        } else if prompt.contains("palette") || prompt.contains("command") {
+            "我会先看 overlay 覆盖语义，再补 PTY/tmux smoke。"
+        } else {
+            "我会先复现主流程，再把验收和宽度预算一起收紧。"
+        };
+        let closing = if self.random_between(0, 1) == 0 {
+            "这段回复现在就是用打字机式流式输出。"
+        } else {
+            "接下来会按流式打字机节奏把结果一点点吐出来。"
+        };
+        format!(
+            "收到，我已经接住 `{prompt}`。\n\n{focus}\n\n- 先排查提交路径\n- 再补真实终端 smoke\n- 最后回到 `Ready` 等下一条输入\n\n{closing}"
+        )
+    }
+
+    fn queue_simulated_turn(&mut self, prompt: &str) {
+        self.pending_events.clear();
+        self.scheduled_actions.clear();
+        self.scheduled_tail_tick = self.script_tick;
+        self.active_stream_entry = None;
+        self.set_status("Thinking");
+
+        let rg_status_delay = self.random_between(3, 8);
+        self.queue_event(
+            rg_status_delay,
+            ScriptEvent::Status("Running rg search".into()),
+        );
+        let rg_tool_delay = self.random_between(2, 5);
+        self.queue_event(
+            rg_tool_delay,
+            ScriptEvent::Tool(format!("rg -n \"{}\" packages/xylitol-tui tests", prompt)),
+        );
+        let mark_one_delay = self.random_between(1, 3);
+        self.queue_event(mark_one_delay, ScriptEvent::MarkPlan(1));
+        let file_delay = self.random_between(2, 4);
+        self.queue_event(
+            file_delay,
+            ScriptEvent::File("tests/tui_e2e/pty.rs".to_string()),
+        );
+        let test_status_delay = self.random_between(2, 5);
+        self.queue_event(
+            test_status_delay,
+            ScriptEvent::Status("Running agent_demo acceptance".into()),
+        );
+        let test_tool_delay = self.random_between(2, 4);
+        self.queue_event(
+            test_tool_delay,
+            ScriptEvent::Tool("cargo test -p xylitol-tui --test agent_demo_test".into()),
+        );
+        let mark_two_delay = self.random_between(1, 3);
+        self.queue_event(mark_two_delay, ScriptEvent::MarkPlan(2));
+        let drafting_delay = self.random_between(2, 4);
+        self.queue_event(drafting_delay, ScriptEvent::Status("Drafting reply".into()));
+        let reply = self.build_assistant_reply(prompt);
+        self.queue_assistant_stream(&reply);
+    }
+
+    fn begin_assistant_stream(&mut self) {
+        self.active_stream_entry = Some(self.transcript.len());
+        self.transcript.push(TranscriptEntry {
+            role: Role::Assistant,
+            text: String::new(),
+        });
+        self.set_status("Drafting reply");
+    }
+
+    fn append_assistant_stream(&mut self, chunk: &str) {
+        if self.active_stream_entry.is_none() {
+            self.begin_assistant_stream();
+        }
+        if let Some(index) = self.active_stream_entry
+            && let Some(entry) = self.transcript.get_mut(index)
+        {
+            entry.text.push_str(chunk);
+        }
+    }
+
+    fn finish_assistant_stream(&mut self) {
+        self.active_stream_entry = None;
+        self.set_status("Ready");
+    }
+
+    fn process_due_actions(&mut self) -> bool {
+        let mut changed = false;
+
+        while let Some(front) = self.scheduled_actions.front() {
+            if front.at_tick > self.script_tick {
+                break;
+            }
+
+            let action = self
+                .scheduled_actions
+                .pop_front()
+                .expect("front action should exist")
+                .action;
+            match action {
+                TimedAction::Event(event) => self.apply_event(event),
+                TimedAction::StreamStart => self.begin_assistant_stream(),
+                TimedAction::StreamChunk(chunk) => self.append_assistant_stream(&chunk),
+                TimedAction::StreamFinish => self.finish_assistant_stream(),
+            }
+            changed = true;
+        }
+
+        changed
     }
 
     fn advance_script(&mut self) {
@@ -350,7 +537,10 @@ impl FakeCodingAgentApp {
                 self.push_entry(Role::Tool, text);
             }
             ScriptEvent::Assistant(text) => {
-                if self.pending_events.is_empty() {
+                if self.pending_events.is_empty()
+                    && self.scheduled_actions.is_empty()
+                    && self.active_stream_entry.is_none()
+                {
                     self.set_status("Ready");
                 }
                 self.push_entry(Role::Assistant, text);
@@ -684,6 +874,7 @@ impl Component for FakeCodingAgentApp {
 
     fn tick(&mut self) -> bool {
         let mut changed = false;
+        self.script_tick = self.script_tick.saturating_add(1);
 
         if self.spinner_active()
             && self.last_tick_at.elapsed().as_millis() >= self.loader.interval_ms() as u128
@@ -701,6 +892,8 @@ impl Component for FakeCodingAgentApp {
             self.advance_script();
             changed = true;
         }
+
+        changed |= self.process_due_actions();
 
         changed
     }

@@ -36,6 +36,15 @@ impl PtySession {
     /// Spawn `cargo run --example <name> -p xylitol-tui` under a PTY of the
     /// given size. Returns once the process is started.
     pub fn spawn_example(example: &str, cols: u16, rows: u16) -> std::io::Result<Self> {
+        Self::spawn_example_with_env(example, cols, rows, &[])
+    }
+
+    pub fn spawn_example_with_env(
+        example: &str,
+        cols: u16,
+        rows: u16,
+        extra_env: &[(&str, &str)],
+    ) -> std::io::Result<Self> {
         let pty_system = NativePtySystem::default();
         let pair = pty_system
             .openpty(PtySize {
@@ -52,6 +61,9 @@ impl PtySession {
         // test's cwd otherwise, which may be outside the workspace).
         cmd.cwd(env!("CARGO_MANIFEST_DIR"));
         cmd.env("TERM", "xterm-256color");
+        for (key, value) in extra_env {
+            cmd.env(key, value);
+        }
 
         let _child = pair
             .slave
@@ -96,6 +108,15 @@ impl PtySession {
     /// given size. Returns once the process is started.
     pub fn spawn_demo(cols: u16, rows: u16) -> std::io::Result<Self> {
         Self::spawn_example("agent_demo", cols, rows)
+    }
+
+    pub fn spawn_demo_with_prompt(cols: u16, rows: u16, prompt: &str) -> std::io::Result<Self> {
+        Self::spawn_example_with_env(
+            "agent_demo",
+            cols,
+            rows,
+            &[("XYLITOL_AGENT_DEMO_INITIAL_PROMPT", prompt)],
+        )
     }
 
     /// Write a key sequence to the PTY (the child reads it via crossterm).
@@ -249,11 +270,12 @@ fn pty_agent_demo_submit_flow_survives_enter() {
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e`"]
 fn pty_agent_demo_command_palette_smoke() {
-    let mut session = PtySession::spawn_demo(172, 40).expect("spawn agent_demo");
+    let mut session =
+        PtySession::spawn_demo_with_prompt(172, 40, ":palette").expect("spawn agent_demo");
     session
         .wait_for("fake coding agent demo", Duration::from_secs(60), 172, 40)
         .expect("agent_demo should render");
-    session.send_keys("\x10").expect("open command palette");
+    session.send_keys("\r").expect("submit palette command");
     let screen = session
         .wait_for("Command Palette", Duration::from_secs(10), 172, 40)
         .expect("command palette should appear");
@@ -267,11 +289,12 @@ fn pty_agent_demo_command_palette_smoke() {
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e`"]
 fn pty_agent_demo_settings_overlay_smoke() {
-    let mut session = PtySession::spawn_demo(172, 40).expect("spawn agent_demo");
+    let mut session =
+        PtySession::spawn_demo_with_prompt(172, 40, ":settings").expect("spawn agent_demo");
     session
         .wait_for("fake coding agent demo", Duration::from_secs(60), 172, 40)
         .expect("agent_demo should render");
-    session.send_keys("\x13").expect("open settings overlay");
+    session.send_keys("\r").expect("submit settings command");
     let screen = session
         .wait_for("Session Settings", Duration::from_secs(10), 172, 40)
         .expect("settings overlay should appear");
