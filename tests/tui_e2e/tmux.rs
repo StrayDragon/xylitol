@@ -37,7 +37,7 @@ pub struct TmuxSession {
 }
 
 impl TmuxSession {
-    /// Create a detached session running the `xylitol-tui` demo example at the
+    /// Create a detached session running the `xylitol-tui` fake coding-agent example at the
     /// given size. Sets `TERM=xterm-256color` so SGR color sequences are
     /// generated. The session name is PID-suffixed for parallel safety.
     pub fn spawn_demo(cols: u16, rows: u16) -> std::io::Result<Self> {
@@ -50,7 +50,7 @@ impl TmuxSession {
         // in the current cwd, but the test process cwd may be outside it).
         let workspace = env!("CARGO_MANIFEST_DIR");
         let window_cmd =
-            format!("cd {workspace} && cargo run --example demo --quiet -p xylitol-tui");
+            format!("cd {workspace} && cargo run --example agent_demo --quiet -p xylitol-tui");
         // new-session -d (detached) -s <name> -x <cols> -y <rows> <command>
         let status = Command::new("tmux")
             .args([
@@ -149,10 +149,10 @@ impl Drop for TmuxSession {
 fn tmux_demo_starts_and_shows_content() {
     require_tmux!();
     let session = TmuxSession::spawn_demo(60, 15).expect("spawn tmux session");
-    // The demo prints a nav panel; wait for a known label.
+    // The example prints a title row; wait for a known label.
     let screen = session
-        .wait_for("Quit", Duration::from_secs(60))
-        .expect("demo should render within 60s (includes cargo build)");
+        .wait_for("fake coding agent demo", Duration::from_secs(60))
+        .expect("agent_demo should render within 60s (includes cargo build)");
     assert!(!screen.trim().is_empty());
 }
 
@@ -164,13 +164,32 @@ fn tmux_captures_styled_output() {
     require_tmux!();
     let session = TmuxSession::spawn_demo(60, 15).expect("spawn tmux session");
     session
-        .wait_for("Quit", Duration::from_secs(60))
-        .expect("demo should render");
+        .wait_for("fake coding agent demo", Duration::from_secs(60))
+        .expect("agent_demo should render");
     let styled = session.capture(true).expect("capture -e");
-    // The demo uses SGR colors (cyan/yellow/dim helpers); at least one escape
+    // The example uses SGR colors (cyan/yellow/dim helpers); at least one escape
     // sequence should be present in a styled render.
     assert!(
         styled.contains("\x1b["),
         "capture-pane -e should contain SGR escapes; got:\n{styled}"
     );
+}
+
+#[test]
+#[ignore = "E2E: needs tmux; run via `just test-tui-e2e`"]
+fn tmux_agent_demo_cjk_submit_flow_survives_enter() {
+    require_tmux!();
+    let session = TmuxSession::spawn_demo(172, 40).expect("spawn tmux session");
+    session
+        .wait_for("fake coding agent demo", Duration::from_secs(60))
+        .expect("agent_demo should render");
+    session.send(&["C-u"]).expect("clear editor line");
+    session
+        .send_text("修复 footer 宽度预算并补一个 emoji smoke 🙂")
+        .expect("send CJK text");
+    session.send(&["Enter"]).expect("submit");
+    let screen = session
+        .wait_for("修复 footer", Duration::from_secs(10))
+        .expect("submitted CJK text should appear in captured pane");
+    assert!(!screen.trim().is_empty());
 }

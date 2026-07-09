@@ -1,6 +1,6 @@
 //! portable-pty E2E driver (c405 layer 5a, spec tt05).
 //!
-//! Spawns the `xylitol-tui` demo example under a PTY, injects key sequences,
+//! Spawns the `xylitol-tui` example surface under a PTY, injects key sequences,
 //! reads the raw byte stream, and feeds it to `CapturedScreen` for cell-grid
 //! assertions. This is the layer that exercises crossterm's REAL event
 //! parsing of multi-byte sequences (Ctrl/Alt+arrow, bracketed paste) — the
@@ -9,9 +9,9 @@
 //! All cases are `#[ignore]`: they spawn a real process + PTY and are slow
 //! (spec `test-infra` r8). Run via `just test-tui-e2e`.
 //!
-//! We spawn the crate's `demo` example (NOT the full `xylitol` binary) so the
-//! test is independent of LLM provider config — it validates the TUI render
-//! pipeline + crossterm under a real PTY, not agent orchestration.
+//! We spawn the crate's fake coding-agent example (NOT the full `xylitol`
+//! binary) so the test is independent of LLM provider config — it validates
+//! the TUI render pipeline + crossterm under a real PTY, not agent orchestration.
 
 use std::io::{Read, Write};
 use std::sync::mpsc;
@@ -21,7 +21,7 @@ use portable_pty::{CommandBuilder, MasterPty, NativePtySystem, PtySize, PtySyste
 
 use super::CapturedScreen;
 
-/// A PTY-driven TUI session. Spawn the demo, inject keys, capture the screen.
+/// A PTY-driven TUI session. Spawn an example, inject keys, capture the screen.
 ///
 /// A background thread drains the PTY reader into a shared buffer so the test
 /// can poll `capture()` without blocking on a read call.
@@ -33,9 +33,9 @@ pub struct PtySession {
 }
 
 impl PtySession {
-    /// Spawn `cargo run --example demo -p xylitol-tui` under a PTY of the
+    /// Spawn `cargo run --example <name> -p xylitol-tui` under a PTY of the
     /// given size. Returns once the process is started.
-    pub fn spawn_demo(cols: u16, rows: u16) -> std::io::Result<Self> {
+    pub fn spawn_example(example: &str, cols: u16, rows: u16) -> std::io::Result<Self> {
         let pty_system = NativePtySystem::default();
         let pair = pty_system
             .openpty(PtySize {
@@ -47,7 +47,7 @@ impl PtySession {
             .map_err(|e| std::io::Error::other(e.to_string()))?;
 
         let mut cmd = CommandBuilder::new("cargo");
-        cmd.args(["run", "--example", "demo", "--quiet", "-p", "xylitol-tui"]);
+        cmd.args(["run", "--example", example, "--quiet", "-p", "xylitol-tui"]);
         // The spawned `cargo` must run in the workspace root (it inherits the
         // test's cwd otherwise, which may be outside the workspace).
         cmd.cwd(env!("CARGO_MANIFEST_DIR"));
@@ -90,6 +90,12 @@ impl PtySession {
             rx,
             buf: Vec::with_capacity(8192),
         })
+    }
+
+    /// Spawn `cargo run --example agent_demo -p xylitol-tui` under a PTY of the
+    /// given size. Returns once the process is started.
+    pub fn spawn_demo(cols: u16, rows: u16) -> std::io::Result<Self> {
+        Self::spawn_example("agent_demo", cols, rows)
     }
 
     /// Write a key sequence to the PTY (the child reads it via crossterm).
@@ -161,11 +167,11 @@ fn windows_two(haystack: &[u8], needle: &[u8]) -> bool {
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e`"]
 fn pty_demo_starts_and_renders() {
-    // The demo prints a navigation panel; one of the labels should appear.
+    // The fake coding-agent example prints a title row; wait for it.
     let mut session = PtySession::spawn_demo(60, 15).expect("spawn demo");
     let screen = session
-        .wait_for("Quit", Duration::from_secs(60), 60, 15)
-        .expect("demo should render within 60s (includes cargo build)");
+        .wait_for("fake coding agent demo", Duration::from_secs(60), 60, 15)
+        .expect("agent_demo should render within 60s (includes cargo build)");
     assert!(!screen.text().trim().is_empty());
 }
 
@@ -174,8 +180,8 @@ fn pty_demo_starts_and_renders() {
 fn pty_demo_survives_keypresses() {
     let mut session = PtySession::spawn_demo(60, 15).expect("spawn demo");
     session
-        .wait_for("Quit", Duration::from_secs(60), 60, 15)
-        .expect("demo should start");
+        .wait_for("fake coding agent demo", Duration::from_secs(60), 60, 15)
+        .expect("agent_demo should start");
     // Send some keystrokes; the demo must not crash (screen still has content).
     session.send_keys("abc").expect("send keys");
     session.drain(Duration::from_millis(300));
@@ -193,7 +199,7 @@ fn pty_demo_survives_keypresses() {
 fn pty_kitty_query_emitted_at_start() {
     let mut session = PtySession::spawn_demo(60, 15).expect("spawn demo");
     session
-        .wait_for("Quit", Duration::from_secs(60), 60, 15)
+        .wait_for("fake coding agent demo", Duration::from_secs(60), 60, 15)
         .expect("demo should render (so start() has run)");
     // CSI >7u = \x1b[>7u — the Kitty enhancement push pi/xy emit at start.
     assert!(
@@ -208,10 +214,34 @@ fn pty_kitty_query_emitted_at_start() {
 fn pty_bracketed_paste_enabled_at_start() {
     let mut session = PtySession::spawn_demo(60, 15).expect("spawn demo");
     session
-        .wait_for("Quit", Duration::from_secs(60), 60, 15)
+        .wait_for("fake coding agent demo", Duration::from_secs(60), 60, 15)
         .expect("demo should render");
     assert!(
         session.raw_contains(b"\x1b[?2004h"),
         "bracketed paste enable (CSI ?2004h) should be in the startup stream"
+    );
+}
+
+#[test]
+#[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e`"]
+fn pty_agent_demo_submit_flow_survives_enter() {
+    let mut session = PtySession::spawn_example("agent_demo", 172, 40).expect("spawn agent_demo");
+    session
+        .wait_for("fake coding agent demo", Duration::from_secs(60), 172, 40)
+        .expect("agent_demo should render");
+    session
+        .send_keys("\x15修复 footer 宽度预算并补一个 emoji smoke 🙂")
+        .expect("replace editor text with CJK");
+    session.send_keys("\r").expect("submit editor input");
+    session.drain(Duration::from_millis(500));
+    let screen = session.screen(172, 40);
+    let text = screen.text();
+    assert!(
+        !text.trim().is_empty(),
+        "screen must remain populated after submit flow"
+    );
+    assert!(
+        text.contains("修复 footer") || text.contains("Running rg and cargo test"),
+        "submit flow should remain visible after Enter; got:\n{text}"
     );
 }
