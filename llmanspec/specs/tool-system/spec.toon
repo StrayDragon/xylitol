@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "tool-system"
-purpose: "TBD - created by archiving change c20-add-tools. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Tool system — tool definitions, execution dispatch, bash/ls/grep/edit/write/read tools, and path utilities."
+valid_scope[3]: src/agent/tools/,src/infra/tools/,src/runtime_protocol/tool.rs
 requirements[35]{req_id,title,statement}:
   r1,工具 trait 前缀,System MUST define the primary tool interface as XyTool; the trait name already carries the Xy prefix and MUST remain consistent with the rest of the runtime_protocol boundary.
   r2,"seven-tools","System MUST implement 7 built-in tools: read bash edit write grep find ls."

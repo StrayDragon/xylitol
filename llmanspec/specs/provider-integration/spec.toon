@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "provider-integration"
 purpose: "Provider integration — API key resolution, model registry integration, and OpenAI/Anthropic provider construction. Attribution headers, OAuth storage, and non-OpenAI/Anthropic provider integrations are out of scope until after 1.0.0."
-valid_scope[1]: src
+valid_scope[2]: src/infra/provider/,src/runtime_protocol/secret.rs
 requirements[6]{req_id,title,statement}:
   pi0,"provider-registration","System SHALL support provider registration with configurable API keys base URLs headers and adapter api type for OpenAI-compatible and Anthropic providers."
   cv1,"config-value-parser","System MUST provide a ConfigValueResolver that parses literal env-var template and shell-command config values."

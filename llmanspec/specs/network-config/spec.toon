@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "network-config"
 purpose: "Network configuration — HTTP proxy settings, idle timeouts, and dispatcher configuration."
-valid_scope[1]: src
+valid_scope[2]: src/infra/config/,src/infra/settings/
 requirements[6]{req_id,title,statement}:
   nc0,placeholder,System SHALL support configurable HTTP proxy and idle timeout settings.
   nc1,"proxy-config",System MUST apply HTTP_PROXY and HTTPS_PROXY environment variables from the httpProxy setting.

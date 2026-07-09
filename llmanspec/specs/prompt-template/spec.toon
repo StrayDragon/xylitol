@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "prompt-template"
-purpose: "TBD - created by archiving change c100-add-prompt-templates. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Prompt template system — Jinja2-based templates, system prompt assembly, and command expansion."
+valid_scope[2]: src/agent/prompt/,src/runtime_protocol/resource.rs
 requirements[5]{req_id,title,statement}:
   pt1,wiring,System MUST inject discovered prompt templates from ResourceLoader into AgentSession so they are available at runtime.
   pt2,"command-registration",AgentSession MUST expose register_prompt_commands that registers each prompt template as a slash command.

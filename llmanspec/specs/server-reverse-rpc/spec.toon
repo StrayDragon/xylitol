@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "server-reverse-rpc"
-purpose: "TBD - created by archiving change c270-add-server-process. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Server reverse RPC — out-of-band approval and question resolution via WebSocket callbacks."
+valid_scope[2]: src/app/server/ws.rs,src/app/server/runtime.rs
 requirements[4]{req_id,title,statement}:
   rr1,"reverse-rpc-approval","On ApprovalRequired event, the server MUST broadcast ServerFrame::ReverseRpc {type: approval, call_id, ...} to all WS connections holding this session; the first client response wins."
   rr2,"reverse-rpc-question","On QuestionRequired event, the server MUST broadcast ServerFrame::ReverseRpc {type: question, call_id, ...} to all WS connections; same first-response-wins semantics."

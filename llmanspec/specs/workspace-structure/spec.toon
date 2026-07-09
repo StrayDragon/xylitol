@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "workspace-structure"
-purpose: "TBD - created by archiving change c05-init-skeleton. Update purpose after archive."
-valid_scope[2]: src/,tests/
+purpose: "Workspace structure — project layout, module organization, and directory conventions."
+valid_scope[2]: Cargo.toml,src/
 requirements[5]{req_id,title,statement}:
   r1,"app-layer","System MUST organize the user-facing surface under a single src/app/ layer: self-contained entry points cli/, rpc.rs, server/, tui/, and gui.rs live at the top of app/, while cross-surface seams (composition, driver) live under src/app/core/. The print mode MUST live under src/app/cli/ as a CLI sub-mode. Built-in modules (tools, hooks, security) compile unconditionally; feature-gated app modes (server, tui, gui) use #[cfg(feature = \"...\")] guards with app-prefixed feature names (server, tui, gui)."
   r2,"feature-flags","System MUST define feature flags with domain prefixes for each optional capability so that non-default features compile out with zero overhead. Built-in capabilities (tools, hooks, security, repeat-detection, print-mode) have no feature flag and are controlled via config.yaml at runtime. ACP mode uses feature flag infra-acp."
