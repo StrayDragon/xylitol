@@ -70,7 +70,7 @@ tower-http = { version = "0.7", features = ["cors"], optional = true }
 xylitol-tui = { path = "packages/xylitol-tui", optional = true }
 
 [features]
-default = ["cli"]
+default = ["cli", "tui"]
 # CLI composition root.
 cli = []
 # Always-on HTTP/WebSocket server.
