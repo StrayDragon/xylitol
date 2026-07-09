@@ -12,7 +12,8 @@
 | 同步库；产品面 host 驱动 | 绑定 tokio / 拥有产品事件循环 |
 | `lib.rs` re-export = API 边界 SSOT | 应用层 theme token / 流式业务缓冲 / 产品 layout |
 
-对齐源（行为参考，非逐文件镜像）：`../pi/packages/tui`。进度笔记：根 `_HANDOFF.md`（非规范）。
+对齐源（行为参考，非逐文件镜像）：`../pi/packages/tui`。
+**刻意差异台账（整合时防覆盖）**：本包 [`PI_DELTAS.md`](PI_DELTAS.md)。进度笔记：根 `_HANDOFF.md`（非规范）。
 
 ## 与 pi-tui 的刻意差异（不得回退成「完整 port」）
 
@@ -38,6 +39,7 @@
 | 事件循环 | 库内 `start` 常见 | 产品路径 **host 驱动** `dispatch_event` / `request_render` / `try_render` / `idle_tick`；`TUI::start()` **仅 demo** |
 | 硬件光标 | 可开 | 默认 **隐藏**；Editor 用反色假光标（防流式闪烁） |
 | 渲染输出 | `string[]` ANSI | 同：`Vec<String>`；**不**引入结构化 `StyledLine` |
+| Editor 补全 | provider + 引擎内 `/` 特判较多 | **`CompletionSource` 注册表**；引擎只管 popup；`/` `@` 等为可插拔 Source（见 `completion.rs`） |
 
 ### 有意不移植 / 已裁剪的模块
 
@@ -66,6 +68,8 @@
 | 任务 | 去哪 |
 |---|---|
 | 改组件 / 引擎 / 测 TUI | `test-tui-harness` skill |
+| 扩展 Editor 补全触发（`/` `@` `$` `^`…） | `CompletionSource` + `set_completion_sources`（`src/completion.rs`）；勿在 `editor.rs` 硬编码触发符 |
+| 对照 / 合并 pi-tui 行为 | 先读 [`PI_DELTAS.md`](PI_DELTAS.md)；不得静默回退表中决议 |
 | 改产品 TUI 面 / UX | `write-tui` skill + `src/app/tui/AGENTS.md` + `src/app/tui/DESIGN.md` |
 | 日常验证 | `cargo test -p xylitol-tui`；`just qa`；E2E `just test-tui-e2e` |
 
