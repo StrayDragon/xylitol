@@ -53,6 +53,11 @@ fn cyan(s: &str) -> String {
     format!("\x1b[36m{s}\x1b[39m")
 }
 
+fn green(s: &str) -> String {
+    // DESIGN.md colors.success #a6e3a1
+    format!("\x1b[38;2;166;227;161m{s}\x1b[39m")
+}
+
 /// Wrap a key chord for block-adjacent hints: `(Ctrl+T)`.
 fn key_hint(chord: &str) -> String {
     dim(&format!("({chord})"))
@@ -508,7 +513,7 @@ enum Role {
 }
 
 /// App-layer glyph config (DESIGN.md): no font probing — env / Alt+G only.
-/// (Avoid Ctrl+G: reserved for future external-editor open.)
+/// (Ctrl+G is external-editor stub — see `open_external_editor_stub`.)
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum GlyphSet {
     Unicode,
@@ -702,6 +707,10 @@ pub struct FakeCodingAgentApp {
     tools_output_expanded: bool,
     /// Max visual lines when collapsed (pi bash tool = 5).
     tools_output_max_lines: usize,
+    /// Editor `!` prefix → bash-mode border (c457).
+    bash_mode: bool,
+    /// Ctrl+G external-editor stub invocation count (harness).
+    external_editor_invocations: u32,
 }
 
 impl FakeCodingAgentApp {
@@ -745,6 +754,11 @@ impl FakeCodingAgentApp {
     /// Test helper: current editor text.
     pub fn input_text_for_test(&self) -> String {
         self.input.get_text()
+    }
+
+    /// Test helper: replace editor text (does not auto-sync bash border).
+    pub fn set_editor_text_for_test(&mut self, text: impl Into<String>) {
+        self.input.set_text(text.into());
     }
 
     pub fn status_text_for_test(&self) -> &str {
@@ -1002,8 +1016,57 @@ impl FakeCodingAgentApp {
         self.tick()
     }
 
+    pub fn bash_mode_for_test(&self) -> bool {
+        self.bash_mode
+    }
+
     pub fn history_leaf_for_test(&self) -> &str {
         &self.history_leaf_id
+    }
+
+    pub fn external_editor_invocations_for_test(&self) -> u32 {
+        self.external_editor_invocations
+    }
+
+    pub fn open_external_editor_stub_for_test(&mut self) {
+        self.open_external_editor_stub();
+    }
+
+    pub fn sync_editor_border_for_test(&mut self) {
+        self.sync_editor_border();
+    }
+
+    fn sync_editor_border(&mut self) {
+        let bash = self.input.get_text().trim_start().starts_with('!');
+        if bash == self.bash_mode {
+            return;
+        }
+        self.bash_mode = bash;
+        if bash {
+            self.input.set_border_color(Box::new(green));
+        } else {
+            self.input.set_border_color(Box::new(dim));
+        }
+    }
+
+    /// Ctrl+G: external editor morphology (stub — no real `$EDITOR` spawn in demo/harness).
+    fn open_external_editor_stub(&mut self) {
+        self.external_editor_invocations = self.external_editor_invocations.saturating_add(1);
+        let text = self.input.get_text();
+        self.push_message(
+            Role::System,
+            format!(
+                "external editor stub (Ctrl+G) · {} chars · $EDITOR not spawned",
+                text.len()
+            ),
+        );
+        if text.is_empty() {
+            self.input.set_text("# $EDITOR stub\n".to_string());
+        } else if !text.contains("$EDITOR stub") {
+            self.input
+                .set_text(format!("{}\n# $EDITOR stub", text.trim_end()));
+        }
+        self.sync_editor_border();
     }
 
     pub fn steer_queue_len_for_test(&self) -> usize {
@@ -1322,6 +1385,8 @@ impl FakeCodingAgentApp {
             cwd,
             tools_output_expanded: false,
             tools_output_max_lines: 5,
+            bash_mode: false,
+            external_editor_invocations: 0,
         };
         app.seed_transcript();
         app
@@ -1331,7 +1396,7 @@ impl FakeCodingAgentApp {
         // One-shot help — fold keys live on blocks as `(Ctrl+T)` / `(Alt+E)`.
         self.push_message(
             Role::System,
-            "keys: Enter submit/steer · Alt+Enter follow-up · double Esc tree · Enter travel (+reply) · /cmds · @path · (Ctrl+P)/(Ctrl+S) · (Alt+G) · (Ctrl+O tools) · Esc · (Ctrl+C)",
+            "keys: Enter submit/steer · Alt+Enter follow-up · ! bash border · Ctrl+G $EDITOR stub · double Esc tree · Shift+F fork · /cmds · @path · (Ctrl+P)/(Ctrl+S) · (Alt+G) · (Ctrl+O tools) · Esc · (Ctrl+C)",
         );
         self.push_message(
             Role::System,
@@ -2380,6 +2445,7 @@ impl FakeCodingAgentApp {
         if self.settings_open {
             return self.render_settings_slot(width);
         }
+        self.sync_editor_border();
         self.input
             .render(width)
             .into_iter()
@@ -2501,6 +2567,11 @@ impl Component for FakeCodingAgentApp {
         if matches_key_event(key, "alt+enter") {
             let text = self.input.get_text();
             self.process_follow_up(text);
+            return;
+        }
+
+        if matches_key_event(key, "ctrl+g") {
+            self.open_external_editor_stub();
             return;
         }
 
@@ -2641,8 +2712,8 @@ impl Component for FakeCodingAgentApp {
             self.toggle_thinking_blocks();
             return;
         }
-        // Alt+E / Alt+G — not Ctrl+E (editor cursorLineEnd) or Ctrl+G (future
-        // external editor). App-level toggles stay off the Editor keybinding table.
+        // Alt+E / Alt+G — not Ctrl+E (editor cursorLineEnd) or Ctrl+G (external
+        // editor stub). App-level toggles stay off the Editor keybinding table.
         if matches_key_event(key, "alt+e") {
             self.toggle_tool_blocks();
             return;

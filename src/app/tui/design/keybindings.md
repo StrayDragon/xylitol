@@ -38,6 +38,8 @@ components:
 |---|---|
 | Esc（选择器打开时） | 关闭选择器，还原 editor |
 | Ctrl+P 等 | 打开命令/设置（替换 editor 槽） |
+| `!` 前缀 | **bash 边框**强调（demo c457；产品执行见 c492） |
+| Ctrl+G | **外部编辑器**（demo stub；真 `$EDITOR` 后置） |
 
 ## 规则
 
