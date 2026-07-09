@@ -1,5 +1,6 @@
 use crate::terminal::Terminal;
 use crate::utils::visible_width;
+use crossterm::event::{KeyEvent, KeyEventKind};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -255,6 +256,9 @@ impl<T: Terminal> TUI<T> {
             if event::poll(std::time::Duration::from_millis(16))? {
                 match event::read()? {
                     Event::Key(key_event) => {
+                        if !self.should_dispatch_key_event(&key_event) {
+                            continue;
+                        }
                         let data = self.key_event_to_string(&key_event);
                         if !data.is_empty() {
                             self.handle_input(&data);
@@ -382,6 +386,16 @@ impl<T: Terminal> TUI<T> {
 
     fn handle_input(&mut self, data: &str) {
         self.dispatch_input(data);
+    }
+
+    fn should_dispatch_key_event(&self, key: &KeyEvent) -> bool {
+        match key.kind {
+            KeyEventKind::Press | KeyEventKind::Repeat => true,
+            KeyEventKind::Release => self
+                .focused_index
+                .and_then(|idx| self.components.get(idx))
+                .is_some_and(|component| component.wants_key_release()),
+        }
     }
 
     /// Run one render pass: composite children + overlays, diff against the
@@ -938,5 +952,86 @@ impl<T: Terminal> TUI<T> {
         for (c, _, _) in &mut self.overlays {
             c.invalidate();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEventState, KeyModifiers};
+
+    struct DummyTerminal;
+
+    impl Terminal for DummyTerminal {
+        fn write(&mut self, _data: &str) {}
+        fn columns(&self) -> u16 {
+            80
+        }
+        fn rows(&self) -> u16 {
+            24
+        }
+        fn hide_cursor(&mut self) {}
+        fn show_cursor(&mut self) {}
+        fn clear_line(&mut self) {}
+        fn clear_from_cursor(&mut self) {}
+        fn clear_screen(&mut self) {}
+        fn flush(&mut self) {}
+    }
+
+    struct DummyComponent {
+        wants_release: bool,
+    }
+
+    impl Component for DummyComponent {
+        fn render(&mut self, _width: usize) -> Vec<String> {
+            Vec::new()
+        }
+
+        fn handle_input(&mut self, _data: &str) {}
+
+        fn invalidate(&mut self) {}
+
+        fn wants_key_release(&self) -> bool {
+            self.wants_release
+        }
+    }
+
+    fn key_with_kind(kind: KeyEventKind) -> KeyEvent {
+        KeyEvent {
+            code: KeyCode::Down,
+            modifiers: KeyModifiers::NONE,
+            kind,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    #[test]
+    fn dispatches_press_and_repeat() {
+        let tui = TUI::new(DummyTerminal);
+
+        assert!(tui.should_dispatch_key_event(&key_with_kind(KeyEventKind::Press)));
+        assert!(tui.should_dispatch_key_event(&key_with_kind(KeyEventKind::Repeat)));
+    }
+
+    #[test]
+    fn ignores_release_without_opt_in() {
+        let mut tui = TUI::new(DummyTerminal);
+        tui.add_child(Box::new(DummyComponent {
+            wants_release: false,
+        }));
+        tui.set_focus(Some(0));
+
+        assert!(!tui.should_dispatch_key_event(&key_with_kind(KeyEventKind::Release)));
+    }
+
+    #[test]
+    fn dispatches_release_when_focused_component_requests_it() {
+        let mut tui = TUI::new(DummyTerminal);
+        tui.add_child(Box::new(DummyComponent {
+            wants_release: true,
+        }));
+        tui.set_focus(Some(0));
+
+        assert!(tui.should_dispatch_key_event(&key_with_kind(KeyEventKind::Release)));
     }
 }
