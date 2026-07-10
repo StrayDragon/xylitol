@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "prompt-template"
+name: "agent-prompt"
 purpose: "Prompt template system — Jinja2-based templates, system prompt assembly, and command expansion."
 valid_scope[2]: src/agent/prompt/,src/runtime_protocol/resource.rs
 requirements[5]{req_id,title,statement}:
