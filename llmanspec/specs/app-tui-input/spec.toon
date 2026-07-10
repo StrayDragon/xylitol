@@ -2,17 +2,23 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: src/app/tui/
-requirements[6]{req_id,title,statement}:
+requirements[8]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式或 agent 忙碌时 Esc MUST 调用 Driver::abort；Ctrl+C 在编辑器非空时 MUST 清空输入，在编辑器为空时 MUST 退出 TUI。"
   ati3,"steer-and-followup-keys","agent 忙碌时普通 Enter MUST 将当前输入作为 steer 入队；Alt+Enter MUST 将当前输入作为 follow-up 入队（等待当前 agent loop 全部完成后再执行）。"
   ati4,"yolo-after-trust",在项目已信任前提下，TUI MUST NOT 实现逐工具审批确认流程；工具默认执行；MUST 保留 hook 扩展点供日后追加策略。
   ati5,"double-esc-session-tree",空编辑器下双 Esc（时间窗与 demo 一致）MUST 打开会话树；树打开时 Esc MUST 关闭树并还原 editor 槽。
-scenarios[6]{req_id,id,given,when,then}:
+  ati6,"demo-steer-followup-morphology","在产品 Driver 接线前，packages/xylitol-tui 的 agent_demo MUST 以假队列验证 ati3 键位：agent 忙碌时普通 Enter MUST 将输入作为 steer 入队且 MUST NOT 清空或中止当前轮的脚本/流式调度；Alt+Enter MUST 将输入作为 follow-up 入队并仅在完全空闲后开新轮；footer MUST 在队列非空时展示 steer/follow-up 计数。"
+  ati7,"demo-steer-preserves-turn","agent_demo 在 steer 入队时 MUST 将 steer 文本写入 transcript（可带 [steer] 标记）并可挂到会话活树；MUST NOT 调用会清空 scheduled_actions/pending_events 的新一轮 queue_simulated_turn 入口来「顶替」当前忙碌轮。"
+scenarios[10]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-input",spec.toon 存在且 purpose 为中文
   ati1,"selector-slot","",打开模型选择器,editor 槽被选择器替换且贴底可见
   ati2,"esc-aborts","",流式中按 Esc,"Driver::abort 被调用"
   ati3,"alt-enter-followup","",忙碌时 Alt+Enter 提交文本,"消息进入 follow-up 队列而非立即 steer"
   ati4,"no-tool-modal","",信任目录下工具执行,无逐工具审批 UI 且 hooks 仍可注册
   ati5,"esc-closes-tree",会话树已打开,按 Esc,树关闭且 editor 槽恢复
+  ati6,"busy-enter-steer",agent_demo 轮次忙碌且编辑器有文本,按 Enter,steer 队列长度增加且状态仍为忙碌类（Thinking/Working/Drafting 等）
+  ati6,"alt-enter-followup",agent_demo 轮次忙碌,Alt+Enter 提交文本,"follow-up 队列长度增加且会话树尚未出现该 follow-up 的 user 节点"
+  ati6,"footer-counts","steer 或 follow-up 队列非空",渲染 footer,"footer 含 steer:N 或 follow-up:N"
+  ati7,"steer-no-abort",已 submit 进入 Thinking 且 scheduled_actions 非空,再次 Enter 提交 steer 文本,scheduled 流式/工具动作仍可继续推进而非被立即清空为仅 Ready
