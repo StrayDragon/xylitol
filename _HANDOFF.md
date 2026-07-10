@@ -1,6 +1,6 @@
 # _HANDOFF — xylitol TUI（交接笔记，非规范）
 
-> 最后更新：2026-07-10（c461 apply 完成，待 verify/archive）
+> 最后更新：2026-07-10（c461 archived；c455 applied）
 > 分支：`feat/tui-dev`
 > **本文是临时交接/进度板，不是 SSOT。** 稳定边界以各层 `AGENTS.md` 与 skills 为准。
 
@@ -42,14 +42,15 @@
 
 ```text
 c450 ✓ archived
-c461 ✓ applied（代码已落地；待 verify → archive）
-  c449 / c451 / c452 / c454 / c455 / c457 / c458 仍 purpose-draft（无硬依赖）
+c461 ✓ archived（steer/follow-up seam）
+c455 ✓ archived（InputListener）
+  c449 / c451 / c452 / c454 / c457 / c458 仍 purpose-draft
 
-c460 host ← 仍 depends c455
-c465 bridge ← c460 + c461
+c460 host ← 现可升格（depends c455 ✓）
+c465 bridge ← c460 + c461✓
 c470 transcript ← c465 + c451 + c452
 c475 chrome ← c460 + c449
-c480 input ← c460 + c461 + c455
+c480 input ← c460 + c461✓ + c455✓
 c485 slice ← c470 + c475 + c480
 后置: c490–c493
 ```
@@ -61,9 +62,8 @@ c485 slice ← c470 + c475 + c480
 
 ## 三、下一步（主线）
 
-1. **c461**：可选 `llman-sdd-verify` → `llman sdd archive run c461-expose-steer-followup-seam`
-2. 并行可升格 **c455**（解锁 c460）
-3. 产品面接线：c480 用 `Driver::{steer,follow_up,abort}` + `QueueUpdate`
+1. **升格 / apply c460**（host；c455 已解锁）
+3. 产品面接线：c480 用 `Driver::{steer,follow_up,abort}` + `QueueUpdate` + InputListener
 
 探查笔记：`_tmp_prompts/05-result.md`
 
@@ -75,8 +75,8 @@ c485 slice ← c470 + c475 + c480
 |---|---|
 | 流中 Enter | steer（Driver 已就绪） |
 | Alt+Enter | follow-up |
-| Esc | abort（清 steer / 留 follow_up） |
-| Ctrl+C | 清输入 / 空则退 |
+| Esc | abort（清 steer / 留 follow_up）；demo 经 InputListener |
+| Ctrl+C | 清输入 / 空则退（InputListener） |
 | 双 Esc | 会话树（c456） |
 | `/` `@` · Ctrl+T/Alt+E/Alt+G · Ctrl+P/S · Ctrl+G | 见既有 demo |
 
@@ -85,8 +85,8 @@ c485 slice ← c470 + c475 + c480
 ## 五、SSOT 指针
 
 - 边界：`packages/xylitol-tui/AGENTS.md`、`src/app/tui/AGENTS.md`、`src/AGENTS.md`、根 `AGENTS.md`
-- vs pi：`packages/xylitol-tui/PI_DELTAS.md`
+- vs pi：`packages/xylitol-tui/PI_DELTAS.md`（含 D16 InputListener）
 - How-to：`write-tui`、`test-tui-harness`、`write-surface`
 - 视觉：`src/app/tui/DESIGN.md` + `design/`（c449）
-- 合约归档：`llmanspec/changes/archive/2026-07-10-c450-revise-app-tui-contract/`
-- 当前 full（已 apply）：`llmanspec/changes/c461-expose-steer-followup-seam/`
+- 合约归档：`llmanspec/changes/archive/2026-07-10-c450-…`、`…/c461-…`
+- 已归档：`llmanspec/changes/archive/2026-07-10-c455-add-package-tui-input-listener/`

@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,pte05,"input-listener-pre-focus",TUI MUST 提供 add_input_listener / remove_input_listener；每个 InputEvent 在路由到 focused overlay 或 focused root child 之前 MUST 按注册顺序调用 listener；任一 listener 返回 Consumed MUST 阻止后续 listener 与焦点组件接收该事件。,null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  pte05,"listener-consumes-before-focus",已注册对 ctrl+c 返回 Consumed 的 listener，且 Editor 处于焦点,调用 dispatch_event(Key(ctrl+c)),Editor 不收到该事件
+  pte05,"listener-yields-to-focus",listener 对普通字符返回 Continue，Editor 处于焦点,调用 dispatch_event(Key(a)),Editor 收到该事件
+  pte05,"paste-through-listeners",listener 对 Paste 返回 Continue,调用 dispatch_event(Paste(...)),焦点组件收到 paste

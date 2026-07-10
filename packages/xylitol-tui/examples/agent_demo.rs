@@ -17,8 +17,8 @@ use xylitol_tui::components::settings_list::{
 };
 use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, set_keybindings};
 use xylitol_tui::{
-    Component, CrosstermTerminal, Focusable, InputEvent, SystemClock, TUI, matches_key_event,
-    truncate_to_width, visible_width, wrap_text_with_ansi,
+    Component, CrosstermTerminal, Focusable, InputEvent, InputListenerResult, SystemClock, TUI,
+    matches_key_event, truncate_to_width, visible_width, wrap_text_with_ansi,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
@@ -76,12 +76,39 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let initial_prompt = std::env::var("XYLITOL_AGENT_DEMO_INITIAL_PROMPT")
         .unwrap_or_else(|_| "tighten footer truncation and add a PTY acceptance test".into());
 
-    tui.add_child(Box::new(FakeCodingAgentApp::new_with_prompt(
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new_with_prompt(
         quit_flag.clone(),
         &initial_prompt,
     )));
+    FakeCodingAgentApp::install_input_listeners(&app, &mut tui);
+    tui.add_child(Box::new(SharedFakeCodingAgentApp(app)));
     tui.set_focus(Some(0));
     tui.start_with_flag(&quit_flag)
+}
+
+/// Thin `Component` wrapper so input listeners can share the same app state.
+pub struct SharedFakeCodingAgentApp(pub Rc<RefCell<FakeCodingAgentApp>>);
+
+impl Component for SharedFakeCodingAgentApp {
+    fn render(&mut self, width: usize) -> Vec<String> {
+        self.0.borrow_mut().render(width)
+    }
+
+    fn handle_input(&mut self, event: InputEvent) {
+        self.0.borrow_mut().handle_input(event);
+    }
+
+    fn invalidate(&mut self) {
+        self.0.borrow_mut().invalidate();
+    }
+
+    fn tick(&mut self) -> bool {
+        self.0.borrow_mut().tick()
+    }
+
+    fn wants_key_release(&self) -> bool {
+        self.0.borrow().wants_key_release()
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -235,6 +262,66 @@ impl FakeCodingAgentApp {
             quit_flag,
             "tighten footer truncation and add a PTY acceptance test",
         )
+    }
+
+    /// Register pre-focus listeners for Ctrl+C / Esc (c455).
+    pub fn install_input_listeners(
+        app: &Rc<RefCell<Self>>,
+        tui: &mut TUI<impl xylitol_tui::Terminal>,
+    ) {
+        let app_ctrl = app.clone();
+        tui.add_input_listener(move |event| {
+            let InputEvent::Key(key) = &event else {
+                return InputListenerResult::Continue;
+            };
+            if matches_key_event(key, "ctrl+c") {
+                app_ctrl.borrow_mut().on_ctrl_c();
+                return InputListenerResult::Consumed;
+            }
+            if matches_key_event(key, "escape") {
+                if app_ctrl.borrow_mut().on_escape() {
+                    return InputListenerResult::Consumed;
+                }
+            }
+            InputListenerResult::Continue
+        });
+    }
+
+    /// Ctrl+C: clear editor when non-empty; otherwise quit.
+    pub fn on_ctrl_c(&mut self) {
+        if !self.input.get_text().is_empty() {
+            self.input.set_text(String::new());
+            return;
+        }
+        self.quit_flag.store(true, Ordering::SeqCst);
+    }
+
+    /// Test helper: current editor text.
+    pub fn input_text_for_test(&self) -> String {
+        self.input.get_text()
+    }
+
+    /// Esc: close overlays; abort active stream; otherwise let Editor handle.
+    /// Returns true if the event was consumed.
+    pub fn on_escape(&mut self) -> bool {
+        if self.palette_open || self.settings_open {
+            self.palette_open = false;
+            self.settings_open = false;
+            return true;
+        }
+        if self.active_stream_entry.is_some() || !self.scheduled_actions.is_empty() {
+            self.abort_active_stream();
+            return true;
+        }
+        false
+    }
+
+    fn abort_active_stream(&mut self) {
+        self.pending_events.clear();
+        self.scheduled_actions.clear();
+        self.active_stream_entry = None;
+        self.set_status("Ready");
+        self.push_message(Role::System, "stream aborted");
     }
 
     pub fn new_with_prompt(quit_flag: Arc<AtomicBool>, initial_prompt: &str) -> Self {
@@ -971,14 +1058,12 @@ impl Component for FakeCodingAgentApp {
         };
 
         if matches_key_event(key, "ctrl+c") {
-            self.quit_flag.store(true, Ordering::SeqCst);
+            self.on_ctrl_c();
             return;
         }
 
         if matches_key_event(key, "escape") {
-            if self.palette_open || self.settings_open {
-                self.palette_open = false;
-                self.settings_open = false;
+            if self.on_escape() {
                 return;
             }
             // Fall through so Editor can dismiss slash CommandPopup (Esc).
