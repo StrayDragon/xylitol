@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "hook-system"
+name: "agent-hooks"
 purpose: "Hook system — lifecycle hooks (before/after tool execution) and script execution."
 valid_scope[2]: src/infra/hooks/,src/agent/runtime/hooks.rs
 requirements[13]{req_id,title,statement}:

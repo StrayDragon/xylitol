@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "provider-adapter"
+name: "infra-provider"
 purpose: "Provider adapter layer — isolates vendor-specific LLM API shapes (OpenAI Responses, Anthropic Messages, OpenAI Chat Completions) behind a unified LlmAdapter trait that emits the internal XyChunk stream."
 valid_scope[2]: src/,tests/
 requirements[5]{req_id,title,statement}:
