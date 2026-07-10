@@ -1,10 +1,26 @@
 ---
 version: "alpha"
 name: "diff-block"
-description: "Xylitol Terminal component UX — see DESIGN.md index."
+description: "Copy-friendly Diff block — unified / side-by-side / edit line format."
+tokens_from: "../DESIGN.md"
+components:
+  diff-added:
+    textColor: "{colors.diff-added}"
+  diff-removed:
+    textColor: "{colors.diff-removed}"
+  diff-context:
+    textColor: "{colors.diff-context}"
+  diff-meta:
+    textColor: "{colors.muted}"
+  diff-gutter:
+    textColor: "{colors.muted}"
+spacing:
+  side-by-side-min-cols: "{spacing.diff-side-by-side-min-cols}"
 ---
 
 # Diff block
+
+> Token 根源：`{colors.*}` / `{spacing.*}` → [`../DESIGN.md`](../DESIGN.md)（本文件 `tokens_from`）。
 
 包组件：`packages/xylitol-tui` Diff（c451）。产品接线：transcript 内可展开块（c470 / c453）。生成侧：`infra` edit 工具的 `display_diff` / unified diff。
 
@@ -21,17 +37,24 @@ description: "Xylitol Terminal component UX — see DESIGN.md index."
 | `display_diff` 文本 | 与 `generate_display_diff` 对齐的 gutter 行（`NNNN NNNN \| …` / `---/+++`） |
 | unified diff 文本 | 标准 `---`/`+++`/`@@`/`+/-/ ` 行 |
 | 结构化行对 | `old` + `new`（+ 可选 path）；包内用 `similar` 计算 |
+| pi edit 行格式（c459） | `±NNNN content` / ` NNNN content` |
 
 ## 行级着色 MUST
 
-| 行类 | Token | 视觉 |
+| 行类 | Token 引用 | 视觉 |
 |---|---|---|
-| 删除 | `diff-removed` | 红 / 语义色 |
-| 添加 | `diff-added` | 绿 / 语义色 |
-| 上下文 | `diff-context` | dim / muted |
-| 头信息 `---`/`+++`/`@@` | muted | dim |
+| 删除 | `{colors.diff-removed}` | 红 / 语义色 |
+| 添加 | `{colors.diff-added}` | 绿 / 语义色 |
+| 上下文 | `{colors.diff-context}` | dim / muted |
+| 头信息 `---`/`+++`/`@@` | `{colors.muted}` | dim |
 
 主题经闭包注入（与 Markdown/SelectList 一致）；包 **MUST NOT** 硬编码产品色板。
+
+## 行号 MUST
+
+1. **Unified**：保留可读 gutter（旧/新行号或 pi `±NNNN`）；宽度按 max line pad。
+2. **Side-by-side**：左右栏 MUST 各自显示合理行号（左=`old_no`，右=`new_no`）；空半栏 MUST NOT 伪造行号。当前实现缺口见 c459（`format_sbs_cell` 丢弃 `_no`）。
+3. **MUST NOT** 做成装饰性「行号墙」。
 
 ## Word-level（行内）MUST
 
@@ -44,7 +67,7 @@ description: "Xylitol Terminal component UX — see DESIGN.md index."
 ## 布局 MUST
 
 1. 默认 **unified**（单栏）。
-2. 当终端宽度 ≥ `spacing.diff-side-by-side-min-cols`（默认 **100**）且调用方开启 side-by-side 时，可渲染左右对照；否则 MUST 回退 unified。
+2. 当终端宽度 ≥ `{spacing.diff-side-by-side-min-cols}`（默认 **100**）且调用方开启 side-by-side 时，可渲染左右对照；否则 MUST 回退 unified。
 3. **MUST NOT** 使用 Unicode 表线 / 树连接符装饰；对齐用空格。
 4. 行宽按 `visible_width`（CJK/emoji）；超宽行 MUST 按 ANSI 感知宽度折行或截断策略与 Text/Markdown 一致，**MUST NOT** 按字节硬切。
 
@@ -61,4 +84,5 @@ description: "Xylitol Terminal component UX — see DESIGN.md index."
 ## Out of scope（本设计）
 
 - 旧 `diff-review` 审批流
-- 把 syntect 打进 Diff（高亮是 fence 代码块的事，见 [`markdown.md`](./markdown.md) / c452）
+- 把 syntect 打进 Diff 默认路径（可选内容高亮见插队提案 `c459-enhance-diff-edit-line-syntax`）
+- 实现前：pi edit 行号格式与 SBS 行号（c459 purpose-draft）
