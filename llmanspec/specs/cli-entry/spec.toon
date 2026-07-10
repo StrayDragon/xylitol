@@ -26,7 +26,7 @@ scenarios[14]{req_id,id,given,when,then}:
   ce6,"same-handler-both-drivers",an app client event handler is written once,it is run against InProcessDriver then RemoteDriver,both produce identical event sequences for the same input
   ce7,"cli-constructs-ports","app::cli::run is traced",the agent construction is inspected,"Agent::new receives Arc<dyn SessionStore> and Arc<dyn EventSink>"
   ce8,"server-stop-signals",a server is running with a lock file containing PID 12345,xylitol server stop is run,SIGTERM is sent to PID 12345 and the lock file is cleaned up
-  ce9,"server-gets-resource-discovery",a server run with an AGENTS.md present in cwd,"server/runtime.rs calls app::core::bootstrap","context_files and append_system_prompt are discovered and injected into the agent, matching print mode behavior (no longer headless-skipped)"
+  ce9,"server-gets-runtime-resource-discovery",a server run with an AGENTS.md present in cwd,"server/runtime.rs calls app::core::bootstrap","context_files and append_system_prompt are discovered and injected into the agent, matching print mode behavior (no longer headless-skipped)"
   ce9,"print-unchanged",print mode before and after c336,the same prompt is run,"the output is byte-identical (assembly path下沉 does not change print behavior)"
   ce10,"tui-model-works",the TUI is running,the user types /model to cycle or /model <id> to set,"the model is switched via app::core::dispatch (not a stub error)"
   ce11,"rpc-files-gone",the source tree is inspected after c336,"src/app/rpc.rs, the --rpc flag in CliArgs, the rpc cargo feature, and tests/features/rpc.feature are checked",none of them exist (rpc mode fully removed)
