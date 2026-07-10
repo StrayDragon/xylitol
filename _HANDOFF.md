@@ -107,3 +107,4 @@ c470 transcript      ← paused（不做 Codex TranscriptView）
 - How-to：`write-tui`、`test-tui-harness`、`write-surface`
 - 视觉：`src/app/tui/DESIGN.md` + `design/`
 - 合约：`llmanspec/changes/archive/2026-07-10-c450-…`、`…/c461-…`
+- **src/ 就绪度 + 命名债（2026-07-10 审计）**：`docs/tui-research/2026-07-10-src-core-tui-readiness.md`
