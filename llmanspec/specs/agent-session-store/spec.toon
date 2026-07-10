@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "session-persistence"
+name: "agent-session-store"
 purpose: "Session persistence — JSONL file-based session storage with tree operations, compaction, fork, and CWD validation."
 valid_scope[1]: src/infra/session/
 requirements[28]{req_id,title,statement}:

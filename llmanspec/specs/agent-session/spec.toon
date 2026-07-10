@@ -10,7 +10,7 @@ requirements[34]{req_id,title,statement}:
   a5,"thinking-level","AgentSession MUST support thinking level toggle (low/medium/high), clamped to model capabilities."
   a6,abort,AgentSession MUST support abort() to cancel current agent operation.
   a7,"context-usage",AgentSession MUST expose getContextUsage() returning estimated token count and context window percentage.
-  a8,"session-persistence","AgentSession MUST auto-persist messages to SessionManager after each turn and after tool execution."
+  a8,"agent-session-store","AgentSession MUST auto-persist messages to SessionManager after each turn and after tool execution."
   a9,"prompt-construction","AgentSession MUST construct the full messages array: system prompt + context files + history + user prompt, prepended per turn."
   a10,"bdd-agent",BDD tests under tests/features/agent.feature MUST all pass.
   a21,"agent-prompt","System MUST support forward-slash template colon name args syntax with positional arg substitution and all-args placeholder and default-value syntax."
