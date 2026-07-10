@@ -17,8 +17,9 @@ use xylitol_tui::components::settings_list::{
 };
 use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, set_keybindings};
 use xylitol_tui::{
-    Component, CrosstermTerminal, Focusable, InputEvent, InputListenerResult, SystemClock, TUI,
-    matches_key_event, truncate_to_width, visible_width, wrap_text_with_ansi,
+    Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme, Focusable, InputEvent,
+    InputListenerResult, SystemClock, TUI, matches_key_event, render_diff_lines, truncate_to_width,
+    visible_width, wrap_text_with_ansi,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
@@ -48,6 +49,18 @@ fn slash_commands() -> Vec<SlashCommand> {
 
 fn cyan(s: &str) -> String {
     format!("\x1b[36m{s}\x1b[39m")
+}
+
+/// Sample `display_diff`-shaped text for the Diff component demo (c451).
+fn sample_display_diff() -> String {
+    [
+        "      ... | --- a/packages/xylitol-tui/examples/agent_demo.rs",
+        "      ... | +++ b/packages/xylitol-tui/examples/agent_demo.rs",
+        "  10    10 |     Component, CrosstermTerminal,",
+        "  11       | -    Focusable, InputEvent,",
+        "       11 | +    DiffInput, Focusable, InputEvent,",
+    ]
+    .join("\n")
 }
 fn magenta(s: &str) -> String {
     format!("\x1b[35m{s}\x1b[39m")
@@ -200,6 +213,12 @@ enum TranscriptEntry {
         summary: String,
         detail: String,
     },
+    /// Collapsible Diff block (c451 `Diff` / `render_diff_lines`).
+    Diff {
+        expanded: bool,
+        summary: String,
+        display_diff: String,
+    },
 }
 
 enum ScriptEvent {
@@ -278,10 +297,8 @@ impl FakeCodingAgentApp {
                 app_ctrl.borrow_mut().on_ctrl_c();
                 return InputListenerResult::Consumed;
             }
-            if matches_key_event(key, "escape") {
-                if app_ctrl.borrow_mut().on_escape() {
-                    return InputListenerResult::Consumed;
-                }
+            if matches_key_event(key, "escape") && app_ctrl.borrow_mut().on_escape() {
+                return InputListenerResult::Consumed;
             }
             InputListenerResult::Continue
         });
@@ -500,6 +517,7 @@ impl FakeCodingAgentApp {
             "read packages/xylitol-tui/examples/agent_demo.rs · 42ms · 790 lines",
             "ok — opened agent_demo.rs\n(preview) FakeCodingAgentApp + scripted turn harness",
         );
+        self.push_diff("edited demo.rs (+1 -1)", sample_display_diff());
     }
 
     fn push_message(&mut self, role: Role, text: impl Into<String>) {
@@ -524,6 +542,14 @@ impl FakeCodingAgentApp {
         });
     }
 
+    fn push_diff(&mut self, summary: impl Into<String>, display_diff: impl Into<String>) {
+        self.transcript.push(TranscriptEntry::Diff {
+            expanded: false,
+            summary: summary.into(),
+            display_diff: display_diff.into(),
+        });
+    }
+
     fn toggle_thinking_blocks(&mut self) {
         // If anything is open, close all (so mid-stream ^T can hide the live
         // typewriter). Only expand when every thinking block is already closed.
@@ -539,13 +565,19 @@ impl FakeCodingAgentApp {
     }
 
     fn toggle_tool_blocks(&mut self) {
-        let any_expanded = self
-            .transcript
-            .iter()
-            .any(|e| matches!(e, TranscriptEntry::Tool { expanded: true, .. }));
+        let any_expanded = self.transcript.iter().any(|e| {
+            matches!(
+                e,
+                TranscriptEntry::Tool { expanded: true, .. }
+                    | TranscriptEntry::Diff { expanded: true, .. }
+            )
+        });
         for entry in &mut self.transcript {
-            if let TranscriptEntry::Tool { expanded, .. } = entry {
-                *expanded = !any_expanded;
+            match entry {
+                TranscriptEntry::Tool { expanded, .. } | TranscriptEntry::Diff { expanded, .. } => {
+                    *expanded = !any_expanded;
+                }
+                _ => {}
             }
         }
     }
@@ -958,6 +990,31 @@ impl FakeCodingAgentApp {
                         Self::push_wrapped(&mut lines, &dim(detail), width);
                     }
                 }
+                TranscriptEntry::Diff {
+                    expanded,
+                    summary,
+                    display_diff,
+                } => {
+                    let marker = if *expanded { g.unfold() } else { g.fold() };
+                    let header = dim(&format!("{} {} {}", marker, g.tool(), summary));
+                    Self::push_wrapped(&mut lines, &header, width);
+                    if *expanded {
+                        let theme = DiffTheme::default();
+                        let opts = DiffOptions {
+                            word_level: true,
+                            side_by_side_min_width: Some(100),
+                        };
+                        let rendered = render_diff_lines(
+                            &DiffInput::DisplayText(display_diff.clone()),
+                            width,
+                            &theme,
+                            &opts,
+                        );
+                        for line in rendered {
+                            lines.push(Self::fit(&line, width));
+                        }
+                    }
+                }
             }
             lines.push(String::new());
         }
@@ -1062,12 +1119,10 @@ impl Component for FakeCodingAgentApp {
             return;
         }
 
-        if matches_key_event(key, "escape") {
-            if self.on_escape() {
-                return;
-            }
-            // Fall through so Editor can dismiss slash CommandPopup (Esc).
+        if matches_key_event(key, "escape") && self.on_escape() {
+            return;
         }
+        // Fall through so Editor can dismiss slash CommandPopup (Esc).
 
         if self.palette_open {
             if matches_key_event(key, "up") || matches_key_event(key, "down") {
@@ -1084,10 +1139,12 @@ impl Component for FakeCodingAgentApp {
                             ));
                         }
                         "diff" => {
-                            self.push_message(
-                                Role::Assistant,
-                                "Current diff is concentrated in example consolidation, acceptance harness cleanup, and the E2E surface switch.",
-                            );
+                            self.push_diff("workspace diff (+3 -2)", sample_display_diff());
+                            if let Some(TranscriptEntry::Diff { expanded, .. }) =
+                                self.transcript.last_mut()
+                            {
+                                *expanded = true;
+                            }
                         }
                         "compact" => {
                             self.push_message(

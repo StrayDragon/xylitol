@@ -5157,6 +5157,7 @@ dependencies = [
  "insta",
  "proptest",
  "pulldown-cmark",
+ "similar 3.1.1",
  "tempfile",
  "tokio",
  "tokio-util",
