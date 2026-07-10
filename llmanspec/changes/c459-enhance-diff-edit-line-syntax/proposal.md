@@ -40,10 +40,10 @@ pi `generateDiffString` / `renderDiff`：`+ 42 content` / `- 11 old` / `  40 con
 
 1. `DiffInput::EditText` + `DiffInput::from_edit_pair` / `generate_edit_text`（pi 兼容）。
 2. **默认** `compact_line_numbers: true`：`±{pad}N {content}`，符号与行号同色、内容列对齐（修双 gutter「错位」）。
-3. SBS：左右栏同一 compact 前缀规则。
+3. SBS：内容打包列宽；多行 replace hunk（DD…II…）按行 zip 成 L|R（`take_change_hunk`），无需新 crate。
 4. 可选 `DiffTheme::highlight_line`（默认 identity）。
-5. `agent_demo`：seed 样例 + **模拟 Edit 工具步骤**（status → 展开 Diff 弹出）。
-6. 更新 `design/diff-block.md`。
+5. `agent_demo`：seed 样例 + **模拟 Edit 工具步骤**（整块弹出，非打字机）；Edit 固定 unified。
+6. 更新 `design/diff-block.md`。pi 整块 bg/fg 对齐记在 **c462**（不在本变更硬凑）。
 
 ## Capabilities
 

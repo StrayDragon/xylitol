@@ -29,6 +29,8 @@ pi coding-agent 用极淡的 **背景 tint**（非仅 fg）表达工具块状态
 
 在 `agent_demo`（及日后 c470 transcript）为 tool / edit 块套三态全行背景；色值以 `DESIGN.md` 为准（Mocha tint，可微调）。
 
+> **记住（2026-07-10）**：与 pi Edit 块「完全一致」的观感（整块浅绿/浅红 **bg** + fg）**依赖本变更**，不在 c459 Diff 行格式里硬凑。c459 只保证 unified compact / SBS 行对齐；tool/edit 块可整块渲染（无需打字机流式）。
+
 ## What Changes（意向）
 
 1. demo：tool 块 pending → success/error 切换时更新 `Box`/`Text`/`Markdown` 的 bg 闭包。
