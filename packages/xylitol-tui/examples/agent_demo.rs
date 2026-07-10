@@ -3,7 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use xylitol_tui::autocomplete::SlashCommand;
 use xylitol_tui::completion::{AtPathSource, SlashCommandSource};
@@ -18,9 +18,9 @@ use xylitol_tui::components::settings_list::{
 use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, set_keybindings};
 use xylitol_tui::{
     Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme, Focusable, InputEvent,
-    InputListenerResult, Markdown, MarkdownOptions, MarkdownTheme, SystemClock, TUI,
-    apply_background_to_line, highlight_code, matches_key_event, render_diff_lines,
-    truncate_to_width, visible_width, wrap_text_with_ansi,
+    InputListenerResult, Markdown, MarkdownOptions, MarkdownTheme, SystemClock, TUI, TreeNode,
+    TreeSelector, TreeSelectorOptions, TreeSelectorTheme, apply_background_to_line, highlight_code,
+    matches_key_event, render_diff_lines, truncate_to_width, visible_width, wrap_text_with_ansi,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
@@ -57,7 +57,34 @@ fn key_hint(chord: &str) -> String {
     dim(&format!("({chord})"))
 }
 
-/// Tool / edit block execution tint (DESIGN.md `tool-*-bg`, Mocha).
+fn sample_session_tree() -> Vec<TreeNode> {
+    vec![
+        TreeNode::new("root", "session · demo").with_children([
+            TreeNode::new("u1", "user: tighten footer truncation").with_child(
+                TreeNode::new("a1", "assistant: plan + tools").with_children([
+                    TreeNode::new("t1", "tool: rg -n TreeSelector"),
+                    TreeNode::new("a2", "assistant: ship tree slot")
+                        .with_child(TreeNode::new("u2", "user: also verify double Esc")),
+                ]),
+            ),
+            TreeNode::new("fork", "user: alternate branch")
+                .with_child(TreeNode::new("af", "assistant: (fork leaf)")),
+        ]),
+    ]
+}
+
+fn demo_tree_selector(active_id: &str) -> TreeSelector {
+    TreeSelector::new(
+        sample_session_tree(),
+        TreeSelectorTheme::default(),
+        TreeSelectorOptions {
+            max_visible: 10,
+            unicode_connectors: true,
+            include_node: None,
+            active_id: Some(active_id.into()),
+        },
+    )
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolBlockStatus {
     Pending,
@@ -425,6 +452,10 @@ pub struct FakeCodingAgentApp {
     palette: SelectList,
     settings_open: bool,
     settings: SettingsList,
+    /// Double-Esc session tree (c454 smoke).
+    tree_open: bool,
+    tree: TreeSelector,
+    last_esc_at: Option<Instant>,
     loader: Loader,
     plan: Vec<(bool, String)>,
     changed_files: Vec<String>,
@@ -554,9 +585,13 @@ impl FakeCodingAgentApp {
         (a, b)
     }
 
-    /// Esc: close overlays; abort active stream; otherwise let Editor handle.
+    /// Esc: close overlays/tree; abort stream; double-Esc (empty editor) opens tree.
     /// Returns true if the event was consumed.
     pub fn on_escape(&mut self) -> bool {
+        if self.tree_open {
+            self.close_session_tree();
+            return true;
+        }
         if self.palette_open || self.settings_open {
             self.palette_open = false;
             self.settings_open = false;
@@ -566,7 +601,43 @@ impl FakeCodingAgentApp {
             self.abort_active_stream();
             return true;
         }
+        if self.input.get_text().is_empty() {
+            let now = Instant::now();
+            if let Some(prev) = self.last_esc_at
+                && now.duration_since(prev) < Duration::from_millis(500)
+            {
+                self.last_esc_at = None;
+                self.open_session_tree();
+                return true;
+            }
+            self.last_esc_at = Some(now);
+        } else {
+            self.last_esc_at = None;
+        }
         false
+    }
+
+    pub fn open_session_tree(&mut self) {
+        self.palette_open = false;
+        self.settings_open = false;
+        self.tree = demo_tree_selector("u2");
+        self.tree_open = true;
+        self.set_status("Session tree");
+    }
+
+    pub fn close_session_tree(&mut self) {
+        self.tree_open = false;
+        self.set_status("Ready");
+    }
+
+    pub fn tree_open_for_test(&self) -> bool {
+        self.tree_open
+    }
+
+    /// Harness: clear editor then open tree (skips double-Esc timing).
+    pub fn open_session_tree_for_test(&mut self) {
+        self.input.set_text(String::new());
+        self.open_session_tree();
     }
 
     fn abort_active_stream(&mut self) {
@@ -705,6 +776,9 @@ impl FakeCodingAgentApp {
             palette,
             settings_open: false,
             settings,
+            tree_open: false,
+            tree: demo_tree_selector("u2"),
+            last_esc_at: None,
             loader,
             plan: vec![
                 (true, "Read failing terminal report".into()),
@@ -738,7 +812,7 @@ impl FakeCodingAgentApp {
         // One-shot help — fold keys live on blocks as `(Ctrl+T)` / `(Alt+E)`.
         self.push_message(
             Role::System,
-            "keys: Enter submit · /cmds · @path · (Ctrl+P) palette · (Ctrl+S) settings · (Alt+G) glyphs · (Ctrl+O) step · Esc · (Ctrl+C)",
+            "keys: Enter submit · double Esc tree · /cmds · @path · (Ctrl+P) · (Ctrl+S) · (Alt+G) · (Ctrl+O) · Esc · (Ctrl+C)",
         );
         self.push_message(
             Role::System,
@@ -1530,6 +1604,9 @@ impl FakeCodingAgentApp {
     /// pi `showSelector`: replace the editor slot (bottom of the stack) so the
     /// popup stays in the viewport as transcript grows into scrollback.
     fn render_editor_slot(&mut self, width: usize) -> Vec<String> {
+        if self.tree_open {
+            return self.render_tree_slot(width);
+        }
         if self.palette_open {
             return self.render_palette_slot(width);
         }
@@ -1541,6 +1618,19 @@ impl FakeCodingAgentApp {
             .into_iter()
             .map(|line| Self::fit(&line, width))
             .collect()
+    }
+
+    fn render_tree_slot(&mut self, width: usize) -> Vec<String> {
+        let mut lines = Vec::new();
+        lines.push(Self::fit(&bold(" Session tree"), width));
+        lines.push(Self::fit(
+            &dim(" Up/Down  Enter travel  Esc close  (double Esc)"),
+            width,
+        ));
+        for line in self.tree.render(width) {
+            lines.push(Self::fit(&line, width));
+        }
+        lines
     }
 
     fn render_palette_slot(&mut self, width: usize) -> Vec<String> {
@@ -1574,7 +1664,7 @@ impl Component for FakeCodingAgentApp {
         }
         lines.extend(self.render_editor_slot(width));
         let footer_owned;
-        let footer_ref = if self.palette_open || self.settings_open {
+        let footer_ref = if self.palette_open || self.settings_open || self.tree_open {
             "esc close · ↑↓ · Enter"
         } else {
             // Compact cue strip — full list is in the seed system line.
@@ -1615,6 +1705,21 @@ impl Component for FakeCodingAgentApp {
             return;
         }
         // Fall through so Editor can dismiss slash CommandPopup (Esc).
+
+        if self.tree_open {
+            if matches_key_event(key, "up")
+                || matches_key_event(key, "down")
+                || matches_key_event(key, "pageUp")
+                || matches_key_event(key, "pageDown")
+            {
+                self.tree.handle_input(event);
+            } else if matches_key_event(key, "enter") {
+                let id = self.tree.selected_id().unwrap_or("?").to_string();
+                self.push_message(Role::System, format!("travel → {id}"));
+                self.close_session_tree();
+            }
+            return;
+        }
 
         if self.palette_open {
             if matches_key_event(key, "up") || matches_key_event(key, "down") {

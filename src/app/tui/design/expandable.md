@@ -22,7 +22,7 @@ components:
 
 > Token 根源：`{colors.*}` / `{components.*}` → [`../DESIGN.md`](../DESIGN.md)。
 
-对齐 pi interactive：折叠一行摘要，展开完整内容。实现落在**应用面** transcript 子块，不是包内通用 Chat 组件。
+对齐 pi interactive：折叠一行摘要，展开完整内容。实现落在**应用面**（demo 优先）；**不是**包内通用 Chat 组件，也**不是** Codex 式 TranscriptView 的一部分。
 
 ## MUST
 

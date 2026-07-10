@@ -34,4 +34,6 @@ track: B
 
 ## Out of scope
 
-- 具体 Markdown/Diff 绘制（c470）
+- Codex 式 TranscriptView / 专用消息浏览面（c470 已搁置）
+- 会话树 UI（c454/c456/c491）
+- 具体 Markdown/Diff 行绘制细节（包组件 + demo；产品 live 行另议）

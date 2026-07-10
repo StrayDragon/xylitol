@@ -28,5 +28,5 @@ thinking / tool / diff 都需默认折叠、键位展开；策略要在 demo 验
 
 ## Out of scope
 
-- 产品面默认策略最终锁定（可在 c470 升格）
+- 产品面默认策略最终锁定（会话树优先后另议；**不**经已搁置的 c470 Codex TranscriptView）
 - 包内通用 Expandable 组件
