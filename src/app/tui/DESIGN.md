@@ -12,6 +12,9 @@ colors:
   error: "#f38ba8"
   warning: "#f9e2af"
   success: "#a6e3a1"
+  diff-added: "#a6e3a1"
+  diff-removed: "#f38ba8"
+  diff-context: "#6c7086"
 typography:
   body:
     fontFamily: terminal-monospace
@@ -28,6 +31,7 @@ spacing:
   sm: 1
   status-rows: 1
   footer-rows: 1
+  diff-side-by-side-min-cols: 100
 rounded:
   none: 0
 components:
@@ -46,13 +50,18 @@ components:
   editor-border:
     textColor: "{colors.muted}"
   operation-zone:
-    # Editor top/bottom `─` borders mark the input/operation area (agent_demo / fig2).
     border: "{components.editor-border}"
+  diff-added:
+    textColor: "{colors.diff-added}"
+  diff-removed:
+    textColor: "{colors.diff-removed}"
+  diff-context:
+    textColor: "{colors.diff-context}"
 ---
 
 # Design System — Xylitol Terminal
 
-> SSOT 路径：`src/app/tui/DESIGN.md`（产品面）。包 `packages/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本面。
+> SSOT 索引：本文件。组件级 MUST：[`design/`](./design/)。包 `packages/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本面。
 
 ## Overview
 
@@ -76,10 +85,11 @@ components:
 | `user` | 用户消息前缀（短 glyph） |
 | `tool` | 工具一行摘要（dim） |
 | `error` / `warning` / `success` | 异常与结果，少用 |
+| `diff-added` / `diff-removed` / `diff-context` | Diff 行着色（见 [`design/diff-block.md`](./design/diff-block.md)） |
 
 不要为 header / debug / 多角色长标签再扩一套色。选中列表用 **reverse**，不必单独 `selection-bg` 面板底。
 
-包内组件收闭包主题；语义 → SGR 在本目录 theme 层。
+包内组件收闭包主题；语义 → SGR 在本目录 theme 层（[`design/theme-tokens.md`](./design/theme-tokens.md)）。
 
 ## Typography
 
@@ -88,27 +98,10 @@ components:
 - **body**：助手 markdown / 用户正文
 - **dim**：元数据、footer、工具行
 - **bold**：极少用（错误标题、必要强调）
-- **reverse**：列表选中
+- **reverse**：列表选中；Diff 行内变更（word-level）
 - **underline**：可复制 URL 展示时可用
 
-段落间最多一空行。代码块：语法高亮即可，**无边框、无语言标签条、无树线装饰**。
-
-## Glyphs（应用层配置，不做字体探测）
-
-短前缀 glyph（用户 / 工具 / 状态等）由**应用面配置**选择，例如：
-
-| 配置档 | 用户 | 工具 | 说明 |
-|---|---|---|---|
-| `unicode`（默认意向） | `❯` | `⚙` | 好看；依赖用户终端字体 |
-| `ascii` | `>` | `*` | 最大兼容；复制也干净 |
-
-规则：
-
-1. **不做运行时字体/emoji 能力探测**，避免缠绕逻辑与假阳性。
-2. 用户显式配置（settings / 环境 / 启动项）切换档位即可。
-3. 包内组件不硬编码产品 glyph；由本面注入字符串或闭包。
-
-缺字体出现方块时：换 `ascii` 档或装字体——产品不自动猜。
+段落间最多一空行。代码块：语法高亮即可，**无边框、无语言标签条、无树线装饰**（[`design/markdown.md`](./design/markdown.md)）。
 
 ## Layout
 
@@ -133,7 +126,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 7. 居中 `show_overlay` 只用于确认框等短交互。
 8. **保留 editor 上下边框**作为操作区边界（图 2）；不要为了「更扁」去掉这层分区提示。
 
-`spacing.*` 单位是 cell / 行。
+`spacing.*` 单位是 cell / 行。宽屏 Diff 阈值见 `spacing.diff-side-by-side-min-cols`。
 
 ## Elevation & Depth
 
@@ -143,46 +136,24 @@ footer         1 行 dim（cwd · model · 可选 context%）
 
 无圆角。Editor 使用 muted 上下 `─`（`Editor` 组件已有 `border_color`）。`rounded.none = 0`。
 
-## Components
+## Components（索引）
 
-### Transcript（主内容）
+| 文档 | 内容 |
+|---|---|
+| [`design/transcript.md`](./design/transcript.md) | 消息呈现 |
+| [`design/expandable.md`](./design/expandable.md) | thinking / tool 可展开 |
+| [`design/status.md`](./design/status.md) | busy 一行 |
+| [`design/editor.md`](./design/editor.md) | 操作区 |
+| [`design/footer.md`](./design/footer.md) | 一行 dim |
+| [`design/overlay.md`](./design/overlay.md) | 短确认 |
+| [`design/diff-block.md`](./design/diff-block.md) | Diff 渲染（包组件 + 产品接线） |
+| [`design/glyphs.md`](./design/glyphs.md) | unicode / ascii 档 |
+| [`design/theme-tokens.md`](./design/theme-tokens.md) | 语义 → SGR |
+| [`design/keybindings.md`](./design/keybindings.md) | 已决议键位 |
+| [`design/markdown.md`](./design/markdown.md) | 复制友好 markdown |
+| [`design/errors.md`](./design/errors.md) | 错误呈现 |
 
-- 用户：配置档短前缀 + 正文。避免 `USER>` / `You` 长标签。
-- 助手：正文直接出；不必每段加 `ASSISTANT>`。
-- System / 错误：短 dim 或 `error` 色一行。
-- Markdown：标题用 `#` 前缀字符；列表用 `1.` / `-`；链接渲染为 `text (url)` 可复制形式。
-
-### 可展开块（thinking / tool，对齐 pi）
-
-默认 **详略得当**：折叠时一行（或短摘要）；展开后显示完整 thinking / 工具输出。
-
-- 形态参考 pi interactive：`ExpandableText`-式块 + 快捷键切换（如 thinking toggle、tools expand）。
-- 实现落在**应用面**（transcript 子块），不是包内通用 Chat 组件。
-- **展开策略**（默认折叠哪些、是否记住、快捷键绑定、是否全局一键展开工具）→ **c450 接线后再单独讨论**；本文件只锁定「需要可展开」，不锁具体策略。
-
-折叠态仍须复制友好：摘要行本身可读，不要只有图标。
-
-### status
-
-- idle：**不占行**（不要空转 spinner）。
-- busy：一行 `spinner + 短词`（Working / Running tool / Retry…）。
-- 不放 turn 计数、耗时百分比、双列元数据。
-
-### editor（操作区）
-
-- 多行草稿；反色假光标；默认隐藏硬件光标。
-- **上下 `─` 边框保留**，明确「这里是输入/操作区」。
-- Ctrl+P / 设置等：替换 editor 槽为 `SelectList` / `SettingsList`，Esc 还原（已验证路径）。
-
-### footer
-
-- 一行 dim：`cwd (branch) · model · context%`；放不下截断右侧。
-- 快捷键提示：默认不列清单；需要时 `/help` 或极短 `?`。
-
-### overlay
-
-- 确认等短交互：居中短面板 + `OverlayHandle`。
-- 不要把命令面板做成大仪表盘（命令面板走 editor 槽替换）。
+后置能力草稿：[`session-tree`](./design/session-tree.md) · [`bash-mode`](./design/bash-mode.md) · [`queue-steer`](./design/queue-steer.md) · [`trust-prompt`](./design/trust-prompt.md) · [`compaction-status`](./design/compaction-status.md)
 
 ## Token economy（复制友好）
 
@@ -203,7 +174,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 - Do 忙碌才出 status；idle 让出垂直空间给对话。
 - Do 用 editor 边框标出操作区（对齐 agent_demo）。
 - Do glyph 走应用配置，不探测字体。
-- Do thinking/tool 可展开（策略另议）。
+- Do thinking/tool 可展开（策略见 expandable）。
 - Don't 常驻 Plan / Tools / Files / 快捷键墙。
 - Don't 双栏、卡片、圆角、多字体、阴影。
 - Don't blit 弹层到内容绝对顶部。

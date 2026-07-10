@@ -8,7 +8,7 @@
 
 ## 视觉 / UX
 
-产品终端视觉 SSOT：本目录 **`DESIGN.md`**（语义 token + layout + 复制友好规则；拆分见 `design/*`，c449）。包内组件只收闭包主题，不承载产品 layout。
+产品终端视觉 SSOT：本目录 **`DESIGN.md`**（索引 + 全局 tokens）与 **`design/*.md`**（组件级 MUST；拆分见 c449）。包内组件只收闭包主题，不承载产品 layout。
 
 ## Specs
 
@@ -39,7 +39,7 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 | 任务 | 去哪 |
 |---|---|
 | 写/改本面 | `write-tui` skill |
-| UX / token / layout | 本目录 `DESIGN.md` |
+| UX / token / layout | 本目录 `DESIGN.md` + `design/*` |
 | 底层能力是否已有 / 如何扩展 | `packages/xylitol-tui/AGENTS.md` |
 | 新增/改造应用面 | `write-surface` skill |
 | 包内组件与五层验证 | `test-tui-harness` skill |
