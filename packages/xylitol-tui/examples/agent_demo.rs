@@ -331,8 +331,11 @@ enum TimedAction {
     StreamStart(StreamKind),
     StreamChunk(StreamKind, String),
     StreamFinish(StreamKind),
-    /// Flip the most recent Tool/Diff block status (pending → success).
-    SetLastToolStatus(ToolBlockStatus),
+    /// Flip a specific Tool/Diff entry (must bind index — never "last").
+    SetToolStatus {
+        index: usize,
+        status: ToolBlockStatus,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -419,18 +422,63 @@ impl FakeCodingAgentApp {
         self.input.get_text()
     }
 
-    /// Harness: push a pending tool (no long scripted turn).
-    pub fn inject_pending_tool_for_test(&mut self) {
+    pub fn status_text_for_test(&self) -> &str {
+        &self.status_text
+    }
+
+    pub fn clear_scheduled_actions_for_test(&mut self) {
+        self.scheduled_actions.clear();
+    }
+
+    /// Stop idle fallback turns from interfering with harness injects.
+    pub fn freeze_script_for_test(&mut self) {
+        self.auto_started = true;
+        self.scripted_turn = 99;
+        self.pending_events.clear();
+    }
+
+    /// Harness: push a pending tool (no long scripted turn). Returns transcript index.
+    pub fn inject_pending_tool_for_test(&mut self) -> usize {
+        let index = self.transcript.len();
         self.push_tool(
             "inject-tool · running",
             "pending detail (demo)",
             ToolBlockStatus::Pending,
         );
+        self.set_status("Working");
+        index
     }
 
-    /// Harness: flip the most recent tool/diff to success (pending → ok).
-    pub fn complete_last_tool_for_test(&mut self) {
-        self.set_last_tool_status(ToolBlockStatus::Success);
+    /// Harness: flip a specific tool/diff entry to success.
+    pub fn complete_tool_at_for_test(&mut self, index: usize) {
+        self.set_tool_status_at(index, ToolBlockStatus::Success);
+    }
+
+    /// Harness: schedule independent flips for two pending tools (parallel feel).
+    pub fn inject_parallel_pending_tools_for_test(&mut self) -> (usize, usize) {
+        let a = self.inject_pending_tool_for_test();
+        // Second tool with a distinct summary.
+        let b = self.transcript.len();
+        self.push_tool(
+            "inject-tool-b · running",
+            "pending detail B (demo)",
+            ToolBlockStatus::Pending,
+        );
+        self.schedule_from_now(
+            3,
+            TimedAction::SetToolStatus {
+                index: a,
+                status: ToolBlockStatus::Success,
+            },
+        );
+        self.schedule_from_now(
+            8,
+            TimedAction::SetToolStatus {
+                index: b,
+                status: ToolBlockStatus::Success,
+            },
+        );
+        (a, b)
     }
 
     /// Esc: close overlays; abort active stream; otherwise let Editor handle.
@@ -797,6 +845,7 @@ impl FakeCodingAgentApp {
 
     fn spinner_active(&self) -> bool {
         self.status_text != "Ready"
+            || self.any_pending_tool_blocks()
             || !self.pending_events.is_empty()
             || !self.scheduled_actions.is_empty()
             || self.active_stream_entry.is_some()
@@ -827,6 +876,16 @@ impl FakeCodingAgentApp {
             at_tick: self.scheduled_tail_tick,
             action,
         });
+    }
+
+    /// Schedule relative to *now* (not the serial event tail) — for independent tool flips.
+    fn schedule_from_now(&mut self, delay_ticks: u64, action: TimedAction) {
+        let at = self.script_tick.saturating_add(delay_ticks.max(1));
+        self.scheduled_actions.push_back(ScheduledAction {
+            at_tick: at,
+            action,
+        });
+        self.scheduled_tail_tick = self.scheduled_tail_tick.max(at);
     }
 
     fn queue_event(&mut self, delay_ticks: u64, event: ScriptEvent) {
@@ -971,50 +1030,30 @@ impl FakeCodingAgentApp {
         // Typewriter the thinking block first (auto-expanded while streaming).
         self.queue_thinking_stream(&thinking_body);
 
-        // After thinking finishes, dwell then tools — hitchy, not metronomic.
+        // After thinking: spawn a parallel-ish tool wave (tight appear, independent flips).
         let think_dwell = self.jitter_ticks(8, 18);
-        self.queue_event(think_dwell, ScriptEvent::Status("Running rg search".into()));
-        let rg_tool_delay = self.jitter_ticks(4, 12);
+        self.queue_event(think_dwell, ScriptEvent::Status("Running tools".into()));
         self.queue_event(
-            rg_tool_delay,
+            1,
             ScriptEvent::Tool(format!("rg -n \"{}\" packages/xylitol-tui tests", prompt)),
         );
-        let mark_one_delay = self.jitter_ticks(2, 8);
-        self.queue_event(mark_one_delay, ScriptEvent::MarkPlan(1));
-        let file_delay = self.jitter_ticks(3, 10);
+        self.queue_event(1, ScriptEvent::MarkPlan(1));
+        self.queue_event(1, ScriptEvent::File("tests/tui_e2e/pty.rs".to_string()));
         self.queue_event(
-            file_delay,
-            ScriptEvent::File("tests/tui_e2e/pty.rs".to_string()),
-        );
-        let test_status_delay = self.jitter_ticks(5, 14);
-        self.queue_event(
-            test_status_delay,
-            ScriptEvent::Status("Running agent_demo acceptance".into()),
-        );
-        let test_tool_delay = self.jitter_ticks(4, 12);
-        self.queue_event(
-            test_tool_delay,
+            1,
             ScriptEvent::Tool("cargo test -p xylitol-tui --test agent_demo_test".into()),
         );
-        let mark_two_delay = self.jitter_ticks(2, 8);
-        self.queue_event(mark_two_delay, ScriptEvent::MarkPlan(2));
-        // Simulate agent Edit tool: pending status → expanded edit Diff pops open.
-        let edit_status_delay = self.jitter_ticks(4, 10);
+        self.queue_event(1, ScriptEvent::MarkPlan(2));
         self.queue_event(
-            edit_status_delay,
-            ScriptEvent::Status("Editing footer_note".into()),
-        );
-        let edit_delay = self.jitter_ticks(5, 12);
-        self.queue_event(
-            edit_delay,
+            1,
             ScriptEvent::Edit {
                 summary: "edit src/app/tui/ui_root.rs (+1 -1)".into(),
                 input: sample_edit_tool_pair(),
             },
         );
-        let mark_edit_delay = self.jitter_ticks(2, 6);
-        self.queue_event(mark_edit_delay, ScriptEvent::MarkPlan(3));
-        let drafting_delay = self.jitter_ticks(6, 16);
+        self.queue_event(1, ScriptEvent::MarkPlan(3));
+        // Let overlapping Pending flips breathe before drafting.
+        let drafting_delay = self.jitter_ticks(18, 36);
         self.queue_event(drafting_delay, ScriptEvent::Status("Drafting reply".into()));
         let reply = self.build_assistant_reply(prompt);
         self.queue_assistant_stream(&reply);
@@ -1075,29 +1114,98 @@ impl FakeCodingAgentApp {
     }
 
     fn process_due_actions(&mut self) -> bool {
-        let mut changed = false;
-
-        while let Some(front) = self.scheduled_actions.front() {
-            if front.at_tick > self.script_tick {
-                break;
+        // Flips use schedule_from_now and may interleave past serial events — drain all due.
+        let tick = self.script_tick;
+        let mut due = Vec::new();
+        let mut rest = VecDeque::new();
+        while let Some(action) = self.scheduled_actions.pop_front() {
+            if action.at_tick <= tick {
+                due.push(action.action);
+            } else {
+                rest.push_back(action);
             }
+        }
+        self.scheduled_actions = rest;
 
-            let action = self
-                .scheduled_actions
-                .pop_front()
-                .expect("front action should exist")
-                .action;
+        let mut changed = false;
+        for action in due {
             match action {
                 TimedAction::Event(event) => self.apply_event(event),
                 TimedAction::StreamStart(kind) => self.begin_stream(kind),
                 TimedAction::StreamChunk(kind, chunk) => self.append_stream(kind, &chunk),
                 TimedAction::StreamFinish(kind) => self.finish_stream(kind),
-                TimedAction::SetLastToolStatus(status) => self.set_last_tool_status(status),
+                TimedAction::SetToolStatus { index, status } => {
+                    self.set_tool_status_at(index, status);
+                }
             }
             changed = true;
         }
-
         changed
+    }
+
+    fn any_pending_tool_blocks(&self) -> bool {
+        self.transcript.iter().any(|e| {
+            matches!(
+                e,
+                TranscriptEntry::Tool {
+                    status: ToolBlockStatus::Pending,
+                    ..
+                } | TranscriptEntry::Diff {
+                    status: ToolBlockStatus::Pending,
+                    ..
+                }
+            )
+        })
+    }
+
+    fn script_work_pending(&self) -> bool {
+        !self.pending_events.is_empty()
+            || self.active_stream_entry.is_some()
+            || self.scheduled_actions.iter().any(|a| {
+                matches!(
+                    a.action,
+                    TimedAction::Event(_)
+                        | TimedAction::StreamStart(_)
+                        | TimedAction::StreamChunk(_, _)
+                        | TimedAction::StreamFinish(_)
+                )
+            })
+    }
+
+    /// After tool tint flips: keep Working while any block is Pending; else Ready if idle.
+    fn sync_status_after_tools(&mut self) {
+        if self.active_stream_entry.is_some() {
+            return;
+        }
+        if self.any_pending_tool_blocks() {
+            self.set_status("Working");
+            return;
+        }
+        if !self.script_work_pending() {
+            self.set_status("Ready");
+        }
+    }
+
+    fn set_tool_status_at(&mut self, index: usize, status: ToolBlockStatus) {
+        match self.transcript.get_mut(index) {
+            Some(TranscriptEntry::Tool {
+                status: slot,
+                summary,
+                ..
+            })
+            | Some(TranscriptEntry::Diff {
+                status: slot,
+                summary,
+                ..
+            }) => {
+                *slot = status;
+                if status == ToolBlockStatus::Success && summary.contains("· running") {
+                    *summary = summary.replace("· running", "· ok");
+                }
+            }
+            _ => {}
+        }
+        self.sync_status_after_tools();
     }
 
     fn advance_script(&mut self) {
@@ -1109,7 +1217,9 @@ impl FakeCodingAgentApp {
         let fallback = match self.scripted_turn {
             0 => Some(vec![
                 ScriptEvent::Status("Running acceptance harness".into()),
+                // Tight burst: both Pending at once, independent flips.
                 ScriptEvent::Tool("cargo test -p xylitol-tui --test agent_demo_test".into()),
+                ScriptEvent::Tool("cargo test --test tui_e2e -- --ignored".into()),
                 ScriptEvent::MarkPlan(1),
                 ScriptEvent::Assistant(
                     "agent_demo is now the single example surface; the old kitchen-sink demos are scheduled for removal.".into(),
@@ -1117,11 +1227,12 @@ impl FakeCodingAgentApp {
                 ScriptEvent::Status("Ready".into()),
             ]),
             1 => Some(vec![
-                ScriptEvent::Tool("cargo test --test tui_e2e -- --ignored".into()),
+                ScriptEvent::Tool("cargo check -p xylitol-tui".into()),
                 ScriptEvent::MarkPlan(3),
                 ScriptEvent::Assistant(
                     "Real terminal smoke should stay focused on the primary flow rather than keeping every showcase alive.".into(),
                 ),
+                ScriptEvent::Status("Ready".into()),
             ]),
             _ => None,
         };
@@ -1135,39 +1246,6 @@ impl FakeCodingAgentApp {
         }
     }
 
-    fn set_last_tool_status(&mut self, status: ToolBlockStatus) {
-        for entry in self.transcript.iter_mut().rev() {
-            match entry {
-                TranscriptEntry::Tool {
-                    status: slot,
-                    summary,
-                    ..
-                } => {
-                    *slot = status;
-                    if status == ToolBlockStatus::Success && !summary.contains("· ok") {
-                        // Keep seed error labels; only polish scripted pending titles.
-                        if summary.contains("· running") {
-                            *summary = summary.replace("· running", "· ok");
-                        }
-                    }
-                    return;
-                }
-                TranscriptEntry::Diff {
-                    status: slot,
-                    summary,
-                    ..
-                } => {
-                    *slot = status;
-                    if status == ToolBlockStatus::Success && summary.contains("· running") {
-                        *summary = summary.replace("· running", "· ok");
-                    }
-                    return;
-                }
-                _ => {}
-            }
-        }
-    }
-
     fn apply_event(&mut self, event: ScriptEvent) {
         match event {
             ScriptEvent::Tool(text) => {
@@ -1175,21 +1253,27 @@ impl FakeCodingAgentApp {
                 self.recent_tools.insert(0, text.clone());
                 self.recent_tools.truncate(4);
                 let detail = format!("$ {text}\n(exit 0 — demo stub)");
+                let index = self.transcript.len();
                 self.push_tool(
                     format!("{text} · running"),
                     detail,
                     ToolBlockStatus::Pending,
                 );
-                let flip = self.jitter_ticks(3, 8);
-                self.schedule_after_ticks(
+                // Independent completion — wide jitter so multiple Pending overlap.
+                let flip = self.jitter_ticks(10, 28);
+                self.schedule_from_now(
                     flip,
-                    TimedAction::SetLastToolStatus(ToolBlockStatus::Success),
+                    TimedAction::SetToolStatus {
+                        index,
+                        status: ToolBlockStatus::Success,
+                    },
                 );
             }
             ScriptEvent::Edit { summary, input } => {
                 self.set_status("Working");
                 self.recent_tools.insert(0, summary.clone());
                 self.recent_tools.truncate(4);
+                let index = self.transcript.len();
                 // pi Edit: unified compact Diff, expanded (pops open). Never SBS.
                 self.push_diff_ex(
                     format!("{summary} · running"),
@@ -1198,10 +1282,13 @@ impl FakeCodingAgentApp {
                     true,
                     ToolBlockStatus::Pending,
                 );
-                let flip = self.jitter_ticks(4, 10);
-                self.schedule_after_ticks(
+                let flip = self.jitter_ticks(12, 32);
+                self.schedule_from_now(
                     flip,
-                    TimedAction::SetLastToolStatus(ToolBlockStatus::Success),
+                    TimedAction::SetToolStatus {
+                        index,
+                        status: ToolBlockStatus::Success,
+                    },
                 );
                 if !self.changed_files.iter().any(|p| p.contains("ui_root.rs")) {
                     self.changed_files
@@ -1209,13 +1296,8 @@ impl FakeCodingAgentApp {
                 }
             }
             ScriptEvent::Assistant(text) => {
-                if self.pending_events.is_empty()
-                    && self.scheduled_actions.is_empty()
-                    && self.active_stream_entry.is_none()
-                {
-                    self.set_status("Ready");
-                }
                 self.push_message(Role::Assistant, text);
+                self.sync_status_after_tools();
             }
             ScriptEvent::MarkPlan(index) => {
                 if let Some((done, _)) = self.plan.get_mut(index) {
@@ -1228,7 +1310,13 @@ impl FakeCodingAgentApp {
                 }
             }
             ScriptEvent::Status(text) => {
-                self.set_status(text);
+                let t = text;
+                // Don't clobber Working while tool blocks are still Pending.
+                if t == "Ready" && self.any_pending_tool_blocks() {
+                    self.set_status("Working");
+                } else {
+                    self.set_status(t);
+                }
             }
         }
     }
