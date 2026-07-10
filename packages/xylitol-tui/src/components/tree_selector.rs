@@ -5,7 +5,58 @@
 
 use crate::keybindings::with_keybindings;
 use crate::tui::{Component, InputEvent};
-use crate::utils::{truncate_to_width, visible_width};
+use crate::utils::{slice_by_column, truncate_to_width, visible_width};
+
+/// Fixed cursor gutter width (`› ` / `  `) — kept visible while body pans (pi).
+const TREE_GUTTER_WIDTH: usize = 2;
+const MIN_VISIBLE_ANCHOR_CONTENT_WIDTH: usize = 4;
+const MAX_VISIBLE_ANCHOR_CONTENT_WIDTH: usize = 20;
+const MIN_ANCHOR_CONTEXT_WIDTH: usize = 2;
+const MAX_ANCHOR_CONTEXT_WIDTH: usize = 12;
+
+struct HorizontalViewportRow {
+    gutter: String,
+    body: String,
+    anchor_col: usize,
+    body_width: usize,
+    is_selected: bool,
+}
+
+/// Clip row bodies horizontally so the selected row's entry text stays visible.
+fn render_horizontal_viewport(rows: &[HorizontalViewportRow], width: usize) -> Vec<String> {
+    let viewport_width = width.saturating_sub(TREE_GUTTER_WIDTH);
+    let max_body_width = rows.iter().map(|r| r.body_width).max().unwrap_or(0);
+    let max_horizontal_scroll = max_body_width.saturating_sub(viewport_width);
+    let selected = rows.iter().find(|r| r.is_selected);
+
+    let mut horizontal_scroll = 0usize;
+    if let Some(sel) = selected
+        && max_horizontal_scroll > 0
+    {
+        let min_visible = MIN_VISIBLE_ANCHOR_CONTENT_WIDTH
+            .max(viewport_width / 3)
+            .min(MAX_VISIBLE_ANCHOR_CONTENT_WIDTH);
+        if sel.anchor_col > viewport_width.saturating_sub(min_visible) {
+            let anchor_context = MIN_ANCHOR_CONTEXT_WIDTH
+                .max(viewport_width / 4)
+                .min(MAX_ANCHOR_CONTEXT_WIDTH);
+            horizontal_scroll =
+                max_horizontal_scroll.min(sel.anchor_col.saturating_sub(anchor_context));
+        }
+    }
+
+    rows.iter()
+        .map(|row| {
+            let body = if horizontal_scroll > 0 {
+                slice_by_column(&row.body, horizontal_scroll, viewport_width)
+            } else {
+                row.body.clone()
+            };
+            let line = format!("{}{body}", row.gutter);
+            truncate_to_width(&line, width, "", false)
+        })
+        .collect()
+}
 
 /// One node in an application-supplied tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,6 +264,14 @@ impl TreeSelector {
 
     pub fn set_status_suffix(&mut self, suffix: Option<String>) {
         self.options.status_suffix = suffix;
+    }
+
+    pub fn set_active_id(&mut self, id: Option<String>) {
+        self.options.active_id = id;
+        self.build_active_path();
+        if let Some(active) = self.options.active_id.as_deref() {
+            self.selected_index = find_nearest_visible_index(&self.flat, &self.filtered, active);
+        }
     }
 
     pub fn search_query(&self) -> &str {
@@ -851,10 +910,11 @@ impl Component for TreeSelector {
             .min(self.filtered.len().saturating_sub(max_visible));
         let end = (start + max_visible).min(self.filtered.len());
 
+        let mut rows = Vec::with_capacity(end - start);
         for i in start..end {
             let flat = &self.filtered[i];
             let is_selected = i == self.selected_index;
-            let cursor = if is_selected {
+            let gutter = if is_selected {
                 (self.theme.cursor)("› ")
             } else {
                 "  ".to_string()
@@ -872,19 +932,24 @@ impl Component for TreeSelector {
                 String::new()
             };
             let label = self.display_label_parts(flat);
-            let mut line = format!("{cursor}{prefix}{fold_marker}{marker}{label}");
+            let prefix_part = format!("{prefix}{fold_marker}{marker}");
+            let anchor_col = visible_width(&prefix_part);
+            let mut body = format!("{prefix_part}{label}");
+            let mut gutter_out = gutter;
             if is_selected {
-                line = (self.theme.selected_row)(&line);
+                gutter_out = (self.theme.selected_row)(&gutter_out);
+                body = (self.theme.selected_row)(&body);
             }
-            // Pad then truncate so reverse selection spans useful width.
-            let pad = width.saturating_sub(visible_width(&line));
-            if pad > 0 && is_selected {
-                line = (self.theme.selected_row)(&format!("{line}{}", " ".repeat(pad)));
-            } else if pad > 0 {
-                line = format!("{line}{}", " ".repeat(pad));
-            }
-            lines.push(truncate_to_width(&line, width, "", false));
+            let body_width = visible_width(&body);
+            rows.push(HorizontalViewportRow {
+                gutter: gutter_out,
+                body,
+                anchor_col,
+                body_width,
+                is_selected,
+            });
         }
+        lines.extend(render_horizontal_viewport(&rows, width));
 
         let mut scroll = format!("  ({}/{})", self.selected_index + 1, self.filtered.len());
         if let Some(ref suffix) = self.options.status_suffix {
@@ -1234,6 +1299,51 @@ mod tests {
         assert_eq!(
             edited.borrow().clone(),
             Some(("r".into(), Some("keep".into())))
+        );
+    }
+
+    #[test]
+    fn horizontal_pan_keeps_deep_selected_label_visible() {
+        let deep = TreeNode::new("r", "root").with_child(TreeNode::new("a", "A").with_child(
+            TreeNode::new("b", "B").with_child(TreeNode::new("c", "C").with_child(TreeNode::new(
+                "leaf",
+                "UNIQUE_TAIL_MARKER_xyz_should_remain_visible_when_selected",
+            ))),
+        ));
+        let mut sel = TreeSelector::new(
+            vec![deep],
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions {
+                active_id: Some("leaf".into()),
+                max_visible: 8,
+                ..TreeSelectorOptions::default()
+            },
+        );
+        assert_eq!(sel.selected_id(), Some("leaf"));
+        let narrow = sel.render(28).join("\n");
+        assert!(
+            narrow.contains("UNIQUE_TAIL")
+                || narrow.contains("MARKER")
+                || narrow.contains("visible"),
+            "selected deep row should pan so label content remains; got:\n{narrow}"
+        );
+    }
+
+    #[test]
+    fn status_suffix_appears_in_render() {
+        let mut sel = TreeSelector::new(
+            sample_branch(),
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions {
+                status_suffix: Some("[no-tools]".into()),
+                ..TreeSelectorOptions::default()
+            },
+        );
+        let lines = sel.render(80);
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("[no-tools]") && joined.contains("/"),
+            "status suffix missing: {joined}"
         );
     }
 }

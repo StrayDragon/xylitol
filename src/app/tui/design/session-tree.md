@@ -22,7 +22,7 @@ components:
 2. 树 **替换 editor 槽**（`showSelector`），保证贴底可见；**MUST NOT** blit 到内容绝对顶部。
 3. 选中用 **reverse**；勿另立 selection 面板底色。
 4. Esc：label 编辑中取消编辑 → 有搜索串清搜索 → 否则关闭树；流中单 Esc 仍为 abort。
-5. travel / fork 经应用面 `Driver`；包组件只负责树 UI。
+5. travel / fork 经应用面 `Driver`；包组件只负责树 UI。demo：`agent_demo::travel_to_history` 按 root→id 重建 transcript（形态学示例）。
 6. **搜索**：对 label/annotation 增量过滤（与 `include_node` AND）。
 7. **翻页**：←→ 与 PgUp/PgDn 按 `max_visible` 翻页。
 8. **Filter**（demo/产品谓词）：Ctrl+D/T/U/L/A；树开时 Ctrl+O 循环；状态行 `(i/n) [filter]`。

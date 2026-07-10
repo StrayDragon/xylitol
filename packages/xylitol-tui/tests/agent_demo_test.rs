@@ -1190,6 +1190,189 @@ fn agent_demo_session_tree_fold_and_label_edit() {
 }
 
 #[test]
+fn agent_demo_session_tree_travel_rebuilds_history_along_path() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )));
+    app.borrow_mut().freeze_script_for_test();
+    assert_eq!(app.borrow().history_leaf_for_test(), "u2");
+
+    app.borrow_mut().open_session_tree_for_test();
+    app.borrow_mut().tree_select_id_for_test("af");
+
+    let mut h = TuiTestHarness::new(100, 32);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h.render_result().expect("tree before travel");
+    h.keys("\r");
+    h.render_result().expect("after travel");
+
+    assert!(
+        !app.borrow().tree_open_for_test(),
+        "Enter travel must close the session tree"
+    );
+    assert_eq!(app.borrow().history_leaf_for_test(), "af");
+    assert_eq!(
+        app.borrow().status_text_for_test(),
+        "Ready",
+        "travel must leave idle status (no spinner)"
+    );
+
+    let plain = app.borrow().transcript_plain_for_test();
+    assert!(
+        plain.contains("history @ af") && plain.contains("root → fork → af"),
+        "expected history banner with path; got:\n{plain}"
+    );
+    assert!(
+        plain.contains("alternate branch") && plain.contains("fork leaf"),
+        "expected fork-path messages only; got:\n{plain}"
+    );
+    assert!(
+        !plain.contains("tighten footer truncation"),
+        "main-branch user turn must not remain after travel to fork; got:\n{plain}"
+    );
+
+    // Re-open tree: active leaf is af (• on path).
+    app.borrow_mut().open_session_tree_for_test();
+    h.render_result().expect("tree after travel");
+    let tree = h.tui.terminal.viewport().join("\n");
+    assert!(
+        tree.contains("fork leaf") || tree.contains("alternate branch"),
+        "tree should still show fork branch; got:\n{tree}"
+    );
+}
+
+#[test]
+fn agent_demo_submit_grows_session_tree() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )));
+    app.borrow_mut().freeze_script_for_test();
+    app.borrow_mut()
+        .submit_text_for_test("UNIQUE_TREE_GROW_PROMPT_xyz");
+
+    assert!(
+        app.borrow()
+            .session_tree_contains_label_for_test("UNIQUE_TREE_GROW_PROMPT_xyz"),
+        "submitted user text must appear as a session-tree node"
+    );
+    assert!(
+        app.borrow().history_leaf_for_test().starts_with("live-u-"),
+        "history leaf should advance to the new user node; got {}",
+        app.borrow().history_leaf_for_test()
+    );
+
+    let mut h = TuiTestHarness::new(100, 28);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    app.borrow_mut().open_session_tree_for_test();
+    h.render_result().expect("tree with live node");
+    let tree = h.tui.terminal.viewport().join("\n");
+    assert!(
+        tree.contains("UNIQUE_TREE_GROW_PROMPT_xyz"),
+        "opened tree must render the live user node; got:\n{tree}"
+    );
+}
+
+#[test]
+fn agent_demo_travel_to_user_includes_assistant_reply() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.freeze_script_for_test();
+    app.travel_to_history_for_test("u1");
+    let plain = app.transcript_plain_for_test();
+    assert!(
+        plain.contains("tighten footer truncation"),
+        "user turn must remain; got:\n{plain}"
+    );
+    assert!(
+        plain.contains("plan + tools") || plain.contains("tree selector"),
+        "travel to user must include linear assistant reply; got:\n{plain}"
+    );
+    // Leaf advances to the reply spine end (a1), not stuck on u1 alone.
+    assert_eq!(app.history_leaf_for_test(), "a1");
+}
+
+#[test]
+fn agent_demo_steer_does_not_abort_busy_turn() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.freeze_script_for_test();
+    // Start a turn (busy).
+    app.submit_text_for_test("first turn prompt");
+    assert!(
+        app.status_text_for_test() == "Thinking"
+            || app.status_text_for_test() == "Working"
+            || app.status_text_for_test() == "Running tools"
+            || app.status_text_for_test() == "Drafting reply",
+        "expected busy status after submit; got {}",
+        app.status_text_for_test()
+    );
+    let before_leaf = app.history_leaf_for_test().to_string();
+    app.submit_text_for_test("steer while busy");
+    assert_eq!(app.steer_queue_len_for_test(), 1);
+    assert!(
+        app.session_tree_contains_label_for_test("[steer] steer while busy"),
+        "steer must grow a tree node without aborting"
+    );
+    // Still busy / first turn not wiped into Ready-only by a second queue_simulated_turn clear.
+    assert!(
+        app.steer_queue_len_for_test() == 1,
+        "steer stays queued until turn finishes"
+    );
+    assert_ne!(
+        app.history_leaf_for_test(),
+        before_leaf,
+        "steer advances leaf under the in-flight branch"
+    );
+}
+
+#[test]
+fn agent_demo_follow_up_queues_while_busy() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.freeze_script_for_test();
+    app.submit_text_for_test("busy turn");
+    app.enqueue_follow_up_for_test("later please");
+    assert_eq!(app.follow_up_queue_len_for_test(), 1);
+    assert!(
+        !app.session_tree_contains_label_for_test("later please"),
+        "follow-up must not grow the tree until applied"
+    );
+}
+
+#[test]
+fn agent_demo_tool_event_grows_session_tree() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.freeze_script_for_test();
+    app.submit_text_for_test("need tools in tree");
+    // Drive script until a tool lands.
+    let mut saw_tool = false;
+    for _ in 0..400 {
+        let _ = app.tick_for_test();
+        if app.session_tree_contains_label_for_test("tool: rg -n")
+            || app.session_tree_contains_label_for_test("rg -n")
+        {
+            saw_tool = true;
+            break;
+        }
+    }
+    assert!(
+        saw_tool,
+        "scripted Tool events must grow tool: nodes in the session tree"
+    );
+}
+
+#[test]
 fn agent_demo_collapsed_tool_viewport_shows_earlier_hint_and_tail() {
     let mut h = TuiTestHarness::new(120, 100);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
