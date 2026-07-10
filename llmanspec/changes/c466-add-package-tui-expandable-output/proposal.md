@@ -20,12 +20,14 @@ track: A
 
 包提供 `ExpandableOutput` / `render_expandable_output` + wrap-aware `truncate_to_visual_lines`；demo/产品在 Tool 详情层使用；全局 Ctrl+O 切换视口（与 Alt+E 块展开正交；树开时 Ctrl+O 让给 filter cycle）。
 
-## What Changes（意向 / 已部分落地）
+## What Changes
 
 1. `packages/xylitol-tui`：`ExpandableOutput`、`ExpandableOutputOptions`（max_preview_lines / Tail|Head / expand_hint）。
 2. `utils::truncate_to_visual_lines`（ANSI wrap 预算）。
 3. `agent_demo`：Tool 详情走视口；seed 长 bash + StreamingBash；Ctrl+O / Ctrl+Shift+O。
 4. 文档：`design/expandable.md` §详情视口、`keybindings.md`。
+
+> 实现已在 demo 冒烟；升格时再补 delta specs + tasks。
 
 ## Capabilities
 
