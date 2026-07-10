@@ -413,6 +413,10 @@ impl Terminal for VirtualTerminal {
     fn flush(&mut self) {
         // Synchronous grid updates; nothing buffered.
     }
+
+    fn set_size_hint(&mut self, cols: u16, rows: u16) {
+        self.resize(cols, rows);
+    }
 }
 
 /// `vte::Perform` implementation forwarding parsed sequences into the grid.
@@ -605,6 +609,10 @@ impl Terminal for LoggingVirtualTerminal {
     }
     fn flush(&mut self) {
         self.inner.flush();
+    }
+
+    fn set_size_hint(&mut self, cols: u16, rows: u16) {
+        self.inner.set_size_hint(cols, rows);
     }
 }
 

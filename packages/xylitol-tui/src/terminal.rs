@@ -67,6 +67,10 @@ pub trait Terminal {
     /// resize event so the cached `columns`/`rows` stay in sync.
     fn refresh_size(&mut self) {}
 
+    /// Test / host hint: set cached size without querying the OS. Default
+    /// no-op. Real `CrosstermTerminal` ignores this and uses `refresh_size`.
+    fn set_size_hint(&mut self, _cols: u16, _rows: u16) {}
+
     // ── c410: lifecycle + protocol (defaults no-op for test doubles) ──
 
     /// Enter raw mode, enable bracketed paste, and negotiate keyboard

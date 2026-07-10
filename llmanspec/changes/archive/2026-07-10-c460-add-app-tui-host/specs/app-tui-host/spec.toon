@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ath5,"host-harness-testable","产品 TUI host MUST 将事件推进与终端 I/O 解耦，使 min-size 提示、dispatch_event 与无 TUI::start 路径可在无真 TTY 的 harness（注入 HostEvent / TestTerminal）中验证。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ath5,"harness-min-size",TestTerminal 尺寸为 20x3,HostSession 推进一帧,视口含放大提示且进程逻辑不 panic
+  ath5,"harness-no-start",产品 TUI 源码与 host 单元测试,审计调用点,"产品路径无 TUI::start 调用"

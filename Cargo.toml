@@ -68,6 +68,7 @@ tower-http = { version = "0.7", features = ["cors"], optional = true }
 # a placeholder until the xylitol-tui-based rewrite. Keep the path dep so the
 # workspace builds uniformly and the package stays testable in-tree.
 xylitol-tui = { path = "packages/xylitol-tui", optional = true }
+crossterm = { version = "0.29", optional = true, features = ["event-stream"] }
 
 [features]
 default = ["cli", "tui"]
@@ -75,8 +76,8 @@ default = ["cli", "tui"]
 cli = []
 # Always-on HTTP/WebSocket server.
 server = ["dep:axum", "dep:tokio-tungstenite", "dep:tower-http"]
-# Terminal UI surface (placeholder run(); rewrite on xylitol-tui).
-tui = ["dep:xylitol-tui"]
+# Terminal UI surface (host-driven on xylitol-tui).
+tui = ["dep:xylitol-tui", "dep:crossterm"]
 # Future GUI placeholder.
 gui = []
 
