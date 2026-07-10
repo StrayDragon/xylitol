@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,ce1,"app-directory","The CLI module MUST live under src/app/cli/, and the print mode MUST live under src/app/cli/print as a CLI sub-mode (not as a top-level app module). app/ modules MUST depend only on agent::facade and protocol/ (and, for the composition roots, runtime_protocol ports), never on agent::runtime, agent::session, or agent::tools directly.",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  ce1,"cli-under-app",the source tree is inspected,src/app/cli is inspected,"src/app/cli exists, print mode lives under src/app/cli (not src/app/print), and src/interface does not exist"

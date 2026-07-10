@@ -64,7 +64,7 @@ scenarios[42]{req_id,id,given,when,then}:
   as30,"responsibilities-separated",the session module responsibilities are enumerated,component boundaries are drawn,each component owns a single responsibility class
   as31,"agent-renamed-from-session","AgentSession was the 25-field capability aggregate called Session",the change is applied,"it is named Agent, composes the as32 collaborators, and retains its event stream and public API"
   as32,"retry-extracted","AgentSession holds retry_state and inline auto-retry logic exceeding 100 lines",the change is applied,"AutoRetryEngine collaborator exists, AgentSession composes it, and public retry behavior is unchanged"
-  as32,"bash-extracted",AgentSession holds bash_cancel and inline !cmd / !!cmd handling,the change is applied,"BashExecHandler collaborator exists, AgentSession composes it, and bash-execution slash commands behave identically"
+  as32,"bash-extracted",AgentSession holds bash_cancel and inline !cmd / !!cmd handling,the change is applied,"BashExecHandler collaborator exists, AgentSession composes it, and infra-bash slash commands behave identically"
   as32,"export-extracted",AgentSession has inline export/import methods,the change is applied,"SessionExporter collaborator exists, AgentSession composes it, and export produces byte-identical output"
   as32,"api-retained",AgentSession public API (per as31),the session module is reorganized into a directory with submodules,all existing public method signatures and emitted events remain unchanged
   as33,"no-orphan-managers",src/agent/ is inspected,"the top-level files are listed","model_manager.rs, compaction_orchestrator.rs, and skill_manager.rs do not exist (they live under model/, compaction/, prompt/ respectively)"

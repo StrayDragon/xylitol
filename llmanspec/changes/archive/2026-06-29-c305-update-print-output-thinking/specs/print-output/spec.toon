@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,r3,"thinking-to-stderr","System MUST stream reasoning/thinking content to stderr in Print mode (not stdout) so the formal answer stays unpolluted, wrapping it in <think>...</think> and MUST NOT double-wrap when the model already emits its own <think> tags.",null,null,null
-  add_requirement,r4,"message-dedup","System MUST write only incremental TextDelta to stdout in Print mode and MUST NOT write the accumulated MessageUpdate payload to stdout to avoid prefix-repetition output.",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  r3,thinking-streamed,"a model emits ThinkingDelta events","Print mode is active","thinking text appears on stderr wrapped in <think> tags and stdout stays clean"
-  r3,embedded-tags,"a model emits its own <think>...</think> tags inside ThinkingDelta","Print mode renders it","no second <think> wrapper is added"
-  r4,text-delta-only,"a model emits TextDelta and MessageUpdate for the same content","Print mode renders it","stdout contains each token exactly once"

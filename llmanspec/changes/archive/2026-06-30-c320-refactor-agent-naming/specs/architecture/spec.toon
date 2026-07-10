@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,ar02,组件粒度边界（修订：补上限）,"Components with fewer than 100 lines or 5 methods and no behavioral logic MUST be inlined into their parent struct. Conversely, inlined blocks that exceed approximately 100 lines, have independent behavioral logic, and are conceptually cohesive MUST be extracted as named collaborator objects (per agent-session.as30). The Agent capability aggregate (formerly AgentSession) MUST NOT grow unboundedly as a single struct or single file; export, bash, permission, stats, and trust concerns MUST be extracted as named collaborators so the aggregate stays cohesive.",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  ar02,"aggregate-decomposed",the Agent (formerly AgentSession) had grown to 25 fields mixing export bash permission stats trust,the change is applied,those concerns live in named collaborator objects and the Agent aggregate stays cohesive instead of growing unboundedly
