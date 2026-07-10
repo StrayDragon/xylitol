@@ -225,9 +225,9 @@ footer         1 行 dim（cwd · model · 可选 context%）
 | [`design/overlay.md`](./design/overlay.md) | 短确认 |
 | [`design/diff-block.md`](./design/diff-block.md) | Diff 渲染 |
 | [`design/glyphs.md`](./design/glyphs.md) | unicode / ascii 档 |
-| [`design/theme-tokens.md`](./design/theme-tokens.md) | 语义 → SGR |
+| [`design/theme-tokens.md`](./design/theme-tokens.md) | 语义 → SGR；Palette/`/theme`（c570）；Ask/ChoicePrompt 见 playground（c565） |
 | [`design/keybindings.md`](./design/keybindings.md) | 已决议键位 |
-| [`design/markdown.md`](./design/markdown.md) | 复制友好 / token 效率 markdown（c530） |
+| [`design/markdown.md`](./design/markdown.md) | 复制友好 / token 效率 markdown（`c530-update-package-tui-markdown`） |
 | [`design/errors.md`](./design/errors.md) | 错误呈现 |
 
 后置草稿：[`bash-mode`](./design/bash-mode.md) · [`queue-steer`](./design/queue-steer.md) · [`trust-prompt`](./design/trust-prompt.md) · [`compaction-status`](./design/compaction-status.md)

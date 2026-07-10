@@ -14,7 +14,7 @@ description: >-
 
 旧实现已删除；本面基于 `xylitol-tui` **从零重做**。
 
-**冻结**：若 `AGENTS.md` 标明产品面冻结，**STOP** 扩展 `src/app/tui` 功能（含在 c491 stub 上加活树/bridge）；改去 `agent_demo` / 包侧，除非用户明确开闸。
+**开闸后**：可按 `c465` 等 Track B change 扩展 `src/app/tui`。**仍 STOP**：在 **c491 stub** 上加活树 / filter / 真 Driver travel；缺通用能力先改 `agent_demo` / `packages/xylitol-tui`。
 
 ## 1. 复用契约
 

@@ -10,8 +10,8 @@ track: B
 
 # c492-add-app-tui-bash-mode
 
-> **status: purpose-draft**（后置）
+> **status: purpose-draft**（后置；demo 形态见 c457 + `design/bash-mode.md`）
 
 ## Purpose
 
-`!` 前缀 bash；边框色；`Driver::execute_bash`；输出进 transcript。
+`!` 前缀 bash；边框色；`Driver::execute_bash`；输出进 **live scrollback**（非 c470 TranscriptView）。

@@ -10,18 +10,19 @@ track: B
 
 # c485-add-app-tui-vertical-slice
 
-> **status: purpose-draft**
+> **status: purpose-draft**（轨 B MVP 归档门槛；依赖 c465 + c475 + c480）
 
 ## Purpose
 
-端到端：TTY 启动 → trust 已决或跳过 → 提交 → 流式回复/工具 → steer/follow-up → abort → `/exit` restore。作为轨 B MVP 归档门槛。
+端到端：TTY 启动 → trust 已决或跳过 → 提交 → 流式回复/工具 → steer/follow-up → abort → `/exit` restore。
 
 ## 依赖说明
 
 - **不再**硬依赖 c470（Codex 式 TranscriptView 已搁置）。
-- Live 输出以 bridge + 极简 scrollback 行为为准；分支导航可与 **c491** 并行/提前。
+- Live 输出以 bridge + 极简 scrollback 为准；会话树保持 **c491 stub**（真活树另 change，可与本切片并行提案）。
 
 ## Out of scope
 
 - Codex 式 transcript 浏览器
 - bash（c492）、compaction UI（c493）除非已提前完成
+- Overlay 完整 focus-restore（c575，可选）
