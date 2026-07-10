@@ -13,4 +13,5 @@
 
 ## 输出
 
-`_tmp_prompts/03b-logging-findings.md`：结论 + 建议 patch 要点。
+- [x] `_tmp_prompts/03b-logging-findings.md`：结论 + 建议 patch 要点。
+- 代码改动建议在 c460 升格时落地（`src/app/cli/logging.rs` 加 `cfg(debug_assertions)` 兜底）。
