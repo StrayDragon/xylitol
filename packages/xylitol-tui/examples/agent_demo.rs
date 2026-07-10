@@ -64,7 +64,7 @@ fn sample_session_tree() -> Vec<TreeNode> {
             TreeNode::new("u1", "user: tighten footer truncation").with_child(
                 TreeNode::new("a1", "assistant: plan + tools").with_children([
                     TreeNode::new("t1", "tool: rg -n TreeSelector"),
-                    TreeNode::new("a2", "assistant: ship tree slot")
+                    TreeNode::new("a2", "assistant: ship tree slot [label]")
                         .with_child(TreeNode::new("u2", "user: also verify double Esc")),
                 ]),
             ),
@@ -74,15 +74,61 @@ fn sample_session_tree() -> Vec<TreeNode> {
     ]
 }
 
-fn demo_tree_selector(active_id: &str) -> TreeSelector {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionTreeFilter {
+    Default,
+    NoTools,
+    UserOnly,
+    LabeledOnly,
+    All,
+}
+
+impl SessionTreeFilter {
+    const ALL: [Self; 5] = [
+        Self::Default,
+        Self::NoTools,
+        Self::UserOnly,
+        Self::LabeledOnly,
+        Self::All,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Default => "[default]",
+            Self::NoTools => "[no-tools]",
+            Self::UserOnly => "[user]",
+            Self::LabeledOnly => "[labeled]",
+            Self::All => "[all]",
+        }
+    }
+
+    fn cycle(self) -> Self {
+        let i = Self::ALL.iter().position(|m| *m == self).unwrap_or(0);
+        Self::ALL[(i + 1) % Self::ALL.len()]
+    }
+
+    fn include(self, node: &TreeNode) -> bool {
+        let label = node.label.as_str();
+        match self {
+            // demo default ≈ all (see c456 design.md)
+            Self::Default | Self::All => true,
+            Self::NoTools => !label.contains("tool:"),
+            Self::UserOnly => label.contains("user:"),
+            Self::LabeledOnly => label.contains("[label]"),
+        }
+    }
+}
+
+fn demo_tree_selector(active_id: &str, filter: SessionTreeFilter) -> TreeSelector {
     TreeSelector::new(
         sample_session_tree(),
         TreeSelectorTheme::default(),
         TreeSelectorOptions {
             max_visible: 10,
             unicode_connectors: true,
-            include_node: None,
+            include_node: Some(Box::new(move |n| filter.include(n))),
             active_id: Some(active_id.into()),
+            status_suffix: Some(filter.label().into()),
         },
     )
 }
@@ -478,9 +524,10 @@ pub struct FakeCodingAgentApp {
     palette: SelectList,
     settings_open: bool,
     settings: SettingsList,
-    /// Double-Esc session tree (c454 smoke).
+    /// Double-Esc session tree (c454/c456).
     tree_open: bool,
     tree: TreeSelector,
+    tree_filter: SessionTreeFilter,
     last_esc_at: Option<Instant>,
     loader: Loader,
     plan: Vec<(bool, String)>,
@@ -639,6 +686,9 @@ impl FakeCodingAgentApp {
     /// Returns true if the event was consumed.
     pub fn on_escape(&mut self) -> bool {
         if self.tree_open {
+            if self.tree.clear_search_if_any() {
+                return true;
+            }
             self.close_session_tree();
             return true;
         }
@@ -670,7 +720,8 @@ impl FakeCodingAgentApp {
     pub fn open_session_tree(&mut self) {
         self.palette_open = false;
         self.settings_open = false;
-        self.tree = demo_tree_selector("u2");
+        self.tree_filter = SessionTreeFilter::Default;
+        self.tree = demo_tree_selector("u2", self.tree_filter);
         self.tree_open = true;
         self.set_status("Session tree");
     }
@@ -678,6 +729,20 @@ impl FakeCodingAgentApp {
     pub fn close_session_tree(&mut self) {
         self.tree_open = false;
         self.set_status("Ready");
+    }
+
+    fn apply_tree_filter(&mut self, filter: SessionTreeFilter) {
+        self.tree_filter = filter;
+        let active = self.tree.selected_id().unwrap_or("u2").to_string();
+        let search = self.tree.search_query().to_string();
+        self.tree = demo_tree_selector(&active, filter);
+        if !search.is_empty() {
+            self.tree.set_search_query(search);
+        }
+    }
+
+    fn cycle_tree_filter(&mut self) {
+        self.apply_tree_filter(self.tree_filter.cycle());
     }
 
     pub fn tree_open_for_test(&self) -> bool {
@@ -827,7 +892,8 @@ impl FakeCodingAgentApp {
             settings_open: false,
             settings,
             tree_open: false,
-            tree: demo_tree_selector("u2"),
+            tree: demo_tree_selector("u2", SessionTreeFilter::Default),
+            tree_filter: SessionTreeFilter::Default,
             last_esc_at: None,
             loader,
             plan: vec![
@@ -1753,8 +1819,15 @@ impl FakeCodingAgentApp {
     fn render_tree_slot(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
         lines.push(Self::fit(&bold(" Session tree"), width));
+        let search = self.tree.search_query();
+        let search_line = if search.is_empty() {
+            dim(" Type to search · ←→ page · Ctrl+D/T/U/L/A filter · Ctrl+O cycle")
+        } else {
+            dim(&format!(" Search: {search}"))
+        };
+        lines.push(Self::fit(&search_line, width));
         lines.push(Self::fit(
-            &dim(" Up/Down  Enter travel  Esc close  (double Esc)"),
+            &dim(" Up/Down  Enter travel  Esc close/clear-search  (double Esc)"),
             width,
         ));
         for line in self.tree.render(width) {
@@ -1837,17 +1910,37 @@ impl Component for FakeCodingAgentApp {
         // Fall through so Editor can dismiss slash CommandPopup (Esc).
 
         if self.tree_open {
-            if matches_key_event(key, "up")
-                || matches_key_event(key, "down")
-                || matches_key_event(key, "pageUp")
-                || matches_key_event(key, "pageDown")
-            {
-                self.tree.handle_input(event);
-            } else if matches_key_event(key, "enter") {
+            if matches_key_event(key, "ctrl+d") {
+                self.apply_tree_filter(SessionTreeFilter::Default);
+                return;
+            }
+            if matches_key_event(key, "ctrl+t") {
+                self.apply_tree_filter(SessionTreeFilter::NoTools);
+                return;
+            }
+            if matches_key_event(key, "ctrl+u") {
+                self.apply_tree_filter(SessionTreeFilter::UserOnly);
+                return;
+            }
+            if matches_key_event(key, "ctrl+l") {
+                self.apply_tree_filter(SessionTreeFilter::LabeledOnly);
+                return;
+            }
+            if matches_key_event(key, "ctrl+a") {
+                self.apply_tree_filter(SessionTreeFilter::All);
+                return;
+            }
+            if matches_key_event(key, "ctrl+o") {
+                self.cycle_tree_filter();
+                return;
+            }
+            if matches_key_event(key, "enter") {
                 let id = self.tree.selected_id().unwrap_or("?").to_string();
                 self.push_message(Role::System, format!("travel → {id}"));
                 self.close_session_tree();
+                return;
             }
+            self.tree.handle_input(event);
             return;
         }
 
@@ -1917,6 +2010,7 @@ impl Component for FakeCodingAgentApp {
             return;
         }
         if matches_key_event(key, "ctrl+o") {
+            // Tree-open path handled above; here tools viewport expand (pi).
             self.toggle_tools_output_expanded();
             return;
         }

@@ -1051,8 +1051,41 @@ fn agent_demo_session_tree_slot_replaces_editor() {
         "expected tree rows/connectors; got:\n{text}"
     );
     assert!(
+        text.contains("[default]"),
+        "status suffix for default filter; got:\n{text}"
+    );
+    assert!(
         app.borrow().tree_open_for_test(),
         "tree should stay open until Esc/Enter"
+    );
+
+    // Ctrl+T → no-tools (demo filter; hides `tool:` rows)
+    h.keys("\x14");
+    h.render_result().expect("after no-tools filter");
+    let filtered = h.tui.terminal.viewport().join("\n");
+    assert!(
+        filtered.contains("[no-tools]"),
+        "expected [no-tools] suffix; got:\n{filtered}"
+    );
+    assert!(
+        !filtered.contains("tool: rg"),
+        "no-tools must hide tool rows; got:\n{filtered}"
+    );
+
+    h.keys("fork");
+    h.render_result().expect("after search");
+    let searched = h.tui.terminal.viewport().join("\n");
+    assert!(
+        searched.contains("Search: fork"),
+        "expected search chrome; got:\n{searched}"
+    );
+
+    // Esc clears search first
+    h.keys("\x1b");
+    h.render_result().expect("clear search");
+    assert!(
+        app.borrow().tree_open_for_test(),
+        "first Esc clears search, tree stays open"
     );
 
     h.keys("\x1b");

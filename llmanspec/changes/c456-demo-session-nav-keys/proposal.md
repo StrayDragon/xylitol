@@ -1,6 +1,6 @@
 ---
 change_id: c456-demo-session-nav-keys
-title: "agent_demo：双 Esc 会话树 + 导航键位原型"
+title: "agent_demo 会话树：搜索 + filter + ←→ 翻页"
 status: full
 priority: 456
 depends_on: ["c454-add-package-tui-tree-selector", "c455-add-package-tui-input-listener"]
@@ -10,22 +10,24 @@ track: A
 
 # c456-demo-session-nav-keys
 
-> **优先路径第二步**（双 Esc 树）。c454 已含假树冒烟；本变更收紧键位契约与文档回写。
+> **优先路径第二步**（双 Esc 树）。c454 已冒烟槽替换；本变更补齐相对 pi 的操作差距第一批。
 
 ## Why
 
-会话树是产品历史/分支主 UX；c454 已在 `agent_demo` 验证双 Esc 槽替换可行，本变更补齐时间窗/文档与导航细节对齐。
+会话树是产品历史/分支主 UX。c454 只有 ↑↓/Enter/Esc；pi 还有增量搜索、五档 filter、←→ 翻页与状态 `[filter]`。缺这些则 demo 无法验证真实 travel 工作流。
 
 ## Purpose
 
-`agent_demo` 双 Esc（空编辑器、<500ms）打开树选择器槽替换；验证 travel UX；回写 `design/session-tree.md` / keybindings。
+在包 `TreeSelector` 增加通用搜索与 ←→ 翻页；在 `agent_demo` 用假数据验证五档 filter（`include_node` 谓词，不硬编码进包）与树开时 Ctrl+O 循环 filter；回写 `design/session-tree.md` / keybindings / vs-pi 差距表。
 
 ## What Changes
 
-1. InputListener：双 Esc 检测（空 editor + 时间窗）。
-2. editor 槽替换为 `TreeSelector`（假 `TreeNode` 数据）。
-3. Enter 选择 / Esc 关闭；回写 `design/session-tree.md` / keybindings。
+1. **包**：`TreeSelector` 增量搜索（打字 / Backspace；Esc 先清搜索）；←→ 等同 pageUp/pageDown；状态行可附 `status_suffix`（如 `[no-tools]`）。
+2. **Demo**：假树标签可过滤（user/tool/assistant/labeled）；Ctrl+D/T/U/L/A 切 filter；树开时 Ctrl+O 循环 filter（关树时仍为工具视口 Ctrl+O）。
+3. **文档**：`session-tree.md` / `keybindings.md` / `session-tree-vs-pi.md` 对齐已验证项。
 
 ## Out of scope
 
+- fold / branch jump / label / 水平平移（后续）
 - 持久化 session / 真实 fork（c491）
+- 产品 `UiRoot` 接线（c491）
