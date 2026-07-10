@@ -262,6 +262,12 @@ impl Editor {
     pub fn get_text(&self) -> String {
         self.state.lines.join("\n")
     }
+
+    /// Replace the border ANSI wrapper used when painting editor chrome.
+    pub fn set_border_color(&mut self, border_color: Box<dyn Fn(&str) -> String>) {
+        self.theme.border_color = border_color;
+    }
+
     pub fn set_text(&mut self, text: String) {
         self.exit_history_browsing();
         self.last_action = None;
