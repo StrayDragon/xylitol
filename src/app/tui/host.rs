@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use xylitol_tui::{InputEvent, RenderError, TUI, Terminal};
 
-use super::scene::{Scene, install_scene_key_listeners, shared_scene_rebuild};
+use super::ui_root::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
 
 /// Minimum usable terminal size (ath4).
 pub const MIN_COLS: u16 = 40;
@@ -34,8 +34,8 @@ pub enum HostEvent {
 /// Layout mode after applying size policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutMode {
-    /// Normal product scene (transcript / editor / footer).
-    Scene,
+    /// Normal product UI root (transcript / editor / footer).
+    Ready,
     TooSmall,
 }
 
@@ -46,8 +46,8 @@ pub struct HostSession<T: Terminal> {
     quit: bool,
     /// Set by InputListener (Ctrl+C on empty editor).
     quit_flag: Arc<AtomicBool>,
-    /// Shared scene when constructed via [`Self::new_product_scene`].
-    scene: Option<Rc<RefCell<Scene>>>,
+    /// Shared UI root when constructed via [`Self::new_product_ui`].
+    ui_root: Option<Rc<RefCell<UiRoot>>>,
     /// Rebuild root children when mode flips.
     rebuild: Box<dyn FnMut(LayoutMode) -> Vec<Box<dyn xylitol_tui::Component>>>,
 }
@@ -63,7 +63,7 @@ impl<T: Terminal> HostSession<T> {
         let mode = if is_too_small(cols, rows) {
             LayoutMode::TooSmall
         } else {
-            LayoutMode::Scene
+            LayoutMode::Ready
         };
         let mut tui = TUI::new(terminal);
         for child in rebuild(mode) {
@@ -76,19 +76,19 @@ impl<T: Terminal> HostSession<T> {
             mode,
             quit: false,
             quit_flag: Arc::new(AtomicBool::new(false)),
-            scene: None,
+            ui_root: None,
             rebuild: Box::new(rebuild),
         }
     }
 
-    /// Product empty scene: shared `Scene` + Ctrl+C InputListener (c455 pipe).
-    pub fn new_product_scene(terminal: T) -> Self {
-        let scene = Rc::new(RefCell::new(Scene::new()));
+    /// Product empty UI: shared `UiRoot` + Ctrl+C InputListener (c455 pipe).
+    pub fn new_product_ui(terminal: T) -> Self {
+        let ui_root = Rc::new(RefCell::new(UiRoot::new()));
         let quit_flag = Arc::new(AtomicBool::new(false));
-        let mut session = Self::new(terminal, shared_scene_rebuild(scene.clone()));
-        session.scene = Some(scene.clone());
+        let mut session = Self::new(terminal, shared_ui_root_rebuild(ui_root.clone()));
+        session.ui_root = Some(ui_root.clone());
         session.quit_flag = quit_flag.clone();
-        install_scene_key_listeners(&scene, &quit_flag, &mut session.tui);
+        install_ui_root_key_listeners(&ui_root, &quit_flag, &mut session.tui);
         session
     }
 
@@ -104,9 +104,9 @@ impl<T: Terminal> HostSession<T> {
         self.quit = true;
     }
 
-    /// Shared scene handle (product construction only).
-    pub fn scene(&self) -> Option<&Rc<RefCell<Scene>>> {
-        self.scene.as_ref()
+    /// Shared UI root handle (product construction only).
+    pub fn ui_root(&self) -> Option<&Rc<RefCell<UiRoot>>> {
+        self.ui_root.as_ref()
     }
 
     /// Apply one host event and attempt a throttled render.
@@ -116,7 +116,7 @@ impl<T: Terminal> HostSession<T> {
                 self.quit = true;
             }
             HostEvent::Tick => {
-                if self.mode == LayoutMode::Scene {
+                if self.mode == LayoutMode::Ready {
                     let _ = self.tui.idle_tick();
                 }
                 self.tui.request_render(false);
@@ -128,7 +128,7 @@ impl<T: Terminal> HostSession<T> {
                 self.tui.request_render(true);
             }
             HostEvent::Input(input) => {
-                if self.mode == LayoutMode::Scene {
+                if self.mode == LayoutMode::Ready {
                     self.tui.dispatch_event(input);
                 }
                 self.tui.request_render(false);
@@ -157,7 +157,7 @@ impl<T: Terminal> HostSession<T> {
         let next = if is_too_small(cols, rows) {
             LayoutMode::TooSmall
         } else {
-            LayoutMode::Scene
+            LayoutMode::Ready
         };
         if next != self.mode {
             self.mode = next;

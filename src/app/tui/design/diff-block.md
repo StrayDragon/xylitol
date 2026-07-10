@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "diff-block"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Diff block
 
 包组件：`packages/xylitol-tui` Diff（c451）。产品接线：transcript 内可展开块（c470 / c453）。生成侧：`infra` edit 工具的 `display_diff` / unified diff。

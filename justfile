@@ -35,6 +35,19 @@ test-tui-e2e-pty:
 test-tui-e2e-tmux:
     cargo test --test tui_e2e -- --ignored tmux
 
+# Run the xylitol-tui agent_demo (default features include syntect highlight).
+# Primary local entry for validating package TUI UX before product wiring.
+demo-tui:
+    cargo run -p xylitol-tui --example agent_demo
+
+# agent_demo without syntect (lighter / no-highlight regression).
+demo-tui-no-highlight:
+    cargo run -p xylitol-tui --example agent_demo --no-default-features
+
+# Package TUI tests with default features (includes highlight).
+test-tui:
+    cargo test -p xylitol-tui
+
 # Run all checks (qa = fmt-check + lint + test + doc-check).
 qa: fmt-check lint test doc-check
     @echo "All checks passed!"

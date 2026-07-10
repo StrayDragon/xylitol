@@ -3,8 +3,8 @@
 //! See `AGENTS.md` in this directory. Engine: `packages/xylitol-tui`.
 
 mod host;
-mod scene;
 mod terminal_guard;
+mod ui_root;
 
 #[cfg(test)]
 mod tests;
@@ -43,7 +43,7 @@ pub async fn run(_driver: &mut dyn Driver) -> Result<(), String> {
 }
 
 async fn run_host_loop(terminal: CrosstermTerminal) -> Result<(), String> {
-    let mut session = HostSession::new_product_scene(terminal);
+    let mut session = HostSession::new_product_ui(terminal);
     session.render_now()?;
 
     let mut events = EventStream::new();

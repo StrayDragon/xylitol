@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "footer"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Footer
 
 ## MUST

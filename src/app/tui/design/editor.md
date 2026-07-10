@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "editor"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Editor（操作区）
 
 ## MUST

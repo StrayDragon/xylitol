@@ -524,7 +524,7 @@ impl FakeCodingAgentApp {
         // One-shot help in transcript (less chrome than a permanent shortcut wall).
         self.push_message(
             Role::System,
-            "keys: Enter submit · / cmds · @ path · ^P palette · ^S settings · ^T thinking · Alt+E tools · Alt+G glyphs · ^O step · Esc close · ^C quit",
+            "keys: Enter submit · /cmds · @path · ^P palette · ^S settings · Alt+G glyphs · ^O step · Esc · ^C",
         );
         self.push_message(
             Role::User,
@@ -744,6 +744,8 @@ impl FakeCodingAgentApp {
             "我会先盯住 CJK/emoji 的宽度预算，再看真实终端回放。"
         } else if prompt.contains("palette") || prompt.contains("command") {
             "我会先看 overlay 覆盖语义，再补 PTY/tmux smoke。"
+        } else if prompt.contains("highlight") || prompt.contains("stream") {
+            "下面会流式吐出一段带 fence 的 Rust，用来验收 syntect 在未闭合→闭合过程中的表现。"
         } else {
             "我会先复现主流程，再把验收和宽度预算一起收紧。"
         };
@@ -752,8 +754,19 @@ impl FakeCodingAgentApp {
         } else {
             "接下来会按流式打字机节奏把结果一点点吐出来。"
         };
+        // Include a fenced rust block so streaming highlight can be eyeballed
+        // (incomplete fence → plain/partial; closed fence → ANSI).
         format!(
-            "收到，我已经接住 `{prompt}`。\n\n{focus}\n\n- 先排查提交路径\n- 再补真实终端 smoke\n- 最后回到 `Ready` 等下一条输入\n\n{closing}"
+            "收到，我已经接住 `{prompt}`。\n\n{focus}\n\n\
+             ```rust\n\
+             fn accept(prompt: &str) -> bool {{\n\
+                 // streamed fence — watch highlight land as the block closes\n\
+                 !prompt.is_empty()\n\
+             }}\n\
+             ```\n\n\
+             - 先排查提交路径\n\
+             - 再补真实终端 smoke\n\
+             - 最后回到 `Ready` 等下一条输入\n\n{closing}"
         )
     }
 
@@ -984,7 +997,8 @@ impl FakeCodingAgentApp {
         for entry in &self.transcript {
             match entry {
                 TranscriptEntry::Message { role, text } => {
-                    if matches!(role, Role::Assistant) && text.contains("```") {
+                    if matches!(role, Role::Assistant) {
+                        // Always Markdown so streaming fences get highlight as they close.
                         let mut md = Markdown::new(
                             text.clone(),
                             0,
@@ -1007,13 +1021,12 @@ impl FakeCodingAgentApp {
                     }
                 }
                 TranscriptEntry::Thinking { expanded, body } => {
+                    let marker = if *expanded { g.unfold() } else { g.fold() };
+                    // Hint beside the block — demo UX exemplar for product chrome.
+                    let header = dim(&format!("{marker} thinking  ^T"));
+                    Self::push_wrapped(&mut lines, &header, width);
                     if *expanded {
-                        let header = dim(&format!("{} thinking", g.unfold()));
-                        Self::push_wrapped(&mut lines, &header, width);
                         Self::push_wrapped(&mut lines, &dim(body), width);
-                    } else {
-                        let header = dim(&format!("{} thinking", g.fold()));
-                        Self::push_wrapped(&mut lines, &header, width);
                     }
                 }
                 TranscriptEntry::Tool {
@@ -1022,7 +1035,7 @@ impl FakeCodingAgentApp {
                     detail,
                 } => {
                     let marker = if *expanded { g.unfold() } else { g.fold() };
-                    let header = dim(&format!("{} {} {}", marker, g.tool(), summary));
+                    let header = dim(&format!("{marker} {} {summary}  Alt+E", g.tool()));
                     Self::push_wrapped(&mut lines, &header, width);
                     if *expanded {
                         Self::push_wrapped(&mut lines, &dim(detail), width);
@@ -1034,7 +1047,7 @@ impl FakeCodingAgentApp {
                     display_diff,
                 } => {
                     let marker = if *expanded { g.unfold() } else { g.fold() };
-                    let header = dim(&format!("{} {} {}", marker, g.tool(), summary));
+                    let header = dim(&format!("{marker} {} {summary}  Alt+E", g.tool()));
                     Self::push_wrapped(&mut lines, &header, width);
                     if *expanded {
                         let theme = DiffTheme::default();
@@ -1126,7 +1139,7 @@ impl Component for FakeCodingAgentApp {
             // Compact cue strip — full list is in the seed system line.
             footer_owned = format!(
                 // Keep cue strip short — narrow terminals (80 cols) still fit.
-                "{} · {} · /@ ^P/^S/^T Alt+E/G ^O",
+                "{} · {} · /@ ^P/^S Alt+G ^O",
                 self.footer_note,
                 self.glyph_set.label()
             );

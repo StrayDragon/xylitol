@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "status"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Status
 
 ## MUST

@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "bash-mode"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Bash mode（草稿）
 
 后置：产品 bash 模式与外部编辑器（c492 / c457）。

@@ -62,7 +62,7 @@ components:
 # Design System — Xylitol Terminal
 
 > 规范：遵循 `common-design-md-zh`（中文正文 + YAML frontmatter tokens，值一律双引号）。
-> SSOT 索引：本文件。组件级 MUST：[`design/`](./design/)。
+> SSOT 索引：本文件。组件级 MUST：[`design/`](./design/)（各文件亦带 YAML frontmatter）。
 > 包 `packages/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本面。
 
 ## Overview

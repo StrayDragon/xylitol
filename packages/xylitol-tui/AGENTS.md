@@ -71,6 +71,7 @@
 | 扩展 Editor 补全触发（`/` `@` `$` `^`…） | `CompletionSource` + `set_completion_sources`（`src/completion.rs`）；勿在 `editor.rs` 硬编码触发符 |
 | 对照 / 合并 pi-tui 行为 | 先读 [`PI_DELTAS.md`](PI_DELTAS.md)；不得静默回退表中决议 |
 | 改产品 TUI 面 / UX | `write-tui` skill + `src/app/tui/AGENTS.md` + `src/app/tui/DESIGN.md` |
-| 日常验证 | `cargo test -p xylitol-tui`；`just qa`；E2E `just test-tui-e2e` |
+| 日常验证 | `cargo test -p xylitol-tui`；`just demo-tui`；`just qa`；E2E `just test-tui-e2e` |
+
 
 裁剪与待补 API 随接线演进，以代码与 `_HANDOFF.md` 为准，不在本文件维护进度清单。

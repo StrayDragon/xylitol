@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "trust-prompt"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Trust prompt（草稿）
 
 后置：项目信任提示（c490）。信任后 yolo（无逐工具审批 UI）。
