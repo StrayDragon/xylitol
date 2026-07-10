@@ -61,7 +61,7 @@
 后置:  c490 trust UI / c491 session-tree / c492 bash / c493 compaction-ui
 ```
 
-- **唯一 full（当前）**：`c450-revise-app-tui-contract`
+- **c450 已归档**：`llmanspec/changes/archive/2026-07-10-c450-revise-app-tui-contract/`（合约已合并进 `app-tui-*` main specs）
 - 其余均为 `status: purpose-draft`（仅 `proposal.md`）
 - 图：`llman sdd graph --scope active --format mermaid`
 
