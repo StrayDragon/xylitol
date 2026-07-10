@@ -92,6 +92,8 @@ pub struct TreeSelectorOptions {
     pub include_node: Option<TreeNodePredicate>,
     /// Highlight path from root to this id with an active marker.
     pub active_id: Option<String>,
+    /// Optional host label appended after `(i/n)` (e.g. `[no-tools]`).
+    pub status_suffix: Option<String>,
 }
 
 impl Default for TreeSelectorOptions {
@@ -101,6 +103,7 @@ impl Default for TreeSelectorOptions {
             unicode_connectors: true,
             include_node: None,
             active_id: None,
+            status_suffix: None,
         }
     }
 }
@@ -114,6 +117,8 @@ pub struct TreeSelector {
     active_path_ids: std::collections::HashSet<String>,
     theme: TreeSelectorTheme,
     options: TreeSelectorOptions,
+    /// Incremental label search (AND with [`TreeSelectorOptions::include_node`]).
+    search_query: String,
     pub on_select: Option<Box<dyn FnMut(String)>>,
     pub on_cancel: Option<Box<dyn FnMut()>>,
 }
@@ -133,6 +138,7 @@ impl TreeSelector {
             active_path_ids: std::collections::HashSet::new(),
             theme,
             options,
+            search_query: String::new(),
             on_select: None,
             on_cancel: None,
         };
@@ -143,6 +149,37 @@ impl TreeSelector {
     pub fn set_roots(&mut self, roots: Vec<TreeNode>) {
         self.roots = roots;
         self.rebuild();
+    }
+
+    pub fn set_include_node(&mut self, pred: Option<TreeNodePredicate>) {
+        self.options.include_node = pred;
+        self.apply_filter();
+        self.clamp_selection();
+    }
+
+    pub fn set_status_suffix(&mut self, suffix: Option<String>) {
+        self.options.status_suffix = suffix;
+    }
+
+    pub fn search_query(&self) -> &str {
+        &self.search_query
+    }
+
+    pub fn set_search_query(&mut self, query: impl Into<String>) {
+        self.search_query = query.into();
+        self.apply_filter();
+        self.clamp_selection();
+    }
+
+    /// Clear search if non-empty. Returns `true` when a query was cleared.
+    pub fn clear_search_if_any(&mut self) -> bool {
+        if self.search_query.is_empty() {
+            return false;
+        }
+        self.search_query.clear();
+        self.apply_filter();
+        self.clamp_selection();
+        true
     }
 
     pub fn selected_id(&self) -> Option<&str> {
@@ -159,6 +196,16 @@ impl TreeSelector {
         &self.filtered
     }
 
+    fn clamp_selection(&mut self) {
+        if self.filtered.is_empty() {
+            self.selected_index = 0;
+            return;
+        }
+        self.selected_index = self
+            .selected_index
+            .min(self.filtered.len().saturating_sub(1));
+    }
+
     fn rebuild(&mut self) {
         self.multiple_roots = self.roots.len() > 1;
         self.flat = flatten_tree(&self.roots, self.options.active_id.as_deref());
@@ -167,9 +214,7 @@ impl TreeSelector {
         if let Some(active) = self.options.active_id.as_deref() {
             self.selected_index = find_nearest_visible_index(&self.flat, &self.filtered, active);
         } else {
-            self.selected_index = self
-                .selected_index
-                .min(self.filtered.len().saturating_sub(1));
+            self.clamp_selection();
         }
     }
 
@@ -188,14 +233,27 @@ impl TreeSelector {
     }
 
     fn apply_filter(&mut self) {
+        let tokens: Vec<String> = self
+            .search_query
+            .to_lowercase()
+            .split_whitespace()
+            .filter(|t| !t.is_empty())
+            .map(str::to_string)
+            .collect();
         self.filtered = self
             .flat
             .iter()
             .filter(|flat| {
-                let Some(ref pred) = self.options.include_node else {
+                if let Some(ref pred) = self.options.include_node
+                    && !find_node(&self.roots, &flat.id).is_some_and(pred)
+                {
+                    return false;
+                }
+                if tokens.is_empty() {
                     return true;
-                };
-                find_node(&self.roots, &flat.id).is_some_and(pred)
+                }
+                let label = flat.label.to_lowercase();
+                tokens.iter().all(|t| label.contains(t))
             })
             .cloned()
             .collect();
@@ -558,6 +616,17 @@ impl Component for TreeSelector {
                 "",
                 false,
             ));
+            let mut scroll = "  (0/0)".to_string();
+            if let Some(ref suffix) = self.options.status_suffix {
+                scroll.push(' ');
+                scroll.push_str(suffix);
+            }
+            lines.push(truncate_to_width(
+                &(self.theme.scroll_info)(&scroll),
+                width,
+                "",
+                false,
+            ));
             return lines;
         }
 
@@ -597,7 +666,11 @@ impl Component for TreeSelector {
             lines.push(truncate_to_width(&line, width, "", false));
         }
 
-        let scroll = format!("  ({}/{})", self.selected_index + 1, self.filtered.len());
+        let mut scroll = format!("  ({}/{})", self.selected_index + 1, self.filtered.len());
+        if let Some(ref suffix) = self.options.status_suffix {
+            scroll.push(' ');
+            scroll.push_str(suffix);
+        }
         lines.push(truncate_to_width(
             &(self.theme.scroll_info)(&scroll),
             width,
@@ -617,12 +690,40 @@ impl Component for TreeSelector {
         let page_down = with_keybindings(|kb| kb.matches_event(key, "tui.select.pageDown"));
         let confirm = with_keybindings(|kb| kb.matches_event(key, "tui.select.confirm"));
         let cancel = with_keybindings(|kb| kb.matches_event(key, "tui.select.cancel"));
+        let backspace = crate::keys::matches_key_event(key, "backspace");
+
+        if cancel {
+            if self.clear_search_if_any() {
+                return;
+            }
+            if let Some(ref mut cb) = self.on_cancel {
+                cb();
+            }
+            return;
+        }
+
+        if backspace {
+            if !self.search_query.is_empty() {
+                self.search_query.pop();
+                self.apply_filter();
+                self.clamp_selection();
+            }
+            return;
+        }
+
+        if let Some(ch) = crate::keys::printable_from_key_event(key) {
+            // Ignore bare space-only spam at start; still allow spaces inside query.
+            if ch == " " && self.search_query.is_empty() {
+                return;
+            }
+            self.search_query.push_str(&ch);
+            self.apply_filter();
+            self.clamp_selection();
+            return;
+        }
 
         let len = self.filtered.len();
         if len == 0 {
-            if cancel && let Some(ref mut cb) = self.on_cancel {
-                cb();
-            }
             return;
         }
 
@@ -645,14 +746,11 @@ impl Component for TreeSelector {
         } else if page_down {
             self.selected_index =
                 (self.selected_index + self.options.max_visible.max(1)).min(len - 1);
-        } else if confirm {
-            if let Some(id) = self.selected_id().map(str::to_string)
-                && let Some(ref mut cb) = self.on_select
-            {
-                cb(id);
-            }
-        } else if cancel && let Some(ref mut cb) = self.on_cancel {
-            cb();
+        } else if confirm
+            && let Some(id) = self.selected_id().map(str::to_string)
+            && let Some(ref mut cb) = self.on_select
+        {
+            cb(id);
         }
     }
 
@@ -735,5 +833,82 @@ mod tests {
             KeyModifiers::NONE,
         )));
         assert!(picked.borrow().is_some());
+    }
+
+    #[test]
+    fn search_filters_labels_and_esc_clears() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let mut sel = TreeSelector::new(
+            sample_branch(),
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions::default(),
+        );
+        sel.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Char('b'),
+            KeyModifiers::NONE,
+        )));
+        sel.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Char('1'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(sel.search_query(), "b1");
+        let ids = sel.filtered_ids();
+        assert!(ids.contains(&"b1"));
+        assert!(!ids.contains(&"a1"));
+        assert!(!ids.contains(&"b2"));
+        sel.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Esc,
+            KeyModifiers::NONE,
+        )));
+        assert!(sel.search_query().is_empty());
+        assert!(sel.filtered_ids().contains(&"a1"));
+    }
+
+    #[test]
+    fn left_right_page_by_max_visible() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let roots =
+            vec![TreeNode::new("r", "root").with_children(
+                (0..20).map(|i| TreeNode::new(format!("n{i}"), format!("node-{i}"))),
+            )];
+        let mut sel = TreeSelector::new(
+            roots,
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions {
+                max_visible: 5,
+                ..TreeSelectorOptions::default()
+            },
+        );
+        assert_eq!(sel.selected_index, 0);
+        sel.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Right,
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(sel.selected_index, 5);
+        sel.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Left,
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(sel.selected_index, 0);
+    }
+
+    #[test]
+    fn status_suffix_appears_in_render() {
+        let mut sel = TreeSelector::new(
+            sample_branch(),
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions {
+                status_suffix: Some("[no-tools]".into()),
+                ..TreeSelectorOptions::default()
+            },
+        );
+        let lines = sel.render(80);
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("[no-tools]") && joined.contains("/"),
+            "status suffix missing: {joined}"
+        );
     }
 }
