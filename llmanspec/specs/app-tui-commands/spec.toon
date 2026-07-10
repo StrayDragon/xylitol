@@ -2,7 +2,13 @@ kind: llman.sdd.spec
 name: "app-tui-commands"
 purpose: "斜杠命令与 protocol::Command / dispatch 映射。"
 valid_scope[1]: src/app/tui/
-requirements[1]{req_id,title,statement}:
+requirements[4]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
-scenarios[1]{req_id,id,given,when,then}:
-  meta0,"shell-present","","列出 llmanspec/specs/app-tui-commands","spec.toon 存在且 purpose 为中文"
+  atm1,"slash-exit-model","TUI MUST 解析斜杠命令 /exit（映射 Quit）与 /model（映射 SetModel 或 CycleModel），语义复用 protocol::Command；未知斜杠 MUST 显示内联错误且 MUST NOT 崩溃。"
+  atm2,"dispatch-shared","除 Prompt、Quit 与传输专用命令外，斜杠执行 MUST 走 app::core::dispatch 共享路径，MUST NOT 发明平行命令词表。"
+  atm3,"extensible-commands",命令面 MUST 允许后续追加斜杠（如 /compact /help）而不改引擎；MVP 仅要求 /exit 与 /model。
+scenarios[4]{req_id,id,given,when,then}:
+  meta0,"shell-present","","列出 llmanspec/specs/app-tui-commands",spec.toon 存在且 purpose 为中文
+  atm1,"exit-cmd","",用户输入 /exit,TUI 退出并恢复终端
+  atm2,"model-via-dispatch","",用户输入 /model,经 dispatch 或等价 Driver 方法切换模型
+  atm3,"unknown-slash","","用户输入 /not-a-command",显示内联错误且会话继续
