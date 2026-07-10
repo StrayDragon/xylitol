@@ -18,8 +18,9 @@ use xylitol_tui::components::settings_list::{
 use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, set_keybindings};
 use xylitol_tui::{
     Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme, Focusable, InputEvent,
-    InputListenerResult, SystemClock, TUI, matches_key_event, render_diff_lines, truncate_to_width,
-    visible_width, wrap_text_with_ansi,
+    InputListenerResult, Markdown, MarkdownOptions, MarkdownTheme, SystemClock, TUI,
+    highlight_code, matches_key_event, render_diff_lines, truncate_to_width, visible_width,
+    wrap_text_with_ansi,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
@@ -61,6 +62,29 @@ fn sample_display_diff() -> String {
         "       11 | +    DiffInput, Focusable, InputEvent,",
     ]
     .join("\n")
+}
+
+fn demo_markdown_theme() -> MarkdownTheme {
+    let id = |s: &str| s.to_string();
+    MarkdownTheme {
+        heading: Box::new(bold),
+        link: Box::new(cyan),
+        link_url: Box::new(dim),
+        code: Box::new(|s| format!("\x1b[36m{s}\x1b[39m")),
+        code_block: Box::new(|s| s.to_string()),
+        // DESIGN: no fence chrome
+        code_block_border: Box::new(|_| String::new()),
+        quote: Box::new(dim),
+        quote_border: Box::new(dim),
+        hr: Box::new(dim),
+        list_bullet: Box::new(id),
+        bold: Box::new(bold),
+        italic: Box::new(|s| format!("\x1b[3m{s}\x1b[23m")),
+        strikethrough: Box::new(|s| format!("\x1b[9m{s}\x1b[29m")),
+        underline: Box::new(|s| format!("\x1b[4m{s}\x1b[24m")),
+        highlight_code: Some(Box::new(|code, lang| highlight_code(code, lang))),
+        code_block_indent: None,
+    }
 }
 fn magenta(s: &str) -> String {
     format!("\x1b[35m{s}\x1b[39m")
@@ -511,7 +535,7 @@ impl FakeCodingAgentApp {
         );
         self.push_message(
             Role::Assistant,
-            "Read the existing examples and the pi coding-agent flow first, then rebuild one stable primary scenario with real terminal acceptance coverage.",
+            "Read the existing examples and the pi coding-agent flow first, then rebuild one stable primary scenario with real terminal acceptance coverage.\n\n```rust\nfn demo() {\n    println!(\"highlight\");\n}\n```",
         );
         self.push_tool(
             "read packages/xylitol-tui/examples/agent_demo.rs · 42ms · 790 lines",
@@ -960,13 +984,27 @@ impl FakeCodingAgentApp {
         for entry in &self.transcript {
             match entry {
                 TranscriptEntry::Message { role, text } => {
-                    let prefix = self.role_prefix(*role);
-                    let raw = if prefix.is_empty() {
-                        text.clone()
+                    if matches!(role, Role::Assistant) && text.contains("```") {
+                        let mut md = Markdown::new(
+                            text.clone(),
+                            0,
+                            0,
+                            demo_markdown_theme(),
+                            None,
+                            Some(MarkdownOptions::default()),
+                        );
+                        for line in md.render(width) {
+                            lines.push(Self::fit(&line, width));
+                        }
                     } else {
-                        format!("{prefix} {text}")
-                    };
-                    Self::push_wrapped(&mut lines, &raw, width);
+                        let prefix = self.role_prefix(*role);
+                        let raw = if prefix.is_empty() {
+                            text.clone()
+                        } else {
+                            format!("{prefix} {text}")
+                        };
+                        Self::push_wrapped(&mut lines, &raw, width);
+                    }
                 }
                 TranscriptEntry::Thinking { expanded, body } => {
                     if *expanded {

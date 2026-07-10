@@ -643,3 +643,21 @@ fn agent_demo_escape_aborts_active_stream() {
     h.render_result().expect("after abort");
     h.assert_text_contains("stream aborted");
 }
+
+#[cfg(feature = "highlight")]
+#[test]
+fn agent_demo_seed_rust_fence_is_highlighted() {
+    let mut h = TuiTestHarness::new(120, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+    h.assert_text_contains("println");
+    // Differential path writes ANSI; raw log should retain escapes from syntect.
+    let raw = h.tui.terminal.all_writes();
+    assert!(
+        raw.contains('\u{1b}') || raw.contains("\x1b["),
+        "highlighted fence should emit ANSI under feature highlight"
+    );
+}
