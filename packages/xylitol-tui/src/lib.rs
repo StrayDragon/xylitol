@@ -34,6 +34,9 @@ pub use components::diff::{
     Diff, DiffInput, DiffOptions, DiffTheme, generate_edit_text, render_diff_lines,
 };
 pub use components::editor::{AutocompleteMode, Editor, EditorOptions, EditorTheme, VisualLine};
+pub use components::expandable_output::{
+    ExpandableOutput, ExpandableOutputOptions, render_expandable_output,
+};
 pub use components::input::Input;
 pub use components::loader::{Loader, LoaderIndicatorOptions};
 pub use components::markdown::{DefaultTextStyle, Markdown, MarkdownOptions, MarkdownTheme};
@@ -75,7 +78,8 @@ pub use tui::{
     OverlayMargin, OverlayOptions, RenderError, SizeValue, TUI,
 };
 pub use utils::{
-    ExtractedSegments, apply_background_to_line, extract_ansi_code, extract_segments,
-    is_punctuation_char, is_whitespace_char, slice_by_column, slice_by_column_strict,
-    truncate_to_width, visible_width, wrap_text_with_ansi,
+    ExtractedSegments, TruncateFrom, VisualTruncateResult, apply_background_to_line,
+    extract_ansi_code, extract_segments, is_punctuation_char, is_whitespace_char, slice_by_column,
+    slice_by_column_strict, truncate_to_visual_lines, truncate_to_width, visible_width,
+    wrap_text_with_ansi,
 };

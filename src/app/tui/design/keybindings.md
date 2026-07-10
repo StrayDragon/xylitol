@@ -23,6 +23,9 @@ components:
 | Enter（流中） | **steer**（插入引导，不打断当前轮的队列语义见 c461） |
 | Alt+Enter | **follow-up**（排队到本轮结束后） |
 | 双 Esc | 打开 **会话树**（**优先路径**；见 [`session-tree.md`](./session-tree.md)，c454→c456→c491） |
+| Ctrl+O | **工具详情视口** 折叠/全文（pi `app.tools.expand`；见 [`expandable.md`](./expandable.md) §详情视口） |
+| Ctrl+T | thinking 块展开/折叠 |
+| Alt+E | tool/diff **块**展开/折叠（有无详情；与 Ctrl+O 视口正交） |
 
 ## MUST（编辑器槽）
 
