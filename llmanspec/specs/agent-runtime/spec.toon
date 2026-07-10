@@ -15,7 +15,7 @@ requirements[31]{req_id,title,statement}:
   ar4,"ports-via-builder","Agent construction MUST go through an AgentBuilder that takes the minimal required ports (ModelRegistry, model builder, Arc<dyn XySessionStore>, Arc<dyn XyEventSink>, Arc<dyn XyPermission>) in its constructor and adds every other capability via consuming builder methods with defaults; the Agent::new(session) and Agent::with_ports(...) positional constructors MUST be removed."
   ar5,统一事件流类型,Agent runtime MUST expose the loop as an async Stream<XyEvent> for consumer layers via XyEventStream.
   ar8,"session-cwd","Agent runtime MUST validate session working directory exists on session creation and import, returning an error with the missing path when CWD is not accessible."
-  ar9,diagnostics,"Agent runtime MUST collect non-fatal diagnostics (info/warning/error) during session creation covering: missing API keys, unknown model references, extension load failures, and CWD issues."
+  ar9,infra-diagnostics,"Agent runtime MUST collect non-fatal diagnostics (info/warning/error) during session creation covering: missing API keys, unknown model references, extension load failures, and CWD issues."
   ar10,defaults,"System MUST centralize default values: DEFAULT_THINKING_LEVEL = medium, DEFAULT_MODEL for each known provider, DEFAULT_MAX_ITERATIONS = 50, DEFAULT_COMPACTION_THRESHOLD = 0.8."
   ar11,"bdd-runtime-v3","BDD tests for session-cwd validation and defaults MUST all pass."
   ar12,"output-guard-takeover","Agent runtime MUST support stdout takeover that redirects all process.stdout.write calls to stderr, enabling clean output in print mode. The takeover state must be queryable via is_stdout_taken_over()."

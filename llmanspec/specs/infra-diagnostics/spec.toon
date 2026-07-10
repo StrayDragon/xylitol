@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: diagnostics
+name: infra-diagnostics
 purpose: Diagnostics — startup timing instrumentation and performance profiling.
 valid_scope[1]: src/infra/timing.rs
 requirements[4]{req_id,title,statement}:

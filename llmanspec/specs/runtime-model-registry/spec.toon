@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "model-registry"
+name: "runtime-model-registry"
 purpose: "Model registry — provider registration, auth checks, model discovery, and model resolution. Only OpenAI-compatible and Anthropic providers are supported pre-1.0.0."
 valid_scope[2]: src/agent/model/,src/runtime_protocol/model.rs
 requirements[8]{req_id,title,statement}:
