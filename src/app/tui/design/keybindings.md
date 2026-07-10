@@ -30,6 +30,7 @@ components:
 | Ctrl/Alt+←→ | **树开**：fold 或分支段跳转 |
 | Shift+L | **树开**：编辑节点 annotation |
 | Shift+T | **树开**：切换 annotation 时间戳显示 |
+| Shift+F | **树开**：**fork**（停在选中节点、预填 user 文案；下次提交成兄弟分支；异于 Enter travel） |
 
 ## MUST（编辑器槽）
 
