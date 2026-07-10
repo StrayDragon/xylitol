@@ -36,6 +36,7 @@
 | D13 | Editor 补全扩展 | provider + 引擎内 `/` 等特判较多 | **`CompletionSource` 注册表**（`completion.rs`）；`/` `@` 为可插拔 Source；未来 `$`/`^` 同范式 | 是 |
 | D14 | paste-burst | 无对等模块（或弱） | `PasteBurst` + `Clock`/`MockClock`（确定性时序） | 是 |
 | D15 | 测试分层 | vitest + virtual-terminal | 五层 harness + PTY/tmux E2E（`test-tui-harness`） | 是 |
+| D16 | InputListener | VT 字符串回调常见 | **`InputEvent` 原生** `add_input_listener`；无 KeyEvent→VT；v1 仅 `Continue`/`Consumed` | 是 |
 
 ---
 
@@ -44,7 +45,7 @@
 | 主题 | 约定 |
 |---|---|
 | 产品壳 | transcript / slash 语义 / session → `src/app/tui/` 或 `agent_demo`，**不**进本包 |
-| `agent_demo` 快捷键 | 应用级：`Ctrl+P/S` 槽替换；`Ctrl+T` thinking；**`Alt+E` tools**（避 `Ctrl+E`=cursorLineEnd）；**`Alt+G` glyphs**（避 `Ctrl+G`=未来外部 editor）；`Ctrl+O` step |
+| `agent_demo` 快捷键 | 应用级：`Ctrl+P/S` 槽替换；`Ctrl+T` thinking；**`Alt+E` tools**（避 `Ctrl+E`=cursorLineEnd）；**`Alt+G` glyphs**（避 `Ctrl+G`=未来外部 editor）；`Ctrl+O` step；**Ctrl+C** 清编辑器/空则退；**Esc** 流中 abort（经 InputListener） |
 | 原型优先 | 真实 `src/app/tui` 所需 UX/UI 交互，优先在 `agent_demo` 验证后再接线产品面（见根 `_HANDOFF.md`） |
 
 ---
@@ -54,3 +55,4 @@
 | 日期 | 变更 |
 |---|---|
 | 2026-07-09 | 建表；纳入 D01–D15；记录 `CompletionSource`（D13）与 demo Alt+E/G 键位 |
+| 2026-07-10 | D16 InputListener（c455）；demo Ctrl+C/Esc 经 listener |

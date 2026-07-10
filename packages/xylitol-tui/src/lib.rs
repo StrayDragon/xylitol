@@ -62,8 +62,8 @@ pub use terminal_colors::{
 };
 pub use terminal_image::{hyperlink, is_image_line};
 pub use tui::{
-    Component, Focusable, InputEvent, OverlayAnchor, OverlayHandle, OverlayMargin, OverlayOptions,
-    RenderError, SizeValue, TUI,
+    Component, Focusable, InputEvent, InputListenerResult, OverlayAnchor, OverlayHandle,
+    OverlayMargin, OverlayOptions, RenderError, SizeValue, TUI,
 };
 pub use utils::{
     ExtractedSegments, extract_ansi_code, extract_segments, is_punctuation_char,
