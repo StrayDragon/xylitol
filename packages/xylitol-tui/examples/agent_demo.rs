@@ -52,7 +52,30 @@ fn cyan(s: &str) -> String {
     format!("\x1b[36m{s}\x1b[39m")
 }
 
-/// Sample `display_diff`-shaped text for the Diff component demo (c451).
+/// Wrap a key chord for block-adjacent hints: `(Ctrl+T)`.
+fn key_hint(chord: &str) -> String {
+    dim(&format!("({chord})"))
+}
+
+/// Richer unified sample (multi-hunk, word-level pair) via LinePair.
+fn sample_unified_pair() -> DiffInput {
+    DiffInput::LinePair {
+        old: "fn ready() -> bool {\n    true\n}\n".into(),
+        new: "fn ready(prompt: &str) -> bool {\n    !prompt.is_empty()\n}\n".into(),
+        path: Some("packages/xylitol-tui/examples/agent_demo.rs".into()),
+    }
+}
+
+/// Side-by-side sample — force low width threshold so demo shows L/R on typical terminals.
+fn sample_sbs_pair() -> DiffInput {
+    DiffInput::LinePair {
+        old: "status: Ready\nfooter: cwd · model\n".into(),
+        new: "status: Working\nfooter: cwd · model · context%\n".into(),
+        path: Some("src/app/tui/ui_root.rs".into()),
+    }
+}
+
+/// Legacy display_diff gutter sample (still exercised).
 fn sample_display_diff() -> String {
     [
         "      ... | --- a/packages/xylitol-tui/examples/agent_demo.rs",
@@ -241,7 +264,9 @@ enum TranscriptEntry {
     Diff {
         expanded: bool,
         summary: String,
-        display_diff: String,
+        input: DiffInput,
+        /// `None` = always unified; `Some(n)` = side-by-side when width ≥ n.
+        side_by_side_min_width: Option<usize>,
     },
 }
 
@@ -293,6 +318,8 @@ pub struct FakeCodingAgentApp {
     script_tick: u64,
     scheduled_tail_tick: u64,
     rng_state: u64,
+    /// Rotates default streamed fence language when prompt has no lang keyword.
+    fence_rotate: usize,
     auto_started: bool,
     last_tick_at: Instant,
     quit_flag: Arc<AtomicBool>,
@@ -511,6 +538,7 @@ impl FakeCodingAgentApp {
             script_tick: 0,
             scheduled_tail_tick: 0,
             rng_state: 0x5eed_c0de_u64,
+            fence_rotate: 0,
             auto_started: false,
             last_tick_at: Instant::now(),
             quit_flag,
@@ -521,10 +549,14 @@ impl FakeCodingAgentApp {
     }
 
     fn seed_transcript(&mut self) {
-        // One-shot help in transcript (less chrome than a permanent shortcut wall).
+        // One-shot help — fold keys live on blocks as `(Ctrl+T)` / `(Alt+E)`.
         self.push_message(
             Role::System,
-            "keys: Enter submit · /cmds · @path · ^P palette · ^S settings · Alt+G glyphs · ^O step · Esc · ^C",
+            "keys: Enter submit · /cmds · @path · (Ctrl+P) palette · (Ctrl+S) settings · (Alt+G) glyphs · (Ctrl+O) step · Esc · (Ctrl+C)",
+        );
+        self.push_message(
+            Role::System,
+            "stream fence: prompt 含 rust/python/typescript/json 定点语言；否则每轮轮换",
         );
         self.push_message(
             Role::User,
@@ -541,7 +573,26 @@ impl FakeCodingAgentApp {
             "read packages/xylitol-tui/examples/agent_demo.rs · 42ms · 790 lines",
             "ok — opened agent_demo.rs\n(preview) FakeCodingAgentApp + scripted turn harness",
         );
-        self.push_diff("edited demo.rs (+1 -1)", sample_display_diff());
+        // Unified + side-by-side samples (collapsed; Alt+E expands — same toggle as tools).
+        self.push_diff_ex(
+            "edited demo.rs (+2 -2) unified",
+            sample_unified_pair(),
+            None,
+            false,
+        );
+        self.push_diff_ex(
+            "edited ui_root.rs (+2 -2) side-by-side",
+            sample_sbs_pair(),
+            Some(60),
+            false,
+        );
+        // display_diff gutter path still covered (collapsed).
+        self.push_diff_ex(
+            "edited demo.rs (display_diff gutter)",
+            DiffInput::DisplayText(sample_display_diff()),
+            None,
+            false,
+        );
     }
 
     fn push_message(&mut self, role: Role, text: impl Into<String>) {
@@ -567,10 +618,26 @@ impl FakeCodingAgentApp {
     }
 
     fn push_diff(&mut self, summary: impl Into<String>, display_diff: impl Into<String>) {
+        self.push_diff_ex(
+            summary,
+            DiffInput::DisplayText(display_diff.into()),
+            None,
+            false,
+        );
+    }
+
+    fn push_diff_ex(
+        &mut self,
+        summary: impl Into<String>,
+        input: DiffInput,
+        side_by_side_min_width: Option<usize>,
+        expanded: bool,
+    ) {
         self.transcript.push(TranscriptEntry::Diff {
-            expanded: false,
+            expanded,
             summary: summary.into(),
-            display_diff: display_diff.into(),
+            input,
+            side_by_side_min_width,
         });
     }
 
@@ -739,31 +806,77 @@ impl FakeCodingAgentApp {
         self.queue_stream(StreamKind::Assistant, text);
     }
 
-    fn build_assistant_reply(&mut self, prompt: &str) -> String {
-        let focus = if prompt.contains("CJK") || prompt.contains("emoji") {
-            "我会先盯住 CJK/emoji 的宽度预算，再看真实终端回放。"
-        } else if prompt.contains("palette") || prompt.contains("command") {
-            "我会先看 overlay 覆盖语义，再补 PTY/tmux smoke。"
-        } else if prompt.contains("highlight") || prompt.contains("stream") {
-            "下面会流式吐出一段带 fence 的 Rust，用来验收 syntect 在未闭合→闭合过程中的表现。"
+    /// Pick a streamed fence: keyword wins; otherwise rotate rust→python→ts→json.
+    fn pick_stream_fence(&mut self, prompt: &str) -> (&'static str, &'static str) {
+        let p = prompt.to_ascii_lowercase();
+        let (lang, focus) = if p.contains("python") || p.contains("py ") {
+            (
+                "python",
+                "下面流式吐一段 Python fence，对照其它语言看多语言高亮。",
+            )
+        } else if p.contains("typescript")
+            || p.contains(".ts")
+            || p.split_whitespace().any(|w| w == "ts" || w == "tsx")
+        {
+            (
+                "typescript",
+                "下面流式吐一段 TypeScript fence，验收 syntect 在 TS 上的着色。",
+            )
+        } else if p.contains("json") {
+            (
+                "json",
+                "下面流式吐一段 JSON fence，看结构字面量高亮是否干净。",
+            )
+        } else if p.contains("rust") || p.contains("highlight") || p.contains("stream") {
+            (
+                "rust",
+                "下面会流式吐出一段带 fence 的 Rust，用来验收 syntect 在未闭合→闭合过程中的表现。",
+            )
+        } else if p.contains("cjk") || p.contains("emoji") {
+            (
+                "rust",
+                "我会先盯住 CJK/emoji 的宽度预算，再看真实终端回放。",
+            )
+        } else if p.contains("palette") || p.contains("command") {
+            ("rust", "我会先看 overlay 覆盖语义，再补 PTY/tmux smoke。")
         } else {
-            "我会先复现主流程，再把验收和宽度预算一起收紧。"
+            let langs = ["rust", "python", "typescript", "json"];
+            let lang = langs[self.fence_rotate % langs.len()];
+            self.fence_rotate = self.fence_rotate.wrapping_add(1);
+            (
+                lang,
+                "我会先复现主流程；本轮流式 fence 语言会轮换，方便肉眼对比高亮。",
+            )
         };
+
+        let fence = match lang {
+            "python" => {
+                "```python\ndef accept(prompt: str) -> bool:\n    # streamed fence — watch highlight land as the block closes\n    return bool(prompt)\n```"
+            }
+            "typescript" => {
+                "```typescript\nfunction accept(prompt: string): boolean {\n  // streamed fence — watch highlight land as the block closes\n  return prompt.length > 0;\n}\n```"
+            }
+            "json" => {
+                "```json\n{\n  \"accept\": true,\n  \"note\": \"streamed fence — watch highlight land as the block closes\"\n}\n```"
+            }
+            _ => {
+                "```rust\nfn accept(prompt: &str) -> bool {\n    // streamed fence — watch highlight land as the block closes\n    !prompt.is_empty()\n}\n```"
+            }
+        };
+        (focus, fence)
+    }
+
+    fn build_assistant_reply(&mut self, prompt: &str) -> String {
+        let (focus, fence) = self.pick_stream_fence(prompt);
+
         let closing = if self.random_between(0, 1) == 0 {
             "这段回复现在就是用打字机式流式输出。"
         } else {
             "接下来会按流式打字机节奏把结果一点点吐出来。"
         };
-        // Include a fenced rust block so streaming highlight can be eyeballed
-        // (incomplete fence → plain/partial; closed fence → ANSI).
         format!(
             "收到，我已经接住 `{prompt}`。\n\n{focus}\n\n\
-             ```rust\n\
-             fn accept(prompt: &str) -> bool {{\n\
-                 // streamed fence — watch highlight land as the block closes\n\
-                 !prompt.is_empty()\n\
-             }}\n\
-             ```\n\n\
+             {fence}\n\n\
              - 先排查提交路径\n\
              - 再补真实终端 smoke\n\
              - 最后回到 `Ready` 等下一条输入\n\n{closing}"
@@ -1022,8 +1135,7 @@ impl FakeCodingAgentApp {
                 }
                 TranscriptEntry::Thinking { expanded, body } => {
                     let marker = if *expanded { g.unfold() } else { g.fold() };
-                    // Hint beside the block — demo UX exemplar for product chrome.
-                    let header = dim(&format!("{marker} thinking  ^T"));
+                    let header = format!("{marker} thinking  {}", key_hint("Ctrl+T"));
                     Self::push_wrapped(&mut lines, &header, width);
                     if *expanded {
                         Self::push_wrapped(&mut lines, &dim(body), width);
@@ -1035,7 +1147,7 @@ impl FakeCodingAgentApp {
                     detail,
                 } => {
                     let marker = if *expanded { g.unfold() } else { g.fold() };
-                    let header = dim(&format!("{marker} {} {summary}  Alt+E", g.tool()));
+                    let header = format!("{marker} {} {summary}  {}", g.tool(), key_hint("Alt+E"));
                     Self::push_wrapped(&mut lines, &header, width);
                     if *expanded {
                         Self::push_wrapped(&mut lines, &dim(detail), width);
@@ -1044,23 +1156,19 @@ impl FakeCodingAgentApp {
                 TranscriptEntry::Diff {
                     expanded,
                     summary,
-                    display_diff,
+                    input,
+                    side_by_side_min_width,
                 } => {
                     let marker = if *expanded { g.unfold() } else { g.fold() };
-                    let header = dim(&format!("{marker} {} {summary}  Alt+E", g.tool()));
+                    let header = format!("{marker} {} {summary}  {}", g.tool(), key_hint("Alt+E"));
                     Self::push_wrapped(&mut lines, &header, width);
                     if *expanded {
                         let theme = DiffTheme::default();
                         let opts = DiffOptions {
                             word_level: true,
-                            side_by_side_min_width: Some(100),
+                            side_by_side_min_width: *side_by_side_min_width,
                         };
-                        let rendered = render_diff_lines(
-                            &DiffInput::DisplayText(display_diff.clone()),
-                            width,
-                            &theme,
-                            &opts,
-                        );
+                        let rendered = render_diff_lines(input, width, &theme, &opts);
                         for line in rendered {
                             lines.push(Self::fit(&line, width));
                         }
@@ -1139,7 +1247,7 @@ impl Component for FakeCodingAgentApp {
             // Compact cue strip — full list is in the seed system line.
             footer_owned = format!(
                 // Keep cue strip short — narrow terminals (80 cols) still fit.
-                "{} · {} · /@ ^P/^S Alt+G ^O",
+                "{} · {} · /@ (Ctrl+P)/(Ctrl+S) (Alt+G) (Ctrl+O)",
                 self.footer_note,
                 self.glyph_set.label()
             );
@@ -1190,12 +1298,18 @@ impl Component for FakeCodingAgentApp {
                             ));
                         }
                         "diff" => {
-                            self.push_diff("workspace diff (+3 -2)", sample_display_diff());
-                            if let Some(TranscriptEntry::Diff { expanded, .. }) =
-                                self.transcript.last_mut()
-                            {
-                                *expanded = true;
-                            }
+                            self.push_diff_ex(
+                                "workspace diff (+2 -2) unified",
+                                sample_unified_pair(),
+                                None,
+                                true,
+                            );
+                            self.push_diff_ex(
+                                "workspace diff side-by-side",
+                                sample_sbs_pair(),
+                                Some(60),
+                                true,
+                            );
                         }
                         "compact" => {
                             self.push_message(

@@ -1,10 +1,16 @@
 ---
 version: "alpha"
 name: "keybindings"
-description: "Xylitol Terminal component UX — see DESIGN.md index."
+description: "Resolved product key chords — parenthesized hints in UI."
+tokens_from: "../DESIGN.md"
+components:
+  key-hint:
+    textColor: "{colors.muted}"
 ---
 
 # Keybindings
+
+> Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
 
 已决议产品键位（实现：c480 / InputListener c455）。包 demo 应提前对齐以便验证。
 
@@ -30,3 +36,4 @@ description: "Xylitol Terminal component UX — see DESIGN.md index."
 1. 全局键经 `InputListener` **先于** Editor 焦点消费（c455）。
 2. **MUST NOT** 让 Ctrl+C 泄漏进 Editor 变成字面 `c`。
 3. footer **默认不**罗列完整快捷键墙；细节 `/help`。
+4. UI 旁注快捷键 MUST 用括号包裹完整和弦（如 `(Ctrl+T)`、`(Alt+E)`），**MUST NOT** 使用 `^T` 缩写作为用户可见提示；提示色用 `{colors.muted}`。

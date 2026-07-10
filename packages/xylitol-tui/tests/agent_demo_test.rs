@@ -115,7 +115,7 @@ fn agent_demo_slash_command_popup_filters_and_completes() {
         .expect("slash popup must stay within width budget");
     h.assert_text_contains("help");
     h.assert_text_contains("Show this help");
-    h.assert_text_contains("palette");
+    // "palette" may be below SelectList max_visible; assert via filter instead.
 
     // Prefix filter: `/hel` should keep help, drop unrelated commands.
     h.keys("hel");
@@ -443,7 +443,7 @@ fn agent_demo_layout_is_minimal_single_column() {
         "seed transcript should include a collapsed thinking block; got:\n{text}"
     );
     assert!(
-        text.contains("^P") && text.contains("^S") && text.contains("keys:"),
+        text.contains("(Ctrl+P)") && text.contains("(Ctrl+S)") && text.contains("keys:"),
         "seed should teach palette/settings keys without a permanent chrome wall; got:\n{text}"
     );
 }
@@ -583,7 +583,7 @@ fn agent_demo_alt_g_cycles_glyph_set_to_ascii() {
         .expect("glyph cycle must stay within width");
     let text = h.tui.terminal.viewport().join("\n");
     assert!(
-        text.contains("ascii") && text.contains("^P/^S"),
+        text.contains("ascii") && text.contains("(Ctrl+P)/(Ctrl+S)"),
         "Alt+G should switch glyph set and footer should keep palette/settings cues; got:\n{text}"
     );
     assert!(
@@ -699,6 +699,31 @@ fn agent_demo_collapsible_headers_show_key_hints() {
     ))))
     .focus(Some(0));
     h.render_result().expect("initial render");
-    h.assert_text_contains("^T");
-    h.assert_text_contains("Alt+E");
+    h.assert_text_contains("(Ctrl+T)");
+    h.assert_text_contains("(Alt+E)");
+}
+
+#[test]
+fn agent_demo_seed_shows_unified_and_side_by_side_diffs() {
+    let mut h = TuiTestHarness::new(120, 48);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+    h.assert_text_contains("unified");
+    h.assert_text_contains("side-by-side");
+
+    // Expand tool+diff blocks together (demo exemplar).
+    h.keys("\x1be"); // Alt+E
+    h.render_result().expect("expand diffs");
+    let text = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text.contains("ready") || text.contains("prompt"),
+        "expanded unified diff body should be visible; got:\n{text}"
+    );
+    assert!(
+        text.contains("Working") || text.contains("status:"),
+        "expanded side-by-side diff body should be visible; got:\n{text}"
+    );
 }

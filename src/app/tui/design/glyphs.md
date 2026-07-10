@@ -1,10 +1,18 @@
 ---
 version: "alpha"
 name: "glyphs"
-description: "Xylitol Terminal component UX — see DESIGN.md index."
+description: "Configurable unicode/ascii glyph sets — no runtime font probing."
+tokens_from: "../DESIGN.md"
+components:
+  user-glyph:
+    textColor: "{colors.user}"
+  tool-glyph:
+    textColor: "{colors.tool}"
 ---
 
 # Glyphs
+
+> Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
 
 短前缀 glyph（用户 / 工具 / 状态等）由**应用面配置**选择。
 
