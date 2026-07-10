@@ -168,6 +168,18 @@ pub trait Driver: Send {
 
     /// List available slash commands.
     fn get_commands(&self) -> Vec<CommandInfo>;
+
+    /// Enqueue a steering message for the active (or next) run.
+    fn steer(&mut self, message: &str) -> Result<(), String>;
+
+    /// Enqueue a follow-up message delivered when the run would otherwise stop.
+    fn follow_up(&mut self, message: &str) -> Result<(), String>;
+
+    /// Clear one or both pending-message queues.
+    fn clear_queue(&mut self, clear_steer: bool, clear_follow_up: bool) -> Result<(), String>;
+
+    /// `(steer_count, follow_up_count)`.
+    fn queue_stats(&self) -> (usize, usize);
 }
 
 // ── In-process driver ─────────────────────────────────────────────
@@ -350,6 +362,25 @@ impl Driver for InProcessDriver {
                 description: c.description,
             })
             .collect()
+    }
+
+    fn steer(&mut self, message: &str) -> Result<(), String> {
+        self.agent.steer(message);
+        Ok(())
+    }
+
+    fn follow_up(&mut self, message: &str) -> Result<(), String> {
+        self.agent.follow_up(message);
+        Ok(())
+    }
+
+    fn clear_queue(&mut self, clear_steer: bool, clear_follow_up: bool) -> Result<(), String> {
+        self.agent.clear_queues(clear_steer, clear_follow_up);
+        Ok(())
+    }
+
+    fn queue_stats(&self) -> (usize, usize) {
+        self.agent.queue_stats()
     }
 }
 
@@ -581,5 +612,21 @@ impl Driver for RemoteDriver {
 
     fn get_commands(&self) -> Vec<CommandInfo> {
         Vec::new()
+    }
+
+    fn steer(&mut self, _message: &str) -> Result<(), String> {
+        Err("RemoteDriver command routes not yet implemented".into())
+    }
+
+    fn follow_up(&mut self, _message: &str) -> Result<(), String> {
+        Err("RemoteDriver command routes not yet implemented".into())
+    }
+
+    fn clear_queue(&mut self, _clear_steer: bool, _clear_follow_up: bool) -> Result<(), String> {
+        Err("RemoteDriver command routes not yet implemented".into())
+    }
+
+    fn queue_stats(&self) -> (usize, usize) {
+        (0, 0)
     }
 }

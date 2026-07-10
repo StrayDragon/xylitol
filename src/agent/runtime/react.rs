@@ -8,12 +8,12 @@
 //! Key features:
 //! - ReAct loop with turn-based execution
 //! - `AgentHooks`: before_tool_call, after_tool_call, transform_context
-//! - Steering/follow-up message queue callbacks
+//! - Steering/follow-up via [`PendingMessageQueue`] on the session agent
 //! - Per-tool execution modes: sequential / parallel
 //! - Auto-retry on transient errors
 
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use futures::Stream;
 use futures::StreamExt;
@@ -23,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 use super::permission_router::permission_target;
 use super::retry::{RetryState, is_retryable_error};
 use super::{AgentHooks, XyEvent, XyEventStream};
-use crate::agent::session::Agent;
+use crate::agent::session::{Agent, PendingMessageQueue};
 use crate::agent::tools::ToolSet;
 use crate::domain::error::XyError;
 use crate::domain::message::{AgentMessage, AgentPart};
@@ -54,8 +54,32 @@ impl ReActAgent {
     }
 
     /// Signal cancellation to abort the agent loop.
+    ///
+    /// Clears the steering queue and keeps follow-up messages so the UI can
+    /// restore them (c461 design D4).
     pub fn abort(&self) {
         self.cancel.cancel();
+        self.inner.clear_steer_queue();
+    }
+
+    /// Enqueue a steering message for the active (or next) run.
+    pub fn steer(&self, message: impl Into<String>) {
+        self.inner.steer(message);
+    }
+
+    /// Enqueue a follow-up message delivered when the run would otherwise stop.
+    pub fn follow_up(&self, message: impl Into<String>) {
+        self.inner.follow_up(message);
+    }
+
+    /// Clear one or both pending-message queues.
+    pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool) {
+        self.inner.clear_queues(clear_steer, clear_follow_up);
+    }
+
+    /// `(steer_count, follow_up_count)`.
+    pub fn queue_stats(&self) -> (usize, usize) {
+        self.inner.queue_stats()
     }
 
     pub fn inner(&self) -> &Agent {
@@ -165,6 +189,8 @@ impl ReActAgent {
             .collect();
 
         let cancel = self.cancel.clone();
+        let steer_queue = self.inner.steer_queue();
+        let follow_up_queue = self.inner.follow_up_queue();
 
         let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> =
             Box::pin(run_react_loop(ReActConfig {
@@ -178,6 +204,8 @@ impl ReActAgent {
                 permission_check,
                 hooks,
                 tool_mode,
+                steer_queue,
+                follow_up_queue,
             }));
 
         XyEventStream {
@@ -208,6 +236,21 @@ struct ReActConfig {
     /// Tool execution mode (currently advisory; sequential execution is the
     /// conservative default).
     tool_mode: XyToolExecutionMode,
+    steer_queue: Arc<Mutex<PendingMessageQueue>>,
+    follow_up_queue: Arc<Mutex<PendingMessageQueue>>,
+}
+
+fn drain_queue(queue: &Arc<Mutex<PendingMessageQueue>>) -> Vec<AgentMessage> {
+    queue.lock().unwrap_or_else(|e| e.into_inner()).drain()
+}
+
+fn queue_counts(
+    steer: &Arc<Mutex<PendingMessageQueue>>,
+    follow_up: &Arc<Mutex<PendingMessageQueue>>,
+) -> (usize, usize) {
+    let steer_count = steer.lock().unwrap_or_else(|e| e.into_inner()).len();
+    let follow_up_count = follow_up.lock().unwrap_or_else(|e| e.into_inner()).len();
+    (steer_count, follow_up_count)
 }
 
 // ── Core ReAct loop ─────────────────────────────────────────────────
@@ -224,6 +267,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         permission_check,
         hooks,
         tool_mode: _tool_mode,
+        steer_queue,
+        follow_up_queue,
     } = cfg;
     async_stream::stream! {
         let mut history: Vec<AgentMessage> = Vec::new();
@@ -243,222 +288,266 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         });
 
         let retry_state = RetryState::new(3, 1000);
+        // Steering queued before/at run start is injected before the first model call.
+        let mut pending: Vec<AgentMessage> = drain_queue(&steer_queue);
+        let mut turn: usize = 0;
 
-        for turn in 0..max_iterations {
-            // Check for cancellation before each turn
-            if cancel.is_cancelled() {
-                yield XyEvent::Error("aborted".to_string());
-                break;
-            }
+        // Outer loop: continues when follow-up messages arrive after the agent
+        // would otherwise stop (pi runLoop semantics).
+        'outer: loop {
+            let mut continue_after_tools = true;
 
-            yield XyEvent::TurnStart { turn_index: turn as u32 };
-
-            // Send accumulated history to the model.
-            // History includes system prompt, user messages, assistant responses,
-            // and tool results from previous turns — giving the LLM full context.
-            let messages = history.clone();
-
-            // Call model with retry support
-            let stream_result = call_with_retry(
-                &model, messages.clone(), &tool_schemas, &retry_state,
-            ).await;
-
-            let mut chunk_stream: Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
-            match stream_result {
-                Ok(s) => chunk_stream = s,
-                Err(e) => {
-                    yield XyEvent::Error(e);
-                    break;
+            while continue_after_tools || !pending.is_empty() {
+                if cancel.is_cancelled() {
+                    yield XyEvent::Error("aborted".to_string());
+                    break 'outer;
                 }
-            }
+                if turn >= max_iterations {
+                    break 'outer;
+                }
 
-            yield XyEvent::MessageStart {
-                role: "assistant".to_string(),
-                message: None,
-            };
+                yield XyEvent::TurnStart { turn_index: turn as u32 };
 
-            let mut text_acc = String::new();
-            let mut thinking_acc = String::new();
-            let mut tool_calls: Vec<(String, String, Value)> = Vec::new();
+                // Inject pending messages (steering / follow-up) before the model call.
+                if !pending.is_empty() {
+                    for message in pending.drain(..) {
+                        history.push(message);
+                    }
+                    let (steer_count, follow_up_count) =
+                        queue_counts(&steer_queue, &follow_up_queue);
+                    yield XyEvent::QueueUpdate {
+                        steer_count,
+                        follow_up_count,
+                    };
+                }
 
-            while let Some(chunk_result) = chunk_stream.next().await {
-                match chunk_result {
-                    Ok(chunk) => match chunk {
-                        XyChunk::TextDelta(text) => {
-                            text_acc.push_str(&text);
-                            yield XyEvent::TextDelta(text.clone());
-                            yield XyEvent::MessageUpdate {
-                                text: text_acc.clone(),
-                                thinking: if thinking_acc.is_empty() { None } else { Some(thinking_acc.clone()) },
-                                message: None,
-                            };
-                        }
-                        XyChunk::ThinkingDelta(text) => {
-                            thinking_acc.push_str(&text);
-                            yield XyEvent::ThinkingDelta(text);
-                        }
-                        XyChunk::FunctionCall { name, args, id } => {
-                            yield XyEvent::ToolExecutionStart {
-                                id: id.clone(),
-                                name: name.clone(),
-                                args: args.clone(),
-                            };
-                            tool_calls.push((id, name, args));
-                        }
-                        XyChunk::Done { .. } => {
-                            // Stream-end marker for this single model call.
-                            // Does NOT end the turn — the loop continues so the
-                            // model can see tool results in the next round.
-                        }
-                    },
+                let messages = history.clone();
+
+                let stream_result = call_with_retry(
+                    &model, messages.clone(), &tool_schemas, &retry_state,
+                ).await;
+
+                let mut chunk_stream: Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
+                match stream_result {
+                    Ok(s) => chunk_stream = s,
                     Err(e) => {
-                        yield XyEvent::Error(format!("stream error: {e}"));
-                        break;
+                        yield XyEvent::Error(e);
+                        break 'outer;
                     }
                 }
-            }
 
-            yield XyEvent::MessageEnd {
-                role: "assistant".to_string(),
-                message: None,
-            };
+                yield XyEvent::MessageStart {
+                    role: "assistant".to_string(),
+                    message: None,
+                };
 
-            // Build assistant message
-            let mut assistant_parts = Vec::new();
-            if !thinking_acc.is_empty() {
-                assistant_parts.push(AgentPart::Thinking { text: thinking_acc, redacted: false, signature: None });
-            }
-            if !text_acc.is_empty() {
-                assistant_parts.push(AgentPart::Text(text_acc));
-            }
-            for (id, name, args) in &tool_calls {
-                assistant_parts.push(AgentPart::ToolCall {
-                    id: id.clone(),
-                    name: name.clone(),
-                    arguments: args.clone(),
-                });
-            }
-            if !assistant_parts.is_empty() {
-                history.push(AgentMessage::AssistantMessage {
-                    content: assistant_parts,
-                    stop_reason: None,
-                    usage: None,
-                    api: String::new(),
-                    provider: String::new(),
-                    model: String::new(),
-                    response_id: None,
-                    error_message: None,
-                    timestamp: crate::domain::message::now_ms(),
-                    diagnostics: Vec::new(),
-                });
-            }
+                let mut text_acc = String::new();
+                let mut thinking_acc = String::new();
+                let mut tool_calls: Vec<(String, String, Value)> = Vec::new();
 
-            // If no tool calls, done
-            if tool_calls.is_empty() {
-                yield XyEvent::TurnEnd { turn_index: turn as u32 };
-                break;
-            }
-
-            // Execute tool calls
-            for (id, name, args) in &tool_calls {
-                let tool = tools.get(name);
-                let ctx = XyToolCtx::with_cancel(id, cancel.clone());
-
-                // ── Before-tool hooks ─────────────────────────────
-                let mut denied_reason: Option<String> = None;
-                if !hooks.before_tool_call.is_empty() {
-                    for hook in &hooks.before_tool_call {
-                        if let Some(reason) = hook(name, id, args) {
-                            denied_reason = Some(reason);
+                while let Some(chunk_result) = chunk_stream.next().await {
+                    match chunk_result {
+                        Ok(chunk) => match chunk {
+                            XyChunk::TextDelta(text) => {
+                                text_acc.push_str(&text);
+                                yield XyEvent::TextDelta(text.clone());
+                                yield XyEvent::MessageUpdate {
+                                    text: text_acc.clone(),
+                                    thinking: if thinking_acc.is_empty() { None } else { Some(thinking_acc.clone()) },
+                                    message: None,
+                                };
+                            }
+                            XyChunk::ThinkingDelta(text) => {
+                                thinking_acc.push_str(&text);
+                                yield XyEvent::ThinkingDelta(text);
+                            }
+                            XyChunk::FunctionCall { name, args, id } => {
+                                yield XyEvent::ToolExecutionStart {
+                                    id: id.clone(),
+                                    name: name.clone(),
+                                    args: args.clone(),
+                                };
+                                tool_calls.push((id, name, args));
+                            }
+                            XyChunk::Done { .. } => {
+                                // Stream-end marker for this single model call.
+                            }
+                        },
+                        Err(e) => {
+                            yield XyEvent::Error(format!("stream error: {e}"));
                             break;
                         }
                     }
                 }
 
-                // ── Permission check ──────────────────────────────
-                if denied_reason.is_none()
-                    && let Some(ref check) = permission_check
-                {
-                    let target = permission_target(name, args);
-                    if let Some(reason) = check(name, &target) {
-                        denied_reason = Some(format!("permission denied: {reason}"));
-                    }
-                }
+                yield XyEvent::MessageEnd {
+                    role: "assistant".to_string(),
+                    message: None,
+                };
 
-                if let Some(reason) = denied_reason {
-                    let err = format!("Tool '{name}' blocked: {reason}");
-                    yield XyEvent::ToolExecutionEnd {
+                let mut assistant_parts = Vec::new();
+                if !thinking_acc.is_empty() {
+                    assistant_parts.push(AgentPart::Thinking { text: thinking_acc, redacted: false, signature: None });
+                }
+                if !text_acc.is_empty() {
+                    assistant_parts.push(AgentPart::Text(text_acc));
+                }
+                for (id, name, args) in &tool_calls {
+                    assistant_parts.push(AgentPart::ToolCall {
                         id: id.clone(),
                         name: name.clone(),
-                        result: err.clone(),
-                        is_error: true,
-                    };
-                    history.push(AgentMessage::ToolResultMessage {
-                        tool_use_id: id.clone(),
-                        tool_name: name.clone(),
-                        content: vec![AgentPart::Text(err.clone())],
-                        details: None,
-                        is_error: true,
-                        timestamp: crate::domain::message::now_ms(),
+                        arguments: args.clone(),
                     });
+                }
+                if !assistant_parts.is_empty() {
+                    history.push(AgentMessage::AssistantMessage {
+                        content: assistant_parts,
+                        stop_reason: None,
+                        usage: None,
+                        api: String::new(),
+                        provider: String::new(),
+                        model: String::new(),
+                        response_id: None,
+                        error_message: None,
+                        timestamp: crate::domain::message::now_ms(),
+                        diagnostics: Vec::new(),
+                    });
+                }
+
+                continue_after_tools = !tool_calls.is_empty();
+
+                if tool_calls.is_empty() {
+                    yield XyEvent::TurnEnd { turn_index: turn as u32 };
+                    turn += 1;
+                    // Poll steering even when there were no tools (pi: pending
+                    // after turn may restart the inner loop).
+                    pending = drain_queue(&steer_queue);
+                    if !pending.is_empty() {
+                        let (steer_count, follow_up_count) =
+                            queue_counts(&steer_queue, &follow_up_queue);
+                        yield XyEvent::QueueUpdate {
+                            steer_count,
+                            follow_up_count,
+                        };
+                    }
                     continue;
                 }
 
-                let mut result = match tool {
-                    Some(t) => match t.execute(&ctx, args.clone()).await {
-                        Ok(output) => (serde_json::Value::String(output), false),
-                        Err(e) => {
-                            let err = format!("Tool '{name}' error: {e}");
+                for (id, name, args) in &tool_calls {
+                    let tool = tools.get(name);
+                    let ctx = XyToolCtx::with_cancel(id, cancel.clone());
+
+                    let mut denied_reason: Option<String> = None;
+                    if !hooks.before_tool_call.is_empty() {
+                        for hook in &hooks.before_tool_call {
+                            if let Some(reason) = hook(name, id, args) {
+                                denied_reason = Some(reason);
+                                break;
+                            }
+                        }
+                    }
+
+                    if denied_reason.is_none()
+                        && let Some(ref check) = permission_check
+                    {
+                        let target = permission_target(name, args);
+                        if let Some(reason) = check(name, &target) {
+                            denied_reason = Some(format!("permission denied: {reason}"));
+                        }
+                    }
+
+                    if let Some(reason) = denied_reason {
+                        let err = format!("Tool '{name}' blocked: {reason}");
+                        yield XyEvent::ToolExecutionEnd {
+                            id: id.clone(),
+                            name: name.clone(),
+                            result: err.clone(),
+                            is_error: true,
+                        };
+                        history.push(AgentMessage::ToolResultMessage {
+                            tool_use_id: id.clone(),
+                            tool_name: name.clone(),
+                            content: vec![AgentPart::Text(err.clone())],
+                            details: None,
+                            is_error: true,
+                            timestamp: crate::domain::message::now_ms(),
+                        });
+                        continue;
+                    }
+
+                    let mut result = match tool {
+                        Some(t) => match t.execute(&ctx, args.clone()).await {
+                            Ok(output) => (serde_json::Value::String(output), false),
+                            Err(e) => {
+                                let err = format!("Tool '{name}' error: {e}");
+                                yield XyEvent::Error(err.clone());
+                                (serde_json::Value::String(err), true)
+                            }
+                        },
+                        None => {
+                            let err = format!("Unknown tool: {name}");
                             yield XyEvent::Error(err.clone());
                             (serde_json::Value::String(err), true)
                         }
-                    },
-                    None => {
-                        let err = format!("Unknown tool: {name}");
-                        yield XyEvent::Error(err.clone());
-                        (serde_json::Value::String(err), true)
-                    }
-                };
+                    };
 
-                // ── After-tool hooks ──────────────────────────────
-                if !hooks.after_tool_call.is_empty() {
-                    for hook in &hooks.after_tool_call {
-                        if let Some((new_value, new_is_error)) = hook(name, id, result.0.clone(), result.1) {
-                            result = (new_value, new_is_error);
+                    if !hooks.after_tool_call.is_empty() {
+                        for hook in &hooks.after_tool_call {
+                            if let Some((new_value, new_is_error)) = hook(name, id, result.0.clone(), result.1) {
+                                result = (new_value, new_is_error);
+                            }
                         }
                     }
+
+                    let result_text = match result.0 {
+                        serde_json::Value::String(s) => s,
+                        other => other.to_string(),
+                    };
+
+                    yield XyEvent::ToolExecutionEnd {
+                        id: id.clone(),
+                        name: name.clone(),
+                        result: result_text.clone(),
+                        is_error: result.1,
+                    };
+
+                    history.push(AgentMessage::ToolResultMessage {
+                        tool_use_id: id.clone(),
+                        tool_name: name.clone(),
+                        content: vec![AgentPart::Text(result_text.clone())],
+                        details: None,
+                        is_error: result.1,
+                        timestamp: crate::domain::message::now_ms(),
+                    });
                 }
 
-                let result_text = match result.0 {
-                    serde_json::Value::String(s) => s,
-                    other => other.to_string(),
-                };
+                yield XyEvent::TurnEnd { turn_index: turn as u32 };
+                turn += 1;
 
-                yield XyEvent::ToolExecutionEnd {
-                    id: id.clone(),
-                    name: name.clone(),
-                    result: result_text.clone(),
-                    is_error: result.1,
-                };
-
-                history.push(AgentMessage::ToolResultMessage {
-                    tool_use_id: id.clone(),
-                    tool_name: name.clone(),
-                    content: vec![AgentPart::Text(result_text.clone())],
-                    details: None,
-                    is_error: result.1,
-                    timestamp: crate::domain::message::now_ms(),
-                });
+                // After tools (or a text-only turn handled above), poll steering
+                // for the next model round.
+                pending = drain_queue(&steer_queue);
+                if !pending.is_empty() {
+                    let (steer_count, follow_up_count) =
+                        queue_counts(&steer_queue, &follow_up_queue);
+                    yield XyEvent::QueueUpdate {
+                        steer_count,
+                        follow_up_count,
+                    };
+                }
             }
 
-            yield XyEvent::TurnEnd { turn_index: turn as u32 };
-            // NOTE: do NOT break on `done` here. XyChunk::Done only marks the
-            // end of ONE model stream — providers emit it right after a
-            // FunctionCall (openai.rs:172), so breaking here would abort a
-            // tool-calling turn before the model's continuation round. The
-            // loop continues so the model sees the tool results and decides
-            // whether to call more tools or produce a final text reply. The
-            // real turn-end is `tool_calls.is_empty()` above (react.rs:356).
+            // Would stop — drain follow-up; if non-empty, continue outer loop.
+            let follow_ups = drain_queue(&follow_up_queue);
+            if follow_ups.is_empty() {
+                break;
+            }
+            pending = follow_ups;
+            let (steer_count, follow_up_count) = queue_counts(&steer_queue, &follow_up_queue);
+            yield XyEvent::QueueUpdate {
+                steer_count,
+                follow_up_count,
+            };
         }
 
         yield XyEvent::AgentEnd { messages: history };
@@ -558,6 +647,8 @@ mod tests {
                 crate::infra::bash_exec::InfraBashExecutor::new(),
             )),
             Some(std::sync::Arc::new(crate::infra::export::StdExportIo::new())),
+            crate::agent::session::QueueMode::default(),
+            crate::agent::session::QueueMode::default(),
         );
 
         assert!(session.current_model().is_some());
@@ -612,6 +703,8 @@ mod tests {
                 crate::infra::bash_exec::InfraBashExecutor::new(),
             )),
             Some(std::sync::Arc::new(crate::infra::export::StdExportIo::new())),
+            crate::agent::session::QueueMode::default(),
+            crate::agent::session::QueueMode::default(),
         );
 
         let mut loop_runner = ReActAgent::new(session);
@@ -733,6 +826,8 @@ mod tests {
             crate::infra::permission::allow_all_permission(),
             None,
             None,
+            crate::agent::session::QueueMode::default(),
+            crate::agent::session::QueueMode::default(),
         );
         ReActAgent::new(session)
     }
@@ -945,6 +1040,8 @@ mod tests {
             crate::infra::permission::allow_all_permission(),
             None,
             None,
+            crate::agent::session::QueueMode::default(),
+            crate::agent::session::QueueMode::default(),
         );
         ReActAgent::new(session)
     }
@@ -1004,5 +1101,85 @@ mod tests {
             turn_end_count, 2,
             "two ReAct iterations → two TurnEnd events"
         );
+    }
+
+    #[tokio::test]
+    async fn steer_before_run_is_injected_into_history() {
+        use crate::domain::lifecycle::XyEvent;
+        use futures::StreamExt;
+
+        let done_stop = || crate::domain::types::XyChunk::Done {
+            finish_reason: crate::domain::message::XyStopReason::Stop,
+            usage: None,
+        };
+        let rounds = vec![vec![
+            crate::domain::types::XyChunk::TextDelta("ok".into()),
+            done_stop(),
+        ]];
+        let mut agent = make_agent_with_rounds(rounds, ToolSet::empty());
+        agent.steer("please be brief");
+
+        let mut stream = agent.run("hello").await;
+        let mut history = Vec::new();
+        while let Some(evt) = stream.next().await {
+            if let XyEvent::AgentEnd { messages } = evt {
+                history = messages;
+            }
+        }
+        let texts: Vec<String> = history
+            .iter()
+            .filter_map(|m| match m {
+                AgentMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
+                    AgentPart::Text(t) => Some(t.clone()),
+                    _ => None,
+                }),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            texts.iter().any(|t| t == "please be brief"),
+            "steering text must appear in history: {texts:?}"
+        );
+        assert!(texts.iter().any(|t| t == "hello"));
+    }
+
+    #[tokio::test]
+    async fn follow_up_continues_after_text_only_turn() {
+        use crate::domain::lifecycle::XyEvent;
+        use futures::StreamExt;
+
+        let done_stop = || crate::domain::types::XyChunk::Done {
+            finish_reason: crate::domain::message::XyStopReason::Stop,
+            usage: None,
+        };
+        let rounds = vec![
+            vec![
+                crate::domain::types::XyChunk::TextDelta("first".into()),
+                done_stop(),
+            ],
+            vec![
+                crate::domain::types::XyChunk::TextDelta("second".into()),
+                done_stop(),
+            ],
+        ];
+        let mut agent = make_agent_with_rounds(rounds, ToolSet::empty());
+        agent.follow_up("and also this");
+
+        let mut stream = agent.run("start").await;
+        let mut texts = Vec::new();
+        let mut turn_ends = 0;
+        while let Some(evt) = stream.next().await {
+            match evt {
+                XyEvent::TextDelta(t) => texts.push(t),
+                XyEvent::TurnEnd { .. } => turn_ends += 1,
+                _ => {}
+            }
+        }
+        assert!(texts.iter().any(|t| t == "first"));
+        assert!(
+            texts.iter().any(|t| t == "second"),
+            "follow-up must trigger a second model round: {texts:?}"
+        );
+        assert!(turn_ends >= 2);
     }
 }
