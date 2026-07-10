@@ -15,6 +15,11 @@ colors:
   diff-added: "#a6e3a1"
   diff-removed: "#f38ba8"
   diff-context: "#6c7086"
+  # Diff line / word backgrounds (Mocha; subtle row tint + stronger word tint).
+  diff-added-bg: "#1e2b22"
+  diff-removed-bg: "#2b1e24"
+  diff-added-word-bg: "#2d4a35"
+  diff-removed-word-bg: "#4a2d35"
   surface: "#1e1e2e"
   # Tool block full-row tints (Mocha base + green/red; subtle, pi-like).
   # pending ≈ surface0; success/error = base blended toward green/red.
@@ -69,10 +74,18 @@ components:
     border: "{components.editor-border}"
   diff-added:
     textColor: "{colors.diff-added}"
+    backgroundColor: "{colors.diff-added-bg}"
   diff-removed:
     textColor: "{colors.diff-removed}"
+    backgroundColor: "{colors.diff-removed-bg}"
   diff-context:
     textColor: "{colors.diff-context}"
+  diff-added-word:
+    textColor: "{colors.diff-added}"
+    backgroundColor: "{colors.diff-added-word-bg}"
+  diff-removed-word:
+    textColor: "{colors.diff-removed}"
+    backgroundColor: "{colors.diff-removed-word-bg}"
 ---
 
 # Design System — Xylitol Terminal
@@ -113,7 +126,9 @@ components:
 | `user` | 用户消息前缀（短 glyph） |
 | `tool` | 工具一行摘要（dim） |
 | `error` / `warning` / `success` | 异常与结果，少用（**前景**） |
-| `diff-added` / `diff-removed` / `diff-context` | Diff 行着色（见 [`design/diff-block.md`](./design/diff-block.md)） |
+| `diff-added` / `diff-removed` / `diff-context` | Diff 行 **fg**（见 [`design/diff-block.md`](./design/diff-block.md)） |
+| `diff-added-bg` / `diff-removed-bg` | Diff 增删行 **整行淡底**（铺满行宽；与 tool-*-bg 分离） |
+| `diff-added-word-bg` / `diff-removed-word-bg` | 词级变更更亮底（复位到行底，勿用 reverse 白底） |
 | `surface` | 默认底（终端常透明；需要垫底时用） |
 | `tool-pending-bg` / `tool-success-bg` / `tool-error-bg` | 工具块**全行背景**三态（Mocha tint：`#313244` / `#24352a` / `#352428`；对齐 pi 语义，色值本文件 SSOT） |
 | `user-message-bg` | 用户消息可选全行背景（对齐 pi `userMessageBg`） |
