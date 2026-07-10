@@ -1,7 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,r1,"app-layer","System MUST organize the user-facing surface under a single src/app/ layer: self-contained entry points cli/, rpc.rs, server/, tui/, and gui.rs live at the top of app/, while cross-surface seams (composition, driver) live under src/app/core/. The print mode MUST live under src/app/cli/ as a CLI sub-mode. Built-in modules (tools, hooks, security) compile unconditionally; feature-gated app modes (server, tui, gui) use #[cfg(feature = \"...\")] guards with app-prefixed feature names (server, tui, gui).",null,null,null
-  modify_requirement,r4,"unified-bootstrap","App modes (CLI, RPC, Server, TUI) MUST share a single composition function (app::core::composition::build_agent) for Agent construction to eliminate duplicated initialization logic.",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  r1,"app-layer-contains-entries","",the source tree is inspected after the change,"src/app contains cli/, rpc.rs, server/, tui/, gui.rs, and a core/ sublayer (composition, driver); print lives under cli/"
-  r4,"modes-use-build-agent","","CLI, RPC, Server, or TUI needs an Agent","they call app::core::composition::build_agent instead of duplicating wiring"

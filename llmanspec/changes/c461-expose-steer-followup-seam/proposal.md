@@ -30,7 +30,7 @@ pi：流中 Enter=steer（下一 ReAct 迭代注入），Alt+Enter=follow-up（�
 ## Capabilities
 
 - `agent-runtime`（modify）
-- 可能 `app-protocol` / `app-tui-bridge`
+- 可能 `protocol-app` / `app-tui-bridge`
 
 ## Out of scope
 

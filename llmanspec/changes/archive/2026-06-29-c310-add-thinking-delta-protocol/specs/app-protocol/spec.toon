@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,ip7,"event-variants-complete","protocol::Event MUST cover all AgentEvent variants: TurnStart, TurnEnd, MessageStart, MessageEnd, MessageUpdate, ToolExecutionUpdate, CompactionEnd, TextDelta, and ThinkingDelta; ThinkingDelta MUST round-trip XyEvent::ThinkingDelta without being downgraded to an empty MessageUpdate.",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  ip7,thinking-delta-variant,"the Event enum is inspected",TextDelta and ThinkingDelta variants are checked,"both variants are present and carry a text field"
-  ip7,thinking-roundtrip,"a XyEvent::ThinkingDelta is converted to wire and back","it is deserialized","the result equals the original ThinkingDelta and is not an empty MessageUpdate"
