@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
 use crate::agent::runtime::ReActAgent;
-use crate::agent::session::Agent;
+use crate::agent::session::{Agent, QueueMode};
 use crate::agent::tools::ToolSet;
 use crate::runtime_protocol::{
     XyBashExecutor, XyEventSink, XyExportIo, XyModelBuilder, XyPermission, XySessionStore,
@@ -36,6 +36,8 @@ pub struct AgentBuilder {
     cwd: String,
     bash_executor: Option<Arc<dyn XyBashExecutor>>,
     export_io: Option<Arc<dyn XyExportIo>>,
+    steering_mode: QueueMode,
+    follow_up_mode: QueueMode,
 }
 
 impl AgentBuilder {
@@ -63,6 +65,8 @@ impl AgentBuilder {
             cwd: ".".into(),
             bash_executor: None,
             export_io: None,
+            steering_mode: QueueMode::default(),
+            follow_up_mode: QueueMode::default(),
         }
     }
 
@@ -132,6 +136,18 @@ impl AgentBuilder {
         self
     }
 
+    /// Set steering queue drain mode (default: [`QueueMode::All`]).
+    pub fn steering_mode(mut self, mode: QueueMode) -> Self {
+        self.steering_mode = mode;
+        self
+    }
+
+    /// Set follow-up queue drain mode (default: [`QueueMode::All`]).
+    pub fn follow_up_mode(mut self, mode: QueueMode) -> Self {
+        self.follow_up_mode = mode;
+        self
+    }
+
     /// Build the [`ReActAgent`] (the ReAct-strategy driver over an [`Agent`]).
     pub fn build(self) -> Result<ReActAgent, String> {
         let session = Agent::new(
@@ -150,6 +166,8 @@ impl AgentBuilder {
             self.permission,
             self.bash_executor,
             self.export_io,
+            self.steering_mode,
+            self.follow_up_mode,
         );
         Ok(ReActAgent::new(session))
     }

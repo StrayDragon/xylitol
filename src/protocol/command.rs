@@ -88,6 +88,24 @@ pub enum Command {
         #[serde(default)]
         id: Option<String>,
     },
+    Steer {
+        #[serde(default)]
+        id: Option<String>,
+        message: String,
+    },
+    FollowUp {
+        #[serde(default)]
+        id: Option<String>,
+        message: String,
+    },
+    ClearQueue {
+        #[serde(default)]
+        id: Option<String>,
+        #[serde(default = "default_true")]
+        clear_steer: bool,
+        #[serde(default = "default_true")]
+        clear_follow_up: bool,
+    },
     /// Subscribe to a session's event stream (WebSocket).
     Subscribe {
         #[serde(default)]
@@ -115,6 +133,10 @@ pub enum Command {
     },
 }
 
+fn default_true() -> bool {
+    true
+}
+
 impl Command {
     /// The correlation id, if any.
     pub fn id(&self) -> Option<&str> {
@@ -136,6 +158,9 @@ impl Command {
             | Command::Fork { id, .. }
             | Command::GetMessages { id }
             | Command::GetCommands { id }
+            | Command::Steer { id, .. }
+            | Command::FollowUp { id, .. }
+            | Command::ClearQueue { id, .. }
             | Command::Subscribe { id, .. }
             | Command::ApproveTool { id, .. }
             | Command::AnswerQuestion { id, .. }

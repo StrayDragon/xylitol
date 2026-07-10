@@ -74,6 +74,11 @@ pub enum DispatchOutcome {
     },
     /// `GetCommands` — the available slash commands.
     Commands(Vec<CommandInfo>),
+    /// `Steer` / `FollowUp` / `ClearQueue` — current queue depths.
+    QueueStats {
+        steer_count: usize,
+        follow_up_count: usize,
+    },
 }
 
 /// Error from dispatching a Command.
@@ -209,6 +214,36 @@ pub async fn dispatch(
             })
         }
         Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(driver.get_commands())),
+        Command::Steer { message, .. } => {
+            driver.steer(&message).map_err(DispatchError)?;
+            let (steer_count, follow_up_count) = driver.queue_stats();
+            Ok(DispatchOutcome::QueueStats {
+                steer_count,
+                follow_up_count,
+            })
+        }
+        Command::FollowUp { message, .. } => {
+            driver.follow_up(&message).map_err(DispatchError)?;
+            let (steer_count, follow_up_count) = driver.queue_stats();
+            Ok(DispatchOutcome::QueueStats {
+                steer_count,
+                follow_up_count,
+            })
+        }
+        Command::ClearQueue {
+            clear_steer,
+            clear_follow_up,
+            ..
+        } => {
+            driver
+                .clear_queue(clear_steer, clear_follow_up)
+                .map_err(DispatchError)?;
+            let (steer_count, follow_up_count) = driver.queue_stats();
+            Ok(DispatchOutcome::QueueStats {
+                steer_count,
+                follow_up_count,
+            })
+        }
 
         // These variants are the caller's responsibility (see module docs).
         Command::Prompt { .. }
@@ -249,6 +284,8 @@ mod tests {
     struct StubDriver {
         thinking: ThinkingLevel,
         session_id: Option<String>,
+        steer: usize,
+        follow_up: usize,
     }
 
     #[async_trait]
@@ -328,12 +365,34 @@ mod tests {
                 description: "compact".into(),
             }]
         }
+        fn steer(&mut self, _message: &str) -> Result<(), String> {
+            self.steer += 1;
+            Ok(())
+        }
+        fn follow_up(&mut self, _message: &str) -> Result<(), String> {
+            self.follow_up += 1;
+            Ok(())
+        }
+        fn clear_queue(&mut self, clear_steer: bool, clear_follow_up: bool) -> Result<(), String> {
+            if clear_steer {
+                self.steer = 0;
+            }
+            if clear_follow_up {
+                self.follow_up = 0;
+            }
+            Ok(())
+        }
+        fn queue_stats(&self) -> (usize, usize) {
+            (self.steer, self.follow_up)
+        }
     }
 
     fn stub() -> StubDriver {
         StubDriver {
             thinking: ThinkingLevel::Medium,
             session_id: Some("s1".into()),
+            steer: 0,
+            follow_up: 0,
         }
     }
 
@@ -401,6 +460,51 @@ mod tests {
         .await
         .unwrap_err();
         assert!(err.0.contains("not handled by shared dispatch"));
+    }
+
+    #[tokio::test]
+    async fn steer_and_clear_queue_round_trip() {
+        let mut d = stub();
+        let outcome = dispatch(
+            &mut d,
+            Command::Steer {
+                id: None,
+                message: "nudge".into(),
+            },
+        )
+        .await
+        .unwrap();
+        match outcome {
+            DispatchOutcome::QueueStats {
+                steer_count,
+                follow_up_count,
+            } => {
+                assert_eq!(steer_count, 1);
+                assert_eq!(follow_up_count, 0);
+            }
+            _ => panic!("expected QueueStats"),
+        }
+
+        let outcome = dispatch(
+            &mut d,
+            Command::ClearQueue {
+                id: None,
+                clear_steer: true,
+                clear_follow_up: false,
+            },
+        )
+        .await
+        .unwrap();
+        match outcome {
+            DispatchOutcome::QueueStats {
+                steer_count,
+                follow_up_count,
+            } => {
+                assert_eq!(steer_count, 0);
+                assert_eq!(follow_up_count, 0);
+            }
+            _ => panic!("expected QueueStats"),
+        }
     }
 
     #[tokio::test]

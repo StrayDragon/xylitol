@@ -116,6 +116,8 @@ pub struct ResolvedAssembly {
     pub cwd: String,
     pub compaction_settings: Option<crate::agent::compaction::CompactionSettings>,
     pub permission: Option<Arc<dyn crate::runtime_protocol::XyPermission>>,
+    pub steering_mode: crate::agent::session::QueueMode,
+    pub follow_up_mode: crate::agent::session::QueueMode,
     pub discovered_templates: Vec<PromptTemplate>,
     /// Resolved default profile's model id, if any (for startup model selection
     /// when `BootstrapInput::model` is absent).
@@ -141,6 +143,8 @@ impl ResolvedAssembly {
             cwd: self.cwd,
             compaction_settings: self.compaction_settings,
             permission: self.permission,
+            steering_mode: self.steering_mode,
+            follow_up_mode: self.follow_up_mode,
         }
     }
 }
@@ -377,8 +381,8 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         );
     }
 
-    // ── Step 3b2: compaction settings ─────────────────────────────
-    let compaction_settings = {
+    // ── Step 3b2: compaction + queue settings ─────────────────────
+    let (compaction_settings, steering_mode, follow_up_mode) = {
         let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
         let settings_cwd = if project_trusted {
             std::path::PathBuf::from(&cwd)
@@ -390,11 +394,14 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
             &agent_dir,
             project_trusted,
         );
-        settings_mgr
+        let compaction = settings_mgr
             .get_settings()
             .compaction
             .as_ref()
-            .map(|c| crate::agent::compaction::CompactionSettings::from(c.clone()))
+            .map(|c| crate::agent::compaction::CompactionSettings::from(c.clone()));
+        let steering_mode = queue_mode_from_settings(settings_mgr.get_steering_mode());
+        let follow_up_mode = queue_mode_from_settings(settings_mgr.get_follow_up_mode());
+        (compaction, steering_mode, follow_up_mode)
     };
 
     // ── Step 3c: permission engine ────────────────────────────────
@@ -424,6 +431,8 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         cwd,
         compaction_settings,
         permission: permission_engine,
+        steering_mode,
+        follow_up_mode,
         discovered_templates,
         default_profile_model,
         session_id,
@@ -496,5 +505,16 @@ fn resolve_api_key(kind: crate::domain::model::XyModelKind) -> Option<String> {
             .or_else(|_| std::env::var("ANTHROPIC_KEY"))
             .ok(),
         crate::domain::model::XyModelKind::Fake => Some(String::new()),
+    }
+}
+
+fn queue_mode_from_settings(
+    mode: crate::infra::settings::types::SteeringMode,
+) -> crate::agent::session::QueueMode {
+    match mode {
+        crate::infra::settings::types::SteeringMode::All => crate::agent::session::QueueMode::All,
+        crate::infra::settings::types::SteeringMode::OneAtATime => {
+            crate::agent::session::QueueMode::OneAtATime
+        }
     }
 }
