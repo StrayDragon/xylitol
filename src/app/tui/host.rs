@@ -1,6 +1,13 @@
 //! Product TUI host — event step machine (testable without a real TTY).
 
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use xylitol_tui::{InputEvent, RenderError, TUI, Terminal};
+
+use super::scene::{Scene, install_scene_key_listeners, shared_scene_rebuild};
 
 /// Minimum usable terminal size (ath4).
 pub const MIN_COLS: u16 = 40;
@@ -27,7 +34,8 @@ pub enum HostEvent {
 /// Layout mode after applying size policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutMode {
-    Shell,
+    /// Normal product scene (transcript / editor / footer).
+    Scene,
     TooSmall,
 }
 
@@ -36,6 +44,10 @@ pub struct HostSession<T: Terminal> {
     pub tui: TUI<T>,
     mode: LayoutMode,
     quit: bool,
+    /// Set by InputListener (Ctrl+C on empty editor).
+    quit_flag: Arc<AtomicBool>,
+    /// Shared scene when constructed via [`Self::new_product_scene`].
+    scene: Option<Rc<RefCell<Scene>>>,
     /// Rebuild root children when mode flips.
     rebuild: Box<dyn FnMut(LayoutMode) -> Vec<Box<dyn xylitol_tui::Component>>>,
 }
@@ -51,7 +63,7 @@ impl<T: Terminal> HostSession<T> {
         let mode = if is_too_small(cols, rows) {
             LayoutMode::TooSmall
         } else {
-            LayoutMode::Shell
+            LayoutMode::Scene
         };
         let mut tui = TUI::new(terminal);
         for child in rebuild(mode) {
@@ -63,8 +75,21 @@ impl<T: Terminal> HostSession<T> {
             tui,
             mode,
             quit: false,
+            quit_flag: Arc::new(AtomicBool::new(false)),
+            scene: None,
             rebuild: Box::new(rebuild),
         }
+    }
+
+    /// Product empty scene: shared `Scene` + Ctrl+C InputListener (c455 pipe).
+    pub fn new_product_scene(terminal: T) -> Self {
+        let scene = Rc::new(RefCell::new(Scene::new()));
+        let quit_flag = Arc::new(AtomicBool::new(false));
+        let mut session = Self::new(terminal, shared_scene_rebuild(scene.clone()));
+        session.scene = Some(scene.clone());
+        session.quit_flag = quit_flag.clone();
+        install_scene_key_listeners(&scene, &quit_flag, &mut session.tui);
+        session
     }
 
     pub fn mode(&self) -> LayoutMode {
@@ -72,11 +97,16 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn should_quit(&self) -> bool {
-        self.quit
+        self.quit || self.quit_flag.load(Ordering::SeqCst)
     }
 
     pub fn request_quit(&mut self) {
         self.quit = true;
+    }
+
+    /// Shared scene handle (product construction only).
+    pub fn scene(&self) -> Option<&Rc<RefCell<Scene>>> {
+        self.scene.as_ref()
     }
 
     /// Apply one host event and attempt a throttled render.
@@ -86,7 +116,7 @@ impl<T: Terminal> HostSession<T> {
                 self.quit = true;
             }
             HostEvent::Tick => {
-                if self.mode == LayoutMode::Shell {
+                if self.mode == LayoutMode::Scene {
                     let _ = self.tui.idle_tick();
                 }
                 self.tui.request_render(false);
@@ -98,7 +128,7 @@ impl<T: Terminal> HostSession<T> {
                 self.tui.request_render(true);
             }
             HostEvent::Input(input) => {
-                if self.mode == LayoutMode::Shell {
+                if self.mode == LayoutMode::Scene {
                     self.tui.dispatch_event(input);
                 }
                 self.tui.request_render(false);
@@ -108,8 +138,6 @@ impl<T: Terminal> HostSession<T> {
         match self.tui.try_render() {
             Ok(_) => Ok(()),
             Err(RenderError { .. }) => {
-                // Extreme width invariant failure: signal quit so the outer
-                // loop can restore the terminal and exit cleanly (ath4).
                 self.quit = true;
                 Err("render failed: terminal too extreme; restoring and exiting".into())
             }
@@ -129,7 +157,7 @@ impl<T: Terminal> HostSession<T> {
         let next = if is_too_small(cols, rows) {
             LayoutMode::TooSmall
         } else {
-            LayoutMode::Shell
+            LayoutMode::Scene
         };
         if next != self.mode {
             self.mode = next;
