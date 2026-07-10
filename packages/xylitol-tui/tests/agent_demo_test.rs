@@ -583,7 +583,7 @@ fn agent_demo_alt_g_cycles_glyph_set_to_ascii() {
 
     h.render_result().expect("initial render should succeed");
     h.assert_text_contains("❯");
-    h.keys("\x1bg"); // Alt+G (not Ctrl+G — reserved for future external editor)
+    h.keys("\x1bg"); // Alt+G (glyphs; Ctrl+G is external editor)
     h.render_result()
         .expect("glyph cycle must stay within width");
     let text = h.tui.terminal.viewport().join("\n");
@@ -1383,6 +1383,24 @@ fn agent_demo_ctrl_g_external_editor_stub() {
     assert!(
         plain.contains("external editor stub"),
         "expected system banner; got:\n{plain}"
+    );
+}
+
+#[test]
+fn agent_demo_ctrl_g_defaults_to_stub_without_tty() {
+    // Harness stdin is not a TTY → request_external_editor must use stub, not pending.
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.freeze_script_for_test();
+    app.set_editor_text_for_test("no tty");
+    app.request_external_editor_for_test();
+    assert!(
+        !app.take_pending_external_editor(),
+        "non-TTY must not arm real-editor pending"
+    );
+    assert!(
+        app.input_text_for_test().contains("$EDITOR stub"),
+        "expected stub marker; got {}",
+        app.input_text_for_test()
     );
 }
 
