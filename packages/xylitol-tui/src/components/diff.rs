@@ -35,27 +35,48 @@ impl DiffInput {
 }
 
 /// Theme closures — product maps semantic tokens → SGR.
+///
+/// **Layering (mockup / pi-like):**
+/// - `added` / `removed` / `context`: **fg** (and optional span styling) for content.
+/// - `added_line_bg` / `removed_line_bg`: wrap the **full padded row** after layout.
+/// - `word_change_added` / `word_change_removed`: brighter bg for changed spans;
+///   SHOULD restore the line bg (not `\x1b[49m`) so the row tint stays continuous.
 pub struct DiffTheme {
     pub added: Box<dyn Fn(&str) -> String>,
     pub removed: Box<dyn Fn(&str) -> String>,
     pub context: Box<dyn Fn(&str) -> String>,
     pub gutter: Box<dyn Fn(&str) -> String>,
     pub meta: Box<dyn Fn(&str) -> String>,
-    /// Intra-line changed span (typically reverse / bold).
-    pub word_change: Box<dyn Fn(&str) -> String>,
+    /// Intra-line changed span on insert lines (brighter added bg).
+    pub word_change_added: Box<dyn Fn(&str) -> String>,
+    /// Intra-line changed span on delete lines (brighter removed bg).
+    pub word_change_removed: Box<dyn Fn(&str) -> String>,
+    /// Full-row background for insert lines (applied after pad-to-width).
+    pub added_line_bg: Box<dyn Fn(&str) -> String>,
+    /// Full-row background for delete lines (applied after pad-to-width).
+    pub removed_line_bg: Box<dyn Fn(&str) -> String>,
     /// Optional per-line content highlight (default identity). Syntect stays optional.
     pub highlight_line: Box<dyn Fn(&str) -> String>,
 }
 
 impl Default for DiffTheme {
     fn default() -> Self {
+        // 256-color fallbacks: dark green/red row tint + stronger word tint.
+        // Prefer product truecolor via demo/app theme (DESIGN.md diff-*-bg).
         Self {
-            added: Box::new(|s| format!("\x1b[32m{s}\x1b[0m")),
-            removed: Box::new(|s| format!("\x1b[31m{s}\x1b[0m")),
-            context: Box::new(|s| format!("\x1b[2m{s}\x1b[0m")),
-            gutter: Box::new(|s| format!("\x1b[2m{s}\x1b[0m")),
-            meta: Box::new(|s| format!("\x1b[2m{s}\x1b[0m")),
-            word_change: Box::new(|s| format!("\x1b[7m{s}\x1b[27m")),
+            added: Box::new(|s| format!("\x1b[32m{s}\x1b[39m")),
+            removed: Box::new(|s| format!("\x1b[31m{s}\x1b[39m")),
+            context: Box::new(|s| format!("\x1b[2m{s}\x1b[22m")),
+            gutter: Box::new(|s| format!("\x1b[2m{s}\x1b[22m")),
+            meta: Box::new(|s| format!("\x1b[2m{s}\x1b[22m")),
+            word_change_added: Box::new(|s| {
+                format!("\x1b[48;5;28m\x1b[32m{s}\x1b[39m\x1b[48;5;22m")
+            }),
+            word_change_removed: Box::new(|s| {
+                format!("\x1b[48;5;88m\x1b[31m{s}\x1b[39m\x1b[48;5;52m")
+            }),
+            added_line_bg: Box::new(|s| format!("\x1b[48;5;22m{s}\x1b[49m")),
+            removed_line_bg: Box::new(|s| format!("\x1b[48;5;52m{s}\x1b[49m")),
             highlight_line: Box::new(|s| s.to_string()),
         }
     }
@@ -636,10 +657,10 @@ fn word_level_pair(old: &str, new: &str, theme: &DiffTheme) -> (String, String) 
         let v = change.value();
         match change.tag() {
             ChangeTag::Delete => {
-                del.push_str(&(theme.word_change)(v));
+                del.push_str(&(theme.word_change_removed)(v));
             }
             ChangeTag::Insert => {
-                ins.push_str(&(theme.word_change)(v));
+                ins.push_str(&(theme.word_change_added)(v));
             }
             ChangeTag::Equal => {
                 del.push_str(&(theme.removed)(v));
@@ -647,8 +668,6 @@ fn word_level_pair(old: &str, new: &str, theme: &DiffTheme) -> (String, String) 
             }
         }
     }
-    // Wrap whole line in kind color if empty of word markers — already mixed.
-    // Prefix remaining plain with kind color via outer emit.
     if del.is_empty() {
         del = (theme.removed)(old);
     }
@@ -696,12 +715,29 @@ fn emit_styled_line(theme: &DiffTheme, opts: EmitOpts<'_>) -> Vec<String> {
         } else {
             format!("{cont_prefix}{part}")
         };
-        out.push(pad_to_width(&line, opts.width));
+        // Pad first, then row tint — so bg spans the full terminal width.
+        out.push(paint_kind_line_bg(
+            theme,
+            opts.kind,
+            &pad_to_width(&line, opts.width),
+        ));
     }
     if out.is_empty() {
-        out.push(pad_to_width(&prefix, opts.width));
+        out.push(paint_kind_line_bg(
+            theme,
+            opts.kind,
+            &pad_to_width(&prefix, opts.width),
+        ));
     }
     out
+}
+
+fn paint_kind_line_bg(theme: &DiffTheme, kind: LineKind, line: &str) -> String {
+    match kind {
+        LineKind::Delete => (theme.removed_line_bg)(line),
+        LineKind::Insert => (theme.added_line_bg)(line),
+        LineKind::Equal | LineKind::Meta => line.to_string(),
+    }
 }
 
 fn format_gutter(old_no: Option<u32>, new_no: Option<u32>, num_width: usize) -> String {
@@ -757,10 +793,18 @@ fn render_side_by_side(
         if visible_width(&plain) > max_half {
             // Truncate plain then re-style so width math stays honest.
             let t = truncate_to_width(&plain, max_half, "", false);
-            let styled = color_prefix(kind, &(theme.highlight_line)(&t), theme);
+            let styled = paint_kind_line_bg(
+                theme,
+                kind,
+                &color_prefix(kind, &(theme.highlight_line)(&t), theme),
+            );
             (t, styled)
         } else {
-            let styled = color_prefix(kind, &(theme.highlight_line)(&plain), theme);
+            let styled = paint_kind_line_bg(
+                theme,
+                kind,
+                &color_prefix(kind, &(theme.highlight_line)(&plain), theme),
+            );
             (plain, styled)
         }
     };
@@ -1025,7 +1069,10 @@ mod tests {
             context: Box::new(|s| s.to_string()),
             gutter: Box::new(|s| s.to_string()),
             meta: Box::new(|s| s.to_string()),
-            word_change: Box::new(|s| format!("[{s}]")),
+            word_change_added: Box::new(|s| format!("[{s}]")),
+            word_change_removed: Box::new(|s| format!("[{s}]")),
+            added_line_bg: Box::new(|s| s.to_string()),
+            removed_line_bg: Box::new(|s| s.to_string()),
             highlight_line: Box::new(|s| s.to_string()),
         }
     }
@@ -1087,6 +1134,30 @@ mod tests {
             joined.contains("[world]") || joined.contains("[there]"),
             "expected word markers, got: {joined}"
         );
+    }
+
+    #[test]
+    fn default_theme_paints_row_bg_after_pad() {
+        let lines = render_diff_lines(
+            &DiffInput::LinePair {
+                old: "hello\n".into(),
+                new: "world\n".into(),
+                path: None,
+            },
+            40,
+            &DiffTheme::default(),
+            &DiffOptions {
+                word_level: false,
+                side_by_side_min_width: None,
+                ..DiffOptions::default()
+            },
+        );
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("\x1b[48;5;52m") && joined.contains("\x1b[48;5;22m"),
+            "default theme should tint delete/insert rows; got:\n{joined}"
+        );
+        assert!(joined.contains("\x1b[49m"), "row bg must reset with 49m");
     }
 
     #[test]

@@ -150,6 +150,60 @@ fn demo_markdown_theme() -> MarkdownTheme {
         code_block_indent: None,
     }
 }
+
+/// Mocha Diff theme (DESIGN.md): row tint + brighter word tint (not reverse white).
+fn demo_diff_theme() -> DiffTheme {
+    // fg
+    const ADDED: (u8, u8, u8) = (0xa6, 0xe3, 0xa1);
+    const REMOVED: (u8, u8, u8) = (0xf3, 0x8b, 0xa8);
+    const CONTEXT: (u8, u8, u8) = (0x6c, 0x70, 0x86);
+    // row bg
+    const ADDED_BG: (u8, u8, u8) = (0x1e, 0x2b, 0x22);
+    const REMOVED_BG: (u8, u8, u8) = (0x2b, 0x1e, 0x24);
+    // word bg (stronger)
+    const ADDED_WORD: (u8, u8, u8) = (0x2d, 0x4a, 0x35);
+    const REMOVED_WORD: (u8, u8, u8) = (0x4a, 0x2d, 0x35);
+
+    let fg = |rgb: (u8, u8, u8)| {
+        move |s: &str| format!("\x1b[38;2;{};{};{}m{s}\x1b[39m", rgb.0, rgb.1, rgb.2)
+    };
+    let line_bg = |rgb: (u8, u8, u8)| {
+        move |s: &str| format!("\x1b[48;2;{};{};{}m{s}\x1b[49m", rgb.0, rgb.1, rgb.2)
+    };
+    // Word tint restores row bg (not 49m) so the line wash stays continuous.
+    let word = |fg_rgb: (u8, u8, u8), word_bg: (u8, u8, u8), row_bg: (u8, u8, u8)| {
+        move |s: &str| {
+            format!(
+                "\x1b[48;2;{};{};{}m\x1b[38;2;{};{};{}m{s}\x1b[38;2;{};{};{}m\x1b[48;2;{};{};{}m",
+                word_bg.0,
+                word_bg.1,
+                word_bg.2,
+                fg_rgb.0,
+                fg_rgb.1,
+                fg_rgb.2,
+                fg_rgb.0,
+                fg_rgb.1,
+                fg_rgb.2,
+                row_bg.0,
+                row_bg.1,
+                row_bg.2,
+            )
+        }
+    };
+
+    DiffTheme {
+        added: Box::new(fg(ADDED)),
+        removed: Box::new(fg(REMOVED)),
+        context: Box::new(fg(CONTEXT)),
+        gutter: Box::new(fg(CONTEXT)),
+        meta: Box::new(fg(CONTEXT)),
+        word_change_added: Box::new(word(ADDED, ADDED_WORD, ADDED_BG)),
+        word_change_removed: Box::new(word(REMOVED, REMOVED_WORD, REMOVED_BG)),
+        added_line_bg: Box::new(line_bg(ADDED_BG)),
+        removed_line_bg: Box::new(line_bg(REMOVED_BG)),
+        highlight_line: Box::new(|s| s.to_string()),
+    }
+}
 fn magenta(s: &str) -> String {
     format!("\x1b[35m{s}\x1b[39m")
 }
@@ -1424,7 +1478,7 @@ impl FakeCodingAgentApp {
                         lines.push(paint_tool_bg(&line, width, *status));
                     }
                     if *expanded {
-                        let theme = DiffTheme::default();
+                        let theme = demo_diff_theme();
                         let opts = DiffOptions {
                             word_level: true,
                             side_by_side_min_width: *side_by_side_min_width,
