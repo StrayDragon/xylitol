@@ -369,16 +369,18 @@ fn sample_edit_tool_pair() -> DiffInput {
 
 fn demo_markdown_theme() -> MarkdownTheme {
     let id = |s: &str| s.to_string();
+    // DESIGN accent #89b4fa
+    let accent = |s: &str| format!("\x1b[38;2;137;180;250m{s}\x1b[39m");
     MarkdownTheme {
-        heading: Box::new(bold),
-        link: Box::new(cyan),
-        link_url: Box::new(dim),
-        code: Box::new(|s| format!("\x1b[36m{s}\x1b[39m")),
+        heading: Box::new(accent),
+        link: Box::new(accent),
+        link_url: Box::new(accent),
+        code: Box::new(|s| format!("\x1b[38;2;166;227;161m{s}\x1b[39m")), // success
         code_block: Box::new(|s| s.to_string()),
-        // DESIGN: no fence chrome
+        // DESIGN / c530: no fence chrome (callback unused)
         code_block_border: Box::new(|_| String::new()),
         quote: Box::new(dim),
-        quote_border: Box::new(dim),
+        quote_border: Box::new(|_| String::new()),
         hr: Box::new(dim),
         list_bullet: Box::new(id),
         bold: Box::new(bold),
@@ -386,8 +388,41 @@ fn demo_markdown_theme() -> MarkdownTheme {
         strikethrough: Box::new(|s| format!("\x1b[9m{s}\x1b[29m")),
         underline: Box::new(|s| format!("\x1b[4m{s}\x1b[24m")),
         highlight_code: Some(Box::new(highlight_code)),
-        code_block_indent: None,
+        code_block_indent: Some("  ".into()),
     }
+}
+
+/// Seed assistant body: full Markdown grammar for c530 copy/token policy.
+fn markdown_showcase_seed() -> &'static str {
+    "\
+## Markdown showcase (c530)
+
+正文含 **bold**、*italic*、`inline`、~~strike~~。标题无井号前缀；代码块无围栏行。
+
+### 链接与列表
+
+见 [docs](https://example.com/md)（显示为 text (url)）。
+
+1. 有序：提交路径
+- 无序：终端 smoke
+- 无序：回到 Ready
+
+> 引用只用 dim/italic，没有竖线装饰。
+
+| Name | Role |
+|------|------|
+| alice | eng |
+| bob | design |
+
+```rust
+fn demo() {
+    println!(\"highlight\");
+}
+```
+
+---
+
+短 HR；表为空格对齐（无盒线）。"
 }
 
 /// Mocha Diff theme (DESIGN.md): row tint + brighter word tint (not reverse white).
@@ -1624,7 +1659,7 @@ impl FakeCodingAgentApp {
         );
         self.push_message(
             Role::System,
-            "stream fence: prompt 含 rust/python/typescript/json 定点语言；否则每轮轮换",
+            "stream code: prompt 含 rust/python/typescript/json 定点语言；否则每轮轮换（源用 fence 解析高亮，显示无围栏）",
         );
         self.push_message(
             Role::User,
@@ -1633,10 +1668,7 @@ impl FakeCodingAgentApp {
         self.push_thinking(
             "Plan: read existing examples and the pi coding-agent ExpandableText flow, then rebuild one stable primary scenario with real terminal acceptance coverage.\n\nKeep transcript in scrollback; mark the editor as the operation zone with borders.",
         );
-        self.push_message(
-            Role::Assistant,
-            "Read the existing examples and the pi coding-agent flow first, then rebuild one stable primary scenario with real terminal acceptance coverage.\n\n```rust\nfn demo() {\n    println!(\"highlight\");\n}\n```",
-        );
+        self.push_message(Role::Assistant, markdown_showcase_seed());
         self.push_tool(
             "read packages/xylitol-tui/examples/agent_demo.rs · 42ms · 790 lines",
             "ok — opened agent_demo.rs\n(preview) FakeCodingAgentApp + scripted turn harness",
@@ -2003,13 +2035,15 @@ impl FakeCodingAgentApp {
         self.queue_stream(StreamKind::Assistant, text);
     }
 
-    /// Pick a streamed fence: keyword wins; otherwise rotate rust→python→ts→json.
+    /// Pick streamed code sample: keyword wins; else rotate rust→python→ts→json.
+    /// Source still uses fenced Markdown so syntect can highlight when the block closes;
+    /// rendered output has no fence chrome (c530).
     fn pick_stream_fence(&mut self, prompt: &str) -> (&'static str, &'static str) {
         let p = prompt.to_ascii_lowercase();
         let (lang, focus) = if p.contains("python") || p.contains("py ") {
             (
                 "python",
-                "下面流式吐一段 Python fence，对照其它语言看多语言高亮。",
+                "下面流式吐一段 Python 代码块，对照其它语言看多语言高亮（显示无围栏）。",
             )
         } else if p.contains("typescript")
             || p.contains(".ts")
@@ -2017,17 +2051,17 @@ impl FakeCodingAgentApp {
         {
             (
                 "typescript",
-                "下面流式吐一段 TypeScript fence，验收 syntect 在 TS 上的着色。",
+                "下面流式吐一段 TypeScript 代码块，验收 syntect 在 TS 上的着色。",
             )
         } else if p.contains("json") {
             (
                 "json",
-                "下面流式吐一段 JSON fence，看结构字面量高亮是否干净。",
+                "下面流式吐一段 JSON 代码块，看结构字面量高亮是否干净。",
             )
         } else if p.contains("rust") || p.contains("highlight") || p.contains("stream") {
             (
                 "rust",
-                "下面会流式吐出一段带 fence 的 Rust，用来验收 syntect 在未闭合→闭合过程中的表现。",
+                "下面会流式吐出一段 Rust 代码块，验收 syntect 在未闭合→闭合过程中的表现。",
             )
         } else if p.contains("cjk") || p.contains("emoji") {
             (
@@ -2036,28 +2070,33 @@ impl FakeCodingAgentApp {
             )
         } else if p.contains("palette") || p.contains("command") {
             ("rust", "我会先看 overlay 覆盖语义，再补 PTY/tmux smoke。")
+        } else if p.contains("markdown") || p.contains("md ") {
+            (
+                "rust",
+                "本轮顺带展示标题/列表/链接等 Markdown 语法（c530 复制友好）。",
+            )
         } else {
             let langs = ["rust", "python", "typescript", "json"];
             let lang = langs[self.fence_rotate % langs.len()];
             self.fence_rotate = self.fence_rotate.wrapping_add(1);
             (
                 lang,
-                "我会先复现主流程；本轮流式 fence 语言会轮换，方便肉眼对比高亮。",
+                "我会先复现主流程；本轮流式代码语言会轮换，方便肉眼对比高亮。",
             )
         };
 
         let fence = match lang {
             "python" => {
-                "```python\ndef accept(prompt: str) -> bool:\n    # streamed fence — watch highlight land as the block closes\n    return bool(prompt)\n```"
+                "```python\ndef accept(prompt: str) -> bool:\n    # streamed block — highlight when fence closes\n    return bool(prompt)\n```"
             }
             "typescript" => {
-                "```typescript\nfunction accept(prompt: string): boolean {\n  // streamed fence — watch highlight land as the block closes\n  return prompt.length > 0;\n}\n```"
+                "```typescript\nfunction accept(prompt: string): boolean {\n  // streamed block — highlight when fence closes\n  return prompt.length > 0;\n}\n```"
             }
             "json" => {
-                "```json\n{\n  \"accept\": true,\n  \"note\": \"streamed fence — watch highlight land as the block closes\"\n}\n```"
+                "```json\n{\n  \"accept\": true,\n  \"note\": \"streamed block — highlight when fence closes\"\n}\n```"
             }
             _ => {
-                "```rust\nfn accept(prompt: &str) -> bool {\n    // streamed fence — watch highlight land as the block closes\n    !prompt.is_empty()\n}\n```"
+                "```rust\nfn accept(prompt: &str) -> bool {\n    // streamed block — highlight when fence closes\n    !prompt.is_empty()\n}\n```"
             }
         };
         (focus, fence)
@@ -2072,11 +2111,21 @@ impl FakeCodingAgentApp {
             "接下来会按流式打字机节奏把结果一点点吐出来。"
         };
         format!(
-            "收到，我已经接住 `{prompt}`。\n\n{focus}\n\n\
-             {fence}\n\n\
-             - 先排查提交路径\n\
+            "收到，我已经接住 `{prompt}`。\n\n\
+             ## 本轮\n\n\
+             {focus}\n\n\
+             ### 清单\n\n\
+             1. 先排查提交路径\n\
              - 再补真实终端 smoke\n\
-             - 最后回到 `Ready` 等下一条输入\n\n{closing}"
+             - 最后回到 `Ready`\n\n\
+             详见 [harness notes](https://example.com/harness)。\n\n\
+             > 流式过程中未闭合代码块可能尚未高亮；闭合后 syntect 着色。\n\n\
+             {fence}\n\n\
+             | Step | Status |\n\
+             |------|--------|\n\
+             | parse | ok |\n\
+             | paint | streaming |\n\n\
+             {closing}"
         )
     }
 
@@ -2548,7 +2597,8 @@ impl FakeCodingAgentApp {
             match entry {
                 TranscriptEntry::Message { role, text } => {
                     if matches!(role, Role::Assistant) {
-                        // Always Markdown so streaming fences get highlight as they close.
+                        // Always Markdown so streaming code fences highlight as they close
+                        // (source fences; rendered output has no fence chrome — c530).
                         let mut md = Markdown::new(
                             text.clone(),
                             0,

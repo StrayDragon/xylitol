@@ -24,7 +24,8 @@
 ## 测试策略
 
 - `#[cfg(test)]`：可见字符断言（剥 ANSI 后）覆盖标题无 `#`、链接形态、无 fence、无盒线、行内标记、引用无竖线、表空格对齐。
-- 不强制新 BDD feature（包级单测足够）；若已有 demo 断言依赖旧输出则最小修正。
+- `agent_demo`：seed 全语法 showcase + 流式代码块（源仍用 fence 供 syntect；显示无围栏）；`agent_demo_test` 覆盖。
+- 不强制新 BDD feature（包级单测足够）。
 
 ## 非目标
 

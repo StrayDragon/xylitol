@@ -658,11 +658,16 @@ fn agent_demo_seed_rust_fence_is_highlighted() {
     ))))
     .focus(Some(0));
     h.render_result().expect("initial render");
-    h.assert_text_contains("println");
+    // Showcase may sit above the sticky viewport — search full scrollback.
+    let text = h.tui.terminal.scroll_buffer().join("\n");
+    assert!(
+        text.contains("println"),
+        "seed code block should appear in scrollback:\n{text}"
+    );
     let raw = h.tui.terminal.all_writes();
     assert!(
         raw.contains('\u{1b}') || raw.contains("\x1b["),
-        "highlighted fence should emit ANSI under feature highlight"
+        "highlighted code block should emit ANSI under feature highlight"
     );
 }
 
@@ -675,7 +680,7 @@ fn agent_demo_streaming_fence_emits_ansi_when_closed() {
     ))))
     .focus(Some(0));
     h.render_result().expect("initial render");
-    // Clear seed writes; submit to start scripted turn with streamed fence.
+    // Clear seed writes; submit to start scripted turn with streamed code block.
     h.tui.terminal.clear_writes();
     h.keys("\r");
     let mut saw_accept_fn = false;
@@ -688,11 +693,49 @@ fn agent_demo_streaming_fence_emits_ansi_when_closed() {
             break;
         }
     }
-    assert!(saw_accept_fn, "streamed assistant fence should appear");
+    assert!(saw_accept_fn, "streamed assistant code block should appear");
     let raw = h.tui.terminal.all_writes();
     assert!(
         raw.contains('\u{1b}') || raw.contains("\x1b["),
-        "closed streamed fence should highlight with ANSI"
+        "closed streamed code block should highlight with ANSI"
+    );
+}
+
+#[test]
+fn agent_demo_seed_markdown_showcase_c530() {
+    let mut h = TuiTestHarness::new(120, 80);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+    let text = h.tui.terminal.scroll_buffer().join("\n");
+    assert!(
+        text.contains("Markdown showcase"),
+        "seed should show markdown showcase title:\n{text}"
+    );
+    assert!(
+        text.contains("docs (https://example.com/md)"),
+        "links must render as text (url):\n{text}"
+    );
+    assert!(
+        text.contains("**bold**") && text.contains("`inline`"),
+        "inline round-trip markers must be visible:\n{text}"
+    );
+    assert!(
+        text.contains("alice") && text.contains("eng"),
+        "table cells should appear:\n{text}"
+    );
+    assert!(
+        !text.contains('┌') && !text.lines().any(|l| l.contains("```")),
+        "no box-drawing table or fence chrome in viewport:\n{text}"
+    );
+    // Heading text without leading `#` on the showcase line
+    assert!(
+        !text
+            .lines()
+            .any(|l| l.trim_start().starts_with("## Markdown")),
+        "rendered heading must not keep ## prefix:\n{text}"
     );
 }
 
