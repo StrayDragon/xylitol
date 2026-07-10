@@ -1,6 +1,6 @@
 # _HANDOFF — xylitol TUI（交接笔记，非规范）
 
-> 最后更新：2026-07-10（c460 host archived）
+> 最后更新：2026-07-10（产品面 **冻结**；c491 stub-only）
 > 分支：`feat/tui-dev`
 > **本文是临时交接/进度板，不是 SSOT。** 稳定边界以各层 `AGENTS.md` 与 skills 为准。
 
@@ -10,9 +10,11 @@
 
 | 轨 | 目标 | 真值落点 |
 |---|---|---|
-| **A. 包 / agent_demo** | demo 验证原子（diff/高亮/树/InputListener/键位…） | `packages/xylitol-tui` + `agent_demo` + `PI_DELTAS.md` |
-| **B. 产品面** | `src/app/tui` ↔ Driver / dispatch / XyEvent | `src/app/tui/` + `write-tui`；合约已归档 **c450** |
-| **D. DESIGN** | 主 DESIGN + `design/*.md` | `src/app/tui/DESIGN.md`、`design/`（**c449** draft） |
+| **A. 包 / agent_demo** | demo 验证原子（**当前主线**） | `packages/xylitol-tui` + `agent_demo` |
+| **B. 产品面** | `src/app/tui` ↔ Driver / XyEvent | **冻结**：仅 c460 空壳 + c491 假树 stub |
+| **D. DESIGN** | 主 DESIGN + `design/*.md` | 可改文档；不据此堆产品实现 |
+
+**闸门**：demo 验完 + 用户开闸 → 才继续轨 B。c491 **MUST NOT** 扩展（活树/filter/Driver travel）。
 
 **原则**：demo 用真实库验证 → 再搬产品面；缺能力先改包；purpose-draft 升格后才 apply。
 
@@ -34,7 +36,8 @@
 | Feature | `tui` 在 **default** |
 | 远控 | 默认 InProcess；保留 RemoteDriver |
 | 高亮 | demo/产品同一真实 syntect；包只收回调 |
-| 日志 | debug 默认即时 log（**代码待 c460**）；release 默认关 |
+| 日志 | debug 默认即时 log；release 默认关 |
+| 会话树 | demo 活树 SSOT；产品 c491 **stub 冻结** |
 
 ---
 
