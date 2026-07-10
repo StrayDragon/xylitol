@@ -591,3 +591,55 @@ fn agent_demo_alt_g_cycles_glyph_set_to_ascii() {
         "system note should confirm the switch; got:\n{text}"
     );
 }
+
+#[test]
+fn agent_demo_ctrl_c_clears_editor_then_quits() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use std::sync::atomic::Ordering;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let quit = Arc::new(AtomicBool::new(false));
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new_with_prompt(
+        quit.clone(),
+        "keep me",
+    )));
+    let mut h = TuiTestHarness::new(100, 24);
+    FakeCodingAgentApp::install_input_listeners(&app, &mut h.tui);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+
+    h.keys("\x03"); // Ctrl+C
+    assert!(
+        !quit.load(Ordering::SeqCst),
+        "non-empty editor must clear, not quit"
+    );
+    assert!(
+        app.borrow().input_text_for_test().is_empty(),
+        "Ctrl+C should clear editor text"
+    );
+
+    h.keys("\x03");
+    assert!(
+        quit.load(Ordering::SeqCst),
+        "second Ctrl+C on empty editor should quit"
+    );
+}
+
+#[test]
+fn agent_demo_escape_aborts_active_stream() {
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+
+    h.render_result().expect("initial render");
+    h.keys("\r");
+    h.render_result().expect("after submit");
+    // Esc while scripted turn is active
+    h.keys("\x1b");
+    h.render_result().expect("after abort");
+    h.assert_text_contains("stream aborted");
+}

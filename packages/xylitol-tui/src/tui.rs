@@ -14,6 +14,15 @@ pub enum InputEvent {
     Paste(String),
 }
 
+/// Result of an input listener invoked before focus routing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputListenerResult {
+    /// Pass the event to later listeners and (if none consume) the focused target.
+    Continue,
+    /// Stop the listener chain and do not deliver the event to overlay/focus.
+    Consumed,
+}
+
 /// Error from a render pass. The engine hard-errors when a component emits a
 /// line wider than the terminal `width` — a widget that overflows desyncs the
 /// cursor and corrupts subsequent lines, so we surface it loudly instead of
@@ -163,6 +172,13 @@ impl OverlayHandle {
     }
 }
 
+type InputListenerFn = Box<dyn FnMut(InputEvent) -> InputListenerResult + 'static>;
+
+struct RegisteredInputListener {
+    id: u64,
+    callback: InputListenerFn,
+}
+
 pub struct TUI<T: Terminal> {
     pub terminal: T,
     components: Vec<Box<dyn Component>>,
@@ -189,6 +205,8 @@ pub struct TUI<T: Terminal> {
     full_redraw_count: u64,
     focus_order_counter: u64,
     next_overlay_id: u64,
+    next_input_listener_id: u64,
+    input_listeners: Vec<RegisteredInputListener>,
     // ── render scheduling (pi's requestRender/scheduleRender) ──
     /// True when a render has been requested but not yet executed.
     render_requested: bool,
@@ -223,9 +241,34 @@ impl<T: Terminal> TUI<T> {
             full_redraw_count: 0,
             focus_order_counter: 0,
             next_overlay_id: 1,
+            next_input_listener_id: 1,
+            input_listeners: Vec::new(),
             render_requested: false,
             last_render_at: None,
         }
+    }
+
+    /// Register a pre-focus input listener. Returns an id for
+    /// [`remove_input_listener`](Self::remove_input_listener).
+    ///
+    /// Listeners run in registration order before overlay/root focus routing.
+    /// The first [`InputListenerResult::Consumed`] stops the chain.
+    pub fn add_input_listener(
+        &mut self,
+        listener: impl FnMut(InputEvent) -> InputListenerResult + 'static,
+    ) -> u64 {
+        let id = self.next_input_listener_id;
+        self.next_input_listener_id = self.next_input_listener_id.saturating_add(1);
+        self.input_listeners.push(RegisteredInputListener {
+            id,
+            callback: Box::new(listener),
+        });
+        id
+    }
+
+    /// Remove a previously registered input listener. No-op if `id` is unknown.
+    pub fn remove_input_listener(&mut self, id: u64) {
+        self.input_listeners.retain(|l| l.id != id);
     }
 
     pub fn full_redraws(&self) -> u64 {
@@ -484,11 +527,25 @@ impl<T: Terminal> TUI<T> {
         self.stopped = true;
     }
 
-    /// Route one decoded input event to the focused overlay (if any) or root child.
+    /// Route one decoded input event through listeners, then the focused
+    /// overlay (if any) or root child.
     ///
     /// Public so host loops (and tests) can feed input without going through
     /// the blocking `start()` event loop.
     pub fn dispatch_event(&mut self, event: InputEvent) {
+        // Snapshot ids so a listener may remove itself / others mid-dispatch
+        // without invalidating the walk; callbacks are invoked by id lookup.
+        let listener_ids: Vec<u64> = self.input_listeners.iter().map(|l| l.id).collect();
+        for id in listener_ids {
+            let Some(index) = self.input_listeners.iter().position(|l| l.id == id) else {
+                continue;
+            };
+            let result = (self.input_listeners[index].callback)(event.clone());
+            if result == InputListenerResult::Consumed {
+                return;
+            }
+        }
+
         if let Some(overlay_id) = self.focused_overlay_id
             && let Some(index) = self.overlay_index(overlay_id)
             && !self.overlays[index].2.hidden
@@ -1191,5 +1248,105 @@ mod tests {
         tui.set_focus(Some(0));
 
         assert!(tui.should_dispatch_key_event(&key_with_kind(KeyEventKind::Release)));
+    }
+
+    struct RecordingComponent {
+        events: std::sync::Arc<std::sync::Mutex<Vec<InputEvent>>>,
+    }
+
+    impl Component for RecordingComponent {
+        fn render(&mut self, _width: usize) -> Vec<String> {
+            Vec::new()
+        }
+        fn handle_input(&mut self, event: InputEvent) {
+            self.events.lock().unwrap().push(event);
+        }
+        fn invalidate(&mut self) {}
+    }
+
+    fn letter_a() -> InputEvent {
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Char('a'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn ctrl_c() -> InputEvent {
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Char('c'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    #[test]
+    fn input_listener_consumes_before_focus() {
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut tui = TUI::new(DummyTerminal);
+        tui.add_child(Box::new(RecordingComponent {
+            events: events.clone(),
+        }));
+        tui.set_focus(Some(0));
+        tui.add_input_listener(|ev| {
+            if matches!(
+                &ev,
+                InputEvent::Key(k)
+                    if k.code == KeyCode::Char('c') && k.modifiers.contains(KeyModifiers::CONTROL)
+            ) {
+                InputListenerResult::Consumed
+            } else {
+                InputListenerResult::Continue
+            }
+        });
+
+        tui.dispatch_event(ctrl_c());
+        assert!(events.lock().unwrap().is_empty());
+
+        tui.dispatch_event(letter_a());
+        assert_eq!(events.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn input_listeners_run_fifo_until_consumed() {
+        let order = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut tui = TUI::new(DummyTerminal);
+        let o1 = order.clone();
+        tui.add_input_listener(move |_| {
+            o1.lock().unwrap().push(1);
+            InputListenerResult::Continue
+        });
+        let o2 = order.clone();
+        tui.add_input_listener(move |_| {
+            o2.lock().unwrap().push(2);
+            InputListenerResult::Consumed
+        });
+        let o3 = order.clone();
+        tui.add_input_listener(move |_| {
+            o3.lock().unwrap().push(3);
+            InputListenerResult::Continue
+        });
+
+        tui.dispatch_event(letter_a());
+        assert_eq!(*order.lock().unwrap(), vec![1, 2]);
+    }
+
+    #[test]
+    fn paste_passes_through_continuing_listener() {
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut tui = TUI::new(DummyTerminal);
+        tui.add_child(Box::new(RecordingComponent {
+            events: events.clone(),
+        }));
+        tui.set_focus(Some(0));
+        tui.add_input_listener(|_| InputListenerResult::Continue);
+
+        tui.dispatch_event(InputEvent::Paste("hello".into()));
+        assert_eq!(
+            events.lock().unwrap().as_slice(),
+            &[InputEvent::Paste("hello".into())]
+        );
     }
 }
