@@ -2,13 +2,16 @@ kind: llman.sdd.spec
 name: "app-tui-chrome"
 purpose: 主题 token、glyph、status 与 footer 等 chrome。
 valid_scope[1]: src/app/tui/
-requirements[4]{req_id,title,statement}:
+requirements[5]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   atc1,"idle-status-omitted",空闲时 status 行 MUST NOT 占用垂直空间（0 行）；忙碌时 MUST 至多 1 行短状态（如 Working / Running tool / Retry）。
   atc2,"footer-minimal",footer MUST 为 1 行 dim 文本，MVP 至少包含 cwd 与 model；放不下时 MUST 截断右侧而非增高。
   atc3,"theme-glyphs-config",颜色 MUST 经应用面语义 token 映射为包组件闭包主题；glyph 档（unicode/ascii）MUST 由显式配置切换，MUST NOT 做运行时字体探测。
-scenarios[4]{req_id,id,given,when,then}:
+  atc4,"design-docs-ssot","产品 TUI 视觉与 UX MUST 以 src/app/tui/DESIGN.md 为索引、以 src/app/tui/design/*.md 为组件级 SSOT；实现与 demo 引用组件规则时 MUST 指向对应子文档（尤其 design/diff-block.md 与 design/keybindings.md），MUST NOT 仅依赖口头约定。"
+scenarios[6]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-chrome",spec.toon 存在且 purpose 为中文
   atc1,"idle-no-status","",TUI 空闲,status 槽不占行
   atc2,"footer-one-row","",渲染空闲帧,最后一行为单行 footer
   atc3,"ascii-glyphs","",配置 glyph=ascii,用户前缀等为 ascii 档字符
+  atc4,"index-lists-components","",打开 DESIGN.md,组件索引列出 design/ 下核心文档路径
+  atc4,"diff-block-exists","",实现 Diff 渲染前查阅设计,"design/diff-block.md 存在且含 unified / word-level / CJK MUST"
