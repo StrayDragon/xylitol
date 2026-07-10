@@ -1,7 +1,7 @@
 ---
 change_id: c466-add-package-tui-expandable-output
 title: "包 ExpandableOutput：工具详情 max-height 视口 + Ctrl+O"
-status: purpose-draft
+status: full
 priority: 466
 depends_on: []
 author: agent
@@ -10,7 +10,7 @@ track: A
 
 # c466-add-package-tui-expandable-output
 
-> **status: purpose-draft**（实现已在 `agent_demo` / `ExpandableOutput` 冒烟；本草案补契约与升格路径）
+> 实现已在 `agent_demo` / `ExpandableOutput` 冒烟；本变更补契约并归档。
 
 ## Why
 
@@ -27,19 +27,12 @@ track: A
 3. `agent_demo`：Tool 详情走视口；seed 长 bash + StreamingBash；Ctrl+O / Ctrl+Shift+O。
 4. 文档：`design/expandable.md` §详情视口、`keybindings.md`。
 
-> 实现已在 demo 冒烟；升格时再补 delta specs + tasks。
-
 ## Capabilities
 
-- `package-tui-expandable-output`（升格时新建）
+- `package-tui-expandable-output`
 
 ## Out of scope
 
 - Diff 块视口（另议）
 - 产品 `UiRoot` 接线（随 bridge / tool 块）
 - 每块独立 expand 态（当前全局 `tools_output_expanded`，对齐 pi）
-
-## Notes
-
-- Demo 已验证形态；升格时补 delta specs + tasks，再 archive 合并。
-- 与 c456 树内 Ctrl+O 共存：见 `keybindings.md` 上下文分流。
