@@ -19,9 +19,10 @@ use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, s
 use xylitol_tui::{
     Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme, ExpandableOutputOptions,
     Focusable, Input, InputEvent, InputListenerResult, Markdown, MarkdownOptions, MarkdownTheme,
-    SystemClock, TUI, TreeNode, TreeSelector, TreeSelectorOptions, TreeSelectorTheme,
-    apply_background_to_line, highlight_code, matches_key_event, render_diff_lines,
-    render_expandable_output, truncate_to_width, visible_width, wrap_text_with_ansi,
+    SystemClock, TUI, TerminalColorScheme, ThemeDetectSources, TreeNode, TreeSelector,
+    TreeSelectorOptions, TreeSelectorTheme, apply_background_to_line, highlight_code,
+    matches_key_event, parse_osc11_background_color, render_diff_lines, render_expandable_output,
+    resolve_terminal_color_scheme, truncate_to_width, visible_width, wrap_text_with_ansi,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
@@ -711,6 +712,10 @@ pub struct FakeCodingAgentApp {
     bash_mode: bool,
     /// Ctrl+G external-editor stub invocation count (harness).
     external_editor_invocations: u32,
+    /// Opt-in theme auto-detect (`XYLITOL_AGENT_DEMO_THEME_AUTO=1` or harness).
+    theme_auto: bool,
+    /// Resolved Dark/Light token set (c458).
+    theme_mode: TerminalColorScheme,
 }
 
 impl FakeCodingAgentApp {
@@ -1034,6 +1039,75 @@ impl FakeCodingAgentApp {
 
     pub fn sync_editor_border_for_test(&mut self) {
         self.sync_editor_border();
+    }
+
+    pub fn theme_mode_for_test(&self) -> TerminalColorScheme {
+        self.theme_mode
+    }
+
+    pub fn theme_auto_for_test(&self) -> bool {
+        self.theme_auto
+    }
+
+    pub fn set_theme_auto_for_test(&mut self, enabled: bool) {
+        self.theme_auto = enabled;
+        if !enabled {
+            self.theme_mode = TerminalColorScheme::Dark;
+        }
+    }
+
+    /// Harness: apply OSC11 / COLORFGBG / CSI997 sources when auto is on.
+    pub fn apply_theme_detect_for_test(
+        &mut self,
+        osc11_response: Option<&str>,
+        colorfgbg: Option<&str>,
+        scheme_report: Option<&str>,
+    ) {
+        if !self.theme_auto {
+            self.theme_mode = TerminalColorScheme::Dark;
+            return;
+        }
+        let osc11_background = osc11_response.and_then(parse_osc11_background_color);
+        let color_scheme_report =
+            scheme_report.and_then(xylitol_tui::parse_terminal_color_scheme_report);
+        self.theme_mode = resolve_terminal_color_scheme(ThemeDetectSources {
+            explicit: None,
+            osc11_background,
+            color_scheme_report,
+            colorfgbg,
+        });
+    }
+
+    fn refresh_theme_from_env(&mut self) {
+        if !self.theme_auto {
+            self.theme_mode = TerminalColorScheme::Dark;
+            return;
+        }
+        let colorfgbg = std::env::var("COLORFGBG").ok();
+        self.theme_mode = resolve_terminal_color_scheme(ThemeDetectSources {
+            explicit: None,
+            osc11_background: None,
+            color_scheme_report: None,
+            colorfgbg: colorfgbg.as_deref(),
+        });
+    }
+
+    fn theme_label(&self) -> &'static str {
+        match self.theme_mode {
+            TerminalColorScheme::Dark => "theme:dark",
+            TerminalColorScheme::Light => "theme:light",
+        }
+    }
+
+    /// Muted chrome color — Latte vs Mocha so auto-detect is visible.
+    fn muted_paint(&self, s: &str) -> String {
+        let (r, g, b) = match self.theme_mode {
+            // DESIGN.md colors.muted (Mocha)
+            TerminalColorScheme::Dark => (108u8, 112, 134),
+            // Catppuccin Latte overlay1-ish
+            TerminalColorScheme::Light => (140u8, 143, 161),
+        };
+        format!("\x1b[38;2;{r};{g};{b}m{s}\x1b[39m")
     }
 
     fn sync_editor_border(&mut self) {
@@ -1387,7 +1461,14 @@ impl FakeCodingAgentApp {
             tools_output_max_lines: 5,
             bash_mode: false,
             external_editor_invocations: 0,
+            theme_auto: std::env::var("XYLITOL_AGENT_DEMO_THEME_AUTO")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false),
+            theme_mode: TerminalColorScheme::Dark,
         };
+        if app.theme_auto {
+            app.refresh_theme_from_env();
+        }
         app.seed_transcript();
         app
     }
@@ -1396,7 +1477,7 @@ impl FakeCodingAgentApp {
         // One-shot help — fold keys live on blocks as `(Ctrl+T)` / `(Alt+E)`.
         self.push_message(
             Role::System,
-            "keys: Enter submit/steer · Alt+Enter follow-up · ! bash border · Ctrl+G $EDITOR stub · double Esc tree · Shift+F fork · /cmds · @path · (Ctrl+P)/(Ctrl+S) · (Alt+G) · (Ctrl+O tools) · Esc · (Ctrl+C)",
+            "keys: Enter submit/steer · Alt+Enter follow-up · ! bash border · Ctrl+G $EDITOR stub · double Esc tree · Shift+F fork · /cmds · @path · (Ctrl+P)/(Ctrl+S) · (Alt+G) · (Ctrl+O tools) · Esc · (Ctrl+C) · theme auto via XYLITOL_AGENT_DEMO_THEME_AUTO",
         );
         self.push_message(
             Role::System,
@@ -2528,13 +2609,14 @@ impl Component for FakeCodingAgentApp {
             // Compact cue strip — full list is in the seed system line.
             footer_owned = format!(
                 // Keep cue strip short — narrow terminals (80 cols) still fit.
-                "{} · {}{queue_hint} · /@ (Ctrl+P)/(Ctrl+S) (Alt+G) (Ctrl+O tools)",
+                "{} · {} · {}{queue_hint} · /@ (Ctrl+P)/(Ctrl+S) (Alt+G) (Ctrl+O tools)",
                 self.footer_note,
+                self.theme_label(),
                 self.glyph_set.label()
             );
             footer_owned.as_str()
         };
-        lines.push(Self::fit(&dim(footer_ref), width));
+        lines.push(Self::fit(&self.muted_paint(footer_ref), width));
         lines
             .into_iter()
             .map(|line| Self::fit(&line, width))
