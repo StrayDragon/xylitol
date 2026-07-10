@@ -1,10 +1,18 @@
 ---
 version: "alpha"
 name: "editor"
-description: "Xylitol Terminal component UX — see DESIGN.md index."
+description: "Bottom operation zone — bordered multiline editor / selector slot."
+tokens_from: "../DESIGN.md"
+components:
+  editor-border:
+    textColor: "{colors.muted}"
+  operation-zone:
+    border: "{components.editor-border}"
 ---
 
 # Editor（操作区）
+
+> Token 根源：`{colors.*}` / `{components.*}` → [`../DESIGN.md`](../DESIGN.md)。
 
 ## MUST
 
@@ -13,4 +21,4 @@ description: "Xylitol Terminal component UX — see DESIGN.md index."
 3. Ctrl+P / 设置等：**替换 editor 槽**为 `SelectList` / `SettingsList`，Esc 还原；**MUST NOT** blit 到 transcript 顶部。
 4. 键位见 [`keybindings.md`](./keybindings.md)（Ctrl+C 清/退、流中 Enter=steer 等）。
 
-边框色：`muted`（`components.editor-border`）。
+边框色：`{colors.muted}`（`{components.editor-border}`）。

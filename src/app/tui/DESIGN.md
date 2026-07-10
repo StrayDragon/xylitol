@@ -15,6 +15,11 @@ colors:
   diff-added: "#a6e3a1"
   diff-removed: "#f38ba8"
   diff-context: "#6c7086"
+  surface: "#1e1e2e"
+  tool-pending-bg: "#313244"
+  tool-success-bg: "#1e2b22"
+  tool-error-bg: "#2b1e22"
+  user-message-bg: "#313244"
 typography:
   body:
     fontFamily: "terminal-monospace"
@@ -41,6 +46,15 @@ components:
     textColor: "{colors.assistant}"
   tool-line:
     textColor: "{colors.tool}"
+  tool-pending:
+    backgroundColor: "{colors.tool-pending-bg}"
+  tool-success:
+    backgroundColor: "{colors.tool-success-bg}"
+  tool-error:
+    backgroundColor: "{colors.tool-error-bg}"
+  user-message:
+    backgroundColor: "{colors.user-message-bg}"
+    textColor: "{colors.on-surface}"
   status-line:
     textColor: "{colors.muted}"
     height: "{spacing.status-rows}"
@@ -62,8 +76,18 @@ components:
 # Design System — Xylitol Terminal
 
 > 规范：遵循 `common-design-md-zh`（中文正文 + YAML frontmatter tokens，值一律双引号）。
-> SSOT 索引：本文件。组件级 MUST：[`design/`](./design/)（各文件亦带 YAML frontmatter）。
+> **Token SSOT**：本文件 frontmatter。子文档见下方「Token 引用」。
+> 组件级 MUST：[`design/`](./design/)（各文件 YAML 只引用本文件，不另立色板）。
 > 包 `packages/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本面。
+
+## Token 引用（子文档）
+
+`design/*.md` 的 YAML 中形如 `{colors.diff-context}`、`{spacing.status-rows}`、`{components.footer}`、`{typography.body}`、`{rounded.none}` 的表达式：
+
+1. **根路径**：一律解析到 **本文件** `src/app/tui/DESIGN.md` 的 frontmatter 同名路径。
+2. 子文档 MUST 声明 `tokens_from: "../DESIGN.md"`，便于 agent / 人一眼找到根源。
+3. 子文档 MUST NOT 重新定义与主色板冲突的 hex；组件级只写引用或本组件独有的非色板属性（如 `height`）。
+4. 查色 / 查间距：先打开本文件 `colors` / `spacing` / `components`，再打开子文档看该组件用了哪些引用。
 
 ## Overview
 
@@ -86,8 +110,13 @@ components:
 | `accent` | 忙碌 spinner、当前焦点边框（一屏最多一处） |
 | `user` | 用户消息前缀（短 glyph） |
 | `tool` | 工具一行摘要（dim） |
-| `error` / `warning` / `success` | 异常与结果，少用 |
+| `error` / `warning` / `success` | 异常与结果，少用（**前景**） |
 | `diff-added` / `diff-removed` / `diff-context` | Diff 行着色（见 [`design/diff-block.md`](./design/diff-block.md)） |
+| `surface` | 默认底（终端常透明；需要垫底时用） |
+| `tool-pending-bg` / `tool-success-bg` / `tool-error-bg` | 工具块**全行背景**三态（对齐 pi `toolPendingBg` / `toolSuccessBg` / `toolErrorBg`：中性 / 浅绿 tint / 浅红 tint） |
+| `user-message-bg` | 用户消息可选全行背景（对齐 pi `userMessageBg`） |
+
+**工具状态背景（吸取 pi）**：成功/失败不要只靠 fg `ok`/`error` 字——用极淡的绿/红 **bg** 铺满工具块行宽（`apply_background_to_line` + 仅重置 `\x1b[49m`），pending 用中性 surface tint。实现落在 transcript / tool 壳（c470），包侧已有 `apply_background_to_line`。
 
 不要为 header / debug / 多角色长标签再扩一套色。选中列表用 **reverse**，不必单独 `selection-bg` 面板底。
 
@@ -104,6 +133,8 @@ components:
 - **underline**：可复制 URL 展示时可用
 
 段落间最多一空行。代码块：语法高亮即可，**无边框、无语言标签条、无树线装饰**（[`design/markdown.md`](./design/markdown.md)）。
+
+Markdown **fg 内联、bg 延后到行宽 padding**（与 pi-tui Markdown 一致），避免背景断在内容末尾。
 
 ## Layout
 
@@ -132,7 +163,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 
 ## Elevation & Depth
 
-无阴影、无卡片。层次靠：短前缀、dim/bold、reverse、以及 **editor 操作区边框**。不要双线框墙或装饰性 Unicode 表格线。
+无阴影、无卡片。层次靠：短前缀、dim/bold、reverse、editor 操作区边框，以及工具块的 **tint 背景**（pending/success/error）。不要双线框墙或装饰性 Unicode 表格线。
 
 ## Shapes
 
@@ -140,7 +171,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 
 ## Components
 
-组件级 MUST 见 [`design/`](./design/) 索引表。实现与 demo 引用子文档，勿仅依赖口头约定。
+组件级 MUST 见 [`design/`](./design/) 索引表。实现与 demo 引用子文档，勿仅依赖口头约定。子文档 token 表达式 → 本文件（见「Token 引用」）。
 
 | 文档 | 内容 |
 |---|---|
@@ -168,10 +199,13 @@ footer         1 行 dim（cwd · model · 可选 context%）
 - Do 用 editor 边框标出操作区（对齐 agent_demo）。
 - Do glyph 走应用配置，不探测字体。
 - Do thinking/tool 可展开（策略见 expandable）。
+- Do 工具块用 `tool-*-bg` 表达 pending/success/error（吸取 pi）。
 - Do YAML frontmatter 中所有 token 值使用双引号（`common-design-md-zh`）。
+- Do 子文档用 `{colors.*}` 引用本文件，并声明 `tokens_from`。
 - Don't 常驻 Plan / Tools / Files / 快捷键墙。
 - Don't 双栏、卡片、圆角、多字体、阴影。
 - Don't blit 弹层到内容绝对顶部。
 - Don't 截断历史冒充滚动。
 - Don't 为「好看」增加无法复制或复制后无意义的装饰字符。
+- Don't 在子文档另立冲突色板 hex。
 - Don't 在未对齐本 DESIGN 前把 `src/app/tui` 空场景当成产品视觉完成态。

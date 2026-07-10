@@ -47,8 +47,10 @@
 | 主题 | 约定 |
 |---|---|
 | 产品壳 | transcript / slash 语义 / session → `src/app/tui/` 或 `agent_demo`，**不**进本包 |
-| `agent_demo` 快捷键 | 应用级：`Ctrl+P/S` 槽替换；`Ctrl+T` thinking；**`Alt+E` tools**（避 `Ctrl+E`=cursorLineEnd）；**`Alt+G` glyphs**（避 `Ctrl+G`=未来外部 editor）；`Ctrl+O` step；**Ctrl+C** 清编辑器/空则退；**Esc** 流中 abort（经 InputListener） |
+| `agent_demo` 快捷键 | 应用级：`Ctrl+P/S` 槽替换；`Ctrl+T` thinking；**`Alt+E` tools**（避 `Ctrl+E`=cursorLineEnd）；**`Alt+G` glyphs**（避 `Ctrl+G`=未来外部 editor）；`Ctrl+O` step；**Ctrl+C** 清编辑器/空则退；**Esc** 流中 abort（经 InputListener）；UI 旁注用 `(Ctrl+T)` 括号完整和弦 |
 | 原型优先 | 真实 `src/app/tui` 所需 UX/UI 交互，优先在 `agent_demo` 验证后再接线产品面（见根 `_HANDOFF.md`） |
+| 工具 bg 三态 | 产品 theme：`tool-pending-bg` / `tool-success-bg` / `tool-error-bg`（`DESIGN.md`）；对齐 pi coding-agent，**不**进 pi-tui 包 |
+| Diff 行号 | unified 已有；SBS 行号 + pi edit 格式 → c459 |
 
 ---
 
@@ -58,3 +60,4 @@
 |---|---|
 | 2026-07-09 | 建表；纳入 D01–D15；记录 `CompletionSource`（D13）与 demo Alt+E/G 键位 |
 | 2026-07-10 | D16 InputListener（c455）；demo Ctrl+C/Esc 经 listener |
+| 2026-07-10 | 记录工具 bg 三态 / Diff SBS 行号缺口（c459）；demo 括号键位 |

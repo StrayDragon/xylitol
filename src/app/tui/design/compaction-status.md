@@ -1,14 +1,19 @@
 ---
 version: "alpha"
 name: "compaction-status"
-description: "Xylitol Terminal component UX — see DESIGN.md index."
+description: "Draft — context compaction / retry status (c493)."
+tokens_from: "../DESIGN.md"
+components:
+  compaction-line:
+    textColor: "{colors.muted}"
 ---
 
 # Compaction status（草稿）
+
+> Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
 
 后置：上下文压缩 / 重试状态（c493）。
 
 ## 意向
 
-- 走 status 一行（Retry… / Compacting…）；idle 不占行。
-- 详情进日志或可展开一行，勿底栏增高。
+短 dim 一行；忙碌时可并入 status（见 [`status.md`](./status.md)），勿常驻多行。

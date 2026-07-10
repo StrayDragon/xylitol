@@ -8,7 +8,7 @@
 
 ## 视觉 / UX
 
-产品终端视觉 SSOT：本目录 **`DESIGN.md`**（索引 + 全局 tokens，遵循 `common-design-md-zh`）与 **`design/*.md`**（组件级 MUST；拆分见 c449）。包内组件只收闭包主题，不承载产品 layout。当前 `run()` 空场景仅为 host 框架占位，**未**按 DESIGN 实现产品视觉。
+产品终端视觉 SSOT：本目录 **`DESIGN.md`**（索引 + 全局 tokens，遵循 `common-design-md-zh`）与 **`design/*.md`**（组件级 MUST；`tokens_from: "../DESIGN.md"`，`{colors.*}` 等表达式解析到主文件）。包内组件只收闭包主题，不承载产品 layout。当前 `run()` 空场景仅为 host 框架占位，**未**按 DESIGN 实现产品视觉。
 
 ## Specs
 
