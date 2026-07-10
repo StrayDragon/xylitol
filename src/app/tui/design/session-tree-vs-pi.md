@@ -16,16 +16,17 @@ pi / xylitol：树 **替换 editor 槽**（`showSelector`），非居中 overlay
 | 增量搜索 + Esc 清搜索 | ✓ | ✓（c456） |
 | Filter：default / no-tools / user / labeled / all | ✓ Ctrl+D/T/U/L/A | ✓ demo（c456；包仅 `include_node`） |
 | Cycle filter Ctrl+O | ✓（树内） | ✓ 树开时循环；关树 = 工具视口 |
-| Fold ⊞/⊟ + Ctrl/Alt←→ 分支跳转 | ✓ | ✗ |
-| Shift+L label / Shift+T 时间戳 | ✓ | ✗ |
+| Fold ⊞/⊟ + Ctrl/Alt←→ 分支跳转 | ✓ | ✓（c467） |
+| Shift+L label / Shift+T 时间戳 | ✓ | ✓ demo annotation（c467） |
 | 选中行水平平移（深 indent） | ✓ | ✗ |
-| 状态行 `(i/n) [filter]` | ✓ | 有 `(i/n)` |
+| 状态行 `(i/n) [filter]` | ✓ | ✓ |
 | 路径 `•` / 选中 `›` | ✓ | ✓ |
 
 ## 建议落地顺序
 
 1. ~~**c464**~~：SBS Diff 去整行红绿底 — 已归档。
-2. ~~**c456**~~：搜索 + filter 五档 + ←→ 翻页 + 状态标签 — 本批。
-3. 其后：fold / branch jump → label → 水平平移 → 产品 c491。
+2. ~~**c456**~~：搜索 + filter + ←→ — 已归档。
+3. ~~**c467**~~：fold / 分支跳转 / annotation — 本批。
+4. 其后：水平平移 → 产品 c491（验收本批后再动）。
 
 包继续只吃 `TreeNode { id, label, children }`；展示文案由 demo/app 预渲染进 `label`。

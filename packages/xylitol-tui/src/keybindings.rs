@@ -124,6 +124,26 @@ static TUI_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
         &["escape", "ctrl+c"],
         Some("Cancel selection"),
     ),
+    (
+        "tui.tree.foldOrUp",
+        &["ctrl+left", "alt+left"],
+        Some("Fold tree branch or jump up"),
+    ),
+    (
+        "tui.tree.unfoldOrDown",
+        &["ctrl+right", "alt+right"],
+        Some("Unfold tree branch or jump down"),
+    ),
+    (
+        "tui.tree.editLabel",
+        &["shift+l"],
+        Some("Edit tree annotation"),
+    ),
+    (
+        "tui.tree.toggleLabelTimestamp",
+        &["shift+t"],
+        Some("Toggle annotation timestamps"),
+    ),
 ];
 
 pub struct KeybindingsManager {
