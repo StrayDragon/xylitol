@@ -1,0 +1,3 @@
+# Binary/large files — skip text normalization and large-file checks
+*.7z.archived binary
+*.7z binary
