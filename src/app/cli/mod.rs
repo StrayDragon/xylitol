@@ -74,9 +74,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Install the tracing subscriber (env-driven, file-only) ──────
     // Done before any mode dispatch so every surface (print / TUI / RPC /
-    // subcommands) is covered. No-op unless RUST_LOG / XYLITOL_DEBUG is set,
-    // and writes only to ~/.xylitol/logs/xylitol.log — never stdout/stderr,
-    // which would corrupt the TUI's inline viewport (see app/cli/logging.rs).
+    // subcommands) is covered. Debug builds default on; release needs
+    // RUST_LOG / XYLITOL_DEBUG. File-only (~/.xylitol/logs/xylitol.log) —
+    // never stdout/stderr (see app/cli/logging.rs).
     logging::init_logging(&crate::infra::resource::DefaultResourceLoader::default_agent_dir());
 
     // ── Subcommands: handled early, no model loading needed ─────────
