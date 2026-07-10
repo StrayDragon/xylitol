@@ -101,8 +101,10 @@ fn strip_ansi_codes(s: &str) -> String {
                 _ => {}
             }
         }
-        result.push(bytes[i] as char);
-        i += 1;
+        // Copy one UTF-8 scalar — never `bytes[i] as char` (splits `·` → Â·, +1 width).
+        let ch = s[i..].chars().next().expect("i in bounds");
+        result.push(ch);
+        i += ch.len_utf8();
     }
     result
 }
@@ -1084,4 +1086,18 @@ pub fn apply_background_to_line(
     let padding = width.saturating_sub(visible_len);
     let with_padding = format!("{}{}", line, " ".repeat(padding));
     bg_fn(&with_padding)
+}
+
+#[cfg(test)]
+mod visible_width_tests {
+    use super::*;
+
+    #[test]
+    fn middle_dot_is_one_column_with_or_without_ansi() {
+        // Regression: strip_ansi used `bytes[i] as char`, splitting U+00B7 into Â· (+1 width).
+        let plain = "cwd · model";
+        assert_eq!(visible_width(plain), 11);
+        let styled = format!("\x1b[31m{plain}\x1b[0m");
+        assert_eq!(visible_width(&styled), 11);
+    }
 }

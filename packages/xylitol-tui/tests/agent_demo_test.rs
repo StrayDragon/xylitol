@@ -418,7 +418,8 @@ fn agent_demo_default_hides_hardware_cursor_during_stream() {
 
 #[test]
 fn agent_demo_layout_is_minimal_single_column() {
-    let mut h = TuiTestHarness::new(172, 40);
+    // Tall enough that seed (all blocks expanded) still shows the top of transcript.
+    let mut h = TuiTestHarness::new(172, 80);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
     ))))
@@ -440,7 +441,11 @@ fn agent_demo_layout_is_minimal_single_column() {
     );
     assert!(
         text.contains("thinking"),
-        "seed transcript should include a collapsed thinking block; got:\n{text}"
+        "seed transcript should include a thinking block; got:\n{text}"
+    );
+    assert!(
+        text.contains("Keep transcript in scrollback"),
+        "seed thinking starts expanded; got:\n{text}"
     );
     assert!(
         text.contains("(Ctrl+P)") && text.contains("(Ctrl+S)") && text.contains("keys:"),
@@ -511,8 +516,8 @@ fn agent_demo_thinking_typewriter_expands_then_collapses() {
 }
 
 #[test]
-fn agent_demo_ctrl_t_expands_thinking_block() {
-    let mut h = TuiTestHarness::new(172, 40);
+fn agent_demo_ctrl_t_toggles_thinking_block() {
+    let mut h = TuiTestHarness::new(172, 80);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
     ))))
@@ -525,23 +530,23 @@ fn agent_demo_ctrl_t_expands_thinking_block() {
         "thinking starts present; got:\n{before}"
     );
     assert!(
-        !before.contains("Keep transcript in scrollback"),
-        "collapsed thinking must hide body; got:\n{before}"
+        before.contains("Keep transcript in scrollback"),
+        "seed thinking starts expanded; got:\n{before}"
     );
 
-    h.keys("\x14"); // Ctrl+T
+    h.keys("\x14"); // Ctrl+T collapses when any thinking is open
     h.render_result()
-        .expect("expand thinking must stay within width");
+        .expect("collapse thinking must stay within width");
     let after = h.tui.terminal.viewport().join("\n");
     assert!(
-        after.contains("Keep transcript in scrollback"),
-        "Ctrl+T should expand thinking body; got:\n{after}"
+        !after.contains("Keep transcript in scrollback"),
+        "Ctrl+T should collapse thinking body; got:\n{after}"
     );
 }
 
 #[test]
-fn agent_demo_alt_e_expands_tool_block() {
-    let mut h = TuiTestHarness::new(172, 40);
+fn agent_demo_alt_e_toggles_tool_block() {
+    let mut h = TuiTestHarness::new(172, 80);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
     ))))
@@ -551,26 +556,26 @@ fn agent_demo_alt_e_expands_tool_block() {
     let before = h.tui.terminal.viewport().join("\n");
     assert!(
         before.contains("agent_demo.rs"),
-        "seed tool block starts collapsed; got:\n{before}"
+        "seed tool block present; got:\n{before}"
     );
     assert!(
-        !before.contains("demo stub") && !before.contains("opened agent_demo"),
-        "collapsed tool must hide detail; got:\n{before}"
+        before.contains("opened agent_demo") || before.contains("FakeCodingAgentApp"),
+        "seed tool starts expanded; got:\n{before}"
     );
 
-    h.keys("\x1be"); // Alt+E (not Ctrl+E — reserved for editor cursorLineEnd)
+    h.keys("\x1be"); // Alt+E collapses all tool/diff when any are open
     h.render_result()
-        .expect("expand tools must stay within width");
+        .expect("collapse tools must stay within width");
     let after = h.tui.terminal.viewport().join("\n");
     assert!(
-        after.contains("opened agent_demo") || after.contains("FakeCodingAgentApp"),
-        "Alt+E should expand tool detail; got:\n{after}"
+        !after.contains("opened agent_demo") && !after.contains("FakeCodingAgentApp"),
+        "Alt+E should collapse tool detail; got:\n{after}"
     );
 }
 
 #[test]
 fn agent_demo_alt_g_cycles_glyph_set_to_ascii() {
-    let mut h = TuiTestHarness::new(172, 40);
+    let mut h = TuiTestHarness::new(172, 80);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
     ))))
@@ -693,7 +698,7 @@ fn agent_demo_streaming_fence_emits_ansi_when_closed() {
 
 #[test]
 fn agent_demo_collapsible_headers_show_key_hints() {
-    let mut h = TuiTestHarness::new(120, 40);
+    let mut h = TuiTestHarness::new(120, 80);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
     ))))
@@ -732,7 +737,7 @@ fn agent_demo_simulated_edit_tool_pops_expanded_diff() {
 
 #[test]
 fn agent_demo_seed_shows_unified_and_side_by_side_diffs() {
-    let mut h = TuiTestHarness::new(120, 48);
+    let mut h = TuiTestHarness::new(120, 80);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
     ))))
@@ -742,9 +747,7 @@ fn agent_demo_seed_shows_unified_and_side_by_side_diffs() {
     h.assert_text_contains("side-by-side");
     h.assert_text_contains("edit-format");
 
-    // Expand tool+diff blocks together (demo exemplar).
-    h.keys("\x1be"); // Alt+E
-    h.render_result().expect("expand diffs");
+    // Seed diffs start expanded — bodies visible without Alt+E.
     let text = h.tui.terminal.viewport().join("\n");
     assert!(
         text.contains("ready") || text.contains("prompt"),
