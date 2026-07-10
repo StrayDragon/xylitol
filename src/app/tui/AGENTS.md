@@ -14,19 +14,23 @@
 
 ## Specs
 
-产品面 capability：`app-tui-*`（`app-tui-host` / `bridge` / `transcript` / `chrome` / `input` / `commands`）。合约修订：`c450-revise-app-tui-contract`。
+产品面 capability：`app-tui-*`（`app-tui-host` / `bridge` / `transcript` / `chrome` / `input` / `commands`）。跨切面索引：`app-tui`。合约已归档：`archive/2026-07-10-c450-revise-app-tui-contract`。
+
+steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面只调 `Driver`，不持有 ReAct 队列。
 
 ## Debug 日志
 
-debug 构建默认写即时日志（可 `tail -f`）；release 默认关。路径与开关见 `app/cli/logging.rs`；排查用 `XYLITOL_DEBUG=1` 或 `RUST_LOG=…`，`target: "xylitol::tui"`。禁止 `println!`。
+**目标**：debug 构建默认写即时日志（可 `tail -f`）；release 默认关。
+**现状**：仍以 `XYLITOL_DEBUG` / `RUST_LOG` 为准；`cfg(debug_assertions)` 兜底待 **c460** 落地（见 `_tmp_prompts/03b-logging-findings.md`）。
+路径见 `app/cli/logging.rs`；`target: "xylitol::tui"`。禁止 `println!`。
 
 ## 硬约束
 
 - 渲染/通用组件只用 `xylitol_tui`；禁止在本目录再实现差分引擎或通用 Editor/Markdown。
 - **需要底层 TUI 能力时**（新组件、键协议、overlay、布局容器、渲染/输入管线等）：先到 `packages/xylitol-tui` 查是否已有或可扩展；缺能力在包内补，再由本面接线。不要在本目录复制「准通用」实现。
 - 产品路径 **host 驱动**同步引擎；异步事件合流在本面；勿调 `TUI::start()`（demo 专用）。
-- 驱动 agent 只经 `app/core/driver::Driver`；禁止 reach `agent::session` / `runtime` / `infra`。
-- slash 语义复用 `protocol::Command`，经 `app/core/dispatch`。
+- 驱动 agent 只经 `app/core/driver::Driver`（含日后 `steer` / `follow_up` / `clear_queue`）；禁止 reach `agent::session` / `runtime` / `infra`。
+- slash 语义复用 `protocol::Command`，经 `app/core/dispatch`（含 Steer/FollowUp 变体，见 c461）。
 - 组件不直接调 `Driver`、不读写 session；颜色走本面 theme 语义 token（对齐 `DESIGN.md`）。
 - 需要新 agent 行为 → 先扩 `runtime_protocol/` / `agent/`，本面只消费。
 

@@ -12,6 +12,7 @@
 - **agent 不依赖 infra**；**infra 不依赖 agent**。
 - **domain** 零 crate 内依赖；**runtime_protocol** 只依赖 `domain`。
 - **应用面走 seam、不 reach 内部**：禁止 `agent::session::*` / `agent::runtime::*` / `infra::*`；只从 `crate::agent`（mod 级）与 `crate::app::core` import。共享 seam：`composition::build_agent` → `Driver::run(prompt)` → `XyEvent` 流 → 该面渲染；不够就扩 seam，不绕过。方法论：`write-surface` skill。
+- **流中改道（steer / follow-up）**：经 `Driver` 队列 API（c461），禁止应用面直接改 ReAct 内部队列。`abort` 清 steer、保留 follow_up（供 UI restore）。详见 `llmanspec/changes/c461-expose-steer-followup-seam/design.md`。
 
 ```text
 app → agent → runtime_protocol → domain
@@ -27,7 +28,7 @@ protocol ───────────────────────�
 - `infra/` — ports 的实现（provider、tools、session、config、…）。
 - `agent/` — ReAct / session / model / tools 编排；公共入口为 mod 级 re-export。
 - `protocol/` — `Command` / `Event` 线协议，传输无关。
-- `app/` — 应用面 + `core/` seam。状态：`cli/print` ✅；`server/` 🟡；`tui/` 🟡（占位，基于 `xylitol-tui` 重做，见 `src/app/tui/AGENTS.md`）；`gui` 🔴。跨面：`core/{bootstrap,dispatch,composition,driver}`。落地顺序 print → server → TUI，禁止并行铺骨架。
+- `app/` — 应用面 + `core/` seam。状态：`cli/print` ✅；`server/` 🟡；`tui/` 🟡（占位，基于 `xylitol-tui` 重做，见 `src/app/tui/AGENTS.md`）；`gui` 🔴。跨面：`core/{bootstrap,dispatch,composition,driver}`。`tui` 已在 Cargo **default features**。落地顺序 print → server → TUI，禁止并行铺骨架。
 
 模块级文件地图以目录与代码为准；本文件不维护易变文件清单。
 
