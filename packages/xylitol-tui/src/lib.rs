@@ -69,8 +69,9 @@ pub use keys::{
 pub use paste_burst::PasteBurst;
 pub use terminal::{CrosstermTerminal, Terminal, parse_kitty_flags};
 pub use terminal_colors::{
-    RgbColor, TerminalColorScheme, is_osc11_background_color_response,
-    parse_osc11_background_color, parse_terminal_color_scheme_report,
+    RgbColor, TerminalColorScheme, ThemeDetectSources, is_osc11_background_color_response,
+    parse_colorfgbg, parse_osc11_background_color, parse_terminal_color_scheme_report,
+    relative_luminance, resolve_terminal_color_scheme, scheme_from_background_rgb,
 };
 pub use terminal_image::{hyperlink, is_image_line};
 pub use tui::{
