@@ -1088,6 +1088,55 @@ pub fn apply_background_to_line(
     bg_fn(&with_padding)
 }
 
+/// Whether to keep the head or tail when truncating to a visual-line budget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TruncateFrom {
+    #[default]
+    Tail,
+    Head,
+}
+
+/// Result of [`truncate_to_visual_lines`] (pi `truncateToVisualLines`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VisualTruncateResult {
+    pub visual_lines: Vec<String>,
+    pub skipped_count: usize,
+}
+
+/// Wrap-aware truncate to at most `max_visual_lines` (ANSI-safe via [`wrap_text_with_ansi`]).
+///
+/// `Tail` keeps the last N lines (bash/tool live preview). `Head` keeps the first N.
+/// When `max_visual_lines` is `usize::MAX`, returns all wrapped lines with `skipped_count = 0`.
+pub fn truncate_to_visual_lines(
+    text: &str,
+    max_visual_lines: usize,
+    width: usize,
+    from: TruncateFrom,
+) -> VisualTruncateResult {
+    if text.is_empty() {
+        return VisualTruncateResult {
+            visual_lines: Vec::new(),
+            skipped_count: 0,
+        };
+    }
+    let all = wrap_text_with_ansi(&text.replace('\t', "   "), width.max(1));
+    if max_visual_lines == usize::MAX || all.len() <= max_visual_lines {
+        return VisualTruncateResult {
+            visual_lines: all,
+            skipped_count: 0,
+        };
+    }
+    let skipped = all.len() - max_visual_lines;
+    let visual_lines = match from {
+        TruncateFrom::Tail => all[skipped..].to_vec(),
+        TruncateFrom::Head => all[..max_visual_lines].to_vec(),
+    };
+    VisualTruncateResult {
+        visual_lines,
+        skipped_count: skipped,
+    }
+}
+
 #[cfg(test)]
 mod visible_width_tests {
     use super::*;

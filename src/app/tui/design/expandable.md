@@ -33,15 +33,17 @@ components:
 5. **工具块背景三态**（吸取 pi `ToolExecutionComponent`）：pending → `{colors.tool-pending-bg}`；成功 → `{colors.tool-success-bg}`；失败 → `{colors.tool-error-bg}`。全行宽 padding 后套 bg（`apply_background_to_line`），ANSI 只重置背景（`\x1b[49m`），勿冲掉内容 fg。
 6. **Diff 块例外**：状态 tint **只铺摘要/header 行**；展开后的 Diff 正文 MUST 只用 Diff 自身的 added/removed/context fg（及 word-level），**MUST NOT** 再套 `tool-*-bg`（否则红/绿行与块级绿底打架）。
 7. **Tool 详情不重复命令**：摘要行已含命令时，展开详情 MUST NOT 再 echo 同一命令（可只留 exit / stderr / 预览）。
+8. **详情视口（max-height）**：块已展开（Alt+E）后，长输出仍有第二层折叠——默认只保留末尾 N 行视觉行（wrap-aware），上方插 dim 提示 `... (N earlier lines, ctrl+o to expand)`；**Ctrl+O** 全局切换「视口 / 全文」。流式时折叠态贴尾（新行进尾、earlier 计数涨）。包实现：`ExpandableOutput` / `render_expandable_output`（`packages/xylitol-tui`）；与 Alt+E「块有无详情」正交。
 
 ## 已验证（c462 / agent_demo）
 
 - seed：Tool 全块 tint；Diff **仅 header** tint + 正文 Diff 配色。
 - 脚本：Tool/Edit 先 `Pending` 再翻 `Success`（摘要 `· running` → `· ok`）；详情不重复 `$ cmd`。
 - harness：cell `Color::Rgb` 断言（见 `agent_demo_test`）。
+- 长 bash seed + Ctrl+O：collapsed hint/tail；expanded 全文；流式 AppendToolDetail 贴尾（`agent_demo_*viewport*` / `*ctrl_o*` / `*streaming_tool*`）。
 
 ## 策略（可后续细化）
 
-默认折叠哪些、是否记住、是否全局一键展开工具 → 接线后可再议；本文件锁定「需要可展开」+「块旁键位提示」+「工具 bg 三态」。
+默认折叠哪些、是否记住、是否全局一键展开工具 → 接线后可再议；本文件锁定「需要可展开」+「块旁键位提示」+「工具 bg 三态」+「详情 max-height 视口」。
 
 Diff 块也可套同一展开壳（见 [`diff-block.md`](./diff-block.md)）；展开策略与 tool 块可共用状态机（c453）。

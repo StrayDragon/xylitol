@@ -17,10 +17,11 @@ use xylitol_tui::components::settings_list::{
 };
 use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, set_keybindings};
 use xylitol_tui::{
-    Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme, Focusable, InputEvent,
-    InputListenerResult, Markdown, MarkdownOptions, MarkdownTheme, SystemClock, TUI, TreeNode,
-    TreeSelector, TreeSelectorOptions, TreeSelectorTheme, apply_background_to_line, highlight_code,
-    matches_key_event, render_diff_lines, truncate_to_width, visible_width, wrap_text_with_ansi,
+    Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme, ExpandableOutputOptions,
+    Focusable, InputEvent, InputListenerResult, Markdown, MarkdownOptions, MarkdownTheme,
+    SystemClock, TUI, TreeNode, TreeSelector, TreeSelectorOptions, TreeSelectorTheme,
+    apply_background_to_line, highlight_code, matches_key_event, render_diff_lines,
+    render_expandable_output, truncate_to_width, visible_width, wrap_text_with_ansi,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
@@ -143,6 +144,21 @@ fn sample_display_diff() -> String {
         "       11 | +    DiffInput, Focusable, InputEvent,",
     ]
     .join("\n")
+}
+
+/// Long tool stdout for expandable viewport (morphology only; content is filler).
+fn sample_long_bash_output() -> String {
+    let mut lines: Vec<String> = (1..=24)
+        .map(|i| format!("(pass) suite-{i:02} · case ok"))
+        .collect();
+    lines.extend([
+        "202 pass".into(),
+        "0 fail".into(),
+        "454 expect() calls".into(),
+        "Ran 202 tests across 33 files. [9.26s]".into(),
+        "Took 9.3s".into(),
+    ]);
+    lines.join("\n")
 }
 
 /// Prefer workspace-relative path when under `cwd`; otherwise absolute.
@@ -408,6 +424,11 @@ enum TranscriptEntry {
 
 enum ScriptEvent {
     Tool(String),
+    /// Long bash stdout streamed into Tool detail (expandable viewport demo).
+    StreamingBash {
+        summary: String,
+        lines: Vec<String>,
+    },
     /// Agent Edit tool: summary line + expanded pi-format Diff (pops open like pi).
     Edit {
         summary: String,
@@ -428,6 +449,11 @@ enum TimedAction {
     SetToolStatus {
         index: usize,
         status: ToolBlockStatus,
+    },
+    /// Append to a Tool entry's detail (streaming bash/tool output; viewport sticks to tail).
+    AppendToolDetail {
+        index: usize,
+        chunk: String,
     },
 }
 
@@ -476,6 +502,11 @@ pub struct FakeCodingAgentApp {
     glyph_set: GlyphSet,
     /// Workspace root for Edit path display (`format_edit_path`) and `@` completion.
     cwd: std::path::PathBuf,
+    /// Global tool-output viewport (pi `toolsExpanded` / Ctrl+O). Collapsed = last N
+    /// visual lines + `... (N earlier lines, ctrl+o to expand)`; expanded = full detail.
+    tools_output_expanded: bool,
+    /// Max visual lines when collapsed (pi bash tool = 5).
+    tools_output_max_lines: usize,
 }
 
 impl FakeCodingAgentApp {
@@ -551,6 +582,25 @@ impl FakeCodingAgentApp {
     /// Harness: push an already-finished tool (header has cmd; detail has no `$` echo).
     pub fn push_tool_for_test(&mut self, summary: impl Into<String>, detail: impl Into<String>) {
         self.push_tool(summary, detail, ToolBlockStatus::Success);
+    }
+
+    /// Harness: transcript length (index of next push).
+    pub fn transcript_len_for_test(&self) -> usize {
+        self.transcript.len()
+    }
+
+    /// Harness: global tool-output viewport expand (Ctrl+O).
+    pub fn tools_output_expanded_for_test(&self) -> bool {
+        self.tools_output_expanded
+    }
+
+    pub fn set_tools_output_expanded_for_test(&mut self, expanded: bool) {
+        self.tools_output_expanded = expanded;
+    }
+
+    /// Harness: append to a Tool detail (streaming viewport).
+    pub fn append_tool_detail_for_test(&mut self, index: usize, chunk: impl Into<String>) {
+        self.append_tool_detail_at(index, &chunk.into());
     }
 
     /// Harness: flip a specific tool/diff entry to success.
@@ -803,6 +853,8 @@ impl FakeCodingAgentApp {
             quit_flag,
             glyph_set: GlyphSet::from_env(),
             cwd,
+            tools_output_expanded: false,
+            tools_output_max_lines: 5,
         };
         app.seed_transcript();
         app
@@ -812,7 +864,7 @@ impl FakeCodingAgentApp {
         // One-shot help — fold keys live on blocks as `(Ctrl+T)` / `(Alt+E)`.
         self.push_message(
             Role::System,
-            "keys: Enter submit · double Esc tree · /cmds · @path · (Ctrl+P) · (Ctrl+S) · (Alt+G) · (Ctrl+O) · Esc · (Ctrl+C)",
+            "keys: Enter submit · double Esc tree · /cmds · @path · (Ctrl+P) · (Ctrl+S) · (Alt+G) · (Ctrl+O expand tools) · (Ctrl+Shift+O step) · Esc · (Ctrl+C)",
         );
         self.push_message(
             Role::System,
@@ -832,6 +884,12 @@ impl FakeCodingAgentApp {
         self.push_tool(
             "read packages/xylitol-tui/examples/agent_demo.rs · 42ms · 790 lines",
             "ok — opened agent_demo.rs\n(preview) FakeCodingAgentApp + scripted turn harness",
+            ToolBlockStatus::Success,
+        );
+        // Long bash-style output: collapsed viewport shows last N + ctrl+o hint (pi).
+        self.push_tool(
+            "$ bun test (timeout 120s) · ok",
+            sample_long_bash_output(),
             ToolBlockStatus::Success,
         );
         // Seed blocks start expanded so SBS / edit / gutter are visible without Alt+E.
@@ -1287,6 +1345,9 @@ impl FakeCodingAgentApp {
                 TimedAction::SetToolStatus { index, status } => {
                     self.set_tool_status_at(index, status);
                 }
+                TimedAction::AppendToolDetail { index, chunk } => {
+                    self.append_tool_detail_at(index, &chunk);
+                }
             }
             changed = true;
         }
@@ -1318,6 +1379,7 @@ impl FakeCodingAgentApp {
                         | TimedAction::StreamStart(_)
                         | TimedAction::StreamChunk(_, _)
                         | TimedAction::StreamFinish(_)
+                        | TimedAction::AppendToolDetail { .. }
                 )
             })
     }
@@ -1358,6 +1420,48 @@ impl FakeCodingAgentApp {
         self.sync_status_after_tools();
     }
 
+    fn append_tool_detail_at(&mut self, index: usize, chunk: &str) {
+        if let Some(TranscriptEntry::Tool { detail, .. }) = self.transcript.get_mut(index) {
+            detail.push_str(chunk);
+        }
+    }
+
+    fn toggle_tools_output_expanded(&mut self) {
+        self.tools_output_expanded = !self.tools_output_expanded;
+    }
+
+    /// Schedule a streaming bash tool: detail grows line-by-line (collapsed viewport sticks to tail).
+    fn push_streaming_bash_tool(&mut self, summary: impl Into<String>, lines: &[String]) {
+        self.set_status("Working");
+        let summary = summary.into();
+        self.recent_tools.insert(0, summary.clone());
+        self.recent_tools.truncate(4);
+        let index = self.transcript.len();
+        self.push_tool(
+            format!("{summary} · running"),
+            String::new(),
+            ToolBlockStatus::Pending,
+        );
+        let mut delay = 2u64;
+        for line in lines {
+            self.schedule_from_now(
+                delay,
+                TimedAction::AppendToolDetail {
+                    index,
+                    chunk: format!("{line}\n"),
+                },
+            );
+            delay = delay.saturating_add(1);
+        }
+        self.schedule_from_now(
+            delay.saturating_add(2),
+            TimedAction::SetToolStatus {
+                index,
+                status: ToolBlockStatus::Success,
+            },
+        );
+    }
+
     fn advance_script(&mut self) {
         if let Some(event) = self.pending_events.pop_front() {
             self.apply_event(event);
@@ -1370,6 +1474,16 @@ impl FakeCodingAgentApp {
                 // Tight burst: both Pending at once, independent flips.
                 ScriptEvent::Tool("cargo test -p xylitol-tui --test agent_demo_test".into()),
                 ScriptEvent::Tool("cargo test --test tui_e2e -- --ignored".into()),
+                ScriptEvent::StreamingBash {
+                    summary: "$ git commit --dry-run (stream)".into(),
+                    lines: (1..=18)
+                        .map(|i| format!("check step-{i:02}........................Passed"))
+                        .chain([
+                            "Command exited with code 0".into(),
+                            "Took 1.8s".into(),
+                        ])
+                        .collect(),
+                },
                 ScriptEvent::MarkPlan(1),
                 ScriptEvent::Assistant(
                     "agent_demo is now the single example surface; the old kitchen-sink demos are scheduled for removal.".into(),
@@ -1418,6 +1532,9 @@ impl FakeCodingAgentApp {
                         status: ToolBlockStatus::Success,
                     },
                 );
+            }
+            ScriptEvent::StreamingBash { summary, lines } => {
+                self.push_streaming_bash_tool(summary, &lines);
             }
             ScriptEvent::Edit { summary, input } => {
                 self.set_status("Working");
@@ -1546,7 +1663,20 @@ impl FakeCodingAgentApp {
                     let mut block = Vec::new();
                     Self::push_wrapped(&mut block, &header, width);
                     if *expanded {
-                        Self::push_wrapped(&mut block, &dim(detail), width);
+                        let opts = ExpandableOutputOptions {
+                            max_preview_lines: self.tools_output_max_lines,
+                            expand_hint: "ctrl+o to expand".into(),
+                            hint_style: Some(dim),
+                            ..ExpandableOutputOptions::default()
+                        };
+                        for line in render_expandable_output(
+                            detail,
+                            width,
+                            self.tools_output_expanded,
+                            &opts,
+                        ) {
+                            block.push(Self::fit(&line, width));
+                        }
                     }
                     for line in block {
                         lines.push(paint_tool_bg(&line, width, *status));
@@ -1670,7 +1800,7 @@ impl Component for FakeCodingAgentApp {
             // Compact cue strip — full list is in the seed system line.
             footer_owned = format!(
                 // Keep cue strip short — narrow terminals (80 cols) still fit.
-                "{} · {} · /@ (Ctrl+P)/(Ctrl+S) (Alt+G) (Ctrl+O)",
+                "{} · {} · /@ (Ctrl+P)/(Ctrl+S) (Alt+G) (Ctrl+O tools)",
                 self.footer_note,
                 self.glyph_set.label()
             );
@@ -1787,6 +1917,10 @@ impl Component for FakeCodingAgentApp {
             return;
         }
         if matches_key_event(key, "ctrl+o") {
+            self.toggle_tools_output_expanded();
+            return;
+        }
+        if matches_key_event(key, "ctrl+shift+o") {
             self.advance_script();
             return;
         }
