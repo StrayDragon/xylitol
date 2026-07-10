@@ -57,16 +57,15 @@ fn key_hint(chord: &str) -> String {
     dim(&format!("({chord})"))
 }
 
-/// Richer unified sample (multi-hunk, word-level pair) via LinePair.
+/// Richer unified sample via pi edit format (aligned `±N content`).
 fn sample_unified_pair() -> DiffInput {
-    DiffInput::LinePair {
-        old: "fn ready() -> bool {\n    true\n}\n".into(),
-        new: "fn ready(prompt: &str) -> bool {\n    !prompt.is_empty()\n}\n".into(),
-        path: Some("packages/xylitol-tui/examples/agent_demo.rs".into()),
-    }
+    DiffInput::from_edit_pair(
+        "fn ready() -> bool {\n    true\n}\n",
+        "fn ready(prompt: &str) -> bool {\n    !prompt.is_empty()\n}\n",
+    )
 }
 
-/// Side-by-side sample — force low width threshold so demo shows L/R on typical terminals.
+/// Side-by-side sample — LinePair so SBS layout is exercised; compact gutters by default.
 fn sample_sbs_pair() -> DiffInput {
     DiffInput::LinePair {
         old: "status: Ready\nfooter: cwd · model\n".into(),
@@ -87,16 +86,11 @@ fn sample_display_diff() -> String {
     .join("\n")
 }
 
-/// pi edit-style `±NNNN content` sample (c459).
-fn sample_edit_text() -> DiffInput {
-    DiffInput::EditText(
-        [
-            "  40 fn ready() -> bool {",
-            "-  41     true",
-            "+  41     !prompt.is_empty()",
-            "  42 }",
-        ]
-        .join("\n"),
+/// Larger edit-tool style sample (context + change) for simulated Edit steps.
+fn sample_edit_tool_pair() -> DiffInput {
+    DiffInput::from_edit_pair(
+        "pub fn footer_note(cwd: &str, model: &str) -> String {\n    format!(\"{cwd} · {model}\")\n}\n",
+        "pub fn footer_note(cwd: &str, model: &str, ctx: u8) -> String {\n    format!(\"{cwd} · {model} · {ctx}%\")\n}\n",
     )
 }
 
@@ -285,6 +279,11 @@ enum TranscriptEntry {
 
 enum ScriptEvent {
     Tool(String),
+    /// Agent Edit tool: summary line + expanded pi-format Diff (pops open like pi).
+    Edit {
+        summary: String,
+        input: DiffInput,
+    },
     Assistant(String),
     MarkPlan(usize),
     File(String),
@@ -586,9 +585,9 @@ impl FakeCodingAgentApp {
             "read packages/xylitol-tui/examples/agent_demo.rs · 42ms · 790 lines",
             "ok — opened agent_demo.rs\n(preview) FakeCodingAgentApp + scripted turn harness",
         );
-        // Unified + side-by-side samples (collapsed; Alt+E expands — same toggle as tools).
+        // Unified (edit-format) + side-by-side samples (collapsed; Alt+E expands).
         self.push_diff_ex(
-            "edited demo.rs (+2 -2) unified",
+            "edited demo.rs (+2 -2) unified edit-format",
             sample_unified_pair(),
             None,
             false,
@@ -603,13 +602,6 @@ impl FakeCodingAgentApp {
         self.push_diff_ex(
             "edited demo.rs (display_diff gutter)",
             DiffInput::DisplayText(sample_display_diff()),
-            None,
-            false,
-        );
-        // pi edit compact line numbers (c459).
-        self.push_diff_ex(
-            "edited ready() (+1 -1) edit-format",
-            sample_edit_text(),
             None,
             false,
         );
@@ -943,6 +935,22 @@ impl FakeCodingAgentApp {
         );
         let mark_two_delay = self.jitter_ticks(2, 8);
         self.queue_event(mark_two_delay, ScriptEvent::MarkPlan(2));
+        // Simulate agent Edit tool: pending status → expanded edit Diff pops open.
+        let edit_status_delay = self.jitter_ticks(4, 10);
+        self.queue_event(
+            edit_status_delay,
+            ScriptEvent::Status("Editing footer_note".into()),
+        );
+        let edit_delay = self.jitter_ticks(5, 12);
+        self.queue_event(
+            edit_delay,
+            ScriptEvent::Edit {
+                summary: "edit src/app/tui/ui_root.rs (+1 -1)".into(),
+                input: sample_edit_tool_pair(),
+            },
+        );
+        let mark_edit_delay = self.jitter_ticks(2, 6);
+        self.queue_event(mark_edit_delay, ScriptEvent::MarkPlan(3));
         let drafting_delay = self.jitter_ticks(6, 16);
         self.queue_event(drafting_delay, ScriptEvent::Status("Drafting reply".into()));
         let reply = self.build_assistant_reply(prompt);
@@ -1071,6 +1079,17 @@ impl FakeCodingAgentApp {
                 self.recent_tools.truncate(4);
                 let detail = format!("$ {text}\n(exit 0 — demo stub)");
                 self.push_tool(format!("{} · ok", text), detail);
+            }
+            ScriptEvent::Edit { summary, input } => {
+                self.set_status("Working");
+                self.recent_tools.insert(0, summary.clone());
+                self.recent_tools.truncate(4);
+                // Expanded like pi edit preview/result — pops open in transcript.
+                self.push_diff_ex(format!("{summary} · ok"), input, None, true);
+                if !self.changed_files.iter().any(|p| p.contains("ui_root.rs")) {
+                    self.changed_files
+                        .push("src/app/tui/ui_root.rs".to_string());
+                }
             }
             ScriptEvent::Assistant(text) => {
                 if self.pending_events.is_empty()
