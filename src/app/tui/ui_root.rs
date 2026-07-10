@@ -2,6 +2,13 @@
 //!
 //! Named `UiRoot` (not `shell`/`scene`) to avoid clashing with bash /
 //! `infra::process::shell` and to read as the product component tree root.
+//!
+//! # Freeze (c491 stub)
+//!
+//! Session tree here is a **static fake** for slot-replace smoke only
+//! (double Esc / Esc close / Enter `travel → {id}`). Do **not** extend this
+//! stub with live graphs, filters, or Driver travel until the demo-first gate
+//! in `AGENTS.md` is explicitly opened. Morphology SSOT: `agent_demo`.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -18,7 +25,8 @@ use xylitol_tui::{
 
 use super::host::{LayoutMode, TOO_SMALL_HINT};
 
-/// Fake session tree for the c491 first slice (real graph lands with Driver seam).
+/// Fake session tree for the **c491 stub only** (frozen).
+/// Real graph / Driver travel waits for demo-first gate open — see `AGENTS.md`.
 fn sample_session_tree() -> Vec<TreeNode> {
     vec![
         TreeNode::new("root", "session · product").with_children([
@@ -44,7 +52,7 @@ fn product_tree_selector(active_id: &str) -> TreeSelector {
             unicode_connectors: true,
             include_node: None,
             active_id: Some(active_id.into()),
-            status_suffix: Some("[demo]".into()),
+            status_suffix: Some("[stub]".into()),
         },
     )
 }
