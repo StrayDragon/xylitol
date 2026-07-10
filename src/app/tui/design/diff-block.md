@@ -52,10 +52,12 @@ spacing:
 
 ## 行号 MUST
 
-1. **Unified（双 gutter）**：保留可读旧/新行号；宽度按 max line pad。
-2. **Unified（pi edit / `compact_line_numbers`）**：`±{lineNum} {content}`（`DiffInput::EditText` 自动启用）。
-3. **Side-by-side**：左右栏 MUST 各自显示合理行号（左=`old_no`，右=`new_no`）；空半栏 MUST NOT 伪造行号。
+1. **默认 compact（pi）**：`±{pad}{lineNum} {content}` — 符号与行号同色、内容列对齐；`DiffInput::from_edit_pair` / `EditText` / 默认 `compact_line_numbers: true`。
+2. **可选双 gutter**：`compact_line_numbers: false` 时旧/新两列行号（易视觉跳动，仅特殊需要）。
+3. **Side-by-side**：左右栏各自 compact 前缀（左=`old_no`，右=`new_no`）；空半栏 MUST NOT 伪造行号。
 4. **MUST NOT** 做成装饰性「行号墙」。
+
+Agent Edit 路径：优先 `DiffInput::from_edit_pair(old, new)`（或 `generate_edit_text`），再包进 expandable Diff 块并默认展开预览。
 
 可选内容高亮：`DiffTheme::highlight_line`（默认 identity；`highlight` feature 下可注入 syntect）。
 

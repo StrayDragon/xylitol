@@ -704,6 +704,33 @@ fn agent_demo_collapsible_headers_show_key_hints() {
 }
 
 #[test]
+fn agent_demo_simulated_edit_tool_pops_expanded_diff() {
+    let mut h = TuiTestHarness::new(120, 48);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+    h.keys("\r"); // submit seed prompt → scripted turn includes Edit
+    let mut saw_edit = false;
+    for _ in 0..3000 {
+        h.tick();
+        h.render_result().ok();
+        let text = h.tui.terminal.viewport().join("\n");
+        if text.contains("edit src/app/tui/ui_root.rs")
+            && (text.contains("footer_note") || text.contains("ctx"))
+        {
+            saw_edit = true;
+            break;
+        }
+    }
+    assert!(
+        saw_edit,
+        "simulated Edit tool should pop an expanded edit-format Diff"
+    );
+}
+
+#[test]
 fn agent_demo_seed_shows_unified_and_side_by_side_diffs() {
     let mut h = TuiTestHarness::new(120, 48);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(

@@ -38,12 +38,12 @@ pi `generateDiffString` / `renderDiff`：`+ 42 content` / `- 11 old` / `  40 con
 
 ## What Changes
 
-1. `DiffInput::EditText` + 解析 `^([+-\s])(\s*\d*)\s(.*)$`。
-2. Unified 对 EditText 用紧凑 `±{pad} {content}`（pi 风格）。
-3. SBS：`format_sbs_cell` 使用 `old_no`/`new_no`；空半栏不伪造行号。
-4. 可选 `DiffTheme::highlight_line`（默认 identity）；demo 可接 syntect。
-5. `agent_demo` edit 样例；单测覆盖解析与 SBS 行号。
-6. 更新 `design/diff-block.md`；`PI_DELTAS` 如有新差异则记一行。
+1. `DiffInput::EditText` + `DiffInput::from_edit_pair` / `generate_edit_text`（pi 兼容）。
+2. **默认** `compact_line_numbers: true`：`±{pad}N {content}`，符号与行号同色、内容列对齐（修双 gutter「错位」）。
+3. SBS：左右栏同一 compact 前缀规则。
+4. 可选 `DiffTheme::highlight_line`（默认 identity）。
+5. `agent_demo`：seed 样例 + **模拟 Edit 工具步骤**（status → 展开 Diff 弹出）。
+6. 更新 `design/diff-block.md`。
 
 ## Capabilities
 

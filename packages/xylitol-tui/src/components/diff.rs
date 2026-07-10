@@ -24,6 +24,16 @@ pub enum DiffInput {
     EditText(String),
 }
 
+impl DiffInput {
+    /// Build pi-style [`EditText`] from old/new file contents (agent Edit tool path).
+    ///
+    /// Prefer this over raw [`LinePair`] when you want compact `±N content` gutters
+    /// that stay column-aligned (same as pi `generateDiffString`).
+    pub fn from_edit_pair(old: &str, new: &str) -> Self {
+        Self::EditText(generate_edit_text(old, new, 4))
+    }
+}
+
 /// Theme closures — product maps semantic tokens → SGR.
 pub struct DiffTheme {
     pub added: Box<dyn Fn(&str) -> String>,
@@ -66,7 +76,8 @@ impl Default for DiffOptions {
         Self {
             word_level: true,
             side_by_side_min_width: Some(100),
-            compact_line_numbers: false,
+            // pi-style `±N content` — dual old/new gutter looks "错位" in demos.
+            compact_line_numbers: true,
         }
     }
 }
@@ -213,6 +224,75 @@ fn parse_edit_line(line: &str) -> Option<(LineKind, char, Option<u32>, String)> 
         (None, content)
     };
     Some((kind, sign, no, content))
+}
+
+/// Generate pi `generateDiffString`-compatible text from old/new contents.
+pub fn generate_edit_text(old: &str, new: &str, context_lines: usize) -> String {
+    if old == new {
+        return String::new();
+    }
+    let diff = TextDiff::from_lines(old, new);
+    let mut old_no = 1u32;
+    let mut new_no = 1u32;
+    let mut max_no = 1u32;
+    let mut rows: Vec<(LineKind, u32, String)> = Vec::new();
+    for change in diff.iter_all_changes() {
+        let value = change.value().trim_end_matches('\n');
+        match change.tag() {
+            ChangeTag::Delete => {
+                rows.push((LineKind::Delete, old_no, value.to_string()));
+                max_no = max_no.max(old_no);
+                old_no += 1;
+            }
+            ChangeTag::Insert => {
+                rows.push((LineKind::Insert, new_no, value.to_string()));
+                max_no = max_no.max(new_no);
+                new_no += 1;
+            }
+            ChangeTag::Equal => {
+                rows.push((LineKind::Equal, old_no, value.to_string()));
+                max_no = max_no.max(old_no).max(new_no);
+                old_no += 1;
+                new_no += 1;
+            }
+        }
+    }
+    let num_width = max_no.to_string().len().max(1);
+    let mut keep = vec![false; rows.len()];
+    for (i, (kind, _, _)) in rows.iter().enumerate() {
+        if *kind != LineKind::Equal {
+            let start = i.saturating_sub(context_lines);
+            let end = (i + context_lines + 1).min(rows.len());
+            for slot in keep.iter_mut().take(end).skip(start) {
+                *slot = true;
+            }
+        }
+    }
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < rows.len() {
+        if !keep[i] {
+            let mut j = i;
+            while j < rows.len() && !keep[j] {
+                j += 1;
+            }
+            if j > i {
+                out.push(format!(" {} ...", " ".repeat(num_width)));
+            }
+            i = j;
+            continue;
+        }
+        let (kind, no, content) = &rows[i];
+        let num = format!("{no:>num_width$}");
+        let sign = match kind {
+            LineKind::Delete => '-',
+            LineKind::Insert => '+',
+            LineKind::Equal | LineKind::Meta => ' ',
+        };
+        out.push(format!("{sign}{num} {content}"));
+        i += 1;
+    }
+    out.join("\n")
 }
 
 fn lines_from_pair(old: &str, new: &str, path: Option<&str>) -> Vec<DiffLine> {
@@ -530,6 +610,24 @@ fn color_content(kind: LineKind, content: &str, theme: &DiffTheme) -> String {
     }
 }
 
+fn color_prefix(kind: LineKind, prefix: &str, theme: &DiffTheme) -> String {
+    match kind {
+        LineKind::Delete => (theme.removed)(prefix),
+        LineKind::Insert => (theme.added)(prefix),
+        LineKind::Equal => (theme.context)(prefix),
+        LineKind::Meta => (theme.meta)(prefix),
+    }
+}
+
+/// Compact pi gutter: `±{pad}N ` — fixed width so content columns align.
+fn compact_prefix(sign: char, no: Option<u32>, num_width: usize) -> String {
+    let num = match no {
+        Some(n) => format!("{n:>num_width$}"),
+        None => " ".repeat(num_width),
+    };
+    format!("{sign}{num} ")
+}
+
 fn word_level_pair(old: &str, new: &str, theme: &DiffTheme) -> (String, String) {
     let diff = TextDiff::from_words(old, new);
     let mut del = String::new();
@@ -572,25 +670,17 @@ struct EmitOpts<'a> {
 }
 
 fn emit_styled_line(theme: &DiffTheme, opts: EmitOpts<'_>) -> Vec<String> {
-    let sign_s = match opts.kind {
-        LineKind::Delete => (theme.removed)(&opts.sign.to_string()),
-        LineKind::Insert => (theme.added)(&opts.sign.to_string()),
-        LineKind::Equal => (theme.context)(&opts.sign.to_string()),
-        LineKind::Meta => (theme.meta)(&opts.sign.to_string()),
-    };
     let (prefix, cont_prefix) = if opts.compact {
-        let no = opts.old_no.or(opts.new_no);
-        let num = match no {
-            Some(n) => format!("{n:>w$}", w = opts.num_width),
-            None => " ".repeat(opts.num_width),
-        };
-        let gutter = format!("{}{num}", opts.sign);
-        let prefix = format!("{} ", (theme.gutter)(&gutter));
-        let blank = format!(" {}", " ".repeat(opts.num_width));
-        let cont_prefix = format!("{} ", (theme.gutter)(&blank));
-        (prefix, cont_prefix)
+        // pi: color sign+number together; content starts at a fixed column.
+        let plain = compact_prefix(opts.sign, opts.old_no.or(opts.new_no), opts.num_width);
+        let cont_plain = format!(" {}", " ".repeat(opts.num_width + 1)); // sign + num + space
+        (
+            color_prefix(opts.kind, &plain, theme),
+            color_prefix(opts.kind, &cont_plain, theme),
+        )
     } else {
-        let gutter = format_gutter(opts.old_no, opts.new_no);
+        let sign_s = color_prefix(opts.kind, &opts.sign.to_string(), theme);
+        let gutter = format_gutter(opts.old_no, opts.new_no, opts.num_width);
         let prefix = format!("{}{} ", (theme.gutter)(&gutter), sign_s);
         let blank_gutter = " ".repeat(visible_width(&gutter));
         let cont_prefix = format!("{}  ", (theme.gutter)(&blank_gutter));
@@ -614,12 +704,13 @@ fn emit_styled_line(theme: &DiffTheme, opts: EmitOpts<'_>) -> Vec<String> {
     out
 }
 
-fn format_gutter(old_no: Option<u32>, new_no: Option<u32>) -> String {
+fn format_gutter(old_no: Option<u32>, new_no: Option<u32>, num_width: usize) -> String {
+    let blank = " ".repeat(num_width);
     match (old_no, new_no) {
-        (Some(o), Some(n)) => format!("{o:>4} {n:>4}"),
-        (Some(o), None) => format!("{o:>4}     "),
-        (None, Some(n)) => format!("     {n:>4}"),
-        (None, None) => "         ".into(),
+        (Some(o), Some(n)) => format!("{o:>w$} {n:>w$}", w = num_width),
+        (Some(o), None) => format!("{o:>w$} {blank}", w = num_width),
+        (None, Some(n)) => format!("{blank} {n:>w$}", w = num_width),
+        (None, None) => format!("{blank} {blank}"),
     }
 }
 
@@ -748,19 +839,10 @@ fn format_sbs_cell(
     col: usize,
     num_width: usize,
 ) -> Vec<String> {
-    let sign_s = match kind {
-        LineKind::Delete => (theme.removed)(&sign.to_string()),
-        LineKind::Insert => (theme.added)(&sign.to_string()),
-        LineKind::Equal => (theme.context)(&sign.to_string()),
-        LineKind::Meta => (theme.meta)(&sign.to_string()),
-    };
-    let num = match no {
-        Some(n) => format!("{n:>num_width$}"),
-        None => " ".repeat(num_width),
-    };
-    let gutter = (theme.gutter)(&num);
+    // Same compact prefix as unified so L/R content columns line up within each pane.
+    let plain = compact_prefix(sign, no, num_width);
+    let prefix = color_prefix(kind, &plain, theme);
     let body = color_content(kind, content, theme);
-    let prefix = format!("{sign_s}{gutter} ");
     wrap_text_with_ansi(&format!("{prefix}{body}"), col.max(1))
         .into_iter()
         .map(|l| pad_to_width(&l, col))
@@ -1042,9 +1124,35 @@ mod tests {
             joined.contains("10") && joined.contains("100"),
             "edit gutter should show padded line numbers; got:\n{joined}"
         );
+        // Content column aligned: prefix is `±` + 3-wide num + space.
+        let content_cols: Vec<usize> = lines
+            .iter()
+            .filter(|l| l.contains("fn ") || l.contains("prompt"))
+            .filter_map(|l| l.find("fn ").or_else(|| l.find('!')))
+            .collect();
         assert!(
-            joined.contains("- 10") || joined.contains("-10"),
-            "compact delete prefix expected; got:\n{joined}"
+            content_cols.len() >= 2,
+            "expected content lines; got:\n{joined}"
+        );
+        assert!(
+            content_cols.windows(2).all(|w| w[0] == w[1]),
+            "content should share one column; cols={content_cols:?}\n{joined}"
+        );
+    }
+
+    #[test]
+    fn from_edit_pair_is_compact_and_aligned() {
+        let input = DiffInput::from_edit_pair("a\nb\n", "a\nc\n");
+        let lines = render_diff_lines(&input, 60, &plain_theme(), &DiffOptions::default());
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains('-') && joined.contains('+'),
+            "got:\n{joined}"
+        );
+        // Default options use compact gutters.
+        assert!(
+            !joined.contains("    1     "),
+            "should not use dual gutter by default; got:\n{joined}"
         );
     }
 
