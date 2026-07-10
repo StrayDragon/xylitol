@@ -108,10 +108,14 @@ static TUI_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
     ("tui.input.copy", &["ctrl+c"], Some("Copy selection")),
     ("tui.select.up", &["up"], Some("Move selection up")),
     ("tui.select.down", &["down"], Some("Move selection down")),
-    ("tui.select.pageUp", &["pageUp"], Some("Selection page up")),
+    (
+        "tui.select.pageUp",
+        &["pageUp", "left"],
+        Some("Selection page up"),
+    ),
     (
         "tui.select.pageDown",
-        &["pageDown"],
+        &["pageDown", "right"],
         Some("Selection page down"),
     ),
     ("tui.select.confirm", &["enter"], Some("Confirm selection")),
