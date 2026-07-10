@@ -108,7 +108,7 @@ components:
 
 **少 chrome、多内容、可复制。** 跑在用户已有终端模拟器里的 coding-agent 界面，不是仪表盘。
 
-对齐 pi interactive 的体感：对话进 scrollback，输入贴底，忙碌时一行 status，底部一行极简 footer。装饰、侧栏、常驻 debug、多行快捷键条默认都不要。
+对齐 pi interactive 的体感：当前轮进 scrollback，输入贴底，忙碌时一行 status，底部一行极简 footer；**分支回看 / travel / fork 用双 Esc 会话树**（替换 editor 槽）。**不做** Codex 式独立 transcript 浏览面。装饰、侧栏、常驻 debug、多行快捷键条默认都不要。
 
 情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
 
@@ -133,7 +133,7 @@ components:
 | `tool-pending-bg` / `tool-success-bg` / `tool-error-bg` | 工具块**全行背景**三态（Mocha tint：`#313244` / `#24352a` / `#352428`；对齐 pi 语义，色值本文件 SSOT） |
 | `user-message-bg` | 用户消息可选全行背景（对齐 pi `userMessageBg`） |
 
-**工具状态背景（吸取 pi）**：成功/失败不要只靠 fg `ok`/`error` 字——用极淡的绿/红 **bg** 铺满工具块行宽（`apply_background_to_line` + 仅重置 `\x1b[49m`），pending 用中性 surface tint。**demo 已验证（c462）**；产品 transcript 接线见 c470。
+**工具状态背景（吸取 pi）**：成功/失败不要只靠 fg `ok`/`error` 字——用极淡的绿/红 **bg** 铺满工具块行宽（`apply_background_to_line` + 仅重置 `\x1b[49m`），pending 用中性 surface tint。**demo 已验证（c462）**。产品侧 **不做 Codex 式 TranscriptView**（c470 已搁置）；历史/分支 UX 优先双 Esc 会话树（c454→c456→c491）。
 
 不要为 header / debug / 多角色长标签再扩一套色。选中列表用 **reverse**，不必单独 `selection-bg` 面板底。
 
@@ -158,10 +158,10 @@ Markdown **fg 内联、bg 延后到行宽 padding**（与 pi-tui Markdown 一致
 默认栈（对齐 `agent_demo` / 图 2）：
 
 ```
-transcript     全宽；全量历史 → 引擎滚入 scrollback
+content        全宽；当前轮 live 输出 → 引擎 scrollback（非 Codex 式浏览面）
 status         0 或 1 行（仅 busy / retry / error）
 editor         贴底；上下 muted `─` 边框标出操作区
-               选择器打开时替换此槽（showSelector）
+               双 Esc 会话树 / 命令面板：替换此槽（showSelector）
 footer         1 行 dim（cwd · model · 可选 context%）
 ```
 
@@ -169,10 +169,10 @@ footer         1 行 dim（cwd · model · 可选 context%）
 
 1. Viewport 贴尾：`previous_viewport_top = max(0, max(height, n) - height)`。
 2. **无双栏**；无常驻 Workspace / Plan / Files 侧栏。
-3. **不截断历史**冒充滚动。
+3. **不截断历史**冒充滚动；**分支 travel / 回看**走会话树，不走 Codex 式 transcript 浏览器。
 4. **无常驻 debug strip**；调试信息走 `/debug`、日志或临时一行，不占 3 行底栏。
 5. **无常驻多行 header**；需要会话名/路径时并进 footer，或 quiet 启动后省略。
-6. 命令面板 / 设置：**替换 editor 槽**，不要 blit 到内容顶部。
+6. 会话树 / 命令面板 / 设置：**替换 editor 槽**，不要 blit 到内容顶部。
 7. 居中 `show_overlay` 只用于确认框等短交互。
 8. **保留 editor 上下边框**作为操作区边界（图 2）；不要为了「更扁」去掉这层分区提示。
 
@@ -192,8 +192,9 @@ footer         1 行 dim（cwd · model · 可选 context%）
 
 | 文档 | 内容 |
 |---|---|
-| [`design/transcript.md`](./design/transcript.md) | 消息呈现 |
-| [`design/expandable.md`](./design/expandable.md) | thinking / tool 可展开 |
+| [`design/session-tree.md`](./design/session-tree.md) | **优先**：双 Esc 会话树（travel/fork） |
+| [`design/transcript.md`](./design/transcript.md) | live 输出进 scrollback（非 Codex 浏览面；c470 搁置） |
+| [`design/expandable.md`](./design/expandable.md) | thinking / tool 可展开（demo 优先） |
 | [`design/status.md`](./design/status.md) | busy 一行 |
 | [`design/editor.md`](./design/editor.md) | 操作区 |
 | [`design/footer.md`](./design/footer.md) | 一行 dim |
@@ -205,20 +206,22 @@ footer         1 行 dim（cwd · model · 可选 context%）
 | [`design/markdown.md`](./design/markdown.md) | 复制友好 markdown |
 | [`design/errors.md`](./design/errors.md) | 错误呈现 |
 
-后置草稿：[`session-tree`](./design/session-tree.md) · [`bash-mode`](./design/bash-mode.md) · [`queue-steer`](./design/queue-steer.md) · [`trust-prompt`](./design/trust-prompt.md) · [`compaction-status`](./design/compaction-status.md)
+后置草稿：[`bash-mode`](./design/bash-mode.md) · [`queue-steer`](./design/queue-steer.md) · [`trust-prompt`](./design/trust-prompt.md) · [`compaction-status`](./design/compaction-status.md)
 
 ## Do's and Don'ts
 
 - Do 像普通终端会话：向上翻、复制、再问。
+- Do 分支回看 / travel / fork 走双 Esc 会话树（对齐 pi）。
 - Do 默认隐藏硬件光标；一屏一个 accent。
-- Do 选择器替换 editor 槽，保证贴底可见。
+- Do 选择器（含会话树）替换 editor 槽，保证贴底可见。
 - Do 忙碌才出 status；idle 让出垂直空间给对话。
 - Do 用 editor 边框标出操作区（对齐 agent_demo）。
 - Do glyph 走应用配置，不探测字体。
-- Do thinking/tool 可展开（策略见 expandable）。
+- Do thinking/tool 可展开（策略见 expandable；demo 优先于产品 Expandable 栈）。
 - Do 工具块用 `tool-*-bg` 表达 pending/success/error（吸取 pi）。
 - Do YAML frontmatter 中所有 token 值使用双引号（`common-design-md-zh`）。
 - Do 子文档用 `{colors.*}` 引用本文件，并声明 `tokens_from`。
+- Don't 做 Codex 式独立 transcript 浏览面 / 专用 TranscriptView 主 UX。
 - Don't 常驻 Plan / Tools / Files / 快捷键墙。
 - Don't 双栏、卡片、圆角、多字体、阴影。
 - Don't blit 弹层到内容绝对顶部。

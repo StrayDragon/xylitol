@@ -30,7 +30,7 @@ spacing:
 
 > Token 根源：`{colors.*}` / `{spacing.*}` → [`../DESIGN.md`](../DESIGN.md)（本文件 `tokens_from`）。
 
-包组件：`packages/xylitol-tui` Diff（c451）。产品接线：transcript 内可展开块（c470 / c453）。生成侧：`infra` edit 工具的 `display_diff` / unified diff。
+包组件：`packages/xylitol-tui` Diff（c451）。产品侧：作为 live scrollback / 工具块积木复用（**非** Codex 式 TranscriptView；c470 已搁置）。生成侧：`infra` edit 工具的 `display_diff` / unified diff。demo 验证：c453 / c462。
 
 ## 目标
 

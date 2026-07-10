@@ -1,26 +1,39 @@
 ---
 change_id: c470-add-app-tui-transcript
-title: "app-tui-transcript：消息流、可展开块、diff"
-status: purpose-draft
+title: "app-tui-transcript：已搁置 — 不做 Codex 式 TranscriptView"
+status: paused
 priority: 470
-depends_on: ["c465-add-app-tui-bridge", "c451-add-package-tui-diff", "c452-demo-highlight-pipeline", "c459-enhance-diff-edit-line-syntax", "c462-demo-tool-status-bg"]
+depends_on: []
 author: agent
 track: B
 ---
 
 # c470-add-app-tui-transcript
 
-> **status: purpose-draft**
+> **status: paused（产品决策：不做 Codex 式 transcript view）**
 
-## Why
+## 决策（2026-07-10）
 
-主内容区：用户回显、流式助手、thinking/tool/diff 可展开；高亮与 diff 用包能力 + 真实 syntect。
+**不做**独立的、Codex 风格的 transcript 浏览/呈现面（可滚动消息栈作为主 UX、专用 TranscriptView 组件树等）。
 
-## Purpose
+历史浏览、分支 travel / fork 的目标改由 **双 Esc 会话树**达成：
 
-实现 transcript 应用面组件（Expandable 留在 app）；接线 Markdown + Diff + highlight。
+| 优先 | Change |
+|---|---|
+| 包 TreeSelector | **c454** |
+| demo 双 Esc 原型 | **c456** |
+| 产品接线 | **c491**（提前，不再等本变更） |
 
-## Out of scope
+## 为何搁置
 
-- 会话历史回放灌入（可另 change）
-- Compaction 专用 UI（c493）
+- Codex 式 transcript view 与当前选定的 pi 交互（scrollback + editor 槽选择器）重复且更重。
+- 双 Esc 树已能覆盖「回看 / 跳转 / fork」目的，应先落地可验证路径。
+
+## 若日后需要「当前轮输出」
+
+仅允许 **极简 live 行写入终端 scrollback**（bridge 驱动的短消息/工具摘要），**MUST NOT** 复活本变更名义下的 Codex 式 TranscriptView。届时另开 change，且不得复用本 id 的旧 purpose。
+
+## Out of scope（永久相对本 change）
+
+- 应用面 Expandable 消息栈 / Diff 块专用 transcript 组件树
+- 以 c470 为垂直切片（c485）硬依赖

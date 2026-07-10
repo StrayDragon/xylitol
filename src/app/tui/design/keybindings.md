@@ -22,7 +22,7 @@ components:
 | Ctrl+C | 编辑器非空：**清空**；已空：**退出** TUI |
 | Enter（流中） | **steer**（插入引导，不打断当前轮的队列语义见 c461） |
 | Alt+Enter | **follow-up**（排队到本轮结束后） |
-| 双 Esc | 打开 **会话树**（后置；见 [`session-tree.md`](./session-tree.md)） |
+| 双 Esc | 打开 **会话树**（**优先路径**；见 [`session-tree.md`](./session-tree.md)，c454→c456→c491） |
 
 ## MUST（编辑器槽）
 
