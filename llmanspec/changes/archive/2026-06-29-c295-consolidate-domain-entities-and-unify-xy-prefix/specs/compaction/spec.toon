@@ -1,9 +1,0 @@
-kind: llman.sdd.delta
-ops[3]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,c14,"单一配置来源","Compaction configuration MUST have exactly one serde-facing type named XyCompactionSettingsConfig and one runtime type named XyCompactionSettings; the duplicate CompactionConfig definition MUST be removed.",null,null,null
-  add_requirement,c15,"token 使用量类型统一","Compaction token estimation MUST use the canonical XyUsage type from domain/; the duplicate XyUsage in token_estimator.rs MUST be removed.",null,null,null
-  modify_requirement,c1,"token 估算使用统一 Usage","System MUST estimate context window usage from current messages using XyUsage and a configurable token estimator without defining a separate usage struct.",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  c14,"single-compaction-config","the codebase is searched for CompactionConfig",rg "struct CompactionConfig",zero matches remain
-  c15,"usage-unified","token_estimator.rs is inspected",the change is applied,it imports XyUsage from domain instead of defining a local struct
-  c1,"estimate-with-xyusage","messages are passed to estimate_context_tokens",the function runs,it reads total_tokens from XyUsage or falls back to summing fields

@@ -1,7 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,as38,"optional-bash-export","AgentSession MUST hold bash_executor and export_io as Option of Arc of the port trait; execute_bash and the export_to_html, export_to_jsonl, and import_from_jsonl methods MUST return a clear not-configured error when the corresponding slot is None, so a minimal conversation agent is not forced to carry bash or export capability.",null,null,null
-  add_requirement,as39,"capability-state-on-session","AgentSession MUST own the runtime-mutable capability state (tools ToolSet, permission engine, hooks, active system prompt) so that Agent facade setters can mutate them and run can snapshot them per turn; AgentLoop MUST NOT duplicate this state, and the current duplication of hooks and tool_mode fields on AgentLoop MUST be removed.",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  as38,"no-bash-configured","an agent is built without a bash executor","execute_bash is called","it returns an error mentioning bash executor not configured without panicking"
-  as39,"loop-no-dup-state","AgentLoop fields are inspected","the change is applied","hooks and tool_mode live on AgentSession only and AgentLoop holds only session and cancel"

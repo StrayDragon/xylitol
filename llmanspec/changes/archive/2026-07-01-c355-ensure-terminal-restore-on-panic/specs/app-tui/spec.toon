@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,tui40,"panic-hook-restore","The TUI MUST install a std::panic::set_hook before entering the inline viewport that restores the terminal (disable raw mode + restore) before chaining to the original hook, so the terminal is never left broken even under panic=abort or when a panic occurs in a spawned task whose stack has no InlineTerminal. Drop alone is insufficient: it does not run under panic=abort, and a panic in a spawn_blocking/spawn child task unwinds that child's stack (no InlineTerminal there). Evidence: codex tui.rs installs a panic hook for terminal restore; Rust's set_hook still executes under panic=abort whereas Drop does not.",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  tui40,panic-hook-installed-before-viewport,"the TUI source is inspected","the run() entry point is read","install_terminal_restore_hook is called before InlineTerminal::enter"
-  tui40,panic-abort-still-restores,"the process is built with panic=abort and the TUI panics during a turn","the panic hook fires","raw mode is disabled and the terminal is usable before the process terminates"

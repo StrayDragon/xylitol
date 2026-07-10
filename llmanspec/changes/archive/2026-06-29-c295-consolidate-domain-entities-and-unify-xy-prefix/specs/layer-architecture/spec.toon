@@ -1,9 +1,0 @@
-kind: llman.sdd.delta
-ops[3]{op,req_id,title,statement,from,to,name}:
-  add_requirement,la16,xy-domain-types,"domain layer MUST host Xy-prefixed core abstractions and remove duplicate types.",null,null,null
-  add_requirement,la17,xy-protocol-ports,"runtime_protocol layer MUST host Xy-prefixed port contracts and signature types.",null,null,null
-  add_requirement,la18,event-layering,"XyEvent MUST live in domain and XyEventSink in runtime_protocol and EventBus in infra.",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  la16,xy-domain-types,public domain type is external,the change is applied,it is renamed to Xy and imported consistently
-  la17,xy-protocol-ports,runtime_protocol trait is referenced,the change is applied,it is renamed to Xy and implemented by infra
-  la18,event-layer-check,event types and ports are located,src is inspected,XyEvent is in domain and XyEventSink is in runtime_protocol

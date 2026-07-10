@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,tui70,"self-research-markdown-renderer","The TUI markdown rendering MUST be backed by a self-researched lightweight renderer (src/app/tui/components/markdown_render.rs, based on pulldown-cmark + syntect) rather than the vendored ratatui-markdown crate. The renderer MUST output only terminal-friendly styling (bold/italic/color via ratatui Style + Modifier) and MUST NOT draw any box-drawing borders (no fence frames like dashes/pipe/corners), tree connectors, or table border lines. Code blocks use syntect syntax highlighting without background, border, or language label. The MarkdownStyle adapter (for_user/for_assistant/for_thinking) MUST remain the single seam RenderedLine::to_lines consumes.",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  tui70,"no-box-drawing-borders",a fenced code block and a table are rendered via TestBackend,"the buffer is inspected for box-drawing chars","no border glyphs (corners, pipes, dashes used as frames) appear — only styled text content"
