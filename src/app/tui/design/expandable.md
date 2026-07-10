@@ -32,6 +32,12 @@ components:
 4. 折叠行旁 MUST 提示对应快捷键，格式为括号包裹的完整和弦（demo 榜样：`thinking  (Ctrl+T)`、`tool/diff  (Alt+E)`），避免 `^T` 缩写与无括号裸键；勿只靠 footer 快捷键墙。
 5. **工具块背景三态**（吸取 pi `ToolExecutionComponent`）：pending → `{colors.tool-pending-bg}`；成功 → `{colors.tool-success-bg}`；失败 → `{colors.tool-error-bg}`。全行宽 padding 后套 bg（`apply_background_to_line`），ANSI 只重置背景（`\x1b[49m`），勿冲掉内容 fg。
 
+## 已验证（c462 / agent_demo）
+
+- seed：success Diff/Tool + error Tool 均带 truecolor 全行 tint。
+- 脚本：Tool/Edit 先 `Pending` 再翻 `Success`（摘要 `· running` → `· ok`）。
+- harness：视口断言 `48;2;…` 与 `49m`（见 `agent_demo_test`）。
+
 ## 策略（可后续细化）
 
 默认折叠哪些、是否记住、是否全局一键展开工具 → 接线后可再议；本文件锁定「需要可展开」+「块旁键位提示」+「工具 bg 三态」。

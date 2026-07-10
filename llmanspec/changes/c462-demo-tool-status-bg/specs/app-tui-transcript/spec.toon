@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,att4,"tool-block-status-bg","thinking 以外的 tool 与 edit/diff 可展开块 MUST 按执行状态（pending / success / error）为块内每一可见行套全行背景 tint；色值 MUST 对齐产品 DESIGN.md 的 tool-*-bg；ANSI MUST 仅用背景 SGR 并以 \\x1b[49m 复位，MUST NOT 用 \\x1b[0m 清 bg以免冲掉内容 fg。",null,null,null
+  add_requirement,att5,"tool-bg-via-package-helper","全行背景铺色 MUST 复用 packages/xylitol-tui 的 apply_background_to_line（或等价包 API）；MUST NOT 在应用面复制一套行宽 padding+bg 逻辑。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  att4,"success-tint","","工具执行成功","块行含 success 对应 truecolor bg 且以 49m 结束"
+  att4,"error-tint","","工具执行失败","块行含 error 对应 truecolor bg"
+  att4,"pending-tint","","工具仍在运行","块行含 pending 对应 truecolor bg"
+  att5,"reuse-apply-bg","","渲染 tool 块","调用 apply_background_to_line 而非手写 pad+bg"

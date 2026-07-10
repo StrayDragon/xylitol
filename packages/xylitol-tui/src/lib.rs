@@ -71,7 +71,7 @@ pub use tui::{
     OverlayMargin, OverlayOptions, RenderError, SizeValue, TUI,
 };
 pub use utils::{
-    ExtractedSegments, extract_ansi_code, extract_segments, is_punctuation_char,
-    is_whitespace_char, slice_by_column, slice_by_column_strict, truncate_to_width, visible_width,
-    wrap_text_with_ansi,
+    ExtractedSegments, apply_background_to_line, extract_ansi_code, extract_segments,
+    is_punctuation_char, is_whitespace_char, slice_by_column, slice_by_column_strict,
+    truncate_to_width, visible_width, wrap_text_with_ansi,
 };
