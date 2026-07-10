@@ -33,9 +33,19 @@
 
 ## 下一波内核（库 + 多 client）
 
-见 [`library-and-clients.md`](docs/architecture/library-and-clients.md)。A2 意向（c530–c540）已归档。后续可选：TUI 开闸、`dispatch` 消费、MCP 配置类型去泄漏。
+见 [`library-and-clients.md`](docs/architecture/library-and-clients.md)。A2（c530–c540）已归档。
 
-轨 B（产品 TUI）仍冻结，需明确开闸。
+## 下一波（已开闸 / 已提案）
+
+| ID | 主题 | depends | 状态 |
+|---|---|---|---|
+| **c545** | MCP 配置去泄漏（embed 缝） | — | proposed |
+| **c550** | Server 经 dispatch 执行命令 | c540 | proposed |
+| **c465** | TUI bridge（Track B） | c460/c461 ✅ | proposed；**TUI 已开闸** |
+
+建议 apply 顺序：**c545 → c550 → c465**（MCP/dispatch 小、可先稳缝；再进 TUI）。
+
+轨 B 其余（c470+）仍为 draft/paused，按需长大。
 
 ## 已清理的文档
 
