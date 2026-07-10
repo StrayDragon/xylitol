@@ -33,6 +33,6 @@ components:
 
 | 层 | Change |
 |---|---|
-| 包 `TreeSelector` | c454 + c456 + **c467** |
+| 包 `TreeSelector` | c454 + c456 + c467 已归档 |
+| 产品 `src/app/tui` | **c491**（假树槽替换首切片；真 session/Driver travel 另批） |
 | 相对 pi 差距 | [`session-tree-vs-pi.md`](./session-tree-vs-pi.md) |
-| 产品 `src/app/tui` | c491（待 fold/label 验收后） |

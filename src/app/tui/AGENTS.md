@@ -10,9 +10,8 @@
 
 **不做 Codex 式 TranscriptView**（`c470` 已 `paused`；`app-tui-transcript` 已降级为 live scrollback）。下一优先：
 
-1. ~~**c454** — 包 `TreeSelector`~~（已归档；`agent_demo` 双 Esc 冒烟已通）
-2. **c456** — 收紧 demo 键位/文档（可选，冒烟已在 c454）
-3. **c491** — 产品面双 Esc 会话树（travel/fork）
+1. ~~**c454–c467** — 包 `TreeSelector` + demo 搜索/filter/fold/label~~（已归档）
+2. **c491** — 产品面双 Esc 会话树（本批：假树槽替换；真 travel/fork 另批）
 
 历史/分支 UX 以会话树为准；live 输出若有，只进 scrollback 行，见 `design/transcript.md` / `design/session-tree.md`。
 
