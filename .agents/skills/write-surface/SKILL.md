@@ -7,7 +7,7 @@ description: "新增或改造应用面（app 层：interactive REPL、TUI、serv
 
 当你要新增或改造 `app/` 下的一个应用面（交互式 REPL、TUI、server 客户端、未来 GUI）时，按本 skill 的流程走。它的存在理由：本项目历史上积累了大量 dead code，根因是「先搭骨架留待将来」而复用契约从未被该面真正驱动。本流程把「先分诊死代码 → 只在契约内接线 → 每个面必须可端到端跑通」变成硬步骤，从源头阻止新一轮骨架腐烂。
 
-**先读**：根 `AGENTS.md` 的「项目地图」「分层不变量」「新增应用面方法论」三节。子目录有 `AGENTS.md` 的（如 `src/app/tui/AGENTS.md`）先读最近的。
+**先读**：根 `AGENTS.md`「项目地图」→ `src/AGENTS.md`「分层不变量」→ 目标面的 `AGENTS.md`（如 `src/app/tui/AGENTS.md`）。方法论总纲见本 skill。
 
 ## 1. 复用契约（不可改写的分工）
 
@@ -30,13 +30,13 @@ composition::build_agent  →  InProcessDriver  →  Driver::run(prompt)
 
 ### 步骤 1 — 分诊死代码（先于一切动手）
 
-在你要动的那块区域，先跑 `audit-dead-code` skill（见 `.agents/skills/audit-dead-code/SKILL.md`）。产出三类清单：
+在你要动的那块区域，先跑 `audit-dead-code` skill（见 `.agents/skills/audit-dead-code/SKILL.md`）。**例外**：纯合约/文档变更（仅改 `llmanspec/`、AGENTS、skills、`_tmp_prompts/`）可跳过；第一个写 `src/app/tui` 产品代码的 change（c460 起）必须跑。产出三类清单：
 
 - **真死**（零引用）：删。
 - **逻辑死**（有引用但无真实用户路径触达）：决定「激活」还是「删」。绝不在其上叠加新代码。
 - **预留**（架构意图明确）：仅当本次新面会在本变更内驱动它，才保留；否则删，等真需要时再加（骨架留着就会变成下一轮逻辑死）。
 
-铁律：**不要在未分诊的骨架上写新功能。** 当前仓库 31 处 `#[allow(dead_code)]` 就是没做这步的后果。
+铁律：**不要在未分诊的骨架上写新功能。** 先 `rg '#\[allow\(dead_code\)\]' src --type rust` 拿到实时数量，确认你就是没做这步的后果。
 
 ### 步骤 2 — 确认复用边界，只改重写侧
 
@@ -63,7 +63,7 @@ match app_mode {
 - print ✅（已通）
 - interactive（REPL）：未建。建成标准 = `cargo run --` 进入 REPL，多轮对话，`XyEvent` 流式渲染，至少 `/exit` `/model` 两条 slash 命令。
 - server（REST/WS）：服务端 ✅、客户端（`RemoteDriver`）🟡 预留。建成标准 = 用 `RemoteDriver` 连上 server，走完一个 prompt 的完整事件流。
-- TUI ✅（已落地，c340-c365）：inline REPL 经 `InProcessDriver` 驱动，流式 mutable-last-line + 组件化渲染。细则见 `src/app/tui/AGENTS.md`。
+- TUI 🟡（占位，基于 `xylitol-tui` 重做，见 `src/app/tui/AGENTS.md`）。细则与重做进度见 `write-tui` skill。
 - GUI：空占位。
 
 铁律：**一个面没有端到端可跑通的入口，就不算存在** —— 它会立刻开始腐烂。
