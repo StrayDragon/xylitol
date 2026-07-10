@@ -1,14 +1,20 @@
 kind: llman.sdd.spec
 name: "package-tui-tree-selector"
-purpose: "通用 TreeSelector：flatten/连接符/过滤钩子/tui.select 导航（供双 Esc 会话树）。"
-valid_scope[1]: packages/xylitol-tui/
-requirements[4]{req_id,title,statement}:
+purpose: 通用 TreeSelector：flatten/连接符/过滤钩子/tui.select 导航（供双 Esc 会话树）。
+valid_scope[1]: "packages/xylitol-tui/"
+requirements[7]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c454-add-package-tui-tree-selector 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   pts1,"tree-node-model",包 MUST 提供 TreeNode（id/label/children）与可导航 TreeSelector 组件；MUST NOT 依赖主 crate xylitol 或 session 类型。
   pts2,"include-node-filter",TreeSelector MUST 支持 include_node 钩子过滤可见节点，并在过滤后重算 indent/connector/gutter；MUST NOT 硬编码产品 FilterMode 枚举。
   pts3,"select-keybindings",TreeSelector 导航 MUST 使用 tui.select.* 键绑定（up/down/page/confirm/cancel）；选中态 MUST 可用主题闭包（如 reverse）表达。
-scenarios[4]{req_id,id,given,when,then}:
+  pts4,"incremental-search",TreeSelector MUST 支持对可见节点 label 的增量搜索（可打印字符追加、Backspace 删除）；有搜索串时 Esc MUST 先清空搜索而非触发 cancel；搜索 MUST 与 include_node 组合（AND）。
+  pts5,"left-right-page",TreeSelector 翻页 MUST 响应 ←/→（或等价 tui.editor.cursorLeft/cursorRight）以及既有 tui.select.pageUp/pageDown；步长为 max_visible。
+  pts6,"status-suffix",TreeSelector 状态行 MUST 在 (i/n) 后可选附加 host 提供的 status_suffix（如 filter 标签）；MUST NOT 在包内硬编码产品 FilterMode 枚举。
+scenarios[7]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/package-tui-tree-selector",spec.toon 存在且 purpose 为中文
   pts1,"unit-flatten","",对分支树 flatten,单子链 indent 不漂移且分支点出现连接符
   pts2,"filter-recalc","",隐藏中间节点,可见兄弟 indent 对齐且无幽灵连接符
   pts3,"nav-confirm","",↓ 后 Enter,on_select 收到对应节点 id
+  pts4,"search-and-esc",树有多节点,键入匹配子串后 Esc,仅匹配节点可见且搜索清空后恢复；第二次 Esc 才 cancel
+  pts5,"arrow-page",可见行多于一页,按 → 或 pageDown,selected_index 增加约 max_visible 且不越界
+  pts6,"suffix-render","host 设置 status_suffix=[no-tools]",render,"状态行含 (i/n) 与 [no-tools]"
