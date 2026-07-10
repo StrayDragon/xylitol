@@ -1,0 +1,19 @@
+kind: llman.sdd.delta
+ops[12]{op,req_id,title,statement,from,to,name}:
+  remove_requirement,tui20,null,null,null,null,null
+  remove_requirement,tui21,null,null,null,null,null
+  remove_requirement,tui22,null,null,null,null,null
+  remove_requirement,tui15,null,null,null,null,null
+  remove_requirement,tui41,null,null,null,null,null
+  remove_requirement,tui51,null,null,null,null,null
+  remove_requirement,tui53,null,null,null,null,null
+  remove_requirement,tui12,null,null,null,null,null
+  modify_requirement,tui1,"line-array-differential-render","产品 TUI MUST 通过 packages/xylitol-tui 的差分渲染引擎呈现（previous_lines 与 new_lines 逐行 diff，仅写变更行并包裹 CSI 2026 同步输出）；MUST NOT 使用 ratatui。视口 MUST 锚定内容尾部：previous_viewport_top = max(0, max(terminal_height, total_lines) - terminal_height)。",null,null,null
+  modify_requirement,tui5,"no-skeleton-spray","在 src/app/tui/ 下新增的每个源文件 MUST 在同一变更内由真实入口 tui::run 驱动；MUST NOT 使用 #[allow(dead_code)] 落地未驱动骨架。",null,null,null
+  modify_requirement,tui11,"event-loop","产品 TUI MUST 以应用面 host 循环合流：Driver 事件流、终端输入、取消信号；MUST 调用引擎的 dispatch_event / request_render / try_render / idle_tick；产品路径 MUST NOT 调用 TUI::start()。",null,null,null
+  modify_requirement,tui42,"render-business-decoupling","渲染层 MUST 只消费 UI 专用数据类型；XyEvent 到 UI 模型的翻译 MUST 发生在单一 bridge 缝；渲染层 MUST NOT 匹配 XyEvent 变体或调用 Driver/agent 方法。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  tui1,"host-engine","","产品 TUI 渲染一帧","输出路径走 xylitol-tui 差分引擎且不链接 ratatui"
+  tui5,"driven-on-land","","变更完成时检查 src/app/tui 新文件","均可从 tui::run 到达且无 allow dead_code 骨架"
+  tui11,"no-tui-start","","检查产品路径调用","不存在 TUI::start 调用；存在 host 驱动 API"
+  tui42,"single-bridge","","检查渲染模块输入类型","无 XyEvent match；仅 UI 模型"

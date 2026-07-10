@@ -1,0 +1,8 @@
+kind: llman.sdd.spec
+name: "app-tui-chrome"
+purpose: "主题 token、glyph、status 与 footer 等 chrome。"
+valid_scope[1]: src/app/tui/
+requirements[1]{req_id,title,statement}:
+  meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+scenarios[1]{req_id,id,given,when,then}:
+  meta0,"shell-present","","列出 llmanspec/specs/app-tui-chrome","spec.toon 存在且 purpose 为中文"
