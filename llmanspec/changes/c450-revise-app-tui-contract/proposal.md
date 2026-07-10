@@ -18,7 +18,7 @@ track: B
 
 ## What Changes
 
-1. **退役冲突 req**：对旧 `app-tui` 中绑定 ratatui、`StyledLine`、always-on status、旧 widget 目录假设的 requirement 执行 `remove_requirement` 或 `modify_requirement` 重写为 xylitol-tui / DESIGN 语义。
+1. **退役冲突 req**：旧 `app-tui` 中绑定 ratatui、`StyledLine`、`Viewport::Inline`、always-on Ready、旧 markdown/TestBackend 实现史的 requirement **已从 main spec 直接移除**（保留 6 条跨切面不变量 + capability 索引）；本变更 delta 将保留项改为中文并对齐 Remote 预留 / `app-tui-*` 索引。引擎与五层 harness 真值在 `package-tui-*`（尤其 `package-tui-testing`），不在单体 `app-tui` 重复。
 2. **引入 `app-tui-*` capabilities**（最小壳 + 关键 MUST，中文 purpose/statement）：
    - `app-tui-host` — 入口、host 循环、终端生命周期、日志
    - `app-tui-bridge` — XyEvent→UI、流生命周期、Remote 预留
