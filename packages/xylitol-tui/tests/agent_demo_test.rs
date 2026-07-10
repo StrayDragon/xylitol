@@ -959,8 +959,8 @@ fn agent_demo_diff_body_skips_tool_status_bg() {
         "expected SBS Ready|Working body row in viewport"
     );
     assert!(
-        saw_removed_bg && saw_added_bg,
-        "SBS body should use Mocha diff row tints (removed={saw_removed_bg} added={saw_added_bg})"
+        !saw_removed_bg && !saw_added_bg,
+        "SBS body must not use Mocha diff row tints (c464; removed={saw_removed_bg} added={saw_added_bg})"
     );
 }
 

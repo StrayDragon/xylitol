@@ -49,14 +49,17 @@ spacing:
 
 ## 行级着色 MUST
 
-| 行类 | Token 引用 | 视觉 |
-|---|---|---|
-| 删除 | `{colors.diff-removed}` + `{colors.diff-removed-bg}` | 红 fg + **整行淡红底**（铺满终端行宽） |
-| 添加 | `{colors.diff-added}` + `{colors.diff-added-bg}` | 绿 fg + **整行淡绿底** |
-| 上下文 | `{colors.diff-context}` | dim / muted（无行底） |
-| 头信息 `---`/`+++`/`@@` | `{colors.muted}` | dim |
+| 行类 | Token 引用 | Unified | Side-by-side |
+|---|---|---|---|
+| 删除 | `{colors.diff-removed}`（+ unified 时 `{colors.diff-removed-bg}`） | 红 fg + **整行淡红底** | **仅红 fg** + gutter；**MUST NOT** 套行底 |
+| 添加 | `{colors.diff-added}`（+ unified 时 `{colors.diff-added-bg}`） | 绿 fg + **整行淡绿底** | **仅绿 fg** + gutter；**MUST NOT** 套行底 |
+| 上下文 | `{colors.diff-context}` | dim / muted（无行底） | 同左 |
+| 头信息 `---`/`+++`/`@@` | `{colors.muted}` | dim | dim |
 
-主题经闭包注入（与 Markdown/SelectList 一致）；包 **MUST NOT** 硬编码产品色板。行底在 **pad 到行宽之后** 再套（`added_line_bg` / `removed_line_bg`），避免底色断在内容末尾。
+主题经闭包注入（与 Markdown/SelectList 一致）；包 **MUST NOT** 硬编码产品色板。
+
+**Unified**：行底在 pad 到行宽之后再套（`added_line_bg` / `removed_line_bg`）。
+**Side-by-side（c464）**：半栏 **MUST NOT** 默认调用行底闭包——避免与产品 `tool-*-bg`（执行态）抢「红/绿墙」语义；极性只靠 fg + 左右栏。
 
 ## 行号 MUST
 
@@ -83,7 +86,7 @@ Agent Edit 路径：优先 `DiffInput::from_edit_pair(old, new)`（或 `generate
 2. Side-by-side：仅当调用方显式设置 `side_by_side_min_width` 且宽度达标时启用；列宽按**内容打包**（cap 半宽）；多行 replace hunk（`similar` 的 DD…II…）MUST **按行 zip** 成 L|R 同行，**MUST NOT** 先堆全部删除再堆全部添加。
 3. **MUST NOT** 使用 Unicode 表线 / 树连接符装饰；对齐用空格。
 4. 行宽按 `visible_width`（CJK/emoji）；超宽行 MUST 按 ANSI 感知宽度折行或截断策略与 Text/Markdown 一致，**MUST NOT** 按字节硬切。
-5. expandable 壳的 `tool-*-bg` **只铺 Diff header**；正文用本文件行级 diff-*-bg（见 [`expandable.md`](./expandable.md)）。
+5. expandable 壳的 `tool-*-bg` **只铺 Diff header**；unified 正文可用本文件行级 `diff-*-bg`；SBS 正文 **MUST NOT** 再套行底（见上表 / c464）。
 
 ## 复制友好 MUST
 
