@@ -739,77 +739,84 @@ fn render_side_by_side(
     _options: &DiffOptions,
     num_width: usize,
 ) -> Vec<String> {
-    // Two columns with a single space separator (no box drawing).
-    let col = width.saturating_sub(1) / 2;
-    let mut out = Vec::new();
+    // Pack columns to content width (capped), not half-terminal stretch.
+    let max_half = width.saturating_sub(2) / 2;
+    enum Row {
+        Meta(Vec<String>),
+        Pair(Vec<String>, Vec<String>),
+    }
+    let mut rows: Vec<Row> = Vec::new();
     let mut i = 0;
     while i < lines.len() {
         let line = &lines[i];
         if line.kind == LineKind::Meta {
-            out.extend(wrap_pad(&(theme.meta)(&line.content), width));
+            rows.push(Row::Meta(wrap_text_with_ansi(
+                &(theme.meta)(&line.content),
+                width.max(1),
+            )));
             i += 1;
             continue;
         }
-        // Pair delete+insert into one row when possible.
         if line.kind == LineKind::Delete
             && i + 1 < lines.len()
             && lines[i + 1].kind == LineKind::Insert
         {
-            let left = format_sbs_cell(
-                '-',
-                &line.content,
-                line.old_no,
-                theme,
-                LineKind::Delete,
-                col,
-                num_width,
-            );
-            let right = format_sbs_cell(
-                '+',
-                &lines[i + 1].content,
-                lines[i + 1].new_no,
-                theme,
-                LineKind::Insert,
-                col,
-                num_width,
-            );
-            out.extend(zip_columns(&left, &right, col, width));
-            i += 2;
-            continue;
-        }
-        let (left, right) = match line.kind {
-            LineKind::Delete => (
+            rows.push(Row::Pair(
                 format_sbs_cell(
                     '-',
                     &line.content,
                     line.old_no,
                     theme,
                     LineKind::Delete,
-                    col,
+                    max_half,
                     num_width,
                 ),
-                vec![" ".repeat(col)],
+                format_sbs_cell(
+                    '+',
+                    &lines[i + 1].content,
+                    lines[i + 1].new_no,
+                    theme,
+                    LineKind::Insert,
+                    max_half,
+                    num_width,
+                ),
+            ));
+            i += 2;
+            continue;
+        }
+        let pair = match line.kind {
+            LineKind::Delete => Row::Pair(
+                format_sbs_cell(
+                    '-',
+                    &line.content,
+                    line.old_no,
+                    theme,
+                    LineKind::Delete,
+                    max_half,
+                    num_width,
+                ),
+                Vec::new(),
             ),
-            LineKind::Insert => (
-                vec![" ".repeat(col)],
+            LineKind::Insert => Row::Pair(
+                Vec::new(),
                 format_sbs_cell(
                     '+',
                     &line.content,
                     line.new_no,
                     theme,
                     LineKind::Insert,
-                    col,
+                    max_half,
                     num_width,
                 ),
             ),
-            LineKind::Equal => (
+            LineKind::Equal => Row::Pair(
                 format_sbs_cell(
                     ' ',
                     &line.content,
                     line.old_no,
                     theme,
                     LineKind::Equal,
-                    col,
+                    max_half,
                     num_width,
                 ),
                 format_sbs_cell(
@@ -818,14 +825,39 @@ fn render_side_by_side(
                     line.new_no,
                     theme,
                     LineKind::Equal,
-                    col,
+                    max_half,
                     num_width,
                 ),
             ),
             LineKind::Meta => unreachable!(),
         };
-        out.extend(zip_columns(&left, &right, col, width));
+        rows.push(pair);
         i += 1;
+    }
+
+    let left_w = rows
+        .iter()
+        .filter_map(|r| match r {
+            Row::Pair(l, _) => l.iter().map(|s| visible_width(s)).max(),
+            Row::Meta(_) => None,
+        })
+        .max()
+        .unwrap_or(0)
+        .min(max_half)
+        .max(1);
+
+    let mut out = Vec::new();
+    for row in rows {
+        match row {
+            Row::Meta(lines) => {
+                for line in lines {
+                    out.push(pad_to_width(&line, width));
+                }
+            }
+            Row::Pair(left, right) => {
+                out.extend(zip_packed_columns(&left, &right, left_w, width));
+            }
+        }
     }
     out
 }
@@ -836,26 +868,51 @@ fn format_sbs_cell(
     no: Option<u32>,
     theme: &DiffTheme,
     kind: LineKind,
-    col: usize,
+    max_col: usize,
     num_width: usize,
 ) -> Vec<String> {
-    // Same compact prefix as unified so L/R content columns line up within each pane.
     let plain = compact_prefix(sign, no, num_width);
     let prefix = color_prefix(kind, &plain, theme);
     let body = color_content(kind, content, theme);
-    wrap_text_with_ansi(&format!("{prefix}{body}"), col.max(1))
+    let combined = format!("{prefix}{body}");
+    wrap_text_with_ansi(&combined, max_col.max(1))
         .into_iter()
-        .map(|l| pad_to_width(&l, col))
+        .map(|l| {
+            if visible_width(&l) > max_col {
+                truncate_to_width(&l, max_col, "", false)
+            } else {
+                l
+            }
+        })
         .collect()
 }
 
-fn zip_columns(left: &[String], right: &[String], col: usize, width: usize) -> Vec<String> {
+fn zip_packed_columns(
+    left: &[String],
+    right: &[String],
+    left_w: usize,
+    width: usize,
+) -> Vec<String> {
+    let gap = 2;
+    let right_budget = width.saturating_sub(left_w + gap).max(1);
     let n = left.len().max(right.len()).max(1);
     let mut out = Vec::with_capacity(n);
     for i in 0..n {
-        let l = left.get(i).cloned().unwrap_or_else(|| " ".repeat(col));
-        let r = right.get(i).cloned().unwrap_or_else(|| " ".repeat(col));
-        let row = format!("{l} {r}");
+        let l_raw = left.get(i).cloned().unwrap_or_default();
+        let r_raw = right.get(i).cloned().unwrap_or_default();
+        let l = pad_to_width(&l_raw, left_w);
+        let r = if visible_width(&r_raw) > right_budget {
+            truncate_to_width(&r_raw, right_budget, "", false)
+        } else {
+            r_raw
+        };
+        let row = if right.is_empty() {
+            l
+        } else if left.is_empty() {
+            format!("{}{r}", " ".repeat(left_w + gap))
+        } else {
+            format!("{l}{}{r}", " ".repeat(gap))
+        };
         out.push(pad_to_width(&row, width));
     }
     out
@@ -974,9 +1031,10 @@ mod tests {
     use super::*;
 
     fn plain_theme() -> DiffTheme {
+        // Identity kind colors — signs come only from compact/dual gutters (avoid `--1`).
         DiffTheme {
-            added: Box::new(|s| format!("+{s}")),
-            removed: Box::new(|s| format!("-{s}")),
+            added: Box::new(|s| s.to_string()),
+            removed: Box::new(|s| s.to_string()),
             context: Box::new(|s| s.to_string()),
             gutter: Box::new(|s| s.to_string()),
             meta: Box::new(|s| s.to_string()),
@@ -1180,6 +1238,16 @@ mod tests {
         assert!(
             joined.contains("Ready") && joined.contains("Working"),
             "SBS body should remain; got:\n{joined}"
+        );
+        // Packed columns: right pane near left content (not mid-screen gap).
+        let data = lines
+            .iter()
+            .find(|l| l.contains("Working"))
+            .expect("Working line");
+        let pos = data.find("Working").expect("Working");
+        assert!(
+            pos < 55,
+            "packed SBS should not leave a huge mid-gap; Working at {pos} in:\n{data}"
         );
     }
 
