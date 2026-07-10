@@ -65,7 +65,7 @@
 - 前缀（按层）：
   - `package-tui-*` — `packages/xylitol-tui`
   - `app-tui-*` — `src/app/tui`（如 `app-tui-host`）；单体 `app-tui` 正退役（c450）
-  - 其它意向：`domain-*` / `runtime-*` / `agent-*` / `infra-*` / `protocol-*` / `cli-*` / `server-*`（历史名迁移见 `_tmp_prompts/`）
+  - 其它意向：`domain-*` / `runtime-*` / `agent-*` / `infra-*` / `protocol-*` / `cli-*` / `server-*` / `test-*`（P0+P1 rename 已完成；`architecture` 等 meta 名仍待议）
 - 细则 SSOT：`llmanspec/config.yaml` → `rules.proposal`。
 
 ## Skills
