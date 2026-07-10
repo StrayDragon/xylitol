@@ -31,12 +31,14 @@ components:
 3. 快捷键切换（thinking toggle、tools expand）由产品面绑定；包组件只渲染给定展开态。
 4. 折叠行旁 MUST 提示对应快捷键，格式为括号包裹的完整和弦（demo 榜样：`thinking  (Ctrl+T)`、`tool/diff  (Alt+E)`），避免 `^T` 缩写与无括号裸键；勿只靠 footer 快捷键墙。
 5. **工具块背景三态**（吸取 pi `ToolExecutionComponent`）：pending → `{colors.tool-pending-bg}`；成功 → `{colors.tool-success-bg}`；失败 → `{colors.tool-error-bg}`。全行宽 padding 后套 bg（`apply_background_to_line`），ANSI 只重置背景（`\x1b[49m`），勿冲掉内容 fg。
+6. **Diff 块例外**：状态 tint **只铺摘要/header 行**；展开后的 Diff 正文 MUST 只用 Diff 自身的 added/removed/context fg（及 word-level），**MUST NOT** 再套 `tool-*-bg`（否则红/绿行与块级绿底打架）。
+7. **Tool 详情不重复命令**：摘要行已含命令时，展开详情 MUST NOT 再 echo 同一命令（可只留 exit / stderr / 预览）。
 
 ## 已验证（c462 / agent_demo）
 
-- seed：success Diff/Tool + error Tool 均带 truecolor 全行 tint。
-- 脚本：Tool/Edit 先 `Pending` 再翻 `Success`（摘要 `· running` → `· ok`）。
-- harness：视口断言 `48;2;…` 与 `49m`（见 `agent_demo_test`）。
+- seed：Tool 全块 tint；Diff **仅 header** tint + 正文 Diff 配色。
+- 脚本：Tool/Edit 先 `Pending` 再翻 `Success`（摘要 `· running` → `· ok`）；详情不重复 `$ cmd`。
+- harness：cell `Color::Rgb` 断言（见 `agent_demo_test`）。
 
 ## 策略（可后续细化）
 
