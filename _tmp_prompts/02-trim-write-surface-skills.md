@@ -23,6 +23,6 @@
 
 ## 完成标准
 
-- [ ] 两份 SKILL 无过期计数
-- [ ] 与现行 AGENTS 不矛盾
-- [ ] 短 diff，可单独 chore 提交
+- [x] 两份 SKILL 无过期计数
+- [x] 与现行 AGENTS 不矛盾
+- [x] 短 diff（+7/-7 行），可单独 chore 提交
