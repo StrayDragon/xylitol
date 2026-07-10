@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "errors"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Errors
 
 ## MUST

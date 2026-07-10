@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "transcript"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Transcript
 
 产品对话主内容区。实现：`app-tui-transcript`（c470）；包侧只提供 Text / Markdown / Diff 等积木。

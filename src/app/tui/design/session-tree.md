@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "session-tree"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Session tree（草稿）
 
 后置：双 Esc 打开会话树（c491）。包侧 tree selector：c454 / c456。

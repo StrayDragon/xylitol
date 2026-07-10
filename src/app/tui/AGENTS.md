@@ -4,7 +4,7 @@
 
 ## 现状
 
-基于 `xylitol-tui` 的 **host 驱动空场景**（c460）：`HostSession` + `Scene` + 终端 lifecycle。`run()` 可进入；XyEvent / slash / steer 接线在后续 change。
+基于 `xylitol-tui` 的 **host 驱动空 UI**（c460）：`HostSession` + `UiRoot` + 终端 lifecycle。`run()` 可进入；XyEvent / slash / steer 接线在后续 change。当前空场景仅为框架占位，**未**按 `DESIGN.md` 实现产品视觉。
 
 ## 视觉 / UX
 
@@ -45,4 +45,4 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 | 包内组件与五层验证 | `test-tui-harness` skill |
 | 排查（禁 println） | `tail -f ~/.xylitol/logs/xylitol.log` |
 
-模块：`host.rs`（步进机）、`scene.rs`（产品场景布局）、`terminal_guard.rs`（restore）、`tests.rs`（harness）。勿用 `shell` 命名，以免与 bash/`infra::process::shell` 混淆。
+模块：`host.rs`（步进机）、`ui_root.rs`（产品根布局）、`terminal_guard.rs`（restore）、`tests.rs`（harness）。勿用 `shell`/`scene` 命名，以免与 bash/`infra::process::shell` 或泛化「场景」混淆。

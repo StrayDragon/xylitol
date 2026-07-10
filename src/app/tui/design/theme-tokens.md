@@ -1,3 +1,9 @@
+---
+version: "alpha"
+name: "theme-tokens"
+description: "Xylitol Terminal component UX — see DESIGN.md index."
+---
+
 # Theme tokens
 
 语义 token（主 `DESIGN.md` frontmatter）→ 终端 SGR 的映射层在**应用面**；包组件只收闭包。
