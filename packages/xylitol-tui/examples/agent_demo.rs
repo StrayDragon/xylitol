@@ -566,25 +566,37 @@ fn sample_edit_tool_pair() -> DiffInput {
 }
 
 fn demo_markdown_theme() -> MarkdownTheme {
-    let id = |s: &str| s.to_string();
-    // DESIGN accent #89b4fa
+    // DESIGN tokens (Mocha): accent / on-surface / muted / success / warning
     let accent = |s: &str| format!("\x1b[38;2;137;180;250m{s}\x1b[39m");
+    let on_surface = |s: &str| format!("\x1b[38;2;205;214;244m{s}\x1b[39m");
+    let muted = |s: &str| format!("\x1b[38;2;108;112;134m{s}\x1b[39m");
+    let success = |s: &str| format!("\x1b[38;2;166;227;161m{s}\x1b[39m");
+    let warning = |s: &str| format!("\x1b[38;2;249;226;175m{s}\x1b[39m");
+    let bold_sgr = |s: &str| format!("\x1b[1m{s}\x1b[22m");
+    let italic_sgr = |s: &str| format!("\x1b[3m{s}\x1b[23m");
+    let underline_sgr = |s: &str| format!("\x1b[4m{s}\x1b[24m");
     MarkdownTheme {
-        heading: Box::new(accent),
+        // Level colors per design/markdown.md — full style here (not nested with theme.bold).
+        heading: Box::new(move |level, s| match level {
+            1 | 2 => accent(&bold_sgr(&underline_sgr(s))),
+            3 | 4 => on_surface(&bold_sgr(s)),
+            _ => muted(s),
+        }),
         link: Box::new(accent),
-        link_url: Box::new(|s| format!("\x1b[4m\x1b[38;2;137;180;250m{s}\x1b[39m\x1b[24m")),
-        code: Box::new(|s| format!("\x1b[38;2;166;227;161m{s}\x1b[39m")), // success
+        link_url: Box::new(move |s| underline_sgr(&accent(s))),
+        code: Box::new(success),
         code_block: Box::new(|s| s.to_string()),
         // DESIGN / c530: no fence chrome (callback unused)
         code_block_border: Box::new(|_| String::new()),
-        quote: Box::new(dim),
+        quote: Box::new(move |s| muted(&italic_sgr(s))),
         quote_border: Box::new(|_| String::new()),
-        hr: Box::new(dim),
-        list_bullet: Box::new(id),
-        bold: Box::new(bold),
-        italic: Box::new(|s| format!("\x1b[3m{s}\x1b[23m")),
-        strikethrough: Box::new(|s| format!("\x1b[9m{s}\x1b[29m")),
-        underline: Box::new(|s| format!("\x1b[4m{s}\x1b[24m")),
+        hr: Box::new(muted),
+        list_bullet: Box::new(|s| s.to_string()),
+        // B: color + SGR so emphasis survives terminals that ignore bold/italic weight.
+        bold: Box::new(move |s| bold_sgr(&accent(s))),
+        italic: Box::new(move |s| italic_sgr(&warning(s))),
+        strikethrough: Box::new(move |s| format!("\x1b[9m{}\x1b[29m", muted(s))),
+        underline: Box::new(underline_sgr),
         highlight_code: Some(Box::new(highlight_code)),
         code_block_indent: Some("  ".into()),
     }

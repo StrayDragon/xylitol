@@ -45,7 +45,7 @@ components:
 4. **Round-trip 标记白名单**（用户决议，2026-07 修订）：
    - 行内代码：`` `code` `` — **保留**可见反引号（复制后仍可辨）
    - 删除线：`~~text~~` — **保留**可见波浪线
-   - 粗体 / 斜体：**不再**输出可见 `**` / `*`；仅用终端 SGR（bold / italic）。粘贴进下一轮会丢强调信息——接受此权衡以省 token、画面更干净。验收 stub 用语义标注如 `（加粗）` / `（斜体）` 标明意图。
+   - 粗体 / 斜体：**不再**输出可见 `**` / `*`；用 **色 + SGR**（bold / italic）。许多终端字重/斜体不可见，色是强调的可靠通道。粘贴进下一轮会丢强调——接受此权衡。验收 stub 可用 `（加粗）` / `（斜体）` 语义标注。
 5. **禁止用装饰换层级**。标题**MUST NOT**输出 `#` / `##` 前缀；用色组 + bold/underline 表达级别。
 6. **fg / bg 分相**：元素着色走 fg；若需消息底色，在行宽 padding 后再套 `bgColor`（`apply_background_to_line`）。
 
@@ -62,6 +62,8 @@ components:
 
 复制后（剥 ANSI）= 纯标题文字（无 `#`）。层级信息在粘贴进 LLM 时会变弱——接受此权衡以省 token；需要层级时靠段落结构与用词。
 
+主题回调：`MarkdownTheme.heading(level, text)` **MUST** 按上表一次上齐色与属性（勿再套 `theme.bold` 的强调色，以免 H3+ 被 accent 盖掉）。
+
 ## 语法 → 显示 / 复制
 
 ### 块级
@@ -73,9 +75,9 @@ components:
 | 无序表 | `- ` + 正文 | 同左 | 必要标记；嵌套用空格缩进，**勿**树线 |
 | 有序表 | `1. ` … | 同左 | 保留原始序号（`preserve_ordered_list_markers`） |
 | 任务列表 | `- [ ]` / `- [x]` | 同左 | 扩展开启时；勿画框 |
-| 引用 | 仅 dim + italic（`md-quote`） | 纯引用正文 | **MUST NOT** `│` / 竖线装饰 |
+| 引用 | `{colors.muted}` + italic（`md-quote`） | 纯引用正文 | **MUST NOT** `│` / 竖线装饰 |
 | 代码块 | 语法高亮（SGR）；可选 2 空格缩进 | 纯代码行 | **MUST NOT** fence、语言标签条、行号墙、边框 |
-| 表格 | **列宽空格对齐（方案 A）**；表头 bold + underline | 对齐纯文本，**无** `\|`、**无**盒线 | 见下「表格」 |
+| 表格 | **列宽空格对齐（方案 A）**；表头 **accent + bold + underline** | 对齐纯文本，**无** `\|`、**无**盒线 | 见下「表格」 |
 | 分隔线 | 短 muted 线（约 4–8×`─`）或单空行 | 少数字符或无 | **MUST NOT** 拉满终端宽的装饰线 |
 | 图片 | `alt (url)`（无 alt 则用 url） | 同左 | 与链接同：不丢 URL；**勿**只靠不可选 OSC |
 
@@ -83,20 +85,20 @@ components:
 
 | 语法 | 显示 | 复制可见字符 |
 |---|---|---|
-| 粗体 | **仅** SGR bold（`theme.bold`）；**无** `**` 包裹 | 纯文字（无星号） |
-| 斜体 | **仅** SGR italic（`theme.italic`）；**无** `*` 包裹 | 纯文字（无星号） |
-| 删除线 | strikethrough + 可见 `~~…~~` | `~~…~~` |
+| 粗体 | `{colors.accent}` + SGR bold（`theme.bold`）；**无** `**` 包裹 | 纯文字（无星号） |
+| 斜体 | `{colors.warning}` + SGR italic（`theme.italic`）；**无** `*` 包裹 | 纯文字（无星号） |
+| 删除线 | `{colors.muted}` + strikethrough + 可见 `~~…~~` | `~~…~~` |
 | 行内代码 | `{colors.success}` + 可见 `` `…` `` | `` `…` `` |
 | 链接 | `text (url)`；url 可用 accent + underline | `text (url)` |
 | 裸 URL / 自动链接 | 全文展示（可 underline） | 全文 |
 | 脚注 | 行内 `[n]`；文末短列表 | 明文 | 后置；勿大框 |
 | HTML | 当文本或剥离危险标签 | 可见文本 | 最小处理 |
 
-> **粗体/斜体特别显示**：终端能力足够时用真粗体/斜体；demo stub 在源 MD 里写 `**（加粗）词**` / `*（斜体）词*`，渲染后星号消失，语义标注仍在，避免「看不出哪里被强调」。
+> **粗体/斜体**：色是主通道（终端常看不见字重/斜体）；SGR bold/italic 仍发出。demo stub 可写 `**（加粗）词**` / `*（斜体）词*`，渲染后星号消失、语义标注仍在。
 
 ### 表格（方案 A · 已决议）
 
-- **显示**：按列计算宽度，**空格垫齐**；表头行 bold + underline；表头与正文之间**不要** `│`/`─┼─`/`┌┐` 盒线。
+- **显示**：按列计算宽度，**空格垫齐**；表头行 **accent + bold + underline**（与行内粗体同色通道，便于无字重终端辨认）；表头与正文之间**不要** `│`/`─┼─`/`┌┐` 盒线。
 - **复制**：即显示中的可见字符 → 对齐的纯文本表（无 pipe、无盒线）。
 - **不选 B**（对齐 GFM `\|` 表）除非产品日后改决议；B 更利 round-trip，但每行多个 `\|` 更胀。
 
@@ -108,16 +110,16 @@ alice     30  eng
 bob       28  design
 ```
 
-（终端里 `Name Age Role` 一行为 underline+bold；上表仅示字符。）
+（终端里 `Name Age Role` 一行为 underline+bold+accent；上表仅示字符。）
 
 ## MUST（实现检查清单）
 
-1. 标题：色组 + SGR 分级；**MUST NOT** 输出 `#`/`##` 前缀。
+1. 标题：色组 + SGR 分级；**MUST NOT** 输出 `#`/`##` 前缀；经 `heading(level, …)` 一次上齐。
 2. 链接 / 图片：**MUST** 渲染为 `text (url)` / `alt (url)`；**MUST NOT** 只留不可选中的 OSC 或丢弃 URL。
 3. 代码块：语法高亮即可；**MUST NOT** 边框、`` ``` `` fence、语言标签条、行号墙。
-4. 行内：粗体/斜体 **MUST** 仅 SGR、**MUST NOT** 输出可见 `**`/`*`；行内代码 / 删除线 **MUST** 保留 `` ` `` / `~~`。
+4. 行内：粗体/斜体 **MUST** 为色 + SGR、**MUST NOT** 输出可见 `**`/`*`；行内代码 / 删除线 **MUST** 保留 `` ` `` / `~~`。
 5. 引用：**MUST NOT** 竖线或盒线装饰；仅用 quote 色 + italic。
-6. 表格：方案 A（空格对齐 + 表头 underline）；**MUST NOT** 盒线表；**MUST NOT** 为装饰输出 `\|`。
+6. 表格：方案 A（空格对齐 + 表头 underline + accent）；**MUST NOT** 盒线表；**MUST NOT** 为装饰输出 `\|`。
 7. 列表：`- ` / `1. `；嵌套空格缩进；**MUST NOT** `│`/`├`/`└` 树线。
 8. HR：短线或空行；**MUST NOT** 近全宽装饰线墙。
 9. 高亮库（syntect 等）注入主 crate / demo；**MUST NOT** 打进 `xylitol-tui` 默认依赖（c452）。
@@ -133,8 +135,8 @@ bob       28  design
 
 | 项 | 状态 |
 |---|---|
-| 本文规范 | SSOT |
-| `packages/xylitol-tui` Markdown 组件 | **已按本文收敛**（c530-update-package-tui-markdown） |
-| `agent_demo` | compact kit seed + **`/md` / Ctrl+P→md-full** 打字机流式全语法 stub；流式可含更富语法（c530/c535） |
-| playground Markdown 槽 | 示意对齐本文；非运行时 |
+| 本文规范 | SSOT（含色增强粗斜体） |
+| `packages/xylitol-tui` Markdown 组件 | **已按本文收敛**（c530；`heading(level)` API） |
+| `agent_demo` | `/md` theme：粗体 accent、斜体 warning、H3+/表头分色 |
+| playground Markdown 槽 | A/B 对照；B = 运行时目标 |
 | Command plate | `DEMO_PLATE` 表驱动（c535）；footer 无键墙，完整键位走 `/help` |
