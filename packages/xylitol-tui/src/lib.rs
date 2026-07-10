@@ -5,6 +5,7 @@ pub mod completion;
 pub mod components;
 pub mod editor_component;
 pub mod fuzzy;
+pub mod highlight;
 pub mod keybindings;
 pub mod keys;
 pub mod kill_ring;
@@ -47,6 +48,7 @@ pub use components::text::Text;
 pub use components::truncated_text::TruncatedText;
 pub use editor_component::EditorComponent;
 pub use fuzzy::{FuzzyMatch, fuzzy_filter, fuzzy_match};
+pub use highlight::{highlight_code, highlight_code_owned};
 pub use keybindings::{
     Keybinding, KeybindingConflict, KeybindingDefinition, KeybindingDefinitions, KeybindingsConfig,
     KeybindingsManager, create_default_definitions, set_keybindings, with_keybindings,
