@@ -585,15 +585,16 @@ impl FakeCodingAgentApp {
             "read packages/xylitol-tui/examples/agent_demo.rs · 42ms · 790 lines",
             "ok — opened agent_demo.rs\n(preview) FakeCodingAgentApp + scripted turn harness",
         );
-        // Unified (edit-format) + side-by-side samples (collapsed; Alt+E expands).
+        // Primary Edit look: pi unified compact (seed + simulated Edit tool).
         self.push_diff_ex(
             "edited demo.rs (+2 -2) unified edit-format",
             sample_unified_pair(),
-            None,
+            None, // always unified — Edit tool path
             false,
         );
+        // Optional wide layout (supported, uncommon); packed columns, not half-stretch.
         self.push_diff_ex(
-            "edited ui_root.rs (+2 -2) side-by-side",
+            "edited ui_root.rs (+2 -2) side-by-side (optional)",
             sample_sbs_pair(),
             Some(60),
             false,
@@ -1084,7 +1085,7 @@ impl FakeCodingAgentApp {
                 self.set_status("Working");
                 self.recent_tools.insert(0, summary.clone());
                 self.recent_tools.truncate(4);
-                // Expanded like pi edit preview/result — pops open in transcript.
+                // pi Edit: unified compact Diff, expanded (pops open). Never SBS.
                 self.push_diff_ex(format!("{summary} · ok"), input, None, true);
                 if !self.changed_files.iter().any(|p| p.contains("ui_root.rs")) {
                     self.changed_files
