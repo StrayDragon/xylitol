@@ -1,6 +1,6 @@
 # _HANDOFF — xylitol TUI（交接笔记，非规范）
 
-> 最后更新：2026-07-10（c461 archived；c455 applied）
+> 最后更新：2026-07-10（c460 host archived）
 > 分支：`feat/tui-dev`
 > **本文是临时交接/进度板，不是 SSOT。** 稳定边界以各层 `AGENTS.md` 与 skills 为准。
 
@@ -44,9 +44,10 @@
 c450 ✓ archived
 c461 ✓ archived（steer/follow-up seam）
 c455 ✓ archived（InputListener）
+c460 ✓ archived（app-tui-host 空壳）
   c449 / c451 / c452 / c454 / c457 / c458 仍 purpose-draft
 
-c460 host ← 现可升格（depends c455 ✓）
+c460 host ← done
 c465 bridge ← c460 + c461✓
 c470 transcript ← c465 + c451 + c452
 c475 chrome ← c460 + c449
@@ -62,12 +63,9 @@ c485 slice ← c470 + c475 + c480
 
 ## 三、下一步（主线）
 
-1. **升格 / apply c460**（host；c455 已解锁）
-3. 产品面接线：c480 用 `Driver::{steer,follow_up,abort}` + `QueueUpdate` + InputListener
-
-探查笔记：`_tmp_prompts/05-result.md`
-
----
+1. **升格 / apply c465**（XyEvent bridge）或 **c480**（input / slash）
+2. 空壳已可 `cargo run -- --tui` 进入（需 TTY）
+3. 已确认需求继续用 harness 验证（HostEvent / TestTerminal）
 
 ## 四、`agent_demo` 键位（应对齐产品）
 
@@ -89,4 +87,4 @@ c485 slice ← c470 + c475 + c480
 - How-to：`write-tui`、`test-tui-harness`、`write-surface`
 - 视觉：`src/app/tui/DESIGN.md` + `design/`（c449）
 - 合约归档：`llmanspec/changes/archive/2026-07-10-c450-…`、`…/c461-…`
-- 已归档：`llmanspec/changes/archive/2026-07-10-c455-add-package-tui-input-listener/`
+- 已归档：c450 / c455 / c460 / c461（见 `llmanspec/changes/archive/2026-07-10-*`）

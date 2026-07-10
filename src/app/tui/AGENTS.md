@@ -4,9 +4,7 @@
 
 ## 现状
 
-旧 in-tree engine/widgets **已移除**。本目录为占位；基于 `xylitol-tui` **从零重做**（不以旧 UI/UX 为参考）。跨面 seam（`Driver` / `dispatch` / `composition` / `XyEvent`）保留。
-
-`tui` feature 下 `run()` 当前返回明确错误，直到重做落地。
+基于 `xylitol-tui` 的 **host 驱动空壳**（c460）：`HostSession` + `Shell` + 终端 lifecycle。`run()` 可进入；XyEvent / slash / steer 接线在后续 change。
 
 ## 视觉 / UX
 
@@ -20,19 +18,21 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 
 ## Debug 日志
 
-**目标**：debug 构建默认写即时日志（可 `tail -f`）；release 默认关。
-**现状**：仍以 `XYLITOL_DEBUG` / `RUST_LOG` 为准；`cfg(debug_assertions)` 兜底待 **c460** 落地（见 `_tmp_prompts/03b-logging-findings.md`）。
-路径见 `app/cli/logging.rs`；`target: "xylitol::tui"`。禁止 `println!`。
+**目标 / 现状（c460）**：debug 构建默认写即时日志；release 默认关。
+- 路径：`~/.xylitol/logs/xylitol.log`（`<agent_dir>/logs/xylitol.log`）
+- 查看：`tail -f ~/.xylitol/logs/xylitol.log`
+- 覆盖：`RUST_LOG=…` 或 `XYLITOL_DEBUG=1`（release 也可用）
+- 装配：`app/cli/logging.rs`；埋点 `target: "xylitol::tui"`。禁止 `println!`。
 
 ## 硬约束
 
 - 渲染/通用组件只用 `xylitol_tui`；禁止在本目录再实现差分引擎或通用 Editor/Markdown。
-- **需要底层 TUI 能力时**（新组件、键协议、overlay、布局容器、渲染/输入管线等）：先到 `packages/xylitol-tui` 查是否已有或可扩展；缺能力在包内补，再由本面接线。不要在本目录复制「准通用」实现。
+- **需要底层 TUI 能力时**：先到 `packages/xylitol-tui` 查是否已有或可扩展；缺能力在包内补，再由本面接线。
 - 产品路径 **host 驱动**同步引擎；异步事件合流在本面；勿调 `TUI::start()`（demo 专用）。
-- 驱动 agent 只经 `app/core/driver::Driver`（含日后 `steer` / `follow_up` / `clear_queue`）；禁止 reach `agent::session` / `runtime` / `infra`。
-- slash 语义复用 `protocol::Command`，经 `app/core/dispatch`（含 Steer/FollowUp 变体，见 c461）。
+- 驱动 agent 只经 `app/core/driver::Driver`（含 `steer` / `follow_up` / `clear_queue`）；禁止 reach `agent::session` / `runtime` / `infra`。
+- slash 语义复用 `protocol::Command`，经 `app/core/dispatch`。
 - 组件不直接调 `Driver`、不读写 session；颜色走本面 theme 语义 token（对齐 `DESIGN.md`）。
-- 需要新 agent 行为 → 先扩 `runtime_protocol/` / `agent/`，本面只消费。
+- 已确认需求须有足够 **harness / 模拟环境** 验证（`HostEvent` 注入 + `TestTerminal`）；难且易错逻辑不外包给低质量实现。
 
 ## HOW（指针）
 
@@ -40,9 +40,9 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 |---|---|
 | 写/改本面 | `write-tui` skill |
 | UX / token / layout | 本目录 `DESIGN.md` |
-| 底层能力是否已有 / 如何扩展 | `packages/xylitol-tui/AGENTS.md`（先查包，再改本面） |
+| 底层能力是否已有 / 如何扩展 | `packages/xylitol-tui/AGENTS.md` |
 | 新增/改造应用面 | `write-surface` skill |
 | 包内组件与五层验证 | `test-tui-harness` skill |
-| 排查（禁 println） | `XYLITOL_DEBUG=1` + `~/.xylitol/logs/xylitol.log`（见 `write-tui`） |
+| 排查（禁 println） | `tail -f ~/.xylitol/logs/xylitol.log` |
 
-文件布局以重做落地为准；落地后只更新本面地图，不把 how-to 堆进本文件。
+模块：`host.rs`（步进机）、`shell.rs`（空壳）、`terminal_guard.rs`（restore）、`tests.rs`（harness）。

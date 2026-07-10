@@ -6,11 +6,12 @@
 //! reach stdout/stderr (which would corrupt the TUI's inline viewport + per-frame
 //! DSR cursor query).
 //!
-//! Activation is **env-driven only** (no CLI flag, no settings field):
+//! Activation priority (no CLI flag, no settings field):
 //! - `RUST_LOG` set → install with `EnvFilter::try_from_default_env()`.
 //! - `XYLITOL_DEBUG=1` (and no `RUST_LOG`) → install with the default filter
 //!   `xylitol=debug,warn`.
-//! - otherwise → do nothing; all `tracing::` macros stay no-op (zero overhead).
+//! - **debug builds** (`cfg(debug_assertions)`) → same default filter (c460).
+//! - release builds with neither env → do nothing; `tracing::` stays no-op.
 //!
 //! The file writer is **synchronous** (`OpenOptions::append`), not
 //! `tracing-appender::non_blocking`, so `panic = "abort"` (see `Cargo.toml`)
@@ -48,7 +49,16 @@ pub fn init_logging(agent_dir: &Path) -> Option<()> {
     } else if std::env::var_os("XYLITOL_DEBUG").is_some_and(is_truthy) {
         EnvFilter::new(DEFAULT_FILTER)
     } else {
-        return None;
+        // Debug builds: default on so `tail -f ~/.xylitol/logs/xylitol.log` works
+        // without env vars (c460 / ath3). Release stays off unless env opts in.
+        #[cfg(debug_assertions)]
+        {
+            EnvFilter::new(DEFAULT_FILTER)
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            return None;
+        }
     };
 
     let log_dir = agent_dir.join("logs");
