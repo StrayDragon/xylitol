@@ -22,6 +22,7 @@ pi / xylitol：树 **替换 editor 槽**（`showSelector`），非居中 overlay
 | 状态行 `(i/n) [filter]` | ✓ | ✓ |
 | 路径 `•` / 选中 `›` | ✓ | ✓ |
 | Enter travel → 重建历史 | ✓ `navigateTree` + rebuild chat | ✓ demo（`travel_to_history` + 线性 assistant/tool 回复链） |
+| 树内 / 会话 fork | ✓ `/fork`（新会话文件） | ✓ demo 同会话 Shift+F（leaf=选中；下次提交成兄弟分支） |
 | 流中 Enter steer / Alt+Enter follow-up | ✓ | ✓ demo 队列（不打断当前轮） |
 | 提交/工具写入活树 | ✓ | ✓ `session_tree` 增长 |
 

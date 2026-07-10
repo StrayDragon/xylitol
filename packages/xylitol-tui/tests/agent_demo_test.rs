@@ -1351,6 +1351,54 @@ fn agent_demo_follow_up_queues_while_busy() {
 }
 
 #[test]
+fn agent_demo_session_tree_fork_stays_on_node_and_branches() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.freeze_script_for_test();
+
+    // u1 already has one child (a1) in the sample tree.
+    let before = app.session_tree_child_count_for_test("u1");
+    assert!(before >= 1, "sample tree u1 should have children");
+
+    app.open_session_tree_for_test();
+    app.tree_select_id_for_test("u1");
+    app.fork_from_selected_for_test();
+
+    assert!(!app.tree_open_for_test(), "fork closes the tree");
+    assert_eq!(
+        app.history_leaf_for_test(),
+        "u1",
+        "fork leaf must stay on selected user (not reply spine)"
+    );
+    assert_eq!(
+        app.input_text_for_test(),
+        "tighten footer truncation",
+        "fork prefills the user prompt"
+    );
+    let plain = app.transcript_plain_for_test();
+    assert!(
+        plain.contains("forked @ u1") && plain.contains("tighten footer truncation"),
+        "expected fork banner + user turn; got:\n{plain}"
+    );
+    // u1's path is root→u1 only; child assistant must not appear (unlike travel spine).
+    assert!(
+        !plain.contains("plan + tools"),
+        "fork must not include child assistant reply; got:\n{plain}"
+    );
+
+    app.submit_text_for_test("forked alternate reply prompt");
+    let after = app.session_tree_child_count_for_test("u1");
+    assert_eq!(
+        after,
+        before + 1,
+        "submit after fork must add a sibling under u1"
+    );
+    assert!(
+        app.session_tree_contains_label_for_test("forked alternate reply prompt"),
+        "new branch user node must appear in the live tree"
+    );
+}
+
+#[test]
 fn agent_demo_tool_event_grows_session_tree() {
     let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
     app.freeze_script_for_test();

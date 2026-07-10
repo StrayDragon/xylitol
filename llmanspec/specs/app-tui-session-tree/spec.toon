@@ -1,17 +1,20 @@
 kind: llman.sdd.spec
 name: "app-tui-session-tree"
-purpose: "产品面双 Esc 会话树 stub（c491 冻结）：仅槽替换与 travel 行；活树/真 Driver 等开闸。形态学见 agent_demo（ast3/ast4）。"
+purpose: 产品面双 Esc 会话树 stub（c491 冻结）：仅槽替换与 travel 行；活树/真 Driver 等开闸。形态学见 agent_demo（ast3/ast4）。
 valid_scope[1]: src/app/tui/
-requirements[5]{req_id,title,statement}:
+requirements[6]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c491-add-app-tui-session-tree 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ast1,"slot-replace",会话树打开时 MUST 替换 UiRoot editor 槽（贴底可见）；MUST NOT 画成内容区顶部 overlay。
   ast2,"travel-stub","Enter 选中节点时 MUST 记录 travel 目标 id 并关闭树；本切片 MUST NOT reach agent::session 或 infra session。"
   ast3,"demo-live-session-tree","在产品真 session 图接线前，packages/xylitol-tui agent_demo MUST 维护可变 session_tree：用户提交、工具事件与助手回复结束 MUST 在当前 history leaf 下挂对应节点并推进 leaf；双 Esc 打开的树 MUST 渲染该活树而非仅静态样例。"
   ast4,"demo-travel-reply-spine","agent_demo 在会话树 Enter travel 时 MUST 重建 root→选中节点路径上的 transcript，并 MUST 继续纳入其后单链的 assistant:/tool: 回复节点；history leaf MUST 落到该显示路径末端；完成后 status MUST 回到空闲（无 spinner）。"
-scenarios[6]{req_id,id,given,when,then}:
+  ast5,"demo-session-tree-fork","agent_demo 会话树打开时 MUST 支持 Shift+F fork：重建 root→选中节点路径（MUST NOT 自动纳入其后线性 assistant/tool 回复链）；history leaf MUST 等于选中 id；若选中为 user 消息 MUST 将其文本预填编辑器；关闭树后下一次用户提交 MUST 在该 leaf 下挂新子节点（与既有子树形成兄弟分叉）；MUST NOT 打开新会话文件或调用产品 Driver::fork。"
+scenarios[8]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-session-tree",spec.toon 存在且 purpose 为中文
   ast1,"double-esc-opens",空编辑器,双 Esc 于 500ms 内,editor 槽显示 Session tree
   ast2,"enter-closes",树已打开,Enter,树关闭且 transcript 含 travel 目标 id
   ast3,"submit-grows-tree",agent_demo 已打开,提交唯一 user 文本,session_tree 含该文本且再开树可见
   ast3,"tool-grows-tree",agent_demo 脚本轮产生 Tool,推进 tick 至工具出现,"session_tree 含 tool: 节点"
   ast4,"travel-user-keeps-reply",样例树在 u1 下有线性 assistant 子节点,travel 到 u1,transcript 含 user 文案与 assistant 回复且 leaf 为回复链末端
+  ast5,"fork-stays-on-user",树选中样例 u1（其下已有 assistant 子节点）,Shift+F 或 fork_from_history,leaf 为 u1、编辑器含原 user 文案、transcript 不含子 assistant 正文
+  ast5,"submit-creates-sibling",fork 到 u1 之后,提交新 user 文本,u1 的 children 数量加一且活树含新文案
