@@ -20,6 +20,8 @@ pub enum DiffInput {
         new: String,
         path: Option<String>,
     },
+    /// pi edit display format: `+ 42 content` / `- 11 old` / `  40 context`.
+    EditText(String),
 }
 
 /// Theme closures — product maps semantic tokens → SGR.
@@ -31,6 +33,8 @@ pub struct DiffTheme {
     pub meta: Box<dyn Fn(&str) -> String>,
     /// Intra-line changed span (typically reverse / bold).
     pub word_change: Box<dyn Fn(&str) -> String>,
+    /// Optional per-line content highlight (default identity). Syntect stays optional.
+    pub highlight_line: Box<dyn Fn(&str) -> String>,
 }
 
 impl Default for DiffTheme {
@@ -42,6 +46,7 @@ impl Default for DiffTheme {
             gutter: Box::new(|s| format!("\x1b[2m{s}\x1b[0m")),
             meta: Box::new(|s| format!("\x1b[2m{s}\x1b[0m")),
             word_change: Box::new(|s| format!("\x1b[7m{s}\x1b[27m")),
+            highlight_line: Box::new(|s| s.to_string()),
         }
     }
 }
@@ -52,6 +57,8 @@ pub struct DiffOptions {
     pub word_level: bool,
     /// When `Some(n)` and `width >= n`, use side-by-side; `None` = always unified.
     pub side_by_side_min_width: Option<usize>,
+    /// Compact pi-style `±{num} {content}` gutter (auto for [`DiffInput::EditText`]).
+    pub compact_line_numbers: bool,
 }
 
 impl Default for DiffOptions {
@@ -59,6 +66,7 @@ impl Default for DiffOptions {
         Self {
             word_level: true,
             side_by_side_min_width: Some(100),
+            compact_line_numbers: false,
         }
     }
 }
@@ -93,14 +101,18 @@ pub fn render_diff_lines(
         return vec![(theme.meta)("(no changes)")];
     }
 
-    let use_sbs = options
-        .side_by_side_min_width
-        .is_some_and(|min| width >= min);
+    let mut opts = options.clone();
+    if matches!(input, DiffInput::EditText(_)) {
+        opts.compact_line_numbers = true;
+    }
+    let num_width = line_number_width(&lines);
+
+    let use_sbs = opts.side_by_side_min_width.is_some_and(|min| width >= min);
 
     if use_sbs {
-        render_side_by_side(&lines, width, theme, options)
+        render_side_by_side(&lines, width, theme, &opts, num_width)
     } else {
-        render_unified(&lines, width, theme, options)
+        render_unified(&lines, width, theme, &opts, num_width)
     }
 }
 
@@ -109,7 +121,98 @@ fn normalize_input(input: &DiffInput) -> Vec<DiffLine> {
         DiffInput::LinePair { old, new, path } => lines_from_pair(old, new, path.as_deref()),
         DiffInput::UnifiedText(text) => parse_unified(text),
         DiffInput::DisplayText(text) => parse_display(text),
+        DiffInput::EditText(text) => parse_edit_text(text),
     }
+}
+
+fn line_number_width(lines: &[DiffLine]) -> usize {
+    lines
+        .iter()
+        .flat_map(|l| [l.old_no, l.new_no])
+        .flatten()
+        .map(|n| n.to_string().len())
+        .max()
+        .unwrap_or(1)
+        .max(1)
+}
+
+/// Parse pi edit display lines: `+ 42 content` / `- 11 old` / `  40 context`.
+fn parse_edit_text(text: &str) -> Vec<DiffLine> {
+    let mut out = Vec::new();
+    for raw in text.lines() {
+        if raw.trim() == "..." || raw.trim_start().starts_with("...") {
+            out.push(DiffLine {
+                kind: LineKind::Meta,
+                sign: ' ',
+                content: raw.trim().to_string(),
+                old_no: None,
+                new_no: None,
+            });
+            continue;
+        }
+        let Some(parsed) = parse_edit_line(raw) else {
+            if !raw.is_empty() {
+                out.push(DiffLine {
+                    kind: LineKind::Meta,
+                    sign: ' ',
+                    content: raw.to_string(),
+                    old_no: None,
+                    new_no: None,
+                });
+            }
+            continue;
+        };
+        let (kind, sign, no, content) = parsed;
+        let (old_no, new_no) = match kind {
+            LineKind::Delete => (no, None),
+            LineKind::Insert => (None, no),
+            LineKind::Equal => (no, no),
+            LineKind::Meta => (None, None),
+        };
+        out.push(DiffLine {
+            kind,
+            sign,
+            content,
+            old_no,
+            new_no,
+        });
+    }
+    out
+}
+
+fn parse_edit_line(line: &str) -> Option<(LineKind, char, Option<u32>, String)> {
+    let bytes = line.as_bytes();
+    if bytes.is_empty() {
+        return None;
+    }
+    let prefix = bytes[0] as char;
+    let (kind, sign) = match prefix {
+        '+' => (LineKind::Insert, '+'),
+        '-' => (LineKind::Delete, '-'),
+        ' ' | '\t' => (LineKind::Equal, ' '),
+        _ => return None,
+    };
+    let rest = &line[1..];
+    // Optional padded line number, then a space, then content (pi: `+  42 content`).
+    let rest_trim_start = rest.trim_start_matches(' ');
+    let digits_end = rest_trim_start
+        .char_indices()
+        .take_while(|(_, c)| c.is_ascii_digit())
+        .map(|(i, _)| i + 1)
+        .last()
+        .unwrap_or(0);
+    let (no, content) = if digits_end > 0 {
+        let num_str = &rest_trim_start[..digits_end];
+        let after = rest_trim_start[digits_end..]
+            .strip_prefix(' ')
+            .unwrap_or("");
+        (num_str.parse().ok(), after.to_string())
+    } else {
+        // `+ content` without a number
+        let content = rest.strip_prefix(' ').unwrap_or(rest).to_string();
+        (None, content)
+    };
+    Some((kind, sign, no, content))
 }
 
 fn lines_from_pair(old: &str, new: &str, path: Option<&str>) -> Vec<DiffLine> {
@@ -341,6 +444,7 @@ fn render_unified(
     width: usize,
     theme: &DiffTheme,
     options: &DiffOptions,
+    num_width: usize,
 ) -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -359,22 +463,30 @@ fn render_unified(
             let ins = &lines[i + 1];
             let (del_styled, ins_styled) = word_level_pair(&del.content, &ins.content, theme);
             out.extend(emit_styled_line(
-                '-',
-                &del_styled,
-                del.old_no,
-                None,
-                width,
                 theme,
-                LineKind::Delete,
+                EmitOpts {
+                    sign: '-',
+                    styled_content: &del_styled,
+                    old_no: del.old_no,
+                    new_no: None,
+                    width,
+                    kind: LineKind::Delete,
+                    compact: options.compact_line_numbers,
+                    num_width,
+                },
             ));
             out.extend(emit_styled_line(
-                '+',
-                &ins_styled,
-                None,
-                ins.new_no,
-                width,
                 theme,
-                LineKind::Insert,
+                EmitOpts {
+                    sign: '+',
+                    styled_content: &ins_styled,
+                    old_no: None,
+                    new_no: ins.new_no,
+                    width,
+                    kind: LineKind::Insert,
+                    compact: options.compact_line_numbers,
+                    num_width,
+                },
             ));
             i += 2;
             continue;
@@ -389,13 +501,17 @@ fn render_unified(
             LineKind::Delete | LineKind::Insert | LineKind::Equal => {
                 let colored = color_content(line.kind, &line.content, theme);
                 out.extend(emit_styled_line(
-                    line.sign,
-                    &colored,
-                    line.old_no,
-                    line.new_no,
-                    width,
                     theme,
-                    line.kind,
+                    EmitOpts {
+                        sign: line.sign,
+                        styled_content: &colored,
+                        old_no: line.old_no,
+                        new_no: line.new_no,
+                        width,
+                        kind: line.kind,
+                        compact: options.compact_line_numbers,
+                        num_width,
+                    },
                 ));
             }
         }
@@ -405,11 +521,12 @@ fn render_unified(
 }
 
 fn color_content(kind: LineKind, content: &str, theme: &DiffTheme) -> String {
+    let highlighted = (theme.highlight_line)(content);
     match kind {
-        LineKind::Delete => (theme.removed)(content),
-        LineKind::Insert => (theme.added)(content),
-        LineKind::Equal => (theme.context)(content),
-        LineKind::Meta => (theme.meta)(content),
+        LineKind::Delete => (theme.removed)(&highlighted),
+        LineKind::Insert => (theme.added)(&highlighted),
+        LineKind::Equal => (theme.context)(&highlighted),
+        LineKind::Meta => (theme.meta)(&highlighted),
     }
 }
 
@@ -443,28 +560,45 @@ fn word_level_pair(old: &str, new: &str, theme: &DiffTheme) -> (String, String) 
     (del, ins)
 }
 
-fn emit_styled_line(
+struct EmitOpts<'a> {
     sign: char,
-    styled_content: &str,
+    styled_content: &'a str,
     old_no: Option<u32>,
     new_no: Option<u32>,
     width: usize,
-    theme: &DiffTheme,
     kind: LineKind,
-) -> Vec<String> {
-    let gutter = format_gutter(old_no, new_no);
-    let sign_s = match kind {
-        LineKind::Delete => (theme.removed)(&sign.to_string()),
-        LineKind::Insert => (theme.added)(&sign.to_string()),
-        LineKind::Equal => (theme.context)(&sign.to_string()),
-        LineKind::Meta => (theme.meta)(&sign.to_string()),
+    compact: bool,
+    num_width: usize,
+}
+
+fn emit_styled_line(theme: &DiffTheme, opts: EmitOpts<'_>) -> Vec<String> {
+    let sign_s = match opts.kind {
+        LineKind::Delete => (theme.removed)(&opts.sign.to_string()),
+        LineKind::Insert => (theme.added)(&opts.sign.to_string()),
+        LineKind::Equal => (theme.context)(&opts.sign.to_string()),
+        LineKind::Meta => (theme.meta)(&opts.sign.to_string()),
     };
-    let prefix = format!("{}{} ", (theme.gutter)(&gutter), sign_s);
+    let (prefix, cont_prefix) = if opts.compact {
+        let no = opts.old_no.or(opts.new_no);
+        let num = match no {
+            Some(n) => format!("{n:>w$}", w = opts.num_width),
+            None => " ".repeat(opts.num_width),
+        };
+        let gutter = format!("{}{num}", opts.sign);
+        let prefix = format!("{} ", (theme.gutter)(&gutter));
+        let blank = format!(" {}", " ".repeat(opts.num_width));
+        let cont_prefix = format!("{} ", (theme.gutter)(&blank));
+        (prefix, cont_prefix)
+    } else {
+        let gutter = format_gutter(opts.old_no, opts.new_no);
+        let prefix = format!("{}{} ", (theme.gutter)(&gutter), sign_s);
+        let blank_gutter = " ".repeat(visible_width(&gutter));
+        let cont_prefix = format!("{}  ", (theme.gutter)(&blank_gutter));
+        (prefix, cont_prefix)
+    };
     let prefix_w = visible_width(&prefix);
-    let content_w = width.saturating_sub(prefix_w).max(1);
-    let wrapped = wrap_text_with_ansi(styled_content, content_w);
-    let blank_gutter = " ".repeat(visible_width(&gutter));
-    let cont_prefix = format!("{}  ", (theme.gutter)(&blank_gutter));
+    let content_w = opts.width.saturating_sub(prefix_w).max(1);
+    let wrapped = wrap_text_with_ansi(opts.styled_content, content_w);
     let mut out = Vec::new();
     for (idx, part) in wrapped.into_iter().enumerate() {
         let line = if idx == 0 {
@@ -472,10 +606,10 @@ fn emit_styled_line(
         } else {
             format!("{cont_prefix}{part}")
         };
-        out.push(pad_to_width(&line, width));
+        out.push(pad_to_width(&line, opts.width));
     }
     if out.is_empty() {
-        out.push(pad_to_width(&prefix, width));
+        out.push(pad_to_width(&prefix, opts.width));
     }
     out
 }
@@ -512,6 +646,7 @@ fn render_side_by_side(
     width: usize,
     theme: &DiffTheme,
     _options: &DiffOptions,
+    num_width: usize,
 ) -> Vec<String> {
     // Two columns with a single space separator (no box drawing).
     let col = width.saturating_sub(1) / 2;
@@ -536,6 +671,7 @@ fn render_side_by_side(
                 theme,
                 LineKind::Delete,
                 col,
+                num_width,
             );
             let right = format_sbs_cell(
                 '+',
@@ -544,6 +680,7 @@ fn render_side_by_side(
                 theme,
                 LineKind::Insert,
                 col,
+                num_width,
             );
             out.extend(zip_columns(&left, &right, col, width));
             i += 2;
@@ -558,6 +695,7 @@ fn render_side_by_side(
                     theme,
                     LineKind::Delete,
                     col,
+                    num_width,
                 ),
                 vec![" ".repeat(col)],
             ),
@@ -570,11 +708,28 @@ fn render_side_by_side(
                     theme,
                     LineKind::Insert,
                     col,
+                    num_width,
                 ),
             ),
             LineKind::Equal => (
-                format_sbs_cell(' ', &line.content, line.old_no, theme, LineKind::Equal, col),
-                format_sbs_cell(' ', &line.content, line.new_no, theme, LineKind::Equal, col),
+                format_sbs_cell(
+                    ' ',
+                    &line.content,
+                    line.old_no,
+                    theme,
+                    LineKind::Equal,
+                    col,
+                    num_width,
+                ),
+                format_sbs_cell(
+                    ' ',
+                    &line.content,
+                    line.new_no,
+                    theme,
+                    LineKind::Equal,
+                    col,
+                    num_width,
+                ),
             ),
             LineKind::Meta => unreachable!(),
         };
@@ -587,10 +742,11 @@ fn render_side_by_side(
 fn format_sbs_cell(
     sign: char,
     content: &str,
-    _no: Option<u32>,
+    no: Option<u32>,
     theme: &DiffTheme,
     kind: LineKind,
     col: usize,
+    num_width: usize,
 ) -> Vec<String> {
     let sign_s = match kind {
         LineKind::Delete => (theme.removed)(&sign.to_string()),
@@ -598,17 +754,16 @@ fn format_sbs_cell(
         LineKind::Equal => (theme.context)(&sign.to_string()),
         LineKind::Meta => (theme.meta)(&sign.to_string()),
     };
+    let num = match no {
+        Some(n) => format!("{n:>num_width$}"),
+        None => " ".repeat(num_width),
+    };
+    let gutter = (theme.gutter)(&num);
     let body = color_content(kind, content, theme);
-    let prefix = format!("{sign_s} ");
-    let pw = visible_width(&prefix);
-    let cw = col.saturating_sub(pw).max(1);
+    let prefix = format!("{sign_s}{gutter} ");
     wrap_text_with_ansi(&format!("{prefix}{body}"), col.max(1))
         .into_iter()
-        .map(|l| {
-            // Re-wrap already combined — simpler: wrap body only
-            let _ = cw;
-            pad_to_width(&l, col)
-        })
+        .map(|l| pad_to_width(&l, col))
         .collect()
 }
 
@@ -667,8 +822,14 @@ impl Diff {
         use std::hash::{Hash, Hasher};
         let mut h = DefaultHasher::new();
         match &self.input {
-            DiffInput::DisplayText(s) | DiffInput::UnifiedText(s) => {
+            DiffInput::DisplayText(s) | DiffInput::UnifiedText(s) | DiffInput::EditText(s) => {
                 1u8.hash(&mut h);
+                // Distinguish EditText from Display/Unified via a tag byte.
+                match &self.input {
+                    DiffInput::EditText(_) => 3u8.hash(&mut h),
+                    DiffInput::UnifiedText(_) => 4u8.hash(&mut h),
+                    _ => 5u8.hash(&mut h),
+                }
                 s.hash(&mut h);
             }
             DiffInput::LinePair { old, new, path } => {
@@ -680,6 +841,7 @@ impl Diff {
         }
         self.options.word_level.hash(&mut h);
         self.options.side_by_side_min_width.hash(&mut h);
+        self.options.compact_line_numbers.hash(&mut h);
         h.finish()
     }
 }
@@ -737,6 +899,7 @@ mod tests {
             gutter: Box::new(|s| s.to_string()),
             meta: Box::new(|s| s.to_string()),
             word_change: Box::new(|s| format!("[{s}]")),
+            highlight_line: Box::new(|s| s.to_string()),
         }
     }
 
@@ -768,6 +931,7 @@ mod tests {
             &DiffOptions {
                 word_level: false,
                 side_by_side_min_width: None,
+                ..DiffOptions::default()
             },
         );
         let joined = lines.join("\n");
@@ -788,6 +952,7 @@ mod tests {
             &DiffOptions {
                 word_level: true,
                 side_by_side_min_width: None,
+                ..DiffOptions::default()
             },
         );
         let joined = lines.join("\n");
@@ -810,6 +975,7 @@ mod tests {
             &DiffOptions {
                 word_level: false,
                 side_by_side_min_width: Some(100),
+                ..DiffOptions::default()
             },
         );
         // Unified has sign on the left of content; side-by-side has two columns.
@@ -831,6 +997,7 @@ mod tests {
             &DiffOptions {
                 word_level: false,
                 side_by_side_min_width: None,
+                ..DiffOptions::default()
             },
         );
         for line in &lines {
@@ -848,5 +1015,86 @@ mod tests {
         let lines = parse_unified(text);
         assert!(lines.iter().any(|l| l.kind == LineKind::Delete));
         assert!(lines.iter().any(|l| l.kind == LineKind::Insert));
+    }
+
+    #[test]
+    fn edit_text_compact_gutter_shows_line_numbers() {
+        let input = DiffInput::EditText(
+            [
+                "-  10 fn ready() -> bool {",
+                "+  10 fn ready(prompt: &str) -> bool {",
+                "+ 100 !prompt.is_empty()",
+            ]
+            .join("\n"),
+        );
+        let lines = render_diff_lines(
+            &input,
+            80,
+            &plain_theme(),
+            &DiffOptions {
+                word_level: false,
+                side_by_side_min_width: None,
+                ..DiffOptions::default()
+            },
+        );
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("10") && joined.contains("100"),
+            "edit gutter should show padded line numbers; got:\n{joined}"
+        );
+        assert!(
+            joined.contains("- 10") || joined.contains("-10"),
+            "compact delete prefix expected; got:\n{joined}"
+        );
+    }
+
+    #[test]
+    fn side_by_side_shows_line_numbers_on_both_columns() {
+        let lines = render_diff_lines(
+            &DiffInput::LinePair {
+                old: "status: Ready\nfooter: cwd\n".into(),
+                new: "status: Working\nfooter: cwd · model\n".into(),
+                path: Some("ui_root.rs".into()),
+            },
+            120,
+            &plain_theme(),
+            &DiffOptions {
+                word_level: false,
+                side_by_side_min_width: Some(60),
+                ..DiffOptions::default()
+            },
+        );
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains('1') && joined.contains('2'),
+            "SBS cells should include line numbers; got:\n{joined}"
+        );
+        assert!(
+            joined.contains("Ready") && joined.contains("Working"),
+            "SBS body should remain; got:\n{joined}"
+        );
+    }
+
+    #[test]
+    fn side_by_side_empty_half_has_no_fake_line_number() {
+        let lines = render_diff_lines(
+            &DiffInput::LinePair {
+                old: "only_old\n".into(),
+                new: "\n".into(),
+                path: None,
+            },
+            100,
+            &plain_theme(),
+            &DiffOptions {
+                word_level: false,
+                side_by_side_min_width: Some(40),
+                ..DiffOptions::default()
+            },
+        );
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("only_old") || joined.contains('-'),
+            "got:\n{joined}"
+        );
     }
 }

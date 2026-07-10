@@ -87,6 +87,19 @@ fn sample_display_diff() -> String {
     .join("\n")
 }
 
+/// pi edit-style `±NNNN content` sample (c459).
+fn sample_edit_text() -> DiffInput {
+    DiffInput::EditText(
+        [
+            "  40 fn ready() -> bool {",
+            "-  41     true",
+            "+  41     !prompt.is_empty()",
+            "  42 }",
+        ]
+        .join("\n"),
+    )
+}
+
 fn demo_markdown_theme() -> MarkdownTheme {
     let id = |s: &str| s.to_string();
     MarkdownTheme {
@@ -590,6 +603,13 @@ impl FakeCodingAgentApp {
         self.push_diff_ex(
             "edited demo.rs (display_diff gutter)",
             DiffInput::DisplayText(sample_display_diff()),
+            None,
+            false,
+        );
+        // pi edit compact line numbers (c459).
+        self.push_diff_ex(
+            "edited ready() (+1 -1) edit-format",
+            sample_edit_text(),
             None,
             false,
         );
@@ -1167,6 +1187,7 @@ impl FakeCodingAgentApp {
                         let opts = DiffOptions {
                             word_level: true,
                             side_by_side_min_width: *side_by_side_min_width,
+                            ..DiffOptions::default()
                         };
                         let rendered = render_diff_lines(input, width, &theme, &opts);
                         for line in rendered {
