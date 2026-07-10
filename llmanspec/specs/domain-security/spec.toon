@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "security-policy"
+name: "domain-security"
 purpose: "Security policy — permission system with tool-level gating, trust store, and approval workflows."
 valid_scope[4]: src/infra/permission/,src/infra/trust/,src/runtime_protocol/permission.rs,src/runtime_protocol/trust.rs
 requirements[19]{req_id,title,statement}:
