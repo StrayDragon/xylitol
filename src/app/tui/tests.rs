@@ -182,3 +182,68 @@ fn harness_ctrl_c_consumed_before_editor_insert() {
     assert_eq!(root.borrow().editor_text(), "");
     assert!(!session.should_quit());
 }
+
+fn esc_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Esc,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+fn enter_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Enter,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+#[test]
+fn harness_double_esc_opens_session_tree() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut().set_editor_text("");
+    session.step(HostEvent::Input(esc_event())).unwrap();
+    assert!(!root.borrow().tree_open(), "single Esc must not open tree");
+    session.step(HostEvent::Input(esc_event())).unwrap();
+    assert!(
+        root.borrow().tree_open(),
+        "double Esc on empty editor should open session tree"
+    );
+    session.render_now().unwrap();
+    let joined = session.tui.terminal.frames.concat();
+    assert!(
+        joined.contains("Session tree"),
+        "expected tree chrome; got: {joined}"
+    );
+}
+
+#[test]
+fn harness_esc_closes_session_tree() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut().open_session_tree_for_test();
+    assert!(root.borrow().tree_open());
+    session.step(HostEvent::Input(esc_event())).unwrap();
+    assert!(!root.borrow().tree_open());
+}
+
+#[test]
+fn harness_enter_travel_stub_closes_tree() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut().open_session_tree_for_test();
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    assert!(!root.borrow().tree_open());
+    session.render_now().unwrap();
+    let joined = session.tui.terminal.frames.concat();
+    assert!(
+        joined.contains("travel →"),
+        "expected travel stub in transcript; got: {joined}"
+    );
+}

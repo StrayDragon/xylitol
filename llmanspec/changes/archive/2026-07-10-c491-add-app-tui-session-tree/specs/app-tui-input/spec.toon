@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ati5,"double-esc-session-tree","空编辑器下双 Esc（时间窗与 demo 一致）MUST 打开会话树；树打开时 Esc MUST 关闭树并还原 editor 槽。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ati5,"esc-closes-tree","会话树已打开",按 Esc,树关闭且 editor 槽恢复

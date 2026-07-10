@@ -1,4 +1,4 @@
-//! Product TUI root layout — transcript / editor / footer placeholders.
+//! Product TUI root layout — transcript / editor|tree slot / footer.
 //!
 //! Named `UiRoot` (not `shell`/`scene`) to avoid clashing with bash /
 //! `infra::process::shell` and to read as the product component tree root.
@@ -7,21 +7,56 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use xylitol_tui::components::editor::{Editor, EditorOptions, EditorTheme};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
-    Component, Focusable, InputEvent, InputListenerResult, SystemClock, TUI, Terminal,
-    matches_key_event,
+    Component, Focusable, InputEvent, InputListenerResult, SystemClock, TUI, Terminal, TreeNode,
+    TreeSelector, TreeSelectorOptions, TreeSelectorTheme, matches_key_event,
 };
 
 use super::host::{LayoutMode, TOO_SMALL_HINT};
 
-/// Root UI: transcript placeholder + bordered editor + footer.
+/// Fake session tree for the c491 first slice (real graph lands with Driver seam).
+fn sample_session_tree() -> Vec<TreeNode> {
+    vec![
+        TreeNode::new("root", "session · product").with_children([
+            TreeNode::new("u1", "user: hello").with_child(
+                TreeNode::new("a1", "assistant: plan").with_children([
+                    TreeNode::new("t1", "tool: read"),
+                    TreeNode::new("a2", "assistant: done")
+                        .with_child(TreeNode::new("u2", "user: next")),
+                ]),
+            ),
+            TreeNode::new("fork", "user: alternate")
+                .with_child(TreeNode::new("af", "assistant: fork leaf")),
+        ]),
+    ]
+}
+
+fn product_tree_selector(active_id: &str) -> TreeSelector {
+    TreeSelector::new(
+        sample_session_tree(),
+        TreeSelectorTheme::default(),
+        TreeSelectorOptions {
+            max_visible: 10,
+            unicode_connectors: true,
+            include_node: None,
+            active_id: Some(active_id.into()),
+            status_suffix: Some("[demo]".into()),
+        },
+    )
+}
+
+/// Root UI: transcript placeholder + bordered editor|tree slot + footer.
 pub struct UiRoot {
     transcript: Text,
     editor: Editor,
     footer: Text,
+    tree_open: bool,
+    tree: TreeSelector,
+    last_esc_at: Option<Instant>,
 }
 
 impl UiRoot {
@@ -39,7 +74,14 @@ impl UiRoot {
                 0,
             ),
             editor,
-            footer: Text::new("esc abort · ctrl+c clear/quit · /exit".into(), 0, 0),
+            footer: Text::new(
+                "double Esc tree · esc close/abort · ctrl+c clear/quit · /exit".into(),
+                0,
+                0,
+            ),
+            tree_open: false,
+            tree: product_tree_selector("u2"),
+            last_esc_at: None,
         }
     }
 
@@ -53,13 +95,86 @@ impl UiRoot {
         self.editor.set_text(text.into());
     }
 
+    pub fn tree_open(&self) -> bool {
+        self.tree_open
+    }
+
     /// Ctrl+C: clear editor when non-empty; otherwise signal quit via `quit_flag`.
     pub fn on_ctrl_c(&mut self, quit_flag: &AtomicBool) {
+        if self.tree_open {
+            self.close_session_tree();
+            return;
+        }
         if !self.editor.get_text().is_empty() {
             self.editor.set_text(String::new());
             return;
         }
         quit_flag.store(true, Ordering::SeqCst);
+    }
+
+    /// Esc: close tree; or empty-editor double-Esc opens tree. Returns true if consumed.
+    pub fn on_escape(&mut self) -> bool {
+        if self.tree_open {
+            self.close_session_tree();
+            return true;
+        }
+        if self.editor.get_text().is_empty() {
+            let now = Instant::now();
+            if let Some(prev) = self.last_esc_at
+                && now.duration_since(prev) < Duration::from_millis(500)
+            {
+                self.last_esc_at = None;
+                self.open_session_tree();
+                return true;
+            }
+            self.last_esc_at = Some(now);
+            // First Esc alone: not yet a double — leave for future abort (c480).
+            return false;
+        }
+        self.last_esc_at = None;
+        false
+    }
+
+    pub fn open_session_tree(&mut self) {
+        self.tree = product_tree_selector("u2");
+        self.tree_open = true;
+        self.footer = Text::new("esc close · ↑↓ · Enter travel".into(), 0, 0);
+    }
+
+    pub fn close_session_tree(&mut self) {
+        self.tree_open = false;
+        self.footer = Text::new(
+            "double Esc tree · esc close/abort · ctrl+c clear/quit · /exit".into(),
+            0,
+            0,
+        );
+    }
+
+    /// Harness: open tree without double-Esc timing.
+    pub fn open_session_tree_for_test(&mut self) {
+        self.editor.set_text(String::new());
+        self.open_session_tree();
+    }
+
+    fn append_transcript_line(&mut self, line: impl Into<String>) {
+        let prev = self.transcript.text();
+        let next = if prev.is_empty() {
+            line.into()
+        } else {
+            format!("{prev}\n{}", line.into())
+        };
+        self.transcript.set_text(next);
+    }
+
+    fn render_editor_slot(&mut self, width: usize) -> Vec<String> {
+        if self.tree_open {
+            let mut lines = Vec::new();
+            lines.push(" Session tree".to_string());
+            lines.push(" Up/Down  Enter travel  Esc close  (double Esc)".to_string());
+            lines.extend(self.tree.render(width.max(1)));
+            return lines;
+        }
+        self.editor.render(width.max(1))
     }
 }
 
@@ -76,15 +191,34 @@ impl Component for UiRoot {
         lines.push(String::new());
         let border = "─".repeat(width.clamp(1, 80));
         lines.push(border.clone());
-        for line in self.editor.render(width.max(1)) {
-            lines.push(line);
-        }
+        lines.extend(self.render_editor_slot(width));
         lines.push(border);
         lines.extend(self.footer.render(width));
         lines
     }
 
     fn handle_input(&mut self, event: InputEvent) {
+        if self.tree_open {
+            let InputEvent::Key(ref key) = event else {
+                return;
+            };
+            if matches_key_event(key, "enter") {
+                let id = self.tree.selected_id().unwrap_or("?").to_string();
+                self.append_transcript_line(format!("travel → {id}"));
+                self.close_session_tree();
+                return;
+            }
+            if matches_key_event(key, "up")
+                || matches_key_event(key, "down")
+                || matches_key_event(key, "pageUp")
+                || matches_key_event(key, "pageDown")
+                || matches_key_event(key, "left")
+                || matches_key_event(key, "right")
+            {
+                self.tree.handle_input(event);
+            }
+            return;
+        }
         self.editor.handle_input(event);
     }
 
@@ -92,6 +226,7 @@ impl Component for UiRoot {
         self.transcript.invalidate();
         self.editor.invalidate();
         self.footer.invalidate();
+        self.tree.invalidate();
     }
 
     fn tick(&mut self) -> bool {
@@ -157,7 +292,7 @@ pub fn shared_ui_root_rebuild(
     }
 }
 
-/// Register pre-focus Ctrl+C (clear / quit). Esc abort waits for streaming (c480).
+/// Register pre-focus Ctrl+C / Esc (session tree). Streaming Esc abort waits for c480.
 pub fn install_ui_root_key_listeners<T: Terminal>(
     root: &Rc<RefCell<UiRoot>>,
     quit_flag: &Arc<AtomicBool>,
@@ -171,6 +306,9 @@ pub fn install_ui_root_key_listeners<T: Terminal>(
         };
         if matches_key_event(key, "ctrl+c") {
             root.borrow_mut().on_ctrl_c(&quit_flag);
+            return InputListenerResult::Consumed;
+        }
+        if matches_key_event(key, "escape") && root.borrow_mut().on_escape() {
             return InputListenerResult::Consumed;
         }
         InputListenerResult::Continue
