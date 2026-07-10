@@ -189,6 +189,8 @@ fn make_agent(agent: &AgentState) -> ReActAgent {
         Some(std::sync::Arc::new(
             xylitol::infra::export::StdExportIo::new(),
         )),
+        xylitol::agent::session::QueueMode::default(),
+        xylitol::agent::session::QueueMode::default(),
     );
     ReActAgent::new(session)
 }
@@ -591,6 +593,8 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         Some(std::sync::Arc::new(
             xylitol::infra::export::StdExportIo::new(),
         )),
+        xylitol::agent::session::QueueMode::default(),
+        xylitol::agent::session::QueueMode::default(),
     );
     let tl = match level.as_str() {
         "high" => ThinkingLevel::High,

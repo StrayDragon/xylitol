@@ -1,6 +1,6 @@
 # _HANDOFF — xylitol TUI（交接笔记，非规范）
 
-> 最后更新：2026-07-10（c461 full 升格）
+> 最后更新：2026-07-10（c461 apply 完成，待 verify/archive）
 > 分支：`feat/tui-dev`
 > **本文是临时交接/进度板，不是 SSOT。** 稳定边界以各层 `AGENTS.md` 与 skills 为准。
 
@@ -42,8 +42,7 @@
 
 ```text
 c450 ✓ archived
-可立即 apply / 升格:
-  c461 FULL ← 下一步实现（steer/follow-up seam）
+c461 ✓ applied（代码已落地；待 verify → archive）
   c449 / c451 / c452 / c454 / c455 / c457 / c458 仍 purpose-draft（无硬依赖）
 
 c460 host ← 仍 depends c455
@@ -62,9 +61,9 @@ c485 slice ← c470 + c475 + c480
 
 ## 三、下一步（主线）
 
-1. **`llman-sdd-apply` → c461**（见 `llmanspec/changes/c461-expose-steer-followup-seam/`）
-2. 并行可升格 **c455**（解锁 c460）— 用户当前选择先只做 c461
-3. c461 归档后再开 c460（需 c455）或先升格 c455
+1. **c461**：可选 `llman-sdd-verify` → `llman sdd archive run c461-expose-steer-followup-seam`
+2. 并行可升格 **c455**（解锁 c460）
+3. 产品面接线：c480 用 `Driver::{steer,follow_up,abort}` + `QueueUpdate`
 
 探查笔记：`_tmp_prompts/05-result.md`
 
@@ -74,7 +73,7 @@ c485 slice ← c470 + c475 + c480
 
 | 键 | 作用 |
 |---|---|
-| 流中 Enter | steer（c461 后可接） |
+| 流中 Enter | steer（Driver 已就绪） |
 | Alt+Enter | follow-up |
 | Esc | abort（清 steer / 留 follow_up） |
 | Ctrl+C | 清输入 / 空则退 |
@@ -90,4 +89,4 @@ c485 slice ← c470 + c475 + c480
 - How-to：`write-tui`、`test-tui-harness`、`write-surface`
 - 视觉：`src/app/tui/DESIGN.md` + `design/`（c449）
 - 合约归档：`llmanspec/changes/archive/2026-07-10-c450-revise-app-tui-contract/`
-- 当前 full：`llmanspec/changes/c461-expose-steer-followup-seam/`
+- 当前 full（已 apply）：`llmanspec/changes/c461-expose-steer-followup-seam/`

@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "protocol-app"
 purpose: "Client↔core wire protocol vocabulary (Command/Event enums + transport helpers), transport-agnostic."
 valid_scope[2]: src/,tests/
-requirements[7]{req_id,title,statement}:
+requirements[9]{req_id,title,statement}:
   ip1,"command-enum","protocol MUST define a Command enum covering at minimum Run Cancel SwitchModel SetThinking ListCommands ApproveTool AnswerQuestion SwitchSession GetMessages ExportHtml ExportJsonl and ImportJsonl; every client-to-core message MUST deserialize into this enum."
   ip2,"event-enum","protocol/ MUST define an Event enum covering at minimum TurnStart, Delta, ToolCall, ApprovalRequired, QuestionRequired, TurnEnd, and Usage; every core-to-client message MUST deserialize into this enum."
   ip3,"envelope-and-errors","protocol/ MUST define a uniform REST response envelope {code, msg, data, request_id} and a typed error-code set; envelope types live in protocol/ and MUST be transport-agnostic (no HTTP or WS types inside)."
@@ -10,7 +10,9 @@ requirements[7]{req_id,title,statement}:
   ip7,"event-variants-complete","protocol::Event MUST cover all AgentEvent variants: TurnStart, TurnEnd, MessageStart, MessageEnd, MessageUpdate, ToolExecutionUpdate, CompactionEnd, TextDelta, and ThinkingDelta; ThinkingDelta MUST round-trip XyEvent::ThinkingDelta without being downgraded to an empty MessageUpdate."
   ip8,"session-commands-dispatch","The RPC dispatch MUST implement SwitchSession by validating the target session exists via SessionStore and switching context; GetMessages by returning loaded SessionEntry records; ExportJsonl and ImportJsonl by delegating to AgentSession; stub or string-only implementations MUST NOT be shipped."
   ip9,"dispatch-residence","The execution semantics of protocol::Command variants (what a Command does when dispatched) MUST live in app::core::dispatch and MUST be consumed by tui; transport-specific Command variants (Subscribe, ApproveTool, AnswerQuestion that require a live WS session) MUST remain in the server/ws layer and MUST NOT leak into app::core::dispatch."
-scenarios[10]{req_id,id,given,when,then}:
+  "ip-q1","steer-followup-commands","protocol::Command MUST 包含 Steer、FollowUp 与 ClearQueue（或语义等价变体）；client 经线协议入队或清队列 MUST 反序列化为这些变体。"
+  "ip-q2","dispatch-queue-commands","app::core::dispatch MUST 将 Steer、FollowUp、ClearQueue 路由到 Driver 对应方法；这些变体 MUST NOT 留在仅 WS 层处理。"
+scenarios[12]{req_id,id,given,when,then}:
   ip1,"jsonl-commands-in-enum",the Command enum is inspected,ExportJsonl and ImportJsonl variants are checked,both variants are present and deserialize from client messages
   ip2,"approval-event",the agent needs a tool approved,an ApprovalRequired event is emitted,it carries a call_id and tool summary
   ip3,"envelope-serializes",an Envelope with code Ok and data is constructed,it is serialized to JSON,"the JSON has code, msg, data, and request_id fields"
@@ -21,3 +23,5 @@ scenarios[10]{req_id,id,given,when,then}:
   ip8,"get-messages-returns-entries",an active session with persisted entries exists,a GetMessages command is dispatched,the loaded SessionEntry records are returned (not a stub error)
   ip9,"ws-variants-stay-in-server","","app::core::dispatch source is inspected","it does NOT contain Subscribe, ApproveTool, or AnswerQuestion handling; those remain in server/ws.rs"
   ip9,"tui-dispatch-path","tui dispatches Command::SetModel",the execution path is traced,"it reaches app::core::dispatch backed by the Driver, not a parallel tui-local implementation"
+  "ip-q1","serde-steer","","序列化再反序列化 Command::Steer",字段与原文一致
+  "ip-q2","dispatch-steer","",dispatch Steer,"调用 Driver::steer 且不报未处理变体错误"

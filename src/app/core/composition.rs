@@ -6,6 +6,7 @@ use crate::agent::AgentBuilder;
 use crate::agent::ReActAgent;
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
+use crate::agent::session::QueueMode;
 use crate::agent::tools::ToolSet;
 use crate::infra::bash_exec::InfraBashExecutor;
 use crate::infra::event::EventBus;
@@ -27,6 +28,8 @@ pub struct BuildAgentOptions {
     pub cwd: String,
     pub compaction_settings: Option<CompactionSettings>,
     pub permission: Option<Arc<dyn XyPermission>>,
+    pub steering_mode: QueueMode,
+    pub follow_up_mode: QueueMode,
 }
 
 impl Default for BuildAgentOptions {
@@ -43,6 +46,8 @@ impl Default for BuildAgentOptions {
             cwd: ".".into(),
             compaction_settings: None,
             permission: None,
+            steering_mode: QueueMode::default(),
+            follow_up_mode: QueueMode::default(),
         }
     }
 }
@@ -83,7 +88,9 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<ReActAgent, String> {
     .compaction_settings(options.compaction_settings)
     .cwd(options.cwd)
     .bash(bash_executor)
-    .export_io(export_io);
+    .export_io(export_io)
+    .steering_mode(options.steering_mode)
+    .follow_up_mode(options.follow_up_mode);
 
     if let Some(sp) = options.system_prompt {
         builder = builder.system_prompt(sp);

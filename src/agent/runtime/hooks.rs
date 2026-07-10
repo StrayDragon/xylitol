@@ -5,9 +5,10 @@
 //! a cheap `is_empty()` check. This is the "open for extension" seam of the
 //! runtime.
 //!
-//! Steering / follow-up message callbacks are message-injection hooks, not
-//! tool-execution interception; they live in a separate [`SteeringHooks`]
-//! struct.
+//! Steering / follow-up injection is owned by [`crate::agent::session::PendingMessageQueue`]
+//! on [`crate::agent::session::Agent`] (c461). [`SteeringHooks`] remains as an
+//! optional external message-source adapter and is **not** wired into the ReAct
+//! loop; product paths must use `Agent::steer` / `Agent::follow_up` (via Driver).
 
 use std::sync::Arc;
 
@@ -69,9 +70,12 @@ impl AgentHooks {
 
 // ── SteeringHooks ───────────────────────────────────────────────────
 
-/// Message-injection hooks (steering / follow-up). These are not
-/// tool-execution interception; they provide extra messages to be inserted
-/// into a turn.
+/// Optional external message-source adapter (steering / follow-up).
+///
+/// **Not wired into the ReAct loop.** The authoritative path is
+/// [`crate::agent::session::PendingMessageQueue`] on the session [`Agent`]
+/// (`steer` / `follow_up` / Driver APIs). Keep this type only if an extension
+/// needs a pull-based message source; do not dual-wire both paths.
 #[derive(Default)]
 pub struct SteeringHooks {
     pub get_steering_messages: Option<GetMessagesHook>,

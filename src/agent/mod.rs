@@ -36,4 +36,5 @@ pub use crate::agent::runtime::ReActAgent;
 pub use crate::agent::runtime::hooks::BeforeToolHook;
 pub use crate::agent::runtime::{AgentHooks, XyEventStream};
 pub use crate::agent::session::Agent;
+pub use crate::agent::session::{PendingMessageQueue, QueueMode};
 pub use crate::domain::lifecycle::XyEvent;
