@@ -758,3 +758,89 @@ fn agent_demo_seed_shows_unified_and_side_by_side_diffs() {
         "expanded side-by-side diff body should be visible; got:\n{text}"
     );
 }
+
+#[test]
+fn agent_demo_seed_tool_blocks_use_status_background_tints() {
+    use agent_demo_example::ToolBlockStatus;
+
+    let mut h = TuiTestHarness::new(120, 80);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+
+    // VirtualTerminal stores truecolor on cells; viewport() strings strip SGR.
+    let success = ToolBlockStatus::Success.rgb();
+    let error = ToolBlockStatus::Error.rgb();
+    assert!(
+        viewport_has_bg_rgb(&h, success),
+        "success tool/diff rows must paint DESIGN success tint {success:?}"
+    );
+    assert!(
+        viewport_has_bg_rgb(&h, error),
+        "error tool seed must paint DESIGN error tint {error:?}"
+    );
+}
+
+#[test]
+fn agent_demo_scripted_tool_flips_pending_to_success_bg() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::{SharedFakeCodingAgentApp, ToolBlockStatus};
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))));
+    app.borrow_mut().inject_pending_tool_for_test();
+
+    let mut h = TuiTestHarness::new(120, 80);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h.render_result().expect("initial render");
+
+    let pending = ToolBlockStatus::Pending.rgb();
+    let text0 = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text0.contains("inject-tool") && text0.contains("· running"),
+        "injected pending tool visible; got:\n{text0}"
+    );
+    assert!(
+        viewport_has_bg_rgb(&h, pending),
+        "injected tool must start with pending tint {pending:?}"
+    );
+
+    app.borrow_mut().complete_last_tool_for_test();
+    h.render_result().expect("after complete");
+    let text1 = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text1.contains("inject-tool") && text1.contains("· ok"),
+        "summary should flip to · ok; got:\n{text1}"
+    );
+    // Pending tint must be gone from the inject row (seed success tint may remain).
+    assert!(
+        !viewport_has_bg_rgb(&h, pending),
+        "pending tint must clear after success flip"
+    );
+}
+
+/// True if any viewport cell has truecolor background `rgb`.
+fn viewport_has_bg_rgb(h: &TuiTestHarness, rgb: (u8, u8, u8)) -> bool {
+    use support::Color;
+    let want = Color::Rgb(rgb.0, rgb.1, rgb.2);
+    let height = h.tui.terminal.viewport().len();
+    let width = h
+        .tui
+        .terminal
+        .grid_row(h.tui.terminal.viewport_top_pub())
+        .len();
+    for row in 0..height {
+        for col in 0..width {
+            if h.tui.terminal.viewport_cell(row, col).bg == want {
+                return true;
+            }
+        }
+    }
+    false
+}

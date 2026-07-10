@@ -118,7 +118,7 @@ components:
 | `tool-pending-bg` / `tool-success-bg` / `tool-error-bg` | 工具块**全行背景**三态（Mocha tint：`#313244` / `#24352a` / `#352428`；对齐 pi 语义，色值本文件 SSOT） |
 | `user-message-bg` | 用户消息可选全行背景（对齐 pi `userMessageBg`） |
 
-**工具状态背景（吸取 pi）**：成功/失败不要只靠 fg `ok`/`error` 字——用极淡的绿/红 **bg** 铺满工具块行宽（`apply_background_to_line` + 仅重置 `\x1b[49m`），pending 用中性 surface tint。实现落在 transcript / tool 壳（c470），包侧已有 `apply_background_to_line`。
+**工具状态背景（吸取 pi）**：成功/失败不要只靠 fg `ok`/`error` 字——用极淡的绿/红 **bg** 铺满工具块行宽（`apply_background_to_line` + 仅重置 `\x1b[49m`），pending 用中性 surface tint。**demo 已验证（c462）**；产品 transcript 接线见 c470。
 
 不要为 header / debug / 多角色长标签再扩一套色。选中列表用 **reverse**，不必单独 `selection-bg` 面板底。
 

@@ -19,8 +19,8 @@ use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, s
 use xylitol_tui::{
     Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme, Focusable, InputEvent,
     InputListenerResult, Markdown, MarkdownOptions, MarkdownTheme, SystemClock, TUI,
-    highlight_code, matches_key_event, render_diff_lines, truncate_to_width, visible_width,
-    wrap_text_with_ansi,
+    apply_background_to_line, highlight_code, matches_key_event, render_diff_lines,
+    truncate_to_width, visible_width, wrap_text_with_ansi,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
@@ -55,6 +55,40 @@ fn cyan(s: &str) -> String {
 /// Wrap a key chord for block-adjacent hints: `(Ctrl+T)`.
 fn key_hint(chord: &str) -> String {
     dim(&format!("({chord})"))
+}
+
+/// Tool / edit block execution tint (DESIGN.md `tool-*-bg`, Mocha).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolBlockStatus {
+    Pending,
+    Success,
+    Error,
+}
+
+impl ToolBlockStatus {
+    /// RGB matching `src/app/tui/DESIGN.md` colors.tool-*-bg.
+    pub const fn rgb(self) -> (u8, u8, u8) {
+        match self {
+            Self::Pending => (0x31, 0x32, 0x44), // #313244
+            Self::Success => (0x24, 0x35, 0x2a), // #24352a
+            Self::Error => (0x35, 0x24, 0x28),   // #352428
+        }
+    }
+
+    /// Truecolor bg open sequence (`48;2;R;G;B`) — for docs / raw-ANSI asserts.
+    #[allow(dead_code)]
+    pub fn ansi_bg_param(self) -> String {
+        let (r, g, b) = self.rgb();
+        format!("48;2;{r};{g};{b}")
+    }
+}
+
+/// Full-row tint: truecolor bg + `\x1b[49m` only (must not wipe content fg).
+fn paint_tool_bg(line: &str, width: usize, status: ToolBlockStatus) -> String {
+    let (r, g, b) = status.rgb();
+    apply_background_to_line(line, width, &|s| {
+        format!("\x1b[48;2;{r};{g};{b}m{s}\x1b[49m")
+    })
 }
 
 /// Richer unified sample via pi edit format (aligned `±N content`).
@@ -112,7 +146,7 @@ fn demo_markdown_theme() -> MarkdownTheme {
         italic: Box::new(|s| format!("\x1b[3m{s}\x1b[23m")),
         strikethrough: Box::new(|s| format!("\x1b[9m{s}\x1b[29m")),
         underline: Box::new(|s| format!("\x1b[4m{s}\x1b[24m")),
-        highlight_code: Some(Box::new(|code, lang| highlight_code(code, lang))),
+        highlight_code: Some(Box::new(highlight_code)),
         code_block_indent: None,
     }
 }
@@ -264,12 +298,14 @@ enum TranscriptEntry {
     /// Collapsible tool block: one-line summary; detail when expanded.
     Tool {
         expanded: bool,
+        status: ToolBlockStatus,
         summary: String,
         detail: String,
     },
     /// Collapsible Diff block (c451 `Diff` / `render_diff_lines`).
     Diff {
         expanded: bool,
+        status: ToolBlockStatus,
         summary: String,
         input: DiffInput,
         /// `None` = always unified; `Some(n)` = side-by-side when width ≥ n.
@@ -295,6 +331,8 @@ enum TimedAction {
     StreamStart(StreamKind),
     StreamChunk(StreamKind, String),
     StreamFinish(StreamKind),
+    /// Flip the most recent Tool/Diff block status (pending → success).
+    SetLastToolStatus(ToolBlockStatus),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -379,6 +417,20 @@ impl FakeCodingAgentApp {
     /// Test helper: current editor text.
     pub fn input_text_for_test(&self) -> String {
         self.input.get_text()
+    }
+
+    /// Harness: push a pending tool (no long scripted turn).
+    pub fn inject_pending_tool_for_test(&mut self) {
+        self.push_tool(
+            "inject-tool · running",
+            "pending detail (demo)",
+            ToolBlockStatus::Pending,
+        );
+    }
+
+    /// Harness: flip the most recent tool/diff to success (pending → ok).
+    pub fn complete_last_tool_for_test(&mut self) {
+        self.set_last_tool_status(ToolBlockStatus::Success);
     }
 
     /// Esc: close overlays; abort active stream; otherwise let Editor handle.
@@ -584,6 +636,7 @@ impl FakeCodingAgentApp {
         self.push_tool(
             "read packages/xylitol-tui/examples/agent_demo.rs · 42ms · 790 lines",
             "ok — opened agent_demo.rs\n(preview) FakeCodingAgentApp + scripted turn harness",
+            ToolBlockStatus::Success,
         );
         // Seed blocks start expanded so SBS / edit / gutter are visible without Alt+E.
         // Primary Edit look: pi unified compact (seed + simulated Edit tool).
@@ -592,6 +645,7 @@ impl FakeCodingAgentApp {
             sample_unified_pair(),
             None, // always unified — Edit tool path
             true,
+            ToolBlockStatus::Success,
         );
         // Optional wide layout (supported, uncommon); packed columns, not half-stretch.
         self.push_diff_ex(
@@ -599,6 +653,7 @@ impl FakeCodingAgentApp {
             sample_sbs_pair(),
             Some(60),
             true,
+            ToolBlockStatus::Success,
         );
         // display_diff gutter path still covered.
         self.push_diff_ex(
@@ -606,6 +661,13 @@ impl FakeCodingAgentApp {
             DiffInput::DisplayText(sample_display_diff()),
             None,
             true,
+            ToolBlockStatus::Success,
+        );
+        // Error tint exemplar (collapsed detail still paints header).
+        self.push_tool(
+            "cargo test -p xylitol-tui --test missing · fail",
+            "error — test binary `missing` not found (demo stub)",
+            ToolBlockStatus::Error,
         );
     }
 
@@ -623,21 +685,18 @@ impl FakeCodingAgentApp {
         });
     }
 
-    fn push_tool(&mut self, summary: impl Into<String>, detail: impl Into<String>) {
+    fn push_tool(
+        &mut self,
+        summary: impl Into<String>,
+        detail: impl Into<String>,
+        status: ToolBlockStatus,
+    ) {
         self.transcript.push(TranscriptEntry::Tool {
             expanded: true,
+            status,
             summary: summary.into(),
             detail: detail.into(),
         });
-    }
-
-    fn push_diff(&mut self, summary: impl Into<String>, display_diff: impl Into<String>) {
-        self.push_diff_ex(
-            summary,
-            DiffInput::DisplayText(display_diff.into()),
-            None,
-            true,
-        );
     }
 
     fn push_diff_ex(
@@ -646,9 +705,11 @@ impl FakeCodingAgentApp {
         input: DiffInput,
         side_by_side_min_width: Option<usize>,
         expanded: bool,
+        status: ToolBlockStatus,
     ) {
         self.transcript.push(TranscriptEntry::Diff {
             expanded,
+            status,
             summary: summary.into(),
             input,
             side_by_side_min_width,
@@ -1031,6 +1092,7 @@ impl FakeCodingAgentApp {
                 TimedAction::StreamStart(kind) => self.begin_stream(kind),
                 TimedAction::StreamChunk(kind, chunk) => self.append_stream(kind, &chunk),
                 TimedAction::StreamFinish(kind) => self.finish_stream(kind),
+                TimedAction::SetLastToolStatus(status) => self.set_last_tool_status(status),
             }
             changed = true;
         }
@@ -1073,6 +1135,39 @@ impl FakeCodingAgentApp {
         }
     }
 
+    fn set_last_tool_status(&mut self, status: ToolBlockStatus) {
+        for entry in self.transcript.iter_mut().rev() {
+            match entry {
+                TranscriptEntry::Tool {
+                    status: slot,
+                    summary,
+                    ..
+                } => {
+                    *slot = status;
+                    if status == ToolBlockStatus::Success && !summary.contains("· ok") {
+                        // Keep seed error labels; only polish scripted pending titles.
+                        if summary.contains("· running") {
+                            *summary = summary.replace("· running", "· ok");
+                        }
+                    }
+                    return;
+                }
+                TranscriptEntry::Diff {
+                    status: slot,
+                    summary,
+                    ..
+                } => {
+                    *slot = status;
+                    if status == ToolBlockStatus::Success && summary.contains("· running") {
+                        *summary = summary.replace("· running", "· ok");
+                    }
+                    return;
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn apply_event(&mut self, event: ScriptEvent) {
         match event {
             ScriptEvent::Tool(text) => {
@@ -1080,14 +1175,34 @@ impl FakeCodingAgentApp {
                 self.recent_tools.insert(0, text.clone());
                 self.recent_tools.truncate(4);
                 let detail = format!("$ {text}\n(exit 0 — demo stub)");
-                self.push_tool(format!("{} · ok", text), detail);
+                self.push_tool(
+                    format!("{text} · running"),
+                    detail,
+                    ToolBlockStatus::Pending,
+                );
+                let flip = self.jitter_ticks(3, 8);
+                self.schedule_after_ticks(
+                    flip,
+                    TimedAction::SetLastToolStatus(ToolBlockStatus::Success),
+                );
             }
             ScriptEvent::Edit { summary, input } => {
                 self.set_status("Working");
                 self.recent_tools.insert(0, summary.clone());
                 self.recent_tools.truncate(4);
                 // pi Edit: unified compact Diff, expanded (pops open). Never SBS.
-                self.push_diff_ex(format!("{summary} · ok"), input, None, true);
+                self.push_diff_ex(
+                    format!("{summary} · running"),
+                    input,
+                    None,
+                    true,
+                    ToolBlockStatus::Pending,
+                );
+                let flip = self.jitter_ticks(4, 10);
+                self.schedule_after_ticks(
+                    flip,
+                    TimedAction::SetLastToolStatus(ToolBlockStatus::Success),
+                );
                 if !self.changed_files.iter().any(|p| p.contains("ui_root.rs")) {
                     self.changed_files
                         .push("src/app/tui/ui_root.rs".to_string());
@@ -1184,25 +1299,32 @@ impl FakeCodingAgentApp {
                 }
                 TranscriptEntry::Tool {
                     expanded,
+                    status,
                     summary,
                     detail,
                 } => {
                     let marker = if *expanded { g.unfold() } else { g.fold() };
                     let header = format!("{marker} {} {summary}  {}", g.tool(), key_hint("Alt+E"));
-                    Self::push_wrapped(&mut lines, &header, width);
+                    let mut block = Vec::new();
+                    Self::push_wrapped(&mut block, &header, width);
                     if *expanded {
-                        Self::push_wrapped(&mut lines, &dim(detail), width);
+                        Self::push_wrapped(&mut block, &dim(detail), width);
+                    }
+                    for line in block {
+                        lines.push(paint_tool_bg(&line, width, *status));
                     }
                 }
                 TranscriptEntry::Diff {
                     expanded,
+                    status,
                     summary,
                     input,
                     side_by_side_min_width,
                 } => {
                     let marker = if *expanded { g.unfold() } else { g.fold() };
                     let header = format!("{marker} {} {summary}  {}", g.tool(), key_hint("Alt+E"));
-                    Self::push_wrapped(&mut lines, &header, width);
+                    let mut block = Vec::new();
+                    Self::push_wrapped(&mut block, &header, width);
                     if *expanded {
                         let theme = DiffTheme::default();
                         let opts = DiffOptions {
@@ -1212,8 +1334,11 @@ impl FakeCodingAgentApp {
                         };
                         let rendered = render_diff_lines(input, width, &theme, &opts);
                         for line in rendered {
-                            lines.push(Self::fit(&line, width));
+                            block.push(Self::fit(&line, width));
                         }
+                    }
+                    for line in block {
+                        lines.push(paint_tool_bg(&line, width, *status));
                     }
                 }
             }
@@ -1345,12 +1470,14 @@ impl Component for FakeCodingAgentApp {
                                 sample_unified_pair(),
                                 None,
                                 true,
+                                ToolBlockStatus::Success,
                             );
                             self.push_diff_ex(
                                 "workspace diff side-by-side",
                                 sample_sbs_pair(),
                                 Some(60),
                                 true,
+                                ToolBlockStatus::Success,
                             );
                         }
                         "compact" => {
