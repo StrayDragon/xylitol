@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ati6,"demo-steer-followup-morphology","在产品 Driver 接线前，packages/xylitol-tui 的 agent_demo MUST 以假队列验证 ati3 键位：agent 忙碌时普通 Enter MUST 将输入作为 steer 入队且 MUST NOT 清空或中止当前轮的脚本/流式调度；Alt+Enter MUST 将输入作为 follow-up 入队并仅在完全空闲后开新轮；footer MUST 在队列非空时展示 steer/follow-up 计数。",null,null,null
+  add_requirement,ati7,"demo-steer-preserves-turn","agent_demo 在 steer 入队时 MUST 将 steer 文本写入 transcript（可带 [steer] 标记）并可挂到会话活树；MUST NOT 调用会清空 scheduled_actions/pending_events 的新一轮 queue_simulated_turn 入口来「顶替」当前忙碌轮。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  ati6,"busy-enter-steer","agent_demo 轮次忙碌且编辑器有文本",按 Enter,"steer 队列长度增加且状态仍为忙碌类（Thinking/Working/Drafting 等）"
+  ati6,"alt-enter-followup","agent_demo 轮次忙碌",Alt+Enter 提交文本,"follow-up 队列长度增加且会话树尚未出现该 follow-up 的 user 节点"
+  ati6,"footer-counts","steer 或 follow-up 队列非空",渲染 footer,footer 含 steer:N 或 follow-up:N
+  ati7,"steer-no-abort","已 submit 进入 Thinking 且 scheduled_actions 非空",再次 Enter 提交 steer 文本,"scheduled 流式/工具动作仍可继续推进而非被立即清空为仅 Ready"
