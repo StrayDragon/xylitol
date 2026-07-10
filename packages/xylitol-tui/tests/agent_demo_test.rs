@@ -1093,3 +1093,101 @@ fn agent_demo_double_esc_opens_session_tree_when_editor_empty() {
         "expected session tree chrome; got:\n{text}"
     );
 }
+
+#[test]
+fn agent_demo_collapsed_tool_viewport_shows_earlier_hint_and_tail() {
+    let mut h = TuiTestHarness::new(120, 100);
+    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))))
+    .focus(Some(0));
+    h.render_result().expect("initial");
+    let text = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text.contains("earlier lines") && text.contains("ctrl+o to expand"),
+        "collapsed long tool detail must show pi-style hint; got:\n{text}"
+    );
+    assert!(
+        text.contains("Took 9.3s"),
+        "collapsed viewport keeps the tail; got:\n{text}"
+    );
+    assert!(
+        !text.contains("suite-01"),
+        "early lines stay hidden while collapsed; got:\n{text}"
+    );
+}
+
+#[test]
+fn agent_demo_ctrl_o_expands_tool_output_viewport() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))));
+    let mut h = TuiTestHarness::new(120, 120);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h.render_result().expect("initial");
+    assert!(!app.borrow().tools_output_expanded_for_test());
+    h.keys("\x0f"); // Ctrl+O
+    h.render_result().expect("after Ctrl+O");
+    assert!(app.borrow().tools_output_expanded_for_test());
+    let text = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text.contains("suite-01") && text.contains("Took 9.3s"),
+        "Ctrl+O expands full tool detail; got:\n{text}"
+    );
+    assert!(
+        !text.contains("ctrl+o to expand"),
+        "hint disappears when expanded; got:\n{text}"
+    );
+}
+
+#[test]
+fn agent_demo_streaming_tool_detail_sticks_to_tail_while_collapsed() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))));
+    app.borrow_mut().freeze_script_for_test();
+    let idx = {
+        let mut a = app.borrow_mut();
+        a.clear_scheduled_actions_for_test();
+        let i = a.transcript_len_for_test();
+        a.push_tool_for_test("$ stream-demo · running", "");
+        for n in 1..=12 {
+            a.append_tool_detail_for_test(i, format!("row-{n:02}\n"));
+        }
+        i
+    };
+    let _ = idx;
+
+    let mut h = TuiTestHarness::new(100, 60);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h.render_result().expect("render");
+    let text = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text.contains("earlier lines") && text.contains("row-12"),
+        "streaming collapsed viewport sticks to last lines; got:\n{text}"
+    );
+    assert!(
+        !text.contains("row-01"),
+        "early streamed lines hidden while collapsed; got:\n{text}"
+    );
+
+    app.borrow_mut().set_tools_output_expanded_for_test(true);
+    h.render_result().expect("expanded");
+    let full = h.tui.terminal.viewport().join("\n");
+    assert!(
+        full.contains("row-01") && full.contains("row-12"),
+        "expanded shows full streamed detail; got:\n{full}"
+    );
+}

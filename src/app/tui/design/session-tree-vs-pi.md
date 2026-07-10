@@ -15,7 +15,7 @@ pi / xylitol：树 **替换 editor 槽**（`showSelector`），非居中 overlay
 | ←→ / PgUp/PgDn 翻页 | ✓ | page 键有；←→ 未绑翻页 |
 | 增量搜索 + Esc 清搜索 | ✓ | ✗ |
 | Filter：default / no-tools / user / labeled / all | ✓ Ctrl+D/T/U/L/A | ✗（仅有 `include_node` 钩子） |
-| Cycle filter Ctrl+O | ✓ | ✗ |
+| Cycle filter Ctrl+O | ✓（树内） | ✗（demo 全局 Ctrl+O = 工具视口展开，与 pi 树内语义冲突；树开时再议） |
 | Fold ⊞/⊟ + Ctrl/Alt←→ 分支跳转 | ✓ | ✗ |
 | Shift+L label / Shift+T 时间戳 | ✓ | ✗ |
 | 选中行水平平移（深 indent） | ✓ | ✗ |
