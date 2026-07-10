@@ -1,7 +1,7 @@
 ---
-version: alpha
-name: Xylitol Terminal
-description: Minimal terminal design system for the xylitol product TUI — clean, copy-friendly, scrollback-native.
+version: "alpha"
+name: "Xylitol Terminal"
+description: "Minimal terminal design system for the xylitol product TUI — clean, copy-friendly, scrollback-native."
 colors:
   on-surface: "#cdd6f4"
   muted: "#6c7086"
@@ -17,23 +17,23 @@ colors:
   diff-context: "#6c7086"
 typography:
   body:
-    fontFamily: terminal-monospace
-    fontSize: 1cell
-    fontWeight: 400
-    lineHeight: 1
+    fontFamily: "terminal-monospace"
+    fontSize: "1cell"
+    fontWeight: "400"
+    lineHeight: "1"
   dim:
-    fontFamily: terminal-monospace
-    fontSize: 1cell
-    fontWeight: 400
-    lineHeight: 1
+    fontFamily: "terminal-monospace"
+    fontSize: "1cell"
+    fontWeight: "400"
+    lineHeight: "1"
 spacing:
-  xs: 0
-  sm: 1
-  status-rows: 1
-  footer-rows: 1
-  diff-side-by-side-min-cols: 100
+  xs: "0"
+  sm: "1"
+  status-rows: "1"
+  footer-rows: "1"
+  diff-side-by-side-min-cols: "100"
 rounded:
-  none: 0
+  none: "0"
 components:
   user-prefix:
     textColor: "{colors.user}"
@@ -61,7 +61,9 @@ components:
 
 # Design System — Xylitol Terminal
 
-> SSOT 索引：本文件。组件级 MUST：[`design/`](./design/)。包 `packages/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本面。
+> 规范：遵循 `common-design-md-zh`（中文正文 + YAML frontmatter tokens，值一律双引号）。
+> SSOT 索引：本文件。组件级 MUST：[`design/`](./design/)。
+> 包 `packages/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本面。
 
 ## Overview
 
@@ -71,7 +73,7 @@ components:
 
 情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
 
-参考实现锚点：`packages/xylitol-tui` 的 `agent_demo`（图 2 布局）≈ 产品 TUI 目标形态。
+参考实现锚点：`packages/xylitol-tui` 的 `agent_demo`（图 2 布局）≈ 产品 TUI 目标形态。当前 `src/app/tui` 空场景仅为 host 框架占位，**尚未**按本 DESIGN 实现产品视觉。
 
 ## Colors
 
@@ -134,9 +136,11 @@ footer         1 行 dim（cwd · model · 可选 context%）
 
 ## Shapes
 
-无圆角。Editor 使用 muted 上下 `─`（`Editor` 组件已有 `border_color`）。`rounded.none = 0`。
+无圆角。Editor 使用 muted 上下 `─`（`Editor` 组件已有 `border_color`）。`rounded.none = "0"`（TUI 无像素圆角；边框风格为 plain `─`）。
 
-## Components（索引）
+## Components
+
+组件级 MUST 见 [`design/`](./design/) 索引表。实现与 demo 引用子文档，勿仅依赖口头约定。
 
 | 文档 | 内容 |
 |---|---|
@@ -146,25 +150,14 @@ footer         1 行 dim（cwd · model · 可选 context%）
 | [`design/editor.md`](./design/editor.md) | 操作区 |
 | [`design/footer.md`](./design/footer.md) | 一行 dim |
 | [`design/overlay.md`](./design/overlay.md) | 短确认 |
-| [`design/diff-block.md`](./design/diff-block.md) | Diff 渲染（包组件 + 产品接线） |
+| [`design/diff-block.md`](./design/diff-block.md) | Diff 渲染 |
 | [`design/glyphs.md`](./design/glyphs.md) | unicode / ascii 档 |
 | [`design/theme-tokens.md`](./design/theme-tokens.md) | 语义 → SGR |
 | [`design/keybindings.md`](./design/keybindings.md) | 已决议键位 |
 | [`design/markdown.md`](./design/markdown.md) | 复制友好 markdown |
 | [`design/errors.md`](./design/errors.md) | 错误呈现 |
 
-后置能力草稿：[`session-tree`](./design/session-tree.md) · [`bash-mode`](./design/bash-mode.md) · [`queue-steer`](./design/queue-steer.md) · [`trust-prompt`](./design/trust-prompt.md) · [`compaction-status`](./design/compaction-status.md)
-
-## Token economy（复制友好）
-
-| Do | Don't |
-|---|---|
-| 短 glyph（配置档） | 长角色名每行重复 |
-| 表格用空格/tab 对齐纯文本 | Unicode 表格线、树连接符 |
-| 代码块只有高亮 | 边框、语言标签条、行号墙 |
-| 工具/thinking 默认折叠摘要 | 默认倾倒完整 JSON/长链 |
-| footer 一行 + editor 边框分区 | 底栏 3～5 行 debug + 快捷键墙 |
-| 显式 glyph 配置 | 运行时字体探测 / emoji 嗅探 |
+后置草稿：[`session-tree`](./design/session-tree.md) · [`bash-mode`](./design/bash-mode.md) · [`queue-steer`](./design/queue-steer.md) · [`trust-prompt`](./design/trust-prompt.md) · [`compaction-status`](./design/compaction-status.md)
 
 ## Do's and Don'ts
 
@@ -175,8 +168,10 @@ footer         1 行 dim（cwd · model · 可选 context%）
 - Do 用 editor 边框标出操作区（对齐 agent_demo）。
 - Do glyph 走应用配置，不探测字体。
 - Do thinking/tool 可展开（策略见 expandable）。
+- Do YAML frontmatter 中所有 token 值使用双引号（`common-design-md-zh`）。
 - Don't 常驻 Plan / Tools / Files / 快捷键墙。
 - Don't 双栏、卡片、圆角、多字体、阴影。
 - Don't blit 弹层到内容绝对顶部。
 - Don't 截断历史冒充滚动。
 - Don't 为「好看」增加无法复制或复制后无意义的装饰字符。
+- Don't 在未对齐本 DESIGN 前把 `src/app/tui` 空场景当成产品视觉完成态。
