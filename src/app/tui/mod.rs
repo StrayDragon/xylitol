@@ -3,7 +3,7 @@
 //! See `AGENTS.md` in this directory. Engine: `packages/xylitol-tui`.
 
 mod host;
-mod shell;
+mod scene;
 mod terminal_guard;
 
 #[cfg(test)]
@@ -13,12 +13,11 @@ use std::time::Duration;
 
 use crossterm::event::{Event, EventStream, KeyEventKind};
 use futures::StreamExt;
-use xylitol_tui::{CrosstermTerminal, InputEvent, Terminal, matches_key_event};
+use xylitol_tui::{CrosstermTerminal, InputEvent, Terminal};
 
 use crate::app::core::driver::Driver;
 
 use self::host::{HostEvent, HostSession};
-use self::shell::build_root;
 use self::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hooks};
 
 pub use self::host::{
@@ -33,13 +32,9 @@ pub async fn run(_driver: &mut dyn Driver) -> Result<(), String> {
 
     let guard = TerminalGuard::enter()?;
     let terminal = guard.take();
-    // Drop guard without stop — we own the terminal and stop it below.
-    // (take() already disarmed Drop.)
 
     let result = run_host_loop(terminal).await;
 
-    // Always restore if the loop returned with the terminal still started.
-    // run_host_loop stops on the happy path; emergency_restore covers panics.
     if let Err(ref e) = result {
         tracing::error!(target: "xylitol::tui", error = %e, "TUI host exited with error");
         terminal_guard::emergency_restore();
@@ -48,7 +43,7 @@ pub async fn run(_driver: &mut dyn Driver) -> Result<(), String> {
 }
 
 async fn run_host_loop(terminal: CrosstermTerminal) -> Result<(), String> {
-    let mut session = HostSession::new(terminal, build_root);
+    let mut session = HostSession::new_product_scene(terminal);
     session.render_now()?;
 
     let mut events = EventStream::new();
@@ -66,11 +61,7 @@ async fn run_host_loop(terminal: CrosstermTerminal) -> Result<(), String> {
                         if key.kind != KeyEventKind::Press && key.kind != KeyEventKind::Repeat {
                             continue;
                         }
-                        if matches_key_event(&key, "ctrl+c") {
-                            // Empty-shell: quit. (Editor clear lands with c480.)
-                            session.request_quit();
-                            continue;
-                        }
+                        // Ctrl+C clear/quit is handled by InputListener (c455).
                         session.step(HostEvent::Input(InputEvent::Key(key)))?;
                     }
                     Some(Ok(Event::Paste(data))) => {
