@@ -1351,6 +1351,42 @@ fn agent_demo_follow_up_queues_while_busy() {
 }
 
 #[test]
+fn agent_demo_bang_prefix_enables_bash_border() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.freeze_script_for_test();
+    assert!(!app.bash_mode_for_test());
+    app.set_editor_text_for_test("!echo hi");
+    app.sync_editor_border_for_test();
+    assert!(app.bash_mode_for_test(), "! prefix must enable bash border");
+    app.set_editor_text_for_test("echo hi");
+    app.sync_editor_border_for_test();
+    assert!(
+        !app.bash_mode_for_test(),
+        "clearing ! restores default border"
+    );
+}
+
+#[test]
+fn agent_demo_ctrl_g_external_editor_stub() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.freeze_script_for_test();
+    app.set_editor_text_for_test("draft body");
+    assert_eq!(app.external_editor_invocations_for_test(), 0);
+    app.open_external_editor_stub_for_test();
+    assert_eq!(app.external_editor_invocations_for_test(), 1);
+    assert!(
+        app.input_text_for_test().contains("$EDITOR stub"),
+        "stub should mark editor text; got {}",
+        app.input_text_for_test()
+    );
+    let plain = app.transcript_plain_for_test();
+    assert!(
+        plain.contains("external editor stub"),
+        "expected system banner; got:\n{plain}"
+    );
+}
+
+#[test]
 fn agent_demo_session_tree_fork_stays_on_node_and_branches() {
     let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
     app.freeze_script_for_test();
