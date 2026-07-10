@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "testing-standards"
+name: "test-standards"
 purpose: "Testing standards and conventions — test organization, harness requirements, and coverage expectations."
 valid_scope[2]: tests/,src/tests.rs
 requirements[4]{req_id,title,statement}:

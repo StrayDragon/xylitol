@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "provider-integration"
+name: "test-provider-integration"
 purpose: "Provider integration — API key resolution, model registry integration, and OpenAI/Anthropic provider construction. Attribution headers, OAuth storage, and non-OpenAI/Anthropic provider integrations are out of scope until after 1.0.0."
 valid_scope[2]: src/infra/provider/,src/runtime_protocol/secret.rs
 requirements[6]{req_id,title,statement}:

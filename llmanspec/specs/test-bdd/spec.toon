@@ -1,5 +1,5 @@
 kind: llman.sdd.spec
-name: "bdd-tests"
+name: "test-bdd"
 purpose: "BDD test framework using rstest-bdd — feature files, step definitions, and scenario verification."
 valid_scope[2]: tests/bdd.rs,tests/features/
 requirements[2]{req_id,title,statement}:
