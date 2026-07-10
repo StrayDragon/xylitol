@@ -207,6 +207,10 @@ pub struct TUI<T: Terminal> {
     next_overlay_id: u64,
     next_input_listener_id: u64,
     input_listeners: Vec<RegisteredInputListener>,
+    /// Optional hook after each input dispatch inside `start` / `start_with_flag`
+    /// (e.g. demo external `$EDITOR` via [`Self::with_terminal_suspended`]).
+    #[allow(clippy::type_complexity)]
+    after_dispatch_hook: Option<Box<dyn FnMut(&mut Self)>>,
     // ── render scheduling (pi's requestRender/scheduleRender) ──
     /// True when a render has been requested but not yet executed.
     render_requested: bool,
@@ -243,6 +247,7 @@ impl<T: Terminal> TUI<T> {
             next_overlay_id: 1,
             next_input_listener_id: 1,
             input_listeners: Vec::new(),
+            after_dispatch_hook: None,
             render_requested: false,
             last_render_at: None,
         }
@@ -482,6 +487,7 @@ impl<T: Terminal> TUI<T> {
                             continue;
                         }
                         self.dispatch_event(InputEvent::Key(key_event));
+                        self.run_after_dispatch_hook();
                         self.do_render()?;
                     }
                     Event::Resize(_, _) => {
@@ -492,6 +498,7 @@ impl<T: Terminal> TUI<T> {
                     }
                     Event::Paste(data) => {
                         self.dispatch_event(InputEvent::Paste(data));
+                        self.run_after_dispatch_hook();
                         self.do_render()?;
                     }
                     _ => {}
@@ -525,6 +532,39 @@ impl<T: Terminal> TUI<T> {
 
     pub fn stop(&mut self) {
         self.stopped = true;
+    }
+
+    /// Temporarily release the terminal (leave raw mode / keyboard protocols)
+    /// so a host can run an external process (e.g. `$EDITOR`), then restore and
+    /// force a full redraw. Does **not** exit the `start` event loop.
+    ///
+    /// This is the package seam for external-editor style suspend/resume.
+    /// Spawning `$EDITOR` / tempfile I/O stays in the application (demo or
+    /// `src/app/tui`), not in this crate.
+    pub fn with_terminal_suspended<R>(&mut self, f: impl FnOnce() -> R) -> R {
+        self.terminal.stop();
+        let result = f();
+        self.terminal.hide_cursor();
+        self.terminal.start();
+        // External editors often use the alternate screen; drop diff state.
+        self.request_render(true);
+        let _ = self.do_render();
+        result
+    }
+
+    /// Hook invoked after each input `dispatch_event` inside `start` /
+    /// `start_with_flag` (before the following render). Host-driven loops may
+    /// call the same logic manually after `dispatch_event`.
+    pub fn set_after_dispatch_hook(&mut self, hook: impl FnMut(&mut Self) + 'static) {
+        self.after_dispatch_hook = Some(Box::new(hook));
+    }
+
+    fn run_after_dispatch_hook(&mut self) {
+        let mut hook = self.after_dispatch_hook.take();
+        if let Some(ref mut h) = hook {
+            h(self);
+        }
+        self.after_dispatch_hook = hook;
     }
 
     /// Route one decoded input event through listeners, then the focused
