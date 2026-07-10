@@ -123,9 +123,13 @@ impl SessionTreeFilter {
     }
 }
 
-fn demo_tree_selector(active_id: &str, filter: SessionTreeFilter) -> TreeSelector {
+fn demo_tree_selector(
+    roots: Vec<TreeNode>,
+    active_id: &str,
+    filter: SessionTreeFilter,
+) -> TreeSelector {
     TreeSelector::new(
-        sample_session_tree(),
+        roots,
         TreeSelectorTheme::default(),
         TreeSelectorOptions {
             max_visible: 10,
@@ -135,6 +139,131 @@ fn demo_tree_selector(active_id: &str, filter: SessionTreeFilter) -> TreeSelecto
             status_suffix: Some(filter.label().into()),
         },
     )
+}
+
+fn find_session_node_mut<'a>(roots: &'a mut [TreeNode], id: &str) -> Option<&'a mut TreeNode> {
+    for root in roots {
+        if root.id == id {
+            return Some(root);
+        }
+        if let Some(n) = find_session_node_mut(&mut root.children, id) {
+            return Some(n);
+        }
+    }
+    None
+}
+
+fn find_session_node<'a>(roots: &'a [TreeNode], id: &str) -> Option<&'a TreeNode> {
+    for root in roots {
+        if root.id == id {
+            return Some(root);
+        }
+        if let Some(n) = find_session_node(&root.children, id) {
+            return Some(n);
+        }
+    }
+    None
+}
+
+fn is_reply_tree_label(label: &str) -> bool {
+    label.starts_with("assistant:") || label.starts_with("tool:")
+}
+
+fn tree_label_preview(prefix: &str, text: &str) -> String {
+    let one = text.lines().next().unwrap_or(text).trim();
+    let body = if visible_width(one) > 48 {
+        truncate_to_width(one, 48, "…", false)
+    } else {
+        one.to_string()
+    };
+    format!("{prefix}{body}")
+}
+
+/// Root→target id path in a session tree (inclusive). Demo history travel uses this.
+fn path_ids_to(roots: &[TreeNode], target: &str) -> Option<Vec<String>> {
+    fn walk(node: &TreeNode, target: &str, path: &mut Vec<String>) -> bool {
+        path.push(node.id.clone());
+        if node.id == target {
+            return true;
+        }
+        for child in &node.children {
+            if walk(child, target, path) {
+                return true;
+            }
+        }
+        path.pop();
+        false
+    }
+    let mut path = Vec::new();
+    for root in roots {
+        if walk(root, target, &mut path) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+/// Path to `target`, then linear assistant/tool spine (so travel to a user still shows its reply).
+fn travel_path_with_replies(roots: &[TreeNode], target: &str) -> Vec<String> {
+    let mut path = path_ids_to(roots, target).unwrap_or_else(|| vec![target.to_string()]);
+    let Some(start) = path.last().cloned() else {
+        return path;
+    };
+    let mut cur_id = start;
+    loop {
+        let Some(node) = find_session_node(roots, &cur_id) else {
+            break;
+        };
+        if node.children.len() != 1 {
+            break;
+        }
+        let child = &node.children[0];
+        if !is_reply_tree_label(&child.label) {
+            break;
+        }
+        path.push(child.id.clone());
+        cur_id = child.id.clone();
+    }
+    path
+}
+
+/// Built-in payloads for the seed sample tree (live nodes use `history_payloads`).
+fn seed_history_entry(id: &str) -> Option<TranscriptEntry> {
+    match id {
+        "root" => None,
+        "u1" => Some(TranscriptEntry::Message {
+            role: Role::User,
+            text: "tighten footer truncation".into(),
+        }),
+        "a1" => Some(TranscriptEntry::Message {
+            role: Role::Assistant,
+            text: "plan + tools — I'll search the tree selector and ship the editor slot.".into(),
+        }),
+        "t1" => Some(TranscriptEntry::Tool {
+            expanded: true,
+            status: ToolBlockStatus::Success,
+            summary: "rg -n TreeSelector · ok".into(),
+            detail: "packages/xylitol-tui/src/components/tree_selector.rs\n(demo history leaf)"
+                .into(),
+        }),
+        "a2" => Some(TranscriptEntry::Message {
+            role: Role::Assistant,
+            text: "ship tree slot — double Esc replaces the editor; Enter travels here.".into(),
+        }),
+        "u2" => Some(TranscriptEntry::Message {
+            role: Role::User,
+            text: "also verify double Esc".into(),
+        }),
+        "fork" => Some(TranscriptEntry::Message {
+            role: Role::User,
+            text: "alternate branch".into(),
+        }),
+        "af" => Some(TranscriptEntry::Message {
+            role: Role::Assistant,
+            text: "(fork leaf) — history rebuild stops at this node.".into(),
+        }),
+        _ => None,
+    }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolBlockStatus {
@@ -444,6 +573,7 @@ impl GlyphSet {
     }
 }
 
+#[derive(Clone)]
 enum TranscriptEntry {
     Message {
         role: Role,
@@ -534,6 +664,18 @@ pub struct FakeCodingAgentApp {
     tree_filter: SessionTreeFilter,
     /// When set, tree slot shows annotation editor instead of browse chrome.
     tree_label_edit: Option<(String, Input)>,
+    /// Live session graph (starts as sample; grows on submit / assistant finish).
+    session_tree: Vec<TreeNode>,
+    /// Payloads for live nodes (seed ids use [`seed_history_entry`]).
+    history_payloads: HashMap<String, TranscriptEntry>,
+    /// Monotonic id suffix for live tree nodes (`live-u-1`, `live-a-2`, …).
+    next_node_seq: u64,
+    /// Current history leaf (tree `active_id` / Enter travel target). Demo only.
+    history_leaf_id: String,
+    /// Steer: Enter while busy — applied when the current turn finishes (demo).
+    steer_queue: VecDeque<String>,
+    /// Follow-up: Alt+Enter — applied only when fully idle.
+    follow_up_queue: VecDeque<String>,
     last_esc_at: Option<Instant>,
     loader: Loader,
     plan: Vec<(bool, String)>,
@@ -731,7 +873,11 @@ impl FakeCodingAgentApp {
         self.settings_open = false;
         self.tree_filter = SessionTreeFilter::Default;
         self.tree_label_edit = None;
-        self.tree = demo_tree_selector("u2", self.tree_filter);
+        self.tree = demo_tree_selector(
+            self.session_tree.clone(),
+            &self.history_leaf_id,
+            self.tree_filter,
+        );
         self.tree_open = true;
         self.set_status("Session tree");
     }
@@ -740,6 +886,126 @@ impl FakeCodingAgentApp {
         self.tree_open = false;
         self.tree_label_edit = None;
         self.set_status("Ready");
+    }
+
+    fn history_entry_for(&self, id: &str) -> Option<TranscriptEntry> {
+        self.history_payloads
+            .get(id)
+            .cloned()
+            .or_else(|| seed_history_entry(id))
+    }
+
+    /// Append a child under the current history leaf and advance the leaf.
+    fn grow_session_tree(&mut self, id: String, label: String, entry: TranscriptEntry) {
+        let parent = self.history_leaf_id.clone();
+        if let Some(node) = find_session_node_mut(&mut self.session_tree, &parent) {
+            node.children.push(TreeNode::new(id.clone(), label));
+        } else if let Some(root) = self.session_tree.first_mut() {
+            root.children.push(TreeNode::new(id.clone(), label));
+        } else {
+            self.session_tree.push(TreeNode::new(id.clone(), label));
+        }
+        self.history_payloads.insert(id.clone(), entry);
+        self.history_leaf_id = id;
+    }
+
+    fn alloc_node_id(&mut self, kind: &str) -> String {
+        self.next_node_seq += 1;
+        format!("live-{kind}-{}", self.next_node_seq)
+    }
+
+    /// Enter on session tree: rebuild transcript along root→id (+ linear reply spine).
+    pub fn travel_to_history(&mut self, id: &str) {
+        self.pending_events.clear();
+        self.scheduled_actions.clear();
+        self.active_stream_entry = None;
+        self.steer_queue.clear();
+        // Keep follow-ups — they are for after idle, independent of travel.
+
+        let path = travel_path_with_replies(&self.session_tree, id);
+        let path_label = path.join(" → ");
+        let leaf = path.last().cloned().unwrap_or_else(|| id.to_string());
+
+        self.transcript.clear();
+        self.push_message(Role::System, format!("history @ {id} · path: {path_label}"));
+        for node_id in &path {
+            if let Some(entry) = self.history_entry_for(node_id) {
+                self.transcript.push(entry);
+            }
+        }
+
+        self.history_leaf_id = leaf;
+        self.close_session_tree(); // Ready — banner lives in transcript, not a spinning status
+    }
+
+    /// Harness: submit text as if the editor fired on_submit (bypasses paste-burst).
+    pub fn submit_text_for_test(&mut self, text: impl Into<String>) {
+        self.process_submit(text.into());
+    }
+
+    /// Harness: drive one Component tick (script / streams / queues).
+    pub fn tick_for_test(&mut self) -> bool {
+        self.tick()
+    }
+
+    pub fn history_leaf_for_test(&self) -> &str {
+        &self.history_leaf_id
+    }
+
+    pub fn steer_queue_len_for_test(&self) -> usize {
+        self.steer_queue.len()
+    }
+
+    pub fn follow_up_queue_len_for_test(&self) -> usize {
+        self.follow_up_queue.len()
+    }
+
+    pub fn enqueue_follow_up_for_test(&mut self, text: impl Into<String>) {
+        self.enqueue_follow_up(text.into());
+    }
+
+    pub fn travel_to_history_for_test(&mut self, id: &str) {
+        self.travel_to_history(id);
+    }
+
+    /// Whether a label substring appears anywhere in the live session tree (harness).
+    pub fn session_tree_contains_label_for_test(&self, needle: &str) -> bool {
+        fn walk(nodes: &[TreeNode], needle: &str) -> bool {
+            nodes
+                .iter()
+                .any(|n| n.label.contains(needle) || walk(&n.children, needle))
+        }
+        walk(&self.session_tree, needle)
+    }
+
+    /// Flattened plain text from transcript messages/tool summaries (harness).
+    pub fn transcript_plain_for_test(&self) -> String {
+        let mut out = String::new();
+        for entry in &self.transcript {
+            match entry {
+                TranscriptEntry::Message { text, .. } => {
+                    out.push_str(text);
+                    out.push('\n');
+                }
+                TranscriptEntry::Thinking { body, .. } => {
+                    out.push_str(body);
+                    out.push('\n');
+                }
+                TranscriptEntry::Tool {
+                    summary, detail, ..
+                } => {
+                    out.push_str(summary);
+                    out.push('\n');
+                    out.push_str(detail);
+                    out.push('\n');
+                }
+                TranscriptEntry::Diff { summary, .. } => {
+                    out.push_str(summary);
+                    out.push('\n');
+                }
+            }
+        }
+        out
     }
 
     fn begin_tree_label_edit(&mut self) {
@@ -966,9 +1232,15 @@ impl FakeCodingAgentApp {
             settings_open: false,
             settings,
             tree_open: false,
-            tree: demo_tree_selector("u2", SessionTreeFilter::Default),
+            tree: demo_tree_selector(sample_session_tree(), "u2", SessionTreeFilter::Default),
             tree_filter: SessionTreeFilter::Default,
             tree_label_edit: None,
+            session_tree: sample_session_tree(),
+            history_payloads: HashMap::new(),
+            next_node_seq: 0,
+            history_leaf_id: "u2".into(),
+            steer_queue: VecDeque::new(),
+            follow_up_queue: VecDeque::new(),
             last_esc_at: None,
             loader,
             plan: vec![
@@ -1005,7 +1277,7 @@ impl FakeCodingAgentApp {
         // One-shot help — fold keys live on blocks as `(Ctrl+T)` / `(Alt+E)`.
         self.push_message(
             Role::System,
-            "keys: Enter submit · double Esc tree · /cmds · @path · (Ctrl+P) · (Ctrl+S) · (Alt+G) · (Ctrl+O expand tools) · (Ctrl+Shift+O step) · Esc · (Ctrl+C)",
+            "keys: Enter submit/steer · Alt+Enter follow-up · double Esc tree · Enter travel (+reply) · /cmds · @path · (Ctrl+P)/(Ctrl+S) · (Alt+G) · (Ctrl+O tools) · Esc · (Ctrl+C)",
         );
         self.push_message(
             Role::System,
@@ -1176,12 +1448,108 @@ impl FakeCodingAgentApp {
             return;
         }
 
+        // Busy Enter = steer (do not abort the in-flight turn).
+        if self.is_turn_busy() {
+            self.enqueue_steer(trimmed);
+            return;
+        }
+
+        self.commit_user_turn(trimmed);
+    }
+
+    /// Alt+Enter: queue until idle, or submit immediately when idle.
+    fn process_follow_up(&mut self, text: String) {
+        let trimmed = text.trim().to_string();
+        if trimmed.is_empty() {
+            return;
+        }
+        if self.is_turn_busy() {
+            self.enqueue_follow_up(trimmed);
+            return;
+        }
+        self.commit_user_turn(trimmed);
+    }
+
+    fn is_turn_busy(&self) -> bool {
+        self.script_work_pending()
+            || self.any_pending_tool_blocks()
+            || matches!(
+                self.status_text.as_str(),
+                "Working" | "Thinking" | "Drafting reply" | "Running tools"
+            )
+    }
+
+    fn enqueue_steer(&mut self, text: String) {
+        self.input.set_text(String::new());
+        self.steer_queue.push_back(text.clone());
+        self.push_message(
+            Role::System,
+            format!("steer queued ({}) · {text}", self.steer_queue.len()),
+        );
+        // Grow tree now so the steer is visible in the session graph without aborting tools.
+        let id = self.alloc_node_id("u");
+        self.grow_session_tree(
+            id,
+            tree_label_preview("user: ", &format!("[steer] {text}")),
+            TranscriptEntry::Message {
+                role: Role::User,
+                text: format!("[steer] {text}"),
+            },
+        );
+        self.push_message(Role::User, format!("[steer] {text}"));
+    }
+
+    fn enqueue_follow_up(&mut self, text: String) {
+        self.input.set_text(String::new());
+        self.follow_up_queue.push_back(text.clone());
+        self.push_message(
+            Role::System,
+            format!("follow-up queued ({}) · {text}", self.follow_up_queue.len()),
+        );
+    }
+
+    fn commit_user_turn(&mut self, trimmed: String) {
         self.last_submitted = trimmed.clone();
         self.push_message(Role::User, trimmed.clone());
+        let user_id = self.alloc_node_id("u");
+        self.grow_session_tree(
+            user_id,
+            tree_label_preview("user: ", &trimmed),
+            TranscriptEntry::Message {
+                role: Role::User,
+                text: trimmed.clone(),
+            },
+        );
         self.input.set_text(String::new());
         self.auto_started = true;
         self.scripted_turn = self.scripted_turn.max(2);
         self.queue_simulated_turn(&trimmed);
+    }
+
+    /// After a turn goes idle: drain steer first, then one follow-up.
+    fn drain_message_queues(&mut self) {
+        if self.is_turn_busy() {
+            return;
+        }
+        if let Some(text) = self.steer_queue.pop_front() {
+            self.push_message(
+                Role::System,
+                format!("steer apply · {} remaining", self.steer_queue.len()),
+            );
+            // Steer node already grown at enqueue time — just run the turn from current leaf.
+            self.last_submitted = text.clone();
+            self.auto_started = true;
+            self.scripted_turn = self.scripted_turn.max(2);
+            self.queue_simulated_turn(&text);
+            return;
+        }
+        if let Some(text) = self.follow_up_queue.pop_front() {
+            self.push_message(
+                Role::System,
+                format!("follow-up apply · {} remaining", self.follow_up_queue.len()),
+            );
+            self.commit_user_turn(text);
+        }
     }
 
     fn set_status(&mut self, text: impl Into<String>) {
@@ -1190,7 +1558,13 @@ impl FakeCodingAgentApp {
     }
 
     fn spinner_active(&self) -> bool {
-        self.status_text != "Ready"
+        // Only agent-busy labels spin. Informational statuses (Session tree, history @ …)
+        // must not keep the loader alive after the work is done.
+        let busy_label = matches!(
+            self.status_text.as_str(),
+            "Working" | "Thinking" | "Drafting reply" | "Running tools"
+        );
+        busy_label
             || self.any_pending_tool_blocks()
             || !self.pending_events.is_empty()
             || !self.scheduled_actions.is_empty()
@@ -1456,9 +1830,30 @@ impl FakeCodingAgentApp {
             // (Does not fight mid-stream ^T — that only mattered while appending.)
             *expanded = false;
         }
+        if kind == StreamKind::Assistant
+            && let Some(index) = self.active_stream_entry
+            && let Some(TranscriptEntry::Message {
+                role: Role::Assistant,
+                text,
+            }) = self.transcript.get(index)
+        {
+            let text = text.clone();
+            if !text.trim().is_empty() {
+                let id = self.alloc_node_id("a");
+                self.grow_session_tree(
+                    id,
+                    tree_label_preview("assistant: ", &text),
+                    TranscriptEntry::Message {
+                        role: Role::Assistant,
+                        text,
+                    },
+                );
+            }
+        }
         self.active_stream_entry = None;
         if kind == StreamKind::Assistant {
             self.set_status("Ready");
+            self.drain_message_queues();
         }
     }
 
@@ -1536,6 +1931,7 @@ impl FakeCodingAgentApp {
         }
         if !self.script_work_pending() {
             self.set_status("Ready");
+            self.drain_message_queues();
         }
     }
 
@@ -1661,8 +2057,19 @@ impl FakeCodingAgentApp {
                 let index = self.transcript.len();
                 self.push_tool(
                     format!("{text} · running"),
-                    detail,
+                    detail.clone(),
                     ToolBlockStatus::Pending,
+                );
+                let tool_id = self.alloc_node_id("t");
+                self.grow_session_tree(
+                    tool_id,
+                    tree_label_preview("tool: ", &text),
+                    TranscriptEntry::Tool {
+                        expanded: true,
+                        status: ToolBlockStatus::Success,
+                        summary: format!("{text} · ok"),
+                        detail,
+                    },
                 );
                 // Independent completion — wide jitter so multiple Pending overlap.
                 let flip = self.jitter_ticks(10, 28);
@@ -1675,7 +2082,19 @@ impl FakeCodingAgentApp {
                 );
             }
             ScriptEvent::StreamingBash { summary, lines } => {
-                self.push_streaming_bash_tool(summary, &lines);
+                self.push_streaming_bash_tool(summary.clone(), &lines);
+                let detail = lines.join("\n");
+                let tool_id = self.alloc_node_id("t");
+                self.grow_session_tree(
+                    tool_id,
+                    tree_label_preview("tool: ", &summary),
+                    TranscriptEntry::Tool {
+                        expanded: false,
+                        status: ToolBlockStatus::Success,
+                        summary: summary.clone(),
+                        detail,
+                    },
+                );
             }
             ScriptEvent::Edit { summary, input } => {
                 self.set_status("Working");
@@ -1685,10 +2104,22 @@ impl FakeCodingAgentApp {
                 // pi Edit: unified compact Diff, expanded (pops open). Never SBS.
                 self.push_diff_ex(
                     format!("{summary} · running"),
-                    input,
+                    input.clone(),
                     None,
                     true,
                     ToolBlockStatus::Pending,
+                );
+                let tool_id = self.alloc_node_id("t");
+                self.grow_session_tree(
+                    tool_id,
+                    tree_label_preview("tool: ", &summary),
+                    TranscriptEntry::Diff {
+                        expanded: true,
+                        status: ToolBlockStatus::Success,
+                        summary: format!("{summary} · ok"),
+                        input,
+                        side_by_side_min_width: None,
+                    },
                 );
                 let flip = self.jitter_ticks(12, 32);
                 self.schedule_from_now(
@@ -1704,7 +2135,18 @@ impl FakeCodingAgentApp {
                 }
             }
             ScriptEvent::Assistant(text) => {
-                self.push_message(Role::Assistant, text);
+                self.push_message(Role::Assistant, text.clone());
+                if !text.trim().is_empty() {
+                    let id = self.alloc_node_id("a");
+                    self.grow_session_tree(
+                        id,
+                        tree_label_preview("assistant: ", &text),
+                        TranscriptEntry::Message {
+                            role: Role::Assistant,
+                            text,
+                        },
+                    );
+                }
                 self.sync_status_after_tools();
             }
             ScriptEvent::MarkPlan(index) => {
@@ -1955,10 +2397,16 @@ impl Component for FakeCodingAgentApp {
         let footer_ref = if self.palette_open || self.settings_open || self.tree_open {
             "esc close · ↑↓ · Enter"
         } else {
+            let queue_hint = match (self.steer_queue.len(), self.follow_up_queue.len()) {
+                (0, 0) => String::new(),
+                (s, 0) => format!(" · steer:{s}"),
+                (0, f) => format!(" · follow-up:{f}"),
+                (s, f) => format!(" · steer:{s} follow-up:{f}"),
+            };
             // Compact cue strip — full list is in the seed system line.
             footer_owned = format!(
                 // Keep cue strip short — narrow terminals (80 cols) still fit.
-                "{} · {} · /@ (Ctrl+P)/(Ctrl+S) (Alt+G) (Ctrl+O tools)",
+                "{} · {}{queue_hint} · /@ (Ctrl+P)/(Ctrl+S) (Alt+G) (Ctrl+O tools)",
                 self.footer_note,
                 self.glyph_set.label()
             );
@@ -1993,6 +2441,12 @@ impl Component for FakeCodingAgentApp {
             return;
         }
         // Fall through so Editor can dismiss slash CommandPopup (Esc).
+
+        if matches_key_event(key, "alt+enter") {
+            let text = self.input.get_text();
+            self.process_follow_up(text);
+            return;
+        }
 
         if self.tree_open {
             if self.tree_label_edit.is_some() {
@@ -2039,8 +2493,7 @@ impl Component for FakeCodingAgentApp {
             }
             if matches_key_event(key, "enter") {
                 let id = self.tree.selected_id().unwrap_or("?").to_string();
-                self.push_message(Role::System, format!("travel → {id}"));
-                self.close_session_tree();
+                self.travel_to_history(&id);
                 return;
             }
             self.tree.handle_input(event);
@@ -2169,6 +2622,9 @@ impl Component for FakeCodingAgentApp {
         }
 
         changed |= self.process_due_actions();
+        if !self.is_turn_busy() {
+            self.drain_message_queues();
+        }
 
         changed
     }
