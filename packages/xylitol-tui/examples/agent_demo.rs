@@ -108,16 +108,28 @@ fn sample_sbs_pair() -> DiffInput {
     }
 }
 
-/// Legacy display_diff gutter sample (still exercised).
+/// Legacy display_diff gutter sample (still exercised). No `--- a/` / `+++ b/` — path is on the header.
 fn sample_display_diff() -> String {
     [
-        "      ... | --- a/packages/xylitol-tui/examples/agent_demo.rs",
-        "      ... | +++ b/packages/xylitol-tui/examples/agent_demo.rs",
         "  10    10 |     Component, CrosstermTerminal,",
         "  11       | -    Focusable, InputEvent,",
         "       11 | +    DiffInput, Focusable, InputEvent,",
     ]
     .join("\n")
+}
+
+/// Prefer workspace-relative path when under `cwd`; otherwise absolute.
+fn format_edit_path(path: impl AsRef<std::path::Path>, cwd: &std::path::Path) -> String {
+    let path = path.as_ref();
+    let abs = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.join(path)
+    };
+    match abs.strip_prefix(cwd) {
+        Ok(rel) if !rel.as_os_str().is_empty() => rel.display().to_string(),
+        _ => abs.display().to_string(),
+    }
 }
 
 /// Larger edit-tool style sample (context + change) for simulated Edit steps.
@@ -431,6 +443,8 @@ pub struct FakeCodingAgentApp {
     last_tick_at: Instant,
     quit_flag: Arc<AtomicBool>,
     glyph_set: GlyphSet,
+    /// Workspace root for Edit path display (`format_edit_path`) and `@` completion.
+    cwd: std::path::PathBuf,
 }
 
 impl FakeCodingAgentApp {
@@ -597,7 +611,7 @@ impl FakeCodingAgentApp {
         // Demo-only static lists — no Driver wiring. Future `$`/`^` = more sources.
         input.set_completion_sources(vec![
             Box::new(SlashCommandSource::new(slash_commands())),
-            Box::new(AtPathSource::new(cwd)),
+            Box::new(AtPathSource::new(cwd.clone())),
         ]);
         input.set_text(initial_prompt.to_string());
 
@@ -714,6 +728,7 @@ impl FakeCodingAgentApp {
             last_tick_at: Instant::now(),
             quit_flag,
             glyph_set: GlyphSet::from_env(),
+            cwd,
         };
         app.seed_transcript();
         app
@@ -746,25 +761,24 @@ impl FakeCodingAgentApp {
             ToolBlockStatus::Success,
         );
         // Seed blocks start expanded so SBS / edit / gutter are visible without Alt+E.
-        // Primary Edit look: pi unified compact (seed + simulated Edit tool).
+        let demo_rs = format_edit_path("packages/xylitol-tui/examples/agent_demo.rs", &self.cwd);
+        let ui_root = format_edit_path("src/app/tui/ui_root.rs", &self.cwd);
         self.push_diff_ex(
-            "edited demo.rs (+2 -2) unified edit-format",
+            format!("edited {demo_rs} (+2 -2) unified edit-format"),
             sample_unified_pair(),
             None, // always unified — Edit tool path
             true,
             ToolBlockStatus::Success,
         );
-        // Optional wide layout (supported, uncommon); packed columns, not half-stretch.
         self.push_diff_ex(
-            "edited ui_root.rs (+2 -2) side-by-side (optional)",
+            format!("edited {ui_root} (+2 -2) side-by-side (optional)"),
             sample_sbs_pair(),
             Some(60),
             true,
             ToolBlockStatus::Success,
         );
-        // display_diff gutter path still covered.
         self.push_diff_ex(
-            "edited demo.rs (display_diff gutter)",
+            format!("edited {demo_rs} (display_diff gutter)"),
             DiffInput::DisplayText(sample_display_diff()),
             None,
             true,
@@ -1106,7 +1120,10 @@ impl FakeCodingAgentApp {
         self.queue_event(
             1,
             ScriptEvent::Edit {
-                summary: "edit src/app/tui/ui_root.rs (+1 -1)".into(),
+                summary: format!(
+                    "edit {} (+1 -1)",
+                    format_edit_path("src/app/tui/ui_root.rs", &self.cwd)
+                ),
                 input: sample_edit_tool_pair(),
             },
         );

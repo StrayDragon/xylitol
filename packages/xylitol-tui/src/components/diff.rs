@@ -149,12 +149,30 @@ pub fn render_diff_lines(
 }
 
 fn normalize_input(input: &DiffInput) -> Vec<DiffLine> {
-    match input {
+    let lines = match input {
         DiffInput::LinePair { old, new, path } => lines_from_pair(old, new, path.as_deref()),
         DiffInput::UnifiedText(text) => parse_unified(text),
         DiffInput::DisplayText(text) => parse_display(text),
         DiffInput::EditText(text) => parse_edit_text(text),
+    };
+    // Expandable / Edit headers already show the path — drop git `--- a/` / `+++ b/` noise.
+    lines
+        .into_iter()
+        .filter(|l| !is_redundant_file_header(l))
+        .collect()
+}
+
+fn is_redundant_file_header(line: &DiffLine) -> bool {
+    if line.kind != LineKind::Meta {
+        return false;
     }
+    let t = line.content.trim();
+    t.starts_with("--- a/")
+        || t.starts_with("--- b/")
+        || t.starts_with("+++ a/")
+        || t.starts_with("+++ b/")
+        || t.starts_with("--- /")
+        || t.starts_with("+++ /")
 }
 
 fn line_number_width(lines: &[DiffLine]) -> usize {
@@ -317,26 +335,11 @@ pub fn generate_edit_text(old: &str, new: &str, context_lines: usize) -> String 
 }
 
 fn lines_from_pair(old: &str, new: &str, path: Option<&str>) -> Vec<DiffLine> {
+    let _ = path; // Callers put the path on the expandable header — omit --- a/ +++ b/ body noise.
     if old == new {
         return Vec::new();
     }
     let mut out = Vec::new();
-    if let Some(p) = path {
-        out.push(DiffLine {
-            kind: LineKind::Meta,
-            sign: ' ',
-            content: format!("--- a/{p}"),
-            old_no: None,
-            new_no: None,
-        });
-        out.push(DiffLine {
-            kind: LineKind::Meta,
-            sign: ' ',
-            content: format!("+++ b/{p}"),
-            old_no: None,
-            new_no: None,
-        });
-    }
     let diff = TextDiff::from_lines(old, new);
     let mut old_no = 1u32;
     let mut new_no = 1u32;
@@ -1109,7 +1112,11 @@ mod tests {
             },
         );
         let joined = lines.join("\n");
-        assert!(joined.contains("--- a/f.rs") || joined.contains("f.rs"));
+        assert!(joined.contains("f.rs") || joined.contains("hello") || joined.contains("world"));
+        assert!(
+            !joined.contains("--- a/"),
+            "path headers belong on the Edit summary, not Diff body"
+        );
         assert!(joined.contains('-') && joined.contains('+'));
     }
 
@@ -1213,6 +1220,30 @@ mod tests {
         let lines = parse_unified(text);
         assert!(lines.iter().any(|l| l.kind == LineKind::Delete));
         assert!(lines.iter().any(|l| l.kind == LineKind::Insert));
+    }
+
+    #[test]
+    fn render_omits_git_a_b_path_headers() {
+        let text = "--- a/x.rs\n+++ b/x.rs\n@@ -1,1 +1,1 @@\n-old\n+new\n";
+        let lines = render_diff_lines(
+            &DiffInput::UnifiedText(text.into()),
+            60,
+            &plain_theme(),
+            &DiffOptions {
+                word_level: false,
+                side_by_side_min_width: None,
+                ..DiffOptions::default()
+            },
+        );
+        let joined = lines.join("\n");
+        assert!(
+            !joined.contains("--- a/") && !joined.contains("+++ b/"),
+            "git path headers are redundant with Edit summary; got:\n{joined}"
+        );
+        assert!(
+            joined.contains("old") && joined.contains("new"),
+            "got:\n{joined}"
+        );
     }
 
     #[test]
