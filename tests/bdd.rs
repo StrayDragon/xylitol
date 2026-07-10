@@ -2136,11 +2136,14 @@ async fn test_hook_empty_noop(agent: AgentState) {}
 // ═══════════════════════════════════════════════════════════════════
 
 use xylitol::app::server::lock::{LockInfo, ServerLock, ServerLockedError};
+use xylitol::app::server::port_retry;
 
 /// Fixture for server tests.
 pub struct ServerTest {
     pub lock_path: RefCell<Option<std::path::PathBuf>>,
     pub lock: RefCell<Option<ServerLock>>,
+    /// Keeps the bound listener alive for the scenario (mirrors production).
+    pub listener: RefCell<Option<std::net::TcpListener>>,
     pub second_result: RefCell<Option<Result<ServerLock, ServerLockedError>>>,
 }
 impl ServerTest {
@@ -2148,6 +2151,7 @@ impl ServerTest {
         Self {
             lock_path: RefCell::new(None),
             lock: RefCell::new(None),
+            listener: RefCell::new(None),
             second_result: RefCell::new(None),
         }
     }
@@ -2188,16 +2192,12 @@ fn server_start(server_test: &mut ServerTest) {
         .as_ref()
         .cloned()
         .unwrap_or_else(|| server_test.random_path());
-    let info = server_test.info(0); // port 0 = OS-assigned, but lock has port 0
-    match ServerLock::try_acquire(&path, &info) {
-        Ok(lock) => {
-            server_test.lock.replace(Some(lock));
-            server_test.lock_path.replace(Some(path));
-        }
-        Err(e) => {
-            panic!("server start failed: {e}");
-        }
-    }
+    let (listener, port, lock) =
+        port_retry::acquire_lock_and_bind(&path, "bdd-test-host", 0).expect("server start failed");
+    assert!(port > 0, "OS should assign a non-zero port");
+    server_test.listener.replace(Some(listener));
+    server_test.lock.replace(Some(lock));
+    server_test.lock_path.replace(Some(path));
 }
 
 #[given("服务端已在运行（锁文件存在）")]
