@@ -18,15 +18,19 @@ pi / xylitol：树 **替换 editor 槽**（`showSelector`），非居中 overlay
 | Cycle filter Ctrl+O | ✓（树内） | ✓ 树开时循环；关树 = 工具视口 |
 | Fold ⊞/⊟ + Ctrl/Alt←→ 分支跳转 | ✓ | ✓（c467） |
 | Shift+L label / Shift+T 时间戳 | ✓ | ✓ demo annotation（c467） |
-| 选中行水平平移（深 indent） | ✓ | ✗ |
+| 选中行水平平移（深 indent） | ✓ | ✓（`render_horizontal_viewport`） |
 | 状态行 `(i/n) [filter]` | ✓ | ✓ |
 | 路径 `•` / 选中 `›` | ✓ | ✓ |
+| Enter travel → 重建历史 | ✓ `navigateTree` + rebuild chat | ✓ demo（`travel_to_history` + 线性 assistant/tool 回复链） |
+| 流中 Enter steer / Alt+Enter follow-up | ✓ | ✓ demo 队列（不打断当前轮） |
+| 提交/工具写入活树 | ✓ | ✓ `session_tree` 增长 |
 
 ## 建议落地顺序
 
 1. ~~**c464**~~：SBS Diff 去整行红绿底 — 已归档。
 2. ~~**c456**~~：搜索 + filter + ←→ — 已归档。
-3. ~~**c467**~~：fold / 分支跳转 / annotation — 本批。
-4. 其后：水平平移 → 产品 c491（验收本批后再动）。
+3. ~~**c467**~~：fold / 分支跳转 / annotation — 已归档。
+4. ~~水平平移~~ + demo history travel — 包 pan + `agent_demo` 路径重建。
+5. 产品真 session / `Driver` travel（c491 假树之后）。
 
 包继续只吃 `TreeNode { id, label, children }`；展示文案由 demo/app 预渲染进 `label`。
