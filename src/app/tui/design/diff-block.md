@@ -88,7 +88,7 @@ Agent Edit 路径：优先 `DiffInput::from_edit_pair(old, new)`（或 `generate
 ## 复制友好 MUST
 
 1. 框选复制后仍可读：保留 `+`/`-`/` ` 语义或等价 gutter，不要只剩色块。
-2. **MUST NOT** 加语言标签条、双边框墙、装饰性行号墙（gutter 数字可保留，但勿做成「行号墙」视觉）。
+2. **MUST NOT** 在 Diff 正文重复 git `--- a/` / `+++ b/` 路径头（路径放在 expandable / Edit 摘要行；工作区内用相对路径，否则绝对路径）。
 3. 空变更：一行 `(no changes)`（或等价 dim）。
 
 ## 可展开
