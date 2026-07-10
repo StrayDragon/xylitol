@@ -27,6 +27,9 @@ components:
 | Ctrl+T | **树关**：thinking 展开/折叠；**树开**：filter → no-tools |
 | Alt+E | tool/diff **块**展开/折叠（有无详情；与 Ctrl+O 视口正交） |
 | Ctrl+D / U / L / A | **树开**：filter → default / user / labeled / all |
+| Ctrl/Alt+←→ | **树开**：fold 或分支段跳转 |
+| Shift+L | **树开**：编辑节点 annotation |
+| Shift+T | **树开**：切换 annotation 时间戳显示 |
 
 ## MUST（编辑器槽）
 

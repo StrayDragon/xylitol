@@ -18,7 +18,7 @@ use xylitol_tui::components::settings_list::{
 use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, set_keybindings};
 use xylitol_tui::{
     Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme, ExpandableOutputOptions,
-    Focusable, InputEvent, InputListenerResult, Markdown, MarkdownOptions, MarkdownTheme,
+    Focusable, Input, InputEvent, InputListenerResult, Markdown, MarkdownOptions, MarkdownTheme,
     SystemClock, TUI, TreeNode, TreeSelector, TreeSelectorOptions, TreeSelectorTheme,
     apply_background_to_line, highlight_code, matches_key_event, render_diff_lines,
     render_expandable_output, truncate_to_width, visible_width, wrap_text_with_ansi,
@@ -64,11 +64,15 @@ fn sample_session_tree() -> Vec<TreeNode> {
             TreeNode::new("u1", "user: tighten footer truncation").with_child(
                 TreeNode::new("a1", "assistant: plan + tools").with_children([
                     TreeNode::new("t1", "tool: rg -n TreeSelector"),
-                    TreeNode::new("a2", "assistant: ship tree slot [label]")
+                    TreeNode::new("a2", "assistant: ship tree slot")
+                        .with_annotation("ship")
+                        .with_annotation_at("2d ago")
                         .with_child(TreeNode::new("u2", "user: also verify double Esc")),
                 ]),
             ),
             TreeNode::new("fork", "user: alternate branch")
+                .with_annotation("alt")
+                .with_annotation_at("1h ago")
                 .with_child(TreeNode::new("af", "assistant: (fork leaf)")),
         ]),
     ]
@@ -114,7 +118,7 @@ impl SessionTreeFilter {
             Self::Default | Self::All => true,
             Self::NoTools => !label.contains("tool:"),
             Self::UserOnly => label.contains("user:"),
-            Self::LabeledOnly => label.contains("[label]"),
+            Self::LabeledOnly => node.annotation.is_some(),
         }
     }
 }
@@ -528,6 +532,8 @@ pub struct FakeCodingAgentApp {
     tree_open: bool,
     tree: TreeSelector,
     tree_filter: SessionTreeFilter,
+    /// When set, tree slot shows annotation editor instead of browse chrome.
+    tree_label_edit: Option<(String, Input)>,
     last_esc_at: Option<Instant>,
     loader: Loader,
     plan: Vec<(bool, String)>,
@@ -686,6 +692,9 @@ impl FakeCodingAgentApp {
     /// Returns true if the event was consumed.
     pub fn on_escape(&mut self) -> bool {
         if self.tree_open {
+            if self.tree_label_edit.take().is_some() {
+                return true;
+            }
             if self.tree.clear_search_if_any() {
                 return true;
             }
@@ -721,6 +730,7 @@ impl FakeCodingAgentApp {
         self.palette_open = false;
         self.settings_open = false;
         self.tree_filter = SessionTreeFilter::Default;
+        self.tree_label_edit = None;
         self.tree = demo_tree_selector("u2", self.tree_filter);
         self.tree_open = true;
         self.set_status("Session tree");
@@ -728,17 +738,39 @@ impl FakeCodingAgentApp {
 
     pub fn close_session_tree(&mut self) {
         self.tree_open = false;
+        self.tree_label_edit = None;
         self.set_status("Ready");
+    }
+
+    fn begin_tree_label_edit(&mut self) {
+        let Some(id) = self.tree.selected_id().map(str::to_string) else {
+            return;
+        };
+        let current = self.tree.annotation_of(&id).unwrap_or("").to_string();
+        let mut input = Input::new();
+        input.set_value(current);
+        self.tree_label_edit = Some((id, input));
+    }
+
+    fn commit_tree_label_edit(&mut self) {
+        let Some((id, input)) = self.tree_label_edit.take() else {
+            return;
+        };
+        let text = input.value().trim().to_string();
+        let ann = if text.is_empty() { None } else { Some(text) };
+        self.tree.set_annotation(&id, ann.clone());
+        if ann.is_some() {
+            self.tree.set_annotation_at(&id, Some("just now".into()));
+        } else {
+            self.tree.set_annotation_at(&id, None);
+        }
     }
 
     fn apply_tree_filter(&mut self, filter: SessionTreeFilter) {
         self.tree_filter = filter;
-        let active = self.tree.selected_id().unwrap_or("u2").to_string();
-        let search = self.tree.search_query().to_string();
-        self.tree = demo_tree_selector(&active, filter);
-        if !search.is_empty() {
-            self.tree.set_search_query(search);
-        }
+        self.tree
+            .set_include_node(Some(Box::new(move |n| filter.include(n))));
+        self.tree.set_status_suffix(Some(filter.label().into()));
     }
 
     fn cycle_tree_filter(&mut self) {
@@ -747,6 +779,48 @@ impl FakeCodingAgentApp {
 
     pub fn tree_open_for_test(&self) -> bool {
         self.tree_open
+    }
+
+    pub fn tree_fold_selected_for_test(&mut self) {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        self.tree.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Left,
+            KeyModifiers::CONTROL,
+        )));
+    }
+
+    pub fn tree_is_folded_for_test(&self, id: &str) -> bool {
+        self.tree.is_folded(id)
+    }
+
+    pub fn tree_select_id_for_test(&mut self, id: &str) {
+        if let Some(idx) = self.tree.filtered_nodes().iter().position(|n| n.id == id) {
+            // Move selection by repeated down/up from 0
+            while self.tree.selected_id() != Some(id) {
+                let cur = self.tree.selected_id().unwrap_or("");
+                let cur_i = self
+                    .tree
+                    .filtered_nodes()
+                    .iter()
+                    .position(|n| n.id == cur)
+                    .unwrap_or(0);
+                if cur_i < idx {
+                    self.tree
+                        .handle_input(InputEvent::Key(crossterm::event::KeyEvent::new(
+                            crossterm::event::KeyCode::Down,
+                            crossterm::event::KeyModifiers::NONE,
+                        )));
+                } else if cur_i > idx {
+                    self.tree
+                        .handle_input(InputEvent::Key(crossterm::event::KeyEvent::new(
+                            crossterm::event::KeyCode::Up,
+                            crossterm::event::KeyModifiers::NONE,
+                        )));
+                } else {
+                    break;
+                }
+            }
+        }
     }
 
     /// Harness: clear editor then open tree (skips double-Esc timing).
@@ -894,6 +968,7 @@ impl FakeCodingAgentApp {
             tree_open: false,
             tree: demo_tree_selector("u2", SessionTreeFilter::Default),
             tree_filter: SessionTreeFilter::Default,
+            tree_label_edit: None,
             last_esc_at: None,
             loader,
             plan: vec![
@@ -1819,15 +1894,25 @@ impl FakeCodingAgentApp {
     fn render_tree_slot(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
         lines.push(Self::fit(&bold(" Session tree"), width));
+        if let Some((_, ref mut input)) = self.tree_label_edit {
+            lines.push(Self::fit(
+                &dim(" Label edit · Enter save · Esc cancel"),
+                width,
+            ));
+            for line in input.render(width) {
+                lines.push(Self::fit(&line, width));
+            }
+            return lines;
+        }
         let search = self.tree.search_query();
         let search_line = if search.is_empty() {
-            dim(" Type to search · ←→ page · Ctrl+D/T/U/L/A filter · Ctrl+O cycle")
+            dim(" Type search · ←→ page · Ctrl/Alt+←→ fold · Shift+L label · Shift+T time")
         } else {
             dim(&format!(" Search: {search}"))
         };
         lines.push(Self::fit(&search_line, width));
         lines.push(Self::fit(
-            &dim(" Up/Down  Enter travel  Esc close/clear-search  (double Esc)"),
+            &dim(" Up/Down  Enter travel  Esc close/clear  (double Esc)  Ctrl+D/T/U/L/A filter"),
             width,
         ));
         for line in self.tree.render(width) {
@@ -1910,6 +1995,16 @@ impl Component for FakeCodingAgentApp {
         // Fall through so Editor can dismiss slash CommandPopup (Esc).
 
         if self.tree_open {
+            if self.tree_label_edit.is_some() {
+                if matches_key_event(key, "enter") {
+                    self.commit_tree_label_edit();
+                    return;
+                }
+                if let Some((_, ref mut input)) = self.tree_label_edit {
+                    input.handle_input(event);
+                }
+                return;
+            }
             if matches_key_event(key, "ctrl+d") {
                 self.apply_tree_filter(SessionTreeFilter::Default);
                 return;
@@ -1932,6 +2027,14 @@ impl Component for FakeCodingAgentApp {
             }
             if matches_key_event(key, "ctrl+o") {
                 self.cycle_tree_filter();
+                return;
+            }
+            if matches_key_event(key, "shift+l") {
+                self.begin_tree_label_edit();
+                return;
+            }
+            if matches_key_event(key, "shift+t") {
+                self.tree.toggle_annotation_timestamps();
                 return;
             }
             if matches_key_event(key, "enter") {
