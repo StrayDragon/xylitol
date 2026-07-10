@@ -8,10 +8,16 @@
 
 ## 优先路径（2026-07-10）
 
-**不做 Codex 式 TranscriptView**（`c470` 已 `paused`；`app-tui-transcript` 已降级为 live scrollback）。下一优先：
+**闸门**：相关原子/交互 MUST 先在 `packages/xylitol-tui` `agent_demo` 验证，再进本面接线。**禁止**在 demo 未齐时继续堆产品视觉/bridge/真 travel。
 
-1. ~~**c454–c467** — 包 `TreeSelector` + demo 搜索/filter/fold/label~~（已归档）
-2. **c491** — 产品面双 Esc 会话树（本批：假树槽替换；真 travel/fork 另批）
+**不做 Codex 式 TranscriptView**（`c470` 已 `paused`；`app-tui-transcript` 已降级为 live scrollback）。
+
+| 阶段 | 状态 |
+|---|---|
+| 包 TreeSelector + demo 搜索/filter/fold/label/pan/活树/travel/steer | 已归档（至 c469 / c468） |
+| **c460** host 空壳 | 已落地（框架占位） |
+| **c491** 产品双 Esc **假树**槽替换 | 已落地（仅 stub；**超前于** demo 活树/真 travel） |
+| 产品真 session / Driver travel · bridge · slash · DESIGN 视觉 | **未做**；等 demo 闸门与后续 change |
 
 历史/分支 UX 以会话树为准；live 输出若有，只进 scrollback 行，见 `design/transcript.md` / `design/session-tree.md`。
 
