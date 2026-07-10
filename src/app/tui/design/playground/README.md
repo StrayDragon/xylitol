@@ -29,8 +29,9 @@ Markdown 槽示意 MUST 对齐 [`../markdown.md`](../markdown.md)：无 `#` 标�
 |---|---|
 | **左侧 tab 点击** | 选中该槽并 **滚动跳转到对应面板**（平铺/专注均生效） |
 | 平铺 / 专注 · `t` | 全槽一页 vs 只看当前槽 |
+| Dark / Light · `d` / `l` | 切换 `colors` vs `colors_light`（`?scheme=light`） |
 | `1`–`9` · `0` · `←→` | 选槽并跳转（`0` = Ask） |
-| 深链 | `?slot=widgets&mode=focus`（会写入 URL） |
+| 深链 | `?slot=widgets&mode=focus&scheme=light`（会写入 URL） |
 
 ## 槽内动态
 

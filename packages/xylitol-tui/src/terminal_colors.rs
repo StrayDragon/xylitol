@@ -3,8 +3,18 @@
 //! Ported from pi's `terminal-colors.ts`. Parses background-color query replies
 //! and `\e[?997;n` color-scheme reports from xterm-style terminals.
 //!
-//! Not yet wired into the event loop — the consumer (e.g. stdin_buffer or host
-//! loop) should feed raw data to `is_osc_color_response` and then parse.
+//! Hosts opt in via env / harness: feed replies into [`resolve_terminal_color_scheme`].
+//!
+//! **Do not** write [`OSC11_BG_QUERY`] / [`CSI_COLOR_SCHEME_QUERY`] into a live
+//! crossterm event loop — replies arrive on stdin as garbage key bytes (can fake
+//! Ctrl+G / corrupt the editor). Prefer `COLORFGBG`, or a dedicated drain before
+//! entering the UI loop.
+
+/// OSC 11 background-color query (`ESC ] 11 ; ? BEL`).
+pub const OSC11_BG_QUERY: &str = "\x1b]11;?\x07";
+
+/// DSR color-scheme query (`CSI ? 996 n`). Replies as `CSI ? 997 ; 1|2 n`.
+pub const CSI_COLOR_SCHEME_QUERY: &str = "\x1b[?996n";
 
 /// RGB color decoded from a terminal response.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,6 +173,11 @@ pub fn resolve_terminal_color_scheme(sources: ThemeDetectSources<'_>) -> Termina
     TerminalColorScheme::Dark
 }
 
+/// True if `data` looks like an OSC11 bg reply or a CSI 997 scheme report.
+pub fn is_terminal_color_reply(data: &str) -> bool {
+    is_osc11_background_color_response(data) || parse_terminal_color_scheme_report(data).is_some()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,5 +299,14 @@ mod tests {
             colorfgbg: Some("15;0"),
         });
         assert_eq!(scheme, TerminalColorScheme::Light);
+    }
+
+    #[test]
+    fn query_constants_and_reply_detect() {
+        assert!(OSC11_BG_QUERY.contains("]11;?"));
+        assert!(CSI_COLOR_SCHEME_QUERY.contains("996"));
+        assert!(is_terminal_color_reply("\x1b]11;#ffffff\x07"));
+        assert!(is_terminal_color_reply("\x1b[?997;2n"));
+        assert!(!is_terminal_color_reply("hello"));
     }
 }
