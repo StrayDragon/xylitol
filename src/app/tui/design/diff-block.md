@@ -52,9 +52,12 @@ spacing:
 
 ## 行号 MUST
 
-1. **Unified**：保留可读 gutter（旧/新行号或 pi `±NNNN`）；宽度按 max line pad。
-2. **Side-by-side**：左右栏 MUST 各自显示合理行号（左=`old_no`，右=`new_no`）；空半栏 MUST NOT 伪造行号。当前实现缺口见 c459（`format_sbs_cell` 丢弃 `_no`）。
-3. **MUST NOT** 做成装饰性「行号墙」。
+1. **Unified（双 gutter）**：保留可读旧/新行号；宽度按 max line pad。
+2. **Unified（pi edit / `compact_line_numbers`）**：`±{lineNum} {content}`（`DiffInput::EditText` 自动启用）。
+3. **Side-by-side**：左右栏 MUST 各自显示合理行号（左=`old_no`，右=`new_no`）；空半栏 MUST NOT 伪造行号。
+4. **MUST NOT** 做成装饰性「行号墙」。
+
+可选内容高亮：`DiffTheme::highlight_line`（默认 identity；`highlight` feature 下可注入 syntect）。
 
 ## Word-level（行内）MUST
 
@@ -84,5 +87,5 @@ spacing:
 ## Out of scope（本设计）
 
 - 旧 `diff-review` 审批流
-- 把 syntect 打进 Diff 默认路径（可选内容高亮见插队提案 `c459-enhance-diff-edit-line-syntax`）
-- 实现前：pi edit 行号格式与 SBS 行号（c459 purpose-draft）
+- 把 syntect 打进 Diff 默认路径（可选 `highlight_line` 钩子见 c459）
+- 改 `infra` `generate_display_diff` 输出格式

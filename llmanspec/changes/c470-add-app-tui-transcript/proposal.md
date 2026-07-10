@@ -3,7 +3,7 @@ change_id: c470-add-app-tui-transcript
 title: "app-tui-transcript：消息流、可展开块、diff"
 status: purpose-draft
 priority: 470
-depends_on: ["c465-add-app-tui-bridge", "c451-add-package-tui-diff", "c452-demo-highlight-pipeline"]
+depends_on: ["c465-add-app-tui-bridge", "c451-add-package-tui-diff", "c452-demo-highlight-pipeline", "c459-enhance-diff-edit-line-syntax", "c462-demo-tool-status-bg"]
 author: agent
 track: B
 ---

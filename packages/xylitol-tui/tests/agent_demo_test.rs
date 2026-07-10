@@ -713,6 +713,7 @@ fn agent_demo_seed_shows_unified_and_side_by_side_diffs() {
     h.render_result().expect("initial render");
     h.assert_text_contains("unified");
     h.assert_text_contains("side-by-side");
+    h.assert_text_contains("edit-format");
 
     // Expand tool+diff blocks together (demo exemplar).
     h.keys("\x1be"); // Alt+E
