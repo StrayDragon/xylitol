@@ -10,7 +10,15 @@
 
 ## 视觉 / UX
 
-产品终端视觉 SSOT：本目录 **`DESIGN.md`**（语义 token + layout + 复制友好规则）。包内组件只收闭包主题，不承载产品 layout。
+产品终端视觉 SSOT：本目录 **`DESIGN.md`**（语义 token + layout + 复制友好规则；拆分见 `design/*`，c449）。包内组件只收闭包主题，不承载产品 layout。
+
+## Specs
+
+产品面 capability：`app-tui-*`（`app-tui-host` / `bridge` / `transcript` / `chrome` / `input` / `commands`）。合约修订：`c450-revise-app-tui-contract`。
+
+## Debug 日志
+
+debug 构建默认写即时日志（可 `tail -f`）；release 默认关。路径与开关见 `app/cli/logging.rs`；排查用 `XYLITOL_DEBUG=1` 或 `RUST_LOG=…`，`target: "xylitol::tui"`。禁止 `println!`。
 
 ## 硬约束
 

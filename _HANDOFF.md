@@ -1,100 +1,107 @@
 # _HANDOFF — xylitol TUI（交接笔记，非规范）
 
-> 最后更新：2026-07-09
+> 最后更新：2026-07-10
 > 分支：`feat/tui-dev`
 > **本文是临时交接/进度板，不是 SSOT。** 稳定边界以各层 `AGENTS.md` 与 skills 为准。
 
 ---
 
-## 〇、战略方向（读这段即可对齐）
-
-两条轨**并行**，职责分开：
+## 〇、三轨并行（读这段即可对齐）
 
 | 轨 | 目标 | 真值落点 |
 |---|---|---|
-| **A. 包潜力 / 原型 UX** | 在 `packages/xylitol-tui` + `agent_demo` 里把**真实 `src/app/tui` 可能需要的交互原型**做全、做稳（补全、槽替换、可展开块、光标策略、host API…） | 包代码 + `agent_demo` + 五层测试；刻意差异见 `packages/xylitol-tui/PI_DELTAS.md` |
-| **B. 产品面接线** | 完成 `src/app/tui` 与现有 `agent` / `infra`（经 `app/core` seam：`Driver` / `dispatch` / `composition` / `XyEvent`）的整合 | `src/app/tui/` + `write-tui` / `write-surface`；视觉 `DESIGN.md` |
+| **A. 包 / agent_demo** | 用 demo 验证全部原子（diff/高亮/树/InputListener/键位/条件展示…） | `packages/xylitol-tui` + `agent_demo` + `PI_DELTAS.md` |
+| **B. 产品面** | `src/app/tui` ↔ `Driver`/`dispatch`/`XyEvent` | `src/app/tui/` + `write-tui`；合约 **c450** |
+| **D. DESIGN** | 主 DESIGN + `design/*.md` 固定 UX | `src/app/tui/DESIGN.md`、`design/`（**c449**） |
 
 **原则**
 
-1. **先在 `agent_demo` 验证 UX/UI**，再搬进 `src/app/tui`——demo 是产品壳的交互沙盒，不是最终产品。
-2. 缺底层能力 → **先改包**（通用、可扩展），再接线应用面（见 `src/app/tui/AGENTS.md`）。
-3. 对照 `../pi/packages/tui` 整合时，**以 `PI_DELTAS.md` 为准**，禁止静默回退 xylitol 决议（crossterm 输入、`CompletionSource`、host 驱动等）。
-4. 包 **零引用**主 crate；产品状态机 / slash 语义 / session **不进** `xylitol-tui`。
+1. UX 先在 `agent_demo` 用**真实库**验证，再搬产品面（禁止假 highlighter）。
+2. 缺通用能力 → 先改包（`package-tui-*`），再接线应用面。
+3. 对照 pi 时以 `PI_DELTAS.md` 为准；产品壳不进包。
+4. Purpose-draft 防失忆；**apply 前必须升格 full**。
 
 ---
 
-## 一、当前阶段
+## 一、已锁定产品决议（2026-07-10）
 
-| 已完成 | 进行中 / 下一步 |
+| 主题 | 决议 |
 |---|---|
-| 引擎 port + 五层测试 + c445（Container / OverlayHandle / Image 裁剪） | **轨 A**：继续用 `agent_demo` 挖包潜力（补全范式、键位、布局原型…） |
-| `CompletionSource` 注册表：`/` slash + `@` path；Editor 无硬编码触发 | **轨 B**：`src/app/tui` 仍为占位；并行推进与 agent/infra 的 seam 整合（`c450` App Shell 仍适用） |
-| `agent_demo`：单列栈、Ctrl+P/S 槽替换、thinking/tool 可展开、流式 typewriter | 展开策略（默认折叠哪些、是否记住）→ 产品接线后再锁 |
-| `PI_DELTAS.md` 台账 | 每次刻意差异变更同步更新该表 |
+| Esc | 流中 = `Driver::abort` |
+| Ctrl+C | 有输入→清编辑器；空→退出 |
+| 流中 Enter | **steer**（下一 ReAct 迭代） |
+| Alt+Enter | **follow-up**（整轮 AgentEnd 后） |
+| 审批 | trust 后 **yolo**；无逐工具确认；保留 hooks |
+| Status | idle **0 行** |
+| Expandable | 仅 `src/app/tui` |
+| Diff | 进包 `package-tui-diff`；MVP **word-level**；宽屏可 L/R |
+| Slash MVP | `/exit` + `/model` |
+| Feature | `tui` **default 打开** |
+| 远控 | 默认 InProcess；**保留** RemoteDriver |
+| 高亮 | demo 与产品同一真实 syntect（或选定库）；包只收回调 |
+| 日志 | debug 默认即时 log + `tail -f`；release 默认关 |
 
-**架构（已写入 AGENTS，此处不重复）**：引擎同步 + 应用面 host 驱动异步合流；`Vec<String>` ANSI；主题闭包在包、语义 token 在应用面；流式业务缓冲在应用面。
+---
 
-**SSOT 指针**
+## 二、Change DAG
+
+```text
+轨 D:  c449 (DESIGN split) ──purpose──┐
+轨 A:  c451 diff / c452 highlight / c455 InputListener / c454 tree
+       c453 conditional ← c451
+       c456 session-nav ← c454+c455
+       c457 bash+Ctrl+G demo / c458 theme-auto demo
+轨 B:  c450 FULL (合约) ──► c460 host ← c455
+                           c461 steer/follow-up seam
+                           c465 bridge ← c460+c461
+                           c470 transcript ← c465+c451+c452
+                           c475 chrome ← c460+c449
+                           c480 input ← c460+c461+c455
+                           c485 vertical-slice ← c470+c475+c480
+后置:  c490 trust UI / c491 session-tree / c492 bash / c493 compaction-ui
+```
+
+- **唯一 full（当前）**：`c450-revise-app-tui-contract`
+- 其余均为 `status: purpose-draft`（仅 `proposal.md`）
+- 图：`llman sdd graph --scope active --format mermaid`
+
+---
+
+## 三、`agent_demo` 键位（应对齐产品；c455/c456 验证）
+
+| 键 | 作用 |
+|---|---|
+| `/` `@` | 补全 |
+| 流中 Enter | steer（待接） |
+| Alt+Enter | follow-up（待接） |
+| Esc | abort / 关选择器 |
+| Ctrl+C | 清输入 / 空则退 |
+| 双 Esc | 会话树（c456） |
+| Ctrl+T / Alt+E / Alt+G | thinking / tools / glyphs |
+| Ctrl+P / Ctrl+S | palette / settings 槽替换（产品可后置） |
+| Ctrl+G | 外部编辑器（预留；c457） |
+
+---
+
+## 四、关键缺口（实现前）
+
+1. **Driver/ReAct 尚未完整暴露 steer/follow-up 队列** → **c461**（hooks 骨架已有）。
+2. **无 TreeSelector / InputListener** → c454 / c455。
+3. **无 Diff 组件** → c451；`edit` 已有 `display_diff`。
+4. **旧 `app-tui` / `diff-review` 腐烂 specs** → c450 + `_tmp_prompts` 清理任务。
+
+---
+
+## 五、并行提示词（用后即弃）
+
+见 `_tmp_prompts/`（specs 重命名、旧 diff-review 清理、skill 文案修剪等）。主线 agent 审核即可。
+
+---
+
+## 六、SSOT 指针
 
 - 边界：`packages/xylitol-tui/AGENTS.md`、`src/app/tui/AGENTS.md`、`src/AGENTS.md`、根 `AGENTS.md`
-- **vs pi 差异**：`packages/xylitol-tui/PI_DELTAS.md`
+- vs pi：`packages/xylitol-tui/PI_DELTAS.md`
 - How-to：`write-tui`、`test-tui-harness`、`write-surface`
-- 视觉/UX：`src/app/tui/DESIGN.md`
-- 分析快照（非规范）：根 `_REPORT.md`
-
-**pi 源**：`../pi/packages/tui`（及 kimi-code 同源）
-
----
-
-## 二、`agent_demo` 键位（应用级，避 Editor 冲突）
-
-| 键 | 作用 | 备注 |
-|---|---|---|
-| `/` … | Slash CommandPopup（`SlashCommandSource`） | 编辑流内嵌 SelectList |
-| `@` … | 路径补全（`AtPathSource`） | 同上 |
-| `Ctrl+P` / `Ctrl+S` | palette / settings **替换 editor 槽** | 非 overlay |
-| `Ctrl+T` | 展开/折叠 thinking | |
-| **`Alt+E`** | 展开/折叠 tools | **不用 Ctrl+E**（= `tui.editor.cursorLineEnd`） |
-| **`Alt+G`** | 切换 glyph 档 | **不用 Ctrl+G**（预留外部 editor） |
-| `Ctrl+O` | 步进脚本 | |
-| `Esc` | 关 palette/settings；或关补全 popup | |
-| `Ctrl+C` | 退出 | |
-
----
-
-## 三、包侧快照（易变，以 `cargo test` 为准）
-
-- 包测试：`cargo test -p xylitol-tui`（五层 1–4）
-- E2E：`just test-tui-e2e`（`#[ignore]`，PTY/tmux + `agent_demo`）
-- 有意不移植：见 `AGENTS.md` + `PI_DELTAS.md`（stdin-buffer、native-modifiers、完整 Image encode…）
-
----
-
-## 四、建议下一刀
-
-### 轨 A（包 / demo）— 优先挖潜力
-
-1. 在 `agent_demo` 继续补**产品面将需要的原型**：更多 `CompletionSource` 示范（文档级 `$`/`^`）、确认 overlay、长 transcript + 槽替换回归、复制友好规则等。
-2. 缺通用能力 → 进包（trait / 组件），**不要**在 demo 里复制准通用实现。
-3. 对照 pi 时更新 `PI_DELTAS.md`，勿无 pi 产品壳覆盖 xylitol 库边界。
-
-### 轨 B（产品面）— 并行整合
-
-1. **`c450`（面）**：`write-surface`（先 `audit-dead-code`）→ App Shell：`tokio` 合流 + host 驱动；`Container` 组栈；`OverlayHandle`；UX 对齐 `DESIGN.md`；交互模式从 `agent_demo` **迁移**而非重发明。
-2. Agent/infra 只经 `app/core` seam；扩行为先扩 `runtime_protocol` / `agent`。
-3. （可选）Image encode feature-gate，非默认路径。
-
----
-
-## 五、SDD 习惯
-
-```
-/llman-sdd-propose <id>   # c450+ 或 package-tui-*
-# 实现…
-just qa
-/llman-sdd-archive <id>
-git commit
-```
-
-范例：`llmanspec/changes/archive/2026-07-09-c445-add-package-tui-container-overlay/`
+- 视觉：`src/app/tui/DESIGN.md` + `design/`（c449）
+- 合约：`llmanspec/changes/c450-revise-app-tui-contract/`

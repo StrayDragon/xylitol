@@ -1,0 +1,11 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。",null,null,null
+  add_requirement,ati2,"cancel-and-ctrl-c","流式或 agent 忙碌时 Esc MUST 调用 Driver::abort；Ctrl+C 在编辑器非空时 MUST 清空输入，在编辑器为空时 MUST 退出 TUI。",null,null,null
+  add_requirement,ati3,"steer-and-followup-keys","agent 忙碌时普通 Enter MUST 将当前输入作为 steer 入队；Alt+Enter MUST 将当前输入作为 follow-up 入队（等待当前 agent loop 全部完成后再执行）。",null,null,null
+  add_requirement,ati4,"yolo-after-trust","在项目已信任前提下，TUI MUST NOT 实现逐工具审批确认流程；工具默认执行；MUST 保留 hook 扩展点供日后追加策略。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  ati1,selector-slot,"","打开模型选择器","editor 槽被选择器替换且贴底可见"
+  ati2,esc-aborts,"","流式中按 Esc","Driver::abort 被调用"
+  ati3,alt-enter-followup,"","忙碌时 Alt+Enter 提交文本","消息进入 follow-up 队列而非立即 steer"
+  ati4,no-tool-modal,"","信任目录下工具执行","无逐工具审批 UI 且 hooks 仍可注册"

@@ -59,11 +59,14 @@
 - BDD 场景在 `tests/features/*.feature`，rstest-bdd 实现在 `tests/bdd.rs`；需顺序/共享状态时 `cargo test bdd -- --test-threads=1`。快照用 `insta`，接受前复核。回归放 `tests/regression/{issue号}-{简述}.rs`。优先扩既有测试文件，别为小特性新建。
 - 实现计划变更后同步 `llmanspec/` 工件（`/llman-sdd-*` 技能）。读代码优先 `rg`。
 
-## llmanspec 命名（workspace 包）
+## llmanspec 命名
 
-- 主 crate 能力：`llmanspec/specs/<domain-noun>/`（如 `app-tui`、`agent-runtime`）。
-- **`packages/xylitol-tui` 能力**：目录与 `name` 字段必须以 `package-tui-` 开头（如 `package-tui-testing`、`package-tui-paste-burst`、`package-tui-editor`）。产品面 TUI 仍用 `app-tui`，不加此前缀。
-- 目的：日后若单独分发/迁出 `xylitol-tui`，可按前缀整批迁移 specs，不与主 crate 能力混名。
+- 目录名 = capability：领域名词、kebab-case；**purpose / statement / scenario 强制中文**（标识符可英文）。
+- 前缀（按层）：
+  - `package-tui-*` — `packages/xylitol-tui`
+  - `app-tui-*` — `src/app/tui`（如 `app-tui-host`）；单体 `app-tui` 正退役（c450）
+  - 其它意向：`domain-*` / `runtime-*` / `agent-*` / `infra-*` / `protocol-*` / `cli-*` / `server-*`（历史名迁移见 `_tmp_prompts/`）
+- 细则 SSOT：`llmanspec/config.yaml` → `rules.proposal`。
 
 ## Skills
 
