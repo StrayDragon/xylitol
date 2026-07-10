@@ -47,6 +47,10 @@ pub use components::settings_list::{
 };
 pub use components::spacer::Spacer;
 pub use components::text::Text;
+pub use components::tree_selector::{
+    FlatNode, GutterInfo, TreeNode, TreeNodePredicate, TreeSelector, TreeSelectorOptions,
+    TreeSelectorTheme, flatten_tree,
+};
 pub use components::truncated_text::TruncatedText;
 pub use editor_component::EditorComponent;
 pub use fuzzy::{FuzzyMatch, fuzzy_filter, fuzzy_match};

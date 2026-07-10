@@ -1022,3 +1022,74 @@ fn viewport_has_bg_rgb(h: &TuiTestHarness, rgb: (u8, u8, u8)) -> bool {
     }
     false
 }
+
+#[test]
+fn agent_demo_session_tree_slot_replaces_editor() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )));
+    app.borrow_mut().freeze_script_for_test();
+    app.borrow_mut().open_session_tree_for_test();
+
+    let mut h = TuiTestHarness::new(100, 28);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h.render_result().expect("tree slot render");
+    let text = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text.contains("Session tree"),
+        "expected tree header; got:\n{text}"
+    );
+    assert!(
+        text.contains("user: tighten footer") || text.contains("├") || text.contains("└"),
+        "expected tree rows/connectors; got:\n{text}"
+    );
+    assert!(
+        app.borrow().tree_open_for_test(),
+        "tree should stay open until Esc/Enter"
+    );
+
+    h.keys("\x1b");
+    h.render_result().expect("close tree");
+    assert!(
+        !app.borrow().tree_open_for_test(),
+        "Esc should close session tree"
+    );
+}
+
+#[test]
+fn agent_demo_double_esc_opens_session_tree_when_editor_empty() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )));
+    app.borrow_mut().freeze_script_for_test();
+
+    let mut h = TuiTestHarness::new(100, 28);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h.render_result().expect("initial");
+    // Two Esc within 500ms (empty editor) → tree.
+    h.keys("\x1b\x1b");
+    h.render_result().expect("after double Esc");
+    assert!(
+        app.borrow().tree_open_for_test(),
+        "double Esc on empty editor should open session tree"
+    );
+    let text = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text.contains("Session tree"),
+        "expected session tree chrome; got:\n{text}"
+    );
+}

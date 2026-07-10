@@ -10,4 +10,5 @@ pub mod select_list;
 pub mod settings_list;
 pub mod spacer;
 pub mod text;
+pub mod tree_selector;
 pub mod truncated_text;

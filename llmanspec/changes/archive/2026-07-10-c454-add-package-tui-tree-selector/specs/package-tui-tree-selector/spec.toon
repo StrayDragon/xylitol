@@ -1,0 +1,11 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  add_requirement,pts1,"tree-node-model",包 MUST 提供 TreeNode（id/label/children）与可导航 TreeSelector 组件；MUST NOT 依赖主 crate xylitol 或 session 类型。,null,null,null
+  add_requirement,pts2,"include-node-filter",TreeSelector MUST 支持 include_node 钩子过滤可见节点，并在过滤后重算 indent/connector/gutter；MUST NOT 硬编码产品 FilterMode 枚举。,null,null,null
+  add_requirement,pts3,"select-keybindings",TreeSelector 导航 MUST 使用 tui.select.* 键绑定（up/down/page/confirm/cancel）；选中态 MUST 可用主题闭包（如 reverse）表达。,null,null,null
+  add_requirement,meta0,"capability-shell","本 capability 由变更 c454-add-package-tui-tree-selector 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  pts1,"unit-flatten","",对分支树 flatten,单子链 indent 不漂移且分支点出现连接符
+  pts2,"filter-recalc","",隐藏中间节点,可见兄弟 indent 对齐且无幽灵连接符
+  pts3,"nav-confirm","",↓ 后 Enter,on_select 收到对应节点 id
+  meta0,"shell-present","","列出 llmanspec/specs/package-tui-tree-selector",spec.toon 存在且 purpose 为中文
