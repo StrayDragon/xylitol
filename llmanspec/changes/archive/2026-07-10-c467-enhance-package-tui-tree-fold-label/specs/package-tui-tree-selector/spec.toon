@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,pts7,"fold-and-branch-jump","TreeSelector MUST 支持折叠可见子树（⊞/⊟ 标记）并通过 tui.tree.foldOrUp / unfoldOrDown（默认 Ctrl/Alt+←→）在 fold 与分支段跳转间切换；搜索或 include_node 变更时 MUST 清空 folds。",null,null,null
+  add_requirement,pts8,"node-annotation","TreeNode MUST 支持可选 annotation 与 annotation_at；渲染 MUST 在主 label 前显示 [annotation]；show_annotation_timestamps 为真时 MUST 显示 annotation_at。",null,null,null
+  add_requirement,pts9,"label-edit-callback","TreeSelector MUST 在 tui.tree.editLabel（默认 Shift+L）时调用 on_label_edit(id current_annotation)；MUST 在 tui.tree.toggleLabelTimestamp（默认 Shift+T）时切换时间戳显示。",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  pts7,"fold-hides-desc","可折叠节点选中","foldOrUp","子节点从可见列表消失且前缀含 ⊞"
+  pts8,"annotation-render","节点带 annotation","render","行含 [annotation] 与主 label"
+  pts9,"edit-label-fires","选中节点","Shift+L","on_label_edit 收到该 id"

@@ -1088,6 +1088,12 @@ fn agent_demo_session_tree_slot_replaces_editor() {
         "first Esc clears search, tree stays open"
     );
 
+    let with_ann = h.tui.terminal.viewport().join("\n");
+    assert!(
+        with_ann.contains("[ship]") || with_ann.contains("[alt]"),
+        "expected annotation markers; got:\n{with_ann}"
+    );
+
     h.keys("\x1b");
     h.render_result().expect("close tree");
     assert!(
@@ -1124,6 +1130,62 @@ fn agent_demo_double_esc_opens_session_tree_when_editor_empty() {
     assert!(
         text.contains("Session tree"),
         "expected session tree chrome; got:\n{text}"
+    );
+}
+
+#[test]
+fn agent_demo_session_tree_fold_and_label_edit() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use xylitol_tui::InputEvent;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )));
+    app.borrow_mut().freeze_script_for_test();
+    app.borrow_mut().open_session_tree_for_test();
+    app.borrow_mut().tree_select_id_for_test("u1");
+    app.borrow_mut().tree_fold_selected_for_test();
+    assert!(
+        app.borrow().tree_is_folded_for_test("u1"),
+        "u1 should be folded"
+    );
+
+    let mut h = TuiTestHarness::new(100, 32);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h.render_result().expect("after fold");
+    let folded = h.tui.terminal.viewport().join("\n");
+    assert!(
+        folded.contains('⊞') || folded.contains("⊞"),
+        "expected fold marker; got:\n{folded}"
+    );
+    assert!(
+        !folded.contains("tool: rg"),
+        "folded u1 should hide tool descendant; got:\n{folded}"
+    );
+
+    h.tui.dispatch_event(InputEvent::Key(KeyEvent::new(
+        KeyCode::Char('l'),
+        KeyModifiers::SHIFT,
+    )));
+    h.render_result().expect("label edit");
+    let editing = h.tui.terminal.viewport().join("\n");
+    assert!(
+        editing.contains("Label edit"),
+        "expected label editor chrome; got:\n{editing}"
+    );
+    h.keys("ok\r");
+    h.render_result().expect("after label save");
+    let labeled = h.tui.terminal.viewport().join("\n");
+    assert!(
+        labeled.contains("[ok]"),
+        "saved annotation should show; got:\n{labeled}"
     );
 }
 

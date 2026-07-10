@@ -13,6 +13,10 @@ pub struct TreeNode {
     pub id: String,
     pub label: String,
     pub children: Vec<TreeNode>,
+    /// Optional host annotation (pi `node.label`); shown as `[annotation]`.
+    pub annotation: Option<String>,
+    /// Optional preformatted timestamp for the annotation (host owns formatting).
+    pub annotation_at: Option<String>,
 }
 
 impl TreeNode {
@@ -21,6 +25,8 @@ impl TreeNode {
             id: id.into(),
             label: label.into(),
             children: Vec::new(),
+            annotation: None,
+            annotation_at: None,
         }
     }
 
@@ -31,6 +37,16 @@ impl TreeNode {
 
     pub fn with_children(mut self, children: impl IntoIterator<Item = TreeNode>) -> Self {
         self.children.extend(children);
+        self
+    }
+
+    pub fn with_annotation(mut self, annotation: impl Into<String>) -> Self {
+        self.annotation = Some(annotation.into());
+        self
+    }
+
+    pub fn with_annotation_at(mut self, at: impl Into<String>) -> Self {
+        self.annotation_at = Some(at.into());
         self
     }
 }
@@ -59,6 +75,9 @@ pub struct FlatNode {
 
 pub type TreeNodePredicate = Box<dyn Fn(&TreeNode) -> bool>;
 
+/// Callback for Shift+L label edit: `(node_id, current_annotation)`.
+pub type TreeLabelEditCallback = Box<dyn FnMut(String, Option<String>)>;
+
 /// Theme closures for tree rows.
 pub struct TreeSelectorTheme {
     pub cursor: Box<dyn Fn(&str) -> String>,
@@ -68,6 +87,8 @@ pub struct TreeSelectorTheme {
     pub active_marker: Box<dyn Fn(&str) -> String>,
     pub scroll_info: Box<dyn Fn(&str) -> String>,
     pub empty: Box<dyn Fn(&str) -> String>,
+    pub annotation: Box<dyn Fn(&str) -> String>,
+    pub annotation_time: Box<dyn Fn(&str) -> String>,
 }
 
 impl Default for TreeSelectorTheme {
@@ -80,6 +101,8 @@ impl Default for TreeSelectorTheme {
             active_marker: Box::new(|s| format!("\x1b[36m{s}\x1b[39m")),
             scroll_info: Box::new(|s| format!("\x1b[2m{s}\x1b[22m")),
             empty: Box::new(|s| format!("\x1b[2m{s}\x1b[22m")),
+            annotation: Box::new(|s| format!("\x1b[33m{s}\x1b[39m")),
+            annotation_time: Box::new(|s| format!("\x1b[2m{s}\x1b[22m")),
         }
     }
 }
@@ -115,12 +138,19 @@ pub struct TreeSelector {
     selected_index: usize,
     multiple_roots: bool,
     active_path_ids: std::collections::HashSet<String>,
+    folded_nodes: std::collections::HashSet<String>,
+    visible_children: std::collections::HashMap<String, Vec<String>>,
+    visible_parent: std::collections::HashMap<String, Option<String>>,
     theme: TreeSelectorTheme,
     options: TreeSelectorOptions,
     /// Incremental label search (AND with [`TreeSelectorOptions::include_node`]).
     search_query: String,
+    show_annotation_timestamps: bool,
     pub on_select: Option<Box<dyn FnMut(String)>>,
     pub on_cancel: Option<Box<dyn FnMut()>>,
+    /// `(id, current_annotation)` when host should open a label editor.
+    #[allow(clippy::type_complexity)]
+    pub on_label_edit: Option<TreeLabelEditCallback>,
 }
 
 impl TreeSelector {
@@ -136,11 +166,16 @@ impl TreeSelector {
             selected_index: 0,
             multiple_roots: false,
             active_path_ids: std::collections::HashSet::new(),
+            folded_nodes: std::collections::HashSet::new(),
+            visible_children: std::collections::HashMap::new(),
+            visible_parent: std::collections::HashMap::new(),
             theme,
             options,
             search_query: String::new(),
+            show_annotation_timestamps: false,
             on_select: None,
             on_cancel: None,
+            on_label_edit: None,
         };
         sel.rebuild();
         sel
@@ -148,11 +183,30 @@ impl TreeSelector {
 
     pub fn set_roots(&mut self, roots: Vec<TreeNode>) {
         self.roots = roots;
+        self.folded_nodes.clear();
         self.rebuild();
+    }
+
+    /// Update annotation on a node without resetting selection/folds.
+    pub fn set_annotation(&mut self, id: &str, annotation: Option<String>) {
+        if let Some(node) = find_node_mut(&mut self.roots, id) {
+            node.annotation = annotation;
+        }
+    }
+
+    pub fn set_annotation_at(&mut self, id: &str, at: Option<String>) {
+        if let Some(node) = find_node_mut(&mut self.roots, id) {
+            node.annotation_at = at;
+        }
+    }
+
+    pub fn annotation_of(&self, id: &str) -> Option<&str> {
+        find_node(&self.roots, id).and_then(|n| n.annotation.as_deref())
     }
 
     pub fn set_include_node(&mut self, pred: Option<TreeNodePredicate>) {
         self.options.include_node = pred;
+        self.folded_nodes.clear();
         self.apply_filter();
         self.clamp_selection();
     }
@@ -167,6 +221,7 @@ impl TreeSelector {
 
     pub fn set_search_query(&mut self, query: impl Into<String>) {
         self.search_query = query.into();
+        self.folded_nodes.clear();
         self.apply_filter();
         self.clamp_selection();
     }
@@ -177,9 +232,26 @@ impl TreeSelector {
             return false;
         }
         self.search_query.clear();
+        self.folded_nodes.clear();
         self.apply_filter();
         self.clamp_selection();
         true
+    }
+
+    pub fn show_annotation_timestamps(&self) -> bool {
+        self.show_annotation_timestamps
+    }
+
+    pub fn set_show_annotation_timestamps(&mut self, show: bool) {
+        self.show_annotation_timestamps = show;
+    }
+
+    pub fn toggle_annotation_timestamps(&mut self) {
+        self.show_annotation_timestamps = !self.show_annotation_timestamps;
+    }
+
+    pub fn is_folded(&self, id: &str) -> bool {
+        self.folded_nodes.contains(id)
     }
 
     pub fn selected_id(&self) -> Option<&str> {
@@ -240,7 +312,7 @@ impl TreeSelector {
             .filter(|t| !t.is_empty())
             .map(str::to_string)
             .collect();
-        self.filtered = self
+        let mut filtered: Vec<FlatNode> = self
             .flat
             .iter()
             .filter(|flat| {
@@ -252,12 +324,37 @@ impl TreeSelector {
                 if tokens.is_empty() {
                     return true;
                 }
-                let label = flat.label.to_lowercase();
-                tokens.iter().all(|t| label.contains(t))
+                let Some(node) = find_node(&self.roots, &flat.id) else {
+                    return false;
+                };
+                let hay = format!(
+                    "{} {} {}",
+                    flat.label,
+                    node.annotation.as_deref().unwrap_or(""),
+                    node.annotation_at.as_deref().unwrap_or("")
+                )
+                .to_lowercase();
+                tokens.iter().all(|t| hay.contains(t))
             })
             .cloned()
             .collect();
+
+        // Hide descendants of folded nodes (pi).
+        if !self.folded_nodes.is_empty() {
+            let mut skip = std::collections::HashSet::new();
+            for flat in &filtered {
+                if let Some(ref parent) = flat.parent_id
+                    && (self.folded_nodes.contains(parent) || skip.contains(parent))
+                {
+                    skip.insert(flat.id.clone());
+                }
+            }
+            filtered.retain(|n| !skip.contains(&n.id));
+        }
+
+        self.filtered = filtered;
         recalculate_visual_structure(&mut self.filtered, &self.flat);
+        self.rebuild_visible_maps();
         let visible_roots = self
             .filtered
             .iter()
@@ -268,6 +365,96 @@ impl TreeSelector {
             })
             .count();
         self.multiple_roots = visible_roots > 1;
+    }
+
+    fn rebuild_visible_maps(&mut self) {
+        self.visible_children.clear();
+        self.visible_parent.clear();
+        let visible: std::collections::HashSet<&str> =
+            self.filtered.iter().map(|n| n.id.as_str()).collect();
+        for flat in &self.filtered {
+            let parent = flat
+                .parent_id
+                .clone()
+                .filter(|p| visible.contains(p.as_str()));
+            self.visible_parent.insert(flat.id.clone(), parent.clone());
+            if let Some(p) = parent {
+                self.visible_children
+                    .entry(p)
+                    .or_default()
+                    .push(flat.id.clone());
+            }
+        }
+    }
+
+    fn is_foldable(&self, entry_id: &str) -> bool {
+        let children = self.visible_children.get(entry_id);
+        if children.map(|c| c.is_empty()).unwrap_or(true) {
+            return false;
+        }
+        match self.visible_parent.get(entry_id) {
+            None | Some(None) => true,
+            Some(Some(parent)) => self
+                .visible_children
+                .get(parent)
+                .is_some_and(|sibs| sibs.len() > 1),
+        }
+    }
+
+    fn find_branch_segment_start(&self, direction: &str) -> usize {
+        let Some(selected_id) = self.selected_id().map(str::to_string) else {
+            return self.selected_index;
+        };
+        let index_by: std::collections::HashMap<&str, usize> = self
+            .filtered
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.id.as_str(), i))
+            .collect();
+        let mut current_id = selected_id;
+        if direction == "down" {
+            loop {
+                let children = self
+                    .visible_children
+                    .get(&current_id)
+                    .cloned()
+                    .unwrap_or_default();
+                if children.is_empty() {
+                    return *index_by
+                        .get(current_id.as_str())
+                        .unwrap_or(&self.selected_index);
+                }
+                if children.len() > 1 {
+                    return *index_by
+                        .get(children[0].as_str())
+                        .unwrap_or(&self.selected_index);
+                }
+                current_id = children[0].clone();
+            }
+        }
+        // up
+        loop {
+            let parent_id = self.visible_parent.get(&current_id).cloned().flatten();
+            let Some(parent_id) = parent_id else {
+                return *index_by
+                    .get(current_id.as_str())
+                    .unwrap_or(&self.selected_index);
+            };
+            let children = self
+                .visible_children
+                .get(&parent_id)
+                .cloned()
+                .unwrap_or_default();
+            if children.len() > 1 {
+                let segment_start = *index_by
+                    .get(current_id.as_str())
+                    .unwrap_or(&self.selected_index);
+                if segment_start < self.selected_index {
+                    return segment_start;
+                }
+            }
+            current_id = parent_id;
+        }
     }
 
     fn render_prefix(&self, flat: &FlatNode) -> String {
@@ -281,20 +468,14 @@ impl TreeSelector {
         } else {
             ("|", "`", "|")
         };
-        let connector = if flat.show_connector && !flat.is_virtual_root_child {
-            if flat.is_last {
-                format!("{branch_last}─ ")
-            } else {
-                format!("{branch_mid}─ ")
-            }
-        } else {
-            String::new()
-        };
-        let connector_position = if connector.is_empty() {
-            usize::MAX
-        } else {
+        let connector = flat.show_connector && !flat.is_virtual_root_child;
+        let connector_position = if connector {
             display_indent.saturating_sub(1)
+        } else {
+            usize::MAX
         };
+        let is_folded = self.folded_nodes.contains(&flat.id);
+        let foldable = self.is_foldable(&flat.id);
         let total_chars = display_indent.saturating_mul(3);
         let mut prefix_chars = Vec::with_capacity(total_chars);
         for i in 0..total_chars {
@@ -306,14 +487,20 @@ impl TreeSelector {
                 } else {
                     prefix_chars.push(" ");
                 }
-            } else if !connector.is_empty() && level == connector_position {
+            } else if connector && level == connector_position {
                 match pos_in_level {
                     0 => prefix_chars.push(if flat.is_last {
                         branch_last
                     } else {
                         branch_mid
                     }),
-                    1 => prefix_chars.push("─"),
+                    1 => prefix_chars.push(if is_folded {
+                        "⊞"
+                    } else if foldable {
+                        "⊟"
+                    } else {
+                        "─"
+                    }),
                     _ => prefix_chars.push(" "),
                 }
             } else {
@@ -321,6 +508,21 @@ impl TreeSelector {
             }
         }
         prefix_chars.concat()
+    }
+
+    fn display_label_parts(&self, flat: &FlatNode) -> String {
+        let node = find_node(&self.roots, &flat.id);
+        let mut out = String::new();
+        if let Some(ann) = node.and_then(|n| n.annotation.as_deref()) {
+            out.push_str(&(self.theme.annotation)(&format!("[{ann}] ")));
+            if self.show_annotation_timestamps
+                && let Some(at) = node.and_then(|n| n.annotation_at.as_deref())
+            {
+                out.push_str(&(self.theme.annotation_time)(&format!("{at} ")));
+            }
+        }
+        out.push_str(&(self.theme.label)(&flat.label));
+        out
     }
 }
 
@@ -466,6 +668,18 @@ fn find_node<'a>(roots: &'a [TreeNode], id: &str) -> Option<&'a TreeNode> {
             return Some(root);
         }
         if let Some(n) = find_node(&root.children, id) {
+            return Some(n);
+        }
+    }
+    None
+}
+
+fn find_node_mut<'a>(roots: &'a mut [TreeNode], id: &str) -> Option<&'a mut TreeNode> {
+    for root in roots {
+        if root.id == id {
+            return Some(root);
+        }
+        if let Some(n) = find_node_mut(&mut root.children, id) {
             return Some(n);
         }
     }
@@ -646,13 +860,19 @@ impl Component for TreeSelector {
                 "  ".to_string()
             };
             let prefix = (self.theme.prefix)(&self.render_prefix(flat));
+            let shows_fold_in_connector = flat.show_connector && !flat.is_virtual_root_child;
+            let fold_marker = if self.folded_nodes.contains(&flat.id) && !shows_fold_in_connector {
+                (self.theme.active_marker)("⊞ ")
+            } else {
+                String::new()
+            };
             let marker = if self.active_path_ids.contains(&flat.id) {
                 (self.theme.active_marker)("• ")
             } else {
                 String::new()
             };
-            let label = (self.theme.label)(&flat.label);
-            let mut line = format!("{cursor}{prefix}{marker}{label}");
+            let label = self.display_label_parts(flat);
+            let mut line = format!("{cursor}{prefix}{fold_marker}{marker}{label}");
             if is_selected {
                 line = (self.theme.selected_row)(&line);
             }
@@ -705,9 +925,57 @@ impl Component for TreeSelector {
         if backspace {
             if !self.search_query.is_empty() {
                 self.search_query.pop();
+                self.folded_nodes.clear();
                 self.apply_filter();
                 self.clamp_selection();
             }
+            return;
+        }
+
+        let fold_up = with_keybindings(|kb| kb.matches_event(key, "tui.tree.foldOrUp"));
+        let unfold_down = with_keybindings(|kb| kb.matches_event(key, "tui.tree.unfoldOrDown"));
+        let edit_label = with_keybindings(|kb| kb.matches_event(key, "tui.tree.editLabel"));
+        let toggle_ts =
+            with_keybindings(|kb| kb.matches_event(key, "tui.tree.toggleLabelTimestamp"));
+
+        if fold_up {
+            let id = self.selected_id().map(str::to_string);
+            if let Some(ref id) = id
+                && self.is_foldable(id)
+                && !self.folded_nodes.contains(id)
+            {
+                self.folded_nodes.insert(id.clone());
+                self.apply_filter();
+                self.clamp_selection();
+            } else {
+                self.selected_index = self.find_branch_segment_start("up");
+            }
+            return;
+        }
+        if unfold_down {
+            let id = self.selected_id().map(str::to_string);
+            if let Some(ref id) = id
+                && self.folded_nodes.contains(id)
+            {
+                self.folded_nodes.remove(id);
+                self.apply_filter();
+                self.clamp_selection();
+            } else {
+                self.selected_index = self.find_branch_segment_start("down");
+            }
+            return;
+        }
+        if edit_label {
+            if let Some(id) = self.selected_id().map(str::to_string) {
+                let current = find_node(&self.roots, &id).and_then(|n| n.annotation.clone());
+                if let Some(ref mut cb) = self.on_label_edit {
+                    cb(id, current);
+                }
+            }
+            return;
+        }
+        if toggle_ts {
+            self.toggle_annotation_timestamps();
             return;
         }
 
@@ -717,6 +985,7 @@ impl Component for TreeSelector {
                 return;
             }
             self.search_query.push_str(&ch);
+            self.folded_nodes.clear();
             self.apply_filter();
             self.clamp_selection();
             return;
@@ -895,20 +1164,76 @@ mod tests {
     }
 
     #[test]
-    fn status_suffix_appears_in_render() {
+    fn fold_hides_descendants_and_shows_marker() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
         let mut sel = TreeSelector::new(
             sample_branch(),
             TreeSelectorTheme::default(),
-            TreeSelectorOptions {
-                status_suffix: Some("[no-tools]".into()),
-                ..TreeSelectorOptions::default()
-            },
+            TreeSelectorOptions::default(),
         );
-        let lines = sel.render(80);
-        let joined = lines.join("\n");
+        // Select "b" (branch with two children) — navigate to it
+        while sel.selected_id() != Some("b") {
+            sel.handle_input(InputEvent::Key(KeyEvent::new(
+                KeyCode::Down,
+                KeyModifiers::NONE,
+            )));
+            if sel.selected_id() == Some("b") {
+                break;
+            }
+            // safety
+            if sel.selected_index > 20 {
+                break;
+            }
+        }
+        assert_eq!(sel.selected_id(), Some("b"));
+        sel.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Left,
+            KeyModifiers::CONTROL,
+        )));
+        assert!(sel.is_folded("b"));
+        let ids = sel.filtered_ids();
+        assert!(!ids.contains(&"b1") && !ids.contains(&"b2"));
+        let joined = sel.render(80).join("\n");
         assert!(
-            joined.contains("[no-tools]") && joined.contains("/"),
-            "status suffix missing: {joined}"
+            joined.contains('⊞') || joined.contains("⊞"),
+            "fold mark: {joined}"
+        );
+    }
+
+    #[test]
+    fn annotation_renders_and_edit_callback_fires() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        let roots = vec![
+            TreeNode::new("r", "root")
+                .with_annotation("keep")
+                .with_annotation_at("2d")
+                .with_child(TreeNode::new("a", "A")),
+        ];
+        let edited = Rc::new(RefCell::new(None));
+        let edited_cb = edited.clone();
+        let mut sel = TreeSelector::new(
+            roots,
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions::default(),
+        );
+        sel.on_label_edit = Some(Box::new(move |id, ann| {
+            *edited_cb.borrow_mut() = Some((id, ann));
+        }));
+        sel.set_show_annotation_timestamps(true);
+        let text = sel.render(80).join("\n");
+        assert!(text.contains("[keep]") && text.contains("2d") && text.contains("root"));
+
+        sel.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Char('l'),
+            KeyModifiers::SHIFT,
+        )));
+        assert_eq!(
+            edited.borrow().clone(),
+            Some(("r".into(), Some("keep".into())))
         );
     }
 }
