@@ -18,6 +18,7 @@ pub async fn record_bash_result( &self, command: &str, result: &crate::runtime_p
 pub enum QueueMode
 pub fn abort(&mut self)
 pub fn abort_bash(&mut self)
+pub fn bind_event_tx(&self, tx: EventTx)
 pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, String>
 pub fn clear(&mut self)
 pub fn clear_follow_up_queue(&self)
@@ -41,8 +42,10 @@ pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dy
 pub fn new(executor: Option<Arc<dyn XyBashExecutor>>) -> Self
 pub fn new(io: Option<Arc<dyn XyExportIo>>) -> Self
 pub fn new(mode: QueueMode) -> Self
+pub fn new(steering_mode: QueueMode, follow_up_mode: QueueMode) -> Self
+pub fn notify_queue_update(&self)
 pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, String>
-pub fn queue_stats(&self) -> (usize, usize)
+pub fn queue_stats(&self) -> QueueStats
 pub fn rebuild_system_prompt(&mut self)
 pub fn register_prompt_commands( &mut self, templates: &[crate::domain::resource_types::PromptTemplate], )
 pub fn render_html(session_id: &str, entries: &[SessionEntry]) -> String
@@ -57,18 +60,25 @@ pub fn set_session(&mut self, session_id: String)
 pub fn set_system_prompt(&mut self, prompt: Option<String>)
 pub fn set_thinking_level(&mut self, level: ThinkingLevel)
 pub fn set_tools(&mut self, tools: ToolSet)
+pub fn stats(&self) -> QueueStats
 pub fn steer(&self, message: impl Into<String>)
 pub fn system_prompt(&self) -> Option<&str>
 pub fn thinking_level(&self) -> ThinkingLevel
+pub fn unbind_event_tx(&self)
 pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Aggregate message counts for a session by reading the session store. /// /// Moved out of the `Agent` body (spec as32 / c320 T24) so the capability /// aggregate holds no aggregation logic. pub async fn compute(store: &dyn XySessionStore, session_id: &str) -> Result<SessionStats, String>
+pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, event_tx: Arc<Mutex<Option<EventTx>>>, } impl AsyncQueueRuntime
+pub steer_count: usize, pub follow_up_count: usize, } /// Sender bound to the active `Driver::run` / ReAct EventStream (may be absent). pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>
 pub struct Agent
+pub struct AsyncQueueRuntime
 pub struct BashExecHandler
 pub struct ContextUsage
 pub struct PendingMessageQueue
+pub struct QueueStats
 pub struct SessionExporter
 pub struct SessionStats
 pub tokens: u64, pub context_window: u64, pub percent: u64, pub should_compact: bool, } pub use crate::agent::compaction::orchestrator::should_compact
+pub type QueueChannel = PendingMessageQueue
 pub use crate::agent::model::registry::ModelRegistry
-pub use self::queue::{PendingMessageQueue, QueueMode}
+pub use self::queue::
 pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_usage}
 pub use self::trust::save_trust_decision
