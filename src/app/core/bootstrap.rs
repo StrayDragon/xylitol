@@ -146,6 +146,7 @@ impl ResolvedAssembly {
             permission: self.permission,
             steering_mode: self.steering_mode,
             follow_up_mode: self.follow_up_mode,
+            event_sink: None,
         }
     }
 }
