@@ -150,7 +150,7 @@ components:
 - **reverse**：列表选中；Diff 行内变更（word-level）
 - **underline**：可复制 URL 展示时可用
 
-段落间最多一空行。代码块：语法高亮即可，**无边框、无语言标签条、无树线装饰**（[`design/markdown.md`](./design/markdown.md)）。
+段落间最多一空行。代码块：语法高亮即可，**无边框、无语言标签条、无树线装饰**（[`design/markdown.md`](./design/markdown.md)）。标题分级靠色组 + bold/underline，**不**用 `#` 前缀；复制友好与 token 权衡见该文档。
 
 Markdown **fg 内联、bg 延后到行宽 padding**（与 pi-tui Markdown 一致），避免背景断在内容末尾。
 
