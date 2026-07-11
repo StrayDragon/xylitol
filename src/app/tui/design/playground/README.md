@@ -13,13 +13,15 @@ cd src/app/tui/design/playground && python -m http.server 8765
 # http://127.0.0.1:8765/
 ```
 
-## 改 DESIGN 后同步（P1）
+## 改 DESIGN 后同步（c555 / adp1）
 
 ```bash
 python3 src/app/tui/design/playground/sync_tokens.py
 ```
 
-生成物（勿手改）：`tokens.css`、`tokens.js`。禁止为迁就预览去改 `xylitol-tui` 运行时默认主题。
+生成物（勿手改）：`tokens.css`、`tokens.js`。SSOT 是 `DESIGN.md` frontmatter，不是本目录手改色值。禁止为迁就预览去改 `xylitol-tui` 运行时默认主题。
+
+Markdown 槽示意 MUST 对齐 [`../markdown.md`](../markdown.md)：无 `#` 标题前缀、链接 `text (url)`、粗体/斜体无可见 `**`/`*`（可用「（加粗）」标注）。
 
 ## 视图 / 跳转
 
