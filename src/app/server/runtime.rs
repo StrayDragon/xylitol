@@ -105,16 +105,19 @@ pub async fn start(
         }
         BootstrapError::BuildFailed(msg) => msg,
     })?;
-    let mut agent = bootstrapped.agent;
+    let agent = bootstrapped.agent;
     let servers = bootstrapped.mcp_servers.unwrap_or_default();
-    let mut mcp_manager = None;
-    if let Err(e) =
-        crate::app::core::composition::reload_mcp_tools(&mut agent, &mut mcp_manager, &servers)
-            .await
-    {
+    // Server still holds ReActAgent directly (see library-and-clients.md);
+    // MCP reload uses a temporary InProcessDriver only to set tools, then
+    // we keep the agent. Full Server-on-Driver is a follow-up change.
+    let store = bootstrapped.store;
+    let mut driver = crate::app::core::driver::InProcessDriver::new(agent, store);
+    let mut mcp = crate::app::core::composition::McpSession::new();
+    if let Err(e) = mcp.reload(&mut driver, &servers).await {
         tracing::warn!(error = %e, "MCP reload failed");
     }
-    let _mcp_manager = mcp_manager;
+    let _mcp = mcp;
+    let agent = driver.into_agent();
     let model_registry = agent.inner().model_registry().clone();
 
     // ── Server state ──────────────────────────────────────────────
