@@ -17,11 +17,19 @@
 //! Config metadata: [`XyModelConfig`], [`XyModelKind`], [`XyModelMeta`],
 //! [`XyToolSchema`].
 //!
-//! Not exported: `Driver`, infra concrete types, internal collaborators.
+//! ## Embed seam ([`embed`])
+//!
+//! Multi-client / external-crate assembly: [`embed::bootstrap`],
+//! [`embed::InProcessDriver`], [`embed::Driver`], [`embed::BuildAgentOptions`],
+//! [`embed::McpSession`], [`embed::dispatch`]. Do **not** treat `infra::*` or
+//! `agent::session::*` as a stability promise — extend the seam instead.
+//!
+//! Not in the curated surface: infra concrete types, agent session internals.
 
 pub mod agent;
 pub mod app;
 pub mod domain;
+pub mod embed;
 pub mod infra;
 pub mod protocol;
 pub mod runtime_protocol;

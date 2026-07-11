@@ -25,7 +25,7 @@
 | **Server** | 远程托管同一内核 | 同上，经 REST/WS 暴露 `Driver` 能力 | 🟡 仍直接持有 `ReActAgent` |
 | **TUI** | 本地交互 | `Driver` + `dispatch(Command)` | ⏸ 冻结；Driver 传入未真正驱动 |
 | **Remote client** | 连 Server 的薄端 | `RemoteDriver` ↔ 线协议 | △ `run`/`abort` 可用；多数命令 stub |
-| **嵌入库** | 外部 crate 自建面 | 公开的装配 + `Driver` + `Xy*` 契约 | △ 有精选 `Xy*`；装配缝仍 `pub(crate)` |
+| **嵌入库** | 外部 crate 自建面 | 公开的装配 + `Driver` + `Xy*` 契约 | ✅ `xylitol::embed` + 精选 `Xy*` |
 | **GUI（未来）** | 桌面/其它 | 同 Print/TUI：只依赖 Driver | 🔴 未开 |
 
 ## 两层对外契约
@@ -54,23 +54,23 @@ flowchart TB
     S["Server → Mutex ReActAgent ✗ 旁路"]
     T["TUI → Driver 未用 ⏸"]
     Rem["RemoteDriver → 命令多 stub △"]
-    Lib["Xy* 精选 ✅ / core pub crate ✗"]
+    Lib["Xy* + xylitol::embed ✅"]
   end
 ```
 
 | 缺口 | 影响 | 后续变更意向 |
 |---|---|---|
-| 装配缝未出库 | 外部无法正规嵌入 | 公开嵌入 API |
-| Server 旁路 Driver | 双后端，远程难对称 | Server 统一到 Driver |
-| 线协议丢生命周期事件 | 远程看不到队列等 | 线协议 / Remote 对齐 |
+| ~~装配缝未出库~~ | ~~外部无法正规嵌入~~ | ✅ `xylitol::embed`（c530） |
+| Server 旁路 Driver | 双后端，远程难对称 | Server 统一到 Driver（c535） |
+| 线协议丢生命周期事件 | 远程看不到队列等 | 线协议 / Remote 对齐（c540） |
 | `dispatch` 无消费方 | Command 路径纸面存在 | TUI 开闸或 Server 接线时启用 |
-| 组合小债 | `agent_mut`、MCP 保活、EventBus 角色不清 | 小步清债（实现） |
+| 组合小债 | MCP / EventBus 角色 | 小步清债（部分已落地） |
 
 ## 嵌入方应依赖什么（产品规则）
 
-1. **优先**精选 `Xy*` + 文档化的应用缝（Driver / bootstrap）。
-2. **不要**把 `infra::*` 具体类型或 `agent::session::*` 当稳定 API。
-3. 需要新能力时：**扩缝**，不要 reach-in。
+1. **优先**精选 `Xy*` + [`xylitol::embed`](../../src/embed.rs)（`bootstrap` / `InProcessDriver` / `Driver` / `McpSession` / `dispatch`）。
+2. **不要**把 `infra::*` 具体类型或 `agent::session::*` 当稳定 API；也不要依赖 `app::core` 路径（crate 内 `pub(crate)`）。
+3. 需要新能力时：**扩 `embed` 缝**，不要 reach-in。
 4. 未配置的能力（如 MCP）必须 **zero-cost**（不装配则无运行时负担）。
 
 ## 与其它文档
