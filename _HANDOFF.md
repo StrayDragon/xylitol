@@ -16,8 +16,8 @@
 | 队列运行时实现 | archive **c525** `design.md` |
 | XyEvent 防宽表实现 | archive **c520**；产品摘要见架构目录 |
 | TUI bridge（轨 B · 已归档） | archive **`2026-07-12-c465-add-app-tui-bridge`** |
-| 日常满闸 | **`just qa`**（fmt+clippy+test+test-tui+doc+tokens+prek） |
-| 真终端满闸 | **`just qa-e2e`**（qa + PTY/tmux 第 5 层） |
+| 日常满闸 | **`just qa`**（见根 `AGENTS.md`） |
+| 真终端满闸 | **`just qa-e2e`**；分工 SSOT：`packages/xylitol-tui/AGENTS.md`「验证」 |
 | 产品视觉 MUST（唯一） | `src/app/tui/DESIGN.md` + `design/*.md` |
 | **产品 TUI 活实验场** | `just demo-tui`（`packages/xylitol-tui/examples/agent_demo.rs`） |
 | 浏览器静图 | `src/app/tui/design/playground/`（`sync_tokens.py`） |

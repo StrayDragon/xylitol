@@ -151,7 +151,7 @@ fn tmux_demo_starts_and_shows_content() {
     let session = TmuxSession::spawn_demo(60, 15).expect("spawn tmux session");
     // The example prints a title row; wait for a known label.
     let screen = session
-        .wait_for("fake coding agent demo", Duration::from_secs(60))
+        .wait_for(crate::DEMO_READY_NEEDLE, Duration::from_secs(60))
         .expect("agent_demo should render within 60s (includes cargo build)");
     assert!(!screen.trim().is_empty());
 }
@@ -164,7 +164,7 @@ fn tmux_captures_styled_output() {
     require_tmux!();
     let session = TmuxSession::spawn_demo(60, 15).expect("spawn tmux session");
     session
-        .wait_for("fake coding agent demo", Duration::from_secs(60))
+        .wait_for(crate::DEMO_READY_NEEDLE, Duration::from_secs(60))
         .expect("agent_demo should render");
     let styled = session.capture(true).expect("capture -e");
     // The example uses SGR colors (cyan/yellow/dim helpers); at least one escape
@@ -181,7 +181,7 @@ fn tmux_agent_demo_cjk_submit_flow_survives_enter() {
     require_tmux!();
     let session = TmuxSession::spawn_demo(172, 40).expect("spawn tmux session");
     session
-        .wait_for("fake coding agent demo", Duration::from_secs(60))
+        .wait_for(crate::DEMO_READY_NEEDLE, Duration::from_secs(60))
         .expect("agent_demo should render");
     session.send(&["C-u"]).expect("clear editor line");
     session
@@ -200,15 +200,15 @@ fn tmux_agent_demo_command_palette_smoke() {
     require_tmux!();
     let session = TmuxSession::spawn_demo(172, 40).expect("spawn tmux session");
     session
-        .wait_for("fake coding agent demo", Duration::from_secs(60))
+        .wait_for(crate::DEMO_READY_NEEDLE, Duration::from_secs(60))
         .expect("agent_demo should render");
-    session.send(&["C-p"]).expect("open command palette");
+    session.send(&["C-p"]).expect("open command plate");
     let screen = session
-        .wait_for("Command Palette", Duration::from_secs(10))
-        .expect("command palette should appear");
+        .wait_for(crate::DEMO_COMMAND_PLATE_NEEDLE, Duration::from_secs(10))
+        .expect("command plate should appear");
     assert!(
-        screen.contains("Run regression tests"),
-        "command palette content should be visible; got:\n{screen}"
+        screen.contains("Run regression tests") || screen.contains("Markdown full"),
+        "command plate content should be visible; got:\n{screen}"
     );
 }
 
@@ -218,11 +218,11 @@ fn tmux_agent_demo_settings_overlay_smoke() {
     require_tmux!();
     let session = TmuxSession::spawn_demo(172, 40).expect("spawn tmux session");
     session
-        .wait_for("fake coding agent demo", Duration::from_secs(60))
+        .wait_for(crate::DEMO_READY_NEEDLE, Duration::from_secs(60))
         .expect("agent_demo should render");
     session.send(&["C-s"]).expect("open settings overlay");
     let screen = session
-        .wait_for("Session Settings", Duration::from_secs(10))
+        .wait_for(crate::DEMO_SETTINGS_NEEDLE, Duration::from_secs(10))
         .expect("settings overlay should appear");
     assert!(
         screen.contains("Approval"),
@@ -236,7 +236,7 @@ fn tmux_agent_demo_narrow_cjk_submit_flow_survives_enter() {
     require_tmux!();
     let session = TmuxSession::spawn_demo(96, 32).expect("spawn tmux session");
     session
-        .wait_for("fake coding agent demo", Duration::from_secs(60))
+        .wait_for(crate::DEMO_READY_NEEDLE, Duration::from_secs(60))
         .expect("agent_demo should render");
     session.send(&["C-u"]).expect("clear editor line");
     session

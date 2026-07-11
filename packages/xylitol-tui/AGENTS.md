@@ -72,6 +72,24 @@
 5. 终端 I/O / 输入硬切：见上表「底层 / 输入」。
 6. 默认隐藏硬件光标；有 `CURSOR_MARKER` 时可相对定位 IME，但不得无条件 `show_cursor`。
 
+## 验证（本文件 = 人类/agent 验证分工 SSOT）
+
+其它文档（skill / `_HANDOFF` / just 注释）**只引用本节**，勿另写平行长文。
+
+| 验什么 | 在哪跑 | 命令 |
+|---|---|---|
+| 包组件层 1–4（键序列 / snapshot / 时序 / proptest） | 本包 `tests/` | `just test-tui` |
+| 真终端层 5（crossterm / PTY / tmux） | 工作区 `tests/tui_e2e/`，spawn **`agent_demo`** | `just test-tui-e2e`（或 `-pty` / `-tmux`） |
+| 仓库满闸（不含层 5） | 全仓 | `just qa` |
+| 满闸 + 层 5 | 全仓 | `just qa-e2e` |
+| 产品 host / `XyEvent` / slash 接线 | `src/app/tui/tests.rs` 等 | 随产品测；**不**替代上表 |
+
+**分工（勿混）**
+
+- **包 E2E / `agent_demo`**：引擎 + 通用组件 + 真终端协议；主场景唯一；就绪探针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs`，footer `theme:dark`——勿用易滚出视口的标题行）。PTY 上 plate/settings 宜用 `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` + 足够行高；tmux 用 `C-p` / `C-s`。
+- **产品 TUI**：Driver / bridge / chrome / 键位；应用面 harness。层 5 **不**默认 spawn 完整 `xylitol` 二进制（避免绑 LLM/配置）。
+- 层 5 全 `#[ignore]`；缺 tmux 时用 `just test-tui-e2e-pty`。操作细则：`test-tui-harness` skill（how-to，非第二份边界文）。
+
 ## Specs
 
 本包能力 specs 使用 `package-tui-*` 前缀（见根 `AGENTS.md` / `llmanspec/config.yaml`）。产品面用 `app-tui-*`（不再堆进单体 `app-tui`）。
@@ -80,12 +98,12 @@
 
 | 任务 | 去哪 |
 |---|---|
-| 改组件 / 引擎 / 测 TUI | `test-tui-harness` skill |
+| 改组件 / 引擎 / 扩测试 | `test-tui-harness` skill（落点）；边界见上「验证」 |
 | 扩展 Editor 补全触发（`/` `@` `$` `^`…） | `CompletionSource` + `set_completion_sources`（`src/completion.rs`）；勿在 `editor.rs` 硬编码触发符 |
 | 对照 / 合并 pi-tui 行为 | 先读 [`PI_DELTAS.md`](PI_DELTAS.md)；不得静默回退表中决议 |
 | 改产品 TUI 面 / UX / 视觉 | `write-tui` + `src/app/tui/DESIGN.md`；先 `just demo-tui` 实验 |
 | 改色板 | 只改 app `DESIGN.md` → `just sync-tui-tokens` → 对齐 `Palette`；`just check-tui-tokens` |
-| 打开 DESIGN 浏览器静图 | `just open-design-playground`（xdg-open） |
-| 日常验证 | `just test-tui`；`just qa`；真终端 `just qa-e2e` / `just test-tui-e2e` |
+| 打开 DESIGN 浏览器静图 | `just open-design-playground` |
+| 日常 / 真终端闸 | 上「验证」表 |
 
 裁剪与待补 API 随接线演进，以代码与 `_HANDOFF.md` 为准，不在本文件维护进度清单。
