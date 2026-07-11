@@ -24,11 +24,13 @@ use xylitol_tui::{
     CancellableLoader, ChoiceMode, ChoiceOption, ChoicePrompt, ChoicePromptTheme, ChoiceQuestion,
     ChoiceResult, Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme,
     ExpandableOutputOptions, Focusable, Input, InputEvent, InputListenerResult, Markdown,
-    MarkdownTheme, Panel, SystemClock, TUI, TerminalColorScheme, Text, ThemeDetectSources,
+    MarkdownTheme, Palette, Panel, SystemClock, TUI, TerminalColorScheme, Text, ThemeDetectSources,
     TreeNode, TreeSelector, TreeSelectorOptions, TreeSelectorTheme, TruncateFrom, TruncatedText,
-    apply_background_to_line, highlight_code, matches_key_event, parse_osc11_background_color,
-    printable_from_key_event, render_diff_lines, render_expandable_output,
-    resolve_terminal_color_scheme, truncate_to_width, visible_width, wrap_text_with_ansi,
+    apply_background_to_line, bg_rgb, fg_rgb, is_osc11_background_color_response,
+    is_terminal_color_reply, matches_key_event, parse_osc11_background_color,
+    parse_terminal_color_scheme_report, printable_from_key_event, render_diff_lines,
+    render_expandable_output, resolve_terminal_color_scheme, truncate_to_width, visible_width,
+    wrap_text_with_ansi,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
@@ -36,6 +38,7 @@ use xylitol_tui::{
 const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("help", "Show key help in transcript"),
     ("md", "Stream full Markdown grammar stub (typewriter)"),
+    ("theme", "Switch chrome theme: /theme [dark|light|toggle]"),
     ("model", "Switch execution model"),
     ("compact", "Compact conversation history"),
     ("export", "Export current session"),
@@ -226,6 +229,11 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
         description: "Tree empty/no-match + selection stable on filter (c560)",
     },
     DemoPlateItem {
+        id: "theme-toggle",
+        label: "Toggle theme dark ↔ light",
+        description: "Cycle Palette chrome (/theme toggle)",
+    },
+    DemoPlateItem {
         id: "help-keys",
         label: "Key help",
         description: "Dump chords into transcript (/help)",
@@ -263,11 +271,6 @@ fn slash_commands() -> Vec<SlashCommand> {
 
 fn cyan(s: &str) -> String {
     format!("\x1b[36m{s}\x1b[39m")
-}
-
-fn green(s: &str) -> String {
-    // DESIGN.md colors.success #a6e3a1
-    format!("\x1b[38;2;166;227;161m{s}\x1b[39m")
 }
 
 /// Wrap a key chord for block-adjacent hints: `(Ctrl+T)`.
@@ -487,29 +490,32 @@ pub enum ToolBlockStatus {
 }
 
 impl ToolBlockStatus {
-    /// RGB matching `src/app/tui/DESIGN.md` colors.tool-*-bg.
-    pub const fn rgb(self) -> (u8, u8, u8) {
-        match self {
-            Self::Pending => (0x31, 0x32, 0x44), // #313244
-            Self::Success => (0x24, 0x35, 0x2a), // #24352a
-            Self::Error => (0x35, 0x24, 0x28),   // #352428
-        }
+    /// RGB from active palette (`tool-*-bg`).
+    pub fn rgb(self, palette: &Palette) -> (u8, u8, u8) {
+        let c = match self {
+            Self::Pending => palette.tool_pending_bg,
+            Self::Success => palette.tool_success_bg,
+            Self::Error => palette.tool_error_bg,
+        };
+        (c.r, c.g, c.b)
     }
 
     /// Truecolor bg open sequence (`48;2;R;G;B`) — for docs / raw-ANSI asserts.
     #[allow(dead_code)]
-    pub fn ansi_bg_param(self) -> String {
-        let (r, g, b) = self.rgb();
+    pub fn ansi_bg_param(self, palette: &Palette) -> String {
+        let (r, g, b) = self.rgb(palette);
         format!("48;2;{r};{g};{b}")
     }
 }
 
 /// Full-row tint: truecolor bg + `\x1b[49m` only (must not wipe content fg).
-fn paint_tool_bg(line: &str, width: usize, status: ToolBlockStatus) -> String {
-    let (r, g, b) = status.rgb();
-    apply_background_to_line(line, width, &|s| {
-        format!("\x1b[48;2;{r};{g};{b}m{s}\x1b[49m")
-    })
+fn paint_tool_bg(line: &str, width: usize, status: ToolBlockStatus, palette: &Palette) -> String {
+    let rgb = match status {
+        ToolBlockStatus::Pending => palette.tool_pending_bg,
+        ToolBlockStatus::Success => palette.tool_success_bg,
+        ToolBlockStatus::Error => palette.tool_error_bg,
+    };
+    apply_background_to_line(line, width, &|s| bg_rgb(rgb, s))
 }
 
 /// Richer unified sample via pi edit format (aligned `±N content`).
@@ -606,41 +612,18 @@ fn sample_edit_tool_pair() -> DiffInput {
     )
 }
 
-fn demo_markdown_theme() -> MarkdownTheme {
-    // DESIGN tokens (Mocha): accent / on-surface / muted / success / warning
-    let accent = |s: &str| format!("\x1b[38;2;137;180;250m{s}\x1b[39m");
-    let on_surface = |s: &str| format!("\x1b[38;2;205;214;244m{s}\x1b[39m");
-    let muted = |s: &str| format!("\x1b[38;2;108;112;134m{s}\x1b[39m");
-    let success = |s: &str| format!("\x1b[38;2;166;227;161m{s}\x1b[39m");
-    let warning = |s: &str| format!("\x1b[38;2;249;226;175m{s}\x1b[39m");
-    let bold_sgr = |s: &str| format!("\x1b[1m{s}\x1b[22m");
-    let italic_sgr = |s: &str| format!("\x1b[3m{s}\x1b[23m");
-    let underline_sgr = |s: &str| format!("\x1b[4m{s}\x1b[24m");
-    MarkdownTheme {
-        // Level colors per design/markdown.md — full style here (not nested with theme.bold).
-        heading: Box::new(move |level, s| match level {
-            1 | 2 => accent(&bold_sgr(&underline_sgr(s))),
-            3 | 4 => on_surface(&bold_sgr(s)),
-            _ => muted(s),
-        }),
-        link: Box::new(accent),
-        link_url: Box::new(move |s| underline_sgr(&accent(s))),
-        code: Box::new(success),
-        code_block: Box::new(|s| s.to_string()),
-        // DESIGN / c530: no fence chrome (callback unused)
-        code_block_border: Box::new(|_| String::new()),
-        quote: Box::new(move |s| muted(&italic_sgr(s))),
-        quote_border: Box::new(|_| String::new()),
-        hr: Box::new(muted),
-        list_bullet: Box::new(|s| s.to_string()),
-        // B: color + SGR so emphasis survives terminals that ignore bold/italic weight.
-        bold: Box::new(move |s| bold_sgr(&accent(s))),
-        italic: Box::new(move |s| italic_sgr(&warning(s))),
-        strikethrough: Box::new(move |s| format!("\x1b[9m{}\x1b[29m", muted(s))),
-        underline: Box::new(underline_sgr),
-        highlight_code: Some(Box::new(highlight_code)),
-        code_block_indent: Some("  ".into()),
-    }
+fn demo_markdown_theme(scheme: TerminalColorScheme) -> MarkdownTheme {
+    Palette::from(scheme).markdown_theme()
+}
+
+/// Richer streamed assistant body used when prompt asks for markdown / md.
+fn markdown_showcase_stream_focus() -> &'static str {
+    "本轮按 c530 打字机流式铺全语法 stub：标题分级、行内标记、链接/图、列表/任务、引用、表、多语言代码。"
+}
+
+/// Diff theme from active scheme (Dark=Mocha DESIGN, Light=Latte).
+fn demo_diff_theme(scheme: TerminalColorScheme) -> DiffTheme {
+    Palette::from(scheme).diff_theme()
 }
 
 /// Full Markdown grammar stub for c530 / c535 — streamed via plate `md-full` or `/md`.
@@ -778,64 +761,6 @@ fn markdown_showcase_seed() -> &'static str {
     markdown_grammar_stub()
 }
 
-/// Richer streamed assistant body used when prompt asks for markdown / md.
-fn markdown_showcase_stream_focus() -> &'static str {
-    "本轮按 c530 打字机流式铺全语法 stub：标题分级、行内标记、链接/图、列表/任务、引用、表、多语言代码。"
-}
-
-/// Mocha Diff theme (DESIGN.md): row tint + brighter word tint (not reverse white).
-fn demo_diff_theme() -> DiffTheme {
-    // fg
-    const ADDED: (u8, u8, u8) = (0xa6, 0xe3, 0xa1);
-    const REMOVED: (u8, u8, u8) = (0xf3, 0x8b, 0xa8);
-    const CONTEXT: (u8, u8, u8) = (0x6c, 0x70, 0x86);
-    // row bg
-    const ADDED_BG: (u8, u8, u8) = (0x1e, 0x2b, 0x22);
-    const REMOVED_BG: (u8, u8, u8) = (0x2b, 0x1e, 0x24);
-    // word bg (stronger)
-    const ADDED_WORD: (u8, u8, u8) = (0x2d, 0x4a, 0x35);
-    const REMOVED_WORD: (u8, u8, u8) = (0x4a, 0x2d, 0x35);
-
-    let fg = |rgb: (u8, u8, u8)| {
-        move |s: &str| format!("\x1b[38;2;{};{};{}m{s}\x1b[39m", rgb.0, rgb.1, rgb.2)
-    };
-    let line_bg = |rgb: (u8, u8, u8)| {
-        move |s: &str| format!("\x1b[48;2;{};{};{}m{s}\x1b[49m", rgb.0, rgb.1, rgb.2)
-    };
-    // Word tint restores row bg (not 49m) so the line wash stays continuous.
-    let word = |fg_rgb: (u8, u8, u8), word_bg: (u8, u8, u8), row_bg: (u8, u8, u8)| {
-        move |s: &str| {
-            format!(
-                "\x1b[48;2;{};{};{}m\x1b[38;2;{};{};{}m{s}\x1b[38;2;{};{};{}m\x1b[48;2;{};{};{}m",
-                word_bg.0,
-                word_bg.1,
-                word_bg.2,
-                fg_rgb.0,
-                fg_rgb.1,
-                fg_rgb.2,
-                fg_rgb.0,
-                fg_rgb.1,
-                fg_rgb.2,
-                row_bg.0,
-                row_bg.1,
-                row_bg.2,
-            )
-        }
-    };
-
-    DiffTheme {
-        added: Box::new(fg(ADDED)),
-        removed: Box::new(fg(REMOVED)),
-        context: Box::new(fg(CONTEXT)),
-        gutter: Box::new(fg(CONTEXT)),
-        meta: Box::new(fg(CONTEXT)),
-        word_change_added: Box::new(word(ADDED, ADDED_WORD, ADDED_BG)),
-        word_change_removed: Box::new(word(REMOVED, REMOVED_WORD, REMOVED_BG)),
-        added_line_bg: Box::new(line_bg(ADDED_BG)),
-        removed_line_bg: Box::new(line_bg(REMOVED_BG)),
-        highlight_line: Box::new(|s| s.to_string()),
-    }
-}
 fn magenta(s: &str) -> String {
     format!("\x1b[35m{s}\x1b[39m")
 }
@@ -949,6 +874,9 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
         &initial_prompt,
     )));
     FakeCodingAgentApp::install_input_listeners(&app, &mut tui);
+
+    // Theme auto uses COLORFGBG only under crossterm — do NOT write OSC11/CSI
+    // queries here: replies land on stdin as garbage keys (can fake Ctrl+G → $EDITOR).
 
     // After Ctrl+G sets pending: suspend terminal → `$EDITOR` → restore (pi shape).
     let app_hook = app.clone();
@@ -1455,17 +1383,8 @@ impl FakeCodingAgentApp {
         self.choice_pending = None;
     }
 
-    fn choice_theme() -> ChoicePromptTheme {
-        ChoicePromptTheme {
-            title: Box::new(|s| bold(s)),
-            prompt: Box::new(|s| s.to_string()),
-            selected: Box::new(|s| format!("\x1b[7m{s}\x1b[27m")),
-            normal: Box::new(|s| s.to_string()),
-            muted: Box::new(dim),
-            tab_active: Box::new(cyan),
-            tab_idle: Box::new(dim),
-            hint: Box::new(dim),
-        }
+    fn choice_theme(&self) -> ChoicePromptTheme {
+        self.palette().choice_prompt_theme()
     }
 
     fn open_choice_prompt(&mut self, questions: Vec<ChoiceQuestion>) {
@@ -1475,7 +1394,7 @@ impl FakeCodingAgentApp {
         self.close_lib_atom();
         let pending: Rc<RefCell<Option<ChoiceResult>>> = Rc::new(RefCell::new(None));
         let slot = pending.clone();
-        let prompt = ChoicePrompt::new(questions, Self::choice_theme(), move |r| {
+        let prompt = ChoicePrompt::new(questions, self.choice_theme(), move |r| {
             *slot.borrow_mut() = Some(r);
         });
         self.choice_prompt = Some(prompt);
@@ -1532,14 +1451,8 @@ impl FakeCodingAgentApp {
                 self.set_status("CancellableLoader · Esc abort");
             }
             LibAtomKind::Panel => {
-                let mut panel = Panel::new(
-                    2,
-                    1,
-                    Some(Box::new(|s: &str| {
-                        // surface-container-ish (DESIGN dark)
-                        format!("\x1b[48;2;49;50;68m{s}\x1b[49m")
-                    })),
-                );
+                let bg = self.palette().tool_pending_bg;
+                let mut panel = Panel::new(2, 1, Some(Box::new(move |s: &str| bg_rgb(bg, s))));
                 panel.add_child(Box::new(Text::new(
                     "Panel · padding + background".into(),
                     0,
@@ -1741,6 +1654,11 @@ impl FakeCodingAgentApp {
         }
     }
 
+    /// Active semantic palette (Dark=Mocha DESIGN, Light=Latte).
+    pub fn palette(&self) -> Palette {
+        Palette::from(self.theme_mode)
+    }
+
     /// Harness: apply OSC11 / COLORFGBG / CSI997 sources when auto is on.
     pub fn apply_theme_detect_for_test(
         &mut self,
@@ -1753,13 +1671,32 @@ impl FakeCodingAgentApp {
             return;
         }
         let osc11_background = osc11_response.and_then(parse_osc11_background_color);
-        let color_scheme_report =
-            scheme_report.and_then(xylitol_tui::parse_terminal_color_scheme_report);
+        let color_scheme_report = scheme_report.and_then(parse_terminal_color_scheme_report);
         self.theme_mode = resolve_terminal_color_scheme(ThemeDetectSources {
             explicit: None,
             osc11_background,
             color_scheme_report,
             colorfgbg,
+        });
+    }
+
+    /// Host-driven live reply (OSC11 or CSI 997). No-op unless `theme_auto`.
+    pub fn feed_terminal_color_reply(&mut self, data: &str) {
+        if !self.theme_auto || !is_terminal_color_reply(data) {
+            return;
+        }
+        let osc11_background = if is_osc11_background_color_response(data) {
+            parse_osc11_background_color(data)
+        } else {
+            None
+        };
+        let color_scheme_report = parse_terminal_color_scheme_report(data);
+        let colorfgbg = std::env::var("COLORFGBG").ok();
+        self.theme_mode = resolve_terminal_color_scheme(ThemeDetectSources {
+            explicit: None,
+            osc11_background,
+            color_scheme_report,
+            colorfgbg: colorfgbg.as_deref(),
         });
     }
 
@@ -1777,6 +1714,72 @@ impl FakeCodingAgentApp {
         });
     }
 
+    /// Explicit theme switch (disables auto-detect so COLORFGBG does not fight).
+    pub fn apply_theme_command(&mut self, scheme: TerminalColorScheme) {
+        self.theme_auto = false;
+        self.theme_mode = scheme;
+        self.refresh_editor_border_theme();
+        self.push_message(
+            Role::System,
+            format!(
+                "theme → {} (explicit; auto off). Try /theme dark|light|toggle",
+                self.theme_label()
+            ),
+        );
+        self.set_status(format!("Ready · {}", self.theme_label()));
+    }
+
+    fn cycle_theme(&mut self) {
+        let next = match self.theme_mode {
+            TerminalColorScheme::Dark => TerminalColorScheme::Light,
+            TerminalColorScheme::Light => TerminalColorScheme::Dark,
+        };
+        self.apply_theme_command(next);
+    }
+
+    /// Parse `/theme` / `:theme` [dark|light|toggle]. Returns true if consumed.
+    fn try_theme_command(&mut self, last_line: &str) -> bool {
+        let body = last_line
+            .strip_prefix('/')
+            .or_else(|| last_line.strip_prefix(':'))
+            .unwrap_or(last_line);
+        let mut parts = body.split_whitespace();
+        let Some(cmd) = parts.next() else {
+            return false;
+        };
+        if !cmd.eq_ignore_ascii_case("theme") {
+            return false;
+        }
+        match parts.next().unwrap_or("toggle") {
+            "dark" => self.apply_theme_command(TerminalColorScheme::Dark),
+            "light" => self.apply_theme_command(TerminalColorScheme::Light),
+            "toggle" | "cycle" => self.cycle_theme(),
+            other => {
+                self.push_message(
+                    Role::System,
+                    format!("unknown theme arg `{other}` · use /theme [dark|light|toggle]"),
+                );
+                self.set_status("Ready");
+            }
+        }
+        true
+    }
+
+    /// Re-apply editor border colors from the active palette (ignores bash early-return).
+    fn refresh_editor_border_theme(&mut self) {
+        let bash = self.input.get_text().trim_start().starts_with('!');
+        self.bash_mode = bash;
+        let success = self.palette().success;
+        let muted = self.palette().muted;
+        if bash {
+            self.input
+                .set_border_color(Box::new(move |s| fg_rgb(success, s)));
+        } else {
+            self.input
+                .set_border_color(Box::new(move |s| fg_rgb(muted, s)));
+        }
+    }
+
     fn theme_label(&self) -> &'static str {
         match self.theme_mode {
             TerminalColorScheme::Dark => "theme:dark",
@@ -1784,15 +1787,9 @@ impl FakeCodingAgentApp {
         }
     }
 
-    /// Muted chrome color — Latte vs Mocha so auto-detect is visible.
+    /// Muted chrome from active palette.
     fn muted_paint(&self, s: &str) -> String {
-        let (r, g, b) = match self.theme_mode {
-            // DESIGN.md colors.muted (Mocha)
-            TerminalColorScheme::Dark => (108u8, 112, 134),
-            // Catppuccin Latte overlay1-ish
-            TerminalColorScheme::Light => (140u8, 143, 161),
-        };
-        format!("\x1b[38;2;{r};{g};{b}m{s}\x1b[39m")
+        fg_rgb(self.palette().muted, s)
     }
 
     fn sync_editor_border(&mut self) {
@@ -1801,10 +1798,14 @@ impl FakeCodingAgentApp {
             return;
         }
         self.bash_mode = bash;
+        let success = self.palette().success;
+        let muted = self.palette().muted;
         if bash {
-            self.input.set_border_color(Box::new(green));
+            self.input
+                .set_border_color(Box::new(move |s| fg_rgb(success, s)));
         } else {
-            self.input.set_border_color(Box::new(dim));
+            self.input
+                .set_border_color(Box::new(move |s| fg_rgb(muted, s)));
         }
     }
 
@@ -2162,7 +2163,7 @@ impl FakeCodingAgentApp {
         // Slim chrome (c535): short pointer + compact kit. Full Markdown → plate `/md`.
         self.push_message(
             Role::System,
-            "demo · Ctrl+P plate · /md Markdown stream · /help keys · /diff diffs",
+            "demo · Ctrl+P plate · /md Markdown · /theme dark|light · /help keys · /diff diffs",
         );
         self.push_message(
             Role::User,
@@ -2219,15 +2220,16 @@ impl FakeCodingAgentApp {
         self.push_message(
             Role::System,
             "keys: Enter submit/steer · Alt+Enter follow-up · /md Markdown stream · Ctrl+P plate · \
-             /help · /diff · ! bash · Ctrl+G $EDITOR · double Esc tree · (Ctrl+T) thinking · \
-             (Alt+E) tools · (Ctrl+O) tools viewport · Alt+G glyphs · Esc · Ctrl+C",
+             /theme [dark|light|toggle] · /help · /diff · ! bash · Ctrl+G $EDITOR · double Esc tree · \
+             (Ctrl+T) thinking · (Alt+E) tools · (Ctrl+O) tools viewport · Alt+G glyphs · Esc · Ctrl+C",
         );
         self.push_message(
             Role::System,
             "stream plate: md-full · stream-rust/python/typescript/json · diff-sbs · \
              completion-dollar (c545 $) · expandable-head (c550) · playground-sync (c555) · \
              md-list-wrap · narrow-clamp · truncated-text · cancellable-loader · panel · \
-             ask-single · ask-multi · ask-tabs · tree (c560) · tool-tints · help-keys · tests · compact",
+             ask-single · ask-multi · ask-tabs · tree (c560) · tool-tints · theme-toggle · \
+             help-keys · tests · compact",
         );
         self.set_status("Ready");
     }
@@ -2591,6 +2593,7 @@ impl FakeCodingAgentApp {
                 self.set_status("Session tree · c560 empty/selection");
             }
             "help-keys" => self.inject_help_keys(),
+            "theme-toggle" => self.cycle_theme(),
             "tests" => {
                 self.pending_events
                     .push_back(ScriptEvent::Tool("cargo test -p xylitol-tui --lib".into()));
@@ -2731,6 +2734,11 @@ impl FakeCodingAgentApp {
         if last_line == "/diff" || last_line == ":diff" {
             self.input.set_text(String::new());
             self.inject_diff_showcase();
+            return;
+        }
+
+        if self.try_theme_command(last_line) {
+            self.input.set_text(String::new());
             return;
         }
 
@@ -3574,7 +3582,13 @@ impl FakeCodingAgentApp {
                     if matches!(role, Role::Assistant) {
                         // Always Markdown so streaming code fences highlight as they close
                         // (source fences; rendered output has no fence chrome — c530).
-                        let mut md = Markdown::new(text.clone(), 0, 0, demo_markdown_theme(), None);
+                        let mut md = Markdown::new(
+                            text.clone(),
+                            0,
+                            0,
+                            demo_markdown_theme(self.theme_mode),
+                            None,
+                        );
                         for line in md.render(width) {
                             lines.push(Self::fit(&line, width));
                         }
@@ -3628,7 +3642,7 @@ impl FakeCodingAgentApp {
                         }
                     }
                     for line in block {
-                        lines.push(paint_tool_bg(&line, width, *status));
+                        lines.push(paint_tool_bg(&line, width, *status, &self.palette()));
                     }
                 }
                 TranscriptEntry::Diff {
@@ -3645,10 +3659,10 @@ impl FakeCodingAgentApp {
                     let mut header_lines = Vec::new();
                     Self::push_wrapped(&mut header_lines, &header, width);
                     for line in header_lines {
-                        lines.push(paint_tool_bg(&line, width, *status));
+                        lines.push(paint_tool_bg(&line, width, *status, &self.palette()));
                     }
                     if *expanded {
-                        let theme = demo_diff_theme();
+                        let theme = demo_diff_theme(self.theme_mode);
                         let opts = DiffOptions {
                             word_level: true,
                             side_by_side_min_width: *side_by_side_min_width,
@@ -4014,6 +4028,7 @@ impl Component for FakeCodingAgentApp {
                             | "ask-multi"
                             | "ask-tabs"
                             | "md-list-wrap"
+                            | "theme-toggle"
                     ) {
                         self.advance_script();
                     }

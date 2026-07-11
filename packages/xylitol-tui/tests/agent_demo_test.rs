@@ -274,7 +274,7 @@ fn agent_demo_command_palette_replaces_editor_slot() {
         .expect("command plate selector must stay within width budget");
     h.assert_text_contains("Command Plate");
     h.assert_text_contains("Markdown full grammar (stream)");
-    h.assert_text_contains("Tool status tints");
+    h.assert_text_contains("Diff unified + side-by-side");
     let text = h.tui.terminal.viewport().join("\n");
     let palette_pos = text
         .find("Command Plate")
@@ -1253,6 +1253,7 @@ fn agent_demo_plate_ask_single_opens_choice_prompt() {
 #[test]
 fn agent_demo_seed_tool_blocks_use_status_background_tints() {
     use agent_demo_example::ToolBlockStatus;
+    use xylitol_tui::SemanticPalette;
 
     let mut h = TuiTestHarness::new(120, 80);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
@@ -1261,8 +1262,9 @@ fn agent_demo_seed_tool_blocks_use_status_background_tints() {
     .focus(Some(0));
     h.render_result().expect("initial render");
 
-    let success = ToolBlockStatus::Success.rgb();
-    let error = ToolBlockStatus::Error.rgb();
+    let p = SemanticPalette::dark();
+    let success = ToolBlockStatus::Success.rgb(&p);
+    let error = ToolBlockStatus::Error.rgb(&p);
     assert!(
         viewport_has_bg_rgb(&h, success),
         "success tool/diff rows must paint DESIGN success tint {success:?}"
@@ -1290,7 +1292,7 @@ fn agent_demo_scripted_tool_flips_pending_to_success_bg() {
         .focus(Some(0));
     h.render_result().expect("initial render");
 
-    let pending = ToolBlockStatus::Pending.rgb();
+    let pending = ToolBlockStatus::Pending.rgb(&xylitol_tui::SemanticPalette::dark());
     let text0 = h.tui.terminal.viewport().join("\n");
     assert!(
         text0.contains("inject-tool") && text0.contains("· running"),
@@ -1331,7 +1333,7 @@ fn agent_demo_parallel_tools_flip_by_index_not_last() {
         .focus(Some(0));
     h.render_result().expect("initial");
 
-    let pending = ToolBlockStatus::Pending.rgb();
+    let pending = ToolBlockStatus::Pending.rgb(&xylitol_tui::SemanticPalette::dark());
     assert!(viewport_has_bg_rgb(&h, pending), "both tools start pending");
 
     // Complete only A — B must stay · running (regression: old code flipped "last").
@@ -1402,6 +1404,7 @@ fn agent_demo_idle_returns_to_ready_after_tool_flips() {
 fn agent_demo_diff_body_skips_tool_status_bg() {
     use agent_demo_example::ToolBlockStatus;
     use support::Color;
+    use xylitol_tui::SemanticPalette;
 
     let mut h = TuiTestHarness::new(120, 80);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
@@ -1410,10 +1413,11 @@ fn agent_demo_diff_body_skips_tool_status_bg() {
     .focus(Some(0));
     h.render_result().expect("initial render");
 
+    let p = SemanticPalette::dark();
     let success = Color::Rgb(
-        ToolBlockStatus::Success.rgb().0,
-        ToolBlockStatus::Success.rgb().1,
-        ToolBlockStatus::Success.rgb().2,
+        ToolBlockStatus::Success.rgb(&p).0,
+        ToolBlockStatus::Success.rgb(&p).1,
+        ToolBlockStatus::Success.rgb(&p).2,
     );
     // DESIGN.md diff-removed-bg / diff-added-bg
     let removed_bg = Color::Rgb(0x2b, 0x1e, 0x24);
@@ -1930,6 +1934,80 @@ fn agent_demo_theme_auto_osc11_light() {
         app.theme_mode_for_test(),
         xylitol_tui::TerminalColorScheme::Light,
         "OSC11 light bg must win over dark COLORFGBG"
+    );
+}
+
+#[test]
+fn agent_demo_feed_terminal_color_reply_light() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.set_theme_auto_for_test(true);
+    app.feed_terminal_color_reply("\x1b]11;#eff1f5\x07");
+    assert_eq!(
+        app.theme_mode_for_test(),
+        xylitol_tui::TerminalColorScheme::Light
+    );
+    let light = xylitol_tui::SemanticPalette::light();
+    assert_eq!(app.palette().accent, light.accent);
+}
+
+#[test]
+fn agent_demo_light_chrome_uses_latte_tool_bg() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::{SharedFakeCodingAgentApp, ToolBlockStatus};
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new(Arc::new(
+        AtomicBool::new(false),
+    ))));
+    {
+        let mut a = app.borrow_mut();
+        a.set_theme_auto_for_test(true);
+        a.apply_theme_detect_for_test(Some("\x1b]11;#eff1f5\x07"), None, None);
+        a.freeze_script_for_test();
+        a.inject_pending_tool_for_test();
+    }
+
+    let mut h = TuiTestHarness::new(120, 80);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h.render_result().expect("light render");
+
+    let latte_pending = ToolBlockStatus::Pending.rgb(&xylitol_tui::SemanticPalette::light());
+    let mocha_pending = ToolBlockStatus::Pending.rgb(&xylitol_tui::SemanticPalette::dark());
+    assert_ne!(latte_pending, mocha_pending);
+    assert!(
+        viewport_has_bg_rgb(&h, latte_pending),
+        "light mode tool rows must use Latte pending bg {latte_pending:?}"
+    );
+}
+
+#[test]
+fn agent_demo_theme_slash_light_and_toggle() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    assert_eq!(
+        app.theme_mode_for_test(),
+        xylitol_tui::TerminalColorScheme::Dark
+    );
+    app.submit_text_for_test("/theme light");
+    assert_eq!(
+        app.theme_mode_for_test(),
+        xylitol_tui::TerminalColorScheme::Light
+    );
+    assert!(
+        !app.theme_auto_for_test(),
+        "explicit /theme must turn auto off"
+    );
+    app.submit_text_for_test("/theme toggle");
+    assert_eq!(
+        app.theme_mode_for_test(),
+        xylitol_tui::TerminalColorScheme::Dark
+    );
+    app.submit_text_for_test("/theme");
+    assert_eq!(
+        app.theme_mode_for_test(),
+        xylitol_tui::TerminalColorScheme::Light,
+        "bare /theme toggles"
     );
 }
 
