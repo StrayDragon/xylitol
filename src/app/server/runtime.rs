@@ -105,7 +105,16 @@ pub async fn start(
         }
         BootstrapError::BuildFailed(msg) => msg,
     })?;
-    let agent = bootstrapped.agent;
+    let mut agent = bootstrapped.agent;
+    let servers = bootstrapped.mcp_servers.unwrap_or_default();
+    let mut mcp_manager = None;
+    if let Err(e) =
+        crate::app::core::composition::reload_mcp_tools(&mut agent, &mut mcp_manager, &servers)
+            .await
+    {
+        tracing::warn!(error = %e, "MCP reload failed");
+    }
+    let _mcp_manager = mcp_manager;
     let model_registry = agent.inner().model_registry().clone();
 
     // ── Server state ──────────────────────────────────────────────
