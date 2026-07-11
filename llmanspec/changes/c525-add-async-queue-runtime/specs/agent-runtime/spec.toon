@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,"ar-q10",异步队列运行时,System MUST 提供可并发 enqueue 的异步消息队列运行时，至少覆盖 steer 与 follow_up 通道；入队与 clear 产生的队列状态更新 MUST 进入活跃 Driver run 的 XyEvent 流（或等价单通道），MUST NOT 仅依赖无人订阅的 EventBus 旁路。,null,null,null
+  add_requirement,"ar-q11",abort 与队列取消语义,Driver abort MUST 取消进行中的工具（经 CancellationToken）并清空 steer 通道；MUST 保留 follow_up 通道内容供 UI restore；队列实现 MUST 在 async 上下文中避免长时间持锁。,null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  "ar-q10","single-channel","一次活跃的 Driver::run",UI 并发 enqueue steer,EventStream 上出现 QueueUpdate 且 ReAct 下轮 drain 到该消息
+  "ar-q11","abort-semantics",steer 与 follow_up 均非空且工具执行中,abort,工具停止、steer 空、follow_up 仍在

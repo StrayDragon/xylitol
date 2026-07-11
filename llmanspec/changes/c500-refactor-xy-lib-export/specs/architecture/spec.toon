@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ar06,精选库入口 Xy 前缀,精选进 crate 公开 API（lib.rs pub use）的可替换端口、跨面生命周期事件及其绑定签名类型 MUST 使用 Xy 前缀；应用面缝（Driver/bootstrap/dispatch）、protocol 线协议类型、infra 具体实现、以及未导出的内部协作者 MUST NOT 仅为品牌而加 Xy 前缀。,null,null,null
+  add_requirement,ar09,精选 pub use 清单,System MUST 在 src/lib.rs（或等价公开入口）维护精选 pub use，至少覆盖 XyModel、XyTool、XySessionStore、XyEvent、XyChunk 及文档化的配套错误/配置类型；未列入清单的内部模块 MUST NOT 被误当作稳定公开 API。,null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ar06,"curated-export",准备精选 pub use,审查 lib.rs 导出列表,仅端口与 XyEvent/XyChunk 等契约类型带 Xy；Driver 与 AgentMessage 可不带
+  ar09,"pub-use-exists","",检查 src/lib.rs,存在精选 pub use 且文档标明稳定契约

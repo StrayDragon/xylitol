@@ -6,7 +6,7 @@
 
 基于 `xylitol-tui` 的 **host 驱动空 UI**（c460）：`HostSession` + `UiRoot` + 终端 lifecycle。`run()` 可进入；XyEvent / slash / steer 接线在后续 change。当前空场景仅为框架占位，**未**按 `DESIGN.md` 实现产品视觉。
 
-**冻结（2026-07-10）**：本目录 **暂停扩展产品功能**，直至用户明确开闸。允许：修 c460 lifecycle / harness 回归、文档与 AGENTS。禁止：bridge、slash、真 travel、活树、DESIGN 视觉堆砌、在 c491 stub 上继续加产品行为。新能力先在 `agent_demo` / `packages/xylitol-tui` 验证。
+**冻结（2026-07-10；条件更新 2026-07-11）**：本目录 **暂停扩展产品功能**，直至（1）根/`src` `AGENTS.md` 中的命名与架构约定已落地、相关重构完成，且（2）用户明确开闸。允许：修 c460 lifecycle / harness 回归、文档与 AGENTS。禁止：bridge、slash、真 travel、活树、DESIGN 视觉堆砌、在 c491 stub 上继续加产品行为。新能力先在 `agent_demo` / `packages/xylitol-tui` 验证。开闸条件 SSOT：`src/AGENTS.md`「冻结」。
 
 ## 优先路径（2026-07-10）
 

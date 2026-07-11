@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,"ar-ev1",未知事件可降级,若未来扩展 XyEvent（含可选 Extension/Custom 载荷），应用面与 bridge MUST 对未识别变体降级处理（如 tracing），MUST NOT panic；核心循环 MUST 不依赖厂商专属变体才能完成一轮工具调用。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  "ar-ev1",degrade,消费者收到未映射事件变体,渲染或 bridge 处理,记录日志且不崩溃

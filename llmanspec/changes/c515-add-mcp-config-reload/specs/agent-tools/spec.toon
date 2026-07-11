@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r36,MCP 工具经 XyTool 接入,"MCP 工具 MUST 仅通过 XyTool 端口进入 agent 工具集；rmcp 具体类型 MUST NOT 泄漏到 agent/ 或 domain/。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r36,via-port,"","rg rmcp 于 src/agent 与 src/domain",零匹配
