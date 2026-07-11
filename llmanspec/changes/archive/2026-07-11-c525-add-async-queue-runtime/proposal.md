@@ -14,7 +14,7 @@ track: A
 
 steer/follow-up 队列语义已由 c461 锁定，但实现偏同步 Mutex，且 QueueUpdate 双通道阻碍 TUI bridge。需要统一的**异步、可并发、可取消**队列运行时，供消息通道与未来同类编排复用（非插件平台）。
 
-设计 SSOT（产品）：`docs/architecture/queue-and-interrupt.md`。
+设计 SSOT（产品）：`docs/architecture/插话续跑与中止.md`。
 实现 SSOT：本目录 `design.md`。
 
 ## What Changes

@@ -14,7 +14,7 @@ track: A2
 
 进程内 EventStream 已有 `QueueUpdate` 等生命周期事件；`XyEvent::to_wire_event` 丢弃多项；`RemoteDriver` 多数命令 stub。远程 client 无法获得与 Print 对等的体验。
 
-依据：`docs/architecture/library-and-clients.md`、`events.md`。
+依据：`docs/architecture/库与多客户端.md`、`用户可见事件.md`。
 
 ## What Changes
 

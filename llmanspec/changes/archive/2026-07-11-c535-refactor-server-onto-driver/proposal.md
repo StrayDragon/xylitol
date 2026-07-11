@@ -14,7 +14,7 @@ track: A2
 
 Print 走 `InProcessDriver`，Server 仍 `Mutex<ReActAgent>` 旁路——双后端。远程 `RemoteDriver` 无法与 Server 命令面对称，违背「多 client 同一条主线」。
 
-依据：`docs/architecture/library-and-clients.md`。
+依据：`docs/architecture/库与多客户端.md`。
 
 ## What Changes
 

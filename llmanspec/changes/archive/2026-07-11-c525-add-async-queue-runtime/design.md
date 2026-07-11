@@ -1,6 +1,6 @@
 # design — c525 异步可并发队列运行时
 
-> 产品语义 SSOT：[`docs/architecture/queue-and-interrupt.md`](../../../../docs/architecture/queue-and-interrupt.md)。
+> 产品语义 SSOT：[`docs/architecture/插话续跑与中止.md`](../../../../docs/architecture/插话续跑与中止.md)。
 > 本文只写**实现选型与落地**。
 
 ## 1. 选型结论（灵活 · 性能 · 体验 · 可维护）
@@ -71,7 +71,7 @@ impl QueueChannel {
 1. 引入 `QueueChannel` / `AsyncQueueRuntime`；行为单测（并发 enqueue、mode、abort）。
 2. 接线：入队/clear → 活跃 EventStream 的 `QueueUpdate`；删除生产路径对 EventBus 队列旁路的依赖。
 3. `Agent` / `Driver` / ReAct 改用新类型；保持 c461 语义测试全绿。
-4. 文档：产品侧只维护 `docs/architecture/queue-and-interrupt.md`；实现变更只改本 design + 代码。
+4. 文档：产品侧只维护 `docs/architecture/插话续跑与中止.md`；实现变更只改本 design + 代码。
 
 ## 6. 与其它 change
 
