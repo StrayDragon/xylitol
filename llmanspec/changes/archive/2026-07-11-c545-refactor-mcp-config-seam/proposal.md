@@ -18,7 +18,7 @@ track: A3
 
 1. 在应用缝（`embed` / `app::core`）引入文档化的 MCP 服务器描述类型（或对配置的 opaque 句柄），供 bootstrap → reload 传递。
 2. `McpSession::reload` 与 `BootstrappedRuntime` 不再在公开字段上命名 infra 路径。
-3. 更新 `library-and-clients.md` / `embed` 文档，去掉该泄漏条目。
+3. 更新 `docs/architecture/库与多客户端.md` / `embed` 文档，去掉该泄漏条目。
 
 ## Capabilities
 

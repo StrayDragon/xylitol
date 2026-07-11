@@ -12,7 +12,7 @@
 
 **冻结**：产品 TUI（`src/app/tui`）——**已开闸（2026-07-11）**。下一实现入口：`c465-add-app-tui-bridge`。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。
 
-共享流水线：`bootstrap` → `composition::build_agent` → `Driver::run` → ReAct → `XyEvent` → 应用面。库嵌入入口：`xylitol::embed`；矩阵与理想/现状：`docs/architecture/library-and-clients.md`。
+共享流水线：`bootstrap` → `composition::build_agent` → `Driver::run` → ReAct → `XyEvent` → 应用面。库嵌入入口：`xylitol::embed`；矩阵与理想/现状：`docs/architecture/库与多客户端.md`。
 
 ## 分层不变量（normative）
 
@@ -58,16 +58,16 @@ protocol ───────────────────────�
 
 **schemars**：配置/settings 的 `JsonSchema` derive 放在 **infra（或 config 面）**；`domain` 领域类型默认只保留 serde，避免把 schema 生成依赖绑进领域层。若某 domain 类型确需 schema，先论证是否应下沉为 config DTO。
 
-**队列运行时**：产品语义见 `docs/architecture/queue-and-interrupt.md`；实现见 archive c525。QueueUpdate MUST 进活跃 EventStream。
+**队列运行时**：产品语义见 `docs/architecture/插话续跑与中止.md`；实现见 archive c525。QueueUpdate MUST 进活跃 EventStream。
 
 **EventBus / `XyEventSink`**：装配时注入的 sink 用于侧路生命周期（如 compaction），**不是**多 client 的 turn 总线；turn 进度走 `Driver::run` 的 `XyEvent` 流。可经 `BuildAgentOptions.event_sink` 替换默认 EventBus。
 
 
 ## Trust / Permission / MCP
 
-- **Trust（对齐 pi）**：决定是否加载**项目本地**资源（settings、prompts、skills、themes、append system 等）。未信任则忽略项目侧配置。工具调用**不做** permission popup 平台。
-- **Permission**：开箱 **allow-all**。`XyPermission` / GlobPolicy 可作可选增强，不是默认交互路径。
-- **MCP**：`mcp_servers`（或等价）**有配置才装配**；无配置则不创建 client/工具（zero-cost）。须支持**动态配置与重载**（改配置后可热更新工具集，无需重启进程为硬性目标；实现可分阶段）。默认不进「未配置也加载」路径。
+- **Trust（对齐 pi）**：决定是否加载**项目本地**资源（settings、prompts、skills、themes、append system 等）。未信任则忽略项目侧配置。工具调用**不做** permission popup 平台。产品语义：`docs/architecture/信任与项目闸.md`。
+- **Permission**：开箱 **allow-all**。`XyPermission` / GlobPolicy 可作可选增强，不是默认交互路径。产品语义：`docs/architecture/工具与权限.md`。
+- **MCP**：`mcp_servers`（或等价）**有配置才装配**；无配置则不创建 client/工具（zero-cost）。须支持**动态配置与重载**（改配置后可热更新工具集，无需重启进程为硬性目标；实现可分阶段）。默认不进「未配置也加载」路径。产品语义：`docs/architecture/扩展能力-MCP.md`。
 
 ## Provider 适配
 
