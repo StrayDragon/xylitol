@@ -181,3 +181,16 @@ fn test_input_render_does_not_overflow() {
     let vis = xylitol_tui::utils::visible_width(&lines[0]);
     assert!(vis <= width, "Overflow: vis={} width={}", vis, width);
 }
+
+#[test]
+fn test_input_render_clamps_at_narrow_widths() {
+    let mut input = Input::new();
+    input.set_focused(true);
+    type_text(&mut input, "hello world");
+    for w in [0usize, 1, 2, 3, 8] {
+        for line in input.render(w) {
+            let vis = xylitol_tui::utils::visible_width(&line);
+            assert!(vis <= w, "width={w}: visible {vis} > budget; line={line:?}");
+        }
+    }
+}
