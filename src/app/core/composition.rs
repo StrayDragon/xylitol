@@ -17,6 +17,8 @@ use crate::runtime_protocol::{
     XyBashExecutor, XyEventSink, XyExportIo, XyModelBuilder, XyPermission, XySessionStore,
 };
 
+pub use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
+
 /// Options for [`build_agent`].
 pub struct BuildAgentOptions {
     pub model_registry: ModelRegistry,
@@ -30,6 +32,9 @@ pub struct BuildAgentOptions {
     pub permission: Option<Arc<dyn XyPermission>>,
     pub steering_mode: QueueMode,
     pub follow_up_mode: QueueMode,
+    /// Optional lifecycle sink (compaction etc.). Default: in-process [`EventBus`].
+    /// Turn UX still uses the `Driver::run` EventStream, not this bus.
+    pub event_sink: Option<Arc<dyn XyEventSink>>,
 }
 
 impl Default for BuildAgentOptions {
@@ -48,6 +53,7 @@ impl Default for BuildAgentOptions {
             permission: None,
             steering_mode: QueueMode::default(),
             follow_up_mode: QueueMode::default(),
+            event_sink: None,
         }
     }
 }
@@ -56,15 +62,21 @@ impl Default for BuildAgentOptions {
 ///
 /// This is the single composition-root helper used by CLI, RPC, server, and
 /// future TUI/GUI modes. It injects the concrete infra implementations
-/// (`SessionManager`, `EventBus`, `InfraBashExecutor`, `StdExportIo`) into the
+/// (`SessionManager`, `XyEventSink`, `InfraBashExecutor`, `StdExportIo`) into the
 /// agent without letting `agent/` know about `infra/` types.
+///
+/// **Event paths:** turn progress is the `Driver::run` → `XyEvent` stream.
+/// The injected [`XyEventSink`] (default [`EventBus`]) is for side lifecycle
+/// (e.g. compaction); it is not the multi-client turn bus.
 pub fn build_agent(options: BuildAgentOptions) -> Result<ReActAgent, String> {
     let sessions_dir = SessionManager::default_dir();
     std::fs::create_dir_all(&sessions_dir).map_err(|e| format!("create sessions dir: {e}"))?;
     let session_mgr = SessionManager::new(sessions_dir);
 
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
-    let sink: Arc<dyn XyEventSink> = Arc::new(EventBus::new());
+    let sink: Arc<dyn XyEventSink> = options
+        .event_sink
+        .unwrap_or_else(|| Arc::new(EventBus::new()));
     let bash_executor: Arc<dyn XyBashExecutor> = Arc::new(InfraBashExecutor::new());
     let export_io: Arc<dyn XyExportIo> = Arc::new(StdExportIo::new());
 
@@ -97,4 +109,76 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<ReActAgent, String> {
     }
 
     builder.build()
+}
+
+/// Owns MCP client connections for a local Driver session (composition seam).
+///
+/// Held by the surface (cli/server) so connections stay alive across turns and
+/// can be shut down / replaced on reload without `Driver` importing infra.
+pub struct McpSession {
+    manager: Option<Arc<crate::infra::mcp::McpClientManager>>,
+}
+
+impl Default for McpSession {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl McpSession {
+    pub fn new() -> Self {
+        Self { manager: None }
+    }
+
+    #[cfg(test)]
+    pub fn has_manager(&self) -> bool {
+        self.manager.is_some()
+    }
+
+    /// Reload MCP tools onto `driver` (empty servers → builtins only, zero-cost).
+    pub async fn reload(
+        &mut self,
+        driver: &mut crate::app::core::driver::InProcessDriver,
+        servers: &[McpServerSpec],
+    ) -> Result<(), String> {
+        use crate::infra::mcp::{connect_and_discover, mcp_enabled};
+
+        if let Some(old) = self.manager.take() {
+            old.shutdown().await;
+        }
+
+        let infra = McpServerSpec::to_infra_list(servers);
+        let mut tools = ToolSet::from_iter(crate::infra::tools::default_tools());
+        if mcp_enabled(&Some(infra.clone()))
+            && let Some((manager, mcp_tools)) = connect_and_discover(&infra).await?
+        {
+            tools = tools.merge(ToolSet::from_iter(mcp_tools));
+            self.manager = Some(manager);
+        }
+
+        driver.set_tools(tools);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infra::mcp::mcp_enabled;
+
+    #[tokio::test]
+    async fn reload_empty_is_zero_cost_no_manager() {
+        let agent = build_agent(BuildAgentOptions::default()).expect("build");
+        let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
+            tempfile::tempdir().unwrap().path().join("sessions"),
+        ));
+        let mut driver = crate::app::core::driver::InProcessDriver::new(agent, store);
+        let mut mcp = McpSession::new();
+        mcp.reload(&mut driver, &[]).await.unwrap();
+        assert!(!mcp.has_manager());
+        assert!(!mcp_enabled(&Some(vec![])));
+        let names: Vec<_> = driver.tool_names_for_test();
+        assert!(names.iter().all(|n| !n.starts_with("mcp:")));
+        assert!(names.iter().any(|n| n == "read"));
+    }
 }

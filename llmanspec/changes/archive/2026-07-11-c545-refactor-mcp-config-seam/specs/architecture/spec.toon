@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ar-mcp-seam,MCP 配置经嵌入缝,"System MUST 向嵌入方提供不依赖 infra 路径的 MCP 服务器描述（或等价句柄），使 bootstrap/reload 可在不 reach-in infra::mcp 的情况下传递配置。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ar-mcp-seam,no-infra-path,"","审查 xylitol::embed 与 BootstrappedRuntime","公开字段/方法签名不出现 infra::mcp::McpServerConfig"

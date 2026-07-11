@@ -10,9 +10,9 @@
 
 **后置 / 配置启用**：Server · MCP（见下）· 更多 provider 适配器 · Export / 周边能力。未配置则不装配。
 
-**冻结**：产品 TUI（`src/app/tui`）——开闸条件：命名公约与相关重构落地，且用户明确开闸。引擎能力可在 `packages/xylitol-tui` / `agent_demo` 继续长。
+**冻结**：产品 TUI（`src/app/tui`）——**已开闸（2026-07-11）**。下一实现入口：`c465-add-app-tui-bridge`。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。
 
-共享流水线：`bootstrap` → `composition::build_agent` → `Driver::run` → ReAct → `XyEvent` → 应用面。
+共享流水线：`bootstrap` → `composition::build_agent` → `Driver::run` → ReAct → `XyEvent` → 应用面。库嵌入入口：`xylitol::embed`；矩阵与理想/现状：`docs/architecture/库与多客户端.md`。
 
 ## 分层不变量（normative）
 
@@ -38,13 +38,13 @@ protocol ───────────────────────�
 - `infra/` — ports 的实现（provider、tools、session、config、…）；vendor 类型（async-openai、rmcp、…）关在本层。
 - `agent/` — ReAct / session / model / tools 编排；公共入口为 mod 级 re-export。
 - `protocol/` — `Command` / `Event` 线协议，传输无关。
-- `app/` — 应用面 + `core/` seam。状态：`cli/print` ✅；`server/` 🟡；`tui/` ⏸ 冻结（见 `src/app/tui/AGENTS.md`）；`gui` 🔴。跨面：`core/{bootstrap,dispatch,composition,driver}`。落地顺序 print → server → TUI（TUI 开闸后），禁止并行铺骨架。
+- `app/` — 应用面 + `core/` seam。状态：`cli/print` ✅；`server/` ✅（Driver + REST 命令面）；`tui/` 🟢 已开闸（先 c465 bridge）；`gui` 🔴。跨面：`core/{bootstrap,dispatch,composition,driver}`。落地顺序 print → server → TUI，禁止并行铺无关骨架。
 
 模块级文件地图以目录与代码为准；本文件不维护易变文件清单。
 
 ## `Xy*` 命名与库导出（normative）
 
-近期要做**精选 `pub use`**。`Xy*` 标记的是**库入口级契约**，不是所有类型都加前缀。
+近期要做**精选 `pub use`**（清单与注释在 `src/lib.rs`）+ 嵌入缝 `src/embed.rs`。`Xy*` 标记的是**库入口级契约**，不是所有类型都加前缀。
 
 | 用 `Xy*` | 不用 `Xy*` |
 |---|---|
@@ -58,14 +58,16 @@ protocol ───────────────────────�
 
 **schemars**：配置/settings 的 `JsonSchema` derive 放在 **infra（或 config 面）**；`domain` 领域类型默认只保留 serde，避免把 schema 生成依赖绑进领域层。若某 domain 类型确需 schema，先论证是否应下沉为 config DTO。
 
-**队列运行时**：产品语义见 `docs/architecture/queue-and-interrupt.md`；实现见 c525。QueueUpdate MUST 进活跃 EventStream（见 c465 design P0）。
+**队列运行时**：产品语义见 `docs/architecture/插话续跑与中止.md`；实现见 archive c525。QueueUpdate MUST 进活跃 EventStream。
+
+**EventBus / `XyEventSink`**：装配时注入的 sink 用于侧路生命周期（如 compaction），**不是**多 client 的 turn 总线；turn 进度走 `Driver::run` 的 `XyEvent` 流。可经 `BuildAgentOptions.event_sink` 替换默认 EventBus。
 
 
 ## Trust / Permission / MCP
 
-- **Trust（对齐 pi）**：决定是否加载**项目本地**资源（settings、prompts、skills、themes、append system 等）。未信任则忽略项目侧配置。工具调用**不做** permission popup 平台。
-- **Permission**：开箱 **allow-all**。`XyPermission` / GlobPolicy 可作可选增强，不是默认交互路径。
-- **MCP**：`mcp_servers`（或等价）**有配置才装配**；无配置则不创建 client/工具（zero-cost）。须支持**动态配置与重载**（改配置后可热更新工具集，无需重启进程为硬性目标；实现可分阶段）。默认不进「未配置也加载」路径。
+- **Trust（对齐 pi）**：决定是否加载**项目本地**资源（settings、prompts、skills、themes、append system 等）。未信任则忽略项目侧配置。工具调用**不做** permission popup 平台。产品语义：`docs/architecture/信任与项目闸.md`。
+- **Permission**：开箱 **allow-all**。`XyPermission` / GlobPolicy 可作可选增强，不是默认交互路径。产品语义：`docs/architecture/工具与权限.md`。
+- **MCP**：`mcp_servers`（或等价）**有配置才装配**；无配置则不创建 client/工具（zero-cost）。须支持**动态配置与重载**（改配置后可热更新工具集，无需重启进程为硬性目标；实现可分阶段）。默认不进「未配置也加载」路径。产品语义：`docs/architecture/扩展能力-MCP.md`。
 
 ## Provider 适配
 

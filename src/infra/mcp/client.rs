@@ -34,10 +34,14 @@ impl McpClientManager {
 
     /// Connect to all MCP servers from the app configuration.
     pub async fn connect(&self, config: &AppConfig) -> Result<(), String> {
-        let Some(ref servers) = config.mcp_servers else {
-            return Ok(());
-        };
+        match &config.mcp_servers {
+            Some(servers) if !servers.is_empty() => self.connect_servers(servers).await,
+            _ => Ok(()),
+        }
+    }
 
+    /// Connect to an explicit server list (empty = no-op).
+    pub async fn connect_servers(&self, servers: &[McpServerConfig]) -> Result<(), String> {
         for server_config in servers {
             let name = server_config.name.clone();
             let result = match server_config.transport {
@@ -175,6 +179,17 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let manager = McpClientManager::new();
         let config = AppConfig::default();
+        rt.block_on(manager.connect(&config)).unwrap();
+        let services = rt.block_on(async { manager.services.lock().await });
+        assert!(services.is_empty());
+    }
+
+    #[test]
+    fn test_connect_with_empty_servers_list() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let manager = McpClientManager::new();
+        let mut config = AppConfig::default();
+        config.mcp_servers = Some(vec![]);
         rt.block_on(manager.connect(&config)).unwrap();
         let services = rt.block_on(async { manager.services.lock().await });
         assert!(services.is_empty());
