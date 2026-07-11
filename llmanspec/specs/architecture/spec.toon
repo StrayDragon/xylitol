@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: architecture
 purpose: "Architecture conventions — layering rules, dependency direction, and module organization enforced by arch_guard."
 valid_scope[1]: src/AGENTS.md
-requirements[11]{req_id,title,statement}:
+requirements[12]{req_id,title,statement}:
   ar01,清除 pi 文档引用,All source files in src/ MUST NOT reference pi coding agent or its TypeScript modules in doc comments. References to pi's design rationale MUST be replaced with independent descriptions of the module's actual responsibilities.
   ar02,组件粒度边界（修订：补上限）,"Components with fewer than 100 lines or 5 methods and no behavioral logic MUST be inlined into their parent struct. Conversely, inlined blocks that exceed approximately 100 lines, have independent behavioral logic, and are conceptually cohesive MUST be extracted as named collaborator objects (per agent-session.as30). The Agent capability aggregate (formerly AgentSession) MUST NOT grow unboundedly as a single struct or single file; export, bash, permission, stats, and trust concerns MUST be extracted as named collaborators so the aggregate stays cohesive."
   ar03,宏系统评估文档,"The project MUST produce docs/architecture/macro-registration.md analyzing the feasibility and ROI of replacing runtime registration (tools, commands, providers) with Rust proc-macro or declarative macro alternatives. This is a design evaluation only — no macro code shall be produced in this change."
@@ -14,7 +14,8 @@ requirements[11]{req_id,title,statement}:
   ar09,精选 pub use 清单,System MUST 在 src/lib.rs（或等价公开入口）维护精选 pub use，至少覆盖 XyModel、XyTool、XySessionStore、XyEvent、XyChunk 及文档化的配套错误/配置类型；未列入清单的内部模块 MUST NOT 被误当作稳定公开 API。
   ar10,domain 不绑 schemars,"src/domain 下的领域类型 MUST NOT derive schemars::JsonSchema；需要 JSON Schema 的配置/settings DTO MUST 位于 infra/config 或 infra/settings（或等价配置边界）并在该处 derive。"
   "ar-embed1",公开嵌入装配缝,"System MUST 向库用户提供文档化的嵌入入口（含 bootstrap/Driver 或等价），使外部 crate 无需 reach-in agent::session 或 infra 具体类型即可装配并驱动一轮对话。"
-scenarios[11]{req_id,id,given,when,then}:
+  "ar-mcp-seam",MCP 配置经嵌入缝,"System MUST 向嵌入方提供不依赖 infra 路径的 MCP 服务器描述（或等价句柄），使 bootstrap/reload 可在不 reach-in infra::mcp 的情况下传递配置。"
+scenarios[12]{req_id,id,given,when,then}:
   ar01,"pi-refs-cleared",src/ files exist with 'Aligns with pi' comments,running rg 'Aligns with pi' src/,zero matches found
   ar02,"aggregate-decomposed",the Agent (formerly AgentSession) had grown to 25 fields mixing export bash permission stats trust,the change is applied,those concerns live in named collaborator objects and the Agent aggregate stays cohesive instead of growing unboundedly
   ar03,"macro-eval-doc","llmanspec/changes/c240-consolidate-architecture/ is open",running the macro evaluation task,"docs/architecture/macro-registration.md exists with ROI analysis for #[tool], #[command], #[provider]"
@@ -26,3 +27,4 @@ scenarios[11]{req_id,id,given,when,then}:
   ar09,"pub-use-exists","",检查 src/lib.rs,存在精选 pub use 且文档标明稳定契约
   ar10,"no-domain-jsonschema","",rg JsonSchema 于 src/domain,零匹配
   "ar-embed1","embed-surface","",审查 lib 公开 API,存在嵌入入口且文档列出稳定符号；Driver/bootstrap 可被 crate 外路径引用
+  "ar-mcp-seam","no-infra-path","","审查 xylitol::embed 与 BootstrappedRuntime","公开字段/方法签名不出现 infra::mcp::McpServerConfig"

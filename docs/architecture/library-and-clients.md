@@ -64,8 +64,8 @@ flowchart TB
 | ~~Server 旁路 Driver~~ | ~~双后端~~ | ✅ Server-on-Driver（c535） |
 | ~~线协议丢生命周期事件~~ | ~~远程看不到队列等~~ | ✅ `QueueUpdate` 上线（c540）；其余仍可降级 |
 | `dispatch` 无消费方 | Command 路径纸面存在 | c550 Server 接线；TUI slash 随后 |
-| MCP 配置类型泄漏 | embed 仍见 infra | c545 |
-| TUI 未消费 Driver 流 | 空壳 | c465 bridge |
+| ~~MCP 配置类型泄漏~~ | ~~embed 仍见 infra~~ | ✅ `McpServerSpec`（c545） |
+| TUI 未消费 Driver 流 | 空壳 | c465 bridge（4xx，本波不处理） |
 
 ## 嵌入方应依赖什么（产品规则）
 
@@ -73,7 +73,7 @@ flowchart TB
 2. **不要**把 `infra::*` 具体类型或 `agent::session::*` 当稳定 API；也不要依赖 `app::core` 路径（crate 内 `pub(crate)`）。
 3. 需要新能力时：**扩 `embed` 缝**，不要 reach-in。
 4. 未配置的能力（如 MCP）必须 **zero-cost**（不装配则无运行时负担）。
-5. **已知泄漏（非承诺）**：`BootstrappedAgent.agent` 仍是 `ReActAgent`（用 `into_runtime`）；`mcp_servers` 仍是 infra 配置类型。`dispatch` / `RemoteDriver` **不**在 `embed` 中，待 Server/TUI/c540 接线后再导出。
+5. **已知泄漏（非承诺）**：`BootstrappedAgent.agent` 仍是 `ReActAgent`（用 `into_runtime`）。MCP 经 [`McpServerSpec`](../../src/app/core/mcp_spec.rs) 传递。`dispatch` / `RemoteDriver` **不**在 `embed` 中（Server 已 REST；TUI slash 另议）。
 
 ## 与其它文档
 
