@@ -704,22 +704,30 @@ fn agent_demo_streaming_fence_emits_ansi_when_closed() {
 #[test]
 fn agent_demo_seed_markdown_showcase_c530() {
     let mut h = TuiTestHarness::new(120, 80);
-    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
-        AtomicBool::new(false),
-    ))))
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )))
     .focus(Some(0));
     h.render_result().expect("initial render");
+    // Slash popup steals Enter for selection — Tab completes, then Enter submits.
+    h.keys("/md\t\r");
+    h.render_result().expect("after /md");
     let text = h.tui.terminal.scroll_buffer().join("\n");
     assert!(
         text.contains("Markdown showcase"),
-        "seed should show markdown showcase title:\n{text}"
+        "showcase title:\n{text}"
     );
     assert!(
         text.contains("docs (https://example.com/md)"),
         "links must render as text (url):\n{text}"
     );
     assert!(
-        text.contains("**bold**") && text.contains("`inline`"),
+        text.contains("diagram (https://example.com/a.png)"),
+        "images must render as alt (url):\n{text}"
+    );
+    assert!(
+        text.contains("**bold**") && text.contains("`inline`") && text.contains("~~strike~~"),
         "inline round-trip markers must be visible:\n{text}"
     );
     assert!(
@@ -728,14 +736,35 @@ fn agent_demo_seed_markdown_showcase_c530() {
     );
     assert!(
         !text.contains('┌') && !text.lines().any(|l| l.contains("```")),
-        "no box-drawing table or fence chrome in viewport:\n{text}"
+        "no box-drawing table or fence chrome:\n{text}"
     );
-    // Heading text without leading `#` on the showcase line
     assert!(
         !text
             .lines()
-            .any(|l| l.trim_start().starts_with("## Markdown")),
-        "rendered heading must not keep ## prefix:\n{text}"
+            .any(|l| l.trim_start().starts_with("# Markdown")),
+        "rendered heading must not keep # prefix:\n{text}"
+    );
+}
+
+#[test]
+fn agent_demo_slash_md_injects_showcase() {
+    let mut h = TuiTestHarness::new(120, 48);
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+    h.keys("/md\t\r");
+    h.render_result().expect("after /md");
+    let text = h.tui.terminal.scroll_buffer().join("\n");
+    assert!(
+        text.contains("request Markdown showcase"),
+        "/md should inject showcase request line:\n{text}"
+    );
+    assert!(
+        text.contains("Markdown showcase (c530)"),
+        "/md should inject showcase body:\n{text}"
     );
 }
 

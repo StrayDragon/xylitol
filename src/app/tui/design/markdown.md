@@ -134,5 +134,6 @@ bob       28  design
 |---|---|
 | 本文规范 | SSOT |
 | `packages/xylitol-tui` Markdown 组件 | **已按本文收敛**（c530-update-package-tui-markdown） |
-| `agent_demo` | seed 全语法 showcase + 流式代码块（源 fence / 显示无围栏） |
+| `agent_demo` | 瘦 seed + **`/md` / Ctrl+P→markdown** 注入全语法 showcase；流式可含更富语法（c530） |
 | playground Markdown 槽 | 示意对齐本文；非运行时 |
+| Command plate 整理 | 见变更 `c535-add-package-tui-agent-demo-plate`（待 apply） |
