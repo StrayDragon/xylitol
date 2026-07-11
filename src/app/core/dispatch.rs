@@ -162,6 +162,9 @@ pub async fn dispatch(
                 "assistant_messages": stats.assistant_messages,
                 "total_messages": stats.total_messages,
                 "thinking_level": stats.thinking_level,
+                "model": stats.model.map(|(p, m)| {
+                    serde_json::json!({ "provider": p, "model_id": m })
+                }),
             })))
         }
         Command::ExportHtml { output_path, .. } => {
