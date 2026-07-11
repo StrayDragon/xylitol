@@ -20,11 +20,12 @@
 //! ## Embed seam ([`embed`])
 //!
 //! Multi-client / external-crate assembly: [`embed::bootstrap`],
+//! [`embed::BootstrappedRuntime`] / [`embed::BootstrappedAgent::into_runtime`],
 //! [`embed::InProcessDriver`], [`embed::Driver`], [`embed::BuildAgentOptions`],
-//! [`embed::McpSession`], [`embed::dispatch`]. Do **not** treat `infra::*` or
-//! `agent::session::*` as a stability promise — extend the seam instead.
+//! [`embed::McpSession`]. Do **not** treat `infra::*` or `agent::session::*`
+//! as a stability promise — extend the seam instead.
 //!
-//! Not in the curated surface: infra concrete types, agent session internals.
+//! Not exported from `embed`: `dispatch`, `RemoteDriver`, infra concrete types.
 
 pub mod agent;
 pub mod app;
