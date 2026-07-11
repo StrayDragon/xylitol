@@ -21,7 +21,8 @@ components:
 3. Diff 使用 `{colors.diff-added}` / `{colors.diff-removed}` / `{colors.diff-context}`（见 [`diff-block.md`](./diff-block.md)）。
 4. 工具块背景使用 `{colors.tool-pending-bg}` / `{colors.tool-success-bg}` / `{colors.tool-error-bg}`（见 [`expandable.md`](./expandable.md)）；bg 闭包只重置背景（`\x1b[49m`）。
 5. 一屏最多一处 `{colors.accent}`（通常 busy spinner 或焦点边框）。
-6. 查任意 `{colors.*}` 表达式：打开 [`../DESIGN.md`](../DESIGN.md) 的 `colors:` 段。
+6. Markdown 标题分级色见 [`markdown.md`](./markdown.md)（`md-h1`…`md-h6` → accent / on-surface / muted）；链接 URL 可用 underline。
+7. 查任意 `{colors.*}` 表达式：打开 [`../DESIGN.md`](../DESIGN.md) 的 `colors:` 段。
 
 ## 默认意向
 
