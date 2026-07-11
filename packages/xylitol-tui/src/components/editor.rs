@@ -1245,6 +1245,7 @@ impl Editor {
         let needle = prefix
             .strip_prefix('/')
             .or_else(|| prefix.strip_prefix('@'))
+            .or_else(|| prefix.strip_prefix('$'))
             .unwrap_or(prefix);
         let mut first_prefix = items.len();
         for (i, item) in items.iter().enumerate() {
