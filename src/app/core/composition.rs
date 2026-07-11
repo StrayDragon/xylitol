@@ -98,3 +98,62 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<ReActAgent, String> {
 
     builder.build()
 }
+
+/// Reload MCP tools onto an agent (composition-root seam; may use infra).
+///
+/// - Empty / missing servers → no manager constructed; ToolSet = builtins only.
+/// - Non-empty → connect, discover, merge `mcp:*` tools; store manager in `mcp`.
+///
+/// Takes effect on the next agent `run`. Shuts down any previous manager in `mcp`.
+pub async fn reload_mcp_tools(
+    agent: &mut ReActAgent,
+    mcp: &mut Option<Arc<crate::infra::mcp::McpClientManager>>,
+    servers: &[crate::infra::mcp::McpServerConfig],
+) -> Result<(), String> {
+    use crate::infra::mcp::{connect_and_discover, mcp_enabled};
+
+    if let Some(old) = mcp.take() {
+        old.shutdown().await;
+    }
+
+    let mut tools = ToolSet::from_iter(crate::infra::tools::default_tools());
+    if mcp_enabled(&Some(servers.to_vec()))
+        && let Some((manager, mcp_tools)) = connect_and_discover(servers).await?
+    {
+        tools = tools.merge(ToolSet::from_iter(mcp_tools));
+        *mcp = Some(manager);
+    }
+
+    agent.set_tools(tools);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infra::mcp::mcp_enabled;
+
+    #[tokio::test]
+    async fn reload_empty_is_zero_cost_no_manager() {
+        let agent = build_agent(BuildAgentOptions::default()).expect("build");
+        let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
+            tempfile::tempdir().unwrap().path().join("sessions"),
+        ));
+        let mut driver = crate::app::core::driver::InProcessDriver::new(agent, store);
+        let mut mcp = None;
+        reload_mcp_tools(driver.agent_mut(), &mut mcp, &[])
+            .await
+            .unwrap();
+        assert!(mcp.is_none());
+        assert!(!mcp_enabled(&Some(vec![])));
+        let names: Vec<_> = driver
+            .agent_mut()
+            .inner()
+            .tools()
+            .iter()
+            .map(|t| t.name().to_string())
+            .collect();
+        assert!(names.iter().all(|n| !n.starts_with("mcp:")));
+        assert!(names.iter().any(|n| n == "read"));
+    }
+}

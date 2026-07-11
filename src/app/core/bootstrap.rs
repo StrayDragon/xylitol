@@ -95,6 +95,8 @@ pub struct BootstrappedAgent {
     /// Driver session commands (SwitchSession/GetMessages) operate without
     /// reaching into agent internals.
     pub store: Arc<dyn crate::runtime_protocol::XySessionStore>,
+    /// MCP servers from loaded config (`None` / empty = disabled, zero-cost).
+    pub mcp_servers: Option<Vec<crate::infra::mcp::McpServerConfig>>,
 }
 
 /// Resolved assembly inputs — the *ingredients* ready for `build_agent`, prior
@@ -123,6 +125,8 @@ pub struct ResolvedAssembly {
     pub session_id: String,
     /// Diagnostics produced during resolution.
     pub warnings: Vec<BootstrapWarning>,
+    /// MCP servers from YAML (`None` / empty = not enabled).
+    pub mcp_servers: Option<Vec<crate::infra::mcp::McpServerConfig>>,
 }
 
 impl ResolvedAssembly {
@@ -418,6 +422,8 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         .clone()
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
+    let mcp_servers = app_config.as_ref().and_then(|c| c.mcp_servers.clone());
+
     Ok(ResolvedAssembly {
         model_registry,
         system_prompt,
@@ -434,6 +440,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         default_profile_model,
         session_id,
         warnings,
+        mcp_servers,
     })
 }
 
@@ -447,6 +454,7 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     let mut assembly = resolve_assembly(&input)?;
     let discovered_templates = assembly.discovered_templates.clone();
     let session_id = assembly.session_id.clone();
+    let mcp_servers = assembly.mcp_servers.clone();
     let target_model = model.or_else(|| assembly.default_profile_model.clone());
     let mut warnings = std::mem::take(&mut assembly.warnings);
 
@@ -486,6 +494,7 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
         session_id,
         warnings,
         store,
+        mcp_servers,
     })
 }
 
