@@ -91,13 +91,10 @@ pub struct BootstrappedAgent {
     /// Diagnostics produced during assembly (surface renders these).
     pub warnings: Vec<BootstrapWarning>,
     /// Session store handle, the same instance the agent holds internally.
-    /// Surfaces construct an [`InProcessDriver`] from this + the agent + the
-    /// model builder, so Driver session commands (SwitchSession/GetMessages)
-    /// operate without reaching into agent internals.
+    /// Surfaces construct an [`InProcessDriver`] from this + the agent so
+    /// Driver session commands (SwitchSession/GetMessages) operate without
+    /// reaching into agent internals.
     pub store: Arc<dyn crate::runtime_protocol::XySessionStore>,
-    /// Model builder, the same instance injected into the agent. Surfaces pass
-    /// it to [`InProcessDriver::new`].
-    pub model_builder: crate::runtime_protocol::XyModelBuilder,
 }
 
 /// Resolved assembly inputs — the *ingredients* ready for `build_agent`, prior
@@ -476,22 +473,19 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
         }
     }
 
-    // Reconstruct the same session store + model builder injected into the
-    // agent by composition::build_agent. Both are stateless / dir-backed, so a
-    // fresh instance points at the same backing data as the agent's internal
-    // copies — this lets an InProcessDriver serve session/model commands
-    // without composition::build_agent having to return its injected ports.
+    // Reconstruct the same session store injected into the agent by
+    // composition::build_agent. It is dir-backed, so a fresh instance points at
+    // the same backing data as the agent's internal copy — this lets an
+    // InProcessDriver serve session commands without composition::build_agent
+    // having to return its injected ports.
     let store: Arc<dyn crate::runtime_protocol::XySessionStore> =
         Arc::new(SessionManager::new(SessionManager::default_dir()));
-    let model_builder: crate::runtime_protocol::XyModelBuilder =
-        Arc::new(crate::infra::provider::factory::build_provider);
 
     Ok(BootstrappedAgent {
         agent,
         session_id,
         warnings,
         store,
-        model_builder,
     })
 }
 

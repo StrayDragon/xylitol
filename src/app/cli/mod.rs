@@ -152,10 +152,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         agent,
         session_id,
         store,
-        model_builder,
         ..
     } = bootstrapped;
-    let mut driver = InProcessDriver::new(agent, store, model_builder);
+    let mut driver = InProcessDriver::new(agent, store);
 
     // ── dispatch by mode ───────────────────────────────────────
     // TUI: when no prompt is supplied and stdin is a TTY (mirroring pi's

@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "TBD - created by archiving change c25-add-agent-loop. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[35]{req_id,title,statement}:
+requirements[36]{req_id,title,statement}:
   r1,"execution-loop","System MUST implement a self-contained ReAct loop (XyRunner) that calls XyModel for generation and dispatches XyTool calls until completion or max_iterations."
   r2,"event-system","System MUST emit AgentEvent variants (TextDelta / ThinkingDelta / ToolCallStart / ToolCallEnd / StepComplete / Error) from XyRunner without any adk-core Event dependency."
   r3,"session-runtime",System MUST manage session history via XySession trait with InMemorySession as default backend.
@@ -38,7 +38,8 @@ requirements[35]{req_id,title,statement}:
   "ar-q2","react-drains-steering","ReAct 循环 MUST 在每一轮模型调用之前 drain steering 队列并将消息注入历史；MUST 在即将结束（无 tool_calls 且将停止）之前 drain follow-up 队列；若 follow-up 非空 MUST 继续循环而非立即 AgentEnd。"
   "ar-q3","queue-update-events","入队、drain 与 clear 之后，runtime MUST 发射 XyEvent::QueueUpdate，携带当前 steer_count 与 follow_up_count。"
   "ar-q4","abort-clears-steer-keeps-followup","调用 abort 时 runtime MUST 清空 steering 队列且 MUST NOT 清空 follow-up 队列；显式 clear_queue API MUST 允许分别或同时清空两侧队列。"
-scenarios[40]{req_id,id,given,when,then}:
+  "ar-ev1",未知事件可降级,若未来扩展 XyEvent（含可选 Extension/Custom 载荷），应用面与 bridge MUST 对未识别变体降级处理（如 tracing），MUST NOT panic；核心循环 MUST 不依赖厂商专属变体才能完成一轮工具调用。
+scenarios[41]{req_id,id,given,when,then}:
   r1,"react-loop",a mock XyModel returns text then tool call then final text,XyRunner executes,all events are emitted and loop terminates after tool response
   r1,"max-iterations",XyModel always returns tool calls,XyRunner reaches max_iterations,loop terminates with MaxIterationsReached error
   r2,"no-adk-events",agent is executing,events are emitted,"no adk_core::Event or adk_runner types appear in the event stream"
@@ -79,3 +80,4 @@ scenarios[40]{req_id,id,given,when,then}:
   "ar-q2","steer-inject","",流中 steer 一条消息后当前工具轮结束进入下一模型轮,steering 文本已注入历史并参与下一轮模型调用
   "ar-q3","emit-counts","",steer 入队一条,观察到 QueueUpdate 且 steer_count 为 1
   "ar-q4","abort-keep-fu","steer 与 follow-up 队列均非空",调用 abort,"steer 为空且 follow-up 仍保留原消息"
+  "ar-ev1",degrade,消费者收到未映射事件变体,渲染或 bridge 处理,记录日志且不崩溃

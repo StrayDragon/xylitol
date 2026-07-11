@@ -1329,19 +1329,6 @@ pub fn assert_session_cwd_exists(
 
 #[async_trait::async_trait]
 impl XySessionStore for SessionManager {
-    async fn load_context(
-        &self,
-        session_id: &str,
-    ) -> Result<Vec<crate::domain::message::AgentMessage>, String> {
-        self.build_session_context_v2(session_id).await
-    }
-
-    async fn append_entry(&self, session_id: &str, entry: serde_json::Value) -> Result<(), String> {
-        let entry: super::types::SessionEntry =
-            serde_json::from_value(entry).map_err(|e| format!("deserialize session entry: {e}"))?;
-        self.append(session_id, &entry).await
-    }
-
     async fn exists(&self, session_id: &str) -> bool {
         self.exists(session_id)
     }
