@@ -85,9 +85,8 @@
 
 | 优先级感 | 候选 | 备注 |
 |---|---|---|
+| done | `MarkdownOptions` 死字段删除；list/table/quote 单次折行（`prewrapped`） | `polish/tui-components` 跟进 |
 | 低摩擦 | playground 再补组件槽 / 对照 DESIGN MUST | c555 已同步 token；非阻塞 |
-| 低摩擦 | `MarkdownOptions` 死字段（`preserve_*` 未接线）清掉或真用 | 纯包内 |
-| 体验 | MD 双折行（list 内 wrap + 外层再 wrap）是否可收敛 | 观感边角，需用例 |
 | 体验 | SelectList / SettingsList / Loader 窄宽与空态边角 | demo 已用，无提案压力 |
 | 延后 | Overlay 完整 focus-restore（PI_DELTAS D08） | 明确延后，非本批 |
 | 延后 | Image 组件 / 完整 overlay（AGENTS 裁剪） | 不得回退成完整 port |

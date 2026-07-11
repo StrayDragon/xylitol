@@ -52,12 +52,6 @@ pub struct MarkdownTheme {
     pub code_block_indent: Option<String>,
 }
 
-#[derive(Default)]
-pub struct MarkdownOptions {
-    pub preserve_ordered_list_markers: bool,
-    pub preserve_backslash_escapes: bool,
-}
-
 // ── Markdown component ──────────────────────────────────────────────────────
 
 pub struct Markdown {
@@ -66,7 +60,6 @@ pub struct Markdown {
     padding_y: usize,
     default_text_style: Option<DefaultTextStyle>,
     theme: MarkdownTheme,
-    _options: MarkdownOptions,
 
     cached_text: Option<String>,
     cached_width: Option<usize>,
@@ -80,7 +73,6 @@ impl Markdown {
         padding_y: usize,
         theme: MarkdownTheme,
         default_text_style: Option<DefaultTextStyle>,
-        options: Option<MarkdownOptions>,
     ) -> Self {
         Self {
             text,
@@ -88,7 +80,6 @@ impl Markdown {
             padding_y,
             theme,
             default_text_style,
-            _options: options.unwrap_or_default(),
             cached_text: None,
             cached_width: None,
             cached_lines: None,
@@ -130,7 +121,7 @@ impl Component for Markdown {
 
         // ---------------------------------------------------------------
         // Collect block-level events into styled strings.
-        let mut rendered: Vec<String> = Vec::new();
+        let mut rendered: Vec<MdLine> = Vec::new();
         let mut idx = 0;
         while idx < events.len() {
             let event = &events[idx];
@@ -147,9 +138,9 @@ impl Component for Markdown {
                     // Token-efficient: no `#` prefix; hierarchy via theme.heading(level) (c530).
                     let line = heading_lines.concat();
                     let n = level_to_usize(*level);
-                    rendered.push((self.theme.heading)(n, &line));
+                    rendered.push(MdLine::raw((self.theme.heading)(n, &line)));
                     if !next_is_space(&events, idx) {
-                        rendered.push(String::new());
+                        rendered.push(MdLine::raw(String::new()));
                     }
                 }
 
@@ -162,9 +153,9 @@ impl Component for Markdown {
                         &|s| apply_default_style(self, s),
                         "",
                     );
-                    rendered.push(text.concat());
+                    rendered.push(MdLine::raw(text.concat()));
                     if !next_is_space(&events, idx) && !next_is_list(&events, idx) {
-                        rendered.push(String::new());
+                        rendered.push(MdLine::raw(String::new()));
                     }
                 }
 
@@ -185,15 +176,18 @@ impl Component for Markdown {
                     // No fence / language bar / line numbers (c530).
                     if let Some(ref hc) = self.theme.highlight_code {
                         for hl in hc(&code, lang) {
-                            rendered.push(format!("{indent}{hl}"));
+                            rendered.push(MdLine::raw(format!("{indent}{hl}")));
                         }
                     } else {
                         for cl in code.lines() {
-                            rendered.push(format!("{indent}{}", (self.theme.code_block)(cl)));
+                            rendered.push(MdLine::raw(format!(
+                                "{indent}{}",
+                                (self.theme.code_block)(cl)
+                            )));
                         }
                     }
                     if !next_is_space(&events, idx) {
-                        rendered.push(String::new());
+                        rendered.push(MdLine::raw(String::new()));
                     }
                 }
 
@@ -201,15 +195,11 @@ impl Component for Markdown {
                     idx += 1;
                     let is_ordered = first_num.is_some() || list_is_ordered(&events, idx);
                     let start = first_num.unwrap_or(1) as usize;
-                    rendered.extend(render_list(
-                        self,
-                        &events,
-                        &mut idx,
-                        0,
-                        content_width,
-                        is_ordered,
-                        start,
-                    ));
+                    rendered.extend(
+                        render_list(self, &events, &mut idx, 0, content_width, is_ordered, start)
+                            .into_iter()
+                            .map(MdLine::prewrapped),
+                    );
                 }
 
                 Event::Start(Tag::BlockQuote(_)) => {
@@ -238,19 +228,23 @@ impl Component for Markdown {
                     for ql in quote_body {
                         for wl in wrap_text_with_ansi(&ql, content_width.max(1)) {
                             // Dim/italic only — no │ / box decoration (c530).
-                            rendered.push(wl);
+                            rendered.push(MdLine::prewrapped(wl));
                         }
                     }
                     if !next_is_space(&events, idx) {
-                        rendered.push(String::new());
+                        rendered.push(MdLine::raw(String::new()));
                     }
                 }
 
                 Event::Start(Tag::Table(_)) => {
                     idx += 1;
-                    rendered.extend(render_table(self, &events, &mut idx, content_width));
+                    rendered.extend(
+                        render_table(self, &events, &mut idx, content_width)
+                            .into_iter()
+                            .map(MdLine::prewrapped),
+                    );
                     if !next_is_space(&events, idx) {
-                        rendered.push(String::new());
+                        rendered.push(MdLine::raw(String::new()));
                     }
                 }
 
@@ -258,9 +252,9 @@ impl Component for Markdown {
                     idx += 1;
                     // Short rule — not a full-width wall (c530).
                     let w = content_width.clamp(4, 8);
-                    rendered.push((self.theme.hr)(&"─".repeat(w)));
+                    rendered.push(MdLine::raw((self.theme.hr)(&"─".repeat(w))));
                     if !next_is_space(&events, idx) {
-                        rendered.push(String::new());
+                        rendered.push(MdLine::raw(String::new()));
                     }
                 }
 
@@ -269,7 +263,7 @@ impl Component for Markdown {
                 }
 
                 Event::Text(t) => {
-                    rendered.push(apply_default_style(self, t));
+                    rendered.push(MdLine::raw(apply_default_style(self, t)));
                     idx += 1;
                 }
 
@@ -280,12 +274,14 @@ impl Component for Markdown {
         }
 
         // ── wrap + margins + background + padding ────────────────────────
+        // Skip a second wrap for list/table/quote rows (hanging indent / cell
+        // packing already fits content_width).
         let mut wrapped: Vec<String> = Vec::new();
         for line in rendered {
-            if is_image_line(&line) {
-                wrapped.push(line);
+            if line.prewrapped || is_image_line(&line.text) {
+                wrapped.push(line.text);
             } else {
-                wrapped.extend(wrap_text_with_ansi(&line, content_width));
+                wrapped.extend(wrap_text_with_ansi(&line.text, content_width));
             }
         }
 
@@ -345,6 +341,31 @@ impl Component for Markdown {
         self.cached_text = None;
         self.cached_width = None;
         self.cached_lines = None;
+    }
+}
+
+/// One Markdown output row before margin/pad.
+///
+/// `prewrapped` lines already respect `content_width` (list hanging indent,
+/// table rows, quote wraps) and must not go through a second wrap pass.
+struct MdLine {
+    text: String,
+    prewrapped: bool,
+}
+
+impl MdLine {
+    fn raw(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            prewrapped: false,
+        }
+    }
+
+    fn prewrapped(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            prewrapped: true,
+        }
     }
 }
 
@@ -1086,14 +1107,14 @@ mod tests {
 
     #[test]
     fn renders_paragraph() {
-        let mut md = Markdown::new("hello world".into(), 1, 1, identity_theme(), None, None);
+        let mut md = Markdown::new("hello world".into(), 1, 1, identity_theme(), None);
         let lines = md.render(30);
         assert!(lines.iter().any(|l| l.contains("hello")));
     }
 
     #[test]
     fn heading_has_no_hash_prefix() {
-        let mut md = Markdown::new("# Title".into(), 1, 1, identity_theme(), None, None);
+        let mut md = Markdown::new("# Title".into(), 1, 1, identity_theme(), None);
         let text = visible_join(&mut md, 30);
         assert!(text.contains("Title"));
         assert!(
@@ -1109,7 +1130,6 @@ mod tests {
             1,
             1,
             identity_theme(),
-            None,
             None,
         );
         let text = visible_join(&mut md, 40);
@@ -1128,7 +1148,6 @@ mod tests {
             0,
             identity_theme(),
             None,
-            None,
         );
         let text = visible_join(&mut md, 60);
         assert!(
@@ -1144,7 +1163,6 @@ mod tests {
             0,
             0,
             identity_theme(),
-            None,
             None,
         );
         let text = visible_join(&mut md, 60);
@@ -1164,7 +1182,6 @@ mod tests {
             0,
             0,
             theme,
-            None,
             None,
         );
         let raw = md.render(80).join("\n");
@@ -1192,7 +1209,6 @@ mod tests {
             0,
             theme,
             None,
-            None,
         );
         let text = visible_join(&mut md, 40);
         assert!(text.contains("H1:One"), "{text}");
@@ -1204,7 +1220,7 @@ mod tests {
 
     #[test]
     fn quote_has_no_bar() {
-        let mut md = Markdown::new("> hello quote".into(), 0, 0, identity_theme(), None, None);
+        let mut md = Markdown::new("> hello quote".into(), 0, 0, identity_theme(), None);
         let text = visible_join(&mut md, 40);
         assert!(text.contains("hello quote"));
         assert!(!text.contains('│'), "quote must not use box bar:\n{text}");
@@ -1212,7 +1228,7 @@ mod tests {
 
     #[test]
     fn renders_list() {
-        let mut md = Markdown::new("- one\n- two".into(), 1, 1, identity_theme(), None, None);
+        let mut md = Markdown::new("- one\n- two".into(), 1, 1, identity_theme(), None);
         let lines = md.render(20);
         assert!(lines.iter().any(|l| l.contains("one")));
         assert!(lines.iter().any(|l| l.contains("two")));
@@ -1225,7 +1241,6 @@ mod tests {
             0,
             0,
             identity_theme(),
-            None,
             None,
         );
         let text = visible_join(&mut md, 40);
@@ -1255,7 +1270,6 @@ mod tests {
             0,
             identity_theme(),
             None,
-            None,
         );
         let text = visible_join(&mut md, 80);
         assert!(
@@ -1272,7 +1286,7 @@ mod tests {
 
     #[test]
     fn empty_text_returns_empty() {
-        let mut md = Markdown::new("   ".into(), 0, 0, identity_theme(), None, None);
+        let mut md = Markdown::new("   ".into(), 0, 0, identity_theme(), None);
         assert!(md.render(20).is_empty());
     }
 
@@ -1283,7 +1297,6 @@ mod tests {
             0,
             0,
             identity_theme(),
-            None,
             None,
         );
         let text = visible_join(&mut md, 40);
@@ -1311,7 +1324,6 @@ mod tests {
             0,
             identity_theme(),
             None,
-            None,
         );
 
         let lines = md.render(72);
@@ -1332,7 +1344,6 @@ mod tests {
             0,
             identity_theme(),
             None,
-            None,
         );
 
         let text = visible_join(&mut md, 48);
@@ -1348,7 +1359,7 @@ mod tests {
 
     #[test]
     fn hr_is_short() {
-        let mut md = Markdown::new("---".into(), 0, 0, identity_theme(), None, None);
+        let mut md = Markdown::new("---".into(), 0, 0, identity_theme(), None);
         let text = visible_join(&mut md, 80);
         let rule = text.lines().find(|l| l.contains('─')).unwrap_or("");
         assert!(
@@ -1360,7 +1371,7 @@ mod tests {
     #[test]
     fn nested_lists_keep_indent_and_ordered_markers() {
         let src = "1. 有序一项\n2. 有序二项\n   - 嵌套无序 A\n   - 嵌套无序 B\n     1. 再嵌套有序\n3. 有序三项含 [链接](https://example.com/list) 与 `code`\n";
-        let mut md = Markdown::new(src.into(), 0, 0, identity_theme(), None, None);
+        let mut md = Markdown::new(src.into(), 0, 0, identity_theme(), None);
         // trim_end only — strip_ansi_for_empty().trim() would erase list indent.
         let lines: Vec<String> = md
             .render(48)
@@ -1398,6 +1409,37 @@ mod tests {
         assert!(
             lines.iter().any(|l| l.contains('`') && l.contains("code")),
             "trailing inline code must still render:\n{text}"
+        );
+    }
+
+    #[test]
+    fn list_hanging_indent_survives_narrow_prewrap() {
+        // Long URL forces wrap; continuation must keep spaces matching "3. "
+        // (prewrapped list lines must not be re-wrapped by the outer pass).
+        let src = "3. 有序三项含 [链接](https://example.com/list) 与 `code`\n";
+        let mut md = Markdown::new(src.into(), 0, 0, identity_theme(), None);
+        let lines: Vec<String> = md
+            .render(40)
+            .iter()
+            .map(|l| l.trim_end().to_string())
+            .filter(|l| !l.is_empty())
+            .collect();
+        let text = lines.join("\n");
+        assert!(
+            lines.first().is_some_and(|l| l.starts_with("3. ")),
+            "first line keeps marker:\n{text}"
+        );
+        assert!(
+            lines.len() >= 2,
+            "narrow width should wrap the long list item:\n{text}"
+        );
+        assert!(
+            lines[1].starts_with("   "),
+            "continuation must keep hanging indent (3 spaces), not reflow flush-left:\n{text}"
+        );
+        assert!(
+            !lines[1].starts_with("3. "),
+            "continuation must not repeat the marker:\n{text}"
         );
     }
 }
