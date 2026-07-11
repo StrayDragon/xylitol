@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,la-dispatch-consume,dispatch 有消费方,"跨面命令执行缝 dispatch MUST 至少被一个生产应用面消费（Server 或 TUI）；禁止长期仅单测覆盖而无面接线。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  la-dispatch-consume,server-wires,"","c550 归档后审查调用点","server REST 生产路径调用 dispatch"

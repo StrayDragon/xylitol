@@ -1,7 +1,6 @@
-# design — c465 bridge 开闸前 P0（自 readiness 并入）
+# design — c465 bridge（Track B 开闸后 P0）
 
-> 来源：原 `docs/tui-research/2026-07-10-src-core-tui-readiness.md`（已删）。
-> 产品 TUI 仍冻结；本文件供开闸后 apply 使用。
+> 来源：原 readiness 笔记。**产品 TUI 已开闸（2026-07-11）**；本文件供 apply 使用。
 
 ## P0 阻塞
 
@@ -9,16 +8,9 @@
 
 `run(_driver)` 丢弃 Driver → 无 EventStream。c465 本体：host `select!` 合流 Tick + 输入 + **agent 事件**。
 
-### 2. QueueUpdate 双通道（必须修）
+### 2. QueueUpdate
 
-```text
-入队/清队 ──► EventBus.emit_lifecycle ──► 生产路径无人订
-drain 后  ──► react yield QueueUpdate ──► Driver::run 流 ✅
-```
-
-只听 EventStream 的 bridge **看不到**流中 Enter 入队的即时 `steer:N`。
-
-**方向**：入队/abort 清队也写入**当前活跃 run** 的事件通道（产品语义见 [`docs/architecture/queue-and-interrupt.md`](../../../../docs/architecture/queue-and-interrupt.md)；实现见 c525 design）。勿再依赖无人订阅的 EventBus 旁路。
+c525/c540 后：入队写入活跃 EventStream；wire 亦有 `QueueUpdate`。Bridge **只听 EventStream**（及本地 `queue_stats` 如需即时徽章）。
 
 ### 3. Bridge 行为
 
@@ -30,12 +22,10 @@ drain 后  ──► react yield QueueUpdate ──► Driver::run 流 ✅
 
 - abort 清 steer、留 follow_up（c461）
 - `steer` / `follow_up` / `clear_queue` / `queue_stats` on Driver
-- `dispatch` 映射（产品零调用）
+- `dispatch`（Server 将由 c550 先消费；TUI slash 后续）
 - `execute_bash`、fork/switch session
 
 ## P1+（非本 change 必做）
 
 - follow_up 正文 peek 或 UI 自持快照
-- Compaction/AutoRetry/AgentStart 进流或删死类型
-- 会话树 Driver list/branch
-- `Driver::EventStream` 与 crossterm 撞名 → 见 c500/命名债
+- slash / 会话树 / DESIGN 视觉堆砌（后续 Track B changes）
