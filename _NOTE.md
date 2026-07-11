@@ -1,7 +1,7 @@
 # xylitol 调研笔记（短索引）
 
 > **非规范。** 稳定边界：根/`src` `AGENTS.md`。高维产品图：[`docs/architecture/`](docs/architecture/README.md)。
-> 更新日期：2026-07-11。交接板：`_HANDOFF.md`。
+> 更新日期：2026-07-11。交接板：`_HANDOFF.md`。主线 Prompt：`_PROMPT.md`。
 
 ## 去哪读
 
