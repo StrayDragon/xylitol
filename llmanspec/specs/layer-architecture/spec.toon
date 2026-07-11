@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "layer-architecture"
 purpose: "TBD - created by archiving change c225-refactor-domain-layering. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[22]{req_id,title,statement}:
+requirements[23]{req_id,title,statement}:
   la1,"core-layer","System MUST provide a base domain/ layer hosting domain vocabulary types including AgentMessage and ModelKind and XyChunk and ALL pure data types consumed by two or more layers (such as SessionEntry variants, SourceInfo, SkillInfo, PromptTemplate, CompactionSettings, AgentLifecycleEvent). System MUST provide a separate runtime_protocol/ layer hosting the trait contracts (XyModel, XyTool, SessionStore, EventSink, SandboxEngine, BashExecutor, SecretResolver, ResourceLoader, TrustStore, ExportIo) so that no layer must import crate::infra merely to reference a shared data type or to declare a port."
   la2,"downward-dependency","infra/ modules MUST NOT import any crate::agent symbol; agent/ modules MUST NOT import any concrete infra/ type (only via runtime_protocol); app/ modules MUST NOT import crate::agent or crate::infra except in the documented seams: the composition roots app/cli/, app/server/, app/rpc.rs, and app/core/composition.rs (which may import both), and app/core/driver.rs (which may import agent::facade only and MUST NOT import crate::infra per la11). domain/ MUST have zero crate:: internal dependencies and runtime_protocol/ MUST only depend on domain/."
   la3,"arch-guard","System MUST enforce via a guard test that no file under src/infra imports crate::agent."
@@ -25,7 +25,8 @@ requirements[22]{req_id,title,statement}:
   la20,"shared-bootstrap-and-dispatch","app::core MUST host a shared bootstrap module (app::core::bootstrap) centralizing the full assembly path from CLI args to a constructed ReActAgent (config load, ModelRegistry build, trust resolution, resource discovery including templates/context_files/system_prompt/append_system_prompt, compaction settings, permission, build_agent, model select), and a shared dispatch module (app::core::dispatch) centralizing Command variant execution semantics; print (cli), server, and tui MUST call bootstrap, rpc and tui MUST call dispatch, and no surface MAY inline its own assembly or command-dispatch implementation."
   la21,禁止死包装协作者,agent/ 内对端口的纯转发壳（无附加状态或行为，且无生产调用方）MUST 删除；Agent MUST 直接持有 Arc<dyn Port> 或经有真实职责的协作者访问，MUST NOT 保留 SessionIO 类零逻辑包装。
   "la-embed1","嵌入禁止 reach-in",嵌入路径 MUST 仅依赖精选 Xy 契约与文档化应用缝；MUST NOT 要求嵌入方 import infra 具体实现或 agent 子模块内部类型以完成标准装配。
-scenarios[24]{req_id,id,given,when,then}:
+  "la-server-driver",Server 与 Print 同缝,Server 与 Print MUST 共享同一应用缝（Driver/bootstrap）；新增 server 能力时优先扩缝，禁止为 server 单独复制一套 agent 编排。
+scenarios[25]{req_id,id,given,when,then}:
   la1,"shared-types-in-domain",a pure data type is needed by both agent/ and infra/,the type is declared and imported,"both layers import it from crate::domain and runtime_protocol from crate::runtime_protocol"
   la2,"app-layer-isolated","","a new file under src/app/core/driver.rs imports crate::infra::tools::BashTool",the architecture guard fails and reports the violation
   la2,"composition-root-allowed","","a file under src/app/core/composition.rs imports crate::infra::tools::default_tools",the architecture guard allows it as a documented composition root
@@ -50,3 +51,4 @@ scenarios[24]{req_id,id,given,when,then}:
   la20,"no-inlined-assembly","","cli/mod.rs::run and server/runtime.rs are inspected","neither contains inline config-load/registry-build/trust-resolution/runtime-resource-discovery logic; both delegate to app::core::bootstrap"
   la21,"no-session-io","",搜索 SessionIO 与 PermissionGate 生产调用,类型已删除或不再作为无逻辑壳存在
   "la-embed1","no-reach-in","",按嵌入文档装配 agent,"调用点不出现 crate::infra:: 或 agent::session:: 路径（测试双除外）"
+  "la-server-driver","shared-seam","",对比 print 与 server 装配,二者均经 composition/bootstrap 与 Driver 语义

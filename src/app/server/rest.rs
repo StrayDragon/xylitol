@@ -21,8 +21,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::Mutex;
 
-use crate::agent::ReActAgent;
-use crate::agent::session::ModelRegistry;
+use crate::app::core::driver::{Driver, InProcessDriver};
 use crate::app::server::ws::{ClientFrame, EventJournal, ReverseRpcGateway, ServerFrame};
 use crate::domain::lifecycle::XyEvent;
 use crate::protocol::{Envelope, ErrorCode};
@@ -30,12 +29,13 @@ use crate::protocol::{Envelope, ErrorCode};
 // ── Shared application state ───────────────────────────────────────
 
 /// Shared state available to all route handlers.
+///
+/// Holds [`InProcessDriver`] (same seam as Print), not a bare `ReActAgent`.
 #[derive(Clone)]
 pub struct AppState {
-    pub agent: Arc<Mutex<ReActAgent>>,
+    pub driver: Arc<Mutex<InProcessDriver>>,
     pub journal: Arc<Mutex<EventJournal>>,
     pub gateway: Arc<ReverseRpcGateway>,
-    pub model_registry: ModelRegistry,
 }
 
 // ── Route handlers ─────────────────────────────────────────────────
@@ -71,14 +71,15 @@ async fn run_prompt(
         }
     };
 
-    let agent = state.agent.clone();
+    let driver = state.driver.clone();
     let journal = state.journal.clone();
 
-    // Spawn a background task that runs the agent and records events.
+    // Spawn a background task that runs via Driver and records events.
+    // Lock is held only to obtain the stream (same pattern as before with agent).
     tokio::spawn(async move {
         let stream = {
-            let mut agent = agent.lock().await;
-            agent.run(&prompt).await
+            let mut driver = driver.lock().await;
+            driver.run(&prompt).await
         };
         let mut stream = stream;
         while let Some(event) = stream.next().await {
@@ -101,7 +102,7 @@ async fn cancel_session(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    state.agent.lock().await.abort();
+    state.driver.lock().await.abort();
     Json(Envelope::ok(serde_json::json!({"cancelled": true})))
 }
 
@@ -117,9 +118,14 @@ async fn switch_model(
     State(state): State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<SwitchModelParams>,
 ) -> Json<Envelope<Value>> {
-    let mut agent = state.agent.lock().await;
-    let _ = agent.inner_mut().select_model(&params.model_id);
-    Json(Envelope::ok(serde_json::json!({"model": params.model_id})))
+    let mut driver = state.driver.lock().await;
+    match driver.select_model(&params.model_id) {
+        Ok(model) => Json(Envelope::ok(serde_json::json!({
+            "model": model.id,
+            "display_name": model.display_name,
+        }))),
+        Err(msg) => Json(Envelope::error(ErrorCode::BadRequest, msg)),
+    }
 }
 
 /// Query parameters for the events endpoint.

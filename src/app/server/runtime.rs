@@ -26,6 +26,9 @@ pub struct RunningServer {
     /// read directly.
     #[allow(dead_code)]
     lock: Option<ServerLock>,
+    /// Keeps MCP connections alive for the server process lifetime.
+    #[allow(dead_code)]
+    _mcp: crate::app::core::composition::McpSession,
 }
 
 impl RunningServer {
@@ -105,30 +108,22 @@ pub async fn start(
         }
         BootstrapError::BuildFailed(msg) => msg,
     })?;
-    let agent = bootstrapped.agent;
-    let servers = bootstrapped.mcp_servers.unwrap_or_default();
-    // Server still holds ReActAgent directly (see library-and-clients.md);
-    // MCP reload uses a temporary InProcessDriver only to set tools, then
-    // we keep the agent. Full Server-on-Driver is a follow-up change.
-    let store = bootstrapped.store;
-    let mut driver = crate::app::core::driver::InProcessDriver::new(agent, store);
+    let runtime = bootstrapped.into_runtime();
+    let servers = runtime.mcp_servers.unwrap_or_default();
+    let mut driver = runtime.driver;
     let mut mcp = crate::app::core::composition::McpSession::new();
     if let Err(e) = mcp.reload(&mut driver, &servers).await {
         tracing::warn!(error = %e, "MCP reload failed");
     }
-    let _mcp = mcp;
-    let agent = driver.into_agent();
-    let model_registry = agent.inner().model_registry().clone();
 
-    // ── Server state ──────────────────────────────────────────────
+    // ── Server state (Driver seam — same as Print) ────────────────
     let session_id = format!("srv-{}", uuid::Uuid::new_v4());
     let journal = EventJournal::with_default_capacity(&session_id);
     let gateway = Arc::new(ReverseRpcGateway::new());
     let state = Arc::new(AppState {
-        agent: Arc::new(Mutex::new(agent)),
+        driver: Arc::new(Mutex::new(driver)),
         journal: Arc::new(Mutex::new(journal)),
         gateway,
-        model_registry,
     });
 
     // ── Lock acquisition ──────────────────────────────────────────
@@ -160,6 +155,7 @@ pub async fn start(
         RunningServer {
             cancel,
             lock: Some(lock),
+            _mcp: mcp,
         },
         actual_port,
     ))

@@ -216,11 +216,6 @@ impl InProcessDriver {
         self.agent.set_tools(tools);
     }
 
-    /// Consume the driver and return the inner agent (server transitional path).
-    pub fn into_agent(self) -> ReActAgent {
-        self.agent
-    }
-
     /// Test/diagnostics: tool names currently registered.
     #[cfg(test)]
     pub(crate) fn tool_names_for_test(&self) -> Vec<String> {
