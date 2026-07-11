@@ -83,8 +83,16 @@ pub enum BootstrapWarning {
 }
 
 /// A fully-assembled agent plus the resolved side-products surfaces need.
+///
+/// Prefer [`Self::into_runtime`] (or [`Self::into_driver`]) over reading
+/// [`Self::agent`] / [`Self::store`] directly — those fields remain for
+/// transitional callers and still name `ReActAgent` (not an embed stability
+/// promise).
 pub struct BootstrappedAgent {
     /// The constructed, ready-to-run agent.
+    ///
+    /// **Leak:** prefer [`Self::into_runtime`] so embedders need not name
+    /// `ReActAgent`.
     pub agent: crate::agent::ReActAgent,
     /// Session id (restored or freshly generated).
     pub session_id: String,
@@ -96,7 +104,40 @@ pub struct BootstrappedAgent {
     /// reaching into agent internals.
     pub store: Arc<dyn crate::runtime_protocol::XySessionStore>,
     /// MCP servers from loaded config (`None` / empty = disabled, zero-cost).
+    ///
+    /// **Leak:** concrete `infra::mcp::McpServerConfig` until a seam type
+    /// exists; pass only into [`crate::app::core::composition::McpSession::reload`].
     pub mcp_servers: Option<Vec<crate::infra::mcp::McpServerConfig>>,
+}
+
+/// Driver-ready result of [`BootstrappedAgent::into_runtime`].
+///
+/// This is the preferred embed / multi-client handoff: no need to name
+/// `ReActAgent` at the call site.
+pub struct BootstrappedRuntime {
+    pub driver: crate::app::core::driver::InProcessDriver,
+    pub session_id: String,
+    pub warnings: Vec<BootstrapWarning>,
+    /// Same leak as [`BootstrappedAgent::mcp_servers`] — infra concrete type.
+    pub mcp_servers: Option<Vec<crate::infra::mcp::McpServerConfig>>,
+}
+
+impl BootstrappedAgent {
+    /// Consume into an [`InProcessDriver`] plus side-products (preferred path).
+    pub fn into_runtime(self) -> BootstrappedRuntime {
+        BootstrappedRuntime {
+            driver: crate::app::core::driver::InProcessDriver::new(self.agent, self.store),
+            session_id: self.session_id,
+            warnings: self.warnings,
+            mcp_servers: self.mcp_servers,
+        }
+    }
+
+    /// Consume into an [`InProcessDriver`] only (drops warnings / session id /
+    /// mcp config). Prefer [`Self::into_runtime`] when those are needed.
+    pub fn into_driver(self) -> crate::app::core::driver::InProcessDriver {
+        self.into_runtime().driver
+    }
 }
 
 /// Resolved assembly inputs — the *ingredients* ready for `build_agent`, prior

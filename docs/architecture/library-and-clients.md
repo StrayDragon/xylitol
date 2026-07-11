@@ -68,10 +68,11 @@ flowchart TB
 
 ## 嵌入方应依赖什么（产品规则）
 
-1. **优先**精选 `Xy*` + [`xylitol::embed`](../../src/embed.rs)（`bootstrap` / `InProcessDriver` / `Driver` / `McpSession` / `dispatch`）。
+1. **优先**精选 `Xy*` + [`xylitol::embed`](../../src/embed.rs)（`bootstrap` → `into_runtime` / `InProcessDriver` / `Driver` / `McpSession`）。
 2. **不要**把 `infra::*` 具体类型或 `agent::session::*` 当稳定 API；也不要依赖 `app::core` 路径（crate 内 `pub(crate)`）。
 3. 需要新能力时：**扩 `embed` 缝**，不要 reach-in。
 4. 未配置的能力（如 MCP）必须 **zero-cost**（不装配则无运行时负担）。
+5. **已知泄漏（非承诺）**：`BootstrappedAgent.agent` 仍是 `ReActAgent`（用 `into_runtime`）；`mcp_servers` 仍是 infra 配置类型。`dispatch` / `RemoteDriver` **不**在 `embed` 中，待 Server/TUI/c540 接线后再导出。
 
 ## 与其它文档
 
