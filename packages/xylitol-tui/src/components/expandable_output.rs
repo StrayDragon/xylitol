@@ -1,7 +1,9 @@
 //! Expandable multi-line output with a max-height viewport (pi bash/tool preview).
 //!
-//! Collapsed: show the **last** `max_preview_lines` visual lines (wrap-aware) with a
-//! dim hint `... (N earlier lines, …)`. Expanded: full content. Host owns the
+//! Collapsed **Tail** (default): last `max_preview_lines` with dim
+//! `... (N earlier lines, …)` **above** the window.
+//! Collapsed **Head**: first N lines with dim `... (N more lines, …)` **below**.
+//! Expanded: full content. `width == 0` returns empty (c550). Host owns the
 //! expand keybinding (pi: `Ctrl+O` / `app.tools.expand`).
 
 use crate::tui::Component;
@@ -42,6 +44,10 @@ pub fn render_expandable_output(
     expanded: bool,
     opts: &ExpandableOutputOptions,
 ) -> Vec<String> {
+    // c550: zero width is a no-op surface (empty), never panic via wrap-at-1.
+    if width == 0 {
+        return Vec::new();
+    }
     if expanded || text.is_empty() {
         let VisualTruncateResult { visual_lines, .. } =
             truncate_to_visual_lines(text, usize::MAX, width, TruncateFrom::Tail);
@@ -206,5 +212,90 @@ mod tests {
         let full = out.render(40);
         assert!(full.len() >= 10);
         assert!(!full[0].contains("earlier"));
+    }
+
+    #[test]
+    fn collapsed_head_shows_first_lines_then_more_hint() {
+        let text = (1..=20)
+            .map(|i| format!("line-{i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let opts = ExpandableOutputOptions {
+            max_preview_lines: 3,
+            from: TruncateFrom::Head,
+            expand_hint: "ctrl+o to expand".into(),
+            hint_style: Some(|s| s.to_string()),
+        };
+        let lines = render_expandable_output(&text, 40, false, &opts);
+        assert!(
+            lines[0].contains("line-1"),
+            "Head must keep original first line on top: {lines:?}"
+        );
+        assert!(
+            !lines[0].contains("more lines"),
+            "more-hint must NOT sit above the head: {lines:?}"
+        );
+        let last = lines.last().expect("hint line");
+        assert!(
+            last.contains("17 more lines") && last.contains("ctrl+o to expand"),
+            "Head hint below body: {lines:?}"
+        );
+        assert_eq!(lines.len(), 4); // 3 body + hint
+        assert!(
+            lines.iter().any(|l| l.contains("line-3")),
+            "preview includes head window: {lines:?}"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("line-20")),
+            "tail of file hidden in Head collapse: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn empty_text_and_narrow_width_do_not_panic() {
+        let opts = ExpandableOutputOptions {
+            max_preview_lines: 3,
+            from: TruncateFrom::Head,
+            expand_hint: "ctrl+o to expand".into(),
+            hint_style: Some(|s| s.to_string()),
+        };
+        let empty = render_expandable_output("", 40, false, &opts);
+        assert!(empty.len() <= 1, "empty text must be bounded: {empty:?}");
+
+        let text = (1..=12)
+            .map(|i| format!("row-{i}-abcdefghijklmnopqrstuvwxyz"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for w in [0usize, 1] {
+            let collapsed = render_expandable_output(&text, w, false, &opts);
+            let expanded = render_expandable_output(&text, w, true, &opts);
+            if w == 0 {
+                assert!(
+                    collapsed.is_empty(),
+                    "width=0 collapsed → empty: {collapsed:?}"
+                );
+                assert!(
+                    expanded.is_empty(),
+                    "width=0 expanded → empty: {expanded:?}"
+                );
+            } else {
+                assert!(
+                    collapsed.len() < 512,
+                    "width=1 collapsed must be bounded: len={}",
+                    collapsed.len()
+                );
+                assert!(
+                    expanded.len() < 512,
+                    "width=1 expanded must be bounded: len={}",
+                    expanded.len()
+                );
+            }
+        }
+
+        let mut comp = ExpandableOutput::new(text, opts);
+        let _ = comp.render(0);
+        let _ = comp.render(1);
+        comp.set_text("");
+        assert!(comp.render(0).len() <= 1);
     }
 }
