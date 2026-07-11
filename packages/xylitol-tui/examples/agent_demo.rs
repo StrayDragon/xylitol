@@ -31,6 +31,7 @@ use xylitol_tui::{
 /// Names omit the leading `/` — Editor's CombinedAutocompleteProvider adds it.
 const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("help", "Show this help"),
+    ("md", "Inject full Markdown showcase (c530)"),
     ("model", "Switch execution model"),
     ("compact", "Compact conversation history"),
     ("export", "Export current session"),
@@ -374,7 +375,7 @@ fn demo_markdown_theme() -> MarkdownTheme {
     MarkdownTheme {
         heading: Box::new(accent),
         link: Box::new(accent),
-        link_url: Box::new(accent),
+        link_url: Box::new(|s| format!("\x1b[4m\x1b[38;2;137;180;250m{s}\x1b[39m\x1b[24m")),
         code: Box::new(|s| format!("\x1b[38;2;166;227;161m{s}\x1b[39m")), // success
         code_block: Box::new(|s| s.to_string()),
         // DESIGN / c530: no fence chrome (callback unused)
@@ -392,37 +393,67 @@ fn demo_markdown_theme() -> MarkdownTheme {
     }
 }
 
-/// Seed assistant body: full Markdown grammar for c530 copy/token policy.
+/// Full Markdown grammar for c530 (via `/md` or Ctrl+P → markdown).
 fn markdown_showcase_seed() -> &'static str {
     "\
-## Markdown showcase (c530)
+# Markdown showcase (c530)
 
-正文含 **bold**、*italic*、`inline`、~~strike~~。标题无井号前缀；代码块无围栏行。
+一级标题靠色+下划线，**没有**井号前缀。
 
-### 链接与列表
+正文含 **bold**、*italic*、`inline`、~~strike~~。
 
-见 [docs](https://example.com/md)（显示为 text (url)）。
+## 二级标题
 
-1. 有序：提交路径
-- 无序：终端 smoke
-- 无序：回到 Ready
+### 链接与图片
 
-> 引用只用 dim/italic，没有竖线装饰。
+链接：[docs](https://example.com/md)
 
-| Name | Role |
-|------|------|
-| alice | eng |
-| bob | design |
+裸 URL：https://example.com/raw
+
+图片：![diagram](https://example.com/a.png)
+
+### 列表
+
+1. 有序一项
+2. 有序二项
+   - 嵌套无序
+   - 再嵌套
+
+### 引用
+
+> 引用第一行，只用 dim/italic。
+>
+> 引用第二段，仍然没有竖线装饰。
+
+### 表格（空格对齐）
+
+| Name | Age | Role |
+|------|-----|------|
+| alice | 30 | eng |
+| bob | 28 | design |
+| cara | 31 | docs |
+
+### 代码块（源有 fence，显示无围栏）
 
 ```rust
-fn demo() {
-    println!(\"highlight\");
+fn demo(path: &str) -> bool {
+    // syntect when highlight feature is on
+    !path.is_empty()
 }
+```
+
+```json
+{ \"ok\": true, \"note\": \"no fence chrome\" }
 ```
 
 ---
 
-短 HR；表为空格对齐（无盒线）。"
+短 HR（非全宽墙）。完。"
+}
+
+/// Richer streamed assistant body used when prompt asks for markdown / md.
+fn markdown_showcase_stream_focus() -> &'static str {
+    "本轮按 c530 再铺一遍语法面（流式）：标题分级、行内标记、链接、任务列表、引用、表、代码。"
 }
 
 /// Mocha Diff theme (DESIGN.md): row tint + brighter word tint (not reverse white).
@@ -1511,6 +1542,8 @@ impl FakeCodingAgentApp {
 
         let palette = SelectList::new(
             vec![
+                SelectItem::new("markdown", "Markdown showcase (c530)")
+                    .with_description("Inject full-grammar assistant block (/md)"),
                 SelectItem::new("tests", "Run regression tests")
                     .with_description("Replay the current TUI acceptance suite"),
                 SelectItem::new("diff", "Summarize staged diff")
@@ -1518,7 +1551,7 @@ impl FakeCodingAgentApp {
                 SelectItem::new("compact", "Compact conversation")
                     .with_description("Simulate a context compaction checkpoint"),
             ],
-            5,
+            6,
             SelectListTheme {
                 selected_prefix: Box::new(cyan),
                 selected_text: Box::new(selected_text),
@@ -1655,11 +1688,11 @@ impl FakeCodingAgentApp {
         // One-shot help — fold keys live on blocks as `(Ctrl+T)` / `(Alt+E)`.
         self.push_message(
             Role::System,
-            "keys: Enter submit/steer · Alt+Enter follow-up · ! bash border · Ctrl+G $EDITOR · double Esc tree · Shift+F fork · /cmds · @path · (Ctrl+P)/(Ctrl+S) · (Alt+G) · (Ctrl+O tools) · Esc · (Ctrl+C) · theme auto via XYLITOL_AGENT_DEMO_THEME_AUTO",
+            "keys: Enter submit/steer · Alt+Enter follow-up · /md Markdown · Ctrl+P plate · ! bash · Ctrl+G $EDITOR · double Esc tree · (Ctrl+T)/(Alt+E)/(Ctrl+O) · Esc · (Ctrl+C)",
         );
         self.push_message(
             Role::System,
-            "stream code: prompt 含 rust/python/typescript/json 定点语言；否则每轮轮换（源用 fence 解析高亮，显示无围栏）",
+            "stream: rust/python/typescript/json/markdown 定点或轮换 · 全语法 showcase 用 /md 或 Ctrl+P→markdown",
         );
         self.push_message(
             Role::User,
@@ -1668,7 +1701,10 @@ impl FakeCodingAgentApp {
         self.push_thinking(
             "Plan: read existing examples and the pi coding-agent ExpandableText flow, then rebuild one stable primary scenario with real terminal acceptance coverage.\n\nKeep transcript in scrollback; mark the editor as the operation zone with borders.",
         );
-        self.push_message(Role::Assistant, markdown_showcase_seed());
+        self.push_message(
+            Role::Assistant,
+            "先读现有 examples 与 pi ExpandableText 流程，再收成一条稳定主场景。\n\n全语法 Markdown 演示请用 `/md` 或 **Ctrl+P → Markdown showcase**（c530：无井号前缀、无 fence 墙、链接为 text (url)）。\n\n```rust\nfn demo() {\n    println!(\"highlight\");\n}\n```",
+        );
         self.push_tool(
             "read packages/xylitol-tui/examples/agent_demo.rs · 42ms · 790 lines",
             "ok — opened agent_demo.rs\n(preview) FakeCodingAgentApp + scripted turn harness",
@@ -1800,6 +1836,12 @@ impl FakeCodingAgentApp {
         );
     }
 
+    fn inject_markdown_showcase(&mut self) {
+        self.push_message(Role::User, "/md · request Markdown showcase");
+        self.push_message(Role::Assistant, markdown_showcase_seed());
+        self.set_status("Ready");
+    }
+
     fn process_submit(&mut self, text: String) {
         let trimmed = text.trim().to_string();
         if trimmed.is_empty() {
@@ -1813,6 +1855,13 @@ impl FakeCodingAgentApp {
             self.input.set_text(String::new());
             self.palette_open = true;
             self.settings_open = false;
+            return;
+        }
+
+        if last_line == "/md" || last_line == ":md" {
+            self.input.set_text(String::new());
+            self.inject_markdown_showcase();
+            self.advance_script();
             return;
         }
 
@@ -2070,11 +2119,8 @@ impl FakeCodingAgentApp {
             )
         } else if p.contains("palette") || p.contains("command") {
             ("rust", "我会先看 overlay 覆盖语义，再补 PTY/tmux smoke。")
-        } else if p.contains("markdown") || p.contains("md ") {
-            (
-                "rust",
-                "本轮顺带展示标题/列表/链接等 Markdown 语法（c530 复制友好）。",
-            )
+        } else if p.contains("markdown") || p.contains("md ") || p.contains("/md") {
+            ("rust", markdown_showcase_stream_focus())
         } else {
             let langs = ["rust", "python", "typescript", "json"];
             let lang = langs[self.fence_rotate % langs.len()];
@@ -2103,6 +2149,14 @@ impl FakeCodingAgentApp {
     }
 
     fn build_assistant_reply(&mut self, prompt: &str) -> String {
+        let p = prompt.to_ascii_lowercase();
+        if p.contains("markdown") || p.contains("md showcase") || p.contains("full md") {
+            return format!(
+                "收到，我已经接住 `{prompt}`。\n\n{}",
+                markdown_showcase_seed()
+            );
+        }
+
         let (focus, fence) = self.pick_stream_fence(prompt);
 
         let closing = if self.random_between(0, 1) == 0 {
@@ -2117,14 +2171,16 @@ impl FakeCodingAgentApp {
              ### 清单\n\n\
              1. 先排查提交路径\n\
              - 再补真实终端 smoke\n\
-             - 最后回到 `Ready`\n\n\
+             - [ ] 终端验收\n\
+             - [x] 解析 prompt\n\n\
              详见 [harness notes](https://example.com/harness)。\n\n\
              > 流式过程中未闭合代码块可能尚未高亮；闭合后 syntect 着色。\n\n\
              {fence}\n\n\
-             | Step | Status |\n\
-             |------|--------|\n\
-             | parse | ok |\n\
-             | paint | streaming |\n\n\
+             | Step | Status | Note |\n\
+             |------|--------|------|\n\
+             | parse | ok | — |\n\
+             | paint | streaming | no fence chrome |\n\n\
+             ~~旧文案~~ 已替换。\n\n\
              {closing}"
         )
     }
@@ -2913,6 +2969,9 @@ impl Component for FakeCodingAgentApp {
             } else if matches_key_event(key, "enter") {
                 if let Some(item) = self.palette.get_selected_item() {
                     match item.value.as_str() {
+                        "markdown" => {
+                            self.inject_markdown_showcase();
+                        }
                         "tests" => {
                             self.pending_events.push_back(ScriptEvent::Tool(
                                 "cargo test -p xylitol-tui --lib".into(),
