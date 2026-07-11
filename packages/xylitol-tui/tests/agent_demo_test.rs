@@ -986,6 +986,28 @@ fn agent_demo_plate_expandable_head_shows_c550_more_hint() {
 }
 
 #[test]
+fn agent_demo_plate_playground_sync_mentions_c555() {
+    let mut h = TuiTestHarness::new(100, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+    h.keys("\x10playground\r");
+    h.render_result().expect("after playground-sync plate");
+    let text = h.tui.terminal.scroll_buffer().join("\n");
+    assert!(
+        text.contains("c555") && text.contains("sync_tokens"),
+        "plate playground-sync should mention c555 sync; got:\n{text}"
+    );
+    assert!(
+        text.contains("playground") && (text.contains("ignore") || text.contains("忽略")),
+        "tip should note Agent ignores playground; got:\n{text}"
+    );
+}
+
+#[test]
 fn agent_demo_seed_tool_blocks_use_status_background_tints() {
     use agent_demo_example::ToolBlockStatus;
 
