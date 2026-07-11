@@ -38,7 +38,7 @@ Markdown 槽示意 MUST 对齐 [`../markdown.md`](../markdown.md)：无 `#` 标�
 |---|---|
 | Tool | 三态 · 流式 thinking · 展开/视口 · Diff 块「摘要 tint / 正文不套 tool-bg」对照 |
 | Diff | unified / SBS（SBS 无行底）· 词级 |
-| Markdown | 四格典型态平铺（含嵌套列表悬挂缩进）· 假流式逐行 · 色强调对照 |
+| Markdown | 强调样式（已落地 B 色+字重）· 嵌套列表悬挂缩进 · 假流式逐行 |
 | Layout | busy↔idle · steer 提示 · 双 Esc 会话树替换 editor |
 | Chrome | 一处 accent ✓ vs 多处 ✗ · user / fg |
 | Overlay | 确认框显隐（短过渡）· Esc/N/Y |

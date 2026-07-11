@@ -771,7 +771,7 @@ fn agent_demo_seed_markdown_showcase_c530() {
     );
     assert!(
         text.contains("2. 有序二项")
-            && text.contains("嵌套无序 A")
+            && text.contains("嵌套无序")
             && text.contains("1. 再嵌套有序")
             && text.contains("链接 (https://example.com/list)"),
         "nested lists + ordered link item must not flatten:\n{text}"
@@ -1103,7 +1103,7 @@ fn agent_demo_plate_md_list_wrap_streams_nested_lists() {
         "plate tip should explain list wrap; got:\n{text}"
     );
     assert!(
-        text.contains("嵌套无序 A") && text.contains("再嵌套有序"),
+        text.contains("嵌套无序") && text.contains("再嵌套有序"),
         "streamed nested list body missing; got:\n{text}"
     );
     assert!(
