@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "package-tui-diff"
 purpose: "可复用 Diff 组件（行级与 word-level、可选 side-by-side、CJK 宽度）。"
 valid_scope[1]: "packages/xylitol-tui/"
-requirements[8]{req_id,title,statement}:
+requirements[11]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c451-add-package-tui-diff 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ptd1,"diff-component-api","xylitol-tui MUST 提供 Diff 组件（及/或 render_diff_lines），接受 display_diff 文本、unified diff 文本或 old/new 行对，输出 Vec of ANSI 行；主题 MUST 经闭包注入；MUST NOT 依赖主 crate xylitol。"
   ptd2,"diff-word-level",当恰好一对相邻删除行与添加行时，Diff MUST 对该对做词级（或字级）对比并用 reverse/word_change 高亮变更片段；多行连续增减 MUST NOT 做词级对比。
@@ -11,7 +11,10 @@ requirements[8]{req_id,title,statement}:
   ptd5,"diff-side-by-side-line-numbers","当 Diff 以 side-by-side 渲染时，左栏 MUST 显示 old_no、右栏 MUST 显示 new_no（pad 对齐）；空半栏 MUST NOT 伪造行号；MUST NOT 使用 Unicode 表线装饰。"
   ptd6,"diff-optional-content-highlight",DiffTheme MAY 提供 highlight_line 闭包对内容做语法高亮；默认 MUST 为 identity（无额外依赖）；包 MUST NOT 在非 highlight 构建中强制 syntect。
   ptd7,"sbs-no-default-row-bg","当 Diff 以 side-by-side 渲染时，增删半栏 MUST NOT 默认套用 added_line_bg / removed_line_bg 全行背景；极性 MUST 仅用 fg（及 gutter 符号/行号）表达。Unified 路径 MAY 继续使用行底。"
-scenarios[12]{req_id,id,given,when,then}:
+  ptd0,"capability-shell","本增量由变更 c540-update-package-tui-diff-edges 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+  ptd8,"cjk-narrow-wrap",当 Diff 行含全角/CJK 且宽度受限时，折行或截断 MUST 按 visible_width 处理；MUST NOT 按字节中途切开字形。
+  ptd9,"sbs-empty-half-no-fake-lineno","side-by-side 仅一侧有内容时，空半栏 MUST NOT 伪造行号；有内容半栏 MUST 仍显示对应 old_no 或 new_no。"
+scenarios[16]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/package-tui-diff",spec.toon 存在且 purpose 为中文
   ptd1,"render-line-pair","","DiffInput::LinePair 含一行删除与一行添加","render 输出含着色的 -/+ 行"
   ptd1,"empty-diff","",old 与 new 相同,输出含 (no changes) 或空等价提示
@@ -24,3 +27,7 @@ scenarios[12]{req_id,id,given,when,then}:
   ptd5,"sbs-empty-half","",仅删除行无配对添加,右半栏空白且无伪造行号
   ptd6,"highlight-identity","",未设置自定义 highlight_line,内容仍按 added/removed/context 着色且可渲染
   ptd7,"sbs-no-row-bg",theme 配置了非 identity 的 added_line_bg,width 达到 side_by_side 阈值并渲染 SBS,输出半栏行不含该行底 SGR；unified 同 theme 仍可含行底
+  ptd0,"shell-present","","列出 capability package-tui-diff",delta 含 ptd8–ptd9
+  ptd8,"cjk-wrap",含全角字符的增删行,在窄 width 下 render,不出现半个汉字且布局按 visible_width
+  ptd9,"empty-right",仅删除行无配对添加,"启用 side-by-side 且宽度足够",右半栏无行号数字且左半栏有 old 行号
+  ptd9,"empty-left",仅添加行无配对删除,"启用 side-by-side 且宽度足够",左半栏无伪造行号
