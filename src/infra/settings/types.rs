@@ -27,6 +27,7 @@ pub struct Settings {
     pub theme: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<CompactionSettingsSchema>")]
     pub compaction: Option<XyCompactionSettingsConfig>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -131,8 +132,9 @@ pub struct Settings {
     pub warnings: Option<WarningSettings>,
 }
 
-/// Compaction behavior settings — relocated to `domain::compaction_config`.
+/// Compaction behavior settings — domain serde type; schema twin in config.
 pub use crate::domain::compaction_config::XyCompactionSettingsConfig;
+pub use crate::infra::config::types::CompactionSettingsSchema;
 
 /// Branch summary settings for forked conversations.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

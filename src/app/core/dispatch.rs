@@ -16,11 +16,9 @@
 //! correlation handle; dispatch ignores it and
 //! lets the caller extract/echo it around the dispatch call.
 //!
-//! NOTE: dispatch is consumed via tui/commands.rs (`#[cfg(feature = "tui")]`).
-//! Under default features the dispatcher and outcome types appear unused; they
-//! are exercised by the dispatch unit tests and light up once tui is on.
-//! ceiling: never consumed without tui. upgrade: tui becomes default or another
-//! surface consumes dispatch.
+//! NOTE: dispatch is consumed by server REST (c550) and will be by tui slash.
+//! Under default features without `server`/`tui` the dispatcher still appears
+//! lightly used; unit tests cover it.
 //!
 //! Outcome payload fields (Bash result, export paths, session entries, ...) are
 //! read by callers as they wire up the corresponding slash commands; only
@@ -164,6 +162,9 @@ pub async fn dispatch(
                 "assistant_messages": stats.assistant_messages,
                 "total_messages": stats.total_messages,
                 "thinking_level": stats.thinking_level,
+                "model": stats.model.map(|(p, m)| {
+                    serde_json::json!({ "provider": p, "model_id": m })
+                }),
             })))
         }
         Command::ExportHtml { output_path, .. } => {
@@ -216,18 +217,18 @@ pub async fn dispatch(
         Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(driver.get_commands())),
         Command::Steer { message, .. } => {
             driver.steer(&message).map_err(DispatchError)?;
-            let (steer_count, follow_up_count) = driver.queue_stats();
+            let stats = driver.queue_stats();
             Ok(DispatchOutcome::QueueStats {
-                steer_count,
-                follow_up_count,
+                steer_count: stats.steer_count,
+                follow_up_count: stats.follow_up_count,
             })
         }
         Command::FollowUp { message, .. } => {
             driver.follow_up(&message).map_err(DispatchError)?;
-            let (steer_count, follow_up_count) = driver.queue_stats();
+            let stats = driver.queue_stats();
             Ok(DispatchOutcome::QueueStats {
-                steer_count,
-                follow_up_count,
+                steer_count: stats.steer_count,
+                follow_up_count: stats.follow_up_count,
             })
         }
         Command::ClearQueue {
@@ -238,10 +239,10 @@ pub async fn dispatch(
             driver
                 .clear_queue(clear_steer, clear_follow_up)
                 .map_err(DispatchError)?;
-            let (steer_count, follow_up_count) = driver.queue_stats();
+            let stats = driver.queue_stats();
             Ok(DispatchOutcome::QueueStats {
-                steer_count,
-                follow_up_count,
+                steer_count: stats.steer_count,
+                follow_up_count: stats.follow_up_count,
             })
         }
 
@@ -382,8 +383,11 @@ mod tests {
             }
             Ok(())
         }
-        fn queue_stats(&self) -> (usize, usize) {
-            (self.steer, self.follow_up)
+        fn queue_stats(&self) -> crate::agent::session::QueueStats {
+            crate::agent::session::QueueStats {
+                steer_count: self.steer,
+                follow_up_count: self.follow_up,
+            }
         }
     }
 

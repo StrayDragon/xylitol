@@ -31,6 +31,8 @@ pub struct AppConfig {
     /// YAML loading-phase compaction config. Mapped to runtime
     /// `CompactionSettings` (in `agent::compaction::settings`)
     /// via `From<XyCompactionSettingsConfig>`.
+    /// Schema twin: [`CompactionSettingsSchema`] (domain type is serde-only).
+    #[schemars(with = "Option<CompactionSettingsSchema>")]
     pub compaction: Option<crate::domain::compaction_config::XyCompactionSettingsConfig>,
 
     pub skills: Option<Vec<SkillConfig>>,
@@ -58,9 +60,11 @@ pub struct ModelsConfig {
 /// A single model alias entry.
 ///
 /// References [`XyModelKind`](crate::domain::model::XyModelKind) for the provider;
-/// the kind's serde representation is the YAML wire format.
+/// the kind's serde representation is the YAML wire format. Schema uses a string
+/// twin so domain stays free of schemars (c510).
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct ModelEntry {
+    #[schemars(with = "String")]
     pub provider: crate::domain::model::XyModelKind,
     pub model: String,
     /// Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.
@@ -649,8 +653,20 @@ fn default_storage_backend() -> String {
     "file".into()
 }
 
-// XyCompactionSettingsConfig re-exported from domain::compaction_config.
+// Compaction: domain type is serde-only; schema twin lives here for AppConfig.
 pub use crate::domain::compaction_config::XyCompactionSettingsConfig;
+
+/// JSON Schema twin of [`XyCompactionSettingsConfig`] (infra-only; c510).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default, rename_all = "camelCase")]
+pub struct CompactionSettingsSchema {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reserve_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keep_recent_tokens: Option<u64>,
+}
 
 // ---------------------------------------------------------------------------
 // Skills & MCP

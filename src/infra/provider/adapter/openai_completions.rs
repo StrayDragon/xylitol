@@ -1,8 +1,7 @@
-//! OpenAI Chat Completions adapter (placeholder).
+//! OpenAI Chat Completions adapter.
 //!
-//! Full implementation is deferred to a follow-up change. For now this adapter
-//! delegates to [`async_openai`] so the `LlmAdapter` trait is satisfied and the
-//! factory can select it based on config.
+//! HTTP via private [`OpenAIProvider`] (async-openai). Public `XyModel` surface
+//! is only [`super::AdapterXyModel`] wrapping this [`LlmAdapter`] (c505).
 
 use async_trait::async_trait;
 
@@ -10,7 +9,7 @@ use crate::domain::error::XyError;
 use crate::domain::message::AgentMessage;
 use crate::domain::types::XyToolSchema;
 use crate::infra::provider::openai::OpenAIProvider;
-use crate::runtime_protocol::{XyModel, XyStream};
+use crate::runtime_protocol::XyStream;
 
 use super::LlmAdapter;
 

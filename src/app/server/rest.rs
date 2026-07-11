@@ -21,21 +21,22 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::Mutex;
 
-use crate::agent::ReActAgent;
-use crate::agent::session::ModelRegistry;
+use crate::app::core::dispatch::{DispatchError, DispatchOutcome, dispatch};
+use crate::app::core::driver::{Driver, InProcessDriver};
 use crate::app::server::ws::{ClientFrame, EventJournal, ReverseRpcGateway, ServerFrame};
 use crate::domain::lifecycle::XyEvent;
-use crate::protocol::{Envelope, ErrorCode};
+use crate::protocol::{Command, Envelope, ErrorCode};
 
 // ── Shared application state ───────────────────────────────────────
 
 /// Shared state available to all route handlers.
+///
+/// Holds [`InProcessDriver`] (same seam as Print), not a bare `ReActAgent`.
 #[derive(Clone)]
 pub struct AppState {
-    pub agent: Arc<Mutex<ReActAgent>>,
+    pub driver: Arc<Mutex<InProcessDriver>>,
     pub journal: Arc<Mutex<EventJournal>>,
     pub gateway: Arc<ReverseRpcGateway>,
-    pub model_registry: ModelRegistry,
 }
 
 // ── Route handlers ─────────────────────────────────────────────────
@@ -71,14 +72,15 @@ async fn run_prompt(
         }
     };
 
-    let agent = state.agent.clone();
+    let driver = state.driver.clone();
     let journal = state.journal.clone();
 
-    // Spawn a background task that runs the agent and records events.
+    // Spawn a background task that runs via Driver and records events.
+    // Lock is held only to obtain the stream (same pattern as before with agent).
     tokio::spawn(async move {
         let stream = {
-            let mut agent = agent.lock().await;
-            agent.run(&prompt).await
+            let mut driver = driver.lock().await;
+            driver.run(&prompt).await
         };
         let mut stream = stream;
         while let Some(event) = stream.next().await {
@@ -101,7 +103,7 @@ async fn cancel_session(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    state.agent.lock().await.abort();
+    state.driver.lock().await.abort();
     Json(Envelope::ok(serde_json::json!({"cancelled": true})))
 }
 
@@ -117,9 +119,481 @@ async fn switch_model(
     State(state): State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<SwitchModelParams>,
 ) -> Json<Envelope<Value>> {
-    let mut agent = state.agent.lock().await;
-    let _ = agent.inner_mut().select_model(&params.model_id);
-    Json(Envelope::ok(serde_json::json!({"model": params.model_id})))
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::SetModel {
+                id: None,
+                provider: String::new(),
+                model_id: params.model_id,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::Model(model) => Some(serde_json::json!({
+                "model": model.id,
+                "display_name": model.display_name,
+            })),
+            _ => None,
+        },
+        dispatch_err,
+    )
+}
+
+async fn run_dispatch(state: &AppState, cmd: Command) -> Result<DispatchOutcome, DispatchError> {
+    let mut driver = state.driver.lock().await;
+    dispatch(&mut *driver, cmd).await
+}
+
+fn unexpected_outcome() -> Json<Envelope<Value>> {
+    Json(Envelope::error(
+        ErrorCode::InternalError,
+        "unexpected dispatch outcome",
+    ))
+}
+
+fn dispatch_err(e: DispatchError) -> Json<Envelope<Value>> {
+    Json(Envelope::error(ErrorCode::BadRequest, e.0))
+}
+
+fn dispatch_err_as(e: DispatchError, code: ErrorCode) -> Json<Envelope<Value>> {
+    Json(Envelope::error(code, e.0))
+}
+
+/// Map a dispatch result: `map` returns `Some(data)` on the expected variant.
+fn map_dispatch(
+    result: Result<DispatchOutcome, DispatchError>,
+    map: impl FnOnce(DispatchOutcome) -> Option<Value>,
+    on_err: impl FnOnce(DispatchError) -> Json<Envelope<Value>>,
+) -> Json<Envelope<Value>> {
+    match result {
+        Ok(outcome) => match map(outcome) {
+            Some(data) => Json(Envelope::ok(data)),
+            None => unexpected_outcome(),
+        },
+        Err(e) => on_err(e),
+    }
+}
+
+fn queue_json(steer_count: usize, follow_up_count: usize) -> Value {
+    serde_json::json!({
+        "steer_count": steer_count,
+        "follow_up_count": follow_up_count,
+    })
+}
+
+fn model_data(m: &crate::app::core::driver::ModelInfo) -> Value {
+    serde_json::json!({
+        "id": m.id,
+        "display_name": m.display_name,
+        "thinking": m.thinking,
+        "context_window": m.context_window,
+    })
+}
+
+#[derive(Deserialize)]
+struct MessageBody {
+    message: String,
+}
+
+#[derive(Deserialize)]
+struct ClearQueueBody {
+    #[serde(default = "default_true")]
+    clear_steer: bool,
+    #[serde(default = "default_true")]
+    clear_follow_up: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+async fn steer(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    axum::extract::Json(body): axum::extract::Json<MessageBody>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::Steer {
+                id: None,
+                message: body.message,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::QueueStats {
+                steer_count,
+                follow_up_count,
+            } => Some(queue_json(steer_count, follow_up_count)),
+            _ => None,
+        },
+        dispatch_err,
+    )
+}
+
+async fn follow_up(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    axum::extract::Json(body): axum::extract::Json<MessageBody>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::FollowUp {
+                id: None,
+                message: body.message,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::QueueStats {
+                steer_count,
+                follow_up_count,
+            } => Some(queue_json(steer_count, follow_up_count)),
+            _ => None,
+        },
+        dispatch_err,
+    )
+}
+
+async fn clear_queue(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    axum::extract::Json(body): axum::extract::Json<ClearQueueBody>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::ClearQueue {
+                id: None,
+                clear_steer: body.clear_steer,
+                clear_follow_up: body.clear_follow_up,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::QueueStats {
+                steer_count,
+                follow_up_count,
+            } => Some(queue_json(steer_count, follow_up_count)),
+            _ => None,
+        },
+        dispatch_err,
+    )
+}
+
+async fn get_queue(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Json<Envelope<Value>> {
+    // No GetQueue Command — thin Driver read (design c550).
+    let driver = state.driver.lock().await;
+    let s = driver.queue_stats();
+    Json(Envelope::ok(queue_json(s.steer_count, s.follow_up_count)))
+}
+
+async fn get_state(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(&state, Command::GetState { id: None }).await,
+        |o| match o {
+            DispatchOutcome::State(st) => Some(serde_json::json!({
+                "session_id": st.session_id,
+                "model": st.model.as_ref().map(model_data),
+                "thinking_level": st.thinking_level,
+            })),
+            _ => None,
+        },
+        dispatch_err,
+    )
+}
+
+async fn list_models(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(&state, Command::GetAvailableModels { id: None }).await,
+        |o| match o {
+            DispatchOutcome::Models(models) => {
+                let models: Vec<Value> = models.iter().map(model_data).collect();
+                Some(serde_json::json!({ "models": models }))
+            }
+            _ => None,
+        },
+        dispatch_err,
+    )
+}
+
+async fn cycle_model(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(&state, Command::CycleModel { id: None }).await,
+        |o| match o {
+            DispatchOutcome::Model(model) => Some(model_data(&model)),
+            _ => None,
+        },
+        dispatch_err,
+    )
+}
+
+#[derive(Deserialize)]
+struct ThinkingBody {
+    level: String,
+}
+
+async fn set_thinking(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    axum::extract::Json(body): axum::extract::Json<ThinkingBody>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::SetThinkingLevel {
+                id: None,
+                level: body.level,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::ThinkingLevel(level) => {
+                Some(serde_json::json!({ "thinking_level": level }))
+            }
+            _ => None,
+        },
+        dispatch_err,
+    )
+}
+
+#[derive(Deserialize)]
+struct BashBody {
+    command: String,
+    #[serde(default)]
+    exclude_from_context: bool,
+}
+
+async fn bash(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    axum::extract::Json(body): axum::extract::Json<BashBody>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::Bash {
+                id: None,
+                command: body.command,
+                exclude_from_context: body.exclude_from_context,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::Bash(r) => Some(serde_json::json!({
+                "output": r.output,
+                "exit_code": r.exit_code,
+                "cancelled": r.cancelled,
+                "truncated": r.truncated,
+            })),
+            _ => None,
+        },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
+    )
+}
+
+async fn compact(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(&state, Command::Compact { id: None }).await,
+        |o| match o {
+            DispatchOutcome::Compacted(did) => Some(serde_json::json!({ "compacted": did })),
+            _ => None,
+        },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
+    )
+}
+
+#[derive(Deserialize)]
+struct PathBody {
+    path: String,
+}
+
+async fn export_html(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    axum::extract::Json(body): axum::extract::Json<PathBody>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::ExportHtml {
+                id: None,
+                output_path: Some(body.path),
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::ExportedPath(p) => Some(serde_json::json!({ "path": p })),
+            _ => None,
+        },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
+    )
+}
+
+async fn export_jsonl(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    axum::extract::Json(body): axum::extract::Json<PathBody>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::ExportJsonl {
+                id: None,
+                output_path: Some(body.path),
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::ExportedPath(p) => Some(serde_json::json!({ "path": p })),
+            _ => None,
+        },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
+    )
+}
+
+async fn import_jsonl(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    axum::extract::Json(body): axum::extract::Json<PathBody>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::ImportJsonl {
+                id: None,
+                input_path: body.path,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::NewSession(id) => Some(serde_json::json!({ "session_id": id })),
+            _ => None,
+        },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
+    )
+}
+
+#[derive(Deserialize)]
+struct ForkBody {
+    entry_id: String,
+}
+
+async fn fork_session(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    axum::extract::Json(body): axum::extract::Json<ForkBody>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::Fork {
+                id: None,
+                entry_id: body.entry_id,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::NewSession(id) => Some(serde_json::json!({ "session_id": id })),
+            _ => None,
+        },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
+    )
+}
+
+#[derive(Deserialize)]
+struct SwitchSessionBody {
+    session_id: String,
+}
+
+async fn switch_session(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    axum::extract::Json(body): axum::extract::Json<SwitchSessionBody>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::SwitchSession {
+                id: None,
+                session_path: body.session_id,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::SwitchedSession(id) => Some(serde_json::json!({ "session_id": id })),
+            _ => None,
+        },
+        |e| dispatch_err_as(e, ErrorCode::NotFound),
+    )
+}
+
+async fn get_messages(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(&state, Command::GetMessages { id: None }).await,
+        |o| match o {
+            DispatchOutcome::Messages { entries, .. } => serde_json::to_value(entries)
+                .ok()
+                .map(|v| serde_json::json!({ "entries": v })),
+            _ => None,
+        },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
+    )
+}
+
+async fn get_session_stats(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(&state, Command::GetSessionStats { id: None }).await,
+        |o| match o {
+            DispatchOutcome::SessionStats(v) => Some(v),
+            _ => None,
+        },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
+    )
+}
+
+async fn get_commands(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Json<Envelope<Value>> {
+    map_dispatch(
+        run_dispatch(&state, Command::GetCommands { id: None }).await,
+        |o| match o {
+            DispatchOutcome::Commands(cmds) => {
+                let cmds: Vec<Value> = cmds
+                    .into_iter()
+                    .map(|c| serde_json::json!({ "name": c.name, "description": c.description }))
+                    .collect();
+                Some(serde_json::json!({ "commands": cmds }))
+            }
+            _ => None,
+        },
+        dispatch_err,
+    )
 }
 
 /// Query parameters for the events endpoint.
@@ -280,7 +754,94 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/v1/session/{id}/run", post(run_prompt))
         .route("/api/v1/session/{id}", delete(cancel_session))
         .route("/api/v1/session/{id}/model", post(switch_model))
+        .route("/api/v1/session/{id}/model/cycle", post(cycle_model))
+        .route("/api/v1/session/{id}/models", get(list_models))
+        .route("/api/v1/session/{id}/state", get(get_state))
+        .route("/api/v1/session/{id}/thinking", post(set_thinking))
+        .route("/api/v1/session/{id}/steer", post(steer))
+        .route("/api/v1/session/{id}/follow-up", post(follow_up))
+        .route("/api/v1/session/{id}/queue", get(get_queue))
+        .route("/api/v1/session/{id}/queue/clear", post(clear_queue))
+        .route("/api/v1/session/{id}/bash", post(bash))
+        .route("/api/v1/session/{id}/compact", post(compact))
+        .route("/api/v1/session/{id}/export/html", post(export_html))
+        .route("/api/v1/session/{id}/export/jsonl", post(export_jsonl))
+        .route("/api/v1/session/{id}/import/jsonl", post(import_jsonl))
+        .route("/api/v1/session/{id}/fork", post(fork_session))
+        .route("/api/v1/session/{id}/switch", post(switch_session))
+        .route("/api/v1/session/{id}/messages", get(get_messages))
+        .route("/api/v1/session/{id}/stats", get(get_session_stats))
+        .route("/api/v1/session/{id}/commands", get(get_commands))
         .route("/api/v1/session/{id}/events", get(get_events))
         .route("/api/v1/session/{id}/ws", get(ws_handler))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::core::composition::{BuildAgentOptions, build_agent};
+    use crate::runtime_protocol::XySessionStore;
+
+    fn test_state() -> Arc<AppState> {
+        let agent = build_agent(BuildAgentOptions::default()).expect("build");
+        let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
+            tempfile::tempdir().unwrap().path().join("sessions"),
+        ));
+        let driver = InProcessDriver::new(agent, store);
+        Arc::new(AppState {
+            driver: Arc::new(Mutex::new(driver)),
+            journal: Arc::new(Mutex::new(
+                crate::app::server::ws::EventJournal::with_default_capacity("test"),
+            )),
+            gateway: Arc::new(ReverseRpcGateway::new()),
+        })
+    }
+
+    #[tokio::test]
+    async fn steer_queue_counts_visible_for_remote_clients() {
+        let state = test_state();
+        let outcome = run_dispatch(
+            &state,
+            Command::Steer {
+                id: None,
+                message: "inject".into(),
+            },
+        )
+        .await
+        .expect("dispatch steer");
+        match outcome {
+            DispatchOutcome::QueueStats {
+                steer_count,
+                follow_up_count,
+            } => {
+                assert_eq!(steer_count, 1);
+                assert_eq!(follow_up_count, 0);
+                let data = queue_json(steer_count, follow_up_count);
+                assert_eq!(data["steer_count"], 1);
+            }
+            other => panic!("unexpected outcome: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn queue_update_is_appended_to_journal_via_wire() {
+        let mut journal = crate::app::server::ws::EventJournal::with_default_capacity("test");
+        let wire = XyEvent::QueueUpdate {
+            steer_count: 3,
+            follow_up_count: 1,
+        }
+        .to_wire_event()
+        .expect("QueueUpdate on wire");
+        journal.append(wire);
+        let replayed = journal.replay_from(0).expect("events");
+        assert_eq!(replayed.len(), 1);
+        assert!(matches!(
+            &replayed[0].1,
+            crate::protocol::Event::QueueUpdate {
+                steer_count: 3,
+                follow_up_count: 1,
+            }
+        ));
+    }
 }

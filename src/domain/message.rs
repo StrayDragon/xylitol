@@ -457,16 +457,6 @@ impl AgentMessage {
     }
 }
 
-// ── LlmMessage conversion trait ─────────────────────────────────────
-
-/// Trait for converting [`AgentMessage`] lists into provider-native request
-/// message formats.
-pub trait LlmMessageConverter: Send + Sync {
-    type Output;
-
-    fn convert_to_llm(messages: &[AgentMessage], system_prompt: Option<&str>) -> Self::Output;
-}
-
 /// Helper: collect text content from a slice of [`AgentPart`], skipping
 /// non-text parts.
 pub fn collect_text_parts(parts: &[AgentPart]) -> String {

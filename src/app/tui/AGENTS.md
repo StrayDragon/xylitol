@@ -6,7 +6,9 @@
 
 基于 `xylitol-tui` 的 **host 驱动空 UI**（c460）：`HostSession` + `UiRoot` + 终端 lifecycle。`run()` 可进入；XyEvent / slash / steer 接线在后续 change。当前空场景仅为框架占位，**未**按 `DESIGN.md` 实现产品视觉。
 
-**冻结（2026-07-10；条件更新 2026-07-11）**：本目录 **暂停扩展产品功能**，直至（1）根/`src` `AGENTS.md` 中的命名与架构约定已落地、相关重构完成，且（2）用户明确开闸。允许：修 c460 lifecycle / harness 回归、文档与 AGENTS。禁止：bridge、slash、真 travel、活树、DESIGN 视觉堆砌、在 c491 stub 上继续加产品行为。新能力先在 `agent_demo` / `packages/xylitol-tui` 验证。开闸条件 SSOT：`src/AGENTS.md`「冻结」。
+**开闸（2026-07-11）**：命名/架构约定与 A2（c530–c540）已落地；用户确认进入 Track B。本目录可按 `c465` 起扩展产品接线。仍建议：原子交互先在 `packages/xylitol-tui` `agent_demo` 验证再进本面。c491 假树 stub 规则不变（未开真 travel 前不扩展活树）。开闸记录 SSOT：`src/AGENTS.md`。
+
+**历史冻结说明（已解除）**：曾暂停扩展直至约定落地 + 明确开闸。
 
 ## 优先路径（2026-07-10）
 
@@ -43,7 +45,7 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 
 ## 硬约束
 
-- **产品面冻结**：未开闸前 MUST NOT 扩展 `UiRoot` / bridge / 真 travel；c491 假树保持 stub（见上表）。
+- **产品面**：已开闸；优先 `c465` bridge + `Driver::run` 合流。c491 假树保持 stub（见上表），真 travel 另 change。
 - 渲染/通用组件只用 `xylitol_tui`；禁止在本目录再实现差分引擎或通用 Editor/Markdown。
 - **需要底层 TUI 能力时**：先到 `packages/xylitol-tui` 查是否已有或可扩展；缺能力在包内补，再由本面接线。
 - 产品路径 **host 驱动**同步引擎；异步事件合流在本面；勿调 `TUI::start()`（demo 专用）。

@@ -87,13 +87,19 @@ pub enum Event {
     },
     /// Compaction completed.
     CompactionEnd,
+    /// Pending steer / follow-up queue depths (cross-client badge).
+    QueueUpdate {
+        steer_count: usize,
+        follow_up_count: usize,
+    },
 }
 
 impl XyEvent {
     /// Convert a domain lifecycle event to its wire-protocol representation.
     ///
     /// Returns `None` for internal-only events that should not cross the
-    /// client boundary (queue updates, auto-retry bookkeeping, etc.).
+    /// client boundary (auto-retry bookkeeping, etc.). [`XyEvent::QueueUpdate`]
+    /// is wire-visible (c540).
     pub fn to_wire_event(&self) -> Option<Event> {
         match self {
             XyEvent::TextDelta(text) => Some(Event::TextDelta { text: text.clone() }),
@@ -138,13 +144,25 @@ impl XyEvent {
                 id: None,
                 message: msg.clone(),
             }),
-            // Internal-only lifecycle events: not exposed on the wire.
+            XyEvent::QueueUpdate {
+                steer_count,
+                follow_up_count,
+            } => Some(Event::QueueUpdate {
+                steer_count: *steer_count,
+                follow_up_count: *follow_up_count,
+            }),
+            // Degraded (not on the wire): process-local or REST-covered.
             XyEvent::AgentStart { .. }
-            | XyEvent::QueueUpdate { .. }
             | XyEvent::AutoRetryStart { .. }
             | XyEvent::AutoRetryEnd { .. }
             | XyEvent::SessionInfoChanged { .. }
-            | XyEvent::ThinkingLevelChanged { .. } => None,
+            | XyEvent::ThinkingLevelChanged { .. } => {
+                tracing::debug!(
+                    event = self.description(),
+                    "wire: dropping non-mapped XyEvent"
+                );
+                None
+            }
         }
     }
 }
@@ -205,6 +223,13 @@ impl TryFrom<&Event> for XyEvent {
                 messages: Vec::new(),
             }),
             Event::Error { message, .. } => Ok(XyEvent::Error(message.clone())),
+            Event::QueueUpdate {
+                steer_count,
+                follow_up_count,
+            } => Ok(XyEvent::QueueUpdate {
+                steer_count: *steer_count,
+                follow_up_count: *follow_up_count,
+            }),
             other => Err(format!(
                 "event variant not convertible to XyEvent: {other:?}"
             )),
@@ -234,5 +259,40 @@ mod tests {
             back,
             XyEvent::ThinkingDelta(text) if text == "reasoning..."
         ));
+    }
+
+    #[test]
+    fn queue_update_roundtrips_through_wire_event() {
+        let domain = XyEvent::QueueUpdate {
+            steer_count: 2,
+            follow_up_count: 1,
+        };
+        let wire = domain
+            .to_wire_event()
+            .expect("QueueUpdate must be wire-visible (c540)");
+        assert!(matches!(
+            wire,
+            Event::QueueUpdate {
+                steer_count: 2,
+                follow_up_count: 1,
+            }
+        ));
+        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        assert!(matches!(
+            back,
+            XyEvent::QueueUpdate {
+                steer_count: 2,
+                follow_up_count: 1,
+            }
+        ));
+    }
+
+    #[test]
+    fn agent_start_degrades_off_wire() {
+        let domain = XyEvent::AgentStart {
+            session_id: "s".into(),
+            model: "m".into(),
+        };
+        assert!(domain.to_wire_event().is_none());
     }
 }
