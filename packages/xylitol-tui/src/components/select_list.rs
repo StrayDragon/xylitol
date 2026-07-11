@@ -14,6 +14,15 @@ fn clamp(value: usize, min: usize, max: usize) -> usize {
     value.max(min).min(max)
 }
 
+/// Hard width budget for popup rows (c545): theme wrappers must not escape `width`.
+fn clamp_line_to_width(line: &str, width: usize) -> String {
+    if visible_width(line) <= width {
+        line.to_string()
+    } else {
+        truncate_to_width(line, width, "", false)
+    }
+}
+
 #[derive(Clone)]
 pub struct SelectItem {
     pub value: String,
@@ -199,7 +208,10 @@ impl Component for SelectList {
         let mut lines: Vec<String> = Vec::new();
 
         if self.filtered_items.is_empty() {
-            lines.push((self.theme.no_match)("  No matching items"));
+            lines.push(clamp_line_to_width(
+                &(self.theme.no_match)("  No matching items"),
+                width,
+            ));
             return lines;
         }
 
@@ -216,12 +228,15 @@ impl Component for SelectList {
                 .description
                 .as_ref()
                 .map(|d| normalize_to_single_line(d));
-            lines.push(self.render_item(
-                item,
-                is_selected,
+            lines.push(clamp_line_to_width(
+                &self.render_item(
+                    item,
+                    is_selected,
+                    width,
+                    desc.as_deref(),
+                    primary_column_width,
+                ),
                 width,
-                desc.as_deref(),
-                primary_column_width,
             ));
         }
 
@@ -231,12 +246,15 @@ impl Component for SelectList {
                 self.selected_index + 1,
                 self.filtered_items.len()
             );
-            lines.push((self.theme.scroll_info)(&truncate_to_width(
-                &scroll,
-                width.saturating_sub(2),
-                "",
-                false,
-            )));
+            lines.push(clamp_line_to_width(
+                &(self.theme.scroll_info)(&truncate_to_width(
+                    &scroll,
+                    width.saturating_sub(2),
+                    "",
+                    false,
+                )),
+                width,
+            ));
         }
 
         lines
@@ -593,5 +611,40 @@ mod tests {
             lines.iter().any(|l| l.contains("/20")),
             "should have scroll indicator"
         );
+    }
+
+    #[test]
+    fn narrow_width_clamps_long_labels_and_empty_match() {
+        let long = "x".repeat(80);
+        let mut list = SelectList::new(
+            vec![SelectItem::new(long.clone(), long).with_description("y".repeat(80))],
+            10,
+            theme(),
+            SelectListLayoutOptions {
+                min_primary_column_width: Some(12),
+                max_primary_column_width: Some(32),
+                truncate_primary: None,
+            },
+        );
+        for w in [1usize, 8, 20, 40] {
+            for line in list.render(w) {
+                assert!(
+                    visible_width(&line) <= w,
+                    "width={w}: visible {} > budget; line={line:?}",
+                    visible_width(&line)
+                );
+            }
+        }
+
+        list.set_filter("zzz-no-match");
+        for w in [1usize, 10, 18] {
+            for line in list.render(w) {
+                assert!(
+                    visible_width(&line) <= w,
+                    "empty-match width={w}: visible {} > budget; line={line:?}",
+                    visible_width(&line)
+                );
+            }
+        }
     }
 }

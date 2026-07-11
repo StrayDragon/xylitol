@@ -7,8 +7,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use xylitol_tui::autocomplete::SlashCommand;
-use xylitol_tui::completion::{AtPathSource, SlashCommandSource};
+use xylitol_tui::autocomplete::{AutocompleteItem, AutocompleteSuggestions, SlashCommand};
+use xylitol_tui::completion::{
+    AtPathSource, CompletionContext, CompletionMatch, CompletionSource, SlashCommandSource,
+};
 use xylitol_tui::components::editor::{Editor, EditorOptions, EditorTheme};
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::select_list::{
@@ -41,6 +43,80 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("palette", "Open command plate"),
     ("diff", "Inject unified + side-by-side diffs"),
 ];
+
+/// Demo-only `$` CompletionSource (c545) — not product skill semantics.
+const DEMO_DOLLAR_SKILLS: &[(&str, &str)] = &[
+    ("demo", "c545 stub skill — third CompletionSource"),
+    (
+        "narrow-clamp-skill-with-a-very-long-identifier",
+        "proves popup clamps under narrow width",
+    ),
+];
+
+struct DemoDollarSource;
+
+impl CompletionSource for DemoDollarSource {
+    fn id(&self) -> &'static str {
+        "demo-dollar"
+    }
+
+    fn probe(&self, ctx: &CompletionContext<'_>) -> Option<CompletionMatch> {
+        let before = ctx.before_cursor();
+        if before.starts_with('$') && !before.contains(' ') {
+            Some(CompletionMatch {
+                prefix: before.to_string(),
+            })
+        } else {
+            None
+        }
+    }
+
+    fn should_dismiss(&self, _ctx: &CompletionContext<'_>, m: &CompletionMatch) -> bool {
+        m.prefix == "$"
+    }
+
+    fn suggestions(
+        &self,
+        _ctx: &CompletionContext<'_>,
+        m: &CompletionMatch,
+    ) -> Option<AutocompleteSuggestions> {
+        let needle = m.prefix.strip_prefix('$').unwrap_or("");
+        let items: Vec<AutocompleteItem> = DEMO_DOLLAR_SKILLS
+            .iter()
+            .filter(|(name, _)| name.starts_with(needle))
+            .map(|(name, desc)| AutocompleteItem {
+                value: (*name).to_string(),
+                label: (*name).to_string(),
+                description: Some((*desc).to_string()),
+            })
+            .collect();
+        if items.is_empty() {
+            None
+        } else {
+            Some(AutocompleteSuggestions {
+                items,
+                prefix: m.prefix.clone(),
+            })
+        }
+    }
+
+    fn apply(
+        &self,
+        lines: &[String],
+        cursor_line: usize,
+        cursor_col: usize,
+        item: &AutocompleteItem,
+        prefix: &str,
+    ) -> (Vec<String>, usize, usize) {
+        let current = lines[cursor_line].clone();
+        let before = &current[..cursor_col.saturating_sub(prefix.len())];
+        let after = &current[cursor_col..];
+        let new_line = format!("${} {}", item.value, after);
+        let mut new_lines = lines.to_vec();
+        new_lines[cursor_line] = new_line;
+        (new_lines, cursor_line, before.len() + item.value.len() + 2)
+    }
+}
 
 /// Command plate row (c535): id drives routing; label/description feed SelectList.
 #[derive(Debug, Clone, Copy)]
@@ -81,6 +157,11 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
         id: "diff-sbs",
         label: "Diff unified + side-by-side",
         description: "CJK/empty-half edges + unified/SBS/edit (c540)",
+    },
+    DemoPlateItem {
+        id: "completion-dollar",
+        label: "Completion $ stub (c545)",
+        description: "Tip + type $ in editor for third CompletionSource",
     },
     DemoPlateItem {
         id: "tool-tints",
@@ -1691,11 +1772,11 @@ impl FakeCodingAgentApp {
         input.on_submit = Some(Box::new(move |text| {
             *submit_clone.borrow_mut() = Some(text);
         }));
-        // Pluggable CompletionSources: `/` slash cmds + `@` path picker.
-        // Demo-only static lists — no Driver wiring. Future `$`/`^` = more sources.
+        // Pluggable CompletionSources: `/` + `@` + demo `$` stub (c545 open extension).
         input.set_completion_sources(vec![
             Box::new(SlashCommandSource::new(slash_commands())),
             Box::new(AtPathSource::new(cwd.clone())),
+            Box::new(DemoDollarSource),
         ]);
         input.set_text(initial_prompt.to_string());
 
@@ -1901,9 +1982,21 @@ impl FakeCodingAgentApp {
         );
         self.push_message(
             Role::System,
-            "stream plate: md-full · stream-rust/python/typescript/json · diff-sbs · tool-tints · tree",
+            "stream plate: md-full · stream-rust/python/typescript/json · diff-sbs · \
+             completion-dollar (c545 $) · tool-tints · tree",
         );
         self.set_status("Ready");
+    }
+
+    fn inject_completion_dollar_tip(&mut self) {
+        self.push_message(Role::User, "plate · completion-dollar · c545");
+        self.push_message(
+            Role::System,
+            "c545: third CompletionSource registered (demo `$`). Type `$` in the editor — \
+             popup lists stub skills; narrow terminals clamp label width. Slash `/` and `@` \
+             stay independent. Product `$`/`^` semantics are out of scope.",
+        );
+        self.set_status("Type $ for stub skills");
     }
 
     fn inject_diff_showcase(&mut self) {
@@ -1993,6 +2086,7 @@ impl FakeCodingAgentApp {
             "stream-typescript" => self.commit_user_turn("stream typescript highlight".into()),
             "stream-json" => self.commit_user_turn("stream json highlight".into()),
             "diff-sbs" => self.inject_diff_showcase(),
+            "completion-dollar" => self.inject_completion_dollar_tip(),
             "tool-tints" => self.inject_tool_tint_showcase(),
             "tree" => {
                 self.tree_open = true;
