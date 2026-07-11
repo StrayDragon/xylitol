@@ -18,7 +18,7 @@
 |---|---|
 | 个人默认就能用的 coding harness | 扩展市场 / Extension / 插件平台 |
 | 合理分层 + 少量稳定库入口（开闭） | 为「未来插件」堆抽象 |
-| 按本仓库需求演进 | 持续对齐 / 追平 `../pi`（历史 port 来源，非持续对照） |
+| 按本仓库需求演进 | 持续对齐 / 追平 `../pi`（`xylitol-tui` 为源自 pi-tui 的独立 fork，见该包 `NOTICE`） |
 
 - **Trust**：对齐 pi 语义——闸的是**项目本地资源是否加载**（settings / prompts / skills / …），不是工具调用 popup。工具侧开箱 **allow-all**。
 - **MCP**：配置驱动；未配置则零装配（zero-cost）；支持动态配置与重载。细节见 `src/AGENTS.md`。

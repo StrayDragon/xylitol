@@ -1,0 +1,20 @@
+# NOTICE
+
+This repository is primarily MIT-licensed. See the root `LICENSE` file
+(Copyright (c) 2026 L8ng).
+
+## Third-party / derived material
+
+### @earendil-works/pi-tui → `packages/xylitol-tui`
+
+Substantial portions of `packages/xylitol-tui` are derived from
+[@earendil-works/pi-tui](https://github.com/earendil-works/pi/tree/main/packages/tui)
+(Copyright (c) 2025 Mario Zechner, MIT).
+
+That crate is an **independent fork** maintained for xylitol (not a 1:1
+upstream port going forward). Full attribution and the upstream MIT notice:
+[`packages/xylitol-tui/NOTICE`](packages/xylitol-tui/NOTICE).
+
+Other ideas and patterns adapted from the broader [pi](https://pi.dev) project
+are listed in `README.md` (Acknowledgments). MIT grants copyright permissions
+only; trademarks such as “pi” / pi.dev remain with their owners.
