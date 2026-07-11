@@ -28,12 +28,12 @@
 | D05 | 平台专属输入 | `native-modifiers`、Apple/Windows native | **不移植** | 是 |
 | D06 | 调试写盘 | `writeLogPath` | **不移植**（tracing / 应用面日志） | 是 |
 | D07 | 根类型 | `TUI extends Container` | `TUI` 持有根列表 + 独立 `Container` 组件 | 是 |
-| D08 | Overlay focus-restore | eligible/blocked/resume 完整状态机 | 最小 hide/focus；完整 restore **延后**（c445 `future.md`） | 是（延后项除外） |
+| D08 | Overlay focus-restore | eligible/blocked/resume 完整状态机 | 最小 hide/focus；完整 restore **延后**（意向 `c575` purpose-draft；非轨 B 阻塞） | 是（延后项除外） |
 | D09 | 事件循环 | 库内 `start` 常见 | 产品路径 **host 驱动**；`TUI::start()` **仅 demo** | 是 |
 | D10 | 硬件光标 | 可开（env） | 默认 **隐藏**；Editor 反色假光标 | 是 |
 | D11 | Image | 完整 Kitty/iTerm + `Image` 组件 | **裁剪**；保留 `is_image_line` + `hyperlink` | 是 |
 | D12 | 渲染输出 | `string[]` ANSI | 同 `Vec<String>`；**不**引入 `StyledLine` | 是 |
-| D13 | Editor 补全扩展 | provider + 引擎内 `/` 等特判较多 | **`CompletionSource` 注册表**（`completion.rs`）；`/` `@` 为可插拔 Source；未来 `$`/`^` 同范式 | 是 |
+| D13 | Editor 补全扩展 | provider + 引擎内 `/` 等特判较多 | **`CompletionSource` 注册表**（`completion.rs`）；`/` `@` `$` 等为可插拔 Source（扩展点已落地；业务语义在应用面） | 是 |
 | D14 | paste-burst | 无对等模块（或弱） | `PasteBurst` + `Clock`/`MockClock`（确定性时序） | 是 |
 | D15 | 测试分层 | vitest + virtual-terminal | 五层 harness + PTY/tmux E2E（`test-tui-harness`） | 是 |
 | D16 | InputListener | VT 字符串回调常见 | **`InputEvent` 原生** `add_input_listener`；无 KeyEvent→VT；v1 仅 `Continue`/`Consumed` | 是 |
@@ -62,4 +62,5 @@
 | 2026-07-09 | 建表；纳入 D01–D15；记录 `CompletionSource`（D13）与 demo Alt+E/G 键位 |
 | 2026-07-10 | D16 InputListener（c455）；demo Ctrl+C/Esc 经 listener |
 | 2026-07-10 | demo Ctrl+G 真 `$EDITOR`（`with_terminal_suspended`）；harness 仍 stub；边界写入 `bash-mode.md` |
-| 2026-07-10 | c459 落地：EditText + SBS 行号；c462 tool-bg purpose-draft |
+| 2026-07-10 | c459 Diff 行号；**c462** tool-bg 三态（已归档，非 draft） |
+| 2026-07-11 | 轨 P 合入：Markdown（package c530）· plate（c535）· Diff 边角 · Completion `$` 扩展点 · Expandable · playground sync · Tree 边角 · **ChoicePrompt（c565）** · **Palette/`/theme`（c570）**；D08 仍延后（c575） |

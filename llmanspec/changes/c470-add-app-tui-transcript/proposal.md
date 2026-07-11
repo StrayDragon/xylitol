@@ -18,16 +18,17 @@ track: B
 
 历史浏览、分支 travel / fork 的目标改由 **双 Esc 会话树**达成：
 
-| 优先 | Change |
-|---|---|
-| 包 TreeSelector | **c454** |
-| demo 双 Esc 原型 | **c456** |
-| 产品接线 | **c491**（提前，不再等本变更） |
+| 优先 | Change | 状态 |
+|---|---|---|
+| 包 TreeSelector | **c454**…轨 P 边角 | 已归档 |
+| demo 双 Esc 原型 | **c456**… | 已归档 |
+| 产品假树槽 | **c491** stub | 已归档（仅假树 + travel 行；**勿**在 stub 上扩活树） |
+| 产品真活树 / Driver travel | 另 change | 未开 |
 
 ## 为何搁置
 
 - Codex 式 transcript view 与当前选定的 pi 交互（scrollback + editor 槽选择器）重复且更重。
-- 双 Esc 树已能覆盖「回看 / 跳转 / fork」目的，应先落地可验证路径。
+- 双 Esc 树路径已选定；产品侧先保持 c491 stub，真图随 Track B 后续 change。
 
 ## 若日后需要「当前轮输出」
 

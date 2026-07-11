@@ -14,8 +14,9 @@ track: B
 
 ## Purpose
 
-未信任且存在 trust inputs 时，TUI 弹出选择器（替换 editor 槽或 overlay），写入 trust store；信任后 yolo 执行工具（保留 hook 扩展点，无逐工具审批）。
+未信任且存在 trust inputs 时，TUI 弹出选择器（**优先替换 editor 槽**；短确认才用 overlay），写入 trust store；信任后 yolo 执行工具（保留 hook 扩展点，无逐工具审批）。
 
 ## Notes
 
 - `infra/trust` 已有 Ask + `on_prompt` 回调；bootstrap `interactive: true` 接线。
+- 多 overlay 焦点恢复不阻塞本变更（包侧 c575 可选）。

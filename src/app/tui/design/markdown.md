@@ -33,7 +33,7 @@ components:
 # Markdown
 
 > Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
-> 包：`Markdown` + `MarkdownTheme`（`highlight_code` 回调）。**实现须对齐本节**；未落地前以本文为 SSOT。
+> 包：`Markdown` + `MarkdownTheme`（`highlight_code` 回调）。本文为 SSOT；包实现已按本节收敛（`c530-update-package-tui-markdown`）。
 
 助手正文：在终端里**直观、安静**，框选粘贴进下一轮时**省 token**，且尽量仍像可再解析的 Markdown。
 
@@ -136,7 +136,7 @@ bob       28  design
 | 项 | 状态 |
 |---|---|
 | 本文规范 | SSOT（含色增强粗斜体） |
-| `packages/xylitol-tui` Markdown 组件 | **已按本文收敛**（c530；`heading(level)` API） |
+| `packages/xylitol-tui` Markdown 组件 | **已按本文收敛**（`c530-update-package-tui-markdown`；`heading(level)` API） |
 | `agent_demo` | `/md` theme：粗体 accent、斜体 warning、H3+/表头分色 |
-| playground Markdown 槽 | A/B 对照；B = 运行时目标 |
-| Command plate | `DEMO_PLATE` 表驱动（c535）；footer 无键墙，完整键位走 `/help` |
+| playground Markdown 槽 | 已落地色增强示意；行为/折行以 `just demo-tui` → `/md` 为准（无 A/B 双轨） |
+| Command plate | `DEMO_PLATE` 表驱动（`c535-add-package-tui-agent-demo-plate`）；footer 无键墙，完整键位走 `/help` |

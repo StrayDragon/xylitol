@@ -10,8 +10,8 @@ track: B
 
 # c493-add-app-tui-compaction-retry-ui
 
-> **status: purpose-draft**（后置；MVP bridge 仅降级）
+> **status: purpose-draft**（后置；c465 MVP 对未知/次要事件仅 tracing 降级即可）
 
 ## Purpose
 
-CompactionStart/End、AutoRetry 的 status/transcript 呈现；对齐 DESIGN 草稿。
+CompactionStart/End、AutoRetry 的 status / scrollback 呈现；对齐 `design/compaction-status.md` 草稿。

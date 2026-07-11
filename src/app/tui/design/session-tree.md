@@ -16,7 +16,7 @@ components:
 
 **优先路径**（替代 Codex 式 transcript 浏览）：双 Esc 打开会话树。
 **形态学 SSOT**：`packages/xylitol-tui` `agent_demo`（活树 / travel 回复链 / filter…）。
-**产品 c491**：**stub 冻结** — 仅假树槽替换 + `travel → id`；**MUST NOT** 在 stub 上扩展；真图等开闸。
+**产品 c491**：**stub 冻结** — 仅假树槽替换 + `travel → id`；**MUST NOT** 在 stub 上扩展；真活树另 change（Track B，非本 stub）。
 
 ## MUST
 
@@ -37,5 +37,5 @@ components:
 |---|---|
 | 包 `TreeSelector` | c454 + c456 + c467 + c469 pan 已归档 |
 | demo 活树 / travel | c469；steer 队列 c468 |
-| 产品 `src/app/tui` | **c491 stub 冻结**（假树 + travel 行）；真 session/Driver **未开闸** |
+| 产品 `src/app/tui` | **c491 stub 冻结**（假树 + travel 行）；真 session/Driver travel **未接线**（开闸后随 Track B） |
 | 相对 pi 差距 | [`session-tree-vs-pi.md`](./session-tree-vs-pi.md) |
