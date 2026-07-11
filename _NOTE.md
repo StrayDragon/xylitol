@@ -9,25 +9,38 @@
 |---|---|
 | 产品定调 / Xy* / 包装 / Trust·MCP / cancel·schemars | 根 + `src/AGENTS.md` |
 | 架构 mermaid（产品/业务） | [`docs/architecture/`](docs/architecture/README.md) |
+| **库嵌入 + 多 client**（矩阵 / 理想 vs 现状） | [`docs/architecture/library-and-clients.md`](docs/architecture/library-and-clients.md) |
 | 插话·续跑·中止（产品） | [`docs/architecture/queue-and-interrupt.md`](docs/architecture/queue-and-interrupt.md) |
-| 队列运行时实现 | **c525** `design.md` |
-| XyEvent 防宽表 | c520 design；产品摘要 [`docs/architecture/events.md`](docs/architecture/events.md) |
+| 队列运行时实现 | archive **c525** `design.md` |
+| XyEvent 防宽表 | archive c520；产品摘要 [`events.md`](docs/architecture/events.md) |
 | TUI bridge P0（原 readiness） | [`c465/.../design.md`](llmanspec/changes/c465-add-app-tui-bridge/design.md) |
 
-## Track A changes
+## Track A（已归档 2026-07-11）
 
-| ID | 主题 |
-|---|---|
-| c500 | 精选 pub use + 删死包装 |
-| c505 | Provider 单路径 |
-| c510 | domain 去 JsonSchema（depends c500） |
-| c515 | MCP 配置化 + 重载 |
-| c520 | XyEvent 闭集 |
-| c525 | 异步可并发队列运行时 |
+| ID | 主题 | 状态 |
+|---|---|---|
+| c500 | 精选 pub use + 删死包装 | archived |
+| c505 | Provider 单路径 | archived |
+| c510 | domain 去 JsonSchema | archived |
+| c515 | MCP 配置化 + 重载 | archived |
+| c520 | XyEvent 闭集 | archived |
+| c525 | 异步可并发队列运行时 | archived |
 
-建议：`c520` ∥ `c500` → `c510`；`c505` ∥ `c515`；**c525 与 c465 开闸前 QueueUpdate 修复强相关**（可先于 TUI apply）。
+路径：`llmanspec/changes/archive/2026-07-11-c5xx-*`。
+
+## 下一波内核（库 + 多 client）
+
+见 [`library-and-clients.md`](docs/architecture/library-and-clients.md)。活跃意向：
+
+| ID | 主题 | depends |
+|---|---|---|
+| **c530** | 公开嵌入 API（Driver/bootstrap） | — |
+| **c535** | Server 统一到 Driver | c530 |
+| **c540** | 线协议 / RemoteDriver 对齐 | c535 |
+
+轨 B（产品 TUI）仍冻结，需明确开闸。
 
 ## 已清理的文档
 
-- 删除：`docs/testing-strategy.md`、`docs/tui-research/*`（对标长文与旧 readiness；**保留** `docs/assets/logo.svg`）
+- 删除：`docs/testing-strategy.md`、`docs/tui-research/*`（**保留** `docs/assets/logo.svg`）
 - 测试分层要点已并入根 `AGENTS.md`「提交与测试」
