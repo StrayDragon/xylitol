@@ -80,7 +80,7 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
     DemoPlateItem {
         id: "diff-sbs",
         label: "Diff unified + side-by-side",
-        description: "Inject expanded unified and SBS diff blocks",
+        description: "CJK/empty-half edges + unified/SBS/edit (c540)",
     },
     DemoPlateItem {
         id: "tool-tints",
@@ -393,6 +393,24 @@ fn sample_sbs_pair() -> DiffInput {
         old: "status: Ready\nfooter: cwd · model\n".into(),
         new: "status: Working\nfooter: cwd · model · context%\n".into(),
         path: Some("src/app/tui/ui_root.rs".into()),
+    }
+}
+
+/// c540: SBS with CJK so visible_width budgeting is obvious in demo.
+fn sample_sbs_cjk_pair() -> DiffInput {
+    DiffInput::LinePair {
+        old: "标题：验收路径\n说明：窄宽折行\n".into(),
+        new: "标题：发布路径\n说明：窄宽折行\n".into(),
+        path: Some("说明.md".into()),
+    }
+}
+
+/// c540: delete-only hunk → empty right half (no fake line number).
+fn sample_sbs_empty_half_pair() -> DiffInput {
+    DiffInput::LinePair {
+        old: "only_old_line\n".into(),
+        new: "\n".into(),
+        path: Some("orphan.rs".into()),
     }
 }
 
@@ -1891,7 +1909,7 @@ impl FakeCodingAgentApp {
     fn inject_diff_showcase(&mut self) {
         let demo_rs = format_edit_path("packages/xylitol-tui/examples/agent_demo.rs", &self.cwd);
         let ui_root = format_edit_path("src/app/tui/ui_root.rs", &self.cwd);
-        self.push_message(Role::User, "plate · diff-sbs");
+        self.push_message(Role::User, "plate · diff-sbs · c540 edges");
         self.push_diff_ex(
             format!("edited {demo_rs} (+2 -2) unified edit-format"),
             sample_unified_pair(),
@@ -1903,6 +1921,20 @@ impl FakeCodingAgentApp {
             format!("edited {ui_root} (+2 -2) side-by-side (optional)"),
             sample_sbs_pair(),
             Some(60),
+            true,
+            ToolBlockStatus::Success,
+        );
+        self.push_diff_ex(
+            "edited 说明.md (+1 -1) side-by-side CJK (c540)",
+            sample_sbs_cjk_pair(),
+            Some(40),
+            true,
+            ToolBlockStatus::Success,
+        );
+        self.push_diff_ex(
+            "edited orphan.rs (−1) side-by-side empty half (c540)",
+            sample_sbs_empty_half_pair(),
+            Some(40),
             true,
             ToolBlockStatus::Success,
         );
