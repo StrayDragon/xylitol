@@ -1,7 +1,7 @@
 # xylitol 调研笔记（短索引）
 
 > **非规范。** 稳定边界：根/`src` `AGENTS.md`。高维图：`docs/architecture/`。
-> 更新日期：2026-07-11。
+> 更新日期：2026-07-11。交接板：`_HANDOFF.md`。轨 P Prompt：`_prompts/track-p-tui-polish.md`。
 
 ## 已落盘
 

@@ -1,110 +1,122 @@
-# _HANDOFF — xylitol TUI（交接笔记，非规范）
+# _HANDOFF — 双轨交接（非规范）
 
-> 最后更新：2026-07-10（轨 A 收口；产品面仍 **冻结**；c491 stub-only）
-> 分支：`feat/tui-dev`（ahead origin；含 c457/c458 等）
-> **本文是临时交接/进度板，不是 SSOT。** 稳定边界以各层 `AGENTS.md` 与 skills 为准。
+> 最后更新：2026-07-11
+> 分支语境：`feat/tui-dev`（轨 A 业务重构可在此推进）；**轨 P** 建议独立 worktree，少碰 `src/` 核心。
+> **本文是临时交接/进度板，不是 SSOT。** 稳定边界：各层 `AGENTS.md`、`docs/architecture/`、`llmanspec/changes/`。
 
 ---
 
-## 〇、三轨并行
+## 〇、三轨（2026-07-11 重命名对齐）
 
-| 轨 | 目标 | 状态 |
+| 轨 | 范围 | 状态 | 冲突面 |
+|---|---|---|---|
+| **P · 包 / demo / DESIGN** | `packages/xylitol-tui`、`agent_demo`、可选 `src/app/tui/DESIGN.md`+`design/*`（只文档） | **可继续打磨** | 与轨 A 几乎零冲突（包零引用主 crate） |
+| **A · 业务核心** | `src/{domain,runtime_protocol,agent,infra,app/core}`、c500–c525 | **可 apply** | 主 crate；勿与轨 P 同改 `src/app/tui` 产品代码 |
+| **B · 产品 TUI** | `src/app/tui` 接线、c465–c493 | **冻结** | 开闸 = 轨 A 相关落地 + 用户明确开闸 |
+
+**原则**
+
+1. 轨 P：组件化、可单独验证、每步可给人审；缺能力先改包，**禁止**在冻结期堆产品 bridge。
+2. 轨 A：按波次 apply（见下）；Print 主线可回归。
+3. 轨 B：purpose-draft 可改文档；**勿 apply** 直至开闸。
+
+**Worktree 建议**
+
+- 轨 P：`git worktree add ../xylitol-tui-polish -b polish/tui-components`（或从当前分支切出）
+- 轨 A：留在 `feat/tui-dev`（或 `refactor/core-export`）
+- Prompt 包：[`_prompts/track-p-tui-polish.md`](_prompts/track-p-tui-polish.md)
+
+---
+
+## 一、轨 A — 业务优化（本仓主线）
+
+| 波次 | Change | 说明 |
 |---|---|---|
-| **A. 包 / agent_demo** | demo 验证原子 | **主线已收口**（至 c458 / c471） |
-| **B. 产品面** | `src/app/tui` ↔ Driver / XyEvent | **冻结**：c460 空壳 + c491 假树 stub |
-| **D. DESIGN** | 主 DESIGN + `design/*.md` | **已落地**（c449）；可改文档，不据此堆产品实现 |
+| A0 | **c520** | XyEvent 闭集护栏（轻） |
+| A1 | **c500** → **c510** | 精选 pub use + 删死包装 → domain 去 JsonSchema |
+| A1′ | **c505** | Provider 单路径（可与 A1 并行） |
+| A2 | **c525** | 异步队列 + QueueUpdate 单通道（**轨 B 开闸 P0**） |
+| A3 | **c515** | MCP 配置化（可后置） |
 
-**闸门**：用户明确开闸 → 才继续轨 B（bridge / input / chrome / 垂直切片）。c491 **MUST NOT** 在 stub 上扩展。
+产品语义图：`docs/architecture/`。实现只在对应 `llmanspec/changes/*/design.md`。
 
-**原则**：demo 用真实库验证 → 再搬产品面；缺能力先改包；purpose-draft 升格后才 apply。
+短索引：`_NOTE.md`。
 
 ---
 
-## 一、已锁定产品决议
+## 二、轨 P — 包 / DESIGN / demo（worktree）
+
+### 目标
+
+把「人眼能审、机器能测、开闸能接」的原子做扎实：
+
+1. **DESIGN**：token / 组件 MUST 可 HTML 预览（给人快速审色与层次）
+2. **包组件**：单测 + snapshot；改一处验一处
+3. **agent_demo**：只组合已验证原子；键位与产品决议对齐
+
+### 工作方式（强制）
+
+| 步 | 产出 | 人怎么审 | 机怎么验 |
+|---|---|---|---|
+| 1 | HTML token/组件预览页 | 浏览器看色板与块 | 静态文件即可 |
+| 2 | 单组件改动 + harness | 看 demo 槽或 snapshot diff | `cargo test -p xylitol-tui` 相关 |
+| 3 | demo 接线（若需要） | `just demo-tui` | 五层 harness 按需 |
+| 4 | 短 PR / 短 commit | 对照 DESIGN MUST | `just qa` 子集 |
+
+**禁止**：无预览/无单测就大改多组件；在 `src/app/tui` 实现产品 bridge。
+
+详细分步 Prompt：见 `_prompts/track-p-tui-polish.md`。
+
+### 已锁定产品决议（demo 应对齐）
 
 | 主题 | 决议 |
 |---|---|
-| Esc | 流中 = `Driver::abort`（**清 steer，保留 follow_up** 供 UI restore — c461 D4） |
+| Esc | 流中 = abort（清 steer，留 follow_up） |
 | Ctrl+C | 有输入→清编辑器；空→退出 |
-| 流中 Enter | **steer** |
-| Alt+Enter | **follow-up** |
-| 审批 | trust 后 yolo；保留 hooks |
+| 流中 Enter / Alt+Enter | steer / follow-up |
 | Status | idle **0 行** |
-| Expandable | 仅应用面（demo/产品）；包有 `ExpandableOutput` 辅助 |
-| Diff | `package-tui-diff`；word-level；宽屏可 L/R |
-| Slash MVP | `/exit` + `/model` |
-| Feature | `tui` 在 **default** |
-| 远控 | 默认 InProcess；保留 RemoteDriver |
-| 高亮 | demo/产品同一真实 syntect；包只收回调 |
-| 日志 | debug 默认即时 log；release 默认关 |
-| 会话树 | demo 活树 SSOT；产品 c491 **stub 冻结** |
-| Bash / `$EDITOR` | demo：TTY 真编辑器 + harness stub；产品 c492 后置 |
-| Theme auto | demo c458 opt-in；产品 MVP **固定暗色** |
+| Diff | word-level；宽屏可 L/R；SBS 无行底 |
+| Slash MVP | `/exit` + `/model`（产品开闸后） |
+| 会话树 | demo 活树；产品 c491 **stub 冻结** |
+| Theme | 产品 MVP **固定暗色**；demo 可 opt-in auto |
+| 高亮 | demo/产品同一 syntect 回调；包只收回调 |
 
----
-
-## 二、Change DAG（当前）
-
-### 轨 A — 已归档（节选）
-
-```text
-c449 DESIGN split ✓
-c451 Diff ✓ · c452 highlight ✓ · c453 conditional ✓
-c454 TreeSelector ✓ · c455 InputListener ✓ · c456 nav keys ✓
-c457 bash/Ctrl+G stub ✓ · c458 theme auto ✓
-c459–c464 / c466–c469 / c471（diff/tool-bg/expandable/tree/steer/pan/fork）✓
-```
-
-### 轨 B — 活跃 purpose-draft（冻结中，勿 apply）
-
-```text
-c460 host ✓ archived
-c461 steer/follow-up seam ✓ archived
-c491 session-tree stub ✓ archived（stub-only）
-
-c465 bridge          ← 开闸后首选
-c475 chrome          ← 依赖 c449✓
-c480 input           ← 依赖 c455✓ / c461✓
-c485 vertical slice  ← c465 + c475 + c480
-c470 transcript      ← paused（不做 Codex TranscriptView）
-后置: c490 trust · c492 bash · c493 compaction/retry
-```
-
-- 图：`llman sdd graph --scope active --format mermaid`
-- specs 层前缀 rename：`_tmp_prompts/SPECS_RENAME_MAP.md`（若仍在）
-
----
-
-## 三、下一步
-
-1. **开闸决策**：升格 / apply **c465**（XyEvent→UI bridge）——轨 B 依赖链起点。
-2. 并行候选（仍需开闸）：**c480** input/slash（依赖已齐）。
-3. 冻结期内允许：c460/c491 harness 回归、文档 / AGENTS / `_HANDOFF`、包内通用缺口（非产品接线）。
-4. 空壳可 `cargo run -- --tui`（需 TTY）；真聊一轮等 c485。
-
----
-
-## 四、`agent_demo` 键位（应对齐产品）
+### `agent_demo` 键位（摘要）
 
 | 键 | 作用 |
 |---|---|
-| 流中 Enter | steer |
-| Alt+Enter | follow-up |
-| Esc | abort（清 steer / 留 follow_up）；经 InputListener |
+| 流中 Enter / Alt+Enter | steer / follow-up |
+| Esc | abort |
 | Ctrl+C | 清输入 / 空则退 |
-| 双 Esc | 会话树；Enter travel（+reply spine）；Shift+F fork |
-| `!` 前缀 | bash 边框 |
-| Ctrl+G | `$EDITOR`（TTY 真路径 / harness stub） |
-| `/` `@` · Ctrl+T/Alt+E/Alt+G · Ctrl+P/S · Ctrl+O | 见 seed 系统行 |
+| 双 Esc | 会话树 |
+| `!` / Ctrl+G | bash 边框 / `$EDITOR` |
 | `XYLITOL_AGENT_DEMO_THEME_AUTO=1` | 可选亮暗探测 |
 
 ---
 
-## 五、SSOT 指针
+## 三、轨 B — 产品 TUI（冻结）
 
-- 边界：`packages/xylitol-tui/AGENTS.md`、`src/app/tui/AGENTS.md`、`src/AGENTS.md`、根 `AGENTS.md`
-- vs pi：`packages/xylitol-tui/PI_DELTAS.md`
-- How-to：`write-tui`、`test-tui-harness`、`write-surface`
-- 视觉：`src/app/tui/DESIGN.md` + `design/`
-- 合约：`llmanspec/changes/archive/2026-07-10-c450-…`、`…/c461-…`
-- **src/ 就绪度 + 命名债（原 2026-07-10 审计）**：已并入 `llmanspec/changes/c465-add-app-tui-bridge/design.md`；插话/续跑产品语义见 `docs/architecture/queue-and-interrupt.md`；实现见 c525。
+```text
+已归档：c460 host · c461 队列 seam · c491 stub-only
+开闸后：c465 bridge → c475 chrome / c480 input → c485 垂直切片
+paused：c470 Codex TranscriptView
+后置：c490 trust · c492 bash · c493 compaction/retry
+```
+
+开闸前 P0（QueueUpdate 单通道）见 `llmanspec/changes/c465-…/design.md` + **c525**。
+
+冻结期内允许：c460/c491 harness 回归、DESIGN 文档、包内通用缺口。
+
+---
+
+## 四、SSOT 指针
+
+| 主题 | 路径 |
+|---|---|
+| 分层 / 导出 / 冻结 | 根 + `src/AGENTS.md`、`src/app/tui/AGENTS.md` |
+| 产品架构图 | `docs/architecture/` |
+| 包边界 / vs pi | `packages/xylitol-tui/AGENTS.md`、`PI_DELTAS.md` |
+| 视觉 | `src/app/tui/DESIGN.md` + `design/` |
+| How-to | `write-tui`、`test-tui-harness`、`write-surface` |
+| 轨 P Prompt | `_prompts/track-p-tui-polish.md` |
+| 轨 A 索引 | `_NOTE.md` |
