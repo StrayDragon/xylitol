@@ -1,5 +1,6 @@
 use crate::components::text::Text;
 use crate::tui::Component;
+use crate::utils::{truncate_to_width, visible_width};
 
 pub struct LoaderIndicatorOptions {
     pub frames: Vec<String>,
@@ -120,8 +121,19 @@ impl Loader {
 
 impl Component for Loader {
     fn render(&mut self, width: usize) -> Vec<String> {
-        let mut lines = vec![String::new()]; // empty top line
-        lines.extend(self.text.render(width));
+        // Keep a spacer row, but never emit lines wider than the budget
+        // (Text padding_x=1 can otherwise overflow at width 0/1).
+        let mut lines = Vec::new();
+        if width > 0 {
+            lines.push(String::new());
+        }
+        for line in self.text.render(width) {
+            if visible_width(&line) <= width {
+                lines.push(line);
+            } else {
+                lines.push(truncate_to_width(&line, width, "", false));
+            }
+        }
         lines
     }
 
@@ -138,6 +150,54 @@ impl Component for Loader {
             true
         } else {
             false
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn identity(s: &str) -> String {
+        s.to_string()
+    }
+
+    #[test]
+    fn narrow_width_clamps_long_message() {
+        let mut loader = Loader::new(
+            Box::new(identity),
+            Box::new(identity),
+            "x".repeat(80),
+            Some(LoaderIndicatorOptions {
+                frames: vec!["*".into()],
+                interval_ms: 80,
+            }),
+        );
+        for w in [0usize, 1, 8, 20] {
+            for line in loader.render(w) {
+                assert!(
+                    visible_width(&line) <= w,
+                    "width={w}: visible {} > budget; line={line:?}",
+                    visible_width(&line)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn empty_message_still_renders_safely() {
+        let mut loader = Loader::new(
+            Box::new(identity),
+            Box::new(identity),
+            String::new(),
+            Some(LoaderIndicatorOptions {
+                frames: vec![String::new()],
+                interval_ms: 80,
+            }),
+        );
+        let lines = loader.render(10);
+        for line in lines {
+            assert!(visible_width(&line) <= 10);
         }
     }
 }

@@ -3,7 +3,9 @@ use crate::keys::printable_from_key_event;
 use crate::kill_ring::{KillRing, KillRingOptions};
 use crate::tui::{CURSOR_MARKER, Component, InputEvent};
 use crate::undo_stack::UndoStack;
-use crate::utils::{is_whitespace_char, slice_by_column_strict as slice_by_column, visible_width};
+use crate::utils::{
+    is_whitespace_char, slice_by_column_strict as slice_by_column, truncate_to_width, visible_width,
+};
 use crate::word_navigation::{find_word_backward, find_word_forward};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -365,9 +367,14 @@ impl Input {
 impl Component for Input {
     fn render(&mut self, width: usize) -> Vec<String> {
         let prompt = "> ";
-        let available = width.saturating_sub(prompt.len());
+        if width == 0 {
+            return vec![String::new()];
+        }
+        let prompt_w = visible_width(prompt);
+        let available = width.saturating_sub(prompt_w);
         if available == 0 {
-            return vec![prompt.to_string()];
+            // Prompt alone doesn't fit — show a clipped prompt, never overflow.
+            return vec![truncate_to_width(prompt, width, "", false)];
         }
 
         let visible_text;
@@ -423,7 +430,7 @@ impl Component for Input {
         let vis_len = visible_width(&text_with_cursor);
         let padding = " ".repeat(available.saturating_sub(vis_len));
         let line = format!("{}{}{}", prompt, text_with_cursor, padding);
-        vec![line]
+        vec![truncate_to_width(&line, width, "", false)]
     }
 
     fn handle_input(&mut self, event: InputEvent) {
