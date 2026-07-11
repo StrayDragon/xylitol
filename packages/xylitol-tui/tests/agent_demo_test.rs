@@ -792,13 +792,22 @@ fn agent_demo_slash_md_injects_showcase() {
     h.render_result().expect("initial render");
     h.keys("/md\t\r");
     let mut text = String::new();
+    let mut saw_accent = false;
+    let mut saw_warning = false;
     for i in 0..8000 {
         h.tick();
         if i % 8 == 0 {
             h.render_result().ok();
         }
         text = h.tui.terminal.scroll_buffer().join("\n");
-        if text.contains("Markdown grammar stub") && text.contains("（加粗）") {
+        saw_accent = scrollback_has_fg_rgb(&h, (137, 180, 250));
+        saw_warning = scrollback_has_fg_rgb(&h, (249, 226, 175));
+        if text.contains("Markdown grammar stub")
+            && text.contains("（加粗）")
+            && text.contains("（斜体）")
+            && saw_accent
+            && saw_warning
+        {
             h.render_result().ok();
             break;
         }
@@ -810,6 +819,15 @@ fn agent_demo_slash_md_injects_showcase() {
     assert!(
         text.contains("Markdown grammar stub"),
         "/md should stream showcase body:\n{text}"
+    );
+    // B color enhance: bold → accent RGB, italic → warning RGB (cell attrs; scroll text strips ANSI).
+    assert!(
+        saw_accent || scrollback_has_fg_rgb(&h, (137, 180, 250)),
+        "/md bold/heading should paint DESIGN accent RGB on cells"
+    );
+    assert!(
+        saw_warning || scrollback_has_fg_rgb(&h, (249, 226, 175)),
+        "/md italic should paint DESIGN warning RGB on cells"
     );
 }
 
@@ -1248,6 +1266,20 @@ fn agent_demo_tool_detail_does_not_echo_command() {
         text.contains("exit 0"),
         "detail keeps exit stub; got:\n{text}"
     );
+}
+
+/// True if any scrollback cell has truecolor foreground `rgb`.
+fn scrollback_has_fg_rgb(h: &TuiTestHarness, rgb: (u8, u8, u8)) -> bool {
+    use support::Color;
+    let want = Color::Rgb(rgb.0, rgb.1, rgb.2);
+    for row in 0..h.tui.terminal.grid_len() {
+        for cell in h.tui.terminal.grid_row(row) {
+            if cell.fg == want {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// True if any viewport cell has truecolor background `rgb`.
