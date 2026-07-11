@@ -31,21 +31,17 @@
 
 路径：`llmanspec/changes/archive/2026-07-11-c5xx-*`；c530–c540 见对应 `archive/2026-07-11-c5xx-*` 目录。
 
-## 下一波内核（库 + 多 client）
+## 下一波（A3）
 
-见 [`library-and-clients.md`](docs/architecture/library-and-clients.md)。A2（c530–c540）已归档。
+见 [`library-and-clients.md`](docs/architecture/library-and-clients.md)。
 
-## 下一波（已开闸 / 已提案）
+| ID | 主题 | 状态 |
+|---|---|---|
+| **c545** | MCP 配置去泄漏（`McpServerSpec`） | archived |
+| **c550** | Server 经 dispatch 执行命令 | proposed |
+| **c465** | TUI bridge（Track B） | proposed；**本波不处理 4xx** |
 
-| ID | 主题 | depends | 状态 |
-|---|---|---|---|
-| **c545** | MCP 配置去泄漏（embed 缝） | — | proposed |
-| **c550** | Server 经 dispatch 执行命令 | c540 | proposed |
-| **c465** | TUI bridge（Track B） | c460/c461 ✅ | proposed；**TUI 已开闸** |
-
-建议 apply 顺序：**c545 → c550 → c465**（MCP/dispatch 小、可先稳缝；再进 TUI）。
-
-轨 B 其余（c470+）仍为 draft/paused，按需长大。
+建议 apply：**c550**。轨 B 其余 draft/paused 搁置。
 
 ## 已清理的文档
 

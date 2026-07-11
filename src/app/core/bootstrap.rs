@@ -104,10 +104,7 @@ pub struct BootstrappedAgent {
     /// reaching into agent internals.
     pub store: Arc<dyn crate::runtime_protocol::XySessionStore>,
     /// MCP servers from loaded config (`None` / empty = disabled, zero-cost).
-    ///
-    /// **Leak:** concrete `infra::mcp::McpServerConfig` until a seam type
-    /// exists; pass only into [`crate::app::core::composition::McpSession::reload`].
-    pub mcp_servers: Option<Vec<crate::infra::mcp::McpServerConfig>>,
+    pub mcp_servers: Option<Vec<crate::app::core::mcp_spec::McpServerSpec>>,
 }
 
 /// Driver-ready result of [`BootstrappedAgent::into_runtime`].
@@ -118,8 +115,8 @@ pub struct BootstrappedRuntime {
     pub driver: crate::app::core::driver::InProcessDriver,
     pub session_id: String,
     pub warnings: Vec<BootstrapWarning>,
-    /// Same leak as [`BootstrappedAgent::mcp_servers`] — infra concrete type.
-    pub mcp_servers: Option<Vec<crate::infra::mcp::McpServerConfig>>,
+    /// MCP servers for [`crate::app::core::composition::McpSession::reload`].
+    pub mcp_servers: Option<Vec<crate::app::core::mcp_spec::McpServerSpec>>,
 }
 
 impl BootstrappedAgent {
@@ -167,7 +164,7 @@ pub struct ResolvedAssembly {
     /// Diagnostics produced during resolution.
     pub warnings: Vec<BootstrapWarning>,
     /// MCP servers from YAML (`None` / empty = not enabled).
-    pub mcp_servers: Option<Vec<crate::infra::mcp::McpServerConfig>>,
+    pub mcp_servers: Option<Vec<crate::app::core::mcp_spec::McpServerSpec>>,
 }
 
 impl ResolvedAssembly {
@@ -464,7 +461,9 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         .clone()
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-    let mcp_servers = app_config.as_ref().and_then(|c| c.mcp_servers.clone());
+    let mcp_servers = crate::app::core::mcp_spec::McpServerSpec::from_infra_list(
+        app_config.as_ref().and_then(|c| c.mcp_servers.clone()),
+    );
 
     Ok(ResolvedAssembly {
         model_registry,
