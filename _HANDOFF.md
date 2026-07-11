@@ -87,10 +87,8 @@
 |---|---|---|
 | done | `MarkdownOptions` 死字段删除；list/table/quote 单次折行（`prewrapped`） | `polish/tui-components` 跟进 |
 | done | SelectList/Settings/Loader/Input 窄宽 clamp + 空态 | SelectList 已有；Settings/Loader/Input 补齐 |
-| 低摩擦 | playground 再补组件槽 / 对照 DESIGN MUST | c555 已同步 token；非阻塞 |
-| 延后 | Overlay 完整 focus-restore（PI_DELTAS D08） | 明确延后，非本批 |
-| 延后 | Image 组件 / 完整 overlay（AGENTS 裁剪） | 不得回退成完整 port |
-| 文档 | 补回或改写 `_prompts/track-p-tui-polish.md`（链接现缺文件） | 可选 |
+| done | playground Widgets 槽 + MD 列表格；demo plate `md-list-wrap` / `narrow-clamp` | 库用户运行时参考 |
+| 低摩擦 | 补回 `_prompts/track-p-tui-polish.md`（链接现缺文件） | 可选 |
 
 ### 已锁定产品决议（demo 应对齐）
 
