@@ -38,10 +38,10 @@
 | ID | 主题 | 状态 |
 |---|---|---|
 | **c545** | MCP 配置去泄漏（`McpServerSpec`） | archived |
-| **c550** | Server 经 dispatch 执行命令 | proposed |
+| **c550** | Server 经 dispatch 执行命令 | archived |
 | **c465** | TUI bridge（Track B） | proposed；**本波不处理 4xx** |
 
-建议 apply：**c550**。轨 B 其余 draft/paused 搁置。
+A3 内核缝（c545/c550）已归档。4xx / Track B 搁置。
 
 ## 已清理的文档
 

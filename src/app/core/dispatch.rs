@@ -16,11 +16,9 @@
 //! correlation handle; dispatch ignores it and
 //! lets the caller extract/echo it around the dispatch call.
 //!
-//! NOTE: dispatch is consumed via tui/commands.rs (`#[cfg(feature = "tui")]`).
-//! Under default features the dispatcher and outcome types appear unused; they
-//! are exercised by the dispatch unit tests and light up once tui is on.
-//! ceiling: never consumed without tui. upgrade: tui becomes default or another
-//! surface consumes dispatch.
+//! NOTE: dispatch is consumed by server REST (c550) and will be by tui slash.
+//! Under default features without `server`/`tui` the dispatcher still appears
+//! lightly used; unit tests cover it.
 //!
 //! Outcome payload fields (Bash result, export paths, session entries, ...) are
 //! read by callers as they wire up the corresponding slash commands; only
