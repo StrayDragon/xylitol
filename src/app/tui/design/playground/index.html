@@ -435,31 +435,16 @@
         <h2>Markdown</h2>
         <p class="spec">
           <a href="../markdown.md">markdown.md</a> · 无 # · text (url) · 无可见 ** / *
-          <span class="md-compare badge" style="border:none;padding:0">B 已落地 · 对照 just demo-tui → /md</span>
+          <span class="md-compare badge" style="border:none;padding:0">已落地 color enhance · 对照 just demo-tui → /md</span>
         </p>
         <div class="ctl">
           <button type="button" id="md-stream" aria-pressed="false">假流式逐行</button>
           <button type="button" id="md-reset" aria-pressed="false">重置</button>
-          <span class="hint">左栏=现状（仅字重）· 右栏=提案（色+字重）· 浏览器能看出字重；终端往往不能</span>
+          <span class="hint">已落地 color enhance（色+字重）· 浏览器能看出字重；终端往往不能 · 对照 just demo-tui → /md</span>
         </div>
         <div class="md-compare" id="md-emphasis-compare">
           <div class="cell">
-            <h3><span>A · 现状（与 agent_demo 接近）</span></h3>
-            <div class="row md-h" style="text-decoration:underline;font-weight:700">一级（accent+underline）</div>
-            <div class="row md-h" style="text-decoration:underline;font-weight:700">二级（accent+underline）</div>
-            <div class="row md-h" style="font-weight:700">三级（现状也是 accent，扁）</div>
-            <div class="row md-h" style="font-weight:600">五级（现状仍 accent）</div>
-            <div class="row fg-assistant">正文（普通）</div>
-            <div class="row"><span class="md-bold">加粗（加粗）</span></div>
-            <div class="row"><span class="md-italic">斜体（斜体）</span></div>
-            <div class="row"><code class="md-code-inline">`code`</code></div>
-            <div class="row"><span style="color:var(--assistant)">~~划掉~~</span></div>
-            <div class="row fg-assistant" style="text-decoration:underline;font-weight:700">Name  Age</div>
-            <div class="row fg-assistant">alice  30</div>
-            <div class="row md-quote" style="font-style:normal">引用：仅 dim（斜体常看不见）</div>
-          </div>
-          <div class="cell">
-            <h3><span>B · 提案</span><span class="badge">color enhance</span></h3>
+            <h3><span>强调样式</span><span class="badge">color enhance</span></h3>
             <div class="row md-h" style="text-decoration:underline;font-weight:700">一级（accent+underline）</div>
             <div class="row md-h" style="text-decoration:underline;font-weight:700">二级（accent+underline）</div>
             <div class="row md-h3">三级 on-surface + bold</div>
@@ -490,7 +475,7 @@
             <h3>嵌套列表 · 悬挂缩进</h3>
             <div class="row fg-assistant">1. 有序一项</div>
             <div class="row fg-assistant">2. 有序二项</div>
-            <div class="row fg-assistant">    - 嵌套无序 A</div>
+            <div class="row fg-assistant">    - 嵌套无序</div>
             <div class="row fg-assistant">        1. 再嵌套有序</div>
             <div class="row fg-assistant">3. … <span class="md-link">链接 (https://example.com/list)</span> 与</div>
             <div class="row fg-assistant">   <code class="md-code-inline">`code`</code></div>

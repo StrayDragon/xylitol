@@ -172,11 +172,10 @@ impl Component for SettingsList {
         } else if cancel {
             (self.on_cancel)();
         } else if self.search_enabled {
-            // Space is confirm above; other printable chars feed the search input.
-            let Some(ch) = printable_from_key_event(key) else {
-                return;
-            };
-            if ch == " " {
+            // Space is confirm above; other printable + Backspace feed the search.
+            let is_backspace = matches!(key.code, KeyCode::Backspace);
+            let printable = printable_from_key_event(key);
+            if !is_backspace && printable.as_deref().is_none_or(|ch| ch == " ") {
                 return;
             }
             if let Some(ref mut input) = self.search_input {
