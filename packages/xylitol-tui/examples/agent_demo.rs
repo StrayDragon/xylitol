@@ -61,18 +61,13 @@ impl CompletionSource for DemoDollarSource {
     }
 
     fn probe(&self, ctx: &CompletionContext<'_>) -> Option<CompletionMatch> {
-        let before = ctx.before_cursor();
-        if before.starts_with('$') && !before.contains(' ') {
-            Some(CompletionMatch {
-                prefix: before.to_string(),
-            })
-        } else {
-            None
-        }
+        xylitol_tui::extract_dollar_prefix(ctx.before_cursor())
+            .map(|prefix| CompletionMatch { prefix })
     }
 
-    fn should_dismiss(&self, _ctx: &CompletionContext<'_>, m: &CompletionMatch) -> bool {
-        m.prefix == "$"
+    fn should_dismiss(&self, ctx: &CompletionContext<'_>, _m: &CompletionMatch) -> bool {
+        // Like `@`: bare `$` stays open; dismiss only when the `$…` token is gone.
+        xylitol_tui::extract_dollar_prefix(ctx.before_cursor()).is_none()
     }
 
     fn suggestions(
@@ -85,7 +80,7 @@ impl CompletionSource for DemoDollarSource {
             .iter()
             .filter(|(name, _)| name.starts_with(needle))
             .map(|(name, desc)| AutocompleteItem {
-                value: (*name).to_string(),
+                value: format!("${name}"),
                 label: (*name).to_string(),
                 description: Some((*desc).to_string()),
             })
@@ -108,13 +103,19 @@ impl CompletionSource for DemoDollarSource {
         item: &AutocompleteItem,
         prefix: &str,
     ) -> (Vec<String>, usize, usize) {
+        // Inline replace like `@path`: keep text before the `$…` token.
         let current = lines[cursor_line].clone();
         let before = &current[..cursor_col.saturating_sub(prefix.len())];
         let after = &current[cursor_col..];
-        let new_line = format!("${} {}", item.value, after);
+        let suffix = " ";
+        let new_line = format!("{}{}{}{}", before, item.value, suffix, after);
         let mut new_lines = lines.to_vec();
         new_lines[cursor_line] = new_line;
-        (new_lines, cursor_line, before.len() + item.value.len() + 2)
+        (
+            new_lines,
+            cursor_line,
+            before.len() + item.value.len() + suffix.len(),
+        )
     }
 }
 
@@ -161,7 +162,7 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
     DemoPlateItem {
         id: "completion-dollar",
         label: "Completion $ stub (c545)",
-        description: "Tip + type $ in editor for third CompletionSource",
+        description: "Inline $skill like @path — type use $ in editor",
     },
     DemoPlateItem {
         id: "tool-tints",
@@ -1992,11 +1993,12 @@ impl FakeCodingAgentApp {
         self.push_message(Role::User, "plate · completion-dollar · c545");
         self.push_message(
             Role::System,
-            "c545: third CompletionSource registered (demo `$`). Type `$` in the editor — \
-             popup lists stub skills; narrow terminals clamp label width. Slash `/` and `@` \
-             stay independent. Product `$`/`^` semantics are out of scope.",
+            "c545: `$skill` is an inline reference (like `@path`), not a line-leading slash. \
+             Type e.g. `use $` mid-prompt — popup lists stub skills; Tab inserts `$name` and \
+             keeps surrounding text. Narrow terminals clamp popup width. `/` and `@` stay \
+             independent. Product skill semantics remain out of scope.",
         );
-        self.set_status("Type $ for stub skills");
+        self.set_status("Type use $ for stub skills");
     }
 
     fn inject_diff_showcase(&mut self) {

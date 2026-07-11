@@ -10,9 +10,11 @@ use xylitol_tui::completion::{
     AtPathSource, CompletionContext, CompletionMatch, CompletionSource, SlashCommandSource,
 };
 use xylitol_tui::components::editor::{Editor, EditorOptions, EditorTheme};
+use xylitol_tui::extract_dollar_prefix;
 use xylitol_tui::utils::visible_width;
 
 /// Test-only `$` trigger — proves a third source can register without product semantics.
+/// Probe/apply mirror `@`: inline `$skill` anywhere before the cursor.
 struct DollarStubSource {
     skills: Vec<(&'static str, &'static str)>,
 }
@@ -23,18 +25,11 @@ impl CompletionSource for DollarStubSource {
     }
 
     fn probe(&self, ctx: &CompletionContext<'_>) -> Option<CompletionMatch> {
-        let before = ctx.before_cursor();
-        if before.starts_with('$') && !before.contains(' ') {
-            Some(CompletionMatch {
-                prefix: before.to_string(),
-            })
-        } else {
-            None
-        }
+        extract_dollar_prefix(ctx.before_cursor()).map(|prefix| CompletionMatch { prefix })
     }
 
-    fn should_dismiss(&self, _ctx: &CompletionContext<'_>, m: &CompletionMatch) -> bool {
-        m.prefix == "$"
+    fn should_dismiss(&self, ctx: &CompletionContext<'_>, _m: &CompletionMatch) -> bool {
+        extract_dollar_prefix(ctx.before_cursor()).is_none()
     }
 
     fn suggestions(
@@ -48,7 +43,7 @@ impl CompletionSource for DollarStubSource {
             .iter()
             .filter(|(name, _)| name.starts_with(needle))
             .map(|(name, desc)| AutocompleteItem {
-                value: (*name).to_string(),
+                value: format!("${name}"),
                 label: (*name).to_string(),
                 description: Some((*desc).to_string()),
             })
@@ -74,10 +69,15 @@ impl CompletionSource for DollarStubSource {
         let current = lines[cursor_line].clone();
         let before = &current[..cursor_col.saturating_sub(prefix.len())];
         let after = &current[cursor_col..];
-        let new_line = format!("${} {}", item.value, after);
+        let suffix = " ";
+        let new_line = format!("{}{}{}{}", before, item.value, suffix, after);
         let mut new_lines = lines.to_vec();
         new_lines[cursor_line] = new_line;
-        (new_lines, cursor_line, before.len() + item.value.len() + 2)
+        (
+            new_lines,
+            cursor_line,
+            before.len() + item.value.len() + suffix.len(),
+        )
     }
 }
 
@@ -176,22 +176,56 @@ fn third_dollar_stub_source_registers_and_opens() {
     .focus(Some(0));
 
     h.render_result().expect("render");
-    h.keys("$");
-    h.render_result().expect("$ stub popup");
+    // Inline like `@`: mid-line `$` must open the stub source.
+    h.keys("use $");
+    h.render_result().expect("inline $ stub popup");
     h.assert_text_contains("demo");
     h.assert_text_contains("c545 stub skill");
 
-    // Slash still independent when `$` dismissed and `/` typed.
-    h.keys("\x1b"); // Esc
-    h.render_result().expect("esc dollar");
-    // Clear `$` then type slash.
-    h.keys("\x7f/");
-    h.render_result().expect("slash after dollar stub");
-    let text = h.tui.terminal.viewport().join("\n");
+    h.keys("dem\t");
+    h.render_result().expect("Tab applies $demo inline");
+    let after = h.tui.terminal.viewport().join("\n");
     assert!(
-        text.contains("Show help") || text.contains("help"),
-        "SlashCommandSource must still work with third source registered; got:\n{text}"
+        after.contains("use $demo"),
+        "Tab should keep leading text and insert $demo; got:\n{after}"
     );
+}
+
+#[test]
+fn dollar_stub_opens_mid_line_without_leading_dollar() {
+    let mut h = TuiTestHarness::new(80, 16);
+    h.mount(Box::new(editor_with(vec![Box::new(DollarStubSource {
+        skills: vec![("search", "find things")],
+    })])))
+    .focus(Some(0));
+
+    h.render_result().expect("render");
+    h.keys("please $se");
+    h.render_result().expect("mid-line $se");
+    h.assert_text_contains("search");
+    h.assert_text_contains("find things");
+}
+
+#[test]
+fn slash_still_works_with_dollar_source_registered() {
+    let mut h = TuiTestHarness::new(80, 16);
+    h.mount(Box::new(editor_with(vec![
+        Box::new(SlashCommandSource::new(vec![SlashCommand {
+            name: "help".into(),
+            description: Some("Show help".into()),
+            argument_hint: None,
+            get_argument_completions: None,
+        }])),
+        Box::new(DollarStubSource {
+            skills: vec![("demo", "stub")],
+        }),
+    ])))
+    .focus(Some(0));
+
+    h.render_result().expect("render");
+    h.keys("/");
+    h.render_result().expect("slash with dollar registered");
+    h.assert_text_contains("Show help");
 }
 
 #[test]
