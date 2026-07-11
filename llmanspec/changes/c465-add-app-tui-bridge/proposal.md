@@ -10,11 +10,11 @@ track: B
 
 # c465-add-app-tui-bridge
 
-> **开闸（2026-07-11）**：用户确认进入 Track B；本变更从 purpose-draft 升为可 apply 的完整提案。
+> **开闸（2026-07-11）**：Track B 可推进；本变更为产品 TUI 接线 P0（可 apply）。轨 A（含 QueueUpdate）与轨 P 包打磨已合入当前主开发分支。
 
 ## Why
 
-渲染不得直接 match 领域事件；需单缝翻译。流生命周期需重新对齐 pi（多 TurnEnd + AgentEnd + 队列），不沿用已删旧 TUI 的临时结论。c540 后 `QueueUpdate` 已上线协议，bridge 可消费进程内 EventStream。
+渲染不得直接 match 领域事件；需单缝翻译。流生命周期需重新对齐 pi（多 TurnEnd + AgentEnd + 队列），不沿用已删旧 TUI 的临时结论。`QueueUpdate` 已在 EventStream / 线协议落地（c525/c540），bridge 可消费进程内流。
 
 ## What Changes
 
@@ -36,5 +36,6 @@ track: B
 ## Out of scope
 
 - Codex 式 TranscriptView（c470 paused）
-- 会话树活树 / slash 全量（后续 change）
-- 具体 Markdown/Diff 行绘制细节
+- 会话树活树 / slash 全量（c480+；c491 stub 不扩展）
+- 具体 Markdown/Diff 行绘制细节（复用轨 P 包组件）
+- Overlay 完整 focus-restore（包侧 c575，可选、不阻塞）

@@ -22,8 +22,8 @@
 
 - **Trust**：对齐 pi 语义——闸的是**项目本地资源是否加载**（settings / prompts / skills / …），不是工具调用 popup。工具侧开箱 **allow-all**。
 - **MCP**：配置驱动；未配置则零装配（zero-cost）；支持动态配置与重载。细节见 `src/AGENTS.md`。
-- **TUI 产品面**：冻结，直至架构命名与相关重构落地；见 `src/app/tui/AGENTS.md`。
-- 长文分析索引：`_NOTE.md`；高维产品/业务图：`docs/architecture/`（入口 `docs/architecture/README.md`）。
+- **TUI 产品面**：已开闸；下一实现入口 `c465-add-app-tui-bridge`（见 `src/app/tui/AGENTS.md`）。c491 假树 stub 仍禁止在其上扩活树。
+- 短索引：`_NOTE.md`；高维产品/业务图：`docs/architecture/`（入口 `docs/architecture/README.md`）；临时交接：`_HANDOFF.md`。
 
 ## 工作原则
 

@@ -2,7 +2,7 @@
 
 本目录 = 产品 TUI **组件级视觉 MUST**（`*.md`）+ **人类用** DESIGN playground。
 
-Token / 全局 Overview SSOT：上一级 [`../DESIGN.md`](../DESIGN.md)。包引擎边界：`packages/xylitol-tui/AGENTS.md`。本面冻结与接线：[`../AGENTS.md`](../AGENTS.md)。
+Token / 全局 Overview SSOT：上一级 [`../DESIGN.md`](../DESIGN.md)。包引擎边界：`packages/xylitol-tui/AGENTS.md`。本面接线边界：[`../AGENTS.md`](../AGENTS.md)。
 
 ## 给人 / 给 agent
 

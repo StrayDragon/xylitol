@@ -12,7 +12,7 @@ track: P
 
 > **status: purpose-draft**
 >
-> **闸门**：本草案仅立项意向；**合入 `main`（当前 `polish/tui-components` PR）之后**再 `llman-sdd-continue` → specs/tasks → apply。合入前勿实现。
+> **闸门**：轨 P 本批已合入 `feat/tui-dev`；本草案仍为可选跟进。升格时走 `llman-sdd-continue` → specs/tasks → apply；**不阻塞** Track B `c465`。
 
 ## Why
 
@@ -37,10 +37,10 @@ pi-tui Overlay 有 eligible / blocked / resume 完整 focus-restore；xylitol-tu
 
 - 产品 `src/app/tui` 接线（轨 B）
 - stdin-buffer / Image 组件（D02 / D11 仍不移植）
-- 合入 main 前的任何实现提交
+- 在未升格为完整提案前落地实现提交
 
 ## Ethics
 
 - risk_level: medium（焦点状态机易回归）
-- prohibited_actions: 合入 main 前 apply；把 coding-agent 产品壳塞进包
+- prohibited_actions: 未升格完整提案前 apply；把 coding-agent 产品壳塞进包
 - required_evidence: continue 后 `validate`；实现后 `cargo test -p xylitol-tui` 相关绿
