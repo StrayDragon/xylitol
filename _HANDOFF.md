@@ -1,7 +1,7 @@
 # _HANDOFF — 双轨交接（非规范）
 
-> 最后更新：2026-07-11
-> 分支语境：`feat/tui-dev`（轨 A 业务重构可在此推进）；**轨 P** 建议独立 worktree，少碰 `src/` 核心。
+> 最后更新：2026-07-11（轨 P 本批收口）
+> 分支语境：轨 A → `feat/tui-dev`；**轨 P** → worktree 分支 `polish/tui-components`（本批已 apply+archive，可开 PR）。
 > **本文是临时交接/进度板，不是 SSOT。** 稳定边界：各层 `AGENTS.md`、`docs/architecture/`、`llmanspec/changes/`。
 
 ---
@@ -10,8 +10,8 @@
 
 | 轨 | 范围 | 状态 | 冲突面 |
 |---|---|---|---|
-| **P · 包 / demo / DESIGN** | `packages/xylitol-tui`、`agent_demo`、可选 `src/app/tui/DESIGN.md`+`design/*`（只文档） | **可继续打磨** | 与轨 A 几乎零冲突（包零引用主 crate） |
-| **A · 业务核心** | `src/{domain,runtime_protocol,agent,infra,app/core}`、c500–c525 | **可 apply** | 主 crate；勿与轨 P 同改 `src/app/tui` 产品代码 |
+| **P · 包 / demo / DESIGN** | `packages/xylitol-tui`、`agent_demo`、可选 `src/app/tui/DESIGN.md`+`design/*`（只文档） | **本批提案队列已空**；可自由打磨或开 PR | 与轨 A 几乎零冲突（包零引用主 crate） |
+| **A · 业务核心** | `src/{domain,runtime_protocol,agent,infra,app/core}`、c500–c525 | **可 apply**（任务未勾） | 主 crate；勿与轨 P 同改 `src/app/tui` 产品代码 |
 | **B · 产品 TUI** | `src/app/tui` 接线、c465–c493 | **冻结** | 开闸 = 轨 A 相关落地 + 用户明确开闸 |
 
 **原则**
@@ -22,9 +22,9 @@
 
 **Worktree 建议**
 
-- 轨 P：`git worktree add ../xylitol-tui-polish -b polish/tui-components`（或从当前分支切出）
+- 轨 P：`polish/tui-components`（当前；本批 done）
 - 轨 A：留在 `feat/tui-dev`（或 `refactor/core-export`）
-- Prompt 包：[`_prompts/track-p-tui-polish.md`](_prompts/track-p-tui-polish.md)
+- Prompt 包：[`_prompts/track-p-tui-polish.md`](_prompts/track-p-tui-polish.md)（若缺文件，以本节 + `packages/xylitol-tui/AGENTS.md` 为准）
 
 ---
 
@@ -46,6 +46,22 @@
 
 ## 二、轨 P — 包 / DESIGN / demo（worktree）
 
+### 本批已收口（2026-07-11 · `polish/tui-components`）
+
+| Change | 主题 | 归档 |
+|---|---|---|
+| c530 | Markdown token-efficient 渲染 | `archive/2026-07-11-c530-…` |
+| c535 | agent_demo Command plate | `archive/2026-07-11-c535-…` |
+| c540 | Diff CJK wrap + SBS 空半栏 | `archive/2026-07-11-c540-…` |
+| c545 | CompletionSource + `$` 行内 | `archive/2026-07-11-c545-…` |
+| c550 | Expandable Head hint / 零宽安全 | `archive/2026-07-11-c550-…` |
+| c555 | DESIGN playground token sync + MD slot | `archive/2026-07-11-c555-…` |
+| c560 | TreeSelector 空态 + 过滤选中稳定 | `archive/2026-07-11-c560-…` |
+
+跟进（无独立 change）：Markdown 弱终端色强调（bold/italic）；有序嵌套列表 + 链接折行 fix。
+
+**活跃 `llmanspec/changes/` 中已无轨 P 提案**；下一动作为开 PR、或下方自由打磨候选（先对齐再 propose）。
+
 ### 目标
 
 把「人眼能审、机器能测、开闸能接」的原子做扎实：
@@ -65,7 +81,17 @@
 
 **禁止**：无预览/无单测就大改多组件；在 `src/app/tui` 实现产品 bridge。
 
-详细分步 Prompt：见 `_prompts/track-p-tui-polish.md`。
+### 自由打磨候选（未立项 · 需先对齐）
+
+| 优先级感 | 候选 | 备注 |
+|---|---|---|
+| 低摩擦 | playground 再补组件槽 / 对照 DESIGN MUST | c555 已同步 token；非阻塞 |
+| 低摩擦 | `MarkdownOptions` 死字段（`preserve_*` 未接线）清掉或真用 | 纯包内 |
+| 体验 | MD 双折行（list 内 wrap + 外层再 wrap）是否可收敛 | 观感边角，需用例 |
+| 体验 | SelectList / SettingsList / Loader 窄宽与空态边角 | demo 已用，无提案压力 |
+| 延后 | Overlay 完整 focus-restore（PI_DELTAS D08） | 明确延后，非本批 |
+| 延后 | Image 组件 / 完整 overlay（AGENTS 裁剪） | 不得回退成完整 port |
+| 文档 | 补回或改写 `_prompts/track-p-tui-polish.md`（链接现缺文件） | 可选 |
 
 ### 已锁定产品决议（demo 应对齐）
 
@@ -118,5 +144,5 @@ paused：c470 Codex TranscriptView
 | 包边界 / vs pi | `packages/xylitol-tui/AGENTS.md`、`PI_DELTAS.md` |
 | 视觉 | `src/app/tui/DESIGN.md` + `design/` |
 | How-to | `write-tui`、`test-tui-harness`、`write-surface` |
-| 轨 P Prompt | `_prompts/track-p-tui-polish.md` |
+| 轨 P Prompt | `_prompts/track-p-tui-polish.md`（缺则用本文件 §二） |
 | 轨 A 索引 | `_NOTE.md` |
