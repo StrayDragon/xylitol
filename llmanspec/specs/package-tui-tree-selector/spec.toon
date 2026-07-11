@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "package-tui-tree-selector"
 purpose: 通用 TreeSelector：flatten/过滤/搜索/翻页/fold/annotation（供双 Esc 会话树）。
 valid_scope[1]: "packages/xylitol-tui/"
-requirements[11]{req_id,title,statement}:
+requirements[14]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c454-add-package-tui-tree-selector 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   pts1,"tree-node-model",包 MUST 提供 TreeNode（id/label/children）与可导航 TreeSelector 组件；MUST NOT 依赖主 crate xylitol 或 session 类型。
   pts2,"include-node-filter",TreeSelector MUST 支持 include_node 钩子过滤可见节点，并在过滤后重算 indent/connector/gutter；MUST NOT 硬编码产品 FilterMode 枚举。
@@ -14,7 +14,10 @@ requirements[11]{req_id,title,statement}:
   pts8,"node-annotation","TreeNode MUST 支持可选 annotation 与 annotation_at；渲染 MUST 在主 label 前显示 [annotation]；show_annotation_timestamps 为真时 MUST 显示 annotation_at。"
   pts9,"label-edit-callback",TreeSelector MUST 在 tui.tree.editLabel（默认 Shift+L）时调用 on_label_edit(id current_annotation)；MUST 在 tui.tree.toggleLabelTimestamp（默认 Shift+T）时切换时间戳显示。
   pts10,"horizontal-viewport-pan",TreeSelector 渲染 MUST 在行宽不足以同时显示 gutter 与选中行 body 时对 body 做水平平移（固定光标 gutter，平移 label/连接符区）；选中行的关键 label 内容在窄宽下 MUST 仍可见；MUST NOT 平移掉选中指示 gutter。
-scenarios[11]{req_id,id,given,when,then}:
+  pts00,"capability-shell","本增量由变更 c560-update-package-tui-tree-edges 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+  pts11,"empty-visible-state",当过滤或搜索导致无可见节点时，TreeSelector MUST 渲染可辨识空态行（主题 no_match 或等价）；MUST NOT 静默输出完全空白列表且无提示。
+  pts12,"selection-stable-on-filter",include_node 或搜索串变更后，若先前选中 id 仍在可见列表中则 MUST 保持该选中；否则 MUST 将选中落到可见列表的合理默认项（通常为首项）。
+scenarios[15]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/package-tui-tree-selector",spec.toon 存在且 purpose 为中文
   pts1,"unit-flatten","",对分支树 flatten,单子链 indent 不漂移且分支点出现连接符
   pts2,"filter-recalc","",隐藏中间节点,可见兄弟 indent 对齐且无幽灵连接符
@@ -26,3 +29,7 @@ scenarios[11]{req_id,id,given,when,then}:
   pts8,"annotation-render",节点带 annotation,render,"行含 [annotation] 与主 label"
   pts9,"edit-label-fires",选中节点,Shift+L,on_label_edit 收到该 id
   pts10,"deep-indent-visible",深嵌套树且 active/selected 为长 label 叶节点,以窄 width render,输出含叶 label 的可辨识子串且行仍以选中 gutter 开头
+  pts00,"shell-present","","列出 capability package-tui-tree-selector",delta 含 pts11–pts12
+  pts11,"no-match",树有节点,搜索无匹配串,render 含空态提示文案
+  pts12,"keep-id",选中某仍可见节点,收紧 include_node 但仍含该 id,选中仍为该 id
+  pts12,fallback,选中节点被过滤掉,刷新可见列表,选中变为可见首项或等价默认
