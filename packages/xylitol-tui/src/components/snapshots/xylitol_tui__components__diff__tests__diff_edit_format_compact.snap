@@ -1,5 +1,6 @@
 ---
 source: packages/xylitol-tui/src/components/diff.rs
+assertion_line: 1554
 expression: "lines.join(\"\\n\")"
 ---
 -1 fn ready() -> bool {

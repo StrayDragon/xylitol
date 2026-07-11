@@ -13,6 +13,7 @@ pub mod paste_burst;
 pub mod terminal;
 pub mod terminal_colors;
 pub mod terminal_image;
+pub mod theme;
 pub mod tui;
 pub mod undo_stack;
 pub mod utils;
@@ -74,11 +75,16 @@ pub use keys::{
 pub use paste_burst::PasteBurst;
 pub use terminal::{CrosstermTerminal, Terminal, parse_kitty_flags};
 pub use terminal_colors::{
-    RgbColor, TerminalColorScheme, ThemeDetectSources, is_osc11_background_color_response,
-    parse_colorfgbg, parse_osc11_background_color, parse_terminal_color_scheme_report,
-    relative_luminance, resolve_terminal_color_scheme, scheme_from_background_rgb,
+    CSI_COLOR_SCHEME_QUERY, OSC11_BG_QUERY, RgbColor, TerminalColorScheme, ThemeDetectSources,
+    is_osc11_background_color_response, is_terminal_color_reply, parse_colorfgbg,
+    parse_osc11_background_color, parse_terminal_color_scheme_report, relative_luminance,
+    resolve_terminal_color_scheme, scheme_from_background_rgb,
 };
 pub use terminal_image::{hyperlink, is_image_line};
+pub use theme::{
+    Palette, SemanticPalette, bg_rgb, bold, dim, fg_bg_rgb, fg_rgb, italic, strikethrough,
+    underline,
+};
 pub use tui::{
     Component, Focusable, InputEvent, InputListenerResult, OverlayAnchor, OverlayHandle,
     OverlayMargin, OverlayOptions, RenderError, SizeValue, TUI,

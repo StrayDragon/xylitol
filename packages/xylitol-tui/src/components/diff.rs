@@ -1551,7 +1551,9 @@ mod tests {
                 ..DiffOptions::default()
             },
         );
-        insta::assert_snapshot!("diff_edit_format_compact", lines.join("\n"));
+        // Pad-to-width adds trailing spaces for row bg; trim for stable, hook-friendly snaps.
+        let normalized: Vec<_> = lines.iter().map(|l| l.trim_end()).collect();
+        insta::assert_snapshot!("diff_edit_format_compact", normalized.join("\n"));
     }
 }
 

@@ -340,7 +340,11 @@
       <button type="button" data-mode="tile" aria-pressed="true">平铺</button>
       <button type="button" data-mode="focus" aria-pressed="false">专注</button>
     </div>
-    <span class="keys">点击左侧 tab 跳转 · t 模式 · ←→ · 1–7</span>
+    <div class="modes" role="group" aria-label="色板">
+      <button type="button" data-scheme="dark" aria-pressed="true">Dark</button>
+      <button type="button" data-scheme="light" aria-pressed="false">Light</button>
+    </div>
+    <span class="keys">点击左侧 tab 跳转 · t 模式 · d/l 色板 · ←→ · 1–7</span>
   </header>
 
   <div class="shell">
@@ -350,7 +354,7 @@
       <!-- 1 palette -->
       <section class="panel is-active" id="panel-palette" data-id="palette">
         <h2>Palette</h2>
-        <p class="spec">全部 <code>colors.*</code>（<code>sync_tokens.py</code>）</p>
+        <p class="spec">全部 <code>colors.*</code> / <code>colors_light.*</code>（<code>sync_tokens.py</code>）· 右上 Dark/Light</p>
         <div class="swatches" id="swatches"></div>
       </section>
 
@@ -717,6 +721,7 @@
 
     const state = {
       mode: "tile",
+      scheme: "dark",
       index: 0,
       tool: {
         status: "pending",
@@ -749,13 +754,39 @@
     const statusMode = document.getElementById("status-mode");
     const statusSlot = document.getElementById("status-slot");
 
-    for (const [name, hex] of window.DESIGN_COLORS || []) {
-      const el = document.createElement("div");
-      el.className = "swatch";
-      el.innerHTML =
-        `<div class="chip" style="background:${hex}"></div>` +
-        `<div><div>${name}</div><div class="hex">${hex}</div></div>`;
-      swatches.appendChild(el);
+    function colorPairsForScheme(scheme) {
+      const bag = window.DESIGN_COLORS;
+      if (Array.isArray(bag)) return bag; // legacy flat
+      if (bag && Array.isArray(bag[scheme])) return bag[scheme];
+      return window.DESIGN_COLORS_FLAT || [];
+    }
+
+    function renderSwatches() {
+      swatches.replaceChildren();
+      for (const [name, hex] of colorPairsForScheme(state.scheme)) {
+        const el = document.createElement("div");
+        el.className = "swatch";
+        el.innerHTML =
+          `<div class="chip" style="background:${hex}"></div>` +
+          `<div><div>${name}</div><div class="hex">${hex}</div></div>`;
+        swatches.appendChild(el);
+      }
+    }
+
+    function applyScheme() {
+      document.documentElement.setAttribute("data-scheme", state.scheme);
+      document.querySelectorAll(".modes [data-scheme]").forEach((btn) => {
+        btn.setAttribute("aria-pressed", String(btn.dataset.scheme === state.scheme));
+      });
+      renderSwatches();
+      const url = new URL(location.href);
+      url.searchParams.set("scheme", state.scheme);
+      history.replaceState(null, "", url);
+    }
+
+    function setScheme(scheme) {
+      state.scheme = scheme === "light" ? "light" : "dark";
+      applyScheme();
     }
 
     /* —— navigation: jump so panel is centered in main viewport —— */
@@ -810,6 +841,7 @@
       const url = new URL(location.href);
       url.searchParams.set("slot", id);
       url.searchParams.set("mode", state.mode);
+      url.searchParams.set("scheme", state.scheme);
       history.replaceState(null, "", url);
       if (jump || state.mode === "focus") {
         // focus mode: panel just became visible — jump after layout
@@ -832,6 +864,9 @@
 
     document.querySelectorAll(".modes [data-mode]").forEach((btn) => {
       btn.addEventListener("click", () => setMode(btn.dataset.mode));
+    });
+    document.querySelectorAll(".modes [data-scheme]").forEach((btn) => {
+      btn.addEventListener("click", () => setScheme(btn.dataset.scheme));
     });
 
     /* —— tool —— */
@@ -1187,6 +1222,12 @@
       if ((e.key === "t" || e.key === "T") && !e.ctrlKey && !e.altKey && !e.metaKey) {
         setMode(state.mode === "tile" ? "focus" : "tile");
         e.preventDefault();
+      } else if ((e.key === "d" || e.key === "D") && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        setScheme("dark");
+        e.preventDefault();
+      } else if ((e.key === "l" || e.key === "L") && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        setScheme("light");
+        e.preventDefault();
       } else if (e.key === "ArrowLeft" || e.key === "[") {
         select(state.index - 1);
         e.preventDefault();
@@ -1234,6 +1275,9 @@
     if (params.get("mode") === "focus" || params.get("mode") === "tile") {
       state.mode = params.get("mode");
     }
+    if (params.get("scheme") === "light" || params.get("scheme") === "dark") {
+      state.scheme = params.get("scheme");
+    }
     const slotParam = params.get("slot");
     if (slotParam) {
       const i = SLOTS.findIndex((s) => s.id === slotParam);
@@ -1248,6 +1292,7 @@
     renderWidgets();
     renderAtoms();
     renderAsk();
+    applyScheme();
     applyMode();
     applySlot({ jump: true, instant: true });
     // overlay after first paint
