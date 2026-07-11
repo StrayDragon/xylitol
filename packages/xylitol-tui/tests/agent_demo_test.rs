@@ -914,17 +914,18 @@ fn agent_demo_dollar_stub_source_opens_and_plate_mentions_c545() {
     h.render_result().expect("after completion-dollar plate");
     let tip = h.tui.terminal.scroll_buffer().join("\n");
     assert!(
-        tip.contains("c545") || tip.contains("CompletionSource") || tip.contains("$"),
-        "plate completion-dollar should mention c545; got:\n{tip}"
+        tip.contains("c545") || tip.contains("inline") || tip.contains("$skill"),
+        "plate completion-dollar should mention c545 inline $skill; got:\n{tip}"
     );
 
-    h.keys("$");
+    // Mid-prompt `$` (like `@`), not line-leading only.
+    h.keys("use $");
     h.render_result()
-        .expect("dollar stub popup must stay within width");
+        .expect("inline dollar stub popup must stay within width");
     let open = h.tui.terminal.viewport().join("\n");
     assert!(
         open.contains("demo") || open.contains("c545 stub"),
-        "$ should open demo dollar stub popup; got:\n{open}"
+        "mid-line $ should open demo dollar stub popup; got:\n{open}"
     );
     for line in h.tui.terminal.viewport() {
         assert!(
@@ -932,6 +933,14 @@ fn agent_demo_dollar_stub_source_opens_and_plate_mentions_c545() {
             "dollar popup overflow; line={line:?}"
         );
     }
+
+    h.keys("dem\t");
+    h.render_result().expect("Tab applies inline $demo");
+    let after = h.tui.terminal.viewport().join("\n");
+    assert!(
+        after.contains("use $demo"),
+        "Tab should preserve leading text; got:\n{after}"
+    );
 }
 
 #[test]

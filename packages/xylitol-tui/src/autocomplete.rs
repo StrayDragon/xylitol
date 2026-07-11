@@ -682,6 +682,20 @@ pub fn extract_at_prefix(text: &str) -> Option<String> {
     None
 }
 
+/// Extract an inline `$skill` token before the cursor (same delimiter rules as `@`).
+///
+/// Unlike slash commands, `$` is an attachment-style reference and MAY appear mid-line
+/// (e.g. `use $demo`). Returns the `$…` fragment from the last delimiter to end of `text`.
+pub fn extract_dollar_prefix(text: &str) -> Option<String> {
+    let delim = find_last_delimiter(text);
+    let start = if delim < 0 { 0 } else { (delim + 1) as usize };
+    if text[start..].starts_with('$') {
+        Some(text[start..].to_string())
+    } else {
+        None
+    }
+}
+
 fn find_last_delimiter(text: &str) -> isize {
     for (i, ch) in text.char_indices().rev() {
         if PATH_DELIMITERS.contains(&ch) {
@@ -827,5 +841,24 @@ fn construct_relative_path(display_prefix: &str, name: &str) -> String {
         }
     } else {
         name.to_string()
+    }
+}
+
+#[cfg(test)]
+mod dollar_prefix_tests {
+    use super::extract_dollar_prefix;
+
+    #[test]
+    fn extracts_inline_dollar_after_words() {
+        assert_eq!(extract_dollar_prefix("use $"), Some("$".into()));
+        assert_eq!(extract_dollar_prefix("use $dem"), Some("$dem".into()));
+        assert_eq!(extract_dollar_prefix("$alone"), Some("$alone".into()));
+    }
+
+    #[test]
+    fn ignores_when_no_dollar_token() {
+        assert_eq!(extract_dollar_prefix("use skill"), None);
+        assert_eq!(extract_dollar_prefix("price is 5$"), None); // $ not at token start
+        assert_eq!(extract_dollar_prefix("use $demo more"), None); // cursor after space → last token is "more"
     }
 }

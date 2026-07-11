@@ -20,7 +20,8 @@ pub mod word_navigation;
 
 pub use autocomplete::{
     AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions, CombinedAutocompleteProvider,
-    DebouncedAutocomplete, SlashCommand, extract_at_prefix, parse_path_prefix,
+    DebouncedAutocomplete, SlashCommand, extract_at_prefix, extract_dollar_prefix,
+    parse_path_prefix,
 };
 pub use autocomplete_fd::{build_fd_path_query, walk_directory_with_fd};
 pub use clock::{Clock, MockClock, SystemClock};

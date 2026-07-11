@@ -3,9 +3,11 @@
 //! The [`Editor`](crate::Editor) owns popup lifecycle (SelectList, ↑↓/Tab/Enter/Esc).
 //! Applications register [`CompletionSource`]s for each trigger paradigm:
 //!
-//! - [`SlashCommandSource`] — `/help`, `/model`, …
-//! - [`AtPathSource`] — `@path/to/file`
-//! - Future: `$skill`, `^agent`, etc. — implement [`CompletionSource`] and register.
+//! - [`SlashCommandSource`] — `/help`, `/model`, … (line-leading)
+//! - [`AtPathSource`] — `@path/to/file` (inline attachment)
+//! - Future: `$skill`, `^agent`, etc. — implement [`CompletionSource`] and register;
+//!   `$` SHOULD use [`extract_dollar_prefix`](crate::extract_dollar_prefix) so it
+//!   behaves like `@` (mid-line reference), not like slash.
 //!
 //! ```ignore
 //! editor.set_completion_sources(vec![
