@@ -2,15 +2,22 @@ kind: llman.sdd.spec
 name: "package-tui-editor-autocomplete"
 purpose: "Editor completion popup via pluggable CompletionSource registry (slash, @-path, future triggers)."
 valid_scope[2]: src/,tests/
-requirements[4]{req_id,title,statement}:
+requirements[7]{req_id,title,statement}:
   ea01,"completion-source-registry","The Editor MUST support pluggable CompletionSource values via set_completion_sources(). The Editor MUST probe registered sources in order on edit/Tab; the first probe hit owns the popup. Built-in SlashCommandSource (/) and AtPathSource (@) MUST be provided by the package; applications register which sources to enable. set_autocomplete_provider(CombinedAutocompleteProvider) MUST remain as a compatibility shim that installs SlashCommandSource + AtPathSource. When the registry is empty, Tab/newline/Enter MUST fall through to normal editor behavior."
   ea02,"autocomplete-selectlist-popup","When a CompletionSource returns suggestions, the Editor MUST create a SelectList popup with the suggestions, compute a best-match pre-selection (exact value match > prefix start match), and render it below the editor border in render(). While the popup is active, Tab/Enter MUST apply the selected item via the active source's apply(), Esc MUST cancel the popup, and up/down arrows MUST navigate the list. After applying, the popup MUST close and the cursor MUST be positioned to the post-completion location."
   ea03,"edit-cursor-refresh","After any text insertion, deletion, or cursor movement, the Editor MUST consult the CompletionSource registry: if a popup is open, should_dismiss_active or a failed probe MUST cancel it, otherwise suggestions MUST refresh; if no popup is open, probe_first MUST open a matching source. For single-result Tab-completion (force+explicitTab), the result MUST auto-apply without showing the popup. SlashCommandSource MUST dismiss when the prefix is a lone `/` while the popup is already open."
   ea04,"request-serialisation-and-debounce","Multiple rapid autocomplete requests MUST be serialised by an autocomplete_start_token counter; only the latest request applies its results. For @-attachment triggers, a 20ms debounce delay MUST be enforced when async debounce is wired. For explicit Tab or force-file completions, the debounce delay MUST be 0. The editor MUST NOT block the main thread during autocomplete; async execution MUST use an optional tokio Handle, falling back to sync when absent."
-scenarios[6]{req_id,id,given,when,then}:
+  ea00,"capability-shell","本增量由变更 c545-update-package-tui-editor-sources 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+  ea05,"extra-source-open",Editor MUST 允许在 Slash/AtPath 之外再注册自定义 CompletionSource；未注册时 MUST NOT 为未来触发符预留运行时成本。应用面 MAY 注册测试桩或未来 $/^ 源。
+  ea06,"narrow-popup-width",当补全 popup 打开时，其渲染行宽 MUST 不超过 Editor 当前内容宽度预算；超长项 MUST 截断或夹紧，MUST NOT 使整行超出终端 width。
+scenarios[10]{req_id,id,given,when,then}:
   ea01,"slash-trigger-on-tab",editor has SlashCommandSource registered and cursor is after /hel,Tab is pressed,suggestions are fetched from SlashCommandSource and a SelectList appears below the editor
   ea01,"at-path-trigger",editor has AtPathSource registered over a directory containing a file,user types @,AtPathSource lists directory entries in the SelectList popup
   ea02,"selectlist-enter-applies","autocomplete popup is showing with first item pre-selected",Enter is pressed,the item's value replaces the prefix at the cursor position and the popup closes
   ea02,"selectlist-esc-cancels",autocomplete popup is showing,Escape is pressed,the popup closes without modifying the text
   ea03,"backspace-updates-suggestions",autocomplete is showing suggestions,backspace removes a character from the prefix,the active source refreshes suggestions to match the new prefix
   ea04,"rapid-tabs-drop-stale",three Tab presses arrive in quick succession,only the final one's suggestions apply,the first two are discarded because the start_token increments
+  ea00,"shell-present","","列出 capability package-tui-editor-autocomplete",delta 含 ea05–ea06
+  ea05,"register-stub",注册含测试桩的 sources,在桩触发前缀下 Tab,popup 由该桩提供建议且 Slash/AtPath 仍可独立工作
+  ea05,"empty-ok",仅注册 Slash,输入不触发 /,无 popup 且无额外源探测副作用
+  ea06,"narrow-clamp",终端宽较窄且建议标签很长,打开 popup 并 render,每行 visible_width 不超过给定 width
