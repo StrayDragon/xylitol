@@ -182,7 +182,7 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
     DemoPlateItem {
         id: "tree",
         label: "Open session tree",
-        description: "Replace editor slot with TreeSelector",
+        description: "Tree empty/no-match + selection stable on filter (c560)",
     },
     DemoPlateItem {
         id: "help-keys",
@@ -2159,10 +2159,18 @@ impl FakeCodingAgentApp {
             "playground-sync" => self.inject_playground_sync_tip(),
             "tool-tints" => self.inject_tool_tint_showcase(),
             "tree" => {
+                self.push_message(Role::User, "plate · tree · c560");
+                self.push_message(
+                    Role::System,
+                    "c560: TreeSelector empty/no-match shows a dim hint (not a blank list). \
+                     Filter/search keeps the prior selected id when still visible; otherwise \
+                     falls back to the first visible row. Type a nonsense search to see empty; \
+                     Ctrl+T cycles demo filters.",
+                );
                 self.tree_open = true;
                 self.palette_open = false;
                 self.settings_open = false;
-                self.set_status("Session tree");
+                self.set_status("Session tree · c560 empty/selection");
             }
             "help-keys" => self.inject_help_keys(),
             "tests" => {
