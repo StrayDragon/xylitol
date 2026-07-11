@@ -40,7 +40,7 @@ pub use components::expandable_output::{
 };
 pub use components::input::Input;
 pub use components::loader::{Loader, LoaderIndicatorOptions};
-pub use components::markdown::{DefaultTextStyle, Markdown, MarkdownOptions, MarkdownTheme};
+pub use components::markdown::{DefaultTextStyle, Markdown, MarkdownTheme};
 pub use components::panel::Panel;
 pub use components::select_list::{
     SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,

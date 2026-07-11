@@ -22,10 +22,10 @@ use xylitol_tui::components::settings_list::{
 use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, set_keybindings};
 use xylitol_tui::{
     Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme, ExpandableOutputOptions,
-    Focusable, Input, InputEvent, InputListenerResult, Markdown, MarkdownOptions, MarkdownTheme,
-    SystemClock, TUI, TerminalColorScheme, ThemeDetectSources, TreeNode, TreeSelector,
-    TreeSelectorOptions, TreeSelectorTheme, TruncateFrom, apply_background_to_line, highlight_code,
-    matches_key_event, parse_osc11_background_color, printable_from_key_event, render_diff_lines,
+    Focusable, Input, InputEvent, InputListenerResult, Markdown, MarkdownTheme, SystemClock, TUI,
+    TerminalColorScheme, ThemeDetectSources, TreeNode, TreeSelector, TreeSelectorOptions,
+    TreeSelectorTheme, TruncateFrom, apply_background_to_line, highlight_code, matches_key_event,
+    parse_osc11_background_color, printable_from_key_event, render_diff_lines,
     render_expandable_output, resolve_terminal_color_scheme, truncate_to_width, visible_width,
     wrap_text_with_ansi,
 };
@@ -3156,14 +3156,7 @@ impl FakeCodingAgentApp {
                     if matches!(role, Role::Assistant) {
                         // Always Markdown so streaming code fences highlight as they close
                         // (source fences; rendered output has no fence chrome — c530).
-                        let mut md = Markdown::new(
-                            text.clone(),
-                            0,
-                            0,
-                            demo_markdown_theme(),
-                            None,
-                            Some(MarkdownOptions::default()),
-                        );
+                        let mut md = Markdown::new(text.clone(), 0, 0, demo_markdown_theme(), None);
                         for line in md.render(width) {
                             lines.push(Self::fit(&line, width));
                         }
