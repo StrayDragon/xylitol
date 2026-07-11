@@ -63,7 +63,7 @@ flowchart TB
 | ~~装配缝未出库~~ | ~~外部无法正规嵌入~~ | ✅ `xylitol::embed`（c530） |
 | ~~Server 旁路 Driver~~ | ~~双后端~~ | ✅ Server-on-Driver（c535） |
 | ~~线协议丢生命周期事件~~ | ~~远程看不到队列等~~ | ✅ `QueueUpdate` 上线（c540）；其余仍可降级 |
-| `dispatch` 无消费方 | Command 路径纸面存在 | c550 Server 接线；TUI slash 随后 |
+| ~~`dispatch` 无消费方~~ | ~~Command 路径纸面存在~~ | ✅ Server REST（c550）；TUI slash 随后 |
 | ~~MCP 配置类型泄漏~~ | ~~embed 仍见 infra~~ | ✅ `McpServerSpec`（c545） |
 | TUI 未消费 Driver 流 | 空壳 | c465 bridge（4xx，本波不处理） |
 
