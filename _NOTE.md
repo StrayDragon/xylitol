@@ -25,8 +25,9 @@
 | c515 | MCP 配置化 + 重载 | archived |
 | c520 | XyEvent 闭集 | archived |
 | c525 | 异步可并发队列运行时 | archived |
+| **c530** | 公开嵌入 API（`xylitol::embed`） | archived |
 
-路径：`llmanspec/changes/archive/2026-07-11-c5xx-*`。
+路径：`llmanspec/changes/archive/2026-07-11-c5xx-*`；c530：`archive/2026-07-11-c530-add-lib-embed-api`。
 
 ## 下一波内核（库 + 多 client）
 
@@ -34,8 +35,7 @@
 
 | ID | 主题 | depends |
 |---|---|---|
-| **c530** | 公开嵌入 API（Driver/bootstrap） | — |
-| **c535** | Server 统一到 Driver | c530 |
+| **c535** | Server 统一到 Driver | c530 ✅ |
 | **c540** | 线协议 / RemoteDriver 对齐 | c535 |
 
 轨 B（产品 TUI）仍冻结，需明确开闸。

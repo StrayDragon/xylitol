@@ -23,10 +23,7 @@
 | `infra::*` 具体类型 | **不**进 embed |
 | `agent::session::*` | **不**进 embed |
 
-实现选项（择一，tasks 落地时定）：
-
-1. `pub mod embed` re-export `app::core` 子集，并将 `app::core` 改为对 embed 可见；或
-2. `feature = "embed"` 打开 `pub use`。
+**定稿（task 1）：** 采用选项 1 — crate 根 `pub mod embed` re-export `app::core` 子集；`app::core` 保持 `pub(crate)`（外部只经 `xylitol::embed::*`，不经 `app::core` 路径）。不加 `feature = "embed"`（与精选 `Xy*` 同默认可用）。
 
 ## 非目标
 
