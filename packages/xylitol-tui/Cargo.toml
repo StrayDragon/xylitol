@@ -3,8 +3,9 @@ name = "xylitol-tui"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-description = "Rust port of pi-tui: terminal UI with differential rendering"
+description = "Terminal UI with differential rendering (fork derived from pi-tui; diverges for xylitol)"
 repository = "https://github.com/straydragon/xylitol"
+
 
 [dependencies]
 crossterm = "0.29"

@@ -2,7 +2,7 @@
 
 本 package **稳定边界**。仓库规则与 AGENTS 写法：根 `AGENTS.md`。产品面接线：`src/app/tui/AGENTS.md`。产品视觉/UX：`src/app/tui/DESIGN.md`。
 
-`xylitol-tui` 是以 `pi-tui` 为参考的 Rust **引擎 + 通用组件库**，不是 1:1 完整移植。**零引用**主 crate `xylitol`。
+`xylitol-tui` 是源自 `@earendil-works/pi-tui`（MIT）的 Rust **引擎 + 通用组件库**，按 xylitol 需求维护的 **独立 fork**（允许大幅分叉，不是持续 1:1 追平上游）。**零引用**主 crate `xylitol`。合规声明：本包 [`NOTICE`](NOTICE)。
 
 ## 边界
 
@@ -12,13 +12,12 @@
 | 同步库；产品面 host 驱动 | 绑定 tokio / 拥有产品事件循环 |
 | `lib.rs` re-export = API 边界 SSOT | 应用层 theme token / 流式业务缓冲 / 产品 layout |
 
-对齐源（行为参考，非逐文件镜像）：`../pi/packages/tui`。
+历史对齐源（行为参考，非逐文件镜像、非强制同步）：`../pi/packages/tui`。
 **刻意差异台账（整合时防覆盖）**：本包 [`PI_DELTAS.md`](PI_DELTAS.md)。进度笔记：根 `_HANDOFF.md`（非规范）。
 
-## 与 pi-tui 的刻意差异（不得回退成「完整 port」）
+## 与 pi-tui 的刻意差异（不得回退成「必须完整 port」）
 
-目标已从「完整移植 pi-tui」收敛为：**差分渲染 + 可组合组件 + crossterm 原生输入**，产品壳与视觉在 `src/app/tui/`。
-
+目标：**差分渲染 + 可组合组件 + crossterm 原生输入**，并随 xylitol 本体迭代；产品壳与视觉在 `src/app/tui/`。上游 bugfix 可择优吸收，**默认不**为对齐而回退本表决议。
 ### 底层 / 输入
 
 | 主题 | pi-tui | xylitol-tui |
