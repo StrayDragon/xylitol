@@ -1,0 +1,10 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ptd0,capability-shell,"本增量由变更 c540-update-package-tui-diff-edges 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。",null,null,null
+  add_requirement,ptd8,cjk-narrow-wrap,"当 Diff 行含全角/CJK 且宽度受限时，折行或截断 MUST 按 visible_width 处理；MUST NOT 按字节中途切开字形。",null,null,null
+  add_requirement,ptd9,sbs-empty-half-no-fake-lineno,"side-by-side 仅一侧有内容时，空半栏 MUST NOT 伪造行号；有内容半栏 MUST 仍显示对应 old_no 或 new_no。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  ptd0,shell-present,"","列出 capability package-tui-diff","delta 含 ptd8–ptd9"
+  ptd8,cjk-wrap,"含全角字符的增删行","在窄 width 下 render","不出现半个汉字且布局按 visible_width"
+  ptd9,empty-right,"仅删除行无配对添加","启用 side-by-side 且宽度足够","右半栏无行号数字且左半栏有 old 行号"
+  ptd9,empty-left,"仅添加行无配对删除","启用 side-by-side 且宽度足够","左半栏无伪造行号"
