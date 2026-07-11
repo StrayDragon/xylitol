@@ -4,9 +4,10 @@
 //! parsing, then renders with user-provided theme hooks and optional syntax
 //! highlighting via a callback (`highlight_code`).
 //!
-//! Copy / token policy (c530): hierarchy via SGR (no `#` prefixes); links as
-//! `text (url)`; no code fences or box-drawing tables; inline `` ` `` / `**` /
-//! `*` / `~~` retained for round-trip. UX SSOT: `src/app/tui/design/markdown.md`.
+//! Copy / token policy (c530+): hierarchy via SGR (no `#` prefixes); links as
+//! `text (url)`; no code fences or box-drawing tables; bold/italic = SGR only
+//! (no visible `**`/`*`); `` ` `` / `~~` retained. UX SSOT:
+//! `src/app/tui/design/markdown.md`.
 //!
 //! The `MarkdownTheme` is deliberately a struct of boxed closures so consumers
 //! (e.g. the main crate with syntect) can inject their own styling pipeline
@@ -119,6 +120,9 @@ impl Component for Markdown {
         let mut opts = Options::empty();
         opts.insert(Options::ENABLE_TABLES);
         opts.insert(Options::ENABLE_STRIKETHROUGH);
+        // GFM task lists — without this, `[` / `]` / `x` arrive as separate Text
+        // events and tight-list rendering used to put each on its own line.
+        opts.insert(Options::ENABLE_TASKLISTS);
 
         let parser = Parser::new_ext(&normalized, opts);
         let events: Vec<Event> = parser.collect();
@@ -416,16 +420,16 @@ fn collect_inline_until(
                 *idx += 1;
                 let inner =
                     collect_inline_until(md, events, idx, default_fn, style_prefix).concat();
-                let marked = format!("**{inner}**");
-                parts.push((md.theme.bold)(&marked));
+                // SGR bold only — no visible `**` (design/markdown.md).
+                parts.push((md.theme.bold)(&inner));
                 parts.push(style_prefix.to_string());
             }
             Event::Start(Tag::Emphasis) => {
                 *idx += 1;
                 let inner =
                     collect_inline_until(md, events, idx, default_fn, style_prefix).concat();
-                let marked = format!("*{inner}*");
-                parts.push((md.theme.italic)(&marked));
+                // SGR italic only — no visible `*`.
+                parts.push((md.theme.italic)(&inner));
                 parts.push(style_prefix.to_string());
             }
             Event::Start(Tag::Strikethrough) => {
@@ -470,6 +474,12 @@ fn collect_inline_until(
                 let marked = format!("`{code}`");
                 parts.push((md.theme.code)(&marked));
                 parts.push(style_prefix.to_string());
+                *idx += 1;
+            }
+            Event::TaskListMarker(checked) => {
+                // Visible round-trip markers (design/markdown.md): `- [ ]` / `- [x]`.
+                let marker = if *checked { "[x] " } else { "[ ] " };
+                parts.push(default_fn(marker));
                 *idx += 1;
             }
             Event::Text(t) => {
@@ -605,6 +615,31 @@ fn skip_end_tag(events: &[Event], idx: &mut usize) {
 
 // ── list rendering ──────────────────────────────────────────────────────────
 
+/// Wrap item body and attach bullet / continuation prefixes. Returns whether any
+/// non-empty content was pushed.
+fn push_list_item_lines(
+    lines: &mut Vec<String>,
+    joined: &str,
+    item_width: usize,
+    first_prefix: &str,
+    continuation: &str,
+    rendered_any: &mut bool,
+) -> bool {
+    if joined.is_empty() {
+        return false;
+    }
+    for wl in wrap_text_with_ansi(joined, item_width) {
+        let prefix = if *rendered_any {
+            continuation
+        } else {
+            first_prefix
+        };
+        lines.push(format!("{prefix}{wl}"));
+        *rendered_any = true;
+    }
+    true
+}
+
 fn render_list(
     md: &Markdown,
     events: &[Event],
@@ -658,42 +693,58 @@ fn render_list(
                         }
                         Event::Start(Tag::Paragraph) => {
                             *idx += 1;
-                            let text = collect_inline_until(
+                            let joined = collect_inline_until(
                                 md,
                                 events,
                                 idx,
                                 &|s| apply_default_style(md, s),
                                 "",
+                            )
+                            .concat();
+                            push_list_item_lines(
+                                &mut lines,
+                                &joined,
+                                item_width,
+                                &first_prefix,
+                                &continuation,
+                                &mut rendered_any,
                             );
-                            let joined = text.concat();
-                            if joined.is_empty() {
-                                continue;
-                            }
-                            for wl in wrap_text_with_ansi(&joined, item_width) {
-                                let prefix = if rendered_any {
-                                    continuation.clone()
-                                } else {
-                                    first_prefix.clone()
-                                };
-                                lines.push(format!("{prefix}{wl}"));
-                                rendered_any = true;
-                            }
                         }
-                        Event::Text(t) => {
-                            *idx += 1;
-                            let styled = apply_default_style(md, t);
-                            if styled.trim().is_empty() {
+                        // Tight items: join consecutive inlines (Text / TaskListMarker /
+                        // Strong / Link / …) into one line — never one Text event per row.
+                        Event::Text(_)
+                        | Event::Code(_)
+                        | Event::TaskListMarker(_)
+                        | Event::SoftBreak
+                        | Event::HardBreak
+                        | Event::Start(
+                            Tag::Strong
+                            | Tag::Emphasis
+                            | Tag::Strikethrough
+                            | Tag::Link { .. }
+                            | Tag::Image { .. },
+                        ) => {
+                            let before = *idx;
+                            let joined = collect_inline_until(
+                                md,
+                                events,
+                                idx,
+                                &|s| apply_default_style(md, s),
+                                "",
+                            )
+                            .concat();
+                            if *idx == before {
+                                *idx += 1;
                                 continue;
                             }
-                            for wl in wrap_text_with_ansi(&styled, item_width) {
-                                let prefix = if rendered_any {
-                                    continuation.clone()
-                                } else {
-                                    first_prefix.clone()
-                                };
-                                lines.push(format!("{prefix}{wl}"));
-                                rendered_any = true;
-                            }
+                            push_list_item_lines(
+                                &mut lines,
+                                &joined,
+                                item_width,
+                                &first_prefix,
+                                &continuation,
+                                &mut rendered_any,
+                            );
                         }
                         _ => *idx += 1,
                     }
@@ -1071,20 +1122,31 @@ mod tests {
     }
 
     #[test]
-    fn inline_markers_roundtrip() {
+    fn bold_italic_are_sgr_without_star_markers() {
+        let mut theme = identity_theme();
+        theme.bold = Box::new(|s| format!("\x1b[1m{s}\x1b[22m"));
+        theme.italic = Box::new(|s| format!("\x1b[3m{s}\x1b[23m"));
         let mut md = Markdown::new(
             "a **bold** and *ital* and `code` and ~~x~~".into(),
             0,
             0,
-            identity_theme(),
+            theme,
             None,
             None,
         );
+        let raw = md.render(80).join("\n");
         let text = visible_join(&mut md, 80);
-        assert!(text.contains("**bold**"), "{text}");
-        assert!(text.contains("*ital*"), "{text}");
+        assert!(
+            !text.contains("**") && !text.contains("*ital*"),
+            "bold/italic must not keep star markers:\n{text}"
+        );
+        assert!(text.contains("bold") && text.contains("ital"), "{text}");
         assert!(text.contains("`code`"), "{text}");
         assert!(text.contains("~~x~~"), "{text}");
+        assert!(
+            raw.contains("\x1b[1m") && raw.contains("\x1b[3m"),
+            "must emit bold/italic SGR:\n{raw:?}"
+        );
     }
 
     #[test]
@@ -1101,6 +1163,58 @@ mod tests {
         let lines = md.render(20);
         assert!(lines.iter().any(|l| l.contains("one")));
         assert!(lines.iter().any(|l| l.contains("two")));
+    }
+
+    #[test]
+    fn task_list_checkbox_stays_on_one_line() {
+        let mut md = Markdown::new(
+            "- [ ] 终端验收\n- [x] 解析 prompt\n".into(),
+            0,
+            0,
+            identity_theme(),
+            None,
+            None,
+        );
+        let text = visible_join(&mut md, 40);
+        assert!(
+            text.lines().any(|l| l.contains("- [ ] 终端验收")),
+            "unchecked task must stay on one line:\n{text}"
+        );
+        assert!(
+            text.lines().any(|l| l.contains("- [x] 解析 prompt")),
+            "checked task must stay on one line:\n{text}"
+        );
+        // Regression: never split brackets onto their own rows.
+        assert!(
+            !text.lines().any(|l| {
+                let t = l.trim();
+                t == "[" || t == "]" || t == "x"
+            }),
+            "checkbox brackets must not be lone lines:\n{text}"
+        );
+    }
+
+    #[test]
+    fn tight_list_keeps_inline_styles_on_one_line() {
+        let mut md = Markdown::new(
+            "- see [docs](https://ex.com) and **bold**\n".into(),
+            0,
+            0,
+            identity_theme(),
+            None,
+            None,
+        );
+        let text = visible_join(&mut md, 80);
+        assert!(
+            text.lines().any(|l| {
+                l.contains("docs (https://ex.com)") && l.contains("bold") && l.contains("- ")
+            }),
+            "tight list inlines must share one bullet line:\n{text}"
+        );
+        assert!(
+            !text.contains("**bold**"),
+            "bold must not keep star markers:\n{text}"
+        );
     }
 
     #[test]
@@ -1170,8 +1284,12 @@ mod tests {
 
         let text = visible_join(&mut md, 48);
         assert!(
-            text.contains("**Editor**") && text.contains("multi-line"),
+            text.contains("Editor") && text.contains("multi-line"),
             "styled first cell must not absorb the next cell:\n{text}"
+        );
+        assert!(
+            !text.contains("**Editor**"),
+            "table bold cells must not keep star markers:\n{text}"
         );
     }
 

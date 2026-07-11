@@ -114,7 +114,7 @@ fn agent_demo_slash_command_popup_filters_and_completes() {
     h.render_result()
         .expect("slash popup must stay within width budget");
     h.assert_text_contains("help");
-    h.assert_text_contains("Show this help");
+    h.assert_text_contains("Show key help in transcript");
     // "palette" may be below SelectList max_visible; assert via filter instead.
 
     // Prefix filter: `/hel` should keep help, drop unrelated commands.
@@ -123,11 +123,11 @@ fn agent_demo_slash_command_popup_filters_and_completes() {
         .expect("filtered slash popup must stay within width");
     let filtered = h.tui.terminal.viewport().join("\n");
     assert!(
-        filtered.contains("help") && filtered.contains("Show this help"),
+        filtered.contains("help") && filtered.contains("Show key help in transcript"),
         "filtered popup should still show /help; got:\n{filtered}"
     );
     assert!(
-        !filtered.contains("Show workspace diff"),
+        !filtered.contains("Inject unified"),
         "prefix /hel should hide /diff; got:\n{filtered}"
     );
 
@@ -159,13 +159,13 @@ fn agent_demo_slash_command_popup_backspace_to_slash_closes() {
         .expect("initial empty editor should render");
     h.keys("/h");
     h.render_result().expect("slash popup with filter");
-    h.assert_text_contains("Show this help");
+    h.assert_text_contains("Show key help in transcript");
     h.keys("\x7f"); // Backspace → `/` only → close popup, keep `/`
     h.render_result()
         .expect("backspace to lone slash must stay within width");
     let text = h.tui.terminal.viewport().join("\n");
     assert!(
-        !text.contains("Show this help"),
+        !text.contains("Show key help in transcript"),
         "backspacing to lone `/` should close CommandPopup; got:\n{text}"
     );
 }
@@ -271,19 +271,20 @@ fn agent_demo_command_palette_replaces_editor_slot() {
     h.render_result().expect("initial render should succeed");
     h.keys("\x10");
     h.render_result()
-        .expect("command palette selector must stay within width budget");
-    h.assert_text_contains("Command Palette");
-    h.assert_text_contains("Run regression tests");
+        .expect("command plate selector must stay within width budget");
+    h.assert_text_contains("Command Plate");
+    h.assert_text_contains("Markdown full grammar (stream)");
+    h.assert_text_contains("Tool status tints");
     let text = h.tui.terminal.viewport().join("\n");
     let palette_pos = text
-        .find("Command Palette")
-        .expect("palette title should be visible");
+        .find("Command Plate")
+        .expect("plate title should be visible");
     let footer_pos = text
         .find("esc close")
         .expect("selector footer hint should remain below");
     assert!(
         palette_pos < footer_pos,
-        "palette must sit in the editor slot above the footer; got:\n{text}"
+        "plate must sit in the editor slot above the footer; got:\n{text}"
     );
 }
 
@@ -339,8 +340,8 @@ fn agent_demo_selector_stays_visible_after_long_transcript() {
         .expect("palette after long transcript must stay within width");
     // Viewport is only the last 24 rows; absolute-top blit would hide the
     // palette. Editor-slot replacement keeps it in the visible bottom.
-    h.assert_text_contains("Command Palette");
-    h.assert_text_contains("Run regression tests");
+    h.assert_text_contains("Command Plate");
+    h.assert_text_contains("Markdown full grammar (stream)");
 }
 
 #[test]
@@ -440,16 +441,12 @@ fn agent_demo_layout_is_minimal_single_column() {
         "user messages use a short glyph prefix; got:\n{text}"
     );
     assert!(
+        text.contains("Ctrl+P") && text.contains("plate") && text.contains("/md"),
+        "slim seed should point at plate/md without a permanent chrome wall; got:\n{text}"
+    );
+    assert!(
         text.contains("thinking"),
-        "seed transcript should include a thinking block; got:\n{text}"
-    );
-    assert!(
-        text.contains("Keep transcript in scrollback"),
-        "seed thinking starts expanded; got:\n{text}"
-    );
-    assert!(
-        text.contains("(Ctrl+P)") && text.contains("(Ctrl+S)") && text.contains("keys:"),
-        "seed should teach palette/settings keys without a permanent chrome wall; got:\n{text}"
+        "compact kit seed still includes a thinking block; got:\n{text}"
     );
 }
 
@@ -588,8 +585,8 @@ fn agent_demo_alt_g_cycles_glyph_set_to_ascii() {
         .expect("glyph cycle must stay within width");
     let text = h.tui.terminal.viewport().join("\n");
     assert!(
-        text.contains("ascii") && text.contains("(Ctrl+P)/(Ctrl+S)"),
-        "Alt+G should switch glyph set and footer should keep palette/settings cues; got:\n{text}"
+        text.contains("ascii") && text.contains("~/xylitol") && text.contains("sonnet-4"),
+        "Alt+G should switch glyph set and keep slim footer metadata; got:\n{text}"
     );
     assert!(
         text.contains("glyph_set=ascii"),
@@ -653,17 +650,27 @@ fn agent_demo_escape_aborts_active_stream() {
 #[test]
 fn agent_demo_seed_rust_fence_is_highlighted() {
     let mut h = TuiTestHarness::new(120, 40);
-    h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
-        AtomicBool::new(false),
-    ))))
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )))
     .focus(Some(0));
     h.render_result().expect("initial render");
-    // Showcase may sit above the sticky viewport — search full scrollback.
-    let text = h.tui.terminal.scroll_buffer().join("\n");
-    assert!(
-        text.contains("println"),
-        "seed code block should appear in scrollback:\n{text}"
-    );
+    // Prefer short stream-rust plate item over full md-full typewriter.
+    h.keys("\x10stream-rust\r");
+    let mut saw = false;
+    for i in 0..4000 {
+        h.tick();
+        if i % 4 == 0 {
+            h.render_result().ok();
+        }
+        let text = h.tui.terminal.scroll_buffer().join("\n");
+        if text.contains("fn accept") || text.contains("println") {
+            saw = true;
+            break;
+        }
+    }
+    assert!(saw, "streamed rust highlight demo should appear");
     let raw = h.tui.terminal.all_writes();
     assert!(
         raw.contains('\u{1b}') || raw.contains("\x1b["),
@@ -712,10 +719,24 @@ fn agent_demo_seed_markdown_showcase_c530() {
     h.render_result().expect("initial render");
     // Slash popup steals Enter for selection — Tab completes, then Enter submits.
     h.keys("/md\t\r");
-    h.render_result().expect("after /md");
-    let text = h.tui.terminal.scroll_buffer().join("\n");
+    let mut text = String::new();
+    for i in 0..8000 {
+        h.tick();
+        // Render every N ticks — irregular stream is long; full render each tick is costly.
+        if i % 8 == 0 {
+            h.render_result().ok();
+        }
+        text = h.tui.terminal.scroll_buffer().join("\n");
+        if text.contains("cara")
+            && text.contains("docs (https://example.com/md)")
+            && text.contains("（加粗）")
+        {
+            h.render_result().ok();
+            break;
+        }
+    }
     assert!(
-        text.contains("Markdown showcase"),
+        text.contains("Markdown grammar stub"),
         "showcase title:\n{text}"
     );
     assert!(
@@ -727,12 +748,26 @@ fn agent_demo_seed_markdown_showcase_c530() {
         "images must render as alt (url):\n{text}"
     );
     assert!(
-        text.contains("**bold**") && text.contains("`inline`") && text.contains("~~strike~~"),
-        "inline round-trip markers must be visible:\n{text}"
+        text.contains("（加粗）")
+            && text.contains("`inline code`")
+            && text.contains("~~strikethrough~~"),
+        "semantic bold label + code/strike markers must be visible:\n{text}"
+    );
+    assert!(
+        text.contains("（斜体）"),
+        "semantic italic label must be visible:\n{text}"
+    );
+    assert!(
+        !text.contains("**（加粗）") && !text.contains("*（斜体）"),
+        "bold/italic must not keep star markers:\n{text}"
     );
     assert!(
         text.contains("alice") && text.contains("eng"),
         "table cells should appear:\n{text}"
+    );
+    assert!(
+        text.contains("- [ ] 未完成") && text.contains("- [x] 已完成"),
+        "task list checkboxes must stay inline:\n{text}"
     );
     assert!(
         !text.contains('┌') && !text.lines().any(|l| l.contains("```")),
@@ -756,15 +791,25 @@ fn agent_demo_slash_md_injects_showcase() {
     .focus(Some(0));
     h.render_result().expect("initial render");
     h.keys("/md\t\r");
-    h.render_result().expect("after /md");
-    let text = h.tui.terminal.scroll_buffer().join("\n");
+    let mut text = String::new();
+    for i in 0..8000 {
+        h.tick();
+        if i % 8 == 0 {
+            h.render_result().ok();
+        }
+        text = h.tui.terminal.scroll_buffer().join("\n");
+        if text.contains("Markdown grammar stub") && text.contains("（加粗）") {
+            h.render_result().ok();
+            break;
+        }
+    }
     assert!(
         text.contains("request Markdown showcase"),
         "/md should inject showcase request line:\n{text}"
     );
     assert!(
-        text.contains("Markdown showcase (c530)"),
-        "/md should inject showcase body:\n{text}"
+        text.contains("Markdown grammar stub"),
+        "/md should stream showcase body:\n{text}"
     );
 }
 
@@ -819,7 +864,6 @@ fn agent_demo_seed_shows_unified_and_side_by_side_diffs() {
     h.assert_text_contains("side-by-side");
     h.assert_text_contains("edit-format");
 
-    // Seed diffs start expanded — bodies visible without Alt+E.
     let text = h.tui.terminal.viewport().join("\n");
     assert!(
         text.contains("ready") || text.contains("prompt"),
@@ -842,7 +886,6 @@ fn agent_demo_seed_tool_blocks_use_status_background_tints() {
     .focus(Some(0));
     h.render_result().expect("initial render");
 
-    // VirtualTerminal stores truecolor on cells; viewport() strings strip SGR.
     let success = ToolBlockStatus::Success.rgb();
     let error = ToolBlockStatus::Error.rgb();
     assert!(

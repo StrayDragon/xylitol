@@ -18,19 +18,22 @@
 
 | 步 | 内容 | 状态 |
 |---|---|---|
-| A（先行） | 加厚 Markdown showcase；`/md` + palette「markdown」入口 | 可在本提案 apply 前合入 |
-| B（本变更） | plate 目录化、预制 prompt 表、瘦 seed、收 footer | apply 本 change |
+| A（先行） | 加厚 Markdown showcase；`/md` + palette「markdown」入口 | 已合入；现为 `md-full` 打字机 stub |
+| B（本变更） | plate 目录化、预制 prompt 表、瘦 chrome、收 footer | apply 中 |
 
-## 预制 prompt 表（初稿）
+## 预制 prompt 表
 
 | plate id | 触发 | 行为 |
 |---|---|---|
-| `md-full` | `/md` 或 plate | 推全语法 assistant（c530） |
-| `stream-rust` 等 | plate / 关键词 | `queue_simulated_turn` 定点语言 |
-| `diff-sbs` | plate | 现有 SBS + unified 推送 |
-| `tool-tints` | plate | pending/success/error 三态块 |
+| `md-full` | `/md` 或 plate | 打字机流式推全语法 stub（`markdown_grammar_stub`） |
+| `stream-rust` 等 | plate | `commit_user_turn` 定点语言 |
+| `diff-sbs` | plate / `/diff` | unified + SBS + display_diff |
+| `tool-tints` | plate | thinking + success/error/long bash |
 | `tree` | plate | 打开会话树槽 |
 | `help-keys` | plate / `/help` | 键位说明进 transcript，不占 footer |
+| `tests` / `compact` | plate | 假 cargo test / compaction 注记 |
+
+默认 seed 保留 **compact kit**（短帮助 + thinking/tools/diff 各一份）便于开箱验收折叠/着色；全语法 Markdown 只走 plate 流式。
 
 ## 非目标
 

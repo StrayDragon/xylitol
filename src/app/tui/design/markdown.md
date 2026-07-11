@@ -42,11 +42,10 @@ components:
 1. **Copy = 可见字符**。多数粘贴会剥掉 ANSI；占上下文 token 的是字形，不是颜色/粗体/下划线。
 2. **层级与强调优先用 SGR**（色 / bold / underline / dim / italic / strikethrough），少加纯装饰字符（`│`、`┌─┐`、全宽 `─`、语言标签条等）。
 3. **信息不丢**。终端多半不能内联跳转 → 链接/图片 URL **必须明文**出现在可见文本里。
-4. **Round-trip 标记白名单**（用户决议）：为可再编辑/再解析，下列标记**保留在可见文本**中（会占 token，但是有意的）：
-   - 行内代码：`` `code` ``
-   - 粗体：`**text**`
-   - 斜体：`*text*`（或 `_text_`，实现选一种并固定）
-   - 删除线：`~~text~~`
+4. **Round-trip 标记白名单**（用户决议，2026-07 修订）：
+   - 行内代码：`` `code` `` — **保留**可见反引号（复制后仍可辨）
+   - 删除线：`~~text~~` — **保留**可见波浪线
+   - 粗体 / 斜体：**不再**输出可见 `**` / `*`；仅用终端 SGR（bold / italic）。粘贴进下一轮会丢强调信息——接受此权衡以省 token、画面更干净。验收 stub 用语义标注如 `（加粗）` / `（斜体）` 标明意图。
 5. **禁止用装饰换层级**。标题**MUST NOT**输出 `#` / `##` 前缀；用色组 + bold/underline 表达级别。
 6. **fg / bg 分相**：元素着色走 fg；若需消息底色，在行宽 padding 后再套 `bgColor`（`apply_background_to_line`）。
 
@@ -84,14 +83,16 @@ components:
 
 | 语法 | 显示 | 复制可见字符 |
 |---|---|---|
-| 粗体 | bold + 可见 `**…**` | `**…**` |
-| 斜体 | italic + 可见 `*…*` | `*…*` |
+| 粗体 | **仅** SGR bold（`theme.bold`）；**无** `**` 包裹 | 纯文字（无星号） |
+| 斜体 | **仅** SGR italic（`theme.italic`）；**无** `*` 包裹 | 纯文字（无星号） |
 | 删除线 | strikethrough + 可见 `~~…~~` | `~~…~~` |
 | 行内代码 | `{colors.success}` + 可见 `` `…` `` | `` `…` `` |
 | 链接 | `text (url)`；url 可用 accent + underline | `text (url)` |
 | 裸 URL / 自动链接 | 全文展示（可 underline） | 全文 |
 | 脚注 | 行内 `[n]`；文末短列表 | 明文 | 后置；勿大框 |
 | HTML | 当文本或剥离危险标签 | 可见文本 | 最小处理 |
+
+> **粗体/斜体特别显示**：终端能力足够时用真粗体/斜体；demo stub 在源 MD 里写 `**（加粗）词**` / `*（斜体）词*`，渲染后星号消失，语义标注仍在，避免「看不出哪里被强调」。
 
 ### 表格（方案 A · 已决议）
 
@@ -114,7 +115,7 @@ bob       28  design
 1. 标题：色组 + SGR 分级；**MUST NOT** 输出 `#`/`##` 前缀。
 2. 链接 / 图片：**MUST** 渲染为 `text (url)` / `alt (url)`；**MUST NOT** 只留不可选中的 OSC 或丢弃 URL。
 3. 代码块：语法高亮即可；**MUST NOT** 边框、`` ``` `` fence、语言标签条、行号墙。
-4. 行内代码 / 粗体 / 斜体 / 删除线：显示与复制均**保留**对应 MD 标记（`` ` `` / `**` / `*` / `~~`）。
+4. 行内：粗体/斜体 **MUST** 仅 SGR、**MUST NOT** 输出可见 `**`/`*`；行内代码 / 删除线 **MUST** 保留 `` ` `` / `~~`。
 5. 引用：**MUST NOT** 竖线或盒线装饰；仅用 quote 色 + italic。
 6. 表格：方案 A（空格对齐 + 表头 underline）；**MUST NOT** 盒线表；**MUST NOT** 为装饰输出 `\|`。
 7. 列表：`- ` / `1. `；嵌套空格缩进；**MUST NOT** `│`/`├`/`└` 树线。
@@ -134,6 +135,6 @@ bob       28  design
 |---|---|
 | 本文规范 | SSOT |
 | `packages/xylitol-tui` Markdown 组件 | **已按本文收敛**（c530-update-package-tui-markdown） |
-| `agent_demo` | 瘦 seed + **`/md` / Ctrl+P→markdown** 注入全语法 showcase；流式可含更富语法（c530） |
+| `agent_demo` | compact kit seed + **`/md` / Ctrl+P→md-full** 打字机流式全语法 stub；流式可含更富语法（c530/c535） |
 | playground Markdown 槽 | 示意对齐本文；非运行时 |
-| Command plate 整理 | 见变更 `c535-add-package-tui-agent-demo-plate`（待 apply） |
+| Command plate | `DEMO_PLATE` 表驱动（c535）；footer 无键墙，完整键位走 `/help` |
