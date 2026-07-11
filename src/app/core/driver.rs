@@ -211,13 +211,25 @@ impl InProcessDriver {
         self.agent.cancel_token()
     }
 
-    /// Mutable agent handle for composition-root seams (e.g. MCP reload).
-    ///
-    /// Surfaces should prefer [`Driver`] methods; this exists so `app::core`
-    /// helpers that may import infra can update tools without reach-in from
-    /// `app/tui`.
-    pub fn agent_mut(&mut self) -> &mut ReActAgent {
-        &mut self.agent
+    /// Replace the tool set (next `run`). Used by composition MCP reload.
+    pub fn set_tools(&mut self, tools: crate::agent::tools::ToolSet) {
+        self.agent.set_tools(tools);
+    }
+
+    /// Consume the driver and return the inner agent (server transitional path).
+    pub fn into_agent(self) -> ReActAgent {
+        self.agent
+    }
+
+    /// Test/diagnostics: tool names currently registered.
+    #[cfg(test)]
+    pub(crate) fn tool_names_for_test(&self) -> Vec<String> {
+        self.agent
+            .inner()
+            .tools()
+            .iter()
+            .map(|t| t.name().to_string())
+            .collect()
     }
 }
 

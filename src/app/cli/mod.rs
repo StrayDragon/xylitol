@@ -156,19 +156,13 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         ..
     } = bootstrapped;
     let mut driver = InProcessDriver::new(agent, store);
-    let mut mcp_manager = None;
+    let mut mcp = crate::app::core::composition::McpSession::new();
     let servers = mcp_servers.unwrap_or_default();
-    if let Err(e) = crate::app::core::composition::reload_mcp_tools(
-        driver.agent_mut(),
-        &mut mcp_manager,
-        &servers,
-    )
-    .await
-    {
+    if let Err(e) = mcp.reload(&mut driver, &servers).await {
         eprintln!("Warning: MCP reload failed: {e}");
     }
-    // Keep manager alive for the process lifetime (shutdown on drop not required for MVP).
-    let _mcp_manager = mcp_manager;
+    // `mcp` kept for process lifetime (owns MCP connections when enabled).
+    let _mcp = mcp;
 
     // ── dispatch by mode ───────────────────────────────────────
     // TUI: when no prompt is supplied and stdin is a TTY (mirroring pi's
