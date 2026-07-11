@@ -23,23 +23,98 @@ use xylitol_tui::{
     Focusable, Input, InputEvent, InputListenerResult, Markdown, MarkdownOptions, MarkdownTheme,
     SystemClock, TUI, TerminalColorScheme, ThemeDetectSources, TreeNode, TreeSelector,
     TreeSelectorOptions, TreeSelectorTheme, apply_background_to_line, highlight_code,
-    matches_key_event, parse_osc11_background_color, render_diff_lines, render_expandable_output,
-    resolve_terminal_color_scheme, truncate_to_width, visible_width, wrap_text_with_ansi,
+    matches_key_event, parse_osc11_background_color, printable_from_key_event, render_diff_lines,
+    render_expandable_output, resolve_terminal_color_scheme, truncate_to_width, visible_width,
+    wrap_text_with_ansi,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
 /// Names omit the leading `/` — Editor's CombinedAutocompleteProvider adds it.
 const SLASH_COMMANDS: &[(&str, &str)] = &[
-    ("help", "Show this help"),
-    ("md", "Inject full Markdown showcase (c530)"),
+    ("help", "Show key help in transcript"),
+    ("md", "Stream full Markdown grammar stub (typewriter)"),
     ("model", "Switch execution model"),
     ("compact", "Compact conversation history"),
     ("export", "Export current session"),
     ("session", "Session management"),
     ("settings", "Open settings panel"),
-    ("palette", "Open command palette"),
-    ("diff", "Show workspace diff"),
+    ("palette", "Open command plate"),
+    ("diff", "Inject unified + side-by-side diffs"),
 ];
+
+/// Command plate row (c535): id drives routing; label/description feed SelectList.
+#[derive(Debug, Clone, Copy)]
+struct DemoPlateItem {
+    id: &'static str,
+    label: &'static str,
+    description: &'static str,
+}
+
+/// Demo catalog — Ctrl+P / `/palette` list is generated from this table only.
+const DEMO_PLATE: &[DemoPlateItem] = &[
+    DemoPlateItem {
+        id: "md-full",
+        label: "Markdown full grammar (stream)",
+        description: "Typewriter-stream every c530 display case (/md)",
+    },
+    DemoPlateItem {
+        id: "stream-rust",
+        label: "Stream Rust highlight",
+        description: "Scripted turn with streamed Rust fence",
+    },
+    DemoPlateItem {
+        id: "stream-python",
+        label: "Stream Python highlight",
+        description: "Scripted turn with streamed Python fence",
+    },
+    DemoPlateItem {
+        id: "stream-typescript",
+        label: "Stream TypeScript highlight",
+        description: "Scripted turn with streamed TypeScript fence",
+    },
+    DemoPlateItem {
+        id: "stream-json",
+        label: "Stream JSON highlight",
+        description: "Scripted turn with streamed JSON fence",
+    },
+    DemoPlateItem {
+        id: "diff-sbs",
+        label: "Diff unified + side-by-side",
+        description: "Inject expanded unified and SBS diff blocks",
+    },
+    DemoPlateItem {
+        id: "tool-tints",
+        label: "Tool status tints",
+        description: "Success / error / long bash tool blocks",
+    },
+    DemoPlateItem {
+        id: "tree",
+        label: "Open session tree",
+        description: "Replace editor slot with TreeSelector",
+    },
+    DemoPlateItem {
+        id: "help-keys",
+        label: "Key help",
+        description: "Dump chords into transcript (/help)",
+    },
+    DemoPlateItem {
+        id: "tests",
+        label: "Run regression tests",
+        description: "Queue fake cargo test tool + note",
+    },
+    DemoPlateItem {
+        id: "compact",
+        label: "Compact conversation",
+        description: "Simulate a context compaction checkpoint",
+    },
+];
+
+fn demo_plate_select_items() -> Vec<SelectItem> {
+    DEMO_PLATE
+        .iter()
+        .map(|p| SelectItem::new(p.id, p.label).with_description(p.description))
+        .collect()
+}
 
 fn slash_commands() -> Vec<SlashCommand> {
     SLASH_COMMANDS
@@ -393,45 +468,88 @@ fn demo_markdown_theme() -> MarkdownTheme {
     }
 }
 
-/// Full Markdown grammar for c530 (via `/md` or Ctrl+P → markdown).
-fn markdown_showcase_seed() -> &'static str {
+/// Full Markdown grammar stub for c530 / c535 — streamed via plate `md-full` or `/md`.
+/// Source keeps fences so syntect can highlight; display has no fence chrome.
+fn markdown_grammar_stub() -> &'static str {
     "\
-# Markdown showcase (c530)
+# Markdown grammar stub (c530)
 
-一级标题靠色+下划线，**没有**井号前缀。
+一级标题：色 + bold + underline，**（加粗）没有**井号前缀。
 
-正文含 **bold**、*italic*、`inline`、~~strike~~。
+正文混排：**（加粗）强调**、*（斜体）语气*、`inline code`、~~strikethrough~~，以及 **（加粗）里的 `code`**。
 
 ## 二级标题
 
+二级同样 accent + underline。
+
+### 三级标题
+
+三级 on-surface + bold。
+
+#### 四级标题
+
+##### 五级标题
+
+###### 六级标题
+
 ### 链接与图片
 
-链接：[docs](https://example.com/md)
+行内链接：[docs](https://example.com/md) 与 [empty-ish](https://example.com/x)。
 
 裸 URL：https://example.com/raw
 
-图片：![diagram](https://example.com/a.png)
+图片（alt + url）：![diagram](https://example.com/a.png)
+
+无 alt：![](https://example.com/blank.png)
 
 ### 列表
 
+有序：
+
 1. 有序一项
 2. 有序二项
-   - 嵌套无序
-   - 再嵌套
+   - 嵌套无序 A
+   - 嵌套无序 B
+     1. 再嵌套有序
+3. 有序三项含 [链接](https://example.com/list) 与 `code`
+
+无序：
+
+- 顶层 bullet
+- 另一 bullet
+  - 子项
+  - 子项含 **（加粗）嵌套强调**
+
+### 任务列表
+
+- [ ] 未完成：终端验收
+- [x] 已完成：解析 prompt
+- [ ] 含 `inline` 与 [link](https://example.com/task)
+  - [x] 嵌套已完成
+  - [ ] 嵌套未完成
 
 ### 引用
 
-> 引用第一行，只用 dim/italic。
+> 引用第一行，只用 dim/italic，没有竖线装饰。
 >
-> 引用第二段，仍然没有竖线装饰。
+> 引用第二段仍安静。
+>
+> 引用里也可以有 **（加粗）词** 与 `code`。
 
-### 表格（空格对齐）
+### 表格（空格对齐，无盒线）
 
 | Name | Age | Role |
 |------|-----|------|
 | alice | 30 | eng |
 | bob | 28 | design |
 | cara | 31 | docs |
+
+宽单元格：
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| wrap | ok | long unbroken token-should-still-paint |
+| cjk | ok | 中文列宽 |
 
 ### 代码块（源有 fence，显示无围栏）
 
@@ -442,18 +560,39 @@ fn demo(path: &str) -> bool {
 }
 ```
 
-```json
-{ \"ok\": true, \"note\": \"no fence chrome\" }
+```python
+def accept(prompt: str) -> bool:
+    # streamed / showcase
+    return bool(prompt)
 ```
+
+```typescript
+function accept(prompt: string): boolean {
+  return prompt.length > 0;
+}
+```
+
+```json
+{ \"ok\": true, \"note\": \"no fence chrome\", \"n\": 3 }
+```
+
+行内后再跟一段普通段落，确认块后恢复 body 色。
 
 ---
 
-短 HR（非全宽墙）。完。"
+短 HR（非全宽墙）。
+
+完：打字机流式应逐段重绘标题 / 列表 / 表 / 高亮；粗体斜体靠 SGR，语义靠（加粗）/（斜体）标注。"
+}
+
+/// Full Markdown grammar for c530 (via `/md` or Ctrl+P → md-full).
+fn markdown_showcase_seed() -> &'static str {
+    markdown_grammar_stub()
 }
 
 /// Richer streamed assistant body used when prompt asks for markdown / md.
 fn markdown_showcase_stream_focus() -> &'static str {
-    "本轮按 c530 再铺一遍语法面（流式）：标题分级、行内标记、链接、任务列表、引用、表、代码。"
+    "本轮按 c530 打字机流式铺全语法 stub：标题分级、行内标记、链接/图、列表/任务、引用、表、多语言代码。"
 }
 
 /// Mocha Diff theme (DESIGN.md): row tint + brighter word tint (not reverse white).
@@ -835,6 +974,8 @@ pub struct FakeCodingAgentApp {
     submit_slot: Rc<RefCell<Option<String>>>,
     palette_open: bool,
     palette: SelectList,
+    /// Typeahead filter for Command plate (SelectList::set_filter).
+    palette_filter: String,
     settings_open: bool,
     settings: SettingsList,
     /// Double-Esc session tree (c454/c456).
@@ -1541,17 +1682,8 @@ impl FakeCodingAgentApp {
         input.set_text(initial_prompt.to_string());
 
         let palette = SelectList::new(
-            vec![
-                SelectItem::new("markdown", "Markdown showcase (c530)")
-                    .with_description("Inject full-grammar assistant block (/md)"),
-                SelectItem::new("tests", "Run regression tests")
-                    .with_description("Replay the current TUI acceptance suite"),
-                SelectItem::new("diff", "Summarize staged diff")
-                    .with_description("Explain the current code change set"),
-                SelectItem::new("compact", "Compact conversation")
-                    .with_description("Simulate a context compaction checkpoint"),
-            ],
-            6,
+            demo_plate_select_items(),
+            8,
             SelectListTheme {
                 selected_prefix: Box::new(cyan),
                 selected_text: Box::new(selected_text),
@@ -1561,7 +1693,7 @@ impl FakeCodingAgentApp {
             },
             SelectListLayoutOptions {
                 min_primary_column_width: Some(24),
-                max_primary_column_width: Some(34),
+                max_primary_column_width: Some(40),
                 truncate_primary: None,
             },
         );
@@ -1630,6 +1762,7 @@ impl FakeCodingAgentApp {
             submit_slot,
             palette_open: false,
             palette,
+            palette_filter: String::new(),
             settings_open: false,
             settings,
             tree_open: false,
@@ -1685,44 +1818,38 @@ impl FakeCodingAgentApp {
     }
 
     fn seed_transcript(&mut self) {
-        // One-shot help — fold keys live on blocks as `(Ctrl+T)` / `(Alt+E)`.
+        // Slim chrome (c535): short pointer + compact kit. Full Markdown → plate `/md`.
         self.push_message(
             Role::System,
-            "keys: Enter submit/steer · Alt+Enter follow-up · /md Markdown · Ctrl+P plate · ! bash · Ctrl+G $EDITOR · double Esc tree · (Ctrl+T)/(Alt+E)/(Ctrl+O) · Esc · (Ctrl+C)",
-        );
-        self.push_message(
-            Role::System,
-            "stream: rust/python/typescript/json/markdown 定点或轮换 · 全语法 showcase 用 /md 或 Ctrl+P→markdown",
+            "demo · Ctrl+P plate · /md Markdown stream · /help keys · /diff diffs",
         );
         self.push_message(
             Role::User,
             "Collapse examples into one fake coding-agent demo and keep foot interaction stable.",
         );
         self.push_thinking(
-            "Plan: read existing examples and the pi coding-agent ExpandableText flow, then rebuild one stable primary scenario with real terminal acceptance coverage.\n\nKeep transcript in scrollback; mark the editor as the operation zone with borders.",
+            "Plan: keep a compact kit in seed (thinking/tools/diff); full Markdown grammar streams from plate.\n\nKeep transcript in scrollback; mark the editor as the operation zone with borders.",
         );
         self.push_message(
             Role::Assistant,
-            "先读现有 examples 与 pi ExpandableText 流程，再收成一条稳定主场景。\n\n全语法 Markdown 演示请用 `/md` 或 **Ctrl+P → Markdown showcase**（c530：无井号前缀、无 fence 墙、链接为 text (url)）。\n\n```rust\nfn demo() {\n    println!(\"highlight\");\n}\n```",
+            "已就绪。用 **Ctrl+P** 打开 Command plate：全语法 Markdown 打字机、流式高亮、更多 Diff/工具。折叠提示在块旁 `(Ctrl+T)` / `(Alt+E)`。",
         );
         self.push_tool(
             "read packages/xylitol-tui/examples/agent_demo.rs · 42ms · 790 lines",
             "ok — opened agent_demo.rs\n(preview) FakeCodingAgentApp + scripted turn harness",
             ToolBlockStatus::Success,
         );
-        // Long bash-style output: collapsed viewport shows last N + ctrl+o hint (pi).
         self.push_tool(
             "$ bun test (timeout 120s) · ok",
             sample_long_bash_output(),
             ToolBlockStatus::Success,
         );
-        // Seed blocks start expanded so SBS / edit / gutter are visible without Alt+E.
         let demo_rs = format_edit_path("packages/xylitol-tui/examples/agent_demo.rs", &self.cwd);
         let ui_root = format_edit_path("src/app/tui/ui_root.rs", &self.cwd);
         self.push_diff_ex(
             format!("edited {demo_rs} (+2 -2) unified edit-format"),
             sample_unified_pair(),
-            None, // always unified — Edit tool path
+            None,
             true,
             ToolBlockStatus::Success,
         );
@@ -1740,12 +1867,123 @@ impl FakeCodingAgentApp {
             true,
             ToolBlockStatus::Success,
         );
-        // Error tint exemplar (collapsed detail still paints header).
         self.push_tool(
             "cargo test -p xylitol-tui --test missing · fail",
             "error — test binary `missing` not found (demo stub)",
             ToolBlockStatus::Error,
         );
+    }
+
+    fn inject_help_keys(&mut self) {
+        self.push_message(
+            Role::System,
+            "keys: Enter submit/steer · Alt+Enter follow-up · /md Markdown stream · Ctrl+P plate · \
+             /help · /diff · ! bash · Ctrl+G $EDITOR · double Esc tree · (Ctrl+T) thinking · \
+             (Alt+E) tools · (Ctrl+O) tools viewport · Alt+G glyphs · Esc · Ctrl+C",
+        );
+        self.push_message(
+            Role::System,
+            "stream plate: md-full · stream-rust/python/typescript/json · diff-sbs · tool-tints · tree",
+        );
+        self.set_status("Ready");
+    }
+
+    fn inject_diff_showcase(&mut self) {
+        let demo_rs = format_edit_path("packages/xylitol-tui/examples/agent_demo.rs", &self.cwd);
+        let ui_root = format_edit_path("src/app/tui/ui_root.rs", &self.cwd);
+        self.push_message(Role::User, "plate · diff-sbs");
+        self.push_diff_ex(
+            format!("edited {demo_rs} (+2 -2) unified edit-format"),
+            sample_unified_pair(),
+            None,
+            true,
+            ToolBlockStatus::Success,
+        );
+        self.push_diff_ex(
+            format!("edited {ui_root} (+2 -2) side-by-side (optional)"),
+            sample_sbs_pair(),
+            Some(60),
+            true,
+            ToolBlockStatus::Success,
+        );
+        self.push_diff_ex(
+            format!("edited {demo_rs} (display_diff gutter)"),
+            DiffInput::DisplayText(sample_display_diff()),
+            None,
+            true,
+            ToolBlockStatus::Success,
+        );
+        self.set_status("Ready");
+    }
+
+    fn inject_tool_tint_showcase(&mut self) {
+        self.push_message(Role::User, "plate · tool-tints");
+        self.push_thinking(
+            "Plan: show tool status tints and long bash collapse. Toggle with (Ctrl+T)/(Alt+E).",
+        );
+        self.push_tool(
+            "read packages/xylitol-tui/examples/agent_demo.rs · 42ms · 790 lines",
+            "ok — opened agent_demo.rs\n(preview) FakeCodingAgentApp + scripted turn harness",
+            ToolBlockStatus::Success,
+        );
+        self.push_tool(
+            "$ bun test (timeout 120s) · ok",
+            sample_long_bash_output(),
+            ToolBlockStatus::Success,
+        );
+        self.push_tool(
+            "cargo test -p xylitol-tui --test missing · fail",
+            "error — test binary `missing` not found (demo stub)",
+            ToolBlockStatus::Error,
+        );
+        self.set_status("Ready");
+    }
+
+    /// Typewriter-stream the full grammar stub (steadier pace than normal reply jitter).
+    fn stream_markdown_grammar(&mut self) {
+        self.push_message(Role::User, "/md · request Markdown showcase");
+        self.pending_events.clear();
+        self.scheduled_actions.clear();
+        self.scheduled_tail_tick = self.script_tick;
+        self.active_stream_entry = None;
+        // Prevent idle `tick` fallback (scripted_turn 0/1 tool wave) from interleaving.
+        self.auto_started = true;
+        self.scripted_turn = self.scripted_turn.max(2);
+        self.set_status("Drafting reply");
+        self.queue_markdown_typewriter(markdown_grammar_stub());
+    }
+
+    fn run_demo_plate(&mut self, id: &str) {
+        match id {
+            "md-full" => self.stream_markdown_grammar(),
+            "stream-rust" => self.commit_user_turn("stream rust highlight".into()),
+            "stream-python" => self.commit_user_turn("stream python highlight".into()),
+            "stream-typescript" => self.commit_user_turn("stream typescript highlight".into()),
+            "stream-json" => self.commit_user_turn("stream json highlight".into()),
+            "diff-sbs" => self.inject_diff_showcase(),
+            "tool-tints" => self.inject_tool_tint_showcase(),
+            "tree" => {
+                self.tree_open = true;
+                self.palette_open = false;
+                self.settings_open = false;
+                self.set_status("Session tree");
+            }
+            "help-keys" => self.inject_help_keys(),
+            "tests" => {
+                self.pending_events
+                    .push_back(ScriptEvent::Tool("cargo test -p xylitol-tui --lib".into()));
+                self.pending_events.push_back(ScriptEvent::Assistant(
+                    "Regression tests are queued. Next step: rerun the PTY smoke against the primary example.".into(),
+                ));
+            }
+            "compact" => {
+                self.push_message(
+                    Role::System,
+                    "Compaction checkpoint: examples rewritten to a single fake coding-agent flow.",
+                );
+            }
+            _ => {}
+        }
     }
 
     fn push_message(&mut self, role: Role, text: impl Into<String>) {
@@ -1836,12 +2074,6 @@ impl FakeCodingAgentApp {
         );
     }
 
-    fn inject_markdown_showcase(&mut self) {
-        self.push_message(Role::User, "/md · request Markdown showcase");
-        self.push_message(Role::Assistant, markdown_showcase_seed());
-        self.set_status("Ready");
-    }
-
     fn process_submit(&mut self, text: String) {
         let trimmed = text.trim().to_string();
         if trimmed.is_empty() {
@@ -1855,13 +2087,28 @@ impl FakeCodingAgentApp {
             self.input.set_text(String::new());
             self.palette_open = true;
             self.settings_open = false;
+            self.palette_filter.clear();
+            self.palette.set_filter("");
             return;
         }
 
         if last_line == "/md" || last_line == ":md" {
             self.input.set_text(String::new());
-            self.inject_markdown_showcase();
-            self.advance_script();
+            self.stream_markdown_grammar();
+            // Do not advance_script — that would enqueue the idle fallback tool wave
+            // on top of the Markdown typewriter.
+            return;
+        }
+
+        if last_line == "/help" || last_line == ":help" {
+            self.input.set_text(String::new());
+            self.inject_help_keys();
+            return;
+        }
+
+        if last_line == "/diff" || last_line == ":diff" {
+            self.input.set_text(String::new());
+            self.inject_diff_showcase();
             return;
         }
 
@@ -2082,6 +2329,56 @@ impl FakeCodingAgentApp {
 
     fn queue_assistant_stream(&mut self, text: &str) {
         self.queue_stream(StreamKind::Assistant, text);
+    }
+
+    /// Irregular typewriter for Markdown stubs — slower, hitchy, more human.
+    fn queue_markdown_typewriter(&mut self, text: &str) {
+        // Spin-up pause before first glyph.
+        let start_delay = self.jitter_ticks(10, 22);
+        self.schedule_after_ticks(start_delay, TimedAction::StreamStart(StreamKind::Assistant));
+        let chars: Vec<char> = text.chars().collect();
+        let mut index = 0usize;
+        while index < chars.len() {
+            let current = chars[index];
+            let take = if current == '\n' {
+                1
+            } else {
+                match self.random_between(0, 11) {
+                    0 => self.random_between(8, 16) as usize, // rare burst
+                    1..=3 => self.random_between(3, 6) as usize,
+                    4..=7 => {
+                        if current.is_ascii() {
+                            self.random_between(1, 3) as usize
+                        } else {
+                            1
+                        }
+                    }
+                    _ => 1, // drip
+                }
+            };
+            let end = (index + take).min(chars.len());
+            let chunk: String = chars[index..end].iter().collect();
+            // Mostly short delays; occasional hitch / think-pause (esp. after newline).
+            let chunk_delay = if current == '\n' {
+                self.jitter_ticks(4, 14)
+            } else {
+                match self.random_between(0, 9) {
+                    0 => self.random_between(12, 28), // long hitch
+                    1..=2 => self.random_between(6, 12),
+                    _ => self.random_between(2, 6),
+                }
+            };
+            self.schedule_after_ticks(
+                chunk_delay,
+                TimedAction::StreamChunk(StreamKind::Assistant, chunk),
+            );
+            index = end;
+        }
+        let finish_delay = self.jitter_ticks(6, 16);
+        self.schedule_after_ticks(
+            finish_delay,
+            TimedAction::StreamFinish(StreamKind::Assistant),
+        );
     }
 
     /// Pick streamed code sample: keyword wins; else rotate rust→python→ts→json.
@@ -2817,7 +3114,7 @@ impl FakeCodingAgentApp {
 
     fn render_palette_slot(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
-        lines.push(Self::fit(&bold(" Command Palette"), width));
+        lines.push(Self::fit(&bold(" Command Plate"), width));
         lines.push(Self::fit(&dim(" Up/Down  Enter run  Esc close"), width));
         for line in self.palette.render(width) {
             lines.push(Self::fit(&line, width));
@@ -2857,8 +3154,8 @@ impl Component for FakeCodingAgentApp {
             };
             // Compact cue strip — full list is in the seed system line.
             footer_owned = format!(
-                // Keep cue strip short — narrow terminals (80 cols) still fit.
-                "{} · {} · {}{queue_hint} · /@ (Ctrl+P)/(Ctrl+S) (Alt+G) (Ctrl+O tools)",
+                // c535 pad4: metadata only — chords live in /help / plate help-keys.
+                "{} · {} · {}{queue_hint}",
                 self.footer_note,
                 self.theme_label(),
                 self.glyph_set.label()
@@ -2968,45 +3265,34 @@ impl Component for FakeCodingAgentApp {
                 self.palette.handle_input(event);
             } else if matches_key_event(key, "enter") {
                 if let Some(item) = self.palette.get_selected_item() {
-                    match item.value.as_str() {
-                        "markdown" => {
-                            self.inject_markdown_showcase();
-                        }
-                        "tests" => {
-                            self.pending_events.push_back(ScriptEvent::Tool(
-                                "cargo test -p xylitol-tui --lib".into(),
-                            ));
-                            self.pending_events.push_back(ScriptEvent::Assistant(
-                                "Regression tests are queued. Next step: rerun the PTY smoke against the primary example.".into(),
-                            ));
-                        }
-                        "diff" => {
-                            self.push_diff_ex(
-                                "workspace diff (+2 -2) unified",
-                                sample_unified_pair(),
-                                None,
-                                true,
-                                ToolBlockStatus::Success,
-                            );
-                            self.push_diff_ex(
-                                "workspace diff side-by-side",
-                                sample_sbs_pair(),
-                                Some(60),
-                                true,
-                                ToolBlockStatus::Success,
-                            );
-                        }
-                        "compact" => {
-                            self.push_message(
-                                Role::System,
-                                "Compaction checkpoint: examples rewritten to a single fake coding-agent flow.",
-                            );
-                        }
-                        _ => {}
+                    let id = item.value.clone();
+                    self.palette_open = false;
+                    self.palette_filter.clear();
+                    self.palette.set_filter("");
+                    self.run_demo_plate(&id);
+                    // md-full / stream-* schedule their own work; skip idle fallback.
+                    if !matches!(
+                        id.as_str(),
+                        "md-full"
+                            | "stream-rust"
+                            | "stream-python"
+                            | "stream-typescript"
+                            | "stream-json"
+                            | "tree"
+                    ) {
+                        self.advance_script();
                     }
+                } else {
+                    self.palette_open = false;
+                    self.palette_filter.clear();
+                    self.palette.set_filter("");
                 }
-                self.palette_open = false;
-                self.advance_script();
+            } else if matches_key_event(key, "backspace") {
+                self.palette_filter.pop();
+                self.palette.set_filter(&self.palette_filter);
+            } else if let Some(text) = printable_from_key_event(key) {
+                self.palette_filter.push_str(&text);
+                self.palette.set_filter(&self.palette_filter);
             }
             return;
         }
@@ -3024,6 +3310,8 @@ impl Component for FakeCodingAgentApp {
         if matches_key_event(key, "ctrl+p") {
             self.palette_open = true;
             self.settings_open = false;
+            self.palette_filter.clear();
+            self.palette.set_filter("");
             return;
         }
         if matches_key_event(key, "ctrl+s") {
