@@ -1,10 +1,11 @@
 # xylitol-tui ↔ pi-tui 刻意差异台账
 
 > **目的**：对照 `../pi/packages/tui`（及 kimi-code 同源）做行为/代码整合时，**不得静默覆盖**本文件列出的 xylitol 决议。
+> **定位**：`xylitol-tui` 是源自 pi-tui 的 **独立 fork**（合规见 [`NOTICE`](NOTICE)），将随 xylitol 本体大幅迭代；不是持续 1:1 port。
 > **不是**进度板；进度见根 `_HANDOFF.md`。稳定边界见本包 `AGENTS.md`。
 > 新增刻意差异时：**先改代码与测试，再在本表加一行**；回退差异须显式评审。
 
-对齐源路径：`../pi/packages/tui`（npm：`@earendil-works/pi-tui`）。
+对齐源路径（历史参考）：`../pi/packages/tui`（npm：`@earendil-works/pi-tui`）。
 
 ---
 
@@ -14,6 +15,7 @@
 2. 若 pi 变更触及某行主题，默认 **保留 xylitol 侧**；只有产品明确要求才改决议并更新本表。
 3. 纯 bugfix（两边语义一致）可对齐 pi，不必记入本表。
 4. 应用面（`src/app/tui/`、`agent_demo` 产品壳）**不在** pi-tui 包内——勿把 coding-agent UI 合进本包。
+5. 分叉是常态：缺能力优先按 xylitol 产品需求设计，不必先问「pi 怎么做」。
 
 ---
 
@@ -64,3 +66,4 @@
 | 2026-07-10 | demo Ctrl+G 真 `$EDITOR`（`with_terminal_suspended`）；harness 仍 stub；边界写入 `bash-mode.md` |
 | 2026-07-10 | c459 Diff 行号；**c462** tool-bg 三态（已归档，非 draft） |
 | 2026-07-11 | 轨 P 合入：Markdown（package c530）· plate（c535）· Diff 边角 · Completion `$` 扩展点 · Expandable · playground sync · Tree 边角 · **ChoicePrompt（c565）** · **Palette/`/theme`（c570）**；D08 仍延后（c575） |
+| 2026-07-11 | 定位声明：独立 fork（非持续 1:1 port）；合规 `NOTICE` |
