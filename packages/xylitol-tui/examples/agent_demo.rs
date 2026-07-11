@@ -175,6 +175,16 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
         description: "Tip: sync_tokens.py + MD slot aligns with /md",
     },
     DemoPlateItem {
+        id: "md-list-wrap",
+        label: "Markdown list wrap (prewrapped)",
+        description: "Nested lists + hanging indent; single wrap pass",
+    },
+    DemoPlateItem {
+        id: "narrow-clamp",
+        label: "Narrow width clamp (widgets)",
+        description: "Settings/Input/Loader empty+narrow — library reference",
+    },
+    DemoPlateItem {
         id: "tool-tints",
         label: "Tool status tints",
         description: "Success / error / long bash tool blocks",
@@ -717,6 +727,21 @@ function accept(prompt: string): boolean {
 短 HR（非全宽墙）。
 
 完：打字机流式应逐段重绘标题 / 列表 / 表 / 高亮；粗体斜体靠 SGR，语义靠（加粗）/（斜体）标注。"
+}
+
+/// Focused nested-list sample for plate `md-list-wrap` (library reference).
+fn markdown_list_wrap_stub() -> &'static str {
+    "\
+### 列表嵌套 · 悬挂缩进（prewrapped）
+
+1. 有序一项
+2. 有序二项
+   - 嵌套无序 A
+   - 嵌套无序 B
+     1. 再嵌套有序
+3. 有序三项含 [链接](https://example.com/list) 与 `code`
+
+窄终端下第 3 项应折行且续行保留与 `3. ` 对齐的空格，**不得**二次折行把悬挂缩进冲掉。"
 }
 
 /// Full Markdown grammar for c530 (via `/md` or Ctrl+P → md-full).
@@ -1874,7 +1899,7 @@ impl FakeCodingAgentApp {
             |_id: &str, _val: &str| {},
             || {},
             SettingsListOptions {
-                enable_search: false,
+                enable_search: true,
             },
         );
 
@@ -2019,7 +2044,7 @@ impl FakeCodingAgentApp {
             Role::System,
             "stream plate: md-full · stream-rust/python/typescript/json · diff-sbs · \
              completion-dollar (c545 $) · expandable-head (c550) · playground-sync (c555) · \
-             tool-tints · tree",
+             md-list-wrap · narrow-clamp · tree (c560) · tool-tints · help-keys · tests · compact",
         );
         self.set_status("Ready");
     }
@@ -2062,9 +2087,91 @@ impl FakeCodingAgentApp {
              `src/app/tui/design/playground/`. Tokens SSOT = DESIGN.md frontmatter → \
              `python3 src/app/tui/design/playground/sync_tokens.py` → tokens.css/js. \
              Markdown slot: no `#` titles, links as `text (url)`, bold/italic via style \
-             only (optional （加粗）/（斜体） stubs). Runtime check: `/md` in this demo.",
+             only (optional （加粗）/（斜体） stubs). Runtime check: `/md` in this demo. \
+             Also try plate `md-list-wrap` / `narrow-clamp`, playground slot `widgets` (key 8).",
         );
         self.set_status("Ready · try /md for runtime MD");
+    }
+
+    fn inject_md_list_wrap_showcase(&mut self) {
+        self.push_message(Role::User, "plate · md-list-wrap · list prewrapped");
+        self.push_message(
+            Role::System,
+            "Library reference: Markdown list/table/quote rows are `prewrapped` — one hanging-indent \
+             wrap pass, no second outer wrap that flushes continuation lines. Nested ordered markers \
+             use pulldown `List(Some(n))`. Shrink the terminal and watch item 3 keep spaces under `3. `. \
+             Full grammar: `/md`. Playground visual: slot Markdown + Widgets.",
+        );
+        self.pending_events.clear();
+        self.scheduled_actions.clear();
+        self.scheduled_tail_tick = self.script_tick;
+        self.active_stream_entry = None;
+        self.auto_started = true;
+        self.scripted_turn = self.scripted_turn.max(2);
+        self.set_status("Streaming list wrap sample");
+        self.queue_markdown_typewriter(markdown_list_wrap_stub());
+    }
+
+    fn inject_narrow_clamp_showcase(&mut self) {
+        self.push_message(Role::User, "plate · narrow-clamp · widgets");
+        self.push_message(
+            Role::System,
+            "Library reference: SelectList / SettingsList / Input / Loader clamp every row to the \
+             width budget (including width 0/1). Settings search empty → `No matching settings`; \
+             SelectList filter → `No matching items`; Input prompt clips instead of overflowing; \
+             Loader clamps Text padding. Try: type `zzz` here in Settings search, or Ctrl+P then \
+             filter `zzz`. Playground: slot Widgets (key 8).",
+        );
+        // Rebuild settings with search so library users can demo empty-match live.
+        self.settings = SettingsList::new(
+            vec![
+                SettingItem {
+                    id: "model".into(),
+                    label: "Model".into(),
+                    description: Some("execution model — long enough to exercise truncate".into()),
+                    current_value: "claude-sonnet-4".into(),
+                    values: Some(vec![
+                        "claude-sonnet-4".into(),
+                        "gpt-5".into(),
+                        "gpt-5-mini".into(),
+                    ]),
+                    submenu: None,
+                },
+                SettingItem {
+                    id: "approval".into(),
+                    label: "Approval".into(),
+                    description: Some("tool execution policy".into()),
+                    current_value: "never".into(),
+                    values: Some(vec!["never".into(), "on-request".into()]),
+                    submenu: None,
+                },
+                SettingItem {
+                    id: "diff".into(),
+                    label: "Diff mode".into(),
+                    description: Some("review format".into()),
+                    current_value: "unified".into(),
+                    values: Some(vec!["unified".into(), "split".into()]),
+                    submenu: None,
+                },
+            ],
+            5,
+            SettingsListTheme {
+                label: Box::new(|s, _| s.to_string()),
+                value: Box::new(|s, _| cyan(s)),
+                description: Box::new(dim),
+                cursor: "> ".into(),
+                hint: Box::new(dim),
+            },
+            |_id: &str, _val: &str| {},
+            || {},
+            SettingsListOptions {
+                enable_search: true,
+            },
+        );
+        self.palette_open = false;
+        self.tree_open = false;
+        self.settings_open = true;
+        self.set_status("Settings · type zzz for no-match · Esc closes");
     }
 
     fn inject_diff_showcase(&mut self) {
@@ -2157,6 +2264,8 @@ impl FakeCodingAgentApp {
             "completion-dollar" => self.inject_completion_dollar_tip(),
             "expandable-head" => self.inject_expandable_head_showcase(),
             "playground-sync" => self.inject_playground_sync_tip(),
+            "md-list-wrap" => self.inject_md_list_wrap_showcase(),
+            "narrow-clamp" => self.inject_narrow_clamp_showcase(),
             "tool-tints" => self.inject_tool_tint_showcase(),
             "tree" => {
                 self.push_message(Role::User, "plate · tree · c560");

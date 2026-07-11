@@ -295,7 +295,7 @@
 
     .md-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 0.5rem;
       max-width: 52rem;
     }
@@ -486,6 +486,16 @@
             <div class="row fg-assistant">见 <span class="md-link">docs (https://ex.com)</span></div>
             <div class="row fg-assistant">裸 URL：<span class="md-link" style="text-decoration:underline">https://ex.com</span></div>
           </div>
+          <div class="cell" data-md-cell="list">
+            <h3>嵌套列表 · 悬挂缩进</h3>
+            <div class="row fg-assistant">1. 有序一项</div>
+            <div class="row fg-assistant">2. 有序二项</div>
+            <div class="row fg-assistant">    - 嵌套无序 A</div>
+            <div class="row fg-assistant">        1. 再嵌套有序</div>
+            <div class="row fg-assistant">3. … <span class="md-link">链接 (https://example.com/list)</span> 与</div>
+            <div class="row fg-assistant">   <code class="md-code-inline">`code`</code></div>
+            <div class="row fg-muted" style="font-size:11px;margin-top:0.25rem">单次折行（prewrapped）· demo: plate md-list-wrap / /md</div>
+          </div>
         </div>
         <div class="stage hidden" id="md-stream-stage" style="margin-top:0.6rem">
           <div class="rows" id="md-stream-rows"></div>
@@ -556,6 +566,45 @@
           </div>
         </div>
       </section>
+
+      <!-- 8 widgets: Select / Settings / Input / Loader narrow+empty -->
+      <section class="panel" id="panel-widgets" data-id="widgets">
+        <h2>Widgets · 窄宽 / 空态</h2>
+        <p class="spec">
+          SelectList / SettingsList / Input / Loader ·
+          运行时参考：<code>just demo-tui</code> → Ctrl+P → <strong>narrow-clamp</strong>
+        </p>
+        <div class="ctl">
+          <button type="button" class="chip-btn" data-widget="empty" aria-pressed="true">空态</button>
+          <button type="button" class="chip-btn" data-widget="narrow" aria-pressed="false">窄宽</button>
+          <span class="hint">行宽 MUST ≤ 预算 · width 0/1 不崩</span>
+        </div>
+        <div id="widgets-empty" class="split">
+          <div class="col">
+            <div class="col-h">SelectList · no match</div>
+            <div class="row fg-muted">  No matching items</div>
+            <div class="row fg-muted">  (0/0)</div>
+          </div>
+          <div class="col">
+            <div class="col-h">SettingsList · empty / filter miss</div>
+            <div class="row fg-muted">  No settings available</div>
+            <div class="row fg-muted">  No matching settings</div>
+            <div class="row fg-muted" style="font-size:11px">Type to search · Esc</div>
+          </div>
+        </div>
+        <div id="widgets-narrow" class="split hidden">
+          <div class="col">
+            <div class="col-h">Input · width≈2</div>
+            <div class="row fg-on">&gt;</div>
+            <div class="row fg-muted" style="font-size:11px">prompt 裁切 · 不溢出</div>
+          </div>
+          <div class="col">
+            <div class="col-h">Loader · 长 status</div>
+            <div class="row"><span class="fg-accent">⠋</span> <span class="fg-muted">working on a very lo…</span></div>
+            <div class="row fg-muted" style="font-size:11px">clamp after Text padding</div>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -575,6 +624,7 @@
       { id: "layout", label: "Layout", key: "5" },
       { id: "chrome", label: "Chrome", key: "6" },
       { id: "overlay", label: "Overlay", key: "7" },
+      { id: "widgets", label: "Widgets narrow/empty", key: "8" },
     ];
 
     const THINK_CHUNKS = [
@@ -601,6 +651,7 @@
       layout: { busy: true, steer: false, tree: false },
       chrome: "ok",
       overlay: true,
+      widget: "empty",
     };
 
     const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -982,6 +1033,24 @@
       renderOverlay();
     });
 
+    function renderWidgets() {
+      const empty = document.getElementById("widgets-empty");
+      const narrow = document.getElementById("widgets-narrow");
+      const isEmpty = state.widget === "empty";
+      empty.classList.toggle("hidden", !isEmpty);
+      narrow.classList.toggle("hidden", isEmpty);
+      document.querySelectorAll("[data-widget]").forEach((b) => {
+        b.setAttribute("aria-pressed", b.getAttribute("data-widget") === state.widget ? "true" : "false");
+      });
+    }
+
+    document.querySelectorAll("[data-widget]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.widget = b.getAttribute("data-widget");
+        renderWidgets();
+      });
+    });
+
     /* —— keys —— */
     document.addEventListener("keydown", (e) => {
       if (e.target.matches("input, textarea")) return;
@@ -994,7 +1063,7 @@
       } else if (e.key === "ArrowRight" || e.key === "]") {
         select(state.index + 1);
         e.preventDefault();
-      } else if (/^[1-7]$/.test(e.key)) {
+      } else if (/^[1-8]$/.test(e.key)) {
         select(Number(e.key) - 1);
         e.preventDefault();
       } else if ((e.key === "e" || e.key === "E") && e.altKey) {
@@ -1040,6 +1109,7 @@
     renderMdStream();
     renderLayout();
     renderChrome();
+    renderWidgets();
     applyMode();
     applySlot({ jump: true, instant: true });
     // overlay after first paint
