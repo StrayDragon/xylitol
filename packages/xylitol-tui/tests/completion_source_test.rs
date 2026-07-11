@@ -4,10 +4,82 @@ mod support;
 
 use support::TuiTestHarness;
 use xylitol_tui::Focusable;
-use xylitol_tui::autocomplete::SlashCommand;
+use xylitol_tui::autocomplete::{AutocompleteItem, AutocompleteSuggestions, SlashCommand};
 use xylitol_tui::clock::SystemClock;
-use xylitol_tui::completion::{AtPathSource, SlashCommandSource};
+use xylitol_tui::completion::{
+    AtPathSource, CompletionContext, CompletionMatch, CompletionSource, SlashCommandSource,
+};
 use xylitol_tui::components::editor::{Editor, EditorOptions, EditorTheme};
+use xylitol_tui::utils::visible_width;
+
+/// Test-only `$` trigger — proves a third source can register without product semantics.
+struct DollarStubSource {
+    skills: Vec<(&'static str, &'static str)>,
+}
+
+impl CompletionSource for DollarStubSource {
+    fn id(&self) -> &'static str {
+        "dollar-stub"
+    }
+
+    fn probe(&self, ctx: &CompletionContext<'_>) -> Option<CompletionMatch> {
+        let before = ctx.before_cursor();
+        if before.starts_with('$') && !before.contains(' ') {
+            Some(CompletionMatch {
+                prefix: before.to_string(),
+            })
+        } else {
+            None
+        }
+    }
+
+    fn should_dismiss(&self, _ctx: &CompletionContext<'_>, m: &CompletionMatch) -> bool {
+        m.prefix == "$"
+    }
+
+    fn suggestions(
+        &self,
+        _ctx: &CompletionContext<'_>,
+        m: &CompletionMatch,
+    ) -> Option<AutocompleteSuggestions> {
+        let needle = m.prefix.strip_prefix('$').unwrap_or("");
+        let items: Vec<AutocompleteItem> = self
+            .skills
+            .iter()
+            .filter(|(name, _)| name.starts_with(needle))
+            .map(|(name, desc)| AutocompleteItem {
+                value: (*name).to_string(),
+                label: (*name).to_string(),
+                description: Some((*desc).to_string()),
+            })
+            .collect();
+        if items.is_empty() {
+            None
+        } else {
+            Some(AutocompleteSuggestions {
+                items,
+                prefix: m.prefix.clone(),
+            })
+        }
+    }
+
+    fn apply(
+        &self,
+        lines: &[String],
+        cursor_line: usize,
+        cursor_col: usize,
+        item: &AutocompleteItem,
+        prefix: &str,
+    ) -> (Vec<String>, usize, usize) {
+        let current = lines[cursor_line].clone();
+        let before = &current[..cursor_col.saturating_sub(prefix.len())];
+        let after = &current[cursor_col..];
+        let new_line = format!("${} {}", item.value, after);
+        let mut new_lines = lines.to_vec();
+        new_lines[cursor_line] = new_line;
+        (new_lines, cursor_line, before.len() + item.value.len() + 2)
+    }
+}
 
 fn editor_with(sources: Vec<Box<dyn xylitol_tui::CompletionSource>>) -> Editor {
     let mut e = Editor::new(
@@ -78,4 +150,94 @@ fn empty_registry_ignores_slash() {
         text.contains("/help"),
         "typed slash text should remain; got:\n{text}"
     );
+}
+
+#[test]
+fn third_dollar_stub_source_registers_and_opens() {
+    let mut h = TuiTestHarness::new(80, 20);
+    h.mount(Box::new(editor_with(vec![
+        Box::new(SlashCommandSource::new(vec![SlashCommand {
+            name: "help".into(),
+            description: Some("Show help".into()),
+            argument_hint: None,
+            get_argument_completions: None,
+        }])),
+        Box::new(AtPathSource::new(std::env::temp_dir())),
+        Box::new(DollarStubSource {
+            skills: vec![
+                ("demo", "c545 stub skill"),
+                (
+                    "very-long-skill-name-that-should-truncate-in-narrow-terminals",
+                    "long description that must not blow the width budget either",
+                ),
+            ],
+        }),
+    ])))
+    .focus(Some(0));
+
+    h.render_result().expect("render");
+    h.keys("$");
+    h.render_result().expect("$ stub popup");
+    h.assert_text_contains("demo");
+    h.assert_text_contains("c545 stub skill");
+
+    // Slash still independent when `$` dismissed and `/` typed.
+    h.keys("\x1b"); // Esc
+    h.render_result().expect("esc dollar");
+    // Clear `$` then type slash.
+    h.keys("\x7f/");
+    h.render_result().expect("slash after dollar stub");
+    let text = h.tui.terminal.viewport().join("\n");
+    assert!(
+        text.contains("Show help") || text.contains("help"),
+        "SlashCommandSource must still work with third source registered; got:\n{text}"
+    );
+}
+
+#[test]
+fn narrow_editor_popup_does_not_overflow_width() {
+    let width: u16 = 28;
+    let mut h = TuiTestHarness::new(width, 16);
+    h.mount(Box::new(editor_with(vec![
+        Box::new(SlashCommandSource::new(vec![SlashCommand {
+            name: "supercalifragilisticexpialidocious".into(),
+            description: Some(
+                "an extraordinarily long description that would overflow a narrow terminal".into(),
+            ),
+            argument_hint: None,
+            get_argument_completions: None,
+        }])),
+        Box::new(DollarStubSource {
+            skills: vec![(
+                "another-extremely-long-skill-identifier-for-c545",
+                "narrow popup clamp",
+            )],
+        }),
+    ])))
+    .focus(Some(0));
+
+    h.render_result().expect("render");
+    h.keys("/");
+    h.render_result()
+        .expect("narrow slash popup must stay within width");
+    let budget = width as usize;
+    for line in h.tui.terminal.viewport() {
+        assert!(
+            visible_width(&line) <= budget,
+            "slash popup overflow: visible {} > {budget}; line={line:?}",
+            visible_width(&line)
+        );
+    }
+
+    h.keys("\x1b\x7f$");
+    h.render_result()
+        .expect("narrow dollar popup must stay within width");
+    for line in h.tui.terminal.viewport() {
+        assert!(
+            visible_width(&line) <= budget,
+            "dollar popup overflow: visible {} > {budget}; line={line:?}",
+            visible_width(&line)
+        );
+    }
+    h.assert_text_contains("another-extremely");
 }

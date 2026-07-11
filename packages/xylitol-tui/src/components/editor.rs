@@ -1558,15 +1558,20 @@ impl Component for Editor {
             result.push((self.theme.border_color)(&h.repeat(width)));
         }
 
-        // c430: append autocomplete popup lines below border
+        // c430/c545: append autocomplete popup below border; clamp to content width.
         if let Some(ref mut ac_list) = self.autocomplete_list
             && self.autocomplete_state.is_some()
         {
             let ac_lines = ac_list.render(cw);
             for line in &ac_lines {
-                let lw = visible_width(line);
+                let clipped = if visible_width(line) <= cw {
+                    line.clone()
+                } else {
+                    truncate_to_width(line, cw, "", false)
+                };
+                let lw = visible_width(&clipped);
                 let pad = cw.saturating_sub(lw);
-                result.push(format!("{lp}{line}{}{rp}", " ".repeat(pad)));
+                result.push(format!("{lp}{clipped}{}{rp}", " ".repeat(pad)));
             }
         }
 

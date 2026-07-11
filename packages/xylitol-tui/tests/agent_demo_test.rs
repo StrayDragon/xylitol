@@ -901,6 +901,40 @@ fn agent_demo_plate_diff_shows_c540_cjk_and_empty_half() {
 }
 
 #[test]
+fn agent_demo_dollar_stub_source_opens_and_plate_mentions_c545() {
+    let mut h = TuiTestHarness::new(100, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+
+    h.keys("\x10completion\r");
+    h.render_result().expect("after completion-dollar plate");
+    let tip = h.tui.terminal.scroll_buffer().join("\n");
+    assert!(
+        tip.contains("c545") || tip.contains("CompletionSource") || tip.contains("$"),
+        "plate completion-dollar should mention c545; got:\n{tip}"
+    );
+
+    h.keys("$");
+    h.render_result()
+        .expect("dollar stub popup must stay within width");
+    let open = h.tui.terminal.viewport().join("\n");
+    assert!(
+        open.contains("demo") || open.contains("c545 stub"),
+        "$ should open demo dollar stub popup; got:\n{open}"
+    );
+    for line in h.tui.terminal.viewport() {
+        assert!(
+            xylitol_tui::visible_width(&line) <= 100,
+            "dollar popup overflow; line={line:?}"
+        );
+    }
+}
+
+#[test]
 fn agent_demo_seed_tool_blocks_use_status_background_tints() {
     use agent_demo_example::ToolBlockStatus;
 
