@@ -34,7 +34,7 @@ use crate::agent::ReActAgent;
 use crate::domain::lifecycle::XyEvent;
 use crate::domain::session_types::SessionEntry;
 use crate::domain::types::{ThinkingLevel, XyModelMeta};
-use crate::runtime_protocol::{XyBashResult, XyModelBuilder, XySessionStore};
+use crate::runtime_protocol::{XyBashResult, XySessionStore};
 
 /// Re-export so Driver implementors under surfaces can name the return type
 /// without importing `crate::agent::session` directly (which arch_guard
@@ -195,29 +195,16 @@ pub struct InProcessDriver {
     /// agent holds its own clone internally; this one is the surface's handle
     /// for session-management commands.
     store: Arc<dyn XySessionStore>,
-    /// Model builder, held so select_model can resolve a fresh model when the
-    /// agent's registry is consulted. Currently the agent owns the builder; this
-    /// field is reserved for future use and kept None-aligned.
-    #[allow(dead_code)]
-    model_builder: XyModelBuilder,
 }
 
 impl InProcessDriver {
-    /// Construct from a built agent plus the store/builder used to build it.
+    /// Construct from a built agent plus the store used to build it.
     ///
-    /// `store` and `model_builder` are the same instances injected into the
-    /// agent at construction; holding them here lets session/model commands
-    /// operate without reaching into agent internals.
-    pub fn new(
-        agent: ReActAgent,
-        store: Arc<dyn XySessionStore>,
-        model_builder: XyModelBuilder,
-    ) -> Self {
-        Self {
-            agent,
-            store,
-            model_builder,
-        }
+    /// `store` is the same instance injected into the agent at construction;
+    /// holding it here lets session commands operate without reaching into
+    /// agent internals.
+    pub fn new(agent: ReActAgent, store: Arc<dyn XySessionStore>) -> Self {
+        Self { agent, store }
     }
 
     pub fn cancel_token(&self) -> CancellationToken {

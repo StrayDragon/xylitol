@@ -2,7 +2,6 @@
 
 use async_trait::async_trait;
 
-use crate::domain::message::AgentMessage;
 use crate::domain::session_types::{SessionContext, SessionEntry};
 
 /// Persistence port — abstracts session storage so the agent can be
@@ -14,10 +13,6 @@ use crate::domain::session_types::{SessionContext, SessionEntry};
 /// `infra::session::SessionManager` for the composition root.
 #[async_trait]
 pub trait XySessionStore: Send + Sync {
-    /// Load session context (messages, model, CWD) for building turn state.
-    async fn load_context(&self, session_id: &str) -> Result<Vec<AgentMessage>, String>;
-    /// Append an opaque JSON entry to the session log.
-    async fn append_entry(&self, session_id: &str, entry: serde_json::Value) -> Result<(), String>;
     /// Check whether a session exists.
     async fn exists(&self, session_id: &str) -> bool;
 

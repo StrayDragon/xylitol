@@ -2,21 +2,23 @@ kind: llman.sdd.spec
 name: architecture
 purpose: "Architecture conventions — layering rules, dependency direction, and module organization enforced by arch_guard."
 valid_scope[1]: src/AGENTS.md
-requirements[8]{req_id,title,statement}:
+requirements[9]{req_id,title,statement}:
   ar01,清除 pi 文档引用,All source files in src/ MUST NOT reference pi coding agent or its TypeScript modules in doc comments. References to pi's design rationale MUST be replaced with independent descriptions of the module's actual responsibilities.
   ar02,组件粒度边界（修订：补上限）,"Components with fewer than 100 lines or 5 methods and no behavioral logic MUST be inlined into their parent struct. Conversely, inlined blocks that exceed approximately 100 lines, have independent behavioral logic, and are conceptually cohesive MUST be extracted as named collaborator objects (per agent-session.as30). The Agent capability aggregate (formerly AgentSession) MUST NOT grow unboundedly as a single struct or single file; export, bash, permission, stats, and trust concerns MUST be extracted as named collaborators so the aggregate stays cohesive."
   ar03,宏系统评估文档,"The project MUST produce docs/architecture/macro-registration.md analyzing the feasibility and ROI of replacing runtime registration (tools, commands, providers) with Rust proc-macro or declarative macro alternatives. This is a design evaluation only — no macro code shall be produced in this change."
   ar04,更新模块地图,"src/domain/ MUST host pure domain vocabulary with consolidated entities, src/runtime_protocol/ MUST host Xy-prefixed port contracts and their signature types."
   ar05,"app-layer-module-map","System MUST update the module map so that src/app/ hosts all user-facing entry points (cli/, rpc.rs, server/, tui/, gui.rs) plus a src/app/core/ sublayer for cross-surface seams (composition, driver), src/protocol/ hosts the client↔core wire vocabulary split into command.rs/event.rs/transport.rs, and src/app/core/composition.rs centralizes Agent construction."
-  ar06,统一公共 API 命名空间,"All public types that are part of the project external interface MUST carry the Xy prefix; project-unique internal types and wire types under protocol/ and concrete implementations under infra/ MUST NOT carry the prefix."
+  ar06,精选库入口 Xy 前缀,精选进 crate 公开 API（lib.rs pub use）的可替换端口、跨面生命周期事件及其绑定签名类型 MUST 使用 Xy 前缀；应用面缝（Driver/bootstrap/dispatch）、protocol 线协议类型、infra 具体实现、以及未导出的内部协作者 MUST NOT 仅为品牌而加 Xy 前缀。
   ar07,消除重复领域实体,"System MUST NOT define multiple types for the same domain concept; Usage, StopReason, and Compaction configuration MUST each have exactly one canonical type."
-  ar08,统一事件词汇表,System MUST expose a single domain event vocabulary XyEvent for both the ReAct loop output stream and the lifecycle event bus; runtime_protocol EventSink MUST consume XyEvent directly.
-scenarios[8]{req_id,id,given,when,then}:
+  ar08,统一事件词汇表（闭集生命周期）,System MUST 以 XyEvent 作为 ReAct 输出流与生命周期总线的统一领域事件词汇；XyEvent MUST 保持为 agent 生命周期闭集（Agent/Turn/Message/Tool/Compaction/Queue 等），MUST NOT 为每个 provider 专属 SSE 事件新增变体。厂商流细节 MUST 在适配器边界映射为 XyChunk 或已有 MessageUpdate 载荷。
+  ar09,精选 pub use 清单,System MUST 在 src/lib.rs（或等价公开入口）维护精选 pub use，至少覆盖 XyModel、XyTool、XySessionStore、XyEvent、XyChunk 及文档化的配套错误/配置类型；未列入清单的内部模块 MUST NOT 被误当作稳定公开 API。
+scenarios[9]{req_id,id,given,when,then}:
   ar01,"pi-refs-cleared",src/ files exist with 'Aligns with pi' comments,running rg 'Aligns with pi' src/,zero matches found
   ar02,"aggregate-decomposed",the Agent (formerly AgentSession) had grown to 25 fields mixing export bash permission stats trust,the change is applied,those concerns live in named collaborator objects and the Agent aggregate stays cohesive instead of growing unboundedly
   ar03,"macro-eval-doc","llmanspec/changes/c240-consolidate-architecture/ is open",running the macro evaluation task,"docs/architecture/macro-registration.md exists with ROI analysis for #[tool], #[command], #[provider]"
   ar04,"domain-map-updated",after the change src/domain/ is inspected,consolidated types are present,no duplicate CompactionConfig or XyFinishReason remains
   ar05,"app-layer-module-map-exists","",the source tree is inspected after the change,"src/app exists with a core/ sublayer, src/interactive and src/server no longer exist, and src/protocol is a directory"
-  ar06,"xy-prefix-consistent",public types under runtime_protocol/ and core domain abstractions are inspected after the change,"running rg \"^pub (struct|enum|type|trait) \" on those modules",all interface types have Xy prefix while infra implementations do not
+  ar06,"curated-export",准备精选 pub use,审查 lib.rs 导出列表,仅端口与 XyEvent/XyChunk 等契约类型带 Xy；Driver 与 AgentMessage 可不带
   ar07,"no-duplicate-usage","the codebase is searched for token-usage types","rg \"struct (Usage|XyUsage)\"",exactly one canonical XyUsage remains
-  ar08,"single-event-vocab",a turn runs with both stream consumer and lifecycle subscriber,events are emitted,both consumers receive the same XyEvent variants
+  ar08,"closed-set","",审查 XyEvent 变体与 provider 适配器,无厂商专名变体；流增量经 XyChunk 进入循环后再发标准 XyEvent
+  ar09,"pub-use-exists","",检查 src/lib.rs,存在精选 pub use 且文档标明稳定契约
