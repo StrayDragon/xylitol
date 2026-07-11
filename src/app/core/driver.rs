@@ -210,6 +210,15 @@ impl InProcessDriver {
     pub fn cancel_token(&self) -> CancellationToken {
         self.agent.cancel_token()
     }
+
+    /// Mutable agent handle for composition-root seams (e.g. MCP reload).
+    ///
+    /// Surfaces should prefer [`Driver`] methods; this exists so `app::core`
+    /// helpers that may import infra can update tools without reach-in from
+    /// `app/tui`.
+    pub fn agent_mut(&mut self) -> &mut ReActAgent {
+        &mut self.agent
+    }
 }
 
 #[async_trait]
