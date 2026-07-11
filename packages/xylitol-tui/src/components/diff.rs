@@ -832,14 +832,19 @@ fn render_side_by_side(
             i = next;
             let n = deletes.len().max(inserts.len());
             for k in 0..n {
-                let (lp, ls) = deletes.get(k).map_or_else(
-                    || (String::new(), String::new()),
-                    |d| style_cell('-', &d.content, d.old_no, LineKind::Delete),
-                );
-                let (rp, rs) = inserts.get(k).map_or_else(
-                    || (String::new(), String::new()),
-                    |ins| style_cell('+', &ins.content, ins.new_no, LineKind::Insert),
-                );
+                // Empty content on one side = blank half (no fake ±N gutter) — ptd9 / c540.
+                let (lp, ls) = match deletes.get(k) {
+                    Some(d) if !d.content.is_empty() => {
+                        style_cell('-', &d.content, d.old_no, LineKind::Delete)
+                    }
+                    _ => (String::new(), String::new()),
+                };
+                let (rp, rs) = match inserts.get(k) {
+                    Some(ins) if !ins.content.is_empty() => {
+                        style_cell('+', &ins.content, ins.new_no, LineKind::Insert)
+                    }
+                    _ => (String::new(), String::new()),
+                };
                 rows.push(Row::Pair {
                     left_plain: lp,
                     right_plain: rp,
@@ -1199,10 +1204,45 @@ mod tests {
                 ..DiffOptions::default()
             },
         );
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("你好世界") && joined.contains("你好宇宙"),
+            "CJK glyphs must stay intact (no byte-split); got:\n{joined}"
+        );
         for line in &lines {
             assert!(
                 visible_width(line) <= 20,
                 "line wider than width: {line:?} ({})",
+                visible_width(line)
+            );
+        }
+    }
+
+    #[test]
+    fn cjk_narrow_sbs_respects_visible_width() {
+        let lines = render_diff_lines(
+            &DiffInput::LinePair {
+                old: "标题：验收路径\n".into(),
+                new: "标题：发布路径\n".into(),
+                path: Some("说明.md".into()),
+            },
+            36,
+            &plain_theme(),
+            &DiffOptions {
+                word_level: false,
+                side_by_side_min_width: Some(30),
+                ..DiffOptions::default()
+            },
+        );
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("验收") || joined.contains("发布"),
+            "SBS CJK content should remain readable; got:\n{joined}"
+        );
+        for line in &lines {
+            assert!(
+                visible_width(line) <= 36,
+                "SBS CJK row exceeds width: {line:?} w={}",
                 visible_width(line)
             );
         }
@@ -1447,6 +1487,71 @@ mod tests {
             joined.contains("only_old") || joined.contains('-'),
             "got:\n{joined}"
         );
+        // Empty right half must not invent a gutter like `+  1` after the separator.
+        for line in &lines {
+            if let Some(idx) = line.find('│') {
+                let right = line[idx + '│'.len_utf8()..].trim();
+                assert!(
+                    right.is_empty()
+                        || (!right.starts_with('+')
+                            && !right.chars().next().is_some_and(|c| c.is_ascii_digit())),
+                    "empty SBS half must not fake a line number; line={line:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn side_by_side_empty_left_half_has_no_fake_line_number() {
+        let lines = render_diff_lines(
+            &DiffInput::LinePair {
+                old: "\n".into(),
+                new: "only_new\n".into(),
+                path: None,
+            },
+            100,
+            &plain_theme(),
+            &DiffOptions {
+                word_level: false,
+                side_by_side_min_width: Some(40),
+                ..DiffOptions::default()
+            },
+        );
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("only_new"),
+            "insert-only SBS should show new content; got:\n{joined}"
+        );
+        for line in &lines {
+            if let Some(idx) = line.find('│') {
+                let left = line[..idx].trim();
+                assert!(
+                    left.is_empty()
+                        || (!left.starts_with('-')
+                            && !left.chars().next().is_some_and(|c| c.is_ascii_digit())),
+                    "empty left SBS half must not fake a line number; line={line:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn edit_format_snapshot_stable_gutter() {
+        let input = DiffInput::from_edit_pair(
+            "fn ready() -> bool {\n    true\n}\n",
+            "fn ready(prompt: &str) -> bool {\n    !prompt.is_empty()\n}\n",
+        );
+        let lines = render_diff_lines(
+            &input,
+            72,
+            &plain_theme(),
+            &DiffOptions {
+                word_level: false,
+                side_by_side_min_width: None,
+                ..DiffOptions::default()
+            },
+        );
+        insta::assert_snapshot!("diff_edit_format_compact", lines.join("\n"));
     }
 }
 

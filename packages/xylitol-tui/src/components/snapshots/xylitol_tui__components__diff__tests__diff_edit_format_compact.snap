@@ -1,0 +1,9 @@
+---
+source: packages/xylitol-tui/src/components/diff.rs
+expression: "lines.join(\"\\n\")"
+---
+-1 fn ready() -> bool {
+-2     true
++1 fn ready(prompt: &str) -> bool {
++2     !prompt.is_empty()
+ 3 }

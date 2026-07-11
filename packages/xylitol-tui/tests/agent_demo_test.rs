@@ -876,6 +876,31 @@ fn agent_demo_seed_shows_unified_and_side_by_side_diffs() {
 }
 
 #[test]
+fn agent_demo_plate_diff_shows_c540_cjk_and_empty_half() {
+    let mut h = TuiTestHarness::new(120, 80);
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+    h.keys("\x10diff\r");
+    h.render_result().expect("after diff-sbs plate");
+    let text = h.tui.terminal.scroll_buffer().join("\n");
+    assert!(
+        text.contains("c540")
+            || text.contains("CJK")
+            || text.contains("验收")
+            || text.contains("发布"),
+        "plate diff-sbs should surface c540 CJK sample; got:\n{text}"
+    );
+    assert!(
+        text.contains("only_old") || text.contains("empty half") || text.contains("orphan"),
+        "plate diff-sbs should surface empty-half sample; got:\n{text}"
+    );
+}
+
+#[test]
 fn agent_demo_seed_tool_blocks_use_status_background_tints() {
     use agent_demo_example::ToolBlockStatus;
 
