@@ -170,6 +170,11 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
         description: "Read-style tool: first-N + more-lines hint below",
     },
     DemoPlateItem {
+        id: "playground-sync",
+        label: "DESIGN playground sync (c555)",
+        description: "Tip: sync_tokens.py + MD slot aligns with /md",
+    },
+    DemoPlateItem {
         id: "tool-tints",
         label: "Tool status tints",
         description: "Success / error / long bash tool blocks",
@@ -2001,7 +2006,8 @@ impl FakeCodingAgentApp {
         self.push_message(
             Role::System,
             "stream plate: md-full · stream-rust/python/typescript/json · diff-sbs · \
-             completion-dollar (c545 $) · expandable-head (c550) · tool-tints · tree",
+             completion-dollar (c545 $) · expandable-head (c550) · playground-sync (c555) · \
+             tool-tints · tree",
         );
         self.set_status("Ready");
     }
@@ -2034,6 +2040,19 @@ impl FakeCodingAgentApp {
         // Keep viewport collapsed so the more-lines hint is visible.
         self.tools_output_expanded = false;
         self.set_status("Head viewport · Ctrl+O to expand");
+    }
+
+    fn inject_playground_sync_tip(&mut self) {
+        self.push_message(Role::User, "plate · playground-sync · c555");
+        self.push_message(
+            Role::System,
+            "c555: DESIGN playground is a human preview shell — Agent defaults ignore \
+             `src/app/tui/design/playground/`. Tokens SSOT = DESIGN.md frontmatter → \
+             `python3 src/app/tui/design/playground/sync_tokens.py` → tokens.css/js. \
+             Markdown slot: no `#` titles, links as `text (url)`, bold/italic via style \
+             only (optional （加粗）/（斜体） stubs). Runtime check: `/md` in this demo.",
+        );
+        self.set_status("Ready · try /md for runtime MD");
     }
 
     fn inject_diff_showcase(&mut self) {
@@ -2125,6 +2144,7 @@ impl FakeCodingAgentApp {
             "diff-sbs" => self.inject_diff_showcase(),
             "completion-dollar" => self.inject_completion_dollar_tip(),
             "expandable-head" => self.inject_expandable_head_showcase(),
+            "playground-sync" => self.inject_playground_sync_tip(),
             "tool-tints" => self.inject_tool_tint_showcase(),
             "tree" => {
                 self.tree_open = true;

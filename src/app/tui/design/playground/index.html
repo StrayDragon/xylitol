@@ -210,6 +210,10 @@
     .md-code { color: var(--success); }
     .md-quote { color: var(--muted); }
     .md-link { color: var(--accent); }
+    /* c555: SGR-like emphasis — no visible ** / * chrome (markdown.md) */
+    .md-bold { font-weight: 700; color: var(--assistant); }
+    .md-italic { font-style: italic; color: var(--assistant); }
+    .md-code-inline { color: var(--success); font-family: var(--mono); }
 
     .split {
       display: grid;
@@ -384,11 +388,11 @@
       <!-- 4 markdown -->
       <section class="panel" id="panel-markdown" data-id="markdown">
         <h2>Markdown</h2>
-        <p class="spec"><a href="../markdown.md">markdown.md</a> · c530：无 # / 无 fence · text (url) · 标记 round-trip</p>
+        <p class="spec"><a href="../markdown.md">markdown.md</a> · c555：无 # · text (url) · 粗斜体纯样式（无 ** / *）· `code` / ~~strike~~ 保留</p>
         <div class="ctl">
           <button type="button" id="md-stream" aria-pressed="false">假流式逐行</button>
           <button type="button" id="md-reset" aria-pressed="false">重置</button>
-          <span class="hint">标题靠色+underline · 表空格对齐</span>
+          <span class="hint">标题靠色+underline · 粗斜体靠 weight/style · 表空格对齐</span>
         </div>
         <div class="md-grid" id="md-grid">
           <div class="cell" data-md-cell="h">
@@ -399,7 +403,14 @@
           <div class="cell" data-md-cell="list">
             <h3>列表 / 行内</h3>
             <div class="row fg-assistant">1. 第一项</div>
-            <div class="row fg-assistant">- **bold** · *ital* · `code`</div>
+            <div class="row fg-assistant">
+              -
+              <span class="md-bold">加粗（加粗）</span>
+              ·
+              <span class="md-italic">斜体（斜体）</span>
+              ·
+              <code class="md-code-inline">`code`</code>
+            </div>
           </div>
           <div class="cell" data-md-cell="code">
             <h3>代码（无 fence）</h3>
@@ -776,6 +787,7 @@
     const MD_STREAM = [
       { cls: "md-h", text: "流式助手回复" },
       { cls: "fg-assistant", text: "先给结论，再给细节。" },
+      { cls: "fg-assistant", text: "强调：加粗（加粗） · 斜体（斜体） · `code`" },
       { cls: "md-code", text: "cargo test -p xylitol-tui" },
       { cls: "fg-assistant", text: "链接：docs (https://ex.com)" },
     ];
