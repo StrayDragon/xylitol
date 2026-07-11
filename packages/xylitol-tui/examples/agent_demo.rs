@@ -21,7 +21,8 @@ use xylitol_tui::components::settings_list::{
 };
 use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, set_keybindings};
 use xylitol_tui::{
-    CancellableLoader, Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme,
+    CancellableLoader, ChoiceMode, ChoiceOption, ChoicePrompt, ChoicePromptTheme, ChoiceQuestion,
+    ChoiceResult, Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme,
     ExpandableOutputOptions, Focusable, Input, InputEvent, InputListenerResult, Markdown,
     MarkdownTheme, Panel, SystemClock, TUI, TerminalColorScheme, Text, ThemeDetectSources,
     TreeNode, TreeSelector, TreeSelectorOptions, TreeSelectorTheme, TruncateFrom, TruncatedText,
@@ -198,6 +199,21 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
         id: "panel",
         label: "Panel atom (Box)",
         description: "Padding + background around children — library reference",
+    },
+    DemoPlateItem {
+        id: "ask-single",
+        label: "Ask single + Other",
+        description: "ChoicePrompt Single · Tab→Other · c565",
+    },
+    DemoPlateItem {
+        id: "ask-multi",
+        label: "Ask multi + Other",
+        description: "ChoicePrompt Multi · Space toggle · c565",
+    },
+    DemoPlateItem {
+        id: "ask-tabs",
+        label: "Ask multi-question tabs",
+        description: "ChoicePrompt tabs + Submit · c565",
     },
     DemoPlateItem {
         id: "tool-tints",
@@ -1164,6 +1180,10 @@ pub struct FakeCodingAgentApp {
     atom_loader: Option<CancellableLoader>,
     /// Built once when opening `LibAtomKind::Panel`.
     atom_panel: Option<Panel>,
+    /// c565 ChoicePrompt (ask-single / ask-multi / ask-tabs).
+    choice_prompt: Option<ChoicePrompt>,
+    /// Shared slot filled by ChoicePrompt on_done.
+    choice_pending: Option<Rc<RefCell<Option<ChoiceResult>>>>,
     /// Double-Esc session tree (c454/c456).
     tree_open: bool,
     tree: TreeSelector,
@@ -1369,6 +1389,10 @@ impl FakeCodingAgentApp {
             self.settings_open = false;
             return true;
         }
+        if self.choice_prompt.is_some() {
+            // Forward Esc into ChoicePrompt (cancel) via handle_input path.
+            return false;
+        }
         // CancellableLoader Esc is handled in handle_input (component on_abort).
         if matches!(self.lib_atom, Some(LibAtomKind::CancellableLoader)) {
             return false;
@@ -1402,6 +1426,7 @@ impl FakeCodingAgentApp {
         self.palette_open = false;
         self.settings_open = false;
         self.close_lib_atom();
+        self.close_choice_prompt();
         self.tree_filter = SessionTreeFilter::Default;
         self.tree_label_edit = None;
         self.tree = demo_tree_selector(
@@ -1425,11 +1450,71 @@ impl FakeCodingAgentApp {
         self.atom_panel = None;
     }
 
+    fn close_choice_prompt(&mut self) {
+        self.choice_prompt = None;
+        self.choice_pending = None;
+    }
+
+    fn choice_theme() -> ChoicePromptTheme {
+        ChoicePromptTheme {
+            title: Box::new(|s| bold(s)),
+            prompt: Box::new(|s| s.to_string()),
+            selected: Box::new(|s| format!("\x1b[7m{s}\x1b[27m")),
+            normal: Box::new(|s| s.to_string()),
+            muted: Box::new(dim),
+            tab_active: Box::new(cyan),
+            tab_idle: Box::new(dim),
+            hint: Box::new(dim),
+        }
+    }
+
+    fn open_choice_prompt(&mut self, questions: Vec<ChoiceQuestion>) {
+        self.palette_open = false;
+        self.settings_open = false;
+        self.tree_open = false;
+        self.close_lib_atom();
+        let pending: Rc<RefCell<Option<ChoiceResult>>> = Rc::new(RefCell::new(None));
+        let slot = pending.clone();
+        let prompt = ChoicePrompt::new(questions, Self::choice_theme(), move |r| {
+            *slot.borrow_mut() = Some(r);
+        });
+        self.choice_prompt = Some(prompt);
+        self.choice_pending = Some(pending);
+        self.set_status("ChoicePrompt · Esc cancel");
+    }
+
+    fn apply_choice_result(&mut self, result: ChoiceResult) {
+        self.close_choice_prompt();
+        if result.cancelled {
+            self.push_message(Role::System, "ChoicePrompt · cancelled");
+            self.set_status("Ready");
+            return;
+        }
+        let summary = result
+            .answers
+            .iter()
+            .map(|a| {
+                let custom = if a.was_custom { " (custom)" } else { "" };
+                format!("{}={}{custom}", a.question_id, a.labels.join("+"))
+            })
+            .collect::<Vec<_>>()
+            .join(" · ");
+        self.push_message(Role::System, format!("ChoicePrompt · answered: {summary}"));
+        self.set_status("Ready");
+    }
+
+    fn take_choice_result(&mut self) -> Option<ChoiceResult> {
+        self.choice_pending
+            .as_ref()
+            .and_then(|p| p.borrow_mut().take())
+    }
+
     fn open_lib_atom(&mut self, kind: LibAtomKind) {
         self.palette_open = false;
         self.settings_open = false;
         self.tree_open = false;
         self.tree_label_edit = None;
+        self.close_choice_prompt();
         self.close_lib_atom();
         self.lib_atom = Some(kind);
         match kind {
@@ -2019,6 +2104,8 @@ impl FakeCodingAgentApp {
             lib_atom: None,
             atom_loader: None,
             atom_panel: None,
+            choice_prompt: None,
+            choice_pending: None,
             tree_open: false,
             tree: demo_tree_selector(sample_session_tree(), "u2", SessionTreeFilter::Default),
             tree_filter: SessionTreeFilter::Default,
@@ -2140,7 +2227,7 @@ impl FakeCodingAgentApp {
             "stream plate: md-full · stream-rust/python/typescript/json · diff-sbs · \
              completion-dollar (c545 $) · expandable-head (c550) · playground-sync (c555) · \
              md-list-wrap · narrow-clamp · truncated-text · cancellable-loader · panel · \
-             tree (c560) · tool-tints · help-keys · tests · compact",
+             ask-single · ask-multi · ask-tabs · tree (c560) · tool-tints · help-keys · tests · compact",
         );
         self.set_status("Ready");
     }
@@ -2267,6 +2354,7 @@ impl FakeCodingAgentApp {
         self.palette_open = false;
         self.tree_open = false;
         self.close_lib_atom();
+        self.close_choice_prompt();
         self.settings_open = true;
         self.set_status("Settings · type zzz for no-match · Esc closes");
     }
@@ -2299,6 +2387,92 @@ impl FakeCodingAgentApp {
              every line. Playground: slot Atoms (key 9). Esc closes.",
         );
         self.open_lib_atom(LibAtomKind::Panel);
+    }
+
+    fn inject_ask_single(&mut self) {
+        self.push_message(Role::User, "plate · ask-single · c565");
+        self.push_message(
+            Role::System,
+            "ChoicePrompt Single + Other: ↑↓ · Enter · Tab focuses Other · Esc cancel. \
+             Playground: slot Ask (key 0).",
+        );
+        self.open_choice_prompt(vec![ChoiceQuestion {
+            id: "scope".into(),
+            label: "Scope".into(),
+            prompt: "本轮优先做什么？".into(),
+            mode: ChoiceMode::Single,
+            options: vec![
+                ChoiceOption::new("bug", "修 bug"),
+                ChoiceOption::new("test", "加测试"),
+                ChoiceOption::new("docs", "写文档"),
+            ],
+            allow_other: true,
+        }]);
+    }
+
+    fn inject_ask_multi(&mut self) {
+        self.push_message(Role::User, "plate · ask-multi · c565");
+        self.push_message(
+            Role::System,
+            "ChoicePrompt Multi + Other: Space 勾选 · Enter 提交 · Tab→Other. Playground: Ask.",
+        );
+        self.open_choice_prompt(vec![ChoiceQuestion {
+            id: "checks".into(),
+            label: "Checks".into(),
+            prompt: "需要哪些验收？（可多选）".into(),
+            mode: ChoiceMode::Multi,
+            options: vec![
+                ChoiceOption::new("unit", "单测"),
+                ChoiceOption::new("harness", "harness"),
+                ChoiceOption::new("demo", "手验 demo"),
+            ],
+            allow_other: true,
+        }]);
+    }
+
+    fn inject_ask_tabs(&mut self) {
+        self.push_message(Role::User, "plate · ask-tabs · c565");
+        self.push_message(
+            Role::System,
+            "ChoicePrompt 多题混搭：Q1 单选 · Q2 多选(+) · Q3 单选；←→ 切题；答完进 Submit。\
+             Tab 上 + 表示多选题，✓ 表示已答。",
+        );
+        self.open_choice_prompt(vec![
+            ChoiceQuestion {
+                id: "scope".into(),
+                label: "Scope".into(),
+                prompt: "范围？".into(),
+                mode: ChoiceMode::Single,
+                options: vec![
+                    ChoiceOption::new("pkg", "仅包"),
+                    ChoiceOption::new("demo", "包+demo"),
+                ],
+                allow_other: true,
+            },
+            ChoiceQuestion {
+                id: "checks".into(),
+                label: "Checks".into(),
+                prompt: "需要哪些验收？".into(),
+                mode: ChoiceMode::Multi,
+                options: vec![
+                    ChoiceOption::new("unit", "单测"),
+                    ChoiceOption::new("harness", "harness"),
+                    ChoiceOption::new("manual", "手验 demo"),
+                ],
+                allow_other: true,
+            },
+            ChoiceQuestion {
+                id: "priority".into(),
+                label: "Priority".into(),
+                prompt: "优先级？".into(),
+                mode: ChoiceMode::Single,
+                options: vec![
+                    ChoiceOption::new("p0", "P0 现在"),
+                    ChoiceOption::new("p1", "P1 本周"),
+                ],
+                allow_other: false,
+            },
+        ]);
     }
 
     fn inject_diff_showcase(&mut self) {
@@ -2396,6 +2570,9 @@ impl FakeCodingAgentApp {
             "truncated-text" => self.inject_truncated_text_atom(),
             "cancellable-loader" => self.inject_cancellable_loader_atom(),
             "panel" => self.inject_panel_atom(),
+            "ask-single" => self.inject_ask_single(),
+            "ask-multi" => self.inject_ask_multi(),
+            "ask-tabs" => self.inject_ask_tabs(),
             "tool-tints" => self.inject_tool_tint_showcase(),
             "tree" => {
                 self.push_message(Role::User, "plate · tree · c560");
@@ -2410,6 +2587,7 @@ impl FakeCodingAgentApp {
                 self.palette_open = false;
                 self.settings_open = false;
                 self.close_lib_atom();
+                self.close_choice_prompt();
                 self.set_status("Session tree · c560 empty/selection");
             }
             "help-keys" => self.inject_help_keys(),
@@ -3514,6 +3692,9 @@ impl FakeCodingAgentApp {
         if self.settings_open {
             return self.render_settings_slot(width);
         }
+        if self.choice_prompt.is_some() {
+            return self.render_choice_slot(width);
+        }
         if let Some(kind) = self.lib_atom {
             return self.render_lib_atom_slot(width, kind);
         }
@@ -3586,6 +3767,17 @@ impl FakeCodingAgentApp {
         lines
     }
 
+    fn render_choice_slot(&mut self, width: usize) -> Vec<String> {
+        let mut lines = Vec::new();
+        lines.push(Self::fit(&bold(" ChoicePrompt"), width));
+        if let Some(ref mut prompt) = self.choice_prompt {
+            for line in prompt.render(width) {
+                lines.push(Self::fit(&line, width));
+            }
+        }
+        lines
+    }
+
     fn render_lib_atom_slot(&mut self, width: usize, kind: LibAtomKind) -> Vec<String> {
         let mut lines = Vec::new();
         match kind {
@@ -3646,27 +3838,30 @@ impl Component for FakeCodingAgentApp {
         }
         lines.extend(self.render_editor_slot(width));
         let footer_owned;
-        let footer_ref =
-            if self.palette_open || self.settings_open || self.tree_open || self.lib_atom.is_some()
-            {
-                "esc close · ↑↓ · Enter"
-            } else {
-                let queue_hint = match (self.steer_queue.len(), self.follow_up_queue.len()) {
-                    (0, 0) => String::new(),
-                    (s, 0) => format!(" · steer:{s}"),
-                    (0, f) => format!(" · follow-up:{f}"),
-                    (s, f) => format!(" · steer:{s} follow-up:{f}"),
-                };
-                // Compact cue strip — full list is in the seed system line.
-                footer_owned = format!(
-                    // c535 pad4: metadata only — chords live in /help / plate help-keys.
-                    "{} · {} · {}{queue_hint}",
-                    self.footer_note,
-                    self.theme_label(),
-                    self.glyph_set.label()
-                );
-                footer_owned.as_str()
+        let footer_ref = if self.palette_open
+            || self.settings_open
+            || self.tree_open
+            || self.lib_atom.is_some()
+            || self.choice_prompt.is_some()
+        {
+            "esc close · ↑↓ · Enter"
+        } else {
+            let queue_hint = match (self.steer_queue.len(), self.follow_up_queue.len()) {
+                (0, 0) => String::new(),
+                (s, 0) => format!(" · steer:{s}"),
+                (0, f) => format!(" · follow-up:{f}"),
+                (s, f) => format!(" · steer:{s} follow-up:{f}"),
             };
+            // Compact cue strip — full list is in the seed system line.
+            footer_owned = format!(
+                // c535 pad4: metadata only — chords live in /help / plate help-keys.
+                "{} · {} · {}{queue_hint}",
+                self.footer_note,
+                self.theme_label(),
+                self.glyph_set.label()
+            );
+            footer_owned.as_str()
+        };
         lines.push(Self::fit(&self.muted_paint(footer_ref), width));
         lines
             .into_iter()
@@ -3705,6 +3900,16 @@ impl Component for FakeCodingAgentApp {
                     self.close_lib_atom();
                     self.set_status("Ready");
                 }
+            }
+            return;
+        }
+
+        if self.choice_prompt.is_some() {
+            if let Some(ref mut prompt) = self.choice_prompt {
+                prompt.handle_input(event);
+            }
+            if let Some(result) = self.take_choice_result() {
+                self.apply_choice_result(result);
             }
             return;
         }
@@ -3805,6 +4010,9 @@ impl Component for FakeCodingAgentApp {
                             | "truncated-text"
                             | "cancellable-loader"
                             | "panel"
+                            | "ask-single"
+                            | "ask-multi"
+                            | "ask-tabs"
                             | "md-list-wrap"
                     ) {
                         self.advance_script();
@@ -3841,6 +4049,7 @@ impl Component for FakeCodingAgentApp {
             self.palette_open = true;
             self.settings_open = false;
             self.close_lib_atom();
+            self.close_choice_prompt();
             self.palette_filter.clear();
             self.palette.set_filter("");
             return;
@@ -3849,6 +4058,7 @@ impl Component for FakeCodingAgentApp {
             self.settings_open = true;
             self.palette_open = false;
             self.close_lib_atom();
+            self.close_choice_prompt();
             return;
         }
         if matches_key_event(key, "ctrl+o") {

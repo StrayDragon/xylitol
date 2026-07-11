@@ -89,6 +89,7 @@
 | done | SelectList/Settings/Loader/Input 窄宽 clamp + 空态 | SelectList 已有；Settings/Loader/Input 补齐 |
 | done | playground Widgets 槽 + MD 列表格；demo plate `md-list-wrap` / `narrow-clamp` | 库用户运行时参考 |
 | done | TruncatedText / Panel / CancellableLoader：playground Atoms + demo plates；Command Plate 过滤回显 | Overlay 确认用内联槽，不设 overlay-confirm plate |
+| done | **c565** ChoicePrompt（单选无 ●/○ · 多选 · Other+Tab · 多题混搭）+ Ask playground + `ask-*` | `archive/2026-07-11-c565-…` |
 | 低摩擦 | 补回 `_prompts/track-p-tui-polish.md`（链接现缺文件） | 可选 |
 
 ### 已锁定产品决议（demo 应对齐）

@@ -1,4 +1,5 @@
 pub mod cancellable_loader;
+pub mod choice_prompt;
 pub mod container;
 pub mod diff;
 pub mod editor;
