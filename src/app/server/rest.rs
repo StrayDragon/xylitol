@@ -21,10 +21,11 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::Mutex;
 
+use crate::app::core::dispatch::{DispatchError, DispatchOutcome, dispatch};
 use crate::app::core::driver::{Driver, InProcessDriver};
 use crate::app::server::ws::{ClientFrame, EventJournal, ReverseRpcGateway, ServerFrame};
 use crate::domain::lifecycle::XyEvent;
-use crate::protocol::{Envelope, ErrorCode};
+use crate::protocol::{Command, Envelope, ErrorCode};
 
 // ── Shared application state ───────────────────────────────────────
 
@@ -118,21 +119,41 @@ async fn switch_model(
     State(state): State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<SwitchModelParams>,
 ) -> Json<Envelope<Value>> {
-    let mut driver = state.driver.lock().await;
-    match driver.select_model(&params.model_id) {
-        Ok(model) => Json(Envelope::ok(serde_json::json!({
+    match run_dispatch(
+        &state,
+        Command::SetModel {
+            id: None,
+            provider: String::new(),
+            model_id: params.model_id,
+        },
+    )
+    .await
+    {
+        Ok(DispatchOutcome::Model(model)) => Json(Envelope::ok(serde_json::json!({
             "model": model.id,
             "display_name": model.display_name,
         }))),
-        Err(msg) => Json(Envelope::error(ErrorCode::BadRequest, msg)),
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => dispatch_err(e),
     }
 }
 
-fn queue_data(driver: &impl Driver) -> Value {
-    let s = driver.queue_stats();
+async fn run_dispatch(state: &AppState, cmd: Command) -> Result<DispatchOutcome, DispatchError> {
+    let mut driver = state.driver.lock().await;
+    dispatch(&mut *driver, cmd).await
+}
+
+fn dispatch_err(e: DispatchError) -> Json<Envelope<Value>> {
+    Json(Envelope::error(ErrorCode::BadRequest, e.0))
+}
+
+fn queue_json(steer_count: usize, follow_up_count: usize) -> Value {
     serde_json::json!({
-        "steer_count": s.steer_count,
-        "follow_up_count": s.follow_up_count,
+        "steer_count": steer_count,
+        "follow_up_count": follow_up_count,
     })
 }
 
@@ -167,10 +188,24 @@ async fn steer(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<MessageBody>,
 ) -> Json<Envelope<Value>> {
-    let mut driver = state.driver.lock().await;
-    match driver.steer(&body.message) {
-        Ok(()) => Json(Envelope::ok(queue_data(&*driver))),
-        Err(msg) => Json(Envelope::error(ErrorCode::BadRequest, msg)),
+    match run_dispatch(
+        &state,
+        Command::Steer {
+            id: None,
+            message: body.message,
+        },
+    )
+    .await
+    {
+        Ok(DispatchOutcome::QueueStats {
+            steer_count,
+            follow_up_count,
+        }) => Json(Envelope::ok(queue_json(steer_count, follow_up_count))),
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => dispatch_err(e),
     }
 }
 
@@ -179,10 +214,24 @@ async fn follow_up(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<MessageBody>,
 ) -> Json<Envelope<Value>> {
-    let mut driver = state.driver.lock().await;
-    match driver.follow_up(&body.message) {
-        Ok(()) => Json(Envelope::ok(queue_data(&*driver))),
-        Err(msg) => Json(Envelope::error(ErrorCode::BadRequest, msg)),
+    match run_dispatch(
+        &state,
+        Command::FollowUp {
+            id: None,
+            message: body.message,
+        },
+    )
+    .await
+    {
+        Ok(DispatchOutcome::QueueStats {
+            steer_count,
+            follow_up_count,
+        }) => Json(Envelope::ok(queue_json(steer_count, follow_up_count))),
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => dispatch_err(e),
     }
 }
 
@@ -191,10 +240,25 @@ async fn clear_queue(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<ClearQueueBody>,
 ) -> Json<Envelope<Value>> {
-    let mut driver = state.driver.lock().await;
-    match driver.clear_queue(body.clear_steer, body.clear_follow_up) {
-        Ok(()) => Json(Envelope::ok(queue_data(&*driver))),
-        Err(msg) => Json(Envelope::error(ErrorCode::BadRequest, msg)),
+    match run_dispatch(
+        &state,
+        Command::ClearQueue {
+            id: None,
+            clear_steer: body.clear_steer,
+            clear_follow_up: body.clear_follow_up,
+        },
+    )
+    .await
+    {
+        Ok(DispatchOutcome::QueueStats {
+            steer_count,
+            follow_up_count,
+        }) => Json(Envelope::ok(queue_json(steer_count, follow_up_count))),
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => dispatch_err(e),
     }
 }
 
@@ -202,40 +266,58 @@ async fn get_queue(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
+    // No GetQueue Command — thin Driver read (design c550).
     let driver = state.driver.lock().await;
-    Json(Envelope::ok(queue_data(&*driver)))
+    let s = driver.queue_stats();
+    Json(Envelope::ok(queue_json(s.steer_count, s.follow_up_count)))
 }
 
 async fn get_state(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    let driver = state.driver.lock().await;
-    let st = driver.get_state();
-    Json(Envelope::ok(serde_json::json!({
-        "session_id": st.session_id,
-        "model": st.model.as_ref().map(model_data),
-        "thinking_level": st.thinking_level,
-    })))
+    match run_dispatch(&state, Command::GetState { id: None }).await {
+        Ok(DispatchOutcome::State(st)) => Json(Envelope::ok(serde_json::json!({
+            "session_id": st.session_id,
+            "model": st.model.as_ref().map(model_data),
+            "thinking_level": st.thinking_level,
+        }))),
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => dispatch_err(e),
+    }
 }
 
 async fn list_models(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    let driver = state.driver.lock().await;
-    let models: Vec<Value> = driver.available_models().iter().map(model_data).collect();
-    Json(Envelope::ok(serde_json::json!({ "models": models })))
+    match run_dispatch(&state, Command::GetAvailableModels { id: None }).await {
+        Ok(DispatchOutcome::Models(models)) => {
+            let models: Vec<Value> = models.iter().map(model_data).collect();
+            Json(Envelope::ok(serde_json::json!({ "models": models })))
+        }
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => dispatch_err(e),
+    }
 }
 
 async fn cycle_model(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    let mut driver = state.driver.lock().await;
-    match driver.cycle_model() {
-        Ok(model) => Json(Envelope::ok(model_data(&model))),
-        Err(msg) => Json(Envelope::error(ErrorCode::BadRequest, msg)),
+    match run_dispatch(&state, Command::CycleModel { id: None }).await {
+        Ok(DispatchOutcome::Model(model)) => Json(Envelope::ok(model_data(&model))),
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => dispatch_err(e),
     }
 }
 
@@ -249,13 +331,24 @@ async fn set_thinking(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<ThinkingBody>,
 ) -> Json<Envelope<Value>> {
-    let level = match crate::app::core::dispatch::parse_thinking_level(&body.level) {
-        Ok(l) => l,
-        Err(e) => return Json(Envelope::error(ErrorCode::BadRequest, e.0)),
-    };
-    let mut driver = state.driver.lock().await;
-    driver.set_thinking_level(level);
-    Json(Envelope::ok(serde_json::json!({ "thinking_level": level })))
+    match run_dispatch(
+        &state,
+        Command::SetThinkingLevel {
+            id: None,
+            level: body.level,
+        },
+    )
+    .await
+    {
+        Ok(DispatchOutcome::ThinkingLevel(level)) => {
+            Json(Envelope::ok(serde_json::json!({ "thinking_level": level })))
+        }
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => dispatch_err(e),
+    }
 }
 
 #[derive(Deserialize)]
@@ -270,18 +363,27 @@ async fn bash(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<BashBody>,
 ) -> Json<Envelope<Value>> {
-    let mut driver = state.driver.lock().await;
-    match driver
-        .execute_bash(&body.command, body.exclude_from_context)
-        .await
+    match run_dispatch(
+        &state,
+        Command::Bash {
+            id: None,
+            command: body.command,
+            exclude_from_context: body.exclude_from_context,
+        },
+    )
+    .await
     {
-        Ok(r) => Json(Envelope::ok(serde_json::json!({
+        Ok(DispatchOutcome::Bash(r)) => Json(Envelope::ok(serde_json::json!({
             "output": r.output,
             "exit_code": r.exit_code,
             "cancelled": r.cancelled,
             "truncated": r.truncated,
         }))),
-        Err(msg) => Json(Envelope::error(ErrorCode::InternalError, msg)),
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
     }
 }
 
@@ -289,10 +391,15 @@ async fn compact(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    let mut driver = state.driver.lock().await;
-    match driver.compact().await {
-        Ok(did) => Json(Envelope::ok(serde_json::json!({ "compacted": did }))),
-        Err(msg) => Json(Envelope::error(ErrorCode::InternalError, msg)),
+    match run_dispatch(&state, Command::Compact { id: None }).await {
+        Ok(DispatchOutcome::Compacted(did)) => {
+            Json(Envelope::ok(serde_json::json!({ "compacted": did })))
+        }
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
     }
 }
 
@@ -306,10 +413,23 @@ async fn export_html(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<PathBody>,
 ) -> Json<Envelope<Value>> {
-    let mut driver = state.driver.lock().await;
-    match driver.export_html(std::path::Path::new(&body.path)).await {
-        Ok(p) => Json(Envelope::ok(serde_json::json!({ "path": p }))),
-        Err(msg) => Json(Envelope::error(ErrorCode::InternalError, msg)),
+    match run_dispatch(
+        &state,
+        Command::ExportHtml {
+            id: None,
+            output_path: Some(body.path),
+        },
+    )
+    .await
+    {
+        Ok(DispatchOutcome::ExportedPath(p)) => {
+            Json(Envelope::ok(serde_json::json!({ "path": p })))
+        }
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
     }
 }
 
@@ -318,10 +438,23 @@ async fn export_jsonl(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<PathBody>,
 ) -> Json<Envelope<Value>> {
-    let mut driver = state.driver.lock().await;
-    match driver.export_jsonl(std::path::Path::new(&body.path)).await {
-        Ok(p) => Json(Envelope::ok(serde_json::json!({ "path": p }))),
-        Err(msg) => Json(Envelope::error(ErrorCode::InternalError, msg)),
+    match run_dispatch(
+        &state,
+        Command::ExportJsonl {
+            id: None,
+            output_path: Some(body.path),
+        },
+    )
+    .await
+    {
+        Ok(DispatchOutcome::ExportedPath(p)) => {
+            Json(Envelope::ok(serde_json::json!({ "path": p })))
+        }
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
     }
 }
 
@@ -330,10 +463,23 @@ async fn import_jsonl(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<PathBody>,
 ) -> Json<Envelope<Value>> {
-    let mut driver = state.driver.lock().await;
-    match driver.import_jsonl(std::path::Path::new(&body.path)).await {
-        Ok(id) => Json(Envelope::ok(serde_json::json!({ "session_id": id }))),
-        Err(msg) => Json(Envelope::error(ErrorCode::InternalError, msg)),
+    match run_dispatch(
+        &state,
+        Command::ImportJsonl {
+            id: None,
+            input_path: body.path,
+        },
+    )
+    .await
+    {
+        Ok(DispatchOutcome::NewSession(id)) => {
+            Json(Envelope::ok(serde_json::json!({ "session_id": id })))
+        }
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
     }
 }
 
@@ -347,10 +493,23 @@ async fn fork_session(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<ForkBody>,
 ) -> Json<Envelope<Value>> {
-    let mut driver = state.driver.lock().await;
-    match driver.fork_session(&body.entry_id).await {
-        Ok(id) => Json(Envelope::ok(serde_json::json!({ "session_id": id }))),
-        Err(msg) => Json(Envelope::error(ErrorCode::InternalError, msg)),
+    match run_dispatch(
+        &state,
+        Command::Fork {
+            id: None,
+            entry_id: body.entry_id,
+        },
+    )
+    .await
+    {
+        Ok(DispatchOutcome::NewSession(id)) => {
+            Json(Envelope::ok(serde_json::json!({ "session_id": id })))
+        }
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
     }
 }
 
@@ -364,10 +523,23 @@ async fn switch_session(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<SwitchSessionBody>,
 ) -> Json<Envelope<Value>> {
-    let mut driver = state.driver.lock().await;
-    match driver.switch_session(&body.session_id).await {
-        Ok(id) => Json(Envelope::ok(serde_json::json!({ "session_id": id }))),
-        Err(msg) => Json(Envelope::error(ErrorCode::NotFound, msg)),
+    match run_dispatch(
+        &state,
+        Command::SwitchSession {
+            id: None,
+            session_path: body.session_id,
+        },
+    )
+    .await
+    {
+        Ok(DispatchOutcome::SwitchedSession(id)) => {
+            Json(Envelope::ok(serde_json::json!({ "session_id": id })))
+        }
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => Json(Envelope::error(ErrorCode::NotFound, e.0)),
     }
 }
 
@@ -375,13 +547,16 @@ async fn get_messages(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    let driver = state.driver.lock().await;
-    match driver.get_messages().await {
-        Ok(entries) => match serde_json::to_value(entries) {
+    match run_dispatch(&state, Command::GetMessages { id: None }).await {
+        Ok(DispatchOutcome::Messages { entries, .. }) => match serde_json::to_value(entries) {
             Ok(v) => Json(Envelope::ok(serde_json::json!({ "entries": v }))),
             Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.to_string())),
         },
-        Err(msg) => Json(Envelope::error(ErrorCode::InternalError, msg)),
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
     }
 }
 
@@ -389,17 +564,13 @@ async fn get_session_stats(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    let driver = state.driver.lock().await;
-    match driver.get_session_stats().await {
-        Ok(stats) => Json(Envelope::ok(serde_json::json!({
-            "session_id": stats.session_id,
-            "user_messages": stats.user_messages,
-            "assistant_messages": stats.assistant_messages,
-            "total_messages": stats.total_messages,
-            "thinking_level": stats.thinking_level,
-            "model": stats.model.map(|(p, m)| serde_json::json!({"provider": p, "model_id": m})),
-        }))),
-        Err(msg) => Json(Envelope::error(ErrorCode::InternalError, msg)),
+    match run_dispatch(&state, Command::GetSessionStats { id: None }).await {
+        Ok(DispatchOutcome::SessionStats(v)) => Json(Envelope::ok(v)),
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
     }
 }
 
@@ -407,13 +578,20 @@ async fn get_commands(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    let driver = state.driver.lock().await;
-    let cmds: Vec<Value> = driver
-        .get_commands()
-        .into_iter()
-        .map(|c| serde_json::json!({ "name": c.name, "description": c.description }))
-        .collect();
-    Json(Envelope::ok(serde_json::json!({ "commands": cmds })))
+    match run_dispatch(&state, Command::GetCommands { id: None }).await {
+        Ok(DispatchOutcome::Commands(cmds)) => {
+            let cmds: Vec<Value> = cmds
+                .into_iter()
+                .map(|c| serde_json::json!({ "name": c.name, "description": c.description }))
+                .collect();
+            Json(Envelope::ok(serde_json::json!({ "commands": cmds })))
+        }
+        Ok(_) => Json(Envelope::error(
+            ErrorCode::InternalError,
+            "unexpected dispatch outcome",
+        )),
+        Err(e) => dispatch_err(e),
+    }
 }
 
 /// Query parameters for the events endpoint.
@@ -621,16 +799,26 @@ mod tests {
     #[tokio::test]
     async fn steer_queue_counts_visible_for_remote_clients() {
         let state = test_state();
-        {
-            let mut driver = state.driver.lock().await;
-            driver.steer("inject").expect("steer");
-            let stats = driver.queue_stats();
-            assert_eq!(stats.steer_count, 1);
-            assert_eq!(stats.follow_up_count, 0);
-            // Same payload shape RemoteDriver reads from GET .../queue.
-            let data = queue_data(&*driver);
-            assert_eq!(data["steer_count"], 1);
-            assert_eq!(data["follow_up_count"], 0);
+        let outcome = run_dispatch(
+            &state,
+            Command::Steer {
+                id: None,
+                message: "inject".into(),
+            },
+        )
+        .await
+        .expect("dispatch steer");
+        match outcome {
+            DispatchOutcome::QueueStats {
+                steer_count,
+                follow_up_count,
+            } => {
+                assert_eq!(steer_count, 1);
+                assert_eq!(follow_up_count, 0);
+                let data = queue_json(steer_count, follow_up_count);
+                assert_eq!(data["steer_count"], 1);
+            }
+            other => panic!("unexpected outcome: {other:?}"),
         }
     }
 
