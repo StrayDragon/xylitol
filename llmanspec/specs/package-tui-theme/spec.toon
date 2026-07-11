@@ -1,0 +1,22 @@
+kind: llman.sdd.spec
+name: "package-tui-theme"
+purpose: "TBD - created by archiving change c570-add-package-tui-theme-palette. Update purpose after archive."
+valid_scope[2]: src/,tests/
+requirements[7]{req_id,title,statement}:
+  ptt00,"capability-shell","本增量由变更 c570-add-package-tui-theme-palette 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+  ptt01,"two-palettes",包 MUST 提供恰好两套内建 SemanticPalette：Dark（对齐 DESIGN Mocha）与 Light（对齐 Catppuccin Latte）；MUST 能经 TerminalColorScheme 选取。
+  ptt02,"paint-truecolor",paint 辅助 MUST 用真彩 SGR 上色，前景复位 39、背景复位 49（或文档约定的行内恢复）；MUST NOT 要求组件依赖 JSON 主题文件。
+  ptt03,"theme-factories",包 MUST 提供由 SemanticPalette 生成 MarkdownTheme 与 DiffTheme 的工厂；组件仍只收闭包主题。
+  ptt04,"demo-full-restyle",当 agent_demo theme_mode 为 Light 时 MUST 将 markdown、diff、tool 背景与 muted chrome 切换为 Light 色板；Dark 时 MUST 使用 Dark 色板。
+  ptt05,"detect-opt-in","终端色探测 MUST 仅在显式 opt-in（如 XYLITOL_AGENT_DEMO_THEME_AUTO）时启用；未启用时 MUST 保持 Dark。"
+  ptt06,"host-feed-replies",包 MUST 导出 OSC11 / CSI 色方案查询常量，并允许宿主将 reply 喂入 resolve_terminal_color_scheme；MUST NOT 因本变更强制产品 host 打开自动亮色。
+scenarios[9]{req_id,id,given,when,then}:
+  ptt00,"shell-present","","列出 capability package-tui-theme",delta 含 ptt01–ptt06
+  ptt01,"dark-light","","调用 SemanticPalette::dark 与 light",两套 on_surface 等 token 不同
+  ptt01,"for-scheme","",for_scheme(Light),得到与 light 等价色板
+  ptt02,"fg-reset","",fg_rgb 包装字符串,输出含 38;2 与 39m
+  ptt03,"md-factory",给定 Dark palette,markdown_theme,返回可用 MarkdownTheme
+  ptt04,"demo-light",theme_auto 且探测为 Light,渲染 footer 与 md/diff chrome,"可见 theme:light 且 chrome 非 Mocha 硬编码"
+  ptt05,"default-dark",未设 THEME_AUTO,启动 demo,theme_mode 为 Dark
+  ptt06,"feed-osc",auto 开启,feed OSC11 浅色背景 reply,theme_mode 变为 Light
+  ptt06,"query-consts","",读取查询常量,含 OSC 11 ? 与 CSI 996
