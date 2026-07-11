@@ -33,7 +33,8 @@ pub struct DefaultTextStyle {
 
 #[allow(clippy::type_complexity)]
 pub struct MarkdownTheme {
-    pub heading: Box<dyn Fn(&str) -> String>,
+    /// Heading line by level (`1..=6`). Caller applies color + weight/underline.
+    pub heading: Box<dyn Fn(usize, &str) -> String>,
     pub link: Box<dyn Fn(&str) -> String>,
     pub link_url: Box<dyn Fn(&str) -> String>,
     pub code: Box<dyn Fn(&str) -> String>,
@@ -143,20 +144,10 @@ impl Component for Markdown {
                         &|s| apply_default_style(self, s),
                         "",
                     );
-                    // Token-efficient: no `#` prefix; hierarchy via SGR (c530 / design/markdown.md).
+                    // Token-efficient: no `#` prefix; hierarchy via theme.heading(level) (c530).
                     let line = heading_lines.concat();
                     let n = level_to_usize(*level);
-                    let styled = match n {
-                        1 => {
-                            (self.theme.heading)(&(self.theme.bold)(&(self.theme.underline)(&line)))
-                        }
-                        2 => {
-                            (self.theme.heading)(&(self.theme.bold)(&(self.theme.underline)(&line)))
-                        }
-                        3 | 4 => (self.theme.heading)(&(self.theme.bold)(&line)),
-                        _ => (self.theme.heading)(&line),
-                    };
-                    rendered.push(styled);
+                    rendered.push((self.theme.heading)(n, &line));
                     if !next_is_space(&events, idx) {
                         rendered.push(String::new());
                     }
@@ -1023,8 +1014,9 @@ mod tests {
 
     fn identity_theme() -> MarkdownTheme {
         let id = Box::new(|s: &str| s.to_string());
+        let heading = Box::new(|_level: usize, s: &str| s.to_string());
         MarkdownTheme {
-            heading: id.clone(),
+            heading,
             link: id.clone(),
             link_url: id.clone(),
             code: id.clone(),
@@ -1147,6 +1139,26 @@ mod tests {
             raw.contains("\x1b[1m") && raw.contains("\x1b[3m"),
             "must emit bold/italic SGR:\n{raw:?}"
         );
+    }
+
+    #[test]
+    fn heading_levels_use_level_callback() {
+        let mut theme = identity_theme();
+        theme.heading = Box::new(|level, s| format!("H{level}:{s}"));
+        let mut md = Markdown::new(
+            "# One\n\n## Two\n\n### Three\n\n##### Five\n".into(),
+            0,
+            0,
+            theme,
+            None,
+            None,
+        );
+        let text = visible_join(&mut md, 40);
+        assert!(text.contains("H1:One"), "{text}");
+        assert!(text.contains("H2:Two"), "{text}");
+        assert!(text.contains("H3:Three"), "{text}");
+        assert!(text.contains("H5:Five"), "{text}");
+        assert!(!text.contains('#'), "no hash prefix:\n{text}");
     }
 
     #[test]
