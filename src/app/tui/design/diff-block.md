@@ -78,7 +78,7 @@ Agent Edit 路径：优先 `DiffInput::from_edit_pair(old, new)`（或 `generate
 2. 变更片段用 **`word_change_removed` / `word_change_added`**（更亮底 + 同行 fg）；复位到**行底色**，**MUST NOT** 默认用 reverse 白底（易与行底打架）。
 3. 多行连续增减 **MUST NOT** 做词级对比，只做行级着色。
 
-算法锚点：pi `renderDiff` + `similar`（见 `docs/tui-research/pi.md`）。
+算法锚点：词级/行级 diff 用 `similar`；行为参考 pi coding-agent 的 `renderDiff`（源在 `../pi`，勿再维护仓内长篇对标文）。
 
 ## 布局 MUST
 
