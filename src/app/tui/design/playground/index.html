@@ -94,13 +94,14 @@
     body.mode-tile .panel {
       display: block;
       margin-bottom: 2.25rem;
-      scroll-margin-top: 0.75rem;
+      /* keep heading clear of chrome when centering / pinning */
+      scroll-margin: 1.25rem 0;
     }
     body.mode-tile .panel.is-active {
       outline: 1px solid var(--accent);
       outline-offset: 6px;
     }
-    body.mode-focus .panel.is-active { scroll-margin-top: 0.5rem; }
+    body.mode-focus .panel.is-active { scroll-margin: 1rem 0; }
 
     .panel h2 {
       margin: 0 0 0.25rem;
@@ -548,14 +549,24 @@
       swatches.appendChild(el);
     }
 
-    /* —— navigation: always jump to panel —— */
+    /* —— navigation: jump so panel is centered in main viewport —— */
     function scrollToActive(behavior = "smooth") {
       const id = SLOTS[state.index].id;
       const panel = document.getElementById("panel-" + id);
       if (!panel) return;
-      // main is the scrollport — offset so heading isn't flush-clipped
-      const top = panel.offsetTop - 8;
-      mainEl.scrollTo({ top: Math.max(0, top), behavior });
+      const viewH = mainEl.clientHeight;
+      const panelH = panel.offsetHeight;
+      const maxScroll = Math.max(0, mainEl.scrollHeight - viewH);
+      let top;
+      if (panelH >= viewH - 32) {
+        // taller than viewport: pin near top with padding (don't bury heading)
+        top = panel.offsetTop - 16;
+      } else {
+        // center panel in the scrollport
+        top = panel.offsetTop - (viewH - panelH) / 2;
+      }
+      top = Math.max(0, Math.min(top, maxScroll));
+      mainEl.scrollTo({ top, behavior });
     }
 
     function renderNav() {
