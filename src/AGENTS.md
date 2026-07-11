@@ -12,7 +12,7 @@
 
 **冻结**：产品 TUI（`src/app/tui`）——开闸条件：命名公约与相关重构落地，且用户明确开闸。引擎能力可在 `packages/xylitol-tui` / `agent_demo` 继续长。
 
-共享流水线：`bootstrap` → `composition::build_agent` → `Driver::run` → ReAct → `XyEvent` → 应用面。库嵌入与多 client 矩阵（理想 vs 现状）：`docs/architecture/library-and-clients.md`。
+共享流水线：`bootstrap` → `composition::build_agent` → `Driver::run` → ReAct → `XyEvent` → 应用面。库嵌入入口：`xylitol::embed`；矩阵与理想/现状：`docs/architecture/library-and-clients.md`。
 
 ## 分层不变量（normative）
 
@@ -44,7 +44,7 @@ protocol ───────────────────────�
 
 ## `Xy*` 命名与库导出（normative）
 
-近期要做**精选 `pub use`**（清单与注释在 `src/lib.rs`）。`Xy*` 标记的是**库入口级契约**，不是所有类型都加前缀。
+近期要做**精选 `pub use`**（清单与注释在 `src/lib.rs`）+ 嵌入缝 `src/embed.rs`。`Xy*` 标记的是**库入口级契约**，不是所有类型都加前缀。
 
 | 用 `Xy*` | 不用 `Xy*` |
 |---|---|
