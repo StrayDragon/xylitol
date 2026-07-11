@@ -29,8 +29,8 @@ Markdown 槽示意 MUST 对齐 [`../markdown.md`](../markdown.md)：无 `#` 标�
 |---|---|
 | **左侧 tab 点击** | 选中该槽并 **滚动跳转到对应面板**（平铺/专注均生效） |
 | 平铺 / 专注 · `t` | 全槽一页 vs 只看当前槽 |
-| `1`–`7` · `←→` | 选槽并跳转 |
-| 深链 | `?slot=tool&mode=focus`（会写入 URL） |
+| `1`–`8` · `←→` | 选槽并跳转 |
+| 深链 | `?slot=widgets&mode=focus`（会写入 URL） |
 
 ## 槽内动态
 
@@ -38,9 +38,21 @@ Markdown 槽示意 MUST 对齐 [`../markdown.md`](../markdown.md)：无 `#` 标�
 |---|---|
 | Tool | 三态 · 流式 thinking · 展开/视口 · Diff 块「摘要 tint / 正文不套 tool-bg」对照 |
 | Diff | unified / SBS（SBS 无行底）· 词级 |
-| Markdown | 四格典型态平铺 · 假流式逐行 |
+| Markdown | 四格典型态平铺（含嵌套列表悬挂缩进）· 假流式逐行 · 色强调对照 |
 | Layout | busy↔idle · steer 提示 · 双 Esc 会话树替换 editor |
 | Chrome | 一处 accent ✓ vs 多处 ✗ · user / fg |
 | Overlay | 确认框显隐（短过渡）· Esc/N/Y |
+| Widgets | Select/Settings 空态 · Input/Loader 窄宽（对照 `agent_demo` plate `narrow-clamp`） |
 
 目标：改 DESIGN 或 MUST 时，先在此获得最快视觉反馈，再落地包组件 / demo。
+
+## 运行时参考（库用户）
+
+浏览器预览只看色与层次；**行为与折行**以包 + demo 为准：
+
+```bash
+just demo-tui
+# Ctrl+P → md-list-wrap   嵌套列表 / 悬挂缩进（单次折行）
+# Ctrl+P → narrow-clamp   Settings 搜索空态 · Input/Loader 窄宽
+# /md                     完整 Markdown grammar stub
+```

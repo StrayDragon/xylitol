@@ -1078,6 +1078,78 @@ fn agent_demo_plate_tree_mentions_c560_and_empty_search() {
 }
 
 #[test]
+fn agent_demo_plate_md_list_wrap_streams_nested_lists() {
+    let mut h = TuiTestHarness::new(100, 48);
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+    h.keys("\x10md-list\r");
+    let mut text = String::new();
+    for i in 0..4000 {
+        h.tick();
+        if i % 8 == 0 {
+            h.render_result().ok();
+        }
+        text = h.tui.terminal.scroll_buffer().join("\n");
+        if text.contains("再嵌套有序") && text.contains("example.com/list") {
+            break;
+        }
+    }
+    assert!(
+        text.contains("prewrapped") || text.contains("悬挂"),
+        "plate tip should explain list wrap; got:\n{text}"
+    );
+    assert!(
+        text.contains("嵌套无序 A") && text.contains("再嵌套有序"),
+        "streamed nested list body missing; got:\n{text}"
+    );
+    assert!(
+        !text.contains("有序二项嵌套无序"),
+        "nested list must not flatten into parent; got:\n{text}"
+    );
+}
+
+#[test]
+fn agent_demo_plate_narrow_clamp_opens_settings_search() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )));
+    app.borrow_mut().freeze_script_for_test();
+    let mut h = TuiTestHarness::new(100, 36);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h.render_result().expect("initial");
+    h.keys("\x10narrow\r");
+    h.render_result().expect("after narrow-clamp plate");
+    let tip = h.tui.terminal.scroll_buffer().join("\n");
+    assert!(
+        tip.contains("Library reference") && tip.contains("clamp"),
+        "narrow-clamp tip missing; got:\n{tip}"
+    );
+    let viewport = h.tui.terminal.viewport().join("\n");
+    assert!(
+        viewport.contains("Model") || viewport.contains("Settings") || viewport.contains("search"),
+        "settings slot should open for live empty-match demo; got:\n{viewport}"
+    );
+    h.keys("zzz");
+    h.render_result().expect("after search miss");
+    let after = h.tui.terminal.viewport().join("\n");
+    assert!(
+        after.contains("No matching"),
+        "settings search miss should show empty hint; got:\n{after}"
+    );
+}
+
+#[test]
 fn agent_demo_seed_tool_blocks_use_status_background_tints() {
     use agent_demo_example::ToolBlockStatus;
 
