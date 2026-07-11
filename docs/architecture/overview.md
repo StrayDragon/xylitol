@@ -35,7 +35,7 @@ flowchart TB
 
 用户说话 → 模型思考/回复 → 需要时用工具改仓库 → 结果写回会话 → 界面看到进度。
 
-所有使用方式（Print / 将来的 TUI / Server）走**同一条主线**，只是「怎么看、怎么点」不同。
+所有使用方式（Print / 将来的 TUI / Server / 嵌入库）走**同一条主线**，只是「怎么看、怎么点」不同。多 client 与库嵌入矩阵见 [library-and-clients.md](./library-and-clients.md)。
 
 ## 能力取舍（个人开箱）
 

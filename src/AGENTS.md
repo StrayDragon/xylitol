@@ -12,7 +12,7 @@
 
 **冻结**：产品 TUI（`src/app/tui`）——开闸条件：命名公约与相关重构落地，且用户明确开闸。引擎能力可在 `packages/xylitol-tui` / `agent_demo` 继续长。
 
-共享流水线：`bootstrap` → `composition::build_agent` → `Driver::run` → ReAct → `XyEvent` → 应用面。
+共享流水线：`bootstrap` → `composition::build_agent` → `Driver::run` → ReAct → `XyEvent` → 应用面。库嵌入与多 client 矩阵（理想 vs 现状）：`docs/architecture/library-and-clients.md`。
 
 ## 分层不变量（normative）
 
@@ -58,7 +58,9 @@ protocol ───────────────────────�
 
 **schemars**：配置/settings 的 `JsonSchema` derive 放在 **infra（或 config 面）**；`domain` 领域类型默认只保留 serde，避免把 schema 生成依赖绑进领域层。若某 domain 类型确需 schema，先论证是否应下沉为 config DTO。
 
-**队列运行时**：产品语义见 `docs/architecture/queue-and-interrupt.md`；实现见 c525。QueueUpdate MUST 进活跃 EventStream（见 c465 design P0）。
+**队列运行时**：产品语义见 `docs/architecture/queue-and-interrupt.md`；实现见 archive c525。QueueUpdate MUST 进活跃 EventStream。
+
+**EventBus / `XyEventSink`**：装配时注入的 sink 用于侧路生命周期（如 compaction），**不是**多 client 的 turn 总线；turn 进度走 `Driver::run` 的 `XyEvent` 流。可经 `BuildAgentOptions.event_sink` 替换默认 EventBus。
 
 
 ## Trust / Permission / MCP
