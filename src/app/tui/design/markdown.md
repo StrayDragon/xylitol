@@ -132,8 +132,6 @@ bob       28  design
 
 | 项 | 状态 |
 |---|---|
-| 本文规范 | **SSOT（本轮已更新）** |
-| `packages/xylitol-tui` Markdown 组件 | **未按本文收敛**（仍有 `#` 前缀、fence、`│` 引用、盒线表、链接只吐 URL 等） |
-| playground Markdown 槽 | 示意可随后对齐；非运行时 |
-
-下一轮（P2a 实现）：按 MUST 改组件 + 单测/snapshot；改一处验一处。
+| 本文规范 | SSOT |
+| `packages/xylitol-tui` Markdown 组件 | **已按本文收敛**（c530-update-package-tui-markdown） |
+| playground Markdown 槽 | 示意应对齐本文；非运行时 |

@@ -384,33 +384,34 @@
       <!-- 4 markdown -->
       <section class="panel" id="panel-markdown" data-id="markdown">
         <h2>Markdown</h2>
-        <p class="spec"><a href="../markdown.md">markdown.md</a> · 典型块平铺 + 假流式</p>
+        <p class="spec"><a href="../markdown.md">markdown.md</a> · c530：无 # / 无 fence · text (url) · 标记 round-trip</p>
         <div class="ctl">
           <button type="button" id="md-stream" aria-pressed="false">假流式逐行</button>
           <button type="button" id="md-reset" aria-pressed="false">重置</button>
-          <span class="hint">无边框代码块 · 链接 text (url)</span>
+          <span class="hint">标题靠色+underline · 表空格对齐</span>
         </div>
         <div class="md-grid" id="md-grid">
           <div class="cell" data-md-cell="h">
-            <h3>标题</h3>
-            <div class="row md-h"># 复制友好</div>
-            <div class="row md-h">## 二级</div>
+            <h3>标题（无 #）</h3>
+            <div class="row md-h" style="text-decoration:underline;font-weight:600">复制友好</div>
+            <div class="row md-h" style="text-decoration:underline;font-weight:600">二级标题</div>
           </div>
           <div class="cell" data-md-cell="list">
-            <h3>列表</h3>
+            <h3>列表 / 行内</h3>
             <div class="row fg-assistant">1. 第一项</div>
-            <div class="row fg-assistant">- 无序列表</div>
+            <div class="row fg-assistant">- **bold** · *ital* · `code`</div>
           </div>
           <div class="cell" data-md-cell="code">
-            <h3>代码</h3>
+            <h3>代码（无 fence）</h3>
             <div class="row md-code">fn main() {</div>
             <div class="row md-code">    println!("hi");</div>
             <div class="row md-code">}</div>
           </div>
           <div class="cell" data-md-cell="link">
-            <h3>链接 / 引用</h3>
+            <h3>链接 / 表</h3>
             <div class="row fg-assistant">见 <span class="md-link">docs (https://ex.com)</span></div>
-            <div class="row md-quote">| 引用 dim</div>
+            <div class="row fg-assistant" style="text-decoration:underline;font-weight:600">Name  Age</div>
+            <div class="row fg-assistant">alice  30</div>
           </div>
         </div>
         <div class="stage hidden" id="md-stream-stage" style="margin-top:0.6rem">
@@ -773,7 +774,7 @@
 
     /* —— markdown stream —— */
     const MD_STREAM = [
-      { cls: "md-h", text: "# 流式助手回复" },
+      { cls: "md-h", text: "流式助手回复" },
       { cls: "fg-assistant", text: "先给结论，再给细节。" },
       { cls: "md-code", text: "cargo test -p xylitol-tui" },
       { cls: "fg-assistant", text: "链接：docs (https://ex.com)" },
