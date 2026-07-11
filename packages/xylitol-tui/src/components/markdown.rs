@@ -447,7 +447,7 @@ fn collect_inline_until(
                     inner
                 };
                 let labeled = (md.theme.link)(&label);
-                let urled = (md.theme.link_url)(&(md.theme.underline)(url));
+                let urled = (md.theme.link_url)(url);
                 parts.push(format!("{labeled} ({urled})"));
                 parts.push(style_prefix.to_string());
             }
@@ -462,7 +462,7 @@ fn collect_inline_until(
                     inner
                 };
                 let labeled = (md.theme.link)(&label);
-                let urled = (md.theme.link_url)(&(md.theme.underline)(url));
+                let urled = (md.theme.link_url)(url);
                 parts.push(format!("{labeled} ({urled})"));
                 parts.push(style_prefix.to_string());
             }
@@ -1033,6 +1033,23 @@ mod tests {
         assert!(
             !text.contains("```"),
             "code block must not emit fence lines:\n{text}"
+        );
+    }
+
+    #[test]
+    fn image_is_alt_url_form() {
+        let mut md = Markdown::new(
+            "![diagram](https://ex.com/a.png)".into(),
+            0,
+            0,
+            identity_theme(),
+            None,
+            None,
+        );
+        let text = visible_join(&mut md, 60);
+        assert!(
+            text.contains("diagram (https://ex.com/a.png)"),
+            "expected alt (url):\n{text}"
         );
     }
 
