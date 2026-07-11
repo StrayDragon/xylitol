@@ -1,0 +1,18 @@
+kind: llman.sdd.spec
+name: "package-tui-agent-demo"
+purpose: "xylitol-tui agent_demo 演示面：Command plate 预制触发、瘦 chrome、打字机 Markdown stub。"
+valid_scope[2]: "packages/xylitol-tui/examples/agent_demo.rs","packages/xylitol-tui/tests/agent_demo_test.rs"
+requirements[5]{req_id,title,statement}:
+  pad0,"capability-shell","本 capability 由变更 c535-add-package-tui-agent-demo-plate 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+  pad1,"command-plate-slot",agent_demo MUST 提供 Command plate（经 Ctrl+P 或等价 slash），以替换 editor 槽的方式展示可选演示项；MUST NOT 做成居中大 overlay 仪表盘。
+  pad2,"canned-triggers",Command plate 每一项 MUST 绑定预制动作或预制 prompt；选中后 MUST 触发可重复的演示脚本（含 Markdown 全语法、流式代码高亮、Diff、工具三态、会话树等已支持场景中的子集）。
+  pad3,"slim-default-seed",默认 seed transcript MUST 保持短小（帮助指向 plate）；重型 showcase MUST 经 plate 或显式 slash（如 /md）注入，MUST NOT 仅依赖过长默认 seed。
+  pad4,"footer-no-key-wall",agent_demo footer MUST NOT 常驻多行或长键位墙；完整键位说明 MUST 经 plate 项或 /help 进入 transcript。
+scenarios[7]{req_id,id,given,when,then}:
+  pad0,"shell-present","","列出 capability package-tui-agent-demo",spec 含 pad0–pad4 且 purpose 为中文
+  pad1,"open-plate","",用户按下 Ctrl+P,editor 槽被 plate 列表替换且可上下选择
+  pad1,"not-overlay-dashboard","",打开 plate,内容仍在 editor 槽区域而非居中 overlay 仪表盘
+  pad2,"md-trigger","",选中 markdown 全语法项或提交 /md,transcript 出现全语法 Markdown 助手块
+  pad2,"stream-trigger","",选中定点流式语言项,开始脚本化流式回复且含该语言代码块
+  pad3,"slim-seed","",启动 demo 默认 seed,viewport/scrollback 以短帮助为主且可通过 plate 再注入 showcase
+  pad4,"footer-short","",渲染 footer,单行 dim 元数据为主且无常驻长快捷键清单
