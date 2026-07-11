@@ -1,0 +1,10 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ea00,capability-shell,"本增量由变更 c545-update-package-tui-editor-sources 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。",null,null,null
+  add_requirement,ea05,extra-source-open,"Editor MUST 允许在 Slash/AtPath 之外再注册自定义 CompletionSource；未注册时 MUST NOT 为未来触发符预留运行时成本。应用面 MAY 注册测试桩或未来 $/^ 源。",null,null,null
+  add_requirement,ea06,narrow-popup-width,"当补全 popup 打开时，其渲染行宽 MUST 不超过 Editor 当前内容宽度预算；超长项 MUST 截断或夹紧，MUST NOT 使整行超出终端 width。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  ea00,shell-present,"","列出 capability package-tui-editor-autocomplete","delta 含 ea05–ea06"
+  ea05,register-stub,"注册含测试桩的 sources","在桩触发前缀下 Tab","popup 由该桩提供建议且 Slash/AtPath 仍可独立工作"
+  ea05,empty-ok,"仅注册 Slash","输入不触发 /","无 popup 且无额外源探测副作用"
+  ea06,narrow-clamp,"终端宽较窄且建议标签很长","打开 popup 并 render","每行 visible_width 不超过给定 width"
