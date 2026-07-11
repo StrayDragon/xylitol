@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Xylitol DESIGN playground</title>
+  <!--
+    Human interactive design mock. Agents: ignore unless human cites this path.
+    Tokens: sync_tokens.py ← ../../DESIGN.md → tokens.css + tokens.js
+  -->
+  <link rel="stylesheet" href="./tokens.css" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: var(--page-bg);
+      color: var(--page-fg);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.45;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem 1rem;
+      padding: 0.65rem 0.9rem;
+      border-bottom: 1px solid var(--hairline);
+    }
+    header h1 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+    header .meta { color: var(--muted); font-size: 12px; }
+    header .meta a { color: var(--accent); }
+    .modes { display: flex; gap: 0.35rem; margin-left: auto; }
+    .modes button, .chip-btn, .ctl button {
+      font: inherit;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--hairline);
+      padding: 0.25rem 0.55rem;
+      cursor: pointer;
+    }
+    .modes button[aria-pressed="true"],
+    .nav button[aria-current="true"],
+    .chip-btn[aria-pressed="true"],
+    .ctl button[aria-pressed="true"] {
+      color: var(--on-surface);
+      border-color: var(--accent);
+      outline: 1px solid var(--accent);
+    }
+    .modes button:hover, .nav button:hover, .chip-btn:hover, .ctl button:hover {
+      color: var(--on-surface);
+    }
+    .keys { color: var(--muted); font-size: 11px; }
+
+    .shell {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 11.5rem 1fr;
+      min-height: 0;
+    }
+    .nav {
+      border-right: 1px solid var(--hairline);
+      padding: 0.5rem 0.35rem;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+    .nav button {
+      font: inherit;
+      text-align: left;
+      color: var(--muted);
+      background: transparent;
+      border: none;
+      padding: 0.35rem 0.5rem;
+      cursor: pointer;
+      width: 100%;
+    }
+    .nav .idx { color: var(--muted); margin-right: 0.35rem; opacity: 0.7; }
+
+    main { overflow: auto; padding: 1rem 1.1rem 2rem; }
+
+    body.mode-focus .panel { display: none; }
+    body.mode-focus .panel.is-active { display: block; }
+    body.mode-tile .panel { display: block; margin-bottom: 2rem; }
+    body.mode-tile .panel.is-active {
+      outline: 1px solid var(--accent);
+      outline-offset: 4px;
+    }
+
+    .panel h2 {
+      margin: 0 0 0.25rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .panel .spec {
+      color: var(--muted);
+      font-size: 12px;
+      margin: 0 0 0.5rem;
+    }
+    .panel .spec a { color: var(--accent); }
+
+    .ctl {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin: 0 0 0.75rem;
+      align-items: center;
+    }
+    .ctl .hint { color: var(--muted); font-size: 11px; margin-left: 0.25rem; }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+      gap: 0.4rem;
+      max-width: 56rem;
+    }
+    .swatch {
+      display: grid;
+      grid-template-columns: 2rem 1fr;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .chip { width: 2rem; height: 2rem; border: 1px solid var(--muted); }
+    .swatch .hex { color: var(--muted); font-size: 12px; }
+
+    .stage {
+      max-width: 44rem;
+      border: 1px solid var(--hairline);
+      padding: 0.55rem 0.65rem;
+      background: var(--surface);
+    }
+    .rows { display: flex; flex-direction: column; gap: 0.2rem; }
+    .row { padding: 0.3rem 0.45rem; white-space: pre-wrap; }
+    .hidden { display: none !important; }
+
+    .fg-muted { color: var(--muted); }
+    .fg-accent { color: var(--accent); }
+    .fg-user { color: var(--user); }
+    .fg-tool { color: var(--tool); }
+    .fg-on { color: var(--on-surface); }
+    .fg-assistant { color: var(--assistant); }
+    .fg-success { color: var(--success); }
+    .fg-error { color: var(--error); }
+    .fg-warning { color: var(--warning); }
+    .fg-diff-added { color: var(--diff-added); }
+    .fg-diff-removed { color: var(--diff-removed); }
+    .fg-diff-context { color: var(--diff-context); }
+
+    .bg-user { background: var(--user-message-bg); }
+    .bg-tool-pending { background: var(--tool-pending-bg); }
+    .bg-tool-success { background: var(--tool-success-bg); }
+    .bg-tool-error { background: var(--tool-error-bg); }
+    .bg-diff-added { background: var(--diff-added-bg); }
+    .bg-diff-removed { background: var(--diff-removed-bg); }
+    .word-added { color: var(--diff-added); background: var(--diff-added-word-bg); }
+    .word-removed { color: var(--diff-removed); background: var(--diff-removed-word-bg); }
+
+    .term {
+      display: flex;
+      flex-direction: column;
+      min-height: 14rem;
+      max-width: 44rem;
+      border: 1px solid var(--hairline);
+      padding: 0.5rem 0.6rem 0.35rem;
+      background: var(--surface);
+    }
+    .term-content { flex: 1; display: flex; flex-direction: column; gap: 0.12rem; }
+    .term-status { color: var(--muted); padding: 0.15rem 0; }
+    .term-status .spin { color: var(--accent); display: inline-block; min-width: 1ch; }
+    .term-editor {
+      border-top: 1px solid var(--muted);
+      border-bottom: 1px solid var(--muted);
+      padding: 0.35rem 0;
+      min-height: 2.1rem;
+      color: var(--on-surface);
+    }
+    .term-editor .cursor { background: var(--on-surface); color: var(--surface); }
+    .term-footer { color: var(--muted); font-size: 12px; padding-top: 0.25rem; }
+
+    .md-h { color: var(--accent); }
+    .md-code { color: var(--success); }
+    .md-quote { color: var(--muted); }
+    .md-link { color: var(--accent); }
+
+    .overlay-demo {
+      position: relative;
+      max-width: 44rem;
+      min-height: 11rem;
+      border: 1px solid var(--hairline);
+      padding: 0.75rem;
+      background: var(--surface);
+    }
+    .overlay-demo .dim-bg { color: var(--muted); opacity: 0.5; }
+    .overlay-box {
+      margin: 1.1rem auto 0;
+      max-width: 22rem;
+      border: 1px solid var(--muted);
+      padding: 0.65rem 0.75rem;
+      background: var(--surface);
+    }
+    .overlay-box .actions { color: var(--muted); margin-top: 0.5rem; }
+    .overlay-box .actions .yes { color: var(--accent); }
+
+    footer.bar {
+      border-top: 1px solid var(--hairline);
+      padding: 0.4rem 0.9rem;
+      color: var(--muted);
+      font-size: 11px;
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body class="mode-tile">
+  <header>
+    <h1>DESIGN playground</h1>
+    <span class="meta">
+      可交互设计图 · SSOT <a href="../../DESIGN.md">DESIGN.md</a> ·
+      <a href="./README.md">同步 / 打开</a> ·
+      agent 默认忽略（<a href="../AGENTS.md">AGENTS</a>）
+    </span>
+    <div class="modes" role="group" aria-label="视图模式">
+      <button type="button" data-mode="tile" aria-pressed="true">平铺</button>
+      <button type="button" data-mode="focus" aria-pressed="false">专注</button>
+    </div>
+    <span class="keys">t 模式 · ←→ 槽 · 1–7 · 槽内见控件</span>
+  </header>
+
+  <div class="shell">
+    <nav class="nav" id="nav" aria-label="组件槽"></nav>
+    <main id="main">
+
+      <!-- 1 palette -->
+      <section class="panel is-active" id="panel-palette" data-id="palette">
+        <h2>Palette</h2>
+        <p class="spec">全部 <code>colors.*</code>（由 <code>sync_tokens.py</code> 生成）</p>
+        <div class="swatches" id="swatches"></div>
+      </section>
+
+      <!-- 2 tool / expandable -->
+      <section class="panel" id="panel-tool" data-id="tool">
+        <h2>Tool / Expandable</h2>
+        <p class="spec"><a href="../expandable.md">expandable.md</a> · 三态 bg · 折叠/展开 · 详情视口</p>
+        <div class="ctl" id="tool-ctl">
+          <button type="button" class="chip-btn" data-tool-state="pending" aria-pressed="true">pending</button>
+          <button type="button" class="chip-btn" data-tool-state="success" aria-pressed="false">success</button>
+          <button type="button" class="chip-btn" data-tool-state="error" aria-pressed="false">error</button>
+          <button type="button" id="tool-expand" aria-pressed="false">展开详情 (Alt+E)</button>
+          <button type="button" id="tool-viewport" aria-pressed="false" class="hidden">全文 (Ctrl+O)</button>
+          <span class="hint">点摘要行也可切换展开</span>
+        </div>
+        <div class="stage">
+          <div class="rows">
+            <div class="row bg-user">
+              <span class="fg-user">❯</span> <span class="fg-on">跑测试并看工具块</span>
+            </div>
+            <div class="row fg-muted" id="think-line">thinking  (Ctrl+T) · 先想一步再调工具…</div>
+            <div class="row fg-muted hidden" id="think-body">我应先确认包测试命令，再报告结果。</div>
+            <div class="row" id="tool-summary" role="button" tabindex="0"></div>
+            <div class="rows hidden" id="tool-detail">
+              <div class="row fg-muted" id="tool-earlier">... (12 earlier lines, ctrl+o to expand)</div>
+              <div class="row fg-tool" id="tool-tail">ok 42  passed · 0 failed</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3 diff -->
+      <section class="panel" id="panel-diff" data-id="diff">
+        <h2>Diff</h2>
+        <p class="spec"><a href="../diff-block.md">diff-block.md</a> · unified 默认；词级可关</p>
+        <div class="ctl">
+          <button type="button" id="diff-words" aria-pressed="true">词级高亮</button>
+          <button type="button" id="diff-header-only" aria-pressed="false">仅摘要行 tint</button>
+          <span class="hint">展开正文 MUST NOT 再套 tool-*-bg</span>
+        </div>
+        <div class="stage">
+          <div class="row bg-tool-success fg-tool" id="diff-summary">✓ diff  src/x.rs  (Alt+E)</div>
+          <div class="rows" id="diff-body">
+            <div class="row fg-diff-context">@@ -1,3 +1,3 @@</div>
+            <div class="row bg-diff-removed fg-diff-removed" data-line="rem">- pub fn render(&amp;self, <span class="word-removed" data-word>w</span>: usize) -&gt; Vec&lt;String&gt; {</div>
+            <div class="row bg-diff-added fg-diff-added" data-line="add">+ pub fn render(&amp;self, <span class="word-added" data-word>width</span>: usize) -&gt; Vec&lt;String&gt; {</div>
+            <div class="row fg-diff-context">  Ok(lines)</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4 markdown -->
+      <section class="panel" id="panel-markdown" data-id="markdown">
+        <h2>Markdown</h2>
+        <p class="spec"><a href="../markdown.md">markdown.md</a> · 复制友好典型块</p>
+        <div class="ctl">
+          <button type="button" class="chip-btn" data-md="body" aria-pressed="true">正文</button>
+          <button type="button" class="chip-btn" data-md="code" aria-pressed="false">代码块</button>
+          <button type="button" class="chip-btn" data-md="link" aria-pressed="false">链接</button>
+          <button type="button" class="chip-btn" data-md="quote" aria-pressed="false">引用</button>
+        </div>
+        <div class="stage" id="md-stage"></div>
+      </section>
+
+      <!-- 5 layout -->
+      <section class="panel" id="panel-layout" data-id="layout">
+        <h2>Layout 竖条</h2>
+        <p class="spec">
+          <a href="../status.md">status</a> /
+          <a href="../editor.md">editor</a> /
+          <a href="../footer.md">footer</a>
+          · idle status=0 行
+        </p>
+        <div class="ctl">
+          <button type="button" id="lay-busy" aria-pressed="true">busy status</button>
+          <button type="button" id="lay-slot" aria-pressed="false">editor → 选择器槽</button>
+          <span class="hint">spinner 动态；一屏一处 accent</span>
+        </div>
+        <div class="term" id="layout-term">
+          <div class="term-content">
+            <div class="row bg-user" style="padding:0.15rem 0.35rem">
+              <span class="fg-user">❯</span> <span class="fg-on">少 chrome、可复制</span>
+            </div>
+            <div class="row fg-assistant">当前轮进 scrollback。</div>
+            <div class="row bg-tool-success" style="padding:0.15rem 0.35rem">
+              <span class="fg-tool">✓ read  DESIGN.md</span>
+            </div>
+          </div>
+          <div class="term-status" id="lay-status"><span class="spin" id="lay-spin">⠋</span> working</div>
+          <div class="term-editor" id="lay-editor"><span class="cursor"> </span>询问或 / 命令…</div>
+          <div class="term-footer">~/xylitol · model · 42%</div>
+        </div>
+      </section>
+
+      <!-- 6 chrome -->
+      <section class="panel" id="panel-chrome" data-id="chrome">
+        <h2>Chrome 语义</h2>
+        <p class="spec">user-message-bg · muted · accent</p>
+        <div class="ctl">
+          <button type="button" class="chip-btn" data-chrome="user" aria-pressed="true">user 行</button>
+          <button type="button" class="chip-btn" data-chrome="muted" aria-pressed="false">muted</button>
+          <button type="button" class="chip-btn" data-chrome="accent" aria-pressed="false">accent</button>
+          <button type="button" class="chip-btn" data-chrome="fg" aria-pressed="false">success/warn/error</button>
+        </div>
+        <div class="stage" id="chrome-stage"></div>
+      </section>
+
+      <!-- 7 overlay -->
+      <section class="panel" id="panel-overlay" data-id="overlay">
+        <h2>Overlay</h2>
+        <p class="spec"><a href="../overlay.md">overlay.md</a> · 短确认；非仪表盘</p>
+        <div class="ctl">
+          <button type="button" id="ov-toggle" aria-pressed="true">显示确认框</button>
+          <span class="hint">Esc / N 关（本页模拟）</span>
+        </div>
+        <div class="overlay-demo">
+          <div class="dim-bg">… scrollback 在后 …</div>
+          <div class="overlay-box" id="ov-box">
+            <div class="fg-on">Discard draft?</div>
+            <div class="actions">
+              <span class="yes">[Y] yes</span> · <span>[N] no / Esc</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="bar">
+    <span id="status-mode">模式：平铺</span>
+    <span id="status-slot">槽：palette</span>
+    <span>改 DESIGN → <code>python3 …/sync_tokens.py</code> → 刷新</span>
+  </footer>
+
+  <script src="./tokens.js"></script>
+  <script>
+    const SLOTS = [
+      { id: "palette", label: "Palette", key: "1" },
+      { id: "tool", label: "Tool / Expandable", key: "2" },
+      { id: "diff", label: "Diff", key: "3" },
+      { id: "markdown", label: "Markdown", key: "4" },
+      { id: "layout", label: "Layout 竖条", key: "5" },
+      { id: "chrome", label: "Chrome", key: "6" },
+      { id: "overlay", label: "Overlay", key: "7" },
+    ];
+
+    const state = {
+      mode: "tile",
+      index: 0,
+      tool: { status: "pending", expanded: false, full: false, thinking: false },
+      diff: { words: true, headerOnly: false },
+      md: "body",
+      layout: { busy: true, selector: false },
+      chrome: "user",
+      overlay: true,
+    };
+
+    const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    let spinI = 0;
+
+    const nav = document.getElementById("nav");
+    const swatches = document.getElementById("swatches");
+    const statusMode = document.getElementById("status-mode");
+    const statusSlot = document.getElementById("status-slot");
+
+    /* —— palette —— */
+    for (const [name, hex] of window.DESIGN_COLORS || []) {
+      const el = document.createElement("div");
+      el.className = "swatch";
+      el.innerHTML =
+        `<div class="chip" style="background:${hex}"></div>` +
+        `<div><div>${name}</div><div class="hex">${hex}</div></div>`;
+      swatches.appendChild(el);
+    }
+
+    /* —— tool —— */
+    const toolGlyph = { pending: "⚙", success: "✓", error: "✗" };
+    const toolBg = {
+      pending: "bg-tool-pending",
+      success: "bg-tool-success",
+      error: "bg-tool-error",
+    };
+    const toolCmd = {
+      pending: "bash  cargo test -p xylitol-tui",
+      success: "bash  cargo test -p xylitol-tui",
+      error: "edit  missing path",
+    };
+
+    function renderTool() {
+      const t = state.tool;
+      const sum = document.getElementById("tool-summary");
+      sum.className = `row ${toolBg[t.status]}`;
+      sum.innerHTML =
+        `<span class="fg-tool">${toolGlyph[t.status]} ${toolCmd[t.status]}  (Alt+E)</span>`;
+      document.getElementById("tool-detail").classList.toggle("hidden", !t.expanded);
+      document.getElementById("tool-viewport").classList.toggle("hidden", !t.expanded);
+      document.getElementById("tool-earlier").classList.toggle("hidden", t.full);
+      document.getElementById("tool-tail").textContent = t.full
+        ? "…\nrunning\nok 1\n…\nok 42  passed · 0 failed"
+        : "ok 42  passed · 0 failed";
+      document.getElementById("think-body").classList.toggle("hidden", !t.thinking);
+      document.getElementById("think-line").textContent = t.thinking
+        ? "thinking  (Ctrl+T) · expanded"
+        : "thinking  (Ctrl+T) · 先想一步再调工具…";
+      document.getElementById("tool-expand").setAttribute("aria-pressed", String(t.expanded));
+      document.getElementById("tool-viewport").setAttribute("aria-pressed", String(t.full));
+      document.querySelectorAll("[data-tool-state]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.toolState === t.status));
+      });
+    }
+
+    document.querySelectorAll("[data-tool-state]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.tool.status = b.dataset.toolState;
+        renderTool();
+      });
+    });
+    document.getElementById("tool-expand").addEventListener("click", () => {
+      state.tool.expanded = !state.tool.expanded;
+      renderTool();
+    });
+    document.getElementById("tool-viewport").addEventListener("click", () => {
+      state.tool.full = !state.tool.full;
+      renderTool();
+    });
+    document.getElementById("tool-summary").addEventListener("click", () => {
+      state.tool.expanded = !state.tool.expanded;
+      renderTool();
+    });
+    document.getElementById("think-line").addEventListener("click", () => {
+      state.tool.thinking = !state.tool.thinking;
+      renderTool();
+    });
+
+    /* —— diff —— */
+    function renderDiff() {
+      const d = state.diff;
+      document.getElementById("diff-words").setAttribute("aria-pressed", String(d.words));
+      document.getElementById("diff-header-only").setAttribute("aria-pressed", String(d.headerOnly));
+      document.getElementById("diff-body").classList.toggle("hidden", d.headerOnly);
+      const rem = document.querySelector('[data-line="rem"]');
+      const add = document.querySelector('[data-line="add"]');
+      if (d.words) {
+        rem.innerHTML =
+          '- pub fn render(&amp;self, <span class="word-removed">w</span>: usize) -&gt; Vec&lt;String&gt; {';
+        add.innerHTML =
+          '+ pub fn render(&amp;self, <span class="word-added">width</span>: usize) -&gt; Vec&lt;String&gt; {';
+      } else {
+        rem.textContent = "- pub fn render(&self, w: usize) -> Vec<String> {";
+        add.textContent = "+ pub fn render(&self, width: usize) -> Vec<String> {";
+      }
+    }
+    document.getElementById("diff-words").addEventListener("click", () => {
+      state.diff.words = !state.diff.words;
+      renderDiff();
+    });
+    document.getElementById("diff-header-only").addEventListener("click", () => {
+      state.diff.headerOnly = !state.diff.headerOnly;
+      renderDiff();
+    });
+
+    /* —— markdown —— */
+    const MD = {
+      body: `<div class="row md-h"># 标题用 # 前缀</div>
+<div class="row fg-assistant">助手正文。段落间最多一空行。</div>
+<div class="row fg-assistant">第二段仍可复制。</div>`,
+      code: `<div class="row md-code">fn main() {\n    println!("no border / no lang bar");\n}</div>
+<div class="row fg-muted">— 语法高亮即可 —</div>`,
+      link: `<div class="row fg-assistant">见 <span class="md-link">docs (https://example.com/a)</span>。</div>
+<div class="row fg-muted">MUST：text (url) 可复制，勿只 OSC 隐藏</div>`,
+      quote: `<div class="row md-quote">| 引用用 dim</div>
+<div class="row md-quote">| 第二行</div>`,
+    };
+    function renderMd() {
+      document.getElementById("md-stage").innerHTML = MD[state.md];
+      document.querySelectorAll("[data-md]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.md === state.md));
+      });
+    }
+    document.querySelectorAll("[data-md]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.md = b.dataset.md;
+        renderMd();
+      });
+    });
+
+    /* —— layout —— */
+    function renderLayout() {
+      const L = state.layout;
+      document.getElementById("lay-busy").setAttribute("aria-pressed", String(L.busy));
+      document.getElementById("lay-slot").setAttribute("aria-pressed", String(L.selector));
+      document.getElementById("lay-status").classList.toggle("hidden", !L.busy);
+      const ed = document.getElementById("lay-editor");
+      if (L.selector) {
+        ed.innerHTML =
+          '<div class="fg-on" style="background:var(--on-surface);color:var(--surface);display:inline">▸ travel abc</div>\n' +
+          '<div class="fg-muted">  fork def</div>\n' +
+          '<div class="fg-muted">  leaf ghi</div>';
+      } else {
+        ed.innerHTML = '<span class="cursor"> </span>询问或 / 命令…';
+      }
+    }
+    document.getElementById("lay-busy").addEventListener("click", () => {
+      state.layout.busy = !state.layout.busy;
+      renderLayout();
+    });
+    document.getElementById("lay-slot").addEventListener("click", () => {
+      state.layout.selector = !state.layout.selector;
+      renderLayout();
+    });
+    setInterval(() => {
+      if (!state.layout.busy) return;
+      spinI = (spinI + 1) % SPIN.length;
+      const el = document.getElementById("lay-spin");
+      if (el) el.textContent = SPIN[spinI];
+    }, 80);
+
+    /* —— chrome —— */
+    const CHROME = {
+      user: `<div class="row bg-user"><span class="fg-user">❯</span> <span class="fg-on">user-message-bg + user 前缀</span></div>`,
+      muted: `<div class="row fg-muted">muted · status / footer / 边框 / 工具摘要</div>`,
+      accent: `<div class="row"><span class="fg-accent">● accent · 忙碌 spinner / 焦点</span> <span class="fg-muted">· 一屏一处</span></div>`,
+      fg: `<div class="row"><span class="fg-success">success</span>  <span class="fg-warning">warning</span>  <span class="fg-error">error</span> <span class="fg-muted">· 前景少用</span></div>`,
+    };
+    function renderChrome() {
+      document.getElementById("chrome-stage").innerHTML = CHROME[state.chrome];
+      document.querySelectorAll("[data-chrome]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.chrome === state.chrome));
+      });
+    }
+    document.querySelectorAll("[data-chrome]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.chrome = b.dataset.chrome;
+        renderChrome();
+      });
+    });
+
+    /* —— overlay —— */
+    function renderOverlay() {
+      document.getElementById("ov-toggle").setAttribute("aria-pressed", String(state.overlay));
+      document.getElementById("ov-box").classList.toggle("hidden", !state.overlay);
+    }
+    document.getElementById("ov-toggle").addEventListener("click", () => {
+      state.overlay = !state.overlay;
+      renderOverlay();
+    });
+
+    /* —— shell nav / mode —— */
+    function renderNav() {
+      nav.innerHTML = "";
+      SLOTS.forEach((s, i) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.innerHTML = `<span class="idx">${s.key}</span>${s.label}`;
+        if (i === state.index) b.setAttribute("aria-current", "true");
+        b.addEventListener("click", () => select(i));
+        nav.appendChild(b);
+      });
+    }
+    function applyMode() {
+      document.body.classList.toggle("mode-tile", state.mode === "tile");
+      document.body.classList.toggle("mode-focus", state.mode === "focus");
+      document.querySelectorAll(".modes [data-mode]").forEach((btn) => {
+        btn.setAttribute("aria-pressed", String(btn.dataset.mode === state.mode));
+      });
+      statusMode.textContent = "模式：" + (state.mode === "tile" ? "平铺" : "专注");
+    }
+    function applySlot() {
+      const id = SLOTS[state.index].id;
+      document.querySelectorAll(".panel").forEach((p) => {
+        p.classList.toggle("is-active", p.dataset.id === id);
+      });
+      statusSlot.textContent = "槽：" + id;
+      renderNav();
+      if (state.mode === "focus") {
+        document.getElementById("panel-" + id)?.scrollIntoView({ block: "start" });
+      }
+    }
+    function select(i) {
+      state.index = (i + SLOTS.length) % SLOTS.length;
+      applySlot();
+    }
+    function setMode(mode) {
+      state.mode = mode;
+      applyMode();
+      applySlot();
+    }
+    document.querySelectorAll(".modes [data-mode]").forEach((btn) => {
+      btn.addEventListener("click", () => setMode(btn.dataset.mode));
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.target.matches("input, textarea")) return;
+      const slot = SLOTS[state.index].id;
+      if ((e.key === "t" || e.key === "T") && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        setMode(state.mode === "tile" ? "focus" : "tile");
+        e.preventDefault();
+      } else if (e.key === "ArrowLeft" || e.key === "[") {
+        select(state.index - 1);
+        e.preventDefault();
+      } else if (e.key === "ArrowRight" || e.key === "]") {
+        select(state.index + 1);
+        e.preventDefault();
+      } else if (/^[1-7]$/.test(e.key)) {
+        select(Number(e.key) - 1);
+        e.preventDefault();
+      } else if ((e.key === "e" || e.key === "E") && e.altKey) {
+        state.tool.expanded = !state.tool.expanded;
+        renderTool();
+        e.preventDefault();
+      } else if ((e.key === "t" || e.key === "T") && e.ctrlKey) {
+        state.tool.thinking = !state.tool.thinking;
+        renderTool();
+        e.preventDefault();
+      } else if ((e.key === "o" || e.key === "O") && e.ctrlKey) {
+        if (state.tool.expanded) {
+          state.tool.full = !state.tool.full;
+          renderTool();
+        }
+        e.preventDefault();
+      } else if ((e.key === "Escape" || e.key === "n" || e.key === "N") &&
+                 (slot === "overlay" || state.mode === "tile")) {
+        if (state.overlay) {
+          state.overlay = false;
+          renderOverlay();
+          e.preventDefault();
+        }
+      } else if ((e.key === "y" || e.key === "Y") &&
+                 (slot === "overlay" || state.mode === "tile")) {
+        if (state.overlay) {
+          state.overlay = false;
+          renderOverlay();
+          e.preventDefault();
+        }
+      }
+    });
+
+    const params = new URLSearchParams(location.search);
+    if (params.get("mode") === "focus" || params.get("mode") === "tile") {
+      state.mode = params.get("mode");
+    }
+    const slotParam = params.get("slot");
+    if (slotParam) {
+      const i = SLOTS.findIndex((s) => s.id === slotParam);
+      if (i >= 0) state.index = i;
+    }
+
+    renderTool();
+    renderDiff();
+    renderMd();
+    renderLayout();
+    renderChrome();
+    renderOverlay();
+    applyMode();
+    applySlot();
+  </script>
+</body>
+</html>

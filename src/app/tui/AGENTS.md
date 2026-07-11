@@ -57,7 +57,7 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 | 任务 | 去哪 |
 |---|---|
 | 写/改本面 | `write-tui` skill |
-| UX / token / layout | 本目录 `DESIGN.md` + `design/*` |
+| UX / token / layout | 本目录 `DESIGN.md` + `design/*`；人类 playground 见 `design/AGENTS.md` |
 | 底层能力是否已有 / 如何扩展 | `packages/xylitol-tui/AGENTS.md` |
 | 新增/改造应用面 | `write-surface` skill |
 | 包内组件与五层验证 | `test-tui-harness` skill |
