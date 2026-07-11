@@ -173,7 +173,7 @@ impl CrosstermTerminal {
         self.kitty_pushed = true;
     }
 
-    #[allow(dead_code)] // parity with pi; route A does not invoke this today
+    #[allow(dead_code)] // 预留：route-B modifyOtherKeys 协商；Kitty 路径今日不调用
     fn enable_modify_other_keys(&mut self) {
         if self.kitty_pushed || self.modify_other_keys_active {
             return;
