@@ -4,6 +4,10 @@
 //! parsing, then renders with user-provided theme hooks and optional syntax
 //! highlighting via a callback (`highlight_code`).
 //!
+//! Copy / token policy (c530): hierarchy via SGR (no `#` prefixes); links as
+//! `text (url)`; no code fences or box-drawing tables; inline `` ` `` / `**` /
+//! `*` / `~~` retained for round-trip. UX SSOT: `src/app/tui/design/markdown.md`.
+//!
 //! The `MarkdownTheme` is deliberately a struct of boxed closures so consumers
 //! (e.g. the main crate with syntect) can inject their own styling pipeline
 //! without the TUI crate depending on heavy highlighting libraries.
@@ -129,28 +133,24 @@ impl Component for Markdown {
                 Event::Start(Tag::Heading { level, .. }) => {
                     idx += 1;
                     let heading_lines = collect_inline_until(
+                        self,
                         &events,
                         &mut idx,
                         &|s| apply_default_style(self, s),
                         "",
                     );
-                    let prefix = "#".repeat(level_to_usize(*level));
-                    let heading_prefix = format!("{} ", prefix);
-
+                    // Token-efficient: no `#` prefix; hierarchy via SGR (c530 / design/markdown.md).
                     let line = heading_lines.concat();
-                    let styled = if level_to_usize(*level) >= 3 {
-                        let hpn = if level_to_usize(*level) == 1 {
-                            let u = (self.theme.underline)(&heading_prefix);
-                            let b = (self.theme.bold)(&u);
-                            (self.theme.heading)(&b)
-                        } else {
-                            (self.theme.heading)(&(self.theme.bold)(&heading_prefix))
-                        };
-                        format!("{}{}", hpn, line)
-                    } else if level_to_usize(*level) == 1 {
-                        (self.theme.heading)(&(self.theme.bold)(&(self.theme.underline)(&line)))
-                    } else {
-                        (self.theme.heading)(&(self.theme.bold)(&line))
+                    let n = level_to_usize(*level);
+                    let styled = match n {
+                        1 => {
+                            (self.theme.heading)(&(self.theme.bold)(&(self.theme.underline)(&line)))
+                        }
+                        2 => {
+                            (self.theme.heading)(&(self.theme.bold)(&(self.theme.underline)(&line)))
+                        }
+                        3 | 4 => (self.theme.heading)(&(self.theme.bold)(&line)),
+                        _ => (self.theme.heading)(&line),
                     };
                     rendered.push(styled);
                     if !next_is_space(&events, idx) {
@@ -161,6 +161,7 @@ impl Component for Markdown {
                 Event::Start(Tag::Paragraph) => {
                     idx += 1;
                     let text = collect_inline_until(
+                        self,
                         &events,
                         &mut idx,
                         &|s| apply_default_style(self, s),
@@ -186,8 +187,7 @@ impl Component for Markdown {
                     };
                     let code = collect_text_until(&events, &mut idx);
                     let indent = self.theme.code_block_indent.as_deref().unwrap_or("  ");
-                    let lang_str = lang.unwrap_or("");
-                    rendered.push((self.theme.code_block_border)(&format!("```{lang_str}")));
+                    // No fence / language bar / line numbers (c530).
                     if let Some(ref hc) = self.theme.highlight_code {
                         for hl in hc(&code, lang) {
                             rendered.push(format!("{indent}{hl}"));
@@ -197,7 +197,6 @@ impl Component for Markdown {
                             rendered.push(format!("{indent}{}", (self.theme.code_block)(cl)));
                         }
                     }
-                    rendered.push((self.theme.code_block_border)("```"));
                     if !next_is_space(&events, idx) {
                         rendered.push(String::new());
                     }
@@ -229,7 +228,7 @@ impl Component for Markdown {
                             self,
                             &events,
                             &mut idx,
-                            content_width.saturating_sub(2).max(1),
+                            content_width.max(1),
                             &quote_text_fn,
                             &quote_prefix,
                         ));
@@ -242,8 +241,9 @@ impl Component for Markdown {
                     }
 
                     for ql in quote_body {
-                        for wl in wrap_text_with_ansi(&ql, content_width.saturating_sub(2).max(1)) {
-                            rendered.push(format!("{}{}", (self.theme.quote_border)("│ "), wl));
+                        for wl in wrap_text_with_ansi(&ql, content_width.max(1)) {
+                            // Dim/italic only — no │ / box decoration (c530).
+                            rendered.push(wl);
                         }
                     }
                     if !next_is_space(&events, idx) {
@@ -261,7 +261,8 @@ impl Component for Markdown {
 
                 Event::Rule => {
                     idx += 1;
-                    let w = content_width.min(80);
+                    // Short rule — not a full-width wall (c530).
+                    let w = content_width.clamp(4, 8);
                     rendered.push((self.theme.hr)(&"─".repeat(w)));
                     if !next_is_space(&events, idx) {
                         rendered.push(String::new());
@@ -395,6 +396,7 @@ fn get_style_prefix(f: &dyn Fn(&str) -> String) -> String {
 // ── event iterators ─────────────────────────────────────────────────────────
 
 fn collect_inline_until(
+    md: &Markdown,
     events: &[Event],
     idx: &mut usize,
     default_fn: &dyn Fn(&str) -> String,
@@ -412,30 +414,61 @@ fn collect_inline_until(
 
             Event::Start(Tag::Strong) => {
                 *idx += 1;
-                let inner = collect_inline_until(events, idx, default_fn, style_prefix);
-                parts.push(inner.concat());
+                let inner =
+                    collect_inline_until(md, events, idx, default_fn, style_prefix).concat();
+                let marked = format!("**{inner}**");
+                parts.push((md.theme.bold)(&marked));
                 parts.push(style_prefix.to_string());
             }
             Event::Start(Tag::Emphasis) => {
                 *idx += 1;
-                let inner = collect_inline_until(events, idx, default_fn, style_prefix);
-                parts.push(inner.concat());
+                let inner =
+                    collect_inline_until(md, events, idx, default_fn, style_prefix).concat();
+                let marked = format!("*{inner}*");
+                parts.push((md.theme.italic)(&marked));
                 parts.push(style_prefix.to_string());
             }
             Event::Start(Tag::Strikethrough) => {
                 *idx += 1;
-                let inner = collect_inline_until(events, idx, default_fn, style_prefix);
-                parts.push(inner.concat());
+                let inner =
+                    collect_inline_until(md, events, idx, default_fn, style_prefix).concat();
+                let marked = format!("~~{inner}~~");
+                parts.push((md.theme.strikethrough)(&marked));
                 parts.push(style_prefix.to_string());
             }
             Event::Start(Tag::Link { dest_url, .. }) => {
                 *idx += 1;
-                let _inner = collect_inline_until(events, idx, default_fn, style_prefix);
-                parts.push(dest_url.clone().into_string());
+                let inner =
+                    collect_inline_until(md, events, idx, default_fn, style_prefix).concat();
+                let url = dest_url.as_ref();
+                let label = if strip_ansi_for_empty(&inner).is_empty() {
+                    url.to_string()
+                } else {
+                    inner
+                };
+                let labeled = (md.theme.link)(&label);
+                let urled = (md.theme.link_url)(&(md.theme.underline)(url));
+                parts.push(format!("{labeled} ({urled})"));
+                parts.push(style_prefix.to_string());
+            }
+            Event::Start(Tag::Image { dest_url, .. }) => {
+                *idx += 1;
+                let inner =
+                    collect_inline_until(md, events, idx, default_fn, style_prefix).concat();
+                let url = dest_url.as_ref();
+                let label = if strip_ansi_for_empty(&inner).is_empty() {
+                    url.to_string()
+                } else {
+                    inner
+                };
+                let labeled = (md.theme.link)(&label);
+                let urled = (md.theme.link_url)(&(md.theme.underline)(url));
+                parts.push(format!("{labeled} ({urled})"));
                 parts.push(style_prefix.to_string());
             }
             Event::Code(code) => {
-                parts.push(code.to_string());
+                let marked = format!("`{code}`");
+                parts.push((md.theme.code)(&marked));
                 parts.push(style_prefix.to_string());
                 *idx += 1;
             }
@@ -465,12 +498,48 @@ fn collect_inline_until(
             | Event::End(TagEnd::Strong)
             | Event::End(TagEnd::Emphasis)
             | Event::End(TagEnd::Strikethrough)
-            | Event::End(TagEnd::Link) => *idx += 1,
+            | Event::End(TagEnd::Link)
+            | Event::End(TagEnd::Image) => *idx += 1,
             _ => {}
         }
     }
 
     parts
+}
+
+/// True empty after stripping CSI / OSC for label fallback.
+fn strip_ansi_for_empty(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            match chars.peek() {
+                Some('[') => {
+                    chars.next();
+                    for ch in chars.by_ref() {
+                        if ch.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+                Some(']') => {
+                    chars.next();
+                    for ch in chars.by_ref() {
+                        if ch == '\u{7}' {
+                            break;
+                        }
+                        if ch == '\\' {
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out.trim().to_string()
 }
 
 fn collect_text_until(events: &[Event], idx: &mut usize) -> String {
@@ -590,6 +659,7 @@ fn render_list(
                         Event::Start(Tag::Paragraph) => {
                             *idx += 1;
                             let text = collect_inline_until(
+                                md,
                                 events,
                                 idx,
                                 &|s| apply_default_style(md, s),
@@ -660,7 +730,7 @@ fn render_events_block(
             }
             Event::Start(Tag::Paragraph) => {
                 *idx += 1;
-                let text = collect_inline_until(events, idx, quote_fn, quote_prefix);
+                let text = collect_inline_until(md, events, idx, quote_fn, quote_prefix);
                 lines.push(text.concat());
             }
             Event::Start(Tag::List(first_num)) => {
@@ -721,7 +791,8 @@ fn render_table(md: &Markdown, events: &[Event], idx: &mut usize, width: usize) 
             }
             Event::Start(Tag::TableCell) => {
                 *idx += 1;
-                let cell = collect_inline_until(events, idx, &|s| apply_default_style(md, s), "");
+                let cell =
+                    collect_inline_until(md, events, idx, &|s| apply_default_style(md, s), "");
                 current_row.push(cell.concat());
             }
             _ => *idx += 1,
@@ -754,11 +825,10 @@ fn render_table(md: &Markdown, events: &[Event], idx: &mut usize, width: usize) 
 
     let widths = compute_column_widths(&natural, &min_word, available);
 
-    // Top
-    let tops: Vec<String> = widths.iter().map(|w| "─".repeat(*w)).collect();
-    lines.push(format!("┌─{}─┐", tops.join("─┬─")));
+    // Space-aligned columns (scheme A) — no box drawing, no decorative `|` (c530).
+    let join_row = |parts: &[String]| -> String { parts.join(" ") };
 
-    // Header
+    // Header (bold + underline)
     let hw: Vec<Vec<String>> = headers
         .iter()
         .enumerate()
@@ -772,18 +842,15 @@ fn render_table(md: &Markdown, events: &[Event], idx: &mut usize, width: usize) 
             .map(|(ci, cw)| {
                 let text = cw.get(ri).cloned().unwrap_or_default();
                 let pad = widths[ci].saturating_sub(visible_width(&text));
-                (md.theme.bold)(&format!("{text}{}", " ".repeat(pad)))
+                let cell = format!("{text}{}", " ".repeat(pad));
+                (md.theme.underline)(&(md.theme.bold)(&cell))
             })
             .collect();
-        lines.push(format!("│ {} │", parts.join(" │ ")));
+        lines.push(join_row(&parts));
     }
 
-    // Separator
-    let sep: Vec<String> = widths.iter().map(|w| "─".repeat(*w)).collect();
-    lines.push(format!("├─{}─┤", sep.join("─┼─")));
-
     // Body
-    for (ri, row) in body_rows.iter().enumerate() {
+    for row in &body_rows {
         let rw: Vec<Vec<String>> = row
             .iter()
             .enumerate()
@@ -802,16 +869,9 @@ fn render_table(md: &Markdown, events: &[Event], idx: &mut usize, width: usize) 
                     )
                 })
                 .collect();
-            lines.push(format!("│ {} │", parts.join(" │ ")));
-        }
-        if ri + 1 < body_rows.len() {
-            lines.push(format!("├─{}─┤", sep.join("─┼─")));
+            lines.push(join_row(&parts));
         }
     }
-
-    // Bottom
-    let bots: Vec<String> = widths.iter().map(|w| "─".repeat(*w)).collect();
-    lines.push(format!("└─{}─┘", bots.join("─┴─")));
 
     lines
 }
@@ -838,21 +898,8 @@ fn longest_word_width(text: &str, max: usize) -> usize {
 }
 
 fn table_overhead(num_cols: usize) -> usize {
-    if num_cols == 0 {
-        return 0;
-    }
-
-    let empty = vec![String::new(); num_cols];
-    [
-        format!("┌─{}─┐", empty.join("─┬─")),
-        format!("│ {} │", empty.join(" │ ")),
-        format!("├─{}─┤", empty.join("─┼─")),
-        format!("└─{}─┘", empty.join("─┴─")),
-    ]
-    .iter()
-    .map(|line| visible_width(line))
-    .max()
-    .unwrap_or(0)
+    // Scheme A: single space between columns.
+    num_cols.saturating_sub(1)
 }
 
 fn compute_column_widths(natural: &[usize], min_word: &[usize], available: usize) -> Vec<usize> {
@@ -945,6 +992,14 @@ mod tests {
         }
     }
 
+    fn visible_join(md: &mut Markdown, width: usize) -> String {
+        md.render(width)
+            .iter()
+            .map(|l| strip_ansi_for_empty(l))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     #[test]
     fn renders_paragraph() {
         let mut md = Markdown::new("hello world".into(), 1, 1, identity_theme(), None, None);
@@ -953,14 +1008,18 @@ mod tests {
     }
 
     #[test]
-    fn renders_header() {
+    fn heading_has_no_hash_prefix() {
         let mut md = Markdown::new("# Title".into(), 1, 1, identity_theme(), None, None);
-        let lines = md.render(30);
-        assert!(lines.iter().any(|l| l.contains("Title")));
+        let text = visible_join(&mut md, 30);
+        assert!(text.contains("Title"));
+        assert!(
+            !text.lines().any(|l| l.trim_start().starts_with('#')),
+            "heading must not use # prefix:\n{text}"
+        );
     }
 
     #[test]
-    fn renders_code_block() {
+    fn code_block_has_no_fence() {
         let mut md = Markdown::new(
             "```rust\nfn main() {}\n```".into(),
             1,
@@ -969,9 +1028,54 @@ mod tests {
             None,
             None,
         );
-        let lines = md.render(40);
-        assert!(lines.iter().any(|l| l.contains("```rust")));
-        assert!(lines.iter().any(|l| l.contains("fn main() {}")));
+        let text = visible_join(&mut md, 40);
+        assert!(text.contains("fn main() {}"));
+        assert!(
+            !text.contains("```"),
+            "code block must not emit fence lines:\n{text}"
+        );
+    }
+
+    #[test]
+    fn link_is_text_url_form() {
+        let mut md = Markdown::new(
+            "see [docs](https://ex.com)".into(),
+            0,
+            0,
+            identity_theme(),
+            None,
+            None,
+        );
+        let text = visible_join(&mut md, 60);
+        assert!(
+            text.contains("docs (https://ex.com)"),
+            "expected text (url):\n{text}"
+        );
+    }
+
+    #[test]
+    fn inline_markers_roundtrip() {
+        let mut md = Markdown::new(
+            "a **bold** and *ital* and `code` and ~~x~~".into(),
+            0,
+            0,
+            identity_theme(),
+            None,
+            None,
+        );
+        let text = visible_join(&mut md, 80);
+        assert!(text.contains("**bold**"), "{text}");
+        assert!(text.contains("*ital*"), "{text}");
+        assert!(text.contains("`code`"), "{text}");
+        assert!(text.contains("~~x~~"), "{text}");
+    }
+
+    #[test]
+    fn quote_has_no_bar() {
+        let mut md = Markdown::new("> hello quote".into(), 0, 0, identity_theme(), None, None);
+        let text = visible_join(&mut md, 40);
+        assert!(text.contains("hello quote"));
+        assert!(!text.contains('│'), "quote must not use box bar:\n{text}");
     }
 
     #[test]
@@ -989,7 +1093,7 @@ mod tests {
     }
 
     #[test]
-    fn renders_table() {
+    fn table_is_space_aligned_without_box() {
         let mut md = Markdown::new(
             "| a | b |\n|---|---|\n| 1 | 2 |".into(),
             0,
@@ -998,10 +1102,16 @@ mod tests {
             None,
             None,
         );
-        let lines = md.render(40);
-        assert!(lines.iter().any(|l| l.contains("┌")));
-        assert!(lines.iter().any(|l| l.contains("a")));
-        assert!(lines.iter().any(|l| l.contains("1")));
+        let text = visible_join(&mut md, 40);
+        assert!(text.contains('a') && text.contains('1'));
+        assert!(
+            !text.contains('┌') && !text.contains('│') && !text.contains('└'),
+            "table must not use box drawing:\n{text}"
+        );
+        assert!(
+            !text.contains('|'),
+            "table must not emit decorative pipes:\n{text}"
+        );
     }
 
     #[test]
@@ -1041,10 +1151,21 @@ mod tests {
             None,
         );
 
-        let text = md.render(48).join("\n");
+        let text = visible_join(&mut md, 48);
         assert!(
-            text.contains("│ Editor") && text.contains("│ multi-line"),
+            text.contains("**Editor**") && text.contains("multi-line"),
             "styled first cell must not absorb the next cell:\n{text}"
+        );
+    }
+
+    #[test]
+    fn hr_is_short() {
+        let mut md = Markdown::new("---".into(), 0, 0, identity_theme(), None, None);
+        let text = visible_join(&mut md, 80);
+        let rule = text.lines().find(|l| l.contains('─')).unwrap_or("");
+        assert!(
+            rule.chars().filter(|c| *c == '─').count() <= 8,
+            "hr should be short:\n{text}"
         );
     }
 }
