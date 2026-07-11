@@ -944,6 +944,48 @@ fn agent_demo_dollar_stub_source_opens_and_plate_mentions_c545() {
 }
 
 #[test]
+fn agent_demo_plate_expandable_head_shows_c550_more_hint() {
+    let mut h = TuiTestHarness::new(120, 60);
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+    h.keys("\x10expandable\r");
+    h.render_result().expect("after expandable-head plate");
+    let text = h.tui.terminal.scroll_buffer().join("\n");
+    assert!(
+        text.contains("c550") && text.contains("more lines"),
+        "plate expandable-head should surface c550 Head tip; got:\n{text}"
+    );
+    // Isolate the Read tool block (seed may still contain Tail "earlier lines").
+    let read_idx = text
+        .find("Read expandable_output.rs")
+        .expect("Read tool header");
+    let read_block = &text[read_idx..];
+    assert!(
+        read_block.contains("more lines") && read_block.contains("ctrl+o to expand"),
+        "collapsed Head viewport must show more-lines hint below body; got:\n{read_block}"
+    );
+    assert!(
+        read_block.contains("render_expandable_output") || read_block.contains("Head keeps"),
+        "Head preview should keep file head visible; got:\n{read_block}"
+    );
+    let hint_at = read_block
+        .find("more lines")
+        .expect("more lines hint in Read block");
+    let head_at = read_block
+        .find("expandable_output.rs")
+        .or_else(|| read_block.find("render_expandable_output"))
+        .expect("head content");
+    assert!(
+        head_at < hint_at,
+        "Head body must appear above more-lines hint; got:\n{read_block}"
+    );
+}
+
+#[test]
 fn agent_demo_seed_tool_blocks_use_status_background_tints() {
     use agent_demo_example::ToolBlockStatus;
 

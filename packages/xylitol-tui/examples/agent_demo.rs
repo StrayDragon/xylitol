@@ -24,7 +24,7 @@ use xylitol_tui::{
     Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme, ExpandableOutputOptions,
     Focusable, Input, InputEvent, InputListenerResult, Markdown, MarkdownOptions, MarkdownTheme,
     SystemClock, TUI, TerminalColorScheme, ThemeDetectSources, TreeNode, TreeSelector,
-    TreeSelectorOptions, TreeSelectorTheme, apply_background_to_line, highlight_code,
+    TreeSelectorOptions, TreeSelectorTheme, TruncateFrom, apply_background_to_line, highlight_code,
     matches_key_event, parse_osc11_background_color, printable_from_key_event, render_diff_lines,
     render_expandable_output, resolve_terminal_color_scheme, truncate_to_width, visible_width,
     wrap_text_with_ansi,
@@ -163,6 +163,11 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
         id: "completion-dollar",
         label: "Completion $ stub (c545)",
         description: "Inline $skill like @path — type use $ in editor",
+    },
+    DemoPlateItem {
+        id: "expandable-head",
+        label: "Expandable Head viewport (c550)",
+        description: "Read-style tool: first-N + more-lines hint below",
     },
     DemoPlateItem {
         id: "tool-tints",
@@ -518,6 +523,18 @@ fn sample_long_bash_output() -> String {
         "Ran 202 tests across 33 files. [9.26s]".into(),
         "Took 9.3s".into(),
     ]);
+    lines.join("\n")
+}
+
+/// Long file-style body for Head viewport (c550) — first lines stay visible when collapsed.
+fn sample_long_read_output() -> String {
+    let mut lines: Vec<String> = vec![
+        "// packages/xylitol-tui/src/components/expandable_output.rs".into(),
+        "pub fn render_expandable_output(...) -> Vec<String> {".into(),
+        "    // Head keeps the first N visual lines".into(),
+    ];
+    lines.extend((4..=28).map(|i| format!("    // body line {i}")));
+    lines.push("}".into());
     lines.join("\n")
 }
 
@@ -1984,7 +2001,7 @@ impl FakeCodingAgentApp {
         self.push_message(
             Role::System,
             "stream plate: md-full · stream-rust/python/typescript/json · diff-sbs · \
-             completion-dollar (c545 $) · tool-tints · tree",
+             completion-dollar (c545 $) · expandable-head (c550) · tool-tints · tree",
         );
         self.set_status("Ready");
     }
@@ -1999,6 +2016,24 @@ impl FakeCodingAgentApp {
              independent. Product skill semantics remain out of scope.",
         );
         self.set_status("Type use $ for stub skills");
+    }
+
+    fn inject_expandable_head_showcase(&mut self) {
+        self.push_message(Role::User, "plate · expandable-head · c550");
+        self.push_message(
+            Role::System,
+            "c550: Read-style tools use TruncateFrom::Head — first N lines stay on top; \
+             dim `more lines` hint sits below (not above like Tail/earlier). Ctrl+O expands \
+             the viewport; width 0/1 stays safe.",
+        );
+        self.push_tool(
+            "Read expandable_output.rs · ok",
+            sample_long_read_output(),
+            ToolBlockStatus::Success,
+        );
+        // Keep viewport collapsed so the more-lines hint is visible.
+        self.tools_output_expanded = false;
+        self.set_status("Head viewport · Ctrl+O to expand");
     }
 
     fn inject_diff_showcase(&mut self) {
@@ -2089,6 +2124,7 @@ impl FakeCodingAgentApp {
             "stream-json" => self.commit_user_turn("stream json highlight".into()),
             "diff-sbs" => self.inject_diff_showcase(),
             "completion-dollar" => self.inject_completion_dollar_tip(),
+            "expandable-head" => self.inject_expandable_head_showcase(),
             "tool-tints" => self.inject_tool_tint_showcase(),
             "tree" => {
                 self.tree_open = true;
@@ -3120,11 +3156,16 @@ impl FakeCodingAgentApp {
                     let mut block = Vec::new();
                     Self::push_wrapped(&mut block, &header, width);
                     if *expanded {
+                        let from = if summary.starts_with("Read ") {
+                            TruncateFrom::Head
+                        } else {
+                            TruncateFrom::Tail
+                        };
                         let opts = ExpandableOutputOptions {
                             max_preview_lines: self.tools_output_max_lines,
+                            from,
                             expand_hint: "ctrl+o to expand".into(),
                             hint_style: Some(dim),
-                            ..ExpandableOutputOptions::default()
                         };
                         for line in render_expandable_output(
                             detail,
