@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "protocol-app"
 purpose: "Client↔core wire protocol vocabulary (Command/Event enums + transport helpers), transport-agnostic."
 valid_scope[2]: src/,tests/
-requirements[10]{req_id,title,statement}:
+requirements[11]{req_id,title,statement}:
   ip1,"command-enum","protocol MUST define a Command enum covering at minimum Run Cancel SwitchModel SetThinking ListCommands ApproveTool AnswerQuestion SwitchSession GetMessages ExportHtml ExportJsonl and ImportJsonl; every client-to-core message MUST deserialize into this enum."
   ip2,"event-enum","protocol/ MUST define an Event enum covering at minimum TurnStart, Delta, ToolCall, ApprovalRequired, QuestionRequired, TurnEnd, and Usage; every core-to-client message MUST deserialize into this enum."
   ip3,"envelope-and-errors","protocol/ MUST define a uniform REST response envelope {code, msg, data, request_id} and a typed error-code set; envelope types live in protocol/ and MUST be transport-agnostic (no HTTP or WS types inside)."
@@ -13,7 +13,8 @@ requirements[10]{req_id,title,statement}:
   "ip-q1","steer-followup-commands","protocol::Command MUST 包含 Steer、FollowUp 与 ClearQueue（或语义等价变体）；client 经线协议入队或清队列 MUST 反序列化为这些变体。"
   "ip-q2","dispatch-queue-commands","app::core::dispatch MUST 将 Steer、FollowUp、ClearQueue 路由到 Driver 对应方法；这些变体 MUST NOT 留在仅 WS 层处理。"
   ip10,线协议不镜像厂商事件,"protocol::Event MUST 映射领域 XyEvent 闭集；MUST NOT 为 OpenAI/Anthropic 等厂商专属事件增加平行变体。无法表达的细节 MUST 留在领域 Message 载荷或被省略，而非拓宽线协议宽表。"
-scenarios[13]{req_id,id,given,when,then}:
+  "pa-wire1",线协议映射队列与闭集,protocol Event MUST 能表达跨面所需的 XyEvent 闭集子集（至少含 QueueUpdate）；未映射变体 MUST 可降级忽略，MUST NOT panic。
+scenarios[14]{req_id,id,given,when,then}:
   ip1,"jsonl-commands-in-enum",the Command enum is inspected,ExportJsonl and ImportJsonl variants are checked,both variants are present and deserialize from client messages
   ip2,"approval-event",the agent needs a tool approved,an ApprovalRequired event is emitted,it carries a call_id and tool summary
   ip3,"envelope-serializes",an Envelope with code Ok and data is constructed,it is serialized to JSON,"the JSON has code, msg, data, and request_id fields"
@@ -27,3 +28,4 @@ scenarios[13]{req_id,id,given,when,then}:
   "ip-q1","serde-steer","","序列化再反序列化 Command::Steer",字段与原文一致
   "ip-q2","dispatch-steer","",dispatch Steer,"调用 Driver::steer 且不报未处理变体错误"
   ip10,"no-vendor-wire","","对比 protocol::Event 与各 provider SSE 事件名",无线协议级厂商专名变体
+  "pa-wire1","queue-on-wire","",XyEvent QueueUpdate 经 to_wire_event,得到对应 Event 变体或文档化等价载荷
