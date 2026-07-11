@@ -6,12 +6,16 @@
 //! 3. Project base:  `<project>/.xylitol/config.yaml`
 //! 4. Project local: `<project>/.xylitol/config.local.yaml`
 //! 5. CLI override:  `--config <path>` (single file, no local overlay)
+//!
+//! Before YAML parse, each file is rendered with minijinja
+//! (`{{ env.KEY }}` / `{{ secret.KEY }}`). `secret.env` is loaded first.
 
 use std::path::Path;
 
 use serde_json::Value;
 
 use super::paths::ConfigPaths;
+use super::secret_env::SecretMap;
 use super::types::AppConfig;
 
 /// Errors from config loading.
@@ -27,6 +31,8 @@ pub(crate) enum LoadError {
         path: String,
         source: yaml_serde::Error,
     },
+    #[error("{0}")]
+    Template(String),
 
     #[error("deserialize: {0}")]
     Deserialize(#[from] serde_json::Error),
@@ -36,12 +42,12 @@ pub(crate) enum LoadError {
 ///
 /// `cli_config` — optional path to a CLI `--config` YAML file (highest priority).
 ///
-/// Side effect: loads `secret.env` from global/project config dirs into the
-/// process environment (keys already set in the OS env are left alone).
+/// Side effects: loads `secret.env` into the process environment (unset keys
+/// only) and renders `{{ env.* }}` / `{{ secret.* }}` in each YAML layer.
 pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, LoadError> {
     let paths = ConfigPaths::discover();
 
-    let injected = super::secret_env::load_secret_env_files(&paths);
+    let (secrets, injected) = super::secret_env::load_secret_env_files(&paths);
     if injected > 0 {
         tracing::debug!(
             target: "xylitol::config",
@@ -50,67 +56,59 @@ pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, Lo
         );
     }
 
-    // Load all config levels into serde_json::Value, rendering templates.
     let mut merged = Value::Null;
 
-    // Level 1: global base
     let global_base = paths.global_dir.join("config.yaml");
     if global_base.exists() {
-        let val = load_and_render(&global_base, &paths)?;
+        let val = load_and_render(&global_base, &secrets)?;
         deep_merge(&mut merged, val);
     }
 
-    // Level 2: global local
     let global_local = paths.global_dir.join("config.local.yaml");
     if global_local.exists() {
-        let val = load_and_render(&global_local, &paths)?;
+        let val = load_and_render(&global_local, &secrets)?;
         deep_merge(&mut merged, val);
     }
 
-    // Level 3: project base
     if let Some(ref proj_dir) = paths.project_dir {
         let proj_base = proj_dir.join("config.yaml");
         if proj_base.exists() {
-            let val = load_and_render(&proj_base, &paths)?;
+            let val = load_and_render(&proj_base, &secrets)?;
             deep_merge(&mut merged, val);
         }
 
-        // Level 4: project local
         let proj_local = proj_dir.join("config.local.yaml");
         if proj_local.exists() {
-            let val = load_and_render(&proj_local, &paths)?;
+            let val = load_and_render(&proj_local, &secrets)?;
             deep_merge(&mut merged, val);
         }
     }
 
-    // Level 5: CLI --config
     if let Some(cli_path) = cli_config
         && cli_path.exists()
     {
-        let val = load_and_render(cli_path, &paths)?;
+        let val = load_and_render(cli_path, &secrets)?;
         deep_merge(&mut merged, val);
     }
 
-    // If no config was loaded at all, use default AppConfig.
     if merged.is_null() {
         return Ok(AppConfig::default());
     }
 
-    // Deserialize to AppConfig.
     let config: AppConfig = serde_json::from_value(merged)?;
-
     Ok(config)
 }
 
-/// Load a YAML file, render templates, and parse to `serde_json::Value`.
-fn load_and_render(path: &Path, _paths: &ConfigPaths) -> Result<Value, LoadError> {
+fn load_and_render(path: &Path, secrets: &SecretMap) -> Result<Value, LoadError> {
     let raw = std::fs::read_to_string(path).map_err(|e| LoadError::Io {
         path: path.to_string_lossy().to_string(),
         source: e,
     })?;
 
-    // Parse YAML directly (template/secret resolution removed — use env vars via the shell).
-    let value: Value = yaml_serde::from_str(&raw).map_err(|e| LoadError::Yaml {
+    let rendered = super::template::render_config_template(&raw, path, secrets)
+        .map_err(LoadError::Template)?;
+
+    let value: Value = yaml_serde::from_str(&rendered).map_err(|e| LoadError::Yaml {
         path: path.to_string_lossy().to_string(),
         source: e,
     })?;
@@ -119,11 +117,6 @@ fn load_and_render(path: &Path, _paths: &ConfigPaths) -> Result<Value, LoadError
 }
 
 /// Deep-merge `overlay` into `base` (mutates `base`).
-///
-/// Rules:
-/// - `Value::Object`: recursive merge, latter keys override earlier.
-/// - `Value::Array`: overlay replaces base (default).
-/// - Scalar values: overlay replaces base.
 pub(crate) fn deep_merge(base: &mut Value, overlay: Value) {
     match (base, overlay) {
         (base @ &mut Value::Object(_), Value::Object(map)) => {
@@ -138,14 +131,9 @@ pub(crate) fn deep_merge(base: &mut Value, overlay: Value) {
                 }
             }
         }
-        // For arrays and scalars, overlay replaces base.
         (base, overlay) => *base = overlay,
     }
 }
-
-// ---------------------------------------------------------------------------
-// Business rules on AppConfig
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
