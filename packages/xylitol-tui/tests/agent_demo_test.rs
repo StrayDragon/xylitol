@@ -1150,6 +1150,75 @@ fn agent_demo_plate_narrow_clamp_opens_settings_search() {
 }
 
 #[test]
+fn agent_demo_command_plate_echoes_filter() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )));
+    app.borrow_mut().freeze_script_for_test();
+    let mut h = TuiTestHarness::new(100, 36);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h.render_result().expect("initial");
+    h.keys("\x10trunc");
+    h.render_result().expect("filtered plate");
+    let viewport = h.tui.terminal.viewport().join("\n");
+    assert!(
+        viewport.contains("Command Plate") && viewport.contains("> trunc"),
+        "plate should echo typed filter; got:\n{viewport}"
+    );
+}
+
+#[test]
+fn agent_demo_plate_lib_atoms_open_editor_slots() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let cases = [
+        ("truncated\r", "TruncatedText", None),
+        ("panel\r", "Panel", None),
+        ("cancellable\r", "CancellableLoader", Some("\x1b")),
+    ];
+
+    for (filter, needle, extra) in cases {
+        let app = Rc::new(RefCell::new(FakeCodingAgentApp::new_with_prompt(
+            Arc::new(AtomicBool::new(false)),
+            "",
+        )));
+        app.borrow_mut().freeze_script_for_test();
+        let mut h = TuiTestHarness::new(100, 36);
+        h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+            .focus(Some(0));
+        h.render_result().expect("initial");
+        h.keys(&format!("\x10{filter}"));
+        h.render_result().expect("after plate");
+        let viewport = h.tui.terminal.viewport().join("\n");
+        assert!(
+            viewport.contains(needle),
+            "plate filter `{filter}` should open `{needle}` slot; got:\n{viewport}"
+        );
+        if let Some(keys) = extra {
+            h.keys(keys);
+            h.render_result().expect("after atom action");
+            let after = h.tui.terminal.scroll_buffer().join("\n");
+            if keys == "\x1b" {
+                assert!(
+                    after.contains("on_abort") || after.contains("aborted"),
+                    "Esc should fire CancellableLoader on_abort; got:\n{after}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn agent_demo_seed_tool_blocks_use_status_background_tints() {
     use agent_demo_example::ToolBlockStatus;
 

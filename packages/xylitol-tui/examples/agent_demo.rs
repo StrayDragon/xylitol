@@ -21,13 +21,13 @@ use xylitol_tui::components::settings_list::{
 };
 use xylitol_tui::keybindings::{KeybindingsManager, create_default_definitions, set_keybindings};
 use xylitol_tui::{
-    Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme, ExpandableOutputOptions,
-    Focusable, Input, InputEvent, InputListenerResult, Markdown, MarkdownTheme, SystemClock, TUI,
-    TerminalColorScheme, ThemeDetectSources, TreeNode, TreeSelector, TreeSelectorOptions,
-    TreeSelectorTheme, TruncateFrom, apply_background_to_line, highlight_code, matches_key_event,
-    parse_osc11_background_color, printable_from_key_event, render_diff_lines,
-    render_expandable_output, resolve_terminal_color_scheme, truncate_to_width, visible_width,
-    wrap_text_with_ansi,
+    CancellableLoader, Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme,
+    ExpandableOutputOptions, Focusable, Input, InputEvent, InputListenerResult, Markdown,
+    MarkdownTheme, Panel, SystemClock, TUI, TerminalColorScheme, Text, ThemeDetectSources,
+    TreeNode, TreeSelector, TreeSelectorOptions, TreeSelectorTheme, TruncateFrom, TruncatedText,
+    apply_background_to_line, highlight_code, matches_key_event, parse_osc11_background_color,
+    printable_from_key_event, render_diff_lines, render_expandable_output,
+    resolve_terminal_color_scheme, truncate_to_width, visible_width, wrap_text_with_ansi,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
@@ -183,6 +183,21 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
         id: "narrow-clamp",
         label: "Narrow width clamp (widgets)",
         description: "Settings/Input/Loader empty+narrow — library reference",
+    },
+    DemoPlateItem {
+        id: "truncated-text",
+        label: "TruncatedText atom",
+        description: "Single-line ellipsis + padding — library reference",
+    },
+    DemoPlateItem {
+        id: "cancellable-loader",
+        label: "CancellableLoader atom",
+        description: "Esc aborts spinner — library reference",
+    },
+    DemoPlateItem {
+        id: "panel",
+        label: "Panel atom (Box)",
+        description: "Padding + background around children — library reference",
     },
     DemoPlateItem {
         id: "tool-tints",
@@ -975,6 +990,14 @@ impl Component for SharedFakeCodingAgentApp {
     }
 }
 
+/// Library-atom showcases that replace the editor slot (like Settings / plate).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LibAtomKind {
+    TruncatedText,
+    CancellableLoader,
+    Panel,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Role {
     User,
@@ -1135,6 +1158,12 @@ pub struct FakeCodingAgentApp {
     palette_filter: String,
     settings_open: bool,
     settings: SettingsList,
+    /// Library-atom editor-slot showcase (TruncatedText / CancellableLoader / Panel / Overlay).
+    lib_atom: Option<LibAtomKind>,
+    /// Live spinner for `LibAtomKind::CancellableLoader` (Esc aborts).
+    atom_loader: Option<CancellableLoader>,
+    /// Built once when opening `LibAtomKind::Panel`.
+    atom_panel: Option<Panel>,
     /// Double-Esc session tree (c454/c456).
     tree_open: bool,
     tree: TreeSelector,
@@ -1340,6 +1369,15 @@ impl FakeCodingAgentApp {
             self.settings_open = false;
             return true;
         }
+        // CancellableLoader Esc is handled in handle_input (component on_abort).
+        if matches!(self.lib_atom, Some(LibAtomKind::CancellableLoader)) {
+            return false;
+        }
+        if self.lib_atom.is_some() {
+            self.close_lib_atom();
+            self.set_status("Ready");
+            return true;
+        }
         if self.active_stream_entry.is_some() || !self.scheduled_actions.is_empty() {
             self.abort_active_stream();
             return true;
@@ -1363,6 +1401,7 @@ impl FakeCodingAgentApp {
     pub fn open_session_tree(&mut self) {
         self.palette_open = false;
         self.settings_open = false;
+        self.close_lib_atom();
         self.tree_filter = SessionTreeFilter::Default;
         self.tree_label_edit = None;
         self.tree = demo_tree_selector(
@@ -1378,6 +1417,61 @@ impl FakeCodingAgentApp {
         self.tree_open = false;
         self.tree_label_edit = None;
         self.set_status("Ready");
+    }
+
+    fn close_lib_atom(&mut self) {
+        self.lib_atom = None;
+        self.atom_loader = None;
+        self.atom_panel = None;
+    }
+
+    fn open_lib_atom(&mut self, kind: LibAtomKind) {
+        self.palette_open = false;
+        self.settings_open = false;
+        self.tree_open = false;
+        self.tree_label_edit = None;
+        self.close_lib_atom();
+        self.lib_atom = Some(kind);
+        match kind {
+            LibAtomKind::CancellableLoader => {
+                let mut loader = CancellableLoader::new(
+                    Box::new(cyan),
+                    Box::new(dim),
+                    "working — Esc aborts".into(),
+                    // Full braille cycle (10 frames). A truncated prefix looks like
+                    // the spinner only completes half a turn.
+                    Some(LoaderIndicatorOptions::default()),
+                );
+                loader.on_abort = Some(Box::new(|| {}));
+                self.atom_loader = Some(loader);
+                self.set_status("CancellableLoader · Esc abort");
+            }
+            LibAtomKind::Panel => {
+                let mut panel = Panel::new(
+                    2,
+                    1,
+                    Some(Box::new(|s: &str| {
+                        // surface-container-ish (DESIGN dark)
+                        format!("\x1b[48;2;49;50;68m{s}\x1b[49m")
+                    })),
+                );
+                panel.add_child(Box::new(Text::new(
+                    "Panel · padding + background".into(),
+                    0,
+                    0,
+                )));
+                panel.add_child(Box::new(Text::new(
+                    "children inherit content width".into(),
+                    0,
+                    0,
+                )));
+                self.atom_panel = Some(panel);
+                self.set_status("Panel · Esc closes");
+            }
+            LibAtomKind::TruncatedText => {
+                self.set_status("TruncatedText · Esc closes");
+            }
+        }
     }
 
     fn history_entry_for(&self, id: &str) -> Option<TranscriptEntry> {
@@ -1922,6 +2016,9 @@ impl FakeCodingAgentApp {
             palette_filter: String::new(),
             settings_open: false,
             settings,
+            lib_atom: None,
+            atom_loader: None,
+            atom_panel: None,
             tree_open: false,
             tree: demo_tree_selector(sample_session_tree(), "u2", SessionTreeFilter::Default),
             tree_filter: SessionTreeFilter::Default,
@@ -2042,7 +2139,8 @@ impl FakeCodingAgentApp {
             Role::System,
             "stream plate: md-full · stream-rust/python/typescript/json · diff-sbs · \
              completion-dollar (c545 $) · expandable-head (c550) · playground-sync (c555) · \
-             md-list-wrap · narrow-clamp · tree (c560) · tool-tints · help-keys · tests · compact",
+             md-list-wrap · narrow-clamp · truncated-text · cancellable-loader · panel · \
+             tree (c560) · tool-tints · help-keys · tests · compact",
         );
         self.set_status("Ready");
     }
@@ -2168,8 +2266,39 @@ impl FakeCodingAgentApp {
         );
         self.palette_open = false;
         self.tree_open = false;
+        self.close_lib_atom();
         self.settings_open = true;
         self.set_status("Settings · type zzz for no-match · Esc closes");
+    }
+
+    fn inject_truncated_text_atom(&mut self) {
+        self.push_message(Role::User, "plate · truncated-text · atom");
+        self.push_message(
+            Role::System,
+            "Library reference: TruncatedText keeps a single line, pads, and ellipsizes to the \
+             width budget. Playground: slot Atoms (key 9). Esc closes this slot.",
+        );
+        self.open_lib_atom(LibAtomKind::TruncatedText);
+    }
+
+    fn inject_cancellable_loader_atom(&mut self) {
+        self.push_message(Role::User, "plate · cancellable-loader · atom");
+        self.push_message(
+            Role::System,
+            "Library reference: CancellableLoader ticks like Loader; Esc matches \
+             `tui.select.cancel` and fires `on_abort`. Playground: slot Atoms (key 9).",
+        );
+        self.open_lib_atom(LibAtomKind::CancellableLoader);
+    }
+
+    fn inject_panel_atom(&mut self) {
+        self.push_message(Role::User, "plate · panel · atom");
+        self.push_message(
+            Role::System,
+            "Library reference: Panel (pi Box) pads children and paints an optional background on \
+             every line. Playground: slot Atoms (key 9). Esc closes.",
+        );
+        self.open_lib_atom(LibAtomKind::Panel);
     }
 
     fn inject_diff_showcase(&mut self) {
@@ -2264,6 +2393,9 @@ impl FakeCodingAgentApp {
             "playground-sync" => self.inject_playground_sync_tip(),
             "md-list-wrap" => self.inject_md_list_wrap_showcase(),
             "narrow-clamp" => self.inject_narrow_clamp_showcase(),
+            "truncated-text" => self.inject_truncated_text_atom(),
+            "cancellable-loader" => self.inject_cancellable_loader_atom(),
+            "panel" => self.inject_panel_atom(),
             "tool-tints" => self.inject_tool_tint_showcase(),
             "tree" => {
                 self.push_message(Role::User, "plate · tree · c560");
@@ -2277,6 +2409,7 @@ impl FakeCodingAgentApp {
                 self.tree_open = true;
                 self.palette_open = false;
                 self.settings_open = false;
+                self.close_lib_atom();
                 self.set_status("Session tree · c560 empty/selection");
             }
             "help-keys" => self.inject_help_keys(),
@@ -3381,6 +3514,9 @@ impl FakeCodingAgentApp {
         if self.settings_open {
             return self.render_settings_slot(width);
         }
+        if let Some(kind) = self.lib_atom {
+            return self.render_lib_atom_slot(width, kind);
+        }
         self.sync_editor_border();
         self.input
             .render(width)
@@ -3424,7 +3560,16 @@ impl FakeCodingAgentApp {
     fn render_palette_slot(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
         lines.push(Self::fit(&bold(" Command Plate"), width));
-        lines.push(Self::fit(&dim(" Up/Down  Enter run  Esc close"), width));
+        lines.push(Self::fit(
+            &dim(" Type to filter · Up/Down  Enter run  Esc close"),
+            width,
+        ));
+        let filter_echo = if self.palette_filter.is_empty() {
+            format!("{}{}", dim("> "), cyan("█"))
+        } else {
+            format!("{}{}{}", dim("> "), self.palette_filter, cyan("█"))
+        };
+        lines.push(Self::fit(&filter_echo, width));
         for line in self.palette.render(width) {
             lines.push(Self::fit(&line, width));
         }
@@ -3440,6 +3585,55 @@ impl FakeCodingAgentApp {
         }
         lines
     }
+
+    fn render_lib_atom_slot(&mut self, width: usize, kind: LibAtomKind) -> Vec<String> {
+        let mut lines = Vec::new();
+        match kind {
+            LibAtomKind::TruncatedText => {
+                lines.push(Self::fit(&bold(" TruncatedText"), width));
+                lines.push(Self::fit(
+                    &dim(" single-line · ellipsis · padding · Esc close"),
+                    width,
+                ));
+                let long = "packages/xylitol-tui/examples/agent_demo.rs · very-long-identifier-for-ellipsis";
+                let mut full = TruncatedText::new(long.into(), 1, 0);
+                for line in full.render(width) {
+                    lines.push(Self::fit(&line, width));
+                }
+                let narrow = width.min(36).max(12);
+                lines.push(Self::fit(&dim(&format!(" @width={narrow}")), width));
+                let mut clipped = TruncatedText::new(long.into(), 0, 0);
+                for line in clipped.render(narrow) {
+                    lines.push(Self::fit(&line, width));
+                }
+            }
+            LibAtomKind::CancellableLoader => {
+                lines.push(Self::fit(&bold(" CancellableLoader"), width));
+                lines.push(Self::fit(
+                    &dim(" Esc → tui.select.cancel → on_abort · Esc closes slot"),
+                    width,
+                ));
+                if let Some(ref mut loader) = self.atom_loader {
+                    for line in loader.render(width) {
+                        lines.push(Self::fit(&line, width));
+                    }
+                }
+            }
+            LibAtomKind::Panel => {
+                lines.push(Self::fit(&bold(" Panel (pi Box)"), width));
+                lines.push(Self::fit(
+                    &dim(" padding_x/y + optional bg on every line · Esc close"),
+                    width,
+                ));
+                if let Some(ref mut panel) = self.atom_panel {
+                    for line in panel.render(width) {
+                        lines.push(Self::fit(&line, width));
+                    }
+                }
+            }
+        }
+        lines
+    }
 }
 
 impl Component for FakeCodingAgentApp {
@@ -3452,25 +3646,27 @@ impl Component for FakeCodingAgentApp {
         }
         lines.extend(self.render_editor_slot(width));
         let footer_owned;
-        let footer_ref = if self.palette_open || self.settings_open || self.tree_open {
-            "esc close · ↑↓ · Enter"
-        } else {
-            let queue_hint = match (self.steer_queue.len(), self.follow_up_queue.len()) {
-                (0, 0) => String::new(),
-                (s, 0) => format!(" · steer:{s}"),
-                (0, f) => format!(" · follow-up:{f}"),
-                (s, f) => format!(" · steer:{s} follow-up:{f}"),
+        let footer_ref =
+            if self.palette_open || self.settings_open || self.tree_open || self.lib_atom.is_some()
+            {
+                "esc close · ↑↓ · Enter"
+            } else {
+                let queue_hint = match (self.steer_queue.len(), self.follow_up_queue.len()) {
+                    (0, 0) => String::new(),
+                    (s, 0) => format!(" · steer:{s}"),
+                    (0, f) => format!(" · follow-up:{f}"),
+                    (s, f) => format!(" · steer:{s} follow-up:{f}"),
+                };
+                // Compact cue strip — full list is in the seed system line.
+                footer_owned = format!(
+                    // c535 pad4: metadata only — chords live in /help / plate help-keys.
+                    "{} · {} · {}{queue_hint}",
+                    self.footer_note,
+                    self.theme_label(),
+                    self.glyph_set.label()
+                );
+                footer_owned.as_str()
             };
-            // Compact cue strip — full list is in the seed system line.
-            footer_owned = format!(
-                // c535 pad4: metadata only — chords live in /help / plate help-keys.
-                "{} · {} · {}{queue_hint}",
-                self.footer_note,
-                self.theme_label(),
-                self.glyph_set.label()
-            );
-            footer_owned.as_str()
-        };
         lines.push(Self::fit(&self.muted_paint(footer_ref), width));
         lines
             .into_iter()
@@ -3493,6 +3689,23 @@ impl Component for FakeCodingAgentApp {
 
         if matches_key_event(key, "ctrl+c") {
             self.on_ctrl_c();
+            return;
+        }
+
+        if matches!(self.lib_atom, Some(LibAtomKind::CancellableLoader))
+            && matches_key_event(key, "escape")
+        {
+            if let Some(ref mut loader) = self.atom_loader {
+                loader.handle_input(InputEvent::Key(*key));
+                if loader.aborted() {
+                    self.push_message(
+                        Role::System,
+                        "CancellableLoader · on_abort fired (Esc → tui.select.cancel)",
+                    );
+                    self.close_lib_atom();
+                    self.set_status("Ready");
+                }
+            }
             return;
         }
 
@@ -3588,6 +3801,11 @@ impl Component for FakeCodingAgentApp {
                             | "stream-typescript"
                             | "stream-json"
                             | "tree"
+                            | "narrow-clamp"
+                            | "truncated-text"
+                            | "cancellable-loader"
+                            | "panel"
+                            | "md-list-wrap"
                     ) {
                         self.advance_script();
                     }
@@ -3614,9 +3832,15 @@ impl Component for FakeCodingAgentApp {
             return;
         }
 
+        if self.lib_atom.is_some() {
+            // Atoms own the editor slot; printable must not leak into Editor.
+            return;
+        }
+
         if matches_key_event(key, "ctrl+p") {
             self.palette_open = true;
             self.settings_open = false;
+            self.close_lib_atom();
             self.palette_filter.clear();
             self.palette.set_filter("");
             return;
@@ -3624,6 +3848,7 @@ impl Component for FakeCodingAgentApp {
         if matches_key_event(key, "ctrl+s") {
             self.settings_open = true;
             self.palette_open = false;
+            self.close_lib_atom();
             return;
         }
         if matches_key_event(key, "ctrl+o") {
@@ -3669,6 +3894,14 @@ impl Component for FakeCodingAgentApp {
             && self.last_tick_at.elapsed().as_millis() >= self.loader.interval_ms() as u128
         {
             self.loader.tick();
+            self.last_tick_at = Instant::now();
+            changed = true;
+        }
+
+        if let Some(ref mut loader) = self.atom_loader
+            && self.last_tick_at.elapsed().as_millis() >= loader.interval_ms() as u128
+        {
+            loader.tick();
             self.last_tick_at = Instant::now();
             changed = true;
         }

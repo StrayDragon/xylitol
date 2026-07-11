@@ -88,6 +88,7 @@
 | done | `MarkdownOptions` 死字段删除；list/table/quote 单次折行（`prewrapped`） | `polish/tui-components` 跟进 |
 | done | SelectList/Settings/Loader/Input 窄宽 clamp + 空态 | SelectList 已有；Settings/Loader/Input 补齐 |
 | done | playground Widgets 槽 + MD 列表格；demo plate `md-list-wrap` / `narrow-clamp` | 库用户运行时参考 |
+| done | TruncatedText / Panel / CancellableLoader：playground Atoms + demo plates；Command Plate 过滤回显 | Overlay 确认用内联槽，不设 overlay-confirm plate |
 | 低摩擦 | 补回 `_prompts/track-p-tui-polish.md`（链接现缺文件） | 可选 |
 
 ### 已锁定产品决议（demo 应对齐）

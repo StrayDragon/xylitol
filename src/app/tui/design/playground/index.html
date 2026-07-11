@@ -535,10 +535,15 @@
       <!-- 7 overlay -->
       <section class="panel" id="panel-overlay" data-id="overlay">
         <h2>Overlay</h2>
-        <p class="spec"><a href="../overlay.md">overlay.md</a> · 短确认进出</p>
+        <p class="spec">
+          <a href="../overlay.md">overlay.md</a> · 短确认 · OverlayHandle（harness）·
+          demo 确认类交互优先 <strong>editor 槽内联</strong>（tree / settings / plate），不做假浮层 plate
+        </p>
         <div class="ctl">
-          <button type="button" id="ov-toggle" aria-pressed="true">显示确认框</button>
-          <span class="hint">Esc / N / Y · 非仪表盘</span>
+          <button type="button" class="chip-btn" data-ov="shown" aria-pressed="true">shown+focus</button>
+          <button type="button" class="chip-btn" data-ov="unfocus" aria-pressed="false">shown+unfocus</button>
+          <button type="button" class="chip-btn" data-ov="hidden" aria-pressed="false">hidden</button>
+          <span class="hint">OverlayHandle · hide / focus / unfocus · Esc / N / Y</span>
         </div>
         <div class="overlay-demo">
           <div class="dim-bg">… scrollback 在后 …</div>
@@ -548,6 +553,7 @@
             <div class="actions">
               <span class="yes">[Y] yes</span> · <span>[N] no / Esc</span>
             </div>
+            <div class="fg-muted" id="ov-focus-hint" style="font-size:11px;margin-top:0.35rem">focused · 输入进 overlay</div>
           </div>
         </div>
       </section>
@@ -590,6 +596,50 @@
           </div>
         </div>
       </section>
+
+      <!-- 9 atoms: TruncatedText / Panel / CancellableLoader -->
+      <section class="panel" id="panel-atoms" data-id="atoms">
+        <h2>Atoms · TruncatedText / Panel / CancellableLoader</h2>
+        <p class="spec">
+          库原子（已 port · 补运行时校验）·
+          <code>just demo-tui</code> → Ctrl+P →
+          <strong>truncated-text</strong> /
+          <strong>panel</strong> /
+          <strong>cancellable-loader</strong>
+        </p>
+        <div class="ctl">
+          <button type="button" class="chip-btn" data-atom="trunc" aria-pressed="true">TruncatedText</button>
+          <button type="button" class="chip-btn" data-atom="panel" aria-pressed="false">Panel</button>
+          <button type="button" class="chip-btn" data-atom="cloader" aria-pressed="false">CancellableLoader</button>
+        </div>
+        <div id="atoms-trunc" class="split">
+          <div class="col">
+            <div class="col-h">full width</div>
+            <div class="row fg-on"> packages/xylitol-tui/examples/agent_demo.rs · very-lo…</div>
+            <div class="row fg-muted" style="font-size:11px">single-line · ellipsis · padding</div>
+          </div>
+          <div class="col">
+            <div class="col-h">@width=36</div>
+            <div class="row fg-on">packages/xylitol-tui/exampl…</div>
+            <div class="row fg-muted" style="font-size:11px">同一组件 · 更窄预算</div>
+          </div>
+        </div>
+        <div id="atoms-panel" class="split hidden">
+          <div class="col" style="background:var(--surface-container,#313244);padding:0.55rem 0.75rem;border-radius:4px">
+            <div class="col-h">Panel (pi Box)</div>
+            <div class="row fg-on">Panel · padding + background</div>
+            <div class="row fg-on">children inherit content width</div>
+            <div class="row fg-muted" style="font-size:11px;margin-top:0.25rem">padding_x/y · optional bg 每行</div>
+          </div>
+        </div>
+        <div id="atoms-cloader" class="split hidden">
+          <div class="col">
+            <div class="col-h">CancellableLoader</div>
+            <div class="row"><span class="fg-accent">⠋</span> <span class="fg-muted">working — Esc aborts</span></div>
+            <div class="row fg-muted" style="font-size:11px">Esc → tui.select.cancel → on_abort</div>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -610,6 +660,7 @@
       { id: "chrome", label: "Chrome", key: "6" },
       { id: "overlay", label: "Overlay", key: "7" },
       { id: "widgets", label: "Widgets narrow/empty", key: "8" },
+      { id: "atoms", label: "Atoms trunc/panel/loader", key: "9" },
     ];
 
     const THINK_CHUNKS = [
@@ -635,8 +686,9 @@
       md: { streaming: false, line: 0 },
       layout: { busy: true, steer: false, tree: false },
       chrome: "ok",
-      overlay: true,
+      overlay: "shown",
       widget: "empty",
+      atom: "trunc",
     };
 
     const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -1002,20 +1054,33 @@
     /* —— overlay —— */
     function renderOverlay() {
       const box = document.getElementById("ov-box");
-      document.getElementById("ov-toggle").setAttribute("aria-pressed", String(state.overlay));
-      if (state.overlay) {
-        box.classList.remove("hidden");
-        requestAnimationFrame(() => box.classList.remove("is-out"));
-      } else {
+      const hint = document.getElementById("ov-focus-hint");
+      const mode = state.overlay;
+      document.querySelectorAll("[data-ov]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.ov === mode));
+      });
+      if (mode === "hidden") {
         box.classList.add("is-out");
         setTimeout(() => {
-          if (!state.overlay) box.classList.add("hidden");
+          if (state.overlay === "hidden") box.classList.add("hidden");
         }, 180);
+        return;
+      }
+      box.classList.remove("hidden");
+      requestAnimationFrame(() => box.classList.remove("is-out"));
+      if (mode === "unfocus") {
+        box.style.opacity = "0.55";
+        hint.textContent = "unfocused · 输入回 root（OverlayHandle::unfocus）";
+      } else {
+        box.style.opacity = "1";
+        hint.textContent = "focused · 输入进 overlay（OverlayHandle::focus）";
       }
     }
-    document.getElementById("ov-toggle").addEventListener("click", () => {
-      state.overlay = !state.overlay;
-      renderOverlay();
+    document.querySelectorAll("[data-ov]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.overlay = b.dataset.ov;
+        renderOverlay();
+      });
     });
 
     function renderWidgets() {
@@ -1036,6 +1101,24 @@
       });
     });
 
+    function renderAtoms() {
+      const trunc = document.getElementById("atoms-trunc");
+      const panel = document.getElementById("atoms-panel");
+      const cloader = document.getElementById("atoms-cloader");
+      trunc.classList.toggle("hidden", state.atom !== "trunc");
+      panel.classList.toggle("hidden", state.atom !== "panel");
+      cloader.classList.toggle("hidden", state.atom !== "cloader");
+      document.querySelectorAll("[data-atom]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.atom === state.atom));
+      });
+    }
+    document.querySelectorAll("[data-atom]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.atom = b.dataset.atom;
+        renderAtoms();
+      });
+    });
+
     /* —— keys —— */
     document.addEventListener("keydown", (e) => {
       if (e.target.matches("input, textarea")) return;
@@ -1048,7 +1131,7 @@
       } else if (e.key === "ArrowRight" || e.key === "]") {
         select(state.index + 1);
         e.preventDefault();
-      } else if (/^[1-8]$/.test(e.key)) {
+      } else if (/^[1-9]$/.test(e.key)) {
         select(Number(e.key) - 1);
         e.preventDefault();
       } else if ((e.key === "e" || e.key === "E") && e.altKey) {
@@ -1070,8 +1153,11 @@
         }
         e.preventDefault();
       } else if (e.key === "Escape" || e.key === "n" || e.key === "N" || e.key === "y" || e.key === "Y") {
-        if (state.overlay && (SLOTS[state.index].id === "overlay" || state.mode === "tile")) {
-          state.overlay = false;
+        if (
+          state.overlay !== "hidden" &&
+          (SLOTS[state.index].id === "overlay" || state.mode === "tile")
+        ) {
+          state.overlay = "hidden";
           renderOverlay();
           e.preventDefault();
         }
@@ -1095,6 +1181,7 @@
     renderLayout();
     renderChrome();
     renderWidgets();
+    renderAtoms();
     applyMode();
     applySlot({ jump: true, instant: true });
     // overlay after first paint

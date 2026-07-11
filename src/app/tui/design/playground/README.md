@@ -29,7 +29,7 @@ Markdown 槽示意 MUST 对齐 [`../markdown.md`](../markdown.md)：无 `#` 标�
 |---|---|
 | **左侧 tab 点击** | 选中该槽并 **滚动跳转到对应面板**（平铺/专注均生效） |
 | 平铺 / 专注 · `t` | 全槽一页 vs 只看当前槽 |
-| `1`–`8` · `←→` | 选槽并跳转 |
+| `1`–`9` · `←→` | 选槽并跳转 |
 | 深链 | `?slot=widgets&mode=focus`（会写入 URL） |
 
 ## 槽内动态
@@ -41,8 +41,9 @@ Markdown 槽示意 MUST 对齐 [`../markdown.md`](../markdown.md)：无 `#` 标�
 | Markdown | 强调样式（已落地 B 色+字重）· 嵌套列表悬挂缩进 · 假流式逐行 |
 | Layout | busy↔idle · steer 提示 · 双 Esc 会话树替换 editor |
 | Chrome | 一处 accent ✓ vs 多处 ✗ · user / fg |
-| Overlay | 确认框显隐（短过渡）· Esc/N/Y |
-| Widgets | Select/Settings 空态 · Input/Loader 窄宽（对照 `agent_demo` plate `narrow-clamp`） |
+| Overlay | 确认框 shown+focus / unfocus / hidden · Esc/N/Y（引擎 OverlayHandle；demo 用内联槽） |
+| Widgets | Select/Settings 空态 · Input/Loader 窄宽（对照 `narrow-clamp`） |
+| Atoms | TruncatedText · Panel · CancellableLoader（对照同名 plate） |
 
 目标：改 DESIGN 或 MUST 时，先在此获得最快视觉反馈，再落地包组件 / demo。
 
@@ -53,6 +54,9 @@ Markdown 槽示意 MUST 对齐 [`../markdown.md`](../markdown.md)：无 `#` 标�
 ```bash
 just demo-tui
 # Ctrl+P → md-list-wrap   嵌套列表 / 悬挂缩进（单次折行）
-# Ctrl+P → narrow-clamp   Settings 搜索空态 · Input/Loader 窄宽
-# /md                     完整 Markdown grammar stub
+# Ctrl+P → narrow-clamp          Settings 搜索空态 · Input/Loader 窄宽
+# Ctrl+P → truncated-text        TruncatedText 单行省略
+# Ctrl+P → panel                 Panel padding+bg
+# Ctrl+P → cancellable-loader    Esc → on_abort（完整 braille 转圈）
+# /md                            完整 Markdown grammar stub
 ```
