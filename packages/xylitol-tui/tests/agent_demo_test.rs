@@ -770,6 +770,17 @@ fn agent_demo_seed_markdown_showcase_c530() {
         "task list checkboxes must stay inline:\n{text}"
     );
     assert!(
+        text.contains("2. 有序二项")
+            && text.contains("嵌套无序 A")
+            && text.contains("1. 再嵌套有序")
+            && text.contains("链接 (https://example.com/list)"),
+        "nested lists + ordered link item must not flatten:\n{text}"
+    );
+    assert!(
+        !text.contains("有序二项嵌套无序") && !text.lines().any(|l| l.trim() == "链接"),
+        "list nesting/link must not mash or isolate label:\n{text}"
+    );
+    assert!(
         !text.contains('┌') && !text.lines().any(|l| l.contains("```")),
         "no box-drawing table or fence chrome:\n{text}"
     );

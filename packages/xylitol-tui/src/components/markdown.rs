@@ -482,9 +482,31 @@ fn collect_inline_until(
                 *idx += 1;
             }
             Event::SoftBreak | Event::HardBreak => {
+                // Leave break for the caller when a nested block follows (list /
+                // paragraph / …); otherwise SoftBreak would become a stray `\n`
+                // glued onto the parent item before `render_list` sees Start(List).
+                if next_is_block_start(events, *idx + 1) {
+                    break;
+                }
                 parts.push("\n".to_string());
                 *idx += 1;
             }
+            // Block starts belong to the caller (e.g. nested lists inside an
+            // Item). Never skip them — that used to flatten nesting into the
+            // parent bullet and scramble subsequent markers.
+            Event::Start(
+                Tag::List(_)
+                | Tag::Item
+                | Tag::Paragraph
+                | Tag::Heading { .. }
+                | Tag::CodeBlock(_)
+                | Tag::BlockQuote(_)
+                | Tag::Table(_)
+                | Tag::TableHead
+                | Tag::TableRow
+                | Tag::TableCell
+                | Tag::HtmlBlock,
+            ) => break,
             _ => *idx += 1,
         }
     }
@@ -506,6 +528,22 @@ fn collect_inline_until(
     }
 
     parts
+}
+
+fn next_is_block_start(events: &[Event], idx: usize) -> bool {
+    matches!(
+        events.get(idx),
+        Some(Event::Start(
+            Tag::List(_)
+                | Tag::Item
+                | Tag::Paragraph
+                | Tag::Heading { .. }
+                | Tag::CodeBlock(_)
+                | Tag::BlockQuote(_)
+                | Tag::Table(_)
+                | Tag::HtmlBlock,
+        ))
+    )
 }
 
 /// True empty after stripping CSI / OSC for label fallback.
@@ -677,7 +715,10 @@ fn render_list(
                         Event::Start(Tag::List(nested_start)) => {
                             *idx += 1;
                             let ns = nested_start.unwrap_or(1) as usize;
-                            let no = list_is_ordered(events, *idx);
+                            // Prefer pulldown's List(Some(n)) — item text is the
+                            // body only, so list_is_ordered (digit-prefix heuristic)
+                            // cannot see "1." for nested ordered lists.
+                            let no = nested_start.is_some() || list_is_ordered(events, *idx);
                             lines.extend(render_list(md, events, idx, depth + 1, width, no, ns));
                             rendered_any = true;
                             continue;
@@ -1313,6 +1354,50 @@ mod tests {
         assert!(
             rule.chars().filter(|c| *c == '─').count() <= 8,
             "hr should be short:\n{text}"
+        );
+    }
+
+    #[test]
+    fn nested_lists_keep_indent_and_ordered_markers() {
+        let src = "1. 有序一项\n2. 有序二项\n   - 嵌套无序 A\n   - 嵌套无序 B\n     1. 再嵌套有序\n3. 有序三项含 [链接](https://example.com/list) 与 `code`\n";
+        let mut md = Markdown::new(src.into(), 0, 0, identity_theme(), None, None);
+        // trim_end only — strip_ansi_for_empty().trim() would erase list indent.
+        let lines: Vec<String> = md
+            .render(48)
+            .iter()
+            .map(|l| l.trim_end().to_string())
+            .collect();
+        let text = lines.join("\n");
+
+        assert!(
+            lines.iter().any(|l| l == "1. 有序一项"),
+            "top-level item 1:\n{text}"
+        );
+        assert!(
+            lines.iter().any(|l| l == "2. 有序二项"),
+            "parent item must not swallow nested text:\n{text}"
+        );
+        assert!(
+            lines.iter().any(|l| l == "    - 嵌套无序 A"),
+            "nested unordered must indent:\n{text}"
+        );
+        assert!(
+            lines.iter().any(|l| l == "        1. 再嵌套有序"),
+            "nested ordered must keep 1. marker + deeper indent:\n{text}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.starts_with("3. 有序三项含 链接 (https://example.com/list)")),
+            "item 3 must keep link label+url on the bullet line:\n{text}"
+        );
+        assert!(
+            !lines.iter().any(|l| l.trim() == "链接"),
+            "link label must not be a lone wrapped line:\n{text}"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains('`') && l.contains("code")),
+            "trailing inline code must still render:\n{text}"
         );
     }
 }
