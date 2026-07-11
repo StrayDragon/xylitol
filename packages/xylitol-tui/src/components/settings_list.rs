@@ -199,11 +199,25 @@ impl Component for SettingsList {
 
 impl SettingsList {
     fn render_main_list(&self, width: usize, search_lines: &[String]) -> Vec<String> {
-        let mut lines = search_lines.to_vec();
+        let mut lines: Vec<String> = search_lines
+            .iter()
+            .map(|l| {
+                if visible_width(l) <= width {
+                    l.clone()
+                } else {
+                    truncate_to_width(l, width, "", false)
+                }
+            })
+            .collect();
         let display_indices = &self.filtered_indices;
 
         if self.items.is_empty() {
-            lines.push((self.theme.hint)("  No settings available"));
+            lines.push(truncate_to_width(
+                &(self.theme.hint)("  No settings available"),
+                width,
+                "",
+                false,
+            ));
             if self.search_enabled {
                 self.add_hint_line(&mut lines, width);
             }
@@ -278,12 +292,12 @@ impl SettingsList {
         // Scroll indicator.
         if start > 0 || end < display_indices.len() {
             let txt = format!("  ({}/{})", self.selected_index + 1, display_indices.len());
-            lines.push((self.theme.hint)(&truncate_to_width(
-                &txt,
-                width.saturating_sub(2),
+            lines.push(truncate_to_width(
+                &(self.theme.hint)(&txt),
+                width,
                 "",
                 false,
-            )));
+            ));
         }
 
         // Description.
@@ -293,8 +307,14 @@ impl SettingsList {
             && let Some(ref desc) = item.description
         {
             lines.push(String::new());
-            for line in wrap_text_with_ansi(desc, width.saturating_sub(4)) {
-                lines.push((self.theme.description)(&format!("  {}", line)));
+            let body_w = width.saturating_sub(2).max(1);
+            for line in wrap_text_with_ansi(desc, body_w) {
+                lines.push(truncate_to_width(
+                    &(self.theme.description)(&format!("  {line}")),
+                    width,
+                    "",
+                    false,
+                ));
             }
         }
 
@@ -628,5 +648,72 @@ mod tests {
         list.render(40); // poll_submenu_close fires, applies value, closes
         assert!(list.submenu.is_none());
         assert_eq!(list.items[0].current_value, "new");
+    }
+
+    #[test]
+    fn narrow_width_clamps_empty_and_rows() {
+        let mut empty = SettingsList::new(
+            vec![],
+            10,
+            default_theme(),
+            |_, _| {},
+            || {},
+            SettingsListOptions::default(),
+        );
+        for w in [0usize, 1, 8, 20] {
+            for line in empty.render(w) {
+                assert!(
+                    visible_width(&line) <= w,
+                    "empty list width={w}: visible {} > budget; line={line:?}",
+                    visible_width(&line)
+                );
+            }
+        }
+
+        let mut list = SettingsList::new(
+            vec![SettingItem {
+                id: "a".into(),
+                label: "x".repeat(40),
+                description: Some("y".repeat(60)),
+                current_value: "z".repeat(40),
+                values: None,
+                submenu: None,
+            }],
+            10,
+            default_theme(),
+            |_, _| {},
+            || {},
+            SettingsListOptions {
+                enable_search: true,
+                ..SettingsListOptions::default()
+            },
+        );
+        for w in [1usize, 8, 16, 32] {
+            for line in list.render(w) {
+                assert!(
+                    visible_width(&line) <= w,
+                    "rows width={w}: visible {} > budget; line={line:?}",
+                    visible_width(&line)
+                );
+            }
+        }
+
+        feed_char(&mut list, 'q');
+        feed_char(&mut list, 'q');
+        feed_char(&mut list, 'q');
+        for w in [1usize, 10, 18] {
+            for line in list.render(w) {
+                assert!(
+                    visible_width(&line) <= w,
+                    "no-match width={w}: visible {} > budget; line={line:?}",
+                    visible_width(&line)
+                );
+            }
+        }
+        let joined = list.render(40).join("\n");
+        assert!(
+            joined.contains("No matching"),
+            "filter miss should show empty hint:\n{joined}"
+        );
     }
 }
