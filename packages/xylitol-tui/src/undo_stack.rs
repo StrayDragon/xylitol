@@ -22,7 +22,6 @@ impl<T> UndoStack<T> {
         self.stack.pop()
     }
 
-    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.stack.clear();
     }
