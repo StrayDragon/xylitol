@@ -1,8 +1,9 @@
-//! OpenAI provider — wraps async-openai for chat completions + streaming.
+//! OpenAI Completions HTTP client — private detail for Chat Completions adapter.
 //!
-//! Delegates HTTP, SSE parsing, tool definitions, and error handling to
-//! the [`async_openai`] crate. Converts between xylitol's internal types
-//! (`AgentMessage` / `XyChunk`) and async-openai's chat types.
+//! Wraps [`async_openai`] for chat completions + streaming. Converts between
+//! xylitol's internal types (`AgentMessage` / `XyChunk`) and async-openai's chat
+//! types. Does **not** implement [`XyModel`](crate::runtime_protocol::XyModel);
+//! the public path is `OpenAiCompletionsAdapter` → `AdapterXyModel` (c505).
 
 use async_openai::{
     Client,
@@ -16,14 +17,13 @@ use async_openai::{
         CreateChatCompletionRequestArgs, FunctionCall, FunctionObject,
     },
 };
-use async_trait::async_trait;
 use futures::Stream;
 use serde_json::Value;
 
 use crate::domain::error::XyError;
-use crate::domain::message::XyStopReason;
+use crate::domain::message::{AgentMessage, AgentPart, XyStopReason, collect_text_parts};
 use crate::domain::types::{XyChunk, XyToolSchema};
-use crate::runtime_protocol::{XyModel, XyStream};
+use crate::runtime_protocol::XyStream;
 
 pub(crate) struct OpenAIProvider {
     client: Client<OpenAIConfig>,
@@ -40,15 +40,9 @@ impl OpenAIProvider {
             model,
         }
     }
-}
 
-#[async_trait]
-impl XyModel for OpenAIProvider {
-    fn name(&self) -> &str {
-        &self.model
-    }
-
-    async fn generate_stream(
+    /// Run a chat completion, returning a stream of [`XyChunk`]s.
+    pub(crate) async fn generate_stream(
         &self,
         messages: Vec<AgentMessage>,
         tools: &[XyToolSchema],
@@ -244,8 +238,6 @@ fn parse_nonstream_response(
 }
 
 // ── AgentMessage conversion ────────────────────────────────────
-
-use crate::domain::message::{AgentMessage, AgentPart, collect_text_parts};
 
 /// Convert a slice of [`AgentMessage`] values to OpenAI chat request
 /// messages.
