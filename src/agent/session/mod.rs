@@ -15,13 +15,10 @@ pub(crate) use crate::runtime_protocol::{XyEventSink, XySessionStore};
 
 mod bash;
 mod export;
-mod io;
-mod permission;
 mod queue;
 mod stats;
 mod trust;
 
-pub use self::io::SessionIO;
 pub use self::queue::{PendingMessageQueue, QueueMode};
 pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_usage};
 pub use self::trust::save_trust_decision;
@@ -62,11 +59,6 @@ pub struct Agent {
     hooks: AgentHooks,
     /// Tool execution mode for the current turn.
     tool_mode: XyToolExecutionMode,
-    /// Session persistence via the XySessionStore port. Held for the
-    /// ReAct loop to consume load_context/append_entry/exists; the loop
-    /// currently builds history inline (c185) and will migrate to this port.
-    #[allow(dead_code)]
-    session_io: SessionIO,
     /// System prompt to prepend to every turn.
     system_prompt: Option<String>,
     /// Current session ID.
@@ -89,9 +81,8 @@ pub struct Agent {
     /// Export/import collaborator. Holds the optional [`XyExportIo`] port.
     exporter: crate::agent::session::export::SessionExporter,
 
-    /// Permission gate collaborator. Holds the advisory [`XyPermission`]
-    /// engine consulted by the ReAct loop for tool routing.
-    permission: crate::agent::session::permission::PermissionGate,
+    /// Advisory permission port consulted by the ReAct loop for tool routing.
+    permission: Arc<dyn XyPermission>,
     /// Session store port — actively used by the ReAct loop.
     store: Arc<dyn XySessionStore>,
     /// Event sink port — actively used for lifecycle events.
@@ -132,7 +123,6 @@ impl Agent {
             tools: tool_registry,
             hooks: AgentHooks::empty(),
             tool_mode: XyToolExecutionMode::Sequential,
-            session_io: SessionIO::new(store.clone()),
             system_prompt: system_prompt.clone(),
             session_id: None,
             max_iterations,
@@ -156,7 +146,7 @@ impl Agent {
             exporter: crate::agent::session::export::SessionExporter::new(export_io),
             store,
             sink,
-            permission: crate::agent::session::permission::PermissionGate::new(permission),
+            permission,
             steer_queue: Arc::new(Mutex::new(PendingMessageQueue::new(steering_mode))),
             follow_up_queue: Arc::new(Mutex::new(PendingMessageQueue::new(follow_up_mode))),
         }
@@ -473,7 +463,7 @@ impl Agent {
 
     /// Set the permission port.
     pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>) {
-        self.permission.set(permission);
+        self.permission = permission;
     }
 
     // ── Session stats ────────────────────────────────────────────
@@ -534,7 +524,7 @@ impl Agent {
 
     /// Get a reference to the permission engine (injected at construction).
     pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission> {
-        self.permission.get()
+        self.permission.clone()
     }
 
     /// Abort any in-flight bash execution.

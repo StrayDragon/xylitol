@@ -2,11 +2,9 @@
 source: tests/agent_session_api_baseline.rs
 expression: "all_items.join(\"\\n\")"
 ---
-pub async fn append_entry( &self, session_id: &str, entry: serde_json::Value, ) -> Result<(), String>
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), String>
 pub async fn execute( &mut self, store: &dyn XySessionStore, session_id: Option<&str>, command: &str, exclude_from_context: bool, ) -> Result<XyBashResult, String>
 pub async fn execute_bash( &mut self, command: &str, exclude_from_context: bool, ) -> Result<crate::runtime_protocol::XyBashResult, String>
-pub async fn exists(&self, session_id: &str) -> bool
 pub async fn export_to_html( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
 pub async fn export_to_html( &self, store: &dyn XySessionStore, session_id: &str, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
 pub async fn export_to_jsonl( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
@@ -15,26 +13,36 @@ pub async fn fork_session(&self, at_entry_id: &str) -> Result<String, String>
 pub async fn get_session_stats(&self) -> Result<SessionStats, String>
 pub async fn import_from_jsonl( &self, store: &dyn XySessionStore, path: &std::path::Path, ) -> Result<String, String>
 pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String>
-pub async fn load_context(&self, session_id: &str) -> Result<Vec<AgentMessage>, String>
 pub async fn maybe_auto_compact(&self) -> Result<bool, String>
 pub async fn record_bash_result( &self, command: &str, result: &crate::runtime_protocol::XyBashResult, exclude_from_context: bool, session_id: Option<&str>, ) -> Result<(), String>
+pub enum QueueMode
 pub fn abort(&mut self)
 pub fn abort_bash(&mut self)
 pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, String>
+pub fn clear(&mut self)
+pub fn clear_follow_up_queue(&self)
+pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool)
+pub fn clear_steer_queue(&self)
 pub fn current_model(&self) -> Option<&XyModelMeta>
 pub fn cwd(&self) -> &str
+pub fn drain(&mut self) -> Vec<AgentMessage>
+pub fn enqueue(&mut self, message: AgentMessage)
 pub fn estimate_tokens(messages: &[crate::domain::message::AgentMessage]) -> u64
-pub fn get(&self) -> Arc<dyn XyPermission>
+pub fn follow_up(&self, message: impl Into<String>)
 pub fn get_context_usage(token_estimate: u64, context_window: u64, threshold: f64) -> ContextUsage
 pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission>
+pub fn has_items(&self) -> bool
+pub fn is_empty(&self) -> bool
+pub fn len(&self) -> usize
 pub fn max_iterations(&self) -> u32
+pub fn mode(&self) -> QueueMode
 pub fn model_registry(&self) -> &ModelRegistry
-pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dyn XySessionStore>, sink: Arc<dyn XyEventSink>, system_prompt: Option<String>, context_files: Vec<(String, String)>, append_system_prompt: Vec<String>, max_iterations: u32, compaction_threshold: f64, cwd: String, compaction_settings: Option<CompactionSettings>, model_builder: crate::runtime_protocol::XyModelBuilder, permission: Arc<dyn XyPermission>, bash_executor: Option<Arc<dyn XyBashExecutor>>, export_io: Option<Arc<dyn XyExportIo>>, ) -> Self
-pub fn new(engine: Arc<dyn XyPermission>) -> Self
+pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dyn XySessionStore>, sink: Arc<dyn XyEventSink>, system_prompt: Option<String>, context_files: Vec<(String, String)>, append_system_prompt: Vec<String>, max_iterations: u32, compaction_threshold: f64, cwd: String, compaction_settings: Option<CompactionSettings>, model_builder: crate::runtime_protocol::XyModelBuilder, permission: Arc<dyn XyPermission>, bash_executor: Option<Arc<dyn XyBashExecutor>>, export_io: Option<Arc<dyn XyExportIo>>, steering_mode: QueueMode, follow_up_mode: QueueMode, ) -> Self
 pub fn new(executor: Option<Arc<dyn XyBashExecutor>>) -> Self
 pub fn new(io: Option<Arc<dyn XyExportIo>>) -> Self
-pub fn new(store: Arc<dyn XySessionStore>) -> Self
+pub fn new(mode: QueueMode) -> Self
 pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, String>
+pub fn queue_stats(&self) -> (usize, usize)
 pub fn rebuild_system_prompt(&mut self)
 pub fn register_prompt_commands( &mut self, templates: &[crate::domain::resource_types::PromptTemplate], )
 pub fn render_html(session_id: &str, entries: &[SessionEntry]) -> String
@@ -43,24 +51,24 @@ pub fn replace_hooks(&mut self, hooks: AgentHooks)
 pub fn save_trust_decision( cwd: &str, trust_store: &dyn XyTrustStore, trusted: bool, ) -> Result<bool, String>
 pub fn select_model(&mut self, model_id: &str) -> Result<(), String>
 pub fn session_id(&self) -> Option<&str>
-pub fn set(&mut self, engine: Arc<dyn XyPermission>)
+pub fn set_mode(&mut self, mode: QueueMode)
 pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>)
 pub fn set_session(&mut self, session_id: String)
 pub fn set_system_prompt(&mut self, prompt: Option<String>)
 pub fn set_thinking_level(&mut self, level: ThinkingLevel)
 pub fn set_tools(&mut self, tools: ToolSet)
+pub fn steer(&self, message: impl Into<String>)
 pub fn system_prompt(&self) -> Option<&str>
 pub fn thinking_level(&self) -> ThinkingLevel
 pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Aggregate message counts for a session by reading the session store. /// /// Moved out of the `Agent` body (spec as32 / c320 T24) so the capability /// aggregate holds no aggregation logic. pub async fn compute(store: &dyn XySessionStore, session_id: &str) -> Result<SessionStats, String>
 pub struct Agent
 pub struct BashExecHandler
 pub struct ContextUsage
-pub struct PermissionGate
+pub struct PendingMessageQueue
 pub struct SessionExporter
-pub struct SessionIO
 pub struct SessionStats
 pub tokens: u64, pub context_window: u64, pub percent: u64, pub should_compact: bool, } pub use crate::agent::compaction::orchestrator::should_compact
 pub use crate::agent::model::registry::ModelRegistry
-pub use self::io::SessionIO
+pub use self::queue::{PendingMessageQueue, QueueMode}
 pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_usage}
 pub use self::trust::save_trust_decision
