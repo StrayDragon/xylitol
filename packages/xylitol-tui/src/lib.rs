@@ -30,6 +30,10 @@ pub use completion::{
     SlashCommandSource, sources_from_combined,
 };
 pub use components::cancellable_loader::CancellableLoader;
+pub use components::choice_prompt::{
+    ChoiceAnswer, ChoiceMode, ChoiceOption, ChoicePrompt, ChoicePromptTheme, ChoiceQuestion,
+    ChoiceResult,
+};
 pub use components::container::Container;
 pub use components::diff::{
     Diff, DiffInput, DiffOptions, DiffTheme, generate_edit_text, render_diff_lines,

@@ -1219,6 +1219,38 @@ fn agent_demo_plate_lib_atoms_open_editor_slots() {
 }
 
 #[test]
+fn agent_demo_plate_ask_single_opens_choice_prompt() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )));
+    app.borrow_mut().freeze_script_for_test();
+    let mut h = TuiTestHarness::new(100, 40);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h.render_result().expect("initial");
+    h.keys("\x10ask-single\r");
+    h.render_result().expect("ask-single");
+    let viewport = h.tui.terminal.viewport().join("\n");
+    assert!(
+        viewport.contains("ChoicePrompt") && viewport.contains("本轮优先"),
+        "ask-single should open ChoicePrompt; got:\n{viewport}"
+    );
+    h.keys("\x1b");
+    h.render_result().expect("after esc");
+    let after = h.tui.terminal.scroll_buffer().join("\n");
+    assert!(
+        after.contains("cancelled"),
+        "Esc should cancel ChoicePrompt; got:\n{after}"
+    );
+}
+
+#[test]
 fn agent_demo_seed_tool_blocks_use_status_background_tints() {
     use agent_demo_example::ToolBlockStatus;
 
