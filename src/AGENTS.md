@@ -10,7 +10,7 @@
 
 **后置 / 配置启用**：Server · MCP（见下）· 更多 provider 适配器 · Export / 周边能力。未配置则不装配。
 
-**冻结**：产品 TUI（`src/app/tui`）——开闸条件：命名公约与相关重构落地，且用户明确开闸。引擎能力可在 `packages/xylitol-tui` / `agent_demo` 继续长。
+**冻结**：产品 TUI（`src/app/tui`）——**已开闸（2026-07-11）**。下一实现入口：`c465-add-app-tui-bridge`。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。
 
 共享流水线：`bootstrap` → `composition::build_agent` → `Driver::run` → ReAct → `XyEvent` → 应用面。库嵌入入口：`xylitol::embed`；矩阵与理想/现状：`docs/architecture/library-and-clients.md`。
 
@@ -38,7 +38,7 @@ protocol ───────────────────────�
 - `infra/` — ports 的实现（provider、tools、session、config、…）；vendor 类型（async-openai、rmcp、…）关在本层。
 - `agent/` — ReAct / session / model / tools 编排；公共入口为 mod 级 re-export。
 - `protocol/` — `Command` / `Event` 线协议，传输无关。
-- `app/` — 应用面 + `core/` seam。状态：`cli/print` ✅；`server/` 🟡；`tui/` ⏸ 冻结（见 `src/app/tui/AGENTS.md`）；`gui` 🔴。跨面：`core/{bootstrap,dispatch,composition,driver}`。落地顺序 print → server → TUI（TUI 开闸后），禁止并行铺骨架。
+- `app/` — 应用面 + `core/` seam。状态：`cli/print` ✅；`server/` ✅（Driver + REST 命令面）；`tui/` 🟢 已开闸（先 c465 bridge）；`gui` 🔴。跨面：`core/{bootstrap,dispatch,composition,driver}`。落地顺序 print → server → TUI，禁止并行铺无关骨架。
 
 模块级文件地图以目录与代码为准；本文件不维护易变文件清单。
 
