@@ -652,8 +652,7 @@ fn markdown_grammar_stub() -> &'static str {
 
 1. 有序一项
 2. 有序二项
-   - 嵌套无序 A
-   - 嵌套无序 B
+   - 嵌套无序
      1. 再嵌套有序
 3. 有序三项含 [链接](https://example.com/list) 与 `code`
 
@@ -736,8 +735,7 @@ fn markdown_list_wrap_stub() -> &'static str {
 
 1. 有序一项
 2. 有序二项
-   - 嵌套无序 A
-   - 嵌套无序 B
+   - 嵌套无序
      1. 再嵌套有序
 3. 有序三项含 [链接](https://example.com/list) 与 `code`
 
@@ -3609,12 +3607,10 @@ impl Component for FakeCodingAgentApp {
         }
 
         if self.settings_open {
-            if matches_key_event(key, "up")
-                || matches_key_event(key, "down")
-                || matches_key_event(key, "enter")
-            {
-                self.settings.handle_input(event);
-            }
+            // Forward all keys (search printable, backspace, arrows, Enter/Space,
+            // Esc via SettingsList cancel) — not only up/down/enter. Otherwise
+            // typing a filter like `zzz` is swallowed and the list never empties.
+            self.settings.handle_input(event);
             return;
         }
 
