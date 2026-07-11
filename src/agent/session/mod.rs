@@ -15,14 +15,13 @@ pub(crate) use crate::runtime_protocol::{XyEventSink, XySessionStore};
 
 mod bash;
 mod export;
-mod io;
-mod permission;
 mod queue;
 mod stats;
 mod trust;
 
-pub use self::io::SessionIO;
-pub use self::queue::{PendingMessageQueue, QueueMode};
+pub use self::queue::{
+    AsyncQueueRuntime, PendingMessageQueue, QueueChannel, QueueMode, QueueStats,
+};
 pub use self::stats::{ContextUsage, SessionStats, estimate_tokens, get_context_usage};
 pub use self::trust::save_trust_decision;
 
@@ -34,7 +33,6 @@ use crate::agent::prompt::templates::PromptTemplate;
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::AgentHooks;
 use crate::agent::tools::ToolSet;
-use crate::domain::lifecycle::XyEvent;
 use crate::domain::message::AgentMessage;
 use crate::domain::session_types::{
     EntryBase, ModelChangeEntry, SessionEntry, ThinkingLevelChangeEntry,
@@ -62,11 +60,6 @@ pub struct Agent {
     hooks: AgentHooks,
     /// Tool execution mode for the current turn.
     tool_mode: XyToolExecutionMode,
-    /// Session persistence via the XySessionStore port. Held for the
-    /// ReAct loop to consume load_context/append_entry/exists; the loop
-    /// currently builds history inline (c185) and will migrate to this port.
-    #[allow(dead_code)]
-    session_io: SessionIO,
     /// System prompt to prepend to every turn.
     system_prompt: Option<String>,
     /// Current session ID.
@@ -89,17 +82,14 @@ pub struct Agent {
     /// Export/import collaborator. Holds the optional [`XyExportIo`] port.
     exporter: crate::agent::session::export::SessionExporter,
 
-    /// Permission gate collaborator. Holds the advisory [`XyPermission`]
-    /// engine consulted by the ReAct loop for tool routing.
-    permission: crate::agent::session::permission::PermissionGate,
+    /// Advisory permission port consulted by the ReAct loop for tool routing.
+    permission: Arc<dyn XyPermission>,
     /// Session store port — actively used by the ReAct loop.
     store: Arc<dyn XySessionStore>,
-    /// Event sink port — actively used for lifecycle events.
+    /// Event sink port — used for compaction / non-queue lifecycle.
     sink: Arc<dyn XyEventSink>,
-    /// Steering queue — injected before each model round while a run is active.
-    steer_queue: Arc<Mutex<PendingMessageQueue>>,
-    /// Follow-up queue — injected when the run would otherwise stop.
-    follow_up_queue: Arc<Mutex<PendingMessageQueue>>,
+    /// Steer / follow-up queues + optional active-run EventTx (c525).
+    queues: Arc<AsyncQueueRuntime>,
 }
 
 impl Agent {
@@ -132,7 +122,6 @@ impl Agent {
             tools: tool_registry,
             hooks: AgentHooks::empty(),
             tool_mode: XyToolExecutionMode::Sequential,
-            session_io: SessionIO::new(store.clone()),
             system_prompt: system_prompt.clone(),
             session_id: None,
             max_iterations,
@@ -156,9 +145,8 @@ impl Agent {
             exporter: crate::agent::session::export::SessionExporter::new(export_io),
             store,
             sink,
-            permission: crate::agent::session::permission::PermissionGate::new(permission),
-            steer_queue: Arc::new(Mutex::new(PendingMessageQueue::new(steering_mode))),
-            follow_up_queue: Arc::new(Mutex::new(PendingMessageQueue::new(follow_up_mode))),
+            permission,
+            queues: Arc::new(AsyncQueueRuntime::new(steering_mode, follow_up_mode)),
         }
     }
 
@@ -313,95 +301,83 @@ impl Agent {
     }
 
     pub(crate) fn steer_queue(&self) -> Arc<Mutex<PendingMessageQueue>> {
-        self.steer_queue.clone()
+        self.queues.steer.clone()
     }
 
     pub(crate) fn follow_up_queue(&self) -> Arc<Mutex<PendingMessageQueue>> {
-        self.follow_up_queue.clone()
+        self.queues.follow_up.clone()
+    }
+
+    pub(crate) fn queues(&self) -> Arc<AsyncQueueRuntime> {
+        self.queues.clone()
     }
 
     /// Enqueue a steering message (injected before the next model round).
     pub fn steer(&self, message: impl Into<String>) {
         let msg = AgentMessage::user(message);
-        self.steer_queue
+        self.queues
+            .steer
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .enqueue(msg);
-        self.emit_queue_update();
+        self.queues.notify_queue_update();
     }
 
     /// Enqueue a follow-up message (injected when the run would otherwise stop).
     pub fn follow_up(&self, message: impl Into<String>) {
         let msg = AgentMessage::user(message);
-        self.follow_up_queue
+        self.queues
+            .follow_up
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .enqueue(msg);
-        self.emit_queue_update();
+        self.queues.notify_queue_update();
     }
 
     /// Clear the steering queue only.
     pub fn clear_steer_queue(&self) {
-        self.steer_queue
+        self.queues
+            .steer
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
-        self.emit_queue_update();
+        self.queues.notify_queue_update();
     }
 
     /// Clear the follow-up queue only.
     pub fn clear_follow_up_queue(&self) {
-        self.follow_up_queue
+        self.queues
+            .follow_up
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
-        self.emit_queue_update();
+        self.queues.notify_queue_update();
     }
 
     /// Clear one or both queues.
     pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool) {
         if clear_steer {
-            self.steer_queue
+            self.queues
+                .steer
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .clear();
         }
         if clear_follow_up {
-            self.follow_up_queue
+            self.queues
+                .follow_up
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .clear();
         }
         if clear_steer || clear_follow_up {
-            self.emit_queue_update();
+            self.queues.notify_queue_update();
         }
     }
 
-    /// `(steer_count, follow_up_count)`.
-    pub fn queue_stats(&self) -> (usize, usize) {
-        let steer = self
-            .steer_queue
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .len();
-        let follow_up = self
-            .follow_up_queue
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .len();
-        (steer, follow_up)
-    }
-
-    fn emit_queue_update(&self) {
-        let (steer_count, follow_up_count) = self.queue_stats();
-        let event = XyEvent::QueueUpdate {
-            steer_count,
-            follow_up_count,
-        };
-        let sink = self.sink.clone();
-        tokio::spawn(async move {
-            sink.emit(&event).await;
-        });
+    /// Queue depths.
+    pub fn queue_stats(&self) -> QueueStats {
+        self.queues.stats()
     }
 
     pub fn system_prompt(&self) -> Option<&str> {
@@ -473,7 +449,7 @@ impl Agent {
 
     /// Set the permission port.
     pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>) {
-        self.permission.set(permission);
+        self.permission = permission;
     }
 
     // ── Session stats ────────────────────────────────────────────
@@ -534,7 +510,7 @@ impl Agent {
 
     /// Get a reference to the permission engine (injected at construction).
     pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission> {
-        self.permission.get()
+        self.permission.clone()
     }
 
     /// Abort any in-flight bash execution.
@@ -683,22 +659,36 @@ mod tests {
     #[tokio::test]
     async fn abort_clears_steer_keeps_follow_up() {
         let session = make_session();
-        // Enqueue without going through emit_queue_update (avoid sink spawn races).
+        // Enqueue without notify (no active EventTx in this unit test).
         session
-            .steer_queue
+            .queues
+            .steer
             .lock()
             .unwrap()
             .enqueue(AgentMessage::user("steer-me"));
         session
-            .follow_up_queue
+            .queues
+            .follow_up
             .lock()
             .unwrap()
             .enqueue(AgentMessage::user("follow-me"));
-        assert_eq!(session.queue_stats(), (1, 1));
+        assert_eq!(
+            session.queue_stats(),
+            QueueStats {
+                steer_count: 1,
+                follow_up_count: 1
+            }
+        );
 
         let agent = crate::agent::runtime::ReActAgent::new(session);
         agent.abort();
-        assert_eq!(agent.queue_stats(), (0, 1));
+        assert_eq!(
+            agent.queue_stats(),
+            QueueStats {
+                steer_count: 0,
+                follow_up_count: 1
+            }
+        );
     }
 
     #[test]

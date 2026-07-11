@@ -2,16 +2,20 @@ kind: llman.sdd.spec
 name: "infra-provider"
 purpose: "Provider adapter layer — isolates vendor-specific LLM API shapes (OpenAI Responses, Anthropic Messages, OpenAI Chat Completions) behind a unified LlmAdapter trait that emits the internal XyChunk stream."
 valid_scope[2]: src/,tests/
-requirements[5]{req_id,title,statement}:
+requirements[7]{req_id,title,statement}:
   pa1,"adapter-trait",System SHALL define an LlmAdapter trait in infra/provider/adapter that exposes generate_stream and generate methods returning XyStream.
   pa2,"openai-responses-adapter","System SHALL provide an OpenAiResponsesAdapter that calls /v1/responses and emits XyChunk::ThinkingDelta for reasoning items and XyChunk::TextDelta for message items."
   pa3,"anthropic-messages-adapter","System SHALL provide an AnthropicMessagesAdapter that preserves existing Anthropic SSE parsing behavior and emits XyChunk::ThinkingDelta for thinking content blocks."
   pa4,"adapter-selection",System SHALL select the concrete adapter based on XyModelConfig kind and api fields with sensible defaults.
   pa5,"responses-input-items-have-type","The OpenAI Responses adapter MUST serialize every input item with an explicit type field matching the Responses API schema: message items as {type: message, role, content: [{type: input_text|output_text, text}]}, function calls as {type: function_call, ...}, function outputs as {type: function_call_output, ...}. A bare {role, content} object with no type MUST NOT be emitted: the Responses API rejects such items with Cannot determine type of 'item' once non-message items are mixed into the input array (which happens exactly on a tool-calling continuation round). An assistant round that carries only a tool call and no text MUST NOT emit an empty message item (only the function_call item). Evidence: convert_messages_to_input_items built message items as {role, content} without type, so the first real tool continuation round after the c375 ReAct-loop fix was rejected by OpenAI with Cannot determine type of 'item'; the function had no test coverage."
-scenarios[6]{req_id,id,given,when,then}:
+  pa6,单一 XyModel 装配路径,System MUST 通过唯一装配路径将方言适配器暴露为 XyModel：LlmAdapter 实现经统一外壳（如 AdapterXyModel）注入；MUST NOT 同时让底层 OpenAIProvider 直接 impl XyModel 再被 Completions 适配器二次包装。
+  pa7,vendor 类型不出 infra,"async-openai 与各厂商 HTTP/SSE 具体类型 MUST 仅出现在 infra/provider（及 adapter）内；agent/ 与 domain/ MUST NOT import 这些 vendor crate。"
+scenarios[8]{req_id,id,given,when,then}:
   pa1,"trait-exists",a new adapter layer is introduced,the LlmAdapter trait is defined,agent loop can call generate_stream on any adapter without naming concrete types
   pa2,"responses-reasoning","a reasoning-capable model is served via /v1/responses",OpenAiResponsesAdapter streams the response,"XyChunk::ThinkingDelta items are emitted before XyChunk::TextDelta items"
   pa3,"anthropic-thinking",a model returns thinking content blocks,AnthropicMessagesAdapter streams the response,"XyChunk::ThinkingDelta items are emitted for thinking blocks"
   pa4,"default-selection",a model config omits the api field,the config loader resolves defaults,"openai kind defaults to openai-responses and anthropic kind defaults to anthropic-messages"
   pa5,"every-item-declares-type",a conversation with user assistant tool_call and tool_result messages is converted to Responses input items,the items are inspected,every item has a type field (message or function_call or function_call_output) and message content is an array of typed text parts
   pa5,"tool-continuation-not-rejected","a tool-calling continuation round request is sent to the Responses API",the request body is the converted items,it is accepted (no Cannot determine type of 'item' error) because every item declares its type
+  pa6,"single-path","",审查 Completions 与 factory 装配,从配置到 dyn XyModel 仅一条路径且无双重 XyModel 包装
+  pa7,"no-vendor-leak","",rg async_openai 于 src/agent 与 src/domain,零匹配

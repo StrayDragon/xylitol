@@ -83,21 +83,58 @@ pub enum BootstrapWarning {
 }
 
 /// A fully-assembled agent plus the resolved side-products surfaces need.
+///
+/// Prefer [`Self::into_runtime`] (or [`Self::into_driver`]) over reading
+/// [`Self::agent`] / [`Self::store`] directly — those fields remain for
+/// transitional callers and still name `ReActAgent` (not an embed stability
+/// promise).
 pub struct BootstrappedAgent {
     /// The constructed, ready-to-run agent.
+    ///
+    /// **Leak:** prefer [`Self::into_runtime`] so embedders need not name
+    /// `ReActAgent`.
     pub agent: crate::agent::ReActAgent,
     /// Session id (restored or freshly generated).
     pub session_id: String,
     /// Diagnostics produced during assembly (surface renders these).
     pub warnings: Vec<BootstrapWarning>,
     /// Session store handle, the same instance the agent holds internally.
-    /// Surfaces construct an [`InProcessDriver`] from this + the agent + the
-    /// model builder, so Driver session commands (SwitchSession/GetMessages)
-    /// operate without reaching into agent internals.
+    /// Surfaces construct an [`InProcessDriver`] from this + the agent so
+    /// Driver session commands (SwitchSession/GetMessages) operate without
+    /// reaching into agent internals.
     pub store: Arc<dyn crate::runtime_protocol::XySessionStore>,
-    /// Model builder, the same instance injected into the agent. Surfaces pass
-    /// it to [`InProcessDriver::new`].
-    pub model_builder: crate::runtime_protocol::XyModelBuilder,
+    /// MCP servers from loaded config (`None` / empty = disabled, zero-cost).
+    pub mcp_servers: Option<Vec<crate::app::core::mcp_spec::McpServerSpec>>,
+}
+
+/// Driver-ready result of [`BootstrappedAgent::into_runtime`].
+///
+/// This is the preferred embed / multi-client handoff: no need to name
+/// `ReActAgent` at the call site.
+pub struct BootstrappedRuntime {
+    pub driver: crate::app::core::driver::InProcessDriver,
+    pub session_id: String,
+    pub warnings: Vec<BootstrapWarning>,
+    /// MCP servers for [`crate::app::core::composition::McpSession::reload`].
+    pub mcp_servers: Option<Vec<crate::app::core::mcp_spec::McpServerSpec>>,
+}
+
+impl BootstrappedAgent {
+    /// Consume into an [`InProcessDriver`] plus side-products (preferred path).
+    pub fn into_runtime(self) -> BootstrappedRuntime {
+        BootstrappedRuntime {
+            driver: crate::app::core::driver::InProcessDriver::new(self.agent, self.store),
+            session_id: self.session_id,
+            warnings: self.warnings,
+            mcp_servers: self.mcp_servers,
+        }
+    }
+
+    /// Consume into an [`InProcessDriver`] only (drops warnings / session id /
+    /// mcp config). Prefer [`Self::into_runtime`] when those are needed.
+    pub fn into_driver(self) -> crate::app::core::driver::InProcessDriver {
+        self.into_runtime().driver
+    }
 }
 
 /// Resolved assembly inputs — the *ingredients* ready for `build_agent`, prior
@@ -126,6 +163,8 @@ pub struct ResolvedAssembly {
     pub session_id: String,
     /// Diagnostics produced during resolution.
     pub warnings: Vec<BootstrapWarning>,
+    /// MCP servers from YAML (`None` / empty = not enabled).
+    pub mcp_servers: Option<Vec<crate::app::core::mcp_spec::McpServerSpec>>,
 }
 
 impl ResolvedAssembly {
@@ -145,6 +184,7 @@ impl ResolvedAssembly {
             permission: self.permission,
             steering_mode: self.steering_mode,
             follow_up_mode: self.follow_up_mode,
+            event_sink: None,
         }
     }
 }
@@ -421,6 +461,10 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         .clone()
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
+    let mcp_servers = crate::app::core::mcp_spec::McpServerSpec::from_infra_list(
+        app_config.as_ref().and_then(|c| c.mcp_servers.clone()),
+    );
+
     Ok(ResolvedAssembly {
         model_registry,
         system_prompt,
@@ -437,6 +481,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         default_profile_model,
         session_id,
         warnings,
+        mcp_servers,
     })
 }
 
@@ -450,6 +495,7 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     let mut assembly = resolve_assembly(&input)?;
     let discovered_templates = assembly.discovered_templates.clone();
     let session_id = assembly.session_id.clone();
+    let mcp_servers = assembly.mcp_servers.clone();
     let target_model = model.or_else(|| assembly.default_profile_model.clone());
     let mut warnings = std::mem::take(&mut assembly.warnings);
 
@@ -476,22 +522,20 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
         }
     }
 
-    // Reconstruct the same session store + model builder injected into the
-    // agent by composition::build_agent. Both are stateless / dir-backed, so a
-    // fresh instance points at the same backing data as the agent's internal
-    // copies — this lets an InProcessDriver serve session/model commands
-    // without composition::build_agent having to return its injected ports.
+    // Reconstruct the same session store injected into the agent by
+    // composition::build_agent. It is dir-backed, so a fresh instance points at
+    // the same backing data as the agent's internal copy — this lets an
+    // InProcessDriver serve session commands without composition::build_agent
+    // having to return its injected ports.
     let store: Arc<dyn crate::runtime_protocol::XySessionStore> =
         Arc::new(SessionManager::new(SessionManager::default_dir()));
-    let model_builder: crate::runtime_protocol::XyModelBuilder =
-        Arc::new(crate::infra::provider::factory::build_provider);
 
     Ok(BootstrappedAgent {
         agent,
         session_id,
         warnings,
         store,
-        model_builder,
+        mcp_servers,
     })
 }
 

@@ -13,10 +13,8 @@ use clap::{Parser, Subcommand};
 
 use crate::app::cli::resources::ResourcesAction;
 use crate::app::core::bootstrap::{
-    BootstrapError, BootstrapInput, BootstrapWarning, BootstrappedAgent, bootstrap,
-    resolve_assembly,
+    BootstrapError, BootstrapInput, BootstrapWarning, bootstrap, resolve_assembly,
 };
-use crate::app::core::driver::InProcessDriver;
 #[cfg(feature = "server")]
 use crate::app::server::subcommand::ServerSubcommand;
 use crate::infra::timing;
@@ -148,14 +146,16 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => return Err(e.into()),
     };
     render_warnings(&bootstrapped.warnings);
-    let BootstrappedAgent {
-        agent,
-        session_id,
-        store,
-        model_builder,
-        ..
-    } = bootstrapped;
-    let mut driver = InProcessDriver::new(agent, store, model_builder);
+    let runtime = bootstrapped.into_runtime();
+    let session_id = runtime.session_id;
+    let mut driver = runtime.driver;
+    let mut mcp = crate::app::core::composition::McpSession::new();
+    let servers = runtime.mcp_servers.unwrap_or_default();
+    if let Err(e) = mcp.reload(&mut driver, &servers).await {
+        eprintln!("Warning: MCP reload failed: {e}");
+    }
+    // `mcp` kept for process lifetime (owns MCP connections when enabled).
+    let _mcp = mcp;
 
     // ── dispatch by mode ───────────────────────────────────────
     // TUI: when no prompt is supplied and stdin is a TTY (mirroring pi's
