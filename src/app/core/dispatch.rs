@@ -216,18 +216,18 @@ pub async fn dispatch(
         Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(driver.get_commands())),
         Command::Steer { message, .. } => {
             driver.steer(&message).map_err(DispatchError)?;
-            let (steer_count, follow_up_count) = driver.queue_stats();
+            let stats = driver.queue_stats();
             Ok(DispatchOutcome::QueueStats {
-                steer_count,
-                follow_up_count,
+                steer_count: stats.steer_count,
+                follow_up_count: stats.follow_up_count,
             })
         }
         Command::FollowUp { message, .. } => {
             driver.follow_up(&message).map_err(DispatchError)?;
-            let (steer_count, follow_up_count) = driver.queue_stats();
+            let stats = driver.queue_stats();
             Ok(DispatchOutcome::QueueStats {
-                steer_count,
-                follow_up_count,
+                steer_count: stats.steer_count,
+                follow_up_count: stats.follow_up_count,
             })
         }
         Command::ClearQueue {
@@ -238,10 +238,10 @@ pub async fn dispatch(
             driver
                 .clear_queue(clear_steer, clear_follow_up)
                 .map_err(DispatchError)?;
-            let (steer_count, follow_up_count) = driver.queue_stats();
+            let stats = driver.queue_stats();
             Ok(DispatchOutcome::QueueStats {
-                steer_count,
-                follow_up_count,
+                steer_count: stats.steer_count,
+                follow_up_count: stats.follow_up_count,
             })
         }
 
@@ -382,8 +382,11 @@ mod tests {
             }
             Ok(())
         }
-        fn queue_stats(&self) -> (usize, usize) {
-            (self.steer, self.follow_up)
+        fn queue_stats(&self) -> crate::agent::session::QueueStats {
+            crate::agent::session::QueueStats {
+                steer_count: self.steer,
+                follow_up_count: self.follow_up,
+            }
         }
     }
 

@@ -178,8 +178,8 @@ pub trait Driver: Send {
     /// Clear one or both pending-message queues.
     fn clear_queue(&mut self, clear_steer: bool, clear_follow_up: bool) -> Result<(), String>;
 
-    /// `(steer_count, follow_up_count)`.
-    fn queue_stats(&self) -> (usize, usize);
+    /// Queue depths for steer / follow-up.
+    fn queue_stats(&self) -> crate::agent::session::QueueStats;
 }
 
 // ── In-process driver ─────────────────────────────────────────────
@@ -375,7 +375,7 @@ impl Driver for InProcessDriver {
         Ok(())
     }
 
-    fn queue_stats(&self) -> (usize, usize) {
+    fn queue_stats(&self) -> crate::agent::session::QueueStats {
         self.agent.queue_stats()
     }
 }
@@ -622,7 +622,7 @@ impl Driver for RemoteDriver {
         Err("RemoteDriver command routes not yet implemented".into())
     }
 
-    fn queue_stats(&self) -> (usize, usize) {
-        (0, 0)
+    fn queue_stats(&self) -> crate::agent::session::QueueStats {
+        crate::agent::session::QueueStats::default()
     }
 }

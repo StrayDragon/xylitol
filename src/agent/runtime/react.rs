@@ -77,8 +77,8 @@ impl ReActAgent {
         self.inner.clear_queues(clear_steer, clear_follow_up);
     }
 
-    /// `(steer_count, follow_up_count)`.
-    pub fn queue_stats(&self) -> (usize, usize) {
+    /// Queue depths.
+    pub fn queue_stats(&self) -> crate::agent::session::QueueStats {
         self.inner.queue_stats()
     }
 
@@ -191,22 +191,46 @@ impl ReActAgent {
         let cancel = self.cancel.clone();
         let steer_queue = self.inner.steer_queue();
         let follow_up_queue = self.inner.follow_up_queue();
+        let queues = self.inner.queues();
 
-        let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> =
-            Box::pin(run_react_loop(ReActConfig {
-                model,
-                tools,
-                tool_schemas,
-                system_prompt,
-                max_iterations: max_iterations as usize,
-                user_prompt: prompt,
-                cancel,
-                permission_check,
-                hooks,
-                tool_mode,
-                steer_queue,
-                follow_up_queue,
-            }));
+        let (queue_tx, mut queue_rx) = tokio::sync::mpsc::unbounded_channel();
+        queues.bind_event_tx(queue_tx);
+
+        let react = Box::pin(run_react_loop(ReActConfig {
+            model,
+            tools,
+            tool_schemas,
+            system_prompt,
+            max_iterations: max_iterations as usize,
+            user_prompt: prompt,
+            cancel,
+            permission_check,
+            hooks,
+            tool_mode,
+            steer_queue,
+            follow_up_queue,
+        }));
+
+        let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> = Box::pin(async_stream::stream! {
+            let mut react = react;
+            loop {
+                tokio::select! {
+                    biased;
+                    ev = react.next() => {
+                        match ev {
+                            Some(e) => yield e,
+                            None => break,
+                        }
+                    }
+                    ev = queue_rx.recv() => {
+                        if let Some(e) = ev {
+                            yield e;
+                        }
+                    }
+                }
+            }
+            queues.unbind_event_tx();
+        });
 
         XyEventStream {
             inner,
