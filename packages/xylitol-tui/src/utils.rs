@@ -316,8 +316,8 @@ impl AnsiCodeTracker {
         // SGR reset does not affect OSC 8 hyperlink state
     }
 
-    /// Full reset including hyperlink state. Used by extract_segments (to be
-    /// ported from pi utils.ts); kept for parity with pi's AnsiCodeTracker.
+    /// Full reset including hyperlink state.
+    /// 预留：对齐 pi `AnsiCodeTracker.clear`（extract_segments 完整移植时启用）。
     #[allow(dead_code)]
     fn clear(&mut self) {
         self.reset();
@@ -369,8 +369,8 @@ impl AnsiCodeTracker {
         result
     }
 
-    /// Whether any SGR attribute is active. Used by extract_segments (to be
-    /// ported); kept for parity with pi's AnsiCodeTracker.
+    /// Whether any SGR attribute is active.
+    /// 预留：对齐 pi `hasActiveCodes`（extract_segments 完整移植时启用）。
     #[allow(dead_code)]
     fn has_active_codes(&self) -> bool {
         self.bold

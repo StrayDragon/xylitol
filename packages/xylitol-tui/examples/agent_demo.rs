@@ -499,13 +499,6 @@ impl ToolBlockStatus {
         };
         (c.r, c.g, c.b)
     }
-
-    /// Truecolor bg open sequence (`48;2;R;G;B`) — for docs / raw-ANSI asserts.
-    #[allow(dead_code)]
-    pub fn ansi_bg_param(self, palette: &Palette) -> String {
-        let (r, g, b) = self.rgb(palette);
-        format!("48;2;{r};{g};{b}")
-    }
 }
 
 /// Full-row tint: truecolor bg + `\x1b[49m` only (must not wipe content fg).

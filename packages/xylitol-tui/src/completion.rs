@@ -310,23 +310,17 @@ impl CompletionSource for SlashCommandSource {
 
 pub struct AtPathSource {
     base_path: PathBuf,
-    #[allow(dead_code)] // reserved for fd-backed fuzzy (same as Combined)
-    fd_path: Option<String>,
 }
 
 impl AtPathSource {
     pub fn new(base_path: PathBuf) -> Self {
-        Self {
-            base_path,
-            fd_path: None,
-        }
+        Self { base_path }
     }
 
-    pub fn new_with_fd(base_path: PathBuf, fd_path: String) -> Self {
-        Self {
-            base_path,
-            fd_path: Some(fd_path),
-        }
+    /// Historically accepted an `fd` path; sync [`CompletionSource`] still uses
+    /// `read_dir` only. Fd-backed fuzzy remains on [`CombinedAutocompleteProvider`].
+    pub fn new_with_fd(base_path: PathBuf, _fd_path: String) -> Self {
+        Self::new(base_path)
     }
 
     fn get_fuzzy_file_suggestions(&self, query: &str, _is_quoted: bool) -> Vec<AutocompleteItem> {
