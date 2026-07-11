@@ -119,26 +119,25 @@ async fn switch_model(
     State(state): State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<SwitchModelParams>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(
-        &state,
-        Command::SetModel {
-            id: None,
-            provider: String::new(),
-            model_id: params.model_id,
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::SetModel {
+                id: None,
+                provider: String::new(),
+                model_id: params.model_id,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::Model(model) => Some(serde_json::json!({
+                "model": model.id,
+                "display_name": model.display_name,
+            })),
+            _ => None,
         },
+        dispatch_err,
     )
-    .await
-    {
-        Ok(DispatchOutcome::Model(model)) => Json(Envelope::ok(serde_json::json!({
-            "model": model.id,
-            "display_name": model.display_name,
-        }))),
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => dispatch_err(e),
-    }
 }
 
 async fn run_dispatch(state: &AppState, cmd: Command) -> Result<DispatchOutcome, DispatchError> {
@@ -146,8 +145,34 @@ async fn run_dispatch(state: &AppState, cmd: Command) -> Result<DispatchOutcome,
     dispatch(&mut *driver, cmd).await
 }
 
+fn unexpected_outcome() -> Json<Envelope<Value>> {
+    Json(Envelope::error(
+        ErrorCode::InternalError,
+        "unexpected dispatch outcome",
+    ))
+}
+
 fn dispatch_err(e: DispatchError) -> Json<Envelope<Value>> {
     Json(Envelope::error(ErrorCode::BadRequest, e.0))
+}
+
+fn dispatch_err_as(e: DispatchError, code: ErrorCode) -> Json<Envelope<Value>> {
+    Json(Envelope::error(code, e.0))
+}
+
+/// Map a dispatch result: `map` returns `Some(data)` on the expected variant.
+fn map_dispatch(
+    result: Result<DispatchOutcome, DispatchError>,
+    map: impl FnOnce(DispatchOutcome) -> Option<Value>,
+    on_err: impl FnOnce(DispatchError) -> Json<Envelope<Value>>,
+) -> Json<Envelope<Value>> {
+    match result {
+        Ok(outcome) => match map(outcome) {
+            Some(data) => Json(Envelope::ok(data)),
+            None => unexpected_outcome(),
+        },
+        Err(e) => on_err(e),
+    }
 }
 
 fn queue_json(steer_count: usize, follow_up_count: usize) -> Value {
@@ -188,25 +213,24 @@ async fn steer(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<MessageBody>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(
-        &state,
-        Command::Steer {
-            id: None,
-            message: body.message,
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::Steer {
+                id: None,
+                message: body.message,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::QueueStats {
+                steer_count,
+                follow_up_count,
+            } => Some(queue_json(steer_count, follow_up_count)),
+            _ => None,
         },
+        dispatch_err,
     )
-    .await
-    {
-        Ok(DispatchOutcome::QueueStats {
-            steer_count,
-            follow_up_count,
-        }) => Json(Envelope::ok(queue_json(steer_count, follow_up_count))),
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => dispatch_err(e),
-    }
 }
 
 async fn follow_up(
@@ -214,25 +238,24 @@ async fn follow_up(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<MessageBody>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(
-        &state,
-        Command::FollowUp {
-            id: None,
-            message: body.message,
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::FollowUp {
+                id: None,
+                message: body.message,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::QueueStats {
+                steer_count,
+                follow_up_count,
+            } => Some(queue_json(steer_count, follow_up_count)),
+            _ => None,
         },
+        dispatch_err,
     )
-    .await
-    {
-        Ok(DispatchOutcome::QueueStats {
-            steer_count,
-            follow_up_count,
-        }) => Json(Envelope::ok(queue_json(steer_count, follow_up_count))),
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => dispatch_err(e),
-    }
 }
 
 async fn clear_queue(
@@ -240,26 +263,25 @@ async fn clear_queue(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<ClearQueueBody>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(
-        &state,
-        Command::ClearQueue {
-            id: None,
-            clear_steer: body.clear_steer,
-            clear_follow_up: body.clear_follow_up,
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::ClearQueue {
+                id: None,
+                clear_steer: body.clear_steer,
+                clear_follow_up: body.clear_follow_up,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::QueueStats {
+                steer_count,
+                follow_up_count,
+            } => Some(queue_json(steer_count, follow_up_count)),
+            _ => None,
         },
+        dispatch_err,
     )
-    .await
-    {
-        Ok(DispatchOutcome::QueueStats {
-            steer_count,
-            follow_up_count,
-        }) => Json(Envelope::ok(queue_json(steer_count, follow_up_count))),
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => dispatch_err(e),
-    }
 }
 
 async fn get_queue(
@@ -276,49 +298,49 @@ async fn get_state(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(&state, Command::GetState { id: None }).await {
-        Ok(DispatchOutcome::State(st)) => Json(Envelope::ok(serde_json::json!({
-            "session_id": st.session_id,
-            "model": st.model.as_ref().map(model_data),
-            "thinking_level": st.thinking_level,
-        }))),
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => dispatch_err(e),
-    }
+    map_dispatch(
+        run_dispatch(&state, Command::GetState { id: None }).await,
+        |o| match o {
+            DispatchOutcome::State(st) => Some(serde_json::json!({
+                "session_id": st.session_id,
+                "model": st.model.as_ref().map(model_data),
+                "thinking_level": st.thinking_level,
+            })),
+            _ => None,
+        },
+        dispatch_err,
+    )
 }
 
 async fn list_models(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(&state, Command::GetAvailableModels { id: None }).await {
-        Ok(DispatchOutcome::Models(models)) => {
-            let models: Vec<Value> = models.iter().map(model_data).collect();
-            Json(Envelope::ok(serde_json::json!({ "models": models })))
-        }
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => dispatch_err(e),
-    }
+    map_dispatch(
+        run_dispatch(&state, Command::GetAvailableModels { id: None }).await,
+        |o| match o {
+            DispatchOutcome::Models(models) => {
+                let models: Vec<Value> = models.iter().map(model_data).collect();
+                Some(serde_json::json!({ "models": models }))
+            }
+            _ => None,
+        },
+        dispatch_err,
+    )
 }
 
 async fn cycle_model(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(&state, Command::CycleModel { id: None }).await {
-        Ok(DispatchOutcome::Model(model)) => Json(Envelope::ok(model_data(&model))),
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => dispatch_err(e),
-    }
+    map_dispatch(
+        run_dispatch(&state, Command::CycleModel { id: None }).await,
+        |o| match o {
+            DispatchOutcome::Model(model) => Some(model_data(&model)),
+            _ => None,
+        },
+        dispatch_err,
+    )
 }
 
 #[derive(Deserialize)]
@@ -331,24 +353,23 @@ async fn set_thinking(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<ThinkingBody>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(
-        &state,
-        Command::SetThinkingLevel {
-            id: None,
-            level: body.level,
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::SetThinkingLevel {
+                id: None,
+                level: body.level,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::ThinkingLevel(level) => {
+                Some(serde_json::json!({ "thinking_level": level }))
+            }
+            _ => None,
         },
+        dispatch_err,
     )
-    .await
-    {
-        Ok(DispatchOutcome::ThinkingLevel(level)) => {
-            Json(Envelope::ok(serde_json::json!({ "thinking_level": level })))
-        }
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => dispatch_err(e),
-    }
 }
 
 #[derive(Deserialize)]
@@ -363,44 +384,41 @@ async fn bash(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<BashBody>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(
-        &state,
-        Command::Bash {
-            id: None,
-            command: body.command,
-            exclude_from_context: body.exclude_from_context,
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::Bash {
+                id: None,
+                command: body.command,
+                exclude_from_context: body.exclude_from_context,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::Bash(r) => Some(serde_json::json!({
+                "output": r.output,
+                "exit_code": r.exit_code,
+                "cancelled": r.cancelled,
+                "truncated": r.truncated,
+            })),
+            _ => None,
         },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
     )
-    .await
-    {
-        Ok(DispatchOutcome::Bash(r)) => Json(Envelope::ok(serde_json::json!({
-            "output": r.output,
-            "exit_code": r.exit_code,
-            "cancelled": r.cancelled,
-            "truncated": r.truncated,
-        }))),
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
-    }
 }
 
 async fn compact(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(&state, Command::Compact { id: None }).await {
-        Ok(DispatchOutcome::Compacted(did)) => {
-            Json(Envelope::ok(serde_json::json!({ "compacted": did })))
-        }
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
-    }
+    map_dispatch(
+        run_dispatch(&state, Command::Compact { id: None }).await,
+        |o| match o {
+            DispatchOutcome::Compacted(did) => Some(serde_json::json!({ "compacted": did })),
+            _ => None,
+        },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
+    )
 }
 
 #[derive(Deserialize)]
@@ -413,24 +431,21 @@ async fn export_html(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<PathBody>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(
-        &state,
-        Command::ExportHtml {
-            id: None,
-            output_path: Some(body.path),
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::ExportHtml {
+                id: None,
+                output_path: Some(body.path),
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::ExportedPath(p) => Some(serde_json::json!({ "path": p })),
+            _ => None,
         },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
     )
-    .await
-    {
-        Ok(DispatchOutcome::ExportedPath(p)) => {
-            Json(Envelope::ok(serde_json::json!({ "path": p })))
-        }
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
-    }
 }
 
 async fn export_jsonl(
@@ -438,24 +453,21 @@ async fn export_jsonl(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<PathBody>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(
-        &state,
-        Command::ExportJsonl {
-            id: None,
-            output_path: Some(body.path),
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::ExportJsonl {
+                id: None,
+                output_path: Some(body.path),
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::ExportedPath(p) => Some(serde_json::json!({ "path": p })),
+            _ => None,
         },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
     )
-    .await
-    {
-        Ok(DispatchOutcome::ExportedPath(p)) => {
-            Json(Envelope::ok(serde_json::json!({ "path": p })))
-        }
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
-    }
 }
 
 async fn import_jsonl(
@@ -463,24 +475,21 @@ async fn import_jsonl(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<PathBody>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(
-        &state,
-        Command::ImportJsonl {
-            id: None,
-            input_path: body.path,
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::ImportJsonl {
+                id: None,
+                input_path: body.path,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::NewSession(id) => Some(serde_json::json!({ "session_id": id })),
+            _ => None,
         },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
     )
-    .await
-    {
-        Ok(DispatchOutcome::NewSession(id)) => {
-            Json(Envelope::ok(serde_json::json!({ "session_id": id })))
-        }
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
-    }
 }
 
 #[derive(Deserialize)]
@@ -493,24 +502,21 @@ async fn fork_session(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<ForkBody>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(
-        &state,
-        Command::Fork {
-            id: None,
-            entry_id: body.entry_id,
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::Fork {
+                id: None,
+                entry_id: body.entry_id,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::NewSession(id) => Some(serde_json::json!({ "session_id": id })),
+            _ => None,
         },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
     )
-    .await
-    {
-        Ok(DispatchOutcome::NewSession(id)) => {
-            Json(Envelope::ok(serde_json::json!({ "session_id": id })))
-        }
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
-    }
 }
 
 #[derive(Deserialize)]
@@ -523,75 +529,71 @@ async fn switch_session(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<SwitchSessionBody>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(
-        &state,
-        Command::SwitchSession {
-            id: None,
-            session_path: body.session_id,
+    map_dispatch(
+        run_dispatch(
+            &state,
+            Command::SwitchSession {
+                id: None,
+                session_path: body.session_id,
+            },
+        )
+        .await,
+        |o| match o {
+            DispatchOutcome::SwitchedSession(id) => Some(serde_json::json!({ "session_id": id })),
+            _ => None,
         },
+        |e| dispatch_err_as(e, ErrorCode::NotFound),
     )
-    .await
-    {
-        Ok(DispatchOutcome::SwitchedSession(id)) => {
-            Json(Envelope::ok(serde_json::json!({ "session_id": id })))
-        }
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => Json(Envelope::error(ErrorCode::NotFound, e.0)),
-    }
 }
 
 async fn get_messages(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(&state, Command::GetMessages { id: None }).await {
-        Ok(DispatchOutcome::Messages { entries, .. }) => match serde_json::to_value(entries) {
-            Ok(v) => Json(Envelope::ok(serde_json::json!({ "entries": v }))),
-            Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.to_string())),
+    map_dispatch(
+        run_dispatch(&state, Command::GetMessages { id: None }).await,
+        |o| match o {
+            DispatchOutcome::Messages { entries, .. } => serde_json::to_value(entries)
+                .ok()
+                .map(|v| serde_json::json!({ "entries": v })),
+            _ => None,
         },
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
-    }
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
+    )
 }
 
 async fn get_session_stats(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(&state, Command::GetSessionStats { id: None }).await {
-        Ok(DispatchOutcome::SessionStats(v)) => Json(Envelope::ok(v)),
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.0)),
-    }
+    map_dispatch(
+        run_dispatch(&state, Command::GetSessionStats { id: None }).await,
+        |o| match o {
+            DispatchOutcome::SessionStats(v) => Some(v),
+            _ => None,
+        },
+        |e| dispatch_err_as(e, ErrorCode::InternalError),
+    )
 }
 
 async fn get_commands(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    match run_dispatch(&state, Command::GetCommands { id: None }).await {
-        Ok(DispatchOutcome::Commands(cmds)) => {
-            let cmds: Vec<Value> = cmds
-                .into_iter()
-                .map(|c| serde_json::json!({ "name": c.name, "description": c.description }))
-                .collect();
-            Json(Envelope::ok(serde_json::json!({ "commands": cmds })))
-        }
-        Ok(_) => Json(Envelope::error(
-            ErrorCode::InternalError,
-            "unexpected dispatch outcome",
-        )),
-        Err(e) => dispatch_err(e),
-    }
+    map_dispatch(
+        run_dispatch(&state, Command::GetCommands { id: None }).await,
+        |o| match o {
+            DispatchOutcome::Commands(cmds) => {
+                let cmds: Vec<Value> = cmds
+                    .into_iter()
+                    .map(|c| serde_json::json!({ "name": c.name, "description": c.description }))
+                    .collect();
+                Some(serde_json::json!({ "commands": cmds }))
+            }
+            _ => None,
+        },
+        dispatch_err,
+    )
 }
 
 /// Query parameters for the events endpoint.
