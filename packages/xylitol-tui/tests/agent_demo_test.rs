@@ -1037,6 +1037,47 @@ fn agent_demo_plate_playground_sync_mentions_c555() {
 }
 
 #[test]
+fn agent_demo_plate_tree_mentions_c560_and_empty_search() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let mut h = TuiTestHarness::new(100, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )))
+    .focus(Some(0));
+    h.render_result().expect("initial render");
+    h.keys("\x10tree\r");
+    h.render_result().expect("after tree plate");
+    let tip = h.tui.terminal.scroll_buffer().join("\n");
+    assert!(
+        tip.contains("c560") && tip.contains("no-match"),
+        "plate tree should inject c560 empty/selection tip; got:\n{tip}"
+    );
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )));
+    app.borrow_mut().freeze_script_for_test();
+    app.borrow_mut().open_session_tree_for_test();
+    let mut h2 = TuiTestHarness::new(100, 28);
+    h2.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
+    h2.render_result().expect("tree open");
+    h2.keys("zzz-nomatch-c560");
+    h2.render_result().expect("after no-match search");
+    let empty = h2.tui.terminal.viewport().join("\n");
+    assert!(
+        empty.contains("No entries found"),
+        "tree search with no hits must show empty hint; got:\n{empty}"
+    );
+}
+
+#[test]
 fn agent_demo_seed_tool_blocks_use_status_background_tints() {
     use agent_demo_example::ToolBlockStatus;
 

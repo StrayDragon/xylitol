@@ -256,10 +256,11 @@ impl TreeSelector {
     }
 
     pub fn set_include_node(&mut self, pred: Option<TreeNodePredicate>) {
+        let prev_id = self.selected_id().map(str::to_string);
         self.options.include_node = pred;
         self.folded_nodes.clear();
         self.apply_filter();
-        self.clamp_selection();
+        self.restore_selection(prev_id.as_deref());
     }
 
     pub fn set_status_suffix(&mut self, suffix: Option<String>) {
@@ -279,10 +280,11 @@ impl TreeSelector {
     }
 
     pub fn set_search_query(&mut self, query: impl Into<String>) {
+        let prev_id = self.selected_id().map(str::to_string);
         self.search_query = query.into();
         self.folded_nodes.clear();
         self.apply_filter();
-        self.clamp_selection();
+        self.restore_selection(prev_id.as_deref());
     }
 
     /// Clear search if non-empty. Returns `true` when a query was cleared.
@@ -290,10 +292,11 @@ impl TreeSelector {
         if self.search_query.is_empty() {
             return false;
         }
+        let prev_id = self.selected_id().map(str::to_string);
         self.search_query.clear();
         self.folded_nodes.clear();
         self.apply_filter();
-        self.clamp_selection();
+        self.restore_selection(prev_id.as_deref());
         true
     }
 
@@ -327,17 +330,29 @@ impl TreeSelector {
         &self.filtered
     }
 
-    fn clamp_selection(&mut self) {
+    /// After filter/search/fold changes: keep prior id if still visible, else first row.
+    fn restore_selection(&mut self, prev_id: Option<&str>) {
         if self.filtered.is_empty() {
             self.selected_index = 0;
             return;
         }
-        self.selected_index = self
-            .selected_index
-            .min(self.filtered.len().saturating_sub(1));
+        if let Some(id) = prev_id
+            && let Some(idx) = self.filtered.iter().position(|n| n.id == id)
+        {
+            self.selected_index = idx;
+            return;
+        }
+        self.selected_index = 0;
+    }
+
+    fn refilter_preserving_selection(&mut self) {
+        let prev_id = self.selected_id().map(str::to_string);
+        self.apply_filter();
+        self.restore_selection(prev_id.as_deref());
     }
 
     fn rebuild(&mut self) {
+        let prev_id = self.selected_id().map(str::to_string);
         self.multiple_roots = self.roots.len() > 1;
         self.flat = flatten_tree(&self.roots, self.options.active_id.as_deref());
         self.build_active_path();
@@ -345,7 +360,7 @@ impl TreeSelector {
         if let Some(active) = self.options.active_id.as_deref() {
             self.selected_index = find_nearest_visible_index(&self.flat, &self.filtered, active);
         } else {
-            self.clamp_selection();
+            self.restore_selection(prev_id.as_deref());
         }
     }
 
@@ -991,8 +1006,7 @@ impl Component for TreeSelector {
             if !self.search_query.is_empty() {
                 self.search_query.pop();
                 self.folded_nodes.clear();
-                self.apply_filter();
-                self.clamp_selection();
+                self.refilter_preserving_selection();
             }
             return;
         }
@@ -1010,8 +1024,7 @@ impl Component for TreeSelector {
                 && !self.folded_nodes.contains(id)
             {
                 self.folded_nodes.insert(id.clone());
-                self.apply_filter();
-                self.clamp_selection();
+                self.refilter_preserving_selection();
             } else {
                 self.selected_index = self.find_branch_segment_start("up");
             }
@@ -1023,8 +1036,7 @@ impl Component for TreeSelector {
                 && self.folded_nodes.contains(id)
             {
                 self.folded_nodes.remove(id);
-                self.apply_filter();
-                self.clamp_selection();
+                self.refilter_preserving_selection();
             } else {
                 self.selected_index = self.find_branch_segment_start("down");
             }
@@ -1051,8 +1063,7 @@ impl Component for TreeSelector {
             }
             self.search_query.push_str(&ch);
             self.folded_nodes.clear();
-            self.apply_filter();
-            self.clamp_selection();
+            self.refilter_preserving_selection();
             return;
         }
 
@@ -1345,5 +1356,84 @@ mod tests {
             joined.contains("[no-tools]") && joined.contains("/"),
             "status suffix missing: {joined}"
         );
+    }
+
+    #[test]
+    fn empty_filter_renders_no_match_hint() {
+        let mut sel = TreeSelector::new(
+            sample_branch(),
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions::default(),
+        );
+        sel.set_search_query("zzz-no-match-xyz");
+        assert!(sel.filtered_ids().is_empty());
+        let joined = sel.render(80).join("\n");
+        assert!(
+            joined.contains("No entries found"),
+            "empty visible list must show no_match/empty hint:\n{joined}"
+        );
+        assert!(
+            joined.contains("(0/0)"),
+            "empty status should report 0/0:\n{joined}"
+        );
+    }
+
+    #[test]
+    fn selection_keeps_id_when_still_visible_after_include_filter() {
+        let mut sel = TreeSelector::new(
+            sample_branch(),
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions::default(),
+        );
+        // Navigate to b1 (index shifts if we only clamp by index after shrinking).
+        while sel.selected_id() != Some("b1") {
+            sel.handle_input(InputEvent::Key(crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Down,
+                crossterm::event::KeyModifiers::NONE,
+            )));
+            if sel.selected_index > 20 {
+                break;
+            }
+        }
+        assert_eq!(sel.selected_id(), Some("b1"));
+        let before_index = sel.selected_index;
+        // Drop the A branch — list shrinks; b1 remains but at a lower index.
+        sel.set_include_node(Some(Box::new(|n| n.id != "a" && n.id != "a1")));
+        assert!(
+            sel.filtered_ids().contains(&"b1"),
+            "b1 should remain visible"
+        );
+        assert_eq!(
+            sel.selected_id(),
+            Some("b1"),
+            "still-visible id must stay selected (was index {before_index}, now {})",
+            sel.selected_index
+        );
+    }
+
+    #[test]
+    fn selection_falls_back_to_first_when_id_filtered_out() {
+        let mut sel = TreeSelector::new(
+            sample_branch(),
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions::default(),
+        );
+        while sel.selected_id() != Some("a1") {
+            sel.handle_input(InputEvent::Key(crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Down,
+                crossterm::event::KeyModifiers::NONE,
+            )));
+            if sel.selected_index > 20 {
+                break;
+            }
+        }
+        assert_eq!(sel.selected_id(), Some("a1"));
+        sel.set_include_node(Some(Box::new(|n| n.id != "a" && n.id != "a1")));
+        assert!(!sel.filtered_ids().contains(&"a1"));
+        assert_eq!(
+            sel.selected_index, 0,
+            "filtered-out selection must fall back to first visible"
+        );
+        assert_eq!(sel.selected_id(), sel.filtered_ids().first().copied());
     }
 }
