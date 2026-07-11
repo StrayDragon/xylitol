@@ -17,6 +17,8 @@ use crate::runtime_protocol::{
     XyBashExecutor, XyEventSink, XyExportIo, XyModelBuilder, XyPermission, XySessionStore,
 };
 
+pub use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
+
 /// Options for [`build_agent`].
 pub struct BuildAgentOptions {
     pub model_registry: ModelRegistry,
@@ -137,7 +139,7 @@ impl McpSession {
     pub async fn reload(
         &mut self,
         driver: &mut crate::app::core::driver::InProcessDriver,
-        servers: &[crate::infra::mcp::McpServerConfig],
+        servers: &[McpServerSpec],
     ) -> Result<(), String> {
         use crate::infra::mcp::{connect_and_discover, mcp_enabled};
 
@@ -145,9 +147,10 @@ impl McpSession {
             old.shutdown().await;
         }
 
+        let infra = McpServerSpec::to_infra_list(servers);
         let mut tools = ToolSet::from_iter(crate::infra::tools::default_tools());
-        if mcp_enabled(&Some(servers.to_vec()))
-            && let Some((manager, mcp_tools)) = connect_and_discover(servers).await?
+        if mcp_enabled(&Some(infra.clone()))
+            && let Some((manager, mcp_tools)) = connect_and_discover(&infra).await?
         {
             tools = tools.merge(ToolSet::from_iter(mcp_tools));
             self.manager = Some(manager);
