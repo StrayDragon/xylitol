@@ -29,7 +29,7 @@ Markdown 槽示意 MUST 对齐 [`../markdown.md`](../markdown.md)：无 `#` 标�
 |---|---|
 | **左侧 tab 点击** | 选中该槽并 **滚动跳转到对应面板**（平铺/专注均生效） |
 | 平铺 / 专注 · `t` | 全槽一页 vs 只看当前槽 |
-| `1`–`9` · `←→` | 选槽并跳转 |
+| `1`–`9` · `0` · `←→` | 选槽并跳转（`0` = Ask） |
 | 深链 | `?slot=widgets&mode=focus`（会写入 URL） |
 
 ## 槽内动态
@@ -44,6 +44,7 @@ Markdown 槽示意 MUST 对齐 [`../markdown.md`](../markdown.md)：无 `#` 标�
 | Overlay | 确认框 shown+focus / unfocus / hidden · Esc/N/Y（引擎 OverlayHandle；demo 用内联槽） |
 | Widgets | Select/Settings 空态 · Input/Loader 窄宽（对照 `narrow-clamp`） |
 | Atoms | TruncatedText · Panel · CancellableLoader（对照同名 plate） |
+| Ask | ChoicePrompt：单选无 ●/○ · 多选 [x] · 多题混搭 Tabs（c565 · `ask-*`） |
 
 目标：改 DESIGN 或 MUST 时，先在此获得最快视觉反馈，再落地包组件 / demo。
 
@@ -58,5 +59,6 @@ just demo-tui
 # Ctrl+P → truncated-text        TruncatedText 单行省略
 # Ctrl+P → panel                 Panel padding+bg
 # Ctrl+P → cancellable-loader    Esc → on_abort（完整 braille 转圈）
+# Ctrl+P → ask-single|ask-multi|ask-tabs   ChoicePrompt（c565）
 # /md                            完整 Markdown grammar stub
 ```
