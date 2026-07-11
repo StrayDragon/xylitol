@@ -22,7 +22,7 @@
 | Client | 角色 | 期望 seam | 今日状态 |
 |---|---|---|---|
 | **Print** | 本地一次性对话 | `bootstrap` → `InProcessDriver` → `XyEvent` | ✅ 已走主线 |
-| **Server** | 远程托管同一内核 | 同上，经 REST/WS 暴露 `Driver` 能力 | 🟡 仍直接持有 `ReActAgent` |
+| **Server** | 远程托管同一内核 | 同上，经 REST/WS 暴露 `Driver` 能力 | ✅ `AppState` 持有 `InProcessDriver` |
 | **TUI** | 本地交互 | `Driver` + `dispatch(Command)` | ⏸ 冻结；Driver 传入未真正驱动 |
 | **Remote client** | 连 Server 的薄端 | `RemoteDriver` ↔ 线协议 | △ `run`/`abort` 可用；多数命令 stub |
 | **嵌入库** | 外部 crate 自建面 | 公开的装配 + `Driver` + `Xy*` 契约 | ✅ `xylitol::embed` + 精选 `Xy*` |
@@ -51,7 +51,7 @@ flowchart TB
 
   subgraph Actual["现状 2026-07-11"]
     P["Print → InProcessDriver ✅"]
-    S["Server → Mutex ReActAgent ✗ 旁路"]
+    S["Server → InProcessDriver ✅"]
     T["TUI → Driver 未用 ⏸"]
     Rem["RemoteDriver → 命令多 stub △"]
     Lib["Xy* + xylitol::embed ✅"]
@@ -61,10 +61,10 @@ flowchart TB
 | 缺口 | 影响 | 后续变更意向 |
 |---|---|---|
 | ~~装配缝未出库~~ | ~~外部无法正规嵌入~~ | ✅ `xylitol::embed`（c530） |
-| Server 旁路 Driver | 双后端，远程难对称 | Server 统一到 Driver（c535） |
+| ~~Server 旁路 Driver~~ | ~~双后端~~ | ✅ Server-on-Driver（c535） |
 | 线协议丢生命周期事件 | 远程看不到队列等 | 线协议 / Remote 对齐（c540） |
-| `dispatch` 无消费方 | Command 路径纸面存在 | TUI 开闸或 Server 接线时启用 |
-| 组合小债 | MCP / EventBus 角色 | 小步清债（部分已落地） |
+| `dispatch` 无消费方 | Command 路径纸面存在 | TUI 开闸或 Server 扩命令时启用 |
+| 组合小债 | MCP 配置类型泄漏等 | 小步清债（部分已落地） |
 
 ## 嵌入方应依赖什么（产品规则）
 
