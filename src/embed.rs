@@ -16,19 +16,30 @@
 //!     interactive: false,
 //!     caller: "embed-example",
 //! };
-//! // Then: `bootstrap(input)?` → `InProcessDriver::new(agent, store)` → `Driver::run`.
+//! // Then: `bootstrap(input)?.into_runtime()` → `Driver::run`.
+//! // Do not name `ReActAgent` at the call site.
 //! let _ = input.caller;
 //! ```
+//!
+//! ## Known leaks (not stability promises)
+//!
+//! - [`BootstrappedAgent::agent`] still exposes `ReActAgent` — use
+//!   [`BootstrappedAgent::into_runtime`] / [`BootstrappedAgent::into_driver`].
+//! - `mcp_servers` / [`McpSession::reload`] still use infra
+//!   `McpServerConfig` until a seam type exists.
+//!
+//! ## Not exported here
+//!
+//! - `dispatch` / `RemoteDriver` — stay crate-internal until a surface wires
+//!   them (Server/TUI / c540). Reach via `app::core` only inside this crate.
 //!
 //! See `docs/architecture/library-and-clients.md`.
 
 pub use crate::app::core::bootstrap::{
-    BootstrapError, BootstrapInput, BootstrapWarning, BootstrappedAgent, bootstrap,
+    BootstrapError, BootstrapInput, BootstrapWarning, BootstrappedAgent, BootstrappedRuntime,
+    bootstrap,
 };
 pub use crate::app::core::composition::{BuildAgentOptions, McpSession, build_agent};
-pub use crate::app::core::dispatch::{
-    DispatchError, DispatchOutcome, dispatch, parse_thinking_level,
-};
 pub use crate::app::core::driver::{
     CommandInfo, Driver, EventStream, InProcessDriver, ModelInfo, SessionState, SessionStats,
 };
