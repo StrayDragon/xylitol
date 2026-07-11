@@ -31,7 +31,7 @@
 //! - `dispatch` / `RemoteDriver` — stay crate-internal until a surface wires
 //!   them. Reach via `app::core` only inside this crate.
 //!
-//! See `docs/architecture/library-and-clients.md`.
+//! See `docs/architecture/库与多客户端.md`.
 
 pub use crate::app::core::bootstrap::{
     BootstrapError, BootstrapInput, BootstrapWarning, BootstrappedAgent, BootstrappedRuntime,
