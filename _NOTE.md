@@ -27,16 +27,13 @@
 | c525 | 异步可并发队列运行时 | archived |
 | **c530** | 公开嵌入 API（`xylitol::embed`） | archived |
 | **c535** | Server 统一到 Driver | archived |
+| **c540** | 线协议 / RemoteDriver 对齐 | archived |
 
-路径：`llmanspec/changes/archive/2026-07-11-c5xx-*`；c530：`archive/2026-07-11-c530-add-lib-embed-api`；c535：`archive/2026-07-11-c535-refactor-server-onto-driver`。
+路径：`llmanspec/changes/archive/2026-07-11-c5xx-*`；c530–c540 见对应 `archive/2026-07-11-c5xx-*` 目录。
 
 ## 下一波内核（库 + 多 client）
 
-见 [`library-and-clients.md`](docs/architecture/library-and-clients.md)。活跃意向：
-
-| ID | 主题 | depends |
-|---|---|---|
-| **c540** | 线协议 / RemoteDriver 对齐 | c535 ✅ |
+见 [`library-and-clients.md`](docs/architecture/library-and-clients.md)。A2 意向（c530–c540）已归档。后续可选：TUI 开闸、`dispatch` 消费、MCP 配置类型去泄漏。
 
 轨 B（产品 TUI）仍冻结，需明确开闸。
 

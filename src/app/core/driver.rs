@@ -435,6 +435,85 @@ impl RemoteDriver {
             .replace("http://", "ws://");
         format!("{ws_base}/api/v1/session/{}/ws", self.session_id)
     }
+
+    fn api(&self, suffix: &str) -> String {
+        format!(
+            "{}/api/v1/session/{}/{}",
+            self.base_url, self.session_id, suffix
+        )
+    }
+
+    fn block_on<T>(
+        &self,
+        fut: impl std::future::Future<Output = Result<T, String>>,
+    ) -> Result<T, String> {
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => tokio::task::block_in_place(|| handle.block_on(fut)),
+            Err(_) => tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|e| e.to_string())?
+                .block_on(fut),
+        }
+    }
+
+    async fn get_data(&self, suffix: &str) -> Result<serde_json::Value, String> {
+        let resp = self
+            .client
+            .get(self.api(suffix))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        Self::parse_envelope(resp).await
+    }
+
+    async fn post_data(
+        &self,
+        suffix: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let resp = self
+            .client
+            .post(self.api(suffix))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        Self::parse_envelope(resp).await
+    }
+
+    async fn parse_envelope(resp: reqwest::Response) -> Result<serde_json::Value, String> {
+        let status = resp.status();
+        let env: crate::protocol::Envelope<serde_json::Value> =
+            resp.json().await.map_err(|e| e.to_string())?;
+        if env.code != crate::protocol::ErrorCode::Ok {
+            return Err(env
+                .msg
+                .unwrap_or_else(|| format!("server error ({status})")));
+        }
+        Ok(env.data.unwrap_or(serde_json::Value::Null))
+    }
+
+    fn model_from_value(v: &serde_json::Value) -> Result<ModelInfo, String> {
+        Ok(ModelInfo {
+            id: v
+                .get("id")
+                .or_else(|| v.get("model"))
+                .and_then(|x| x.as_str())
+                .ok_or("missing model id")?
+                .to_string(),
+            display_name: v
+                .get("display_name")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
+            thinking: v.get("thinking").and_then(|x| x.as_bool()).unwrap_or(false),
+            context_window: v
+                .get("context_window")
+                .and_then(|x| x.as_u64())
+                .unwrap_or(0),
+        })
+    }
 }
 
 #[cfg(feature = "server")]
@@ -537,32 +616,83 @@ impl Driver for RemoteDriver {
         });
     }
 
-    // NOTE: the command methods below hit REST endpoints. Several server routes
-    // for these commands do not exist yet (the server today exposes only
-    // run/cancel/events). Until the server grows the matching routes, these
-    // return a not-implemented error rather than fabricating a response. The
-    // in-process path is the authoritative implementation; remote parity
-    // arrives when the server command surface is built out.
-    // ceiling: server lacks command routes. upgrade: add REST routes + wire.
-
     fn current_model(&self) -> Option<ModelInfo> {
-        None
+        self.block_on(async {
+            let data = self.get_data("state").await?;
+            match data.get("model") {
+                Some(m) if !m.is_null() => Self::model_from_value(m).map(Some),
+                _ => Ok(None),
+            }
+        })
+        .ok()
+        .flatten()
     }
 
     fn available_models(&self) -> Vec<ModelInfo> {
-        Vec::new()
+        self.block_on(async {
+            let data = self.get_data("models").await?;
+            let arr = data
+                .get("models")
+                .and_then(|m| m.as_array())
+                .cloned()
+                .unwrap_or_default();
+            arr.iter().map(Self::model_from_value).collect()
+        })
+        .unwrap_or_default()
     }
 
-    fn select_model(&mut self, _model_id: &str) -> Result<ModelInfo, String> {
-        Err("RemoteDriver command routes not yet implemented".into())
+    fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, String> {
+        let model_id = model_id.to_string();
+        let url = format!(
+            "{}/api/v1/session/{}/model?model_id={}",
+            self.base_url,
+            self.session_id,
+            urlencoding_loose(&model_id)
+        );
+        self.block_on(async {
+            let resp = self
+                .client
+                .post(&url)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
+            let data = Self::parse_envelope(resp).await?;
+            // Endpoint returns { model, display_name }; enrich via list if needed.
+            if data.get("id").is_some() {
+                Self::model_from_value(&data)
+            } else {
+                Ok(ModelInfo {
+                    id: data
+                        .get("model")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or(&model_id)
+                        .to_string(),
+                    display_name: data
+                        .get("display_name")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    thinking: false,
+                    context_window: 0,
+                })
+            }
+        })
     }
 
     fn cycle_model(&mut self) -> Result<ModelInfo, String> {
-        Err("RemoteDriver command routes not yet implemented".into())
+        self.block_on(async {
+            let data = self.post_data("model/cycle", serde_json::json!({})).await?;
+            Self::model_from_value(&data)
+        })
     }
 
     fn set_thinking_level(&mut self, level: ThinkingLevel) {
         *self.thinking.lock().unwrap() = level;
+        let level_str = level.as_str();
+        let _ = self.block_on(async {
+            self.post_data("thinking", serde_json::json!({ "level": level_str }))
+                .await
+        });
     }
 
     fn thinking_level(&self) -> ThinkingLevel {
@@ -575,61 +705,230 @@ impl Driver for RemoteDriver {
 
     async fn execute_bash(
         &mut self,
-        _command: &str,
-        _exclude_from_context: bool,
+        command: &str,
+        exclude_from_context: bool,
     ) -> Result<XyBashResult, String> {
-        Err("RemoteDriver command routes not yet implemented".into())
+        let data = self
+            .post_data(
+                "bash",
+                serde_json::json!({
+                    "command": command,
+                    "exclude_from_context": exclude_from_context,
+                }),
+            )
+            .await?;
+        Ok(XyBashResult {
+            output: data
+                .get("output")
+                .and_then(|o| o.as_str())
+                .unwrap_or("")
+                .to_string(),
+            exit_code: data
+                .get("exit_code")
+                .and_then(|c| c.as_i64())
+                .map(|c| c as i32),
+            cancelled: data
+                .get("cancelled")
+                .and_then(|c| c.as_bool())
+                .unwrap_or(false),
+            truncated: data
+                .get("truncated")
+                .and_then(|c| c.as_bool())
+                .unwrap_or(false),
+            full_output_path: None,
+        })
     }
 
     async fn compact(&mut self) -> Result<bool, String> {
-        Err("RemoteDriver command routes not yet implemented".into())
+        let data = self.post_data("compact", serde_json::json!({})).await?;
+        Ok(data
+            .get("compacted")
+            .and_then(|c| c.as_bool())
+            .unwrap_or(false))
     }
 
-    async fn export_html(&mut self, _path: &Path) -> Result<String, String> {
-        Err("RemoteDriver command routes not yet implemented".into())
+    async fn export_html(&mut self, path: &Path) -> Result<String, String> {
+        let data = self
+            .post_data(
+                "export/html",
+                serde_json::json!({ "path": path.to_string_lossy() }),
+            )
+            .await?;
+        Ok(data
+            .get("path")
+            .and_then(|p| p.as_str())
+            .unwrap_or("")
+            .to_string())
     }
 
-    async fn export_jsonl(&mut self, _path: &Path) -> Result<String, String> {
-        Err("RemoteDriver command routes not yet implemented".into())
+    async fn export_jsonl(&mut self, path: &Path) -> Result<String, String> {
+        let data = self
+            .post_data(
+                "export/jsonl",
+                serde_json::json!({ "path": path.to_string_lossy() }),
+            )
+            .await?;
+        Ok(data
+            .get("path")
+            .and_then(|p| p.as_str())
+            .unwrap_or("")
+            .to_string())
     }
 
-    async fn import_jsonl(&mut self, _path: &Path) -> Result<String, String> {
-        Err("RemoteDriver command routes not yet implemented".into())
+    async fn import_jsonl(&mut self, path: &Path) -> Result<String, String> {
+        let data = self
+            .post_data(
+                "import/jsonl",
+                serde_json::json!({ "path": path.to_string_lossy() }),
+            )
+            .await?;
+        Ok(data
+            .get("session_id")
+            .and_then(|p| p.as_str())
+            .unwrap_or("")
+            .to_string())
     }
 
-    async fn fork_session(&mut self, _entry_id: &str) -> Result<String, String> {
-        Err("RemoteDriver command routes not yet implemented".into())
+    async fn fork_session(&mut self, entry_id: &str) -> Result<String, String> {
+        let data = self
+            .post_data("fork", serde_json::json!({ "entry_id": entry_id }))
+            .await?;
+        Ok(data
+            .get("session_id")
+            .and_then(|p| p.as_str())
+            .unwrap_or("")
+            .to_string())
     }
 
-    async fn switch_session(&mut self, _session_id: &str) -> Result<String, String> {
-        Err("RemoteDriver command routes not yet implemented".into())
+    async fn switch_session(&mut self, session_id: &str) -> Result<String, String> {
+        let data = self
+            .post_data("switch", serde_json::json!({ "session_id": session_id }))
+            .await?;
+        let id = data
+            .get("session_id")
+            .and_then(|p| p.as_str())
+            .unwrap_or(session_id)
+            .to_string();
+        self.session_id = id.clone();
+        Ok(id)
     }
 
     async fn get_messages(&self) -> Result<Vec<SessionEntry>, String> {
-        Err("RemoteDriver command routes not yet implemented".into())
+        let data = self.get_data("messages").await?;
+        let entries = data
+            .get("entries")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        serde_json::from_value(entries).map_err(|e| e.to_string())
     }
 
     async fn get_session_stats(&self) -> Result<SessionStats, String> {
-        Err("RemoteDriver command routes not yet implemented".into())
+        let data = self.get_data("stats").await?;
+        Ok(SessionStats {
+            session_id: data
+                .get("session_id")
+                .and_then(|s| s.as_str())
+                .unwrap_or(&self.session_id)
+                .to_string(),
+            user_messages: data
+                .get("user_messages")
+                .and_then(|n| n.as_u64())
+                .unwrap_or(0) as usize,
+            assistant_messages: data
+                .get("assistant_messages")
+                .and_then(|n| n.as_u64())
+                .unwrap_or(0) as usize,
+            total_messages: data
+                .get("total_messages")
+                .and_then(|n| n.as_u64())
+                .unwrap_or(0) as usize,
+            thinking_level: data
+                .get("thinking_level")
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_string(),
+            model: data.get("model").and_then(|m| {
+                Some((
+                    m.get("provider")?.as_str()?.to_string(),
+                    m.get("model_id")?.as_str()?.to_string(),
+                ))
+            }),
+        })
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {
-        Vec::new()
+        self.block_on(async {
+            let data = self.get_data("commands").await?;
+            let arr = data
+                .get("commands")
+                .and_then(|c| c.as_array())
+                .cloned()
+                .unwrap_or_default();
+            Ok(arr
+                .iter()
+                .filter_map(|c| {
+                    Some(CommandInfo {
+                        name: c.get("name")?.as_str()?.to_string(),
+                        description: c
+                            .get("description")
+                            .and_then(|d| d.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    })
+                })
+                .collect())
+        })
+        .unwrap_or_default()
     }
 
-    fn steer(&mut self, _message: &str) -> Result<(), String> {
-        Err("RemoteDriver command routes not yet implemented".into())
+    fn steer(&mut self, message: &str) -> Result<(), String> {
+        self.block_on(async {
+            self.post_data("steer", serde_json::json!({ "message": message }))
+                .await?;
+            Ok(())
+        })
     }
 
-    fn follow_up(&mut self, _message: &str) -> Result<(), String> {
-        Err("RemoteDriver command routes not yet implemented".into())
+    fn follow_up(&mut self, message: &str) -> Result<(), String> {
+        self.block_on(async {
+            self.post_data("follow-up", serde_json::json!({ "message": message }))
+                .await?;
+            Ok(())
+        })
     }
 
-    fn clear_queue(&mut self, _clear_steer: bool, _clear_follow_up: bool) -> Result<(), String> {
-        Err("RemoteDriver command routes not yet implemented".into())
+    fn clear_queue(&mut self, clear_steer: bool, clear_follow_up: bool) -> Result<(), String> {
+        self.block_on(async {
+            self.post_data(
+                "queue/clear",
+                serde_json::json!({
+                    "clear_steer": clear_steer,
+                    "clear_follow_up": clear_follow_up,
+                }),
+            )
+            .await?;
+            Ok(())
+        })
     }
 
     fn queue_stats(&self) -> crate::agent::session::QueueStats {
-        crate::agent::session::QueueStats::default()
+        self.block_on(async {
+            let data = self.get_data("queue").await?;
+            Ok(crate::agent::session::QueueStats {
+                steer_count: data
+                    .get("steer_count")
+                    .and_then(|n| n.as_u64())
+                    .unwrap_or(0) as usize,
+                follow_up_count: data
+                    .get("follow_up_count")
+                    .and_then(|n| n.as_u64())
+                    .unwrap_or(0) as usize,
+            })
+        })
+        .unwrap_or_default()
     }
+}
+
+fn urlencoding_loose(s: &str) -> String {
+    s.replace(' ', "%20")
 }

@@ -24,7 +24,7 @@
 | **Print** | 本地一次性对话 | `bootstrap` → `InProcessDriver` → `XyEvent` | ✅ 已走主线 |
 | **Server** | 远程托管同一内核 | 同上，经 REST/WS 暴露 `Driver` 能力 | ✅ `AppState` 持有 `InProcessDriver` |
 | **TUI** | 本地交互 | `Driver` + `dispatch(Command)` | ⏸ 冻结；Driver 传入未真正驱动 |
-| **Remote client** | 连 Server 的薄端 | `RemoteDriver` ↔ 线协议 | △ `run`/`abort` 可用；多数命令 stub |
+| **Remote client** | 连 Server 的薄端 | `RemoteDriver` ↔ 线协议 | ✅ 命令面经 REST；`QueueUpdate` 上线 |
 | **嵌入库** | 外部 crate 自建面 | 公开的装配 + `Driver` + `Xy*` 契约 | ✅ `xylitol::embed` + 精选 `Xy*` |
 | **GUI（未来）** | 桌面/其它 | 同 Print/TUI：只依赖 Driver | 🔴 未开 |
 
@@ -53,7 +53,7 @@ flowchart TB
     P["Print → InProcessDriver ✅"]
     S["Server → InProcessDriver ✅"]
     T["TUI → Driver 未用 ⏸"]
-    Rem["RemoteDriver → 命令多 stub △"]
+    Rem["RemoteDriver → REST 命令面 ✅"]
     Lib["Xy* + xylitol::embed ✅"]
   end
 ```
@@ -62,7 +62,7 @@ flowchart TB
 |---|---|---|
 | ~~装配缝未出库~~ | ~~外部无法正规嵌入~~ | ✅ `xylitol::embed`（c530） |
 | ~~Server 旁路 Driver~~ | ~~双后端~~ | ✅ Server-on-Driver（c535） |
-| 线协议丢生命周期事件 | 远程看不到队列等 | 线协议 / Remote 对齐（c540） |
+| ~~线协议丢生命周期事件~~ | ~~远程看不到队列等~~ | ✅ `QueueUpdate` 上线（c540）；其余仍可降级 |
 | `dispatch` 无消费方 | Command 路径纸面存在 | TUI 开闸或 Server 扩命令时启用 |
 | 组合小债 | MCP 配置类型泄漏等 | 小步清债（部分已落地） |
 
