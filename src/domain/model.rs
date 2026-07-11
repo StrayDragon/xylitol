@@ -2,12 +2,14 @@
 //!
 //! Provides [`XyModelKind`] (supported provider types) and [`XyModelConfig`]
 //! (connection parameters for building a provider instance).
+//!
+//! JSON Schema for config files lives in `infra` (see c510); this module is
+//! serde-only so domain stays free of schemars.
 
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Supported LLM provider kinds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum XyModelKind {
     #[serde(rename = "openai")]
