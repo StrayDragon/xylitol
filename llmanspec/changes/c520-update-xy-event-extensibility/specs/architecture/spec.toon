@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ar08,统一事件词汇表（闭集生命周期）,System MUST 以 XyEvent 作为 ReAct 输出流与生命周期总线的统一领域事件词汇；XyEvent MUST 保持为 agent 生命周期闭集（Agent/Turn/Message/Tool/Compaction/Queue 等），MUST NOT 为每个 provider 专属 SSE 事件新增变体。厂商流细节 MUST 在适配器边界映射为 XyChunk 或已有 MessageUpdate 载荷。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ar08,"closed-set","",审查 XyEvent 变体与 provider 适配器,无厂商专名变体；流增量经 XyChunk 进入循环后再发标准 XyEvent

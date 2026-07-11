@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,la21,禁止死包装协作者,agent/ 内对端口的纯转发壳（无附加状态或行为，且无生产调用方）MUST 删除；Agent MUST 直接持有 Arc<dyn Port> 或经有真实职责的协作者访问，MUST NOT 保留 SessionIO 类零逻辑包装。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  la21,"no-session-io","",搜索 SessionIO 与 PermissionGate 生产调用,类型已删除或不再作为无逻辑壳存在

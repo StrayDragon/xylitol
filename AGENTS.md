@@ -10,7 +10,20 @@
 
 # 仓库级 Agent 指南
 
-用与用户相同的语言回复。`xylitol` 是 Rust 2024 单 crate 的 LLM 增强开发工具包，用 llman SDD 驱动开发。
+用与用户相同的语言回复。`xylitol` 是 Rust 2024 单 crate 的 **开箱即用个人 coding agent**（LLM 增强开发工具包），用 llman SDD 驱动开发。
+
+## 产品定调
+
+| 是 | 不是 |
+|---|---|
+| 个人默认就能用的 coding harness | 扩展市场 / Extension / 插件平台 |
+| 合理分层 + 少量稳定库入口（开闭） | 为「未来插件」堆抽象 |
+| 按本仓库需求演进 | 持续对齐 / 追平 `../pi`（历史 port 来源，非持续对照） |
+
+- **Trust**：对齐 pi 语义——闸的是**项目本地资源是否加载**（settings / prompts / skills / …），不是工具调用 popup。工具侧开箱 **allow-all**。
+- **MCP**：配置驱动；未配置则零装配（zero-cost）；支持动态配置与重载。细节见 `src/AGENTS.md`。
+- **TUI 产品面**：冻结，直至架构命名与相关重构落地；见 `src/app/tui/AGENTS.md`。
+- 长文分析索引：`_NOTE.md`；高维架构图：`docs/architecture/`。
 
 ## 工作原则
 
@@ -26,7 +39,7 @@
 
 | 层 | 角色 | 关键约束 |
 |---|---|---|
-| `domain/` | 纯领域词汇（`XyEvent`/`XyModel`/`XyTool`/消息类型） | 零 crate 内依赖 |
+| `domain/` | 纯领域词汇（`XyEvent` / 消息类型等） | 零 crate 内依赖 |
 | `runtime_protocol/` | agent↔infra 边界 traits（ports） | 只依赖 `domain/` |
 | `agent/` | 薄编排核心（ReAct 循环、session、model、tools 聚合） | 不依赖 `infra`（arch_guard 强制） |
 | `infra/` | 运行时域（provider adapter、工具实现、config、session 等） | 不依赖 `agent`（arch_guard 强制） |
@@ -35,6 +48,12 @@
 | `packages/xylitol-tui` | 通用 TUI 引擎与组件库（workspace 包） | 零引用主 crate；见该包 `AGENTS.md` |
 
 依赖方向：`app → agent → runtime_protocol → domain`，`infra → runtime_protocol → domain`，`protocol → domain`。
+
+## `Xy*` 与外部库包装
+
+- **`Xy*`** = 近期要精选进库 `pub use` 的**跨层契约 / 可替换端口 / 跨面事件**（方便导出），不是全局品牌前缀。细则 SSOT：`src/AGENTS.md`。
+- **外部库概念**：会出现在库入口或多方言统一处 → 包一层（我们的类型）；纯内部实现细节 → **直接用** crate 类型，不 newtype。
+- 应用面缝（`Driver` / bootstrap / dispatch）与内部协作者**不加** `Xy`。
 
 ## 编码规则
 
@@ -47,7 +66,9 @@
 
 ## Provider 支持范围（Pre-1.0.0）
 
-只支持两类 provider API：**OpenAI 兼容**（Chat Completions）与 **Anthropic**（Messages）。其它 provider、OAuth 凭据存储、provider 专属 attribution header 在 1.0.0 前不支持。用户自定义 provider 仅当说 OpenAI/Anthropic 兼容 API 时才接受。给不支持 provider 加专属逻辑的改动，review 时拒绝。
+**交付**：只支持两类 provider API——**OpenAI 兼容**（Chat Completions）与 **Anthropic**（Messages）。OAuth、专属 attribution header、其它厂商专属逻辑在 1.0.0 前不支持；用户自定义仅当声明为上述兼容 API 时接受。
+
+**抽象**：业务只依赖 `XyModel`；多方言收在 infra 适配器族（开闭：新厂商 = 新适配器，不改 ReAct / 应用面）。禁止 Completions「已是 `XyModel` 再包一层」双路径。
 
 ## 命令
 
@@ -57,6 +78,7 @@
 
 - 提交用 Conventional Commits：`feat(cli): …`/`fix(agent): …`/`refactor(config): …`/`docs: …`/`chore: …`。开 PR 前跑 `just qa`。
 - BDD 场景在 `tests/features/*.feature`，rstest-bdd 实现在 `tests/bdd.rs`；需顺序/共享状态时 `cargo test bdd -- --test-threads=1`。快照用 `insta`，接受前复核。回归放 `tests/regression/{issue号}-{简述}.rs`。优先扩既有测试文件，别为小特性新建。
+- **测试分层**：BDD 覆盖端到端编排（agent 循环、工具完整路径、session、CLI slash、跨组件）；`#[cfg(test)]` 覆盖纯数据/算法/组件内状态机。已有 BDD 的路径，单测只测底层边界，不重复全链路。
 - 实现计划变更后同步 `llmanspec/` 工件（`/llman-sdd-*` 技能）。读代码优先 `rg`。
 
 ## llmanspec 命名
