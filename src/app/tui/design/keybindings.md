@@ -11,39 +11,52 @@ components:
 # Keybindings
 
 > Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
+> **c480 MVP** 先落地「全局 / 输入」表；树开扩展键仅在 **活树** change 后启用（c491 stub 只开/关/Enter travel）。
 
-已决议产品键位（实现：c480 / InputListener c455）。包 demo 应提前对齐以便验证。
+已决议产品键位（实现：c480 / InputListener c455）。活实验场：`just demo-tui`。
 
-## MUST（全局 / 输入）
+## MUST — c480 MVP（全局 / 输入）
 
 | 键 | 行为 |
 |---|---|
-| Esc | 流中：**abort** 当前模型/工具流 |
+| Esc | 流中：**abort**（清 steer，**留** follow_up 供 restore） |
 | Ctrl+C | 编辑器非空：**清空**；已空：**退出** TUI |
-| Enter（流中） | **steer**（插入引导，不打断当前轮的队列语义见 c461） |
+| Enter（idle） | 提交用户消息 |
+| Enter（流中） | **steer** |
 | Alt+Enter | **follow-up**（排队到本轮结束后） |
-| 双 Esc | 打开 **会话树**（**优先路径**；见 [`session-tree.md`](./session-tree.md)，c454→c456→c491） |
-| Ctrl+O | **树关**：工具详情视口折叠/全文；**树开**：循环 session-tree filter |
-| Ctrl+T | **树关**：thinking 展开/折叠；**树开**：filter → no-tools |
-| Alt+E | tool/diff **块**展开/折叠（有无详情；与 Ctrl+O 视口正交） |
-| Ctrl+D / U / L / A | **树开**：filter → default / user / labeled / all |
-| Ctrl/Alt+←→ | **树开**：fold 或分支段跳转 |
-| Shift+L | **树开**：编辑节点 annotation |
-| Shift+T | **树开**：切换 annotation 时间戳显示 |
-| Shift+F | **树开**：**fork**（停在选中节点、预填 user 文案；下次提交成兄弟分支；异于 Enter travel） |
+| 双 Esc | 打开 **c491 stub** 会话树（假树；Esc 关；Enter `travel → id`） |
+| `/exit` | 退出并 restore（与垂直切片一致） |
+| `/model` | 切换/选择模型（MVP；实现可极简列表） |
+
+## MUST — 树关时（有内容时；可与 c480 同批或紧随）
+
+| 键 | 行为 |
+|---|---|
+| Ctrl+O | 工具详情视口折叠/全文 |
+| Ctrl+T | thinking 展开/折叠 |
+| Alt+E | tool/diff **块**展开/折叠 |
+
+## 后置 — 树开（**勿**在 c491 stub 上实现）
+
+| 键 | 行为 |
+|---|---|
+| Ctrl+O/T/D/U/L/A | filter 循环 |
+| Ctrl/Alt+←→ | fold / 分支跳转 |
+| Shift+L / T / F | annotation / 时间戳 / **fork** |
+| Enter | travel（stub 已有假 id） |
 
 ## MUST（编辑器槽）
 
 | 键 | 行为 |
 |---|---|
 | Esc（选择器打开时） | 关闭选择器，还原 editor |
-| Ctrl+P 等 | 打开命令/设置（替换 editor 槽） |
-| `!` 前缀 | **bash 边框**强调（demo c457；产品执行见 c492） |
-| Ctrl+G | **外部编辑器**：demo TTY 真 `$EDITOR`（包 `with_terminal_suspended`）；harness stub；产品接线后置 |
+| `/` 补全 | CompletionSource（包注册表）；产品 MVP 命令见上 |
+| `!` 前缀 | bash 边框（**c492**；c480 可不实现执行） |
+| Ctrl+G | 外部编辑器（后置） |
 
 ## 规则
 
 1. 全局键经 `InputListener` **先于** Editor 焦点消费（c455）。
 2. **MUST NOT** 让 Ctrl+C 泄漏进 Editor 变成字面 `c`。
 3. footer **默认不**罗列完整快捷键墙；细节 `/help`。
-4. UI 旁注快捷键 MUST 用括号包裹完整和弦（如 `(Ctrl+T)`、`(Alt+E)`），**MUST NOT** 使用 `^T` 缩写作为用户可见提示；提示色用 `{colors.muted}`。
+4. UI 旁注快捷键 MUST 用括号包裹完整和弦（如 `(Ctrl+T)`、`(Alt+E)`），**MUST NOT** 使用 `^T` 缩写；提示色 `{colors.muted}`。

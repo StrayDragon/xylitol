@@ -46,9 +46,9 @@ just open-design-playground
 | **左侧 tab** | 选槽并跳转 |
 | 平铺 / 专注 · `t` | 全槽 vs 当前槽 |
 | Dark / Light · `d` / `l` | `colors` vs `colors_light` |
-| `f` | **Full shell**（主槽） |
-| `c` | **Chrome** |
-| `k` | **Keybindings** |
+| `f` | **Full shell**（c475+c480 整壳） |
+| `c` | **Chrome**（c475） |
+| `k` | **Keybindings**（c480 MVP） |
 | `1`–`5` · `←→` | Layout / Tool / Diff / Markdown / Overlay |
 | `8` `9` `0` | 弱对照：Widgets / Atoms / Ask（细节以 `just demo-tui` 为准） |
 | 深链 | `?slot=shell&mode=focus&scheme=light` |

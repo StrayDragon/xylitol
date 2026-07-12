@@ -136,7 +136,17 @@ components:
 
 情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
 
-参考实现锚点：`packages/xylitol-tui` 的 `agent_demo`（图 2 布局）≈ 产品 TUI 目标形态。当前 `src/app/tui` 空场景仅为 host 框架占位，**尚未**按本 DESIGN 实现产品视觉。
+参考实现锚点：`packages/xylitol-tui` 的 **`agent_demo`（`just demo-tui`）= 产品 TUI 活实验场**；浏览器静图见 [`design/playground/`](./design/playground/)。当前 `src/app/tui` host 已接 c465 bridge，**尚未**按本 DESIGN 落地 chrome / 键位（**c475 / c480**）。
+
+## Track B 落地切片（设计闸）
+
+| Change | 设计焦点 | 文档 |
+|---|---|---|
+| **c475** chrome | `Palette::dark` 注入；glyph 档；idle **0** status；busy 一行；footer `cwd · model` | [`status`](./design/status.md) · [`footer`](./design/footer.md) · [`glyphs`](./design/glyphs.md) · [`theme-tokens`](./design/theme-tokens.md) |
+| **c480** input | Editor 操作区；`/exit` `/model`；steer / follow-up / abort / Ctrl+C；双 Esc → **c491 stub** | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) · [`session-tree`](./design/session-tree.md) |
+| **c485** | 可聊一轮 E2E（依赖上两者） | — |
+
+产品 MVP **固定暗色**；**MUST NOT** 默认开 theme auto / `/theme`（demo 可保留）。
 
 ## Colors
 
