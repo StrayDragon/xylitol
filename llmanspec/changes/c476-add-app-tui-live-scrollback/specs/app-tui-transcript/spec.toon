@@ -1,0 +1,11 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,att1,live-scrollback-output,"产品 UiRoot 当前轮 live 用户/助手/系统输出 MUST 写入引擎 scrollback 并以包 Markdown（及角色色/glyph）呈现；MUST NOT 截断历史冒充滚动；MUST NOT 以此要求实现 Codex 式可导航 transcript 浏览面。",null,null,null
+  modify_requirement,att3,diff-via-package,"产品 live scrollback 中文件编辑 diff MUST 复用 packages/xylitol-tui Diff（含 word-level 与复制友好前缀）；MUST NOT 在应用面复制准通用 diff 渲染器。",null,null,null
+  modify_requirement,att4,tool-block-status-bg,"产品 tool 可展开块 MUST 按 pending/success/error 为可见行套 tool-*-bg；edit/diff 块 MUST 仅对摘要/header 套同一 tint，Diff 正文 MUST NOT 再套 tool-*-bg；色值 MUST 对齐 DESIGN.md；ANSI 背景 MUST 以 \\x1b[49m 复位。",null,null,null
+  modify_requirement,att7,expandable-block-fold,"产品 live scrollback 的 thinking/tool/edit-diff 可展开块 MUST 支持折叠与展开；折叠态 MUST 保留可读摘要行；状态机 MUST 在应用面；展开快捷键旁注 MUST 为括号完整和弦（Ctrl+T / Alt+E）。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  att1,markdown-assistant,"",UiModel 含助手 Markdown 条目并 render,输出含 Markdown 主题着色而非纯 `assistant:` 前缀行
+  att3,diff-component,"",UiEntry::Diff 含 display_diff,render 经包 Diff 着色
+  att4,header-tint-only,"",展开 edit/diff 块,仅 header 含 tool status bg
+  att7,fold-key-hint,"",渲染折叠 thinking 头,行旁含 (Ctrl+T)

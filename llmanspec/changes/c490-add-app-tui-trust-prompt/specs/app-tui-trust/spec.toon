@@ -1,0 +1,10 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,atr1,choice-prompt-not-stdio,"产品 `--tui` 路径在需要 Ask trust 时 MUST 在 raw-mode TUI 内用 packages/xylitol-tui ChoicePrompt（替换 editor 槽）完成选择；MUST NOT 调用 prompt_trust_options_stdio 或等价 stderr 数字菜单。",null,null,null
+  add_requirement,atr2,theme-and-cancel,"Trust ChoicePrompt MUST 使用 Palette::dark()（或等价）choice_prompt_theme；Esc/取消 MUST 视为不信任（deny）；提交 MUST 经 TrustManager 写入持久 store。",null,null,null
+  add_requirement,atr3,yolo-after,"项目已信任后产品 TUI MUST NOT 实现逐工具审批 UI；工具默认执行；MUST 保留 hook 扩展点。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  atr1,no-stdio-menu,"需要 Ask 且启动 --tui","进入产品 TUI","editor 槽为 ChoicePrompt 且无 Choice [1-N] stderr 菜单"
+  atr1,options-from-store,"","构造 trust 选择","选项 label 来自 TrustManager::get_trust_options"
+  atr2,esc-denies,"ChoicePrompt 已打开",按 Esc,不信任且不写 trust 肯定决策（或等价 deny）
+  atr3,no-tool-approval-ui,"项目已信任",模型请求工具,无逐工具确认弹层
