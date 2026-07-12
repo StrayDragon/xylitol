@@ -379,7 +379,19 @@ pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
             }
         }
         XyEvent::Error(msg) => {
-            model.entries.push(UiEntry::Error { text: msg.clone() });
+            // Esc abort used to emit Error("aborted"); treat as cancel note + idle
+            // so a sticky Error wall cannot block further conversation (c482).
+            if msg == "aborted" {
+                model.entries.push(UiEntry::System {
+                    text: "aborted".into(),
+                });
+                if model.queue.follow_up_count == 0 {
+                    model.phase = UiPhase::Idle;
+                    model.status = None;
+                }
+            } else {
+                model.entries.push(UiEntry::Error { text: msg.clone() });
+            }
         }
         XyEvent::ModelSelect { .. }
         | XyEvent::ThinkingLevelChanged { .. }
@@ -613,6 +625,27 @@ mod tests {
             })
             .collect();
         assert_eq!(users, ["hello", "nudge"]);
+    }
+
+    #[test]
+    fn aborted_error_is_system_note_and_idles() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(&mut model, &XyEvent::Error("aborted".into()));
+        assert_eq!(model.phase, UiPhase::Idle);
+        assert!(model.status.is_none());
+        assert!(
+            model
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text == "aborted"))
+        );
+        assert!(
+            !model
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::Error { .. }))
+        );
     }
 
     #[test]
