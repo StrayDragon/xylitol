@@ -671,6 +671,25 @@ fn push_list_item_lines(
     true
 }
 
+/// Attach list bullet / hanging-indent prefixes to already-rendered block lines.
+fn push_list_block_lines(
+    lines: &mut Vec<String>,
+    block_lines: impl IntoIterator<Item = String>,
+    first_prefix: &str,
+    continuation: &str,
+    rendered_any: &mut bool,
+) {
+    for line in block_lines {
+        let prefix = if *rendered_any {
+            continuation
+        } else {
+            first_prefix
+        };
+        lines.push(format!("{prefix}{line}"));
+        *rendered_any = true;
+    }
+}
+
 fn render_list(
     md: &Markdown,
     events: &[Event],
@@ -748,15 +767,52 @@ fn render_list(
                             *idx += 1;
                             let lang = fenced_lang(kind);
                             let code = collect_text_until(events, idx);
-                            for line in render_code_block_lines(md, &code, lang) {
-                                let prefix = if rendered_any {
-                                    continuation.as_str()
-                                } else {
-                                    first_prefix.as_str()
-                                };
-                                lines.push(format!("{prefix}{line}"));
-                                rendered_any = true;
-                            }
+                            push_list_block_lines(
+                                &mut lines,
+                                render_code_block_lines(md, &code, lang),
+                                &first_prefix,
+                                &continuation,
+                                &mut rendered_any,
+                            );
+                        }
+                        Event::Start(Tag::BlockQuote(_)) => {
+                            *idx += 1;
+                            push_list_block_lines(
+                                &mut lines,
+                                render_blockquote_block(md, events, idx, item_width),
+                                &first_prefix,
+                                &continuation,
+                                &mut rendered_any,
+                            );
+                        }
+                        Event::Start(Tag::Heading { level, .. }) => {
+                            *idx += 1;
+                            let heading_lines = collect_inline_until(
+                                md,
+                                events,
+                                idx,
+                                &|s| apply_default_style(md, s),
+                                "",
+                            );
+                            let n = level_to_usize(*level);
+                            let line = (md.theme.heading)(n, &heading_lines.concat());
+                            push_list_block_lines(
+                                &mut lines,
+                                std::iter::once(line),
+                                &first_prefix,
+                                &continuation,
+                                &mut rendered_any,
+                            );
+                        }
+                        Event::Start(Tag::Table(_)) => {
+                            *idx += 1;
+                            push_list_block_lines(
+                                &mut lines,
+                                render_table(md, events, idx, item_width),
+                                &first_prefix,
+                                &continuation,
+                                &mut rendered_any,
+                            );
                         }
                         // Tight items: join consecutive inlines (Text / TaskListMarker /
                         // Strong / Link / …) into one line — never one Text event per row.
@@ -1395,6 +1451,43 @@ mod tests {
         assert!(
             text.contains('1') && text.contains('2') && !text.contains('|'),
             "quote table should space-align without pipes:\n{text}"
+        );
+    }
+
+    #[test]
+    fn list_quote_heading_and_table_render() {
+        let mut theme = identity_theme();
+        theme.heading = Box::new(|level, s| format!("H{level}:{s}"));
+        let mut md = Markdown::new(
+            "\
+- intro
+
+  > quoted under list
+
+  ### Heading under list
+
+  | a | b |
+  |---|---|
+  | 1 | 2 |
+"
+            .into(),
+            0,
+            0,
+            theme,
+            None,
+        );
+        let text = visible_join(&mut md, 48);
+        assert!(
+            text.contains("intro") && text.contains("│") && text.contains("quoted under list"),
+            "list ⊃ quote missing:\n{text}"
+        );
+        assert!(
+            text.contains("H3:Heading under list"),
+            "list ⊃ heading missing:\n{text}"
+        );
+        assert!(
+            text.contains('1') && text.contains('2') && !text.contains('|'),
+            "list ⊃ table missing:\n{text}"
         );
     }
 
