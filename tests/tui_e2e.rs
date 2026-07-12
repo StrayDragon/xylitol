@@ -13,6 +13,18 @@
 //! under the default `cargo test` and require the dedicated justfile target
 //! `test-tui-e2e`. tmux cases additionally skip unless the `tmux` binary is
 //! present and `TERM=xterm-256color` is set.
+//!
+//! Ready-probe SSOT for `agent_demo`: see `packages/xylitol-tui/AGENTS.md`
+//! 「验证」; needle is [`DEMO_READY_NEEDLE`].
+
+/// Substring that appears once `agent_demo` has painted a stable frame.
+/// Prefer footer text (`theme:dark`) over header banners — tall seed
+/// transcripts scroll the header out of the captured viewport.
+pub const DEMO_READY_NEEDLE: &str = "theme:dark";
+
+/// Overlay / plate titles visible in `agent_demo` (keep in sync with demo render).
+pub const DEMO_COMMAND_PLATE_NEEDLE: &str = "Command Plate";
+pub const DEMO_SETTINGS_NEEDLE: &str = "Session Settings";
 
 #[path = "tui_e2e/pty.rs"]
 mod pty;

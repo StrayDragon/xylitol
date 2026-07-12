@@ -55,7 +55,7 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 - 驱动 agent 只经 `app/core/driver::Driver`（含 `steer` / `follow_up` / `clear_queue`）；禁止 reach `agent::session` / `runtime` / `infra`。
 - slash 语义复用 `protocol::Command`，经 `app/core/dispatch`。
 - 组件不直接调 `Driver`、不读写 session；颜色走本面 theme 语义 token（对齐 `DESIGN.md`）。
-- 已确认需求须有足够 **harness / 模拟环境** 验证（`HostEvent` 注入 + `TestTerminal`）；难且易错逻辑不外包给低质量实现。
+- 已确认需求须有足够 **harness / 模拟环境** 验证（`HostEvent` 注入 + `TestTerminal`）；难且易错逻辑不外包给低质量实现。包侧五层 / 真终端 E2E 与产品接线测的分工：**唯一 SSOT** → [`packages/xylitol-tui/AGENTS.md`](../../packages/xylitol-tui/AGENTS.md)「验证」。
 
 ## HOW（指针）
 
@@ -65,7 +65,7 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 | UX / token / layout | 本目录 `DESIGN.md` + `design/*`；人类 playground 见 `design/AGENTS.md` |
 | 底层能力是否已有 / 如何扩展 | `packages/xylitol-tui/AGENTS.md` |
 | 新增/改造应用面 | `write-surface` skill |
-| 包内组件与五层验证 | `test-tui-harness` skill |
+| 包内组件与五层 / E2E 分工 | [`packages/xylitol-tui/AGENTS.md`](../../packages/xylitol-tui/AGENTS.md)「验证」；how-to → `test-tui-harness` |
 | 排查（禁 println） | `tail -f ~/.xylitol/logs/xylitol.log` |
 
 模块：`host.rs`（步进机）、`ui_root.rs`（产品根布局）、`terminal_guard.rs`（restore）、`tests.rs`（harness）。勿用 `shell`/`scene` 命名，以免与 bash/`infra::process::shell` 或泛化「场景」混淆。

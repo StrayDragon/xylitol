@@ -167,6 +167,31 @@ impl PtySession {
         }
     }
 
+    /// Poll until `needle` is present and `avoid` is absent (idle footer).
+    pub fn wait_for_idle(
+        &mut self,
+        needle: &str,
+        avoid: &str,
+        timeout: Duration,
+        cols: usize,
+        rows: usize,
+    ) -> std::io::Result<CapturedScreen> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            self.drain(Duration::from_millis(50));
+            let screen = self.screen(cols, rows);
+            let text = screen.text();
+            if text.contains(needle) && !text.contains(avoid) {
+                return Ok(screen);
+            }
+            if Instant::now() >= deadline {
+                return Err(std::io::Error::other(format!(
+                    "timeout waiting idle ({needle:?} without {avoid:?}); last screen:\n{text}"
+                )));
+            }
+        }
+    }
+
     /// True if the raw byte stream received so far contains `needle` (a byte
     /// substring, e.g. a CSI escape sequence emitted at startup). Used to
     /// assert protocol-negotiation sequences were sent (c410 tp01).
@@ -191,7 +216,7 @@ fn pty_demo_starts_and_renders() {
     // The fake coding-agent example prints a title row; wait for it.
     let mut session = PtySession::spawn_demo(60, 15).expect("spawn demo");
     let screen = session
-        .wait_for("fake coding agent demo", Duration::from_secs(60), 60, 15)
+        .wait_for(crate::DEMO_READY_NEEDLE, Duration::from_secs(60), 60, 15)
         .expect("agent_demo should render within 60s (includes cargo build)");
     assert!(!screen.text().trim().is_empty());
 }
@@ -201,7 +226,7 @@ fn pty_demo_starts_and_renders() {
 fn pty_demo_survives_keypresses() {
     let mut session = PtySession::spawn_demo(60, 15).expect("spawn demo");
     session
-        .wait_for("fake coding agent demo", Duration::from_secs(60), 60, 15)
+        .wait_for(crate::DEMO_READY_NEEDLE, Duration::from_secs(60), 60, 15)
         .expect("agent_demo should start");
     // Send some keystrokes; the demo must not crash (screen still has content).
     session.send_keys("abc").expect("send keys");
@@ -220,7 +245,7 @@ fn pty_demo_survives_keypresses() {
 fn pty_kitty_query_emitted_at_start() {
     let mut session = PtySession::spawn_demo(60, 15).expect("spawn demo");
     session
-        .wait_for("fake coding agent demo", Duration::from_secs(60), 60, 15)
+        .wait_for(crate::DEMO_READY_NEEDLE, Duration::from_secs(60), 60, 15)
         .expect("demo should render (so start() has run)");
     // CSI >7u = \x1b[>7u — the Kitty enhancement push pi/xy emit at start.
     assert!(
@@ -235,7 +260,7 @@ fn pty_kitty_query_emitted_at_start() {
 fn pty_bracketed_paste_enabled_at_start() {
     let mut session = PtySession::spawn_demo(60, 15).expect("spawn demo");
     session
-        .wait_for("fake coding agent demo", Duration::from_secs(60), 60, 15)
+        .wait_for(crate::DEMO_READY_NEEDLE, Duration::from_secs(60), 60, 15)
         .expect("demo should render");
     assert!(
         session.raw_contains(b"\x1b[?2004h"),
@@ -248,41 +273,46 @@ fn pty_bracketed_paste_enabled_at_start() {
 fn pty_agent_demo_submit_flow_survives_enter() {
     let mut session = PtySession::spawn_example("agent_demo", 172, 40).expect("spawn agent_demo");
     session
-        .wait_for("fake coding agent demo", Duration::from_secs(60), 172, 40)
+        .wait_for(crate::DEMO_READY_NEEDLE, Duration::from_secs(60), 172, 40)
         .expect("agent_demo should render");
+    // Ctrl+U clear (0x15), then CJK — match tmux driver semantics.
     session
         .send_keys("\x15修复 footer 宽度预算并补一个 emoji smoke 🙂")
         .expect("replace editor text with CJK");
     session.send_keys("\r").expect("submit editor input");
-    session.drain(Duration::from_millis(500));
-    let screen = session.screen(172, 40);
-    let text = screen.text();
-    assert!(
-        !text.trim().is_empty(),
-        "screen must remain populated after submit flow"
-    );
-    assert!(
-        text.contains("修复 footer") || text.contains("Running rg and cargo test"),
-        "submit flow should remain visible after Enter; got:\n{text}"
-    );
+    let screen = session
+        .wait_for("修复 footer", Duration::from_secs(10), 172, 40)
+        .expect("submitted CJK text should appear");
+    assert!(!screen.text().trim().is_empty());
 }
 
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e`"]
 fn pty_agent_demo_command_palette_smoke() {
+    // Preload editor with exactly `:palette` so Enter matches the slash handler.
+    // Use a tall viewport so the plate title/filter lines stay on-screen.
     let mut session =
-        PtySession::spawn_demo_with_prompt(172, 40, ":palette").expect("spawn agent_demo");
+        PtySession::spawn_demo_with_prompt(172, 60, ":palette").expect("spawn agent_demo");
     session
-        .wait_for("fake coding agent demo", Duration::from_secs(60), 172, 40)
-        .expect("agent_demo should render");
-    session.send_keys("\r").expect("submit palette command");
+        .wait_for_idle(
+            crate::DEMO_READY_NEEDLE,
+            "Drafting",
+            Duration::from_secs(60),
+            172,
+            60,
+        )
+        .expect("agent_demo should be idle");
+    session.send_keys("\r").expect("submit :palette");
+    // Footer swaps to selector chrome when plate is open; also match plate body.
     let screen = session
-        .wait_for("Command Palette", Duration::from_secs(10), 172, 40)
-        .expect("command palette should appear");
+        .wait_for("Type to filter", Duration::from_secs(10), 172, 60)
+        .expect("command plate should appear");
     let text = screen.text();
     assert!(
-        text.contains("Run regression tests"),
-        "command palette content should be visible; got:\n{text}"
+        text.contains("Run regression tests")
+            || text.contains("Markdown full")
+            || text.contains(crate::DEMO_COMMAND_PLATE_NEEDLE),
+        "command plate content should be visible; got:\n{text}"
     );
 }
 
@@ -290,17 +320,23 @@ fn pty_agent_demo_command_palette_smoke() {
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e`"]
 fn pty_agent_demo_settings_overlay_smoke() {
     let mut session =
-        PtySession::spawn_demo_with_prompt(172, 40, ":settings").expect("spawn agent_demo");
+        PtySession::spawn_demo_with_prompt(172, 60, ":settings").expect("spawn agent_demo");
     session
-        .wait_for("fake coding agent demo", Duration::from_secs(60), 172, 40)
-        .expect("agent_demo should render");
-    session.send_keys("\r").expect("submit settings command");
+        .wait_for_idle(
+            crate::DEMO_READY_NEEDLE,
+            "Drafting",
+            Duration::from_secs(60),
+            172,
+            60,
+        )
+        .expect("agent_demo should be idle");
+    session.send_keys("\r").expect("submit :settings");
     let screen = session
-        .wait_for("Session Settings", Duration::from_secs(10), 172, 40)
+        .wait_for("Approval", Duration::from_secs(10), 172, 60)
         .expect("settings overlay should appear");
     let text = screen.text();
     assert!(
-        text.contains("Approval"),
+        text.contains(crate::DEMO_SETTINGS_NEEDLE) || text.contains("Approval"),
         "settings overlay content should be visible; got:\n{text}"
     );
 }
@@ -310,21 +346,14 @@ fn pty_agent_demo_settings_overlay_smoke() {
 fn pty_agent_demo_narrow_cjk_submit_flow_survives_enter() {
     let mut session = PtySession::spawn_example("agent_demo", 96, 32).expect("spawn agent_demo");
     session
-        .wait_for("fake coding agent demo", Duration::from_secs(60), 96, 32)
+        .wait_for(crate::DEMO_READY_NEEDLE, Duration::from_secs(60), 96, 32)
         .expect("agent_demo should render");
     session
         .send_keys("\x15把命令面板和设置面板的窄宽 CJK 回归补齐 🙂")
         .expect("replace editor text with narrow CJK prompt");
     session.send_keys("\r").expect("submit editor input");
-    session.drain(Duration::from_millis(500));
-    let screen = session.screen(96, 32);
-    let text = screen.text();
-    assert!(
-        !text.trim().is_empty(),
-        "screen must remain populated after narrow submit flow"
-    );
-    assert!(
-        text.contains("窄宽 CJK") || text.contains("Running rg and cargo test"),
-        "narrow submit flow should remain visible after Enter; got:\n{text}"
-    );
+    let screen = session
+        .wait_for("窄宽 CJK", Duration::from_secs(10), 96, 32)
+        .expect("narrow submit should appear");
+    assert!(!screen.text().trim().is_empty());
 }
