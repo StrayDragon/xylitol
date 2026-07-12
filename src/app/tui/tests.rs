@@ -590,6 +590,51 @@ fn chrome_idle_status_occupies_zero_rows() {
 }
 
 #[test]
+fn chrome_compacting_and_retry_stay_single_status_row() {
+    use super::ui_root::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_chrome_meta("~/xylitol", "ornith");
+
+    let mut compacting = UiModel::new();
+    compacting.begin_run("hi");
+    compacting.status = Some("Compacting".into());
+    root.apply_ui_model(&compacting);
+    let compact_lines = root.render(80);
+    let compact_status: Vec<_> = compact_lines
+        .iter()
+        .filter(|l| l.contains("Compacting"))
+        .collect();
+    assert_eq!(
+        compact_status.len(),
+        1,
+        "Compacting must be a single status row: {compact_lines:?}"
+    );
+    let footer = compact_lines.last().expect("footer");
+    assert!(
+        !footer.contains("Compacting"),
+        "Compacting must not live in footer: {footer}"
+    );
+
+    let mut retrying = UiModel::new();
+    retrying.begin_run("hi");
+    retrying.status = Some("Retry 1/3".into());
+    root.apply_ui_model(&retrying);
+    let retry_lines = root.render(80);
+    let retry_status: Vec<_> = retry_lines.iter().filter(|l| l.contains("Retry")).collect();
+    assert_eq!(
+        retry_status.len(),
+        1,
+        "Retry must be a single status row: {retry_lines:?}"
+    );
+    let footer = retry_lines.last().expect("footer");
+    assert!(
+        !footer.contains("Retry"),
+        "Retry must not live in footer: {footer}"
+    );
+}
+
+#[test]
 fn chrome_busy_status_is_separate_from_footer() {
     use super::ui_root::UiRoot;
 
