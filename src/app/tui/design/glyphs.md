@@ -13,18 +13,20 @@ components:
 # Glyphs
 
 > Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
+> **c475**：产品注入字符串；默认 `unicode`；可用 settings/env 切 `ascii`。
 
 短前缀 glyph（用户 / 工具 / 状态等）由**应用面配置**选择。
 
 | 配置档 | 用户 | 工具 | 说明 |
 |---|---|---|---|
-| `unicode`（默认意向） | `❯` | `⚙` | 好看；依赖用户终端字体 |
+| `unicode`（**产品默认**） | `❯` | `⚙` | 好看；依赖用户终端字体 |
 | `ascii` | `>` | `*` | 最大兼容；复制也干净 |
 
 ## MUST
 
 1. **MUST NOT** 做运行时字体/emoji 能力探测。
-2. 用户显式配置（settings / 环境 / 启动项）切换档位。
+2. 用户显式配置（settings / 环境 / 启动项）切换档位；缺省 `unicode`。
 3. 包内组件 **MUST NOT** 硬编码产品 glyph；由本面注入字符串或闭包。
+4. busy spinner 用 braille 帧（与 demo 一致）；**不算** glyph 档切换范围。
 
 缺字体出现方块时：换 `ascii` 档或装字体——产品不自动猜。
