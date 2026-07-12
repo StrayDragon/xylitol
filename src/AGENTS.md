@@ -10,7 +10,7 @@
 
 **后置 / 配置启用**：Server · MCP（见下）· 更多 provider 适配器 · Export / 周边能力。未配置则不装配。
 
-**产品 TUI（`src/app/tui`）**：**已开闸（2026-07-11）**。轨 B 至 **c493** 已归档；可选包侧 `c575-add-package-tui-overlay-focus-restore`。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。c491 假树 stub 禁止扩活树。
+**产品 TUI（`src/app/tui`）**：**已开闸（2026-07-11）**。轨 B 至 **c493** 已归档；包侧 D08（**c575**）已归档。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。c491 假树 stub 禁止扩活树。
 
 共享流水线：`bootstrap` → `composition::build_agent` → `Driver::run` → ReAct → `XyEvent` → 应用面。库嵌入入口：`xylitol::embed`；矩阵与理想/现状：`docs/architecture/库与多客户端.md`。
 

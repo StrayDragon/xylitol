@@ -49,7 +49,7 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 
 ## 硬约束
 
-- **产品面**：已开闸；轨 B 至 **c493** 已归档。c491 假树保持 stub（见上表）；真 travel 另 change。可选包侧 c575。
+- **产品面**：已开闸；轨 B 至 **c493** 已归档。c491 假树保持 stub（见上表）；真 travel 另 change。包侧 c575（D08）已归档。
 - 渲染/通用组件只用 `xylitol_tui`；禁止在本目录再实现差分引擎或通用 Editor/Markdown。
 - **需要底层 TUI 能力时**：先到 `packages/xylitol-tui` 查是否已有或可扩展；缺能力在包内补，再由本面接线。
 - 产品路径 **host 驱动**同步引擎；异步事件合流在本面；勿调 `TUI::start()`（demo 专用）。
