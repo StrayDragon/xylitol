@@ -1,6 +1,6 @@
 # _HANDOFF — 交接板 + 短索引（非规范）
 
-> 最后更新：2026-07-12（**c492 bash 已归档**；下一 c493）
+> 最后更新：2026-07-12（**c493 已归档**；轨 B 主切片收口；可选 c575）
 > 分支语境：`feat/tui-dev`（相对 `origin/feat/tui-dev` 超前）
 > **临时交接 / 进度指针，不是 SSOT。** 稳定边界：各层 `AGENTS.md`、`docs/architecture/`、`llmanspec/`。
 
@@ -48,7 +48,7 @@ just test-tui-e2e-pty
 |---|---|---|
 | **P · 包 / demo / DESIGN** | `packages/xylitol-tui`、`agent_demo`、`DESIGN.md`+`design/*` | **已合入**（包侧 c530…c570 已归档） |
 | **A · 业务核心** | `domain`→`embed`/`server`/线协议 | **已归档**（c500–c525 + 业务侧 c530–c550） |
-| **B · 产品 TUI** | `src/app/tui` 接线 | **至 c492 已归档**；下一 **c493 compaction/retry** |
+| **B · 产品 TUI** | `src/app/tui` 接线 | **至 c493 已归档**；可选包侧 **c575**；c491 stub 冻结 |
 
 **号段注意**：轨 P 与轨 A 曾并行占用 **c530–c550**；以 `llmanspec/changes/archive/` **全名**为准。
 
@@ -65,6 +65,7 @@ just test-tui-e2e-pty
 | c465–c482 | bridge · chrome · live scrollback · trust · input · history · abort-resume | 已归档 |
 | **c485** vertical slice | `ScriptedDriver` H1–H9 + 产品 PTY Fake（Hello → `/exit`） | 已归档 |
 | **c492** bang-bash | `!`/`!!` → `execute_bash` + 边框 + Ctrl+G stub | 已归档 |
+| **c493** compaction/retry | Compacting / Retry 单行 status；End 恢复 Working | 已归档 |
 | secret.env + YAML 模板 | `{{ secret.KEY }}` / `{{ env.KEY }}` | 已合入 |
 | `just qa` / `qa-e2e` | 统一日常 / 真终端满闸（c580） | 已归档 |
 
@@ -98,8 +99,7 @@ just test-tui-e2e-pty
 ## 四、轨 B — 产品 TUI（当前主线）
 
 ```text
-已归档：… · c485 slice · c492 bash
-下一：  **c493 compaction/retry UI**（升格后 apply）
+已归档：… · c485 slice · c492 bash · c493 compaction/retry
 可选：  c575 overlay focus-restore（包侧，非轨 B 阻塞）
 冻结：  c491 假树 stub（勿扩活树）
 已移除：c470 Codex TranscriptView
@@ -111,15 +111,14 @@ just test-tui-e2e-pty
 
 | ID | 状态 | 做什么 |
 |---|---|---|
-| **c493** compaction/retry | purpose-draft · **下一刀** | Compaction / AutoRetry 的 status·scrollback 呈现 |
 | **c575** overlay restore | purpose-draft · 包侧可选 | Overlay 完整 focus-restore（不阻塞轨 B） |
 
-**建议顺序**：升格 apply **c493**；可选并行 **c575**。
+**建议顺序**：轨 B 主线已收口；可选升格 apply **c575**。
 
 ### 下一工作焦点
 
-1. 升格 `c493-add-app-tui-compaction-retry-ui`（specs/tasks）并 apply。
-2. `just demo-tui` / harness 对照验收。
+1. 可选：升格 `c575-add-package-tui-overlay-focus-restore`（包侧）。
+2. 或另开产品 follow-up（`/compact` slash、真 emit AutoRetry、活树等）。
 
 ---
 

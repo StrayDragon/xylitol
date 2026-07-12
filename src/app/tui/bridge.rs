@@ -363,6 +363,10 @@ pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
                 "compaction complete"
             };
             model.entries.push(UiEntry::System { text: text.into() });
+            // Sticky Compacting would block chrome; restore like ToolExecutionEnd.
+            if model.phase == UiPhase::Busy {
+                model.status = Some("Working".into());
+            }
         }
         XyEvent::AutoRetryStart {
             attempt,
@@ -376,6 +380,9 @@ pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
                 model.entries.push(UiEntry::System {
                     text: format!("retry failed (attempt {attempt})"),
                 });
+            }
+            if model.phase == UiPhase::Busy {
+                model.status = Some("Working".into());
             }
         }
         XyEvent::Error(msg) => {
@@ -736,5 +743,150 @@ mod tests {
             })
             .collect();
         assert_eq!(assistants, ["Hello!"]);
+    }
+
+    #[test]
+    fn compaction_start_sets_status_and_note() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(
+            &mut model,
+            &XyEvent::CompactionStart {
+                reason: "auto: 90%".into(),
+            },
+        );
+        assert_eq!(model.phase, UiPhase::Busy);
+        assert_eq!(model.status.as_deref(), Some("Compacting"));
+        assert!(
+            model
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text.contains("auto: 90%")))
+        );
+    }
+
+    #[test]
+    fn compaction_end_restores_working() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(
+            &mut model,
+            &XyEvent::CompactionStart {
+                reason: "manual".into(),
+            },
+        );
+        apply_xy_event(
+            &mut model,
+            &XyEvent::CompactionEnd {
+                result: Some("ok".into()),
+                aborted: false,
+            },
+        );
+        assert_eq!(model.status.as_deref(), Some("Working"));
+        assert!(
+            model
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text == "compaction complete"))
+        );
+    }
+
+    #[test]
+    fn compaction_end_aborted_restores_working() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(
+            &mut model,
+            &XyEvent::CompactionStart {
+                reason: "manual".into(),
+            },
+        );
+        apply_xy_event(
+            &mut model,
+            &XyEvent::CompactionEnd {
+                result: None,
+                aborted: true,
+            },
+        );
+        assert_eq!(model.status.as_deref(), Some("Working"));
+        assert!(
+            model
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text == "compaction aborted"))
+        );
+    }
+
+    #[test]
+    fn auto_retry_start_sets_status() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(
+            &mut model,
+            &XyEvent::AutoRetryStart {
+                attempt: 2,
+                max_retries: 5,
+                delay_ms: 100,
+            },
+        );
+        assert_eq!(model.status.as_deref(), Some("Retry 2/5"));
+    }
+
+    #[test]
+    fn auto_retry_end_fail_notes_and_restores() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(
+            &mut model,
+            &XyEvent::AutoRetryStart {
+                attempt: 1,
+                max_retries: 3,
+                delay_ms: 0,
+            },
+        );
+        apply_xy_event(
+            &mut model,
+            &XyEvent::AutoRetryEnd {
+                success: false,
+                attempt: 1,
+            },
+        );
+        assert_eq!(model.status.as_deref(), Some("Working"));
+        assert!(
+            model
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text.contains("retry failed")))
+        );
+    }
+
+    #[test]
+    fn auto_retry_end_success_restores_without_fail_note() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(
+            &mut model,
+            &XyEvent::AutoRetryStart {
+                attempt: 1,
+                max_retries: 3,
+                delay_ms: 0,
+            },
+        );
+        let before = model.entries.len();
+        apply_xy_event(
+            &mut model,
+            &XyEvent::AutoRetryEnd {
+                success: true,
+                attempt: 1,
+            },
+        );
+        assert_eq!(model.status.as_deref(), Some("Working"));
+        assert_eq!(model.entries.len(), before);
+        assert!(
+            !model
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text.contains("retry failed")))
+        );
     }
 }

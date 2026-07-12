@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-chrome"
 purpose: 主题 token、glyph、status 与 footer 等 chrome。
 valid_scope[1]: src/app/tui/
-requirements[9]{req_id,title,statement}:
+requirements[10]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   atc1,"idle-status-omitted",产品 UiRoot 空闲时 status 槽 MUST 渲染 0 行；忙碌时 MUST 至多独立 1 行短状态；MUST NOT 将 Working 等忙碌文案并入 footer。
   atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本，MVP 至少含 cwd 与 model（形如 `cwd · model`）；队列非空时可加 `q:sN|fM ·` 前缀；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。"
@@ -12,7 +12,8 @@ requirements[9]{req_id,title,statement}:
   atc6,"idle-editor-compact",产品空闲且 Editor 草稿为空时操作区可见内容行 MUST 紧凑（对齐 agent_demo 观感：上下 ─ 保留，避免大块空盒）；有多行草稿时 MUST 仍可按既有 terminal_rows/max_vis 规则长高。
   atc7,"busy-status-spinner",产品 busy status 行 MUST 为至多一行 accent spinner（或等价动画帧）加短词；idle MUST 仍为 0 行；MUST NOT 把 spinner 画进 footer。
   atc8,"user-message-bg","产品 scrollback 用户消息行 MUST 可应用 DESIGN user-message-bg 全行淡底（默认开启或与 agent_demo 一致）；MUST NOT 改变消息文本语义前缀。"
-scenarios[14]{req_id,id,given,when,then}:
+  atc9,"compaction-retry-single-status-line",产品 TUI 在 Compacting 或 Retry n/m 忙碌态时 status 槽 MUST 仍至多独立 1 行（spinner+短词）；压缩/重试细节 MUST 走 scrollback System 行而非增高 status；MUST NOT 常驻多行 compaction/retry chrome。
+scenarios[16]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-chrome",spec.toon 存在且 purpose 为中文
   atc1,"idle-status-zero-rows","",空闲 UiRoot apply_ui_model 后 render,无独立 Working 行且 status 槽占 0 行
   atc1,"busy-status-not-in-footer","",busy 且 status=Working 时 render,存在独立 status 文案且 footer 不含 Working
@@ -27,3 +28,5 @@ scenarios[14]{req_id,id,given,when,then}:
   atc6,"draft-grows",Editor 已有多行草稿,render,可见行随草稿增加且不超过既有 max_vis 上限
   atc7,"busy-spinner-row",UiModel busy 且 status=Working,render,存在独立 status 行含 spinner 帧或 accent 标记且 footer 无 spinner
   atc8,"user-bg-row",scrollback 含用户消息,render,"用户行带 user-message-bg 染色（或测试可观测的 bg 应用痕迹）"
+  atc9,"compacting-one-row",UiModel Busy status=Compacting,UiRoot render,独立 status 至多 1 行且含 Compacting
+  atc9,"retry-one-row",UiModel Busy status=Retry 1/3,UiRoot render,独立 status 至多 1 行且含 Retry

@@ -136,7 +136,7 @@ components:
 
 情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
 
-参考实现锚点：`packages/xylitol-tui` 的 **`agent_demo`（`just demo-tui`）= 产品 TUI 活实验场**；浏览器静图见 [`design/playground/`](./design/playground/)。当前 `src/app/tui`：c465–c492 主路径已接并归档；**下一刀 = c493 compaction/retry UI**。
+参考实现锚点：`packages/xylitol-tui` 的 **`agent_demo`（`just demo-tui`）= 产品 TUI 活实验场**；浏览器静图见 [`design/playground/`](./design/playground/)。当前 `src/app/tui`：c465–c493 主路径已归档。
 
 ## Track B 落地切片（设计闸）
 
@@ -149,7 +149,7 @@ components:
 | **c490** trust | Ask 时 **ChoicePrompt** 换 editor 槽（禁 stdio 数字菜单） | [`trust-prompt`](./design/trust-prompt.md) |
 | **c485** vertical slice | **已归档**：合成 harness H1–H9 + 产品 PTY Fake smoke | archive `2026-07-12-c485-…` |
 | **c492** bash | **已归档**：`!`/`!!` 边框 + `execute_bash` → scrollback；Ctrl+G stub | [`bash-mode`](./design/bash-mode.md) · archive `2026-07-12-c492-…` |
-| **c493** compaction/retry（下一） | Compaction / AutoRetry 的 status·scrollback 呈现 | [`compaction-status`](./design/compaction-status.md) |
+| **c493** compaction/retry | **已归档**：Compacting / Retry 单行 status；End 恢复 Working | [`compaction-status`](./design/compaction-status.md) · archive `2026-07-12-c493-…` |
 
 产品 MVP **固定暗色**；**MUST NOT** 默认开 theme auto / `/theme`（demo 可保留）。
 
@@ -245,7 +245,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 | [`design/markdown.md`](./design/markdown.md) | 复制友好 / token 效率 markdown（`c530-update-package-tui-markdown`） |
 | [`design/errors.md`](./design/errors.md) | 错误呈现 |
 
-后置草稿（轨 B 下一刀）：[`compaction-status`](./design/compaction-status.md)。bash（c492）与 trust（c490）已落地。
+已落地（c493）：[`compaction-status`](./design/compaction-status.md)。bash（c492）与 trust（c490）已落地。
 
 **已落地 chrome 子规范**（c480 起）：[`queue-steer`](./design/queue-steer.md) · [`status`](./design/status.md) — 写产品 host 时以这两份为准，**不要**抄 demo scrollback `[steer]` 墙。
 
