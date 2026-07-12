@@ -4,7 +4,7 @@
 
 ## 现状
 
-基于 `xylitol-tui` 的 **host 驱动 UI**（c460 host + **c465 bridge**）：`HostSession` + `UiRoot` + `apply_xy_event` + EventStream 合流。`run(driver)` 可聊事件驱动占位；**尚未**按 `DESIGN.md` 实现产品 chrome / slash / 键位（下一 **c475 / c480**）。
+基于 `xylitol-tui` 的 **host 驱动 UI**（c460 host + **c465 bridge** + **c475 chrome**）：`HostSession` + `UiRoot`（Palette dark / glyph / status / footer）+ `apply_xy_event` + EventStream 合流。下一 **c480** slash / 键位 / abort。
 
 **已开闸（2026-07-11）**：轨 A / 轨 P 已落地；c465 已归档（2026-07-12）。原子交互仍建议先在 `packages/xylitol-tui` `agent_demo` 验证再进本面。开闸记录 SSOT：`src/AGENTS.md`。
 
@@ -20,7 +20,7 @@
 | **c460** host 空壳 | 已落地（框架占位） |
 | **c491** 产品双 Esc **假树**槽替换 | **stub 冻结**：仅双 Esc 开/Esc 关/Enter `travel → id`；**MUST NOT** 在此 stub 上扩展活树/filter/Driver |
 | 产品 bridge（XyEvent→UI + Driver 合流） | **c465 已归档** |
-| 产品 chrome · slash/键位 · DESIGN 视觉落地 · 真 session travel | chrome/input：**c475 / c480**；真 travel：另 change |
+| 产品 chrome · slash/键位 · DESIGN 视觉落地 · 真 session travel | chrome：**c475**；input：**c480**；真 travel：另 change |
 
 历史/分支 UX 以会话树为准；live 输出若有，只进 scrollback 行，见 `design/transcript.md` / `design/session-tree.md`。
 
@@ -30,7 +30,7 @@
 
 **活实验场**：`just demo-tui`（`agent_demo`）= 产品 TUI 快速 playground——形状/交互先在此试，再进本 host。浏览器静图：`design/playground/`（Agent 默认忽略）。
 
-包组件只收闭包主题，不承载产品 layout。当前 `run()` 尚未按 DESIGN 实现产品 chrome / 键位（c475/c480）。
+包组件只收闭包主题，不承载产品 layout。chrome（c475）已注入；slash / 键位见 c480。
 
 ## Specs
 
