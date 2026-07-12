@@ -188,12 +188,19 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "tui"))]
     let want_tui = false;
 
+    // c490: Ask trust inside ChoicePrompt **before** bootstrap (no stdio menu).
+    #[cfg(feature = "tui")]
+    if want_tui {
+        crate::app::tui::run_trust_gate_if_needed(trust_override)?;
+    }
+
     let bootstrap_input = BootstrapInput {
         config_path: args.config.as_ref().map(std::path::PathBuf::from),
         session: args.session.clone(),
         model: args.model.clone(),
         trust_override,
-        interactive: want_tui,
+        // c490: product TUI Ask is `run_trust_gate_if_needed` (ChoicePrompt), never stdio.
+        interactive: false,
         caller: if want_tui { "tui" } else { "cli" },
     };
 
