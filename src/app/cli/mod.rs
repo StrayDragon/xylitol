@@ -166,6 +166,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         use std::io::IsTerminal;
         let want_tui = args.tui || (args.prompt.is_none() && std::io::stdin().is_terminal());
         if want_tui {
+            if let Err(e) = crate::app::tui::preflight(&driver) {
+                eprintln!("Error: {e}");
+                return Err(e.into());
+            }
             return crate::app::tui::run(&mut driver)
                 .await
                 .map_err(|e| e.into());

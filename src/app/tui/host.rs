@@ -7,6 +7,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use xylitol_tui::{InputEvent, RenderError, TUI, Terminal};
 
+use crate::app::core::driver::XyEvent;
+
+use super::bridge::{UiModel, UiPhase, apply_xy_event};
 use super::ui_root::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
 
 /// Minimum usable terminal size (ath4).
@@ -26,9 +29,14 @@ pub fn is_too_small(cols: u16, rows: u16) -> bool {
 #[derive(Debug, Clone)]
 pub enum HostEvent {
     Input(InputEvent),
-    Resize { cols: u16, rows: u16 },
+    Resize {
+        cols: u16,
+        rows: u16,
+    },
     Tick,
     Quit,
+    /// Agent lifecycle event from `Driver::run` EventStream (c465).
+    Xy(Box<XyEvent>),
 }
 
 /// Layout mode after applying size policy.
@@ -50,6 +58,12 @@ pub struct HostSession<T: Terminal> {
     ui_root: Option<Rc<RefCell<UiRoot>>>,
     /// Rebuild root children when mode flips.
     rebuild: Box<dyn FnMut(LayoutMode) -> Vec<Box<dyn xylitol_tui::Component>>>,
+    /// UI-only model; updated solely via [`apply_xy_event`] / submit.
+    ui_model: UiModel,
+    /// Idle Enter submit request (consumed by the async host loop).
+    pending_submit: Option<String>,
+    /// True while a `Driver::run` stream is open (blocks duplicate submit).
+    run_active: bool,
 }
 
 impl<T: Terminal> HostSession<T> {
@@ -78,10 +92,13 @@ impl<T: Terminal> HostSession<T> {
             quit_flag: Arc::new(AtomicBool::new(false)),
             ui_root: None,
             rebuild: Box::new(rebuild),
+            ui_model: UiModel::new(),
+            pending_submit: None,
+            run_active: false,
         }
     }
 
-    /// Product empty UI: shared `UiRoot` + Ctrl+C InputListener (c455 pipe).
+    /// Product empty UI: shared `UiRoot` + Ctrl+C / Esc / idle-Enter listeners.
     pub fn new_product_ui(terminal: T) -> Self {
         let ui_root = Rc::new(RefCell::new(UiRoot::new()));
         let quit_flag = Arc::new(AtomicBool::new(false));
@@ -109,6 +126,57 @@ impl<T: Terminal> HostSession<T> {
         self.ui_root.as_ref()
     }
 
+    /// UI-only model (harness / status).
+    pub fn ui_model(&self) -> &UiModel {
+        &self.ui_model
+    }
+
+    pub fn is_busy(&self) -> bool {
+        self.ui_model.phase == UiPhase::Busy || self.run_active
+    }
+
+    pub fn run_active(&self) -> bool {
+        self.run_active
+    }
+
+    /// Take an idle-Enter submit request, if any.
+    pub fn take_submit(&mut self) -> Option<String> {
+        self.pending_submit.take()
+    }
+
+    /// Queue a submit from the host loop / harness (idle only).
+    pub fn request_submit(&mut self, prompt: impl Into<String>) {
+        if self.run_active || self.ui_model.phase == UiPhase::Busy {
+            return;
+        }
+        let prompt = prompt.into();
+        if prompt.trim().is_empty() {
+            return;
+        }
+        self.pending_submit = Some(prompt);
+    }
+
+    /// Mark that `Driver::run` has started; seeds the user entry + busy phase.
+    pub fn on_run_started(&mut self, prompt: &str) {
+        self.run_active = true;
+        self.ui_model.begin_run(prompt);
+        self.sync_ui_root_from_model();
+    }
+
+    /// Stream ended (None) — clear run flag; idle only if bridge already did.
+    pub fn on_run_stream_closed(&mut self) {
+        self.run_active = false;
+        self.ui_model.on_stream_closed_without_agent_end();
+        self.sync_ui_root_from_model();
+    }
+
+    fn sync_ui_root_from_model(&mut self) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().apply_ui_model(&self.ui_model);
+    }
+
     /// Apply one host event and attempt a throttled render.
     pub fn step(&mut self, event: HostEvent) -> Result<(), String> {
         match event {
@@ -129,8 +197,20 @@ impl<T: Terminal> HostSession<T> {
             }
             HostEvent::Input(input) => {
                 if self.mode == LayoutMode::Ready {
-                    self.tui.dispatch_event(input);
+                    if self.try_idle_enter_submit(&input) {
+                        // Submit consumed Enter — do not insert a newline.
+                    } else {
+                        self.tui.dispatch_event(input);
+                    }
                 }
+                self.tui.request_render(false);
+            }
+            HostEvent::Xy(xy) => {
+                apply_xy_event(&mut self.ui_model, &xy);
+                if matches!(xy.as_ref(), XyEvent::AgentEnd { .. }) {
+                    self.run_active = false;
+                }
+                self.sync_ui_root_from_model();
                 self.tui.request_render(false);
             }
         }
@@ -142,6 +222,36 @@ impl<T: Terminal> HostSession<T> {
                 Err("render failed: terminal too extreme; restoring and exiting".into())
             }
         }
+    }
+
+    /// Idle Enter (no modifiers): submit editor text when product UI is ready.
+    /// Steer / Alt+Enter follow-up land in c480 — busy Enter is ignored here.
+    /// Returns true when Enter was consumed as submit.
+    fn try_idle_enter_submit(&mut self, input: &InputEvent) -> bool {
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        if self.run_active || self.ui_model.phase == UiPhase::Busy {
+            return false;
+        }
+        let InputEvent::Key(key) = input else {
+            return false;
+        };
+        if !xylitol_tui::matches_key_event(key, "enter") {
+            return false;
+        }
+        let mut root = root.borrow_mut();
+        if root.tree_open() {
+            return false;
+        }
+        let text = root.editor_text();
+        if text.trim().is_empty() {
+            return false;
+        }
+        root.set_editor_text(String::new());
+        drop(root);
+        self.pending_submit = Some(text);
+        true
     }
 
     /// Force an immediate frame (bypasses throttle) — useful after mount.
