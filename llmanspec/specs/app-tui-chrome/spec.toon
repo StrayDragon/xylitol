@@ -2,14 +2,17 @@ kind: llman.sdd.spec
 name: "app-tui-chrome"
 purpose: 主题 token、glyph、status 与 footer 等 chrome。
 valid_scope[1]: src/app/tui/
-requirements[6]{req_id,title,statement}:
+requirements[9]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   atc1,"idle-status-omitted",产品 UiRoot 空闲时 status 槽 MUST 渲染 0 行；忙碌时 MUST 至多独立 1 行短状态；MUST NOT 将 Working 等忙碌文案并入 footer。
   atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本，MVP 至少含 cwd 与 model（形如 `cwd · model`）；队列非空时可加 `q:sN|fM ·` 前缀；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。"
   atc3,"theme-glyphs-config","产品 host MUST 经 Palette::dark()（或等价闭包）将语义色注入组件主题；glyph 档（unicode/ascii）MUST 由显式配置切换，MUST NOT 做运行时字体探测；产品 MVP MUST NOT 默认开启 theme auto。"
   atc4,"design-docs-ssot","产品 TUI 视觉与 UX MUST 以 src/app/tui/DESIGN.md 为索引、以 src/app/tui/design/*.md 为组件级 SSOT；实现与 demo 引用组件规则时 MUST 指向对应子文档（尤其 design/diff-block.md 与 design/keybindings.md），MUST NOT 仅依赖口头约定。"
   atc5,"demo-theme-auto-detect",agent_demo MUST 默认使用 Dark token 集；当启用主题自动探测（环境变量或 harness API）时 MUST 经 package terminal_colors 纯函数切换 Light/Dark，并在 chrome（footer 或系统行）暴露当前 theme_mode；MUST NOT 将自动切换设为产品 MVP 默认。
-scenarios[10]{req_id,id,given,when,then}:
+  atc6,"idle-editor-compact",产品空闲且 Editor 草稿为空时操作区可见内容行 MUST 紧凑（对齐 agent_demo 观感：上下 ─ 保留，避免大块空盒）；有多行草稿时 MUST 仍可按既有 terminal_rows/max_vis 规则长高。
+  atc7,"busy-status-spinner",产品 busy status 行 MUST 为至多一行 accent spinner（或等价动画帧）加短词；idle MUST 仍为 0 行；MUST NOT 把 spinner 画进 footer。
+  atc8,"user-message-bg","产品 scrollback 用户消息行 MUST 可应用 DESIGN user-message-bg 全行淡底（默认开启或与 agent_demo 一致）；MUST NOT 改变消息文本语义前缀。"
+scenarios[14]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-chrome",spec.toon 存在且 purpose 为中文
   atc1,"idle-status-zero-rows","",空闲 UiRoot apply_ui_model 后 render,无独立 Working 行且 status 槽占 0 行
   atc1,"busy-status-not-in-footer","",busy 且 status=Working 时 render,存在独立 status 文案且 footer 不含 Working
@@ -20,3 +23,7 @@ scenarios[10]{req_id,id,given,when,then}:
   atc5,"default-dark",未启用 auto,构造 demo,theme_mode 为 Dark
   atc5,"auto-osc11-light",已启用 auto,注入近白 OSC11 背景,theme_mode 为 Light
   atc5,"auto-off-ignores-env",未启用 auto 且 COLORFGBG 为亮,调用 apply_theme_detect,theme_mode 仍为 Dark
+  atc6,"idle-editor-short",空闲且 editor 文本为空,render UiRoot,操作区内容可见行数显著少于满 max_vis 空盒（仍含上下边框与光标行）
+  atc6,"draft-grows",Editor 已有多行草稿,render,可见行随草稿增加且不超过既有 max_vis 上限
+  atc7,"busy-spinner-row",UiModel busy 且 status=Working,render,存在独立 status 行含 spinner 帧或 accent 标记且 footer 无 spinner
+  atc8,"user-bg-row",scrollback 含用户消息,render,"用户行带 user-message-bg 染色（或测试可观测的 bg 应用痕迹）"
