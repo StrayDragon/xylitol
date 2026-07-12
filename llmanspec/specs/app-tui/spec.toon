@@ -7,12 +7,13 @@ requirements[6]{req_id,title,statement}:
   tui3,"three-surfaces-coexist",rpc（stdio JSONL）、server（REST+WS）与 tui（inline）应用面 MUST 共存；不得以统一为名删除任一传输面。
   tui4,"reuse-contract","产品 TUI MUST 仅从 crate::agent（mod 级）、crate::app::core、crate::protocol、crate::domain 导入；MUST NOT 导入 crate::agent::session、crate::agent::runtime 或 crate::infra。斜杠语义 MUST 复用 protocol::Command。"
   tui5,"no-skeleton-spray","src/app/tui/ 下每个新增源文件 MUST 在同一变更内由真实入口 tui::run 驱动；MUST NOT 用 #[allow(dead_code)] 落地未驱动骨架。"
-  tui10,"repl-entry","当未提供 prompt 且 stdin 为 TTY 时，CLI MUST 进入 app::tui::run；--tui 可在有 prompt 时强制进入 TUI。"
+  tui10,"repl-entry","当未提供 one-shot prompt（位置参数或 --prompt）且 stdin 为 TTY 时，CLI MUST 进入 app::tui::run（默认入口，无需 --tui）；--tui MUST 可显式强制进入 TUI（即使同时给出 prompt）。"
   "tui-index","capability-index","产品 TUI 行为细节 MUST 由 app-tui-host / app-tui-bridge / app-tui-transcript / app-tui-chrome / app-tui-input / app-tui-commands 各自约束；引擎与五层 harness MUST 由 package-tui-*（含 package-tui-testing）约束，不得在本索引重复实现史细节。"
-scenarios[6]{req_id,id,given,when,then}:
+scenarios[7]{req_id,id,given,when,then}:
   tui2,"inprocess-default","",无 prompt 且 TTY 启动 TUI,使用 InProcessDriver 且 RemoteDriver 类型仍存在
   tui3,"surfaces-retained","",检查 rpc 与 server 入口,两面仍存在且可分发
   tui4,"no-infra-import","",检查 src/app/tui 导入,"无 agent::session / runtime / infra 直达"
   tui5,"driven-on-land","",变更完成检查新文件,"均可从 tui::run 到达且无 allow dead_code 骨架"
-  tui10,"tty-default","",无参数且 stdin 为 TTY,"进入 app::tui::run"
+  tui10,"tty-default-no-flag","",无参数且 stdin 为 TTY,"进入 app::tui::run 且不依赖 --tui"
+  tui10,"tui-flag-wins","同时给 --tui 与 --prompt",启动,进入 TUI 而非 print
   "tui-index","split-capabilities","","列出 llmanspec/specs/app-tui-*","六个产品 capability 与 package-tui-testing 均存在"
