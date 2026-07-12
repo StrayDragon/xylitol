@@ -35,8 +35,20 @@ pub(crate) enum LoadError {
 /// Load configuration from all layers, returning the merged `AppConfig`.
 ///
 /// `cli_config` — optional path to a CLI `--config` YAML file (highest priority).
+///
+/// Side effect: loads `secret.env` from global/project config dirs into the
+/// process environment (keys already set in the OS env are left alone).
 pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, LoadError> {
     let paths = ConfigPaths::discover();
+
+    let injected = super::secret_env::load_secret_env_files(&paths);
+    if injected > 0 {
+        tracing::debug!(
+            target: "xylitol::config",
+            injected,
+            "loaded secret.env into process environment"
+        );
+    }
 
     // Load all config levels into serde_json::Value, rendering templates.
     let mut merged = Value::Null;
