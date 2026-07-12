@@ -30,13 +30,15 @@ Markdown 槽示意 MUST 对齐 [`../markdown.md`](../markdown.md)：无 `#` 标�
 | **左侧 tab 点击** | 选中该槽并 **滚动跳转到对应面板**（平铺/专注均生效） |
 | 平铺 / 专注 · `t` | 全槽一页 vs 只看当前槽 |
 | Dark / Light · `d` / `l` | 切换 `colors` vs `colors_light`（`?scheme=light`） |
+| `f` | **Full shell** 产品整壳（transcript → status → editor|tree → footer） |
 | `1`–`9` · `0` · `←→` | 选槽并跳转（`0` = Ask） |
-| 深链 | `?slot=widgets&mode=focus&scheme=light`（会写入 URL） |
+| 深链 | `?slot=shell&mode=focus&scheme=light`（会写入 URL） |
 
 ## 槽内动态
 
 | 槽 | 可切换 |
 |---|---|
+| **Full shell** | busy↔idle · 队列徽章 · 会话树槽 · 工具块；产品整页合成 |
 | Tool | 三态 · 流式 thinking · 展开/视口 · Diff 块「摘要 tint / 正文不套 tool-bg」对照 |
 | Diff | unified / SBS（SBS 无行底）· 词级 |
 | Markdown | 强调样式（已落地 B 色+字重）· 嵌套列表悬挂缩进 · 假流式逐行 |

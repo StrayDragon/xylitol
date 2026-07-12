@@ -53,7 +53,7 @@ pub struct BootstrapInput {
     /// `--trust` / `--no-trust` override; `None` = use trust-store resolution.
     pub trust_override: Option<bool>,
     /// Whether to run interactively (affects trust UI callback). print/server
-    /// pass `false`; a future interactive trust prompt would pass `true`.
+    /// pass `false`; product TUI passes `true` so Ask can prompt on stdio.
     pub interactive: bool,
     /// Diagnostic label identifying the calling surface (e.g. "print", "server",
     /// "tui", "list-models"). Appears in tracing spans so log readers can tell
@@ -363,13 +363,20 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
     // ── Step 3b: resolve trust + discover resources ───────────────
     let trust_manager =
         crate::infra::trust::TrustManager::new(crate::infra::trust::TrustManager::default_dir());
+    let trust_cwd = cwd.clone();
     let trust_resolution = crate::infra::trust::resolve_project_trusted(
         &trust_manager,
         &cwd,
         input.trust_override,
         crate::infra::trust::DefaultProjectTrust::default(),
         input.interactive,
-        |_| None,
+        |options| {
+            if input.interactive {
+                crate::infra::trust::prompt_trust_options_stdio(&trust_cwd, options)
+            } else {
+                None
+            }
+        },
     );
     let project_trusted = trust_resolution.trusted;
     if !project_trusted {

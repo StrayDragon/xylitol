@@ -8,10 +8,13 @@
 //! Submodules:
 //! - [`store`] — persistence, locking, inheritance, and trust-input detection
 //! - [`resolve`] — the fixed-precedence resolution pipeline
+//! - [`prompt`] — stdio Ask prompt for interactive surfaces (TUI)
 
+pub(crate) mod prompt;
 pub(crate) mod resolve;
 pub(crate) mod store;
 
+pub use prompt::prompt_trust_options_stdio;
 pub use resolve::{
     DefaultProjectTrust, TrustReason, TrustResolution, format_trust_prompt, resolve_project_trusted,
 };

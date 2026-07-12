@@ -100,13 +100,26 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         (_, true) => Some(false),
         _ => None,
     };
+
+    // Decide TUI vs print before bootstrap so Ask trust can use stdio
+    // (must happen before raw mode). `--list-models` stays non-interactive.
+    #[cfg(feature = "tui")]
+    let want_tui = {
+        use std::io::IsTerminal;
+        !args.list_models
+            && (args.tui
+                || (args.prompt.is_none() && !args.print && std::io::stdin().is_terminal()))
+    };
+    #[cfg(not(feature = "tui"))]
+    let want_tui = false;
+
     let bootstrap_input = BootstrapInput {
         config_path: args.config.as_ref().map(std::path::PathBuf::from),
         session: args.session.clone(),
         model: args.model.clone(),
         trust_override,
-        interactive: false, // print mode has no interactive trust UI
-        caller: "cli",
+        interactive: want_tui,
+        caller: if want_tui { "tui" } else { "cli" },
     };
 
     // `--list-models` needs the resolved registry before any agent build; it
@@ -158,22 +171,15 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let _mcp = mcp;
 
     // ── dispatch by mode ───────────────────────────────────────
-    // TUI: when no prompt is supplied and stdin is a TTY (mirroring pi's
-    // resolveAppMode), enter the inline REPL. `--tui` forces it even with a
-    // prompt. Rpc was handled earlier above.
     #[cfg(feature = "tui")]
-    {
-        use std::io::IsTerminal;
-        let want_tui = args.tui || (args.prompt.is_none() && std::io::stdin().is_terminal());
-        if want_tui {
-            if let Err(e) = crate::app::tui::preflight(&driver) {
-                eprintln!("Error: {e}");
-                return Err(e.into());
-            }
-            return crate::app::tui::run(&mut driver)
-                .await
-                .map_err(|e| e.into());
+    if want_tui {
+        if let Err(e) = crate::app::tui::preflight(&driver) {
+            eprintln!("Error: {e}");
+            return Err(e.into());
         }
+        return crate::app::tui::run(&mut driver)
+            .await
+            .map_err(|e| e.into());
     }
 
     let prompt = args.prompt.unwrap_or_else(|| {
