@@ -69,6 +69,8 @@ pub struct UiRoot {
     /// Busy-only; idle leaves this unused so status occupies 0 rows.
     status_loader: Loader,
     status_busy: bool,
+    /// Gate loader frames to [`Loader::interval_ms`] (host idle_tick is ~16ms).
+    loader_last_tick: Instant,
     editor: Editor,
     footer: Text,
     theme: ChromeTheme,
@@ -106,6 +108,7 @@ impl UiRoot {
             fold: ScrollbackFold::default(),
             status_loader,
             status_busy: false,
+            loader_last_tick: Instant::now(),
             editor,
             footer: Text::new(String::new(), 0, 0),
             theme,
@@ -143,6 +146,11 @@ impl UiRoot {
 
     pub fn set_editor_text(&mut self, text: impl Into<String>) {
         self.editor.set_text(text.into());
+    }
+
+    /// Record a sent prompt / steer / follow-up for ↑/↓ history (pi `addToHistory`).
+    pub fn remember_editor_send(&mut self, text: impl Into<String>) {
+        self.editor.add_to_history(text.into());
     }
 
     pub fn tree_open(&self) -> bool {
@@ -227,6 +235,45 @@ impl UiRoot {
             .push(UiEntry::System { text: line.into() });
     }
 
+    /// Pending steer / follow-up chrome above status (pi `pendingMessagesContainer`).
+    fn render_queue_slot(&mut self, width: usize) -> Vec<String> {
+        let steer = &self.ui_model.pending_steer;
+        let follow_up = &self.ui_model.pending_follow_up;
+        if steer.is_empty() && follow_up.is_empty() {
+            return Vec::new();
+        }
+        let mut lines = Vec::new();
+        // One blank spacer like pi's Spacer(1) before the queue block.
+        if width > 0 {
+            lines.push(String::new());
+        }
+        for msg in steer {
+            let line = self.theme.paint_muted(&format!("Steering: {msg}"));
+            lines.push(if width == 0 {
+                line
+            } else {
+                truncate_to_width(&line, width, "...", true)
+            });
+        }
+        for msg in follow_up {
+            let line = self.theme.paint_muted(&format!("Follow-up: {msg}"));
+            lines.push(if width == 0 {
+                line
+            } else {
+                truncate_to_width(&line, width, "...", true)
+            });
+        }
+        let hint = self
+            .theme
+            .paint_muted("↳ Alt+Up to edit all queued messages");
+        lines.push(if width == 0 {
+            hint
+        } else {
+            truncate_to_width(&hint, width, "...", true)
+        });
+        lines
+    }
+
     fn render_status_slot(&mut self, width: usize) -> Vec<String> {
         if !self.status_busy {
             return Vec::new();
@@ -266,6 +313,8 @@ impl Component for UiRoot {
     fn render(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
         lines.extend(self.render_scrollback_slot(width));
+        // Queue chrome sits between transcript and status (pi morphology).
+        lines.extend(self.render_queue_slot(width));
         lines.extend(self.render_status_slot(width));
         // Editor owns the operation-zone ─ borders (DESIGN editor.md / agent_demo).
         // Do NOT wrap with a second outer border pair.
@@ -326,7 +375,11 @@ impl Component for UiRoot {
     fn tick(&mut self) -> bool {
         let mut dirty = self.editor.tick();
         if self.status_busy {
-            dirty = Component::tick(&mut self.status_loader) || dirty;
+            let interval = self.status_loader.interval_ms() as u128;
+            if self.loader_last_tick.elapsed().as_millis() >= interval {
+                dirty = Component::tick(&mut self.status_loader) || dirty;
+                self.loader_last_tick = Instant::now();
+            }
         }
         dirty
     }
@@ -390,7 +443,7 @@ pub fn shared_ui_root_rebuild(
     }
 }
 
-/// Register pre-focus Ctrl+C / Esc (session tree). Streaming Esc abort waits for c480.
+/// Register pre-focus Ctrl+C / Esc (session tree). Busy Esc abort is host-side (c480).
 pub fn install_ui_root_key_listeners<T: Terminal>(
     root: &Rc<RefCell<UiRoot>>,
     quit_flag: &Arc<AtomicBool>,

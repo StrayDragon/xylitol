@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: src/app/tui/
-requirements[10]{req_id,title,statement}:
+requirements[14]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式或 agent 忙碌时 Esc MUST 调用 Driver::abort；Ctrl+C 在编辑器非空时 MUST 清空输入，在编辑器为空时 MUST 退出 TUI。"
@@ -13,7 +13,11 @@ requirements[10]{req_id,title,statement}:
   ati7,"demo-steer-preserves-turn","agent_demo 在 steer 入队时 MUST 将 steer 文本写入 transcript（可带 [steer] 标记）并可挂到会话活树；MUST NOT 调用会清空 scheduled_actions/pending_events 的新一轮 queue_simulated_turn 入口来「顶替」当前忙碌轮。"
   ati8,"demo-bash-prefix-border",agent_demo 中当编辑器文本 trim 后以 ! 开头时，Editor 操作区边框 MUST 切换为 bash 强调色（对齐 DESIGN success 前景）；去掉 ! 前缀后 MUST 恢复默认 muted 边框。
   ati9,"demo-external-editor-stub",agent_demo MUST 将 Ctrl+G 绑定为外部编辑器原型：记录调用并写入系统提示；MUST NOT 在 harness 路径强制 spawn 真实 $EDITOR；MAY 向编辑器追加 stub 标记以演示往返。
-scenarios[13]{req_id,id,given,when,then}:
+  ati10,"product-host-key-wiring","产品 HostSession MUST 在 agent 忙碌且会话树关闭时将普通 Enter 映射为 Driver::steer、Alt+Enter 映射为 Driver::follow_up；忙碌时 Esc MUST 调用 Driver::abort 并 clear_queue(steer=true, follow_up=false)；MUST NOT 在忙碌 Esc 时打开 c491 stub 树。"
+  ati11,"product-queue-chrome","产品 TUI 在 steer/follow-up 队列非空时 MUST 在 scrollback 与 status 之间以 muted 色渲染 Steering:/Follow-up: 行及 Alt+Up dequeue 提示（对齐 pi pendingMessagesContainer）；MUST NOT 将排队内容写成 scrollback System [steer]/[follow-up] 墙；Alt+Up MUST 将队列文本还原进 editor 并 clear_queue(steer=true, follow_up=true)。"
+  ati12,"product-queue-uplink","当 steer/follow-up 从队列注入 agent history 时，runtime MUST 发射 MessageStart/MessageEnd（role=user，带 message）；产品 bridge MUST 将其提交为 scrollback UiEntry::User（与 idle 提交同形）；chrome 随 QueueUpdate 消退后用户文本 MUST 仍留在 transcript；MUST NOT 仅在 chrome 闪现后丢失。"
+  ati13,"product-editor-send-history","产品 Host 在 idle 提交、busy steer、busy follow-up 发送用户文本时 MUST 调用 Editor::add_to_history（跳过空串与连续重复）；同一 TUI session 内 MUST 能在 editor 空或已在浏览态时用 ↑/↓ 召回这些文本（委托包 ed05）；MUST NOT 要求跨进程持久化。"
+scenarios[23]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-input",spec.toon 存在且 purpose 为中文
   ati1,"selector-slot","",打开模型选择器,editor 槽被选择器替换且贴底可见
   ati2,"esc-aborts","",流式中按 Esc,"Driver::abort 被调用"
@@ -27,3 +31,13 @@ scenarios[13]{req_id,id,given,when,then}:
   ati8,"bang-enables-bash",编辑器文本为 !ls,sync 边框,bash_mode 为真
   ati8,"clear-bang-restores",曾处于 bash 模式,文本改为 hello 后 sync,bash_mode 为假
   ati9,"ctrl-g-stub",编辑器有文本,Ctrl+G 或 stub API,external_editor 计数加一且 transcript 含 external editor stub
+  ati10,"busy-enter-steer",产品 host 忙碌且 editor 非空,按 Enter,steer 被调用或 pending steer 入队且 editor 清空
+  ati10,"busy-alt-enter-followup",产品 host 忙碌,Alt+Enter 提交文本,"follow_up 被调用或 pending follow-up 入队"
+  ati10,"busy-esc-abort",产品 host 忙碌且树关闭,按 Esc,abort 被请求且不打开会话树
+  ati11,"busy-steer-chrome",产品 host 忙碌且已入队 steer,渲染一帧,"出现 Steering: 行且无 scrollback [steer] System 墙"
+  ati11,"busy-followup-chrome","产品 host 忙碌且已入队 follow-up",渲染一帧,"出现 Follow-up: 行与 Alt+Up hint"
+  ati11,"busy-alt-up-dequeue",产品 host 忙碌且队列非空,按 Alt+Up,队列文本进入 editor 且请求 clear 两侧队列
+  ati12,"steer-inject-scrollback",busy 且 steer 已注入,收到 user MessageStart,scrollback 出现对应用户行
+  ati12,"followup-inject-scrollback","follow-up 注入后 QueueUpdate 清 chrome",渲染,"Follow-up 文本仍在 UiEntry::User 中"
+  ati13,"submit-then-up",idle 提交过非空 prompt 且 editor 已空,按 ↑,editor 回填该 prompt
+  ati13,"steer-in-history",busy 发送过 steer 文本,idle 后 editor 空再按 ↑,可召回该 steer 文本

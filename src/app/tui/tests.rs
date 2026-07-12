@@ -221,6 +221,144 @@ fn enter_event() -> InputEvent {
     })
 }
 
+fn alt_enter_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Enter,
+        modifiers: KeyModifiers::ALT,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+#[test]
+fn harness_busy_enter_queues_steer() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_run_started("hello");
+    root.borrow_mut().set_editor_text("nudge");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    assert_eq!(session.take_steer().as_deref(), Some("nudge"));
+    assert!(root.borrow().editor_text().is_empty());
+    assert_eq!(session.ui_model().pending_steer, vec!["nudge".to_string()]);
+    assert!(
+        !session.ui_model().entries.iter().any(
+            |e| matches!(e, super::bridge::UiEntry::System { text } if text.contains("[steer]"))
+        ),
+        "steer must not be a scrollback system wall: {:?}",
+        session.ui_model().entries
+    );
+    let frame = root.borrow_mut().render(80);
+    assert!(
+        frame.iter().any(|l| l.contains("Steering: nudge")),
+        "missing Steering chrome: {frame:?}"
+    );
+    assert!(
+        frame
+            .iter()
+            .any(|l| l.contains("Alt+Up to edit all queued messages")),
+        "missing dequeue hint: {frame:?}"
+    );
+    assert!(!root.borrow().tree_open());
+}
+
+#[test]
+fn harness_busy_alt_enter_queues_follow_up() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_run_started("hello");
+    root.borrow_mut().set_editor_text("later");
+    session.step(HostEvent::Input(alt_enter_event())).unwrap();
+    assert_eq!(session.take_follow_up().as_deref(), Some("later"));
+    assert!(root.borrow().editor_text().is_empty());
+    assert_eq!(
+        session.ui_model().pending_follow_up,
+        vec!["later".to_string()]
+    );
+    let frame = root.borrow_mut().render(80);
+    assert!(
+        frame.iter().any(|l| l.contains("Follow-up: later")),
+        "missing Follow-up chrome: {frame:?}"
+    );
+}
+
+fn alt_up_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Up,
+        modifiers: KeyModifiers::ALT,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+#[test]
+fn harness_busy_alt_up_restores_queued_to_editor() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_run_started("hello");
+    root.borrow_mut().set_editor_text("nudge");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    let _ = session.take_steer();
+    root.borrow_mut().set_editor_text("draft");
+    session.step(HostEvent::Input(alt_up_event())).unwrap();
+    assert!(session.take_dequeue());
+    assert!(session.ui_model().pending_steer.is_empty());
+    assert_eq!(root.borrow().editor_text(), "nudge\n\ndraft");
+}
+
+#[test]
+fn harness_busy_esc_requests_abort_not_tree() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_run_started("hello");
+    session.step(HostEvent::Input(esc_event())).unwrap();
+    assert!(session.take_abort());
+    assert!(
+        !root.borrow().tree_open(),
+        "busy Esc must not open stub tree"
+    );
+}
+
+#[test]
+fn harness_idle_slash_exit_quits() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut().set_editor_text("/exit");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    assert!(session.should_quit());
+    assert!(session.take_submit().is_none());
+}
+
+#[test]
+fn harness_idle_unknown_slash_stays_alive() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut().set_editor_text("/nope");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    assert!(!session.should_quit());
+    assert!(session.take_submit().is_none());
+    assert!(
+        session.ui_model().entries.iter().any(
+            |e| matches!(e, super::bridge::UiEntry::System { text } if text.contains("unknown"))
+        ),
+        "unknown slash note missing: {:?}",
+        session.ui_model().entries
+    );
+}
+
+#[test]
+fn harness_idle_slash_model_pending() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut().set_editor_text("/model");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    assert_eq!(
+        session.take_slash(),
+        Some(super::host::PendingSlash::CycleModel)
+    );
+}
+
 #[test]
 fn harness_double_esc_opens_session_tree() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -321,6 +459,29 @@ fn harness_idle_enter_queues_submit() {
     session.step(HostEvent::Input(enter_event())).unwrap();
     assert_eq!(session.take_submit().as_deref(), Some("run me"));
     assert!(root.borrow().editor_text().is_empty());
+}
+
+fn arrow_up_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Up,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+#[test]
+fn harness_idle_up_recalls_submit_history() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut().set_editor_text("run me");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    let _ = session.take_submit();
+    assert!(root.borrow().editor_text().is_empty());
+    // Idle: dispatch Up into focused editor via host step → component tree.
+    session.step(HostEvent::Input(arrow_up_event())).unwrap();
+    assert_eq!(root.borrow().editor_text(), "run me");
 }
 
 #[test]

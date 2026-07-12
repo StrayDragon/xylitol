@@ -333,8 +333,17 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 yield XyEvent::TurnStart { turn_index: turn as u32 };
 
                 // Inject pending messages (steering / follow-up) before the model call.
+                // Emit user MessageStart/End so surfaces can 上行 scrollback (pi chat).
                 if !pending.is_empty() {
                     for message in pending.drain(..) {
+                        yield XyEvent::MessageStart {
+                            role: "user".to_string(),
+                            message: Some(message.clone()),
+                        };
+                        yield XyEvent::MessageEnd {
+                            role: "user".to_string(),
+                            message: Some(message.clone()),
+                        };
                         history.push(message);
                     }
                     let (steer_count, follow_up_count) =

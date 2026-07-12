@@ -23,5 +23,6 @@ components:
 4. 键位见 [`keybindings.md`](./keybindings.md)。
 5. **Slash MVP（c480）**：至少 `/exit`、`/model`；补全走包 `CompletionSource`；未知命令短错误进 scrollback 或 editor 提示，不崩。
 6. idle 占位文案可静默（无强制 placeholder 墙）；有草稿时不盖住内容。
+7. **发送历史（c481）**：idle 提交 / steer / follow-up MUST `add_to_history`；editor 空或已在浏览态时 ↑/↓ 召回（包 ed05）。Slash 命令 **不** 写入历史。
 
 边框色：`{colors.muted}`（`{components.editor-border}`）。
