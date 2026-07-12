@@ -697,11 +697,13 @@ mod tests {
     use crate::infra::session::SessionManager;
     use crate::runtime_protocol::{XyEventSink, XyModel, XySessionStore, XyStream};
 
+    type ModelBuilderFn =
+        Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync>;
+
     /// Model builder for tests — the real factory (tests register `Fake`/`OpenAi`
     /// model configs and rely on `build_provider` constructing the provider struct;
     /// no real network calls are made in unit assertions).
-    fn fake_model_builder()
-    -> Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync> {
+    fn fake_model_builder() -> ModelBuilderFn {
         Arc::new(crate::infra::provider::factory::build_provider)
     }
 
@@ -898,9 +900,7 @@ mod tests {
         reg
     }
 
-    fn mock_model_builder(
-        chunks: Vec<crate::domain::types::XyChunk>,
-    ) -> Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync> {
+    fn mock_model_builder(chunks: Vec<crate::domain::types::XyChunk>) -> ModelBuilderFn {
         Arc::new(move |_| {
             Ok(Arc::new(MockModel {
                 chunks: chunks.clone(),
@@ -1387,8 +1387,8 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert!(messages.iter().any(|r| *r == "user"));
-        assert!(messages.iter().any(|r| *r == "assistant"));
+        assert!(messages.contains(&"user"));
+        assert!(messages.contains(&"assistant"));
     }
 
     #[tokio::test]
@@ -1428,7 +1428,7 @@ mod tests {
         let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-        let builder: Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync> = {
+        let builder: ModelBuilderFn = {
             let seen = seen.clone();
             Arc::new(move |_| {
                 Ok(Arc::new(RecordingMockModel {
