@@ -25,7 +25,16 @@ cd src/app/tui/design/playground && python -m http.server 8765
 
 ```bash
 python3 src/app/tui/design/playground/sync_tokens.py
-# 并手改/对齐 packages/xylitol-tui/src/theme/palette.rs（Dark/Light）
+# 或
+just sync-tui-tokens
+just check-tui-tokens   # tokens.css/js + Palette ≡ DESIGN.md
+```
+
+打开浏览器静图（Linux）：
+
+```bash
+just open-design-playground
+# ≡ xdg-open src/app/tui/design/playground/index.html
 ```
 
 生成物（勿手改）：`tokens.css`、`tokens.js`。
