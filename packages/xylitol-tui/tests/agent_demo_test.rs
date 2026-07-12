@@ -1367,6 +1367,32 @@ fn agent_demo_parallel_tools_flip_by_index_not_last() {
 }
 
 #[test]
+fn agent_demo_compaction_and_retry_status_chrome() {
+    let mut app = FakeCodingAgentApp::new(Arc::new(AtomicBool::new(false)));
+    app.demo_compaction_status_for_test();
+    assert_eq!(app.status_text_for_test(), "Compacting");
+    for _ in 0..80 {
+        let _ = app.tick_for_test();
+    }
+    assert_eq!(
+        app.status_text_for_test(),
+        "Ready",
+        "compaction demo should settle on Ready"
+    );
+
+    app.demo_retry_status_for_test();
+    assert_eq!(app.status_text_for_test(), "Retry 1/3");
+    for _ in 0..100 {
+        let _ = app.tick_for_test();
+    }
+    assert_eq!(
+        app.status_text_for_test(),
+        "Ready",
+        "retry demo should settle on Ready"
+    );
+}
+
+#[test]
 fn agent_demo_idle_returns_to_ready_after_tool_flips() {
     use std::cell::RefCell;
     use std::rc::Rc;

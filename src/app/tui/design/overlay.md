@@ -1,7 +1,7 @@
 ---
 version: "alpha"
 name: "overlay"
-description: "Short centered confirm overlays — not command-palette dashboards."
+description: "Optional short confirms only — prefer editor-slot selectors."
 tokens_from: "../DESIGN.md"
 components:
   overlay-border:
@@ -14,11 +14,19 @@ components:
 
 > Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
 
-## MUST
+## 产品偏好（2026-07-12）
 
-1. 仅用于确认框等**短交互**：居中短面板 + `OverlayHandle`。
-2. 命令面板 / 设置 **MUST NOT** 做成大 overlay 仪表盘——走 editor 槽替换（见 [`editor.md`](./editor.md)）。
+**默认不要**用 capturing overlay 做交互。下列场景走 **editor 槽替换**（与 demo / 已落地产品一致）：
 
-## 引擎差距
+| 场景 | 用 |
+|---|---|
+| 会话树 / travel | [`session-tree.md`](./session-tree.md)（`TreeSelector` 换槽） |
+| Trust / Ask / 多选 | [`trust-prompt.md`](./trust-prompt.md) · ChoicePrompt 换槽 |
+| 命令板 / 设置 | SelectList / SettingsList 换槽（见 [`editor.md`](./editor.md)） |
 
-包侧当前为最小 hide/focus/unfocus；完整 eligible/blocked focus-restore 见 `packages/xylitol-tui` `PI_DELTAS` **D08**（意向 `c575`，不阻塞产品 bridge）。
+包侧仍保留 `show_overlay` + focus-restore（c575 / D08）供引擎与极少数短确认；**产品 UX 不以 overlay 为主控件**。
+
+## MUST（若仍用 overlay）
+
+1. 仅用于确认框等**极短交互**：居中短面板 + `OverlayHandle`。
+2. 命令面板 / 设置 / Ask / 树 **MUST NOT** 做成大 overlay 仪表盘。

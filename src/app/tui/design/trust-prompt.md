@@ -27,4 +27,4 @@ components:
 ## 非目标
 
 - 大 overlay 仪表盘（走全屏/槽内 ChoicePrompt，非命令面板）
-- c575 overlay focus-restore
+- c575 overlay focus-restore（包引擎已有；产品 UX 默认不用 capturing overlay，见 overlay.md）

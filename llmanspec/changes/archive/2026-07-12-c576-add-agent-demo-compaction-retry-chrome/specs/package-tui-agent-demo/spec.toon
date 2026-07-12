@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,pad5,"demo-compaction-retry-chrome","agent_demo MUST 提供可触发的 Compacting 与 Retry n/m 单行 status 预览（和弦或 Command plate 或 slash），时序结束后 MUST 回到 Ready/Working 类空闲短词，并 MUST 向 transcript 追加对应 System 说明；MUST NOT 以 capturing overlay focus-restore 演示作为本预览的一部分。",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  pad5,"compact-status-sequence",agent_demo 空闲,"触发 compact-status",status 曾为 Compacting 且稍后为 Ready
+  pad5,"retry-status-sequence",agent_demo 空闲,"触发 retry-status",status 曾为 Retry 1/3 且稍后为 Ready
+  pad5,"no-overlay-focus-demo",agent_demo 入口,查阅 plate/slash/和弦,"无 overlay-focus 演示入口"

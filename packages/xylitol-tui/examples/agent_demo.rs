@@ -40,7 +40,8 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("md", "Stream full Markdown grammar stub (typewriter)"),
     ("theme", "Switch chrome theme: /theme [dark|light|toggle]"),
     ("model", "Switch execution model"),
-    ("compact", "Compact conversation history"),
+    ("compact", "Demo Compacting status → Working (c493)"),
+    ("retry", "Demo Retry status → Working (c493)"),
     ("export", "Export current session"),
     ("session", "Session management"),
     ("settings", "Open settings panel"),
@@ -244,9 +245,19 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
         description: "Queue fake cargo test tool + note",
     },
     DemoPlateItem {
+        id: "compact-status",
+        label: "Compaction status (c493)",
+        description: "Status Compacting → System note → Working (Alt+K)",
+    },
+    DemoPlateItem {
+        id: "retry-status",
+        label: "AutoRetry status (c493)",
+        description: "Status Retry 1/3 → fail note → Working (Alt+Y)",
+    },
+    DemoPlateItem {
         id: "compact",
-        label: "Compact conversation",
-        description: "Simulate a context compaction checkpoint",
+        label: "Compact conversation (legacy note)",
+        description: "Alias → same as compact-status",
     },
 ];
 
@@ -1070,6 +1081,10 @@ enum TimedAction {
         index: usize,
         chunk: String,
     },
+    /// Demo chrome status (c493 Compacting / Retry).
+    SetStatus(String),
+    /// Demo scrollback System line.
+    PushSystem(String),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1095,7 +1110,7 @@ pub struct FakeCodingAgentApp {
     palette_filter: String,
     settings_open: bool,
     settings: SettingsList,
-    /// Library-atom editor-slot showcase (TruncatedText / CancellableLoader / Panel / Overlay).
+    /// Library-atom editor-slot showcase (TruncatedText / CancellableLoader / Panel).
     lib_atom: Option<LibAtomKind>,
     /// Live spinner for `LibAtomKind::CancellableLoader` (Esc aborts).
     atom_loader: Option<CancellableLoader>,
@@ -1603,6 +1618,48 @@ impl FakeCodingAgentApp {
         let pending = self.pending_external_editor;
         self.pending_external_editor = false;
         pending
+    }
+
+    /// c493: Compacting status + System note, then restore Working.
+    fn demo_compaction_status(&mut self) {
+        self.set_status("Compacting");
+        self.push_message(
+            Role::System,
+            "compaction: auto: demo 90% of window (c493 chrome)",
+        );
+        self.schedule_from_now(36, TimedAction::PushSystem("compaction complete".into()));
+        self.schedule_from_now(36, TimedAction::SetStatus("Working".into()));
+        self.schedule_from_now(72, TimedAction::SetStatus("Ready".into()));
+        self.push_message(
+            Role::System,
+            "watch status: Compacting (spinner) → Working → Ready · Alt+K / plate compact-status",
+        );
+    }
+
+    /// Harness: run c493 compaction status demo.
+    pub fn demo_compaction_status_for_test(&mut self) {
+        self.demo_compaction_status();
+    }
+
+    /// Harness: run c493 retry status demo.
+    pub fn demo_retry_status_for_test(&mut self) {
+        self.demo_retry_status();
+    }
+
+    /// c493: Retry n/m then fail note + Working.
+    fn demo_retry_status(&mut self) {
+        self.set_status("Retry 1/3");
+        self.push_message(Role::System, "auto-retry start · attempt 1/3 (c493 chrome)");
+        self.schedule_from_now(
+            40,
+            TimedAction::PushSystem("retry failed (attempt 1)".into()),
+        );
+        self.schedule_from_now(40, TimedAction::SetStatus("Working".into()));
+        self.schedule_from_now(80, TimedAction::SetStatus("Ready".into()));
+        self.push_message(
+            Role::System,
+            "watch status: Retry 1/3 → Working → Ready · Alt+Y / plate retry-status",
+        );
     }
 
     pub fn apply_external_editor_text(&mut self, text: String) {
@@ -2214,7 +2271,8 @@ impl FakeCodingAgentApp {
             Role::System,
             "keys: Enter submit/steer · Alt+Enter follow-up · /md Markdown stream · Ctrl+P plate · \
              /theme [dark|light|toggle] · /help · /diff · ! bash · Ctrl+G $EDITOR · double Esc tree · \
-             (Ctrl+T) thinking · (Alt+E) tools · (Ctrl+O) tools viewport · Alt+G glyphs · Esc · Ctrl+C",
+             (Ctrl+T) thinking · (Alt+E) tools · (Ctrl+O) tools viewport · Alt+G glyphs · \
+             Alt+K compact-status · Alt+Y retry-status · Esc · Ctrl+C",
         );
         self.push_message(
             Role::System,
@@ -2222,7 +2280,7 @@ impl FakeCodingAgentApp {
              completion-dollar (c545 $) · expandable-head (c550) · playground-sync (c555) · \
              md-list-wrap · narrow-clamp · truncated-text · cancellable-loader · panel · \
              ask-single · ask-multi · ask-tabs · tree (c560) · tool-tints · theme-toggle · \
-             help-keys · tests · compact",
+             help-keys · tests · compact-status · retry-status",
         );
         self.set_status("Ready");
     }
@@ -2593,12 +2651,8 @@ impl FakeCodingAgentApp {
                     "Regression tests are queued. Next step: rerun the PTY smoke against the primary example.".into(),
                 ));
             }
-            "compact" => {
-                self.push_message(
-                    Role::System,
-                    "Compaction checkpoint: examples rewritten to a single fake coding-agent flow.",
-                );
-            }
+            "compact-status" | "compact" => self.demo_compaction_status(),
+            "retry-status" => self.demo_retry_status(),
             _ => {}
         }
     }
@@ -2734,6 +2788,17 @@ impl FakeCodingAgentApp {
             return;
         }
 
+        if last_line == "/compact" || last_line == ":compact" {
+            self.input.set_text(String::new());
+            self.demo_compaction_status();
+            return;
+        }
+        if last_line == "/retry" || last_line == ":retry" {
+            self.input.set_text(String::new());
+            self.demo_retry_status();
+            return;
+        }
+
         if last_line == "/settings" || last_line == ":settings" {
             self.input.set_text(String::new());
             self.settings_open = true;
@@ -2768,8 +2833,9 @@ impl FakeCodingAgentApp {
             || self.any_pending_tool_blocks()
             || matches!(
                 self.status_text.as_str(),
-                "Working" | "Thinking" | "Drafting reply" | "Running tools"
+                "Working" | "Thinking" | "Drafting reply" | "Running tools" | "Compacting"
             )
+            || self.status_text.starts_with("Retry ")
     }
 
     fn enqueue_steer(&mut self, text: String) {
@@ -2855,8 +2921,8 @@ impl FakeCodingAgentApp {
         // must not keep the loader alive after the work is done.
         let busy_label = matches!(
             self.status_text.as_str(),
-            "Working" | "Thinking" | "Drafting reply" | "Running tools"
-        );
+            "Working" | "Thinking" | "Drafting reply" | "Running tools" | "Compacting"
+        ) || self.status_text.starts_with("Retry ");
         busy_label
             || self.any_pending_tool_blocks()
             || !self.pending_events.is_empty()
@@ -3251,6 +3317,8 @@ impl FakeCodingAgentApp {
                 TimedAction::AppendToolDetail { index, chunk } => {
                     self.append_tool_detail_at(index, &chunk);
                 }
+                TimedAction::SetStatus(text) => self.set_status(text),
+                TimedAction::PushSystem(text) => self.push_message(Role::System, text),
             }
             changed = true;
         }
@@ -4091,6 +4159,14 @@ impl Component for FakeCodingAgentApp {
         }
         if matches_key_event(key, "alt+g") {
             self.cycle_glyph_set();
+            return;
+        }
+        if matches_key_event(key, "alt+k") {
+            self.demo_compaction_status();
+            return;
+        }
+        if matches_key_event(key, "alt+y") {
+            self.demo_retry_status();
             return;
         }
 
