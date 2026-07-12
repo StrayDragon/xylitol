@@ -1,35 +1,46 @@
-//! portable-pty E2E driver (c405 layer 5a, spec tt05).
+//! portable-pty E2E driver (c405 layer 5a, spec tt05; c485 avs2 product path).
 //!
-//! Spawns the `xylitol-tui` example surface under a PTY, injects key sequences,
-//! reads the raw byte stream, and feeds it to `CapturedScreen` for cell-grid
-//! assertions. This is the layer that exercises crossterm's REAL event
-//! parsing of multi-byte sequences (Ctrl/Alt+arrow, bracketed paste) — the
-//! in-process `handle_input` path bypasses crossterm entirely.
+//! Two spawn targets under a real PTY:
+//! - `xylitol-tui` examples (`agent_demo`) — package render / crossterm protocol
+//! - product `xylitol` binary — Fake model + `--trust` vertical-slice smoke
+//!
+//! Injects key sequences, reads the raw byte stream, and feeds it to
+//! `CapturedScreen` for cell-grid assertions. This layer exercises crossterm's
+//! REAL event parsing of multi-byte sequences (Ctrl/Alt+arrow, bracketed paste)
+//! — the in-process `handle_input` path bypasses crossterm entirely.
 //!
 //! All cases are `#[ignore]`: they spawn a real process + PTY and are slow
-//! (spec `test-infra` r8). Run via `just test-tui-e2e`.
-//!
-//! We spawn the crate's fake coding-agent example (NOT the full `xylitol`
-//! binary) so the test is independent of LLM provider config — it validates
-//! the TUI render pipeline + crossterm under a real PTY, not agent orchestration.
+//! (spec `test-infra` r8). Run via `just test-tui-e2e` / `just test-tui-e2e-pty`.
 
 use std::io::{Read, Write};
+use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use portable_pty::{CommandBuilder, MasterPty, NativePtySystem, PtySize, PtySystem};
+use portable_pty::{Child, CommandBuilder, MasterPty, NativePtySystem, PtySize, PtySystem};
 
 use super::CapturedScreen;
 
-/// A PTY-driven TUI session. Spawn an example, inject keys, capture the screen.
+/// A PTY-driven TUI session. Spawn an example or product binary, inject keys,
+/// capture the screen.
 ///
 /// A background thread drains the PTY reader into a shared buffer so the test
 /// can poll `capture()` without blocking on a read call.
 pub struct PtySession {
+    child: Box<dyn Child + Send + Sync>,
     _master: Box<dyn MasterPty>,
     writer: Box<dyn Write + Send>,
     rx: mpsc::Receiver<Vec<u8>>,
     buf: Vec<u8>,
+}
+
+impl Drop for PtySession {
+    fn drop(&mut self) {
+        if self.child.try_wait().ok().flatten().is_none() {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
 }
 
 impl PtySession {
@@ -45,6 +56,42 @@ impl PtySession {
         rows: u16,
         extra_env: &[(&str, &str)],
     ) -> std::io::Result<Self> {
+        let mut cmd = CommandBuilder::new("cargo");
+        cmd.args(["run", "--example", example, "--quiet", "-p", "xylitol-tui"]);
+        // The spawned `cargo` must run in the workspace root (it inherits the
+        // test's cwd otherwise, which may be outside the workspace).
+        cmd.cwd(env!("CARGO_MANIFEST_DIR"));
+        cmd.env("TERM", "xterm-256color");
+        for (key, value) in extra_env {
+            cmd.env(key, value);
+        }
+        Self::spawn_cmd(cmd, cols, rows)
+    }
+
+    /// Product `xylitol` TUI with isolated Fake model config (c485 avs2).
+    ///
+    /// `project_root` must contain `.xylitol/config.local.yaml` with a `fake`
+    /// model. `config_dir` / `home_dir` isolate global config + trust/sessions.
+    pub fn spawn_product_fake(
+        cols: u16,
+        rows: u16,
+        project_root: &Path,
+        config_dir: &Path,
+        home_dir: &Path,
+    ) -> std::io::Result<Self> {
+        let mut cmd = CommandBuilder::new("cargo");
+        cmd.args([
+            "run", "--quiet", "--", "--trust", "--tui", "--model", "fake",
+        ]);
+        cmd.cwd(env!("CARGO_MANIFEST_DIR"));
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("HOME", home_dir);
+        cmd.env("XYLITOL_CONFIG_DIR", config_dir);
+        cmd.env("XYLITOL_PROJECT_DIR", project_root);
+        Self::spawn_cmd(cmd, cols, rows)
+    }
+
+    fn spawn_cmd(cmd: CommandBuilder, cols: u16, rows: u16) -> std::io::Result<Self> {
         let pty_system = NativePtySystem::default();
         let pair = pty_system
             .openpty(PtySize {
@@ -55,17 +102,7 @@ impl PtySession {
             })
             .map_err(|e| std::io::Error::other(e.to_string()))?;
 
-        let mut cmd = CommandBuilder::new("cargo");
-        cmd.args(["run", "--example", example, "--quiet", "-p", "xylitol-tui"]);
-        // The spawned `cargo` must run in the workspace root (it inherits the
-        // test's cwd otherwise, which may be outside the workspace).
-        cmd.cwd(env!("CARGO_MANIFEST_DIR"));
-        cmd.env("TERM", "xterm-256color");
-        for (key, value) in extra_env {
-            cmd.env(key, value);
-        }
-
-        let _child = pair
+        let child = pair
             .slave
             .spawn_command(cmd)
             .map_err(|e| std::io::Error::other(e.to_string()))?;
@@ -97,6 +134,7 @@ impl PtySession {
         });
 
         Ok(Self {
+            child,
             _master: pair.master,
             writer,
             rx,
@@ -198,6 +236,34 @@ impl PtySession {
     pub fn raw_contains(&self, needle: &[u8]) -> bool {
         windows_two(self.buf.as_slice(), needle)
     }
+
+    /// Poll until the child process exits, up to `timeout`.
+    pub fn wait_exit(&mut self, timeout: Duration) -> std::io::Result<u32> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if let Ok(Some(status)) = self.child.try_wait() {
+                return Ok(status.exit_code());
+            }
+            self.drain(Duration::from_millis(50));
+            if Instant::now() >= deadline {
+                let _ = self.child.kill();
+                return Err(std::io::Error::other(
+                    "timeout waiting for child process exit",
+                ));
+            }
+        }
+    }
+}
+
+/// Write isolated Fake model project config under `project_root/.xylitol/`.
+fn write_fake_project_config(project_root: &Path) -> std::io::Result<()> {
+    let dir = project_root.join(".xylitol");
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(
+        dir.join("config.local.yaml"),
+        "models:\n  default_model: fake\n  models:\n    fake:\n      provider: fake\n      model: fake-model\n",
+    )?;
+    Ok(())
 }
 
 /// Naive substring search (the `buf` is small in tests; no need for memchr).
@@ -342,7 +408,7 @@ fn pty_agent_demo_settings_overlay_smoke() {
 }
 
 #[test]
-#[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e`"]
+#[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e-pty`"]
 fn pty_agent_demo_narrow_cjk_submit_flow_survives_enter() {
     let mut session = PtySession::spawn_example("agent_demo", 96, 32).expect("spawn agent_demo");
     session
@@ -356,4 +422,44 @@ fn pty_agent_demo_narrow_cjk_submit_flow_survives_enter() {
         .wait_for("窄宽 CJK", Duration::from_secs(10), 96, 32)
         .expect("narrow submit should appear");
     assert!(!screen.text().trim().is_empty());
+}
+
+/// c485 avs2: product `xylitol` Fake smoke — Hello → `/exit`.
+#[test]
+#[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_product_fake_hello_then_exit() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let config_dir = tmp.path().join("config");
+    let home = tmp.path().join("home");
+    std::fs::create_dir_all(&project).expect("project dir");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    std::fs::create_dir_all(&home).expect("home dir");
+    write_fake_project_config(&project).expect("fake config");
+
+    const COLS: usize = 100;
+    const ROWS: usize = 30;
+    let mut session =
+        PtySession::spawn_product_fake(COLS as u16, ROWS as u16, &project, &config_dir, &home)
+            .expect("spawn product xylitol");
+
+    session
+        .wait_for(
+            crate::PRODUCT_READY_NEEDLE,
+            Duration::from_secs(120),
+            COLS,
+            ROWS,
+        )
+        .expect("product TUI should render Fake footer");
+
+    session.send_keys("\x15hi\r").expect("submit short prompt");
+    session
+        .wait_for(crate::FAKE_HELLO, Duration::from_secs(30), COLS, ROWS)
+        .expect("Fake default reply should appear");
+
+    session.send_keys("\x15/exit\r").expect("submit /exit");
+    let code = session
+        .wait_exit(Duration::from_secs(30))
+        .expect("process should exit after /exit");
+    assert_eq!(code, 0, "product TUI /exit should exit 0");
 }

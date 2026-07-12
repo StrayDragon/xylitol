@@ -39,7 +39,7 @@ use crate::runtime_protocol::{XyBashResult, XySessionStore};
 /// without importing `crate::agent::session` directly (which arch_guard
 /// forbids for tui/). Surfaces reference this as
 /// `crate::app::core::driver::SessionStats`.
-pub use crate::agent::session::SessionStats;
+pub use crate::agent::session::{QueueStats, SessionStats};
 
 /// Lifecycle events on [`EventStream`] — surfaces import via the Driver seam
 /// (not `crate::agent`), so arch_guard stays green for `app/tui`.
@@ -182,7 +182,7 @@ pub trait Driver: Send {
     fn clear_queue(&mut self, clear_steer: bool, clear_follow_up: bool) -> Result<(), String>;
 
     /// Queue depths for steer / follow-up.
-    fn queue_stats(&self) -> crate::agent::session::QueueStats;
+    fn queue_stats(&self) -> QueueStats;
 }
 
 // ── In-process driver ─────────────────────────────────────────────

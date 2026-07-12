@@ -28,6 +28,7 @@ test-tui-e2e:
     cargo test --test tui_e2e -- --ignored
 
 # TUI E2E — portable-pty driver only (no tmux needed).
+# Includes agent_demo cases and c485 product Fake smoke (`pty_product_*`).
 test-tui-e2e-pty:
     cargo test --test tui_e2e -- --ignored pty
 
