@@ -48,7 +48,7 @@
 | 主题 | pi-tui | xylitol-tui |
 |---|---|---|
 | 根类型 | `TUI extends Container` | `TUI` 持有根 `components`；另提供独立 `Container` 组件（组合，非继承） |
-| Overlay | `OverlayHandle` + 完整 focus-restore 状态机 | `OverlayHandle`（id 世代）+ 最小 hide/focus/unfocus；完整 restore **延后**（`PI_DELTAS` D08 / 意向 c575） |
+| Overlay | `OverlayHandle` + 完整 focus-restore 状态机 | `OverlayHandle` + **eligible/blocked/resume**（c575 / D08）；host `dispatch_event` reclaim |
 | 事件循环 | 库内 `start` 常见 | 产品路径 **host 驱动** `dispatch_event` / `request_render` / `try_render` / `idle_tick`；`TUI::start()` **仅 demo** |
 | 硬件光标 | 可开 | 默认 **隐藏**；Editor 用反色假光标（防流式闪烁） |
 | 渲染输出 | `string[]` ANSI | 同：`Vec<String>`；**不**引入结构化 `StyledLine` |
@@ -59,7 +59,7 @@
 - `stdin-buffer`、`native-modifiers`、Apple/Windows 专属输入、`writeLogPath`
 - **`Image` 组件**与 Kitty/iTerm **完整 encode 路径**（c445 裁剪）；保留 `is_image_line`（宽度豁免）与 `hyperlink`
 - pi coding-agent **产品壳**（transcript/slash/session UI）→ 在 `src/app/tui/`，不进本包
-- 完整 overlay focus-restore 状态机（延后；意向 c575，非轨 B 阻塞）
+- 完整 overlay focus-restore 状态机 → **已落地**（c575 / D08）；产品壳仍不进本包
 
 缺能力时：**先在本包补通用能力，再由应用面接线**——不要把准通用实现塞进 `src/app/tui/`。
 

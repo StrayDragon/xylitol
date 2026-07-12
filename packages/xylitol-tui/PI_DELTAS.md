@@ -30,7 +30,7 @@
 | D05 | 平台专属输入 | `native-modifiers`、Apple/Windows native | **不移植** | 是 |
 | D06 | 调试写盘 | `writeLogPath` | **不移植**（tracing / 应用面日志） | 是 |
 | D07 | 根类型 | `TUI extends Container` | `TUI` 持有根列表 + 独立 `Container` 组件 | 是 |
-| D08 | Overlay focus-restore | eligible/blocked/resume 完整状态机 | 最小 hide/focus；完整 restore **延后**（意向 `c575` purpose-draft；非轨 B 阻塞） | 是（延后项除外） |
+| D08 | Overlay focus-restore | eligible/blocked/resume 完整状态机 | **已对齐**（c575）：`FocusTarget` + eligible/blocked/resume；`dispatch_event` reclaim；NC 可显式 `focus`；host 驱动路径 | 是 |
 | D09 | 事件循环 | 库内 `start` 常见 | 产品路径 **host 驱动**；`TUI::start()` **仅 demo** | 是 |
 | D10 | 硬件光标 | 可开（env） | 默认 **隐藏**；Editor 反色假光标 | 是 |
 | D11 | Image | 完整 Kitty/iTerm + `Image` 组件 | **裁剪**；保留 `is_image_line` + `hyperlink` | 是 |
@@ -67,3 +67,4 @@
 | 2026-07-10 | c459 Diff 行号；**c462** tool-bg 三态（已归档，非 draft） |
 | 2026-07-11 | 轨 P 合入：Markdown（package c530）· plate（c535）· Diff 边角 · Completion `$` 扩展点 · Expandable · playground sync · Tree 边角 · **ChoicePrompt（c565）** · **Palette/`/theme`（c570）**；D08 仍延后（c575） |
 | 2026-07-11 | 定位声明：独立 fork（非持续 1:1 port）；合规 `NOTICE` |
+| 2026-07-12 | **c575**：D08 overlay focus-restore（eligible/blocked/resume + dispatch reclaim）已落地 |

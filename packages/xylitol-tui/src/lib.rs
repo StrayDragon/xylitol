@@ -86,8 +86,9 @@ pub use theme::{
     underline,
 };
 pub use tui::{
-    Component, Focusable, InputEvent, InputListenerResult, OverlayAnchor, OverlayHandle,
-    OverlayMargin, OverlayOptions, RenderError, SizeValue, TUI,
+    Component, FocusTarget, Focusable, InputEvent, InputListenerResult, OverlayAnchor,
+    OverlayHandle, OverlayMargin, OverlayOptions, OverlayUnfocusOptions, RenderError, SizeValue,
+    TUI,
 };
 pub use utils::{
     ExtractedSegments, TruncateFrom, VisualTruncateResult, apply_background_to_line,
