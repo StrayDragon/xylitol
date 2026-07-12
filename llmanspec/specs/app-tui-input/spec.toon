@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: src/app/tui/
-requirements[15]{req_id,title,statement}:
+requirements[18]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式或 agent 忙碌时 Esc MUST 调用 Driver::abort；Ctrl+C 在编辑器非空时 MUST 清空输入，在编辑器为空时 MUST 退出 TUI。"
@@ -18,7 +18,10 @@ requirements[15]{req_id,title,statement}:
   ati12,"product-queue-uplink","当 steer/follow-up 从队列注入 agent history 时，runtime MUST 发射 MessageStart/MessageEnd（role=user，带 message）；产品 bridge MUST 将其提交为 scrollback UiEntry::User（与 idle 提交同形）；chrome 随 QueueUpdate 消退后用户文本 MUST 仍留在 transcript；MUST NOT 仅在 chrome 闪现后丢失。"
   ati13,"product-editor-send-history","产品 Host 在 idle 提交、busy steer、busy follow-up 发送用户文本时 MUST 调用 Editor::add_to_history（跳过空串与连续重复）；同一 TUI session 内 MUST 能在 editor 空或已在浏览态时用 ↑/↓ 召回这些文本（委托包 ed05）；MUST NOT 要求跨进程持久化。"
   ati14,"product-abort-resumable","产品 TUI 在用户 Esc abort 当前流之后 MUST 回到可提交 idle（follow-up restore 语义不变）；MUST NOT 让后续用户输入持续产生粘性 aborted Error 而无法继续对话。"
-scenarios[24]{req_id,id,given,when,then}:
+  ati15,"product-bash-prefix-border",产品 TUI 中当编辑器文本 trim 后以 ! 或 !! 开头时，Editor 操作区边框 MUST 切换为 bash 强调色（对齐 DESIGN success 前景）；去掉该前缀后 MUST 恢复默认 muted 边框。
+  ati16,"product-idle-bang-execute","产品 idle 且会话树关闭时，Enter 提交以 ! 或 !! 开头的非空命令 MUST 调用 Driver::execute_bash（经 Command::Bash / dispatch），MUST NOT 调用 Driver::run；!! 前缀 MUST 设置 exclude_from_context=true，单 ! 为 false；命令体为空时 MUST 提示且 MUST NOT 执行。"
+  ati17,"product-external-editor-stub","产品 Host MUST 将 Ctrl+G 绑定为外部编辑器入口：至少记录/系统提示或 stub 回写；harness 路径 MUST NOT 强制 spawn 真实 $EDITOR；真编辑器路径 MAY 使用 with_terminal_suspended 边界（对齐 design/bash-mode.md）。"
+scenarios[31]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-input",spec.toon 存在且 purpose 为中文
   ati1,"selector-slot","",打开模型选择器,editor 槽被选择器替换且贴底可见
   ati2,"esc-aborts","",流式中按 Esc,"Driver::abort 被调用"
@@ -43,3 +46,10 @@ scenarios[24]{req_id,id,given,when,then}:
   ati13,"submit-then-up",idle 提交过非空 prompt 且 editor 已空,按 ↑,editor 回填该 prompt
   ati13,"steer-in-history",busy 发送过 steer 文本,idle 后 editor 空再按 ↑,可召回该 steer 文本
   ati14,"esc-then-submit",TUI busy 中 Esc abort 后,再 idle Enter 提交,新一轮开始且无连续 aborted Error 墙
+  ati15,"bang-enables",editor 文本为 !ls,sync 边框,边框为 success 强调色
+  ati15,"clear-restores",曾处于 bash 边框,文本改为 hello 后 sync,边框恢复 muted
+  ati16,"bang-executes",idle 且 editor 为 !echo hi,Enter,execute_bash 被调用且 run 未被调用
+  ati16,"bangbang-exclude",idle 且 editor 为 !!echo x,Enter,exclude_from_context 为 true
+  ati16,"empty-bang",idle 且 editor 仅为 !,Enter,出现提示且未执行 bash
+  ati16,"slash-wins",idle 且 editor 为 /exit,Enter,走 slash 退出而非 bash
+  ati17,"ctrl-g-stub",产品 host 可测环境,Ctrl+G,不崩且有 stub/系统提示可观测

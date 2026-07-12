@@ -53,8 +53,8 @@ components:
 |---|---|
 | Esc（选择器打开时） | 关闭选择器，还原 editor |
 | `/` 补全 | CompletionSource（包注册表）；产品 MVP 命令见上 |
-| `!` 前缀 | bash 边框（**c492**；c480 可不实现执行） |
-| Ctrl+G | 外部编辑器（后置） |
+| `!` / `!!` 前缀 | bash 边框 + idle Enter → `execute_bash`（**c492**） |
+| Ctrl+G | 外部编辑器 stub（**c492**；真 `$EDITOR` 后置） |
 
 ## 规则
 

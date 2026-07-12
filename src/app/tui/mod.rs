@@ -32,8 +32,9 @@ use self::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hook
 pub use self::bridge::{QueueBadge, UiEntry, UiModel, UiPhase, apply_xy_event};
 pub use self::glyphs::GlyphSet;
 pub use self::host::{
-    HostEvent as TuiHostEvent, HostSession as TuiHostSession, LayoutMode, MIN_COLS, MIN_ROWS,
-    PendingSlash as TuiPendingSlash, TOO_SMALL_HINT, display_cwd, is_too_small,
+    BangParse, HostEvent as TuiHostEvent, HostSession as TuiHostSession, LayoutMode, MIN_COLS,
+    MIN_ROWS, PendingBash, PendingSlash as TuiPendingSlash, TOO_SMALL_HINT, bash_result_entries,
+    display_cwd, is_too_small, parse_bang_command,
 };
 pub use self::theme::ChromeTheme;
 
@@ -223,6 +224,33 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
                     let _ = session.render_now();
                 }
             }
+        }
+
+        // Idle `!` / `!!` bash (c492) before starting a new agent run.
+        if let Some(bash) = session.take_bash() {
+            tracing::info!(
+                target: "xylitol::tui",
+                command_len = bash.command.len(),
+                exclude = bash.exclude_from_context,
+                "Driver::execute_bash"
+            );
+            match dispatch(
+                driver,
+                Command::Bash {
+                    id: None,
+                    command: bash.command.clone(),
+                    exclude_from_context: bash.exclude_from_context,
+                },
+            )
+            .await
+            {
+                Ok(DispatchOutcome::Bash(result)) => {
+                    session.push_bash_result(&bash.command, &result);
+                }
+                Ok(_) => session.push_system_note("bash: unexpected dispatch outcome"),
+                Err(e) => session.push_system_note(format!("bash failed: {e}")),
+            }
+            let _ = session.render_now();
         }
 
         // Start a run if idle Enter queued a prompt.

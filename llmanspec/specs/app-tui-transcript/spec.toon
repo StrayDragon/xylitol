@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-transcript"
 purpose: Live 输出进引擎 scrollback（非 Codex 式 transcript 浏览面）；分支回看走会话树。
 valid_scope[1]: src/app/tui/
-requirements[8]{req_id,title,statement}:
+requirements[9]{req_id,title,statement}:
   meta0,"capability-shell",本 capability 约束 live scrollback 行呈现与相关积木复用；MUST NOT 被解读为要求 Codex 式 TranscriptView。本壳 MUST 保持非空以满足 BDD 护栏。
   att1,"live-scrollback-output",产品 UiRoot 当前轮 live 用户/助手/系统输出 MUST 写入引擎 scrollback 并以包 Markdown（及角色色/glyph）呈现；MUST NOT 截断历史冒充滚动；MUST NOT 以此要求实现 Codex 式可导航 transcript 浏览面。
   att3,"diff-via-package","产品 live scrollback 中文件编辑 diff MUST 复用 packages/xylitol-tui Diff（含 word-level 与复制友好前缀）；MUST NOT 在应用面复制准通用 diff 渲染器。"
@@ -11,7 +11,8 @@ requirements[8]{req_id,title,statement}:
   att6,"no-codex-transcript-view","产品 TUI MUST NOT 实现 Codex 风格的独立 transcript 浏览面或专用 TranscriptView 作为主 UX；历史/分支 travel MUST 经双 Esc 会话树（app-tui session-tree / package TreeSelector）。"
   att7,"expandable-block-fold","产品 live scrollback 的 thinking/tool/edit-diff 可展开块 MUST 支持折叠与展开；折叠态 MUST 保留可读摘要行；状态机 MUST 在应用面；展开快捷键旁注 MUST 为括号完整和弦（Ctrl+T / Alt+E）。"
   att8,"expandable-key-hints",可展开块旁 MUST 提示对应快捷键，格式为括号包裹的完整和弦（如 (Ctrl+T) 用于 thinking、(Alt+E) 用于 tool/diff）；agent_demo MUST 用 Ctrl+T 切换 thinking 展开态、Alt+E 同时切换 tool 与 diff 展开态；流式 thinking 期间 MUST 保持展开，结束后可折叠。
-scenarios[9]{req_id,id,given,when,then}:
+  att9,"product-bash-result-scrollback",产品 TUI 在 idle bash 执行完成后 MUST 将命令摘要与输出写入 live scrollback；exit_code 非 0 时 MUST 以 error 或 warning 前景强调；MUST NOT 为此引入 Codex 式 TranscriptView。
+scenarios[11]{req_id,id,given,when,then}:
   meta0,"shell-live-purpose","","列出 app-tui-transcript",purpose 描述 live scrollback 且禁 Codex 浏览面
   att1,"markdown-assistant","",UiModel 含助手 Markdown 条目并 render,"输出含 Markdown 主题着色而非纯 `assistant:` 前缀行"
   att3,"diff-component","","UiEntry::Diff 含 display_diff",render 经包 Diff 着色
@@ -21,3 +22,5 @@ scenarios[9]{req_id,id,given,when,then}:
   att7,"fold-key-hint","",渲染折叠 thinking 头,行旁含 (Ctrl+T)
   att8,"alt-e-tools-and-diff",存在 tool 与 diff 块,Alt+E,两类块展开态一同翻转
   att8,"hint-parenthesized",渲染折叠 thinking 头,行旁提示,含 (Ctrl+T) 而非裸 ^T
+  att9,"ok-output",idle 已 execute_bash 成功,渲染,scrollback 含命令或输出片段
+  att9,"err-tint",idle bash exit_code 非 0,渲染,失败结果带错误/警告色强调
