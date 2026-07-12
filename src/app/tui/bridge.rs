@@ -132,13 +132,22 @@ impl UiModel {
                 UiEntry::Error { text } => lines.push(format!("error: {text}")),
             }
         }
-        if !self.streaming_thinking.is_empty() {
-            lines.push(format!("thinking: {}…", self.streaming_thinking));
-        }
-        if !self.streaming_assistant.is_empty() {
-            lines.push(format!("assistant: {}…", self.streaming_assistant));
+        for (kind, text) in self.streaming_scrollback_tails() {
+            lines.push(format!("{kind}: {text}…"));
         }
         lines
+    }
+
+    /// In-flight streaming tails for chrome scrollback (role label, text).
+    pub(crate) fn streaming_scrollback_tails(&self) -> Vec<(&'static str, &str)> {
+        let mut out = Vec::new();
+        if !self.streaming_thinking.is_empty() {
+            out.push(("thinking", self.streaming_thinking.as_str()));
+        }
+        if !self.streaming_assistant.is_empty() {
+            out.push(("assistant", self.streaming_assistant.as_str()));
+        }
+        out
     }
 
     /// Stream ended without a clean AgentEnd — idle if no pending follow-up.

@@ -4,16 +4,17 @@ purpose: 主题 token、glyph、status 与 footer 等 chrome。
 valid_scope[1]: src/app/tui/
 requirements[6]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
-  atc1,"idle-status-omitted",空闲时 status 行 MUST NOT 占用垂直空间（0 行）；忙碌时 MUST 至多 1 行短状态（如 Working / Running tool / Retry）。
-  atc2,"footer-minimal",footer MUST 为 1 行 dim 文本，MVP 至少包含 cwd 与 model；放不下时 MUST 截断右侧而非增高。
-  atc3,"theme-glyphs-config",颜色 MUST 经应用面语义 token 映射为包组件闭包主题；glyph 档（unicode/ascii）MUST 由显式配置切换，MUST NOT 做运行时字体探测。
+  atc1,"idle-status-omitted",产品 UiRoot 空闲时 status 槽 MUST 渲染 0 行；忙碌时 MUST 至多独立 1 行短状态；MUST NOT 将 Working 等忙碌文案并入 footer。
+  atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本，MVP 至少含 cwd 与 model（形如 `cwd · model`）；队列非空时可加 `q:sN|fM ·` 前缀；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。"
+  atc3,"theme-glyphs-config","产品 host MUST 经 Palette::dark()（或等价闭包）将语义色注入组件主题；glyph 档（unicode/ascii）MUST 由显式配置切换，MUST NOT 做运行时字体探测；产品 MVP MUST NOT 默认开启 theme auto。"
   atc4,"design-docs-ssot","产品 TUI 视觉与 UX MUST 以 src/app/tui/DESIGN.md 为索引、以 src/app/tui/design/*.md 为组件级 SSOT；实现与 demo 引用组件规则时 MUST 指向对应子文档（尤其 design/diff-block.md 与 design/keybindings.md），MUST NOT 仅依赖口头约定。"
   atc5,"demo-theme-auto-detect",agent_demo MUST 默认使用 Dark token 集；当启用主题自动探测（环境变量或 harness API）时 MUST 经 package terminal_colors 纯函数切换 Light/Dark，并在 chrome（footer 或系统行）暴露当前 theme_mode；MUST NOT 将自动切换设为产品 MVP 默认。
-scenarios[9]{req_id,id,given,when,then}:
+scenarios[10]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-chrome",spec.toon 存在且 purpose 为中文
-  atc1,"idle-no-status","",TUI 空闲,status 槽不占行
-  atc2,"footer-one-row","",渲染空闲帧,最后一行为单行 footer
-  atc3,"ascii-glyphs","",配置 glyph=ascii,用户前缀等为 ascii 档字符
+  atc1,"idle-status-zero-rows","",空闲 UiRoot apply_ui_model 后 render,无独立 Working 行且 status 槽占 0 行
+  atc1,"busy-status-not-in-footer","",busy 且 status=Working 时 render,存在独立 status 文案且 footer 不含 Working
+  atc2,"footer-cwd-model-no-keywall","",空闲渲染末行,含 cwd 与 model 且不含 enter submit 键墙
+  atc3,"ascii-glyph-prefix","",配置 glyph=ascii 后渲染用户行,用户前缀为 ascii 档字符
   atc4,"index-lists-components","",打开 DESIGN.md,组件索引列出 design/ 下核心文档路径
   atc4,"diff-block-exists","",实现 Diff 渲染前查阅设计,"design/diff-block.md 存在且含 unified / word-level / CJK MUST"
   atc5,"default-dark",未启用 auto,构造 demo,theme_mode 为 Dark

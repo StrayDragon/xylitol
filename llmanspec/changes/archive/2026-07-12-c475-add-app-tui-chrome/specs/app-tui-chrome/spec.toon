@@ -1,0 +1,10 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,atc1,idle-status-omitted,"产品 UiRoot 空闲时 status 槽 MUST 渲染 0 行；忙碌时 MUST 至多独立 1 行短状态；MUST NOT 将 Working 等忙碌文案并入 footer。",null,null,null
+  modify_requirement,atc2,footer-minimal,"产品 footer MUST 为 1 行 dim 文本，MVP 至少含 cwd 与 model（形如 `cwd · model`）；队列非空时可加 `q:sN|fM ·` 前缀；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。",null,null,null
+  modify_requirement,atc3,theme-glyphs-config,"产品 host MUST 经 Palette::dark()（或等价闭包）将语义色注入组件主题；glyph 档（unicode/ascii）MUST 由显式配置切换，MUST NOT 做运行时字体探测；产品 MVP MUST NOT 默认开启 theme auto。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  atc1,idle-status-zero-rows,"",空闲 UiRoot apply_ui_model 后 render,无独立 Working 行且 status 槽占 0 行
+  atc1,busy-status-not-in-footer,"",busy 且 status=Working 时 render,存在独立 status 文案且 footer 不含 Working
+  atc2,footer-cwd-model-no-keywall,"",空闲渲染末行,含 cwd 与 model 且不含 enter submit 键墙
+  atc3,ascii-glyph-prefix,"",配置 glyph=ascii 后渲染用户行,用户前缀为 ascii 档字符

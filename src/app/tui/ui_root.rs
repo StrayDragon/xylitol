@@ -1,4 +1,4 @@
-//! Product TUI root layout — transcript / editor|tree slot / footer.
+//! Product TUI root layout — transcript / status / editor|tree / footer.
 //!
 //! Named `UiRoot` (not `shell`/`scene`) to avoid clashing with bash /
 //! `infra::process::shell` and to read as the product component tree root.
@@ -16,15 +16,17 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use xylitol_tui::components::editor::{Editor, EditorOptions, EditorTheme};
+use xylitol_tui::components::editor::{Editor, EditorOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
     Component, Focusable, InputEvent, InputListenerResult, SystemClock, TUI, Terminal, TreeNode,
-    TreeSelector, TreeSelectorOptions, TreeSelectorTheme, matches_key_event,
+    TreeSelector, TreeSelectorOptions, TreeSelectorTheme, matches_key_event, truncate_to_width,
 };
 
-use super::bridge::UiModel;
+use super::bridge::{UiEntry, UiModel};
+use super::glyphs::GlyphSet;
 use super::host::{LayoutMode, TOO_SMALL_HINT};
+use super::theme::ChromeTheme;
 
 /// Fake session tree for the **c491 stub only** (frozen).
 /// Real graph / Driver travel waits for demo-first gate open — see `AGENTS.md`.
@@ -58,11 +60,16 @@ fn product_tree_selector(active_id: &str) -> TreeSelector {
     )
 }
 
-/// Root UI: transcript placeholder + bordered editor|tree slot + footer.
+/// Root UI: transcript + optional status + bordered editor|tree + footer.
 pub struct UiRoot {
     transcript: Text,
+    status: Text,
     editor: Editor,
     footer: Text,
+    theme: ChromeTheme,
+    glyphs: GlyphSet,
+    cwd: String,
+    model: String,
     tree_open: bool,
     tree: TreeSelector,
     last_esc_at: Option<Instant>,
@@ -70,24 +77,42 @@ pub struct UiRoot {
 
 impl UiRoot {
     pub fn new() -> Self {
+        let theme = ChromeTheme::product_dark();
         let mut editor = Editor::new(
-            EditorTheme::default(),
+            theme.editor_theme(),
             EditorOptions::default(),
             Box::new(SystemClock),
         );
         editor.set_focused(true);
         Self {
             transcript: Text::new("(empty — submit with Enter)".into(), 0, 0),
+            status: Text::new(String::new(), 0, 0),
             editor,
-            footer: Text::new(
-                "enter submit · double Esc tree · esc close · ctrl+c clear/quit".into(),
-                0,
-                0,
-            ),
+            footer: Text::new(String::new(), 0, 0),
+            theme,
+            glyphs: GlyphSet::from_env(),
+            cwd: ".".into(),
+            model: "—".into(),
             tree_open: false,
             tree: product_tree_selector("u2"),
             last_esc_at: None,
         }
+    }
+
+    /// Inject footer identity (cwd · model). Call before first render when known.
+    pub fn set_chrome_meta(&mut self, cwd: impl Into<String>, model: impl Into<String>) {
+        self.cwd = cwd.into();
+        self.model = model.into();
+        self.refresh_footer_from_queue(0, 0);
+    }
+
+    /// Override glyph set (tests / harness). Default comes from env.
+    pub fn set_glyphs(&mut self, glyphs: GlyphSet) {
+        self.glyphs = glyphs;
+    }
+
+    pub fn glyphs(&self) -> GlyphSet {
+        self.glyphs
     }
 
     /// Current editor text (harness / listeners).
@@ -143,16 +168,10 @@ impl UiRoot {
     pub fn open_session_tree(&mut self) {
         self.tree = product_tree_selector("u2");
         self.tree_open = true;
-        self.footer = Text::new("esc close · ↑↓ · Enter travel".into(), 0, 0);
     }
 
     pub fn close_session_tree(&mut self) {
         self.tree_open = false;
-        self.footer = Text::new(
-            "enter submit · double Esc tree · esc close · ctrl+c clear/quit".into(),
-            0,
-            0,
-        );
     }
 
     /// Harness: open tree without double-Esc timing.
@@ -161,11 +180,9 @@ impl UiRoot {
         self.open_session_tree();
     }
 
-    /// Push bridge UI model into the placeholder transcript / footer badge.
-    ///
-    /// Domain events stay in `bridge` / host — this layer only sees UI-only fields (c465).
+    /// Push bridge UI model into transcript / status / footer (c465 + c475).
     pub fn apply_ui_model(&mut self, model: &UiModel) {
-        let lines = model.scrollback_lines();
+        let lines = format_scrollback(model, self.glyphs, self.theme);
         if lines.is_empty() {
             self.transcript
                 .set_text("(empty — submit with Enter)".into());
@@ -173,19 +190,24 @@ impl UiRoot {
             self.transcript.set_text(lines.join("\n"));
         }
 
-        let mut footer =
-            String::from("enter submit · double Esc tree · esc close · ctrl+c clear/quit");
-        if let Some(status) = model.status.as_ref() {
-            footer = format!("{status} · {footer}");
+        match model.status.as_ref() {
+            Some(s) if !s.is_empty() => {
+                self.status.set_text(self.theme.paint_status(s));
+            }
+            _ => {
+                self.status.set_text(String::new());
+            }
         }
-        let q = &model.queue;
-        if q.steer_count > 0 || q.follow_up_count > 0 {
-            footer = format!("q:s{}|f{} · {footer}", q.steer_count, q.follow_up_count);
+
+        self.refresh_footer_from_queue(model.queue.steer_count, model.queue.follow_up_count);
+    }
+
+    fn refresh_footer_from_queue(&mut self, steer: usize, follow_up: usize) {
+        let mut base = format!("{} · {}", self.cwd, self.model);
+        if steer > 0 || follow_up > 0 {
+            base = format!("q:s{steer}|f{follow_up} · {base}");
         }
-        if self.tree_open {
-            footer = "esc close · ↑↓ · Enter travel".into();
-        }
-        self.footer = Text::new(footer, 0, 0);
+        self.footer.set_text(self.theme.paint_muted(&base));
     }
 
     fn append_transcript_line(&mut self, line: impl Into<String>) {
@@ -220,12 +242,17 @@ impl Component for UiRoot {
     fn render(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
         lines.extend(self.transcript.render(width));
-        lines.push(String::new());
-        let border = "─".repeat(width.clamp(1, 80));
+        lines.extend(self.status.render(width));
+        let border = self.theme.paint_border(width);
         lines.push(border.clone());
         lines.extend(self.render_editor_slot(width));
         lines.push(border);
-        lines.extend(self.footer.render(width));
+        let footer = if width == 0 {
+            self.footer.text().to_string()
+        } else {
+            truncate_to_width(self.footer.text(), width, "...", true)
+        };
+        lines.push(footer);
         lines
     }
 
@@ -256,6 +283,7 @@ impl Component for UiRoot {
 
     fn invalidate(&mut self) {
         self.transcript.invalidate();
+        self.status.invalidate();
         self.editor.invalidate();
         self.footer.invalidate();
         self.tree.invalidate();
@@ -264,6 +292,66 @@ impl Component for UiRoot {
     fn tick(&mut self) -> bool {
         self.editor.tick()
     }
+}
+
+fn format_scrollback(model: &UiModel, glyphs: GlyphSet, theme: ChromeTheme) -> Vec<String> {
+    let mut lines = Vec::new();
+    for entry in &model.entries {
+        match entry {
+            UiEntry::User { text } => {
+                lines.push(format!("{} {}", theme.paint_user(glyphs.user()), text));
+            }
+            UiEntry::Assistant { text } => {
+                lines.push(theme.paint_assistant(text));
+            }
+            UiEntry::Thinking { text } => {
+                lines.push(theme.paint_muted(&format!("{} {text}", glyphs.system())));
+            }
+            UiEntry::Tool {
+                name,
+                output,
+                is_error,
+                done,
+                ..
+            } => {
+                let state = if !done {
+                    "…"
+                } else if *is_error {
+                    "err"
+                } else {
+                    "ok"
+                };
+                let preview: String = output.lines().take(2).collect::<Vec<_>>().join(" / ");
+                let body = if preview.is_empty() {
+                    format!("{} {name} [{state}]", glyphs.tool())
+                } else {
+                    format!("{} {name} [{state}] {preview}", glyphs.tool())
+                };
+                lines.push(theme.paint_tool(&body));
+            }
+            UiEntry::Diff { summary, .. } => {
+                lines.push(theme.paint_muted(&format!("diff: {summary}")));
+            }
+            UiEntry::System { text } => {
+                lines.push(theme.paint_muted(&format!("{} {text}", glyphs.system())));
+            }
+            UiEntry::Error { text } => {
+                lines.push(theme.paint_error(&format!("error: {text}")));
+            }
+        }
+    }
+    for line in model.streaming_scrollback_tails() {
+        match line {
+            ("thinking", text) => {
+                lines.push(theme.paint_muted(&format!("{} {text}…", glyphs.system())));
+            }
+            ("assistant", text) => {
+                lines.push(theme.paint_assistant(&format!("{text}…")));
+            }
+            _ => {}
+        }
+    }
+    lines
 }
 
 /// Shared root so InputListeners and the focused Component see the same state.
