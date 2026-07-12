@@ -1,16 +1,16 @@
-//! Product chrome theme — fixed dark `Palette` → component closures (c475).
+//! Product layout theme — fixed dark `Palette` → component closures (c475).
 
 use xylitol_tui::components::editor::EditorTheme;
 use xylitol_tui::components::select_list::SelectListTheme;
 use xylitol_tui::{Palette, fg_rgb};
 
-/// Product MVP chrome: always `Palette::dark()` (no theme auto).
+/// Product MVP layout theme: always `Palette::dark()` (no theme auto).
 #[derive(Clone, Copy)]
-pub struct ChromeTheme {
+pub struct LayoutTheme {
     palette: Palette,
 }
 
-impl ChromeTheme {
+impl LayoutTheme {
     pub fn product_dark() -> Self {
         Self {
             palette: Palette::dark(),
@@ -79,7 +79,7 @@ impl ChromeTheme {
     }
 }
 
-impl Default for ChromeTheme {
+impl Default for LayoutTheme {
     fn default() -> Self {
         Self::product_dark()
     }

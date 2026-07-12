@@ -11,7 +11,7 @@ use crate::app::core::driver::XyEvent;
 use crate::runtime_protocol::XyBashResult;
 
 use super::bridge::{UiEntry, UiModel, UiPhase, apply_xy_event};
-use super::ui_root::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
+use super::layout::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
 
 /// Minimum usable terminal size (ath4).
 pub const MIN_COLS: u16 = 40;
@@ -188,7 +188,7 @@ pub struct HostSession<T: Terminal> {
     pending_bash: Option<PendingBash>,
     /// True while a `Driver::run` stream is open (blocks duplicate submit).
     run_active: bool,
-    chrome_cwd: String,
+    layout_cwd: String,
 }
 
 impl<T: Terminal> HostSession<T> {
@@ -226,22 +226,22 @@ impl<T: Terminal> HostSession<T> {
             pending_slash: None,
             pending_bash: None,
             run_active: false,
-            chrome_cwd: display_cwd(),
+            layout_cwd: display_cwd(),
         }
     }
 
     /// Product empty UI: shared `UiRoot` + Ctrl+C / Esc / idle-Enter listeners.
     pub fn new_product_ui(terminal: T) -> Self {
-        Self::new_product_ui_with_chrome(terminal, display_cwd(), "—".into())
+        Self::new_product_ui_with_meta(terminal, display_cwd(), "—".into())
     }
 
     /// Product UI with footer identity (`cwd · model`).
-    pub fn new_product_ui_with_chrome(terminal: T, cwd: String, model: String) -> Self {
+    pub fn new_product_ui_with_meta(terminal: T, cwd: String, model: String) -> Self {
         let ui_root = Rc::new(RefCell::new(UiRoot::new()));
-        ui_root.borrow_mut().set_chrome_meta(cwd.clone(), model);
+        ui_root.borrow_mut().set_layout_meta(cwd.clone(), model);
         let quit_flag = Arc::new(AtomicBool::new(false));
         let mut session = Self::new(terminal, shared_ui_root_rebuild(ui_root.clone()));
-        session.chrome_cwd = cwd;
+        session.layout_cwd = cwd;
         session.ui_root = Some(ui_root.clone());
         session.quit_flag = quit_flag.clone();
         install_ui_root_key_listeners(&ui_root, &quit_flag, &mut session.tui);
@@ -329,7 +329,7 @@ impl<T: Terminal> HostSession<T> {
             return;
         };
         root.borrow_mut()
-            .set_chrome_meta(self.chrome_cwd.clone(), model);
+            .set_layout_meta(self.layout_cwd.clone(), model);
         self.sync_ui_root_from_model();
     }
 
@@ -476,7 +476,7 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(String::new());
             drop(root);
             // pi chrome: dim Follow-up: above status — not a scrollback [steer] wall.
-            self.ui_model.enqueue_follow_up_chrome(text.clone());
+            self.ui_model.enqueue_follow_up_strip(text.clone());
             self.pending_follow_up = Some(text);
             self.sync_ui_root_from_model();
             return true;
@@ -491,7 +491,7 @@ impl<T: Terminal> HostSession<T> {
             root.remember_editor_send(text.clone());
             root.set_editor_text(String::new());
             drop(root);
-            self.ui_model.enqueue_steer_chrome(text.clone());
+            self.ui_model.enqueue_steer_strip(text.clone());
             self.pending_steer = Some(text);
             self.sync_ui_root_from_model();
             return true;

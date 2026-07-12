@@ -2,7 +2,7 @@
 
 use super::bridge::{UiModel, UiPhase, apply_xy_event};
 use super::host::{HostEvent, HostSession, LayoutMode, TOO_SMALL_HINT, is_too_small};
-use super::ui_root::build_root;
+use super::layout::build_root;
 use crate::app::core::driver::XyEvent;
 use xylitol_tui::{Component, InputEvent, Terminal};
 
@@ -108,7 +108,7 @@ fn product_tui_source_has_no_tui_start_call() {
     let sources = [
         ("mod.rs", include_str!("mod.rs")),
         ("host.rs", include_str!("host.rs")),
-        ("ui_root.rs", include_str!("ui_root.rs")),
+        ("layout/root.rs", include_str!("layout/root.rs")),
         ("terminal_guard.rs", include_str!("terminal_guard.rs")),
         ("bridge.rs", include_str!("bridge.rs")),
     ];
@@ -131,10 +131,10 @@ fn product_tui_source_has_no_tui_start_call() {
 #[test]
 fn render_modules_do_not_match_xy_event() {
     // atb1: render layer must not match XyEvent — only bridge does.
-    let ui_root = include_str!("ui_root.rs");
+    let root = include_str!("layout/root.rs");
     assert!(
-        !ui_root.contains("XyEvent"),
-        "ui_root must stay XyEvent-free"
+        !root.contains("XyEvent"),
+        "layout/root must stay XyEvent-free"
     );
     let bridge = include_str!("bridge.rs");
     assert!(
@@ -524,10 +524,10 @@ fn apply_xy_event_sequence_snapshot() {
 
 #[test]
 fn idle_scrollback_is_silent_no_placeholder_wall() {
-    use super::ui_root::UiRoot;
+    use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
-    root.set_chrome_meta("~/x", "m");
+    root.set_layout_meta("~/x", "m");
     root.apply_ui_model(&UiModel::new());
     let joined = root.render(80).join("\n");
     assert!(
@@ -540,10 +540,10 @@ fn idle_scrollback_is_silent_no_placeholder_wall() {
 
 #[test]
 fn idle_editor_operation_zone_is_compact() {
-    use super::ui_root::UiRoot;
+    use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
-    root.set_chrome_meta("~/x", "m");
+    root.set_layout_meta("~/x", "m");
     root.apply_ui_model(&UiModel::new());
     let lines = root.render(80);
     // scrollback 0 + status 0 + editor (3) + footer 1
@@ -569,11 +569,11 @@ fn idle_editor_operation_zone_is_compact() {
 }
 
 #[test]
-fn chrome_idle_status_occupies_zero_rows() {
-    use super::ui_root::UiRoot;
+fn layout_idle_status_occupies_zero_rows() {
+    use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
-    root.set_chrome_meta("~/xylitol", "ornith");
+    root.set_layout_meta("~/xylitol", "ornith");
     root.apply_ui_model(&UiModel::new());
     let lines = root.render(80);
     assert!(
@@ -590,11 +590,11 @@ fn chrome_idle_status_occupies_zero_rows() {
 }
 
 #[test]
-fn chrome_compacting_and_retry_stay_single_status_row() {
-    use super::ui_root::UiRoot;
+fn layout_compacting_and_retry_stay_single_status_row() {
+    use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
-    root.set_chrome_meta("~/xylitol", "ornith");
+    root.set_layout_meta("~/xylitol", "ornith");
 
     let mut compacting = UiModel::new();
     compacting.begin_run("hi");
@@ -635,11 +635,11 @@ fn chrome_compacting_and_retry_stay_single_status_row() {
 }
 
 #[test]
-fn chrome_busy_status_is_separate_from_footer() {
-    use super::ui_root::UiRoot;
+fn layout_busy_status_is_separate_from_footer() {
+    use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
-    root.set_chrome_meta("~/xylitol", "ornith");
+    root.set_layout_meta("~/xylitol", "ornith");
     let mut model = UiModel::new();
     model.begin_run("hello");
     root.apply_ui_model(&model);
@@ -689,10 +689,10 @@ fn chrome_busy_status_is_separate_from_footer() {
 
 #[test]
 fn scrollback_user_message_applies_background() {
-    use super::ui_root::UiRoot;
+    use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
-    root.set_chrome_meta(".", "m");
+    root.set_layout_meta(".", "m");
     let mut model = UiModel::new();
     model.entries.push(super::bridge::UiEntry::User {
         text: "hello bg".into(),
@@ -708,13 +708,13 @@ fn scrollback_user_message_applies_background() {
 }
 
 #[test]
-fn chrome_ascii_user_glyph() {
-    use super::glyphs::GlyphSet;
-    use super::ui_root::UiRoot;
+fn layout_ascii_user_glyph() {
+    use super::layout::UiRoot;
+    use super::widgets::GlyphSet;
 
     let mut root = UiRoot::new();
     root.set_glyphs(GlyphSet::Ascii);
-    root.set_chrome_meta(".", "m");
+    root.set_layout_meta(".", "m");
     let mut model = UiModel::new();
     model.begin_run("hi");
     root.apply_ui_model(&model);
@@ -730,10 +730,10 @@ fn chrome_ascii_user_glyph() {
 
 #[test]
 fn scrollback_assistant_uses_markdown_not_plain_prefix() {
-    use super::ui_root::UiRoot;
+    use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
-    root.set_chrome_meta(".", "m");
+    root.set_layout_meta(".", "m");
     let mut model = UiModel::new();
     model.entries.push(super::bridge::UiEntry::Assistant {
         text: "**bold** hi".into(),
@@ -749,7 +749,7 @@ fn scrollback_assistant_uses_markdown_not_plain_prefix() {
 
 #[test]
 fn scrollback_thinking_fold_shows_ctrl_t_hint() {
-    use super::ui_root::UiRoot;
+    use super::layout::UiRoot;
     use xylitol_tui::InputEvent;
 
     let mut root = UiRoot::new();
@@ -779,7 +779,7 @@ fn scrollback_thinking_fold_shows_ctrl_t_hint() {
 
 #[test]
 fn scrollback_diff_header_tint_and_body() {
-    use super::ui_root::UiRoot;
+    use super::layout::UiRoot;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     let mut root = UiRoot::new();

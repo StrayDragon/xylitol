@@ -69,4 +69,4 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 | 包内组件与五层 / E2E 分工 | [`packages/xylitol-tui/AGENTS.md`](../../packages/xylitol-tui/AGENTS.md)「验证」；how-to → `test-tui-harness` |
 | 排查（禁 println） | `tail -f ~/.xylitol/logs/xylitol.log` |
 
-模块：`host.rs`（步进机）、`ui_root.rs`（产品根布局）、`terminal_guard.rs`（restore）、`tests.rs` / `harness.rs`（合成切片）、`tests/tui_e2e`（产品 PTY）。勿用 `shell`/`scene` 命名，以免与 bash/`infra::process::shell` 或泛化「场景」混淆。
+模块：`host.rs`（步进机）、`layout/`（整页槽位机 + `LayoutTheme`）、`widgets/`（产品组合件：scrollback / queue strip / glyphs）、`bridge.rs`、`terminal_guard.rs`、`tests.rs` / `harness.rs`（合成切片）、`tests/tui_e2e`（产品 PTY）。原子组件来自 `xylitol_tui`；勿在本面再实现通用 Editor/Markdown。勿用 `shell`/`scene` 命名，以免与 bash/`infra::process::shell` 或泛化「场景」混淆。历史文档里的「chrome」= 本面 layout/widgets（非浏览器）。
