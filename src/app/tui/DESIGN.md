@@ -136,7 +136,7 @@ components:
 
 情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
 
-参考实现锚点：`packages/xylitol-tui` 的 **`agent_demo`（`just demo-tui`）= 产品 TUI 活实验场**；浏览器静图见 [`design/playground/`](./design/playground/)。当前 `src/app/tui`：c465–c482 主路径已接；**下一刀 = c485 垂直切片**（合成 harness + 产品 PTY Fake smoke）。
+参考实现锚点：`packages/xylitol-tui` 的 **`agent_demo`（`just demo-tui`）= 产品 TUI 活实验场**；浏览器静图见 [`design/playground/`](./design/playground/)。当前 `src/app/tui`：c465–c485 主路径已接并归档；**下一刀 = c492 bash / c493 compaction UI**（purpose-draft）。
 
 ## Track B 落地切片（设计闸）
 
@@ -147,7 +147,9 @@ components:
 | **c480** input | Editor 操作区；`/exit` `/model`；steer / follow-up / Alt+Up dequeue / abort / Ctrl+C；双 Esc → **c491 stub**；队列 chrome = pi `Steering:`/`Follow-up:`（非 scrollback 墙）；注入后上行 `UiEntry::User` | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) · [`queue-steer`](./design/queue-steer.md) · [`session-tree`](./design/session-tree.md) |
 | **c481** history | 同一 TUI session：idle/steer/follow-up 写入 Editor 发送历史；↑/↓ 召回（包 ed05） | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) |
 | **c490** trust | Ask 时 **ChoicePrompt** 换 editor 槽（禁 stdio 数字菜单） | [`trust-prompt`](./design/trust-prompt.md) |
-| **c485** vertical slice | 合成 harness H1–H10 + **产品 PTY Fake smoke**（Hello from fake provider → `/exit`）；轨 B MVP 归档闸 | `llmanspec/changes/c485-add-app-tui-vertical-slice/` |
+| **c485** vertical slice | **已归档**：合成 harness H1–H9 + 产品 PTY Fake smoke（Hello → `/exit`）；合约 `app-tui-vertical-slice` | archive `2026-07-12-c485-…` · [`spec`](../../../llmanspec/specs/app-tui-vertical-slice/spec.toon) |
+| **c492** bash（下一） | `!` bash 边框 + `Driver::execute_bash`；输出进 live scrollback | [`bash-mode`](./design/bash-mode.md) |
+| **c493** compaction/retry（下一） | Compaction / AutoRetry 的 status·scrollback 呈现 | [`compaction-status`](./design/compaction-status.md) |
 
 产品 MVP **固定暗色**；**MUST NOT** 默认开 theme auto / `/theme`（demo 可保留）。
 
@@ -170,7 +172,7 @@ components:
 | `tool-pending-bg` / `tool-success-bg` / `tool-error-bg` | 工具块**全行背景**三态（Mocha tint：`#313244` / `#24352a` / `#352428`；对齐 pi 语义，色值本文件 SSOT） |
 | `user-message-bg` | 用户消息可选全行背景（对齐 pi `userMessageBg`） |
 
-**工具状态背景（吸取 pi）**：成功/失败不要只靠 fg `ok`/`error` 字——用极淡的绿/红 **bg** 铺满工具块行宽（`apply_background_to_line` + 仅重置 `\x1b[49m`），pending 用中性 surface tint。**demo 已验证（c462）**。产品侧 **不做 Codex 式 TranscriptView**（c470 已搁置）；历史/分支 UX 优先双 Esc 会话树（c454→c456→c491）。
+**工具状态背景（吸取 pi）**：成功/失败不要只靠 fg `ok`/`error` 字——用极淡的绿/红 **bg** 铺满工具块行宽（`apply_background_to_line` + 仅重置 `\x1b[49m`），pending 用中性 surface tint。**demo 已验证（c462）**。产品侧 **不做 Codex 式 TranscriptView**（原 c470 已移除）；历史/分支 UX 优先双 Esc 会话树（c454→c456→c491）。
 
 不要为 header / debug / 多角色长标签再扩一套色。选中列表用 **reverse**，不必单独 `selection-bg` 面板底。
 
@@ -230,7 +232,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 | 文档 | 内容 |
 |---|---|
 | [`design/session-tree.md`](./design/session-tree.md) | **优先**：双 Esc 会话树（travel/fork） |
-| [`design/transcript.md`](./design/transcript.md) | live 输出进 scrollback（非 Codex 浏览面；c470 搁置） |
+| [`design/transcript.md`](./design/transcript.md) | live 输出进 scrollback（非 Codex 浏览面） |
 | [`design/expandable.md`](./design/expandable.md) | thinking / tool 可展开（demo 优先） |
 | [`design/status.md`](./design/status.md) | busy 一行 |
 | [`design/editor.md`](./design/editor.md) | 操作区 |
@@ -243,7 +245,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 | [`design/markdown.md`](./design/markdown.md) | 复制友好 / token 效率 markdown（`c530-update-package-tui-markdown`） |
 | [`design/errors.md`](./design/errors.md) | 错误呈现 |
 
-后置草稿：[`bash-mode`](./design/bash-mode.md) · [`trust-prompt`](./design/trust-prompt.md) · [`compaction-status`](./design/compaction-status.md)
+后置草稿（轨 B 下一刀）：[`bash-mode`](./design/bash-mode.md) · [`compaction-status`](./design/compaction-status.md)。trust 壳已落地（c490）；详见 [`trust-prompt`](./design/trust-prompt.md)。
 
 **已落地 chrome 子规范**（c480 起）：[`queue-steer`](./design/queue-steer.md) · [`status`](./design/status.md) — 写产品 host 时以这两份为准，**不要**抄 demo scrollback `[steer]` 墙。
 

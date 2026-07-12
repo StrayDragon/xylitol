@@ -21,7 +21,7 @@ components:
 
 **不是** Codex 式 transcript view。历史回看 / 分支 travel / fork 走 [`session-tree.md`](./session-tree.md)（双 Esc）。
 
-本文件只约束：**当前轮**写入终端 scrollback 的呈现（若/当 bridge 接线 live 行时）。`app-tui-transcript` / 原 c470 **已搁置**，不得按「专用 TranscriptView 组件树」实现。
+本文件只约束：**当前轮**写入终端 scrollback 的呈现（若/当 bridge 接线 live 行时）。`app-tui-transcript` 语义为 live scrollback；**不得**按「专用 TranscriptView 组件树」实现。
 
 ## MUST（若有 live 行）
 
