@@ -14,4 +14,4 @@ track: B
 
 ## Purpose
 
-`!` 前缀 bash；边框色；`Driver::execute_bash`；输出进 **live scrollback**（非 c470 TranscriptView）。
+`!` 前缀 bash；边框色；`Driver::execute_bash`；输出进 **live scrollback**（非 Codex TranscriptView）。

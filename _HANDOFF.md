@@ -1,9 +1,8 @@
 # _HANDOFF — 交接板 + 短索引（非规范）
 
-> 最后更新：2026-07-12（c580 统一 just qa / qa-e2e；轨 B 下一 c475/c480）
-> 分支语境：`feat/tui-dev`（相对 `main` 超前）
+> 最后更新：2026-07-12（**c485 垂直切片已归档**；轨 B MVP 过闸；下一 c492/c493）
+> 分支语境：`feat/tui-dev`（相对 `origin/feat/tui-dev` 超前）
 > **临时交接 / 进度指针，不是 SSOT。** 稳定边界：各层 `AGENTS.md`、`docs/architecture/`、`llmanspec/`。
-> 原 `_NOTE.md` 内容已并入本文；`_NOTE.md` 仅作跳转 stub。
 
 ---
 
@@ -15,9 +14,9 @@
 | **全部产品架构图（唯一入口）** | [`docs/architecture/README.md`](docs/architecture/README.md) |
 | 队列运行时实现 | archive **c525** `design.md` |
 | XyEvent 防宽表实现 | archive **c520**；产品摘要见架构目录 |
-| TUI bridge（轨 B · 已归档） | archive **`2026-07-12-c465-add-app-tui-bridge`** |
+| TUI bridge / chrome / input / slice | archive **c465** … **c485**；合约 `app-tui-*` / `app-tui-vertical-slice` |
 | 日常满闸 | **`just qa`**（见根 `AGENTS.md`） |
-| 真终端满闸 | **`just qa-e2e`**；分工 SSOT：`packages/xylitol-tui/AGENTS.md`「验证」 |
+| 真终端满闸 | **`just qa-e2e`**；产品 Fake smoke：`just test-tui-e2e-pty` |
 | 产品视觉 MUST（唯一） | `src/app/tui/DESIGN.md` + `design/*.md` |
 | **产品 TUI 活实验场** | `just demo-tui`（`packages/xylitol-tui/examples/agent_demo.rs`） |
 | 浏览器静图 | `src/app/tui/design/playground/`（`sync_tokens.py`） |
@@ -36,6 +35,9 @@ just open-design-playground
 
 # 改色板后
 just sync-tui-tokens && just check-tui-tokens
+
+# 产品 PTY Fake smoke（#[ignore]）
+just test-tui-e2e-pty
 ```
 
 ---
@@ -46,7 +48,7 @@ just sync-tui-tokens && just check-tui-tokens
 |---|---|---|
 | **P · 包 / demo / DESIGN** | `packages/xylitol-tui`、`agent_demo`、`DESIGN.md`+`design/*` | **已合入**（包侧 c530…c570 已归档） |
 | **A · 业务核心** | `domain`→`embed`/`server`/线协议 | **已归档**（c500–c525 + 业务侧 c530–c550） |
-| **B · 产品 TUI** | `src/app/tui` 接线 | **c465 已归档**；下一升格 **c475 chrome / c480 input → c485** |
+| **B · 产品 TUI** | `src/app/tui` 接线 | **MVP 已过闸（至 c485）**；下一 **c492 bash / c493 compaction** |
 
 **号段注意**：轨 P 与轨 A 曾并行占用 **c530–c550**；以 `llmanspec/changes/archive/` **全名**为准。
 
@@ -56,14 +58,14 @@ just sync-tui-tokens && just check-tui-tokens
 2. 产品面只经 `Driver` / `dispatch` / `XyEvent`；不 reach `agent`/`infra` 内部。
 3. **c491 假树 stub** 仍冻结扩展（仅双 Esc / Esc 关 / Enter `travel → id`）；真活树另 change。
 
-### 近期已落地（本分支，相对交接）
+### 近期已落地（本分支）
 
-| 项 | 说明 | commit / 状态 |
+| 项 | 说明 | 状态 |
 |---|---|---|
-| c465 bridge | `apply_xy_event` + host `select!` 合流 EventStream | `8fec5a9`（已归档） |
-| secret.env + YAML 模板 | `{{ secret.KEY }}` / `{{ env.KEY }}` | `19dd0c4` · `adfa669` |
-| TUI trust | `interactive: true` + stdio trust prompt | 同上批 |
-| playground / DESIGN 组织 | **单份** app DESIGN；`agent_demo`=产品活实验场；删包侧 HTML playground | **未 commit** |
+| c465–c482 | bridge · chrome · live scrollback · trust · input · history · abort-resume | 已归档 |
+| **c485** vertical slice | `ScriptedDriver` H1–H9 + 产品 PTY Fake（Hello → `/exit`） | **`c96d2c0` 已归档** |
+| secret.env + YAML 模板 | `{{ secret.KEY }}` / `{{ env.KEY }}` | 已合入 |
+| `just qa` / `qa-e2e` | 统一日常 / 真终端满闸（c580） | 已归档 |
 
 ---
 
@@ -95,35 +97,31 @@ just sync-tui-tokens && just check-tui-tokens
 ## 四、轨 B — 产品 TUI（当前主线）
 
 ```text
-已归档：c460 host · c461 队列 seam · c491 stub-only · c465 bridge
-下一：  c475 chrome / c480 input → c485 垂直切片
-paused：c470 Codex TranscriptView（不做）
-后置：  c490 trust UI · c492 bash · c493 compaction/retry UI
+已归档：c460 host · c461 队列 · c465 bridge · c475 chrome · c476 live
+         · c480/c481 input · c482 abort · c490 trust · c485 slice
+下一：  c492 bash · c493 compaction/retry UI（升格 specs/tasks 后 apply）
 可选：  c575 overlay focus-restore（包侧，非轨 B 阻塞）
+冻结：  c491 假树 stub（勿扩活树）
+已移除：c470 Codex TranscriptView（明确不做；目录已删）
 ```
 
-开闸记录：`src/AGENTS.md` / `src/app/tui/AGENTS.md`。
+开闸记录：`src/AGENTS.md` / `src/app/tui/AGENTS.md`。视觉闸：`src/app/tui/DESIGN.md`。
 
 ### 剩余 change 简报
 
 | ID | 状态 | 做什么 |
 |---|---|---|
-| **c475** chrome | purpose-draft · **下一刀** | 语义 token→闭包主题；glyph；idle **0 行** status；busy 一行；footer=`cwd · model`；产品 MVP **固定暗色** |
-| **c480** input | purpose-draft · **下一刀** | Editor 区；`/exit` `/model`；流中 Enter=steer / Alt+Enter=follow-up / Esc=abort / Ctrl+C 清或退；双 Esc→**c491 stub** |
-| **c485** vertical slice | purpose-draft · MVP 门槛 | TTY→提交→流式/工具→steer/follow-up→abort→`/exit` 可聊一轮 E2E（依赖 c475+c480） |
-| **c470** transcript | **paused** | 不做 Codex 式 TranscriptView；浏览改双 Esc 树 |
-| **c490** trust UI | purpose-draft · 后置/可并行 | 未信任时 TUI 选择器（优先 editor 槽）；stdio trust 已有，本 change 补 **壳内 UX** |
-| **c492** bash | purpose-draft · 后置 | `!` bash 边框 + `Driver::execute_bash`；输出进 live scrollback |
-| **c493** compaction/retry | purpose-draft · 后置 | Compaction / AutoRetry 的 status·scrollback 呈现 |
+| **c492** bash | purpose-draft · **下一刀** | `!` bash 边框 + `Driver::execute_bash`；输出进 live scrollback |
+| **c493** compaction/retry | purpose-draft · **下一刀** | Compaction / AutoRetry 的 status·scrollback 呈现 |
 | **c575** overlay restore | purpose-draft · 包侧可选 | Overlay 完整 focus-restore（不阻塞轨 B） |
 
-**建议顺序**：DESIGN（已钉 c475/c480 MUST + playground）→ 升格 apply **c475** → **c480** → **c485**。
+**建议顺序**：升格 apply **c492** → **c493**；可选并行 **c575**。
 
 ### 下一工作焦点
 
-1. 升格 `c475-add-app-tui-chrome`（specs/tasks）并 apply。
-2. 升格 `c480-add-app-tui-input` 并 apply。
-3. `just open-design-playground` / `just demo-tui` 对照验收。
+1. 升格 `c492-add-app-tui-bash-mode`（specs/tasks）并 apply。
+2. 升格 `c493-add-app-tui-compaction-retry-ui` 并 apply。
+3. `just demo-tui` / `just test-tui-e2e-pty` 对照验收。
 
 ---
 
@@ -131,16 +129,17 @@ paused：c470 Codex TranscriptView（不做）
 
 | 主题 | 决议 |
 |---|---|
-| Esc | 流中 = abort（清 steer，留 follow_up） |
+| Esc | 流中 = abort（清 steer，留 follow_up）；abort 后可继续聊（c482） |
 | Ctrl+C | 有输入→清编辑器；空→退出 |
 | 流中 Enter / Alt+Enter | steer / follow-up |
 | Status | idle **0 行** |
 | Diff | word-level；宽屏可 L/R；SBS 无行底 |
-| Slash MVP | `/exit` + `/model`（产品接线随 c480） |
+| Slash MVP | `/exit` + `/model` |
 | 会话树 | demo 活树；产品 **c491 stub**（勿在 stub 上扩活树） |
 | Theme | 产品 MVP **固定暗色**；demo `/theme` + 可选 `THEME_AUTO` |
 | 高亮 | demo/产品同一 syntect 回调；包只收回调 |
-| Transcript | **不做** Codex TranscriptView（c470 paused）；live = bridge scrollback |
+| Transcript | **不做** Codex TranscriptView（原 c470 已移除）；live = bridge scrollback |
+| 垂直切片 | 合成 harness + 产品 PTY Fake smoke（c485 / `app-tui-vertical-slice`） |
 
 ### `agent_demo` 键位（摘要）
 
@@ -160,7 +159,8 @@ paused：c470 Codex TranscriptView（不做）
 
 - 删除：`docs/testing-strategy.md`、`docs/tui-research/*`（**保留** `docs/assets/logo.svg`）
 - 测试分层要点已并入根 `AGENTS.md`「提交与测试」
-- `_NOTE.md` → stub，内容并入本文件（2026-07-12）
+- `_NOTE.md` **已删除**（2026-07-12）；短索引只保留本文件
+- `c470-add-app-tui-transcript` **已删除**（2026-07-12；明确不做 Codex TranscriptView）
 
 ---
 
@@ -172,5 +172,6 @@ paused：c470 Codex TranscriptView（不做）
 | 产品架构图 | `docs/architecture/` |
 | 包边界 / vs pi | `packages/xylitol-tui/AGENTS.md`、`PI_DELTAS.md` |
 | 视觉 | `src/app/tui/DESIGN.md` + `design/` |
+| 垂直切片合约 | `llmanspec/specs/app-tui-vertical-slice/` |
 | How-to | `write-tui`、`test-tui-harness`、`write-surface`、`audit-dead-code` |
 | 交接 / 短索引 | 本文件 `_HANDOFF.md` |
