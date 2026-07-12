@@ -4,9 +4,9 @@
 
 ## 现状
 
-基于 `xylitol-tui` 的 **host 驱动空 UI**（c460）：`HostSession` + `UiRoot` + 终端 lifecycle。`run()` 可进入；XyEvent / slash / steer 接线走 Track B（入口 **c465**）。当前空场景仅为框架占位，**未**按 `DESIGN.md` 实现产品视觉。
+基于 `xylitol-tui` 的 **host 驱动 UI**（c460 host + **c465 bridge**）：`HostSession` + `UiRoot` + `apply_xy_event` + EventStream 合流。`run(driver)` 可聊事件驱动占位；**尚未**按 `DESIGN.md` 实现产品 chrome / slash / 键位（下一 **c475 / c480**）。
 
-**已开闸（2026-07-11）**：轨 A 业务缝与轨 P 包打磨已落地；本目录可按 `c465` 起扩展。原子交互仍建议先在 `packages/xylitol-tui` `agent_demo` 验证再进本面。开闸记录 SSOT：`src/AGENTS.md`。
+**已开闸（2026-07-11）**：轨 A / 轨 P 已落地；c465 已归档（2026-07-12）。原子交互仍建议先在 `packages/xylitol-tui` `agent_demo` 验证再进本面。开闸记录 SSOT：`src/AGENTS.md`。
 
 ## 优先路径
 
@@ -19,13 +19,18 @@
 | 包 TreeSelector + demo 搜索/filter/fold/label/pan/活树/travel/steer | 已归档（至 c469 / c468）；轨 P 打磨至 c570 已合入 |
 | **c460** host 空壳 | 已落地（框架占位） |
 | **c491** 产品双 Esc **假树**槽替换 | **stub 冻结**：仅双 Esc 开/Esc 关/Enter `travel → id`；**MUST NOT** 在此 stub 上扩展活树/filter/Driver |
-| 产品 bridge · slash · DESIGN 视觉 · 真 session travel | **未做**；下一 **c465** |
+| 产品 bridge（XyEvent→UI + Driver 合流） | **c465 已归档** |
+| 产品 chrome · slash/键位 · DESIGN 视觉落地 · 真 session travel | chrome/input：**c475 / c480**；真 travel：另 change |
 
 历史/分支 UX 以会话树为准；live 输出若有，只进 scrollback 行，见 `design/transcript.md` / `design/session-tree.md`。
 
 ## 视觉 / UX
 
-产品终端视觉 SSOT：本目录 **`DESIGN.md`**（索引 + 全局 tokens，遵循 `common-design-md-zh`）与 **`design/*.md`**（组件级 MUST；`tokens_from: "../DESIGN.md"`，`{colors.*}` 等表达式解析到主文件）。包内组件只收闭包主题，不承载产品 layout。当前 `run()` 空场景仅为 host 框架占位，**未**按 DESIGN 实现产品视觉。
+**唯一视觉 SSOT**：本目录 **`DESIGN.md`** + **`design/*.md`**。包内不另起 design 文档树；`Palette` 对齐本 DESIGN。
+
+**活实验场**：`just demo-tui`（`agent_demo`）= 产品 TUI 快速 playground——形状/交互先在此试，再进本 host。浏览器静图：`design/playground/`（Agent 默认忽略）。
+
+包组件只收闭包主题，不承载产品 layout。当前 `run()` 尚未按 DESIGN 实现产品 chrome / 键位（c475/c480）。
 
 ## Specs
 
@@ -43,7 +48,7 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 
 ## 硬约束
 
-- **产品面**：已开闸；优先 `c465` bridge + `Driver::run` 合流。c491 假树保持 stub（见上表）；真 travel 另 change。
+- **产品面**：已开闸；c465 已归档；下一 **c475 chrome / c480 input → c485**。c491 假树保持 stub（见上表）；真 travel 另 change。
 - 渲染/通用组件只用 `xylitol_tui`；禁止在本目录再实现差分引擎或通用 Editor/Markdown。
 - **需要底层 TUI 能力时**：先到 `packages/xylitol-tui` 查是否已有或可扩展；缺能力在包内补，再由本面接线。
 - 产品路径 **host 驱动**同步引擎；异步事件合流在本面；勿调 `TUI::start()`（demo 专用）。
