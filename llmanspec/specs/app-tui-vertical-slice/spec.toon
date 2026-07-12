@@ -1,0 +1,14 @@
+kind: llman.sdd.spec
+name: "app-tui-vertical-slice"
+purpose: "产品 TUI 垂直切片验收：无真 TTY/无真 LLM 的合成 ScriptedDriver harness（H1–H9），以及 Fake+--trust 产品 PTY smoke（Hello → /exit）。"
+valid_scope[2]: src/app/tui/,tests/tui_e2e/
+requirements[2]{req_id,title,statement}:
+  avs1,"synthetic-harness-one-round","产品 TUI MUST 提供可在无真 TTY/无真 LLM 下运行的合成验收：ScriptedDriver（或等价）记录 run/steer/follow_up/abort/clear_queue，并能将预置 XyEvent 流回流 HostSession。MUST 覆盖提交→流式/工具→steer/follow-up chrome→abort 后再提交→/exit 触发 finish_inline（H1–H9）；MUST NOT 把活树、bash、compaction UI 纳入本切片。"
+  avs2,"product-pty-fake-smoke","tests/tui_e2e MUST 包含产品 xylitol 二进制的 PTY 冒烟（#[ignore]，经 just test-tui-e2e-pty 可跑）：在临时 Fake 模型配置与 --trust 下启动 TUI，提交用户消息后屏上 MUST 出现 Fake 默认文案 Hello from fake provider，输入 /exit 后进程 MUST 退出。MUST NOT 要求跨进程 Fake 脚本化，MUST NOT 在本用例断言 steer/工具 chrome。"
+scenarios[6]{req_id,id,given,when,then}:
+  avs1,"h2-stream",HostSession 已 on_run_started,注入 TextDelta 与 AgentEnd,scrollback 含助手文本且 phase 为 Idle
+  avs1,"h3-tool",Busy 中,注入 ToolExecutionStart/End,"存在 UiEntry::Tool 且渲染含工具名"
+  avs1,"h4-steer",Busy 且 editor 非空,薄编排处理 Enter,"Driver::steer 被记录且出现 Steering: chrome"
+  avs1,"h7-abort-resume",Busy 中 Esc 已 abort,再 idle 提交,"第二次 Driver::run 被调用且无粘性 aborted"
+  avs1,"h8-exit",idle 输入 /exit,编排收尾,session quit 且 finish_inline/stop 可观测
+  avs2,"pty-hello-exit","PTY 下 Fake+--trust 产品 TUI 已就绪",提交短 prompt 再 /exit,屏含 Hello from fake provider 且进程退出

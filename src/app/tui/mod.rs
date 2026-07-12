@@ -11,6 +11,8 @@ mod theme;
 mod ui_root;
 
 #[cfg(test)]
+mod harness;
+#[cfg(test)]
 mod tests;
 
 use std::time::Duration;
