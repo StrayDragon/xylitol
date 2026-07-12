@@ -30,10 +30,11 @@
 just demo-tui
 
 # 浏览器静图（token / 整壳）
-xdg-open src/app/tui/design/playground/index.html
-```
+just open-design-playground
 
-包内**不**维护第二份 design HTML；分发后文档/`Palette` 仍引用本仓 app DESIGN。
+# 改色板后
+just sync-tui-tokens && just check-tui-tokens
+```
 
 ---
 

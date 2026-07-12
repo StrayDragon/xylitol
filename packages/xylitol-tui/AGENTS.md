@@ -84,7 +84,8 @@
 | 扩展 Editor 补全触发（`/` `@` `$` `^`…） | `CompletionSource` + `set_completion_sources`（`src/completion.rs`）；勿在 `editor.rs` 硬编码触发符 |
 | 对照 / 合并 pi-tui 行为 | 先读 [`PI_DELTAS.md`](PI_DELTAS.md)；不得静默回退表中决议 |
 | 改产品 TUI 面 / UX / 视觉 | `write-tui` + `src/app/tui/DESIGN.md`；先 `just demo-tui` 实验 |
-| 改色板 | 只改 app `DESIGN.md` → `sync_tokens.py` → 对齐本包 `Palette` |
+| 改色板 | 只改 app `DESIGN.md` → `just sync-tui-tokens` → 对齐 `Palette`；`just check-tui-tokens` |
+| 打开 DESIGN 浏览器静图 | `just open-design-playground`（xdg-open） |
 | 日常验证 | `cargo test -p xylitol-tui`；`just demo-tui`；`just qa`；E2E `just test-tui-e2e` |
 
 裁剪与待补 API 随接线演进，以代码与 `_HANDOFF.md` 为准，不在本文件维护进度清单。
