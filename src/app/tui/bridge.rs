@@ -58,6 +58,10 @@ pub struct UiModel {
     pub entries: Vec<UiEntry>,
     pub phase: UiPhase,
     pub queue: QueueBadge,
+    /// Local copies of queued steer texts for chrome (pi `Steering:` lines).
+    pub pending_steer: Vec<String>,
+    /// Local copies of queued follow-up texts for chrome (pi `Follow-up:` lines).
+    pub pending_follow_up: Vec<String>,
     /// Busy-only short status; [`None`] when idle (chrome: 0 rows).
     pub status: Option<String>,
     /// In-progress assistant text (not yet committed as an entry).
@@ -79,11 +83,50 @@ impl UiModel {
             entries: Vec::new(),
             phase: UiPhase::Idle,
             queue: QueueBadge::default(),
+            pending_steer: Vec::new(),
+            pending_follow_up: Vec::new(),
             status: None,
             streaming_assistant: String::new(),
             streaming_thinking: String::new(),
             current_role: None,
         }
+    }
+
+    /// Align badge counts and trim chrome message lists from the front (FIFO).
+    pub fn sync_queue(&mut self, steer_count: usize, follow_up_count: usize) {
+        self.queue = QueueBadge {
+            steer_count,
+            follow_up_count,
+        };
+        if self.pending_steer.len() > steer_count {
+            let drop_n = self.pending_steer.len() - steer_count;
+            self.pending_steer.drain(..drop_n);
+        }
+        if self.pending_follow_up.len() > follow_up_count {
+            let drop_n = self.pending_follow_up.len() - follow_up_count;
+            self.pending_follow_up.drain(..drop_n);
+        }
+    }
+
+    /// Enqueue a steer message for chrome + badge (host local; Driver follows).
+    pub fn enqueue_steer_chrome(&mut self, text: String) {
+        self.pending_steer.push(text);
+        self.queue.steer_count = self.pending_steer.len();
+    }
+
+    /// Enqueue a follow-up message for chrome + badge (host local; Driver follows).
+    pub fn enqueue_follow_up_chrome(&mut self, text: String) {
+        self.pending_follow_up.push(text);
+        self.queue.follow_up_count = self.pending_follow_up.len();
+    }
+
+    /// Drain chrome queues into one editor blob (pi Alt+Up restore).
+    pub fn take_queued_for_editor(&mut self) -> Vec<String> {
+        let mut all = Vec::new();
+        all.append(&mut self.pending_steer);
+        all.append(&mut self.pending_follow_up);
+        self.queue = QueueBadge::default();
+        all
     }
 
     /// Local submit / steer kickoff before the first stream event arrives.
@@ -214,11 +257,23 @@ pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
                 "TurnEnd (intermediate); UI stays busy"
             );
         }
-        XyEvent::MessageStart { role, .. } => {
+        XyEvent::MessageStart { role, message } => {
             model.flush_streaming();
             model.current_role = Some(role.clone());
             if role == "assistant" {
                 model.set_busy_status("Drafting reply");
+            } else if role == "user" {
+                // Steer / follow-up inject (and any future user MessageStart):
+                // commit into scrollback so queued chrome can leave without losing text.
+                if let Some(msg) = message {
+                    let text = msg.text();
+                    if !text.trim().is_empty() {
+                        push_user_entry_dedup(model, text);
+                    }
+                }
+                if model.phase == UiPhase::Busy {
+                    model.set_busy_status("Working");
+                }
             }
         }
         XyEvent::MessageUpdate { .. } => {
@@ -293,10 +348,7 @@ pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
             steer_count,
             follow_up_count,
         } => {
-            model.queue = QueueBadge {
-                steer_count: *steer_count,
-                follow_up_count: *follow_up_count,
-            };
+            model.sync_queue(*steer_count, *follow_up_count);
         }
         XyEvent::CompactionStart { reason } => {
             model.entries.push(UiEntry::System {
@@ -358,6 +410,17 @@ fn find_tool_mut<'a>(entries: &'a mut [UiEntry], id: &str) -> Option<&'a mut UiE
         UiEntry::Tool { id: tid, .. } => tid == id,
         _ => false,
     })
+}
+
+/// Append a user scrollback row; skip if it duplicates the trailing user entry
+/// (e.g. idle `begin_run` already seeded the same prompt).
+fn push_user_entry_dedup(model: &mut UiModel, text: String) {
+    if let Some(UiEntry::User { text: last }) = model.entries.last()
+        && last == &text
+    {
+        return;
+    }
+    model.entries.push(UiEntry::User { text });
 }
 
 /// Pull `display_diff` from edit-tool JSON result (shape is intentionally fragile).
@@ -493,6 +556,63 @@ mod tests {
                 follow_up_count: 3
             }
         );
+    }
+
+    #[test]
+    fn queue_update_trims_pending_chrome_fifo() {
+        let mut model = UiModel::new();
+        model.enqueue_steer_chrome("a".into());
+        model.enqueue_steer_chrome("b".into());
+        model.enqueue_follow_up_chrome("c".into());
+        apply_xy_event(
+            &mut model,
+            &XyEvent::QueueUpdate {
+                steer_count: 1,
+                follow_up_count: 0,
+            },
+        );
+        assert_eq!(model.pending_steer, vec!["b".to_string()]);
+        assert!(model.pending_follow_up.is_empty());
+    }
+
+    #[test]
+    fn user_message_start_commits_steer_to_scrollback() {
+        use crate::domain::message::AgentMessage;
+
+        let mut model = UiModel::new();
+        model.begin_run("hello");
+        model.enqueue_steer_chrome("nudge".into());
+        apply_xy_event(
+            &mut model,
+            &XyEvent::MessageStart {
+                role: "user".into(),
+                message: Some(AgentMessage::user("nudge")),
+            },
+        );
+        apply_xy_event(
+            &mut model,
+            &XyEvent::MessageEnd {
+                role: "user".into(),
+                message: Some(AgentMessage::user("nudge")),
+            },
+        );
+        apply_xy_event(
+            &mut model,
+            &XyEvent::QueueUpdate {
+                steer_count: 0,
+                follow_up_count: 0,
+            },
+        );
+        assert!(model.pending_steer.is_empty());
+        let users: Vec<_> = model
+            .entries
+            .iter()
+            .filter_map(|e| match e {
+                UiEntry::User { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(users, ["hello", "nudge"]);
     }
 
     #[test]

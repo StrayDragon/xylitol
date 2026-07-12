@@ -20,16 +20,18 @@ use crossterm::event::{Event, KeyEventKind};
 use futures::StreamExt;
 use xylitol_tui::{CrosstermTerminal, InputEvent};
 
+use crate::app::core::dispatch::{DispatchOutcome, dispatch};
 use crate::app::core::driver::{Driver, EventStream as AgentEventStream};
+use crate::protocol::Command;
 
-use self::host::{HostEvent, HostSession};
+use self::host::{HostEvent, HostSession, PendingSlash};
 use self::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hooks};
 
 pub use self::bridge::{QueueBadge, UiEntry, UiModel, UiPhase, apply_xy_event};
 pub use self::glyphs::GlyphSet;
 pub use self::host::{
     HostEvent as TuiHostEvent, HostSession as TuiHostSession, LayoutMode, MIN_COLS, MIN_ROWS,
-    TOO_SMALL_HINT, display_cwd, is_too_small,
+    PendingSlash as TuiPendingSlash, TOO_SMALL_HINT, display_cwd, is_too_small,
 };
 pub use self::theme::ChromeTheme;
 
@@ -138,6 +140,89 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     while !session.should_quit() && !exit_requested() {
+        // c480: abort / steer / follow-up / slash before starting a new run.
+        if session.take_abort() {
+            tracing::info!(target: "xylitol::tui", "Driver::abort (Esc)");
+            driver.abort();
+            let _ = driver.clear_queue(true, false);
+            let stats = driver.queue_stats();
+            session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+            let _ = session.render_now();
+        }
+        if session.take_dequeue() {
+            tracing::info!(target: "xylitol::tui", "Driver::clear_queue (Alt+Up dequeue)");
+            let _ = driver.clear_queue(true, true);
+            let stats = driver.queue_stats();
+            session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+            let _ = session.render_now();
+        }
+        if let Some(msg) = session.take_steer() {
+            tracing::info!(target: "xylitol::tui", prompt_len = msg.len(), "Driver::steer");
+            if let Err(e) = driver.steer(&msg) {
+                session.push_system_note(format!("steer failed: {e}"));
+            }
+            let stats = driver.queue_stats();
+            session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+            let _ = session.render_now();
+        }
+        if let Some(msg) = session.take_follow_up() {
+            tracing::info!(target: "xylitol::tui", prompt_len = msg.len(), "Driver::follow_up");
+            if let Err(e) = driver.follow_up(&msg) {
+                session.push_system_note(format!("follow-up failed: {e}"));
+            }
+            let stats = driver.queue_stats();
+            session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+            let _ = session.render_now();
+        }
+        if let Some(slash) = session.take_slash() {
+            match slash {
+                PendingSlash::Exit => {
+                    session.request_quit();
+                }
+                PendingSlash::CycleModel => {
+                    match dispatch(driver, Command::CycleModel { id: None }).await {
+                        Ok(DispatchOutcome::Model(m)) => {
+                            let label = if m.display_name.is_empty() {
+                                m.id
+                            } else {
+                                m.display_name
+                            };
+                            session.set_footer_model(label.clone());
+                            session.push_system_note(format!("model → {label}"));
+                        }
+                        Ok(_) => session.push_system_note("model cycled"),
+                        Err(e) => session.push_system_note(format!("/model failed: {e}")),
+                    }
+                    let _ = session.render_now();
+                }
+                PendingSlash::SetModel(model_id) => {
+                    match dispatch(
+                        driver,
+                        Command::SetModel {
+                            id: None,
+                            provider: String::new(),
+                            model_id,
+                        },
+                    )
+                    .await
+                    {
+                        Ok(DispatchOutcome::Model(m)) => {
+                            let label = if m.display_name.is_empty() {
+                                m.id
+                            } else {
+                                m.display_name
+                            };
+                            session.set_footer_model(label.clone());
+                            session.push_system_note(format!("model → {label}"));
+                        }
+                        Ok(_) => session.push_system_note("model set"),
+                        Err(e) => session.push_system_note(format!("/model failed: {e}")),
+                    }
+                    let _ = session.render_now();
+                }
+            }
+        }
+
         // Start a run if idle Enter queued a prompt.
         if agent_stream.is_none()
             && let Some(prompt) = session.take_submit()

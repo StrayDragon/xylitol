@@ -144,7 +144,8 @@ components:
 |---|---|---|
 | **c475** chrome | `Palette::dark` 注入；glyph 档；idle **0** status；busy 一行；footer `cwd · model` | [`status`](./design/status.md) · [`footer`](./design/footer.md) · [`glyphs`](./design/glyphs.md) · [`theme-tokens`](./design/theme-tokens.md) |
 | **c476** live scrollback | Markdown / Expandable / Diff / tool-bg；对齐 `agent_demo` 形态（非 Codex 浏览面） | [`markdown`](./design/markdown.md) · [`expandable`](./design/expandable.md) · [`diff-block`](./design/diff-block.md) |
-| **c480** input | Editor 操作区；`/exit` `/model`；steer / follow-up / abort / Ctrl+C；双 Esc → **c491 stub** | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) · [`session-tree`](./design/session-tree.md) |
+| **c480** input | Editor 操作区；`/exit` `/model`；steer / follow-up / Alt+Up dequeue / abort / Ctrl+C；双 Esc → **c491 stub**；队列 chrome = pi `Steering:`/`Follow-up:`（非 scrollback 墙）；注入后上行 `UiEntry::User` | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) · [`queue-steer`](./design/queue-steer.md) · [`session-tree`](./design/session-tree.md) |
+| **c481** history | 同一 TUI session：idle/steer/follow-up 写入 Editor 发送历史；↑/↓ 召回（包 ed05） | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) |
 | **c490** trust | Ask 时 **ChoicePrompt** 换 editor 槽（禁 stdio 数字菜单） | [`trust-prompt`](./design/trust-prompt.md) |
 | **c485** | 可聊一轮 E2E（依赖 chrome + input + bridge） | — |
 
@@ -242,7 +243,9 @@ footer         1 行 dim（cwd · model · 可选 context%）
 | [`design/markdown.md`](./design/markdown.md) | 复制友好 / token 效率 markdown（`c530-update-package-tui-markdown`） |
 | [`design/errors.md`](./design/errors.md) | 错误呈现 |
 
-后置草稿：[`bash-mode`](./design/bash-mode.md) · [`queue-steer`](./design/queue-steer.md) · [`trust-prompt`](./design/trust-prompt.md) · [`compaction-status`](./design/compaction-status.md)
+后置草稿：[`bash-mode`](./design/bash-mode.md) · [`trust-prompt`](./design/trust-prompt.md) · [`compaction-status`](./design/compaction-status.md)
+
+**已落地 chrome 子规范**（c480 起）：[`queue-steer`](./design/queue-steer.md) · [`status`](./design/status.md) — 写产品 host 时以这两份为准，**不要**抄 demo scrollback `[steer]` 墙。
 
 ## Do's and Don'ts
 
