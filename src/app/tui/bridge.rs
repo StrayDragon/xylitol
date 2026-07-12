@@ -58,11 +58,11 @@ pub struct UiModel {
     pub entries: Vec<UiEntry>,
     pub phase: UiPhase,
     pub queue: QueueBadge,
-    /// Local copies of queued steer texts for chrome (pi `Steering:` lines).
+    /// Local copies of queued steer texts for queue strip (pi `Steering:` lines).
     pub pending_steer: Vec<String>,
-    /// Local copies of queued follow-up texts for chrome (pi `Follow-up:` lines).
+    /// Local copies of queued follow-up texts for queue strip (pi `Follow-up:` lines).
     pub pending_follow_up: Vec<String>,
-    /// Busy-only short status; [`None`] when idle (chrome: 0 rows).
+    /// Busy-only short status; [`None`] when idle (layout status: 0 rows).
     pub status: Option<String>,
     /// In-progress assistant text (not yet committed as an entry).
     streaming_assistant: String,
@@ -92,7 +92,7 @@ impl UiModel {
         }
     }
 
-    /// Align badge counts and trim chrome message lists from the front (FIFO).
+    /// Align badge counts and trim strip message lists from the front (FIFO).
     pub fn sync_queue(&mut self, steer_count: usize, follow_up_count: usize) {
         self.queue = QueueBadge {
             steer_count,
@@ -108,19 +108,19 @@ impl UiModel {
         }
     }
 
-    /// Enqueue a steer message for chrome + badge (host local; Driver follows).
+    /// Enqueue a steer message for strip + badge (host local; Driver follows).
     pub fn enqueue_steer_strip(&mut self, text: String) {
         self.pending_steer.push(text);
         self.queue.steer_count = self.pending_steer.len();
     }
 
-    /// Enqueue a follow-up message for chrome + badge (host local; Driver follows).
+    /// Enqueue a follow-up message for strip + badge (host local; Driver follows).
     pub fn enqueue_follow_up_strip(&mut self, text: String) {
         self.pending_follow_up.push(text);
         self.queue.follow_up_count = self.pending_follow_up.len();
     }
 
-    /// Drain chrome queues into one editor blob (pi Alt+Up restore).
+    /// Drain strip queues into one editor blob (pi Alt+Up restore).
     pub fn take_queued_for_editor(&mut self) -> Vec<String> {
         let mut all = Vec::new();
         all.append(&mut self.pending_steer);
@@ -181,7 +181,7 @@ impl UiModel {
         lines
     }
 
-    /// In-flight streaming tails for chrome scrollback (role label, text).
+    /// In-flight streaming tails for layout scrollback (role label, text).
     pub(crate) fn streaming_scrollback_tails(&self) -> Vec<(&'static str, &str)> {
         let mut out = Vec::new();
         if !self.streaming_thinking.is_empty() {
@@ -221,7 +221,7 @@ impl UiModel {
 
     fn maybe_idle_after_agent_end(&mut self) {
         // Follow-ups are drained inside the same Driver::run before AgentEnd on
-        // the happy path. After abort, follow_up may remain — stay busy so chrome
+        // the happy path. After abort, follow_up may remain — stay busy so layout
         // can restore (c480); counts still come from QueueUpdate.
         if self.queue.follow_up_count == 0 {
             self.phase = UiPhase::Idle;
@@ -264,7 +264,7 @@ pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
                 model.set_busy_status("Drafting reply");
             } else if role == "user" {
                 // Steer / follow-up inject (and any future user MessageStart):
-                // commit into scrollback so queued chrome can leave without losing text.
+                // commit into scrollback so queued strip can leave without losing text.
                 if let Some(msg) = message {
                     let text = msg.text();
                     if !text.trim().is_empty() {
@@ -363,7 +363,7 @@ pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
                 "compaction complete"
             };
             model.entries.push(UiEntry::System { text: text.into() });
-            // Sticky Compacting would block chrome; restore like ToolExecutionEnd.
+            // Sticky Compacting would block layout status; restore like ToolExecutionEnd.
             if model.phase == UiPhase::Busy {
                 model.status = Some("Working".into());
             }

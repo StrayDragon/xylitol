@@ -86,7 +86,7 @@ fn harness_resize_to_ready() {
     let joined = session.tui.terminal.frames.concat();
     assert!(
         joined.contains('─') || joined.contains("ornith") || joined.contains("~/"),
-        "expected editor border or footer chrome, got: {joined:?}"
+        "expected editor border or footer layout, got: {joined:?}"
     );
 }
 
@@ -251,7 +251,7 @@ fn harness_busy_enter_queues_steer() {
     let frame = root.borrow_mut().render(80);
     assert!(
         frame.iter().any(|l| l.contains("Steering: nudge")),
-        "missing Steering chrome: {frame:?}"
+        "missing Steering strip: {frame:?}"
     );
     assert!(
         frame
@@ -278,7 +278,7 @@ fn harness_busy_alt_enter_queues_follow_up() {
     let frame = root.borrow_mut().render(80);
     assert!(
         frame.iter().any(|l| l.contains("Follow-up: later")),
-        "missing Follow-up chrome: {frame:?}"
+        "missing Follow-up strip: {frame:?}"
     );
 }
 
@@ -375,7 +375,7 @@ fn harness_double_esc_opens_session_tree() {
     let joined = session.tui.terminal.frames.concat();
     assert!(
         joined.contains("Session tree"),
-        "expected tree chrome; got: {joined}"
+        "expected tree layout; got: {joined}"
     );
 }
 
@@ -549,7 +549,7 @@ fn idle_editor_operation_zone_is_compact() {
     // scrollback 0 + status 0 + editor (3) + footer 1
     assert!(
         lines.len() <= 5,
-        "idle chrome must stay compact (got {} lines): {lines:?}",
+        "idle layout must stay compact (got {} lines): {lines:?}",
         lines.len()
     );
     let border_rows = lines.iter().filter(|l| l.contains('─')).count();

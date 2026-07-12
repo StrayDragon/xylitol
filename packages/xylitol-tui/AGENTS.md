@@ -87,7 +87,7 @@
 **分工（勿混）**
 
 - **包 E2E / `agent_demo`**：引擎 + 通用组件 + 真终端协议；主场景唯一；就绪探针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs`，footer `theme:dark`——勿用易滚出视口的标题行）。PTY 上 plate/settings 宜用 `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` + 足够行高；tmux 用 `C-p` / `C-s`。
-- **产品 TUI**：Driver / bridge / chrome / 键位；应用面 harness。层 5 **不**默认 spawn 完整 `xylitol` 二进制（避免绑 LLM/配置）。
+- **产品 TUI**：Driver / bridge / layout / 键位；应用面 harness。层 5 **不**默认 spawn 完整 `xylitol` 二进制（避免绑 LLM/配置）。
 - 层 5 全 `#[ignore]`；缺 tmux 时用 `just test-tui-e2e-pty`。操作细则：`test-tui-harness` skill（how-to，非第二份边界文）。
 
 ## Specs
