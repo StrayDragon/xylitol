@@ -3761,6 +3761,7 @@ impl FakeCodingAgentApp {
         let paint_bg = |line: &str, w: usize, rgb: xylitol_tui::RgbColor| {
             apply_background_to_line(&Self::fit(line, w), w, &|s| bg_rgb(rgb, s))
         };
+        // Full-width wash + padding_y=1; one Spacer between blocks.
         let push_tinted = |lines: &mut Vec<String>, content: &[String], w: usize, rgb| {
             lines.push(paint_bg("", w, rgb));
             for line in content {
@@ -3768,9 +3769,12 @@ impl FakeCodingAgentApp {
             }
             lines.push(paint_bg("", w, rgb));
         };
+        let mut need_spacer = false;
         for entry in &self.transcript {
-            // pi: Spacer(1) outside the tinted Box; Box padding_y=1 inside the wash.
-            lines.push(spacer(width));
+            if need_spacer {
+                lines.push(spacer(width));
+            }
+            need_spacer = true;
             match entry {
                 TranscriptEntry::Message { role, text } => {
                     if matches!(role, Role::Assistant) {
@@ -3877,7 +3881,6 @@ impl FakeCodingAgentApp {
                     }
                 }
             }
-            lines.push(spacer(width));
         }
         lines
     }
