@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use xylitol_tui::{InputEvent, RenderError, TUI, Terminal, matches_key_event};
 
 use crate::app::core::driver::XyEvent;
+use crate::runtime_protocol::XyBashResult;
 
 use super::bridge::{UiEntry, UiModel, UiPhase, apply_xy_event};
 use super::ui_root::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
@@ -70,6 +71,99 @@ pub enum PendingSlash {
     SetModel(String),
 }
 
+/// Idle `!` / `!!` bash request for the async host loop (c492).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingBash {
+    pub command: String,
+    pub exclude_from_context: bool,
+}
+
+/// Parse trimmed editor text for bang-bash (c492).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BangParse {
+    NotBang,
+    /// `!` or `!!` with empty command body.
+    Empty {
+        exclude_from_context: bool,
+    },
+    Cmd {
+        command: String,
+        exclude_from_context: bool,
+    },
+}
+
+/// Classify idle input for `!` / `!!` bash (after slash handling).
+pub fn parse_bang_command(text: &str) -> BangParse {
+    let trimmed = text.trim();
+    if let Some(rest) = trimmed.strip_prefix("!!") {
+        let cmd = rest.trim();
+        if cmd.is_empty() {
+            BangParse::Empty {
+                exclude_from_context: true,
+            }
+        } else {
+            BangParse::Cmd {
+                command: cmd.to_string(),
+                exclude_from_context: true,
+            }
+        }
+    } else if let Some(rest) = trimmed.strip_prefix('!') {
+        let cmd = rest.trim();
+        if cmd.is_empty() {
+            BangParse::Empty {
+                exclude_from_context: false,
+            }
+        } else {
+            BangParse::Cmd {
+                command: cmd.to_string(),
+                exclude_from_context: false,
+            }
+        }
+    } else {
+        BangParse::NotBang
+    }
+}
+
+/// Format bash outcome lines for live scrollback (c492 / att9).
+pub fn bash_result_entries(command: &str, result: &XyBashResult) -> Vec<UiEntry> {
+    let mut out = vec![UiEntry::System {
+        text: format!("$ {command}"),
+    }];
+    let code = result.exit_code;
+    let failed = result.cancelled || code.is_some_and(|c| c != 0);
+    let mut body = result.output.trim_end().to_string();
+    if body.len() > 4000 {
+        body = format!("{}…", &body[..4000]);
+    }
+    if result.truncated {
+        if !body.is_empty() {
+            body.push('\n');
+        }
+        body.push_str("(truncated)");
+    }
+    if result.cancelled {
+        if !body.is_empty() {
+            body.push('\n');
+        }
+        body.push_str("(cancelled)");
+    }
+    if let Some(c) = code {
+        if !body.is_empty() {
+            body.push('\n');
+        }
+        body.push_str(&format!("(exit {c})"));
+    }
+    if body.is_empty() {
+        body = "(no output)".into();
+    }
+    if failed {
+        out.push(UiEntry::Error { text: body });
+    } else {
+        out.push(UiEntry::System { text: body });
+    }
+    out
+}
+
 /// One host-driven TUI session. Does **not** call [`TUI::start`](xylitol_tui::TUI::start).
 pub struct HostSession<T: Terminal> {
     pub tui: TUI<T>,
@@ -91,6 +185,7 @@ pub struct HostSession<T: Terminal> {
     /// Alt+Up: restore queued messages to editor and clear both driver queues.
     pending_dequeue: bool,
     pending_slash: Option<PendingSlash>,
+    pending_bash: Option<PendingBash>,
     /// True while a `Driver::run` stream is open (blocks duplicate submit).
     run_active: bool,
     chrome_cwd: String,
@@ -129,6 +224,7 @@ impl<T: Terminal> HostSession<T> {
             pending_abort: false,
             pending_dequeue: false,
             pending_slash: None,
+            pending_bash: None,
             run_active: false,
             chrome_cwd: display_cwd(),
         }
@@ -201,6 +297,19 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn take_slash(&mut self) -> Option<PendingSlash> {
         self.pending_slash.take()
+    }
+
+    /// Take a pending idle bash (`!` / `!!`) request.
+    pub fn take_bash(&mut self) -> Option<PendingBash> {
+        self.pending_bash.take()
+    }
+
+    /// Append bash outcome to live scrollback (c492).
+    pub fn push_bash_result(&mut self, command: &str, result: &XyBashResult) {
+        for entry in bash_result_entries(command, result) {
+            self.ui_model.entries.push(entry);
+        }
+        self.sync_ui_root_from_model();
     }
 
     /// Refresh queue badge from driver stats (after local steer/follow-up/abort).
@@ -285,7 +394,10 @@ impl<T: Terminal> HostSession<T> {
             }
             HostEvent::Input(input) => {
                 if self.mode == LayoutMode::Ready {
-                    if self.try_busy_input(&input) || self.try_idle_enter_submit(&input) {
+                    if self.try_busy_input(&input)
+                        || self.try_idle_enter_submit(&input)
+                        || self.try_ctrl_g(&input)
+                    {
                         // Consumed — do not forward to editor (no newline / no tree).
                     } else {
                         self.tui.dispatch_event(input);
@@ -436,10 +548,57 @@ impl<T: Terminal> HostSession<T> {
             return true;
         }
 
+        match parse_bang_command(&text) {
+            BangParse::NotBang => {}
+            BangParse::Empty { .. } => {
+                root.set_editor_text(String::new());
+                drop(root);
+                self.push_system_note("empty bash command (try !ls or !!ls)");
+                return true;
+            }
+            BangParse::Cmd {
+                command,
+                exclude_from_context,
+            } => {
+                root.remember_editor_send(text.clone());
+                root.set_editor_text(String::new());
+                drop(root);
+                self.pending_bash = Some(PendingBash {
+                    command,
+                    exclude_from_context,
+                });
+                return true;
+            }
+        }
+
         root.remember_editor_send(text.clone());
         root.set_editor_text(String::new());
         drop(root);
         self.pending_submit = Some(text);
+        true
+    }
+
+    /// Ctrl+G: external editor stub (c492 / ati17).
+    fn try_ctrl_g(&mut self, input: &InputEvent) -> bool {
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        let InputEvent::Key(key) = input else {
+            return false;
+        };
+        if !matches_key_event(key, "ctrl+g") {
+            return false;
+        }
+        let mut root = root.borrow_mut();
+        if root.tree_open() {
+            return false;
+        }
+        let chars = root.editor_text().len();
+        root.open_external_editor_stub();
+        drop(root);
+        self.push_system_note(format!(
+            "external editor stub (Ctrl+G) · {chars} chars · $EDITOR not spawned"
+        ));
         true
     }
 
