@@ -1,6 +1,6 @@
 # _HANDOFF — 交接板 + 短索引（非规范）
 
-> 最后更新：2026-07-12（**c493 已归档**；轨 B 主切片收口；可选 c575）
+> 最后更新：2026-07-12（**c575 已归档**；无活跃 change；轨 B 至 c493）
 > 分支语境：`feat/tui-dev`（相对 `origin/feat/tui-dev` 超前）
 > **临时交接 / 进度指针，不是 SSOT。** 稳定边界：各层 `AGENTS.md`、`docs/architecture/`、`llmanspec/`。
 
@@ -14,7 +14,8 @@
 | **全部产品架构图（唯一入口）** | [`docs/architecture/README.md`](docs/architecture/README.md) |
 | 队列运行时实现 | archive **c525** `design.md` |
 | XyEvent 防宽表实现 | archive **c520**；产品摘要见架构目录 |
-| TUI bridge / chrome / input / slice | archive **c465** … **c485**；合约 `app-tui-*` / `app-tui-vertical-slice` |
+| TUI bridge / chrome / input / slice | archive **c465** … **c493**；合约 `app-tui-*` / `app-tui-vertical-slice` |
+| 包 Overlay focus-restore（D08） | archive **c575**；`package-tui-engine` pte06 |
 | 日常满闸 | **`just qa`**（见根 `AGENTS.md`） |
 | 真终端满闸 | **`just qa-e2e`**；产品 Fake smoke：`just test-tui-e2e-pty` |
 | 产品视觉 MUST（唯一） | `src/app/tui/DESIGN.md` + `design/*.md` |
@@ -46,9 +47,9 @@ just test-tui-e2e-pty
 
 | 轨 | 范围 | 状态 |
 |---|---|---|
-| **P · 包 / demo / DESIGN** | `packages/xylitol-tui`、`agent_demo`、`DESIGN.md`+`design/*` | **已合入**（包侧 c530…c570 已归档） |
+| **P · 包 / demo / DESIGN** | `packages/xylitol-tui`、`agent_demo`、`DESIGN.md`+`design/*` | **已合入**（包侧至 **c575** 已归档） |
 | **A · 业务核心** | `domain`→`embed`/`server`/线协议 | **已归档**（c500–c525 + 业务侧 c530–c550） |
-| **B · 产品 TUI** | `src/app/tui` 接线 | **至 c493 已归档**；可选包侧 **c575**；c491 stub 冻结 |
+| **B · 产品 TUI** | `src/app/tui` 接线 | **至 c493 已归档**；c491 stub 冻结 |
 
 **号段注意**：轨 P 与轨 A 曾并行占用 **c530–c550**；以 `llmanspec/changes/archive/` **全名**为准。
 
@@ -66,6 +67,7 @@ just test-tui-e2e-pty
 | **c485** vertical slice | `ScriptedDriver` H1–H9 + 产品 PTY Fake（Hello → `/exit`） | 已归档 |
 | **c492** bang-bash | `!`/`!!` → `execute_bash` + 边框 + Ctrl+G stub | 已归档 |
 | **c493** compaction/retry | Compacting / Retry 单行 status；End 恢复 Working | 已归档 |
+| **c575** overlay focus-restore | eligible/blocked/resume + dispatch reclaim（D08） | 已归档 |
 | secret.env + YAML 模板 | `{{ secret.KEY }}` / `{{ env.KEY }}` | 已合入 |
 | `just qa` / `qa-e2e` | 统一日常 / 真终端满闸（c580） | 已归档 |
 
@@ -90,9 +92,10 @@ just test-tui-e2e-pty
 | Change | 主题 |
 |---|---|
 | c530 … c570（package-tui / demo / playground） | Markdown · Command plate · Diff 边角 · CompletionSource · Expandable · DESIGN sync · TreeSelector · ChoicePrompt · Palette/`/theme` |
+| **c575** | Overlay eligible/blocked/resume focus-restore（D08） |
 | 跟进提交（无独立 change） | 弱终端 Markdown 强调；窄宽 clamp；Atoms plates；死代码分诊 |
 
-**可选下一刀（purpose-draft，不阻塞轨 B）**：[`c575-add-package-tui-overlay-focus-restore`](llmanspec/changes/c575-add-package-tui-overlay-focus-restore/)（`PI_DELTAS` D08）。
+**活跃 change**：无。
 
 ---
 
@@ -100,7 +103,7 @@ just test-tui-e2e-pty
 
 ```text
 已归档：… · c485 slice · c492 bash · c493 compaction/retry
-可选：  c575 overlay focus-restore（包侧，非轨 B 阻塞）
+包侧：  c575 overlay focus-restore 已归档
 冻结：  c491 假树 stub（勿扩活树）
 已移除：c470 Codex TranscriptView
 ```
@@ -109,16 +112,12 @@ just test-tui-e2e-pty
 
 ### 剩余 change 简报
 
-| ID | 状态 | 做什么 |
-|---|---|---|
-| **c575** overlay restore | purpose-draft · 包侧可选 | Overlay 完整 focus-restore（不阻塞轨 B） |
-
-**建议顺序**：轨 B 主线已收口；可选升格 apply **c575**。
+无活跃 SDD change。
 
 ### 下一工作焦点
 
-1. 可选：升格 `c575-add-package-tui-overlay-focus-restore`（包侧）。
-2. 或另开产品 follow-up（`/compact` slash、真 emit AutoRetry、活树等）。
+1. 另开产品 follow-up（`/compact` slash、真 emit AutoRetry、活树等），或
+2. 整理 `feat/tui-dev` PR / 合并。
 
 ---
 
@@ -137,38 +136,16 @@ just test-tui-e2e-pty
 | 高亮 | demo/产品同一 syntect 回调；包只收回调 |
 | Transcript | **不做** Codex TranscriptView（原 c470 已移除）；live = bridge scrollback |
 | 垂直切片 | 合成 harness + 产品 PTY Fake smoke（c485 / `app-tui-vertical-slice`） |
-
-### `agent_demo` 键位（摘要）
-
-| 键 / 命令 | 作用 |
-|---|---|
-| 流中 Enter / Alt+Enter | steer / follow-up |
-| Esc | abort |
-| Ctrl+C | 清输入 / 空则退 |
-| 双 Esc | 会话树 |
-| `!` / Ctrl+G | bash 边框 / `$EDITOR` |
-| `/theme [dark\|light\|toggle]` | 显式换肤（关 auto） |
-| `XYLITOL_AGENT_DEMO_THEME_AUTO=1` | COLORFGBG 探测 |
+| Bash | `!`/`!!` → `execute_bash`；busy 不另开 bash（c492） |
+| Compaction UI | 单行 Compacting/Retry；End→Working（c493） |
 
 ---
 
-## 六、已清理的文档（历史）
+## 六、验证速查
 
-- 删除：`docs/testing-strategy.md`、`docs/tui-research/*`（**保留** `docs/assets/logo.svg`）
-- 测试分层要点已并入根 `AGENTS.md`「提交与测试」
-- `_NOTE.md` **已删除**（2026-07-12）；短索引只保留本文件
-- `c470-add-app-tui-transcript` **已删除**（2026-07-12；明确不做 Codex TranscriptView）
-
----
-
-## 七、SSOT 指针
-
-| 主题 | 路径 |
+| 闸 | 命令 |
 |---|---|
-| 分层 / 导出 / 开闸 | 根 + `src/AGENTS.md`、`src/app/tui/AGENTS.md` |
-| 产品架构图 | `docs/architecture/` |
-| 包边界 / vs pi | `packages/xylitol-tui/AGENTS.md`、`PI_DELTAS.md` |
-| 视觉 | `src/app/tui/DESIGN.md` + `design/` |
-| 垂直切片合约 | `llmanspec/specs/app-tui-vertical-slice/` |
-| How-to | `write-tui`、`test-tui-harness`、`write-surface`、`audit-dead-code` |
-| 交接 / 短索引 | 本文件 `_HANDOFF.md` |
+| 日常 | `just qa` |
+| 真终端 | `just qa-e2e` |
+| 包 TUI | `cargo test -p xylitol-tui` |
+| Overlay focus | `cargo test -p xylitol-tui --test overlay_focus_test` |

@@ -123,11 +123,50 @@ pub struct OverlayOptions {
     pub non_capturing: bool,
 }
 
+/// Focus routing target: a root child index or an overlay id (c575 / D08).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FocusTarget {
+    Root(usize),
+    Overlay(u64),
+}
+
+/// Options for [`OverlayHandle::unfocus`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OverlayUnfocusOptions {
+    /// Explicit target after releasing this overlay (may be `None` = clear focus).
+    pub target: Option<FocusTarget>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OverlayFocusRestorePolicy {
+    Clear,
+    Preserve,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BlockedResume {
+    RestoreOverlay,
+    FocusTarget(Option<FocusTarget>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OverlayFocusRestore {
+    Inactive,
+    Eligible {
+        overlay_id: u64,
+    },
+    Blocked {
+        overlay_id: u64,
+        blocked_by: FocusTarget,
+        resume: BlockedResume,
+    },
+}
+
 #[derive(Debug, Clone, Copy)]
 struct OverlayStackEntry {
     overlay_id: u64,
-    /// Focused root-child index before the overlay opened; restored on hide.
-    pre_focus: Option<usize>,
+    /// Focus target before this overlay opened (root or overlay); restored on hide.
+    pre_focus: Option<FocusTarget>,
     hidden: bool,
     focus_order: u64,
 }
@@ -167,8 +206,9 @@ impl OverlayHandle {
         tui.focus_overlay(self);
     }
 
-    pub fn unfocus<T: Terminal>(self, tui: &mut TUI<T>) {
-        tui.unfocus_overlay(self);
+    /// Release focus (optional explicit [`OverlayUnfocusOptions::target`]).
+    pub fn unfocus<T: Terminal>(self, tui: &mut TUI<T>, options: Option<OverlayUnfocusOptions>) {
+        tui.unfocus_overlay(self, options);
     }
 }
 
@@ -194,6 +234,8 @@ pub struct TUI<T: Terminal> {
     focused_index: Option<usize>,
     /// When set, input routes to this overlay instead of a root child.
     focused_overlay_id: Option<u64>,
+    /// pi-style eligible / blocked / resume (c575 / D08).
+    overlay_focus_restore: OverlayFocusRestore,
     stopped: bool,
     /// Logical cursor row = content end (used for viewport math). Distinct from
     /// `hardware_cursor_row` (where the terminal's cursor physically stopped).
@@ -236,6 +278,7 @@ impl<T: Terminal> TUI<T> {
             previous_viewport_top: 0,
             focused_index: None,
             focused_overlay_id: None,
+            overlay_focus_restore: OverlayFocusRestore::Inactive,
             stopped: false,
             cursor_row: 0,
             hardware_cursor_row: 0,
@@ -303,8 +346,10 @@ impl<T: Terminal> TUI<T> {
         self.components.clear();
     }
     pub fn set_focus(&mut self, index: Option<usize>) {
-        self.focused_overlay_id = None;
-        self.focused_index = index;
+        self.set_focus_internal(
+            index.map(FocusTarget::Root),
+            OverlayFocusRestorePolicy::Clear,
+        );
     }
 
     /// Show an overlay and return a handle for hide / focus control.
@@ -318,14 +363,17 @@ impl<T: Terminal> TUI<T> {
         self.focus_order_counter += 1;
         let entry = OverlayStackEntry {
             overlay_id,
-            pre_focus: self.focused_index,
+            pre_focus: self.current_focus_target(),
             hidden: false,
             focus_order: self.focus_order_counter,
         };
         let capturing = !options.non_capturing;
         self.overlays.push((component, options, entry));
         if capturing {
-            self.focused_overlay_id = Some(overlay_id);
+            self.set_focus_internal(
+                Some(FocusTarget::Overlay(overlay_id)),
+                OverlayFocusRestorePolicy::Clear,
+            );
         }
         self.terminal.hide_cursor();
         OverlayHandle { overlay_id }
@@ -337,20 +385,217 @@ impl<T: Terminal> TUI<T> {
             .position(|(_, _, e)| e.overlay_id == overlay_id)
     }
 
+    fn is_overlay_entry_visible(&self, entry: &OverlayStackEntry) -> bool {
+        !entry.hidden
+    }
+
     fn topmost_visible_capturing_overlay_id(&self) -> Option<u64> {
         self.overlays
             .iter()
-            .filter(|(_, opts, e)| !e.hidden && !opts.non_capturing)
+            .filter(|(_, opts, e)| !opts.non_capturing && self.is_overlay_entry_visible(e))
             .max_by_key(|(_, _, e)| e.focus_order)
             .map(|(_, _, e)| e.overlay_id)
     }
 
-    fn restore_focus_after_overlay(&mut self, pre_focus: Option<usize>) {
-        if let Some(id) = self.topmost_visible_capturing_overlay_id() {
-            self.focused_overlay_id = Some(id);
-        } else {
-            self.focused_overlay_id = None;
-            self.focused_index = pre_focus;
+    fn current_focus_target(&self) -> Option<FocusTarget> {
+        if let Some(id) = self.focused_overlay_id {
+            return Some(FocusTarget::Overlay(id));
+        }
+        self.focused_index.map(FocusTarget::Root)
+    }
+
+    fn apply_focus_target(&mut self, target: Option<FocusTarget>) {
+        match target {
+            Some(FocusTarget::Overlay(id)) => {
+                self.focused_overlay_id = Some(id);
+            }
+            Some(FocusTarget::Root(i)) => {
+                self.focused_overlay_id = None;
+                self.focused_index = Some(i);
+            }
+            None => {
+                self.focused_overlay_id = None;
+                self.focused_index = None;
+            }
+        }
+    }
+
+    fn clear_overlay_focus_restore(&mut self) {
+        self.overlay_focus_restore = OverlayFocusRestore::Inactive;
+    }
+
+    fn clear_overlay_focus_restore_for(&mut self, overlay_id: u64) {
+        let clear = match self.overlay_focus_restore {
+            OverlayFocusRestore::Eligible { overlay_id: id }
+            | OverlayFocusRestore::Blocked { overlay_id: id, .. } => id == overlay_id,
+            OverlayFocusRestore::Inactive => false,
+        };
+        if clear {
+            self.clear_overlay_focus_restore();
+        }
+    }
+
+    fn get_visible_overlay_focus_restore(&self) -> OverlayFocusRestore {
+        match self.overlay_focus_restore {
+            OverlayFocusRestore::Inactive => OverlayFocusRestore::Inactive,
+            OverlayFocusRestore::Eligible { overlay_id }
+            | OverlayFocusRestore::Blocked { overlay_id, .. } => {
+                let visible = self
+                    .overlay_index(overlay_id)
+                    .is_some_and(|i| self.is_overlay_entry_visible(&self.overlays[i].2));
+                if visible {
+                    self.overlay_focus_restore
+                } else {
+                    OverlayFocusRestore::Inactive
+                }
+            }
+        }
+    }
+
+    fn is_focus_target_mounted(&self, target: FocusTarget) -> bool {
+        match target {
+            FocusTarget::Root(i) => i < self.components.len(),
+            FocusTarget::Overlay(id) => self
+                .overlay_index(id)
+                .is_some_and(|i| self.is_overlay_entry_visible(&self.overlays[i].2)),
+        }
+    }
+
+    fn is_overlay_focus_ancestor(&self, overlay_id: u64, target: FocusTarget) -> bool {
+        let mut visited = std::collections::HashSet::new();
+        let mut current = self
+            .overlay_index(overlay_id)
+            .and_then(|i| self.overlays[i].2.pre_focus);
+        while let Some(node) = current {
+            if !visited.insert(node) {
+                break;
+            }
+            if node == target {
+                return true;
+            }
+            current = match node {
+                FocusTarget::Overlay(id) => self
+                    .overlay_index(id)
+                    .and_then(|i| self.overlays[i].2.pre_focus),
+                FocusTarget::Root(_) => None,
+            };
+        }
+        false
+    }
+
+    fn retarget_overlay_pre_focus(&mut self, removed_id: u64, removed_pre: Option<FocusTarget>) {
+        let removed_target = FocusTarget::Overlay(removed_id);
+        for (_, _, entry) in &mut self.overlays {
+            if entry.pre_focus == Some(removed_target) {
+                entry.pre_focus = removed_pre;
+            }
+        }
+    }
+
+    fn resolve_blocked_resume(&mut self, state: OverlayFocusRestore) -> Option<FocusTarget> {
+        match state {
+            OverlayFocusRestore::Blocked {
+                overlay_id,
+                resume: BlockedResume::RestoreOverlay,
+                ..
+            } => Some(FocusTarget::Overlay(overlay_id)),
+            OverlayFocusRestore::Blocked {
+                resume: BlockedResume::FocusTarget(target),
+                ..
+            } => {
+                self.clear_overlay_focus_restore();
+                target
+            }
+            _ => None,
+        }
+    }
+
+    fn set_focus_internal(
+        &mut self,
+        mut next: Option<FocusTarget>,
+        policy: OverlayFocusRestorePolicy,
+    ) {
+        let previous = self.current_focus_target();
+        let previous_focused_overlay = match previous {
+            Some(FocusTarget::Overlay(id))
+                if self
+                    .overlay_index(id)
+                    .is_some_and(|i| self.is_overlay_entry_visible(&self.overlays[i].2)) =>
+            {
+                Some(id)
+            }
+            _ => None,
+        };
+        let next_is_overlay = matches!(next, Some(FocusTarget::Overlay(_)));
+        let restore_state = self.get_visible_overlay_focus_restore();
+
+        if let Some(next_target) = next
+            && !next_is_overlay
+        {
+            if let OverlayFocusRestore::Blocked {
+                blocked_by,
+                overlay_id,
+                resume,
+            } = restore_state
+                && Some(blocked_by) == previous
+            {
+                if matches!(resume, BlockedResume::FocusTarget(_))
+                    || !self.is_focus_target_mounted(blocked_by)
+                {
+                    next = self.resolve_blocked_resume(OverlayFocusRestore::Blocked {
+                        overlay_id,
+                        blocked_by,
+                        resume,
+                    });
+                } else {
+                    self.overlay_focus_restore = OverlayFocusRestore::Blocked {
+                        overlay_id,
+                        blocked_by: next_target,
+                        resume,
+                    };
+                }
+            } else if let Some(prev_overlay) = previous_focused_overlay
+                && !matches!(restore_state, OverlayFocusRestore::Inactive)
+                && matches!(
+                    restore_state,
+                    OverlayFocusRestore::Eligible { overlay_id }
+                        | OverlayFocusRestore::Blocked { overlay_id, .. }
+                        if overlay_id == prev_overlay
+                )
+                && !self.is_overlay_focus_ancestor(prev_overlay, next_target)
+            {
+                self.overlay_focus_restore = OverlayFocusRestore::Blocked {
+                    overlay_id: prev_overlay,
+                    blocked_by: next_target,
+                    resume: BlockedResume::RestoreOverlay,
+                };
+            }
+        } else if next.is_none() {
+            if let OverlayFocusRestore::Blocked {
+                blocked_by,
+                overlay_id,
+                resume,
+            } = restore_state
+                && Some(blocked_by) == previous
+            {
+                next = self.resolve_blocked_resume(OverlayFocusRestore::Blocked {
+                    overlay_id,
+                    blocked_by,
+                    resume,
+                });
+            } else if policy == OverlayFocusRestorePolicy::Clear {
+                self.clear_overlay_focus_restore();
+            }
+        }
+
+        self.apply_focus_target(next);
+
+        if let Some(FocusTarget::Overlay(id)) = next
+            && self
+                .overlay_index(id)
+                .is_some_and(|i| self.is_overlay_entry_visible(&self.overlays[i].2))
+        {
+            self.overlay_focus_restore = OverlayFocusRestore::Eligible { overlay_id: id };
         }
     }
 
@@ -360,9 +605,13 @@ impl<T: Terminal> TUI<T> {
             return;
         };
         let (_, _, entry) = self.overlays.remove(index);
+        self.clear_overlay_focus_restore_for(entry.overlay_id);
+        self.retarget_overlay_pre_focus(entry.overlay_id, entry.pre_focus);
         let was_focused = self.focused_overlay_id == Some(handle.overlay_id);
         if was_focused {
-            self.restore_focus_after_overlay(entry.pre_focus);
+            let top = self.topmost_visible_capturing_overlay_id();
+            let target = top.map(FocusTarget::Overlay).or(entry.pre_focus);
+            self.set_focus_internal(target, OverlayFocusRestorePolicy::Clear);
         }
         if self.overlays.is_empty() {
             self.terminal.hide_cursor();
@@ -381,13 +630,19 @@ impl<T: Terminal> TUI<T> {
         let non_capturing = self.overlays[index].1.non_capturing;
         let pre_focus = self.overlays[index].2.pre_focus;
         if hidden {
+            self.clear_overlay_focus_restore_for(handle.overlay_id);
             if self.focused_overlay_id == Some(handle.overlay_id) {
-                self.restore_focus_after_overlay(pre_focus);
+                let top = self.topmost_visible_capturing_overlay_id();
+                let target = top.map(FocusTarget::Overlay).or(pre_focus);
+                self.set_focus_internal(target, OverlayFocusRestorePolicy::Clear);
             }
         } else if !non_capturing {
             self.focus_order_counter += 1;
             self.overlays[index].2.focus_order = self.focus_order_counter;
-            self.focused_overlay_id = Some(handle.overlay_id);
+            self.set_focus_internal(
+                Some(FocusTarget::Overlay(handle.overlay_id)),
+                OverlayFocusRestorePolicy::Clear,
+            );
         }
         self.request_render(false);
     }
@@ -405,45 +660,82 @@ impl<T: Terminal> TUI<T> {
                 .is_some_and(|i| !self.overlays[i].2.hidden)
     }
 
-    /// Bring overlay to the visual front and capture focus (if capturing).
+    /// Bring overlay to the visual front and capture focus (including non_capturing).
     pub fn focus_overlay(&mut self, handle: OverlayHandle) {
         let Some(index) = self.overlay_index(handle.overlay_id) else {
             return;
         };
-        if self.overlays[index].2.hidden || self.overlays[index].1.non_capturing {
+        if self.overlays[index].2.hidden {
             return;
         }
         self.focus_order_counter += 1;
         self.overlays[index].2.focus_order = self.focus_order_counter;
-        self.focused_overlay_id = Some(handle.overlay_id);
+        self.set_focus_internal(
+            Some(FocusTarget::Overlay(handle.overlay_id)),
+            OverlayFocusRestorePolicy::Clear,
+        );
         self.request_render(false);
     }
 
-    /// Release focus from this overlay to the next visible capturing overlay
-    /// or the stored `pre_focus` root child.
-    pub fn unfocus_overlay(&mut self, handle: OverlayHandle) {
+    /// Release focus from this overlay (optional explicit target).
+    pub fn unfocus_overlay(
+        &mut self,
+        handle: OverlayHandle,
+        options: Option<OverlayUnfocusOptions>,
+    ) {
         let Some(index) = self.overlay_index(handle.overlay_id) else {
             return;
         };
-        if self.focused_overlay_id != Some(handle.overlay_id) {
+        let is_focused = self.focused_overlay_id == Some(handle.overlay_id);
+        let has_pending = match self.overlay_focus_restore {
+            OverlayFocusRestore::Eligible { overlay_id }
+            | OverlayFocusRestore::Blocked { overlay_id, .. } => overlay_id == handle.overlay_id,
+            OverlayFocusRestore::Inactive => false,
+        };
+        if !is_focused && !has_pending {
             return;
         }
-        let pre_focus = self.overlays[index].2.pre_focus;
-        // Temporarily treat this overlay as non-candidate by clearing focus
-        // then picking the next topmost (excluding self via focus clear).
-        self.focused_overlay_id = None;
-        let next = self
-            .overlays
-            .iter()
-            .filter(|(_, opts, e)| {
-                e.overlay_id != handle.overlay_id && !e.hidden && !opts.non_capturing
-            })
-            .max_by_key(|(_, _, e)| e.focus_order)
-            .map(|(_, _, e)| e.overlay_id);
-        if let Some(id) = next {
-            self.focused_overlay_id = Some(id);
-        } else {
-            self.focused_index = pre_focus;
+
+        if let OverlayFocusRestore::Blocked {
+            overlay_id,
+            blocked_by,
+            ..
+        } = self.overlay_focus_restore
+            && overlay_id == handle.overlay_id
+            && self.current_focus_target() == Some(blocked_by)
+        {
+            if let Some(opts) = options {
+                self.overlay_focus_restore = OverlayFocusRestore::Blocked {
+                    overlay_id,
+                    blocked_by,
+                    resume: BlockedResume::FocusTarget(opts.target),
+                };
+            } else {
+                self.clear_overlay_focus_restore();
+            }
+            self.request_render(false);
+            return;
+        }
+
+        self.clear_overlay_focus_restore_for(handle.overlay_id);
+        if is_focused || options.is_some() {
+            let pre_focus = self.overlays[index].2.pre_focus;
+            let top = self
+                .overlays
+                .iter()
+                .filter(|(_, opts, e)| {
+                    e.overlay_id != handle.overlay_id
+                        && !opts.non_capturing
+                        && self.is_overlay_entry_visible(e)
+                })
+                .max_by_key(|(_, _, e)| e.focus_order)
+                .map(|(_, _, e)| e.overlay_id);
+            let fallback = top.map(FocusTarget::Overlay).or(pre_focus);
+            let target = match options {
+                Some(OverlayUnfocusOptions { target }) => target,
+                None => fallback,
+            };
+            self.set_focus_internal(target, OverlayFocusRestorePolicy::Clear);
         }
         self.request_render(false);
     }
@@ -594,10 +886,56 @@ impl<T: Terminal> TUI<T> {
             }
         }
 
+        // If focused overlay became invisible, redirect (preserve restore).
+        if let Some(overlay_id) = self.focused_overlay_id
+            && let Some(index) = self.overlay_index(overlay_id)
+            && !self.is_overlay_entry_visible(&self.overlays[index].2)
+        {
+            let pre_focus = self.overlays[index].2.pre_focus;
+            if let Some(top) = self.topmost_visible_capturing_overlay_id() {
+                self.set_focus_internal(
+                    Some(FocusTarget::Overlay(top)),
+                    OverlayFocusRestorePolicy::Clear,
+                );
+            } else {
+                self.set_focus_internal(pre_focus, OverlayFocusRestorePolicy::Preserve);
+            }
+        }
+
+        // Reclaim eligible / blocked resume when focus is not on an overlay.
+        let focus_is_overlay = matches!(self.current_focus_target(), Some(FocusTarget::Overlay(_)));
+        if !focus_is_overlay {
+            match self.get_visible_overlay_focus_restore() {
+                OverlayFocusRestore::Eligible { overlay_id } => {
+                    self.set_focus_internal(
+                        Some(FocusTarget::Overlay(overlay_id)),
+                        OverlayFocusRestorePolicy::Clear,
+                    );
+                }
+                OverlayFocusRestore::Blocked {
+                    overlay_id,
+                    blocked_by,
+                    resume,
+                } if self.current_focus_target() != Some(blocked_by) => match resume {
+                    BlockedResume::RestoreOverlay => {
+                        self.set_focus_internal(
+                            Some(FocusTarget::Overlay(overlay_id)),
+                            OverlayFocusRestorePolicy::Clear,
+                        );
+                    }
+                    BlockedResume::FocusTarget(target) => {
+                        self.clear_overlay_focus_restore();
+                        self.set_focus_internal(target, OverlayFocusRestorePolicy::Clear);
+                    }
+                },
+                _ => {}
+            }
+        }
+
+        // Route to focused overlay (including explicitly focused non_capturing).
         if let Some(overlay_id) = self.focused_overlay_id
             && let Some(index) = self.overlay_index(overlay_id)
             && !self.overlays[index].2.hidden
-            && !self.overlays[index].1.non_capturing
         {
             self.overlays[index].0.handle_input(event);
             return;
