@@ -289,6 +289,16 @@ impl SessionEntry {
 
 // ── Message entry helpers ───────────────────────────────────────────
 
+/// AgentMessage-shaped JSON for session fixtures (matches serde of
+/// [`crate::domain::message::AgentMessage`]: untagged `content` text strings).
+pub fn fixture_message_json(role: &str, text: &str) -> Value {
+    serde_json::json!({
+        "role": role,
+        "content": [text],
+        "timestamp": 0u64,
+    })
+}
+
 /// Extract the `role` field from a serialized agent message JSON value.
 pub fn message_role(msg: &Value) -> Option<&str> {
     msg.get("role").and_then(Value::as_str)
@@ -459,7 +469,6 @@ mod session_tree_tests {
     use serde_json::json;
 
     fn msg_entry(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionEntry {
-        // Match AgentMessage serde: `content` is untagged Text strings, not `parts`.
         SessionEntry::Message(MessageEntry {
             base: EntryBase {
                 entry_type: "message".into(),
@@ -467,11 +476,7 @@ mod session_tree_tests {
                 parent_id: parent.map(str::to_string),
                 timestamp: format!("2026-01-01T00:00:{id}Z"),
             },
-            message: json!({
-                "role": role,
-                "content": [text],
-                "timestamp": 0u64,
-            }),
+            message: fixture_message_json(role, text),
         })
     }
 

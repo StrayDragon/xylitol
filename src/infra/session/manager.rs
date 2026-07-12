@@ -663,19 +663,17 @@ impl SessionManager {
                     messages.push(m.message.clone());
                 }
                 SessionEntry::Compaction(c) => {
-                    // Compaction summary as system message
-                    let summary_msg = serde_json::json!({
-                        "role": "system",
-                        "parts": [{"type": "text", "text": format!("[Previous context summary]\n{}", c.summary)}]
-                    });
-                    messages.push(summary_msg);
+                    // Compaction summary as user-shaped AgentMessage JSON (no `system` role).
+                    messages.push(crate::domain::session_types::fixture_message_json(
+                        "user",
+                        &format!("[Previous context summary]\n{}", c.summary),
+                    ));
                 }
                 SessionEntry::BranchSummary(b) => {
-                    let summary_msg = serde_json::json!({
-                        "role": "system",
-                        "parts": [{"type": "text", "text": format!("[Branch summary]\n{}", b.summary)}]
-                    });
-                    messages.push(summary_msg);
+                    messages.push(crate::domain::session_types::fixture_message_json(
+                        "user",
+                        &format!("[Branch summary]\n{}", b.summary),
+                    ));
                 }
                 SessionEntry::ModelChange(mc) => {
                     model = Some((mc.provider.clone(), mc.model_id.clone()));
@@ -700,14 +698,10 @@ impl SessionManager {
                     if b.exclude_from_context {
                         continue;
                     }
-                    let msg = serde_json::json!({
-                        "role": "user",
-                        "parts": [{
-                            "type": "text",
-                            "text": format!("$ {}
-                    {}", b.command, b.output)
-                        }]
-                    });
+                    let msg = crate::domain::session_types::fixture_message_json(
+                        "user",
+                        &format!("$ {}\n{}", b.command, b.output),
+                    );
                     messages.push(msg);
                 }
             }
@@ -1383,10 +1377,7 @@ mod deferred_persist_tests {
                 parent_id: None,
                 timestamp: String::new(),
             },
-            message: serde_json::json!({
-                "role": "user",
-                "parts": [{ "type": "text", "text": text }],
-            }),
+            message: crate::domain::session_types::fixture_message_json("user", text),
         })
     }
 
@@ -1398,10 +1389,7 @@ mod deferred_persist_tests {
                 parent_id: None,
                 timestamp: String::new(),
             },
-            message: serde_json::json!({
-                "role": "assistant",
-                "parts": [{ "type": "text", "text": text }],
-            }),
+            message: crate::domain::session_types::fixture_message_json("assistant", text),
         })
     }
 

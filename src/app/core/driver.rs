@@ -1031,8 +1031,6 @@ fn urlencoding_loose(s: &str) -> String {
 mod driver_session_tree_tests {
     use std::sync::Arc;
 
-    use serde_json::json;
-
     use super::*;
     use crate::agent::AgentBuilder;
     use crate::agent::tools::ToolSet;
@@ -1053,10 +1051,7 @@ mod driver_session_tree_tests {
                 parent_id: parent.map(str::to_string),
                 timestamp: format!("2026-01-01T00:00:{id}Z"),
             },
-            message: json!({
-                "role": role,
-                "parts": [{ "type": "text", "text": text }],
-            }),
+            message: crate::domain::session_types::fixture_message_json(role, text),
         })
     }
 

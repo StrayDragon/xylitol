@@ -28,27 +28,7 @@ pub fn is_context_overflow(token_estimate: u64, context_window: u64, reserve_tok
 /// Estimate tokens for a single `SessionEntry` using chars/4 heuristic.
 pub fn estimate_tokens_entry(entry: &SessionEntry) -> u64 {
     match entry {
-        SessionEntry::Message(msg) => {
-            let mut tokens: u64 = 0;
-            if let Some(parts) = msg.message.get("parts").and_then(|p| p.as_array()) {
-                for part in parts {
-                    match part.get("type").and_then(|t| t.as_str()) {
-                        Some("image") => tokens += 4800,
-                        Some("text") | Some("thinking") => {
-                            if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                                tokens += (text.len() as u64).div_ceil(4);
-                            }
-                        }
-                        _ => {
-                            tokens += (part.to_string().len() as u64).div_ceil(4);
-                        }
-                    }
-                }
-            } else {
-                tokens = (msg.message.to_string().len() as u64).div_ceil(4);
-            }
-            tokens
-        }
+        SessionEntry::Message(msg) => estimate_tokens_message_json(&msg.message),
         SessionEntry::Header(_) => 0,
         SessionEntry::Compaction(c) => (c.summary.len() as u64).div_ceil(4),
         SessionEntry::BranchSummary(b) => (b.summary.len() as u64).div_ceil(4),
@@ -68,6 +48,49 @@ pub fn estimate_tokens_entry(entry: &SessionEntry) -> u64 {
             (b.command.len() as u64 + b.output.len() as u64).div_ceil(4)
         }
     }
+}
+
+fn estimate_tokens_message_json(message: &serde_json::Value) -> u64 {
+    if let Some(s) = message.get("content").and_then(|c| c.as_str()) {
+        return (s.len() as u64).div_ceil(4);
+    }
+    let Some(parts) = message
+        .get("content")
+        .or_else(|| message.get("parts"))
+        .and_then(|p| p.as_array())
+    else {
+        return (message.to_string().len() as u64).div_ceil(4);
+    };
+
+    let mut tokens: u64 = 0;
+    for part in parts {
+        if let Some(t) = part.as_str() {
+            tokens += (t.len() as u64).div_ceil(4);
+            continue;
+        }
+        let typ = part.get("type").and_then(|t| t.as_str());
+        if typ == Some("image")
+            || ((part.get("url").is_some() || part.get("data").is_some())
+                && part.get("text").is_none()
+                && part.get("name").is_none())
+        {
+            tokens += 4800;
+            continue;
+        }
+        match typ {
+            Some("text") | Some("thinking") | None => {
+                if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+                    tokens += (text.len() as u64).div_ceil(4);
+                } else {
+                    tokens += (part.to_string().len() as u64).div_ceil(4);
+                }
+            }
+            _ => {
+                tokens += (part.to_string().len() as u64).div_ceil(4);
+            }
+        }
+    }
+    tokens
 }
 
 /// Check whether `entry_type` is a valid cut point.
