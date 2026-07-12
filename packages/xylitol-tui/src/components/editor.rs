@@ -1503,13 +1503,12 @@ impl Component for Editor {
         let ms = layout.len().saturating_sub(max_vis);
         self.scroll_offset = self.scroll_offset.min(ms);
         let visible = &layout[self.scroll_offset..(self.scroll_offset + max_vis).min(layout.len())];
-        let h = (self.theme.border_color)("─");
         let lp = " ".repeat(px);
         let rp = " ".repeat(px);
         let mut result = Vec::new();
         let marker = if self.focused { CURSOR_MARKER } else { "" };
 
-        // Top border
+        // Top border — style the full line once (do not paint-then-repeat ANSI).
         if self.scroll_offset > 0 {
             let ind = format!("─── ↑ {} more ", self.scroll_offset);
             let iw = visible_width(&ind);
@@ -1519,7 +1518,7 @@ impl Component for Editor {
                 (self.theme.border_color)(&truncate_to_width(&ind, width, "", false))
             });
         } else {
-            result.push((self.theme.border_color)(&h.repeat(width)));
+            result.push((self.theme.border_color)(&"─".repeat(width.max(1))));
         }
 
         for ll in visible {
@@ -1556,7 +1555,7 @@ impl Component for Editor {
                 (self.theme.border_color)(&truncate_to_width(&ind, width, "", false))
             });
         } else {
-            result.push((self.theme.border_color)(&h.repeat(width)));
+            result.push((self.theme.border_color)(&"─".repeat(width.max(1))));
         }
 
         // c430/c545: append autocomplete popup below border; clamp to content width.
