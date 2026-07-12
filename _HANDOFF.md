@@ -12,7 +12,7 @@
 |---|---|
 | 产品定调 / Trust·MCP / Provider 范围 | 根 + `src/AGENTS.md` |
 | **全部产品架构图（唯一入口）** | [`docs/architecture/README.md`](docs/architecture/README.md) |
-| TUI bridge / chrome | archive **c465** … **c493**；合约 `app-tui-*` |
+| TUI bridge / layout 壳 | archive **c465** … **c493**；合约 `app-tui-*`（layout 壳 id 仍为 `app-tui-chrome`） |
 | 包 Overlay 引擎（D08） | archive **c575**；**产品默认不用** capturing overlay |
 | demo Compacting/Retry | `just demo-tui` · Alt+K / Alt+Y |
 | 日常满闸 | **`just qa`** |

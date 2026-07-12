@@ -25,7 +25,7 @@
   --tool-error-bg: #352428;
   --user-message-bg: #313244;
 
-  /* page chrome: aliases of DESIGN tokens only */
+  /* page frame: aliases of DESIGN tokens only */
   --page-bg: var(--surface);
   --page-fg: var(--on-surface);
   --hairline: var(--tool-pending-bg);
@@ -55,7 +55,7 @@
   --tool-error-bg: #e8dce0;
   --user-message-bg: #ccd0da;
 
-  /* page chrome: aliases of DESIGN tokens only */
+  /* page frame: aliases of DESIGN tokens only */
   --page-bg: var(--surface);
   --page-fg: var(--on-surface);
   --hairline: var(--tool-pending-bg);
