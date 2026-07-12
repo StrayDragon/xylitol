@@ -29,16 +29,18 @@ description: >-
 
 ```bash
 # 包内 1–4（快）
-cargo test -p xylitol-tui
+just test-tui
+# 或：cargo test -p xylitol-tui
 
-# 提交 / PR 前（仓库级）
+# 提交 / PR 前 — 统一满闸（不含第 5 层）
 just qa
 
-# 真终端（慢，按需）
-just test-tui-e2e
+# 真终端协议 / 渲染（慢，需 PTY；tmux 用例需本机 tmux）
+just qa-e2e
+# 或只跑第 5 层：just test-tui-e2e / test-tui-e2e-pty / test-tui-e2e-tmux
 ```
 
-只改某一层时，可只跑对应 `--test`；合并前仍应用 `cargo test -p xylitol-tui` 兜底。
+只改某一层时，可只跑对应 `--test`；合并前仍应用 `just qa` 兜底。
 
 ## 新增测试落点
 
@@ -66,5 +68,5 @@ just test-tui-e2e
 - [ ] 新行为落在正确层，且有自动化覆盖
 - [ ] 无新增 `thread::sleep` 时序测试
 - [ ] snapshot 已人工复核（若有变更）
-- [ ] `cargo test -p xylitol-tui` 绿
-- [ ] 涉及协议/真终端时跑过 `just test-tui-e2e`（或说明为何跳过）
+- [ ] `just test-tui` / `cargo test -p xylitol-tui` 绿
+- [ ] 涉及协议/真终端时跑过 `just qa-e2e` 或 `just test-tui-e2e`（或说明为何跳过）
