@@ -81,6 +81,10 @@
       width: 100%;
       border-radius: 0;
     }
+    .nav button.secondary {
+      opacity: 0.72;
+      font-size: 12px;
+    }
     .nav .idx { color: var(--muted); margin-right: 0.35rem; opacity: 0.7; }
 
     main#main {
@@ -351,7 +355,7 @@
       <button type="button" data-scheme="dark" aria-pressed="true">Dark</button>
       <button type="button" data-scheme="light" aria-pressed="false">Light</button>
     </div>
-    <span class="keys">点击左侧 tab 跳转 · t 模式 · d/l 色板 · ←→ · f 整壳 · 1–0</span>
+    <span class="keys">f 整壳 · c chrome · k 键位 · t 模式 · d/l · ←→ · 1–5 积木 · 8/9/0 包对照</span>
   </header>
 
   <div class="shell">
@@ -559,7 +563,7 @@
       <!-- 6 chrome -->
       <section class="panel" id="panel-chrome" data-id="chrome">
         <h2>Chrome 语义</h2>
-        <p class="spec">user / muted / accent 唯一性</p>
+        <p class="spec">user / muted / accent 唯一性 · 产品主槽</p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-chrome="ok" aria-pressed="true">一处 accent ✓</button>
           <button type="button" class="chip-btn" data-chrome="bad" aria-pressed="false">多处 accent ✗</button>
@@ -567,6 +571,21 @@
           <button type="button" class="chip-btn" data-chrome="fg" aria-pressed="false">fg 语义</button>
         </div>
         <div class="stage" id="chrome-stage"></div>
+      </section>
+
+      <!-- keybindings (product) -->
+      <section class="panel" id="panel-keys" data-id="keys">
+        <h2>Keybindings · 产品键位</h2>
+        <p class="spec">
+          <a href="../keybindings.md">keybindings.md</a> · 旁注用括号完整和弦 · footer 不堆快捷键墙
+        </p>
+        <div class="ctl">
+          <button type="button" class="chip-btn" data-keys="idle" aria-pressed="true">idle</button>
+          <button type="button" class="chip-btn" data-keys="busy" aria-pressed="false">流中</button>
+          <button type="button" class="chip-btn" data-keys="tree" aria-pressed="false">树开</button>
+          <span class="hint">实现随 c480；此处为产品决议预览</span>
+        </div>
+        <div class="stage" id="keys-stage"></div>
       </section>
 
       <!-- 7 overlay -->
@@ -597,10 +616,9 @@
 
       <!-- 8 widgets: Select / Settings / Input / Loader narrow+empty -->
       <section class="panel" id="panel-widgets" data-id="widgets">
-        <h2>Widgets · 窄宽 / 空态</h2>
+        <h2>Widgets · 包对照（弱）</h2>
         <p class="spec">
-          SelectList / SettingsList / Input / Loader ·
-          运行时参考：<code>just demo-tui</code> → Ctrl+P → <strong>narrow-clamp</strong>
+          细节以 <code>just demo-tui</code>（产品活实验场）为准 · plate <strong>narrow-clamp</strong>
         </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-widget="empty" aria-pressed="true">空态</button>
@@ -636,9 +654,9 @@
 
       <!-- 9 atoms: TruncatedText / Panel / CancellableLoader -->
       <section class="panel" id="panel-atoms" data-id="atoms">
-        <h2>Atoms · TruncatedText / Panel / CancellableLoader</h2>
+        <h2>Atoms · 包对照（弱）</h2>
         <p class="spec">
-          库原子（已 port · 补运行时校验）·
+          TruncatedText / Panel / Loader · 行为真值在包测试与
           <code>just demo-tui</code> → Ctrl+P →
           <strong>truncated-text</strong> /
           <strong>panel</strong> /
@@ -680,9 +698,9 @@
 
       <!-- 0 ask: ChoicePrompt (c565) -->
       <section class="panel" id="panel-ask" data-id="ask">
-        <h2>Ask · ChoicePrompt</h2>
+        <h2>Ask · 包对照（弱）</h2>
         <p class="spec">
-          c565 · 单选（无 ●/○）/ 多选 [x] / Other+Tab / <strong>多题混搭</strong> · 内联槽 ·
+          ChoicePrompt · 细节以 demo / 包 playground 为准 · c565 ·
           <code>just demo-tui</code> → Ctrl+P →
           <strong>ask-single</strong> /
           <strong>ask-multi</strong> /
@@ -735,16 +753,17 @@
   <script>
     const SLOTS = [
       { id: "shell", label: "Full shell", key: "f" },
-      { id: "palette", label: "Palette", key: "1" },
+      { id: "chrome", label: "Chrome", key: "c" },
+      { id: "keys", label: "Keybindings", key: "k" },
+      { id: "layout", label: "Layout", key: "1" },
       { id: "tool", label: "Tool / Expandable", key: "2" },
       { id: "diff", label: "Diff", key: "3" },
       { id: "markdown", label: "Markdown", key: "4" },
-      { id: "layout", label: "Layout", key: "5" },
-      { id: "chrome", label: "Chrome", key: "6" },
-      { id: "overlay", label: "Overlay", key: "7" },
-      { id: "widgets", label: "Widgets narrow/empty", key: "8" },
-      { id: "atoms", label: "Atoms trunc/panel/loader", key: "9" },
-      { id: "ask", label: "Ask ChoicePrompt", key: "0" },
+      { id: "overlay", label: "Overlay", key: "5" },
+      { id: "palette", label: "Palette", key: "6" },
+      { id: "widgets", label: "· Widgets (包)", key: "8", secondary: true },
+      { id: "atoms", label: "· Atoms (包)", key: "9", secondary: true },
+      { id: "ask", label: "· Ask (包)", key: "0", secondary: true },
     ];
 
     const THINK_CHUNKS = [
@@ -771,6 +790,7 @@
       md: { streaming: false, line: 0 },
       layout: { busy: true, steer: false, tree: false },
       shell: { busy: true, queue: false, tree: false, tool: true },
+      keys: "idle",
       chrome: "ok",
       overlay: "shown",
       widget: "empty",
@@ -849,6 +869,7 @@
       SLOTS.forEach((s, i) => {
         const b = document.createElement("button");
         b.type = "button";
+        if (s.secondary) b.classList.add("secondary");
         b.innerHTML = `<span class="idx">${s.key}</span>${s.label}`;
         if (i === state.index) b.setAttribute("aria-current", "true");
         b.addEventListener("click", () => select(i, { jump: true }));
@@ -1235,6 +1256,33 @@
       });
     });
 
+    /* —— keybindings —— */
+    const KEYS = {
+      idle: `<div class="row fg-muted">idle · status 0 行</div>
+<div class="row"><span class="fg-on">Enter</span> <span class="fg-muted">提交</span> · <span class="fg-on">Ctrl+C</span> <span class="fg-muted">清输入 / 空则退出</span></div>
+<div class="row"><span class="fg-on">双 Esc</span> <span class="fg-muted">会话树</span> · <span class="fg-on">/</span> <span class="fg-muted">slash（c480）</span></div>
+<div class="row fg-muted">旁注例：(Ctrl+T) · 禁止 ^T 缩写</div>`,
+      busy: `<div class="row"><span class="fg-accent">⠋</span> <span class="fg-muted">Working</span></div>
+<div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">abort（清 steer，留 follow-up）</span></div>
+<div class="row"><span class="fg-on">Enter</span> <span class="fg-muted">steer</span> · <span class="fg-on">Alt+Enter</span> <span class="fg-muted">follow-up</span></div>
+<div class="row"><span class="fg-on">Ctrl+O</span> <span class="fg-muted">工具详情视口</span> · <span class="fg-on">Ctrl+T</span> <span class="fg-muted">thinking 折叠</span> · <span class="fg-on">Alt+E</span> <span class="fg-muted">块展开</span></div>`,
+      tree: `<div class="row fg-muted">Session tree · 替换 editor 槽</div>
+<div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">关树</span> · <span class="fg-on">Enter</span> <span class="fg-muted">travel</span> · <span class="fg-on">Shift+F</span> <span class="fg-muted">fork</span></div>
+<div class="row"><span class="fg-on">Ctrl+O/T/D/U/L/A</span> <span class="fg-muted">filter 循环（产品真树另 change；c491 stub 仅开/关/travel）</span></div>`,
+    };
+    function renderKeys() {
+      document.getElementById("keys-stage").innerHTML = KEYS[state.keys];
+      document.querySelectorAll("[data-keys]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.keys === state.keys));
+      });
+    }
+    document.querySelectorAll("[data-keys]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.keys = b.dataset.keys;
+        renderKeys();
+      });
+    });
+
     /* —— overlay —— */
     function renderOverlay() {
       const box = document.getElementById("ov-box");
@@ -1336,8 +1384,8 @@
       } else if (e.key === "ArrowRight" || e.key === "]") {
         select(state.index + 1);
         e.preventDefault();
-      } else if (/^[0-9fF]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        const k = e.key === "F" ? "f" : e.key;
+      } else if (/^[0-9fFcCkK]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        const k = e.key.toLowerCase();
         const idx = SLOTS.findIndex((s) => s.key === k);
         if (idx >= 0) select(idx);
         e.preventDefault();
@@ -1391,6 +1439,7 @@
     renderShell();
     renderLayout();
     renderChrome();
+    renderKeys();
     renderWidgets();
     renderAtoms();
     renderAsk();

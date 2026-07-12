@@ -15,9 +15,23 @@
 历史对齐源（行为参考，非逐文件镜像、非强制同步）：`../pi/packages/tui`。
 **刻意差异台账（整合时防覆盖）**：本包 [`PI_DELTAS.md`](PI_DELTAS.md)。进度笔记：根 `_HANDOFF.md`（非规范）。
 
+## 设计与实验场（单份 SSOT）
+
+本仓 **视觉 MUST 只有一份**：[`src/app/tui/DESIGN.md`](../../src/app/tui/DESIGN.md) + [`src/app/tui/design/`](../../src/app/tui/design/)。
+
+| 角色 | 路径 | 说明 |
+|---|---|---|
+| **SSOT** | app `DESIGN.md` + `design/*.md` | 色板 / 壳 / 键位 / 组件呈现 MUST |
+| **快速实验场** | `examples/agent_demo.rs`（`just demo-tui`） | **当作产品 TUI 的活 playground**：先在此试形状与交互，再接线 `src/app/tui` |
+| **浏览器静图** | app `design/playground/` | 人类审 token / 整壳；**不**在本包维护第二份 HTML design |
+| **运行时便利** | `Palette`（本包） | 对齐 DESIGN 的 Dark/Light 快照；组件仍只收闭包 |
+
+分发本库后：代码零依赖主 crate；文档与 `Palette` **继续引用** monorepo 的 app DESIGN 为活 SSOT（嵌入方也可自备 token 注入闭包）。**不要**在本包另起平行 design 文档树。
+
 ## 与 pi-tui 的刻意差异（不得回退成「必须完整 port」）
 
 目标：**差分渲染 + 可组合组件 + crossterm 原生输入**，并随 xylitol 本体迭代；产品壳与视觉在 `src/app/tui/`。上游 bugfix 可择优吸收，**默认不**为对齐而回退本表决议。
+
 ### 底层 / 输入
 
 | 主题 | pi-tui | xylitol-tui |
@@ -69,8 +83,8 @@
 | 改组件 / 引擎 / 测 TUI | `test-tui-harness` skill |
 | 扩展 Editor 补全触发（`/` `@` `$` `^`…） | `CompletionSource` + `set_completion_sources`（`src/completion.rs`）；勿在 `editor.rs` 硬编码触发符 |
 | 对照 / 合并 pi-tui 行为 | 先读 [`PI_DELTAS.md`](PI_DELTAS.md)；不得静默回退表中决议 |
-| 改产品 TUI 面 / UX | `write-tui` skill + `src/app/tui/AGENTS.md` + `src/app/tui/DESIGN.md` |
+| 改产品 TUI 面 / UX / 视觉 | `write-tui` + `src/app/tui/DESIGN.md`；先 `just demo-tui` 实验 |
+| 改色板 | 只改 app `DESIGN.md` → `sync_tokens.py` → 对齐本包 `Palette` |
 | 日常验证 | `cargo test -p xylitol-tui`；`just demo-tui`；`just qa`；E2E `just test-tui-e2e` |
-
 
 裁剪与待补 API 随接线演进，以代码与 `_HANDOFF.md` 为准，不在本文件维护进度清单。

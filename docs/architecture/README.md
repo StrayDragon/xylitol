@@ -2,7 +2,7 @@
 
 > **只写高维产品/业务思考与流程图。**
 > 具体类型、API、文件路径、crate 选型 → `llmanspec/changes/*/design.md` 与代码。
-> 规范边界：根 / `src` `AGENTS.md`。短索引：`_NOTE.md`。
+> 规范边界：根 / `src` `AGENTS.md`。短索引 / 交接：`_HANDOFF.md`。
 
 一个不熟悉代码的人应能从本目录回答：开箱有什么、后置什么、多 client 怎么共享体验、插话 / 事件 / 信任 / MCP 的产品规则是什么。
 
