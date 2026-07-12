@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ati18,"editor-slot-machine",产品 TUI MUST 以显式 EditorSlot（至少含 Editor 与 Tree stub；MAY 含 Plate/Settings/Choice）互斥替换 editor 槽；打开任一非 Editor 槽时 MUST 替换贴底 editor 区而非画到 scrollback 顶部；Esc MUST 优先关闭当前槽并还原 Editor；忙碌时 Esc MUST 仍 abort（ati10）且 MUST NOT 打开 Tree；c491 stub Tree MUST NOT 扩展为活树/filter/真 Driver travel。,null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  ati18,"open-tree-slot",产品 idle 且 editor 空,双 Esc 打开会话树,editor 槽被 Tree stub 替换且贴底可见
+  ati18,"esc-closes-slot",Tree stub 槽已打开,按 Esc,槽关闭且 Editor 还原
+  ati18,"busy-esc-aborts-not-tree",产品 busy 且 Tree 关闭,按 Esc,请求 abort 且不打开 Tree 槽
