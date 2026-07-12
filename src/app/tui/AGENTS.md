@@ -4,7 +4,7 @@
 
 ## 现状
 
-基于 `xylitol-tui` 的 **host 驱动 UI**（c460 host + **c465 bridge** + **c475 chrome** + **c476 live scrollback**）：`HostSession` + `UiRoot`（Palette / glyph / Markdown·Expandable·Diff / status / footer）+ `apply_xy_event`。下一 **c490** trust ChoicePrompt · **c480** slash / 键位 / abort。
+基于 `xylitol-tui` 的 **host 驱动 UI**（c465 bridge + **c475 chrome** + **c476 live scrollback** + **c490 trust gate**）。CLI 无参默认 TUI（c474）。下一 **c480** slash / 键位 / abort。
 
 **已开闸（2026-07-11）**：轨 A / 轨 P 已落地；c465 已归档（2026-07-12）。原子交互仍建议先在 `packages/xylitol-tui` `agent_demo` 验证再进本面。开闸记录 SSOT：`src/AGENTS.md`。
 

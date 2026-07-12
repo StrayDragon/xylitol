@@ -8,6 +8,7 @@ mod host;
 mod scrollback;
 mod terminal_guard;
 mod theme;
+mod trust_gate;
 mod ui_root;
 
 #[cfg(test)]
@@ -32,6 +33,7 @@ pub use self::host::{
     TOO_SMALL_HINT, display_cwd, is_too_small,
 };
 pub use self::theme::ChromeTheme;
+pub use self::trust_gate::{TrustGateResult, pending_trust_options, run_trust_gate_if_needed};
 
 /// Failures that MUST abort before raw-mode / host loop (CLI-level, no TTY corruption).
 #[derive(Debug, Clone, PartialEq, Eq)]

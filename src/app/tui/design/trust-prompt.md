@@ -1,7 +1,7 @@
 ---
 version: "alpha"
 name: "trust-prompt"
-description: "Draft — project trust prompt then yolo (c490)."
+description: "Project trust ChoicePrompt before bootstrap (c490)."
 tokens_from: "../DESIGN.md"
 components:
   trust-body:
@@ -10,12 +10,19 @@ components:
     textColor: "{colors.warning}"
 ---
 
-# Trust prompt（草稿）
+# Trust prompt
 
 > Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
+> **c490**：产品 `--tui` / 默认 TUI 入口在 bootstrap **之前**用包 `ChoicePrompt`（`Palette::dark().choice_prompt_theme()`）完成 Ask；**MUST NOT** `prompt_trust_options_stdio`。
 
-后置：项目信任提示（c490）。信任后 yolo（无逐工具审批 UI）。
+## MUST
 
-## 意向
+1. 需要 Ask 时：raw-mode 内单题 Single ChoicePrompt，选项来自 `TrustManager::get_trust_options`。
+2. Esc / cancel → deny（写入 Do not trust 若有持久 updates）。
+3. 提交后写 trust store，再 `bootstrap`（此时 store 已决，可加载 `.xylitol/`）。
+4. 信任后 yolo（无逐工具审批 UI）；hook 扩展点保留。
 
-短 overlay 确认（见 [`overlay.md`](./overlay.md)）；警告用 `{colors.warning}`。
+## 非目标
+
+- 大 overlay 仪表盘（走全屏/槽内 ChoicePrompt，非命令面板）
+- c575 overlay focus-restore
