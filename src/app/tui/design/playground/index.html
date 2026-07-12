@@ -222,6 +222,7 @@
     .md-h5 { color: var(--muted); font-weight: 600; }
     .md-code { color: var(--success); }
     .md-quote { color: var(--muted); font-style: italic; }
+    .md-quote-bar { color: var(--muted); font-style: normal; }
     .md-link { color: var(--accent); }
     /* c555 baseline: weight/style only (same fg as body — weak on many terminals) */
     .md-bold { font-weight: 700; color: var(--assistant); }
@@ -496,7 +497,8 @@
             <div class="row"><span class="md-strike">~~划掉~~</span></div>
             <div class="row md-th">Name  Age</div>
             <div class="row fg-assistant">alice  30</div>
-            <div class="row md-quote">引用：muted + italic</div>
+            <div class="row"><span class="md-quote-bar">│ </span><span class="md-quote">这是一段引用</span></div>
+            <div class="row"><span class="md-quote-bar">│ </span><span class="md-quote">可以有多行</span></div>
           </div>
         </div>
         <div class="md-grid" id="md-grid" style="margin-top:0.55rem">

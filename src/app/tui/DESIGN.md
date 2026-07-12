@@ -267,6 +267,6 @@ footer         1 行 dim（cwd · model · 可选 context%）
 - Don't 双栏、卡片、圆角、多字体、阴影。
 - Don't blit 弹层到内容绝对顶部。
 - Don't 截断历史冒充滚动。
-- Don't 为「好看」增加无法复制或复制后无意义的装饰字符（含 Markdown 盒线表、`│` 引用、代码 fence 墙、标题 `#` 前缀——见 [`design/markdown.md`](./design/markdown.md)）。
+- Don't 为「好看」增加无法复制或复制后无意义的装饰字符（含 Markdown 盒线表、代码 fence 墙、标题 `#` 前缀；引用 `│ ` gutter 为例外，见 [`design/markdown.md`](./design/markdown.md)）。
 - Don't 在子文档另立冲突色板 hex。
 - Don't 在未对齐本 DESIGN 前把 `src/app/tui` 空场景当成产品视觉完成态。

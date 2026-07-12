@@ -26,6 +26,8 @@ components:
     textColor: "{colors.success}"
   md-quote:
     textColor: "{colors.muted}"
+  md-quote-border:
+    textColor: "{colors.muted}"
   md-hr:
     textColor: "{colors.muted}"
 ---
@@ -40,7 +42,7 @@ components:
 ## 顶层原则
 
 1. **Copy = 可见字符**。多数粘贴会剥掉 ANSI；占上下文 token 的是字形，不是颜色/粗体/下划线。
-2. **层级与强调优先用 SGR**（色 / bold / underline / dim / italic / strikethrough），少加纯装饰字符（`│`、`┌─┐`、全宽 `─`、语言标签条等）。
+2. **层级与强调优先用 SGR**（色 / bold / underline / dim / italic / strikethrough），少加纯装饰字符（`┌─┐`、全宽 `─`、语言标签条等）。引用 gutter `│ ` 是结构标记，见下表。
 3. **信息不丢**。终端多半不能内联跳转 → 链接/图片 URL **必须明文**出现在可见文本里。
 4. **Round-trip 标记白名单**（用户决议，2026-07 修订）：
    - 行内代码：`` `code` `` — **保留**可见反引号（复制后仍可辨）
@@ -75,7 +77,7 @@ components:
 | 无序表 | `- ` + 正文 | 同左 | 必要标记；嵌套用空格缩进，**勿**树线 |
 | 有序表 | `1. ` … | 同左 | 保留原始序号（`preserve_ordered_list_markers`） |
 | 任务列表 | `- [ ]` / `- [x]` | 同左 | 扩展开启时；勿画框 |
-| 引用 | `{colors.muted}` + italic（`md-quote`） | 纯引用正文 | **MUST NOT** `│` / 竖线装饰 |
+| 引用 | `{colors.muted}` + italic（`md-quote`）；左 gutter `│ `（`quote_border`，同 muted） | `│ ` + 引用正文 | 竖线是引用结构标记（非盒线墙）；**MUST NOT** 嵌套 `theme.italic`（warning）以免发黄 |
 | 代码块 | 语法高亮（SGR）；可选 2 空格缩进 | 纯代码行 | **MUST NOT** fence、语言标签条、行号墙、边框 |
 | 表格 | **列宽空格对齐（方案 A）**；表头 **accent + bold + underline** | 对齐纯文本，**无** `\|`、**无**盒线 | 见下「表格」 |
 | 分隔线 | 短 muted 线（约 4–8×`─`）或单空行 | 少数字符或无 | **MUST NOT** 拉满终端宽的装饰线 |
@@ -118,7 +120,7 @@ bob       28  design
 2. 链接 / 图片：**MUST** 渲染为 `text (url)` / `alt (url)`；**MUST NOT** 只留不可选中的 OSC 或丢弃 URL。
 3. 代码块：语法高亮即可；**MUST NOT** 边框、`` ``` `` fence、语言标签条、行号墙。
 4. 行内：粗体/斜体 **MUST** 为色 + SGR、**MUST NOT** 输出可见 `**`/`*`；行内代码 / 删除线 **MUST** 保留 `` ` `` / `~~`。
-5. 引用：**MUST NOT** 竖线或盒线装饰；仅用 quote 色 + italic。
+5. 引用：**MUST** 每行 `│ ` gutter（`quote_border`，与正文同 `{colors.muted}`）+ quote 色 + italic；**MUST NOT** 经 `theme.italic` 再套 warning 色；**MUST NOT** 盒线墙（`┌─┐` 等）。
 6. 表格：方案 A（空格对齐 + 表头 underline + accent）；**MUST NOT** 盒线表；**MUST NOT** 为装饰输出 `\|`。
 7. 列表：`- ` / `1. `；嵌套空格缩进；**MUST NOT** `│`/`├`/`└` 树线。
 8. HR：短线或空行；**MUST NOT** 近全宽装饰线墙。
