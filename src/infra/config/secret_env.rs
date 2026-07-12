@@ -1,18 +1,19 @@
-//! Load `secret.env` dotenv files into the process environment.
+//! Collect + inject `secret.env` dotenv files (runtime-config r5).
 //!
-//! Spec `runtime-config` r5: each config location may ship a `secret.env`.
-//! We parse KEY=VALUE lines and inject into `std::env` for keys that are
-//! **not already set** (OS / shell always wins). Project overlays global.
+//! Global then project; project overlays global. OS/shell env always wins
+//! for `std::env` injection. The collected map is also the `secret.*`
+//! namespace for YAML template rendering (`{{ secret.KEY }}`).
 
 use std::collections::HashMap;
 use std::path::Path;
 
 use super::paths::ConfigPaths;
 
-/// Load global then project `secret.env`, injecting missing keys into the process env.
-///
-/// Returns how many keys were newly set (for tracing / tests).
-pub(crate) fn load_secret_env_files(paths: &ConfigPaths) -> usize {
+/// Secrets loaded from dotenv files (global ← project overlay).
+pub(crate) type SecretMap = HashMap<String, String>;
+
+/// Read `secret.env` maps from config locations (does not touch process env).
+pub(crate) fn collect_secret_map(paths: &ConfigPaths) -> SecretMap {
     let mut map = HashMap::new();
 
     let global = paths.global_dir.join("secret.env");
@@ -27,10 +28,18 @@ pub(crate) fn load_secret_env_files(paths: &ConfigPaths) -> usize {
         }
     }
 
-    inject_missing_env(&map)
+    map
 }
 
-/// Parse a dotenv file into `map` (later keys overwrite earlier ones in the map).
+/// Collect secrets and inject missing keys into the process environment.
+///
+/// Returns `(secret_map, newly_injected_count)`.
+pub(crate) fn load_secret_env_files(paths: &ConfigPaths) -> (SecretMap, usize) {
+    let map = collect_secret_map(paths);
+    let injected = inject_missing_env(&map);
+    (map, injected)
+}
+
 fn merge_dotenv_file(path: &Path, map: &mut HashMap<String, String>) {
     let Ok(raw) = std::fs::read_to_string(path) else {
         return;
@@ -40,15 +49,13 @@ fn merge_dotenv_file(path: &Path, map: &mut HashMap<String, String>) {
     }
 }
 
-/// Inject map entries into the process environment when the key is unset.
 fn inject_missing_env(map: &HashMap<String, String>) -> usize {
     let mut set = 0;
     for (key, value) in map {
         if std::env::var_os(key).is_some() {
             continue;
         }
-        // SAFETY: single-threaded at CLI startup before worker threads; values
-        // are API keys / config, not untrusted concurrent mutation.
+        // SAFETY: single-threaded at CLI startup before worker threads.
         unsafe {
             std::env::set_var(key, value);
         }
@@ -58,8 +65,6 @@ fn inject_missing_env(map: &HashMap<String, String>) -> usize {
 }
 
 /// Minimal dotenv parser: `#` comments, blank lines, `KEY=VALUE`, optional quotes.
-///
-/// Does **not** expand `$VAR` inside values (keep predictable; shell can set those).
 pub(crate) fn parse_dotenv(raw: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for line in raw.lines() {
@@ -97,7 +102,6 @@ mod tests {
     use std::fs;
     use std::sync::Mutex;
 
-    /// Serialize env-mutating tests — `set_var` is process-global.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
@@ -164,7 +168,9 @@ mod tests {
             project_dir: Some(proj),
             agents_dir: None,
         };
-        assert_eq!(load_secret_env_files(&paths), 1);
+        let (map, injected) = load_secret_env_files(&paths);
+        assert_eq!(injected, 1);
+        assert_eq!(map.get(key).map(String::as_str), Some("loaded-ok"));
         assert_eq!(std::env::var(key).unwrap(), "loaded-ok");
         unsafe {
             std::env::remove_var(key);
