@@ -6,9 +6,8 @@ mod bridge;
 mod glyphs;
 mod host;
 mod scrollback;
-mod terminal_guard;
+pub(crate) mod terminal_guard;
 mod theme;
-mod trust_gate;
 mod ui_root;
 
 #[cfg(test)]
@@ -19,7 +18,7 @@ use std::time::Duration;
 use crossterm::event::EventStream as CrosstermEventStream;
 use crossterm::event::{Event, KeyEventKind};
 use futures::StreamExt;
-use xylitol_tui::{CrosstermTerminal, InputEvent, Terminal};
+use xylitol_tui::{CrosstermTerminal, InputEvent};
 
 use crate::app::core::driver::{Driver, EventStream as AgentEventStream};
 
@@ -33,7 +32,6 @@ pub use self::host::{
     TOO_SMALL_HINT, display_cwd, is_too_small,
 };
 pub use self::theme::ChromeTheme;
-pub use self::trust_gate::{TrustGateResult, pending_trust_options, run_trust_gate_if_needed};
 
 /// Failures that MUST abort before raw-mode / host loop (CLI-level, no TTY corruption).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -175,7 +173,7 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
                     }
                     Some(Ok(_)) => {}
                     Some(Err(e)) => {
-                        session.tui.terminal.stop();
+                        session.tui.finish_inline();
                         return Err(format!("input error: {e}"));
                     }
                     None => {
@@ -204,7 +202,7 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
         }
     }
 
-    session.tui.terminal.stop();
+    session.tui.finish_inline();
     tracing::info!(target: "xylitol::tui", "product TUI host stopped");
     Ok(())
 }

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use crate::components::input::Input;
 use crate::keybindings::with_keybindings;
-use crate::keys::printable_from_key_event;
+use crate::keys::{matches_key_event, printable_from_key_event};
 use crate::tui::{Component, InputEvent};
 use crate::utils::{truncate_to_width, visible_width};
 use crossterm::event::KeyCode;
@@ -397,8 +397,27 @@ impl Component for ChoicePrompt {
             ChoiceMode::Multi => "多选",
         };
         let muted_hint = (self.theme.muted)(&format!("· {mode_hint}"));
-        let prompt_line = format!("{prompt}  {muted_hint}");
-        lines.push(Self::fit(&(self.theme.prompt)(&prompt_line), width));
+        // Multi-line prompts (e.g. trust body) MUST stay left-aligned as
+        // separate rows — never concatenate into one logical line (width/ANSI
+        // fit then misplaces path / help / · 单选).
+        let prompt_rows: Vec<&str> = prompt.lines().collect();
+        if prompt_rows.is_empty() {
+            lines.push(Self::fit(&(self.theme.muted)(&muted_hint), width));
+        } else {
+            for (i, row) in prompt_rows.iter().enumerate() {
+                if row.is_empty() {
+                    lines.push(String::new());
+                    continue;
+                }
+                let painted = if i == 0 {
+                    let head = format!("{row}  {muted_hint}");
+                    (self.theme.prompt)(&head)
+                } else {
+                    (self.theme.prompt)(row)
+                };
+                lines.push(Self::fit(&painted, width));
+            }
+        }
 
         for (i, opt) in options.iter().enumerate() {
             let selected = self.cursor == i;
@@ -483,9 +502,11 @@ impl Component for ChoicePrompt {
             }
         }
 
-        let hint = match mode {
-            ChoiceMode::Single => " ↑↓ · Enter · Tab→Other · Esc",
-            ChoiceMode::Multi => " ↑↓ · Space · Enter · Tab→Other · Esc",
+        let hint = match (mode, allow_other) {
+            (ChoiceMode::Single, true) => " ↑↓ · Enter · Tab→Other · Esc/Ctrl+C",
+            (ChoiceMode::Single, false) => " ↑↓ · Enter · Esc/Ctrl+C cancel",
+            (ChoiceMode::Multi, true) => " ↑↓ · Space · Enter · Tab→Other · Esc/Ctrl+C",
+            (ChoiceMode::Multi, false) => " ↑↓ · Space · Enter · Esc/Ctrl+C cancel",
         };
         lines.push(Self::fit(&(self.theme.hint)(hint), width));
         lines
@@ -506,7 +527,8 @@ impl Component for ChoicePrompt {
         let confirm = with_keybindings(|kb| kb.matches_event(key, "tui.select.confirm"))
             || matches!(key.code, KeyCode::Enter);
         let cancel = with_keybindings(|kb| kb.matches_event(key, "tui.select.cancel"))
-            || matches!(key.code, KeyCode::Esc);
+            || matches!(key.code, KeyCode::Esc)
+            || matches_key_event(key, "ctrl+c");
         let is_tab = matches!(key.code, KeyCode::Tab);
         let is_space = matches!(key.code, KeyCode::Char(' '));
         let left = matches!(key.code, KeyCode::Left);
@@ -756,6 +778,41 @@ mod tests {
         let r = result.borrow().clone().expect("done");
         assert!(r.cancelled);
         assert!(r.answers.is_empty());
+    }
+
+    #[test]
+    fn multiline_prompt_renders_as_separate_rows() {
+        let mut p = ChoicePrompt::new(
+            vec![ChoiceQuestion {
+                id: "trust".into(),
+                label: "Trust".into(),
+                prompt: "Trust project folder?\n/home/user/proj\n\nThis allows load.".into(),
+                mode: ChoiceMode::Single,
+                options: vec![ChoiceOption::new("t", "Trust")],
+                allow_other: false,
+            }],
+            ChoicePromptTheme::default(),
+            |_| {},
+        );
+        let lines = p.render(80);
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("Trust project folder?"),
+            "first prompt row missing: {joined}"
+        );
+        assert!(
+            joined.contains("/home/user/proj"),
+            "path row missing: {joined}"
+        );
+        assert!(
+            !joined.contains("Trust project folder?\n/home/user/proj  ·"),
+            "must not glue path onto mode-hint line: {joined}"
+        );
+        // Path should appear as its own rendered row (not only inside a wrap).
+        assert!(
+            lines.iter().any(|l| l.contains("/home/user/proj")),
+            "path must be its own line: {lines:?}"
+        );
     }
 
     #[test]
