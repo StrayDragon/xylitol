@@ -75,7 +75,8 @@ mod tests {
                 },
                 message: json!({
                     "role": "user",
-                    "parts": [{ "type": "text", "text": text }],
+                    "content": [text],
+                    "timestamp": 0u64,
                 }),
             }),
             children: Vec::new(),
