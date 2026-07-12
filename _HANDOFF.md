@@ -1,6 +1,6 @@
 # _HANDOFF — 交接板 + 短索引（非规范）
 
-> 最后更新：2026-07-12（DESIGN 单份 SSOT；agent_demo=产品活实验场；轨 B 下一 c475/c480）
+> 最后更新：2026-07-12（c580 统一 just qa / qa-e2e；轨 B 下一 c475/c480）
 > 分支语境：`feat/tui-dev`（相对 `main` 超前）
 > **临时交接 / 进度指针，不是 SSOT。** 稳定边界：各层 `AGENTS.md`、`docs/architecture/`、`llmanspec/`。
 > 原 `_NOTE.md` 内容已并入本文；`_NOTE.md` 仅作跳转 stub。
@@ -16,7 +16,9 @@
 | 队列运行时实现 | archive **c525** `design.md` |
 | XyEvent 防宽表实现 | archive **c520**；产品摘要见架构目录 |
 | TUI bridge（轨 B · 已归档） | archive **`2026-07-12-c465-add-app-tui-bridge`** |
-| **视觉 MUST（唯一）** | `src/app/tui/DESIGN.md` + `design/*.md` |
+| 日常满闸 | **`just qa`**（fmt+clippy+test+test-tui+doc+tokens+prek） |
+| 真终端满闸 | **`just qa-e2e`**（qa + PTY/tmux 第 5 层） |
+| 产品视觉 MUST（唯一） | `src/app/tui/DESIGN.md` + `design/*.md` |
 | **产品 TUI 活实验场** | `just demo-tui`（`packages/xylitol-tui/examples/agent_demo.rs`） |
 | 浏览器静图 | `src/app/tui/design/playground/`（`sync_tokens.py`） |
 | 包边界 / vs pi | `packages/xylitol-tui/AGENTS.md`、`PI_DELTAS.md` |

@@ -86,6 +86,6 @@
 | 改产品 TUI 面 / UX / 视觉 | `write-tui` + `src/app/tui/DESIGN.md`；先 `just demo-tui` 实验 |
 | 改色板 | 只改 app `DESIGN.md` → `just sync-tui-tokens` → 对齐 `Palette`；`just check-tui-tokens` |
 | 打开 DESIGN 浏览器静图 | `just open-design-playground`（xdg-open） |
-| 日常验证 | `cargo test -p xylitol-tui`；`just demo-tui`；`just qa`；E2E `just test-tui-e2e` |
+| 日常验证 | `just test-tui`；`just qa`；真终端 `just qa-e2e` / `just test-tui-e2e` |
 
 裁剪与待补 API 随接线演进，以代码与 `_HANDOFF.md` 为准，不在本文件维护进度清单。
