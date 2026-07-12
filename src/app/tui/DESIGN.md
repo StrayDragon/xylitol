@@ -136,7 +136,7 @@ components:
 
 情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
 
-参考实现锚点：`packages/xylitol-tui` 的 **`agent_demo`（`just demo-tui`）= 产品 TUI 活实验场**；浏览器静图见 [`design/playground/`](./design/playground/)。当前 `src/app/tui`：c465 bridge + **c475 chrome** 已接；**c476** live 富渲染 / **c490** trust ChoicePrompt / **c480** 键位为下一刀。
+参考实现锚点：`packages/xylitol-tui` 的 **`agent_demo`（`just demo-tui`）= 产品 TUI 活实验场**；浏览器静图见 [`design/playground/`](./design/playground/)。当前 `src/app/tui`：c465–c482 主路径已接；**下一刀 = c485 垂直切片**（合成 harness + 产品 PTY Fake smoke）。
 
 ## Track B 落地切片（设计闸）
 
@@ -147,7 +147,7 @@ components:
 | **c480** input | Editor 操作区；`/exit` `/model`；steer / follow-up / Alt+Up dequeue / abort / Ctrl+C；双 Esc → **c491 stub**；队列 chrome = pi `Steering:`/`Follow-up:`（非 scrollback 墙）；注入后上行 `UiEntry::User` | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) · [`queue-steer`](./design/queue-steer.md) · [`session-tree`](./design/session-tree.md) |
 | **c481** history | 同一 TUI session：idle/steer/follow-up 写入 Editor 发送历史；↑/↓ 召回（包 ed05） | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) |
 | **c490** trust | Ask 时 **ChoicePrompt** 换 editor 槽（禁 stdio 数字菜单） | [`trust-prompt`](./design/trust-prompt.md) |
-| **c485** | 可聊一轮 E2E（依赖 chrome + input + bridge） | — |
+| **c485** vertical slice | 合成 harness H1–H10 + **产品 PTY Fake smoke**（Hello from fake provider → `/exit`）；轨 B MVP 归档闸 | `llmanspec/changes/c485-add-app-tui-vertical-slice/` |
 
 产品 MVP **固定暗色**；**MUST NOT** 默认开 theme auto / `/theme`（demo 可保留）。
 

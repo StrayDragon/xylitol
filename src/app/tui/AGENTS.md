@@ -4,7 +4,7 @@
 
 ## 现状
 
-基于 `xylitol-tui` 的 **host 驱动 UI**（c465 bridge + **c475 chrome** + **c476 live scrollback** + **c490 trust gate** + **c480 input**）。CLI 无参默认 TUI（c474）。
+基于 `xylitol-tui` 的 **host 驱动 UI**（c465 bridge + **c475 chrome** + **c476 live scrollback** + **c490 trust gate** + **c480/c481 input** + **c482 abort-resume**）。CLI 无参默认 TUI（c474）。
 
 **已开闸（2026-07-11）**：轨 A / 轨 P 已落地；c465 已归档（2026-07-12）。原子交互仍建议先在 `packages/xylitol-tui` `agent_demo` 验证再进本面。开闸记录 SSOT：`src/AGENTS.md`。
 
@@ -48,7 +48,7 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 
 ## 硬约束
 
-- **产品面**：已开闸；c465 已归档；下一 **c475 chrome / c480 input → c485**。c491 假树保持 stub（见上表）；真 travel 另 change。
+- **产品面**：已开闸；下一闸 **c485 垂直切片**（合成 harness + 产品 PTY Fake smoke）。c491 假树保持 stub（见上表）；真 travel 另 change。
 - 渲染/通用组件只用 `xylitol_tui`；禁止在本目录再实现差分引擎或通用 Editor/Markdown。
 - **需要底层 TUI 能力时**：先到 `packages/xylitol-tui` 查是否已有或可扩展；缺能力在包内补，再由本面接线。
 - 产品路径 **host 驱动**同步引擎；异步事件合流在本面；勿调 `TUI::start()`（demo 专用）。
