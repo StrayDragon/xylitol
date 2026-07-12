@@ -56,14 +56,19 @@ check-tui-tokens:
 open-design-playground:
     xdg-open src/app/tui/design/playground/index.html
 
-# Package TUI tests with default features (includes highlight).
+# Package TUI tests with default features (includes highlight) — layers 1–4.
 test-tui:
     cargo test -p xylitol-tui
 
-# Run all checks (qa = fmt-check + lint + test + doc-check + design tokens).
-qa: fmt-check lint test doc-check check-tui-tokens
+# Unified daily / PR gate (no TUI layer-5 E2E — needs PTY/tmux).
+# Order: fmt → clippy → workspace tests → package TUI harness → docs → DESIGN tokens → prek.
+qa: fmt-check lint test test-tui doc-check check-tui-tokens
     @echo "All checks passed!"
     prek run --all-files
+
+# Full gate including TUI layer-5 E2E (portable-pty + tmux; #[ignore]).
+qa-e2e: qa test-tui-e2e
+    @echo "qa-e2e passed!"
 
 alias check := qa
 alias ci := qa
