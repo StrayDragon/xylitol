@@ -115,13 +115,13 @@ paused：c470 Codex TranscriptView（不做）
 | **c493** compaction/retry | purpose-draft · 后置 | Compaction / AutoRetry 的 status·scrollback 呈现 |
 | **c575** overlay restore | purpose-draft · 包侧可选 | Overlay 完整 focus-restore（不阻塞轨 B） |
 
-**建议顺序**：先在 **`just demo-tui`（活实验场）+ app DESIGN/playground** 钉 c475/c480 → 升格 apply → c485。
+**建议顺序**：DESIGN（已钉 c475/c480 MUST + playground）→ 升格 apply **c475** → **c480** → **c485**。
 
-### 下一工作焦点（待确认）
+### 下一工作焦点
 
-1. **DESIGN 提前设计**：在 app MUST + playground 主槽钉 chrome/键位；形状在 `agent_demo` 试。
-2. 文档/收口改动手验后 **commit**。
-3. 升格 `c475` / `c480` 并 apply。
+1. 升格 `c475-add-app-tui-chrome`（specs/tasks）并 apply。
+2. 升格 `c480-add-app-tui-input` 并 apply。
+3. `just open-design-playground` / `just demo-tui` 对照验收。
 
 ---
 

@@ -364,11 +364,10 @@
 
       <!-- 0 full product shell -->
       <section class="panel is-active" id="panel-shell" data-id="shell">
-        <h2>Full shell · 产品整壳</h2>
+        <h2>Full shell · 产品整壳（c475+c480）</h2>
         <p class="spec">
-          整页合成（transcript → status 0|1 → editor|tree → footer）·
-          <a href="../../DESIGN.md">DESIGN.md</a> Layout ·
-          非 Codex TranscriptView
+          transcript → status 0|1 → editor|tree → footer <code>cwd · model</code> ·
+          <a href="../../DESIGN.md">DESIGN.md</a> Layout · 活实验场 <code>just demo-tui</code>
         </p>
         <div class="ctl">
           <button type="button" id="shell-busy" aria-pressed="true">busy</button>
@@ -384,7 +383,7 @@
             <span class="spin" id="shell-spin">⠋</span> Working
           </div>
           <div class="term-editor" id="shell-editor"></div>
-          <div class="term-footer" id="shell-footer">~/xylitol · ornith · enter submit · double Esc tree</div>
+          <div class="term-footer" id="shell-footer">~/xylitol · ornith</div>
         </div>
       </section>
 
@@ -562,28 +561,36 @@
 
       <!-- 6 chrome -->
       <section class="panel" id="panel-chrome" data-id="chrome">
-        <h2>Chrome 语义</h2>
-        <p class="spec">user / muted / accent 唯一性 · 产品主槽</p>
+        <h2>Chrome · c475</h2>
+        <p class="spec">
+          <a href="../theme-tokens.md">theme-tokens</a> ·
+          <a href="../status.md">status</a> ·
+          <a href="../footer.md">footer</a> ·
+          <a href="../glyphs.md">glyphs</a> · 固定暗色 · 一处 accent
+        </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-chrome="ok" aria-pressed="true">一处 accent ✓</button>
           <button type="button" class="chip-btn" data-chrome="bad" aria-pressed="false">多处 accent ✗</button>
-          <button type="button" class="chip-btn" data-chrome="user" aria-pressed="false">user 行</button>
-          <button type="button" class="chip-btn" data-chrome="fg" aria-pressed="false">fg 语义</button>
+          <button type="button" class="chip-btn" data-chrome="idle" aria-pressed="false">idle · status 0</button>
+          <button type="button" class="chip-btn" data-chrome="footer" aria-pressed="false">footer MVP</button>
+          <button type="button" class="chip-btn" data-chrome="glyph" aria-pressed="false">glyph 档</button>
         </div>
         <div class="stage" id="chrome-stage"></div>
       </section>
 
       <!-- keybindings (product) -->
       <section class="panel" id="panel-keys" data-id="keys">
-        <h2>Keybindings · 产品键位</h2>
+        <h2>Keybindings · c480 MVP</h2>
         <p class="spec">
-          <a href="../keybindings.md">keybindings.md</a> · 旁注用括号完整和弦 · footer 不堆快捷键墙
+          <a href="../keybindings.md">keybindings.md</a> ·
+          <a href="../editor.md">editor.md</a> · 旁注括号和弦 · footer 不堆快捷键墙
         </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-keys="idle" aria-pressed="true">idle</button>
           <button type="button" class="chip-btn" data-keys="busy" aria-pressed="false">流中</button>
-          <button type="button" class="chip-btn" data-keys="tree" aria-pressed="false">树开</button>
-          <span class="hint">实现随 c480；此处为产品决议预览</span>
+          <button type="button" class="chip-btn" data-keys="slash" aria-pressed="false">slash</button>
+          <button type="button" class="chip-btn" data-keys="tree" aria-pressed="false">树 stub</button>
+          <span class="hint">树开 filter/fork 勿在 c491 stub 上扩</span>
         </div>
         <div class="stage" id="keys-stage"></div>
       </section>
@@ -1169,8 +1176,7 @@
 
       let footer = "~/xylitol · ornith";
       if (S.queue) footer = "q:s1|f0 · " + footer;
-      if (S.busy) footer += " · Working";
-      else footer += " · enter submit · double Esc tree";
+      // footer MUST NOT carry Working or key-chord walls (status / /help)
       document.getElementById("shell-footer").textContent = footer;
     }
     document.getElementById("shell-busy").addEventListener("click", () => {
@@ -1236,12 +1242,20 @@
 
     /* —— chrome —— */
     const CHROME = {
-      ok: `<div class="row"><span class="fg-accent">⠋</span> <span class="fg-muted">working · 仅此处 accent</span></div>
-           <div class="row fg-muted">footer · muted 边框</div>`,
-      bad: `<div class="row accent-bad"><span class="spin-a">⠋</span> <span class="fg-muted">working</span> &nbsp; <span class="spin-b">●</span> <span class="fg-accent">焦点边框也抢戏</span></div>
-            <div class="row fg-muted">✗ 一屏多处 accent — DESIGN 禁止</div>`,
-      user: `<div class="row bg-user"><span class="fg-user">❯</span> <span class="fg-on">user-message-bg</span></div>`,
-      fg: `<div class="row"><span class="fg-success">success</span>  <span class="fg-warning">warning</span>  <span class="fg-error">error</span> <span class="fg-muted">· 少用</span></div>`,
+      ok: `<div class="row"><span class="fg-accent">⠋</span> <span class="fg-muted">Working · 仅 spinner 用 accent</span></div>
+<div class="row fg-muted">~/xylitol · ornith</div>
+<div class="row fg-muted" style="font-size:11px">c475 · Palette::dark · 一处 accent</div>`,
+      bad: `<div class="row accent-bad"><span class="spin-a">⠋</span> <span class="fg-muted">working</span> &nbsp; <span class="spin-b">●</span> <span class="fg-accent">边框也抢戏</span></div>
+<div class="row fg-muted">✗ 一屏多处 accent — DESIGN 禁止</div>`,
+      idle: `<div class="row fg-assistant">idle · 无 status 行（高度 0）</div>
+<div class="row fg-muted">~/xylitol · ornith</div>
+<div class="row fg-muted" style="font-size:11px">status.md · MUST NOT 空转 spinner</div>`,
+      footer: `<div class="row fg-muted">~/xylitol · ornith</div>
+<div class="row fg-muted">q:s1|f0 · ~/proj · model-x</div>
+<div class="row fg-muted" style="font-size:11px">MVP = cwd · model · 可选 q: 前缀 · 无键位墙 · Working 不进 footer</div>`,
+      glyph: `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">unicode 默认</span> · <span class="fg-tool">⚙</span> tool</div>
+<div class="row"><span class="fg-user">&gt;</span> <span class="fg-on">ascii 档</span> · <span class="fg-tool">*</span> tool</div>
+<div class="row fg-muted" style="font-size:11px">glyphs.md · 不探测字体 · 产品注入</div>`,
     };
     function renderChrome() {
       document.getElementById("chrome-stage").innerHTML = CHROME[state.chrome];
@@ -1258,17 +1272,21 @@
 
     /* —— keybindings —— */
     const KEYS = {
-      idle: `<div class="row fg-muted">idle · status 0 行</div>
+      idle: `<div class="row fg-muted">c480 MVP · idle · status 0 行</div>
 <div class="row"><span class="fg-on">Enter</span> <span class="fg-muted">提交</span> · <span class="fg-on">Ctrl+C</span> <span class="fg-muted">清输入 / 空则退出</span></div>
-<div class="row"><span class="fg-on">双 Esc</span> <span class="fg-muted">会话树</span> · <span class="fg-on">/</span> <span class="fg-muted">slash（c480）</span></div>
-<div class="row fg-muted">旁注例：(Ctrl+T) · 禁止 ^T 缩写</div>`,
-      busy: `<div class="row"><span class="fg-accent">⠋</span> <span class="fg-muted">Working</span></div>
+<div class="row"><span class="fg-on">双 Esc</span> <span class="fg-muted">c491 stub 树</span> · <span class="fg-on">/</span> <span class="fg-muted">slash 补全</span></div>
+<div class="row fg-muted">旁注例：(Ctrl+T) · 禁止 ^T · footer 不堆键</div>`,
+      busy: `<div class="row"><span class="fg-accent">⠋</span> <span class="fg-muted">Working（status 行）</span></div>
 <div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">abort（清 steer，留 follow-up）</span></div>
 <div class="row"><span class="fg-on">Enter</span> <span class="fg-muted">steer</span> · <span class="fg-on">Alt+Enter</span> <span class="fg-muted">follow-up</span></div>
-<div class="row"><span class="fg-on">Ctrl+O</span> <span class="fg-muted">工具详情视口</span> · <span class="fg-on">Ctrl+T</span> <span class="fg-muted">thinking 折叠</span> · <span class="fg-on">Alt+E</span> <span class="fg-muted">块展开</span></div>`,
-      tree: `<div class="row fg-muted">Session tree · 替换 editor 槽</div>
-<div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">关树</span> · <span class="fg-on">Enter</span> <span class="fg-muted">travel</span> · <span class="fg-on">Shift+F</span> <span class="fg-muted">fork</span></div>
-<div class="row"><span class="fg-on">Ctrl+O/T/D/U/L/A</span> <span class="fg-muted">filter 循环（产品真树另 change；c491 stub 仅开/关/travel）</span></div>`,
+<div class="row"><span class="fg-on">Ctrl+O</span> <span class="fg-muted">工具视口</span> · <span class="fg-on">Ctrl+T</span> <span class="fg-muted">thinking</span> · <span class="fg-on">Alt+E</span> <span class="fg-muted">块展开</span></div>`,
+      slash: `<div class="row fg-muted">slash MVP · 替换 editor 槽或行内补全</div>
+<div class="row"><span class="fg-on">/exit</span> <span class="fg-muted">退出 + restore</span></div>
+<div class="row"><span class="fg-on">/model</span> <span class="fg-muted">选模型（极简列表即可）</span></div>
+<div class="row fg-muted">未知命令 → 短错误 · 不崩 · CompletionSource</div>`,
+      tree: `<div class="row fg-muted">c491 stub · 替换 editor 槽</div>
+<div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">关树</span> · <span class="fg-on">Enter</span> <span class="fg-muted">travel → id</span></div>
+<div class="row fg-muted">✗ stub 上禁 filter / fork / 真 Driver travel（另 change）</div>`,
     };
     function renderKeys() {
       document.getElementById("keys-stage").innerHTML = KEYS[state.keys];
