@@ -26,10 +26,10 @@ use xylitol_tui::{
 use super::bridge::{UiEntry, UiModel};
 use super::glyphs::GlyphSet;
 use super::host::{LayoutMode, TOO_SMALL_HINT};
+use super::scrollback::{ScrollbackFold, render_scrollback};
 use super::theme::ChromeTheme;
 
 /// Fake session tree for the **c491 stub only** (frozen).
-/// Real graph / Driver travel waits for demo-first gate open — see `AGENTS.md`.
 fn sample_session_tree() -> Vec<TreeNode> {
     vec![
         TreeNode::new("root", "session · product").with_children([
@@ -60,9 +60,10 @@ fn product_tree_selector(active_id: &str) -> TreeSelector {
     )
 }
 
-/// Root UI: transcript + optional status + bordered editor|tree + footer.
+/// Root UI: live scrollback + optional status + bordered editor|tree + footer.
 pub struct UiRoot {
-    transcript: Text,
+    ui_model: UiModel,
+    fold: ScrollbackFold,
     status: Text,
     editor: Editor,
     footer: Text,
@@ -80,12 +81,16 @@ impl UiRoot {
         let theme = ChromeTheme::product_dark();
         let mut editor = Editor::new(
             theme.editor_theme(),
-            EditorOptions::default(),
+            EditorOptions {
+                padding_x: 1,
+                ..EditorOptions::default()
+            },
             Box::new(SystemClock),
         );
         editor.set_focused(true);
         Self {
-            transcript: Text::new("(empty — submit with Enter)".into(), 0, 0),
+            ui_model: UiModel::new(),
+            fold: ScrollbackFold::default(),
             status: Text::new(String::new(), 0, 0),
             editor,
             footer: Text::new(String::new(), 0, 0),
@@ -106,7 +111,6 @@ impl UiRoot {
         self.refresh_footer_from_queue(0, 0);
     }
 
-    /// Override glyph set (tests / harness). Default comes from env.
     pub fn set_glyphs(&mut self, glyphs: GlyphSet) {
         self.glyphs = glyphs;
     }
@@ -115,12 +119,14 @@ impl UiRoot {
         self.glyphs
     }
 
-    /// Current editor text (harness / listeners).
+    pub fn fold(&self) -> ScrollbackFold {
+        self.fold
+    }
+
     pub fn editor_text(&self) -> String {
         self.editor.get_text()
     }
 
-    /// Replace editor text (harness).
     pub fn set_editor_text(&mut self, text: impl Into<String>) {
         self.editor.set_text(text.into());
     }
@@ -129,7 +135,6 @@ impl UiRoot {
         self.tree_open
     }
 
-    /// Ctrl+C: clear editor when non-empty; otherwise signal quit via `quit_flag`.
     pub fn on_ctrl_c(&mut self, quit_flag: &AtomicBool) {
         if self.tree_open {
             self.close_session_tree();
@@ -142,7 +147,6 @@ impl UiRoot {
         quit_flag.store(true, Ordering::SeqCst);
     }
 
-    /// Esc: close tree; or empty-editor double-Esc opens tree. Returns true if consumed.
     pub fn on_escape(&mut self) -> bool {
         if self.tree_open {
             self.close_session_tree();
@@ -158,7 +162,6 @@ impl UiRoot {
                 return true;
             }
             self.last_esc_at = Some(now);
-            // First Esc alone: not yet a double — leave for future abort (c480).
             return false;
         }
         self.last_esc_at = None;
@@ -174,21 +177,14 @@ impl UiRoot {
         self.tree_open = false;
     }
 
-    /// Harness: open tree without double-Esc timing.
     pub fn open_session_tree_for_test(&mut self) {
         self.editor.set_text(String::new());
         self.open_session_tree();
     }
 
-    /// Push bridge UI model into transcript / status / footer (c465 + c475).
+    /// Push bridge UI model into status / footer; scrollback re-renders from model (c476).
     pub fn apply_ui_model(&mut self, model: &UiModel) {
-        let lines = format_scrollback(model, self.glyphs, self.theme);
-        if lines.is_empty() {
-            self.transcript
-                .set_text("(empty — submit with Enter)".into());
-        } else {
-            self.transcript.set_text(lines.join("\n"));
-        }
+        self.ui_model = model.clone();
 
         match model.status.as_ref() {
             Some(s) if !s.is_empty() => {
@@ -210,14 +206,10 @@ impl UiRoot {
         self.footer.set_text(self.theme.paint_muted(&base));
     }
 
-    fn append_transcript_line(&mut self, line: impl Into<String>) {
-        let prev = self.transcript.text();
-        let next = if prev.is_empty() {
-            line.into()
-        } else {
-            format!("{prev}\n{}", line.into())
-        };
-        self.transcript.set_text(next);
+    fn append_system_note(&mut self, line: impl Into<String>) {
+        self.ui_model
+            .entries
+            .push(UiEntry::System { text: line.into() });
     }
 
     fn render_editor_slot(&mut self, width: usize) -> Vec<String> {
@@ -230,6 +222,18 @@ impl UiRoot {
         }
         self.editor.render(width.max(1))
     }
+
+    fn render_scrollback_slot(&mut self, width: usize) -> Vec<String> {
+        let lines = render_scrollback(&self.ui_model, self.glyphs, self.theme, self.fold, width);
+        if lines.is_empty() {
+            return vec![format!(
+                "{}{}",
+                "(empty — submit with Enter)",
+                " ".repeat(width.saturating_sub("(empty — submit with Enter)".chars().count()))
+            )];
+        }
+        lines
+    }
 }
 
 impl Default for UiRoot {
@@ -241,7 +245,7 @@ impl Default for UiRoot {
 impl Component for UiRoot {
     fn render(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
-        lines.extend(self.transcript.render(width));
+        lines.extend(self.render_scrollback_slot(width));
         lines.extend(self.status.render(width));
         let border = self.theme.paint_border(width);
         lines.push(border.clone());
@@ -263,7 +267,7 @@ impl Component for UiRoot {
             };
             if matches_key_event(key, "enter") {
                 let id = self.tree.selected_id().unwrap_or("?").to_string();
-                self.append_transcript_line(format!("travel → {id}"));
+                self.append_system_note(format!("travel → {id}"));
                 self.close_session_tree();
                 return;
             }
@@ -278,11 +282,22 @@ impl Component for UiRoot {
             }
             return;
         }
+
+        if let InputEvent::Key(ref key) = event {
+            if matches_key_event(key, "ctrl+t") {
+                self.fold.thinking_expanded = !self.fold.thinking_expanded;
+                return;
+            }
+            if matches_key_event(key, "alt+e") {
+                self.fold.tools_expanded = !self.fold.tools_expanded;
+                return;
+            }
+        }
+
         self.editor.handle_input(event);
     }
 
     fn invalidate(&mut self) {
-        self.transcript.invalidate();
         self.status.invalidate();
         self.editor.invalidate();
         self.footer.invalidate();
@@ -292,66 +307,6 @@ impl Component for UiRoot {
     fn tick(&mut self) -> bool {
         self.editor.tick()
     }
-}
-
-fn format_scrollback(model: &UiModel, glyphs: GlyphSet, theme: ChromeTheme) -> Vec<String> {
-    let mut lines = Vec::new();
-    for entry in &model.entries {
-        match entry {
-            UiEntry::User { text } => {
-                lines.push(format!("{} {}", theme.paint_user(glyphs.user()), text));
-            }
-            UiEntry::Assistant { text } => {
-                lines.push(theme.paint_assistant(text));
-            }
-            UiEntry::Thinking { text } => {
-                lines.push(theme.paint_muted(&format!("{} {text}", glyphs.system())));
-            }
-            UiEntry::Tool {
-                name,
-                output,
-                is_error,
-                done,
-                ..
-            } => {
-                let state = if !done {
-                    "…"
-                } else if *is_error {
-                    "err"
-                } else {
-                    "ok"
-                };
-                let preview: String = output.lines().take(2).collect::<Vec<_>>().join(" / ");
-                let body = if preview.is_empty() {
-                    format!("{} {name} [{state}]", glyphs.tool())
-                } else {
-                    format!("{} {name} [{state}] {preview}", glyphs.tool())
-                };
-                lines.push(theme.paint_tool(&body));
-            }
-            UiEntry::Diff { summary, .. } => {
-                lines.push(theme.paint_muted(&format!("diff: {summary}")));
-            }
-            UiEntry::System { text } => {
-                lines.push(theme.paint_muted(&format!("{} {text}", glyphs.system())));
-            }
-            UiEntry::Error { text } => {
-                lines.push(theme.paint_error(&format!("error: {text}")));
-            }
-        }
-    }
-    for line in model.streaming_scrollback_tails() {
-        match line {
-            ("thinking", text) => {
-                lines.push(theme.paint_muted(&format!("{} {text}…", glyphs.system())));
-            }
-            ("assistant", text) => {
-                lines.push(theme.paint_assistant(&format!("{text}…")));
-            }
-            _ => {}
-        }
-    }
-    lines
 }
 
 /// Shared root so InputListeners and the focused Component see the same state.

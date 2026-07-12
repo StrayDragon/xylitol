@@ -429,6 +429,82 @@ fn chrome_ascii_user_glyph() {
 }
 
 #[test]
+fn scrollback_assistant_uses_markdown_not_plain_prefix() {
+    use super::ui_root::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_chrome_meta(".", "m");
+    let mut model = UiModel::new();
+    model.entries.push(super::bridge::UiEntry::Assistant {
+        text: "**bold** hi".into(),
+    });
+    root.apply_ui_model(&model);
+    let joined = root.render(80).join("\n");
+    assert!(
+        !joined.contains("assistant:"),
+        "must not use plain assistant: prefix: {joined}"
+    );
+    assert!(joined.contains("hi"), "{joined}");
+}
+
+#[test]
+fn scrollback_thinking_fold_shows_ctrl_t_hint() {
+    use super::ui_root::UiRoot;
+    use xylitol_tui::InputEvent;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.entries.push(super::bridge::UiEntry::Thinking {
+        text: "secret plan".into(),
+    });
+    root.apply_ui_model(&model);
+    let idle = root.render(80).join("\n");
+    assert!(idle.contains("(Ctrl+T)"), "{idle}");
+    assert!(
+        !idle.contains("secret plan"),
+        "collapsed must hide body: {idle}"
+    );
+
+    // Toggle expand via Ctrl+T (synthetic key through handle_input).
+    // Use HostSession path would need key event; call fold via listener keys.
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    root.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Char('t'),
+        KeyModifiers::CONTROL,
+    )));
+    let open = root.render(80).join("\n");
+    assert!(open.contains("secret plan"), "{open}");
+    assert!(root.fold().thinking_expanded);
+}
+
+#[test]
+fn scrollback_diff_header_tint_and_body() {
+    use super::ui_root::UiRoot;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.entries.push(super::bridge::UiEntry::Diff {
+        summary: "edit foo.rs".into(),
+        display_diff: "+ hello\n- world\n".into(),
+    });
+    root.apply_ui_model(&model);
+    let collapsed = root.render(80).join("\n");
+    assert!(collapsed.contains("(Alt+E)"), "{collapsed}");
+    assert!(collapsed.contains("edit foo.rs"), "{collapsed}");
+
+    root.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Char('e'),
+        KeyModifiers::ALT,
+    )));
+    let open = root.render(80).join("\n");
+    assert!(
+        open.contains("hello") || open.contains('+'),
+        "expanded diff body missing: {open}"
+    );
+}
+
+#[test]
 fn preflight_error_messages_are_cli_friendly() {
     let msg = super::TuiPreflightError::NoModelSelected.to_string();
     assert!(msg.contains("selected model"), "{msg}");
