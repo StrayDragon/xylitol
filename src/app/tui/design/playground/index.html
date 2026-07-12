@@ -184,6 +184,13 @@
       min-height: 15rem;
       padding-bottom: 0.35rem;
     }
+    .term.term-tall {
+      min-height: 22rem;
+      max-width: 56rem;
+    }
+    .term.term-tall .term-content {
+      min-height: 12rem;
+    }
     .term-content {
       flex: 1;
       display: flex;
@@ -344,15 +351,41 @@
       <button type="button" data-scheme="dark" aria-pressed="true">Dark</button>
       <button type="button" data-scheme="light" aria-pressed="false">Light</button>
     </div>
-    <span class="keys">点击左侧 tab 跳转 · t 模式 · d/l 色板 · ←→ · 1–7</span>
+    <span class="keys">点击左侧 tab 跳转 · t 模式 · d/l 色板 · ←→ · f 整壳 · 1–0</span>
   </header>
 
   <div class="shell">
     <nav class="nav" id="nav" aria-label="组件槽"></nav>
     <main id="main">
 
+      <!-- 0 full product shell -->
+      <section class="panel is-active" id="panel-shell" data-id="shell">
+        <h2>Full shell · 产品整壳</h2>
+        <p class="spec">
+          整页合成（transcript → status 0|1 → editor|tree → footer）·
+          <a href="../../DESIGN.md">DESIGN.md</a> Layout ·
+          非 Codex TranscriptView
+        </p>
+        <div class="ctl">
+          <button type="button" id="shell-busy" aria-pressed="true">busy</button>
+          <button type="button" id="shell-queue" aria-pressed="false">队列徽章</button>
+          <button type="button" id="shell-tree" aria-pressed="false">会话树槽</button>
+          <button type="button" id="shell-tool" aria-pressed="true">工具块</button>
+          <span class="hint">idle → status 0 行 · 一处 accent · 贴底 editor</span>
+        </div>
+        <div class="term term-tall" id="shell-term">
+          <div class="term-content" id="shell-content"></div>
+          <div class="steer-hint hidden" id="shell-queue-line">q:s1|f0 · 插话待消化</div>
+          <div class="term-status" id="shell-status">
+            <span class="spin" id="shell-spin">⠋</span> Working
+          </div>
+          <div class="term-editor" id="shell-editor"></div>
+          <div class="term-footer" id="shell-footer">~/xylitol · ornith · enter submit · double Esc tree</div>
+        </div>
+      </section>
+
       <!-- 1 palette -->
-      <section class="panel is-active" id="panel-palette" data-id="palette">
+      <section class="panel" id="panel-palette" data-id="palette">
         <h2>Palette</h2>
         <p class="spec">全部 <code>colors.*</code> / <code>colors_light.*</code>（<code>sync_tokens.py</code>）· 右上 Dark/Light</p>
         <div class="swatches" id="swatches"></div>
@@ -701,6 +734,7 @@
   <script src="./tokens.js"></script>
   <script>
     const SLOTS = [
+      { id: "shell", label: "Full shell", key: "f" },
       { id: "palette", label: "Palette", key: "1" },
       { id: "tool", label: "Tool / Expandable", key: "2" },
       { id: "diff", label: "Diff", key: "3" },
@@ -736,6 +770,7 @@
       diff: { view: "unified", words: true },
       md: { streaming: false, line: 0 },
       layout: { busy: true, steer: false, tree: false },
+      shell: { busy: true, queue: false, tree: false, tool: true },
       chrome: "ok",
       overlay: "shown",
       widget: "empty",
@@ -1073,6 +1108,73 @@
       renderMdStream();
     });
 
+    /* —— full shell —— */
+    function renderShell() {
+      const S = state.shell;
+      document.getElementById("shell-busy").setAttribute("aria-pressed", String(S.busy));
+      document.getElementById("shell-queue").setAttribute("aria-pressed", String(S.queue));
+      document.getElementById("shell-tree").setAttribute("aria-pressed", String(S.tree));
+      document.getElementById("shell-tool").setAttribute("aria-pressed", String(S.tool));
+      document.getElementById("shell-status").classList.toggle("hidden", !S.busy);
+      document.getElementById("shell-queue-line").classList.toggle("hidden", !S.queue);
+
+      const content = document.getElementById("shell-content");
+      let html =
+        '<div class="row bg-user" style="padding:0.15rem 0.35rem">' +
+        '<span class="fg-user">❯</span> <span class="fg-on">少 chrome、可复制 · 整壳预览</span></div>' +
+        '<div class="row fg-assistant">当前轮进 scrollback（非 Codex 浏览面）。</div>' +
+        '<div class="row fg-muted">thinking: 先读 DESIGN，再接线 bridge…</div>' +
+        '<div class="row fg-assistant">assistant: 已对齐 Layout 栈。</div>';
+      if (S.tool) {
+        html +=
+          '<div class="row bg-tool-success" style="padding:0.15rem 0.35rem">' +
+          '<span class="fg-tool">✓ read  src/app/tui/DESIGN.md</span></div>' +
+          '<div class="row bg-tool-pending" style="padding:0.15rem 0.35rem">' +
+          '<span class="fg-tool">… bash  cargo test --lib app::tui</span></div>';
+      }
+      content.innerHTML = html;
+
+      const ed = document.getElementById("shell-editor");
+      if (S.tree) {
+        ed.innerHTML =
+          '<div class="fg-muted"> Session tree · [stub]</div>' +
+          '<div><span class="rev">▸ a2 · assistant: done</span></div>' +
+          '<div class="fg-muted">  ├─ t1 · tool: read</div>' +
+          '<div class="fg-on">  └─ u1 · user: hello</div>' +
+          '<div class="fg-muted" style="margin-top:0.25rem">esc close · ↑↓ · Enter travel</div>';
+      } else {
+        ed.innerHTML = '<span class="cursor"> </span>询问或 / 命令…';
+      }
+
+      let footer = "~/xylitol · ornith";
+      if (S.queue) footer = "q:s1|f0 · " + footer;
+      if (S.busy) footer += " · Working";
+      else footer += " · enter submit · double Esc tree";
+      document.getElementById("shell-footer").textContent = footer;
+    }
+    document.getElementById("shell-busy").addEventListener("click", () => {
+      state.shell.busy = !state.shell.busy;
+      renderShell();
+    });
+    document.getElementById("shell-queue").addEventListener("click", () => {
+      state.shell.queue = !state.shell.queue;
+      renderShell();
+    });
+    document.getElementById("shell-tree").addEventListener("click", () => {
+      state.shell.tree = !state.shell.tree;
+      renderShell();
+    });
+    document.getElementById("shell-tool").addEventListener("click", () => {
+      state.shell.tool = !state.shell.tool;
+      renderShell();
+    });
+    setInterval(() => {
+      if (!state.shell.busy) return;
+      spinI = (spinI + 1) % SPIN.length;
+      const el = document.getElementById("shell-spin");
+      if (el) el.textContent = SPIN[spinI];
+    }, 80);
+
     /* —— layout —— */
     function renderLayout() {
       const L = state.layout;
@@ -1234,11 +1336,10 @@
       } else if (e.key === "ArrowRight" || e.key === "]") {
         select(state.index + 1);
         e.preventDefault();
-      } else if (/^[0-9]$/.test(e.key)) {
-        const n = Number(e.key);
-        // 1–9 → index 0–8；0 → Ask（末槽）
-        const idx = n === 0 ? SLOTS.length - 1 : n - 1;
-        if (idx >= 0 && idx < SLOTS.length) select(idx);
+      } else if (/^[0-9fF]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        const k = e.key === "F" ? "f" : e.key;
+        const idx = SLOTS.findIndex((s) => s.key === k);
+        if (idx >= 0) select(idx);
         e.preventDefault();
       } else if ((e.key === "e" || e.key === "E") && e.altKey) {
         state.tool.expanded = !state.tool.expanded;
@@ -1287,6 +1388,7 @@
     renderTool();
     renderDiff();
     renderMdStream();
+    renderShell();
     renderLayout();
     renderChrome();
     renderWidgets();

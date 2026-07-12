@@ -1,5 +1,6 @@
 pub(crate) mod loader;
 pub(crate) mod paths;
+pub(crate) mod secret_env;
 pub mod types;
 pub mod value;
 
