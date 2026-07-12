@@ -4,7 +4,7 @@ use super::bridge::{UiModel, UiPhase, apply_xy_event};
 use super::host::{HostEvent, HostSession, LayoutMode, TOO_SMALL_HINT, is_too_small};
 use super::ui_root::build_root;
 use crate::app::core::driver::XyEvent;
-use xylitol_tui::{InputEvent, Terminal};
+use xylitol_tui::{Component, InputEvent, Terminal};
 
 /// Minimal in-memory terminal for host tests.
 struct TestTerminal {
@@ -293,8 +293,12 @@ fn harness_xy_events_update_ui_model_and_transcript() {
     session.render_now().unwrap();
     let joined = session.tui.terminal.frames.concat();
     assert!(
-        joined.contains("user: hello") || joined.contains("assistant: Hi"),
+        joined.contains("hello") && joined.contains("Hi"),
         "expected bridge scrollback; got: {joined}"
+    );
+    assert!(
+        joined.contains('❯') || joined.contains("> hello"),
+        "expected user glyph prefix; got: {joined}"
     );
 }
 
@@ -355,6 +359,73 @@ fn apply_xy_event_sequence_snapshot() {
     assert!(lines.iter().any(|l| l.contains("assistant: A")));
     assert_eq!(model.phase, UiPhase::Idle);
     assert!(model.status.is_none());
+}
+
+#[test]
+fn chrome_idle_status_occupies_zero_rows() {
+    use super::ui_root::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_chrome_meta("~/xylitol", "ornith");
+    root.apply_ui_model(&UiModel::new());
+    let lines = root.render(80);
+    assert!(
+        !lines.iter().any(|l| l.contains("Working")),
+        "idle must not show busy status: {lines:?}"
+    );
+    let footer = lines.last().expect("footer");
+    assert!(footer.contains("~/xylitol"), "{footer}");
+    assert!(footer.contains("ornith"), "{footer}");
+    assert!(
+        !footer.contains("enter submit"),
+        "footer must not be a key-chord wall: {footer}"
+    );
+}
+
+#[test]
+fn chrome_busy_status_is_separate_from_footer() {
+    use super::ui_root::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_chrome_meta("~/xylitol", "ornith");
+    let mut model = UiModel::new();
+    model.begin_run("hello");
+    root.apply_ui_model(&model);
+    let lines = root.render(80);
+    assert!(
+        lines.iter().any(|l| l.contains("Working")),
+        "busy status row missing: {lines:?}"
+    );
+    let footer = lines.last().expect("footer");
+    assert!(
+        !footer.contains("Working"),
+        "Working must not live in footer: {footer}"
+    );
+    assert!(
+        footer.contains("~/xylitol") && footer.contains("ornith"),
+        "{footer}"
+    );
+}
+
+#[test]
+fn chrome_ascii_user_glyph() {
+    use super::glyphs::GlyphSet;
+    use super::ui_root::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_glyphs(GlyphSet::Ascii);
+    root.set_chrome_meta(".", "m");
+    let mut model = UiModel::new();
+    model.begin_run("hi");
+    root.apply_ui_model(&model);
+    let lines = root.render(80);
+    let joined = lines.join("\n");
+    assert!(
+        joined.contains("> hi") || joined.contains(">\x1b") || joined.contains("> "),
+        "ascii user glyph missing: {joined}"
+    );
+    // Unicode ❯ must not appear when ascii is forced.
+    assert!(!joined.contains('❯'), "{joined}");
 }
 
 #[test]

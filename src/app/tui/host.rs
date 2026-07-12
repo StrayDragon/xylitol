@@ -16,6 +16,21 @@ use super::ui_root::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebui
 pub const MIN_COLS: u16 = 40;
 pub const MIN_ROWS: u16 = 6;
 
+/// Compact cwd for footer (`$HOME` → `~`).
+pub fn display_cwd() -> String {
+    let cwd = std::env::current_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| ".".into());
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+    if let Some(home) = home {
+        let home = home.to_string_lossy();
+        if let Some(rest) = cwd.strip_prefix(home.as_ref()) {
+            return format!("~{rest}");
+        }
+    }
+    cwd
+}
+
 /// Friendly prompt when the terminal is too small.
 pub const TOO_SMALL_HINT: &str = "请放大终端";
 
@@ -100,7 +115,13 @@ impl<T: Terminal> HostSession<T> {
 
     /// Product empty UI: shared `UiRoot` + Ctrl+C / Esc / idle-Enter listeners.
     pub fn new_product_ui(terminal: T) -> Self {
+        Self::new_product_ui_with_chrome(terminal, display_cwd(), "—".into())
+    }
+
+    /// Product UI with footer identity (`cwd · model`).
+    pub fn new_product_ui_with_chrome(terminal: T, cwd: String, model: String) -> Self {
         let ui_root = Rc::new(RefCell::new(UiRoot::new()));
+        ui_root.borrow_mut().set_chrome_meta(cwd, model);
         let quit_flag = Arc::new(AtomicBool::new(false));
         let mut session = Self::new(terminal, shared_ui_root_rebuild(ui_root.clone()));
         session.ui_root = Some(ui_root.clone());
