@@ -602,7 +602,7 @@ async fn get_message_history_tree(
     Path(_session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Json<Envelope<Value>> {
-    let mut driver = state.driver.lock().await;
+    let driver = state.driver.lock().await;
     match driver.session_tree(SessionTreeKind::MessageHistory).await {
         Ok(tree) => match serde_json::to_value(tree) {
             Ok(v) => Json(Envelope::ok(serde_json::json!({ "tree": v }))),
@@ -623,7 +623,7 @@ async fn travel_message_history_tree(
     State(state): State<Arc<AppState>>,
     axum::extract::Json(body): axum::extract::Json<TravelTreeBody>,
 ) -> Json<Envelope<Value>> {
-    let mut driver = state.driver.lock().await;
+    let driver = state.driver.lock().await;
     match driver
         .travel_session_tree(SessionTreeKind::MessageHistory, &body.entry_id)
         .await

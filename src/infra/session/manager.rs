@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use chrono::Utc;
 use serde_json::Value;
@@ -16,48 +16,24 @@ use crate::domain::lifecycle::XyEvent;
 use crate::runtime_protocol::{XyEventSink, XySessionStore};
 
 /// Manages session persistence using JSONL files or in-memory storage.
-#[derive(Debug)]
+///
+/// [`Clone`] shares interior stores via [`Arc`] so handles remain coherent after
+/// deferred (pre-flush) creates — deep-copying pending would drop sessions on
+/// `mgr.clone()` + mutate patterns used by tests and thin wrappers.
+#[derive(Debug, Clone)]
 pub struct SessionManager {
     sessions_dir: PathBuf,
     /// Storage backend.
     backend: SessionBackend,
     /// Per-session leaf node tracking (in-memory).
     /// session_id -> current leaf entry id (None = root).
-    leaf_ids: RwLock<HashMap<String, Option<String>>>,
+    leaf_ids: Arc<RwLock<HashMap<String, Option<String>>>>,
     /// Active session tracking.
-    active_session: RwLock<Option<String>>,
+    active_session: Arc<RwLock<Option<String>>>,
     /// In-memory entry storage (used when backend is InMemory).
-    in_memory_store: RwLock<HashMap<String, Vec<SessionEntry>>>,
+    in_memory_store: Arc<RwLock<HashMap<String, Vec<SessionEntry>>>>,
     /// Pending entries for persisted sessions not yet flushed to disk.
-    pending_store: RwLock<HashMap<String, Vec<SessionEntry>>>,
-}
-
-impl Clone for SessionManager {
-    fn clone(&self) -> Self {
-        Self {
-            sessions_dir: self.sessions_dir.clone(),
-            backend: self.backend.clone(),
-            leaf_ids: RwLock::new(self.leaf_ids.read().expect("RwLock not poisoned").clone()),
-            active_session: RwLock::new(
-                self.active_session
-                    .read()
-                    .expect("RwLock not poisoned")
-                    .clone(),
-            ),
-            in_memory_store: RwLock::new(
-                self.in_memory_store
-                    .read()
-                    .expect("RwLock not poisoned")
-                    .clone(),
-            ),
-            pending_store: RwLock::new(
-                self.pending_store
-                    .read()
-                    .expect("RwLock not poisoned")
-                    .clone(),
-            ),
-        }
-    }
+    pending_store: Arc<RwLock<HashMap<String, Vec<SessionEntry>>>>,
 }
 
 impl Default for SessionManager {
@@ -67,10 +43,10 @@ impl Default for SessionManager {
             backend: SessionBackend::Persisted {
                 sessions_dir: PathBuf::from("."),
             },
-            leaf_ids: RwLock::new(HashMap::new()),
-            active_session: RwLock::new(None),
-            in_memory_store: RwLock::new(HashMap::new()),
-            pending_store: RwLock::new(HashMap::new()),
+            leaf_ids: Arc::new(RwLock::new(HashMap::new())),
+            active_session: Arc::new(RwLock::new(None)),
+            in_memory_store: Arc::new(RwLock::new(HashMap::new())),
+            pending_store: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -95,10 +71,10 @@ impl SessionManager {
             backend: SessionBackend::Persisted {
                 sessions_dir: sessions_dir.clone(),
             },
-            leaf_ids: RwLock::new(HashMap::new()),
-            active_session: RwLock::new(None),
-            in_memory_store: RwLock::new(HashMap::new()),
-            pending_store: RwLock::new(HashMap::new()),
+            leaf_ids: Arc::new(RwLock::new(HashMap::new())),
+            active_session: Arc::new(RwLock::new(None)),
+            in_memory_store: Arc::new(RwLock::new(HashMap::new())),
+            pending_store: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -110,10 +86,10 @@ impl SessionManager {
             backend: SessionBackend::InMemory {
                 entries: Vec::new(),
             },
-            leaf_ids: RwLock::new(HashMap::new()),
-            active_session: RwLock::new(None),
-            in_memory_store: RwLock::new(HashMap::new()),
-            pending_store: RwLock::new(HashMap::new()),
+            leaf_ids: Arc::new(RwLock::new(HashMap::new())),
+            active_session: Arc::new(RwLock::new(None)),
+            in_memory_store: Arc::new(RwLock::new(HashMap::new())),
+            pending_store: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -536,11 +512,19 @@ impl SessionManager {
     }
 
     /// List all session IDs with metadata.
+    ///
+    /// Includes on-disk `.jsonl` sessions and not-yet-flushed pending sessions
+    /// (created / user-only before first assistant flush).
     pub async fn list(&self) -> Result<Vec<String>, String> {
-        let mut ids = Vec::new();
         let dir = match tokio::fs::read_dir(&self.sessions_dir).await {
             Ok(d) => d,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(ids),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // Still surface pending-only sessions below.
+                let pending = self.pending_store.read().expect("RwLock not poisoned");
+                let mut pending_ids: Vec<_> = pending.keys().cloned().collect();
+                pending_ids.sort();
+                return Ok(pending_ids);
+            }
             Err(e) => return Err(format!("read sessions dir: {e}")),
         };
 
@@ -571,7 +555,16 @@ impl SessionManager {
         }
 
         files.sort_by_key(|(_, m)| std::cmp::Reverse(*m));
-        ids = files.into_iter().map(|(id, _)| id).collect();
+        let mut ids: Vec<String> = files.into_iter().map(|(id, _)| id).collect();
+
+        if matches!(&self.backend, SessionBackend::Persisted { .. }) {
+            let pending = self.pending_store.read().expect("RwLock not poisoned");
+            for id in pending.keys() {
+                if !ids.iter().any(|existing| existing == id) {
+                    ids.push(id.clone());
+                }
+            }
+        }
 
         Ok(ids)
     }
