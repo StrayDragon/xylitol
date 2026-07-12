@@ -307,7 +307,7 @@
 
     .md-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr;
       gap: 0.5rem;
       max-width: 52rem;
     }
@@ -481,7 +481,7 @@
         <div class="ctl">
           <button type="button" id="md-stream" aria-pressed="false">假流式逐行</button>
           <button type="button" id="md-reset" aria-pressed="false">重置</button>
-          <span class="hint">已落地 color enhance（色+字重）· 浏览器能看出字重；终端往往不能 · 对照 just demo-tui → /md</span>
+          <span class="hint">已落地 color enhance + 引用 │ gutter + 嵌套块 · 对照 just demo-tui → /md · md-list-wrap</span>
         </div>
         <div class="md-compare" id="md-emphasis-compare">
           <div class="cell">
@@ -504,9 +504,20 @@
         <div class="md-grid" id="md-grid" style="margin-top:0.55rem">
           <div class="cell" data-md-cell="code">
             <h3>代码（无 fence）</h3>
-            <div class="row md-code">fn main() {</div>
-            <div class="row md-code">    println!("hi");</div>
-            <div class="row md-code">}</div>
+            <div class="row md-code">  fn main() {</div>
+            <div class="row md-code">      println!("hi");</div>
+            <div class="row md-code">  }</div>
+            <div class="row fg-muted" style="font-size:11px;margin-top:0.35rem">顶层 · 2 空格缩进 · syntect 高亮</div>
+          </div>
+          <div class="cell" data-md-cell="quote-nest">
+            <h3>引用嵌套</h3>
+            <div class="row"><span class="md-quote-bar">│ </span><span class="md-quote">外层引用</span></div>
+            <div class="row"><span class="md-quote-bar">│ │ </span><span class="md-quote">嵌套引用叠 │</span></div>
+            <div class="row"><span class="md-quote-bar">│ </span><span class="md-h3">引用内标题</span></div>
+            <div class="row"><span class="md-quote-bar">│ </span><span class="md-code">  fn nest() {}</span></div>
+            <div class="row"><span class="md-quote-bar">│ </span><span class="md-th">a  b</span></div>
+            <div class="row"><span class="md-quote-bar">│ </span><span class="fg-assistant">1  2</span></div>
+            <div class="row fg-muted" style="font-size:11px;margin-top:0.25rem">code 保持高亮色 · 不套 muted italic</div>
           </div>
           <div class="cell" data-md-cell="link">
             <h3>链接（两栏相同）</h3>
@@ -514,14 +525,19 @@
             <div class="row fg-assistant">裸 URL：<span class="md-link" style="text-decoration:underline">https://ex.com</span></div>
           </div>
           <div class="cell" data-md-cell="list">
-            <h3>嵌套列表 · 悬挂缩进</h3>
+            <h3>列表嵌套 · 悬挂缩进</h3>
             <div class="row fg-assistant">1. 有序一项</div>
             <div class="row fg-assistant">2. 有序二项</div>
             <div class="row fg-assistant">    - 嵌套无序</div>
             <div class="row fg-assistant">        1. 再嵌套有序</div>
             <div class="row fg-assistant">3. … <span class="md-link">链接 (https://example.com/list)</span> 与</div>
             <div class="row fg-assistant">   <code class="md-code-inline">`code`</code></div>
-            <div class="row fg-muted" style="font-size:11px;margin-top:0.25rem">单次折行（prewrapped）· demo: plate md-list-wrap / /md</div>
+            <div class="row fg-assistant">4. 列表内块级</div>
+            <div class="row fg-assistant">   <span class="md-quote-bar">│ </span><span class="md-quote">列表下引用</span></div>
+            <div class="row fg-assistant">   <span class="md-h3">列表下标题</span></div>
+            <div class="row fg-assistant">   <span class="md-th">k  v</span></div>
+            <div class="row fg-assistant">   a  1</div>
+            <div class="row fg-muted" style="font-size:11px;margin-top:0.25rem">prewrapped · demo: plate md-list-wrap / /md</div>
           </div>
         </div>
         <div class="stage hidden" id="md-stream-stage" style="margin-top:0.6rem">
