@@ -1,6 +1,6 @@
 # _HANDOFF — 交接板（非规范）
 
-> 最后更新：2026-07-11（轨 P 已合入当前分支；轨 A 内核缝归档；轨 B 已开闸）
+> 最后更新：2026-07-12（轨 B：c465 bridge 已归档；下一 c475/c480）
 > 分支语境：`feat/tui-dev`（含轨 A 业务缝 + 轨 P 包打磨；相对 `main` 超前）
 > **临时交接 / 进度指针，不是 SSOT。** 稳定边界：各层 `AGENTS.md`、`docs/architecture/`、`llmanspec/`。
 
@@ -12,7 +12,7 @@
 |---|---|---|
 | **P · 包 / demo / DESIGN** | `packages/xylitol-tui`、`agent_demo`、`DESIGN.md`+`design/*` | **本批完成并已合入**（包侧 c530…c570 已归档） |
 | **A · 业务核心** | `domain`→`embed`/`server`/线协议 | **已归档**（c500–c525 + 业务侧 c530–c550） |
-| **B · 产品 TUI** | `src/app/tui` 接线 | **已开闸**；下一入口 **`c465` bridge** |
+| **B · 产品 TUI** | `src/app/tui` 接线 | **c465 已归档**；下一升格 c475 chrome / c480 input → c485 |
 
 **号段注意**：轨 P 与轨 A 曾并行占用 **c530–c550**；以 `llmanspec/changes/archive/` **全名**为准（如 `c530-update-package-tui-markdown` vs `c530-add-lib-embed-api`）。
 
@@ -51,8 +51,8 @@
 ## 三、轨 B — 产品 TUI（当前主线）
 
 ```text
-已归档：c460 host · c461 队列 seam · c491 stub-only
-下一：  c465 bridge → c475 chrome / c480 input → c485 垂直切片
+已归档：c460 host · c461 队列 seam · c491 stub-only · c465 bridge
+下一：  c475 chrome / c480 input → c485 垂直切片
 paused：c470 Codex TranscriptView（不做）
 后置：  c490 trust · c492 bash · c493 compaction/retry UI
 ```

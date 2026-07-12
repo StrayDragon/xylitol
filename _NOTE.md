@@ -34,7 +34,7 @@
 
 | ID | 主题 | 状态 |
 |---|---|---|
-| **c465** | TUI bridge（XyEvent→UI + Driver 合流） | proposed；可 apply |
+| **c465** | TUI bridge（XyEvent→UI + Driver 合流） | 已归档 `2026-07-12-c465-…` |
 | c475 / c480 / c485 | chrome · input · 垂直切片 | purpose-draft |
 | c470 | Codex TranscriptView | **paused**（不做） |
 | c490 / c492 / c493 | trust · bash · compaction UI | purpose-draft（后置） |
