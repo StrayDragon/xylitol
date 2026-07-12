@@ -5,10 +5,11 @@
 //!
 //! # Freeze (c491 stub)
 //!
-//! Session tree here is a **static fake** for slot-replace smoke only
-//! (double Esc / Esc close / Enter `travel → {id}`). Do **not** extend this
-//! stub with live graphs, filters, or Driver travel until the demo-first gate
-//! in `AGENTS.md` is explicitly opened. Morphology SSOT: `agent_demo`.
+//! Session tree here is a **static fake** for slot-replace smoke
+//! (double Esc / Esc close / Enter travel; c605: user → editor prefill).
+//! Do **not** extend with live graphs, filters, or Driver navigateTree until
+//! the demo-first gate in `AGENTS.md` is explicitly opened. Morphology SSOT:
+//! `agent_demo`.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -277,6 +278,14 @@ impl UiRoot {
         self.open_session_tree();
     }
 
+    /// Harness: open stub tree with selection on `id` (via active path + select_id).
+    pub fn open_session_tree_at_for_test(&mut self, id: &str) {
+        self.editor.set_text(String::new());
+        self.tree = product_tree_selector(self.theme, id);
+        let _ = self.tree.select_id(id);
+        self.slot = EditorSlot::Tree;
+    }
+
     pub fn open_slot_for_test(&mut self, slot: EditorSlot) {
         self.editor.set_text(String::new());
         self.open_slot(slot);
@@ -338,7 +347,9 @@ impl UiRoot {
             EditorSlot::Tree => {
                 let mut lines = Vec::new();
                 lines.push(" Session tree".to_string());
-                lines.push(" Up/Down  Enter travel  Esc close  (double Esc)".to_string());
+                lines.push(
+                    " Up/Down  Enter travel (user→input)  Esc close  (double Esc)".to_string(),
+                );
                 lines.extend(self.tree.render(width.max(1)));
                 lines
             }
@@ -390,6 +401,13 @@ impl Component for UiRoot {
                 };
                 if matches_key_event(key, "enter") {
                     let id = self.tree.selected_id().unwrap_or("?").to_string();
+                    let prefill = if self.tree.kind_of(&id) == Some("user") {
+                        self.tree.label_of(&id).unwrap_or("").to_string()
+                    } else {
+                        String::new()
+                    };
+                    self.editor.set_text(prefill);
+                    self.sync_editor_border();
                     self.append_system_note(format!("travel → {id}"));
                     self.close_slot();
                     return;

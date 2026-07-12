@@ -22,7 +22,7 @@ components:
 
 **优先路径**（替代 Codex 式 transcript 浏览）：双 Esc 打开会话树。
 **形态学 SSOT**：`packages/xylitol-tui` `agent_demo`（活树 / travel / filter / kind…）。
-**产品 c491**：**stub 冻结** — 仅假树槽替换 + `travel → id`；**MUST NOT** 在 stub 上扩展；真活树另 change（Track B，非本 stub）。
+**产品 c491**：**stub** — 假树槽替换 + Enter travel；**c605** 起 user Enter MUST 预填 editor。**MUST NOT** 在 stub 上扩活树 / filter / Driver navigateTree；真活树另 change。
 
 ## MUST
 
@@ -34,6 +34,7 @@ components:
    - `kind=user` → history leaf = **父节点**；user 正文预填 editor；transcript = root→父（**不含**被选 user 及其后线性回复）。
    - 非 user → leaf = 选中 id；重建 root→选中；**不**因 travel 预填 user 正文。
    - Shift+F fork 仍见 `ast5`（leaf=选中；user 预填）。
+   - **产品 stub（c605）**：Enter + `kind=user` MUST 用节点 `label` 预填 editor 并关树 + `travel → id` 注记；非 user MUST NOT 预填；仍 MUST NOT 活树 / Driver。
 6. **搜索**：对 label / kind / annotation 增量过滤（与 `include_node` AND）。
 7. **翻页**：←→ 与 PgUp/PgDn 按 `max_visible` 翻页。
 8. **Filter**（demo/产品谓词）：Ctrl+D/T/U/L/A；树开时 Ctrl+O 循环；状态行 `(i/n) [filter]`。

@@ -445,6 +445,41 @@ fn harness_enter_travel_stub_closes_tree() {
 }
 
 #[test]
+fn harness_enter_user_prefills_editor() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut().open_session_tree_at_for_test("u1");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    assert!(!root.borrow().tree_open());
+    assert_eq!(
+        root.borrow().editor_text(),
+        "hello",
+        "user travel must prefill stub label into editor"
+    );
+}
+
+#[test]
+fn harness_enter_assistant_does_not_prefill() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut().set_editor_text("stale");
+    root.borrow_mut().open_session_tree_at_for_test("a1");
+    // open_session_tree_at clears editor; set after open would be wrong — re-set via
+    // selecting assistant with empty editor, then assert stays empty.
+    assert!(
+        root.borrow().editor_text().is_empty(),
+        "tree open clears editor before travel"
+    );
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    assert!(!root.borrow().tree_open());
+    assert!(
+        root.borrow().editor_text().is_empty(),
+        "non-user travel must not prefill; got {:?}",
+        root.borrow().editor_text()
+    );
+}
+
+#[test]
 fn harness_editor_slot_mutex_and_esc_closes() {
     use super::layout::EditorSlot;
 
