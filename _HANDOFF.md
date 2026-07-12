@@ -99,7 +99,7 @@ just test-tui-e2e-pty
 ```text
 已归档：c460 host · c461 队列 · c465 bridge · c475 chrome · c476 live
          · c480/c481 input · c482 abort · c490 trust · c485 slice
-下一：  c492 bash · c493 compaction/retry UI（升格 specs/tasks 后 apply）
+下一：  **c492 bash（已升格，待 apply）** · c493 compaction/retry UI
 可选：  c575 overlay focus-restore（包侧，非轨 B 阻塞）
 冻结：  c491 假树 stub（勿扩活树）
 已移除：c470 Codex TranscriptView（明确不做；目录已删）
@@ -111,7 +111,7 @@ just test-tui-e2e-pty
 
 | ID | 状态 | 做什么 |
 |---|---|---|
-| **c492** bash | purpose-draft · **下一刀** | `!` bash 边框 + `Driver::execute_bash`；输出进 live scrollback |
+| **c492** bash | **draft（已升格）** · **下一刀 apply** | `!`/`!!` 边框 + `execute_bash` → live scrollback；Ctrl+G stub |
 | **c493** compaction/retry | purpose-draft · **下一刀** | Compaction / AutoRetry 的 status·scrollback 呈现 |
 | **c575** overlay restore | purpose-draft · 包侧可选 | Overlay 完整 focus-restore（不阻塞轨 B） |
 
