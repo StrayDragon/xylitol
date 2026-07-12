@@ -5,6 +5,7 @@
 mod bridge;
 mod glyphs;
 mod host;
+mod scrollback;
 mod terminal_guard;
 mod theme;
 mod ui_root;
