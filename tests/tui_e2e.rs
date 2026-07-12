@@ -16,6 +16,7 @@
 //!
 //! Ready-probe SSOT for `agent_demo`: see `packages/xylitol-tui/AGENTS.md`
 //! 「验证」; needle is [`DEMO_READY_NEEDLE`].
+//! Product binary smoke (c485 avs2): [`PRODUCT_READY_NEEDLE`] + [`FAKE_HELLO`].
 
 /// Substring that appears once `agent_demo` has painted a stable frame.
 /// Prefer footer text (`theme:dark`) over header banners — tall seed
@@ -25,6 +26,12 @@ pub const DEMO_READY_NEEDLE: &str = "theme:dark";
 /// Overlay / plate titles visible in `agent_demo` (keep in sync with demo render).
 pub const DEMO_COMMAND_PLATE_NEEDLE: &str = "Command Plate";
 pub const DEMO_SETTINGS_NEEDLE: &str = "Session Settings";
+
+/// Product TUI footer once Fake model is selected (`cwd · fake`).
+pub const PRODUCT_READY_NEEDLE: &str = " · fake";
+
+/// Fake provider default assistant text (cross-process; no thread-local scripting).
+pub const FAKE_HELLO: &str = "Hello from fake provider";
 
 #[path = "tui_e2e/pty.rs"]
 mod pty;
