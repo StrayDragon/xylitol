@@ -1,0 +1,10 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,atc6,"idle-editor-compact","产品空闲且 Editor 草稿为空时操作区可见内容行 MUST 紧凑（对齐 agent_demo 观感：上下 ─ 保留，避免大块空盒）；有多行草稿时 MUST 仍可按既有 terminal_rows/max_vis 规则长高。",null,null,null
+  add_requirement,atc7,"busy-status-spinner","产品 busy status 行 MUST 为至多一行 accent spinner（或等价动画帧）加短词；idle MUST 仍为 0 行；MUST NOT 把 spinner 画进 footer。",null,null,null
+  add_requirement,atc8,"user-message-bg","产品 scrollback 用户消息行 MUST 可应用 DESIGN user-message-bg 全行淡底（默认开启或与 agent_demo 一致）；MUST NOT 改变消息文本语义前缀。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  atc6,idle-editor-short,"空闲且 editor 文本为空",render UiRoot,"操作区内容可见行数显著少于满 max_vis 空盒（仍含上下边框与光标行）"
+  atc6,draft-grows,"Editor 已有多行草稿",render,"可见行随草稿增加且不超过既有 max_vis 上限"
+  atc7,busy-spinner-row,"UiModel busy 且 status=Working",render,"存在独立 status 行含 spinner 帧或 accent 标记且 footer 无 spinner"
+  atc8,user-bg-row,"scrollback 含用户消息",render,"用户行带 user-message-bg 染色（或测试可观测的 bg 应用痕迹）"
