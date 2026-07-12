@@ -413,6 +413,10 @@ fn harness_double_esc_opens_session_tree() {
         joined.contains("Session tree"),
         "expected tree layout; got: {joined}"
     );
+    assert!(
+        joined.contains("user:") && joined.contains("hello"),
+        "stub tree must render themed kind prefix + plain label; got: {joined}"
+    );
 }
 
 #[test]

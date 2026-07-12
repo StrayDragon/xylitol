@@ -21,8 +21,7 @@ use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
     Component, Focusable, InputEvent, InputListenerResult, SystemClock, TUI, Terminal, TreeNode,
-    TreeSelector, TreeSelectorOptions, TreeSelectorTheme, fg_rgb, matches_key_event,
-    truncate_to_width,
+    TreeSelector, TreeSelectorOptions, fg_rgb, matches_key_event, truncate_to_width,
 };
 
 use super::slots::EditorSlot;
@@ -37,23 +36,27 @@ use crate::app::tui::widgets::{
 fn sample_session_tree() -> Vec<TreeNode> {
     vec![
         TreeNode::new("root", "session · product").with_children([
-            TreeNode::new("u1", "user: hello").with_child(
-                TreeNode::new("a1", "assistant: plan").with_children([
-                    TreeNode::new("t1", "tool: read"),
-                    TreeNode::new("a2", "assistant: done")
-                        .with_child(TreeNode::new("u2", "user: next")),
-                ]),
+            TreeNode::new("u1", "hello").with_kind("user").with_child(
+                TreeNode::new("a1", "plan")
+                    .with_kind("assistant")
+                    .with_children([
+                        TreeNode::new("t1", "read").with_kind("tool"),
+                        TreeNode::new("a2", "done")
+                            .with_kind("assistant")
+                            .with_child(TreeNode::new("u2", "next").with_kind("user")),
+                    ]),
             ),
-            TreeNode::new("fork", "user: alternate")
-                .with_child(TreeNode::new("af", "assistant: fork leaf")),
+            TreeNode::new("fork", "alternate")
+                .with_kind("user")
+                .with_child(TreeNode::new("af", "fork leaf").with_kind("assistant")),
         ]),
     ]
 }
 
-fn product_tree_selector(active_id: &str) -> TreeSelector {
+fn product_tree_selector(theme: LayoutTheme, active_id: &str) -> TreeSelector {
     TreeSelector::new(
         sample_session_tree(),
-        TreeSelectorTheme::default(),
+        theme.tree_selector_theme(),
         TreeSelectorOptions {
             max_visible: 10,
             unicode_connectors: true,
@@ -123,7 +126,7 @@ impl UiRoot {
             cwd: ".".into(),
             model: "—".into(),
             slot: EditorSlot::Editor,
-            tree: product_tree_selector("u2"),
+            tree: product_tree_selector(theme, "u2"),
             last_esc_at: None,
             bash_mode: false,
             external_editor_invocations: 0,
@@ -244,7 +247,7 @@ impl UiRoot {
     }
 
     pub fn open_session_tree(&mut self) {
-        self.tree = product_tree_selector("u2");
+        self.tree = product_tree_selector(self.theme, "u2");
         self.slot = EditorSlot::Tree;
     }
 
