@@ -1,19 +1,24 @@
 kind: llman.sdd.spec
 name: "app-tui-design-playground"
-purpose: DESIGN playground 人类预览壳：token 由 sync_tokens.py 从 DESIGN.md 生成；Markdown 槽对齐 markdown.md；Agent 默认忽略。
-valid_scope[5]: src/app/tui/design/playground/,src/app/tui/design/AGENTS.md,src/app/tui/design/playground/README.md,src/app/tui/design/playground/sync_tokens.py,src/app/tui/design/playground/index.html
-requirements[6]{req_id,title,statement}:
-  adp0,"capability-shell","本 capability 由变更 c555-add-app-tui-design-playground-sync 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+purpose: "DESIGN playground 静态设计图：token 同步、Next-wave 槽、Agent 默认忽略、L1/L2 一致性闸门指针。"
+valid_scope[7]: src/app/tui/design/playground/,src/app/tui/design/AGENTS.md,src/app/tui/design/playground/README.md,src/app/tui/design/playground/sync_tokens.py,src/app/tui/design/playground/index.html,src/app/tui/design/fixtures/,src/app/tui/DESIGN.md
+requirements[8]{req_id,title,statement}:
+  adp0,"capability-shell","本 capability 由变更 c555-add-app-tui-design-playground-sync 引入；归档合并后以本文件为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   adp1,"token-sync-ssot",playground 的 tokens.css 与 tokens.js MUST 由 sync_tokens.py 从 DESIGN.md frontmatter 生成；手改生成物 MUST NOT 作为长期真值。
   adp2,"markdown-slot-align",playground Markdown 槽示意 MUST 对齐 design/markdown.md：无井号标题前缀、链接为 text (url)、粗体斜体无可见星号包裹。
   adp3,"agent-default-ignore",design/AGENTS.md MUST 写明 Agent 默认忽略 playground/；仅在人类点名路径或粘贴片段时才读。
   adp4,"session-tree-kind-ssot","playground 会话树槽静图 MUST 用 DESIGN token 色区分 kind 前缀（user/assistant/tool），正文 MUST NOT 再把 role 字符串预烘焙进同一纯文本片段作为唯一表现；MUST 与 session-tree.md 的 kind 渲染序一致。"
   adp5,"session-tree-travel-ssot-live",playground 会话树槽注脚与键位示意 MUST 写明产品树为 Driver MessageHistory 活树、Enter 经 travel_session_tree（user→填 input）；MUST NOT 再暗示产品仍为 c491 假树 stub 或禁止 Driver travel。
-scenarios[7]{req_id,id,given,when,then}:
-  adp0,"shell-present","","列出 capability app-tui-design-playground",delta 含 adp0–adp3
+  adp9,"next-wave-static-slots","DESIGN playground MUST 提供 Next-wave 静态槽 panel-models 与 panel-tree-power（固定状态示意）；MUST 与 design/models-picker.md、design/session-tree.md 形状一致；MUST NOT 在静图中表达实现分层（包标签/置灰）或顶栏快捷键墙。"
+  adp10,"next-wave-design-ssot","产品下一波（/models、树 filter/fold/fork、真 EDITOR、footer context%、abort UI）的视觉 MUST 以 src/app/tui/DESIGN.md Next wave 表与对应 design/*.md 为 SSOT；静图一致性格式（L1/L2）MUST 可被后续 lint 引用。"
+scenarios[10]{req_id,id,given,when,then}:
+  adp0,"shell-present","","列出 capability app-tui-design-playground",spec 含 adp0 及后续 requirements
   adp1,"sync-runs","",运行 sync_tokens.py,生成或刷新 tokens.css 与 tokens.js 且无报错
   adp2,"md-slot","",打开 playground Markdown 槽,示意中无井号标题前缀且链接呈 text (url) 形态
   adp2,"no-star-wrapping","",查看粗体斜体示意,可见文案无 ** 或成对 * 包裹
   adp3,"agents-pointer","",阅读 design/AGENTS.md,含 Agent 默认忽略 playground 的说明
   adp4,"tree-slot-kind-colors",打开 playground 会话树槽,查看树行,可见分色 kind 前缀与无 role 烘焙的正文
   adp5,"playground-live-note",打开 design playground 会话树槽,阅读注脚,写明活树与 travel_session_tree / user 预填
+  adp9,"slots-present","","打开 design playground","存在 Models 与 Tree power 槽且无包标签置灰"
+  adp9,"models-shape","","查看 Models 打开态","替换 editor 槽示意且选中行为整行 reverse"
+  adp10,"design-table","","阅读 DESIGN.md Next wave 表","列出后续 change 与文档指针"
