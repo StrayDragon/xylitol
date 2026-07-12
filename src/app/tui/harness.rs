@@ -22,15 +22,18 @@ use crate::runtime_protocol::XyBashResult;
 
 use super::host::{HostEvent, HostSession, PendingSlash};
 
-/// Test double: canned `run` streams + call recording for steer/abort/queues.
+/// Test double: canned `run` streams + call recording for steer/abort/queues/bash.
 pub struct ScriptedDriver {
     pub runs: Vec<String>,
     pub steer_calls: Vec<String>,
     pub follow_up_calls: Vec<String>,
     pub clear_calls: Vec<(bool, bool)>,
+    pub bash_calls: Vec<(String, bool)>,
     abort_count: AtomicUsize,
     scripts: VecDeque<Vec<XyEvent>>,
     default_script: Vec<XyEvent>,
+    bash_results: VecDeque<XyBashResult>,
+    default_bash: XyBashResult,
     steer_queued: usize,
     follow_up_queued: usize,
     model: ModelInfo,
@@ -43,6 +46,7 @@ impl ScriptedDriver {
             steer_calls: Vec::new(),
             follow_up_calls: Vec::new(),
             clear_calls: Vec::new(),
+            bash_calls: Vec::new(),
             abort_count: AtomicUsize::new(0),
             scripts: VecDeque::new(),
             default_script: vec![
@@ -55,6 +59,14 @@ impl ScriptedDriver {
                     messages: Vec::new(),
                 },
             ],
+            bash_results: VecDeque::new(),
+            default_bash: XyBashResult {
+                output: "ok".into(),
+                exit_code: Some(0),
+                cancelled: false,
+                truncated: false,
+                full_output_path: None,
+            },
             steer_queued: 0,
             follow_up_queued: 0,
             model: ModelInfo {
@@ -72,6 +84,10 @@ impl ScriptedDriver {
 
     pub fn set_default_script(&mut self, events: Vec<XyEvent>) {
         self.default_script = events;
+    }
+
+    pub fn push_bash_result(&mut self, result: XyBashResult) {
+        self.bash_results.push_back(result);
     }
 
     pub fn abort_count(&self) -> usize {
@@ -134,10 +150,15 @@ impl Driver for ScriptedDriver {
 
     async fn execute_bash(
         &mut self,
-        _command: &str,
-        _exclude_from_context: bool,
+        command: &str,
+        exclude_from_context: bool,
     ) -> Result<XyBashResult, String> {
-        Err("scripted: no bash".into())
+        self.bash_calls
+            .push((command.to_string(), exclude_from_context));
+        Ok(self
+            .bash_results
+            .pop_front()
+            .unwrap_or_else(|| self.default_bash.clone()))
     }
 
     async fn compact(&mut self) -> Result<bool, String> {
@@ -292,6 +313,26 @@ pub async fn pump_host_driver<T: Terminal>(
         }
     }
 
+    if let Some(bash) = session.take_bash() {
+        match dispatch(
+            driver,
+            Command::Bash {
+                id: None,
+                command: bash.command.clone(),
+                exclude_from_context: bash.exclude_from_context,
+            },
+        )
+        .await
+        {
+            Ok(DispatchOutcome::Bash(result)) => {
+                session.push_bash_result(&bash.command, &result);
+            }
+            Ok(_) => session.push_system_note("bash: unexpected dispatch outcome"),
+            Err(e) => session.push_system_note(format!("bash failed: {e}")),
+        }
+        let _ = session.render_now();
+    }
+
     if agent_stream.is_none()
         && let Some(prompt) = session.take_submit()
     {
@@ -405,6 +446,16 @@ mod slice_tests {
         InputEvent::Key(KeyEvent {
             code: KeyCode::Up,
             modifiers: KeyModifiers::ALT,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn ctrl_g_event() -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Char('g'),
+            modifiers: KeyModifiers::CONTROL,
             kind: KeyEventKind::Press,
             state: KeyEventState::NONE,
         })
@@ -618,6 +669,161 @@ mod slice_tests {
                 .any(|e| matches!(e, UiEntry::System { text } if text.contains("model"))),
             "expected model note: {:?}",
             session.ui_model().entries
+        );
+    }
+
+    // ── c492 bang-bash (B1–B7) ─────────────────────────────────────
+
+    #[test]
+    fn b1_b2_bang_border_toggles() {
+        let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        root.borrow_mut().set_editor_text("!ls");
+        assert!(root.borrow().bash_mode(), "B1: !ls enables bash border");
+        root.borrow_mut().set_editor_text("hello");
+        assert!(!root.borrow().bash_mode(), "B2: clear restores muted");
+    }
+
+    #[tokio::test]
+    async fn b3_idle_bang_execute_bash_not_run() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("!echo hi");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            driver.runs.is_empty(),
+            "MUST NOT call run: {:?}",
+            driver.runs
+        );
+        assert_eq!(
+            driver.bash_calls,
+            vec![("echo hi".to_string(), false)],
+            "B3: execute_bash once"
+        );
+    }
+
+    #[tokio::test]
+    async fn b4_bangbang_exclude_from_context() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("!!echo x");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.bash_calls, vec![("echo x".to_string(), true)]);
+    }
+
+    #[tokio::test]
+    async fn b5_bash_ok_in_scrollback() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.push_bash_result(XyBashResult {
+            output: "hello-out".into(),
+            exit_code: Some(0),
+            ..Default::default()
+        });
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("!echo hi");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let entries = &session.ui_model().entries;
+        assert!(
+            entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text.contains("$ echo hi"))),
+            "summary missing: {entries:?}"
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text.contains("hello-out"))),
+            "output missing: {entries:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn b6_bash_nonzero_error_entry() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.push_bash_result(XyBashResult {
+            output: "boom".into(),
+            exit_code: Some(1),
+            ..Default::default()
+        });
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("!false");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            session
+                .ui_model()
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::Error { text } if text.contains("exit 1"))),
+            "B6 expected Error tint: {:?}",
+            session.ui_model().entries
+        );
+    }
+
+    #[test]
+    fn b7_ctrl_g_stub() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        root.borrow_mut().set_editor_text("draft");
+        session.step(HostEvent::Input(ctrl_g_event())).unwrap();
+        assert_eq!(root.borrow().external_editor_invocations(), 1);
+        assert!(
+            root.borrow().editor_text().contains("$EDITOR stub"),
+            "stub marker: {}",
+            root.borrow().editor_text()
+        );
+        assert!(
+            session
+                .ui_model()
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text.contains("Ctrl+G"))),
+            "system note: {:?}",
+            session.ui_model().entries
+        );
+    }
+
+    #[test]
+    fn bang_parse_helpers() {
+        use crate::app::tui::host::{BangParse, parse_bang_command};
+        assert_eq!(parse_bang_command("hi"), BangParse::NotBang);
+        assert_eq!(
+            parse_bang_command("!"),
+            BangParse::Empty {
+                exclude_from_context: false
+            }
+        );
+        assert_eq!(
+            parse_bang_command("!!"),
+            BangParse::Empty {
+                exclude_from_context: true
+            }
+        );
+        assert_eq!(
+            parse_bang_command("  ! ls -la "),
+            BangParse::Cmd {
+                command: "ls -la".into(),
+                exclude_from_context: false
+            }
         );
     }
 }

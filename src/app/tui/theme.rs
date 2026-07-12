@@ -53,6 +53,26 @@ impl ChromeTheme {
         fg_rgb(self.palette.error, s)
     }
 
+    pub fn paint_success(self, s: &str) -> String {
+        fg_rgb(self.palette.success, s)
+    }
+
+    pub fn paint_warning(self, s: &str) -> String {
+        fg_rgb(self.palette.warning, s)
+    }
+
+    /// Editor border painter for bash (`!` / `!!`) mode.
+    pub fn bash_border_color(self) -> Box<dyn Fn(&str) -> String> {
+        let success = self.palette.success;
+        Box::new(move |s| fg_rgb(success, s))
+    }
+
+    /// Default muted editor border painter.
+    pub fn muted_border_color(self) -> Box<dyn Fn(&str) -> String> {
+        let muted = self.palette.muted;
+        Box::new(move |s| fg_rgb(muted, s))
+    }
+
     pub fn paint_border(self, width: usize) -> String {
         let raw = "─".repeat(width.clamp(1, 80));
         self.paint_muted(&raw)

@@ -80,6 +80,10 @@ pub struct UiRoot {
     tree_open: bool,
     tree: TreeSelector,
     last_esc_at: Option<Instant>,
+    /// `!` / `!!` prefix → success border (c492).
+    bash_mode: bool,
+    /// Ctrl+G stub invocation count (harness).
+    external_editor_invocations: u32,
 }
 
 impl UiRoot {
@@ -118,6 +122,8 @@ impl UiRoot {
             tree_open: false,
             tree: product_tree_selector("u2"),
             last_esc_at: None,
+            bash_mode: false,
+            external_editor_invocations: 0,
         }
     }
 
@@ -146,6 +152,44 @@ impl UiRoot {
 
     pub fn set_editor_text(&mut self, text: impl Into<String>) {
         self.editor.set_text(text.into());
+        self.sync_editor_border();
+    }
+
+    /// Whether the editor is in bash accent mode (`!` / `!!` prefix).
+    pub fn bash_mode(&self) -> bool {
+        self.bash_mode
+    }
+
+    pub fn external_editor_invocations(&self) -> u32 {
+        self.external_editor_invocations
+    }
+
+    /// Sync operation-zone border for `!` / `!!` (c492 / ati15).
+    pub fn sync_editor_border(&mut self) {
+        let bash = self.editor.get_text().trim_start().starts_with('!');
+        if bash == self.bash_mode {
+            return;
+        }
+        self.bash_mode = bash;
+        if bash {
+            self.editor.set_border_color(self.theme.bash_border_color());
+        } else {
+            self.editor
+                .set_border_color(self.theme.muted_border_color());
+        }
+    }
+
+    /// Ctrl+G stub: count + optional `# $EDITOR stub` marker (harness-safe).
+    pub fn open_external_editor_stub(&mut self) {
+        self.external_editor_invocations = self.external_editor_invocations.saturating_add(1);
+        let text = self.editor.get_text();
+        if text.is_empty() {
+            self.editor.set_text("# $EDITOR stub\n".to_string());
+        } else if !text.contains("$EDITOR stub") {
+            self.editor
+                .set_text(format!("{}\n# $EDITOR stub", text.trim_end()));
+        }
+        self.sync_editor_border();
     }
 
     /// Record a sent prompt / steer / follow-up for ↑/↓ history (pi `addToHistory`).
@@ -363,6 +407,7 @@ impl Component for UiRoot {
         }
 
         self.editor.handle_input(event);
+        self.sync_editor_border();
     }
 
     fn invalidate(&mut self) {
