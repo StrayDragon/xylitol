@@ -134,9 +134,7 @@ impl ScriptedDriver {
 
     pub fn set_hang_bash_until_abort(&self, hang: bool) {
         self.hang_bash_until_abort.store(hang, Ordering::SeqCst);
-        if hang {
-            self.aborted.store(false, Ordering::SeqCst);
-        }
+        self.aborted.store(false, Ordering::SeqCst);
     }
 
     pub fn bash_calls(&self) -> Vec<(String, bool)> {
@@ -945,6 +943,66 @@ mod slice_tests {
         );
         assert!(!session.bash_active());
         assert!(!session.is_busy());
+    }
+
+    #[tokio::test]
+    async fn c665_bang_after_esc_abort_runs_again() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_hang_bash_until_abort(true);
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("!sleep 99");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let bash = session.take_bash().expect("pending bang");
+        session.begin_bash_exec();
+        {
+            let bash_fut = driver.execute_bash(&bash.command, bash.exclude_from_context);
+            tokio::pin!(bash_fut);
+            tokio::select! {
+                result = &mut bash_fut => {
+                    let r = result.expect("bash result");
+                    assert!(r.cancelled);
+                    session.end_bash_exec();
+                }
+                _ = async {
+                    tokio::time::sleep(Duration::from_millis(40)).await;
+                    session.step(HostEvent::Input(esc_event())).unwrap();
+                    assert!(session.take_abort());
+                    driver.abort();
+                    session.note_user_abort();
+                    // Simulate Esc backlog that used to sticky-cancel the next bang.
+                    session.step(HostEvent::Input(esc_event())).unwrap();
+                    session.step(HostEvent::Input(esc_event())).unwrap();
+                    std::future::pending::<()>().await
+                } => {}
+            }
+        }
+
+        driver.set_hang_bash_until_abort(false);
+        root.borrow_mut().set_editor_text("!echo ok");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let calls = driver.bash_calls();
+        assert!(
+            calls.iter().any(|(c, _)| c == "echo ok"),
+            "second bang must run after Esc abort: {calls:?}"
+        );
+        assert!(
+            session
+                .ui_model()
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text.contains("ok"))),
+            "second bang output missing: {:?}",
+            session.ui_model().entries
+        );
     }
 
     #[tokio::test]
