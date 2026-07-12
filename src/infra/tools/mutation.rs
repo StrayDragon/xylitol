@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 /// [`FileMutationQueue::run`] to wrap a mutation.
 #[derive(Clone)]
 pub struct FileMutationQueue {
-    /// A Mutex<HashMap> so we can lazily insert per-path locks without write contention
+    /// A `Mutex<HashMap>` so we can lazily insert per-path locks without write contention
     /// on the map (we only briefly lock the map to look up/insert, then lock the per-path lock).
     queues: Arc<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>>,
 }

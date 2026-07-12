@@ -6,9 +6,9 @@
 //! via callback (spec t4) so this module stays UI-agnostic.
 //!
 //! Submodules:
-//! - [`store`] — persistence, locking, inheritance, and trust-input detection
-//! - [`resolve`] — the fixed-precedence resolution pipeline
-//! - [`prompt`] — stdio Ask prompt for interactive surfaces (TUI)
+//! - `store` — persistence, locking, inheritance, and trust-input detection
+//! - `resolve` — the fixed-precedence resolution pipeline
+//! - `prompt` — stdio Ask prompt for interactive surfaces (TUI)
 
 pub(crate) mod prompt;
 pub(crate) mod resolve;

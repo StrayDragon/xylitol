@@ -1393,7 +1393,6 @@ mod tests {
 
     #[tokio::test]
     async fn second_turn_model_input_includes_first_turn_messages() {
-        use crate::domain::lifecycle::XyEvent;
         use futures::StreamExt;
 
         let done_stop = || crate::domain::types::XyChunk::Done {

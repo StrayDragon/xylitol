@@ -7,7 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// User-controlled settings that can live in global (~/.xylitol/settings.json)
-/// or project (<cwd>/.xylitol/settings.json).
+/// or project (`<cwd>`/.xylitol/settings.json).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {

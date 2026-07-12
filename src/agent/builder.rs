@@ -1,4 +1,4 @@
-//! Agent builder — construct-time assembly for [`Agent`].
+//! Agent builder — construct-time assembly for [`AgentRuntime`].
 //!
 //! [`AgentBuilder`] takes only the minimal runtime-protocol ports in its
 //! constructor. Every other capability is attached via consuming builder

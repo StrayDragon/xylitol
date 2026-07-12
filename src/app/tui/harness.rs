@@ -475,6 +475,26 @@ mod slice_tests {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
+        driver.set_default_script(vec![
+            XyEvent::AgentStart {
+                session_id: "s".into(),
+                model: "fake".into(),
+            },
+            XyEvent::TextDelta("hello".into()),
+            XyEvent::AgentEnd {
+                messages: Vec::new(),
+            },
+        ]);
+        driver.push_script(vec![
+            XyEvent::AgentStart {
+                session_id: "s".into(),
+                model: "fake".into(),
+            },
+            XyEvent::TextDelta("hello".into()),
+            XyEvent::AgentEnd {
+                messages: Vec::new(),
+            },
+        ]);
         let mut stream = None;
         root.borrow_mut().set_editor_text("hi");
         session.step(HostEvent::Input(enter_event())).unwrap();

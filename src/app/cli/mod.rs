@@ -1,7 +1,7 @@
 //! CLI argument parsing and mode dispatch.
 //!
 //! Provider-guidance messages (login help, no-model/no-api-key text) live in
-//! [`provider_guidance`] — they are pure CLI-surface presentation, not agent
+//! the CLI provider-guidance helpers — they are pure CLI-surface presentation, not agent
 //! orchestration (la13).
 
 mod logging;

@@ -11,7 +11,7 @@ pub enum McpTransportSpec {
     Sse,
 }
 
-/// MCP server description for bootstrap → [`super::McpSession::reload`].
+/// MCP server description for bootstrap → [`crate::app::core::composition::McpSession::reload`].
 ///
 /// Converted to infra config only inside the composition root.
 #[derive(Clone, Debug)]

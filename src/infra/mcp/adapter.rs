@@ -1,4 +1,4 @@
-//! MCP tool adapter — wraps MCP tools as [`XyTool`].
+//! MCP tool adapter — wraps MCP tools as [`crate::runtime_protocol::XyTool`].
 
 use std::sync::Arc;
 
@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::client::McpClientManager;
 
-/// Adapter wrapping an MCP tool as an [`XyTool`].
+/// Adapter wrapping an MCP tool as an [`crate::runtime_protocol::XyTool`].
 ///
 /// The publicly-facing name follows the convention `mcp:{server_id}:{name}`
 /// to avoid naming conflicts with built-in tools.

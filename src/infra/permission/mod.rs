@@ -1,6 +1,6 @@
 //! Permission policy backends for the agent runtime.
 //!
-//! Provides the [`XyPermission`] trait (defined in [`runtime_protocol::permission`])
+//! Provides the [`XyPermission`] trait (defined in [`crate::runtime_protocol::permission`])
 //! and concrete backends that enforce application-level path/domain matching.
 //! Platform-specific backends (Landlock, macOS sandbox) are added as separate
 //! modules.

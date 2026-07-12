@@ -1,7 +1,6 @@
 //! Server runtime — second composition root for xylitol.
 //!
-//! Constructs the agent via the shared [`bootstrap`](crate::app::core::bootstrap)
-//! path (config → registry → trust → resource discovery → build_agent), builds
+//! Constructs the agent via the shared bootstrap path (config → registry → trust → resource discovery → build_agent), builds
 //! the REST and WS routers, acquires the single-instance lock, and starts
 //! the HTTP server with graceful shutdown.
 

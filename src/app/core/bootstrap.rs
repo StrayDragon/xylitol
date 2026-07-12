@@ -14,8 +14,8 @@
 //!   permission → `build_agent` → model select.
 //!
 //! Surfaces that need the *resolved ingredients* without constructing an agent
-//! (e.g. `--list-models`, which only needs the registry) consume
-//! [`resolve_assembly`] directly; surfaces that need a ready-to-run agent call
+//! (e.g. `--list-models`, which only needs the registry) call
+//! `resolve_assembly` directly; surfaces that need a ready-to-run agent call
 //! [`bootstrap`].
 //!
 //! Layering note: this module emits diagnostics only via the returned
@@ -37,7 +37,7 @@ use crate::infra::permission;
 use crate::infra::session::SessionManager;
 use crate::infra::timing;
 
-/// Inputs to [`bootstrap`] / [`resolve_assembly`], mirroring the CLI flags that
+/// Inputs to [`bootstrap`] / `resolve_assembly`, mirroring the CLI flags that
 /// drive assembly.
 ///
 /// Fields are the minimal set needed to reproduce the print-mode assembly path;
@@ -99,7 +99,7 @@ pub struct BootstrappedAgent {
     /// Diagnostics produced during assembly (surface renders these).
     pub warnings: Vec<BootstrapWarning>,
     /// Session store handle, the same instance the agent holds internally.
-    /// Surfaces construct an [`InProcessDriver`] from this + the agent so
+    /// Surfaces construct an [`crate::app::core::driver::InProcessDriver`] from this + the agent so
     /// Driver session commands (SwitchSession/GetMessages) operate without
     /// reaching into agent internals.
     pub store: Arc<dyn crate::runtime_protocol::XySessionStore>,
@@ -120,7 +120,7 @@ pub struct BootstrappedRuntime {
 }
 
 impl BootstrappedAgent {
-    /// Consume into an [`InProcessDriver`] plus side-products (preferred path).
+    /// Consume into an [`crate::app::core::driver::InProcessDriver`] plus side-products (preferred path).
     pub fn into_runtime(mut self) -> BootstrappedRuntime {
         self.agent.inner_mut().set_session(self.session_id.clone());
         BootstrappedRuntime {
@@ -131,7 +131,7 @@ impl BootstrappedAgent {
         }
     }
 
-    /// Consume into an [`InProcessDriver`] only (drops warnings / session id /
+    /// Consume into an [`crate::app::core::driver::InProcessDriver`] only (drops warnings / session id /
     /// mcp config). Prefer [`Self::into_runtime`] when those are needed.
     pub fn into_driver(self) -> crate::app::core::driver::InProcessDriver {
         self.into_runtime().driver
@@ -139,7 +139,7 @@ impl BootstrappedAgent {
 }
 
 /// Resolved assembly inputs — the *ingredients* ready for `build_agent`, prior
-/// to construction. Returned by [`resolve_assembly`] and consumed by callers that need ingredients without building (e.g. --list-models, which
+/// to construction. Returned by `resolve_assembly` and consumed by callers that need ingredients without building (e.g. --list-models, which
 /// rebuilds the agent per command) and by [`bootstrap`] (which builds once).
 ///
 /// Exposing this lets ingredient-only callers share resolution without forcing a full build via
@@ -496,7 +496,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
 /// Bootstrap a fully-assembled agent: resolve inputs, build once, select model.
 ///
 /// Used by print / tui / server — surfaces that hold a single agent for their
-/// lifetime. Ingredient-only paths (e.g. --list-models) use [`resolve_assembly`] directly.
+/// lifetime. Ingredient-only paths (e.g. --list-models) use `resolve_assembly` directly.
 pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapError> {
     let model = input.model.clone();
 
