@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: src/app/tui/
-requirements[14]{req_id,title,statement}:
+requirements[15]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式或 agent 忙碌时 Esc MUST 调用 Driver::abort；Ctrl+C 在编辑器非空时 MUST 清空输入，在编辑器为空时 MUST 退出 TUI。"
@@ -17,7 +17,8 @@ requirements[14]{req_id,title,statement}:
   ati11,"product-queue-chrome","产品 TUI 在 steer/follow-up 队列非空时 MUST 在 scrollback 与 status 之间以 muted 色渲染 Steering:/Follow-up: 行及 Alt+Up dequeue 提示（对齐 pi pendingMessagesContainer）；MUST NOT 将排队内容写成 scrollback System [steer]/[follow-up] 墙；Alt+Up MUST 将队列文本还原进 editor 并 clear_queue(steer=true, follow_up=true)。"
   ati12,"product-queue-uplink","当 steer/follow-up 从队列注入 agent history 时，runtime MUST 发射 MessageStart/MessageEnd（role=user，带 message）；产品 bridge MUST 将其提交为 scrollback UiEntry::User（与 idle 提交同形）；chrome 随 QueueUpdate 消退后用户文本 MUST 仍留在 transcript；MUST NOT 仅在 chrome 闪现后丢失。"
   ati13,"product-editor-send-history","产品 Host 在 idle 提交、busy steer、busy follow-up 发送用户文本时 MUST 调用 Editor::add_to_history（跳过空串与连续重复）；同一 TUI session 内 MUST 能在 editor 空或已在浏览态时用 ↑/↓ 召回这些文本（委托包 ed05）；MUST NOT 要求跨进程持久化。"
-scenarios[23]{req_id,id,given,when,then}:
+  ati14,"product-abort-resumable","产品 TUI 在用户 Esc abort 当前流之后 MUST 回到可提交 idle（follow-up restore 语义不变）；MUST NOT 让后续用户输入持续产生粘性 aborted Error 而无法继续对话。"
+scenarios[24]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-input",spec.toon 存在且 purpose 为中文
   ati1,"selector-slot","",打开模型选择器,editor 槽被选择器替换且贴底可见
   ati2,"esc-aborts","",流式中按 Esc,"Driver::abort 被调用"
@@ -41,3 +42,4 @@ scenarios[23]{req_id,id,given,when,then}:
   ati12,"followup-inject-scrollback","follow-up 注入后 QueueUpdate 清 chrome",渲染,"Follow-up 文本仍在 UiEntry::User 中"
   ati13,"submit-then-up",idle 提交过非空 prompt 且 editor 已空,按 ↑,editor 回填该 prompt
   ati13,"steer-in-history",busy 发送过 steer 文本,idle 后 editor 空再按 ↑,可召回该 steer 文本
+  ati14,"esc-then-submit",TUI busy 中 Esc abort 后,再 idle Enter 提交,新一轮开始且无连续 aborted Error 墙

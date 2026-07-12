@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ati14,"product-abort-resumable","产品 TUI 在用户 Esc abort 当前流之后 MUST 回到可提交 idle（follow-up restore 语义不变）；MUST NOT 让后续用户输入持续产生粘性 aborted Error 而无法继续对话。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ati14,esc-then-submit,"TUI busy 中 Esc abort 后",再 idle Enter 提交,"新一轮开始且无连续 aborted Error 墙"

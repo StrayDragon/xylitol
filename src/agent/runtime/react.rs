@@ -36,29 +36,36 @@ use crate::runtime_protocol::XyPermissionVerdict;
 
 pub struct ReActAgent {
     pub(crate) inner: Agent,
-    /// Cancellation token.
-    cancel: CancellationToken,
+    /// Current-run cancel token. Replaced at each [`Self::run`] so abort is not sticky.
+    cancel: Mutex<CancellationToken>,
 }
 
 impl ReActAgent {
     pub fn new(inner: Agent) -> Self {
         Self {
             inner,
-            cancel: CancellationToken::new(),
+            cancel: Mutex::new(CancellationToken::new()),
         }
     }
 
-    /// Get a reference to the cancellation token.
+    /// Get a reference to the cancellation token for the active (or last) run.
     pub fn cancel_token(&self) -> CancellationToken {
-        self.cancel.clone()
+        self.cancel
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Signal cancellation to abort the agent loop.
     ///
     /// Clears the steering queue and keeps follow-up messages so the UI can
-    /// restore them (c461 design D4).
+    /// restore them (c461 design D4). Only cancels the **current** run token;
+    /// the next [`Self::run`] installs a fresh one (c482).
     pub fn abort(&self) {
-        self.cancel.cancel();
+        self.cancel
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .cancel();
         self.inner.clear_steer_queue();
     }
 
@@ -188,7 +195,11 @@ impl ReActAgent {
             })
             .collect();
 
-        let cancel = self.cancel.clone();
+        let cancel = {
+            let mut guard = self.cancel.lock().unwrap_or_else(|e| e.into_inner());
+            *guard = CancellationToken::new();
+            guard.clone()
+        };
         let steer_queue = self.inner.steer_queue();
         let follow_up_queue = self.inner.follow_up_queue();
         let queues = self.inner.queues();
@@ -323,6 +334,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
             while continue_after_tools || !pending.is_empty() {
                 if cancel.is_cancelled() {
+                    // Bridge maps this to a dim system note + idle (not a sticky fault).
                     yield XyEvent::Error("aborted".to_string());
                     break 'outer;
                 }
@@ -1214,5 +1226,75 @@ mod tests {
             "follow-up must trigger a second model round: {texts:?}"
         );
         assert!(turn_ends >= 2);
+    }
+
+    #[tokio::test]
+    async fn abort_before_run_does_not_stick_to_next_run() {
+        use crate::domain::lifecycle::XyEvent;
+        use futures::StreamExt;
+
+        let done_stop = || crate::domain::types::XyChunk::Done {
+            finish_reason: crate::domain::message::XyStopReason::Stop,
+            usage: None,
+        };
+        let rounds = vec![vec![
+            crate::domain::types::XyChunk::TextDelta("recovered".into()),
+            done_stop(),
+        ]];
+        let mut agent = make_agent_with_rounds(rounds, ToolSet::empty());
+        // Sticky-cancel bug: abort left the token cancelled forever.
+        agent.abort();
+
+        let mut stream = agent.run("hello").await;
+        let mut texts = Vec::new();
+        let mut aborted = false;
+        while let Some(evt) = stream.next().await {
+            match evt {
+                XyEvent::TextDelta(t) => texts.push(t),
+                XyEvent::Error(m) if m == "aborted" => aborted = true,
+                _ => {}
+            }
+        }
+        assert!(
+            !aborted,
+            "run() must install a fresh cancel token after abort"
+        );
+        assert_eq!(texts, vec!["recovered".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn abort_after_completed_run_allows_second_run() {
+        use crate::domain::lifecycle::XyEvent;
+        use futures::StreamExt;
+
+        let done_stop = || crate::domain::types::XyChunk::Done {
+            finish_reason: crate::domain::message::XyStopReason::Stop,
+            usage: None,
+        };
+        // Each `run` rebuilds the mock from the same round template — we only
+        // assert the second run is not sticky-aborted (c482).
+        let rounds = vec![vec![
+            crate::domain::types::XyChunk::TextDelta("ok".into()),
+            done_stop(),
+        ]];
+        let mut agent = make_agent_with_rounds(rounds, ToolSet::empty());
+
+        let mut first = agent.run("1").await;
+        while first.next().await.is_some() {}
+
+        agent.abort();
+
+        let mut second = agent.run("2").await;
+        let mut texts = Vec::new();
+        let mut aborted = false;
+        while let Some(evt) = second.next().await {
+            match evt {
+                XyEvent::TextDelta(t) => texts.push(t),
+                XyEvent::Error(m) if m == "aborted" => aborted = true,
+                _ => {}
+            }
+        }
+        assert!(!aborted, "second run must not immediately abort: {texts:?}");
+        assert_eq!(texts, vec!["ok".to_string()]);
     }
 }
