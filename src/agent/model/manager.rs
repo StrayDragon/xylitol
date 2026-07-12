@@ -1,6 +1,6 @@
 //! ModelManager — model registry, selection, and thinking level.
 //!
-//! Extracted from [`Agent`](crate::agent::session::Agent) to isolate
+//! Extracted from [`AgentCapabilities`](crate::agent::session::AgentCapabilities) to isolate
 //! model-related responsibilities into a focused component.
 
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use crate::runtime_protocol::XyModel;
 
 /// Manages model registry, current model selection, and thinking level.
 ///
-/// Owned by [`Agent`](crate::agent::session::Agent) as a composed field.
+/// Owned by [`AgentCapabilities`](crate::agent::session::AgentCapabilities) as a composed field.
 /// The provider is built via an injected `model_builder` (the agent layer must
 /// not call `infra::provider::factory::build_provider` directly; the composition
 /// root supplies the builder).

@@ -30,7 +30,7 @@ use async_trait::async_trait;
 use futures::Stream;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::ReActAgent;
+use crate::agent::AgentRuntime;
 use crate::domain::session_types::SessionEntry;
 use crate::domain::types::{ThinkingLevel, XyModelMeta};
 use crate::runtime_protocol::{XyBashResult, XySessionStore};
@@ -96,7 +96,7 @@ impl From<&XyModelMeta> for ModelInfo {
 
 /// Driver — interact with the core without knowing its internals.
 ///
-/// [`InProcessDriver`] keeps a cached `ReActAgent` and is the local
+/// [`InProcessDriver`] keeps a cached `AgentRuntime` and is the local
 /// (single-process) implementation. [`RemoteDriver`] speaks the protocol over
 /// WS/REST to a xylitol server.
 #[async_trait]
@@ -193,7 +193,7 @@ pub trait Driver: Send {
 /// ports and agent together. This is the **only** place in the app surfaces
 /// that imports `agent`.
 pub struct InProcessDriver {
-    agent: ReActAgent,
+    agent: AgentRuntime,
     /// Session store, held so SwitchSession/GetMessages/Fork can operate. The
     /// agent holds its own clone internally; this one is the surface's handle
     /// for session-management commands.
@@ -206,7 +206,7 @@ impl InProcessDriver {
     /// `store` is the same instance injected into the agent at construction;
     /// holding it here lets session commands operate without reaching into
     /// agent internals.
-    pub fn new(agent: ReActAgent, store: Arc<dyn XySessionStore>) -> Self {
+    pub fn new(agent: AgentRuntime, store: Arc<dyn XySessionStore>) -> Self {
         Self { agent, store }
     }
 

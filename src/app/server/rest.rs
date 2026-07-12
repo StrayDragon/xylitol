@@ -31,7 +31,7 @@ use crate::protocol::{Command, Envelope, ErrorCode};
 
 /// Shared state available to all route handlers.
 ///
-/// Holds [`InProcessDriver`] (same seam as Print), not a bare `ReActAgent`.
+/// Holds [`InProcessDriver`] (same seam as Print), not a bare `AgentRuntime`.
 #[derive(Clone)]
 pub struct AppState {
     pub driver: Arc<Mutex<InProcessDriver>>,

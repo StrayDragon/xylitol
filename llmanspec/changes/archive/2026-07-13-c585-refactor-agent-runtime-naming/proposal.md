@@ -1,15 +1,13 @@
 ---
 change_id: c585-refactor-agent-runtime-naming
 title: "Rename ReActAgent/Agent → AgentRuntime/AgentCapabilities"
-status: purpose-draft
+status: draft
 priority: 585
 depends_on: []
 author: agent
 ---
 
 # c585-refactor-agent-runtime-naming
-
-> **status: purpose-draft** — 命名决议已锁定；升格 specs/tasks 前勿改代码。
 
 ## Why
 
@@ -20,19 +18,20 @@ author: agent
 | 旧 | 新 | 理由 |
 |---|---|---|
 | `ReActAgent` | **`AgentRuntime`** | 跑循环的驱动器/运行时 |
-| `session::Agent` | **`AgentCapabilities`** | 能力聚合体；**不用** `AgentContext`（已占用：`domain::message::AgentContext` = LLM 请求快照） |
+| `session::Agent` | **`AgentCapabilities`** | 能力聚合体；**不用** `AgentContext`（已占用：`domain::message::AgentContext`） |
 | `domain::AgentContext` | **保持不变** | 避免双改 |
 
-## What（升格后）
+## What Changes
 
-- 机械 rename + `agent/mod` re-export、`builder`、`app/core`、`embed`、bdd、API snapshot
-- Delta：`agent-runtime` / `agent-session` / `layer-architecture` / `server-runtime` 中 MUST 点名
-- **MUST NOT** 与 `c494` 同 PR
+1. 机械 rename 类型与 `agent/mod` re-export、`builder`、`app/core`、`embed`、bdd、API snapshot、skills 文档。
+2. 更新 MUST 点名：`agent-runtime` / `agent-session` / `layer-architecture` / `server-runtime`。
+3. 修正 `agent/mod.rs` Strategy 注释为 Runtime + Capabilities。
 
-## 非目标（本 draft）
+## 非目标
 
 - 不拆 `react.rs` 循环；不改 ReAct 行为；不改 `Driver` 对外语义。
+- 不与 TUI layout change 纠缠。
 
-## Next
+## Capabilities
 
-升格为 full（delta specs + tasks）后走 `llman-sdd-apply`。确认后可 `llman-sdd-propose` 补全工件。
+- `agent-runtime`、`agent-session`、`layer-architecture`、`server-runtime`

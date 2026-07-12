@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,as31,"agent-renamed-from-session","Capability aggregate MUST be named AgentCapabilities (formerly Agent / AgentSession); it MUST compose decomposed collaborator components and MUST retain its existing event-stream-related public API surface so call sites only change the type name.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  as31,"capabilities-named",源码树在本变更后,"rg '\\bstruct Agent\\b' agent/session",能力聚合体类型名为 AgentCapabilities

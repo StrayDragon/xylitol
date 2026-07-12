@@ -1,4 +1,4 @@
-//! Agent — core agent lifecycle management.
+//! AgentCapabilities — core agent lifecycle / capability aggregate.
 //!
 //! Handles:
 //! - Model registry and current model tracking
@@ -48,10 +48,10 @@ use crate::runtime_protocol::{
 
 pub use crate::agent::model::registry::ModelRegistry;
 
-// ── Agent ────────────────────────────────────────────────────
+// ── AgentCapabilities ────────────────────────────────────────────────────
 
-/// Core agent session — encapsulates model, tools, session persistence, and events.
-pub struct Agent {
+/// Capability aggregate — model, tools, session persistence, and events.
+pub struct AgentCapabilities {
     /// Model management (registry, selection, thinking level).
     model_manager: ModelManager,
     /// Tools available to the agent (construct-time final set).
@@ -92,7 +92,7 @@ pub struct Agent {
     queues: Arc<AsyncQueueRuntime>,
 }
 
-impl Agent {
+impl AgentCapabilities {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         model_registry: ModelRegistry,
@@ -589,13 +589,13 @@ mod tests {
     use crate::infra::session::SessionManager;
     use std::path::PathBuf;
 
-    fn make_session() -> Agent {
+    fn make_session() -> AgentCapabilities {
         let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
         let store: std::sync::Arc<dyn crate::runtime_protocol::XySessionStore> =
             std::sync::Arc::new(mgr);
         let sink: std::sync::Arc<dyn crate::runtime_protocol::XyEventSink> =
             std::sync::Arc::new(crate::infra::event::EventBus::new());
-        Agent::new(
+        AgentCapabilities::new(
             ModelRegistry::new(std::sync::Arc::new(
                 crate::infra::config::value::InfraSecretResolver::new(),
             )),
@@ -680,7 +680,7 @@ mod tests {
             }
         );
 
-        let agent = crate::agent::runtime::ReActAgent::new(session);
+        let agent = crate::agent::runtime::AgentRuntime::new(session);
         agent.abort();
         assert_eq!(
             agent.queue_stats(),

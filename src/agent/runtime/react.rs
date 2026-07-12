@@ -23,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 use super::permission_router::permission_target;
 use super::retry::{RetryState, is_retryable_error};
 use super::{AgentHooks, XyEvent, XyEventStream};
-use crate::agent::session::{Agent, PendingMessageQueue};
+use crate::agent::session::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::tools::ToolSet;
 use crate::domain::error::XyError;
 use crate::domain::message::{AgentMessage, AgentPart};
@@ -32,16 +32,16 @@ use crate::runtime_protocol::{XyModel, XyToolCtx, XyToolExecutionMode};
 
 use crate::runtime_protocol::XyPermissionVerdict;
 
-// ── ReActAgent ───────────────────────────────────────────────────────
+// ── AgentRuntime ───────────────────────────────────────────────────────
 
-pub struct ReActAgent {
-    pub(crate) inner: Agent,
+pub struct AgentRuntime {
+    pub(crate) inner: AgentCapabilities,
     /// Current-run cancel token. Replaced at each [`Self::run`] so abort is not sticky.
     cancel: Mutex<CancellationToken>,
 }
 
-impl ReActAgent {
-    pub fn new(inner: Agent) -> Self {
+impl AgentRuntime {
+    pub fn new(inner: AgentCapabilities) -> Self {
         Self {
             inner,
             cancel: Mutex::new(CancellationToken::new()),
@@ -89,11 +89,11 @@ impl ReActAgent {
         self.inner.queue_stats()
     }
 
-    pub fn inner(&self) -> &Agent {
+    pub fn inner(&self) -> &AgentCapabilities {
         &self.inner
     }
 
-    pub fn inner_mut(&mut self) -> &mut Agent {
+    pub fn inner_mut(&mut self) -> &mut AgentCapabilities {
         &mut self.inner
     }
 
@@ -674,7 +674,7 @@ mod tests {
         let session_mgr = SessionManager::new(SessionManager::default_dir());
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr.clone());
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-        let session = Agent::new(
+        let session = AgentCapabilities::new(
             reg,
             ToolSet::from_iter(crate::infra::tools::default_tools()),
             store,
@@ -730,7 +730,7 @@ mod tests {
         let session_mgr = SessionManager::new(SessionManager::default_dir());
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr.clone());
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-        let session = Agent::new(
+        let session = AgentCapabilities::new(
             reg,
             ToolSet::from_iter(crate::infra::tools::default_tools()),
             store,
@@ -752,7 +752,7 @@ mod tests {
             crate::agent::session::QueueMode::default(),
         );
 
-        let mut loop_runner = ReActAgent::new(session);
+        let mut loop_runner = AgentRuntime::new(session);
         let _stream = loop_runner.run_with_id("hello", "test-session").await;
     }
 
@@ -850,12 +850,12 @@ mod tests {
     fn make_agent_with_tools(
         chunks: Vec<crate::domain::types::XyChunk>,
         tools: ToolSet,
-    ) -> ReActAgent {
+    ) -> AgentRuntime {
         let reg = mock_model_registry();
         let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-        let session = Agent::new(
+        let session = AgentCapabilities::new(
             reg,
             tools,
             store,
@@ -874,7 +874,7 @@ mod tests {
             crate::agent::session::QueueMode::default(),
             crate::agent::session::QueueMode::default(),
         );
-        ReActAgent::new(session)
+        AgentRuntime::new(session)
     }
 
     #[tokio::test]
@@ -1058,7 +1058,7 @@ mod tests {
     fn make_agent_with_rounds(
         rounds: Vec<Vec<crate::domain::types::XyChunk>>,
         tools: ToolSet,
-    ) -> ReActAgent {
+    ) -> AgentRuntime {
         use crate::runtime_protocol::XyModelBuilder;
         let reg = mock_model_registry();
         let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
@@ -1069,7 +1069,7 @@ mod tests {
                 rounds: std::sync::Mutex::new(rounds.clone()),
             }) as Arc<dyn XyModel>)
         });
-        let session = Agent::new(
+        let session = AgentCapabilities::new(
             reg,
             tools,
             store,
@@ -1088,7 +1088,7 @@ mod tests {
             crate::agent::session::QueueMode::default(),
             crate::agent::session::QueueMode::default(),
         );
-        ReActAgent::new(session)
+        AgentRuntime::new(session)
     }
 
     #[tokio::test]

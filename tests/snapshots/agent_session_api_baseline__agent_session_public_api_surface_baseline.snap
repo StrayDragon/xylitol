@@ -65,10 +65,10 @@ pub fn steer(&self, message: impl Into<String>)
 pub fn system_prompt(&self) -> Option<&str>
 pub fn thinking_level(&self) -> ThinkingLevel
 pub fn unbind_event_tx(&self)
-pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Aggregate message counts for a session by reading the session store. /// /// Moved out of the `Agent` body (spec as32 / c320 T24) so the capability /// aggregate holds no aggregation logic. pub async fn compute(store: &dyn XySessionStore, session_id: &str) -> Result<SessionStats, String>
+pub session_id: String, pub user_messages: usize, pub assistant_messages: usize, pub total_messages: usize, pub thinking_level: String, pub model: Option<(String, String)>, } /// Aggregate message counts for a session by reading the session store. /// /// Moved out of the `AgentCapabilities` body (spec as32 / c320 T24) so the capability /// aggregate holds no aggregation logic. pub async fn compute(store: &dyn XySessionStore, session_id: &str) -> Result<SessionStats, String>
 pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, event_tx: Arc<Mutex<Option<EventTx>>>, } impl AsyncQueueRuntime
 pub steer_count: usize, pub follow_up_count: usize, } /// Sender bound to the active `Driver::run` / ReAct EventStream (may be absent). pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>
-pub struct Agent
+pub struct AgentCapabilities
 pub struct AsyncQueueRuntime
 pub struct BashExecHandler
 pub struct ContextUsage

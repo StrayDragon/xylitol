@@ -1,0 +1,13 @@
+kind: llman.sdd.delta
+ops[5]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ar16,"agent-entry-direct","System MUST define AgentRuntime (the ReAct-loop driver) and AgentCapabilities (the pluggable capability aggregate) directly under agent/ and re-export them from agent/mod.rs; app layers MUST import agent symbols from agent/mod (not from an agent::facade hub); the previous single facade re-export module MUST be removed.",null,null,null
+  modify_requirement,ar25,"react-agent-naming","Turn driver MUST be named AgentRuntime (formerly ReActAgent / AgentLoop); it MUST drive AgentCapabilities for each ReAct turn; hollow single-field delegation shells MUST NOT be reintroduced.",null,null,null
+  modify_requirement,ar26,"facade-layer-removed","The agent::facade intermediate module MUST remain removed; AgentRuntime and AgentCapabilities MUST be defined under agent/ with builder/hooks/event re-exports on agent/mod.rs; reaching into agent::runtime or agent::session internals from app/ remains a layering violation.",null,null,null
+  modify_requirement,ar28,"abort-resets-cancel-token",AgentRuntime MUST 在每次 run 开始时安装一个新的 CancellationToken；abort MUST 只取消当前 run 的 token。abort 之后的下一次 run MUST NOT 因沿用已取消 token 而立即以 aborted 结束。,null,null,null
+  modify_requirement,ar21,"agent-builder","System MUST provide an AgentBuilder in agent/ that depends only on runtime_protocol port trait objects and plain data (no concrete infra types), defaults tools to an empty ToolSet and bash_executor and export_io to None, provides consuming methods tools, system_prompt, hooks, bash, export_io, sandbox, context_files, compaction, max_iterations, and a build method returning Result<AgentRuntime, String>.",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  ar16,"runtime-capabilities-named",源码树在本变更后,rg AgentRuntime 与 AgentCapabilities,二者均存在且 agent/mod 再导出；无 ReActAgent 类型名
+  ar25,"agent-runtime-named",源码树在本变更后,"rg '\\bReActAgent\\b' src/",零匹配且 AgentRuntime 为 turn driver
+  ar26,"facade-still-gone",源码树,检查 agent/facade.rs,不存在且 agent/mod 再导出 AgentRuntime 与 AgentCapabilities
+  ar28,"abort-resets",AgentRuntime 上一轮被 abort,再次 run,不因旧 token 立即 aborted
+  ar21,"builder-returns-runtime",AgentBuilder 装配完成,调用 build,返回 AgentRuntime

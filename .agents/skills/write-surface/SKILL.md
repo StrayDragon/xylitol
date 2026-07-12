@@ -20,7 +20,7 @@ composition::build_agent  →  InProcessDriver  →  Driver::run(prompt)
 
 | 层 | 处置 | 具体对象 |
 |---|---|---|
-| **复用，绝不重写** | 共享，所有面走同一条 | `app/core/composition.rs::build_agent`（组合根，唯一允许同时 import agent+infra，见 `src/AGENTS.md`）；`Driver` trait + `InProcessDriver`；`ReActAgent::run/run_with_id → XyEventStream`；`protocol::Command` 的语义；`domain::lifecycle::XyEvent` 变体集 |
+| **复用，绝不重写** | 共享，所有面走同一条 | `app/core/composition.rs::build_agent`（组合根，唯一允许同时 import agent+infra，见 `src/AGENTS.md`）；`Driver` trait + `InProcessDriver`；`AgentRuntime::run/run_with_id → XyEventStream`；`protocol::Command` 的语义；`domain::lifecycle::XyEvent` 变体集 |
 | **每面重写，绝不共享** | 面内独占 | 输入采集（REPL 循环 / HTTP handler / 行编辑器）；渲染（stdout / TUI widget / HTTP JSON）；slash 命令 → driver 调用的本地分派 |
 | **新 agent 能力** | 进 `agent/`，不进面 | 若新面需要 agent 还没有的行为，那是 agent 层的 port 扩容（先在 `runtime_protocol/` 加 trait，再在 `infra/` 实现），不是在面里 reach into `agent::session` |
 
@@ -40,7 +40,7 @@ composition::build_agent  →  InProcessDriver  →  Driver::run(prompt)
 
 ### 步骤 2 — 确认复用边界，只改重写侧
 
-- 面的新代码只允许 import：`crate::app::core::composition`、`crate::app::core::driver`（`Driver`/`InProcessDriver`/`RemoteDriver`）、`crate::agent`（mod 级：`ReActAgent`/`Agent`/`XyEvent`/`XyEventStream`/`AgentBuilder`）、`crate::protocol`、`crate::domain`。
+- 面的新代码只允许 import：`crate::app::core::composition`、`crate::app::core::driver`（`Driver`/`InProcessDriver`/`RemoteDriver`）、`crate::agent`（mod 级：`AgentRuntime`/`AgentCapabilities`/`XyEvent`/`XyEventStream`/`AgentBuilder`）、`crate::protocol`、`crate::domain`。
 - 面**禁止** import：`crate::agent::session::*`、`crate::agent::runtime::*`、`crate::infra::*` 的任何子模块。唯一例外是组合根（`cli/mod.rs`、`server/subcommand.rs`、`rpc.rs`、`core/composition.rs`），它们在构造期注入具体 adapter。
 - `src/tests.rs::arch_guard` 会拦 `agent ↔ infra` 互引；但它拦不住「面 reach into agent 内部」，那是本 skill 的社会性规则，靠 review 把关。
 
@@ -56,7 +56,7 @@ match app_mode {
 }
 ```
 
-如果 seam（`Driver` trait 或 `XyEvent` 枚举）不足以支撑新面，**扩 seam**（给 `Driver` 加方法 / 给 `XyEvent` 加变体），而不是让面绕过 `Driver` 直接持有 `ReActAgent` 内部。扩 seam 时同步更新所有既有面。
+如果 seam（`Driver` trait 或 `XyEvent` 枚举）不足以支撑新面，**扩 seam**（给 `Driver` 加方法 / 给 `XyEvent` 加变体），而不是让面绕过 `Driver` 直接持有 `AgentRuntime` 内部。扩 seam 时同步更新所有既有面。
 
 ### 步骤 4 — 每个面必须可端到端跑通，才认它「存在」
 

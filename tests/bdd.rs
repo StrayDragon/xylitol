@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use xylitol::agent::compaction::should_compact;
-use xylitol::agent::runtime::{ReActAgent, XyEvent};
-use xylitol::agent::session::{Agent, ContextUsage, ModelRegistry, get_context_usage};
+use xylitol::agent::runtime::{AgentRuntime, XyEvent};
+use xylitol::agent::session::{AgentCapabilities, ContextUsage, ModelRegistry, get_context_usage};
 use xylitol::agent::tools::ToolSet;
 use xylitol::domain::model::{XyModelConfig, XyModelKind};
 use xylitol::domain::types::{ThinkingLevel, XyModelMeta};
@@ -162,14 +162,14 @@ fn check_or_contains(haystack: &str, or_clause: &str) -> bool {
 }
 
 /// Borrow result as &str — callers must keep the Ref alive
-fn make_agent(agent: &AgentState) -> ReActAgent {
+fn make_agent(agent: &AgentState) -> AgentRuntime {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     use std::sync::Arc;
     let store: Arc<dyn xylitol::runtime_protocol::XySessionStore> = Arc::new(mgr.clone());
     let sink: Arc<dyn xylitol::runtime_protocol::XyEventSink> =
         Arc::new(xylitol::infra::event::EventBus::new());
-    let session = Agent::new(
+    let session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
         ToolSet::from_iter(xylitol::infra::tools::default_tools()),
         store,
@@ -192,7 +192,7 @@ fn make_agent(agent: &AgentState) -> ReActAgent {
         xylitol::agent::session::QueueMode::default(),
         xylitol::agent::session::QueueMode::default(),
     );
-    ReActAgent::new(session)
+    AgentRuntime::new(session)
 }
 
 async fn dispatch_hook(agent: &AgentState, event: HookEvent, phase: HookPhase) {
@@ -573,7 +573,7 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         std::sync::Arc::new(mgr.clone());
     let sink: std::sync::Arc<dyn xylitol::runtime_protocol::XyEventSink> =
         std::sync::Arc::new(xylitol::infra::event::EventBus::new());
-    let mut session = Agent::new(
+    let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
         ToolSet::from_iter(xylitol::infra::tools::default_tools()),
         store,

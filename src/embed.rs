@@ -17,13 +17,13 @@
 //!     caller: "embed-example",
 //! };
 //! // Then: `bootstrap(input)?.into_runtime()` → `Driver::run`.
-//! // Do not name `ReActAgent` at the call site.
+//! // Do not name `AgentRuntime` at the call site.
 //! let _ = input.caller;
 //! ```
 //!
 //! ## Known leaks (not stability promises)
 //!
-//! - [`BootstrappedAgent::agent`] still exposes `ReActAgent` — use
+//! - [`BootstrappedAgent::agent`] still exposes `AgentRuntime` — use
 //!   [`BootstrappedAgent::into_runtime`] / [`BootstrappedAgent::into_driver`].
 //!
 //! ## Not exported here

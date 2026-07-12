@@ -9,14 +9,14 @@ use std::sync::Arc;
 
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
-use crate::agent::runtime::ReActAgent;
-use crate::agent::session::{Agent, QueueMode};
+use crate::agent::runtime::AgentRuntime;
+use crate::agent::session::{AgentCapabilities, QueueMode};
 use crate::agent::tools::ToolSet;
 use crate::runtime_protocol::{
     XyBashExecutor, XyEventSink, XyExportIo, XyModelBuilder, XyPermission, XySessionStore,
 };
 
-/// Builder for [`Agent`].
+/// Builder for [`AgentCapabilities`].
 pub struct AgentBuilder {
     // Required ports for a minimal conversation agent.
     model_registry: ModelRegistry,
@@ -148,9 +148,9 @@ impl AgentBuilder {
         self
     }
 
-    /// Build the [`ReActAgent`] (the ReAct-strategy driver over an [`Agent`]).
-    pub fn build(self) -> Result<ReActAgent, String> {
-        let session = Agent::new(
+    /// Build the [`AgentRuntime`] (ReAct-loop runtime over [`AgentCapabilities`]).
+    pub fn build(self) -> Result<AgentRuntime, String> {
+        let session = AgentCapabilities::new(
             self.model_registry,
             self.tools,
             self.store,
@@ -169,6 +169,6 @@ impl AgentBuilder {
             self.steering_mode,
             self.follow_up_mode,
         );
-        Ok(ReActAgent::new(session))
+        Ok(AgentRuntime::new(session))
     }
 }

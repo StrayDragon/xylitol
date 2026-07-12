@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::agent::AgentBuilder;
-use crate::agent::ReActAgent;
+use crate::agent::AgentRuntime;
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
 use crate::agent::session::QueueMode;
@@ -58,7 +58,7 @@ impl Default for BuildAgentOptions {
     }
 }
 
-/// Construct a fully-wired [`ReActAgent`] from the given options.
+/// Construct a fully-wired [`AgentRuntime`] from the given options.
 ///
 /// This is the single composition-root helper used by CLI, RPC, server, and
 /// future TUI/GUI modes. It injects the concrete infra implementations
@@ -68,7 +68,7 @@ impl Default for BuildAgentOptions {
 /// **Event paths:** turn progress is the `Driver::run` → `XyEvent` stream.
 /// The injected [`XyEventSink`] (default [`EventBus`]) is for side lifecycle
 /// (e.g. compaction); it is not the multi-client turn bus.
-pub fn build_agent(options: BuildAgentOptions) -> Result<ReActAgent, String> {
+pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, String> {
     let sessions_dir = SessionManager::default_dir();
     std::fs::create_dir_all(&sessions_dir).map_err(|e| format!("create sessions dir: {e}"))?;
     let session_mgr = SessionManager::new(sessions_dir);
