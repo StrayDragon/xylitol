@@ -212,7 +212,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 4. **无常驻 debug strip**；调试信息走 `/debug`、日志或临时一行，不占 3 行底栏。
 5. **无常驻多行 header**；需要会话名/路径时并进 footer，或 quiet 启动后省略。
 6. 会话树 / 命令面板 / 设置：**替换 editor 槽**，不要 blit 到内容顶部。
-7. 居中 `show_overlay` 只用于确认框等短交互。
+7. 居中 `show_overlay` **默认不用**；交互优先 editor 槽（树 / Ask / 板）。仅极短确认可选用 overlay（见 [`overlay.md`](./design/overlay.md)）。
 8. **保留 editor 上下边框**作为操作区边界（图 2）；不要为了「更扁」去掉这层分区提示。
 
 `spacing.*` 单位是 cell / 行。宽屏 Diff 阈值见 `spacing.diff-side-by-side-min-cols`。
@@ -237,7 +237,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 | [`design/status.md`](./design/status.md) | busy 一行 |
 | [`design/editor.md`](./design/editor.md) | 操作区 |
 | [`design/footer.md`](./design/footer.md) | 一行 dim |
-| [`design/overlay.md`](./design/overlay.md) | 短确认 |
+| [`design/overlay.md`](./design/overlay.md) | 默认不用；优先槽内树/Ask；极短确认可选 |
 | [`design/diff-block.md`](./design/diff-block.md) | Diff 渲染 |
 | [`design/glyphs.md`](./design/glyphs.md) | unicode / ascii 档 |
 | [`design/theme-tokens.md`](./design/theme-tokens.md) | 语义 → SGR；Palette/`/theme`（c570）；Ask/ChoicePrompt 见 playground（c565） |
