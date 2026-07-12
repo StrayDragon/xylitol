@@ -378,6 +378,36 @@ fn idle_scrollback_is_silent_no_placeholder_wall() {
 }
 
 #[test]
+fn idle_editor_operation_zone_is_compact() {
+    use super::ui_root::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_chrome_meta("~/x", "m");
+    root.apply_ui_model(&UiModel::new());
+    let lines = root.render(80);
+    // scrollback 0 + status 0 + editor (3) + footer 1
+    assert!(
+        lines.len() <= 5,
+        "idle chrome must stay compact (got {} lines): {lines:?}",
+        lines.len()
+    );
+    let border_rows = lines.iter().filter(|l| l.contains('─')).count();
+    assert!(
+        border_rows >= 2,
+        "operation-zone borders missing: {lines:?}"
+    );
+
+    root.set_editor_text("line1\nline2\nline3\nline4\nline5\nline6");
+    let grown = root.render(80);
+    assert!(
+        grown.len() > lines.len(),
+        "multi-line draft must grow editor slot: idle={} grown={}",
+        lines.len(),
+        grown.len()
+    );
+}
+
+#[test]
 fn chrome_idle_status_occupies_zero_rows() {
     use super::ui_root::UiRoot;
 
@@ -412,14 +442,62 @@ fn chrome_busy_status_is_separate_from_footer() {
         lines.iter().any(|l| l.contains("Working")),
         "busy status row missing: {lines:?}"
     );
+    // Default Loader frames are braille spinners (⠋…).
+    assert!(
+        lines.iter().any(|l| {
+            l.contains('⠋')
+                || l.contains('⠙')
+                || l.contains('⠹')
+                || l.contains('⠸')
+                || l.contains('⠼')
+                || l.contains('⠴')
+                || l.contains('⠦')
+                || l.contains('⠧')
+                || l.contains('⠇')
+                || l.contains('⠏')
+        }),
+        "busy status must include spinner frame: {lines:?}"
+    );
     let footer = lines.last().expect("footer");
     assert!(
         !footer.contains("Working"),
         "Working must not live in footer: {footer}"
     );
     assert!(
+        !footer.contains('⠋') && !footer.contains('⠙'),
+        "spinner must not live in footer: {footer}"
+    );
+    assert!(
         footer.contains("~/xylitol") && footer.contains("ornith"),
         "{footer}"
+    );
+
+    // Tick advances spinner without growing status into footer.
+    let _ = root.tick();
+    let after = root.render(80);
+    assert!(
+        after.iter().any(|l| l.contains("Working")),
+        "tick must keep busy status: {after:?}"
+    );
+}
+
+#[test]
+fn scrollback_user_message_applies_background() {
+    use super::ui_root::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_chrome_meta(".", "m");
+    let mut model = UiModel::new();
+    model.entries.push(super::bridge::UiEntry::User {
+        text: "hello bg".into(),
+    });
+    root.apply_ui_model(&model);
+    let joined = root.render(80).join("\n");
+    assert!(joined.contains("hello bg"), "user text missing: {joined}");
+    // bg_rgb emits CSI 48;2;r;g;b
+    assert!(
+        joined.contains("\x1b[48;2;"),
+        "user-message-bg ANSI missing: {joined:?}"
     );
 }
 

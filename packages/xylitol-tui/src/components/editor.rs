@@ -1493,7 +1493,12 @@ impl Component for Editor {
         };
         self.last_width = lw;
         let layout = self.layout_text(lw);
-        let max_vis = (self.terminal_rows * 30 / 100).max(5);
+        // Empty draft: keep a single content row (cursor) so the operation zone
+        // stays compact — product chrome / agent_demo idle parity (c477).
+        let mut max_vis = (self.terminal_rows * 30 / 100).max(5);
+        if self.is_editor_empty() {
+            max_vis = 1;
+        }
         let cur_idx = layout.iter().position(|l| l.has_cursor).unwrap_or(0);
         if cur_idx < self.scroll_offset {
             self.scroll_offset = cur_idx;
@@ -1623,6 +1628,25 @@ mod tests {
     fn empty() {
         let mut e = Editor::new(t(), EditorOptions::default(), clk());
         assert!(e.render(30).iter().any(|l| l.contains('─')));
+    }
+
+    #[test]
+    fn empty_draft_renders_one_content_row() {
+        let mut e = Editor::new(
+            t(),
+            EditorOptions {
+                padding_x: 1,
+                terminal_rows: 8,
+            },
+            clk(),
+        );
+        e.set_focused(true);
+        let lines = e.render(40);
+        // top border + 1 content + bottom border
+        assert_eq!(lines.len(), 3, "empty draft must stay compact: {lines:?}");
+        e.set_text("a\nb\nc\nd\ne\nf".into());
+        let grown = e.render(40);
+        assert!(grown.len() > 3, "multi-line draft must grow: {grown:?}");
     }
 
     #[test]

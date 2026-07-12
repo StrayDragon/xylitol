@@ -17,10 +17,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use xylitol_tui::components::editor::{Editor, EditorOptions};
+use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
     Component, Focusable, InputEvent, InputListenerResult, SystemClock, TUI, Terminal, TreeNode,
-    TreeSelector, TreeSelectorOptions, TreeSelectorTheme, matches_key_event, truncate_to_width,
+    TreeSelector, TreeSelectorOptions, TreeSelectorTheme, fg_rgb, matches_key_event,
+    truncate_to_width,
 };
 
 use super::bridge::{UiEntry, UiModel};
@@ -64,7 +66,9 @@ fn product_tree_selector(active_id: &str) -> TreeSelector {
 pub struct UiRoot {
     ui_model: UiModel,
     fold: ScrollbackFold,
-    status: Text,
+    /// Busy-only; idle leaves this unused so status occupies 0 rows.
+    status_loader: Loader,
+    status_busy: bool,
     editor: Editor,
     footer: Text,
     theme: ChromeTheme,
@@ -79,6 +83,14 @@ pub struct UiRoot {
 impl UiRoot {
     pub fn new() -> Self {
         let theme = ChromeTheme::product_dark();
+        let accent = theme.palette().accent;
+        let muted = theme.palette().muted;
+        let status_loader = Loader::new(
+            Box::new(move |s| fg_rgb(accent, s)),
+            Box::new(move |s| fg_rgb(muted, s)),
+            String::new(),
+            Some(LoaderIndicatorOptions::default()),
+        );
         let mut editor = Editor::new(
             theme.editor_theme(),
             EditorOptions {
@@ -92,7 +104,8 @@ impl UiRoot {
         Self {
             ui_model: UiModel::new(),
             fold: ScrollbackFold::default(),
-            status: Text::new(String::new(), 0, 0),
+            status_loader,
+            status_busy: false,
             editor,
             footer: Text::new(String::new(), 0, 0),
             theme,
@@ -189,10 +202,11 @@ impl UiRoot {
 
         match model.status.as_ref() {
             Some(s) if !s.is_empty() => {
-                self.status.set_text(self.theme.paint_status(s));
+                self.status_loader.set_message(s.clone());
+                self.status_busy = true;
             }
             _ => {
-                self.status.set_text(String::new());
+                self.status_busy = false;
             }
         }
 
@@ -211,6 +225,18 @@ impl UiRoot {
         self.ui_model
             .entries
             .push(UiEntry::System { text: line.into() });
+    }
+
+    fn render_status_slot(&mut self, width: usize) -> Vec<String> {
+        if !self.status_busy {
+            return Vec::new();
+        }
+        // Loader::render prepends a blank spacer — drop empties so busy is 1 row.
+        self.status_loader
+            .render(width)
+            .into_iter()
+            .filter(|l| !l.is_empty())
+            .collect()
     }
 
     fn render_editor_slot(&mut self, width: usize) -> Vec<String> {
@@ -240,7 +266,7 @@ impl Component for UiRoot {
     fn render(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
         lines.extend(self.render_scrollback_slot(width));
-        lines.extend(self.status.render(width));
+        lines.extend(self.render_status_slot(width));
         // Editor owns the operation-zone ─ borders (DESIGN editor.md / agent_demo).
         // Do NOT wrap with a second outer border pair.
         lines.extend(self.render_editor_slot(width));
@@ -291,14 +317,18 @@ impl Component for UiRoot {
     }
 
     fn invalidate(&mut self) {
-        self.status.invalidate();
+        self.status_loader.invalidate();
         self.editor.invalidate();
         self.footer.invalidate();
         self.tree.invalidate();
     }
 
     fn tick(&mut self) -> bool {
-        self.editor.tick()
+        let mut dirty = self.editor.tick();
+        if self.status_busy {
+            dirty = Component::tick(&mut self.status_loader) || dirty;
+        }
+        dirty
     }
 }
 
