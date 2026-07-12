@@ -1,13 +1,26 @@
 ---
 name: "llman-sdd-graph"
-description: "根据变更提案的 frontmatter（depends_on/blocks）生成依赖关系图。"
+description: "以 mermaid 图可视化 llman SDD 变更间的依赖关系（depends_on/blocks）。辅助工具，任意阶段可用，不属于主实现 pipeline。"
 metadata:
-  version: "0.0.56"
+  version: "0.0.57"
 ---
 
 # LLMAN SDD 依赖图
 
 使用此 skill 可视化变更之间的依赖关系。
+
+## Pipeline 位置
+
+```mermaid
+flowchart LR
+    pipeline["主 pipeline:<br/>propose → apply → verify → archive"]
+    graph["📎 llman-sdd-graph<br/>依赖可视化（辅助工具）"]
+    graph -.->|任意阶段可用| pipeline
+
+    style graph fill:#e8f4e8,stroke:#28a745,stroke-width:2px
+```
+
+> 📎 辅助工具，可在 pipeline 任意阶段使用。需要落地执行时 → `llman-sdd-apply`（实施）或 `llman-sdd-propose`（提案）。
 
 ## 用法
 
@@ -52,6 +65,8 @@ blocks:
 ## Why
 ...
 ```
+
+> 💡 这只是辅助工具 — 需要落地执行时回到主 pipeline：`llman-sdd-propose` → `llman-sdd-apply` → `llman-sdd-verify` → `llman-sdd-archive`。
 
 在执行之前，请先阅读 `llmanspec/config.yaml`，若其中包含 `context` 与 `rules` 请遵循。
 

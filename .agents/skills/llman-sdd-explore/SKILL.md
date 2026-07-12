@@ -1,8 +1,8 @@
 ---
 name: "llman-sdd-explore"
-description: "进入 llman SDD 探索模式（仅思考；不做实现）。"
+description: "进入 llman SDD 探索模式：理清思路、调查需求、分析问题。仅思考，禁止写代码。用于意图不明确或需要分析后再行动的场景。"
 metadata:
-  version: "0.0.56"
+  version: "0.0.57"
 ---
 
 # LLMAN SDD Explore
@@ -14,7 +14,24 @@ metadata:
 - 如果用户需要，你可以创建/更新 llman SDD artifacts（proposal/specs/design/tasks）。
 - 你绝对不能在探索模式下写应用代码或实现功能。
 
-## 探索姿态（Stance）
+## Pipeline 位置
+
+```mermaid
+flowchart LR
+    explore["★ llman-sdd-explore ★<br/>探索（你现在在这里）"]
+    explore --> propose["llman-sdd-propose<br/>提案"]
+    propose --> apply["llman-sdd-apply<br/>实施"]
+    apply --> verify["llman-sdd-verify<br/>验证"]
+    verify --> archive["llman-sdd-archive<br/>归档"]
+    archive --> commit["git commit<br/>完成闭环"]
+
+    style explore fill:#fff3cd,stroke:#ffc107,stroke-width:3px
+```
+
+> 📍 你现在在探索阶段（仅思考）→ 常规路径下一步 `llman-sdd-propose`（提案）
+> 📎 如果是小改动（不改行为合约），可直接走 `llman-sdd-quick`（快速路径）
+
+## 探索姿态
 - 好奇而不教条
 - 以真实代码为依据
 - 需要时用 ASCII 图可视化
@@ -35,13 +52,13 @@ metadata:
    - 新工作项 → `tasks.md`
 
 ## 退出探索模式
-当用户准备开始实现时，建议：
-- `llman-sdd-propose`（提出提案并生成工件）
-- `llman-sdd-new-change`（创建 change）
-- `llman-sdd-ff`（一次性创建所有 artifacts）
-- `llman-sdd-apply`（按 tasks 实施）
-- `llman-sdd-quick`（快速路径：小改动直接改）
+当用户准备开始实现时，根据变更规模选择路径：
+- 行为合约变更 → `llman-sdd-propose`（创建提案工件）
+- 小改动 / 不改合约 → `llman-sdd-quick`（快速路径）
+- 已有完整 change 工件 → `llman-sdd-apply`（按 tasks 实施）
 若用户在探索模式中要求你开始实现，STOP 并提醒其先退出探索模式。
+
+> 💡 探索完成 → 下一步 `llman-sdd-propose`（保单）或 `llman-sdd-quick`（快速路径）
 
 在执行之前，请先阅读 `llmanspec/config.yaml`，若其中包含 `context` 与 `rules` 请遵循。
 

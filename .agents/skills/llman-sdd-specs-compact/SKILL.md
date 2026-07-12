@@ -1,13 +1,25 @@
 ---
 name: "llman-sdd-specs-compact"
-description: "压缩并重构 llman SDD specs，同时保持规范行为不变。"
+description: "人类主动触发的维护工具。压缩去重 llman SDD specs——在归档积累较多后合并冗余 requirement/scenario，保留所有规范行为不变。不属于日常 pipeline：仅在用户明确要求压缩 specs 时才运行。"
 metadata:
-  version: "0.0.56"
+  version: "0.0.57"
 ---
 
 # LLMAN SDD Specs Compact
 
 使用此 skill 在不改变规范行为的前提下压缩 specs。
+
+## Pipeline 位置
+
+```mermaid
+flowchart LR
+    archive["llman-sdd-archive<br/>归档完成后"] --> compact
+    compact["📎 llman-sdd-specs-compact<br/>压缩重构 specs（维护工具）"]
+
+    style compact fill:#e8f4e8,stroke:#28a745,stroke-width:2px
+```
+
+> 📎 维护工具，通常在归档积累较多后执行。日常开发 → `llman-sdd-propose` / `llman-sdd-apply`。
 
 ## Context
 - specs 会随着变更积累而膨胀，并出现重复 requirement/scenario。
@@ -42,6 +54,8 @@ metadata:
 - 输出按 capability 分组的压缩方案。
 - 包含：keep/merge/remove 决策及理由。
 - 包含验证命令与预期结果。
+
+> 💡 维护完成后，新需求走正常 pipeline：`llman-sdd-propose` → `llman-sdd-apply` → `llman-sdd-verify` → `llman-sdd-archive`。
 
 在执行之前，请先阅读 `llmanspec/config.yaml`，若其中包含 `context` 与 `rules` 请遵循。
 
