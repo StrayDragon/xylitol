@@ -19,8 +19,8 @@ use crate::app::core::bootstrap::{
 use crate::app::server::subcommand::ServerSubcommand;
 use crate::infra::timing;
 
-/// Top-level subcommand. When absent, the flat flags/positional below drive
-/// the default print-mode flow (backward compatible).
+/// Top-level subcommand. When absent, flat flags/positional drive TUI (default)
+/// or print one-shot.
 #[derive(Subcommand, Debug)]
 pub enum CliCommand {
     /// Read-only resource listing and diagnostics.
@@ -37,24 +37,38 @@ pub enum CliCommand {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "xylitol", version, about)]
+#[command(
+    name = "xylitol",
+    version,
+    about = "Personal coding agent — default entry is the interactive TUI"
+)]
 pub struct CliArgs {
     #[command(subcommand)]
     pub command: Option<CliCommand>,
 
-    pub prompt: Option<String>,
+    /// One-shot prompt for print mode (`--prompt` / `-p`).
+    #[arg(short = 'p', long = "prompt", value_name = "TEXT")]
+    pub prompt_flag: Option<String>,
+
+    /// Positional one-shot prompt (same as `--prompt`).
+    #[arg(value_name = "PROMPT")]
+    pub positional_prompt: Option<String>,
+
+    /// Force print mode (still requires a prompt via `--prompt`, positional, or piped stdin).
     #[arg(long)]
     pub print: bool,
+
     #[arg(long)]
     pub session: Option<String>,
     #[arg(long)]
     pub model: Option<String>,
     #[arg(long)]
     pub config: Option<String>,
-    /// Enter the interactive inline TUI (ratatui). Implied when no prompt is
-    /// given and stdin is a TTY.
+
+    /// Force the interactive TUI (default when no one-shot prompt on a TTY).
     #[arg(long)]
     pub tui: bool,
+
     #[arg(long)]
     pub list_models: bool,
     #[arg(long)]
@@ -65,6 +79,68 @@ pub struct CliArgs {
     /// Do not trust the project directory; skip its `.xylitol/` resources.
     #[arg(long)]
     pub no_trust: bool,
+}
+
+impl CliArgs {
+    /// Merged one-shot prompt: `--prompt` wins over positional.
+    pub fn one_shot_prompt(&self) -> Option<&str> {
+        self.prompt_flag
+            .as_deref()
+            .or(self.positional_prompt.as_deref())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    }
+}
+
+/// Which interactive surface to open (after `--list-models` is ruled out).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SurfaceMode {
+    Tui,
+    Print,
+}
+
+/// Pure dispatch (c474): TUI is the default on a TTY; print needs an explicit prompt path.
+pub fn select_surface_mode(
+    force_tui: bool,
+    print_flag: bool,
+    has_one_shot_prompt: bool,
+    stdin_is_tty: bool,
+) -> SurfaceMode {
+    if force_tui {
+        return SurfaceMode::Tui;
+    }
+    if has_one_shot_prompt || print_flag {
+        return SurfaceMode::Print;
+    }
+    if stdin_is_tty {
+        return SurfaceMode::Tui;
+    }
+    // Non-TTY bare launch: treat as print so the caller can error (no Hello!).
+    SurfaceMode::Print
+}
+
+/// Resolve the print-mode prompt. Never returns a placeholder like `Hello!`.
+pub fn resolve_print_prompt(
+    one_shot: Option<&str>,
+    allow_stdin_pipe: bool,
+    stdin_is_tty: bool,
+    mut read_stdin: impl FnMut() -> std::io::Result<String>,
+) -> Result<String, String> {
+    if let Some(p) = one_shot.map(str::trim).filter(|s| !s.is_empty()) {
+        return Ok(p.to_string());
+    }
+    if allow_stdin_pipe && !stdin_is_tty {
+        let buf = read_stdin().map_err(|e| format!("failed to read stdin: {e}"))?;
+        let trimmed = buf.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
+        }
+    }
+    Err(
+        "print mode requires a prompt: pass PROMPT, --prompt TEXT, or pipe stdin \
+         (bare launch on a TTY opens the TUI; use --tui to force it)"
+            .into(),
+    )
 }
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -90,7 +166,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some(CliCommand::Server { action }) => {
             return crate::app::server::subcommand::run(action).await;
         }
-        None => {} // continue to default print-mode flow
+        None => {}
     }
 
     timing::reset_timings();
@@ -101,15 +177,14 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         _ => None,
     };
 
-    // Decide TUI vs print before bootstrap so Ask trust can use stdio
-    // (must happen before raw mode). `--list-models` stays non-interactive.
+    use std::io::IsTerminal;
+    let stdin_is_tty = std::io::stdin().is_terminal();
+    let one_shot = args.one_shot_prompt().map(str::to_string);
+
     #[cfg(feature = "tui")]
-    let want_tui = {
-        use std::io::IsTerminal;
-        !args.list_models
-            && (args.tui
-                || (args.prompt.is_none() && !args.print && std::io::stdin().is_terminal()))
-    };
+    let want_tui = !args.list_models
+        && select_surface_mode(args.tui, args.print, one_shot.is_some(), stdin_is_tty)
+            == SurfaceMode::Tui;
     #[cfg(not(feature = "tui"))]
     let want_tui = false;
 
@@ -182,15 +257,23 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|e| e.into());
     }
 
-    let prompt = args.prompt.unwrap_or_else(|| {
-        use std::io::Read;
-        let mut buf = String::new();
-        if std::io::stdin().read_to_string(&mut buf).is_ok() && !buf.is_empty() {
-            buf.trim().to_string()
-        } else {
-            "Hello!".into()
+    let prompt = match resolve_print_prompt(
+        one_shot.as_deref(),
+        args.print || one_shot.is_none(),
+        stdin_is_tty,
+        || {
+            use std::io::Read;
+            let mut buf = String::new();
+            std::io::stdin().read_to_string(&mut buf)?;
+            Ok(buf)
+        },
+    ) {
+        Ok(p) => p,
+        Err(msg) => {
+            eprintln!("Error: {msg}");
+            return Err(msg.into());
         }
-    });
+    };
 
     crate::app::cli::print::run_print(&mut driver, &prompt, &session_id).await?;
 
@@ -240,5 +323,61 @@ fn render_warnings(warnings: &[BootstrapWarning]) {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bare_tty_selects_tui() {
+        assert_eq!(
+            select_surface_mode(false, false, false, true),
+            SurfaceMode::Tui
+        );
+    }
+
+    #[test]
+    fn force_tui_wins_over_prompt() {
+        assert_eq!(
+            select_surface_mode(true, false, true, true),
+            SurfaceMode::Tui
+        );
+    }
+
+    #[test]
+    fn prompt_selects_print() {
+        assert_eq!(
+            select_surface_mode(false, false, true, true),
+            SurfaceMode::Print
+        );
+    }
+
+    #[test]
+    fn print_flag_selects_print() {
+        assert_eq!(
+            select_surface_mode(false, true, false, true),
+            SurfaceMode::Print
+        );
+    }
+
+    #[test]
+    fn resolve_print_prompt_rejects_hello_fallback() {
+        let err = resolve_print_prompt(None, false, true, || Ok(String::new())).unwrap_err();
+        assert!(err.contains("--prompt") || err.contains("PROMPT"), "{err}");
+        assert!(!err.contains("Hello!"), "{err}");
+    }
+
+    #[test]
+    fn resolve_print_prompt_uses_flag() {
+        let p = resolve_print_prompt(Some("hi"), false, true, || Ok(String::new())).unwrap();
+        assert_eq!(p, "hi");
+    }
+
+    #[test]
+    fn resolve_print_prompt_reads_pipe() {
+        let p = resolve_print_prompt(None, true, false, || Ok("piped\n".into())).unwrap();
+        assert_eq!(p, "piped");
     }
 }
