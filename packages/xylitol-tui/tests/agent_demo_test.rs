@@ -1930,6 +1930,38 @@ fn agent_demo_bang_prefix_enables_bash_border() {
 }
 
 #[test]
+fn agent_demo_transcript_blocks_blank_before_and_after() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.freeze_script_for_test();
+    app.seed_two_user_blocks_for_test();
+    let lines = app.transcript_render_lines_for_test(40);
+    let is_blank = |l: &str| l.chars().all(|c| c.is_whitespace());
+    assert!(
+        !lines.is_empty() && is_blank(&lines[0]),
+        "first block must have a leading blank: {lines:?}"
+    );
+    assert!(
+        lines.last().is_some_and(|l| is_blank(l)),
+        "last block must have a trailing blank: {lines:?}"
+    );
+    let alpha = lines
+        .iter()
+        .position(|l| l.contains("block-alpha"))
+        .expect("alpha");
+    let beta = lines
+        .iter()
+        .position(|l| l.contains("block-beta"))
+        .expect("beta");
+    assert!(alpha < beta, "order: {lines:?}");
+    let gap: Vec<_> = lines[alpha + 1..beta].iter().collect();
+    let blank_run = gap.iter().take_while(|l| is_blank(l)).count();
+    assert!(
+        blank_run >= 2,
+        "pi-like gap: blank after alpha + blank before beta (got {blank_run}): {lines:?}"
+    );
+}
+
+#[test]
 fn agent_demo_ctrl_g_external_editor_stub() {
     let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
     app.freeze_script_for_test();
