@@ -4,15 +4,15 @@
 
 ## 现状
 
-基于 `xylitol-tui` 的 **host 驱动 UI**（c465 bridge + **c475 chrome** + **c476 live scrollback** + **c490 trust gate** + **c480/c481 input** + **c482 abort-resume**）。CLI 无参默认 TUI（c474）。
+基于 `xylitol-tui` 的 **host 驱动 UI**（c465 bridge + **c475 chrome** + **c476 live scrollback** + **c490 trust gate** + **c480/c481 input** + **c482 abort-resume** + **c485 vertical slice**）。CLI 无参默认 TUI（c474）。
 
-**已开闸（2026-07-11）**：轨 A / 轨 P 已落地；c465 已归档（2026-07-12）。原子交互仍建议先在 `packages/xylitol-tui` `agent_demo` 验证再进本面。开闸记录 SSOT：`src/AGENTS.md`。
+**已开闸（2026-07-11）**：轨 A / 轨 P 已落地；轨 B MVP（至 c485）已归档（2026-07-12）。原子交互仍建议先在 `packages/xylitol-tui` `agent_demo` 验证再进本面。开闸记录 SSOT：`src/AGENTS.md`。
 
 ## 优先路径
 
 **闸门**：相关原子/交互 MUST 先在 `packages/xylitol-tui` `agent_demo` 验证，再进本面接线。**禁止**在 c491 stub 上扩活树 / filter / 真 Driver travel。
 
-**不做 Codex 式 TranscriptView**（`c470` 已 `paused`；`app-tui-transcript` 已降级为 live scrollback）。
+**不做 Codex 式 TranscriptView**（原 c470 草案已移除；`app-tui-transcript` 合约仅约束 live scrollback）。
 
 | 阶段 | 状态 |
 |---|---|
@@ -20,7 +20,8 @@
 | **c460** host 空壳 | 已落地（框架占位） |
 | **c491** 产品双 Esc **假树**槽替换 | **stub 冻结**：仅双 Esc 开/Esc 关/Enter `travel → id`；**MUST NOT** 在此 stub 上扩展活树/filter/Driver |
 | 产品 bridge（XyEvent→UI + Driver 合流） | **c465 已归档** |
-| 产品 chrome · slash/键位 · DESIGN 视觉落地 · 真 session travel | chrome：**c475**；live scrollback：**c476**；trust：**c490**；input：**c480**；真 travel：另 change |
+| 产品 chrome · slash/键位 · DESIGN 视觉落地 · 真 session travel | chrome：**c475**；live：**c476**；trust：**c490**；input：**c480/c481**；slice：**c485**；真 travel：另 change |
+| 垂直切片验收 | **c485 已归档**（`harness.rs` H1–H9 + `tests/tui_e2e` 产品 PTY Fake） |
 
 历史/分支 UX 以会话树为准；live 输出若有，只进 scrollback 行，见 `design/transcript.md` / `design/session-tree.md`。
 
@@ -34,7 +35,7 @@
 
 ## Specs
 
-产品面 capability：`app-tui-*`（`app-tui-host` / `bridge` / `transcript` / `chrome` / `input` / `commands`）。跨切面索引：`app-tui`。合约已归档：`archive/2026-07-10-c450-revise-app-tui-contract`。`app-tui-transcript` 壳仍在；**实现上不按 Codex 浏览面推进**。
+产品面 capability：`app-tui-*`（含 `app-tui-vertical-slice`；另有 `host` / `bridge` / `transcript` / `chrome` / `input` / `commands`）。跨切面索引：`app-tui`。合约已归档：`archive/2026-07-10-c450-revise-app-tui-contract`。`app-tui-transcript` 壳仍在，语义为 live scrollback（**非** Codex 浏览面）。
 
 steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面只调 `Driver`，不持有 ReAct 队列。
 
@@ -48,7 +49,7 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 
 ## 硬约束
 
-- **产品面**：已开闸；下一闸 **c485 垂直切片**（合成 harness + 产品 PTY Fake smoke）。c491 假树保持 stub（见上表）；真 travel 另 change。
+- **产品面**：已开闸；轨 B MVP（c485）已过；下一闸 **c492 bash / c493 compaction UI**（purpose-draft）。c491 假树保持 stub（见上表）；真 travel 另 change。
 - 渲染/通用组件只用 `xylitol_tui`；禁止在本目录再实现差分引擎或通用 Editor/Markdown。
 - **需要底层 TUI 能力时**：先到 `packages/xylitol-tui` 查是否已有或可扩展；缺能力在包内补，再由本面接线。
 - 产品路径 **host 驱动**同步引擎；异步事件合流在本面；勿调 `TUI::start()`（demo 专用）。
@@ -68,4 +69,4 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 | 包内组件与五层 / E2E 分工 | [`packages/xylitol-tui/AGENTS.md`](../../packages/xylitol-tui/AGENTS.md)「验证」；how-to → `test-tui-harness` |
 | 排查（禁 println） | `tail -f ~/.xylitol/logs/xylitol.log` |
 
-模块：`host.rs`（步进机）、`ui_root.rs`（产品根布局）、`terminal_guard.rs`（restore）、`tests.rs`（harness）。勿用 `shell`/`scene` 命名，以免与 bash/`infra::process::shell` 或泛化「场景」混淆。
+模块：`host.rs`（步进机）、`ui_root.rs`（产品根布局）、`terminal_guard.rs`（restore）、`tests.rs` / `harness.rs`（合成切片）、`tests/tui_e2e`（产品 PTY）。勿用 `shell`/`scene` 命名，以免与 bash/`infra::process::shell` 或泛化「场景」混淆。
