@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-design-playground"
 purpose: "DESIGN playground 静态设计图：token 同步、Next-wave 槽、Agent 默认忽略、L1/L2 一致性闸门指针。"
 valid_scope[7]: src/app/tui/design/playground/,src/app/tui/design/AGENTS.md,src/app/tui/design/playground/README.md,src/app/tui/design/playground/sync_tokens.py,src/app/tui/design/playground/index.html,src/app/tui/design/fixtures/,src/app/tui/DESIGN.md
-requirements[8]{req_id,title,statement}:
+requirements[11]{req_id,title,statement}:
   adp0,"capability-shell","本 capability 由变更 c555-add-app-tui-design-playground-sync 引入；归档合并后以本文件为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   adp1,"token-sync-ssot",playground 的 tokens.css 与 tokens.js MUST 由 sync_tokens.py 从 DESIGN.md frontmatter 生成；手改生成物 MUST NOT 作为长期真值。
   adp2,"markdown-slot-align",playground Markdown 槽示意 MUST 对齐 design/markdown.md：无井号标题前缀、链接为 text (url)、粗体斜体无可见星号包裹。
@@ -10,8 +10,11 @@ requirements[8]{req_id,title,statement}:
   adp4,"session-tree-kind-ssot","playground 会话树槽静图 MUST 用 DESIGN token 色区分 kind 前缀（user/assistant/tool），正文 MUST NOT 再把 role 字符串预烘焙进同一纯文本片段作为唯一表现；MUST 与 session-tree.md 的 kind 渲染序一致。"
   adp5,"session-tree-travel-ssot-live",playground 会话树槽注脚与键位示意 MUST 写明产品树为 Driver MessageHistory 活树、Enter 经 travel_session_tree（user→填 input）；MUST NOT 再暗示产品仍为 c491 假树 stub 或禁止 Driver travel。
   adp9,"next-wave-static-slots","DESIGN playground MUST 提供 Next-wave 静态槽 panel-models 与 panel-tree-power（固定状态示意）；MUST 与 design/models-picker.md、design/session-tree.md 形状一致；MUST NOT 在静图中表达实现分层（包标签/置灰）或顶栏快捷键墙。"
-  adp10,"next-wave-design-ssot","产品下一波（/models、树 filter/fold/fork、真 EDITOR、footer context%、abort UI）的视觉 MUST 以 src/app/tui/DESIGN.md Next wave 表与对应 design/*.md 为 SSOT；静图一致性格式（L1/L2）MUST 可被后续 lint 引用。"
-scenarios[10]{req_id,id,given,when,then}:
+  adp10,"next-wave-design-ssot",产品下一波（/models、树 filter/fold/fork、真 EDITOR、footer context%、abort UI）的视觉 MUST 以 src/app/tui/DESIGN.md Next wave 表与对应 design/*.md 为 SSOT；静图一致性格式（L1/L2）MUST 可被后续 lint 引用。
+  adp6,"playground-lint-gate","仓库 MUST 提供 scripts/check_tui_design_playground.py（或等价），并由 just qa 经 check-scripts 执行；失败时 MUST 非零退出。脚本 MUST 覆盖至少：禁止实现分层标签/置灰、Next-wave 槽与 fixture 源内禁止 change-id 噪音、选中 .rev 对比度护栏（CSS inherit 与选中行无 kind 前景穿透）、必有 panel-models 与 panel-tree-power、Models/Tree 使用 term-slot。"
+  adp7,"playground-fixtures-l2","src/app/tui/design/fixtures/ MUST 存在至少 session-tree.filter 与 models.open 的 YAML 夹具；playground HTML MUST 以 data-design-fixture 关联；lint MUST 按夹具 must_contain / must_not_contain / assert_html 断言对应模板源。"
+  adp8,"playground-lint-docs","design/AGENTS.md 与 playground README MUST 写明改静图须跑 playground lint（及 check-tui-tokens）；MUST NOT 再暗示仅靠人眼发现 DESIGN 漂移。"
+scenarios[14]{req_id,id,given,when,then}:
   adp0,"shell-present","","列出 capability app-tui-design-playground",spec 含 adp0 及后续 requirements
   adp1,"sync-runs","",运行 sync_tokens.py,生成或刷新 tokens.css 与 tokens.js 且无报错
   adp2,"md-slot","",打开 playground Markdown 槽,示意中无井号标题前缀且链接呈 text (url) 形态
@@ -19,6 +22,10 @@ scenarios[10]{req_id,id,given,when,then}:
   adp3,"agents-pointer","",阅读 design/AGENTS.md,含 Agent 默认忽略 playground 的说明
   adp4,"tree-slot-kind-colors",打开 playground 会话树槽,查看树行,可见分色 kind 前缀与无 role 烘焙的正文
   adp5,"playground-live-note",打开 design playground 会话树槽,阅读注脚,写明活树与 travel_session_tree / user 预填
-  adp9,"slots-present","","打开 design playground","存在 Models 与 Tree power 槽且无包标签置灰"
-  adp9,"models-shape","","查看 Models 打开态","替换 editor 槽示意且选中行为整行 reverse"
-  adp10,"design-table","","阅读 DESIGN.md Next wave 表","列出后续 change 与文档指针"
+  adp9,"slots-present","",打开 design playground,存在 Models 与 Tree power 槽且无包标签置灰
+  adp9,"models-shape","",查看 Models 打开态,替换 editor 槽示意且选中行为整行 reverse
+  adp10,"design-table","",阅读 DESIGN.md Next wave 表,列出后续 change 与文档指针
+  adp6,"qa-runs-lint","","运行 python3 scripts/check_tui_design_playground.py --check",退出码 0 或对故意违规样本非 0
+  adp6,"rev-inherit",playground CSS 含 .rev,检查选中对比度规则,"要求 .rev * color inherit 且 TREEP 选中行无 fg-user 穿透"
+  adp7,"fixtures-present","",列出 design/fixtures,"存在 session-tree.filter 与 models.open YAML 且 HTML 有对应 data-design-fixture"
+  adp8,"docs-pointer","",阅读 design/AGENTS.md 与 playground README,含 lint / qa 指针
