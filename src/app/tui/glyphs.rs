@@ -37,4 +37,18 @@ impl GlyphSet {
             Self::Ascii => ".",
         }
     }
+
+    pub fn fold(self) -> &'static str {
+        match self {
+            Self::Unicode => "▶",
+            Self::Ascii => ">",
+        }
+    }
+
+    pub fn unfold(self) -> &'static str {
+        match self {
+            Self::Unicode => "▼",
+            Self::Ascii => "v",
+        }
+    }
 }
