@@ -24,6 +24,8 @@ components:
 | Enter（idle） | 提交用户消息 |
 | Enter（流中） | **steer** |
 | Alt+Enter | **follow-up**（排队到本轮结束后） |
+| Alt+Up | 将已排队 steer/follow-up **还原进 editor** 并清空两侧队列 |
+| ↑ / ↓（editor） | 在首/末可视行且（空草稿或已在浏览）时：**发送历史**召回（c481；包 ed05） |
 | 双 Esc | 打开 **c491 stub** 会话树（假树；Esc 关；Enter `travel → id`） |
 | `/exit` | 退出并 restore（与垂直切片一致） |
 | `/model` | 切换/选择模型（MVP；实现可极简列表） |

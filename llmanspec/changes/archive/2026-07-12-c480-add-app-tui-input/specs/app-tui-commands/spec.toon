@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,atm4,"idle-slash-submit","产品 idle Enter 提交以 / 开头的文本时 MUST 解析 /exit 与 /model（经 protocol::Command / dispatch 或等价 Driver 方法）；未知斜杠 MUST 写入系统错误行且 MUST NOT 崩溃或退出。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  atm4,exit-quits,"idle 且 editor 为 /exit",Enter,TUI 进入退出路径（quit 标志）
+  atm4,unknown-inline,"idle 且 editor 为 /nope",Enter,出现系统错误提示且会话未退出
