@@ -1,6 +1,6 @@
 # src/ 分层架构（代码架构 SSOT）
 
-本文件是 `src/` **代码架构**的单一真值源：分层不变量、各层职责、应用面状态、seam、`Xy*` / 导出边界。全局工作方式与产品定调见根 `AGENTS.md`。高维 mermaid：`docs/architecture/`。短索引：`_NOTE.md`。子目录 `AGENTS.md` 与 skills 只引用本文件，不重复长文。
+本文件是 `src/` **代码架构**的单一真值源：分层不变量、各层职责、应用面状态、seam、`Xy*` / 导出边界。全局工作方式与产品定调见根 `AGENTS.md`。高维 mermaid：`docs/architecture/`。短索引 / 交接：`_HANDOFF.md`。子目录 `AGENTS.md` 与 skills 只引用本文件，不重复长文。
 
 `xylitol` 主 crate：薄编排（`agent/`）+ 运行时域（`infra/`）+ 应用面（`app/`）+ 线协议（`protocol/`）+ 领域词（`domain/`）+ ports（`runtime_protocol/`）。通用 TUI 库在 workspace 包 `packages/xylitol-tui`（不在本文件展开）。
 
@@ -10,7 +10,7 @@
 
 **后置 / 配置启用**：Server · MCP（见下）· 更多 provider 适配器 · Export / 周边能力。未配置则不装配。
 
-**产品 TUI（`src/app/tui`）**：**已开闸（2026-07-11）**。下一实现入口：`c465-add-app-tui-bridge`。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。c491 假树 stub 禁止扩活树。
+**产品 TUI（`src/app/tui`）**：**已开闸（2026-07-11）**。c465 bridge 已归档；下一：`c475-add-app-tui-chrome` / `c480-add-app-tui-input`。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。c491 假树 stub 禁止扩活树。
 
 共享流水线：`bootstrap` → `composition::build_agent` → `Driver::run` → ReAct → `XyEvent` → 应用面。库嵌入入口：`xylitol::embed`；矩阵与理想/现状：`docs/architecture/库与多客户端.md`。
 

@@ -2261,12 +2261,11 @@ impl FakeCodingAgentApp {
         self.push_message(Role::User, "plate · playground-sync · c555");
         self.push_message(
             Role::System,
-            "c555: DESIGN playground is a human preview shell — Agent defaults ignore \
-             `src/app/tui/design/playground/`. Tokens SSOT = DESIGN.md frontmatter → \
-             `python3 src/app/tui/design/playground/sync_tokens.py` → tokens.css/js. \
-             Markdown slot: no `#` titles, links as `text (url)`, bold/italic via style \
-             only (optional （加粗）/（斜体） stubs). Runtime check: `/md` in this demo. \
-             Also try plate `md-list-wrap` / `narrow-clamp`, playground slot `widgets` (key 8).",
+            "This demo (`just demo-tui`) is the product TUI live playground. \
+             Visual SSOT = `src/app/tui/DESIGN.md` only (no package HTML design tree). \
+             Browser static preview: `src/app/tui/design/playground/` — Agents ignore by default. \
+             Tokens: DESIGN.md frontmatter → `python3 …/sync_tokens.py` → tokens.css/js; keep \
+             `Palette` aligned. Runtime MD: `/md` · plates `md-list-wrap` / `narrow-clamp`.",
         );
         self.set_status("Ready · try /md for runtime MD");
     }
