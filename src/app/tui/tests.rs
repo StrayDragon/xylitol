@@ -1,7 +1,9 @@
 //! Host harness tests — no real TTY (ath5).
 
+use super::bridge::{UiModel, UiPhase, apply_xy_event};
 use super::host::{HostEvent, HostSession, LayoutMode, TOO_SMALL_HINT, is_too_small};
 use super::ui_root::build_root;
+use crate::app::core::driver::XyEvent;
 use xylitol_tui::{InputEvent, Terminal};
 
 /// Minimal in-memory terminal for host tests.
@@ -83,7 +85,7 @@ fn harness_resize_to_ready() {
     assert_eq!(session.mode(), LayoutMode::Ready);
     let joined = session.tui.terminal.frames.concat();
     assert!(
-        joined.contains("transcript") || joined.contains("esc abort"),
+        joined.contains("submit") || joined.contains("double Esc"),
         "expected UI chrome, got: {joined:?}"
     );
 }
@@ -108,6 +110,7 @@ fn product_tui_source_has_no_tui_start_call() {
         ("host.rs", include_str!("host.rs")),
         ("ui_root.rs", include_str!("ui_root.rs")),
         ("terminal_guard.rs", include_str!("terminal_guard.rs")),
+        ("bridge.rs", include_str!("bridge.rs")),
     ];
     for (name, src) in sources {
         for line in src.lines() {
@@ -123,6 +126,21 @@ fn product_tui_source_has_no_tui_start_call() {
             );
         }
     }
+}
+
+#[test]
+fn render_modules_do_not_match_xy_event() {
+    // atb1: render layer must not match XyEvent — only bridge does.
+    let ui_root = include_str!("ui_root.rs");
+    assert!(
+        !ui_root.contains("XyEvent"),
+        "ui_root must stay XyEvent-free"
+    );
+    let bridge = include_str!("bridge.rs");
+    assert!(
+        bridge.contains("apply_xy_event"),
+        "bridge must own apply_xy_event"
+    );
 }
 
 #[test]
@@ -246,4 +264,105 @@ fn harness_enter_travel_stub_closes_tree() {
         joined.contains("travel →"),
         "expected travel stub in transcript; got: {joined}"
     );
+}
+
+#[test]
+fn harness_xy_events_update_ui_model_and_transcript() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.on_run_started("hello");
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::TextDelta("Hi".into()))))
+        .unwrap();
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::QueueUpdate {
+            steer_count: 1,
+            follow_up_count: 0,
+        })))
+        .unwrap();
+    assert_eq!(session.ui_model().phase, UiPhase::Busy);
+    assert_eq!(session.ui_model().queue.steer_count, 1);
+
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+            messages: vec![],
+        })))
+        .unwrap();
+    assert_eq!(session.ui_model().phase, UiPhase::Idle);
+    assert!(!session.run_active());
+
+    session.render_now().unwrap();
+    let joined = session.tui.terminal.frames.concat();
+    assert!(
+        joined.contains("user: hello") || joined.contains("assistant: Hi"),
+        "expected bridge scrollback; got: {joined}"
+    );
+}
+
+#[test]
+fn harness_middle_turn_end_keeps_busy() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.on_run_started("x");
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::TurnEnd { turn_index: 0 })))
+        .unwrap();
+    assert_eq!(session.ui_model().phase, UiPhase::Busy);
+    assert!(session.run_active());
+}
+
+#[test]
+fn harness_idle_enter_queues_submit() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    root.borrow_mut().set_editor_text("run me");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    assert_eq!(session.take_submit().as_deref(), Some("run me"));
+    assert!(root.borrow().editor_text().is_empty());
+}
+
+#[test]
+fn apply_xy_event_sequence_snapshot() {
+    let mut model = UiModel::new();
+    model.begin_run("prompt");
+    apply_xy_event(
+        &mut model,
+        &XyEvent::AgentStart {
+            session_id: "s".into(),
+            model: "m".into(),
+        },
+    );
+    apply_xy_event(&mut model, &XyEvent::TurnStart { turn_index: 0 });
+    apply_xy_event(&mut model, &XyEvent::TextDelta("A".into()));
+    apply_xy_event(&mut model, &XyEvent::TurnEnd { turn_index: 0 });
+    apply_xy_event(&mut model, &XyEvent::TurnStart { turn_index: 1 });
+    apply_xy_event(
+        &mut model,
+        &XyEvent::MessageEnd {
+            role: "assistant".into(),
+            message: None,
+        },
+    );
+    apply_xy_event(
+        &mut model,
+        &XyEvent::QueueUpdate {
+            steer_count: 0,
+            follow_up_count: 0,
+        },
+    );
+    apply_xy_event(&mut model, &XyEvent::AgentEnd { messages: vec![] });
+
+    let lines = model.scrollback_lines();
+    assert!(lines.iter().any(|l| l.contains("user: prompt")));
+    assert!(lines.iter().any(|l| l.contains("assistant: A")));
+    assert_eq!(model.phase, UiPhase::Idle);
+    assert!(model.status.is_none());
+}
+
+#[test]
+fn preflight_error_messages_are_cli_friendly() {
+    let msg = super::TuiPreflightError::NoModelSelected.to_string();
+    assert!(msg.contains("selected model"), "{msg}");
+    assert!(msg.contains("--model") || msg.contains("config"), "{msg}");
+
+    let msg = super::TuiPreflightError::StdinNotTty.to_string();
+    assert!(msg.contains("TTY"), "{msg}");
 }

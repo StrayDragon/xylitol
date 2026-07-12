@@ -31,7 +31,6 @@ use futures::Stream;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::ReActAgent;
-use crate::domain::lifecycle::XyEvent;
 use crate::domain::session_types::SessionEntry;
 use crate::domain::types::{ThinkingLevel, XyModelMeta};
 use crate::runtime_protocol::{XyBashResult, XySessionStore};
@@ -41,6 +40,10 @@ use crate::runtime_protocol::{XyBashResult, XySessionStore};
 /// forbids for tui/). Surfaces reference this as
 /// `crate::app::core::driver::SessionStats`.
 pub use crate::agent::session::SessionStats;
+
+/// Lifecycle events on [`EventStream`] — surfaces import via the Driver seam
+/// (not `crate::agent`), so arch_guard stays green for `app/tui`.
+pub use crate::domain::lifecycle::XyEvent;
 
 #[cfg(feature = "server")]
 use futures::{SinkExt, StreamExt};

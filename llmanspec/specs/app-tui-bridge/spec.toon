@@ -4,13 +4,14 @@ purpose: XyEvent 到 UI 模型的单一翻译缝与 agent 循环生命周期。
 valid_scope[1]: src/app/tui/
 requirements[5]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
-  atb1,"xyevent-to-ui-seam",系统 MUST 在单一 bridge 将 XyEvent 翻译为 UI 专用模型；未识别事件 MUST 降级记录（如 tracing）且 MUST NOT panic。
+  atb1,"xyevent-to-ui-seam","产品 TUI MUST 经单一 bridge 缝（apply_xy_event）将 XyEvent 译为 UI-only 模型；渲染层 MUST NOT 直接 match XyEvent。未知/元数据变体 MUST 降级（tracing）且 MUST NOT panic。"
   atb2,"agent-loop-lifecycle","用户可见忙碌态 MUST 覆盖从提交或 steer 起至 AgentEnd 且 follow-up 队列为空；中间 TurnEnd MUST NOT 被当作整轮结束去清空 streaming 尾或复位 idle。"
   atb3,"steer-followup-events",bridge MUST 能消费 QueueUpdate（steer_count / follow_up_count）；display_diff 等工具结果字段 MUST 在 ToolExecutionEnd 路径可被抽取供 transcript 使用。
   atb4,"inprocess-default-remote-retained",TUI 默认 MUST 使用 InProcessDriver；RemoteDriver 类型与远控能力 MUST 保留以支持日后远程 server 控制，MUST NOT 删除。
-scenarios[5]{req_id,id,given,when,then}:
+scenarios[6]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-bridge",spec.toon 存在且 purpose 为中文
   atb1,"unknown-event","",收到未映射 XyEvent,记录日志且 UI 不崩溃
+  atb1,"no-xyevent-in-render","",审查 tui 渲染模块,无 XyEvent 匹配；事件经 apply_xy_event
   atb2,"tool-turn-middle","",工具调用后出现中间 TurnEnd,UI 仍保持 busy 并继续消费后续事件
   atb3,"queue-update","","steer 与 follow-up 入队",UI 收到 QueueUpdate 计数
   atb4,"remote-type-kept","",检查 Driver 实现,InProcess 为默认且 RemoteDriver 仍存在

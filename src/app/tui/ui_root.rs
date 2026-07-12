@@ -23,6 +23,7 @@ use xylitol_tui::{
     TreeSelector, TreeSelectorOptions, TreeSelectorTheme, matches_key_event,
 };
 
+use super::bridge::UiModel;
 use super::host::{LayoutMode, TOO_SMALL_HINT};
 
 /// Fake session tree for the **c491 stub only** (frozen).
@@ -76,14 +77,10 @@ impl UiRoot {
         );
         editor.set_focused(true);
         Self {
-            transcript: Text::new(
-                "(empty transcript — bridge lands in a later change)".into(),
-                0,
-                0,
-            ),
+            transcript: Text::new("(empty — submit with Enter)".into(), 0, 0),
             editor,
             footer: Text::new(
-                "double Esc tree · esc close/abort · ctrl+c clear/quit · /exit".into(),
+                "enter submit · double Esc tree · esc close · ctrl+c clear/quit".into(),
                 0,
                 0,
             ),
@@ -152,7 +149,7 @@ impl UiRoot {
     pub fn close_session_tree(&mut self) {
         self.tree_open = false;
         self.footer = Text::new(
-            "double Esc tree · esc close/abort · ctrl+c clear/quit · /exit".into(),
+            "enter submit · double Esc tree · esc close · ctrl+c clear/quit".into(),
             0,
             0,
         );
@@ -162,6 +159,33 @@ impl UiRoot {
     pub fn open_session_tree_for_test(&mut self) {
         self.editor.set_text(String::new());
         self.open_session_tree();
+    }
+
+    /// Push bridge UI model into the placeholder transcript / footer badge.
+    ///
+    /// Domain events stay in `bridge` / host — this layer only sees UI-only fields (c465).
+    pub fn apply_ui_model(&mut self, model: &UiModel) {
+        let lines = model.scrollback_lines();
+        if lines.is_empty() {
+            self.transcript
+                .set_text("(empty — submit with Enter)".into());
+        } else {
+            self.transcript.set_text(lines.join("\n"));
+        }
+
+        let mut footer =
+            String::from("enter submit · double Esc tree · esc close · ctrl+c clear/quit");
+        if let Some(status) = model.status.as_ref() {
+            footer = format!("{status} · {footer}");
+        }
+        let q = &model.queue;
+        if q.steer_count > 0 || q.follow_up_count > 0 {
+            footer = format!("q:s{}|f{} · {footer}", q.steer_count, q.follow_up_count);
+        }
+        if self.tree_open {
+            footer = "esc close · ↑↓ · Enter travel".into();
+        }
+        self.footer = Text::new(footer, 0, 0);
     }
 
     fn append_transcript_line(&mut self, line: impl Into<String>) {
