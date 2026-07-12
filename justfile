@@ -36,7 +36,7 @@ test-tui-e2e-tmux:
     cargo test --test tui_e2e -- --ignored tmux
 
 # Run the xylitol-tui agent_demo (default features include syntect highlight).
-# Primary local entry for validating package TUI UX before product wiring.
+# Product TUI live playground — experiment shapes here before host wiring.
 demo-tui:
     cargo run -p xylitol-tui --example agent_demo
 
@@ -44,12 +44,24 @@ demo-tui:
 demo-tui-no-highlight:
     cargo run -p xylitol-tui --example agent_demo --no-default-features
 
+# Sync playground tokens.css/js from src/app/tui/DESIGN.md frontmatter.
+sync-tui-tokens:
+    python3 src/app/tui/design/playground/sync_tokens.py
+
+# Fail if playground tokens or package Palette diverge from DESIGN.md.
+check-tui-tokens:
+    python3 src/app/tui/design/playground/sync_tokens.py --check
+
+# Open DESIGN playground HTML (Linux; xdg-open).
+open-design-playground:
+    xdg-open src/app/tui/design/playground/index.html
+
 # Package TUI tests with default features (includes highlight).
 test-tui:
     cargo test -p xylitol-tui
 
-# Run all checks (qa = fmt-check + lint + test + doc-check).
-qa: fmt-check lint test doc-check
+# Run all checks (qa = fmt-check + lint + test + doc-check + design tokens).
+qa: fmt-check lint test doc-check check-tui-tokens
     @echo "All checks passed!"
     prek run --all-files
 

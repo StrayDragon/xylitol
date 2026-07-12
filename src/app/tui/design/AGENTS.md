@@ -27,6 +27,7 @@ Agent **仅在**人类指定路径或粘贴 playground 片段时读 HTML。不�
 
 - 子文档 MUST 声明 `tokens_from: "../DESIGN.md"`；MUST NOT 另立冲突 hex。
 - playground 色值 MUST 来自 `DESIGN.md` frontmatter。改 token 后跑：
-  `python3 src/app/tui/design/playground/sync_tokens.py`，并对齐 `packages/xylitol-tui` 的 `Palette`。
+  `just sync-tui-tokens`，并对齐 `Palette`；闸门：`just check-tui-tokens`（已进 `just qa`）。
+  浏览器静图：`just open-design-playground`。
 - playground 是产品可交互设计图，**不是**运行时；禁止在此堆 Rust / host 接线。
 - 窄宽 / 空态 / 焦点细行为以 `just demo-tui` + 包 harness 为准；本 playground 对 Widgets/Atoms/Ask 仅弱对照。
