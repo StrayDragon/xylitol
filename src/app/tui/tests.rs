@@ -85,8 +85,8 @@ fn harness_resize_to_ready() {
     assert_eq!(session.mode(), LayoutMode::Ready);
     let joined = session.tui.terminal.frames.concat();
     assert!(
-        joined.contains("submit") || joined.contains("double Esc"),
-        "expected UI chrome, got: {joined:?}"
+        joined.contains('─') || joined.contains("ornith") || joined.contains("~/"),
+        "expected editor border or footer chrome, got: {joined:?}"
     );
 }
 
@@ -359,6 +359,22 @@ fn apply_xy_event_sequence_snapshot() {
     assert!(lines.iter().any(|l| l.contains("assistant: A")));
     assert_eq!(model.phase, UiPhase::Idle);
     assert!(model.status.is_none());
+}
+
+#[test]
+fn idle_scrollback_is_silent_no_placeholder_wall() {
+    use super::ui_root::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_chrome_meta("~/x", "m");
+    root.apply_ui_model(&UiModel::new());
+    let joined = root.render(80).join("\n");
+    assert!(
+        !joined.contains("empty — submit"),
+        "idle must not shout placeholder: {joined}"
+    );
+    assert!(joined.contains('─'), "editor operation-zone border missing");
+    assert!(joined.contains("~/x"), "footer missing");
 }
 
 #[test]

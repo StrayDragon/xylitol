@@ -8,6 +8,8 @@ mod logging;
 mod print;
 mod provider_guidance;
 pub mod resources;
+#[cfg(feature = "tui")]
+mod trust_gate;
 
 use clap::{Parser, Subcommand};
 
@@ -191,7 +193,18 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // c490: Ask trust inside ChoicePrompt **before** bootstrap (no stdio menu).
     #[cfg(feature = "tui")]
     if want_tui {
-        crate::app::tui::run_trust_gate_if_needed(trust_override)?;
+        match trust_gate::run_trust_gate_if_needed(trust_override) {
+            Ok(()) => {}
+            Err(trust_gate::TrustGateError::Cancelled) => {
+                eprintln!("{}", trust_gate::TrustGateError::Cancelled);
+                return Ok(());
+            }
+            Err(trust_gate::TrustGateError::Denied) => {
+                eprintln!("{}", trust_gate::TrustGateError::Denied);
+                return Ok(());
+            }
+            Err(e) => return Err(e.to_string().into()),
+        }
     }
 
     let bootstrap_input = BootstrapInput {
@@ -241,6 +254,12 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => return Err(e.into()),
     };
     render_warnings(&bootstrapped.warnings);
+    #[cfg(feature = "tui")]
+    let refuse_tui_untrusted = want_tui
+        && bootstrapped
+            .warnings
+            .iter()
+            .any(|w| matches!(w, BootstrapWarning::ProjectNotTrusted { .. }));
     let runtime = bootstrapped.into_runtime();
     let session_id = runtime.session_id;
     let mut driver = runtime.driver;
@@ -255,6 +274,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // ── dispatch by mode ───────────────────────────────────────
     #[cfg(feature = "tui")]
     if want_tui {
+        // Align with pi / 图4: untrusted project → message already printed, no TUI.
+        if refuse_tui_untrusted {
+            return Ok(());
+        }
         if let Err(e) = crate::app::tui::preflight(&driver) {
             eprintln!("Error: {e}");
             return Err(e.into());

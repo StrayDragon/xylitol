@@ -18,9 +18,11 @@ components:
 ## MUST
 
 1. 需要 Ask 时：raw-mode 内单题 Single ChoicePrompt，选项来自 `TrustManager::get_trust_options`。
-2. Esc / cancel → deny（写入 Do not trust 若有持久 updates）。
-3. 提交后写 trust store，再 `bootstrap`（此时 store 已决，可加载 `.xylitol/`）。
-4. 信任后 yolo（无逐工具审批 UI）；hook 扩展点保留。
+2. Esc / Ctrl+C → **取消**：不写 `trust.json`，恢复终端，打印提示后退出（**不**进入产品 TUI）。
+3. Enter 提交 **Trust / Trust parent** → 写 trust store，再 `bootstrap` 并进入产品 TUI。
+4. Enter 提交 **Do not trust** → 写 deny 到 trust store，打印「denied in trust store」提示后退出（**不**进入产品 TUI）。
+5. 信任后 yolo（无逐工具审批 UI）；hook 扩展点保留。
+6. ChoicePrompt `prompt` 若含换行，MUST 按行渲染（禁止把 path / 说明 / `· 单选` 粘成一行导致错位）。
 
 ## 非目标
 

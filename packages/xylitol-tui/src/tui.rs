@@ -513,10 +513,19 @@ impl<T: Terminal> TUI<T> {
             }
         }
 
-        // Move cursor past rendered content before tearing down (so the shell
-        // prompt lands below the TUI output). Protocol/raw-mode cleanup is
-        // delegated to terminal.stop() (c410: pops Kitty, disables
-        // modifyOtherKeys, drains stdin, disables raw mode, shows cursor).
+        // Host-driven loops must call the same teardown (see `finish_inline`).
+        self.finish_inline();
+        Ok(())
+    }
+
+    /// Park the cursor below the last rendered frame, emit `\r\n`, then
+    /// restore the terminal (raw mode / keyboard protocol).
+    ///
+    /// Call this from host-driven loops (product TUI / trust gate) instead of
+    /// bare `terminal.stop()`, so the shell prompt lands under the leftover
+    /// frame — same exit shape as `start` / `start_with_flag` / agent_demo.
+    pub fn finish_inline(&mut self) {
+        self.stopped = true;
         if !self.previous_lines.is_empty() {
             let target_row = self.previous_lines.len();
             if target_row > self.hardware_cursor_row {
@@ -527,7 +536,6 @@ impl<T: Terminal> TUI<T> {
         }
         self.terminal.flush();
         self.terminal.stop();
-        Ok(())
     }
 
     pub fn stop(&mut self) {

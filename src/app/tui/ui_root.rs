@@ -83,7 +83,8 @@ impl UiRoot {
             theme.editor_theme(),
             EditorOptions {
                 padding_x: 1,
-                ..EditorOptions::default()
+                // Match agent_demo: compact operation zone (max_vis ≈ 5 lines).
+                terminal_rows: 8,
             },
             Box::new(SystemClock),
         );
@@ -224,15 +225,8 @@ impl UiRoot {
     }
 
     fn render_scrollback_slot(&mut self, width: usize) -> Vec<String> {
-        let lines = render_scrollback(&self.ui_model, self.glyphs, self.theme, self.fold, width);
-        if lines.is_empty() {
-            return vec![format!(
-                "{}{}",
-                "(empty — submit with Enter)",
-                " ".repeat(width.saturating_sub("(empty — submit with Enter)".chars().count()))
-            )];
-        }
-        lines
+        // Idle empty: 0 rows (DESIGN editor.md — no loud placeholder wall).
+        render_scrollback(&self.ui_model, self.glyphs, self.theme, self.fold, width)
     }
 }
 
@@ -247,10 +241,9 @@ impl Component for UiRoot {
         let mut lines = Vec::new();
         lines.extend(self.render_scrollback_slot(width));
         lines.extend(self.status.render(width));
-        let border = self.theme.paint_border(width);
-        lines.push(border.clone());
+        // Editor owns the operation-zone ─ borders (DESIGN editor.md / agent_demo).
+        // Do NOT wrap with a second outer border pair.
         lines.extend(self.render_editor_slot(width));
-        lines.push(border);
         let footer = if width == 0 {
             self.footer.text().to_string()
         } else {
