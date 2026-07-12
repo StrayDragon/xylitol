@@ -99,4 +99,3 @@ paused：c470 Codex TranscriptView（不做）
 | 视觉 | `src/app/tui/DESIGN.md` + `design/` |
 | How-to | `write-tui`、`test-tui-harness`、`write-surface`、`audit-dead-code` |
 | 轨 A 短索引 | `_NOTE.md` |
-| **主线 Agent Prompt** | `_PROMPT.md`（新会话粘贴用） |
