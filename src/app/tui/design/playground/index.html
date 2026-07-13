@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Xylitol DESIGN playground</title>
   <!--
-    Human interactive design mock. Agents: ignore unless human cites this path.
+    Static design mock (fixed states). Agents: ignore unless human cites this path.
+    Dynamic playground: just demo-tui. Production: src/app/tui.
     Tokens: sync_tokens.py ← ../../DESIGN.md → tokens.css + tokens.js
   -->
   <link rel="stylesheet" href="./tokens.css" />
@@ -54,7 +55,6 @@
     .modes button:hover, .nav button:hover, .chip-btn:hover, .ctl button:hover {
       color: var(--on-surface);
     }
-    .keys { color: var(--muted); font-size: 11px; }
 
     .shell {
       flex: 1;
@@ -81,10 +81,6 @@
       width: 100%;
       border-radius: 0;
     }
-    .nav button.secondary {
-      opacity: 0.72;
-      font-size: 12px;
-    }
     .nav .idx { color: var(--muted); margin-right: 0.35rem; opacity: 0.7; }
 
     main#main {
@@ -98,7 +94,6 @@
     body.mode-tile .panel {
       display: block;
       margin-bottom: 2.25rem;
-      /* keep heading clear of sticky header when centering / pinning */
       scroll-margin: 1.25rem 0;
     }
     body.mode-tile .panel.is-active {
@@ -152,8 +147,14 @@
       padding: 0.55rem 0.65rem;
       background: var(--surface);
     }
-    .rows { display: flex; flex-direction: column; gap: 0.15rem; }
-    .row { padding: 0.28rem 0.4rem; white-space: pre-wrap; }
+    .rows { display: flex; flex-direction: column; gap: 0; }
+    /* TUI mock lines denser than page chrome (≈ 1 cell) */
+    .term .row, .stage .row, .split .row {
+      padding: 0 0.35rem;
+      line-height: 1.25;
+      white-space: pre-wrap;
+    }
+    .row { padding: 0.15rem 0.4rem; white-space: pre-wrap; }
     .hidden { display: none !important; }
 
     .fg-muted { color: var(--muted); }
@@ -181,41 +182,58 @@
       background: var(--on-surface);
       color: var(--surface);
     }
+    /* Selected = whole-line reverse; kind chromatic MUST NOT pierce reverse (contrast). */
+    .rev *,
+    .row.rev * {
+      color: inherit;
+      background: transparent;
+    }
 
     .term {
       display: flex;
       flex-direction: column;
-      min-height: 15rem;
+      min-height: 14rem;
       padding-bottom: 0.35rem;
     }
+    .term.term-slot {
+      min-height: 0;
+    }
+    .term.term-slot .term-content {
+      flex: 0 0 auto;
+      min-height: 0;
+    }
+    .term.term-slot .term-editor {
+      min-height: 0;
+    }
     .term.term-tall {
-      min-height: 22rem;
+      min-height: 20rem;
       max-width: 56rem;
     }
     .term.term-tall .term-content {
-      min-height: 12rem;
+      min-height: 10rem;
     }
     .term-content {
       flex: 1;
       display: flex;
       flex-direction: column;
-      gap: 0.1rem;
-      min-height: 6rem;
+      gap: 0;
+      min-height: 5rem;
       overflow: hidden;
     }
-    .term-status { color: var(--muted); padding: 0.15rem 0; }
+    .term-status { color: var(--muted); padding: 0.1rem 0; line-height: 1.25; }
     .term-status .spin { color: var(--accent); display: inline-block; min-width: 1ch; }
     .term-editor {
       border-top: 1px solid var(--muted);
       border-bottom: 1px solid var(--muted);
-      padding: 0.35rem 0;
-      min-height: 2.4rem;
+      padding: 0.2rem 0;
+      min-height: 1.8rem;
       color: var(--on-surface);
       white-space: pre-wrap;
+      line-height: 1.25;
     }
     .term-editor .cursor { background: var(--on-surface); color: var(--surface); }
-    .term-footer { color: var(--muted); font-size: 12px; padding-top: 0.25rem; }
-    .steer-hint { color: var(--muted); font-size: 12px; padding: 0.1rem 0; }
+    .term-footer { color: var(--muted); font-size: 12px; padding-top: 0.2rem; line-height: 1.25; }
+    .steer-hint { color: var(--muted); font-size: 12px; padding: 0.05rem 0; line-height: 1.25; }
 
     .md-h { color: var(--accent); }
     .md-h3 { color: var(--on-surface); font-weight: 700; }
@@ -236,7 +254,7 @@
     .md-compare {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 0.5rem;
+      gap: 0.35rem;
       margin-top: 0.55rem;
       align-items: start;
     }
@@ -344,7 +362,7 @@
   <header>
     <h1>DESIGN playground</h1>
     <span class="meta">
-      可交互设计图 · <a href="../../DESIGN.md">DESIGN.md</a> ·
+      静态设计图（固定状态） · <a href="../../DESIGN.md">DESIGN.md</a> ·
       <a href="./README.md">同步</a> ·
       <a href="../AGENTS.md">AGENTS</a>
     </span>
@@ -356,7 +374,6 @@
       <button type="button" data-scheme="dark" aria-pressed="true">Dark</button>
       <button type="button" data-scheme="light" aria-pressed="false">Light</button>
     </div>
-    <span class="keys">f 整壳 · c 壳 · k 键位 · t 模式 · d/l · ←→ · 1–5 积木 · 8/9/0 包对照</span>
   </header>
 
   <div class="shell">
@@ -368,7 +385,7 @@
         <h2>Full shell · 产品整壳（c475+c480）</h2>
         <p class="spec">
           transcript → status 0|1 → editor|tree → footer <code>cwd · model</code> ·
-          <a href="../../DESIGN.md">DESIGN.md</a> Layout · 活实验场 <code>just demo-tui</code>
+          <a href="../../DESIGN.md">DESIGN.md</a> Layout · 交互试跑 <code>just demo-tui</code>
         </p>
         <div class="ctl">
           <button type="button" id="shell-busy" aria-pressed="true">busy</button>
@@ -598,27 +615,73 @@
 
       <!-- keybindings (product) -->
       <section class="panel" id="panel-keys" data-id="keys">
-        <h2>Keybindings · c480 MVP</h2>
+        <h2>Keybindings · next wave</h2>
         <p class="spec">
           <a href="../keybindings.md">keybindings.md</a> ·
-          <a href="../editor.md">editor.md</a> · 旁注括号和弦 · footer 不堆快捷键墙
+          <a href="../models-picker.md">models-picker.md</a> ·
+          旁注括号和弦 · footer 不堆快捷键墙
         </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-keys="idle" aria-pressed="true">idle</button>
           <button type="button" class="chip-btn" data-keys="busy" aria-pressed="false">流中</button>
           <button type="button" class="chip-btn" data-keys="slash" aria-pressed="false">slash</button>
           <button type="button" class="chip-btn" data-keys="tree" aria-pressed="false">活树</button>
-          <span class="hint">filter / fork 后置；Enter = travel_session_tree</span>
+          <span class="hint">/models · 树 filter/fold/fork · 无 /model cycle</span>
         </div>
         <div class="stage" id="keys-stage"></div>
       </section>
 
-      <!-- 7 overlay -->
+      <!-- models picker -->
+      <section class="panel" id="panel-models" data-id="models">
+        <h2>Models · /models fuzzy</h2>
+        <p class="spec">
+          <a href="../models-picker.md">models-picker.md</a> · 替换 editor 槽 · fuzzy · Esc 取消
+        </p>
+        <div class="ctl">
+          <button type="button" class="chip-btn" data-models="open" aria-pressed="true">打开</button>
+          <button type="button" class="chip-btn" data-models="filter" aria-pressed="false">filter orn</button>
+          <button type="button" class="chip-btn" data-models="empty" aria-pressed="false">无匹配</button>
+          <span class="hint">形状对照 DESIGN · 非实现分层示意</span>
+        </div>
+        <div class="term term-slot" id="models-term" data-design-fixture="models.open">
+          <div class="term-content">
+            <div class="row"><span class="fg-user">❯</span> 换个更快的模型</div>
+            <div class="row fg-assistant">好的，用 /models 选一个。</div>
+          </div>
+          <div class="term-editor" id="models-editor"></div>
+          <div class="term-footer" id="models-footer">~/xylitol · ornith-think</div>
+        </div>
+      </section>
+
+      <!-- tree power -->
+      <section class="panel" id="panel-tree-power" data-id="tree-power">
+        <h2>Tree power · filter / fold / fork</h2>
+        <p class="spec">
+          <a href="../session-tree.md">session-tree.md</a> ·
+          <a href="../keybindings.md">keybindings.md</a> · 替换 editor 槽 · 选中 reverse · 底栏 (i/n) [filter]
+        </p>
+        <div class="ctl">
+          <button type="button" class="chip-btn" data-treep="filter" aria-pressed="true">filter</button>
+          <button type="button" class="chip-btn" data-treep="fold" aria-pressed="false">fold</button>
+          <button type="button" class="chip-btn" data-treep="fork" aria-pressed="false">fork</button>
+        </div>
+        <div class="term term-slot" id="treep-term" data-design-fixture="session-tree.filter">
+          <div class="term-content">
+            <div class="row"><span class="fg-user">❯</span> 上一轮问题</div>
+            <div class="row fg-assistant">助手回复摘要…</div>
+          </div>
+          <div class="term-editor" id="treep-editor"></div>
+          <div class="term-footer">~/xylitol · ornith</div>
+        </div>
+      </section>
+
+      <!-- overlay -->
       <section class="panel" id="panel-overlay" data-id="overlay">
         <h2>Overlay</h2>
         <p class="spec">
           <a href="../overlay.md">overlay.md</a> · 短确认 · OverlayHandle（harness）·
-          demo 确认类交互优先 <strong>editor 槽内联</strong>（tree / settings / plate），不做假浮层 plate
+          交互优先 <strong>editor 槽内联</strong>（tree / models / Ask）；
+          <strong>不做</strong> Settings/Plate 运行时改配置
         </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-ov="shown" aria-pressed="true">shown+focus</button>
@@ -641,9 +704,9 @@
 
       <!-- 8 widgets: Select / Settings / Input / Loader narrow+empty -->
       <section class="panel" id="panel-widgets" data-id="widgets">
-        <h2>Widgets · 包对照（弱）</h2>
+        <h2>Widgets</h2>
         <p class="spec">
-          细节以 <code>just demo-tui</code>（产品活实验场）为准 · plate <strong>narrow-clamp</strong>
+          空态 / 窄宽固定形状 · 细交互以 <code>just demo-tui</code> 为准
         </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-widget="empty" aria-pressed="true">空态</button>
@@ -679,13 +742,9 @@
 
       <!-- 9 atoms: TruncatedText / Panel / CancellableLoader -->
       <section class="panel" id="panel-atoms" data-id="atoms">
-        <h2>Atoms · 包对照（弱）</h2>
+        <h2>Atoms</h2>
         <p class="spec">
-          TruncatedText / Panel / Loader · 行为真值在包测试与
-          <code>just demo-tui</code> → Ctrl+P →
-          <strong>truncated-text</strong> /
-          <strong>panel</strong> /
-          <strong>cancellable-loader</strong>
+          TruncatedText / Panel / Loader 固定形状 · 细行为以 <code>just demo-tui</code> 为准
         </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-atom="trunc" aria-pressed="true">TruncatedText</button>
@@ -705,7 +764,7 @@
           </div>
         </div>
         <div id="atoms-panel" class="split hidden">
-          <div class="col" style="background:var(--surface-container,#313244);padding:0.55rem 0.75rem;border-radius:4px">
+          <div class="col" style="background:var(--tool-pending-bg);padding:0.55rem 0.75rem">
             <div class="col-h">Panel (pi Box)</div>
             <div class="row fg-on">Panel · padding + background</div>
             <div class="row fg-on">children inherit content width</div>
@@ -723,13 +782,10 @@
 
       <!-- 0 ask: ChoicePrompt (c565) -->
       <section class="panel" id="panel-ask" data-id="ask">
-        <h2>Ask · 包对照（弱）</h2>
+        <h2>Ask</h2>
         <p class="spec">
-          ChoicePrompt · 细节以 demo / 包 playground 为准 · c565 ·
-          <code>just demo-tui</code> → Ctrl+P →
-          <strong>ask-single</strong> /
-          <strong>ask-multi</strong> /
-          <strong>ask-tabs</strong>
+          ChoicePrompt 固定形状 · 细交互以 <code>just demo-tui</code> 为准 ·
+          <a href="../trust-prompt.md">trust-prompt.md</a>
         </p>
         <div class="ctl">
           <button type="button" class="chip-btn" data-ask="single" aria-pressed="true">Single + Other</button>
@@ -780,15 +836,17 @@
       { id: "shell", label: "Full shell", key: "f" },
       { id: "layout-shell", label: "Layout 壳", key: "c" },
       { id: "keys", label: "Keybindings", key: "k" },
+      { id: "models", label: "Models /models", key: "m" },
+      { id: "tree-power", label: "Tree power", key: "p" },
       { id: "layout", label: "Layout", key: "1" },
       { id: "tool", label: "Tool / Expandable", key: "2" },
       { id: "diff", label: "Diff", key: "3" },
       { id: "markdown", label: "Markdown", key: "4" },
       { id: "overlay", label: "Overlay", key: "5" },
       { id: "palette", label: "Palette", key: "6" },
-      { id: "widgets", label: "· Widgets (包)", key: "8", secondary: true },
-      { id: "atoms", label: "· Atoms (包)", key: "9", secondary: true },
-      { id: "ask", label: "· Ask (包)", key: "0", secondary: true },
+      { id: "widgets", label: "Widgets", key: "8" },
+      { id: "atoms", label: "Atoms", key: "9" },
+      { id: "ask", label: "Ask", key: "0" },
     ];
 
     const THINK_CHUNKS = [
@@ -816,6 +874,8 @@
       layout: { busy: true, steer: false, tree: false },
       shell: { busy: true, queue: false, tree: false, tool: true },
       keys: "idle",
+      models: "open",
+      treep: "filter",
       layoutShell: "ok",
       overlay: "shown",
       widget: "empty",
@@ -894,7 +954,6 @@
       SLOTS.forEach((s, i) => {
         const b = document.createElement("button");
         b.type = "button";
-        if (s.secondary) b.classList.add("secondary");
         b.innerHTML = `<span class="idx">${s.key}</span>${s.label}`;
         if (i === state.index) b.setAttribute("aria-current", "true");
         b.addEventListener("click", () => select(i, { jump: true }));
@@ -1184,10 +1243,10 @@
       if (S.tree) {
         ed.innerHTML =
           '<div class="fg-muted"> Session tree · MessageHistory</div>' +
-          '<div><span class="rev">▸ <span class="fg-success">assistant:</span> done</span></div>' +
+          '<div><span class="rev">▸ assistant: done</span></div>' +
           '<div class="fg-muted">  ├─ <span class="fg-tool">tool:</span> read</div>' +
           '<div class="fg-on">  └─ <span class="fg-user">user:</span> hello</div>' +
-          '<div class="fg-muted" style="margin-top:0.25rem">esc close · ↑↓ · Enter：travel_session_tree · user→editor_text</div>';
+          '<div class="fg-muted" style="margin-top:0.25rem">esc close · ↑↓ · Enter：travel · user→预填</div>';
       } else {
         ed.innerHTML = '<span class="cursor"> </span>询问或 / 命令…';
       }
@@ -1231,10 +1290,10 @@
       const ed = document.getElementById("lay-editor");
       if (L.tree) {
         ed.innerHTML =
-          '<div><span class="rev">▸ <span class="fg-success">assistant:</span> fix diff tint</span> <span class="fg-muted">[wip]</span></div>' +
+          '<div><span class="rev">▸ assistant: fix diff tint</span> <span class="fg-muted">[wip]</span></div>' +
           '<div class="fg-muted">  ├─ <span class="fg-user">user:</span> explore</div>' +
           '<div class="fg-on">  └─ <span class="fg-muted">session</span> · hello</div>' +
-          '<div class="fg-muted" style="margin-top:0.25rem">(2/5) [all] · Esc 关闭 · Enter user→填 input</div>';
+          '<div class="fg-muted" style="margin-top:0.25rem">(2/5) [all] · Esc 关闭 · Enter user→预填</div>';
       } else {
         ed.innerHTML = '<span class="cursor"> </span>询问或 / 命令…';
       }
@@ -1294,22 +1353,22 @@
 
     /* —— keybindings —— */
     const KEYS = {
-      idle: `<div class="row fg-muted">c480 MVP · idle · status 0 行</div>
+      idle: `<div class="row fg-muted">idle · status 0 行</div>
 <div class="row"><span class="fg-on">Enter</span> <span class="fg-muted">提交</span> · <span class="fg-on">Ctrl+C</span> <span class="fg-muted">清输入 / 空则退出</span></div>
-<div class="row"><span class="fg-on">双 Esc</span> <span class="fg-muted">MessageHistory 活树</span> · <span class="fg-on">/</span> <span class="fg-muted">slash 补全</span></div>
+<div class="row"><span class="fg-on">双 Esc</span> <span class="fg-muted">MessageHistory 活树</span> · <span class="fg-on">/models</span> <span class="fg-muted">fuzzy 选模型</span></div>
 <div class="row fg-muted">旁注例：(Ctrl+T) · 禁止 ^T · footer 不堆键</div>`,
       busy: `<div class="row"><span class="fg-accent">⠋</span> <span class="fg-muted">Working（status 行）</span></div>
 <div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">abort（清 steer，留 follow-up）</span></div>
 <div class="row"><span class="fg-on">Enter</span> <span class="fg-muted">steer</span> · <span class="fg-on">Alt+Enter</span> <span class="fg-muted">follow-up</span></div>
 <div class="row"><span class="fg-on">Ctrl+O</span> <span class="fg-muted">工具视口</span> · <span class="fg-on">Ctrl+T</span> <span class="fg-muted">thinking</span> · <span class="fg-on">Alt+E</span> <span class="fg-muted">块展开</span></div>`,
-      slash: `<div class="row fg-muted">slash MVP · 替换 editor 槽或行内补全</div>
+      slash: `<div class="row fg-muted">slash · 替换 editor 槽或行内补全</div>
 <div class="row"><span class="fg-on">/exit</span> <span class="fg-muted">退出 + restore</span></div>
-<div class="row"><span class="fg-on">/model</span> <span class="fg-muted">选模型（极简列表即可）</span></div>
-<div class="row fg-muted">未知命令 → 短错误 · 不崩 · CompletionSource</div>`,
-      tree: `<div class="row fg-muted">c615 · Driver session_tree(MessageHistory) · 替换 editor 槽 · kind 前缀分色</div>
+<div class="row"><span class="fg-on">/models</span> <span class="fg-muted">fuzzy 列表选模型</span></div>
+<div class="row fg-muted">无 /model cycle · 未知命令 → 短错误 · 不崩</div>`,
+      tree: `<div class="row fg-muted">双 Esc 活树 · 替换 editor 槽 · kind 前缀分色</div>
 <div class="row"><span class="fg-user">user:</span> <span class="fg-on">正文</span> · <span class="fg-success">assistant:</span> · <span class="fg-tool">tool:</span></div>
-<div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">关树</span> · <span class="fg-on">Enter</span> <span class="fg-muted">travel_session_tree · user→editor_text</span></div>
-<div class="row fg-muted">filter / Shift+F fork 后置（demo 已有）</div>`,
+<div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">关树</span> · <span class="fg-on">Enter</span> <span class="fg-muted">travel</span> · <span class="fg-on">Shift+F</span> <span class="fg-muted">fork</span></div>
+<div class="row fg-muted">Ctrl+D/T/U/L/A filter · Ctrl/Alt+←→ fold · 底栏 (i/n) [filter]</div>`,
     };
     function renderKeys() {
       document.getElementById("keys-stage").innerHTML = KEYS[state.keys];
@@ -1321,6 +1380,72 @@
       b.addEventListener("click", () => {
         state.keys = b.dataset.keys;
         renderKeys();
+      });
+    });
+
+    /* —— models picker shapes —— */
+    const MODELS = {
+      open: {
+        editor: `<div class="row fg-muted">models</div>
+<div class="row rev">› ornith-fast *</div>
+<div class="row fg-on">  ornith-think</div>
+<div class="row fg-on">  other/gpt-mini</div>`,
+        footer: "~/xylitol · ornith-think",
+      },
+      filter: {
+        editor: `<div class="row fg-muted">filter: orn</div>
+<div class="row rev">› ornith-fast</div>
+<div class="row fg-on">  ornith-think</div>`,
+        footer: "~/xylitol · ornith-think",
+      },
+      empty: {
+        editor: `<div class="row fg-muted">filter: zzz</div>
+<div class="row fg-muted">  No entries found</div>
+<div class="row fg-muted">  (0/0)</div>`,
+        footer: "~/xylitol · ornith-think",
+      },
+    };
+    function renderModels() {
+      const m = MODELS[state.models] || MODELS.open;
+      document.getElementById("models-editor").innerHTML = m.editor;
+      document.getElementById("models-footer").textContent = m.footer;
+      document.querySelectorAll("[data-models]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.models === state.models));
+      });
+    }
+    document.querySelectorAll("[data-models]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.models = b.dataset.models;
+        renderModels();
+      });
+    });
+
+    /* TreeSelector shape: gutter ›/␠␠ · kind 色 + label · 选中整行 reverse · 底栏 (i/n) [filter] */
+    const TREEP = {
+      filter: `<div class="row">  <span class="fg-user">user:</span> <span class="fg-on">修 footer</span></div>
+<div class="row rev">› user: 加 /models</div>
+<div class="row">  <span class="fg-success">assistant:</span> <span class="fg-on">已改</span></div>
+<div class="row fg-muted">  (2/5) [user]</div>`,
+      fold: `<div class="row rev">› assistant: …</div>
+<div class="row">  ⊞ <span class="fg-tool">tool:</span> <span class="fg-on">bash</span></div>
+<div class="row">  <span class="fg-user">user:</span> <span class="fg-on">继续</span></div>
+<div class="row fg-muted">  (1/3) [default]</div>`,
+      fork: `<div class="row">  <span class="fg-user">user:</span> <span class="fg-on">修 footer</span></div>
+<div class="row rev">› user: 从这里分叉</div>
+<div class="row">  <span class="fg-success">assistant:</span> <span class="fg-on">旧分支回复</span></div>
+<div class="row fg-muted">  (2/6)</div>`,
+    };
+    function renderTreep() {
+      document.getElementById("treep-editor").innerHTML =
+        TREEP[state.treep] || TREEP.filter;
+      document.querySelectorAll("[data-treep]").forEach((b) => {
+        b.setAttribute("aria-pressed", String(b.dataset.treep === state.treep));
+      });
+    }
+    document.querySelectorAll("[data-treep]").forEach((b) => {
+      b.addEventListener("click", () => {
+        state.treep = b.dataset.treep;
+        renderTreep();
       });
     });
 
@@ -1425,7 +1550,7 @@
       } else if (e.key === "ArrowRight" || e.key === "]") {
         select(state.index + 1);
         e.preventDefault();
-      } else if (/^[0-9fFcCkK]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      } else if (/^[0-9fFcCkKmMpP]$/.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
         const k = e.key.toLowerCase();
         const idx = SLOTS.findIndex((s) => s.key === k);
         if (idx >= 0) select(idx);
@@ -1483,6 +1608,8 @@
     renderLayout();
     renderLayoutShell();
     renderKeys();
+    renderModels();
+    renderTreep();
     renderWidgets();
     renderAtoms();
     renderAsk();

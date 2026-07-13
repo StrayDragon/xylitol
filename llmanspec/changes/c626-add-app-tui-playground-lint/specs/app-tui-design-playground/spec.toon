@@ -1,0 +1,10 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,adp6,"playground-lint-gate","仓库 MUST 提供 scripts/check_tui_design_playground.py（或等价），并由 just qa 经 check-scripts 执行；失败时 MUST 非零退出。脚本 MUST 覆盖至少：禁止实现分层标签/置灰、Next-wave 槽与 fixture 源内禁止 change-id 噪音、选中 .rev 对比度护栏（CSS inherit 与选中行无 kind 前景穿透）、必有 panel-models 与 panel-tree-power、Models/Tree 使用 term-slot。",null,null,null
+  add_requirement,adp7,"playground-fixtures-l2","src/app/tui/design/fixtures/ MUST 存在至少 session-tree.filter 与 models.open 的 YAML 夹具；playground HTML MUST 以 data-design-fixture 关联；lint MUST 按夹具 must_contain / must_not_contain / assert_html 断言对应模板源。",null,null,null
+  add_requirement,adp8,"playground-lint-docs","design/AGENTS.md 与 playground README MUST 写明改静图须跑 playground lint（及 check-tui-tokens）；MUST NOT 再暗示仅靠人眼发现 DESIGN 漂移。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  adp6,"qa-runs-lint","","运行 python3 scripts/check_tui_design_playground.py --check","退出码 0 或对故意违规样本非 0"
+  adp6,"rev-inherit","playground CSS 含 .rev","检查选中对比度规则","要求 .rev * color inherit 且 TREEP 选中行无 fg-user 穿透"
+  adp7,"fixtures-present","","列出 design/fixtures","存在 session-tree.filter 与 models.open YAML 且 HTML 有对应 data-design-fixture"
+  adp8,"docs-pointer","","阅读 design/AGENTS.md 与 playground README","含 lint / qa 指针"

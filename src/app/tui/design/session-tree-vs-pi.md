@@ -37,6 +37,6 @@ pi / xylitol：树 **替换 editor 槽**（`showSelector`），非居中 overlay
 5. ~~**c595**~~：`TreeNode.kind` 库机制 + DESIGN/playground SSOT。
 6. ~~**c600**~~：demo travel 对齐 pi（user → 父 leaf + editor 预填）。
 7. **c615** 产品 `Driver::session_tree` + `travel_session_tree`（MessageHistory）。
-8. 产品 filter / fold / Shift+F fork（demo 已有；产品键位后置）。
+8. 产品 filter / fold / Shift+F fork → **c635 / c640 / c645**（设计闸 **c625**；demo 已有）。
 
 包吃 `TreeNode { id, label, children, annotation?, kind? }`；**kind 前缀由主题画**，host **不**把 role 字符串烘焙进 `label`。

@@ -116,7 +116,7 @@ components:
 > 规范：遵循 `common-design-md-zh`（中文正文 + YAML frontmatter tokens，值一律双引号）。
 > **Token SSOT**：本文件 frontmatter。子文档见下方「Token 引用」。
 > 组件级 MUST：[`design/`](./design/)（各文件 YAML 只引用本文件，不另立色板）。
-> 人类快速审色 / 层次：[`design/playground/`](./design/playground/)（交互；agent 默认忽略，见 [`design/AGENTS.md`](./design/AGENTS.md)）。
+> 人类快速审色 / 固定状态：[`design/playground/`](./design/playground/)（**静态设计图**；agent 默认忽略，见 [`design/AGENTS.md`](./design/AGENTS.md)）。
 > 包 `packages/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本面。
 
 ## Token 引用（子文档）
@@ -136,7 +136,7 @@ components:
 
 情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
 
-参考实现锚点：`packages/xylitol-tui` 的 **`agent_demo`（`just demo-tui`）= 产品 TUI 活实验场**；浏览器静图见 [`design/playground/`](./design/playground/)。当前 `src/app/tui`：c465–c493 主路径已归档；代码模块为 `layout/` + `widgets/`（历史文档称 chrome = 本面 layout 壳，非浏览器）。
+参考实现锚点：`agent_demo`（`just demo-tui`）= **动态** playground；浏览器 [`design/playground/`](./design/playground/) = **静态**设计图（固定状态）；生产接线在本目录 `src/app/tui`。当前主路径 c465–c493 已归档；模块为 `layout/` + `widgets/`。
 
 ## Track B 落地切片（设计闸）
 
@@ -144,13 +144,26 @@ components:
 |---|---|---|
 | **c475** layout 壳 | `Palette::dark` 注入；glyph 档；idle **0** status；busy 一行；footer `cwd · model` | [`status`](./design/status.md) · [`footer`](./design/footer.md) · [`glyphs`](./design/glyphs.md) · [`theme-tokens`](./design/theme-tokens.md) |
 | **c476** live scrollback | Markdown / Expandable / Diff / tool-bg；对齐 `agent_demo` 形态（非 Codex 浏览面） | [`markdown`](./design/markdown.md) · [`expandable`](./design/expandable.md) · [`diff-block`](./design/diff-block.md) |
-| **c480** input | Editor 操作区；`/exit` `/model`；steer / follow-up / Alt+Up dequeue / abort / Ctrl+C；双 Esc → **c615 活树**；队列 strip = pi `Steering:`/`Follow-up:`（非 scrollback 墙）；注入后上行 `UiEntry::User` | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) · [`queue-steer`](./design/queue-steer.md) · [`session-tree`](./design/session-tree.md) |
+| **c480** input | Editor 操作区；`/exit`；steer / follow-up / Alt+Up dequeue / abort / Ctrl+C；双 Esc → **c615 活树**；队列 strip = pi `Steering:`/`Follow-up:`（非 scrollback 墙）；注入后上行 `UiEntry::User` | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) · [`queue-steer`](./design/queue-steer.md) · [`session-tree`](./design/session-tree.md) |
 | **c615** session tree | `Driver::session_tree(MessageHistory)` + `travel_session_tree` Enter；`effects::drain_pending` 异步泵 | [`session-tree`](./design/session-tree.md) |
 | **c481** history | 同一 TUI session：idle/steer/follow-up 写入 Editor 发送历史；↑/↓ 召回（包 ed05） | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) |
 | **c490** trust | Ask 时 **ChoicePrompt** 换 editor 槽（禁 stdio 数字菜单） | [`trust-prompt`](./design/trust-prompt.md) |
 | **c485** vertical slice | **已归档**：合成 harness H1–H9 + 产品 PTY Fake smoke | archive `2026-07-12-c485-…` |
 | **c492** bash | **已归档**：`!`/`!!` 边框 + `execute_bash` → scrollback；Ctrl+G stub | [`bash-mode`](./design/bash-mode.md) · archive `2026-07-12-c492-…` |
 | **c493** compaction/retry | **已归档**：Compacting / Retry 单行 status；End 恢复 Working | [`compaction-status`](./design/compaction-status.md) · archive `2026-07-12-c493-…` |
+
+### Next wave（设计闸 · c625+；实现分 change）
+
+| Change | 设计焦点 | 文档 |
+|---|---|---|
+| **c625** design/playground | 固定下一屏形状：`/models` 槽、树 power、真 `$EDITOR`、footer context%、abort 反馈；**不做** Settings/Plate 运行时改配置 | 本表 · [`playground/`](./design/playground/) |
+| **c630** `/models` | 替换 editor 槽的 **fuzzy 模型列表**；**移除** `/model` 极简切换 | [`models-picker`](./design/models-picker.md) · [`keybindings`](./design/keybindings.md) |
+| **c635–c645** 树 power | 产品 filter → fold → fork（demo 已有；逐个接线） | [`session-tree`](./design/session-tree.md) · [`keybindings`](./design/keybindings.md) |
+| **c650** 真 `$EDITOR` | Ctrl+G：TTY 真编辑器；harness 仍 stub | [`bash-mode`](./design/bash-mode.md) |
+| **c655** footer context% | 有数据时追加 `· context%`；无则省略 | [`footer`](./design/footer.md) |
+| **c660–c665** abort 质量 | 工具/bash 进程树取消 + status 反馈（非 computer-use） | [`status`](./design/status.md) · [`errors`](./design/errors.md) |
+
+**明确不做（本波）**：Settings / Plate 槽（配置继续 YAML+JSON Schema，无运行时改配置 UX）；computer-use 扩展；Codex TranscriptView。
 
 产品 MVP **固定暗色**；**MUST NOT** 默认开 theme auto / `/theme`（demo 可保留）。
 
@@ -233,6 +246,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 | 文档 | 内容 |
 |---|---|
 | [`design/session-tree.md`](./design/session-tree.md) | **优先**：双 Esc 会话树（travel/fork） |
+| [`design/models-picker.md`](./design/models-picker.md) | `/models` fuzzy 列表（替换 editor 槽） |
 | [`design/transcript.md`](./design/transcript.md) | live 输出进 scrollback（非 Codex 浏览面） |
 | [`design/expandable.md`](./design/expandable.md) | thinking / tool 可展开（demo 优先） |
 | [`design/status.md`](./design/status.md) | busy 一行 |

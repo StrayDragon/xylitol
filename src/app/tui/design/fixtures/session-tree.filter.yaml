@@ -1,0 +1,22 @@
+# id: session-tree.filter
+id: session-tree.filter
+design: ../session-tree.md
+slot: tree-power
+state: filter
+source: treep.filter
+must_contain:
+  - "(2/5) [user]"
+  - "› user:"
+must_not_contain:
+  - "c635"
+  - "c640"
+  - "c645"
+  - "demo 已有"
+assert_html:
+  selected_class: "rev"
+  selected_forbids_substrings:
+    - "fg-user"
+    - "fg-success"
+    - "fg-tool"
+  status_pattern: "\\([0-9]+/[0-9]+\\)"
+  status_after_selected: true

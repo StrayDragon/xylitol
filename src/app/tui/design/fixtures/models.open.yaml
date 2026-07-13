@@ -1,0 +1,19 @@
+# id: models.open
+id: models.open
+design: ../models-picker.md
+slot: models
+state: open
+source: models.open.editor
+must_contain:
+  - "models"
+  - "› ornith-fast"
+must_not_contain:
+  - "c630"
+  - "/model "
+  - "fg-user"
+assert_html:
+  selected_class: "rev"
+  selected_forbids_substrings:
+    - "fg-user"
+    - "fg-success"
+    - "fg-accent"
