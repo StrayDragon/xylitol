@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: src/app/tui/
-requirements[27]{req_id,title,statement}:
+requirements[28]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式或 agent 忙碌时 Esc MUST 调用 Driver::abort；Ctrl+C 在编辑器非空时 MUST 清空输入，在编辑器为空时 MUST 退出 TUI。"
@@ -30,7 +30,8 @@ requirements[27]{req_id,title,statement}:
   ati24,"session-tree-fold-keys","产品 TUI 在 EditorSlot::Tree 时 MUST 把 ctrl+left、alt+left、ctrl+right、alt+right 交给包 TreeSelector（fold/unfold 或分支跳转）；MUST NOT 在 Editor 槽把这些键误当成 editor 光标词跳；树关时这些键保持既有 Editor/其它语义。"
   ati25,"session-tree-fork-key","产品 TUI 在 EditorSlot::Tree 打开时 Shift+F MUST 触发产品会话 fork 流程（见 app-tui-session-tree ast10）；MUST NOT 在 Editor 槽把 Shift+F 误当成普通输入；树关时 Shift+F 保持既有语义（若无则 noop）。"
   ati26,"session-tree-cycle-backward","产品 TUI 在 EditorSlot::Tree 打开时 Ctrl+Shift+O（或 KeybindingsManager 解析到的 cycleBackward 等价和弦）MUST 按 all→labeled-only→user-only→no-tools→default 方向循环 FilterMode；MUST 优先于关树时的其它 Ctrl+O 语义；Ctrl+O 正向循环（ati22）保持不变。"
-scenarios[46]{req_id,id,given,when,then}:
+  ati27,"session-tree-label-keys","产品 TUI 在 EditorSlot::Tree 时 Shift+L MUST 打开 label 编辑（非向 editor 写入字面 L）；Shift+T MUST 切换 annotation 时间戳显示；label 编辑中 Esc MUST 取消编辑且 MUST NOT 关树；树关时 Shift+L/T 保持既有语义。"
+scenarios[47]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-input",spec.toon 存在且 purpose 为中文
   ati1,"selector-slot","",打开模型选择器,editor 槽被选择器替换且贴底可见
   ati2,"esc-aborts","",流式中按 Esc,"Driver::abort 被调用"
@@ -77,3 +78,4 @@ scenarios[46]{req_id,id,given,when,then}:
   ati25,"shift-f-in-tree","EditorSlot::Tree 打开",按 Shift+F,pending fork 或等价入口被置位且不向 editor 写入字面 F
   ati26,"cycle-backward",树开且当前 FilterMode 为 default,按 Ctrl+Shift+O,"进入 all 或状态含 [all]"
   ati22,"ctrl-o-forward-unchanged",树开且当前 default,按 Ctrl+O,"进入 no-tools 或状态含 [no-tools]"
+  ati27,"shift-l-opens-edit","EditorSlot::Tree 打开",按 Shift+L,进入 label 编辑且树仍开

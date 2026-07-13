@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-session-tree"
 purpose: 产品面双 Esc 会话树 stub（c491 冻结）：仅槽替换与 travel 行；活树/真 Driver 等开闸。形态学见 agent_demo（ast3/ast4）。
 valid_scope[1]: src/app/tui/
-requirements[12]{req_id,title,statement}:
+requirements[13]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c491-add-app-tui-session-tree 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ast1,"slot-replace",会话树打开时 MUST 替换 UiRoot editor 槽（贴底可见）；MUST NOT 画成内容区顶部 overlay。
   ast2,"live-travel-via-driver","产品双 Esc 会话树 MUST 渲染当前 session 的 MessageHistory 活树（经 Driver::session_tree(MessageHistory) 映射为包 TreeNode，含 kind）；Enter 选中节点时 MUST 调用 Driver::travel_session_tree(MessageHistory, id)，按返回的 SessionTreeTravel 关闭树、预填 editor（仅当 editor_text 有值）、并重建/刷新 transcript 与后续提交 leaf 语义；MUST NOT 再使用 c491 假树样例作为唯一数据源；filter / 增量搜索产品接线见 ast8；fold / Shift+F fork 仍属后续 change。"
@@ -15,7 +15,8 @@ requirements[12]{req_id,title,statement}:
   ast9,"session-tree-fold","产品会话树打开时 MUST 将 Ctrl+Left / Alt+Left / Ctrl+Right / Alt+Right（包 tui.tree.foldOrUp / unfoldOrDown）转发给 TreeSelector::handle_input，以折叠/展开可折节点或执行分支跳转；折叠后 MUST 隐藏该节点后代并显示 ⊞（或包等价标记）；MUST NOT 在 src/app/tui 重写 folded_nodes 算法；裸 Left/Right MUST 仍为翻页（既有）。"
   ast10,"product-session-tree-fork","产品会话树 Shift+F MUST 创建新 child session：内容 MUST 为 get_branch 路径并重链 parent_id（对齐 pi createBranchedSession），MUST NOT 按 JSONL 文件序切片，MUST NOT 改写父文件，header MUST 含 parent_session。选中 user 时 MUST 用 ForkPosition::Before（leaf=parent、预填正文、不拷该 user）；选中非 user 时 MUST 用 ForkPosition::At（路径含选中、不因 fork 预填 user 正文）。随后 MUST switch_session 到 child 并关树。MUST NOT 使用 demo 同会话 ast5。"
   ast11,"session-tree-slot-help-search","产品会话树槽打开时 MUST 在 TreeSelector 列表上方渲染 Search 行与 TreeHelp 行：Search 在无查询时提示可键入搜索、有查询时显示 Search: 与当前串；TreeHelp MUST 根据 KeybindingsManager（或只读封装）解析当前键位展示 move/page/fold/unfold（折叠）/filters/cycle 等用途片段（可用 · 分隔并随宽度换行），MUST NOT 再使用仅含 Up/Down Enter travel 的过时硬编码唯一提示行作为树槽唯一头行；MUST NOT 把产品 FilterMode 硬编码进 packages/xylitol-tui。"
-scenarios[23]{req_id,id,given,when,then}:
+  ast12,"session-tree-label-persist","产品会话树打开时 Shift+L MUST 进入节点 annotation 编辑；Enter 提交后 MUST 经 Driver 将 Label entry 写入当前 session（空串 MUST 清除 annotation）；重开或刷新后 MUST 仍可见对应 TreeNode.annotation；Shift+T MUST 切换 annotation 时间戳显示（本 change 允许本地 just now）；MUST NOT 在产品面 reach infra::session。"
+scenarios[24]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-session-tree",spec.toon 存在且 purpose 为中文
   ast1,"double-esc-opens",空编辑器,双 Esc 于 500ms 内,editor 槽显示 Session tree
   ast2,"open-shows-live",Driver 当前 session 已有 user/assistant 消息,空编辑器双 Esc 打开树,树行来自 MessageHistory 活数据而非 sample_session_tree 假树
@@ -39,3 +40,4 @@ scenarios[23]{req_id,id,given,when,then}:
   ast10,"fork-no-sibling-leak",父会话同层已有兄弟分支,对一侧路径 Shift+F,child 不含另一侧兄弟条目
   ast11,"open-shows-search-help",产品 TUI idle 且已打开会话树,渲染 Tree 槽一帧,帧内含 Search 或 Type to search 类提示，且含由键位解析得到的 move 或 filters 或 cycle 等 Help 片段
   ast11,"search-echo",产品会话树已打开,键入搜索串 foo,Search 行显示含 foo 的查询回显
+  ast12,"label-persist",产品树已打开且选中节点,Shift+L 输入 keep 后 Enter,"树行含 [keep] 且 store 有对应该节点的 Label entry"
