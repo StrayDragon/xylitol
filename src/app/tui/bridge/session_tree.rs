@@ -2,7 +2,7 @@
 
 use crate::domain::session_types::{SessionEntry, SessionTreeTravel, message_role, message_text};
 
-use super::{UiEntry, UiModel, UiPhase};
+use super::{BashBlockStatus, UiEntry, UiModel, UiPhase};
 
 /// Replace transcript with entries on the ancestry path to `travel.leaf_id`.
 pub fn rebuild_scrollback_from_travel(
@@ -78,9 +78,21 @@ fn session_entry_to_ui(entry: &SessionEntry) -> Option<UiEntry> {
                 _ => Some(UiEntry::System { text }),
             }
         }
-        SessionEntry::BashExecution(b) => Some(UiEntry::System {
-            text: format!("$ {}\n{}", b.command, b.output),
-        }),
+        SessionEntry::BashExecution(b) => {
+            let status = if b.cancelled {
+                BashBlockStatus::Cancelled
+            } else if b.exit_code.is_some_and(|c| c != 0) {
+                BashBlockStatus::Error
+            } else {
+                BashBlockStatus::Success
+            };
+            Some(UiEntry::Bash {
+                command: b.command.clone(),
+                status,
+                output: b.output.clone(),
+                exclude_from_context: b.exclude_from_context,
+            })
+        }
         SessionEntry::Compaction(c) => Some(UiEntry::System {
             text: format!("[compaction] {}", c.summary),
         }),

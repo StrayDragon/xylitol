@@ -205,6 +205,8 @@ impl Driver for ScriptedDriver {
         command: &str,
         exclude_from_context: bool,
     ) -> Result<XyBashResult, String> {
+        // Fresh run: do not inherit a prior abort latch (pi: new AbortController each bang).
+        self.aborted.store(false, Ordering::SeqCst);
         self.bash_calls
             .lock()
             .expect("bash_calls")
@@ -808,16 +810,20 @@ mod slice_tests {
             .unwrap();
         let entries = &session.ui_model().entries;
         assert!(
-            entries
-                .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text.contains("$ echo hi"))),
-            "summary missing: {entries:?}"
+            session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::Bash { command, .. } if command.contains("echo hi")
+            )),
+            "summary missing: {entries:?}",
+            entries = &session.ui_model().entries
         );
         assert!(
-            entries
-                .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text.contains("hello-out"))),
-            "output missing: {entries:?}"
+            session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::Bash { output, .. } if output.contains("hello-out")
+            )),
+            "output missing: {:?}",
+            session.ui_model().entries
         );
     }
 
@@ -838,11 +844,14 @@ mod slice_tests {
             .await
             .unwrap();
         assert!(
-            session
-                .ui_model()
-                .entries
-                .iter()
-                .any(|e| matches!(e, UiEntry::Error { text } if text.contains("exit 1"))),
+            session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::Bash {
+                    status: crate::app::tui::bridge::BashBlockStatus::Error,
+                    output,
+                    ..
+                } if output.contains("exit 1")
+            )),
             "B6 expected Error tint: {:?}",
             session.ui_model().entries
         );
@@ -912,14 +921,25 @@ mod slice_tests {
             .await
             .unwrap();
         let bash = session.take_bash().expect("pending bang");
-        session.begin_bash_exec();
+        session.begin_bash_exec(&bash.command, bash.exclude_from_context);
+        assert!(
+            session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::Bash {
+                    command,
+                    status: crate::app::tui::bridge::BashBlockStatus::Pending,
+                    ..
+                } if command == "sleep 99"
+            )),
+            "bang must uplink Bash pending: {:?}",
+            session.ui_model().entries
+        );
         let bash_fut = driver.execute_bash(&bash.command, bash.exclude_from_context);
         tokio::pin!(bash_fut);
         tokio::select! {
             result = &mut bash_fut => {
                 let r = result.expect("bash result");
                 assert!(r.cancelled, "bash must be cancelled: {r:?}");
-                session.push_bash_result(&bash.command, &r);
                 session.end_bash_exec();
             }
             _ = async {
@@ -927,19 +947,29 @@ mod slice_tests {
                 session.step(HostEvent::Input(esc_event())).unwrap();
                 assert!(session.take_abort(), "busy Esc must request abort");
                 driver.abort();
-                session.note_user_abort();
+                session.note_bash_cancelled();
                 std::future::pending::<()>().await
             } => {}
         }
         assert!(driver.abort_count() >= 1);
+        let entries = &session.ui_model().entries;
         assert!(
-            session
-                .ui_model()
-                .entries
+            entries.iter().any(|e| matches!(
+                e,
+                UiEntry::Bash {
+                    command,
+                    status: crate::app::tui::bridge::BashBlockStatus::Cancelled,
+                    output,
+                    ..
+                } if command == "sleep 99" && output.contains("(cancelled)")
+            )),
+            "bang Esc must cancel Bash block: {entries:?}"
+        );
+        assert!(
+            !entries
                 .iter()
                 .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted")),
-            "Aborted note: {:?}",
-            session.ui_model().entries
+            "bang Esc must not use agent Aborted: {entries:?}"
         );
         assert!(!session.bash_active());
         assert!(!session.is_busy());
@@ -959,7 +989,7 @@ mod slice_tests {
             .await
             .unwrap();
         let bash = session.take_bash().expect("pending bang");
-        session.begin_bash_exec();
+        session.begin_bash_exec(&bash.command, bash.exclude_from_context);
         {
             let bash_fut = driver.execute_bash(&bash.command, bash.exclude_from_context);
             tokio::pin!(bash_fut);
@@ -974,7 +1004,7 @@ mod slice_tests {
                     session.step(HostEvent::Input(esc_event())).unwrap();
                     assert!(session.take_abort());
                     driver.abort();
-                    session.note_user_abort();
+                    session.note_bash_cancelled();
                     // Simulate Esc backlog that used to sticky-cancel the next bang.
                     session.step(HostEvent::Input(esc_event())).unwrap();
                     session.step(HostEvent::Input(esc_event())).unwrap();
@@ -995,13 +1025,111 @@ mod slice_tests {
             "second bang must run after Esc abort: {calls:?}"
         );
         assert!(
-            session
-                .ui_model()
-                .entries
-                .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text.contains("ok"))),
+            session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::Bash { command, output, .. }
+                    if command == "echo ok" && output.contains("ok")
+            )),
             "second bang output missing: {:?}",
             session.ui_model().entries
+        );
+    }
+
+    /// After abort + Esc backlog, a second hanging bang must still be Esc-abortable
+    /// (regression: `suppress_busy_esc` used to eat busy Esc forever).
+    #[tokio::test]
+    async fn c665_second_bang_esc_still_aborts() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_hang_bash_until_abort(true);
+        let mut stream = None;
+
+        // Bang 1: hang + Esc abort + Esc backlog while idle.
+        root.borrow_mut().set_editor_text("!sleep 1");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let bash1 = session.take_bash().expect("bang1");
+        session.begin_bash_exec(&bash1.command, bash1.exclude_from_context);
+        {
+            let bash_fut = driver.execute_bash(&bash1.command, bash1.exclude_from_context);
+            tokio::pin!(bash_fut);
+            tokio::select! {
+                result = &mut bash_fut => {
+                    assert!(result.expect("bash1").cancelled);
+                    session.end_bash_exec();
+                }
+                _ = async {
+                    tokio::time::sleep(Duration::from_millis(40)).await;
+                    session.step(HostEvent::Input(esc_event())).unwrap();
+                    assert!(session.take_abort());
+                    driver.abort();
+                    session.note_bash_cancelled();
+                    for _ in 0..8 {
+                        session.step(HostEvent::Input(esc_event())).unwrap();
+                    }
+                    std::future::pending::<()>().await
+                } => {}
+            }
+        }
+        assert!(!session.is_busy());
+
+        // Bang 2: must still accept Esc abort (pi: fresh AbortController each run).
+        root.borrow_mut().set_editor_text("!sleep 2");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let bash2 = session.take_bash().expect("bang2");
+        session.begin_bash_exec(&bash2.command, bash2.exclude_from_context);
+        let abort_before = driver.abort_count();
+        {
+            let bash_fut = driver.execute_bash(&bash2.command, bash2.exclude_from_context);
+            tokio::pin!(bash_fut);
+            tokio::select! {
+                result = &mut bash_fut => {
+                    let r = result.expect("bash2");
+                    assert!(r.cancelled, "second bang must cancel on Esc: {r:?}");
+                    session.end_bash_exec();
+                }
+                _ = async {
+                    tokio::time::sleep(Duration::from_millis(40)).await;
+                    session.step(HostEvent::Input(esc_event())).unwrap();
+                    assert!(
+                        session.take_abort(),
+                        "busy Esc on second bang must request abort"
+                    );
+                    driver.abort();
+                    session.note_bash_cancelled();
+                    std::future::pending::<()>().await
+                } => {}
+            }
+        }
+        assert!(driver.abort_count() > abort_before);
+        let entries = &session.ui_model().entries;
+        let cancelled_count = entries
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e,
+                    UiEntry::Bash {
+                        status: crate::app::tui::bridge::BashBlockStatus::Cancelled,
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert!(
+            cancelled_count >= 2,
+            "each bang Esc abort should cancel a Bash block: {entries:?}"
+        );
+        assert!(
+            !entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted")),
+            "bang Esc must not emit Aborted: {entries:?}"
         );
     }
 

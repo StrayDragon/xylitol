@@ -1935,14 +1935,14 @@ fn agent_demo_transcript_blocks_blank_before_and_after() {
     app.freeze_script_for_test();
     app.seed_two_user_blocks_for_test();
     let lines = app.transcript_render_lines_for_test(40);
-    let is_blank = |l: &str| l.chars().all(|c| c.is_whitespace());
+    let is_inter_spacer = |l: &str| l.contains("\x1b[49m") && !l.contains("\x1b[48;2");
     assert!(
-        !lines.is_empty() && is_blank(&lines[0]),
-        "first block must have a leading blank: {lines:?}"
+        !lines.is_empty() && is_inter_spacer(&lines[0]),
+        "first block must have a leading untinted spacer: {lines:?}"
     );
     assert!(
-        lines.last().is_some_and(|l| is_blank(l)),
-        "last block must have a trailing blank: {lines:?}"
+        lines.last().is_some_and(|l| is_inter_spacer(l)),
+        "last block must have a trailing untinted spacer: {lines:?}"
     );
     let alpha = lines
         .iter()
@@ -1953,11 +1953,34 @@ fn agent_demo_transcript_blocks_blank_before_and_after() {
         .position(|l| l.contains("block-beta"))
         .expect("beta");
     assert!(alpha < beta, "order: {lines:?}");
-    let gap: Vec<_> = lines[alpha + 1..beta].iter().collect();
-    let blank_run = gap.iter().take_while(|l| is_blank(l)).count();
+    let spacer_run = lines[alpha + 1..beta]
+        .iter()
+        .filter(|l| is_inter_spacer(l))
+        .count();
     assert!(
-        blank_run >= 2,
-        "pi-like gap: blank after alpha + blank before beta (got {blank_run}): {lines:?}"
+        spacer_run >= 2,
+        "pi-like gap: trailing + leading spacers between blocks (got {spacer_run}): {lines:?}"
+    );
+}
+
+#[test]
+fn agent_demo_tool_tint_blocks_have_gaps() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.freeze_script_for_test();
+    app.clear_transcript_for_test();
+    app.push_tool_for_test("tool-a ok", "out-a");
+    app.push_tool_for_test("tool-b ok", "out-b");
+    let lines = app.transcript_render_lines_for_test(60);
+    let is_inter_spacer = |l: &str| l.contains("\x1b[49m") && !l.contains("\x1b[48;2");
+    let a = lines.iter().position(|l| l.contains("tool-a")).expect("a");
+    let b = lines.iter().position(|l| l.contains("tool-b")).expect("b");
+    let spacer_run = lines[a + 1..b]
+        .iter()
+        .filter(|l| is_inter_spacer(l))
+        .count();
+    assert!(
+        spacer_run >= 2,
+        "tool blocks must have untinted spacers between them (got {spacer_run})"
     );
 }
 

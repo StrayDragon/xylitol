@@ -10,6 +10,30 @@ use serde_json::Value;
 
 use crate::app::core::driver::XyEvent;
 
+/// True when the last scrollback line is already an abort note (same-event dedupe).
+pub(crate) fn trailing_aborted_note(entries: &[UiEntry]) -> bool {
+    matches!(
+        entries.last(),
+        Some(UiEntry::System { text }) if text == "Aborted" || text == "aborted"
+    )
+}
+
+/// True when the last line is already a bang `(cancelled)` note (pi bash status).
+pub(crate) fn trailing_bash_cancelled_note(entries: &[UiEntry]) -> bool {
+    match entries.last() {
+        Some(UiEntry::Bash {
+            status: BashBlockStatus::Cancelled,
+            ..
+        }) => true,
+        Some(UiEntry::System { text } | UiEntry::Error { text })
+            if text.contains("(cancelled)") =>
+        {
+            true
+        }
+        _ => false,
+    }
+}
+
 /// User-visible busy vs idle (idle ⇒ status row is 0 lines).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiPhase {
@@ -22,6 +46,15 @@ pub enum UiPhase {
 pub struct QueueBadge {
     pub steer_count: usize,
     pub follow_up_count: usize,
+}
+
+/// Bang / interactive bash block tint state (c668; aligns demo tool tint).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BashBlockStatus {
+    Pending,
+    Success,
+    Error,
+    Cancelled,
 }
 
 /// One scrollback / transcript entry — UI-only, no domain types.
@@ -47,6 +80,13 @@ pub enum UiEntry {
     Diff {
         summary: String,
         display_diff: String,
+    },
+    /// Interactive `!` / `!!` bash block (c668).
+    Bash {
+        command: String,
+        status: BashBlockStatus,
+        output: String,
+        exclude_from_context: bool,
     },
     System {
         text: String,
@@ -175,6 +215,17 @@ impl UiModel {
                     }
                 }
                 UiEntry::Diff { summary, .. } => lines.push(format!("diff: {summary}")),
+                UiEntry::Bash {
+                    command,
+                    status,
+                    output,
+                    ..
+                } => {
+                    lines.push(format!("bash[{status:?}]: $ {command}"));
+                    if !output.is_empty() {
+                        lines.push(output.clone());
+                    }
+                }
                 UiEntry::System { text } => lines.push(format!("system: {text}")),
                 UiEntry::Error { text } => lines.push(format!("error: {text}")),
             }
@@ -197,12 +248,12 @@ impl UiModel {
         out
     }
 
-    /// Immediate user Esc abort: System `Aborted` + idle status (deduped).
+    /// Immediate user Esc abort: System `Aborted` + idle status.
+    /// Dedupes only a trailing abort note (Esc repeat / same-event `Error("aborted")`),
+    /// not any historical `Aborted` in scrollback — each agent abort must show again.
+    /// Bang Esc uses [`Self::note_bash_cancelled`] instead (pi `(cancelled)`).
     pub fn note_user_abort(&mut self) {
-        let already = self.entries.iter().any(
-            |e| matches!(e, UiEntry::System { text } if text == "Aborted" || text == "aborted"),
-        );
-        if !already {
+        if !trailing_aborted_note(&self.entries) {
             self.entries.push(UiEntry::System {
                 text: "Aborted".into(),
             });
@@ -210,6 +261,66 @@ impl UiModel {
         if self.queue.follow_up_count == 0 {
             self.phase = UiPhase::Idle;
             self.status = None;
+        }
+    }
+
+    /// Bang Esc abort: mark last pending Bash cancelled + `(cancelled)` (pi).
+    pub fn note_bash_cancelled(&mut self) {
+        let mut updated = false;
+        for entry in self.entries.iter_mut().rev() {
+            if let UiEntry::Bash { status, output, .. } = entry {
+                if matches!(
+                    *status,
+                    BashBlockStatus::Pending | BashBlockStatus::Cancelled
+                ) {
+                    *status = BashBlockStatus::Cancelled;
+                    if !output.contains("(cancelled)") {
+                        if !output.is_empty() {
+                            output.push('\n');
+                        }
+                        output.push_str("(cancelled)");
+                    }
+                    updated = true;
+                }
+                break;
+            }
+        }
+        if !updated && !trailing_bash_cancelled_note(&self.entries) {
+            self.entries.push(UiEntry::System {
+                text: "(cancelled)".into(),
+            });
+        }
+        if self.queue.follow_up_count == 0 {
+            self.phase = UiPhase::Idle;
+            self.status = None;
+        }
+    }
+
+    /// Start a bang block (pending tint) at submit.
+    pub fn begin_bash_block(&mut self, command: &str, exclude_from_context: bool) {
+        self.entries.push(UiEntry::Bash {
+            command: command.to_string(),
+            status: BashBlockStatus::Pending,
+            output: String::new(),
+            exclude_from_context,
+        });
+        self.phase = UiPhase::Busy;
+        self.status = Some("Running".into());
+    }
+
+    /// Finish the last pending bang block with preformatted output body + status.
+    pub fn finish_bash_block(&mut self, status: BashBlockStatus, body: String) {
+        for entry in self.entries.iter_mut().rev() {
+            if let UiEntry::Bash {
+                status: st, output, ..
+            } = entry
+            {
+                if *st == BashBlockStatus::Pending || status == BashBlockStatus::Cancelled {
+                    *st = status;
+                    *output = body;
+                }
+                break;
+            }
         }
     }
 
@@ -511,6 +622,47 @@ mod tests {
                 .entries
                 .iter()
                 .any(|e| matches!(e, UiEntry::Error { .. }))
+        );
+    }
+
+    #[test]
+    fn note_bash_cancelled_does_not_emit_aborted() {
+        let mut model = UiModel::new();
+        model.begin_bash_block("sleep 1", false);
+        model.note_bash_cancelled();
+        assert!(model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::Bash {
+                status: BashBlockStatus::Cancelled,
+                output,
+                ..
+            } if output.contains("(cancelled)")
+        )));
+        assert!(
+            !model
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted"))
+        );
+    }
+
+    #[test]
+    fn note_user_abort_allows_second_abort_after_new_command() {
+        let mut model = UiModel::new();
+        model.note_user_abort();
+        model.entries.push(UiEntry::System {
+            text: "$ sleep 2".into(),
+        });
+        model.note_user_abort();
+        let n = model
+            .entries
+            .iter()
+            .filter(|e| matches!(e, UiEntry::System { text } if text == "Aborted"))
+            .count();
+        assert_eq!(
+            n, 2,
+            "each bang abort must show Aborted: {:?}",
+            model.entries
         );
     }
 
