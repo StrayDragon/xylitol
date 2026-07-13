@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ast12,"session-tree-label-persist","产品会话树打开时 Shift+L MUST 进入节点 annotation 编辑；Enter 提交后 MUST 经 Driver 将 Label entry 写入当前 session（空串 MUST 清除 annotation）；重开或刷新后 MUST 仍可见对应 TreeNode.annotation；Shift+T MUST 切换 annotation 时间戳显示（本 change 允许本地 just now）；MUST NOT 在产品面 reach infra::session。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ast12,"label-persist",产品树已打开且选中节点,Shift+L 输入 keep 后 Enter,"树行含 [keep] 且 store 有对应该节点的 Label entry"

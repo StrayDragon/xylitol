@@ -52,6 +52,7 @@ pub struct ScriptedDriver {
     travel_calls: Mutex<Vec<String>>,
     fork_calls: Mutex<Vec<(String, crate::domain::session_types::ForkPosition)>>,
     switch_calls: Mutex<Vec<String>>,
+    label_calls: Mutex<Vec<(String, Option<String>)>>,
     active_session_id: Mutex<String>,
 }
 
@@ -120,6 +121,7 @@ impl ScriptedDriver {
             travel_calls: Mutex::new(Vec::new()),
             fork_calls: Mutex::new(Vec::new()),
             switch_calls: Mutex::new(Vec::new()),
+            label_calls: Mutex::new(Vec::new()),
             active_session_id: Mutex::new("scripted".into()),
         }
     }
@@ -146,6 +148,10 @@ impl ScriptedDriver {
 
     pub fn fork_calls(&self) -> Vec<(String, crate::domain::session_types::ForkPosition)> {
         self.fork_calls.lock().expect("fork_calls").clone()
+    }
+
+    pub fn label_calls(&self) -> Vec<(String, Option<String>)> {
+        self.label_calls.lock().expect("label_calls").clone()
     }
 
     pub fn switch_calls(&self) -> Vec<String> {
@@ -404,6 +410,22 @@ impl Driver for ScriptedDriver {
             }
         }
     }
+
+    async fn append_entry_label(
+        &mut self,
+        target_id: &str,
+        label: Option<&str>,
+    ) -> Result<(), String> {
+        let cleaned = label
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        self.label_calls
+            .lock()
+            .expect("label_calls")
+            .push((target_id.to_string(), cleaned));
+        Ok(())
+    }
 }
 
 /// One pump of host pending ops + optional full drain of the active agent stream.
@@ -650,6 +672,26 @@ mod slice_tests {
         use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
         InputEvent::Key(KeyEvent {
             code: KeyCode::Char('f'),
+            modifiers: KeyModifiers::SHIFT,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn shift_l_event() -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Char('l'),
+            modifiers: KeyModifiers::SHIFT,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn shift_t_event() -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Char('t'),
             modifiers: KeyModifiers::SHIFT,
             kind: KeyEventKind::Press,
             state: KeyEventState::NONE,
@@ -1897,6 +1939,56 @@ mod slice_tests {
         assert_eq!(
             root.borrow().tree_filter_for_test(),
             crate::app::tui::layout::FilterMode::All
+        );
+    }
+
+    #[tokio::test]
+    async fn h23_tree_shift_l_persists_annotation() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        root.borrow_mut().open_session_tree_at_for_test(
+            crate::app::tui::layout::sample_tree_nodes_for_test(),
+            "a1",
+        );
+        session.step(HostEvent::Input(shift_l_event())).unwrap();
+        let slot = root.borrow_mut().tree_slot_text_for_test(80);
+        assert!(
+            slot.contains("Label edit"),
+            "Shift+L must open label editor; got:\n{slot}"
+        );
+        session.step(HostEvent::Input(char_event('k'))).unwrap();
+        session.step(HostEvent::Input(char_event('e'))).unwrap();
+        session.step(HostEvent::Input(char_event('e'))).unwrap();
+        session.step(HostEvent::Input(char_event('p'))).unwrap();
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.label_calls(),
+            vec![("a1".to_string(), Some("keep".to_string()))]
+        );
+        let panel = root.borrow_mut().tree_panel_text_for_test(80);
+        assert!(
+            panel.contains("[keep]"),
+            "annotation must show after label save; got:\n{panel}"
+        );
+    }
+
+    #[tokio::test]
+    async fn h24_tree_shift_t_toggles_timestamps() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = open_sample_tree(&mut session);
+        // sample has annotation "keep" on u1
+        root.borrow_mut()
+            .apply_tree_label("u1", Some("keep".into()));
+        session.step(HostEvent::Input(shift_t_event())).unwrap();
+        let panel = root.borrow_mut().tree_panel_text_for_test(80);
+        assert!(
+            panel.contains("just now") || panel.contains("[keep]"),
+            "Shift+T should reveal timestamp near annotation; got:\n{panel}"
         );
     }
 

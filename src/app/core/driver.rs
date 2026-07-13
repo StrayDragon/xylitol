@@ -210,6 +210,14 @@ pub trait Driver: Send {
         kind: SessionTreeKind,
         entry_id: &str,
     ) -> Result<SessionTreeTravel, String>;
+
+    /// Persist a tree annotation (`Label` entry) for `target_id` (c690).
+    /// `label: None` or empty clears the annotation.
+    async fn append_entry_label(
+        &mut self,
+        target_id: &str,
+        label: Option<&str>,
+    ) -> Result<(), String>;
 }
 
 // ── In-process driver ─────────────────────────────────────────────
@@ -461,9 +469,37 @@ impl Driver for InProcessDriver {
             SessionTreeKind::FileBrowser => Err(session_tree_kind_unimplemented(kind)),
         }
     }
-}
 
-// ── Remote driver ─────────────────────────────────────────────────
+    async fn append_entry_label(
+        &mut self,
+        target_id: &str,
+        label: Option<&str>,
+    ) -> Result<(), String> {
+        use crate::domain::session_types::{EntryBase, LabelEntry};
+
+        let sid = self.agent.inner().session_id().ok_or("no active session")?;
+        self.agent.inner().ensure_session(sid, None).await?;
+        let entries = self.store.load_entries(sid).await?;
+        if !entries.iter().any(|e| e.entry_id() == Some(target_id)) {
+            return Err(format!("target entry not found: {target_id}"));
+        }
+        let cleaned = label
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let entry = SessionEntry::Label(LabelEntry {
+            base: EntryBase {
+                entry_type: "label".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: String::new(),
+            },
+            target_id: target_id.to_string(),
+            label: cleaned,
+        });
+        self.store.append_session_entry(sid, &entry).await
+    }
+}
 
 /// Remote driver — speaks protocol over REST/WS to a xylitol server.
 ///
@@ -1047,6 +1083,14 @@ impl Driver for RemoteDriver {
             }
             SessionTreeKind::FileBrowser => Err(session_tree_kind_unimplemented(kind)),
         }
+    }
+
+    async fn append_entry_label(
+        &mut self,
+        _target_id: &str,
+        _label: Option<&str>,
+    ) -> Result<(), String> {
+        Err("remote: append_entry_label not implemented".into())
     }
 }
 

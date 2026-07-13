@@ -14,9 +14,10 @@ use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
-    Component, Focusable, InputEvent, InputListenerResult, SlashArgCompletionSource, SlashCommand,
-    SlashCommandSource, SystemClock, TUI, Terminal, TreeNode, TreeSelector, TreeSelectorOptions,
-    fg_rgb, fuzzy_filter, matches_key_event, printable_from_key_event, truncate_to_width,
+    Component, Focusable, Input, InputEvent, InputListenerResult, SlashArgCompletionSource,
+    SlashCommand, SlashCommandSource, SystemClock, TUI, Terminal, TreeNode, TreeSelector,
+    TreeSelectorOptions, fg_rgb, fuzzy_filter, matches_key_event, printable_from_key_event,
+    truncate_to_width,
 };
 
 use super::session_tree::{FilterMode, tree_help_line, tree_search_line, wrap_help_line};
@@ -102,6 +103,10 @@ pub struct UiRoot {
     pending_tree_travel: Option<String>,
     /// Tree Shift+F → host calls `fork_session` + `switch_session` (c645).
     pending_tree_fork: Option<String>,
+    /// Tree Shift+L commit → host `append_entry_label` (c690).
+    pending_tree_label: Option<(String, Option<String>)>,
+    /// Active label editor for selected tree node (c690).
+    tree_label_edit: Option<(String, Input)>,
     /// Models Enter → host calls `SetModel` (c630).
     pending_model_select: Option<String>,
     models_list: SelectList,
@@ -153,6 +158,8 @@ impl UiRoot {
             pending_tree_open: false,
             pending_tree_travel: None,
             pending_tree_fork: None,
+            pending_tree_label: None,
+            tree_label_edit: None,
             pending_model_select: None,
             models_list: empty_models_list(theme),
             models_items: Vec::new(),
@@ -270,6 +277,19 @@ impl UiRoot {
         self.pending_tree_fork.take()
     }
 
+    pub fn take_pending_tree_label(&mut self) -> Option<(String, Option<String>)> {
+        self.pending_tree_label.take()
+    }
+
+    pub fn apply_tree_label(&mut self, id: &str, label: Option<String>) {
+        self.tree.set_annotation(id, label.clone());
+        if label.is_some() {
+            self.tree.set_annotation_at(id, Some("just now".into()));
+        } else {
+            self.tree.set_annotation_at(id, None);
+        }
+    }
+
     pub fn take_pending_model_select(&mut self) -> Option<String> {
         self.pending_model_select.take()
     }
@@ -344,9 +364,12 @@ impl UiRoot {
         quit_flag.store(true, Ordering::SeqCst);
     }
 
-    /// Esc: tree clears search first; other overlays close; else idle empty double-Esc queues live tree open.
+    /// Esc: label edit cancel → tree clears search → other overlays close; else idle empty double-Esc.
     pub fn on_escape(&mut self) -> bool {
         if self.slot.is_tree() {
+            if self.tree_label_edit.take().is_some() {
+                return true;
+            }
             if self.tree.clear_search_if_any() {
                 return true;
             }
@@ -470,7 +493,15 @@ impl UiRoot {
             EditorSlot::Tree => {
                 let mut lines = Vec::new();
                 lines.push(" Session tree".to_string());
-                // pi order: TreeHelp then SearchLine (purpose keys above search).
+                if let Some((_, ref mut input)) = self.tree_label_edit {
+                    lines.push(
+                        self.theme
+                            .paint_muted(" Label edit · Enter save · Esc cancel"),
+                    );
+                    lines.extend(input.render(width.max(1)));
+                    return lines;
+                }
+                // pi order: TreeHelp then SearchLine.
                 for help in wrap_help_line(&tree_help_line(), width.max(1)) {
                     lines.push(self.theme.paint_muted(&help));
                 }
@@ -559,6 +590,18 @@ impl Component for UiRoot {
                 let InputEvent::Key(ref key) = event else {
                     return;
                 };
+                if let Some((_, ref mut input)) = self.tree_label_edit {
+                    if matches_key_event(key, "enter") {
+                        if let Some((id, input)) = self.tree_label_edit.take() {
+                            let text = input.value().trim().to_string();
+                            let ann = if text.is_empty() { None } else { Some(text) };
+                            self.pending_tree_label = Some((id, ann));
+                        }
+                        return;
+                    }
+                    input.handle_input(event);
+                    return;
+                }
                 if matches_key_event(key, "ctrl+d") {
                     self.apply_tree_filter(FilterMode::Default);
                     return;
@@ -595,6 +638,20 @@ impl Component for UiRoot {
                 if matches_key_event(key, "shift+f") {
                     let id = self.tree.selected_id().unwrap_or("?").to_string();
                     self.pending_tree_fork = Some(id);
+                    return;
+                }
+                if matches_key_event(key, "shift+l") {
+                    let Some(id) = self.tree.selected_id().map(str::to_string) else {
+                        return;
+                    };
+                    let current = self.tree.annotation_of(&id).unwrap_or("").to_string();
+                    let mut input = Input::new();
+                    input.set_value(current);
+                    self.tree_label_edit = Some((id, input));
+                    return;
+                }
+                if matches_key_event(key, "shift+t") {
+                    self.tree.toggle_annotation_timestamps();
                     return;
                 }
                 if matches_key_event(key, "up")
