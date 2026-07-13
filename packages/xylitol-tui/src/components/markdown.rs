@@ -162,30 +162,10 @@ impl Component for Markdown {
 
                 Event::Start(Tag::CodeBlock(kind)) => {
                     idx += 1;
-                    let lang = match kind {
-                        pulldown_cmark::CodeBlockKind::Fenced(s) => {
-                            if s.is_empty() {
-                                None
-                            } else {
-                                Some(s.as_ref())
-                            }
-                        }
-                        pulldown_cmark::CodeBlockKind::Indented => None,
-                    };
+                    let lang = fenced_lang(kind);
                     let code = collect_text_until(&events, &mut idx);
-                    let indent = self.theme.code_block_indent.as_deref().unwrap_or("  ");
-                    // No fence / language bar / line numbers (c530).
-                    if let Some(ref hc) = self.theme.highlight_code {
-                        for hl in hc(&code, lang) {
-                            rendered.push(MdLine::raw(format!("{indent}{hl}")));
-                        }
-                    } else {
-                        for cl in code.lines() {
-                            rendered.push(MdLine::raw(format!(
-                                "{indent}{}",
-                                (self.theme.code_block)(cl)
-                            )));
-                        }
+                    for line in render_code_block_lines(self, &code, lang) {
+                        rendered.push(MdLine::raw(line));
                     }
                     if !next_is_space(&events, idx) {
                         rendered.push(MdLine::raw(String::new()));
@@ -607,6 +587,28 @@ fn strip_ansi_for_empty(s: &str) -> String {
     out.trim().to_string()
 }
 
+fn fenced_lang<'a>(kind: &'a pulldown_cmark::CodeBlockKind<'_>) -> Option<&'a str> {
+    match kind {
+        pulldown_cmark::CodeBlockKind::Fenced(s) if !s.is_empty() => Some(s.as_ref()),
+        _ => None,
+    }
+}
+
+/// Highlighted (or themed) code lines without fence chrome (c530).
+fn render_code_block_lines(md: &Markdown, code: &str, lang: Option<&str>) -> Vec<String> {
+    let indent = md.theme.code_block_indent.as_deref().unwrap_or("  ");
+    if let Some(ref hc) = md.theme.highlight_code {
+        hc(code, lang)
+            .into_iter()
+            .map(|hl| format!("{indent}{hl}"))
+            .collect()
+    } else {
+        code.lines()
+            .map(|cl| format!("{indent}{}", (md.theme.code_block)(cl)))
+            .collect()
+    }
+}
+
 fn collect_text_until(events: &[Event], idx: &mut usize) -> String {
     let mut text = String::new();
     while *idx < events.len() {
@@ -768,6 +770,20 @@ fn render_list(
                                 &mut rendered_any,
                             );
                         }
+                        Event::Start(Tag::CodeBlock(kind)) => {
+                            *idx += 1;
+                            let lang = fenced_lang(kind);
+                            let code = collect_text_until(events, idx);
+                            for line in render_code_block_lines(md, &code, lang) {
+                                let prefix = if rendered_any {
+                                    continuation.as_str()
+                                } else {
+                                    first_prefix.as_str()
+                                };
+                                lines.push(format!("{prefix}{line}"));
+                                rendered_any = true;
+                            }
+                        }
                         // Tight items: join consecutive inlines (Text / TaskListMarker /
                         // Strong / Link / …) into one line — never one Text event per row.
                         Event::Text(_)
@@ -848,9 +864,12 @@ fn render_events_block(
                 let start = first_num.unwrap_or(1) as usize;
                 lines.extend(render_list(md, events, idx, 0, width, is_ordered, start));
             }
-            Event::Start(Tag::CodeBlock(_)) => {
-                let text = collect_text_until(events, idx);
-                lines.push(text);
+            Event::Start(Tag::CodeBlock(kind)) => {
+                *idx += 1;
+                let lang = fenced_lang(kind);
+                let code = collect_text_until(events, idx);
+                // Keep highlight colors — do not wrap with quote_fn (muted/italic).
+                lines.extend(render_code_block_lines(md, &code, lang));
             }
             Event::Text(t) => {
                 lines.push(quote_fn(t));
@@ -1230,6 +1249,49 @@ mod tests {
         assert!(
             text.contains("│ hello quote"),
             "quote must use '│ ' gutter:\n{text}"
+        );
+    }
+
+    #[test]
+    fn quote_code_block_uses_highlight_and_bar() {
+        let mut theme = identity_theme();
+        theme.highlight_code = Some(Box::new(|code, lang| {
+            let tag = lang.unwrap_or("?");
+            code.lines().map(|l| format!("HL[{tag}]{l}")).collect()
+        }));
+        let mut md = Markdown::new(
+            "> ```rust\n> fn main() {}\n> ```\n".into(),
+            0,
+            0,
+            theme,
+            None,
+        );
+        let text = visible_join(&mut md, 60);
+        assert!(
+            text.contains("│") && text.contains("HL[rust]fn main() {}"),
+            "quote fence must highlight and keep gutter:\n{text}"
+        );
+        assert!(!text.contains("```"), "must not show fence chrome:\n{text}");
+    }
+
+    #[test]
+    fn list_code_block_uses_highlight() {
+        let mut theme = identity_theme();
+        theme.highlight_code = Some(Box::new(|code, lang| {
+            let tag = lang.unwrap_or("?");
+            code.lines().map(|l| format!("HL[{tag}]{l}")).collect()
+        }));
+        let mut md = Markdown::new(
+            "- item\n\n  ```py\n  x = 1\n  ```\n".into(),
+            0,
+            0,
+            theme,
+            None,
+        );
+        let text = visible_join(&mut md, 60);
+        assert!(
+            text.contains("HL[py]x = 1"),
+            "list fence must highlight:\n{text}"
         );
     }
 
