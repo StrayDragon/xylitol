@@ -10,7 +10,7 @@
 
 ## 优先路径
 
-**闸门**：相关原子/交互 MUST 先在 `packages/xylitol-tui` `agent_demo` 验证，再进本面接线。filter / fold / Shift+F 等产品扩展仍后置（demo 先行）。
+**闸门**：相关原子/交互 MUST 先在 `packages/xylitol-tui` `agent_demo` 验证，再进本面接线。下一波 draft：`/models`（c630）· 树 filter/fold/fork（c635–c645）· 真 `$EDITOR`（c650）；设计闸 **c625**。**不做** Settings/Plate 运行时改配置；computer-use 延后。
 
 **不做 Codex 式 TranscriptView**（原 c470 草案已移除；`app-tui-transcript` 合约仅约束 live scrollback）。
 
@@ -29,7 +29,7 @@
 
 **唯一视觉 SSOT**：本目录 **`DESIGN.md`** + **`design/*.md`**。包内不另起 design 文档树；`Palette` 对齐本 DESIGN。
 
-**活实验场**：`just demo-tui`（`agent_demo`）= 产品 TUI 快速 playground——形状/交互先在此试，再进本 host。浏览器静图：`design/playground/`（Agent 默认忽略）。
+**三层预览**：浏览器 `design/playground/` = **静态设计图**（固定状态）；`just demo-tui` = **动态** playground；本目录 = **生产** host。细则：`design/AGENTS.md`。
 
 包组件只收闭包主题，不承载产品整页 layout。layout 壳（c475）已注入；slash / 键位见 c480。
 

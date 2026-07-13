@@ -22,7 +22,7 @@ components:
 | 空 `!` / `!!` | 系统提示，不执行 |
 | 结果 | live scrollback：`$ cmd` + 输出；非 0 exit → `UiEntry::Error`（error fg） |
 | busy | `!…` 仍走 steer/普通文本；**不**另开 bash |
-| Ctrl+G | 最小 stub（系统行 + `# $EDITOR stub`）；harness 不 spawn `$EDITOR` |
+| Ctrl+G | **c650**：TTY 真 `$VISUAL`/`$EDITOR`（对齐 demo）；harness / 非 TTY 仍 stub（系统行 + `# $EDITOR stub`） |
 
 ## Demo 已验证（c457+ · `agent_demo`）
 
@@ -38,7 +38,7 @@ components:
 | 层 | 职责 |
 |---|---|
 | `packages/xylitol-tui` | **仅**挂起/恢复终端：`with_terminal_suspended`（`Terminal::stop`/`start` + `request_render(true)`）；**MUST NOT** 内置 `$EDITOR` / tempfile |
-| `agent_demo` / `src/app/tui` | 解析编辑器命令、写临时文件、spawn/wait、写回 Editor（产品 MVP = stub） |
+| `agent_demo` / `src/app/tui` | 解析编辑器命令、写临时文件、spawn/wait、写回 Editor；产品 **c650** 对齐 demo 真路径，harness 仍 stub |
 | `infra` / Driver | bash **执行**走 `Driver::execute_bash`；外部编辑器 **不参与** |
 
 ## 意向（对齐 pi）
