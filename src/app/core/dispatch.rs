@@ -274,7 +274,7 @@ fn cmd_variant_name(cmd: &Command) -> &'static str {
 mod tests {
     use super::*;
     use crate::app::core::driver::{CommandInfo, ModelInfo, SessionState};
-    use crate::domain::session_types::SessionEntry;
+    use crate::domain::session_types::SessionTreeKind;
     use crate::domain::types::ThinkingLevel;
     use crate::runtime_protocol::XyBashResult;
     use async_trait::async_trait;
@@ -387,6 +387,33 @@ mod tests {
             crate::agent::session::QueueStats {
                 steer_count: self.steer,
                 follow_up_count: self.follow_up,
+            }
+        }
+
+        async fn session_tree(
+            &self,
+            kind: SessionTreeKind,
+        ) -> Result<Vec<crate::domain::session_types::SessionTreeNode>, String> {
+            match kind {
+                SessionTreeKind::MessageHistory => Ok(Vec::new()),
+                SessionTreeKind::FileBrowser => {
+                    Err("session tree kind 'file_browser' is not implemented".into())
+                }
+            }
+        }
+
+        async fn travel_session_tree(
+            &self,
+            kind: SessionTreeKind,
+            _entry_id: &str,
+        ) -> Result<crate::domain::session_types::SessionTreeTravel, String> {
+            match kind {
+                SessionTreeKind::MessageHistory => {
+                    Err("stub: travel_session_tree not implemented".into())
+                }
+                SessionTreeKind::FileBrowser => {
+                    Err("session tree kind 'file_browser' is not implemented".into())
+                }
             }
         }
     }

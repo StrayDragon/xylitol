@@ -1100,82 +1100,7 @@ impl SessionManager {
     /// Builds a `Vec<SessionTreeNode>` with labels resolved from LabelEntries.
     pub async fn get_tree(&self, session_id: &str) -> Result<Vec<SessionTreeNode>, String> {
         let entries = self.load(session_id).await?;
-        Ok(Self::build_tree(&entries))
-    }
-
-    /// Build a tree from entries (public for testing).
-    pub fn build_tree(entries: &[SessionEntry]) -> Vec<SessionTreeNode> {
-        use std::collections::HashMap;
-
-        // Collect labels from LabelEntries
-        let mut labels: HashMap<String, String> = HashMap::new();
-        for entry in entries {
-            if let SessionEntry::Label(l) = entry {
-                if let Some(ref label) = l.label {
-                    labels.insert(l.target_id.clone(), label.clone());
-                } else {
-                    labels.remove(&l.target_id);
-                }
-            }
-        }
-
-        let mut node_map: HashMap<String, SessionTreeNode> = HashMap::new();
-        let mut roots: Vec<SessionTreeNode> = Vec::new();
-
-        // Create nodes
-        for entry in entries {
-            if entry.entry_type() == "label" || entry.entry_type() == "session" {
-                continue; // Labels and headers not part of tree display
-            }
-            if let Some(id) = entry.entry_id() {
-                let label = labels.get(id).cloned();
-                node_map.insert(
-                    id.to_string(),
-                    SessionTreeNode {
-                        entry: entry.clone(),
-                        children: Vec::new(),
-                        label,
-                    },
-                );
-            }
-        }
-
-        // Build tree connections
-        for entry in entries {
-            if entry.entry_type() == "label" || entry.entry_type() == "session" {
-                continue;
-            }
-            let Some(id) = entry.entry_id() else { continue };
-            let Some(node) = node_map.remove(id) else {
-                continue;
-            };
-
-            if let Some(parent_id) = entry.parent_id() {
-                if let Some(parent) = node_map.get_mut(parent_id) {
-                    parent.children.push(node);
-                } else {
-                    // Orphan - treat as root
-                    roots.push(node);
-                }
-            } else {
-                roots.push(node);
-            }
-        }
-
-        // Sort children by timestamp
-        fn sort_children(nodes: &mut [SessionTreeNode]) {
-            for node in nodes.iter_mut() {
-                node.children.sort_by(|a, b| {
-                    let ta = a.entry.base().map(|b| b.timestamp.clone());
-                    let tb = b.entry.base().map(|b| b.timestamp.clone());
-                    ta.cmp(&tb)
-                });
-                sort_children(&mut node.children);
-            }
-        }
-        sort_children(&mut roots);
-
-        roots
+        Ok(crate::domain::session_types::build_session_tree(&entries))
     }
 
     // ── Label and session info ─────────────────────────────────
@@ -1366,6 +1291,14 @@ impl XySessionStore for SessionManager {
 
     async fn fork(&self, parent_id: &str, child_id: &str, at_entry_id: &str) -> Result<(), String> {
         SessionManager::fork(self, parent_id, child_id, at_entry_id).await
+    }
+
+    fn set_leaf(&self, session_id: &str, entry_id: Option<&str>) {
+        <SessionManager>::set_leaf(self, session_id, entry_id.map(str::to_string));
+    }
+
+    fn leaf_id(&self, session_id: &str) -> Option<String> {
+        SessionManager::get_leaf_id(self, session_id)
     }
 }
 
