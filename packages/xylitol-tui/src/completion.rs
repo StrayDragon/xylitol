@@ -3,7 +3,8 @@
 //! The [`Editor`](crate::Editor) owns popup lifecycle (SelectList, ↑↓/Tab/Enter/Esc).
 //! Applications register [`CompletionSource`]s for each trigger paradigm:
 //!
-//! - [`SlashCommandSource`] — `/help`, `/model`, … (line-leading)
+//! - [`SlashCommandSource`] — `/help`, `/model`, … (line-leading, **no** space yet)
+//! - [`SlashArgCompletionSource`] — `/model <prefix>` argument ids (needs space after command)
 //! - [`AtPathSource`] — `@path/to/file` (inline attachment)
 //! - Future: `$skill`, `^agent`, etc. — implement [`CompletionSource`] and register;
 //!   `$` SHOULD use [`extract_dollar_prefix`](crate::extract_dollar_prefix) so it
@@ -11,12 +12,14 @@
 //!
 //! ```ignore
 //! editor.set_completion_sources(vec![
+//!     Box::new(SlashArgCompletionSource::new("model", model_catalog).with_id("model-id")),
 //!     Box::new(SlashCommandSource::new(commands)),
 //!     Box::new(AtPathSource::new(cwd)),
-//!     // Box::new(DollarSkillSource::new(skills)),
 //! ]);
 //! ```
-
+//!
+//! Probe order: first hit wins. Slash command name and slash-arg probes are mutually
+//! exclusive (`/`… vs `/cmd `…), so either order is safe.
 use crate::autocomplete::{
     AutocompleteItem, AutocompleteSuggestions, SlashCommand, build_completion_value,
     expand_home_path, extract_at_prefix, parse_path_prefix, to_display_path,
@@ -306,6 +309,127 @@ impl CompletionSource for SlashCommandSource {
     }
 }
 
+// ── SlashArgCompletionSource ────────────────────────────────────────────────
+
+/// `/<command> <arg-prefix>` completion (e.g. `/model dee` → model ids).
+///
+/// Bare `/<command>` (**no** trailing space) MUST NOT probe — leave that to
+/// [`SlashCommandSource`] / product editor-slot pickers.
+pub struct SlashArgCompletionSource {
+    command: String,
+    source_id: &'static str,
+    /// `(value/label, description)` — fuzzy-filtered by the arg fragment.
+    catalog: Vec<(String, String)>,
+}
+
+impl SlashArgCompletionSource {
+    pub fn new(command: impl Into<String>, catalog: Vec<(String, String)>) -> Self {
+        Self {
+            command: command.into(),
+            source_id: "slash-arg",
+            catalog,
+        }
+    }
+
+    pub fn with_id(mut self, id: &'static str) -> Self {
+        self.source_id = id;
+        self
+    }
+
+    pub fn set_catalog(&mut self, catalog: Vec<(String, String)>) {
+        self.catalog = catalog;
+    }
+}
+
+/// If `before` is `/<command><space><arg…>`, return the arg fragment (may be empty).
+///
+/// Bare `/command` with no space → [`None`].
+pub fn extract_slash_arg_prefix<'a>(before: &'a str, command: &str) -> Option<&'a str> {
+    if command.is_empty() || command.contains(|c: char| c.is_whitespace()) {
+        return None;
+    }
+    let head = format!("/{command} ");
+    before.strip_prefix(head.as_str())
+}
+
+impl CompletionSource for SlashArgCompletionSource {
+    fn id(&self) -> &'static str {
+        self.source_id
+    }
+
+    fn probe(&self, ctx: &CompletionContext<'_>) -> Option<CompletionMatch> {
+        let arg = extract_slash_arg_prefix(ctx.before_cursor(), &self.command)?;
+        Some(CompletionMatch {
+            // Arg fragment only — Editor apply replaces `prefix.len()` before cursor.
+            prefix: arg.to_string(),
+        })
+    }
+
+    fn should_dismiss(&self, ctx: &CompletionContext<'_>, _m: &CompletionMatch) -> bool {
+        extract_slash_arg_prefix(ctx.before_cursor(), &self.command).is_none()
+    }
+
+    fn suggestions(
+        &self,
+        _ctx: &CompletionContext<'_>,
+        m: &CompletionMatch,
+    ) -> Option<AutocompleteSuggestions> {
+        let needle = m.prefix.as_str();
+        let items: Vec<AutocompleteItem> = self
+            .catalog
+            .iter()
+            .filter_map(|(id, desc)| {
+                fuzzy_match(needle, id)?;
+                Some(AutocompleteItem {
+                    value: id.clone(),
+                    label: id.clone(),
+                    description: if desc.is_empty() {
+                        None
+                    } else {
+                        Some(desc.clone())
+                    },
+                })
+            })
+            .collect();
+        if items.is_empty() {
+            return None;
+        }
+        Some(AutocompleteSuggestions {
+            items,
+            prefix: m.prefix.clone(),
+        })
+    }
+
+    fn apply(
+        &self,
+        lines: &[String],
+        cursor_line: usize,
+        cursor_col: usize,
+        item: &AutocompleteItem,
+        prefix: &str,
+    ) -> (Vec<String>, usize, usize) {
+        let current = lines[cursor_line].clone();
+        let before = &current[..cursor_col.saturating_sub(prefix.len())];
+        let after = &current[cursor_col..];
+        // Keep `/command ` head; write selected id; trailing space for Enter submit.
+        let suffix = if after.is_empty() {
+            " "
+        } else if after.starts_with(' ') {
+            ""
+        } else {
+            " "
+        };
+        let new_line = format!("{before}{}{suffix}{after}", item.value);
+        let mut new_lines = lines.to_vec();
+        new_lines[cursor_line] = new_line;
+        (
+            new_lines,
+            cursor_line,
+            before.len() + item.value.len() + suffix.len(),
+        )
+    }
+}
+
 // ── AtPathSource ────────────────────────────────────────────────────────────
 
 pub struct AtPathSource {
@@ -554,5 +678,89 @@ mod tests {
         assert_eq!(i, 0);
         assert_eq!(m.prefix, "/h");
         assert_eq!(reg.sources[i].id(), "slash");
+    }
+
+    fn model_arg() -> SlashArgCompletionSource {
+        SlashArgCompletionSource::new(
+            "model",
+            vec![
+                ("deepseek-v4-flash".into(), "opencode-go".into()),
+                ("deepseek/deepseek-v4-pro".into(), "commandcode".into()),
+                ("grok-4.5:slow".into(), "cursor".into()),
+            ],
+        )
+        .with_id("model-id")
+    }
+
+    #[test]
+    fn slash_arg_skips_bare_command() {
+        assert!(extract_slash_arg_prefix("/model", "model").is_none());
+        let src = model_arg();
+        let lines = vec!["/model".into()];
+        let ctx = CompletionContext {
+            lines: &lines,
+            cursor_line: 0,
+            cursor_col: 6,
+        };
+        assert!(
+            src.probe(&ctx).is_none(),
+            "bare /model must not steal picker"
+        );
+        assert!(slash().probe(&ctx).is_some(), "slash owns bare /model");
+    }
+
+    #[test]
+    fn slash_arg_fuzzy_and_apply() {
+        let src = model_arg();
+        let lines = vec!["/model dee".into()];
+        let ctx = CompletionContext {
+            lines: &lines,
+            cursor_line: 0,
+            cursor_col: 10,
+        };
+        let m = src.probe(&ctx).expect("probe /model dee");
+        assert_eq!(m.prefix, "dee");
+        let s = src.suggestions(&ctx, &m).unwrap();
+        assert!(
+            s.items.iter().any(|i| i.value.contains("deepseek")),
+            "fuzzy dee → deepseek*; got {:?}",
+            s.items.iter().map(|i| i.value.as_str()).collect::<Vec<_>>()
+        );
+        assert!(!s.items.iter().any(|i| i.value.starts_with("grok")));
+
+        let item = s
+            .items
+            .iter()
+            .find(|i| i.value == "deepseek-v4-flash")
+            .cloned()
+            .expect("flash in list");
+        let (new_lines, _, col) = src.apply(&lines, 0, 10, &item, &m.prefix);
+        assert_eq!(new_lines[0], "/model deepseek-v4-flash ");
+        assert_eq!(col, "/model deepseek-v4-flash ".len());
+    }
+
+    #[test]
+    fn slash_arg_and_slash_mutex_in_registry() {
+        let mut reg = CompletionRegistry::new();
+        reg.set_sources(vec![Box::new(model_arg()), Box::new(slash())]);
+
+        let bare = vec!["/model".into()];
+        let ctx = CompletionContext {
+            lines: &bare,
+            cursor_line: 0,
+            cursor_col: 6,
+        };
+        let (i, _) = reg.probe_first(&ctx).unwrap();
+        assert_eq!(reg.sources[i].id(), "slash");
+
+        let arg = vec!["/model dee".into()];
+        let ctx = CompletionContext {
+            lines: &arg,
+            cursor_line: 0,
+            cursor_col: 10,
+        };
+        let (i, m) = reg.probe_first(&ctx).unwrap();
+        assert_eq!(reg.sources[i].id(), "model-id");
+        assert_eq!(m.prefix, "dee");
     }
 }

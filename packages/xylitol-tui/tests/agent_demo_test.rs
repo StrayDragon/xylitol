@@ -183,12 +183,12 @@ fn agent_demo_slash_command_popup_esc_dismisses() {
         .expect("initial empty editor should render");
     h.keys("/");
     h.render_result().expect("slash popup open");
-    h.assert_text_contains("Switch execution model");
+    h.assert_text_contains("Switch model: /model <id>");
     h.keys("\x1b"); // Esc → Editor cancels autocomplete
     h.render_result().expect("Esc dismisses slash popup");
     let dismissed = h.tui.terminal.viewport().join("\n");
     assert!(
-        !dismissed.contains("Switch execution model"),
+        !dismissed.contains("Switch model: /model <id>"),
         "Esc should close CommandPopup and leave `/` in the editor; got:\n{dismissed}"
     );
 }
@@ -2192,6 +2192,47 @@ fn agent_demo_theme_slash_light_and_toggle() {
         app.theme_mode_for_test(),
         xylitol_tui::TerminalColorScheme::Light,
         "bare /theme toggles"
+    );
+}
+
+#[test]
+fn agent_demo_model_arg_completion_tab() {
+    let mut h = TuiTestHarness::new(172, 40);
+    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+        Arc::new(AtomicBool::new(false)),
+        "",
+    )))
+    .focus(Some(0));
+
+    h.render_result().expect("initial");
+    h.keys("/model dee");
+    h.render_result().expect("model arg popup");
+    h.assert_text_contains("deepseek-v4-flash");
+    h.assert_text_contains("opencode-go");
+    h.keys("\t");
+    h.render_result().expect("Tab applies id");
+    let after = h.tui.terminal.viewport().join("\n");
+    assert!(
+        after.contains("/model deepseek-v4-flash"),
+        "Tab should complete model id; got:\n{after}"
+    );
+}
+
+#[test]
+fn agent_demo_model_slash_submit_updates_footer() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    assert_eq!(app.footer_note_for_test(), "~/xylitol · sonnet-4");
+    app.submit_text_for_test("/model");
+    assert_eq!(
+        app.footer_note_for_test(),
+        "~/xylitol · sonnet-4",
+        "bare /model must not change model"
+    );
+    app.submit_text_for_test("/model deepseek-v4-flash");
+    assert_eq!(
+        app.footer_note_for_test(),
+        "~/xylitol · deepseek-v4-flash",
+        "SetModel should update footer"
     );
 }
 

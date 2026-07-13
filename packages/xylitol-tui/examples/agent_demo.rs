@@ -9,7 +9,8 @@ use std::time::{Duration, Instant};
 
 use xylitol_tui::autocomplete::{AutocompleteItem, AutocompleteSuggestions, SlashCommand};
 use xylitol_tui::completion::{
-    AtPathSource, CompletionContext, CompletionMatch, CompletionSource, SlashCommandSource,
+    AtPathSource, CompletionContext, CompletionMatch, CompletionSource, SlashArgCompletionSource,
+    SlashCommandSource,
 };
 use xylitol_tui::components::editor::{Editor, EditorOptions, EditorTheme};
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
@@ -39,7 +40,7 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("help", "Show key help in transcript"),
     ("md", "Stream full Markdown grammar stub (typewriter)"),
     ("theme", "Switch chrome theme: /theme [dark|light|toggle]"),
-    ("model", "Switch execution model"),
+    ("model", "Switch model: /model <id>"),
     ("compact", "Demo Compacting status → Working (c493)"),
     ("retry", "Demo Retry status → Working (c493)"),
     ("export", "Export current session"),
@@ -277,6 +278,24 @@ fn slash_commands() -> Vec<SlashCommand> {
             argument_hint: None,
             get_argument_completions: None,
         })
+        .collect()
+}
+
+/// Demo model catalog for [`SlashArgCompletionSource`] (`/model <id>`).
+const DEMO_MODELS: &[(&str, &str)] = &[
+    ("sonnet-4", "anthropic"),
+    ("claude-sonnet-4", "anthropic"),
+    ("deepseek-v4-flash", "opencode-go"),
+    ("deepseek/deepseek-v4-pro", "commandcode"),
+    ("grok-4.5:slow", "cursor"),
+    ("gpt-5", "openai-compat"),
+    ("gpt-5-mini", "openai-compat"),
+];
+
+fn demo_model_catalog() -> Vec<(String, String)> {
+    DEMO_MODELS
+        .iter()
+        .map(|(id, provider)| ((*id).to_string(), (*provider).to_string()))
         .collect()
 }
 
@@ -1292,6 +1311,11 @@ impl FakeCodingAgentApp {
         self.input.get_text()
     }
 
+    /// Test helper: footer metadata line (`cwd · model`).
+    pub fn footer_note_for_test(&self) -> &str {
+        &self.footer_note
+    }
+
     /// Test helper: replace editor text (does not auto-sync bash border).
     pub fn set_editor_text_for_test(&mut self, text: impl Into<String>) {
         self.input.set_text(text.into());
@@ -1964,6 +1988,36 @@ impl FakeCodingAgentApp {
         true
     }
 
+    /// Apply `/model <id>` (SetModel-style). Bare `/model` tips without changing footer.
+    fn try_model_command(&mut self, last_line: &str) -> bool {
+        let body = last_line
+            .strip_prefix('/')
+            .or_else(|| last_line.strip_prefix(':'))
+            .unwrap_or(last_line);
+        let mut parts = body.split_whitespace();
+        let Some(cmd) = parts.next() else {
+            return false;
+        };
+        if !cmd.eq_ignore_ascii_case("model") {
+            return false;
+        }
+        match parts.next() {
+            None => {
+                self.push_message(
+                    Role::System,
+                    "model · type `/model <id>` (Tab completes ids) · bare `/model` keeps slash list",
+                );
+                self.set_status("Ready");
+            }
+            Some(id) => {
+                self.footer_note = format!("~/xylitol · {id}");
+                self.push_message(Role::System, format!("model → {id}"));
+                self.set_status(format!("Ready · {id}"));
+            }
+        }
+        true
+    }
+
     /// Re-apply editor border colors from the active palette (ignores bash early-return).
     fn refresh_editor_border_theme(&mut self) {
         let bash = self.input.get_text().trim_start().starts_with('!');
@@ -2209,8 +2263,11 @@ impl FakeCodingAgentApp {
         input.on_submit = Some(Box::new(move |text| {
             *submit_clone.borrow_mut() = Some(text);
         }));
-        // Pluggable CompletionSources: `/` + `@` + demo `$` stub (c545 open extension).
+        // Pluggable CompletionSources: `/model <id>` + `/` + `@` + demo `$` stub.
         input.set_completion_sources(vec![
+            Box::new(
+                SlashArgCompletionSource::new("model", demo_model_catalog()).with_id("model-id"),
+            ),
             Box::new(SlashCommandSource::new(slash_commands())),
             Box::new(AtPathSource::new(cwd.clone())),
             Box::new(DemoDollarSource),
@@ -2933,6 +2990,11 @@ impl FakeCodingAgentApp {
         }
 
         if self.try_theme_command(last_line) {
+            self.input.set_text(String::new());
+            return;
+        }
+
+        if self.try_model_command(last_line) {
             self.input.set_text(String::new());
             return;
         }
