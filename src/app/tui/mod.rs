@@ -177,6 +177,10 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
                                     }
                                     session.step(HostEvent::Input(InputEvent::Key(key)))?;
                                     if session.take_abort() {
+                                        if aborted_during_bash {
+                                            // Already aborted this bang; ignore Esc backlog.
+                                            continue;
+                                        }
                                         tracing::info!(
                                             target: "xylitol::tui",
                                             "Driver::abort during bang"
@@ -209,7 +213,14 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
                 (bash_result, aborted_during_bash)
             };
             match bash_result {
-                Ok(r) => session.push_bash_result(&bash.command, &r),
+                Ok(r) => {
+                    if aborted_during_bash {
+                        // `Aborted` already noted; avoid a second error wall `(cancelled)`.
+                        session.push_system_note(format!("$ {}", bash.command));
+                    } else {
+                        session.push_bash_result(&bash.command, &r);
+                    }
+                }
                 Err(e) => session.push_system_note(format!("bash failed: {e}")),
             }
             session.end_bash_exec();
