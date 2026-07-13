@@ -130,21 +130,21 @@ components:
 
 ## Overview
 
-**少 chrome、多内容、可复制。** 跑在用户已有终端模拟器里的 coding-agent 界面，不是仪表盘。
+**少装饰壳、多内容、可复制。** 跑在用户已有终端模拟器里的 coding-agent 界面，不是仪表盘。
 
 对齐 pi interactive 的体感：当前轮进 scrollback，输入贴底，忙碌时一行 status，底部一行极简 footer；**分支回看 / travel / fork 用双 Esc 会话树**（替换 editor 槽）。**不做** Codex 式独立 transcript 浏览面。装饰、侧栏、常驻 debug、多行快捷键条默认都不要。
 
 情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
 
-参考实现锚点：`packages/xylitol-tui` 的 **`agent_demo`（`just demo-tui`）= 产品 TUI 活实验场**；浏览器静图见 [`design/playground/`](./design/playground/)。当前 `src/app/tui`：c465–c493 主路径已归档。
+参考实现锚点：`packages/xylitol-tui` 的 **`agent_demo`（`just demo-tui`）= 产品 TUI 活实验场**；浏览器静图见 [`design/playground/`](./design/playground/)。当前 `src/app/tui`：c465–c493 主路径已归档；代码模块为 `layout/` + `widgets/`（历史文档称 chrome = 本面 layout 壳，非浏览器）。
 
 ## Track B 落地切片（设计闸）
 
 | Change | 设计焦点 | 文档 |
 |---|---|---|
-| **c475** chrome | `Palette::dark` 注入；glyph 档；idle **0** status；busy 一行；footer `cwd · model` | [`status`](./design/status.md) · [`footer`](./design/footer.md) · [`glyphs`](./design/glyphs.md) · [`theme-tokens`](./design/theme-tokens.md) |
+| **c475** layout 壳 | `Palette::dark` 注入；glyph 档；idle **0** status；busy 一行；footer `cwd · model` | [`status`](./design/status.md) · [`footer`](./design/footer.md) · [`glyphs`](./design/glyphs.md) · [`theme-tokens`](./design/theme-tokens.md) |
 | **c476** live scrollback | Markdown / Expandable / Diff / tool-bg；对齐 `agent_demo` 形态（非 Codex 浏览面） | [`markdown`](./design/markdown.md) · [`expandable`](./design/expandable.md) · [`diff-block`](./design/diff-block.md) |
-| **c480** input | Editor 操作区；`/exit` `/model`；steer / follow-up / Alt+Up dequeue / abort / Ctrl+C；双 Esc → **c491 stub**；队列 chrome = pi `Steering:`/`Follow-up:`（非 scrollback 墙）；注入后上行 `UiEntry::User` | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) · [`queue-steer`](./design/queue-steer.md) · [`session-tree`](./design/session-tree.md) |
+| **c480** input | Editor 操作区；`/exit` `/model`；steer / follow-up / Alt+Up dequeue / abort / Ctrl+C；双 Esc → **c491 stub**；队列 strip = pi `Steering:`/`Follow-up:`（非 scrollback 墙）；注入后上行 `UiEntry::User` | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) · [`queue-steer`](./design/queue-steer.md) · [`session-tree`](./design/session-tree.md) |
 | **c481** history | 同一 TUI session：idle/steer/follow-up 写入 Editor 发送历史；↑/↓ 召回（包 ed05） | [`editor`](./design/editor.md) · [`keybindings`](./design/keybindings.md) |
 | **c490** trust | Ask 时 **ChoicePrompt** 换 editor 槽（禁 stdio 数字菜单） | [`trust-prompt`](./design/trust-prompt.md) |
 | **c485** vertical slice | **已归档**：合成 harness H1–H9 + 产品 PTY Fake smoke | archive `2026-07-12-c485-…` |
@@ -247,7 +247,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 
 已落地（c493）：[`compaction-status`](./design/compaction-status.md)。bash（c492）与 trust（c490）已落地。
 
-**已落地 chrome 子规范**（c480 起）：[`queue-steer`](./design/queue-steer.md) · [`status`](./design/status.md) — 写产品 host 时以这两份为准，**不要**抄 demo scrollback `[steer]` 墙。
+**已落地 layout 子规范**（c480 起）：[`queue-steer`](./design/queue-steer.md) · [`status`](./design/status.md) — 写产品 host 时以这两份为准，**不要**抄 demo scrollback `[steer]` 墙。
 
 ## Do's and Don'ts
 

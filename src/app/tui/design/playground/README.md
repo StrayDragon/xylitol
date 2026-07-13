@@ -47,7 +47,7 @@ just open-design-playground
 | 平铺 / 专注 · `t` | 全槽 vs 当前槽 |
 | Dark / Light · `d` / `l` | `colors` vs `colors_light` |
 | `f` | **Full shell**（c475+c480 整壳） |
-| `c` | **Chrome**（c475） |
+| `c` | **Layout 壳**（c475） |
 | `k` | **Keybindings**（c480 MVP） |
 | `1`–`5` · `←→` | Layout / Tool / Diff / Markdown / Overlay |
 | `8` `9` `0` | 弱对照：Widgets / Atoms / Ask（细节以 `just demo-tui` 为准） |
@@ -57,6 +57,6 @@ just open-design-playground
 
 | 优先级 | 槽 | 说明 |
 |---|---|---|
-| **主** | Full shell · Chrome · Keybindings · Layout | 产品整页合成与语义 |
+| **主** | Full shell · Layout · Keybindings | 产品整页合成与语义 |
 | **产品积木** | Tool · Diff · Markdown · Overlay | 仍属产品呈现 MUST |
 | **弱对照** | Widgets · Atoms · Ask | 折行/焦点以 demo 为准 |

@@ -11,5 +11,5 @@ scenarios[5]{req_id,id,given,when,then}:
   adp0,"shell-present","","列出 capability app-tui-design-playground","delta 含 adp0–adp3"
   adp1,"sync-runs","","运行 sync_tokens.py","生成或刷新 tokens.css 与 tokens.js 且无报错"
   adp2,"md-slot","","打开 playground Markdown 槽","示意中无井号标题前缀且链接呈 text (url) 形态"
-  adp2,"no-star-chrome","","查看粗体斜体示意","可见文案无 ** 或成对 * 包裹"
+  adp2,"no-star-wrapping","","查看粗体斜体示意","可见文案无 ** 或成对 * 包裹"
   adp3,"agents-pointer","","阅读 design/AGENTS.md","含 Agent 默认忽略 playground 的说明"

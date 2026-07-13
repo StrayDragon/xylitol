@@ -4,7 +4,7 @@
 
 ## 现状
 
-基于 `xylitol-tui` 的 **host 驱动 UI**（c465 bridge + **c475 chrome** + **c476 live scrollback** + **c490 trust gate** + **c480/c481 input** + **c482 abort-resume** + **c485 vertical slice**）。CLI 无参默认 TUI（c474）。
+基于 `xylitol-tui` 的 **host 驱动 UI**（c465 bridge + **c475 layout 壳** + **c476 live scrollback** + **c490 trust gate** + **c480/c481 input** + **c482 abort-resume** + **c485 vertical slice**）。CLI 无参默认 TUI（c474）。
 
 **已开闸（2026-07-11）**：轨 A / 轨 P 已落地；轨 B MVP（至 c485）已归档（2026-07-12）。原子交互仍建议先在 `packages/xylitol-tui` `agent_demo` 验证再进本面。开闸记录 SSOT：`src/AGENTS.md`。
 
@@ -20,7 +20,7 @@
 | **c460** host 空壳 | 已落地（框架占位） |
 | **c491** 产品双 Esc **假树**槽替换 | **stub 冻结**：仅双 Esc 开/Esc 关/Enter `travel → id`；**MUST NOT** 在此 stub 上扩展活树/filter/Driver |
 | 产品 bridge（XyEvent→UI + Driver 合流） | **c465 已归档** |
-| 产品 chrome · slash/键位 · DESIGN 视觉落地 · 真 session travel | chrome：**c475**；live：**c476**；trust：**c490**；input：**c480/c481**；slice：**c485**；真 travel：另 change |
+| 产品 layout · slash/键位 · DESIGN 视觉落地 · 真 session travel | layout：**c475**；live：**c476**；trust：**c490**；input：**c480/c481**；slice：**c485**；真 travel：另 change |
 | 垂直切片验收 | **c485 已归档**（`harness.rs` H1–H9 + `tests/tui_e2e` 产品 PTY Fake） |
 
 历史/分支 UX 以会话树为准；live 输出若有，只进 scrollback 行，见 `design/transcript.md` / `design/session-tree.md`。
@@ -31,11 +31,11 @@
 
 **活实验场**：`just demo-tui`（`agent_demo`）= 产品 TUI 快速 playground——形状/交互先在此试，再进本 host。浏览器静图：`design/playground/`（Agent 默认忽略）。
 
-包组件只收闭包主题，不承载产品 layout。chrome（c475）已注入；slash / 键位见 c480。
+包组件只收闭包主题，不承载产品整页 layout。layout 壳（c475）已注入；slash / 键位见 c480。
 
 ## Specs
 
-产品面 capability：`app-tui-*`（含 `app-tui-vertical-slice`；另有 `host` / `bridge` / `transcript` / `chrome` / `input` / `commands`）。跨切面索引：`app-tui`。合约已归档：`archive/2026-07-10-c450-revise-app-tui-contract`。`app-tui-transcript` 壳仍在，语义为 live scrollback（**非** Codex 浏览面）。
+产品面 capability：`app-tui-*`（含 `app-tui-vertical-slice`；另有 `host` / `bridge` / `transcript` / `chrome`（layout 壳合约 id） / `input` / `commands`）。跨切面索引：`app-tui`。合约已归档：`archive/2026-07-10-c450-revise-app-tui-contract`。`app-tui-transcript` 壳仍在，语义为 live scrollback（**非** Codex 浏览面）。
 
 steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面只调 `Driver`，不持有 ReAct 队列。
 
