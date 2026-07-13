@@ -1581,8 +1581,10 @@ fn agent_demo_session_tree_slot_replaces_editor() {
         "expected tree header; got:\n{text}"
     );
     assert!(
-        text.contains("user: tighten footer") || text.contains("├") || text.contains("└"),
-        "expected tree rows/connectors; got:\n{text}"
+        (text.contains("user:") && text.contains("tighten footer"))
+            || text.contains("├")
+            || text.contains("└"),
+        "expected tree rows/connectors with kind prefix; got:\n{text}"
     );
     assert!(
         text.contains("[default]"),
@@ -1593,7 +1595,7 @@ fn agent_demo_session_tree_slot_replaces_editor() {
         "tree should stay open until Esc/Enter"
     );
 
-    // Ctrl+T → no-tools (demo filter; hides `tool:` rows)
+    // Ctrl+T → no-tools (demo filter; hides kind=tool rows)
     h.keys("\x14");
     h.render_result().expect("after no-tools filter");
     let filtered = h.tui.terminal.viewport().join("\n");
@@ -1602,7 +1604,7 @@ fn agent_demo_session_tree_slot_replaces_editor() {
         "expected [no-tools] suffix; got:\n{filtered}"
     );
     assert!(
-        !filtered.contains("tool: rg"),
+        !(filtered.contains("tool:") && filtered.contains("rg")),
         "no-tools must hide tool rows; got:\n{filtered}"
     );
 
@@ -1700,7 +1702,7 @@ fn agent_demo_session_tree_fold_and_label_edit() {
         "expected fold marker; got:\n{folded}"
     );
     assert!(
-        !folded.contains("tool: rg"),
+        !(folded.contains("tool:") && folded.contains("rg")),
         "folded u1 should hide tool descendant; got:\n{folded}"
     );
 
@@ -1821,21 +1823,48 @@ fn agent_demo_submit_grows_session_tree() {
 }
 
 #[test]
-fn agent_demo_travel_to_user_includes_assistant_reply() {
+fn agent_demo_travel_to_user_prefills_editor_and_omits_reply_spine() {
     let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
     app.freeze_script_for_test();
     app.travel_to_history_for_test("u1");
     let plain = app.transcript_plain_for_test();
     assert!(
-        plain.contains("tighten footer truncation"),
-        "user turn must remain; got:\n{plain}"
+        !plain.contains("tighten footer truncation"),
+        "selected user body goes to editor, not transcript; got:\n{plain}"
     );
     assert!(
-        plain.contains("plan + tools") || plain.contains("tree selector"),
-        "travel to user must include linear assistant reply; got:\n{plain}"
+        !plain.contains("plan + tools") && !plain.contains("tree selector"),
+        "travel to user must NOT include linear assistant reply; got:\n{plain}"
     );
-    // Leaf advances to the reply spine end (a1), not stuck on u1 alone.
+    assert_eq!(
+        app.history_leaf_for_test(),
+        "root",
+        "user travel leaf must be parent"
+    );
+    assert_eq!(
+        app.input_text_for_test(),
+        "tighten footer truncation",
+        "user travel must prefill editor"
+    );
+}
+
+#[test]
+fn agent_demo_travel_to_assistant_does_not_prefill_user_body() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.freeze_script_for_test();
+    app.set_editor_text_for_test("should be cleared");
+    app.travel_to_history_for_test("a1");
     assert_eq!(app.history_leaf_for_test(), "a1");
+    assert!(
+        app.input_text_for_test().is_empty(),
+        "non-user travel must not leave user body in editor; got {:?}",
+        app.input_text_for_test()
+    );
+    let plain = app.transcript_plain_for_test();
+    assert!(
+        plain.contains("tighten footer truncation") && plain.contains("plan + tools"),
+        "path to assistant includes prior user+assistant; got:\n{plain}"
+    );
 }
 
 #[test]

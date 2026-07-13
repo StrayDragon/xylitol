@@ -45,7 +45,7 @@ components:
 | Ctrl+O/T/D/U/L/A | filter 循环 |
 | Ctrl/Alt+←→ | fold / 分支跳转 |
 | Shift+L / T / F | annotation / 时间戳 / **fork** |
-| Enter | travel（stub 已有假 id） |
+| Enter | travel（demo **c600**：user → 父 leaf + 填 input；非 user → leaf=id） |
 
 ## MUST（编辑器槽）
 
