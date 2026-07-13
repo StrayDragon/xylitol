@@ -485,14 +485,14 @@ impl AgentCapabilities {
     ///
     /// `exclude_from_context=true` (the `!!` prefix) stores the entry on disk
     /// but omits it from LLM context (see `build_session_context`).
+    ///
+    /// Takes `&self` so an in-flight bash can be cancelled via [`Self::abort_bash`]
+    /// / [`crate::agent::AgentRuntime::abort`] without an exclusive borrow.
     pub async fn execute_bash(
-        &mut self,
+        &self,
         command: &str,
         exclude_from_context: bool,
     ) -> Result<crate::runtime_protocol::XyBashResult, String> {
-        // Snapshot the immutable borrows first so `self.bash` (mut) does not
-        // conflict with `self.store` / `self.session_id` (shared) within one
-        // call expression (design §6 borrow risk).
         let store: &dyn XySessionStore = self.store.as_ref();
         let sid = self.session_id().map(str::to_string);
         self.bash
@@ -530,8 +530,8 @@ impl AgentCapabilities {
         self.permission.clone()
     }
 
-    /// Abort any in-flight bash execution.
-    pub fn abort_bash(&mut self) {
+    /// Abort any in-flight bash execution (`&self` so [`crate::agent::AgentRuntime::abort`] can call it).
+    pub fn abort_bash(&self) {
         self.bash.abort();
     }
 
@@ -705,6 +705,25 @@ mod tests {
                 steer_count: 0,
                 follow_up_count: 1
             }
+        );
+    }
+
+    #[tokio::test]
+    async fn runtime_abort_cancels_interactive_bash() {
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let agent = Arc::new(crate::agent::runtime::AgentRuntime::new(make_session()));
+        let agent_exec = Arc::clone(&agent);
+        let join =
+            tokio::spawn(async move { agent_exec.inner().execute_bash("sleep 30", false).await });
+
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        agent.abort();
+        let result = join.await.expect("join").expect("execute_bash");
+        assert!(
+            result.cancelled,
+            "AgentRuntime::abort must cancel in-flight interactive bash"
         );
     }
 

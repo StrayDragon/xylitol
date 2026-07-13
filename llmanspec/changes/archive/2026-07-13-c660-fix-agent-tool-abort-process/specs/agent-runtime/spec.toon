@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ar29,"abort-cancels-interactive-bash","AgentRuntime::abort（及经 Driver::abort 的同一入口）MUST 在取消当前 run CancellationToken 并清空 steer 队列之外，取消进行中的交互 bash（session abort_bash / BashExecHandler）；MUST 导致挂起中的 !/!! 或 execute_bash 子进程树被终止且结果标记 cancelled（或等价可观测中止）。工具 bash 仍经 run token 取消（ar-q11）；MUST NOT 清空 follow_up。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ar29,"interactive-bash-aborted","交互 bash 正在执行 sleep 类长命令","调用 AgentRuntime::abort 或 Driver::abort","bash 结果 cancelled 为 true 且子进程不再存活"
+  ar29,"followup-kept","steer 与 follow_up 均非空且交互 bash 进行中","调用 abort","steer 空、follow_up 保留、交互 bash 已取消"

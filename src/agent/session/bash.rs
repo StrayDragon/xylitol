@@ -5,7 +5,7 @@
 //! [`crate::agent::session::AgentCapabilities`] remains the single holder of session
 //! context (design §4.1).
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use tokio_util::sync::CancellationToken;
 
@@ -17,7 +17,9 @@ pub struct BashExecHandler {
     /// Injected bash executor port. `None` means `!cmd` is unavailable.
     executor: Option<Arc<dyn XyBashExecutor>>,
     /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
-    cancel: Option<CancellationToken>,
+    /// `Arc` so [`crate::agent::AgentRuntime::abort`] can cancel without `&mut`
+    /// (and tests can abort concurrent with [`Self::execute`]).
+    cancel: Arc<Mutex<Option<CancellationToken>>>,
 }
 
 impl BashExecHandler {
@@ -25,8 +27,14 @@ impl BashExecHandler {
     pub fn new(executor: Option<Arc<dyn XyBashExecutor>>) -> Self {
         Self {
             executor,
-            cancel: None,
+            cancel: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Shared cancel slot (test / future AbortToken clones).
+    #[cfg(test)]
+    pub(crate) fn cancel_slot(&self) -> Arc<Mutex<Option<CancellationToken>>> {
+        Arc::clone(&self.cancel)
     }
 
     /// Execute a user-initiated bash command and record the result.
@@ -34,7 +42,7 @@ impl BashExecHandler {
     /// `exclude_from_context=true` (the `!!` prefix) stores the entry on disk
     /// but omits it from LLM context (see `build_session_context`).
     pub async fn execute(
-        &mut self,
+        &self,
         store: &dyn XySessionStore,
         session_id: Option<&str>,
         command: &str,
@@ -46,11 +54,11 @@ impl BashExecHandler {
             .ok_or("bash executor not configured")?;
 
         let cancel = CancellationToken::new();
-        self.cancel = Some(cancel.clone());
+        *self.cancel.lock().unwrap_or_else(|e| e.into_inner()) = Some(cancel.clone());
 
         let result = executor.execute(command, Some(cancel)).await;
 
-        self.cancel = None;
+        *self.cancel.lock().unwrap_or_else(|e| e.into_inner()) = None;
 
         // Record on disk.
         if let Some(sid) = session_id {
@@ -60,9 +68,9 @@ impl BashExecHandler {
         Ok(result)
     }
 
-    /// Abort any in-flight bash execution.
-    pub fn abort(&mut self) {
-        if let Some(cancel) = self.cancel.take() {
+    /// Abort any in-flight bash execution (`&self` for Driver / AgentRuntime abort).
+    pub fn abort(&self) {
+        if let Some(cancel) = self.cancel.lock().unwrap_or_else(|e| e.into_inner()).take() {
             cancel.cancel();
         }
     }
@@ -92,4 +100,39 @@ pub(crate) async fn record_bash_result(
         exclude_from_context,
     });
     store.append_session_entry(session_id, &entry).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infra::bash_exec::InfraBashExecutor;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn abort_cancels_in_flight_sleep() {
+        let handler = BashExecHandler::new(Some(Arc::new(InfraBashExecutor::new())));
+        let store = crate::infra::session::SessionManager::new(
+            tempfile::tempdir().unwrap().path().join("sessions"),
+        );
+        let store: Arc<dyn XySessionStore> = Arc::new(store);
+
+        let handler_exec = BashExecHandler {
+            executor: handler.executor.clone(),
+            cancel: handler.cancel_slot(),
+        };
+        let store_exec = Arc::clone(&store);
+        let join = tokio::spawn(async move {
+            handler_exec
+                .execute(store_exec.as_ref(), None, "sleep 30", false)
+                .await
+        });
+
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        handler.abort();
+        let result = join.await.expect("join").expect("execute");
+        assert!(
+            result.cancelled,
+            "abort must cancel in-flight interactive bash"
+        );
+    }
 }

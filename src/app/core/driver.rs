@@ -342,7 +342,7 @@ impl Driver for InProcessDriver {
         exclude_from_context: bool,
     ) -> Result<XyBashResult, String> {
         self.agent
-            .inner_mut()
+            .inner()
             .execute_bash(command, exclude_from_context)
             .await
     }
