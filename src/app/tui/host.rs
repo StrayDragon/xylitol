@@ -475,7 +475,7 @@ impl<T: Terminal> HostSession<T> {
             root.remember_editor_send(text.clone());
             root.set_editor_text(String::new());
             drop(root);
-            // pi chrome: dim Follow-up: above status — not a scrollback [steer] wall.
+            // pi queue strip: dim Follow-up: above status — not a scrollback [steer] wall.
             self.ui_model.enqueue_follow_up_strip(text.clone());
             self.pending_follow_up = Some(text);
             self.sync_ui_root_from_model();
