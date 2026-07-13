@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,s12,"deferred-persist-until-assistant",Persisted SessionManager（非 in_memory backend）MUST 对齐 pi：在首条 assistant 消息写入之前，session 条目可仅保留在内存；首条 assistant append 时 MUST 创建磁盘 jsonl（若尚不存在）并刷出此前挂起的条目（含 header 与先前 user 等）；其后每次 append MUST 落盘。InMemory backend MUST NOT 写文件。MUST NOT 在仅有 header、用户又放弃对话时强制留下无消息垃圾文件作为唯一策略（允许 create 仍写 header，但 deferred 刷出路径 MUST 存在并可测）。,null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  s12,"defer-before-assistant",新 persisted session 仅有 user 消息已 append,检查磁盘 jsonl,文件尚不存在或未含完整挂起条目刷出；首条 assistant append 后文件存在且含 user+assistant
+  s12,"in-memory-no-file","SessionManager::in_memory()",append 多条消息,无 session 文件被创建且 load 仍可读到条目

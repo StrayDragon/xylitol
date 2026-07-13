@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ce14,"stable-session-id-on-run","BootstrappedRuntime / InProcessDriver MUST 在装配后将 bootstrap 的 session_id 绑定到 Agent（set_session）；InProcessDriver::run MUST 对当前 session_id 调用 run_with_id（或等价），MUST NOT 每次 run 新建 Uuid 导致每轮新 header-only 文件。若尚无 session_id 则 MAY 创建一次并复用。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ce14,"same-id-two-runs",into_runtime 后的 InProcessDriver,"连续两次 Driver::run",两次使用同一 session_id 且不因第二轮再 mint 新 uuid 文件
+  ce14,"bootstrap-binds-session",bootstrap 返回 session_id,into_runtime / into_driver,"Driver::session_id 等于该 id"

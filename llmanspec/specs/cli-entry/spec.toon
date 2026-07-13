@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "cli-entry"
 purpose: "TBD - created by archiving change c110-update-slash-commands. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[15]{req_id,title,statement}:
+requirements[16]{req_id,title,statement}:
   sc1,"info-fields",SlashCommandInfo MUST carry name description source and source_info fields.
   sc2,"source-enum",SlashCommandSource MUST be exactly one of extension prompt or skill.
   sc3,"builtin-table",System MUST provide the full builtin slash command table matching pi semantics including export compact tree fork and reload.
@@ -18,7 +18,8 @@ requirements[15]{req_id,title,statement}:
   ce12,"default-tui-entry","当未提供 one-shot prompt（位置参数或 --prompt）、未指定 --list-models、且 stdin 为 TTY 时，CLI MUST 进入产品 TUI；MUST NOT 要求用户传 --tui 才能进入该默认路径。"
   ce13,"print-requires-prompt","print one-shot 模式 MUST 仅在提供位置 PROMPT 和/或 --prompt（或显式 --print 且能从 stdin 读到非空内容）时进入；无 prompt 时 MUST NOT 使用占位字符串 Hello! 作为默认 prompt。"
   "ce-st1","session-tree-kind-api","Driver MUST 暴露以 SessionTreeKind 区分的会话树 API：session_tree(kind) 读取该 kind 的树；travel_session_tree(kind, entry_id) 在该 kind 上旅行并返回 SessionTreeTravel（含 leaf_id 与可选 editor_text）。首版 MUST 至少实现 MessageHistory；未实现的 kind MUST 返回明确错误且 MUST NOT 静默落到其它 kind。InProcessDriver 与 RemoteDriver MUST 同面实现（Remote 经 REST）。应用面缝类型 MUST NOT 仅为品牌加 Xy 前缀。"
-scenarios[21]{req_id,id,given,when,then}:
+  ce14,"stable-session-id-on-run","BootstrappedRuntime / InProcessDriver MUST 在装配后将 bootstrap 的 session_id 绑定到 Agent（set_session）；InProcessDriver::run MUST 对当前 session_id 调用 run_with_id（或等价），MUST NOT 每次 run 新建 Uuid 导致每轮新 header-only 文件。若尚无 session_id 则 MAY 创建一次并复用。"
+scenarios[23]{req_id,id,given,when,then}:
   sc1,fields,a command originates from a skill,the command is queried,source is skill and source_info is set
   sc2,"source-values",command sources are enumerated,the set is inspected,values are extension prompt or skill only
   sc3,"builtin-table",builtin commands are listed,the table is inspected,it includes export compact tree fork and reload
@@ -40,3 +41,5 @@ scenarios[21]{req_id,id,given,when,then}:
   "ce-st1","travel-user-prefill",MessageHistory 树中选中 user 消息节点,"调用 travel_session_tree(MessageHistory, that_id)",SessionTreeTravel.leaf_id 为父（或约定根策略）、editor_text 含该 user 正文
   "ce-st1","travel-non-user",选中非 user 节点,"travel_session_tree(MessageHistory, id)",leaf_id 为选中 id 且 editor_text 为空
   "ce-st1","unsupported-kind",传入尚未实现的 SessionTreeKind,调用 session_tree 或 travel_session_tree,返回明确错误且不修改 leaf
+  ce14,"same-id-two-runs",into_runtime 后的 InProcessDriver,"连续两次 Driver::run",两次使用同一 session_id 且不因第二轮再 mint 新 uuid 文件
+  ce14,"bootstrap-binds-session",bootstrap 返回 session_id,into_runtime / into_driver,"Driver::session_id 等于该 id"
