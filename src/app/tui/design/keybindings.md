@@ -26,7 +26,7 @@ components:
 | Alt+Enter | **follow-up**（排队到本轮结束后） |
 | Alt+Up | 将已排队 steer/follow-up **还原进 editor** 并清空两侧队列 |
 | ↑ / ↓（editor） | 在首/末可视行且（空草稿或已在浏览）时：**发送历史**召回（c481；包 ed05） |
-| 双 Esc | 打开 **c491 stub** 会话树（假树；Esc 关；Enter `travel → id`） |
+| 双 Esc | 打开 **会话树 stub**（假树；Esc 关；Enter：user→填 input / 非 user→仅 travel 注记） |
 | `/exit` | 退出并 restore（与垂直切片一致） |
 | `/model` | 切换/选择模型（MVP；实现可极简列表） |
 
@@ -45,7 +45,7 @@ components:
 | Ctrl+O/T/D/U/L/A | filter 循环 |
 | Ctrl/Alt+←→ | fold / 分支跳转 |
 | Shift+L / T / F | annotation / 时间戳 / **fork** |
-| Enter | travel（demo **c600**：user → 父 leaf + 填 input；非 user → leaf=id） |
+| Enter | travel（demo **c600** / 产品 stub **c605**：user → 填 input；非 user → 不预填） |
 
 ## MUST（编辑器槽）
 

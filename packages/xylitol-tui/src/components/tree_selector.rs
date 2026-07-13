@@ -273,6 +273,24 @@ impl TreeSelector {
         find_node(&self.roots, id).and_then(|n| n.annotation.as_deref())
     }
 
+    pub fn kind_of(&self, id: &str) -> Option<&str> {
+        find_node(&self.roots, id).and_then(|n| n.kind.as_deref())
+    }
+
+    pub fn label_of(&self, id: &str) -> Option<&str> {
+        find_node(&self.roots, id).map(|n| n.label.as_str())
+    }
+
+    /// Move selection to `id` if it is in the current visible (filtered) list.
+    pub fn select_id(&mut self, id: &str) -> bool {
+        if let Some(idx) = self.filtered.iter().position(|n| n.id == id) {
+            self.selected_index = idx;
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn set_include_node(&mut self, pred: Option<TreeNodePredicate>) {
         let prev_id = self.selected_id().map(str::to_string);
         self.options.include_node = pred;
