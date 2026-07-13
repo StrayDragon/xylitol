@@ -1187,7 +1187,7 @@
           '<div><span class="rev">▸ <span class="fg-success">assistant:</span> done</span></div>' +
           '<div class="fg-muted">  ├─ <span class="fg-tool">tool:</span> read</div>' +
           '<div class="fg-on">  └─ <span class="fg-user">user:</span> hello</div>' +
-          '<div class="fg-muted" style="margin-top:0.25rem">esc close · ↑↓ · Enter：user→填 input / 非 user→travel</div>';
+          '<div class="fg-muted" style="margin-top:0.25rem">esc close · ↑↓ · Enter：user→填 input（stub+demo）</div>';
       } else {
         ed.innerHTML = '<span class="cursor"> </span>询问或 / 命令…';
       }
@@ -1306,10 +1306,10 @@
 <div class="row"><span class="fg-on">/exit</span> <span class="fg-muted">退出 + restore</span></div>
 <div class="row"><span class="fg-on">/model</span> <span class="fg-muted">选模型（极简列表即可）</span></div>
 <div class="row fg-muted">未知命令 → 短错误 · 不崩 · CompletionSource</div>`,
-      tree: `<div class="row fg-muted">c491 stub · 替换 editor 槽 · kind 前缀分色（c595）</div>
+      tree: `<div class="row fg-muted">c491 stub · 替换 editor 槽 · kind 前缀分色（c595）· user Enter 预填（c605）</div>
 <div class="row"><span class="fg-user">user:</span> <span class="fg-on">正文</span> · <span class="fg-success">assistant:</span> · <span class="fg-tool">tool:</span></div>
-<div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">关树</span> · <span class="fg-on">Enter</span> <span class="fg-muted">user→填 input（c600）· 非 user→travel</span></div>
-<div class="row fg-muted">✗ stub 上禁 filter / fork / 真 Driver travel（另 change）</div>`,
+<div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">关树</span> · <span class="fg-on">Enter</span> <span class="fg-muted">user→填 input · 非 user→travel 注记</span></div>
+<div class="row fg-muted">✗ stub 上禁 filter / fork / 真 Driver navigateTree（另 change）</div>`,
     };
     function renderKeys() {
       document.getElementById("keys-stage").innerHTML = KEYS[state.keys];

@@ -18,7 +18,7 @@
 |---|---|
 | 包 TreeSelector + demo 搜索/filter/fold/label/pan/活树/travel/steer | 已归档（至 c469 / c468）；轨 P 打磨至 c570 已合入 |
 | **c460** host 空壳 | 已落地（框架占位） |
-| **c491** 产品双 Esc **假树**槽替换 | **stub 冻结**：仅双 Esc 开/Esc 关/Enter `travel → id`；**MUST NOT** 在此 stub 上扩展活树/filter/Driver |
+| **c491** 产品双 Esc **假树**槽替换 | stub：双 Esc 开/Esc 关/Enter travel；**c605** user→预填 editor；**MUST NOT** 扩活树/filter/Driver navigateTree |
 | 产品 bridge（XyEvent→UI + Driver 合流） | **c465 已归档** |
 | 产品 layout · slash/键位 · DESIGN 视觉落地 · 真 session travel | layout：**c475**；live：**c476**；trust：**c490**；input：**c480/c481**；slice：**c485**；真 travel：另 change |
 | 垂直切片验收 | **c485 已归档**（`harness.rs` H1–H9 + `tests/tui_e2e` 产品 PTY Fake） |
