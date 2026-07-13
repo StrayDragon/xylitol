@@ -97,6 +97,9 @@ pub struct HostSession<T: Terminal> {
     run_active: bool,
     /// True while interactive `!`/`!!` bash is in flight (c665 Esc abort).
     bash_active: bool,
+    /// Absorb leftover Esc / key-repeat after an abort so the next bang is not
+    /// immediately cancelled (c665 sticky-Esc fix).
+    suppress_busy_esc: u8,
     layout_cwd: String,
 }
 
@@ -136,6 +139,7 @@ impl<T: Terminal> HostSession<T> {
             pending_bash: None,
             run_active: false,
             bash_active: false,
+            suppress_busy_esc: 0,
             layout_cwd: display_cwd(),
         }
     }
@@ -194,6 +198,7 @@ impl<T: Terminal> HostSession<T> {
 
     /// Mark bang bash started: busy status `Running` (c665).
     pub fn begin_bash_exec(&mut self) {
+        self.pending_abort = false;
         self.bash_active = true;
         self.ui_model.phase = UiPhase::Busy;
         self.ui_model.set_busy_status("Running");
@@ -203,6 +208,7 @@ impl<T: Terminal> HostSession<T> {
     /// Clear bang busy after execute finishes (cancelled or not).
     pub fn end_bash_exec(&mut self) {
         self.bash_active = false;
+        self.pending_abort = false;
         if !self.run_active {
             self.ui_model.phase = UiPhase::Idle;
             self.ui_model.status = None;
@@ -214,8 +220,11 @@ impl<T: Terminal> HostSession<T> {
     pub fn note_user_abort(&mut self) {
         self.ui_model.note_user_abort();
         self.bash_active = false;
-        // Drop run flag so idle submit is not blocked waiting for stream teardown.
         self.run_active = false;
+        self.pending_abort = false;
+        // Crossterm may still deliver Esc Press/Repeat after we handled abort;
+        // without this the next `!` bang is cancelled immediately.
+        self.suppress_busy_esc = 8;
         self.sync_ui_root_from_model();
     }
 
@@ -374,7 +383,8 @@ impl<T: Terminal> HostSession<T> {
             }
             HostEvent::Input(input) => {
                 if self.mode == LayoutMode::Ready {
-                    if self.try_busy_input(&input)
+                    if self.try_suppress_stale_esc(&input)
+                        || self.try_busy_input(&input)
                         || self.try_idle_enter_submit(&input)
                         || self.try_ctrl_g(&input)
                     {
@@ -404,6 +414,22 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
+    /// Drop Esc backlog after abort (idle or busy) so the next bang is not cancelled.
+    fn try_suppress_stale_esc(&mut self, input: &InputEvent) -> bool {
+        if self.suppress_busy_esc == 0 {
+            return false;
+        }
+        let InputEvent::Key(key) = input else {
+            return false;
+        };
+        if !matches_key_event(key, "escape") {
+            return false;
+        }
+        self.suppress_busy_esc -= 1;
+        self.pending_abort = false;
+        true
+    }
+
     /// Busy Enter / Alt+Enter / Esc / Alt+Up (c480). Returns true when consumed.
     fn try_busy_input(&mut self, input: &InputEvent) -> bool {
         let Some(root) = self.ui_root.as_ref() else {
@@ -420,6 +446,11 @@ impl<T: Terminal> HostSession<T> {
         }
 
         if matches_key_event(key, "escape") {
+            if self.suppress_busy_esc > 0 {
+                self.suppress_busy_esc -= 1;
+                self.pending_abort = false;
+                return true;
+            }
             self.pending_abort = true;
             // Drop untaken local steer so loop does not re-enqueue after abort.
             self.pending_steer = None;
