@@ -1,5 +1,5 @@
 //! Shared application bootstrap — the single assembly path from CLI args to a
-//! constructed [`ReActAgent`], reused by the print / tui / server surfaces.
+//! constructed [`AgentRuntime`], reused by the print / tui / server surfaces.
 //!
 //! This module is the seam that prevents assembly drift across surfaces: every
 //! surface that needs a ready-to-run agent calls [`bootstrap`]; none inlines its
@@ -86,14 +86,14 @@ pub enum BootstrapWarning {
 ///
 /// Prefer [`Self::into_runtime`] (or [`Self::into_driver`]) over reading
 /// [`Self::agent`] / [`Self::store`] directly — those fields remain for
-/// transitional callers and still name `ReActAgent` (not an embed stability
+/// transitional callers and still name `AgentRuntime` (not an embed stability
 /// promise).
 pub struct BootstrappedAgent {
     /// The constructed, ready-to-run agent.
     ///
     /// **Leak:** prefer [`Self::into_runtime`] so embedders need not name
-    /// `ReActAgent`.
-    pub agent: crate::agent::ReActAgent,
+    /// `AgentRuntime`.
+    pub agent: crate::agent::AgentRuntime,
     /// Session id (restored or freshly generated).
     pub session_id: String,
     /// Diagnostics produced during assembly (surface renders these).
@@ -110,7 +110,7 @@ pub struct BootstrappedAgent {
 /// Driver-ready result of [`BootstrappedAgent::into_runtime`].
 ///
 /// This is the preferred embed / multi-client handoff: no need to name
-/// `ReActAgent` at the call site.
+/// `AgentRuntime` at the call site.
 pub struct BootstrappedRuntime {
     pub driver: crate::app::core::driver::InProcessDriver,
     pub session_id: String,

@@ -1,6 +1,6 @@
 //! Project trust decision helper (spec c255 / c320 T25).
 //!
-//! Demoted from a method on the [`crate::agent::session::Agent`] capability
+//! Demoted from a method on the [`crate::agent::session::AgentCapabilities`] capability
 //! aggregate to a free function: it reads only `cwd` and does not hold a trust
 //! store, so it had no cohesive reason to live on the aggregate (design §5).
 

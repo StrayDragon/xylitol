@@ -17,7 +17,7 @@ use crate::runtime_protocol::{XyExportIo, XySessionStore};
 /// Stateful export/import collaborator — owns the [`XyExportIo`] port.
 ///
 /// The session store is borrowed per call (passed as `&dyn XySessionStore` +
-/// session id) so the [`crate::agent::session::Agent`] remains the single
+/// session id) so the [`crate::agent::session::AgentCapabilities`] remains the single
 /// holder of session context (design §4.1).
 pub struct SessionExporter {
     io: Option<Arc<dyn XyExportIo>>,

@@ -15,7 +15,7 @@ pub struct SessionStats {
 
 /// Aggregate message counts for a session by reading the session store.
 ///
-/// Moved out of the `Agent` body (spec as32 / c320 T24) so the capability
+/// Moved out of the `AgentCapabilities` body (spec as32 / c320 T24) so the capability
 /// aggregate holds no aggregation logic.
 pub async fn compute(store: &dyn XySessionStore, session_id: &str) -> Result<SessionStats, String> {
     let ctx = store.build_session_context(session_id).await?;

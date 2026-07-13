@@ -12,7 +12,7 @@ requirements[12]{req_id,title,statement}:
   sr8,"port-retry","If the configured port is busy (EADDRINUSE), the server MUST try port+1 up to PORT_RETRY_LIMIT (10) times and update the lock file with the actual port."
   sr9,"rest-routes-functional","app/server/ MUST respond to POST /api/v1/session/{id}/run by invoking Agent::run and returning session_id; DELETE /api/v1/session/{id} MUST abort the agent; GET /api/v1/session/{id}/events MUST pull from the journal."
   sr10,"export-io-wiring","The app::server runtime composition root MUST construct an infra-provided StdExportIo and inject it as Arc<dyn runtime_protocol::export::ExportIo> when assembling the Agent hosted in AppState, preferably via app::core::composition::build_agent."
-  "sr-driver1",Server 经 Driver 驱动,Server 运行时 MUST 通过 Driver（或等价文档化缝）驱动对话与会话命令，MUST NOT 在生产路径上以裸 ReActAgent 作为唯一后端旁路 Print 主线。
+  "sr-driver1",Server 经 Driver 驱动,Server 运行时 MUST 通过 Driver（或等价文档化缝）驱动对话与会话命令，MUST NOT 在生产路径上以裸 AgentRuntime 作为唯一后端旁路 Print 主线。
   "sr-remote1",RemoteDriver 命令对齐,RemoteDriver MUST 实现与 InProcessDriver 对等的文档化 Driver 命令面（模型/会话/队列/导出等），MUST NOT 在生产路径对已承诺命令返回未实现错误。
   "sr-dispatch1",Server 经 dispatch 执行命令,"Server 对可映射的会话命令 MUST 经 protocol::Command + dispatch（或文档化的同一执行路径）执行，MUST NOT 为同一语义维护第二套与 dispatch 漂移的手写分支。"
 scenarios[12]{req_id,id,given,when,then}:
@@ -25,6 +25,6 @@ scenarios[12]{req_id,id,given,when,then}:
   sr8,"port-retry-binds",port 8080 is in use by another process,the server starts on port 8080,it retries and binds to 8081 then updates the lock file
   sr9,"run-endpoint-works",a prompt is POSTed to /api/v1/session/x/run,the server processes the prompt,the endpoint returns a 200 with a session_id
   sr10,"server-composition-export-io","","app::server runtime assembles the Agent via app::core::composition",an Arc<dyn ExportIo> is passed to the Agent
-  "sr-driver1","no-bare-agent","",审查 server AppState,持有 Driver；handlers 不直接 Mutex ReActAgent 作为唯一入口
+  "sr-driver1","no-bare-runtime",审查 server AppState,检查持有类型,持有 Driver；handlers 不直接 Mutex AgentRuntime 作为唯一入口
   "sr-remote1","remote-commands","",调用 RemoteDriver steer 与 queue_stats,成功并与 server 状态一致
   "sr-dispatch1","shared-path","",审查 switch_model/steer 等 handlers,调用 dispatch 或共享 helper；与 InProcessDriver 语义一致
