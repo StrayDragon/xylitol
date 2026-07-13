@@ -1,7 +1,7 @@
 //! Queue / compaction / retry / error / metadata events.
 
 use crate::app::core::driver::XyEvent;
-use crate::app::tui::bridge::{UiEntry, UiModel, UiPhase};
+use crate::app::tui::bridge::{UiEntry, UiModel, UiPhase, trailing_aborted_note};
 
 pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
     match event {
@@ -55,10 +55,7 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
             // Esc abort used to emit Error("aborted"); treat as cancel note + idle
             // so a sticky Error wall cannot block further conversation (c482 / c665).
             if msg == "aborted" {
-                let already = model.entries.iter().any(|e| {
-                    matches!(e, UiEntry::System { text } if text == "Aborted" || text == "aborted")
-                });
-                if !already {
+                if !trailing_aborted_note(&model.entries) {
                     model.entries.push(UiEntry::System {
                         text: "Aborted".into(),
                     });

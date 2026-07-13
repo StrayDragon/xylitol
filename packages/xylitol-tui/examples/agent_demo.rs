@@ -542,16 +542,6 @@ impl ToolBlockStatus {
     }
 }
 
-/// Full-row tint: truecolor bg + `\x1b[49m` only (must not wipe content fg).
-fn paint_tool_bg(line: &str, width: usize, status: ToolBlockStatus, palette: &Palette) -> String {
-    let rgb = match status {
-        ToolBlockStatus::Pending => palette.tool_pending_bg,
-        ToolBlockStatus::Success => palette.tool_success_bg,
-        ToolBlockStatus::Error => palette.tool_error_bg,
-    };
-    apply_background_to_line(line, width, &|s| bg_rgb(rgb, s))
-}
-
 /// Richer unified sample via pi edit format (aligned `±N content`).
 fn sample_unified_pair() -> DiffInput {
     DiffInput::from_edit_pair(
@@ -1333,6 +1323,11 @@ impl FakeCodingAgentApp {
         self.transcript.clear();
         self.push_message(Role::User, "block-alpha");
         self.push_message(Role::User, "block-beta");
+    }
+
+    /// Clear all transcript entries (harness).
+    pub fn clear_transcript_for_test(&mut self) {
+        self.transcript.clear();
     }
 
     /// Harness: global tool-output viewport expand (Ctrl+O).
@@ -3762,15 +3757,23 @@ impl FakeCodingAgentApp {
     fn transcript_lines(&self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
         let g = self.glyph_set;
+        let spacer = |w: usize| format!("{}\x1b[49m", " ".repeat(w.max(1)));
+        let paint_bg = |line: &str, w: usize, rgb: xylitol_tui::RgbColor| {
+            apply_background_to_line(&Self::fit(line, w), w, &|s| bg_rgb(rgb, s))
+        };
+        let push_tinted = |lines: &mut Vec<String>, content: &[String], w: usize, rgb| {
+            lines.push(paint_bg("", w, rgb));
+            for line in content {
+                lines.push(paint_bg(line, w, rgb));
+            }
+            lines.push(paint_bg("", w, rgb));
+        };
         for entry in &self.transcript {
-            // pi: Spacer(1) before tool/bash; user Box padding_y — blank before *and*
-            // after each block so adjacent entries read with clear separation.
-            lines.push(String::new());
+            // pi: Spacer(1) outside the tinted Box; Box padding_y=1 inside the wash.
+            lines.push(spacer(width));
             match entry {
                 TranscriptEntry::Message { role, text } => {
                     if matches!(role, Role::Assistant) {
-                        // Always Markdown so streaming code fences highlight as they close
-                        // (source fences; rendered output has no fence chrome — c530).
                         let mut md = Markdown::new(
                             text.clone(),
                             0,
@@ -3788,7 +3791,13 @@ impl FakeCodingAgentApp {
                         } else {
                             format!("{prefix} {text}")
                         };
-                        Self::push_wrapped(&mut lines, &raw, width);
+                        let content = wrap_text_with_ansi(&raw, width);
+                        let rgb = if matches!(role, Role::User) {
+                            self.palette().user_message_bg
+                        } else {
+                            self.palette().tool_pending_bg
+                        };
+                        push_tinted(&mut lines, &content, width, rgb);
                     }
                 }
                 TranscriptEntry::Thinking { expanded, body } => {
@@ -3827,12 +3836,15 @@ impl FakeCodingAgentApp {
                             self.tools_output_expanded,
                             &opts,
                         ) {
-                            block.push(Self::fit(&line, width));
+                            block.push(line);
                         }
                     }
-                    for line in block {
-                        lines.push(paint_tool_bg(&line, width, *status, &self.palette()));
-                    }
+                    let rgb = match status {
+                        ToolBlockStatus::Pending => self.palette().tool_pending_bg,
+                        ToolBlockStatus::Success => self.palette().tool_success_bg,
+                        ToolBlockStatus::Error => self.palette().tool_error_bg,
+                    };
+                    push_tinted(&mut lines, &block, width, rgb);
                 }
                 TranscriptEntry::Diff {
                     expanded,
@@ -3843,13 +3855,14 @@ impl FakeCodingAgentApp {
                 } => {
                     let marker = if *expanded { g.unfold() } else { g.fold() };
                     let header = format!("{marker} {} {summary}  {}", g.tool(), key_hint("Alt+E"));
-                    // Status tint on header only — Diff body keeps its own fg/bg
-                    // (painting tool-success-bg over red/green diff lines looks broken).
                     let mut header_lines = Vec::new();
                     Self::push_wrapped(&mut header_lines, &header, width);
-                    for line in header_lines {
-                        lines.push(paint_tool_bg(&line, width, *status, &self.palette()));
-                    }
+                    let rgb = match status {
+                        ToolBlockStatus::Pending => self.palette().tool_pending_bg,
+                        ToolBlockStatus::Success => self.palette().tool_success_bg,
+                        ToolBlockStatus::Error => self.palette().tool_error_bg,
+                    };
+                    push_tinted(&mut lines, &header_lines, width, rgb);
                     if *expanded {
                         let theme = demo_diff_theme(self.theme_mode);
                         let opts = DiffOptions {
@@ -3864,7 +3877,7 @@ impl FakeCodingAgentApp {
                     }
                 }
             }
-            lines.push(String::new());
+            lines.push(spacer(width));
         }
         lines
     }

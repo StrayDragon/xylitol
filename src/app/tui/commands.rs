@@ -2,7 +2,7 @@
 
 use crate::runtime_protocol::XyBashResult;
 
-use super::bridge::UiEntry;
+use super::bridge::{BashBlockStatus, UiEntry};
 
 /// Idle slash resolved for the async host loop (or applied locally).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,13 +87,20 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
     }
 }
 
-/// Format bash outcome lines for live scrollback (c492 / att9).
-pub fn bash_result_entries(command: &str, result: &XyBashResult) -> Vec<UiEntry> {
-    let mut out = vec![UiEntry::System {
-        text: format!("$ {command}"),
-    }];
+/// Map execute result → bang block tint.
+pub fn bash_block_status(result: &XyBashResult) -> BashBlockStatus {
+    if result.cancelled {
+        BashBlockStatus::Cancelled
+    } else if result.exit_code.is_some_and(|c| c != 0) {
+        BashBlockStatus::Error
+    } else {
+        BashBlockStatus::Success
+    }
+}
+
+/// Format bang outcome body (no `$ cmd` header — lives on the Bash block).
+pub fn bash_output_body(result: &XyBashResult) -> String {
     let code = result.exit_code;
-    let failed = result.cancelled || code.is_some_and(|c| c != 0);
     let mut body = result.output.trim_end().to_string();
     if body.len() > 4000 {
         body = format!("{}…", &body[..4000]);
@@ -117,12 +124,20 @@ pub fn bash_result_entries(command: &str, result: &XyBashResult) -> Vec<UiEntry>
         body.push_str(&format!("(exit {c})"));
     }
     if body.is_empty() {
-        body = "(no output)".into();
+        if result.cancelled {
+            return String::new();
+        }
+        return "(no output)".into();
     }
-    if failed {
-        out.push(UiEntry::Error { text: body });
-    } else {
-        out.push(UiEntry::System { text: body });
-    }
-    out
+    body
+}
+
+/// Build a finished bang [`UiEntry::Bash`] (c668).
+pub fn bash_result_entries(command: &str, result: &XyBashResult) -> Vec<UiEntry> {
+    vec![UiEntry::Bash {
+        command: command.to_string(),
+        status: bash_block_status(result),
+        output: bash_output_body(result),
+        exclude_from_context: false,
+    }]
 }

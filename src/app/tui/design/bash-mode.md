@@ -12,7 +12,7 @@ components:
 
 > Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
 
-## 产品已接线（c492）
+## 产品已接线（c492 / c668）
 
 | 行为 | 约定 |
 |---|---|
@@ -20,7 +20,8 @@ components:
 | idle Enter `!cmd` | `Driver::execute_bash`（`exclude_from_context=false`）；**MUST NOT** `Driver::run` |
 | idle Enter `!!cmd` | 同上且 `exclude_from_context=true` |
 | 空 `!` / `!!` | 系统提示，不执行 |
-| 结果 | live scrollback：`$ cmd` + 输出；非 0 exit → `UiEntry::Error`（error fg） |
+| 结果 | live scrollback：`UiEntry::Bash` 块（`$ cmd` + 输出）；提交即 **pending** tint（`tool-pending-bg`）；成功 → `tool-success-bg`；失败 / Esc `(cancelled)` → `tool-error-bg`；全行 `apply_background_to_line` |
+| 块间距 | 与其它 scrollback 块一样：块前+块后各一空行（对齐 agent_demo / pi Spacer） |
 | busy | `!…` 仍走 steer/普通文本；**不**另开 bash |
 | Ctrl+G | **c650**：TTY 真 `$VISUAL`/`$EDITOR`（对齐 demo）；harness / 非 TTY 仍 stub（系统行 + `# $EDITOR stub`） |
 
@@ -41,6 +42,6 @@ components:
 | `agent_demo` / `src/app/tui` | 解析编辑器命令、写临时文件、spawn/wait、写回 Editor；产品 **c650** 对齐 demo 真路径，harness 仍 stub |
 | `infra` / Driver | bash **执行**走 `Driver::execute_bash`；外部编辑器 **不参与** |
 
-## 意向（对齐 pi）
+## 意向（对齐 pi / demo）
 
-bash 模式用 **fg** 强调（非 tool bg 三态）；退出码用 `{colors.error}`（产品 Error 行）。
+bash 交互块用 **tool-*-bg 三态 tint**（pending / success / error·cancelled）；边框仍用 `{colors.success}` fg 强调 `!` 模式。退出码与 `(cancelled)` 用 error tint + error fg。

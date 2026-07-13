@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,atb8,"bash-ui-entry-block","产品 bridge/host MUST 以 UI-only 可着色块表示交互 bang（建议 UiEntry::Bash 或等价），携带 command 与 status（pending/success/error/cancelled）及输出；渲染层 MUST NOT 再把 bang 长期拼成无语义的裸 System 行。",null,null,null
+  modify_requirement,atb7,"abort-feedback-aborted-note","用户 Esc abort agent 流后，产品 bridge/host MUST 向 live scrollback 追加至多一行 muted/System 文案 Aborted，并将 status 置为 idle；若随后收到 XyEvent::Error aborted，MUST NOT 再追加重复 Aborted 行（仅与末行去重）；bang Esc 取消 MUST 走块内 (cancelled)，MUST NOT 冒充 agent Aborted。",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  atb8,bash-entry-shape,"idle 提交 bang","审查 UiModel entries","存在 Bash 块或等价含 command 字段"
+  atb7,esc-shows-aborted,"产品 TUI agent Busy","Esc abort","scrollback 含 Aborted 且 status 为空闲"
+  atb7,bang-uses-cancelled,"bang Busy Esc abort",渲染,"含 (cancelled) 且该次取消不新增 Aborted"
