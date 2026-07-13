@@ -2,6 +2,7 @@
 
 > 调研源：`../pi/packages/coding-agent/.../tree-selector.ts` + `interactive-mode.ts`。
 > **不归档进 c454**；后续由 c456 / 新 change 分批落地。冒烟（双 Esc 槽替换）已在 c454 验证。
+> **刻意不做 / 不得回退**：见 [`../PI_DELTAS.md`](../PI_DELTAS.md)（如 travel 分支摘要 A01）。本文件是能力差距清单，不是「全部要对齐 pi」。
 
 ## 槽模型（已对齐）
 
