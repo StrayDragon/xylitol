@@ -27,8 +27,9 @@ use crate::agent::session::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::tools::ToolSet;
 use crate::domain::error::XyError;
 use crate::domain::message::{AgentMessage, AgentPart};
+use crate::domain::session_types::{EntryBase, MessageEntry, SessionEntry};
 use crate::domain::types::{XyChunk, XyToolSchema};
-use crate::runtime_protocol::{XyModel, XyToolCtx, XyToolExecutionMode};
+use crate::runtime_protocol::{XyModel, XySessionStore, XyToolCtx, XyToolExecutionMode};
 
 use crate::runtime_protocol::XyPermissionVerdict;
 
@@ -95,6 +96,11 @@ impl AgentRuntime {
 
     pub fn inner_mut(&mut self) -> &mut AgentCapabilities {
         &mut self.inner
+    }
+
+    /// Session store shared with the Driver seam.
+    pub fn session_store(&self) -> Arc<dyn crate::runtime_protocol::XySessionStore> {
+        self.inner.session_store()
     }
 
     /// Replace the tool set. Takes effect on the next [`run`](Self::run) call.
@@ -173,6 +179,11 @@ impl AgentRuntime {
             return XyEventStream::error(format!("session error: {e}"));
         }
 
+        let seeded_history = match self.inner.load_conversation_history(&sid).await {
+            Ok(h) => h,
+            Err(e) => return XyEventStream::error(format!("session load error: {e}")),
+        };
+
         let model = match self.inner.build_current_model() {
             Ok(m) => m,
             Err(e) => return XyEventStream::error(format!("model build error: {e}")),
@@ -203,6 +214,7 @@ impl AgentRuntime {
         let steer_queue = self.inner.steer_queue();
         let follow_up_queue = self.inner.follow_up_queue();
         let queues = self.inner.queues();
+        let store = self.inner.session_store();
 
         let (queue_tx, mut queue_rx) = tokio::sync::mpsc::unbounded_channel();
         queues.bind_event_tx(queue_tx);
@@ -220,6 +232,9 @@ impl AgentRuntime {
             tool_mode,
             steer_queue,
             follow_up_queue,
+            store,
+            session_id: sid,
+            seeded_history,
         }));
 
         let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> = Box::pin(async_stream::stream! {
@@ -273,6 +288,9 @@ struct ReActConfig {
     tool_mode: XyToolExecutionMode,
     steer_queue: Arc<Mutex<PendingMessageQueue>>,
     follow_up_queue: Arc<Mutex<PendingMessageQueue>>,
+    store: Arc<dyn XySessionStore>,
+    session_id: String,
+    seeded_history: Vec<AgentMessage>,
 }
 
 fn drain_queue(queue: &Arc<Mutex<PendingMessageQueue>>) -> Vec<AgentMessage> {
@@ -286,6 +304,26 @@ fn queue_counts(
     let steer_count = steer.lock().unwrap_or_else(|e| e.into_inner()).len();
     let follow_up_count = follow_up.lock().unwrap_or_else(|e| e.into_inner()).len();
     (steer_count, follow_up_count)
+}
+
+async fn persist_agent_message(
+    store: &Arc<dyn XySessionStore>,
+    session_id: &str,
+    message: &AgentMessage,
+) {
+    let Ok(message) = serde_json::to_value(message) else {
+        return;
+    };
+    let entry = SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: String::new(),
+            parent_id: None,
+            timestamp: String::new(),
+        },
+        message,
+    });
+    let _ = store.append_session_entry(session_id, &entry).await;
 }
 
 // ── Core ReAct loop ─────────────────────────────────────────────────
@@ -304,12 +342,17 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         tool_mode: _tool_mode,
         steer_queue,
         follow_up_queue,
+        store,
+        session_id,
+        seeded_history,
     } = cfg;
     async_stream::stream! {
-        let mut history: Vec<AgentMessage> = Vec::new();
+        let mut history: Vec<AgentMessage> = seeded_history;
 
-        // Add system prompt to history (as user message — AgentMessage has no system variant)
-        if let Some(ref sp) = system_prompt {
+        // First turn only: prepend configured system prompt when store is empty.
+        if history.is_empty()
+            && let Some(ref sp) = system_prompt
+        {
             history.push(AgentMessage::UserMessage {
                 content: vec![AgentPart::Text(sp.clone())],
                 timestamp: crate::domain::message::now_ms(),
@@ -321,6 +364,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             content: vec![AgentPart::Text(user_prompt.clone())],
             timestamp: crate::domain::message::now_ms(),
         });
+        persist_agent_message(&store, &session_id, history.last().expect("user message")).await;
 
         let retry_state = RetryState::new(3, 1000);
         // Steering queued before/at run start is injected before the first model call.
@@ -356,7 +400,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             role: "user".to_string(),
                             message: Some(message.clone()),
                         };
-                        history.push(message);
+                        history.push(message.clone());
+                        persist_agent_message(&store, &session_id, &message).await;
                     }
                     let (steer_count, follow_up_count) =
                         queue_counts(&steer_queue, &follow_up_queue);
@@ -445,7 +490,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     });
                 }
                 if !assistant_parts.is_empty() {
-                    history.push(AgentMessage::AssistantMessage {
+                    let assistant_msg = AgentMessage::AssistantMessage {
                         content: assistant_parts,
                         stop_reason: None,
                         usage: None,
@@ -456,7 +501,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         error_message: None,
                         timestamp: crate::domain::message::now_ms(),
                         diagnostics: Vec::new(),
-                    });
+                    };
+                    persist_agent_message(&store, &session_id, &assistant_msg).await;
+                    history.push(assistant_msg);
                 }
 
                 continue_after_tools = !tool_calls.is_empty();
@@ -517,6 +564,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             is_error: true,
                             timestamp: crate::domain::message::now_ms(),
                         });
+                        persist_agent_message(
+                            &store,
+                            &session_id,
+                            history.last().expect("tool result"),
+                        )
+                        .await;
                         continue;
                     }
 
@@ -564,6 +617,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         is_error: result.1,
                         timestamp: crate::domain::message::now_ms(),
                     });
+                    persist_agent_message(
+                        &store,
+                        &session_id,
+                        history.last().expect("tool result"),
+                    )
+                    .await;
                 }
 
                 yield XyEvent::TurnEnd { turn_index: turn as u32 };
@@ -631,7 +690,9 @@ mod tests {
 
     use super::*;
     use crate::agent::model::registry::ModelRegistry;
+    use crate::agent::session::AgentCapabilities;
     use crate::domain::model::XyModelConfig;
+    use crate::domain::session_types::SessionEntry;
     use crate::domain::types::XyModelMeta;
     use crate::infra::session::SessionManager;
     use crate::runtime_protocol::{XyEventSink, XyModel, XySessionStore, XyStream};
@@ -1296,5 +1357,135 @@ mod tests {
         }
         assert!(!aborted, "second run must not immediately abort: {texts:?}");
         assert_eq!(texts, vec!["ok".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn persist_turn_writes_user_and_assistant_messages() {
+        use futures::StreamExt;
+
+        let done_stop = || crate::domain::types::XyChunk::Done {
+            finish_reason: crate::domain::message::XyStopReason::Stop,
+            usage: None,
+        };
+        let rounds = vec![vec![
+            crate::domain::types::XyChunk::TextDelta("hello back".into()),
+            done_stop(),
+        ]];
+        let mut agent = make_agent_with_rounds(rounds, ToolSet::empty());
+        let sid = "persist-test-session".to_string();
+        agent.inner_mut().set_session(sid.clone());
+        let store = agent.session_store();
+
+        let mut stream = agent.run_with_id("hello", &sid).await;
+        while stream.next().await.is_some() {}
+
+        let entries = store.load_entries(&sid).await.expect("load entries");
+        let messages: Vec<_> = entries
+            .iter()
+            .filter_map(|e| match e {
+                SessionEntry::Message(m) => m.message.get("role").and_then(|r| r.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(messages.iter().any(|r| *r == "user"));
+        assert!(messages.iter().any(|r| *r == "assistant"));
+    }
+
+    #[tokio::test]
+    async fn second_turn_model_input_includes_first_turn_messages() {
+        use crate::domain::lifecycle::XyEvent;
+        use futures::StreamExt;
+
+        let done_stop = || crate::domain::types::XyChunk::Done {
+            finish_reason: crate::domain::message::XyStopReason::Stop,
+            usage: None,
+        };
+
+        struct RecordingMockModel {
+            seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<AgentMessage>>>>,
+            chunks: Vec<crate::domain::types::XyChunk>,
+        }
+
+        #[async_trait::async_trait]
+        impl XyModel for RecordingMockModel {
+            fn name(&self) -> &str {
+                "recording-mock"
+            }
+
+            async fn generate_stream(
+                &self,
+                messages: Vec<AgentMessage>,
+                _tools: &[crate::domain::types::XyToolSchema],
+                _stream: bool,
+            ) -> Result<XyStream, XyError> {
+                self.seen.lock().unwrap().push(messages);
+                let chunks = self.chunks.clone();
+                Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
+            }
+        }
+
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let reg = mock_model_registry();
+        let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+        let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
+        let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
+        let builder: Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync> = {
+            let seen = seen.clone();
+            Arc::new(move |_| {
+                Ok(Arc::new(RecordingMockModel {
+                    seen: seen.clone(),
+                    chunks: vec![
+                        crate::domain::types::XyChunk::TextDelta("ok".into()),
+                        done_stop(),
+                    ],
+                }) as Arc<dyn XyModel>)
+            })
+        };
+        let mut agent = AgentRuntime::new(AgentCapabilities::new(
+            reg,
+            ToolSet::empty(),
+            store,
+            sink,
+            None,
+            Vec::new(),
+            Vec::new(),
+            50,
+            0.8,
+            ".".into(),
+            None,
+            builder,
+            crate::infra::permission::allow_all_permission(),
+            None,
+            None,
+            crate::agent::session::QueueMode::default(),
+            crate::agent::session::QueueMode::default(),
+        ));
+        let sid = "multi-turn-session".to_string();
+        agent.inner_mut().set_session(sid.clone());
+
+        let mut first = agent.run_with_id("turn one", &sid).await;
+        while first.next().await.is_some() {}
+
+        let mut second = agent.run_with_id("turn two", &sid).await;
+        while second.next().await.is_some() {}
+
+        let rounds = seen.lock().unwrap();
+        assert_eq!(rounds.len(), 2, "expected two model calls");
+        let second_input = rounds.last().expect("second round");
+        let user_texts: Vec<String> = second_input
+            .iter()
+            .filter_map(|m| match m {
+                AgentMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
+                    AgentPart::Text(t) => Some(t.clone()),
+                    _ => None,
+                }),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            user_texts.iter().any(|t| t == "turn one"),
+            "second turn must include first user prompt: {user_texts:?}"
+        );
+        assert!(user_texts.iter().any(|t| t == "turn two"));
     }
 }

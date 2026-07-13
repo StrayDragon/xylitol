@@ -318,6 +318,14 @@ pub fn is_user_message(entry: &SessionEntry) -> bool {
     )
 }
 
+/// Whether `entry` is a persisted assistant message.
+pub fn is_assistant_message(entry: &SessionEntry) -> bool {
+    matches!(
+        entry,
+        SessionEntry::Message(m) if message_role(&m.message) == Some("assistant")
+    )
+}
+
 // ── Session tree ────────────────────────────────────────────────────
 
 /// Build a parent/child tree from flat session entries (labels resolved).
