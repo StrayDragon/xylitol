@@ -1,15 +1,19 @@
 kind: llman.sdd.spec
 name: "app-tui-design-playground"
-purpose: "DESIGN playground 人类预览壳：token 由 sync_tokens.py 从 DESIGN.md 生成；Markdown 槽对齐 markdown.md；Agent 默认忽略。"
-valid_scope[5]: "src/app/tui/design/playground/","src/app/tui/design/AGENTS.md","src/app/tui/design/playground/README.md","src/app/tui/design/playground/sync_tokens.py","src/app/tui/design/playground/index.html"
-requirements[4]{req_id,title,statement}:
+purpose: DESIGN playground 人类预览壳：token 由 sync_tokens.py 从 DESIGN.md 生成；Markdown 槽对齐 markdown.md；Agent 默认忽略。
+valid_scope[5]: src/app/tui/design/playground/,src/app/tui/design/AGENTS.md,src/app/tui/design/playground/README.md,src/app/tui/design/playground/sync_tokens.py,src/app/tui/design/playground/index.html
+requirements[6]{req_id,title,statement}:
   adp0,"capability-shell","本 capability 由变更 c555-add-app-tui-design-playground-sync 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
-  adp1,"token-sync-ssot","playground 的 tokens.css 与 tokens.js MUST 由 sync_tokens.py 从 DESIGN.md frontmatter 生成；手改生成物 MUST NOT 作为长期真值。"
-  adp2,"markdown-slot-align","playground Markdown 槽示意 MUST 对齐 design/markdown.md：无井号标题前缀、链接为 text (url)、粗体斜体无可见星号包裹。"
-  adp3,"agent-default-ignore","design/AGENTS.md MUST 写明 Agent 默认忽略 playground/；仅在人类点名路径或粘贴片段时才读。"
-scenarios[5]{req_id,id,given,when,then}:
-  adp0,"shell-present","","列出 capability app-tui-design-playground","delta 含 adp0–adp3"
-  adp1,"sync-runs","","运行 sync_tokens.py","生成或刷新 tokens.css 与 tokens.js 且无报错"
-  adp2,"md-slot","","打开 playground Markdown 槽","示意中无井号标题前缀且链接呈 text (url) 形态"
-  adp2,"no-star-wrapping","","查看粗体斜体示意","可见文案无 ** 或成对 * 包裹"
-  adp3,"agents-pointer","","阅读 design/AGENTS.md","含 Agent 默认忽略 playground 的说明"
+  adp1,"token-sync-ssot",playground 的 tokens.css 与 tokens.js MUST 由 sync_tokens.py 从 DESIGN.md frontmatter 生成；手改生成物 MUST NOT 作为长期真值。
+  adp2,"markdown-slot-align",playground Markdown 槽示意 MUST 对齐 design/markdown.md：无井号标题前缀、链接为 text (url)、粗体斜体无可见星号包裹。
+  adp3,"agent-default-ignore",design/AGENTS.md MUST 写明 Agent 默认忽略 playground/；仅在人类点名路径或粘贴片段时才读。
+  adp4,"session-tree-kind-ssot","playground 会话树槽静图 MUST 用 DESIGN token 色区分 kind 前缀（user/assistant/tool），正文 MUST NOT 再把 role 字符串预烘焙进同一纯文本片段作为唯一表现；MUST 与 session-tree.md 的 kind 渲染序一致。"
+  adp5,"session-tree-travel-ssot","playground 会话树槽注脚与键位示意 MUST 写明 Enter 在 user 节点上将正文填入 input（对齐 session-tree.md travel 语义）；MUST NOT 再暗示 Enter 仅 travel→id 且保留回复链为唯一形态。"
+scenarios[7]{req_id,id,given,when,then}:
+  adp0,"shell-present","","列出 capability app-tui-design-playground",delta 含 adp0–adp3
+  adp1,"sync-runs","",运行 sync_tokens.py,生成或刷新 tokens.css 与 tokens.js 且无报错
+  adp2,"md-slot","",打开 playground Markdown 槽,示意中无井号标题前缀且链接呈 text (url) 形态
+  adp2,"no-star-wrapping","",查看粗体斜体示意,可见文案无 ** 或成对 * 包裹
+  adp3,"agents-pointer","",阅读 design/AGENTS.md,含 Agent 默认忽略 playground 的说明
+  adp4,"tree-slot-kind-colors",打开 playground 会话树槽,查看树行,可见分色 kind 前缀与无 role 烘焙的正文
+  adp5,"travel-footnote",打开 playground 会话树槽或键位树说明,阅读注脚,文案含 user+Enter→填 input（或等价中文）

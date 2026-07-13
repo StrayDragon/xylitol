@@ -68,6 +68,9 @@ pub struct TreeNode {
     pub annotation: Option<String>,
     /// Optional preformatted timestamp for the annotation (host owns formatting).
     pub annotation_at: Option<String>,
+    /// Optional host kind tag (e.g. `user` / `assistant` / `tool`); package does not
+    /// hard-code a product role enum — theme renders the prefix via [`TreeSelectorTheme::kind_prefix`].
+    pub kind: Option<String>,
 }
 
 impl TreeNode {
@@ -78,6 +81,7 @@ impl TreeNode {
             children: Vec::new(),
             annotation: None,
             annotation_at: None,
+            kind: None,
         }
     }
 
@@ -98,6 +102,11 @@ impl TreeNode {
 
     pub fn with_annotation_at(mut self, at: impl Into<String>) -> Self {
         self.annotation_at = Some(at.into());
+        self
+    }
+
+    pub fn with_kind(mut self, kind: impl Into<String>) -> Self {
+        self.kind = Some(kind.into());
         self
     }
 }
@@ -140,6 +149,9 @@ pub struct TreeSelectorTheme {
     pub empty: Box<dyn Fn(&str) -> String>,
     pub annotation: Box<dyn Fn(&str) -> String>,
     pub annotation_time: Box<dyn Fn(&str) -> String>,
+    /// Renders a kind tag into a display prefix (typically `"user: "` with color).
+    /// Receives the raw [`TreeNode::kind`] string; return value is inserted before `label`.
+    pub kind_prefix: Box<dyn Fn(&str) -> String>,
 }
 
 impl Default for TreeSelectorTheme {
@@ -154,6 +166,12 @@ impl Default for TreeSelectorTheme {
             empty: Box::new(|s| format!("\x1b[2m{s}\x1b[22m")),
             annotation: Box::new(|s| format!("\x1b[33m{s}\x1b[39m")),
             annotation_time: Box::new(|s| format!("\x1b[2m{s}\x1b[22m")),
+            kind_prefix: Box::new(|kind| match kind {
+                "user" => "\x1b[35muser: \x1b[39m".to_string(),
+                "assistant" => "\x1b[32massistant: \x1b[39m".to_string(),
+                "tool" => "\x1b[2mtool: \x1b[22m".to_string(),
+                other => format!("\x1b[2m[{other}]: \x1b[22m"),
+            }),
         }
     }
 }
@@ -402,8 +420,9 @@ impl TreeSelector {
                     return false;
                 };
                 let hay = format!(
-                    "{} {} {}",
+                    "{} {} {} {}",
                     flat.label,
+                    node.kind.as_deref().unwrap_or(""),
                     node.annotation.as_deref().unwrap_or(""),
                     node.annotation_at.as_deref().unwrap_or("")
                 )
@@ -594,6 +613,9 @@ impl TreeSelector {
             {
                 out.push_str(&(self.theme.annotation_time)(&format!("{at} ")));
             }
+        }
+        if let Some(kind) = node.and_then(|n| n.kind.as_deref()) {
+            out.push_str(&(self.theme.kind_prefix)(kind));
         }
         out.push_str(&(self.theme.label)(&flat.label));
         out
@@ -1310,6 +1332,81 @@ mod tests {
         assert_eq!(
             edited.borrow().clone(),
             Some(("r".into(), Some("keep".into())))
+        );
+    }
+
+    #[test]
+    fn kind_prefix_renders_before_label() {
+        let roots = vec![TreeNode::new("u1", "hello body").with_kind("user")];
+        let mut sel = TreeSelector::new(
+            roots,
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions::default(),
+        );
+        let text = sel.render(80).join("\n");
+        assert!(
+            text.contains("user:") && text.contains("hello body"),
+            "kind prefix + plain label; got:\n{text}"
+        );
+        assert!(
+            !text.contains("user: hello body"),
+            "role must not be baked into a single unstyled blob when kind is set; got:\n{text}"
+        );
+    }
+
+    #[test]
+    fn no_kind_skips_forced_prefix() {
+        let roots = vec![TreeNode::new("r", "plain-only")];
+        let mut sel = TreeSelector::new(
+            roots,
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions::default(),
+        );
+        let text = sel.render(80).join("\n");
+        assert!(text.contains("plain-only"));
+        assert!(
+            !text.contains("user:") && !text.contains("assistant:") && !text.contains("tool:"),
+            "no kind → no forced role prefix; got:\n{text}"
+        );
+    }
+
+    #[test]
+    fn search_matches_kind() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let roots = vec![
+            TreeNode::new("u", "hello").with_kind("user"),
+            TreeNode::new("t", "rg -n").with_kind("tool"),
+        ];
+        let mut sel = TreeSelector::new(
+            roots,
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions::default(),
+        );
+        sel.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Char('t'),
+            KeyModifiers::NONE,
+        )));
+        sel.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Char('o'),
+            KeyModifiers::NONE,
+        )));
+        sel.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Char('o'),
+            KeyModifiers::NONE,
+        )));
+        sel.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Char('l'),
+            KeyModifiers::NONE,
+        )));
+        let text = sel.render(80).join("\n");
+        assert!(
+            text.contains("rg -n") || text.contains("tool:"),
+            "search 'tool' should keep kind=tool node; got:\n{text}"
+        );
+        assert!(
+            !text.contains("hello"),
+            "user node should be filtered out; got:\n{text}"
         );
     }
 
