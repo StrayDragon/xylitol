@@ -61,13 +61,15 @@ impl AgentRuntime {
     ///
     /// Clears the steering queue and keeps follow-up messages so the UI can
     /// restore them (c461 design D4). Only cancels the **current** run token;
-    /// the next [`Self::run`] installs a fresh one (c482).
+    /// the next [`Self::run`] installs a fresh one (c482). Also cancels any
+    /// in-flight interactive `!`/`!!` bash (c660; aligns with pi `abortBash`).
     pub fn abort(&self) {
         self.cancel
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .cancel();
         self.inner.clear_steer_queue();
+        self.inner.abort_bash();
     }
 
     /// Enqueue a steering message for the active (or next) run.
