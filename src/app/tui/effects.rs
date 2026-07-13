@@ -175,7 +175,7 @@ pub async fn run_pending_bash<T: Terminal>(
         exclude = bash.exclude_from_context,
         "Driver::execute_bash"
     );
-    session.begin_bash_exec();
+    session.begin_bash_exec(&bash.command, bash.exclude_from_context);
     let _ = session.render_now();
     match driver
         .execute_bash(&bash.command, bash.exclude_from_context)

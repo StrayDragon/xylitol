@@ -18,7 +18,7 @@ use crate::domain::session_types::{SessionEntry, SessionTreeTravel};
 use xylitol_tui::TreeNode;
 
 pub use super::commands::{
-    BangParse, PendingBash, PendingSlash, bash_result_entries, parse_bang_command,
+    BangParse, PendingBash, PendingSlash, bash_block_status, bash_output_body, parse_bang_command,
 };
 
 /// Minimum usable terminal size (ath4).
@@ -97,9 +97,12 @@ pub struct HostSession<T: Terminal> {
     run_active: bool,
     /// True while interactive `!`/`!!` bash is in flight (c665 Esc abort).
     bash_active: bool,
-    /// Absorb leftover Esc / key-repeat after an abort so the next bang is not
-    /// immediately cancelled (c665 sticky-Esc fix).
-    suppress_busy_esc: u8,
+    /// Absorb leftover Esc / key-repeat after an abort while **idle** so the next
+    /// bang is not cancelled at submit. Cleared on non-Esc input and when a new
+    /// busy period starts (`begin_bash_exec` / `on_run_started`). MUST NOT gate
+    /// Esc while busy — that made the second bang un-abortable (pi: no suppress
+    /// on bash Esc; fresh cancel each run).
+    suppress_idle_esc: bool,
     layout_cwd: String,
 }
 
@@ -139,7 +142,7 @@ impl<T: Terminal> HostSession<T> {
             pending_bash: None,
             run_active: false,
             bash_active: false,
-            suppress_busy_esc: 0,
+            suppress_idle_esc: false,
             layout_cwd: display_cwd(),
         }
     }
@@ -196,12 +199,14 @@ impl<T: Terminal> HostSession<T> {
         self.bash_active
     }
 
-    /// Mark bang bash started: busy status `Running` (c665).
-    pub fn begin_bash_exec(&mut self) {
+    /// Mark bang bash started: uplink Bash pending block, busy status `Running`.
+    pub fn begin_bash_exec(&mut self, command: &str, exclude_from_context: bool) {
         self.pending_abort = false;
+        // New bang = fresh cancel window; do not inherit post-abort Esc suppress.
+        self.suppress_idle_esc = false;
         self.bash_active = true;
-        self.ui_model.phase = UiPhase::Busy;
-        self.ui_model.set_busy_status("Running");
+        self.ui_model
+            .begin_bash_block(command, exclude_from_context);
         self.sync_ui_root_from_model();
     }
 
@@ -216,15 +221,24 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Immediate Esc abort feedback: one System `Aborted`, idle status (c665).
+    /// Immediate Esc abort feedback: one System `Aborted`, idle status (agent run; c665).
     pub fn note_user_abort(&mut self) {
         self.ui_model.note_user_abort();
         self.bash_active = false;
         self.run_active = false;
         self.pending_abort = false;
-        // Crossterm may still deliver Esc Press/Repeat after we handled abort;
-        // without this the next `!` bang is cancelled immediately.
-        self.suppress_busy_esc = 8;
+        // Crossterm may still deliver Esc Press/Repeat while idle after abort;
+        // eat those only until the next non-Esc key or a new busy period.
+        self.suppress_idle_esc = true;
+        self.sync_ui_root_from_model();
+    }
+
+    /// Bang Esc abort: `(cancelled)` under `$ cmd` (pi); idle + Esc backlog suppress.
+    pub fn note_bash_cancelled(&mut self) {
+        self.ui_model.note_bash_cancelled();
+        self.bash_active = false;
+        self.pending_abort = false;
+        self.suppress_idle_esc = true;
         self.sync_ui_root_from_model();
     }
 
@@ -254,11 +268,10 @@ impl<T: Terminal> HostSession<T> {
         self.pending_bash.take()
     }
 
-    /// Append bash outcome to live scrollback (c492).
-    pub fn push_bash_result(&mut self, command: &str, result: &XyBashResult) {
-        for entry in bash_result_entries(command, result) {
-            self.ui_model.entries.push(entry);
-        }
+    /// Append bash outcome into the pending Bash block (c668).
+    pub fn push_bash_result(&mut self, _command: &str, result: &XyBashResult) {
+        self.ui_model
+            .finish_bash_block(bash_block_status(result), bash_output_body(result));
         self.sync_ui_root_from_model();
     }
 
@@ -344,6 +357,7 @@ impl<T: Terminal> HostSession<T> {
 
     /// Mark that `Driver::run` has started; seeds the user entry + busy phase.
     pub fn on_run_started(&mut self, prompt: &str) {
+        self.suppress_idle_esc = false;
         self.run_active = true;
         self.ui_model.begin_run(prompt);
         self.sync_ui_root_from_model();
@@ -414,20 +428,29 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Drop Esc backlog after abort (idle or busy) so the next bang is not cancelled.
+    /// Drop Esc backlog after abort while idle so the next bang is not cancelled
+    /// at submit. Never suppress Esc while busy (second bang must stay abortable).
     fn try_suppress_stale_esc(&mut self, input: &InputEvent) -> bool {
-        if self.suppress_busy_esc == 0 {
+        if !self.suppress_idle_esc {
+            return false;
+        }
+        // New busy work owns Esc for abort — clear suppress and do not consume.
+        if self.is_busy() {
+            self.suppress_idle_esc = false;
             return false;
         }
         let InputEvent::Key(key) = input else {
+            // Paste / other input: user moved on; clear suppress.
+            self.suppress_idle_esc = false;
             return false;
         };
-        if !matches_key_event(key, "escape") {
-            return false;
+        if matches_key_event(key, "escape") {
+            self.pending_abort = false;
+            return true;
         }
-        self.suppress_busy_esc -= 1;
-        self.pending_abort = false;
-        true
+        // Any other key (typing the next `!cmd`) ends idle Esc suppress.
+        self.suppress_idle_esc = false;
+        false
     }
 
     /// Busy Enter / Alt+Enter / Esc / Alt+Up (c480). Returns true when consumed.
@@ -446,11 +469,6 @@ impl<T: Terminal> HostSession<T> {
         }
 
         if matches_key_event(key, "escape") {
-            if self.suppress_busy_esc > 0 {
-                self.suppress_busy_esc -= 1;
-                self.pending_abort = false;
-                return true;
-            }
             self.pending_abort = true;
             // Drop untaken local steer so loop does not re-enqueue after abort.
             self.pending_steer = None;

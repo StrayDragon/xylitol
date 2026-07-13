@@ -1,6 +1,6 @@
-//! Live scrollback rendering — Markdown / Expandable / Diff (c476).
+//! Live scrollback rendering — Markdown / Expandable / Diff (c476 / c668).
 //!
-//! Morphology SSOT: `agent_demo` + `design/{markdown,expandable,diff-block}.md`.
+//! Morphology SSOT: `agent_demo` + `design/{markdown,expandable,diff-block,bash-mode}.md`.
 //! Not a Codex TranscriptView — lines go into the engine scrollback stack.
 
 use xylitol_tui::{
@@ -10,8 +10,9 @@ use xylitol_tui::{
 };
 
 use super::glyphs::GlyphSet;
-use crate::app::tui::bridge::{UiEntry, UiModel};
+use crate::app::tui::bridge::{BashBlockStatus, UiEntry, UiModel};
 use crate::app::tui::layout::LayoutTheme;
+use xylitol_tui::terminal_colors::RgbColor;
 
 /// Fold state owned by the product surface (att7).
 #[derive(Debug, Clone, Copy, Default)]
@@ -43,21 +44,43 @@ fn push_wrapped(lines: &mut Vec<String>, raw: &str, width: usize) {
     }
 }
 
-fn paint_tool_bg(
-    line: &str,
-    width: usize,
-    pending: bool,
-    is_error: bool,
-    theme: LayoutTheme,
-) -> String {
-    let rgb = if pending {
+/// Untinted full-width row between blocks (pi `Spacer(1)`).
+///
+/// Must be spaces + `\x1b[49m` — a bare `""` does not reliably occupy a visible
+/// terminal row after differential clear, so gaps looked missing.
+fn inter_block_spacer(width: usize) -> String {
+    format!("{}\x1b[49m", " ".repeat(width.max(1)))
+}
+
+fn paint_bg_line(line: &str, width: usize, rgb: RgbColor) -> String {
+    apply_background_to_line(&fit(line, width), width, &|s| bg_rgb(rgb, s))
+}
+
+/// pi `Box` padding_y=1: tinted empty row above/below content inside the wash.
+fn push_tinted_padded(lines: &mut Vec<String>, content: &[String], width: usize, rgb: RgbColor) {
+    lines.push(paint_bg_line("", width, rgb));
+    for line in content {
+        lines.push(paint_bg_line(line, width, rgb));
+    }
+    lines.push(paint_bg_line("", width, rgb));
+}
+
+fn tool_bg_rgb(pending: bool, is_error: bool, theme: LayoutTheme) -> RgbColor {
+    if pending {
         theme.palette().tool_pending_bg
     } else if is_error {
         theme.palette().tool_error_bg
     } else {
         theme.palette().tool_success_bg
-    };
-    apply_background_to_line(line, width, &|s| bg_rgb(rgb, s))
+    }
+}
+
+fn bash_bg_rgb(status: BashBlockStatus, theme: LayoutTheme) -> RgbColor {
+    match status {
+        BashBlockStatus::Pending => theme.palette().tool_pending_bg,
+        BashBlockStatus::Success => theme.palette().tool_success_bg,
+        BashBlockStatus::Error | BashBlockStatus::Cancelled => theme.palette().tool_error_bg,
+    }
 }
 
 /// Render UiModel entries into scrollback lines for the product host.
@@ -76,16 +99,13 @@ pub fn render_scrollback(
     }
 
     for entry in &model.entries {
+        lines.push(inter_block_spacer(width));
         match entry {
             UiEntry::User { text } => {
                 let prefix = theme.paint_user(glyphs.user());
                 let body = format!("{prefix} {text}");
-                // Optional user-message-bg on each wrapped line.
-                let bg = theme.palette().user_message_bg;
-                for line in wrap_text_with_ansi(&body, width) {
-                    let fitted = fit(&line, width);
-                    lines.push(apply_background_to_line(&fitted, width, &|s| bg_rgb(bg, s)));
-                }
+                let content = wrap_text_with_ansi(&body, width);
+                push_tinted_padded(&mut lines, &content, width, theme.palette().user_message_bg);
             }
             UiEntry::Assistant { text } => {
                 let mut md =
@@ -147,12 +167,11 @@ pub fn render_scrollback(
                         hint_style: None,
                     };
                     for line in render_expandable_output(output, width, true, &opts) {
-                        block.push(fit(&line, width));
+                        block.push(line);
                     }
                 }
-                for line in block {
-                    lines.push(paint_tool_bg(&line, width, !done, *is_error, theme));
-                }
+                let rgb = tool_bg_rgb(!done, *is_error, theme);
+                push_tinted_padded(&mut lines, &block, width, rgb);
             }
             UiEntry::Diff {
                 summary,
@@ -170,9 +189,8 @@ pub fn render_scrollback(
                 );
                 let mut header_lines = Vec::new();
                 push_wrapped(&mut header_lines, &theme.paint_tool(&header), width);
-                for line in header_lines {
-                    lines.push(paint_tool_bg(&line, width, false, false, theme));
-                }
+                let rgb = tool_bg_rgb(false, false, theme);
+                push_tinted_padded(&mut lines, &header_lines, width, rgb);
                 if fold.tools_expanded && !display_diff.is_empty() {
                     let input = DiffInput::DisplayText(display_diff.clone());
                     let opts = DiffOptions {
@@ -185,6 +203,35 @@ pub fn render_scrollback(
                         lines.push(fit(&line, width));
                     }
                 }
+            }
+            UiEntry::Bash {
+                command,
+                status,
+                output,
+                ..
+            } => {
+                let mut block = Vec::new();
+                push_wrapped(
+                    &mut block,
+                    &theme.paint_success(&format!("$ {command}")),
+                    width,
+                );
+                if !output.is_empty() {
+                    let body =
+                        if matches!(status, BashBlockStatus::Error | BashBlockStatus::Cancelled) {
+                            theme.paint_error(output)
+                        } else {
+                            theme.paint_muted(output)
+                        };
+                    push_wrapped(&mut block, &body, width);
+                } else if matches!(status, BashBlockStatus::Pending) {
+                    push_wrapped(
+                        &mut block,
+                        &theme.paint_muted(&format!("Running… {}", key_hint("Esc"))),
+                        width,
+                    );
+                }
+                push_tinted_padded(&mut lines, &block, width, bash_bg_rgb(*status, theme));
             }
             UiEntry::System { text } => {
                 push_wrapped(
@@ -201,10 +248,11 @@ pub fn render_scrollback(
                 );
             }
         }
-        lines.push(String::new());
+        lines.push(inter_block_spacer(width));
     }
 
     for (kind, text) in model.streaming_scrollback_tails() {
+        lines.push(inter_block_spacer(width));
         match kind {
             "thinking" => {
                 let marker = if fold.thinking_expanded {
@@ -233,11 +281,8 @@ pub fn render_scrollback(
             }
             _ => {}
         }
+        lines.push(inter_block_spacer(width));
     }
 
-    // Drop trailing blank from last entry spacer when present.
-    while lines.last().is_some_and(|l| l.trim().is_empty()) {
-        lines.pop();
-    }
     lines
 }

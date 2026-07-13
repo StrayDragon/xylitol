@@ -150,7 +150,7 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
         if active_bash.is_none()
             && let Some(bash) = session.take_bash()
         {
-            session.begin_bash_exec();
+            session.begin_bash_exec(&bash.command, bash.exclude_from_context);
             let _ = session.render_now();
             active_bash = Some(bash);
         }
@@ -186,7 +186,7 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
                                             "Driver::abort during bang"
                                         );
                                         driver.abort();
-                                        session.note_user_abort();
+                                        session.note_bash_cancelled();
                                         aborted_during_bash = true;
                                         let _ = session.render_now();
                                     }
@@ -215,8 +215,7 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
             match bash_result {
                 Ok(r) => {
                     if aborted_during_bash {
-                        // `Aborted` already noted; avoid a second error wall `(cancelled)`.
-                        session.push_system_note(format!("$ {}", bash.command));
+                        // `$ cmd` + `(cancelled)` already uplinked — no second wall.
                     } else {
                         session.push_bash_result(&bash.command, &r);
                     }

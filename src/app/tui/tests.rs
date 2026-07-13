@@ -886,6 +886,70 @@ fn scrollback_user_message_applies_background() {
 }
 
 #[test]
+fn scrollback_bash_block_tint_and_gap() {
+    use super::bridge::BashBlockStatus;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta(".", "m");
+    let mut model = UiModel::new();
+    model.entries.push(super::bridge::UiEntry::User {
+        text: "before".into(),
+    });
+    model.entries.push(super::bridge::UiEntry::Bash {
+        command: "echo hi".into(),
+        status: BashBlockStatus::Success,
+        output: "hi".into(),
+        exclude_from_context: false,
+    });
+    root.apply_ui_model(&model);
+    let lines = root.render(80);
+    let is_inter_spacer = |l: &str| l.contains("\x1b[49m") && !l.contains("\x1b[48;2");
+    let before = lines
+        .iter()
+        .position(|l| strip_ansi(l).contains("before"))
+        .expect("user");
+    let bash = lines
+        .iter()
+        .position(|l| strip_ansi(l).contains("$ echo hi"))
+        .expect("bash");
+    assert!(before < bash);
+    let spacer_run = lines[before + 1..bash]
+        .iter()
+        .filter(|l| is_inter_spacer(l))
+        .count();
+    assert!(
+        spacer_run >= 2,
+        "att10 untinted spacers between blocks: {spacer_run}"
+    );
+    let joined = lines.join("\n");
+    assert!(
+        joined.contains("\x1b[48;2;"),
+        "bash success tint missing: {joined:?}"
+    );
+}
+
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::new();
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            if chars.peek() == Some(&'[') {
+                chars.next();
+                for x in chars.by_ref() {
+                    if x.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+#[test]
 fn layout_ascii_user_glyph() {
     use super::layout::UiRoot;
     use super::widgets::GlyphSet;
