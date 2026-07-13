@@ -684,7 +684,6 @@ mod tests {
             || {},
             SettingsListOptions {
                 enable_search: true,
-                ..SettingsListOptions::default()
             },
         );
         for w in [1usize, 8, 16, 32] {

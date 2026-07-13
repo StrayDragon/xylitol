@@ -120,6 +120,9 @@ mod tests {
     use crate::domain::model::XyModelConfig;
     use crate::runtime_protocol::XyModel;
 
+    type ModelBuilderFn =
+        Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync>;
+
     fn empty_registry() -> ModelRegistry {
         ModelRegistry::new(Arc::new(
             crate::infra::config::value::InfraSecretResolver::new(),
@@ -128,8 +131,7 @@ mod tests {
 
     /// A fake model builder that always reports "no model configured";
     /// tests don't build real providers.
-    fn fake_builder()
-    -> Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync> {
+    fn fake_builder() -> ModelBuilderFn {
         Arc::new(|_cfg: &XyModelConfig| Err("test: no provider".to_string()))
     }
 
