@@ -425,6 +425,10 @@ impl Component for UiRoot {
                 self.fold.tools_expanded = !self.fold.tools_expanded;
                 return;
             }
+            if matches_key_event(key, "ctrl+o") {
+                self.fold.tools_output_expanded = !self.fold.tools_output_expanded;
+                return;
+            }
             // MAY: Ctrl+P opens Plate stub (Esc closes).
             if matches_key_event(key, "ctrl+p") {
                 self.open_slot(EditorSlot::Plate);

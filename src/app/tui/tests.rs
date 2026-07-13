@@ -919,14 +919,68 @@ fn scrollback_bash_block_tint_and_gap() {
         .filter(|l| is_inter_spacer(l))
         .count();
     assert!(
-        spacer_run >= 2,
-        "att10 untinted spacers between blocks: {spacer_run}"
+        spacer_run >= 1,
+        "att10 untinted spacer between blocks: {spacer_run}"
     );
     let joined = lines.join("\n");
     assert!(
         joined.contains("\x1b[48;2;"),
         "bash success tint missing: {joined:?}"
     );
+}
+
+#[test]
+fn scrollback_bash_ctrl_o_viewport_full_width_tint() {
+    use super::bridge::BashBlockStatus;
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta(".", "m");
+    let mut model = UiModel::new();
+    let long_out: String = (0..20).map(|i| format!("line-{i}\n")).collect();
+    model.entries.push(super::bridge::UiEntry::Bash {
+        command: "seq".into(),
+        status: BashBlockStatus::Success,
+        output: long_out,
+        exclude_from_context: false,
+    });
+    root.apply_ui_model(&model);
+
+    let collapsed = root.render(160);
+    let joined = collapsed.join("\n");
+    assert!(
+        strip_ansi(&joined).contains("ctrl+o to expand"),
+        "collapsed viewport hint missing"
+    );
+    let bash_line = collapsed
+        .iter()
+        .find(|l| strip_ansi(l).contains("$ seq"))
+        .expect("$ seq");
+    assert!(
+        bash_line.contains("\x1b[48;2;"),
+        "bash header must be tinted full-width wash"
+    );
+    // Background applies across the padded full terminal width (160 cols).
+    assert!(
+        xylitol_tui::visible_width(bash_line) >= 160,
+        "tinted row must span terminal width, got {}",
+        xylitol_tui::visible_width(bash_line)
+    );
+
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use xylitol_tui::InputEvent;
+    root.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Char('o'),
+        KeyModifiers::CONTROL,
+    )));
+    assert!(root.fold().tools_output_expanded);
+    let expanded = root.render(160).join("\n");
+    assert!(
+        !strip_ansi(&expanded).contains("ctrl+o to expand"),
+        "expanded viewport should not show collapse hint"
+    );
+    assert!(strip_ansi(&expanded).contains("line-0"));
+    assert!(strip_ansi(&expanded).contains("line-19"));
 }
 
 fn strip_ansi(s: &str) -> String {

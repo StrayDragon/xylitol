@@ -18,8 +18,14 @@ use xylitol_tui::terminal_colors::RgbColor;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ScrollbackFold {
     pub thinking_expanded: bool,
+    /// Alt+E — tool/diff **block** show/hide detail.
     pub tools_expanded: bool,
+    /// Ctrl+O — tool/bash detail **viewport** collapsed ↔ full (orthogonal to Alt+E).
+    pub tools_output_expanded: bool,
 }
+
+/// Max visual lines for collapsed tool/bash detail (pi bash tool = 5).
+const TOOLS_OUTPUT_PREVIEW_LINES: usize = 5;
 
 fn key_hint(chord: &str) -> String {
     format!("({chord})")
@@ -52,12 +58,13 @@ fn inter_block_spacer(width: usize) -> String {
     format!("{}\x1b[49m", " ".repeat(width.max(1)))
 }
 
+/// Full-width tinted row (pad + `apply_background_to_line`).
 fn paint_bg_line(line: &str, width: usize, rgb: RgbColor) -> String {
     apply_background_to_line(&fit(line, width), width, &|s| bg_rgb(rgb, s))
 }
 
-/// pi `Box` padding_y=1: tinted empty row above/below content inside the wash.
-fn push_tinted_padded(lines: &mut Vec<String>, content: &[String], width: usize, rgb: RgbColor) {
+/// pi `Box` padding_y=1: tinted empty row above/below content; wash spans full terminal width.
+fn push_tinted(lines: &mut Vec<String>, content: &[String], width: usize, rgb: RgbColor) {
     lines.push(paint_bg_line("", width, rgb));
     for line in content {
         lines.push(paint_bg_line(line, width, rgb));
@@ -98,14 +105,18 @@ pub fn render_scrollback(
         return lines;
     }
 
+    let mut need_spacer = false;
     for entry in &model.entries {
-        lines.push(inter_block_spacer(width));
+        if need_spacer {
+            lines.push(inter_block_spacer(width));
+        }
+        need_spacer = true;
         match entry {
             UiEntry::User { text } => {
                 let prefix = theme.paint_user(glyphs.user());
                 let body = format!("{prefix} {text}");
                 let content = wrap_text_with_ansi(&body, width);
-                push_tinted_padded(&mut lines, &content, width, theme.palette().user_message_bg);
+                push_tinted(&mut lines, &content, width, theme.palette().user_message_bg);
             }
             UiEntry::Assistant { text } => {
                 let mut md =
@@ -161,17 +172,19 @@ pub fn render_scrollback(
                 push_wrapped(&mut block, &theme.paint_tool(&header), width);
                 if fold.tools_expanded && !output.is_empty() {
                     let opts = ExpandableOutputOptions {
-                        max_preview_lines: 12,
+                        max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
                         from: TruncateFrom::Tail,
                         expand_hint: "ctrl+o to expand".into(),
                         hint_style: None,
                     };
-                    for line in render_expandable_output(output, width, true, &opts) {
+                    for line in
+                        render_expandable_output(output, width, fold.tools_output_expanded, &opts)
+                    {
                         block.push(line);
                     }
                 }
                 let rgb = tool_bg_rgb(!done, *is_error, theme);
-                push_tinted_padded(&mut lines, &block, width, rgb);
+                push_tinted(&mut lines, &block, width, rgb);
             }
             UiEntry::Diff {
                 summary,
@@ -190,7 +203,7 @@ pub fn render_scrollback(
                 let mut header_lines = Vec::new();
                 push_wrapped(&mut header_lines, &theme.paint_tool(&header), width);
                 let rgb = tool_bg_rgb(false, false, theme);
-                push_tinted_padded(&mut lines, &header_lines, width, rgb);
+                push_tinted(&mut lines, &header_lines, width, rgb);
                 if fold.tools_expanded && !display_diff.is_empty() {
                     let input = DiffInput::DisplayText(display_diff.clone());
                     let opts = DiffOptions {
@@ -223,7 +236,17 @@ pub fn render_scrollback(
                         } else {
                             theme.paint_muted(output)
                         };
-                    push_wrapped(&mut block, &body, width);
+                    let opts = ExpandableOutputOptions {
+                        max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
+                        from: TruncateFrom::Tail,
+                        expand_hint: "ctrl+o to expand".into(),
+                        hint_style: None,
+                    };
+                    for line in
+                        render_expandable_output(&body, width, fold.tools_output_expanded, &opts)
+                    {
+                        block.push(line);
+                    }
                 } else if matches!(status, BashBlockStatus::Pending) {
                     push_wrapped(
                         &mut block,
@@ -231,7 +254,7 @@ pub fn render_scrollback(
                         width,
                     );
                 }
-                push_tinted_padded(&mut lines, &block, width, bash_bg_rgb(*status, theme));
+                push_tinted(&mut lines, &block, width, bash_bg_rgb(*status, theme));
             }
             UiEntry::System { text } => {
                 push_wrapped(
@@ -248,11 +271,13 @@ pub fn render_scrollback(
                 );
             }
         }
-        lines.push(inter_block_spacer(width));
     }
 
     for (kind, text) in model.streaming_scrollback_tails() {
-        lines.push(inter_block_spacer(width));
+        if need_spacer {
+            lines.push(inter_block_spacer(width));
+        }
+        need_spacer = true;
         match kind {
             "thinking" => {
                 let marker = if fold.thinking_expanded {
@@ -281,7 +306,6 @@ pub fn render_scrollback(
             }
             _ => {}
         }
-        lines.push(inter_block_spacer(width));
     }
 
     lines

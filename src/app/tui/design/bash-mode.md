@@ -20,8 +20,9 @@ components:
 | idle Enter `!cmd` | `Driver::execute_bash`（`exclude_from_context=false`）；**MUST NOT** `Driver::run` |
 | idle Enter `!!cmd` | 同上且 `exclude_from_context=true` |
 | 空 `!` / `!!` | 系统提示，不执行 |
-| 结果 | live scrollback：`UiEntry::Bash` 块（`$ cmd` + 输出）；提交即 **pending** tint（`tool-pending-bg`）；成功 → `tool-success-bg`；失败 / Esc `(cancelled)` → `tool-error-bg`；全行 `apply_background_to_line` |
-| 块间距 | 与其它 scrollback 块一样：块前+块后各一空行（对齐 agent_demo / pi Spacer） |
+| 结果 | live scrollback：`UiEntry::Bash` 块（`$ cmd` + 输出）；提交即 **pending** tint（`tool-pending-bg`）；成功 → `tool-success-bg`；失败 / Esc `(cancelled)` → `tool-error-bg`；**整行终端宽度** `apply_background_to_line` + 块内 padding_y=1 |
+| 块间距 | 块与块之间 **一行** untinted Spacer |
+| 长输出 | 默认末尾 5 行视口 + `ctrl+o to expand`；**Ctrl+O** 全局视口折叠/全文（与工具详情同键） |
 | busy | `!…` 仍走 steer/普通文本；**不**另开 bash |
 | Ctrl+G | **c650**：TTY 真 `$VISUAL`/`$EDITOR`（对齐 demo）；harness / 非 TTY 仍 stub（系统行 + `# $EDITOR stub`） |
 
