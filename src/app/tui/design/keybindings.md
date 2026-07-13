@@ -11,7 +11,7 @@ components:
 # Keybindings
 
 > Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
-> **c480 MVP** 先落地「全局 / 输入」表；树开扩展键仅在 **活树** change 后启用（c491 stub 只开/关/Enter travel）。
+> **c480 MVP** 先落地「全局 / 输入」表；树开 filter/fork 等扩展键后置（demo 已有）。
 
 已决议产品键位（实现：c480 / InputListener c455）。活实验场：`just demo-tui`。
 
@@ -26,7 +26,7 @@ components:
 | Alt+Enter | **follow-up**（排队到本轮结束后） |
 | Alt+Up | 将已排队 steer/follow-up **还原进 editor** 并清空两侧队列 |
 | ↑ / ↓（editor） | 在首/末可视行且（空草稿或已在浏览）时：**发送历史**召回（c481；包 ed05） |
-| 双 Esc | 打开 **会话树 stub**（假树；Esc 关；Enter：user→填 input / 非 user→仅 travel 注记） |
+| 双 Esc | 打开 **MessageHistory 活树**（`session_tree`；Esc 关；Enter：`travel_session_tree`，user→`editor_text` 预填） |
 | `/exit` | 退出并 restore（与垂直切片一致） |
 | `/model` | 切换/选择模型（MVP；实现可极简列表） |
 
@@ -38,14 +38,14 @@ components:
 | Ctrl+T | thinking 展开/折叠 |
 | Alt+E | tool/diff **块**展开/折叠 |
 
-## 后置 — 树开（**勿**在 c491 stub 上实现）
+## 后置 — 树开（filter / fork 等；Enter travel 已接线 c615）
 
 | 键 | 行为 |
 |---|---|
 | Ctrl+O/T/D/U/L/A | filter 循环 |
 | Ctrl/Alt+←→ | fold / 分支跳转 |
 | Shift+L / T / F | annotation / 时间戳 / **fork** |
-| Enter | travel（demo **c600** / 产品 stub **c605**：user → 填 input；非 user → 不预填） |
+| Enter | `travel_session_tree`（user → `editor_text` 预填；非 user → 不预填） |
 
 ## MUST（编辑器槽）
 

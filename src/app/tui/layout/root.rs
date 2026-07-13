@@ -2,14 +2,6 @@
 //!
 //! Named `UiRoot` (not `shell`/`scene`) to avoid clashing with bash /
 //! `infra::process::shell` and to read as the product component tree root.
-//!
-//! # Freeze (c491 stub)
-//!
-//! Session tree here is a **static fake** for slot-replace smoke
-//! (double Esc / Esc close / Enter travel; c605: user → editor prefill).
-//! Do **not** extend with live graphs, filters, or Driver navigateTree until
-//! the demo-first gate in `AGENTS.md` is explicitly opened. Morphology SSOT:
-//! `agent_demo`.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -27,43 +19,22 @@ use xylitol_tui::{
 
 use super::slots::EditorSlot;
 use super::theme::LayoutTheme;
-use crate::app::tui::bridge::{UiEntry, UiModel};
+use crate::app::tui::bridge::{UiModel, UiPhase};
 use crate::app::tui::host::{LayoutMode, TOO_SMALL_HINT};
 use crate::app::tui::widgets::{
     GlyphSet, ScrollbackFold, format_footer_text, render_queue_strip, render_scrollback,
 };
 
-/// Fake session tree for the **c491 stub only** (frozen).
-fn sample_session_tree() -> Vec<TreeNode> {
-    vec![
-        TreeNode::new("root", "session · product").with_children([
-            TreeNode::new("u1", "hello").with_kind("user").with_child(
-                TreeNode::new("a1", "plan")
-                    .with_kind("assistant")
-                    .with_children([
-                        TreeNode::new("t1", "read").with_kind("tool"),
-                        TreeNode::new("a2", "done")
-                            .with_kind("assistant")
-                            .with_child(TreeNode::new("u2", "next").with_kind("user")),
-                    ]),
-            ),
-            TreeNode::new("fork", "alternate")
-                .with_kind("user")
-                .with_child(TreeNode::new("af", "fork leaf").with_kind("assistant")),
-        ]),
-    ]
-}
-
-fn product_tree_selector(theme: LayoutTheme, active_id: &str) -> TreeSelector {
+fn empty_tree_selector(theme: LayoutTheme) -> TreeSelector {
     TreeSelector::new(
-        sample_session_tree(),
+        Vec::new(),
         theme.tree_selector_theme(),
         TreeSelectorOptions {
             max_visible: 10,
             unicode_connectors: true,
             include_node: None,
-            active_id: Some(active_id.into()),
-            status_suffix: Some("[stub]".into()),
+            active_id: None,
+            status_suffix: None,
         },
     )
 }
@@ -91,6 +62,10 @@ pub struct UiRoot {
     bash_mode: bool,
     /// Ctrl+G stub invocation count (harness).
     external_editor_invocations: u32,
+    /// Double Esc while idle → host fetches MessageHistory via Driver (c615).
+    pending_tree_open: bool,
+    /// Tree Enter → host calls `travel_session_tree` (c615).
+    pending_tree_travel: Option<String>,
 }
 
 impl UiRoot {
@@ -127,10 +102,12 @@ impl UiRoot {
             cwd: ".".into(),
             model: "—".into(),
             slot: EditorSlot::Editor,
-            tree: product_tree_selector(theme, "u2"),
+            tree: empty_tree_selector(theme),
             last_esc_at: None,
             bash_mode: false,
             external_editor_invocations: 0,
+            pending_tree_open: false,
+            pending_tree_travel: None,
         }
     }
 
@@ -208,9 +185,32 @@ impl UiRoot {
         self.slot
     }
 
-    /// Convenience: c491 stub tree is mounted in the editor slot.
     pub fn tree_open(&self) -> bool {
         self.slot.is_tree()
+    }
+
+    pub fn take_pending_tree_open(&mut self) -> bool {
+        std::mem::take(&mut self.pending_tree_open)
+    }
+
+    pub fn take_pending_tree_travel(&mut self) -> Option<String> {
+        self.pending_tree_travel.take()
+    }
+
+    /// Mount MessageHistory rows fetched via Driver and open the Tree slot.
+    pub fn mount_session_tree(&mut self, roots: Vec<TreeNode>, active_id: Option<&str>) {
+        self.tree = TreeSelector::new(
+            roots,
+            self.theme.tree_selector_theme(),
+            TreeSelectorOptions {
+                max_visible: 10,
+                unicode_connectors: true,
+                include_node: None,
+                active_id: active_id.map(str::to_string),
+                status_suffix: None,
+            },
+        );
+        self.slot = EditorSlot::Tree;
     }
 
     pub fn on_ctrl_c(&mut self, quit_flag: &AtomicBool) {
@@ -225,11 +225,15 @@ impl UiRoot {
         quit_flag.store(true, Ordering::SeqCst);
     }
 
-    /// Esc: close overlay slot first; else idle empty double-Esc opens Tree stub.
+    /// Esc: close overlay slot first; else idle empty double-Esc queues live tree open.
     pub fn on_escape(&mut self) -> bool {
         if self.slot.is_overlay() {
             self.close_slot();
             return true;
+        }
+        if self.ui_model.phase == UiPhase::Busy {
+            self.last_esc_at = None;
+            return false;
         }
         if self.editor.get_text().is_empty() {
             let now = Instant::now();
@@ -237,7 +241,7 @@ impl UiRoot {
                 && now.duration_since(prev) < Duration::from_millis(500)
             {
                 self.last_esc_at = None;
-                self.open_session_tree();
+                self.pending_tree_open = true;
                 return true;
             }
             self.last_esc_at = Some(now);
@@ -245,11 +249,6 @@ impl UiRoot {
         }
         self.last_esc_at = None;
         false
-    }
-
-    pub fn open_session_tree(&mut self) {
-        self.tree = product_tree_selector(self.theme, "u2");
-        self.slot = EditorSlot::Tree;
     }
 
     pub fn close_slot(&mut self) {
@@ -266,26 +265,27 @@ impl UiRoot {
     pub fn open_slot(&mut self, slot: EditorSlot) {
         match slot {
             EditorSlot::Editor => self.close_slot(),
-            EditorSlot::Tree => self.open_session_tree(),
+            EditorSlot::Tree => self.pending_tree_open = true,
             EditorSlot::Plate | EditorSlot::Settings | EditorSlot::Choice => {
                 self.slot = slot;
             }
         }
     }
 
-    pub fn open_session_tree_for_test(&mut self) {
+    #[cfg(test)]
+    pub fn open_session_tree_for_test(&mut self, roots: Vec<TreeNode>, active_id: Option<&str>) {
         self.editor.set_text(String::new());
-        self.open_session_tree();
+        self.mount_session_tree(roots, active_id);
     }
 
-    /// Harness: open stub tree with selection on `id` (via active path + select_id).
-    pub fn open_session_tree_at_for_test(&mut self, id: &str) {
+    #[cfg(test)]
+    pub fn open_session_tree_at_for_test(&mut self, roots: Vec<TreeNode>, id: &str) {
         self.editor.set_text(String::new());
-        self.tree = product_tree_selector(self.theme, id);
+        self.mount_session_tree(roots, Some(id));
         let _ = self.tree.select_id(id);
-        self.slot = EditorSlot::Tree;
     }
 
+    #[cfg(test)]
     pub fn open_slot_for_test(&mut self, slot: EditorSlot) {
         self.editor.set_text(String::new());
         self.open_slot(slot);
@@ -311,12 +311,6 @@ impl UiRoot {
     fn refresh_footer_from_queue(&mut self, steer: usize, follow_up: usize) {
         let base = format_footer_text(&self.cwd, &self.model, steer, follow_up);
         self.footer.set_text(self.theme.paint_muted(&base));
-    }
-
-    fn append_system_note(&mut self, line: impl Into<String>) {
-        self.ui_model
-            .entries
-            .push(UiEntry::System { text: line.into() });
     }
 
     /// Pending steer / follow-up strip above status (pi `pendingMessagesContainer`).
@@ -401,15 +395,7 @@ impl Component for UiRoot {
                 };
                 if matches_key_event(key, "enter") {
                     let id = self.tree.selected_id().unwrap_or("?").to_string();
-                    let prefill = if self.tree.kind_of(&id) == Some("user") {
-                        self.tree.label_of(&id).unwrap_or("").to_string()
-                    } else {
-                        String::new()
-                    };
-                    self.editor.set_text(prefill);
-                    self.sync_editor_border();
-                    self.append_system_note(format!("travel → {id}"));
-                    self.close_slot();
+                    self.pending_tree_travel = Some(id);
                     return;
                 }
                 if matches_key_event(key, "up")
@@ -549,4 +535,25 @@ pub fn install_ui_root_key_listeners<T: Terminal>(
         }
         InputListenerResult::Continue
     });
+}
+
+#[cfg(test)]
+pub(crate) fn sample_tree_nodes_for_test() -> Vec<TreeNode> {
+    vec![
+        TreeNode::new("root", "session · product").with_children([
+            TreeNode::new("u1", "hello").with_kind("user").with_child(
+                TreeNode::new("a1", "plan")
+                    .with_kind("assistant")
+                    .with_children([
+                        TreeNode::new("t1", "read").with_kind("tool"),
+                        TreeNode::new("a2", "done")
+                            .with_kind("assistant")
+                            .with_child(TreeNode::new("u2", "next").with_kind("user")),
+                    ]),
+            ),
+            TreeNode::new("fork", "alternate")
+                .with_kind("user")
+                .with_child(TreeNode::new("af", "fork leaf").with_kind("assistant")),
+        ]),
+    ]
 }

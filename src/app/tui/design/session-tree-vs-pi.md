@@ -22,8 +22,8 @@ pi / xylitol：树 **替换 editor 槽**（`showSelector`），非居中 overlay
 | 状态行 `(i/n) [filter]` | ✓ | ✓ |
 | 路径 `•` / 选中 `›` | ✓ | ✓ |
 | Kind / role 前缀 | ✓ 产品树按 entry.role 着色 | ✓ **c595**：`TreeNode.kind` + `kind_prefix` 主题；label 纯正文 |
-| Enter travel → user 预填 editor | ✓ `editorText`；leaf=父 | ✓ **c600** demo |
-| Enter travel → 非 user | ✓ leaf=target | ✓ **c600** demo |
+| Enter travel → user 预填 editor | ✓ `editorText`；leaf=父 | ✓ **c615** 产品 `travel_session_tree` |
+| Enter travel → 非 user | ✓ leaf=target | ✓ **c615** 产品 |
 | 树内 / 会话 fork | ✓ `/fork`（新会话文件） | ✓ demo 同会话 Shift+F（leaf=选中；user 预填） |
 | 流中 Enter steer / Alt+Enter follow-up | ✓ | ✓ demo 队列（不打断当前轮） |
 | 提交/工具写入活树 | ✓ | ✓ `session_tree` 增长 |
@@ -36,6 +36,7 @@ pi / xylitol：树 **替换 editor 槽**（`showSelector`），非居中 overlay
 4. ~~水平平移~~ + demo history travel — 包 pan + `agent_demo` 路径重建。
 5. ~~**c595**~~：`TreeNode.kind` 库机制 + DESIGN/playground SSOT。
 6. ~~**c600**~~：demo travel 对齐 pi（user → 父 leaf + editor 预填）。
-7. 产品真 session / `Driver` travel（c491 假树之后）。
+7. **c615** 产品 `Driver::session_tree` + `travel_session_tree`（MessageHistory）。
+8. 产品 filter / fold / Shift+F fork（demo 已有；产品键位后置）。
 
 包吃 `TreeNode { id, label, children, annotation?, kind? }`；**kind 前缀由主题画**，host **不**把 role 字符串烘焙进 `label`。

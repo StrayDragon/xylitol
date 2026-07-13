@@ -8,7 +8,7 @@
 pub enum EditorSlot {
     #[default]
     Editor,
-    /// c491 session-tree stub (frozen — no live graph / filter / Driver travel).
+    /// c615 MessageHistory live tree (Driver `session_tree` + `travel_session_tree`).
     Tree,
     /// Command plate empty shell (MAY; Esc closes).
     Plate,
