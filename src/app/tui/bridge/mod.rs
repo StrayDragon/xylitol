@@ -288,6 +288,9 @@ impl UiModel {
                 text: "Aborted".into(),
             });
         }
+        self.streaming_thinking.clear();
+        self.streaming_assistant.clear();
+        self.current_role = None;
         if self.queue.follow_up_count == 0 {
             self.phase = UiPhase::Idle;
             self.status = None;

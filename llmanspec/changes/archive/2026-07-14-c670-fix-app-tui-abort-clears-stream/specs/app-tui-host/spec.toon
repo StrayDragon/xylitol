@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ath8,"abort-drops-stream-events","产品 TUI 在用户 Esc abort（note_user_abort）后 MUST 清空 streaming_thinking 与 streaming_assistant；在本轮 agent EventStream 结束前 MUST NOT 再经 apply_xy_event 接受该轮 ThinkingDelta / TextDelta / 会提交正文的 AgentEnd；Driver::abort MUST 仍被调用；下一轮 submit MUST 可正常开始。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ath8,"abort-then-deltas-ignored","busy 已 Esc abort","再泵入 ThinkingDelta 与 TextDelta 与 AgentEnd","无 assistant 正文条目且 status idle"
+  ath8,"second-run-after-abort","abort 且 stream 已关","再 idle Enter 提交","Driver::run 被调用"
