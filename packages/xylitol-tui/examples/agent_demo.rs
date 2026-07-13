@@ -843,12 +843,19 @@ fn env_flag(name: &str) -> bool {
 }
 
 /// Interactive TTY → real `$EDITOR`; harness / non-TTY / explicit stub → stub.
+///
+/// Under `cfg(test)` (agent_demo included by `agent_demo_test`), never auto-prefer
+/// real editor from inherited stdin TTY — otherwise interactive `just qa` flakes
+/// while CI/pipe runs pass. Force real path with `XYLITOL_AGENT_DEMO_REAL_EDITOR=1`.
 fn prefer_real_external_editor() -> bool {
     if env_flag("XYLITOL_AGENT_DEMO_EDITOR_STUB") {
         return false;
     }
     if env_flag("XYLITOL_AGENT_DEMO_REAL_EDITOR") {
         return true;
+    }
+    if cfg!(test) {
+        return false;
     }
     std::io::stdin().is_terminal()
 }
