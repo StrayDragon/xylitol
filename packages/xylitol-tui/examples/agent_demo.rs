@@ -292,19 +292,27 @@ fn key_hint(chord: &str) -> String {
 fn sample_session_tree() -> Vec<TreeNode> {
     vec![
         TreeNode::new("root", "session · demo").with_children([
-            TreeNode::new("u1", "user: tighten footer truncation").with_child(
-                TreeNode::new("a1", "assistant: plan + tools").with_children([
-                    TreeNode::new("t1", "tool: rg -n TreeSelector"),
-                    TreeNode::new("a2", "assistant: ship tree slot")
-                        .with_annotation("ship")
-                        .with_annotation_at("2d ago")
-                        .with_child(TreeNode::new("u2", "user: also verify double Esc")),
-                ]),
-            ),
-            TreeNode::new("fork", "user: alternate branch")
+            TreeNode::new("u1", "tighten footer truncation")
+                .with_kind("user")
+                .with_child(
+                    TreeNode::new("a1", "plan + tools")
+                        .with_kind("assistant")
+                        .with_children([
+                            TreeNode::new("t1", "rg -n TreeSelector").with_kind("tool"),
+                            TreeNode::new("a2", "ship tree slot")
+                                .with_kind("assistant")
+                                .with_annotation("ship")
+                                .with_annotation_at("2d ago")
+                                .with_child(
+                                    TreeNode::new("u2", "also verify double Esc").with_kind("user"),
+                                ),
+                        ]),
+                ),
+            TreeNode::new("fork", "alternate branch")
+                .with_kind("user")
                 .with_annotation("alt")
                 .with_annotation_at("1h ago")
-                .with_child(TreeNode::new("af", "assistant: (fork leaf)")),
+                .with_child(TreeNode::new("af", "(fork leaf)").with_kind("assistant")),
         ]),
     ]
 }
@@ -343,12 +351,12 @@ impl SessionTreeFilter {
     }
 
     fn include(self, node: &TreeNode) -> bool {
-        let label = node.label.as_str();
+        let kind = node.kind.as_deref().unwrap_or("");
         match self {
             // demo default ≈ all (see c456 design.md)
             Self::Default | Self::All => true,
-            Self::NoTools => !label.contains("tool:"),
-            Self::UserOnly => label.contains("user:"),
+            Self::NoTools => kind != "tool",
+            Self::UserOnly => kind == "user",
             Self::LabeledOnly => node.annotation.is_some(),
         }
     }
@@ -396,18 +404,38 @@ fn find_session_node<'a>(roots: &'a [TreeNode], id: &str) -> Option<&'a TreeNode
     None
 }
 
-fn is_reply_tree_label(label: &str) -> bool {
-    label.starts_with("assistant:") || label.starts_with("tool:")
+/// `None` = not found; `Some(None)` = `target` is a forest root; `Some(Some(id))` = parent id.
+fn parent_id_of(roots: &[TreeNode], target: &str) -> Option<Option<String>> {
+    fn walk(node: &TreeNode, target: &str, parent: Option<&str>) -> Option<Option<String>> {
+        if node.id == target {
+            return Some(parent.map(str::to_string));
+        }
+        for child in &node.children {
+            if let Some(found) = walk(child, target, Some(&node.id)) {
+                return Some(found);
+            }
+        }
+        None
+    }
+    for root in roots {
+        if let Some(found) = walk(root, target, None) {
+            return Some(found);
+        }
+    }
+    None
 }
 
-fn tree_label_preview(prefix: &str, text: &str) -> String {
+fn is_reply_tree_node(node: &TreeNode) -> bool {
+    matches!(node.kind.as_deref(), Some("assistant") | Some("tool"))
+}
+
+fn tree_label_preview(text: &str) -> String {
     let one = text.lines().next().unwrap_or(text).trim();
-    let body = if visible_width(one) > 48 {
+    if visible_width(one) > 48 {
         truncate_to_width(one, 48, "…", false)
     } else {
         one.to_string()
-    };
-    format!("{prefix}{body}")
+    }
 }
 
 /// Root→target id path in a session tree (inclusive). Demo history travel uses this.
@@ -434,7 +462,9 @@ fn path_ids_to(roots: &[TreeNode], target: &str) -> Option<Vec<String>> {
     None
 }
 
-/// Path to `target`, then linear assistant/tool spine (so travel to a user still shows its reply).
+/// Path to `target`, then linear assistant/tool spine.
+/// Retained for harness/experiments; Enter travel uses pi semantics in [`FakeCodingAgentApp::travel_to_history`].
+#[allow(dead_code)]
 fn travel_path_with_replies(roots: &[TreeNode], target: &str) -> Vec<String> {
     let mut path = path_ids_to(roots, target).unwrap_or_else(|| vec![target.to_string()]);
     let Some(start) = path.last().cloned() else {
@@ -446,7 +476,7 @@ fn travel_path_with_replies(roots: &[TreeNode], target: &str) -> Vec<String> {
             break;
         }
         let child = &node.children[0];
-        if !is_reply_tree_label(&child.label) {
+        if !is_reply_tree_node(child) {
             break;
         }
         path.push(child.id.clone());
@@ -1513,14 +1543,15 @@ impl FakeCodingAgentApp {
     }
 
     /// Append a child under the current history leaf and advance the leaf.
-    fn grow_session_tree(&mut self, id: String, label: String, entry: TranscriptEntry) {
+    fn grow_session_tree(&mut self, id: String, kind: &str, label: String, entry: TranscriptEntry) {
         let parent = self.history_leaf_id.clone();
-        if let Some(node) = find_session_node_mut(&mut self.session_tree, &parent) {
-            node.children.push(TreeNode::new(id.clone(), label));
+        let node = TreeNode::new(id.clone(), label).with_kind(kind);
+        if let Some(parent_node) = find_session_node_mut(&mut self.session_tree, &parent) {
+            parent_node.children.push(node);
         } else if let Some(root) = self.session_tree.first_mut() {
-            root.children.push(TreeNode::new(id.clone(), label));
+            root.children.push(node);
         } else {
-            self.session_tree.push(TreeNode::new(id.clone(), label));
+            self.session_tree.push(node);
         }
         self.history_payloads.insert(id.clone(), entry);
         self.history_leaf_id = id;
@@ -1531,7 +1562,9 @@ impl FakeCodingAgentApp {
         format!("live-{kind}-{}", self.next_node_seq)
     }
 
-    /// Enter on session tree: rebuild transcript along root→id (+ linear reply spine).
+    /// Enter on session tree: pi `navigateTree` morphology.
+    /// - `kind=user`: leaf = parent; user body prefills editor; transcript = path to parent.
+    /// - otherwise: leaf = id; rebuild path to id; do not prefill user body.
     pub fn travel_to_history(&mut self, id: &str) {
         self.pending_events.clear();
         self.scheduled_actions.clear();
@@ -1539,19 +1572,66 @@ impl FakeCodingAgentApp {
         self.steer_queue.clear();
         // Keep follow-ups — they are for after idle, independent of travel.
 
-        let path = travel_path_with_replies(&self.session_tree, id);
-        let path_label = path.join(" → ");
-        let leaf = path.last().cloned().unwrap_or_else(|| id.to_string());
+        let is_user = find_session_node(&self.session_tree, id).and_then(|n| n.kind.as_deref())
+            == Some("user");
 
-        self.transcript.clear();
-        self.push_message(Role::System, format!("history @ {id} · path: {path_label}"));
-        for node_id in &path {
-            if let Some(entry) = self.history_entry_for(node_id) {
-                self.transcript.push(entry);
+        if is_user {
+            let parent = parent_id_of(&self.session_tree, id)
+                .flatten()
+                .unwrap_or_else(|| id.to_string());
+            let path = if parent == id {
+                Vec::new()
+            } else {
+                path_ids_to(&self.session_tree, &parent).unwrap_or_default()
+            };
+            let path_label = if path.is_empty() {
+                "(root)".to_string()
+            } else {
+                path.join(" → ")
+            };
+
+            self.transcript.clear();
+            self.push_message(
+                Role::System,
+                format!("history @ {id} · leaf={parent} · path: {path_label}"),
+            );
+            for node_id in &path {
+                if let Some(entry) = self.history_entry_for(node_id) {
+                    self.transcript.push(entry);
+                }
             }
+
+            if let Some(TranscriptEntry::Message {
+                role: Role::User,
+                text,
+            }) = self.history_entry_for(id)
+            {
+                let prefill = text
+                    .strip_prefix("[steer] ")
+                    .unwrap_or(text.as_str())
+                    .to_string();
+                self.input.set_text(prefill);
+            } else {
+                self.input.set_text(String::new());
+            }
+
+            self.history_leaf_id = parent;
+        } else {
+            let path = path_ids_to(&self.session_tree, id).unwrap_or_else(|| vec![id.to_string()]);
+            let path_label = path.join(" → ");
+
+            self.transcript.clear();
+            self.push_message(Role::System, format!("history @ {id} · path: {path_label}"));
+            for node_id in &path {
+                if let Some(entry) = self.history_entry_for(node_id) {
+                    self.transcript.push(entry);
+                }
+            }
+
+            self.input.set_text(String::new());
+            self.history_leaf_id = id.to_string();
         }
 
-        self.history_leaf_id = leaf;
         self.close_session_tree(); // Ready — banner lives in transcript, not a spinning status
     }
 
@@ -2874,7 +2954,8 @@ impl FakeCodingAgentApp {
         let id = self.alloc_node_id("u");
         self.grow_session_tree(
             id,
-            tree_label_preview("user: ", &format!("[steer] {text}")),
+            "user",
+            tree_label_preview(&format!("[steer] {text}")),
             TranscriptEntry::Message {
                 role: Role::User,
                 text: format!("[steer] {text}"),
@@ -2898,7 +2979,8 @@ impl FakeCodingAgentApp {
         let user_id = self.alloc_node_id("u");
         self.grow_session_tree(
             user_id,
-            tree_label_preview("user: ", &trimmed),
+            "user",
+            tree_label_preview(&trimmed),
             TranscriptEntry::Message {
                 role: Role::User,
                 text: trimmed.clone(),
@@ -3059,13 +3141,8 @@ impl FakeCodingAgentApp {
                 match self.random_between(0, 11) {
                     0 => self.random_between(8, 16) as usize, // rare burst
                     1..=3 => self.random_between(3, 6) as usize,
-                    4..=7 => {
-                        if current.is_ascii() {
-                            self.random_between(1, 3) as usize
-                        } else {
-                            1
-                        }
-                    }
+                    4..=7 if current.is_ascii() => self.random_between(1, 3) as usize,
+                    4..=7 => 1,
                     _ => 1, // drip
                 }
             };
@@ -3300,7 +3377,8 @@ impl FakeCodingAgentApp {
                 let id = self.alloc_node_id("a");
                 self.grow_session_tree(
                     id,
-                    tree_label_preview("assistant: ", &text),
+                    "assistant",
+                    tree_label_preview(&text),
                     TranscriptEntry::Message {
                         role: Role::Assistant,
                         text,
@@ -3523,7 +3601,8 @@ impl FakeCodingAgentApp {
                 let tool_id = self.alloc_node_id("t");
                 self.grow_session_tree(
                     tool_id,
-                    tree_label_preview("tool: ", &text),
+                    "tool",
+                    tree_label_preview(&text),
                     TranscriptEntry::Tool {
                         expanded: true,
                         status: ToolBlockStatus::Success,
@@ -3547,7 +3626,8 @@ impl FakeCodingAgentApp {
                 let tool_id = self.alloc_node_id("t");
                 self.grow_session_tree(
                     tool_id,
-                    tree_label_preview("tool: ", &summary),
+                    "tool",
+                    tree_label_preview(&summary),
                     TranscriptEntry::Tool {
                         expanded: false,
                         status: ToolBlockStatus::Success,
@@ -3572,7 +3652,8 @@ impl FakeCodingAgentApp {
                 let tool_id = self.alloc_node_id("t");
                 self.grow_session_tree(
                     tool_id,
-                    tree_label_preview("tool: ", &summary),
+                    "tool",
+                    tree_label_preview(&summary),
                     TranscriptEntry::Diff {
                         expanded: true,
                         status: ToolBlockStatus::Success,
@@ -3600,7 +3681,8 @@ impl FakeCodingAgentApp {
                     let id = self.alloc_node_id("a");
                     self.grow_session_tree(
                         id,
-                        tree_label_preview("assistant: ", &text),
+                        "assistant",
+                        tree_label_preview(&text),
                         TranscriptEntry::Message {
                             role: Role::Assistant,
                             text,
@@ -3891,7 +3973,7 @@ impl FakeCodingAgentApp {
                 for line in full.render(width) {
                     lines.push(Self::fit(&line, width));
                 }
-                let narrow = width.min(36).max(12);
+                let narrow = width.clamp(12, 36);
                 lines.push(Self::fit(&dim(&format!(" @width={narrow}")), width));
                 let mut clipped = TruncatedText::new(long.into(), 0, 0);
                 for line in clipped.render(narrow) {

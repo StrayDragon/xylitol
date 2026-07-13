@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "package-tui-tree-selector"
 purpose: 通用 TreeSelector：flatten/过滤/搜索/翻页/fold/annotation（供双 Esc 会话树）。
 valid_scope[1]: "packages/xylitol-tui/"
-requirements[14]{req_id,title,statement}:
+requirements[16]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c454-add-package-tui-tree-selector 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   pts1,"tree-node-model",包 MUST 提供 TreeNode（id/label/children）与可导航 TreeSelector 组件；MUST NOT 依赖主 crate xylitol 或 session 类型。
   pts2,"include-node-filter",TreeSelector MUST 支持 include_node 钩子过滤可见节点，并在过滤后重算 indent/connector/gutter；MUST NOT 硬编码产品 FilterMode 枚举。
@@ -17,7 +17,9 @@ requirements[14]{req_id,title,statement}:
   pts00,"capability-shell","本增量由变更 c560-update-package-tui-tree-edges 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   pts11,"empty-visible-state",当过滤或搜索导致无可见节点时，TreeSelector MUST 渲染可辨识空态行（主题 no_match 或等价）；MUST NOT 静默输出完全空白列表且无提示。
   pts12,"selection-stable-on-filter",include_node 或搜索串变更后，若先前选中 id 仍在可见列表中则 MUST 保持该选中；否则 MUST 将选中落到可见列表的合理默认项（通常为首项）。
-scenarios[15]{req_id,id,given,when,then}:
+  pts13,"node-kind",TreeNode MUST 支持可选 kind（字符串；包 MUST NOT 硬编码产品 role 枚举）；有 kind 时渲染 MUST 在 annotation 之后、主 label 之前经主题闭包输出 kind 前缀；无 kind 时 MUST NOT 强制前缀。
+  pts14,"kind-in-search",TreeSelector 增量搜索 MUST 将节点 kind（若有）纳入匹配；搜索 MUST 仍与 include_node 组合（AND）。
+scenarios[18]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/package-tui-tree-selector",spec.toon 存在且 purpose 为中文
   pts1,"unit-flatten","",对分支树 flatten,单子链 indent 不漂移且分支点出现连接符
   pts2,"filter-recalc","",隐藏中间节点,可见兄弟 indent 对齐且无幽灵连接符
@@ -33,3 +35,6 @@ scenarios[15]{req_id,id,given,when,then}:
   pts11,"no-match",树有节点,搜索无匹配串,render 含空态提示文案
   pts12,"keep-id",选中某仍可见节点,收紧 include_node 但仍含该 id,选中仍为该 id
   pts12,fallback,选中节点被过滤掉,刷新可见列表,选中变为可见首项或等价默认
+  pts13,"kind-prefix-render",节点 kind=user 且 label 为正文无 role 前缀,render,行含主题化 user 前缀与正文 label
+  pts13,"no-kind-compat",节点无 kind,render,行仅含既有 annotation/label 形态且无强制 role 前缀
+  pts14,"search-matches-kind",可见节点含 kind=tool,键入 tool,该节点仍可见

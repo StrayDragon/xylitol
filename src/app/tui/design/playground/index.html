@@ -1184,10 +1184,10 @@
       if (S.tree) {
         ed.innerHTML =
           '<div class="fg-muted"> Session tree · [stub]</div>' +
-          '<div><span class="rev">▸ a2 · assistant: done</span></div>' +
-          '<div class="fg-muted">  ├─ t1 · tool: read</div>' +
-          '<div class="fg-on">  └─ u1 · user: hello</div>' +
-          '<div class="fg-muted" style="margin-top:0.25rem">esc close · ↑↓ · Enter travel</div>';
+          '<div><span class="rev">▸ <span class="fg-success">assistant:</span> done</span></div>' +
+          '<div class="fg-muted">  ├─ <span class="fg-tool">tool:</span> read</div>' +
+          '<div class="fg-on">  └─ <span class="fg-user">user:</span> hello</div>' +
+          '<div class="fg-muted" style="margin-top:0.25rem">esc close · ↑↓ · Enter：user→填 input / 非 user→travel</div>';
       } else {
         ed.innerHTML = '<span class="cursor"> </span>询问或 / 命令…';
       }
@@ -1231,10 +1231,10 @@
       const ed = document.getElementById("lay-editor");
       if (L.tree) {
         ed.innerHTML =
-          '<div><span class="rev">▸ leaf · fix diff tint</span> <span class="fg-muted">[wip]</span></div>' +
-          '<div class="fg-muted">  ├─ branch · explore</div>' +
-          '<div class="fg-on">  └─ root · hello</div>' +
-          '<div class="fg-muted" style="margin-top:0.25rem">(2/5) [all] · Esc 关闭</div>';
+          '<div><span class="rev">▸ <span class="fg-success">assistant:</span> fix diff tint</span> <span class="fg-muted">[wip]</span></div>' +
+          '<div class="fg-muted">  ├─ <span class="fg-user">user:</span> explore</div>' +
+          '<div class="fg-on">  └─ <span class="fg-muted">session</span> · hello</div>' +
+          '<div class="fg-muted" style="margin-top:0.25rem">(2/5) [all] · Esc 关闭 · Enter user→填 input</div>';
       } else {
         ed.innerHTML = '<span class="cursor"> </span>询问或 / 命令…';
       }
@@ -1306,8 +1306,9 @@
 <div class="row"><span class="fg-on">/exit</span> <span class="fg-muted">退出 + restore</span></div>
 <div class="row"><span class="fg-on">/model</span> <span class="fg-muted">选模型（极简列表即可）</span></div>
 <div class="row fg-muted">未知命令 → 短错误 · 不崩 · CompletionSource</div>`,
-      tree: `<div class="row fg-muted">c491 stub · 替换 editor 槽</div>
-<div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">关树</span> · <span class="fg-on">Enter</span> <span class="fg-muted">travel → id</span></div>
+      tree: `<div class="row fg-muted">c491 stub · 替换 editor 槽 · kind 前缀分色（c595）</div>
+<div class="row"><span class="fg-user">user:</span> <span class="fg-on">正文</span> · <span class="fg-success">assistant:</span> · <span class="fg-tool">tool:</span></div>
+<div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">关树</span> · <span class="fg-on">Enter</span> <span class="fg-muted">user→填 input（c600）· 非 user→travel</span></div>
 <div class="row fg-muted">✗ stub 上禁 filter / fork / 真 Driver travel（另 change）</div>`,
     };
     function renderKeys() {
