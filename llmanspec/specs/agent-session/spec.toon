@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-session"
 purpose: "Agent session management — session lifecycle, capability state, prompt construction, and turn orchestration."
 valid_scope[3]: src/agent/session/,src/runtime_protocol/session.rs,src/domain/session_types.rs
-requirements[34]{req_id,title,statement}:
+requirements[35]{req_id,title,statement}:
   a1,"agent-session","System MUST provide AgentSession encapsulating prompt to model to tools to loop with full event stream, holding ONLY orchestration state; the system prompt MUST be assembled from injected context (AGENTS.md files, configured system prompt, append prompts) supplied by the composition root, NOT from a hardcoded fallback."
   a2,"turn-events","AgentSession MUST emit: turn_start, message_start, message_update (streaming), message_end events per turn."
   a3,"tool-events","AgentSession MUST emit: tool_execution_start, tool_execution_update (streaming partials), tool_execution_end events per tool call."
@@ -10,7 +10,7 @@ requirements[34]{req_id,title,statement}:
   a5,"thinking-level","AgentSession MUST support thinking level toggle (low/medium/high), clamped to model capabilities."
   a6,abort,AgentSession MUST support abort() to cancel current agent operation.
   a7,"context-usage",AgentSession MUST expose getContextUsage() returning estimated token count and context window percentage.
-  a8,"agent-session-store","AgentSession MUST auto-persist messages to SessionManager after each turn and after tool execution."
+  a8,"agent-session-store","AgentCapabilities 或 ReAct 运行时 MUST 在每条 user、assistant、toolResult 消息完成时（对齐 pi message_end）经 XySessionStore::append_session_entry 写入当前 session；tool 执行结束后 MUST 持久化对应 toolResult；一轮结束后 session 文件或内存 backend MUST 含本轮消息。MUST NOT 仅把对话留在 ReAct 本地 history 而不写入 store。"
   a9,"prompt-construction","AgentSession MUST construct the full messages array: system prompt + context files + history + user prompt, prepended per turn."
   a10,"bdd-agent",BDD tests under tests/features/agent.feature MUST all pass.
   a21,"agent-prompt","System MUST support forward-slash template colon name args syntax with positional arg substitution and all-args placeholder and default-value syntax."
@@ -19,7 +19,7 @@ requirements[34]{req_id,title,statement}:
   a24,"command-dispatch","AgentSession prompt MUST intercept forward-slash prefix input dispatching to command handler or template expander before sending to LLM."
   a25,"resource-loader",System MUST provide ResourceLoader aggregating project context files from AGENTS.md and CLAUDE.md plus skills and prompts and system prompt from CLI.
   a26,"bdd-agent-v3",BDD tests for prompt templates and slash commands MUST all pass.
-  as27,"event-bus-lifecycle","AgentSession MUST integrate AgentEventBus to emit turn_start and turn_end events with auto-persistence of agent messages to session storage during the turn lifecycle."
+  as27,"event-bus-lifecycle","AgentCapabilities MUST 在 turn 生命周期内发出 turn_start 与 turn_end（或等价 XyEvent）；并 MUST 在消息完成时 auto-persist 到 session store（与 a8 一致），不得只依赖无人订阅的旁路。"
   as28,"session-lifecycle","AgentSession MUST support start_new_session creating a fresh session with optional parent reference, and resume_session loading and validating an existing session including CWD assertion."
   as29,"bdd-agent-v4",BDD tests for AgentSession lifecycle and event bus integration MUST all pass.
   as30,"cohesion-decomposition",AgentSession MUST be decomposed into focused collaborator components covering model management and tool management and compaction orchestration and skill activation rather than a single object mixing many unrelated responsibilities.
@@ -37,7 +37,8 @@ requirements[34]{req_id,title,statement}:
   as42,"stats-compute-moved","The get_session_stats aggregation logic MUST move out of the Agent body into a compute function under agent/session/stats.rs taking the session store and session id; the Agent method MUST become a one-line delegate so the body holds no aggregation logic."
   as43,"trust-demoted-to-free-fn","The save_trust_decision method (which only reads self.cwd and does not hold a trust store) MUST be demoted to a free function under agent/session/trust.rs taking cwd, trust_store, and trusted; Agent MUST NOT carry this method since it has no cohesive reason to live on the capability aggregate."
   as44,"dead-code-cleared","After confirming zero production call sites via grep, the dead methods MUST be removed from Agent: the whole steering domain (steer, follow_up, clear_queue, pending_message_count, has_pending_steer, get_steering_messages, get_follow_up_messages, drain_queued_messages, message_queue, message_queue_mut), process_prompt, cycle_forward, cycle_backward, share_as_gist, registry_clone, set_append_prompt, compact_current_session, compaction_threshold, compaction_settings, register_template, register_templates, register_command, and register_skill_commands; dead #[allow(dead_code)] attributes MUST be removed alongside."
-scenarios[42]{req_id,id,given,when,then}:
+  as45,"seed-history-from-store","AgentRuntime::run_with_id（或等价入口）在已有 session 上开新一轮时 MUST 经 store.build_session_context（及既有 SessionEntry→AgentMessage 转换）灌入 history，再追加本轮 user prompt；MUST NOT 每轮从空 history 起步导致多轮丢失上下文。"
+scenarios[43]{req_id,id,given,when,then}:
   a1,"prompt-from-loader",a project containing AGENTS.md and the CLI composition root constructs the agent,the agent builds its system prompt,the system prompt MUST include the AGENTS.md content and MUST NOT default to a hardcoded placeholder when the loader provides values
   a2,"turn-events","agent processes a tool-calling turn",turn starts,"events are emitted in order: turn_start message_start message_update* message_end turn_end"
   a3,"tool-stream",bash tool streams output,tool_execution_start fires,tool_execution_update fires multiple times then tool_execution_end
@@ -45,7 +46,8 @@ scenarios[42]{req_id,id,given,when,then}:
   a5,"thinking-toggle",model supports thinking,thinking level is changed,new level is clamped to model capabilities
   a6,abort,agent is streaming a response,abort() is called,agent loop terminates and returns abort error
   a7,"context-usage",a model with 200k window is active,messages consume 50k tokens,getContextUsage() returns 25% and 50000 tokens
-  a8,"auto-save",a turn completes,session is loaded from disk,the turn's messages are persisted
+  a8,"persist-user-assistant",已绑定稳定 session_id 的 Agent 跑完一轮 user→assistant,load_entries(session_id),"含本轮 user 与 assistant 的 SessionEntry::Message"
+  a8,"persist-tool-result",一轮含工具调用,工具执行结束,store 含对应 toolResult（或等价 tool）消息条目
   a9,"prompt-build",system prompt is configured with context files,agent starts a turn,messages array has system prompt then history then user message
   a10,"bdd-pass",BDD runner invoked,"cargo test --test bdd",all agent scenarios pass
   a21,"template-expand",template has placeholder for first arg,template expanded with main.rs,content has main.rs substituted
@@ -57,8 +59,7 @@ scenarios[42]{req_id,id,given,when,then}:
   a24,"template-dispatch","user sends forward-slash review with args",prompt is intercepted,template expanded and sent to LLM
   a25,"context-files-found",AGENTS.md exists in cwd tree,load_context_files called,returns AGENTS.md content as first entry
   a26,"bdd-pass",BDD runner invoked,cargo test runs,"all agent-v3 scenarios pass"
-  as27,"turn-events-emitted",AgentSession has event bus subscriber,a turn starts and completes,turn_start and turn_end events are received by subscriber
-  as27,"auto-persist",AgentSession has enabled session,agent message is received,message is persisted to session file
+  as27,"auto-persist-on-message-end",已启用 session 的 Agent,assistant message_end 发生,该消息已 append 到 session store
   as28,"resume-validates-cwd",a session file has cwd set to existing directory,resume_session is called,session loads successfully
   as29,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all agent-v4 scenarios pass"
   as30,"responsibilities-separated",the session module responsibilities are enumerated,component boundaries are drawn,each component owns a single responsibility class
@@ -80,3 +81,4 @@ scenarios[42]{req_id,id,given,when,then}:
   as42,"stats-delegate",get_session_stats held inline aggregation,the Agent method is inspected,"its body is a one-line delegate to stats::compute"
   as43,"trust-free-fn",save_trust_decision lived on the Agent,the change is applied,it is a free function in agent/session/trust.rs and the Agent no longer carries it
   as44,"dead-methods-gone",the steering domain and other dead methods existed,rg for those method names in src/agent/ runs,no production dead methods remain (only legitimately used methods survive)
+  as45,"second-turn-sees-first",同一 session_id 已有第一轮 user/assistant 在 store,第二轮 run_with_id,送给模型的 history 含第一轮消息

@@ -278,6 +278,23 @@ impl AgentCapabilities {
         Ok(())
     }
 
+    /// Load conversation messages from the session store (leaf branch).
+    pub(crate) async fn load_conversation_history(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<AgentMessage>, String> {
+        let entries = self.store.load_entries(session_id).await?;
+        Ok(entries
+            .iter()
+            .filter_map(|e| e.as_agent_message())
+            .collect())
+    }
+
+    /// Shared session store handle (same instance as Driver uses).
+    pub fn session_store(&self) -> Arc<dyn XySessionStore> {
+        self.store.clone()
+    }
+
     // ── Accessors ─────────────────────────────────────────────────
 
     pub(crate) fn tools(&self) -> &ToolSet {

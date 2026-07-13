@@ -121,7 +121,8 @@ pub struct BootstrappedRuntime {
 
 impl BootstrappedAgent {
     /// Consume into an [`InProcessDriver`] plus side-products (preferred path).
-    pub fn into_runtime(self) -> BootstrappedRuntime {
+    pub fn into_runtime(mut self) -> BootstrappedRuntime {
+        self.agent.inner_mut().set_session(self.session_id.clone());
         BootstrappedRuntime {
             driver: crate::app::core::driver::InProcessDriver::new(self.agent, self.store),
             session_id: self.session_id,
@@ -529,13 +530,8 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
         }
     }
 
-    // Reconstruct the same session store injected into the agent by
-    // composition::build_agent. It is dir-backed, so a fresh instance points at
-    // the same backing data as the agent's internal copy — this lets an
-    // InProcessDriver serve session commands without composition::build_agent
-    // having to return its injected ports.
-    let store: Arc<dyn crate::runtime_protocol::XySessionStore> =
-        Arc::new(SessionManager::new(SessionManager::default_dir()));
+    // Reuse the same session store injected into the agent at composition time.
+    let store = agent.session_store();
 
     Ok(BootstrappedAgent {
         agent,

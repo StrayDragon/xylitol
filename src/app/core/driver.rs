@@ -252,7 +252,17 @@ impl InProcessDriver {
 #[async_trait]
 impl Driver for InProcessDriver {
     async fn run(&mut self, prompt: &str) -> EventStream {
-        let stream = self.agent.run(prompt).await;
+        let sid = self
+            .agent
+            .inner()
+            .session_id()
+            .map(String::from)
+            .unwrap_or_else(|| {
+                let id = uuid::Uuid::new_v4().to_string();
+                self.agent.inner_mut().set_session(id.clone());
+                id
+            });
+        let stream = self.agent.run_with_id(prompt, &sid).await;
         Box::pin(stream)
     }
 
@@ -1180,6 +1190,105 @@ mod driver_session_tree_tests {
         assert_eq!(
             XySessionStore::leaf_id(store.as_ref(), &sid).as_deref(),
             Some("keep")
+        );
+    }
+
+    #[tokio::test]
+    async fn after_run_session_tree_reflects_persisted_turn() {
+        use std::pin::Pin;
+
+        use async_trait::async_trait;
+        use futures::StreamExt;
+
+        use crate::domain::error::XyError;
+        use crate::domain::message::AgentMessage;
+        use crate::domain::message::XyStopReason;
+        use crate::domain::model::XyModelConfig;
+        use crate::domain::types::{XyChunk, XyModelMeta, XyToolSchema};
+        use crate::runtime_protocol::{XyModel, XyStream};
+
+        struct TextMockModel;
+        #[async_trait]
+        impl XyModel for TextMockModel {
+            fn name(&self) -> &str {
+                "text-mock"
+            }
+
+            async fn generate_stream(
+                &self,
+                _messages: Vec<AgentMessage>,
+                _tools: &[XyToolSchema],
+                _stream: bool,
+            ) -> Result<XyStream, XyError> {
+                let chunks = vec![
+                    Ok(XyChunk::TextDelta("reply".into())),
+                    Ok(XyChunk::Done {
+                        finish_reason: XyStopReason::Stop,
+                        usage: None,
+                    }),
+                ];
+                Ok(Box::pin(futures::stream::iter(chunks))
+                    as Pin<
+                        Box<dyn futures::Stream<Item = Result<XyChunk, XyError>> + Send>,
+                    >)
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let store_trait: Arc<dyn XySessionStore> = store.clone();
+        let mut reg =
+            crate::agent::model::registry::ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
+        reg.register(XyModelMeta {
+            id: "mock".into(),
+            config: XyModelConfig {
+                kind: crate::domain::model::XyModelKind::Fake,
+                api_key: String::new(),
+                model: "mock".into(),
+                base_url: None,
+                api: None,
+            },
+            display_name: "Mock".into(),
+            thinking: false,
+            context_window: 128000,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
+        });
+        let builder: Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync> =
+            Arc::new(|_| Ok(Arc::new(TextMockModel) as Arc<dyn XyModel>));
+        let mut agent = AgentBuilder::new(
+            reg,
+            builder,
+            store_trait.clone(),
+            Arc::new(EventBus::new()) as Arc<dyn crate::runtime_protocol::XyEventSink>,
+            permission::allow_all_permission(),
+        )
+        .cwd(".")
+        .tools(ToolSet::empty())
+        .bash(Arc::new(InfraBashExecutor::new()) as Arc<dyn XyBashExecutor>)
+        .export_io(Arc::new(StdExportIo::new()) as Arc<dyn XyExportIo>)
+        .build()
+        .expect("build agent");
+        let sid = uuid::Uuid::new_v4().to_string();
+        agent.inner_mut().set_session(sid);
+        let mut driver = InProcessDriver::new(agent, store_trait);
+
+        let mut stream = driver.run("hello tree").await;
+        while stream.next().await.is_some() {}
+
+        let tree = driver
+            .session_tree(SessionTreeKind::MessageHistory)
+            .await
+            .expect("tree");
+        assert!(
+            !tree.is_empty(),
+            "session tree should reflect persisted messages"
         );
     }
 }

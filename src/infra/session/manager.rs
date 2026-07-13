@@ -28,6 +28,8 @@ pub struct SessionManager {
     active_session: RwLock<Option<String>>,
     /// In-memory entry storage (used when backend is InMemory).
     in_memory_store: RwLock<HashMap<String, Vec<SessionEntry>>>,
+    /// Pending entries for persisted sessions not yet flushed to disk.
+    pending_store: RwLock<HashMap<String, Vec<SessionEntry>>>,
 }
 
 impl Clone for SessionManager {
@@ -48,6 +50,12 @@ impl Clone for SessionManager {
                     .expect("RwLock not poisoned")
                     .clone(),
             ),
+            pending_store: RwLock::new(
+                self.pending_store
+                    .read()
+                    .expect("RwLock not poisoned")
+                    .clone(),
+            ),
         }
     }
 }
@@ -62,6 +70,7 @@ impl Default for SessionManager {
             leaf_ids: RwLock::new(HashMap::new()),
             active_session: RwLock::new(None),
             in_memory_store: RwLock::new(HashMap::new()),
+            pending_store: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -89,6 +98,7 @@ impl SessionManager {
             leaf_ids: RwLock::new(HashMap::new()),
             active_session: RwLock::new(None),
             in_memory_store: RwLock::new(HashMap::new()),
+            pending_store: RwLock::new(HashMap::new()),
         }
     }
 
@@ -103,6 +113,7 @@ impl SessionManager {
             leaf_ids: RwLock::new(HashMap::new()),
             active_session: RwLock::new(None),
             in_memory_store: RwLock::new(HashMap::new()),
+            pending_store: RwLock::new(HashMap::new()),
         }
     }
 
@@ -132,6 +143,52 @@ impl SessionManager {
             .unwrap_or(None)
     }
 
+    fn session_file_exists(&self, session_id: &str) -> bool {
+        matches!(&self.backend, SessionBackend::Persisted { .. })
+            && self.session_path(session_id).exists()
+    }
+
+    async fn write_entries_to_disk(
+        &self,
+        session_id: &str,
+        entries: &[SessionEntry],
+    ) -> Result<(), String> {
+        let path = self.session_path(session_id);
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| format!("create sessions dir: {e}"))?;
+        }
+
+        let mut content = String::new();
+        for entry in entries {
+            let line = serde_json::to_string(entry).map_err(|e| format!("serialize entry: {e}"))?;
+            content.push_str(&line);
+            content.push('\n');
+        }
+
+        tokio::fs::write(&path, content)
+            .await
+            .map_err(|e| format!("write session file: {e}"))?;
+        Ok(())
+    }
+
+    async fn flush_pending_to_disk(&self, session_id: &str) -> Result<(), String> {
+        let entries = {
+            let mut pending = self.pending_store.write().expect("RwLock not poisoned");
+            pending
+                .remove(session_id)
+                .ok_or_else(|| format!("no pending entries for session: {session_id}"))?
+        };
+        self.write_entries_to_disk(session_id, &entries).await
+    }
+
+    fn update_leaf_from_entry(&self, session_id: &str, entry: &SessionEntry) {
+        if let Some(new_id) = entry.entry_id() {
+            self.set_leaf(session_id, Some(new_id.to_string()));
+        }
+    }
+
     // ── CRUD ────────────────────────────────────────────────────
 
     /// Get the file path for a session.
@@ -153,47 +210,54 @@ impl SessionManager {
     /// Check if a session exists.
     pub fn exists(&self, id: &str) -> bool {
         match &self.backend {
-            SessionBackend::Persisted { .. } => self.session_path(id).exists(),
-            SessionBackend::InMemory { entries } => {
-                entries.iter().any(|e| e.entry_id() == Some(id))
+            SessionBackend::Persisted { .. } => {
+                self.session_file_exists(id)
+                    || self
+                        .pending_store
+                        .read()
+                        .expect("RwLock not poisoned")
+                        .contains_key(id)
             }
+            SessionBackend::InMemory { .. } => self
+                .in_memory_store
+                .read()
+                .expect("RwLock not poisoned")
+                .contains_key(id),
         }
     }
 
-    /// Create a new session and write the header entry.
+    /// Create a new session and record the header entry.
     pub async fn create(
         &self,
         id: &str,
         cwd: Option<&str>,
         parent_session: Option<&str>,
     ) -> Result<(), String> {
-        let path = self.session_path(id);
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|e| format!("create sessions dir: {e}"))?;
-        }
-
-        // Build header JSON manually (not via enum tag to avoid duplicate `type`).
-        let mut header = serde_json::json!({
-            "type": "session",
-            "version": 4, // v4: id/parentId tree structure
-            "id": id,
-            "timestamp": Utc::now().to_rfc3339(),
-            "cwd": cwd.unwrap_or(".")
+        let header = SessionEntry::Header(SessionHeader {
+            entry_type: "session".into(),
+            version: 4,
+            id: id.to_string(),
+            timestamp: Utc::now().to_rfc3339(),
+            cwd: cwd.unwrap_or(".").to_string(),
+            parent_session: parent_session.map(String::from),
         });
-        if let Some(ps) = parent_session {
-            header["parent_session"] = serde_json::json!(ps);
+
+        match &self.backend {
+            SessionBackend::Persisted { .. } => {
+                self.pending_store
+                    .write()
+                    .expect("RwLock not poisoned")
+                    .insert(id.to_string(), vec![header]);
+            }
+            SessionBackend::InMemory { .. } => {
+                self.in_memory_store
+                    .write()
+                    .expect("RwLock not poisoned")
+                    .insert(id.to_string(), vec![header]);
+            }
         }
 
-        let line = serde_json::to_string(&header).map_err(|e| format!("serialize header: {e}"))?;
-        tokio::fs::write(&path, format!("{line}\n"))
-            .await
-            .map_err(|e| format!("write session file: {e}"))?;
-
-        // Initialize leaf tracking (root = null)
         self.set_leaf(id, None);
-
         Ok(())
     }
 
@@ -206,21 +270,35 @@ impl SessionManager {
 
         match &self.backend {
             SessionBackend::Persisted { .. } => {
-                let path = self.session_path(session_id);
-                let line = serde_json::to_string(&entry_with_ids)
-                    .map_err(|e| format!("serialize entry: {e}"))?;
-                let content = format!("{line}\n");
+                if self.session_file_exists(session_id) {
+                    let path = self.session_path(session_id);
+                    let line = serde_json::to_string(&entry_with_ids)
+                        .map_err(|e| format!("serialize entry: {e}"))?;
+                    let content = format!("{line}\n");
 
-                use tokio::io::AsyncWriteExt;
-                let mut file = tokio::fs::OpenOptions::new()
-                    .append(true)
-                    .create(true)
-                    .open(&path)
-                    .await
-                    .map_err(|e| format!("open for append: {e}"))?;
-                file.write_all(content.as_bytes())
-                    .await
-                    .map_err(|e| format!("write entry: {e}"))?;
+                    use tokio::io::AsyncWriteExt;
+                    let mut file = tokio::fs::OpenOptions::new()
+                        .append(true)
+                        .open(&path)
+                        .await
+                        .map_err(|e| format!("open for append: {e}"))?;
+                    file.write_all(content.as_bytes())
+                        .await
+                        .map_err(|e| format!("write entry: {e}"))?;
+                } else {
+                    let is_assistant =
+                        crate::domain::session_types::is_assistant_message(&entry_with_ids);
+                    {
+                        let mut pending = self.pending_store.write().expect("RwLock not poisoned");
+                        pending
+                            .entry(session_id.to_string())
+                            .or_default()
+                            .push(entry_with_ids.clone());
+                    }
+                    if is_assistant {
+                        self.flush_pending_to_disk(session_id).await?;
+                    }
+                }
             }
             SessionBackend::InMemory { .. } => {
                 let mut store = self.in_memory_store.write().expect("RwLock not poisoned");
@@ -231,11 +309,7 @@ impl SessionManager {
             }
         }
 
-        // Update leaf pointer
-        if let Some(new_id) = entry_with_ids.entry_id() {
-            self.set_leaf(session_id, Some(new_id.to_string()));
-        }
-
+        self.update_leaf_from_entry(session_id, &entry_with_ids);
         Ok(())
     }
 
@@ -342,6 +416,11 @@ impl SessionManager {
         entry: &SessionEntry,
     ) -> Result<(), String> {
         let path = self.session_path(session_id);
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| format!("create sessions dir: {e}"))?;
+        }
         let line = serde_json::to_string(entry).map_err(|e| format!("serialize entry: {e}"))?;
         let content = format!("{line}\n");
 
@@ -364,71 +443,61 @@ impl SessionManager {
     }
 
     /// Load all entries from a session (with v3→v4 migration if needed).
-    /// For persisted sessions, reads from the JSONL file.
-    /// For in-memory sessions, returns from the Vec.
+    /// For persisted sessions, reads from the JSONL file or pending memory.
+    /// For in-memory sessions, returns from the in-memory store.
     pub async fn load(&self, session_id: &str) -> Result<Vec<SessionEntry>, String> {
-        match &self.backend {
-            SessionBackend::InMemory { .. } => {
-                let store = self.in_memory_store.read().expect("RwLock not poisoned");
-                let entries = store
-                    .get(session_id)
-                    .cloned()
-                    .ok_or_else(|| format!("session not found: {session_id}"))?;
-                // Update leaf tracking
-                if let Some(last) = entries.last() {
-                    if let Some(id) = last.entry_id() {
-                        self.set_leaf(session_id, Some(id.to_string()));
-                    }
-                } else {
-                    self.set_leaf(session_id, None);
-                }
-                Ok(entries)
-            }
+        let mut entries = match &self.backend {
+            SessionBackend::InMemory { .. } => self
+                .in_memory_store
+                .read()
+                .expect("RwLock not poisoned")
+                .get(session_id)
+                .cloned()
+                .ok_or_else(|| format!("session not found: {session_id}"))?,
             SessionBackend::Persisted { .. } => {
-                let path = self.session_path(session_id);
-                if !path.exists() {
-                    return Err(format!("session not found: {session_id}"));
-                }
-
-                let content = tokio::fs::read_to_string(&path)
-                    .await
-                    .map_err(|e| format!("read session: {e}"))?;
-
-                let mut entries: Vec<SessionEntry> = Vec::new();
-                let mut needs_migration = false;
-
-                for line in content.lines() {
-                    if line.trim().is_empty() {
-                        continue;
-                    }
-                    let entry: SessionEntry =
-                        serde_json::from_str(line).map_err(|e| format!("parse entry: {e}"))?;
-
-                    if let SessionEntry::Header(ref h) = entry
-                        && h.version < 4
-                    {
-                        needs_migration = true;
-                    }
-
-                    entries.push(entry);
-                }
-
-                if needs_migration {
-                    entries = self.migrate_v3_to_v4(entries);
-                }
-
-                // Update leaf tracking
-                if let Some(last) = entries.last() {
-                    if let Some(id) = last.entry_id() {
-                        self.set_leaf(session_id, Some(id.to_string()));
-                    }
+                if self.session_file_exists(session_id) {
+                    let path = self.session_path(session_id);
+                    let content = tokio::fs::read_to_string(&path)
+                        .await
+                        .map_err(|e| format!("read session: {e}"))?;
+                    Self::parse_entries_from_content(&content)?
                 } else {
-                    self.set_leaf(session_id, None);
+                    self.pending_store
+                        .read()
+                        .expect("RwLock not poisoned")
+                        .get(session_id)
+                        .cloned()
+                        .ok_or_else(|| format!("session not found: {session_id}"))?
                 }
-
-                Ok(entries)
             }
+        };
+
+        if needs_migration_from_entries(&entries) {
+            entries = self.migrate_v3_to_v4(entries);
         }
+
+        if let Some(last) = entries.last() {
+            if let Some(id) = last.entry_id() {
+                self.set_leaf(session_id, Some(id.to_string()));
+            }
+        } else {
+            self.set_leaf(session_id, None);
+        }
+
+        Ok(entries)
+    }
+
+    fn parse_entries_from_content(content: &str) -> Result<Vec<SessionEntry>, String> {
+        let mut entries: Vec<SessionEntry> = Vec::new();
+        for line in content.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let entry: SessionEntry =
+                serde_json::from_str(line).map_err(|e| format!("parse entry: {e}"))?;
+            entries.push(entry);
+        }
+        Ok(entries)
     }
 
     /// Load and validate that the session's CWD exists.
@@ -1207,6 +1276,12 @@ impl SessionManager {
 
 // ── CWD Validation ──────────────────────────────────────────────────
 
+fn needs_migration_from_entries(entries: &[SessionEntry]) -> bool {
+    entries
+        .iter()
+        .any(|entry| matches!(entry, SessionEntry::Header(h) if h.version < 4))
+}
+
 /// Validate that the session's working directory exists.
 ///
 /// Checks the CWD stored in the session header. If the directory does not
@@ -1299,6 +1374,100 @@ impl XySessionStore for SessionManager {
 
     fn leaf_id(&self, session_id: &str) -> Option<String> {
         SessionManager::get_leaf_id(self, session_id)
+    }
+}
+
+#[cfg(test)]
+mod deferred_persist_tests {
+    use super::*;
+    use crate::domain::session_types::{EntryBase, MessageEntry};
+
+    fn user_message(text: &str) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: String::new(),
+            },
+            message: serde_json::json!({
+                "role": "user",
+                "parts": [{ "type": "text", "text": text }],
+            }),
+        })
+    }
+
+    fn assistant_message(text: &str) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: String::new(),
+            },
+            message: serde_json::json!({
+                "role": "assistant",
+                "parts": [{ "type": "text", "text": text }],
+            }),
+        })
+    }
+
+    #[tokio::test]
+    async fn defer_before_assistant_keeps_disk_clean_then_flushes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        let sid = "defer-session";
+
+        mgr.create(sid, Some("."), None).await.unwrap();
+        assert!(!mgr.session_path(sid).exists());
+
+        mgr.append(sid, &user_message("hello")).await.unwrap();
+        assert!(!mgr.session_path(sid).exists());
+
+        let pending = mgr.load(sid).await.unwrap();
+        assert!(
+            pending
+                .iter()
+                .any(|e| matches!(e, SessionEntry::Message(_)))
+        );
+
+        mgr.append(sid, &assistant_message("hi")).await.unwrap();
+        assert!(mgr.session_path(sid).exists());
+
+        let loaded = mgr.load(sid).await.unwrap();
+        let roles: Vec<_> = loaded
+            .iter()
+            .filter_map(|e| match e {
+                SessionEntry::Message(m) => m.message.get("role").and_then(|r| r.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(roles.contains(&"user"));
+        assert!(roles.contains(&"assistant"));
+    }
+
+    #[tokio::test]
+    async fn in_memory_append_never_creates_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::in_memory();
+        let sid = "mem-session";
+
+        mgr.create(sid, Some("."), None).await.unwrap();
+        mgr.append(sid, &user_message("one")).await.unwrap();
+        mgr.append(sid, &assistant_message("two")).await.unwrap();
+
+        assert!(
+            std::fs::read_dir(dir.path()).is_err() || dir.path().read_dir().unwrap().count() == 0
+        );
+
+        let loaded = mgr.load(sid).await.unwrap();
+        assert_eq!(
+            loaded
+                .iter()
+                .filter(|e| matches!(e, SessionEntry::Message(_)))
+                .count(),
+            2
+        );
     }
 }
 

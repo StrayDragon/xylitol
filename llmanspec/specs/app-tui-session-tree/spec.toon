@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-session-tree"
 purpose: 产品面双 Esc 会话树 stub（c491 冻结）：仅槽替换与 travel 行；活树/真 Driver 等开闸。形态学见 agent_demo（ast3/ast4）。
 valid_scope[1]: src/app/tui/
-requirements[7]{req_id,title,statement}:
+requirements[8]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c491-add-app-tui-session-tree 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ast1,"slot-replace",会话树打开时 MUST 替换 UiRoot editor 槽（贴底可见）；MUST NOT 画成内容区顶部 overlay。
   ast2,"live-travel-via-driver","产品双 Esc 会话树 MUST 渲染当前 session 的 MessageHistory 活树（经 Driver::session_tree(MessageHistory) 映射为包 TreeNode，含 kind）；Enter 选中节点时 MUST 调用 Driver::travel_session_tree(MessageHistory, id)，按返回的 SessionTreeTravel 关闭树、预填 editor（仅当 editor_text 有值）、并重建/刷新 transcript 与后续提交 leaf 语义；MUST NOT 再使用 c491 假树样例作为唯一数据源；MUST NOT 在本切片实现 filter/fold/Shift+F 产品 fork（fork 语义另 change）。"
@@ -10,7 +10,8 @@ requirements[7]{req_id,title,statement}:
   ast4,"demo-travel-pi-semantics",agent_demo 在会话树 Enter travel 时：若选中节点 kind 为 user，则 MUST 将 history leaf 设为该节点的父（根 user 则回到无叶/约定根策略）、MUST 用该 user 正文预填编辑器（可剥 steer 前缀）、MUST 重建 transcript 为 root→父 路径且 MUST NOT 纳入被选 user 及其后线性回复；若选中非 user，则 MUST 将 leaf 设为选中 id、MUST 重建 root→选中路径、MUST NOT 因 travel 预填 user 正文；完成后 status MUST 回到空闲（无 spinner）。
   ast5,"demo-session-tree-fork","agent_demo 会话树打开时 MUST 支持 Shift+F fork：重建 root→选中节点路径（MUST NOT 自动纳入其后线性 assistant/tool 回复链）；history leaf MUST 等于选中 id；若选中为 user 消息 MUST 将其文本预填编辑器；关闭树后下一次用户提交 MUST 在该 leaf 下挂新子节点（与既有子树形成兄弟分叉）；MUST NOT 打开新会话文件或调用产品 Driver::fork。"
   ast6,"map-session-tree-nodes","产品 MUST 将 domain SessionTreeNode（MessageHistory）映射为 xylitol-tui TreeNode：id 取 entry id、label 为可显示正文（MUST NOT 把 role 烘焙进 label）、kind 取 message role 或等价（user/assistant/tool 等）；主题 kind_prefix 继续由 LayoutTheme 供给。"
-scenarios[13]{req_id,id,given,when,then}:
+  ast7,"tree-reflects-persisted-turn","在 auto-persist 与稳定 session_id 就绪后，产品双 Esc 打开的 MessageHistory 树 MUST 能反映已完成回合写入 store 的消息节点；一轮 user/assistant 成功结束后 session_tree(MessageHistory) MUST NOT 因 store 仅有 header 而长期为 0 节点（空会话除外）。"
+scenarios[14]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-session-tree",spec.toon 存在且 purpose 为中文
   ast1,"double-esc-opens",空编辑器,双 Esc 于 500ms 内,editor 槽显示 Session tree
   ast2,"open-shows-live",Driver 当前 session 已有 user/assistant 消息,空编辑器双 Esc 打开树,树行来自 MessageHistory 活数据而非 sample_session_tree 假树
@@ -24,3 +25,4 @@ scenarios[13]{req_id,id,given,when,then}:
   ast5,"fork-stays-on-user",树选中样例 u1（其下已有 assistant 子节点）,Shift+F 或 fork_from_history,leaf 为 u1、编辑器含原 user 文案、transcript 不含子 assistant 正文
   ast5,"submit-creates-sibling",fork 到 u1 之后,提交新 user 文本,u1 的 children 数量加一且活树含新文案
   ast6,"kind-mapped",活树含一条 user 消息,打开会话树,对应行 kind=user 且 label 为纯正文
+  ast7,"after-turn-tree-nonempty",产品 TUI 完成至少一轮对话且消息已 persist,双 Esc 打开会话树,树节点数大于 0 且可见 user 正文
