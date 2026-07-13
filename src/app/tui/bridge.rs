@@ -109,13 +109,13 @@ impl UiModel {
     }
 
     /// Enqueue a steer message for chrome + badge (host local; Driver follows).
-    pub fn enqueue_steer_chrome(&mut self, text: String) {
+    pub fn enqueue_steer_strip(&mut self, text: String) {
         self.pending_steer.push(text);
         self.queue.steer_count = self.pending_steer.len();
     }
 
     /// Enqueue a follow-up message for chrome + badge (host local; Driver follows).
-    pub fn enqueue_follow_up_chrome(&mut self, text: String) {
+    pub fn enqueue_follow_up_strip(&mut self, text: String) {
         self.pending_follow_up.push(text);
         self.queue.follow_up_count = self.pending_follow_up.len();
     }
@@ -578,11 +578,11 @@ mod tests {
     }
 
     #[test]
-    fn queue_update_trims_pending_chrome_fifo() {
+    fn queue_update_trims_pending_strip_fifo() {
         let mut model = UiModel::new();
-        model.enqueue_steer_chrome("a".into());
-        model.enqueue_steer_chrome("b".into());
-        model.enqueue_follow_up_chrome("c".into());
+        model.enqueue_steer_strip("a".into());
+        model.enqueue_steer_strip("b".into());
+        model.enqueue_follow_up_strip("c".into());
         apply_xy_event(
             &mut model,
             &XyEvent::QueueUpdate {
@@ -600,7 +600,7 @@ mod tests {
 
         let mut model = UiModel::new();
         model.begin_run("hello");
-        model.enqueue_steer_chrome("nudge".into());
+        model.enqueue_steer_strip("nudge".into());
         apply_xy_event(
             &mut model,
             &XyEvent::MessageStart {

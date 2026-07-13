@@ -3,12 +3,10 @@
 //! See `AGENTS.md` in this directory. Engine: `packages/xylitol-tui`.
 
 mod bridge;
-mod glyphs;
 mod host;
-mod scrollback;
+mod layout;
 pub(crate) mod terminal_guard;
-mod theme;
-mod ui_root;
+mod widgets;
 
 #[cfg(test)]
 mod harness;
@@ -30,13 +28,13 @@ use self::host::{HostEvent, HostSession, PendingSlash};
 use self::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hooks};
 
 pub use self::bridge::{QueueBadge, UiEntry, UiModel, UiPhase, apply_xy_event};
-pub use self::glyphs::GlyphSet;
 pub use self::host::{
     BangParse, HostEvent as TuiHostEvent, HostSession as TuiHostSession, LayoutMode, MIN_COLS,
     MIN_ROWS, PendingBash, PendingSlash as TuiPendingSlash, TOO_SMALL_HINT, bash_result_entries,
     display_cwd, is_too_small, parse_bang_command,
 };
-pub use self::theme::ChromeTheme;
+pub use self::layout::LayoutTheme;
+pub use self::widgets::GlyphSet;
 
 /// Failures that MUST abort before raw-mode / host loop (CLI-level, no TTY corruption).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,7 +132,7 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
             }
         })
         .unwrap_or_else(|| "—".into());
-    let mut session = HostSession::new_product_ui_with_chrome(terminal, host::display_cwd(), model);
+    let mut session = HostSession::new_product_ui_with_meta(terminal, host::display_cwd(), model);
     session.render_now()?;
 
     let mut term_events = CrosstermEventStream::new();

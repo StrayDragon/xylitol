@@ -25,11 +25,12 @@ use xylitol_tui::{
     truncate_to_width,
 };
 
-use super::bridge::{UiEntry, UiModel};
-use super::glyphs::GlyphSet;
-use super::host::{LayoutMode, TOO_SMALL_HINT};
-use super::scrollback::{ScrollbackFold, render_scrollback};
-use super::theme::ChromeTheme;
+use super::theme::LayoutTheme;
+use crate::app::tui::bridge::{UiEntry, UiModel};
+use crate::app::tui::host::{LayoutMode, TOO_SMALL_HINT};
+use crate::app::tui::widgets::{
+    GlyphSet, ScrollbackFold, format_footer_text, render_queue_strip, render_scrollback,
+};
 
 /// Fake session tree for the **c491 stub only** (frozen).
 fn sample_session_tree() -> Vec<TreeNode> {
@@ -73,7 +74,7 @@ pub struct UiRoot {
     loader_last_tick: Instant,
     editor: Editor,
     footer: Text,
-    theme: ChromeTheme,
+    theme: LayoutTheme,
     glyphs: GlyphSet,
     cwd: String,
     model: String,
@@ -88,7 +89,7 @@ pub struct UiRoot {
 
 impl UiRoot {
     pub fn new() -> Self {
-        let theme = ChromeTheme::product_dark();
+        let theme = LayoutTheme::product_dark();
         let accent = theme.palette().accent;
         let muted = theme.palette().muted;
         let status_loader = Loader::new(
@@ -128,7 +129,7 @@ impl UiRoot {
     }
 
     /// Inject footer identity (cwd · model). Call before first render when known.
-    pub fn set_chrome_meta(&mut self, cwd: impl Into<String>, model: impl Into<String>) {
+    pub fn set_layout_meta(&mut self, cwd: impl Into<String>, model: impl Into<String>) {
         self.cwd = cwd.into();
         self.model = model.into();
         self.refresh_footer_from_queue(0, 0);
@@ -266,10 +267,7 @@ impl UiRoot {
     }
 
     fn refresh_footer_from_queue(&mut self, steer: usize, follow_up: usize) {
-        let mut base = format!("{} · {}", self.cwd, self.model);
-        if steer > 0 || follow_up > 0 {
-            base = format!("q:s{steer}|f{follow_up} · {base}");
-        }
+        let base = format_footer_text(&self.cwd, &self.model, steer, follow_up);
         self.footer.set_text(self.theme.paint_muted(&base));
     }
 
@@ -279,43 +277,14 @@ impl UiRoot {
             .push(UiEntry::System { text: line.into() });
     }
 
-    /// Pending steer / follow-up chrome above status (pi `pendingMessagesContainer`).
+    /// Pending steer / follow-up strip above status (pi `pendingMessagesContainer`).
     fn render_queue_slot(&mut self, width: usize) -> Vec<String> {
-        let steer = &self.ui_model.pending_steer;
-        let follow_up = &self.ui_model.pending_follow_up;
-        if steer.is_empty() && follow_up.is_empty() {
-            return Vec::new();
-        }
-        let mut lines = Vec::new();
-        // One blank spacer like pi's Spacer(1) before the queue block.
-        if width > 0 {
-            lines.push(String::new());
-        }
-        for msg in steer {
-            let line = self.theme.paint_muted(&format!("Steering: {msg}"));
-            lines.push(if width == 0 {
-                line
-            } else {
-                truncate_to_width(&line, width, "...", true)
-            });
-        }
-        for msg in follow_up {
-            let line = self.theme.paint_muted(&format!("Follow-up: {msg}"));
-            lines.push(if width == 0 {
-                line
-            } else {
-                truncate_to_width(&line, width, "...", true)
-            });
-        }
-        let hint = self
-            .theme
-            .paint_muted("↳ Alt+Up to edit all queued messages");
-        lines.push(if width == 0 {
-            hint
-        } else {
-            truncate_to_width(&hint, width, "...", true)
-        });
-        lines
+        render_queue_strip(
+            self.theme,
+            &self.ui_model.pending_steer,
+            &self.ui_model.pending_follow_up,
+            width,
+        )
     }
 
     fn render_status_slot(&mut self, width: usize) -> Vec<String> {
@@ -357,7 +326,7 @@ impl Component for UiRoot {
     fn render(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
         lines.extend(self.render_scrollback_slot(width));
-        // Queue chrome sits between transcript and status (pi morphology).
+        // Queue strip sits between transcript and status (pi morphology).
         lines.extend(self.render_queue_slot(width));
         lines.extend(self.render_status_slot(width));
         // Editor owns the operation-zone ─ borders (DESIGN editor.md / agent_demo).
