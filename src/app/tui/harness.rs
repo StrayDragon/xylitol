@@ -11,16 +11,15 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use xylitol_tui::Terminal;
 
-use crate::app::core::dispatch::{DispatchOutcome, dispatch};
 use crate::app::core::driver::{
     CommandInfo, Driver, EventStream, ModelInfo, QueueStats, SessionStats, XyEvent,
 };
 use crate::domain::session_types::SessionEntry;
 use crate::domain::types::ThinkingLevel;
-use crate::protocol::Command;
 use crate::runtime_protocol::XyBashResult;
 
-use super::host::{HostEvent, HostSession, PendingSlash};
+use super::effects::drain_pending;
+use super::host::{HostEvent, HostSession};
 
 /// Test double: canned `run` streams + call recording for steer/abort/queues/bash.
 pub struct ScriptedDriver {
@@ -229,117 +228,13 @@ impl Driver for ScriptedDriver {
 }
 
 /// One pump of host pending ops + optional full drain of the active agent stream.
-/// Mirrors `run_host_loop` ordering (c485).
+/// Mirrors `run_host_loop` ordering via shared [`drain_pending`] (c485 / ath6).
 pub async fn pump_host_driver<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn Driver,
     agent_stream: &mut Option<EventStream>,
 ) -> Result<(), String> {
-    if session.take_abort() {
-        driver.abort();
-        let _ = driver.clear_queue(true, false);
-        let stats = driver.queue_stats();
-        session.set_queue_badge(stats.steer_count, stats.follow_up_count);
-        let _ = session.render_now();
-    }
-    if session.take_dequeue() {
-        let _ = driver.clear_queue(true, true);
-        let stats = driver.queue_stats();
-        session.set_queue_badge(stats.steer_count, stats.follow_up_count);
-        let _ = session.render_now();
-    }
-    if let Some(msg) = session.take_steer() {
-        if let Err(e) = driver.steer(&msg) {
-            session.push_system_note(format!("steer failed: {e}"));
-        }
-        let stats = driver.queue_stats();
-        session.set_queue_badge(stats.steer_count, stats.follow_up_count);
-        let _ = session.render_now();
-    }
-    if let Some(msg) = session.take_follow_up() {
-        if let Err(e) = driver.follow_up(&msg) {
-            session.push_system_note(format!("follow-up failed: {e}"));
-        }
-        let stats = driver.queue_stats();
-        session.set_queue_badge(stats.steer_count, stats.follow_up_count);
-        let _ = session.render_now();
-    }
-    if let Some(slash) = session.take_slash() {
-        match slash {
-            PendingSlash::Exit => {
-                session.request_quit();
-            }
-            PendingSlash::CycleModel => {
-                match dispatch(driver, Command::CycleModel { id: None }).await {
-                    Ok(DispatchOutcome::Model(m)) => {
-                        let label = if m.display_name.is_empty() {
-                            m.id
-                        } else {
-                            m.display_name
-                        };
-                        session.set_footer_model(label.clone());
-                        session.push_system_note(format!("model → {label}"));
-                    }
-                    Ok(_) => session.push_system_note("model cycled"),
-                    Err(e) => session.push_system_note(format!("/model failed: {e}")),
-                }
-                let _ = session.render_now();
-            }
-            PendingSlash::SetModel(model_id) => {
-                match dispatch(
-                    driver,
-                    Command::SetModel {
-                        id: None,
-                        provider: String::new(),
-                        model_id,
-                    },
-                )
-                .await
-                {
-                    Ok(DispatchOutcome::Model(m)) => {
-                        let label = if m.display_name.is_empty() {
-                            m.id
-                        } else {
-                            m.display_name
-                        };
-                        session.set_footer_model(label.clone());
-                        session.push_system_note(format!("model → {label}"));
-                    }
-                    Ok(_) => session.push_system_note("model set"),
-                    Err(e) => session.push_system_note(format!("/model failed: {e}")),
-                }
-                let _ = session.render_now();
-            }
-        }
-    }
-
-    if let Some(bash) = session.take_bash() {
-        match dispatch(
-            driver,
-            Command::Bash {
-                id: None,
-                command: bash.command.clone(),
-                exclude_from_context: bash.exclude_from_context,
-            },
-        )
-        .await
-        {
-            Ok(DispatchOutcome::Bash(result)) => {
-                session.push_bash_result(&bash.command, &result);
-            }
-            Ok(_) => session.push_system_note("bash: unexpected dispatch outcome"),
-            Err(e) => session.push_system_note(format!("bash failed: {e}")),
-        }
-        let _ = session.render_now();
-    }
-
-    if agent_stream.is_none()
-        && let Some(prompt) = session.take_submit()
-    {
-        session.on_run_started(&prompt);
-        let _ = session.render_now();
-        *agent_stream = Some(driver.run(&prompt).await);
-    }
+    drain_pending(session, driver, agent_stream).await?;
 
     if let Some(stream) = agent_stream.as_mut() {
         while let Some(xy) = stream.next().await {
@@ -804,7 +699,7 @@ mod slice_tests {
 
     #[test]
     fn bang_parse_helpers() {
-        use crate::app::tui::host::{BangParse, parse_bang_command};
+        use crate::app::tui::commands::{BangParse, parse_bang_command};
         assert_eq!(parse_bang_command("hi"), BangParse::NotBang);
         assert_eq!(
             parse_bang_command("!"),

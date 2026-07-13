@@ -5,9 +5,11 @@
 //! generic Editor/Markdown/TreeSelector stay in `xylitol_tui`.
 
 mod root;
+mod slots;
 mod theme;
 
 pub use root::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
+pub use slots::EditorSlot;
 pub use theme::LayoutTheme;
 
 #[cfg(test)]

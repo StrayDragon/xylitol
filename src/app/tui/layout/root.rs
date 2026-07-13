@@ -25,6 +25,7 @@ use xylitol_tui::{
     truncate_to_width,
 };
 
+use super::slots::EditorSlot;
 use super::theme::LayoutTheme;
 use crate::app::tui::bridge::{UiEntry, UiModel};
 use crate::app::tui::host::{LayoutMode, TOO_SMALL_HINT};
@@ -78,7 +79,8 @@ pub struct UiRoot {
     glyphs: GlyphSet,
     cwd: String,
     model: String,
-    tree_open: bool,
+    /// Mutually exclusive editor-zone face (ati18).
+    slot: EditorSlot,
     tree: TreeSelector,
     last_esc_at: Option<Instant>,
     /// `!` / `!!` prefix → success border (c492).
@@ -120,7 +122,7 @@ impl UiRoot {
             glyphs: GlyphSet::from_env(),
             cwd: ".".into(),
             model: "—".into(),
-            tree_open: false,
+            slot: EditorSlot::Editor,
             tree: product_tree_selector("u2"),
             last_esc_at: None,
             bash_mode: false,
@@ -198,13 +200,18 @@ impl UiRoot {
         self.editor.add_to_history(text.into());
     }
 
+    pub fn slot(&self) -> EditorSlot {
+        self.slot
+    }
+
+    /// Convenience: c491 stub tree is mounted in the editor slot.
     pub fn tree_open(&self) -> bool {
-        self.tree_open
+        self.slot.is_tree()
     }
 
     pub fn on_ctrl_c(&mut self, quit_flag: &AtomicBool) {
-        if self.tree_open {
-            self.close_session_tree();
+        if self.slot.is_overlay() {
+            self.close_slot();
             return;
         }
         if !self.editor.get_text().is_empty() {
@@ -214,9 +221,10 @@ impl UiRoot {
         quit_flag.store(true, Ordering::SeqCst);
     }
 
+    /// Esc: close overlay slot first; else idle empty double-Esc opens Tree stub.
     pub fn on_escape(&mut self) -> bool {
-        if self.tree_open {
-            self.close_session_tree();
+        if self.slot.is_overlay() {
+            self.close_slot();
             return true;
         }
         if self.editor.get_text().is_empty() {
@@ -237,16 +245,38 @@ impl UiRoot {
 
     pub fn open_session_tree(&mut self) {
         self.tree = product_tree_selector("u2");
-        self.tree_open = true;
+        self.slot = EditorSlot::Tree;
+    }
+
+    pub fn close_slot(&mut self) {
+        self.slot = EditorSlot::Editor;
     }
 
     pub fn close_session_tree(&mut self) {
-        self.tree_open = false;
+        if self.slot.is_tree() {
+            self.close_slot();
+        }
+    }
+
+    /// Open a non-Editor slot (replaces any current overlay).
+    pub fn open_slot(&mut self, slot: EditorSlot) {
+        match slot {
+            EditorSlot::Editor => self.close_slot(),
+            EditorSlot::Tree => self.open_session_tree(),
+            EditorSlot::Plate | EditorSlot::Settings | EditorSlot::Choice => {
+                self.slot = slot;
+            }
+        }
     }
 
     pub fn open_session_tree_for_test(&mut self) {
         self.editor.set_text(String::new());
         self.open_session_tree();
+    }
+
+    pub fn open_slot_for_test(&mut self, slot: EditorSlot) {
+        self.editor.set_text(String::new());
+        self.open_slot(slot);
     }
 
     /// Push bridge UI model into status / footer; scrollback re-renders from model (c476).
@@ -300,14 +330,22 @@ impl UiRoot {
     }
 
     fn render_editor_slot(&mut self, width: usize) -> Vec<String> {
-        if self.tree_open {
-            let mut lines = Vec::new();
-            lines.push(" Session tree".to_string());
-            lines.push(" Up/Down  Enter travel  Esc close  (double Esc)".to_string());
-            lines.extend(self.tree.render(width.max(1)));
-            return lines;
+        match self.slot {
+            EditorSlot::Editor => self.editor.render(width.max(1)),
+            EditorSlot::Tree => {
+                let mut lines = Vec::new();
+                lines.push(" Session tree".to_string());
+                lines.push(" Up/Down  Enter travel  Esc close  (double Esc)".to_string());
+                lines.extend(self.tree.render(width.max(1)));
+                lines
+            }
+            EditorSlot::Plate => vec![
+                " Command Plate".to_string(),
+                " (stub) Esc close".to_string(),
+            ],
+            EditorSlot::Settings => vec![" Settings".to_string(), " (stub) Esc close".to_string()],
+            EditorSlot::Choice => vec![" Choice".to_string(), " (stub) Esc close".to_string()],
         }
-        self.editor.render(width.max(1))
     }
 
     fn render_scrollback_slot(&mut self, width: usize) -> Vec<String> {
@@ -342,26 +380,33 @@ impl Component for UiRoot {
     }
 
     fn handle_input(&mut self, event: InputEvent) {
-        if self.tree_open {
-            let InputEvent::Key(ref key) = event else {
-                return;
-            };
-            if matches_key_event(key, "enter") {
-                let id = self.tree.selected_id().unwrap_or("?").to_string();
-                self.append_system_note(format!("travel → {id}"));
-                self.close_session_tree();
+        match self.slot {
+            EditorSlot::Tree => {
+                let InputEvent::Key(ref key) = event else {
+                    return;
+                };
+                if matches_key_event(key, "enter") {
+                    let id = self.tree.selected_id().unwrap_or("?").to_string();
+                    self.append_system_note(format!("travel → {id}"));
+                    self.close_slot();
+                    return;
+                }
+                if matches_key_event(key, "up")
+                    || matches_key_event(key, "down")
+                    || matches_key_event(key, "pageUp")
+                    || matches_key_event(key, "pageDown")
+                    || matches_key_event(key, "left")
+                    || matches_key_event(key, "right")
+                {
+                    self.tree.handle_input(event);
+                }
                 return;
             }
-            if matches_key_event(key, "up")
-                || matches_key_event(key, "down")
-                || matches_key_event(key, "pageUp")
-                || matches_key_event(key, "pageDown")
-                || matches_key_event(key, "left")
-                || matches_key_event(key, "right")
-            {
-                self.tree.handle_input(event);
+            EditorSlot::Plate | EditorSlot::Settings | EditorSlot::Choice => {
+                // Empty shells: Esc is handled by InputListener; ignore other keys.
+                return;
             }
-            return;
+            EditorSlot::Editor => {}
         }
 
         if let InputEvent::Key(ref key) = event {
@@ -371,6 +416,11 @@ impl Component for UiRoot {
             }
             if matches_key_event(key, "alt+e") {
                 self.fold.tools_expanded = !self.fold.tools_expanded;
+                return;
+            }
+            // MAY: Ctrl+P opens Plate stub (Esc closes).
+            if matches_key_event(key, "ctrl+p") {
+                self.open_slot(EditorSlot::Plate);
                 return;
             }
         }
@@ -457,7 +507,7 @@ pub fn shared_ui_root_rebuild(
     }
 }
 
-/// Register pre-focus Ctrl+C / Esc (session tree). Busy Esc abort is host-side (c480).
+/// Register pre-focus Ctrl+C / Esc (editor-slot overlays). Busy Esc abort is host-side (c480).
 pub fn install_ui_root_key_listeners<T: Terminal>(
     root: &Rc<RefCell<UiRoot>>,
     quit_flag: &Arc<AtomicBool>,
