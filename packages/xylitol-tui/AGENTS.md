@@ -22,8 +22,8 @@
 | 角色 | 路径 | 说明 |
 |---|---|---|
 | **SSOT** | app `DESIGN.md` + `design/*.md` | 色板 / 壳 / 键位 / 组件呈现 MUST |
-| **快速实验场** | `examples/agent_demo.rs`（`just demo-tui`） | **当作产品 TUI 的活 playground**：先在此试形状与交互，再接线 `src/app/tui` |
-| **浏览器静图** | app `design/playground/` | 人类审 token / 整壳；**不**在本包维护第二份 HTML design |
+| **快速实验场** | `examples/agent_demo.rs`（`just demo-tui`） | **动态** playground：先在此试交互，再接线 `src/app/tui` |
+| **浏览器静图** | app `design/playground/` | **静态**固定状态对照；**不**在本包维护第二份 HTML design；不标实现分层 |
 | **运行时便利** | `Palette`（本包） | 对齐 DESIGN 的 Dark/Light 快照；组件仍只收闭包 |
 
 分发本库后：代码零依赖主 crate；文档与 `Palette` **继续引用** monorepo 的 app DESIGN 为活 SSOT（嵌入方也可自备 token 注入闭包）。**不要**在本包另起平行 design 文档树。
