@@ -230,6 +230,28 @@ impl PtySession {
         }
     }
 
+    /// Poll until the raw PTY byte stream contains `needle` (not CapturedScreen).
+    ///
+    /// Prefer this when tall scrollback / differential CSI leaves the cell-grid
+    /// oracle stale (no scroll-region support) while the app did paint correctly.
+    pub fn wait_for_raw(&mut self, needle: &str, timeout: Duration) -> std::io::Result<()> {
+        let needle_b = needle.as_bytes();
+        let deadline = Instant::now() + timeout;
+        loop {
+            self.drain(Duration::from_millis(50));
+            if self.raw_contains(needle_b) {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                let screen = self.screen(100, 30);
+                return Err(std::io::Error::other(format!(
+                    "timeout waiting raw for {needle:?}; screen:\n{}",
+                    screen.text()
+                )));
+            }
+        }
+    }
+
     /// True if the raw byte stream received so far contains `needle` (a byte
     /// substring, e.g. a CSI escape sequence emitted at startup). Used to
     /// assert protocol-negotiation sequences were sent (c410 tp01).
@@ -586,15 +608,59 @@ fn pty_product_fake_session_tree_label_path() {
     session.send_keys("\x1b").expect("Esc 1");
     session.drain(Duration::from_millis(80));
     session.send_keys("\x1b").expect("Esc 2");
-    let screen = session
-        .wait_for("Type to search", Duration::from_secs(15), COLS, ROWS)
+    session
+        .wait_for_raw("Type to search", Duration::from_secs(15))
         .expect("tree open");
-    let text = screen.text();
     assert!(
-        text.contains("[bookmark]"),
-        "debug session-tree-labeled must show annotation; screen:\n{text}"
+        session.raw_contains(b"[bookmark]"),
+        "debug session-tree-labeled must show annotation in PTY stream"
     );
     // Shift+L type+save: harness h23 (PTY+Kitty printable is flaky).
+
+    session.send_keys("\x1b").expect("Esc close tree");
+    session.drain(Duration::from_millis(200));
+    session.send_keys("\x15/exit\r").expect("/exit");
+    let code = session.wait_exit(Duration::from_secs(30)).expect("exit");
+    assert_eq!(code, 0);
+}
+
+/// Product Fake — `/debug session-tree-branched` + double Esc shows sibling branches.
+#[test]
+#[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_product_fake_session_tree_branched() {
+    const COLS: usize = 100;
+    const ROWS: usize = 30;
+    let (mut session, _tmp) = spawn_product_fake_ready(COLS as u16, ROWS as u16);
+
+    session
+        .send_keys("\x15/debug session-tree-branched")
+        .expect("type debug scene");
+    session.drain(Duration::from_millis(200));
+    session.send_keys("\x1b").expect("dismiss completion");
+    session.drain(Duration::from_millis(100));
+    session.send_keys("\r").expect("submit debug scene");
+    session
+        .wait_for("debug scene", Duration::from_secs(20), COLS, ROWS)
+        .expect("debug scene note");
+    session
+        .wait_for("alt leaf", Duration::from_secs(15), COLS, ROWS)
+        .expect("fixture alt leaf in scrollback");
+
+    // Same open path as labeled (c705): empty editor + double Esc.
+    // Assert via raw bytes: tall fixture scrollback desyncs CapturedScreen
+    // (no scroll-region), so wait_for("Type to search") on the cell grid flakes.
+    session.send_keys("\x15").expect("clear");
+    session.drain(Duration::from_millis(100));
+    session.send_keys("\x1b").expect("Esc 1");
+    session.drain(Duration::from_millis(80));
+    session.send_keys("\x1b").expect("Esc 2");
+    session
+        .wait_for_raw("Type to search", Duration::from_secs(15))
+        .expect("tree Search row in PTY stream");
+    assert!(
+        session.raw_contains(b"main branch") && session.raw_contains(b"alt branch"),
+        "branched fixture must show sibling user nodes in tree (raw PTY)"
+    );
 
     session.send_keys("\x1b").expect("Esc close tree");
     session.drain(Duration::from_millis(200));

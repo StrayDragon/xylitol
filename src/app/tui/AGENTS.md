@@ -83,6 +83,6 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 | **Agent 必跑** | 相关 `harness.rs` / lib 测；`just fmt` + 相关 clippy；change `--strict` |
 | **Agent 尽量跑** | 触及真终端协议时：`just test-tui-e2e-pty`（缺 tmux 用 `-pty` 并写明）；会话树满路径见 **c705**（`pty_product_fake_session_tree_*`） |
 | **人类确认** | 最短路径手测观感（是否像 pi / 是否可读）；**不**替代 harness。修 bug 仍交 Agent 自修再交 |
-| **人类路径示例** | debug 构建：`/debug ` Tab 选场景（`session-tree-multiturn` / `session-tree-labeled` / `session-tree-branched`）→ 双 Esc；无参 `/debug` 列场景+描述。分叉一眼验用 **branched**。Fake 回复仍需 catalog 含 `fake`。夹具 SSOT：`src/app/debug_fixtures/`（整目录可删）。对照 `just demo-tui` 仅作形态参考 |
+| **人类路径示例** | debug 构建：`/debug ` Tab 选场景（`session-tree-multiturn` / `session-tree-labeled` / `session-tree-branched`）→ 双 Esc；无参 `/debug` 列场景+描述。分叉一眼验用 **branched**（PTY：`pty_product_fake_session_tree_branched`）。Fake 回复仍需 catalog 含 `fake`。夹具 SSOT：`src/app/debug_fixtures/`（整目录可删）。对照 `just demo-tui` 仅作形态参考 |
 
 交付含 UI 的 change 时，proposal/design **MUST** 写清上表命令与期望画面（参考 c685 `design.md`「验证」）。
