@@ -252,7 +252,7 @@ impl AppConfig {
         })
     }
 
-    /// Resolve a named agent profile to a [`ResolvedProfile`].
+    /// Resolve a named agent profile to a [`crate::domain::model::ResolvedProfile`].
     pub fn resolve_profile(
         &self,
         name: &str,

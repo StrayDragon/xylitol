@@ -23,7 +23,7 @@ pub struct SettingsManager {
 impl SettingsManager {
     // ── Construction ────────────────────────────────────────────
 
-    /// Create from file storage (global ~/.xylitol/settings.json + project <cwd>/.xylitol/settings.json).
+    /// Create from file storage (global ~/.xylitol/settings.json + project `<cwd>`/.xylitol/settings.json).
     pub fn from_files(
         cwd: &std::path::Path,
         agent_dir: &std::path::Path,

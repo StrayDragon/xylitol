@@ -28,9 +28,34 @@ impl RecordingSink {
     }
 }
 
+impl Default for RecordingSink {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl XyEventSink for RecordingSink {
     async fn emit(&self, event: &XyEvent) {
         self.events.lock().unwrap().push(event.clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn records_and_drains_lifecycle_events() {
+        let sink = RecordingSink::new();
+        sink.emit(&XyEvent::TextDelta("hi".into())).await;
+        sink.emit(&XyEvent::AgentEnd {
+            messages: Vec::new(),
+        })
+        .await;
+        let drained = sink.drain();
+        assert_eq!(drained.len(), 2);
+        assert!(matches!(drained[0], XyEvent::TextDelta(ref t) if t == "hi"));
+        assert!(sink.drain().is_empty());
     }
 }

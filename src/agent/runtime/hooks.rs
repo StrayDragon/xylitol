@@ -73,7 +73,8 @@ impl AgentHooks {
 /// Optional external message-source adapter (steering / follow-up).
 ///
 /// **Not wired into the ReAct loop.** The authoritative path is
-/// [`crate::agent::session::PendingMessageQueue`] on the session [`AgentCapabilities`]
+/// [`crate::agent::session::PendingMessageQueue`] on the session
+/// [`crate::agent::session::AgentCapabilities`]
 /// (`steer` / `follow_up` / Driver APIs). Keep this type only if an extension
 /// needs a pull-based message source; do not dual-wire both paths.
 #[derive(Default)]

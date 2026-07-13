@@ -1,7 +1,7 @@
 //! Built-in tool implementations and the default registry factory.
 //!
 //! Each tool implements [`crate::runtime_protocol::XyTool`]. The composition root
-//! (and tests) build a registry via [`default_registry`]; the agent holds the
+//! (and tests) build a registry via [`default_tools`]; the agent holds the
 //! resulting registry as orchestration state without naming these types.
 
 pub mod accumulator;

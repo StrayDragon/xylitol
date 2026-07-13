@@ -1,7 +1,7 @@
 //! MCP (Model Context Protocol) client integration.
 //!
 //! Provides [`McpClientManager`] to connect to MCP servers via stdio or SSE
-//! transport, and [`McpToolAdapter`] to expose MCP tools as [`XyTool`].
+//! transport, and [`McpToolAdapter`] to expose MCP tools as [`crate::runtime_protocol::XyTool`].
 //!
 //! This module is independent of the skills system and can be used standalone.
 

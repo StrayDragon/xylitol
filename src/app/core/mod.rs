@@ -6,10 +6,10 @@
 //! `gui.rs`) and are the only `app/` modules allowed to import `agent` and/or
 //! `infra`.
 //!
-//! - [`bootstrap`] — shared assembly path from CLI args to a constructed
+//! - `bootstrap` — shared assembly path from CLI args to a constructed
 //!   agent (config → registry → trust → resources → build_agent). print /
-//!   tui / server call `bootstrap`; ingredient-only paths (e.g. --list-models) consume `resolve_assembly` (they
-//!   need ingredients without building).
+//!   tui / server call `bootstrap`; ingredient-only paths (e.g. --list-models) call
+//!   `resolve_assembly` (they need ingredients without building).
 //! - [`composition`] — the composition root: the single module permitted
 //!   to import both `agent` and `infra`, centralizing Agent wiring so CLI/RPC/
 //!   Server/TUI never duplicate it.

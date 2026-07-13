@@ -1,6 +1,6 @@
 //! REST API — HTTP control surface for the server.
 //!
-//! Routes under `/api/v1`. All responses use the [`protocol::Envelope`] format.
+//! Routes under `/api/v1`. All responses use the [`crate::protocol::Envelope`] format.
 //! The actual agent integration is wired in `runtime.rs`; this module defines
 //! the route handlers and their shape.
 
