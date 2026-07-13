@@ -691,7 +691,7 @@ fn markdown_grammar_stub() -> &'static str {
 
 ### 引用
 
-> 引用第一行，只用 dim/italic，没有竖线装饰。
+> 引用第一行：muted + italic，左侧 `│ ` 竖线同色。
 >
 > 引用第二段仍安静。
 >

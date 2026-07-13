@@ -118,7 +118,7 @@ impl Palette {
             code_block: Box::new(|s| s.to_string()),
             code_block_border: Box::new(|_| String::new()),
             quote: Box::new(move |s| fg_rgb(muted, &italic(s))),
-            quote_border: Box::new(|_| String::new()),
+            quote_border: Box::new(move |s| fg_rgb(muted, s)),
             hr: Box::new(move |s| fg_rgb(muted, s)),
             list_bullet: Box::new(|s| s.to_string()),
             bold: Box::new(move |s| bold(&fg_rgb(accent, s))),

@@ -6,7 +6,8 @@
 //!
 //! Copy / token policy (c530+): hierarchy via SGR (no `#` prefixes); links as
 //! `text (url)`; no code fences or box-drawing tables; bold/italic = SGR only
-//! (no visible `**`/`*`); `` ` `` / `~~` retained. UX SSOT:
+//! (no visible `**`/`*`); `` ` `` / `~~` retained; blockquotes use a muted
+//! `│ ` gutter (same token as quote body). UX SSOT:
 //! `src/app/tui/design/markdown.md`.
 //!
 //! The `MarkdownTheme` is deliberately a struct of boxed closures so consumers
@@ -204,8 +205,13 @@ impl Component for Markdown {
 
                 Event::Start(Tag::BlockQuote(_)) => {
                     idx += 1;
-                    let quote_text_fn = |s: &str| (self.theme.quote)(&(self.theme.italic)(s));
+                    // quote theme already applies muted + italic — do not nest
+                    // theme.italic (warning fg) or the body turns prominent.
+                    let quote_text_fn = |s: &str| (self.theme.quote)(s);
                     let quote_prefix = get_style_prefix(&quote_text_fn);
+                    let bar = (self.theme.quote_border)("│ ");
+                    let bar_w = visible_width(&bar);
+                    let body_width = content_width.saturating_sub(bar_w).max(1);
 
                     let mut quote_body = Vec::new();
                     while !at_list_end(&events, idx, "BlockQuote") {
@@ -213,7 +219,7 @@ impl Component for Markdown {
                             self,
                             &events,
                             &mut idx,
-                            content_width.max(1),
+                            body_width,
                             &quote_text_fn,
                             &quote_prefix,
                         ));
@@ -226,9 +232,8 @@ impl Component for Markdown {
                     }
 
                     for ql in quote_body {
-                        for wl in wrap_text_with_ansi(&ql, content_width.max(1)) {
-                            // Dim/italic only — no │ / box decoration (c530).
-                            rendered.push(MdLine::prewrapped(wl));
+                        for wl in wrap_text_with_ansi(&ql, body_width) {
+                            rendered.push(MdLine::prewrapped(format!("{bar}{wl}")));
                         }
                     }
                     if !next_is_space(&events, idx) {
@@ -1219,11 +1224,37 @@ mod tests {
     }
 
     #[test]
-    fn quote_has_no_bar() {
+    fn quote_uses_muted_bar_prefix() {
         let mut md = Markdown::new("> hello quote".into(), 0, 0, identity_theme(), None);
         let text = visible_join(&mut md, 40);
-        assert!(text.contains("hello quote"));
-        assert!(!text.contains('│'), "quote must not use box bar:\n{text}");
+        assert!(
+            text.contains("│ hello quote"),
+            "quote must use '│ ' gutter:\n{text}"
+        );
+    }
+
+    #[test]
+    fn quote_wrap_keeps_bar_on_continuation() {
+        let mut md = Markdown::new(
+            "> a very long quote line that should wrap under the gutter".into(),
+            0,
+            0,
+            identity_theme(),
+            None,
+        );
+        let lines: Vec<String> = md
+            .render(24)
+            .iter()
+            .map(|l| strip_ansi_for_empty(l))
+            .filter(|l| !l.trim().is_empty())
+            .collect();
+        assert!(lines.len() >= 2, "expected wrap:\n{lines:?}");
+        for line in &lines {
+            assert!(
+                line.starts_with("│ "),
+                "each wrapped quote line needs '│ ':\n{lines:?}"
+            );
+        }
     }
 
     #[test]
