@@ -1034,6 +1034,7 @@ mod driver_session_tree_tests {
     use super::*;
     use crate::agent::AgentBuilder;
     use crate::agent::tools::ToolSet;
+    use crate::domain::model::XyModelConfig;
     use crate::domain::session_types::{EntryBase, MessageEntry, SessionEntry, SessionTreeKind};
     use crate::infra::bash_exec::InfraBashExecutor;
     use crate::infra::config::value::InfraSecretResolver;
@@ -1041,7 +1042,12 @@ mod driver_session_tree_tests {
     use crate::infra::export::StdExportIo;
     use crate::infra::permission;
     use crate::infra::session::SessionManager;
-    use crate::runtime_protocol::{XyBashExecutor, XyEventSink, XyExportIo, XySessionStore};
+    use crate::runtime_protocol::{
+        XyBashExecutor, XyEventSink, XyExportIo, XyModel, XySessionStore,
+    };
+
+    type ModelBuilderFn =
+        Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync>;
 
     fn msg_entry(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionEntry {
         SessionEntry::Message(MessageEntry {
@@ -1255,8 +1261,7 @@ mod driver_session_tree_tests {
             max_tokens: 0,
             thinking_levels: Vec::new(),
         });
-        let builder: Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync> =
-            Arc::new(|_| Ok(Arc::new(TextMockModel) as Arc<dyn XyModel>));
+        let builder: ModelBuilderFn = Arc::new(|_| Ok(Arc::new(TextMockModel) as Arc<dyn XyModel>));
         let mut agent = AgentBuilder::new(
             reg,
             builder,

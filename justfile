@@ -13,10 +13,14 @@ fmt:
 
 # Run cargo clippy with warnings denied (lib + bins, all features so the tui
 # and server code paths are linted, not just default `cli`). Tests/integration
-# crates are not linted by this gate (run `cargo clippy --all-targets` to
-# inspect them).
+# crates are not linted by this gate; use `lint-all` for `--all-targets`.
 lint:
     cargo clippy --all-features -- -D warnings
+
+# Clippy on all targets (lib, bins, tests, benches, examples) — local / pre-PR.
+lint-all:
+    cargo clippy --all-features --all-targets -- -D warnings
+    cargo clippy -p xylitol-tui --all-targets -- -D warnings
 
 # Run cargo test (all features so tui/server tests run, not just default `cli`).
 test:
@@ -138,11 +142,11 @@ fmt-check:
 
 # Build API docs (cargo doc) and open in browser.
 doc:
-    cargo doc --no-deps --all-features --open
+    RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --all-features --open
 
-# Check API docs build without errors.
+# Check API docs build without warnings.
 doc-check:
-    cargo doc --no-deps --all-features
+    RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --all-features
 
 # Run doc tests (verify /// examples compile).
 doc-test:

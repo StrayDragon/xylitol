@@ -909,14 +909,14 @@ mod tests {
         let mut mgr = SettingsManager::from_storage(Box::new(storage), true);
         // Initially trusted: effective default_model comes from project merge.
         assert!(mgr.is_project_trusted());
-        assert_eq!(mgr.get_default_model(), Some("project-model".into()));
+        assert_eq!(mgr.get_default_model(), Some("project-model"));
 
         // Flip to untrusted: project settings cleared, global wins.
         mgr.set_project_trusted(false);
         assert!(!mgr.is_project_trusted());
         assert_eq!(
             mgr.get_default_model(),
-            Some("global-model".into()),
+            Some("global-model"),
             "untrusted project MUST NOT contribute to effective settings"
         );
         assert_eq!(mgr.get_project_settings(), &Settings::default());

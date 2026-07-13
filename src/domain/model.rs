@@ -222,7 +222,7 @@ mod tests {
         assert_eq!(profile.name, "default");
         assert_eq!(profile.max_iterations, 50);
         assert_eq!(
-            profile.allowed_tools.as_ref().map(|v| v.as_slice()),
+            profile.allowed_tools.as_deref(),
             Some(&["read".to_string(), "write".to_string()][..])
         );
     }

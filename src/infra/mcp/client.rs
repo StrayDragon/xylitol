@@ -188,8 +188,10 @@ mod tests {
     fn test_connect_with_empty_servers_list() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let manager = McpClientManager::new();
-        let mut config = AppConfig::default();
-        config.mcp_servers = Some(vec![]);
+        let config = AppConfig {
+            mcp_servers: Some(vec![]),
+            ..Default::default()
+        };
         rt.block_on(manager.connect(&config)).unwrap();
         let services = rt.block_on(async { manager.services.lock().await });
         assert!(services.is_empty());
