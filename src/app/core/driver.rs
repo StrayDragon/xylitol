@@ -436,6 +436,9 @@ impl Driver for InProcessDriver {
 
     async fn session_tree(&self, kind: SessionTreeKind) -> Result<Vec<SessionTreeNode>, String> {
         let sid = self.agent.inner().session_id().ok_or("no active session")?;
+        // Bootstrap may assign a fresh id before any persist; wiped HOME may leave
+        // an orphan id. Ensure an empty session so double-Esc opens an empty tree.
+        self.agent.inner().ensure_session(sid, None).await?;
         match kind {
             SessionTreeKind::MessageHistory => self.store.message_history_tree(sid).await,
             SessionTreeKind::FileBrowser => Err(session_tree_kind_unimplemented(kind)),
@@ -1115,6 +1118,39 @@ mod driver_session_tree_tests {
             .expect("create session");
         agent.inner_mut().set_session(sid);
         InProcessDriver::new(agent, store)
+    }
+
+    #[tokio::test]
+    async fn in_process_session_tree_ensures_missing_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let store_trait: Arc<dyn XySessionStore> = store.clone();
+        let mut agent = AgentBuilder::new(
+            crate::agent::model::registry::ModelRegistry::new(Arc::new(InfraSecretResolver::new())),
+            Arc::new(crate::infra::provider::factory::build_provider),
+            store_trait.clone(),
+            Arc::new(EventBus::new()) as Arc<dyn XyEventSink>,
+            permission::allow_all_permission(),
+        )
+        .cwd(".")
+        .tools(ToolSet::from_iter(crate::infra::tools::default_tools()))
+        .bash(Arc::new(InfraBashExecutor::new()) as Arc<dyn XyBashExecutor>)
+        .export_io(Arc::new(StdExportIo::new()) as Arc<dyn XyExportIo>)
+        .build()
+        .expect("build agent");
+        // Orphan id: set on agent but never created on disk (wipe / pre-persist).
+        let orphan = uuid::Uuid::new_v4().to_string();
+        agent.inner_mut().set_session(orphan.clone());
+        let driver = InProcessDriver::new(agent, store);
+        let tree = driver
+            .session_tree(SessionTreeKind::MessageHistory)
+            .await
+            .expect("empty tree after ensure");
+        assert!(tree.is_empty(), "expected empty tree, got {tree:?}");
+        assert!(
+            store_trait.exists(&orphan).await,
+            "ensure_session must create orphan session"
+        );
     }
 
     #[tokio::test]
