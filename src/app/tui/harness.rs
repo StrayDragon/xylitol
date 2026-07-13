@@ -44,6 +44,7 @@ pub struct ScriptedDriver {
     steer_queued: usize,
     follow_up_queued: usize,
     model: ModelInfo,
+    available_models: Vec<ModelInfo>,
     message_history_tree: Vec<SessionTreeNode>,
     session_messages: Vec<SessionEntry>,
     travel_overrides: HashMap<String, SessionTreeTravel>,
@@ -89,6 +90,26 @@ impl ScriptedDriver {
                 thinking: false,
                 context_window: 8_000,
             },
+            available_models: vec![
+                ModelInfo {
+                    id: "fake".into(),
+                    display_name: "Fake".into(),
+                    thinking: false,
+                    context_window: 8_000,
+                },
+                ModelInfo {
+                    id: "ornith-fast".into(),
+                    display_name: "Ornith Fast".into(),
+                    thinking: false,
+                    context_window: 8_000,
+                },
+                ModelInfo {
+                    id: "ornith-think".into(),
+                    display_name: "Ornith Think".into(),
+                    thinking: true,
+                    context_window: 32_000,
+                },
+            ],
             message_history_tree: Vec::new(),
             session_messages: Vec::new(),
             travel_overrides: HashMap::new(),
@@ -115,6 +136,14 @@ impl ScriptedDriver {
 
     pub fn travel_calls(&self) -> Vec<String> {
         self.travel_calls.lock().expect("travel_calls").clone()
+    }
+
+    pub fn set_available_models(&mut self, models: Vec<ModelInfo>) {
+        self.available_models = models;
+    }
+
+    pub fn set_current_model(&mut self, model: ModelInfo) {
+        self.model = model;
     }
 
     pub fn push_script(&mut self, events: Vec<XyEvent>) {
@@ -173,7 +202,11 @@ impl Driver for ScriptedDriver {
     }
 
     fn available_models(&self) -> Vec<ModelInfo> {
-        vec![self.model.clone()]
+        if self.available_models.is_empty() {
+            vec![self.model.clone()]
+        } else {
+            self.available_models.clone()
+        }
     }
 
     fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, String> {
@@ -735,7 +768,7 @@ mod slice_tests {
     }
 
     #[tokio::test]
-    async fn h9_model_slash_cycles() {
+    async fn h9_model_slash_opens_picker() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
@@ -746,13 +779,114 @@ mod slice_tests {
             .await
             .unwrap();
         assert!(
-            session
-                .ui_model()
-                .entries
+            root.borrow().models_open(),
+            "bare /model must open models slot"
+        );
+        let frame = root.borrow_mut().render(80);
+        assert!(
+            frame.iter().any(|l| l.contains("Ornith Think")),
+            "expected models in frame: {frame:?}"
+        );
+    }
+
+    fn char_event(ch: char) -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Char(ch),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    #[tokio::test]
+    async fn c630_model_filter_select_updates_footer() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_current_model(ModelInfo {
+            id: "fake".into(),
+            display_name: "Fake".into(),
+            thinking: false,
+            context_window: 8_000,
+        });
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("/model");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().models_open());
+        for ch in "think".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(!root.borrow().models_open());
+        let frame = root.borrow_mut().render(80);
+        assert!(
+            frame
                 .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text.contains("model"))),
-            "expected model note: {:?}",
-            session.ui_model().entries
+                .any(|l| l.contains("ornith-think") || l.contains("Ornith Think")),
+            "footer should show selected model: {frame:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c630_model_esc_keeps_model() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_current_model(ModelInfo {
+            id: "fake".into(),
+            display_name: "Fake".into(),
+            thinking: false,
+            context_window: 8_000,
+        });
+        let mut stream = None;
+        root.borrow_mut().set_layout_meta(".", "Fake");
+        root.borrow_mut().set_editor_text("/model");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().models_open());
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        assert!(!root.borrow().models_open());
+        let frame = root.borrow_mut().render(80);
+        assert!(
+            frame.iter().any(|l| l.contains("Fake")),
+            "Esc must not change footer model: {frame:?}"
+        );
+        assert_eq!(driver.model.id, "fake");
+    }
+
+    #[tokio::test]
+    async fn c630_model_id_direct_set() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("/model ornith-think");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(!root.borrow().models_open());
+        assert_eq!(driver.model.id, "ornith-think");
+    }
+
+    #[tokio::test]
+    async fn c630_bare_model_not_cycle() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        root.borrow_mut().set_editor_text("/model");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        assert_eq!(
+            session.take_slash(),
+            Some(crate::app::tui::commands::PendingSlash::OpenModels)
         );
     }
 

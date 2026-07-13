@@ -11,10 +11,12 @@ use std::time::{Duration, Instant};
 
 use xylitol_tui::components::editor::{Editor, EditorOptions};
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
+use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
     Component, Focusable, InputEvent, InputListenerResult, SystemClock, TUI, Terminal, TreeNode,
-    TreeSelector, TreeSelectorOptions, fg_rgb, matches_key_event, truncate_to_width,
+    TreeSelector, TreeSelectorOptions, fg_rgb, fuzzy_filter, matches_key_event,
+    printable_from_key_event, truncate_to_width,
 };
 
 use super::slots::EditorSlot;
@@ -35,6 +37,19 @@ fn empty_tree_selector(theme: LayoutTheme) -> TreeSelector {
             include_node: None,
             active_id: None,
             status_suffix: None,
+        },
+    )
+}
+
+fn empty_models_list(theme: LayoutTheme) -> SelectList {
+    SelectList::new(
+        Vec::new(),
+        8,
+        theme.select_list_theme(),
+        SelectListLayoutOptions {
+            min_primary_column_width: Some(24),
+            max_primary_column_width: Some(48),
+            truncate_primary: None,
         },
     )
 }
@@ -66,6 +81,11 @@ pub struct UiRoot {
     pending_tree_open: bool,
     /// Tree Enter → host calls `travel_session_tree` (c615).
     pending_tree_travel: Option<String>,
+    /// Models Enter → host calls `SetModel` (c630).
+    pending_model_select: Option<String>,
+    models_list: SelectList,
+    models_items: Vec<SelectItem>,
+    models_filter: String,
 }
 
 impl UiRoot {
@@ -108,6 +128,10 @@ impl UiRoot {
             external_editor_invocations: 0,
             pending_tree_open: false,
             pending_tree_travel: None,
+            pending_model_select: None,
+            models_list: empty_models_list(theme),
+            models_items: Vec::new(),
+            models_filter: String::new(),
         }
     }
 
@@ -197,6 +221,42 @@ impl UiRoot {
         self.pending_tree_travel.take()
     }
 
+    pub fn take_pending_model_select(&mut self) -> Option<String> {
+        self.pending_model_select.take()
+    }
+
+    pub fn models_open(&self) -> bool {
+        self.slot == EditorSlot::Models
+    }
+
+    /// Mount fuzzy model picker in the editor slot (c630).
+    pub fn mount_models_picker(&mut self, items: Vec<SelectItem>) {
+        self.models_filter.clear();
+        self.models_items = items;
+        self.models_list = empty_models_list(self.theme);
+        self.apply_models_filter();
+        self.slot = EditorSlot::Models;
+    }
+
+    fn apply_models_filter(&mut self) {
+        let filter = self.models_filter.as_str();
+        self.models_list.filtered_items = if filter.is_empty() {
+            self.models_items.clone()
+        } else {
+            fuzzy_filter(&self.models_items, filter, |item| item.value.as_str())
+        };
+        self.models_list.selected_index = 0;
+    }
+
+    fn models_filter_line(&self) -> String {
+        if self.models_filter.is_empty() {
+            self.theme.paint_muted(" models")
+        } else {
+            self.theme
+                .paint_muted(&format!(" filter: {}", self.models_filter))
+        }
+    }
+
     /// Mount MessageHistory rows fetched via Driver and open the Tree slot.
     pub fn mount_session_tree(&mut self, roots: Vec<TreeNode>, active_id: Option<&str>) {
         self.tree = TreeSelector::new(
@@ -253,6 +313,9 @@ impl UiRoot {
 
     pub fn close_slot(&mut self) {
         self.slot = EditorSlot::Editor;
+        self.models_filter.clear();
+        self.models_items.clear();
+        self.models_list = empty_models_list(self.theme);
     }
 
     pub fn close_session_tree(&mut self) {
@@ -268,6 +331,9 @@ impl UiRoot {
             EditorSlot::Tree => self.pending_tree_open = true,
             EditorSlot::Plate | EditorSlot::Settings | EditorSlot::Choice => {
                 self.slot = slot;
+            }
+            EditorSlot::Models => {
+                // Opened via `mount_models_picker` after `GetAvailableModels`.
             }
         }
     }
@@ -353,6 +419,12 @@ impl UiRoot {
             ],
             EditorSlot::Settings => vec![" Settings".to_string(), " (stub) Esc close".to_string()],
             EditorSlot::Choice => vec![" Choice".to_string(), " (stub) Esc close".to_string()],
+            EditorSlot::Models => {
+                let mut lines = Vec::new();
+                lines.push(self.models_filter_line());
+                lines.extend(self.models_list.render(width.max(1)));
+                lines
+            }
         }
     }
 
@@ -413,6 +485,35 @@ impl Component for UiRoot {
                 // Empty shells: Esc is handled by InputListener; ignore other keys.
                 return;
             }
+            EditorSlot::Models => {
+                let InputEvent::Key(ref key) = event else {
+                    return;
+                };
+                if matches_key_event(key, "enter") {
+                    if let Some(item) = self.models_list.get_selected_item() {
+                        self.pending_model_select = Some(item.value.clone());
+                    }
+                    return;
+                }
+                if matches_key_event(key, "up")
+                    || matches_key_event(key, "down")
+                    || matches_key_event(key, "pageUp")
+                    || matches_key_event(key, "pageDown")
+                {
+                    self.models_list.handle_input(event);
+                    return;
+                }
+                if matches_key_event(key, "backspace") {
+                    self.models_filter.pop();
+                    self.apply_models_filter();
+                    return;
+                }
+                if let Some(text) = printable_from_key_event(key) {
+                    self.models_filter.push_str(&text);
+                    self.apply_models_filter();
+                }
+                return;
+            }
             EditorSlot::Editor => {}
         }
 
@@ -445,6 +546,7 @@ impl Component for UiRoot {
         self.editor.invalidate();
         self.footer.invalidate();
         self.tree.invalidate();
+        self.models_list.invalidate();
     }
 
     fn tick(&mut self) -> bool {
