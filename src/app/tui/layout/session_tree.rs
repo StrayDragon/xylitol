@@ -62,7 +62,6 @@ fn preview_label_line(text: &str) -> String {
 mod tests {
     use super::*;
     use crate::domain::session_types::{EntryBase, MessageEntry};
-    use serde_json::json;
 
     fn user_node(id: &str, text: &str) -> SessionTreeNode {
         SessionTreeNode {
@@ -73,11 +72,7 @@ mod tests {
                     parent_id: None,
                     timestamp: "t".into(),
                 },
-                message: json!({
-                    "role": "user",
-                    "content": [text],
-                    "timestamp": 0u64,
-                }),
+                message: crate::domain::session_types::fixture_message_json("user", text),
             }),
             children: Vec::new(),
             label: None,

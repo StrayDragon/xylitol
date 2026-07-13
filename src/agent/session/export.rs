@@ -236,10 +236,7 @@ mod tests {
     fn message(role: &str, text: &str) -> SessionEntry {
         SessionEntry::Message(MessageEntry {
             base: base(),
-            message: serde_json::json!({
-                "role": role,
-                "parts": [{"type": "text", "text": text}]
-            }),
+            message: crate::domain::session_types::fixture_message_json(role, text),
         })
     }
 

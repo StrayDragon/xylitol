@@ -173,7 +173,8 @@ mod tests {
             },
             message: serde_json::json!({
                 "role": role,
-                "parts": [{"type": "text", "text": content}]
+                "content": [content],
+                "timestamp": 0u64,
             }),
         })
     }
