@@ -1,7 +1,7 @@
 //! XyEvent → UI-only model seam (c465 / c494).
 //!
 //! Render / `UiRoot` MUST consume [`UiModel`] only — never match [`XyEvent`].
-//! Event-family logic lives in [`handlers`]; [`apply_xy_event`] remains the sole entry.
+//! Event-family logic lives in per-family handler modules; [`apply_xy_event`] remains the sole entry.
 
 mod handlers;
 pub(crate) mod session_tree;
@@ -239,7 +239,7 @@ impl UiModel {
 /// Single seam: translate one [`XyEvent`] into UI-only mutations.
 ///
 /// Unhandled / metadata variants are logged and ignored — never panic.
-/// Family handlers live under [`handlers`]; this remains the only public entry.
+/// Family handlers live in per-family modules; this remains the only public entry.
 pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
     if handlers::apply_agent_family(model, event)
         || handlers::apply_stream_family(model, event)

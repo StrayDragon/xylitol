@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 pub enum SourceScope {
     /// User-level resource (e.g., ~/.xylitol/skills/).
     User,
-    /// Project-level resource (e.g., <cwd>/.xylitol/skills/).
+    /// Project-level resource (e.g., `<cwd>`/.xylitol/skills/).
     Project,
     /// Temporary or synthetic resource (not persisted).
     Temporary,

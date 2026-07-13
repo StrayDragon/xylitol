@@ -6,7 +6,7 @@
 //! ## Architecture
 //! - **Builtins** are defined as simple `(&str, &str)` tuples (name, description).
 //! - **Non-builtin commands** (from skills, prompts, extensions) carry a
-//!   [`SlashCommandSource`] and optional `source_path` for provenance.
+//!   source kind (skill vs prompt) and optional `source_path` for provenance.
 //! - Agent owns the dispatch logic (`dispatch_slash_command` in session.rs).
 //!
 //! NOTE: the builtin table + get_all_commands are currently consumed only via

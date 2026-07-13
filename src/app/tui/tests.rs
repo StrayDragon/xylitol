@@ -471,11 +471,21 @@ async fn harness_enter_travel_closes_tree() {
 #[tokio::test]
 async fn harness_enter_user_prefills_editor() {
     use super::harness::{ScriptedDriver, harness_sample_session_messages, pump_host_driver};
+    use crate::domain::session_types::{SessionTreeKind, SessionTreeTravel};
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
     let mut driver = ScriptedDriver::new();
     driver.set_session_messages(harness_sample_session_messages());
+    driver.set_travel_override(
+        "u1",
+        SessionTreeTravel {
+            kind: SessionTreeKind::MessageHistory,
+            selected_id: "u1".into(),
+            leaf_id: None,
+            editor_text: Some("hello".into()),
+        },
+    );
     let mut stream = None;
     root.borrow_mut()
         .open_session_tree_at_for_test(super::layout::sample_tree_nodes_for_test(), "u1");

@@ -1,7 +1,7 @@
 //! Provider adapter layer — isolates vendor-specific LLM API shapes.
 //!
 //! Each adapter owns one vendor API dialect (OpenAI Responses, Anthropic Messages,
-//! OpenAI Chat Completions, etc.) and converts it into the internal [`XyChunk`]
+//! OpenAI Chat Completions, etc.) and converts it into the internal [`crate::domain::types::XyChunk`]
 //! stream consumed by the agent loop.
 
 use std::sync::Arc;
@@ -67,7 +67,7 @@ impl std::fmt::Display for AdapterKind {
     }
 }
 
-/// A vendor-specific adapter that converts a request into a stream of [`XyChunk`].
+/// A vendor-specific adapter that converts a request into a stream of [`crate::domain::types::XyChunk`].
 #[async_trait]
 pub trait LlmAdapter: Send + Sync {
     /// Adapter name for diagnostics.

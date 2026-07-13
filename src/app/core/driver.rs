@@ -4,9 +4,9 @@
 //! [`Driver`]; they import agent symbols only from `agent` (mod-level),
 //! never reaching into `agent::session`/`agent::runtime` internals or `infra`.
 //!
-//! - [`InProcessDriver`]: wraps the local agent module (composition root wires
+//! - [`crate::app::core::driver::InProcessDriver`]: wraps the local agent module (composition root wires
 //!   ports and agent together).
-//! - [`RemoteDriver`]: speaks the protocol over REST/WS to a remote server.
+//! - Remote HTTP driver: speaks the protocol over REST/WS to a remote server.
 //!
 //! The trait carries not just `run`/`abort` but the full set of command
 //! execution semantics (model selection, compaction, export, session ops) so
@@ -98,8 +98,8 @@ impl From<&XyModelMeta> for ModelInfo {
 
 /// Driver — interact with the core without knowing its internals.
 ///
-/// [`InProcessDriver`] keeps a cached `AgentRuntime` and is the local
-/// (single-process) implementation. [`RemoteDriver`] speaks the protocol over
+/// [`crate::app::core::driver::InProcessDriver`] keeps a cached `AgentRuntime` and is the local
+/// (single-process) implementation. The remote HTTP driver speaks the protocol over
 /// WS/REST to a xylitol server.
 #[async_trait]
 pub trait Driver: Send {

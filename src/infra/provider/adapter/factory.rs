@@ -1,4 +1,4 @@
-//! Adapter factory — constructs an [`LlmAdapter`] from a model config.
+//! Adapter factory — constructs an [`crate::infra::provider::adapter::LlmAdapter`] from a model config.
 
 use std::sync::Arc;
 

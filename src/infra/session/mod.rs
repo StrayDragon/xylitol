@@ -2,7 +2,7 @@
 //!
 //! Key behaviors:
 //! - JSONL format (one JSON object per line, append-only)
-//! - Stored in ~/.xylitol/sessions/<id>.jsonl
+//! - Stored in ~/.xylitol/sessions/`<id>`.jsonl
 //! - Entry types: message, compaction, branch_summary, model_change, thinking_level_change, custom
 //! - Session tree via parentSession header field
 //! - Version migration support

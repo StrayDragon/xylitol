@@ -1,7 +1,7 @@
 //! OpenAI Chat Completions adapter.
 //!
-//! HTTP via private [`OpenAIProvider`] (async-openai). Public `XyModel` surface
-//! is only [`super::AdapterXyModel`] wrapping this [`LlmAdapter`] (c505).
+//! HTTP via the internal OpenAI HTTP client (async-openai). Public `XyModel` surface
+//! is only [`super::AdapterXyModel`] wrapping this [`crate::infra::provider::adapter::LlmAdapter`] (c505).
 
 use async_trait::async_trait;
 
