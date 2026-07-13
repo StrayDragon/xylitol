@@ -4,6 +4,7 @@
 //! Event-family logic lives in [`handlers`]; [`apply_xy_event`] remains the sole entry.
 
 mod handlers;
+pub(crate) mod session_tree;
 
 use serde_json::Value;
 

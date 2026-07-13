@@ -395,14 +395,27 @@ fn harness_idle_slash_model_pending() {
     );
 }
 
-#[test]
-fn harness_double_esc_opens_session_tree() {
+#[tokio::test]
+async fn harness_double_esc_opens_session_tree() {
+    use super::harness::{ScriptedDriver, harness_sample_message_history_tree, pump_host_driver};
+
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
+    let mut driver = ScriptedDriver::new();
+    driver.set_message_history_tree(harness_sample_message_history_tree());
+    let mut stream = None;
     root.borrow_mut().set_editor_text("");
     session.step(HostEvent::Input(esc_event())).unwrap();
     assert!(!root.borrow().tree_open(), "single Esc must not open tree");
     session.step(HostEvent::Input(esc_event())).unwrap();
+    assert!(
+        !root.borrow().tree_open(),
+        "tree opens after async Driver fetch"
+    );
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert_eq!(driver.session_tree_calls(), 1);
     assert!(
         root.borrow().tree_open(),
         "double Esc on empty editor should open session tree"
@@ -415,7 +428,7 @@ fn harness_double_esc_opens_session_tree() {
     );
     assert!(
         joined.contains("user:") && joined.contains("hello"),
-        "stub tree must render themed kind prefix + plain label; got: {joined}"
+        "live tree must render themed kind prefix + plain label; got: {joined}"
     );
 }
 
@@ -423,60 +436,88 @@ fn harness_double_esc_opens_session_tree() {
 fn harness_esc_closes_session_tree() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    root.borrow_mut().open_session_tree_for_test();
+    root.borrow_mut()
+        .open_session_tree_for_test(super::layout::sample_tree_nodes_for_test(), Some("u2"));
     assert!(root.borrow().tree_open());
     session.step(HostEvent::Input(esc_event())).unwrap();
     assert!(!root.borrow().tree_open());
 }
 
-#[test]
-fn harness_enter_travel_stub_closes_tree() {
+#[tokio::test]
+async fn harness_enter_travel_closes_tree() {
+    use super::harness::{ScriptedDriver, harness_sample_session_messages, pump_host_driver};
+
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    root.borrow_mut().open_session_tree_for_test();
+    let mut driver = ScriptedDriver::new();
+    driver.set_session_messages(harness_sample_session_messages());
+    let mut stream = None;
+    root.borrow_mut()
+        .open_session_tree_at_for_test(super::layout::sample_tree_nodes_for_test(), "u2");
     session.step(HostEvent::Input(enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
     assert!(!root.borrow().tree_open());
+    assert_eq!(driver.travel_calls(), vec!["u2".to_string()]);
     session.render_now().unwrap();
     let joined = session.tui.terminal.frames.concat();
     assert!(
-        joined.contains("travel →"),
-        "expected travel stub in transcript; got: {joined}"
+        joined.contains("history @ u2"),
+        "expected travel transcript banner; got: {joined}"
     );
 }
 
-#[test]
-fn harness_enter_user_prefills_editor() {
+#[tokio::test]
+async fn harness_enter_user_prefills_editor() {
+    use super::harness::{ScriptedDriver, harness_sample_session_messages, pump_host_driver};
+
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    root.borrow_mut().open_session_tree_at_for_test("u1");
+    let mut driver = ScriptedDriver::new();
+    driver.set_session_messages(harness_sample_session_messages());
+    let mut stream = None;
+    root.borrow_mut()
+        .open_session_tree_at_for_test(super::layout::sample_tree_nodes_for_test(), "u1");
     session.step(HostEvent::Input(enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
     assert!(!root.borrow().tree_open());
     assert_eq!(
         root.borrow().editor_text(),
         "hello",
-        "user travel must prefill stub label into editor"
+        "user travel must prefill editor_text from Driver travel"
     );
+    assert_eq!(driver.travel_calls(), vec!["u1".to_string()]);
 }
 
-#[test]
-fn harness_enter_assistant_does_not_prefill() {
+#[tokio::test]
+async fn harness_enter_assistant_does_not_prefill() {
+    use super::harness::{ScriptedDriver, harness_sample_session_messages, pump_host_driver};
+
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    root.borrow_mut().set_editor_text("stale");
-    root.borrow_mut().open_session_tree_at_for_test("a1");
-    // open_session_tree_at clears editor; set after open would be wrong — re-set via
-    // selecting assistant with empty editor, then assert stays empty.
+    let mut driver = ScriptedDriver::new();
+    driver.set_session_messages(harness_sample_session_messages());
+    let mut stream = None;
+    root.borrow_mut()
+        .open_session_tree_at_for_test(super::layout::sample_tree_nodes_for_test(), "a1");
     assert!(
         root.borrow().editor_text().is_empty(),
         "tree open clears editor before travel"
     );
     session.step(HostEvent::Input(enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
     assert!(!root.borrow().tree_open());
     assert!(
         root.borrow().editor_text().is_empty(),
         "non-user travel must not prefill; got {:?}",
         root.borrow().editor_text()
     );
+    assert_eq!(driver.travel_calls(), vec!["a1".to_string()]);
 }
 
 #[test]
@@ -498,8 +539,9 @@ fn harness_editor_slot_mutex_and_esc_closes() {
         "slots are mutually exclusive"
     );
 
-    // Opening Tree replaces Plate.
-    root.borrow_mut().open_slot(EditorSlot::Tree);
+    // Opening Tree replaces Plate (mount directly in harness — open_slot queues Driver fetch).
+    root.borrow_mut()
+        .open_session_tree_for_test(super::layout::sample_tree_nodes_for_test(), Some("u2"));
     assert_eq!(root.borrow().slot(), EditorSlot::Tree);
     assert!(root.borrow().tree_open());
 

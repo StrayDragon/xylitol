@@ -607,8 +607,8 @@
           <button type="button" class="chip-btn" data-keys="idle" aria-pressed="true">idle</button>
           <button type="button" class="chip-btn" data-keys="busy" aria-pressed="false">流中</button>
           <button type="button" class="chip-btn" data-keys="slash" aria-pressed="false">slash</button>
-          <button type="button" class="chip-btn" data-keys="tree" aria-pressed="false">树 stub</button>
-          <span class="hint">树开 filter/fork 勿在 c491 stub 上扩</span>
+          <button type="button" class="chip-btn" data-keys="tree" aria-pressed="false">活树</button>
+          <span class="hint">filter / fork 后置；Enter = travel_session_tree</span>
         </div>
         <div class="stage" id="keys-stage"></div>
       </section>
@@ -1183,11 +1183,11 @@
       const ed = document.getElementById("shell-editor");
       if (S.tree) {
         ed.innerHTML =
-          '<div class="fg-muted"> Session tree · [stub]</div>' +
+          '<div class="fg-muted"> Session tree · MessageHistory</div>' +
           '<div><span class="rev">▸ <span class="fg-success">assistant:</span> done</span></div>' +
           '<div class="fg-muted">  ├─ <span class="fg-tool">tool:</span> read</div>' +
           '<div class="fg-on">  └─ <span class="fg-user">user:</span> hello</div>' +
-          '<div class="fg-muted" style="margin-top:0.25rem">esc close · ↑↓ · Enter：user→填 input（stub+demo）</div>';
+          '<div class="fg-muted" style="margin-top:0.25rem">esc close · ↑↓ · Enter：travel_session_tree · user→editor_text</div>';
       } else {
         ed.innerHTML = '<span class="cursor"> </span>询问或 / 命令…';
       }
@@ -1296,7 +1296,7 @@
     const KEYS = {
       idle: `<div class="row fg-muted">c480 MVP · idle · status 0 行</div>
 <div class="row"><span class="fg-on">Enter</span> <span class="fg-muted">提交</span> · <span class="fg-on">Ctrl+C</span> <span class="fg-muted">清输入 / 空则退出</span></div>
-<div class="row"><span class="fg-on">双 Esc</span> <span class="fg-muted">c491 stub 树</span> · <span class="fg-on">/</span> <span class="fg-muted">slash 补全</span></div>
+<div class="row"><span class="fg-on">双 Esc</span> <span class="fg-muted">MessageHistory 活树</span> · <span class="fg-on">/</span> <span class="fg-muted">slash 补全</span></div>
 <div class="row fg-muted">旁注例：(Ctrl+T) · 禁止 ^T · footer 不堆键</div>`,
       busy: `<div class="row"><span class="fg-accent">⠋</span> <span class="fg-muted">Working（status 行）</span></div>
 <div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">abort（清 steer，留 follow-up）</span></div>
@@ -1306,10 +1306,10 @@
 <div class="row"><span class="fg-on">/exit</span> <span class="fg-muted">退出 + restore</span></div>
 <div class="row"><span class="fg-on">/model</span> <span class="fg-muted">选模型（极简列表即可）</span></div>
 <div class="row fg-muted">未知命令 → 短错误 · 不崩 · CompletionSource</div>`,
-      tree: `<div class="row fg-muted">c491 stub · 替换 editor 槽 · kind 前缀分色（c595）· user Enter 预填（c605）</div>
+      tree: `<div class="row fg-muted">c615 · Driver session_tree(MessageHistory) · 替换 editor 槽 · kind 前缀分色</div>
 <div class="row"><span class="fg-user">user:</span> <span class="fg-on">正文</span> · <span class="fg-success">assistant:</span> · <span class="fg-tool">tool:</span></div>
-<div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">关树</span> · <span class="fg-on">Enter</span> <span class="fg-muted">user→填 input · 非 user→travel 注记</span></div>
-<div class="row fg-muted">✗ stub 上禁 filter / fork / 真 Driver navigateTree（另 change）</div>`,
+<div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">关树</span> · <span class="fg-on">Enter</span> <span class="fg-muted">travel_session_tree · user→editor_text</span></div>
+<div class="row fg-muted">filter / Shift+F fork 后置（demo 已有）</div>`,
     };
     function renderKeys() {
       document.getElementById("keys-stage").innerHTML = KEYS[state.keys];

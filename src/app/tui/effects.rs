@@ -4,10 +4,12 @@ use xylitol_tui::Terminal;
 
 use crate::app::core::dispatch::{DispatchOutcome, dispatch};
 use crate::app::core::driver::{Driver, EventStream};
+use crate::domain::session_types::SessionTreeKind;
 use crate::protocol::Command;
 
 use super::commands::PendingSlash;
 use super::host::HostSession;
+use super::layout::map_session_tree_nodes;
 
 /// Consume HostSession pending ops and call Driver / dispatch.
 ///
@@ -131,6 +133,38 @@ pub async fn drain_pending<T: Terminal>(
         let _ = session.render_now();
     }
 
+    if session.take_pending_session_tree_open() {
+        tracing::info!(target: "xylitol::tui", "Driver::session_tree(MessageHistory)");
+        match driver.session_tree(SessionTreeKind::MessageHistory).await {
+            Ok(nodes) => {
+                let mapped = map_session_tree_nodes(&nodes);
+                let active = deepest_tree_id(&mapped);
+                session.mount_session_tree(mapped, active);
+            }
+            Err(e) => session.push_system_note(format!("session tree failed: {e}")),
+        }
+        let _ = session.render_now();
+    }
+
+    if let Some(entry_id) = session.take_pending_session_tree_travel() {
+        tracing::info!(
+            target: "xylitol::tui",
+            entry_id = %entry_id,
+            "Driver::travel_session_tree(MessageHistory)"
+        );
+        match driver
+            .travel_session_tree(SessionTreeKind::MessageHistory, &entry_id)
+            .await
+        {
+            Ok(travel) => {
+                let entries = driver.get_messages().await.unwrap_or_default();
+                session.apply_session_tree_travel(travel, entries);
+            }
+            Err(e) => session.push_system_note(format!("travel failed: {e}")),
+        }
+        let _ = session.render_now();
+    }
+
     if agent_stream.is_none()
         && let Some(prompt) = session.take_submit()
     {
@@ -145,4 +179,18 @@ pub async fn drain_pending<T: Terminal>(
     }
 
     Ok(())
+}
+
+fn deepest_tree_id(nodes: &[xylitol_tui::TreeNode]) -> Option<String> {
+    fn walk(node: &xylitol_tui::TreeNode, last: &mut Option<String>) {
+        *last = Some(node.id.clone());
+        for child in &node.children {
+            walk(child, last);
+        }
+    }
+    let mut last = None;
+    for node in nodes {
+        walk(node, &mut last);
+    }
+    last
 }
