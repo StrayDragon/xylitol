@@ -1323,6 +1323,18 @@ impl FakeCodingAgentApp {
         self.transcript.len()
     }
 
+    /// Rendered transcript lines (including block spacers) for harness asserts.
+    pub fn transcript_render_lines_for_test(&self, width: usize) -> Vec<String> {
+        self.transcript_lines(width)
+    }
+
+    /// Replace transcript with two short messages (block-gap tests).
+    pub fn seed_two_user_blocks_for_test(&mut self) {
+        self.transcript.clear();
+        self.push_message(Role::User, "block-alpha");
+        self.push_message(Role::User, "block-beta");
+    }
+
     /// Harness: global tool-output viewport expand (Ctrl+O).
     pub fn tools_output_expanded_for_test(&self) -> bool {
         self.tools_output_expanded
@@ -3751,6 +3763,9 @@ impl FakeCodingAgentApp {
         let mut lines = Vec::new();
         let g = self.glyph_set;
         for entry in &self.transcript {
+            // pi: Spacer(1) before tool/bash; user Box padding_y — blank before *and*
+            // after each block so adjacent entries read with clear separation.
+            lines.push(String::new());
             match entry {
                 TranscriptEntry::Message { role, text } => {
                     if matches!(role, Role::Assistant) {
