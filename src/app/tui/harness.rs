@@ -321,7 +321,6 @@ pub async fn pump_host_driver<T: Terminal>(
 #[cfg(test)]
 pub fn harness_sample_message_history_tree() -> Vec<SessionTreeNode> {
     use crate::domain::session_types::{EntryBase, MessageEntry};
-    use serde_json::json;
 
     fn msg(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionTreeNode {
         SessionTreeNode {
@@ -332,10 +331,7 @@ pub fn harness_sample_message_history_tree() -> Vec<SessionTreeNode> {
                     parent_id: parent.map(str::to_string),
                     timestamp: format!("t-{id}"),
                 },
-                message: json!({
-                    "role": role,
-                    "parts": [{ "type": "text", "text": text }],
-                }),
+                message: crate::domain::session_types::fixture_message_json(role, text),
             }),
             children: Vec::new(),
             label: None,
