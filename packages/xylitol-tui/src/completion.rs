@@ -4,7 +4,8 @@
 //! Applications register [`CompletionSource`]s for each trigger paradigm:
 //!
 //! - [`SlashCommandSource`] — `/help`, `/model`, … (line-leading, **no** space yet)
-//! - [`SlashArgCompletionSource`] — `/model <prefix>` argument ids (needs space after command)
+//! - [`SlashArgCompletionSource`] — `/model <prefix>` argument ids (`/cmd `…;
+//!   optional bare `/cmd` via [`SlashArgCompletionSource::with_bare_command`])
 //! - [`AtPathSource`] — `@path/to/file` (inline attachment)
 //! - Future: `$skill`, `^agent`, etc. — implement [`CompletionSource`] and register;
 //!   `$` SHOULD use [`extract_dollar_prefix`](crate::extract_dollar_prefix) so it
@@ -12,14 +13,19 @@
 //!
 //! ```ignore
 //! editor.set_completion_sources(vec![
-//!     Box::new(SlashArgCompletionSource::new("model", model_catalog).with_id("model-id")),
+//!     Box::new(
+//!         SlashArgCompletionSource::new("model", model_catalog)
+//!             .with_id("model-id")
+//!             .with_bare_command(true), // demo: exact `/model` opens catalog
+//!     ),
 //!     Box::new(SlashCommandSource::new(commands)),
 //!     Box::new(AtPathSource::new(cwd)),
 //! ]);
 //! ```
 //!
-//! Probe order: first hit wins. Slash command name and slash-arg probes are mutually
-//! exclusive (`/`… vs `/cmd `…), so either order is safe.
+//! Probe order: first hit wins. With default (no bare), slash name and slash-arg
+//! probes are mutually exclusive (`/`… vs `/cmd `…). With `with_bare_command(true)`,
+//! register the arg source **before** slash so exact `/cmd` opens the catalog.
 use crate::autocomplete::{
     AutocompleteItem, AutocompleteSuggestions, SlashCommand, build_completion_value,
     expand_home_path, extract_at_prefix, parse_path_prefix, to_display_path,
@@ -168,28 +174,25 @@ impl CompletionRegistry {
 
     /// Probe (or keep active) and fetch suggestions. Sets `active` on success.
     ///
-    /// `should_dismiss` applies only while a popup is already open (e.g. slash
-    /// backspaced to lone `/`). Opening on a fresh `/` still shows all commands.
+    /// Always re-runs [`probe_first`] so a higher-priority source can take over
+    /// (e.g. slash `/mod…` → exact `/model` with bare [`SlashArgCompletionSource`]).
+    ///
+    /// `should_dismiss` applies only while that same source already owns the
+    /// popup (e.g. slash backspaced to lone `/`). Opening on a fresh `/` still
+    /// shows all commands.
     pub fn open_or_refresh(
         &mut self,
         ctx: &CompletionContext<'_>,
     ) -> Option<AutocompleteSuggestions> {
-        if let Some(i) = self.active {
-            let src = self.sources.get(i)?;
-            match src.probe(ctx) {
-                None => {
-                    self.active = None;
-                    return None;
-                }
-                Some(m) if src.should_dismiss(ctx, &m) => {
-                    self.active = None;
-                    return None;
-                }
-                Some(m) => return src.suggestions(ctx, &m),
-            }
-        }
-        let (i, m) = self.probe_first(ctx)?;
+        let Some((i, m)) = self.probe_first(ctx) else {
+            self.active = None;
+            return None;
+        };
         let src = self.sources.get(i)?;
+        if self.active == Some(i) && src.should_dismiss(ctx, &m) {
+            self.active = None;
+            return None;
+        }
         let s = src.suggestions(ctx, &m)?;
         self.active = Some(i);
         Some(s)
@@ -313,11 +316,15 @@ impl CompletionSource for SlashCommandSource {
 
 /// `/<command> <arg-prefix>` completion (e.g. `/model dee` → model ids).
 ///
-/// Bare `/<command>` (**no** trailing space) MUST NOT probe — leave that to
-/// [`SlashCommandSource`] / product editor-slot pickers.
+/// By default, bare `/<command>` (**no** trailing space) does **not** probe —
+/// leave that to [`SlashCommandSource`] / product editor-slot pickers.
+/// Call [`SlashArgCompletionSource::with_bare_command`] when the host wants
+/// exact `/command` to open the arg catalog immediately (agent_demo).
 pub struct SlashArgCompletionSource {
     command: String,
     source_id: &'static str,
+    /// When true, exact `/command` (no space) also probes with an empty arg.
+    bare_command: bool,
     /// `(value/label, description)` — fuzzy-filtered by the arg fragment.
     catalog: Vec<(String, String)>,
 }
@@ -327,6 +334,7 @@ impl SlashArgCompletionSource {
         Self {
             command: command.into(),
             source_id: "slash-arg",
+            bare_command: false,
             catalog,
         }
     }
@@ -336,8 +344,27 @@ impl SlashArgCompletionSource {
         self
     }
 
+    /// Exact `/command` opens the catalog (same as `/command ` with empty arg).
+    pub fn with_bare_command(mut self, enabled: bool) -> Self {
+        self.bare_command = enabled;
+        self
+    }
+
     pub fn set_catalog(&mut self, catalog: Vec<(String, String)>) {
         self.catalog = catalog;
+    }
+
+    fn arg_prefix(&self, before: &str) -> Option<String> {
+        if let Some(arg) = extract_slash_arg_prefix(before, &self.command) {
+            return Some(arg.to_string());
+        }
+        if self.bare_command {
+            let bare = format!("/{}", self.command);
+            if before == bare {
+                return Some(String::new());
+            }
+        }
+        None
     }
 }
 
@@ -358,15 +385,15 @@ impl CompletionSource for SlashArgCompletionSource {
     }
 
     fn probe(&self, ctx: &CompletionContext<'_>) -> Option<CompletionMatch> {
-        let arg = extract_slash_arg_prefix(ctx.before_cursor(), &self.command)?;
+        let arg = self.arg_prefix(ctx.before_cursor())?;
         Some(CompletionMatch {
             // Arg fragment only — Editor apply replaces `prefix.len()` before cursor.
-            prefix: arg.to_string(),
+            prefix: arg,
         })
     }
 
     fn should_dismiss(&self, ctx: &CompletionContext<'_>, _m: &CompletionMatch) -> bool {
-        extract_slash_arg_prefix(ctx.before_cursor(), &self.command).is_none()
+        self.arg_prefix(ctx.before_cursor()).is_none()
     }
 
     fn suggestions(
@@ -411,6 +438,12 @@ impl CompletionSource for SlashArgCompletionSource {
         let current = lines[cursor_line].clone();
         let before = &current[..cursor_col.saturating_sub(prefix.len())];
         let after = &current[cursor_col..];
+        // Bare `/command` → normalize to `/command ` before writing the id.
+        let head = if before == format!("/{}", self.command) {
+            format!("/{} ", self.command)
+        } else {
+            before.to_string()
+        };
         // Keep `/command ` head; write selected id; trailing space for Enter submit.
         let suffix = if after.is_empty() {
             " "
@@ -419,13 +452,13 @@ impl CompletionSource for SlashArgCompletionSource {
         } else {
             " "
         };
-        let new_line = format!("{before}{}{suffix}{after}", item.value);
+        let new_line = format!("{head}{}{suffix}{after}", item.value);
         let mut new_lines = lines.to_vec();
         new_lines[cursor_line] = new_line;
         (
             new_lines,
             cursor_line,
-            before.len() + item.value.len() + suffix.len(),
+            head.len() + item.value.len() + suffix.len(),
         )
     }
 }
@@ -693,7 +726,7 @@ mod tests {
     }
 
     #[test]
-    fn slash_arg_skips_bare_command() {
+    fn slash_arg_skips_bare_command_by_default() {
         assert!(extract_slash_arg_prefix("/model", "model").is_none());
         let src = model_arg();
         let lines = vec!["/model".into()];
@@ -707,6 +740,30 @@ mod tests {
             "bare /model must not steal picker"
         );
         assert!(slash().probe(&ctx).is_some(), "slash owns bare /model");
+    }
+
+    #[test]
+    fn slash_arg_bare_command_opt_in() {
+        let src = model_arg().with_bare_command(true);
+        let lines = vec!["/model".into()];
+        let ctx = CompletionContext {
+            lines: &lines,
+            cursor_line: 0,
+            cursor_col: 6,
+        };
+        let m = src.probe(&ctx).expect("bare /model with opt-in");
+        assert_eq!(m.prefix, "");
+        let s = src.suggestions(&ctx, &m).unwrap();
+        assert!(s.items.iter().any(|i| i.value == "deepseek-v4-flash"));
+        let item = s.items[0].clone();
+        let (new_lines, _, col) = src.apply(&lines, 0, 6, &item, &m.prefix);
+        assert!(
+            new_lines[0].starts_with("/model "),
+            "bare apply must insert space; got {}",
+            new_lines[0]
+        );
+        assert!(new_lines[0].contains(&item.value));
+        assert_eq!(col, new_lines[0].len());
     }
 
     #[test]
@@ -762,5 +819,36 @@ mod tests {
         let (i, m) = reg.probe_first(&ctx).unwrap();
         assert_eq!(reg.sources[i].id(), "model-id");
         assert_eq!(m.prefix, "dee");
+    }
+
+    #[test]
+    fn open_or_refresh_switches_to_higher_priority_source() {
+        let mut reg = CompletionRegistry::new();
+        reg.set_sources(vec![
+            Box::new(model_arg().with_bare_command(true)),
+            Box::new(slash()),
+        ]);
+
+        // Start on slash while typing `/mod`.
+        let mid = vec!["/mod".into()];
+        let ctx = CompletionContext {
+            lines: &mid,
+            cursor_line: 0,
+            cursor_col: 4,
+        };
+        let s = reg.open_or_refresh(&ctx).unwrap();
+        assert!(s.items.iter().any(|i| i.value == "model"));
+        assert_eq!(reg.active_index(), Some(1));
+
+        // Exact `/model` must hand off to bare model-id without cancel+reopen.
+        let exact = vec!["/model".into()];
+        let ctx = CompletionContext {
+            lines: &exact,
+            cursor_line: 0,
+            cursor_col: 6,
+        };
+        let s = reg.open_or_refresh(&ctx).unwrap();
+        assert!(s.items.iter().any(|i| i.value == "deepseek-v4-flash"));
+        assert_eq!(reg.active_index(), Some(0));
     }
 }

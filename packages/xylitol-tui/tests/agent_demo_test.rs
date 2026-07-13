@@ -2205,12 +2205,21 @@ fn agent_demo_model_arg_completion_tab() {
     .focus(Some(0));
 
     h.render_result().expect("initial");
-    h.keys("/model dee");
-    h.render_result().expect("model arg popup");
+    // Bare `/model` opens the catalog immediately (demo bare_command opt-in).
+    h.keys("/model");
+    h.render_result().expect("bare /model catalog");
     h.assert_text_contains("deepseek-v4-flash");
     h.assert_text_contains("opencode-go");
-    h.keys("\t");
-    h.render_result().expect("Tab applies id");
+
+    // Esc, then `/model ` (space) must also auto-open without Tab.
+    h.keys("\x1b");
+    h.render_result().expect("Esc closes");
+    h.keys(" ");
+    h.render_result().expect("/model␠ auto catalog");
+    h.assert_text_contains("deepseek-v4-flash");
+
+    h.keys("dee\t");
+    h.render_result().expect("filter + Tab applies id");
     let after = h.tui.terminal.viewport().join("\n");
     assert!(
         after.contains("/model deepseek-v4-flash"),
