@@ -14,7 +14,9 @@ use xylitol_tui::Terminal;
 use crate::app::core::driver::{
     CommandInfo, Driver, EventStream, ModelInfo, QueueStats, SessionStats, XyEvent,
 };
-use crate::domain::session_types::SessionEntry;
+use crate::domain::session_types::{
+    SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel,
+};
 use crate::domain::types::ThinkingLevel;
 use crate::runtime_protocol::XyBashResult;
 
@@ -223,6 +225,30 @@ impl Driver for ScriptedDriver {
         QueueStats {
             steer_count: self.steer_queued,
             follow_up_count: self.follow_up_queued,
+        }
+    }
+
+    async fn session_tree(&self, kind: SessionTreeKind) -> Result<Vec<SessionTreeNode>, String> {
+        match kind {
+            SessionTreeKind::MessageHistory => Ok(Vec::new()),
+            SessionTreeKind::FileBrowser => {
+                Err("scripted: file_browser tree not implemented".into())
+            }
+        }
+    }
+
+    async fn travel_session_tree(
+        &self,
+        kind: SessionTreeKind,
+        entry_id: &str,
+    ) -> Result<SessionTreeTravel, String> {
+        match kind {
+            SessionTreeKind::MessageHistory => Err(format!(
+                "scripted: travel_session_tree(message_history, {entry_id}) not implemented"
+            )),
+            SessionTreeKind::FileBrowser => {
+                Err("scripted: file_browser travel not implemented".into())
+            }
         }
     }
 }

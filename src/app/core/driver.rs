@@ -31,7 +31,9 @@ use futures::Stream;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::AgentRuntime;
-use crate::domain::session_types::SessionEntry;
+use crate::domain::session_types::{
+    SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
+};
 use crate::domain::types::{ThinkingLevel, XyModelMeta};
 use crate::runtime_protocol::{XyBashResult, XySessionStore};
 
@@ -183,6 +185,22 @@ pub trait Driver: Send {
 
     /// Queue depths for steer / follow-up.
     fn queue_stats(&self) -> QueueStats;
+
+    /// Read a session tree for the given kind.
+    ///
+    /// Driver-only seam (not wired through `protocol::Command`); REST calls this
+    /// directly for MessageHistory tree endpoints.
+    async fn session_tree(&self, kind: SessionTreeKind) -> Result<Vec<SessionTreeNode>, String>;
+
+    /// Travel within a session tree kind and update the active leaf.
+    ///
+    /// Driver-only seam (not wired through `protocol::Command`); REST travel
+    /// endpoints call this directly.
+    async fn travel_session_tree(
+        &self,
+        kind: SessionTreeKind,
+        entry_id: &str,
+    ) -> Result<SessionTreeTravel, String>;
 }
 
 // ── In-process driver ─────────────────────────────────────────────
@@ -387,6 +405,31 @@ impl Driver for InProcessDriver {
 
     fn queue_stats(&self) -> crate::agent::session::QueueStats {
         self.agent.queue_stats()
+    }
+
+    async fn session_tree(&self, kind: SessionTreeKind) -> Result<Vec<SessionTreeNode>, String> {
+        let sid = self.agent.inner().session_id().ok_or("no active session")?;
+        match kind {
+            SessionTreeKind::MessageHistory => self.store.message_history_tree(sid).await,
+            SessionTreeKind::FileBrowser => Err(session_tree_kind_unimplemented(kind)),
+        }
+    }
+
+    async fn travel_session_tree(
+        &self,
+        kind: SessionTreeKind,
+        entry_id: &str,
+    ) -> Result<SessionTreeTravel, String> {
+        let sid = self.agent.inner().session_id().ok_or("no active session")?;
+        match kind {
+            SessionTreeKind::MessageHistory => {
+                let entries = self.store.load_entries(sid).await?;
+                let travel = plan_message_history_travel(&entries, entry_id)?;
+                self.store.set_leaf(sid, travel.leaf_id.as_deref());
+                Ok(travel)
+            }
+            SessionTreeKind::FileBrowser => Err(session_tree_kind_unimplemented(kind)),
+        }
     }
 }
 
@@ -930,8 +973,213 @@ impl Driver for RemoteDriver {
         })
         .unwrap_or_default()
     }
+
+    async fn session_tree(&self, kind: SessionTreeKind) -> Result<Vec<SessionTreeNode>, String> {
+        match kind {
+            SessionTreeKind::MessageHistory => {
+                let data = self.get_data("trees/message-history").await?;
+                let tree = data.get("tree").cloned().unwrap_or(serde_json::Value::Null);
+                serde_json::from_value(tree).map_err(|e| e.to_string())
+            }
+            SessionTreeKind::FileBrowser => Err(session_tree_kind_unimplemented(kind)),
+        }
+    }
+
+    async fn travel_session_tree(
+        &self,
+        kind: SessionTreeKind,
+        entry_id: &str,
+    ) -> Result<SessionTreeTravel, String> {
+        match kind {
+            SessionTreeKind::MessageHistory => {
+                let data = self
+                    .post_data(
+                        "trees/message-history/travel",
+                        serde_json::json!({ "entry_id": entry_id }),
+                    )
+                    .await?;
+                serde_json::from_value(data).map_err(|e| e.to_string())
+            }
+            SessionTreeKind::FileBrowser => Err(session_tree_kind_unimplemented(kind)),
+        }
+    }
+}
+
+fn session_tree_kind_unimplemented(kind: SessionTreeKind) -> String {
+    let name = match kind {
+        SessionTreeKind::MessageHistory => "message_history",
+        SessionTreeKind::FileBrowser => "file_browser",
+    };
+    format!("session tree kind '{name}' is not implemented")
 }
 
 fn urlencoding_loose(s: &str) -> String {
     s.replace(' ', "%20")
+}
+
+#[cfg(test)]
+mod driver_session_tree_tests {
+    use std::sync::Arc;
+
+    use serde_json::json;
+
+    use super::*;
+    use crate::agent::AgentBuilder;
+    use crate::agent::tools::ToolSet;
+    use crate::domain::session_types::{EntryBase, MessageEntry, SessionEntry, SessionTreeKind};
+    use crate::infra::bash_exec::InfraBashExecutor;
+    use crate::infra::config::value::InfraSecretResolver;
+    use crate::infra::event::EventBus;
+    use crate::infra::export::StdExportIo;
+    use crate::infra::permission;
+    use crate::infra::session::SessionManager;
+    use crate::runtime_protocol::{XyBashExecutor, XyEventSink, XyExportIo, XySessionStore};
+
+    fn msg_entry(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: parent.map(str::to_string),
+                timestamp: format!("2026-01-01T00:00:{id}Z"),
+            },
+            message: json!({
+                "role": role,
+                "parts": [{ "type": "text", "text": text }],
+            }),
+        })
+    }
+
+    async fn build_test_driver(store: Arc<SessionManager>) -> InProcessDriver {
+        let store_trait: Arc<dyn XySessionStore> = store.clone();
+        let mut agent = AgentBuilder::new(
+            crate::agent::model::registry::ModelRegistry::new(Arc::new(InfraSecretResolver::new())),
+            Arc::new(crate::infra::provider::factory::build_provider),
+            store_trait.clone(),
+            Arc::new(EventBus::new()) as Arc<dyn XyEventSink>,
+            permission::allow_all_permission(),
+        )
+        .cwd(".")
+        .tools(ToolSet::from_iter(crate::infra::tools::default_tools()))
+        .bash(Arc::new(InfraBashExecutor::new()) as Arc<dyn XyBashExecutor>)
+        .export_io(Arc::new(StdExportIo::new()) as Arc<dyn XyExportIo>)
+        .build()
+        .expect("build agent");
+        let sid = uuid::Uuid::new_v4().to_string();
+        store_trait
+            .create(&sid, Some("."), None)
+            .await
+            .expect("create session");
+        agent.inner_mut().set_session(sid);
+        InProcessDriver::new(agent, store)
+    }
+
+    #[tokio::test]
+    async fn in_process_session_tree_returns_parent_child() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let driver = build_test_driver(store.clone()).await;
+        let sid = driver.session_id().expect("session");
+
+        store
+            .append_with_id(&sid, &msg_entry("u1", None, "user", "hello"))
+            .await
+            .expect("append u1");
+        store
+            .append_with_id(&sid, &msg_entry("a1", Some("u1"), "assistant", "hi"))
+            .await
+            .expect("append a1");
+
+        let tree = driver
+            .session_tree(SessionTreeKind::MessageHistory)
+            .await
+            .expect("tree");
+        assert_eq!(tree.len(), 1);
+        assert_eq!(tree[0].entry.entry_id(), Some("u1"));
+        assert_eq!(tree[0].children.len(), 1);
+        assert_eq!(tree[0].children[0].entry.entry_id(), Some("a1"));
+    }
+
+    #[tokio::test]
+    async fn in_process_travel_user_sets_parent_leaf_and_editor_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let driver = build_test_driver(store.clone()).await;
+        let sid = driver.session_id().expect("session");
+
+        store
+            .append_with_id(&sid, &msg_entry("u1", None, "user", "edit me"))
+            .await
+            .unwrap();
+        store
+            .append_with_id(&sid, &msg_entry("a1", Some("u1"), "assistant", "reply"))
+            .await
+            .unwrap();
+        XySessionStore::set_leaf(store.as_ref(), &sid, Some("a1"));
+
+        let travel = driver
+            .travel_session_tree(SessionTreeKind::MessageHistory, "u1")
+            .await
+            .expect("travel");
+        assert_eq!(travel.leaf_id, None);
+        assert_eq!(travel.editor_text.as_deref(), Some("edit me"));
+        assert_eq!(XySessionStore::leaf_id(store.as_ref(), &sid), None);
+    }
+
+    #[tokio::test]
+    async fn in_process_travel_non_user_sets_leaf_without_editor_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let driver = build_test_driver(store.clone()).await;
+        let sid = driver.session_id().expect("session");
+
+        store
+            .append_with_id(&sid, &msg_entry("u1", None, "user", "hello"))
+            .await
+            .unwrap();
+        store
+            .append_with_id(&sid, &msg_entry("a1", Some("u1"), "assistant", "reply"))
+            .await
+            .unwrap();
+
+        let travel = driver
+            .travel_session_tree(SessionTreeKind::MessageHistory, "a1")
+            .await
+            .expect("travel");
+        assert_eq!(travel.leaf_id.as_deref(), Some("a1"));
+        assert!(travel.editor_text.is_none());
+        assert_eq!(
+            XySessionStore::leaf_id(store.as_ref(), &sid).as_deref(),
+            Some("a1")
+        );
+    }
+
+    #[tokio::test]
+    async fn unsupported_tree_kind_returns_err_without_changing_leaf() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let driver = build_test_driver(store.clone()).await;
+        let sid = driver.session_id().expect("session");
+        XySessionStore::set_leaf(store.as_ref(), &sid, Some("keep"));
+
+        let err = driver
+            .session_tree(SessionTreeKind::FileBrowser)
+            .await
+            .expect_err("file_browser");
+        assert!(err.contains("file_browser"));
+        assert_eq!(
+            XySessionStore::leaf_id(store.as_ref(), &sid).as_deref(),
+            Some("keep")
+        );
+
+        let err = driver
+            .travel_session_tree(SessionTreeKind::FileBrowser, "x")
+            .await
+            .expect_err("travel file_browser");
+        assert!(err.contains("file_browser"));
+        assert_eq!(
+            XySessionStore::leaf_id(store.as_ref(), &sid).as_deref(),
+            Some("keep")
+        );
+    }
 }

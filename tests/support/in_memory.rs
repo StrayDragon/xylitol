@@ -19,6 +19,7 @@ pub struct InMemorySessionStore {
 
 struct SessionState {
     entries: Vec<Value>,
+    leaf_id: Option<String>,
 }
 
 impl InMemorySessionStore {
@@ -87,6 +88,7 @@ impl XySessionStore for InMemorySessionStore {
         let mut map = self.sessions.lock().unwrap();
         map.entry(id.to_string()).or_insert_with(|| SessionState {
             entries: Vec::new(),
+            leaf_id: None,
         });
         Ok(())
     }
@@ -106,8 +108,21 @@ impl XySessionStore for InMemorySessionStore {
                     .iter()
                     .map(|e| serde_json::to_value(e).unwrap_or_default())
                     .collect(),
+                leaf_id: None,
             },
         );
         Ok(())
+    }
+
+    fn set_leaf(&self, session_id: &str, entry_id: Option<&str>) {
+        let mut map = self.sessions.lock().unwrap();
+        if let Some(state) = map.get_mut(session_id) {
+            state.leaf_id = entry_id.map(str::to_string);
+        }
+    }
+
+    fn leaf_id(&self, session_id: &str) -> Option<String> {
+        let map = self.sessions.lock().unwrap();
+        map.get(session_id).and_then(|s| s.leaf_id.clone())
     }
 }

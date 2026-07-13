@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,"sr-st1","session-tree-rest","Server REST MUST 为 SessionTreeKind::MessageHistory 提供与 Driver 对等的读树与 travel 端点（路径/查询参数文档化 kind）；RemoteDriver MUST 经这些端点实现 session_tree/travel_session_tree，MUST NOT 对已承诺的 MessageHistory 返回未实现错误。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  "sr-st1","rest-get-tree",server 上存在 session 与消息树,GET 文档化的 session tree 端点且 kind=MessageHistory,200 且 body 含树节点
+  "sr-st1","remote-travel",RemoteDriver 指向该 server,"travel_session_tree(MessageHistory, user_entry_id)",返回 SessionTreeTravel 且与 InProcess 语义一致（user→父 leaf + editor_text）

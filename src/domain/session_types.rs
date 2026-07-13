@@ -186,8 +186,27 @@ pub struct SessionContext {
     pub model: Option<(String, String)>, // (provider, model_id)
 }
 
+/// Kind of session tree exposed via [`crate::app::core::driver::Driver`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionTreeKind {
+    MessageHistory,
+    /// Reserved; callers MUST receive an explicit error until implemented.
+    FileBrowser,
+}
+
+/// Result of travelling a session tree — leaf position plus optional editor prefill.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionTreeTravel {
+    pub kind: SessionTreeKind,
+    pub selected_id: String,
+    pub leaf_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editor_text: Option<String>,
+}
+
 /// Tree node for getTree() - defensive copy of session structure.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionTreeNode {
     /// The session entry at this node.
     pub entry: SessionEntry,
@@ -265,5 +284,210 @@ impl SessionEntry {
 
     pub fn parent_id(&self) -> Option<&str> {
         self.base().and_then(|b| b.parent_id.as_deref())
+    }
+}
+
+// ── Message entry helpers ───────────────────────────────────────────
+
+/// Extract the `role` field from a serialized agent message JSON value.
+pub fn message_role(msg: &Value) -> Option<&str> {
+    msg.get("role").and_then(Value::as_str)
+}
+
+/// Extract human-readable text from a serialized agent message JSON value.
+pub fn message_text(msg: &Value) -> String {
+    if let Some(parts) = msg.get("parts").and_then(Value::as_array) {
+        let mut out = String::new();
+        for p in parts {
+            if let Some(t) = p.get("text").and_then(Value::as_str) {
+                out.push_str(t);
+            } else {
+                out.push_str(&p.to_string());
+            }
+        }
+        return out;
+    }
+    msg.to_string()
+}
+
+/// Whether `entry` is a persisted user message.
+pub fn is_user_message(entry: &SessionEntry) -> bool {
+    matches!(
+        entry,
+        SessionEntry::Message(m) if message_role(&m.message) == Some("user")
+    )
+}
+
+// ── Session tree ────────────────────────────────────────────────────
+
+/// Build a parent/child tree from flat session entries (labels resolved).
+pub fn build_session_tree(entries: &[SessionEntry]) -> Vec<SessionTreeNode> {
+    use std::collections::HashMap;
+
+    let mut labels: HashMap<String, String> = HashMap::new();
+    for entry in entries {
+        if let SessionEntry::Label(l) = entry {
+            if let Some(ref label) = l.label {
+                labels.insert(l.target_id.clone(), label.clone());
+            } else {
+                labels.remove(&l.target_id);
+            }
+        }
+    }
+
+    let mut node_map: HashMap<String, SessionTreeNode> = HashMap::new();
+    for entry in entries {
+        if entry.entry_type() == "label" || entry.entry_type() == "session" {
+            continue;
+        }
+        if let Some(id) = entry.entry_id() {
+            let label = labels.get(id).cloned();
+            node_map.insert(
+                id.to_string(),
+                SessionTreeNode {
+                    entry: entry.clone(),
+                    children: Vec::new(),
+                    label,
+                },
+            );
+        }
+    }
+
+    let mut roots: Vec<SessionTreeNode> = Vec::new();
+
+    // Link children to parents (reverse order so parents stay in node_map).
+    for entry in entries.iter().rev() {
+        if entry.entry_type() == "label" || entry.entry_type() == "session" {
+            continue;
+        }
+        let Some(id) = entry.entry_id() else {
+            continue;
+        };
+        let Some(node) = node_map.remove(id) else {
+            continue;
+        };
+
+        if let Some(parent_id) = entry.parent_id() {
+            if let Some(parent) = node_map.get_mut(parent_id) {
+                parent.children.push(node);
+            } else {
+                roots.push(node);
+            }
+        } else {
+            roots.push(node);
+        }
+    }
+
+    fn sort_children(nodes: &mut [SessionTreeNode]) {
+        for node in nodes.iter_mut() {
+            node.children.sort_by(|a, b| {
+                let ta = a.entry.base().map(|b| b.timestamp.clone());
+                let tb = b.entry.base().map(|b| b.timestamp.clone());
+                ta.cmp(&tb)
+            });
+            sort_children(&mut node.children);
+        }
+    }
+    sort_children(&mut roots);
+
+    roots
+}
+
+/// Pure planner for MessageHistory travel (pi / c600 semantics).
+pub fn plan_message_history_travel(
+    entries: &[SessionEntry],
+    selected_id: &str,
+) -> Result<SessionTreeTravel, String> {
+    let selected = entries
+        .iter()
+        .find(|e| e.entry_id() == Some(selected_id))
+        .ok_or_else(|| format!("entry not found: {selected_id}"))?;
+
+    if is_user_message(selected) {
+        let SessionEntry::Message(m) = selected else {
+            return Err(format!("entry not found: {selected_id}"));
+        };
+        Ok(SessionTreeTravel {
+            kind: SessionTreeKind::MessageHistory,
+            selected_id: selected_id.to_string(),
+            leaf_id: selected.parent_id().map(str::to_string),
+            editor_text: Some(message_text(&m.message)),
+        })
+    } else {
+        Ok(SessionTreeTravel {
+            kind: SessionTreeKind::MessageHistory,
+            selected_id: selected_id.to_string(),
+            leaf_id: Some(selected_id.to_string()),
+            editor_text: None,
+        })
+    }
+}
+
+#[cfg(test)]
+mod session_tree_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn msg_entry(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: parent.map(str::to_string),
+                timestamp: format!("2026-01-01T00:00:{id}Z"),
+            },
+            message: json!({
+                "role": role,
+                "parts": [{ "type": "text", "text": text }],
+            }),
+        })
+    }
+
+    #[test]
+    fn build_session_tree_links_parent_child() {
+        let entries = vec![
+            msg_entry("u1", None, "user", "hello"),
+            msg_entry("a1", Some("u1"), "assistant", "hi"),
+        ];
+        let tree = build_session_tree(&entries);
+        assert_eq!(tree.len(), 1);
+        assert_eq!(tree[0].entry.entry_id(), Some("u1"));
+        assert_eq!(tree[0].children.len(), 1);
+        assert_eq!(tree[0].children[0].entry.entry_id(), Some("a1"));
+    }
+
+    #[test]
+    fn plan_travel_user_sets_parent_leaf_and_editor_text() {
+        let entries = vec![
+            msg_entry("u1", None, "user", "edit me"),
+            msg_entry("a1", Some("u1"), "assistant", "reply"),
+        ];
+        let travel = plan_message_history_travel(&entries, "u1").expect("travel");
+        assert_eq!(travel.kind, SessionTreeKind::MessageHistory);
+        assert_eq!(travel.selected_id, "u1");
+        assert_eq!(travel.leaf_id, None);
+        assert_eq!(travel.editor_text.as_deref(), Some("edit me"));
+    }
+
+    #[test]
+    fn plan_travel_non_user_sets_leaf_to_selected() {
+        let entries = vec![
+            msg_entry("u1", None, "user", "hello"),
+            msg_entry("a1", Some("u1"), "assistant", "reply"),
+        ];
+        let travel = plan_message_history_travel(&entries, "a1").expect("travel");
+        assert_eq!(travel.leaf_id.as_deref(), Some("a1"));
+        assert!(travel.editor_text.is_none());
+    }
+
+    #[test]
+    fn plan_travel_nested_user_uses_parent_leaf() {
+        let entries = vec![
+            msg_entry("u1", None, "user", "root"),
+            msg_entry("u2", Some("u1"), "user", "child"),
+        ];
+        let travel = plan_message_history_travel(&entries, "u2").expect("travel");
+        assert_eq!(travel.leaf_id.as_deref(), Some("u1"));
+        assert_eq!(travel.editor_text.as_deref(), Some("child"));
     }
 }
