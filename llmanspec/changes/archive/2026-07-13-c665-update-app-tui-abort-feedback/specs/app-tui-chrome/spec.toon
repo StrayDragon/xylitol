@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,atc10,"abort-status-idle","产品在用户 abort 后 status 槽 MUST 回到 0 行（idle）；取消说明 MUST 走 scrollback System 一行而非增高 status；bang 执行中 MAY 使用单行 Running。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  atc10,"abort-clears-status","Busy 且 status=Working","用户 abort","status 槽 0 行且 scrollback 含 Aborted"

@@ -143,9 +143,84 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
     let mut agent_stream: Option<AgentEventStream> = None;
     let mut ticker = tokio::time::interval(Duration::from_millis(16));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut active_bash: Option<PendingBash> = None;
 
     while !session.should_quit() && !exit_requested() {
         drain_pending(&mut session, driver, &mut agent_stream).await?;
+        if active_bash.is_none()
+            && let Some(bash) = session.take_bash()
+        {
+            session.begin_bash_exec();
+            let _ = session.render_now();
+            active_bash = Some(bash);
+        }
+
+        if let Some(bash) = active_bash.take() {
+            // Pin one execute_bash future; Esc → abort (`&self` only) while borrowed (c665).
+            let (bash_result, aborted_during_bash) = {
+                let bash_fut = driver.execute_bash(&bash.command, bash.exclude_from_context);
+                tokio::pin!(bash_fut);
+                let mut aborted_during_bash = false;
+                let bash_result = loop {
+                    tokio::select! {
+                        result = &mut bash_fut => break result,
+                        _ = ticker.tick() => {
+                            session.step(HostEvent::Tick)?;
+                        }
+                        maybe = term_events.next() => {
+                            match maybe {
+                                Some(Ok(Event::Key(key))) => {
+                                    if key.kind != KeyEventKind::Press
+                                        && key.kind != KeyEventKind::Repeat
+                                    {
+                                        continue;
+                                    }
+                                    session.step(HostEvent::Input(InputEvent::Key(key)))?;
+                                    if session.take_abort() {
+                                        tracing::info!(
+                                            target: "xylitol::tui",
+                                            "Driver::abort during bang"
+                                        );
+                                        driver.abort();
+                                        session.note_user_abort();
+                                        aborted_during_bash = true;
+                                        let _ = session.render_now();
+                                    }
+                                }
+                                Some(Ok(Event::Paste(data))) => {
+                                    session.step(HostEvent::Input(InputEvent::Paste(data)))?;
+                                }
+                                Some(Ok(Event::Resize(cols, rows))) => {
+                                    session.step(HostEvent::Resize { cols, rows })?;
+                                }
+                                Some(Ok(_)) => {}
+                                Some(Err(e)) => {
+                                    session.tui.finish_inline();
+                                    return Err(format!("input error: {e}"));
+                                }
+                                None => {
+                                    session.request_quit();
+                                    break Err("input closed during bang".into());
+                                }
+                            }
+                        }
+                    }
+                };
+                (bash_result, aborted_during_bash)
+            };
+            match bash_result {
+                Ok(r) => session.push_bash_result(&bash.command, &r),
+                Err(e) => session.push_system_note(format!("bash failed: {e}")),
+            }
+            session.end_bash_exec();
+            if aborted_during_bash {
+                let _ = driver.clear_queue(true, false);
+                let stats = driver.queue_stats();
+                session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+            }
+            let _ = session.render_now();
+            continue;
+        }
 
         tokio::select! {
             _ = ticker.tick() => {

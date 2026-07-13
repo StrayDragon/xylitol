@@ -53,11 +53,16 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
         }
         XyEvent::Error(msg) => {
             // Esc abort used to emit Error("aborted"); treat as cancel note + idle
-            // so a sticky Error wall cannot block further conversation (c482).
+            // so a sticky Error wall cannot block further conversation (c482 / c665).
             if msg == "aborted" {
-                model.entries.push(UiEntry::System {
-                    text: "aborted".into(),
+                let already = model.entries.iter().any(|e| {
+                    matches!(e, UiEntry::System { text } if text == "Aborted" || text == "aborted")
                 });
+                if !already {
+                    model.entries.push(UiEntry::System {
+                        text: "Aborted".into(),
+                    });
+                }
                 if model.queue.follow_up_count == 0 {
                     model.phase = UiPhase::Idle;
                     model.status = None;

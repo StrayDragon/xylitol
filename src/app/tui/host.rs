@@ -95,6 +95,8 @@ pub struct HostSession<T: Terminal> {
     pending_bash: Option<PendingBash>,
     /// True while a `Driver::run` stream is open (blocks duplicate submit).
     run_active: bool,
+    /// True while interactive `!`/`!!` bash is in flight (c665 Esc abort).
+    bash_active: bool,
     layout_cwd: String,
 }
 
@@ -133,6 +135,7 @@ impl<T: Terminal> HostSession<T> {
             pending_slash: None,
             pending_bash: None,
             run_active: false,
+            bash_active: false,
             layout_cwd: display_cwd(),
         }
     }
@@ -178,11 +181,42 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn is_busy(&self) -> bool {
-        self.ui_model.phase == UiPhase::Busy || self.run_active
+        self.ui_model.phase == UiPhase::Busy || self.run_active || self.bash_active
     }
 
     pub fn run_active(&self) -> bool {
         self.run_active
+    }
+
+    pub fn bash_active(&self) -> bool {
+        self.bash_active
+    }
+
+    /// Mark bang bash started: busy status `Running` (c665).
+    pub fn begin_bash_exec(&mut self) {
+        self.bash_active = true;
+        self.ui_model.phase = UiPhase::Busy;
+        self.ui_model.set_busy_status("Running");
+        self.sync_ui_root_from_model();
+    }
+
+    /// Clear bang busy after execute finishes (cancelled or not).
+    pub fn end_bash_exec(&mut self) {
+        self.bash_active = false;
+        if !self.run_active {
+            self.ui_model.phase = UiPhase::Idle;
+            self.ui_model.status = None;
+        }
+        self.sync_ui_root_from_model();
+    }
+
+    /// Immediate Esc abort feedback: one System `Aborted`, idle status (c665).
+    pub fn note_user_abort(&mut self) {
+        self.ui_model.note_user_abort();
+        self.bash_active = false;
+        // Drop run flag so idle submit is not blocked waiting for stream teardown.
+        self.run_active = false;
+        self.sync_ui_root_from_model();
     }
 
     /// Take an idle-Enter submit request, if any.

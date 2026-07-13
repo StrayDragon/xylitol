@@ -327,7 +327,7 @@ mod tests {
             self.session_id.clone()
         }
         async fn execute_bash(
-            &mut self,
+            &self,
             _command: &str,
             _exclude_from_context: bool,
         ) -> Result<XyBashResult, String> {
