@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,adp5,"session-tree-travel-ssot-live",playground 会话树槽注脚与键位示意 MUST 写明产品树为 Driver MessageHistory 活树、Enter 经 travel_session_tree（user→填 input）；MUST NOT 再暗示产品仍为 c491 假树 stub 或禁止 Driver travel。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  adp5,"playground-live-note",打开 design playground 会话树槽,阅读注脚,写明活树与 travel_session_tree / user 预填

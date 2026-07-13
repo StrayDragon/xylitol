@@ -10,7 +10,7 @@
 
 ## 优先路径
 
-**闸门**：相关原子/交互 MUST 先在 `packages/xylitol-tui` `agent_demo` 验证，再进本面接线。**禁止**在 c491 stub 上扩活树 / filter / 真 Driver travel。
+**闸门**：相关原子/交互 MUST 先在 `packages/xylitol-tui` `agent_demo` 验证，再进本面接线。filter / fold / Shift+F 等产品扩展仍后置（demo 先行）。
 
 **不做 Codex 式 TranscriptView**（原 c470 草案已移除；`app-tui-transcript` 合约仅约束 live scrollback）。
 
@@ -18,10 +18,10 @@
 |---|---|
 | 包 TreeSelector + demo 搜索/filter/fold/label/pan/活树/travel/steer | 已归档（至 c469 / c468）；轨 P 打磨至 c570 已合入 |
 | **c460** host 空壳 | 已落地（框架占位） |
-| **c491** 产品双 Esc **假树**槽替换 | stub：双 Esc 开/Esc 关/Enter travel；**c605** user→预填 editor；**MUST NOT** 扩活树/filter/Driver navigateTree |
+| **c491** 产品双 Esc 会话树槽 | **c615**：`Driver::session_tree(MessageHistory)` 活树 + `travel_session_tree` Enter |
 | 产品 bridge（XyEvent→UI + Driver 合流） | **c465 已归档** |
-| 产品 layout · slash/键位 · DESIGN 视觉落地 · 真 session travel | layout：**c475**；live：**c476**；trust：**c490**；input：**c480/c481**；slice：**c485**；真 travel：另 change |
-| 垂直切片验收 | **c485 已归档**（`harness.rs` H1–H9 + `tests/tui_e2e` 产品 PTY Fake） |
+| 产品 layout · slash/键位 · DESIGN 视觉 | layout：**c475**；live：**c476**；trust：**c490**；input：**c480/c481**；slice：**c485**；活树 travel：**c615** |
+| 垂直切片验收 | **c485 已归档**（`harness.rs` H1–H11 + `tests/tui_e2e` 产品 PTY Fake） |
 
 历史/分支 UX 以会话树为准；live 输出若有，只进 scrollback 行，见 `design/transcript.md` / `design/session-tree.md`。
 
@@ -49,7 +49,7 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 
 ## 硬约束
 
-- **产品面**：已开闸；轨 B 至 **c493** 已归档。**c494** EditorSlot 槽机 + 共享 `effects::drain_pending`。c491 假树保持 stub（见上表）；真 travel 另 change。包侧 c575（D08）已归档。
+- **产品面**：已开闸；轨 B 至 **c493** 已归档。**c494** EditorSlot 槽机 + 共享 `effects::drain_pending`。**c615** MessageHistory 活树 + `travel_session_tree`（`effects::drain_pending` 异步泵）。包侧 c575（D08）已归档。
 - 渲染/通用组件只用 `xylitol_tui`；禁止在本目录再实现差分引擎或通用 Editor/Markdown。
 - **需要底层 TUI 能力时**：先到 `packages/xylitol-tui` 查是否已有或可扩展；缺能力在包内补，再由本面接线。
 - 产品路径 **host 驱动**同步引擎；异步事件合流在本面；勿调 `TUI::start()`（demo 专用）。

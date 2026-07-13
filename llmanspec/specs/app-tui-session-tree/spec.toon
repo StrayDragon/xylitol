@@ -2,19 +2,20 @@ kind: llman.sdd.spec
 name: "app-tui-session-tree"
 purpose: 产品面双 Esc 会话树 stub（c491 冻结）：仅槽替换与 travel 行；活树/真 Driver 等开闸。形态学见 agent_demo（ast3/ast4）。
 valid_scope[1]: src/app/tui/
-requirements[6]{req_id,title,statement}:
+requirements[7]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c491-add-app-tui-session-tree 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ast1,"slot-replace",会话树打开时 MUST 替换 UiRoot editor 槽（贴底可见）；MUST NOT 画成内容区顶部 overlay。
-  ast2,"travel-stub-prefill","Enter 选中节点时 MUST 关闭树并记录 travel 目标 id（transcript 注记）；若选中节点 kind 为 user，则 MUST 用该节点正文（label）预填编辑器；若选中非 user，则 MUST NOT 因 travel 预填 user 正文；本切片 MUST NOT reach agent::session 或 infra session，MUST NOT 接线活树或 Driver navigateTree。"
+  ast2,"live-travel-via-driver","产品双 Esc 会话树 MUST 渲染当前 session 的 MessageHistory 活树（经 Driver::session_tree(MessageHistory) 映射为包 TreeNode，含 kind）；Enter 选中节点时 MUST 调用 Driver::travel_session_tree(MessageHistory, id)，按返回的 SessionTreeTravel 关闭树、预填 editor（仅当 editor_text 有值）、并重建/刷新 transcript 与后续提交 leaf 语义；MUST NOT 再使用 c491 假树样例作为唯一数据源；MUST NOT 在本切片实现 filter/fold/Shift+F 产品 fork（fork 语义另 change）。"
   ast3,"demo-live-session-tree","在产品真 session 图接线前，packages/xylitol-tui agent_demo MUST 维护可变 session_tree：用户提交、工具事件与助手回复结束 MUST 在当前 history leaf 下挂对应节点并推进 leaf；双 Esc 打开的树 MUST 渲染该活树而非仅静态样例。"
   ast4,"demo-travel-pi-semantics",agent_demo 在会话树 Enter travel 时：若选中节点 kind 为 user，则 MUST 将 history leaf 设为该节点的父（根 user 则回到无叶/约定根策略）、MUST 用该 user 正文预填编辑器（可剥 steer 前缀）、MUST 重建 transcript 为 root→父 路径且 MUST NOT 纳入被选 user 及其后线性回复；若选中非 user，则 MUST 将 leaf 设为选中 id、MUST 重建 root→选中路径、MUST NOT 因 travel 预填 user 正文；完成后 status MUST 回到空闲（无 spinner）。
   ast5,"demo-session-tree-fork","agent_demo 会话树打开时 MUST 支持 Shift+F fork：重建 root→选中节点路径（MUST NOT 自动纳入其后线性 assistant/tool 回复链）；history leaf MUST 等于选中 id；若选中为 user 消息 MUST 将其文本预填编辑器；关闭树后下一次用户提交 MUST 在该 leaf 下挂新子节点（与既有子树形成兄弟分叉）；MUST NOT 打开新会话文件或调用产品 Driver::fork。"
-scenarios[12]{req_id,id,given,when,then}:
+  ast6,"map-session-tree-nodes","产品 MUST 将 domain SessionTreeNode（MessageHistory）映射为 xylitol-tui TreeNode：id 取 entry id、label 为可显示正文（MUST NOT 把 role 烘焙进 label）、kind 取 message role 或等价（user/assistant/tool 等）；主题 kind_prefix 继续由 LayoutTheme 供给。"
+scenarios[13]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-session-tree",spec.toon 存在且 purpose 为中文
   ast1,"double-esc-opens",空编辑器,双 Esc 于 500ms 内,editor 槽显示 Session tree
-  ast2,"enter-closes",树已打开,Enter,树关闭且 transcript 含 travel 目标 id
-  ast2,"enter-user-prefills",树打开且选中 kind=user 节点（如 u1）,Enter,编辑器含该节点正文 label 且树关闭
-  ast2,"enter-non-user-no-prefill",树打开且选中 kind=assistant 节点,Enter,编辑器未因 travel 填入 user 正文且树关闭
+  ast2,"open-shows-live",Driver 当前 session 已有 user/assistant 消息,空编辑器双 Esc 打开树,树行来自 MessageHistory 活数据而非 sample_session_tree 假树
+  ast2,"enter-travels-driver",树打开且选中 kind=user 节点,Enter,调用 travel_session_tree(MessageHistory)；编辑器含 editor_text；树关闭
+  ast2,"enter-non-user",树打开且选中非 user 节点,Enter,leaf 按 Travel 结果更新且编辑器未因 travel 填入 user 正文
   ast3,"submit-grows-tree",agent_demo 已打开,提交唯一 user 文本,session_tree 含该文本且再开树可见
   ast3,"tool-grows-tree",agent_demo 脚本轮产生 Tool,推进 tick 至工具出现,"session_tree 含 tool: 节点"
   ast4,"travel-user-prefills-editor",样例树选中 u1（kind=user，其下有 assistant 子节点）,Enter travel,编辑器含原 user 正文、leaf 为 u1 的父、transcript 不含 u1 子 assistant 正文、树关闭且 status 空闲
@@ -22,3 +23,4 @@ scenarios[12]{req_id,id,given,when,then}:
   ast4,"travel-assistant-no-prefill",选中 assistant 节点,Enter travel,leaf 为该 assistant id 且编辑器未因 travel 填入 user 正文
   ast5,"fork-stays-on-user",树选中样例 u1（其下已有 assistant 子节点）,Shift+F 或 fork_from_history,leaf 为 u1、编辑器含原 user 文案、transcript 不含子 assistant 正文
   ast5,"submit-creates-sibling",fork 到 u1 之后,提交新 user 文本,u1 的 children 数量加一且活树含新文案
+  ast6,"kind-mapped",活树含一条 user 消息,打开会话树,对应行 kind=user 且 label 为纯正文

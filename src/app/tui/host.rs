@@ -10,9 +10,12 @@ use xylitol_tui::{InputEvent, RenderError, TUI, Terminal, matches_key_event};
 use crate::app::core::driver::XyEvent;
 use crate::runtime_protocol::XyBashResult;
 
+use super::bridge::session_tree::rebuild_scrollback_from_travel;
 use super::bridge::{UiEntry, UiModel, UiPhase, apply_xy_event};
 use super::commands::parse_slash_command;
 use super::layout::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
+use crate::domain::session_types::{SessionEntry, SessionTreeTravel};
+use xylitol_tui::TreeNode;
 
 pub use super::commands::{
     BangParse, PendingBash, PendingSlash, bash_result_entries, parse_bang_command,
@@ -242,6 +245,45 @@ impl<T: Terminal> HostSession<T> {
         self.ui_model
             .entries
             .push(UiEntry::System { text: text.into() });
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn take_pending_session_tree_open(&mut self) -> bool {
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        root.borrow_mut().take_pending_tree_open()
+    }
+
+    pub fn take_pending_session_tree_travel(&mut self) -> Option<String> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().take_pending_tree_travel()
+    }
+
+    pub fn mount_session_tree(&mut self, roots: Vec<TreeNode>, active_id: Option<String>) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut()
+            .mount_session_tree(roots, active_id.as_deref());
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn apply_session_tree_travel(
+        &mut self,
+        travel: SessionTreeTravel,
+        entries: Vec<SessionEntry>,
+    ) {
+        rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
+        if let Some(root) = self.ui_root.as_ref() {
+            let mut root = root.borrow_mut();
+            root.close_session_tree();
+            if let Some(text) = travel.editor_text {
+                root.set_editor_text(text);
+            } else {
+                root.set_editor_text(String::new());
+            }
+        }
         self.sync_ui_root_from_model();
     }
 

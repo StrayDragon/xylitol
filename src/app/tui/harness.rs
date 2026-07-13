@@ -3,6 +3,7 @@
 //! Only compiled in unit tests (`cfg(test)`). Stays inside `app/tui` and talks
 //! to the core solely via [`crate::app::core::driver::Driver`] (arch_guard).
 
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -15,7 +16,7 @@ use crate::app::core::driver::{
     CommandInfo, Driver, EventStream, ModelInfo, QueueStats, SessionStats, XyEvent,
 };
 use crate::domain::session_types::{
-    SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel,
+    SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
 };
 use crate::domain::types::ThinkingLevel;
 use crate::runtime_protocol::XyBashResult;
@@ -38,6 +39,11 @@ pub struct ScriptedDriver {
     steer_queued: usize,
     follow_up_queued: usize,
     model: ModelInfo,
+    message_history_tree: Vec<SessionTreeNode>,
+    session_messages: Vec<SessionEntry>,
+    travel_overrides: HashMap<String, SessionTreeTravel>,
+    session_tree_calls: AtomicUsize,
+    travel_calls: std::sync::Mutex<Vec<String>>,
 }
 
 impl ScriptedDriver {
@@ -76,7 +82,32 @@ impl ScriptedDriver {
                 thinking: false,
                 context_window: 8_000,
             },
+            message_history_tree: Vec::new(),
+            session_messages: Vec::new(),
+            travel_overrides: HashMap::new(),
+            session_tree_calls: AtomicUsize::new(0),
+            travel_calls: std::sync::Mutex::new(Vec::new()),
         }
+    }
+
+    pub fn set_message_history_tree(&mut self, tree: Vec<SessionTreeNode>) {
+        self.message_history_tree = tree;
+    }
+
+    pub fn set_session_messages(&mut self, entries: Vec<SessionEntry>) {
+        self.session_messages = entries;
+    }
+
+    pub fn set_travel_override(&mut self, entry_id: impl Into<String>, travel: SessionTreeTravel) {
+        self.travel_overrides.insert(entry_id.into(), travel);
+    }
+
+    pub fn session_tree_calls(&self) -> usize {
+        self.session_tree_calls.load(Ordering::SeqCst)
+    }
+
+    pub fn travel_calls(&self) -> Vec<String> {
+        self.travel_calls.lock().expect("travel_calls").clone()
     }
 
     pub fn push_script(&mut self, events: Vec<XyEvent>) {
@@ -187,7 +218,7 @@ impl Driver for ScriptedDriver {
     }
 
     async fn get_messages(&self) -> Result<Vec<SessionEntry>, String> {
-        Ok(Vec::new())
+        Ok(self.session_messages.clone())
     }
 
     async fn get_session_stats(&self) -> Result<SessionStats, String> {
@@ -230,7 +261,10 @@ impl Driver for ScriptedDriver {
 
     async fn session_tree(&self, kind: SessionTreeKind) -> Result<Vec<SessionTreeNode>, String> {
         match kind {
-            SessionTreeKind::MessageHistory => Ok(Vec::new()),
+            SessionTreeKind::MessageHistory => {
+                self.session_tree_calls.fetch_add(1, Ordering::SeqCst);
+                Ok(self.message_history_tree.clone())
+            }
             SessionTreeKind::FileBrowser => {
                 Err("scripted: file_browser tree not implemented".into())
             }
@@ -243,9 +277,16 @@ impl Driver for ScriptedDriver {
         entry_id: &str,
     ) -> Result<SessionTreeTravel, String> {
         match kind {
-            SessionTreeKind::MessageHistory => Err(format!(
-                "scripted: travel_session_tree(message_history, {entry_id}) not implemented"
-            )),
+            SessionTreeKind::MessageHistory => {
+                self.travel_calls
+                    .lock()
+                    .expect("travel_calls")
+                    .push(entry_id.to_string());
+                if let Some(travel) = self.travel_overrides.get(entry_id) {
+                    return Ok(travel.clone());
+                }
+                plan_message_history_travel(&self.session_messages, entry_id)
+            }
             SessionTreeKind::FileBrowser => {
                 Err("scripted: file_browser travel not implemented".into())
             }
@@ -275,6 +316,57 @@ pub async fn pump_host_driver<T: Terminal>(
         session.tui.finish_inline();
     }
     Ok(())
+}
+
+#[cfg(test)]
+pub fn harness_sample_message_history_tree() -> Vec<SessionTreeNode> {
+    use crate::domain::session_types::{EntryBase, MessageEntry};
+    use serde_json::json;
+
+    fn msg(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionTreeNode {
+        SessionTreeNode {
+            entry: SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: id.into(),
+                    parent_id: parent.map(str::to_string),
+                    timestamp: format!("t-{id}"),
+                },
+                message: json!({
+                    "role": role,
+                    "parts": [{ "type": "text", "text": text }],
+                }),
+            }),
+            children: Vec::new(),
+            label: None,
+        }
+    }
+
+    let mut u1 = msg("u1", None, "user", "hello");
+    let mut a1 = msg("a1", Some("u1"), "assistant", "plan");
+    let t1 = msg("t1", Some("a1"), "tool", "read");
+    let mut a2 = msg("a2", Some("a1"), "assistant", "done");
+    let u2 = msg("u2", Some("a2"), "user", "next");
+    a2.children.push(u2);
+    a1.children.extend([t1, a2]);
+    u1.children.push(a1);
+    vec![u1]
+}
+
+#[cfg(test)]
+pub fn harness_sample_session_messages() -> Vec<SessionEntry> {
+    harness_sample_message_history_tree()
+        .into_iter()
+        .flat_map(flatten_session_tree_entries)
+        .collect()
+}
+
+fn flatten_session_tree_entries(node: SessionTreeNode) -> Vec<SessionEntry> {
+    let mut out = vec![node.entry];
+    for child in node.children {
+        out.extend(flatten_session_tree_entries(child));
+    }
+    out
 }
 
 #[cfg(test)]
@@ -721,6 +813,49 @@ mod slice_tests {
             "system note: {:?}",
             session.ui_model().entries
         );
+    }
+
+    #[tokio::test]
+    async fn h10_double_esc_fetches_live_tree() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_message_history_tree(harness_sample_message_history_tree());
+        let mut stream = None;
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.session_tree_calls(), 1);
+        assert!(root.borrow().tree_open());
+        let frame = root.borrow_mut().render(80);
+        assert!(
+            frame
+                .iter()
+                .any(|l| l.contains("user:") && l.contains("hello")),
+            "live tree frame: {frame:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn h11_tree_enter_user_travel_prefills() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        let mut stream = None;
+        root.borrow_mut().open_session_tree_at_for_test(
+            crate::app::tui::layout::sample_tree_nodes_for_test(),
+            "u1",
+        );
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.travel_calls(), vec!["u1".to_string()]);
+        assert_eq!(root.borrow().editor_text(), "hello");
+        assert!(!root.borrow().tree_open());
     }
 
     #[test]
