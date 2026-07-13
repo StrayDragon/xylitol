@@ -26,13 +26,16 @@ pub fn rebuild_scrollback_from_travel(
     let path_label = if path.is_empty() {
         "(root)".to_string()
     } else {
-        path.join(" → ")
+        path.iter()
+            .map(|id| short_entry_id(id))
+            .collect::<Vec<_>>()
+            .join(" → ")
     };
     ui_model.entries.push(UiEntry::System {
         text: format!(
             "history @ {} · leaf={} · path: {path_label}",
-            travel.selected_id,
-            leaf.unwrap_or("(root)")
+            short_entry_id(&travel.selected_id),
+            leaf.map(short_entry_id).unwrap_or("(root)")
         ),
     });
 
@@ -62,6 +65,13 @@ fn ancestry_path_ids(entries: &[SessionEntry], leaf_id: Option<&str>) -> Vec<Str
     }
     path.reverse();
     path
+}
+
+/// Truncate opaque ids for the travel banner (full UUID path overflows COLS and
+/// can wedge differential render / CapturedScreen in PTY E2E).
+fn short_entry_id(id: &str) -> &str {
+    const KEEP: usize = 8;
+    if id.len() > KEEP { &id[..KEEP] } else { id }
 }
 
 /// Project one session entry into zero or more UI rows (c646: thinking ≠ text).

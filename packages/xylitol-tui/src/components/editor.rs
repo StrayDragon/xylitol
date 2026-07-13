@@ -270,6 +270,7 @@ impl Editor {
 
     pub fn set_text(&mut self, text: String) {
         self.exit_history_browsing();
+        self.cancel_autocomplete();
         self.last_action = None;
         self.pastes.clear();
         self.paste_counter = 0;
