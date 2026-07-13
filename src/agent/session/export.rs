@@ -165,18 +165,7 @@ fn render_message(m: &MessageEntry) -> String {
 }
 
 fn message_text(msg: &Value) -> String {
-    if let Some(parts) = msg.get("parts").and_then(Value::as_array) {
-        let mut out = String::new();
-        for p in parts {
-            if let Some(t) = p.get("text").and_then(Value::as_str) {
-                out.push_str(t);
-            } else {
-                out.push_str(&p.to_string());
-            }
-        }
-        return out;
-    }
-    msg.to_string()
+    crate::domain::session_types::message_text(msg)
 }
 
 /// Render a session's entries as JSONL (one JSON object per line).
