@@ -9,9 +9,9 @@ use xylitol_tui::{
     truncate_to_width, visible_width, wrap_text_with_ansi,
 };
 
-use super::bridge::{UiEntry, UiModel};
 use super::glyphs::GlyphSet;
-use super::theme::ChromeTheme;
+use crate::app::tui::bridge::{UiEntry, UiModel};
+use crate::app::tui::layout::LayoutTheme;
 
 /// Fold state owned by the product surface (att7).
 #[derive(Debug, Clone, Copy, Default)]
@@ -48,7 +48,7 @@ fn paint_tool_bg(
     width: usize,
     pending: bool,
     is_error: bool,
-    theme: ChromeTheme,
+    theme: LayoutTheme,
 ) -> String {
     let rgb = if pending {
         theme.palette().tool_pending_bg
@@ -64,7 +64,7 @@ fn paint_tool_bg(
 pub fn render_scrollback(
     model: &UiModel,
     glyphs: GlyphSet,
-    theme: ChromeTheme,
+    theme: LayoutTheme,
     fold: ScrollbackFold,
     width: usize,
 ) -> Vec<String> {
