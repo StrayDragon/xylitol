@@ -1,5 +1,6 @@
 ---
 source: tests/agent_session_api_baseline.rs
+assertion_line: 138
 expression: "all_items.join(\"\\n\")"
 ---
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), String>
@@ -54,6 +55,7 @@ pub fn replace_hooks(&mut self, hooks: AgentHooks)
 pub fn save_trust_decision( cwd: &str, trust_store: &dyn XyTrustStore, trusted: bool, ) -> Result<bool, String>
 pub fn select_model(&mut self, model_id: &str) -> Result<(), String>
 pub fn session_id(&self) -> Option<&str>
+pub fn session_store(&self) -> Arc<dyn XySessionStore>
 pub fn set_mode(&mut self, mode: QueueMode)
 pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>)
 pub fn set_session(&mut self, session_id: String)
