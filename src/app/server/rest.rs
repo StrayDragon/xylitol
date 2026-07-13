@@ -25,6 +25,7 @@ use crate::app::core::dispatch::{DispatchError, DispatchOutcome, dispatch};
 use crate::app::core::driver::{Driver, InProcessDriver};
 use crate::app::server::ws::{ClientFrame, EventJournal, ReverseRpcGateway, ServerFrame};
 use crate::domain::lifecycle::XyEvent;
+use crate::domain::session_types::SessionTreeKind;
 use crate::protocol::{Command, Envelope, ErrorCode};
 
 // ── Shared application state ───────────────────────────────────────
@@ -596,6 +597,45 @@ async fn get_commands(
     )
 }
 
+/// Driver-only: read MessageHistory session tree (not routed through `protocol::Command`).
+async fn get_message_history_tree(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Json<Envelope<Value>> {
+    let mut driver = state.driver.lock().await;
+    match driver.session_tree(SessionTreeKind::MessageHistory).await {
+        Ok(tree) => match serde_json::to_value(tree) {
+            Ok(v) => Json(Envelope::ok(serde_json::json!({ "tree": v }))),
+            Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.to_string())),
+        },
+        Err(e) => Json(Envelope::error(ErrorCode::BadRequest, e)),
+    }
+}
+
+#[derive(Deserialize)]
+struct TravelTreeBody {
+    entry_id: String,
+}
+
+/// Driver-only: travel MessageHistory tree (not routed through `protocol::Command`).
+async fn travel_message_history_tree(
+    Path(_session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    axum::extract::Json(body): axum::extract::Json<TravelTreeBody>,
+) -> Json<Envelope<Value>> {
+    let mut driver = state.driver.lock().await;
+    match driver
+        .travel_session_tree(SessionTreeKind::MessageHistory, &body.entry_id)
+        .await
+    {
+        Ok(travel) => match serde_json::to_value(travel) {
+            Ok(v) => Json(Envelope::ok(v)),
+            Err(e) => Json(Envelope::error(ErrorCode::InternalError, e.to_string())),
+        },
+        Err(e) => Json(Envelope::error(ErrorCode::BadRequest, e)),
+    }
+}
+
 /// Query parameters for the events endpoint.
 #[derive(Deserialize)]
 pub struct EventsParams {
@@ -770,6 +810,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/v1/session/{id}/fork", post(fork_session))
         .route("/api/v1/session/{id}/switch", post(switch_session))
         .route("/api/v1/session/{id}/messages", get(get_messages))
+        .route(
+            "/api/v1/session/{id}/trees/message-history",
+            get(get_message_history_tree),
+        )
+        .route(
+            "/api/v1/session/{id}/trees/message-history/travel",
+            post(travel_message_history_tree),
+        )
         .route("/api/v1/session/{id}/stats", get(get_session_stats))
         .route("/api/v1/session/{id}/commands", get(get_commands))
         .route("/api/v1/session/{id}/events", get(get_events))

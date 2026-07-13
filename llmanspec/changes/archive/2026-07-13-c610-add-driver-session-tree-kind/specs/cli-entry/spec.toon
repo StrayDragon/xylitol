@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,"ce-st1","session-tree-kind-api","Driver MUST 暴露以 SessionTreeKind 区分的会话树 API：session_tree(kind) 读取该 kind 的树；travel_session_tree(kind, entry_id) 在该 kind 上旅行并返回 SessionTreeTravel（含 leaf_id 与可选 editor_text）。首版 MUST 至少实现 MessageHistory；未实现的 kind MUST 返回明确错误且 MUST NOT 静默落到其它 kind。InProcessDriver 与 RemoteDriver MUST 同面实现（Remote 经 REST）。应用面缝类型 MUST NOT 仅为品牌加 Xy 前缀。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  "ce-st1","message-history-tree",当前 session 含父子 message 条目,调用 session_tree(MessageHistory),返回非空 SessionTreeNode 树且反映 parent/child
+  "ce-st1","travel-user-prefill",MessageHistory 树中选中 user 消息节点,"调用 travel_session_tree(MessageHistory, that_id)",SessionTreeTravel.leaf_id 为父（或约定根策略）、editor_text 含该 user 正文
+  "ce-st1","travel-non-user",选中非 user 节点,"travel_session_tree(MessageHistory, id)",leaf_id 为选中 id 且 editor_text 为空
+  "ce-st1","unsupported-kind",传入尚未实现的 SessionTreeKind,调用 session_tree 或 travel_session_tree,返回明确错误且不修改 leaf
