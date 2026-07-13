@@ -1836,12 +1836,18 @@ impl FakeCodingAgentApp {
     }
 
     pub fn apply_external_editor_text(&mut self, text: String) {
+        // `Editor::set_text` places the cursor at buffer end (pi setText parity).
         self.input.set_text(text);
         self.sync_editor_border();
         self.push_message(
             Role::System,
             "external editor saved — buffer replaced (Ctrl+G)".to_string(),
         );
+    }
+
+    /// Test helper: editor cursor `(line, col)` after external-editor writeback.
+    pub fn editor_cursor_for_test(&self) -> (usize, usize) {
+        self.input.cursor_position()
     }
 
     pub fn push_system_for_test(&mut self, text: String) {
