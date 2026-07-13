@@ -696,6 +696,13 @@ fn markdown_grammar_stub() -> &'static str {
 > 引用第二段仍安静。
 >
 > 引用里也可以有 **（加粗）词** 与 `code`。
+>
+> ```rust
+> fn nested_in_quote() {
+>     // must highlight inside │ gutter
+>     println!(\"hi\");
+> }
+> ```
 
 ### 表格（空格对齐，无盒线）
 
