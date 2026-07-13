@@ -35,7 +35,7 @@
 
 ## Specs
 
-产品面 capability：`app-tui-*`（含 `app-tui-vertical-slice`；另有 `host` / `bridge` / `transcript` / `chrome`（layout 壳合约 id） / `input` / `commands`）。跨切面索引：`app-tui`。合约已归档：`archive/2026-07-10-c450-revise-app-tui-contract`。`app-tui-transcript` 壳仍在，语义为 live scrollback（**非** Codex 浏览面）。
+产品面 capability：`app-tui-*`（含 `app-tui-vertical-slice`；另有 `host` / `bridge` / `transcript` / `app-tui-chrome`（**合约 id 不改名**；语义=layout 壳） / `input` / `commands`）。跨切面索引：`app-tui`。合约已归档：`archive/2026-07-10-c450-revise-app-tui-contract`。`app-tui-transcript` 壳仍在，语义为 live scrollback（**非** Codex 浏览面）。
 
 steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面只调 `Driver`，不持有 ReAct 队列。
 

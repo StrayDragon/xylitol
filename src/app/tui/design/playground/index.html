@@ -98,7 +98,7 @@
     body.mode-tile .panel {
       display: block;
       margin-bottom: 2.25rem;
-      /* keep heading clear of chrome when centering / pinning */
+      /* keep heading clear of sticky header when centering / pinning */
       scroll-margin: 1.25rem 0;
     }
     body.mode-tile .panel.is-active {
@@ -356,7 +356,7 @@
       <button type="button" data-scheme="dark" aria-pressed="true">Dark</button>
       <button type="button" data-scheme="light" aria-pressed="false">Light</button>
     </div>
-    <span class="keys">f 整壳 · c chrome · k 键位 · t 模式 · d/l · ←→ · 1–5 积木 · 8/9/0 包对照</span>
+    <span class="keys">f 整壳 · c 壳 · k 键位 · t 模式 · d/l · ←→ · 1–5 积木 · 8/9/0 包对照</span>
   </header>
 
   <div class="shell">
@@ -563,7 +563,7 @@
         <div class="term" id="layout-term">
           <div class="term-content" id="lay-content">
             <div class="row bg-user" style="padding:0.15rem 0.35rem">
-              <span class="fg-user">❯</span> <span class="fg-on">少 chrome、可复制</span>
+              <span class="fg-user">❯</span> <span class="fg-on">少壳层、可复制</span>
             </div>
             <div class="row fg-assistant">当前轮进 scrollback。</div>
             <div class="row bg-tool-success" style="padding:0.15rem 0.35rem">
@@ -577,9 +577,9 @@
         </div>
       </section>
 
-      <!-- 6 chrome -->
-      <section class="panel" id="panel-chrome" data-id="chrome">
-        <h2>Chrome · c475</h2>
+      <!-- 6 layout 壳（slot id=layout-shell；与 key=1 的 Layout 积木槽区分；合约 id 仍为 app-tui-chrome） -->
+      <section class="panel" id="panel-layout-shell" data-id="layout-shell">
+        <h2>Layout 壳 · c475</h2>
         <p class="spec">
           <a href="../theme-tokens.md">theme-tokens</a> ·
           <a href="../status.md">status</a> ·
@@ -587,13 +587,13 @@
           <a href="../glyphs.md">glyphs</a> · 固定暗色 · 一处 accent
         </p>
         <div class="ctl">
-          <button type="button" class="chip-btn" data-chrome="ok" aria-pressed="true">一处 accent ✓</button>
-          <button type="button" class="chip-btn" data-chrome="bad" aria-pressed="false">多处 accent ✗</button>
-          <button type="button" class="chip-btn" data-chrome="idle" aria-pressed="false">idle · status 0</button>
-          <button type="button" class="chip-btn" data-chrome="footer" aria-pressed="false">footer MVP</button>
-          <button type="button" class="chip-btn" data-chrome="glyph" aria-pressed="false">glyph 档</button>
+          <button type="button" class="chip-btn" data-layout-shell="ok" aria-pressed="true">一处 accent ✓</button>
+          <button type="button" class="chip-btn" data-layout-shell="bad" aria-pressed="false">多处 accent ✗</button>
+          <button type="button" class="chip-btn" data-layout-shell="idle" aria-pressed="false">idle · status 0</button>
+          <button type="button" class="chip-btn" data-layout-shell="footer" aria-pressed="false">footer MVP</button>
+          <button type="button" class="chip-btn" data-layout-shell="glyph" aria-pressed="false">glyph 档</button>
         </div>
-        <div class="stage" id="chrome-stage"></div>
+        <div class="stage" id="layout-shell-stage"></div>
       </section>
 
       <!-- keybindings (product) -->
@@ -778,7 +778,7 @@
   <script>
     const SLOTS = [
       { id: "shell", label: "Full shell", key: "f" },
-      { id: "chrome", label: "Chrome", key: "c" },
+      { id: "layout-shell", label: "Layout 壳", key: "c" },
       { id: "keys", label: "Keybindings", key: "k" },
       { id: "layout", label: "Layout", key: "1" },
       { id: "tool", label: "Tool / Expandable", key: "2" },
@@ -816,7 +816,7 @@
       layout: { busy: true, steer: false, tree: false },
       shell: { busy: true, queue: false, tree: false, tool: true },
       keys: "idle",
-      chrome: "ok",
+      layoutShell: "ok",
       overlay: "shown",
       widget: "empty",
       atom: "trunc",
@@ -1167,7 +1167,7 @@
       const content = document.getElementById("shell-content");
       let html =
         '<div class="row bg-user" style="padding:0.15rem 0.35rem">' +
-        '<span class="fg-user">❯</span> <span class="fg-on">少 chrome、可复制 · 整壳预览</span></div>' +
+        '<span class="fg-user">❯</span> <span class="fg-on">少壳层、可复制 · 整壳预览</span></div>' +
         '<div class="row fg-assistant">当前轮进 scrollback（非 Codex 浏览面）。</div>' +
         '<div class="row fg-muted">thinking: 先读 DESIGN，再接线 bridge…</div>' +
         '<div class="row fg-assistant">assistant: 已对齐 Layout 栈。</div>';
@@ -1258,8 +1258,8 @@
       if (el) el.textContent = SPIN[spinI];
     }, 80);
 
-    /* —— chrome —— */
-    const CHROME = {
+    /* —— layout 壳（c475） —— */
+    const LAYOUT_SHELL = {
       ok: `<div class="row"><span class="fg-accent">⠋</span> <span class="fg-muted">Working · 仅 spinner 用 accent</span></div>
 <div class="row fg-muted">~/xylitol · ornith</div>
 <div class="row fg-muted" style="font-size:11px">c475 · Palette::dark · 一处 accent</div>`,
@@ -1275,16 +1275,20 @@
 <div class="row"><span class="fg-user">&gt;</span> <span class="fg-on">ascii 档</span> · <span class="fg-tool">*</span> tool</div>
 <div class="row fg-muted" style="font-size:11px">glyphs.md · 不探测字体 · 产品注入</div>`,
     };
-    function renderChrome() {
-      document.getElementById("chrome-stage").innerHTML = CHROME[state.chrome];
-      document.querySelectorAll("[data-chrome]").forEach((b) => {
-        b.setAttribute("aria-pressed", String(b.dataset.chrome === state.chrome));
+    function renderLayoutShell() {
+      document.getElementById("layout-shell-stage").innerHTML =
+        LAYOUT_SHELL[state.layoutShell];
+      document.querySelectorAll("[data-layout-shell]").forEach((b) => {
+        b.setAttribute(
+          "aria-pressed",
+          String(b.dataset.layoutShell === state.layoutShell),
+        );
       });
     }
-    document.querySelectorAll("[data-chrome]").forEach((b) => {
+    document.querySelectorAll("[data-layout-shell]").forEach((b) => {
       b.addEventListener("click", () => {
-        state.chrome = b.dataset.chrome;
-        renderChrome();
+        state.layoutShell = b.dataset.layoutShell;
+        renderLayoutShell();
       });
     });
 
@@ -1465,7 +1469,9 @@
     }
     const slotParam = params.get("slot");
     if (slotParam) {
-      const i = SLOTS.findIndex((s) => s.id === slotParam);
+      // legacy ?slot=chrome → layout-shell
+      const slotId = slotParam === "chrome" ? "layout-shell" : slotParam;
+      const i = SLOTS.findIndex((s) => s.id === slotId);
       if (i >= 0) state.index = i;
     }
 
@@ -1474,7 +1480,7 @@
     renderMdStream();
     renderShell();
     renderLayout();
-    renderChrome();
+    renderLayoutShell();
     renderKeys();
     renderWidgets();
     renderAtoms();
