@@ -57,6 +57,18 @@ fn product_slash_commands() -> Vec<SlashCommand> {
             argument_hint: None,
             get_argument_completions: None,
         },
+        SlashCommand {
+            name: "tree".into(),
+            description: Some("Open session tree (same as double Esc)".into()),
+            argument_hint: None,
+            get_argument_completions: None,
+        },
+        SlashCommand {
+            name: "fork".into(),
+            description: Some("Fork session at current leaf".into()),
+            argument_hint: None,
+            get_argument_completions: None,
+        },
     ];
     // Hand-test only — see `app::debug_fixtures` (delete that module to remove).
     #[cfg(debug_assertions)]
@@ -290,12 +302,22 @@ impl UiRoot {
         std::mem::take(&mut self.pending_tree_open)
     }
 
+    /// Request MessageHistory tree open (double Esc / `/tree`, c700).
+    pub fn request_tree_open(&mut self) {
+        self.pending_tree_open = true;
+    }
+
     pub fn take_pending_tree_travel(&mut self) -> Option<String> {
         self.pending_tree_travel.take()
     }
 
     pub fn take_pending_tree_fork(&mut self) -> Option<String> {
         self.pending_tree_fork.take()
+    }
+
+    /// Queue fork for `entry_id` (`/fork` at leaf or Shift+F).
+    pub fn request_tree_fork(&mut self, entry_id: String) {
+        self.pending_tree_fork = Some(entry_id);
     }
 
     pub fn take_pending_tree_label(&mut self) -> Option<(String, Option<String>)> {
