@@ -1,6 +1,9 @@
-//! XyEvent → UI-only model seam (c465).
+//! XyEvent → UI-only model seam (c465 / c494).
 //!
 //! Render / `UiRoot` MUST consume [`UiModel`] only — never match [`XyEvent`].
+//! Event-family logic lives in [`handlers`]; [`apply_xy_event`] remains the sole entry.
+
+mod handlers;
 
 use serde_json::Value;
 
@@ -65,10 +68,10 @@ pub struct UiModel {
     /// Busy-only short status; [`None`] when idle (layout status: 0 rows).
     pub status: Option<String>,
     /// In-progress assistant text (not yet committed as an entry).
-    streaming_assistant: String,
+    pub(crate) streaming_assistant: String,
     /// In-progress thinking text.
-    streaming_thinking: String,
-    current_role: Option<String>,
+    pub(crate) streaming_thinking: String,
+    pub(crate) current_role: Option<String>,
 }
 
 impl Default for UiModel {
@@ -201,7 +204,7 @@ impl UiModel {
         }
     }
 
-    fn flush_streaming(&mut self) {
+    pub(crate) fn flush_streaming(&mut self) {
         if !self.streaming_thinking.is_empty() {
             self.entries.push(UiEntry::Thinking {
                 text: std::mem::take(&mut self.streaming_thinking),
@@ -214,12 +217,12 @@ impl UiModel {
         }
     }
 
-    fn set_busy_status(&mut self, status: impl Into<String>) {
+    pub(crate) fn set_busy_status(&mut self, status: impl Into<String>) {
         self.phase = UiPhase::Busy;
         self.status = Some(status.into());
     }
 
-    fn maybe_idle_after_agent_end(&mut self) {
+    pub(crate) fn maybe_idle_after_agent_end(&mut self) {
         // Follow-ups are drained inside the same Driver::run before AgentEnd on
         // the happy path. After abort, follow_up may remain — stay busy so layout
         // can restore (c480); counts still come from QueueUpdate.
@@ -235,184 +238,23 @@ impl UiModel {
 /// Single seam: translate one [`XyEvent`] into UI-only mutations.
 ///
 /// Unhandled / metadata variants are logged and ignored — never panic.
+/// Family handlers live under [`handlers`]; this remains the only public entry.
 pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
-    match event {
-        XyEvent::AgentStart { .. } => {
-            model.set_busy_status("Working");
-        }
-        XyEvent::AgentEnd { .. } => {
-            model.flush_streaming();
-            model.maybe_idle_after_agent_end();
-        }
-        XyEvent::TurnStart { .. } => {
-            // Intermediate ReAct boundary — keep busy; do not clear streaming.
-            if model.phase == UiPhase::Busy {
-                model.status = Some("Working".into());
-            }
-        }
-        XyEvent::TurnEnd { .. } => {
-            // MUST NOT treat as user-visible round end / idle reset.
-            tracing::trace!(
-                target: "xylitol::tui",
-                "TurnEnd (intermediate); UI stays busy"
-            );
-        }
-        XyEvent::MessageStart { role, message } => {
-            model.flush_streaming();
-            model.current_role = Some(role.clone());
-            if role == "assistant" {
-                model.set_busy_status("Drafting reply");
-            } else if role == "user" {
-                // Steer / follow-up inject (and any future user MessageStart):
-                // commit into scrollback so queued strip can leave without losing text.
-                if let Some(msg) = message {
-                    let text = msg.text();
-                    if !text.trim().is_empty() {
-                        push_user_entry_dedup(model, text);
-                    }
-                }
-                if model.phase == UiPhase::Busy {
-                    model.set_busy_status("Working");
-                }
-            }
-        }
-        XyEvent::MessageUpdate { .. } => {
-            // Accumulated snapshot — TextDelta/ThinkingDelta already stream the
-            // increments; applying this would duplicate prefixes (see print mode).
-        }
-        XyEvent::MessageEnd { .. } => {
-            model.flush_streaming();
-            model.current_role = None;
-        }
-        XyEvent::TextDelta(text) => {
-            model.streaming_assistant.push_str(text);
-            model.set_busy_status("Drafting reply");
-        }
-        XyEvent::ThinkingDelta(text) => {
-            model.streaming_thinking.push_str(text);
-            model.set_busy_status("Thinking");
-        }
-        XyEvent::ToolExecutionStart { id, name, args } => {
-            model.flush_streaming();
-            let args_preview = compact_json_preview(args, 80);
-            model.entries.push(UiEntry::Tool {
-                id: id.clone(),
-                name: name.clone(),
-                args_preview,
-                output: String::new(),
-                is_error: false,
-                done: false,
-            });
-            model.set_busy_status(format!("Running {name}"));
-        }
-        XyEvent::ToolExecutionUpdate { id, output } => {
-            if let Some(UiEntry::Tool { output: buf, .. }) = find_tool_mut(&mut model.entries, id) {
-                buf.push_str(output);
-            }
-        }
-        XyEvent::ToolExecutionEnd {
-            id,
-            name,
-            result,
-            is_error,
-        } => {
-            if let Some(UiEntry::Tool {
-                output,
-                is_error: err,
-                done,
-                ..
-            }) = find_tool_mut(&mut model.entries, id)
-            {
-                if output.is_empty() {
-                    *output = result.clone();
-                }
-                *err = *is_error;
-                *done = true;
-            }
-            if name == "edit"
-                && let Some(display_diff) = extract_display_diff(result)
-            {
-                let summary = extract_edit_path(result)
-                    .map(|p| format!("edited {p}"))
-                    .unwrap_or_else(|| "edit".into());
-                model.entries.push(UiEntry::Diff {
-                    summary,
-                    display_diff,
-                });
-            }
-            if model.phase == UiPhase::Busy {
-                model.status = Some("Working".into());
-            }
-        }
-        XyEvent::QueueUpdate {
-            steer_count,
-            follow_up_count,
-        } => {
-            model.sync_queue(*steer_count, *follow_up_count);
-        }
-        XyEvent::CompactionStart { reason } => {
-            model.entries.push(UiEntry::System {
-                text: format!("compaction: {reason}"),
-            });
-            model.set_busy_status("Compacting");
-        }
-        XyEvent::CompactionEnd { aborted, .. } => {
-            let text = if *aborted {
-                "compaction aborted"
-            } else {
-                "compaction complete"
-            };
-            model.entries.push(UiEntry::System { text: text.into() });
-            // Sticky Compacting would block layout status; restore like ToolExecutionEnd.
-            if model.phase == UiPhase::Busy {
-                model.status = Some("Working".into());
-            }
-        }
-        XyEvent::AutoRetryStart {
-            attempt,
-            max_retries,
-            ..
-        } => {
-            model.set_busy_status(format!("Retry {attempt}/{max_retries}"));
-        }
-        XyEvent::AutoRetryEnd { success, attempt } => {
-            if !*success {
-                model.entries.push(UiEntry::System {
-                    text: format!("retry failed (attempt {attempt})"),
-                });
-            }
-            if model.phase == UiPhase::Busy {
-                model.status = Some("Working".into());
-            }
-        }
-        XyEvent::Error(msg) => {
-            // Esc abort used to emit Error("aborted"); treat as cancel note + idle
-            // so a sticky Error wall cannot block further conversation (c482).
-            if msg == "aborted" {
-                model.entries.push(UiEntry::System {
-                    text: "aborted".into(),
-                });
-                if model.queue.follow_up_count == 0 {
-                    model.phase = UiPhase::Idle;
-                    model.status = None;
-                }
-            } else {
-                model.entries.push(UiEntry::Error { text: msg.clone() });
-            }
-        }
-        XyEvent::ModelSelect { .. }
-        | XyEvent::ThinkingLevelChanged { .. }
-        | XyEvent::SessionInfoChanged { .. } => {
-            tracing::debug!(
-                target: "xylitol::tui",
-                event = event.description(),
-                "XyEvent ignored by bridge (metadata)"
-            );
-        }
+    if handlers::apply_agent_family(model, event)
+        || handlers::apply_stream_family(model, event)
+        || handlers::apply_tools_family(model, event)
+        || handlers::apply_lifecycle_family(model, event)
+    {
+        return;
     }
+    tracing::debug!(
+        target: "xylitol::tui",
+        event = event.description(),
+        "XyEvent unhandled by bridge"
+    );
 }
 
-fn compact_json_preview(value: &Value, max_chars: usize) -> String {
+pub(crate) fn compact_json_preview(value: &Value, max_chars: usize) -> String {
     let raw = match value {
         Value::String(s) => s.clone(),
         other => other.to_string(),
@@ -424,7 +266,7 @@ fn compact_json_preview(value: &Value, max_chars: usize) -> String {
     format!("{truncated}…")
 }
 
-fn find_tool_mut<'a>(entries: &'a mut [UiEntry], id: &str) -> Option<&'a mut UiEntry> {
+pub(crate) fn find_tool_mut<'a>(entries: &'a mut [UiEntry], id: &str) -> Option<&'a mut UiEntry> {
     entries.iter_mut().rev().find(|e| match e {
         UiEntry::Tool { id: tid, .. } => tid == id,
         _ => false,
@@ -433,7 +275,7 @@ fn find_tool_mut<'a>(entries: &'a mut [UiEntry], id: &str) -> Option<&'a mut UiE
 
 /// Append a user scrollback row; skip if it duplicates the trailing user entry
 /// (e.g. idle `begin_run` already seeded the same prompt).
-fn push_user_entry_dedup(model: &mut UiModel, text: String) {
+pub(crate) fn push_user_entry_dedup(model: &mut UiModel, text: String) {
     if let Some(UiEntry::User { text: last }) = model.entries.last()
         && last == &text
     {
@@ -451,7 +293,7 @@ pub fn extract_display_diff(result: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-fn extract_edit_path(result: &str) -> Option<String> {
+pub(crate) fn extract_edit_path(result: &str) -> Option<String> {
     let value: Value = serde_json::from_str(result).ok()?;
     value
         .get("path")

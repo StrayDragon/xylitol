@@ -108,9 +108,12 @@ fn product_tui_source_has_no_tui_start_call() {
     let sources = [
         ("mod.rs", include_str!("mod.rs")),
         ("host.rs", include_str!("host.rs")),
+        ("effects.rs", include_str!("effects.rs")),
+        ("commands.rs", include_str!("commands.rs")),
         ("layout/root.rs", include_str!("layout/root.rs")),
+        ("layout/slots.rs", include_str!("layout/slots.rs")),
         ("terminal_guard.rs", include_str!("terminal_guard.rs")),
-        ("bridge.rs", include_str!("bridge.rs")),
+        ("bridge/mod.rs", include_str!("bridge/mod.rs")),
     ];
     for (name, src) in sources {
         for line in src.lines() {
@@ -136,10 +139,43 @@ fn render_modules_do_not_match_xy_event() {
         !root.contains("XyEvent"),
         "layout/root must stay XyEvent-free"
     );
-    let bridge = include_str!("bridge.rs");
+    let slots = include_str!("layout/slots.rs");
+    assert!(
+        !slots.contains("XyEvent"),
+        "layout/slots must stay XyEvent-free"
+    );
+    let bridge = include_str!("bridge/mod.rs");
     assert!(
         bridge.contains("apply_xy_event"),
         "bridge must own apply_xy_event"
+    );
+}
+
+#[test]
+fn shared_effect_pump_is_single_entry() {
+    // ath6: production + harness share drain_pending; no duplicate PendingSlash match.
+    let effects = include_str!("effects.rs");
+    assert!(
+        effects.contains("pub async fn drain_pending"),
+        "effects must export drain_pending"
+    );
+    let mod_src = include_str!("mod.rs");
+    assert!(
+        mod_src.contains("drain_pending"),
+        "production host loop must call drain_pending"
+    );
+    assert!(
+        !mod_src.contains("PendingSlash::Exit"),
+        "mod.rs must not duplicate PendingSlash match"
+    );
+    let harness = include_str!("harness.rs");
+    assert!(
+        harness.contains("drain_pending"),
+        "harness pump must call drain_pending"
+    );
+    assert!(
+        !harness.contains("PendingSlash::Exit"),
+        "harness must not duplicate PendingSlash match"
     );
 }
 
@@ -355,7 +391,7 @@ fn harness_idle_slash_model_pending() {
     session.step(HostEvent::Input(enter_event())).unwrap();
     assert_eq!(
         session.take_slash(),
-        Some(super::host::PendingSlash::CycleModel)
+        Some(super::commands::PendingSlash::CycleModel)
     );
 }
 
@@ -401,6 +437,57 @@ fn harness_enter_travel_stub_closes_tree() {
     assert!(
         joined.contains("travel →"),
         "expected travel stub in transcript; got: {joined}"
+    );
+}
+
+#[test]
+fn harness_editor_slot_mutex_and_esc_closes() {
+    use super::layout::EditorSlot;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+
+    root.borrow_mut().open_slot_for_test(EditorSlot::Plate);
+    assert_eq!(root.borrow().slot(), EditorSlot::Plate);
+    let frame = root.borrow_mut().render(80);
+    assert!(
+        frame.iter().any(|l| l.contains("Command Plate")),
+        "Plate must replace editor slot: {frame:?}"
+    );
+    assert!(
+        !frame.iter().any(|l| l.contains("Session tree")),
+        "slots are mutually exclusive"
+    );
+
+    // Opening Tree replaces Plate.
+    root.borrow_mut().open_slot(EditorSlot::Tree);
+    assert_eq!(root.borrow().slot(), EditorSlot::Tree);
+    assert!(root.borrow().tree_open());
+
+    session.step(HostEvent::Input(esc_event())).unwrap();
+    assert_eq!(root.borrow().slot(), EditorSlot::Editor);
+
+    root.borrow_mut().open_slot_for_test(EditorSlot::Settings);
+    session.step(HostEvent::Input(esc_event())).unwrap();
+    assert_eq!(root.borrow().slot(), EditorSlot::Editor);
+
+    root.borrow_mut().open_slot_for_test(EditorSlot::Choice);
+    session.step(HostEvent::Input(esc_event())).unwrap();
+    assert_eq!(root.borrow().slot(), EditorSlot::Editor);
+}
+
+#[test]
+fn harness_busy_esc_aborts_not_tree_slot() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_run_started("hello");
+    assert_eq!(root.borrow().slot(), super::layout::EditorSlot::Editor);
+    session.step(HostEvent::Input(esc_event())).unwrap();
+    assert!(session.take_abort());
+    assert_eq!(
+        root.borrow().slot(),
+        super::layout::EditorSlot::Editor,
+        "busy Esc must abort and MUST NOT open Tree"
     );
 }
 
