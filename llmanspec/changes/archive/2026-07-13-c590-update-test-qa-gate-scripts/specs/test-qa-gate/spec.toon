@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,qg04,"scripts-check-convention","仓库 MUST 约定 scripts/check_*.py（或 check-*.py）为非变更闸脚本且 MUST 经 just qa 的 check-scripts-wired/check-scripts 入闸；cleanup_* 等维护脚本 MUST NOT 被 just qa 强制执行。",null,null,null
+  modify_requirement,qg01,统一 just qa 满闸,"仓库 MUST 提供 just qa 作为日常与 PR 前的统一验证入口；该入口 MUST 顺序包含：cargo fmt --check、clippy（all-features、-D warnings）、cargo/nextest 全特性测试、显式 packages/xylitol-tui 测试（五层中的 1–4）、cargo doc --no-deps --all-features、DESIGN token/Palette 一致性检查（check-tui-tokens）、scripts/check_* 入闸校验与执行（check-scripts-wired 与 check-scripts；约定 scripts/check_*.py 或 check-*.py 为非变更闸脚本）、以及 prek run --all-files。just check 与 just ci MUST 作为 just qa 的别名。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  qg04,"wired-meta",新增 scripts/check_foo.py,"运行 just check-scripts-wired","因 check-scripts 通配或显式引用而通过；未入闸则失败"
+  qg01,"qa-runs-scripts-checks",仓库含 scripts/check_*.py,运行 just qa,"check-scripts-wired 与 check-scripts 被执行且全部通过才打印成功"
