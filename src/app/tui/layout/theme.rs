@@ -2,6 +2,7 @@
 
 use xylitol_tui::components::editor::EditorTheme;
 use xylitol_tui::components::select_list::SelectListTheme;
+use xylitol_tui::components::tree_selector::TreeSelectorTheme;
 use xylitol_tui::{Palette, fg_rgb};
 
 /// Product MVP layout theme: always `Palette::dark()` (no theme auto).
@@ -26,6 +27,34 @@ impl LayoutTheme {
         EditorTheme {
             border_color: Box::new(move |s| fg_rgb(muted, s)),
             select_list_theme: SelectListTheme::default(),
+        }
+    }
+
+    /// Session-tree theme: kind prefixes use DESIGN tokens (user / success / tool).
+    pub fn tree_selector_theme(self) -> TreeSelectorTheme {
+        let user = self.palette.user;
+        let success = self.palette.success;
+        let tool = self.palette.tool;
+        let muted = self.palette.muted;
+        let on_surface = self.palette.on_surface;
+        let warning = self.palette.warning;
+        let accent = self.palette.accent;
+        TreeSelectorTheme {
+            cursor: Box::new(move |s| fg_rgb(accent, s)),
+            prefix: Box::new(move |s| fg_rgb(muted, s)),
+            label: Box::new(move |s| fg_rgb(on_surface, s)),
+            selected_row: Box::new(|s| format!("\x1b[7m{s}\x1b[27m")),
+            active_marker: Box::new(move |s| fg_rgb(accent, s)),
+            scroll_info: Box::new(move |s| fg_rgb(muted, s)),
+            empty: Box::new(move |s| fg_rgb(muted, s)),
+            annotation: Box::new(move |s| fg_rgb(warning, s)),
+            annotation_time: Box::new(move |s| fg_rgb(muted, s)),
+            kind_prefix: Box::new(move |kind| match kind {
+                "user" => fg_rgb(user, "user: "),
+                "assistant" => fg_rgb(success, "assistant: "),
+                "tool" => fg_rgb(tool, "tool: "),
+                other => fg_rgb(muted, &format!("[{other}]: ")),
+            }),
         }
     }
 
