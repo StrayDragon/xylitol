@@ -185,37 +185,11 @@ impl Component for Markdown {
 
                 Event::Start(Tag::BlockQuote(_)) => {
                     idx += 1;
-                    // quote theme already applies muted + italic — do not nest
-                    // theme.italic (warning fg) or the body turns prominent.
-                    let quote_text_fn = |s: &str| (self.theme.quote)(s);
-                    let quote_prefix = get_style_prefix(&quote_text_fn);
-                    let bar = (self.theme.quote_border)("│ ");
-                    let bar_w = visible_width(&bar);
-                    let body_width = content_width.saturating_sub(bar_w).max(1);
-
-                    let mut quote_body = Vec::new();
-                    while !at_list_end(&events, idx, "BlockQuote") {
-                        quote_body.extend(render_events_block(
-                            self,
-                            &events,
-                            &mut idx,
-                            body_width,
-                            &quote_text_fn,
-                            &quote_prefix,
-                        ));
-                    }
-                    // skip End(BlockQuote)
-                    skip_end_tag(&events, &mut idx);
-
-                    while quote_body.last().is_some_and(|l| l.is_empty()) {
-                        quote_body.pop();
-                    }
-
-                    for ql in quote_body {
-                        for wl in wrap_text_with_ansi(&ql, body_width) {
-                            rendered.push(MdLine::prewrapped(format!("{bar}{wl}")));
-                        }
-                    }
+                    rendered.extend(
+                        render_blockquote_block(self, &events, &mut idx, content_width)
+                            .into_iter()
+                            .map(MdLine::prewrapped),
+                    );
                     if !next_is_space(&events, idx) {
                         rendered.push(MdLine::raw(String::new()));
                     }
@@ -835,6 +809,53 @@ fn render_list(
     lines
 }
 
+fn render_blockquote_block(
+    md: &Markdown,
+    events: &[Event],
+    idx: &mut usize,
+    width: usize,
+) -> Vec<String> {
+    // quote theme already applies muted + italic — do not nest theme.italic
+    // (warning fg) or the body turns prominent.
+    let quote_text_fn = |s: &str| (md.theme.quote)(s);
+    let quote_prefix = get_style_prefix(&quote_text_fn);
+    let bar = (md.theme.quote_border)("│ ");
+    let bar_w = visible_width(&bar);
+    let body_width = width.saturating_sub(bar_w).max(1);
+
+    let mut out = Vec::new();
+    while !at_list_end(events, *idx, "BlockQuote") {
+        match events.get(*idx) {
+            Some(Event::Start(Tag::BlockQuote(_))) => {
+                *idx += 1;
+                // Nested quote already sized to body_width; prefix one more bar.
+                for line in render_blockquote_block(md, events, idx, body_width) {
+                    out.push(format!("{bar}{line}"));
+                }
+            }
+            _ => {
+                let before = *idx;
+                let chunk =
+                    render_events_block(md, events, idx, body_width, &quote_text_fn, &quote_prefix);
+                if *idx == before {
+                    *idx += 1;
+                    continue;
+                }
+                for ql in chunk {
+                    for wl in wrap_text_with_ansi(&ql, body_width) {
+                        out.push(format!("{bar}{wl}"));
+                    }
+                }
+            }
+        }
+    }
+    skip_end_tag(events, idx);
+    while out.last().is_some_and(|l| l.is_empty()) {
+        out.pop();
+    }
+    out
+}
+
 fn render_events_block(
     md: &Markdown,
     events: &[Event],
@@ -849,6 +870,8 @@ fn render_events_block(
             Event::End(TagEnd::BlockQuote(_))
             | Event::End(TagEnd::List(_))
             | Event::End(TagEnd::Table) => break,
+            // Nested quote is owned by render_blockquote_block.
+            Event::Start(Tag::BlockQuote(_)) => break,
             Event::End(TagEnd::Paragraph) => {
                 *idx += 1;
                 break;
@@ -857,6 +880,13 @@ fn render_events_block(
                 *idx += 1;
                 let text = collect_inline_until(md, events, idx, quote_fn, quote_prefix);
                 lines.push(text.concat());
+            }
+            Event::Start(Tag::Heading { level, .. }) => {
+                *idx += 1;
+                let heading_lines =
+                    collect_inline_until(md, events, idx, &|s| apply_default_style(md, s), "");
+                let n = level_to_usize(*level);
+                lines.push((md.theme.heading)(n, &heading_lines.concat()));
             }
             Event::Start(Tag::List(first_num)) => {
                 *idx += 1;
@@ -870,6 +900,10 @@ fn render_events_block(
                 let code = collect_text_until(events, idx);
                 // Keep highlight colors — do not wrap with quote_fn (muted/italic).
                 lines.extend(render_code_block_lines(md, &code, lang));
+            }
+            Event::Start(Tag::Table(_)) => {
+                *idx += 1;
+                lines.extend(render_table(md, events, idx, width));
             }
             Event::Text(t) => {
                 lines.push(quote_fn(t));
@@ -1317,6 +1351,51 @@ mod tests {
                 "each wrapped quote line needs '│ ':\n{lines:?}"
             );
         }
+    }
+
+    #[test]
+    fn nested_quote_stacks_bars() {
+        let mut md = Markdown::new(
+            "> outer\n>\n> > inner\n".into(),
+            0,
+            0,
+            identity_theme(),
+            None,
+        );
+        let text = visible_join(&mut md, 40);
+        assert!(
+            text.contains("│ outer") && text.contains("│ │ inner"),
+            "nested quote needs stacked gutters:\n{text}"
+        );
+    }
+
+    #[test]
+    fn quote_heading_and_table_render() {
+        let mut theme = identity_theme();
+        theme.heading = Box::new(|level, s| format!("H{level}:{s}"));
+        let mut md = Markdown::new(
+            "\
+> ### Inside
+>
+> | a | b |
+> |---|---|
+> | 1 | 2 |
+"
+            .into(),
+            0,
+            0,
+            theme,
+            None,
+        );
+        let text = visible_join(&mut md, 40);
+        assert!(
+            text.contains("│") && text.contains("H3:Inside"),
+            "quote heading missing:\n{text}"
+        );
+        assert!(
+            text.contains('1') && text.contains('2') && !text.contains('|'),
+            "quote table should space-align without pipes:\n{text}"
+        );
     }
 
     #[test]
