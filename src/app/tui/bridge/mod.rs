@@ -197,6 +197,22 @@ impl UiModel {
         out
     }
 
+    /// Immediate user Esc abort: System `Aborted` + idle status (deduped).
+    pub fn note_user_abort(&mut self) {
+        let already = self.entries.iter().any(
+            |e| matches!(e, UiEntry::System { text } if text == "Aborted" || text == "aborted"),
+        );
+        if !already {
+            self.entries.push(UiEntry::System {
+                text: "Aborted".into(),
+            });
+        }
+        if self.queue.follow_up_count == 0 {
+            self.phase = UiPhase::Idle;
+            self.status = None;
+        }
+    }
+
     /// Stream ended without a clean AgentEnd — idle if no pending follow-up.
     pub fn on_stream_closed_without_agent_end(&mut self) {
         if self.phase == UiPhase::Busy && self.queue.follow_up_count == 0 {
@@ -488,7 +504,7 @@ mod tests {
             model
                 .entries
                 .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text == "aborted"))
+                .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted"))
         );
         assert!(
             !model
@@ -496,6 +512,23 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, UiEntry::Error { .. }))
         );
+    }
+
+    #[test]
+    fn note_user_abort_dedupes_with_error_aborted() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        model.note_user_abort();
+        apply_xy_event(&mut model, &XyEvent::Error("aborted".into()));
+        let n = model
+            .entries
+            .iter()
+            .filter(
+                |e| matches!(e, UiEntry::System { text } if text == "Aborted" || text == "aborted"),
+            )
+            .count();
+        assert_eq!(n, 1, "must not duplicate Aborted notes");
+        assert_eq!(model.phase, UiPhase::Idle);
     }
 
     #[test]

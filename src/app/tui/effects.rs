@@ -7,6 +7,8 @@ use crate::app::core::driver::{Driver, EventStream};
 use crate::domain::session_types::SessionTreeKind;
 use crate::protocol::Command;
 
+#[cfg(test)]
+use super::commands::PendingBash;
 use super::commands::PendingSlash;
 use super::host::HostSession;
 use super::layout::map_session_tree_nodes;
@@ -14,8 +16,9 @@ use super::layout::map_session_tree_nodes;
 /// Consume HostSession pending ops and call Driver / dispatch.
 ///
 /// Ordering matches the historical `run_host_loop` body (abort → dequeue → steer →
-/// follow-up → slash → bash → optional submit→`Driver::run`). Production and
-/// harness MUST share this entry so slash/bash/steer branches cannot diverge.
+/// follow-up → slash → optional submit→`Driver::run`). Bang is **not** awaited here
+/// (c665 — host `select!` / [`run_pending_bash`]). Production and harness MUST share
+/// this entry so slash/steer branches cannot diverge.
 ///
 /// When `agent_stream` is already `Some`, submit is not taken. A newly started
 /// run is stored in `agent_stream`; callers decide whether to drain it (harness)
@@ -28,6 +31,7 @@ pub async fn drain_pending<T: Terminal>(
     if session.take_abort() {
         tracing::info!(target: "xylitol::tui", "Driver::abort (Esc)");
         driver.abort();
+        session.note_user_abort();
         let _ = driver.clear_queue(true, false);
         let stats = driver.queue_stats();
         session.set_queue_badge(stats.steer_count, stats.follow_up_count);
@@ -107,31 +111,8 @@ pub async fn drain_pending<T: Terminal>(
         }
     }
 
-    if let Some(bash) = session.take_bash() {
-        tracing::info!(
-            target: "xylitol::tui",
-            command_len = bash.command.len(),
-            exclude = bash.exclude_from_context,
-            "Driver::execute_bash"
-        );
-        match dispatch(
-            driver,
-            Command::Bash {
-                id: None,
-                command: bash.command.clone(),
-                exclude_from_context: bash.exclude_from_context,
-            },
-        )
-        .await
-        {
-            Ok(DispatchOutcome::Bash(result)) => {
-                session.push_bash_result(&bash.command, &result);
-            }
-            Ok(_) => session.push_system_note("bash: unexpected dispatch outcome"),
-            Err(e) => session.push_system_note(format!("bash failed: {e}")),
-        }
-        let _ = session.render_now();
-    }
+    // Bang (`!`/`!!`) is NOT awaited here — host loop / pump runs it so Esc can
+    // abort concurrently (c665). Callers MUST `take_bash` after drain_pending.
 
     if session.take_pending_session_tree_open() {
         tracing::info!(target: "xylitol::tui", "Driver::session_tree(MessageHistory)");
@@ -178,6 +159,35 @@ pub async fn drain_pending<T: Terminal>(
         *agent_stream = Some(driver.run(&prompt).await);
     }
 
+    Ok(())
+}
+
+/// Run one pending bang bash to completion (harness / non-select callers).
+#[cfg(test)]
+pub async fn run_pending_bash<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &dyn Driver,
+    bash: PendingBash,
+) -> Result<(), String> {
+    tracing::info!(
+        target: "xylitol::tui",
+        command_len = bash.command.len(),
+        exclude = bash.exclude_from_context,
+        "Driver::execute_bash"
+    );
+    session.begin_bash_exec();
+    let _ = session.render_now();
+    match driver
+        .execute_bash(&bash.command, bash.exclude_from_context)
+        .await
+    {
+        Ok(result) => {
+            session.push_bash_result(&bash.command, &result);
+        }
+        Err(e) => session.push_system_note(format!("bash failed: {e}")),
+    }
+    session.end_bash_exec();
+    let _ = session.render_now();
     Ok(())
 }
 
