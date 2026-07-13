@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: src/app/tui/
-requirements[18]{req_id,title,statement}:
+requirements[19]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式或 agent 忙碌时 Esc MUST 调用 Driver::abort；Ctrl+C 在编辑器非空时 MUST 清空输入，在编辑器为空时 MUST 退出 TUI。"
@@ -21,7 +21,8 @@ requirements[18]{req_id,title,statement}:
   ati15,"product-bash-prefix-border",产品 TUI 中当编辑器文本 trim 后以 ! 或 !! 开头时，Editor 操作区边框 MUST 切换为 bash 强调色（对齐 DESIGN success 前景）；去掉该前缀后 MUST 恢复默认 muted 边框。
   ati16,"product-idle-bang-execute","产品 idle 且会话树关闭时，Enter 提交以 ! 或 !! 开头的非空命令 MUST 调用 Driver::execute_bash（经 Command::Bash / dispatch），MUST NOT 调用 Driver::run；!! 前缀 MUST 设置 exclude_from_context=true，单 ! 为 false；命令体为空时 MUST 提示且 MUST NOT 执行。"
   ati17,"product-external-editor-stub","产品 Host MUST 将 Ctrl+G 绑定为外部编辑器入口：至少记录/系统提示或 stub 回写；harness 路径 MUST NOT 强制 spawn 真实 $EDITOR；真编辑器路径 MAY 使用 with_terminal_suspended 边界（对齐 design/bash-mode.md）。"
-scenarios[31]{req_id,id,given,when,then}:
+  ati18,"editor-slot-machine",产品 TUI MUST 以显式 EditorSlot（至少含 Editor 与 Tree stub；MAY 含 Plate/Settings/Choice）互斥替换 editor 槽；打开任一非 Editor 槽时 MUST 替换贴底 editor 区而非画到 scrollback 顶部；Esc MUST 优先关闭当前槽并还原 Editor；忙碌时 Esc MUST 仍 abort（ati10）且 MUST NOT 打开 Tree；c491 stub Tree MUST NOT 扩展为活树/filter/真 Driver travel。
+scenarios[34]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-input",spec.toon 存在且 purpose 为中文
   ati1,"selector-slot","",打开模型选择器,editor 槽被选择器替换且贴底可见
   ati2,"esc-aborts","",流式中按 Esc,"Driver::abort 被调用"
@@ -53,3 +54,6 @@ scenarios[31]{req_id,id,given,when,then}:
   ati16,"empty-bang",idle 且 editor 仅为 !,Enter,出现提示且未执行 bash
   ati16,"slash-wins",idle 且 editor 为 /exit,Enter,走 slash 退出而非 bash
   ati17,"ctrl-g-stub",产品 host 可测环境,Ctrl+G,不崩且有 stub/系统提示可观测
+  ati18,"open-tree-slot",产品 idle 且 editor 空,双 Esc 打开会话树,editor 槽被 Tree stub 替换且贴底可见
+  ati18,"esc-closes-slot",Tree stub 槽已打开,按 Esc,槽关闭且 Editor 还原
+  ati18,"busy-esc-aborts-not-tree",产品 busy 且 Tree 关闭,按 Esc,请求 abort 且不打开 Tree 槽
