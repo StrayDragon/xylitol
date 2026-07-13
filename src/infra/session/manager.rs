@@ -916,6 +916,10 @@ impl SessionManager {
 
     /// Generate a branch summary for cut-point entries.
     pub fn generate_branch_summary(&self, skipped_entries: &[SessionEntry]) -> String {
+        use crate::domain::session_types::{
+            count_tool_calls, is_user_message, message_text, tool_file_paths,
+        };
+
         if skipped_entries.is_empty() {
             return String::new();
         }
@@ -923,85 +927,55 @@ impl SessionManager {
         let total = skipped_entries.len();
         let user_count = skipped_entries
             .iter()
-            .filter(|e| {
-                matches!(e, SessionEntry::Message(m) if m.message.get("role").and_then(|r| r.as_str()) == Some("user"))
-            })
+            .filter(|e| is_user_message(e))
             .count();
         let assistant_count = skipped_entries
             .iter()
             .filter(|e| {
-                matches!(e, SessionEntry::Message(m) if m.message.get("role").and_then(|r| r.as_str()) == Some("assistant"))
+                matches!(
+                    e,
+                    SessionEntry::Message(m)
+                        if m.message.get("role").and_then(|r| r.as_str()) == Some("assistant")
+                )
             })
             .count();
 
-        // Count tool calls from assistant messages
         let tool_calls: usize = skipped_entries
             .iter()
-            .filter_map(|e| {
-                if let SessionEntry::Message(m) = e {
-                    m.message
-                        .get("parts")
-                        .and_then(|p| p.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter(|p| {
-                                    p.get("type").and_then(|t| t.as_str()) == Some("FunctionCall")
-                                })
-                                .count()
-                        })
-                } else {
-                    None
-                }
+            .filter_map(|e| match e {
+                SessionEntry::Message(m) => Some(count_tool_calls(&m.message)),
+                _ => None,
             })
             .sum();
 
-        // Extract files from tool calls
         let mut files: Vec<String> = Vec::new();
         for entry in skipped_entries {
-            if let SessionEntry::Message(m) = entry
-                && let Some(parts) = m.message.get("parts").and_then(|p| p.as_array())
-            {
-                for part in parts {
-                    if part.get("type").and_then(|t| t.as_str()) == Some("FunctionCall") {
-                        let name = part.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                        if matches!(name, "read" | "write" | "edit")
-                            && let Some(path) = part
-                                .get("args")
-                                .and_then(|a| a.get("path"))
-                                .and_then(|p| p.as_str())
-                            && !files.contains(&path.to_string())
-                        {
-                            files.push(path.to_string());
-                        }
+            if let SessionEntry::Message(m) = entry {
+                for path in tool_file_paths(&m.message) {
+                    if !files.contains(&path) {
+                        files.push(path);
                     }
                 }
             }
         }
 
-        // Find last user message
         let last_user_msg = skipped_entries.iter().rev().find_map(|e| {
-            if let SessionEntry::Message(m) = e {
-                if m.message.get("role").and_then(|r| r.as_str()) == Some("user") {
-                    m.message
-                        .get("parts")
-                        .and_then(|p| p.as_array())
-                        .and_then(|arr| arr.first())
-                        .and_then(|p| p.get("text"))
-                        .and_then(|t| t.as_str())
-                        .map(|s| {
-                            let truncated: String = s.chars().take(100).collect();
-                            if s.len() > 100 {
-                                format!("{truncated}...")
-                            } else {
-                                truncated
-                            }
-                        })
-                } else {
-                    None
-                }
-            } else {
-                None
+            if !is_user_message(e) {
+                return None;
             }
+            let SessionEntry::Message(m) = e else {
+                return None;
+            };
+            let text = message_text(&m.message);
+            if text.is_empty() {
+                return None;
+            }
+            let truncated: String = text.chars().take(100).collect();
+            Some(if text.chars().count() > 100 {
+                format!("{truncated}...")
+            } else {
+                truncated
+            })
         });
 
         let mut summary = format!("分支摘要:\n- 跳过 {total} 条记录\n");
@@ -1449,6 +1423,49 @@ mod deferred_persist_tests {
                 .count(),
             2
         );
+    }
+}
+
+#[cfg(test)]
+mod branch_summary_tests {
+    use super::*;
+    use crate::domain::session_types::{EntryBase, MessageEntry, fixture_message_json};
+    use serde_json::json;
+
+    fn msg(id: &str, message: serde_json::Value) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: None,
+                timestamp: "t".into(),
+            },
+            message,
+        })
+    }
+
+    #[test]
+    fn branch_summary_counts_content_tool_calls_and_plain_user_text() {
+        let mgr = SessionManager::in_memory();
+        let entries = vec![
+            msg("u1", fixture_message_json("user", "你能做什么")),
+            msg(
+                "a1",
+                json!({
+                    "role": "assistant",
+                    "content": [
+                        "查文件",
+                        { "id": "1", "name": "read", "arguments": { "path": "src/lib.rs" } }
+                    ],
+                    "timestamp": 0u64,
+                }),
+            ),
+        ];
+        let summary = mgr.generate_branch_summary(&entries);
+        assert!(summary.contains("1 次工具调用"), "{summary}");
+        assert!(summary.contains("src/lib.rs"), "{summary}");
+        assert!(summary.contains("你能做什么"), "{summary}");
+        assert!(!summary.contains("{\"content\""), "{summary}");
     }
 }
 

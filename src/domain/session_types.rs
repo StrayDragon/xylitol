@@ -342,6 +342,80 @@ fn extract_text_from_parts(parts: &[Value]) -> String {
     out
 }
 
+/// Iterate `content` or legacy `parts` arrays on a serialized message.
+pub fn message_parts(msg: &Value) -> Option<&Vec<Value>> {
+    msg.get("content")
+        .or_else(|| msg.get("parts"))
+        .and_then(Value::as_array)
+}
+
+/// Whether a content/part value is a tool-call (AgentMessage ToolCall or legacy FunctionCall).
+pub fn is_tool_call_part(part: &Value) -> bool {
+    if part.as_str().is_some() {
+        return false;
+    }
+    let typ = part.get("type").and_then(Value::as_str);
+    if matches!(
+        typ,
+        Some("FunctionCall") | Some("toolCall") | Some("tool_call")
+    ) {
+        return part.get("name").is_some();
+    }
+    // Untagged AgentPart::ToolCall: { id, name, arguments }
+    part.get("name").is_some()
+        && (part.get("arguments").is_some() || part.get("args").is_some())
+        && part.get("text").is_none()
+}
+
+/// Tool name from a tool-call part, if any.
+pub fn tool_call_name(part: &Value) -> Option<&str> {
+    if !is_tool_call_part(part) {
+        return None;
+    }
+    part.get("name").and_then(Value::as_str)
+}
+
+/// Tool arguments object (`arguments` or legacy `args`).
+pub fn tool_call_arguments(part: &Value) -> Option<&Value> {
+    if !is_tool_call_part(part) {
+        return None;
+    }
+    part.get("arguments").or_else(|| part.get("args"))
+}
+
+/// Count tool-call parts in a serialized message.
+pub fn count_tool_calls(msg: &Value) -> usize {
+    message_parts(msg)
+        .map(|parts| parts.iter().filter(|p| is_tool_call_part(p)).count())
+        .unwrap_or(0)
+}
+
+/// Collect unique `path` args from read/write/edit tool calls in a message.
+pub fn tool_file_paths(msg: &Value) -> Vec<String> {
+    let Some(parts) = message_parts(msg) else {
+        return Vec::new();
+    };
+    let mut files = Vec::new();
+    for part in parts {
+        let Some(name) = tool_call_name(part) else {
+            continue;
+        };
+        if !matches!(name, "read" | "write" | "edit") {
+            continue;
+        }
+        let Some(path) = tool_call_arguments(part)
+            .and_then(|a| a.get("path"))
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        if !files.iter().any(|f| f == path) {
+            files.push(path.to_string());
+        }
+    }
+    files
+}
+
 /// Whether `entry` is a persisted user message.
 pub fn is_user_message(entry: &SessionEntry) -> bool {
     matches!(
@@ -518,6 +592,35 @@ mod session_tree_tests {
             "parts": [{ "type": "text", "text": "legacy" }],
         });
         assert_eq!(message_text(&msg), "legacy");
+    }
+
+    #[test]
+    fn count_tool_calls_reads_agent_message_shape() {
+        let msg = json!({
+            "role": "assistant",
+            "content": [
+                "ok",
+                { "id": "1", "name": "read", "arguments": { "path": "a.rs" } },
+                { "id": "2", "name": "bash", "arguments": { "command": "ls" } }
+            ],
+        });
+        assert_eq!(count_tool_calls(&msg), 2);
+        assert_eq!(tool_file_paths(&msg), vec!["a.rs".to_string()]);
+    }
+
+    #[test]
+    fn count_tool_calls_reads_legacy_function_call() {
+        let msg = json!({
+            "role": "assistant",
+            "parts": [{
+                "type": "FunctionCall",
+                "id": "c1",
+                "name": "write",
+                "args": { "path": "b.rs" }
+            }]
+        });
+        assert_eq!(count_tool_calls(&msg), 1);
+        assert_eq!(tool_file_paths(&msg), vec!["b.rs".to_string()]);
     }
 
     #[test]
