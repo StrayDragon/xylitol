@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,"sr-driver1",Server 经 Driver 驱动,Server 运行时 MUST 通过 Driver（或等价文档化缝）驱动对话与会话命令，MUST NOT 在生产路径上以裸 AgentRuntime 作为唯一后端旁路 Print 主线。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  "sr-driver1","no-bare-runtime",审查 server AppState,检查持有类型,持有 Driver；handlers 不直接 Mutex AgentRuntime 作为唯一入口

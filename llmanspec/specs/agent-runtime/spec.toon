@@ -22,17 +22,17 @@ requirements[39]{req_id,title,statement}:
   ar13,"output-guard-restore","Agent runtime MUST support stdout restore returning process.stdout.write to its original implementation, and write_raw_stdout that bypasses the takeover for direct output."
   ar14,"bdd-runtime-v4",BDD tests for OutputGuard stdout takeover and restore MUST all pass.
   ar15,"no-rloop-keyword","No source file under src/ MUST use the r#loop raw identifier; the ReAct loop module MUST be named runtime::react."
-  ar16,"agent-entry-direct","System MUST define ReActAgent (the ReAct-strategy driver) and Agent (the pluggable capability aggregate) directly under agent/ and re-export them from agent/mod.rs; app layers MUST import agent symbols from agent/mod (not from an agent::facade hub); the previous single facade re-export module MUST be removed."
+  ar16,"agent-entry-direct","System MUST define AgentRuntime (the ReAct-loop driver) and AgentCapabilities (the pluggable capability aggregate) directly under agent/ and re-export them from agent/mod.rs; app layers MUST import agent symbols from agent/mod (not from an agent::facade hub); the previous single facade re-export module MUST be removed."
   ar17,"sessionstore-port","System MUST define runtime_protocol::SessionStore with load_context (returns SessionContext), append, and exists methods — the minimal surface the ReAct loop and compaction call; SessionManager MUST implement it."
   ar18,"eventsink-port","System MUST define runtime_protocol::EventSink with emit_lifecycle; EventBus MUST implement it."
   ar19,"lifecyclehandler-in-runtime-protocol","The LifecycleHandler type alias for async event subscriptions MUST reside in runtime_protocol::event, not in domain::lifecycle, because it is a contract detail of the event runtime protocol rather than domain vocabulary."
   ar20,事件映射自动化,"System MUST provide From<&XyEvent> for protocol::Event and TryFrom<&protocol::Event> for XyEvent to replace hand-written proto_to_agent conversions."
-  ar21,"agent-builder","System MUST provide an AgentBuilder in agent/ that depends only on runtime_protocol port trait objects and plain data (no concrete infra types, HC-1), defaults tools to an empty ToolSet and bash_executor and export_io to None so a conversation-only agent carries no file or bash or export capability, provides consuming methods tools, system_prompt, hooks, bash, export_io, sandbox, context_files, compaction, max_iterations, and a build method returning Result<Agent, String>."
+  ar21,"agent-builder","System MUST provide an AgentBuilder in agent/ that depends only on runtime_protocol port trait objects and plain data (no concrete infra types), defaults tools to an empty ToolSet and bash_executor and export_io to None, provides consuming methods tools, system_prompt, hooks, bash, export_io, sandbox, context_files, compaction, max_iterations, and a build method returning Result<AgentRuntime, String>."
   ar22,"runtime-mutable-slots","Agent MUST expose turn-level setters set_tools, set_hooks, add_hook, set_sandbox, and set_system_prompt that mutate session-backed capability state and take effect on the NEXT run call; an in-flight turn MUST be unaffected because run snapshots tools, prompt, cancel, and hooks at turn start, so the app or tui layer MAY switch configuration between turns (plan or edit mode) without locks."
   ar23,"hooks-invoked","The ReAct loop MUST consult AgentHooks at the tool-call boundary: before executing a tool it MUST run the before chain where any hook MAY deny the call with a reason that short-circuits to a tool-error result, and after a tool returns it MUST run the after chain where hooks MAY observe or transform the result; when no hooks are registered the loop MUST incur zero overhead. The previous self.hooks field was never read; this requirement wires it."
   ar24,"hook-chains-not-slots","AgentHooks MUST hold before, after, and transform_context as Vec of callbacks appendable at runtime via add_hook, not single Option slots; the steering and follow-up message callbacks MUST be separated into a distinct struct because they are message-injection, not tool-execution interception."
-  ar25,"react-agent-naming","AgentLoop MUST be renamed ReActAgent to express it is the ReAct-strategy driver of the Agent capability aggregate; the hollow Agent shell (a single loop_ field with pure delegation methods and zero behavioral increment) MUST be removed and its methods merged into ReActAgent so there is exactly one type that drives a ReAct turn."
-  ar26,"facade-layer-removed","The agent::facade intermediate module MUST be removed; ReActAgent and Agent MUST be defined directly under agent/ (for example agent/core.rs or agent/mod.rs) with the builder/hooks/event re-export surface moved to agent/mod.rs; reaching into agent::runtime or agent::session internals from app/ remains a layering violation, but the single public hub MUST be agent/mod, not agent::facade."
+  ar25,"react-agent-naming","Turn driver MUST be named AgentRuntime (formerly ReActAgent / AgentLoop); it MUST drive AgentCapabilities for each ReAct turn; hollow single-field delegation shells MUST NOT be reintroduced."
+  ar26,"facade-layer-removed","The agent::facade intermediate module MUST remain removed; AgentRuntime and AgentCapabilities MUST be defined under agent/ with builder/hooks/event re-exports on agent/mod.rs; reaching into agent::runtime or agent::session internals from app/ remains a layering violation."
   ar27,"react-loop-continues-after-tool-call","The ReAct loop MUST continue to a next model round after executing tool calls (feeding the tool results back into history), and MUST terminate a turn only when a model round produces NO tool call (tool_calls is empty). The loop MUST NOT terminate merely because the model stream emitted XyChunk::Done: providers send Done at the end of every single model stream including ones that contain FunctionCalls (openai yields FunctionCall then Done at finish_reason; anthropic and openai-responses likewise), so treating Done as turn-end aborts every tool-calling turn after one round and the model never sees the tool results. Evidence: react.rs had if done { break } after TurnEnd where done was set by XyChunk::Done, so a tool call (FunctionCall followed by Done) broke the for-loop before the continuation round; a stateful mock model test confirmed the continuation text never reached the caller; the correct termination tool_calls.is_empty() already existed at react.rs:356."
   "ar-q1","pending-message-queue","Agent runtime MUST 提供 PendingMessageQueue（或等价类型），支持 enqueue、drain、clear、has_items，以及 all 与 one-at-a-time 两种 drain 模式；steer 与 follow-up MUST 使用各自独立队列。"
   "ar-q2","react-drains-steering","ReAct 循环 MUST 在每一轮模型调用之前 drain steering 队列并将消息注入历史；MUST 在即将结束（无 tool_calls 且将停止）之前 drain follow-up 队列；若 follow-up 非空 MUST 继续循环而非立即 AgentEnd。"
@@ -41,8 +41,8 @@ requirements[39]{req_id,title,statement}:
   "ar-ev1",未知事件可降级,若未来扩展 XyEvent（含可选 Extension/Custom 载荷），应用面与 bridge MUST 对未识别变体降级处理（如 tracing），MUST NOT panic；核心循环 MUST 不依赖厂商专属变体才能完成一轮工具调用。
   "ar-q10",异步队列运行时,System MUST 提供可并发 enqueue 的异步消息队列运行时，至少覆盖 steer 与 follow_up 通道；入队与 clear 产生的队列状态更新 MUST 进入活跃 Driver run 的 XyEvent 流（或等价单通道），MUST NOT 仅依赖无人订阅的 EventBus 旁路。
   "ar-q11",abort 与队列取消语义,Driver abort MUST 取消进行中的工具（经 CancellationToken）并清空 steer 通道；MUST 保留 follow_up 通道内容供 UI restore；队列实现 MUST 在 async 上下文中避免长时间持锁。
-  ar28,"abort-resets-cancel-token",ReActAgent MUST 在每次 run 开始时安装一个新的 CancellationToken；abort MUST 只取消当前 run 的 token。abort 之后的下一次 run MUST NOT 因沿用已取消 token 而立即以 aborted 结束。
-scenarios[45]{req_id,id,given,when,then}:
+  ar28,"abort-resets-cancel-token",AgentRuntime MUST 在每次 run 开始时安装一个新的 CancellationToken；abort MUST 只取消当前 run 的 token。abort 之后的下一次 run MUST NOT 因沿用已取消 token 而立即以 aborted 结束。
+scenarios[43]{req_id,id,given,when,then}:
   r1,"react-loop",a mock XyModel returns text then tool call then final text,XyRunner executes,all events are emitted and loop terminates after tool response
   r1,"max-iterations",XyModel always returns tool calls,XyRunner reaches max_iterations,loop terminates with MaxIterationsReached error
   r2,"no-adk-events",agent is executing,events are emitted,"no adk_core::Event or adk_runner types appear in the event stream"
@@ -65,18 +65,17 @@ scenarios[45]{req_id,id,given,when,then}:
   ar13,restore,stdout is taken over,restore_stdout is called,is_stdout_taken_over returns false and original stdout is restored
   ar14,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all runtime-v4 scenarios pass"
   ar15,"grep-no-rloop",the source tree is grepped for r#loop,the grep runs,zero matches are found
-  ar16,"app-imports-agent-mod",an app/ file imports an Agent type from agent/,the import is inspected,"it imports agent:: (mod-level) symbols, not agent::facade"
+  ar16,"runtime-capabilities-named",源码树在本变更后,rg AgentRuntime 与 AgentCapabilities,二者均存在且 agent/mod 再导出；无 ReActAgent 类型名
   ar17,"store-in-memory",a test constructs Agent with InMemoryStore,a turn runs,the test passes without creating a real SessionManager
   ar18,"sink-records-events",a test constructs Agent with RecordingSink,compaction triggers lifecycle events,the sink contains the expected events
   ar19,"handler-in-runtime-protocol",the source tree is inspected for LifecycleHandler,its definition is located,it is defined under src/runtime_protocol/event.rs
   ar20,"auto-mapping",a protocol Event is converted back to domain,TryFrom is used,the conversion succeeds for all supported variants
-  ar21,"builder-minimal-core","a conversation-only agent is desired",AgentBuilder is called with ports and a system prompt only,the agent runs turns with an empty tool set and no bash or export capability and never names a concrete infra type
+  ar21,"builder-returns-runtime",AgentBuilder 装配完成,调用 build,返回 AgentRuntime
   ar22,"turn-snapshot",a turn N is in flight,"set_tools is called mid-turn",turn N still uses the old tool set and turn N+1 uses the new set with no lock
   ar23,"before-chain-denies",a before hook denies the bash tool,the loop reaches the bash call,"execute is skipped and a tool-error result is recorded for the LLM"
   ar24,"add-hook-runtime",an agent is already built,add_hook pushes a second before callback,both callbacks run on the next tool call in registration order
-  ar25,"react-agent-named",the source tree after the change,"rg '\\bAgentLoop\\b' src/ runs",zero matches remain and ReActAgent exists as the turn driver
-  ar25,"shell-removed",the hollow Agent shell existed as pure delegation,the change is applied,no Agent struct with a single loop_ field remains; its methods live on ReActAgent
-  ar26,"facade-gone","agent/facade.rs existed as the re-export hub",the source tree is inspected,"agent/facade.rs no longer exists and agent/mod.rs re-exports ReActAgent and Agent"
+  ar25,"agent-runtime-named",源码树在本变更后,"rg '\\bReActAgent\\b' src/",零匹配且 AgentRuntime 为 turn driver
+  ar26,"facade-still-gone",源码树,检查 agent/facade.rs,不存在且 agent/mod 再导出 AgentRuntime 与 AgentCapabilities
   ar27,"tool-call-then-continuation",a model round emits a FunctionCall then Done and the agent executes the tool,the loop processes the tool result and calls the model again,the model continuation round (a final text reply with no tool call) reaches the caller and the turn ends with that reply visible
   ar27,"plain-text-turn-unchanged",a model round emits only text and no tool call then Done,the loop terminates after that single round,"the turn ends after one round with no spurious continuation (the fix does not change plain-text behavior)"
   "ar-q1","drain-one","","one-at-a-time 模式下队列有两条消息并 drain",仅返回一条且队列仍剩一条
@@ -86,5 +85,4 @@ scenarios[45]{req_id,id,given,when,then}:
   "ar-ev1",degrade,消费者收到未映射事件变体,渲染或 bridge 处理,记录日志且不崩溃
   "ar-q10","single-channel","一次活跃的 Driver::run",UI 并发 enqueue steer,EventStream 上出现 QueueUpdate 且 ReAct 下轮 drain 到该消息
   "ar-q11","abort-semantics",steer 与 follow_up 均非空且工具执行中,abort,工具停止、steer 空、follow_up 仍在
-  ar28,"abort-then-rerun",agent 正在 run,abort 后再 run 新 prompt,第二次 run 正常产出模型事件且不在入口立即 aborted
-  ar28,"abort-token-fresh",上一轮已被 abort,开始新 run,新 run 使用未取消的 CancellationToken
+  ar28,"abort-resets",AgentRuntime 上一轮被 abort,再次 run,不因旧 token 立即 aborted

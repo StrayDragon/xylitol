@@ -2,7 +2,7 @@
 //!
 //! [`BashExecHandler`] owns the optional [`XyBashExecutor`] port and the
 //! in-flight cancellation token. The session store is borrowed per call so the
-//! [`crate::agent::session::Agent`] remains the single holder of session
+//! [`crate::agent::session::AgentCapabilities`] remains the single holder of session
 //! context (design §4.1).
 
 use std::sync::Arc;

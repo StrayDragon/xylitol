@@ -1,9 +1,9 @@
 //! Prompt template metadata for `/template:name` command surfacing.
 //!
 //! Templates are discovered by the resource loader and registered on the
-//! [`Agent`](crate::agent::session::Agent) via `register_prompt_commands`, which
+//! [`AgentCapabilities`](crate::agent::session::AgentCapabilities) via `register_prompt_commands`, which
 //! surfaces each template as a `/template:name` slash command (see
-//! `Agent::get_commands`). The c320 change removed the dead in-Agent dispatch
+//! `AgentCapabilities::get_commands`). The c320 change removed the dead in-AgentCapabilities dispatch
 //! path (`process_prompt`) together with its positional-argument expansion
 //! machinery — none of it had a production call site (the application surface
 //! owns command dispatch/expansion, not the capability aggregate).

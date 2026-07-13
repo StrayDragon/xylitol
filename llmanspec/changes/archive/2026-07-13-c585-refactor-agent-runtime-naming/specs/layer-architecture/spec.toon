@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,la20,"shared-bootstrap-and-dispatch","app::core MUST host a shared bootstrap module (app::core::bootstrap) centralizing the full assembly path from CLI args to a constructed AgentRuntime (config load, ModelRegistry build, trust resolution, resource discovery including templates/context_files/system_prompt/append_system_prompt, compaction settings, permission, build_agent, model select), and a shared dispatch module (app::core::dispatch) centralizing Command variant execution semantics; print (cli), server, and tui MUST call bootstrap, rpc and tui MUST call dispatch, and no surface MAY inline its own assembly or command-dispatch implementation.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  la20,"bootstrap-agent-runtime",bootstrap 完成,检查 BootstrappedAgent 字段,持有 AgentRuntime（或经 Driver 封装）
