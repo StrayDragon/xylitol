@@ -86,7 +86,7 @@ def scheme_css_block(selector: str, colors: list[tuple[str, str]]) -> list[str]:
         lines.append(f"  --{name}: {hex_};")
     lines += [
         "",
-        "  /* page chrome: aliases of DESIGN tokens only */",
+        "  /* page frame: aliases of DESIGN tokens only */",
         "  --page-bg: var(--surface);",
         "  --page-fg: var(--on-surface);",
         "  --hairline: var(--tool-pending-bg);",
