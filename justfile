@@ -53,6 +53,61 @@ sync-tui-tokens:
 check-tui-tokens:
     python3 src/app/tui/design/playground/sync_tokens.py --check
 
+# --- scripts/ QA checks -------------------------------------------------
+# Convention (normative for this repo):
+#   - scripts/check_*.py or scripts/check-*.py = non-mutating gate scripts.
+#     Each MUST be reachable from `just qa` (via `check-scripts` / deps).
+#   - Other scripts/ files (e.g. cleanup_*) are maintenance tools and MUST NOT
+#     be required by `qa` (they may mutate the tree).
+#
+# Meta-gate: every check_* script path must appear in this justfile, and `qa`
+# must depend on `check-scripts-wired` + `check-scripts`.
+check-scripts-wired:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    qa_hdr="$(awk '/^qa:/{print; exit}' justfile)"
+    if [[ "$qa_hdr" != *check-scripts-wired* ]] || [[ "$qa_hdr" != *check-scripts* ]]; then
+        echo "error: just qa must list check-scripts-wired and check-scripts as dependencies" >&2
+        echo "  got: $qa_hdr" >&2
+        exit 1
+    fi
+    shopt -s nullglob
+    missing=0
+    # Wired if the exact path appears, or the check-scripts recipe globs the family.
+    has_glob=0
+    if grep -E -q 'scripts/check_\*\.py|scripts/check-\*\.py' justfile; then
+        has_glob=1
+    fi
+    for f in scripts/check_*.py scripts/check-*.py; do
+        if grep -F -q "$f" justfile || [[ "$has_glob" -eq 1 ]]; then
+            continue
+        fi
+        echo "error: QA check script not wired into justfile (list it or keep check-scripts glob): $f" >&2
+        missing=1
+    done
+    if [[ "$missing" -ne 0 ]]; then
+        exit 1
+    fi
+    echo "ok: scripts/check_* wired into just qa"
+
+# Run every scripts/check_*.py / check-*.py (prefer `--check` when supported).
+check-scripts:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shopt -s nullglob
+    files=(scripts/check_*.py scripts/check-*.py)
+    if [[ "${#files[@]}" -eq 0 ]]; then
+        echo "ok: no scripts/check_*.py yet"
+        exit 0
+    fi
+    for f in "${files[@]}"; do
+        if python3 "$f" --help 2>/dev/null | grep -q -- '--check'; then
+            python3 "$f" --check
+        else
+            python3 "$f"
+        fi
+    done
+
 # Open DESIGN playground HTML (Linux; xdg-open).
 open-design-playground:
     xdg-open src/app/tui/design/playground/index.html
@@ -62,8 +117,9 @@ test-tui:
     cargo test -p xylitol-tui
 
 # Unified daily / PR gate (no TUI layer-5 E2E — needs PTY/tmux).
-# Order: fmt → clippy → workspace tests → package TUI harness → docs → DESIGN tokens → prek.
-qa: fmt-check lint test test-tui doc-check check-tui-tokens
+# Order: fmt → clippy → workspace tests → package TUI harness → docs → DESIGN tokens
+# → scripts/check_* (wired + run) → prek.
+qa: fmt-check lint test test-tui doc-check check-tui-tokens check-scripts-wired check-scripts
     @echo "All checks passed!"
     prek run --all-files
 
