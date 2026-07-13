@@ -6,7 +6,9 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -21,7 +23,7 @@ use crate::domain::session_types::{
 use crate::domain::types::ThinkingLevel;
 use crate::runtime_protocol::XyBashResult;
 
-use super::effects::drain_pending;
+use super::effects::{drain_pending, run_pending_bash};
 use super::host::{HostEvent, HostSession};
 
 /// Test double: canned `run` streams + call recording for steer/abort/queues/bash.
@@ -30,11 +32,14 @@ pub struct ScriptedDriver {
     pub steer_calls: Vec<String>,
     pub follow_up_calls: Vec<String>,
     pub clear_calls: Vec<(bool, bool)>,
-    pub bash_calls: Vec<(String, bool)>,
+    bash_calls: Mutex<Vec<(String, bool)>>,
     abort_count: AtomicUsize,
+    /// When true, [`Self::execute_bash`] waits until [`Self::abort`] (c665).
+    hang_bash_until_abort: AtomicBool,
+    aborted: AtomicBool,
     scripts: VecDeque<Vec<XyEvent>>,
     default_script: Vec<XyEvent>,
-    bash_results: VecDeque<XyBashResult>,
+    bash_results: Mutex<VecDeque<XyBashResult>>,
     default_bash: XyBashResult,
     steer_queued: usize,
     follow_up_queued: usize,
@@ -43,7 +48,7 @@ pub struct ScriptedDriver {
     session_messages: Vec<SessionEntry>,
     travel_overrides: HashMap<String, SessionTreeTravel>,
     session_tree_calls: AtomicUsize,
-    travel_calls: std::sync::Mutex<Vec<String>>,
+    travel_calls: Mutex<Vec<String>>,
 }
 
 impl ScriptedDriver {
@@ -53,8 +58,10 @@ impl ScriptedDriver {
             steer_calls: Vec::new(),
             follow_up_calls: Vec::new(),
             clear_calls: Vec::new(),
-            bash_calls: Vec::new(),
+            bash_calls: Mutex::new(Vec::new()),
             abort_count: AtomicUsize::new(0),
+            hang_bash_until_abort: AtomicBool::new(false),
+            aborted: AtomicBool::new(false),
             scripts: VecDeque::new(),
             default_script: vec![
                 XyEvent::AgentStart {
@@ -66,7 +73,7 @@ impl ScriptedDriver {
                     messages: Vec::new(),
                 },
             ],
-            bash_results: VecDeque::new(),
+            bash_results: Mutex::new(VecDeque::new()),
             default_bash: XyBashResult {
                 output: "ok".into(),
                 exit_code: Some(0),
@@ -86,7 +93,7 @@ impl ScriptedDriver {
             session_messages: Vec::new(),
             travel_overrides: HashMap::new(),
             session_tree_calls: AtomicUsize::new(0),
-            travel_calls: std::sync::Mutex::new(Vec::new()),
+            travel_calls: Mutex::new(Vec::new()),
         }
     }
 
@@ -119,7 +126,21 @@ impl ScriptedDriver {
     }
 
     pub fn push_bash_result(&mut self, result: XyBashResult) {
-        self.bash_results.push_back(result);
+        self.bash_results
+            .lock()
+            .expect("bash_results")
+            .push_back(result);
+    }
+
+    pub fn set_hang_bash_until_abort(&self, hang: bool) {
+        self.hang_bash_until_abort.store(hang, Ordering::SeqCst);
+        if hang {
+            self.aborted.store(false, Ordering::SeqCst);
+        }
+    }
+
+    pub fn bash_calls(&self) -> Vec<(String, bool)> {
+        self.bash_calls.lock().expect("bash_calls").clone()
     }
 
     pub fn abort_count(&self) -> usize {
@@ -146,6 +167,7 @@ impl Driver for ScriptedDriver {
 
     fn abort(&self) {
         self.abort_count.fetch_add(1, Ordering::SeqCst);
+        self.aborted.store(true, Ordering::SeqCst);
     }
 
     fn current_model(&self) -> Option<ModelInfo> {
@@ -181,14 +203,30 @@ impl Driver for ScriptedDriver {
     }
 
     async fn execute_bash(
-        &mut self,
+        &self,
         command: &str,
         exclude_from_context: bool,
     ) -> Result<XyBashResult, String> {
         self.bash_calls
+            .lock()
+            .expect("bash_calls")
             .push((command.to_string(), exclude_from_context));
+        if self.hang_bash_until_abort.load(Ordering::SeqCst) {
+            while !self.aborted.load(Ordering::SeqCst) {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            return Ok(XyBashResult {
+                output: String::new(),
+                exit_code: None,
+                cancelled: true,
+                truncated: false,
+                full_output_path: None,
+            });
+        }
         Ok(self
             .bash_results
+            .lock()
+            .expect("bash_results")
             .pop_front()
             .unwrap_or_else(|| self.default_bash.clone()))
     }
@@ -302,6 +340,10 @@ pub async fn pump_host_driver<T: Terminal>(
     agent_stream: &mut Option<EventStream>,
 ) -> Result<(), String> {
     drain_pending(session, driver, agent_stream).await?;
+
+    if let Some(bash) = session.take_bash() {
+        run_pending_bash(session, driver, bash).await?;
+    }
 
     if let Some(stream) = agent_stream.as_mut() {
         while let Some(xy) = stream.next().await {
@@ -730,7 +772,7 @@ mod slice_tests {
             driver.runs
         );
         assert_eq!(
-            driver.bash_calls,
+            driver.bash_calls(),
             vec![("echo hi".to_string(), false)],
             "B3: execute_bash once"
         );
@@ -747,7 +789,7 @@ mod slice_tests {
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        assert_eq!(driver.bash_calls, vec![("echo x".to_string(), true)]);
+        assert_eq!(driver.bash_calls(), vec![("echo x".to_string(), true)]);
     }
 
     #[tokio::test]
@@ -829,6 +871,80 @@ mod slice_tests {
             "system note: {:?}",
             session.ui_model().entries
         );
+    }
+
+    #[tokio::test]
+    async fn c665_busy_esc_shows_aborted_and_idles() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        session.on_run_started("first");
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.abort_count(), 1);
+        assert!(
+            session
+                .ui_model()
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted")),
+            "expected Aborted note: {:?}",
+            session.ui_model().entries
+        );
+        assert!(
+            session.ui_model().status.is_none(),
+            "status must idle: {:?}",
+            session.ui_model().status
+        );
+        assert!(!session.is_busy());
+    }
+
+    #[tokio::test]
+    async fn c665_bang_esc_cancels_hanging_bash() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_hang_bash_until_abort(true);
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("!sleep 99");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let bash = session.take_bash().expect("pending bang");
+        session.begin_bash_exec();
+        let bash_fut = driver.execute_bash(&bash.command, bash.exclude_from_context);
+        tokio::pin!(bash_fut);
+        tokio::select! {
+            result = &mut bash_fut => {
+                let r = result.expect("bash result");
+                assert!(r.cancelled, "bash must be cancelled: {r:?}");
+                session.push_bash_result(&bash.command, &r);
+                session.end_bash_exec();
+            }
+            _ = async {
+                tokio::time::sleep(Duration::from_millis(40)).await;
+                session.step(HostEvent::Input(esc_event())).unwrap();
+                assert!(session.take_abort(), "busy Esc must request abort");
+                driver.abort();
+                session.note_user_abort();
+                std::future::pending::<()>().await
+            } => {}
+        }
+        assert!(driver.abort_count() >= 1);
+        assert!(
+            session
+                .ui_model()
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted")),
+            "Aborted note: {:?}",
+            session.ui_model().entries
+        );
+        assert!(!session.bash_active());
+        assert!(!session.is_busy());
     }
 
     #[tokio::test]

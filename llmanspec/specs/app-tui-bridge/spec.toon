@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-bridge"
 purpose: XyEvent 到 UI 模型的单一翻译缝与 agent 循环生命周期。
 valid_scope[1]: src/app/tui/
-requirements[7]{req_id,title,statement}:
+requirements[8]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   atb1,"xyevent-to-ui-seam","产品 TUI MUST 经单一 bridge 缝（apply_xy_event）将 XyEvent 译为 UI-only 模型；渲染层 MUST NOT 直接 match XyEvent。未知/元数据变体 MUST 降级（tracing）且 MUST NOT panic。"
   atb2,"agent-loop-lifecycle","用户可见忙碌态 MUST 覆盖从提交或 steer 起至 AgentEnd 且 follow-up 队列为空；中间 TurnEnd MUST NOT 被当作整轮结束去清空 streaming 尾或复位 idle。"
@@ -10,7 +10,8 @@ requirements[7]{req_id,title,statement}:
   atb4,"inprocess-default-remote-retained",TUI 默认 MUST 使用 InProcessDriver；RemoteDriver 类型与远控能力 MUST 保留以支持日后远程 server 控制，MUST NOT 删除。
   atb5,"compaction-status-scrollback",产品 bridge 收到 CompactionStart 时 MUST 将 busy status 设为单行短词 Compacting，并 MUST 向 live scrollback 追加一条 muted/System 说明（含 reason）；收到 CompactionEnd 时 MUST 追加完成或 aborted 说明，且若仍处于 Busy MUST 将 status 恢复为 Working；MUST NOT 用多行 status 呈现压缩进度。
   atb6,"auto-retry-status-scrollback",产品 bridge 收到 AutoRetryStart 时 MUST 将 busy status 设为单行 Retry attempt/max_retries；收到 AutoRetryEnd 时若 success=false MUST 向 scrollback 追加失败说明，且若仍处于 Busy MUST 将 status 恢复为 Working；成功结束时若仍 Busy 亦 MUST 恢复 Working；MUST NOT 在 status 行堆叠多行重试详情。
-scenarios[12]{req_id,id,given,when,then}:
+  atb7,"abort-feedback-aborted-note","用户 Esc abort（或等价 Driver::abort）后，产品 bridge/host MUST 向 live scrollback 追加至多一行 muted/System 文案 Aborted，并将 status 置为 idle（0 行）；若随后收到 XyEvent::Error aborted，MUST NOT 再追加重复 Aborted/aborted 行；MUST NOT 用多行 Error 墙呈现取消。"
+scenarios[14]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-bridge",spec.toon 存在且 purpose 为中文
   atb1,"unknown-event","",收到未映射 XyEvent,记录日志且 UI 不崩溃
   atb1,"no-xyevent-in-render","",审查 tui 渲染模块,无 XyEvent 匹配；事件经 apply_xy_event
@@ -23,3 +24,5 @@ scenarios[12]{req_id,id,given,when,then}:
   atb6,"retry-start-status",agent Busy,AutoRetryStart attempt=2 max=5,status 为 Retry 2/5
   atb6,"retry-end-fail-note",Busy 且 Retry 状态,AutoRetryEnd success=false,scrollback 含失败说明且 status 恢复 Working
   atb6,"retry-end-success-restores",Busy 且 Retry 状态,AutoRetryEnd success=true,status 恢复 Working 且无失败 System 行
+  atb7,"esc-shows-aborted",产品 TUI agent Busy,Esc abort,scrollback 含 Aborted 且 status 为空闲
+  atb7,"no-duplicate-aborted",已写入 System Aborted,再收到 Error aborted,scrollback 中 Aborted 类注记仍至多一行

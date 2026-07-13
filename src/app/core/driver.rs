@@ -141,8 +141,11 @@ pub trait Driver: Send {
     }
 
     /// Execute a bash command (the `Bash` Command variant).
+    ///
+    /// Takes `&self` so the host can `select!` keyboard (Esc → [`Self::abort`])
+    /// while bash is in flight (c665).
     async fn execute_bash(
-        &mut self,
+        &self,
         command: &str,
         exclude_from_context: bool,
     ) -> Result<XyBashResult, String>;
@@ -337,7 +340,7 @@ impl Driver for InProcessDriver {
     }
 
     async fn execute_bash(
-        &mut self,
+        &self,
         command: &str,
         exclude_from_context: bool,
     ) -> Result<XyBashResult, String> {
@@ -760,7 +763,7 @@ impl Driver for RemoteDriver {
     }
 
     async fn execute_bash(
-        &mut self,
+        &self,
         command: &str,
         exclude_from_context: bool,
     ) -> Result<XyBashResult, String> {
