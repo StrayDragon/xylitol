@@ -23,7 +23,7 @@ blocks: ["c669-add-app-tui-scrollback-async-tint"]
 ## What Changes
 
 1. **块模型**：引入可着色块（建议 `UiEntry::Bash { command, status, output, … }` 或等价 `BlockTint`），bang 不再长期依赖无语义的 `System` 拼行。
-2. **渲染**：`widgets/scrollback.rs` 对 bang 块套 `tool-pending-bg` / `tool-success-bg` / `tool-error-bg`（cancelled → error tint）；user / tool 既有路径复核；**每块前后各一空行**（对齐 agent_demo）。
+2. **渲染**：`widgets/scrollback.rs` 对 bang 块套 `tool-pending-bg` / `tool-success-bg` / `tool-error-bg`（cancelled → error tint）；user / tool 既有路径复核；**相邻块之间一行空行**（对齐 agent_demo Spacer）。
 3. **文案**：bang Esc → 块内 `(cancelled)`；agent Esc → 仍 `Aborted`。
 4. **DESIGN**：修订 [`bash-mode.md`](../../../src/app/tui/design/bash-mode.md)——去掉「bash 仅用 fg、非 tool bg」旧意向，改为块 tint MUST。
 5. **Harness**：断言 bang 成功/失败/cancelled 渲染含 tint 痕迹；user/tool 回归；块间隙。

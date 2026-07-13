@@ -1930,19 +1930,15 @@ fn agent_demo_bang_prefix_enables_bash_border() {
 }
 
 #[test]
-fn agent_demo_transcript_blocks_blank_before_and_after() {
+fn agent_demo_transcript_blocks_blank_between() {
     let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
     app.freeze_script_for_test();
     app.seed_two_user_blocks_for_test();
     let lines = app.transcript_render_lines_for_test(40);
     let is_inter_spacer = |l: &str| l.contains("\x1b[49m") && !l.contains("\x1b[48;2");
     assert!(
-        !lines.is_empty() && is_inter_spacer(&lines[0]),
-        "first block must have a leading untinted spacer: {lines:?}"
-    );
-    assert!(
-        lines.last().is_some_and(|l| is_inter_spacer(l)),
-        "last block must have a trailing untinted spacer: {lines:?}"
+        !lines.is_empty() && !is_inter_spacer(&lines[0]),
+        "first content line should not be a leading spacer: {lines:?}"
     );
     let alpha = lines
         .iter()
@@ -1958,8 +1954,8 @@ fn agent_demo_transcript_blocks_blank_before_and_after() {
         .filter(|l| is_inter_spacer(l))
         .count();
     assert!(
-        spacer_run >= 2,
-        "pi-like gap: trailing + leading spacers between blocks (got {spacer_run}): {lines:?}"
+        spacer_run >= 1,
+        "one untinted spacer between blocks (got {spacer_run}): {lines:?}"
     );
 }
 
@@ -1979,8 +1975,8 @@ fn agent_demo_tool_tint_blocks_have_gaps() {
         .filter(|l| is_inter_spacer(l))
         .count();
     assert!(
-        spacer_run >= 2,
-        "tool blocks must have untinted spacers between them (got {spacer_run})"
+        spacer_run >= 1,
+        "tool blocks must have an untinted spacer between them (got {spacer_run})"
     );
 }
 
