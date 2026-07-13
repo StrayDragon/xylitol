@@ -295,19 +295,41 @@ pub fn message_role(msg: &Value) -> Option<&str> {
 }
 
 /// Extract human-readable text from a serialized agent message JSON value.
+///
+/// Aligns with pi `_extractUserMessageText` / [`crate::domain::message::AgentMessage::text`]:
+/// prefers `content` (string or part array). Also accepts legacy `parts` used in older
+/// fixtures. Falls back to empty string — never the whole JSON blob.
 pub fn message_text(msg: &Value) -> String {
-    if let Some(parts) = msg.get("parts").and_then(Value::as_array) {
-        let mut out = String::new();
-        for p in parts {
-            if let Some(t) = p.get("text").and_then(Value::as_str) {
-                out.push_str(t);
-            } else {
-                out.push_str(&p.to_string());
-            }
-        }
-        return out;
+    if let Some(s) = msg.get("content").and_then(Value::as_str) {
+        return s.to_string();
     }
-    msg.to_string()
+    if let Some(parts) = msg
+        .get("content")
+        .or_else(|| msg.get("parts"))
+        .and_then(Value::as_array)
+    {
+        return extract_text_from_parts(parts);
+    }
+    String::new()
+}
+
+fn extract_text_from_parts(parts: &[Value]) -> String {
+    let mut out = String::new();
+    for p in parts {
+        if let Some(t) = p.as_str() {
+            // AgentPart::Text is `#[serde(untagged)]` → bare string in JSON.
+            out.push_str(t);
+            continue;
+        }
+        let typ = p.get("type").and_then(Value::as_str);
+        // Typed text / thinking, or untagged Thinking { text, … } without `type`.
+        let take_text = matches!(typ, None | Some("text") | Some("thinking"));
+        if take_text && let Some(t) = p.get("text").and_then(Value::as_str) {
+            out.push_str(t);
+        }
+        // Skip toolCall / image / toolResult parts for preview & editor prefill.
+    }
+    out
 }
 
 /// Whether `entry` is a persisted user message.
@@ -437,6 +459,7 @@ mod session_tree_tests {
     use serde_json::json;
 
     fn msg_entry(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionEntry {
+        // Match AgentMessage serde: `content` is untagged Text strings, not `parts`.
         SessionEntry::Message(MessageEntry {
             base: EntryBase {
                 entry_type: "message".into(),
@@ -446,9 +469,58 @@ mod session_tree_tests {
             },
             message: json!({
                 "role": role,
-                "parts": [{ "type": "text", "text": text }],
+                "content": [text],
+                "timestamp": 0u64,
             }),
         })
+    }
+
+    #[test]
+    fn message_text_extracts_untagged_content_strings() {
+        let msg = json!({
+            "role": "user",
+            "content": ["你好"],
+            "timestamp": 1u64,
+        });
+        assert_eq!(message_text(&msg), "你好");
+    }
+
+    #[test]
+    fn message_text_extracts_typed_text_parts() {
+        let msg = json!({
+            "role": "user",
+            "content": [{ "type": "text", "text": "hello" }],
+        });
+        assert_eq!(message_text(&msg), "hello");
+    }
+
+    #[test]
+    fn message_text_skips_tool_call_parts() {
+        let msg = json!({
+            "role": "assistant",
+            "content": [
+                "前置文字",
+                { "id": "1", "name": "bash", "arguments": {"command": "ls"} }
+            ],
+        });
+        assert_eq!(message_text(&msg), "前置文字");
+    }
+
+    #[test]
+    fn message_text_legacy_parts_still_works() {
+        let msg = json!({
+            "role": "user",
+            "parts": [{ "type": "text", "text": "legacy" }],
+        });
+        assert_eq!(message_text(&msg), "legacy");
+    }
+
+    #[test]
+    fn plan_travel_user_prefills_plain_text_not_json() {
+        let entries = vec![msg_entry("u1", None, "user", "你能做什么")];
+        let travel = plan_message_history_travel(&entries, "u1").expect("travel");
+        assert_eq!(travel.editor_text.as_deref(), Some("你能做什么"));
+        assert!(!travel.editor_text.as_deref().unwrap_or("").contains('{'));
     }
 
     #[test]
