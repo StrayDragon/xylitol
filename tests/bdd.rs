@@ -20,7 +20,7 @@ use xylitol::infra::config::types::HookEntry;
 use xylitol::infra::config::value::InfraSecretResolver;
 use xylitol::infra::hooks::{DispatchResult, HookDispatcher, HookEvent, HookPhase};
 use xylitol::infra::provider::factory::{
-    reset_fake_state, set_fake_text, set_fake_tool_call, set_fake_tool_result,
+    reset_fake_state, set_fake_slow_stream, set_fake_text, set_fake_tool_call, set_fake_tool_result,
 };
 use xylitol::infra::session::{
     CompactionEntry, EntryBase, MessageEntry, SessionEntry, SessionManager,
@@ -163,6 +163,15 @@ fn check_or_contains(haystack: &str, or_clause: &str) -> bool {
 
 /// Borrow result as &str — callers must keep the Ref alive
 fn make_agent(agent: &AgentState) -> AgentRuntime {
+    make_agent_with_store(agent).0
+}
+
+fn make_agent_with_store(
+    agent: &AgentState,
+) -> (
+    AgentRuntime,
+    Arc<dyn xylitol::runtime_protocol::XySessionStore>,
+) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     use std::sync::Arc;
@@ -172,7 +181,7 @@ fn make_agent(agent: &AgentState) -> AgentRuntime {
     let session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
         ToolSet::from_iter(xylitol::infra::tools::default_tools()),
-        store,
+        store.clone(),
         sink,
         Some("you are helpful".into()),
         Vec::new(),
@@ -192,7 +201,7 @@ fn make_agent(agent: &AgentState) -> AgentRuntime {
         xylitol::agent::session::QueueMode::default(),
         xylitol::agent::session::QueueMode::default(),
     );
-    AgentRuntime::new(session)
+    (AgentRuntime::new(session), store)
 }
 
 async fn dispatch_hook(agent: &AgentState, event: HookEvent, phase: HookPhase) {
@@ -1789,6 +1798,10 @@ fn _t_hook_fail_open(agent: &AgentState) {
 fn _g_agent_mock_text(_agent: &AgentState, text: String) {
     set_fake_text(&text);
 }
+#[given("mock 模型慢速流式返回 {n:u32} 段文本间隔 {ms:u32} 毫秒")]
+fn _g_agent_mock_slow_stream(_agent: &AgentState, n: u32, ms: u32) {
+    set_fake_slow_stream(n as usize, ms as u64);
+}
 #[given("mock 模型返回工具调用 {tool:string} 参数 {args}")]
 fn _g_agent_mock_tool_call(_agent: &AgentState, tool: String, args: String) {
     set_fake_tool_call(&tool, &args);
@@ -1796,6 +1809,51 @@ fn _g_agent_mock_tool_call(_agent: &AgentState, tool: String, args: String) {
 #[given("read 工具返回 {result}")]
 fn _g_read_tool_result(_agent: &AgentState, result: String) {
     set_fake_tool_result(&result);
+}
+#[when("经 Driver 启动会话并在首个 TextDelta 后 abort")]
+async fn _w_driver_abort_after_first_delta(agent: &AgentState) {
+    use xylitol::embed::{Driver, InProcessDriver};
+
+    let (runtime, store) = make_agent_with_store(agent);
+    let mut driver = InProcessDriver::new(runtime, store);
+    let mut stream = driver.run("abort-mid-stream").await;
+    let mut local_events = Vec::new();
+    let mut saw_delta = false;
+    while let Some(e) = stream.next().await {
+        if !saw_delta && matches!(&e, XyEvent::TextDelta(_)) {
+            saw_delta = true;
+            driver.abort();
+        }
+        local_events.push(e);
+    }
+    let mut events = agent.events.borrow_mut();
+    events.clear();
+    events.extend(local_events);
+}
+#[then("事件流包含 aborted 错误")]
+fn _t_agent_aborted_error(agent: &AgentState) {
+    assert!(
+        agent
+            .events
+            .borrow()
+            .iter()
+            .any(|e| matches!(e, XyEvent::Error(m) if m == "aborted")),
+        "expected Error(aborted), got {:?}",
+        agent.events.borrow()
+    );
+}
+#[then("TextDelta 段数少于 {n:u32}")]
+fn _t_agent_textdelta_less_than(agent: &AgentState, n: u32) {
+    let count = agent
+        .events
+        .borrow()
+        .iter()
+        .filter(|e| matches!(e, XyEvent::TextDelta(_)))
+        .count();
+    assert!(
+        count < n as usize,
+        "expected fewer than {n} TextDelta events, got {count}"
+    );
 }
 #[when("尝试将思考级别设为 {level}")]
 fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
@@ -2088,6 +2146,11 @@ async fn test_agent_thinking_limit(agent: AgentState, ws: Workspace) {}
 async fn test_agent_context_usage(agent: AgentState, ws: Workspace) {}
 #[scenario(path = "tests/features/agent.feature", name = "会话自动持久化")]
 async fn test_agent_auto_save(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+#[scenario(
+    path = "tests/features/agent.feature",
+    name = "abort 中断进行中的模型流式输出"
+)]
+async fn test_agent_abort_mid_stream(agent: AgentState, ws: Workspace) {}
 
 // compaction.feature (5)
 #[scenario(path = "tests/features/compaction.feature", name = "检测需要压缩")]

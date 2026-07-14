@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ar30,"abort-cancels-provider-stream","AgentRuntime 在模型流进行中（含 call_with_retry/send 挂起与 chunk 消费中）收到 abort（当前 run CancellationToken 取消，及经 Driver::abort 的同一入口）时 MUST 停止继续 poll 该次模型流，MUST drop provider stream 以便关闭 HTTP 响应体，并 MUST 以 Error aborted（或等价可观测中止）结束本轮；MUST NOT 仅抑制 UI 事件而继续 drain 完 SSE。TUI/CLI/server/未来 client MUST 经 Driver::abort 无感继承，MUST NOT 在各应用面各自实现 HTTP 取消。",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  ar30,"mid-stream-abort",慢速多段模型流进行中,"调用 AgentRuntime::abort 或 Driver::abort",出现 aborted 且后续 chunk/TextDelta 远少于未 abort 总量
+  ar30,"http-drop-evidence",本地慢速 chunked HTTP/SSE 服务,客户端 drop bytes_stream 或 adapter XyStream,服务端观察到写失败/断连且写入计数停滞
+  ar30,"driver-inherits",InProcessDriver 跑慢速 Fake 流,"首个 TextDelta 后 Driver::abort",事件含 aborted 且 TextDelta 段数远少于脚本量

@@ -63,6 +63,9 @@ impl AgentRuntime {
     /// restore them (c461 design D4). Only cancels the **current** run token;
     /// the next [`Self::run`] installs a fresh one (c482). Also cancels any
     /// in-flight interactive `!`/`!!` bash (c660; aligns with pi `abortBash`).
+    /// Mid-stream model HTTP is aborted by racing this token in the ReAct chunk
+    /// loop and dropping the provider stream (c680; surfaces inherit via
+    /// [`crate::app::core::driver::Driver::abort`]).
     pub fn abort(&self) {
         self.cancel
             .lock()
@@ -415,14 +418,24 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                 let messages = history.clone();
 
-                let stream_result = call_with_retry(
-                    &model, messages.clone(), &tool_schemas, &retry_state,
-                ).await;
+                // Race cancel against connect/retry so Esc aborts hung `send()`
+                // (reqwest drop-cancels the in-flight HTTP future).
+                let stream_result = tokio::select! {
+                    biased;
+                    _ = cancel.cancelled() => None,
+                    result = call_with_retry(
+                        &model, messages.clone(), &tool_schemas, &retry_state,
+                    ) => Some(result),
+                };
 
                 let mut chunk_stream: Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
                 match stream_result {
-                    Ok(s) => chunk_stream = s,
-                    Err(e) => {
+                    None => {
+                        yield XyEvent::Error("aborted".to_string());
+                        break 'outer;
+                    }
+                    Some(Ok(s)) => chunk_stream = s,
+                    Some(Err(e)) => {
                         yield XyEvent::Error(e);
                         break 'outer;
                     }
@@ -437,9 +450,21 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let mut thinking_acc = String::new();
                 let mut tool_calls: Vec<(String, String, Value)> = Vec::new();
 
-                while let Some(chunk_result) = chunk_stream.next().await {
+                // Mid-stream abort: drop `chunk_stream` so adapter/reqwest closes
+                // the HTTP body (c680). Surfaces inherit via Driver::abort → token.
+                loop {
+                    let chunk_result = tokio::select! {
+                        biased;
+                        _ = cancel.cancelled() => {
+                            drop(chunk_stream);
+                            yield XyEvent::Error("aborted".to_string());
+                            break 'outer;
+                        }
+                        next = chunk_stream.next() => next,
+                    };
                     match chunk_result {
-                        Ok(chunk) => match chunk {
+                        None => break,
+                        Some(Ok(chunk)) => match chunk {
                             XyChunk::TextDelta(text) => {
                                 text_acc.push_str(&text);
                                 yield XyEvent::TextDelta(text.clone());
@@ -465,7 +490,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 // Stream-end marker for this single model call.
                             }
                         },
-                        Err(e) => {
+                        Some(Err(e)) => {
                             yield XyEvent::Error(format!("stream error: {e}"));
                             break;
                         }
@@ -1359,6 +1384,105 @@ mod tests {
         }
         assert!(!aborted, "second run must not immediately abort: {texts:?}");
         assert_eq!(texts, vec!["ok".to_string()]);
+    }
+
+    /// Mid-stream abort MUST stop polling the model stream (c680). Without
+    /// `select!` on cancel inside the chunk loop, the consumer would drain all
+    /// slow chunks even after `abort()` — proving UI-only abort is insufficient.
+    #[tokio::test]
+    async fn abort_mid_stream_stops_polling_model_chunks() {
+        use crate::domain::lifecycle::XyEvent;
+        use futures::StreamExt;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct SlowMock {
+            polled: Arc<AtomicUsize>,
+        }
+
+        #[async_trait::async_trait]
+        impl XyModel for SlowMock {
+            fn name(&self) -> &str {
+                "slow-mock"
+            }
+            async fn generate_stream(
+                &self,
+                _messages: Vec<AgentMessage>,
+                _tools: &[crate::domain::types::XyToolSchema],
+                _stream: bool,
+            ) -> Result<XyStream, XyError> {
+                let polled = self.polled.clone();
+                Ok(Box::pin(async_stream::stream! {
+                    for i in 0..80u32 {
+                        tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+                        polled.fetch_add(1, Ordering::SeqCst);
+                        yield Ok(crate::domain::types::XyChunk::TextDelta(format!("c{i}")));
+                    }
+                    yield Ok(crate::domain::types::XyChunk::Done {
+                        finish_reason: crate::domain::message::XyStopReason::Stop,
+                        usage: None,
+                    });
+                }))
+            }
+        }
+
+        let polled = Arc::new(AtomicUsize::new(0));
+        let polled_for_builder = polled.clone();
+        let reg = mock_model_registry();
+        let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+        let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
+        let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
+        let builder: crate::runtime_protocol::XyModelBuilder = Arc::new(move |_| {
+            Ok(Arc::new(SlowMock {
+                polled: polled_for_builder.clone(),
+            }) as Arc<dyn XyModel>)
+        });
+        let session = AgentCapabilities::new(
+            reg,
+            ToolSet::empty(),
+            store,
+            sink,
+            None,
+            Vec::new(),
+            Vec::new(),
+            50,
+            0.8,
+            ".".into(),
+            None,
+            builder,
+            crate::infra::permission::allow_all_permission(),
+            None,
+            None,
+            crate::agent::session::QueueMode::default(),
+            crate::agent::session::QueueMode::default(),
+        );
+        let mut agent = AgentRuntime::new(session);
+
+        let mut stream = agent.run("go").await;
+        let mut aborted = false;
+        let mut text_count = 0usize;
+        while let Some(evt) = stream.next().await {
+            match evt {
+                XyEvent::TextDelta(_) => {
+                    text_count += 1;
+                    if text_count == 1 {
+                        agent.abort();
+                    }
+                }
+                XyEvent::Error(m) if m == "aborted" => aborted = true,
+                _ => {}
+            }
+        }
+
+        assert!(aborted, "must surface aborted after mid-stream cancel");
+        let n = polled.load(Ordering::SeqCst);
+        assert!(
+            n < 40,
+            "abort must stop polling model chunks (polled={n}, text_count={text_count})"
+        );
+        assert!(
+            text_count < 40,
+            "UI/event consumer must not see a full drain after abort (text_count={text_count})"
+        );
     }
 
     #[tokio::test]

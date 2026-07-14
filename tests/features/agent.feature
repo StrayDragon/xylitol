@@ -50,3 +50,9 @@
     假定 一个 turn 完成
     当 加载会话文件
     那么 该 turn 的消息记录已保存
+
+  场景: abort 中断进行中的模型流式输出
+    假定 mock 模型慢速流式返回 40 段文本间隔 20 毫秒
+    当 经 Driver 启动会话并在首个 TextDelta 后 abort
+    那么 事件流包含 aborted 错误
+    并且 TextDelta 段数少于 20
