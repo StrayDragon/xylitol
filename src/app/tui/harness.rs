@@ -1266,6 +1266,51 @@ mod slice_tests {
         );
     }
 
+    #[test]
+    fn c650_ctrl_g_missing_editor_is_error() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        root.borrow_mut().set_editor_text("keep-me");
+        session.set_force_real_external_editor(true);
+        session.set_external_editor_cmd_override(Some(Err(
+            "set $VISUAL or $EDITOR to use external editor (Ctrl+G)".into(),
+        )));
+        session.step(HostEvent::Input(ctrl_g_event())).unwrap();
+        assert_eq!(root.borrow().editor_text(), "keep-me");
+        assert!(
+            !root.borrow().editor_text().contains("$EDITOR stub"),
+            "must not stub-mark on missing config"
+        );
+        assert!(
+            session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::Error { text } if text.contains("$VISUAL") || text.contains("$EDITOR")
+            )),
+            "expected UiEntry::Error: {:?}",
+            session.ui_model().entries
+        );
+    }
+
+    #[test]
+    fn c650_ctrl_g_spawn_fail_is_error() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        root.borrow_mut().set_editor_text("keep-me");
+        session.set_force_real_external_editor(true);
+        session
+            .set_external_editor_cmd_override(Some(Ok("/nonexistent/xylitol-c650-editor".into())));
+        session.step(HostEvent::Input(ctrl_g_event())).unwrap();
+        assert_eq!(root.borrow().editor_text(), "keep-me");
+        assert!(
+            session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::Error { text } if text.contains("external editor failed")
+            )),
+            "expected spawn Error: {:?}",
+            session.ui_model().entries
+        );
+    }
+
     #[tokio::test]
     async fn c665_busy_esc_shows_aborted_and_idles() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
