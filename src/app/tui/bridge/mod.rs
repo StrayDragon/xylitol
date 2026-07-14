@@ -10,6 +10,33 @@ use serde_json::Value;
 
 use crate::app::core::driver::XyEvent;
 
+/// Decode complete UTF-8 prefix from `buf`, leaving a trailing incomplete sequence.
+fn drain_utf8_prefix(buf: &mut Vec<u8>) -> String {
+    match std::str::from_utf8(buf) {
+        Ok(s) => {
+            let out = s.to_string();
+            buf.clear();
+            out
+        }
+        Err(e) => {
+            let valid = e.valid_up_to();
+            if valid == 0 {
+                if e.error_len().is_some() {
+                    // Invalid byte — skip one and continue.
+                    buf.remove(0);
+                    return drain_utf8_prefix(buf);
+                }
+                // Incomplete sequence at end — wait for more bytes.
+                return String::new();
+            }
+            let out = String::from_utf8_lossy(&buf[..valid]).into_owned();
+            let rest = buf[valid..].to_vec();
+            *buf = rest;
+            out
+        }
+    }
+}
+
 /// True when the last scrollback line is already an abort note (same-event dedupe).
 pub(crate) fn trailing_aborted_note(entries: &[UiEntry]) -> bool {
     matches!(
@@ -113,6 +140,8 @@ pub struct UiModel {
     /// In-progress thinking text.
     pub(crate) streaming_thinking: String,
     pub(crate) current_role: Option<String>,
+    /// Incomplete UTF-8 bytes across bang stream chunks (c669).
+    bash_utf8_pending: Vec<u8>,
 }
 
 impl Default for UiModel {
@@ -133,6 +162,7 @@ impl UiModel {
             streaming_assistant: String::new(),
             streaming_thinking: String::new(),
             current_role: None,
+            bash_utf8_pending: Vec::new(),
         }
     }
 
@@ -266,6 +296,7 @@ impl UiModel {
 
     /// Bang Esc abort: mark last pending Bash cancelled + `(cancelled)` (pi).
     pub fn note_bash_cancelled(&mut self) {
+        self.bash_utf8_pending.clear();
         let mut updated = false;
         for entry in self.entries.iter_mut().rev() {
             if let UiEntry::Bash { status, output, .. } = entry {
@@ -304,12 +335,32 @@ impl UiModel {
             output: String::new(),
             exclude_from_context,
         });
+        self.bash_utf8_pending.clear();
         self.phase = UiPhase::Busy;
         self.status = Some("Running".into());
     }
 
+    /// Append live bang output bytes to the last Pending Bash block (c669).
+    /// Incomplete UTF-8 sequences are held across calls.
+    pub fn append_bash_output(&mut self, chunk: &[u8]) {
+        self.bash_utf8_pending.extend_from_slice(chunk);
+        let decoded = drain_utf8_prefix(&mut self.bash_utf8_pending);
+        if decoded.is_empty() {
+            return;
+        }
+        for entry in self.entries.iter_mut().rev() {
+            if let UiEntry::Bash { status, output, .. } = entry {
+                if *status == BashBlockStatus::Pending {
+                    output.push_str(&decoded);
+                }
+                break;
+            }
+        }
+    }
+
     /// Finish the last pending bang block with preformatted output body + status.
     pub fn finish_bash_block(&mut self, status: BashBlockStatus, body: String) {
+        self.bash_utf8_pending.clear();
         for entry in self.entries.iter_mut().rev() {
             if let UiEntry::Bash {
                 status: st, output, ..

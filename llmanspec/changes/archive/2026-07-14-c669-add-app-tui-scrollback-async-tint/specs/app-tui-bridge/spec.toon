@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,atb9,"bash-stream-append",产品 bridge MUST 提供对最后一条 Pending Bash 块的增量追加 API（append_bash_output 或等价）；流式 chunk 追加期间 status MUST 保持 pending tint；BashDone 或取消收口时 MUST 经既有 finish/cancelled 路径切换终态；MUST NOT 每 chunk 新建独立 System 行。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  atb9,"append-keeps-pending",已 begin_bash_block,连续两次 append_bash_output,同一 Bash 条目 output 增长且 status 仍为 pending

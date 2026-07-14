@@ -3,7 +3,7 @@ name: "infra-bash"
 purpose: Bash command execution via shell subprocess with streaming output and cancellation.
 valid_scope[2]: src/infra/bash_exec/,src/runtime_protocol/bash.rs
 requirements[10]{req_id,title,statement}:
-  be1,"streaming-executor",System MUST provide BashExecutor that executes shell commands emitting output chunks via an on_chunk callback.
+  be1,"streaming-executor","System MUST provide XyBashExecutor that executes shell commands via BashExecOpts carrying optional CancellationToken and optional bounded mpsc chunk_tx for output bytes; when chunk_tx is Some the executor MUST emit output chunks on that channel (try_send with sender-side coalesce on Full); when None MUST accumulate silently without requiring a callback. The former on_chunk callback signature MUST NOT remain as the public port."
   be2,"abort-cancellation",BashExecutor MUST support cancellation that kills the whole process group and marks the result cancelled.
   be3,"output-truncation",BashExecutor MUST truncate output to a configured max bytes and spill the full output to a temp file path when exceeded.
   be4,"session-entry",SessionEntry MUST support a BashExecution variant carrying command output exit_code cancelled truncated full_output_path and exclude_from_context.
@@ -13,8 +13,9 @@ requirements[10]{req_id,title,statement}:
   b2,"bash-hooks","System MUST support pre-spawn and post-spawn hooks on bash execution for extension integration."
   b3,"timeout-esc","System MUST implement graduated timeout: SIGTERM then 5-second grace then SIGKILL on bash commands."
   be7,"abort-reachable-from-runtime","交互 bash 的取消入口 abort_bash MUST 可从 AgentRuntime::abort（&self）到达，无需独占 &mut AgentCapabilities 才能在 Driver::abort 路径上杀进程树；CancellationToken 取消后 MUST 触发既有杀树路径（be2）。"
-scenarios[11]{req_id,id,given,when,then}:
-  be1,stream,command prints multiple lines,on_chunk fires for each line,all chunks are received in order
+scenarios[12]{req_id,id,given,when,then}:
+  be1,"stream-via-channel",chunk_tx is Some,command prints multiple lines,receiver gets one or more byte chunks covering the output before execute returns
+  be1,"no-callback-port",审查 runtime_protocol bash 端口,查找 on_chunk 回调签名,公共 execute 仅接受 BashExecOpts 而无 FnMut on_chunk
   be2,abort,long running command is executing,abort is invoked,process group is killed and cancelled is true
   be3,truncate,output exceeds max bytes,execution completes,truncated is true and full_output_path is set
   be4,entry,bash result is recorded,session is appended,entry is stored as BashExecution variant

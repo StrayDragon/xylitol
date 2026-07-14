@@ -145,7 +145,7 @@ pub async fn dispatch(
             ..
         } => {
             let r = driver
-                .execute_bash(&command, exclude_from_context)
+                .execute_bash(&command, exclude_from_context, None)
                 .await
                 .map_err(DispatchError)?;
             Ok(DispatchOutcome::Bash(r))
@@ -330,6 +330,7 @@ mod tests {
             &self,
             _command: &str,
             _exclude_from_context: bool,
+            _chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
         ) -> Result<XyBashResult, String> {
             unimplemented!()
         }

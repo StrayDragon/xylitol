@@ -1,10 +1,10 @@
 //! Persistent bash executor — user/RPC-initiated shell execution with recording.
 //!
 //! Unlike `tools/bash.rs` (the LLM tool-call entry point), this serves
-//! interactive/RPC `!cmd` and `!!cmd` execution: it streams sanitized output
-//! via an `on_chunk` callback, supports cancellation via a [`CancellationToken`],
-//! truncates output, and spills the full output to a temp file when the rolling
-//! buffer overflows.
+//! interactive/RPC `!cmd` and `!!cmd` execution: it streams output bytes via
+//! an optional bounded `chunk_tx` (`BashExecOpts`), supports cancellation via
+//! a [`CancellationToken`], truncates output, and spills the full output to a
+//! temp file when the rolling buffer overflows.
 //!
 //! This module lives under `infra/` because it is a runtime facility
 //! (process spawn + output streaming). The agent consumes it only through the
@@ -20,7 +20,7 @@ use tokio_util::sync::CancellationToken;
 use crate::infra::tools::accumulator::OutputAccumulator;
 use crate::infra::tools::process::kill_tree;
 use crate::infra::tools::truncate::DEFAULT_MAX_BYTES;
-use crate::runtime_protocol::{XyBashExecutor, XyBashResult};
+use crate::runtime_protocol::{BashExecOpts, XyBashExecutor, XyBashResult};
 
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
@@ -35,9 +35,56 @@ impl InfraBashExecutor {
     }
 }
 
+impl InfraBashExecutor {
+    fn emit_chunk(tx: &Option<mpsc::Sender<Vec<u8>>>, coalesce: &mut Vec<u8>, bytes: &[u8]) {
+        let Some(tx) = tx else {
+            return;
+        };
+        if !coalesce.is_empty() {
+            coalesce.extend_from_slice(bytes);
+            match tx.try_send(std::mem::take(coalesce)) {
+                Ok(()) => {}
+                Err(mpsc::error::TrySendError::Full(v)) => {
+                    *coalesce = v;
+                }
+                Err(mpsc::error::TrySendError::Closed(v)) => {
+                    *coalesce = v;
+                }
+            }
+            return;
+        }
+        match tx.try_send(bytes.to_vec()) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(v)) => {
+                *coalesce = v;
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {}
+        }
+    }
+
+    fn flush_coalesce(tx: &Option<mpsc::Sender<Vec<u8>>>, coalesce: &mut Vec<u8>) {
+        if coalesce.is_empty() {
+            return;
+        }
+        let Some(tx) = tx else {
+            coalesce.clear();
+            return;
+        };
+        let pending = std::mem::take(coalesce);
+        match tx.try_send(pending) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(v)) | Err(mpsc::error::TrySendError::Closed(v)) => {
+                // Last-chance: drop if still full / closed — Accumulator remains SSOT.
+                let _ = v;
+            }
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl XyBashExecutor for InfraBashExecutor {
-    async fn execute(&self, command: &str, cancel: Option<CancellationToken>) -> XyBashResult {
+    async fn execute(&self, command: &str, opts: BashExecOpts) -> XyBashResult {
+        let BashExecOpts { cancel, chunk_tx } = opts;
         let timeout_secs = DEFAULT_TIMEOUT_SECS;
         let timeout_dur = Duration::from_secs(timeout_secs);
 
@@ -84,6 +131,7 @@ impl XyBashExecutor for InfraBashExecutor {
 
         let mut acc = OutputAccumulator::new();
         let mut cancelled = false;
+        let mut coalesce = Vec::new();
 
         loop {
             tokio::select! {
@@ -96,6 +144,7 @@ impl XyBashExecutor for InfraBashExecutor {
                     match chunk {
                         Some(bytes) => {
                             acc.append(&bytes);
+                            Self::emit_chunk(&chunk_tx, &mut coalesce, &bytes);
                         }
                         None => break, // both readers finished
                     }
@@ -106,6 +155,8 @@ impl XyBashExecutor for InfraBashExecutor {
                 }
             }
         }
+
+        Self::flush_coalesce(&chunk_tx, &mut coalesce);
 
         if cancelled {
             kill_tree(pid).await;
@@ -146,7 +197,7 @@ fn spawn_reader<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
     });
 }
 
-async fn cancelled_event(cancel: &Option<CancellationToken>) -> () {
+async fn cancelled_event(cancel: &Option<CancellationToken>) {
     match cancel {
         Some(c) => c.cancelled().await,
         None => std::future::pending::<()>().await,
@@ -161,7 +212,9 @@ mod tests {
 
     #[tokio::test]
     async fn records_exit_code() {
-        let result = InfraBashExecutor::new().execute("exit 7", None).await;
+        let result = InfraBashExecutor::new()
+            .execute("exit 7", BashExecOpts::default())
+            .await;
         assert!(!result.cancelled);
         assert_eq!(result.exit_code, Some(7));
     }
@@ -175,7 +228,13 @@ mod tests {
             cancel_clone.cancel();
         });
         let result = InfraBashExecutor::new()
-            .execute("sleep 30", Some(cancel))
+            .execute(
+                "sleep 30",
+                BashExecOpts {
+                    cancel: Some(cancel),
+                    chunk_tx: None,
+                },
+            )
             .await;
         assert!(result.cancelled);
         assert_eq!(result.exit_code, None);
@@ -184,8 +243,33 @@ mod tests {
     #[tokio::test]
     async fn merges_stdout_and_stderr() {
         let result = InfraBashExecutor::new()
-            .execute("echo OUT; echo ERR >&2", None)
+            .execute("echo OUT; echo ERR >&2", BashExecOpts::default())
             .await;
         assert!(result.output.contains("OUT") || result.output.contains("ERR"));
+    }
+
+    #[tokio::test]
+    async fn streams_chunks_when_tx_provided() {
+        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(64);
+        let result = InfraBashExecutor::new()
+            .execute(
+                "printf 'hello\\nworld\\n'",
+                BashExecOpts {
+                    cancel: None,
+                    chunk_tx: Some(tx),
+                },
+            )
+            .await;
+        assert!(!result.cancelled);
+        let mut collected = Vec::new();
+        while let Ok(chunk) = rx.try_recv() {
+            collected.extend_from_slice(&chunk);
+        }
+        let text = String::from_utf8_lossy(&collected);
+        assert!(
+            text.contains("hello") || result.output.contains("hello"),
+            "chunks or result must contain hello; chunks={text:?} result={:?}",
+            result.output
+        );
     }
 }

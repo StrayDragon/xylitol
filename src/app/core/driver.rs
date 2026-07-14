@@ -143,11 +143,13 @@ pub trait Driver: Send {
     /// Execute a bash command (the `Bash` Command variant).
     ///
     /// Takes `&self` so the host can `select!` keyboard (Esc → [`Self::abort`])
-    /// while bash is in flight (c665).
+    /// while bash is in flight (c665). `chunk_tx` uplinks live output bytes for
+    /// product TUI streaming (c669); pass `None` for non-streaming callers.
     async fn execute_bash(
         &self,
         command: &str,
         exclude_from_context: bool,
+        chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
     ) -> Result<XyBashResult, String>;
 
     /// Run auto-compaction. Returns whether a compaction occurred.
@@ -343,10 +345,11 @@ impl Driver for InProcessDriver {
         &self,
         command: &str,
         exclude_from_context: bool,
+        chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
     ) -> Result<XyBashResult, String> {
         self.agent
             .inner()
-            .execute_bash(command, exclude_from_context)
+            .execute_bash(command, exclude_from_context, chunk_tx)
             .await
     }
 
@@ -766,7 +769,9 @@ impl Driver for RemoteDriver {
         &self,
         command: &str,
         exclude_from_context: bool,
+        _chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
     ) -> Result<XyBashResult, String> {
+        // Remote REST bash is request/response — no live chunk uplink.
         let data = self
             .post_data(
                 "bash",
