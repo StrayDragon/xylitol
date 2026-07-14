@@ -19,7 +19,7 @@ use xylitol_tui::{
     fg_rgb, fuzzy_filter, matches_key_event, printable_from_key_event, truncate_to_width,
 };
 
-use super::session_tree::FilterMode;
+use super::session_tree::{FilterMode, tree_help_line, tree_search_line, wrap_help_line};
 use super::slots::EditorSlot;
 use super::theme::LayoutTheme;
 use crate::app::tui::bridge::{UiModel, UiPhase};
@@ -471,8 +471,12 @@ impl UiRoot {
                 let mut lines = Vec::new();
                 lines.push(" Session tree".to_string());
                 lines.push(
-                    " Up/Down  Enter travel (user→input)  Esc close  (double Esc)".to_string(),
+                    self.theme
+                        .paint_muted(&tree_search_line(self.tree.search_query())),
                 );
+                for help in wrap_help_line(&tree_help_line(), width.max(1)) {
+                    lines.push(self.theme.paint_muted(&help));
+                }
                 lines.extend(self.tree.render(width.max(1)));
                 lines
             }
@@ -509,6 +513,12 @@ impl UiRoot {
     #[cfg(test)]
     pub fn tree_panel_text_for_test(&mut self, width: usize) -> String {
         self.tree.render(width).join("\n")
+    }
+
+    /// Full Tree slot head (Search / Help) + list for harness asserts.
+    #[cfg(test)]
+    pub fn tree_slot_text_for_test(&mut self, width: usize) -> String {
+        self.render_editor_slot(width).join("\n")
     }
 
     #[cfg(test)]
@@ -566,6 +576,10 @@ impl Component for UiRoot {
                 }
                 if matches_key_event(key, "ctrl+a") {
                     self.apply_tree_filter(self.tree_filter.toggle(FilterMode::All));
+                    return;
+                }
+                if matches_key_event(key, "ctrl+shift+o") {
+                    self.apply_tree_filter(self.tree_filter.cycle_backward());
                     return;
                 }
                 if matches_key_event(key, "ctrl+o") {

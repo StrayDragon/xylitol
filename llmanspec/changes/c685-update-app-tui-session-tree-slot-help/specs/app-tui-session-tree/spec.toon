@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ast11,"session-tree-slot-help-search","产品会话树槽打开时 MUST 在 TreeSelector 列表上方渲染 Search 行与 TreeHelp 行：Search 在无查询时提示可键入搜索、有查询时显示 Search: 与当前串；TreeHelp MUST 根据 KeybindingsManager（或只读封装）解析当前键位展示 move/page/branch/filters/cycle 等片段（可用 · 分隔并随宽度换行），MUST NOT 再使用仅含 Up/Down Enter travel 的过时硬编码唯一提示行作为树槽唯一头行；MUST NOT 把产品 FilterMode 硬编码进 packages/xylitol-tui。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ast11,"open-shows-search-help",产品 TUI idle 且已打开会话树,渲染 Tree 槽一帧,帧内含 Search 或 Type to search 类提示，且含由键位解析得到的 move 或 filters 或 cycle 等 Help 片段
+  ast11,"search-echo",产品会话树已打开,键入搜索串 foo,Search 行显示含 foo 的查询回显

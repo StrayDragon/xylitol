@@ -606,6 +606,16 @@ mod slice_tests {
         })
     }
 
+    fn ctrl_shift_key_event(ch: char) -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Char(ch),
+            modifiers: KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
     fn ctrl_left_event() -> InputEvent {
         use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
         InputEvent::Key(KeyEvent {
@@ -1838,6 +1848,55 @@ mod slice_tests {
             root.borrow().editor_text(),
             "",
             "At must not prefill user body"
+        );
+    }
+
+    #[tokio::test]
+    async fn h21_tree_slot_search_and_help() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = open_sample_tree(&mut session);
+        let slot = root.borrow_mut().tree_slot_text_for_test(80);
+        assert!(
+            slot.contains("Type to search") || slot.contains("Search:"),
+            "expected Search head line; got:\n{slot}"
+        );
+        assert!(
+            slot.contains("filters") && slot.contains("cycle"),
+            "expected dynamic TreeHelp filters/cycle; got:\n{slot}"
+        );
+        assert!(
+            !slot.contains("Up/Down  Enter travel (user→input)"),
+            "stale hard-coded help must be gone; got:\n{slot}"
+        );
+        session.step(HostEvent::Input(char_event('f'))).unwrap();
+        session.step(HostEvent::Input(char_event('o'))).unwrap();
+        session.step(HostEvent::Input(char_event('o'))).unwrap();
+        let slot = root.borrow_mut().tree_slot_text_for_test(80);
+        assert!(
+            slot.contains("Search: foo"),
+            "search echo missing; got:\n{slot}"
+        );
+    }
+
+    #[tokio::test]
+    async fn h22_tree_filter_cycle_backward_ctrl_shift_o() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = open_sample_tree(&mut session);
+        assert_eq!(
+            root.borrow().tree_filter_for_test(),
+            crate::app::tui::layout::FilterMode::Default
+        );
+        session
+            .step(HostEvent::Input(ctrl_shift_key_event('o')))
+            .unwrap();
+        let panel = root.borrow_mut().tree_panel_text_for_test(80);
+        assert!(
+            panel.contains("[all]"),
+            "ctrl+shift+o from default must cycle to all; got:\n{panel}"
+        );
+        assert_eq!(
+            root.borrow().tree_filter_for_test(),
+            crate::app::tui::layout::FilterMode::All
         );
     }
 

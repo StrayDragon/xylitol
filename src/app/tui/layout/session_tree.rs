@@ -1,6 +1,7 @@
 //! SessionTreeNode → package `TreeNode` mapping (c615 / ast6) + product FilterMode (c635).
+//! Tree slot Search/Help helpers (c685) — layout, not browser chrome.
 
-use xylitol_tui::{TreeNode, truncate_to_width, visible_width};
+use xylitol_tui::{TreeNode, truncate_to_width, visible_width, with_keybindings};
 
 use crate::domain::session_types::{SessionEntry, SessionTreeNode, message_role, message_text};
 
@@ -52,6 +53,12 @@ impl FilterMode {
         Self::ALL[(i + 1) % Self::ALL.len()]
     }
 
+    /// Reverse of [`Self::cycle`] (pi `filter.cycleBackward` / Ctrl+Shift+O).
+    pub fn cycle_backward(self) -> Self {
+        let i = Self::ALL.iter().position(|m| *m == self).unwrap_or(0);
+        Self::ALL[(i + Self::ALL.len() - 1) % Self::ALL.len()]
+    }
+
     /// Toggle `target` ↔ `default` (pi semantics for Ctrl+T/U/L/A).
     pub fn toggle(self, target: Self) -> Self {
         if self == target {
@@ -59,6 +66,176 @@ impl FilterMode {
         } else {
             target
         }
+    }
+}
+
+/// Product filter chords (not yet registered as `app.tree.filter.*` in the package).
+const TREE_FILTER_KEY_IDS: &[&str] = &["ctrl+d", "ctrl+t", "ctrl+u", "ctrl+l", "ctrl+a"];
+const TREE_CYCLE_KEY_IDS: &[&str] = &["ctrl+o", "ctrl+shift+o"];
+
+/// Search line above the tree list (pi `SearchLine` / demo morphology).
+pub(crate) fn tree_search_line(query: &str) -> String {
+    if query.is_empty() {
+        " Type to search:".into()
+    } else {
+        format!(" Search: {query}")
+    }
+}
+
+/// Dynamic TreeHelp from KeybindingsManager + product filter/cycle chords (c685).
+pub(crate) fn tree_help_line() -> String {
+    let move_keys = binding_first_keys(&["tui.select.up", "tui.select.down"]);
+    let page_keys = binding_first_keys(&["tui.select.pageUp", "tui.select.pageDown"]);
+    let branch_keys = binding_first_keys(&["tui.tree.foldOrUp", "tui.tree.unfoldOrDown"]);
+    let label_keys = binding_first_keys(&["tui.tree.editLabel"]);
+    let label_time_keys = binding_first_keys(&["tui.tree.toggleLabelTimestamp"]);
+
+    let mut parts = Vec::new();
+    push_help_item(&mut parts, &move_keys, "move", false);
+    push_help_item(&mut parts, &page_keys, "page", false);
+    push_help_item(&mut parts, &branch_keys, "branch", false);
+    push_help_item(&mut parts, &label_keys, "label", false);
+    push_help_item(&mut parts, &label_time_keys, "label time", false);
+    push_help_item(
+        &mut parts,
+        &TREE_FILTER_KEY_IDS
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect::<Vec<_>>(),
+        "filters",
+        true,
+    );
+    push_help_item(
+        &mut parts,
+        &TREE_CYCLE_KEY_IDS
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect::<Vec<_>>(),
+        "cycle",
+        true,
+    );
+
+    format!(" {}", parts.join(" · "))
+}
+
+fn binding_first_keys(ids: &[&'static str]) -> Vec<String> {
+    with_keybindings(|kb| {
+        ids.iter()
+            .filter_map(|id| kb.get_keys(id).into_iter().next().map(str::to_string))
+            .collect()
+    })
+}
+
+fn push_help_item(parts: &mut Vec<String>, keys: &[String], label: &str, label_first: bool) {
+    let text = format_help_keys(keys);
+    if text.is_empty() {
+        parts.push(label.to_string());
+        return;
+    }
+    if label_first {
+        parts.push(format!("{label} {text}"));
+    } else {
+        parts.push(format!("{text} {label}"));
+    }
+}
+
+fn format_help_keys(keys: &[String]) -> String {
+    if keys.is_empty() {
+        return String::new();
+    }
+    let pretty: Vec<String> = keys.iter().map(|k| pretty_key_id(k)).collect();
+    compact_raw_keys(&pretty)
+}
+
+fn pretty_key_id(key_id: &str) -> String {
+    let (prefix, suffix) = match key_id.rfind('+') {
+        Some(i) => (&key_id[..=i], &key_id[i + 1..]),
+        None => ("", key_id),
+    };
+    let mapped = match suffix {
+        "up" => "↑",
+        "down" => "↓",
+        "left" => "←",
+        "right" => "→",
+        "pageUp" => "pgup",
+        "pageDown" => "pgdn",
+        other => other,
+    };
+    format!("{prefix}{mapped}")
+}
+
+fn compact_raw_keys(keys: &[String]) -> String {
+    if keys.len() == 1 {
+        return keys[0].clone();
+    }
+    let parts: Vec<(String, String)> = keys
+        .iter()
+        .map(|key| match key.rfind('+') {
+            Some(i) => (key[..=i].to_string(), key[i + 1..].to_string()),
+            None => (String::new(), key.clone()),
+        })
+        .collect();
+    let prefix = parts[0].0.clone();
+    if !prefix.is_empty() && parts.iter().all(|p| p.0 == prefix) {
+        format!(
+            "{prefix}{}",
+            parts
+                .iter()
+                .map(|p| p.1.as_str())
+                .collect::<Vec<_>>()
+                .join("/")
+        )
+    } else {
+        keys.join("/")
+    }
+}
+
+/// Wrap a muted help line to `width` on ` · ` boundaries (pi TreeHelp).
+pub(crate) fn wrap_help_line(line: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    if visible_width(line) <= width {
+        return vec![line.to_string()];
+    }
+    let indent = "  ";
+    let sep = " · ";
+    let items: Vec<&str> = line
+        .trim_start()
+        .split(" · ")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    let mut out = Vec::new();
+    let mut current = String::new();
+    for item in items {
+        let candidate = if current.is_empty() {
+            let with_indent = format!("{indent}{item}");
+            if visible_width(&with_indent) <= width {
+                with_indent
+            } else {
+                item.to_string()
+            }
+        } else {
+            format!("{current}{sep}{item}")
+        };
+        if current.is_empty() || visible_width(&candidate) <= width {
+            current = candidate;
+            continue;
+        }
+        out.push(current);
+        let next = format!("{indent}{item}");
+        current = if visible_width(&next) <= width {
+            next
+        } else {
+            item.to_string()
+        };
+    }
+    if !current.is_empty() {
+        out.push(current);
+    }
+    if out.is_empty() {
+        vec![truncate_to_width(line, width, "", false)]
+    } else {
+        out
     }
 }
 
@@ -187,5 +364,26 @@ mod tests {
         let node = TreeNode::new("m", "meta row").with_kind("meta");
         assert!(!FilterMode::Default.include(&node));
         assert!(FilterMode::All.include(&node));
+    }
+
+    #[test]
+    fn filter_mode_cycle_backward_from_default_is_all() {
+        assert_eq!(FilterMode::Default.cycle_backward(), FilterMode::All);
+        assert_eq!(FilterMode::NoTools.cycle_backward(), FilterMode::Default);
+        assert_eq!(FilterMode::All.cycle(), FilterMode::Default);
+    }
+
+    #[test]
+    fn tree_search_line_echoes_query() {
+        assert!(tree_search_line("").contains("Type to search"));
+        assert!(tree_search_line("foo").contains("Search: foo"));
+    }
+
+    #[test]
+    fn tree_help_line_includes_filters_and_cycle() {
+        let help = tree_help_line();
+        assert!(help.contains("filters"), "got: {help}");
+        assert!(help.contains("cycle"), "got: {help}");
+        assert!(help.contains("move") || help.contains('↑'), "got: {help}");
     }
 }
