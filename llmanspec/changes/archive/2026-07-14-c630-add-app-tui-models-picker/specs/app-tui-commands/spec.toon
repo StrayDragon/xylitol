@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,atm1,"slash-exit-model",TUI MUST 解析斜杠命令 /exit（映射 Quit）与 /model：无参 MUST 打开替换 editor 槽的 fuzzy 模型列表（GetAvailableModels + 选定后 SetModel）；有参 /model <id> MUST 直接 SetModel；MUST NOT 再把无参 /model 做成 CycleModel 静默轮换；MUST NOT 引入 /models 主路径；未知斜杠 MUST 显示内联错误且 MUST NOT 崩溃。,null,null,null
+  modify_requirement,atm4,"idle-slash-submit",产品 idle Enter 提交以 / 开头的文本时 MUST 解析 /exit 与 /model（无参开列表槽；有参直选）；未知斜杠 MUST 写入系统错误行且 MUST NOT 崩溃或退出。,null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  atm1,"model-opens-picker",idle 且会话树关闭,Enter 提交无参 /model,打开 models 槽且不调用 CycleModel
+  atm1,"model-id-sets",idle,Enter 提交 /model fake,SetModel 或等价 select_model 被调用且不打开槽
+  atm4,"model-bare-not-cycle",产品 harness idle,/model Enter,pending 为开 picker 而非 CycleModel
