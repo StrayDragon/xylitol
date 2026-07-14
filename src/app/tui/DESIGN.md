@@ -162,7 +162,7 @@ components:
 | **c630** `/model` | 替换 editor 槽的 **fuzzy 模型列表**（对齐 pi）；**移除** 无参 cycle | [`models-picker`](./design/models-picker.md) · [`keybindings`](./design/keybindings.md) |
 | **c635–c645** 树 power | 产品 filter → fold → fork（demo 已有；逐个接线） | [`session-tree`](./design/session-tree.md) · [`keybindings`](./design/keybindings.md) |
 | **c650** 真 `$EDITOR` | Ctrl+G：TTY 真编辑器；harness 仍 stub | [`bash-mode`](./design/bash-mode.md) |
-| **c655** footer context% | 有数据时追加 `· context%`；无则省略 | [`footer`](./design/footer.md) |
+| **c1035** footer token usage | 带 provenance 的 `used N`/`~N`/`?`；travel 刷新 | [`footer`](./design/footer.md) |
 | **c660–c665** abort 质量 | 工具/bash 进程树取消 + status 反馈（非 computer-use） | [`status`](./design/status.md) · [`errors`](./design/errors.md) |
 
 **明确不做（本波）**：Settings / Plate 槽（配置继续 YAML+JSON Schema，无运行时改配置 UX）；computer-use 扩展；Codex TranscriptView。
