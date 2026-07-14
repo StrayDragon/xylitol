@@ -69,4 +69,17 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 | 包内组件与五层 / E2E 分工 | [`packages/xylitol-tui/AGENTS.md`](../../packages/xylitol-tui/AGENTS.md)「验证」；how-to → `test-tui-harness` |
 | 排查（禁 println） | `tail -f ~/.xylitol/logs/xylitol.log` |
 
-模块：`host.rs`（步进机）、`effects.rs`（唯一 `drain_pending`）、`commands.rs`（slash/bang）、`layout/`（`slots::EditorSlot` + `root` + `LayoutTheme`）、`widgets/`（产品组合件：scrollback / queue strip / glyphs）、`bridge/`（`apply_xy_event` + `handlers/` 事件族）、`terminal_guard.rs`、`tests.rs` / `harness.rs`（合成切片）、`tests/tui_e2e`（产品 PTY）。原子组件来自 `xylitol_tui`；勿在本面再实现通用 Editor/Markdown。勿用 `shell`/`scene` 命名，以免与 bash/`infra::process::shell` 或泛化「场景」混淆。历史文档里的「chrome」= 本面 layout/widgets（非浏览器）。
+模块：`host.rs`（步进机）、`effects.rs`（唯一 `drain_pending`）、`commands.rs`（slash/bang）、`layout/`（`slots::EditorSlot` + `root` + `LayoutTheme`）、`widgets/`（产品组合件：scrollback / queue strip / glyphs）、`bridge/`（`apply_xy_event` + `handlers/` 事件族）、`terminal_guard.rs`、`tests.rs` / `harness.rs`（合成切片）、`tests/tui_e2e`（产品 PTY）。原子组件来自 `xylitol_tui`；勿在本面再实现通用 Editor/Markdown。勿用 `shell`/`scene` 命名，以免与 bash/`infra::process::shell` 或泛化「场景」混淆。历史文档/合约 id 里的「chrome」= 本面 **layout/widgets**（非浏览器）；**新文案用 layout / 树槽 / widget**，勿再扩写「chrome」。
+
+## 产品 UI 验证（自验 + 人辅确认）
+
+包侧五层分工 SSOT：[`packages/xylitol-tui/AGENTS.md`](../../packages/xylitol-tui/AGENTS.md)「验证」。产品面增量约定：
+
+| 角色 | 做什么 |
+|---|---|
+| **Agent 必跑** | 相关 `harness.rs` / lib 测；`just fmt` + 相关 clippy；change `--strict` |
+| **Agent 尽量跑** | 触及真终端协议时：`just test-tui-e2e-pty`（缺 tmux 用 `-pty` 并写明）；会话树满路径见 **c705** |
+| **人类确认** | 最短路径手测观感（是否像 pi / 是否可读）；**不**替代 harness。修 bug 仍交 Agent 自修再交 |
+| **人类路径示例** | Fake：`cargo run -- --trust --tui --model fake`（隔离 HOME/config 见 just 注释）；双 Esc 开树看 Search/Help；对照 `just demo-tui` 仅作形态参考 |
+
+交付含 UI 的 change 时，proposal/design **MUST** 写清上表命令与期望画面（参考 c685 `design.md`「验证」）。

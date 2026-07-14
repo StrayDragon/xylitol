@@ -47,10 +47,13 @@ components:
 | Ctrl+D | filter → default | **c635** |
 | Ctrl+T/U/L/A | filter **toggle** ↔ default（no-tools / user / labeled / all） | **c635** |
 | Ctrl+O | filter cycle forward（树开优先；关树仍为工具视口） | **c635** |
+| Ctrl+Shift+O | filter cycle **backward** | **c685** |
 | Ctrl/Alt+←→ | fold / 分支跳转（转发包；裸 ←→ 仍翻页） | **c640** |
 | Shift+F | **fork** 新 session（user→Before / 非 user→At；对齐 pi） | **c645** |
-| Shift+L / T | annotation / 时间戳 | **future**（本波不做） |
+| Shift+L / T | annotation / 时间戳 | **c690**（draft） |
 | Enter | `travel_session_tree`（已 **c615**） | — |
+
+树槽头行：**Search** + **TreeHelp**（键位经 KeybindingsManager / 产品 filter 和弦解析；**c685**）。口语勿称「chrome」（易与浏览器混淆；layout 壳合约 id 仍为 `app-tui-chrome`）。
 
 ## MUST（编辑器槽）
 
