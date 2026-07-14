@@ -91,11 +91,12 @@ pub(crate) fn tree_help_line() -> String {
     let label_time_keys = binding_first_keys(&["tui.tree.toggleLabelTimestamp"]);
 
     let mut parts = Vec::new();
+    // Purpose-first labels; ⊞/⊟ match tree fold markers (pi connector indicators).
     push_help_item(&mut parts, &move_keys, "move", false);
     push_help_item(&mut parts, &page_keys, "page", false);
-    push_help_item(&mut parts, &branch_keys, "branch", false);
-    push_help_item(&mut parts, &label_keys, "label", false);
-    push_help_item(&mut parts, &label_time_keys, "label time", false);
+    push_help_item(&mut parts, &branch_keys, "⊞⊟ fold", false);
+    push_help_item(&mut parts, &label_keys, "edit label", false);
+    push_help_item(&mut parts, &label_time_keys, "timestamps", false);
     push_help_item(
         &mut parts,
         &TREE_FILTER_KEY_IDS
@@ -111,7 +112,7 @@ pub(crate) fn tree_help_line() -> String {
             .iter()
             .map(|s| (*s).to_string())
             .collect::<Vec<_>>(),
-        "cycle",
+        "cycle filter",
         true,
     );
 
@@ -384,6 +385,10 @@ mod tests {
         let help = tree_help_line();
         assert!(help.contains("filters"), "got: {help}");
         assert!(help.contains("cycle"), "got: {help}");
+        assert!(
+            help.contains("⊞⊟") || help.contains("fold"),
+            "fold purpose / indicators missing; got: {help}"
+        );
         assert!(help.contains("move") || help.contains('↑'), "got: {help}");
     }
 }
