@@ -92,6 +92,36 @@ impl XySessionStore {
     }
 }
 
+/// Library-seam hook recorder implementing crate-root [`xylitol::XyHookBus`] (c990).
+struct WiringHookLog {
+    calls: std::sync::Mutex<Vec<(String, String, serde_json::Value)>>,
+}
+
+impl WiringHookLog {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            calls: std::sync::Mutex::new(Vec::new()),
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl xylitol::XyHookBus for WiringHookLog {
+    async fn dispatch(
+        &self,
+        event_type: &str,
+        phase: &str,
+        context: serde_json::Value,
+    ) -> xylitol::XyHookOutcome {
+        self.calls.lock().unwrap_or_else(|e| e.into_inner()).push((
+            event_type.to_string(),
+            phase.to_string(),
+            context,
+        ));
+        xylitol::XyHookOutcome::Allowed
+    }
+}
+
 pub struct AgentState {
     pub registry: RefCell<ModelRegistry>,
     pub events: RefCell<Vec<XyEvent>>,
@@ -101,6 +131,9 @@ pub struct AgentState {
     pub compaction_threshold: Cell<f64>,
     pub hook_result: RefCell<Option<DispatchResult>>,
     pub hook_entries: RefCell<Vec<HookEntry>>,
+    /// When set, injected as `XyHookBus` for library-seam wiring BDD (c990).
+    wiring_hook_log: RefCell<Option<Arc<WiringHookLog>>>,
+    last_op_error: RefCell<Option<String>>,
 }
 impl AgentState {
     fn new() -> Self {
@@ -113,7 +146,16 @@ impl AgentState {
             compaction_threshold: Cell::new(0.8),
             hook_result: RefCell::new(None),
             hook_entries: RefCell::new(Vec::new()),
+            wiring_hook_log: RefCell::new(None),
+            last_op_error: RefCell::new(None),
         }
+    }
+
+    fn ensure_wiring_hook_log(&self) -> Arc<WiringHookLog> {
+        if self.wiring_hook_log.borrow().is_none() {
+            self.wiring_hook_log.replace(Some(WiringHookLog::new()));
+        }
+        self.wiring_hook_log.borrow().as_ref().unwrap().clone()
     }
 }
 
@@ -178,6 +220,11 @@ fn make_agent_with_store(
     let store: Arc<dyn xylitol::runtime_protocol::XySessionStore> = Arc::new(mgr.clone());
     let sink: Arc<dyn xylitol::runtime_protocol::XyEventSink> =
         Arc::new(xylitol::infra::event::EventBus::new());
+    let hook_bus: Option<Arc<dyn xylitol::XyHookBus>> = agent
+        .wiring_hook_log
+        .borrow()
+        .clone()
+        .map(|log| log as Arc<dyn xylitol::XyHookBus>);
     let session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
         ToolSet::from_iter(xylitol::infra::tools::default_tools()),
@@ -200,9 +247,32 @@ fn make_agent_with_store(
         )),
         xylitol::agent::session::QueueMode::default(),
         xylitol::agent::session::QueueMode::default(),
-        None,
+        hook_bus,
     );
     (AgentRuntime::new(session), store)
+}
+
+/// Library-seam operation dictionary (c990). Unknown names return a readable Err.
+/// Must not call `HookDispatcher::dispatch` directly — only Driver/agent APIs.
+async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), String> {
+    use xylitol::domain::session_types::SessionTreeKind;
+    use xylitol::embed::{Driver, InProcessDriver};
+
+    match op {
+        "确保新会话" => {
+            let _ = agent.ensure_wiring_hook_log();
+            let (mut runtime, store) = make_agent_with_store(agent);
+            let orphan = uuid::Uuid::new_v4().to_string();
+            runtime.inner_mut().set_session(orphan);
+            let driver = InProcessDriver::new(runtime, store);
+            driver
+                .session_tree(SessionTreeKind::MessageHistory)
+                .await
+                .map_err(|e| e)?;
+            Ok(())
+        }
+        other => Err(format!("未知操作: {other}")),
+    }
 }
 
 async fn dispatch_hook(agent: &AgentState, event: HookEvent, phase: HookPhase) {
@@ -989,10 +1059,63 @@ async fn _w_hook_any_event_step(agent: &AgentState) {
 }
 
 #[then("hook 脚本被调用")]
-fn _t_hook_called(_agent: &AgentState) {}
+fn _t_hook_called(agent: &AgentState) {
+    if let Some(log) = agent.wiring_hook_log.borrow().as_ref() {
+        let calls = log.calls.lock().unwrap_or_else(|e| e.into_inner());
+        assert!(
+            !calls.is_empty(),
+            "expected library-seam hook dispatch, got none"
+        );
+    }
+    // Legacy hooks.feature (no wiring log): observational.
+}
+
 #[then("hook 收到包含事件类型和参数的 JSON")]
 fn _t_hook_received_json(_agent: &AgentState) {}
 
+#[then("hook 上下文包含键 {key:string}")]
+fn _t_hook_context_has_key(agent: &AgentState, key: String) {
+    let key = strip_quotes(&key);
+    let log = agent
+        .wiring_hook_log
+        .borrow()
+        .as_ref()
+        .expect("wiring hook log")
+        .clone();
+    let calls = log.calls.lock().unwrap_or_else(|e| e.into_inner());
+    assert!(
+        calls
+            .iter()
+            .any(|(_, _, ctx)| ctx.get(key.as_str()).is_some()),
+        "expected context key {key:?} in calls {calls:?}"
+    );
+}
+
+#[when("执行操作 {op:string}")]
+async fn _w_wiring_op(agent: &AgentState, op: String) {
+    let op = strip_quotes(&op);
+    agent.last_op_error.replace(None);
+    if let Some(log) = agent.wiring_hook_log.borrow().as_ref() {
+        log.calls.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    }
+    match run_wiring_operation(agent, &op).await {
+        Ok(()) => {}
+        Err(e) => {
+            agent.last_op_error.replace(Some(e));
+        }
+    }
+}
+
+#[then("操作失败原因包含 {msg}")]
+fn _t_op_error_contains(agent: &AgentState, msg: String) {
+    let msg = strip_quotes(&msg);
+    let err = agent
+        .last_op_error
+        .borrow()
+        .clone()
+        .expect("expected operation error");
+    assert!(err.contains(&msg), "error {err:?} does not contain {msg:?}");
+}
 #[then("操作被阻止")]
 fn _t_hook_blocked(agent: &AgentState) {
     assert!(matches!(
@@ -2246,6 +2369,26 @@ async fn test_hook_provider_response(agent: AgentState) {}
 #[scenario(path = "tests/features/hooks.feature", name = "空 hook 配置为零开销")]
 async fn test_hook_empty_noop(agent: AgentState) {}
 
+// hooks-wiring.feature (c990) — library seam
+#[scenario(
+    path = "tests/features/hooks-wiring.feature",
+    name = "确保新会话触发 session_start"
+)]
+async fn test_hooks_wiring_session_start(agent: AgentState) {}
+
+#[scenario(
+    path = "tests/features/hooks-wiring.feature",
+    name = "未知库操作名可读失败"
+)]
+async fn test_hooks_wiring_unknown_op(agent: AgentState) {}
+
+#[test]
+fn curated_xy_hook_bus_symbols_resolve() {
+    fn assert_port<T: ?Sized>() {}
+    assert_port::<dyn xylitol::XyHookBus>();
+    let _ = xylitol::XyHookOutcome::Allowed;
+    let _ = xylitol::NoopHookBus;
+}
 // ═══════════════════════════════════════════════════════════════════
 // server.feature — Server lifecycle
 // ═══════════════════════════════════════════════════════════════════

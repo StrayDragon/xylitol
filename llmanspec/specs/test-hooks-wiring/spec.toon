@@ -1,0 +1,16 @@
+kind: llman.sdd.spec
+name: "test-hooks-wiring"
+purpose: "TBD - created by archiving change c990-add-test-hooks-wiring-bdd. Update purpose after archive."
+valid_scope[2]: src/,tests/
+requirements[5]{req_id,title,statement}:
+  thw1,"hooks-wiring-feature","仓库 MUST 提供 tests/features/hooks-wiring.feature（中文），以场景大纲固定「观察型 / 可取消 / 可修改」三类通用单元；每个已启用例子对应一种 hook 事件在权威路径上的至少一处引用。"
+  thw2,"operation-dictionary-steps",BDD runner MUST 提供可复用步骤：注册匹配事件的 hook、hook 返回 JSON、执行操作「操作名」、断言 hook 被调用、断言 hook 上下文包含键、断言操作被阻止；操作名 MUST 经显式字典映射到权威路径，未知操作名 MUST 失败且信息可读。
+  thw3,"smoke-already-wired","本变更 MUST 至少启用一条观察型例子，覆盖 c735 已接线事件（session_start 或 agent_start），经 InProcessDriver 等库缝触发并录制 hook 调用；MUST NOT 用直接 HookDispatcher::dispatch 冒充接线证明。"
+  thw4,"pending-matrix-no-ci-red","hooks-wiring.feature 或 design.md MUST 预留 c996（model_select/thinking_level_select）与 c998（Completions 三缝）的例子行或操作名；未接线行 MUST NOT 挂为失败的 #[scenario]，可用注释、design 表或未绑定 scenario 保持 CI 绿。"
+  thw5,"curated-xy-hook-bus",crate 根精选 pub use MUST 导出 XyHookBus 与 XyHookOutcome（及 NoopHookBus）；嵌入方 MUST 能在不 import runtime_protocol 子路径的情况下引用这些符号；MUST NOT 将 HookDispatcher 或 HookEvent 列为精选导出。
+scenarios[5]{req_id,id,given,when,then}:
+  thw1,"outline-observe","hooks-wiring.feature 含观察型场景大纲",启用一条已接线事件的例子,场景描述事件名、操作名与期望上下文键
+  thw2,"dict-unknown",BDD 步骤已注册,执行操作「未登记操作」,步骤失败并提示未知操作名
+  thw3,"session-start-smoke",注册了匹配 session_start 的 hook 且经库缝注入 XyHookBus,执行操作「确保新会话」,hook 脚本被调用且上下文包含键 reason
+  thw4,"pending-documented",c996/c998 尚未接线,"查阅 hooks-wiring 预留表",可见 model_select 与 Completions 相关预留且 CI 不因此失败
+  thw5,"root-export",xylitol 作为库依赖,"引用 xylitol::XyHookBus 与 xylitol::XyHookOutcome",符号可解析且文档将其列为库端口
