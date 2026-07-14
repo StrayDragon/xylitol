@@ -94,7 +94,7 @@ pub(crate) fn tree_help_line() -> String {
     // Purpose-first labels; ⊞/⊟ match tree fold markers (pi connector indicators).
     push_help_item(&mut parts, &move_keys, "move", false);
     push_help_item(&mut parts, &page_keys, "page", false);
-    push_help_item(&mut parts, &branch_keys, "⊞⊟ fold", false);
+    push_help_item(&mut parts, &branch_keys, "fold/unfold", false);
     push_help_item(&mut parts, &label_keys, "edit label", false);
     push_help_item(&mut parts, &label_time_keys, "timestamps", false);
     push_help_item(
@@ -386,8 +386,8 @@ mod tests {
         assert!(help.contains("filters"), "got: {help}");
         assert!(help.contains("cycle"), "got: {help}");
         assert!(
-            help.contains("⊞⊟") || help.contains("fold"),
-            "fold purpose / indicators missing; got: {help}"
+            help.contains("fold/unfold") || help.contains("fold"),
+            "fold/unfold purpose missing; got: {help}"
         );
         assert!(help.contains("move") || help.contains('↑'), "got: {help}");
     }
