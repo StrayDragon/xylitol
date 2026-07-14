@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: src/app/tui/
-requirements[24]{req_id,title,statement}:
+requirements[25]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式或 agent 忙碌时 Esc MUST 调用 Driver::abort；Ctrl+C 在编辑器非空时 MUST 清空输入，在编辑器为空时 MUST 退出 TUI。"
@@ -27,7 +27,8 @@ requirements[24]{req_id,title,statement}:
   ati21,"model-picker-slot","产品 TUI 无参 /model MUST 以 EditorSlot（Models 或等价）替换贴底 editor 区展示可用模型 SelectList；支持过滤（fuzzy 或包 API）；Enter 选定 → SetModel 并关槽还原 editor、更新 footer model；Esc 取消关槽且 MUST NOT 改模型；busy 时 MUST 拒绝打开（idle-only）；MUST NOT 居中 overlay 主路径。"
   ati23,"model-arg-completion",产品 Editor MUST 经包 CompletionSource 注册 SlashArgCompletionSource（命令 model，默认 MUST NOT with_bare_command）与 SlashCommandSource（至少 exit/model）；键入 /model 加空格（及可选前缀）时 MUST 弹出模型 id 补全（catalog 来自 available_models）；Tab/Enter 选定 MUST 将 id 写入 editor；Esc 关 popup MUST NOT 调用 SetModel；无参 /model Enter 仍 MUST 走 c630 OpenModels 槽，MUST NOT 被 arg Source 抢走。
   ati22,"session-tree-filter-keys","产品 TUI 在 EditorSlot::Tree 打开时：Ctrl+D MUST 将 FilterMode 设为 default；Ctrl+T / Ctrl+U / Ctrl+L / Ctrl+A MUST 在对应模式（no-tools / user-only / labeled-only / all）与 default 之间 toggle；Ctrl+O MUST 按 default→no-tools→user-only→labeled-only→all 循环；上述键 MUST 优先于关树时的 thinking（Ctrl+T）与工具视口（Ctrl+O）；增量搜索键入 MUST 交给包 TreeSelector；有搜索串时 Esc MUST 先清搜索再关树（既有 ati5 语义保留）。"
-scenarios[42]{req_id,id,given,when,then}:
+  ati24,"session-tree-fold-keys","产品 TUI 在 EditorSlot::Tree 时 MUST 把 ctrl+left、alt+left、ctrl+right、alt+right 交给包 TreeSelector（fold/unfold 或分支跳转）；MUST NOT 在 Editor 槽把这些键误当成 editor 光标词跳；树关时这些键保持既有 Editor/其它语义。"
+scenarios[43]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-input",spec.toon 存在且 purpose 为中文
   ati1,"selector-slot","",打开模型选择器,editor 槽被选择器替换且贴底可见
   ati2,"esc-aborts","",流式中按 Esc,"Driver::abort 被调用"
@@ -70,3 +71,4 @@ scenarios[42]{req_id,id,given,when,then}:
   ati22,"ctrl-o-cycles",树开且当前 default,按 Ctrl+O,"进入 no-tools 或状态含 [no-tools]"
   ati22,"tree-ctrl-t-not-thinking",树开,按 Ctrl+T,走 filter toggle 而非 thinking 折叠
   ati22,"esc-clears-search-first",树开且已键入搜索串,按 Esc,搜索清空且树仍开；再 Esc 关树
+  ati24,"tree-forwards-fold-chords",产品树已打开,按 ctrl+left,TreeSelector 收到输入（fold 或分支跳转生效）

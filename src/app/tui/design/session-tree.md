@@ -23,7 +23,7 @@ components:
 **优先路径**（替代 Codex 式 transcript 浏览）：双 Esc 打开会话树。
 **形态学 SSOT**：`packages/xylitol-tui` `agent_demo`（活树 / travel / filter / kind…）。
 **产品 c615**：双 Esc → `Driver::session_tree(MessageHistory)` 活树；Enter → `travel_session_tree`（user → `editor_text` 预填 + leaf 更新 + scrollback 按 ancestry 重建）。
-**产品下一波**：filter **c635** → fold **c640** → fork **c645**（demo 已有；键位见 [`keybindings.md`](./keybindings.md)；静图 playground「Tree power」）。
+**产品下一波**：filter **c635**（已）→ fold **c640**（已）→ fork **c645**（demo 已有；键位见 [`keybindings.md`](./keybindings.md)；静图 playground「Tree power」）。
 
 ## MUST
 
@@ -41,7 +41,7 @@ components:
 6. **搜索**：对 label / kind / annotation 增量过滤（与 `include_node` AND）— demo 已有；产品随 **c635**。
 7. **翻页**：←→ 与 PgUp/PgDn 按 `max_visible` 翻页。
 8. **Filter**（产品 **c635**，对齐 pi）：Ctrl+D → default；Ctrl+T/U/L/A **toggle** ↔ default；Ctrl+O cycle；default 藏 `kind=meta` bookkeeping；状态行 `(i/n)` + 非 default 时 `[filter]`（无 `[default]`）。demo 曾用纯 set，产品以 pi toggle 为准。
-9. **Fold / 分支跳转**：Ctrl/Alt+←→；连接符 ⊞/⊟（c467）— 产品 **c640**。
+9. **Fold / 分支跳转**：Ctrl/Alt+←→；连接符 ⊞/⊟（c467）— 产品 **c640**（转发包 `foldOrUp` / `unfoldOrDown`；裸 ←→ 仍翻页）。
 10. **Annotation**：可选 `[annotation]` + Shift+L 编辑 + Shift+T 时间戳（c467）— 可随 **c640** 或拆 future。
 11. **Kind（c595）**：`TreeNode.kind` 为可选字符串；渲染序 `[annotation]?` + 主题化 kind 前缀 + **纯正文** `label`。**MUST NOT** 把 `user:` / `assistant:` / `tool:` 预烘焙进 `label` 作为唯一表现。
 
