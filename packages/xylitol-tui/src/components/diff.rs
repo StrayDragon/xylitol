@@ -36,13 +36,15 @@ impl DiffInput {
 
 /// Theme closures — product maps semantic tokens → SGR.
 ///
-/// **Layering (mockup / pi-like):**
-/// - `added` / `removed` / `context`: **fg** (and optional span styling) for content.
-/// - `added_line_bg` / `removed_line_bg`: wrap the **full padded row** after layout
-///   on the **unified** path only. Side-by-side skips these so row tint does not
-///   collide with product `tool-*-bg` (execution status) semantics.
-/// - `word_change_added` / `word_change_removed`: brighter bg for changed spans;
-///   SHOULD restore the line bg (not `\x1b[49m`) so the row tint stays continuous.
+/// **Layering (pi edit / tool-wash embedding):**
+/// - `added` / `removed` / `context`: **fg** for content polarity.
+/// - `added_line_bg` / `removed_line_bg`: optional full-row tint after pad (unified
+///   only). Prefer identity when the host already paints a `tool-*-bg` shell.
+/// - `word_change_added` / `word_change_removed`: changed spans. Prefer
+///   `word_wash_bg(block_bg, polarity)` (soft green/red mix ≈0.32 on the tool/row
+///   wash) + polarity fg; restore the **block/row bg** (not `49m`). Avoid
+///   reverse/white flash and darken-only shades.
+/// - Side-by-side skips row tint so polarity stays fg-only (c464).
 pub struct DiffTheme {
     pub added: Box<dyn Fn(&str) -> String>,
     pub removed: Box<dyn Fn(&str) -> String>,
@@ -655,17 +657,43 @@ fn compact_prefix(sign: char, no: Option<u32>, num_width: usize) -> String {
 }
 
 fn word_level_pair(old: &str, new: &str, theme: &DiffTheme) -> (String, String) {
+    // pi `renderIntraLineDiff`: strip leading whitespace from the first
+    // removed/added part so indentation is not inverse-/word-highlighted.
     let diff = TextDiff::from_words(old, new);
     let mut del = String::new();
     let mut ins = String::new();
+    let mut first_removed = true;
+    let mut first_added = true;
     for change in diff.iter_all_changes() {
         let v = change.value();
         match change.tag() {
             ChangeTag::Delete => {
-                del.push_str(&(theme.word_change_removed)(v));
+                let mut value = v.to_string();
+                if first_removed {
+                    let lead = value
+                        .find(|c: char| !c.is_whitespace())
+                        .unwrap_or(value.len());
+                    del.push_str(&value[..lead]);
+                    value = value[lead..].to_string();
+                    first_removed = false;
+                }
+                if !value.is_empty() {
+                    del.push_str(&(theme.word_change_removed)(&value));
+                }
             }
             ChangeTag::Insert => {
-                ins.push_str(&(theme.word_change_added)(v));
+                let mut value = v.to_string();
+                if first_added {
+                    let lead = value
+                        .find(|c: char| !c.is_whitespace())
+                        .unwrap_or(value.len());
+                    ins.push_str(&value[..lead]);
+                    value = value[lead..].to_string();
+                    first_added = false;
+                }
+                if !value.is_empty() {
+                    ins.push_str(&(theme.word_change_added)(&value));
+                }
             }
             ChangeTag::Equal => {
                 del.push_str(&(theme.removed)(v));

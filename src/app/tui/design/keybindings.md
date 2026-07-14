@@ -11,7 +11,7 @@ components:
 # Keybindings
 
 > Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
-> 已接线：c480 / c615。下一波：c630 `/models` · c635–c645 树 power · c650 真 `$EDITOR`。
+> 已接线：c480 / c615。下一波：c630 `/model` 列表 · c635–c645 树 power · c650 真 `$EDITOR`。
 > 活实验场：`just demo-tui`。静图：[`playground/`](./playground/)。
 
 ## MUST — 全局 / 输入（已落地）
@@ -27,9 +27,10 @@ components:
 | ↑ / ↓（editor） | 在首/末可视行且（空草稿或已在浏览）时：**发送历史**召回（c481；包 ed05） |
 | 双 Esc | 打开 **MessageHistory 活树**（`session_tree`；Esc 关；Enter：`travel_session_tree`，user→`editor_text` 预填） |
 | `/exit` | 退出并 restore（与垂直切片一致） |
-| `/models` | 打开 **fuzzy 模型列表**（替换 editor 槽；见 [`models-picker.md`](./models-picker.md)；**c630**） |
+| `/model` | 打开 **fuzzy 模型列表**（替换 editor 槽；见 [`models-picker.md`](./models-picker.md)；**c630**；对齐 pi） |
+| `/model <id>` | 直选模型（不经列表） |
 
-**移除**：`/model` 极简切换 / 静默 cycle — **不再是产品主路径**。
+**移除**：无参 `/model` 静默 **cycle** — 改为打开列表；**不**引入 `/models`。
 
 ## MUST — 树关时（有内容时）
 
@@ -54,7 +55,7 @@ components:
 | 键 | 行为 |
 |---|---|
 | Esc（选择器打开时） | 关闭选择器，还原 editor |
-| `/` 补全 | CompletionSource；产品命令含 `/exit` `/models` |
+| `/` 补全 | CompletionSource；产品命令含 `/exit` `/model` |
 | `!` / `!!` 前缀 | bash 边框 + idle Enter → `execute_bash`（**c492**） |
 | Ctrl+G | 外部编辑器：TTY 真 `$VISUAL`/`$EDITOR`（**c650**）；harness / 非 TTY 仍 stub |
 
