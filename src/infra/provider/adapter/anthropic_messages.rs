@@ -382,7 +382,9 @@ pub fn convert_agent_messages_for_anthropic(
                 let inner: Vec<Value> = content
                     .iter()
                     .map(|p| match p {
-                        AgentPart::Text(t) => serde_json::json!({"type": "text", "text": t}),
+                        AgentPart::Text { text } => {
+                            serde_json::json!({"type": "text", "text": text})
+                        }
                         AgentPart::Image(img) => serde_json::json!({
                             "type": "image",
                             "source": {
@@ -462,11 +464,11 @@ fn agent_parts_to_anthropic_blocks(parts: &[AgentPart]) -> Vec<Value> {
     parts
         .iter()
         .map(|part| match part {
-            AgentPart::Text(text) => serde_json::json!({
+            AgentPart::Text { text } => serde_json::json!({
                 "type": "text",
                 "text": text,
             }),
-            AgentPart::Thinking { text: thinking, .. } => serde_json::json!({
+            AgentPart::Thinking { thinking, .. } => serde_json::json!({
                 "type": "text",
                 "text": thinking,
             }),
@@ -488,25 +490,6 @@ fn agent_parts_to_anthropic_blocks(parts: &[AgentPart]) -> Vec<Value> {
                 "name": name,
                 "input": arguments,
             }),
-            AgentPart::ToolResult {
-                tool_use_id,
-                content,
-                is_error,
-            } => {
-                let inner: Vec<Value> = content
-                    .iter()
-                    .map(|p| match p {
-                        AgentPart::Text(t) => serde_json::json!({"type": "text", "text": t}),
-                        _ => serde_json::json!({"type": "text", "text": ""}),
-                    })
-                    .collect();
-                serde_json::json!({
-                    "type": "tool_result",
-                    "tool_use_id": tool_use_id,
-                    "content": inner,
-                    "is_error": *is_error,
-                })
-            }
         })
         .collect()
 }
@@ -565,7 +548,7 @@ mod tests {
     fn convert_assistant_with_tool_call() {
         let msgs = vec![AgentMessage::AssistantMessage {
             content: vec![
-                AgentPart::Text("Let me check".into()),
+                AgentPart::text("Let me check"),
                 AgentPart::ToolCall {
                     id: "call-1".into(),
                     name: "read".into(),
@@ -595,7 +578,7 @@ mod tests {
         let msgs = vec![AgentMessage::tool_result(
             "call-1",
             "",
-            vec![AgentPart::Text("result here".into())],
+            vec![AgentPart::text("result here")],
             false,
         )];
         let (_, msgs) = convert_agent_messages_for_anthropic(&msgs);

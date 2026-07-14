@@ -1208,7 +1208,7 @@ pub fn matches_key_event(event: &crossterm::event::KeyEvent, key_id: &str) -> bo
         "right" => matches!(event.code, KeyCode::Right),
         "space" => matches!(event.code, KeyCode::Char(' ')),
         "clear" => matches!(event.code, KeyCode::Null), // unused at runtime
-        k if k.starts_with('f') => {
+        k if k.len() > 1 && k.starts_with('f') => {
             if let Ok(n) = k[1..].parse::<u8>() {
                 matches!(event.code, KeyCode::F(m) if m == n)
             } else {

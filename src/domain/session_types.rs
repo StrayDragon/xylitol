@@ -11,12 +11,25 @@ use serde_json::Value;
 
 /// Current session format version.
 /// v3: legacy (no id/parentId tree)
-/// v4: tree-aware with id/parentId
-pub const SESSION_VERSION: u32 = 4;
+/// v4: tree-aware with id/parentId (snake_case / untagged AgentPart era)
+/// v5: camelCase entry shell + tagged AgentPart content (c646 / pi-aligned)
+pub const SESSION_VERSION: u32 = 5;
+
+/// Where a session fork cuts the parent tree (aligns with pi `fork` position).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ForkPosition {
+    /// Include `at_entry_id` in the child path (pi `position: "at"` / clone).
+    #[default]
+    At,
+    /// User-message only: path ends at the user's **parent**; the user entry is
+    /// **not** copied (pi `/fork` default `position: "before"`).
+    Before,
+}
 
 // ── Header ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionHeader {
     #[serde(skip, default)]
     pub entry_type: String, // "session" — provided by enum tag
@@ -36,6 +49,7 @@ fn default_version() -> u32 {
 // ── Entry base ──────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EntryBase {
     #[serde(skip, default)]
     pub entry_type: String,
@@ -227,21 +241,21 @@ pub enum SessionEntry {
     Message(MessageEntry),
     #[serde(rename = "compaction")]
     Compaction(CompactionEntry),
-    #[serde(rename = "branch_summary")]
+    #[serde(rename = "branchSummary")]
     BranchSummary(BranchSummaryEntry),
-    #[serde(rename = "model_change")]
+    #[serde(rename = "modelChange")]
     ModelChange(ModelChangeEntry),
-    #[serde(rename = "thinking_level_change")]
+    #[serde(rename = "thinkingLevelChange")]
     ThinkingLevelChange(ThinkingLevelChangeEntry),
     #[serde(rename = "custom")]
     Custom(CustomEntry),
-    #[serde(rename = "custom_message")]
+    #[serde(rename = "customMessage")]
     CustomMessage(CustomMessageEntry),
     #[serde(rename = "label")]
     Label(LabelEntry),
-    #[serde(rename = "session_info")]
+    #[serde(rename = "sessionInfo")]
     SessionInfo(SessionInfoEntry),
-    #[serde(rename = "bash_execution")]
+    #[serde(rename = "bashExecution")]
     BashExecution(BashExecutionEntry),
 }
 
@@ -267,14 +281,14 @@ impl SessionEntry {
             SessionEntry::Header(_) => "session",
             SessionEntry::Message(_) => "message",
             SessionEntry::Compaction(_) => "compaction",
-            SessionEntry::BranchSummary(_) => "branch_summary",
-            SessionEntry::ModelChange(_) => "model_change",
-            SessionEntry::ThinkingLevelChange(_) => "thinking_level_change",
+            SessionEntry::BranchSummary(_) => "branchSummary",
+            SessionEntry::ModelChange(_) => "modelChange",
+            SessionEntry::ThinkingLevelChange(_) => "thinkingLevelChange",
             SessionEntry::Custom(_) => "custom",
-            SessionEntry::CustomMessage(_) => "custom_message",
+            SessionEntry::CustomMessage(_) => "customMessage",
             SessionEntry::Label(_) => "label",
-            SessionEntry::SessionInfo(_) => "session_info",
-            SessionEntry::BashExecution(_) => "bash_execution",
+            SessionEntry::SessionInfo(_) => "sessionInfo",
+            SessionEntry::BashExecution(_) => "bashExecution",
         }
     }
 
@@ -289,12 +303,11 @@ impl SessionEntry {
 
 // ── Message entry helpers ───────────────────────────────────────────
 
-/// AgentMessage-shaped JSON for session fixtures (matches serde of
-/// [`crate::domain::message::AgentMessage`]: untagged `content` text strings).
+/// AgentMessage-shaped JSON for session fixtures (c646 tagged content).
 pub fn fixture_message_json(role: &str, text: &str) -> Value {
     serde_json::json!({
         "role": role,
-        "content": [text],
+        "content": [{ "type": "text", "text": text }],
         "timestamp": 0u64,
     })
 }
@@ -304,15 +317,11 @@ pub fn message_role(msg: &Value) -> Option<&str> {
     msg.get("role").and_then(Value::as_str)
 }
 
-/// Extract human-readable text from a serialized agent message JSON value.
+/// Extract **visible text** for editor prefill / tree summary (dm2).
 ///
-/// Aligns with pi `_extractUserMessageText` / [`crate::domain::message::AgentMessage::text`]:
-/// prefers `content` (string or part array). Also accepts legacy `parts` used in older
-/// fixtures. Falls back to empty string — never the whole JSON blob.
+/// Only aggregates `type=text` parts. Thinking / toolCall / image are skipped.
+/// Bare-string content and untyped objects are ignored (c646: no legacy read).
 pub fn message_text(msg: &Value) -> String {
-    if let Some(s) = msg.get("content").and_then(Value::as_str) {
-        return s.to_string();
-    }
     if let Some(parts) = msg
         .get("content")
         .or_else(|| msg.get("parts"))
@@ -326,18 +335,15 @@ pub fn message_text(msg: &Value) -> String {
 fn extract_text_from_parts(parts: &[Value]) -> String {
     let mut out = String::new();
     for p in parts {
-        if let Some(t) = p.as_str() {
-            // AgentPart::Text is `#[serde(untagged)]` → bare string in JSON.
-            out.push_str(t);
+        let Some(obj) = p.as_object() else {
+            continue;
+        };
+        if obj.get("type").and_then(Value::as_str) != Some("text") {
             continue;
         }
-        let typ = p.get("type").and_then(Value::as_str);
-        // Typed text / thinking, or untagged Thinking { text, … } without `type`.
-        let take_text = matches!(typ, None | Some("text") | Some("thinking"));
-        if take_text && let Some(t) = p.get("text").and_then(Value::as_str) {
+        if let Some(t) = obj.get("text").and_then(Value::as_str) {
             out.push_str(t);
         }
-        // Skip toolCall / image / toolResult parts for preview & editor prefill.
     }
     out
 }
@@ -349,22 +355,9 @@ pub fn message_parts(msg: &Value) -> Option<&Vec<Value>> {
         .and_then(Value::as_array)
 }
 
-/// Whether a content/part value is a tool-call (AgentMessage ToolCall or legacy FunctionCall).
+/// Whether a content/part value is a tool-call (requires `type: toolCall`).
 pub fn is_tool_call_part(part: &Value) -> bool {
-    if part.as_str().is_some() {
-        return false;
-    }
-    let typ = part.get("type").and_then(Value::as_str);
-    if matches!(
-        typ,
-        Some("FunctionCall") | Some("toolCall") | Some("tool_call")
-    ) {
-        return part.get("name").is_some();
-    }
-    // Untagged AgentPart::ToolCall: { id, name, arguments }
-    part.get("name").is_some()
-        && (part.get("arguments").is_some() || part.get("args").is_some())
-        && part.get("text").is_none()
+    part.get("type").and_then(Value::as_str) == Some("toolCall") && part.get("name").is_some()
 }
 
 /// Tool name from a tool-call part, if any.
@@ -555,13 +548,13 @@ mod session_tree_tests {
     }
 
     #[test]
-    fn message_text_extracts_untagged_content_strings() {
+    fn message_text_ignores_bare_string_content() {
         let msg = json!({
             "role": "user",
             "content": ["你好"],
             "timestamp": 1u64,
         });
-        assert_eq!(message_text(&msg), "你好");
+        assert_eq!(message_text(&msg), "");
     }
 
     #[test]
@@ -574,12 +567,45 @@ mod session_tree_tests {
     }
 
     #[test]
+    fn message_text_skips_thinking_parts() {
+        let msg = json!({
+            "role": "assistant",
+            "content": [
+                { "type": "thinking", "thinking": "nope" },
+                { "type": "text", "text": "yes" }
+            ],
+        });
+        assert_eq!(message_text(&msg), "yes");
+    }
+
+    #[test]
+    fn entry_shell_serializes_parent_id_camel_and_version_5() {
+        let header = SessionEntry::Header(SessionHeader {
+            entry_type: "session".into(),
+            version: SESSION_VERSION,
+            id: "s1".into(),
+            timestamp: "t".into(),
+            cwd: "/tmp".into(),
+            parent_session: Some("p".into()),
+        });
+        let v = serde_json::to_value(&header).unwrap();
+        assert_eq!(v["version"], 5);
+        assert_eq!(v["parentSession"], "p");
+
+        let msg = msg_entry("e1", Some("p1"), "user", "hi");
+        let v = serde_json::to_value(&msg).unwrap();
+        assert_eq!(v["parentId"], "p1");
+        assert_eq!(v["type"], "message");
+        assert_eq!(v["message"]["content"][0]["type"], "text");
+    }
+
+    #[test]
     fn message_text_skips_tool_call_parts() {
         let msg = json!({
             "role": "assistant",
             "content": [
-                "前置文字",
-                { "id": "1", "name": "bash", "arguments": {"command": "ls"} }
+                { "type": "text", "text": "前置文字" },
+                { "type": "toolCall", "id": "1", "name": "bash", "arguments": {"command": "ls"} }
             ],
         });
         assert_eq!(message_text(&msg), "前置文字");
@@ -599,9 +625,9 @@ mod session_tree_tests {
         let msg = json!({
             "role": "assistant",
             "content": [
-                "ok",
-                { "id": "1", "name": "read", "arguments": { "path": "a.rs" } },
-                { "id": "2", "name": "bash", "arguments": { "command": "ls" } }
+                { "type": "text", "text": "ok" },
+                { "type": "toolCall", "id": "1", "name": "read", "arguments": { "path": "a.rs" } },
+                { "type": "toolCall", "id": "2", "name": "bash", "arguments": { "command": "ls" } }
             ],
         });
         assert_eq!(count_tool_calls(&msg), 2);
@@ -609,7 +635,7 @@ mod session_tree_tests {
     }
 
     #[test]
-    fn count_tool_calls_reads_legacy_function_call() {
+    fn count_tool_calls_ignores_untagged_legacy_shape() {
         let msg = json!({
             "role": "assistant",
             "parts": [{
@@ -619,8 +645,8 @@ mod session_tree_tests {
                 "args": { "path": "b.rs" }
             }]
         });
-        assert_eq!(count_tool_calls(&msg), 1);
-        assert_eq!(tool_file_paths(&msg), vec!["b.rs".to_string()]);
+        assert_eq!(count_tool_calls(&msg), 0);
+        assert!(tool_file_paths(&msg).is_empty());
     }
 
     #[test]

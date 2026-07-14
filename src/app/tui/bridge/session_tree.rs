@@ -1,6 +1,10 @@
-//! Rebuild live scrollback after MessageHistory travel (c615).
+//! Rebuild live scrollback after MessageHistory travel (c615 / c646).
 
-use crate::domain::session_types::{SessionEntry, SessionTreeTravel, message_role, message_text};
+use crate::domain::session_types::{
+    SessionEntry, SessionTreeTravel, is_tool_call_part, message_parts, message_role, message_text,
+    tool_call_name,
+};
+use serde_json::Value;
 
 use super::{BashBlockStatus, UiEntry, UiModel, UiPhase};
 
@@ -36,7 +40,7 @@ pub fn rebuild_scrollback_from_travel(
         let Some(entry) = entries.iter().find(|e| e.entry_id() == Some(id.as_str())) else {
             continue;
         };
-        if let Some(ui) = session_entry_to_ui(entry) {
+        for ui in session_entry_to_ui_entries(entry) {
             ui_model.entries.push(ui);
         }
     }
@@ -60,24 +64,10 @@ fn ancestry_path_ids(entries: &[SessionEntry], leaf_id: Option<&str>) -> Vec<Str
     path
 }
 
-fn session_entry_to_ui(entry: &SessionEntry) -> Option<UiEntry> {
+/// Project one session entry into zero or more UI rows (c646: thinking ≠ text).
+pub fn session_entry_to_ui_entries(entry: &SessionEntry) -> Vec<UiEntry> {
     match entry {
-        SessionEntry::Message(m) => {
-            let text = message_text(&m.message);
-            match message_role(&m.message)? {
-                "user" => Some(UiEntry::User { text }),
-                "assistant" => Some(UiEntry::Assistant { text }),
-                "tool" => Some(UiEntry::Tool {
-                    id: m.base.id.clone(),
-                    name: "tool".into(),
-                    args_preview: String::new(),
-                    output: text,
-                    is_error: false,
-                    done: true,
-                }),
-                _ => Some(UiEntry::System { text }),
-            }
-        }
+        SessionEntry::Message(m) => message_json_to_ui_entries(&m.base.id, &m.message),
         SessionEntry::BashExecution(b) => {
             let status = if b.cancelled {
                 BashBlockStatus::Cancelled
@@ -86,19 +76,166 @@ fn session_entry_to_ui(entry: &SessionEntry) -> Option<UiEntry> {
             } else {
                 BashBlockStatus::Success
             };
-            Some(UiEntry::Bash {
+            vec![UiEntry::Bash {
                 command: b.command.clone(),
                 status,
                 output: b.output.clone(),
                 exclude_from_context: b.exclude_from_context,
-            })
+            }]
         }
-        SessionEntry::Compaction(c) => Some(UiEntry::System {
+        SessionEntry::Compaction(c) => vec![UiEntry::System {
             text: format!("[compaction] {}", c.summary),
-        }),
-        SessionEntry::BranchSummary(b) => Some(UiEntry::System {
+        }],
+        SessionEntry::BranchSummary(b) => vec![UiEntry::System {
             text: format!("[branch] {}", b.summary),
-        }),
-        _ => None,
+        }],
+        _ => Vec::new(),
+    }
+}
+
+fn message_json_to_ui_entries(entry_id: &str, message: &Value) -> Vec<UiEntry> {
+    let Some(role) = message_role(message) else {
+        return Vec::new();
+    };
+    match role {
+        "user" => vec![UiEntry::User {
+            text: message_text(message),
+        }],
+        "assistant" => assistant_parts_to_ui(entry_id, message),
+        "toolResult" | "tool" => vec![UiEntry::Tool {
+            id: entry_id.to_string(),
+            name: message
+                .get("toolName")
+                .or_else(|| message.get("tool_name"))
+                .and_then(Value::as_str)
+                .unwrap_or("tool")
+                .to_string(),
+            args_preview: String::new(),
+            output: message_text(message),
+            is_error: message
+                .get("isError")
+                .or_else(|| message.get("is_error"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            done: true,
+        }],
+        _ => {
+            let text = message_text(message);
+            if text.is_empty() {
+                Vec::new()
+            } else {
+                vec![UiEntry::System { text }]
+            }
+        }
+    }
+}
+
+fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
+    let Some(parts) = message_parts(message) else {
+        let text = message_text(message);
+        return if text.is_empty() {
+            Vec::new()
+        } else {
+            vec![UiEntry::Assistant { text }]
+        };
+    };
+
+    let mut out = Vec::new();
+    for part in parts {
+        let typ = part.get("type").and_then(Value::as_str);
+        match typ {
+            Some("thinking") => {
+                if let Some(t) = part
+                    .get("thinking")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                {
+                    out.push(UiEntry::Thinking {
+                        text: t.to_string(),
+                    });
+                }
+            }
+            Some("text") => {
+                if let Some(t) = part
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                {
+                    out.push(UiEntry::Assistant {
+                        text: t.to_string(),
+                    });
+                }
+            }
+            Some("toolCall") if is_tool_call_part(part) => {
+                let name = tool_call_name(part).unwrap_or("tool");
+                let args = part
+                    .get("arguments")
+                    .or_else(|| part.get("args"))
+                    .map(|v| v.to_string())
+                    .unwrap_or_default();
+                out.push(UiEntry::Tool {
+                    id: part
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or(entry_id)
+                        .to_string(),
+                    name: name.to_string(),
+                    args_preview: args,
+                    output: String::new(),
+                    is_error: false,
+                    done: false,
+                });
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::session_types::{EntryBase, MessageEntry, fixture_message_json};
+    use serde_json::json;
+
+    #[test]
+    fn rebuild_keeps_thinking_and_assistant_separate() {
+        let entry = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "a1".into(),
+                parent_id: Some("u1".into()),
+                timestamp: "t".into(),
+            },
+            message: json!({
+                "role": "assistant",
+                "content": [
+                    { "type": "thinking", "thinking": "step 1" },
+                    { "type": "text", "text": "hello" }
+                ],
+                "timestamp": 0u64,
+            }),
+        });
+        let ui = session_entry_to_ui_entries(&entry);
+        assert!(
+            matches!(ui.as_slice(), [
+                UiEntry::Thinking { text } ,
+                UiEntry::Assistant { text: reply }
+            ] if text == "step 1" && reply == "hello"),
+            "got: {ui:?}"
+        );
+    }
+
+    #[test]
+    fn message_text_skips_thinking_for_prefill() {
+        let msg = json!({
+            "role": "assistant",
+            "content": [
+                { "type": "thinking", "thinking": "secret" },
+                { "type": "text", "text": "visible" }
+            ],
+        });
+        assert_eq!(message_text(&msg), "visible");
+        let _ = fixture_message_json("user", "x");
     }
 }

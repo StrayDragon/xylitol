@@ -457,7 +457,7 @@ fn convert_messages_to_input_items(messages: &[AgentMessage]) -> Vec<Value> {
 fn collect_text_parts(parts: &[AgentPart]) -> String {
     let mut buf = String::new();
     for part in parts {
-        if let AgentPart::Text(text) | AgentPart::Thinking { text, .. } = part {
+        if let Some(text) = part.as_text() {
             buf.push_str(text);
         }
     }
@@ -495,7 +495,7 @@ mod tests {
             AgentMessage::user("list files"),
             AgentMessage::AssistantMessage {
                 content: vec![
-                    AgentPart::Text("let me check".into()),
+                    AgentPart::text("let me check"),
                     AgentPart::ToolCall {
                         id: "call-1".into(),
                         name: "ls".into(),
@@ -512,12 +512,7 @@ mod tests {
                 timestamp: 0,
                 diagnostics: Vec::new(),
             },
-            AgentMessage::tool_result(
-                "call-1",
-                "ls",
-                vec![AgentPart::Text("file.txt".into())],
-                false,
-            ),
+            AgentMessage::tool_result("call-1", "ls", vec![AgentPart::text("file.txt")], false),
         ];
         let items = convert_messages_to_input_items(&msgs);
         // user message, assistant message, function_call, function_call_output

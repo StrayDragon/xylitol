@@ -496,6 +496,8 @@ async fn import_jsonl(
 #[derive(Deserialize)]
 struct ForkBody {
     entry_id: String,
+    #[serde(default)]
+    position: Option<String>,
 }
 
 async fn fork_session(
@@ -509,6 +511,7 @@ async fn fork_session(
             Command::Fork {
                 id: None,
                 entry_id: body.entry_id,
+                position: body.position,
             },
         )
         .await,

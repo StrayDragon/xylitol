@@ -1,0 +1,16 @@
+kind: llman.sdd.spec
+name: domain-message
+purpose: "AgentMessage / AgentPart 持久化 wire（JSONL content 自描述部件）— c646 起对齐 pi tagged 形态。"
+valid_scope[2]: src/domain/message.rs,src/domain/session_types.rs
+requirements[4]{req_id,title,statement}:
+  dm1,"agent-part-tagged-wire","AgentPart 序列化到 JSONL/session message.content 时 MUST 使用带 type 判别的自描述形态（对齐 pi ThinkingContent/TextContent/ToolCall）：thinking MUST 为 {type:thinking, thinking, thinkingSignature?, redacted?}；text MUST 为 {type:text, text}；toolCall MUST 为 {type:toolCall, id, name, arguments}。MUST NOT 使用 serde untagged；MUST NOT 将 Text 写成裸字符串；MUST NOT 将 Thinking 写成无 type 且字段名为 text 的对象。"
+  dm2,"preview-text-excludes-thinking",用于 editor 预填与树摘要的 message 纯文本提取（message_text 或等价）MUST 只聚合 type=text 的正文；MUST NOT 把 type=thinking 的正文拼进预填/摘要。
+  dm3,"session-entry-camelcase-v5",Session JSONL 外壳 MUST 使用 camelCase 字段（含 parentId、parentSession）与 camelCase 的 SessionEntry type 判别（如 branchSummary、bashExecution）；新写入的 header.version MUST 为 5。MUST NOT 再写出 parent_id 或 version≤4 作为新会话真源。
+  dm4,"tool-result-tool-call-id",role=toolResult 的 AgentMessage MUST 以 toolCallId 键持久化工具调用关联 id（对齐 pi）；MUST NOT 写出 toolUseId。content 内 MUST NOT 再嵌入 type=toolResult 的 AgentPart（工具结果只走独立 message 行）。
+scenarios[6]{req_id,id,given,when,then}:
+  dm1,"roundtrip-thinking",内存中有含 Thinking 与 Text 的 AssistantMessage,serde 序列化再反序列化,仍为 Thinking 与 Text 两部件且字段/type 与 pi 形一致
+  dm1,"reject-bare-text",content 含裸字符串 Hi,按 AgentPart 解析,MUST 失败或拒绝为合法 Text 部件（不静默接受）
+  dm1,"reject-untagged-thinking","content 含 {redacted:false, text:...} 无 type",按 AgentPart 解析,MUST 失败或拒绝为 Thinking（不静默接受）
+  dm2,"prefill-skips-thinking",assistant content 含 thinking 与 text,提取 message_text,结果仅含 text 正文
+  dm3,"write-parent-id-camel",创建并 append 一条 message,序列化 JSONL 行,含 parentId 键且 header version 为 5
+  dm4,"tool-call-id-key",一条 toolResult 消息,serde 序列化,JSON 含 toolCallId 且无 toolUseId

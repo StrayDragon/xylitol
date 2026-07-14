@@ -4,21 +4,21 @@ assertion_line: 138
 expression: "all_items.join(\"\\n\")"
 ---
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), String>
-pub async fn execute( &mut self, store: &dyn XySessionStore, session_id: Option<&str>, command: &str, exclude_from_context: bool, ) -> Result<XyBashResult, String>
-pub async fn execute_bash( &mut self, command: &str, exclude_from_context: bool, ) -> Result<crate::runtime_protocol::XyBashResult, String>
+pub async fn execute( &self, store: &dyn XySessionStore, session_id: Option<&str>, command: &str, exclude_from_context: bool, chunk_tx: Option<mpsc::Sender<Vec<u8>>>, ) -> Result<XyBashResult, String>
+pub async fn execute_bash( &self, command: &str, exclude_from_context: bool, chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>, ) -> Result<crate::runtime_protocol::XyBashResult, String>
 pub async fn export_to_html( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
 pub async fn export_to_html( &self, store: &dyn XySessionStore, session_id: &str, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
 pub async fn export_to_jsonl( &self, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
 pub async fn export_to_jsonl( &self, store: &dyn XySessionStore, session_id: &str, path: &std::path::Path, ) -> Result<std::path::PathBuf, String>
-pub async fn fork_session(&self, at_entry_id: &str) -> Result<String, String>
+pub async fn fork_session( &self, at_entry_id: &str, position: crate::domain::session_types::ForkPosition, ) -> Result<String, String>
 pub async fn get_session_stats(&self) -> Result<SessionStats, String>
 pub async fn import_from_jsonl( &self, store: &dyn XySessionStore, path: &std::path::Path, ) -> Result<String, String>
 pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String>
 pub async fn maybe_auto_compact(&self) -> Result<bool, String>
 pub async fn record_bash_result( &self, command: &str, result: &crate::runtime_protocol::XyBashResult, exclude_from_context: bool, session_id: Option<&str>, ) -> Result<(), String>
 pub enum QueueMode
-pub fn abort(&mut self)
-pub fn abort_bash(&mut self)
+pub fn abort(&self)
+pub fn abort_bash(&self)
 pub fn bind_event_tx(&self, tx: EventTx)
 pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, String>
 pub fn clear(&mut self)

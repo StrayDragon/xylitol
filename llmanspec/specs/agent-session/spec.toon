@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-session"
 purpose: "Agent session management — session lifecycle, capability state, prompt construction, and turn orchestration."
 valid_scope[3]: src/agent/session/,src/runtime_protocol/session.rs,src/domain/session_types.rs
-requirements[35]{req_id,title,statement}:
+requirements[36]{req_id,title,statement}:
   a1,"agent-session","System MUST provide AgentSession encapsulating prompt to model to tools to loop with full event stream, holding ONLY orchestration state; the system prompt MUST be assembled from injected context (AGENTS.md files, configured system prompt, append prompts) supplied by the composition root, NOT from a hardcoded fallback."
   a2,"turn-events","AgentSession MUST emit: turn_start, message_start, message_update (streaming), message_end events per turn."
   a3,"tool-events","AgentSession MUST emit: tool_execution_start, tool_execution_update (streaming partials), tool_execution_end events per tool call."
@@ -38,7 +38,8 @@ requirements[35]{req_id,title,statement}:
   as43,"trust-demoted-to-free-fn","The save_trust_decision method (which only reads self.cwd and does not hold a trust store) MUST be demoted to a free function under agent/session/trust.rs taking cwd, trust_store, and trusted; Agent MUST NOT carry this method since it has no cohesive reason to live on the capability aggregate."
   as44,"dead-code-cleared","After confirming zero production call sites via grep, the dead methods MUST be removed from Agent: the whole steering domain (steer, follow_up, clear_queue, pending_message_count, has_pending_steer, get_steering_messages, get_follow_up_messages, drain_queued_messages, message_queue, message_queue_mut), process_prompt, cycle_forward, cycle_backward, share_as_gist, registry_clone, set_append_prompt, compact_current_session, compaction_threshold, compaction_settings, register_template, register_templates, register_command, and register_skill_commands; dead #[allow(dead_code)] attributes MUST be removed alongside."
   as45,"seed-history-from-store","AgentRuntime::run_with_id（或等价入口）在已有 session 上开新一轮时 MUST 经 store.build_session_context（及既有 SessionEntry→AgentMessage 转换）灌入 history，再追加本轮 user prompt；MUST NOT 每轮从空 history 起步导致多轮丢失上下文。"
-scenarios[43]{req_id,id,given,when,then}:
+  as46,"persist-tagged-agent-parts","ReAct/session 将 AssistantMessage/UserMessage 持久化为 SessionEntry::Message 时 MUST 写出 domain-message dm1 的 tagged content；从 store 恢复为 AgentMessage（as_agent_message 或等价）时 MUST 只接受 tagged 部件；遇旧 untagged/裸字符串 content MUST NOT 静默当成合法对话上下文（MUST 报错或跳过该条目并可观测），MUST NOT 把 thinking 与 text 糊成单一 Text。"
+scenarios[45]{req_id,id,given,when,then}:
   a1,"prompt-from-loader",a project containing AGENTS.md and the CLI composition root constructs the agent,the agent builds its system prompt,the system prompt MUST include the AGENTS.md content and MUST NOT default to a hardcoded placeholder when the loader provides values
   a2,"turn-events","agent processes a tool-calling turn",turn starts,"events are emitted in order: turn_start message_start message_update* message_end turn_end"
   a3,"tool-stream",bash tool streams output,tool_execution_start fires,tool_execution_update fires multiple times then tool_execution_end
@@ -82,3 +83,5 @@ scenarios[43]{req_id,id,given,when,then}:
   as43,"trust-free-fn",save_trust_decision lived on the Agent,the change is applied,it is a free function in agent/session/trust.rs and the Agent no longer carries it
   as44,"dead-methods-gone",the steering domain and other dead methods existed,rg for those method names in src/agent/ runs,no production dead methods remain (only legitimately used methods survive)
   as45,"second-turn-sees-first",同一 session_id 已有第一轮 user/assistant 在 store,第二轮 run_with_id,送给模型的 history 含第一轮消息
+  as46,"persist-load-thinking",一轮含 ThinkingDelta 与 TextDelta 的 assistant 已 persist,load_entries 后 as_agent_message,content 含独立 Thinking 与 Text 且 type 字段正确
+  as46,"legacy-content-rejected",JSONL message.content 为旧 untagged 形态,as_agent_message 或恢复上下文,不产生糊成一体的合法 Assistant Text；失败或跳过可观测

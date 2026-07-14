@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-session-tree"
 purpose: 产品面双 Esc 会话树 stub（c491 冻结）：仅槽替换与 travel 行；活树/真 Driver 等开闸。形态学见 agent_demo（ast3/ast4）。
 valid_scope[1]: src/app/tui/
-requirements[10]{req_id,title,statement}:
+requirements[11]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c491-add-app-tui-session-tree 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ast1,"slot-replace",会话树打开时 MUST 替换 UiRoot editor 槽（贴底可见）；MUST NOT 画成内容区顶部 overlay。
   ast2,"live-travel-via-driver","产品双 Esc 会话树 MUST 渲染当前 session 的 MessageHistory 活树（经 Driver::session_tree(MessageHistory) 映射为包 TreeNode，含 kind）；Enter 选中节点时 MUST 调用 Driver::travel_session_tree(MessageHistory, id)，按返回的 SessionTreeTravel 关闭树、预填 editor（仅当 editor_text 有值）、并重建/刷新 transcript 与后续提交 leaf 语义；MUST NOT 再使用 c491 假树样例作为唯一数据源；filter / 增量搜索产品接线见 ast8；fold / Shift+F fork 仍属后续 change。"
@@ -13,7 +13,8 @@ requirements[10]{req_id,title,statement}:
   ast7,"tree-reflects-persisted-turn","在 auto-persist 与稳定 session_id 就绪后，产品双 Esc 打开的 MessageHistory 树 MUST 能反映已完成回合写入 store 的消息节点；一轮 user/assistant 成功结束后 session_tree(MessageHistory) MUST NOT 因 store 仅有 header 而长期为 0 节点（空会话除外）。"
   ast8,"session-tree-filter","产品会话树打开时 MUST 支持与 pi 对齐的 FilterMode（default / no-tools / user-only / labeled-only / all）：经 TreeSelector include_node 应用谓词，并与包增量搜索 AND；default MUST 隐藏 kind=meta；no-tools MUST 在 default 基础上隐藏 kind=tool；user-only MUST 仅 kind=user；labeled-only MUST 仅 annotation 有值；all MUST 显示全部；状态行 MUST 在非 default 时追加 [no-tools]/[user]/[labeled]/[all] 之一，default MUST NOT 追加 [default]；MUST NOT 在 packages/xylitol-tui 硬编码产品 FilterMode。"
   ast9,"session-tree-fold","产品会话树打开时 MUST 将 Ctrl+Left / Alt+Left / Ctrl+Right / Alt+Right（包 tui.tree.foldOrUp / unfoldOrDown）转发给 TreeSelector::handle_input，以折叠/展开可折节点或执行分支跳转；折叠后 MUST 隐藏该节点后代并显示 ⊞（或包等价标记）；MUST NOT 在 src/app/tui 重写 folded_nodes 算法；裸 Left/Right MUST 仍为翻页（既有）。"
-scenarios[17]{req_id,id,given,when,then}:
+  ast10,"product-session-tree-fork","产品会话树 Shift+F MUST 创建新 child session：内容 MUST 为 get_branch 路径并重链 parent_id（对齐 pi createBranchedSession），MUST NOT 按 JSONL 文件序切片，MUST NOT 改写父文件，header MUST 含 parent_session。选中 user 时 MUST 用 ForkPosition::Before（leaf=parent、预填正文、不拷该 user）；选中非 user 时 MUST 用 ForkPosition::At（路径含选中、不因 fork 预填 user 正文）。随后 MUST switch_session 到 child 并关树。MUST NOT 使用 demo 同会话 ast5。"
+scenarios[21]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-session-tree",spec.toon 存在且 purpose 为中文
   ast1,"double-esc-opens",空编辑器,双 Esc 于 500ms 内,editor 槽显示 Session tree
   ast2,"open-shows-live",Driver 当前 session 已有 user/assistant 消息,空编辑器双 Esc 打开树,树行来自 MessageHistory 活数据而非 sample_session_tree 假树
@@ -31,3 +32,7 @@ scenarios[17]{req_id,id,given,when,then}:
   ast8,"labeled-only",树含带 annotation 与无 annotation 节点,"Ctrl+L 进入 labeled-only",仅 annotation 有值的行可见
   ast9,"fold-hides-descendants",树开且选中有子节点的可折行,按 Ctrl+Left（或 Alt+Left）,该节点 is_folded 且后代行不可见，帧含 ⊞ 或等价
   ast9,"unfold-restores",同上已折叠,按 Ctrl+Right（或 Alt+Right）,后代重新可见
+  ast10,"fork-new-session",树开且选中节点,按 Shift+F,"fork+switch 后当前为 child、树关闭、父 JSONL 未改"
+  ast10,"fork-user-before",树选中 kind=user,Shift+F,"Before：editor 含正文且 child 不含该 user id"
+  ast10,"fork-non-user-at",树选中 assistant/tool,Shift+F,"At：child 含该节点 id 且 editor 未因 fork 填 user 正文"
+  ast10,"fork-no-sibling-leak",父会话同层已有兄弟分支,对一侧路径 Shift+F,child 不含另一侧兄弟条目

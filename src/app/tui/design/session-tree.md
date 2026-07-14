@@ -23,7 +23,7 @@ components:
 **优先路径**（替代 Codex 式 transcript 浏览）：双 Esc 打开会话树。
 **形态学 SSOT**：`packages/xylitol-tui` `agent_demo`（活树 / travel / filter / kind…）。
 **产品 c615**：双 Esc → `Driver::session_tree(MessageHistory)` 活树；Enter → `travel_session_tree`（user → `editor_text` 预填 + leaf 更新 + scrollback 按 ancestry 重建）。
-**产品下一波**：filter **c635**（已）→ fold **c640**（已）→ fork **c645**（demo 已有；键位见 [`keybindings.md`](./keybindings.md)；静图 playground「Tree power」）。
+**产品下一波**：filter **c635**（已）→ fold **c640**（已）→ fork **c645**（产品 Driver 新 session；demo ast5 同会话保留）。
 
 ## MUST
 
@@ -36,7 +36,7 @@ components:
 5. travel / fork 经应用面 `Driver`；包组件只负责树 UI。demo **Enter travel（c600，对齐 pi）**：
    - `kind=user` → history leaf = **父节点**；user 正文预填 editor；transcript = root→父（**不含**被选 user 及其后线性回复）。
    - 非 user → leaf = 选中 id；重建 root→选中；**不**因 travel 预填 user 正文。
-   - Shift+F fork：demo `ast5`（leaf=选中；user 预填）；产品 **c645**。
+   - Shift+F fork：demo `ast5`（同会话）；产品 **c645** = Driver 新 session（user Before / 非 user At）。
    - **产品（c615）**：Enter MUST 调 `travel_session_tree`；`editor_text` 有值时预填；scrollback 按 travel `leaf_id` ancestry 最佳努力重建。
 6. **搜索**：对 label / kind / annotation 增量过滤（与 `include_node` AND）— demo 已有；产品随 **c635**。
 7. **翻页**：←→ 与 PgUp/PgDn 按 `max_visible` 翻页。

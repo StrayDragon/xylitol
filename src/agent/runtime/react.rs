@@ -359,14 +359,14 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             && let Some(ref sp) = system_prompt
         {
             history.push(AgentMessage::UserMessage {
-                content: vec![AgentPart::Text(sp.clone())],
+                content: vec![AgentPart::text(sp.clone())],
                 timestamp: crate::domain::message::now_ms(),
             });
         }
 
         // Add user message
         history.push(AgentMessage::UserMessage {
-            content: vec![AgentPart::Text(user_prompt.clone())],
+            content: vec![AgentPart::text(user_prompt.clone())],
             timestamp: crate::domain::message::now_ms(),
         });
         persist_agent_message(&store, &session_id, history.last().expect("user message")).await;
@@ -504,10 +504,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                 let mut assistant_parts = Vec::new();
                 if !thinking_acc.is_empty() {
-                    assistant_parts.push(AgentPart::Thinking { text: thinking_acc, redacted: false, signature: None });
+                    assistant_parts.push(AgentPart::thinking(thinking_acc));
                 }
                 if !text_acc.is_empty() {
-                    assistant_parts.push(AgentPart::Text(text_acc));
+                    assistant_parts.push(AgentPart::text(text_acc));
                 }
                 for (id, name, args) in &tool_calls {
                     assistant_parts.push(AgentPart::ToolCall {
@@ -586,7 +586,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         history.push(AgentMessage::ToolResultMessage {
                             tool_use_id: id.clone(),
                             tool_name: name.clone(),
-                            content: vec![AgentPart::Text(err.clone())],
+                            content: vec![AgentPart::text(err.clone())],
                             details: None,
                             is_error: true,
                             timestamp: crate::domain::message::now_ms(),
@@ -639,7 +639,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     history.push(AgentMessage::ToolResultMessage {
                         tool_use_id: id.clone(),
                         tool_name: name.clone(),
-                        content: vec![AgentPart::Text(result_text.clone())],
+                        content: vec![AgentPart::text(result_text.clone())],
                         details: None,
                         is_error: result.1,
                         timestamp: crate::domain::message::now_ms(),
@@ -1263,7 +1263,7 @@ mod tests {
             .iter()
             .filter_map(|m| match m {
                 AgentMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
-                    AgentPart::Text(t) => Some(t.clone()),
+                    AgentPart::Text { text: t } => Some(t.clone()),
                     _ => None,
                 }),
                 _ => None,
@@ -1601,7 +1601,7 @@ mod tests {
             .iter()
             .filter_map(|m| match m {
                 AgentMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
-                    AgentPart::Text(t) => Some(t.clone()),
+                    AgentPart::Text { text: t } => Some(t.clone()),
                     _ => None,
                 }),
                 _ => None,

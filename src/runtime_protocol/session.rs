@@ -6,6 +6,8 @@ use crate::domain::session_types::{
     SessionContext, SessionEntry, SessionTreeNode, build_session_tree,
 };
 
+pub use crate::domain::session_types::ForkPosition;
+
 /// Persistence port — abstracts session storage so the agent can be
 /// unit-tested without a real filesystem and the server can host
 /// sessions without coupling to the file store.
@@ -32,8 +34,18 @@ pub trait XySessionStore: Send + Sync {
     /// Create a new session (writes header, initializes leaf tracking).
     async fn create(&self, id: &str, cwd: Option<&str>, parent: Option<&str>)
     -> Result<(), String>;
-    /// Fork a session at a given entry into a new child session.
-    async fn fork(&self, parent_id: &str, child_id: &str, at_entry_id: &str) -> Result<(), String>;
+    /// Fork a session into a new child.
+    ///
+    /// - [`ForkPosition::At`]: child path is `get_branch` through `at_entry_id` (re-chained).
+    /// - [`ForkPosition::Before`]: `at_entry_id` must be a user message; path ends at its
+    ///   parent (pi `/fork`); the user row is not copied.
+    async fn fork(
+        &self,
+        parent_id: &str,
+        child_id: &str,
+        at_entry_id: &str,
+        position: ForkPosition,
+    ) -> Result<(), String>;
 
     /// Set the active leaf entry for branching / travel.
     fn set_leaf(&self, session_id: &str, entry_id: Option<&str>);
