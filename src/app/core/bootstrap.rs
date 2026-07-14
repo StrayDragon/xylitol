@@ -166,6 +166,8 @@ pub struct ResolvedAssembly {
     pub warnings: Vec<BootstrapWarning>,
     /// MCP servers from YAML (`None` / empty = not enabled).
     pub mcp_servers: Option<Vec<crate::app::core::mcp_spec::McpServerSpec>>,
+    /// Three-tier script hook configuration.
+    pub hooks_config: crate::infra::config::types::HooksConfig,
 }
 
 impl ResolvedAssembly {
@@ -186,6 +188,7 @@ impl ResolvedAssembly {
             steering_mode: self.steering_mode,
             follow_up_mode: self.follow_up_mode,
             event_sink: None,
+            hooks_config: self.hooks_config,
         }
     }
 }
@@ -473,6 +476,11 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         app_config.as_ref().and_then(|c| c.mcp_servers.clone()),
     );
 
+    let hooks_config = app_config
+        .as_ref()
+        .map(|c| c.hooks.clone())
+        .unwrap_or_default();
+
     Ok(ResolvedAssembly {
         model_registry,
         system_prompt,
@@ -490,6 +498,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         session_id,
         warnings,
         mcp_servers,
+        hooks_config,
     })
 }
 

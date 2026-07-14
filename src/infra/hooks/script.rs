@@ -32,7 +32,17 @@ pub async fn run_hook_script(
     env: &HashMap<String, String>,
 ) -> HookAction {
     let ctx = event.to_json_context(phase);
-    let ctx_bytes = serde_json::to_vec(&ctx).unwrap_or_default();
+    run_hook_script_with_context(command, &ctx, timeout, env).await
+}
+
+/// Run a hook script with an explicit JSON context on stdin.
+pub async fn run_hook_script_with_context(
+    command: &str,
+    context: &serde_json::Value,
+    timeout: Duration,
+    env: &HashMap<String, String>,
+) -> HookAction {
+    let ctx_bytes = serde_json::to_vec(context).unwrap_or_default();
 
     let mut child = match Command::new("sh")
         .arg("-c")

@@ -1,32 +1,42 @@
 kind: llman.sdd.spec
 name: "agent-hooks"
-purpose: "Hook system — lifecycle hooks (before/after tool execution) and script execution."
+purpose: Hook system — lifecycle hooks (before/after tool execution) and script execution.
 valid_scope[2]: src/infra/hooks/,src/agent/runtime/hooks.rs
-requirements[13]{req_id,title,statement}:
+requirements[18]{req_id,title,statement}:
   r1,"hook-dispatcher",System MUST implement a HookDispatcher that executes registered hooks for 10+ event types.
   r2,"three-tier-config","System MUST support global/project/user three-tier hook configuration with later layers overriding earlier."
   r3,"script-execution",System MUST execute hook scripts via stdin JSON context and parse stdout for block/allow control.
-  h1,"hook-events","Hook system MUST support event types: tool_call (pre/post), model_query (pre), after_provider_request, after_provider_response, turn_end, message_end, compaction, session_start."
+  h1,"hook-events","Hook system MUST support pi-aligned event names including: tool_call, tool_result, context, before_provider_headers, before_provider_request, after_provider_response, agent_start, agent_end, agent_settled, turn_start, turn_end, message_start, message_end, session_start, session_shutdown, and xylitol-only events already in HookEvent."
   h2,"hook-matching",Hook dispatcher MUST match hooks by event_type.phase.qualifier pattern (e.g. pre.tool_call.bash matches bash tool calls in pre phase).
   h3,"hook-actions","Hook scripts MUST return JSON with action: allow/block/modify; block stops the chain, modify updates args for subsequent hooks."
   h4,"three-tier-hooks","Hook entries MUST merge from three tiers: user > project > global, with same-pattern overrides."
   h5,"hook-timeout","Each hook script MUST execute with a configurable timeout (default 5s), killed if exceeded."
   h6,"hook-env",Hook scripts MUST receive event context as JSON on stdin and inherit configured env vars.
-  h7,"prefix-caching-hook","after_provider_request hook MUST allow modifying the provider request payload for prefix-caching optimizations (e.g. deepseek v4 cache_control)."
-  h8,"after-provider-response","after_provider_response hook MUST fire after provider responds but before streaming, receiving status and headers."
+  h7,"before-provider-request",before_provider_request hook MUST run after the provider JSON body is built and before HTTP send; Modify.args MUST replace the request body (e.g. cache_control).
+  h8,"after-provider-response",after_provider_response hook MUST fire after HTTP response headers are available and before the success stream/body is consumed; context MUST include status and response headers; MUST NOT require reading the SSE body.
   h9,"noop-empty","When no hooks are configured, dispatch MUST be a zero-overhead no-op."
   h10,"bdd-hooks",BDD tests under tests/features/hooks.feature MUST all pass.
-scenarios[13]{req_id,id,given,when,then}:
+  h11,"before-provider-headers",before_provider_headers hook MUST run after default auth headers are built and before send; Modify.args.headers object MUST merge into or replace request headers.
+  h12,"provider-hooks-wired","OpenAI Responses and Anthropic Messages adapters MUST invoke the three provider hooks when a HookDispatcher is injected; empty dispatcher MUST be a zero-overhead no-op."
+  h13,"script-bridge-react","When a HookDispatcher is attached to the agent, ReAct MUST dispatch script hooks for tool_call (pre), tool_result (post), and context (pre model call) in addition to AgentHooks."
+  h14,"lifecycle-script-hooks","When a HookDispatcher is attached, agent_start/agent_end/turn_start/turn_end/message_start/message_end MUST be dispatched alongside the corresponding XyEvent emissions (observe-only; fail-open)."
+  h15,"bdd-provider-nonempty","BDD scenarios for before_provider_request and after_provider_response MUST exercise real dispatch (non-empty scenario bodies)."
+scenarios[18]{req_id,id,given,when,then}:
   r1,happy,a pre.tool_call hook is registered,tool is about to execute,hook script runs and receives event context via stdin
   r2,happy,global hook and project hook both exist for same event,hook dispatcher runs,project hook overrides global hook
   r3,happy,hook script returns block action,tool execution is pending,tool execution is blocked with reason
-  h1,"tool-call-pre",a hook matches pre.tool_call.bash,bash tool is about to execute,hook script receives event JSON on stdin
+  h1,"event-names",HookEvent enum lists provider and lifecycle variants,event_type is queried,pi names are returned for provider and lifecycle events
   h2,"pattern-match","hook entry has events: [\"pre.tool_call.bash\",\"post.step_complete\"]",step_complete event fires in post phase,hook matches
   h3,block,"hook returns {\"action\":\"block\",\"reason\":\"forbidden\"}",dispatch processes result,"DispatchResult::Blocked is returned"
   h4,merge,user config has hook for pre.tool_call overriding global,hooks are loaded,user's hook command is used
   h5,timeout,hook script hangs for 10s with 2s timeout,dispatch waits,"hook is killed and result is Allow (fail-open)"
   h6,env,"hook entry has env: {\"DEBUG\":\"1\"}",hook runs,"the script sees DEBUG=1 in environment\""
-  h7,"prefix-cache",after_provider_request hook fires for deepseek model,hook modifies payload,cache_control field is added to request
-  h8,"after-response",provider responds with status 200,after_provider_response hook fires,hook receives status=200 and headers
+  h7,"prefix-cache",a before_provider_request hook returns Modify with cache_control,Responses or Anthropic adapter sends,request JSON includes the modified fields
+  h8,"after-headers",provider returns HTTP 200,after_provider_response runs,hook context includes status 200 and headers before SSE read
   h9,empty,no hooks are configured,dispatch is called,result is Allowed with zero overhead
   h10,"bdd-pass",BDD runner invoked,"cargo test --test bdd",all hook scenarios pass
+  h11,"header-merge","before_provider_headers Modify adds X-Test",request is sent,"outgoing request carries X-Test"
+  h12,"empty-noop",HookDispatcher is empty,adapter generate_stream runs,no script processes are spawned
+  h13,"tool-bridge",script hook matches pre.tool_call,ReAct is about to run a tool,script receives tool name and args on stdin
+  h14,"agent-start-fire",dispatcher attached,agent run starts,agent_start hook pattern can match
+  h15,"bdd-real",hooks.feature provider scenarios,"cargo test --test bdd",provider scenarios are not empty stubs

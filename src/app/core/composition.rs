@@ -9,12 +9,15 @@ use crate::agent::model::registry::ModelRegistry;
 use crate::agent::session::QueueMode;
 use crate::agent::tools::ToolSet;
 use crate::infra::bash_exec::InfraBashExecutor;
+use crate::infra::config::types::HooksConfig;
 use crate::infra::event::EventBus;
 use crate::infra::export::StdExportIo;
+use crate::infra::hooks::HookDispatcher;
 use crate::infra::permission;
 use crate::infra::session::SessionManager;
 use crate::runtime_protocol::{
-    XyBashExecutor, XyEventSink, XyExportIo, XyModelBuilder, XyPermission, XySessionStore,
+    XyBashExecutor, XyEventSink, XyExportIo, XyHookBus, XyModelBuilder, XyPermission,
+    XySessionStore,
 };
 
 pub use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
@@ -35,6 +38,8 @@ pub struct BuildAgentOptions {
     /// Optional lifecycle sink (compaction etc.). Default: in-process [`EventBus`].
     /// Turn UX still uses the `Driver::run` EventStream, not this bus.
     pub event_sink: Option<Arc<dyn XyEventSink>>,
+    /// Three-tier script hook configuration (empty = zero-cost no-op).
+    pub hooks_config: HooksConfig,
 }
 
 impl Default for BuildAgentOptions {
@@ -54,6 +59,7 @@ impl Default for BuildAgentOptions {
             steering_mode: QueueMode::default(),
             follow_up_mode: QueueMode::default(),
             event_sink: None,
+            hooks_config: HooksConfig::default(),
         }
     }
 }
@@ -80,7 +86,24 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, String> {
     let bash_executor: Arc<dyn XyBashExecutor> = Arc::new(InfraBashExecutor::new());
     let export_io: Arc<dyn XyExportIo> = Arc::new(StdExportIo::new());
 
-    let model_builder: XyModelBuilder = Arc::new(crate::infra::provider::factory::build_provider);
+    let hook_dispatcher = Arc::new(HookDispatcher::new(&options.hooks_config));
+    let hooks_for_provider = if hook_dispatcher.is_empty() {
+        None
+    } else {
+        Some(hook_dispatcher.clone())
+    };
+    let hook_bus: Option<Arc<dyn XyHookBus>> = if hook_dispatcher.is_empty() {
+        None
+    } else {
+        Some(hook_dispatcher)
+    };
+
+    let model_builder: XyModelBuilder = {
+        let hooks = hooks_for_provider;
+        Arc::new(move |config| {
+            crate::infra::provider::factory::build_provider_with_hooks(config, hooks.clone())
+        })
+    };
     let permission = options
         .permission
         .unwrap_or_else(permission::allow_all_permission);
@@ -102,7 +125,8 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, String> {
     .bash(bash_executor)
     .export_io(export_io)
     .steering_mode(options.steering_mode)
-    .follow_up_mode(options.follow_up_mode);
+    .follow_up_mode(options.follow_up_mode)
+    .hook_bus(hook_bus);
 
     if let Some(sp) = options.system_prompt {
         builder = builder.system_prompt(sp);

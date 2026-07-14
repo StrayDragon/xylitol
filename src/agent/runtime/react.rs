@@ -29,7 +29,9 @@ use crate::domain::error::XyError;
 use crate::domain::message::{AgentMessage, AgentPart};
 use crate::domain::session_types::{EntryBase, MessageEntry, SessionEntry};
 use crate::domain::types::{XyChunk, XyToolSchema};
-use crate::runtime_protocol::{XyModel, XySessionStore, XyToolCtx, XyToolExecutionMode};
+use crate::runtime_protocol::{
+    XyHookBus, XyHookOutcome, XyModel, XySessionStore, XyToolCtx, XyToolExecutionMode,
+};
 
 use crate::runtime_protocol::XyPermissionVerdict;
 
@@ -198,6 +200,7 @@ impl AgentRuntime {
         let max_iterations = self.inner.max_iterations();
         let system_prompt = self.inner.system_prompt().map(|s| s.to_string());
         let hooks = self.inner.hooks().clone();
+        let hook_bus = self.inner.hook_bus();
         let tool_mode = self.inner.tool_mode();
         let prompt = prompt.to_string();
 
@@ -234,6 +237,7 @@ impl AgentRuntime {
             cancel,
             permission_check,
             hooks,
+            hook_bus,
             tool_mode,
             steer_queue,
             follow_up_queue,
@@ -288,6 +292,8 @@ struct ReActConfig {
     permission_check: Option<std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>>,
     /// Hooks consulted at tool-call boundaries.
     hooks: AgentHooks,
+    /// Optional script hook bus (pi-aligned lifecycle + tool/context bridge).
+    hook_bus: Option<Arc<dyn XyHookBus>>,
     /// Tool execution mode (currently advisory; sequential execution is the
     /// conservative default).
     tool_mode: XyToolExecutionMode,
@@ -344,6 +350,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         cancel,
         permission_check,
         hooks,
+        hook_bus,
         tool_mode: _tool_mode,
         steer_queue,
         follow_up_queue,
@@ -352,6 +359,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         seeded_history,
     } = cfg;
     async_stream::stream! {
+        if let Some(bus) = &hook_bus {
+            observe_script_hook(bus, "agent_start", "", serde_json::json!({})).await;
+        }
+
         let mut history: Vec<AgentMessage> = seeded_history;
 
         // First turn only: prepend configured system prompt when store is empty.
@@ -392,6 +403,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 }
 
                 yield XyEvent::TurnStart { turn_index: turn as u32 };
+                if let Some(bus) = &hook_bus {
+                    observe_script_hook(
+                        bus,
+                        "turn_start",
+                        "",
+                        serde_json::json!({ "turn_index": turn }),
+                    )
+                    .await;
+                }
 
                 // Inject pending messages (steering / follow-up) before the model call.
                 // Emit user MessageStart/End so surfaces can 上行 scrollback (pi chat).
@@ -401,10 +421,28 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             role: "user".to_string(),
                             message: Some(message.clone()),
                         };
+                        if let Some(bus) = &hook_bus {
+                            observe_script_hook(
+                                bus,
+                                "message_start",
+                                "",
+                                serde_json::json!({ "role": "user" }),
+                            )
+                            .await;
+                        }
                         yield XyEvent::MessageEnd {
                             role: "user".to_string(),
                             message: Some(message.clone()),
                         };
+                        if let Some(bus) = &hook_bus {
+                            observe_script_hook(
+                                bus,
+                                "message_end",
+                                "",
+                                serde_json::json!({ "role": "user" }),
+                            )
+                            .await;
+                        }
                         history.push(message.clone());
                         persist_agent_message(&store, &session_id, &message).await;
                     }
@@ -416,7 +454,24 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     };
                 }
 
-                let messages = history.clone();
+                let mut messages = history.clone();
+                if !hooks.transform_context.is_empty() {
+                    for hook in &hooks.transform_context {
+                        messages = hook(messages);
+                    }
+                }
+                if let Some(bus) = &hook_bus
+                    && let XyHookOutcome::Blocked { reason } = bus
+                        .dispatch(
+                            "context",
+                            "pre",
+                            serde_json::json!({ "message_count": messages.len() }),
+                        )
+                        .await
+                {
+                    yield XyEvent::Error(format!("context hook blocked: {reason}"));
+                    break 'outer;
+                }
 
                 // Race cancel against connect/retry so Esc aborts hung `send()`
                 // (reqwest drop-cancels the in-flight HTTP future).
@@ -424,7 +479,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     biased;
                     _ = cancel.cancelled() => None,
                     result = call_with_retry(
-                        &model, messages.clone(), &tool_schemas, &retry_state,
+                        &model, messages, &tool_schemas, &retry_state,
                     ) => Some(result),
                 };
 
@@ -445,6 +500,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     role: "assistant".to_string(),
                     message: None,
                 };
+                if let Some(bus) = &hook_bus {
+                    observe_script_hook(
+                        bus,
+                        "message_start",
+                        "",
+                        serde_json::json!({ "role": "assistant" }),
+                    )
+                    .await;
+                }
 
                 let mut text_acc = String::new();
                 let mut thinking_acc = String::new();
@@ -501,6 +565,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     role: "assistant".to_string(),
                     message: None,
                 };
+                if let Some(bus) = &hook_bus {
+                    observe_script_hook(
+                        bus,
+                        "message_end",
+                        "",
+                        serde_json::json!({ "role": "assistant" }),
+                    )
+                    .await;
+                }
 
                 let mut assistant_parts = Vec::new();
                 if !thinking_acc.is_empty() {
@@ -537,6 +610,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                 if tool_calls.is_empty() {
                     yield XyEvent::TurnEnd { turn_index: turn as u32 };
+                    if let Some(bus) = &hook_bus {
+                        observe_script_hook(
+                            bus,
+                            "turn_end",
+                            "",
+                            serde_json::json!({ "turn_index": turn }),
+                        )
+                        .await;
+                    }
                     turn += 1;
                     // Poll steering even when there were no tools (pi: pending
                     // after turn may restart the inner loop).
@@ -555,11 +637,30 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 for (id, name, args) in &tool_calls {
                     let tool = tools.get(name);
                     let ctx = XyToolCtx::with_cancel(id, cancel.clone());
+                    let mut tool_args = args.clone();
 
                     let mut denied_reason: Option<String> = None;
+                    if let Some(bus) = &hook_bus {
+                        match bus
+                            .dispatch(
+                                "tool_call",
+                                "pre",
+                                serde_json::json!({ "tool": name, "args": tool_args }),
+                            )
+                            .await
+                        {
+                            XyHookOutcome::Blocked { reason } => {
+                                denied_reason = Some(reason);
+                            }
+                            XyHookOutcome::Modified { args: modified } => {
+                                tool_args = modified;
+                            }
+                            XyHookOutcome::Allowed => {}
+                        }
+                    }
                     if !hooks.before_tool_call.is_empty() {
                         for hook in &hooks.before_tool_call {
-                            if let Some(reason) = hook(name, id, args) {
+                            if let Some(reason) = hook(name, id, &tool_args) {
                                 denied_reason = Some(reason);
                                 break;
                             }
@@ -569,7 +670,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     if denied_reason.is_none()
                         && let Some(ref check) = permission_check
                     {
-                        let target = permission_target(name, args);
+                        let target = permission_target(name, &tool_args);
                         if let Some(reason) = check(name, &target) {
                             denied_reason = Some(format!("permission denied: {reason}"));
                         }
@@ -601,7 +702,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
 
                     let mut result = match tool {
-                        Some(t) => match t.execute(&ctx, args.clone()).await {
+                        Some(t) => match t.execute(&ctx, tool_args.clone()).await {
                             Ok(output) => (serde_json::Value::String(output), false),
                             Err(e) => {
                                 let err = format!("Tool '{name}' error: {e}");
@@ -618,9 +719,31 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                     if !hooks.after_tool_call.is_empty() {
                         for hook in &hooks.after_tool_call {
-                            if let Some((new_value, new_is_error)) = hook(name, id, result.0.clone(), result.1) {
+                            if let Some((new_value, new_is_error)) =
+                                hook(name, id, result.0.clone(), result.1)
+                            {
                                 result = (new_value, new_is_error);
                             }
+                        }
+                    }
+                    if let Some(bus) = &hook_bus
+                        && let XyHookOutcome::Modified { args: modified } = bus
+                            .dispatch(
+                                "tool_result",
+                                "post",
+                                serde_json::json!({
+                                    "tool": name,
+                                    "result": result.0,
+                                    "is_error": result.1,
+                                }),
+                            )
+                            .await
+                    {
+                        if let Some(val) = modified.get("result") {
+                            result.0 = val.clone();
+                        }
+                        if let Some(err) = modified.get("is_error").and_then(|v| v.as_bool()) {
+                            result.1 = err;
                         }
                     }
 
@@ -653,6 +776,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 }
 
                 yield XyEvent::TurnEnd { turn_index: turn as u32 };
+                if let Some(bus) = &hook_bus {
+                    observe_script_hook(
+                        bus,
+                        "turn_end",
+                        "",
+                        serde_json::json!({ "turn_index": turn }),
+                    )
+                    .await;
+                }
                 turn += 1;
 
                 // After tools (or a text-only turn handled above), poll steering
@@ -681,7 +813,28 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             };
         }
 
+        if let Some(bus) = &hook_bus {
+            // pi agent_settled: no retry/compaction/follow-up left before AgentEnd.
+            observe_script_hook(bus, "agent_settled", "", serde_json::json!({})).await;
+            observe_script_hook(bus, "agent_end", "", serde_json::json!({})).await;
+        }
         yield XyEvent::AgentEnd { messages: history };
+    }
+}
+
+async fn observe_script_hook(
+    bus: &Arc<dyn XyHookBus>,
+    event_type: &str,
+    phase: &str,
+    context: serde_json::Value,
+) {
+    if let XyHookOutcome::Blocked { reason } = bus.dispatch(event_type, phase, context).await {
+        tracing::warn!(
+            event = event_type,
+            phase = phase,
+            reason = reason,
+            "Script hook blocked observe-only lifecycle event (fail-open)"
+        );
     }
 }
 
@@ -784,6 +937,7 @@ mod tests {
             Some(std::sync::Arc::new(crate::infra::export::StdExportIo::new())),
             crate::agent::session::QueueMode::default(),
             crate::agent::session::QueueMode::default(),
+            None,
         );
 
         assert!(session.current_model().is_some());
@@ -840,6 +994,7 @@ mod tests {
             Some(std::sync::Arc::new(crate::infra::export::StdExportIo::new())),
             crate::agent::session::QueueMode::default(),
             crate::agent::session::QueueMode::default(),
+            None,
         );
 
         let mut loop_runner = AgentRuntime::new(session);
@@ -961,6 +1116,7 @@ mod tests {
             None,
             crate::agent::session::QueueMode::default(),
             crate::agent::session::QueueMode::default(),
+            None,
         );
         AgentRuntime::new(session)
     }
@@ -1175,6 +1331,7 @@ mod tests {
             None,
             crate::agent::session::QueueMode::default(),
             crate::agent::session::QueueMode::default(),
+            None,
         );
         AgentRuntime::new(session)
     }
@@ -1454,6 +1611,7 @@ mod tests {
             None,
             crate::agent::session::QueueMode::default(),
             crate::agent::session::QueueMode::default(),
+            None,
         );
         let mut agent = AgentRuntime::new(session);
 
@@ -1584,6 +1742,7 @@ mod tests {
             None,
             crate::agent::session::QueueMode::default(),
             crate::agent::session::QueueMode::default(),
+            None,
         ));
         let sid = "multi-turn-session".to_string();
         agent.inner_mut().set_session(sid.clone());

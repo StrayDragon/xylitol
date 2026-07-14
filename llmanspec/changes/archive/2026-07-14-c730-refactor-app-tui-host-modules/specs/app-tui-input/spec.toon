@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ati32,"busy-bang-prefix-policy","产品 TUI 在 agent 忙碌（run_active / phase Busy）且非 bash_active 时，用户 Enter 提交以 ! 或 !! 开头的文本 MUST 硬拒绝（提示 + 保留编辑器文本），MUST NOT 将该字面量作为 Driver::steer 入队；bash_active 时第二 bang 硬拒绝仍遵循 ati20。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ati32,"agent-busy-bang-rejected","agent busy 且编辑器为 !ls","按 Enter","出现拒绝提示、steer 未被调用、编辑器仍含命令"

@@ -12,6 +12,8 @@ pub(crate) mod terminal_guard;
 mod widgets;
 
 #[cfg(test)]
+mod bdd_scenarios;
+#[cfg(test)]
 mod harness;
 #[cfg(test)]
 mod tests;
@@ -25,7 +27,7 @@ use xylitol_tui::{CrosstermTerminal, InputEvent};
 
 use crate::app::core::driver::{Driver, EventStream as AgentEventStream};
 
-use self::effects::drain_pending;
+use self::effects::{drain_pending, run_interactive_bang};
 use self::host::{HostEvent, HostSession};
 use self::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hooks};
 
@@ -156,110 +158,11 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
                     "bash already running — wait or Esc to cancel (second ! rejected)",
                 );
             } else {
-                session.begin_bash_exec(&bash.command, bash.exclude_from_context);
-                let _ = session.render_now();
-                let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
-                let (bash_result, aborted_during_bash) = {
-                    let bash_fut = driver.execute_bash(
-                        &bash.command,
-                        bash.exclude_from_context,
-                        Some(chunk_tx),
-                    );
-                    tokio::pin!(bash_fut);
-                    let mut aborted_during_bash = false;
-                    let bash_result = loop {
-                        tokio::select! {
-                            biased;
-                            result = &mut bash_fut => break result,
-                            chunk = chunk_rx.recv() => {
-                                if let Some(bytes) = chunk {
-                                    // Dirty only — Tick / Done try_render (c669).
-                                    session.append_bash_chunk(&bytes);
-                                }
-                            }
-                            _ = ticker.tick() => {
-                                session.step(HostEvent::Tick)?;
-                            }
-                            maybe = term_events.next() => {
-                                match maybe {
-                                    Some(Ok(Event::Key(key))) => {
-                                        if key.kind != KeyEventKind::Press
-                                            && key.kind != KeyEventKind::Repeat
-                                        {
-                                            continue;
-                                        }
-                                        session.step(HostEvent::Input(InputEvent::Key(key)))?;
-                                        if session.take_abort() {
-                                            if aborted_during_bash {
-                                                continue;
-                                            }
-                                            tracing::info!(
-                                                target: "xylitol::tui",
-                                                "Driver::abort during bang"
-                                            );
-                                            driver.abort();
-                                            session.note_bash_cancelled();
-                                            aborted_during_bash = true;
-                                            let _ = session.render_now();
-                                        }
-                                    }
-                                    Some(Ok(Event::Paste(data))) => {
-                                        session.step(HostEvent::Input(InputEvent::Paste(data)))?;
-                                    }
-                                    Some(Ok(Event::Resize(cols, rows))) => {
-                                        session.step(HostEvent::Resize { cols, rows })?;
-                                    }
-                                    Some(Ok(_)) => {}
-                                    Some(Err(e)) => {
-                                        session.tui.finish_inline();
-                                        return Err(format!("input error: {e}"));
-                                    }
-                                    None => {
-                                        session.request_quit();
-                                        break Err("input closed during bang".into());
-                                    }
-                                }
-                            }
-                            maybe_agent = async {
-                                match agent_stream.as_mut() {
-                                    Some(stream) => stream.next().await,
-                                    None => std::future::pending().await,
-                                }
-                            } => {
-                                match maybe_agent {
-                                    Some(xy) => {
-                                        session.step(HostEvent::Xy(Box::new(xy)))?;
-                                    }
-                                    None => {
-                                        tracing::debug!(
-                                            target: "xylitol::tui",
-                                            "agent EventStream ended"
-                                        );
-                                        agent_stream = None;
-                                        session.on_run_stream_closed();
-                                        let _ = session.tui.try_render();
-                                    }
-                                }
-                            }
-                        }
-                    };
-                    (bash_result, aborted_during_bash)
-                };
-                match bash_result {
-                    Ok(r) => {
-                        if !aborted_during_bash {
-                            session.push_bash_result(&bash.command, &r);
-                        }
-                    }
-                    Err(e) => session.push_system_note(format!("bash failed: {e}")),
-                }
-                session.end_bash_exec();
-                if aborted_during_bash {
-                    let _ = driver.clear_queue(true, false);
-                    let stats = driver.queue_stats();
-                    session.set_queue_badge(stats.steer_count, stats.follow_up_count);
-                }
-                let _ = session.render_now();
+                // Shared bang loop (c715/c725): same crossterm→HostEvent map as main arms.
+                let input = term_events
+                    .by_ref()
+                    .filter_map(|maybe| futures::future::ready(map_crossterm_item(maybe)));
+                run_interactive_bang(&mut session, driver, bash, &mut agent_stream, input).await?;
                 continue;
             }
         }
@@ -270,22 +173,16 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
             }
             maybe = term_events.next() => {
                 match maybe {
-                    Some(Ok(Event::Key(key))) => {
-                        if key.kind != KeyEventKind::Press && key.kind != KeyEventKind::Repeat {
-                            continue;
+                    Some(item) => {
+                        if let Some(ev) = map_crossterm_item(item) {
+                            match ev {
+                                Ok(host_ev) => session.step(host_ev)?,
+                                Err(e) => {
+                                    session.tui.finish_inline();
+                                    return Err(e);
+                                }
+                            }
                         }
-                        session.step(HostEvent::Input(InputEvent::Key(key)))?;
-                    }
-                    Some(Ok(Event::Paste(data))) => {
-                        session.step(HostEvent::Input(InputEvent::Paste(data)))?;
-                    }
-                    Some(Ok(Event::Resize(cols, rows))) => {
-                        session.step(HostEvent::Resize { cols, rows })?;
-                    }
-                    Some(Ok(_)) => {}
-                    Some(Err(e)) => {
-                        session.tui.finish_inline();
-                        return Err(format!("input error: {e}"));
                     }
                     None => {
                         session.request_quit();
@@ -298,17 +195,7 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
                     None => std::future::pending().await,
                 }
             } => {
-                match maybe_agent {
-                    Some(xy) => {
-                        session.step(HostEvent::Xy(Box::new(xy)))?;
-                    }
-                    None => {
-                        tracing::debug!(target: "xylitol::tui", "agent EventStream ended");
-                        agent_stream = None;
-                        session.on_run_stream_closed();
-                        let _ = session.tui.try_render();
-                    }
-                }
+                on_agent_stream_item(&mut session, &mut agent_stream, maybe_agent)?;
             }
         }
     }
@@ -316,4 +203,38 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
     session.tui.finish_inline();
     tracing::info!(target: "xylitol::tui", "product TUI host stopped");
     Ok(())
+}
+
+/// Shared crossterm → HostEvent map for main select and bang input stream (c725 / 2A).
+fn map_crossterm_item(item: Result<Event, std::io::Error>) -> Option<Result<HostEvent, String>> {
+    match item {
+        Ok(Event::Key(key)) => {
+            if key.kind != KeyEventKind::Press && key.kind != KeyEventKind::Repeat {
+                None
+            } else {
+                Some(Ok(HostEvent::Input(InputEvent::Key(key))))
+            }
+        }
+        Ok(Event::Paste(data)) => Some(Ok(HostEvent::Input(InputEvent::Paste(data)))),
+        Ok(Event::Resize(cols, rows)) => Some(Ok(HostEvent::Resize { cols, rows })),
+        Ok(_) => None,
+        Err(e) => Some(Err(format!("input error: {e}"))),
+    }
+}
+
+fn on_agent_stream_item<T: xylitol_tui::Terminal>(
+    session: &mut HostSession<T>,
+    agent_stream: &mut Option<AgentEventStream>,
+    maybe: Option<crate::domain::lifecycle::XyEvent>,
+) -> Result<(), String> {
+    match maybe {
+        Some(xy) => session.step(HostEvent::Xy(Box::new(xy))),
+        None => {
+            tracing::debug!(target: "xylitol::tui", "agent EventStream ended");
+            *agent_stream = None;
+            session.on_run_stream_closed();
+            let _ = session.tui.try_render();
+            Ok(())
+        }
+    }
 }

@@ -288,13 +288,18 @@ impl UiModel {
                 text: "Aborted".into(),
             });
         }
-        self.streaming_thinking.clear();
-        self.streaming_assistant.clear();
-        self.current_role = None;
+        self.clear_streaming_buffers();
         if self.queue.follow_up_count == 0 {
             self.phase = UiPhase::Idle;
             self.status = None;
         }
+    }
+
+    /// Drop in-flight stream drafts (c670 / c720 Esc latch before drain).
+    pub fn clear_streaming_buffers(&mut self) {
+        self.streaming_thinking.clear();
+        self.streaming_assistant.clear();
+        self.current_role = None;
     }
 
     /// Bang Esc abort: mark last pending Bash cancelled + `(cancelled)` (pi).
