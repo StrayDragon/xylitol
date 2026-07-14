@@ -427,6 +427,14 @@ mod tests {
                 }
             }
         }
+
+        async fn append_entry_label(
+            &mut self,
+            _target_id: &str,
+            _label: Option<&str>,
+        ) -> Result<(), String> {
+            Ok(())
+        }
     }
 
     fn stub() -> StubDriver {

@@ -193,6 +193,19 @@ pub async fn drain_pending<T: Terminal>(
         let _ = session.render_now();
     }
 
+    if let Some((entry_id, label)) = session.take_pending_session_tree_label() {
+        tracing::info!(
+            target: "xylitol::tui",
+            entry_id = %entry_id,
+            "Driver::append_entry_label"
+        );
+        match driver.append_entry_label(&entry_id, label.as_deref()).await {
+            Ok(()) => session.apply_session_tree_label(&entry_id, label),
+            Err(e) => session.push_system_note(format!("label failed: {e}")),
+        }
+        let _ = session.render_now();
+    }
+
     if let Some(model_id) = session.take_pending_model_select() {
         tracing::info!(target: "xylitol::tui", model_id = %model_id, "SetModel from picker");
         match dispatch(

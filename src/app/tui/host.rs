@@ -333,6 +333,17 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().take_pending_tree_fork()
     }
 
+    pub fn take_pending_session_tree_label(&mut self) -> Option<(String, Option<String>)> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().take_pending_tree_label()
+    }
+
+    pub fn apply_session_tree_label(&mut self, id: &str, label: Option<String>) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().apply_tree_label(id, label);
+        }
+    }
+
     pub fn mount_session_tree(&mut self, roots: Vec<TreeNode>, active_id: Option<String>) {
         let Some(root) = self.ui_root.as_ref() else {
             return;

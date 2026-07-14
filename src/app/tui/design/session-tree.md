@@ -42,7 +42,7 @@ components:
 7. **翻页**：←→ 与 PgUp/PgDn 按 `max_visible` 翻页。
 8. **Filter**（产品 **c635**，对齐 pi）：Ctrl+D → default；Ctrl+T/U/L/A **toggle** ↔ default；Ctrl+O cycle forward；Ctrl+Shift+O cycle backward（**c685**）；default 藏 `kind=meta` bookkeeping；状态行 `(i/n)` + 非 default 时 `[filter]`（无 `[default]`）。
 9. **Fold / 分支跳转**：Ctrl/Alt+←→；连接符 ⊞/⊟（c467）— 产品 **c640**。
-10. **Annotation**：可选 `[annotation]` + Shift+L 编辑 + Shift+T 时间戳 — 产品 **c690**（draft）。
+10. **Annotation**：可选 `[annotation]` + Shift+L 编辑 + Shift+T 时间戳 — 产品 **c690**。
 11. **Kind（c595）**：`TreeNode.kind` 为可选字符串；渲染序 `[annotation]?` + 主题化 kind 前缀 + **纯正文** `label`。**MUST NOT** 把 `user:` / `assistant:` / `tool:` 预烘焙进 `label` 作为唯一表现。
 12. **树槽头行（c685）**：Tree 槽 MUST 有 Search 行 + 由键位解析的 TreeHelp（move/page/branch/filters/cycle）；MUST NOT 仅用过时硬编码 `Up/Down Enter travel…` 作为唯一提示。
 

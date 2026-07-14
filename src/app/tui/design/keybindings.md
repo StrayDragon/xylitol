@@ -50,10 +50,10 @@ components:
 | Ctrl+Shift+O | filter cycle **backward** | **c685** |
 | Ctrl/Alt+←→ | fold / 分支跳转（转发包；裸 ←→ 仍翻页） | **c640** |
 | Shift+F | **fork** 新 session（user→Before / 非 user→At；对齐 pi） | **c645** |
-| Shift+L / T | annotation / 时间戳 | **c690**（draft） |
+| Shift+L / T | annotation 编辑 / 时间戳显隐 | **c690** |
 | Enter | `travel_session_tree`（已 **c615**） | — |
 
-树槽头行：**Search** + **TreeHelp**（键位经 KeybindingsManager / 产品 filter 和弦解析；**c685**）。口语勿称「chrome」（易与浏览器混淆；layout 壳合约 id 仍为 `app-tui-chrome`）。
+树槽头行：**Help**（⊞⊟ fold 等用途）+ **Search**（键位经 KeybindingsManager / 产品 filter 和弦；**c685**）。口语勿称「chrome」（易与浏览器混淆；layout 壳合约 id 仍为 `app-tui-chrome`）。
 
 ## MUST（编辑器槽）
 
