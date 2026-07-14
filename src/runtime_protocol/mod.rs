@@ -18,7 +18,7 @@ pub mod trust;
 
 // Flat re-exports for the common case where callers import the boundary
 // trait directly from `runtime_protocol` rather than from its submodule.
-pub use bash::{XyBashExecutor, XyBashResult};
+pub use bash::{BashExecOpts, XyBashExecutor, XyBashResult};
 pub use event::{LifecycleHandler, XyEventSink};
 pub use export::XyExportIo;
 pub use model::{XyModel, XyModelBuilder, XyStream};

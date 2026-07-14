@@ -143,93 +143,123 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
     let mut agent_stream: Option<AgentEventStream> = None;
     let mut ticker = tokio::time::interval(Duration::from_millis(16));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut active_bash: Option<PendingBash> = None;
 
     while !session.should_quit() && !exit_requested() {
         drain_pending(&mut session, driver, &mut agent_stream).await?;
-        if active_bash.is_none()
-            && let Some(bash) = session.take_bash()
-        {
-            session.begin_bash_exec(&bash.command, bash.exclude_from_context);
-            let _ = session.render_now();
-            active_bash = Some(bash);
-        }
 
-        if let Some(bash) = active_bash.take() {
-            // Pin one execute_bash future; Esc → abort (`&self` only) while borrowed (c665).
-            let (bash_result, aborted_during_bash) = {
-                let bash_fut = driver.execute_bash(&bash.command, bash.exclude_from_context);
-                tokio::pin!(bash_fut);
-                let mut aborted_during_bash = false;
-                let bash_result = loop {
-                    tokio::select! {
-                        result = &mut bash_fut => break result,
-                        _ = ticker.tick() => {
-                            session.step(HostEvent::Tick)?;
-                        }
-                        maybe = term_events.next() => {
-                            match maybe {
-                                Some(Ok(Event::Key(key))) => {
-                                    if key.kind != KeyEventKind::Press
-                                        && key.kind != KeyEventKind::Repeat
-                                    {
-                                        continue;
-                                    }
-                                    session.step(HostEvent::Input(InputEvent::Key(key)))?;
-                                    if session.take_abort() {
-                                        if aborted_during_bash {
-                                            // Already aborted this bang; ignore Esc backlog.
+        if let Some(bash) = session.take_bash() {
+            // Guard: never start a second interactive bang while one is active.
+            if session.bash_active() {
+                session.push_system_note(
+                    "bash already running — wait or Esc to cancel (second ! rejected)",
+                );
+            } else {
+                session.begin_bash_exec(&bash.command, bash.exclude_from_context);
+                let _ = session.render_now();
+                let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+                let (bash_result, aborted_during_bash) = {
+                    let bash_fut = driver.execute_bash(
+                        &bash.command,
+                        bash.exclude_from_context,
+                        Some(chunk_tx),
+                    );
+                    tokio::pin!(bash_fut);
+                    let mut aborted_during_bash = false;
+                    let bash_result = loop {
+                        tokio::select! {
+                            biased;
+                            result = &mut bash_fut => break result,
+                            chunk = chunk_rx.recv() => {
+                                if let Some(bytes) = chunk {
+                                    // Dirty only — Tick / Done try_render (c669).
+                                    session.append_bash_chunk(&bytes);
+                                }
+                            }
+                            _ = ticker.tick() => {
+                                session.step(HostEvent::Tick)?;
+                            }
+                            maybe = term_events.next() => {
+                                match maybe {
+                                    Some(Ok(Event::Key(key))) => {
+                                        if key.kind != KeyEventKind::Press
+                                            && key.kind != KeyEventKind::Repeat
+                                        {
                                             continue;
                                         }
-                                        tracing::info!(
-                                            target: "xylitol::tui",
-                                            "Driver::abort during bang"
-                                        );
-                                        driver.abort();
-                                        session.note_bash_cancelled();
-                                        aborted_during_bash = true;
-                                        let _ = session.render_now();
+                                        session.step(HostEvent::Input(InputEvent::Key(key)))?;
+                                        if session.take_abort() {
+                                            if aborted_during_bash {
+                                                continue;
+                                            }
+                                            tracing::info!(
+                                                target: "xylitol::tui",
+                                                "Driver::abort during bang"
+                                            );
+                                            driver.abort();
+                                            session.note_bash_cancelled();
+                                            aborted_during_bash = true;
+                                            let _ = session.render_now();
+                                        }
+                                    }
+                                    Some(Ok(Event::Paste(data))) => {
+                                        session.step(HostEvent::Input(InputEvent::Paste(data)))?;
+                                    }
+                                    Some(Ok(Event::Resize(cols, rows))) => {
+                                        session.step(HostEvent::Resize { cols, rows })?;
+                                    }
+                                    Some(Ok(_)) => {}
+                                    Some(Err(e)) => {
+                                        session.tui.finish_inline();
+                                        return Err(format!("input error: {e}"));
+                                    }
+                                    None => {
+                                        session.request_quit();
+                                        break Err("input closed during bang".into());
                                     }
                                 }
-                                Some(Ok(Event::Paste(data))) => {
-                                    session.step(HostEvent::Input(InputEvent::Paste(data)))?;
+                            }
+                            maybe_agent = async {
+                                match agent_stream.as_mut() {
+                                    Some(stream) => stream.next().await,
+                                    None => std::future::pending().await,
                                 }
-                                Some(Ok(Event::Resize(cols, rows))) => {
-                                    session.step(HostEvent::Resize { cols, rows })?;
-                                }
-                                Some(Ok(_)) => {}
-                                Some(Err(e)) => {
-                                    session.tui.finish_inline();
-                                    return Err(format!("input error: {e}"));
-                                }
-                                None => {
-                                    session.request_quit();
-                                    break Err("input closed during bang".into());
+                            } => {
+                                match maybe_agent {
+                                    Some(xy) => {
+                                        session.step(HostEvent::Xy(Box::new(xy)))?;
+                                    }
+                                    None => {
+                                        tracing::debug!(
+                                            target: "xylitol::tui",
+                                            "agent EventStream ended"
+                                        );
+                                        agent_stream = None;
+                                        session.on_run_stream_closed();
+                                        let _ = session.tui.try_render();
+                                    }
                                 }
                             }
                         }
-                    }
+                    };
+                    (bash_result, aborted_during_bash)
                 };
-                (bash_result, aborted_during_bash)
-            };
-            match bash_result {
-                Ok(r) => {
-                    if aborted_during_bash {
-                        // `$ cmd` + `(cancelled)` already uplinked — no second wall.
-                    } else {
-                        session.push_bash_result(&bash.command, &r);
+                match bash_result {
+                    Ok(r) => {
+                        if !aborted_during_bash {
+                            session.push_bash_result(&bash.command, &r);
+                        }
                     }
+                    Err(e) => session.push_system_note(format!("bash failed: {e}")),
                 }
-                Err(e) => session.push_system_note(format!("bash failed: {e}")),
+                session.end_bash_exec();
+                if aborted_during_bash {
+                    let _ = driver.clear_queue(true, false);
+                    let stats = driver.queue_stats();
+                    session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+                }
+                let _ = session.render_now();
+                continue;
             }
-            session.end_bash_exec();
-            if aborted_during_bash {
-                let _ = driver.clear_queue(true, false);
-                let stats = driver.queue_stats();
-                session.set_queue_badge(stats.steer_count, stats.follow_up_count);
-            }
-            let _ = session.render_now();
-            continue;
         }
 
         tokio::select! {
@@ -242,7 +272,6 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
                         if key.kind != KeyEventKind::Press && key.kind != KeyEventKind::Repeat {
                             continue;
                         }
-                        // Ctrl+C clear/quit is handled by InputListener (c455).
                         session.step(HostEvent::Input(InputEvent::Key(key)))?;
                     }
                     Some(Ok(Event::Paste(data))) => {

@@ -275,6 +275,12 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
+    /// Append live bang output chunk (c669); caller renders on Tick/Done.
+    pub fn append_bash_chunk(&mut self, chunk: &[u8]) {
+        self.ui_model.append_bash_output(chunk);
+        self.sync_ui_root_from_model();
+    }
+
     /// Refresh queue badge from driver stats (after local steer/follow-up/abort).
     pub fn set_queue_badge(&mut self, steer_count: usize, follow_up_count: usize) {
         self.ui_model.sync_queue(steer_count, follow_up_count);
@@ -516,6 +522,20 @@ impl<T: Terminal> HostSession<T> {
             let text = root.editor_text();
             if text.trim().is_empty() {
                 return true;
+            }
+            // c669: hard-reject second bang while interactive bash is still running.
+            if self.bash_active {
+                match parse_bang_command(&text) {
+                    BangParse::NotBang => {}
+                    BangParse::Empty { .. } | BangParse::Cmd { .. } => {
+                        // Keep editor text; do not clear / do not execute.
+                        drop(root);
+                        self.push_system_note(
+                            "bash already running — wait or Esc to cancel (second ! rejected)",
+                        );
+                        return true;
+                    }
+                }
             }
             root.remember_editor_send(text.clone());
             root.set_editor_text(String::new());

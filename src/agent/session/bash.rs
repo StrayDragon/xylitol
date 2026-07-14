@@ -7,10 +7,11 @@
 
 use std::sync::{Arc, Mutex};
 
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::domain::session_types::{BashExecutionEntry, EntryBase, SessionEntry};
-use crate::runtime_protocol::{XyBashExecutor, XyBashResult, XySessionStore};
+use crate::runtime_protocol::{BashExecOpts, XyBashExecutor, XyBashResult, XySessionStore};
 
 /// Stateful bash-execution collaborator.
 pub struct BashExecHandler {
@@ -41,12 +42,15 @@ impl BashExecHandler {
     ///
     /// `exclude_from_context=true` (the `!!` prefix) stores the entry on disk
     /// but omits it from LLM context (see `build_session_context`).
+    ///
+    /// `chunk_tx`: optional live output uplink for product TUI (c669).
     pub async fn execute(
         &self,
         store: &dyn XySessionStore,
         session_id: Option<&str>,
         command: &str,
         exclude_from_context: bool,
+        chunk_tx: Option<mpsc::Sender<Vec<u8>>>,
     ) -> Result<XyBashResult, String> {
         let executor = self
             .executor
@@ -56,7 +60,15 @@ impl BashExecHandler {
         let cancel = CancellationToken::new();
         *self.cancel.lock().unwrap_or_else(|e| e.into_inner()) = Some(cancel.clone());
 
-        let result = executor.execute(command, Some(cancel)).await;
+        let result = executor
+            .execute(
+                command,
+                BashExecOpts {
+                    cancel: Some(cancel),
+                    chunk_tx,
+                },
+            )
+            .await;
 
         *self.cancel.lock().unwrap_or_else(|e| e.into_inner()) = None;
 
@@ -123,7 +135,7 @@ mod tests {
         let store_exec = Arc::clone(&store);
         let join = tokio::spawn(async move {
             handler_exec
-                .execute(store_exec.as_ref(), None, "sleep 30", false)
+                .execute(store_exec.as_ref(), None, "sleep 30", false, None)
                 .await
         });
 
