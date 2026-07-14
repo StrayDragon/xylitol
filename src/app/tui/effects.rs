@@ -107,6 +107,23 @@ pub async fn drain_pending<T: Terminal>(
                 }
                 let _ = session.render_now();
             }
+            PendingSlash::DebugScene(scene) => {
+                let scene = scene.trim().to_ascii_lowercase();
+                if scene.is_empty() || scene == "list" {
+                    session.push_system_note(crate::app::debug_fixtures::list_note());
+                } else {
+                    tracing::info!(
+                        target: "xylitol::tui",
+                        scene = %scene,
+                        "Driver::load_debug_scene"
+                    );
+                    match driver.load_debug_scene(&scene).await {
+                        Ok(load) => session.apply_debug_scene(load),
+                        Err(e) => session.push_system_note(e),
+                    }
+                }
+                let _ = session.render_now();
+            }
         }
     }
 

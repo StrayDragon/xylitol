@@ -14,10 +14,10 @@ use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
-    Component, Focusable, Input, InputEvent, InputListenerResult, SlashArgCompletionSource,
-    SlashCommand, SlashCommandSource, SystemClock, TUI, Terminal, TreeNode, TreeSelector,
-    TreeSelectorOptions, fg_rgb, fuzzy_filter, matches_key_event, printable_from_key_event,
-    truncate_to_width,
+    CompletionSource, Component, Focusable, Input, InputEvent, InputListenerResult,
+    SlashArgCompletionSource, SlashCommand, SlashCommandSource, SystemClock, TUI, Terminal,
+    TreeNode, TreeSelector, TreeSelectorOptions, fg_rgb, fuzzy_filter, matches_key_event,
+    printable_from_key_event, truncate_to_width,
 };
 
 use super::session_tree::{FilterMode, tree_help_line, tree_search_line, wrap_help_line};
@@ -44,7 +44,7 @@ fn empty_tree_selector(theme: LayoutTheme) -> TreeSelector {
 }
 
 fn product_slash_commands() -> Vec<SlashCommand> {
-    vec![
+    let mut cmds = vec![
         SlashCommand {
             name: "exit".into(),
             description: Some("Quit TUI".into()),
@@ -57,7 +57,16 @@ fn product_slash_commands() -> Vec<SlashCommand> {
             argument_hint: None,
             get_argument_completions: None,
         },
-    ]
+    ];
+    // Hand-test only — see `app::debug_fixtures` (delete that module to remove).
+    #[cfg(debug_assertions)]
+    cmds.push(SlashCommand {
+        name: "debug".into(),
+        description: Some("Load fixture: /debug <scene>".into()),
+        argument_hint: Some("<scene>".into()),
+        get_argument_completions: None,
+    });
+    cmds
 }
 
 fn empty_models_list(theme: LayoutTheme) -> SelectList {
@@ -171,14 +180,26 @@ impl UiRoot {
     }
 
     fn install_completion_sources(&mut self) {
+        // Arg sources before SlashCommandSource so `/model ` / `/debug ` win.
         // Default: no bare — exact `/model` stays for slash list / c630 slot Enter.
-        self.editor.set_completion_sources(vec![
-            Box::new(
-                SlashArgCompletionSource::new("model", self.model_arg_catalog.clone())
-                    .with_id("model-id"),
-            ),
-            Box::new(SlashCommandSource::new(product_slash_commands())),
-        ]);
+        let mut sources: Vec<Box<dyn CompletionSource>> = Vec::new();
+        #[cfg(debug_assertions)]
+        {
+            // Hand-test fixtures — see `app::debug_fixtures`.
+            sources.push(Box::new(
+                SlashArgCompletionSource::new(
+                    "debug",
+                    crate::app::debug_fixtures::completion_catalog(),
+                )
+                .with_id("debug-scene"),
+            ));
+        }
+        sources.push(Box::new(
+            SlashArgCompletionSource::new("model", self.model_arg_catalog.clone())
+                .with_id("model-id"),
+        ));
+        sources.push(Box::new(SlashCommandSource::new(product_slash_commands())));
+        self.editor.set_completion_sources(sources);
     }
 
     /// Refresh `/model <id>` inline completion catalog (from `available_models`).

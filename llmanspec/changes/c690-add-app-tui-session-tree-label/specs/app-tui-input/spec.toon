@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ati27,"session-tree-label-keys","产品 TUI 在 EditorSlot::Tree 时 Shift+L MUST 打开 label 编辑（非向 editor 写入字面 L）；Shift+T MUST 切换 annotation 时间戳显示；label 编辑中 Esc MUST 取消编辑且 MUST NOT 关树；树关时 Shift+L/T 保持既有语义。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  ati27,"shift-l-opens-edit","EditorSlot::Tree 打开",按 Shift+L,进入 label 编辑且树仍开
