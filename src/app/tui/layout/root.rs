@@ -14,9 +14,9 @@ use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
-    Component, Focusable, InputEvent, InputListenerResult, SystemClock, TUI, Terminal, TreeNode,
-    TreeSelector, TreeSelectorOptions, fg_rgb, fuzzy_filter, matches_key_event,
-    printable_from_key_event, truncate_to_width,
+    Component, Focusable, InputEvent, InputListenerResult, SlashArgCompletionSource, SlashCommand,
+    SlashCommandSource, SystemClock, TUI, Terminal, TreeNode, TreeSelector, TreeSelectorOptions,
+    fg_rgb, fuzzy_filter, matches_key_event, printable_from_key_event, truncate_to_width,
 };
 
 use super::slots::EditorSlot;
@@ -39,6 +39,23 @@ fn empty_tree_selector(theme: LayoutTheme) -> TreeSelector {
             status_suffix: None,
         },
     )
+}
+
+fn product_slash_commands() -> Vec<SlashCommand> {
+    vec![
+        SlashCommand {
+            name: "exit".into(),
+            description: Some("Quit TUI".into()),
+            argument_hint: None,
+            get_argument_completions: None,
+        },
+        SlashCommand {
+            name: "model".into(),
+            description: Some("Switch model: /model [id]".into()),
+            argument_hint: None,
+            get_argument_completions: None,
+        },
+    ]
 }
 
 fn empty_models_list(theme: LayoutTheme) -> SelectList {
@@ -86,6 +103,8 @@ pub struct UiRoot {
     models_list: SelectList,
     models_items: Vec<SelectItem>,
     models_filter: String,
+    /// `(model_id, description)` for [`SlashArgCompletionSource`] (c999).
+    model_arg_catalog: Vec<(String, String)>,
 }
 
 impl UiRoot {
@@ -109,7 +128,7 @@ impl UiRoot {
             Box::new(SystemClock),
         );
         editor.set_focused(true);
-        Self {
+        let mut root = Self {
             ui_model: UiModel::new(),
             fold: ScrollbackFold::default(),
             status_loader,
@@ -132,7 +151,27 @@ impl UiRoot {
             models_list: empty_models_list(theme),
             models_items: Vec::new(),
             models_filter: String::new(),
-        }
+            model_arg_catalog: Vec::new(),
+        };
+        root.install_completion_sources();
+        root
+    }
+
+    fn install_completion_sources(&mut self) {
+        // Default: no bare — exact `/model` stays for slash list / c630 slot Enter.
+        self.editor.set_completion_sources(vec![
+            Box::new(
+                SlashArgCompletionSource::new("model", self.model_arg_catalog.clone())
+                    .with_id("model-id"),
+            ),
+            Box::new(SlashCommandSource::new(product_slash_commands())),
+        ]);
+    }
+
+    /// Refresh `/model <id>` inline completion catalog (from `available_models`).
+    pub fn set_model_arg_catalog(&mut self, catalog: Vec<(String, String)>) {
+        self.model_arg_catalog = catalog;
+        self.install_completion_sources();
     }
 
     /// Inject footer identity (cwd · model). Call before first render when known.

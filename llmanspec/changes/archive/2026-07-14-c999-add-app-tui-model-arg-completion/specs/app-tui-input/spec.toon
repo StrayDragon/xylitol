@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ati23,"model-arg-completion","产品 Editor MUST 经包 CompletionSource 注册 SlashArgCompletionSource（命令 model，默认 MUST NOT with_bare_command）与 SlashCommandSource（至少 exit/model）；键入 /model 加空格（及可选前缀）时 MUST 弹出模型 id 补全（catalog 来自 available_models）；Tab/Enter 选定 MUST 将 id 写入 editor；Esc 关 popup MUST NOT 调用 SetModel；无参 /model Enter 仍 MUST 走 c630 OpenModels 槽，MUST NOT 被 arg Source 抢走。",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  ati23,"space-opens-catalog","产品 idle 且 catalog 已注入","键入 /model 加空格","补全 popup 出现模型项"
+  ati23,"tab-applies-id","/model dee 补全已开","按 Tab","editor 含 /model 与选定 id"
+  ati23,"bare-still-slot","产品 idle","提交无参 /model","打开 Models 槽而非仅依赖 arg bare catalog"

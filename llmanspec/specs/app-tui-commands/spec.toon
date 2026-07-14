@@ -4,14 +4,14 @@ purpose: "斜杠命令与 protocol::Command / dispatch 映射。"
 valid_scope[1]: src/app/tui/
 requirements[5]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
-  atm1,"slash-exit-model",TUI MUST 解析斜杠命令 /exit（映射 Quit）与 /model：无参 MUST 打开替换 editor 槽的 fuzzy 模型列表（GetAvailableModels + 选定后 SetModel）；有参 /model <id> MUST 直接 SetModel；MUST NOT 再把无参 /model 做成 CycleModel 静默轮换；MUST NOT 引入 /models 主路径；未知斜杠 MUST 显示内联错误且 MUST NOT 崩溃。
+  atm1,"slash-exit-model",TUI MUST 解析斜杠命令 /exit（映射 Quit）与 /model：无参 MUST 打开替换 editor 槽的 fuzzy 模型列表（GetAvailableModels + 选定后 SetModel）；有参 /model <id> MUST 直接 SetModel；键入 /model 参数时 MAY/MUST 经包 SlashArgCompletionSource 内联补全（见 ati23），补全写入后仍走有参 SetModel；MUST NOT 再把无参 /model 做成 CycleModel 静默轮换；MUST NOT 引入 /models 主路径；未知斜杠 MUST 显示内联错误且 MUST NOT 崩溃。
   atm2,"dispatch-shared","除 Prompt、Quit 与传输专用命令外，斜杠执行 MUST 走 app::core::dispatch 共享路径，MUST NOT 发明平行命令词表。"
   atm3,"extensible-commands",命令面 MUST 允许后续追加斜杠（如 /compact /help）而不改引擎；MVP 仅要求 /exit 与 /model。
   atm4,"idle-slash-submit",产品 idle Enter 提交以 / 开头的文本时 MUST 解析 /exit 与 /model（无参开列表槽；有参直选）；未知斜杠 MUST 写入系统错误行且 MUST NOT 崩溃或退出。
 scenarios[6]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-commands",spec.toon 存在且 purpose 为中文
   atm1,"model-opens-picker",idle 且会话树关闭,Enter 提交无参 /model,打开 models 槽且不调用 CycleModel
-  atm1,"model-id-sets",idle,Enter 提交 /model fake,SetModel 或等价 select_model 被调用且不打开槽
+  atm1,"model-id-after-completion",idle 编辑器经补全得到 /model fake,Enter 提交,SetModel 或等价被调用
   atm2,"model-via-dispatch","",用户输入 /model,经 dispatch 或等价 Driver 方法切换模型
   atm3,"unknown-slash","","用户输入 /not-a-command",显示内联错误且会话继续
   atm4,"model-bare-not-cycle",产品 harness idle,/model Enter,pending 为开 picker 而非 CycleModel

@@ -68,9 +68,9 @@ Filter 态标题改为 `filter: orn`；无匹配时：
 - 拉取远端模型市场 / OAuth 订阅面板。
 - `/theme` 或主题切换（MVP 固定暗色）。
 - pi `Ctrl+Shift+M`（MAY 后续 change）。
-- **键入 `/model <前缀>` 的内联自动补全**（后置 **c999**；本文件只约束无参开槽 + `/model <id>` 直选）。
+- **键入 `/model <前缀>` 内联补全**：产品经包 `SlashArgCompletionSource`（**c999**；无 bare，与槽互补）。
 
 ## 验收指针
 
 - playground「Models」槽肉眼对照本文件形状。
-- 产品 harness：`/model` → 过滤 → Enter → footer model 变；Esc 不变；无参不再 cycle。
+- 产品 harness：`/model` → 过滤 → Enter → footer model 变；Esc 不变；无参不再 cycle；`/model orn` Tab 写入 id（c999）。
