@@ -2078,6 +2078,20 @@ fn agent_demo_ctrl_g_external_editor_stub() {
 }
 
 #[test]
+fn agent_demo_apply_external_editor_places_cursor_at_end() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.freeze_script_for_test();
+    app.set_editor_text_for_test("old");
+    app.apply_external_editor_text("line1\n\naaa\n\nbbb".into());
+    assert_eq!(app.input_text_for_test(), "line1\n\naaa\n\nbbb");
+    assert_eq!(
+        app.editor_cursor_for_test(),
+        (4, 3),
+        "Ctrl+G writeback must leave cursor at end of last line (pi setText)"
+    );
+}
+
+#[test]
 fn agent_demo_ctrl_g_defaults_to_stub_without_tty() {
     // Unit-test builds must not arm real-editor pending from an inherited TTY
     // (interactive `just qa`); only XYLITOL_AGENT_DEMO_REAL_EDITOR=1 forces real.

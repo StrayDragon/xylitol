@@ -835,10 +835,19 @@ impl<T: Terminal> TUI<T> {
     }
 
     /// Temporarily release the terminal (leave raw mode / keyboard protocols)
-    /// so a host can run an external process (e.g. `$EDITOR`), then restore and
-    /// force a full redraw. Does **not** exit the `start` event loop.
+    /// so a host can run an external process (e.g. `$EDITOR`), then restore.
+    /// Does **not** exit the `start` event loop.
     ///
-    /// This is the package seam for external-editor style suspend/resume.
+    /// **Paint is deferred** and **previous_lines are kept**: after an
+    /// alternate-screen editor exits, the main buffer matches our last frame,
+    /// so the next soft render can differential-update (grow/shrink the editor)
+    /// without `\x1b[2J` wiping inline scrollback above the TUI (cargo output,
+    /// etc.). Callers must `set_text` *after* this returns, then render —
+    /// painting here with a stale buffer caused 1-line ghosts.
+    ///
+    /// If the TTY was resized while suspended, the next `do_render` still sees
+    /// a real width/height change and clears as usual.
+    ///
     /// Spawning `$EDITOR` / tempfile I/O stays in the application (demo or
     /// `src/app/tui`), not in this crate.
     pub fn with_terminal_suspended<R>(&mut self, f: impl FnOnce() -> R) -> R {
@@ -846,9 +855,10 @@ impl<T: Terminal> TUI<T> {
         let result = f();
         self.terminal.hide_cursor();
         self.terminal.start();
-        // External editors often use the alternate screen; drop diff state.
-        self.request_render(true);
-        let _ = self.do_render();
+        // Size may have changed while the editor owned the TTY (pi SIGWINCH).
+        self.terminal.refresh_size();
+        // Soft pending only — do not wipe previous_lines / do not paint yet.
+        self.request_render(false);
         result
     }
 
@@ -990,8 +1000,14 @@ impl<T: Terminal> TUI<T> {
 
     /// Mark a render as needed. The actual frame is driven by whoever calls
     /// `try_render` (a host loop) or by `run_event_loop`'s internal timer. If
-    /// `force`, previous-frame state is reset so the next render is a full
-    /// redraw — mirrors pi's `requestRender(true)`.
+    /// `force`, previous-frame state is reset so the next render takes the
+    /// full-redraw path.
+    ///
+    /// **Inline TUI (xylitol vs pi):** force sets `previous_width/height = 0`,
+    /// the same sentinel as the first frame, so the next full paint does **not**
+    /// emit `\x1b[2J` (preserves scrollback above the TUI). pi uses `-1` to
+    /// force a clearing redraw; we deliberately keep the no-clear force for
+    /// inline/host embedding. See `packages/xylitol-tui/PI_DELTAS.md`.
     pub fn request_render(&mut self, force: bool) {
         if force {
             self.previous_lines.clear();

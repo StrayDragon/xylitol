@@ -299,13 +299,76 @@ fn request_render_force_resets_previous_state_for_full_redraw() {
     tui.render_frame().unwrap(); // establish previous_lines
     assert!(tui.full_redraws() >= 1);
     let before = tui.full_redraws();
+    tui.terminal.clear_writes();
 
-    // force=true resets previous state, so next render is a full redraw.
+    // force=true resets previous state → next render is full redraw.
+    // Inline xylitol: force uses previous_width=0 (first-frame sentinel) so it
+    // does **not** emit 2J (unlike pi's -1 clearing force).
     tui.request_render(true);
     tui.try_render().unwrap();
     assert!(
         tui.full_redraws() > before,
         "force request should trigger a full redraw"
+    );
+    assert!(
+        !tui.terminal.all_writes().contains("\x1b[2J"),
+        "inline force must not wipe scrollback above the TUI"
+    );
+}
+
+/// Ctrl+G / `$EDITOR` resume: do not paint during suspend; keep previous_lines
+/// so the post-`set_text` frame differentials against the restored main buffer
+/// (no `\x1b[2J` — preserves inline scrollback). Premature paint caused ghosts.
+#[test]
+fn with_terminal_suspended_defers_paint_until_after_caller_mutates() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use support::MutableComponent;
+
+    let lines = Rc::new(RefCell::new(vec!["short-draft".to_string()]));
+    let term = LoggingVirtualTerminal::new(40, 12);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(MutableComponent {
+        lines: lines.clone(),
+    }));
+    tui.render_frame().unwrap();
+    let writes_before = tui.terminal.write_count();
+
+    let _ = tui.with_terminal_suspended(|| {
+        // External editor would run here; buffer still "short-draft".
+        "ok"
+    });
+
+    assert_eq!(
+        tui.terminal.write_count(),
+        writes_before,
+        "suspend must not paint before caller replaces editor text"
+    );
+
+    // Grow like a multi-line $EDITOR save (product Ctrl+G path).
+    *lines.borrow_mut() = vec![
+        "short-draft".into(),
+        String::new(),
+        "aaa".into(),
+        String::new(),
+        "bbb".into(),
+    ];
+    tui.request_render(false);
+    assert!(tui.try_render().unwrap());
+
+    let writes = tui.terminal.all_writes();
+    assert!(
+        !writes.contains("\x1b[2J"),
+        "resume must not full-clear (inline TUI keeps scrollback above)"
+    );
+
+    let vp = tui.terminal.viewport().join("\n");
+    assert!(vp.contains("aaa"), "viewport missing aaa:\n{vp}");
+    assert!(vp.contains("bbb"), "viewport missing bbb:\n{vp}");
+    let short_hits = vp.matches("short-draft").count();
+    assert_eq!(
+        short_hits, 1,
+        "stale 1-line frame must not ghost above grown buffer:\n{vp}"
     );
 }
 

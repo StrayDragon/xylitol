@@ -263,6 +263,11 @@ impl Editor {
         self.state.lines.join("\n")
     }
 
+    /// Cursor as `(line, col)` — after [`Self::set_text`], line/col are at buffer end (pi parity).
+    pub fn cursor_position(&self) -> (usize, usize) {
+        (self.state.cursor_line, self.state.cursor_col)
+    }
+
     /// Replace the border ANSI wrapper used when painting editor chrome.
     pub fn set_border_color(&mut self, border_color: Box<dyn Fn(&str) -> String>) {
         self.theme.border_color = border_color;
@@ -279,15 +284,8 @@ impl Editor {
             .replace("\r\n", "\n")
             .replace('\r', "\n");
         self.push_undo();
-        self.state.lines = if n.is_empty() {
-            vec![String::new()]
-        } else {
-            n.split('\n').map(String::from).collect()
-        };
-        self.state.cursor_line = 0;
-        self.state.cursor_col = 0;
-        self.scroll_offset = 0;
-        self.on_changed();
+        // pi `setText` → `setTextInternal(..., "end")` — cursor at end of buffer.
+        self.set_text_internal(&n, CursorPlacement::End);
     }
     pub fn add_to_history(&mut self, text: String) {
         let t = text.trim().to_string();
@@ -1925,5 +1923,13 @@ mod tests {
         e.set_text_internal("hello\nworld", CursorPlacement::End);
         assert_eq!(e.state.cursor_line, 1);
         assert_eq!(e.state.cursor_col, 5); // "world".len()
+    }
+
+    #[test]
+    fn set_text_places_cursor_at_end_like_pi() {
+        let mut e = Editor::new(t(), EditorOptions::default(), clk());
+        e.set_text("hello\nworld".into());
+        assert_eq!(e.state.cursor_line, 1);
+        assert_eq!(e.state.cursor_col, 5);
     }
 }
