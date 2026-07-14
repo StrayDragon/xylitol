@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,qg05,"session-tree-pty-e2e","仓库 MUST 在 tests/tui_e2e（portable-pty）提供至少一条产品 Fake 会话树 E2E：双 Esc 开树后屏幕 MUST 含 Search 或 Type to search 类提示，且含 TreeHelp 用途片段（如 fold/unfold 或 filters）；该用例 MUST 为 #[ignore] 并由 just test-tui-e2e-pty（或 qa-e2e）拉取；默认 just qa MUST NOT 强制运行之。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  qg05,"pty-opens-tree-slot",产品 Fake PTY 已就绪且已有至少一轮对话,双 Esc 开树,屏幕含 Type to search 或 Search: 且含 fold/unfold 或 filters

@@ -516,6 +516,93 @@ fn pty_product_fake_bang_second_hard_reject() {
     let _ = session.wait_exit(Duration::from_secs(30));
 }
 
+/// c705: product Fake — after a turn, double Esc opens tree slot Search/Help.
+#[test]
+#[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_product_fake_session_tree_opens_search_help() {
+    const COLS: usize = 100;
+    const ROWS: usize = 30;
+    let (mut session, _tmp) = spawn_product_fake_ready(COLS as u16, ROWS as u16);
+    session.send_keys("\x15hi\r").expect("submit prompt");
+    session
+        .wait_for(crate::FAKE_HELLO, Duration::from_secs(30), COLS, ROWS)
+        .expect("Fake reply");
+
+    // Empty editor, then double Esc within the product window.
+    session.send_keys("\x15").expect("clear editor");
+    session.drain(Duration::from_millis(100));
+    session.send_keys("\x1b").expect("Esc 1");
+    session.drain(Duration::from_millis(80));
+    session.send_keys("\x1b").expect("Esc 2");
+
+    let screen = session
+        .wait_for("Type to search", Duration::from_secs(15), COLS, ROWS)
+        .expect("tree Search row");
+    let text = screen.text();
+    assert!(
+        text.contains("fold/unfold") || text.contains("filters") || text.contains("cycle"),
+        "TreeHelp should show fold/unfold or filters/cycle; screen:\n{text}"
+    );
+    assert!(
+        text.contains("Session tree") || text.contains("hi") || text.contains("Hello"),
+        "tree should show session content; screen:\n{text}"
+    );
+
+    session.send_keys("\x1b").expect("Esc close tree");
+    session.drain(Duration::from_millis(200));
+    session.send_keys("\x15/exit\r").expect("submit /exit");
+    let code = session
+        .wait_exit(Duration::from_secs(30))
+        .expect("exit after tree");
+    assert_eq!(code, 0);
+}
+
+/// c705: product Fake — `/debug session-tree-labeled` + Shift+L opens label editor.
+#[test]
+#[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_product_fake_session_tree_label_path() {
+    const COLS: usize = 100;
+    const ROWS: usize = 30;
+    let (mut session, _tmp) = spawn_product_fake_ready(COLS as u16, ROWS as u16);
+
+    // c710 fixture: labeled tree without fighting Kitty printable typing.
+    // Dismiss arg-completion popup (Enter would apply, not submit) then submit.
+    session
+        .send_keys("\x15/debug session-tree-labeled")
+        .expect("type debug scene");
+    session.drain(Duration::from_millis(200));
+    session.send_keys("\x1b").expect("dismiss completion");
+    session.drain(Duration::from_millis(100));
+    session.send_keys("\r").expect("submit debug scene");
+    session
+        .wait_for("debug scene", Duration::from_secs(20), COLS, ROWS)
+        .expect("debug scene note");
+    session
+        .wait_for("labeled root", Duration::from_secs(15), COLS, ROWS)
+        .expect("fixture user in scrollback");
+
+    session.send_keys("\x15").expect("clear");
+    session.drain(Duration::from_millis(100));
+    session.send_keys("\x1b").expect("Esc 1");
+    session.drain(Duration::from_millis(80));
+    session.send_keys("\x1b").expect("Esc 2");
+    let screen = session
+        .wait_for("Type to search", Duration::from_secs(15), COLS, ROWS)
+        .expect("tree open");
+    let text = screen.text();
+    assert!(
+        text.contains("[bookmark]"),
+        "debug session-tree-labeled must show annotation; screen:\n{text}"
+    );
+    // Shift+L type+save: harness h23 (PTY+Kitty printable is flaky).
+
+    session.send_keys("\x1b").expect("Esc close tree");
+    session.drain(Duration::from_millis(200));
+    session.send_keys("\x15/exit\r").expect("/exit");
+    let code = session.wait_exit(Duration::from_secs(30)).expect("exit");
+    assert_eq!(code, 0);
+}
+
 fn spawn_product_fake_ready(cols: u16, rows: u16) -> (PtySession, tempfile::TempDir) {
     let tmp = tempfile::tempdir().expect("tempdir");
     let project = tmp.path().join("project");

@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,atm5,"debug-scene-slash","产品 TUI idle 时 MUST 解析斜杠 /debug、/debug:<scene> 与 /debug <scene>：无 scene 或 scene=list 时 MUST 以系统提示列出可用场景且 MUST NOT 改当前 session；已知 scene（至少 tree-branch、tree-labeled）MUST 经 Driver::load_debug_scene 新建隔离 debug-* session、写入 fixture 消息后 switch，并重建 transcript；未知 scene MUST 提示错误且 MUST NOT 崩溃；MUST NOT 把 debug 场景写成 protocol::Command 主路径；MUST NOT 覆写用户装载前的当前 session 文件内容。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  atm5,"list-scenes",产品 idle,提交 /debug,系统提示含 tree-branch 或 tree-labeled
+  atm5,"load-tree-branch",产品 idle,提交 /debug:tree-branch,当前 session 变为 debug- 前缀且 transcript/树可含 fixture user 正文

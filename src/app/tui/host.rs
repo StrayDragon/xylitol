@@ -459,6 +459,37 @@ impl<T: Terminal> HostSession<T> {
         self.push_system_note(format!("Forked to new session {child_id}"));
     }
 
+    /// Apply `/debug <scene>` load: rebuild transcript and optional footer model (c710).
+    pub fn apply_debug_scene(&mut self, load: crate::app::core::driver::DebugSceneLoad) {
+        let leaf_id = load
+            .entries
+            .iter()
+            .rev()
+            .find_map(|e| e.entry_id().map(str::to_string));
+        let travel = SessionTreeTravel {
+            kind: crate::domain::session_types::SessionTreeKind::MessageHistory,
+            selected_id: leaf_id.clone().unwrap_or_else(|| load.session_id.clone()),
+            leaf_id,
+            editor_text: None,
+        };
+        rebuild_scrollback_from_travel(&mut self.ui_model, &load.entries, &travel);
+        if let Some(root) = self.ui_root.as_ref() {
+            let mut root = root.borrow_mut();
+            root.close_session_tree();
+            root.set_editor_text(String::new());
+        }
+        if let Some(m) = load.model {
+            let label = if m.display_name.is_empty() {
+                m.id
+            } else {
+                m.display_name
+            };
+            self.set_footer_model(label);
+        }
+        self.sync_ui_root_from_model();
+        self.push_system_note(load.note);
+    }
+
     /// Queue a submit from the host loop / harness (idle only).
     pub fn request_submit(&mut self, prompt: impl Into<String>) {
         if self.run_active || self.ui_model.phase == UiPhase::Busy {
@@ -697,7 +728,9 @@ impl<T: Terminal> HostSession<T> {
                 PendingSlash::Exit => {
                     self.request_quit();
                 }
-                PendingSlash::OpenModels | PendingSlash::SetModel(_) => {
+                PendingSlash::OpenModels
+                | PendingSlash::SetModel(_)
+                | PendingSlash::DebugScene(_) => {
                     self.pending_slash = Some(slash);
                 }
             }
@@ -708,7 +741,7 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(String::new());
             drop(root);
             self.push_system_note(format!(
-                "unknown command: {} (try /exit, /model)",
+                "unknown command: {} (try /exit, /model, /debug)",
                 text.split_whitespace().next().unwrap_or("/")
             ));
             return true;

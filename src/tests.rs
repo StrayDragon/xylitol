@@ -201,7 +201,9 @@ mod arch_guard {
         // Cross-surface seams under app/core/ (the privileged seam layer):
         //   core/composition.rs — shared Agent construction (agent+infra root)
         //   core/driver.rs      — Driver trait + InProcessDriver (agent-only)
-        let exempt_prefixes = ["cli/", "server/", "core/"];
+        // debug_fixtures/: hand-test seam (seed uses XySessionStore; tests may
+        // touch SessionManager). Delete with the module when removing /debug.
+        let exempt_prefixes = ["cli/", "server/", "core/", "debug_fixtures/"];
         let exempt_files = ["rpc.rs"];
 
         let mut violations = Vec::new();

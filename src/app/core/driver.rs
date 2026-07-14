@@ -218,6 +218,23 @@ pub trait Driver: Send {
         target_id: &str,
         label: Option<&str>,
     ) -> Result<(), String>;
+
+    /// Load a named `/debug <scene>` fixture into a fresh `debug-*` session (c710).
+    ///
+    /// Returns session id + entries for transcript rebuild. Does not invent a
+    /// `protocol::Command` — Driver-only like session_tree. Fixtures live in
+    /// `app::debug_fixtures` (delete that module to remove).
+    async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, String>;
+}
+
+/// Outcome of [`Driver::load_debug_scene`] (c710).
+#[derive(Debug, Clone)]
+pub struct DebugSceneLoad {
+    pub session_id: String,
+    pub entries: Vec<SessionEntry>,
+    pub note: String,
+    /// Set when the driver also switched to a catalog `fake` model.
+    pub model: Option<ModelInfo>,
 }
 
 // ── In-process driver ─────────────────────────────────────────────
@@ -498,6 +515,43 @@ impl Driver for InProcessDriver {
             label: cleaned,
         });
         self.store.append_session_entry(sid, &entry).await
+    }
+
+    async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, String> {
+        use crate::app::debug_fixtures::{list_note, resolve_scene_id, seed_scene};
+
+        let scene = scene.trim();
+        if scene.is_empty() || scene.eq_ignore_ascii_case("list") {
+            return Err(list_note());
+        }
+        let canonical = resolve_scene_id(scene)
+            .ok_or_else(|| format!("unknown debug scene: {scene}\n{}", list_note()))?;
+        let short = &uuid::Uuid::new_v4().to_string()[..8];
+        let session_id = format!("debug-{canonical}-{short}");
+        let cwd = std::env::current_dir()
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned());
+        self.store.create(&session_id, cwd.as_deref(), None).await?;
+        let canonical = seed_scene(self.store.as_ref(), &session_id, scene).await?;
+        self.agent.inner_mut().set_session(session_id.clone());
+        let entries = self.store.load_entries(&session_id).await?;
+        let mut note = format!("debug scene `{canonical}` → session {session_id}");
+        let model = match self.select_model("fake") {
+            Ok(m) => {
+                note.push_str("; model → fake");
+                Some(m)
+            }
+            Err(_) => {
+                note.push_str("; fake not in catalog (tree fixture only)");
+                None
+            }
+        };
+        Ok(DebugSceneLoad {
+            session_id,
+            entries,
+            note,
+            model,
+        })
     }
 }
 
@@ -1091,6 +1145,10 @@ impl Driver for RemoteDriver {
         _label: Option<&str>,
     ) -> Result<(), String> {
         Err("remote: append_entry_label not implemented".into())
+    }
+
+    async fn load_debug_scene(&mut self, _scene: &str) -> Result<DebugSceneLoad, String> {
+        Err("remote: load_debug_scene not implemented".into())
     }
 }
 
