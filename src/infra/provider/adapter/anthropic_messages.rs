@@ -4,14 +4,16 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::Stream;
-use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::Value;
 
 use crate::domain::error::XyError;
 use crate::domain::message::XyStopReason;
 use crate::domain::types::{XyChunk, XyToolSchema};
 use crate::infra::hooks::HookDispatcher;
-use crate::infra::hooks::http::{run_after_response, run_before_headers, run_before_request};
+use crate::infra::hooks::http::{
+    HeaderBag, run_after_response, run_before_headers, run_before_request,
+};
+use crate::infra::provider::reqwest_bridge::{from_reqwest_headers, to_reqwest_headers};
 use crate::runtime_protocol::XyStream;
 
 use super::LlmAdapter;
@@ -46,15 +48,16 @@ impl AnthropicMessagesAdapter {
         }
     }
 
-    fn headers(&self) -> HeaderMap {
-        let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        if let Ok(val) = HeaderValue::from_str(&self.api_key) {
-            headers.insert("x-api-key", val);
-        }
+    fn headers_bag(&self) -> HeaderBag {
+        let mut headers = HeaderBag::new();
         headers.insert(
-            "anthropic-version",
-            HeaderValue::from_static(ANTHROPIC_VERSION),
+            "content-type".into(),
+            Value::String("application/json".into()),
+        );
+        headers.insert("x-api-key".into(), Value::String(self.api_key.clone()));
+        headers.insert(
+            "anthropic-version".into(),
+            Value::String(ANTHROPIC_VERSION.into()),
         );
         headers
     }
@@ -118,21 +121,26 @@ impl AnthropicMessagesAdapter {
         }
         let url = format!("{}/v1/messages", self.base_url);
 
-        let mut headers = self.headers();
+        let mut headers = self.headers_bag();
         run_before_headers(&self.hooks, &mut headers).await?;
         run_before_request(&self.hooks, &self.model, &mut body).await?;
 
         let response = self
             .client
             .post(&url)
-            .headers(headers)
+            .headers(to_reqwest_headers(&headers))
             .json(&body)
             .send()
             .await
             .map_err(|e| XyError::Provider(anyhow::anyhow!("Anthropic request error: {e}")))?;
 
         let status = response.status().as_u16();
-        run_after_response(&self.hooks, status, response.headers()).await;
+        run_after_response(
+            &self.hooks,
+            status,
+            &from_reqwest_headers(response.headers()),
+        )
+        .await;
 
         if !response.status().is_success() {
             let body_text = response.text().await.unwrap_or_default();
