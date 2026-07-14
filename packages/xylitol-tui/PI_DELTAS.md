@@ -41,6 +41,7 @@
 | D16 | InputListener | VT 字符串回调常见 | **`InputEvent` 原生** `add_input_listener`；无 KeyEvent→VT；v1 仅 `Continue`/`Consumed` | 是 |
 | D17 | Diff 组件 | `renderDiff` 函数式 | **`Diff` Component + `render_diff_lines`**；`similar` 在包内；主题闭包；对齐 `design/diff-block.md` | 是 |
 | D18 | 代码高亮 | 应用层常见 | **`highlight` optional feature**（syntect+two-face）；默认依赖无 syntect；经 `MarkdownTheme.highlight_code` 注入 | 是 |
+| D19 | `requestRender(true)` / suspend | force 用 `previousWidth=-1` → **整屏 clear**；外部编辑器 resume 亦 clear | force 用 `previous_width=0`（首帧哨兵）→ **full path 但不 `2J`**；`with_terminal_suspended` **保留** `previous_lines` 差分、不立刻 paint（inline 保留上方 scrollback） | 是 |
 
 ---
 
@@ -50,7 +51,7 @@
 |---|---|
 | 产品壳 | transcript / slash 语义 / session → `src/app/tui/` 或 `agent_demo`，**不**进本包 |
 | `agent_demo` 快捷键 | 应用级：`Ctrl+P/S` 槽替换；`Ctrl+T` thinking；**`Alt+E` tools**（避 `Ctrl+E`=cursorLineEnd）；**`Alt+G` glyphs**（避 `Ctrl+G`=外部编辑器）；`Ctrl+O` tools viewport；**Ctrl+C** 清编辑器/空则退；**Esc** 流中 abort（经 InputListener）；UI 旁注用 `(Ctrl+T)` 括号完整和弦 |
-| 外部 `$EDITOR` | 包只提供 `TUI::with_terminal_suspended`（stop/start + 强制全量重绘）；spawn/`$VISUAL`/`$EDITOR`/tempfile 在 demo 或 `src/app/tui`，**不**进本包 |
+| 外部 `$EDITOR` | 包只提供 `TUI::with_terminal_suspended`（stop/start/refresh_size + soft `request_render`；**保留** `previous_lines` 差分、**不**立刻 `do_render`、**不**整屏 `2J`——对齐 inline）；spawn/`$VISUAL`/`$EDITOR`/tempfile 在 demo 或 `src/app/tui`，**不**进本包 |
 | 原型优先 | 真实 `src/app/tui` 所需 UX/UI 交互，优先在 `agent_demo` 验证后再接线产品面（见根 `_HANDOFF.md`） |
 | 工具 bg 三态 | 产品 theme：`tool-pending-bg` / `tool-success-bg` / `tool-error-bg`（`DESIGN.md`）；对齐 pi coding-agent，**不**进 pi-tui 包 |
 | Diff 行号 | unified 双 gutter + EditText 紧凑 `±N` + SBS 左右行号（c459） |
@@ -68,3 +69,4 @@
 | 2026-07-11 | 轨 P 合入：Markdown（package c530）· plate（c535）· Diff 边角 · Completion `$` 扩展点 · Expandable · playground sync · Tree 边角 · **ChoicePrompt（c565）** · **Palette/`/theme`（c570）**；D08 仍延后（c575） |
 | 2026-07-11 | 定位声明：独立 fork（非持续 1:1 port）；合规 `NOTICE` |
 | 2026-07-12 | **c575**：D08 overlay focus-restore（eligible/blocked/resume + dispatch reclaim）已落地 |
+| 2026-07-14 | **D19**：Ctrl+G resume 不整屏 clear；`set_text` 光标默认 End（对齐 pi editor） |

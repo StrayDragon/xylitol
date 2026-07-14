@@ -915,6 +915,8 @@ impl<T: Terminal> HostSession<T> {
                 self.push_error_note(format!("external editor failed: {err}"));
             }
         }
+        // Soft render via step(); suspend kept previous_lines for differential
+        // (no full-screen clear — inline TUI preserves scrollback above).
         true
     }
 

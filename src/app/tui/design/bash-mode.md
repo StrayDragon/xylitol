@@ -48,7 +48,7 @@ components:
 
 | 层 | 职责 |
 |---|---|
-| `packages/xylitol-tui` | **仅**挂起/恢复终端：`with_terminal_suspended`（`Terminal::stop`/`start` + `request_render(true)`）；**MUST NOT** 内置 `$EDITOR` / tempfile |
+| `packages/xylitol-tui` | **仅**挂起/恢复终端：`with_terminal_suspended`（`stop`/`start`/`refresh_size` + soft pending；**保留** `previous_lines` 供差分，**不**立刻 `do_render`、**不**整屏 clear）；**MUST NOT** 内置 `$EDITOR` / tempfile |
 | `agent_demo` / `src/app/tui` | 解析编辑器命令、写临时文件、spawn/wait、写回 Editor；产品 **c650** 对齐 demo 真路径，harness 仍 stub |
 | `infra` / Driver | bash **执行**走 `Driver::execute_bash`；外部编辑器 **不参与** |
 
