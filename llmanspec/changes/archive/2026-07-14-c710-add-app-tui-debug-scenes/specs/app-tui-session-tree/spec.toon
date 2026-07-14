@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ast13,"debug-scene-tree-fixture","经 /debug:tree-branch 或 /debug:tree-labeled 装载后，产品双 Esc 打开的 MessageHistory 树 MUST 非空且可见 fixture user 正文；tree-labeled MUST 使至少一节点 annotation 有值以便 labeled-only 过滤可验。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ast13,"after-debug-tree-nonempty",已成功 /debug:tree-branch,双 Esc 开树,树节点数大于 0 且可见 fixture user 正文

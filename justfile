@@ -42,8 +42,8 @@ test-tui-e2e-tmux:
     cargo test --test tui_e2e -- --ignored tmux
 
 # Run the xylitol-tui agent_demo (package dynamic playground — not product host).
-# Experiment shapes/keys here before wiring `src/app/tui`; product hand-test uses
-# Fake: `cargo run -- --trust --tui --model fake` with isolated config.
+# Experiment shapes/keys here before wiring `src/app/tui`; product hand-test:
+# `/debug session-tree-multiturn` (debug build) or Fake via isolated config.
 demo-tui:
     cargo run -p xylitol-tui --example agent_demo
 

@@ -15,7 +15,7 @@ use futures::StreamExt;
 use xylitol_tui::Terminal;
 
 use crate::app::core::driver::{
-    CommandInfo, Driver, EventStream, ModelInfo, QueueStats, SessionStats, XyEvent,
+    CommandInfo, DebugSceneLoad, Driver, EventStream, ModelInfo, QueueStats, SessionStats, XyEvent,
 };
 use crate::domain::session_types::{
     SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
@@ -53,6 +53,7 @@ pub struct ScriptedDriver {
     fork_calls: Mutex<Vec<(String, crate::domain::session_types::ForkPosition)>>,
     switch_calls: Mutex<Vec<String>>,
     label_calls: Mutex<Vec<(String, Option<String>)>>,
+    debug_scene_calls: Mutex<Vec<String>>,
     active_session_id: Mutex<String>,
 }
 
@@ -122,6 +123,7 @@ impl ScriptedDriver {
             fork_calls: Mutex::new(Vec::new()),
             switch_calls: Mutex::new(Vec::new()),
             label_calls: Mutex::new(Vec::new()),
+            debug_scene_calls: Mutex::new(Vec::new()),
             active_session_id: Mutex::new("scripted".into()),
         }
     }
@@ -152,6 +154,13 @@ impl ScriptedDriver {
 
     pub fn label_calls(&self) -> Vec<(String, Option<String>)> {
         self.label_calls.lock().expect("label_calls").clone()
+    }
+
+    pub fn debug_scene_calls(&self) -> Vec<String> {
+        self.debug_scene_calls
+            .lock()
+            .expect("debug_scene_calls")
+            .clone()
     }
 
     pub fn switch_calls(&self) -> Vec<String> {
@@ -425,6 +434,23 @@ impl Driver for ScriptedDriver {
             .expect("label_calls")
             .push((target_id.to_string(), cleaned));
         Ok(())
+    }
+
+    async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, String> {
+        self.debug_scene_calls
+            .lock()
+            .expect("debug_scene_calls")
+            .push(scene.to_string());
+        let canonical = crate::app::debug_fixtures::resolve_scene_id(scene).unwrap_or(scene);
+        let sid = format!("debug-{canonical}-scripted");
+        *self.active_session_id.lock().expect("active_session_id") = sid.clone();
+        let entries = self.session_messages.clone();
+        Ok(DebugSceneLoad {
+            session_id: sid,
+            entries,
+            note: format!("debug scene `{canonical}` (scripted)"),
+            model: Some(self.model.clone()),
+        })
     }
 }
 
@@ -1989,6 +2015,80 @@ mod slice_tests {
         assert!(
             panel.contains("just now") || panel.contains("[keep]"),
             "Shift+T should reveal timestamp near annotation; got:\n{panel}"
+        );
+    }
+
+    #[tokio::test]
+    async fn h25_debug_list_load_and_arg_completion() {
+        use crate::app::tui::commands::{PendingSlash, parse_slash_command};
+        assert_eq!(
+            parse_slash_command("/debug"),
+            Some(PendingSlash::DebugScene("list".into()))
+        );
+        assert_eq!(
+            parse_slash_command("/debug session-tree-multiturn"),
+            Some(PendingSlash::DebugScene("session-tree-multiturn".into()))
+        );
+        // Colon form intentionally unsupported (use space).
+        assert_eq!(parse_slash_command("/debug:session-tree-multiturn"), None);
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("/debug");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            driver.debug_scene_calls().is_empty(),
+            "list must not call Driver::load_debug_scene"
+        );
+        let note = session
+            .ui_model()
+            .entries
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                crate::app::tui::UiEntry::System { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .unwrap_or("");
+        assert!(
+            note.contains("session-tree-multiturn"),
+            "list note should name scenes; got: {note}"
+        );
+        assert!(
+            note.contains("Multi-turn") || note.contains("MessageHistory"),
+            "list note should include description; got: {note}"
+        );
+
+        root.borrow_mut()
+            .set_editor_text("/debug session-tree-multiturn");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.debug_scene_calls(),
+            vec!["session-tree-multiturn".to_string()]
+        );
+        assert_eq!(
+            driver.session_id().as_deref(),
+            Some("debug-session-tree-multiturn-scripted")
+        );
+
+        // `/debug ` arg completion (same path as `/model `).
+        for ch in "/debug sess".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        let frame = root.borrow_mut().render(80);
+        let joined = frame.join("\n");
+        assert!(
+            joined.contains("session-tree") || joined.contains("multiturn"),
+            "debug arg completion should list scene ids; got:\n{joined}"
         );
     }
 

@@ -435,6 +435,13 @@ mod tests {
         ) -> Result<(), String> {
             Ok(())
         }
+
+        async fn load_debug_scene(
+            &mut self,
+            _scene: &str,
+        ) -> Result<crate::app::core::driver::DebugSceneLoad, String> {
+            Err("stub: load_debug_scene not implemented".into())
+        }
     }
 
     fn stub() -> StubDriver {

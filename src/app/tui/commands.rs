@@ -11,6 +11,8 @@ pub enum PendingSlash {
     /// Bare `/model` — open fuzzy picker (c630).
     OpenModels,
     SetModel(String),
+    /// `/debug` / `/debug <scene>` hand-test fixtures (c710; debug builds).
+    DebugScene(String),
 }
 
 /// Idle `!` / `!!` bash request for the async host loop (c492).
@@ -66,7 +68,7 @@ pub fn parse_bang_command(text: &str) -> BangParse {
     }
 }
 
-/// Parse idle slash MVP (`/exit`, `/model` [id]).
+/// Parse idle slash MVP (`/exit`, `/model` [id], and debug-build `/debug` [scene]).
 pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
     let trimmed = text.trim();
     let rest = trimmed.strip_prefix('/')?;
@@ -84,6 +86,11 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         ("exit" | "quit", _) => Some(PendingSlash::Exit),
         ("model", None) => Some(PendingSlash::OpenModels),
         ("model", Some(id)) => Some(PendingSlash::SetModel(id)),
+        // Space form only (`/debug scene`). Colon form intentionally unsupported.
+        #[cfg(debug_assertions)]
+        ("debug", None) => Some(PendingSlash::DebugScene("list".into())),
+        #[cfg(debug_assertions)]
+        ("debug", Some(scene)) => Some(PendingSlash::DebugScene(scene)),
         _ => None,
     }
 }
