@@ -3,7 +3,7 @@ name: domain-compaction
 purpose: "Conversation compaction — n-gram cut detection, LLM summarization, and token estimation."
 valid_scope[2]: src/agent/compaction/,src/domain/compaction_config.rs
 requirements[15]{req_id,title,statement}:
-  c1,token 估算使用统一 Usage,System MUST estimate context window usage from current messages using XyUsage and a configurable token estimator without defining a separate usage struct.
+  c1,token-估算使用统一-Usage-与多源计量,"System MUST 基于当前消息与可选 XyUsage 锚点估计上下文占用，并经 xylitol-ai-bridge accounting（或等价注入端口）按 Api 然后 RemoteCount 然后 LocalTokenizer 然后 Heuristic 的优先级解析；MUST 继续使用 canonical XyUsage，MUST NOT 再引入并行的第二套 usage 结构。"
   c2,"should-compact",System MUST trigger compaction when estimated token usage exceeds a configurable threshold percentage of the context window.
   c3,"compact-summarize",Compaction MUST summarize older messages into a CompactionEntry while preserving the N most recent turns.
   c4,"compact-session",Compaction MUST persist the CompactionEntry to the session file and update the session tree.
@@ -17,9 +17,10 @@ requirements[15]{req_id,title,statement}:
   c12,"agent-integration","AgentSession MUST expose compact_current_session() that: estimates context usage, finds cut point, calls LLM summarization, writes CompactionEntry, and reloads session state."
   c13,"module-split","The compaction subsystem MUST be split into cohesive modules by responsibility covering token estimation and cut-point detection and file-operation tracking and LLM summarization and branch summary instead of a single oversized file."
   c14,单一配置来源,"Compaction configuration MUST have exactly one serde-facing type named XyCompactionSettingsConfig and one runtime type named XyCompactionSettings; the duplicate CompactionConfig definition MUST be removed."
-  c15,token 使用量类型统一,Compaction token estimation MUST use the canonical XyUsage type from domain/; the duplicate XyUsage in token_estimator.rs MUST be removed.
-scenarios[15]{req_id,id,given,when,then}:
-  c1,"estimate-with-xyusage",messages are passed to estimate_context_tokens,the function runs,it reads total_tokens from XyUsage or falls back to summing fields
+  c15,token-使用量类型统一与来源标注,"Compaction 与会话侧上下文估计 MUST 使用 domain 的 XyUsage 作为厂商/归一化用量类型；估计结果 MUST 能暴露 TokenProvenance（或经映射的等价来源标注）供上层区分 Api 与降级估计；token_estimator 内 MUST NOT 再定义重复的 XyUsage。"
+scenarios[17]{req_id,id,given,when,then}:
+  c1,"estimate-uses-priority","存在可信 XyUsage 锚点","调用上下文估计","优先采用 Api 语义且仍返回统一估计结构"
+  c1,"estimate-fallback-chain","无 XyUsage 且 LocalTokenizer 可用","调用上下文估计","采用 LocalTokenizer 而非静默当作 Api"
   c2,trigger,tokens exceed 80% of context window,shouldCompact is called,returns true
   c3,summarize,session has 50 turns,compact is called,first 40 turns are summarized into one CompactionEntry
   c4,persist,compaction completes,session is loaded,CompactionEntry is present with summary and cut point
@@ -33,4 +34,5 @@ scenarios[15]{req_id,id,given,when,then}:
   c12,agent,agent session has messages exceeding threshold,compact_current_session is called,"CompactionEntry written to session, session state reloaded"
   c13,"split-by-responsibility",the compaction module responsibilities are enumerated,the module is split,each resulting file owns one responsibility and is independently testable
   c14,"single-compaction-config",the codebase is searched for CompactionConfig,"rg \"struct CompactionConfig\"",zero matches remain
+  c15,"provenance-available","完成一次启发式降级估计","检查估计结果","带有 Heuristic 来源标注且无重复 XyUsage 定义"
   c15,"usage-unified",token_estimator.rs is inspected,the change is applied,it imports XyUsage from domain instead of defining a local struct
