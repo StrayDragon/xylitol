@@ -420,6 +420,26 @@ impl Driver for InProcessDriver {
         if !self.store.exists(session_id).await {
             return Err(format!("session not found: {session_id}"));
         }
+        if let Some(bus) = self.agent.inner().hook_bus() {
+            crate::agent::session::cancel_hook(
+                &bus,
+                "session_before_switch",
+                "pre",
+                serde_json::json!({ "reason": "resume", "target": session_id }),
+            )
+            .await?;
+            crate::agent::session::observe_hook(
+                &bus,
+                "session_shutdown",
+                "",
+                serde_json::json!({
+                    "reason": "resume",
+                    "target": session_id,
+                    "previous": self.agent.inner().session_id(),
+                }),
+            )
+            .await;
+        }
         self.agent.inner_mut().set_session(session_id.to_string());
         Ok(session_id.to_string())
     }
@@ -466,13 +486,32 @@ impl Driver for InProcessDriver {
 
     async fn session_tree(&self, kind: SessionTreeKind) -> Result<Vec<SessionTreeNode>, String> {
         let sid = self.agent.inner().session_id().ok_or("no active session")?;
+        if let Some(bus) = self.agent.inner().hook_bus() {
+            crate::agent::session::cancel_hook(
+                &bus,
+                "session_before_tree",
+                "pre",
+                serde_json::json!({ "kind": format!("{kind:?}") }),
+            )
+            .await?;
+        }
         // Bootstrap may assign a fresh id before any persist; wiped HOME may leave
         // an orphan id. Ensure an empty session so double-Esc opens an empty tree.
         self.agent.inner().ensure_session(sid, None).await?;
-        match kind {
-            SessionTreeKind::MessageHistory => self.store.message_history_tree(sid).await,
-            SessionTreeKind::FileBrowser => Err(session_tree_kind_unimplemented(kind)),
+        let tree = match kind {
+            SessionTreeKind::MessageHistory => self.store.message_history_tree(sid).await?,
+            SessionTreeKind::FileBrowser => return Err(session_tree_kind_unimplemented(kind)),
+        };
+        if let Some(bus) = self.agent.inner().hook_bus() {
+            crate::agent::session::observe_hook(
+                &bus,
+                "session_tree",
+                "post",
+                serde_json::json!({ "kind": format!("{kind:?}") }),
+            )
+            .await;
         }
+        Ok(tree)
     }
 
     async fn travel_session_tree(
@@ -481,15 +520,43 @@ impl Driver for InProcessDriver {
         entry_id: &str,
     ) -> Result<SessionTreeTravel, String> {
         let sid = self.agent.inner().session_id().ok_or("no active session")?;
-        match kind {
+        if let Some(bus) = self.agent.inner().hook_bus() {
+            crate::agent::session::cancel_hook(
+                &bus,
+                "session_before_tree",
+                "pre",
+                serde_json::json!({
+                    "kind": format!("{kind:?}"),
+                    "entry_id": entry_id,
+                }),
+            )
+            .await?;
+        }
+        let travel = match kind {
             SessionTreeKind::MessageHistory => {
                 let entries = self.store.load_entries(sid).await?;
                 let travel = plan_message_history_travel(&entries, entry_id)?;
                 self.store.set_leaf(sid, travel.leaf_id.as_deref());
-                Ok(travel)
+                travel
             }
-            SessionTreeKind::FileBrowser => Err(session_tree_kind_unimplemented(kind)),
+            SessionTreeKind::FileBrowser => {
+                return Err(session_tree_kind_unimplemented(kind));
+            }
+        };
+        if let Some(bus) = self.agent.inner().hook_bus() {
+            crate::agent::session::observe_hook(
+                &bus,
+                "session_tree",
+                "post",
+                serde_json::json!({
+                    "kind": format!("{kind:?}"),
+                    "entry_id": entry_id,
+                    "leaf_id": travel.leaf_id,
+                }),
+            )
+            .await;
         }
+        Ok(travel)
     }
 
     async fn append_entry_label(

@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-hooks"
 purpose: Hook system — lifecycle hooks (before/after tool execution) and script execution.
 valid_scope[2]: src/infra/hooks/,src/agent/runtime/hooks.rs
-requirements[20]{req_id,title,statement}:
+requirements[22]{req_id,title,statement}:
   r1,"hook-dispatcher",System MUST implement a HookDispatcher that executes registered hooks for 10+ event types.
   r2,"three-tier-config","System MUST support global/project/user three-tier hook configuration with later layers overriding earlier."
   r3,"script-execution",System MUST execute hook scripts via stdin JSON context and parse stdout for block/allow control.
@@ -23,7 +23,9 @@ requirements[20]{req_id,title,statement}:
   h15,"bdd-provider-nonempty","BDD scenarios for before_provider_request and after_provider_response MUST exercise real dispatch (non-empty scenario bodies)."
   h16,"model-thinking-select-wiring","When XyHookBus is attached, Driver select_model and cycle_model MUST dispatch model_select after successful change; set_thinking_level MUST dispatch thinking_level_select; both MUST be observe-only fail-open; MUST NOT depend on TUI-only paths."
   h17,"completions-provider-three-seam","OpenAI Completions adapter MUST invoke before_provider_headers, before_provider_request, and after_provider_response in the same order as Responses when HookDispatcher is injected; empty dispatcher MUST be zero-overhead no-op; MUST NOT require reading SSE body for after_provider_response."
-scenarios[20]{req_id,id,given,when,then}:
+  h18,"session-tree-switch-hooks","When XyHookBus is attached, Driver session_tree and travel_session_tree MUST dispatch session_before_tree (Blocked cancels) and session_tree on success; switch_session MUST dispatch session_before_switch (Blocked cancels) and session_shutdown for the prior session on success; process-quit shutdown MAY until a library teardown seam exists."
+  h19,"user-bash-on-execute-bash","When XyHookBus is attached, Driver execute_bash MUST dispatch user_bash before running the command; Blocked MUST prevent execution and surface an error; input event is out of scope for this change."
+scenarios[22]{req_id,id,given,when,then}:
   r1,happy,a pre.tool_call hook is registered,tool is about to execute,hook script runs and receives event context via stdin
   r2,happy,global hook and project hook both exist for same event,hook dispatcher runs,project hook overrides global hook
   r3,happy,hook script returns block action,tool execution is pending,tool execution is blocked with reason
@@ -44,3 +46,5 @@ scenarios[20]{req_id,id,given,when,then}:
   h15,"bdd-real",hooks.feature provider scenarios,"cargo test --test bdd",provider scenarios are not empty stubs
   h16,"model-select-fire",库缝注入了匹配 model_select 的 hook,执行操作「选择模型 fake」,hook 被调用且上下文含 model
   h17,"completions-modify",Completions adapter 注入了 before_provider_request Modify hook,发送 Completions 请求,outgoing JSON 包含修改后的字段
+  h18,"switch-cancel",注册了匹配 session_before_switch 且返回 block 的 hook,执行操作「切换会话 target」,切换未发生且阻止原因可观测
+  h19,"bash-block",注册了匹配 user_bash 且返回 block 的 hook,执行操作「执行 bash」,bash 未执行且操作被阻止
