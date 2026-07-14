@@ -436,6 +436,10 @@ mod tests {
             Ok(())
         }
 
+        fn leaf_entry_id(&self) -> Option<String> {
+            None
+        }
+
         async fn load_debug_scene(
             &mut self,
             _scene: &str,

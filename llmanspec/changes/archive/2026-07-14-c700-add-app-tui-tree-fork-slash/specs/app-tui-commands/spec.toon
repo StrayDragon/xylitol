@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,atm6,"slash-tree-fork","产品 TUI idle 时 MUST 解析 /tree 与 /fork：/tree MUST 打开 MessageHistory 会话树（与双 Esc 同路径）；/fork MUST 对当前 session leaf 执行与树内 Shift+F 相同的产品 fork（user→Before、非 user→At）并 switch 到 child；busy 时二者 MUST 拒绝并提示且 MUST NOT 开树或 fork；SlashCommandSource MUST 列出 tree 与 fork；MUST NOT 发明平行 fork 语义。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  atm6,"slash-tree-opens",产品 idle,提交 /tree,EditorSlot::Tree 打开且含 Search 或 Type to search
+  atm6,"slash-fork-leaf",产品 idle 且 session 有 leaf,提交 /fork,fork+switch 发生或 ScriptedDriver fork 被调用

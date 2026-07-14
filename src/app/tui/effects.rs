@@ -124,6 +124,27 @@ pub async fn drain_pending<T: Terminal>(
                 }
                 let _ = session.render_now();
             }
+            PendingSlash::OpenTree => {
+                if session.is_busy() {
+                    session.push_system_note("session tree unavailable while busy");
+                } else {
+                    session.request_session_tree_open();
+                }
+                let _ = session.render_now();
+            }
+            PendingSlash::ForkAtLeaf => {
+                if session.is_busy() {
+                    session.push_system_note("fork unavailable while busy");
+                } else {
+                    match driver.leaf_entry_id() {
+                        Some(id) => session.request_session_tree_fork(id),
+                        None => session.push_system_note(
+                            "fork failed: no leaf (send a message first, or /tree then Shift+F)",
+                        ),
+                    }
+                }
+                let _ = session.render_now();
+            }
         }
     }
 

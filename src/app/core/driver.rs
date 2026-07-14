@@ -219,6 +219,9 @@ pub trait Driver: Send {
         label: Option<&str>,
     ) -> Result<(), String>;
 
+    /// Active MessageHistory leaf entry id for the current session (c700 `/fork`).
+    fn leaf_entry_id(&self) -> Option<String>;
+
     /// Load a named `/debug <scene>` fixture into a fresh `debug-*` session (c710).
     ///
     /// Returns session id + entries for transcript rebuild. Does not invent a
@@ -515,6 +518,11 @@ impl Driver for InProcessDriver {
             label: cleaned,
         });
         self.store.append_session_entry(sid, &entry).await
+    }
+
+    fn leaf_entry_id(&self) -> Option<String> {
+        let sid = self.agent.inner().session_id()?;
+        self.store.leaf_id(sid)
     }
 
     async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, String> {
@@ -1145,6 +1153,10 @@ impl Driver for RemoteDriver {
         _label: Option<&str>,
     ) -> Result<(), String> {
         Err("remote: append_entry_label not implemented".into())
+    }
+
+    fn leaf_entry_id(&self) -> Option<String> {
+        None
     }
 
     async fn load_debug_scene(&mut self, _scene: &str) -> Result<DebugSceneLoad, String> {

@@ -55,6 +55,8 @@ pub struct ScriptedDriver {
     label_calls: Mutex<Vec<(String, Option<String>)>>,
     debug_scene_calls: Mutex<Vec<String>>,
     active_session_id: Mutex<String>,
+    /// Scripted leaf for `/fork` (c700).
+    leaf_entry_id: Mutex<Option<String>>,
 }
 
 impl ScriptedDriver {
@@ -125,6 +127,7 @@ impl ScriptedDriver {
             label_calls: Mutex::new(Vec::new()),
             debug_scene_calls: Mutex::new(Vec::new()),
             active_session_id: Mutex::new("scripted".into()),
+            leaf_entry_id: Mutex::new(None),
         }
     }
 
@@ -154,6 +157,10 @@ impl ScriptedDriver {
 
     pub fn label_calls(&self) -> Vec<(String, Option<String>)> {
         self.label_calls.lock().expect("label_calls").clone()
+    }
+
+    pub fn set_leaf_entry_id(&self, id: Option<String>) {
+        *self.leaf_entry_id.lock().expect("leaf") = id;
     }
 
     pub fn debug_scene_calls(&self) -> Vec<String> {
@@ -434,6 +441,10 @@ impl Driver for ScriptedDriver {
             .expect("label_calls")
             .push((target_id.to_string(), cleaned));
         Ok(())
+    }
+
+    fn leaf_entry_id(&self) -> Option<String> {
+        self.leaf_entry_id.lock().expect("leaf").clone()
     }
 
     async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, String> {
@@ -2089,6 +2100,63 @@ mod slice_tests {
         assert!(
             joined.contains("session-tree") || joined.contains("multiturn"),
             "debug arg completion should list scene ids; got:\n{joined}"
+        );
+    }
+
+    #[tokio::test]
+    async fn h26_slash_tree_opens_session_tree() {
+        use crate::app::tui::commands::{PendingSlash, parse_slash_command};
+        assert_eq!(parse_slash_command("/tree"), Some(PendingSlash::OpenTree));
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_message_history_tree(harness_sample_message_history_tree());
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("/tree");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.session_tree_calls(), 1);
+        assert!(root.borrow().tree_open());
+        let slot = root.borrow_mut().tree_slot_text_for_test(80);
+        assert!(
+            slot.contains("Type to search") || slot.contains("Search:"),
+            "expected Search row after /tree; got:\n{slot}"
+        );
+    }
+
+    #[tokio::test]
+    async fn h27_slash_fork_at_leaf() {
+        use crate::app::tui::commands::{PendingSlash, parse_slash_command};
+        use crate::domain::session_types::ForkPosition;
+        assert_eq!(parse_slash_command("/fork"), Some(PendingSlash::ForkAtLeaf));
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        driver.set_leaf_entry_id(Some("a1".into()));
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("/fork");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.fork_calls(),
+            vec![("a1".to_string(), ForkPosition::At)]
+        );
+        assert_eq!(driver.switch_calls(), vec!["forked-child".to_string()]);
+        assert!(
+            session
+                .ui_model()
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text.contains("Forked"))),
+            "expected fork note: {:?}",
+            session.ui_model().entries
         );
     }
 
