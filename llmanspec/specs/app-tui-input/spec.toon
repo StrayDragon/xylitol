@@ -20,7 +20,7 @@ requirements[29]{req_id,title,statement}:
   ati14,"product-abort-resumable","产品 TUI 在用户 Esc abort 当前流之后 MUST 回到可提交 idle（follow-up restore 语义不变）；MUST NOT 让后续用户输入持续产生粘性 aborted Error 而无法继续对话。"
   ati15,"product-bash-prefix-border",产品 TUI 中当编辑器文本 trim 后以 ! 或 !! 开头时，Editor 操作区边框 MUST 切换为 bash 强调色（对齐 DESIGN success 前景）；去掉该前缀后 MUST 恢复默认 muted 边框。
   ati16,"product-idle-bang-execute","产品 idle 且会话树关闭时，Enter 提交以 ! 或 !! 开头的非空命令 MUST 调用 Driver::execute_bash（经 Command::Bash / dispatch），MUST NOT 调用 Driver::run；!! 前缀 MUST 设置 exclude_from_context=true，单 ! 为 false；命令体为空时 MUST 提示且 MUST NOT 执行。"
-  ati17,"product-external-editor-stub","产品 Host MUST 将 Ctrl+G 绑定为外部编辑器入口：至少记录/系统提示或 stub 回写；harness 路径 MUST NOT 强制 spawn 真实 $EDITOR；真编辑器路径 MAY 使用 with_terminal_suspended 边界（对齐 design/bash-mode.md）。"
+  ati17,"product-external-editor","产品 Host MUST 将 Ctrl+G 绑定为外部编辑器入口：交互 TTY 且已配置非空 $VISUAL 或 $EDITOR 时 MUST 经 xylitol_tui::TUI::with_terminal_suspended 挂起终端、写入 tempfile、spawn 该编辑器、成功退出后把文件内容写回 Editor；harness / 非 TTY / 测试路径 MUST NOT spawn 真实编辑器（保持 stub：系统提示与可选 stub 标记）；未配置 $VISUAL 与 $EDITOR、tempfile/spawn/读回失败、或编辑器非零退出时 MUST NOT panic，MUST 向 scrollback 追加 UiEntry::Error 短行并保留原 Editor 文本；MUST NOT 静默默认 nano/notepad；MUST NOT 在 packages/xylitol-tui 内实现 $EDITOR/tempfile/spawn（包仅提供 with_terminal_suspended）。"
   ati18,"editor-slot-machine-live-tree","产品 TUI MUST 以显式 EditorSlot（至少含 Editor 与 Tree；MAY 含 Plate/Settings/Choice）互斥替换 editor 槽；打开任一非 Editor 槽时 MUST 替换贴底 editor 区而非画到 scrollback 顶部；Esc MUST 优先关闭当前槽并还原 Editor；忙碌时 Esc MUST 仍 abort（ati10）且 MUST NOT 打开 Tree；Tree 槽 MUST 由 Driver MessageHistory 活树驱动（见 app-tui-session-tree），MUST NOT 再冻结为仅假树 stub。"
   ati19,"bang-esc-aborts","产品 TUI 在交互 !/!! bash 执行期间 MUST 视为忙碌：Esc MUST 调用 Driver::abort 以取消该 bash（进程树按 c660）；host MUST NOT 在 drain_pending 内独占 await bash 以致无法读键盘；取消后 MUST 回到可输入 idle。"
   ati20,"bang-busy-hard-reject","产品 TUI 在交互 bang 仍 busy（bash_active）时，用户再次 Enter 提交 ! 或 !! 命令 MUST 硬拒绝：MUST 向用户给出简短提示、MUST 恢复编辑器文本（或等价保留命令体）、MUST NOT 调用第二次 Driver::execute_bash、MUST NOT 排队第二 bang；忙碌时非 bang 前缀文本 MUST 仍按既有 steer 规则处理。"
@@ -31,8 +31,8 @@ requirements[29]{req_id,title,statement}:
   ati25,"session-tree-fork-key","产品 TUI 在 EditorSlot::Tree 打开时 Shift+F MUST 触发产品会话 fork 流程（见 app-tui-session-tree ast10）；MUST NOT 在 Editor 槽把 Shift+F 误当成普通输入；树关时 Shift+F 保持既有语义（若无则 noop）。"
   ati26,"session-tree-cycle-backward","产品 TUI 在 EditorSlot::Tree 打开时 Ctrl+Shift+O（或 KeybindingsManager 解析到的 cycleBackward 等价和弦）MUST 按 all→labeled-only→user-only→no-tools→default 方向循环 FilterMode；MUST 优先于关树时的其它 Ctrl+O 语义；Ctrl+O 正向循环（ati22）保持不变。"
   ati27,"session-tree-label-keys","产品 TUI 在 EditorSlot::Tree 时 Shift+L MUST 打开 label 编辑（非向 editor 写入字面 L）；Shift+T MUST 切换 annotation 时间戳显示；label 编辑中 Esc MUST 取消编辑且 MUST NOT 关树；树关时 Shift+L/T 保持既有语义。"
-  ati28,"slash-tree-fork-keys","产品 TUI idle 且 Editor 槽时 Enter 提交 /tree 或 /fork MUST 走 PendingSlash（非向 agent 当普通 prompt）；树已开时 /tree 再提交 MUST NOT 重复破坏既有槽（可 noop 或刷新）；busy 时 MUST NOT 开树或 fork。"
-scenarios[48]{req_id,id,given,when,then}:
+  ati28,"slash-tree-fork-keys",产品 TUI idle 且 Editor 槽时 Enter 提交 /tree 或 /fork MUST 走 PendingSlash（非向 agent 当普通 prompt）；树已开时 /tree 再提交 MUST NOT 重复破坏既有槽（可 noop 或刷新）；busy 时 MUST NOT 开树或 fork。
+scenarios[51]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-input",spec.toon 存在且 purpose 为中文
   ati1,"selector-slot","",打开模型选择器,editor 槽被选择器替换且贴底可见
   ati2,"esc-aborts","",流式中按 Esc,"Driver::abort 被调用"
@@ -63,7 +63,10 @@ scenarios[48]{req_id,id,given,when,then}:
   ati16,"bangbang-exclude",idle 且 editor 为 !!echo x,Enter,exclude_from_context 为 true
   ati16,"empty-bang",idle 且 editor 仅为 !,Enter,出现提示且未执行 bash
   ati16,"slash-wins",idle 且 editor 为 /exit,Enter,走 slash 退出而非 bash
-  ati17,"ctrl-g-stub",产品 host 可测环境,Ctrl+G,不崩且有 stub/系统提示可观测
+  ati17,"ctrl-g-harness-stub",产品 host 可测/harness 环境,Ctrl+G,不 spawn 真实编辑器且有 stub 或系统提示可观测且不崩
+  ati17,"ctrl-g-missing-editor-error",交互路径且 VISUAL 与 EDITOR 均未设置或为空,Ctrl+G,"出现 UiEntry::Error 短行提示需配置编辑器且 Editor 原文保留且进程不崩"
+  ati17,"ctrl-g-spawn-fail-error",已配置编辑器但 spawn 或读写 tempfile 失败,Ctrl+G 真路径执行,"出现 UiEntry::Error 短行且 Editor 原文保留且不崩"
+  ati17,"ctrl-g-tty-success-writeback",交互 TTY 且 VISUAL 或 EDITOR 已配置且编辑器成功退出,Ctrl+G,经 with_terminal_suspended 往返后 Editor 文本为编辑器保存内容
   ati18,"tree-slot-live",产品 TUI idle,双 Esc 打开 Tree 槽,槽内为 MessageHistory 活树且 Esc 可关回 Editor
   ati19,"esc-cancels-hanging-bang",产品 idle bang 已开始且 bash 未返回,按 Esc,"Driver::abort 被调用且 bash 结果 cancelled 或等价中止"
   ati20,"second-bang-rejected",第一 bang 仍在执行,再提交 !echo second,出现拒绝提示且 execute_bash 调用次数仍为 1

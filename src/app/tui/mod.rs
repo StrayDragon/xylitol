@@ -5,6 +5,7 @@
 mod bridge;
 mod commands;
 mod effects;
+mod external_editor;
 mod host;
 mod layout;
 pub(crate) mod terminal_guard;

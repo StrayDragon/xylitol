@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ati17,"product-external-editor","产品 Host MUST 将 Ctrl+G 绑定为外部编辑器入口：交互 TTY 且已配置非空 $VISUAL 或 $EDITOR 时 MUST 经 xylitol_tui::TUI::with_terminal_suspended 挂起终端、写入 tempfile、spawn 该编辑器、成功退出后把文件内容写回 Editor；harness / 非 TTY / 测试路径 MUST NOT spawn 真实编辑器（保持 stub：系统提示与可选 stub 标记）；未配置 $VISUAL 与 $EDITOR、tempfile/spawn/读回失败、或编辑器非零退出时 MUST NOT panic，MUST 向 scrollback 追加 UiEntry::Error 短行并保留原 Editor 文本；MUST NOT 静默默认 nano/notepad；MUST NOT 在 packages/xylitol-tui 内实现 $EDITOR/tempfile/spawn（包仅提供 with_terminal_suspended）。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  ati17,"ctrl-g-harness-stub",产品 host 可测/harness 环境,Ctrl+G,不 spawn 真实编辑器且有 stub 或系统提示可观测且不崩
+  ati17,"ctrl-g-missing-editor-error",交互路径且 VISUAL 与 EDITOR 均未设置或为空,Ctrl+G,"出现 UiEntry::Error 短行提示需配置编辑器且 Editor 原文保留且进程不崩"
+  ati17,"ctrl-g-spawn-fail-error",已配置编辑器但 spawn 或读写 tempfile 失败,Ctrl+G 真路径执行,"出现 UiEntry::Error 短行且 Editor 原文保留且不崩"
+  ati17,"ctrl-g-tty-success-writeback",交互 TTY 且 VISUAL 或 EDITOR 已配置且编辑器成功退出,Ctrl+G,经 with_terminal_suspended 往返后 Editor 文本为编辑器保存内容

@@ -25,7 +25,7 @@ components:
 | 长输出 | 默认末尾 5 行视口 + `ctrl+o to expand`；**Ctrl+O** 全局视口折叠/全文（与工具详情同键） |
 | busy（agent） | `!…` 仍走 steer/普通文本；**不**另开 bash |
 | busy（交互 bang 仍在跑） | 再提交 `!`/`!!` **硬拒绝**：提示 + 保留编辑器文本；**MUST NOT** 第二次 `execute_bash`、**MUST NOT** 排队 |
-| Ctrl+G | **c650**：TTY 真 `$VISUAL`/`$EDITOR`（对齐 demo）；harness / 非 TTY 仍 stub（系统行 + `# $EDITOR stub`） |
+| Ctrl+G | **c650**：交互 TTY 且已配置非空 `$VISUAL`/`$EDITOR` → 真外部编辑器；harness / 非 TTY → stub（系统行 + `# $EDITOR stub`）；未配置或失败 → `UiEntry::Error`（**无**静默 nano/notepad；与 demo 可默认 nano **分叉**） |
 
 ## Demo 已验证（c457+ · `agent_demo`）
 
@@ -35,6 +35,14 @@ components:
 | 去掉 `!` | 边框恢复 muted |
 | Ctrl+G（TTY） | 真 `$VISUAL`/`$EDITOR`（缺省 nano/notepad）：`TUI::with_terminal_suspended` → tempfile → spawn → 写回 `set_text` |
 | Ctrl+G（harness / 非 TTY） | **stub**（系统行 + `# $EDITOR stub`）；`XYLITOL_AGENT_DEMO_EDITOR_STUB=1` 强制 stub；`XYLITOL_AGENT_DEMO_REAL_EDITOR=1` 强制真路径 |
+
+### 产品 vs demo（c650）
+
+| | 产品 `src/app/tui` | demo `agent_demo` |
+|---|---|---|
+| 未配置 `$VISUAL`/`$EDITOR` | **`UiEntry::Error`**，保留原文；**MUST NOT** 默认 nano | 可默认 nano/notepad |
+| 实现位置 | 产品独立模块（不抽进包、不与 demo 共享） | demo 内辅助函数 |
+| 包 | 仅 `with_terminal_suspended` | 同左 |
 
 ## 分层边界（外部编辑器）
 
