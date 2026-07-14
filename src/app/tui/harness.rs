@@ -1139,6 +1139,76 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn c670_abort_drops_late_deltas() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.push_script(vec![
+            XyEvent::ThinkingDelta("plan…".into()),
+            XyEvent::TextDelta("SHOULD_NOT_APPEAR".into()),
+            XyEvent::AgentEnd {
+                messages: Vec::new(),
+            },
+        ]);
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("go");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        // Start run but do not drain stream yet.
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(stream.is_some(), "run must open EventStream");
+        // Mid-stream Esc abort.
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.abort_count(), 1);
+        // Pump remaining scripted events — must be dropped (c670).
+        if let Some(s) = stream.as_mut() {
+            while let Some(xy) = s.next().await {
+                session.step(HostEvent::Xy(Box::new(xy))).unwrap();
+            }
+            stream = None;
+            session.on_run_stream_closed();
+        }
+        assert!(
+            session
+                .ui_model()
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted")),
+            "expected Aborted: {:?}",
+            session.ui_model().entries
+        );
+        assert!(
+            !session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::Assistant { text } if text.contains("SHOULD_NOT_APPEAR")
+            )),
+            "late TextDelta must not become assistant: {:?}",
+            session.ui_model().entries
+        );
+        assert!(
+            session.ui_model().streaming_assistant.is_empty()
+                && session.ui_model().streaming_thinking.is_empty(),
+            "streaming buffers must stay empty"
+        );
+        assert!(!session.is_busy());
+        // Next turn still works.
+        root.borrow_mut().set_editor_text("again");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            driver.runs.iter().any(|r| r == "again"),
+            "second run after abort: {:?}",
+            driver.runs
+        );
+    }
+
+    #[tokio::test]
     async fn c665_bang_esc_cancels_hanging_bash() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();

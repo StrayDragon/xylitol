@@ -747,7 +747,7 @@ fn idle_editor_operation_zone_is_compact() {
 }
 
 #[test]
-fn layout_idle_status_occupies_zero_rows() {
+fn layout_idle_status_is_one_blank_above_editor() {
     use super::layout::UiRoot;
 
     let mut root = UiRoot::new();
@@ -758,12 +758,37 @@ fn layout_idle_status_occupies_zero_rows() {
         !lines.iter().any(|l| l.contains("Working")),
         "idle must not show busy status: {lines:?}"
     );
+    // scrollback(0) → status blank → editor… → footer
+    assert!(
+        !lines.is_empty() && lines[0].is_empty(),
+        "idle must keep one blank above editor: {lines:?}"
+    );
     let footer = lines.last().expect("footer");
     assert!(footer.contains("~/xylitol"), "{footer}");
     assert!(footer.contains("ornith"), "{footer}");
     assert!(
         !footer.contains("enter submit"),
         "footer must not be a key-chord wall: {footer}"
+    );
+}
+
+#[test]
+fn layout_busy_status_keeps_leading_blank() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta("~/xylitol", "ornith");
+    let mut model = UiModel::new();
+    model.begin_run("hello");
+    root.apply_ui_model(&model);
+    let lines = root.render(80);
+    let working_idx = lines
+        .iter()
+        .position(|l| l.contains("Working"))
+        .expect("busy Working row");
+    assert!(
+        working_idx > 0 && lines[working_idx - 1].is_empty(),
+        "busy spinner must keep leading blank: {lines:?}"
     );
 }
 

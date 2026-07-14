@@ -450,14 +450,11 @@ impl UiRoot {
 
     fn render_status_slot(&mut self, width: usize) -> Vec<String> {
         if !self.status_busy {
-            return Vec::new();
+            // Idle breathing room above editor (status.md / agent_demo status_lines).
+            return vec![String::new()];
         }
-        // Loader::render prepends a blank spacer — drop empties so busy is 1 row.
-        self.status_loader
-            .render(width)
-            .into_iter()
-            .filter(|l| !l.is_empty())
-            .collect()
+        // Keep Loader leading blank + spinner row (do not strip empties).
+        self.status_loader.render(width)
     }
 
     fn render_editor_slot(&mut self, width: usize) -> Vec<String> {

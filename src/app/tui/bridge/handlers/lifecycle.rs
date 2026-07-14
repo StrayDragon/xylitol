@@ -60,6 +60,9 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                         text: "Aborted".into(),
                     });
                 }
+                model.streaming_thinking.clear();
+                model.streaming_assistant.clear();
+                model.current_role = None;
                 if model.queue.follow_up_count == 0 {
                     model.phase = UiPhase::Idle;
                     model.status = None;

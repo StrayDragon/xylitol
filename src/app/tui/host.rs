@@ -104,6 +104,8 @@ pub struct HostSession<T: Terminal> {
     /// Esc while busy — that made the second bang un-abortable (pi: no suppress
     /// on bash Esc; fresh cancel each run).
     suppress_idle_esc: bool,
+    /// After Esc abort: drop agent `XyEvent`s until this run's EventStream ends (c670).
+    suppress_xy_until_stream_end: bool,
     layout_cwd: String,
 }
 
@@ -144,6 +146,7 @@ impl<T: Terminal> HostSession<T> {
             run_active: false,
             bash_active: false,
             suppress_idle_esc: false,
+            suppress_xy_until_stream_end: false,
             layout_cwd: display_cwd(),
         }
     }
@@ -223,11 +226,13 @@ impl<T: Terminal> HostSession<T> {
     }
 
     /// Immediate Esc abort feedback: one System `Aborted`, idle status (agent run; c665).
+    /// Drops further agent Xy events until the current EventStream ends (c670).
     pub fn note_user_abort(&mut self) {
         self.ui_model.note_user_abort();
         self.bash_active = false;
         self.run_active = false;
         self.pending_abort = false;
+        self.suppress_xy_until_stream_end = true;
         // Crossterm may still deliver Esc Press/Repeat while idle after abort;
         // eat those only until the next non-Esc key or a new busy period.
         self.suppress_idle_esc = true;
@@ -423,6 +428,7 @@ impl<T: Terminal> HostSession<T> {
     /// Mark that `Driver::run` has started; seeds the user entry + busy phase.
     pub fn on_run_started(&mut self, prompt: &str) {
         self.suppress_idle_esc = false;
+        self.suppress_xy_until_stream_end = false;
         self.run_active = true;
         self.ui_model.begin_run(prompt);
         self.sync_ui_root_from_model();
@@ -431,6 +437,7 @@ impl<T: Terminal> HostSession<T> {
     /// Stream ended (None) — clear run flag; idle only if bridge already did.
     pub fn on_run_stream_closed(&mut self) {
         self.run_active = false;
+        self.suppress_xy_until_stream_end = false;
         self.ui_model.on_stream_closed_without_agent_end();
         self.sync_ui_root_from_model();
     }
@@ -475,12 +482,17 @@ impl<T: Terminal> HostSession<T> {
                 self.tui.request_render(false);
             }
             HostEvent::Xy(xy) => {
-                apply_xy_event(&mut self.ui_model, &xy);
-                if matches!(xy.as_ref(), XyEvent::AgentEnd { .. }) {
-                    self.run_active = false;
+                if self.suppress_xy_until_stream_end {
+                    // c670: abort already noted — do not revive busy via deltas / AgentEnd.
+                    self.tui.request_render(false);
+                } else {
+                    apply_xy_event(&mut self.ui_model, &xy);
+                    if matches!(xy.as_ref(), XyEvent::AgentEnd { .. }) {
+                        self.run_active = false;
+                    }
+                    self.sync_ui_root_from_model();
+                    self.tui.request_render(false);
                 }
-                self.sync_ui_root_from_model();
-                self.tui.request_render(false);
             }
         }
 
