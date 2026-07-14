@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,paa5,RemoteCount-可降级,"RemoteCount（Anthropic count_tokens 与 OpenAI Responses input_tokens，及等价注入 stub）MUST 可配置关闭；调用失败或超时时 MUST 降级到 LocalTokenizer 或 Heuristic，且 MUST NOT 将失败结果标为 Api。",null,null,null
+  add_requirement,paa7,openai-responses-remote-count,"当模型路径为 OpenAI Responses（或声明兼容 input_tokens 的端点）且 RemoteCount 已启用时，估计上下文 MUST 可经 POST /v1/responses/input_tokens（或配置的 base_url 等价路径）取得 input_tokens 并标 provenance 为 RemoteCount；Completions-only 路径 MUST NOT 伪造该远程调用成功。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  paa5,"remote-fail-degrade","RemoteCount 已启用但网络失败","估计上下文","降级到 LocalTokenizer 或 Heuristic 且 provenance 不是 Api"
+  paa7,"openai-input-tokens-success","Responses 路径 RemoteCount 启用且 input_tokens 返回 123","调用 estimate 且无 Api 锚点","provenance 为 RemoteCount 且 tokens 为 123"
+  paa7,"openai-input-tokens-http-fail","Responses RemoteCount 启用但 HTTP 非 2xx","估计上下文","provenance 不是 RemoteCount 也不是 Api"
+  paa7,"completions-no-fake-remote","仅 Completions adapter 且未声明 input_tokens","未注入 remote_count_tokens","不声称 OpenAI RemoteCount 成功"
