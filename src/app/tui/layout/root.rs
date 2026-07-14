@@ -503,6 +503,11 @@ impl UiRoot {
     pub fn tree_panel_text_for_test(&mut self, width: usize) -> String {
         self.tree.render(width).join("\n")
     }
+
+    #[cfg(test)]
+    pub fn tree_is_folded_for_test(&self, id: &str) -> bool {
+        self.tree.is_folded(id)
+    }
 }
 
 impl Default for UiRoot {
@@ -571,6 +576,10 @@ impl Component for UiRoot {
                     || matches_key_event(key, "pageDown")
                     || matches_key_event(key, "left")
                     || matches_key_event(key, "right")
+                    || matches_key_event(key, "ctrl+left")
+                    || matches_key_event(key, "alt+left")
+                    || matches_key_event(key, "ctrl+right")
+                    || matches_key_event(key, "alt+right")
                     || matches_key_event(key, "backspace")
                     || printable_from_key_event(key).is_some()
                 {

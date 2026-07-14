@@ -578,6 +578,36 @@ mod slice_tests {
         })
     }
 
+    fn ctrl_left_event() -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Left,
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn ctrl_right_event() -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Right,
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn bare_left_event() -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Left,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
     fn open_sample_tree(
         session: &mut HostSession<TestTerminal>,
     ) -> std::rc::Rc<std::cell::RefCell<crate::app::tui::layout::UiRoot>> {
@@ -1647,6 +1677,65 @@ mod slice_tests {
         );
         session.step(HostEvent::Input(esc_event())).unwrap();
         assert!(!root.borrow().tree_open(), "second Esc must close tree");
+    }
+
+    #[tokio::test]
+    async fn h17_tree_ctrl_left_folds_hides_descendants() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        root.borrow_mut().open_session_tree_at_for_test(
+            crate::app::tui::layout::sample_tree_nodes_for_test(),
+            "u1",
+        );
+        let before = root.borrow_mut().tree_panel_text_for_test(80);
+        assert!(
+            before.contains("tool:") || before.contains("read"),
+            "precondition: descendant tool row visible:\n{before}"
+        );
+        session.step(HostEvent::Input(ctrl_left_event())).unwrap();
+        assert!(
+            root.borrow().tree_is_folded_for_test("u1"),
+            "Ctrl+Left must fold selected u1"
+        );
+        let folded = root.borrow_mut().tree_panel_text_for_test(80);
+        assert!(
+            folded.contains('⊞') || folded.contains("⊞"),
+            "expected ⊞ fold marker; got:\n{folded}"
+        );
+        assert!(
+            !(folded.contains("tool:") && folded.contains("read")),
+            "folded u1 must hide tool descendant; got:\n{folded}"
+        );
+        session.step(HostEvent::Input(ctrl_right_event())).unwrap();
+        assert!(
+            !root.borrow().tree_is_folded_for_test("u1"),
+            "Ctrl+Right must unfold u1"
+        );
+        let restored = root.borrow_mut().tree_panel_text_for_test(80);
+        assert!(
+            restored.contains("tool:") || restored.contains("read"),
+            "unfold must restore descendants:\n{restored}"
+        );
+    }
+
+    #[tokio::test]
+    async fn h18_tree_bare_left_does_not_fold() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        root.borrow_mut().open_session_tree_at_for_test(
+            crate::app::tui::layout::sample_tree_nodes_for_test(),
+            "u1",
+        );
+        session.step(HostEvent::Input(bare_left_event())).unwrap();
+        assert!(
+            !root.borrow().tree_is_folded_for_test("u1"),
+            "bare Left must page, not fold"
+        );
+        let panel = root.borrow_mut().tree_panel_text_for_test(80);
+        assert!(
+            panel.contains("tool:") || panel.contains("read"),
+            "bare Left must keep descendants visible:\n{panel}"
+        );
     }
 
     #[test]
