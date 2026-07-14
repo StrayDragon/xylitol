@@ -2005,7 +2005,7 @@ impl FakeCodingAgentApp {
             None => {
                 self.push_message(
                     Role::System,
-                    "model · type `/model <id>` (Tab completes ids) · bare `/model` keeps slash list",
+                    "model · pick an id from the list (`/model` or `/model <prefix>`) then Enter",
                 );
                 self.set_status("Ready");
             }
@@ -2266,7 +2266,9 @@ impl FakeCodingAgentApp {
         // Pluggable CompletionSources: `/model <id>` + `/` + `@` + demo `$` stub.
         input.set_completion_sources(vec![
             Box::new(
-                SlashArgCompletionSource::new("model", demo_model_catalog()).with_id("model-id"),
+                SlashArgCompletionSource::new("model", demo_model_catalog())
+                    .with_id("model-id")
+                    .with_bare_command(true),
             ),
             Box::new(SlashCommandSource::new(slash_commands())),
             Box::new(AtPathSource::new(cwd.clone())),
