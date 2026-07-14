@@ -568,6 +568,27 @@ mod slice_tests {
         })
     }
 
+    fn ctrl_key_event(ch: char) -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Char(ch),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn open_sample_tree(
+        session: &mut HostSession<TestTerminal>,
+    ) -> std::rc::Rc<std::cell::RefCell<crate::app::tui::layout::UiRoot>> {
+        let root = session.ui_root().expect("ui").clone();
+        root.borrow_mut().open_session_tree_for_test(
+            crate::app::tui::layout::sample_tree_nodes_for_test(),
+            None,
+        );
+        root
+    }
+
     #[tokio::test]
     async fn h1_idle_enter_runs_driver() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -1452,6 +1473,110 @@ mod slice_tests {
         assert_eq!(driver.travel_calls(), vec!["u1".to_string()]);
         assert_eq!(root.borrow().editor_text(), "hello");
         assert!(!root.borrow().tree_open());
+    }
+
+    #[tokio::test]
+    async fn h12_tree_filter_no_tools_toggle() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = open_sample_tree(&mut session);
+        session.step(HostEvent::Input(ctrl_key_event('t'))).unwrap();
+        let panel = root.borrow_mut().tree_panel_text_for_test(80);
+        assert!(
+            !panel.contains("tool:"),
+            "no-tools must hide tool rows; got:\n{panel}"
+        );
+        assert!(
+            panel.contains("[no-tools]"),
+            "status must show [no-tools]; got:\n{panel}"
+        );
+        session.step(HostEvent::Input(ctrl_key_event('t'))).unwrap();
+        let panel = root.borrow_mut().tree_panel_text_for_test(80);
+        assert!(
+            panel.contains("tool:"),
+            "toggle back to default must show tools; got:\n{panel}"
+        );
+        assert!(
+            !panel.contains("[no-tools]"),
+            "default must not show [no-tools]; got:\n{panel}"
+        );
+        assert_eq!(
+            root.borrow().tree_filter_for_test(),
+            crate::app::tui::layout::FilterMode::Default
+        );
+    }
+
+    #[tokio::test]
+    async fn h13_tree_filter_user_only() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = open_sample_tree(&mut session);
+        session.step(HostEvent::Input(ctrl_key_event('u'))).unwrap();
+        let panel = root.borrow_mut().tree_panel_text_for_test(80);
+        assert!(
+            panel.contains("user:") && !panel.contains("assistant:") && !panel.contains("tool:"),
+            "user-only must hide non-user rows; got:\n{panel}"
+        );
+        assert!(
+            panel.contains("[user]"),
+            "status must show [user]; got:\n{panel}"
+        );
+    }
+
+    #[tokio::test]
+    async fn h14_tree_filter_labeled_only() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = open_sample_tree(&mut session);
+        session.step(HostEvent::Input(ctrl_key_event('l'))).unwrap();
+        let panel = root.borrow_mut().tree_panel_text_for_test(80);
+        assert!(
+            panel.contains("keep") && !panel.contains("alternate"),
+            "labeled-only must show annotated node only; got:\n{panel}"
+        );
+        assert!(
+            panel.contains("[labeled]"),
+            "status must show [labeled]; got:\n{panel}"
+        );
+    }
+
+    #[tokio::test]
+    async fn h15_tree_filter_cycle_ctrl_o() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = open_sample_tree(&mut session);
+        assert_eq!(
+            root.borrow().tree_filter_for_test(),
+            crate::app::tui::layout::FilterMode::Default
+        );
+        session.step(HostEvent::Input(ctrl_key_event('o'))).unwrap();
+        let panel = root.borrow_mut().tree_panel_text_for_test(80);
+        assert!(
+            panel.contains("[no-tools]"),
+            "ctrl+o from default must cycle to no-tools; got:\n{panel}"
+        );
+        assert_eq!(
+            root.borrow().tree_filter_for_test(),
+            crate::app::tui::layout::FilterMode::NoTools
+        );
+    }
+
+    #[tokio::test]
+    async fn h16_tree_search_esc_then_close() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = open_sample_tree(&mut session);
+        session.step(HostEvent::Input(char_event('r'))).unwrap();
+        assert!(
+            !root.borrow().tree_search_query_for_test().is_empty(),
+            "typing must set tree search query"
+        );
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        assert!(
+            root.borrow().tree_search_query_for_test().is_empty(),
+            "first Esc must clear search"
+        );
+        assert!(
+            root.borrow().tree_open(),
+            "tree must stay open after search clear"
+        );
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        assert!(!root.borrow().tree_open(), "second Esc must close tree");
     }
 
     #[test]

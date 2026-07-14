@@ -19,6 +19,7 @@ use xylitol_tui::{
     fg_rgb, fuzzy_filter, matches_key_event, printable_from_key_event, truncate_to_width,
 };
 
+use super::session_tree::FilterMode;
 use super::slots::EditorSlot;
 use super::theme::LayoutTheme;
 use crate::app::tui::bridge::{UiModel, UiPhase};
@@ -89,6 +90,7 @@ pub struct UiRoot {
     /// Mutually exclusive editor-zone face (ati18).
     slot: EditorSlot,
     tree: TreeSelector,
+    tree_filter: FilterMode,
     last_esc_at: Option<Instant>,
     /// `!` / `!!` prefix → success border (c492).
     bash_mode: bool,
@@ -142,6 +144,7 @@ impl UiRoot {
             model: "—".into(),
             slot: EditorSlot::Editor,
             tree: empty_tree_selector(theme),
+            tree_filter: FilterMode::Default,
             last_esc_at: None,
             bash_mode: false,
             external_editor_invocations: 0,
@@ -296,15 +299,25 @@ impl UiRoot {
         }
     }
 
+    fn apply_tree_filter(&mut self, mode: FilterMode) {
+        self.tree_filter = mode;
+        let filter = mode;
+        self.tree
+            .set_include_node(Some(Box::new(move |n| filter.include(n))));
+        self.tree
+            .set_status_suffix(mode.status_suffix().map(str::to_string));
+    }
+
     /// Mount MessageHistory rows fetched via Driver and open the Tree slot.
     pub fn mount_session_tree(&mut self, roots: Vec<TreeNode>, active_id: Option<&str>) {
+        self.tree_filter = FilterMode::Default;
         self.tree = TreeSelector::new(
             roots,
             self.theme.tree_selector_theme(),
             TreeSelectorOptions {
                 max_visible: 10,
                 unicode_connectors: true,
-                include_node: None,
+                include_node: Some(Box::new(|n| FilterMode::Default.include(n))),
                 active_id: active_id.map(str::to_string),
                 status_suffix: None,
             },
@@ -324,8 +337,15 @@ impl UiRoot {
         quit_flag.store(true, Ordering::SeqCst);
     }
 
-    /// Esc: close overlay slot first; else idle empty double-Esc queues live tree open.
+    /// Esc: tree clears search first; other overlays close; else idle empty double-Esc queues live tree open.
     pub fn on_escape(&mut self) -> bool {
+        if self.slot.is_tree() {
+            if self.tree.clear_search_if_any() {
+                return true;
+            }
+            self.close_slot();
+            return true;
+        }
         if self.slot.is_overlay() {
             self.close_slot();
             return true;
@@ -471,6 +491,21 @@ impl UiRoot {
         // Idle empty: 0 rows (DESIGN editor.md — no loud placeholder wall).
         render_scrollback(&self.ui_model, self.glyphs, self.theme, self.fold, width)
     }
+
+    #[cfg(test)]
+    pub fn tree_filter_for_test(&self) -> FilterMode {
+        self.tree_filter
+    }
+
+    #[cfg(test)]
+    pub fn tree_search_query_for_test(&self) -> &str {
+        self.tree.search_query()
+    }
+
+    #[cfg(test)]
+    pub fn tree_panel_text_for_test(&mut self, width: usize) -> String {
+        self.tree.render(width).join("\n")
+    }
 }
 
 impl Default for UiRoot {
@@ -504,6 +539,30 @@ impl Component for UiRoot {
                 let InputEvent::Key(ref key) = event else {
                     return;
                 };
+                if matches_key_event(key, "ctrl+d") {
+                    self.apply_tree_filter(FilterMode::Default);
+                    return;
+                }
+                if matches_key_event(key, "ctrl+t") {
+                    self.apply_tree_filter(self.tree_filter.toggle(FilterMode::NoTools));
+                    return;
+                }
+                if matches_key_event(key, "ctrl+u") {
+                    self.apply_tree_filter(self.tree_filter.toggle(FilterMode::UserOnly));
+                    return;
+                }
+                if matches_key_event(key, "ctrl+l") {
+                    self.apply_tree_filter(self.tree_filter.toggle(FilterMode::LabeledOnly));
+                    return;
+                }
+                if matches_key_event(key, "ctrl+a") {
+                    self.apply_tree_filter(self.tree_filter.toggle(FilterMode::All));
+                    return;
+                }
+                if matches_key_event(key, "ctrl+o") {
+                    self.apply_tree_filter(self.tree_filter.cycle());
+                    return;
+                }
                 if matches_key_event(key, "enter") {
                     let id = self.tree.selected_id().unwrap_or("?").to_string();
                     self.pending_tree_travel = Some(id);
@@ -515,6 +574,8 @@ impl Component for UiRoot {
                     || matches_key_event(key, "pageDown")
                     || matches_key_event(key, "left")
                     || matches_key_event(key, "right")
+                    || matches_key_event(key, "backspace")
+                    || printable_from_key_event(key).is_some()
                 {
                     self.tree.handle_input(event);
                 }
@@ -686,16 +747,20 @@ pub fn install_ui_root_key_listeners<T: Terminal>(
 pub(crate) fn sample_tree_nodes_for_test() -> Vec<TreeNode> {
     vec![
         TreeNode::new("root", "session · product").with_children([
-            TreeNode::new("u1", "hello").with_kind("user").with_child(
-                TreeNode::new("a1", "plan")
-                    .with_kind("assistant")
-                    .with_children([
-                        TreeNode::new("t1", "read").with_kind("tool"),
-                        TreeNode::new("a2", "done")
-                            .with_kind("assistant")
-                            .with_child(TreeNode::new("u2", "next").with_kind("user")),
-                    ]),
-            ),
+            TreeNode::new("meta1", "fake / model").with_kind("meta"),
+            TreeNode::new("u1", "hello")
+                .with_kind("user")
+                .with_annotation("keep")
+                .with_child(
+                    TreeNode::new("a1", "plan")
+                        .with_kind("assistant")
+                        .with_children([
+                            TreeNode::new("t1", "read").with_kind("tool"),
+                            TreeNode::new("a2", "done")
+                                .with_kind("assistant")
+                                .with_child(TreeNode::new("u2", "next").with_kind("user")),
+                        ]),
+                ),
             TreeNode::new("fork", "alternate")
                 .with_kind("user")
                 .with_child(TreeNode::new("af", "fork leaf").with_kind("assistant")),
