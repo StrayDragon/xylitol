@@ -46,7 +46,7 @@
 
 - 树内 Shift+F，或叶上 `/fork` → `fork_session` + `switch_session`（user→`Before` / 非 user→`At`）。
 
-`session-tree-branched` 预置兄弟枝；线性夹具测不出分叉 UI，不等于没有机制。
+`session-tree-branched` 预置兄弟枝；PTY：`pty_product_fake_session_tree_branched`。线性夹具测不出分叉 UI，不等于没有机制。
 
 ---
 
@@ -55,4 +55,4 @@
 | 日期 | 变更 |
 |---|---|
 | 2026-07-14 | 建表；A01 明确不做 travel 分支摘要（撤 c695）；A02 产品 fork=新 session vs 同会话 travel 分枝 |
-| 2026-07-14 | `/debug session-tree-branched` 预置兄弟枝 |
+| 2026-07-14 | `/debug session-tree-branched` 预置兄弟枝；PTY `pty_product_fake_session_tree_branched`（raw 断言，避 CapturedScreen 长 scrollback 不同步） |
