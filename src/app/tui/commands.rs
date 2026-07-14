@@ -8,7 +8,8 @@ use super::bridge::{BashBlockStatus, UiEntry};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PendingSlash {
     Exit,
-    CycleModel,
+    /// Bare `/model` — open fuzzy picker (c630).
+    OpenModels,
     SetModel(String),
 }
 
@@ -81,7 +82,7 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         .map(str::to_string);
     match (cmd.as_str(), arg) {
         ("exit" | "quit", _) => Some(PendingSlash::Exit),
-        ("model", None) => Some(PendingSlash::CycleModel),
+        ("model", None) => Some(PendingSlash::OpenModels),
         ("model", Some(id)) => Some(PendingSlash::SetModel(id)),
         _ => None,
     }

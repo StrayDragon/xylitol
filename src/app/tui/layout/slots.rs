@@ -16,6 +16,8 @@ pub enum EditorSlot {
     Settings,
     /// Ask / ChoicePrompt empty shell (MAY; Esc closes).
     Choice,
+    /// Fuzzy model picker (`/model`, c630).
+    Models,
 }
 
 impl EditorSlot {
@@ -39,6 +41,7 @@ impl EditorSlot {
             Self::Plate => "Command Plate",
             Self::Settings => "Settings",
             Self::Choice => "Choice",
+            Self::Models => "Models",
         }
     }
 }
