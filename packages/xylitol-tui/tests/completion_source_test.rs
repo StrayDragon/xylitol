@@ -285,7 +285,7 @@ fn slash_arg_model_opens_after_space_not_bare() {
     ];
     let mut h = TuiTestHarness::new(80, 20);
     h.mount(Box::new(editor_with(vec![
-        Box::new(SlashArgCompletionSource::new("model", catalog).with_id("model-id")),
+        Box::new(SlashArgCompletionSource::new("model", catalog.clone()).with_id("model-id")),
         Box::new(SlashCommandSource::new(vec![SlashCommand {
             name: "model".into(),
             description: Some("Switch model: /model <id>".into()),
@@ -301,29 +301,63 @@ fn slash_arg_model_opens_after_space_not_bare() {
     let bare = h.tui.terminal.viewport().join("\n");
     assert!(
         bare.contains("Switch model: /model <id>"),
-        "bare /model must stay on slash list; got:\n{bare}"
+        "default bare /model must stay on slash list; got:\n{bare}"
     );
     assert!(
         !bare.contains("opencode-go"),
-        "bare /model must not open model-id catalog; got:\n{bare}"
+        "default bare /model must not open model-id catalog; got:\n{bare}"
     );
 
-    h.keys(" dee");
-    h.render_result().expect("/model dee arg popup");
+    h.keys(" ");
+    h.render_result().expect("/model␠ auto-opens arg popup");
     h.assert_text_contains("deepseek-v4-flash");
     h.assert_text_contains("opencode-go");
     let arg = h.tui.terminal.viewport().join("\n");
     assert!(
         !arg.contains("Switch model: /model <id>"),
-        "arg popup must own the slot; got:\n{arg}"
+        "space after /model must auto-open catalog without Tab; got:\n{arg}"
     );
 
-    h.keys("\t");
+    h.keys("dee\t");
     h.render_result().expect("Tab applies model id");
     let after = h.tui.terminal.viewport().join("\n");
     assert!(
         after.contains("/model deepseek-v4-flash"),
         "Tab should write id onto the line; got:\n{after}"
+    );
+}
+
+#[test]
+fn slash_arg_model_bare_opt_in_opens_catalog() {
+    let catalog = vec![
+        ("deepseek-v4-flash".into(), "opencode-go".into()),
+        ("grok-4.5:slow".into(), "cursor".into()),
+    ];
+    let mut h = TuiTestHarness::new(80, 20);
+    h.mount(Box::new(editor_with(vec![
+        Box::new(
+            SlashArgCompletionSource::new("model", catalog)
+                .with_id("model-id")
+                .with_bare_command(true),
+        ),
+        Box::new(SlashCommandSource::new(vec![SlashCommand {
+            name: "model".into(),
+            description: Some("Switch model: /model <id>".into()),
+            argument_hint: None,
+            get_argument_completions: None,
+        }])),
+    ])))
+    .focus(Some(0));
+
+    h.render_result().expect("render");
+    h.keys("/model");
+    h.render_result().expect("bare /model opens catalog");
+    h.assert_text_contains("deepseek-v4-flash");
+    h.assert_text_contains("opencode-go");
+    let text = h.tui.terminal.viewport().join("\n");
+    assert!(
+        !text.contains("Switch model: /model <id>"),
+        "bare opt-in must own the slot; got:\n{text}"
     );
 }
 

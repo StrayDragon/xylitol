@@ -1106,15 +1106,23 @@ impl Editor {
         if self.is_showing_autocomplete() {
             let ctx = self.completion_ctx();
             if self.completion.should_dismiss_active(&ctx) {
+                let prev = self.completion.active_index();
                 self.cancel_autocomplete();
+                // Lone `/` stays closed; `/model␠` must hand off to model-id.
+                if let Some((i, _)) = self.completion.probe_first(&self.completion_ctx())
+                    && prev != Some(i)
+                {
+                    self.request_autocomplete(false, false);
+                }
                 return;
             }
             self.request_autocomplete(false, false);
-        } else {
-            let ctx = self.completion_ctx();
-            if self.completion.probe_first(&ctx).is_some() {
-                self.request_autocomplete(false, false);
-            }
+        } else if self
+            .completion
+            .probe_first(&self.completion_ctx())
+            .is_some()
+        {
+            self.request_autocomplete(false, false);
         }
     }
 
@@ -1177,6 +1185,8 @@ impl Editor {
                     self.set_cursor_col(nc);
                     self.cancel_autocomplete();
                     self.on_changed();
+                    // Chain: `/model` slash apply → `/model ` → open arg catalog.
+                    self.handle_autocomplete_on_edit();
                 } else {
                     self.apply_autocomplete_suggestions(
                         s,
@@ -1347,6 +1357,8 @@ impl Editor {
                         self.set_cursor_col(nc);
                         self.cancel_autocomplete();
                         self.on_changed();
+                        // Chain next source (e.g. slash `model` → `/model ` → model ids).
+                        self.handle_autocomplete_on_edit();
                     } else {
                         self.cancel_autocomplete();
                     }
