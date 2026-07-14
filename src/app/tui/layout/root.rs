@@ -100,6 +100,8 @@ pub struct UiRoot {
     pending_tree_open: bool,
     /// Tree Enter → host calls `travel_session_tree` (c615).
     pending_tree_travel: Option<String>,
+    /// Tree Shift+F → host calls `fork_session` + `switch_session` (c645).
+    pending_tree_fork: Option<String>,
     /// Models Enter → host calls `SetModel` (c630).
     pending_model_select: Option<String>,
     models_list: SelectList,
@@ -150,6 +152,7 @@ impl UiRoot {
             external_editor_invocations: 0,
             pending_tree_open: false,
             pending_tree_travel: None,
+            pending_tree_fork: None,
             pending_model_select: None,
             models_list: empty_models_list(theme),
             models_items: Vec::new(),
@@ -261,6 +264,10 @@ impl UiRoot {
 
     pub fn take_pending_tree_travel(&mut self) -> Option<String> {
         self.pending_tree_travel.take()
+    }
+
+    pub fn take_pending_tree_fork(&mut self) -> Option<String> {
+        self.pending_tree_fork.take()
     }
 
     pub fn take_pending_model_select(&mut self) -> Option<String> {
@@ -568,6 +575,11 @@ impl Component for UiRoot {
                 if matches_key_event(key, "enter") {
                     let id = self.tree.selected_id().unwrap_or("?").to_string();
                     self.pending_tree_travel = Some(id);
+                    return;
+                }
+                if matches_key_event(key, "shift+f") {
+                    let id = self.tree.selected_id().unwrap_or("?").to_string();
+                    self.pending_tree_fork = Some(id);
                     return;
                 }
                 if matches_key_event(key, "up")

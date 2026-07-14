@@ -199,9 +199,15 @@ pub async fn dispatch(
                 .map_err(DispatchError)?;
             Ok(DispatchOutcome::SwitchedSession(switched))
         }
-        Command::Fork { entry_id, .. } => {
+        Command::Fork {
+            entry_id, position, ..
+        } => {
+            let pos = match position.as_deref() {
+                Some("before") => crate::domain::session_types::ForkPosition::Before,
+                _ => crate::domain::session_types::ForkPosition::At,
+            };
             let new_id = driver
-                .fork_session(&entry_id)
+                .fork_session(&entry_id, pos)
                 .await
                 .map_err(DispatchError)?;
             Ok(DispatchOutcome::NewSession(new_id))
@@ -346,7 +352,11 @@ mod tests {
         async fn import_jsonl(&mut self, _path: &std::path::Path) -> Result<String, String> {
             Ok("new-session".into())
         }
-        async fn fork_session(&mut self, _entry_id: &str) -> Result<String, String> {
+        async fn fork_session(
+            &mut self,
+            _entry_id: &str,
+            _position: crate::domain::session_types::ForkPosition,
+        ) -> Result<String, String> {
             Ok("forked-session".into())
         }
         async fn switch_session(&mut self, id: &str) -> Result<String, String> {

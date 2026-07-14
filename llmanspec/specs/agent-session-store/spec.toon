@@ -8,7 +8,7 @@ requirements[29]{req_id,title,statement}:
   s1,"jsonl-storage","SessionManager MUST persist sessions as JSONL files with one JSON object per line version-tagged in ~/.xylitol/sessions/."
   s2,"entry-types",SessionManager MUST support entry types (message compaction branch_summary model_change thinking_level_change custom label session_info).
   s3,crud,SessionManager MUST support create append load list and exists operations.
-  s4,"version-migration","SessionManager MUST support version migration when reading older-format session files."
+  s4,"no-legacy-agent-part-migration","Session JSONL 的 message.content AgentPart 形态以 domain-message dm1 为唯一真源；系统 MUST NOT 迁移或静默解读 c646 之前的 untagged/裸字符串 content。读到此类旧 content 时 MUST 按 agent-session as46 拒绝/跳过策略处理。文件级其它版本字段若存在 MAY 保留，但 MUST NOT 借此复活旧 AgentPart 语义。"
   s5,"session-tree","SessionManager MUST maintain parent/child session links: fork creates child branch summaries reference parent entries."
   s6,"branch-summary","System MUST support generateBranchSummary(parentEntries) producing a CompactionEntry summarizing cut-point entries."
   s7,"file-operations","SessionManager MUST use atomic appends (append-only JSONL) with file locking for concurrent access safety."
@@ -38,7 +38,7 @@ scenarios[35]{req_id,id,given,when,then}:
   s1,"create-load",a new session is created,entries are appended and session is loaded,all entries are returned in order
   s2,types,entries of each type are appended,session is loaded,each entry preserves its type and data
   s3,list,multiple sessions exist,list() is called,all session ids are returned
-  s4,migration,a v2 session file exists,session is loaded,entries are migrated to v3 format correctly
+  s4,"no-untagged-migration",磁盘 JSONL 含旧 untagged thinking 对象,load 并解析为 AgentPart,不迁移为合法 Thinking；走拒绝或跳过
   s5,fork,session A has 10 entries,fork at entry 5 creates session B,"B has entries 1-5 + branch_summary"
   s6,"branch-summary",5 entries before a cut point,generateBranchSummary is called,a CompactionEntry summarizing those 5 entries is produced
   s7,concurrent,two writers append to the same session,both writes complete,file has all entries without corruption

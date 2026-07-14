@@ -50,6 +50,9 @@ pub struct ScriptedDriver {
     travel_overrides: HashMap<String, SessionTreeTravel>,
     session_tree_calls: AtomicUsize,
     travel_calls: Mutex<Vec<String>>,
+    fork_calls: Mutex<Vec<(String, crate::domain::session_types::ForkPosition)>>,
+    switch_calls: Mutex<Vec<String>>,
+    active_session_id: Mutex<String>,
 }
 
 impl ScriptedDriver {
@@ -115,6 +118,9 @@ impl ScriptedDriver {
             travel_overrides: HashMap::new(),
             session_tree_calls: AtomicUsize::new(0),
             travel_calls: Mutex::new(Vec::new()),
+            fork_calls: Mutex::new(Vec::new()),
+            switch_calls: Mutex::new(Vec::new()),
+            active_session_id: Mutex::new("scripted".into()),
         }
     }
 
@@ -138,6 +144,15 @@ impl ScriptedDriver {
         self.travel_calls.lock().expect("travel_calls").clone()
     }
 
+    pub fn fork_calls(&self) -> Vec<(String, crate::domain::session_types::ForkPosition)> {
+        self.fork_calls.lock().expect("fork_calls").clone()
+    }
+
+    pub fn switch_calls(&self) -> Vec<String> {
+        self.switch_calls.lock().expect("switch_calls").clone()
+    }
+
+    #[allow(dead_code)] // harness helper for model-picker scripts
     pub fn set_available_models(&mut self, models: Vec<ModelInfo>) {
         self.available_models = models;
     }
@@ -230,7 +245,7 @@ impl Driver for ScriptedDriver {
     }
 
     fn session_id(&self) -> Option<String> {
-        Some("scripted".into())
+        Some(self.active_session_id.lock().expect("sid").clone())
     }
 
     async fn execute_bash(
@@ -293,11 +308,24 @@ impl Driver for ScriptedDriver {
         Ok("imported".into())
     }
 
-    async fn fork_session(&mut self, _entry_id: &str) -> Result<String, String> {
-        Ok("forked".into())
+    async fn fork_session(
+        &mut self,
+        entry_id: &str,
+        position: crate::domain::session_types::ForkPosition,
+    ) -> Result<String, String> {
+        self.fork_calls
+            .lock()
+            .expect("fork_calls")
+            .push((entry_id.to_string(), position));
+        Ok("forked-child".into())
     }
 
     async fn switch_session(&mut self, session_id: &str) -> Result<String, String> {
+        self.switch_calls
+            .lock()
+            .expect("switch_calls")
+            .push(session_id.to_string());
+        *self.active_session_id.lock().expect("sid") = session_id.to_string();
         Ok(session_id.into())
     }
 
@@ -603,6 +631,16 @@ mod slice_tests {
         InputEvent::Key(KeyEvent {
             code: KeyCode::Left,
             modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn shift_f_event() -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Char('f'),
+            modifiers: KeyModifiers::SHIFT,
             kind: KeyEventKind::Press,
             state: KeyEventState::NONE,
         })
@@ -1068,14 +1106,13 @@ mod slice_tests {
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
-        let entries = &session.ui_model().entries;
         assert!(
             session.ui_model().entries.iter().any(|e| matches!(
                 e,
                 UiEntry::Bash { command, .. } if command.contains("echo hi")
             )),
-            "summary missing: {entries:?}",
-            entries = &session.ui_model().entries
+            "summary missing: {:?}",
+            session.ui_model().entries
         );
         assert!(
             session.ui_model().entries.iter().any(|e| matches!(
@@ -1509,7 +1546,7 @@ mod slice_tests {
     async fn c669_second_bang_hard_reject_while_bash_active() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
-        let mut driver = ScriptedDriver::new();
+        let driver = ScriptedDriver::new();
         session.begin_bash_exec("sleep 99", false);
         assert!(session.bash_active());
         root.borrow_mut()
@@ -1735,6 +1772,72 @@ mod slice_tests {
         assert!(
             panel.contains("tool:") || panel.contains("read"),
             "bare Left must keep descendants visible:\n{panel}"
+        );
+    }
+
+    #[tokio::test]
+    async fn h19_tree_shift_f_forks_user_before() {
+        use crate::domain::session_types::ForkPosition;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        let mut stream = None;
+        root.borrow_mut().open_session_tree_at_for_test(
+            crate::app::tui::layout::sample_tree_nodes_for_test(),
+            "u1",
+        );
+        session.step(HostEvent::Input(shift_f_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.fork_calls(),
+            vec![("u1".to_string(), ForkPosition::Before)]
+        );
+        assert_eq!(driver.switch_calls(), vec!["forked-child".to_string()]);
+        assert!(!root.borrow().tree_open(), "tree must close after fork");
+        assert_eq!(root.borrow().editor_text(), "hello");
+        assert!(
+            session
+                .ui_model()
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text.contains("Forked"))),
+            "expected fork note: {:?}",
+            session.ui_model().entries
+        );
+    }
+
+    #[tokio::test]
+    async fn h20_tree_shift_f_forks_assistant_at() {
+        use crate::domain::session_types::ForkPosition;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        let mut stream = None;
+        root.borrow_mut().open_session_tree_at_for_test(
+            crate::app::tui::layout::sample_tree_nodes_for_test(),
+            "a1",
+        );
+        root.borrow_mut().set_editor_text("stale prefill");
+        session.step(HostEvent::Input(shift_f_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.fork_calls(),
+            vec![("a1".to_string(), ForkPosition::At)]
+        );
+        assert_eq!(driver.switch_calls(), vec!["forked-child".to_string()]);
+        assert!(!root.borrow().tree_open(), "tree must close after fork");
+        assert_eq!(
+            root.borrow().editor_text(),
+            "",
+            "At must not prefill user body"
         );
     }
 

@@ -420,7 +420,7 @@ mod tests {
     fn convert_assistant_with_tool_call() {
         let msgs = vec![AgentMessage::AssistantMessage {
             content: vec![
-                AgentPart::Text("Let me check".into()),
+                AgentPart::text("Let me check"),
                 AgentPart::ToolCall {
                     id: "call-1".into(),
                     name: "read".into(),
@@ -453,7 +453,7 @@ mod tests {
         let msgs = vec![AgentMessage::tool_result(
             "call-1",
             "",
-            vec![AgentPart::Text("done".into())],
+            vec![AgentPart::text("done")],
             false,
         )];
         let result = convert_agent_messages(&msgs, None);

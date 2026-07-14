@@ -418,8 +418,12 @@ impl AgentCapabilities {
 
     /// Fork the current session at a given entry, creating a child session.
     ///
-    /// Returns the child session ID on success.
-    pub async fn fork_session(&self, at_entry_id: &str) -> Result<String, String> {
+    /// Returns the child session ID on success. See [`ForkPosition`].
+    pub async fn fork_session(
+        &self,
+        at_entry_id: &str,
+        position: crate::domain::session_types::ForkPosition,
+    ) -> Result<String, String> {
         let parent_id = self
             .session_id()
             .ok_or_else(|| "no active session".to_string())?;
@@ -427,7 +431,7 @@ impl AgentCapabilities {
         let child_id = uuid::Uuid::new_v4().to_string();
 
         self.store
-            .fork(parent_id, &child_id, at_entry_id)
+            .fork(parent_id, &child_id, at_entry_id, position)
             .await
             .map_err(|e| format!("fork failed: {e}"))?;
 

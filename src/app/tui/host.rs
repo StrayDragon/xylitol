@@ -328,6 +328,11 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().take_pending_tree_travel()
     }
 
+    pub fn take_pending_session_tree_fork(&mut self) -> Option<String> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().take_pending_tree_fork()
+    }
+
     pub fn mount_session_tree(&mut self, roots: Vec<TreeNode>, active_id: Option<String>) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
@@ -411,6 +416,36 @@ impl<T: Terminal> HostSession<T> {
             }
         }
         self.sync_ui_root_from_model();
+    }
+
+    /// After Driver fork+switch: rebuild transcript from child entries and optional prefill.
+    pub fn apply_session_tree_fork(
+        &mut self,
+        child_id: &str,
+        entries: Vec<SessionEntry>,
+        editor_prefill: Option<String>,
+    ) {
+        let leaf_id = entries
+            .iter()
+            .rev()
+            .find_map(|e| e.entry_id().map(str::to_string));
+        let travel = SessionTreeTravel {
+            kind: crate::domain::session_types::SessionTreeKind::MessageHistory,
+            selected_id: child_id.to_string(),
+            leaf_id,
+            editor_text: editor_prefill.clone(),
+        };
+        rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
+        if let Some(UiEntry::System { text }) = self.ui_model.entries.first_mut() {
+            *text = format!("forked → session {child_id}");
+        }
+        if let Some(root) = self.ui_root.as_ref() {
+            let mut root = root.borrow_mut();
+            root.close_session_tree();
+            root.set_editor_text(editor_prefill.unwrap_or_default());
+        }
+        self.sync_ui_root_from_model();
+        self.push_system_note(format!("Forked to new session {child_id}"));
     }
 
     /// Queue a submit from the host loop / harness (idle only).

@@ -57,26 +57,20 @@ pub fn estimate_tokens(messages: &[crate::domain::message::AgentMessage]) -> u64
     let mut total = 0u64;
     for msg in messages {
         for part in msg.content() {
-            match part {
-                crate::domain::message::AgentPart::Text(s)
-                | crate::domain::message::AgentPart::Thinking { text: s, .. } => {
-                    total += (s.len() as u64).div_ceil(4);
-                }
-                crate::domain::message::AgentPart::ToolCall {
-                    name, arguments, ..
-                } => {
-                    total += (name.len() as u64).div_ceil(4);
-                    total += (arguments.to_string().len() as u64).div_ceil(4);
-                }
-                crate::domain::message::AgentPart::ToolResult { content, .. } => {
-                    for inner in content {
-                        if let crate::domain::message::AgentPart::Text(s) = inner {
-                            total += (s.len() as u64).div_ceil(4);
-                        }
+            if let Some(s) = part.as_text() {
+                total += (s.len() as u64).div_ceil(4);
+            } else {
+                match part {
+                    crate::domain::message::AgentPart::ToolCall {
+                        name, arguments, ..
+                    } => {
+                        total += (name.len() as u64).div_ceil(4);
+                        total += (arguments.to_string().len() as u64).div_ceil(4);
                     }
-                }
-                crate::domain::message::AgentPart::Image(_) => {
-                    total += 4800; // image token estimate
+                    crate::domain::message::AgentPart::Image(_) => {
+                        total += 4800; // image token estimate
+                    }
+                    _ => {}
                 }
             }
         }

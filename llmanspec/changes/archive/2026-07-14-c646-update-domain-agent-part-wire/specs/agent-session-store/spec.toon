@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,s4,"no-legacy-agent-part-migration","Session JSONL 的 message.content AgentPart 形态以 domain-message dm1 为唯一真源；系统 MUST NOT 迁移或静默解读 c646 之前的 untagged/裸字符串 content。读到此类旧 content 时 MUST 按 agent-session as46 拒绝/跳过策略处理。文件级其它版本字段若存在 MAY 保留，但 MUST NOT 借此复活旧 AgentPart 语义。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  s4,"no-untagged-migration",磁盘 JSONL 含旧 untagged thinking 对象,load 并解析为 AgentPart,不迁移为合法 Thinking；走拒绝或跳过
