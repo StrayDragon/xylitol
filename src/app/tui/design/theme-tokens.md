@@ -24,6 +24,7 @@ components:
 1. 颜色 MUST 经语义 token 映射，**MUST NOT** 在产品组件里散落原始 hex。
 2. 包组件主题字段为 `Box<dyn Fn(&str) -> String>`（或等价），由本面注入。
 3. Diff / 工具块 / Markdown 色规则见 [`diff-block.md`](./diff-block.md)、[`expandable.md`](./expandable.md)、[`markdown.md`](./markdown.md)。
+   - Edit 嵌在 `tool-*-bg` 时：词级用 `xylitol_tui::word_wash_bg(block_bg, polarity)`（红/绿轻量混亮，默认 mix≈**0.32**），**MUST NOT** reverse。
 4. 一屏最多一处 `{colors.accent}`（通常 busy spinner 或焦点边框）。
 5. 产品 host **MUST** 默认 `Palette::dark()`；**MUST NOT** 默认开启 theme auto / `/theme`。
 6. 查任意 `{colors.*}`：打开 [`../DESIGN.md`](../DESIGN.md) 的 `colors:` 段。

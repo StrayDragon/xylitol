@@ -141,7 +141,7 @@
     .chip { width: 2rem; height: 2rem; border: 1px solid var(--muted); }
     .swatch .hex { color: var(--muted); font-size: 12px; }
 
-    .stage, .term, .overlay-demo, .split {
+    .stage, .term, .split {
       max-width: 52rem;
       border: 1px solid var(--hairline);
       padding: 0.55rem 0.65rem;
@@ -176,8 +176,25 @@
     .bg-tool-error { background: var(--tool-error-bg); }
     .bg-diff-added { background: var(--diff-added-bg); }
     .bg-diff-removed { background: var(--diff-removed-bg); }
-    .word-added { color: var(--diff-added); background: var(--diff-added-word-bg); }
-    .word-removed { color: var(--diff-removed); background: var(--diff-removed-word-bg); }
+    /* Bright polarity wash on block bg: + green / − red (not darken-only) */
+    .word-added {
+      color: var(--diff-added);
+      background: color-mix(in srgb, var(--tool-success-bg, var(--diff-added-bg)) 68%, var(--diff-added));
+    }
+    .word-removed {
+      color: var(--diff-removed);
+      background: color-mix(in srgb, var(--tool-success-bg, var(--diff-removed-bg)) 68%, var(--diff-removed));
+    }
+    .stage-tool-wash {
+      background: var(--tool-success-bg);
+      padding: 0.35rem 0.4rem;
+    }
+    .stage-tool-wash .word-added {
+      background: color-mix(in srgb, var(--tool-success-bg) 68%, var(--diff-added));
+    }
+    .stage-tool-wash .word-removed {
+      background: color-mix(in srgb, var(--tool-success-bg) 68%, var(--diff-removed));
+    }
     .rev {
       background: var(--on-surface);
       color: var(--surface);
@@ -302,23 +319,6 @@
       .split { grid-template-columns: 1fr; }
     }
 
-    .overlay-demo { position: relative; min-height: 12rem; }
-    .overlay-demo .dim-bg { color: var(--muted); opacity: 0.5; }
-    .overlay-box {
-      margin: 1.1rem auto 0;
-      max-width: 22rem;
-      border: 1px solid var(--muted);
-      padding: 0.65rem 0.75rem;
-      background: var(--surface);
-      transition: opacity 0.18s ease, transform 0.18s ease;
-    }
-    .overlay-box.is-out {
-      opacity: 0;
-      transform: translateY(6px);
-      pointer-events: none;
-    }
-    .overlay-box .actions { color: var(--muted); margin-top: 0.5rem; }
-    .overlay-box .actions .yes { color: var(--accent); }
 
     .accent-bad .spin-a,
     .accent-bad .spin-b { color: var(--accent); }
@@ -466,9 +466,9 @@
           <button type="button" class="chip-btn" data-diff-view="unified" aria-pressed="true">unified</button>
           <button type="button" class="chip-btn" data-diff-view="sbs" aria-pressed="false">side-by-side</button>
           <button type="button" id="diff-words" aria-pressed="true">词级高亮</button>
-          <span class="hint">SBS MUST NOT 用行底（仅 fg）</span>
+          <span class="hint">词级：块 bg→红/绿轻量混亮(~0.32) · 勿 reverse · SBS 无行底</span>
         </div>
-        <div id="diff-unified" class="stage">
+        <div id="diff-unified" class="stage stage-tool-wash">
           <div class="row fg-diff-context">@@ -10,4 +10,4 @@</div>
           <div class="row bg-diff-removed fg-diff-removed" data-line="rem"></div>
           <div class="row bg-diff-added fg-diff-added" data-line="add"></div>
@@ -626,14 +626,14 @@
           <button type="button" class="chip-btn" data-keys="busy" aria-pressed="false">流中</button>
           <button type="button" class="chip-btn" data-keys="slash" aria-pressed="false">slash</button>
           <button type="button" class="chip-btn" data-keys="tree" aria-pressed="false">活树</button>
-          <span class="hint">/models · 树 filter/fold/fork · 无 /model cycle</span>
+          <span class="hint">/model · 树 filter/fold/fork · 无参打开列表（无 cycle）</span>
         </div>
         <div class="stage" id="keys-stage"></div>
       </section>
 
       <!-- models picker -->
       <section class="panel" id="panel-models" data-id="models">
-        <h2>Models · /models fuzzy</h2>
+        <h2>Models · /model fuzzy</h2>
         <p class="spec">
           <a href="../models-picker.md">models-picker.md</a> · 替换 editor 槽 · fuzzy · Esc 取消
         </p>
@@ -646,7 +646,7 @@
         <div class="term term-slot" id="models-term" data-design-fixture="models.open">
           <div class="term-content">
             <div class="row"><span class="fg-user">❯</span> 换个更快的模型</div>
-            <div class="row fg-assistant">好的，用 /models 选一个。</div>
+            <div class="row fg-assistant">好的，用 /model 选一个。</div>
           </div>
           <div class="term-editor" id="models-editor"></div>
           <div class="term-footer" id="models-footer">~/xylitol · ornith-think</div>
@@ -675,32 +675,6 @@
         </div>
       </section>
 
-      <!-- overlay -->
-      <section class="panel" id="panel-overlay" data-id="overlay">
-        <h2>Overlay</h2>
-        <p class="spec">
-          <a href="../overlay.md">overlay.md</a> · 短确认 · OverlayHandle（harness）·
-          交互优先 <strong>editor 槽内联</strong>（tree / models / Ask）；
-          <strong>不做</strong> Settings/Plate 运行时改配置
-        </p>
-        <div class="ctl">
-          <button type="button" class="chip-btn" data-ov="shown" aria-pressed="true">shown+focus</button>
-          <button type="button" class="chip-btn" data-ov="unfocus" aria-pressed="false">shown+unfocus</button>
-          <button type="button" class="chip-btn" data-ov="hidden" aria-pressed="false">hidden</button>
-          <span class="hint">OverlayHandle · hide / focus / unfocus · Esc / N / Y</span>
-        </div>
-        <div class="overlay-demo">
-          <div class="dim-bg">… scrollback 在后 …</div>
-          <div class="dim-bg">… 勿 blit 到内容顶 …</div>
-          <div class="overlay-box" id="ov-box">
-            <div class="fg-on">Discard draft?</div>
-            <div class="actions">
-              <span class="yes">[Y] yes</span> · <span>[N] no / Esc</span>
-            </div>
-            <div class="fg-muted" id="ov-focus-hint" style="font-size:11px;margin-top:0.35rem">focused · 输入进 overlay</div>
-          </div>
-        </div>
-      </section>
 
       <!-- 8 widgets: Select / Settings / Input / Loader narrow+empty -->
       <section class="panel" id="panel-widgets" data-id="widgets">
@@ -836,13 +810,12 @@
       { id: "shell", label: "Full shell", key: "f" },
       { id: "layout-shell", label: "Layout 壳", key: "c" },
       { id: "keys", label: "Keybindings", key: "k" },
-      { id: "models", label: "Models /models", key: "m" },
+      { id: "models", label: "Models /model", key: "m" },
       { id: "tree-power", label: "Tree power", key: "p" },
       { id: "layout", label: "Layout", key: "1" },
       { id: "tool", label: "Tool / Expandable", key: "2" },
       { id: "diff", label: "Diff", key: "3" },
       { id: "markdown", label: "Markdown", key: "4" },
-      { id: "overlay", label: "Overlay", key: "5" },
       { id: "palette", label: "Palette", key: "6" },
       { id: "widgets", label: "Widgets", key: "8" },
       { id: "atoms", label: "Atoms", key: "9" },
@@ -877,7 +850,6 @@
       models: "open",
       treep: "filter",
       layoutShell: "ok",
-      overlay: "shown",
       widget: "empty",
       atom: "trunc",
       ask: "single",
@@ -1355,7 +1327,7 @@
     const KEYS = {
       idle: `<div class="row fg-muted">idle · status 0 行</div>
 <div class="row"><span class="fg-on">Enter</span> <span class="fg-muted">提交</span> · <span class="fg-on">Ctrl+C</span> <span class="fg-muted">清输入 / 空则退出</span></div>
-<div class="row"><span class="fg-on">双 Esc</span> <span class="fg-muted">MessageHistory 活树</span> · <span class="fg-on">/models</span> <span class="fg-muted">fuzzy 选模型</span></div>
+<div class="row"><span class="fg-on">双 Esc</span> <span class="fg-muted">MessageHistory 活树</span> · <span class="fg-on">/model</span> <span class="fg-muted">fuzzy 选模型</span></div>
 <div class="row fg-muted">旁注例：(Ctrl+T) · 禁止 ^T · footer 不堆键</div>`,
       busy: `<div class="row"><span class="fg-accent">⠋</span> <span class="fg-muted">Working（status 行）</span></div>
 <div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">abort（清 steer，留 follow-up）</span></div>
@@ -1363,8 +1335,8 @@
 <div class="row"><span class="fg-on">Ctrl+O</span> <span class="fg-muted">工具视口</span> · <span class="fg-on">Ctrl+T</span> <span class="fg-muted">thinking</span> · <span class="fg-on">Alt+E</span> <span class="fg-muted">块展开</span></div>`,
       slash: `<div class="row fg-muted">slash · 替换 editor 槽或行内补全</div>
 <div class="row"><span class="fg-on">/exit</span> <span class="fg-muted">退出 + restore</span></div>
-<div class="row"><span class="fg-on">/models</span> <span class="fg-muted">fuzzy 列表选模型</span></div>
-<div class="row fg-muted">无 /model cycle · 未知命令 → 短错误 · 不崩</div>`,
+<div class="row"><span class="fg-on">/model</span> <span class="fg-muted">fuzzy 列表选模型</span></div>
+<div class="row fg-muted">无参 /model → 列表 · 未知命令 → 短错误 · 不崩</div>`,
       tree: `<div class="row fg-muted">双 Esc 活树 · 替换 editor 槽 · kind 前缀分色</div>
 <div class="row"><span class="fg-user">user:</span> <span class="fg-on">正文</span> · <span class="fg-success">assistant:</span> · <span class="fg-tool">tool:</span></div>
 <div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">关树</span> · <span class="fg-on">Enter</span> <span class="fg-muted">travel</span> · <span class="fg-on">Shift+F</span> <span class="fg-muted">fork</span></div>
@@ -1423,7 +1395,7 @@
     /* TreeSelector shape: gutter ›/␠␠ · kind 色 + label · 选中整行 reverse · 底栏 (i/n) [filter] */
     const TREEP = {
       filter: `<div class="row">  <span class="fg-user">user:</span> <span class="fg-on">修 footer</span></div>
-<div class="row rev">› user: 加 /models</div>
+<div class="row rev">› user: 加 /model 列表</div>
 <div class="row">  <span class="fg-success">assistant:</span> <span class="fg-on">已改</span></div>
 <div class="row fg-muted">  (2/5) [user]</div>`,
       fold: `<div class="row rev">› assistant: …</div>
@@ -1449,37 +1421,6 @@
       });
     });
 
-    /* —— overlay —— */
-    function renderOverlay() {
-      const box = document.getElementById("ov-box");
-      const hint = document.getElementById("ov-focus-hint");
-      const mode = state.overlay;
-      document.querySelectorAll("[data-ov]").forEach((b) => {
-        b.setAttribute("aria-pressed", String(b.dataset.ov === mode));
-      });
-      if (mode === "hidden") {
-        box.classList.add("is-out");
-        setTimeout(() => {
-          if (state.overlay === "hidden") box.classList.add("hidden");
-        }, 180);
-        return;
-      }
-      box.classList.remove("hidden");
-      requestAnimationFrame(() => box.classList.remove("is-out"));
-      if (mode === "unfocus") {
-        box.style.opacity = "0.55";
-        hint.textContent = "unfocused · 输入回 root（OverlayHandle::unfocus）";
-      } else {
-        box.style.opacity = "1";
-        hint.textContent = "focused · 输入进 overlay（OverlayHandle::focus）";
-      }
-    }
-    document.querySelectorAll("[data-ov]").forEach((b) => {
-      b.addEventListener("click", () => {
-        state.overlay = b.dataset.ov;
-        renderOverlay();
-      });
-    });
 
     function renderWidgets() {
       const empty = document.getElementById("widgets-empty");
@@ -1573,15 +1514,6 @@
           renderTool();
         }
         e.preventDefault();
-      } else if (e.key === "Escape" || e.key === "n" || e.key === "N" || e.key === "y" || e.key === "Y") {
-        if (
-          state.overlay !== "hidden" &&
-          (SLOTS[state.index].id === "overlay" || state.mode === "tile")
-        ) {
-          state.overlay = "hidden";
-          renderOverlay();
-          e.preventDefault();
-        }
       }
     });
 
@@ -1616,8 +1548,6 @@
     applyScheme();
     applyMode();
     applySlot({ jump: true, instant: true });
-    // overlay after first paint
-    renderOverlay();
   </script>
 </body>
 </html>

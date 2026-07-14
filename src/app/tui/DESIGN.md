@@ -15,7 +15,9 @@ colors:
   diff-added: "#a6e3a1"
   diff-removed: "#f38ba8"
   diff-context: "#6c7086"
-  # Diff line / word backgrounds (Mocha; subtle row tint + stronger word tint).
+  # Diff line / word backgrounds (Mocha).
+  # Edit-in-tool path: prefer word_wash_bg(tool-*-bg, polarity) mix≈0.32 (see design/diff-block.md).
+  # Fixed *-word-bg tokens: optional standalone unified row-bg path.
   diff-added-bg: "#1e2b22"
   diff-removed-bg: "#2b1e24"
   diff-added-word-bg: "#2d4a35"
@@ -156,8 +158,8 @@ components:
 
 | Change | 设计焦点 | 文档 |
 |---|---|---|
-| **c625** design/playground | 固定下一屏形状：`/models` 槽、树 power、真 `$EDITOR`、footer context%、abort 反馈；**不做** Settings/Plate 运行时改配置 | 本表 · [`playground/`](./design/playground/) |
-| **c630** `/models` | 替换 editor 槽的 **fuzzy 模型列表**；**移除** `/model` 极简切换 | [`models-picker`](./design/models-picker.md) · [`keybindings`](./design/keybindings.md) |
+| **c625** design/playground | 固定下一屏形状：`/model` 列表槽、树 power、真 `$EDITOR`、footer context%、abort 反馈；**不做** Settings/Plate 运行时改配置 | 本表 · [`playground/`](./design/playground/) |
+| **c630** `/model` | 替换 editor 槽的 **fuzzy 模型列表**（对齐 pi）；**移除** 无参 cycle | [`models-picker`](./design/models-picker.md) · [`keybindings`](./design/keybindings.md) |
 | **c635–c645** 树 power | 产品 filter → fold → fork（demo 已有；逐个接线） | [`session-tree`](./design/session-tree.md) · [`keybindings`](./design/keybindings.md) |
 | **c650** 真 `$EDITOR` | Ctrl+G：TTY 真编辑器；harness 仍 stub | [`bash-mode`](./design/bash-mode.md) |
 | **c655** footer context% | 有数据时追加 `· context%`；无则省略 | [`footer`](./design/footer.md) |
@@ -181,7 +183,7 @@ components:
 | `error` / `warning` / `success` | 异常与结果，少用（**前景**） |
 | `diff-added` / `diff-removed` / `diff-context` | Diff 行 **fg**（见 [`design/diff-block.md`](./design/diff-block.md)） |
 | `diff-added-bg` / `diff-removed-bg` | Diff 增删行 **整行淡底**（**仅 unified**；铺满行宽；与 tool-*-bg 分离）。**Side-by-side MUST NOT 用行底**（c464） |
-| `diff-added-word-bg` / `diff-removed-word-bg` | 词级变更更亮底（unified；复位到行底，勿用 reverse 白底） |
+| `diff-added-word-bg` / `diff-removed-word-bg` | 独立 unified 行底路径的词级底 token。**Edit 嵌在 `tool-*-bg` 时**改用 `word_wash_bg(block, polarity)`（块底→红/绿轻量混亮，默认 mix≈**0.32**）；复位到块/行底，**勿 reverse** |
 | `surface` | 默认底（终端常透明；需要垫底时用） |
 | `tool-pending-bg` / `tool-success-bg` / `tool-error-bg` | 工具块**全行背景**三态（Mocha tint：`#313244` / `#24352a` / `#352428`；对齐 pi 语义，色值本文件 SSOT） |
 | `user-message-bg` | 用户消息可选全行背景（对齐 pi `userMessageBg`） |
@@ -199,7 +201,7 @@ components:
 - **body**：助手 markdown / 用户正文
 - **dim**：元数据、footer、工具行
 - **bold**：极少用（错误标题、必要强调）
-- **reverse**：列表选中；Diff 行内变更（word-level）
+- **reverse**：列表选中（**不要**用于 Diff 词级；词级见 `word_wash_bg` / [`design/diff-block.md`](./design/diff-block.md)）
 - **underline**：可复制 URL 展示时可用
 
 段落间最多一空行。代码块：语法高亮即可，**无边框、无语言标签条、无树线装饰**（[`design/markdown.md`](./design/markdown.md)）。标题分级靠色组 + bold/underline，**不**用 `#` 前缀；复制友好与 token 权衡见该文档。
@@ -246,13 +248,13 @@ footer         1 行 dim（cwd · model · 可选 context%）
 | 文档 | 内容 |
 |---|---|
 | [`design/session-tree.md`](./design/session-tree.md) | **优先**：双 Esc 会话树（travel/fork） |
-| [`design/models-picker.md`](./design/models-picker.md) | `/models` fuzzy 列表（替换 editor 槽） |
+| [`design/models-picker.md`](./design/models-picker.md) | `/model` fuzzy 列表（替换 editor 槽；对齐 pi） |
 | [`design/transcript.md`](./design/transcript.md) | live 输出进 scrollback（非 Codex 浏览面） |
 | [`design/expandable.md`](./design/expandable.md) | thinking / tool 可展开（demo 优先） |
 | [`design/status.md`](./design/status.md) | busy 一行 |
 | [`design/editor.md`](./design/editor.md) | 操作区 |
 | [`design/footer.md`](./design/footer.md) | 一行 dim |
-| [`design/overlay.md`](./design/overlay.md) | 默认不用；优先槽内树/Ask；极短确认可选 |
+| [`design/overlay.md`](./design/overlay.md) | 默认不用；优先槽内；playground 静图已撤 |
 | [`design/diff-block.md`](./design/diff-block.md) | Diff 渲染 |
 | [`design/glyphs.md`](./design/glyphs.md) | unicode / ascii 档 |
 | [`design/theme-tokens.md`](./design/theme-tokens.md) | 语义 → SGR；Palette/`/theme`（c570）；Ask/ChoicePrompt 见 playground（c565） |
