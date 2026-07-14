@@ -387,6 +387,36 @@ fn agent_demo_idle_omits_status_row() {
     );
 }
 
+/// Idle reserves one blank above the editor; busy keeps Loader's leading blank
+/// so the spinner sits flush against input (pi statusContainer).
+#[test]
+fn agent_demo_status_keeps_blank_above_editor() {
+    let mut app = FakeCodingAgentApp::new(Arc::new(AtomicBool::new(false)));
+    app.freeze_script_for_test();
+    app.set_status_for_test("Ready");
+
+    let idle = app.status_lines_for_test(80);
+    assert_eq!(idle.len(), 1, "idle: exactly one blank above editor");
+    assert!(
+        idle[0].trim().is_empty(),
+        "idle blank may be width-padded; got {:?}",
+        idle[0]
+    );
+
+    app.inject_pending_tool_for_test();
+    let busy = app.status_lines_for_test(80);
+    assert!(busy.len() >= 2, "busy: blank + spinner row; got {busy:?}");
+    assert!(
+        busy[0].trim().is_empty(),
+        "busy first row must be the Loader spacer; got {:?}",
+        busy[0]
+    );
+    assert!(
+        busy.iter().skip(1).any(|l| !l.trim().is_empty()),
+        "busy must include a non-empty spinner/message row; got {busy:?}"
+    );
+}
+
 #[test]
 fn agent_demo_default_hides_hardware_cursor_during_stream() {
     let mut h = TuiTestHarness::new(172, 40);
@@ -1285,6 +1315,12 @@ fn agent_demo_scripted_tool_flips_pending_to_success_bg() {
     let app = Rc::new(RefCell::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
     ))));
+    // Isolate from seed: user/system washes share tool_pending_bg RGB.
+    {
+        let mut a = app.borrow_mut();
+        a.freeze_script_for_test();
+        a.clear_transcript_for_test();
+    }
     let idx = app.borrow_mut().inject_pending_tool_for_test();
 
     let mut h = TuiTestHarness::new(120, 80);
@@ -1299,7 +1335,7 @@ fn agent_demo_scripted_tool_flips_pending_to_success_bg() {
         "injected pending tool visible; got:\n{text0}"
     );
     assert!(
-        viewport_has_bg_rgb(&h, pending),
+        viewport_row_with_text_has_bg_rgb(&h, "inject-tool", pending),
         "injected tool must start with pending tint {pending:?}"
     );
 
@@ -1311,7 +1347,7 @@ fn agent_demo_scripted_tool_flips_pending_to_success_bg() {
         "summary should flip to · ok; got:\n{text1}"
     );
     assert!(
-        !viewport_has_bg_rgb(&h, pending),
+        !viewport_row_with_text_has_bg_rgb(&h, "inject-tool", pending),
         "pending tint must clear after success flip"
     );
 }
@@ -1326,6 +1362,11 @@ fn agent_demo_parallel_tools_flip_by_index_not_last() {
     let app = Rc::new(RefCell::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
     ))));
+    {
+        let mut a = app.borrow_mut();
+        a.freeze_script_for_test();
+        a.clear_transcript_for_test();
+    }
     let (a, b) = app.borrow_mut().inject_parallel_pending_tools_for_test();
 
     let mut h = TuiTestHarness::new(120, 80);
@@ -1334,7 +1375,10 @@ fn agent_demo_parallel_tools_flip_by_index_not_last() {
     h.render_result().expect("initial");
 
     let pending = ToolBlockStatus::Pending.rgb(&xylitol_tui::SemanticPalette::dark());
-    assert!(viewport_has_bg_rgb(&h, pending), "both tools start pending");
+    assert!(
+        viewport_row_with_text_has_bg_rgb(&h, "inject-tool", pending),
+        "both tools start pending"
+    );
 
     // Complete only A — B must stay · running (regression: old code flipped "last").
     app.borrow_mut().complete_tool_at_for_test(a);
@@ -1349,8 +1393,12 @@ fn agent_demo_parallel_tools_flip_by_index_not_last() {
         "B must remain running when only A completes; got:\n{text}"
     );
     assert!(
-        viewport_has_bg_rgb(&h, pending),
+        viewport_row_with_text_has_bg_rgb(&h, "inject-tool-b", pending),
         "B pending tint must remain"
+    );
+    assert!(
+        !viewport_row_with_text_has_bg_rgb(&h, "inject-tool · ok", pending),
+        "A success row must not keep pending tint"
     );
 
     app.borrow_mut().complete_tool_at_for_test(b);
@@ -1361,8 +1409,8 @@ fn agent_demo_parallel_tools_flip_by_index_not_last() {
         "B should flip independently; got:\n{text2}"
     );
     assert!(
-        !viewport_has_bg_rgb(&h, pending),
-        "no pending tint after both complete"
+        !viewport_row_with_text_has_bg_rgb(&h, "inject-tool", pending),
+        "no pending tint on tool rows after both complete"
     );
 }
 
@@ -1427,7 +1475,7 @@ fn agent_demo_idle_returns_to_ready_after_tool_flips() {
 }
 
 #[test]
-fn agent_demo_diff_body_skips_tool_status_bg() {
+fn agent_demo_diff_body_shares_tool_wash_no_row_tints() {
     use agent_demo_example::ToolBlockStatus;
     use support::Color;
     use xylitol_tui::SemanticPalette;
@@ -1445,12 +1493,13 @@ fn agent_demo_diff_body_skips_tool_status_bg() {
         ToolBlockStatus::Success.rgb(&p).1,
         ToolBlockStatus::Success.rgb(&p).2,
     );
-    // DESIGN.md diff-removed-bg / diff-added-bg
+    // Mocha diff-*-bg must stay unused when demo embeds body in tool wash (pi).
     let removed_bg = Color::Rgb(0x2b, 0x1e, 0x24);
     let added_bg = Color::Rgb(0x1e, 0x2b, 0x22);
     let height = h.tui.terminal.viewport().len();
     let top = h.tui.terminal.viewport_top_pub();
     let mut found_body = false;
+    let mut saw_tool_wash = false;
     let mut saw_removed_bg = false;
     let mut saw_added_bg = false;
     for row in 0..height {
@@ -1462,10 +1511,9 @@ fn agent_demo_diff_body_skips_tool_status_bg() {
         let width = h.tui.terminal.grid_row(top + row).len();
         for col in 0..width {
             let cell = h.tui.terminal.viewport_cell(row, col);
-            assert_ne!(
-                cell.bg, success,
-                "diff body must not use tool-success-bg; cell({row},{col})={cell:?} line={line}"
-            );
+            if cell.bg == success {
+                saw_tool_wash = true;
+            }
             if cell.bg == removed_bg {
                 saw_removed_bg = true;
             }
@@ -1479,8 +1527,12 @@ fn agent_demo_diff_body_skips_tool_status_bg() {
         "expected SBS Ready|Working body row in viewport"
     );
     assert!(
+        saw_tool_wash,
+        "diff body should share tool-success-bg wash with header (pi Box)"
+    );
+    assert!(
         !saw_removed_bg && !saw_added_bg,
-        "SBS body must not use Mocha diff row tints (c464; removed={saw_removed_bg} added={saw_added_bg})"
+        "body must not use Mocha diff row tints (removed={saw_removed_bg} added={saw_added_bg})"
     );
 }
 
@@ -1548,6 +1600,31 @@ fn viewport_has_bg_rgb(h: &TuiTestHarness, rgb: (u8, u8, u8)) -> bool {
         .grid_row(h.tui.terminal.viewport_top_pub())
         .len();
     for row in 0..height {
+        for col in 0..width {
+            if h.tui.terminal.viewport_cell(row, col).bg == want {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// True if a viewport row whose text contains `needle` has truecolor bg `rgb`.
+/// Prefer this over full-viewport scans — idle blanks / stale shrink rows can
+/// retain unrelated cells, and user/system washes share `tool_pending_bg`.
+fn viewport_row_with_text_has_bg_rgb(h: &TuiTestHarness, needle: &str, rgb: (u8, u8, u8)) -> bool {
+    use support::Color;
+    let want = Color::Rgb(rgb.0, rgb.1, rgb.2);
+    let vp = h.tui.terminal.viewport();
+    let width = h
+        .tui
+        .terminal
+        .grid_row(h.tui.terminal.viewport_top_pub())
+        .len();
+    for (row, line) in vp.iter().enumerate() {
+        if !line.contains(needle) {
+            continue;
+        }
         for col in 0..width {
             if h.tui.terminal.viewport_cell(row, col).bg == want {
                 return true;

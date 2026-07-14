@@ -26,11 +26,11 @@ use xylitol_tui::{
     ExpandableOutputOptions, Focusable, Input, InputEvent, InputListenerResult, Markdown,
     MarkdownTheme, Palette, Panel, SystemClock, TUI, TerminalColorScheme, Text, ThemeDetectSources,
     TreeNode, TreeSelector, TreeSelectorOptions, TreeSelectorTheme, TruncateFrom, TruncatedText,
-    apply_background_to_line, bg_rgb, fg_rgb, is_osc11_background_color_response,
+    apply_background_to_line, bg_rgb, fg_bg_rgb, fg_rgb, is_osc11_background_color_response,
     is_terminal_color_reply, matches_key_event, parse_osc11_background_color,
     parse_terminal_color_scheme_report, printable_from_key_event, render_diff_lines,
     render_expandable_output, resolve_terminal_color_scheme, truncate_to_width, visible_width,
-    wrap_text_with_ansi,
+    word_wash_bg, wrap_text_with_ansi,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
@@ -645,9 +645,30 @@ fn markdown_showcase_stream_focus() -> &'static str {
     "本轮按 c530 打字机流式铺全语法 stub：标题分级、行内标记、链接/图、列表/任务、引用、表、多语言代码。"
 }
 
-/// Diff theme from active scheme (Dark=Mocha DESIGN, Light=Latte).
-fn demo_diff_theme(scheme: TerminalColorScheme) -> DiffTheme {
-    Palette::from(scheme).diff_theme()
+/// Diff theme for demo blocks embedded in a tool wash (pi edit path).
+///
+/// Fg polarity + word spans on a **bright red/green wash** mixed from the block
+/// bg toward polarity (not reverse, not a darker-only shade).
+/// No row `diff-*-bg` — the expandable shell's `tool-*-bg` owns the block wash.
+fn demo_diff_theme(scheme: TerminalColorScheme, block_bg: xylitol_tui::RgbColor) -> DiffTheme {
+    let p = Palette::from(scheme);
+    let added = p.diff_added;
+    let removed = p.diff_removed;
+    let context = p.diff_context;
+    let word_added_bg = word_wash_bg(block_bg, added);
+    let word_removed_bg = word_wash_bg(block_bg, removed);
+    DiffTheme {
+        added: Box::new(move |s| fg_rgb(added, s)),
+        removed: Box::new(move |s| fg_rgb(removed, s)),
+        context: Box::new(move |s| fg_rgb(context, s)),
+        gutter: Box::new(move |s| fg_rgb(context, s)),
+        meta: Box::new(move |s| fg_rgb(context, s)),
+        word_change_added: Box::new(move |s| fg_bg_rgb(added, word_added_bg, block_bg, s)),
+        word_change_removed: Box::new(move |s| fg_bg_rgb(removed, word_removed_bg, block_bg, s)),
+        added_line_bg: Box::new(|s| s.to_string()),
+        removed_line_bg: Box::new(|s| s.to_string()),
+        highlight_line: Box::new(|s| s.to_string()),
+    }
 }
 
 /// Full Markdown grammar stub for c530 / c535 — streamed via plate `md-full` or `/md`.
@@ -1278,6 +1299,15 @@ impl FakeCodingAgentApp {
 
     pub fn status_text_for_test(&self) -> &str {
         &self.status_text
+    }
+
+    pub fn set_status_for_test(&mut self, text: impl Into<String>) {
+        self.set_status(text);
+    }
+
+    /// Harness: status stack above the editor (idle blank / busy blank+spinner).
+    pub fn status_lines_for_test(&mut self, width: usize) -> Vec<String> {
+        self.status_lines(width)
     }
 
     pub fn clear_scheduled_actions_for_test(&mut self) {
@@ -3857,46 +3887,52 @@ impl FakeCodingAgentApp {
                     input,
                     side_by_side_min_width,
                 } => {
+                    // pi edit: one Box(tool*Bg) wraps title + Spacer + full diff body.
                     let marker = if *expanded { g.unfold() } else { g.fold() };
                     let header = format!("{marker} {} {summary}  {}", g.tool(), key_hint("Alt+E"));
-                    let mut header_lines = Vec::new();
-                    Self::push_wrapped(&mut header_lines, &header, width);
+                    let mut block = Vec::new();
+                    Self::push_wrapped(&mut block, &header, width);
                     let rgb = match status {
                         ToolBlockStatus::Pending => self.palette().tool_pending_bg,
                         ToolBlockStatus::Success => self.palette().tool_success_bg,
                         ToolBlockStatus::Error => self.palette().tool_error_bg,
                     };
-                    push_tinted(&mut lines, &header_lines, width, rgb);
                     if *expanded {
-                        let theme = demo_diff_theme(self.theme_mode);
+                        let theme = demo_diff_theme(self.theme_mode, rgb);
                         let opts = DiffOptions {
                             word_level: true,
                             side_by_side_min_width: *side_by_side_min_width,
                             ..DiffOptions::default()
                         };
                         let rendered = render_diff_lines(input, width, &theme, &opts);
-                        for line in rendered {
-                            lines.push(Self::fit(&line, width));
+                        if !rendered.is_empty() {
+                            block.push(String::new()); // pi Spacer(1) between title and body
+                            for line in rendered {
+                                block.push(Self::fit(&line, width));
+                            }
                         }
                     }
+                    push_tinted(&mut lines, &block, width, rgb);
                 }
             }
         }
         lines
     }
 
-    /// Busy-only status (DESIGN.md): idle returns None so the stack stays short.
-    fn status_line(&mut self, width: usize) -> Option<String> {
-        if !self.spinner_active() {
-            return None;
+    /// Status / breathing room above the editor (pi `statusContainer`).
+    ///
+    /// - Busy: `Loader::render` → leading blank + spinner (keep both; do not strip).
+    /// - Idle: one blank so input is never flush against transcript.
+    fn status_lines(&mut self, width: usize) -> Vec<String> {
+        if self.spinner_active() {
+            return self
+                .loader
+                .render(width)
+                .into_iter()
+                .map(|line| Self::fit(&line, width))
+                .collect();
         }
-        let activity = self
-            .loader
-            .render(width)
-            .into_iter()
-            .find(|line| !line.is_empty())
-            .unwrap_or_else(|| dim(&self.status_text));
-        Some(Self::fit(&activity, width))
+        vec![String::new()]
     }
 
     /// pi `showSelector`: replace the editor slot (bottom of the stack) so the
@@ -4049,12 +4085,10 @@ impl FakeCodingAgentApp {
 
 impl Component for FakeCodingAgentApp {
     fn render(&mut self, width: usize) -> Vec<String> {
-        // Minimal stack (DESIGN.md / pi): transcript → [status] → editor|selector → footer.
+        // Minimal stack (pi): transcript → status (blank | blank+spinner) → editor → footer.
         let mut lines = Vec::new();
         lines.extend(self.transcript_lines(width));
-        if let Some(status) = self.status_line(width) {
-            lines.push(status);
-        }
+        lines.extend(self.status_lines(width));
         lines.extend(self.render_editor_slot(width));
         let footer_owned;
         let footer_ref = if self.palette_open

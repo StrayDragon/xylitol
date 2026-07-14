@@ -10,7 +10,7 @@
 
 ## 优先路径
 
-**闸门**：相关原子/交互 MUST 先在 `packages/xylitol-tui` `agent_demo` 验证，再进本面接线。下一波 draft：`/models`（c630）· 树 filter/fold/fork（c635–c645）· 真 `$EDITOR`（c650）；设计闸 **c625**。**不做** Settings/Plate 运行时改配置；computer-use 延后。
+**闸门**：相关原子/交互 MUST 先在 `packages/xylitol-tui` `agent_demo` 验证，再进本面接线。下一波 draft：`/model` 列表（c630）· 树 filter/fold/fork（c635–c645）· 真 `$EDITOR`（c650）；设计闸 **c625**。**不做** Settings/Plate 运行时改配置；computer-use 延后。
 
 **不做 Codex 式 TranscriptView**（原 c470 草案已移除；`app-tui-transcript` 合约仅约束 live scrollback）。
 
