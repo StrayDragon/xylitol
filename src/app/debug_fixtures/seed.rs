@@ -45,6 +45,7 @@ pub async fn seed_scene(
     match id {
         "session-tree-multiturn" => seed_multiturn(store, session_id).await?,
         "session-tree-labeled" => seed_labeled(store, session_id).await?,
+        "session-tree-branched" => seed_branched(store, session_id).await?,
         _ => return Err(format!("unhandled debug scene id: {id}")),
     }
     Ok(id)
@@ -62,6 +63,40 @@ async fn seed_multiturn(store: &dyn XySessionStore, session_id: &str) -> Result<
         .await?;
     store
         .append_session_entry(session_id, &assistant_msg("debug: 有什么可以帮你？"))
+        .await?;
+    Ok(())
+}
+
+/// Same-session sibling branches: rewind leaf after the first spine, then grow an alt path.
+///
+/// ```text
+/// u_root → a_root ─┬─ u_main → a_main
+///                  └─ u_alt  → a_alt
+/// ```
+async fn seed_branched(store: &dyn XySessionStore, session_id: &str) -> Result<(), String> {
+    store
+        .append_session_entry(session_id, &user_msg("debug: root"))
+        .await?;
+    store
+        .append_session_entry(session_id, &assistant_msg("debug: root reply"))
+        .await?;
+    let fork_parent = store
+        .leaf_id(session_id)
+        .ok_or_else(|| "debug session-tree-branched: missing fork parent leaf".to_string())?;
+
+    store
+        .append_session_entry(session_id, &user_msg("debug: main branch"))
+        .await?;
+    store
+        .append_session_entry(session_id, &assistant_msg("debug: main leaf"))
+        .await?;
+
+    store.set_leaf(session_id, Some(&fork_parent));
+    store
+        .append_session_entry(session_id, &user_msg("debug: alt branch"))
+        .await?;
+    store
+        .append_session_entry(session_id, &assistant_msg("debug: alt leaf"))
         .await?;
     Ok(())
 }
@@ -144,6 +179,27 @@ mod tests {
                 }) if l == "bookmark"
             )),
             "{entries:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn seed_branched_has_sibling_children() {
+        use crate::domain::session_types::build_session_tree;
+
+        let mgr = SessionManager::in_memory();
+        mgr.create("d3", Some("."), None).await.unwrap();
+        let id = seed_scene(&mgr, "d3", "branched").await.unwrap();
+        assert_eq!(id, "session-tree-branched");
+        let tree = build_session_tree(&mgr.load_entries("d3").await.unwrap());
+        let max_siblings = tree
+            .iter()
+            .flat_map(|n| n.children.iter())
+            .map(|n| n.children.len())
+            .max()
+            .unwrap_or(0);
+        assert!(
+            max_siblings >= 2,
+            "expected a parent with ≥2 children, got max={max_siblings}; tree={tree:#?}"
         );
     }
 }

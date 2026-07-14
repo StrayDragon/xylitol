@@ -17,6 +17,10 @@ pub const DEBUG_SCENES: &[DebugSceneMeta] = &[
         id: "session-tree-labeled",
         description: "Tree with [bookmark] annotation for labeled-only / Shift+L",
     },
+    DebugSceneMeta {
+        id: "session-tree-branched",
+        description: "Sibling branches under one parent (fold / ←→ jump hand-test)",
+    },
 ];
 
 /// `(id, description)` for [`xylitol_tui::SlashArgCompletionSource`].
@@ -51,6 +55,7 @@ pub fn resolve_scene_id(raw: &str) -> Option<&'static str> {
     match key.as_str() {
         "tree-branch" | "multiturn" => Some("session-tree-multiturn"),
         "tree-labeled" | "labeled" => Some("session-tree-labeled"),
+        "branched" | "tree-branched" => Some("session-tree-branched"),
         _ => None,
     }
 }
@@ -69,6 +74,7 @@ mod tests {
             resolve_scene_id("tree-branch"),
             Some("session-tree-multiturn")
         );
+        assert_eq!(resolve_scene_id("branched"), Some("session-tree-branched"));
         assert_eq!(resolve_scene_id("list"), None);
         assert_eq!(resolve_scene_id("nope"), None);
     }
