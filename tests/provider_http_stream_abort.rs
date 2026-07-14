@@ -140,6 +140,7 @@ async fn anthropic_adapter_drop_stream_stops_server_writes() {
         "test-key".into(),
         "claude-test".into(),
         Some(format!("http://{addr}")),
+        None,
     );
 
     // Anthropic path POSTs /v1/messages; our stub ignores method/path and streams.

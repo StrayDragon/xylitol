@@ -36,8 +36,8 @@
     那么 hook 在 1 秒后被杀死
     并且 操作被允许继续（fail-open 策略）
 
-  场景: after_provider_request hook 用于 prefix-caching
-    假定 注册了匹配 "after_provider_request" 的 hook
+  场景: before_provider_request hook 用于 prefix-caching
+    假定 注册了匹配 "before_provider_request" 的 hook
     并且 当前 provider 为 "deepseek"
     当 provider 请求发送前
     那么 hook 收到请求 payload

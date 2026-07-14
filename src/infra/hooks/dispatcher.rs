@@ -4,9 +4,10 @@ use std::time::Duration;
 
 use tracing::warn;
 
-use super::script::run_hook_script;
-use super::{DispatchResult, HookAction, HookEvent, HookPhase, event_matches};
+use super::script::{run_hook_script, run_hook_script_with_context};
+use super::{DispatchResult, HookAction, HookEvent, HookPhase, entry_matches_raw, event_matches};
 use crate::infra::config::types::{HookEntry, HooksConfig};
+use crate::runtime_protocol::{XyHookBus, XyHookOutcome};
 
 /// Default timeout per hook script execution.
 const DEFAULT_TIMEOUT_SECS: u64 = 5;
@@ -91,6 +92,73 @@ impl HookDispatcher {
     /// Whether any hooks are registered.
     pub fn is_empty(&self) -> bool {
         self.hooks.is_empty()
+    }
+
+    /// Dispatch using pi-aligned event type strings and a JSON context.
+    ///
+    /// When no hooks are registered this is a zero-overhead no-op returning
+    /// [`DispatchResult::Allowed`].
+    pub async fn dispatch_raw(
+        &self,
+        event_type: &str,
+        phase: &str,
+        context: serde_json::Value,
+    ) -> DispatchResult {
+        if self.hooks.is_empty() {
+            return DispatchResult::Allowed;
+        }
+
+        let mut modified_args: Option<serde_json::Value> = None;
+
+        for hook in &self.hooks {
+            if !entry_matches_raw(hook, event_type, phase, &context) {
+                continue;
+            }
+
+            let timeout = Duration::from_secs(hook.timeout_secs.max(1));
+
+            let result =
+                run_hook_script_with_context(&hook.command, &context, timeout, &hook.env).await;
+
+            match result {
+                HookAction::Allow => {}
+                HookAction::Block { reason } => {
+                    warn!(
+                        event = event_type,
+                        phase = phase,
+                        hook = hook.command,
+                        reason = reason,
+                        "Hook blocked operation"
+                    );
+                    return DispatchResult::Blocked { reason };
+                }
+                HookAction::Modify { args } => {
+                    modified_args = Some(args);
+                }
+            }
+        }
+
+        if let Some(args) = modified_args {
+            DispatchResult::Modified { args }
+        } else {
+            DispatchResult::Allowed
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl XyHookBus for HookDispatcher {
+    async fn dispatch(
+        &self,
+        event_type: &str,
+        phase: &str,
+        context: serde_json::Value,
+    ) -> XyHookOutcome {
+        match self.dispatch_raw(event_type, phase, context).await {
+            DispatchResult::Allowed => XyHookOutcome::Allowed,
+            DispatchResult::Blocked { reason } => XyHookOutcome::Blocked { reason },
+            DispatchResult::Modified { args } => XyHookOutcome::Modified { args },
+        }
     }
 }
 

@@ -8,6 +8,7 @@
 pub mod bash;
 pub mod event;
 pub mod export;
+pub mod hook;
 pub mod model;
 pub mod permission;
 pub mod resource;
@@ -21,6 +22,7 @@ pub mod trust;
 pub use bash::{BashExecOpts, XyBashExecutor, XyBashResult};
 pub use event::{LifecycleHandler, XyEventSink};
 pub use export::XyExportIo;
+pub use hook::{NoopHookBus, XyHookBus, XyHookOutcome};
 pub use model::{XyModel, XyModelBuilder, XyStream};
 pub use permission::{XyPermission, XyPermissionVerdict};
 pub use resource::XyResourceLoader;

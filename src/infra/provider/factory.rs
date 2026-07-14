@@ -62,9 +62,17 @@ pub fn set_fake_tool_result(text: &str) {
 /// The agent never names concrete provider types; it receives the result as
 /// `Arc<dyn XyModel>`. Add new providers by extending this match.
 pub fn build_provider(config: &XyModelConfig) -> Result<Arc<dyn XyModel>, String> {
+    build_provider_with_hooks(config, None)
+}
+
+/// Build a provider with optional script hooks wired into HTTP adapters.
+pub fn build_provider_with_hooks(
+    config: &XyModelConfig,
+    hooks: Option<Arc<crate::infra::hooks::HookDispatcher>>,
+) -> Result<Arc<dyn XyModel>, String> {
     match config.kind {
         XyModelKind::OpenAi | XyModelKind::Anthropic => {
-            let adapter = build_adapter(config)?;
+            let adapter = build_adapter(config, hooks)?;
             Ok(Arc::new(AdapterXyModel::new(adapter)) as Arc<dyn XyModel>)
         }
         XyModelKind::Fake => {

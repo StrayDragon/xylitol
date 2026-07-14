@@ -41,7 +41,7 @@ use crate::domain::session_types::{
 use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
 use crate::domain::types::{ThinkingLevel, XyModelMeta};
 use crate::runtime_protocol::{
-    XyBashExecutor, XyExportIo, XyModel, XyPermission, XyToolExecutionMode,
+    XyBashExecutor, XyExportIo, XyHookBus, XyModel, XyPermission, XyToolExecutionMode,
 };
 
 // ── Model Registry ──────────────────────────────────────────────────
@@ -90,6 +90,8 @@ pub struct AgentCapabilities {
     sink: Arc<dyn XyEventSink>,
     /// Steer / follow-up queues + optional active-run EventTx (c525).
     queues: Arc<AsyncQueueRuntime>,
+    /// Optional script hook bus (composition-root supplied).
+    hook_bus: Option<Arc<dyn XyHookBus>>,
 }
 
 impl AgentCapabilities {
@@ -112,6 +114,7 @@ impl AgentCapabilities {
         export_io: Option<Arc<dyn XyExportIo>>,
         steering_mode: QueueMode,
         follow_up_mode: QueueMode,
+        hook_bus: Option<Arc<dyn XyHookBus>>,
     ) -> Self {
         let selected_tools: Vec<String> =
             tool_registry.iter().map(|t| t.name().to_string()).collect();
@@ -147,6 +150,7 @@ impl AgentCapabilities {
             sink,
             permission,
             queues: Arc::new(AsyncQueueRuntime::new(steering_mode, follow_up_mode)),
+            hook_bus,
         }
     }
 
@@ -274,6 +278,16 @@ impl AgentCapabilities {
         if !self.store.exists(id).await {
             let cwd_clone = self.cwd.clone();
             self.store.create(id, Some(&cwd_clone), parent).await?;
+            if let Some(bus) = &self.hook_bus {
+                let reason = if parent.is_some() { "fork" } else { "new" };
+                observe_hook(
+                    bus,
+                    "session_start",
+                    "",
+                    serde_json::json!({ "reason": reason }),
+                )
+                .await;
+            }
         }
         Ok(())
     }
@@ -307,6 +321,10 @@ impl AgentCapabilities {
 
     pub(crate) fn hooks_mut(&mut self) -> &mut AgentHooks {
         &mut self.hooks
+    }
+
+    pub(crate) fn hook_bus(&self) -> Option<Arc<dyn XyHookBus>> {
+        self.hook_bus.clone()
     }
 
     pub(crate) fn tool_mode(&self) -> XyToolExecutionMode {
@@ -427,6 +445,19 @@ impl AgentCapabilities {
         let parent_id = self
             .session_id()
             .ok_or_else(|| "no active session".to_string())?;
+
+        if let Some(bus) = &self.hook_bus {
+            observe_hook(
+                bus,
+                "session_before_fork",
+                "pre",
+                serde_json::json!({
+                    "entry_id": at_entry_id,
+                    "position": format!("{position:?}"),
+                }),
+            )
+            .await;
+        }
 
         let child_id = uuid::Uuid::new_v4().to_string();
 
@@ -599,7 +630,12 @@ impl AgentCapabilities {
             .map(|m| m.context_window)
             .unwrap_or(128000);
 
-        self.compaction_orchestrator
+        if let Some(bus) = &self.hook_bus {
+            observe_hook(bus, "session_before_compact", "pre", serde_json::json!({})).await;
+        }
+
+        let compacted = self
+            .compaction_orchestrator
             .maybe_auto_compact(
                 self.store.as_ref(),
                 sid,
@@ -607,7 +643,31 @@ impl AgentCapabilities {
                 self.sink.as_ref(),
                 ctx_window,
             )
-            .await
+            .await?;
+
+        if compacted && let Some(bus) = &self.hook_bus {
+            observe_hook(bus, "session_compact", "post", serde_json::json!({})).await;
+        }
+
+        Ok(compacted)
+    }
+}
+
+async fn observe_hook(
+    bus: &Arc<dyn XyHookBus>,
+    event_type: &str,
+    phase: &str,
+    context: serde_json::Value,
+) {
+    if let crate::runtime_protocol::XyHookOutcome::Blocked { reason } =
+        bus.dispatch(event_type, phase, context).await
+    {
+        tracing::warn!(
+            event = event_type,
+            phase = phase,
+            reason = reason,
+            "Script hook blocked observe-only lifecycle event (fail-open)"
+        );
     }
 }
 
@@ -645,6 +705,7 @@ mod tests {
             Some(std::sync::Arc::new(crate::infra::export::StdExportIo::new())),
             QueueMode::default(),
             QueueMode::default(),
+            None,
         )
     }
 

@@ -7,6 +7,7 @@
 //! Built-in, config-gated (empty hooks list = no-op).
 
 pub mod dispatcher;
+pub mod http;
 pub mod script;
 
 pub use dispatcher::HookDispatcher;
@@ -59,31 +60,51 @@ pub enum HookEvent {
         args: serde_json::Value,
     },
     /// An LSP query tool call (pre/post).
-    ToolCallLspQuery { file: String, method: String },
+    ToolCallLspQuery {
+        file: String,
+        method: String,
+    },
     /// A debugger command tool call (pre/post). (DAP PAUSED — not emitted.)
-    ToolCallDapCommand { command: String },
+    ToolCallDapCommand {
+        command: String,
+    },
     /// A file write tool call (pre/post).
     ToolCallFileWrite {
         file: String,
         content_preview: String,
     },
     /// About to query the model (pre only).
-    ModelQuery { model: String, prompt_length: usize },
+    ModelQuery {
+        model: String,
+        prompt_length: usize,
+    },
     /// A single agent step completed (post).
-    StepComplete { step: u32, summary: String },
+    StepComplete {
+        step: u32,
+        summary: String,
+    },
     /// Planner generated a plan (post).
-    PlanGenerated { plan: String },
+    PlanGenerated {
+        plan: String,
+    },
     /// Review phase started (pre) or ended (post).
-    ReviewStart { diffs: Vec<String> },
+    ReviewStart {
+        diffs: Vec<String>,
+    },
     /// Review phase ended.
-    ReviewEnd { approved: bool },
+    ReviewEnd {
+        approved: bool,
+    },
     /// Repeat detection triggered (post).
     RepeatDetected {
         loop_fragment: String,
         tokens: usize,
     },
     /// A step is being retried (pre only).
-    StepRetry { retry_count: u8, reason: String },
+    StepRetry {
+        retry_count: u8,
+        reason: String,
+    },
     /// A tool call was blocked by security policy (post).
     ToolCallBlocked {
         tool: String,
@@ -91,11 +112,81 @@ pub enum HookEvent {
         rule: String,
     },
     /// Session snapshot created (post).
-    SessionSnapshot { snapshot_id: String },
+    SessionSnapshot {
+        snapshot_id: String,
+    },
     /// About to spawn a new session from a snapshot (pre).
-    SessionSpawn { parent_id: String },
+    SessionSpawn {
+        parent_id: String,
+    },
     /// Session snapshot merged (post).
-    SessionMerge { snapshot_id: String },
+    SessionMerge {
+        snapshot_id: String,
+    },
+    // ── pi-aligned provider hooks ────────────────────────────────────
+    /// After default auth headers are built, before HTTP send.
+    BeforeProviderHeaders {
+        headers: serde_json::Value,
+    },
+    /// After provider JSON body is built, before HTTP send.
+    BeforeProviderRequest {
+        model: String,
+        body: serde_json::Value,
+    },
+    /// After HTTP response status/headers, before stream/body consumption.
+    AfterProviderResponse {
+        status: u16,
+        headers: serde_json::Value,
+    },
+    // ── pi-aligned agent / turn / message ────────────────────────────
+    /// Tool execution result (post).
+    ToolResult {
+        tool: String,
+        result: serde_json::Value,
+        is_error: bool,
+    },
+    /// Context before a model call (pre).
+    Context {
+        message_count: usize,
+    },
+    AgentStart,
+    AgentEnd,
+    AgentSettled,
+    TurnStart {
+        turn_index: u32,
+    },
+    TurnEnd {
+        turn_index: u32,
+    },
+    MessageStart {
+        role: String,
+    },
+    MessageEnd {
+        role: String,
+    },
+    // ── pi-aligned session ───────────────────────────────────────────
+    SessionStart {
+        reason: String,
+    },
+    SessionShutdown,
+    SessionBeforeCompact,
+    SessionCompact,
+    SessionBeforeFork,
+    SessionBeforeSwitch {
+        reason: String,
+    },
+    SessionBeforeTree,
+    SessionTree,
+    // ── pi-aligned model / user ────────────────────────────────────
+    ModelSelect {
+        model: String,
+    },
+    ThinkingLevelSelect {
+        level: String,
+    },
+    UserBash {
+        command: String,
+    },
 }
 
 impl HookEvent {
@@ -118,6 +209,29 @@ impl HookEvent {
             HookEvent::SessionSnapshot { .. } => "session_snapshot",
             HookEvent::SessionSpawn { .. } => "session_spawn",
             HookEvent::SessionMerge { .. } => "session_merge",
+            HookEvent::BeforeProviderHeaders { .. } => "before_provider_headers",
+            HookEvent::BeforeProviderRequest { .. } => "before_provider_request",
+            HookEvent::AfterProviderResponse { .. } => "after_provider_response",
+            HookEvent::ToolResult { .. } => "tool_result",
+            HookEvent::Context { .. } => "context",
+            HookEvent::AgentStart => "agent_start",
+            HookEvent::AgentEnd => "agent_end",
+            HookEvent::AgentSettled => "agent_settled",
+            HookEvent::TurnStart { .. } => "turn_start",
+            HookEvent::TurnEnd { .. } => "turn_end",
+            HookEvent::MessageStart { .. } => "message_start",
+            HookEvent::MessageEnd { .. } => "message_end",
+            HookEvent::SessionStart { .. } => "session_start",
+            HookEvent::SessionShutdown => "session_shutdown",
+            HookEvent::SessionBeforeCompact => "session_before_compact",
+            HookEvent::SessionCompact => "session_compact",
+            HookEvent::SessionBeforeFork => "session_before_fork",
+            HookEvent::SessionBeforeSwitch { .. } => "session_before_switch",
+            HookEvent::SessionBeforeTree => "session_before_tree",
+            HookEvent::SessionTree => "session_tree",
+            HookEvent::ModelSelect { .. } => "model_select",
+            HookEvent::ThinkingLevelSelect { .. } => "thinking_level_select",
+            HookEvent::UserBash { .. } => "user_bash",
         }
     }
 
@@ -196,6 +310,56 @@ impl HookEvent {
                 HookEvent::SessionMerge { snapshot_id } => {
                     map.insert("snapshot_id".into(), serde_json::json!(snapshot_id));
                 }
+                HookEvent::BeforeProviderHeaders { headers } => {
+                    map.insert("headers".into(), headers.clone());
+                }
+                HookEvent::BeforeProviderRequest { model, body } => {
+                    map.insert("model".into(), serde_json::json!(model));
+                    map.insert("body".into(), body.clone());
+                }
+                HookEvent::AfterProviderResponse { status, headers } => {
+                    map.insert("status".into(), serde_json::json!(status));
+                    map.insert("headers".into(), headers.clone());
+                }
+                HookEvent::ToolResult {
+                    tool,
+                    result,
+                    is_error,
+                } => {
+                    map.insert("tool".into(), serde_json::json!(tool));
+                    map.insert("result".into(), result.clone());
+                    map.insert("is_error".into(), serde_json::json!(is_error));
+                }
+                HookEvent::Context { message_count } => {
+                    map.insert("message_count".into(), serde_json::json!(message_count));
+                }
+                HookEvent::AgentStart
+                | HookEvent::AgentEnd
+                | HookEvent::AgentSettled
+                | HookEvent::SessionShutdown
+                | HookEvent::SessionBeforeCompact
+                | HookEvent::SessionCompact
+                | HookEvent::SessionBeforeFork
+                | HookEvent::SessionBeforeTree
+                | HookEvent::SessionTree => {}
+                HookEvent::TurnStart { turn_index } | HookEvent::TurnEnd { turn_index } => {
+                    map.insert("turn_index".into(), serde_json::json!(turn_index));
+                }
+                HookEvent::MessageStart { role } | HookEvent::MessageEnd { role } => {
+                    map.insert("role".into(), serde_json::json!(role));
+                }
+                HookEvent::SessionStart { reason } | HookEvent::SessionBeforeSwitch { reason } => {
+                    map.insert("reason".into(), serde_json::json!(reason));
+                }
+                HookEvent::ModelSelect { model } => {
+                    map.insert("model".into(), serde_json::json!(model));
+                }
+                HookEvent::ThinkingLevelSelect { level } => {
+                    map.insert("level".into(), serde_json::json!(level));
+                }
+                HookEvent::UserBash { command } => {
+                    map.insert("command".into(), serde_json::json!(command));
+                }
             }
         }
 
@@ -234,6 +398,58 @@ pub fn event_matches(
     }
 
     false
+}
+
+/// Check whether a hook entry matches a raw event type + phase + JSON context.
+///
+/// Used by [`HookDispatcher::dispatch_raw`] for pi-aligned event names and
+/// ReAct script bridging.
+pub fn entry_matches_raw(
+    entry: &crate::infra::config::types::HookEntry,
+    event_type: &str,
+    phase: &str,
+    context: &serde_json::Value,
+) -> bool {
+    if !entry.phase.is_empty() && !phase_str_matches(phase, &entry.phase) {
+        return false;
+    }
+
+    for pattern in &entry.events {
+        if pattern_matches_raw(pattern, event_type, phase, context) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn phase_str_matches(actual: &str, filter: &str) -> bool {
+    match filter {
+        "pre" => actual == "pre",
+        "post" => actual == "post",
+        "" => true,
+        _ => false,
+    }
+}
+
+fn pattern_matches_raw(
+    pattern: &str,
+    event_type: &str,
+    phase: &str,
+    context: &serde_json::Value,
+) -> bool {
+    let parts: Vec<&str> = pattern.split('.').collect();
+
+    match parts.len() {
+        1 => parts[0] == event_type,
+        2 => parts[0] == phase && parts[1] == event_type,
+        3 => {
+            parts[0] == phase
+                && parts[1] == event_type
+                && context.get("tool").and_then(|v| v.as_str()) == Some(parts[2])
+        }
+        _ => false,
+    }
 }
 
 /// Check if a single pattern string matches the given event and phase.
@@ -479,5 +695,51 @@ mod tests {
         assert_eq!(ctx["phase"], "pre");
         assert_eq!(ctx["tool"], "bash");
         assert_eq!(ctx["args"]["command"], "ls");
+    }
+
+    #[test]
+    fn test_event_type_before_provider_request() {
+        let event = HookEvent::BeforeProviderRequest {
+            model: "gpt-4o".into(),
+            body: serde_json::json!({}),
+        };
+        assert_eq!(event.event_type(), "before_provider_request");
+    }
+
+    #[test]
+    fn test_event_type_after_provider_response() {
+        let event = HookEvent::AfterProviderResponse {
+            status: 200,
+            headers: serde_json::json!({}),
+        };
+        assert_eq!(event.event_type(), "after_provider_response");
+    }
+
+    #[test]
+    fn test_entry_matches_raw_pi_name() {
+        let entry = make_entry(vec!["before_provider_request"], "");
+        assert!(entry_matches_raw(
+            &entry,
+            "before_provider_request",
+            "pre",
+            &serde_json::json!({})
+        ));
+    }
+
+    #[test]
+    fn test_entry_matches_raw_phase_event() {
+        let entry = make_entry(vec!["pre.tool_call"], "");
+        assert!(entry_matches_raw(
+            &entry,
+            "tool_call",
+            "pre",
+            &serde_json::json!({"tool": "bash"})
+        ));
+        assert!(!entry_matches_raw(
+            &entry,
+            "tool_call",
+            "post",
+            &serde_json::json!({})
+        ));
     }
 }

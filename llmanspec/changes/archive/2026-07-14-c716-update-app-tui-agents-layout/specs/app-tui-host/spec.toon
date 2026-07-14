@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ath10,"agents-layout-map","src/app/tui/AGENTS.md MUST 提供 kimi 式本地布局地图：目录/文件职责一句话、协调者（host/mod）与可下沉模块（effects/bridge/layout/widgets/commands）边界、硬约束指针（Esc 归属与 bang/agent abort 分岔、禁止 reach-in、禁止继续堆 God 文件）、验证命令指针；MUST NOT 把进度板或易腐清单写入 AGENTS；MUST 保留对 PI_DELTAS 与 write-tui skill 的指针。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ath10,"layout-section-present","打开 src/app/tui/AGENTS.md","审计文档结构","含文件布局表、模块职责、硬约束与验证指针，且无进度表"

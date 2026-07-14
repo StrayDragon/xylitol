@@ -200,6 +200,7 @@ fn make_agent_with_store(
         )),
         xylitol::agent::session::QueueMode::default(),
         xylitol::agent::session::QueueMode::default(),
+        None,
     );
     (AgentRuntime::new(session), store)
 }
@@ -604,6 +605,7 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         )),
         xylitol::agent::session::QueueMode::default(),
         xylitol::agent::session::QueueMode::default(),
+        None,
     );
     let tl = match level.as_str() {
         "high" => ThinkingLevel::High,
@@ -949,9 +951,29 @@ async fn _w_hook_dispatch_step(agent: &AgentState) {
 }
 
 #[when("provider 请求发送前")]
-fn _w_hook_before_request(_agent: &AgentState) {}
+async fn _w_hook_before_request(agent: &AgentState) {
+    dispatch_hook(
+        agent,
+        HookEvent::BeforeProviderRequest {
+            model: "deepseek".into(),
+            body: serde_json::json!({"model": "deepseek", "input": []}),
+        },
+        HookPhase::Pre,
+    )
+    .await;
+}
 #[when("provider 返回状态码 200")]
-fn _w_hook_provider_responded(_agent: &AgentState) {}
+async fn _w_hook_provider_responded(agent: &AgentState) {
+    dispatch_hook(
+        agent,
+        HookEvent::AfterProviderResponse {
+            status: 200,
+            headers: serde_json::json!({"content-type": "application/json"}),
+        },
+        HookPhase::Post,
+    )
+    .await;
+}
 
 #[when("任何事件触发")]
 async fn _w_hook_any_event_step(agent: &AgentState) {
@@ -1011,11 +1033,41 @@ fn _t_hook_allowed(agent: &AgentState) {
 }
 
 #[then("hook 收到请求 payload")]
-fn _t_hook_got_payload(_agent: &AgentState) {}
+fn _t_hook_got_payload(agent: &AgentState) {
+    assert!(agent.hook_result.borrow().is_some());
+}
 #[then("hook 可以注入 cache_control 字段")]
-fn _t_hook_cache_control(_agent: &AgentState) {}
+async fn _t_hook_cache_control(agent: &AgentState) {
+    agent.hook_entries.borrow_mut().push(HookEntry {
+        events: vec!["before_provider_request".into()],
+        command:
+            "echo '{\"action\":\"modify\",\"args\":{\"cache_control\":{\"type\":\"ephemeral\"}}}'"
+                .into(),
+        ..Default::default()
+    });
+    dispatch_hook(
+        agent,
+        HookEvent::BeforeProviderRequest {
+            model: "deepseek".into(),
+            body: serde_json::json!({"model": "deepseek"}),
+        },
+        HookPhase::Pre,
+    )
+    .await;
+    match agent.hook_result.borrow().as_ref().unwrap() {
+        DispatchResult::Modified { args } => {
+            assert_eq!(args["cache_control"]["type"], "ephemeral");
+        }
+        other => panic!("expected Modified, got {other:?}"),
+    }
+}
 #[then("hook 收到 status=200 和响应 headers")]
-fn _t_hook_got_response(_agent: &AgentState) {}
+fn _t_hook_got_response(agent: &AgentState) {
+    assert!(matches!(
+        agent.hook_result.borrow().as_ref(),
+        Some(DispatchResult::Allowed)
+    ));
+}
 #[then("dispatch 是零开销 no-op")]
 fn _t_hook_noop(agent: &AgentState) {
     assert!(matches!(
@@ -2183,7 +2235,7 @@ async fn test_hook_merge(agent: AgentState) {}
 async fn test_hook_timeout(agent: AgentState) {}
 #[scenario(
     path = "tests/features/hooks.feature",
-    name = "after_provider_request hook 用于 prefix-caching"
+    name = "before_provider_request hook 用于 prefix-caching"
 )]
 async fn test_hook_provider_request(agent: AgentState) {}
 #[scenario(

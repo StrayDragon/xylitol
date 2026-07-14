@@ -113,8 +113,8 @@ serial_test = "3.5.0"
 test-case = "3.3.1"
 wiremock = "0.6.5"
 rstest = "0.26"
-rstest-bdd = "0.6.0-beta2"
-rstest-bdd-macros = { version = "0.6.0-beta2", features = ["compile-time-validation"] }
+rstest-bdd = "0.6.0-beta3"
+rstest-bdd-macros = { version = "0.6.0-beta3", features = ["compile-time-validation"] }
 
 # In CI, to catch missing steps at compile time, use:
 #   cargo test --features rstest-bdd-macros/compile-time-validation

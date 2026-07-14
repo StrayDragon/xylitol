@@ -1,5 +1,9 @@
 //! Shared pending side-effect pump for production host loop and harness (ath6 / c494).
 
+use std::time::Duration;
+
+use futures::Stream;
+use futures::StreamExt;
 use xylitol_tui::Terminal;
 
 use crate::app::core::dispatch::{DispatchOutcome, dispatch};
@@ -7,10 +11,8 @@ use crate::app::core::driver::{Driver, EventStream};
 use crate::domain::session_types::SessionTreeKind;
 use crate::protocol::Command;
 
-#[cfg(test)]
-use super::commands::PendingBash;
-use super::commands::PendingSlash;
-use super::host::HostSession;
+use super::commands::{PendingBash, PendingSlash};
+use super::host::{HostEvent, HostSession};
 use super::layout::map_session_tree_nodes;
 
 /// Consume HostSession pending ops and call Driver / dispatch.
@@ -174,10 +176,10 @@ pub async fn drain_pending<T: Terminal>(
             .travel_session_tree(SessionTreeKind::MessageHistory, &entry_id)
             .await
         {
-            Ok(travel) => {
-                let entries = driver.get_messages().await.unwrap_or_default();
-                session.apply_session_tree_travel(travel, entries);
-            }
+            Ok(travel) => match driver.get_messages().await {
+                Ok(entries) => session.apply_session_tree_travel(travel, entries),
+                Err(e) => session.push_system_note(format!("travel: get_messages failed: {e}")),
+            },
             Err(e) => session.push_system_note(format!("travel failed: {e}")),
         }
         let _ = session.render_now();
@@ -191,7 +193,14 @@ pub async fn drain_pending<T: Terminal>(
             entry_id = %entry_id,
             "Driver::fork_session + switch_session"
         );
-        let parent_entries = driver.get_messages().await.unwrap_or_default();
+        let parent_entries = match driver.get_messages().await {
+            Ok(e) => e,
+            Err(e) => {
+                session.push_system_note(format!("fork: get_messages failed: {e}"));
+                let _ = session.render_now();
+                return Ok(());
+            }
+        };
         let selected = parent_entries
             .iter()
             .find(|e| e.entry_id() == Some(entry_id.as_str()));
@@ -216,10 +225,14 @@ pub async fn drain_pending<T: Terminal>(
                 };
                 match driver.fork_session(&entry_id, position).await {
                     Ok(child_id) => match driver.switch_session(&child_id).await {
-                        Ok(_) => {
-                            let entries = driver.get_messages().await.unwrap_or_default();
-                            session.apply_session_tree_fork(&child_id, entries, prefill);
-                        }
+                        Ok(_) => match driver.get_messages().await {
+                            Ok(entries) => {
+                                session.apply_session_tree_fork(&child_id, entries, prefill);
+                            }
+                            Err(e) => {
+                                session.push_system_note(format!("fork: get_messages failed: {e}"))
+                            }
+                        },
                         Err(e) => {
                             session.push_system_note(format!("switch after fork failed: {e}"))
                         }
@@ -291,31 +304,118 @@ pub async fn drain_pending<T: Terminal>(
     Ok(())
 }
 
-/// Run one pending bang bash to completion (harness / non-select callers).
-#[cfg(test)]
-pub async fn run_pending_bash<T: Terminal>(
+/// Interactive bang loop shared by production `run_host_loop` and harness (c715 / ath9).
+///
+/// `input` yields terminal-side [`HostEvent`]s (Input / Paste / Resize). Tick is owned
+/// here (16ms). Esc → `Driver::abort` + [`HostSession::note_bash_cancelled`] (not agent
+/// Aborted). Empty `input` is valid for fire-and-forget bang that completes without Esc.
+pub async fn run_interactive_bang<T, S>(
     session: &mut HostSession<T>,
-    driver: &dyn Driver,
+    driver: &mut dyn Driver,
     bash: PendingBash,
-) -> Result<(), String> {
+    agent_stream: &mut Option<EventStream>,
+    input: S,
+) -> Result<(), String>
+where
+    T: Terminal,
+    S: Stream<Item = Result<HostEvent, String>>,
+{
+    tokio::pin!(input);
     tracing::info!(
         target: "xylitol::tui",
         command_len = bash.command.len(),
         exclude = bash.exclude_from_context,
-        "Driver::execute_bash"
+        "Driver::execute_bash (interactive bang)"
     );
     session.begin_bash_exec(&bash.command, bash.exclude_from_context);
     let _ = session.render_now();
-    match driver
-        .execute_bash(&bash.command, bash.exclude_from_context, None)
-        .await
-    {
-        Ok(result) => {
-            session.push_bash_result(&bash.command, &result);
+    let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+    let (bash_result, aborted_during_bash) = {
+        let bash_fut =
+            driver.execute_bash(&bash.command, bash.exclude_from_context, Some(chunk_tx));
+        tokio::pin!(bash_fut);
+        let mut ticker = tokio::time::interval(Duration::from_millis(16));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut aborted_during_bash = false;
+        let bash_result = loop {
+            tokio::select! {
+                biased;
+                result = &mut bash_fut => break result,
+                chunk = chunk_rx.recv() => {
+                    if let Some(bytes) = chunk {
+                        session.append_bash_chunk(&bytes);
+                    }
+                }
+                _ = ticker.tick() => {
+                    session.step(HostEvent::Tick)?;
+                }
+                maybe = input.next() => {
+                    match maybe {
+                        Some(Ok(ev)) => {
+                            session.step(ev)?;
+                            if session.take_abort() {
+                                if aborted_during_bash {
+                                    continue;
+                                }
+                                tracing::info!(
+                                    target: "xylitol::tui",
+                                    "Driver::abort during bang"
+                                );
+                                driver.abort();
+                                session.note_bash_cancelled();
+                                aborted_during_bash = true;
+                                let _ = session.render_now();
+                            }
+                        }
+                        Some(Err(e)) => {
+                            session.tui.finish_inline();
+                            return Err(e);
+                        }
+                        None => {
+                            session.request_quit();
+                            break Err("input closed during bang".into());
+                        }
+                    }
+                }
+                maybe_agent = async {
+                    match agent_stream.as_mut() {
+                        Some(stream) => stream.next().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    match maybe_agent {
+                        Some(xy) => {
+                            session.step(HostEvent::Xy(Box::new(xy)))?;
+                        }
+                        None => {
+                            tracing::debug!(
+                                target: "xylitol::tui",
+                                "agent EventStream ended during bang"
+                            );
+                            *agent_stream = None;
+                            session.on_run_stream_closed();
+                            let _ = session.tui.try_render();
+                        }
+                    }
+                }
+            }
+        };
+        (bash_result, aborted_during_bash)
+    };
+    match bash_result {
+        Ok(r) => {
+            if !aborted_during_bash {
+                session.push_bash_result(&bash.command, &r);
+            }
         }
         Err(e) => session.push_system_note(format!("bash failed: {e}")),
     }
     session.end_bash_exec();
+    if aborted_during_bash {
+        let _ = driver.clear_queue(true, false);
+        let stats = driver.queue_stats();
+        session.set_queue_badge(stats.steer_count, stats.follow_up_count);
+    }
     let _ = session.render_now();
     Ok(())
 }

@@ -10,7 +10,7 @@ description: >-
 
 # 编写 TUI（src/app/tui/）
 
-写/改前读：`src/app/tui/AGENTS.md` → `packages/xylitol-tui/AGENTS.md` → `src/AGENTS.md`。方法论总纲：`write-surface`。包内测试：`test-tui-harness`。
+写/改前读：`src/app/tui/AGENTS.md`（**先读 File Layout / Module Responsibilities**）→ `packages/xylitol-tui/AGENTS.md` → `src/AGENTS.md`。方法论总纲：`write-surface`。包内测试：`test-tui-harness`。
 
 旧实现已删除；本面基于 `xylitol-tui` **从零重做**。
 

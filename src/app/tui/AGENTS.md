@@ -2,87 +2,77 @@
 
 本面专属边界。分层与 seam：`src/AGENTS.md`。引擎库：`packages/xylitol-tui/AGENTS.md`。AGENTS 写法：根 `AGENTS.md`。
 
-**刻意差异台账（对照 pi coding-agent；整合 / 对齐时防静默覆盖）**：本目录 [`PI_DELTAS.md`](./PI_DELTAS.md)。包层台账：[`packages/xylitol-tui/PI_DELTAS.md`](../../../packages/xylitol-tui/PI_DELTAS.md)。
+写/改本面：**先读本节布局与职责**，再跟 `write-tui` skill。
 
-## 现状
+**刻意差异台账**（不得静默覆盖）：本目录 [`PI_DELTAS.md`](./PI_DELTAS.md)；包层 [`packages/xylitol-tui/PI_DELTAS.md`](../../../packages/xylitol-tui/PI_DELTAS.md)。
 
-基于 `xylitol-tui` 的 **host 驱动 UI**（c465 bridge + **c475 layout 壳** + **c476 live scrollback** + **c490 trust gate** + **c480/c481 input** + **c482 abort-resume** + **c485 vertical slice**）。CLI 无参默认 TUI（c474）。
+## TUI File Layout
 
-**已开闸（2026-07-11）**：轨 A / 轨 P 已落地；轨 B MVP（至 c485）已归档（2026-07-12）。原子交互仍建议先在 `packages/xylitol-tui` `agent_demo` 验证再进本面。开闸记录 SSOT：`src/AGENTS.md`。
+基于 `xylitol-tui` 的 **host 驱动**产品面（CLI 无参默认 TUI）。原子交互优先在 `packages/xylitol-tui` `agent_demo` 验证后再接线。
 
-## 优先路径
-
-**闸门**：相关原子/交互 MUST 先在 `packages/xylitol-tui` `agent_demo` 验证，再进本面接线。下一波 draft：`/model` 列表（c630）· 树 filter/fold/fork（c635–c645）· 真 `$EDITOR`（c650）；设计闸 **c625**。**不做** Settings/Plate 运行时改配置；computer-use 延后。
-
-**不做 Codex 式 TranscriptView**（原 c470 草案已移除；`app-tui-transcript` 合约仅约束 live scrollback）。
-
-| 阶段 | 状态 |
+| 路径 | 职责（一句话） |
 |---|---|
-| 包 TreeSelector + demo 搜索/filter/fold/label/pan/活树/travel/steer | 已归档（至 c469 / c468）；轨 P 打磨至 c570 已合入 |
-| **c460** host 空壳 | 已落地（框架占位） |
-| **c491** 产品双 Esc 会话树槽 | **c615**：`Driver::session_tree(MessageHistory)` 活树 + `travel_session_tree` Enter |
-| 产品 bridge（XyEvent→UI + Driver 合流） | **c465 已归档** |
-| 产品 layout · slash/键位 · DESIGN 视觉 | layout：**c475**；live：**c476**；trust：**c490**；input：**c480/c481**；slice：**c485**；活树 travel：**c615** |
-| 垂直切片验收 | **c485 已归档**（`harness.rs` H1–H11 + `tests/tui_e2e` 产品 PTY Fake） |
+| `mod.rs` | 生产 `run_host_loop`：终端 / tick / agent 流 / bang 扇入 |
+| `host.rs`（及子模块） | `HostSession::step` 同步步进机；pending 标志；busy/idle 输入策略 |
+| `effects.rs` | **唯一** `drain_pending` → Driver / dispatch |
+| `commands.rs`（可多文件） | slash / bang 解析 → pending；不执行副作用 |
+| `bridge/` | `XyEvent` → `UiModel`；family handlers |
+| `layout/` | 产品壳：`EditorSlot`、`UiRoot`、theme |
+| `widgets/` | scrollback / queue strip / glyphs（组合件，非通用引擎） |
+| `terminal_guard.rs` | 终端生命周期 / panic 恢复 |
+| `harness.rs` / `tests.rs` | 合成切片；`HostEvent` + `TestTerminal` |
+| `DESIGN.md` + `design/` | 视觉 / UX SSOT；playground 见 `design/AGENTS.md` |
 
-历史/分支 UX 以会话树为准；live 输出若有，只进 scrollback 行，见 `design/transcript.md` / `design/session-tree.md`。
+历史合约 id「chrome」= layout/widgets；**新文案用 layout / 树槽 / widget**。勿用 `shell`/`scene` 命名（避 bash / 泛化场景混淆）。
 
-## 视觉 / UX
+## Module Responsibilities
 
-**唯一视觉 SSOT**：本目录 **`DESIGN.md`** + **`design/*.md`**。包内不另起 design 文档树；`Palette` 对齐本 DESIGN。
-
-**三层预览**：浏览器 `design/playground/` = **静态设计图**（固定状态）；`just demo-tui` = **动态** playground；本目录 = **生产** host。细则：`design/AGENTS.md`。
-
-包组件只收闭包主题，不承载产品整页 layout。layout 壳（c475）已注入；slash / 键位见 c480。
-
-## Specs
-
-产品面 capability：`app-tui-*`（含 `app-tui-vertical-slice`；另有 `host` / `bridge` / `transcript` / `app-tui-chrome`（**合约 id 不改名**；语义=layout 壳） / `input` / `commands`）。跨切面索引：`app-tui`。合约已归档：`archive/2026-07-10-c450-revise-app-tui-contract`。`app-tui-transcript` 壳仍在，语义为 live scrollback（**非** Codex 浏览面）。
-
-steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面只调 `Driver`，不持有 ReAct 队列。
-
-## Debug 日志
-
-**目标 / 现状（c460）**：debug 构建默认写即时日志；release 默认关。
-- 路径：`~/.xylitol/logs/xylitol.log`（`<agent_dir>/logs/xylitol.log`）
-- 查看：`tail -f ~/.xylitol/logs/xylitol.log`
-- 覆盖：`RUST_LOG=…` 或 `XYLITOL_DEBUG=1`（release 也可用）
-- 装配：`app/cli/logging.rs`；埋点 `target: "xylitol::tui"`。禁止 `println!`。
+- **`mod` / `HostSession`**：协调者。新逻辑能单测的 → 先下沉到 `effects` / `bridge` / `commands` / `layout` 子模块，**禁止**继续把业务堆进 God 文件（单文件逼近 ~1200 行视为硬味）。
+- **`effects`**：唯一异步副作用泵；harness MUST 复用，禁止第二套 slash/steer match。
+- **`bridge`**：只更新 `UiModel`；layout MUST NOT match `XyEvent`。
+- **`commands`**：只解析与 pending 类型；执行经 `drain_pending` → `protocol::Command` / `dispatch` 或 Driver。
+- **`layout` / `widgets`**：呈现与局部交互；**MUST NOT** 直接调 Driver / 读写 session。
+- **Trust**：CLI `trust_gate`，不在本面 Choice stub 上扩活逻辑。
+- **Plate / Settings / Choice 槽**：stub 冻结，产品未拍板前勿扩。
 
 ## 硬约束
 
-- **产品面**：已开闸；轨 B 至 **c493** 已归档。**c494** EditorSlot 槽机 + 共享 `effects::drain_pending`。**c615** MessageHistory 活树 + `travel_session_tree`（`effects::drain_pending` 异步泵）。包侧 c575（D08）已归档。
-- 渲染/通用组件只用 `xylitol_tui`；禁止在本目录再实现差分引擎或通用 Editor/Markdown。
-- **需要底层 TUI 能力时**：先到 `packages/xylitol-tui` 查是否已有或可扩展；缺能力在包内补，再由本面接线。
-- 产品路径 **host 驱动**同步引擎；异步事件合流在本面；勿调 `TUI::start()`（demo 专用）。
-- 驱动 agent 只经 `app/core/driver::Driver`（含 `steer` / `follow_up` / `clear_queue`）；禁止 reach `agent::session` / `runtime` / `infra`。
-- slash 语义复用 `protocol::Command`，经 `app/core/dispatch`；解析收口在 `commands.rs`。
-- 组件不直接调 `Driver`、不读写 session；颜色走本面 theme 语义 token（对齐 `DESIGN.md`）。
-- 已确认需求须有足够 **harness / 模拟环境** 验证（`HostEvent` 注入 + `TestTerminal`）；难且易错逻辑不外包给低质量实现。包侧五层 / 真终端 E2E 与产品接线测的分工：**唯一 SSOT** → [`packages/xylitol-tui/AGENTS.md`](../../packages/xylitol-tui/AGENTS.md)「验证」。
+- 渲染/通用组件只用 `xylitol_tui`；缺能力先改包再接线。产品路径 **host 驱动**；勿调 `TUI::start()`（demo 专用）。
+- Agent 只经 `app/core/driver::Driver`；禁止 reach `agent::session` / `runtime` / `infra`。
+- Esc 归属（摘要；细节见 stage-QA design）：
+  - Idle 空 editor → 双 Esc 开树（`UiRoot::on_escape`）
+  - Busy 无 overlay → abort latch（host `try_busy_input`）；**立刻**臂装 Xy 抑制，drain 仍 MUST 调 `Driver::abort`
+  - Busy + overlay → 先关槽，不 abort
+  - Agent abort → `note_user_abort`（Aborted + `suppress_xy`）；Bang abort → `note_bash_cancelled`（`(cancelled)`，无 `suppress_xy`）
+- 颜色走本面 theme token（`DESIGN.md`）。已确认需求须有 harness / BDD 护栏。
 
-## HOW（指针）
+## 视觉 / Specs / Debug
 
-| 任务 | 去哪 |
-|---|---|
-| 写/改本面 | `write-tui` skill |
-| 对照 pi coding-agent 的**刻意差异**（不得静默对齐） | 本目录 [`PI_DELTAS.md`](./PI_DELTAS.md)（包层见 `packages/xylitol-tui/PI_DELTAS.md`） |
-| UX / token / layout | 本目录 `DESIGN.md` + `design/*`；人类 playground 见 `design/AGENTS.md` |
-| 底层能力是否已有 / 如何扩展 | `packages/xylitol-tui/AGENTS.md` |
-| 新增/改造应用面 | `write-surface` skill |
-| 包内组件与五层 / E2E 分工 | [`packages/xylitol-tui/AGENTS.md`](../../packages/xylitol-tui/AGENTS.md)「验证」；how-to → `test-tui-harness` |
-| 排查（禁 println） | `tail -f ~/.xylitol/logs/xylitol.log` |
+- **视觉 SSOT**：`DESIGN.md` + `design/*`。三层：浏览器静图 / `just demo-tui` / 本目录生产。
+- **Specs**：`app-tui-*`（勿再堆单体 `app-tui`）。steer/follow-up 经 Driver 队列（c461），本面不持有 ReAct 队列。
+- **日志**：debug 默认写 `~/.xylitol/logs/xylitol.log`；`tail -f`；`RUST_LOG` / `XYLITOL_DEBUG=1`；埋点 `target: "xylitol::tui"`；禁止 `println!`。装配：`app/cli/logging.rs`。
 
-模块：`host.rs`（步进机）、`effects.rs`（唯一 `drain_pending`）、`commands.rs`（slash/bang）、`layout/`（`slots::EditorSlot` + `root` + `LayoutTheme`）、`widgets/`（产品组合件：scrollback / queue strip / glyphs）、`bridge/`（`apply_xy_event` + `handlers/` 事件族）、`terminal_guard.rs`、`tests.rs` / `harness.rs`（合成切片）、`tests/tui_e2e`（产品 PTY）。原子组件来自 `xylitol_tui`；勿在本面再实现通用 Editor/Markdown。勿用 `shell`/`scene` 命名，以免与 bash/`infra::process::shell` 或泛化「场景」混淆。历史文档/合约 id 里的「chrome」= 本面 **layout/widgets**（非浏览器）；**新文案用 layout / 树槽 / widget**，勿再扩写「chrome」。
+## 验证
 
-## 产品 UI 验证（自验 + 人辅确认）
-
-包侧五层分工 SSOT：[`packages/xylitol-tui/AGENTS.md`](../../packages/xylitol-tui/AGENTS.md)「验证」。产品面增量约定：
+包侧五层 SSOT：[`packages/xylitol-tui/AGENTS.md`](../../packages/xylitol-tui/AGENTS.md)「验证」。
 
 | 角色 | 做什么 |
 |---|---|
-| **Agent 必跑** | 相关 `harness.rs` / lib 测；`just fmt` + 相关 clippy；change `--strict` |
-| **Agent 尽量跑** | 触及真终端协议时：`just test-tui-e2e-pty`（缺 tmux 用 `-pty` 并写明）；会话树满路径见 **c705**（`pty_product_fake_session_tree_*`） |
-| **人类确认** | 最短路径手测观感（是否像 pi / 是否可读）；**不**替代 harness。修 bug 仍交 Agent 自修再交 |
-| **人类路径示例** | debug 构建：`/debug ` Tab 选场景（`session-tree-multiturn` / `session-tree-labeled` / `session-tree-branched`）→ 双 Esc；无参 `/debug` 列场景+描述。分叉一眼验用 **branched**（PTY：`pty_product_fake_session_tree_branched`）。Fake 回复仍需 catalog 含 `fake`。夹具 SSOT：`src/app/debug_fixtures/`（整目录可删）。对照 `just demo-tui` 仅作形态参考 |
+| **Agent 必跑** | 相关 `harness.rs` / lib；产品 TUI BDD（`tests/features/app-tui-*.feature` → `cargo test --test bdd -- --test-threads=1`）；`just fmt` + 相关 clippy；change `--strict` |
+| **Agent 尽量跑** | 真终端：`just test-tui-e2e-pty`；会话树满路径见 c705 `pty_product_fake_session_tree_*` |
+| **人类确认** | 最短手测观感；**不**替代 harness |
 
-交付含 UI 的 change 时，proposal/design **MUST** 写清上表命令与期望画面（参考 c685 `design.md`「验证」）。
+人类路径示例：debug 构建 `/debug ` Tab 选场景 → 双 Esc；分叉用 `session-tree-branched`。夹具：`src/app/debug_fixtures/`。
+
+## HOW
+
+| 任务 | 去哪 |
+|---|---|
+| 写/改本面 | `write-tui` skill（先读上表布局） |
+| 刻意差异 | [`PI_DELTAS.md`](./PI_DELTAS.md) |
+| UX / token | `DESIGN.md` + `design/*` |
+| 包能力 / 五层测 | `packages/xylitol-tui/AGENTS.md`；`test-tui-harness` |
+| 新增应用面 | `write-surface` |
+| 排查 | `tail -f ~/.xylitol/logs/xylitol.log` |
+
+历史/分支 UX 以会话树为准；live 只进 scrollback。不做 Codex TranscriptView；不做 Settings/Plate 运行时改配置。
