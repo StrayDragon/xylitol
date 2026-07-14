@@ -2,6 +2,8 @@
 
 本面专属边界。分层与 seam：`src/AGENTS.md`。引擎库：`packages/xylitol-tui/AGENTS.md`。AGENTS 写法：根 `AGENTS.md`。
 
+**刻意差异台账（对照 pi coding-agent；整合 / 对齐时防静默覆盖）**：本目录 [`PI_DELTAS.md`](./PI_DELTAS.md)。包层台账：[`packages/xylitol-tui/PI_DELTAS.md`](../../../packages/xylitol-tui/PI_DELTAS.md)。
+
 ## 现状
 
 基于 `xylitol-tui` 的 **host 驱动 UI**（c465 bridge + **c475 layout 壳** + **c476 live scrollback** + **c490 trust gate** + **c480/c481 input** + **c482 abort-resume** + **c485 vertical slice**）。CLI 无参默认 TUI（c474）。
@@ -63,6 +65,7 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 | 任务 | 去哪 |
 |---|---|
 | 写/改本面 | `write-tui` skill |
+| 对照 pi coding-agent 的**刻意差异**（不得静默对齐） | 本目录 [`PI_DELTAS.md`](./PI_DELTAS.md)（包层见 `packages/xylitol-tui/PI_DELTAS.md`） |
 | UX / token / layout | 本目录 `DESIGN.md` + `design/*`；人类 playground 见 `design/AGENTS.md` |
 | 底层能力是否已有 / 如何扩展 | `packages/xylitol-tui/AGENTS.md` |
 | 新增/改造应用面 | `write-surface` skill |
@@ -80,6 +83,6 @@ steer / follow-up 键位依赖 **c461**（Agent+Driver 队列 seam）；本面�
 | **Agent 必跑** | 相关 `harness.rs` / lib 测；`just fmt` + 相关 clippy；change `--strict` |
 | **Agent 尽量跑** | 触及真终端协议时：`just test-tui-e2e-pty`（缺 tmux 用 `-pty` 并写明）；会话树满路径见 **c705**（`pty_product_fake_session_tree_*`） |
 | **人类确认** | 最短路径手测观感（是否像 pi / 是否可读）；**不**替代 harness。修 bug 仍交 Agent 自修再交 |
-| **人类路径示例** | debug 构建：`/debug ` Tab 选场景（如 `session-tree-multiturn` / `session-tree-labeled`）→ 双 Esc 看 Search/Help；无参 `/debug` 列场景+描述。Fake 回复仍需 catalog 含 `fake`。夹具 SSOT：`src/app/debug_fixtures/`（整目录可删）。对照 `just demo-tui` 仅作形态参考 |
+| **人类路径示例** | debug 构建：`/debug ` Tab 选场景（`session-tree-multiturn` / `session-tree-labeled` / `session-tree-branched`）→ 双 Esc；无参 `/debug` 列场景+描述。分叉一眼验用 **branched**。Fake 回复仍需 catalog 含 `fake`。夹具 SSOT：`src/app/debug_fixtures/`（整目录可删）。对照 `just demo-tui` 仅作形态参考 |
 
 交付含 UI 的 change 时，proposal/design **MUST** 写清上表命令与期望画面（参考 c685 `design.md`「验证」）。
