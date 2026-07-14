@@ -538,6 +538,16 @@ mod slice_tests {
         })
     }
 
+    fn tab_event() -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Tab,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
     fn alt_up_event() -> InputEvent {
         use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
         InputEvent::Key(KeyEvent {
@@ -887,6 +897,58 @@ mod slice_tests {
         assert_eq!(
             session.take_slash(),
             Some(crate::app::tui::commands::PendingSlash::OpenModels)
+        );
+    }
+
+    #[tokio::test]
+    async fn c999_model_arg_tab_applies_id() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let driver = ScriptedDriver::new();
+        session.set_model_arg_catalog_from_models(&driver.available_models());
+        for ch in "/model orn".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        let frame = root.borrow_mut().render(80);
+        assert!(
+            frame
+                .iter()
+                .any(|l| l.contains("ornith-fast") || l.contains("ornith-think")),
+            "expected model-id popup; got: {frame:?}"
+        );
+        session.step(HostEvent::Input(tab_event())).unwrap();
+        let text = root.borrow().editor_text();
+        assert!(
+            text.starts_with("/model ornith-"),
+            "Tab must apply model id; got {text:?}"
+        );
+        assert_eq!(
+            crate::app::tui::commands::parse_slash_command(&text),
+            Some(crate::app::tui::commands::PendingSlash::SetModel(
+                text.trim_start_matches("/model ").trim().to_string()
+            ))
+        );
+    }
+
+    #[tokio::test]
+    async fn c999_model_arg_esc_keeps_model() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let driver = ScriptedDriver::new();
+        session.set_model_arg_catalog_from_models(&driver.available_models());
+        root.borrow_mut().set_layout_meta(".", "Fake");
+        for ch in "/model ".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        assert!(
+            !root.borrow().models_open(),
+            "Esc on arg popup must not open models slot"
+        );
+        let frame = root.borrow_mut().render(80);
+        assert!(
+            frame.iter().any(|l| l.contains("Fake")),
+            "footer model must stay Fake after Esc dismiss: {frame:?}"
         );
     }
 

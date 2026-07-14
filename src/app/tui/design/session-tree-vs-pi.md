@@ -14,8 +14,8 @@ pi / xylitol：树 **替换 editor 槽**（`showSelector`），非居中 overlay
 | ↑↓ / Enter / Esc | ✓ | ✓（`tui.select.*`；Esc 先清搜索） |
 | ←→ / PgUp/PgDn 翻页 | ✓ | ✓（c456：←→ 绑 page） |
 | 增量搜索 + Esc 清搜索 | ✓ | ✓（c456；c595 起含 kind） |
-| Filter：default / no-tools / user / labeled / all | ✓ Ctrl+D/T/U/L/A | ✓ demo（按 `kind` / annotation；包仅 `include_node`） |
-| Cycle filter Ctrl+O | ✓（树内） | ✓ 树开时循环；关树 = 工具视口 |
+| Filter：default / no-tools / user / labeled / all | ✓ Ctrl+D；T/U/L/A **toggle** | ✓ demo set；**c635** 产品对齐 pi toggle + default 藏 meta |
+| Cycle filter Ctrl+O | ✓（+ Shift+Ctrl+O 反向） | ✓ 树开 cycle forward；反向 MAY 后置；关树 = 工具视口 |
 | Fold ⊞/⊟ + Ctrl/Alt←→ 分支跳转 | ✓ | ✓（c467） |
 | Shift+L label / Shift+T 时间戳 | ✓ | ✓ demo annotation（c467） |
 | 选中行水平平移（深 indent） | ✓ | ✓（`render_horizontal_viewport`） |
