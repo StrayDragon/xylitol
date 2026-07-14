@@ -252,10 +252,11 @@ fn make_agent_with_store(
     (AgentRuntime::new(session), store)
 }
 
-/// Library-seam operation dictionary (c990). Unknown names return a readable Err.
+/// Library-seam operation dictionary (c990+). Unknown names return a readable Err.
 /// Must not call `HookDispatcher::dispatch` directly — only Driver/agent APIs.
 async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), String> {
     use xylitol::domain::session_types::SessionTreeKind;
+    use xylitol::domain::types::ThinkingLevel;
     use xylitol::embed::{Driver, InProcessDriver};
 
     match op {
@@ -271,8 +272,59 @@ async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), String
                 .map_err(|e| e)?;
             Ok(())
         }
+        "选择模型 fake" => {
+            let _ = agent.ensure_wiring_hook_log();
+            ensure_wiring_fake_model(agent, true);
+            let (mut runtime, store) = make_agent_with_store(agent);
+            let mut driver = InProcessDriver::new(runtime, store);
+            driver.select_model("fake").map(|_| ())
+        }
+        "设置思考级别 high" => {
+            let _ = agent.ensure_wiring_hook_log();
+            ensure_wiring_fake_model(agent, true);
+            let (mut runtime, store) = make_agent_with_store(agent);
+            // Select fake first so a model exists; then change thinking.
+            let mut driver = InProcessDriver::new(runtime, store);
+            let _ = driver.select_model("fake");
+            // Clear recorder so only thinking_level_select remains for key asserts.
+            if let Some(log) = agent.wiring_hook_log.borrow().as_ref() {
+                log.calls.lock().unwrap_or_else(|e| e.into_inner()).clear();
+            }
+            driver.set_thinking_level(ThinkingLevel::High);
+            Ok(())
+        }
         other => Err(format!("未知操作: {other}")),
     }
+}
+
+fn ensure_wiring_fake_model(agent: &AgentState, thinking: bool) {
+    use xylitol::domain::model::{XyModelConfig, XyModelKind};
+    use xylitol::domain::types::XyModelMeta;
+    let mut reg = agent.registry.borrow_mut();
+    if reg.find("fake").is_some() {
+        return;
+    }
+    reg.register(XyModelMeta {
+        id: "fake".into(),
+        config: XyModelConfig {
+            kind: XyModelKind::Fake,
+            api_key: String::new(),
+            model: "fake-model".into(),
+            base_url: None,
+            api: None,
+        },
+        display_name: "Fake".into(),
+        thinking,
+        context_window: 200_000,
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: Vec::new(),
+    });
 }
 
 async fn dispatch_hook(agent: &AgentState, event: HookEvent, phase: HookPhase) {
@@ -2375,6 +2427,18 @@ async fn test_hook_empty_noop(agent: AgentState) {}
     name = "确保新会话触发 session_start"
 )]
 async fn test_hooks_wiring_session_start(agent: AgentState) {}
+
+#[scenario(
+    path = "tests/features/hooks-wiring.feature",
+    name = "选择模型触发 model_select"
+)]
+async fn test_hooks_wiring_model_select(agent: AgentState) {}
+
+#[scenario(
+    path = "tests/features/hooks-wiring.feature",
+    name = "设置思考级别触发 thinking_level_select"
+)]
+async fn test_hooks_wiring_thinking_select(agent: AgentState) {}
 
 #[scenario(
     path = "tests/features/hooks-wiring.feature",

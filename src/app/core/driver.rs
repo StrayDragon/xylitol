@@ -357,7 +357,9 @@ impl Driver for InProcessDriver {
             .unwrap_or(0);
         let next_idx = (current_idx + 1) % list.len();
         let next_id = list[next_idx].id.clone();
-        self.agent.inner_mut().select_model(&next_id)?;
+        self.agent
+            .inner_mut()
+            .select_model_with_source(&next_id, "cycle")?;
         Ok(ModelInfo::from(&list[next_idx]))
     }
 

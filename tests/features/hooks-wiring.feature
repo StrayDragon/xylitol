@@ -15,12 +15,24 @@
     那么 hook 脚本被调用
     并且 hook 上下文包含键 "reason"
 
+  场景: 选择模型触发 model_select
+    假定 注册了匹配 "model_select" 的 hook
+    当 执行操作 "选择模型 fake"
+    那么 hook 脚本被调用
+    并且 hook 上下文包含键 "model"
+
+  场景: 设置思考级别触发 thinking_level_select
+    假定 注册了匹配 "thinking_level_select" 的 hook
+    当 执行操作 "设置思考级别 high"
+    那么 hook 脚本被调用
+    并且 hook 上下文包含键 "level"
+
   场景: 未知库操作名可读失败
     当 执行操作 "未登记操作"
     那么 操作失败原因包含 "未知操作"
 
-  # 预留例子（c996 / c998 — 未接线，勿挂 #[scenario]）:
+  # 预留例子（c995 / c997 / c998 — 未接线，勿挂 #[scenario]）:
   # | 事件 | 操作名 | 上下文键 | change |
-  # | model_select | 选择模型 fake | model | c996 |
-  # | thinking_level_select | 设置思考级别 high | level | c996 |
+  # | session_before_switch | 切换会话 target | reason | c995 |
+  # | user_bash | 执行 bash | command | c997 |
   # | before_provider_request | Completions 发送流式请求 | body | c998 |
