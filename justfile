@@ -26,13 +26,14 @@ lint-all:
 test:
     if command -v cargo-nextest >/dev/null; then cargo nextest run --all-features --profile ci; else cargo test --all-features; fi
 
-# Run TUI end-to-end integration tests (c405 layer 5). Slow + needs a real PTY
-# and/or tmux; gated #[ignore] so they never run under the default `test`.
+# Run TUI end-to-end integration tests (layer 5: PTY/tmux). Slow + needs a real
+# PTY and/or tmux; gated #[ignore] so they never run under the default `test`.
+# Covers xylitol-tui agent_demo + product Fake smoke (`pty_product_*`).
 test-tui-e2e:
     cargo test --test tui_e2e -- --ignored
 
 # TUI E2E — portable-pty driver only (no tmux needed).
-# Includes agent_demo cases and c485 product Fake smoke (`pty_product_*`).
+# Includes agent_demo cases and product Fake smoke (`pty_product_*`, c485/c669).
 test-tui-e2e-pty:
     cargo test --test tui_e2e -- --ignored pty
 
@@ -40,8 +41,9 @@ test-tui-e2e-pty:
 test-tui-e2e-tmux:
     cargo test --test tui_e2e -- --ignored tmux
 
-# Run the xylitol-tui agent_demo (default features include syntect highlight).
-# Product TUI live playground — experiment shapes here before host wiring.
+# Run the xylitol-tui agent_demo (package dynamic playground — not product host).
+# Experiment shapes/keys here before wiring `src/app/tui`; product hand-test uses
+# Fake: `cargo run -- --trust --tui --model fake` with isolated config.
 demo-tui:
     cargo run -p xylitol-tui --example agent_demo
 

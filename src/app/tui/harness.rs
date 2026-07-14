@@ -204,6 +204,7 @@ impl Driver for ScriptedDriver {
         &self,
         command: &str,
         exclude_from_context: bool,
+        chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
     ) -> Result<XyBashResult, String> {
         // Fresh run: do not inherit a prior abort latch (pi: new AbortController each bang).
         self.aborted.store(false, Ordering::SeqCst);
@@ -223,12 +224,24 @@ impl Driver for ScriptedDriver {
                 full_output_path: None,
             });
         }
-        Ok(self
+        let result = self
             .bash_results
             .lock()
             .expect("bash_results")
             .pop_front()
-            .unwrap_or_else(|| self.default_bash.clone()))
+            .unwrap_or_else(|| self.default_bash.clone());
+        if let Some(tx) = chunk_tx {
+            // Stream output in small frames so harness can assert pending tint mid-flight.
+            let bytes = result.output.as_bytes();
+            if !bytes.is_empty() {
+                let mid = bytes.len().saturating_add(1) / 2;
+                let _ = tx.send(bytes[..mid].to_vec()).await;
+                if mid < bytes.len() {
+                    let _ = tx.send(bytes[mid..].to_vec()).await;
+                }
+            }
+        }
+        Ok(result)
     }
 
     async fn compact(&mut self) -> Result<bool, String> {
@@ -934,7 +947,7 @@ mod slice_tests {
             "bang must uplink Bash pending: {:?}",
             session.ui_model().entries
         );
-        let bash_fut = driver.execute_bash(&bash.command, bash.exclude_from_context);
+        let bash_fut = driver.execute_bash(&bash.command, bash.exclude_from_context, None);
         tokio::pin!(bash_fut);
         tokio::select! {
             result = &mut bash_fut => {
@@ -991,7 +1004,7 @@ mod slice_tests {
         let bash = session.take_bash().expect("pending bang");
         session.begin_bash_exec(&bash.command, bash.exclude_from_context);
         {
-            let bash_fut = driver.execute_bash(&bash.command, bash.exclude_from_context);
+            let bash_fut = driver.execute_bash(&bash.command, bash.exclude_from_context, None);
             tokio::pin!(bash_fut);
             tokio::select! {
                 result = &mut bash_fut => {
@@ -1054,7 +1067,7 @@ mod slice_tests {
         let bash1 = session.take_bash().expect("bang1");
         session.begin_bash_exec(&bash1.command, bash1.exclude_from_context);
         {
-            let bash_fut = driver.execute_bash(&bash1.command, bash1.exclude_from_context);
+            let bash_fut = driver.execute_bash(&bash1.command, bash1.exclude_from_context, None);
             tokio::pin!(bash_fut);
             tokio::select! {
                 result = &mut bash_fut => {
@@ -1086,7 +1099,7 @@ mod slice_tests {
         session.begin_bash_exec(&bash2.command, bash2.exclude_from_context);
         let abort_before = driver.abort_count();
         {
-            let bash_fut = driver.execute_bash(&bash2.command, bash2.exclude_from_context);
+            let bash_fut = driver.execute_bash(&bash2.command, bash2.exclude_from_context, None);
             tokio::pin!(bash_fut);
             tokio::select! {
                 result = &mut bash_fut => {
@@ -1130,6 +1143,75 @@ mod slice_tests {
                 .iter()
                 .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted")),
             "bang Esc must not emit Aborted: {entries:?}"
+        );
+    }
+
+    #[test]
+    fn c669_append_bash_keeps_pending_tint() {
+        use crate::app::tui::bridge::{BashBlockStatus, UiEntry, UiModel};
+        let mut model = UiModel::new();
+        model.begin_bash_block("printf hi", false);
+        model.append_bash_output(b"hel");
+        model.append_bash_output(b"lo\n");
+        let Some(UiEntry::Bash { status, output, .. }) = model.entries.last() else {
+            panic!("expected Bash entry: {:?}", model.entries);
+        };
+        assert_eq!(*status, BashBlockStatus::Pending);
+        assert!(output.contains("hello"), "output={output:?}");
+        model.finish_bash_block(BashBlockStatus::Success, "hello\n(exit 0)".into());
+        let Some(UiEntry::Bash { status, .. }) = model.entries.last() else {
+            panic!("expected Bash entry");
+        };
+        assert_eq!(*status, BashBlockStatus::Success);
+    }
+
+    #[tokio::test]
+    async fn c669_scripted_streams_chunks_before_done() {
+        let mut driver = ScriptedDriver::new();
+        driver.push_bash_result(XyBashResult {
+            output: "abcdef".into(),
+            exit_code: Some(0),
+            cancelled: false,
+            truncated: false,
+            full_output_path: None,
+        });
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(8);
+        let result = driver
+            .execute_bash("echo", false, Some(tx))
+            .await
+            .expect("bash");
+        assert_eq!(result.output, "abcdef");
+        let mut collected = Vec::new();
+        while let Ok(c) = rx.try_recv() {
+            collected.extend_from_slice(&c);
+        }
+        assert_eq!(String::from_utf8_lossy(&collected), "abcdef");
+    }
+
+    #[tokio::test]
+    async fn c669_second_bang_hard_reject_while_bash_active() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        session.begin_bash_exec("sleep 99", false);
+        assert!(session.bash_active());
+        root.borrow_mut()
+            .set_editor_text(String::from("!echo second"));
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        assert_eq!(
+            driver.bash_calls(),
+            Vec::<(String, bool)>::new(),
+            "second bang must not call execute_bash"
+        );
+        assert_eq!(root.borrow().editor_text(), "!echo second");
+        assert!(
+            session
+                .ui_model()
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text.contains("rejected"))),
+            "expected hard-reject note: {:?}",
+            session.ui_model().entries
         );
     }
 

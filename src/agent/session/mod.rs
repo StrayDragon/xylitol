@@ -492,11 +492,18 @@ impl AgentCapabilities {
         &self,
         command: &str,
         exclude_from_context: bool,
+        chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
     ) -> Result<crate::runtime_protocol::XyBashResult, String> {
         let store: &dyn XySessionStore = self.store.as_ref();
         let sid = self.session_id().map(str::to_string);
         self.bash
-            .execute(store, sid.as_deref(), command, exclude_from_context)
+            .execute(
+                store,
+                sid.as_deref(),
+                command,
+                exclude_from_context,
+                chunk_tx,
+            )
             .await
     }
 
@@ -715,8 +722,12 @@ mod tests {
 
         let agent = Arc::new(crate::agent::runtime::AgentRuntime::new(make_session()));
         let agent_exec = Arc::clone(&agent);
-        let join =
-            tokio::spawn(async move { agent_exec.inner().execute_bash("sleep 30", false).await });
+        let join = tokio::spawn(async move {
+            agent_exec
+                .inner()
+                .execute_bash("sleep 30", false, None)
+                .await
+        });
 
         tokio::time::sleep(Duration::from_millis(150)).await;
         agent.abort();

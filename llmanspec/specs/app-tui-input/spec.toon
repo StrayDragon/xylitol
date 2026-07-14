@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: src/app/tui/
-requirements[20]{req_id,title,statement}:
+requirements[21]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式或 agent 忙碌时 Esc MUST 调用 Driver::abort；Ctrl+C 在编辑器非空时 MUST 清空输入，在编辑器为空时 MUST 退出 TUI。"
@@ -23,7 +23,8 @@ requirements[20]{req_id,title,statement}:
   ati17,"product-external-editor-stub","产品 Host MUST 将 Ctrl+G 绑定为外部编辑器入口：至少记录/系统提示或 stub 回写；harness 路径 MUST NOT 强制 spawn 真实 $EDITOR；真编辑器路径 MAY 使用 with_terminal_suspended 边界（对齐 design/bash-mode.md）。"
   ati18,"editor-slot-machine-live-tree","产品 TUI MUST 以显式 EditorSlot（至少含 Editor 与 Tree；MAY 含 Plate/Settings/Choice）互斥替换 editor 槽；打开任一非 Editor 槽时 MUST 替换贴底 editor 区而非画到 scrollback 顶部；Esc MUST 优先关闭当前槽并还原 Editor；忙碌时 Esc MUST 仍 abort（ati10）且 MUST NOT 打开 Tree；Tree 槽 MUST 由 Driver MessageHistory 活树驱动（见 app-tui-session-tree），MUST NOT 再冻结为仅假树 stub。"
   ati19,"bang-esc-aborts","产品 TUI 在交互 !/!! bash 执行期间 MUST 视为忙碌：Esc MUST 调用 Driver::abort 以取消该 bash（进程树按 c660）；host MUST NOT 在 drain_pending 内独占 await bash 以致无法读键盘；取消后 MUST 回到可输入 idle。"
-scenarios[33]{req_id,id,given,when,then}:
+  ati20,"bang-busy-hard-reject","产品 TUI 在交互 bang 仍 busy（bash_active）时，用户再次 Enter 提交 ! 或 !! 命令 MUST 硬拒绝：MUST 向用户给出简短提示、MUST 恢复编辑器文本（或等价保留命令体）、MUST NOT 调用第二次 Driver::execute_bash、MUST NOT 排队第二 bang；忙碌时非 bang 前缀文本 MUST 仍按既有 steer 规则处理。"
+scenarios[34]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-input",spec.toon 存在且 purpose 为中文
   ati1,"selector-slot","",打开模型选择器,editor 槽被选择器替换且贴底可见
   ati2,"esc-aborts","",流式中按 Esc,"Driver::abort 被调用"
@@ -57,3 +58,4 @@ scenarios[33]{req_id,id,given,when,then}:
   ati17,"ctrl-g-stub",产品 host 可测环境,Ctrl+G,不崩且有 stub/系统提示可观测
   ati18,"tree-slot-live",产品 TUI idle,双 Esc 打开 Tree 槽,槽内为 MessageHistory 活树且 Esc 可关回 Editor
   ati19,"esc-cancels-hanging-bang",产品 idle bang 已开始且 bash 未返回,按 Esc,"Driver::abort 被调用且 bash 结果 cancelled 或等价中止"
+  ati20,"second-bang-rejected",第一 bang 仍在执行,再提交 !echo second,出现拒绝提示且 execute_bash 调用次数仍为 1

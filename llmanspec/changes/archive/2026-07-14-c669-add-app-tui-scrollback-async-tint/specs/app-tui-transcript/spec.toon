@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,att9,"product-bash-result-scrollback","产品 TUI 在 idle bang 提交时 MUST 立即将命令写入 live scrollback 可着色块；执行中 MUST 为 pending tint，且输出 chunk 到达时 MUST 在同一块内增量刷新（保持 pending）；完成后 MUST 按成功或失败或 cancelled 切换 tool-*-bg；bang Esc 取消 MUST 在该块内呈现 (cancelled) 而非 agent 的 Aborted；exit_code 非 0 MUST 以 error 前景或 error tint 强调；MUST NOT 为此引入 Codex 式 TranscriptView。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  att9,"stream-frames-pending",bang 执行中已收到至少一帧输出 chunk,渲染 scrollback,同一块含部分输出且仍为 pending tint

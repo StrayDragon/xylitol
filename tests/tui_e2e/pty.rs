@@ -428,6 +428,95 @@ fn pty_agent_demo_narrow_cjk_submit_flow_survives_enter() {
 #[test]
 #[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
 fn pty_product_fake_hello_then_exit() {
+    let (mut session, _tmp) = spawn_product_fake_ready(100, 30);
+    session.send_keys("\x15hi\r").expect("submit short prompt");
+    session
+        .wait_for(crate::FAKE_HELLO, Duration::from_secs(30), 100, 30)
+        .expect("Fake default reply should appear");
+
+    session.send_keys("\x15/exit\r").expect("submit /exit");
+    let code = session
+        .wait_exit(Duration::from_secs(30))
+        .expect("process should exit after /exit");
+    assert_eq!(code, 0, "product TUI /exit should exit 0");
+}
+
+/// c669: product bang `!echo` streams into a Bash block (real shell, Fake model).
+#[test]
+#[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_product_fake_bang_echo_ok() {
+    const COLS: usize = 100;
+    const ROWS: usize = 30;
+    let (mut session, _tmp) = spawn_product_fake_ready(COLS as u16, ROWS as u16);
+    session
+        .send_keys("\x15!echo c669-bang-ok\r")
+        .expect("submit bang echo");
+    session
+        .wait_for("c669-bang-ok", Duration::from_secs(30), COLS, ROWS)
+        .expect("bang output should appear in scrollback");
+    session.send_keys("\x15/exit\r").expect("submit /exit");
+    let code = session
+        .wait_exit(Duration::from_secs(30))
+        .expect("exit after bang");
+    assert_eq!(code, 0);
+}
+
+/// c669: Esc during hanging bang → `(cancelled)` (not agent `Aborted`).
+#[test]
+#[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_product_fake_bang_esc_cancelled() {
+    const COLS: usize = 100;
+    const ROWS: usize = 30;
+    let (mut session, _tmp) = spawn_product_fake_ready(COLS as u16, ROWS as u16);
+    session
+        .send_keys("\x15!sleep 30\r")
+        .expect("submit hanging bang");
+    session
+        .wait_for("sleep 30", Duration::from_secs(15), COLS, ROWS)
+        .expect("bang command should uplink");
+    // Brief settle so execute_bash is in-flight, then Esc.
+    session.drain(Duration::from_millis(400));
+    session.send_keys("\x1b").expect("Esc abort bang");
+    let screen = session
+        .wait_for("(cancelled)", Duration::from_secs(15), COLS, ROWS)
+        .expect("bang Esc should show (cancelled)");
+    let text = screen.text();
+    assert!(
+        text.contains("(cancelled)"),
+        "bang Esc must show (cancelled); screen:\n{text}"
+    );
+    session.send_keys("\x15/exit\r").expect("submit /exit");
+    let _ = session.wait_exit(Duration::from_secs(30));
+}
+
+/// c669: second `!` while bang busy → hard reject (reject note).
+#[test]
+#[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_product_fake_bang_second_hard_reject() {
+    const COLS: usize = 100;
+    const ROWS: usize = 30;
+    let (mut session, _tmp) = spawn_product_fake_ready(COLS as u16, ROWS as u16);
+    session
+        .send_keys("\x15!sleep 30\r")
+        .expect("submit first bang");
+    session
+        .wait_for("sleep 30", Duration::from_secs(15), COLS, ROWS)
+        .expect("first bang uplink");
+    session.drain(Duration::from_millis(400));
+    session
+        .send_keys("\x15!echo second\r")
+        .expect("submit second bang");
+    session
+        .wait_for("rejected", Duration::from_secs(10), COLS, ROWS)
+        .expect("second bang must hard-reject");
+    // Cancel hanging first bang so /exit is clean.
+    session.send_keys("\x1b").expect("Esc first bang");
+    let _ = session.wait_for("(cancelled)", Duration::from_secs(15), COLS, ROWS);
+    session.send_keys("\x15/exit\r").expect("submit /exit");
+    let _ = session.wait_exit(Duration::from_secs(30));
+}
+
+fn spawn_product_fake_ready(cols: u16, rows: u16) -> (PtySession, tempfile::TempDir) {
     let tmp = tempfile::tempdir().expect("tempdir");
     let project = tmp.path().join("project");
     let config_dir = tmp.path().join("config");
@@ -437,29 +526,15 @@ fn pty_product_fake_hello_then_exit() {
     std::fs::create_dir_all(&home).expect("home dir");
     write_fake_project_config(&project).expect("fake config");
 
-    const COLS: usize = 100;
-    const ROWS: usize = 30;
-    let mut session =
-        PtySession::spawn_product_fake(COLS as u16, ROWS as u16, &project, &config_dir, &home)
-            .expect("spawn product xylitol");
-
+    let mut session = PtySession::spawn_product_fake(cols, rows, &project, &config_dir, &home)
+        .expect("spawn product xylitol");
     session
         .wait_for(
             crate::PRODUCT_READY_NEEDLE,
             Duration::from_secs(120),
-            COLS,
-            ROWS,
+            cols as usize,
+            rows as usize,
         )
         .expect("product TUI should render Fake footer");
-
-    session.send_keys("\x15hi\r").expect("submit short prompt");
-    session
-        .wait_for(crate::FAKE_HELLO, Duration::from_secs(30), COLS, ROWS)
-        .expect("Fake default reply should appear");
-
-    session.send_keys("\x15/exit\r").expect("submit /exit");
-    let code = session
-        .wait_exit(Duration::from_secs(30))
-        .expect("process should exit after /exit");
-    assert_eq!(code, 0, "product TUI /exit should exit 0");
+    (session, tmp)
 }
