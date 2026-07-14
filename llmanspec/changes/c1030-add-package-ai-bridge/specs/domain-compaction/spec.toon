@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,c1,token-估算使用统一-Usage-与多源计量,"System MUST 基于当前消息与可选 XyUsage 锚点估计上下文占用，并经 xylitol-ai-bridge accounting（或等价注入端口）按 Api 然后 RemoteCount 然后 LocalTokenizer 然后 Heuristic 的优先级解析；MUST 继续使用 canonical XyUsage，MUST NOT 再引入并行的第二套 usage 结构。",null,null,null
-  modify_requirement,c15,token-使用量类型统一与来源标注,"Compaction 与会话侧上下文估计 MUST 使用 domain 的 XyUsage 作为厂商/归一化用量类型；估计结果 MUST 能暴露 TokenProvenance（或经映射的等价来源标注）供上层区分 Api 与降级估计；token_estimator 内 MUST NOT 再定义重复的 XyUsage。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  c1,"estimate-uses-priority","存在可信 XyUsage 锚点","调用上下文估计","优先采用 Api 语义且仍返回统一估计结构"
-  c1,"estimate-fallback-chain","无 XyUsage 且 LocalTokenizer 可用","调用上下文估计","采用 LocalTokenizer 而非静默当作 Api"
-  c15,"provenance-available","完成一次启发式降级估计","检查估计结果","带有 Heuristic 来源标注且无重复 XyUsage 定义"
