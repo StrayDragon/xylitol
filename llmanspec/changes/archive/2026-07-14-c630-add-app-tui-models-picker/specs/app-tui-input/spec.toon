@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ati21,"model-picker-slot","产品 TUI 无参 /model MUST 以 EditorSlot（Models 或等价）替换贴底 editor 区展示可用模型 SelectList；支持过滤（fuzzy 或包 API）；Enter 选定 → SetModel 并关槽还原 editor、更新 footer model；Esc 取消关槽且 MUST NOT 改模型；busy 时 MUST 拒绝打开（idle-only）；MUST NOT 居中 overlay 主路径。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ati21,"open-filter-select",idle 已打开 models 槽,过滤后 Enter 选定一项,footer model 更新且槽关闭回到 Editor
+  ati21,"esc-cancels",models 槽已打开,Esc,关槽且模型不变

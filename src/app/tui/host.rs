@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use xylitol_tui::{InputEvent, RenderError, TUI, Terminal, matches_key_event};
 
-use crate::app::core::driver::XyEvent;
+use crate::app::core::driver::{ModelInfo, XyEvent};
 use crate::runtime_protocol::XyBashResult;
 
 use super::bridge::session_tree::rebuild_scrollback_from_travel;
@@ -16,6 +16,7 @@ use super::commands::parse_slash_command;
 use super::layout::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
 use crate::domain::session_types::{SessionEntry, SessionTreeTravel};
 use xylitol_tui::TreeNode;
+use xylitol_tui::components::select_list::SelectItem;
 
 pub use super::commands::{
     BangParse, PendingBash, PendingSlash, bash_block_status, bash_output_body, parse_bang_command,
@@ -331,6 +332,30 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
+    pub fn take_pending_model_select(&mut self) -> Option<String> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().take_pending_model_select()
+    }
+
+    pub fn mount_models_picker(&mut self, models: Vec<ModelInfo>, current_id: Option<String>) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        let items = models
+            .iter()
+            .map(|m| model_info_to_select_item(m, &current_id))
+            .collect();
+        root.borrow_mut().mount_models_picker(items);
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn close_models_slot(&mut self) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().close_slot();
+            self.sync_ui_root_from_model();
+        }
+    }
+
     pub fn apply_session_tree_travel(
         &mut self,
         travel: SessionTreeTravel,
@@ -580,7 +605,7 @@ impl<T: Terminal> HostSession<T> {
                 PendingSlash::Exit => {
                     self.request_quit();
                 }
-                PendingSlash::CycleModel | PendingSlash::SetModel(_) => {
+                PendingSlash::OpenModels | PendingSlash::SetModel(_) => {
                     self.pending_slash = Some(slash);
                 }
             }
@@ -675,4 +700,18 @@ impl<T: Terminal> HostSession<T> {
             self.tui.set_focus(Some(0));
         }
     }
+}
+
+fn model_info_to_select_item(m: &ModelInfo, current_id: &Option<String>) -> SelectItem {
+    let label = if m.display_name.is_empty() {
+        m.id.clone()
+    } else {
+        m.display_name.clone()
+    };
+    let marked = if current_id.as_deref() == Some(m.id.as_str()) {
+        format!("{label} *")
+    } else {
+        label
+    };
+    SelectItem::new(m.id.clone(), marked)
 }

@@ -1,7 +1,7 @@
 ---
 change_id: c630-add-app-tui-models-picker
 title: "产品 /model：fuzzy 模型列表替换 editor 槽（对齐 pi）"
-status: purpose-draft
+status: full
 priority: 630
 depends_on: ["c625-update-app-tui-design-next-wave"]
 author: agent
@@ -46,6 +46,7 @@ track: A
 
 - `/models` 别名；模型市场 / OAuth；busy 中换模（默认 idle-only，除非 design 修订）
 - pi 的 `Ctrl+Shift+M` 快捷键（MAY 后续；本 change 只钉斜杠）
+- **editor 内联 `/model <前缀>` 自动补全** → 后置 **c999-add-app-tui-model-arg-completion**（依赖本 change + 包 `CompletionSource`）
 
 ## Ethics
 
