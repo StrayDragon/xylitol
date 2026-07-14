@@ -1,56 +1,52 @@
 ---
 change_id: c996-update-agent-hooks-model-select
-title: "Hook：model_select / thinking_level_select"
-status: purpose-draft
+title: "库缝：model_select / thinking_level_select"
+status: full
 priority: 996
-depends_on: ["c735-update-agent-hooks-pi-parity"]
+depends_on: ["c990-add-test-hooks-wiring-bdd"]
 author: agent
 track: A
-wave: hooks-pi-parity-followup
+wave: hooks-wiring-bdd
 domain: c995
 ---
 
 # c996-update-agent-hooks-model-select
 
-> **status: purpose-draft** — 承接 `c735` future 选模/思考级别缺口。
-> **depends_on c735**：归档后再 apply。
-
 ## Why
 
-pi 在 `/model` 与 thinking level 变更时发 `model_select` / `thinking_level_select`。xylitol `HookEvent` 已有名，但 Driver/`SetModel`/thinking 设置路径未 `dispatch`，扩展无法观测或拦截选模。
+`HookEvent` 已有 `model_select` / `thinking_level_select`，但 `Driver::select_model` / `cycle_model` / `set_thinking_level` 未经 `XyHookBus` 发射。嵌入方与脚本扩展无法观测选模；TUI picker 与 slash 若另挂会双路径漏发。
 
 ## Purpose
 
-1. 在 **成功变更模型** 与 **成功变更 thinking level** 的权威路径（Driver / session / settings）上 MUST 发：
-   - `model_select`（context 含 model id / display 等）
-   - `thinking_level_select`（context 含 level）
-2. 可选：Blocked 表示拒绝切换（须 BDD）；默认建议 observe + fail-open，与 c735 lifecycle 一致，升格时二选一写死。
-3. 与 models picker / `/model` slash 共用同一 hook 点，禁止双路径漏发。
+1. 在 **库权威路径** 成功变更后 MUST observe-dispatch（fail-open，对齐 c735 lifecycle）：
+   - `Driver::select_model` / `cycle_model` → `model_select`（context：`model`、`previous`、`source`=`set`|`cycle`）
+   - `Driver::set_thinking_level` → `thinking_level_select`（context：`level`、`previous`）
+2. **不做** Blocked 拦截选模（pi 亦无 cancel 结果类型）；Blocked 仅日志 fail-open。
+3. 所有 client（TUI/Print/Server/embed）凡走上述 Driver API 即自动触发；禁止仅在 UI 旁挂。
+4. 启用 `hooks-wiring.feature` 观察例子：`选择模型 fake` / `设置思考级别 high`。
 
-## What Changes（升格后预期）
+## What Changes
 
-- Driver `set_model` / thinking API 旁挂 `XyHookBus`
-- `agent-hooks` delta + BDD
-- 勾销 c735 future 对应行
+- `InProcessDriver`（及 agent 内实际 set 点若更权威）旁挂 `hook_bus`
+- `agent-hooks` + `test-hooks-wiring` delta；BDD 操作字典扩两行
 
 ## Capabilities
 
 - `agent-hooks`
-- 可能 `app-tui-commands` / models picker（升格时声明）
+- `test-hooks-wiring`
 
 ## Out of scope
 
-- Driver session tree/switch（`c995`）
-- bang/input（`c997`）
-- Completions HTTP（`c998`）
+- session tree/switch（c995）、user_bash（c997）、Completions 三缝（c998）
+- 拦截选模 UX
 
 ## Ethics
 
 - risk_level: low
-- prohibited_actions: 静默吞掉选模失败且不通知用户
-- required_evidence: 改模型与改 thinking 各至少一测
-- escalation_policy: 若要做拦截选模，须产品确认 UX
+- prohibited_actions: 只在 TUI 接线；静默吞选模失败
+- required_evidence: wiring BDD 两行绿；`validate --strict`
+- escalation_policy: 若 set 点在 agent 而非 Driver，以 agent 为唯一发射点并文档化
 
 ## Depends
 
-- **c735-update-agent-hooks-pi-parity**
+- **c990-add-test-hooks-wiring-bdd**（已归档）
