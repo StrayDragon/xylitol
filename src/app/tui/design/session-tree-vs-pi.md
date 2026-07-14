@@ -17,7 +17,7 @@ pi / xylitol：树 **替换 editor 槽**（`showSelector`），非居中 overlay
 | Filter：default / no-tools / user / labeled / all | ✓ Ctrl+D；T/U/L/A **toggle** | ✓ demo set；**c635** 产品对齐 pi toggle + default 藏 meta |
 | Cycle filter Ctrl+O | ✓（+ Shift+Ctrl+O 反向） | ✓ forward **c635**；✓ backward **c685** |
 | Fold ⊞/⊟ + Ctrl/Alt←→ 分支跳转 | ✓ | ✓（c467 / 产品 **c640**） |
-| Shift+L label / Shift+T 时间戳 | ✓ | ✓ demo；产品 **c690** draft |
+| Shift+L label / Shift+T 时间戳 | ✓ | ✓ demo；✓ 产品 **c690** |
 | 选中行水平平移（深 indent） | ✓ | ✓（`render_horizontal_viewport`） |
 | 状态行 `(i/n) [filter]` | ✓ | ✓ |
 | 路径 `•` / 选中 `›` | ✓ | ✓ |
