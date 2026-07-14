@@ -17,15 +17,33 @@ use crate::runtime_protocol::{XyModel, XyStream};
 #[derive(Debug, Clone)]
 pub enum ScenarioStep {
     Text(String),
-    ToolCall { name: String, args: Value },
-    ToolResult { name: String, result: Value },
+    /// Many text deltas with a delay between each (abort / cancel evidence).
+    SlowStream {
+        chunks: Vec<String>,
+        delay: Duration,
+    },
+    ToolCall {
+        name: String,
+        args: Value,
+    },
+    ToolResult {
+        name: String,
+        result: Value,
+    },
     Delay(Duration),
-    Error { message: String, retryable: bool },
+    Error {
+        message: String,
+        retryable: bool,
+    },
 }
 
 impl ScenarioStep {
     pub fn text(text: impl Into<String>) -> Self {
         Self::Text(text.into())
+    }
+
+    pub fn slow_stream(chunks: Vec<String>, delay: Duration) -> Self {
+        Self::SlowStream { chunks, delay }
     }
 
     pub fn tool_call(name: impl Into<String>, args: Value) -> Self {
@@ -146,6 +164,7 @@ impl FakeProvider {
                 }
                 ScenarioStep::ToolResult { .. } => continue,
                 ScenarioStep::Text(_)
+                | ScenarioStep::SlowStream { .. }
                 | ScenarioStep::ToolCall { .. }
                 | ScenarioStep::Error { .. } => {
                     return Some(StepOutcome {
@@ -236,6 +255,18 @@ impl XyModel for FakeProvider {
                     usage: None,
                 }),
             ]))),
+            ScenarioStep::SlowStream { chunks, delay } => Ok(Box::pin(async_stream::stream! {
+                for text in chunks {
+                    if !delay.is_zero() {
+                        tokio::time::sleep(delay).await;
+                    }
+                    yield Ok(XyChunk::TextDelta(text));
+                }
+                yield Ok(XyChunk::Done {
+                    finish_reason: XyStopReason::Stop,
+                    usage: None,
+                });
+            })),
             ScenarioStep::ToolCall { name, args } => {
                 let id = format!("fake-call-{name}");
                 Ok(Box::pin(futures::stream::iter(vec![

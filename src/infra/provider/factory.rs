@@ -23,6 +23,8 @@ thread_local! {
     static FAKE_TEXT: RefCell<Option<String>> = const { RefCell::new(None) };
     static FAKE_TOOL_CALL: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
     static FAKE_TOOL_RESULT: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// `(chunk_count, delay_ms)` — slow multi-delta stream for abort BDD.
+    static FAKE_SLOW_STREAM: RefCell<Option<(usize, u64)>> = const { RefCell::new(None) };
 }
 
 /// Reset all mock state (call in test setup when needed).
@@ -30,11 +32,17 @@ pub fn reset_fake_state() {
     FAKE_TEXT.with(|c| c.replace(None));
     FAKE_TOOL_CALL.with(|c| c.replace(None));
     FAKE_TOOL_RESULT.with(|c| c.replace(None));
+    FAKE_SLOW_STREAM.with(|c| c.replace(None));
 }
 
 /// Set the text the fake model should return.
 pub fn set_fake_text(text: &str) {
     FAKE_TEXT.with(|c| c.replace(Some(text.to_string())));
+}
+
+/// Script a slow multi-chunk text stream (`chunk_count` deltas, `delay_ms` apart).
+pub fn set_fake_slow_stream(chunk_count: usize, delay_ms: u64) {
+    FAKE_SLOW_STREAM.with(|c| c.replace(Some((chunk_count, delay_ms))));
 }
 
 /// Set the tool call the fake model should return.
@@ -61,9 +69,16 @@ pub fn build_provider(config: &XyModelConfig) -> Result<Arc<dyn XyModel>, String
         }
         XyModelKind::Fake => {
             let steps = {
+                let slow = FAKE_SLOW_STREAM.with(|c| c.borrow_mut().take());
                 let tool = FAKE_TOOL_CALL.with(|c| c.borrow_mut().take());
                 let text = FAKE_TEXT.with(|c| c.borrow_mut().take());
-                if let Some((tool_name, tool_args)) = tool {
+                if let Some((n, delay_ms)) = slow {
+                    let chunks: Vec<String> = (0..n).map(|i| format!("chunk-{i}")).collect();
+                    vec![ScenarioStep::slow_stream(
+                        chunks,
+                        std::time::Duration::from_millis(delay_ms),
+                    )]
+                } else if let Some((tool_name, tool_args)) = tool {
                     let args: serde_json::Value =
                         serde_json::from_str(&tool_args).unwrap_or(serde_json::json!({}));
                     let tool_result = FAKE_TOOL_RESULT.with(|c| c.borrow_mut().take());

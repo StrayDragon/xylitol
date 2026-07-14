@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "TBD - created by archiving change c25-add-agent-loop. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[40]{req_id,title,statement}:
+requirements[41]{req_id,title,statement}:
   r1,"execution-loop","System MUST implement a self-contained ReAct loop (XyRunner) that calls XyModel for generation and dispatches XyTool calls until completion or max_iterations."
   r2,"event-system","System MUST emit AgentEvent variants (TextDelta / ThinkingDelta / ToolCallStart / ToolCallEnd / StepComplete / Error) from XyRunner without any adk-core Event dependency."
   r3,"session-runtime",System MUST manage session history via XySession trait with InMemorySession as default backend.
@@ -43,7 +43,8 @@ requirements[40]{req_id,title,statement}:
   "ar-q11",abort 与队列取消语义,Driver abort MUST 取消进行中的工具（经 CancellationToken）并清空 steer 通道；MUST 保留 follow_up 通道内容供 UI restore；队列实现 MUST 在 async 上下文中避免长时间持锁。
   ar28,"abort-resets-cancel-token",AgentRuntime MUST 在每次 run 开始时安装一个新的 CancellationToken；abort MUST 只取消当前 run 的 token。abort 之后的下一次 run MUST NOT 因沿用已取消 token 而立即以 aborted 结束。
   ar29,"abort-cancels-interactive-bash","AgentRuntime::abort（及经 Driver::abort 的同一入口）MUST 在取消当前 run CancellationToken 并清空 steer 队列之外，取消进行中的交互 bash（session abort_bash / BashExecHandler）；MUST 导致挂起中的 !/!! 或 execute_bash 子进程树被终止且结果标记 cancelled（或等价可观测中止）。工具 bash 仍经 run token 取消（ar-q11）；MUST NOT 清空 follow_up。"
-scenarios[45]{req_id,id,given,when,then}:
+  ar30,"abort-cancels-provider-stream","AgentRuntime 在模型流进行中（含 call_with_retry/send 挂起与 chunk 消费中）收到 abort（当前 run CancellationToken 取消，及经 Driver::abort 的同一入口）时 MUST 停止继续 poll 该次模型流，MUST drop provider stream 以便关闭 HTTP 响应体，并 MUST 以 Error aborted（或等价可观测中止）结束本轮；MUST NOT 仅抑制 UI 事件而继续 drain 完 SSE。TUI/CLI/server/未来 client MUST 经 Driver::abort 无感继承，MUST NOT 在各应用面各自实现 HTTP 取消。"
+scenarios[48]{req_id,id,given,when,then}:
   r1,"react-loop",a mock XyModel returns text then tool call then final text,XyRunner executes,all events are emitted and loop terminates after tool response
   r1,"max-iterations",XyModel always returns tool calls,XyRunner reaches max_iterations,loop terminates with MaxIterationsReached error
   r2,"no-adk-events",agent is executing,events are emitted,"no adk_core::Event or adk_runner types appear in the event stream"
@@ -89,3 +90,6 @@ scenarios[45]{req_id,id,given,when,then}:
   ar28,"abort-resets",AgentRuntime 上一轮被 abort,再次 run,不因旧 token 立即 aborted
   ar29,"interactive-bash-aborted",交互 bash 正在执行 sleep 类长命令,"调用 AgentRuntime::abort 或 Driver::abort",bash 结果 cancelled 为 true 且子进程不再存活
   ar29,"followup-kept",steer 与 follow_up 均非空且交互 bash 进行中,调用 abort,steer 空、follow_up 保留、交互 bash 已取消
+  ar30,"mid-stream-abort",慢速多段模型流进行中,"调用 AgentRuntime::abort 或 Driver::abort",出现 aborted 且后续 chunk/TextDelta 远少于未 abort 总量
+  ar30,"http-drop-evidence",本地慢速 chunked HTTP/SSE 服务,客户端 drop bytes_stream 或 adapter XyStream,服务端观察到写失败/断连且写入计数停滞
+  ar30,"driver-inherits",InProcessDriver 跑慢速 Fake 流,"首个 TextDelta 后 Driver::abort",事件含 aborted 且 TextDelta 段数远少于脚本量
