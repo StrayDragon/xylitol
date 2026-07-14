@@ -323,6 +323,20 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().take_pending_tree_open()
     }
 
+    /// Queue a MessageHistory tree open (c700 `/tree`).
+    pub fn request_session_tree_open(&mut self) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().request_tree_open();
+        }
+    }
+
+    /// Queue fork at `entry_id` (c700 `/fork` / tree Shift+F).
+    pub fn request_session_tree_fork(&mut self, entry_id: impl Into<String>) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().request_tree_fork(entry_id.into());
+        }
+    }
+
     pub fn take_pending_session_tree_travel(&mut self) -> Option<String> {
         let root = self.ui_root.as_ref()?;
         root.borrow_mut().take_pending_tree_travel()
@@ -730,7 +744,9 @@ impl<T: Terminal> HostSession<T> {
                 }
                 PendingSlash::OpenModels
                 | PendingSlash::SetModel(_)
-                | PendingSlash::DebugScene(_) => {
+                | PendingSlash::DebugScene(_)
+                | PendingSlash::OpenTree
+                | PendingSlash::ForkAtLeaf => {
                     self.pending_slash = Some(slash);
                 }
             }
@@ -741,7 +757,7 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(String::new());
             drop(root);
             self.push_system_note(format!(
-                "unknown command: {} (try /exit, /model, /debug)",
+                "unknown command: {} (try /exit, /model, /tree, /fork)",
                 text.split_whitespace().next().unwrap_or("/")
             ));
             return true;

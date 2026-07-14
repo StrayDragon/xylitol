@@ -60,7 +60,9 @@ components:
 | 键 | 行为 |
 |---|---|
 | Esc（选择器打开时） | 关闭选择器，还原 editor |
-| `/` 补全 | CompletionSource；产品命令含 `/exit` `/model` |
+| `/` 补全 | CompletionSource；产品命令含 `/exit` `/model` `/tree` `/fork`（**c700**）；debug 构建另有 `/debug` |
+| `/tree` | 打开会话树（同双 Esc；**c700**） |
+| `/fork` | 在当前 leaf fork（同 Shift+F 语义；选节点仍用树；**c700**） |
 | `!` / `!!` 前缀 | bash 边框 + idle Enter → `execute_bash`（**c492**） |
 | Ctrl+G | 外部编辑器：TTY 真 `$VISUAL`/`$EDITOR`（**c650**）；harness / 非 TTY 仍 stub |
 

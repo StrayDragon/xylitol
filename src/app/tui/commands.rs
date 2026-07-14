@@ -13,6 +13,10 @@ pub enum PendingSlash {
     SetModel(String),
     /// `/debug` / `/debug <scene>` hand-test fixtures (c710; debug builds).
     DebugScene(String),
+    /// `/tree` — open MessageHistory tree (c700).
+    OpenTree,
+    /// `/fork` — fork at current leaf (c700).
+    ForkAtLeaf,
 }
 
 /// Idle `!` / `!!` bash request for the async host loop (c492).
@@ -86,6 +90,8 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         ("exit" | "quit", _) => Some(PendingSlash::Exit),
         ("model", None) => Some(PendingSlash::OpenModels),
         ("model", Some(id)) => Some(PendingSlash::SetModel(id)),
+        ("tree", None) => Some(PendingSlash::OpenTree),
+        ("fork", None) => Some(PendingSlash::ForkAtLeaf),
         // Space form only (`/debug scene`). Colon form intentionally unsupported.
         #[cfg(debug_assertions)]
         ("debug", None) => Some(PendingSlash::DebugScene("list".into())),
