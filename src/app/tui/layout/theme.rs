@@ -22,6 +22,19 @@ impl LayoutTheme {
         self.palette
     }
 
+    /// SelectList theme for models picker (DESIGN models-picker.md).
+    pub fn select_list_theme(self) -> SelectListTheme {
+        let muted = self.palette.muted;
+        let accent = self.palette.accent;
+        SelectListTheme {
+            selected_prefix: Box::new(move |s| fg_rgb(accent, s)),
+            selected_text: Box::new(|s| format!("\x1b[7m{s}\x1b[27m")),
+            description: Box::new(move |s| fg_rgb(muted, s)),
+            scroll_info: Box::new(move |s| fg_rgb(muted, s)),
+            no_match: Box::new(move |s| fg_rgb(muted, s)),
+        }
+    }
+
     pub fn editor_theme(self) -> EditorTheme {
         let muted = self.palette.muted;
         EditorTheme {

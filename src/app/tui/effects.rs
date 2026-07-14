@@ -67,19 +67,18 @@ pub async fn drain_pending<T: Terminal>(
             PendingSlash::Exit => {
                 session.request_quit();
             }
-            PendingSlash::CycleModel => {
-                match dispatch(driver, Command::CycleModel { id: None }).await {
-                    Ok(DispatchOutcome::Model(m)) => {
-                        let label = if m.display_name.is_empty() {
-                            m.id
-                        } else {
-                            m.display_name
-                        };
-                        session.set_footer_model(label.clone());
-                        session.push_system_note(format!("model → {label}"));
+            PendingSlash::OpenModels => {
+                if session.is_busy() {
+                    session.push_system_note("models picker unavailable while busy");
+                } else {
+                    match dispatch(driver, Command::GetAvailableModels { id: None }).await {
+                        Ok(DispatchOutcome::Models(models)) => {
+                            let current = driver.current_model().map(|m| m.id);
+                            session.mount_models_picker(models, current);
+                        }
+                        Ok(_) => session.push_system_note("models list unavailable"),
+                        Err(e) => session.push_system_note(format!("/model failed: {e}")),
                     }
-                    Ok(_) => session.push_system_note("model cycled"),
-                    Err(e) => session.push_system_note(format!("/model failed: {e}")),
                 }
                 let _ = session.render_now();
             }
@@ -142,6 +141,37 @@ pub async fn drain_pending<T: Terminal>(
                 session.apply_session_tree_travel(travel, entries);
             }
             Err(e) => session.push_system_note(format!("travel failed: {e}")),
+        }
+        let _ = session.render_now();
+    }
+
+    if let Some(model_id) = session.take_pending_model_select() {
+        tracing::info!(target: "xylitol::tui", model_id = %model_id, "SetModel from picker");
+        match dispatch(
+            driver,
+            Command::SetModel {
+                id: None,
+                provider: String::new(),
+                model_id: model_id.clone(),
+            },
+        )
+        .await
+        {
+            Ok(DispatchOutcome::Model(m)) => {
+                let label = if m.display_name.is_empty() {
+                    m.id
+                } else {
+                    m.display_name
+                };
+                session.set_footer_model(label.clone());
+                session.push_system_note(format!("model → {label}"));
+                session.close_models_slot();
+            }
+            Ok(_) => {
+                session.push_system_note("model set");
+                session.close_models_slot();
+            }
+            Err(e) => session.push_system_note(format!("/model failed: {e}")),
         }
         let _ = session.render_now();
     }

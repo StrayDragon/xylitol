@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-chrome"
 purpose: 主题 token、glyph、status 与 footer 等 layout 壳（历史 capability 名 chrome）。
 valid_scope[1]: src/app/tui/
-requirements[11]{req_id,title,statement}:
+requirements[12]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   atc1,"idle-status-omitted",产品 UiRoot 空闲时 status 槽 MUST 渲染 0 行；忙碌时 MUST 至多独立 1 行短状态；MUST NOT 将 Working 等忙碌文案并入 footer。
   atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本，MVP 至少含 cwd 与 model（形如 `cwd · model`）；队列非空时可加 `q:sN|fM ·` 前缀；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。"
@@ -14,7 +14,8 @@ requirements[11]{req_id,title,statement}:
   atc8,"user-message-bg","产品 scrollback 用户消息行 MUST 可应用 DESIGN user-message-bg 全行淡底（默认开启或与 agent_demo 一致）；MUST NOT 改变消息文本语义前缀。"
   atc9,"compaction-retry-single-status-line",产品 TUI 在 Compacting 或 Retry n/m 忙碌态时 status 槽 MUST 仍至多独立 1 行（spinner+短词）；压缩/重试细节 MUST 走 scrollback System 行而非增高 status；MUST NOT 常驻多行 compaction/retry layout 条。
   atc10,"abort-status-idle",产品在用户 abort 后 status 槽 MUST 回到 0 行（idle）；取消说明 MUST 走 scrollback System 一行而非增高 status；bang 执行中 MAY 使用单行 Running。
-scenarios[17]{req_id,id,given,when,then}:
+  atc11,"models-picker-footer",经 models 槽或 /model <id> 成功 SetModel 后，产品 footer 的 model 字段 MUST 更新为选定模型的显示名或 id。
+scenarios[18]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-chrome",spec.toon 存在且 purpose 为中文
   atc1,"idle-status-zero-rows","",空闲 UiRoot apply_ui_model 后 render,无独立 Working 行且 status 槽占 0 行
   atc1,"busy-status-not-in-footer","",busy 且 status=Working 时 render,存在独立 status 文案且 footer 不含 Working
@@ -32,3 +33,4 @@ scenarios[17]{req_id,id,given,when,then}:
   atc9,"compacting-one-row",UiModel Busy status=Compacting,UiRoot render,独立 status 至多 1 行且含 Compacting
   atc9,"retry-one-row",UiModel Busy status=Retry 1/3,UiRoot render,独立 status 至多 1 行且含 Retry
   atc10,"abort-clears-status",Busy 且 status=Working,用户 abort,status 槽 0 行且 scrollback 含 Aborted
+  atc11,"footer-updates",选定新模型成功,下一帧 footer,含新模型标签
