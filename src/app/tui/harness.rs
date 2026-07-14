@@ -23,7 +23,7 @@ use crate::domain::session_types::{
 use crate::domain::types::ThinkingLevel;
 use crate::runtime_protocol::XyBashResult;
 
-use super::effects::{drain_pending, run_pending_bash};
+use super::effects::{drain_pending, run_interactive_bang};
 use super::host::{HostEvent, HostSession};
 
 /// Test double: canned `run` streams + call recording for steer/abort/queues/bash.
@@ -475,7 +475,9 @@ pub async fn pump_host_driver<T: Terminal>(
     drain_pending(session, driver, agent_stream).await?;
 
     if let Some(bash) = session.take_bash() {
-        run_pending_bash(session, driver, bash).await?;
+        // No keyboard: pending stream (not empty — empty would EOF-quit the bang loop).
+        let input = futures::stream::pending::<Result<HostEvent, String>>();
+        run_interactive_bang(session, driver, bash, agent_stream, input).await?;
     }
 
     if let Some(stream) = agent_stream.as_mut() {
@@ -545,7 +547,27 @@ mod slice_tests {
     use super::*;
     use crate::app::tui::bridge::{UiEntry, UiPhase};
     use crate::app::tui::host::{HostEvent, HostSession};
+    use futures::Stream;
     use xylitol_tui::{Component, InputEvent, Terminal};
+
+    /// HostEvent stream for hanging-bang Esc: delay → Esc(+backlog) → park (no EOF).
+    fn bang_esc_input_stream(
+        backlog_after_abort: usize,
+    ) -> impl Stream<Item = Result<HostEvent, String>> {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            let _ = tx.send(Ok(HostEvent::Input(esc_event())));
+            for _ in 0..backlog_after_abort {
+                let _ = tx.send(Ok(HostEvent::Input(esc_event())));
+            }
+            std::future::pending::<()>().await;
+        });
+        futures::stream::unfold(
+            rx,
+            |mut rx| async move { rx.recv().await.map(|ev| (ev, rx)) },
+        )
+    }
 
     struct TestTerminal {
         cols: u16,
@@ -1340,6 +1362,45 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn c720_esc_suppresses_xy_before_drain() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        session.on_run_started("first");
+        // Mid-stream draft then Esc — suppress must arm before drain.
+        session
+            .step(HostEvent::Xy(Box::new(XyEvent::TextDelta("draft".into()))))
+            .unwrap();
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        session
+            .step(HostEvent::Xy(Box::new(XyEvent::TextDelta(
+                "SHOULD_NOT_APPEAR".into(),
+            ))))
+            .unwrap();
+        drain_pending(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.abort_count(), 1, "Driver::abort must still run");
+        assert!(
+            !session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::Assistant { text } if text.contains("SHOULD_NOT_APPEAR")
+            )),
+            "late delta before drain must not appear: {:?}",
+            session.ui_model().entries
+        );
+        assert!(
+            session
+                .ui_model()
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text == "Aborted")),
+            "expected Aborted after drain: {:?}",
+            session.ui_model().entries
+        );
+    }
+
+    #[tokio::test]
     async fn c670_abort_drops_late_deltas() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -1422,36 +1483,10 @@ mod slice_tests {
             .await
             .unwrap();
         let bash = session.take_bash().expect("pending bang");
-        session.begin_bash_exec(&bash.command, bash.exclude_from_context);
-        assert!(
-            session.ui_model().entries.iter().any(|e| matches!(
-                e,
-                UiEntry::Bash {
-                    command,
-                    status: crate::app::tui::bridge::BashBlockStatus::Pending,
-                    ..
-                } if command == "sleep 99"
-            )),
-            "bang must uplink Bash pending: {:?}",
-            session.ui_model().entries
-        );
-        let bash_fut = driver.execute_bash(&bash.command, bash.exclude_from_context, None);
-        tokio::pin!(bash_fut);
-        tokio::select! {
-            result = &mut bash_fut => {
-                let r = result.expect("bash result");
-                assert!(r.cancelled, "bash must be cancelled: {r:?}");
-                session.end_bash_exec();
-            }
-            _ = async {
-                tokio::time::sleep(Duration::from_millis(40)).await;
-                session.step(HostEvent::Input(esc_event())).unwrap();
-                assert!(session.take_abort(), "busy Esc must request abort");
-                driver.abort();
-                session.note_bash_cancelled();
-                std::future::pending::<()>().await
-            } => {}
-        }
+        let input = bang_esc_input_stream(0);
+        run_interactive_bang(&mut session, &mut driver, bash, &mut stream, input)
+            .await
+            .unwrap();
         assert!(driver.abort_count() >= 1);
         let entries = &session.ui_model().entries;
         assert!(
@@ -1490,29 +1525,10 @@ mod slice_tests {
             .await
             .unwrap();
         let bash = session.take_bash().expect("pending bang");
-        session.begin_bash_exec(&bash.command, bash.exclude_from_context);
-        {
-            let bash_fut = driver.execute_bash(&bash.command, bash.exclude_from_context, None);
-            tokio::pin!(bash_fut);
-            tokio::select! {
-                result = &mut bash_fut => {
-                    let r = result.expect("bash result");
-                    assert!(r.cancelled);
-                    session.end_bash_exec();
-                }
-                _ = async {
-                    tokio::time::sleep(Duration::from_millis(40)).await;
-                    session.step(HostEvent::Input(esc_event())).unwrap();
-                    assert!(session.take_abort());
-                    driver.abort();
-                    session.note_bash_cancelled();
-                    // Simulate Esc backlog that used to sticky-cancel the next bang.
-                    session.step(HostEvent::Input(esc_event())).unwrap();
-                    session.step(HostEvent::Input(esc_event())).unwrap();
-                    std::future::pending::<()>().await
-                } => {}
-            }
-        }
+        let input = bang_esc_input_stream(2);
+        run_interactive_bang(&mut session, &mut driver, bash, &mut stream, input)
+            .await
+            .unwrap();
 
         driver.set_hang_bash_until_abort(false);
         root.borrow_mut().set_editor_text("!echo ok");
@@ -1553,28 +1569,10 @@ mod slice_tests {
             .await
             .unwrap();
         let bash1 = session.take_bash().expect("bang1");
-        session.begin_bash_exec(&bash1.command, bash1.exclude_from_context);
-        {
-            let bash_fut = driver.execute_bash(&bash1.command, bash1.exclude_from_context, None);
-            tokio::pin!(bash_fut);
-            tokio::select! {
-                result = &mut bash_fut => {
-                    assert!(result.expect("bash1").cancelled);
-                    session.end_bash_exec();
-                }
-                _ = async {
-                    tokio::time::sleep(Duration::from_millis(40)).await;
-                    session.step(HostEvent::Input(esc_event())).unwrap();
-                    assert!(session.take_abort());
-                    driver.abort();
-                    session.note_bash_cancelled();
-                    for _ in 0..8 {
-                        session.step(HostEvent::Input(esc_event())).unwrap();
-                    }
-                    std::future::pending::<()>().await
-                } => {}
-            }
-        }
+        let input1 = bang_esc_input_stream(8);
+        run_interactive_bang(&mut session, &mut driver, bash1, &mut stream, input1)
+            .await
+            .unwrap();
         assert!(!session.is_busy());
 
         // Bang 2: must still accept Esc abort (pi: fresh AbortController each run).
@@ -1584,30 +1582,11 @@ mod slice_tests {
             .await
             .unwrap();
         let bash2 = session.take_bash().expect("bang2");
-        session.begin_bash_exec(&bash2.command, bash2.exclude_from_context);
         let abort_before = driver.abort_count();
-        {
-            let bash_fut = driver.execute_bash(&bash2.command, bash2.exclude_from_context, None);
-            tokio::pin!(bash_fut);
-            tokio::select! {
-                result = &mut bash_fut => {
-                    let r = result.expect("bash2");
-                    assert!(r.cancelled, "second bang must cancel on Esc: {r:?}");
-                    session.end_bash_exec();
-                }
-                _ = async {
-                    tokio::time::sleep(Duration::from_millis(40)).await;
-                    session.step(HostEvent::Input(esc_event())).unwrap();
-                    assert!(
-                        session.take_abort(),
-                        "busy Esc on second bang must request abort"
-                    );
-                    driver.abort();
-                    session.note_bash_cancelled();
-                    std::future::pending::<()>().await
-                } => {}
-            }
-        }
+        let input2 = bang_esc_input_stream(0);
+        run_interactive_bang(&mut session, &mut driver, bash2, &mut stream, input2)
+            .await
+            .unwrap();
         assert!(driver.abort_count() > abort_before);
         let entries = &session.ui_model().entries;
         let cancelled_count = entries
@@ -1699,6 +1678,35 @@ mod slice_tests {
                 .iter()
                 .any(|e| matches!(e, UiEntry::System { text } if text.contains("rejected"))),
             "expected hard-reject note: {:?}",
+            session.ui_model().entries
+        );
+    }
+
+    #[tokio::test]
+    async fn ati32_agent_busy_bang_prefix_rejected_not_steer() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        session.on_run_started("busy");
+        root.borrow_mut().set_editor_text("!ls");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            driver.steer_calls.is_empty(),
+            "bang must not steer: {:?}",
+            driver.steer_calls
+        );
+        assert_eq!(root.borrow().editor_text(), "!ls");
+        assert!(
+            session
+                .ui_model()
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::System { text } if text.contains("rejected"))),
+            "expected reject note: {:?}",
             session.ui_model().entries
         );
     }

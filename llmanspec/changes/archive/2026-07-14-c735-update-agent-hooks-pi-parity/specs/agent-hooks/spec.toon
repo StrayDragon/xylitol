@@ -1,0 +1,19 @@
+kind: llman.sdd.delta
+ops[8]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,h1,"hook-events","Hook system MUST support pi-aligned event names including: tool_call, tool_result, context, before_provider_headers, before_provider_request, after_provider_response, agent_start, agent_end, agent_settled, turn_start, turn_end, message_start, message_end, session_start, session_shutdown, and xylitol-only events already in HookEvent.",null,null,null
+  modify_requirement,h7,"before-provider-request","before_provider_request hook MUST run after the provider JSON body is built and before HTTP send; Modify.args MUST replace the request body (e.g. cache_control).",null,null,null
+  modify_requirement,h8,"after-provider-response","after_provider_response hook MUST fire after HTTP response headers are available and before the success stream/body is consumed; context MUST include status and response headers; MUST NOT require reading the SSE body.",null,null,null
+  add_requirement,h11,"before-provider-headers","before_provider_headers hook MUST run after default auth headers are built and before send; Modify.args.headers object MUST merge into or replace request headers.",null,null,null
+  add_requirement,h12,"provider-hooks-wired","OpenAI Responses and Anthropic Messages adapters MUST invoke the three provider hooks when a HookDispatcher is injected; empty dispatcher MUST be a zero-overhead no-op.",null,null,null
+  add_requirement,h13,"script-bridge-react","When a HookDispatcher is attached to the agent, ReAct MUST dispatch script hooks for tool_call (pre), tool_result (post), and context (pre model call) in addition to AgentHooks.",null,null,null
+  add_requirement,h14,"lifecycle-script-hooks","When a HookDispatcher is attached, agent_start/agent_end/turn_start/turn_end/message_start/message_end MUST be dispatched alongside the corresponding XyEvent emissions (observe-only; fail-open).",null,null,null
+  add_requirement,h15,"bdd-provider-nonempty","BDD scenarios for before_provider_request and after_provider_response MUST exercise real dispatch (non-empty scenario bodies).",null,null,null
+op_scenarios[8]{req_id,id,given,when,then}:
+  h1,"event-names","HookEvent enum lists provider and lifecycle variants","event_type is queried","pi names are returned for provider and lifecycle events"
+  h7,"prefix-cache","a before_provider_request hook returns Modify with cache_control","Responses or Anthropic adapter sends","request JSON includes the modified fields"
+  h8,"after-headers","provider returns HTTP 200","after_provider_response runs","hook context includes status 200 and headers before SSE read"
+  h11,"header-merge","before_provider_headers Modify adds X-Test","request is sent","outgoing request carries X-Test"
+  h12,"empty-noop","HookDispatcher is empty","adapter generate_stream runs","no script processes are spawned"
+  h13,"tool-bridge","script hook matches pre.tool_call","ReAct is about to run a tool","script receives tool name and args on stdin"
+  h14,"agent-start-fire","dispatcher attached","agent run starts","agent_start hook pattern can match"
+  h15,"bdd-real","hooks.feature provider scenarios","cargo test --test bdd","provider scenarios are not empty stubs"

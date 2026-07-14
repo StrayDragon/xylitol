@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,atm7,"commands-module-growth","产品 TUI slash/bang 解析 MUST 继续收口于 commands 模块（可多文件），执行仍经 pending + drain_pending → protocol::Command / dispatch 或 Driver；MUST NOT 在 UiRoot/widgets 内散落第二套 slash 语义。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  atm7,"parse-stays-in-commands","新增或拆分 slash 解析","审计调用点","解析定义在 commands 下且 layout 无独立 parse 副本"

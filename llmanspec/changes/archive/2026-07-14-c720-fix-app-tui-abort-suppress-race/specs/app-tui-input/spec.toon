@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ati31,"abort-latch-suppresses-xy","产品 TUI 在 agent 忙碌且无 overlay 时按 Esc MUST 在同一步进内臂装流抑制并保留 pending_abort 供 drain_pending 调用 Driver::abort；在 drain 完成前注入的迟到 Xy MUST NOT 写出新 assistant 正文或清除 Aborted 语义。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ati31,"harness-esc-inject-before-drain","ScriptedDriver 轮次 busy","Esc 后注入 TextDelta 再 drain_pending","abort 被调用、无新 assistant 正文、可再 submit"

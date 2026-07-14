@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::Stream;
@@ -15,6 +16,8 @@ use serde_json::Value;
 use crate::domain::error::XyError;
 use crate::domain::message::{AgentMessage, AgentPart, XyStopReason};
 use crate::domain::types::{XyChunk, XyToolSchema};
+use crate::infra::hooks::HookDispatcher;
+use crate::infra::hooks::http::{run_after_response, run_before_headers, run_before_request};
 use crate::runtime_protocol::XyStream;
 
 use super::LlmAdapter;
@@ -25,16 +28,23 @@ pub struct OpenAiResponsesAdapter {
     api_key: String,
     model: String,
     base_url: String,
+    hooks: Option<Arc<HookDispatcher>>,
 }
 
 impl OpenAiResponsesAdapter {
     /// Create a new Responses API adapter.
-    pub fn new(api_key: String, model: String, base_url: Option<String>) -> Self {
+    pub fn new(
+        api_key: String,
+        model: String,
+        base_url: Option<String>,
+        hooks: Option<Arc<HookDispatcher>>,
+    ) -> Self {
         Self {
             client: reqwest::Client::new(),
             api_key,
             model,
             base_url: base_url.unwrap_or_else(|| "https://api.openai.com/v1".into()),
+            hooks,
         }
     }
 
@@ -77,6 +87,41 @@ impl OpenAiResponsesAdapter {
 
         body
     }
+
+    async fn send_request(
+        &self,
+        messages: Vec<AgentMessage>,
+        tools: &[XyToolSchema],
+        stream: bool,
+    ) -> Result<reqwest::Response, XyError> {
+        let mut body = self.build_body(messages, tools, stream);
+        let url = format!("{}/responses", self.base_url);
+
+        let mut headers = self.headers();
+        run_before_headers(&self.hooks, &mut headers).await?;
+        run_before_request(&self.hooks, &self.model, &mut body).await?;
+
+        let response = self
+            .client
+            .post(&url)
+            .headers(headers)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| XyError::Provider(anyhow::anyhow!("OpenAI Responses request: {e}")))?;
+
+        let status = response.status().as_u16();
+        run_after_response(&self.hooks, status, response.headers()).await;
+
+        if !response.status().is_success() {
+            let body_text = response.text().await.unwrap_or_default();
+            let msg = extract_error_message(&body_text)
+                .unwrap_or_else(|| format!("HTTP {status}: {body_text}"));
+            return Err(XyError::Provider(anyhow::anyhow!(msg)));
+        }
+
+        Ok(response)
+    }
 }
 
 #[async_trait]
@@ -90,26 +135,7 @@ impl LlmAdapter for OpenAiResponsesAdapter {
         messages: Vec<AgentMessage>,
         tools: &[XyToolSchema],
     ) -> Result<XyStream, XyError> {
-        let body = self.build_body(messages, tools, true);
-        let url = format!("{}/responses", self.base_url);
-
-        let response = self
-            .client
-            .post(&url)
-            .headers(self.headers())
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| XyError::Provider(anyhow::anyhow!("OpenAI Responses request: {e}")))?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let body_text = response.text().await.unwrap_or_default();
-            let msg = extract_error_message(&body_text)
-                .unwrap_or_else(|| format!("HTTP {}: {}", status.as_u16(), body_text));
-            return Err(XyError::Provider(anyhow::anyhow!(msg)));
-        }
-
+        let response = self.send_request(messages, tools, true).await?;
         Ok(Box::pin(responses_stream(response)))
     }
 
@@ -118,26 +144,7 @@ impl LlmAdapter for OpenAiResponsesAdapter {
         messages: Vec<AgentMessage>,
         tools: &[XyToolSchema],
     ) -> Result<XyStream, XyError> {
-        let body = self.build_body(messages, tools, false);
-        let url = format!("{}/responses", self.base_url);
-
-        let response = self
-            .client
-            .post(&url)
-            .headers(self.headers())
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| XyError::Provider(anyhow::anyhow!("OpenAI Responses request: {e}")))?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let body_text = response.text().await.unwrap_or_default();
-            let msg = extract_error_message(&body_text)
-                .unwrap_or_else(|| format!("HTTP {}: {}", status.as_u16(), body_text));
-            return Err(XyError::Provider(anyhow::anyhow!(msg)));
-        }
-
+        let response = self.send_request(messages, tools, false).await?;
         let json: Value = response
             .json()
             .await

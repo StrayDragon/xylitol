@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::Stream;
@@ -9,6 +10,8 @@ use serde_json::Value;
 use crate::domain::error::XyError;
 use crate::domain::message::XyStopReason;
 use crate::domain::types::{XyChunk, XyToolSchema};
+use crate::infra::hooks::HookDispatcher;
+use crate::infra::hooks::http::{run_after_response, run_before_headers, run_before_request};
 use crate::runtime_protocol::XyStream;
 
 use super::LlmAdapter;
@@ -22,17 +25,24 @@ pub struct AnthropicMessagesAdapter {
     model: String,
     base_url: String,
     max_tokens: u32,
+    hooks: Option<Arc<HookDispatcher>>,
 }
 
 impl AnthropicMessagesAdapter {
     /// Create a new Anthropic Messages adapter.
-    pub fn new(api_key: String, model: String, base_url: Option<String>) -> Self {
+    pub fn new(
+        api_key: String,
+        model: String,
+        base_url: Option<String>,
+        hooks: Option<Arc<HookDispatcher>>,
+    ) -> Self {
         Self {
             client: reqwest::Client::new(),
             api_key,
             model,
             base_url: base_url.unwrap_or_else(|| "https://api.anthropic.com".into()),
             max_tokens: 8192,
+            hooks,
         }
     }
 
@@ -108,20 +118,26 @@ impl AnthropicMessagesAdapter {
         }
         let url = format!("{}/v1/messages", self.base_url);
 
+        let mut headers = self.headers();
+        run_before_headers(&self.hooks, &mut headers).await?;
+        run_before_request(&self.hooks, &self.model, &mut body).await?;
+
         let response = self
             .client
             .post(&url)
-            .headers(self.headers())
+            .headers(headers)
             .json(&body)
             .send()
             .await
             .map_err(|e| XyError::Provider(anyhow::anyhow!("Anthropic request error: {e}")))?;
 
-        let status = response.status();
-        if !status.is_success() {
+        let status = response.status().as_u16();
+        run_after_response(&self.hooks, status, response.headers()).await;
+
+        if !response.status().is_success() {
             let body_text = response.text().await.unwrap_or_default();
             let msg = extract_error_message(&body_text)
-                .unwrap_or_else(|| format!("HTTP {}: {}", status.as_u16(), body_text));
+                .unwrap_or_else(|| format!("HTTP {status}: {body_text}"));
             return Err(XyError::Provider(anyhow::anyhow!(msg)));
         }
 

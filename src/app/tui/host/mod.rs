@@ -1,5 +1,9 @@
 //! Product TUI host — event step machine (testable without a real TTY).
 
+mod pending;
+
+pub use pending::PendingOps;
+
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -85,15 +89,8 @@ pub struct HostSession<T: Terminal> {
     rebuild: Box<dyn FnMut(LayoutMode) -> Vec<Box<dyn xylitol_tui::Component>>>,
     /// UI-only model; updated solely via [`apply_xy_event`] / submit.
     ui_model: UiModel,
-    /// Idle Enter submit request (consumed by the async host loop).
-    pending_submit: Option<String>,
-    pending_steer: Option<String>,
-    pending_follow_up: Option<String>,
-    pending_abort: bool,
-    /// Alt+Up: restore queued messages to editor and clear both driver queues.
-    pending_dequeue: bool,
-    pending_slash: Option<PendingSlash>,
-    pending_bash: Option<PendingBash>,
+    /// Side effects for [`crate::app::tui::effects::drain_pending`] (c730).
+    pending: PendingOps,
     /// True while a `Driver::run` stream is open (blocks duplicate submit).
     run_active: bool,
     /// True while interactive `!`/`!!` bash is in flight (c665 Esc abort).
@@ -142,13 +139,7 @@ impl<T: Terminal> HostSession<T> {
             ui_root: None,
             rebuild: Box::new(rebuild),
             ui_model: UiModel::new(),
-            pending_submit: None,
-            pending_steer: None,
-            pending_follow_up: None,
-            pending_abort: false,
-            pending_dequeue: false,
-            pending_slash: None,
-            pending_bash: None,
+            pending: PendingOps::default(),
             run_active: false,
             bash_active: false,
             suppress_idle_esc: false,
@@ -215,7 +206,7 @@ impl<T: Terminal> HostSession<T> {
 
     /// Mark bang bash started: uplink Bash pending block, busy status `Running`.
     pub fn begin_bash_exec(&mut self, command: &str, exclude_from_context: bool) {
-        self.pending_abort = false;
+        self.pending.abort = false;
         // New bang = fresh cancel window; do not inherit post-abort Esc suppress.
         self.suppress_idle_esc = false;
         self.bash_active = true;
@@ -227,7 +218,7 @@ impl<T: Terminal> HostSession<T> {
     /// Clear bang busy after execute finishes (cancelled or not).
     pub fn end_bash_exec(&mut self) {
         self.bash_active = false;
-        self.pending_abort = false;
+        self.pending.abort = false;
         if !self.run_active {
             self.ui_model.phase = UiPhase::Idle;
             self.ui_model.status = None;
@@ -241,7 +232,7 @@ impl<T: Terminal> HostSession<T> {
         self.ui_model.note_user_abort();
         self.bash_active = false;
         self.run_active = false;
-        self.pending_abort = false;
+        self.pending.abort = false;
         self.suppress_xy_until_stream_end = true;
         // Crossterm may still deliver Esc Press/Repeat while idle after abort;
         // eat those only until the next non-Esc key or a new busy period.
@@ -253,35 +244,35 @@ impl<T: Terminal> HostSession<T> {
     pub fn note_bash_cancelled(&mut self) {
         self.ui_model.note_bash_cancelled();
         self.bash_active = false;
-        self.pending_abort = false;
+        self.pending.abort = false;
         self.suppress_idle_esc = true;
         self.sync_ui_root_from_model();
     }
 
     /// Take an idle-Enter submit request, if any.
     pub fn take_submit(&mut self) -> Option<String> {
-        self.pending_submit.take()
+        self.pending.take_submit()
     }
 
     pub fn take_steer(&mut self) -> Option<String> {
-        self.pending_steer.take()
+        self.pending.take_steer()
     }
 
     pub fn take_follow_up(&mut self) -> Option<String> {
-        self.pending_follow_up.take()
+        self.pending.take_follow_up()
     }
 
     pub fn take_abort(&mut self) -> bool {
-        std::mem::take(&mut self.pending_abort)
+        self.pending.take_abort()
     }
 
     pub fn take_slash(&mut self) -> Option<PendingSlash> {
-        self.pending_slash.take()
+        self.pending.take_slash()
     }
 
     /// Take a pending idle bash (`!` / `!!`) request.
     pub fn take_bash(&mut self) -> Option<PendingBash> {
-        self.pending_bash.take()
+        self.pending.take_bash()
     }
 
     /// Append bash outcome into the pending Bash block (c668).
@@ -305,7 +296,7 @@ impl<T: Terminal> HostSession<T> {
 
     /// Take a pending Alt+Up dequeue request (clear both driver queues).
     pub fn take_dequeue(&mut self) -> bool {
-        std::mem::take(&mut self.pending_dequeue)
+        self.pending.take_dequeue()
     }
 
     /// Update footer model name after `/model`.
@@ -543,7 +534,7 @@ impl<T: Terminal> HostSession<T> {
         if prompt.trim().is_empty() {
             return;
         }
-        self.pending_submit = Some(prompt);
+        self.pending.submit = Some(prompt);
     }
 
     /// Mark that `Driver::run` has started; seeds the user entry + busy phase.
@@ -643,7 +634,7 @@ impl<T: Terminal> HostSession<T> {
             return false;
         };
         if matches_key_event(key, "escape") {
-            self.pending_abort = false;
+            self.pending.abort = false;
             return true;
         }
         // Any other key (typing the next `!cmd`) ends idle Esc suppress.
@@ -667,9 +658,13 @@ impl<T: Terminal> HostSession<T> {
         }
 
         if matches_key_event(key, "escape") {
-            self.pending_abort = true;
+            self.pending.abort = true;
             // Drop untaken local steer so loop does not re-enqueue after abort.
-            self.pending_steer = None;
+            self.pending.steer = None;
+            // c720 / 1A: arm suppress immediately so late Xy cannot revive UI before
+            // drain_pending calls Driver::abort (token waste / fake busy).
+            self.suppress_xy_until_stream_end = true;
+            self.ui_model.clear_streaming_buffers();
             return true;
         }
 
@@ -686,9 +681,9 @@ impl<T: Terminal> HostSession<T> {
             }
             root.set_editor_text(parts.join("\n\n"));
             drop(root);
-            self.pending_steer = None;
-            self.pending_follow_up = None;
-            self.pending_dequeue = true;
+            self.pending.steer = None;
+            self.pending.follow_up = None;
+            self.pending.dequeue = true;
             self.sync_ui_root_from_model();
             return true;
         }
@@ -704,7 +699,7 @@ impl<T: Terminal> HostSession<T> {
             drop(root);
             // pi queue strip: dim Follow-up: above status — not a scrollback [steer] wall.
             self.ui_model.enqueue_follow_up_strip(text.clone());
-            self.pending_follow_up = Some(text);
+            self.pending.follow_up = Some(text);
             self.sync_ui_root_from_model();
             return true;
         }
@@ -715,16 +710,20 @@ impl<T: Terminal> HostSession<T> {
             if text.trim().is_empty() {
                 return true;
             }
-            // c669: hard-reject second bang while interactive bash is still running.
-            if self.bash_active {
+            // c669 / ati32: hard-reject bang while bash_active or agent busy
+            // (must not steer literal `!cmd`).
+            let reject_bang = self.bash_active || self.run_active || self.is_busy();
+            if reject_bang {
                 match parse_bang_command(&text) {
                     BangParse::NotBang => {}
                     BangParse::Empty { .. } | BangParse::Cmd { .. } => {
-                        // Keep editor text; do not clear / do not execute.
                         drop(root);
-                        self.push_system_note(
-                            "bash already running — wait or Esc to cancel (second ! rejected)",
-                        );
+                        let note = if self.bash_active {
+                            "bash already running — wait or Esc to cancel (second ! rejected)"
+                        } else {
+                            "agent busy — wait or Esc (! command cannot steer; rejected)"
+                        };
+                        self.push_system_note(note);
                         return true;
                     }
                 }
@@ -733,7 +732,7 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(String::new());
             drop(root);
             self.ui_model.enqueue_steer_strip(text.clone());
-            self.pending_steer = Some(text);
+            self.pending.steer = Some(text);
             self.sync_ui_root_from_model();
             return true;
         }
@@ -777,7 +776,7 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::DebugScene(_)
                 | PendingSlash::OpenTree
                 | PendingSlash::ForkAtLeaf => {
-                    self.pending_slash = Some(slash);
+                    self.pending.slash = Some(slash);
                 }
             }
             return true;
@@ -808,7 +807,7 @@ impl<T: Terminal> HostSession<T> {
                 root.remember_editor_send(text.clone());
                 root.set_editor_text(String::new());
                 drop(root);
-                self.pending_bash = Some(PendingBash {
+                self.pending.bash = Some(PendingBash {
                     command,
                     exclude_from_context,
                 });
@@ -819,7 +818,7 @@ impl<T: Terminal> HostSession<T> {
         root.remember_editor_send(text.clone());
         root.set_editor_text(String::new());
         drop(root);
-        self.pending_submit = Some(text);
+        self.pending.submit = Some(text);
         true
     }
 

@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ath9,"qa-baseline-before-refactor","在修改 abort 抑制时序、合并 bang select、或拆分 HostSession 模块之前，产品 TUI MUST 先落地可复现的 QA 基线：harness 与生产 bang Esc 路径 MUST 经同一共享 helper（或同序同分支等价入口）可测；MUST 提供 rstest-bdd feature 覆盖 abort/bang Esc/overlay Esc/队列键位；既有 ABS/HRS/BASE harness 与相关 PTY bang Esc 测 MUST 保持绿灯。本要求不豁免 ath6/ath7/ath8。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ath9,"shared-bang-helper","生产 mod.rs bang 环与 harness bang Esc 测并存","审查 bang Esc 消费路径","两侧调用同一共享 helper 或同序同分支入口，无第三份手写 select"
+  ath9,"bdd-features-present","tests/features 含 app-tui abort/bang/esc/queue feature","cargo test --test bdd -- --test-threads=1","新增 app-tui 场景全部通过且既有核心 BDD 不回归"

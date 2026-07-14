@@ -3137,9 +3137,9 @@ dependencies = [
 
 [[package]]
 name = "rstest-bdd"
-version = "0.6.0-beta2"
+version = "0.6.0-beta3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a2489c1f8f41fe6b4c7c44086f7c28ae793bbee39129259cb3993c29ba07501"
+checksum = "a53b8195de84b6694b210c967726e2a6e4bd82b3394951ad99b85062c7eca6b2"
 dependencies = [
  "ctor",
  "derive_more 0.99.20",
@@ -3155,26 +3155,26 @@ dependencies = [
  "rust-embed",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "unic-langid",
 ]
 
 [[package]]
 name = "rstest-bdd-harness"
-version = "0.6.0-beta2"
+version = "0.6.0-beta3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bea56879689118fffbcb3f7e6ad6c87923382aebba2953cd7fd91f33c51a34be"
+checksum = "4f2994169999c2037287129466b9c576cf51add440bb7d30ee16f712d4e2edf5"
 dependencies = [
  "cargo_metadata",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tracing",
 ]
 
 [[package]]
 name = "rstest-bdd-macros"
-version = "0.6.0-beta2"
+version = "0.6.0-beta3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2f3120a9b245abf3015dbe366d6e7f68e7a302bf0351c76666a080a91bc9780"
+checksum = "83080cc7749d3c8b2040c0f8be7faf350817342daade1d56df744655e33e9640"
 dependencies = [
  "camino",
  "cap-std",
@@ -3191,26 +3191,26 @@ dependencies = [
  "rstest-bdd-patterns",
  "rstest-bdd-policy",
  "syn 2.0.117",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "walkdir",
 ]
 
 [[package]]
 name = "rstest-bdd-patterns"
-version = "0.6.0-beta2"
+version = "0.6.0-beta3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f51caf698cc585cc3cd56d905756909a918335454ca0e21c52ee5d50224aff2d"
+checksum = "9773a23087aa9d460f11a982232758e9438f9b09bf297eb1dac748b745a324bd"
 dependencies = [
  "gherkin",
  "regex",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "rstest-bdd-policy"
-version = "0.6.0-beta2"
+version = "0.6.0-beta3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d186344367c5bc4fd7dbdd522d9af6402d73e13e7d9680ef1d1250bff867e47a"
+checksum = "b3de569456285584981fdd241e1a87152e39fd2c3029ea1b88948b086bfbfbd6"
 
 [[package]]
 name = "rstest_macros"

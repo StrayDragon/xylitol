@@ -13,7 +13,8 @@ use crate::agent::runtime::AgentRuntime;
 use crate::agent::session::{AgentCapabilities, QueueMode};
 use crate::agent::tools::ToolSet;
 use crate::runtime_protocol::{
-    XyBashExecutor, XyEventSink, XyExportIo, XyModelBuilder, XyPermission, XySessionStore,
+    XyBashExecutor, XyEventSink, XyExportIo, XyHookBus, XyModelBuilder, XyPermission,
+    XySessionStore,
 };
 
 /// Builder for [`AgentCapabilities`].
@@ -38,6 +39,7 @@ pub struct AgentBuilder {
     export_io: Option<Arc<dyn XyExportIo>>,
     steering_mode: QueueMode,
     follow_up_mode: QueueMode,
+    hook_bus: Option<Arc<dyn XyHookBus>>,
 }
 
 impl AgentBuilder {
@@ -67,6 +69,7 @@ impl AgentBuilder {
             export_io: None,
             steering_mode: QueueMode::default(),
             follow_up_mode: QueueMode::default(),
+            hook_bus: None,
         }
     }
 
@@ -148,6 +151,12 @@ impl AgentBuilder {
         self
     }
 
+    /// Attach the script hook bus (default: none).
+    pub fn hook_bus(mut self, bus: Option<Arc<dyn XyHookBus>>) -> Self {
+        self.hook_bus = bus;
+        self
+    }
+
     /// Build the [`AgentRuntime`] (ReAct-loop runtime over [`AgentCapabilities`]).
     pub fn build(self) -> Result<AgentRuntime, String> {
         let session = AgentCapabilities::new(
@@ -168,6 +177,7 @@ impl AgentBuilder {
             self.export_io,
             self.steering_mode,
             self.follow_up_mode,
+            self.hook_bus,
         );
         Ok(AgentRuntime::new(session))
     }

@@ -107,7 +107,7 @@ fn harness_never_calls_terminal_start() {
 fn product_tui_source_has_no_tui_start_call() {
     let sources = [
         ("mod.rs", include_str!("mod.rs")),
-        ("host.rs", include_str!("host.rs")),
+        ("host/mod.rs", include_str!("host/mod.rs")),
         ("effects.rs", include_str!("effects.rs")),
         ("commands.rs", include_str!("commands.rs")),
         ("layout/root.rs", include_str!("layout/root.rs")),

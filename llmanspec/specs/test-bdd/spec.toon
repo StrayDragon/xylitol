@@ -2,9 +2,11 @@ kind: llman.sdd.spec
 name: "test-bdd"
 purpose: "BDD test framework using rstest-bdd — feature files, step definitions, and scenario verification."
 valid_scope[2]: tests/bdd.rs,tests/features/
-requirements[2]{req_id,title,statement}:
+requirements[3]{req_id,title,statement}:
   r1,BDD steps MUST pass all 77 scenarios,"All 77 BDD scenarios MUST pass (currently 41/77, 36 failed) using rstest-bdd runner."
   bt1,"server-integration-scenarios","The BDD test suite MUST include step definitions for server.feature (server start, health check, prompt submission, event streaming, shutdown) and approval.feature (tool approval round-trip via reverse RPC)."
-scenarios[2]{req_id,id,given,when,then}:
+  bt2,"rstest-bdd-current-and-app-tui","仓库 MUST 使用 crates.io 当前 rstest-bdd / rstest-bdd-macros 兼容最新 beta（本变更目标 0.6.0-beta3 或更新的同系列）；MUST 在 tests/features 增加产品 TUI 相关 .feature，并在 BDD runner（tests/bdd.rs 或其子模块）提供对应 step；既有核心 BDD 场景 MUST 在升级后仍全部通过。"
+scenarios[3]{req_id,id,given,when,then}:
   r1,"all-pass",all 77 scenarios exist in feature files,"cargo test --test bdd -- --test-threads=1","all 77 pass, 0 fail"
   bt1,"server-feature-steps",server.feature scenarios have Gherkin steps,the BDD runner parses them,all server.feature and approval.feature scenarios run and pass
+  bt2,"upgrade-and-core-green","Cargo.toml 已升至目标 rstest-bdd 版本","cargo test --test bdd -- --test-threads=1","既有核心 feature 与新增 app-tui feature 均通过"
