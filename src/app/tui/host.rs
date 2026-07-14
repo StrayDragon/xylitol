@@ -107,6 +107,12 @@ pub struct HostSession<T: Terminal> {
     /// After Esc abort: drop agent `XyEvent`s until this run's EventStream ends (c670).
     suppress_xy_until_stream_end: bool,
     layout_cwd: String,
+    /// Test-only: force real external-editor path (skip harness stub gate).
+    #[cfg(test)]
+    force_real_external_editor: bool,
+    /// Test-only: override `$VISUAL`/`$EDITOR` resolve (avoids process-wide env races).
+    #[cfg(test)]
+    external_editor_cmd_override: Option<Result<String, String>>,
 }
 
 impl<T: Terminal> HostSession<T> {
@@ -148,6 +154,10 @@ impl<T: Terminal> HostSession<T> {
             suppress_idle_esc: false,
             suppress_xy_until_stream_end: false,
             layout_cwd: display_cwd(),
+            #[cfg(test)]
+            force_real_external_editor: false,
+            #[cfg(test)]
+            external_editor_cmd_override: None,
         }
     }
 
@@ -314,6 +324,26 @@ impl<T: Terminal> HostSession<T> {
             .entries
             .push(UiEntry::System { text: text.into() });
         self.sync_ui_root_from_model();
+    }
+
+    /// Push an error line (`UiEntry::Error` / `errors.md` one-liner).
+    pub fn push_error_note(&mut self, text: impl Into<String>) {
+        self.ui_model
+            .entries
+            .push(UiEntry::Error { text: text.into() });
+        self.sync_ui_root_from_model();
+    }
+
+    /// Test harness: force Ctrl+G down the real-editor path (no stub).
+    #[cfg(test)]
+    pub fn set_force_real_external_editor(&mut self, force: bool) {
+        self.force_real_external_editor = force;
+    }
+
+    /// Test harness: override editor command resolve (`Err` = missing config).
+    #[cfg(test)]
+    pub fn set_external_editor_cmd_override(&mut self, cmd: Option<Result<String, String>>) {
+        self.external_editor_cmd_override = cmd;
     }
 
     pub fn take_pending_session_tree_open(&mut self) -> bool {
@@ -793,7 +823,7 @@ impl<T: Terminal> HostSession<T> {
         true
     }
 
-    /// Ctrl+G: external editor stub (c492 / ati17).
+    /// Ctrl+G: external editor (c650 / ati17) — TTY real path or harness stub.
     fn try_ctrl_g(&mut self, input: &InputEvent) -> bool {
         let Some(root) = self.ui_root.as_ref() else {
             return false;
@@ -808,12 +838,83 @@ impl<T: Terminal> HostSession<T> {
         if root.slot().is_overlay() {
             return false;
         }
-        let chars = root.editor_text().len();
-        root.open_external_editor_stub();
+
+        let prefer_real = {
+            #[cfg(test)]
+            {
+                self.force_real_external_editor
+                    || super::external_editor::prefer_real_external_editor()
+            }
+            #[cfg(not(test))]
+            {
+                super::external_editor::prefer_real_external_editor()
+            }
+        };
+
+        if !prefer_real {
+            let chars = root.editor_text().len();
+            root.open_external_editor_stub();
+            drop(root);
+            self.push_system_note(format!(
+                "external editor stub (Ctrl+G) · {chars} chars · $EDITOR not spawned"
+            ));
+            return true;
+        }
+
+        let text = root.editor_text();
         drop(root);
-        self.push_system_note(format!(
-            "external editor stub (Ctrl+G) · {chars} chars · $EDITOR not spawned"
-        ));
+
+        let editor_cmd = {
+            #[cfg(test)]
+            {
+                if let Some(over) = self.external_editor_cmd_override.clone() {
+                    match over {
+                        Ok(cmd) => cmd,
+                        Err(msg) => {
+                            self.push_error_note(msg);
+                            return true;
+                        }
+                    }
+                } else {
+                    match super::external_editor::resolve_external_editor_command() {
+                        Ok(cmd) => cmd,
+                        Err(msg) => {
+                            self.push_error_note(msg);
+                            return true;
+                        }
+                    }
+                }
+            }
+            #[cfg(not(test))]
+            {
+                match super::external_editor::resolve_external_editor_command() {
+                    Ok(cmd) => cmd,
+                    Err(msg) => {
+                        self.push_error_note(msg);
+                        return true;
+                    }
+                }
+            }
+        };
+
+        let outcome = self.tui.with_terminal_suspended(|| {
+            super::external_editor::run_external_editor_process_with_command(&editor_cmd, &text)
+        });
+        match outcome {
+            Ok(Some(new_text)) => {
+                if let Some(root) = self.ui_root.as_ref() {
+                    root.borrow_mut().set_editor_text(new_text);
+                }
+            }
+            Ok(None) => {
+                self.push_error_note(
+                    "external editor exited non-zero — keeping original text".to_string(),
+                );
+            }
+            Err(err) => {
+                self.push_error_note(format!("external editor failed: {err}"));
+            }
+        }
         true
     }
 

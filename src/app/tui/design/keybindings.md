@@ -64,7 +64,7 @@ components:
 | `/tree` | 打开会话树（同双 Esc；**c700**） |
 | `/fork` | 在当前 leaf fork（同 Shift+F 语义；选节点仍用树；**c700**） |
 | `!` / `!!` 前缀 | bash 边框 + idle Enter → `execute_bash`（**c492**） |
-| Ctrl+G | 外部编辑器：TTY 真 `$VISUAL`/`$EDITOR`（**c650**）；harness / 非 TTY 仍 stub |
+| Ctrl+G | 外部编辑器（**c650**）：TTY + 已配置 `$VISUAL`/`$EDITOR` → 真编辑器；harness / 非 TTY → stub；未配置/失败 → `UiEntry::Error`（无静默默认编辑器） |
 
 ## 明确不做（键位）
 
