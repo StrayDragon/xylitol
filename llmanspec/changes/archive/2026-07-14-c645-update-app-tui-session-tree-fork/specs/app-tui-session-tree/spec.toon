@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ast10,"product-session-tree-fork","产品会话树 Shift+F MUST 创建新 child session：内容 MUST 为 get_branch 路径并重链 parent_id（对齐 pi createBranchedSession），MUST NOT 按 JSONL 文件序切片，MUST NOT 改写父文件，header MUST 含 parent_session。选中 user 时 MUST 用 ForkPosition::Before（leaf=parent、预填正文、不拷该 user）；选中非 user 时 MUST 用 ForkPosition::At（路径含选中、不因 fork 预填 user 正文）。随后 MUST switch_session 到 child 并关树。MUST NOT 使用 demo 同会话 ast5。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  ast10,"fork-new-session",树开且选中节点,按 Shift+F,"fork+switch 后当前为 child、树关闭、父 JSONL 未改"
+  ast10,"fork-user-before",树选中 kind=user,Shift+F,"Before：editor 含正文且 child 不含该 user id"
+  ast10,"fork-non-user-at",树选中 assistant/tool,Shift+F,"At：child 含该节点 id 且 editor 未因 fork 填 user 正文"
+  ast10,"fork-no-sibling-leak",父会话同层已有兄弟分支,对一侧路径 Shift+F,child 不含另一侧兄弟条目

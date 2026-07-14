@@ -165,7 +165,11 @@ pub trait Driver: Send {
     async fn import_jsonl(&mut self, path: &Path) -> Result<String, String>;
 
     /// Fork the current session at `entry_id`. Returns the new session id.
-    async fn fork_session(&mut self, entry_id: &str) -> Result<String, String>;
+    async fn fork_session(
+        &mut self,
+        entry_id: &str,
+        position: crate::domain::session_types::ForkPosition,
+    ) -> Result<String, String>;
 
     /// Switch to an existing session id. Validates existence first.
     async fn switch_session(&mut self, session_id: &str) -> Result<String, String>;
@@ -371,8 +375,15 @@ impl Driver for InProcessDriver {
         self.agent.inner_mut().import_from_jsonl(path).await
     }
 
-    async fn fork_session(&mut self, entry_id: &str) -> Result<String, String> {
-        self.agent.inner_mut().fork_session(entry_id).await
+    async fn fork_session(
+        &mut self,
+        entry_id: &str,
+        position: crate::domain::session_types::ForkPosition,
+    ) -> Result<String, String> {
+        self.agent
+            .inner_mut()
+            .fork_session(entry_id, position)
+            .await
     }
 
     async fn switch_session(&mut self, session_id: &str) -> Result<String, String> {
@@ -853,9 +864,22 @@ impl Driver for RemoteDriver {
             .to_string())
     }
 
-    async fn fork_session(&mut self, entry_id: &str) -> Result<String, String> {
+    async fn fork_session(
+        &mut self,
+        entry_id: &str,
+        position: crate::domain::session_types::ForkPosition,
+    ) -> Result<String, String> {
         let data = self
-            .post_data("fork", serde_json::json!({ "entry_id": entry_id }))
+            .post_data(
+                "fork",
+                serde_json::json!({
+                    "entry_id": entry_id,
+                    "position": match position {
+                        crate::domain::session_types::ForkPosition::At => "at",
+                        crate::domain::session_types::ForkPosition::Before => "before",
+                    },
+                }),
+            )
             .await?;
         Ok(data
             .get("session_id")

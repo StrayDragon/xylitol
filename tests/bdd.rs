@@ -1715,7 +1715,7 @@ async fn _w_session_set_label(sess: &XySessionStore, label: String) {
         .rev()
         .find(|e| {
             e.entry_type() != "label"
-                && e.entry_type() != "session_info"
+                && e.entry_type() != "sessionInfo"
                 && e.entry_type() != "session"
         })
         .and_then(|e| e.entry_id().map(String::from))
@@ -1736,7 +1736,7 @@ async fn _w_session_clear_label(sess: &XySessionStore) {
         .rev()
         .find(|e| {
             e.entry_type() != "label"
-                && e.entry_type() != "session_info"
+                && e.entry_type() != "sessionInfo"
                 && e.entry_type() != "session"
         })
         .and_then(|e| e.entry_id().map(String::from))
@@ -1755,7 +1755,7 @@ async fn _t_session_label_is(sess: &XySessionStore, expected: String) {
         .rev()
         .find(|e| {
             e.entry_type() != "label"
-                && e.entry_type() != "session_info"
+                && e.entry_type() != "sessionInfo"
                 && e.entry_type() != "session"
         })
         .and_then(|e| e.entry_id())
@@ -1775,7 +1775,7 @@ async fn _t_session_no_label(sess: &XySessionStore) {
         .rev()
         .find(|e| {
             e.entry_type() != "label"
-                && e.entry_type() != "session_info"
+                && e.entry_type() != "sessionInfo"
                 && e.entry_type() != "session"
         })
         .and_then(|e| e.entry_id())

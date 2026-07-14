@@ -79,6 +79,9 @@ pub enum Command {
         #[serde(default)]
         id: Option<String>,
         entry_id: String,
+        /// `"before"` | `"at"` (default `"at"`).
+        #[serde(default)]
+        position: Option<String>,
     },
     GetMessages {
         #[serde(default)]

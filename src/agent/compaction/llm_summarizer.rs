@@ -134,8 +134,10 @@ pub fn serialize_conversation(messages: &[AgentMessage]) -> String {
                 let mut tool_calls = Vec::new();
                 for part in content {
                     match part {
-                        AgentPart::Text(t) => text_parts.push(t.as_str()),
-                        AgentPart::Thinking { text, .. } => thinking_parts.push(text.as_str()),
+                        AgentPart::Text { text } => text_parts.push(text.as_str()),
+                        AgentPart::Thinking { thinking, .. } => {
+                            thinking_parts.push(thinking.as_str())
+                        }
                         AgentPart::ToolCall {
                             name, arguments, ..
                         } => {

@@ -814,7 +814,13 @@ impl SessionManager {
         child_id: &str,
         target_entry_id: &str,
     ) -> Result<(), String> {
-        self.fork(parent_id, child_id, target_entry_id).await
+        self.fork(
+            parent_id,
+            child_id,
+            target_entry_id,
+            crate::domain::session_types::ForkPosition::At,
+        )
+        .await
     }
 
     /// Append a label to an entry.
@@ -1002,59 +1008,99 @@ impl SessionManager {
 
     // ── Fork ────────────────────────────────────────────────────
 
-    /// Fork a session: create a child session from a parent up to a given entry.
+    /// Fork a session: create a child session from a parent branch path.
+    ///
+    /// Aligns with pi `createBranchedSession`: content is [`Self::get_branch`],
+    /// `parent_id` values are re-chained; the parent JSONL is never mutated.
     pub async fn fork(
         &self,
         parent_id: &str,
         child_id: &str,
         at_entry_id: &str,
+        position: crate::domain::session_types::ForkPosition,
     ) -> Result<(), String> {
-        self.fork_inner(parent_id, child_id, at_entry_id).await
+        self.fork_inner(parent_id, child_id, at_entry_id, position)
+            .await
     }
 
-    /// Fork implementation (uses text-based branch summary).
+    /// Fork implementation (path-based; see [`crate::domain::session_types::ForkPosition`]).
     pub async fn fork_inner(
         &self,
         parent_id: &str,
         child_id: &str,
         at_entry_id: &str,
+        position: crate::domain::session_types::ForkPosition,
     ) -> Result<(), String> {
-        let parent_entries = self.load(parent_id).await?;
+        use crate::domain::session_types::{ForkPosition, is_user_message};
 
-        let fork_index = parent_entries
+        let parent_entries = self.load(parent_id).await?;
+        let selected = parent_entries
             .iter()
-            .position(|e| e.entry_id() == Some(at_entry_id))
+            .find(|e| e.entry_id() == Some(at_entry_id))
             .ok_or_else(|| format!("entry not found in parent session: {at_entry_id}"))?;
 
-        let kept = &parent_entries[..=fork_index];
-        let skipped = if fork_index + 1 < parent_entries.len() {
-            &parent_entries[fork_index + 1..]
-        } else {
-            &[]
+        let path_leaf: Option<&str> = match position {
+            ForkPosition::At => Some(at_entry_id),
+            ForkPosition::Before => {
+                if !is_user_message(selected) {
+                    return Err(
+                        "ForkPosition::Before requires a user message entry (pi /fork)".into(),
+                    );
+                }
+                selected.parent_id()
+            }
         };
 
-        self.create(child_id, None, Some(parent_id)).await?;
+        let path = match path_leaf {
+            None => Vec::new(),
+            Some(leaf) => self.get_branch(parent_id, Some(leaf)).await?,
+        };
 
-        for entry in kept {
-            self.append_with_id(child_id, entry).await?;
+        // Re-chain parent_id along the path (keep original entry ids — pi style).
+        let mut rechanneled = Vec::with_capacity(path.len());
+        let mut prev_id: Option<String> = None;
+        for entry in path {
+            let Some(eid) = entry.entry_id() else {
+                continue;
+            };
+            let ts = entry
+                .base()
+                .map(|b| b.timestamp.as_str())
+                .unwrap_or("")
+                .to_string();
+            let rewritten = Self::clone_entry_with_ids(&entry, eid, prev_id.as_deref(), &ts);
+            prev_id = Some(eid.to_string());
+            rechanneled.push(rewritten);
         }
 
-        if !skipped.is_empty() {
-            let summary = self.generate_branch_summary(skipped);
-            let now = Utc::now().to_rfc3339();
-            let branch_entry = SessionEntry::BranchSummary(BranchSummaryEntry {
-                base: EntryBase {
-                    entry_type: "branch_summary".into(),
-                    id: Uuid::new_v4().to_string(),
-                    parent_id: Some(at_entry_id.to_string()),
-                    timestamp: now,
-                },
-                from_id: at_entry_id.to_string(),
-                summary,
-                details: None,
-                from_hook: Some(false),
-            });
-            self.append_with_id(child_id, &branch_entry).await?;
+        self.create(child_id, None, Some(parent_id)).await?;
+        // Persist header before body rows (append_with_id writes the file directly).
+        if matches!(&self.backend, SessionBackend::Persisted { .. }) {
+            self.flush_pending_to_disk(child_id).await?;
+        }
+
+        for entry in &rechanneled {
+            match &self.backend {
+                SessionBackend::Persisted { .. } => {
+                    self.append_with_id(child_id, entry).await?;
+                }
+                SessionBackend::InMemory { .. } => {
+                    let mut store = self.in_memory_store.write().expect("RwLock not poisoned");
+                    store
+                        .entry(child_id.to_string())
+                        .or_default()
+                        .push(entry.clone());
+                    if let Some(id) = entry.entry_id() {
+                        self.set_leaf(child_id, Some(id.to_string()));
+                    }
+                }
+            }
+        }
+
+        if let Some(last) = rechanneled.last().and_then(|e| e.entry_id()) {
+            self.set_leaf(child_id, Some(last.to_string()));
+        } else {
+            self.set_leaf(child_id, None);
         }
 
         Ok(())
@@ -1325,8 +1371,14 @@ impl XySessionStore for SessionManager {
         SessionManager::create(self, id, cwd, parent).await
     }
 
-    async fn fork(&self, parent_id: &str, child_id: &str, at_entry_id: &str) -> Result<(), String> {
-        SessionManager::fork(self, parent_id, child_id, at_entry_id).await
+    async fn fork(
+        &self,
+        parent_id: &str,
+        child_id: &str,
+        at_entry_id: &str,
+        position: crate::domain::session_types::ForkPosition,
+    ) -> Result<(), String> {
+        SessionManager::fork(self, parent_id, child_id, at_entry_id, position).await
     }
 
     fn set_leaf(&self, session_id: &str, entry_id: Option<&str>) {
@@ -1454,8 +1506,8 @@ mod branch_summary_tests {
                 json!({
                     "role": "assistant",
                     "content": [
-                        "查文件",
-                        { "id": "1", "name": "read", "arguments": { "path": "src/lib.rs" } }
+                        { "type": "text", "text": "查文件" },
+                        { "type": "toolCall", "id": "1", "name": "read", "arguments": { "path": "src/lib.rs" } }
                     ],
                     "timestamp": 0u64,
                 }),
@@ -1466,6 +1518,166 @@ mod branch_summary_tests {
         assert!(summary.contains("src/lib.rs"), "{summary}");
         assert!(summary.contains("你能做什么"), "{summary}");
         assert!(!summary.contains("{\"content\""), "{summary}");
+    }
+}
+
+#[cfg(test)]
+mod fork_path_tests {
+    //! c645: path-based fork (pi createBranchedSession) — not file-order slice.
+    use super::*;
+    use crate::domain::session_types::{
+        EntryBase, ForkPosition, MessageEntry, fixture_message_json, is_user_message, message_text,
+    };
+
+    fn msg(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: parent.map(str::to_string),
+                timestamp: format!("t-{id}"),
+            },
+            message: fixture_message_json(role, text),
+        })
+    }
+
+    /// Branched tree written so **file order** would include the sibling if
+    /// sliced by index, while **get_branch** path would not:
+    /// ```text
+    /// u1
+    /// ├─ a_left  (file earlier)
+    /// └─ a_right (file later; fork target path)
+    /// ```
+    async fn seeded_sibling_tree(mgr: &SessionManager, sid: &str) {
+        mgr.create(sid, Some("."), None).await.unwrap();
+        if matches!(&mgr.backend, SessionBackend::Persisted { .. }) {
+            mgr.flush_pending_to_disk(sid).await.unwrap();
+        }
+        for e in [
+            msg("u1", None, "user", "root user"),
+            msg(
+                "a_left",
+                Some("u1"),
+                "assistant",
+                "LEFT sibling — must not leak",
+            ),
+            msg("a_right", Some("u1"), "assistant", "RIGHT keep"),
+            msg("u_right", Some("a_right"), "user", "fork me"),
+        ] {
+            match &mgr.backend {
+                SessionBackend::Persisted { .. } => {
+                    mgr.append_with_id(sid, &e).await.unwrap();
+                }
+                SessionBackend::InMemory { .. } => {
+                    let mut store = mgr.in_memory_store.write().expect("lock");
+                    store.entry(sid.to_string()).or_default().push(e.clone());
+                    if let Some(id) = e.entry_id() {
+                        mgr.set_leaf(sid, Some(id.to_string()));
+                    }
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn fork_at_excludes_sibling_branch() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        seeded_sibling_tree(&mgr, "parent").await;
+
+        mgr.fork("parent", "child", "u_right", ForkPosition::At)
+            .await
+            .unwrap();
+
+        let child = mgr.load("child").await.unwrap();
+        let ids: Vec<_> = child.iter().filter_map(|e| e.entry_id()).collect();
+        assert!(
+            ids.contains(&"u1") && ids.contains(&"a_right") && ids.contains(&"u_right"),
+            "path must include u1→a_right→u_right: {ids:?}"
+        );
+        assert!(
+            !ids.contains(&"a_left"),
+            "sibling a_left must NOT leak into child (file-order bug): {ids:?}"
+        );
+
+        let parent = mgr.load("parent").await.unwrap();
+        assert_eq!(
+            parent.iter().filter(|e| e.entry_id().is_some()).count(),
+            4,
+            "parent must be unchanged"
+        );
+        let header = child.iter().find_map(|e| match e {
+            SessionEntry::Header(h) => Some(h),
+            _ => None,
+        });
+        assert_eq!(
+            header.and_then(|h| h.parent_session.as_deref()),
+            Some("parent")
+        );
+    }
+
+    #[tokio::test]
+    async fn fork_before_user_omits_user_and_prefills_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        seeded_sibling_tree(&mgr, "parent").await;
+
+        mgr.fork("parent", "child", "u_right", ForkPosition::Before)
+            .await
+            .unwrap();
+
+        let child = mgr.load("child").await.unwrap();
+        let ids: Vec<_> = child.iter().filter_map(|e| e.entry_id()).collect();
+        assert!(
+            ids.contains(&"u1") && ids.contains(&"a_right"),
+            "before-user path ends at parent of u_right: {ids:?}"
+        );
+        assert!(
+            !ids.contains(&"u_right"),
+            "selected user must not be copied (pi before): {ids:?}"
+        );
+        assert!(!ids.contains(&"a_left"), "no sibling leak: {ids:?}");
+
+        let parent = mgr.load("parent").await.unwrap();
+        let u = parent
+            .iter()
+            .find(|e| e.entry_id() == Some("u_right"))
+            .expect("u_right");
+        assert!(is_user_message(u));
+        let text = match u {
+            SessionEntry::Message(m) => message_text(&m.message),
+            _ => String::new(),
+        };
+        assert_eq!(text, "fork me");
+    }
+
+    #[tokio::test]
+    async fn fork_before_rejects_non_user() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        seeded_sibling_tree(&mgr, "parent").await;
+        let err = mgr
+            .fork("parent", "child", "a_right", ForkPosition::Before)
+            .await
+            .unwrap_err();
+        assert!(err.contains("user"), "Before on assistant must err: {err}");
+    }
+
+    #[tokio::test]
+    async fn persisted_fork_does_not_mutate_parent_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        seeded_sibling_tree(&mgr, "parent").await;
+        // Force flush parent to disk (assistant already flushed via append_with_id).
+        let before = tokio::fs::read(mgr.session_path("parent")).await.unwrap();
+
+        mgr.fork("parent", "child", "u_right", ForkPosition::At)
+            .await
+            .unwrap();
+
+        let after = tokio::fs::read(mgr.session_path("parent")).await.unwrap();
+        assert_eq!(before, after, "parent JSONL bytes must be identical");
+        assert!(mgr.session_path("child").exists());
     }
 }
 

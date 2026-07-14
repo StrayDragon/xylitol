@@ -70,6 +70,8 @@ pub enum AgentMessage {
     /// A tool result message (result of executing a tool call).
     #[serde(rename = "toolResult")]
     ToolResultMessage {
+        /// Wire key `toolCallId` (pi); not `toolUseId`.
+        #[serde(rename = "toolCallId")]
         tool_use_id: String,
         /// Name of the tool that produced this result.
         #[serde(default)]
@@ -164,7 +166,9 @@ impl AgentMessage {
                 let mut buf = String::new();
                 for part in content {
                     match part {
-                        AgentPart::Text(t) | AgentPart::Thinking { text: t, .. } => buf.push_str(t),
+                        AgentPart::Text { text } | AgentPart::Thinking { thinking: text, .. } => {
+                            buf.push_str(text)
+                        }
                         _ => {}
                     }
                 }
@@ -196,22 +200,29 @@ impl AgentMessage {
 // ── AgentPart ───────────────────────────────────────────────────────
 
 /// A single content part within an [`AgentMessage`].
+///
+/// Wire (c646 / pi): internally tagged with `"type"`. Tool results MUST NOT appear
+/// as content parts — use [`AgentMessage::ToolResultMessage`] rows instead.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum AgentPart {
-    /// Plain text content.
-    Text(String),
+    /// Plain text content (`{"type":"text","text":…}`).
+    Text { text: String },
     /// An image (url or base64 data).
     Image(ImageContent),
-    /// Thinking / reasoning text.
+    /// Thinking / reasoning (`{"type":"thinking","thinking":…}`).
     Thinking {
-        text: String,
+        thinking: String,
         /// Whether the thinking content was redacted by safety filters.
         #[serde(default)]
         redacted: bool,
-        /// Opaque signature for multi-turn thinking continuity.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        signature: Option<String>,
+        /// Opaque signature for multi-turn thinking continuity (wire: `thinkingSignature`).
+        #[serde(
+            default,
+            rename = "thinkingSignature",
+            skip_serializing_if = "Option::is_none"
+        )]
+        thinking_signature: Option<String>,
     },
     /// A tool call request (assistant → tool).
     ToolCall {
@@ -219,36 +230,38 @@ pub enum AgentPart {
         name: String,
         arguments: Value,
     },
-    /// A tool result (tool → assistant).
-    ToolResult {
-        tool_use_id: String,
-        content: Vec<AgentPart>,
-        #[serde(default)]
-        is_error: bool,
-    },
 }
 
 impl AgentPart {
+    /// Construct a text part.
+    pub fn text(s: impl Into<String>) -> Self {
+        Self::Text { text: s.into() }
+    }
+
+    /// Construct a thinking part (no signature).
+    pub fn thinking(s: impl Into<String>) -> Self {
+        Self::Thinking {
+            thinking: s.into(),
+            redacted: false,
+            thinking_signature: None,
+        }
+    }
+
     /// Returns `true` if this part is a [`ToolCall`](AgentPart::ToolCall).
     pub fn is_tool_call(&self) -> bool {
         matches!(self, Self::ToolCall { .. })
     }
 
-    /// Returns `true` if this part is a [`ToolResult`](AgentPart::ToolResult).
-    pub fn is_tool_result(&self) -> bool {
-        matches!(self, Self::ToolResult { .. })
-    }
-
     /// Returns `true` if this part is text or thinking content.
     pub fn is_text_content(&self) -> bool {
-        matches!(self, Self::Text(_) | Self::Thinking { .. })
+        matches!(self, Self::Text { .. } | Self::Thinking { .. })
     }
 
     /// Return the text content if this is a text or thinking part.
     pub fn as_text(&self) -> Option<&str> {
         match self {
-            Self::Text(t) => Some(t.as_str()),
-            Self::Thinking { text, .. } => Some(text.as_str()),
+            Self::Text { text } => Some(text.as_str()),
+            Self::Thinking { thinking, .. } => Some(thinking.as_str()),
             _ => None,
         }
     }
@@ -256,7 +269,7 @@ impl AgentPart {
 
 // ── ImageContent ────────────────────────────────────────────────────
 
-/// An image attachment.
+/// An image attachment (flattened under `AgentPart::Image` with `type: "image"`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageContent {
     /// Public URL of the image (if available).
@@ -265,7 +278,8 @@ pub struct ImageContent {
     /// Base64-encoded image data (inline).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
-    /// MIME type (e.g. `image/png`, `image/jpeg`).
+    /// MIME type (e.g. `image/png`, `image/jpeg`). Wire key: `mimeType`.
+    #[serde(rename = "mimeType")]
     pub media_type: String,
 }
 
@@ -402,7 +416,7 @@ impl AgentMessage {
     /// Create a simple user text message.
     pub fn user(text: impl Into<String>) -> Self {
         Self::UserMessage {
-            content: vec![AgentPart::Text(text.into())],
+            content: vec![AgentPart::text(text)],
             timestamp: now_ms(),
         }
     }
@@ -410,7 +424,7 @@ impl AgentMessage {
     /// Create a simple assistant text message.
     pub fn assistant(text: impl Into<String>) -> Self {
         Self::AssistantMessage {
-            content: vec![AgentPart::Text(text.into())],
+            content: vec![AgentPart::text(text)],
             stop_reason: Some(XyStopReason::Stop),
             usage: None,
             api: String::new(),
@@ -463,7 +477,9 @@ pub fn collect_text_parts(parts: &[AgentPart]) -> String {
     parts
         .iter()
         .filter_map(|p| match p {
-            AgentPart::Text(t) | AgentPart::Thinking { text: t, .. } => Some(t.as_str()),
+            AgentPart::Text { text } | AgentPart::Thinking { thinking: text, .. } => {
+                Some(text.as_str())
+            }
             _ => None,
         })
         .collect::<Vec<_>>()
@@ -487,7 +503,7 @@ mod tests {
     #[test]
     fn assistant_message_has_new_fields() {
         let msg = AgentMessage::AssistantMessage {
-            content: vec![AgentPart::Text("response".into())],
+            content: vec![AgentPart::text("response")],
             stop_reason: Some(XyStopReason::Stop),
             usage: Some(XyUsage {
                 input: 100,
@@ -544,7 +560,7 @@ mod tests {
         let msg = AgentMessage::ToolResultMessage {
             tool_use_id: "call-1".into(),
             tool_name: "read_file".into(),
-            content: vec![AgentPart::Text("file contents".into())],
+            content: vec![AgentPart::text("file contents")],
             details: Some(serde_json::json!({"path": "src/main.rs", "lines": 42})),
             is_error: false,
             timestamp: 1000,
@@ -574,24 +590,48 @@ mod tests {
     #[test]
     fn thinking_part_with_metadata() {
         let part = AgentPart::Thinking {
-            text: "Let me reason...".into(),
+            thinking: "Let me reason...".into(),
             redacted: false,
-            signature: Some("sig-abc".into()),
+            thinking_signature: Some("sig-abc".into()),
         };
         let json = serde_json::to_string(&part).unwrap();
+        assert!(
+            json.contains(r#""type":"thinking""#) && json.contains(r#""thinking":"#),
+            "tagged thinking wire: {json}"
+        );
+        assert!(
+            json.contains("thinkingSignature"),
+            "signature key must be thinkingSignature: {json}"
+        );
         let deserialized: AgentPart = serde_json::from_str(&json).unwrap();
         match deserialized {
             AgentPart::Thinking {
-                text,
+                thinking,
                 redacted,
-                signature,
+                thinking_signature,
             } => {
-                assert_eq!(text, "Let me reason...");
+                assert_eq!(thinking, "Let me reason...");
                 assert!(!redacted);
-                assert_eq!(signature, Some("sig-abc".into()));
+                assert_eq!(thinking_signature, Some("sig-abc".into()));
             }
             _ => panic!("expected Thinking"),
         }
+        assert!(serde_json::from_str::<AgentPart>(r#""bare""#).is_err());
+        assert!(serde_json::from_str::<AgentPart>(r#"{"redacted":false,"text":"x"}"#).is_err());
+    }
+
+    #[test]
+    fn text_part_is_tagged_not_bare_string() {
+        let json = serde_json::to_string(&AgentPart::text("hi")).unwrap();
+        assert_eq!(json, r#"{"type":"text","text":"hi"}"#);
+    }
+
+    #[test]
+    fn tool_result_message_uses_tool_call_id_key() {
+        let msg = AgentMessage::tool_result("c1", "read", vec![AgentPart::text("ok")], false);
+        let v = serde_json::to_value(&msg).unwrap();
+        assert!(v.get("toolCallId").is_some(), "{v}");
+        assert!(v.get("toolUseId").is_none(), "{v}");
     }
 
     #[test]
@@ -599,12 +639,7 @@ mod tests {
         let messages = vec![
             AgentMessage::user("hi"),
             AgentMessage::assistant("hello"),
-            AgentMessage::tool_result(
-                "t1",
-                "read_file",
-                vec![AgentPart::Text("done".into())],
-                false,
-            ),
+            AgentMessage::tool_result("t1", "read_file", vec![AgentPart::text("done")], false),
             AgentMessage::bash("pwd", "/home", Some(0)),
             AgentMessage::CustomMessage {
                 custom_type: "x".into(),

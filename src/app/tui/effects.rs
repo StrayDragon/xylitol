@@ -145,6 +145,54 @@ pub async fn drain_pending<T: Terminal>(
         let _ = session.render_now();
     }
 
+    if let Some(entry_id) = session.take_pending_session_tree_fork() {
+        use crate::domain::session_types::{ForkPosition, is_user_message, message_text};
+
+        tracing::info!(
+            target: "xylitol::tui",
+            entry_id = %entry_id,
+            "Driver::fork_session + switch_session"
+        );
+        let parent_entries = driver.get_messages().await.unwrap_or_default();
+        let selected = parent_entries
+            .iter()
+            .find(|e| e.entry_id() == Some(entry_id.as_str()));
+        match selected {
+            None => {
+                session.push_system_note(format!("fork failed: entry not found: {entry_id}"));
+            }
+            Some(e) => {
+                let (position, prefill) = if is_user_message(e) {
+                    let text = match e {
+                        crate::domain::session_types::SessionEntry::Message(m) => {
+                            let raw = message_text(&m.message);
+                            raw.strip_prefix("[steer] ")
+                                .unwrap_or(raw.as_str())
+                                .to_string()
+                        }
+                        _ => String::new(),
+                    };
+                    (ForkPosition::Before, Some(text))
+                } else {
+                    (ForkPosition::At, None)
+                };
+                match driver.fork_session(&entry_id, position).await {
+                    Ok(child_id) => match driver.switch_session(&child_id).await {
+                        Ok(_) => {
+                            let entries = driver.get_messages().await.unwrap_or_default();
+                            session.apply_session_tree_fork(&child_id, entries, prefill);
+                        }
+                        Err(e) => {
+                            session.push_system_note(format!("switch after fork failed: {e}"))
+                        }
+                    },
+                    Err(e) => session.push_system_note(format!("fork failed: {e}")),
+                }
+            }
+        }
+        let _ = session.render_now();
+    }
+
     if let Some(model_id) = session.take_pending_model_select() {
         tracing::info!(target: "xylitol::tui", model_id = %model_id, "SetModel from picker");
         match dispatch(
