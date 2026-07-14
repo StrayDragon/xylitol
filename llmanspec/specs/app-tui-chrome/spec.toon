@@ -2,10 +2,10 @@ kind: llman.sdd.spec
 name: "app-tui-chrome"
 purpose: 主题 token、glyph、status 与 footer 等 layout 壳（历史 capability 名 chrome）。
 valid_scope[1]: src/app/tui/
-requirements[13]{req_id,title,statement}:
+requirements[15]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   atc1,"idle-status-omitted",产品 UiRoot 空闲时 status 槽 MUST 渲染 0 行；忙碌时 MUST 至多独立 1 行短状态；MUST NOT 将 Working 等忙碌文案并入 footer。
-  atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本，MVP 至少含 cwd 与 model（形如 `cwd · model`）；队列非空时可加 `q:sN|fM ·` 前缀；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。"
+  atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本；字段序为 cwd 与 model（形如 `cwd · model`），并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api/RemoteCount/LocalTokenizer 为 used N tokens，Heuristic 为 used ~N tokens，Unknown 为 used ? tokens）；队列非空时可加 `q:sN|fM ·` 前缀；无估计数据时 MUST NOT 伪造 used 0；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。"
   atc3,"theme-glyphs-config","产品 host MUST 经 Palette::dark()（或等价闭包）将语义色注入组件主题；glyph 档（unicode/ascii）MUST 由显式配置切换，MUST NOT 做运行时字体探测；产品 MVP MUST NOT 默认开启 theme auto。"
   atc4,"design-docs-ssot","产品 TUI 视觉与 UX MUST 以 src/app/tui/DESIGN.md 为索引、以 src/app/tui/design/*.md 为组件级 SSOT；实现与 demo 引用组件规则时 MUST 指向对应子文档（尤其 design/diff-block.md 与 design/keybindings.md），MUST NOT 仅依赖口头约定。"
   atc5,"demo-theme-auto-detect",agent_demo MUST 默认使用 Dark token 集；当启用主题自动探测（环境变量或 harness API）时 MUST 经 package terminal_colors 纯函数切换 Light/Dark，并在 layout 壳（footer 或系统行）暴露当前 theme_mode；MUST NOT 将自动切换设为产品 MVP 默认。
@@ -16,11 +16,15 @@ requirements[13]{req_id,title,statement}:
   atc10,"abort-status-idle",产品在用户 abort 后 status 槽 MUST 回到 0 行（idle）；取消说明 MUST 走 scrollback System 一行而非增高 status；bang 执行中 MAY 使用单行 Running。
   atc11,"models-picker-footer",经 models 槽或 /model <id> 成功 SetModel 后，产品 footer 的 model 字段 MUST 更新为选定模型的显示名或 id。
   atc12,"status-spacer-above-editor",产品 TUI status 槽：busy 时 MUST 渲染 Loader 前导空行加一行 spinner 短词并紧贴 editor 上方（MUST NOT strip 空行）；idle 时 MUST 保留恰好一行空白呼吸间距（MUST NOT 显示 Ready 文案）；对齐 agent_demo status_lines 与 status.md。
-scenarios[20]{req_id,id,given,when,then}:
+  atc13,"footer-token-provenance","当 footer 展示上下文 token 占用时，文案 MUST 反映 Driver::estimate_context_tokens 返回的 TokenProvenance：精确来源（Api/RemoteCount/LocalTokenizer）MUST 使用无波浪号的 used N tokens；Heuristic MUST 使用 used ~N tokens；Unknown MUST 使用 used ? tokens；MUST NOT 将 Heuristic 显示为无 ~ 的精确值。"
+  atc14,"footer-token-refresh","产品 host MUST 在 session tree travel 换叶、一轮 agent turn 结束后回到 idle、以及 compact 成功后刷新 footer token 字段；刷新 MUST 经 Driver 只读 estimate_context_tokens（或等价 seam），MUST NOT 在每个 TextDelta 上全量本地 tokenizer.encode。"
+scenarios[26]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-chrome",spec.toon 存在且 purpose 为中文
   atc1,"idle-status-zero-rows","",空闲 UiRoot apply_ui_model 后 render,无独立 Working 行且 status 槽占 0 行
   atc1,"busy-status-not-in-footer","",busy 且 status=Working 时 render,存在独立 status 文案且 footer 不含 Working
   atc2,"footer-cwd-model-no-keywall","",空闲渲染末行,含 cwd 与 model 且不含 enter submit 键墙
+  atc2,"footer-with-used-tokens","已有 ContextTokenEstimate 且 provenance 为 Api","渲染 footer","末行含 used N tokens 且仍为单行 dim"
+  atc2,"footer-omit-when-no-estimate","尚无 estimate 结果","渲染 footer","含 cwd 与 model 且不含伪造的 used 0"
   atc3,"ascii-glyph-prefix","",配置 glyph=ascii 后渲染用户行,用户前缀为 ascii 档字符
   atc4,"index-lists-components","",打开 DESIGN.md,组件索引列出 design/ 下核心文档路径
   atc4,"diff-block-exists","",实现 Diff 渲染前查阅设计,"design/diff-block.md 存在且含 unified / word-level / CJK MUST"
@@ -37,3 +41,7 @@ scenarios[20]{req_id,id,given,when,then}:
   atc11,"footer-updates",选定新模型成功,下一帧 footer,含新模型标签
   atc12,"busy-keeps-leading-blank",产品 host busy,渲染一帧,status 区含前导空行再 spinner 行且紧贴 editor
   atc12,"idle-one-blank",产品 host idle,渲染一帧,editor 上方恰好一行空白且无 spinner
+  atc13,"heuristic-tilde","estimate provenance 为 Heuristic","渲染 footer token 字段","文案为 used ~N tokens"
+  atc13,"unknown-question","estimate provenance 为 Unknown","渲染 footer token 字段","文案为 used ? tokens"
+  atc14,"travel-refreshes-token","用户 travel 到另一 leaf","下一帧 footer","token 字段对应该 leaf 的 estimate"
+  atc14,"no-per-delta-encode","正在流式生成","仅处理 TextDelta","不因每个 delta 触发全文 tokenizer.encode"
