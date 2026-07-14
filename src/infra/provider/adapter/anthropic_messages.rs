@@ -289,8 +289,13 @@ fn anthropic_stream(
                         let mut sorted: Vec<_> = tool_accumulators.drain().collect();
                         sorted.sort_by_key(|(idx, _)| *idx);
                         for (_, (id, name, args_str)) in sorted {
-                            let args: Value = serde_json::from_str(&args_str).unwrap_or(serde_json::json!({}));
-                            yield XyChunk::FunctionCall { name, args, id };
+                            let args: Value =
+                                serde_json::from_str(&args_str).unwrap_or(serde_json::json!({}));
+                            let chunk = XyChunk::FunctionCall { name, args, id };
+                            if let Some(t) = &trace {
+                                t.emit_mapped_chunk(&chunk);
+                            }
+                            yield chunk;
                         }
 
                         let finish = match stop_reason {
@@ -312,7 +317,14 @@ fn anthropic_stream(
                         } else {
                             None
                         };
-                        yield XyChunk::Done { finish_reason: finish, usage };
+                        let chunk = XyChunk::Done {
+                            finish_reason: finish,
+                            usage,
+                        };
+                        if let Some(t) = &trace {
+                            t.emit_mapped_chunk(&chunk);
+                        }
+                        yield chunk;
                     }
                 }
 
