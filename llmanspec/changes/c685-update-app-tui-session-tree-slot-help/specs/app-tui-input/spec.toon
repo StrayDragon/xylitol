@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ati26,"session-tree-cycle-backward","产品 TUI 在 EditorSlot::Tree 打开时 Ctrl+Shift+O（或 KeybindingsManager 解析到的 cycleBackward 等价和弦）MUST 按 all→labeled-only→user-only→no-tools→default 方向循环 FilterMode；MUST 优先于关树时的其它 Ctrl+O 语义；Ctrl+O 正向循环（ati22）保持不变。",null,null,null
+  modify_requirement,ati22,"session-tree-filter-keys","产品 TUI 在 EditorSlot::Tree 打开时：Ctrl+D MUST 将 FilterMode 设为 default；Ctrl+T / Ctrl+U / Ctrl+L / Ctrl+A MUST 在对应模式（no-tools / user-only / labeled-only / all）与 default 之间 toggle；Ctrl+O MUST 按 default→no-tools→user-only→labeled-only→all 循环；Ctrl+Shift+O（或等价 cycleBackward）MUST 反向循环（见 ati26）；上述键 MUST 优先于关树时的 thinking（Ctrl+T）与工具视口（Ctrl+O）；增量搜索键入 MUST 交给包 TreeSelector；有搜索串时 Esc MUST 先清搜索再关树（既有 ati5 语义保留）。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ati26,"cycle-backward",树开且当前 FilterMode 为 default,按 Ctrl+Shift+O,"进入 all 或状态含 [all]"
+  ati22,"ctrl-o-forward-unchanged",树开且当前 default,按 Ctrl+O,"进入 no-tools 或状态含 [no-tools]"
