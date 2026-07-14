@@ -470,13 +470,14 @@ impl UiRoot {
             EditorSlot::Tree => {
                 let mut lines = Vec::new();
                 lines.push(" Session tree".to_string());
+                // pi order: TreeHelp then SearchLine (purpose keys above search).
+                for help in wrap_help_line(&tree_help_line(), width.max(1)) {
+                    lines.push(self.theme.paint_muted(&help));
+                }
                 lines.push(
                     self.theme
                         .paint_muted(&tree_search_line(self.tree.search_query())),
                 );
-                for help in wrap_help_line(&tree_help_line(), width.max(1)) {
-                    lines.push(self.theme.paint_muted(&help));
-                }
                 lines.extend(self.tree.render(width.max(1)));
                 lines
             }
