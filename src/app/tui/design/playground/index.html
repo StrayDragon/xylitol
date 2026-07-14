@@ -626,14 +626,14 @@
           <button type="button" class="chip-btn" data-keys="busy" aria-pressed="false">流中</button>
           <button type="button" class="chip-btn" data-keys="slash" aria-pressed="false">slash</button>
           <button type="button" class="chip-btn" data-keys="tree" aria-pressed="false">活树</button>
-          <span class="hint">/models · 树 filter/fold/fork · 无 /model cycle</span>
+          <span class="hint">/model · 树 filter/fold/fork · 无参打开列表（无 cycle）</span>
         </div>
         <div class="stage" id="keys-stage"></div>
       </section>
 
       <!-- models picker -->
       <section class="panel" id="panel-models" data-id="models">
-        <h2>Models · /models fuzzy</h2>
+        <h2>Models · /model fuzzy</h2>
         <p class="spec">
           <a href="../models-picker.md">models-picker.md</a> · 替换 editor 槽 · fuzzy · Esc 取消
         </p>
@@ -646,7 +646,7 @@
         <div class="term term-slot" id="models-term" data-design-fixture="models.open">
           <div class="term-content">
             <div class="row"><span class="fg-user">❯</span> 换个更快的模型</div>
-            <div class="row fg-assistant">好的，用 /models 选一个。</div>
+            <div class="row fg-assistant">好的，用 /model 选一个。</div>
           </div>
           <div class="term-editor" id="models-editor"></div>
           <div class="term-footer" id="models-footer">~/xylitol · ornith-think</div>
@@ -836,7 +836,7 @@
       { id: "shell", label: "Full shell", key: "f" },
       { id: "layout-shell", label: "Layout 壳", key: "c" },
       { id: "keys", label: "Keybindings", key: "k" },
-      { id: "models", label: "Models /models", key: "m" },
+      { id: "models", label: "Models /model", key: "m" },
       { id: "tree-power", label: "Tree power", key: "p" },
       { id: "layout", label: "Layout", key: "1" },
       { id: "tool", label: "Tool / Expandable", key: "2" },
@@ -1355,7 +1355,7 @@
     const KEYS = {
       idle: `<div class="row fg-muted">idle · status 0 行</div>
 <div class="row"><span class="fg-on">Enter</span> <span class="fg-muted">提交</span> · <span class="fg-on">Ctrl+C</span> <span class="fg-muted">清输入 / 空则退出</span></div>
-<div class="row"><span class="fg-on">双 Esc</span> <span class="fg-muted">MessageHistory 活树</span> · <span class="fg-on">/models</span> <span class="fg-muted">fuzzy 选模型</span></div>
+<div class="row"><span class="fg-on">双 Esc</span> <span class="fg-muted">MessageHistory 活树</span> · <span class="fg-on">/model</span> <span class="fg-muted">fuzzy 选模型</span></div>
 <div class="row fg-muted">旁注例：(Ctrl+T) · 禁止 ^T · footer 不堆键</div>`,
       busy: `<div class="row"><span class="fg-accent">⠋</span> <span class="fg-muted">Working（status 行）</span></div>
 <div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">abort（清 steer，留 follow-up）</span></div>
@@ -1363,8 +1363,8 @@
 <div class="row"><span class="fg-on">Ctrl+O</span> <span class="fg-muted">工具视口</span> · <span class="fg-on">Ctrl+T</span> <span class="fg-muted">thinking</span> · <span class="fg-on">Alt+E</span> <span class="fg-muted">块展开</span></div>`,
       slash: `<div class="row fg-muted">slash · 替换 editor 槽或行内补全</div>
 <div class="row"><span class="fg-on">/exit</span> <span class="fg-muted">退出 + restore</span></div>
-<div class="row"><span class="fg-on">/models</span> <span class="fg-muted">fuzzy 列表选模型</span></div>
-<div class="row fg-muted">无 /model cycle · 未知命令 → 短错误 · 不崩</div>`,
+<div class="row"><span class="fg-on">/model</span> <span class="fg-muted">fuzzy 列表选模型</span></div>
+<div class="row fg-muted">无参 /model → 列表 · 未知命令 → 短错误 · 不崩</div>`,
       tree: `<div class="row fg-muted">双 Esc 活树 · 替换 editor 槽 · kind 前缀分色</div>
 <div class="row"><span class="fg-user">user:</span> <span class="fg-on">正文</span> · <span class="fg-success">assistant:</span> · <span class="fg-tool">tool:</span></div>
 <div class="row"><span class="fg-on">Esc</span> <span class="fg-muted">关树</span> · <span class="fg-on">Enter</span> <span class="fg-muted">travel</span> · <span class="fg-on">Shift+F</span> <span class="fg-muted">fork</span></div>
@@ -1423,7 +1423,7 @@
     /* TreeSelector shape: gutter ›/␠␠ · kind 色 + label · 选中整行 reverse · 底栏 (i/n) [filter] */
     const TREEP = {
       filter: `<div class="row">  <span class="fg-user">user:</span> <span class="fg-on">修 footer</span></div>
-<div class="row rev">› user: 加 /models</div>
+<div class="row rev">› user: 加 /model 列表</div>
 <div class="row">  <span class="fg-success">assistant:</span> <span class="fg-on">已改</span></div>
 <div class="row fg-muted">  (2/5) [user]</div>`,
       fold: `<div class="row rev">› assistant: …</div>

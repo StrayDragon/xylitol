@@ -156,8 +156,8 @@ components:
 
 | Change | 设计焦点 | 文档 |
 |---|---|---|
-| **c625** design/playground | 固定下一屏形状：`/models` 槽、树 power、真 `$EDITOR`、footer context%、abort 反馈；**不做** Settings/Plate 运行时改配置 | 本表 · [`playground/`](./design/playground/) |
-| **c630** `/models` | 替换 editor 槽的 **fuzzy 模型列表**；**移除** `/model` 极简切换 | [`models-picker`](./design/models-picker.md) · [`keybindings`](./design/keybindings.md) |
+| **c625** design/playground | 固定下一屏形状：`/model` 列表槽、树 power、真 `$EDITOR`、footer context%、abort 反馈；**不做** Settings/Plate 运行时改配置 | 本表 · [`playground/`](./design/playground/) |
+| **c630** `/model` | 替换 editor 槽的 **fuzzy 模型列表**（对齐 pi）；**移除** 无参 cycle | [`models-picker`](./design/models-picker.md) · [`keybindings`](./design/keybindings.md) |
 | **c635–c645** 树 power | 产品 filter → fold → fork（demo 已有；逐个接线） | [`session-tree`](./design/session-tree.md) · [`keybindings`](./design/keybindings.md) |
 | **c650** 真 `$EDITOR` | Ctrl+G：TTY 真编辑器；harness 仍 stub | [`bash-mode`](./design/bash-mode.md) |
 | **c655** footer context% | 有数据时追加 `· context%`；无则省略 | [`footer`](./design/footer.md) |
@@ -246,7 +246,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 | 文档 | 内容 |
 |---|---|
 | [`design/session-tree.md`](./design/session-tree.md) | **优先**：双 Esc 会话树（travel/fork） |
-| [`design/models-picker.md`](./design/models-picker.md) | `/models` fuzzy 列表（替换 editor 槽） |
+| [`design/models-picker.md`](./design/models-picker.md) | `/model` fuzzy 列表（替换 editor 槽；对齐 pi） |
 | [`design/transcript.md`](./design/transcript.md) | live 输出进 scrollback（非 Codex 浏览面） |
 | [`design/expandable.md`](./design/expandable.md) | thinking / tool 可展开（demo 优先） |
 | [`design/status.md`](./design/status.md) | busy 一行 |

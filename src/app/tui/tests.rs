@@ -391,7 +391,7 @@ fn harness_idle_slash_model_pending() {
     session.step(HostEvent::Input(enter_event())).unwrap();
     assert_eq!(
         session.take_slash(),
-        Some(super::commands::PendingSlash::CycleModel)
+        Some(super::commands::PendingSlash::OpenModels)
     );
 }
 
