@@ -44,7 +44,9 @@ components:
 
 | 键 | 行为 | Change |
 |---|---|---|
-| Ctrl+O/T/D/U/L/A | filter 循环 / 谓词 | **c635** |
+| Ctrl+D | filter → default | **c635** |
+| Ctrl+T/U/L/A | filter **toggle** ↔ default（no-tools / user / labeled / all） | **c635** |
+| Ctrl+O | filter cycle forward（树开优先；关树仍为工具视口） | **c635** |
 | Ctrl/Alt+←→ | fold / 分支跳转 | **c640** |
 | Shift+L / T | annotation / 时间戳（可与 fold 同批或紧随） | **c640** future 可拆 |
 | Shift+F | **fork** | **c645** |

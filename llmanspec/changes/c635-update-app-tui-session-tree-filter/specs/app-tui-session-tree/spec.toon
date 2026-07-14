@@ -1,0 +1,11 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,ast2,"live-travel-via-driver","产品双 Esc 会话树 MUST 渲染当前 session 的 MessageHistory 活树（经 Driver::session_tree(MessageHistory) 映射为包 TreeNode，含 kind）；Enter 选中节点时 MUST 调用 Driver::travel_session_tree(MessageHistory, id)，按返回的 SessionTreeTravel 关闭树、预填 editor（仅当 editor_text 有值）、并重建/刷新 transcript 与后续提交 leaf 语义；MUST NOT 再使用 c491 假树样例作为唯一数据源；filter / 增量搜索产品接线见 ast8；fold / Shift+F fork 仍属后续 change。",null,null,null
+  modify_requirement,ast6,"map-session-tree-nodes","产品 MUST 将 domain SessionTreeNode（MessageHistory）映射为 xylitol-tui TreeNode：id 取 entry id、label 为可显示正文（MUST NOT 把 role 烘焙进 label）、kind 取 message role 或等价（user/assistant/tool 等）；SessionTreeNode.label 有值时 MUST 映射为 TreeNode.annotation；bookkeeping 类 entry（ModelChange / ThinkingLevelChange / Label / SessionInfo / Custom / CustomMessage / Header）MUST 映射 kind=meta 以便 default 过滤；主题 kind_prefix 继续由 LayoutTheme 供给。",null,null,null
+  add_requirement,ast8,"session-tree-filter","产品会话树打开时 MUST 支持与 pi 对齐的 FilterMode（default / no-tools / user-only / labeled-only / all）：经 TreeSelector include_node 应用谓词，并与包增量搜索 AND；default MUST 隐藏 kind=meta；no-tools MUST 在 default 基础上隐藏 kind=tool；user-only MUST 仅 kind=user；labeled-only MUST 仅 annotation 有值；all MUST 显示全部；状态行 MUST 在非 default 时追加 [no-tools]/[user]/[labeled]/[all] 之一，default MUST NOT 追加 [default]；MUST NOT 在 packages/xylitol-tui 硬编码产品 FilterMode。",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  ast2,"open-shows-live","Driver 当前 session 已有 user/assistant 消息","空编辑器双 Esc 打开树","树行来自 MessageHistory 活数据而非 sample_session_tree 假树"
+  ast6,"annotation-mapped","活树节点域 label 已 resolve","打开会话树","对应 TreeNode.annotation 有值"
+  ast8,"ctrl-t-hides-tools","产品树已打开且含 tool 行","按 Ctrl+T 进入 no-tools","可见行无 kind=tool 且状态含 [no-tools]"
+  ast8,"toggle-back-default","树在 no-tools","再按 Ctrl+T","回到 default 谓词且状态无 [no-tools]"
+  ast8,"labeled-only","树含带 annotation 与无 annotation 节点","Ctrl+L 进入 labeled-only","仅 annotation 有值的行可见"

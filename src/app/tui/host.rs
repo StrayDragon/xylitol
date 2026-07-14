@@ -341,12 +341,46 @@ impl<T: Terminal> HostSession<T> {
         let Some(root) = self.ui_root.as_ref() else {
             return;
         };
+        let catalog: Vec<(String, String)> = models
+            .iter()
+            .map(|m| {
+                let desc = if m.display_name.is_empty() {
+                    String::new()
+                } else {
+                    m.display_name.clone()
+                };
+                (m.id.clone(), desc)
+            })
+            .collect();
         let items = models
             .iter()
             .map(|m| model_info_to_select_item(m, &current_id))
             .collect();
-        root.borrow_mut().mount_models_picker(items);
+        {
+            let mut root = root.borrow_mut();
+            root.set_model_arg_catalog(catalog);
+            root.mount_models_picker(items);
+        }
         self.sync_ui_root_from_model();
+    }
+
+    /// Seed `/model <id>` completion catalog without opening the picker (c999).
+    pub fn set_model_arg_catalog_from_models(&mut self, models: &[ModelInfo]) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        let catalog = models
+            .iter()
+            .map(|m| {
+                let desc = if m.display_name.is_empty() {
+                    String::new()
+                } else {
+                    m.display_name.clone()
+                };
+                (m.id.clone(), desc)
+            })
+            .collect();
+        root.borrow_mut().set_model_arg_catalog(catalog);
     }
 
     pub fn close_models_slot(&mut self) {

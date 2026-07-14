@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: src/app/tui/
-requirements[22]{req_id,title,statement}:
+requirements[23]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式或 agent 忙碌时 Esc MUST 调用 Driver::abort；Ctrl+C 在编辑器非空时 MUST 清空输入，在编辑器为空时 MUST 退出 TUI。"
@@ -25,7 +25,8 @@ requirements[22]{req_id,title,statement}:
   ati19,"bang-esc-aborts","产品 TUI 在交互 !/!! bash 执行期间 MUST 视为忙碌：Esc MUST 调用 Driver::abort 以取消该 bash（进程树按 c660）；host MUST NOT 在 drain_pending 内独占 await bash 以致无法读键盘；取消后 MUST 回到可输入 idle。"
   ati20,"bang-busy-hard-reject","产品 TUI 在交互 bang 仍 busy（bash_active）时，用户再次 Enter 提交 ! 或 !! 命令 MUST 硬拒绝：MUST 向用户给出简短提示、MUST 恢复编辑器文本（或等价保留命令体）、MUST NOT 调用第二次 Driver::execute_bash、MUST NOT 排队第二 bang；忙碌时非 bang 前缀文本 MUST 仍按既有 steer 规则处理。"
   ati21,"model-picker-slot","产品 TUI 无参 /model MUST 以 EditorSlot（Models 或等价）替换贴底 editor 区展示可用模型 SelectList；支持过滤（fuzzy 或包 API）；Enter 选定 → SetModel 并关槽还原 editor、更新 footer model；Esc 取消关槽且 MUST NOT 改模型；busy 时 MUST 拒绝打开（idle-only）；MUST NOT 居中 overlay 主路径。"
-scenarios[36]{req_id,id,given,when,then}:
+  ati23,"model-arg-completion",产品 Editor MUST 经包 CompletionSource 注册 SlashArgCompletionSource（命令 model，默认 MUST NOT with_bare_command）与 SlashCommandSource（至少 exit/model）；键入 /model 加空格（及可选前缀）时 MUST 弹出模型 id 补全（catalog 来自 available_models）；Tab/Enter 选定 MUST 将 id 写入 editor；Esc 关 popup MUST NOT 调用 SetModel；无参 /model Enter 仍 MUST 走 c630 OpenModels 槽，MUST NOT 被 arg Source 抢走。
+scenarios[39]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-input",spec.toon 存在且 purpose 为中文
   ati1,"selector-slot","",打开模型选择器,editor 槽被选择器替换且贴底可见
   ati2,"esc-aborts","",流式中按 Esc,"Driver::abort 被调用"
@@ -62,3 +63,6 @@ scenarios[36]{req_id,id,given,when,then}:
   ati20,"second-bang-rejected",第一 bang 仍在执行,再提交 !echo second,出现拒绝提示且 execute_bash 调用次数仍为 1
   ati21,"open-filter-select",idle 已打开 models 槽,过滤后 Enter 选定一项,footer model 更新且槽关闭回到 Editor
   ati21,"esc-cancels",models 槽已打开,Esc,关槽且模型不变
+  ati23,"space-opens-catalog",产品 idle 且 catalog 已注入,键入 /model 加空格,补全 popup 出现模型项
+  ati23,"tab-applies-id",/model dee 补全已开,按 Tab,editor 含 /model 与选定 id
+  ati23,"bare-still-slot",产品 idle,提交无参 /model,打开 Models 槽而非仅依赖 arg bare catalog
