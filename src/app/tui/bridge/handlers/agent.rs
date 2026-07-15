@@ -23,7 +23,7 @@ pub fn apply_agent_family(model: &mut UiModel, event: &XyEvent) -> bool {
         }
         XyEvent::TurnEnd { .. } => {
             // MUST NOT treat as user-visible round end / idle reset.
-            tracing::trace!(
+            log::trace!(
                 target: "xylitol::tui",
                 "TurnEnd (intermediate); UI stays busy"
             );

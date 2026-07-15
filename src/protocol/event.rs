@@ -157,9 +157,9 @@ impl XyEvent {
             | XyEvent::AutoRetryEnd { .. }
             | XyEvent::SessionInfoChanged { .. }
             | XyEvent::ThinkingLevelChanged { .. } => {
-                tracing::debug!(
-                    event = self.description(),
-                    "wire: dropping non-mapped XyEvent"
+                log::debug!(
+                    "wire: dropping non-mapped XyEvent event={}",
+                    self.description()
                 );
                 None
             }

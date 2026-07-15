@@ -325,7 +325,7 @@ impl SettingsManager {
         let json = match serde_json::to_string_pretty(&settings) {
             Ok(j) => j,
             Err(e) => {
-                tracing::warn!("serialize global settings: {e}");
+                log::warn!("serialize global settings: {e}");
                 return;
             }
         };

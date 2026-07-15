@@ -10,9 +10,9 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use log::{debug, warn};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
-use tracing::{debug, warn};
 
 use super::{HookAction, HookEvent, HookPhase};
 
@@ -56,7 +56,10 @@ pub async fn run_hook_script_with_context(
     {
         Ok(c) => c,
         Err(e) => {
-            warn!(command = command, error = %e, "Failed to spawn hook script");
+            warn!(
+                "Failed to spawn hook script command={} error={}",
+                command, e
+            );
             return HookAction::Allow;
         }
     };
@@ -82,10 +85,8 @@ pub async fn run_hook_script_with_context(
                     Ok(val) => HookAction::from_json(&val),
                     Err(e) => {
                         debug!(
-                            command = command,
-                            error = %e,
-                            stdout = trimmed,
-                            "Hook stdout is not valid JSON, treating as allow"
+                            "Hook stdout is not valid JSON, treating as allow command={} error={} stdout={}",
+                            command, e, trimmed
                         );
                         HookAction::Allow
                     }
@@ -93,23 +94,22 @@ pub async fn run_hook_script_with_context(
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 warn!(
-                    command = command,
-                    exit_code = output.status.code(),
-                    stderr = stderr.as_ref(),
-                    "Hook script exited with non-zero status"
+                    "Hook script exited with non-zero status command={command} exit_code={:?} stderr={}",
+                    output.status.code(),
+                    stderr.as_ref()
                 );
                 HookAction::Allow
             }
         }
         Ok(Err(e)) => {
-            warn!(command = command, error = %e, "Hook script I/O error");
+            warn!("Hook script I/O error command={} error={}", command, e);
             HookAction::Allow
         }
         Err(_elapsed) => {
             warn!(
-                command = command,
-                timeout_ms = timeout.as_millis(),
-                "Hook script timed out, blocking (fail-closed)"
+                "Hook script timed out, blocking (fail-closed) command={} timeout_ms={}",
+                command,
+                timeout.as_millis()
             );
             HookAction::Block {
                 reason: format!("hook timed out after {}ms", timeout.as_millis()),

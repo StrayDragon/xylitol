@@ -718,11 +718,11 @@ pub(crate) async fn observe_hook(
     if let crate::runtime_protocol::XyHookOutcome::Blocked { reason } =
         bus.dispatch(event_type, phase, context).await
     {
-        tracing::warn!(
-            event = event_type,
-            phase = phase,
-            reason = reason,
-            "Script hook blocked observe-only lifecycle event (fail-open)"
+        log::warn!(
+            "Script hook blocked observe-only lifecycle event (fail-open) event={} phase={} reason={}",
+            event_type,
+            phase,
+            reason
         );
     }
 }
@@ -747,8 +747,8 @@ fn observe_hook_sync(
     });
     match rx.recv() {
         Ok(Ok(())) => {}
-        Ok(Err(e)) => tracing::warn!(error = %e, "observe_hook_sync runtime failed"),
-        Err(_) => tracing::warn!("observe_hook_sync worker disconnected"),
+        Ok(Err(e)) => log::warn!("observe_hook_sync runtime failed error={}", e),
+        Err(_) => log::warn!("observe_hook_sync worker disconnected"),
     }
 }
 

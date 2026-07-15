@@ -16,11 +16,7 @@ impl SessionEntry {
                 match serde_json::from_value::<AgentMessage>(msg.message.clone()) {
                     Ok(agent_msg) => Some(agent_msg),
                     Err(e) => {
-                        tracing::warn!(
-                            target: "xylitol::session",
-                            error = %e,
-                            "skip message entry: AgentMessage deserialize failed (c646 tagged wire only)"
-                        );
+                        log::warn!(target: "xylitol::session", "skip message entry: AgentMessage deserialize failed (c646 tagged wire only) error={}", e);
                         None
                     }
                 }

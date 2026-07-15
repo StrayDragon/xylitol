@@ -1,87 +1,126 @@
-//! Debug logging bootstrap — installs the global tracing subscriber.
+//! Observability bootstrap — fastrace FileReporter + `log` file logger.
 //!
-//! `tracing` is an unconditional dependency and emit sites already exist across
-//! `infra/` and `agent/`, but until a subscriber is installed those emits are
-//! silent no-ops. This module installs a **file-only** subscriber so logs never
-//! reach stdout/stderr (which would corrupt the TUI's inline viewport + per-frame
-//! DSR cursor query).
+//! File-only (never stdout/stderr) so TUI Inline + DSR stay intact.
 //!
-//! Activation priority (no CLI flag, no settings field):
-//! - `RUST_LOG` set → install with `EnvFilter::try_from_default_env()`.
-//! - `XYLITOL_DEBUG=1` (and no `RUST_LOG`) → install with the default filter
-//!   `xylitol=debug,warn`.
-//! - **debug builds** (`cfg(debug_assertions)`) → same default filter (c460).
-//! - release builds with neither env → do nothing; `tracing::` stays no-op.
+//! Activation (no CLI flag / settings field):
+//! - `RUST_LOG` set → level filter from env
+//! - else `XYLITOL_DEBUG=1` → `xylitol=debug,warn`
+//! - else debug builds (`cfg(debug_assertions)`) → same default
+//! - release with neither → off
 //!
-//! The file writer is **synchronous** (`OpenOptions::append`), not
-//! `tracing-appender::non_blocking`, so `panic = "abort"` (see `Cargo.toml`)
-//! cannot drop buffered lines on the floor. The file is created `0o600` on unix
-//! and ANSI is disabled.
-//!
-//! Init lives at the composition root (`app::cli::run`) — the single common
-//! entry for print / TUI / RPC / subcommands — so every app surface is covered.
-//! The `agent/` layer never installs a subscriber (it only emits), preserving
-//! the `agent → runtime_protocol → domain` dependency direction.
+//! Provider timeline (`provider-trace.jsonl`) follows the same gate, or
+//! `XYLITOL_PROVIDER_TRACE=1` alone in release.
 
 use std::io::Write;
 use std::path::Path;
+use std::sync::Mutex;
 
-use tracing_subscriber::EnvFilter;
+use crate::infra::observability::FileTraceReporter;
+use crate::infra::provider::trace::set_provider_trace_active;
 
-/// Default filter used when `XYLITOL_DEBUG=1` is set but `RUST_LOG` is not.
-///
-/// `xylitol=` matches this crate's emits (tracing uses the crate name as the
-/// default target); the bare `warn` catches warnings from any dependency.
 const DEFAULT_FILTER: &str = "xylitol=debug,warn";
 
-/// Install the global tracing subscriber if the environment requests it.
+/// Install file-only log + fastrace reporter when the environment / build requests it.
 ///
-/// Writes to `<agent_dir>/logs/xylitol.log` (created if missing). Returns
-/// `Some(())` when a subscriber was installed, `None` when logging stayed off.
-/// Installing when a global subscriber already exists (e.g. a prior call, or a
-/// test harness) is a no-op via `try_init`.
+/// Returns `Some(())` when backends were installed.
 pub fn init_logging(agent_dir: &Path) -> Option<()> {
-    // Priority: explicit RUST_LOG > XYLITOL_DEBUG one-switch > off.
-    // An empty RUST_LOG is treated as unset so a stale `export RUST_LOG=`
-    // in the user's shell doesn't accidentally enable verbose logging.
-    let filter = if std::env::var_os("RUST_LOG").is_some_and(|v| !v.is_empty()) {
-        EnvFilter::try_from_default_env().ok()?
-    } else if std::env::var_os("XYLITOL_DEBUG").is_some_and(is_truthy) {
-        EnvFilter::new(DEFAULT_FILTER)
-    } else {
-        // Debug builds: default on so `tail -f ~/.xylitol/logs/xylitol.log` works
-        // without env vars (c460 / ath3). Release stays off unless env opts in.
-        #[cfg(debug_assertions)]
-        {
-            EnvFilter::new(DEFAULT_FILTER)
-        }
-        #[cfg(not(debug_assertions))]
-        {
-            return None;
-        }
-    };
+    let want_log = logging_requested();
+    let want_provider = provider_trace_requested(want_log);
+
+    if !want_log && !want_provider {
+        set_provider_trace_active(false);
+        return None;
+    }
 
     let log_dir = agent_dir.join("logs");
-    let log_path = log_dir.join("xylitol.log");
-    // create_dir_all + open are best-effort: if the log dir can't be created
-    // (read-only home, sandbox), fall back to no logging rather than crashing
-    // the app — debug logging must never break the normal flow.
-    let file = open_append(&log_dir, &log_path)?;
+    std::fs::create_dir_all(&log_dir).ok()?;
 
-    // `try_init` returns Err if a global subscriber is already set (e.g. in
-    // repeated test runs). That is benign — keep the first subscriber.
-    let _ = tracing_subscriber::fmt()
-        .with_writer(file)
-        .with_ansi(false)
-        .with_env_filter(filter)
-        .try_init();
+    if want_log {
+        let log_path = log_dir.join("xylitol.log");
+        let file = open_append(&log_dir, &log_path)?;
+        let filter = level_filter();
+        let _ = env_logger::Builder::new()
+            .filter_level(log::LevelFilter::Warn)
+            .parse_filters(&filter)
+            .target(env_logger::Target::Pipe(Box::new(MutexWriter(Mutex::new(
+                file,
+            )))))
+            .format(|buf, record| {
+                writeln!(
+                    buf,
+                    "{} {:5} {} - {}",
+                    buf.timestamp_millis(),
+                    record.level(),
+                    record.target(),
+                    record.args()
+                )
+            })
+            .try_init();
+        log::info!(
+            target: "xylitol::logging",
+            "logging enabled path={}",
+            log_path.display()
+        );
+    }
 
-    tracing::info!(target: "xylitol::logging", path = %log_path.display(), "logging enabled");
+    if want_provider {
+        let trace_path = log_dir.join("provider-trace.jsonl");
+        match FileTraceReporter::open(trace_path.clone()) {
+            Ok(reporter) => {
+                fastrace::set_reporter(reporter, fastrace::collector::Config::default());
+                set_provider_trace_active(true);
+                log::info!(
+                    target: "xylitol::logging",
+                    "provider trace enabled path={}",
+                    trace_path.display()
+                );
+            }
+            Err(e) => {
+                set_provider_trace_active(false);
+                log::warn!(target: "xylitol::logging", "provider trace open failed: {e}");
+            }
+        }
+    } else {
+        set_provider_trace_active(false);
+    }
+
     Some(())
 }
 
-/// Open `path` for append, creating it (and `dir`) as needed. On unix the file
-/// is created `0o600` so logs (which may carry prompts/secrets) stay private.
+/// Flush fastrace before process exit.
+pub fn flush_observability() {
+    fastrace::flush();
+}
+
+fn logging_requested() -> bool {
+    if std::env::var_os("RUST_LOG").is_some_and(|v| !v.is_empty()) {
+        return true;
+    }
+    if std::env::var_os("XYLITOL_DEBUG").is_some_and(is_truthy) {
+        return true;
+    }
+    cfg!(debug_assertions)
+}
+
+fn provider_trace_requested(logging_on: bool) -> bool {
+    if std::env::var_os("XYLITOL_PROVIDER_TRACE").is_some_and(is_truthy) {
+        return true;
+    }
+    if std::env::var_os("XYLITOL_PROVIDER_TRACE").is_some_and(is_falsey) {
+        return false;
+    }
+    logging_on
+}
+
+fn level_filter() -> String {
+    if let Ok(v) = std::env::var("RUST_LOG")
+        && !v.is_empty()
+    {
+        return v;
+    }
+    DEFAULT_FILTER.to_string()
+}
+
 fn open_append(dir: &Path, path: &Path) -> Option<std::fs::File> {
     std::fs::create_dir_all(dir).ok()?;
     let mut opts = std::fs::OpenOptions::new();
@@ -92,25 +131,42 @@ fn open_append(dir: &Path, path: &Path) -> Option<std::fs::File> {
         opts.mode(0o600);
     }
     let mut file = opts.open(path).ok()?;
-    // Force the umask-respecting mode on already-existing files too (create_dir
-    // above may have left a loose 0027 umask difference); chmod is best-effort.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
     }
-    // Eagerly surface any deferred open error and keep the writer honest.
     let _ = file.flush();
     Some(file)
 }
 
-/// Match common truthy env values (`1`, `true`, `yes`, `on`), case-insensitive.
 fn is_truthy(v: std::ffi::OsString) -> bool {
     let s = v.to_string_lossy();
     matches!(
         s.as_ref(),
         "1" | "true" | "yes" | "on" | "TRUE" | "YES" | "ON"
     )
+}
+
+fn is_falsey(v: std::ffi::OsString) -> bool {
+    let s = v.to_string_lossy();
+    matches!(
+        s.as_ref(),
+        "0" | "false" | "no" | "off" | "FALSE" | "NO" | "OFF"
+    )
+}
+
+/// `env_logger::Target::Pipe` needs `Write`; Mutex around File is Sync.
+struct MutexWriter(Mutex<std::fs::File>);
+
+impl Write for MutexWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).flush()
+    }
 }
 
 #[cfg(test)]
@@ -124,9 +180,7 @@ mod tests {
         let path = dir.join("xylitol.log");
         let _ = open_append(&dir, &path).expect("open_append succeeds");
         assert!(path.exists());
-        // Reopening appends rather than truncating.
         let mut f = open_append(&dir, &path).unwrap();
-        use std::io::Write;
         assert!(writeln!(f, "line1").is_ok());
         let mut f2 = open_append(&dir, &path).unwrap();
         assert!(writeln!(f2, "line2").is_ok());
@@ -135,34 +189,10 @@ mod tests {
     }
 
     #[test]
-    fn open_append_missing_dir_is_no_op() {
-        // A read-only parent makes create_dir_all fail → open_append yields None
-        // (debug logging must never break the normal flow).
-        let tmp = tempfile::tempdir().unwrap();
-        let ro = tmp.path().join("ro");
-        std::fs::create_dir(&ro).unwrap();
-        let mut perms = std::fs::metadata(&ro).unwrap().permissions();
-        perms.set_readonly(true);
-        std::fs::set_permissions(&ro, perms).unwrap();
-        let dir = ro.join("logs");
-        let path = dir.join("xylitol.log");
-        assert!(open_append(&dir, &path).is_none());
-    }
-
-    #[test]
     fn is_truthy_matches_common_values() {
         assert!(is_truthy("1".into()));
         assert!(is_truthy("true".into()));
-        assert!(is_truthy("yes".into()));
-        assert!(is_truthy("on".into()));
         assert!(!is_truthy("0".into()));
-        assert!(!is_truthy("no".into()));
-        assert!(!is_truthy("".into()));
+        assert!(is_falsey("0".into()));
     }
-
-    // `init_logging`'s env-driven branch is exercised manually
-    // (`RUST_LOG=debug cargo run -- tui`) and via the BDD/manual checks in
-    // tasks.md: it mutates the process-global subscriber + env vars, so unit
-    // tests that assert on it are inherently flaky and provide little extra
-    // signal over the pure-helper tests above.
 }

@@ -114,7 +114,7 @@ pub async fn compact_session(
     {
         Ok(s) => s,
         Err(e) => {
-            tracing::warn!("LLM summarization failed, using fallback: {e}");
+            log::warn!("LLM summarization failed, using fallback: {e}");
             format!(
                 "[Compacted: {} entries, ~{tokens_before} tokens]",
                 messages_to_summarize.len()

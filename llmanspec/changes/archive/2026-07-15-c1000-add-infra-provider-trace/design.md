@@ -49,6 +49,43 @@ Span::root("provider.request", …)  properties: request_id, api, model
 
 Agent 读同一 `request_id` 下 raw vs mapped 即可判责。
 
+## JSONL schema（v1，留扩展）
+
+**文件**
+
+| 文件 | 内容 |
+|------|------|
+| `logs/xylitol.log` | `log` 级别日志（人类/agent tail） |
+| `logs/provider-trace.jsonl` | 一行一 JSON 对象；UTF-8；同步 append |
+
+**每行公共字段（v1）**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `schema` | string | 固定 `"xylitol.provider_trace.v1"` |
+| `ts_unix_ns` | u64 | 事件时间 |
+| `trace_id` | string | fastrace TraceId（hex） |
+| `span_id` | string | fastrace SpanId（hex） |
+| `request_id` | string | 业务相关 id（uuid）；对照主键 |
+| `kind` | string | `raw` \| `mapped` \| `span` |
+| `api` | string | 方言：`openai-responses` / `anthropic-messages` / `openai-completions` |
+| `model` | string | 模型 id |
+| `ext` | object | **预留**；v1 可为空对象，日后加字段不改 schema 主版本时优先塞这里 |
+
+**kind 特有**
+
+| kind | 字段 | 说明 |
+|------|------|------|
+| `raw` | `event` | 协议事件名（如 `response.reasoning_text.delta`） |
+| `raw` | `text` | delta/载荷片段（截断后） |
+| `mapped` | `variant` | `ThinkingDelta` / `TextDelta` / `FunctionCall` / `Done` / … |
+| `mapped` | `text` | 映射后文本（截断后） |
+| `*` | `truncated` | bool；`text` 被截断时为 true |
+
+**截断**：`text` 默认上限 **4096** Unicode 标量；超出截断并 `truncated:true`。常量名 `PROVIDER_TRACE_TEXT_MAX`，日后可经 env 覆盖（本 change 可硬编码 + 测）。
+
+**扩展规则**：新增可选字段放 `ext` 或 bump `schema` → `v2`；读者应忽略未知字段。
+
 ## 迁移步骤（tasks 顺序）
 
 1. 引入 fastrace + log + FileReporter；组合根装配；TUI 冒烟无 stderr 污染

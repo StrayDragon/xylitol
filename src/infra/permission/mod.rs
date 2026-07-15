@@ -152,11 +152,11 @@ pub fn build_permission(config: &PermissionConfig) -> Arc<dyn XyPermission> {
         PermissionBackend::Glob => Arc::new(GlobPolicy::new(config)),
         PermissionBackend::Landlock => {
             // Landlock backend is not yet implemented — fall back gracefully.
-            tracing::warn!("Landlock permission backend not yet implemented, using GlobPolicy");
+            log::warn!("Landlock permission backend not yet implemented, using GlobPolicy");
             Arc::new(GlobPolicy::new(config))
         }
         PermissionBackend::MacOs => {
-            tracing::warn!("macOS permission backend not yet implemented, using GlobPolicy");
+            log::warn!("macOS permission backend not yet implemented, using GlobPolicy");
             Arc::new(GlobPolicy::new(config))
         }
     }

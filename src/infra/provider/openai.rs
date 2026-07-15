@@ -127,14 +127,26 @@ impl OpenAIProvider {
         tools: &[XyToolSchema],
         stream: bool,
     ) -> Result<XyStream, XyError> {
+        let trace = crate::infra::provider::trace::ProviderRequestTrace::start(
+            "openai-completions",
+            &self.model,
+        );
         let response = self.send_request(messages, tools, stream).await?;
         if stream {
-            Ok(completions_sse_stream(response))
+            Ok(completions_sse_stream(response, trace))
         } else {
             let json: Value = response.json().await.map_err(|e| {
                 XyError::Provider(anyhow::anyhow!("parse Completions response: {e}"))
             })?;
+            if let Some(t) = &trace {
+                t.emit_raw("chat.completion.json", &json.to_string());
+            }
             let chunks = parse_nonstream_json(&json);
+            if let Some(t) = &trace {
+                for c in &chunks {
+                    t.emit_mapped_chunk(c);
+                }
+            }
             Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
         }
     }
@@ -162,6 +174,7 @@ fn convert_tools(tools: &[XyToolSchema]) -> Vec<ChatCompletionTools> {
 
 fn completions_sse_stream(
     response: reqwest::Response,
+    trace: Option<crate::infra::provider::trace::ProviderRequestTrace>,
 ) -> Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>> {
     Box::pin(async_stream::try_stream! {
         use std::collections::HashMap;
@@ -185,6 +198,13 @@ fn completions_sse_stream(
                 Ok(v) => v,
                 Err(_) => continue,
             };
+            if let Some(t) = &trace {
+                let snippet = data
+                    .pointer("/choices/0/delta/content")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                t.emit_raw("chat.completion.chunk", snippet);
+            }
             let Some(choices) = data.get("choices").and_then(|c| c.as_array()) else {
                 continue;
             };
@@ -194,7 +214,11 @@ fn completions_sse_stream(
                     .and_then(|v| v.as_str())
                     .filter(|t| !t.is_empty())
                 {
-                    yield XyChunk::TextDelta(text.to_string());
+                    let chunk = XyChunk::TextDelta(text.to_string());
+                    if let Some(t) = &trace {
+                        t.emit_mapped_chunk(&chunk);
+                    }
+                    yield chunk;
                 }
 
                 if let Some(tool_calls) = choice
@@ -226,17 +250,25 @@ fn completions_sse_stream(
                         for (_, (id, name, args_str)) in sorted {
                             let args: Value = serde_json::from_str(&args_str)
                                 .unwrap_or(serde_json::json!({}));
-                            yield XyChunk::FunctionCall { name, args, id };
+                            let chunk = XyChunk::FunctionCall { name, args, id };
+                            if let Some(t) = &trace {
+                                t.emit_mapped_chunk(&chunk);
+                            }
+                            yield chunk;
                         }
                     }
                     let reason = match finish_reason {
                         "length" => XyStopReason::MaxTokens,
                         _ => XyStopReason::Stop,
                     };
-                    yield XyChunk::Done {
+                    let chunk = XyChunk::Done {
                         finish_reason: reason,
                         usage: None,
                     };
+                    if let Some(t) = &trace {
+                        t.emit_mapped_chunk(&chunk);
+                    }
+                    yield chunk;
                 }
             }
         }

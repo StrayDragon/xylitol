@@ -5,6 +5,7 @@ pub mod event;
 pub mod export;
 pub mod hooks;
 pub mod mcp;
+pub(crate) mod observability;
 pub mod process;
 pub mod provider;
 pub mod source_info;
