@@ -3,6 +3,7 @@
 //! model.
 
 pub mod commands;
+pub mod product_commands;
 pub mod system;
 pub mod templates;
 
