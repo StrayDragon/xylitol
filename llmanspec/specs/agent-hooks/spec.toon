@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-hooks"
 purpose: Hook system — lifecycle hooks (before/after tool execution) and script execution.
 valid_scope[2]: src/infra/hooks/,src/agent/runtime/hooks.rs
-requirements[18]{req_id,title,statement}:
+requirements[19]{req_id,title,statement}:
   r1,"hook-dispatcher",System MUST implement a HookDispatcher that executes registered hooks for 10+ event types.
   r2,"three-tier-config","System MUST support global/project/user three-tier hook configuration with later layers overriding earlier."
   r3,"script-execution",System MUST execute hook scripts via stdin JSON context and parse stdout for block/allow control.
@@ -21,7 +21,8 @@ requirements[18]{req_id,title,statement}:
   h13,"script-bridge-react","When a HookDispatcher is attached to the agent, ReAct MUST dispatch script hooks for tool_call (pre), tool_result (post), and context (pre model call) in addition to AgentHooks."
   h14,"lifecycle-script-hooks","When a HookDispatcher is attached, agent_start/agent_end/turn_start/turn_end/message_start/message_end MUST be dispatched alongside the corresponding XyEvent emissions (observe-only; fail-open)."
   h15,"bdd-provider-nonempty","BDD scenarios for before_provider_request and after_provider_response MUST exercise real dispatch (non-empty scenario bodies)."
-scenarios[18]{req_id,id,given,when,then}:
+  h16,"model-thinking-select-wiring","When XyHookBus is attached, Driver select_model and cycle_model MUST dispatch model_select after successful change; set_thinking_level MUST dispatch thinking_level_select; both MUST be observe-only fail-open; MUST NOT depend on TUI-only paths."
+scenarios[19]{req_id,id,given,when,then}:
   r1,happy,a pre.tool_call hook is registered,tool is about to execute,hook script runs and receives event context via stdin
   r2,happy,global hook and project hook both exist for same event,hook dispatcher runs,project hook overrides global hook
   r3,happy,hook script returns block action,tool execution is pending,tool execution is blocked with reason
@@ -40,3 +41,4 @@ scenarios[18]{req_id,id,given,when,then}:
   h13,"tool-bridge",script hook matches pre.tool_call,ReAct is about to run a tool,script receives tool name and args on stdin
   h14,"agent-start-fire",dispatcher attached,agent run starts,agent_start hook pattern can match
   h15,"bdd-real",hooks.feature provider scenarios,"cargo test --test bdd",provider scenarios are not empty stubs
+  h16,"model-select-fire",库缝注入了匹配 model_select 的 hook,执行操作「选择模型 fake」,hook 被调用且上下文含 model

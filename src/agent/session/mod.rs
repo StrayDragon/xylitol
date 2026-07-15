@@ -173,6 +173,7 @@ impl AgentCapabilities {
 
     /// Set thinking level.
     pub fn set_thinking_level(&mut self, level: ThinkingLevel) {
+        let previous = self.thinking_level();
         self.model_manager.set_thinking_level(level);
         // Fire-and-forget persistence via the session store port.
         if let Some(ref sid) = self.session_id {
@@ -192,10 +193,27 @@ impl AgentCapabilities {
                 let _ = store.append_session_entry(&sid, &entry).await;
             });
         }
+        if let Some(bus) = self.hook_bus.clone() {
+            observe_hook_sync(
+                &bus,
+                "thinking_level_select",
+                "",
+                serde_json::json!({
+                    "level": level.as_str(),
+                    "previous": previous.as_str(),
+                }),
+            );
+        }
     }
 
-    /// Select a specific model by ID.
+    /// Select a specific model by ID (`source` = `"set"`).
     pub fn select_model(&mut self, model_id: &str) -> Result<(), String> {
+        self.select_model_with_source(model_id, "set")
+    }
+
+    /// Select a model and emit `model_select` with the given source (`set` | `cycle`).
+    pub fn select_model_with_source(&mut self, model_id: &str, source: &str) -> Result<(), String> {
+        let previous = self.current_model().map(|m| m.id.clone());
         self.model_manager.select_model(model_id)?;
         // Fire-and-forget persistence via the session store port.
         if let Some(ref sid) = self.session_id {
@@ -215,6 +233,18 @@ impl AgentCapabilities {
                 });
                 let _ = store.append_session_entry(&sid, &entry).await;
             });
+        }
+        if let Some(bus) = self.hook_bus.clone() {
+            observe_hook_sync(
+                &bus,
+                "model_select",
+                "",
+                serde_json::json!({
+                    "model": model_id,
+                    "previous": previous,
+                    "source": source,
+                }),
+            );
         }
         Ok(())
     }
@@ -668,6 +698,35 @@ async fn observe_hook(
             reason = reason,
             "Script hook blocked observe-only lifecycle event (fail-open)"
         );
+    }
+}
+
+/// Sync observe for Driver/agent APIs that are not async (c996).
+///
+/// Runs on a dedicated thread + current-thread runtime so it works when the
+/// caller is already inside a `current_thread` tokio runtime (BDD / tests),
+/// where `block_in_place` is unavailable.
+fn observe_hook_sync(
+    bus: &Arc<dyn XyHookBus>,
+    event_type: &str,
+    phase: &str,
+    context: serde_json::Value,
+) {
+    let bus = bus.clone();
+    let event_type = event_type.to_string();
+    let phase = phase.to_string();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let result = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map(|rt| rt.block_on(observe_hook(&bus, &event_type, &phase, context)));
+        let _ = tx.send(result.map(|_| ()));
+    });
+    match rx.recv() {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => tracing::warn!(error = %e, "observe_hook_sync runtime failed"),
+        Err(_) => tracing::warn!("observe_hook_sync worker disconnected"),
     }
 }
 
