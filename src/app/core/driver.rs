@@ -62,11 +62,11 @@ pub fn estimate_from_session_entries(
         if let SessionEntry::Message(m) = entry
             && let Ok(msg) = serde_json::from_value::<AgentMessage>(m.message.clone())
         {
-            if let AgentMessage::AssistantMessage {
+            if let AgentMessage::Llm(crate::domain::message::LlmMessage::AssistantMessage {
                 usage: Some(u),
                 stop_reason: sr,
                 ..
-            } = &msg
+            }) = &msg
             {
                 last_usage = Some(*u);
                 stop_reason = *sr;

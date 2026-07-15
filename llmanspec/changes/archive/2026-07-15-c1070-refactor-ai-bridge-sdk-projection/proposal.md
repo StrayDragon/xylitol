@@ -23,9 +23,9 @@ track: B
 ## Purpose
 
 1. **Provider 接线**：Completions / Responses / RemoteCount（及 Anthropic Messages / count_tokens）**逐步**改为官方 SDK Client；hooks 经 SDK **middleware**（或等价扩展点）接入，保持可移植 `HeaderBag` + JSON body 语义。
-2. **投影缝（主仓）**：显式 `project_for_llm(&[AgentMessage]) -> Vec<LlmTurnMessage>`（名称可微调）；bash/compaction/branch/custom 等按规则折叠或剔除，**MUST NOT** 把环境角色原样当成第二套全量 enum 拷进 bridge。
-3. **收窄 bridge DTO**：仅保留 LLM 方言需要的消息/块/usage；删除与 `AgentMessage` 平行的全量 session 变体拷贝。
-4. **开闭**：新 OpenAI-compatible / Anthropic-compatible 端 = 新 adapter 配置或薄包装；**MUST NOT** 改 ReAct / session / `AgentMessage` 形状。
+2. **组合投影（主仓 domain）**：`AgentMessage = Llm(LlmMessage) | Env(EnvMessage)`（Rust 组合，非继承）；`project_for_llm(&[AgentMessage]) -> Vec<LlmMessage>`；bash/compaction/branch/custom 折叠或剔除；线格式经 untagged 保持 `role` JSONL。
+3. **收窄 bridge DTO**：仅映射 `LlmMessage`；**MUST NOT** 为环境角色维护平行 enum；**MUST NOT** `AgentMessage` 内嵌包内 `AiBridgeMessage`（依赖反了）。
+4. **开闭**：新兼容端 = 新 adapter/配置；**MUST NOT** 为网关改 ReAct / `LlmMessage` 形状（环境折叠只改投影）。
 
 ## What Changes
 
@@ -44,14 +44,14 @@ track: B
 ## Out of scope
 
 - 抽第三个 `xylitol-llm-types` crate
-- `struct AgentMessage(AiBridgeMessage)` newtype 嵌套
+- `AgentMessage` 内嵌 / newtype 包内 `AiBridgeMessage`（domain→bridge 依赖反转）
 - 改变 accounting 优先级（仍 Api → RemoteCount → Local → Heuristic）
 - 一次 PR 迁完所有网关边角（允许任务切片，但合约一次定稿）
 
 ## Ethics
 
 - risk_level: high
-- prohibited_actions: 用孪生全量 DTO「假装」分层；domain/agent 依赖 vendor SDK 类型；为兼容而 newtype 嵌套 AgentMessage
+- prohibited_actions: 用孪生全量 DTO「假装」分层；domain/agent 依赖 vendor SDK 类型；domain 嵌套 AiBridgeMessage
 - required_evidence: 投影单测（含 bash 不泄漏为独立 LLM role）；SDK 路径 wiremock/集成；arch_guard（domain 无 vendor）
 - escalation_policy: Anthropic 官方 Rust SDK 若不可用/许可证不合，升级确认后保留 reqwest 实现但 **DTO 仍须收窄**
 

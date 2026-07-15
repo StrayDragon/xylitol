@@ -1,35 +1,31 @@
-//! OpenAI Responses API adapter.
+//! OpenAI Responses API adapter via `async-openai` [`Client`] (c1070).
 //!
-//! Supports both streaming (`stream: true`) and non-streaming calls to
-//! `/v1/responses`, emitting reasoning items as [`AiBridgeChunk::ThinkingDelta`] and
-//! final message text as [`AiBridgeChunk::TextDelta`].
+//! Streaming and non-streaming `/v1/responses` calls; reasoning text →
+//! [`AiBridgeChunk::ThinkingDelta`], output text → [`AiBridgeChunk::TextDelta`].
 
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use async_openai::Client;
+use async_openai::config::OpenAIConfig;
 use async_trait::async_trait;
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use serde_json::Value;
 
 use crate::dto::AiBridgeStream;
 use crate::dto::{AiBridgeChunk, AiBridgeToolSchema};
 use crate::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason};
 use crate::error::AiBridgeError;
-use crate::hooks::{
-    HeaderBag, HttpHooks, run_after_response, run_before_headers, run_before_request,
-};
-use crate::provider::reqwest_bridge::{from_reqwest_headers, to_reqwest_headers};
+use crate::hooks::HttpHooks;
+use crate::provider::openai_client::{build_openai_client, normalize_openai_v1_base};
 
 use super::AiBridgeLlmAdapter;
 
 /// Adapter for the OpenAI Responses API (`/v1/responses`).
 pub struct OpenAiResponsesAdapter {
-    client: reqwest::Client,
-    api_key: String,
+    client: Client<OpenAIConfig>,
     model: String,
-    base_url: String,
-    hooks: Option<Arc<dyn HttpHooks>>,
 }
 
 impl OpenAiResponsesAdapter {
@@ -40,26 +36,11 @@ impl OpenAiResponsesAdapter {
         base_url: Option<String>,
         hooks: Option<Arc<dyn HttpHooks>>,
     ) -> Self {
+        let base = base_url.map(|b| normalize_openai_v1_base(&b));
         Self {
-            client: reqwest::Client::new(),
-            api_key,
+            client: build_openai_client(api_key, base, hooks),
             model,
-            base_url: base_url.unwrap_or_else(|| "https://api.openai.com/v1".into()),
-            hooks,
         }
-    }
-
-    fn headers_bag(&self) -> HeaderBag {
-        let mut headers = HeaderBag::new();
-        headers.insert(
-            "content-type".into(),
-            Value::String("application/json".into()),
-        );
-        headers.insert(
-            "authorization".into(),
-            Value::String(format!("Bearer {}", self.api_key)),
-        );
-        headers
     }
 
     fn build_body(
@@ -93,46 +74,8 @@ impl OpenAiResponsesAdapter {
         body
     }
 
-    async fn send_request(
-        &self,
-        messages: Vec<AiBridgeMessage>,
-        tools: &[AiBridgeToolSchema],
-        stream: bool,
-    ) -> Result<reqwest::Response, AiBridgeError> {
-        let mut body = self.build_body(messages, tools, stream);
-        let url = format!("{}/responses", self.base_url);
-
-        let mut headers = self.headers_bag();
-        run_before_headers(&self.hooks, &mut headers).await?;
-        run_before_request(&self.hooks, &self.model, &mut body).await?;
-
-        let response = self
-            .client
-            .post(&url)
-            .headers(to_reqwest_headers(&headers))
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| {
-                AiBridgeError::Provider(anyhow::anyhow!("OpenAI Responses request: {e}"))
-            })?;
-
-        let status = response.status().as_u16();
-        run_after_response(
-            &self.hooks,
-            status,
-            &from_reqwest_headers(response.headers()),
-        )
-        .await;
-
-        if !response.status().is_success() {
-            let body_text = response.text().await.unwrap_or_default();
-            let msg = extract_error_message(&body_text)
-                .unwrap_or_else(|| format!("HTTP {status}: {body_text}"));
-            return Err(AiBridgeError::Provider(anyhow::anyhow!(msg)));
-        }
-
-        Ok(response)
+    fn map_err(err: async_openai::error::OpenAIError) -> AiBridgeError {
+        AiBridgeError::Provider(anyhow::anyhow!("OpenAI Responses: {err}"))
     }
 }
 
@@ -149,8 +92,16 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
     ) -> Result<AiBridgeStream, AiBridgeError> {
         let trace =
             crate::provider::trace::ProviderRequestTrace::start("openai-responses", &self.model);
-        let response = self.send_request(messages, tools, true).await?;
-        Ok(Box::pin(responses_stream(response, trace)))
+        let body = self.build_body(messages, tools, true);
+        // BYOT + `Value`: compatible servers (e.g. llama.cpp) may omit fields that
+        // typed `ResponseStreamEvent` requires (`created_at` on `response.created`).
+        let sdk_stream = self
+            .client
+            .responses()
+            .create_stream_byot::<_, Value>(body)
+            .await
+            .map_err(Self::map_err)?;
+        Ok(Box::pin(responses_sdk_stream(sdk_stream, trace)))
     }
 
     async fn generate(
@@ -160,11 +111,13 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
     ) -> Result<AiBridgeStream, AiBridgeError> {
         let trace =
             crate::provider::trace::ProviderRequestTrace::start("openai-responses", &self.model);
-        let response = self.send_request(messages, tools, false).await?;
-        let json: Value = response
-            .json()
+        let body = self.build_body(messages, tools, false);
+        let json: Value = self
+            .client
+            .responses()
+            .create_byot(body)
             .await
-            .map_err(|e| AiBridgeError::Provider(anyhow::anyhow!("parse response: {e}")))?;
+            .map_err(Self::map_err)?;
         if let Some(t) = &trace {
             t.emit_raw("response.json", &json.to_string());
         }
@@ -178,141 +131,157 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
     }
 }
 
-fn responses_stream(
-    response: reqwest::Response,
+fn responses_sdk_stream(
+    mut sdk_stream: impl Stream<Item = Result<Value, async_openai::error::OpenAIError>>
+    + Send
+    + Unpin
+    + 'static,
     trace: Option<crate::provider::trace::ProviderRequestTrace>,
 ) -> Pin<Box<dyn Stream<Item = Result<AiBridgeChunk, AiBridgeError>> + Send>> {
     Box::pin(async_stream::try_stream! {
-        use futures::StreamExt;
-        use eventsource_stream::Eventsource;
+        let mut state = ResponsesStreamState::default();
 
-        let byte_stream = response.bytes_stream();
-        let mut event_stream = byte_stream.eventsource();
+        while let Some(item) = sdk_stream.next().await {
+            let data = item.map_err(|e| {
+                AiBridgeError::Provider(anyhow::anyhow!("OpenAI Responses stream: {e}"))
+            })?;
 
-        let mut reasoning_items: HashMap<String, bool> = HashMap::new();
-        let mut function_call_args: HashMap<String, String> = HashMap::new();
-        let mut usage_input: u64 = 0;
-        let mut usage_output: u64 = 0;
-
-        while let Some(event_result) = event_stream.next().await {
-            let event = match event_result {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-
-            let event_type = event.event.as_str();
-            let data: Value = match serde_json::from_str(&event.data) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-
+            let event_type = data.get("type").and_then(|v| v.as_str()).unwrap_or("");
             if let Some(t) = &trace {
-                let snippet = data
-                    .get("delta")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let snippet = data.get("delta").and_then(|v| v.as_str()).unwrap_or("");
                 t.emit_raw(event_type, snippet);
             }
 
-            match event_type {
-                "response.output_item.added" => {
-                    if let Some(item) = data.get("item") {
-                        let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                        let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        if item_type == "reasoning" {
-                            reasoning_items.insert(item_id, true);
-                        }
-                    }
+            for chunk in map_responses_sse_event(&data, &mut state) {
+                if let Some(t) = &trace {
+                    t.emit_mapped_chunk(&chunk);
                 }
-
-                "response.reasoning_text.delta" => {
-                    if let Some(delta) = data.get("delta").and_then(|v| v.as_str()) {
-                        let chunk = AiBridgeChunk::ThinkingDelta(delta.to_string());
-                        if let Some(t) = &trace {
-                            t.emit_mapped_chunk(&chunk);
-                        }
-                        yield chunk;
-                    }
-                }
-
-                "response.output_text.delta" => {
-                    if let Some(delta) = data.get("delta").and_then(|v| v.as_str()) {
-                        let chunk = AiBridgeChunk::TextDelta(delta.to_string());
-                        if let Some(t) = &trace {
-                            t.emit_mapped_chunk(&chunk);
-                        }
-                        yield chunk;
-                    }
-                }
-
-                "response.function_call_arguments.delta" => {
-                    if let (Some(item_id), Some(delta)) = (
-                        data.get("item_id").and_then(|v| v.as_str()),
-                        data.get("delta").and_then(|v| v.as_str()),
-                    ) {
-                        function_call_args
-                            .entry(item_id.to_string())
-                            .or_default()
-                            .push_str(delta);
-                    }
-                }
-
-                "response.output_item.done" => {
-                    if let Some(item) = data.get("item") {
-                        let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                        if item_type == "function_call" {
-                            let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                            let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                            let args_str = function_call_args.remove(&id).unwrap_or_default();
-                            let args: Value = serde_json::from_str(&args_str)
-                                .unwrap_or(serde_json::json!({}));
-                            let chunk = AiBridgeChunk::FunctionCall { name, args, id };
-                            if let Some(t) = &trace {
-                                t.emit_mapped_chunk(&chunk);
-                            }
-                            yield chunk;
-                        }
-                    }
-                }
-
-                "response.completed" => {
-                    let usage_total = usage_input + usage_output;
-                    let usage = if usage_total > 0 {
-                        Some(crate::dto::AiBridgeUsage {
-                            input: usage_input,
-                            output: usage_output,
-                            cache_read: 0,
-                            cache_write: 0,
-                            total_tokens: usage_total,
-                            cache_write_1h: 0,
-                            cost: None,
-                        })
-                    } else {
-                        None
-                    };
-                    let chunk = AiBridgeChunk::Done {
-                        finish_reason: AiBridgeStopReason::Stop,
-                        usage,
-                    };
-                    if let Some(t) = &trace {
-                        t.emit_mapped_chunk(&chunk);
-                    }
-                    yield chunk;
-                }
-
-                "response.usage" => {
-                    if let Some(usage) = data.get("usage") {
-                        usage_input = usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(usage_input);
-                        usage_output = usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(usage_output);
-                    }
-                }
-
-                _ => {}
+                yield chunk;
             }
         }
     })
 }
 
+#[derive(Default)]
+struct ResponsesStreamState {
+    function_call_args: HashMap<String, String>,
+    usage_input: u64,
+    usage_output: u64,
+}
+
+/// Map one Responses SSE JSON payload (lenient `Value`) into zero or more chunks.
+///
+/// Compatible servers may emit partial objects (e.g. `response.created` without
+/// `created_at`); those events are ignored rather than failing deserialization.
+fn map_responses_sse_event(data: &Value, state: &mut ResponsesStreamState) -> Vec<AiBridgeChunk> {
+    let event_type = data.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    match event_type {
+        "response.reasoning_text.delta" => data
+            .get("delta")
+            .and_then(|v| v.as_str())
+            .map(|d| vec![AiBridgeChunk::ThinkingDelta(d.to_string())])
+            .unwrap_or_default(),
+        "response.output_text.delta" => data
+            .get("delta")
+            .and_then(|v| v.as_str())
+            .map(|d| vec![AiBridgeChunk::TextDelta(d.to_string())])
+            .unwrap_or_default(),
+        "response.function_call_arguments.delta" => {
+            if let (Some(item_id), Some(delta)) = (
+                data.get("item_id").and_then(|v| v.as_str()),
+                data.get("delta").and_then(|v| v.as_str()),
+            ) {
+                state
+                    .function_call_args
+                    .entry(item_id.to_string())
+                    .or_default()
+                    .push_str(delta);
+            }
+            Vec::new()
+        }
+        "response.output_item.done" => {
+            let Some(item) = data.get("item") else {
+                return Vec::new();
+            };
+            let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            if item_type != "function_call" {
+                return Vec::new();
+            }
+            let id = item
+                .get("id")
+                .or_else(|| item.get("call_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let name = item
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let args_str = state.function_call_args.remove(&id).unwrap_or_else(|| {
+                item.get("arguments")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("{}")
+                    .to_string()
+            });
+            let args: Value =
+                serde_json::from_str(&args_str).unwrap_or_else(|_| serde_json::json!({}));
+            vec![AiBridgeChunk::FunctionCall { name, args, id }]
+        }
+        "response.usage" => {
+            if let Some(usage) = data.get("usage") {
+                state.usage_input = usage
+                    .get("input_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(state.usage_input);
+                state.usage_output = usage
+                    .get("output_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(state.usage_output);
+            }
+            Vec::new()
+        }
+        "response.completed" => {
+            if let Some(usage) = data
+                .get("response")
+                .and_then(|r| r.get("usage"))
+                .or_else(|| data.get("usage"))
+            {
+                state.usage_input = usage
+                    .get("input_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(state.usage_input);
+                state.usage_output = usage
+                    .get("output_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(state.usage_output);
+            }
+            let usage_total = state.usage_input + state.usage_output;
+            let usage = if usage_total > 0 {
+                Some(crate::dto::AiBridgeUsage {
+                    input: state.usage_input,
+                    output: state.usage_output,
+                    cache_read: 0,
+                    cache_write: 0,
+                    total_tokens: usage_total,
+                    cache_write_1h: 0,
+                    cost: None,
+                })
+            } else {
+                None
+            };
+            vec![AiBridgeChunk::Done {
+                finish_reason: AiBridgeStopReason::Stop,
+                usage,
+            }]
+        }
+        // Partial lifecycle events (`response.created`, `response.in_progress`, …)
+        // must not fail the stream on compatible APIs.
+        _ => Vec::new(),
+    }
+}
+
+/// Convert a slice of [`AiBridgeMessage`] values to OpenAI Responses `input` items.
 fn parse_responses_output(json: &Value) -> Vec<AiBridgeChunk> {
     let mut chunks = Vec::new();
 
@@ -387,14 +356,6 @@ fn parse_responses_output(json: &Value) -> Vec<AiBridgeChunk> {
     chunks
 }
 
-fn extract_error_message(body: &str) -> Option<String> {
-    let json: Value = serde_json::from_str(body).ok()?;
-    json.get("error")?
-        .get("message")?
-        .as_str()
-        .map(String::from)
-}
-
 // ── AiBridgeMessage conversion ────────────────────────────────────
 
 /// Convert a slice of [`AiBridgeMessage`] values to OpenAI Responses `input` items.
@@ -465,48 +426,6 @@ fn convert_messages_to_input_items(messages: &[AiBridgeMessage]) -> Vec<Value> {
                     "type": "function_call_output",
                     "call_id": tool_use_id,
                     "output": text,
-                }));
-            }
-            AiBridgeMessage::BashExecutionMessage {
-                command,
-                output,
-                exclude_from_context,
-                ..
-            } => {
-                if *exclude_from_context {
-                    continue;
-                }
-                let text = format!("$ {command}\n{output}");
-                items.push(serde_json::json!({
-                    "type": "message",
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": text}],
-                }));
-            }
-            AiBridgeMessage::CompactionSummaryMessage { summary, .. }
-            | AiBridgeMessage::BranchSummaryMessage { summary, .. } => {
-                items.push(serde_json::json!({
-                    "type": "message",
-                    "role": "user",
-                    "content": [{
-                        "type": "input_text",
-                        "text": format!("[Context summary: {summary}]"),
-                    }],
-                }));
-            }
-            AiBridgeMessage::CustomMessage {
-                custom_type: _,
-                content,
-                ..
-            } => {
-                let text = content.as_str().unwrap_or("").to_string();
-                if text.is_empty() {
-                    continue;
-                }
-                items.push(serde_json::json!({
-                    "type": "message",
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": text}],
                 }));
             }
         }
@@ -632,5 +551,51 @@ mod tests {
             "only the function_call item, no empty message"
         );
         assert_eq!(items[0]["type"], "function_call");
+    }
+
+    #[test]
+    fn partial_response_created_is_ignored_not_fatal() {
+        // llama.cpp (and other compatible servers) may omit `created_at` on
+        // `response.created`; typed ResponseStreamEvent would fail here.
+        let data: Value = serde_json::from_str(
+            r#"{"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress"}}"#,
+        )
+        .unwrap();
+        let mut state = ResponsesStreamState::default();
+        let chunks = map_responses_sse_event(&data, &mut state);
+        assert!(chunks.is_empty());
+    }
+
+    #[test]
+    fn output_text_delta_maps_to_text_chunk() {
+        let data = serde_json::json!({
+            "type": "response.output_text.delta",
+            "delta": "hello"
+        });
+        let mut state = ResponsesStreamState::default();
+        let chunks = map_responses_sse_event(&data, &mut state);
+        assert_eq!(chunks.len(), 1);
+        assert!(matches!(&chunks[0], AiBridgeChunk::TextDelta(t) if t == "hello"));
+    }
+
+    #[test]
+    fn completed_with_nested_usage_emits_done() {
+        let data = serde_json::json!({
+            "type": "response.completed",
+            "response": {
+                "usage": { "input_tokens": 3, "output_tokens": 5 }
+            }
+        });
+        let mut state = ResponsesStreamState::default();
+        let chunks = map_responses_sse_event(&data, &mut state);
+        assert_eq!(chunks.len(), 1);
+        match &chunks[0] {
+            AiBridgeChunk::Done { usage: Some(u), .. } => {
+                assert_eq!(u.input, 3);
+                assert_eq!(u.output, 5);
+                assert_eq!(u.total_tokens, 8);
+            }
+            other => panic!("expected Done with usage, got {other:?}"),
+        }
     }
 }

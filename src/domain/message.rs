@@ -1,7 +1,7 @@
-//! Typed agent message types — fully aligned with pi coding agent's type system.
+//! Typed agent message types — session SSOT with LLM / Env composition (c1070).
 //!
-//! Provides [`AgentMessage`] (7 roles), [`AgentPart`] (5 part types),
-//! [`XyUsage`] (with cost), [`XyStopReason`], [`AgentState`], and
+//! Provides [`AgentMessage`] (`Llm` ∪ `Env`), [`LlmMessage`], [`EnvMessage`],
+//! [`AgentPart`], [`XyUsage`], [`XyStopReason`], [`AgentState`], and
 //! [`AgentContext`] as the canonical agent data model.
 
 use serde::{Deserialize, Serialize};
@@ -16,27 +16,21 @@ pub fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
-// ── AgentMessage ────────────────────────────────────────────────────
+// ── LlmMessage / EnvMessage / AgentMessage (c1070 composition) ─
 
-/// A single message in the agent conversation.
+/// LLM-visible turn content only (user / assistant / toolResult).
 ///
-/// Supports all roles required by the pi coding agent pipeline:
-/// user, assistant, toolResult, bashExecution, custom, compactionSummary,
-/// branchSummary.
+/// Session history wraps this in [`AgentMessage::Llm`]. Provider paths take
+/// [`crate::domain::llm_project::project_for_llm`] output of this type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "camelCase")]
-pub enum AgentMessage {
-    /// A user message (text, images, or tool results intended for the
-    /// assistant).
+pub enum LlmMessage {
     #[serde(rename = "user")]
     UserMessage {
         content: Vec<AgentPart>,
-        /// Unix timestamp in milliseconds.
         #[serde(default = "now_ms")]
         timestamp: u64,
     },
-
-    /// An assistant message (text, thinking, tool calls).
     #[serde(rename = "assistant")]
     AssistantMessage {
         content: Vec<AgentPart>,
@@ -44,50 +38,120 @@ pub enum AgentMessage {
         stop_reason: Option<XyStopReason>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         usage: Option<XyUsage>,
-        /// Provider API name (e.g. "openai", "anthropic").
         #[serde(default)]
         api: String,
-        /// Provider name (e.g. "openai", "anthropic", "deepseek").
         #[serde(default)]
         provider: String,
-        /// Model identifier used for this response.
         #[serde(default)]
         model: String,
-        /// Provider-specific response identifier.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         response_id: Option<String>,
-        /// Error message when stop_reason is Error or Aborted.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error_message: Option<String>,
-        /// Unix timestamp in milliseconds.
         #[serde(default = "now_ms")]
         timestamp: u64,
-        /// Provider/runtime diagnostics for failures and recoveries.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         diagnostics: Vec<Diagnostic>,
     },
-
-    /// A tool result message (result of executing a tool call).
     #[serde(rename = "toolResult")]
     ToolResultMessage {
-        /// Wire key `toolCallId` (pi); not `toolUseId`.
         #[serde(rename = "toolCallId")]
         tool_use_id: String,
-        /// Name of the tool that produced this result.
         #[serde(default)]
         tool_name: String,
         content: Vec<AgentPart>,
-        /// Arbitrary structured details for logs or UI.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         details: Option<Value>,
         #[serde(default)]
         is_error: bool,
-        /// Unix timestamp in milliseconds.
         #[serde(default = "now_ms")]
         timestamp: u64,
     },
+}
 
-    /// A bash execution message (user-initiated `!cmd` / `!!cmd`).
+impl LlmMessage {
+    pub fn role_name(&self) -> &'static str {
+        match self {
+            Self::UserMessage { .. } => "user",
+            Self::AssistantMessage { .. } => "assistant",
+            Self::ToolResultMessage { .. } => "toolResult",
+        }
+    }
+
+    pub fn content(&self) -> &[AgentPart] {
+        match self {
+            Self::UserMessage { content, .. }
+            | Self::AssistantMessage { content, .. }
+            | Self::ToolResultMessage { content, .. } => content,
+        }
+    }
+
+    pub fn text(&self) -> String {
+        let mut buf = String::new();
+        for part in self.content() {
+            match part {
+                AgentPart::Text { text } | AgentPart::Thinking { thinking: text, .. } => {
+                    buf.push_str(text)
+                }
+                _ => {}
+            }
+        }
+        buf
+    }
+
+    pub fn is_error(&self) -> bool {
+        matches!(
+            self,
+            Self::AssistantMessage {
+                stop_reason: Some(XyStopReason::Error | XyStopReason::Aborted),
+                ..
+            }
+        )
+    }
+
+    pub fn user(text: impl Into<String>) -> Self {
+        Self::UserMessage {
+            content: vec![AgentPart::text(text)],
+            timestamp: now_ms(),
+        }
+    }
+
+    pub fn assistant(text: impl Into<String>) -> Self {
+        Self::AssistantMessage {
+            content: vec![AgentPart::text(text)],
+            stop_reason: Some(XyStopReason::Stop),
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: now_ms(),
+            diagnostics: Vec::new(),
+        }
+    }
+
+    pub fn tool_result(
+        id: impl Into<String>,
+        tool_name: impl Into<String>,
+        content: Vec<AgentPart>,
+        is_error: bool,
+    ) -> Self {
+        Self::ToolResultMessage {
+            tool_use_id: id.into(),
+            tool_name: tool_name.into(),
+            content,
+            details: None,
+            is_error,
+            timestamp: now_ms(),
+        }
+    }
+}
+
+/// Environment / session meta roles (not sent to the model as-is).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "role", rename_all = "camelCase")]
+pub enum EnvMessage {
     #[serde(rename = "bashExecution")]
     BashExecutionMessage {
         command: String,
@@ -101,8 +165,6 @@ pub enum AgentMessage {
         #[serde(default)]
         exclude_from_context: bool,
     },
-
-    /// A custom message (extension-injected content).
     #[serde(rename = "custom")]
     CustomMessage {
         custom_type: String,
@@ -112,8 +174,6 @@ pub enum AgentMessage {
         #[serde(default)]
         details: Value,
     },
-
-    /// A compaction summary message (replaces compacted entries).
     #[serde(rename = "compactionSummary")]
     CompactionSummaryMessage {
         summary: String,
@@ -124,19 +184,13 @@ pub enum AgentMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         modified_files: Option<Vec<String>>,
     },
-
-    /// A branch summary message (summarises a forked branch).
     #[serde(rename = "branchSummary")]
     BranchSummaryMessage { summary: String, from_id: String },
 }
 
-impl AgentMessage {
-    /// Return the role name as a static string (user, assistant, …).
+impl EnvMessage {
     pub fn role_name(&self) -> &'static str {
         match self {
-            Self::UserMessage { .. } => "user",
-            Self::AssistantMessage { .. } => "assistant",
-            Self::ToolResultMessage { .. } => "toolResult",
             Self::BashExecutionMessage { .. } => "bashExecution",
             Self::CustomMessage { .. } => "custom",
             Self::CompactionSummaryMessage { .. } => "compactionSummary",
@@ -144,56 +198,110 @@ impl AgentMessage {
         }
     }
 
-    /// Return the content parts (most variants carry them).
-    pub fn content(&self) -> &[AgentPart] {
-        match self {
-            Self::UserMessage { content, .. }
-            | Self::AssistantMessage { content, .. }
-            | Self::ToolResultMessage { content, .. } => content,
-            Self::BashExecutionMessage { .. }
-            | Self::CustomMessage { .. }
-            | Self::CompactionSummaryMessage { .. }
-            | Self::BranchSummaryMessage { .. } => &[],
-        }
-    }
-
-    /// Collapse all text parts into a single string.
     pub fn text(&self) -> String {
         match self {
-            Self::UserMessage { content, .. }
-            | Self::AssistantMessage { content, .. }
-            | Self::ToolResultMessage { content, .. } => {
-                let mut buf = String::new();
-                for part in content {
-                    match part {
-                        AgentPart::Text { text } | AgentPart::Thinking { thinking: text, .. } => {
-                            buf.push_str(text)
-                        }
-                        _ => {}
-                    }
-                }
-                buf
-            }
             Self::BashExecutionMessage {
                 command, output, ..
-            } => {
-                format!("$ {command}\n{output}")
-            }
+            } => format!("$ {command}\n{output}"),
             Self::CustomMessage { content, .. } => content.as_str().unwrap_or("").to_string(),
-            Self::CompactionSummaryMessage { summary, .. } => summary.clone(),
-            Self::BranchSummaryMessage { summary, .. } => summary.clone(),
+            Self::CompactionSummaryMessage { summary, .. }
+            | Self::BranchSummaryMessage { summary, .. } => summary.clone(),
+        }
+    }
+}
+
+/// Session/agent transcript entry: LLM turn **or** environment meta.
+///
+/// Wire format stays flat `{ "role": … }` via `untagged` + inner tagged enums.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AgentMessage {
+    Llm(LlmMessage),
+    Env(EnvMessage),
+}
+
+impl From<LlmMessage> for AgentMessage {
+    fn from(value: LlmMessage) -> Self {
+        Self::Llm(value)
+    }
+}
+
+impl From<EnvMessage> for AgentMessage {
+    fn from(value: EnvMessage) -> Self {
+        Self::Env(value)
+    }
+}
+
+impl AgentMessage {
+    pub fn as_llm(&self) -> Option<&LlmMessage> {
+        match self {
+            Self::Llm(m) => Some(m),
+            Self::Env(_) => None,
         }
     }
 
-    /// Return `true` if this is an assistant message with an error stop reason.
+    pub fn as_env(&self) -> Option<&EnvMessage> {
+        match self {
+            Self::Env(m) => Some(m),
+            Self::Llm(_) => None,
+        }
+    }
+
+    pub fn role_name(&self) -> &'static str {
+        match self {
+            Self::Llm(m) => m.role_name(),
+            Self::Env(m) => m.role_name(),
+        }
+    }
+
+    pub fn content(&self) -> &[AgentPart] {
+        match self {
+            Self::Llm(m) => m.content(),
+            Self::Env(_) => &[],
+        }
+    }
+
+    pub fn text(&self) -> String {
+        match self {
+            Self::Llm(m) => m.text(),
+            Self::Env(m) => m.text(),
+        }
+    }
+
     pub fn is_error(&self) -> bool {
-        matches!(
-            self,
-            Self::AssistantMessage {
-                stop_reason: Some(XyStopReason::Error | XyStopReason::Aborted),
-                ..
-            }
-        )
+        self.as_llm().is_some_and(LlmMessage::is_error)
+    }
+
+    pub fn user(text: impl Into<String>) -> Self {
+        Self::Llm(LlmMessage::user(text))
+    }
+
+    pub fn assistant(text: impl Into<String>) -> Self {
+        Self::Llm(LlmMessage::assistant(text))
+    }
+
+    pub fn tool_result(
+        id: impl Into<String>,
+        tool_name: impl Into<String>,
+        content: Vec<AgentPart>,
+        is_error: bool,
+    ) -> Self {
+        Self::Llm(LlmMessage::tool_result(id, tool_name, content, is_error))
+    }
+
+    pub fn bash(
+        command: impl Into<String>,
+        output: impl Into<String>,
+        exit_code: Option<i32>,
+    ) -> Self {
+        Self::Env(EnvMessage::BashExecutionMessage {
+            command: command.into(),
+            output: output.into(),
+            exit_code,
+            cancelled: false,
+            truncated: false,
+            exclude_from_context: false,
+        })
     }
 }
 
@@ -202,7 +310,8 @@ impl AgentMessage {
 /// A single content part within an [`AgentMessage`].
 ///
 /// Wire (c646 / pi): internally tagged with `"type"`. Tool results MUST NOT appear
-/// as content parts — use [`AgentMessage::ToolResultMessage`] rows instead.
+/// as content parts — use [`LlmMessage::ToolResultMessage`] / [`AgentMessage::tool_result`]
+/// rows instead.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum AgentPart {
@@ -410,66 +519,7 @@ pub struct AgentContext {
     pub tool_names: Vec<String>,
 }
 
-// ── Convenience constructors ────────────────────────────────────────
-
-impl AgentMessage {
-    /// Create a simple user text message.
-    pub fn user(text: impl Into<String>) -> Self {
-        Self::UserMessage {
-            content: vec![AgentPart::text(text)],
-            timestamp: now_ms(),
-        }
-    }
-
-    /// Create a simple assistant text message.
-    pub fn assistant(text: impl Into<String>) -> Self {
-        Self::AssistantMessage {
-            content: vec![AgentPart::text(text)],
-            stop_reason: Some(XyStopReason::Stop),
-            usage: None,
-            api: String::new(),
-            provider: String::new(),
-            model: String::new(),
-            response_id: None,
-            error_message: None,
-            timestamp: now_ms(),
-            diagnostics: Vec::new(),
-        }
-    }
-
-    /// Create a tool result message.
-    pub fn tool_result(
-        id: impl Into<String>,
-        tool_name: impl Into<String>,
-        content: Vec<AgentPart>,
-        is_error: bool,
-    ) -> Self {
-        Self::ToolResultMessage {
-            tool_use_id: id.into(),
-            tool_name: tool_name.into(),
-            content,
-            details: None,
-            is_error,
-            timestamp: now_ms(),
-        }
-    }
-
-    /// Create a bash execution message.
-    pub fn bash(
-        command: impl Into<String>,
-        output: impl Into<String>,
-        exit_code: Option<i32>,
-    ) -> Self {
-        Self::BashExecutionMessage {
-            command: command.into(),
-            output: output.into(),
-            exit_code,
-            cancelled: false,
-            truncated: false,
-            exclude_from_context: false,
-        }
-    }
-}
+// ── Convenience helpers ─────────────────────────────────────────────
 
 /// Helper: collect text content from a slice of [`AgentPart`], skipping
 /// non-text parts.
@@ -502,7 +552,7 @@ mod tests {
 
     #[test]
     fn assistant_message_has_new_fields() {
-        let msg = AgentMessage::AssistantMessage {
+        let msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
             content: vec![AgentPart::text("response")],
             stop_reason: Some(XyStopReason::Stop),
             usage: Some(XyUsage {
@@ -527,16 +577,17 @@ mod tests {
             error_message: None,
             timestamp: 1000,
             diagnostics: vec![],
-        };
+        });
         let json = serde_json::to_string(&msg).unwrap();
         let deserialized: AgentMessage = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.role_name(), "assistant");
         assert_eq!(deserialized.text(), "response");
+        assert!(matches!(deserialized, AgentMessage::Llm(_)));
     }
 
     #[test]
     fn assistant_error_message() {
-        let msg = AgentMessage::AssistantMessage {
+        let msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
             content: vec![],
             stop_reason: Some(XyStopReason::Error),
             usage: None,
@@ -550,21 +601,21 @@ mod tests {
                 message: "Retried 3 times".into(),
                 source: Some("openai".into()),
             }],
-        };
+        });
         assert!(msg.is_error());
         assert_eq!(msg.text(), "");
     }
 
     #[test]
     fn tool_result_message_has_tool_name() {
-        let msg = AgentMessage::ToolResultMessage {
+        let msg = AgentMessage::Llm(LlmMessage::ToolResultMessage {
             tool_use_id: "call-1".into(),
             tool_name: "read_file".into(),
             content: vec![AgentPart::text("file contents")],
             details: Some(serde_json::json!({"path": "src/main.rs", "lines": 42})),
             is_error: false,
             timestamp: 1000,
-        };
+        });
         assert_eq!(msg.role_name(), "toolResult");
     }
 
@@ -641,23 +692,23 @@ mod tests {
             AgentMessage::assistant("hello"),
             AgentMessage::tool_result("t1", "read_file", vec![AgentPart::text("done")], false),
             AgentMessage::bash("pwd", "/home", Some(0)),
-            AgentMessage::CustomMessage {
+            AgentMessage::Env(EnvMessage::CustomMessage {
                 custom_type: "x".into(),
                 content: serde_json::json!({}),
                 display: serde_json::json!({}),
                 details: serde_json::json!({}),
-            },
-            AgentMessage::CompactionSummaryMessage {
+            }),
+            AgentMessage::Env(EnvMessage::CompactionSummaryMessage {
                 summary: "s".into(),
                 tokens_before: 10,
                 tokens_after: 2,
                 read_files: None,
                 modified_files: None,
-            },
-            AgentMessage::BranchSummaryMessage {
+            }),
+            AgentMessage::Env(EnvMessage::BranchSummaryMessage {
                 summary: "s".into(),
                 from_id: "e-1".into(),
-            },
+            }),
         ];
 
         for msg in messages {
@@ -665,5 +716,25 @@ mod tests {
             let deserialized: AgentMessage = serde_json::from_str(&json).unwrap();
             assert_eq!(deserialized.role_name(), msg.role_name());
         }
+    }
+
+    #[test]
+    fn wire_user_deserializes_as_llm_variant() {
+        let json = r#"{"role":"user","content":[{"type":"text","text":"hi"}],"timestamp":1}"#;
+        let msg: AgentMessage = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            msg,
+            AgentMessage::Llm(LlmMessage::UserMessage { .. })
+        ));
+    }
+
+    #[test]
+    fn wire_bash_deserializes_as_env_variant() {
+        let json = r#"{"role":"bashExecution","command":"ls","output":"a","cancelled":false,"truncated":false,"exclude_from_context":false}"#;
+        let msg: AgentMessage = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            msg,
+            AgentMessage::Env(EnvMessage::BashExecutionMessage { .. })
+        ));
     }
 }

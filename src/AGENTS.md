@@ -71,20 +71,21 @@ protocol ───────────────────────�
 
 ## Provider 适配
 
-业务 / agent 只认 `XyModel`。厂商 HTTP/SSE **优先经官方 SDK Client**（OpenAI：`async-openai`；Anthropic：官方 Rust SDK）落在 workspace 包
+业务 / agent 只认 `XyModel`。厂商 HTTP/SSE **优先经官方 SDK Client**（OpenAI：`async-openai`；Anthropic：官方 Rust SDK 未成熟前 **reqwest 兜底**）落在 workspace 包
 `packages/xylitol-ai-bridge`；主仓 `infra/provider` 负责：
 
-1. **`AgentMessage` → LLM 投影**（显式 `project_for_llm` 或等价；**不是**全量孪生 DTO + JSON 往返）
+1. **`AgentMessage` → `LlmMessage` 投影**（`project_for_llm`；组合而非孪生 JSON 往返）
 2. 装配 `XyModel` / 配置（base_url、密钥）
 
 **概念分层（MUST）**：
 
 | 类型 | 含义 |
 |---|---|
-| `AgentMessage`（domain） | session/agent **真源** = LLM 回合 + **环境元信息**（bash、compaction、branch、custom…） |
-| bridge LLM DTO | **仅**发给模型的投影；**MUST NOT** 平行拷贝环境角色 enum |
+| `AgentMessage`（domain） | session **真源** = `Llm(LlmMessage) \| Env(EnvMessage)` |
+| `LlmMessage`（domain） | 仅 user / assistant / toolResult |
+| bridge LLM DTO | 从 `LlmMessage` 映射；**MUST NOT** 平行拷贝 Env 角色；**MUST NOT** 被 domain 内嵌 |
 
-**开闭**：新 OpenAI-like / Anthropic-like 兼容端 = 新 adapter 或配置；**MUST NOT** 为网关改 `AgentMessage` / ReAct。禁止 Completions「已是 `XyModel` 再包一层」双路径。Pre-1.0 **交付**范围见根 `AGENTS.md`。细则与包边界：`packages/xylitol-ai-bridge/AGENTS.md`；重构 change：**c1070**。
+**开闭**：新 OpenAI-like / Anthropic-like 兼容端 = 新 adapter 或配置；**MUST NOT** 为网关改 `AgentMessage` / ReAct。禁止 Completions「已是 `XyModel` 再包一层」双路径。Pre-1.0 **交付**范围见根 `AGENTS.md`。细则与包边界（含 Responses 流式 BYOT/`Value`）：`packages/xylitol-ai-bridge/AGENTS.md`；设计史：**c1070-refactor-ai-bridge-sdk-projection**（`llmanspec/changes/archive/`）。
 
 **HTTP / SDK vs hook 缝（隔离）**：
 - 脚本 hook 三缝只认**可移植**载荷：`HeaderBag`（JSON map）与 `serde_json::Value` body —— **不**把 reqwest / 某一 SDK 类型泄漏进 hook 合约。

@@ -1,23 +1,26 @@
 kind: llman.sdd.spec
 name: "infra-provider"
 purpose: "Provider 装配与映射：方言实现在 xylitol-ai-bridge；主仓 LlmAdapter/XyModel 外壳与 DTO 映射。"
-valid_scope[3]: src/infra/provider/,packages/xylitol-ai-bridge/,tests/
-requirements[7]{req_id,title,statement}:
+valid_scope[3]: src/infra/provider/,"packages/xylitol-ai-bridge/",tests/
+requirements[8]{req_id,title,statement}:
   pa1,"adapter-trait",System SHALL define an LlmAdapter trait in infra/provider/adapter that exposes generate_stream and generate methods returning XyStream.
   pa2,"openai-responses-adapter","System SHALL provide an OpenAiResponsesAdapter that calls /v1/responses and emits XyChunk::ThinkingDelta for reasoning items and XyChunk::TextDelta for message items."
   pa3,"anthropic-messages-adapter","System SHALL provide an AnthropicMessagesAdapter that preserves existing Anthropic SSE parsing behavior and emits XyChunk::ThinkingDelta for thinking content blocks."
   pa4,"adapter-selection",System SHALL select the concrete adapter based on XyModelConfig kind and api fields with sensible defaults.
   pa5,"responses-input-items-have-type","The OpenAI Responses adapter MUST serialize every input item with an explicit type field matching the Responses API schema: message items as {type: message, role, content: [{type: input_text|output_text, text}]}, function calls as {type: function_call, ...}, function outputs as {type: function_call_output, ...}. A bare {role, content} object with no type MUST NOT be emitted: the Responses API rejects such items with Cannot determine type of 'item' once non-message items are mixed into the input array (which happens exactly on a tool-calling continuation round). An assistant round that carries only a tool call and no text MUST NOT emit an empty message item (only the function_call item). Evidence: convert_messages_to_input_items built message items as {role, content} without type, so the first real tool continuation round after the c375 ReAct-loop fix was rejected by OpenAI with Cannot determine type of 'item'; the function had no test coverage."
-  pa6,单一-XyModel-装配路径,System MUST 通过唯一装配路径将方言适配器暴露为 XyModel：具体接线实现归属 packages/xylitol-ai-bridge，经主仓映射与统一外壳（如 AdapterXyModel）注入；MUST NOT 同时让底层 OpenAIProvider 直接 impl XyModel 再被 Completions 适配器二次包装，且 MUST NOT 在主仓保留与包并行的第二套完整方言实现。
-  pa7,vendor-类型不出-infra与agent,"async-openai 与各厂商 HTTP/SSE 具体类型 MUST 仅出现在 packages/xylitol-ai-bridge（及其测试）与必要的主仓映射边界内；agent/ 与 domain/ MUST NOT import 这些 vendor crate；主仓 infra 若保留映射模块 MUST NOT 把 vendor 类型再导出给 agent。"
-scenarios[10]{req_id,id,given,when,then}:
+  pa6,"单一-XyModel-装配路径","System MUST 通过唯一装配路径将方言适配器暴露为 XyModel：具体接线实现归属 packages/xylitol-ai-bridge，经主仓映射与统一外壳（如 AdapterXyModel）注入；MUST NOT 同时让底层 OpenAIProvider 直接 impl XyModel 再被 Completions 适配器二次包装，且 MUST NOT 在主仓保留与包并行的第二套完整方言实现。"
+  pa7,"vendor-类型不出-infra与agent","async-openai 与各厂商 HTTP/SSE 具体类型 MUST 仅出现在 packages/xylitol-ai-bridge（及其测试）与必要的主仓映射边界内；agent/ 与 domain/ MUST NOT import 这些 vendor crate；主仓 infra 若保留映射模块 MUST NOT 把 vendor 类型再导出给 agent。"
+  pa20,"agent-to-llm-projection","infra provider 装配路径 MUST 在调用 xylitol-ai-bridge 之前将 AgentMessage 经显式投影转为 LLM DTO；投影 MUST 保留开闭：新环境消息变体的折叠策略落在投影层，MUST NOT 要求 bridge 同步增加平行 session 角色。"
+scenarios[12]{req_id,id,given,when,then}:
   pa1,"trait-exists",a new adapter layer is introduced,the LlmAdapter trait is defined,agent loop can call generate_stream on any adapter without naming concrete types
   pa2,"responses-reasoning","a reasoning-capable model is served via /v1/responses",OpenAiResponsesAdapter streams the response,"XyChunk::ThinkingDelta items are emitted before XyChunk::TextDelta items"
   pa3,"anthropic-thinking",a model returns thinking content blocks,AnthropicMessagesAdapter streams the response,"XyChunk::ThinkingDelta items are emitted for thinking blocks"
   pa4,"default-selection",a model config omits the api field,the config loader resolves defaults,"openai kind defaults to openai-responses and anthropic kind defaults to anthropic-messages"
   pa5,"every-item-declares-type",a conversation with user assistant tool_call and tool_result messages is converted to Responses input items,the items are inspected,every item has a type field (message or function_call or function_call_output) and message content is an array of typed text parts
   pa5,"tool-continuation-not-rejected","a tool-calling continuation round request is sent to the Responses API",the request body is the converted items,it is accepted (no Cannot determine type of 'item' error) because every item declares its type
-  pa6,"single-path-via-bridge","变更完成后","审查从配置到 dyn XyModel 的装配","仅一条路径且实现体来自 xylitol-ai-bridge 经映射注入"
-  pa6,"no-dual-impl","OpenAI Completions 与 Responses 均可用","搜索主仓与包内的重复 adapter 实现","主仓无并行完整实现体"
-  pa7,"no-vendor-in-agent-domain","变更完成后","rg async_openai 于 src/agent 与 src/domain","零匹配"
+  pa6,"single-path-via-bridge",变更完成后,审查从配置到 dyn XyModel 的装配,"仅一条路径且实现体来自 xylitol-ai-bridge 经映射注入"
+  pa6,"no-dual-impl",OpenAI Completions 与 Responses 均可用,搜索主仓与包内的重复 adapter 实现,主仓无并行完整实现体
+  pa7,"no-vendor-in-agent-domain",变更完成后,rg async_openai 于 src/agent 与 src/domain,零匹配
   pa7,"no-vendor-leak","",rg async_openai 于 src/agent 与 src/domain,零匹配
+  pa20,"bash-folded",history 含 bashExecution,投影后送入 adapter,bridge 侧无 bashExecution 变体
+  pa20,"vendor-not-in-agent",agent 层,搜索 async_openai 与 anthropic vendor 类型,零匹配

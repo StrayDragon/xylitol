@@ -124,13 +124,10 @@ impl RemoteCounter for AnthropicRemoteCounter {
     }
 }
 
-/// OpenAI Responses `POST /v1/responses/input_tokens` client (c1060).
+/// OpenAI Responses `POST /v1/responses/input_tokens` client (c1060 / c1070 SDK).
 pub struct OpenAiResponsesRemoteCounter {
-    client: reqwest::Client,
-    api_key: String,
+    client: async_openai::Client<async_openai::config::OpenAIConfig>,
     model: String,
-    base_url: String,
-    hooks: Option<Arc<dyn HttpHooks>>,
 }
 
 impl OpenAiResponsesRemoteCounter {
@@ -140,12 +137,10 @@ impl OpenAiResponsesRemoteCounter {
         base_url: Option<String>,
         hooks: Option<Arc<dyn HttpHooks>>,
     ) -> Self {
+        let base = base_url.map(|b| crate::provider::openai_client::normalize_openai_v1_base(&b));
         Self {
-            client: reqwest::Client::new(),
-            api_key,
+            client: crate::provider::openai_client::build_openai_client(api_key, base, hooks),
             model,
-            base_url: base_url.unwrap_or_else(|| "https://api.openai.com".into()),
-            hooks,
         }
     }
 }
@@ -154,53 +149,17 @@ impl OpenAiResponsesRemoteCounter {
 impl RemoteCounter for OpenAiResponsesRemoteCounter {
     async fn count_tokens(&self, messages: &[AiBridgeMessage]) -> Result<u64, AiBridgeError> {
         let input = messages_to_responses_input(messages);
-        let mut body = serde_json::json!({
+        let body = serde_json::json!({
             "model": self.model,
             "input": input,
         });
-        let mut headers = HeaderBag::new();
-        headers.insert(
-            "content-type".into(),
-            Value::String("application/json".into()),
-        );
-        headers.insert(
-            "authorization".into(),
-            Value::String(format!("Bearer {}", self.api_key)),
-        );
-        run_before_headers(&self.hooks, &mut headers).await?;
-        run_before_request(&self.hooks, &self.model, &mut body).await?;
-
-        let url = format!(
-            "{}/v1/responses/input_tokens",
-            self.base_url.trim_end_matches('/')
-        );
-        let response = self
+        // byot: tolerate partial mock / compatible JSON; hooks run in middleware.
+        let json: Value = self
             .client
-            .post(&url)
-            .headers(to_reqwest_headers(&headers))
-            .json(&body)
-            .send()
+            .responses()
+            .get_input_token_counts_byot(body)
             .await
-            .map_err(|e| AiBridgeError::Provider(anyhow::anyhow!("input_tokens request: {e}")))?;
-
-        let status = response.status().as_u16();
-        run_after_response_local(
-            &self.hooks,
-            status,
-            &from_reqwest_headers(response.headers()),
-        )
-        .await;
-
-        if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(AiBridgeError::Provider(anyhow::anyhow!(
-                "input_tokens HTTP {status}: {text}"
-            )));
-        }
-        let json: Value = response
-            .json()
-            .await
-            .map_err(|e| AiBridgeError::Provider(anyhow::anyhow!("input_tokens parse: {e}")))?;
+            .map_err(|e| AiBridgeError::Provider(anyhow::anyhow!("input_tokens: {e}")))?;
         json.get("input_tokens")
             .and_then(|v| v.as_u64())
             .ok_or_else(|| {
