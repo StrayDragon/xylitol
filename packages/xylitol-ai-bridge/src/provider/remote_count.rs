@@ -1,4 +1,4 @@
-//! Remote token-count APIs (Anthropic count_tokens) with injectable stub.
+//! Remote token-count APIs (Anthropic count_tokens, OpenAI responses/input_tokens).
 
 use std::sync::Arc;
 
@@ -8,6 +8,7 @@ use serde_json::Value;
 use crate::dto::AiBridgeMessage;
 use crate::error::AiBridgeError;
 use crate::hooks::{HeaderBag, HttpHooks, run_before_headers, run_before_request};
+use crate::provider::openai_responses::messages_to_responses_input;
 use crate::provider::reqwest_bridge::{from_reqwest_headers, to_reqwest_headers};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
@@ -123,6 +124,91 @@ impl RemoteCounter for AnthropicRemoteCounter {
     }
 }
 
+/// OpenAI Responses `POST /v1/responses/input_tokens` client (c1060).
+pub struct OpenAiResponsesRemoteCounter {
+    client: reqwest::Client,
+    api_key: String,
+    model: String,
+    base_url: String,
+    hooks: Option<Arc<dyn HttpHooks>>,
+}
+
+impl OpenAiResponsesRemoteCounter {
+    pub fn new(
+        api_key: String,
+        model: String,
+        base_url: Option<String>,
+        hooks: Option<Arc<dyn HttpHooks>>,
+    ) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            api_key,
+            model,
+            base_url: base_url.unwrap_or_else(|| "https://api.openai.com".into()),
+            hooks,
+        }
+    }
+}
+
+#[async_trait]
+impl RemoteCounter for OpenAiResponsesRemoteCounter {
+    async fn count_tokens(&self, messages: &[AiBridgeMessage]) -> Result<u64, AiBridgeError> {
+        let input = messages_to_responses_input(messages);
+        let mut body = serde_json::json!({
+            "model": self.model,
+            "input": input,
+        });
+        let mut headers = HeaderBag::new();
+        headers.insert(
+            "content-type".into(),
+            Value::String("application/json".into()),
+        );
+        headers.insert(
+            "authorization".into(),
+            Value::String(format!("Bearer {}", self.api_key)),
+        );
+        run_before_headers(&self.hooks, &mut headers).await?;
+        run_before_request(&self.hooks, &self.model, &mut body).await?;
+
+        let url = format!(
+            "{}/v1/responses/input_tokens",
+            self.base_url.trim_end_matches('/')
+        );
+        let response = self
+            .client
+            .post(&url)
+            .headers(to_reqwest_headers(&headers))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AiBridgeError::Provider(anyhow::anyhow!("input_tokens request: {e}")))?;
+
+        let status = response.status().as_u16();
+        run_after_response_local(
+            &self.hooks,
+            status,
+            &from_reqwest_headers(response.headers()),
+        )
+        .await;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(AiBridgeError::Provider(anyhow::anyhow!(
+                "input_tokens HTTP {status}: {text}"
+            )));
+        }
+        let json: Value = response
+            .json()
+            .await
+            .map_err(|e| AiBridgeError::Provider(anyhow::anyhow!("input_tokens parse: {e}")))?;
+        json.get("input_tokens")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| {
+                AiBridgeError::Provider(anyhow::anyhow!("input_tokens missing input_tokens field"))
+            })
+    }
+}
+
 async fn run_after_response_local(
     hooks: &Option<Arc<dyn HttpHooks>>,
     status: u16,
@@ -151,6 +237,10 @@ impl RemoteCounter for StubRemoteCounter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::accounting::{EstimateContextOpts, estimate_context};
+    use crate::dto::TokenProvenance;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
     async fn stub_returns_tokens() {
@@ -168,5 +258,74 @@ mod tests {
             fail: true,
         };
         assert!(stub.count_tokens(&[]).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn openai_input_tokens_success() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/responses/input_tokens"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "object": "response.input_tokens",
+                "input_tokens": 123
+            })))
+            .mount(&server)
+            .await;
+
+        let counter = OpenAiResponsesRemoteCounter::new(
+            "sk-test".into(),
+            "gpt-4o".into(),
+            Some(server.uri()),
+            None,
+        );
+        let msgs = vec![AiBridgeMessage::user("hello")];
+        assert_eq!(counter.count_tokens(&msgs).await.unwrap(), 123);
+
+        let est = estimate_context(
+            &msgs,
+            EstimateContextOpts {
+                last_usage: None,
+                stop_reason: None,
+                remote_count: Some(Box::new(|_| Some(123))),
+                tokenizer_estimate: None,
+                allow_remote: true,
+            },
+        );
+        assert_eq!(est.provenance, TokenProvenance::RemoteCount);
+        assert_eq!(est.tokens, 123);
+    }
+
+    #[tokio::test]
+    async fn openai_input_tokens_http_fail_does_not_claim_remote() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/responses/input_tokens"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("boom"))
+            .mount(&server)
+            .await;
+
+        let counter = OpenAiResponsesRemoteCounter::new(
+            "sk-test".into(),
+            "gpt-4o".into(),
+            Some(server.uri()),
+            None,
+        );
+        let msgs = vec![AiBridgeMessage::user("hello")];
+        assert!(counter.count_tokens(&msgs).await.is_err());
+
+        // Caller must not inject tokens on failure → Heuristic (no local tokenizer here).
+        let est = estimate_context(
+            &msgs,
+            EstimateContextOpts {
+                last_usage: None,
+                stop_reason: None,
+                remote_count: None,
+                tokenizer_estimate: None,
+                allow_remote: true,
+            },
+        );
+        assert_ne!(est.provenance, TokenProvenance::RemoteCount);
+        assert_ne!(est.provenance, TokenProvenance::Api);
+        assert_eq!(est.provenance, TokenProvenance::Heuristic);
     }
 }

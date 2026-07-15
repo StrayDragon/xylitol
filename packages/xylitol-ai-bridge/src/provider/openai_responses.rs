@@ -398,6 +398,11 @@ fn extract_error_message(body: &str) -> Option<String> {
 // ── AiBridgeMessage conversion ────────────────────────────────────
 
 /// Convert a slice of [`AiBridgeMessage`] values to OpenAI Responses `input` items.
+pub fn messages_to_responses_input(messages: &[AiBridgeMessage]) -> Vec<Value> {
+    convert_messages_to_input_items(messages)
+}
+
+/// Convert a slice of [`AiBridgeMessage`] values to OpenAI Responses `input` items.
 fn convert_messages_to_input_items(messages: &[AiBridgeMessage]) -> Vec<Value> {
     let mut items: Vec<Value> = Vec::new();
 

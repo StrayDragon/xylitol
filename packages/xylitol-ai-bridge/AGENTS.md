@@ -6,9 +6,10 @@ LLM **provider bridge** + multi-source **token accounting**。Workspace 库；**
 |---|---|
 | OpenAI / Anthropic 方言 HTTP/SSE → `AiBridge*` DTO | ReAct / session / TUI |
 | usage 归一化 + accounting（Api→RemoteCount→LocalTokenizer→Heuristic） | 产品 footer 文案（见 c1035） |
-| OpenAI tiktoken builtin（`tiktoken-rs`）/ HF tokenizer.json（下载 **opt-in**）；Anthropic **无**本地 vocab（Api / RemoteCount / Heuristic） | 再抽 `xylitol-llm-types`；再套一层 `AgentMessage` newtype；已弃用的 `claude-tokenizer` |
+| OpenAI tiktoken builtin（`tiktoken-rs`）/ HF tokenizer.json（下载 **opt-in**）；Anthropic **无**本地 vocab；RemoteCount：Anthropic `count_tokens` + OpenAI Responses `input_tokens`（c1060） | 再抽 `xylitol-llm-types`；再套一层 `AgentMessage` newtype；已弃用的 `claude-tokenizer` |
 
-> 类型方向（产品偏好）：主仓宜 **直接依赖** 本包 `AiBridge*` 作为可控契约，消灭双类型 JSON 往返；**不要**再增加 `AgentMessage` 嵌套。OpenAI RemoteCount 补强见草稿 **c1060**。
+> 类型方向（产品偏好）：主仓宜 **直接依赖** 本包 `AiBridge*` 作为可控契约，消灭双类型 JSON 往返；**不要**再增加 `AgentMessage` 嵌套。
+> 计量优先级：Api → RemoteCount → LocalTokenizer → Heuristic；本地 count 不能替代 API。
 
 
 ## 包内模块边界（normative）
