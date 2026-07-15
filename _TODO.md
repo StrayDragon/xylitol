@@ -4,12 +4,18 @@
 
 ## 目标顺序
 
-1. [ ] purpose-draft 提案 batch + depends_on DAG → commit
+1. [x] purpose-draft 提案 batch + depends_on DAG → commit (`fc09ec2`)
 2. [ ] 文档 cleanup（过时 architecture / 空壳 TUI 表述等）→ commit
 3. [ ] `llman sdd archive freeze` 旧 archive → 7z → commit
 4. [ ] `llman-sdd-specs-compact`：以代码为 SSOT 重写 specs → commit
-5. [ ] 坏味道分析 + 重构准备笔记（可进 draft / 本文件末节）
+5. [ ] 坏味道分析 + 重构准备笔记
 6. [ ] 删除本 `_TODO.md`
+
+### 文档 cleanup 备注
+
+- BDD `tests/features/*`：抽查后 **未删**（sandbox/approval/app-tui-* 仍有 `bdd.rs` 绑定）。若后续确认死场景再单开清理。
+- 已刷新 `docs/architecture/*`、`src/AGENTS.md`、`llmanspec/config.yaml` context、精简 `session-tree-vs-pi.md`。
+
 
 ## Draft change 清单（purpose-draft，仅 proposal）
 

@@ -1,6 +1,6 @@
 # src/ 分层架构（代码架构 SSOT）
 
-本文件是 `src/` **代码架构**的单一真值源：分层不变量、各层职责、应用面状态、seam、`Xy*` / 导出边界。全局工作方式与产品定调见根 `AGENTS.md`。高维 mermaid：`docs/architecture/`。短索引 / 交接：`_HANDOFF.md`。子目录 `AGENTS.md` 与 skills 只引用本文件，不重复长文。
+本文件是 `src/` **代码架构**的单一真值源：分层不变量、各层职责、应用面状态、seam、`Xy*` / 导出边界。全局工作方式与产品定调见根 `AGENTS.md`。高维 mermaid：`docs/architecture/`。子目录 `AGENTS.md` 与 skills 只引用本文件，不重复长文。
 
 `xylitol` 主 crate：薄编排（`agent/`）+ 运行时域（`infra/`）+ 应用面（`app/`）+ 线协议（`protocol/`）+ 领域词（`domain/`）+ ports（`runtime_protocol/`）。通用 TUI 库在 workspace 包 `packages/xylitol-tui`（不在本文件展开）。
 
@@ -10,7 +10,7 @@
 
 **后置 / 配置启用**：Server · MCP（见下）· 更多 provider 适配器 · Export / 周边能力。未配置则不装配。
 
-**产品 TUI（`src/app/tui`）**：**已开闸（2026-07-11）**。轨 B 至 **c493** 已归档；包侧 D08（**c575**）已归档；**c615** MessageHistory 活树已接线。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。
+**产品 TUI（`src/app/tui`）**：**已开闸并可用**。会话树 / slash / bang / steer 等走 Driver + `XyEvent`。下一波对齐缺口见 purpose-drafts `c1080`–`c1160`。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。
 
 共享流水线：`bootstrap` → `composition::build_agent` → `Driver::run` → ReAct → `XyEvent` → 应用面。库嵌入入口：`xylitol::embed`；矩阵与理想/现状：`docs/architecture/库与多客户端.md`。
 
@@ -22,7 +22,7 @@
 - **agent 不依赖 infra**；**infra 不依赖 agent**。
 - **domain** 零 crate 内依赖；**runtime_protocol** 只依赖 `domain`（可依赖已接受的契约级外部类型，见下「取消」）。
 - **应用面走 seam、不 reach 内部**：禁止 `agent::session::*` / `agent::runtime::*` / `infra::*`；只从 `crate::agent`（mod 级）与 `crate::app::core` import。共享 seam：`composition::build_agent` → `Driver::run(prompt)` → `XyEvent` 流 → 该面渲染；不够就扩 seam，不绕过。方法论：`write-surface` skill。
-- **流中改道（steer / follow-up）**：经 `Driver` 队列 API（c461），禁止应用面直接改 ReAct 内部队列。`abort` 清 steer、保留 follow_up（供 UI restore）。详见 `llmanspec/changes/c461-expose-steer-followup-seam/design.md`。
+- **流中改道（steer / follow-up）**：经 `Driver` 队列 API（c461），禁止应用面直接改 ReAct 内部队列。`abort` 清 steer、保留 follow_up（供 UI restore）。详见 archive `c461-expose-steer-followup-seam/design.md`。
 
 ```text
 app → agent → runtime_protocol → domain
@@ -38,7 +38,7 @@ protocol ───────────────────────�
 - `infra/` — ports 的实现（provider、tools、session、config、…）；vendor 类型（async-openai、rmcp、…）关在本层。
 - `agent/` — ReAct / session / model / tools 编排；公共入口为 mod 级 re-export。
 - `protocol/` — `Command` / `Event` 线协议，传输无关。
-- `app/` — 应用面 + `core/` seam。状态：`cli/print` ✅；`server/` ✅（Driver + REST 命令面）；`tui/` 🟢 已开闸（先 c465 bridge）；`gui` 🔴。跨面：`core/{bootstrap,dispatch,composition,driver}`。落地顺序 print → server → TUI，禁止并行铺无关骨架。
+- `app/` — 应用面 + `core/` seam。状态：`cli/print` ✅；`server/` ✅；`tui/` ✅ 已开闸可用；`gui` 🔴。跨面：`core/{bootstrap,dispatch,composition,driver}`。
 
 模块级文件地图以目录与代码为准；本文件不维护易变文件清单。
 
