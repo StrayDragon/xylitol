@@ -466,7 +466,8 @@ impl AgentCapabilities {
 
     /// Fork the current session at a given entry, creating a child session.
     ///
-    /// Returns the child session ID on success. See [`ForkPosition`].
+    /// Returns the child session ID on success. See
+    /// [`crate::domain::session_types::ForkPosition`].
     pub async fn fork_session(
         &self,
         at_entry_id: &str,

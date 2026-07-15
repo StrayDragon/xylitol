@@ -446,6 +446,12 @@ mod tests {
         ) -> Result<crate::app::core::driver::DebugSceneLoad, String> {
             Err("stub: load_debug_scene not implemented".into())
         }
+
+        async fn list_sessions(
+            &self,
+        ) -> Result<Vec<crate::app::core::driver::SessionListEntry>, String> {
+            Ok(Vec::new())
+        }
     }
 
     fn stub() -> StubDriver {

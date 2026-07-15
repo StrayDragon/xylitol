@@ -1388,6 +1388,18 @@ impl XySessionStore for SessionManager {
     fn leaf_id(&self, session_id: &str) -> Option<String> {
         SessionManager::get_leaf_id(self, session_id)
     }
+
+    async fn list_sessions(
+        &self,
+    ) -> Result<Vec<crate::runtime_protocol::SessionListEntry>, String> {
+        let ids = SessionManager::list(self).await?;
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            let name = SessionManager::get_session_name(self, &id).await?;
+            out.push(crate::runtime_protocol::SessionListEntry { id, name });
+        }
+        Ok(out)
+    }
 }
 
 #[cfg(test)]

@@ -27,6 +27,6 @@ pub use model::{XyModel, XyModelBuilder, XyStream};
 pub use permission::{XyPermission, XyPermissionVerdict};
 pub use resource::XyResourceLoader;
 pub use secret::XySecretResolver;
-pub use session::XySessionStore;
+pub use session::{SessionListEntry, XySessionStore};
 pub use tool::{XyTool, XyToolCtx, XyToolExecutionMode};
 pub use trust::XyTrustStore;
