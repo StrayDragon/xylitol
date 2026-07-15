@@ -434,11 +434,7 @@ pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
     {
         return;
     }
-    tracing::debug!(
-        target: "xylitol::tui",
-        event = event.description(),
-        "XyEvent unhandled by bridge"
-    );
+    log::debug!(target: "xylitol::tui", "XyEvent unhandled by bridge event={}", event.description());
 }
 
 pub(crate) fn compact_json_preview(value: &Value, max_chars: usize) -> String {

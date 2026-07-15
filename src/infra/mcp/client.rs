@@ -49,7 +49,7 @@ impl McpClientManager {
                 McpTransportKind::Sse => self.connect_sse(&name, server_config).await,
             };
             if let Err(e) = result {
-                tracing::warn!("MCP server {name}: connection failed: {e}");
+                log::warn!("MCP server {name}: connection failed: {e}");
                 // Continue connecting to remaining servers.
             }
         }
@@ -79,7 +79,11 @@ impl McpClientManager {
 
         let mut services = self.services.lock().await;
         services.insert(name.to_string(), service);
-        tracing::info!(name, transport = "stdio", "MCP server connected");
+        log::info!(
+            "MCP server connected name={} transport={}",
+            { name },
+            "stdio"
+        );
         Ok(())
     }
 
@@ -95,7 +99,7 @@ impl McpClientManager {
 
         let mut services = self.services.lock().await;
         services.insert(name.to_string(), service);
-        tracing::info!(name, transport = "sse", "MCP server connected");
+        log::info!("MCP server connected name={} transport={}", { name }, "sse");
         Ok(())
     }
 
@@ -109,7 +113,11 @@ impl McpClientManager {
             let tools = match service.list_all_tools().await {
                 Ok(t) => t,
                 Err(e) => {
-                    tracing::warn!(server_id, error = %e, "list_all_tools failed");
+                    log::warn!(
+                        "list_all_tools failed server_id={} error={}",
+                        { server_id },
+                        e
+                    );
                     continue;
                 }
             };
@@ -156,7 +164,7 @@ impl McpClientManager {
         let mut services = self.services.lock().await;
         for (name, mut service) in services.drain() {
             if let Err(e) = service.close().await {
-                tracing::warn!(server = %name, error = %e, "MCP server shutdown error");
+                log::warn!("MCP server shutdown error server={} error={}", name, e);
             }
         }
     }

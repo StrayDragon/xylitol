@@ -829,11 +829,11 @@ async fn observe_script_hook(
     context: serde_json::Value,
 ) {
     if let XyHookOutcome::Blocked { reason } = bus.dispatch(event_type, phase, context).await {
-        tracing::warn!(
-            event = event_type,
-            phase = phase,
-            reason = reason,
-            "Script hook blocked observe-only lifecycle event (fail-open)"
+        log::warn!(
+            "Script hook blocked observe-only lifecycle event (fail-open) event={} phase={} reason={}",
+            event_type,
+            phase,
+            reason
         );
     }
 }

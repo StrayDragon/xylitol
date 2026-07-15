@@ -414,21 +414,21 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         let append = loader.get_append_system_prompt().to_vec();
         (templates, ctx, sys, append)
     };
-    tracing::debug!(
-        caller = %input.caller,
-        trusted = project_trusted,
-        cwd = %cwd,
-        context_files = context_files.len(),
-        templates = discovered_templates.len(),
-        append_system_prompt = append_system_prompt.len(),
-        loader_system_prompt = loader_system_prompt.is_some(),
-        "resource discovery resolved"
+    log::debug!(
+        "resource discovery resolved caller={} trusted={} cwd={} context_files={} templates={} append_system_prompt={} loader_system_prompt={}",
+        input.caller,
+        project_trusted,
+        cwd,
+        context_files.len(),
+        discovered_templates.len(),
+        append_system_prompt.len(),
+        loader_system_prompt.is_some()
     );
     for (path, content) in &context_files {
-        tracing::debug!(
-            context_file = %path,
-            bytes = content.len(),
-            "context file discovered"
+        log::debug!(
+            "context file discovered context_file={} bytes={}",
+            path,
+            content.len()
         );
     }
 

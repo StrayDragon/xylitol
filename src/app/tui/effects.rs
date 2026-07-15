@@ -31,7 +31,7 @@ pub async fn drain_pending<T: Terminal>(
     agent_stream: &mut Option<EventStream>,
 ) -> Result<(), String> {
     if session.take_abort() {
-        tracing::info!(target: "xylitol::tui", "Driver::abort (Esc)");
+        log::info!(target: "xylitol::tui", "Driver::abort (Esc)");
         driver.abort();
         session.note_user_abort();
         let _ = driver.clear_queue(true, false);
@@ -40,14 +40,14 @@ pub async fn drain_pending<T: Terminal>(
         let _ = session.render_now();
     }
     if session.take_dequeue() {
-        tracing::info!(target: "xylitol::tui", "Driver::clear_queue (Alt+Up dequeue)");
+        log::info!(target: "xylitol::tui", "Driver::clear_queue (Alt+Up dequeue)");
         let _ = driver.clear_queue(true, true);
         let stats = driver.queue_stats();
         session.set_queue_badge(stats.steer_count, stats.follow_up_count);
         let _ = session.render_now();
     }
     if let Some(msg) = session.take_steer() {
-        tracing::info!(target: "xylitol::tui", prompt_len = msg.len(), "Driver::steer");
+        log::info!(target: "xylitol::tui", "Driver::steer prompt_len={}", msg.len());
         if let Err(e) = driver.steer(&msg) {
             session.push_system_note(format!("steer failed: {e}"));
         }
@@ -56,7 +56,7 @@ pub async fn drain_pending<T: Terminal>(
         let _ = session.render_now();
     }
     if let Some(msg) = session.take_follow_up() {
-        tracing::info!(target: "xylitol::tui", prompt_len = msg.len(), "Driver::follow_up");
+        log::info!(target: "xylitol::tui", "Driver::follow_up prompt_len={}", msg.len());
         if let Err(e) = driver.follow_up(&msg) {
             session.push_system_note(format!("follow-up failed: {e}"));
         }
@@ -114,11 +114,7 @@ pub async fn drain_pending<T: Terminal>(
                 if scene.is_empty() || scene == "list" {
                     session.push_system_note(crate::app::debug_fixtures::list_note());
                 } else {
-                    tracing::info!(
-                        target: "xylitol::tui",
-                        scene = %scene,
-                        "Driver::load_debug_scene"
-                    );
+                    log::info!(target: "xylitol::tui", "Driver::load_debug_scene scene={}", scene);
                     match driver.load_debug_scene(&scene).await {
                         Ok(load) => session.apply_debug_scene(load),
                         Err(e) => session.push_system_note(e),
@@ -154,7 +150,7 @@ pub async fn drain_pending<T: Terminal>(
     // abort concurrently (c665). Callers MUST `take_bash` after drain_pending.
 
     if session.take_pending_session_tree_open() {
-        tracing::info!(target: "xylitol::tui", "Driver::session_tree(MessageHistory)");
+        log::info!(target: "xylitol::tui", "Driver::session_tree(MessageHistory)");
         match driver.session_tree(SessionTreeKind::MessageHistory).await {
             Ok(nodes) => {
                 let mapped = map_session_tree_nodes(&nodes);
@@ -167,11 +163,7 @@ pub async fn drain_pending<T: Terminal>(
     }
 
     if let Some(entry_id) = session.take_pending_session_tree_travel() {
-        tracing::info!(
-            target: "xylitol::tui",
-            entry_id = %entry_id,
-            "Driver::travel_session_tree(MessageHistory)"
-        );
+        log::info!(target: "xylitol::tui", "Driver::travel_session_tree(MessageHistory) entry_id={}", entry_id);
         match driver
             .travel_session_tree(SessionTreeKind::MessageHistory, &entry_id)
             .await
@@ -188,11 +180,7 @@ pub async fn drain_pending<T: Terminal>(
     if let Some(entry_id) = session.take_pending_session_tree_fork() {
         use crate::domain::session_types::{ForkPosition, is_user_message, message_text};
 
-        tracing::info!(
-            target: "xylitol::tui",
-            entry_id = %entry_id,
-            "Driver::fork_session + switch_session"
-        );
+        log::info!(target: "xylitol::tui", "Driver::fork_session + switch_session entry_id={}", entry_id);
         let parent_entries = match driver.get_messages().await {
             Ok(e) => e,
             Err(e) => {
@@ -245,11 +233,7 @@ pub async fn drain_pending<T: Terminal>(
     }
 
     if let Some((entry_id, label)) = session.take_pending_session_tree_label() {
-        tracing::info!(
-            target: "xylitol::tui",
-            entry_id = %entry_id,
-            "Driver::append_entry_label"
-        );
+        log::info!(target: "xylitol::tui", "Driver::append_entry_label entry_id={}", entry_id);
         match driver.append_entry_label(&entry_id, label.as_deref()).await {
             Ok(()) => session.apply_session_tree_label(&entry_id, label),
             Err(e) => session.push_system_note(format!("label failed: {e}")),
@@ -258,7 +242,7 @@ pub async fn drain_pending<T: Terminal>(
     }
 
     if let Some(model_id) = session.take_pending_model_select() {
-        tracing::info!(target: "xylitol::tui", model_id = %model_id, "SetModel from picker");
+        log::info!(target: "xylitol::tui", "SetModel from picker model_id={}", model_id);
         match dispatch(
             driver,
             Command::SetModel {
@@ -291,11 +275,7 @@ pub async fn drain_pending<T: Terminal>(
     if agent_stream.is_none()
         && let Some(prompt) = session.take_submit()
     {
-        tracing::info!(
-            target: "xylitol::tui",
-            prompt_len = prompt.len(),
-            "Driver::run starting"
-        );
+        log::info!(target: "xylitol::tui", "Driver::run starting prompt_len={}", prompt.len());
         session.on_run_started(&prompt);
         let _ = session.render_now();
         *agent_stream = Some(driver.run(&prompt).await);
@@ -321,12 +301,7 @@ where
     S: Stream<Item = Result<HostEvent, String>>,
 {
     tokio::pin!(input);
-    tracing::info!(
-        target: "xylitol::tui",
-        command_len = bash.command.len(),
-        exclude = bash.exclude_from_context,
-        "Driver::execute_bash (interactive bang)"
-    );
+    log::info!(target: "xylitol::tui", "Driver::execute_bash (interactive bang) command_len={} exclude={}", bash.command.len(), bash.exclude_from_context);
     session.begin_bash_exec(&bash.command, bash.exclude_from_context);
     let _ = session.render_now();
     let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
@@ -357,7 +332,7 @@ where
                                 if aborted_during_bash {
                                     continue;
                                 }
-                                tracing::info!(
+                                log::info!(
                                     target: "xylitol::tui",
                                     "Driver::abort during bang"
                                 );
@@ -388,7 +363,7 @@ where
                             session.step(HostEvent::Xy(Box::new(xy)))?;
                         }
                         None => {
-                            tracing::debug!(
+                            log::debug!(
                                 target: "xylitol::tui",
                                 "agent EventStream ended during bang"
                             );

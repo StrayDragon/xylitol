@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,dl1,"debug-observation-pipeline","应用 MUST 在组合根（app::cli::run，CliArgs::parse 之后、模式分发之前）恰好一次装配 file-only 观测后端：fastrace Reporter 与 log 文件日志均 MUST 只写入 agent 日志目录下的文件（如 xylitol.log / provider-trace.jsonl），MUST NEVER 写 stdout 或 stderr，以免破坏 TUI Inline viewport 与 DSR。禁止使用会打印到 stderr 的 ConsoleReporter。激活 MUST 仅由环境与构建配置驱动（无 CLI flag、无 settings 字段）：debug 构建（cfg(debug_assertions)）MUST 默认启用；release MUST 默认关闭，经 XYLITOL_DEBUG / RUST_LOG（级别日志）与 XYLITOL_PROVIDER_TRACE（provider timeline）显式打开。文件写入 MUST 同步 append（兼容 panic=abort），unix 下文件模式 MUST 为 0o600。TUI 层 MUST 只调用 log 宏或 fastrace API，MUST NOT 自行安装 Reporter。时间线栈 MUST 为 fastrace；MUST NOT 再依赖 tracing / tracing-subscriber。",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  dl1,"file-only-never-stdout-stderr","debug 构建或已显式打开观测且 TUI 活跃","任意层发出 log::debug 或 fastrace Event","内容写入日志目录文件且 stdout/stderr 无污染"
+  dl1,"debug-default-on","cfg(debug_assertions) 且未强制关闭","启动应用","file-only Reporter/logger 已装配"
+  dl1,"release-needs-opt-in","release 且未设 XYLITOL_DEBUG / XYLITOL_PROVIDER_TRACE / 等价 RUST_LOG","启动应用","不安装会落盘的观测后端（或等价零写入）"

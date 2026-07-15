@@ -21,11 +21,10 @@ jsonschema = "0.46"
 minijinja = { version = "2.21.0", features = ["json", "builtins"] }
 dirs = "6"
 thiserror = "2.0.18"
-tracing = "0.1.44"
-# Subscriber that activates the existing tracing emit sites across infra/agent.
-# Unconditional (matches `tracing`) so emits are never silently dropped. The
-# subscriber itself is only installed when env-driven (see app::cli::logging).
-tracing-subscriber = { version = "0.3.23", default-features = false, features = ["std", "fmt", "env-filter", "smallvec"] }
+# Timeline tracing (c1000): enable at the binary crate; FileReporter is file-only.
+fastrace = { version = "0.7.18", features = ["enable"] }
+log = "0.4"
+env_logger = "0.11"
 clap = { version = "4.6.1", features = ["derive"] }
 tokio = { version = "1.52.3", features = ["fs", "process", "io-util", "macros", "rt", "rt-multi-thread", "signal", "sync", "time"] }
 async-trait = "0.1.89"

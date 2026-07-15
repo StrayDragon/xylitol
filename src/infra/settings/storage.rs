@@ -93,9 +93,9 @@ impl SettingsStorage for FileSettingsStorage {
             // Atomic write: temp file + rename
             let tmp = path.with_extension("json.tmp");
             if let Err(e) = std::fs::write(&tmp, format!("{content}\n")) {
-                tracing::warn!("write settings temp file: {e}");
+                log::warn!("write settings temp file: {e}");
             } else if let Err(e) = std::fs::rename(&tmp, path) {
-                tracing::warn!("rename settings temp file: {e}");
+                log::warn!("rename settings temp file: {e}");
             }
         }
 

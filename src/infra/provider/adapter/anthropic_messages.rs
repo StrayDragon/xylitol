@@ -150,13 +150,29 @@ impl AnthropicMessagesAdapter {
         }
 
         if stream {
-            Ok(Box::pin(anthropic_stream(response)))
+            let trace = crate::infra::provider::trace::ProviderRequestTrace::start(
+                "anthropic-messages",
+                &self.model,
+            );
+            Ok(Box::pin(anthropic_stream(response, trace)))
         } else {
+            let trace = crate::infra::provider::trace::ProviderRequestTrace::start(
+                "anthropic-messages",
+                &self.model,
+            );
             let json: Value = response
                 .json()
                 .await
                 .map_err(|e| XyError::Provider(anyhow::anyhow!("parse response: {e}")))?;
+            if let Some(t) = &trace {
+                t.emit_raw("message.json", &json.to_string());
+            }
             let chunks = parse_anthropic_response(&json);
+            if let Some(t) = &trace {
+                for c in &chunks {
+                    t.emit_mapped_chunk(c);
+                }
+            }
             Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
         }
     }
@@ -164,6 +180,7 @@ impl AnthropicMessagesAdapter {
 
 fn anthropic_stream(
     response: reqwest::Response,
+    trace: Option<crate::infra::provider::trace::ProviderRequestTrace>,
 ) -> Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>> {
     Box::pin(async_stream::try_stream! {
         use futures::StreamExt;
@@ -188,6 +205,15 @@ fn anthropic_stream(
                 Ok(v) => v,
                 Err(_) => continue,
             };
+
+            if let Some(t) = &trace {
+                let snippet = data
+                    .pointer("/delta/text")
+                    .or_else(|| data.pointer("/delta/thinking"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                t.emit_raw(event_type, snippet);
+            }
 
             match event_type {
                 "content_block_start" => {
@@ -215,12 +241,20 @@ fn anthropic_stream(
                         match delta_type {
                             "text_delta" => {
                                 if let Some(text) = delta.get("text").and_then(|v| v.as_str()) {
-                                    yield XyChunk::TextDelta(text.to_string());
+                                    let chunk = XyChunk::TextDelta(text.to_string());
+                                    if let Some(t) = &trace {
+                                        t.emit_mapped_chunk(&chunk);
+                                    }
+                                    yield chunk;
                                 }
                             }
                             "thinking" => {
                                 if let Some(thinking) = delta.get("thinking").and_then(|v| v.as_str()) {
-                                    yield XyChunk::ThinkingDelta(thinking.to_string());
+                                    let chunk = XyChunk::ThinkingDelta(thinking.to_string());
+                                    if let Some(t) = &trace {
+                                        t.emit_mapped_chunk(&chunk);
+                                    }
+                                    yield chunk;
                                 }
                             }
                             "input_json_delta" => {

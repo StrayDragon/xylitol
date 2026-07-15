@@ -148,12 +148,18 @@ pub fn resolve_print_prompt(
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = CliArgs::parse();
 
-    // ── Install the tracing subscriber (env-driven, file-only) ──────
+    // ── Install file-only observability (fastrace + log) ────────────
     // Done before any mode dispatch so every surface (print / TUI / RPC /
     // subcommands) is covered. Debug builds default on; release needs
-    // RUST_LOG / XYLITOL_DEBUG. File-only (~/.xylitol/logs/xylitol.log) —
-    // never stdout/stderr (see app/cli/logging.rs).
+    // RUST_LOG / XYLITOL_DEBUG / XYLITOL_PROVIDER_TRACE. Never stdout/stderr.
     logging::init_logging(&crate::infra::resource::DefaultResourceLoader::default_agent_dir());
+    struct FlushOnDrop;
+    impl Drop for FlushOnDrop {
+        fn drop(&mut self) {
+            logging::flush_observability();
+        }
+    }
+    let _flush = FlushOnDrop;
 
     // ── Subcommands: handled early, no model loading needed ─────────
     match args.command {

@@ -146,8 +146,12 @@ impl LlmAdapter for OpenAiResponsesAdapter {
         messages: Vec<AgentMessage>,
         tools: &[XyToolSchema],
     ) -> Result<XyStream, XyError> {
+        let trace = crate::infra::provider::trace::ProviderRequestTrace::start(
+            "openai-responses",
+            &self.model,
+        );
         let response = self.send_request(messages, tools, true).await?;
-        Ok(Box::pin(responses_stream(response)))
+        Ok(Box::pin(responses_stream(response, trace)))
     }
 
     async fn generate(
@@ -155,18 +159,31 @@ impl LlmAdapter for OpenAiResponsesAdapter {
         messages: Vec<AgentMessage>,
         tools: &[XyToolSchema],
     ) -> Result<XyStream, XyError> {
+        let trace = crate::infra::provider::trace::ProviderRequestTrace::start(
+            "openai-responses",
+            &self.model,
+        );
         let response = self.send_request(messages, tools, false).await?;
         let json: Value = response
             .json()
             .await
             .map_err(|e| XyError::Provider(anyhow::anyhow!("parse response: {e}")))?;
+        if let Some(t) = &trace {
+            t.emit_raw("response.json", &json.to_string());
+        }
         let chunks = parse_responses_output(&json);
+        if let Some(t) = &trace {
+            for c in &chunks {
+                t.emit_mapped_chunk(c);
+            }
+        }
         Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
     }
 }
 
 fn responses_stream(
     response: reqwest::Response,
+    trace: Option<crate::infra::provider::trace::ProviderRequestTrace>,
 ) -> Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>> {
     Box::pin(async_stream::try_stream! {
         use futures::StreamExt;
@@ -192,6 +209,14 @@ fn responses_stream(
                 Err(_) => continue,
             };
 
+            if let Some(t) = &trace {
+                let snippet = data
+                    .get("delta")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                t.emit_raw(event_type, snippet);
+            }
+
             match event_type {
                 "response.output_item.added" => {
                     if let Some(item) = data.get("item") {
@@ -205,13 +230,21 @@ fn responses_stream(
 
                 "response.reasoning_text.delta" => {
                     if let Some(delta) = data.get("delta").and_then(|v| v.as_str()) {
-                        yield XyChunk::ThinkingDelta(delta.to_string());
+                        let chunk = XyChunk::ThinkingDelta(delta.to_string());
+                        if let Some(t) = &trace {
+                            t.emit_mapped_chunk(&chunk);
+                        }
+                        yield chunk;
                     }
                 }
 
                 "response.output_text.delta" => {
                     if let Some(delta) = data.get("delta").and_then(|v| v.as_str()) {
-                        yield XyChunk::TextDelta(delta.to_string());
+                        let chunk = XyChunk::TextDelta(delta.to_string());
+                        if let Some(t) = &trace {
+                            t.emit_mapped_chunk(&chunk);
+                        }
+                        yield chunk;
                     }
                 }
 
@@ -236,7 +269,11 @@ fn responses_stream(
                             let args_str = function_call_args.remove(&id).unwrap_or_default();
                             let args: Value = serde_json::from_str(&args_str)
                                 .unwrap_or(serde_json::json!({}));
-                            yield XyChunk::FunctionCall { name, args, id };
+                            let chunk = XyChunk::FunctionCall { name, args, id };
+                            if let Some(t) = &trace {
+                                t.emit_mapped_chunk(&chunk);
+                            }
+                            yield chunk;
                         }
                     }
                 }
@@ -256,10 +293,14 @@ fn responses_stream(
                     } else {
                         None
                     };
-                    yield XyChunk::Done {
+                    let chunk = XyChunk::Done {
                         finish_reason: XyStopReason::Stop,
                         usage,
                     };
+                    if let Some(t) = &trace {
+                        t.emit_mapped_chunk(&chunk);
+                    }
+                    yield chunk;
                 }
 
                 "response.usage" => {

@@ -17,6 +17,7 @@ pub mod adapter;
 pub mod factory;
 pub(crate) mod openai;
 pub(crate) mod reqwest_bridge;
+pub(crate) mod trace;
 
 mod fake;
 #[cfg(test)]

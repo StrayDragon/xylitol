@@ -77,8 +77,8 @@ protocol ───────────────────────�
 - 脚本 hook 三缝（`before_provider_headers` / `before_provider_request` / `after_provider_response`）只认**可移植**载荷：`infra::hooks::http::HeaderBag`（JSON map）与 `serde_json::Value` body —— **不**依赖 reqwest / 某一 vendor SDK。
 - 当前传输实现（reqwest）经 `infra::provider::reqwest_bridge` 在适配器边缘转换；换 SDK = 加/换 bridge，不改 hook 合约。
 - 禁止为包而包：不另造全局 `XyHttpClient`，除非出现跨方言共享且要进库入口的传输端口。
-- 原始 SSE / 通道错分诊断：**优先进程内 raw provider trace**（与映射后 `XyChunk` 对照；debug 默认、release 开关 —— 另开 change，**不**塞进 hook）。
-- 外挂 MITM / claude-tap 提案已暂停：`llmanspec/do-not-read-me/c999-add-infra-provider-traffic-capture/`（勿当主线）。
+- 原始 SSE / 通道错分诊断：**优先进程内 raw provider trace**（fastrace Event + `provider-trace.jsonl`；与映射后 `XyChunk` 对照；debug 默认、release 经 `XYLITOL_PROVIDER_TRACE` —— **不**塞进 hook）。
+- 观测栈：**仅 fastrace**（时间线）+ **`log`**（级别日志）；禁止 `tracing` / 双栈。外挂 MITM 提案已暂停：`llmanspec/do-not-read-me/c999-add-infra-provider-traffic-capture/`。
 
 ## 跨层测试与守卫
 

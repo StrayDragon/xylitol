@@ -75,11 +75,7 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
         XyEvent::ModelSelect { .. }
         | XyEvent::ThinkingLevelChanged { .. }
         | XyEvent::SessionInfoChanged { .. } => {
-            tracing::debug!(
-                target: "xylitol::tui",
-                event = event.description(),
-                "XyEvent ignored by bridge (metadata)"
-            );
+            log::debug!(target: "xylitol::tui", "XyEvent ignored by bridge (metadata) event={}", event.description());
             true
         }
         _ => false,
