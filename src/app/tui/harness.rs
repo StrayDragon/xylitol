@@ -74,6 +74,7 @@ pub struct ScriptedDriver {
     estimate_override: Option<crate::domain::types::ContextTokenEstimate>,
     reload_runtime_calls: AtomicUsize,
     persist_project_trust_calls: Mutex<Vec<crate::app::core::driver::ProjectTrustMode>>,
+    copy_text_calls: Mutex<Vec<String>>,
     dollar_skill_catalog: Mutex<Vec<(String, String)>>,
 }
 
@@ -161,6 +162,7 @@ impl ScriptedDriver {
             estimate_override: None,
             reload_runtime_calls: AtomicUsize::new(0),
             persist_project_trust_calls: Mutex::new(Vec::new()),
+            copy_text_calls: Mutex::new(Vec::new()),
             dollar_skill_catalog: Mutex::new(Vec::new()),
         }
     }
@@ -173,6 +175,13 @@ impl ScriptedDriver {
         self.persist_project_trust_calls
             .lock()
             .expect("persist_project_trust_calls")
+            .clone()
+    }
+
+    pub fn copy_text_calls(&self) -> Vec<String> {
+        self.copy_text_calls
+            .lock()
+            .expect("copy_text_calls")
             .clone()
     }
 
@@ -713,6 +722,14 @@ impl Driver for ScriptedDriver {
                 ProjectTrustPersistReport::RELOAD_HINT
             ),
         })
+    }
+
+    fn copy_text_to_clipboard(&mut self, text: &str) -> Result<(), String> {
+        self.copy_text_calls
+            .lock()
+            .expect("copy_text_calls")
+            .push(text.to_string());
+        Ok(())
     }
 }
 

@@ -785,6 +785,108 @@ async fn harness_idle_slash_reload_keeps_history_and_calls_runtime() {
 }
 
 #[tokio::test]
+async fn harness_history_copy_last_copies_assistant() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crate::app::tui::bridge::UiEntry;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_run_started("prompt");
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::TextDelta(
+            "copy-me-please".into(),
+        ))))
+        .unwrap();
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+            messages: Vec::new(),
+        })))
+        .unwrap();
+    session.push_system_note("trailing system");
+
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+    root.borrow_mut().set_editor_text("/history-copy-last");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert_eq!(driver.copy_text_calls(), vec!["copy-me-please".to_string()]);
+    assert!(
+        session.ui_model().entries.iter().any(
+            |e| matches!(e, UiEntry::System { text } if text.contains("Copied") && text.contains("chars"))
+        ),
+        "expected copy ok note; got {:?}",
+        session.ui_model().entries
+    );
+}
+
+#[tokio::test]
+async fn harness_history_copy_last_empty_prompts() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crate::app::tui::bridge::UiEntry;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+    root.borrow_mut().set_editor_text("/history-copy-last");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert!(driver.copy_text_calls().is_empty());
+    assert!(
+        session.ui_model().entries.iter().any(
+            |e| matches!(e, UiEntry::System { text } if text.contains("no assistant message"))
+        ),
+        "expected empty note; got {:?}",
+        session.ui_model().entries
+    );
+}
+
+#[tokio::test]
+async fn harness_busy_history_copy_last_still_copies() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crate::app::tui::bridge::UiEntry;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_run_started("first");
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::TextDelta("A".into()))))
+        .unwrap();
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+            messages: Vec::new(),
+        })))
+        .unwrap();
+    session.on_run_started("busy again");
+    assert!(session.is_busy());
+
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+    root.borrow_mut().set_editor_text("/history-copy-last");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert_eq!(driver.copy_text_calls(), vec!["A".to_string()]);
+    assert!(
+        session
+            .ui_model()
+            .entries
+            .iter()
+            .any(|e| matches!(e, UiEntry::System { text } if text.contains("Copied"))),
+        "busy must still copy; got {:?}",
+        session.ui_model().entries
+    );
+}
+
+#[tokio::test]
 async fn harness_idle_slash_trust_persists_without_reload() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::core::driver::ProjectTrustMode;

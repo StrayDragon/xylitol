@@ -84,6 +84,11 @@ pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
             description: "Persist project trust: /trust [self|parent|deny]",
             argument_hint: Some("[self|parent|deny]"),
         },
+        ProductSlashCommand {
+            name: "history-copy-last",
+            description: "Copy last assistant message to clipboard",
+            argument_hint: None,
+        },
     ];
     #[cfg(debug_assertions)]
     cmds.push(ProductSlashCommand {

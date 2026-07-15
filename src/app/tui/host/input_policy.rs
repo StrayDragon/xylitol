@@ -118,6 +118,14 @@ impl<T: Terminal> HostSession<T> {
                     self.sync_ui_root_from_model();
                     return true;
                 }
+                // c1110: readonly copy allowed while busy.
+                Some(PendingSlash::HistoryCopyLast) => {
+                    root.set_editor_text(String::new());
+                    drop(root);
+                    self.pending.slash = Some(PendingSlash::HistoryCopyLast);
+                    self.sync_ui_root_from_model();
+                    return true;
+                }
                 _ => {}
             }
             // c669 / ati32: hard-reject bang while bash_active or agent busy
@@ -202,6 +210,7 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::SessionName { .. }
                 | PendingSlash::Reload
                 | PendingSlash::Trust { .. }
+                | PendingSlash::HistoryCopyLast
                 | PendingSlash::Usage(_) => {
                     self.pending.slash = Some(slash);
                 }
@@ -213,7 +222,7 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(String::new());
             drop(root);
             self.push_system_note(format!(
-                "unknown command: {} (try /exit, /model, /session, /session-resume, /session-new, /session-clone, /session-name, /session-tree, /session-fork, /session-compact, /session-export, /session-import, /reload, /trust)",
+                "unknown command: {} (try /exit, /model, /session, /session-resume, /session-new, /session-clone, /session-name, /session-tree, /session-fork, /session-compact, /session-export, /session-import, /reload, /trust, /history-copy-last)",
                 text.split_whitespace().next().unwrap_or("/")
             ));
             return true;
