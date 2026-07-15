@@ -4,8 +4,8 @@ locale: zh-CN
 
 context: |
   Project conventions: 根 AGENTS.md 仅全局基本约束；代码架构 SSOT（分层地图 + 分层不变量 + 各层职责 + 应用面状态表 + seam 定义）在 src/AGENTS.md；应用面方法论见 write-surface skill，TUI 见 src/app/tui/AGENTS.md。子目录 AGENTS.md 只做路径引用，不重复架构事实。
-  Current state (2026-07-16): 产品 TUI 已开闸可用。active purpose-drafts：c1080–c1160（对齐缺口）、c1170/c1175（重构债）。
-  Apply priority (normative for next wave): 1) 重构（c1170 god modules、c1175 slash SSOT）→ 2) 现有系统调整（MCP/skills/热重载缝、@ 与 paste-collapse 接线等）→ 3) 新功能（/trust /reload /theme /$skill header thinking 粘贴图等）。depends_on 仍优先于本优先级。
+  Current state (2026-07-16): 产品 TUI 已开闸可用。c1170 已归档。active purpose-drafts：c1080–c1160（对齐缺口）；active full：c1175（slash SSOT 重构）。
+  Apply priority (normative for next wave): 1) 重构（c1175 slash SSOT）→ 2) 现有系统调整（MCP/skills/热重载缝、@ 与 paste-collapse 接线等）→ 3) 新功能（/trust /reload /theme /$skill header thinking 粘贴图等）。depends_on 仍优先于本优先级。
   Design principle: pluggable/configurable architecture. Core always present; enhancements runtime-toggled; MCP/skills UX polish opt-in via config.
   Dependency tracking: proposal.md frontmatter depends_on. DAG: llman sdd graph
 
