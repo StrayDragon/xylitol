@@ -1,18 +1,24 @@
-//! AiBridge DTO ↔ domain type mapping (c1030).
+//! [`LlmMessage`] ↔ xylitol-ai-bridge DTO mapping (c1030 / c1070).
 //!
-//! `xylitol-ai-bridge` owns vendor wiring; this module is the only place that
-//! converts between package DTOs and xylitol domain / runtime_protocol types.
+//! Session vocabulary stays on [`AgentMessage`] (`Llm` ∪ `Env`). Bridge DTOs
+//! are LLM-only; [`crate::domain::llm_project::project_for_llm`] folds Env
+//! first. This module maps [`LlmMessage`] ↔ package DTOs for the provider path.
 
 use futures::StreamExt;
 use xylitol_ai_bridge::dto::{
-    AiBridgeChunk, AiBridgeMessage, AiBridgeStopReason, AiBridgeStream, AiBridgeToolSchema,
-    AiBridgeUsage, AiBridgeUsageCost, ContextTokenEstimate as AiBridgeContextTokenEstimate,
+    AiBridgeChunk, AiBridgeImageContent, AiBridgeMessage, AiBridgePart, AiBridgeStopReason,
+    AiBridgeStream, AiBridgeToolSchema, AiBridgeUsage, AiBridgeUsageCost,
+    ContextTokenEstimate as AiBridgeContextTokenEstimate, Diagnostic as AiBridgeDiagnostic,
     TokenProvenance as AiBridgeTokenProvenance,
 };
 use xylitol_ai_bridge::error::AiBridgeError;
 
 use crate::domain::error::XyError;
-use crate::domain::message::{AgentMessage, XyStopReason, XyUsage, XyUsageCost};
+use crate::domain::llm_project::project_for_llm;
+use crate::domain::message::{
+    AgentMessage, AgentPart, Diagnostic, ImageContent, LlmMessage, XyStopReason, XyUsage,
+    XyUsageCost,
+};
 use crate::domain::types::{ContextTokenEstimate, TokenProvenance, XyChunk, XyToolSchema};
 use crate::runtime_protocol::XyStream;
 
@@ -40,15 +46,120 @@ impl From<AiBridgeContextTokenEstimate> for ContextTokenEstimate {
     }
 }
 
+/// Project session messages then map to LLM bridge DTOs (provider entry).
 pub fn to_bridge_messages(messages: Vec<AgentMessage>) -> Result<Vec<AiBridgeMessage>, XyError> {
-    messages.into_iter().map(to_bridge_message).collect()
+    Ok(project_for_llm(&messages)
+        .into_iter()
+        .map(to_bridge_llm_message)
+        .collect())
 }
 
+/// Map a single [`LlmMessage`] (or LLM-role [`AgentMessage`]) to bridge DTO.
 pub fn to_bridge_message(msg: AgentMessage) -> Result<AiBridgeMessage, XyError> {
-    let value = serde_json::to_value(&msg)
-        .map_err(|e| XyError::Provider(anyhow::anyhow!("map AgentMessage→json: {e}")))?;
-    serde_json::from_value(value)
-        .map_err(|e| XyError::Provider(anyhow::anyhow!("map json→AiBridgeMessage: {e}")))
+    match msg {
+        AgentMessage::Llm(m) => Ok(to_bridge_llm_message(m)),
+        AgentMessage::Env(e) => Err(XyError::Provider(anyhow::anyhow!(
+            "to_bridge_message expects Llm after projection; got Env {}",
+            e.role_name()
+        ))),
+    }
+}
+
+pub fn to_bridge_llm_message(msg: LlmMessage) -> AiBridgeMessage {
+    match msg {
+        LlmMessage::UserMessage { content, timestamp } => AiBridgeMessage::UserMessage {
+            content: content.into_iter().map(to_bridge_part).collect(),
+            timestamp,
+        },
+        LlmMessage::AssistantMessage {
+            content,
+            stop_reason,
+            usage,
+            api,
+            provider,
+            model,
+            response_id,
+            error_message,
+            timestamp,
+            diagnostics,
+        } => AiBridgeMessage::AssistantMessage {
+            content: content.into_iter().map(to_bridge_part).collect(),
+            stop_reason: stop_reason.map(to_bridge_stop_reason),
+            usage: usage.as_ref().map(to_bridge_usage),
+            api,
+            provider,
+            model,
+            response_id,
+            error_message,
+            timestamp,
+            diagnostics: diagnostics.into_iter().map(to_bridge_diagnostic).collect(),
+        },
+        LlmMessage::ToolResultMessage {
+            tool_use_id,
+            tool_name,
+            content,
+            details,
+            is_error,
+            timestamp,
+        } => AiBridgeMessage::ToolResultMessage {
+            tool_use_id,
+            tool_name,
+            content: content.into_iter().map(to_bridge_part).collect(),
+            details,
+            is_error,
+            timestamp,
+        },
+    }
+}
+
+fn to_bridge_part(part: AgentPart) -> AiBridgePart {
+    match part {
+        AgentPart::Text { text } => AiBridgePart::Text { text },
+        AgentPart::Image(img) => AiBridgePart::Image(to_bridge_image(img)),
+        AgentPart::Thinking {
+            thinking,
+            redacted,
+            thinking_signature,
+        } => AiBridgePart::Thinking {
+            thinking,
+            redacted,
+            thinking_signature,
+        },
+        AgentPart::ToolCall {
+            id,
+            name,
+            arguments,
+        } => AiBridgePart::ToolCall {
+            id,
+            name,
+            arguments,
+        },
+    }
+}
+
+fn to_bridge_image(img: ImageContent) -> AiBridgeImageContent {
+    AiBridgeImageContent {
+        url: img.url,
+        data: img.data,
+        media_type: img.media_type,
+    }
+}
+
+fn to_bridge_diagnostic(d: Diagnostic) -> AiBridgeDiagnostic {
+    AiBridgeDiagnostic {
+        message: d.message,
+        source: d.source,
+    }
+}
+
+fn to_bridge_stop_reason(r: XyStopReason) -> AiBridgeStopReason {
+    match r {
+        XyStopReason::Stop => AiBridgeStopReason::Stop,
+        XyStopReason::MaxTokens => AiBridgeStopReason::MaxTokens,
+        XyStopReason::Error => AiBridgeStopReason::Error,
+        XyStopReason::Aborted => AiBridgeStopReason::Aborted,
+        XyStopReason::ToolUse => AiBridgeStopReason::ToolUse,
+    }
 }
 
 pub fn to_bridge_tools(tools: &[XyToolSchema]) -> Vec<AiBridgeToolSchema> {
@@ -148,13 +259,26 @@ mod tests {
     use crate::domain::message::AgentMessage;
 
     #[test]
-    fn agent_message_roundtrip_user() {
+    fn llm_user_maps_to_bridge() {
         let msg = AgentMessage::user("hello");
-        let bridge = to_bridge_message(msg.clone()).expect("to bridge");
-        let value = serde_json::to_value(&bridge).unwrap();
-        let back: AgentMessage = serde_json::from_value(value).unwrap();
-        assert_eq!(back.role_name(), "user");
-        assert_eq!(back.text(), "hello");
+        let bridge = to_bridge_message(msg).expect("to bridge");
+        assert_eq!(bridge.role_name(), "user");
+        assert_eq!(bridge.text(), "hello");
+    }
+
+    #[test]
+    fn bash_projects_then_maps() {
+        let msgs = vec![AgentMessage::bash("echo hi", "hi", Some(0))];
+        let bridge = to_bridge_messages(msgs).expect("project+map");
+        assert_eq!(bridge.len(), 1);
+        assert_eq!(bridge[0].role_name(), "user");
+        assert!(bridge[0].text().contains("echo hi"));
+    }
+
+    #[test]
+    fn env_rejected_without_projection() {
+        let msg = AgentMessage::bash("x", "y", None);
+        assert!(to_bridge_message(msg).is_err());
     }
 
     #[test]

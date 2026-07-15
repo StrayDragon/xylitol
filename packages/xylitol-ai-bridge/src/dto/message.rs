@@ -1,4 +1,8 @@
-//! Typed bridge message types — serde-compatible with domain AgentMessage.
+//! Typed bridge LLM message types (c1070: session roles live only on AgentMessage).
+//!
+//! Variants are limited to model-visible roles: user / assistant / toolResult.
+//! Environment folding (bash, compact, branch, custom) happens in the main crate
+//! via `domain::llm_project::project_for_llm` before crossing this boundary.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -57,40 +61,6 @@ pub enum AiBridgeMessage {
         #[serde(default = "now_ms")]
         timestamp: u64,
     },
-    #[serde(rename = "bashExecution")]
-    BashExecutionMessage {
-        command: String,
-        output: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        exit_code: Option<i32>,
-        #[serde(default)]
-        cancelled: bool,
-        #[serde(default)]
-        truncated: bool,
-        #[serde(default)]
-        exclude_from_context: bool,
-    },
-    #[serde(rename = "custom")]
-    CustomMessage {
-        custom_type: String,
-        content: Value,
-        #[serde(default)]
-        display: Value,
-        #[serde(default)]
-        details: Value,
-    },
-    #[serde(rename = "compactionSummary")]
-    CompactionSummaryMessage {
-        summary: String,
-        tokens_before: u64,
-        tokens_after: u64,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        read_files: Option<Vec<String>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        modified_files: Option<Vec<String>>,
-    },
-    #[serde(rename = "branchSummary")]
-    BranchSummaryMessage { summary: String, from_id: String },
 }
 
 impl AiBridgeMessage {
@@ -99,10 +69,6 @@ impl AiBridgeMessage {
             Self::UserMessage { .. } => "user",
             Self::AssistantMessage { .. } => "assistant",
             Self::ToolResultMessage { .. } => "toolResult",
-            Self::BashExecutionMessage { .. } => "bashExecution",
-            Self::CustomMessage { .. } => "custom",
-            Self::CompactionSummaryMessage { .. } => "compactionSummary",
-            Self::BranchSummaryMessage { .. } => "branchSummary",
         }
     }
 
@@ -111,10 +77,6 @@ impl AiBridgeMessage {
             Self::UserMessage { content, .. }
             | Self::AssistantMessage { content, .. }
             | Self::ToolResultMessage { content, .. } => content,
-            Self::BashExecutionMessage { .. }
-            | Self::CustomMessage { .. }
-            | Self::CompactionSummaryMessage { .. }
-            | Self::BranchSummaryMessage { .. } => &[],
         }
     }
 
@@ -123,12 +85,6 @@ impl AiBridgeMessage {
             Self::UserMessage { content, .. }
             | Self::AssistantMessage { content, .. }
             | Self::ToolResultMessage { content, .. } => collect_text_parts(content),
-            Self::BashExecutionMessage {
-                command, output, ..
-            } => format!("$ {command}\n{output}"),
-            Self::CustomMessage { content, .. } => content.as_str().unwrap_or("").to_string(),
-            Self::CompactionSummaryMessage { summary, .. } => summary.clone(),
-            Self::BranchSummaryMessage { summary, .. } => summary.clone(),
         }
     }
 
@@ -177,21 +133,6 @@ impl AiBridgeMessage {
             details: None,
             is_error,
             timestamp: now_ms(),
-        }
-    }
-
-    pub fn bash(
-        command: impl Into<String>,
-        output: impl Into<String>,
-        exit_code: Option<i32>,
-    ) -> Self {
-        Self::BashExecutionMessage {
-            command: command.into(),
-            output: output.into(),
-            exit_code,
-            cancelled: false,
-            truncated: false,
-            exclude_from_context: false,
         }
     }
 }

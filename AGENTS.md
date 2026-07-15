@@ -68,9 +68,9 @@
 
 **交付**：只支持两类 provider API——**OpenAI 兼容**（Chat Completions / Responses）与 **Anthropic**（Messages）。OAuth、专属 attribution header、其它厂商专属逻辑在 1.0.0 前不支持；用户自定义仅当声明为上述兼容 API 时接受。
 
-**抽象（开闭）**：业务只依赖 `XyModel`；方言差异收在 `packages/xylitol-ai-bridge` adapter 族。**优先厂商官方 SDK Client**（兼容端靠 base_url/配置）。新兼容供应商 = 新 adapter/配置，**不改** ReAct / `AgentMessage`。禁止 Completions「已是 `XyModel` 再包一层」双路径。
+**抽象（开闭）**：业务只依赖 `XyModel`；方言差异收在 `packages/xylitol-ai-bridge` adapter 族。**优先厂商官方 SDK Client**（兼容端靠 base_url/配置；Responses 流式宽松解析见该包 `AGENTS.md`）。新兼容供应商 = 新 adapter/配置，**不改** ReAct / `AgentMessage`。禁止 Completions「已是 `XyModel` 再包一层」双路径。
 
-**消息分层**：`AgentMessage`（domain）= session 真源（LLM 内容 + 环境元信息）；发模型前经主仓 **显式投影** 到 bridge LLM DTO。细则：`src/AGENTS.md`「Provider 适配」、`packages/xylitol-ai-bridge/AGENTS.md`。
+**消息分层**：`AgentMessage` = `Llm(LlmMessage) | Env(…)`；发模型前 `project_for_llm → Vec<LlmMessage>` 再映射 bridge DTO。细则：`src/AGENTS.md`「Provider 适配」、`packages/xylitol-ai-bridge/AGENTS.md`。
 
 ## 命令
 

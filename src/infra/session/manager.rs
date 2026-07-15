@@ -753,24 +753,24 @@ impl SessionManager {
         let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
 
         let mut messages = Vec::new();
-        use crate::domain::message::AgentMessage;
+        use crate::domain::message::{AgentMessage, EnvMessage};
 
         for entry in &branch {
             match entry {
                 SessionEntry::Compaction(c) => {
-                    messages.push(AgentMessage::CompactionSummaryMessage {
+                    messages.push(AgentMessage::Env(EnvMessage::CompactionSummaryMessage {
                         summary: c.summary.clone(),
                         tokens_before: c.tokens_before,
                         tokens_after: 0,
                         read_files: None,
                         modified_files: None,
-                    });
+                    }));
                 }
                 SessionEntry::BranchSummary(b) => {
-                    messages.push(AgentMessage::BranchSummaryMessage {
+                    messages.push(AgentMessage::Env(EnvMessage::BranchSummaryMessage {
                         summary: b.summary.clone(),
                         from_id: b.from_id.clone(),
-                    });
+                    }));
                 }
                 SessionEntry::CustomMessage(cm) => {
                     if cm.display {

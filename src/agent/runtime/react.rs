@@ -26,7 +26,7 @@ use super::{AgentHooks, XyEvent, XyEventStream};
 use crate::agent::session::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::tools::ToolSet;
 use crate::domain::error::XyError;
-use crate::domain::message::{AgentMessage, AgentPart};
+use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
 use crate::domain::session_types::{EntryBase, MessageEntry, SessionEntry};
 use crate::domain::types::{XyChunk, XyToolSchema};
 use crate::runtime_protocol::{
@@ -369,17 +369,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         if history.is_empty()
             && let Some(ref sp) = system_prompt
         {
-            history.push(AgentMessage::UserMessage {
-                content: vec![AgentPart::text(sp.clone())],
-                timestamp: crate::domain::message::now_ms(),
-            });
+            history.push(AgentMessage::user(sp.clone()));
         }
 
         // Add user message
-        history.push(AgentMessage::UserMessage {
-            content: vec![AgentPart::text(user_prompt.clone())],
-            timestamp: crate::domain::message::now_ms(),
-        });
+        history.push(AgentMessage::user(user_prompt.clone()));
         persist_agent_message(&store, &session_id, history.last().expect("user message")).await;
 
         let retry_state = RetryState::new(3, 1000);
@@ -590,7 +584,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     });
                 }
                 if !assistant_parts.is_empty() {
-                    let assistant_msg = AgentMessage::AssistantMessage {
+                    let assistant_msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
                         content: assistant_parts,
                         stop_reason: None,
                         usage: None,
@@ -601,7 +595,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         error_message: None,
                         timestamp: crate::domain::message::now_ms(),
                         diagnostics: Vec::new(),
-                    };
+                    });
                     persist_agent_message(&store, &session_id, &assistant_msg).await;
                     history.push(assistant_msg);
                 }
@@ -684,14 +678,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             result: err.clone(),
                             is_error: true,
                         };
-                        history.push(AgentMessage::ToolResultMessage {
-                            tool_use_id: id.clone(),
-                            tool_name: name.clone(),
-                            content: vec![AgentPart::text(err.clone())],
-                            details: None,
-                            is_error: true,
-                            timestamp: crate::domain::message::now_ms(),
-                        });
+                        history.push(AgentMessage::tool_result(
+                            id.clone(),
+                            name.clone(),
+                            vec![AgentPart::text(err.clone())],
+                            true,
+                        ));
                         persist_agent_message(
                             &store,
                             &session_id,
@@ -759,14 +751,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         is_error: result.1,
                     };
 
-                    history.push(AgentMessage::ToolResultMessage {
-                        tool_use_id: id.clone(),
-                        tool_name: name.clone(),
-                        content: vec![AgentPart::text(result_text.clone())],
-                        details: None,
-                        is_error: result.1,
-                        timestamp: crate::domain::message::now_ms(),
-                    });
+                    history.push(AgentMessage::tool_result(
+                        id.clone(),
+                        name.clone(),
+                        vec![AgentPart::text(result_text.clone())],
+                        result.1,
+                    ));
                     persist_agent_message(
                         &store,
                         &session_id,
@@ -1419,10 +1409,12 @@ mod tests {
         let texts: Vec<String> = history
             .iter()
             .filter_map(|m| match m {
-                AgentMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
-                    AgentPart::Text { text: t } => Some(t.clone()),
-                    _ => None,
-                }),
+                AgentMessage::Llm(LlmMessage::UserMessage { content, .. }) => {
+                    content.iter().find_map(|p| match p {
+                        AgentPart::Text { text: t } => Some(t.clone()),
+                        _ => None,
+                    })
+                }
                 _ => None,
             })
             .collect();
@@ -1759,10 +1751,12 @@ mod tests {
         let user_texts: Vec<String> = second_input
             .iter()
             .filter_map(|m| match m {
-                AgentMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
-                    AgentPart::Text { text: t } => Some(t.clone()),
-                    _ => None,
-                }),
+                AgentMessage::Llm(LlmMessage::UserMessage { content, .. }) => {
+                    content.iter().find_map(|p| match p {
+                        AgentPart::Text { text: t } => Some(t.clone()),
+                        _ => None,
+                    })
+                }
                 _ => None,
             })
             .collect();

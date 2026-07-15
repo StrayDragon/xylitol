@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "layer-architecture"
 purpose: "TBD - created by archiving change c225-refactor-domain-layering. Update purpose after archive."
 valid_scope[2]: src/,tests/
-requirements[25]{req_id,title,statement}:
+requirements[26]{req_id,title,statement}:
   la1,"core-layer","System MUST provide a base domain/ layer hosting domain vocabulary types including AgentMessage and ModelKind and XyChunk and ALL pure data types consumed by two or more layers (such as SessionEntry variants, SourceInfo, SkillInfo, PromptTemplate, CompactionSettings, AgentLifecycleEvent). System MUST provide a separate runtime_protocol/ layer hosting the trait contracts (XyModel, XyTool, SessionStore, EventSink, SandboxEngine, BashExecutor, SecretResolver, ResourceLoader, TrustStore, ExportIo) so that no layer must import crate::infra merely to reference a shared data type or to declare a port."
   la2,"downward-dependency","infra/ modules MUST NOT import any crate::agent symbol; agent/ modules MUST NOT import any concrete infra/ type (only via runtime_protocol); app/ modules MUST NOT import crate::agent or crate::infra except in the documented seams: the composition roots app/cli/, app/server/, app/rpc.rs, and app/core/composition.rs (which may import both), and app/core/driver.rs (which may import agent::facade only and MUST NOT import crate::infra per la11). domain/ MUST have zero crate:: internal dependencies and runtime_protocol/ MUST only depend on domain/."
   la3,"arch-guard","System MUST enforce via a guard test that no file under src/infra imports crate::agent."
@@ -28,7 +28,8 @@ requirements[25]{req_id,title,statement}:
   "la-server-driver",Server 与 Print 同缝,Server 与 Print MUST 共享同一应用缝（Driver/bootstrap）；新增 server 能力时优先扩缝，禁止为 server 单独复制一套 agent 编排。
   "la-mcp-seam",组合根消化 MCP 配置,"composition/McpSession MUST 在缝边界内将嵌入缝 MCP 描述转为 infra 实现；应用面 MUST NOT 为 MCP 装配单独 reach-in infra 类型。"
   "la-dispatch-consume",dispatch 有消费方,跨面命令执行缝 dispatch MUST 至少被一个生产应用面消费（Server 或 TUI）；禁止长期仅单测覆盖而无面接线。
-scenarios[26]{req_id,id,given,when,then}:
+  la25,"provider-package-ocp","LLM 厂商差异 MUST 收敛在 packages/xylitol-ai-bridge 的 adapter 族与主仓投影缝；新 OpenAI-like 或 Anthropic-like 兼容端 MUST 以开闭方式扩展（新 adapter/配置），MUST NOT 修改 domain AgentMessage 或 agent ReAct 核心以适配某一网关；domain/agent MUST NOT 依赖厂商 SDK。"
+scenarios[28]{req_id,id,given,when,then}:
   la1,"shared-types-in-domain",a pure data type is needed by both agent/ and infra/,the type is declared and imported,"both layers import it from crate::domain and runtime_protocol from crate::runtime_protocol"
   la2,"app-layer-isolated","","a new file under src/app/core/driver.rs imports crate::infra::tools::BashTool",the architecture guard fails and reports the violation
   la2,"composition-root-allowed","","a file under src/app/core/composition.rs imports crate::infra::tools::default_tools",the architecture guard allows it as a documented composition root
@@ -55,3 +56,5 @@ scenarios[26]{req_id,id,given,when,then}:
   "la-server-driver","shared-seam","",对比 print 与 server 装配,二者均经 composition/bootstrap 与 Driver 语义
   "la-mcp-seam","composition-owns","","审查 McpSession::reload 签名",参数为缝类型；infra 转换仅在 composition/infra 内
   "la-dispatch-consume","server-wires","",c550 归档后审查调用点,server REST 生产路径调用 dispatch
+  la25,"new-compatible-endpoint",新增兼容 OpenAI base_url 的供应商,接线,不改 AgentMessage 定义
+  la25,"domain-no-sdk",src/domain 与 src/agent,rg async_openai 或 anthropic SDK,零匹配

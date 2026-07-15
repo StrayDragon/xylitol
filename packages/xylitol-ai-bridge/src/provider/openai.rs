@@ -1,42 +1,36 @@
-//! OpenAI Completions HTTP client — private detail for Chat Completions adapter.
+//! OpenAI Completions via `async-openai` [`Client`] (c1070).
 //!
-//! Builds chat-completions JSON (via async-openai request types for shape parity),
-//! sends with **reqwest** (current transport). Provider script hooks use portable
-//! header bags via [`crate::hooks`] + [`crate::provider::reqwest_bridge`]
-//! (c998); transport can be swapped without changing hook contracts.
-//! Converts between xylitol's internal types and OpenAI chat shapes.
-//! Does **not** implement [`XyModel`](crate::runtime_protocol::XyModel);
-//! the public path is `OpenAiCompletionsAdapter` → `AdapterXyModel` (c505).
+//! Transport is the official Client with [`crate::provider::openai_hooks_mw::HooksHttpService`]
+//! for portable [`crate::hooks::HttpHooks`]. Request shapes use async-openai chat types.
 
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use async_openai::Client;
+use async_openai::config::OpenAIConfig;
 use async_openai::types::chat::{
     ChatCompletionMessageToolCalls, ChatCompletionRequestAssistantMessage,
     ChatCompletionRequestAssistantMessageContent, ChatCompletionRequestMessage,
     ChatCompletionRequestSystemMessage, ChatCompletionRequestToolMessage,
     ChatCompletionRequestToolMessageContent, ChatCompletionRequestUserMessage,
-    ChatCompletionRequestUserMessageContent, ChatCompletionTool, ChatCompletionTools,
-    CreateChatCompletionRequestArgs, FunctionCall, FunctionObject,
+    ChatCompletionRequestUserMessageContent, ChatCompletionStreamOptions, ChatCompletionTool,
+    ChatCompletionTools, CreateChatCompletionRequestArgs, CreateChatCompletionStreamResponse,
+    FinishReason, FunctionCall, FunctionObject,
 };
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use serde_json::Value;
 
 use crate::dto::AiBridgeStream;
 use crate::dto::{AiBridgeChunk, AiBridgeToolSchema};
 use crate::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason, collect_text_parts};
 use crate::error::AiBridgeError;
-use crate::hooks::{
-    HeaderBag, HttpHooks, run_after_response, run_before_headers, run_before_request,
-};
-use crate::provider::reqwest_bridge::{from_reqwest_headers, to_reqwest_headers};
+use crate::hooks::HttpHooks;
+use crate::provider::openai_client::build_openai_client;
 
 pub struct OpenAIProvider {
-    client: reqwest::Client,
-    api_key: String,
+    client: Client<OpenAIConfig>,
     model: String,
-    base_url: String,
-    hooks: Option<Arc<dyn HttpHooks>>,
 }
 
 impl OpenAIProvider {
@@ -47,84 +41,13 @@ impl OpenAIProvider {
         hooks: Option<Arc<dyn HttpHooks>>,
     ) -> Self {
         Self {
-            client: reqwest::Client::new(),
-            api_key,
+            client: build_openai_client(api_key, base_url, hooks),
             model,
-            base_url: base_url.unwrap_or_else(|| "https://api.openai.com/v1".into()),
-            hooks,
         }
     }
 
-    fn headers_bag(&self) -> HeaderBag {
-        let mut headers = HeaderBag::new();
-        headers.insert(
-            "content-type".into(),
-            Value::String("application/json".into()),
-        );
-        headers.insert(
-            "authorization".into(),
-            Value::String(format!("Bearer {}", self.api_key)),
-        );
-        headers
-    }
-
-    async fn send_request(
-        &self,
-        messages: Vec<AiBridgeMessage>,
-        tools: &[AiBridgeToolSchema],
-        stream: bool,
-    ) -> Result<reqwest::Response, AiBridgeError> {
-        let msgs = convert_agent_messages(&messages, None);
-        let tool_defs = convert_tools(tools);
-        let request = CreateChatCompletionRequestArgs::default()
-            .model(self.model.clone())
-            .messages(msgs)
-            .tools(tool_defs)
-            .stream(stream)
-            .build()
-            .map_err(|e| AiBridgeError::Provider(anyhow::anyhow!("build request: {e}")))?;
-
-        let mut body = serde_json::to_value(&request)
-            .map_err(|e| AiBridgeError::Provider(anyhow::anyhow!("serialize request: {e}")))?;
-        // Ask compatible endpoints for usage on the final stream chunk. Some
-        // OpenAI-compatible servers ignore this; missing usage falls back to
-        // accounting (LocalTokenizer / Heuristic) rather than fabricating Api.
-        if stream {
-            body["stream_options"] = serde_json::json!({ "include_usage": true });
-        }
-        let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
-
-        let mut headers = self.headers_bag();
-        run_before_headers(&self.hooks, &mut headers).await?;
-        run_before_request(&self.hooks, &self.model, &mut body).await?;
-
-        let response = self
-            .client
-            .post(&url)
-            .headers(to_reqwest_headers(&headers))
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| {
-                AiBridgeError::Provider(anyhow::anyhow!("OpenAI Completions request: {e}"))
-            })?;
-
-        let status = response.status().as_u16();
-        run_after_response(
-            &self.hooks,
-            status,
-            &from_reqwest_headers(response.headers()),
-        )
-        .await;
-
-        if !response.status().is_success() {
-            let body_text = response.text().await.unwrap_or_default();
-            return Err(AiBridgeError::Provider(anyhow::anyhow!(
-                "HTTP {status}: {body_text}"
-            )));
-        }
-
-        Ok(response)
+    fn map_err(err: async_openai::error::OpenAIError) -> AiBridgeError {
+        AiBridgeError::Provider(anyhow::anyhow!("OpenAI Completions: {err}"))
     }
 
     /// Run a chat completion, returning a stream of [`AiBridgeChunk`]s.
@@ -136,13 +59,46 @@ impl OpenAIProvider {
     ) -> Result<AiBridgeStream, AiBridgeError> {
         let trace =
             crate::provider::trace::ProviderRequestTrace::start("openai-completions", &self.model);
-        let response = self.send_request(messages, tools, stream).await?;
+        let msgs = convert_agent_messages(&messages, None);
+        let tool_defs = convert_tools(tools);
+
         if stream {
-            Ok(completions_sse_stream(response, trace))
+            let request = CreateChatCompletionRequestArgs::default()
+                .model(self.model.clone())
+                .messages(msgs)
+                .tools(tool_defs)
+                .stream(true)
+                .stream_options(ChatCompletionStreamOptions {
+                    include_usage: Some(true),
+                    include_obfuscation: None,
+                })
+                .build()
+                .map_err(Self::map_err)?;
+
+            let sdk_stream = self
+                .client
+                .chat()
+                .create_stream(request)
+                .await
+                .map_err(Self::map_err)?;
+
+            Ok(completions_sdk_stream(sdk_stream, trace))
         } else {
-            let json: Value = response.json().await.map_err(|e| {
-                AiBridgeError::Provider(anyhow::anyhow!("parse Completions response: {e}"))
-            })?;
+            let request = CreateChatCompletionRequestArgs::default()
+                .model(self.model.clone())
+                .messages(msgs)
+                .tools(tool_defs)
+                .stream(false)
+                .build()
+                .map_err(Self::map_err)?;
+
+            let json: Value = self
+                .client
+                .chat()
+                .create_byot(request)
+                .await
+                .map_err(Self::map_err)?;
+
             if let Some(t) = &trace {
                 t.emit_raw("chat.completion.json", &json.to_string());
             }
@@ -155,6 +111,105 @@ impl OpenAIProvider {
             Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
         }
     }
+}
+
+fn completions_sdk_stream(
+    mut sdk_stream: impl Stream<
+        Item = Result<CreateChatCompletionStreamResponse, async_openai::error::OpenAIError>,
+    > + Send
+    + Unpin
+    + 'static,
+    trace: Option<crate::provider::trace::ProviderRequestTrace>,
+) -> Pin<Box<dyn Stream<Item = Result<AiBridgeChunk, AiBridgeError>> + Send>> {
+    Box::pin(async_stream::try_stream! {
+        let mut tool_accumulators: HashMap<u32, (String, String, String)> = HashMap::new();
+        let mut pending_usage: Option<crate::dto::AiBridgeUsage> = None;
+
+        while let Some(item) = sdk_stream.next().await {
+            let chunk = item.map_err(|e| {
+                AiBridgeError::Provider(anyhow::anyhow!("OpenAI Completions stream: {e}"))
+            })?;
+
+            if let Some(t) = &trace {
+                let snippet = chunk
+                    .choices
+                    .first()
+                    .and_then(|c| c.delta.content.as_deref())
+                    .unwrap_or("");
+                t.emit_raw("chat.completion.chunk", snippet);
+            }
+
+            if let Some(u) = &chunk.usage {
+                pending_usage = Some(crate::dto::AiBridgeUsage {
+                    input: u.prompt_tokens as u64,
+                    output: u.completion_tokens as u64,
+                    cache_read: 0,
+                    cache_write: 0,
+                    cache_write_1h: 0,
+                    total_tokens: u.total_tokens as u64,
+                    cost: None,
+                });
+            }
+
+            for choice in &chunk.choices {
+                if let Some(text) = choice.delta.content.as_ref().filter(|t| !t.is_empty()) {
+                    let out = AiBridgeChunk::TextDelta(text.clone());
+                    if let Some(t) = &trace {
+                        t.emit_mapped_chunk(&out);
+                    }
+                    yield out;
+                }
+
+                if let Some(tool_calls) = &choice.delta.tool_calls {
+                    for tc in tool_calls {
+                        let entry = tool_accumulators
+                            .entry(tc.index)
+                            .or_insert_with(|| (String::new(), String::new(), String::new()));
+                        if let Some(id) = &tc.id {
+                            entry.0 = id.clone();
+                        }
+                        if let Some(func) = &tc.function {
+                            if let Some(name) = &func.name {
+                                entry.1 = name.clone();
+                            }
+                            if let Some(args) = &func.arguments {
+                                entry.2.push_str(args);
+                            }
+                        }
+                    }
+                }
+
+                if let Some(finish_reason) = choice.finish_reason {
+                    if !tool_accumulators.is_empty() {
+                        let mut sorted: Vec<_> = tool_accumulators.drain().collect();
+                        sorted.sort_by_key(|(idx, _)| *idx);
+                        for (_, (id, name, args_str)) in sorted {
+                            let args: Value = serde_json::from_str(&args_str)
+                                .unwrap_or(serde_json::json!({}));
+                            let out = AiBridgeChunk::FunctionCall { name, args, id };
+                            if let Some(t) = &trace {
+                                t.emit_mapped_chunk(&out);
+                            }
+                            yield out;
+                        }
+                    }
+                    let reason = match finish_reason {
+                        FinishReason::Length => AiBridgeStopReason::MaxTokens,
+                        FinishReason::ToolCalls => AiBridgeStopReason::ToolUse,
+                        _ => AiBridgeStopReason::Stop,
+                    };
+                    let out = AiBridgeChunk::Done {
+                        finish_reason: reason,
+                        usage: pending_usage.take(),
+                    };
+                    if let Some(t) = &trace {
+                        t.emit_mapped_chunk(&out);
+                    }
+                    yield out;
+                }
+            }
+        }
+    })
 }
 
 // ── Tool conversion ────────────────────────────────────────────────
@@ -173,115 +228,6 @@ fn convert_tools(tools: &[AiBridgeToolSchema]) -> Vec<ChatCompletionTools> {
             })
         })
         .collect()
-}
-
-// ── Stream mapping ─────────────────────────────────────────────────
-
-fn completions_sse_stream(
-    response: reqwest::Response,
-    trace: Option<crate::provider::trace::ProviderRequestTrace>,
-) -> Pin<Box<dyn Stream<Item = Result<AiBridgeChunk, AiBridgeError>> + Send>> {
-    Box::pin(async_stream::try_stream! {
-        use std::collections::HashMap;
-
-        use eventsource_stream::Eventsource;
-        use futures::StreamExt;
-
-        let byte_stream = response.bytes_stream();
-        let mut event_stream = byte_stream.eventsource();
-        let mut tool_accumulators: HashMap<u32, (String, String, String)> = HashMap::new();
-        let mut pending_usage: Option<crate::dto::AiBridgeUsage> = None;
-
-        while let Some(event_result) = event_stream.next().await {
-            let event = match event_result {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            if event.data.trim() == "[DONE]" {
-                break;
-            }
-            let data: Value = match serde_json::from_str(&event.data) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            if let Some(t) = &trace {
-                let snippet = data
-                    .pointer("/choices/0/delta/content")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                t.emit_raw("chat.completion.chunk", snippet);
-            }
-            if let Some(u) = data.get("usage") {
-                pending_usage = Some(crate::usage::from_openai_usage(u));
-            }
-            let Some(choices) = data.get("choices").and_then(|c| c.as_array()) else {
-                continue;
-            };
-            for choice in choices {
-                if let Some(text) = choice
-                    .pointer("/delta/content")
-                    .and_then(|v| v.as_str())
-                    .filter(|t| !t.is_empty())
-                {
-                    let chunk = AiBridgeChunk::TextDelta(text.to_string());
-                    if let Some(t) = &trace {
-                        t.emit_mapped_chunk(&chunk);
-                    }
-                    yield chunk;
-                }
-
-                if let Some(tool_calls) = choice
-                    .pointer("/delta/tool_calls")
-                    .and_then(|v| v.as_array())
-                {
-                    for tc in tool_calls {
-                        let index = tc.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-                        let entry = tool_accumulators
-                            .entry(index)
-                            .or_insert_with(|| (String::new(), String::new(), String::new()));
-                        if let Some(id) = tc.get("id").and_then(|v| v.as_str()) {
-                            entry.0 = id.to_string();
-                        }
-                        if let Some(name) = tc.pointer("/function/name").and_then(|v| v.as_str()) {
-                            entry.1 = name.to_string();
-                        }
-                        if let Some(args) = tc.pointer("/function/arguments").and_then(|v| v.as_str())
-                        {
-                            entry.2.push_str(args);
-                        }
-                    }
-                }
-
-                if let Some(finish_reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
-                    if !tool_accumulators.is_empty() {
-                        let mut sorted: Vec<_> = tool_accumulators.drain().collect();
-                        sorted.sort_by_key(|(idx, _)| *idx);
-                        for (_, (id, name, args_str)) in sorted {
-                            let args: Value = serde_json::from_str(&args_str)
-                                .unwrap_or(serde_json::json!({}));
-                            let chunk = AiBridgeChunk::FunctionCall { name, args, id };
-                            if let Some(t) = &trace {
-                                t.emit_mapped_chunk(&chunk);
-                            }
-                            yield chunk;
-                        }
-                    }
-                    let reason = match finish_reason {
-                        "length" => AiBridgeStopReason::MaxTokens,
-                        _ => AiBridgeStopReason::Stop,
-                    };
-                    let chunk = AiBridgeChunk::Done {
-                        finish_reason: reason,
-                        usage: pending_usage.take(),
-                    };
-                    if let Some(t) = &trace {
-                        t.emit_mapped_chunk(&chunk);
-                    }
-                    yield chunk;
-                }
-            }
-        }
-    })
 }
 
 // ── Non-streaming response ─────────────────────────────────────────
@@ -444,49 +390,6 @@ pub fn convert_agent_messages(
                     },
                 ));
             }
-            AiBridgeMessage::BashExecutionMessage {
-                command,
-                output,
-                exclude_from_context,
-                ..
-            } => {
-                if *exclude_from_context {
-                    continue;
-                }
-                let text = format!("$ {command}\n{output}");
-                out.push(ChatCompletionRequestMessage::User(
-                    ChatCompletionRequestUserMessage {
-                        content: ChatCompletionRequestUserMessageContent::Text(text),
-                        name: None,
-                    },
-                ));
-            }
-            AiBridgeMessage::CompactionSummaryMessage { summary, .. }
-            | AiBridgeMessage::BranchSummaryMessage { summary, .. } => {
-                let text = format!("[Context summary: {summary}]");
-                out.push(ChatCompletionRequestMessage::User(
-                    ChatCompletionRequestUserMessage {
-                        content: ChatCompletionRequestUserMessageContent::Text(text),
-                        name: None,
-                    },
-                ));
-            }
-            AiBridgeMessage::CustomMessage {
-                custom_type: _,
-                content,
-                ..
-            } => {
-                let text = content.as_str().unwrap_or("").to_string();
-                if text.is_empty() {
-                    continue;
-                }
-                out.push(ChatCompletionRequestMessage::User(
-                    ChatCompletionRequestUserMessage {
-                        content: ChatCompletionRequestUserMessageContent::Text(text),
-                        name: None,
-                    },
-                ));
-            }
         }
     }
 
@@ -581,8 +484,8 @@ mod tests {
     }
 
     #[test]
-    fn convert_bash_execution() {
-        let msgs = vec![AiBridgeMessage::bash("ls -la", "total 42", Some(0))];
+    fn convert_projected_bash_as_user() {
+        let msgs = vec![AiBridgeMessage::user("$ ls -la\ntotal 42")];
         let result = convert_agent_messages(&msgs, None);
         assert_eq!(result.len(), 1);
         match &result[0] {
@@ -595,30 +498,5 @@ mod tests {
             },
             _ => panic!("expected User message"),
         }
-    }
-
-    #[test]
-    fn convert_custom_message() {
-        let msgs = vec![AiBridgeMessage::CustomMessage {
-            custom_type: "diag".into(),
-            content: serde_json::json!("diagnostic info"),
-            display: serde_json::json!({}),
-            details: serde_json::json!({}),
-        }];
-        let result = convert_agent_messages(&msgs, None);
-        assert_eq!(result.len(), 1);
-    }
-
-    #[test]
-    fn convert_compaction_summary() {
-        let msgs = vec![AiBridgeMessage::CompactionSummaryMessage {
-            summary: "Compressed 50 entries".into(),
-            tokens_before: 100000,
-            tokens_after: 5000,
-            read_files: None,
-            modified_files: None,
-        }];
-        let result = convert_agent_messages(&msgs, None);
-        assert_eq!(result.len(), 1);
     }
 }

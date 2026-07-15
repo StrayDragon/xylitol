@@ -18,6 +18,7 @@
 pub mod compaction_config;
 pub mod error;
 pub mod lifecycle;
+pub mod llm_project;
 pub mod message;
 pub mod model;
 pub mod resource_types;
