@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,rd11,主题名发现,System MUST 能在 Trust 语义下列出已发现 theme 文件名（stem）；未信任 MUST NOT 列出项目 themes 目录条目。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  rd11,"list-trusted",信任且项目 themes/foo.json 存在,discovered_theme_names,列表含 foo
