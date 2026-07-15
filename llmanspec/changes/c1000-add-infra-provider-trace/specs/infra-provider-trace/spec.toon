@@ -1,8 +1,10 @@
 kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ipt1,"provider-raw-mapped-对照","当 provider tracing 激活时，每次 provider HTTP 流 MUST 在同一 request_id 下记录原始协议事件与映射后的 XyChunk 变体，使 agent 能区分上游通道混写与适配器映射错误；记录 MUST 只写入 agent 日志目录下的专用文件（禁止 stdout/stderr），MUST NOT 包含 Authorization 或 API-key 头值，且 MUST NOT 经 script hook 分发。",null,null,null
-  add_requirement,ipt2,"provider-trace-闸门","Provider tracing 在 cfg(debug_assertions) 下 MUST 默认开启，在 release 构建 MUST 默认关闭；release MUST 经 XYLITOL_PROVIDER_TRACE 或启用 xylitol::provider::trace 的 EnvFilter 显式打开；tracing 未激活时，发射点 MUST 避免对 SSE 载荷做昂贵序列化。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  ipt1,"raw-mapped-correlate","Responses 流且 provider tracing 已激活并产生 reasoning 与 text","流结束","provider-trace.jsonl 中存在共享同一 request_id 的 raw 与 mapped 行且覆盖 ThinkingDelta 与 TextDelta"
+ops[3]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ipt1,"provider-raw-mapped-对照","当 provider tracing 激活时，每次 provider HTTP 流 MUST 在同一 fastrace 请求 span / request_id 下记录原始协议事件与映射后的 XyChunk 变体（Event），使 agent 能区分上游通道混写与适配器映射错误；记录 MUST 只经 file-only Reporter 写入 agent 日志目录专用文件（禁止 stdout/stderr 与 ConsoleReporter），MUST NOT 包含 Authorization 或 API-key 头值，且 MUST NOT 经 script hook 分发。",null,null,null
+  add_requirement,ipt2,"provider-trace-闸门","Provider tracing 在 cfg(debug_assertions) 下 MUST 默认安装 Reporter，在 release 构建 MUST 默认不安装；release MUST 经 XYLITOL_PROVIDER_TRACE 显式打开；tracing 未激活时 MUST 避免对 SSE 载荷做昂贵序列化。",null,null,null
+  add_requirement,ipt3,"fastrace-单栈","仓库观测时间线 MUST 仅使用 fastrace；级别诊断 MUST 使用 log 门面；Cargo 与 src MUST NOT 依赖 tracing 或 tracing-subscriber。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  ipt1,"raw-mapped-correlate","Responses 流且 provider tracing 已激活并产生 reasoning 与 text","流结束","provider-trace.jsonl 中存在共享同一 request_id 的 raw 与 mapped 记录且覆盖 ThinkingDelta 与 TextDelta"
   ipt1,"no-secrets-in-dump","provider tracing 已激活","发出带 Authorization 头的请求","trace 文件 MUST NOT 含 bearer 或 API key 材料"
-  ipt2,"release-off-by-default","release 构建且未设 XYLITOL_PROVIDER_TRACE / 未启用对应 RUST_LOG target","跑一次 provider 流","不应因该流产生可归因的 provider-trace.jsonl 增长"
+  ipt2,"release-off-by-default","release 构建且未设 XYLITOL_PROVIDER_TRACE","跑一次 provider 流","不应因该流产生可归因的 provider-trace 增长"
+  ipt3,"no-tracing-crate","变更完成后","rg tracing 于 Cargo.toml 与 src","无 tracing / tracing-subscriber 依赖与 import"
