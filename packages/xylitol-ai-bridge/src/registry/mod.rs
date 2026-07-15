@@ -1,4 +1,7 @@
-//! Model id → tokenizer source mapping (builtin + optional HF override stub).
+//! Model id → tokenizer source mapping (builtin OpenAI tiktoken + optional HF).
+//!
+//! Claude / Anthropic ids intentionally have **no** local builtin: use Api usage
+//! or RemoteCount; otherwise accounting falls through to Heuristic.
 
 use crate::tokenize::BuiltinTokenizer;
 
@@ -8,11 +11,11 @@ pub enum TokenizerSource {
     HuggingFace { repo: String, file: String },
 }
 
-/// Builtin mapping for common OpenAI / Anthropic model ids.
+/// Builtin mapping for common OpenAI model ids (Anthropic → `None`).
 pub fn builtin_tokenizer_for(model_id: &str) -> Option<TokenizerSource> {
     let id = model_id.to_ascii_lowercase();
     if id.starts_with("claude") {
-        return Some(TokenizerSource::Builtin(BuiltinTokenizer::AnthropicClaude));
+        return None;
     }
     if id.starts_with("gpt-4o") || id.starts_with("o1") || id.starts_with("o3") {
         return Some(TokenizerSource::Builtin(BuiltinTokenizer::OpenAiO200k));
@@ -34,12 +37,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn claude_maps_to_anthropic_builtin() {
-        let src = resolve_tokenizer("claude-3-5-sonnet").unwrap();
-        assert_eq!(
-            src,
-            TokenizerSource::Builtin(BuiltinTokenizer::AnthropicClaude)
-        );
+    fn claude_has_no_local_builtin() {
+        assert!(resolve_tokenizer("claude-3-5-sonnet").is_none());
+        assert!(resolve_tokenizer("claude-opus-4").is_none());
     }
 
     #[test]

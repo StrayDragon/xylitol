@@ -182,6 +182,8 @@ pub struct UiRoot {
     glyphs: GlyphSet,
     cwd: String,
     model: String,
+    /// Optional `used N|~N|? tokens` fragment (c1035); omitted when unknown/empty.
+    footer_token: Option<String>,
     /// Mutually exclusive editor-zone face (ati18).
     slot: EditorSlot,
     tree: TreeSelector,
@@ -252,6 +254,7 @@ impl UiRoot {
             glyphs: GlyphSet::from_env(),
             cwd: ".".into(),
             model: "—".into(),
+            footer_token: None,
             slot: EditorSlot::Editor,
             tree: empty_tree_selector(theme),
             tree_filter: FilterMode::Default,
@@ -314,6 +317,15 @@ impl UiRoot {
         self.cwd = cwd.into();
         self.model = model.into();
         self.refresh_footer_from_queue(0, 0);
+    }
+
+    /// Set or clear the provenance-honest token usage fragment (c1035).
+    pub fn set_footer_token_label(&mut self, label: Option<String>) {
+        self.footer_token = label.filter(|s| !s.is_empty());
+        self.refresh_footer_from_queue(
+            self.ui_model.queue.steer_count,
+            self.ui_model.queue.follow_up_count,
+        );
     }
 
     pub fn set_glyphs(&mut self, glyphs: GlyphSet) {
@@ -694,7 +706,13 @@ impl UiRoot {
     }
 
     fn refresh_footer_from_queue(&mut self, steer: usize, follow_up: usize) {
-        let base = format_footer_text(&self.cwd, &self.model, steer, follow_up);
+        let base = format_footer_text(
+            &self.cwd,
+            &self.model,
+            steer,
+            follow_up,
+            self.footer_token.as_deref(),
+        );
         self.footer.set_text(self.theme.paint_muted(&base));
     }
 

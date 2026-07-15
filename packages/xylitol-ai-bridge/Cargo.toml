@@ -23,7 +23,6 @@ fastrace = { version = "0.7", features = ["enable"] }
 uuid = { version = "1", features = ["v4"] }
 log = "0.4"
 tiktoken-rs = "0.6"
-claude-tokenizer = "0.3"
 tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
 dirs = "6"
 
