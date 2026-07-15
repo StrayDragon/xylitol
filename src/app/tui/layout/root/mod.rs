@@ -270,6 +270,12 @@ impl UiRoot {
     }
 
     pub fn editor_text(&self) -> String {
+        // Send / history / Ctrl+G paths: expand [paste #N …] markers (c1160 / ati34).
+        self.editor.get_expanded_text()
+    }
+
+    /// Display buffer (may contain `[paste #N …]` collapse markers).
+    pub fn editor_display_text(&self) -> String {
         self.editor.get_text()
     }
 

@@ -42,6 +42,7 @@
 | D17 | Diff 组件 | `renderDiff` 函数式 | **`Diff` Component + `render_diff_lines`**；`similar` 在包内；主题闭包；对齐 `design/diff-block.md` | 是 |
 | D18 | 代码高亮 | 应用层常见 | **`highlight` optional feature**（syntect+two-face）；默认依赖无 syntect；经 `MarkdownTheme.highlight_code` 注入 | 是 |
 | D19 | `requestRender(true)` / suspend | force 用 `previousWidth=-1` → **整屏 clear**；外部编辑器 resume 亦 clear | force 用 `previous_width=0`（首帧哨兵）→ **full path 但不 `2J`**；`with_terminal_suspended` **保留** `previous_lines` 差分、不立刻 paint（inline 保留上方 scrollback） | 是 |
+| D20 | paste marker 原子分段 | `segmentWithMarkers`：光标/删除把 `[paste #N …]` 当单段 | **未移植**；折叠/展开与 `get_expanded_text` 已对齐；原子分段另开 change | 是 |
 
 ---
 
@@ -70,3 +71,4 @@
 | 2026-07-11 | 定位声明：独立 fork（非持续 1:1 port）；合规 `NOTICE` |
 | 2026-07-12 | **c575**：D08 overlay focus-restore（eligible/blocked/resume + dispatch reclaim）已落地 |
 | 2026-07-14 | **D19**：Ctrl+G resume 不整屏 clear；`set_text` 光标默认 End（对齐 pi editor） |
+| 2026-07-16 | **D20**：paste marker 原子分段延后；c1160 折叠/展开 + 产品提交展开 |
