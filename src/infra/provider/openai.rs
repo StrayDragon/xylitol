@@ -1,8 +1,10 @@
 //! OpenAI Completions HTTP client — private detail for Chat Completions adapter.
 //!
 //! Builds chat-completions JSON (via async-openai request types for shape parity),
-//! sends with **reqwest** so provider script hooks can see headers/body/status
-//! (c998). Converts between xylitol's internal types and OpenAI chat shapes.
+//! sends with **reqwest** (current transport). Provider script hooks use portable
+//! header bags via [`crate::infra::hooks::http`] + [`crate::infra::provider::reqwest_bridge`]
+//! (c998); transport can be swapped without changing hook contracts.
+//! Converts between xylitol's internal types and OpenAI chat shapes.
 //! Does **not** implement [`XyModel`](crate::runtime_protocol::XyModel);
 //! the public path is `OpenAiCompletionsAdapter` → `AdapterXyModel` (c505).
 
@@ -18,14 +20,16 @@ use async_openai::types::chat::{
     CreateChatCompletionRequestArgs, FunctionCall, FunctionObject,
 };
 use futures::Stream;
-use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::Value;
 
 use crate::domain::error::XyError;
 use crate::domain::message::{AgentMessage, AgentPart, XyStopReason, collect_text_parts};
 use crate::domain::types::{XyChunk, XyToolSchema};
 use crate::infra::hooks::HookDispatcher;
-use crate::infra::hooks::http::{run_after_response, run_before_headers, run_before_request};
+use crate::infra::hooks::http::{
+    HeaderBag, run_after_response, run_before_headers, run_before_request,
+};
+use crate::infra::provider::reqwest_bridge::{from_reqwest_headers, to_reqwest_headers};
 use crate::runtime_protocol::XyStream;
 
 pub(crate) struct OpenAIProvider {
@@ -52,12 +56,16 @@ impl OpenAIProvider {
         }
     }
 
-    fn headers(&self) -> HeaderMap {
-        let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        if let Ok(val) = HeaderValue::from_str(&format!("Bearer {}", self.api_key)) {
-            headers.insert("authorization", val);
-        }
+    fn headers_bag(&self) -> HeaderBag {
+        let mut headers = HeaderBag::new();
+        headers.insert(
+            "content-type".into(),
+            Value::String("application/json".into()),
+        );
+        headers.insert(
+            "authorization".into(),
+            Value::String(format!("Bearer {}", self.api_key)),
+        );
         headers
     }
 
@@ -81,21 +89,26 @@ impl OpenAIProvider {
             .map_err(|e| XyError::Provider(anyhow::anyhow!("serialize request: {e}")))?;
         let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
 
-        let mut headers = self.headers();
+        let mut headers = self.headers_bag();
         run_before_headers(&self.hooks, &mut headers).await?;
         run_before_request(&self.hooks, &self.model, &mut body).await?;
 
         let response = self
             .client
             .post(&url)
-            .headers(headers)
+            .headers(to_reqwest_headers(&headers))
             .json(&body)
             .send()
             .await
             .map_err(|e| XyError::Provider(anyhow::anyhow!("OpenAI Completions request: {e}")))?;
 
         let status = response.status().as_u16();
-        run_after_response(&self.hooks, status, response.headers()).await;
+        run_after_response(
+            &self.hooks,
+            status,
+            &from_reqwest_headers(response.headers()),
+        )
+        .await;
 
         if !response.status().is_success() {
             let body_text = response.text().await.unwrap_or_default();
