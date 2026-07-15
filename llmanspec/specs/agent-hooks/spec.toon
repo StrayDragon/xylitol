@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-hooks"
 purpose: Hook system — lifecycle hooks (before/after tool execution) and script execution.
 valid_scope[2]: src/infra/hooks/,src/agent/runtime/hooks.rs
-requirements[19]{req_id,title,statement}:
+requirements[20]{req_id,title,statement}:
   r1,"hook-dispatcher",System MUST implement a HookDispatcher that executes registered hooks for 10+ event types.
   r2,"three-tier-config","System MUST support global/project/user three-tier hook configuration with later layers overriding earlier."
   r3,"script-execution",System MUST execute hook scripts via stdin JSON context and parse stdout for block/allow control.
@@ -17,12 +17,13 @@ requirements[19]{req_id,title,statement}:
   h9,"noop-empty","When no hooks are configured, dispatch MUST be a zero-overhead no-op."
   h10,"bdd-hooks",BDD tests under tests/features/hooks.feature MUST all pass.
   h11,"before-provider-headers",before_provider_headers hook MUST run after default auth headers are built and before send; Modify.args.headers object MUST merge into or replace request headers.
-  h12,"provider-hooks-wired","OpenAI Responses and Anthropic Messages adapters MUST invoke the three provider hooks when a HookDispatcher is injected; empty dispatcher MUST be a zero-overhead no-op."
+  h12,"provider-hooks-wired","OpenAI Responses, Anthropic Messages, and OpenAI Completions adapters MUST invoke the three provider hooks when a HookDispatcher is injected; empty dispatcher MUST be a zero-overhead no-op."
   h13,"script-bridge-react","When a HookDispatcher is attached to the agent, ReAct MUST dispatch script hooks for tool_call (pre), tool_result (post), and context (pre model call) in addition to AgentHooks."
   h14,"lifecycle-script-hooks","When a HookDispatcher is attached, agent_start/agent_end/turn_start/turn_end/message_start/message_end MUST be dispatched alongside the corresponding XyEvent emissions (observe-only; fail-open)."
   h15,"bdd-provider-nonempty","BDD scenarios for before_provider_request and after_provider_response MUST exercise real dispatch (non-empty scenario bodies)."
   h16,"model-thinking-select-wiring","When XyHookBus is attached, Driver select_model and cycle_model MUST dispatch model_select after successful change; set_thinking_level MUST dispatch thinking_level_select; both MUST be observe-only fail-open; MUST NOT depend on TUI-only paths."
-scenarios[19]{req_id,id,given,when,then}:
+  h17,"completions-provider-three-seam","OpenAI Completions adapter MUST invoke before_provider_headers, before_provider_request, and after_provider_response in the same order as Responses when HookDispatcher is injected; empty dispatcher MUST be zero-overhead no-op; MUST NOT require reading SSE body for after_provider_response."
+scenarios[20]{req_id,id,given,when,then}:
   r1,happy,a pre.tool_call hook is registered,tool is about to execute,hook script runs and receives event context via stdin
   r2,happy,global hook and project hook both exist for same event,hook dispatcher runs,project hook overrides global hook
   r3,happy,hook script returns block action,tool execution is pending,tool execution is blocked with reason
@@ -37,8 +38,9 @@ scenarios[19]{req_id,id,given,when,then}:
   h9,empty,no hooks are configured,dispatch is called,result is Allowed with zero overhead
   h10,"bdd-pass",BDD runner invoked,"cargo test --test bdd",all hook scenarios pass
   h11,"header-merge","before_provider_headers Modify adds X-Test",request is sent,"outgoing request carries X-Test"
-  h12,"empty-noop",HookDispatcher is empty,adapter generate_stream runs,no script processes are spawned
+  h12,"completions-wired",Completions 注入 HookDispatcher,发送请求,三缝被调用或空 dispatcher 为零开销
   h13,"tool-bridge",script hook matches pre.tool_call,ReAct is about to run a tool,script receives tool name and args on stdin
   h14,"agent-start-fire",dispatcher attached,agent run starts,agent_start hook pattern can match
   h15,"bdd-real",hooks.feature provider scenarios,"cargo test --test bdd",provider scenarios are not empty stubs
   h16,"model-select-fire",库缝注入了匹配 model_select 的 hook,执行操作「选择模型 fake」,hook 被调用且上下文含 model
+  h17,"completions-modify",Completions adapter 注入了 before_provider_request Modify hook,发送 Completions 请求,outgoing JSON 包含修改后的字段
