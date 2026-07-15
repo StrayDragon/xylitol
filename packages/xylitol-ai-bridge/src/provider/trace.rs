@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use fastrace::prelude::*;
 
-use crate::domain::types::XyChunk;
+use crate::dto::AiBridgeChunk;
 
 /// Max Unicode scalars for `text` fields in provider-trace JSONL (c1000).
 pub const PROVIDER_TRACE_TEXT_MAX: usize = 4096;
@@ -15,7 +15,7 @@ pub const PROVIDER_TRACE_TEXT_MAX: usize = 4096;
 static PROVIDER_TRACE_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// Called from composition-root logging init when the FileReporter is installed.
-pub(crate) fn set_provider_trace_active(active: bool) {
+pub fn set_provider_trace_active(active: bool) {
     PROVIDER_TRACE_ACTIVE.store(active, Ordering::Relaxed);
 }
 
@@ -62,15 +62,15 @@ impl ProviderRequestTrace {
         }));
     }
 
-    pub fn emit_mapped_chunk(&self, chunk: &XyChunk) {
+    pub fn emit_mapped_chunk(&self, chunk: &AiBridgeChunk) {
         if !provider_trace_active() {
             return;
         }
         let (variant, text) = match chunk {
-            XyChunk::TextDelta(t) => ("TextDelta", t.as_str()),
-            XyChunk::ThinkingDelta(t) => ("ThinkingDelta", t.as_str()),
-            XyChunk::FunctionCall { name, .. } => ("FunctionCall", name.as_str()),
-            XyChunk::Done { .. } => ("Done", ""),
+            AiBridgeChunk::TextDelta(t) => ("TextDelta", t.as_str()),
+            AiBridgeChunk::ThinkingDelta(t) => ("ThinkingDelta", t.as_str()),
+            AiBridgeChunk::FunctionCall { name, .. } => ("FunctionCall", name.as_str()),
+            AiBridgeChunk::Done { .. } => ("Done", ""),
         };
         let (text, truncated) = truncate_text(text);
         self.root

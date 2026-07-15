@@ -52,30 +52,9 @@ pub struct ContextUsage {
 
 pub use crate::agent::compaction::orchestrator::should_compact;
 
-/// Estimate token count from messages using simple heuristic (1 token ≈ 4 chars).
+/// Estimate token count from messages via accounting (Heuristic fallback).
 pub fn estimate_tokens(messages: &[crate::domain::message::AgentMessage]) -> u64 {
-    let mut total = 0u64;
-    for msg in messages {
-        for part in msg.content() {
-            if let Some(s) = part.as_text() {
-                total += (s.len() as u64).div_ceil(4);
-            } else {
-                match part {
-                    crate::domain::message::AgentPart::ToolCall {
-                        name, arguments, ..
-                    } => {
-                        total += (name.len() as u64).div_ceil(4);
-                        total += (arguments.to_string().len() as u64).div_ceil(4);
-                    }
-                    crate::domain::message::AgentPart::Image(_) => {
-                        total += 4800; // image token estimate
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-    total
+    crate::agent::compaction::token_estimator::estimate_context_tokens(messages, None).tokens
 }
 
 /// Compute context usage info from a token estimate and window size.

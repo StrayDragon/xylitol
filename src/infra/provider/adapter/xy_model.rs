@@ -1,7 +1,4 @@
 //! Generic `XyModel` wrapper around any [`crate::infra::provider::adapter::LlmAdapter`].
-//!
-//! This lets the composition root build a provider purely from an adapter,
-//! without separate `OpenAIProvider` / `AnthropicProvider` shells.
 
 use async_trait::async_trait;
 
