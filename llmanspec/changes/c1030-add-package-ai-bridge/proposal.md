@@ -15,7 +15,7 @@ domain: packages
 ## Why
 
 1. xylitol 需要稳定、可共享的 **client→LLM provider server** 接线面（方言 HTTP/SSE、归一化 usage/cost），而不仅是散落在 `src/infra/provider` 的实现。
-2. Footer / compaction 需要**诚实、可标注来源**的上下文 token 数；chars/4 对中文/代码误差过大（见 c655 暂停结论与 tokenshub PRD 实验）。
+2. Footer / compaction 需要**诚实、可标注来源**的上下文 token 数；chars/4 对中文/代码误差过大（见已吸收至 c1035 的 c655 调研结论与 tokenshub PRD 实验）。
 3. 若只建独立 `tokenshub` 包，计量会与 provider 接线长期分叉；本 change 把 **接线 + 计量降级链** 收进同一包，避免架构偏移。
 
 ## Purpose
@@ -74,4 +74,4 @@ c1030-add-package-ai-bridge
 └── c1060-update-ai-bridge-openai-remote-count
 ```
 
-- 原暂停调研备忘：`llmanspec/do-not-read-me/c655-update-app-tui-footer-context/`（由 **c1035** 吸收，勿平行复活两套 footer change）
+- 原 c655 调研已由 **c1035** 吸收，勿平行复活两套 footer change

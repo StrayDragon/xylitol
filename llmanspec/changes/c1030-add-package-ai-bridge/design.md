@@ -145,7 +145,7 @@ ContextTokenEstimate {
 | `infra-provider` | 实现迁入 bridge；主树保留 LlmAdapter/XyModel 装配语义与 pa7 vendor 隔离 |
 | `domain-compaction` | `estimate_context_tokens` 等改走 accounting 优先级；仍用 `XyUsage` |
 | `runtime-model-registry` | 不合并；tokenizer 映射是 bridge `registry`，可后续交叉引用 model id |
-| c1035（draft） | 本 change 提供可信 Estimate 源；footer 产品面由 c1035 承接（原 c655） |
+| c1035（draft） | 本 change 提供可信 Estimate 源；footer 产品面由 c1035 承接（已吸收 c655 调研） |
 
 ## 7. 实施分期（与 tasks 对齐）
 

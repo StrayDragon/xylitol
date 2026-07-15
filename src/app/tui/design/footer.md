@@ -12,11 +12,11 @@ components:
 # Footer
 
 > Token 根源：`{colors.*}` / `{spacing.*}` → [`../DESIGN.md`](../DESIGN.md)。
-> **c475 MVP**：`cwd · model`；**c655**：有数据时追加 `· context%`（无则省略）；branch 仍可选。
+> **c475 MVP**：`cwd · model`；**c1035**：带 provenance 的 `used N`/`~N`/`?`（无则省略）；branch 仍可选。
 
 ## MUST
 
-1. 恰好 **1 行** dim。字段序：`cwd · model`；可选 `· context%`（**c655**）/ `· branch`。
+1. 恰好 **1 行** dim。字段序：`cwd · model`；可选 `· used <friendly> tokens`（**c1035**）/ `· branch`。
 2. `context%` 仅当 Driver/会话能提供上下文占用比例时显示；无数据 **MUST NOT** 伪造 `0%` 墙。
 3. 放不下截断右侧（优先保留 cwd 左端与 model），**MUST NOT** 增高。
 4. 快捷键提示：默认**不**写进 footer（勿 `enter submit · double Esc…` 墙）；需要时 `/help` 或旁注括号和弦（见 [`keybindings.md`](./keybindings.md)）。
