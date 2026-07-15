@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ati35,"keybindings-catalog-hot-reload","产品 TUI MUST 将已接线产品动作注册为 app.*（或文档约定的）keybinding id 并经 KeybindingsManager 匹配，MUST NOT 在产品输入路径新增字面和弦硬编码；MUST 在启动时从用户 agent 目录 keybindings.json（若存在）加载覆盖；MUST 提供 reload_keybindings（或等价）在成功时替换当前会话绑定、失败时保留旧绑定并报告诊断；重载 MUST NOT 清空 transcript 或 session 历史。",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  ati35,"match-by-app-id","产品 idle 且默认绑定",按下 app.thinking.toggle 默认键,thinking 折叠切换生效
+  ati35,"reload-success","磁盘 keybindings.json 将某 app.* 改到新和弦",调用 reload,新和弦生效且旧和弦不再触发该动作
+  ati35,"reload-bad-keeps-old","磁盘 JSON 损坏",调用 reload,绑定保持重载前状态且有诊断或错误提示
