@@ -1,13 +1,6 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/StrayDragon/llman/main/artifacts/schema/configs/en/llmanspec-config.schema.json
 schema: spec-driven
-locale: zh-CN
-
-context: |
-  Project conventions: 根 AGENTS.md 仅全局基本约束；代码架构 SSOT（分层地图 + 分层不变量 + 各层职责 + 应用面状态表 + seam 定义）在 src/AGENTS.md；应用面方法论见 write-surface skill，TUI 见 src/app/tui/AGENTS.md。子目录 AGENTS.md 只做路径引用，不重复架构事实。
-  Current state (2026-07-16): 产品 TUI 已开闸可用。c1170/c1175 已归档。active purpose-drafts：c1080–c1160（对齐缺口）。
-  Apply priority (normative for next wave): 1) 现有系统调整（MCP/skills/热重载缝、@ 与 paste-collapse 接线等）→ 2) 新功能（/trust /reload /theme /$skill header thinking 粘贴图等）。depends_on 仍优先于本优先级。
-  Design principle: pluggable/configurable architecture. Core always present; enhancements runtime-toggled; MCP/skills UX polish opt-in via config.
-  Dependency tracking: proposal.md frontmatter depends_on. DAG: llman sdd graph
+locale: zh-Hans
 
 bdd:
   framework: rstest-bdd
@@ -15,20 +8,3 @@ bdd:
   default_language: zh-CN
   run_command: "cargo test --test bdd -- --test-threads=1"
   verify_prompt: "Each scenario in the feature file MUST be mapped to an implemented step definition. Run `cargo test --test bdd` to confirm all scenarios pass."
-
-rules:
-  proposal:
-    - "Change ID format: c{priority}-{verb}-{subject} where priority is a multiple of 5 (e.g., c05-add-skeleton, c10-add-config, c15-add-tools). Verb prefix: add / update / remove / refactor / fix. Priority numbers MUST be unique."
-    - "Priority numbers are advisory ordering. Actual execution follows dependency edges first, then priority as tiebreaker. To insert between c05 and c10, use c06/c07/c08/c09."
-    - "Every proposal.md MUST include YAML frontmatter with depends_on (list of change IDs). Use [] if none."
-    - "A change cannot be applied until all its depends_on changes have been archived (moved to changes/archive/)."
-    - "If depends_on references a change that does not exist in llmanspec/changes/, treat as validation error and STOP."
-    - "Keep changes atomic: each change must be independently validatable and archivable."
-    - "Prefer pluggable/configurable design: features beyond core agent loop + basic tools should be opt-in via config or feature flag, not hard-coded."
-    - "Spec naming: spec directory names MUST be domain nouns describing WHAT the spec governs, not actions. Examples: runtime-config (not add-config), tool-system (not add-tools), agent-runtime (not add-agent-loop). Use hyphenated lowercase noun phrases."
-    - "Spec language: purpose、requirement title/statement、scenario given/when/then MUST 使用中文撰写；技术标识符（类型名、路径、命令、req_id）保留英文。"
-    - "Capability prefix by layer (normative): packages/xylitol-tui → `package-tui-*`；产品 TUI → `app-tui-*`（可多 capability，禁止再把新产品合约堆进单体 `app-tui`）；其它域意向前缀 `domain-*` / `runtime-*` / `agent-*` / `infra-*` / `protocol-*` / `cli-*` / `server-*`（历史名可并存，迁移见并行清理任务）。"
-    - "packages/xylitol-tui capability specs MUST use the `package-tui-` directory/name prefix (e.g. package-tui-testing, package-tui-paste-burst). Product-surface TUI specs MUST use `app-tui-*` (e.g. app-tui-host, app-tui-bridge). Legacy monolithic `app-tui` is being retired via c450."
-  tasks:
-    - "Break tasks into chunks of max 2 hours."
-    - "Purpose-draft changes MAY ship proposal.md only (status: purpose-draft); promote to full (specs+tasks) before apply."
