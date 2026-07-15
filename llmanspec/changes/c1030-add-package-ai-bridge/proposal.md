@@ -22,7 +22,7 @@ domain: packages
 
 一步到位定义并落地（按 tasks 分阶段实施、一次归档）`packages/xylitol-ai-bridge`：
 
-1. **Provider bridge**：迁入（或等价迁出后由 infra 薄映射）现有 LlmAdapter 族能力；包内使用**自有 DTO**，主 crate 映射到 `XyChunk` / `XyUsage` / `AgentMessage`（过渡双类型）。
+1. **Provider bridge**：迁入（或等价迁出后由 infra 薄映射）现有 LlmAdapter 族能力；包内使用**自有 DTO**（`AiBridgeMessage` / `AiBridgeChunk` / `AiBridgeUsage` 等），主 crate 映射到 `XyChunk` / `XyUsage` / `AgentMessage`（过渡双类型）。
 2. **Accounting**：上下文计量优先级固定为
    `Api → RemoteCount → LocalTokenizer → Heuristic`（另保留 `Unknown` 语义供产品选用）；流路径禁止每 delta 全量 encode。
 3. **下游只认内部语义**：经映射后的 `XyUsage` / `ContextTokenEstimate`（含 provenance）；agent/app 不解析 OpenAI/Anthropic 字段。

@@ -371,6 +371,17 @@ mod tests {
         ) -> Result<crate::app::core::driver::SessionStats, String> {
             unimplemented!()
         }
+        async fn estimate_context_tokens(
+            &self,
+        ) -> Result<crate::domain::types::ContextTokenEstimate, String> {
+            Ok(crate::domain::types::ContextTokenEstimate {
+                tokens: 0,
+                provenance: crate::domain::types::TokenProvenance::Unknown,
+                usage_tokens: 0,
+                trailing_tokens: 0,
+                last_usage_index: None,
+            })
+        }
         fn get_commands(&self) -> Vec<CommandInfo> {
             vec![CommandInfo {
                 name: "compact".into(),

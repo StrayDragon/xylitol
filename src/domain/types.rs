@@ -32,6 +32,26 @@ pub struct XyToolSchema {
     pub parameters: Value,
 }
 
+/// Where a context-token estimate came from (c1030 accounting provenance).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenProvenance {
+    Api,
+    RemoteCount,
+    LocalTokenizer,
+    Heuristic,
+    Unknown,
+}
+
+/// Context occupancy estimate with provenance (Driver / compaction seam).
+#[derive(Debug, Clone)]
+pub struct ContextTokenEstimate {
+    pub tokens: u64,
+    pub provenance: TokenProvenance,
+    pub usage_tokens: u64,
+    pub trailing_tokens: u64,
+    pub last_usage_index: Option<usize>,
+}
+
 // ── Thinking Level ──────────────────────────────────────────────────
 
 /// How much "thinking" / chain-of-thought the model should expose.

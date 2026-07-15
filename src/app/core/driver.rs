@@ -46,6 +46,46 @@ pub use crate::agent::session::{QueueStats, SessionStats};
 /// Session resume list row (from [`XySessionStore::list_sessions`]).
 pub use crate::runtime_protocol::SessionListEntry;
 
+/// Build a [`ContextTokenEstimate`] from persisted session entries (Driver seam).
+pub fn estimate_from_session_entries(
+    entries: &[SessionEntry],
+    model_id: Option<String>,
+) -> crate::domain::types::ContextTokenEstimate {
+    use crate::agent::compaction::token_estimator::{EstimateOpts, estimate_context_tokens_with};
+    use crate::domain::message::{AgentMessage, XyUsage};
+
+    let mut messages: Vec<AgentMessage> = Vec::new();
+    let mut last_usage: Option<XyUsage> = None;
+    let mut stop_reason = None;
+
+    for entry in entries {
+        if let SessionEntry::Message(m) = entry
+            && let Ok(msg) = serde_json::from_value::<AgentMessage>(m.message.clone())
+        {
+            if let AgentMessage::AssistantMessage {
+                usage: Some(u),
+                stop_reason: sr,
+                ..
+            } = &msg
+            {
+                last_usage = Some(*u);
+                stop_reason = *sr;
+            }
+            messages.push(msg);
+        }
+    }
+
+    estimate_context_tokens_with(
+        &messages,
+        last_usage.as_ref(),
+        stop_reason,
+        &EstimateOpts {
+            model_id,
+            ..Default::default()
+        },
+    )
+}
+
 /// Lifecycle events on [`EventStream`] — surfaces import via the Driver seam
 /// (not `crate::agent`), so arch_guard stays green for `app/tui`.
 pub use crate::domain::lifecycle::XyEvent;
@@ -182,6 +222,14 @@ pub trait Driver: Send {
 
     /// Load session statistics.
     async fn get_session_stats(&self) -> Result<SessionStats, String>;
+
+    /// Read-only context token estimate for the current leaf/path (c1030).
+    ///
+    /// No footer UI — product display is deferred to c1035. Surfaces may poll
+    /// this seam after travel / turn / compact.
+    async fn estimate_context_tokens(
+        &self,
+    ) -> Result<crate::domain::types::ContextTokenEstimate, String>;
 
     /// List available slash commands.
     fn get_commands(&self) -> Vec<CommandInfo>;
@@ -481,6 +529,16 @@ impl Driver for InProcessDriver {
 
     async fn get_session_stats(&self) -> Result<SessionStats, String> {
         self.agent.inner().get_session_stats().await
+    }
+
+    async fn estimate_context_tokens(
+        &self,
+    ) -> Result<crate::domain::types::ContextTokenEstimate, String> {
+        let entries = self.get_messages().await?;
+        Ok(estimate_from_session_entries(
+            &entries,
+            self.current_model().map(|m| m.id),
+        ))
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {
@@ -1178,6 +1236,16 @@ impl Driver for RemoteDriver {
                 ))
             }),
         })
+    }
+
+    async fn estimate_context_tokens(
+        &self,
+    ) -> Result<crate::domain::types::ContextTokenEstimate, String> {
+        let entries = self.get_messages().await.unwrap_or_default();
+        Ok(estimate_from_session_entries(
+            &entries,
+            self.current_model().map(|m| m.id),
+        ))
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {

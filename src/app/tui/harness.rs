@@ -463,6 +463,15 @@ impl Driver for ScriptedDriver {
             .ok_or_else(|| "scripted: no stats".into())
     }
 
+    async fn estimate_context_tokens(
+        &self,
+    ) -> Result<crate::domain::types::ContextTokenEstimate, String> {
+        Ok(crate::app::core::driver::estimate_from_session_entries(
+            &self.session_messages,
+            self.current_model().map(|m| m.id),
+        ))
+    }
+
     fn get_commands(&self) -> Vec<CommandInfo> {
         Vec::new()
     }

@@ -13,12 +13,6 @@ use crate::infra::provider::adapter::{AdapterXyModel, factory::build_adapter};
 use crate::infra::provider::{FakeProvider, ScenarioStep};
 use crate::runtime_protocol::XyModel;
 
-// ── Mock model state (BDD tests only) ──────────────────────────────
-//
-// Thread-locals let FakeProvider scenarios be configured from BDD step
-// functions without refactoring the provider construction pipeline.
-// Every test that touches mock state should call reset_fake_state() first.
-
 thread_local! {
     static FAKE_TEXT: RefCell<Option<String>> = const { RefCell::new(None) };
     static FAKE_TOOL_CALL: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
@@ -55,12 +49,7 @@ pub fn set_fake_tool_result(text: &str) {
     FAKE_TOOL_RESULT.with(|c| c.replace(Some(text.to_string())));
 }
 
-// ── Factory ────────────────────────────────────────────────────────
-
 /// Build a provider instance from a model config.
-///
-/// The agent never names concrete provider types; it receives the result as
-/// `Arc<dyn XyModel>`. Add new providers by extending this match.
 pub fn build_provider(config: &XyModelConfig) -> Result<Arc<dyn XyModel>, String> {
     build_provider_with_hooks(config, None)
 }

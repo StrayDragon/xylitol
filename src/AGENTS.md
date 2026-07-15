@@ -71,7 +71,9 @@ protocol ───────────────────────�
 
 ## Provider 适配
 
-业务 / agent 只认 `XyModel`。infra 内用适配器族收束 OpenAI 兼容、Anthropic 及未来端点。禁止双路径包装。Pre-1.0 **交付**范围见根 `AGENTS.md`。
+业务 / agent 只认 `XyModel`。方言 HTTP/SSE 与 usage 归一化 / accounting 在 workspace 包
+`packages/xylitol-ai-bridge`；主仓 `infra/provider` 仅做 DTO↔domain 映射与装配。
+禁止 Completions「已是 `XyModel` 再包一层」双路径。Pre-1.0 **交付**范围见根 `AGENTS.md`。
 
 **HTTP 传输 vs hook 缝（隔离）**：
 - 脚本 hook 三缝（`before_provider_headers` / `before_provider_request` / `after_provider_response`）只认**可移植**载荷：`infra::hooks::http::HeaderBag`（JSON map）与 `serde_json::Value` body —— **不**依赖 reqwest / 某一 vendor SDK。
