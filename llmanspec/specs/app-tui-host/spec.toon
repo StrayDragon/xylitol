@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-host"
 purpose: 产品 TUI 宿主：host 驱动引擎、终端生命周期、即时日志与尺寸降级。
 valid_scope[1]: src/app/tui/
-requirements[16]{req_id,title,statement}:
+requirements[17]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ath1,"host-driven-engine","产品 TUI MUST 以 host 驱动 packages/xylitol-tui：使用 dispatch_event、request_render、try_render、idle_tick；产品路径 MUST NOT 调用 TUI::start()。"
   ath2,"terminal-restore",产品 TUI MUST 在正常退出、错误退出与 panic 路径恢复终端（关闭 raw mode 等），不得把用户终端留在损坏状态；MUST 安装 panic hook（仅靠 Drop 不足）。
@@ -17,9 +17,10 @@ requirements[16]{req_id,title,statement}:
   ath11,"abort-suppress-before-drain","Busy Esc（非 overlay）MUST 在 HostSession::step 内同步臂装 Xy 抑制，MUST NOT 仅依赖下一轮循环顶部的 drain_pending 才开始丢弃该轮流事件；bang Esc 路径 MUST 继续走 note_bash_cancelled（无 suppress_xy），不得与 agent abort 文案混用。"
   ath12,"host-module-boundaries",产品 TUI MUST 将 HostSession 协调逻辑与可单测切片分离：pending 副作用标志 MUST 收拢为 PendingOps（或等价单一结构）；输入策略、session tree mount、models mount MUST 可位于 host 子模块或独立文件；UiRoot MUST 将 tree / models / editor 路由臂拆到可导航单元；组件与 layout MUST NOT 直接调用 Driver；单源文件逼近约 1200 行时 MUST 优先拆分而非继续堆叠。
   ath13,"session-read-errors-surfaced","产品 TUI 在 travel/fork/label 等路径调用 Driver::get_messages（或等价）失败时 MUST 向用户展示 system/error note，MUST NOT 以 unwrap_or_default 静默得到空 transcript 并当作成功。"
-  ath14,"session-list-seam","产品 TUI 获取可 resume 会话列表时 MUST 经 Driver（或 app::core 公开 seam）list_sessions 或等价 API，MUST NOT 从 app/tui 直接 import infra::session / 直接读 sessions 目录；switch 成功后 MUST 重建 transcript 并清除与旧 session 绑定的树槽/pending UI 态。"
+  ath14,"session-list-seam","产品 TUI 获取可 resume 会话列表时 MUST 经 Driver（或 app::core 公开 seam）list_sessions 或等价 API，行 MUST 能支撑 scope（cwd）、预览、parent、mtime/age 与可选 path 展示；MUST NOT 从 app/tui 直接 import infra::session / 直接读 sessions 目录；switch 成功后 MUST 重建 transcript 并清除与旧 session 绑定的树槽/pending UI 态。"
   ath15,"session-lifecycle-seam","产品 TUI 创建空会话与读写会话显示名时 MUST 经 Driver::new_session / get_session_name / set_session_name（或 app::core 公开等价 seam），MUST NOT 从 app/tui 直接 import infra::session 或直接写 sessions 目录；set_session_name MUST 将 CR/LF 规范为空格并 trim；new_session 成功后 MUST 清空与旧 session 绑定的 transcript/树槽；session-clone MUST 仅经既有 fork_session(At)+switch 路径，不得平行 fork 实现。"
-scenarios[22]{req_id,id,given,when,then}:
+  ath16,"session-resume-manage-seam","产品 TUI Resume 面板内 rename/delete MUST 经 Driver set_session_name / delete_session（或 app::core 公开等价 seam）；删除当前活跃 session MUST 拒绝并提示且 MUST NOT 调用删除；删除 MUST 经显式确认（确认前 MUST NOT 删盘）；scope=Current MUST 仅展示 cwd 匹配会话，scope=All MUST 展示 Driver 列举的全部可 resume 会话；TUI MUST NOT 直删会话文件。"
+scenarios[25]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-host",spec.toon 存在且 purpose 为中文
   ath1,"no-start","",审计产品 TUI 源码,"无 TUI::start；存在 host 驱动调用"
   ath2,"panic-restore","",TUI 运行中发生 panic,panic hook 恢复终端后用户 shell 可用
@@ -39,6 +40,9 @@ scenarios[22]{req_id,id,given,when,then}:
   ath12,"pending-ops-bag",审查 HostSession 字段,重构后,pending_* 位于 PendingOps（或等价）且 drain_pending 仍为唯一异步泵
   ath12,"no-driver-in-widgets",审计 layout/widgets,调用点,无 Driver 直接调用
   ath13,"get-messages-error-note",Driver get_messages 返回 Err,执行 travel,scrollback 含失败提示且不假装空树成功
-  ath14,"list-via-driver",产品 harness 或单元,调用 list 路径,经 Driver/seam 返回且无 tui→infra::session 依赖
-  ath15,"new-via-driver",产品 harness,提交 /session-new,经 Driver new_session 返回新 id 且无 tui→infra::session 依赖
-  ath15,"name-via-driver",产品 harness,提交 /session-name demo,经 Driver set_session_name 且无 tui 直写目录
+  ath14,"list-via-driver",产品 harness 或单元,打开 resume 列表路径,"经 Driver/seam 返回且无 tui→infra::session 依赖"
+  ath14,"row-has-preview-fields",list_sessions 返回非空,检查行字段,含预览或 name 以及可用于 age 的时间信息
+  ath15,"new-via-driver",产品 harness,"提交 /session-new","经 Driver new_session 返回新 id 且无 tui→infra::session 依赖"
+  ath15,"name-via-driver",产品 harness,"提交 /session-name demo",经 Driver set_session_name 且无 tui 直写目录
+  ath16,"delete-rejects-current",Resume 面板选中当前活跃 session,触发删除确认并确认,出现拒绝提示且会话仍存在
+  ath16,"rename-via-driver",Resume 面板已开,完成一项 rename,Driver set_session_name 被调用且列表展示新名

@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: src/app/tui/
-requirements[32]{req_id,title,statement}:
+requirements[33]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式或 agent 忙碌时 Esc MUST 调用 Driver::abort；Ctrl+C 在编辑器非空时 MUST 清空输入，在编辑器为空时 MUST 退出 TUI。"
@@ -35,7 +35,8 @@ requirements[32]{req_id,title,statement}:
   ati30,"input-bdd-guardrails","产品 TUI 输入面关键行为 MUST 可由 rstest-bdd 场景固定：忙碌 Esc abort 与迟到 Xy 不复活；bang Esc 取消与 suppress_idle_esc 后第二 bang 仍可 abort；overlay Esc 先关槽且忙碌无 overlay 时 Esc MUST NOT 开树；忙碌 Enter/Alt+Enter/Alt+Up 与 Driver steer/follow_up/clear_queue 契约。实现可复用 HostSession+ScriptedDriver+HostEvent 注入，MUST NOT 为 BDD 另造第二套副作用泵。"
   ati31,"abort-latch-suppresses-xy","产品 TUI 在 agent 忙碌且无 overlay 时按 Esc MUST 在同一步进内臂装流抑制并保留 pending_abort 供 drain_pending 调用 Driver::abort；在 drain 完成前注入的迟到 Xy MUST NOT 写出新 assistant 正文或清除 Aborted 语义。"
   ati32,"busy-bang-prefix-policy","产品 TUI 在 agent 忙碌（run_active / phase Busy）且非 bash_active 时，用户 Enter 提交以 ! 或 !! 开头的文本 MUST 硬拒绝（提示 + 保留编辑器文本），MUST NOT 将该字面量作为 Driver::steer 入队；bash_active 时第二 bang 硬拒绝仍遵循 ati20。"
-scenarios[58]{req_id,id,given,when,then}:
+  ati29,"session-resume-panel-keys","产品 TUI 在 EditorSlot::SessionResume 打开时：Tab MUST 切换 scope Current/All；Ctrl+S（或键位表等价）MUST 循环 Sort Threaded/Recent/Fuzzy；Ctrl+N MUST 切换 Name All/Named；Ctrl+P MUST 切换 path 显示；Ctrl+R MUST 进入选中项 rename（Esc 取消 rename MUST NOT 改名）；Ctrl+D MUST 进入删除确认（Enter 确认 / Esc 取消）；Threaded 下 ctrl/alt+left|right（tui.tree.foldOrUp / unfoldOrDown）MUST 折叠或展开选中父节点的子会话行；上述键 MUST 优先于 Editor 槽同名语义；面板关闭后键位恢复既有语义；搜索键入 MUST 交给面板 filter 而非误提交 prompt。"
+scenarios[63]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-input",spec.toon 存在且 purpose 为中文
   ati1,"selector-slot","",打开模型选择器,editor 槽被选择器替换且贴底可见
   ati2,"esc-aborts","",流式中按 Esc,"Driver::abort 被调用"
@@ -86,7 +87,7 @@ scenarios[58]{req_id,id,given,when,then}:
   ati26,"cycle-backward",树开且当前 FilterMode 为 default,按 Ctrl+Shift+O,"进入 all 或状态含 [all]"
   ati22,"ctrl-o-forward-unchanged",树开且当前 default,按 Ctrl+O,"进入 no-tools 或状态含 [no-tools]"
   ati27,"shift-l-opens-edit","EditorSlot::Tree 打开",按 Shift+L,进入 label 编辑且树仍开
-  ati28,"idle-session-tree-slash",产品 idle Editor 槽,提交 /session-tree,pending 为 OpenTree 或树被打开
+  ati28,"idle-session-tree-slash",产品 idle Editor 槽,"提交 /session-tree",pending 为 OpenTree 或树被打开
   ati28,"old-tree-not-pending",产品 idle Editor 槽,提交 /tree,不产生 OpenTree pending（unknown 或系统错误）
   ati30,"abort-and-late-delta",agent busy 且用户 Esc abort,再注入迟到 TextDelta 或 AgentEnd,UI 保持 Aborted/idle 语义且无新 assistant 正文复活
   ati30,"bang-esc-and-second",hanging bang 进行中,Esc 取消后再开第二 bang 并可再 Esc,出现 cancelled 语义且第二 bang 仍可 abort，无粘性 Aborted 挡住
@@ -94,3 +95,8 @@ scenarios[58]{req_id,id,given,when,then}:
   ati30,"queue-keys",agent busy,Enter / Alt+Enter / Alt+Up,分别触发 steer、follow_up、双队列清空并还原 editor 文本契约
   ati31,"harness-esc-inject-before-drain",ScriptedDriver 轮次 busy,Esc 后注入 TextDelta 再 drain_pending,abort 被调用、无新 assistant 正文、可再 submit
   ati32,"agent-busy-bang-rejected",agent busy 且编辑器为 !ls,按 Enter,出现拒绝提示、steer 未被调用、编辑器仍含命令
+  ati29,"tab-toggles-scope",Resume 面板已开,按 Tab,header scope 在 Current 与 All 间切换或列表按 cwd 过滤变化
+  ati29,"sort-cycles",Resume 面板已开,按 Ctrl+S,Sort 标签在 Threaded/Recent/Fuzzy 间变化
+  ati29,"named-filter",Resume 面板已开且存在未命名会话,按 Ctrl+N 至 Named,未命名行不可见
+  ati29,"delete-confirm-esc",Resume 面板选中可删项并 Ctrl+D,按 Esc,未删除且退出确认态
+  ati29,"fold-hides-children",Threaded 且选中有子会话的父节点,按 fold 键,子行不可见且再 unfold 恢复
