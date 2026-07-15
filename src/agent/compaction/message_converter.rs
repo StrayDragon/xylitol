@@ -68,7 +68,9 @@ mod tests {
         }));
         let msg = e.as_agent_message().expect("assistant");
         match msg {
-            crate::domain::message::AgentMessage::AssistantMessage { content, .. } => {
+            crate::domain::message::AgentMessage::Llm(
+                crate::domain::message::LlmMessage::AssistantMessage { content, .. },
+            ) => {
                 assert!(matches!(
                     content.as_slice(),
                     [

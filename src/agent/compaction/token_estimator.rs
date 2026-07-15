@@ -2,15 +2,18 @@
 
 use xylitol_ai_bridge::accounting::{EstimateContextOpts, estimate_context};
 use xylitol_ai_bridge::dto::{
-    AiBridgeMessage, AiBridgeStopReason, AiBridgeUsage, AiBridgeUsageCost,
-    TokenProvenance as AiBridgeProvenance,
+    AiBridgeImageContent, AiBridgeMessage, AiBridgePart, AiBridgeStopReason, AiBridgeUsage,
+    AiBridgeUsageCost, Diagnostic as AiBridgeDiagnostic, TokenProvenance as AiBridgeProvenance,
 };
 use xylitol_ai_bridge::registry::TokenizerSource;
 use xylitol_ai_bridge::registry::resolve_tokenizer;
 use xylitol_ai_bridge::tokenize::HfTokenizerCache;
 use xylitol_ai_bridge::tokenize::{BuiltinTokenizer, estimate_messages};
 
-use crate::domain::message::{AgentMessage, XyStopReason, XyUsage};
+use crate::domain::llm_project::project_for_llm;
+use crate::domain::message::{
+    AgentMessage, AgentPart, Diagnostic, ImageContent, LlmMessage, XyStopReason, XyUsage,
+};
 use crate::domain::types::{ContextTokenEstimate, TokenProvenance};
 
 /// Calculate total context tokens from a XyUsage struct.
@@ -25,9 +28,91 @@ pub fn calculate_context_tokens(usage: &XyUsage) -> u64 {
 /// Backward-compatible alias used by older compaction tests.
 pub type ContextUsageEstimate = ContextTokenEstimate;
 
-fn to_bridge_message(msg: &AgentMessage) -> AiBridgeMessage {
-    let value = serde_json::to_value(msg).unwrap_or(serde_json::Value::Null);
-    serde_json::from_value(value).unwrap_or_else(|_| AiBridgeMessage::user(""))
+fn to_bridge_llm_message(msg: LlmMessage) -> AiBridgeMessage {
+    match msg {
+        LlmMessage::UserMessage { content, timestamp } => AiBridgeMessage::UserMessage {
+            content: content.into_iter().map(to_bridge_part).collect(),
+            timestamp,
+        },
+        LlmMessage::AssistantMessage {
+            content,
+            stop_reason,
+            usage,
+            api,
+            provider,
+            model,
+            response_id,
+            error_message,
+            timestamp,
+            diagnostics,
+        } => AiBridgeMessage::AssistantMessage {
+            content: content.into_iter().map(to_bridge_part).collect(),
+            stop_reason: stop_reason.map(to_bridge_stop),
+            usage: usage.as_ref().map(to_bridge_usage),
+            api,
+            provider,
+            model,
+            response_id,
+            error_message,
+            timestamp,
+            diagnostics: diagnostics.into_iter().map(to_bridge_diagnostic).collect(),
+        },
+        LlmMessage::ToolResultMessage {
+            tool_use_id,
+            tool_name,
+            content,
+            details,
+            is_error,
+            timestamp,
+        } => AiBridgeMessage::ToolResultMessage {
+            tool_use_id,
+            tool_name,
+            content: content.into_iter().map(to_bridge_part).collect(),
+            details,
+            is_error,
+            timestamp,
+        },
+    }
+}
+
+fn to_bridge_part(part: AgentPart) -> AiBridgePart {
+    match part {
+        AgentPart::Text { text } => AiBridgePart::Text { text },
+        AgentPart::Image(img) => AiBridgePart::Image(to_bridge_image(img)),
+        AgentPart::Thinking {
+            thinking,
+            redacted,
+            thinking_signature,
+        } => AiBridgePart::Thinking {
+            thinking,
+            redacted,
+            thinking_signature,
+        },
+        AgentPart::ToolCall {
+            id,
+            name,
+            arguments,
+        } => AiBridgePart::ToolCall {
+            id,
+            name,
+            arguments,
+        },
+    }
+}
+
+fn to_bridge_image(img: ImageContent) -> AiBridgeImageContent {
+    AiBridgeImageContent {
+        url: img.url,
+        data: img.data,
+        media_type: img.media_type,
+    }
+}
+
+fn to_bridge_diagnostic(d: Diagnostic) -> AiBridgeDiagnostic {
+    AiBridgeDiagnostic {
+        message: d.message,
+        source: d.source,
+    }
 }
 
 fn to_bridge_usage(u: &XyUsage) -> AiBridgeUsage {
@@ -94,7 +179,10 @@ pub fn estimate_context_tokens_with(
     stop_reason: Option<XyStopReason>,
     opts: &EstimateOpts,
 ) -> ContextTokenEstimate {
-    let bridge_msgs: Vec<AiBridgeMessage> = messages.iter().map(to_bridge_message).collect();
+    let bridge_msgs: Vec<AiBridgeMessage> = project_for_llm(messages)
+        .into_iter()
+        .map(to_bridge_llm_message)
+        .collect();
     let bridge_usage = last_usage.map(to_bridge_usage);
     let bridge_stop = stop_reason.map(to_bridge_stop);
 

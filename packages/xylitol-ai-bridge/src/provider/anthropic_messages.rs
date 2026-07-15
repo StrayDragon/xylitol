@@ -476,45 +476,6 @@ pub fn convert_agent_messages_for_anthropic(
                     }],
                 }));
             }
-            AiBridgeMessage::BashExecutionMessage {
-                command,
-                output,
-                exclude_from_context,
-                ..
-            } => {
-                if *exclude_from_context {
-                    continue;
-                }
-                let text = format!("$ {command}\n{output}");
-                msgs.push(serde_json::json!({
-                    "role": "user",
-                    "content": [{"type": "text", "text": text}],
-                }));
-            }
-            AiBridgeMessage::CompactionSummaryMessage { summary, .. }
-            | AiBridgeMessage::BranchSummaryMessage { summary, .. } => {
-                msgs.push(serde_json::json!({
-                    "role": "user",
-                    "content": [{
-                        "type": "text",
-                        "text": format!("[Context summary: {summary}]")
-                    }],
-                }));
-            }
-            AiBridgeMessage::CustomMessage {
-                custom_type: _,
-                content,
-                ..
-            } => {
-                let text = content.as_str().unwrap_or("").to_string();
-                if text.is_empty() {
-                    continue;
-                }
-                msgs.push(serde_json::json!({
-                    "role": "user",
-                    "content": [{"type": "text", "text": text}],
-                }));
-            }
         }
     }
 
@@ -658,23 +619,10 @@ mod tests {
     }
 
     #[test]
-    fn convert_bash_execution() {
-        let msgs = vec![AiBridgeMessage::bash("ls", "output", Some(0))];
+    fn convert_projected_env_as_user() {
+        let msgs = vec![AiBridgeMessage::user("$ ls\noutput")];
         let (_, msgs) = convert_agent_messages_for_anthropic(&msgs);
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0]["role"], "user");
-    }
-
-    #[test]
-    fn convert_compaction_summary() {
-        let msgs = vec![AiBridgeMessage::CompactionSummaryMessage {
-            summary: "Compressed".into(),
-            tokens_before: 100,
-            tokens_after: 10,
-            read_files: None,
-            modified_files: None,
-        }];
-        let (_, msgs) = convert_agent_messages_for_anthropic(&msgs);
-        assert_eq!(msgs.len(), 1);
     }
 }

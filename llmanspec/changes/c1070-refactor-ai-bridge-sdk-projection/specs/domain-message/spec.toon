@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,dm6,session-vs-llm-vocab,"AgentMessage MUST 继续作为 session/agent 真源，可含环境角色（bashExecution、compactionSummary、branchSummary、custom 等）；这些角色表达环境与会话元信息，MUST NOT 被重新解释为 xylitol-ai-bridge 的平行全量 DTO；发往模型前 MUST 经投影层。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  dm6,"bash-is-session","一条 bashExecution 消息","持久化 session","仍以 AgentMessage bashExecution 角色写入"
-  dm6,"not-twin-dto","对比 bridge 公共消息 enum 与 AgentMessage","角色集合","bridge 不为环境角色维护平行 enum"
