@@ -1363,6 +1363,44 @@ mod slice_tests {
         );
     }
 
+    #[tokio::test]
+    async fn c1125_at_path_popup_and_tab_insert() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("hello.rs"), b"fn main() {}\n").expect("write");
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        root.borrow_mut().set_at_path_base(dir.path());
+        for ch in "@hel".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        let frame = root.borrow_mut().render(80);
+        assert!(
+            frame.iter().any(|l| l.contains("hello.rs")),
+            "expected @ path popup with hello.rs; got: {frame:?}"
+        );
+        session.step(HostEvent::Input(tab_event())).unwrap();
+        let text = root.borrow().editor_text();
+        assert!(
+            text.contains("hello.rs") && text.contains('@'),
+            "Tab must insert @path reference; got {text:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1125_at_path_esc_keeps_prefix() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("hello.rs"), b"").expect("write");
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        root.borrow_mut().set_at_path_base(dir.path());
+        for ch in "@hel".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        let text = root.borrow().editor_text();
+        assert_eq!(text, "@hel", "Esc closes popup without rewriting prefix");
+    }
+
     // ── c492 bang-bash (B1–B7) ─────────────────────────────────────
 
     #[test]

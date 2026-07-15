@@ -7,6 +7,7 @@ mod render;
 mod slot_input;
 mod slot_nav;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,7 +18,7 @@ use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
-    CompletionSource, Component, Focusable, Input, InputEvent, InputListenerResult,
+    AtPathSource, CompletionSource, Component, Focusable, Input, InputEvent, InputListenerResult,
     SlashArgCompletionSource, SlashCommandSource, SystemClock, TUI, Terminal, TreeNode,
     TreeSelector, TreeSelectorOptions, fg_rgb, fuzzy_filter, matches_key_event, truncate_to_width,
 };
@@ -126,6 +127,8 @@ pub struct UiRoot {
     models_filter: String,
     /// `(model_id, description)` for [`SlashArgCompletionSource`] (c999).
     model_arg_catalog: Vec<(String, String)>,
+    /// Root for [`AtPathSource`] (c1125); default process cwd.
+    at_path_base: PathBuf,
     /// `/session-import` confirm (c1010).
     import_confirm_list: SelectList,
     import_confirm_path: Option<String>,
@@ -187,6 +190,7 @@ impl UiRoot {
             models_items: Vec::new(),
             models_filter: String::new(),
             model_arg_catalog: Vec::new(),
+            at_path_base: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             import_confirm_list: import_confirm_list(theme),
             import_confirm_path: None,
             pending_import_decision: None,
@@ -221,7 +225,14 @@ impl UiRoot {
         sources.push(Box::new(SlashCommandSource::new(
             product_slash_commands_for_editor(),
         )));
+        sources.push(Box::new(AtPathSource::new(self.at_path_base.clone())));
         self.editor.set_completion_sources(sources);
+    }
+
+    /// Override `@` path completion root (c1125; harness injects tempdir).
+    pub fn set_at_path_base(&mut self, base: impl Into<PathBuf>) {
+        self.at_path_base = base.into();
+        self.install_completion_sources();
     }
 
     /// Refresh `/model <id>` inline completion catalog (from `available_models`).

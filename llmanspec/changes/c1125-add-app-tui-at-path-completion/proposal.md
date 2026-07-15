@@ -1,7 +1,7 @@
 ---
 change_id: c1125-add-app-tui-at-path-completion
 title: "产品 TUI：@ 文件模糊引用（接线 AtPathSource）"
-status: purpose-draft
+status: full
 priority: 1125
 apply_band: P2-system
 depends_on: []
@@ -19,31 +19,32 @@ domain: app-tui
 
 ## Purpose
 
-产品 editor 注册 `AtPathSource`（cwd 为根）；用户输入 `@` 模糊选文件并插入路径；提交后的附件语义（纯文本路径 vs 读入内容）升格时钉——默认对齐 demo/pi 的路径引用，读入内容可后置。
+产品 editor 注册 `AtPathSource`（进程 cwd 为根，可测覆盖）；用户输入 `@` 模糊选文件并插入路径引用；提交语义为**路径文本**（不在本变更自动 read 文件内容）。
 
-## What Changes（升格 full 时）
+## What Changes
 
 - `install_completion_sources` 加入 `AtPathSource`
-- harness：`@` 弹出与插入
-- 参考 `agent_demo` 接线，不复制业务到包内
-- delta：`app-tui-input` · `package-tui-autocomplete`
+- harness：`@` 弹出与 Tab 插入
+- 参考 `agent_demo`；不复制业务到包内
+- delta：`app-tui-input`（add ati33）
 
 ## Capabilities
 
-- `app-tui-input`（modify）
-- `package-tui-autocomplete`（引用/小改）
+- `app-tui-input`（modify/add）
 
 ## Out of scope
 
 - `$skill`（c1130）
 - 图片拖放
+- 提交时自动读入文件内容
+- 改包 `AtPathSource` 算法（除非发现产品接线 bug）
 
 ## Ethics
 
 - risk_level: low
-- prohibited_actions: 未信任扫描项目外敏感路径为默认（cwd 根）
+- prohibited_actions: 未信任扫描项目外敏感路径为默认（默认 cwd）
 - required_evidence: harness 补全测
-- escalation_policy: 提交时是否自动 read 文件需产品确认
+- escalation_policy: 提交时是否自动 read 文件需另开 change
 
 ## Depends
 
