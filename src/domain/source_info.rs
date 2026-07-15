@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 /// The scope of a resource: where it was loaded from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SourceScope {
-    /// User-level resource (e.g., ~/.xylitol/skills/).
+    /// User-level resource (e.g., `~/.xylitol/skills/`, `~/.agents/skills/`).
     User,
-    /// Project-level resource (e.g., `<cwd>`/.xylitol/skills/).
+    /// Project-level resource (e.g., `<cwd>/.xylitol/skills/`, `<cwd>/.agents/skills/`).
     Project,
     /// Temporary or synthetic resource (not persisted).
     Temporary,

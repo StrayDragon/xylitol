@@ -394,7 +394,12 @@ impl DefaultResourceLoader {
         &self,
         path: &std::path::Path,
     ) -> crate::infra::source_info::SourceInfo {
-        let scope = if path.starts_with(&self.agent_dir) {
+        let under_user_agents = self
+            .agent_dir
+            .parent()
+            .map(|p| p.join(".agents"))
+            .is_some_and(|root| path.starts_with(root));
+        let scope = if path.starts_with(&self.agent_dir) || under_user_agents {
             crate::infra::source_info::SourceScope::User
         } else if path.starts_with(&self.cwd) {
             crate::infra::source_info::SourceScope::Project
@@ -412,14 +417,29 @@ impl DefaultResourceLoader {
 
     // ── Skills ────────────────────────────────────────────────────────
 
-    /// Load skills discovered under `.xylitol/skills` (project + user).
+    /// User-level `~/.agents/skills` (sibling of `agent_dir` / `~/.xylitol`).
+    fn user_agents_skills_dir(&self) -> PathBuf {
+        self.agent_dir
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(".agents")
+            .join("skills")
+    }
+
+    /// Load skills from `.xylitol/skills` and `.agents/skills` (project + user).
     ///
-    /// Load order: user then project; name collision → **project wins** (pi precedence).
+    /// Load order (low → high precedence; name collision → later wins):
+    /// `~/.agents` → `~/.xylitol` → `{cwd}/.agents` → `{cwd}/.xylitol`.
+    /// So **`.xylitol` beats `.agents`**, and **project beats user**.
     fn load_skills_internal(&mut self) {
-        let project_skills = self.cwd.join(".xylitol").join("skills");
-        let global_skills = self.agent_dir.join("skills");
-        self.load_skills_from_skills_dir(&global_skills);
-        self.load_skills_from_skills_dir(&project_skills);
+        let user_agents = self.user_agents_skills_dir();
+        let user_xylitol = self.agent_dir.join("skills");
+        let project_agents = self.cwd.join(".agents").join("skills");
+        let project_xylitol = self.cwd.join(".xylitol").join("skills");
+        self.load_skills_from_skills_dir(&user_agents);
+        self.load_skills_from_skills_dir(&user_xylitol);
+        self.load_skills_from_skills_dir(&project_agents);
+        self.load_skills_from_skills_dir(&project_xylitol);
         self.dedup_skills_project_wins();
     }
 
@@ -948,6 +968,91 @@ mod tests {
         assert!(
             diags.iter().any(|d| d.message.contains("duplicate")),
             "collision should warn; got {diags:?}"
+        );
+    }
+
+    #[test]
+    fn test_skills_loads_from_project_agents_dir() {
+        let project = TempDir::new().unwrap();
+        let skill = project
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("from-agents");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: from-agents\ndescription: agents layout\n---\nbody\n",
+        )
+        .unwrap();
+        let loader =
+            DefaultResourceLoader::new(project.path().to_path_buf(), PathBuf::from("/tmp/xylitol"));
+        let (skills, _) = loader.get_skills();
+        assert!(
+            skills.iter().any(|s| s.name == "from-agents"),
+            "expected .agents/skills discovery; got {skills:?}"
+        );
+        let s = skills.iter().find(|s| s.name == "from-agents").unwrap();
+        assert_eq!(
+            s.source_info.scope,
+            crate::domain::source_info::SourceScope::Project
+        );
+    }
+
+    #[test]
+    fn test_skills_xylitol_overrides_agents_on_name_collision() {
+        let project = TempDir::new().unwrap();
+        let agents_skill = project.path().join(".agents").join("skills").join("shared");
+        let xylitol_skill = project
+            .path()
+            .join(".xylitol")
+            .join("skills")
+            .join("shared");
+        std::fs::create_dir_all(&agents_skill).unwrap();
+        std::fs::create_dir_all(&xylitol_skill).unwrap();
+        std::fs::write(
+            agents_skill.join("SKILL.md"),
+            "---\nname: shared\ndescription: from-agents\n---\n",
+        )
+        .unwrap();
+        std::fs::write(
+            xylitol_skill.join("SKILL.md"),
+            "---\nname: shared\ndescription: from-xylitol\n---\n",
+        )
+        .unwrap();
+        let loader =
+            DefaultResourceLoader::new(project.path().to_path_buf(), PathBuf::from("/tmp/xylitol"));
+        let (skills, diags) = loader.get_skills();
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].description.as_deref(), Some("from-xylitol"));
+        assert!(
+            diags.iter().any(|d| d.message.contains("duplicate")),
+            "collision should warn; got {diags:?}"
+        );
+    }
+
+    #[test]
+    fn test_skills_loads_from_user_agents_dir() {
+        let home = TempDir::new().unwrap();
+        let agent_dir = home.path().join(".xylitol");
+        let user_agents = home.path().join(".agents").join("skills").join("ua");
+        std::fs::create_dir_all(&agent_dir).unwrap();
+        std::fs::create_dir_all(&user_agents).unwrap();
+        std::fs::write(
+            user_agents.join("SKILL.md"),
+            "---\nname: ua\ndescription: user agents\n---\n",
+        )
+        .unwrap();
+        let loader =
+            DefaultResourceLoader::new(TempDir::new().unwrap().path().to_path_buf(), agent_dir);
+        let (skills, _) = loader.get_skills();
+        let s = skills
+            .iter()
+            .find(|s| s.name == "ua")
+            .expect("user .agents skill");
+        assert_eq!(
+            s.source_info.scope,
+            crate::domain::source_info::SourceScope::User
         );
     }
 
