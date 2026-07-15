@@ -26,3 +26,4 @@ pub(crate) mod composition;
 pub(crate) mod dispatch;
 pub(crate) mod driver;
 pub(crate) mod mcp_spec;
+pub(crate) mod product_commands;

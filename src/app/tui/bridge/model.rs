@@ -58,7 +58,7 @@ pub enum UiPhase {
     Busy,
 }
 
-/// Queue badge counts from [`XyEvent::QueueUpdate`].
+/// Queue badge counts from [`crate::domain::lifecycle::XyEvent::QueueUpdate`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct QueueBadge {
     pub steer_count: usize,
@@ -113,7 +113,7 @@ pub enum UiEntry {
     },
 }
 
-/// Product TUI state produced solely by [`apply_xy_event`] / [`UiModel::begin_run`].
+/// Product TUI state produced solely by [`super::apply_xy_event`] / [`UiModel::begin_run`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiModel {
     pub entries: Vec<UiEntry>,
