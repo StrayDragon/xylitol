@@ -71,13 +71,24 @@ protocol ───────────────────────�
 
 ## Provider 适配
 
-业务 / agent 只认 `XyModel`。方言 HTTP/SSE 与 usage 归一化 / accounting 在 workspace 包
-`packages/xylitol-ai-bridge`；主仓 `infra/provider` 仅做 DTO↔domain 映射与装配。
-禁止 Completions「已是 `XyModel` 再包一层」双路径。Pre-1.0 **交付**范围见根 `AGENTS.md`。
+业务 / agent 只认 `XyModel`。厂商 HTTP/SSE **优先经官方 SDK Client**（OpenAI：`async-openai`；Anthropic：官方 Rust SDK）落在 workspace 包
+`packages/xylitol-ai-bridge`；主仓 `infra/provider` 负责：
 
-**HTTP 传输 vs hook 缝（隔离）**：
-- 脚本 hook 三缝（`before_provider_headers` / `before_provider_request` / `after_provider_response`）只认**可移植**载荷：`infra::hooks::http::HeaderBag`（JSON map）与 `serde_json::Value` body —— **不**依赖 reqwest / 某一 vendor SDK。
-- 当前传输实现（reqwest）经 `infra::provider::reqwest_bridge` 在适配器边缘转换；换 SDK = 加/换 bridge，不改 hook 合约。
+1. **`AgentMessage` → LLM 投影**（显式 `project_for_llm` 或等价；**不是**全量孪生 DTO + JSON 往返）
+2. 装配 `XyModel` / 配置（base_url、密钥）
+
+**概念分层（MUST）**：
+
+| 类型 | 含义 |
+|---|---|
+| `AgentMessage`（domain） | session/agent **真源** = LLM 回合 + **环境元信息**（bash、compaction、branch、custom…） |
+| bridge LLM DTO | **仅**发给模型的投影；**MUST NOT** 平行拷贝环境角色 enum |
+
+**开闭**：新 OpenAI-like / Anthropic-like 兼容端 = 新 adapter 或配置；**MUST NOT** 为网关改 `AgentMessage` / ReAct。禁止 Completions「已是 `XyModel` 再包一层」双路径。Pre-1.0 **交付**范围见根 `AGENTS.md`。细则与包边界：`packages/xylitol-ai-bridge/AGENTS.md`；重构 change：**c1070**。
+
+**HTTP / SDK vs hook 缝（隔离）**：
+- 脚本 hook 三缝只认**可移植**载荷：`HeaderBag`（JSON map）与 `serde_json::Value` body —— **不**把 reqwest / 某一 SDK 类型泄漏进 hook 合约。
+- 传输实现经 SDK **middleware**（或薄 bridge）在适配器边缘对接；换 SDK = 换 middleware，不改 hook 合约。
 - 禁止为包而包：不另造全局 `XyHttpClient`，除非出现跨方言共享且要进库入口的传输端口。
 - 原始 SSE / 通道错分诊断：**优先进程内 raw provider trace**（fastrace Event + `provider-trace.jsonl`；与映射后 `XyChunk` 对照；debug 默认、release 经 `XYLITOL_PROVIDER_TRACE` —— **不**塞进 hook）。
 - 观测栈：**仅 fastrace**（时间线）+ **`log`**（级别日志）；禁止 `tracing` / 双栈。外挂 MITM 提案已暂停：`llmanspec/do-not-read-me/c999-add-infra-provider-traffic-capture/`。
