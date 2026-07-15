@@ -1,6 +1,8 @@
 //! OpenAI Chat Completions adapter.
 //!
-//! HTTP via reqwest + provider hook three-seam (c998). Public `XyModel` surface
+//! HTTP via current transport (reqwest) + portable hook three-seam (c998).
+//! Hooks use [`crate::infra::hooks::http::HeaderBag`]; reqwest conversion is
+//! [`crate::infra::provider::reqwest_bridge`] only. Public `XyModel` surface
 //! is only [`super::AdapterXyModel`] wrapping this [`crate::infra::provider::adapter::LlmAdapter`] (c505).
 
 use std::sync::Arc;

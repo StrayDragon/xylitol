@@ -1,28 +1,29 @@
 //! Provider HTTP hook helpers — headers/body modify and after-response observe.
+//!
+//! **Client-agnostic**: header bags are JSON objects (`serde_json::Map`), matching
+//! script-hook payloads. Adapters convert to/from their HTTP stack (reqwest today,
+//! vendor SDK / `http` types later) at the provider edge — do not import HTTP
+//! clients here.
 
 use std::sync::Arc;
 
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use super::{DispatchResult, HookDispatcher, HookEvent, HookPhase};
 use crate::domain::error::XyError;
 
-/// Serialize request/response headers to a JSON object (lowercase keys).
-pub fn headers_to_json(headers: &HeaderMap) -> Value {
-    let mut map = serde_json::Map::new();
-    for (name, value) in headers.iter() {
-        let key = name.as_str().to_ascii_lowercase();
-        let val = value.to_str().unwrap_or("").to_string();
-        map.insert(key, Value::String(val));
-    }
-    Value::Object(map)
+/// Portable request/response header bag (lowercase keys preferred).
+pub type HeaderBag = Map<String, Value>;
+
+/// Serialize a header bag to a JSON object (identity for [`HeaderBag`]).
+pub fn headers_to_json(headers: &HeaderBag) -> Value {
+    Value::Object(headers.clone())
 }
 
-/// Merge header fields from a JSON object into a [`HeaderMap`].
+/// Merge header fields from a JSON object into a [`HeaderBag`].
 ///
 /// `Modify.args.headers` from `before_provider_headers` uses this helper.
-pub fn merge_headers_from_json(headers: &mut HeaderMap, value: &Value) {
+pub fn merge_headers_from_json(headers: &mut HeaderBag, value: &Value) {
     let Some(obj) = value.as_object() else {
         return;
     };
@@ -30,19 +31,14 @@ pub fn merge_headers_from_json(headers: &mut HeaderMap, value: &Value) {
         let Some(text) = val.as_str() else {
             continue;
         };
-        if let (Ok(name), Ok(header_val)) = (
-            HeaderName::from_bytes(key.as_bytes()),
-            HeaderValue::from_str(text),
-        ) {
-            headers.insert(name, header_val);
-        }
+        headers.insert(key.to_ascii_lowercase(), Value::String(text.to_string()));
     }
 }
 
 /// Run `before_provider_headers` hooks; merge modified headers when returned.
 pub async fn run_before_headers(
     hooks: &Option<Arc<HookDispatcher>>,
-    headers: &mut HeaderMap,
+    headers: &mut HeaderBag,
 ) -> Result<(), XyError> {
     let Some(dispatcher) = hooks else {
         return Ok(());
@@ -103,7 +99,7 @@ pub async fn run_before_request(
 pub async fn run_after_response(
     hooks: &Option<Arc<HookDispatcher>>,
     status: u16,
-    headers: &HeaderMap,
+    headers: &HeaderBag,
 ) {
     let Some(dispatcher) = hooks else {
         return;
@@ -123,25 +119,30 @@ pub async fn run_after_response(
 mod tests {
     use super::*;
     use crate::infra::config::types::{HookEntry, HooksConfig};
-    use reqwest::header::{CONTENT_TYPE, HeaderValue};
+
+    fn bag(pairs: &[(&str, &str)]) -> HeaderBag {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), Value::String((*v).to_string())))
+            .collect()
+    }
 
     #[test]
-    fn headers_to_json_lowercases_keys() {
-        let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    fn headers_to_json_preserves_keys() {
+        let headers = bag(&[("content-type", "application/json")]);
         let json = headers_to_json(&headers);
         assert_eq!(json["content-type"], "application/json");
     }
 
     #[test]
     fn merge_headers_from_json_adds_header() {
-        let mut headers = HeaderMap::new();
+        let mut headers = HeaderBag::new();
         merge_headers_from_json(
             &mut headers,
-            &serde_json::json!({"x-test": "1", "content-type": "text/plain"}),
+            &serde_json::json!({"X-Test": "1", "content-type": "text/plain"}),
         );
         assert_eq!(headers.get("x-test").unwrap(), "1");
-        assert_eq!(headers.get(CONTENT_TYPE).unwrap(), "text/plain");
+        assert_eq!(headers.get("content-type").unwrap(), "text/plain");
     }
 
     #[tokio::test]
@@ -186,8 +187,7 @@ mod tests {
         };
         let dispatcher = Arc::new(HookDispatcher::new(&config));
         let hooks = Some(dispatcher);
-        let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        let headers = bag(&[("content-type", "application/json")]);
         run_after_response(&hooks, 200, &headers).await;
     }
 }
