@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ati34,"paste-collapse-submit","产品 TUI 在 idle 提交、busy steer、busy follow-up、remember_editor_send（历史）以及 Ctrl+G 外部编辑器读出时，MUST 使用 Editor::get_expanded_text（或 UiRoot 等价 API）作为发送/写入文本；显示层 MUST 仍可经 get_text 展示 [paste #N …] 占位；MUST NOT 把未展开的 paste marker 作为 prompt/steer/follow-up 交给 Driver。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ati34,"idle-submit-expanded","产品 idle 且 editor 显示长粘贴折叠 marker",Enter 提交,"pending submit 或 Driver::run 文本为展开全文而非 [paste #"
+  ati34,"steer-expanded","产品 busy 且 editor 含折叠 paste marker",Enter 入队 steer,"steer 文本为展开全文"
