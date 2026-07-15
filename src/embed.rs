@@ -21,6 +21,12 @@
 //! let _ = input.caller;
 //! ```
 //!
+//! ## Script hooks (library port)
+//!
+//! Configure via [`BuildAgentOptions::hooks_config`] (empty = zero-cost).
+//! The replaceable port is crate-root [`crate::XyHookBus`] / [`crate::XyHookOutcome`]
+//! (and [`crate::NoopHookBus`]). Prefer those over `infra::hooks` types.
+//!
 //! ## Known leaks (not stability promises)
 //!
 //! - [`BootstrappedAgent::agent`] still exposes `AgentRuntime` — use
@@ -30,6 +36,7 @@
 //!
 //! - `dispatch` / `RemoteDriver` — stay crate-internal until a surface wires
 //!   them. Reach via `app::core` only inside this crate.
+//! - `HookDispatcher` / `HookEvent` — infra script implementation details.
 //!
 //! See `docs/architecture/库与多客户端.md`.
 

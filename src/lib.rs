@@ -11,8 +11,9 @@
 //!
 //! Ports: [`XyModel`], [`XyTool`], [`XySessionStore`], [`XyEventSink`],
 //! [`XyPermission`], [`XyBashExecutor`], [`XyExportIo`], [`XySecretResolver`],
-//! [`XyModelBuilder`].
+//! [`XyModelBuilder`], [`XyHookBus`].
 //! Events / stream: [`XyEvent`], [`XyChunk`], [`XyStream`].
+//! Hook outcomes: [`XyHookOutcome`], [`NoopHookBus`].
 //! Errors: [`XyError`], [`XyToolError`].
 //! Config metadata: [`XyModelConfig`], [`XyModelKind`], [`XyModelMeta`],
 //! [`XyToolSchema`].
@@ -22,10 +23,13 @@
 //! Multi-client / external-crate assembly: [`embed::bootstrap`],
 //! [`embed::BootstrappedRuntime`] / [`embed::BootstrappedAgent::into_runtime`],
 //! [`embed::InProcessDriver`], [`embed::Driver`], [`embed::BuildAgentOptions`],
-//! [`embed::McpSession`]. Do **not** treat `infra::*` or `agent::session::*`
-//! as a stability promise — extend the seam instead.
+//! [`embed::McpSession`]. Script hooks are configured via
+//! [`embed::BuildAgentOptions::hooks_config`]; replaceable port is [`XyHookBus`].
+//! Do **not** treat `infra::*` or `agent::session::*` as a stability promise —
+//! extend the seam instead.
 //!
-//! Not exported from `embed`: `dispatch`, `RemoteDriver`, infra concrete types.
+//! Not exported from `embed`: `dispatch`, `RemoteDriver`, infra concrete types
+//! (`HookDispatcher`, `HookEvent`).
 
 pub mod agent;
 pub mod app;
@@ -42,8 +46,8 @@ pub use crate::domain::lifecycle::XyEvent;
 pub use crate::domain::model::{XyModelConfig, XyModelKind};
 pub use crate::domain::types::{XyChunk, XyModelMeta, XyToolSchema};
 pub use crate::runtime_protocol::{
-    XyBashExecutor, XyEventSink, XyExportIo, XyModel, XyModelBuilder, XyPermission,
-    XySecretResolver, XySessionStore, XyStream, XyTool,
+    NoopHookBus, XyBashExecutor, XyEventSink, XyExportIo, XyHookBus, XyHookOutcome, XyModel,
+    XyModelBuilder, XyPermission, XySecretResolver, XySessionStore, XyStream, XyTool,
 };
 
 /// Application entry point.
