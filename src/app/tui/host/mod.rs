@@ -309,6 +309,23 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
+    /// Set or clear footer token usage fragment (c1035).
+    pub fn set_footer_token_label(&mut self, label: Option<String>) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().set_footer_token_label(label);
+    }
+
+    /// Request a Driver estimate refresh on the next `drain_pending` (c1035).
+    pub fn request_footer_token_refresh(&mut self) {
+        self.pending.footer_token_refresh = true;
+    }
+
+    pub fn take_pending_footer_token_refresh(&mut self) -> bool {
+        self.pending.take_footer_token_refresh()
+    }
+
     /// Push a system line into the UI model (slash errors, notes).
     pub fn push_system_note(&mut self, text: impl Into<String>) {
         self.ui_model
@@ -714,6 +731,7 @@ impl<T: Terminal> HostSession<T> {
         self.run_active = false;
         self.suppress_xy_until_stream_end = false;
         self.ui_model.on_stream_closed_without_agent_end();
+        self.pending.footer_token_refresh = true;
         self.sync_ui_root_from_model();
     }
 
@@ -764,6 +782,7 @@ impl<T: Terminal> HostSession<T> {
                     apply_xy_event(&mut self.ui_model, &xy);
                     if matches!(xy.as_ref(), XyEvent::AgentEnd { .. }) {
                         self.run_active = false;
+                        self.pending.footer_token_refresh = true;
                     }
                     self.sync_ui_root_from_model();
                     self.tui.request_render(false);

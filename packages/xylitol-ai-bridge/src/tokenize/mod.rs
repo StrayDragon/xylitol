@@ -1,4 +1,8 @@
-//! Builtin and HuggingFace tokenizer stubs.
+//! Builtin (OpenAI tiktoken) and HuggingFace tokenizer stubs.
+//!
+//! Anthropic: no local vocab crate — prefer response `usage` (Api) or
+//! `count_tokens` (RemoteCount); otherwise Heuristic. The abandoned
+//! `claude-tokenizer` crate is intentionally not used.
 
 use std::path::PathBuf;
 
@@ -8,7 +12,6 @@ use crate::dto::AiBridgeMessage;
 pub enum BuiltinTokenizer {
     OpenAiO200k,
     OpenAiCl100k,
-    AnthropicClaude,
 }
 
 impl BuiltinTokenizer {
@@ -20,7 +23,6 @@ impl BuiltinTokenizer {
             Self::OpenAiCl100k => tiktoken_rs::cl100k_base()
                 .map(|enc| enc.encode_with_special_tokens(text).len() as u64)
                 .unwrap_or_else(|_| heuristic_count(text)),
-            Self::AnthropicClaude => claude_tokenizer::count_tokens(text).unwrap_or(0) as u64,
         }
     }
 }

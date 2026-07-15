@@ -24,7 +24,7 @@ use crate::domain::session_types::{
 use crate::domain::types::ThinkingLevel;
 use crate::runtime_protocol::XyBashResult;
 
-use super::effects::{drain_pending, run_interactive_bang};
+use super::effects::{drain_pending, refresh_footer_tokens, run_interactive_bang};
 use super::host::{HostEvent, HostSession};
 
 /// Test double: canned `run` streams + call recording for steer/abort/queues/bash.
@@ -70,6 +70,8 @@ pub struct ScriptedDriver {
     set_session_name_calls: Mutex<Vec<String>>,
     set_session_name_for_calls: Mutex<Vec<(String, String)>>,
     delete_session_calls: Mutex<Vec<String>>,
+    /// Optional fixed estimate for footer harness (c1035).
+    estimate_override: Option<crate::domain::types::ContextTokenEstimate>,
 }
 
 impl ScriptedDriver {
@@ -153,6 +155,7 @@ impl ScriptedDriver {
             set_session_name_calls: Mutex::new(Vec::new()),
             set_session_name_for_calls: Mutex::new(Vec::new()),
             delete_session_calls: Mutex::new(Vec::new()),
+            estimate_override: None,
         }
     }
 
@@ -187,6 +190,14 @@ impl ScriptedDriver {
 
     pub fn set_session_messages(&mut self, entries: Vec<SessionEntry>) {
         self.session_messages = entries;
+    }
+
+    /// Fixed [`Driver::estimate_context_tokens`] result for footer harness (c1035).
+    pub fn set_estimate_override(
+        &mut self,
+        estimate: Option<crate::domain::types::ContextTokenEstimate>,
+    ) {
+        self.estimate_override = estimate;
     }
 
     pub fn set_travel_override(&mut self, entry_id: impl Into<String>, travel: SessionTreeTravel) {
@@ -466,6 +477,9 @@ impl Driver for ScriptedDriver {
     async fn estimate_context_tokens(
         &self,
     ) -> Result<crate::domain::types::ContextTokenEstimate, String> {
+        if let Some(est) = self.estimate_override.clone() {
+            return Ok(est);
+        }
         Ok(crate::app::core::driver::estimate_from_session_entries(
             &self.session_messages,
             self.current_model().map(|m| m.id),
@@ -662,6 +676,7 @@ pub async fn pump_host_driver<T: Terminal>(
         }
         *agent_stream = None;
         session.on_run_stream_closed();
+        refresh_footer_tokens(session, driver).await;
         let _ = session.render_now();
     }
 
@@ -3081,6 +3096,184 @@ mod slice_tests {
                 .any(|t| t.contains("new session")),
             "expected new-session note: {:?}",
             system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
+    async fn c1035_empty_session_omits_footer_token() {
+        use crate::app::tui::effects::refresh_footer_tokens;
+
+        let mut session = HostSession::new_product_ui_with_meta(
+            TestTerminal::new(80, 24),
+            "~/x".into(),
+            "Fake".into(),
+        );
+        let driver = ScriptedDriver::new();
+        refresh_footer_tokens(&mut session, &driver).await;
+        session.render_now().unwrap();
+        let frame = session.ui_root().expect("ui").borrow_mut().render(80);
+        let footer = frame.last().expect("footer");
+        assert!(
+            footer.contains("~/x") && footer.contains("Fake"),
+            "footer identity missing: {footer}"
+        );
+        assert!(
+            !footer.contains("used "),
+            "empty session must omit used field: {footer}"
+        );
+        assert!(
+            !footer.contains("used 0"),
+            "must not forge used 0: {footer}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1035_heuristic_shows_tilde() {
+        use crate::app::tui::effects::refresh_footer_tokens;
+        use crate::domain::types::{ContextTokenEstimate, TokenProvenance};
+
+        let mut session = HostSession::new_product_ui_with_meta(
+            TestTerminal::new(80, 24),
+            "~/x".into(),
+            "Fake".into(),
+        );
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        driver.set_estimate_override(Some(ContextTokenEstimate {
+            tokens: 42,
+            provenance: TokenProvenance::Heuristic,
+            usage_tokens: 0,
+            trailing_tokens: 42,
+            last_usage_index: None,
+        }));
+        refresh_footer_tokens(&mut session, &driver).await;
+        let frame = session.ui_root().expect("ui").borrow_mut().render(80);
+        let footer = frame.last().expect("footer");
+        assert!(
+            footer.contains("used ~42 tokens"),
+            "Heuristic must show tilde: {footer}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1035_api_shows_exact_used() {
+        use crate::app::tui::effects::refresh_footer_tokens;
+        use crate::domain::types::{ContextTokenEstimate, TokenProvenance};
+
+        let mut session = HostSession::new_product_ui_with_meta(
+            TestTerminal::new(80, 24),
+            "~/x".into(),
+            "Fake".into(),
+        );
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        driver.set_estimate_override(Some(ContextTokenEstimate {
+            tokens: 100,
+            provenance: TokenProvenance::Api,
+            usage_tokens: 100,
+            trailing_tokens: 0,
+            last_usage_index: Some(0),
+        }));
+        refresh_footer_tokens(&mut session, &driver).await;
+        let frame = session.ui_root().expect("ui").borrow_mut().render(80);
+        let footer = frame.last().expect("footer");
+        assert!(
+            footer.contains("used 100 tokens") && !footer.contains("used ~"),
+            "Api must be exact: {footer}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1035_travel_refreshes_footer_token() {
+        use crate::domain::types::{ContextTokenEstimate, TokenProvenance};
+
+        let mut session = HostSession::new_product_ui_with_meta(
+            TestTerminal::new(80, 24),
+            "~/x".into(),
+            "Fake".into(),
+        );
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        driver.set_message_history_tree(harness_sample_message_history_tree());
+        driver.set_estimate_override(Some(ContextTokenEstimate {
+            tokens: 11,
+            provenance: TokenProvenance::Heuristic,
+            usage_tokens: 0,
+            trailing_tokens: 11,
+            last_usage_index: None,
+        }));
+        let mut stream = None;
+        root.borrow_mut().open_session_tree_at_for_test(
+            crate::app::tui::layout::sample_tree_nodes_for_test(),
+            "u1",
+        );
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let footer1 = root.borrow_mut().render(80);
+        let f1 = footer1.last().expect("footer").clone();
+        assert!(
+            f1.contains("used ~11 tokens"),
+            "first travel estimate: {f1}"
+        );
+
+        driver.set_estimate_override(Some(ContextTokenEstimate {
+            tokens: 99,
+            provenance: TokenProvenance::Heuristic,
+            usage_tokens: 0,
+            trailing_tokens: 99,
+            last_usage_index: None,
+        }));
+        root.borrow_mut().open_session_tree_at_for_test(
+            crate::app::tui::layout::sample_tree_nodes_for_test(),
+            "u2",
+        );
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let footer2 = root.borrow_mut().render(80);
+        let f2 = footer2.last().expect("footer").clone();
+        assert!(
+            f2.contains("used ~99 tokens"),
+            "travel must refresh token field: {f2}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1035_agent_end_requests_footer_refresh() {
+        use crate::domain::types::{ContextTokenEstimate, TokenProvenance};
+
+        let mut session = HostSession::new_product_ui_with_meta(
+            TestTerminal::new(80, 24),
+            "~/x".into(),
+            "Fake".into(),
+        );
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        driver.set_estimate_override(Some(ContextTokenEstimate {
+            tokens: 7,
+            provenance: TokenProvenance::LocalTokenizer,
+            usage_tokens: 0,
+            trailing_tokens: 7,
+            last_usage_index: None,
+        }));
+        session
+            .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+                messages: Vec::new(),
+            })))
+            .unwrap();
+        let mut stream = None;
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let footer = session.ui_root().expect("ui").borrow_mut().render(80);
+        let f = footer.last().expect("footer");
+        assert!(
+            f.contains("used 7 tokens"),
+            "AgentEnd + drain must refresh footer: {f}"
         );
     }
 

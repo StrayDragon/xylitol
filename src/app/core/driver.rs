@@ -223,10 +223,9 @@ pub trait Driver: Send {
     /// Load session statistics.
     async fn get_session_stats(&self) -> Result<SessionStats, String>;
 
-    /// Read-only context token estimate for the current leaf/path (c1030).
+    /// Read-only context token estimate for the current leaf/path (c1030 / c1035).
     ///
-    /// No footer UI — product display is deferred to c1035. Surfaces may poll
-    /// this seam after travel / turn / compact.
+    /// Product footer polls this after travel / turn / compact.
     async fn estimate_context_tokens(
         &self,
     ) -> Result<crate::domain::types::ContextTokenEstimate, String>;
