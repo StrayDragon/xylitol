@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,atm10,"slash-session-resume","产品 TUI idle 提交无参 /session-resume 时 MUST 打开替换 editor 槽的 Resume 面板（非居中 overlay）：数据经 Driver list_sessions 或等价 seam；面板 MUST 提供 header（scope Current/All、Name All/Named、Sort Threaded/Recent/Fuzzy）、搜索（支持 re: 正则与引号 phrase）与会话行（name 或 first_message 预览、message_count、相对时间；Threaded 时 parent 树前缀）；Enter 选定 MUST SwitchSession 并重建 transcript、关闭面板；Esc 取消 MUST NOT 切换；busy 时 MUST 拒绝；旧名 /resume MUST NOT 被识别；MVP MUST NOT 要求路径直参；TUI MUST NOT reach infra::session。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  atm10,"resume-opens-panel",产品 idle,提交 /session-resume,"editor 槽出现含 scope 或 Sort 或搜索提示的 Resume 面板"
+  atm10,"resume-switch","产品 idle 且列表有项","在面板 Enter 选定","SwitchSession 发生且 transcript 刷新"
+  atm10,"resume-search-regex","面板已开且有多项","输入 re: 可匹配某预览的模式","可见行收窄为匹配项"
+  atm10,"old-resume-unknown",产品 idle,提交 /resume,"显示 unknown command 类错误"

@@ -22,6 +22,10 @@ pub struct SessionListEntry {
     pub parent_session_id: Option<String>,
     /// Tree glyph prefix after forest flatten (`└─ ` / `├─ `…); empty for roots.
     pub tree_prefix: String,
+    /// Session cwd from header (scope=Current filter).
+    pub cwd: Option<String>,
+    /// Persisted jsonl path when known (optional path display).
+    pub path: Option<String>,
 }
 
 /// Persistence port — abstracts session storage so the agent can be
@@ -116,6 +120,15 @@ pub trait XySessionStore: Send + Sync {
         });
         self.append_session_entry(session_id, &entry).await?;
         Ok(sanitized)
+    }
+
+    /// Delete a persisted session (Driver `/session-resume` panel; c1065).
+    ///
+    /// Default returns an error so minimal store stubs stay safe.
+    async fn delete_session(&self, session_id: &str) -> Result<(), String> {
+        let _ = session_id;
+        let _ = self;
+        Err("delete_session not supported".into())
     }
 }
 

@@ -421,13 +421,9 @@ impl<T: Terminal> HostSession<T> {
         let Some(root) = self.ui_root.as_ref() else {
             return;
         };
-        let items = entries
-            .into_iter()
-            .map(|e| session_list_entry_to_select_item(&e, &current_id))
-            .collect();
         {
             let mut root = root.borrow_mut();
-            root.mount_session_resume_picker(items, current_id.as_deref());
+            root.mount_session_resume_picker(entries, current_id.as_deref());
         }
         self.sync_ui_root_from_model();
     }
@@ -443,6 +439,37 @@ impl<T: Terminal> HostSession<T> {
     pub fn take_pending_session_resume_select(&mut self) -> Option<String> {
         let root = self.ui_root.as_ref()?;
         root.borrow_mut().take_pending_session_resume_select()
+    }
+
+    pub fn take_pending_session_resume_rename(&mut self) -> Option<(String, String)> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().take_pending_session_resume_rename()
+    }
+
+    pub fn take_pending_session_resume_delete(&mut self) -> Option<String> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().take_pending_session_resume_delete()
+    }
+
+    pub fn session_resume_apply_rename(&mut self, id: &str, name: &str) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().session_resume.apply_rename(id, name);
+            self.sync_ui_root_from_model();
+        }
+    }
+
+    pub fn session_resume_remove_entry(&mut self, id: &str) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().session_resume.remove_entry(id);
+            self.sync_ui_root_from_model();
+        }
+    }
+
+    pub fn session_resume_set_status(&mut self, msg: impl Into<String>) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().session_resume.set_status(msg);
+            self.sync_ui_root_from_model();
+        }
     }
 
     pub fn close_session_resume_slot(&mut self) {
@@ -1113,31 +1140,4 @@ fn model_info_to_select_item(m: &ModelInfo, current_id: &Option<String>) -> Sele
         label
     };
     SelectItem::new(m.id.clone(), marked)
-}
-
-fn session_list_entry_to_select_item(
-    entry: &crate::app::core::driver::SessionListEntry,
-    current_id: &Option<String>,
-) -> SelectItem {
-    use crate::runtime_protocol::format_session_age;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    // pi resume row: tree_prefix + (name ?? firstMessage); right: count · age.
-    let primary = entry
-        .name
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .or(entry.first_message.as_deref().filter(|s| !s.is_empty()))
-        .unwrap_or(entry.id.as_str());
-    let mut label = format!("{}{primary}", entry.tree_prefix);
-    if current_id.as_deref() == Some(entry.id.as_str()) {
-        label.push_str(" *");
-    }
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let age = format_session_age(entry.modified_unix, now);
-    let desc = format!("{} · {age}", entry.message_count);
-    SelectItem::new(entry.id.clone(), label).with_description(desc)
 }

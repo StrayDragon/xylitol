@@ -505,6 +505,39 @@ pub async fn drain_pending<T: Terminal>(
         let _ = session.render_now();
     }
 
+    if let Some((id, name)) = session.take_pending_session_resume_rename() {
+        match driver.set_session_name_for(&id, &name).await {
+            Ok(stored) => {
+                session.session_resume_apply_rename(&id, &stored);
+                session.push_system_note(format!("Session renamed: {stored}"));
+            }
+            Err(e) => {
+                session.session_resume_set_status(format!("rename failed: {e}"));
+                session.push_system_note(format!("rename failed: {e}"));
+            }
+        }
+        let _ = session.render_now();
+    }
+
+    if let Some(id) = session.take_pending_session_resume_delete() {
+        if driver.session_id().as_deref() == Some(id.as_str()) {
+            session.session_resume_set_status("Cannot delete the active session");
+            session.push_system_note("Cannot delete the active session");
+        } else {
+            match driver.delete_session(&id).await {
+                Ok(()) => {
+                    session.session_resume_remove_entry(&id);
+                    session.push_system_note(format!("Deleted session {id}"));
+                }
+                Err(e) => {
+                    session.session_resume_set_status(format!("delete failed: {e}"));
+                    session.push_system_note(format!("delete failed: {e}"));
+                }
+            }
+        }
+        let _ = session.render_now();
+    }
+
     if agent_stream.is_none()
         && let Some(prompt) = session.take_submit()
     {

@@ -8,6 +8,7 @@ mod effects;
 mod external_editor;
 mod host;
 mod layout;
+pub(crate) mod session_resume;
 pub(crate) mod terminal_guard;
 mod widgets;
 
