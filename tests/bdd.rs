@@ -95,12 +95,14 @@ impl XySessionStore {
 /// Library-seam hook recorder implementing crate-root [`xylitol::XyHookBus`] (c990).
 struct WiringHookLog {
     calls: std::sync::Mutex<Vec<(String, String, serde_json::Value)>>,
+    force: std::sync::Mutex<Option<xylitol::XyHookOutcome>>,
 }
 
 impl WiringHookLog {
     fn new() -> Arc<Self> {
         Arc::new(Self {
             calls: std::sync::Mutex::new(Vec::new()),
+            force: std::sync::Mutex::new(None),
         })
     }
 }
@@ -118,6 +120,9 @@ impl xylitol::XyHookBus for WiringHookLog {
             phase.to_string(),
             context,
         ));
+        if let Some(outcome) = self.force.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            return outcome;
+        }
         xylitol::XyHookOutcome::Allowed
     }
 }
@@ -282,7 +287,7 @@ async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), String
         "设置思考级别 high" => {
             let _ = agent.ensure_wiring_hook_log();
             ensure_wiring_fake_model(agent, true);
-            let (mut runtime, store) = make_agent_with_store(agent);
+            let (runtime, store) = make_agent_with_store(agent);
             // Select fake first so a model exists; then change thinking.
             let mut driver = InProcessDriver::new(runtime, store);
             let _ = driver.select_model("fake");
@@ -292,6 +297,34 @@ async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), String
             }
             driver.set_thinking_level(ThinkingLevel::High);
             Ok(())
+        }
+        "打开会话树" => {
+            let _ = agent.ensure_wiring_hook_log();
+            let (mut runtime, store) = make_agent_with_store(agent);
+            let orphan = uuid::Uuid::new_v4().to_string();
+            runtime.inner_mut().set_session(orphan);
+            let driver = InProcessDriver::new(runtime, store);
+            driver
+                .session_tree(SessionTreeKind::MessageHistory)
+                .await
+                .map(|_| ())
+        }
+        "切换会话 target" => {
+            let _ = agent.ensure_wiring_hook_log();
+            let (mut runtime, store) = make_agent_with_store(agent);
+            let current = uuid::Uuid::new_v4().to_string();
+            let target = "target".to_string();
+            store.create(&current, Some("."), None).await?;
+            store.create(&target, Some("."), None).await?;
+            runtime.inner_mut().set_session(current);
+            let mut driver = InProcessDriver::new(runtime, store);
+            driver.switch_session(&target).await.map(|_| ())
+        }
+        "执行 bash" => {
+            let _ = agent.ensure_wiring_hook_log();
+            let (runtime, store) = make_agent_with_store(agent);
+            let driver = InProcessDriver::new(runtime, store);
+            driver.execute_bash("true", false, None).await.map(|_| ())
         }
         other => Err(format!("未知操作: {other}")),
     }
@@ -974,6 +1007,21 @@ fn _g_hook_returns(agent: &AgentState, json_str: String) {
     if let Some(e) = agent.hook_entries.borrow_mut().last_mut() {
         let j: serde_json::Value = serde_json::from_str(&json_str).unwrap_or_default();
         e.command = format!("echo '{}'", j.to_string().replace('\'', "'\\''"));
+        let log = agent.ensure_wiring_hook_log();
+        let outcome = match j.get("action").and_then(|a| a.as_str()) {
+            Some("block") => xylitol::XyHookOutcome::Blocked {
+                reason: j
+                    .get("reason")
+                    .and_then(|r| r.as_str())
+                    .unwrap_or("blocked")
+                    .to_string(),
+            },
+            Some("modify") => xylitol::XyHookOutcome::Modified {
+                args: j.get("args").cloned().unwrap_or(j.clone()),
+            },
+            _ => xylitol::XyHookOutcome::Allowed,
+        };
+        *log.force.lock().unwrap_or_else(|err| err.into_inner()) = Some(outcome);
     }
 }
 
@@ -2442,10 +2490,44 @@ async fn test_hooks_wiring_thinking_select(agent: AgentState) {}
 
 #[scenario(
     path = "tests/features/hooks-wiring.feature",
+    name = "打开会话树触发 session_tree"
+)]
+async fn test_hooks_wiring_session_tree(agent: AgentState) {}
+
+#[scenario(
+    path = "tests/features/hooks-wiring.feature",
+    name = "session_before_tree block 取消打开树"
+)]
+async fn test_hooks_wiring_tree_cancel(agent: AgentState) {}
+
+#[scenario(
+    path = "tests/features/hooks-wiring.feature",
+    name = "切换会话触发 session_shutdown"
+)]
+async fn test_hooks_wiring_session_shutdown(agent: AgentState) {}
+
+#[scenario(
+    path = "tests/features/hooks-wiring.feature",
+    name = "session_before_switch block 取消切换"
+)]
+async fn test_hooks_wiring_switch_cancel(agent: AgentState) {}
+#[scenario(
+    path = "tests/features/hooks-wiring.feature",
+    name = "执行 bash 触发 user_bash"
+)]
+async fn test_hooks_wiring_user_bash(agent: AgentState) {}
+
+#[scenario(
+    path = "tests/features/hooks-wiring.feature",
+    name = "user_bash block 取消执行"
+)]
+async fn test_hooks_wiring_user_bash_block(agent: AgentState) {}
+
+#[scenario(
+    path = "tests/features/hooks-wiring.feature",
     name = "未知库操作名可读失败"
 )]
 async fn test_hooks_wiring_unknown_op(agent: AgentState) {}
-
 #[test]
 fn curated_xy_hook_bus_symbols_resolve() {
     fn assert_port<T: ?Sized>() {}
