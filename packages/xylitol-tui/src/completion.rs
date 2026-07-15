@@ -27,8 +27,8 @@
 //! probes are mutually exclusive (`/`… vs `/cmd `…). With `with_bare_command(true)`,
 //! register the arg source **before** slash so exact `/cmd` opens the catalog.
 use crate::autocomplete::{
-    AutocompleteItem, AutocompleteSuggestions, SlashCommand, build_completion_value,
-    expand_home_path, extract_at_prefix, parse_path_prefix, to_display_path,
+    AutocompleteItem, AutocompleteSuggestions, SlashCommand, expand_home_path, extract_at_prefix,
+    parse_path_prefix, path_autocomplete_item,
 };
 use crate::fuzzy::fuzzy_match;
 use std::path::PathBuf;
@@ -486,13 +486,14 @@ impl AtPathSource {
 
         // If the query looks like a directory prefix (`src/`), list that dir;
         // otherwise list base and fuzzy-filter by the file name fragment.
-        let (search_dir, filter) = if expanded.ends_with('/') {
+        // `display_prefix` is the path stem kept in `value` (pi: displayPrefix + name).
+        let (search_dir, filter, display_prefix) = if expanded.ends_with('/') {
             let dir = if expanded.starts_with('/') {
                 PathBuf::from(&expanded)
             } else {
                 self.base_path.join(&expanded)
             };
-            (dir, String::new())
+            (dir, String::new(), expanded.clone())
         } else if let Some((parent, name)) = expanded.rsplit_once('/') {
             let dir = if parent.starts_with('/') {
                 PathBuf::from(parent)
@@ -501,9 +502,14 @@ impl AtPathSource {
             } else {
                 self.base_path.join(parent)
             };
-            (dir, name.to_string())
+            let display_prefix = if parent.is_empty() {
+                String::new()
+            } else {
+                format!("{}/", parent.trim_end_matches('/'))
+            };
+            (dir, name.to_string(), display_prefix)
         } else {
-            (self.base_path.clone(), expanded)
+            (self.base_path.clone(), expanded, String::new())
         };
 
         let entries: Vec<_> = match std::fs::read_dir(&search_dir) {
@@ -534,16 +540,7 @@ impl AtPathSource {
             .into_iter()
             .take(20)
             .map(|(_, is_dir, name)| {
-                let path_value = if is_dir {
-                    format!("{name}/")
-                } else {
-                    name.clone()
-                };
-                AutocompleteItem {
-                    value: build_completion_value(&path_value, is_dir, is_at, is_quoted),
-                    label: if is_dir { format!("{name}/") } else { name },
-                    description: Some(to_display_path(&path_value)),
-                }
+                path_autocomplete_item(&display_prefix, &name, is_dir, is_at, is_quoted)
             })
             .collect()
     }
@@ -692,6 +689,54 @@ mod tests {
         };
         let m = src.probe(&ctx).expect("probe @foo");
         assert_eq!(m.prefix, "@foo");
+    }
+
+    #[test]
+    fn at_path_keeps_dir_prefix_in_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("subdir");
+        std::fs::create_dir(&nested).unwrap();
+        std::fs::write(nested.join("nested.rs"), "").unwrap();
+
+        let src = AtPathSource::new(dir.path().to_path_buf());
+        let lines = vec!["@subdir/".into()];
+        let ctx = CompletionContext {
+            lines: &lines,
+            cursor_line: 0,
+            cursor_col: 8,
+        };
+        let m = src.probe(&ctx).expect("probe @subdir/");
+        let s = src.suggestions(&ctx, &m).expect("suggestions");
+        let item = s
+            .items
+            .iter()
+            .find(|i| i.label == "nested.rs")
+            .expect("nested.rs");
+        assert_eq!(item.value, "@subdir/nested.rs");
+        assert_eq!(item.description.as_deref(), Some("subdir/nested.rs"));
+    }
+
+    #[test]
+    fn at_path_omits_description_when_same_as_label() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("only.rs"), "").unwrap();
+
+        let src = AtPathSource::new(dir.path().to_path_buf());
+        let lines = vec!["@".into()];
+        let ctx = CompletionContext {
+            lines: &lines,
+            cursor_line: 0,
+            cursor_col: 1,
+        };
+        let m = src.probe(&ctx).expect("probe @");
+        let s = src.suggestions(&ctx, &m).expect("suggestions");
+        let item = s
+            .items
+            .iter()
+            .find(|i| i.label == "only.rs")
+            .expect("only.rs");
+        assert_eq!(item.value, "@only.rs");
+        assert_eq!(item.description, None);
     }
 
     #[test]

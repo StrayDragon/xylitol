@@ -227,7 +227,8 @@ impl Component for SelectList {
             let desc = item
                 .description
                 .as_ref()
-                .map(|d| normalize_to_single_line(d));
+                .map(|d| normalize_to_single_line(d))
+                .filter(|d| d != &item.label);
             lines.push(clamp_line_to_width(
                 &self.render_item(
                     item,
