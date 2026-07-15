@@ -1093,8 +1093,9 @@ impl Editor {
         }
     }
 
-    fn is_showing_autocomplete(&self) -> bool {
-        self.autocomplete_state.is_some()
+    /// Whether the autocomplete popup is currently open (host Enter routing).
+    pub fn is_showing_autocomplete(&self) -> bool {
+        self.autocomplete_state.is_some() && self.autocomplete_list.is_some()
     }
 
     /// After text/cursor edits: dismiss, refresh, or open a matching source.
@@ -1290,6 +1291,63 @@ impl Editor {
         self.clear_autocomplete_ui();
     }
 
+    /// Apply the highlighted autocomplete item into the editor buffer only
+    /// (no submit). Used by product host Idle-Enter before slash parse.
+    pub fn confirm_autocomplete_selection(&mut self) -> bool {
+        self.apply_selected_autocomplete(/* chain_next */ false)
+    }
+
+    /// Apply the highlighted autocomplete item into the editor.
+    ///
+    /// Returns `true` when text was updated. When `chain_next` is true (Tab),
+    /// re-probe sources after apply (e.g. `/model ` → model ids). Enter on
+    /// slash uses `chain_next=false` then submits (pi `tui.select.confirm`).
+    fn apply_selected_autocomplete(&mut self, chain_next: bool) -> bool {
+        let apply_data = if let Some(ref list) = self.autocomplete_list {
+            list.get_selected_item().map(|i| {
+                (
+                    i.value.clone(),
+                    i.label.clone(),
+                    i.description.clone(),
+                    self.autocomplete_prefix.clone(),
+                )
+            })
+        } else {
+            None
+        };
+        let Some((val, lbl, desc, prefix)) = apply_data else {
+            self.cancel_autocomplete();
+            return false;
+        };
+        let ai = AutocompleteItem {
+            value: val,
+            label: lbl,
+            description: desc,
+        };
+        if let Some((new_lines, nl, nc)) = self.completion.apply_active(
+            &self.state.lines,
+            self.state.cursor_line,
+            self.state.cursor_col,
+            &ai,
+            &prefix,
+        ) {
+            self.push_undo();
+            self.last_action = None;
+            self.state.lines = new_lines;
+            self.state.cursor_line = nl;
+            self.set_cursor_col(nc);
+            self.cancel_autocomplete();
+            self.on_changed();
+            if chain_next {
+                self.handle_autocomplete_on_edit();
+            }
+            true
+        } else {
+            self.cancel_autocomplete();
+            false
+        }
+    }
+
     fn handle_key(&mut self, key: &crossterm::event::KeyEvent) {
         if let Some(dir) = self.jump_mode.take() {
             if let Some(s) = printable_from_key_event(key).and_then(|s| s.chars().next()) {
@@ -1310,7 +1368,7 @@ impl Editor {
             return;
         }
 
-        // ── c430: autocomplete active routing ────────────────────────
+        // ── c430: autocomplete active routing (align pi: Tab=apply, Enter on `/`=apply+submit)
         if self.autocomplete_state.is_some() && self.autocomplete_list.is_some() {
             if k!("tui.select.cancel") {
                 self.cancel_autocomplete();
@@ -1322,47 +1380,27 @@ impl Editor {
                 }
                 return;
             }
-            if k!("tui.input.tab") || k!("tui.select.confirm") {
-                // Extract apply data before the mutable self borrow
-                let apply_data = if let Some(ref list) = self.autocomplete_list {
-                    list.get_selected_item().map(|i| {
-                        (
-                            i.value.clone(),
-                            i.label.clone(),
-                            i.description.clone(),
-                            self.autocomplete_prefix.clone(),
-                        )
-                    })
-                } else {
-                    None
-                };
-                if let Some((val, lbl, desc, prefix)) = apply_data {
-                    let ai = AutocompleteItem {
-                        value: val.clone(),
-                        label: lbl.clone(),
-                        description: desc.clone(),
-                    };
-                    if let Some((new_lines, nl, nc)) = self.completion.apply_active(
-                        &self.state.lines,
-                        self.state.cursor_line,
-                        self.state.cursor_col,
-                        &ai,
-                        &prefix,
-                    ) {
-                        self.push_undo();
-                        self.last_action = None;
-                        self.state.lines = new_lines;
-                        self.state.cursor_line = nl;
-                        self.set_cursor_col(nc);
-                        self.cancel_autocomplete();
-                        self.on_changed();
-                        // Chain next source (e.g. slash `model` → `/model ` → model ids).
-                        self.handle_autocomplete_on_edit();
-                    } else {
-                        self.cancel_autocomplete();
+            if k!("tui.input.tab") {
+                self.apply_selected_autocomplete(/* chain_next */ true);
+                return;
+            }
+            if k!("tui.select.confirm") {
+                let prefix = self.autocomplete_prefix.clone();
+                let applied = self.apply_selected_autocomplete(/* chain_next */ false);
+                if applied && prefix.starts_with('/') {
+                    // pi: slash confirm falls through to submit (no Tab required).
+                    if !self.disable_submit {
+                        let now = self.clock.now();
+                        if self
+                            .paste_burst
+                            .should_insert_newline_instead_of_submit(now)
+                        {
+                            self.paste_burst.extend_window(now);
+                            self.newline();
+                        } else {
+                            self.submit();
+                        }
                     }
-                } else {
-                    self.cancel_autocomplete();
                 }
                 return;
             }

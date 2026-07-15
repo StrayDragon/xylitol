@@ -1,0 +1,10 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,atm11,"slash-session-lifecycle","产品 TUI idle 时 MUST 解析 /session-new、/session-clone 与 /session-name：/session-new 无参 MUST 经 Driver::new_session（或等价）创建空会话并切换、清空 transcript，带参 MUST usage 错误；/session-clone 无参 MUST 对当前 leaf 以 ForkPosition::At 执行 fork_session 并 switch（对齐 pi /clone；MUST NOT 套用 /session-fork 的 Before/At 规则），无 leaf MUST 提示且 MUST NOT fork，带参 MUST usage 错误；/session-name 无参 MUST 显示当前会话名或 usage，有参 MUST 经 Driver::set_session_name（换行→空格 trim）写入并回报最终名，规范化与输入不同时 MUST 提示；三者 busy 时 MUST 拒绝；SlashCommandSource MUST 列出三者；旧名 /new /clone /name MUST NOT 被识别；MUST NOT 发明平行词表或 pi 式 user 选择器。",null,null,null
+op_scenarios[6]{req_id,id,given,when,then}:
+  atm11,"session-new-bare",产品 idle,提交 /session-new,Driver new_session 被调用且 transcript 清空或系统行提示新会话
+  atm11,"session-new-rejects-args",产品 idle,提交 /session-new x,出现 usage 类错误且未 new_session
+  atm11,"session-clone-at-leaf",产品 idle 且有 leaf,提交 /session-clone,"fork_session 以 At 调用并 switch"
+  atm11,"session-clone-no-leaf",产品 idle 且无 leaf,提交 /session-clone,提示无 leaf 且未 fork
+  atm11,"session-name-set",产品 idle,提交 /session-name hello,set_session_name 被调用或系统行含最终名
+  atm11,"old-lifecycle-unknown",产品 idle,"提交 /new 或 /clone 或 /name","显示 unknown command 类错误"
