@@ -73,6 +73,12 @@ protocol ───────────────────────�
 
 业务 / agent 只认 `XyModel`。infra 内用适配器族收束 OpenAI 兼容、Anthropic 及未来端点。禁止双路径包装。Pre-1.0 **交付**范围见根 `AGENTS.md`。
 
+**HTTP 传输 vs hook 缝（隔离）**：
+- 脚本 hook 三缝（`before_provider_headers` / `before_provider_request` / `after_provider_response`）只认**可移植**载荷：`infra::hooks::http::HeaderBag`（JSON map）与 `serde_json::Value` body —— **不**依赖 reqwest / 某一 vendor SDK。
+- 当前传输实现（reqwest）经 `infra::provider::reqwest_bridge` 在适配器边缘转换；换 SDK = 加/换 bridge，不改 hook 合约。
+- 禁止为包而包：不另造全局 `XyHttpClient`，除非出现跨方言共享且要进库入口的传输端口。
+- 原始 SSE 抓包 / 流量查看走外挂（见 draft `c999`），**不**把成功 SSE body 默认塞进 hook。
+
 ## 跨层测试与守卫
 
 - `arch_guard`；BDD（`tests/features` + `tests/bdd.rs`）；回归（`tests/regression/`）。
