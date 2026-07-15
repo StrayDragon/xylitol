@@ -15,6 +15,32 @@ use super::commands::{PendingBash, PendingSlash};
 use super::host::{HostEvent, HostSession};
 use super::layout::ImportConfirmDecision;
 use super::layout::map_session_tree_nodes;
+use super::widgets::footer_token_label;
+
+/// Refresh footer token usage from [`Driver::estimate_context_tokens`] (c1035).
+///
+/// Empty session → omit field (MUST NOT forge `used 0`). Estimate errors → omit.
+pub async fn refresh_footer_tokens<T: Terminal>(session: &mut HostSession<T>, driver: &dyn Driver) {
+    let _ = session.take_pending_footer_token_refresh();
+    let entries = match driver.get_messages().await {
+        Ok(e) => e,
+        Err(_) => {
+            session.set_footer_token_label(None);
+            return;
+        }
+    };
+    if entries.is_empty() {
+        session.set_footer_token_label(None);
+        return;
+    }
+    match driver.estimate_context_tokens().await {
+        Ok(est) => {
+            let label = footer_token_label(est.provenance, est.tokens);
+            session.set_footer_token_label(Some(label));
+        }
+        Err(_) => session.set_footer_token_label(None),
+    }
+}
 
 /// Consume HostSession pending ops and call Driver / dispatch.
 ///
@@ -31,6 +57,10 @@ pub async fn drain_pending<T: Terminal>(
     driver: &mut dyn Driver,
     agent_stream: &mut Option<EventStream>,
 ) -> Result<(), String> {
+    if session.take_pending_footer_token_refresh() {
+        refresh_footer_tokens(session, driver).await;
+        let _ = session.render_now();
+    }
     if session.take_abort() {
         log::info!(target: "xylitol::tui", "Driver::abort (Esc)");
         driver.abort();
@@ -156,8 +186,12 @@ pub async fn drain_pending<T: Terminal>(
                                 "session unchanged (nothing to compact)"
                             };
                             session.push_system_note(msg);
+                            refresh_footer_tokens(session, driver).await;
                         }
-                        Ok(_) => session.push_system_note("session compact complete"),
+                        Ok(_) => {
+                            session.push_system_note("session compact complete");
+                            refresh_footer_tokens(session, driver).await;
+                        }
                         Err(e) => session.push_system_note(format!("/session-compact failed: {e}")),
                     }
                 }
@@ -355,7 +389,10 @@ pub async fn drain_pending<T: Terminal>(
             .await
         {
             Ok(travel) => match driver.get_messages().await {
-                Ok(entries) => session.apply_session_tree_travel(travel, entries),
+                Ok(entries) => {
+                    session.apply_session_tree_travel(travel, entries);
+                    refresh_footer_tokens(session, driver).await;
+                }
                 Err(e) => session.push_system_note(format!("travel: get_messages failed: {e}")),
             },
             Err(e) => session.push_system_note(format!("travel failed: {e}")),
