@@ -65,6 +65,9 @@ pub struct ScriptedDriver {
     session_list: Vec<SessionListEntry>,
     session_stats: Option<SessionStats>,
     list_sessions_calls: AtomicUsize,
+    new_session_calls: AtomicUsize,
+    session_name: Mutex<Option<String>>,
+    set_session_name_calls: Mutex<Vec<String>>,
 }
 
 impl ScriptedDriver {
@@ -143,7 +146,21 @@ impl ScriptedDriver {
             session_list: Vec::new(),
             session_stats: None,
             list_sessions_calls: AtomicUsize::new(0),
+            new_session_calls: AtomicUsize::new(0),
+            session_name: Mutex::new(None),
+            set_session_name_calls: Mutex::new(Vec::new()),
         }
+    }
+
+    pub fn new_session_calls(&self) -> usize {
+        self.new_session_calls.load(Ordering::SeqCst)
+    }
+
+    pub fn set_session_name_calls(&self) -> Vec<String> {
+        self.set_session_name_calls
+            .lock()
+            .expect("set_session_name_calls")
+            .clone()
     }
 
     pub fn set_message_history_tree(&mut self, tree: Vec<SessionTreeNode>) {
@@ -535,7 +552,33 @@ impl Driver for ScriptedDriver {
 
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String> {
         self.list_sessions_calls.fetch_add(1, Ordering::SeqCst);
-        Ok(self.session_list.clone())
+        Ok(crate::runtime_protocol::flatten_session_forest(
+            self.session_list.clone(),
+        ))
+    }
+
+    async fn new_session(&mut self) -> Result<String, String> {
+        self.new_session_calls.fetch_add(1, Ordering::SeqCst);
+        let sid = format!("new-{}", self.new_session_calls());
+        *self.active_session_id.lock().expect("sid") = sid.clone();
+        self.session_messages.clear();
+        *self.leaf_entry_id.lock().expect("leaf") = None;
+        *self.session_name.lock().expect("session_name") = None;
+        Ok(sid)
+    }
+
+    async fn get_session_name(&self) -> Result<Option<String>, String> {
+        Ok(self.session_name.lock().expect("session_name").clone())
+    }
+
+    async fn set_session_name(&mut self, name: &str) -> Result<String, String> {
+        let stored = crate::runtime_protocol::sanitize_session_display_name(name);
+        self.set_session_name_calls
+            .lock()
+            .expect("set_session_name_calls")
+            .push(name.to_string());
+        *self.session_name.lock().expect("session_name") = Some(stored.clone());
+        Ok(stored)
     }
 }
 
@@ -2573,10 +2616,20 @@ mod slice_tests {
             SessionListEntry {
                 id: "older".into(),
                 name: Some("Old chat".into()),
+                first_message: Some("hello from older".into()),
+                message_count: 4,
+                modified_unix: Some(1_700_000_000),
+                parent_session_id: None,
+                tree_prefix: String::new(),
             },
             SessionListEntry {
                 id: "newer".into(),
                 name: None,
+                first_message: Some("latest dialogue preview".into()),
+                message_count: 2,
+                modified_unix: Some(1_700_000_100),
+                parent_session_id: Some("older".into()),
+                tree_prefix: String::new(),
             },
         ]);
         driver.set_session_messages(harness_sample_session_messages());
@@ -2592,8 +2645,14 @@ mod slice_tests {
         let frame = root.borrow_mut().render(80);
         let joined = frame.join("\n");
         assert!(
-            joined.contains("older") || joined.contains("Old chat"),
-            "expected session list in slot: {joined}"
+            joined.contains("older")
+                || joined.contains("Old chat")
+                || joined.contains("latest dialogue"),
+            "expected session list / preview in slot: {joined}"
+        );
+        assert!(
+            joined.contains("latest dialogue preview") || joined.contains("Old chat"),
+            "expected first-message preview or name: {joined}"
         );
 
         session.step(HostEvent::Input(esc_event())).unwrap();
@@ -2617,6 +2676,203 @@ mod slice_tests {
                 .iter()
                 .any(|t| t.contains("switched") && t.contains("newer")),
             "expected switch note: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
+    async fn h33_slash_session_new() {
+        use crate::app::tui::commands::{PendingSlash, parse_slash_command};
+        assert_eq!(
+            parse_slash_command("/session-new"),
+            Some(PendingSlash::SessionNew)
+        );
+        assert_eq!(
+            parse_slash_command("/session-new x"),
+            Some(PendingSlash::Usage("usage: /session-new (no arguments)"))
+        );
+        assert_eq!(parse_slash_command("/new"), None);
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("/session-new");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.new_session_calls(), 1);
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("new session") && t.contains("new-1")),
+            "expected new session note: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
+    async fn h34_slash_session_clone_at_and_no_leaf() {
+        use crate::app::tui::commands::{PendingSlash, parse_slash_command};
+        use crate::domain::session_types::ForkPosition;
+        assert_eq!(
+            parse_slash_command("/session-clone"),
+            Some(PendingSlash::SessionClone)
+        );
+        assert_eq!(parse_slash_command("/clone"), None);
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("/session-clone");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(driver.fork_calls().is_empty());
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("Nothing to clone")),
+            "expected no-leaf note: {:?}",
+            system_notes(&session)
+        );
+
+        driver.set_leaf_entry_id(Some("leaf-1".into()));
+        driver.set_session_messages(harness_sample_session_messages());
+        root.borrow_mut().set_editor_text("/session-clone");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.fork_calls(),
+            vec![("leaf-1".to_string(), ForkPosition::At)]
+        );
+        assert_eq!(driver.switch_calls(), vec!["forked-child".to_string()]);
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("cloned") && t.contains("forked-child")),
+            "expected clone note: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
+    async fn h35_slash_session_name_show_and_set() {
+        use crate::app::tui::commands::{PendingSlash, parse_slash_command};
+        assert_eq!(
+            parse_slash_command("/session-name"),
+            Some(PendingSlash::SessionName { name: None })
+        );
+        assert_eq!(
+            parse_slash_command("/session-name hello"),
+            Some(PendingSlash::SessionName {
+                name: Some("hello".into())
+            })
+        );
+        assert_eq!(parse_slash_command("/name"), None);
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("/session-name");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("usage: /session-name")),
+            "expected usage when unnamed: {:?}",
+            system_notes(&session)
+        );
+
+        root.borrow_mut()
+            .set_editor_text("/session-name hello\nworld");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.set_session_name_calls(),
+            vec!["hello\nworld".to_string()]
+        );
+        let notes = system_notes(&session);
+        assert!(
+            notes.iter().any(|t| t.contains("normalized")),
+            "expected normalize warning: {notes:?}"
+        );
+        assert!(
+            notes
+                .iter()
+                .any(|t| t.contains("Session name set:") && t.contains("hello world")),
+            "expected set note: {notes:?}"
+        );
+
+        root.borrow_mut().set_editor_text("/session-name");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("Session name: hello world")),
+            "expected show name: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
+    async fn h36_slash_fuzzy_enter_applies_before_host_parse() {
+        // Regression: host stole Enter while popup showed `session-new` for typed `/new`
+        // → unknown command. Must apply selection then parse.
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        for ch in "/new".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        assert!(
+            root.borrow().editor_autocomplete_open(),
+            "expected slash popup while typing /new; editor={:?}",
+            root.borrow().editor_text()
+        );
+        assert_eq!(root.borrow().editor_text(), "/new");
+
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            driver.new_session_calls(),
+            1,
+            "Enter should run /session-new"
+        );
+        assert!(
+            !system_notes(&session)
+                .iter()
+                .any(|t| t.contains("unknown command")),
+            "must not treat /new as unknown when popup selected session-new: {:?}",
+            system_notes(&session)
+        );
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("new session")),
+            "expected new-session note: {:?}",
             system_notes(&session)
         );
     }

@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ath15,"session-lifecycle-seam","产品 TUI 创建空会话与读写会话显示名时 MUST 经 Driver::new_session / get_session_name / set_session_name（或 app::core 公开等价 seam），MUST NOT 从 app/tui 直接 import infra::session 或直接写 sessions 目录；set_session_name MUST 将 CR/LF 规范为空格并 trim；new_session 成功后 MUST 清空与旧 session 绑定的 transcript/树槽；session-clone MUST 仅经既有 fork_session(At)+switch 路径，不得平行 fork 实现。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ath15,"new-via-driver",产品 harness,提交 /session-new,经 Driver new_session 返回新 id 且无 tui→infra::session 依赖
+  ath15,"name-via-driver",产品 harness,提交 /session-name demo,经 Driver set_session_name 且无 tui 直写目录

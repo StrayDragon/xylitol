@@ -14,6 +14,7 @@ pub mod permission;
 pub mod resource;
 pub mod secret;
 pub mod session;
+pub mod session_list;
 pub mod tool;
 pub mod trust;
 
@@ -27,6 +28,7 @@ pub use model::{XyModel, XyModelBuilder, XyStream};
 pub use permission::{XyPermission, XyPermissionVerdict};
 pub use resource::XyResourceLoader;
 pub use secret::XySecretResolver;
-pub use session::{SessionListEntry, XySessionStore};
+pub use session::{SessionListEntry, XySessionStore, sanitize_session_display_name};
+pub use session_list::{flatten_session_forest, format_session_age};
 pub use tool::{XyTool, XyToolCtx, XyToolExecutionMode};
 pub use trust::XyTrustStore;

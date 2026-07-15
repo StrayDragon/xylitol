@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 
 use crate::domain::session_types::{
-    SessionContext, SessionEntry, SessionTreeNode, build_session_tree,
+    EntryBase, SessionContext, SessionEntry, SessionInfoEntry, SessionTreeNode, build_session_tree,
 };
 
 pub use crate::domain::session_types::ForkPosition;
@@ -13,6 +13,15 @@ pub use crate::domain::session_types::ForkPosition;
 pub struct SessionListEntry {
     pub id: String,
     pub name: Option<String>,
+    /// First user-message preview (pi `firstMessage`); unnamed sessions use this as label.
+    pub first_message: Option<String>,
+    pub message_count: usize,
+    /// Last activity / file mtime (unix secs); used for relative age in the picker.
+    pub modified_unix: Option<u64>,
+    /// Parent session id when this session was forked/cloned (`SessionHeader.parent_session`).
+    pub parent_session_id: Option<String>,
+    /// Tree glyph prefix after forest flatten (`└─ ` / `├─ `…); empty for roots.
+    pub tree_prefix: String,
 }
 
 /// Persistence port — abstracts session storage so the agent can be
@@ -74,4 +83,56 @@ pub trait XySessionStore: Send + Sync {
         let _ = self;
         Ok(Vec::new())
     }
+
+    /// Latest display name from `session_info` entries (c1020 `/session-name`).
+    async fn get_session_name(&self, session_id: &str) -> Result<Option<String>, String> {
+        let entries = self.load_entries(session_id).await?;
+        for entry in entries.iter().rev() {
+            if let SessionEntry::SessionInfo(si) = entry {
+                return Ok(si
+                    .name
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Append a sanitized session display name (CR/LF → space, trim; c1020).
+    ///
+    /// Returns the name actually stored.
+    async fn set_session_name(&self, session_id: &str, name: &str) -> Result<String, String> {
+        let sanitized = sanitize_session_display_name(name);
+        let entry = SessionEntry::SessionInfo(SessionInfoEntry {
+            base: EntryBase {
+                entry_type: "session_info".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: String::new(),
+            },
+            name: Some(sanitized.clone()),
+        });
+        self.append_session_entry(session_id, &entry).await?;
+        Ok(sanitized)
+    }
+}
+
+/// pi-aligned session display name sanitize (CR/LF runs → one space, then trim).
+pub fn sanitize_session_display_name(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut saw_nl = false;
+    for c in name.chars() {
+        if c == '\r' || c == '\n' {
+            if !saw_nl {
+                out.push(' ');
+                saw_nl = true;
+            }
+        } else {
+            saw_nl = false;
+            out.push(c);
+        }
+    }
+    out.trim().to_string()
 }

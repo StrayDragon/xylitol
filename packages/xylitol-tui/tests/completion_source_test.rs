@@ -208,6 +208,44 @@ fn dollar_stub_opens_mid_line_without_leading_dollar() {
 }
 
 #[test]
+fn slash_enter_applies_selected_and_submits() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let submitted = Rc::new(RefCell::new(None::<String>));
+    let sink = submitted.clone();
+    let mut editor = editor_with(vec![Box::new(SlashCommandSource::new(vec![
+        SlashCommand {
+            name: "session-new".into(),
+            description: Some("Start a new empty session".into()),
+            argument_hint: None,
+            get_argument_completions: None,
+        },
+        SlashCommand {
+            name: "session-name".into(),
+            description: Some("Set name".into()),
+            argument_hint: None,
+            get_argument_completions: None,
+        },
+    ]))]);
+    editor.on_submit = Some(Box::new(move |v| *sink.borrow_mut() = Some(v)));
+
+    let mut h = TuiTestHarness::new(80, 16);
+    h.mount(Box::new(editor)).focus(Some(0));
+    h.render_result().expect("render");
+    h.keys("/new");
+    h.render_result().expect("slash popup for /new");
+    h.assert_text_contains("session-new");
+    h.keys("\r");
+    h.render_result().expect("Enter on slash selection");
+    assert_eq!(
+        submitted.borrow().as_deref(),
+        Some("/session-new"),
+        "Enter must apply highlighted slash item and submit (pi select.confirm)"
+    );
+}
+
+#[test]
 fn slash_still_works_with_dollar_source_registered() {
     let mut h = TuiTestHarness::new(80, 16);
     h.mount(Box::new(editor_with(vec![
