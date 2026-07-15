@@ -60,9 +60,14 @@ components:
 | 键 | 行为 |
 |---|---|
 | Esc（选择器打开时） | 关闭选择器，还原 editor |
-| `/` 补全 | CompletionSource；产品命令含 `/exit` `/model` `/tree` `/fork`（**c700**）；debug 构建另有 `/debug` |
-| `/tree` | 打开会话树（同双 Esc；**c700**） |
-| `/fork` | 在当前 leaf fork（同 Shift+F 语义；选节点仍用树；**c700**） |
+| `/` 补全 | CompletionSource；产品命令含 `/exit` `/model` `/session` `/session-resume` `/session-tree` `/session-fork` `/session-compact` `/session-export` `/session-import`（**c1005–c1015**）；debug 构建另有 `/debug` |
+| `/session-tree` | 打开会话树（同双 Esc；**c700/c1005**；旧名 `/tree` 无效） |
+| `/session-fork` | 在当前 leaf fork（同 Shift+F 语义；选节点仍用树；**c700/c1005**；旧名 `/fork` 无效） |
+| `/session` | 转储会话 info/stats（**c1015**；非操作菜单） |
+| `/session-resume` | 会话列表槽 → switch（**c1015**；旧名 `/resume` 无效） |
+| `/session-compact` | 手动 Compact（**c1010**；仅无参） |
+| `/session-export` [path] | 默认 HTML；`.jsonl` → JSONL（**c1010**） |
+| `/session-import` \<path\> | Yes/No 确认后 ImportJsonl（**c1010**） |
 | `!` / `!!` 前缀 | bash 边框 + idle Enter → `execute_bash`（**c492**） |
 | Ctrl+G | 外部编辑器（**c650**）：TTY + 已配置 `$VISUAL`/`$EDITOR` → 真编辑器；harness / 非 TTY → stub；未配置/失败 → `UiEntry::Error`（无静默默认编辑器） |
 

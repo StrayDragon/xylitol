@@ -10,7 +10,7 @@
 //! - [`FakeProvider`] (dev-only): scenario-based mock for offline testing
 //! - `MockXyModel` (test-only): returns a fixed text response
 //!
-//! HTTP client types stay inside adapters / [`reqwest_bridge`]; script hooks see
+//! HTTP client types stay inside adapters / `reqwest_bridge`; script hooks see
 //! only portable header bags (`infra::hooks::http`).
 
 pub mod adapter;

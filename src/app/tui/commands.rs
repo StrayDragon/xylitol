@@ -13,10 +13,26 @@ pub enum PendingSlash {
     SetModel(String),
     /// `/debug` / `/debug <scene>` hand-test fixtures (c710; debug builds).
     DebugScene(String),
-    /// `/tree` — open MessageHistory tree (c700).
+    /// `/session-tree` — open MessageHistory tree (c700 / c1005).
     OpenTree,
-    /// `/fork` — fork at current leaf (c700).
+    /// `/session-fork` — fork at current leaf (c700 / c1005).
     ForkAtLeaf,
+    /// Bare `/session-compact` (c1010).
+    Compact,
+    /// `/session-export` with optional path (c1010).
+    Export {
+        path: Option<String>,
+    },
+    /// `/session-import` with required path — confirm before dispatch (c1010).
+    Import {
+        path: String,
+    },
+    /// Bare `/session` — info/stats dump (c1015).
+    SessionDump,
+    /// Bare `/session-resume` — open session SelectList (c1015).
+    OpenSessionResume,
+    /// Slash usage / arity error (no dispatch).
+    Usage(&'static str),
 }
 
 /// Idle `!` / `!!` bash request for the async host loop (c492).
@@ -90,8 +106,21 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         ("exit" | "quit", _) => Some(PendingSlash::Exit),
         ("model", None) => Some(PendingSlash::OpenModels),
         ("model", Some(id)) => Some(PendingSlash::SetModel(id)),
-        ("tree", None) => Some(PendingSlash::OpenTree),
-        ("fork", None) => Some(PendingSlash::ForkAtLeaf),
+        ("session-tree", None) => Some(PendingSlash::OpenTree),
+        ("session-fork", None) => Some(PendingSlash::ForkAtLeaf),
+        ("session-compact", None) => Some(PendingSlash::Compact),
+        ("session-compact", Some(_)) => Some(PendingSlash::Usage(
+            "usage: /session-compact (no arguments; custom instructions not supported)",
+        )),
+        ("session-export", path) => Some(PendingSlash::Export { path }),
+        ("session-import", None) => Some(PendingSlash::Usage("usage: /session-import <path>")),
+        ("session-import", Some(path)) => Some(PendingSlash::Import { path }),
+        ("session", None) => Some(PendingSlash::SessionDump),
+        ("session", Some(_)) => Some(PendingSlash::Usage("usage: /session (no arguments)")),
+        ("session-resume", None) => Some(PendingSlash::OpenSessionResume),
+        ("session-resume", Some(_)) => {
+            Some(PendingSlash::Usage("usage: /session-resume (no arguments)"))
+        }
         // Space form only (`/debug scene`). Colon form intentionally unsupported.
         #[cfg(debug_assertions)]
         ("debug", None) => Some(PendingSlash::DebugScene("list".into())),

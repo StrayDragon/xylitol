@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,atm9,"slash-session-info","产品 TUI idle 提交无参 /session 时 MUST 经 dispatch 调用 GetSessionStats（及必要 GetState）并将会话信息与统计以 scrollback/系统文本块展示（对齐 pi：信息转储而非操作菜单）；带参数 MUST 短错误或不识别为本命令；busy 时 MUST 拒绝；SlashCommandSource MUST 列出 session；MUST NOT 实现 /session 子命令操作板。",null,null,null
+  add_requirement,atm10,"slash-session-resume","产品 TUI idle 提交无参 /session-resume 时 MUST 打开替换 editor 槽的会话 SelectList（数据经 Driver list_sessions 或等价 seam，mtime 降序，行含 name（若有）与 id）；Enter 选定 MUST SwitchSession 并重建 transcript、关闭其它槽；Esc 取消 MUST NOT 切换；busy 时 MUST 拒绝；旧名 /resume MUST NOT 被识别；MVP MUST NOT 要求 /session-resume 路径直参；TUI MUST NOT reach infra::session。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  atm9,"session-dumps-stats",产品 idle,提交 /session,scrollback 或系统行含 session id 或消息统计字段
+  atm9,"session-rejects-args",产品 idle,提交 /session info,出现错误或不识别为 dump 成功路径
+  atm10,"resume-opens-list",产品 idle,提交 /session-resume,editor 槽出现会话 SelectList
+  atm10,"resume-switch",产品 idle 且列表有项,在 resume 槽 Enter 选定,SwitchSession 发生且 transcript 刷新
