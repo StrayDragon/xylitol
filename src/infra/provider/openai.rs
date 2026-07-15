@@ -1,44 +1,110 @@
 //! OpenAI Completions HTTP client — private detail for Chat Completions adapter.
 //!
-//! Wraps [`async_openai`] for chat completions + streaming. Converts between
-//! xylitol's internal types (`AgentMessage` / `XyChunk`) and async-openai's chat
-//! types. Does **not** implement [`XyModel`](crate::runtime_protocol::XyModel);
+//! Builds chat-completions JSON (via async-openai request types for shape parity),
+//! sends with **reqwest** so provider script hooks can see headers/body/status
+//! (c998). Converts between xylitol's internal types and OpenAI chat shapes.
+//! Does **not** implement [`XyModel`](crate::runtime_protocol::XyModel);
 //! the public path is `OpenAiCompletionsAdapter` → `AdapterXyModel` (c505).
 
-use async_openai::{
-    Client,
-    config::OpenAIConfig,
-    types::chat::{
-        ChatCompletionMessageToolCalls, ChatCompletionRequestAssistantMessage,
-        ChatCompletionRequestAssistantMessageContent, ChatCompletionRequestMessage,
-        ChatCompletionRequestSystemMessage, ChatCompletionRequestToolMessage,
-        ChatCompletionRequestToolMessageContent, ChatCompletionRequestUserMessage,
-        ChatCompletionRequestUserMessageContent, ChatCompletionTool, ChatCompletionTools,
-        CreateChatCompletionRequestArgs, FunctionCall, FunctionObject,
-    },
+use std::pin::Pin;
+use std::sync::Arc;
+
+use async_openai::types::chat::{
+    ChatCompletionMessageToolCalls, ChatCompletionRequestAssistantMessage,
+    ChatCompletionRequestAssistantMessageContent, ChatCompletionRequestMessage,
+    ChatCompletionRequestSystemMessage, ChatCompletionRequestToolMessage,
+    ChatCompletionRequestToolMessageContent, ChatCompletionRequestUserMessage,
+    ChatCompletionRequestUserMessageContent, ChatCompletionTool, ChatCompletionTools,
+    CreateChatCompletionRequestArgs, FunctionCall, FunctionObject,
 };
 use futures::Stream;
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::Value;
 
 use crate::domain::error::XyError;
 use crate::domain::message::{AgentMessage, AgentPart, XyStopReason, collect_text_parts};
 use crate::domain::types::{XyChunk, XyToolSchema};
+use crate::infra::hooks::HookDispatcher;
+use crate::infra::hooks::http::{run_after_response, run_before_headers, run_before_request};
 use crate::runtime_protocol::XyStream;
 
 pub(crate) struct OpenAIProvider {
-    client: Client<OpenAIConfig>,
+    client: reqwest::Client,
+    api_key: String,
     model: String,
+    base_url: String,
+    hooks: Option<Arc<HookDispatcher>>,
 }
 
 impl OpenAIProvider {
-    pub(crate) fn new(api_key: String, model: String, base_url: Option<String>) -> Self {
-        let config = OpenAIConfig::new()
-            .with_api_key(api_key)
-            .with_api_base(base_url.unwrap_or_else(|| "https://api.openai.com/v1".into()));
+    pub(crate) fn new(
+        api_key: String,
+        model: String,
+        base_url: Option<String>,
+        hooks: Option<Arc<HookDispatcher>>,
+    ) -> Self {
         Self {
-            client: Client::with_config(config),
+            client: reqwest::Client::new(),
+            api_key,
             model,
+            base_url: base_url.unwrap_or_else(|| "https://api.openai.com/v1".into()),
+            hooks,
         }
+    }
+
+    fn headers(&self) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        if let Ok(val) = HeaderValue::from_str(&format!("Bearer {}", self.api_key)) {
+            headers.insert("authorization", val);
+        }
+        headers
+    }
+
+    async fn send_request(
+        &self,
+        messages: Vec<AgentMessage>,
+        tools: &[XyToolSchema],
+        stream: bool,
+    ) -> Result<reqwest::Response, XyError> {
+        let msgs = convert_agent_messages(&messages, None);
+        let tool_defs = convert_tools(tools);
+        let request = CreateChatCompletionRequestArgs::default()
+            .model(self.model.clone())
+            .messages(msgs)
+            .tools(tool_defs)
+            .stream(stream)
+            .build()
+            .map_err(|e| XyError::Provider(anyhow::anyhow!("build request: {e}")))?;
+
+        let mut body = serde_json::to_value(&request)
+            .map_err(|e| XyError::Provider(anyhow::anyhow!("serialize request: {e}")))?;
+        let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
+
+        let mut headers = self.headers();
+        run_before_headers(&self.hooks, &mut headers).await?;
+        run_before_request(&self.hooks, &self.model, &mut body).await?;
+
+        let response = self
+            .client
+            .post(&url)
+            .headers(headers)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| XyError::Provider(anyhow::anyhow!("OpenAI Completions request: {e}")))?;
+
+        let status = response.status().as_u16();
+        run_after_response(&self.hooks, status, response.headers()).await;
+
+        if !response.status().is_success() {
+            let body_text = response.text().await.unwrap_or_default();
+            return Err(XyError::Provider(anyhow::anyhow!(
+                "HTTP {status}: {body_text}"
+            )));
+        }
+
+        Ok(response)
     }
 
     /// Run a chat completion, returning a stream of [`XyChunk`]s.
@@ -48,38 +114,15 @@ impl OpenAIProvider {
         tools: &[XyToolSchema],
         stream: bool,
     ) -> Result<XyStream, XyError> {
-        let msgs = convert_agent_messages(&messages, None);
-        let tool_defs = convert_tools(tools);
-
+        let response = self.send_request(messages, tools, stream).await?;
         if stream {
-            let request = CreateChatCompletionRequestArgs::default()
-                .model(self.model.clone())
-                .messages(msgs)
-                .tools(tool_defs)
-                .stream(true)
-                .build()
-                .map_err(|e| XyError::Provider(anyhow::anyhow!("build request: {e}")))?;
-
-            match self.client.chat().create_stream(request).await {
-                Ok(s) => Ok(Box::pin(map_stream(s))),
-                Err(e) => Err(XyError::Provider(anyhow::anyhow!("OpenAI stream: {e}"))),
-            }
+            Ok(completions_sse_stream(response))
         } else {
-            let request = CreateChatCompletionRequestArgs::default()
-                .model(self.model.clone())
-                .messages(msgs)
-                .tools(tool_defs)
-                .stream(false)
-                .build()
-                .map_err(|e| XyError::Provider(anyhow::anyhow!("build request: {e}")))?;
-
-            match self.client.chat().create(request).await {
-                Ok(response) => {
-                    let chunks = parse_nonstream_response(&response);
-                    Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
-                }
-                Err(e) => Err(XyError::Provider(anyhow::anyhow!("OpenAI: {e}"))),
-            }
+            let json: Value = response.json().await.map_err(|e| {
+                XyError::Provider(anyhow::anyhow!("parse Completions response: {e}"))
+            })?;
+            let chunks = parse_nonstream_json(&json);
+            Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
         }
     }
 }
@@ -104,50 +147,66 @@ fn convert_tools(tools: &[XyToolSchema]) -> Vec<ChatCompletionTools> {
 
 // ── Stream mapping ─────────────────────────────────────────────────
 
-fn map_stream(
-    s: async_openai::types::chat::ChatCompletionResponseStream,
-) -> impl Stream<Item = Result<XyChunk, XyError>> + Send {
-    use async_openai::types::chat::FinishReason;
-
-    async_stream::try_stream! {
-        use futures::StreamExt;
+fn completions_sse_stream(
+    response: reqwest::Response,
+) -> Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>> {
+    Box::pin(async_stream::try_stream! {
         use std::collections::HashMap;
 
-        let mut stream = s;
+        use eventsource_stream::Eventsource;
+        use futures::StreamExt;
+
+        let byte_stream = response.bytes_stream();
+        let mut event_stream = byte_stream.eventsource();
         let mut tool_accumulators: HashMap<u32, (String, String, String)> = HashMap::new();
 
-        while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result
-                .map_err(|e| XyError::Provider(anyhow::anyhow!("stream chunk: {e}")))?;
-
-            for choice in &chunk.choices {
-                if let Some(ref text) = choice.delta.content
-                    && !text.is_empty()
+        while let Some(event_result) = event_stream.next().await {
+            let event = match event_result {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            if event.data.trim() == "[DONE]" {
+                break;
+            }
+            let data: Value = match serde_json::from_str(&event.data) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let Some(choices) = data.get("choices").and_then(|c| c.as_array()) else {
+                continue;
+            };
+            for choice in choices {
+                if let Some(text) = choice
+                    .pointer("/delta/content")
+                    .and_then(|v| v.as_str())
+                    .filter(|t| !t.is_empty())
                 {
-                    yield XyChunk::TextDelta(text.clone());
+                    yield XyChunk::TextDelta(text.to_string());
                 }
 
-                if let Some(ref tool_calls) = choice.delta.tool_calls {
+                if let Some(tool_calls) = choice
+                    .pointer("/delta/tool_calls")
+                    .and_then(|v| v.as_array())
+                {
                     for tc in tool_calls {
+                        let index = tc.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
                         let entry = tool_accumulators
-                            .entry(tc.index)
+                            .entry(index)
                             .or_insert_with(|| (String::new(), String::new(), String::new()));
-
-                        if let Some(ref id) = tc.id {
-                            entry.0 = id.clone();
+                        if let Some(id) = tc.get("id").and_then(|v| v.as_str()) {
+                            entry.0 = id.to_string();
                         }
-                        if let Some(ref func) = tc.function {
-                            if let Some(ref name) = func.name {
-                                entry.1 = name.clone();
-                            }
-                            if let Some(ref args) = func.arguments {
-                                entry.2.push_str(args);
-                            }
+                        if let Some(name) = tc.pointer("/function/name").and_then(|v| v.as_str()) {
+                            entry.1 = name.to_string();
+                        }
+                        if let Some(args) = tc.pointer("/function/arguments").and_then(|v| v.as_str())
+                        {
+                            entry.2.push_str(args);
                         }
                     }
                 }
 
-                if let Some(ref finish_reason) = choice.finish_reason {
+                if let Some(finish_reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
                     if !tool_accumulators.is_empty() {
                         let mut sorted: Vec<_> = tool_accumulators.drain().collect();
                         sorted.sort_by_key(|(idx, _)| *idx);
@@ -157,10 +216,8 @@ fn map_stream(
                             yield XyChunk::FunctionCall { name, args, id };
                         }
                     }
-
                     let reason = match finish_reason {
-                        FinishReason::Stop => XyStopReason::Stop,
-                        FinishReason::Length => XyStopReason::MaxTokens,
+                        "length" => XyStopReason::MaxTokens,
                         _ => XyStopReason::Stop,
                     };
                     yield XyChunk::Done {
@@ -170,62 +227,67 @@ fn map_stream(
                 }
             }
         }
-    }
+    })
 }
 
 // ── Non-streaming response ─────────────────────────────────────────
 
-/// Extract XyUsage from OpenAI response.
-fn openai_usage(
-    usage: &Option<async_openai::types::chat::CompletionUsage>,
-) -> Option<crate::domain::message::XyUsage> {
-    usage.as_ref().map(|u| crate::domain::message::XyUsage {
-        input: u.prompt_tokens as u64,
-        output: u.completion_tokens as u64,
-        cache_read: 0,
-        cache_write: 0,
-        total_tokens: u.total_tokens as u64,
-        cache_write_1h: 0,
-        cost: None,
-    })
-}
-
-fn parse_nonstream_response(
-    response: &async_openai::types::chat::CreateChatCompletionResponse,
-) -> Vec<XyChunk> {
+fn parse_nonstream_json(response: &Value) -> Vec<XyChunk> {
     let mut chunks = Vec::new();
-    let usage = openai_usage(&response.usage);
+    let usage = response
+        .get("usage")
+        .map(|u| crate::domain::message::XyUsage {
+            input: u.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+            output: u
+                .get("completion_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0),
+            cache_read: 0,
+            cache_write: 0,
+            total_tokens: u.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+            cache_write_1h: 0,
+            cost: None,
+        });
 
-    for choice in &response.choices {
-        let msg = &choice.message;
+    let Some(choices) = response.get("choices").and_then(|c| c.as_array()) else {
+        return chunks;
+    };
 
-        if let Some(ref text) = msg.content
-            && !text.is_empty()
+    for choice in choices {
+        if let Some(text) = choice
+            .pointer("/message/content")
+            .and_then(|v| v.as_str())
+            .filter(|t| !t.is_empty())
         {
-            chunks.push(XyChunk::TextDelta(text.clone()));
+            chunks.push(XyChunk::TextDelta(text.to_string()));
         }
 
-        if let Some(ref tool_calls) = msg.tool_calls {
+        if let Some(tool_calls) = choice
+            .pointer("/message/tool_calls")
+            .and_then(|v| v.as_array())
+        {
             for tc in tool_calls {
-                match tc {
-                    ChatCompletionMessageToolCalls::Function(f) => {
-                        let args: Value = serde_json::from_str(&f.function.arguments)
-                            .unwrap_or(serde_json::json!({}));
-                        let name = f.function.name.clone();
-                        chunks.push(XyChunk::FunctionCall {
-                            name,
-                            args,
-                            id: f.id.clone(),
-                        });
-                    }
-                    ChatCompletionMessageToolCalls::Custom(_) => {}
-                }
+                let id = tc
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let name = tc
+                    .pointer("/function/name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let args_str = tc
+                    .pointer("/function/arguments")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("{}");
+                let args: Value = serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
+                chunks.push(XyChunk::FunctionCall { name, args, id });
             }
         }
 
-        let reason = match choice.finish_reason {
-            Some(async_openai::types::chat::FinishReason::Stop) => XyStopReason::Stop,
-            Some(async_openai::types::chat::FinishReason::Length) => XyStopReason::MaxTokens,
+        let reason = match choice.get("finish_reason").and_then(|v| v.as_str()) {
+            Some("length") => XyStopReason::MaxTokens,
             _ => XyStopReason::Stop,
         };
         chunks.push(XyChunk::Done {
