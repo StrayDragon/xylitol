@@ -559,6 +559,19 @@ impl AgentCapabilities {
         exclude_from_context: bool,
         chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
     ) -> Result<crate::runtime_protocol::XyBashResult, String> {
+        if let Some(bus) = &self.hook_bus {
+            cancel_hook(
+                bus,
+                "user_bash",
+                "pre",
+                serde_json::json!({
+                    "command": command,
+                    "exclude_from_context": exclude_from_context,
+                    "cwd": self.cwd,
+                }),
+            )
+            .await?;
+        }
         let store: &dyn XySessionStore = self.store.as_ref();
         let sid = self.session_id().map(str::to_string);
         self.bash
@@ -683,7 +696,20 @@ impl AgentCapabilities {
     }
 }
 
-async fn observe_hook(
+/// Cancel-capable hook: `Blocked` aborts the library operation (c995/c997).
+pub(crate) async fn cancel_hook(
+    bus: &Arc<dyn XyHookBus>,
+    event_type: &str,
+    phase: &str,
+    context: serde_json::Value,
+) -> Result<(), String> {
+    match bus.dispatch(event_type, phase, context).await {
+        crate::runtime_protocol::XyHookOutcome::Blocked { reason } => Err(reason),
+        _ => Ok(()),
+    }
+}
+
+pub(crate) async fn observe_hook(
     bus: &Arc<dyn XyHookBus>,
     event_type: &str,
     phase: &str,
@@ -702,10 +728,6 @@ async fn observe_hook(
 }
 
 /// Sync observe for Driver/agent APIs that are not async (c996).
-///
-/// Runs on a dedicated thread + current-thread runtime so it works when the
-/// caller is already inside a `current_thread` tokio runtime (BDD / tests),
-/// where `block_in_place` is unavailable.
 fn observe_hook_sync(
     bus: &Arc<dyn XyHookBus>,
     event_type: &str,
