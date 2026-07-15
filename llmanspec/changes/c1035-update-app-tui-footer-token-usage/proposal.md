@@ -12,11 +12,11 @@ track: A
 # c1035-update-app-tui-footer-token-usage
 
 > **status: purpose-draft** — 待 c1030 归档后 promote 为 full（specs+tasks）再 apply。
-> 吸收并取代暂停调研：`llmanspec/do-not-read-me/c655-update-app-tui-footer-context/`。
+> 吸收并取代原 c655 调研成果。
 
 ## Why
 
-c655 因无可信 token 数据源暂停。c1030 落地 `ContextTokenEstimate` + `TokenProvenance` 与 Driver 预留 seam 后，footer 可以诚实展示 `used N` / `~N` / `?`，并随 session tree travel 换叶更新。
+原 c655 因无可信 token 数据源暂停。c1030 落地 `ContextTokenEstimate` + `TokenProvenance` 与 Driver 预留 seam 后，footer 可以诚实展示 `used N` / `~N` / `?`，并随 session tree travel 换叶更新。
 
 ## Purpose
 
