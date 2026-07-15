@@ -79,7 +79,7 @@ protocol ───────────────────────�
 - 禁止为包而包：不另造全局 `XyHttpClient`，除非出现跨方言共享且要进库入口的传输端口。
 - 原始 SSE / 通道错分诊断：**优先进程内 raw provider trace**（fastrace Event + `provider-trace.jsonl`；与映射后 `XyChunk` 对照；debug 默认、release 经 `XYLITOL_PROVIDER_TRACE` —— **不**塞进 hook）。
 - 观测栈：**仅 fastrace**（时间线）+ **`log`**（级别日志）；禁止 `tracing` / 双栈。外挂 MITM 提案已暂停：`llmanspec/do-not-read-me/c999-add-infra-provider-traffic-capture/`。
-- **读 trace 要省 token**：禁止整文件 `Read` JSONL/log；用 `tail`/`rg`/短 `python -c`（见 `.cursor/rules/provider-trace-efficiency.mdc`）。
+- **读 trace 要省 token**：禁止整文件 `Read` JSONL/log；用 skill **`xylitol-inspect-runtime-logs`**（`tail`/`rg`/短脚本）。
 
 ## 跨层测试与守卫
 

@@ -92,7 +92,7 @@
 
 ## Skills
 
-SDD：`.agents/skills/llman-sdd-*`。应用面：`write-surface`、`audit-dead-code`、`write-tui`。TUI 五层自动验证：`test-tui-harness`。
+SDD：`.agents/skills/llman-sdd-*`。应用面：`write-surface`、`audit-dead-code`、`write-tui`。TUI 五层自动验证：`test-tui-harness`。运行时 log/trace 窄读：`xylitol-inspect-runtime-logs`。
 
 ## 编写与维护 AGENTS.md（规范）
 
