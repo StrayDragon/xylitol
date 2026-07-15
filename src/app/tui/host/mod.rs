@@ -432,6 +432,14 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
+    pub fn mount_session_resume_loading(&mut self, loaded: usize, total: usize) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut()
+                .mount_session_resume_loading(loaded, total);
+            self.sync_ui_root_from_model();
+        }
+    }
+
     pub fn take_pending_session_resume_select(&mut self) -> Option<String> {
         let root = self.ui_root.as_ref()?;
         root.borrow_mut().take_pending_session_resume_select()
@@ -566,6 +574,31 @@ impl<T: Terminal> HostSession<T> {
             |root| {
                 root.close_session_tree();
                 root.close_session_resume();
+            },
+        );
+    }
+
+    /// After `/session-new`: empty (or near-empty) transcript (c1020).
+    pub fn apply_new_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
+        self.apply_switched_session(
+            session_id,
+            entries,
+            format!("new session → {session_id}"),
+            |root| {
+                root.close_session_tree();
+                root.close_session_resume();
+            },
+        );
+    }
+
+    /// After `/session-clone` (fork At + switch) (c1020).
+    pub fn apply_clone_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
+        self.apply_switched_session(
+            session_id,
+            entries,
+            format!("cloned → session {session_id}"),
+            |root| {
+                root.close_session_tree();
             },
         );
     }
@@ -862,6 +895,12 @@ impl<T: Terminal> HostSession<T> {
         if root.slot().is_overlay() {
             return false;
         }
+        // Product steals Enter before Editor; when the slash/fuzzy popup is open,
+        // apply the highlighted item first (pi select.confirm), then parse.
+        // Otherwise `/new` stays literal → unknown while `session-new` is selected.
+        if root.editor_autocomplete_open() {
+            let _ = root.confirm_editor_autocomplete();
+        }
         let text = root.editor_text();
         if text.trim().is_empty() {
             return false;
@@ -884,6 +923,9 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::Import { .. }
                 | PendingSlash::SessionDump
                 | PendingSlash::OpenSessionResume
+                | PendingSlash::SessionNew
+                | PendingSlash::SessionClone
+                | PendingSlash::SessionName { .. }
                 | PendingSlash::Usage(_) => {
                     self.pending.slash = Some(slash);
                 }
@@ -895,7 +937,7 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(String::new());
             drop(root);
             self.push_system_note(format!(
-                "unknown command: {} (try /exit, /model, /session, /session-resume, /session-tree, /session-fork, /session-compact, /session-export, /session-import)",
+                "unknown command: {} (try /exit, /model, /session, /session-resume, /session-new, /session-clone, /session-name, /session-tree, /session-fork, /session-compact, /session-export, /session-import)",
                 text.split_whitespace().next().unwrap_or("/")
             ));
             return true;
@@ -1029,6 +1071,11 @@ impl<T: Terminal> HostSession<T> {
     }
 
     /// Force an immediate frame (bypasses throttle) — useful after mount.
+    /// Toggle terminal task progress (OSC 9;4) — used while loading session list.
+    pub fn set_task_progress(&mut self, active: bool) {
+        self.tui.terminal.set_progress(active);
+    }
+
     pub fn render_now(&mut self) -> Result<(), String> {
         self.tui.render_now().map(|_| ()).map_err(|e| e.to_string())
     }
@@ -1072,14 +1119,25 @@ fn session_list_entry_to_select_item(
     entry: &crate::app::core::driver::SessionListEntry,
     current_id: &Option<String>,
 ) -> SelectItem {
-    let label = match entry.name.as_deref() {
-        Some(name) if !name.is_empty() => format!("{name} ({})", entry.id),
-        _ => entry.id.clone(),
-    };
-    let marked = if current_id.as_deref() == Some(entry.id.as_str()) {
-        format!("{label} *")
-    } else {
-        label
-    };
-    SelectItem::new(entry.id.clone(), marked)
+    use crate::runtime_protocol::format_session_age;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    // pi resume row: tree_prefix + (name ?? firstMessage); right: count · age.
+    let primary = entry
+        .name
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .or(entry.first_message.as_deref().filter(|s| !s.is_empty()))
+        .unwrap_or(entry.id.as_str());
+    let mut label = format!("{}{primary}", entry.tree_prefix);
+    if current_id.as_deref() == Some(entry.id.as_str()) {
+        label.push_str(" *");
+    }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let age = format_session_age(entry.modified_unix, now);
+    let desc = format!("{} · {age}", entry.message_count);
+    SelectItem::new(entry.id.clone(), label).with_description(desc)
 }

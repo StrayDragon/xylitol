@@ -237,6 +237,17 @@ pub trait Driver: Send {
     /// Driver-only seam (not `protocol::Command`); sorted mtime desc by store.
     /// TUI MUST NOT read the sessions directory directly.
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String>;
+
+    /// Create an empty session and make it current (`/session-new`, c1020).
+    ///
+    /// Driver-only seam (not `protocol::Command`).
+    async fn new_session(&mut self) -> Result<String, String>;
+
+    /// Current session display name (`/session-name`, c1020).
+    async fn get_session_name(&self) -> Result<Option<String>, String>;
+
+    /// Set current session display name; returns sanitized stored name (c1020).
+    async fn set_session_name(&mut self, name: &str) -> Result<String, String>;
 }
 
 /// Outcome of [`Driver::load_debug_scene`] (c710).
@@ -642,6 +653,26 @@ impl Driver for InProcessDriver {
 
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String> {
         self.store.list_sessions().await
+    }
+
+    async fn new_session(&mut self) -> Result<String, String> {
+        let session_id = uuid::Uuid::new_v4().to_string();
+        let cwd = std::env::current_dir()
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned());
+        self.store.create(&session_id, cwd.as_deref(), None).await?;
+        self.agent.inner_mut().set_session(session_id.clone());
+        Ok(session_id)
+    }
+
+    async fn get_session_name(&self) -> Result<Option<String>, String> {
+        let sid = self.agent.inner().session_id().ok_or("no active session")?;
+        self.store.get_session_name(sid).await
+    }
+
+    async fn set_session_name(&mut self, name: &str) -> Result<String, String> {
+        let sid = self.agent.inner().session_id().ok_or("no active session")?;
+        self.store.set_session_name(sid, name).await
     }
 }
 
@@ -1263,10 +1294,44 @@ impl Driver for RemoteDriver {
                             .and_then(|n| n.as_str())
                             .filter(|s| !s.is_empty())
                             .map(str::to_string),
+                        first_message: row
+                            .get("first_message")
+                            .or_else(|| row.get("firstMessage"))
+                            .and_then(|n| n.as_str())
+                            .filter(|s| !s.is_empty())
+                            .map(str::to_string),
+                        message_count: row
+                            .get("message_count")
+                            .or_else(|| row.get("messageCount"))
+                            .and_then(|n| n.as_u64())
+                            .unwrap_or(0) as usize,
+                        modified_unix: row
+                            .get("modified_unix")
+                            .or_else(|| row.get("modified"))
+                            .and_then(|n| n.as_u64()),
+                        parent_session_id: row
+                            .get("parent_session_id")
+                            .or_else(|| row.get("parentSession"))
+                            .and_then(|n| n.as_str())
+                            .filter(|s| !s.is_empty())
+                            .map(str::to_string),
+                        tree_prefix: String::new(),
                     })
                 })
                 .collect())
         })
+    }
+
+    async fn new_session(&mut self) -> Result<String, String> {
+        Err("remote: new_session not implemented".into())
+    }
+
+    async fn get_session_name(&self) -> Result<Option<String>, String> {
+        Err("remote: get_session_name not implemented".into())
+    }
+
+    async fn set_session_name(&mut self, _name: &str) -> Result<String, String> {
+        Err("remote: set_session_name not implemented".into())
     }
 }
 

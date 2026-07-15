@@ -31,6 +31,14 @@ pub enum PendingSlash {
     SessionDump,
     /// Bare `/session-resume` — open session SelectList (c1015).
     OpenSessionResume,
+    /// Bare `/session-new` — empty session (c1020).
+    SessionNew,
+    /// Bare `/session-clone` — fork leaf at At (c1020).
+    SessionClone,
+    /// `/session-name` with optional display name (c1020).
+    SessionName {
+        name: Option<String>,
+    },
     /// Slash usage / arity error (no dispatch).
     Usage(&'static str),
 }
@@ -121,6 +129,13 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         ("session-resume", Some(_)) => {
             Some(PendingSlash::Usage("usage: /session-resume (no arguments)"))
         }
+        ("session-new", None) => Some(PendingSlash::SessionNew),
+        ("session-new", Some(_)) => Some(PendingSlash::Usage("usage: /session-new (no arguments)")),
+        ("session-clone", None) => Some(PendingSlash::SessionClone),
+        ("session-clone", Some(_)) => {
+            Some(PendingSlash::Usage("usage: /session-clone (no arguments)"))
+        }
+        ("session-name", name) => Some(PendingSlash::SessionName { name }),
         // Space form only (`/debug scene`). Colon form intentionally unsupported.
         #[cfg(debug_assertions)]
         ("debug", None) => Some(PendingSlash::DebugScene("list".into())),

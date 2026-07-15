@@ -218,15 +218,109 @@ pub async fn drain_pending<T: Terminal>(
                 if session.is_busy() {
                     session.push_system_note("session resume unavailable while busy");
                 } else {
-                    match driver.list_sessions().await {
+                    // pi-style load UX: slot shows loaded/total; OSC 9;4 while scanning.
+                    session.mount_session_resume_loading(0, 0);
+                    session.set_task_progress(true);
+                    let _ = session.render_now();
+                    let listed = driver.list_sessions().await;
+                    session.set_task_progress(false);
+                    match listed {
                         Ok(entries) if entries.is_empty() => {
+                            session.close_session_resume_slot();
                             session.push_system_note("no sessions to resume");
                         }
                         Ok(entries) => {
+                            let n = entries.len();
+                            session.mount_session_resume_loading(n, n);
+                            let _ = session.render_now();
                             let current = driver.session_id();
                             session.mount_session_resume_picker(entries, current);
                         }
-                        Err(e) => session.push_system_note(format!("/session-resume failed: {e}")),
+                        Err(e) => {
+                            session.close_session_resume_slot();
+                            session.push_system_note(format!("/session-resume failed: {e}"));
+                        }
+                    }
+                }
+                let _ = session.render_now();
+            }
+            PendingSlash::SessionNew => {
+                if session.is_busy() {
+                    session.push_system_note("session new unavailable while busy");
+                } else {
+                    log::info!(target: "xylitol::tui", "Driver::new_session");
+                    match driver.new_session().await {
+                        Ok(sid) => match driver.get_messages().await {
+                            Ok(entries) => session.apply_new_session(&sid, entries),
+                            Err(e) => session
+                                .push_system_note(format!("new session: get_messages failed: {e}")),
+                        },
+                        Err(e) => session.push_system_note(format!("/session-new failed: {e}")),
+                    }
+                }
+                let _ = session.render_now();
+            }
+            PendingSlash::SessionClone => {
+                if session.is_busy() {
+                    session.push_system_note("session clone unavailable while busy");
+                } else {
+                    use crate::domain::session_types::ForkPosition;
+                    match driver.leaf_entry_id() {
+                        None => session.push_system_note("Nothing to clone yet"),
+                        Some(entry_id) => {
+                            log::info!(
+                                target: "xylitol::tui",
+                                "Driver::fork_session(At) + switch for /session-clone entry_id={}",
+                                entry_id
+                            );
+                            match driver.fork_session(&entry_id, ForkPosition::At).await {
+                                Ok(child_id) => match driver.switch_session(&child_id).await {
+                                    Ok(_) => match driver.get_messages().await {
+                                        Ok(entries) => {
+                                            session.apply_clone_session(&child_id, entries)
+                                        }
+                                        Err(e) => session.push_system_note(format!(
+                                            "clone: get_messages failed: {e}"
+                                        )),
+                                    },
+                                    Err(e) => session.push_system_note(format!(
+                                        "switch after clone failed: {e}"
+                                    )),
+                                },
+                                Err(e) => {
+                                    session.push_system_note(format!("/session-clone failed: {e}"))
+                                }
+                            }
+                        }
+                    }
+                }
+                let _ = session.render_now();
+            }
+            PendingSlash::SessionName { name } => {
+                if session.is_busy() {
+                    session.push_system_note("session name unavailable while busy");
+                } else {
+                    match name {
+                        None => match driver.get_session_name().await {
+                            Ok(Some(n)) => session.push_system_note(format!("Session name: {n}")),
+                            Ok(None) => session.push_system_note("usage: /session-name <name>"),
+                            Err(e) => {
+                                session.push_system_note(format!("/session-name failed: {e}"))
+                            }
+                        },
+                        Some(raw) => match driver.set_session_name(&raw).await {
+                            Ok(stored) => {
+                                if stored != raw {
+                                    session.push_system_note(format!(
+                                        "Session name was normalized from {raw:?} to {stored:?}"
+                                    ));
+                                }
+                                session.push_system_note(format!("Session name set: {stored}"));
+                            }
+                            Err(e) => {
+                                session.push_system_note(format!("/session-name failed: {e}"))
+                            }
+                        },
                     }
                 }
                 let _ = session.render_now();

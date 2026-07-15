@@ -1392,13 +1392,72 @@ impl XySessionStore for SessionManager {
     async fn list_sessions(
         &self,
     ) -> Result<Vec<crate::runtime_protocol::SessionListEntry>, String> {
+        use crate::domain::session_types::{SessionEntry, is_user_message, message_text};
+        use crate::runtime_protocol::flatten_session_forest;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
         let ids = SessionManager::list(self).await?;
         let mut out = Vec::with_capacity(ids.len());
         for id in ids {
             let name = SessionManager::get_session_name(self, &id).await?;
-            out.push(crate::runtime_protocol::SessionListEntry { id, name });
+            let entries = SessionManager::load(self, &id).await.unwrap_or_default();
+            let mut message_count = 0usize;
+            let mut first_message = None;
+            let mut parent_session_id = None;
+            let mut modified_unix = None;
+            for entry in &entries {
+                if let SessionEntry::Header(h) = entry {
+                    parent_session_id = h.parent_session.clone();
+                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&h.timestamp) {
+                        modified_unix = Some(dt.timestamp().max(0) as u64);
+                    }
+                    continue;
+                }
+                if matches!(entry, SessionEntry::Message(_)) {
+                    message_count += 1;
+                }
+                if first_message.is_none()
+                    && is_user_message(entry)
+                    && let SessionEntry::Message(m) = entry
+                {
+                    let text = message_text(&m.message);
+                    let cleaned = text
+                        .chars()
+                        .map(|c| if c.is_control() { ' ' } else { c })
+                        .collect::<String>()
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    if !cleaned.is_empty() {
+                        first_message = Some(cleaned);
+                    }
+                }
+            }
+            if modified_unix.is_none() {
+                let path = self.sessions_dir.join(format!("{id}.jsonl"));
+                if let Ok(meta) = tokio::fs::metadata(&path).await
+                    && let Ok(modified) = meta.modified()
+                    && let Ok(dur) = modified.duration_since(UNIX_EPOCH)
+                {
+                    modified_unix = Some(dur.as_secs());
+                } else {
+                    modified_unix = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .ok()
+                        .map(|d| d.as_secs());
+                }
+            }
+            out.push(crate::runtime_protocol::SessionListEntry {
+                id,
+                name,
+                first_message,
+                message_count,
+                modified_unix,
+                parent_session_id,
+                tree_prefix: String::new(),
+            });
         }
-        Ok(out)
+        Ok(flatten_session_forest(out))
     }
 }
 

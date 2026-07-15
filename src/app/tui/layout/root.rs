@@ -99,6 +99,24 @@ fn product_slash_commands() -> Vec<SlashCommand> {
             argument_hint: None,
             get_argument_completions: None,
         },
+        SlashCommand {
+            name: "session-new".into(),
+            description: Some("Start a new empty session".into()),
+            argument_hint: None,
+            get_argument_completions: None,
+        },
+        SlashCommand {
+            name: "session-clone".into(),
+            description: Some("Clone session at current leaf (fork at)".into()),
+            argument_hint: None,
+            get_argument_completions: None,
+        },
+        SlashCommand {
+            name: "session-name".into(),
+            description: Some("Show or set session display name".into()),
+            argument_hint: Some("[name]".into()),
+            get_argument_completions: None,
+        },
     ];
     // Hand-test only — see `app::debug_fixtures` (delete that module to remove).
     #[cfg(debug_assertions)]
@@ -323,6 +341,20 @@ impl UiRoot {
         self.sync_editor_border();
     }
 
+    /// Autocomplete popup open (host must not steal Enter before confirm).
+    pub fn editor_autocomplete_open(&self) -> bool {
+        self.editor.is_showing_autocomplete()
+    }
+
+    /// Apply highlighted completion into the editor buffer (no submit).
+    pub fn confirm_editor_autocomplete(&mut self) -> bool {
+        let ok = self.editor.confirm_autocomplete_selection();
+        if ok {
+            self.sync_editor_border();
+        }
+        ok
+    }
+
     /// Whether the editor is in bash accent mode (`!` / `!!` prefix).
     pub fn bash_mode(&self) -> bool {
         self.bash_mode
@@ -444,6 +476,20 @@ impl UiRoot {
         {
             list.selected_index = idx;
         }
+        self.session_resume_list = list;
+        self.slot = EditorSlot::SessionResume;
+    }
+
+    /// Placeholder while scanning session jsonl (pi loaded/total).
+    pub fn mount_session_resume_loading(&mut self, loaded: usize, total: usize) {
+        let label = if total == 0 {
+            "Loading sessions…".to_string()
+        } else {
+            format!("Loading sessions… {loaded}/{total}")
+        };
+        let mut list = empty_session_resume_list(self.theme);
+        list.filtered_items = vec![SelectItem::new("__loading__", label)];
+        list.selected_index = 0;
         self.session_resume_list = list;
         self.slot = EditorSlot::SessionResume;
     }
@@ -935,7 +981,9 @@ impl Component for UiRoot {
                     return;
                 };
                 if matches_key_event(key, "enter") {
-                    if let Some(item) = self.session_resume_list.get_selected_item() {
+                    if let Some(item) = self.session_resume_list.get_selected_item()
+                        && item.value != "__loading__"
+                    {
                         self.pending_session_resume_select = Some(item.value.clone());
                     }
                     return;

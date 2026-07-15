@@ -452,6 +452,18 @@ mod tests {
         ) -> Result<Vec<crate::app::core::driver::SessionListEntry>, String> {
             Ok(Vec::new())
         }
+
+        async fn new_session(&mut self) -> Result<String, String> {
+            Ok("new-session".into())
+        }
+
+        async fn get_session_name(&self) -> Result<Option<String>, String> {
+            Ok(None)
+        }
+
+        async fn set_session_name(&mut self, name: &str) -> Result<String, String> {
+            Ok(name.trim().to_string())
+        }
     }
 
     fn stub() -> StubDriver {
