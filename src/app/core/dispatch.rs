@@ -464,6 +464,18 @@ mod tests {
         async fn set_session_name(&mut self, name: &str) -> Result<String, String> {
             Ok(name.trim().to_string())
         }
+
+        async fn set_session_name_for(
+            &mut self,
+            _session_id: &str,
+            name: &str,
+        ) -> Result<String, String> {
+            Ok(name.trim().to_string())
+        }
+
+        async fn delete_session(&mut self, _session_id: &str) -> Result<(), String> {
+            Err("stub: delete_session not implemented".into())
+        }
     }
 
     fn stub() -> StubDriver {

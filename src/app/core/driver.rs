@@ -248,6 +248,16 @@ pub trait Driver: Send {
 
     /// Set current session display name; returns sanitized stored name (c1020).
     async fn set_session_name(&mut self, name: &str) -> Result<String, String>;
+
+    /// Set display name for any session (resume panel rename; c1065).
+    async fn set_session_name_for(
+        &mut self,
+        session_id: &str,
+        name: &str,
+    ) -> Result<String, String>;
+
+    /// Delete a persisted session (resume panel; c1065). MUST NOT delete active session.
+    async fn delete_session(&mut self, session_id: &str) -> Result<(), String>;
 }
 
 /// Outcome of [`Driver::load_debug_scene`] (c710).
@@ -673,6 +683,18 @@ impl Driver for InProcessDriver {
     async fn set_session_name(&mut self, name: &str) -> Result<String, String> {
         let sid = self.agent.inner().session_id().ok_or("no active session")?;
         self.store.set_session_name(sid, name).await
+    }
+
+    async fn set_session_name_for(
+        &mut self,
+        session_id: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        self.store.set_session_name(session_id, name).await
+    }
+
+    async fn delete_session(&mut self, session_id: &str) -> Result<(), String> {
+        self.store.delete_session(session_id).await
     }
 }
 
@@ -1316,6 +1338,16 @@ impl Driver for RemoteDriver {
                             .filter(|s| !s.is_empty())
                             .map(str::to_string),
                         tree_prefix: String::new(),
+                        cwd: row
+                            .get("cwd")
+                            .and_then(|n| n.as_str())
+                            .filter(|s| !s.is_empty())
+                            .map(str::to_string),
+                        path: row
+                            .get("path")
+                            .and_then(|n| n.as_str())
+                            .filter(|s| !s.is_empty())
+                            .map(str::to_string),
                     })
                 })
                 .collect())
@@ -1332,6 +1364,18 @@ impl Driver for RemoteDriver {
 
     async fn set_session_name(&mut self, _name: &str) -> Result<String, String> {
         Err("remote: set_session_name not implemented".into())
+    }
+
+    async fn set_session_name_for(
+        &mut self,
+        _session_id: &str,
+        _name: &str,
+    ) -> Result<String, String> {
+        Err("remote: set_session_name_for not implemented".into())
+    }
+
+    async fn delete_session(&mut self, _session_id: &str) -> Result<(), String> {
+        Err("remote: delete_session not implemented".into())
     }
 }
 

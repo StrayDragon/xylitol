@@ -511,6 +511,34 @@ impl SessionManager {
             .collect()
     }
 
+    /// Delete a session file and in-memory tracking (c1065 resume panel).
+    pub async fn delete_session(&self, session_id: &str) -> Result<(), String> {
+        {
+            let mut pending = self.pending_store.write().expect("RwLock not poisoned");
+            pending.remove(session_id);
+        }
+        {
+            let mut leaf = self.leaf_ids.write().expect("RwLock not poisoned");
+            leaf.remove(session_id);
+        }
+        match &self.backend {
+            SessionBackend::InMemory { .. } => {
+                let mut store = self.in_memory_store.write().expect("RwLock not poisoned");
+                store.remove(session_id);
+                Ok(())
+            }
+            SessionBackend::Persisted { .. } => {
+                let path = self.session_path(session_id);
+                if path.exists() {
+                    tokio::fs::remove_file(&path)
+                        .await
+                        .map_err(|e| format!("delete session file: {e}"))?;
+                }
+                Ok(())
+            }
+        }
+    }
+
     /// List all session IDs with metadata.
     ///
     /// Includes on-disk `.jsonl` sessions and not-yet-flushed pending sessions
@@ -1393,21 +1421,30 @@ impl XySessionStore for SessionManager {
         &self,
     ) -> Result<Vec<crate::runtime_protocol::SessionListEntry>, String> {
         use crate::domain::session_types::{SessionEntry, is_user_message, message_text};
-        use crate::runtime_protocol::flatten_session_forest;
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let ids = SessionManager::list(self).await?;
         let mut out = Vec::with_capacity(ids.len());
         for id in ids {
+            let path = self.session_path(&id);
+            let path_str = if path.exists() {
+                Some(path.to_string_lossy().into_owned())
+            } else {
+                None
+            };
             let name = SessionManager::get_session_name(self, &id).await?;
             let entries = SessionManager::load(self, &id).await.unwrap_or_default();
             let mut message_count = 0usize;
             let mut first_message = None;
             let mut parent_session_id = None;
             let mut modified_unix = None;
+            let mut cwd = None;
             for entry in &entries {
                 if let SessionEntry::Header(h) = entry {
                     parent_session_id = h.parent_session.clone();
+                    if !h.cwd.is_empty() {
+                        cwd = Some(h.cwd.clone());
+                    }
                     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&h.timestamp) {
                         modified_unix = Some(dt.timestamp().max(0) as u64);
                     }
@@ -1455,9 +1492,20 @@ impl XySessionStore for SessionManager {
                 modified_unix,
                 parent_session_id,
                 tree_prefix: String::new(),
+                cwd,
+                path: path_str,
             });
         }
-        Ok(flatten_session_forest(out))
+        out.sort_by(|a, b| {
+            b.modified_unix
+                .unwrap_or(0)
+                .cmp(&a.modified_unix.unwrap_or(0))
+        });
+        Ok(out)
+    }
+
+    async fn delete_session(&self, session_id: &str) -> Result<(), String> {
+        SessionManager::delete_session(self, session_id).await
     }
 }
 
