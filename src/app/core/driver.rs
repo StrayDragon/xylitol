@@ -43,6 +43,9 @@ use crate::runtime_protocol::{XyBashResult, XySessionStore};
 /// `crate::app::core::driver::SessionStats`.
 pub use crate::agent::session::{QueueStats, SessionStats};
 
+/// Session resume list row (from [`XySessionStore::list_sessions`]).
+pub use crate::runtime_protocol::SessionListEntry;
+
 /// Lifecycle events on [`EventStream`] — surfaces import via the Driver seam
 /// (not `crate::agent`), so arch_guard stays green for `app/tui`.
 pub use crate::domain::lifecycle::XyEvent;
@@ -219,7 +222,7 @@ pub trait Driver: Send {
         label: Option<&str>,
     ) -> Result<(), String>;
 
-    /// Active MessageHistory leaf entry id for the current session (c700 `/fork`).
+    /// Active MessageHistory leaf entry id for the current session (c700/c1005 `/session-fork`).
     fn leaf_entry_id(&self) -> Option<String>;
 
     /// Load a named `/debug <scene>` fixture into a fresh `debug-*` session (c710).
@@ -228,6 +231,12 @@ pub trait Driver: Send {
     /// `protocol::Command` — Driver-only like session_tree. Fixtures live in
     /// `app::debug_fixtures` (delete that module to remove).
     async fn load_debug_scene(&mut self, scene: &str) -> Result<DebugSceneLoad, String>;
+
+    /// List resumable sessions for `/session-resume` (c1015).
+    ///
+    /// Driver-only seam (not `protocol::Command`); sorted mtime desc by store.
+    /// TUI MUST NOT read the sessions directory directly.
+    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String>;
 }
 
 /// Outcome of [`Driver::load_debug_scene`] (c710).
@@ -629,6 +638,10 @@ impl Driver for InProcessDriver {
             note,
             model,
         })
+    }
+
+    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String> {
+        self.store.list_sessions().await
     }
 }
 
@@ -1230,6 +1243,30 @@ impl Driver for RemoteDriver {
 
     async fn load_debug_scene(&mut self, _scene: &str) -> Result<DebugSceneLoad, String> {
         Err("remote: load_debug_scene not implemented".into())
+    }
+
+    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String> {
+        self.block_on(async {
+            let data = self.get_data("sessions").await?;
+            let arr = data
+                .get("sessions")
+                .and_then(|s| s.as_array())
+                .cloned()
+                .unwrap_or_default();
+            Ok(arr
+                .iter()
+                .filter_map(|row| {
+                    Some(SessionListEntry {
+                        id: row.get("id")?.as_str()?.to_string(),
+                        name: row
+                            .get("name")
+                            .and_then(|n| n.as_str())
+                            .filter(|s| !s.is_empty())
+                            .map(str::to_string),
+                    })
+                })
+                .collect())
+        })
     }
 }
 

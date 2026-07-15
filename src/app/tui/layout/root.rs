@@ -58,14 +58,44 @@ fn product_slash_commands() -> Vec<SlashCommand> {
             get_argument_completions: None,
         },
         SlashCommand {
-            name: "tree".into(),
+            name: "session-tree".into(),
             description: Some("Open session tree (same as double Esc)".into()),
             argument_hint: None,
             get_argument_completions: None,
         },
         SlashCommand {
-            name: "fork".into(),
+            name: "session-fork".into(),
             description: Some("Fork session at current leaf".into()),
+            argument_hint: None,
+            get_argument_completions: None,
+        },
+        SlashCommand {
+            name: "session-compact".into(),
+            description: Some("Compact session context".into()),
+            argument_hint: None,
+            get_argument_completions: None,
+        },
+        SlashCommand {
+            name: "session-export".into(),
+            description: Some("Export session (default HTML; .jsonl → JSONL)".into()),
+            argument_hint: Some("[path]".into()),
+            get_argument_completions: None,
+        },
+        SlashCommand {
+            name: "session-import".into(),
+            description: Some("Import session from JSONL".into()),
+            argument_hint: Some("<path>".into()),
+            get_argument_completions: None,
+        },
+        SlashCommand {
+            name: "session".into(),
+            description: Some("Show session info and stats".into()),
+            argument_hint: None,
+            get_argument_completions: None,
+        },
+        SlashCommand {
+            name: "session-resume".into(),
+            description: Some("Switch to another session".into()),
             argument_hint: None,
             get_argument_completions: None,
         },
@@ -92,6 +122,39 @@ fn empty_models_list(theme: LayoutTheme) -> SelectList {
             truncate_primary: None,
         },
     )
+}
+
+fn import_confirm_list(theme: LayoutTheme) -> SelectList {
+    SelectList::new(
+        vec![SelectItem::new("yes", "Yes"), SelectItem::new("no", "No")],
+        4,
+        theme.select_list_theme(),
+        SelectListLayoutOptions {
+            min_primary_column_width: Some(8),
+            max_primary_column_width: Some(24),
+            truncate_primary: None,
+        },
+    )
+}
+
+fn empty_session_resume_list(theme: LayoutTheme) -> SelectList {
+    SelectList::new(
+        Vec::new(),
+        10,
+        theme.select_list_theme(),
+        SelectListLayoutOptions {
+            min_primary_column_width: Some(16),
+            max_primary_column_width: Some(48),
+            truncate_primary: None,
+        },
+    )
+}
+
+/// User choice from `/session-import` confirm slot (c1010).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportConfirmDecision {
+    Accepted { path: String },
+    Rejected,
 }
 
 /// Root UI: live scrollback + optional status + bordered editor|tree + footer.
@@ -135,6 +198,13 @@ pub struct UiRoot {
     models_filter: String,
     /// `(model_id, description)` for [`SlashArgCompletionSource`] (c999).
     model_arg_catalog: Vec<(String, String)>,
+    /// `/session-import` confirm (c1010).
+    import_confirm_list: SelectList,
+    import_confirm_path: Option<String>,
+    pending_import_decision: Option<ImportConfirmDecision>,
+    /// `/session-resume` picker (c1015).
+    session_resume_list: SelectList,
+    pending_session_resume_select: Option<String>,
 }
 
 impl UiRoot {
@@ -186,6 +256,11 @@ impl UiRoot {
             models_items: Vec::new(),
             models_filter: String::new(),
             model_arg_catalog: Vec::new(),
+            import_confirm_list: import_confirm_list(theme),
+            import_confirm_path: None,
+            pending_import_decision: None,
+            session_resume_list: empty_session_resume_list(theme),
+            pending_session_resume_select: None,
         };
         root.install_completion_sources();
         root
@@ -302,7 +377,7 @@ impl UiRoot {
         std::mem::take(&mut self.pending_tree_open)
     }
 
-    /// Request MessageHistory tree open (double Esc / `/tree`, c700).
+    /// Request MessageHistory tree open (double Esc / `/session-tree`, c700/c1005).
     pub fn request_tree_open(&mut self) {
         self.pending_tree_open = true;
     }
@@ -315,7 +390,7 @@ impl UiRoot {
         self.pending_tree_fork.take()
     }
 
-    /// Queue fork for `entry_id` (`/fork` at leaf or Shift+F).
+    /// Queue fork for `entry_id` (`/session-fork` at leaf or Shift+F).
     pub fn request_tree_fork(&mut self, entry_id: String) {
         self.pending_tree_fork = Some(entry_id);
     }
@@ -339,6 +414,62 @@ impl UiRoot {
 
     pub fn models_open(&self) -> bool {
         self.slot == EditorSlot::Models
+    }
+
+    pub fn import_confirm_open(&self) -> bool {
+        self.slot == EditorSlot::ImportConfirm
+    }
+
+    pub fn session_resume_open(&self) -> bool {
+        self.slot == EditorSlot::SessionResume
+    }
+
+    pub fn take_pending_session_resume_select(&mut self) -> Option<String> {
+        self.pending_session_resume_select.take()
+    }
+
+    /// Mount session resume SelectList in the editor slot (c1015).
+    pub fn mount_session_resume_picker(
+        &mut self,
+        items: Vec<SelectItem>,
+        current_id: Option<&str>,
+    ) {
+        let mut list = empty_session_resume_list(self.theme);
+        list.filtered_items = items;
+        if let Some(cur) = current_id
+            && let Some(idx) = list
+                .filtered_items
+                .iter()
+                .position(|item| item.value == cur)
+        {
+            list.selected_index = idx;
+        }
+        self.session_resume_list = list;
+        self.slot = EditorSlot::SessionResume;
+    }
+
+    pub fn close_session_resume(&mut self) {
+        if self.slot == EditorSlot::SessionResume {
+            self.close_slot();
+        }
+    }
+
+    pub fn take_pending_import_decision(&mut self) -> Option<ImportConfirmDecision> {
+        self.pending_import_decision.take()
+    }
+
+    /// Mount Yes/No import confirm in the editor slot (c1010).
+    pub fn mount_import_confirm(&mut self, path: &str) {
+        self.import_confirm_path = Some(path.to_string());
+        self.import_confirm_list = import_confirm_list(self.theme);
+        self.import_confirm_list.selected_index = 0;
+        self.slot = EditorSlot::ImportConfirm;
+    }
+
+    pub fn close_import_confirm(&mut self) {
+        if self.slot == EditorSlot::ImportConfirm {
+            self.close_slot();
+        }
     }
 
     /// Mount fuzzy model picker in the editor slot (c630).
@@ -419,6 +550,11 @@ impl UiRoot {
             self.close_slot();
             return true;
         }
+        if self.slot == EditorSlot::ImportConfirm {
+            self.pending_import_decision = Some(ImportConfirmDecision::Rejected);
+            self.close_import_confirm();
+            return true;
+        }
         if self.slot.is_overlay() {
             self.close_slot();
             return true;
@@ -448,6 +584,9 @@ impl UiRoot {
         self.models_filter.clear();
         self.models_items.clear();
         self.models_list = empty_models_list(self.theme);
+        self.import_confirm_path = None;
+        self.import_confirm_list = import_confirm_list(self.theme);
+        self.session_resume_list = empty_session_resume_list(self.theme);
     }
 
     pub fn close_session_tree(&mut self) {
@@ -464,8 +603,8 @@ impl UiRoot {
             EditorSlot::Plate | EditorSlot::Settings | EditorSlot::Choice => {
                 self.slot = slot;
             }
-            EditorSlot::Models => {
-                // Opened via `mount_models_picker` after `GetAvailableModels`.
+            EditorSlot::Models | EditorSlot::ImportConfirm | EditorSlot::SessionResume => {
+                // Opened via mount_* after slash dispatch.
             }
         }
     }
@@ -565,6 +704,22 @@ impl UiRoot {
                 let mut lines = Vec::new();
                 lines.push(self.models_filter_line());
                 lines.extend(self.models_list.render(width.max(1)));
+                lines
+            }
+            EditorSlot::ImportConfirm => {
+                let mut lines = Vec::new();
+                let path = self.import_confirm_path.as_deref().unwrap_or("?");
+                lines.push(
+                    self.theme
+                        .paint_muted(&format!(" Replace current session with {path}?")),
+                );
+                lines.extend(self.import_confirm_list.render(width.max(1)));
+                lines
+            }
+            EditorSlot::SessionResume => {
+                let mut lines = Vec::new();
+                lines.push(self.theme.paint_muted(" sessions"));
+                lines.extend(self.session_resume_list.render(width.max(1)));
                 lines
             }
         }
@@ -747,6 +902,53 @@ impl Component for UiRoot {
                 }
                 return;
             }
+            EditorSlot::ImportConfirm => {
+                let InputEvent::Key(ref key) = event else {
+                    return;
+                };
+                if matches_key_event(key, "enter") {
+                    let Some(path) = self.import_confirm_path.clone() else {
+                        return;
+                    };
+                    let accepted = self
+                        .import_confirm_list
+                        .get_selected_item()
+                        .is_some_and(|item| item.value == "yes");
+                    self.pending_import_decision = Some(if accepted {
+                        ImportConfirmDecision::Accepted { path }
+                    } else {
+                        ImportConfirmDecision::Rejected
+                    });
+                    return;
+                }
+                if matches_key_event(key, "up")
+                    || matches_key_event(key, "down")
+                    || matches_key_event(key, "pageUp")
+                    || matches_key_event(key, "pageDown")
+                {
+                    self.import_confirm_list.handle_input(event);
+                }
+                return;
+            }
+            EditorSlot::SessionResume => {
+                let InputEvent::Key(ref key) = event else {
+                    return;
+                };
+                if matches_key_event(key, "enter") {
+                    if let Some(item) = self.session_resume_list.get_selected_item() {
+                        self.pending_session_resume_select = Some(item.value.clone());
+                    }
+                    return;
+                }
+                if matches_key_event(key, "up")
+                    || matches_key_event(key, "down")
+                    || matches_key_event(key, "pageUp")
+                    || matches_key_event(key, "pageDown")
+                {
+                    self.session_resume_list.handle_input(event);
+                }
+                return;
+            }
             EditorSlot::Editor => {}
         }
 
@@ -780,6 +982,8 @@ impl Component for UiRoot {
         self.footer.invalidate();
         self.tree.invalidate();
         self.models_list.invalidate();
+        self.import_confirm_list.invalidate();
+        self.session_resume_list.invalidate();
     }
 
     fn tick(&mut self) -> bool {

@@ -8,6 +8,13 @@ use crate::domain::session_types::{
 
 pub use crate::domain::session_types::ForkPosition;
 
+/// Row for session resume picker (Driver seam; mtime order is store-defined).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionListEntry {
+    pub id: String,
+    pub name: Option<String>,
+}
+
 /// Persistence port — abstracts session storage so the agent can be
 /// unit-tested without a real filesystem and the server can host
 /// sessions without coupling to the file store.
@@ -57,5 +64,14 @@ pub trait XySessionStore: Send + Sync {
     async fn message_history_tree(&self, session_id: &str) -> Result<Vec<SessionTreeNode>, String> {
         let entries = self.load_entries(session_id).await?;
         Ok(build_session_tree(&entries))
+    }
+
+    /// List resumable sessions (mtime descending when persisted).
+    ///
+    /// Used by the Driver for `/session-resume` (not a `protocol::Command`).
+    /// Default returns an empty list so minimal store stubs stay usable.
+    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String> {
+        let _ = self;
+        Ok(Vec::new())
     }
 }

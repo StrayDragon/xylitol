@@ -344,14 +344,14 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().take_pending_tree_open()
     }
 
-    /// Queue a MessageHistory tree open (c700 `/tree`).
+    /// Queue a MessageHistory tree open (c700/c1005 `/session-tree`).
     pub fn request_session_tree_open(&mut self) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().request_tree_open();
         }
     }
 
-    /// Queue fork at `entry_id` (c700 `/fork` / tree Shift+F).
+    /// Queue fork at `entry_id` (c700/c1005 `/session-fork` / tree Shift+F).
     pub fn request_session_tree_fork(&mut self, entry_id: impl Into<String>) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().request_tree_fork(entry_id.into());
@@ -391,6 +391,57 @@ impl<T: Terminal> HostSession<T> {
     pub fn take_pending_model_select(&mut self) -> Option<String> {
         let root = self.ui_root.as_ref()?;
         root.borrow_mut().take_pending_model_select()
+    }
+
+    pub fn take_pending_import_decision(&mut self) -> Option<super::layout::ImportConfirmDecision> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().take_pending_import_decision()
+    }
+
+    pub fn mount_import_confirm(&mut self, path: &str) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().mount_import_confirm(path);
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn close_import_confirm(&mut self) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().close_import_confirm();
+            self.sync_ui_root_from_model();
+        }
+    }
+
+    pub fn mount_session_resume_picker(
+        &mut self,
+        entries: Vec<crate::app::core::driver::SessionListEntry>,
+        current_id: Option<String>,
+    ) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        let items = entries
+            .into_iter()
+            .map(|e| session_list_entry_to_select_item(&e, &current_id))
+            .collect();
+        {
+            let mut root = root.borrow_mut();
+            root.mount_session_resume_picker(items, current_id.as_deref());
+        }
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn take_pending_session_resume_select(&mut self) -> Option<String> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().take_pending_session_resume_select()
+    }
+
+    pub fn close_session_resume_slot(&mut self) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().close_session_resume();
+            self.sync_ui_root_from_model();
+        }
     }
 
     pub fn mount_models_picker(&mut self, models: Vec<ModelInfo>, current_id: Option<String>) {
@@ -492,6 +543,58 @@ impl<T: Terminal> HostSession<T> {
         }
         self.sync_ui_root_from_model();
         self.push_system_note(format!("Forked to new session {child_id}"));
+    }
+
+    /// After import + switch: rebuild transcript from imported entries (c1010).
+    pub fn apply_import_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
+        self.apply_switched_session(
+            session_id,
+            entries,
+            format!("imported → session {session_id}"),
+            |root| {
+                root.close_import_confirm();
+            },
+        );
+    }
+
+    /// After `/session-resume` switch: rebuild transcript and clear overlays (c1015).
+    pub fn apply_resume_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
+        self.apply_switched_session(
+            session_id,
+            entries,
+            format!("switched → session {session_id}"),
+            |root| {
+                root.close_session_tree();
+                root.close_session_resume();
+            },
+        );
+    }
+
+    fn apply_switched_session(
+        &mut self,
+        session_id: &str,
+        entries: Vec<SessionEntry>,
+        note: String,
+        close_overlays: impl FnOnce(&mut super::layout::UiRoot),
+    ) {
+        let leaf_id = entries
+            .iter()
+            .rev()
+            .find_map(|e| e.entry_id().map(str::to_string));
+        let travel = SessionTreeTravel {
+            kind: crate::domain::session_types::SessionTreeKind::MessageHistory,
+            selected_id: session_id.to_string(),
+            leaf_id,
+            editor_text: None,
+        };
+        rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
+        if let Some(root) = self.ui_root.as_ref() {
+            let mut root = root.borrow_mut();
+            close_overlays(&mut root);
+            root.set_editor_text(String::new());
+        }
+        self.sync_ui_root_from_model();
+        self.push_system_note(note);
     }
 
     /// Apply `/debug <scene>` load: rebuild transcript and optional footer model (c710).
@@ -775,7 +878,13 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::SetModel(_)
                 | PendingSlash::DebugScene(_)
                 | PendingSlash::OpenTree
-                | PendingSlash::ForkAtLeaf => {
+                | PendingSlash::ForkAtLeaf
+                | PendingSlash::Compact
+                | PendingSlash::Export { .. }
+                | PendingSlash::Import { .. }
+                | PendingSlash::SessionDump
+                | PendingSlash::OpenSessionResume
+                | PendingSlash::Usage(_) => {
                     self.pending.slash = Some(slash);
                 }
             }
@@ -786,7 +895,7 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(String::new());
             drop(root);
             self.push_system_note(format!(
-                "unknown command: {} (try /exit, /model, /tree, /fork)",
+                "unknown command: {} (try /exit, /model, /session, /session-resume, /session-tree, /session-fork, /session-compact, /session-export, /session-import)",
                 text.split_whitespace().next().unwrap_or("/")
             ));
             return true;
@@ -957,4 +1066,20 @@ fn model_info_to_select_item(m: &ModelInfo, current_id: &Option<String>) -> Sele
         label
     };
     SelectItem::new(m.id.clone(), marked)
+}
+
+fn session_list_entry_to_select_item(
+    entry: &crate::app::core::driver::SessionListEntry,
+    current_id: &Option<String>,
+) -> SelectItem {
+    let label = match entry.name.as_deref() {
+        Some(name) if !name.is_empty() => format!("{name} ({})", entry.id),
+        _ => entry.id.clone(),
+    };
+    let marked = if current_id.as_deref() == Some(entry.id.as_str()) {
+        format!("{label} *")
+    } else {
+        label
+    };
+    SelectItem::new(entry.id.clone(), marked)
 }

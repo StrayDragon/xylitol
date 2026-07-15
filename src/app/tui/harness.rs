@@ -15,7 +15,8 @@ use futures::StreamExt;
 use xylitol_tui::Terminal;
 
 use crate::app::core::driver::{
-    CommandInfo, DebugSceneLoad, Driver, EventStream, ModelInfo, QueueStats, SessionStats, XyEvent,
+    CommandInfo, DebugSceneLoad, Driver, EventStream, ModelInfo, QueueStats, SessionListEntry,
+    SessionStats, XyEvent,
 };
 use crate::domain::session_types::{
     SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
@@ -55,8 +56,15 @@ pub struct ScriptedDriver {
     label_calls: Mutex<Vec<(String, Option<String>)>>,
     debug_scene_calls: Mutex<Vec<String>>,
     active_session_id: Mutex<String>,
-    /// Scripted leaf for `/fork` (c700).
+    /// Scripted leaf for `/session-fork` (c700/c1005).
     leaf_entry_id: Mutex<Option<String>>,
+    compact_calls: AtomicUsize,
+    export_html_calls: Mutex<Vec<String>>,
+    export_jsonl_calls: Mutex<Vec<String>>,
+    import_jsonl_calls: Mutex<Vec<String>>,
+    session_list: Vec<SessionListEntry>,
+    session_stats: Option<SessionStats>,
+    list_sessions_calls: AtomicUsize,
 }
 
 impl ScriptedDriver {
@@ -128,6 +136,13 @@ impl ScriptedDriver {
             debug_scene_calls: Mutex::new(Vec::new()),
             active_session_id: Mutex::new("scripted".into()),
             leaf_entry_id: Mutex::new(None),
+            compact_calls: AtomicUsize::new(0),
+            export_html_calls: Mutex::new(Vec::new()),
+            export_jsonl_calls: Mutex::new(Vec::new()),
+            import_jsonl_calls: Mutex::new(Vec::new()),
+            session_list: Vec::new(),
+            session_stats: None,
+            list_sessions_calls: AtomicUsize::new(0),
         }
     }
 
@@ -172,6 +187,43 @@ impl ScriptedDriver {
 
     pub fn switch_calls(&self) -> Vec<String> {
         self.switch_calls.lock().expect("switch_calls").clone()
+    }
+
+    pub fn compact_calls(&self) -> usize {
+        self.compact_calls.load(Ordering::SeqCst)
+    }
+
+    pub fn export_html_calls(&self) -> Vec<String> {
+        self.export_html_calls
+            .lock()
+            .expect("export_html_calls")
+            .clone()
+    }
+
+    pub fn export_jsonl_calls(&self) -> Vec<String> {
+        self.export_jsonl_calls
+            .lock()
+            .expect("export_jsonl_calls")
+            .clone()
+    }
+
+    pub fn import_jsonl_calls(&self) -> Vec<String> {
+        self.import_jsonl_calls
+            .lock()
+            .expect("import_jsonl_calls")
+            .clone()
+    }
+
+    pub fn set_session_list(&mut self, entries: Vec<SessionListEntry>) {
+        self.session_list = entries;
+    }
+
+    pub fn set_session_stats(&mut self, stats: SessionStats) {
+        self.session_stats = Some(stats);
+    }
+
+    pub fn list_sessions_calls(&self) -> usize {
+        self.list_sessions_calls.load(Ordering::SeqCst)
     }
 
     #[allow(dead_code)] // harness helper for model-picker scripts
@@ -315,18 +367,33 @@ impl Driver for ScriptedDriver {
     }
 
     async fn compact(&mut self) -> Result<bool, String> {
+        self.compact_calls.fetch_add(1, Ordering::SeqCst);
         Ok(false)
     }
 
     async fn export_html(&mut self, path: &Path) -> Result<String, String> {
-        Ok(path.display().to_string())
+        let s = path.display().to_string();
+        self.export_html_calls
+            .lock()
+            .expect("export_html_calls")
+            .push(s.clone());
+        Ok(s)
     }
 
     async fn export_jsonl(&mut self, path: &Path) -> Result<String, String> {
-        Ok(path.display().to_string())
+        let s = path.display().to_string();
+        self.export_jsonl_calls
+            .lock()
+            .expect("export_jsonl_calls")
+            .push(s.clone());
+        Ok(s)
     }
 
-    async fn import_jsonl(&mut self, _path: &Path) -> Result<String, String> {
+    async fn import_jsonl(&mut self, path: &Path) -> Result<String, String> {
+        self.import_jsonl_calls
+            .lock()
+            .expect("import_jsonl_calls")
+            .push(path.display().to_string());
         Ok("imported".into())
     }
 
@@ -356,7 +423,9 @@ impl Driver for ScriptedDriver {
     }
 
     async fn get_session_stats(&self) -> Result<SessionStats, String> {
-        Err("scripted: no stats".into())
+        self.session_stats
+            .clone()
+            .ok_or_else(|| "scripted: no stats".into())
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {
@@ -462,6 +531,11 @@ impl Driver for ScriptedDriver {
             note: format!("debug scene `{canonical}` (scripted)"),
             model: Some(self.model.clone()),
         })
+    }
+
+    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String> {
+        self.list_sessions_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(self.session_list.clone())
     }
 }
 
@@ -641,6 +715,16 @@ mod slice_tests {
         use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
         InputEvent::Key(KeyEvent {
             code: KeyCode::Esc,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn down_event() -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Down,
             modifiers: KeyModifiers::NONE,
             kind: KeyEventKind::Press,
             state: KeyEventState::NONE,
@@ -2157,16 +2241,20 @@ mod slice_tests {
     }
 
     #[tokio::test]
-    async fn h26_slash_tree_opens_session_tree() {
+    async fn h26_slash_session_tree_opens_session_tree() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
-        assert_eq!(parse_slash_command("/tree"), Some(PendingSlash::OpenTree));
+        assert_eq!(
+            parse_slash_command("/session-tree"),
+            Some(PendingSlash::OpenTree)
+        );
+        assert_eq!(parse_slash_command("/tree"), None);
 
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
         driver.set_message_history_tree(harness_sample_message_history_tree());
         let mut stream = None;
-        root.borrow_mut().set_editor_text("/tree");
+        root.borrow_mut().set_editor_text("/session-tree");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
@@ -2176,15 +2264,19 @@ mod slice_tests {
         let slot = root.borrow_mut().tree_slot_text_for_test(80);
         assert!(
             slot.contains("Type to search") || slot.contains("Search:"),
-            "expected Search row after /tree; got:\n{slot}"
+            "expected Search row after /session-tree; got:\n{slot}"
         );
     }
 
     #[tokio::test]
-    async fn h27_slash_fork_at_leaf() {
+    async fn h27_slash_session_fork_at_leaf() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
         use crate::domain::session_types::ForkPosition;
-        assert_eq!(parse_slash_command("/fork"), Some(PendingSlash::ForkAtLeaf));
+        assert_eq!(
+            parse_slash_command("/session-fork"),
+            Some(PendingSlash::ForkAtLeaf)
+        );
+        assert_eq!(parse_slash_command("/fork"), None);
 
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2192,7 +2284,7 @@ mod slice_tests {
         driver.set_session_messages(harness_sample_session_messages());
         driver.set_leaf_entry_id(Some("a1".into()));
         let mut stream = None;
-        root.borrow_mut().set_editor_text("/fork");
+        root.borrow_mut().set_editor_text("/session-fork");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
@@ -2210,6 +2302,322 @@ mod slice_tests {
                 .any(|e| matches!(e, UiEntry::System { text } if text.contains("Forked"))),
             "expected fork note: {:?}",
             session.ui_model().entries
+        );
+    }
+
+    #[tokio::test]
+    async fn h26b_old_tree_fork_slash_unknown() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        for old in ["/tree", "/fork"] {
+            root.borrow_mut().set_editor_text(old);
+            session.step(HostEvent::Input(enter_event())).unwrap();
+            pump_host_driver(&mut session, &mut driver, &mut stream)
+                .await
+                .unwrap();
+        }
+        assert_eq!(driver.session_tree_calls(), 0);
+        assert_eq!(driver.fork_calls().len(), 0);
+        let notes: Vec<_> = session
+            .ui_model()
+            .entries
+            .iter()
+            .filter_map(|e| match e {
+                UiEntry::System { text } | UiEntry::Error { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            notes
+                .iter()
+                .any(|t| t.contains("unknown command") && t.contains("/tree")),
+            "expected unknown for /tree: {notes:?}"
+        );
+        assert!(
+            notes
+                .iter()
+                .any(|t| t.contains("unknown command") && t.contains("/fork")),
+            "expected unknown for /fork: {notes:?}"
+        );
+    }
+
+    fn system_notes(session: &HostSession<TestTerminal>) -> Vec<String> {
+        session
+            .ui_model()
+            .entries
+            .iter()
+            .filter_map(|e| match e {
+                UiEntry::System { text } | UiEntry::Error { text } => Some(text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn h28_slash_session_compact_and_usage() {
+        use crate::app::tui::commands::{PendingSlash, parse_slash_command};
+        assert_eq!(
+            parse_slash_command("/session-compact"),
+            Some(PendingSlash::Compact)
+        );
+        assert_eq!(
+            parse_slash_command("/session-compact please"),
+            Some(PendingSlash::Usage(
+                "usage: /session-compact (no arguments; custom instructions not supported)",
+            ))
+        );
+        assert_eq!(parse_slash_command("/compact"), None);
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("/session-compact");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.compact_calls(), 1);
+
+        root.borrow_mut().set_editor_text("/session-compact extra");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.compact_calls(), 1, "args must not compact");
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("usage") && t.contains("/session-compact")),
+            "expected usage error: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
+    async fn h29_slash_session_export_html_and_jsonl() {
+        use crate::app::tui::commands::{PendingSlash, parse_slash_command};
+        assert_eq!(
+            parse_slash_command("/session-export"),
+            Some(PendingSlash::Export { path: None })
+        );
+        assert_eq!(
+            parse_slash_command("/session-export /tmp/out.jsonl"),
+            Some(PendingSlash::Export {
+                path: Some("/tmp/out.jsonl".into())
+            })
+        );
+        assert_eq!(parse_slash_command("/export"), None);
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("/session-export");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.export_html_calls(), vec!["export.html".to_string()]);
+        assert!(driver.export_jsonl_calls().is_empty());
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("exported") && t.contains("export.html")),
+            "expected export note: {:?}",
+            system_notes(&session)
+        );
+
+        root.borrow_mut()
+            .set_editor_text("/session-export /tmp/out.jsonl");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.export_jsonl_calls(),
+            vec!["/tmp/out.jsonl".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn h30_slash_session_import_confirm_cancel_and_accept() {
+        use crate::app::tui::commands::{PendingSlash, parse_slash_command};
+        assert_eq!(
+            parse_slash_command("/session-import"),
+            Some(PendingSlash::Usage("usage: /session-import <path>"))
+        );
+        assert_eq!(
+            parse_slash_command("/session-import /tmp/a.jsonl"),
+            Some(PendingSlash::Import {
+                path: "/tmp/a.jsonl".into()
+            })
+        );
+        assert_eq!(parse_slash_command("/import"), None);
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        let mut stream = None;
+
+        root.borrow_mut()
+            .set_editor_text("/session-import /tmp/a.jsonl");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            root.borrow().import_confirm_open(),
+            "import must open confirm slot"
+        );
+        assert!(driver.import_jsonl_calls().is_empty());
+
+        session.step(HostEvent::Input(down_event())).unwrap();
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(driver.import_jsonl_calls().is_empty());
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("Import cancelled")),
+            "expected cancel note: {:?}",
+            system_notes(&session)
+        );
+        assert!(!root.borrow().import_confirm_open());
+
+        root.borrow_mut()
+            .set_editor_text("/session-import /tmp/a.jsonl");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().import_confirm_open());
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.import_jsonl_calls(),
+            vec!["/tmp/a.jsonl".to_string()]
+        );
+        assert_eq!(driver.switch_calls(), vec!["imported".to_string()]);
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("imported") && t.contains("imported")),
+            "expected import note: {:?}",
+            system_notes(&session)
+        );
+    }
+
+    #[tokio::test]
+    async fn h31_slash_session_dumps_stats() {
+        use crate::app::tui::commands::{PendingSlash, parse_slash_command};
+        assert_eq!(
+            parse_slash_command("/session"),
+            Some(PendingSlash::SessionDump)
+        );
+        assert_eq!(
+            parse_slash_command("/session info"),
+            Some(PendingSlash::Usage("usage: /session (no arguments)"))
+        );
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_stats(SessionStats {
+            session_id: "sess-abc".into(),
+            user_messages: 2,
+            assistant_messages: 3,
+            total_messages: 5,
+            thinking_level: "medium".into(),
+            model: Some(("openai".into(), "gpt-4".into())),
+        });
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("/session");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        let notes = system_notes(&session);
+        let dump = notes
+            .iter()
+            .find(|t| t.contains("Session Info"))
+            .expect("expected stats dump");
+        assert!(dump.contains("sess-abc"));
+        assert!(dump.contains("User: 2") || dump.contains("User: 2\n"));
+        assert!(dump.contains("Assistant: 3"));
+        assert!(dump.contains("Total: 5"));
+    }
+
+    #[tokio::test]
+    async fn h32_slash_session_resume_list_switch_and_esc() {
+        use crate::app::tui::commands::{PendingSlash, parse_slash_command};
+        assert_eq!(
+            parse_slash_command("/session-resume"),
+            Some(PendingSlash::OpenSessionResume)
+        );
+        assert_eq!(parse_slash_command("/resume"), None);
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_list(vec![
+            SessionListEntry {
+                id: "older".into(),
+                name: Some("Old chat".into()),
+            },
+            SessionListEntry {
+                id: "newer".into(),
+                name: None,
+            },
+        ]);
+        driver.set_session_messages(harness_sample_session_messages());
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("/session-resume");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.list_sessions_calls(), 1);
+        assert!(root.borrow().session_resume_open());
+        let frame = root.borrow_mut().render(80);
+        let joined = frame.join("\n");
+        assert!(
+            joined.contains("older") || joined.contains("Old chat"),
+            "expected session list in slot: {joined}"
+        );
+
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        assert!(!root.borrow().session_resume_open());
+        assert!(driver.switch_calls().is_empty());
+
+        root.borrow_mut().set_editor_text("/session-resume");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        session.step(HostEvent::Input(down_event())).unwrap();
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.switch_calls(), vec!["newer".to_string()]);
+        assert!(!root.borrow().session_resume_open());
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("switched") && t.contains("newer")),
+            "expected switch note: {:?}",
+            system_notes(&session)
         );
     }
 

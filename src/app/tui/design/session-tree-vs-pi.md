@@ -25,7 +25,7 @@ pi / xylitol：树 **替换 editor 槽**（`showSelector`），非居中 overlay
 | Kind / role 前缀 | ✓ 产品树按 entry.role 着色 | ✓ **c595**：`TreeNode.kind` + `kind_prefix` 主题；label 纯正文 |
 | Enter travel → user 预填 editor | ✓ `editorText`；leaf=父 | ✓ **c615** 产品 `travel_session_tree` |
 | Enter travel → 非 user | ✓ leaf=target | ✓ **c615** 产品 |
-| 树内 / 会话 fork | ✓ `/fork`（新会话文件） | ✓ 产品 Shift+F **c645**（Driver 新 session）；demo 同会话保留 |
+| 树内 / 会话 fork | ✓ `/fork`（新会话文件；user 选择器） | ✓ 产品 Shift+F / `/session-fork` **c645/c1005**（Driver 新 session；非 user 选择器）；demo 同会话保留 |
 | TreeHelp + Search 行 | ✓ 动态键位 | ✓ 产品 **c685**（树槽头行 / layout） |
 | 流中 Enter steer / Alt+Enter follow-up | ✓ | ✓ demo 队列（不打断当前轮） |
 | 提交/工具写入活树 | ✓ | ✓ `session_tree` 增长 |

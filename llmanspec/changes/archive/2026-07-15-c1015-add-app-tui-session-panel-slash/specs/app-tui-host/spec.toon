@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ath14,"session-list-seam","产品 TUI 获取可 resume 会话列表时 MUST 经 Driver（或 app::core 公开 seam）list_sessions 或等价 API，MUST NOT 从 app/tui 直接 import infra::session / 直接读 sessions 目录；switch 成功后 MUST 重建 transcript 并清除与旧 session 绑定的树槽/pending UI 态。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  ath14,"list-via-driver",产品 harness 或单元,调用 list 路径,经 Driver/seam 返回且无 tui→infra::session 依赖

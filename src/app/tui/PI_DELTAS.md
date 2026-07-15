@@ -7,6 +7,8 @@
 
 对齐源路径（历史参考）：`../pi/packages/coding-agent`（interactive / tree / travel）。
 
+会话 slash 迁移调研工件：`llmanspec/changes/c1005-*/design.md`、`c1010-*/design.md`、`c1015-*/design.md`；计划报告修正见 `../pi/_PLAN_REPORT.md`「调研修正」节。
+
 ---
 
 ## 如何使用
@@ -24,7 +26,19 @@
 | ID | 主题 | pi coding-agent | xylitol `src/app/tui` | 不得回退 |
 |---|---|---|---|---|
 | A01 | Travel 时分支摘要 | travel / 切分支时可走 LLM（或同类）生成 branch summary 写回树 | **不做** travel 时自动摘要；树节点文案来自 entry / label / 既有 summary 字段。若以后要策略，经 **hook / 扩展点** 注入，不内置默认 LLM 路径 | 是 |
-| A02 | 同会话 fork 形态 | 树内 `/fork` 等可在同会话 MessageHistory 上开兄弟枝（再配合新会话文件语义） | 产品 **Shift+F / `/fork`** = `Driver::fork_session`（**新 child session** + switch）；同会话兄弟枝靠 **travel 改 leaf 后再发消息**（`parent_id`←当前 leaf）长出来。demo `agent_demo` 的同会话 Shift+F 是原型，**不是**产品默认语义 | 是 |
+| A02 | 同会话 fork 形态 | 树内 `/fork` 等可在同会话 MessageHistory 上开兄弟枝（再配合新会话文件语义）；slash `/fork` 开 **user 消息选择器** | 产品 **Shift+F / `/session-fork`** = `Driver::fork_session`（**新 child session** + switch）；同会话兄弟枝靠 **travel 改 leaf 后再发消息**（`parent_id`←当前 leaf）长出来。demo `agent_demo` 的同会话 Shift+F 是原型，**不是**产品默认语义。**不开** pi 式 user 选择器 | 是 |
+| A03 | Slash 命名 | 短名：`/tree` `/fork` `/export` `/import` `/compact` `/resume` `/quit` … | 选中迁移命令用 **`session-*` 前缀**（如 `/session-tree`）；**旧名无效**（unknown）。`/model` `/exit` 仍短名；`/exit` 仍认 `quit` | 是 |
+| A04 | `/session` 形态 | 无参 → scrollback **info/stats 转储**（非操作菜单） | 对齐 dump（c1015）；**不做**「SessionOperations 覆盖层 / 子命令板」 | 是 |
+| A05 | Compact 自定义指令 | `/compact <instructions>` 可传自定义压缩提示 | `Command::Compact` 无 instructions 字段 → **仅无参** `/session-compact`；带参 usage 错误 | 是 |
+| A06 | Import 确认 UI | extension confirm 对话框 | editor 槽 **Yes/No SelectList**（不解冻 Trust Choice stub） | 是 |
+
+### 对齐（非差异，备忘）
+
+| 主题 | 双方行为 |
+|---|---|
+| Export 默认格式 | **默认 HTML**；路径以 `.jsonl` 结尾才 JSONL |
+| Resume 入口 | 无参开会话列表（mtime 降序）；选中 switch |
+| Tree 入口 | slash / 快捷键开 MessageHistory 树（xylitol 另保留双 Esc） |
 
 ---
 
@@ -34,17 +48,17 @@
 |---|---|---|
 | `/debug session-tree-multiturn` / `labeled` 打开是一条脊 | 线性夹具 | 用 **`/debug session-tree-branched`**，或见下「同会话兄弟枝」手测 |
 | 一直 Fake 聊天、从不 travel | 每条消息挂在 tip leaf → 永远一条链 | 先 travel，再发 |
-| Shift+F / `/fork` 后树仍像一条链 | 你已切到 **新 session**；父会话树不会自动出现「旁路子会话」节点 | 在父会话里 travel+续聊看兄弟；或分别打开父子 session 对比 |
+| Shift+F / `/session-fork` 后树仍像一条链 | 你已切到 **新 session**；父会话树不会自动出现「旁路子会话」节点 | 在父会话里 travel+续聊看兄弟；或分别打开父子 session 对比 |
 
 **同会话兄弟枝（产品已有机制）**
 
 1. 有多轮历史（手聊或 `/debug session-tree-multiturn`），**或** 直接 `/debug session-tree-branched`。
-2. 若未用 branched：双 Esc / `/tree` → 选中**中部**节点 → Enter travel → 再发一条用户消息。
+2. 若未用 branched：双 Esc / `/session-tree` → 选中**中部**节点 → Enter travel → 再发一条用户消息。
 3. 开树：应能看到同一父节点下 **≥2 个孩子**（原枝 + 新枝）。fold / ←→ 分支跳转即可验。
 
 **跨会话 fork（产品已有机制）**
 
-- 树内 Shift+F，或叶上 `/fork` → `fork_session` + `switch_session`（user→`Before` / 非 user→`At`）。
+- 树内 Shift+F，或叶上 `/session-fork` → `fork_session` + `switch_session`（user→`Before` / 非 user→`At`）。
 
 `session-tree-branched` 预置兄弟枝；PTY：`pty_product_fake_session_tree_branched`。线性夹具测不出分叉 UI，不等于没有机制。
 
@@ -56,3 +70,4 @@
 |---|---|
 | 2026-07-14 | 建表；A01 明确不做 travel 分支摘要（撤 c695）；A02 产品 fork=新 session vs 同会话 travel 分枝 |
 | 2026-07-14 | `/debug session-tree-branched` 预置兄弟枝；PTY `pty_product_fake_session_tree_branched`（raw 断言，避 CapturedScreen 长 scrollback 不同步） |
+| 2026-07-15 | 会话 slash 迁移调研：A02 钉 `/session-fork`（非 user 选择器）；增 A03–A06；手测备忘 `/tree`/`/fork`→新名；对照 `../pi/_PLAN_REPORT.md` |
