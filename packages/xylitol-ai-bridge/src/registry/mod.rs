@@ -1,7 +1,4 @@
-//! Model id → tokenizer source mapping (builtin OpenAI tiktoken + optional HF).
-//!
-//! Claude / Anthropic ids intentionally have **no** local builtin: use Api usage
-//! or RemoteCount; otherwise accounting falls through to Heuristic.
+//! Model id → tokenizer source + RemoteCount capability mapping.
 
 use crate::tokenize::BuiltinTokenizer;
 
@@ -9,6 +6,15 @@ use crate::tokenize::BuiltinTokenizer;
 pub enum TokenizerSource {
     Builtin(BuiltinTokenizer),
     HuggingFace { repo: String, file: String },
+}
+
+/// Which remote token-count API a path can use (c1030 / c1060).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoteCountKind {
+    /// Anthropic `POST /v1/messages/count_tokens`.
+    AnthropicMessages,
+    /// OpenAI `POST /v1/responses/input_tokens`.
+    OpenAiResponsesInputTokens,
 }
 
 /// Builtin mapping for common OpenAI model ids (Anthropic → `None`).
@@ -32,6 +38,25 @@ pub fn resolve_tokenizer(model_id: &str) -> Option<TokenizerSource> {
     builtin_tokenizer_for(model_id)
 }
 
+/// Whether this adapter kind exposes a RemoteCount HTTP API.
+///
+/// Completions-only paths return `None` (use LocalTokenizer / Api usage instead).
+pub fn remote_count_kind_for_adapter(adapter: &str) -> Option<RemoteCountKind> {
+    match adapter {
+        "anthropic-messages" => Some(RemoteCountKind::AnthropicMessages),
+        "openai-responses" => Some(RemoteCountKind::OpenAiResponsesInputTokens),
+        "openai-completions" => None,
+        _ => None,
+    }
+}
+
+/// Convenience: Claude models prefer Anthropic count; gpt/o* can use Responses input_tokens
+/// when the adapter is Responses (caller still passes adapter string).
+pub fn remote_count_kind_for(model_id: &str, adapter: &str) -> Option<RemoteCountKind> {
+    let _ = model_id;
+    remote_count_kind_for_adapter(adapter)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -51,5 +76,18 @@ mod tests {
     #[test]
     fn unknown_model_returns_none() {
         assert!(resolve_tokenizer("unknown-model-xyz").is_none());
+    }
+
+    #[test]
+    fn responses_supports_remote_count() {
+        assert_eq!(
+            remote_count_kind_for_adapter("openai-responses"),
+            Some(RemoteCountKind::OpenAiResponsesInputTokens)
+        );
+        assert_eq!(
+            remote_count_kind_for_adapter("anthropic-messages"),
+            Some(RemoteCountKind::AnthropicMessages)
+        );
+        assert_eq!(remote_count_kind_for_adapter("openai-completions"), None);
     }
 }

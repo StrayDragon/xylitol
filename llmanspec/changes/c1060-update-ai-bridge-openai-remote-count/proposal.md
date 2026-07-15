@@ -1,7 +1,7 @@
 ---
 change_id: c1060-update-ai-bridge-openai-remote-count
 title: "ai-bridge：OpenAI Responses RemoteCount 全量接线"
-status: purpose-draft
+status: full
 priority: 1060
 depends_on:
   - "c1030-add-package-ai-bridge"
@@ -11,36 +11,43 @@ track: B
 
 # c1060-update-ai-bridge-openai-remote-count
 
-> **status: purpose-draft** — 产品优先 **Api > RemoteCount > LocalTokenizer > Heuristic**；
-> 本地 tokenizer 也要等 turn end / 锚点才稳，不能替代远程精确 count。
+> 产品优先 **Api > RemoteCount > LocalTokenizer > Heuristic**。
+> 本地 tokenizer 要等 turn end / 锚点才稳，不能替代远程精确 count。
 
 ## Why
 
-c1030 accounting 优先级含 `RemoteCount`，首期以 Anthropic `count_tokens`（或 stub）满足合约。
-OpenAI / 兼容端在无稳定 usage 锚点、或本地 BPE 与真实计费不一致时，仍应走 **API 侧 count**（优先于 tiktoken），与 Anthropic 对称。
-
-本地计算（tiktoken / Heuristic）只作降级：往往要到 leaf / turn end 才有可靠落点，**不能**当作与 Api/RemoteCount 同级的「精确」来源。
+c1030 首期以 Anthropic `count_tokens`（或 stub）满足 RemoteCount 合约。
+OpenAI 现有官方 `POST /v1/responses/input_tokens`，应与 Anthropic 对称接入，避免 OpenAI 路径只能落 LocalTokenizer/Heuristic。
 
 ## Purpose
 
-1. 对 OpenAI Responses（及文档化的兼容端）实现 RemoteCount 路径，并接入 estimate 装配（可配置开关，失败降级）。
-2. registry 标明哪些 model/api 支持 RemoteCount；失败降级到 LocalTokenizer/Heuristic，provenance 诚实。
-3. 单测/集成测覆盖成功与降级；与 Anthropic `RemoteCounter` 共用 port 形状。
+1. 实现 `OpenAiResponsesRemoteCounter`（`POST {base}/v1/responses/input_tokens`），复用 Responses `input` 消息转换。
+2. `RemoteCounter` port 下 Anthropic / OpenAI / Stub 并列；registry 标明 Responses 路径可 RemoteCount。
+3. estimate 装配：可注入预取 `remote_count_tokens` 或经 helper 先 await count 再 estimate；失败降级，provenance 非 Api。
+4. wiremock / stub 单测覆盖成功与失败降级。
 
-## Capabilities（promote 时）
+## What Changes
 
-- modify `package-ai-bridge-accounting` / `package-ai-bridge`（remote_count）
+- `provider/remote_count.rs`：OpenAI input_tokens 客户端
+- `openai_responses`：导出 input 转换供 count 复用
+- delta：`package-ai-bridge-accounting`（RemoteCount 覆盖 OpenAI）
+- 可选：`token_estimator` / 文档说明装配
+
+## Capabilities
+
+- `package-ai-bridge-accounting`（modify）
 
 ## Out of scope
 
-- 改变优先级顺序（仍 Api → RemoteCount → LocalTokenizer → Heuristic）
-- 抽公共 llm-types 包；把 AgentMessage 再套一层
+- 改变优先级顺序
+- 每个 TextDelta 打 count API
+- 抽 llm-types；AgentMessage 双轨消解（另案）
 
 ## Ethics
 
 - risk_level: low–medium
-- prohibited_actions: 把 RemoteCount 失败标成 Api；默认静默对每次 TextDelta 打 count API
-- required_evidence: 成功路径 provenance=RemoteCount；失败降级非 Api
+- prohibited_actions: RemoteCount 失败标成 Api；默认每 delta 远程 count
+- required_evidence: OpenAI 成功路径 provenance=RemoteCount；失败降级非 Api
 
 ## Depends
 
