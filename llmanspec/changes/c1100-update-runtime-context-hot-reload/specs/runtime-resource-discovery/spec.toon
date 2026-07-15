@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,rd10,资源热重载,DefaultResourceLoader MUST 提供 reload（或实现 XyReloadable）：清空缓存后重新发现 context/prompts/skills/themes/SYSTEM/APPEND；失败诊断 MUST 可观察；reload MUST NOT 修改会话历史文件。,null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  rd10,"reload-agents",loader 已加载且盘上 AGENTS.md 已改,调用 reload,get_agents_files 反映新内容
+  rd10,"reloadable-trait",runtime_protocol 导出 XyReloadable,检查 DefaultResourceLoader,实现 XyReloadable 且 Outcome 可丢弃或含诊断

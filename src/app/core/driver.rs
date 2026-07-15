@@ -351,6 +351,18 @@ impl InProcessDriver {
         self.agent.set_tools(tools);
     }
 
+    /// Replace context / SYSTEM / APPEND for the next `run` (c1100).
+    /// Does not mutate session history.
+    pub fn apply_prompt_resources(
+        &mut self,
+        context_files: Vec<(String, String)>,
+        system_prompt: Option<String>,
+        append_system_prompt: Vec<String>,
+    ) {
+        self.agent
+            .apply_prompt_resources(context_files, system_prompt, append_system_prompt);
+    }
+
     /// Test/diagnostics: tool names currently registered.
     #[cfg(test)]
     pub(crate) fn tool_names_for_test(&self) -> Vec<String> {
@@ -360,6 +372,12 @@ impl InProcessDriver {
             .iter()
             .map(|t| t.name().to_string())
             .collect()
+    }
+
+    /// Test/diagnostics: assembled system prompt text (c1100).
+    #[cfg(test)]
+    pub(crate) fn system_prompt_for_test(&self) -> Option<String> {
+        self.agent.inner().system_prompt().map(String::from)
     }
 }
 

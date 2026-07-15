@@ -120,7 +120,7 @@ impl AgentCapabilities {
             tool_registry.iter().map(|t| t.name().to_string()).collect();
         let tool_snippets = prompt::collect_tool_snippets(&tool_registry, &selected_tools);
 
-        Self {
+        let mut session = Self {
             model_manager: ModelManager::new(model_registry, model_builder),
             tools: tool_registry,
             hooks: AgentHooks::empty(),
@@ -151,7 +151,11 @@ impl AgentCapabilities {
             permission,
             queues: Arc::new(AsyncQueueRuntime::new(steering_mode, follow_up_mode)),
             hook_bus,
-        }
+        };
+        // Assemble full system prompt (tools + context + SYSTEM/APPEND) once at construction
+        // so bootstrap-injected AGENTS.md is visible on the first run (c1100 / pt1).
+        session.rebuild_system_prompt();
+        session
     }
 
     // ── Model management (delegated to ModelManager) ──────────────
@@ -509,6 +513,21 @@ impl AgentCapabilities {
         self.system_prompt = Some(prompt::build_system_prompt(&self.prompt_opts));
     }
 
+    /// Replace context / SYSTEM / APPEND resources and rebuild the system prompt (c1100).
+    ///
+    /// Affects the **next** `run` only. Does **not** mutate session history or store entries.
+    pub fn apply_prompt_resources(
+        &mut self,
+        context_files: Vec<(String, String)>,
+        system_prompt: Option<String>,
+        append_system_prompt: Vec<String>,
+    ) {
+        self.prompt_opts.context_files = context_files;
+        self.prompt_opts.system_prompt = system_prompt;
+        self.prompt_opts.append_system_prompt = append_system_prompt;
+        self.rebuild_system_prompt();
+    }
+
     /// Set the active system prompt text and rebuild.
     pub fn set_system_prompt(&mut self, prompt: Option<String>) {
         self.prompt_opts.system_prompt = prompt.clone();
@@ -809,6 +828,35 @@ mod tests {
                 base_dir: None,
             },
         }
+    }
+
+    #[test]
+    fn apply_prompt_resources_updates_system_keeps_history_untouched() {
+        let mut session = make_session();
+        let before = session.system_prompt().unwrap_or("").to_string();
+        assert!(!before.contains("UNIQUE_CONTEXT_MARKER_V2"));
+
+        // Seed a fake history marker on the in-memory store via ensure+append path
+        // is heavy; instead verify apply only changes assembled prompt and does not
+        // clear session_id / queues (history ownership stays with the store).
+        session
+            .queues
+            .steer
+            .lock()
+            .unwrap()
+            .enqueue(AgentMessage::user("steer-keep"));
+        let stats_before = session.queue_stats();
+
+        session.apply_prompt_resources(
+            vec![("AGENTS.md".into(), "UNIQUE_CONTEXT_MARKER_V2".into())],
+            Some("system-base".into()),
+            vec!["APPEND_MARK".into()],
+        );
+
+        let after = session.system_prompt().unwrap_or("").to_string();
+        assert!(after.contains("UNIQUE_CONTEXT_MARKER_V2"));
+        assert!(after.contains("APPEND_MARK"));
+        assert_eq!(session.queue_stats(), stats_before);
     }
 
     #[test]

@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::runtime_protocol::XyResourceLoader;
+use crate::runtime_protocol::{XyReloadable, XyResourceLoader};
 
 // ── ResourceDiagnostic ────────────────────────────────────────────────
 
@@ -89,6 +89,27 @@ impl DefaultResourceLoader {
         self.load_skills_internal();
         self.load_themes();
         self.discover_system_prompt();
+    }
+
+    fn clear_caches(&mut self) {
+        self.context_files.clear();
+        self.prompt_templates.clear();
+        self.skills.clear();
+        self.themes.clear();
+        self.system_prompt = None;
+        self.append_system_prompt.clear();
+        self.context_diagnostics.clear();
+        self.skills_diagnostics.clear();
+        self.prompts_diagnostics.clear();
+        self.themes_diagnostics.clear();
+    }
+
+    /// Re-discover all resources from disk (c1100). Does not touch session history.
+    /// Prefer this inherent method at call sites; [`XyReloadable`] is the port constraint.
+    #[allow(dead_code)] // public API for c1120 / long-lived loader holders
+    pub fn reload(&mut self) {
+        self.clear_caches();
+        self.load_all();
     }
 
     // ── Getters ───────────────────────────────────────────────────────
@@ -495,6 +516,14 @@ impl DefaultResourceLoader {
     }
 }
 
+impl XyReloadable for DefaultResourceLoader {
+    type Outcome = ();
+
+    fn reload(&mut self) -> Self::Outcome {
+        DefaultResourceLoader::reload(self);
+    }
+}
+
 // XyResourceLoader port impl. The trait currently has no `dyn` consumer in
 // production (the loader-based prompt assembly path was never wired into
 // Agent.prompt_opts); concrete callers in interactive/resources.rs
@@ -853,5 +882,41 @@ mod tests {
         let diags = loader.get_all_diagnostics();
         // Should not crash on inaccessible directories
         let _ = diags.len();
+    }
+
+    #[test]
+    fn test_reload_picks_up_changed_agents_md() {
+        use crate::runtime_protocol::XyReloadable;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let agent_dir = tempfile::tempdir().unwrap();
+        let agents = tmp.path().join("AGENTS.md");
+        std::fs::write(&agents, "v1 rules").unwrap();
+
+        let mut loader =
+            DefaultResourceLoader::new(tmp.path().to_path_buf(), agent_dir.path().to_path_buf());
+        assert!(
+            loader
+                .get_agents_files()
+                .iter()
+                .any(|f| f.content.contains("v1 rules"))
+        );
+
+        std::fs::write(&agents, "v2 rules after edit").unwrap();
+        XyReloadable::reload(&mut loader);
+
+        assert!(
+            loader
+                .get_agents_files()
+                .iter()
+                .any(|f| f.content.contains("v2 rules after edit")),
+            "reload must re-read AGENTS.md from disk"
+        );
+        assert!(
+            !loader
+                .get_agents_files()
+                .iter()
+                .any(|f| f.content.contains("v1 rules"))
+        );
     }
 }
