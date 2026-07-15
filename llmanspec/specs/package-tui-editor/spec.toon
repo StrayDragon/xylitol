@@ -1,6 +1,6 @@
 kind: llman.sdd.spec
 name: "package-tui-editor"
-purpose: "TBD - created by archiving change c425-port-editor-core. Update purpose after archive."
+purpose: "xylitol-tui Editor：视觉行图、粘滞列、PasteBurst、历史导航与边框色 API。"
 valid_scope[2]: src/,tests/
 requirements[8]{req_id,title,statement}:
   ed01,"visual-line-map","The Editor MUST build a visual-line map from logical lines via build_visual_line_map(width) that maps each wrapped visual segment to its logical line index, start column, and byte length. The map MUST account for word-wrap on lines wider than width, and empty lines MUST occupy one visual line. The map is the foundation for vertical cursor movement across wrapped lines."

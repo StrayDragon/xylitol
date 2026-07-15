@@ -1,6 +1,6 @@
 kind: llman.sdd.spec
 name: "runtime-resource-discovery"
-purpose: "Unified resource discovery — skills, prompts, themes, AGENTS.md, and system prompt loading."
+purpose: "统一资源发现：skills、prompt 模板、themes、AGENTS.md / SYSTEM 与诊断（list/info/doctor）。"
 valid_scope[3]: src/infra/resource/,src/domain/resource_types.rs,src/runtime_protocol/resource.rs
 requirements[9]{req_id,title,statement}:
   rd1,"resource-listing","System MUST provide a read-only command that lists all discovered skills prompts and themes with their source scope and path."

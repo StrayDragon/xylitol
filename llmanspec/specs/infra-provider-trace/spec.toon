@@ -1,6 +1,6 @@
 kind: llman.sdd.spec
 name: "infra-provider-trace"
-purpose: "TBD - created by archiving change c1000-add-infra-provider-trace. Update purpose after archive."
+purpose: "进程内 provider raw/mapped trace（fastrace + provider-trace.jsonl）；debug 默认、release 经环境变量。"
 valid_scope[2]: src/,tests/
 requirements[3]{req_id,title,statement}:
   ipt1,"provider-raw-mapped-对照","当 provider tracing 激活时，每次 provider HTTP 流 MUST 在同一 fastrace 请求 span / request_id 下记录原始协议事件与映射后的 XyChunk 变体（Event），使 agent 能区分上游通道混写与适配器映射错误；记录 MUST 只经 file-only Reporter 写入 agent 日志目录专用文件（禁止 stdout/stderr 与 ConsoleReporter），MUST NOT 包含 Authorization 或 API-key 头值，且 MUST NOT 经 script hook 分发。"
