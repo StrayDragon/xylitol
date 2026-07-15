@@ -6,17 +6,16 @@ use async_trait::async_trait;
 use futures::Stream;
 use serde_json::Value;
 
-use crate::domain::error::XyError;
-use crate::domain::message::XyStopReason;
-use crate::domain::types::{XyChunk, XyToolSchema};
-use crate::infra::hooks::HookDispatcher;
-use crate::infra::hooks::http::{
-    HeaderBag, run_after_response, run_before_headers, run_before_request,
+use crate::dto::AiBridgeStream;
+use crate::dto::{AiBridgeChunk, AiBridgeToolSchema};
+use crate::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason};
+use crate::error::AiBridgeError;
+use crate::hooks::{
+    HeaderBag, HttpHooks, run_after_response, run_before_headers, run_before_request,
 };
-use crate::infra::provider::reqwest_bridge::{from_reqwest_headers, to_reqwest_headers};
-use crate::runtime_protocol::XyStream;
+use crate::provider::reqwest_bridge::{from_reqwest_headers, to_reqwest_headers};
 
-use super::LlmAdapter;
+use super::AiBridgeLlmAdapter;
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
@@ -27,7 +26,7 @@ pub struct AnthropicMessagesAdapter {
     model: String,
     base_url: String,
     max_tokens: u32,
-    hooks: Option<Arc<HookDispatcher>>,
+    hooks: Option<Arc<dyn HttpHooks>>,
 }
 
 impl AnthropicMessagesAdapter {
@@ -36,7 +35,7 @@ impl AnthropicMessagesAdapter {
         api_key: String,
         model: String,
         base_url: Option<String>,
-        hooks: Option<Arc<HookDispatcher>>,
+        hooks: Option<Arc<dyn HttpHooks>>,
     ) -> Self {
         Self {
             client: reqwest::Client::new(),
@@ -64,24 +63,24 @@ impl AnthropicMessagesAdapter {
 }
 
 #[async_trait]
-impl LlmAdapter for AnthropicMessagesAdapter {
+impl AiBridgeLlmAdapter for AnthropicMessagesAdapter {
     fn name(&self) -> &str {
         &self.model
     }
 
     async fn generate_stream(
         &self,
-        messages: Vec<AgentMessage>,
-        tools: &[XyToolSchema],
-    ) -> Result<XyStream, XyError> {
+        messages: Vec<AiBridgeMessage>,
+        tools: &[AiBridgeToolSchema],
+    ) -> Result<AiBridgeStream, AiBridgeError> {
         self.execute(messages, tools, true).await
     }
 
     async fn generate(
         &self,
-        messages: Vec<AgentMessage>,
-        tools: &[XyToolSchema],
-    ) -> Result<XyStream, XyError> {
+        messages: Vec<AiBridgeMessage>,
+        tools: &[AiBridgeToolSchema],
+    ) -> Result<AiBridgeStream, AiBridgeError> {
         self.execute(messages, tools, false).await
     }
 }
@@ -89,10 +88,10 @@ impl LlmAdapter for AnthropicMessagesAdapter {
 impl AnthropicMessagesAdapter {
     async fn execute(
         &self,
-        messages: Vec<AgentMessage>,
-        tools: &[XyToolSchema],
+        messages: Vec<AiBridgeMessage>,
+        tools: &[AiBridgeToolSchema],
         stream: bool,
-    ) -> Result<XyStream, XyError> {
+    ) -> Result<AiBridgeStream, AiBridgeError> {
         let (system_prompt, anthropic_msgs) = convert_agent_messages_for_anthropic(&messages);
 
         let mut body = serde_json::json!({
@@ -132,7 +131,9 @@ impl AnthropicMessagesAdapter {
             .json(&body)
             .send()
             .await
-            .map_err(|e| XyError::Provider(anyhow::anyhow!("Anthropic request error: {e}")))?;
+            .map_err(|e| {
+                AiBridgeError::Provider(anyhow::anyhow!("Anthropic request error: {e}"))
+            })?;
 
         let status = response.status().as_u16();
         run_after_response(
@@ -146,24 +147,24 @@ impl AnthropicMessagesAdapter {
             let body_text = response.text().await.unwrap_or_default();
             let msg = extract_error_message(&body_text)
                 .unwrap_or_else(|| format!("HTTP {status}: {body_text}"));
-            return Err(XyError::Provider(anyhow::anyhow!(msg)));
+            return Err(AiBridgeError::Provider(anyhow::anyhow!(msg)));
         }
 
         if stream {
-            let trace = crate::infra::provider::trace::ProviderRequestTrace::start(
+            let trace = crate::provider::trace::ProviderRequestTrace::start(
                 "anthropic-messages",
                 &self.model,
             );
             Ok(Box::pin(anthropic_stream(response, trace)))
         } else {
-            let trace = crate::infra::provider::trace::ProviderRequestTrace::start(
+            let trace = crate::provider::trace::ProviderRequestTrace::start(
                 "anthropic-messages",
                 &self.model,
             );
             let json: Value = response
                 .json()
                 .await
-                .map_err(|e| XyError::Provider(anyhow::anyhow!("parse response: {e}")))?;
+                .map_err(|e| AiBridgeError::Provider(anyhow::anyhow!("parse response: {e}")))?;
             if let Some(t) = &trace {
                 t.emit_raw("message.json", &json.to_string());
             }
@@ -180,8 +181,8 @@ impl AnthropicMessagesAdapter {
 
 fn anthropic_stream(
     response: reqwest::Response,
-    trace: Option<crate::infra::provider::trace::ProviderRequestTrace>,
-) -> Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>> {
+    trace: Option<crate::provider::trace::ProviderRequestTrace>,
+) -> Pin<Box<dyn Stream<Item = Result<AiBridgeChunk, AiBridgeError>> + Send>> {
     Box::pin(async_stream::try_stream! {
         use futures::StreamExt;
         use eventsource_stream::Eventsource;
@@ -241,7 +242,7 @@ fn anthropic_stream(
                         match delta_type {
                             "text_delta" => {
                                 if let Some(text) = delta.get("text").and_then(|v| v.as_str()) {
-                                    let chunk = XyChunk::TextDelta(text.to_string());
+                                    let chunk = AiBridgeChunk::TextDelta(text.to_string());
                                     if let Some(t) = &trace {
                                         t.emit_mapped_chunk(&chunk);
                                     }
@@ -250,7 +251,7 @@ fn anthropic_stream(
                             }
                             "thinking" => {
                                 if let Some(thinking) = delta.get("thinking").and_then(|v| v.as_str()) {
-                                    let chunk = XyChunk::ThinkingDelta(thinking.to_string());
+                                    let chunk = AiBridgeChunk::ThinkingDelta(thinking.to_string());
                                     if let Some(t) = &trace {
                                         t.emit_mapped_chunk(&chunk);
                                     }
@@ -291,7 +292,7 @@ fn anthropic_stream(
                         for (_, (id, name, args_str)) in sorted {
                             let args: Value =
                                 serde_json::from_str(&args_str).unwrap_or(serde_json::json!({}));
-                            let chunk = XyChunk::FunctionCall { name, args, id };
+                            let chunk = AiBridgeChunk::FunctionCall { name, args, id };
                             if let Some(t) = &trace {
                                 t.emit_mapped_chunk(&chunk);
                             }
@@ -299,13 +300,13 @@ fn anthropic_stream(
                         }
 
                         let finish = match stop_reason {
-                            Some("max_tokens") => XyStopReason::MaxTokens,
-                            _ => XyStopReason::Stop,
+                            Some("max_tokens") => AiBridgeStopReason::MaxTokens,
+                            _ => AiBridgeStopReason::Stop,
                         };
 
                         let usage_total = usage_input + usage_output;
                         let usage = if usage_total > 0 {
-                            Some(crate::domain::message::XyUsage {
+                            Some(crate::dto::AiBridgeUsage {
                                 input: usage_input,
                                 output: usage_output,
                                 cache_read: 0,
@@ -317,7 +318,7 @@ fn anthropic_stream(
                         } else {
                             None
                         };
-                        let chunk = XyChunk::Done {
+                        let chunk = AiBridgeChunk::Done {
                             finish_reason: finish,
                             usage,
                         };
@@ -342,7 +343,7 @@ fn anthropic_stream(
     })
 }
 
-fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
+fn parse_anthropic_response(json: &Value) -> Vec<AiBridgeChunk> {
     let mut chunks = Vec::new();
 
     if let Some(content) = json.get("content").and_then(|v| v.as_array()) {
@@ -351,12 +352,12 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
             match block_type {
                 "text" => {
                     if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                        chunks.push(XyChunk::TextDelta(text.to_string()));
+                        chunks.push(AiBridgeChunk::TextDelta(text.to_string()));
                     }
                 }
                 "thinking" => {
                     if let Some(thinking) = block.get("thinking").and_then(|v| v.as_str()) {
-                        chunks.push(XyChunk::ThinkingDelta(thinking.to_string()));
+                        chunks.push(AiBridgeChunk::ThinkingDelta(thinking.to_string()));
                     }
                 }
                 "tool_use" => {
@@ -371,7 +372,7 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
                         .unwrap_or("")
                         .to_string();
                     let args = block.get("input").cloned().unwrap_or(serde_json::json!({}));
-                    chunks.push(XyChunk::FunctionCall { name, args, id });
+                    chunks.push(AiBridgeChunk::FunctionCall { name, args, id });
                 }
                 _ => {}
             }
@@ -379,8 +380,8 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
     }
 
     let finish = match json.get("stop_reason").and_then(|v| v.as_str()) {
-        Some("max_tokens") => XyStopReason::MaxTokens,
-        _ => XyStopReason::Stop,
+        Some("max_tokens") => AiBridgeStopReason::MaxTokens,
+        _ => AiBridgeStopReason::Stop,
     };
 
     // Parse usage from non-streaming response
@@ -389,7 +390,7 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
         let output = u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
         let total = input + output;
         if total > 0 {
-            Some(crate::domain::message::XyUsage {
+            Some(crate::dto::AiBridgeUsage {
                 input,
                 output,
                 cache_read: 0,
@@ -403,7 +404,7 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
         }
     });
 
-    chunks.push(XyChunk::Done {
+    chunks.push(AiBridgeChunk::Done {
         finish_reason: finish,
         usage,
     });
@@ -411,21 +412,19 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
     chunks
 }
 
-// ── AgentMessage conversion ────────────────────────────────────
+// ── AiBridgeMessage conversion ────────────────────────────────────
 
-use crate::domain::message::{AgentMessage, AgentPart};
-
-/// Convert a slice of [`AgentMessage`] values to Anthropic request body
+/// Convert a slice of [`AiBridgeMessage`] values to Anthropic request body
 /// (returns `(system_prompt, messages)` tuple).
 pub fn convert_agent_messages_for_anthropic(
-    messages: &[AgentMessage],
+    messages: &[AiBridgeMessage],
 ) -> (Option<String>, Vec<Value>) {
     let system_parts: Vec<String> = Vec::new();
     let mut msgs: Vec<Value> = Vec::new();
 
     for msg in messages {
         match msg {
-            AgentMessage::UserMessage { content, .. } => {
+            AiBridgeMessage::UserMessage { content, .. } => {
                 let blocks = agent_parts_to_anthropic_blocks(content);
                 if !blocks.is_empty() {
                     msgs.push(serde_json::json!({
@@ -434,7 +433,7 @@ pub fn convert_agent_messages_for_anthropic(
                     }));
                 }
             }
-            AgentMessage::AssistantMessage { content, .. } => {
+            AiBridgeMessage::AssistantMessage { content, .. } => {
                 let blocks = agent_parts_to_anthropic_blocks(content);
                 if !blocks.is_empty() {
                     msgs.push(serde_json::json!({
@@ -443,7 +442,7 @@ pub fn convert_agent_messages_for_anthropic(
                     }));
                 }
             }
-            AgentMessage::ToolResultMessage {
+            AiBridgeMessage::ToolResultMessage {
                 tool_use_id,
                 content,
                 is_error,
@@ -452,10 +451,10 @@ pub fn convert_agent_messages_for_anthropic(
                 let inner: Vec<Value> = content
                     .iter()
                     .map(|p| match p {
-                        AgentPart::Text { text } => {
+                        AiBridgePart::Text { text } => {
                             serde_json::json!({"type": "text", "text": text})
                         }
-                        AgentPart::Image(img) => serde_json::json!({
+                        AiBridgePart::Image(img) => serde_json::json!({
                             "type": "image",
                             "source": {
                                 "type": "base64",
@@ -477,7 +476,7 @@ pub fn convert_agent_messages_for_anthropic(
                     }],
                 }));
             }
-            AgentMessage::BashExecutionMessage {
+            AiBridgeMessage::BashExecutionMessage {
                 command,
                 output,
                 exclude_from_context,
@@ -492,8 +491,8 @@ pub fn convert_agent_messages_for_anthropic(
                     "content": [{"type": "text", "text": text}],
                 }));
             }
-            AgentMessage::CompactionSummaryMessage { summary, .. }
-            | AgentMessage::BranchSummaryMessage { summary, .. } => {
+            AiBridgeMessage::CompactionSummaryMessage { summary, .. }
+            | AiBridgeMessage::BranchSummaryMessage { summary, .. } => {
                 msgs.push(serde_json::json!({
                     "role": "user",
                     "content": [{
@@ -502,7 +501,7 @@ pub fn convert_agent_messages_for_anthropic(
                     }],
                 }));
             }
-            AgentMessage::CustomMessage {
+            AiBridgeMessage::CustomMessage {
                 custom_type: _,
                 content,
                 ..
@@ -530,19 +529,19 @@ pub fn convert_agent_messages_for_anthropic(
     (system, msgs)
 }
 
-fn agent_parts_to_anthropic_blocks(parts: &[AgentPart]) -> Vec<Value> {
+fn agent_parts_to_anthropic_blocks(parts: &[AiBridgePart]) -> Vec<Value> {
     parts
         .iter()
         .map(|part| match part {
-            AgentPart::Text { text } => serde_json::json!({
+            AiBridgePart::Text { text } => serde_json::json!({
                 "type": "text",
                 "text": text,
             }),
-            AgentPart::Thinking { thinking, .. } => serde_json::json!({
+            AiBridgePart::Thinking { thinking, .. } => serde_json::json!({
                 "type": "text",
                 "text": thinking,
             }),
-            AgentPart::Image(img) => serde_json::json!({
+            AiBridgePart::Image(img) => serde_json::json!({
                 "type": "image",
                 "source": {
                     "type": "base64",
@@ -550,7 +549,7 @@ fn agent_parts_to_anthropic_blocks(parts: &[AgentPart]) -> Vec<Value> {
                     "data": img.data.as_deref().unwrap_or(""),
                 },
             }),
-            AgentPart::ToolCall {
+            AiBridgePart::ToolCall {
                 id,
                 name,
                 arguments,
@@ -603,11 +602,11 @@ fn extract_error_message(body: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::message::{AgentMessage, AgentPart};
+    use crate::dto::{AiBridgeMessage, AiBridgePart};
 
     #[test]
     fn convert_user_message() {
-        let msgs = vec![AgentMessage::user("hello")];
+        let msgs = vec![AiBridgeMessage::user("hello")];
         let (system, msgs) = convert_agent_messages_for_anthropic(&msgs);
         assert!(system.is_none());
         assert_eq!(msgs.len(), 1);
@@ -616,16 +615,16 @@ mod tests {
 
     #[test]
     fn convert_assistant_with_tool_call() {
-        let msgs = vec![AgentMessage::AssistantMessage {
+        let msgs = vec![AiBridgeMessage::AssistantMessage {
             content: vec![
-                AgentPart::text("Let me check"),
-                AgentPart::ToolCall {
+                AiBridgePart::text("Let me check"),
+                AiBridgePart::ToolCall {
                     id: "call-1".into(),
                     name: "read".into(),
                     arguments: serde_json::json!({"path": "/tmp"}),
                 },
             ],
-            stop_reason: Some(crate::domain::message::XyStopReason::ToolUse),
+            stop_reason: Some(crate::dto::AiBridgeStopReason::ToolUse),
             usage: None,
             api: String::new(),
             provider: String::new(),
@@ -645,10 +644,10 @@ mod tests {
 
     #[test]
     fn convert_tool_result() {
-        let msgs = vec![AgentMessage::tool_result(
+        let msgs = vec![AiBridgeMessage::tool_result(
             "call-1",
             "",
-            vec![AgentPart::text("result here")],
+            vec![AiBridgePart::text("result here")],
             false,
         )];
         let (_, msgs) = convert_agent_messages_for_anthropic(&msgs);
@@ -660,7 +659,7 @@ mod tests {
 
     #[test]
     fn convert_bash_execution() {
-        let msgs = vec![AgentMessage::bash("ls", "output", Some(0))];
+        let msgs = vec![AiBridgeMessage::bash("ls", "output", Some(0))];
         let (_, msgs) = convert_agent_messages_for_anthropic(&msgs);
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0]["role"], "user");
@@ -668,7 +667,7 @@ mod tests {
 
     #[test]
     fn convert_compaction_summary() {
-        let msgs = vec![AgentMessage::CompactionSummaryMessage {
+        let msgs = vec![AiBridgeMessage::CompactionSummaryMessage {
             summary: "Compressed".into(),
             tokens_before: 100,
             tokens_after: 10,

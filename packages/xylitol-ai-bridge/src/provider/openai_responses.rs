@@ -1,8 +1,8 @@
 //! OpenAI Responses API adapter.
 //!
 //! Supports both streaming (`stream: true`) and non-streaming calls to
-//! `/v1/responses`, emitting reasoning items as [`XyChunk::ThinkingDelta`] and
-//! final message text as [`XyChunk::TextDelta`].
+//! `/v1/responses`, emitting reasoning items as [`AiBridgeChunk::ThinkingDelta`] and
+//! final message text as [`AiBridgeChunk::TextDelta`].
 
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -12,17 +12,16 @@ use async_trait::async_trait;
 use futures::Stream;
 use serde_json::Value;
 
-use crate::domain::error::XyError;
-use crate::domain::message::{AgentMessage, AgentPart, XyStopReason};
-use crate::domain::types::{XyChunk, XyToolSchema};
-use crate::infra::hooks::HookDispatcher;
-use crate::infra::hooks::http::{
-    HeaderBag, run_after_response, run_before_headers, run_before_request,
+use crate::dto::AiBridgeStream;
+use crate::dto::{AiBridgeChunk, AiBridgeToolSchema};
+use crate::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason};
+use crate::error::AiBridgeError;
+use crate::hooks::{
+    HeaderBag, HttpHooks, run_after_response, run_before_headers, run_before_request,
 };
-use crate::infra::provider::reqwest_bridge::{from_reqwest_headers, to_reqwest_headers};
-use crate::runtime_protocol::XyStream;
+use crate::provider::reqwest_bridge::{from_reqwest_headers, to_reqwest_headers};
 
-use super::LlmAdapter;
+use super::AiBridgeLlmAdapter;
 
 /// Adapter for the OpenAI Responses API (`/v1/responses`).
 pub struct OpenAiResponsesAdapter {
@@ -30,7 +29,7 @@ pub struct OpenAiResponsesAdapter {
     api_key: String,
     model: String,
     base_url: String,
-    hooks: Option<Arc<HookDispatcher>>,
+    hooks: Option<Arc<dyn HttpHooks>>,
 }
 
 impl OpenAiResponsesAdapter {
@@ -39,7 +38,7 @@ impl OpenAiResponsesAdapter {
         api_key: String,
         model: String,
         base_url: Option<String>,
-        hooks: Option<Arc<HookDispatcher>>,
+        hooks: Option<Arc<dyn HttpHooks>>,
     ) -> Self {
         Self {
             client: reqwest::Client::new(),
@@ -65,8 +64,8 @@ impl OpenAiResponsesAdapter {
 
     fn build_body(
         &self,
-        messages: Vec<AgentMessage>,
-        tools: &[XyToolSchema],
+        messages: Vec<AiBridgeMessage>,
+        tools: &[AiBridgeToolSchema],
         stream: bool,
     ) -> Value {
         let input_items = convert_messages_to_input_items(&messages);
@@ -96,10 +95,10 @@ impl OpenAiResponsesAdapter {
 
     async fn send_request(
         &self,
-        messages: Vec<AgentMessage>,
-        tools: &[XyToolSchema],
+        messages: Vec<AiBridgeMessage>,
+        tools: &[AiBridgeToolSchema],
         stream: bool,
-    ) -> Result<reqwest::Response, XyError> {
+    ) -> Result<reqwest::Response, AiBridgeError> {
         let mut body = self.build_body(messages, tools, stream);
         let url = format!("{}/responses", self.base_url);
 
@@ -114,7 +113,9 @@ impl OpenAiResponsesAdapter {
             .json(&body)
             .send()
             .await
-            .map_err(|e| XyError::Provider(anyhow::anyhow!("OpenAI Responses request: {e}")))?;
+            .map_err(|e| {
+                AiBridgeError::Provider(anyhow::anyhow!("OpenAI Responses request: {e}"))
+            })?;
 
         let status = response.status().as_u16();
         run_after_response(
@@ -128,7 +129,7 @@ impl OpenAiResponsesAdapter {
             let body_text = response.text().await.unwrap_or_default();
             let msg = extract_error_message(&body_text)
                 .unwrap_or_else(|| format!("HTTP {status}: {body_text}"));
-            return Err(XyError::Provider(anyhow::anyhow!(msg)));
+            return Err(AiBridgeError::Provider(anyhow::anyhow!(msg)));
         }
 
         Ok(response)
@@ -136,38 +137,34 @@ impl OpenAiResponsesAdapter {
 }
 
 #[async_trait]
-impl LlmAdapter for OpenAiResponsesAdapter {
+impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
     fn name(&self) -> &str {
         &self.model
     }
 
     async fn generate_stream(
         &self,
-        messages: Vec<AgentMessage>,
-        tools: &[XyToolSchema],
-    ) -> Result<XyStream, XyError> {
-        let trace = crate::infra::provider::trace::ProviderRequestTrace::start(
-            "openai-responses",
-            &self.model,
-        );
+        messages: Vec<AiBridgeMessage>,
+        tools: &[AiBridgeToolSchema],
+    ) -> Result<AiBridgeStream, AiBridgeError> {
+        let trace =
+            crate::provider::trace::ProviderRequestTrace::start("openai-responses", &self.model);
         let response = self.send_request(messages, tools, true).await?;
         Ok(Box::pin(responses_stream(response, trace)))
     }
 
     async fn generate(
         &self,
-        messages: Vec<AgentMessage>,
-        tools: &[XyToolSchema],
-    ) -> Result<XyStream, XyError> {
-        let trace = crate::infra::provider::trace::ProviderRequestTrace::start(
-            "openai-responses",
-            &self.model,
-        );
+        messages: Vec<AiBridgeMessage>,
+        tools: &[AiBridgeToolSchema],
+    ) -> Result<AiBridgeStream, AiBridgeError> {
+        let trace =
+            crate::provider::trace::ProviderRequestTrace::start("openai-responses", &self.model);
         let response = self.send_request(messages, tools, false).await?;
         let json: Value = response
             .json()
             .await
-            .map_err(|e| XyError::Provider(anyhow::anyhow!("parse response: {e}")))?;
+            .map_err(|e| AiBridgeError::Provider(anyhow::anyhow!("parse response: {e}")))?;
         if let Some(t) = &trace {
             t.emit_raw("response.json", &json.to_string());
         }
@@ -183,8 +180,8 @@ impl LlmAdapter for OpenAiResponsesAdapter {
 
 fn responses_stream(
     response: reqwest::Response,
-    trace: Option<crate::infra::provider::trace::ProviderRequestTrace>,
-) -> Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>> {
+    trace: Option<crate::provider::trace::ProviderRequestTrace>,
+) -> Pin<Box<dyn Stream<Item = Result<AiBridgeChunk, AiBridgeError>> + Send>> {
     Box::pin(async_stream::try_stream! {
         use futures::StreamExt;
         use eventsource_stream::Eventsource;
@@ -230,7 +227,7 @@ fn responses_stream(
 
                 "response.reasoning_text.delta" => {
                     if let Some(delta) = data.get("delta").and_then(|v| v.as_str()) {
-                        let chunk = XyChunk::ThinkingDelta(delta.to_string());
+                        let chunk = AiBridgeChunk::ThinkingDelta(delta.to_string());
                         if let Some(t) = &trace {
                             t.emit_mapped_chunk(&chunk);
                         }
@@ -240,7 +237,7 @@ fn responses_stream(
 
                 "response.output_text.delta" => {
                     if let Some(delta) = data.get("delta").and_then(|v| v.as_str()) {
-                        let chunk = XyChunk::TextDelta(delta.to_string());
+                        let chunk = AiBridgeChunk::TextDelta(delta.to_string());
                         if let Some(t) = &trace {
                             t.emit_mapped_chunk(&chunk);
                         }
@@ -269,7 +266,7 @@ fn responses_stream(
                             let args_str = function_call_args.remove(&id).unwrap_or_default();
                             let args: Value = serde_json::from_str(&args_str)
                                 .unwrap_or(serde_json::json!({}));
-                            let chunk = XyChunk::FunctionCall { name, args, id };
+                            let chunk = AiBridgeChunk::FunctionCall { name, args, id };
                             if let Some(t) = &trace {
                                 t.emit_mapped_chunk(&chunk);
                             }
@@ -281,7 +278,7 @@ fn responses_stream(
                 "response.completed" => {
                     let usage_total = usage_input + usage_output;
                     let usage = if usage_total > 0 {
-                        Some(crate::domain::message::XyUsage {
+                        Some(crate::dto::AiBridgeUsage {
                             input: usage_input,
                             output: usage_output,
                             cache_read: 0,
@@ -293,8 +290,8 @@ fn responses_stream(
                     } else {
                         None
                     };
-                    let chunk = XyChunk::Done {
-                        finish_reason: XyStopReason::Stop,
+                    let chunk = AiBridgeChunk::Done {
+                        finish_reason: AiBridgeStopReason::Stop,
                         usage,
                     };
                     if let Some(t) = &trace {
@@ -316,7 +313,7 @@ fn responses_stream(
     })
 }
 
-fn parse_responses_output(json: &Value) -> Vec<XyChunk> {
+fn parse_responses_output(json: &Value) -> Vec<AiBridgeChunk> {
     let mut chunks = Vec::new();
 
     if let Some(output) = json.get("output").and_then(|v| v.as_array()) {
@@ -327,7 +324,7 @@ fn parse_responses_output(json: &Value) -> Vec<XyChunk> {
                     if let Some(content) = item.get("content").and_then(|v| v.as_array()) {
                         for block in content {
                             if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                                chunks.push(XyChunk::ThinkingDelta(text.to_string()));
+                                chunks.push(AiBridgeChunk::ThinkingDelta(text.to_string()));
                             }
                         }
                     }
@@ -336,7 +333,7 @@ fn parse_responses_output(json: &Value) -> Vec<XyChunk> {
                     if let Some(content) = item.get("content").and_then(|v| v.as_array()) {
                         for block in content {
                             if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                                chunks.push(XyChunk::TextDelta(text.to_string()));
+                                chunks.push(AiBridgeChunk::TextDelta(text.to_string()));
                             }
                         }
                     }
@@ -356,7 +353,7 @@ fn parse_responses_output(json: &Value) -> Vec<XyChunk> {
                         .get("arguments")
                         .cloned()
                         .unwrap_or(serde_json::json!({}));
-                    chunks.push(XyChunk::FunctionCall { name, args, id });
+                    chunks.push(AiBridgeChunk::FunctionCall { name, args, id });
                 }
                 _ => {}
             }
@@ -368,7 +365,7 @@ fn parse_responses_output(json: &Value) -> Vec<XyChunk> {
         let output = u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
         let total = input + output;
         if total > 0 {
-            Some(crate::domain::message::XyUsage {
+            Some(crate::dto::AiBridgeUsage {
                 input,
                 output,
                 cache_read: 0,
@@ -382,8 +379,8 @@ fn parse_responses_output(json: &Value) -> Vec<XyChunk> {
         }
     });
 
-    chunks.push(XyChunk::Done {
-        finish_reason: XyStopReason::Stop,
+    chunks.push(AiBridgeChunk::Done {
+        finish_reason: AiBridgeStopReason::Stop,
         usage,
     });
 
@@ -398,15 +395,15 @@ fn extract_error_message(body: &str) -> Option<String> {
         .map(String::from)
 }
 
-// ── AgentMessage conversion ────────────────────────────────────
+// ── AiBridgeMessage conversion ────────────────────────────────────
 
-/// Convert a slice of [`AgentMessage`] values to OpenAI Responses `input` items.
-fn convert_messages_to_input_items(messages: &[AgentMessage]) -> Vec<Value> {
+/// Convert a slice of [`AiBridgeMessage`] values to OpenAI Responses `input` items.
+fn convert_messages_to_input_items(messages: &[AiBridgeMessage]) -> Vec<Value> {
     let mut items: Vec<Value> = Vec::new();
 
     for msg in messages {
         match msg {
-            AgentMessage::UserMessage { content, .. } => {
+            AiBridgeMessage::UserMessage { content, .. } => {
                 let text = collect_text_parts(content);
                 if !text.is_empty() {
                     // Responses API requires each input item to declare its
@@ -420,12 +417,12 @@ fn convert_messages_to_input_items(messages: &[AgentMessage]) -> Vec<Value> {
                     }));
                 }
             }
-            AgentMessage::AssistantMessage { content, .. } => {
+            AiBridgeMessage::AssistantMessage { content, .. } => {
                 let text = collect_text_parts(content);
                 let tool_calls: Vec<Value> = content
                     .iter()
                     .filter_map(|p| match p {
-                        AgentPart::ToolCall {
+                        AiBridgePart::ToolCall {
                             id,
                             name,
                             arguments,
@@ -453,7 +450,7 @@ fn convert_messages_to_input_items(messages: &[AgentMessage]) -> Vec<Value> {
                     items.extend(tool_calls);
                 }
             }
-            AgentMessage::ToolResultMessage {
+            AiBridgeMessage::ToolResultMessage {
                 tool_use_id,
                 content,
                 ..
@@ -465,7 +462,7 @@ fn convert_messages_to_input_items(messages: &[AgentMessage]) -> Vec<Value> {
                     "output": text,
                 }));
             }
-            AgentMessage::BashExecutionMessage {
+            AiBridgeMessage::BashExecutionMessage {
                 command,
                 output,
                 exclude_from_context,
@@ -481,8 +478,8 @@ fn convert_messages_to_input_items(messages: &[AgentMessage]) -> Vec<Value> {
                     "content": [{"type": "input_text", "text": text}],
                 }));
             }
-            AgentMessage::CompactionSummaryMessage { summary, .. }
-            | AgentMessage::BranchSummaryMessage { summary, .. } => {
+            AiBridgeMessage::CompactionSummaryMessage { summary, .. }
+            | AiBridgeMessage::BranchSummaryMessage { summary, .. } => {
                 items.push(serde_json::json!({
                     "type": "message",
                     "role": "user",
@@ -492,7 +489,7 @@ fn convert_messages_to_input_items(messages: &[AgentMessage]) -> Vec<Value> {
                     }],
                 }));
             }
-            AgentMessage::CustomMessage {
+            AiBridgeMessage::CustomMessage {
                 custom_type: _,
                 content,
                 ..
@@ -513,7 +510,7 @@ fn convert_messages_to_input_items(messages: &[AgentMessage]) -> Vec<Value> {
     items
 }
 
-fn collect_text_parts(parts: &[AgentPart]) -> String {
+fn collect_text_parts(parts: &[AiBridgePart]) -> String {
     let mut buf = String::new();
     for part in parts {
         if let Some(text) = part.as_text() {
@@ -526,7 +523,7 @@ fn collect_text_parts(parts: &[AgentPart]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::message::{AgentMessage, AgentPart};
+    use crate::dto::{AiBridgeMessage, AiBridgePart};
 
     /// Every Responses API input item MUST declare a `type`, or OpenAI rejects
     /// the request with "Cannot determine type of 'item'" once non-message
@@ -534,8 +531,8 @@ mod tests {
     #[test]
     fn all_items_have_type_field() {
         let msgs = vec![
-            AgentMessage::user("hello"),
-            AgentMessage::assistant("hi there"),
+            AiBridgeMessage::user("hello"),
+            AiBridgeMessage::assistant("hi there"),
         ];
         let items = convert_messages_to_input_items(&msgs);
         for item in &items {
@@ -551,11 +548,11 @@ mod tests {
     #[test]
     fn tool_round_items_are_well_typed() {
         let msgs = vec![
-            AgentMessage::user("list files"),
-            AgentMessage::AssistantMessage {
+            AiBridgeMessage::user("list files"),
+            AiBridgeMessage::AssistantMessage {
                 content: vec![
-                    AgentPart::text("let me check"),
-                    AgentPart::ToolCall {
+                    AiBridgePart::text("let me check"),
+                    AiBridgePart::ToolCall {
                         id: "call-1".into(),
                         name: "ls".into(),
                         arguments: serde_json::json!({"path": "."}),
@@ -571,7 +568,12 @@ mod tests {
                 timestamp: 0,
                 diagnostics: Vec::new(),
             },
-            AgentMessage::tool_result("call-1", "ls", vec![AgentPart::text("file.txt")], false),
+            AiBridgeMessage::tool_result(
+                "call-1",
+                "ls",
+                vec![AiBridgePart::text("file.txt")],
+                false,
+            ),
         ];
         let items = convert_messages_to_input_items(&msgs);
         // user message, assistant message, function_call, function_call_output
@@ -602,8 +604,8 @@ mod tests {
     fn assistant_tool_only_round_emits_function_call_not_empty_message() {
         // Assistant round with a tool_call and NO text must not emit an empty
         // message item (would confuse the API); only the function_call item.
-        let msgs = vec![AgentMessage::AssistantMessage {
-            content: vec![AgentPart::ToolCall {
+        let msgs = vec![AiBridgeMessage::AssistantMessage {
+            content: vec![AiBridgePart::ToolCall {
                 id: "c1".into(),
                 name: "ls".into(),
                 arguments: serde_json::json!({}),

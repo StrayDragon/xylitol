@@ -2,7 +2,7 @@
 //!
 //! Builds chat-completions JSON (via async-openai request types for shape parity),
 //! sends with **reqwest** (current transport). Provider script hooks use portable
-//! header bags via [`crate::infra::hooks::http`] + [`crate::infra::provider::reqwest_bridge`]
+//! header bags via [`crate::hooks`] + [`crate::provider::reqwest_bridge`]
 //! (c998); transport can be swapped without changing hook contracts.
 //! Converts between xylitol's internal types and OpenAI chat shapes.
 //! Does **not** implement [`XyModel`](crate::runtime_protocol::XyModel);
@@ -22,30 +22,29 @@ use async_openai::types::chat::{
 use futures::Stream;
 use serde_json::Value;
 
-use crate::domain::error::XyError;
-use crate::domain::message::{AgentMessage, AgentPart, XyStopReason, collect_text_parts};
-use crate::domain::types::{XyChunk, XyToolSchema};
-use crate::infra::hooks::HookDispatcher;
-use crate::infra::hooks::http::{
-    HeaderBag, run_after_response, run_before_headers, run_before_request,
+use crate::dto::AiBridgeStream;
+use crate::dto::{AiBridgeChunk, AiBridgeToolSchema};
+use crate::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason, collect_text_parts};
+use crate::error::AiBridgeError;
+use crate::hooks::{
+    HeaderBag, HttpHooks, run_after_response, run_before_headers, run_before_request,
 };
-use crate::infra::provider::reqwest_bridge::{from_reqwest_headers, to_reqwest_headers};
-use crate::runtime_protocol::XyStream;
+use crate::provider::reqwest_bridge::{from_reqwest_headers, to_reqwest_headers};
 
-pub(crate) struct OpenAIProvider {
+pub struct OpenAIProvider {
     client: reqwest::Client,
     api_key: String,
     model: String,
     base_url: String,
-    hooks: Option<Arc<HookDispatcher>>,
+    hooks: Option<Arc<dyn HttpHooks>>,
 }
 
 impl OpenAIProvider {
-    pub(crate) fn new(
+    pub fn new(
         api_key: String,
         model: String,
         base_url: Option<String>,
-        hooks: Option<Arc<HookDispatcher>>,
+        hooks: Option<Arc<dyn HttpHooks>>,
     ) -> Self {
         Self {
             client: reqwest::Client::new(),
@@ -71,10 +70,10 @@ impl OpenAIProvider {
 
     async fn send_request(
         &self,
-        messages: Vec<AgentMessage>,
-        tools: &[XyToolSchema],
+        messages: Vec<AiBridgeMessage>,
+        tools: &[AiBridgeToolSchema],
         stream: bool,
-    ) -> Result<reqwest::Response, XyError> {
+    ) -> Result<reqwest::Response, AiBridgeError> {
         let msgs = convert_agent_messages(&messages, None);
         let tool_defs = convert_tools(tools);
         let request = CreateChatCompletionRequestArgs::default()
@@ -83,10 +82,16 @@ impl OpenAIProvider {
             .tools(tool_defs)
             .stream(stream)
             .build()
-            .map_err(|e| XyError::Provider(anyhow::anyhow!("build request: {e}")))?;
+            .map_err(|e| AiBridgeError::Provider(anyhow::anyhow!("build request: {e}")))?;
 
         let mut body = serde_json::to_value(&request)
-            .map_err(|e| XyError::Provider(anyhow::anyhow!("serialize request: {e}")))?;
+            .map_err(|e| AiBridgeError::Provider(anyhow::anyhow!("serialize request: {e}")))?;
+        // Ask compatible endpoints for usage on the final stream chunk. Some
+        // OpenAI-compatible servers ignore this; missing usage falls back to
+        // accounting (LocalTokenizer / Heuristic) rather than fabricating Api.
+        if stream {
+            body["stream_options"] = serde_json::json!({ "include_usage": true });
+        }
         let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
 
         let mut headers = self.headers_bag();
@@ -100,7 +105,9 @@ impl OpenAIProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| XyError::Provider(anyhow::anyhow!("OpenAI Completions request: {e}")))?;
+            .map_err(|e| {
+                AiBridgeError::Provider(anyhow::anyhow!("OpenAI Completions request: {e}"))
+            })?;
 
         let status = response.status().as_u16();
         run_after_response(
@@ -112,7 +119,7 @@ impl OpenAIProvider {
 
         if !response.status().is_success() {
             let body_text = response.text().await.unwrap_or_default();
-            return Err(XyError::Provider(anyhow::anyhow!(
+            return Err(AiBridgeError::Provider(anyhow::anyhow!(
                 "HTTP {status}: {body_text}"
             )));
         }
@@ -120,23 +127,21 @@ impl OpenAIProvider {
         Ok(response)
     }
 
-    /// Run a chat completion, returning a stream of [`XyChunk`]s.
-    pub(crate) async fn generate_stream(
+    /// Run a chat completion, returning a stream of [`AiBridgeChunk`]s.
+    pub async fn generate_stream(
         &self,
-        messages: Vec<AgentMessage>,
-        tools: &[XyToolSchema],
+        messages: Vec<AiBridgeMessage>,
+        tools: &[AiBridgeToolSchema],
         stream: bool,
-    ) -> Result<XyStream, XyError> {
-        let trace = crate::infra::provider::trace::ProviderRequestTrace::start(
-            "openai-completions",
-            &self.model,
-        );
+    ) -> Result<AiBridgeStream, AiBridgeError> {
+        let trace =
+            crate::provider::trace::ProviderRequestTrace::start("openai-completions", &self.model);
         let response = self.send_request(messages, tools, stream).await?;
         if stream {
             Ok(completions_sse_stream(response, trace))
         } else {
             let json: Value = response.json().await.map_err(|e| {
-                XyError::Provider(anyhow::anyhow!("parse Completions response: {e}"))
+                AiBridgeError::Provider(anyhow::anyhow!("parse Completions response: {e}"))
             })?;
             if let Some(t) = &trace {
                 t.emit_raw("chat.completion.json", &json.to_string());
@@ -154,7 +159,7 @@ impl OpenAIProvider {
 
 // ── Tool conversion ────────────────────────────────────────────────
 
-fn convert_tools(tools: &[XyToolSchema]) -> Vec<ChatCompletionTools> {
+fn convert_tools(tools: &[AiBridgeToolSchema]) -> Vec<ChatCompletionTools> {
     tools
         .iter()
         .map(|t| {
@@ -174,8 +179,8 @@ fn convert_tools(tools: &[XyToolSchema]) -> Vec<ChatCompletionTools> {
 
 fn completions_sse_stream(
     response: reqwest::Response,
-    trace: Option<crate::infra::provider::trace::ProviderRequestTrace>,
-) -> Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>> {
+    trace: Option<crate::provider::trace::ProviderRequestTrace>,
+) -> Pin<Box<dyn Stream<Item = Result<AiBridgeChunk, AiBridgeError>> + Send>> {
     Box::pin(async_stream::try_stream! {
         use std::collections::HashMap;
 
@@ -185,6 +190,7 @@ fn completions_sse_stream(
         let byte_stream = response.bytes_stream();
         let mut event_stream = byte_stream.eventsource();
         let mut tool_accumulators: HashMap<u32, (String, String, String)> = HashMap::new();
+        let mut pending_usage: Option<crate::dto::AiBridgeUsage> = None;
 
         while let Some(event_result) = event_stream.next().await {
             let event = match event_result {
@@ -205,6 +211,9 @@ fn completions_sse_stream(
                     .unwrap_or("");
                 t.emit_raw("chat.completion.chunk", snippet);
             }
+            if let Some(u) = data.get("usage") {
+                pending_usage = Some(crate::usage::from_openai_usage(u));
+            }
             let Some(choices) = data.get("choices").and_then(|c| c.as_array()) else {
                 continue;
             };
@@ -214,7 +223,7 @@ fn completions_sse_stream(
                     .and_then(|v| v.as_str())
                     .filter(|t| !t.is_empty())
                 {
-                    let chunk = XyChunk::TextDelta(text.to_string());
+                    let chunk = AiBridgeChunk::TextDelta(text.to_string());
                     if let Some(t) = &trace {
                         t.emit_mapped_chunk(&chunk);
                     }
@@ -250,7 +259,7 @@ fn completions_sse_stream(
                         for (_, (id, name, args_str)) in sorted {
                             let args: Value = serde_json::from_str(&args_str)
                                 .unwrap_or(serde_json::json!({}));
-                            let chunk = XyChunk::FunctionCall { name, args, id };
+                            let chunk = AiBridgeChunk::FunctionCall { name, args, id };
                             if let Some(t) = &trace {
                                 t.emit_mapped_chunk(&chunk);
                             }
@@ -258,12 +267,12 @@ fn completions_sse_stream(
                         }
                     }
                     let reason = match finish_reason {
-                        "length" => XyStopReason::MaxTokens,
-                        _ => XyStopReason::Stop,
+                        "length" => AiBridgeStopReason::MaxTokens,
+                        _ => AiBridgeStopReason::Stop,
                     };
-                    let chunk = XyChunk::Done {
+                    let chunk = AiBridgeChunk::Done {
                         finish_reason: reason,
-                        usage: None,
+                        usage: pending_usage.take(),
                     };
                     if let Some(t) = &trace {
                         t.emit_mapped_chunk(&chunk);
@@ -277,22 +286,20 @@ fn completions_sse_stream(
 
 // ── Non-streaming response ─────────────────────────────────────────
 
-fn parse_nonstream_json(response: &Value) -> Vec<XyChunk> {
+fn parse_nonstream_json(response: &Value) -> Vec<AiBridgeChunk> {
     let mut chunks = Vec::new();
-    let usage = response
-        .get("usage")
-        .map(|u| crate::domain::message::XyUsage {
-            input: u.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-            output: u
-                .get("completion_tokens")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0),
-            cache_read: 0,
-            cache_write: 0,
-            total_tokens: u.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-            cache_write_1h: 0,
-            cost: None,
-        });
+    let usage = response.get("usage").map(|u| crate::dto::AiBridgeUsage {
+        input: u.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+        output: u
+            .get("completion_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        cache_read: 0,
+        cache_write: 0,
+        total_tokens: u.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+        cache_write_1h: 0,
+        cost: None,
+    });
 
     let Some(choices) = response.get("choices").and_then(|c| c.as_array()) else {
         return chunks;
@@ -304,7 +311,7 @@ fn parse_nonstream_json(response: &Value) -> Vec<XyChunk> {
             .and_then(|v| v.as_str())
             .filter(|t| !t.is_empty())
         {
-            chunks.push(XyChunk::TextDelta(text.to_string()));
+            chunks.push(AiBridgeChunk::TextDelta(text.to_string()));
         }
 
         if let Some(tool_calls) = choice
@@ -327,15 +334,15 @@ fn parse_nonstream_json(response: &Value) -> Vec<XyChunk> {
                     .and_then(|v| v.as_str())
                     .unwrap_or("{}");
                 let args: Value = serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
-                chunks.push(XyChunk::FunctionCall { name, args, id });
+                chunks.push(AiBridgeChunk::FunctionCall { name, args, id });
             }
         }
 
         let reason = match choice.get("finish_reason").and_then(|v| v.as_str()) {
-            Some("length") => XyStopReason::MaxTokens,
-            _ => XyStopReason::Stop,
+            Some("length") => AiBridgeStopReason::MaxTokens,
+            _ => AiBridgeStopReason::Stop,
         };
-        chunks.push(XyChunk::Done {
+        chunks.push(AiBridgeChunk::Done {
             finish_reason: reason,
             usage,
         });
@@ -344,12 +351,12 @@ fn parse_nonstream_json(response: &Value) -> Vec<XyChunk> {
     chunks
 }
 
-// ── AgentMessage conversion ────────────────────────────────────
+// ── AiBridgeMessage conversion ────────────────────────────────────
 
-/// Convert a slice of [`AgentMessage`] values to OpenAI chat request
+/// Convert a slice of [`AiBridgeMessage`] values to OpenAI chat request
 /// messages.
 pub fn convert_agent_messages(
-    messages: &[AgentMessage],
+    messages: &[AiBridgeMessage],
     system_prompt: Option<&str>,
 ) -> Vec<ChatCompletionRequestMessage> {
     let mut out = Vec::new();
@@ -369,7 +376,7 @@ pub fn convert_agent_messages(
 
     for msg in messages {
         match msg {
-            AgentMessage::UserMessage { content, .. } => {
+            AiBridgeMessage::UserMessage { content, .. } => {
                 let text = collect_text_parts(content);
                 if text.is_empty() {
                     continue;
@@ -381,12 +388,12 @@ pub fn convert_agent_messages(
                     },
                 ));
             }
-            AgentMessage::AssistantMessage { content, .. } => {
+            AiBridgeMessage::AssistantMessage { content, .. } => {
                 let text = collect_text_parts(content);
                 let tool_calls: Vec<ChatCompletionMessageToolCalls> = content
                     .iter()
                     .filter_map(|p| match p {
-                        AgentPart::ToolCall {
+                        AiBridgePart::ToolCall {
                             id,
                             name,
                             arguments,
@@ -424,7 +431,7 @@ pub fn convert_agent_messages(
                     },
                 ));
             }
-            AgentMessage::ToolResultMessage {
+            AiBridgeMessage::ToolResultMessage {
                 tool_use_id,
                 content,
                 ..
@@ -437,7 +444,7 @@ pub fn convert_agent_messages(
                     },
                 ));
             }
-            AgentMessage::BashExecutionMessage {
+            AiBridgeMessage::BashExecutionMessage {
                 command,
                 output,
                 exclude_from_context,
@@ -454,8 +461,8 @@ pub fn convert_agent_messages(
                     },
                 ));
             }
-            AgentMessage::CompactionSummaryMessage { summary, .. }
-            | AgentMessage::BranchSummaryMessage { summary, .. } => {
+            AiBridgeMessage::CompactionSummaryMessage { summary, .. }
+            | AiBridgeMessage::BranchSummaryMessage { summary, .. } => {
                 let text = format!("[Context summary: {summary}]");
                 out.push(ChatCompletionRequestMessage::User(
                     ChatCompletionRequestUserMessage {
@@ -464,7 +471,7 @@ pub fn convert_agent_messages(
                     },
                 ));
             }
-            AgentMessage::CustomMessage {
+            AiBridgeMessage::CustomMessage {
                 custom_type: _,
                 content,
                 ..
@@ -489,11 +496,11 @@ pub fn convert_agent_messages(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::message::{AgentMessage, XyStopReason};
+    use crate::dto::{AiBridgeMessage, AiBridgeStopReason};
 
     #[test]
     fn convert_user_message() {
-        let msgs = vec![AgentMessage::user("hello world")];
+        let msgs = vec![AiBridgeMessage::user("hello world")];
         let result = convert_agent_messages(&msgs, None);
         assert_eq!(result.len(), 1);
         match &result[0] {
@@ -509,7 +516,7 @@ mod tests {
 
     #[test]
     fn convert_system_prompt() {
-        let msgs = vec![AgentMessage::user("hi")];
+        let msgs = vec![AiBridgeMessage::user("hi")];
         let result = convert_agent_messages(&msgs, Some("You are helpful"));
         assert_eq!(result.len(), 2);
         match &result[0] {
@@ -525,16 +532,16 @@ mod tests {
 
     #[test]
     fn convert_assistant_with_tool_call() {
-        let msgs = vec![AgentMessage::AssistantMessage {
+        let msgs = vec![AiBridgeMessage::AssistantMessage {
             content: vec![
-                AgentPart::text("Let me check"),
-                AgentPart::ToolCall {
+                AiBridgePart::text("Let me check"),
+                AiBridgePart::ToolCall {
                     id: "call-1".into(),
                     name: "read".into(),
                     arguments: serde_json::json!({}),
                 },
             ],
-            stop_reason: Some(XyStopReason::ToolUse),
+            stop_reason: Some(AiBridgeStopReason::ToolUse),
             usage: None,
             api: String::new(),
             provider: String::new(),
@@ -557,10 +564,10 @@ mod tests {
 
     #[test]
     fn convert_tool_result() {
-        let msgs = vec![AgentMessage::tool_result(
+        let msgs = vec![AiBridgeMessage::tool_result(
             "call-1",
             "",
-            vec![AgentPart::text("done")],
+            vec![AiBridgePart::text("done")],
             false,
         )];
         let result = convert_agent_messages(&msgs, None);
@@ -575,7 +582,7 @@ mod tests {
 
     #[test]
     fn convert_bash_execution() {
-        let msgs = vec![AgentMessage::bash("ls -la", "total 42", Some(0))];
+        let msgs = vec![AiBridgeMessage::bash("ls -la", "total 42", Some(0))];
         let result = convert_agent_messages(&msgs, None);
         assert_eq!(result.len(), 1);
         match &result[0] {
@@ -592,7 +599,7 @@ mod tests {
 
     #[test]
     fn convert_custom_message() {
-        let msgs = vec![AgentMessage::CustomMessage {
+        let msgs = vec![AiBridgeMessage::CustomMessage {
             custom_type: "diag".into(),
             content: serde_json::json!("diagnostic info"),
             display: serde_json::json!({}),
@@ -604,7 +611,7 @@ mod tests {
 
     #[test]
     fn convert_compaction_summary() {
-        let msgs = vec![AgentMessage::CompactionSummaryMessage {
+        let msgs = vec![AiBridgeMessage::CompactionSummaryMessage {
             summary: "Compressed 50 entries".into(),
             tokens_before: 100000,
             tokens_after: 5000,

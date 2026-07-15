@@ -24,7 +24,7 @@ packages/xylitol-ai-bridge
 
 ## 2. 双类型过渡（本 change 选定）
 
-**决策**：包内自有 DTO（如 `BridgeMessage` / `BridgeChunk` / `BridgeUsage`）；主 crate `infra` 负责 ↔ `AgentMessage` / `XyChunk` / `XyUsage`。
+**决策**：包内自有 DTO（如 `AiBridgeMessage` / `AiBridgeChunk` / `AiBridgeUsage`）；主 crate `infra` 负责 ↔ `AgentMessage` / `XyChunk` / `XyUsage`。
 
 | 优点 | 代价 |
 |---|---|
@@ -42,7 +42,7 @@ packages/xylitol-ai-bridge/
   src/
     lib.rs
     provider/          # LlmAdapter 等价：OpenAI Responses/Completions、Anthropic Messages、装配
-    usage/             # 方言 usage 字段 → BridgeUsage；可选 cost(rates)
+    usage/             # 方言 usage 字段 → AiBridgeUsage；可选 cost(rates)
     accounting/        # 优先级解析 → ContextTokenEstimate + TokenProvenance
     tokenize/          # Builtin(tiktoken/claude-tokenizer) + HF tokenizer.json 缓存
     registry/          # model_id → TokenizerSource / RemoteCount 能力
@@ -116,7 +116,7 @@ HuggingFace { repo, file, mirrors[] }   # 缓存 ~/.xylitol/tokenizers/；下载
 ## 5. 映射到 xylitol 内部语义
 
 ```text
-BridgeChunk::Delta/Done(BridgeUsage?)
+AiBridgeChunk::Delta/Done(AiBridgeUsage?)
         │ infra map
         ▼
 XyChunk::TextDelta|ThinkingDelta|FunctionCall|Done { usage: Option<XyUsage> }
@@ -162,10 +162,17 @@ ContextTokenEstimate {
 
 | 风险 | 缓解 |
 |---|---|
-| 双类型漂移 | 映射单测 + 禁止 agent 直接用 Bridge*；恶化则 promote **c1040** |
+| 双类型漂移 | 映射单测；agent 可用 accounting+DTO，禁止碰 provider HTTP；恶化则 promote **c1040** |
 | 大迁回归 | tasks 分批；Fake/BDD 先绿再迁下一 adapter |
 | HF 下载 | opt-in；镜像可配；失败降级；显式 CLI 见 **c1050** |
 | 「Exact」误解 | 对外用 Provenance，文档写明 Local ≠ 账单保证 |
+
+## 包内模块边界（选 2：同 crate 硬分家）
+
+- `accounting` / `tokenize` / `registry` MUST NOT import `provider`
+- 厂商响应 usage = Api 优先；降级链见 §4
+- agent 允许依赖本包 accounting（+ DTO）；禁止依赖 provider HTTP 类型
+- 护栏：包测试扫 `accounting`→`provider` import（见 `lib.rs` `boundary_tests`）
 
 ## 9. 下游 draft 依赖（无 future.md）
 

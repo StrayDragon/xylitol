@@ -1,0 +1,31 @@
+[package]
+name = "xylitol-ai-bridge"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "LLM provider bridge + multi-source token accounting for xylitol"
+repository = "https://github.com/straydragon/xylitol"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+async-trait = "0.1"
+futures = "0.3"
+async-stream = "0.3"
+tokio = { version = "1", features = ["time", "sync", "macros", "rt"] }
+tokio-util = "0.7"
+reqwest = { version = "0.13", features = ["stream", "json"] }
+eventsource-stream = "0.2"
+async-openai = { version = "0.41", default-features = false, features = ["chat-completion", "rustls"] }
+fastrace = { version = "0.7", features = ["enable"] }
+uuid = { version = "1", features = ["v4"] }
+log = "0.4"
+tiktoken-rs = "0.6"
+claude-tokenizer = "0.3"
+tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
+dirs = "6"
+
+[dev-dependencies]
+wiremock = "0.6"
