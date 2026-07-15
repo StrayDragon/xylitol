@@ -464,6 +464,13 @@ pub trait Driver: Send {
     async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, String> {
         Err("stage_clipboard_image not supported on this driver".into())
     }
+
+    /// Read UTF-8 text from the system clipboard (c1156 / Ctrl+V text fallback).
+    ///
+    /// Returns `Ok(None)` when empty / no text. Default: unsupported.
+    async fn read_clipboard_text(&mut self) -> Result<Option<String>, String> {
+        Err("read_clipboard_text not supported on this driver".into())
+    }
 }
 
 /// Outcome of [`Driver::load_debug_scene`] (c710).
@@ -1233,6 +1240,12 @@ impl Driver for InProcessDriver {
         .await
         .map_err(|e| format!("clipboard image write task failed: {e}"))??;
         Ok(Some(path))
+    }
+
+    async fn read_clipboard_text(&mut self) -> Result<Option<String>, String> {
+        tokio::task::spawn_blocking(crate::infra::clipboard::read_clipboard_text)
+            .await
+            .map_err(|e| format!("clipboard text task failed: {e}"))?
     }
 }
 

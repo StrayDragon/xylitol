@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "infra-clipboard"
 purpose: 剪贴板集成 — 原生剪贴板、OSC 52 与图片复制支持。
 valid_scope[1]: src/infra/clipboard/
-requirements[7]{req_id,title,statement}:
+requirements[8]{req_id,title,statement}:
   c1,"text-copy","System MUST 提供 copy_to_clipboard(text)，经平台原生工具将 UTF-8 文本复制到系统剪贴板。"
   c2,"platform-order","System MUST 按顺序尝试平台原生剪贴板：native addon > pbcopy/clip > wl-copy > xclip/xsel > termux-clipboard-set > OSC 52。"
   c3,"image-clipboard",System MUST 在支持平台上读取剪贴板图片数据并检测 MIME 类型。
@@ -10,7 +10,8 @@ requirements[7]{req_id,title,statement}:
   c5,"osc52-limit",System MUST 遵守 OSC 52 载荷大小限制（编码后 100KB），超出时 MUST 跳过 OSC 52 回退。
   c6,"clipboard-error",所有剪贴板方法均失败时，System MUST 返回描述性错误，MUST NOT 静默吞掉失败。
   c7,"clipboard-image-temp-file",System MUST 提供将剪贴板图片字节写入 tempfile 的能力：文件名含不可预测分量；扩展名由 MIME 推导；返回绝对路径。MUST NOT 写入固定世界可读路径（如 ~/.xylitol/paste.png）。写盘失败 MUST 返回描述性错误。
-scenarios[9]{req_id,id,given,when,then}:
+  c8,"clipboard-text-read","System MUST 提供 read_clipboard_text：在支持平台上读取系统剪贴板 UTF-8 文本；无文本时返回空/None；工具不可用或失败 MUST 返回描述性错误。MUST NOT 依赖 OSC 52 读取（OSC 52 仅用于写出回退）。"
+scenarios[11]{req_id,id,given,when,then}:
   c1,macos,macOS 系统且 pbcopy 可用,copy_to_clipboard 被调用并传入 text,pbcopy 进程从 stdin 接收 text 且剪贴板含 text
   c1,"linux-wayland","Wayland Linux 且 wl-copy 可用",copy_to_clipboard 被调用并传入 text,"wl-copy 经 stdin pipe 接收 text 且剪贴板含 text"
   c1,"linux-x11",X11 Linux 且 xclip 可用,copy_to_clipboard 被调用并传入 text,xclip 接收 text 且剪贴板含 text
@@ -20,3 +21,5 @@ scenarios[9]{req_id,id,given,when,then}:
   c5,oversize,text 超过 100KB base64 编码,copy_to_clipboard 被调用并传入大文本,跳过 OSC 52 回退并返回错误
   c6,"all-fail",系统无剪贴板工具且无终端,copy_to_clipboard 被调用,返回描述性错误字符串
   c7,"write-png-temp",提供 image/png 字节,写出 tempfile,路径存在且后缀为 .png
+  c8,"wayland-plain-text","Wayland 且 wl-paste 报告 text/plain",调用 read_clipboard_text,"返回非空 UTF-8 字符串"
+  c8,"empty-clipboard",剪贴板无 text/plain,调用 read_clipboard_text,返回 None 或空串语义且不 panic

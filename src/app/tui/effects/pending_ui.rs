@@ -18,18 +18,35 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
 ) {
     if session.take_paste_image() {
         log::info!(target: "xylitol::tui", "Driver::stage_clipboard_image");
-        match driver.stage_clipboard_image().await {
+        let image_outcome = driver.stage_clipboard_image().await;
+        match image_outcome {
             Ok(Some(path)) => {
                 let insert = path.display().to_string();
                 if let Some(root) = session.ui_root() {
                     root.borrow_mut().insert_editor_text_at_cursor(&insert);
                 }
             }
-            Ok(None) => {
-                session.push_error_note("clipboard: no image");
-            }
-            Err(e) => {
-                session.push_error_note(format!("clipboard image: {e}"));
+            Ok(None) | Err(_) => {
+                // c1156 / pi: no image (or read failed) → try system clipboard text.
+                if let Err(e) = &image_outcome {
+                    log::info!(
+                        target: "xylitol::tui",
+                        "clipboard image unavailable, trying text: {e}"
+                    );
+                }
+                match driver.read_clipboard_text().await {
+                    Ok(Some(text)) if !text.is_empty() => {
+                        if let Some(root) = session.ui_root() {
+                            root.borrow_mut().insert_editor_text_at_cursor(&text);
+                        }
+                    }
+                    Ok(_) => {
+                        session.push_error_note("clipboard: no image or text");
+                    }
+                    Err(e) => {
+                        session.push_error_note(format!("clipboard: {e}"));
+                    }
+                }
             }
         }
         let _ = session.render_now();
