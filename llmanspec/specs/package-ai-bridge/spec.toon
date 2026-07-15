@@ -1,0 +1,17 @@
+kind: llman.sdd.spec
+name: package-ai-bridge
+purpose: "packages/xylitol-ai-bridge：client→LLM provider 接线与 AiBridge* DTO 边界。"
+valid_scope[2]: packages/xylitol-ai-bridge/,src/infra/provider/
+requirements[5]{req_id,title,statement}:
+  pab1,"workspace-包边界","仓库 MUST 提供 workspace 成员包 packages/xylitol-ai-bridge，作为 client 到上游 LLM model provider 的接线与计量库；该包 MUST NOT 依赖主 crate xylitol。"
+  pab2,"包内模块划分","xylitol-ai-bridge MUST 按职责划分至少包含 provider、usage、accounting、tokenize、registry 模块（名称可等价），分别承担方言接线、usage 归一化、多源计量、本地/远程分词计数与模型到分词源注册。"
+  pab3,"包内 DTO 独立","包对外流式与消息类型 MUST 使用包内自有 DTO（如 AiBridgeMessage / AiBridgeChunk / AiBridgeUsage）；包 MUST NOT 直接依赖主仓 domain 中的 AgentMessage / XyChunk 作为其公共 API 类型（过渡期由主仓 infra 映射）。"
+  pab4,"主仓映射层","主仓 infra（或明确的组合根映射模块）MUST 提供 AiBridge DTO 与 domain 类型（AgentMessage / XyChunk / XyUsage）之间的双向或足够覆盖生成路径的映射；agent 与 domain 层 MUST NOT 直接依赖 xylitol_ai_bridge 的 HTTP/vendor 类型。"
+  pab5,"provider-实现迁入","OpenAI 兼容（Responses 与 Completions）与 Anthropic Messages 的流式/非流式接线实现 MUST 以 xylitol-ai-bridge 为实现归属；主仓 MUST NOT 保留与包并行的第二套完整 adapter 实现体（允许薄映射与装配）。"
+scenarios[6]{req_id,id,given,when,then}:
+  pab1,"crate-no-dep-xylitol","packages/xylitol-ai-bridge 已加入 workspace","检查该包 Cargo.toml 依赖","不存在对主包 xylitol 的依赖"
+  pab2,"modules-exist","包源码树已按 design 落地","枚举 src 模块","存在 provider usage accounting tokenize registry 职责边界"
+  pab3,"dto-not-domain","包公共 API 已定义","审查 lib 导出的消息/块类型","导出类型为包内 AiBridge* DTO 而非 crate::domain 路径"
+  pab4,"map-to-xychunk","映射层已实现且收到含 usage 的 AiBridge Done","映射为 domain 流事件","得到 XyChunk::Done 且 usage 字段按约定填充"
+  pab4,"agent-no-vendor","变更完成后","在 src/agent 与 src/domain 中搜索 xylitol_ai_bridge 的 vendor HTTP 类型","无直接 import"
+  pab5,"single-impl","OpenAI 与 Anthropic 路径已迁入包","审查 src/infra/provider 与包 provider","主仓无并行完整 adapter 实现体仅剩映射或装配"
