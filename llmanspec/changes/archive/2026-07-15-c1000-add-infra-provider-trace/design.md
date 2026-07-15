@@ -86,6 +86,22 @@ Agent 读同一 `request_id` 下 raw vs mapped 即可判责。
 
 **扩展规则**：新增可选字段放 `ext` 或 bump `schema` → `v2`；读者应忽略未知字段。
 
+## 验收样例（2026-07-15，本机 tufa / openai-responses）
+
+命令：`cargo run -- --print --prompt "Reply with exactly: ok"`（debug 默认或 `XYLITOL_PROVIDER_TRACE=1`）。
+
+观察（`tail` / 计数，**勿整文件读入**）：
+
+| 项 | 结果 |
+|----|------|
+| 行数 | 37 |
+| `request_id` | 1 个共享 |
+| kinds | raw 23 / mapped 14 |
+| mapped variants | ThinkingDelta×12，TextDelta×1，Done×1 |
+| raw 关键 event | `response.reasoning_text.delta` → ThinkingDelta；`response.output_text.delta` → TextDelta |
+
+打印面可见 `<think>…</think>ok`；对照证明通道拆分正确（上游 reasoning vs output，非映射错分）。
+
 ## 迁移步骤（tasks 顺序）
 
 1. 引入 fastrace + log + FileReporter；组合根装配；TUI 冒烟无 stderr 污染
