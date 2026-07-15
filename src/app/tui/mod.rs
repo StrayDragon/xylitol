@@ -114,7 +114,7 @@ pub fn preflight(driver: &dyn Driver) -> Result<(), TuiPreflightError> {
 /// `TerminalGuard::enter` cannot start the terminal.
 pub async fn run(driver: &mut dyn Driver) -> Result<(), String> {
     install_lifecycle_hooks();
-    tracing::info!(target: "xylitol::tui", "starting product TUI host");
+    log::info!(target: "xylitol::tui", "starting product TUI host");
 
     let guard = TerminalGuard::enter()?;
     let terminal = guard.take();
@@ -122,7 +122,7 @@ pub async fn run(driver: &mut dyn Driver) -> Result<(), String> {
     let result = run_host_loop(terminal, driver).await;
 
     if let Err(ref e) = result {
-        tracing::error!(target: "xylitol::tui", error = %e, "TUI host exited with error");
+        log::error!(target: "xylitol::tui", "TUI host exited with error error={}", e);
         terminal_guard::emergency_restore();
     }
     result
@@ -201,7 +201,7 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
     }
 
     session.tui.finish_inline();
-    tracing::info!(target: "xylitol::tui", "product TUI host stopped");
+    log::info!(target: "xylitol::tui", "product TUI host stopped");
     Ok(())
 }
 
@@ -230,7 +230,7 @@ fn on_agent_stream_item<T: xylitol_tui::Terminal>(
     match maybe {
         Some(xy) => session.step(HostEvent::Xy(Box::new(xy))),
         None => {
-            tracing::debug!(target: "xylitol::tui", "agent EventStream ended");
+            log::debug!(target: "xylitol::tui", "agent EventStream ended");
             *agent_stream = None;
             session.on_run_stream_closed();
             let _ = session.tui.try_render();

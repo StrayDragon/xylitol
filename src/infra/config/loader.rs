@@ -49,10 +49,9 @@ pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, Lo
 
     let (secrets, injected) = super::secret_env::load_secret_env_files(&paths);
     if injected > 0 {
-        tracing::debug!(
+        log::debug!(
             target: "xylitol::config",
-            injected,
-            "loaded secret.env into process environment"
+            "loaded secret.env into process environment injected={injected}"
         );
     }
 

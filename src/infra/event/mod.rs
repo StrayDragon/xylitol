@@ -76,7 +76,7 @@ impl EventBus {
                     handler(data).await;
                 });
                 if let Err(e) = join_handle.await {
-                    tracing::warn!(
+                    log::warn!(
                         "EventBus: handler panicked on channel '{}': {}",
                         channel_name,
                         e

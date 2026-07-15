@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use tracing::warn;
+use log::warn;
 
 use super::script::{run_hook_script, run_hook_script_with_context};
 use super::{DispatchResult, HookAction, HookEvent, HookPhase, entry_matches_raw, event_matches};
@@ -63,11 +63,11 @@ impl HookDispatcher {
                 }
                 HookAction::Block { reason } => {
                     warn!(
-                        event = event.event_type(),
-                        phase = phase.as_str(),
-                        hook = hook.command,
-                        reason = reason,
-                        "Hook blocked operation"
+                        "Hook blocked operation event={} phase={} hook={} reason={}",
+                        event.event_type(),
+                        phase.as_str(),
+                        hook.command,
+                        reason
                     );
                     return DispatchResult::Blocked { reason };
                 }
@@ -124,11 +124,8 @@ impl HookDispatcher {
                 HookAction::Allow => {}
                 HookAction::Block { reason } => {
                     warn!(
-                        event = event_type,
-                        phase = phase,
-                        hook = hook.command,
-                        reason = reason,
-                        "Hook blocked operation"
+                        "Hook blocked operation event={} phase={} hook={} reason={}",
+                        event_type, phase, hook.command, reason
                     );
                     return DispatchResult::Blocked { reason };
                 }

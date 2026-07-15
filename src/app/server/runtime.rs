@@ -112,7 +112,7 @@ pub async fn start(
     let mut driver = runtime.driver;
     let mut mcp = crate::app::core::composition::McpSession::new();
     if let Err(e) = mcp.reload(&mut driver, &servers).await {
-        tracing::warn!(error = %e, "MCP reload failed");
+        log::warn!("MCP reload failed error={}", e);
     }
 
     // ── Server state (Driver seam — same as Print) ────────────────
