@@ -5,7 +5,7 @@ status: purpose-draft
 priority: 1150
 apply_band: P3-feature
 depends_on:
-  - c1140-add-package-tui-thinking-level-chrome
+  - c1140-add-package-tui-thinking-level-border
   - c1145-update-runtime-model-thinking-levels
 author: agent
 track: R

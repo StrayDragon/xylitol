@@ -1,6 +1,6 @@
 ---
-change_id: c1140-add-package-tui-thinking-level-chrome
-title: "xylitol-tui / agent_demo：thinking level 编辑器边框能力"
+change_id: c1140-add-package-tui-thinking-level-border
+title: "xylitol-tui / agent_demo：thinking level 编辑器边框色"
 status: purpose-draft
 priority: 1140
 apply_band: P3-feature
@@ -11,11 +11,13 @@ wave: thinking
 domain: package-tui
 ---
 
-# c1140-add-package-tui-thinking-level-chrome
+# c1140-add-package-tui-thinking-level-border
 
 ## Why
 
 pi 用编辑器边框色表示 thinking level。产品不做 `/settings`。能力应先在 `packages/xylitol-tui` + `agent_demo` 验证，再进 app TUI（c1150）。
+
+（原 id 含 `chrome` 易与浏览器 Chrome / TUI chrome 壳混淆；已改为 `border`。）
 
 ## Purpose
 
