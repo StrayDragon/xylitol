@@ -1,56 +1,51 @@
 ---
 change_id: c997-update-agent-hooks-bang-input
-title: "Hook：user_bash / input（TUI bang 与提前提交）"
-status: purpose-draft
+title: "库缝：user_bash（Driver::execute_bash）"
+status: full
 priority: 997
-depends_on: ["c735-update-agent-hooks-pi-parity"]
+depends_on: ["c990-add-test-hooks-wiring-bdd"]
 author: agent
 track: A
-wave: hooks-pi-parity-followup
+wave: hooks-wiring-bdd
 domain: c995
 ---
 
 # c997-update-agent-hooks-bang-input
 
-> **status: purpose-draft** — 承接 `c735` future 的 `user_bash` / `input`。
-> **depends_on c735**：归档后再 apply。
-
 ## Why
 
-pi 扩展可拦 `user_bash` 与 `input`。xylitol TUI bang（`!`/`!!`）与 editor 提交走 host/`effects`，未发脚本 hook；枚举名已有或可加，但热路径未接。
+pi 可拦 `user_bash`。xylitol TUI bang 与任意 client 最终应走 `Driver::execute_bash`；该库 API 尚未 dispatch。
 
 ## Purpose
 
-1. **`user_bash`**：交互 bang 提交前 MUST dispatch（command、exclude_from_context 等）；Blocked → 不执行并表面提示（与现有 bang reject 一致可测）。
-2. **`input`**（可选升格范围）：idle/busy 提交用户文本前观察或改写；须避免与 slash/steer 抢键；升格时写清是否 MUST 或 MAY。
-3. 通过 app 层持有的 `XyHookBus`/`HookDispatcher` 调用（TUI 可依赖 infra/composition），**不**让 `packages/xylitol-tui` 依赖主 crate hooks。
-4. 空配置零开销；不改变 bang abort 与 `(cancelled)` 语义（c665/c669）。
+1. **`Driver::execute_bash` 执行前** MUST dispatch `user_bash`（context：`command`、`exclude_from_context`；可选 `cwd`）。
+2. **Blocked** → 不执行 bash，返回可观测错误（与产品 reject 文案可后续对齐）。
+3. **Modify.command**（MAY）：若实现则须测；最小 MUST 为 allow/block。
+4. **`input` 事件本 change 不做**（后置；易与 slash/steer 抢语义）。
+5. TUI bang 只调用同一 Driver API，禁止第二套 hook 点；`packages/xylitol-tui` 不依赖 hooks。
+6. wiring：`执行 bash` 操作 allow + block 场景。
 
-## What Changes（升格后预期）
+## What Changes
 
-- `effects` / host bang 与 submit 路径挂 hook
-- `agent-hooks` + 可能 `app-tui-input` / commands delta
-- BDD 或 harness：bang block / allow
+- `InProcessDriver::execute_bash`（或 agent `execute_bash` 唯一点）旁挂
+- `agent-hooks` + `test-hooks-wiring`；BDD
 
 ## Capabilities
 
 - `agent-hooks`
-- `app-tui-input` 和/或 `app-tui-commands`（升格时声明）
+- `test-hooks-wiring`
 
 ## Out of scope
 
-- Driver session hooks（`c995`）
-- model_select（`c996`）
-- Completions HTTP（`c998`）
-- 通用 keybinding 扩展市场
+- `input` 事件；c995/c996/c998；改 bang abort/(cancelled) 语义
 
 ## Ethics
 
-- risk_level: medium（可拦用户输入/shell）
-- prohibited_actions: 默认 block 所有 input；hook 超时阻塞 UI 超过既有 timeout 策略
-- required_evidence: bang allow + block 场景
-- escalation_policy: `input` 改写语义有歧义时先确认再 MUST
+- risk_level: medium
+- prohibited_actions: 默认 block 全部 bash；hook 超时阻塞超过既有策略
+- required_evidence: allow + block 各一
+- escalation_policy: Modify 有歧义时只交 allow/block
 
 ## Depends
 
-- **c735-update-agent-hooks-pi-parity**
+- **c990-add-test-hooks-wiring-bdd**

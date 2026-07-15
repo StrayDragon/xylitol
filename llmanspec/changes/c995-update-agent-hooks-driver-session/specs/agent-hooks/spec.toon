@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,h18,"session-tree-switch-hooks","When XyHookBus is attached, Driver session_tree and travel_session_tree MUST dispatch session_before_tree (Blocked cancels) and session_tree on success; switch_session MUST dispatch session_before_switch (Blocked cancels) and session_shutdown for the prior session on success; process-quit shutdown MAY until a library teardown seam exists.",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  h18,"switch-cancel",注册了匹配 session_before_switch 且返回 block 的 hook,执行操作「切换会话 target」,切换未发生且阻止原因可观测

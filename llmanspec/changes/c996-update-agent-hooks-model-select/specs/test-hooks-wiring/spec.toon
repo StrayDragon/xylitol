@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,thw6,"wiring-model-ops","hooks-wiring 操作字典 MUST 支持「选择模型 fake」与「设置思考级别 high」，并启用对应观察场景。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  thw6,"thinking-select",注册了匹配 thinking_level_select 的 hook,执行操作「设置思考级别 high」,hook 上下文包含键 level
