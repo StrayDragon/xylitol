@@ -32,6 +32,7 @@
 | A05 | Compact 自定义指令 | `/compact <instructions>` 可传自定义压缩提示 | `Command::Compact` 无 instructions 字段 → **仅无参** `/session-compact`；带参 usage 错误 | 是 |
 | A06 | Import 确认 UI | extension confirm 对话框 | editor 槽 **Yes/No SelectList**（不解冻 Trust Choice stub） | 是 |
 | A07 | Clone vs fork | `/clone` = leaf `fork(at)`；`/fork` = user 选择器 | `/session-clone` = leaf **恒 At** + switch；`/session-fork` 仍遵守 A02（user→Before / 非 user→At）。二者 MUST NOT 混用语义 | 是 |
+| A08 | Resume scope=All | 多 project 根目录 `listAll` 全局列举 | 单 `sessions_dir` 下全部 jsonl；scope=Current 按 header `cwd` 过滤 | 是 |
 
 ### 对齐（非差异，备忘）
 
@@ -73,3 +74,4 @@
 | 2026-07-14 | `/debug session-tree-branched` 预置兄弟枝；PTY `pty_product_fake_session_tree_branched`（raw 断言，避 CapturedScreen 长 scrollback 不同步） |
 | 2026-07-15 | 会话 slash 迁移调研：A02 钉 `/session-fork`（非 user 选择器）；增 A03–A06；手测备忘 `/tree`/`/fork`→新名；对照 `../pi/_PLAN_REPORT.md` |
 | 2026-07-15 | c1020：`/session-new` `/session-clone` `/session-name`；A07 clone(At) ≠ session-fork |
+| 2026-07-15 | c1065：Resume 面板 P0–P2；A08 单 sessions_dir All ≠ pi 多根 listAll |

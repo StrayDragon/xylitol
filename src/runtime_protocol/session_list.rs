@@ -113,6 +113,8 @@ mod tests {
             modified_unix: Some(mtime),
             parent_session_id: parent.map(str::to_string),
             tree_prefix: String::new(),
+            cwd: None,
+            path: None,
         }
     }
 

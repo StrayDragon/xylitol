@@ -25,6 +25,7 @@ use super::slots::EditorSlot;
 use super::theme::LayoutTheme;
 use crate::app::tui::bridge::{UiModel, UiPhase};
 use crate::app::tui::host::{LayoutMode, TOO_SMALL_HINT};
+use crate::app::tui::session_resume::{SessionResumeAction, SessionResumePanel};
 use crate::app::tui::widgets::{
     GlyphSet, ScrollbackFold, format_footer_text, render_queue_strip, render_scrollback,
 };
@@ -155,17 +156,8 @@ fn import_confirm_list(theme: LayoutTheme) -> SelectList {
     )
 }
 
-fn empty_session_resume_list(theme: LayoutTheme) -> SelectList {
-    SelectList::new(
-        Vec::new(),
-        10,
-        theme.select_list_theme(),
-        SelectListLayoutOptions {
-            min_primary_column_width: Some(16),
-            max_primary_column_width: Some(48),
-            truncate_primary: None,
-        },
-    )
+fn empty_session_resume_panel(theme: LayoutTheme) -> SessionResumePanel {
+    SessionResumePanel::new(theme)
 }
 
 /// User choice from `/session-import` confirm slot (c1010).
@@ -220,9 +212,11 @@ pub struct UiRoot {
     import_confirm_list: SelectList,
     import_confirm_path: Option<String>,
     pending_import_decision: Option<ImportConfirmDecision>,
-    /// `/session-resume` picker (c1015).
-    session_resume_list: SelectList,
+    /// `/session-resume` picker (c1015 / c1065).
+    pub(crate) session_resume: SessionResumePanel,
     pending_session_resume_select: Option<String>,
+    pending_session_resume_rename: Option<(String, String)>,
+    pending_session_resume_delete: Option<String>,
 }
 
 impl UiRoot {
@@ -277,8 +271,10 @@ impl UiRoot {
             import_confirm_list: import_confirm_list(theme),
             import_confirm_path: None,
             pending_import_decision: None,
-            session_resume_list: empty_session_resume_list(theme),
+            session_resume: empty_session_resume_panel(theme),
             pending_session_resume_select: None,
+            pending_session_resume_rename: None,
+            pending_session_resume_delete: None,
         };
         root.install_completion_sources();
         root
@@ -460,37 +456,34 @@ impl UiRoot {
         self.pending_session_resume_select.take()
     }
 
-    /// Mount session resume SelectList in the editor slot (c1015).
+    pub fn take_pending_session_resume_rename(&mut self) -> Option<(String, String)> {
+        self.pending_session_resume_rename.take()
+    }
+
+    pub fn take_pending_session_resume_delete(&mut self) -> Option<String> {
+        self.pending_session_resume_delete.take()
+    }
+
+    pub fn session_resume_panel_text_for_test(&self, width: usize) -> String {
+        self.session_resume.render(width).join("\n")
+    }
+
+    /// Mount session resume panel in the editor slot (c1065).
     pub fn mount_session_resume_picker(
         &mut self,
-        items: Vec<SelectItem>,
+        entries: Vec<crate::app::core::driver::SessionListEntry>,
         current_id: Option<&str>,
     ) {
-        let mut list = empty_session_resume_list(self.theme);
-        list.filtered_items = items;
-        if let Some(cur) = current_id
-            && let Some(idx) = list
-                .filtered_items
-                .iter()
-                .position(|item| item.value == cur)
-        {
-            list.selected_index = idx;
-        }
-        self.session_resume_list = list;
+        self.session_resume.set_current_cwd(&self.cwd);
+        self.session_resume
+            .load_entries(entries, current_id.map(str::to_string));
         self.slot = EditorSlot::SessionResume;
     }
 
     /// Placeholder while scanning session jsonl (pi loaded/total).
     pub fn mount_session_resume_loading(&mut self, loaded: usize, total: usize) {
-        let label = if total == 0 {
-            "Loading sessions…".to_string()
-        } else {
-            format!("Loading sessions… {loaded}/{total}")
-        };
-        let mut list = empty_session_resume_list(self.theme);
-        list.filtered_items = vec![SelectItem::new("__loading__", label)];
-        list.selected_index = 0;
-        self.session_resume_list = list;
+        self.session_resume.set_current_cwd(&self.cwd);
+        self.session_resume.set_loading(loaded, total);
         self.slot = EditorSlot::SessionResume;
     }
 
@@ -601,6 +594,13 @@ impl UiRoot {
             self.close_import_confirm();
             return true;
         }
+        if self.slot == EditorSlot::SessionResume {
+            if self.session_resume.cancel_substate() {
+                return true;
+            }
+            self.close_session_resume();
+            return true;
+        }
         if self.slot.is_overlay() {
             self.close_slot();
             return true;
@@ -632,7 +632,9 @@ impl UiRoot {
         self.models_list = empty_models_list(self.theme);
         self.import_confirm_path = None;
         self.import_confirm_list = import_confirm_list(self.theme);
-        self.session_resume_list = empty_session_resume_list(self.theme);
+        self.session_resume = empty_session_resume_panel(self.theme);
+        self.pending_session_resume_rename = None;
+        self.pending_session_resume_delete = None;
     }
 
     pub fn close_session_tree(&mut self) {
@@ -762,12 +764,7 @@ impl UiRoot {
                 lines.extend(self.import_confirm_list.render(width.max(1)));
                 lines
             }
-            EditorSlot::SessionResume => {
-                let mut lines = Vec::new();
-                lines.push(self.theme.paint_muted(" sessions"));
-                lines.extend(self.session_resume_list.render(width.max(1)));
-                lines
-            }
+            EditorSlot::SessionResume => self.session_resume.render(width.max(1)),
         }
     }
 
@@ -977,23 +974,18 @@ impl Component for UiRoot {
                 return;
             }
             EditorSlot::SessionResume => {
-                let InputEvent::Key(ref key) = event else {
-                    return;
-                };
-                if matches_key_event(key, "enter") {
-                    if let Some(item) = self.session_resume_list.get_selected_item()
-                        && item.value != "__loading__"
-                    {
-                        self.pending_session_resume_select = Some(item.value.clone());
+                let action = self.session_resume.handle_input(event);
+                match action {
+                    SessionResumeAction::Switch(id) => {
+                        self.pending_session_resume_select = Some(id);
                     }
-                    return;
-                }
-                if matches_key_event(key, "up")
-                    || matches_key_event(key, "down")
-                    || matches_key_event(key, "pageUp")
-                    || matches_key_event(key, "pageDown")
-                {
-                    self.session_resume_list.handle_input(event);
+                    SessionResumeAction::Rename { id, name } => {
+                        self.pending_session_resume_rename = Some((id, name));
+                    }
+                    SessionResumeAction::Delete(id) => {
+                        self.pending_session_resume_delete = Some(id);
+                    }
+                    SessionResumeAction::None => {}
                 }
                 return;
             }
@@ -1031,7 +1023,7 @@ impl Component for UiRoot {
         self.tree.invalidate();
         self.models_list.invalidate();
         self.import_confirm_list.invalidate();
-        self.session_resume_list.invalidate();
+        self.session_resume.invalidate();
     }
 
     fn tick(&mut self) -> bool {

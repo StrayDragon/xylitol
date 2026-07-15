@@ -62,12 +62,14 @@ pub struct ScriptedDriver {
     export_html_calls: Mutex<Vec<String>>,
     export_jsonl_calls: Mutex<Vec<String>>,
     import_jsonl_calls: Mutex<Vec<String>>,
-    session_list: Vec<SessionListEntry>,
+    session_list: Mutex<Vec<SessionListEntry>>,
     session_stats: Option<SessionStats>,
     list_sessions_calls: AtomicUsize,
     new_session_calls: AtomicUsize,
     session_name: Mutex<Option<String>>,
     set_session_name_calls: Mutex<Vec<String>>,
+    set_session_name_for_calls: Mutex<Vec<(String, String)>>,
+    delete_session_calls: Mutex<Vec<String>>,
 }
 
 impl ScriptedDriver {
@@ -143,12 +145,14 @@ impl ScriptedDriver {
             export_html_calls: Mutex::new(Vec::new()),
             export_jsonl_calls: Mutex::new(Vec::new()),
             import_jsonl_calls: Mutex::new(Vec::new()),
-            session_list: Vec::new(),
+            session_list: Mutex::new(Vec::new()),
             session_stats: None,
             list_sessions_calls: AtomicUsize::new(0),
             new_session_calls: AtomicUsize::new(0),
             session_name: Mutex::new(None),
             set_session_name_calls: Mutex::new(Vec::new()),
+            set_session_name_for_calls: Mutex::new(Vec::new()),
+            delete_session_calls: Mutex::new(Vec::new()),
         }
     }
 
@@ -160,6 +164,20 @@ impl ScriptedDriver {
         self.set_session_name_calls
             .lock()
             .expect("set_session_name_calls")
+            .clone()
+    }
+
+    pub fn set_session_name_for_calls(&self) -> Vec<(String, String)> {
+        self.set_session_name_for_calls
+            .lock()
+            .expect("set_session_name_for_calls")
+            .clone()
+    }
+
+    pub fn delete_session_calls(&self) -> Vec<String> {
+        self.delete_session_calls
+            .lock()
+            .expect("delete_session_calls")
             .clone()
     }
 
@@ -232,7 +250,7 @@ impl ScriptedDriver {
     }
 
     pub fn set_session_list(&mut self, entries: Vec<SessionListEntry>) {
-        self.session_list = entries;
+        *self.session_list.lock().expect("session_list") = entries;
     }
 
     pub fn set_session_stats(&mut self, stats: SessionStats) {
@@ -552,9 +570,7 @@ impl Driver for ScriptedDriver {
 
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, String> {
         self.list_sessions_calls.fetch_add(1, Ordering::SeqCst);
-        Ok(crate::runtime_protocol::flatten_session_forest(
-            self.session_list.clone(),
-        ))
+        Ok(self.session_list.lock().expect("session_list").clone())
     }
 
     async fn new_session(&mut self) -> Result<String, String> {
@@ -579,6 +595,40 @@ impl Driver for ScriptedDriver {
             .push(name.to_string());
         *self.session_name.lock().expect("session_name") = Some(stored.clone());
         Ok(stored)
+    }
+
+    async fn set_session_name_for(
+        &mut self,
+        session_id: &str,
+        name: &str,
+    ) -> Result<String, String> {
+        let stored = crate::runtime_protocol::sanitize_session_display_name(name);
+        self.set_session_name_for_calls
+            .lock()
+            .expect("set_session_name_for_calls")
+            .push((session_id.to_string(), name.to_string()));
+        if let Some(entry) = self
+            .session_list
+            .lock()
+            .expect("session_list")
+            .iter_mut()
+            .find(|e| e.id == session_id)
+        {
+            entry.name = Some(stored.clone());
+        }
+        Ok(stored)
+    }
+
+    async fn delete_session(&mut self, session_id: &str) -> Result<(), String> {
+        self.delete_session_calls
+            .lock()
+            .expect("delete_session_calls")
+            .push(session_id.to_string());
+        self.session_list
+            .lock()
+            .expect("session_list")
+            .retain(|e| e.id != session_id);
+        Ok(())
     }
 }
 
@@ -768,6 +818,16 @@ mod slice_tests {
         use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
         InputEvent::Key(KeyEvent {
             code: KeyCode::Down,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn up_event() -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Up,
             modifiers: KeyModifiers::NONE,
             kind: KeyEventKind::Press,
             state: KeyEventState::NONE,
@@ -2621,6 +2681,8 @@ mod slice_tests {
                 modified_unix: Some(1_700_000_000),
                 parent_session_id: None,
                 tree_prefix: String::new(),
+                cwd: Some(".".into()),
+                path: None,
             },
             SessionListEntry {
                 id: "newer".into(),
@@ -2630,6 +2692,8 @@ mod slice_tests {
                 modified_unix: Some(1_700_000_100),
                 parent_session_id: Some("older".into()),
                 tree_prefix: String::new(),
+                cwd: Some(".".into()),
+                path: None,
             },
         ]);
         driver.set_session_messages(harness_sample_session_messages());
@@ -2678,6 +2742,140 @@ mod slice_tests {
             "expected switch note: {:?}",
             system_notes(&session)
         );
+    }
+
+    #[tokio::test]
+    async fn h37_session_resume_panel_scope_sort_rename_delete_fold() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(100, 30));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        *driver.active_session_id.lock().expect("sid") = "parent".into();
+        driver.set_session_list(vec![
+            SessionListEntry {
+                id: "parent".into(),
+                name: Some("Parent chat".into()),
+                first_message: Some("parent preview".into()),
+                message_count: 5,
+                modified_unix: Some(1_700_000_200),
+                parent_session_id: None,
+                tree_prefix: String::new(),
+                cwd: Some(".".into()),
+                path: Some("/tmp/parent.jsonl".into()),
+            },
+            SessionListEntry {
+                id: "child".into(),
+                name: None,
+                first_message: Some("child preview line".into()),
+                message_count: 2,
+                modified_unix: Some(1_700_000_100),
+                parent_session_id: Some("parent".into()),
+                tree_prefix: String::new(),
+                cwd: Some(".".into()),
+                path: None,
+            },
+            SessionListEntry {
+                id: "other-cwd".into(),
+                name: Some("Elsewhere".into()),
+                first_message: Some("other cwd".into()),
+                message_count: 1,
+                modified_unix: Some(1_700_000_050),
+                parent_session_id: None,
+                tree_prefix: String::new(),
+                cwd: Some("/other/project".into()),
+                path: None,
+            },
+        ]);
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("/session-resume");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        let panel = root.borrow().session_resume_panel_text_for_test(100);
+        assert!(
+            panel.contains("Sort: Threaded") || panel.contains("Current"),
+            "expected resume header cues: {panel}"
+        );
+        assert!(panel.contains("filter"), "expected filter hint: {panel}");
+
+        // Tab to All scope — other-cwd session becomes visible.
+        session.step(HostEvent::Input(tab_event())).unwrap();
+        let all_scope = root.borrow().session_resume_panel_text_for_test(100);
+        assert!(
+            all_scope.contains("Elsewhere") || all_scope.contains("other-cwd"),
+            "expected All scope to show other cwd session: {all_scope}"
+        );
+
+        // Named filter hides unnamed child.
+        session.step(HostEvent::Input(ctrl_key_event('n'))).unwrap();
+        let named_only = root.borrow().session_resume_panel_text_for_test(100);
+        assert!(
+            !named_only.contains("child preview"),
+            "Named filter should hide unnamed child: {named_only}"
+        );
+        session.step(HostEvent::Input(ctrl_key_event('n'))).unwrap();
+
+        // Sort cycle to Recent.
+        session.step(HostEvent::Input(ctrl_key_event('s'))).unwrap();
+        let recent = root.borrow().session_resume_panel_text_for_test(100);
+        assert!(
+            recent.contains("Sort: Recent"),
+            "expected Recent sort label: {recent}"
+        );
+
+        // Back to Threaded for fold test.
+        session.step(HostEvent::Input(ctrl_key_event('s'))).unwrap();
+        session.step(HostEvent::Input(ctrl_key_event('s'))).unwrap();
+        let threaded = root.borrow().session_resume_panel_text_for_test(100);
+        assert!(
+            threaded.contains("child preview"),
+            "child visible: {threaded}"
+        );
+
+        // Fold parent hides child (parent is first row when threaded).
+        session.step(HostEvent::Input(ctrl_left_event())).unwrap();
+        let folded = root.borrow().session_resume_panel_text_for_test(100);
+        assert!(
+            !folded.contains("child preview"),
+            "fold should hide child row: {folded}"
+        );
+        session.step(HostEvent::Input(ctrl_right_event())).unwrap();
+
+        // Rename non-active child session (unnamed — empty rename buffer).
+        session.step(HostEvent::Input(down_event())).unwrap();
+        session.step(HostEvent::Input(ctrl_key_event('r'))).unwrap();
+        for ch in "child-named".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.set_session_name_for_calls(),
+            vec![("child".to_string(), "child-named".to_string())]
+        );
+
+        // Back to parent (active) for delete reject test.
+        session.step(HostEvent::Input(up_event())).unwrap();
+        session.step(HostEvent::Input(ctrl_key_event('d'))).unwrap();
+        let reject_panel = root.borrow().session_resume_panel_text_for_test(100);
+        assert!(
+            reject_panel.contains("Cannot delete the active session"),
+            "expected panel reject message: {reject_panel}"
+        );
+        assert!(driver.delete_session_calls().is_empty());
+
+        // Delete non-active child.
+        session.step(HostEvent::Input(down_event())).unwrap();
+        session.step(HostEvent::Input(ctrl_key_event('d'))).unwrap();
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.delete_session_calls(), vec!["child".to_string()]);
     }
 
     #[tokio::test]
