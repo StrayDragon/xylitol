@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,h17,"completions-provider-three-seam","OpenAI Completions adapter MUST invoke before_provider_headers, before_provider_request, and after_provider_response in the same order as Responses when HookDispatcher is injected; empty dispatcher MUST be zero-overhead no-op; MUST NOT require reading SSE body for after_provider_response.",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  h17,"completions-modify",Completions adapter 注入了 before_provider_request Modify hook,发送 Completions 请求,outgoing JSON 包含修改后的字段

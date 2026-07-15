@@ -123,6 +123,7 @@ pub async fn run_after_response(
 mod tests {
     use super::*;
     use crate::infra::config::types::{HookEntry, HooksConfig};
+    use reqwest::header::{CONTENT_TYPE, HeaderValue};
 
     #[test]
     fn headers_to_json_lowercases_keys() {

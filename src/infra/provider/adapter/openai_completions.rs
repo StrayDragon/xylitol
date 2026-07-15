@@ -1,6 +1,6 @@
 //! OpenAI Chat Completions adapter.
 //!
-//! HTTP via the internal OpenAI HTTP client (async-openai). Public `XyModel` surface
+//! HTTP via reqwest + provider hook three-seam (c998). Public `XyModel` surface
 //! is only [`super::AdapterXyModel`] wrapping this [`crate::infra::provider::adapter::LlmAdapter`] (c505).
 
 use std::sync::Arc;
@@ -19,9 +19,6 @@ use super::LlmAdapter;
 /// Adapter for the OpenAI Chat Completions API.
 pub struct OpenAiCompletionsAdapter {
     inner: OpenAIProvider,
-    /// Provider script hooks — accepted for wiring parity; HTTP three-seam is
-    /// intentionally no-op on Completions (Responses/Anthropic only).
-    _hooks: Option<Arc<HookDispatcher>>,
 }
 
 impl OpenAiCompletionsAdapter {
@@ -33,8 +30,7 @@ impl OpenAiCompletionsAdapter {
         hooks: Option<Arc<HookDispatcher>>,
     ) -> Self {
         Self {
-            inner: OpenAIProvider::new(api_key, model, base_url),
-            _hooks: hooks,
+            inner: OpenAIProvider::new(api_key, model, base_url, hooks),
         }
     }
 }
@@ -59,5 +55,91 @@ impl LlmAdapter for OpenAiCompletionsAdapter {
         tools: &[XyToolSchema],
     ) -> Result<XyStream, XyError> {
         self.inner.generate_stream(messages, tools, false).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infra::config::types::{HookEntry, HooksConfig};
+    use futures::StreamExt;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn empty_hooks_completions_noop() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "x",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "hi"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = OpenAiCompletionsAdapter::new(
+            "sk-test".into(),
+            "gpt-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(HookDispatcher::new(&HooksConfig::default()))),
+        );
+        let mut stream = adapter
+            .generate(vec![AgentMessage::user("hi")], &[])
+            .await
+            .expect("generate");
+        let mut saw_text = false;
+        while let Some(item) = stream.next().await {
+            let chunk = item.expect("chunk");
+            if matches!(chunk, crate::domain::types::XyChunk::TextDelta(_)) {
+                saw_text = true;
+            }
+        }
+        assert!(saw_text);
+    }
+
+    #[tokio::test]
+    async fn before_provider_request_modify_reaches_wiremock() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .and(wiremock::matchers::body_partial_json(serde_json::json!({
+                "cache_control": {"type": "ephemeral"}
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "x",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "ok"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+            })))
+            .mount(&server)
+            .await;
+
+        let config = HooksConfig {
+            global: vec![HookEntry {
+                events: vec!["before_provider_request".into()],
+                command: "echo '{\"action\":\"modify\",\"args\":{\"model\":\"gpt-test\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"cache_control\":{\"type\":\"ephemeral\"}}}'".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let adapter = OpenAiCompletionsAdapter::new(
+            "sk-test".into(),
+            "gpt-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(HookDispatcher::new(&config))),
+        );
+        let _ = adapter
+            .generate(vec![AgentMessage::user("hi")], &[])
+            .await
+            .expect("generate with modify");
     }
 }
