@@ -23,7 +23,7 @@ requirements[17]{req_id,title,statement}:
   r8,"agents-dir-discovery",System MUST discover .agents/ directory alongside .xylitol/ during project root detection and expose its path via ConfigPaths for downstream consumers.
   r9,"model-resolution","System MUST resolve the effective model ID from user-provided sources (CLI override, agent profile, execution config, model.default_model). System MUST NOT embed environment-specific local model IDs as code defaults. If no model is configured, system MUST return a clear error describing how to configure one."
   r10,"provider-tag","System MUST accept `openai` (not `open_a_i`) as the provider tag for OpenAI-compatible models in configuration. System MUST validate provider tags via JSON Schema and return a descriptive error for unknown values."
-  rc1,"three-tier","Config MUST merge three tiers in priority order: user (~/.xylitol/config.yaml) > project (./.xylitol/config.yaml) > global (built-in defaults)."
+  rc1,"three-tier","Config MUST merge tiers in priority order: global (~/.config/xylitol/config.yaml) < project (./.xylitol/config.yaml) < CLI --config; built-in defaults when absent."
   rc2,"model-config","Config MUST support model entries with: provider, model-id, base_url override, api_key env reference, thinking support, context_window."
   rc3,"provider-config","Config MUST support provider entries with: base_url, api_key, headers, api (openai-compatible or anthropic-messages)."
   rc4,settings,"Config MUST support settings: max_iterations, compaction_threshold, default_model, thinking_level, tools (allow/deny list)."

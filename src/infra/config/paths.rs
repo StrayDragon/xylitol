@@ -24,8 +24,14 @@ impl ConfigPaths {
     /// - `XYLITOL_CONFIG_DIR` env var to override global config dir.
     /// - `XYLITOL_PROJECT_DIR` env var to pin the project root.
     /// - CWD ancestor walk to find `.xylitol/` or `.agents/` as project markers.
+    ///
+    /// Global **AppConfig** SSOT is `~/.config/xylitol/` (or XDG / env override),
+    /// **not** `~/.xylitol/` (that remains the data/agent dir for skills/sessions/logs).
+    /// On discover, missing global config files are one-shot copied from legacy
+    /// `~/.xylitol/{config.yaml,config.local.yaml,secret.env}` when present.
     pub(crate) fn discover() -> Self {
         let global_dir = resolve_global_dir();
+        super::migrate::migrate_legacy_global_config_files(&global_dir);
         let (project_dir, agents_dir) = resolve_project_dirs();
         Self {
             global_dir,
