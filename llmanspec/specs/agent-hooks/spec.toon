@@ -1,6 +1,6 @@
 kind: llman.sdd.spec
 name: "agent-hooks"
-purpose: Hook system — lifecycle hooks (before/after tool execution) and script execution.
+purpose: "脚本/库 hooks：工具与 provider 生命周期、XyHookBus 精选导出与可取消/可修改语义。"
 valid_scope[2]: src/infra/hooks/,src/agent/runtime/hooks.rs
 requirements[22]{req_id,title,statement}:
   r1,"hook-dispatcher",System MUST implement a HookDispatcher that executes registered hooks for 10+ event types.

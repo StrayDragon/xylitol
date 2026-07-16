@@ -4,17 +4,44 @@
 
 ## 目标顺序
 
-1. [x] purpose-draft 提案 batch + depends_on DAG → commit (`fc09ec2`)
-2. [x] 文档 cleanup → commit (`97e6ee3`)
-3. [ ] `llman sdd archive freeze` 旧 archive → 7z → commit
-4. [ ] `llman-sdd-specs-compact`：以代码为 SSOT 重写 specs → commit
-5. [ ] 坏味道分析 + 重构准备笔记
+1. [x] purpose-draft 提案 batch → `fc09ec2`
+2. [x] 文档 cleanup → `97e6ee3`
+3. [x] archive freeze → `d71b608`
+4. [x] specs-compact（本批）→ 待 commit
+5. [x] 坏味道分析（见下）
 6. [ ] 删除本 `_TODO.md`
 
-### 文档 cleanup 备注
+## Specs compact 报告（代码 SSOT）
 
-- BDD `tests/features/*`：抽查后 **未删**（sandbox/approval/app-tui-* 仍有 `bdd.rs` 绑定）。若后续确认死场景再单开清理。
-- 已刷新 `docs/architecture/*`、`src/AGENTS.md`、`llmanspec/config.yaml` context、精简 `session-tree-vs-pi.md`。
+### 已重写
+- `agent-runtime`：41→18 req；删除 adk/XyRunner/AgentEvent/OutputGuard 幽灵合约
+- `agent-prompt`：去掉 Jinja2；钉 skills 注入 + 产品不以 prompt 为 header
+- `cli-entry`：产品 `session-*` vs 死短名表；rpc 保持移除
+- `infra-mcp`：purpose + 收窄 valid_scope；stdio/url
+- `app-tui-session-tree`：去掉 stub purpose；ast2 不再写「fold 后续」
+- TBD purpose 批量中文化：layer-architecture / test-* / package-tui-* / infra-provider-trace / hooks / resource-discovery
+- `agent-hooks` purpose 中文化；layer 缝去掉 rpc.rs
+
+### 仍不匹配 / 待后续（未硬改行为）
+| 项 | 说明 |
+|---|---|
+| `agent/prompt/commands.rs` 22 短名表 | 与产品 TUI 双词表；spec 已允许 MAY 保留，代码仍 `dead_code` |
+| `SlashCommandSource::extension` | enum/注释仍提 extension；产品无扩展平台 |
+| `layer-architecture` / 多数 package specs | 英文 statement 仍多；本批未全量中文化 |
+| `app-tui` 单体 | 仍存在；c450 退役未完 |
+| BDD features | 未删（仍有绑定）；无确认死场景 |
+
+## 坏味道 / 重构准备
+
+| 味道 | 位置 | 建议下一刀 |
+|---|---|---|
+| God 文件 | `host/mod.rs` ~1160、`layout/root.rs` ~1160、`effects` ~800、`bridge` ~975 | 续拆：pending/effects 子模块；bridge handlers 已有可再切 |
+| 双 slash 词表 | `agent/prompt/commands.rs` vs `app/tui/commands.rs` | 升格 draft 或 quick：收敛 GetCommands / 删死表 |
+| Stub 槽冻结 | Plate/Settings/Choice | 保持冻结；勿扩 |
+| 文档指针 `_HANDOFF` | 已清 live 指针 | archive 内可忽略 |
+| 观测 | fastrace+log 已单栈 | 保持；禁 tracing 回潮 |
+
+重构 draft 候选（未建）：`c1170-refactor-app-tui-host-split`、`c1175-refactor-slash-command-ssot`。
 
 
 ## Draft change 清单（purpose-draft，仅 proposal）
