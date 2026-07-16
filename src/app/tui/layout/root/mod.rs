@@ -6,6 +6,7 @@
 mod render;
 mod slot_input;
 mod slot_nav;
+mod theme_apply;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -595,6 +596,11 @@ impl UiRoot {
     #[cfg(test)]
     pub fn tree_is_folded_for_test(&self, id: &str) -> bool {
         self.tree.is_folded(id)
+    }
+
+    #[cfg(test)]
+    pub fn ui_model_entries_len_for_test(&self) -> usize {
+        self.ui_model.entries.len()
     }
 }
 

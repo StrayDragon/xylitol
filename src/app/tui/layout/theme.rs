@@ -13,9 +13,15 @@ pub struct LayoutTheme {
 
 impl LayoutTheme {
     pub fn product_dark() -> Self {
-        Self {
-            palette: Palette::dark(),
-        }
+        Self::from_palette(Palette::dark())
+    }
+
+    pub fn product_light() -> Self {
+        Self::from_palette(Palette::light())
+    }
+
+    pub fn from_palette(palette: Palette) -> Self {
+        Self { palette }
     }
 
     pub fn palette(self) -> Palette {

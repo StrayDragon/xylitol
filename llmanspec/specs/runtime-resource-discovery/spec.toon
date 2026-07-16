@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "runtime-resource-discovery"
 purpose: "统一资源发现：skills、prompt 模板、themes、AGENTS.md / SYSTEM 与诊断（list/info/doctor）。"
 valid_scope[4]: src/infra/resource/,src/domain/resource_types.rs,src/runtime_protocol/resource.rs,src/runtime_protocol/reload.rs
-requirements[10]{req_id,title,statement}:
+requirements[11]{req_id,title,statement}:
   rd1,资源列表,"System MUST 提供只读命令，列出全部已发现 skills、prompts、themes 及其 source scope 与 path。"
   rd2,资源详情,"System MUST 提供命令展示单个命名资源详情，未找到时以非零退出。"
   rd3,资源 doctor,"System MUST 提供命令展示 ResourceLoader 诊断，存在问题时以非零退出。"
@@ -13,7 +13,8 @@ requirements[10]{req_id,title,statement}:
   rd8,Source 迁移,"Skills、PromptTemplate、SlashCommandInfo MUST 使用统一 SourceInfo 类型。"
   rd9,Scope 枚举,"SourceScope MUST 支持 user、project、temporary 变体，对齐 pi。"
   rd10,资源热重载,"DefaultResourceLoader MUST 提供 reload（或实现 XyReloadable）：清空缓存后重新发现 context/prompts/skills/themes/SYSTEM/APPEND；失败诊断 MUST 可观察；reload MUST NOT 修改会话历史文件。"
-scenarios[15]{req_id,id,given,when,then}:
+  rd11,主题名发现,"System MUST 能在 Trust 语义下列出已发现 theme 文件名（stem）；未信任 MUST NOT 列出项目 themes 目录条目。"
+scenarios[16]{req_id,id,given,when,then}:
   rd1,list,ResourceLoader 已加载 skills 与 prompts,调用 list,输出展示每项资源的 scope 与 path
   rd1,"list-empty",未安装任何资源,调用 list,输出为空且退出码为零
   rd2,"info-found",存在名为 foo 的 skill,调用 info foo,展示 foo 详情且退出为零
@@ -29,3 +30,4 @@ scenarios[15]{req_id,id,given,when,then}:
   rd9,"scope-variants",从 user scope 加载资源,创建其 SourceInfo,scope 为 User
   rd10,"reload-agents",loader 已加载且盘上 AGENTS.md 已改,调用 reload,get_agents_files 反映新内容
   rd10,"reloadable-trait",runtime_protocol 导出 XyReloadable,检查 DefaultResourceLoader,实现 XyReloadable 且 Outcome 可丢弃或含诊断
+  rd11,"list-trusted",信任且项目 themes/foo.json 存在,discovered_theme_names,列表含 foo
