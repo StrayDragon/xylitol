@@ -66,7 +66,7 @@ Filter 态标题改为 `filter: orn`；无匹配时：
 - `/models` 别名或第二命令。
 - 运行时改 YAML/provider 配置（无 Settings 槽）。
 - 拉取远端模型市场 / OAuth 订阅面板。
-- `/theme` 或主题切换（MVP 固定暗色）。
+- 主题切换（本文件只管 `/model`；产品 `/theme` 见 [`theme-tokens.md`](./theme-tokens.md) / **c1115**）。
 - pi `Ctrl+Shift+M`（MAY 后续 change）。
 - **键入 `/model <前缀>` 内联补全**：产品经包 `SlashArgCompletionSource`（**c999**；无 bare，与槽互补）。
 

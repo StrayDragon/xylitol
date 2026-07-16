@@ -63,6 +63,12 @@ impl UiRoot {
                 lines.extend(self.models_list.render(width.max(1)));
                 lines
             }
+            EditorSlot::Themes => {
+                let mut lines = Vec::new();
+                lines.push(self.theme.paint_muted(" themes"));
+                lines.extend(self.themes_list.render(width.max(1)));
+                lines
+            }
             EditorSlot::ImportConfirm => {
                 let mut lines = Vec::new();
                 let path = self.import_confirm_path.as_deref().unwrap_or("?");

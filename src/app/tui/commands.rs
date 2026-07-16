@@ -47,6 +47,10 @@ pub enum PendingSlash {
     },
     /// Bare `/history-copy-last` — copy last assistant text (c1110; busy allowed).
     HistoryCopyLast,
+    /// `/theme` [dark|light|toggle|cycle] — open picker or apply (c1115).
+    Theme {
+        arg: Option<String>,
+    },
     /// Slash usage / arity error (no dispatch).
     Usage(&'static str),
 }
@@ -167,6 +171,7 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         ("history-copy-last", Some(_)) => Some(PendingSlash::Usage(
             "usage: /history-copy-last (no arguments)",
         )),
+        ("theme", arg) => Some(PendingSlash::Theme { arg }),
         // Space form only (`/debug scene`). Colon form intentionally unsupported.
         #[cfg(debug_assertions)]
         ("debug", None) => Some(PendingSlash::DebugScene("list".into())),
@@ -304,6 +309,26 @@ mod parse_tests {
             Some(PendingSlash::Usage(
                 "usage: /history-copy-last (no arguments)"
             ))
+        );
+    }
+
+    #[test]
+    fn parse_theme() {
+        assert_eq!(
+            parse_slash_command("/theme"),
+            Some(PendingSlash::Theme { arg: None })
+        );
+        assert_eq!(
+            parse_slash_command("/theme light"),
+            Some(PendingSlash::Theme {
+                arg: Some("light".into())
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/theme toggle"),
+            Some(PendingSlash::Theme {
+                arg: Some("toggle".into())
+            })
         );
     }
 }

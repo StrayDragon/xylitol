@@ -67,6 +67,11 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().take_pending_model_select()
     }
 
+    pub fn take_pending_theme_select(&mut self) -> Option<String> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().take_pending_theme_select()
+    }
+
     pub fn take_pending_import_decision(
         &mut self,
     ) -> Option<super::super::layout::ImportConfirmDecision> {
@@ -210,6 +215,22 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn close_models_slot(&mut self) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().close_slot();
+            self.sync_ui_root_from_model();
+        }
+    }
+
+    pub fn mount_themes_picker(&mut self) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        let current = self.theme_preference.clone();
+        root.borrow_mut().mount_themes_picker(current.as_deref());
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn close_themes_slot(&mut self) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().close_slot();
             self.sync_ui_root_from_model();

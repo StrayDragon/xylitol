@@ -18,6 +18,8 @@ pub enum EditorSlot {
     Choice,
     /// Fuzzy model picker (`/model`, c630).
     Models,
+    /// Built-in theme picker (`/theme`, c1115).
+    Themes,
     /// `/session-import` Yes/No confirm (c1010; not Trust Choice stub).
     ImportConfirm,
     /// `/session-resume` session picker (c1015).
@@ -46,6 +48,7 @@ impl EditorSlot {
             Self::Settings => "Settings",
             Self::Choice => "Choice",
             Self::Models => "Models",
+            Self::Themes => "Themes",
             Self::ImportConfirm => "Import confirm",
             Self::SessionResume => "Resume session",
         }

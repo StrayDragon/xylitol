@@ -126,6 +126,25 @@ impl UiRoot {
                 }
                 return;
             }
+            EditorSlot::Themes => {
+                let InputEvent::Key(ref key) = event else {
+                    return;
+                };
+                if matches_binding(key, "tui.select.confirm") {
+                    if let Some(item) = self.themes_list.get_selected_item() {
+                        self.pending_theme_select = Some(item.value.clone());
+                    }
+                    return;
+                }
+                if matches_binding(key, "tui.select.up")
+                    || matches_binding(key, "tui.select.down")
+                    || matches_binding(key, "tui.select.pageUp")
+                    || matches_binding(key, "tui.select.pageDown")
+                {
+                    self.themes_list.handle_input(event);
+                }
+                return;
+            }
             EditorSlot::ImportConfirm => {
                 let InputEvent::Key(ref key) = event else {
                     return;

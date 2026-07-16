@@ -62,6 +62,19 @@ pub(super) fn empty_models_list(theme: LayoutTheme) -> SelectList {
     )
 }
 
+pub(super) fn empty_themes_list(theme: LayoutTheme) -> SelectList {
+    SelectList::new(
+        Vec::new(),
+        4,
+        theme.select_list_theme(),
+        SelectListLayoutOptions {
+            min_primary_column_width: Some(12),
+            max_primary_column_width: Some(24),
+            truncate_primary: None,
+        },
+    )
+}
+
 pub(super) fn import_confirm_list(theme: LayoutTheme) -> SelectList {
     SelectList::new(
         vec![SelectItem::new("yes", "Yes"), SelectItem::new("no", "No")],
@@ -129,6 +142,9 @@ pub struct UiRoot {
     models_filter: String,
     /// `(model_id, description)` for [`SlashArgCompletionSource`] (c999).
     model_arg_catalog: Vec<(String, String)>,
+    /// Themes Enter → host calls `reload_themes` (c1115).
+    pending_theme_select: Option<String>,
+    themes_list: SelectList,
     /// Root for [`AtPathSource`] (c1125); default process cwd.
     at_path_base: PathBuf,
     /// `(name, description)` for [`DollarSkillSource`] (c1130).
@@ -194,6 +210,8 @@ impl UiRoot {
             models_items: Vec::new(),
             models_filter: String::new(),
             model_arg_catalog: Vec::new(),
+            pending_theme_select: None,
+            themes_list: empty_themes_list(theme),
             at_path_base: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             dollar_skill_catalog: Vec::new(),
             import_confirm_list: import_confirm_list(theme),
@@ -226,6 +244,18 @@ impl UiRoot {
         sources.push(Box::new(
             SlashArgCompletionSource::new("model", self.model_arg_catalog.clone())
                 .with_id("model-id"),
+        ));
+        // Static `/theme <dark|light|toggle>` args (c1115).
+        sources.push(Box::new(
+            SlashArgCompletionSource::new(
+                "theme",
+                vec![
+                    ("dark".into(), "Dark palette (default)".into()),
+                    ("light".into(), "Light palette".into()),
+                    ("toggle".into(), "Toggle dark ↔ light".into()),
+                ],
+            )
+            .with_id("theme-name"),
         ));
         // Static `/trust <self|parent|deny>` args (c1105) — same space-after-cmd probe as `/model `.
         // `self` first so Tab/Enter after `/trust ` defaults to trust cwd (same as bare `/trust`).
@@ -421,6 +451,14 @@ impl UiRoot {
         self.slot == EditorSlot::Models
     }
 
+    pub fn take_pending_theme_select(&mut self) -> Option<String> {
+        self.pending_theme_select.take()
+    }
+
+    pub fn themes_open(&self) -> bool {
+        self.slot == EditorSlot::Themes
+    }
+
     pub fn import_confirm_open(&self) -> bool {
         self.slot == EditorSlot::ImportConfirm
     }
@@ -495,6 +533,33 @@ impl UiRoot {
         self.models_list = empty_models_list(self.theme);
         self.apply_models_filter();
         self.slot = EditorSlot::Models;
+    }
+
+    /// Mount built-in theme picker in the editor slot (c1115).
+    pub fn mount_themes_picker(&mut self, current: Option<&str>) {
+        let current = current.unwrap_or("dark");
+        let items: Vec<SelectItem> = ["dark", "light"]
+            .into_iter()
+            .map(|name| {
+                let label = if current.eq_ignore_ascii_case(name) {
+                    format!("{name} *")
+                } else {
+                    name.to_string()
+                };
+                SelectItem::new(name, label)
+            })
+            .collect();
+        self.themes_list = SelectList::new(
+            items,
+            4,
+            self.theme.select_list_theme(),
+            SelectListLayoutOptions {
+                min_primary_column_width: Some(12),
+                max_primary_column_width: Some(24),
+                truncate_primary: None,
+            },
+        );
+        self.slot = EditorSlot::Themes;
     }
 
     fn apply_models_filter(&mut self) {
