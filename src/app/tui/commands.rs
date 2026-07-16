@@ -45,6 +45,8 @@ pub enum PendingSlash {
     Trust {
         mode: crate::app::core::driver::ProjectTrustMode,
     },
+    /// Bare `/history-copy-last` — copy last assistant text (c1110; busy allowed).
+    HistoryCopyLast,
     /// Slash usage / arity error (no dispatch).
     Usage(&'static str),
 }
@@ -161,6 +163,10 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
                 "usage: /trust [self|this_dir|parent|deny]",
             )),
         },
+        ("history-copy-last", None) => Some(PendingSlash::HistoryCopyLast),
+        ("history-copy-last", Some(_)) => Some(PendingSlash::Usage(
+            "usage: /history-copy-last (no arguments)",
+        )),
         // Space form only (`/debug scene`). Colon form intentionally unsupported.
         #[cfg(debug_assertions)]
         ("debug", None) => Some(PendingSlash::DebugScene("list".into())),
@@ -283,6 +289,20 @@ mod parse_tests {
             parse_slash_command("/trust foo"),
             Some(PendingSlash::Usage(
                 "usage: /trust [self|this_dir|parent|deny]"
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_history_copy_last() {
+        assert_eq!(
+            parse_slash_command("/history-copy-last"),
+            Some(PendingSlash::HistoryCopyLast)
+        );
+        assert_eq!(
+            parse_slash_command("/history-copy-last x"),
+            Some(PendingSlash::Usage(
+                "usage: /history-copy-last (no arguments)"
             ))
         );
     }

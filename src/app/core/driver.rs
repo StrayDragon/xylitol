@@ -394,6 +394,13 @@ pub trait Driver: Send {
     ) -> Result<ProjectTrustPersistReport, String> {
         Err("persist_project_trust not supported on this driver".into())
     }
+
+    /// Copy UTF-8 text to the system clipboard (`/history-copy-last`, c1110).
+    ///
+    /// Default: unsupported (remote / stubs override as needed).
+    fn copy_text_to_clipboard(&mut self, _text: &str) -> Result<(), String> {
+        Err("copy_text_to_clipboard not supported on this driver".into())
+    }
 }
 
 /// Outcome of [`Driver::load_debug_scene`] (c710).
@@ -1110,6 +1117,10 @@ impl Driver for InProcessDriver {
                 ProjectTrustPersistReport::RELOAD_HINT
             ),
         })
+    }
+
+    fn copy_text_to_clipboard(&mut self, text: &str) -> Result<(), String> {
+        crate::infra::clipboard::copy_to_clipboard(text)
     }
 }
 
