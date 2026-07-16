@@ -78,10 +78,22 @@ pub(crate) fn build_system_prompt(opts: &SystemPromptOpts) -> String {
         }
     }
 
-    // Skills section — XML format with name, description, location
-    if !opts.skills.is_empty() {
-        prompt.push_str("\n<available_skills>\n");
-        for skill in &opts.skills {
+    // Skills section — XML format aligned with pi / agentskills.io
+    // (`disable-model-invocation` skills omitted; intro tells model to read SKILL.md).
+    let visible_skills: Vec<_> = opts
+        .skills
+        .iter()
+        .filter(|s| !s.disable_model_invocation)
+        .collect();
+    if !visible_skills.is_empty() {
+        prompt.push_str(
+            "\n\nThe following skills provide specialized instructions for specific tasks.\n\
+             Use the read tool to load a skill's file when the task matches its description.\n\
+             When a skill file references a relative path, resolve it against the skill directory \
+             (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n\
+             <available_skills>\n",
+        );
+        for skill in visible_skills {
             let name = crate::domain::text::xml_escape(&skill.name);
             let desc = crate::domain::text::xml_escape(skill.description.as_deref().unwrap_or(""));
             let loc = crate::domain::text::xml_escape(&skill.source_info.path.to_string_lossy());
@@ -210,6 +222,7 @@ mod tests {
                     origin: crate::domain::source_info::SourceOrigin::TopLevel,
                     base_dir: Some(PathBuf::from("/home/u/.xylitol/skills")),
                 },
+                disable_model_invocation: false,
             }],
             ..Default::default()
         };
@@ -219,6 +232,75 @@ mod tests {
         assert!(prompt.contains("SKILL.md"));
         assert!(prompt.contains("<available_skills>"));
         assert!(prompt.contains("</available_skills>"));
+        assert!(
+            prompt.contains("Use the read tool"),
+            "pi-aligned intro prose required"
+        );
+    }
+
+    #[test]
+    fn test_skills_disable_model_invocation_omitted_from_prompt() {
+        use crate::domain::resource_types::SkillInfo;
+        use std::path::PathBuf;
+        let opts = SystemPromptOpts {
+            cwd: ".".into(),
+            skills: vec![
+                SkillInfo {
+                    name: "visible".into(),
+                    description: Some("ok".into()),
+                    source_info: crate::domain::source_info::SourceInfo {
+                        path: PathBuf::from("/s/visible/SKILL.md"),
+                        source: "user".into(),
+                        scope: crate::domain::source_info::SourceScope::User,
+                        origin: crate::domain::source_info::SourceOrigin::TopLevel,
+                        base_dir: None,
+                    },
+                    disable_model_invocation: false,
+                },
+                SkillInfo {
+                    name: "hidden".into(),
+                    description: Some("slash only".into()),
+                    source_info: crate::domain::source_info::SourceInfo {
+                        path: PathBuf::from("/s/hidden/SKILL.md"),
+                        source: "user".into(),
+                        scope: crate::domain::source_info::SourceScope::User,
+                        origin: crate::domain::source_info::SourceOrigin::TopLevel,
+                        base_dir: None,
+                    },
+                    disable_model_invocation: true,
+                },
+            ],
+            ..Default::default()
+        };
+        let prompt = build_system_prompt(&opts);
+        assert!(prompt.contains("visible"));
+        assert!(!prompt.contains("hidden"));
+        assert!(prompt.contains("<available_skills>"));
+    }
+
+    #[test]
+    fn test_skills_xml_escapes_special_chars() {
+        use crate::domain::resource_types::SkillInfo;
+        use std::path::PathBuf;
+        let opts = SystemPromptOpts {
+            cwd: ".".into(),
+            skills: vec![SkillInfo {
+                name: "a&b".into(),
+                description: Some("<x>".into()),
+                source_info: crate::domain::source_info::SourceInfo {
+                    path: PathBuf::from("/tmp/a&b/SKILL.md"),
+                    source: "user".into(),
+                    scope: crate::domain::source_info::SourceScope::User,
+                    origin: crate::domain::source_info::SourceOrigin::TopLevel,
+                    base_dir: None,
+                },
+                disable_model_invocation: false,
+            }],
+            ..Default::default()
+        };
+        let prompt = build_system_prompt(&opts);
+        assert!(prompt.contains("a&amp;b"));
+        assert!(prompt.contains("&lt;x&gt;"));
     }
 
     #[test]

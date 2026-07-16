@@ -35,6 +35,7 @@
 | A08 | Resume scope=All | 多 project 根目录 `listAll` 全局列举 | 单 `sessions_dir` 下全部 jsonl；scope=Current 按 header `cwd` 过滤 | 是 |
 | A09 | tool/diff 块键 id | 无独立 Alt+E app id（或不同命名） | **`app.tools.blocks`** = Alt+E（产品特有）；`app.tools.expand` = Ctrl+O 视口 | 是 |
 | A10 | Skill 调用呈现 | `/skill:name` → `<skill>…</skill>`；scrollback **每条** skill 用 `SkillInvocationMessage` 色块折叠/展开 **SKILL.md** | 产品用 **内联多 `$name`**（非 `/skill:`）。提交时 **读 SKILL.md 注入模型上下文**（静默，可多引用）。Scrollback：**只在用户消息内**用特殊色（如紫）高亮 `$name`；**MUST NOT** 另加系统消息行、N 个 skill 色块、footer `skills:N`、**`/session` / `/status skills` skill 清单**。验收以 **注入/read 断言**为准，不以 TUI 元素为主门禁 | 是 |
+| A11 | Skill 发现路径 | 多源：`~/.pi/agent/skills`、`~/.agents/skills`、项目 `.pi`/`.agents`（祖先）、packages、settings、CLI | **产品主路径**：`~/.xylitol/skills` + `{cwd}/.xylitol/skills`（Trust 闸项目侧）。**对齐** agentskills 元数据：`disable-model-invocation`、name 校验警告、碰撞 project 优先、system `<available_skills>` + read-tool 引导文。**不做**全量 pi 多源/递归/ignore 文件（另开 change） | 是 |
 
 ### 对齐（非差异，备忘）
 
@@ -43,6 +44,7 @@
 | Export 默认格式 | **默认 HTML**；路径以 `.jsonl` 结尾才 JSONL |
 | Resume 入口 | 无参开会话列表（mtime 降序）；选中 switch |
 | Tree 入口 | slash / 快捷键开 MessageHistory 树（xylitol 另保留双 Esc） |
+| Skills catalog → system | Trust 后发现；`<available_skills>` XML；reload 不改历史（c1085） |
 
 ---
 
@@ -79,3 +81,4 @@
 | 2026-07-15 | c1065：Resume 面板 P0–P2；A08 单 sessions_dir All ≠ pi 多根 listAll |
 | 2026-07-16 | c1090：app.* 目录 + 热重载；A09 `app.tools.blocks` |
 | 2026-07-16 | A10：多 `$skill` → 用户消息内紫色高亮 + 静默注入 SKILL.md；废弃 /session·/status skills 观测面；验收验注入不验 TUI |
+| 2026-07-16 | A11：skills 发现路径子集 vs pi 多源；对齐 disable-model-invocation / 碰撞 / available_skills 引导文 |

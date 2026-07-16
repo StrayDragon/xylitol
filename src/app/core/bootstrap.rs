@@ -883,4 +883,56 @@ mod tests {
                 .any(|n| n == "secret-reload")
         );
     }
+
+    #[test]
+    fn build_agent_with_skills_injects_available_skills_section() {
+        use crate::domain::resource_types::SkillInfo;
+        use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
+
+        let mut opts = BuildAgentOptions::default();
+        opts.skills = vec![SkillInfo {
+            name: "boot-skill".into(),
+            description: Some("from build options".into()),
+            source_info: SourceInfo {
+                path: std::path::PathBuf::from("/tmp/boot/SKILL.md"),
+                source: "user".into(),
+                scope: SourceScope::User,
+                origin: SourceOrigin::TopLevel,
+                base_dir: None,
+            },
+            disable_model_invocation: false,
+        }];
+        let agent = build_agent(opts).expect("build");
+        let sp = agent.inner().system_prompt().unwrap_or("");
+        assert!(sp.contains("<available_skills>"));
+        assert!(sp.contains("boot-skill"));
+        assert!(sp.contains("Use the read tool"));
+        assert_eq!(agent.loaded_skill_names(), vec!["boot-skill".to_string()]);
+    }
+
+    #[test]
+    fn untrusted_reload_still_loads_user_global_skills() {
+        let project = tempfile::tempdir().unwrap();
+        let agent_dir = tempfile::tempdir().unwrap();
+        write_skill(project.path(), "project-only");
+        let user_skill = agent_dir.path().join("skills").join("user-global");
+        std::fs::create_dir_all(&user_skill).unwrap();
+        std::fs::write(
+            user_skill.join("SKILL.md"),
+            "---\nname: user-global\ndescription: always\n---\n",
+        )
+        .unwrap();
+
+        let mut driver = make_driver();
+        let report = reload_skills(&mut driver, project.path(), agent_dir.path(), false);
+        assert!(
+            report.names.iter().any(|n| n == "user-global"),
+            "untrusted must still load user skills; got {:?}",
+            report.names
+        );
+        assert!(!report.names.iter().any(|n| n == "project-only"));
+        let sp = driver.system_prompt_for_test().unwrap_or_default();
+        assert!(sp.contains("user-global"));
+        assert!(!sp.contains("project-only"));
+    }
 }
