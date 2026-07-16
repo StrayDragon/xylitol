@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,"ar-pilot",solidify 风格 feature 试点,"agent-runtime spec MUST 在 llmanspec/specs/agent-runtime/agent-runtime.feature 携带可执行场景 react-terminates 与 stream-is-xyevent，作为 solidify 链路的首个试点；场景文本源自 spec.toon 对应 scenario 的 given/when/then。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then,feature}:
+  "ar-pilot","react-terminates",mock 模型先 tool 后无 tool,运行 AgentRuntime,先执行工具再结束且无 adk 类型,true
+  "ar-pilot","stream-is-xyevent",消费事件流,轮询,每项为 XyEvent,true
