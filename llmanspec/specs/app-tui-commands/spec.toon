@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-commands"
 purpose: "斜杠命令与 protocol::Command / dispatch 映射。"
 valid_scope[1]: src/app/tui/
-requirements[12]{req_id,title,statement}:
+requirements[13]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   atm1,"slash-exit-model",TUI MUST 解析斜杠命令 /exit（映射 Quit）与 /model：无参 MUST 打开替换 editor 槽的 fuzzy 模型列表（GetAvailableModels + 选定后 SetModel）；有参 /model <id> MUST 直接 SetModel；键入 /model 参数时 MAY/MUST 经包 SlashArgCompletionSource 内联补全（见 ati23），补全写入后仍走有参 SetModel；MUST NOT 再把无参 /model 做成 CycleModel 静默轮换；MUST NOT 引入 /models 主路径；未知斜杠 MUST 显示内联错误且 MUST NOT 崩溃。
   atm2,"dispatch-shared","除 Prompt、Quit 与传输专用命令外，斜杠执行 MUST 走 app::core::dispatch 共享路径，MUST NOT 发明平行命令词表。"
@@ -15,7 +15,8 @@ requirements[12]{req_id,title,statement}:
   atm9,"slash-session-info",产品 TUI idle 提交无参 /session 时 MUST 经 dispatch 调用 GetSessionStats（及必要 GetState）并将会话信息与统计以 scrollback/系统文本块展示（对齐 pi：信息转储而非操作菜单）；带参数 MUST 短错误或不识别为本命令；busy 时 MUST 拒绝；SlashCommandSource MUST 列出 session；MUST NOT 实现 /session 子命令操作板。
   atm10,"slash-session-resume","产品 TUI idle 提交无参 /session-resume 时 MUST 打开替换 editor 槽的 Resume 面板（非居中 overlay）：数据经 Driver list_sessions 或等价 seam；面板 MUST 提供 header（scope Current/All、Name All/Named、Sort Threaded/Recent/Fuzzy）、搜索（支持 re: 正则与引号 phrase）与会话行（name 或 first_message 预览、message_count、相对时间；Threaded 时 parent 树前缀）；Enter 选定 MUST SwitchSession 并重建 transcript、关闭面板；Esc 取消 MUST NOT 切换；busy 时 MUST 拒绝；旧名 /resume MUST NOT 被识别；MVP MUST NOT 要求路径直参；TUI MUST NOT reach infra::session。"
   atm11,"slash-session-lifecycle","产品 TUI idle 时 MUST 解析 /session-new、/session-clone 与 /session-name：/session-new 无参 MUST 经 Driver::new_session（或等价）创建空会话并切换、清空 transcript，带参 MUST usage 错误；/session-clone 无参 MUST 对当前 leaf 以 ForkPosition::At 执行 fork_session 并 switch（对齐 pi /clone；MUST NOT 套用 /session-fork 的 Before/At 规则），无 leaf MUST 提示且 MUST NOT fork，带参 MUST usage 错误；/session-name 无参 MUST 显示当前会话名或 usage，有参 MUST 经 Driver::set_session_name（换行→空格 trim）写入并回报最终名，规范化与输入不同时 MUST 提示；三者 busy 时 MUST 拒绝；SlashCommandSource MUST 列出三者；旧名 /new /clone /name MUST NOT 被识别；MUST NOT 发明平行词表或 pi 式 user 选择器。"
-scenarios[31]{req_id,id,given,when,then}:
+  atm12,"slash-reload",产品 TUI idle 时 MUST 解析无参 /reload：依次（或文档约定安全序）触发 keybindings、skills、MCP、themes、context 热重载 API，并以系统块汇总成功/失败诊断；busy 时 MUST 拒绝且 MUST NOT 调用重载；MUST NOT 改写已持久化 session 历史或清空已渲染 transcript 历史块；SlashCommandSource MUST 列出 reload；带参 MUST usage 错误或不识别为成功路径。
+scenarios[34]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-commands",spec.toon 存在且 purpose 为中文
   atm1,"model-opens-picker",idle 且会话树关闭,Enter 提交无参 /model,打开 models 槽且不调用 CycleModel
   atm1,"model-id-after-completion",idle 编辑器经补全得到 /model fake,Enter 提交,SetModel 或等价被调用
@@ -47,3 +48,6 @@ scenarios[31]{req_id,id,given,when,then}:
   atm11,"session-clone-no-leaf",产品 idle 且无 leaf,"提交 /session-clone",提示无 leaf 且未 fork
   atm11,"session-name-set",产品 idle,"提交 /session-name hello",set_session_name 被调用或系统行含最终名
   atm11,"old-lifecycle-unknown",产品 idle,提交 /new 或 /clone 或 /name,显示 unknown command 类错误
+  atm12,"idle-reload",产品 idle 且 foundation 可测,提交 /reload,系统块含 reload 或各资源成功/失败摘要且历史条目数不变
+  atm12,"busy-refuse",产品 busy,提交 /reload,拒绝提示且未改历史
+  atm12,"catalog-lists","",打开 slash 补全,列表含 reload
