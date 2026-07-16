@@ -3,11 +3,14 @@
 //! Named `UiRoot` (not `shell`/`scene`) to avoid clashing with bash /
 //! `infra::process::shell` and to read as the product component tree root.
 
+mod render;
+mod slot_input;
+mod slot_nav;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use xylitol_tui::components::editor::{Editor, EditorOptions};
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
@@ -15,22 +18,21 @@ use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLay
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
     CompletionSource, Component, Focusable, Input, InputEvent, InputListenerResult,
-    SlashArgCompletionSource, SlashCommand, SlashCommandSource, SystemClock, TUI, Terminal,
-    TreeNode, TreeSelector, TreeSelectorOptions, fg_rgb, fuzzy_filter, matches_key_event,
-    printable_from_key_event, truncate_to_width,
+    SlashArgCompletionSource, SlashCommandSource, SystemClock, TUI, Terminal, TreeNode,
+    TreeSelector, TreeSelectorOptions, fg_rgb, fuzzy_filter, matches_key_event, truncate_to_width,
 };
 
-use super::session_tree::{FilterMode, tree_help_line, tree_search_line, wrap_help_line};
+use super::slash_catalog::product_slash_commands;
+
+use super::session_tree::FilterMode;
 use super::slots::EditorSlot;
 use super::theme::LayoutTheme;
-use crate::app::tui::bridge::{UiModel, UiPhase};
+use crate::app::tui::bridge::UiModel;
 use crate::app::tui::host::{LayoutMode, TOO_SMALL_HINT};
-use crate::app::tui::session_resume::{SessionResumeAction, SessionResumePanel};
-use crate::app::tui::widgets::{
-    GlyphSet, ScrollbackFold, format_footer_text, render_queue_strip, render_scrollback,
-};
+use crate::app::tui::session_resume::SessionResumePanel;
+use crate::app::tui::widgets::{GlyphSet, ScrollbackFold, format_footer_text};
 
-fn empty_tree_selector(theme: LayoutTheme) -> TreeSelector {
+pub(super) fn empty_tree_selector(theme: LayoutTheme) -> TreeSelector {
     TreeSelector::new(
         Vec::new(),
         theme.tree_selector_theme(),
@@ -44,93 +46,7 @@ fn empty_tree_selector(theme: LayoutTheme) -> TreeSelector {
     )
 }
 
-fn product_slash_commands() -> Vec<SlashCommand> {
-    let mut cmds = vec![
-        SlashCommand {
-            name: "exit".into(),
-            description: Some("Quit TUI".into()),
-            argument_hint: None,
-            get_argument_completions: None,
-        },
-        SlashCommand {
-            name: "model".into(),
-            description: Some("Switch model: /model [id]".into()),
-            argument_hint: None,
-            get_argument_completions: None,
-        },
-        SlashCommand {
-            name: "session-tree".into(),
-            description: Some("Open session tree (same as double Esc)".into()),
-            argument_hint: None,
-            get_argument_completions: None,
-        },
-        SlashCommand {
-            name: "session-fork".into(),
-            description: Some("Fork session at current leaf".into()),
-            argument_hint: None,
-            get_argument_completions: None,
-        },
-        SlashCommand {
-            name: "session-compact".into(),
-            description: Some("Compact session context".into()),
-            argument_hint: None,
-            get_argument_completions: None,
-        },
-        SlashCommand {
-            name: "session-export".into(),
-            description: Some("Export session (default HTML; .jsonl → JSONL)".into()),
-            argument_hint: Some("[path]".into()),
-            get_argument_completions: None,
-        },
-        SlashCommand {
-            name: "session-import".into(),
-            description: Some("Import session from JSONL".into()),
-            argument_hint: Some("<path>".into()),
-            get_argument_completions: None,
-        },
-        SlashCommand {
-            name: "session".into(),
-            description: Some("Show session info and stats".into()),
-            argument_hint: None,
-            get_argument_completions: None,
-        },
-        SlashCommand {
-            name: "session-resume".into(),
-            description: Some("Switch to another session".into()),
-            argument_hint: None,
-            get_argument_completions: None,
-        },
-        SlashCommand {
-            name: "session-new".into(),
-            description: Some("Start a new empty session".into()),
-            argument_hint: None,
-            get_argument_completions: None,
-        },
-        SlashCommand {
-            name: "session-clone".into(),
-            description: Some("Clone session at current leaf (fork at)".into()),
-            argument_hint: None,
-            get_argument_completions: None,
-        },
-        SlashCommand {
-            name: "session-name".into(),
-            description: Some("Show or set session display name".into()),
-            argument_hint: Some("[name]".into()),
-            get_argument_completions: None,
-        },
-    ];
-    // Hand-test only — see `app::debug_fixtures` (delete that module to remove).
-    #[cfg(debug_assertions)]
-    cmds.push(SlashCommand {
-        name: "debug".into(),
-        description: Some("Load fixture: /debug <scene>".into()),
-        argument_hint: Some("<scene>".into()),
-        get_argument_completions: None,
-    });
-    cmds
-}
-
-fn empty_models_list(theme: LayoutTheme) -> SelectList {
+pub(super) fn empty_models_list(theme: LayoutTheme) -> SelectList {
     SelectList::new(
         Vec::new(),
         8,
@@ -143,7 +59,7 @@ fn empty_models_list(theme: LayoutTheme) -> SelectList {
     )
 }
 
-fn import_confirm_list(theme: LayoutTheme) -> SelectList {
+pub(super) fn import_confirm_list(theme: LayoutTheme) -> SelectList {
     SelectList::new(
         vec![SelectItem::new("yes", "Yes"), SelectItem::new("no", "No")],
         4,
@@ -156,7 +72,7 @@ fn import_confirm_list(theme: LayoutTheme) -> SelectList {
     )
 }
 
-fn empty_session_resume_panel(theme: LayoutTheme) -> SessionResumePanel {
+pub(super) fn empty_session_resume_panel(theme: LayoutTheme) -> SessionResumePanel {
     SessionResumePanel::new(theme)
 }
 
@@ -590,86 +506,6 @@ impl UiRoot {
     }
 
     /// Esc: label edit cancel → tree clears search → other overlays close; else idle empty double-Esc.
-    pub fn on_escape(&mut self) -> bool {
-        if self.slot.is_tree() {
-            if self.tree_label_edit.take().is_some() {
-                return true;
-            }
-            if self.tree.clear_search_if_any() {
-                return true;
-            }
-            self.close_slot();
-            return true;
-        }
-        if self.slot == EditorSlot::ImportConfirm {
-            self.pending_import_decision = Some(ImportConfirmDecision::Rejected);
-            self.close_import_confirm();
-            return true;
-        }
-        if self.slot == EditorSlot::SessionResume {
-            if self.session_resume.cancel_substate() {
-                return true;
-            }
-            self.close_session_resume();
-            return true;
-        }
-        if self.slot.is_overlay() {
-            self.close_slot();
-            return true;
-        }
-        if self.ui_model.phase == UiPhase::Busy {
-            self.last_esc_at = None;
-            return false;
-        }
-        if self.editor.get_text().is_empty() {
-            let now = Instant::now();
-            if let Some(prev) = self.last_esc_at
-                && now.duration_since(prev) < Duration::from_millis(500)
-            {
-                self.last_esc_at = None;
-                self.pending_tree_open = true;
-                return true;
-            }
-            self.last_esc_at = Some(now);
-            return false;
-        }
-        self.last_esc_at = None;
-        false
-    }
-
-    pub fn close_slot(&mut self) {
-        self.slot = EditorSlot::Editor;
-        self.models_filter.clear();
-        self.models_items.clear();
-        self.models_list = empty_models_list(self.theme);
-        self.import_confirm_path = None;
-        self.import_confirm_list = import_confirm_list(self.theme);
-        self.session_resume = empty_session_resume_panel(self.theme);
-        self.pending_session_resume_rename = None;
-        self.pending_session_resume_delete = None;
-    }
-
-    pub fn close_session_tree(&mut self) {
-        if self.slot.is_tree() {
-            self.close_slot();
-        }
-    }
-
-    /// Open a non-Editor slot (replaces any current overlay).
-    pub fn open_slot(&mut self, slot: EditorSlot) {
-        match slot {
-            EditorSlot::Editor => self.close_slot(),
-            EditorSlot::Tree => self.pending_tree_open = true,
-            EditorSlot::Plate | EditorSlot::Settings | EditorSlot::Choice => {
-                self.slot = slot;
-            }
-            EditorSlot::Models | EditorSlot::ImportConfirm | EditorSlot::SessionResume => {
-                // Opened via mount_* after slash dispatch.
-            }
-        }
-    }
-
-    #[cfg(test)]
     pub fn open_session_tree_for_test(&mut self, roots: Vec<TreeNode>, active_id: Option<&str>) {
         self.editor.set_text(String::new());
         self.mount_session_tree(roots, active_id);
@@ -717,81 +553,6 @@ impl UiRoot {
     }
 
     /// Pending steer / follow-up strip above status (pi `pendingMessagesContainer`).
-    fn render_queue_slot(&mut self, width: usize) -> Vec<String> {
-        render_queue_strip(
-            self.theme,
-            &self.ui_model.pending_steer,
-            &self.ui_model.pending_follow_up,
-            width,
-        )
-    }
-
-    fn render_status_slot(&mut self, width: usize) -> Vec<String> {
-        if !self.status_busy {
-            // Idle breathing room above editor (status.md / agent_demo status_lines).
-            return vec![String::new()];
-        }
-        // Keep Loader leading blank + spinner row (do not strip empties).
-        self.status_loader.render(width)
-    }
-
-    fn render_editor_slot(&mut self, width: usize) -> Vec<String> {
-        match self.slot {
-            EditorSlot::Editor => self.editor.render(width.max(1)),
-            EditorSlot::Tree => {
-                let mut lines = Vec::new();
-                lines.push(" Session tree".to_string());
-                if let Some((_, ref mut input)) = self.tree_label_edit {
-                    lines.push(
-                        self.theme
-                            .paint_muted(" Label edit · Enter save · Esc cancel"),
-                    );
-                    lines.extend(input.render(width.max(1)));
-                    return lines;
-                }
-                // pi order: TreeHelp then SearchLine.
-                for help in wrap_help_line(&tree_help_line(), width.max(1)) {
-                    lines.push(self.theme.paint_muted(&help));
-                }
-                lines.push(
-                    self.theme
-                        .paint_muted(&tree_search_line(self.tree.search_query())),
-                );
-                lines.extend(self.tree.render(width.max(1)));
-                lines
-            }
-            EditorSlot::Plate => vec![
-                " Command Plate".to_string(),
-                " (stub) Esc close".to_string(),
-            ],
-            EditorSlot::Settings => vec![" Settings".to_string(), " (stub) Esc close".to_string()],
-            EditorSlot::Choice => vec![" Choice".to_string(), " (stub) Esc close".to_string()],
-            EditorSlot::Models => {
-                let mut lines = Vec::new();
-                lines.push(self.models_filter_line());
-                lines.extend(self.models_list.render(width.max(1)));
-                lines
-            }
-            EditorSlot::ImportConfirm => {
-                let mut lines = Vec::new();
-                let path = self.import_confirm_path.as_deref().unwrap_or("?");
-                lines.push(
-                    self.theme
-                        .paint_muted(&format!(" Replace current session with {path}?")),
-                );
-                lines.extend(self.import_confirm_list.render(width.max(1)));
-                lines
-            }
-            EditorSlot::SessionResume => self.session_resume.render(width.max(1)),
-        }
-    }
-
-    fn render_scrollback_slot(&mut self, width: usize) -> Vec<String> {
-        // Idle empty: 0 rows (DESIGN editor.md — no loud placeholder wall).
-        render_scrollback(&self.ui_model, self.glyphs, self.theme, self.fold, width)
-    }
-
-    #[cfg(test)]
     pub fn tree_filter_for_test(&self) -> FilterMode {
         self.tree_filter
     }
@@ -844,194 +605,7 @@ impl Component for UiRoot {
     }
 
     fn handle_input(&mut self, event: InputEvent) {
-        match self.slot {
-            EditorSlot::Tree => {
-                let InputEvent::Key(ref key) = event else {
-                    return;
-                };
-                if let Some((_, ref mut input)) = self.tree_label_edit {
-                    if matches_key_event(key, "enter") {
-                        if let Some((id, input)) = self.tree_label_edit.take() {
-                            let text = input.value().trim().to_string();
-                            let ann = if text.is_empty() { None } else { Some(text) };
-                            self.pending_tree_label = Some((id, ann));
-                        }
-                        return;
-                    }
-                    input.handle_input(event);
-                    return;
-                }
-                if matches_key_event(key, "ctrl+d") {
-                    self.apply_tree_filter(FilterMode::Default);
-                    return;
-                }
-                if matches_key_event(key, "ctrl+t") {
-                    self.apply_tree_filter(self.tree_filter.toggle(FilterMode::NoTools));
-                    return;
-                }
-                if matches_key_event(key, "ctrl+u") {
-                    self.apply_tree_filter(self.tree_filter.toggle(FilterMode::UserOnly));
-                    return;
-                }
-                if matches_key_event(key, "ctrl+l") {
-                    self.apply_tree_filter(self.tree_filter.toggle(FilterMode::LabeledOnly));
-                    return;
-                }
-                if matches_key_event(key, "ctrl+a") {
-                    self.apply_tree_filter(self.tree_filter.toggle(FilterMode::All));
-                    return;
-                }
-                if matches_key_event(key, "ctrl+shift+o") {
-                    self.apply_tree_filter(self.tree_filter.cycle_backward());
-                    return;
-                }
-                if matches_key_event(key, "ctrl+o") {
-                    self.apply_tree_filter(self.tree_filter.cycle());
-                    return;
-                }
-                if matches_key_event(key, "enter") {
-                    let id = self.tree.selected_id().unwrap_or("?").to_string();
-                    self.pending_tree_travel = Some(id);
-                    return;
-                }
-                if matches_key_event(key, "shift+f") {
-                    let id = self.tree.selected_id().unwrap_or("?").to_string();
-                    self.pending_tree_fork = Some(id);
-                    return;
-                }
-                if matches_key_event(key, "shift+l") {
-                    let Some(id) = self.tree.selected_id().map(str::to_string) else {
-                        return;
-                    };
-                    let current = self.tree.annotation_of(&id).unwrap_or("").to_string();
-                    let mut input = Input::new();
-                    input.set_value(current);
-                    self.tree_label_edit = Some((id, input));
-                    return;
-                }
-                if matches_key_event(key, "shift+t") {
-                    self.tree.toggle_annotation_timestamps();
-                    return;
-                }
-                if matches_key_event(key, "up")
-                    || matches_key_event(key, "down")
-                    || matches_key_event(key, "pageUp")
-                    || matches_key_event(key, "pageDown")
-                    || matches_key_event(key, "left")
-                    || matches_key_event(key, "right")
-                    || matches_key_event(key, "ctrl+left")
-                    || matches_key_event(key, "alt+left")
-                    || matches_key_event(key, "ctrl+right")
-                    || matches_key_event(key, "alt+right")
-                    || matches_key_event(key, "backspace")
-                    || printable_from_key_event(key).is_some()
-                {
-                    self.tree.handle_input(event);
-                }
-                return;
-            }
-            EditorSlot::Plate | EditorSlot::Settings | EditorSlot::Choice => {
-                // Empty shells: Esc is handled by InputListener; ignore other keys.
-                return;
-            }
-            EditorSlot::Models => {
-                let InputEvent::Key(ref key) = event else {
-                    return;
-                };
-                if matches_key_event(key, "enter") {
-                    if let Some(item) = self.models_list.get_selected_item() {
-                        self.pending_model_select = Some(item.value.clone());
-                    }
-                    return;
-                }
-                if matches_key_event(key, "up")
-                    || matches_key_event(key, "down")
-                    || matches_key_event(key, "pageUp")
-                    || matches_key_event(key, "pageDown")
-                {
-                    self.models_list.handle_input(event);
-                    return;
-                }
-                if matches_key_event(key, "backspace") {
-                    self.models_filter.pop();
-                    self.apply_models_filter();
-                    return;
-                }
-                if let Some(text) = printable_from_key_event(key) {
-                    self.models_filter.push_str(&text);
-                    self.apply_models_filter();
-                }
-                return;
-            }
-            EditorSlot::ImportConfirm => {
-                let InputEvent::Key(ref key) = event else {
-                    return;
-                };
-                if matches_key_event(key, "enter") {
-                    let Some(path) = self.import_confirm_path.clone() else {
-                        return;
-                    };
-                    let accepted = self
-                        .import_confirm_list
-                        .get_selected_item()
-                        .is_some_and(|item| item.value == "yes");
-                    self.pending_import_decision = Some(if accepted {
-                        ImportConfirmDecision::Accepted { path }
-                    } else {
-                        ImportConfirmDecision::Rejected
-                    });
-                    return;
-                }
-                if matches_key_event(key, "up")
-                    || matches_key_event(key, "down")
-                    || matches_key_event(key, "pageUp")
-                    || matches_key_event(key, "pageDown")
-                {
-                    self.import_confirm_list.handle_input(event);
-                }
-                return;
-            }
-            EditorSlot::SessionResume => {
-                let action = self.session_resume.handle_input(event);
-                match action {
-                    SessionResumeAction::Switch(id) => {
-                        self.pending_session_resume_select = Some(id);
-                    }
-                    SessionResumeAction::Rename { id, name } => {
-                        self.pending_session_resume_rename = Some((id, name));
-                    }
-                    SessionResumeAction::Delete(id) => {
-                        self.pending_session_resume_delete = Some(id);
-                    }
-                    SessionResumeAction::None => {}
-                }
-                return;
-            }
-            EditorSlot::Editor => {}
-        }
-
-        if let InputEvent::Key(ref key) = event {
-            if matches_key_event(key, "ctrl+t") {
-                self.fold.thinking_expanded = !self.fold.thinking_expanded;
-                return;
-            }
-            if matches_key_event(key, "alt+e") {
-                self.fold.tools_expanded = !self.fold.tools_expanded;
-                return;
-            }
-            if matches_key_event(key, "ctrl+o") {
-                self.fold.tools_output_expanded = !self.fold.tools_output_expanded;
-                return;
-            }
-            // MAY: Ctrl+P opens Plate stub (Esc closes).
-            if matches_key_event(key, "ctrl+p") {
-                self.open_slot(EditorSlot::Plate);
-                return;
-            }
-        }
-
-        self.editor.handle_input(event);
-        self.sync_editor_border();
+        self.handle_slot_input(event);
     }
 
     fn invalidate(&mut self) {
