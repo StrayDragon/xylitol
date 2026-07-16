@@ -273,8 +273,8 @@ impl AgentCapabilities {
     /// Get all available commands (builtin + extension + prompt templates).
     pub(crate) fn get_commands(&self) -> Vec<SlashCommandInfo> {
         let mut all = get_all_commands(&self.extension_commands);
-        // Surface registered prompt templates as commands so callers (c110
-        // slash dispatch, c115 RPC get_commands) can discover them.
+        // Surface registered prompt templates as commands so callers
+        // (slash dispatch / GetCommands) can discover them.
         for t in &self.prompt_templates {
             let mut cmd = SlashCommandInfo::new(
                 format!("template:{}", t.name),
@@ -821,10 +821,14 @@ mod tests {
         let names: Vec<String> = session.get_commands().into_iter().map(|c| c.name).collect();
         assert!(names.iter().any(|n| n == "template:review"));
         assert!(names.iter().any(|n| n == "template:plan"));
-        // All 22 builtin names should also be present.
+        // Product builtins from SSOT (c1175).
         assert!(names.iter().any(|n| n == "model"));
-        assert!(names.iter().any(|n| n == "export"));
-        assert!(names.iter().any(|n| n == "compact"));
+        assert!(names.iter().any(|n| n == "session-export"));
+        assert!(names.iter().any(|n| n == "session-compact"));
+        assert!(names.iter().any(|n| n == "session-tree"));
+        assert!(!names.iter().any(|n| n == "tree"));
+        assert!(!names.iter().any(|n| n == "compact"));
+        assert!(!names.iter().any(|n| n == "export"));
     }
 
     #[tokio::test]

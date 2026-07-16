@@ -11,6 +11,8 @@ mod slots;
 mod theme;
 
 pub(crate) use session_tree::map_session_tree_nodes;
+#[cfg(test)]
+pub(crate) use slash_catalog::product_slash_commands_for_editor;
 
 #[cfg(test)]
 pub(crate) use root::sample_tree_nodes_for_test;

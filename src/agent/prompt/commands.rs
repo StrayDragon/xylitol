@@ -1,24 +1,11 @@
-//! Slash commands — `/model`, `/compact`, `/export`, etc.
+//! Slash command types and discovery for agent + Driver GetCommands (c1175).
 //!
-//! Provides a full builtin command table, slash-command detection,
-//! and slash-command info types for routing.
-//!
-//! ## Architecture
-//! - **Builtins** are defined as simple `(&str, &str)` tuples (name, description).
-//! - **Non-builtin commands** (from skills, prompts, extensions) carry a
-//!   source kind (skill vs prompt) and optional `source_path` for provenance.
-//! - Agent owns the dispatch logic (`dispatch_slash_command` in session.rs).
-//!
-//! NOTE: the builtin table + get_all_commands are currently consumed only via
-//! Driver::get_commands (backing GetCommands dispatch). The stdio rpc consumer
-//! that previously drove these was removed in c336 (zero external users, spec
-//! ip4 violation); tui/server slash-command surfaces will reactivate them as
-//! commands are exposed. ceiling: commands stay unused. upgrade: tui adds
-//! `/compact` `/export` etc. (c355 tui interactive components).
-
-#![allow(dead_code)]
+//! Builtin names/descriptions come from [`super::product_commands`] (product SSOT).
+//! Extension/skill/prompt commands merge on top.
 
 use crate::domain::source_info::SourceInfo;
+
+use super::product_commands::product_slash_commands;
 
 /// Source of a registered (non-builtin) slash command.
 #[derive(Debug, Clone, PartialEq)]
@@ -37,7 +24,7 @@ pub(crate) struct SlashCommandInfo {
     /// Human-readable description.
     pub(crate) description: String,
     /// Source of the command.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // retained for extension provenance; not yet read on product path
     pub(crate) source: SlashCommandSource,
     /// Provenance info for the originating resource, if applicable.
     pub(crate) source_info: Option<SourceInfo>,
@@ -64,44 +51,11 @@ impl SlashCommandInfo {
     }
 }
 
-/// Full builtin slash command table.
-///
-/// Command descriptions use `[requires ...]` tags to indicate optional feature
-/// requirements so callers can distinguish them without a separate flag.
-pub(crate) const BUILTIN_COMMANDS: &[(&str, &str)] = &[
-    ("model", "Select model"),
-    ("compact", "Manually compact the session context"),
-    ("session", "Show session info and stats"),
-    ("fork", "Fork session at a previous message"),
-    ("new", "Start a new session"),
-    ("export", "Export session (HTML/JSONL)"),
-    ("import", "Import and resume a session from a JSONL file"),
-    ("tree", "Navigate session tree (switch branches)"),
-    ("resume", "Resume a different session"),
-    ("quit", "Quit the agent"),
-    ("settings", "Open settings menu"),
-    ("scoped-models", "Enable/disable models for cycling"),
-    ("share", "Share session as a gist"),
-    (
-        "copy",
-        "Copy last agent message to clipboard [requires clipboard]",
-    ),
-    ("name", "Set session display name"),
-    ("changelog", "Show changelog entries"),
-    ("hotkeys", "Show all keyboard shortcuts"),
-    ("clone", "Clone the current session"),
-    ("trust", "Save project trust decision"),
-    ("login", "Configure provider authentication"),
-    ("logout", "Remove provider authentication"),
-    ("reload", "Reload extensions, skills, and prompts"),
-];
-
-/// Get builtin commands as a Vec for iteration.
-/// Merge builtin + extension/skill/prompt commands into a single list.
+/// Merge product builtins + extension/skill/prompt commands into a single list.
 pub(crate) fn get_all_commands(extensions: &[SlashCommandInfo]) -> Vec<SlashCommandInfo> {
-    let mut all: Vec<SlashCommandInfo> = BUILTIN_COMMANDS
-        .iter()
-        .map(|(n, d)| SlashCommandInfo::new(*n, *d, SlashCommandSource::Skill))
+    let mut all: Vec<SlashCommandInfo> = product_slash_commands()
+        .into_iter()
+        .map(|c| SlashCommandInfo::new(c.name, c.description, SlashCommandSource::Skill))
         .collect();
     all.extend(extensions.iter().cloned());
     all
@@ -110,23 +64,23 @@ pub(crate) fn get_all_commands(extensions: &[SlashCommandInfo]) -> Vec<SlashComm
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::prompt::product_commands::{LEGACY_SHORT_NAMES, product_slash_commands};
 
     #[test]
-    fn test_builtin_22_commands() {
-        assert_eq!(BUILTIN_COMMANDS.len(), 22);
-        let names: Vec<&str> = BUILTIN_COMMANDS.iter().map(|(n, _)| *n).collect();
-        assert!(names.contains(&"model"));
-        assert!(names.contains(&"export"));
-        assert!(names.contains(&"compact"));
-        assert!(names.contains(&"tree"));
-        assert!(names.contains(&"fork"));
-        assert!(names.contains(&"reload"));
-        assert!(names.contains(&"quit"));
-        assert!(!names.contains(&"stats"));
+    fn builtins_match_product_ssot() {
+        let ssot: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
+        let builtins: Vec<String> = get_all_commands(&[]).into_iter().map(|c| c.name).collect();
+        assert_eq!(
+            builtins,
+            ssot.iter().map(|s| (*s).to_string()).collect::<Vec<_>>()
+        );
+        for legacy in LEGACY_SHORT_NAMES {
+            assert!(!builtins.iter().any(|n| n == legacy));
+        }
     }
 
     #[test]
-    fn test_get_all_commands_includes_non_builtins() {
+    fn get_all_commands_includes_non_builtins() {
         let ext = vec![SlashCommandInfo::new(
             "analyze",
             "Analyze code",
@@ -135,10 +89,11 @@ mod tests {
         let all = get_all_commands(&ext);
         assert!(all.iter().any(|c| c.name == "analyze"));
         assert!(all.iter().any(|c| c.name == "model"));
+        assert!(all.iter().any(|c| c.name == "session-tree"));
     }
 
     #[test]
-    fn test_slash_command_info_with_source_info() {
+    fn slash_command_info_with_source_info() {
         use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
         let si = SourceInfo {
             path: std::path::PathBuf::from("/a/b/c.md"),
@@ -157,7 +112,7 @@ mod tests {
     }
 
     #[test]
-    fn test_slash_command_source_variants() {
+    fn slash_command_source_variants() {
         let skill = SlashCommandSource::Skill;
         let prompt = SlashCommandSource::Prompt;
         assert_ne!(format!("{skill:?}"), format!("{prompt:?}"));
