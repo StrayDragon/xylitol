@@ -3,14 +3,13 @@
 //! Named `UiRoot` (not `shell`/`scene`) to avoid clashing with bash /
 //! `infra::process::shell` and to read as the product component tree root.
 
+mod editor_border;
+mod mount;
 mod render;
 mod slot_input;
 mod slot_nav;
 mod theme_apply;
-use std::cell::RefCell;
 use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
@@ -19,9 +18,9 @@ use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
-    AtPathSource, CompletionSource, Component, Focusable, Input, InputEvent, InputListenerResult,
-    SlashArgCompletionSource, SlashCommandSource, SystemClock, TUI, Terminal, TreeNode,
-    TreeSelector, TreeSelectorOptions, fg_rgb, fuzzy_filter, truncate_to_width,
+    AtPathSource, CompletionSource, Component, Focusable, Input, InputEvent,
+    SlashArgCompletionSource, SlashCommandSource, SystemClock, TreeNode, TreeSelector,
+    TreeSelectorOptions, fg_rgb, fuzzy_filter, truncate_to_width,
 };
 
 use super::dollar_skill_source::DollarSkillSource;
@@ -31,9 +30,11 @@ use super::session_tree::FilterMode;
 use super::slots::EditorSlot;
 use super::theme::LayoutTheme;
 use crate::app::tui::bridge::UiModel;
-use crate::app::tui::host::{LayoutMode, TOO_SMALL_HINT};
 use crate::app::tui::session_resume::SessionResumePanel;
-use crate::app::tui::widgets::{GlyphSet, ScrollbackFold, format_footer_text};
+use crate::app::tui::widgets::{
+    GlyphSet, ScrollbackFold, footer_thinking_label, format_footer_text,
+};
+use crate::domain::types::ThinkingLevel;
 
 pub(super) fn empty_tree_selector(theme: LayoutTheme) -> TreeSelector {
     TreeSelector::new(
@@ -116,6 +117,10 @@ pub struct UiRoot {
     model: String,
     /// Optional `used N|~N|? tokens` fragment (c1035); omitted when unknown/empty.
     footer_token: Option<String>,
+    /// Current Driver thinking level mirrored for border + footer (c1150).
+    thinking_level: ThinkingLevel,
+    /// Shift+Tab / `app.thinking.cycle` → host drain calls Driver (c1150).
+    pending_thinking_cycle: bool,
     /// Mutually exclusive editor-zone face (ati18).
     slot: EditorSlot,
     tree: TreeSelector,
@@ -194,6 +199,8 @@ impl UiRoot {
             cwd: ".".into(),
             model: "—".into(),
             footer_token: None,
+            thinking_level: ThinkingLevel::Off,
+            pending_thinking_cycle: false,
             slot: EditorSlot::Editor,
             tree: empty_tree_selector(theme),
             tree_filter: FilterMode::Default,
@@ -223,6 +230,8 @@ impl UiRoot {
             pending_session_resume_delete: None,
         };
         root.install_completion_sources();
+        root.sync_editor_border();
+        root.refresh_footer_from_queue(0, 0);
         root
     }
 
@@ -365,21 +374,6 @@ impl UiRoot {
 
     pub fn external_editor_invocations(&self) -> u32 {
         self.external_editor_invocations
-    }
-
-    /// Sync operation-zone border for `!` / `!!` (c492 / ati15).
-    pub fn sync_editor_border(&mut self) {
-        let bash = self.editor.get_text().trim_start().starts_with('!');
-        if bash == self.bash_mode {
-            return;
-        }
-        self.bash_mode = bash;
-        if bash {
-            self.editor.set_border_color(self.theme.bash_border_color());
-        } else {
-            self.editor
-                .set_border_color(self.theme.muted_border_color());
-        }
     }
 
     /// Ctrl+G stub: count + optional `# $EDITOR stub` marker (harness-safe).
@@ -656,9 +650,11 @@ impl UiRoot {
     }
 
     fn refresh_footer_from_queue(&mut self, steer: usize, follow_up: usize) {
+        let thinking = footer_thinking_label(self.thinking_level);
         let base = format_footer_text(
             &self.cwd,
             &self.model,
+            &thinking,
             steer,
             follow_up,
             self.footer_token.as_deref(),
@@ -695,6 +691,17 @@ impl UiRoot {
     #[cfg(test)]
     pub fn ui_model_entries_len_for_test(&self) -> usize {
         self.ui_model.entries.len()
+    }
+
+    /// Editor slot lines (incl. border SGR) for harness border asserts (c1150).
+    #[cfg(test)]
+    pub fn editor_render_for_test(&mut self, width: usize) -> Vec<String> {
+        self.render_editor_slot(width)
+    }
+
+    #[cfg(test)]
+    pub fn thinking_level_for_test(&self) -> ThinkingLevel {
+        self.thinking_level
     }
 }
 
@@ -750,110 +757,8 @@ impl Component for UiRoot {
     }
 }
 
-/// Shared root so InputListeners and the focused Component see the same state.
-pub struct SharedUiRoot(pub Rc<RefCell<UiRoot>>);
-
-impl Component for SharedUiRoot {
-    fn render(&mut self, width: usize) -> Vec<String> {
-        self.0.borrow_mut().render(width)
-    }
-
-    fn handle_input(&mut self, event: InputEvent) {
-        self.0.borrow_mut().handle_input(event);
-    }
-
-    fn invalidate(&mut self) {
-        self.0.borrow_mut().invalidate();
-    }
-
-    fn tick(&mut self) -> bool {
-        self.0.borrow_mut().tick()
-    }
-}
-
-/// Full-screen hint when the terminal is too small.
-pub struct TooSmallHint;
-
-impl Component for TooSmallHint {
-    fn render(&mut self, width: usize) -> Vec<String> {
-        let msg = TOO_SMALL_HINT;
-        if width == 0 {
-            return vec![msg.into()];
-        }
-        let pad = width.saturating_sub(msg.chars().count()) / 2;
-        vec![format!("{}{msg}", " ".repeat(pad))]
-    }
-
-    fn handle_input(&mut self, _event: InputEvent) {}
-
-    fn invalidate(&mut self) {}
-}
-
-/// Build root children for a layout mode (no shared state — simple tests).
 #[cfg(test)]
-pub fn build_root(mode: LayoutMode) -> Vec<Box<dyn Component>> {
-    match mode {
-        LayoutMode::Ready => vec![Box::new(UiRoot::new())],
-        LayoutMode::TooSmall => vec![Box::new(TooSmallHint)],
-    }
-}
-
-/// Shared root + rebuild closure that keeps the same `UiRoot` across min-size flips.
-pub fn shared_ui_root_rebuild(
-    root: Rc<RefCell<UiRoot>>,
-) -> impl FnMut(LayoutMode) -> Vec<Box<dyn Component>> + 'static {
-    move |mode| match mode {
-        LayoutMode::Ready => vec![Box::new(SharedUiRoot(root.clone()))],
-        LayoutMode::TooSmall => vec![Box::new(TooSmallHint)],
-    }
-}
-
-/// Register pre-focus Ctrl+C / Esc (editor-slot overlays). Busy Esc abort is host-side (c480).
-pub fn install_ui_root_key_listeners<T: Terminal>(
-    root: &Rc<RefCell<UiRoot>>,
-    quit_flag: &Arc<AtomicBool>,
-    tui: &mut TUI<T>,
-) {
-    let root = root.clone();
-    let quit_flag = quit_flag.clone();
-    tui.add_input_listener(move |event| {
-        let InputEvent::Key(key) = &event else {
-            return InputListenerResult::Continue;
-        };
-        if crate::app::tui::keybindings::matches_binding(key, "app.clear") {
-            root.borrow_mut().on_ctrl_c(&quit_flag);
-            return InputListenerResult::Consumed;
-        }
-        if crate::app::tui::keybindings::matches_binding(key, "app.interrupt")
-            && root.borrow_mut().on_escape()
-        {
-            return InputListenerResult::Consumed;
-        }
-        InputListenerResult::Continue
-    });
-}
-
+pub use mount::build_root;
 #[cfg(test)]
-pub(crate) fn sample_tree_nodes_for_test() -> Vec<TreeNode> {
-    vec![
-        TreeNode::new("root", "session · product").with_children([
-            TreeNode::new("meta1", "fake / model").with_kind("meta"),
-            TreeNode::new("u1", "hello")
-                .with_kind("user")
-                .with_annotation("keep")
-                .with_child(
-                    TreeNode::new("a1", "plan")
-                        .with_kind("assistant")
-                        .with_children([
-                            TreeNode::new("t1", "read").with_kind("tool"),
-                            TreeNode::new("a2", "done")
-                                .with_kind("assistant")
-                                .with_child(TreeNode::new("u2", "next").with_kind("user")),
-                        ]),
-                ),
-            TreeNode::new("fork", "alternate")
-                .with_kind("user")
-                .with_child(TreeNode::new("af", "fork leaf").with_kind("assistant")),
-        ]),
-    ]
-}
+pub(crate) use mount::sample_tree_nodes_for_test;
+pub use mount::{install_ui_root_key_listeners, shared_ui_root_rebuild};

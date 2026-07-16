@@ -1,7 +1,7 @@
 ---
 version: "alpha"
 name: "footer"
-description: "Single-line dim footer — cwd · model · optional used N/~N/? tokens."
+description: "Single-line dim footer — cwd · model · • thinking · optional used N/~N/? tokens."
 tokens_from: "../DESIGN.md"
 components:
   footer:
@@ -12,12 +12,13 @@ components:
 # Footer
 
 > Token 根源：`{colors.*}` / `{spacing.*}` → [`../DESIGN.md`](../DESIGN.md)。
-> **c475 MVP**：`cwd · model`；**c1035**：带 provenance 的 `used N`/`~N`/`?`（无则省略）；branch 仍可选。
+> **c475 MVP**：`cwd · model`；**c1035**：带 provenance 的 `used N`/`~N`/`?`（无则省略）；**c1150**：thinking 标签（`• thinking off` / `• {as_str}`）。
 
 ## MUST
 
-1. 恰好 **1 行** dim。字段序：`cwd · model`；有 `ContextTokenEstimate` 时追加 `· used … tokens`（见下表）；可选 `· branch`。
-2. Token 文案按 `TokenProvenance`（经 `Driver::estimate_context_tokens`）：
+1. 恰好 **1 行** dim。字段序：`cwd · model · • {thinking}`；有 `ContextTokenEstimate` 时追加 `· used … tokens`（见下表）；可选 `· branch`。
+2. Thinking 标签（**c1150**）：level=`off` → `thinking off`；其余用 `ThinkingLevel::as_str`（如 `medium`、`xhigh`）。形如 `~/x · model · • thinking off` 或 `· • high`。与编辑器 thinking 边框同步；切换经 Driver，**MUST NOT** 因 cycle 向 transcript 刷系统行。
+3. Token 文案按 `TokenProvenance`（经 `Driver::estimate_context_tokens`）：
 
    | Provenance | 文案 |
    |---|---|
@@ -26,10 +27,10 @@ components:
    | Unknown | `used ? tokens` |
 
    无估计结果（空会话 / estimate 失败）时 **MUST 省略** 该字段；**MUST NOT** 伪造 `used 0 tokens`。
-3. 放不下截断右侧（优先保留 cwd 左端与 model），**MUST NOT** 增高。
-4. 快捷键提示：默认**不**写进 footer（勿 `enter submit · double Esc…` 墙）；需要时 `/help` 或旁注括号和弦（见 [`keybindings.md`](./keybindings.md)）。
-5. 队列摘要若展示：短前缀 `q:sN|fM ·` 可贴 footer 最左，仍保持单行。
-6. 刷新时机：session tree travel 换叶、一轮 turn 结束（AgentEnd / stream close）、compact 成功；**MUST NOT** 每个 TextDelta 全量 tokenizer.encode。
-7. **MUST NOT** 常驻多行 debug / 快捷键墙；**MUST NOT** 把 Working 文案塞进 footer（那是 status）；**MUST NOT** 把 Heuristic 显示成无 `~` 的精确值。
+4. 放不下截断右侧（优先保留 cwd 左端与 model），**MUST NOT** 增高。
+5. 快捷键提示：默认**不**写进 footer（勿 `enter submit · double Esc…` 墙）；需要时 `/help` 或旁注括号和弦（见 [`keybindings.md`](./keybindings.md)）。
+6. 队列摘要若展示：短前缀 `q:sN|fM ·` 可贴 footer 最左，仍保持单行。
+7. 刷新时机：session tree travel 换叶、一轮 turn 结束（AgentEnd / stream close）、compact 成功、thinking cycle / 模型切换；**MUST NOT** 每个 TextDelta 全量 tokenizer.encode。
+8. **MUST NOT** 常驻多行 debug / 快捷键墙；**MUST NOT** 把 Working 文案塞进 footer（那是 status）；**MUST NOT** 把 Heuristic 显示成无 `~` 的精确值。
 
 颜色：`{colors.muted}`；高度：`{spacing.footer-rows}`。

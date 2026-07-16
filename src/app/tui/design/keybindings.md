@@ -43,6 +43,7 @@ components:
 | Ctrl+O | 工具详情视口折叠/全文 |
 | Ctrl+T | thinking 展开/折叠 |
 | Alt+E | tool/diff **块**展开/折叠 |
+| Shift+Tab | **cycle thinking level**（模型支持集；静默更新边框 + footer；idle/busy 均可；**c1150**） |
 
 ## MUST — 树开（产品接线 · c635→c645；demo 已有）
 
@@ -94,6 +95,7 @@ components:
 
 - Settings / Plate 槽的运行时配置编辑（配置走 YAML+JSON Schema）。
 - computer-use 专用键位（本波延后）。
+- 产品 `/thinking-level` slash（demo 可有；产品用 Shift+Tab / `app.thinking.cycle` 静默切换）。
 
 ## 规则
 

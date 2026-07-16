@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ati36,"thinking-level-cycle-key","产品 TUI MUST 注册 app.thinking.cycle（默认 Shift+Tab）经 KeybindingsManager 匹配；触发时 MUST 经 Driver/protocol 在当前模型支持的 thinking_levels 上循环（MUST NOT 用包 ThinkingBorderLevel::cycle_next 作为产品 cycle 真源）；idle 与 busy（含 agent/bash busy）均 MUST 允许 cycle；MUST NOT 新增产品 /thinking-level slash；MUST NOT 与 app.thinking.toggle（Ctrl+T 折叠）混淆。",null,null,null
+  modify_requirement,ati15,"product-bash-prefix-border","产品 TUI 中当编辑器文本 trim 后以 ! 或 !! 开头时，Editor 操作区边框 MUST 切换为 bash 强调色（对齐 DESIGN success 前景）；去掉该前缀后 MUST 恢复当前 thinking level 边框（atc17），MUST NOT 在已接线 thinking 边框后仍用 muted 覆盖。",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  ati36,"shift-tab-cycles","产品 idle 且模型支持 off 与 high","按 Shift+Tab（或 app.thinking.cycle）","thinking level 在支持列表内前进一档且 footer/边框更新"
+  ati36,"busy-allowed","产品 agent busy","按 Shift+Tab","thinking level 仍 cycle 成功且无拒绝系统块"
+  ati15,"clear-restores-thinking","曾处于 bash 边框且 thinking 为 low","文本改为 hello 后 sync","边框恢复为 low thinking 色而非仅 muted"

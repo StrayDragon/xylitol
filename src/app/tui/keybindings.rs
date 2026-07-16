@@ -40,6 +40,11 @@ static APP_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
         Some("Toggle thinking blocks"),
     ),
     (
+        "app.thinking.cycle",
+        &["shift+tab"],
+        Some("Cycle thinking level"),
+    ),
+    (
         "app.tools.expand",
         &["ctrl+o"],
         Some("Toggle tool output viewport"),

@@ -246,6 +246,12 @@ pub trait Driver: Send {
     /// Current thinking level.
     fn thinking_level(&self) -> ThinkingLevel;
 
+    /// Cycle to the next level in the current model's thinking support list.
+    ///
+    /// Returns the level now in effect. Product TUI MUST use this (not package
+    /// `ThinkingBorderLevel::cycle_next`) as the cycle truth source.
+    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String>;
+
     /// Current session id (the id the next `run`/export acts on).
     fn session_id(&self) -> Option<String>;
 
@@ -681,6 +687,10 @@ impl Driver for InProcessDriver {
 
     fn thinking_level(&self) -> ThinkingLevel {
         self.agent.inner().thinking_level()
+    }
+
+    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String> {
+        self.agent.inner_mut().cycle_thinking_level()
     }
 
     fn session_id(&self) -> Option<String> {
@@ -1458,6 +1468,16 @@ impl Driver for RemoteDriver {
 
     fn thinking_level(&self) -> ThinkingLevel {
         *self.thinking.lock().unwrap()
+    }
+
+    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String> {
+        // Remote REST has set-only; cycle locally over STANDARD then POST.
+        let levels = ThinkingLevel::STANDARD;
+        let cur = self.thinking_level();
+        let idx = levels.iter().position(|l| *l == cur).unwrap_or(0);
+        let next = levels[(idx + 1) % levels.len()];
+        self.set_thinking_level(next)?;
+        Ok(next)
     }
 
     fn session_id(&self) -> Option<String> {

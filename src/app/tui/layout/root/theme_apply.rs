@@ -26,11 +26,8 @@ impl UiRoot {
             String::new(),
             Some(LoaderIndicatorOptions::default()),
         );
-        self.editor.set_border_color(if self.bash_mode {
-            theme.bash_border_color()
-        } else {
-            theme.muted_border_color()
-        });
+        // Bash accent or thinking border under the new Palette (c1150).
+        self.sync_editor_border();
         // Rebuild themed shells; tree/resume content is host-refreshed on next open.
         let selected = self.tree.selected_id().map(str::to_string);
         self.tree = empty_tree_selector(theme);
