@@ -1,9 +1,0 @@
-kind: llman.sdd.delta
-ops[3]{op,req_id,title,statement,from,to,name}:
-  add_requirement,qg01,"统一 just qa 满闸","仓库 MUST 提供 just qa 作为日常与 PR 前的统一验证入口；该入口 MUST 顺序包含：cargo fmt --check、clippy（all-features、-D warnings）、cargo/nextest 全特性测试、显式 packages/xylitol-tui 测试（五层中的 1–4）、cargo doc --no-deps --all-features、DESIGN token/Palette 一致性检查（check-tui-tokens）、以及 prek run --all-files。just check 与 just ci MUST 作为 just qa 的别名。",null,null,null
-  add_requirement,qg02,"qa-e2e 可选第 5 层","仓库 MUST 提供 just qa-e2e，其行为 MUST 为先执行 just qa，再执行 just test-tui-e2e（portable-pty 与 tmux 驱动的 #[ignore] 用例）。默认 just qa MUST NOT 自动运行第 5 层 E2E，以免缺少 tmux/PTY 环境时整闸失败。",null,null,null
-  add_requirement,qg03,"文档指针","根 AGENTS.md 命令段与 test-tui-harness skill MUST 写明 just qa 与 just qa-e2e 的分工；TUI 五层方法论仍以 package-tui-testing 与该 skill 为 SSOT，本闸仅统一入口。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  qg01,qa-runs-full-gate,"开发者准备提交","运行 just qa","fmt、clippy、workspace 测试、xylitol-tui 包测、doc、token check、prek 均执行且全部通过才打印成功"
-  qg02,qa-skips-e2e-by-default,"本机未安装 tmux","仅运行 just qa","第 5 层 E2E 不被调用；闸门可绿"
-  qg03,docs-point-to-recipes,"读者打开根 AGENTS.md 或 test-tui-harness skill","查找验证入口","文档写明 just qa 为日常满闸、just qa-e2e 含真终端 E2E"

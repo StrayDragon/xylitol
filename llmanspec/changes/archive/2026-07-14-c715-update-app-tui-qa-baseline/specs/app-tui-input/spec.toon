@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ati30,"input-bdd-guardrails","产品 TUI 输入面关键行为 MUST 可由 rstest-bdd 场景固定：忙碌 Esc abort 与迟到 Xy 不复活；bang Esc 取消与 suppress_idle_esc 后第二 bang 仍可 abort；overlay Esc 先关槽且忙碌无 overlay 时 Esc MUST NOT 开树；忙碌 Enter/Alt+Enter/Alt+Up 与 Driver steer/follow_up/clear_queue 契约。实现可复用 HostSession+ScriptedDriver+HostEvent 注入，MUST NOT 为 BDD 另造第二套副作用泵。",null,null,null
-op_scenarios[4]{req_id,id,given,when,then}:
-  ati30,"abort-and-late-delta","agent busy 且用户 Esc abort","再注入迟到 TextDelta 或 AgentEnd","UI 保持 Aborted/idle 语义且无新 assistant 正文复活"
-  ati30,"bang-esc-and-second","hanging bang 进行中","Esc 取消后再开第二 bang 并可再 Esc","出现 cancelled 语义且第二 bang 仍可 abort，无粘性 Aborted 挡住"
-  ati30,"esc-overlay-vs-tree","busy 无 overlay 或已开 Models/Tree overlay","按 Esc","无 overlay 时 abort 且不开树；有 overlay 时只关槽不 abort"
-  ati30,"queue-keys","agent busy","Enter / Alt+Enter / Alt+Up","分别触发 steer、follow_up、双队列清空并还原 editor 文本契约"

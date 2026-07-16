@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ar10,domain 不绑 schemars,"src/domain 下的领域类型 MUST NOT derive schemars::JsonSchema；需要 JSON Schema 的配置/settings DTO MUST 位于 infra/config 或 infra/settings（或等价配置边界）并在该处 derive。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  ar10,"no-domain-jsonschema","",rg JsonSchema 于 src/domain,零匹配

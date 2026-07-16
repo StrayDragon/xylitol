@@ -1,9 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,att7,"expandable-block-fold","live scrollback 中的 thinking / tool / edit-diff 可展开块 MUST 支持折叠与展开两态；折叠态 MUST 保留可读摘要行（MUST NOT 仅图标）；展开态 MUST 显示完整正文或工具详情；状态机 MUST 落在应用面（demo/产品），MUST NOT 要求包内通用 Chat Expandable 组件。",null,null,null
-  add_requirement,att8,"expandable-key-hints","可展开块旁 MUST 提示对应快捷键，格式为括号包裹的完整和弦（如 (Ctrl+T) 用于 thinking、(Alt+E) 用于 tool/diff）；agent_demo MUST 用 Ctrl+T 切换 thinking 展开态、Alt+E 同时切换 tool 与 diff 展开态；流式 thinking 期间 MUST 保持展开，结束后可折叠。",null,null,null
-op_scenarios[4]{req_id,id,given,when,then}:
-  att7,"fold-shows-summary","transcript 含 thinking 块",块为折叠态,可见摘要行且不含完整长正文
-  att7,"expand-shows-body","thinking 已折叠",Ctrl+T 展开,可见完整 thinking 正文
-  att8,"alt-e-tools-and-diff","存在 tool 与 diff 块",Alt+E,两类块展开态一同翻转
-  att8,"hint-parenthesized","渲染折叠 thinking 头","行旁提示",含 (Ctrl+T) 而非裸 ^T

@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ati24,"session-tree-fold-keys","产品 TUI 在 EditorSlot::Tree 时 MUST 把 ctrl+left、alt+left、ctrl+right、alt+right 交给包 TreeSelector（fold/unfold 或分支跳转）；MUST NOT 在 Editor 槽把这些键误当成 editor 光标词跳；树关时这些键保持既有 Editor/其它语义。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  ati24,"tree-forwards-fold-chords","产品树已打开","按 ctrl+left","TreeSelector 收到输入（fold 或分支跳转生效）"

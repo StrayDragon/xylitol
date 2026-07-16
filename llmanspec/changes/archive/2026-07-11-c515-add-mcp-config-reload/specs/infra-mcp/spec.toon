@@ -1,9 +1,0 @@
-kind: llman.sdd.delta
-ops[3]{op,req_id,title,statement,from,to,name}:
-  add_requirement,mcp1,无配置零装配,"当配置中不存在 mcp_servers 或列表为空时，System MUST NOT 创建 MCP client、MUST NOT 向默认 ToolSet 注册任何 mcp: 前缀工具，且该路径 MUST 不引入可感知的运行时开销（zero-cost 未启用）。",null,null,null
-  add_requirement,mcp2,有配置则装配为 XyTool,"当 mcp_servers 含有效条目时，System MUST 连接（或按 transport 启动）对应服务器，并将发现的工具以 XyTool 形式注册，公开名 MUST 使用 mcp:{server_id}:{name} 约定。",null,null,null
-  add_requirement,mcp3,动态配置重载,System MUST 支持在进程存活期间根据更新后的 mcp_servers 配置重载 MCP 工具集（增删服务器/工具）；重载 MUST NOT 要求以重启整个进程作为唯一手段。,null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  mcp1,"zero-cost",配置无 mcp_servers,bootstrap/composition 装配 agent,"无 McpClientManager 实例且工具列表无 mcp: 前缀"
-  mcp2,wired,配置含一个可用 mcp server,装配完成,"ToolSet 含对应 mcp: 工具且可经 XyTool 执行"
-  mcp3,reload,已装配一套 MCP 工具,配置变更为另一组 mcp_servers 并触发重载,ToolSet 反映新集合且旧服务器工具不再可用

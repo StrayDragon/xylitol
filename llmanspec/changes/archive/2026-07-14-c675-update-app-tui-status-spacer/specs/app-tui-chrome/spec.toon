@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,atc12,"status-spacer-above-editor","产品 TUI status 槽：busy 时 MUST 渲染 Loader 前导空行加一行 spinner 短词并紧贴 editor 上方（MUST NOT strip 空行）；idle 时 MUST 保留恰好一行空白呼吸间距（MUST NOT 显示 Ready 文案）；对齐 agent_demo status_lines 与 status.md。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  atc12,"busy-keeps-leading-blank","产品 host busy","渲染一帧","status 区含前导空行再 spinner 行且紧贴 editor"
-  atc12,"idle-one-blank","产品 host idle","渲染一帧","editor 上方恰好一行空白且无 spinner"

@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ast9,"session-tree-fold","产品会话树打开时 MUST 将 Ctrl+Left / Alt+Left / Ctrl+Right / Alt+Right（包 tui.tree.foldOrUp / unfoldOrDown）转发给 TreeSelector::handle_input，以折叠/展开可折节点或执行分支跳转；折叠后 MUST 隐藏该节点后代并显示 ⊞（或包等价标记）；MUST NOT 在 src/app/tui 重写 folded_nodes 算法；裸 Left/Right MUST 仍为翻页（既有）。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  ast9,"fold-hides-descendants","树开且选中有子节点的可折行","按 Ctrl+Left（或 Alt+Left）","该节点 is_folded 且后代行不可见，帧含 ⊞ 或等价"
-  ast9,"unfold-restores","同上已折叠","按 Ctrl+Right（或 Alt+Right）","后代重新可见"

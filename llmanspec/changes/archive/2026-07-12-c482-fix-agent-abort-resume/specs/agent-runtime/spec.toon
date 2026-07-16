@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ar28,"abort-resets-cancel-token","ReActAgent MUST 在每次 run 开始时安装一个新的 CancellationToken；abort MUST 只取消当前 run 的 token。abort 之后的下一次 run MUST NOT 因沿用已取消 token 而立即以 aborted 结束。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  ar28,abort-then-rerun,"agent 正在 run",abort 后再 run 新 prompt,"第二次 run 正常产出模型事件且不在入口立即 aborted"
-  ar28,abort-token-fresh,"上一轮已被 abort",开始新 run,"新 run 使用未取消的 CancellationToken"

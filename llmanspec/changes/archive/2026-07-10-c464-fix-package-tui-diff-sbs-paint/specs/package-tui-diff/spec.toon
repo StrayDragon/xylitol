@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ptd7,"sbs-no-default-row-bg","当 Diff 以 side-by-side 渲染时，增删半栏 MUST NOT 默认套用 added_line_bg / removed_line_bg 全行背景；极性 MUST 仅用 fg（及 gutter 符号/行号）表达。Unified 路径 MAY 继续使用行底。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  ptd7,"sbs-no-row-bg",theme 配置了非 identity 的 added_line_bg,width 达到 side_by_side 阈值并渲染 SBS,输出半栏行不含该行底 SGR；unified 同 theme 仍可含行底

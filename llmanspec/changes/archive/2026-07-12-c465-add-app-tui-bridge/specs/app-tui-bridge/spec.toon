@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,atb1,xyevent-to-ui-seam,"产品 TUI MUST 经单一 bridge 缝（apply_xy_event）将 XyEvent 译为 UI-only 模型；渲染层 MUST NOT 直接 match XyEvent。未知/元数据变体 MUST 降级（tracing）且 MUST NOT panic。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  atb1,no-xyevent-in-render,"","审查 tui 渲染模块","无 XyEvent 匹配；事件经 apply_xy_event"

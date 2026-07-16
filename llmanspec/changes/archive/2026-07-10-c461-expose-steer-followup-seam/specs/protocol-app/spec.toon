@@ -1,7 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ip-q1,"steer-followup-commands","protocol::Command MUST 包含 Steer、FollowUp 与 ClearQueue（或语义等价变体）；client 经线协议入队或清队列 MUST 反序列化为这些变体。",null,null,null
-  add_requirement,ip-q2,"dispatch-queue-commands","app::core::dispatch MUST 将 Steer、FollowUp、ClearQueue 路由到 Driver 对应方法；这些变体 MUST NOT 留在仅 WS 层处理。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  ip-q1,serde-steer,"","序列化再反序列化 Command::Steer","字段与原文一致"
-  ip-q2,dispatch-steer,"","dispatch Steer","调用 Driver::steer 且不报未处理变体错误"

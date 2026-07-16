@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,ath7,"single-mux-loop","产品 TUI host MUST 以单一扇入模型同时等待终端输入、idle tick、可选 agent EventStream、可选 bang 完成与 bang chunk：生产 run_host_loop 与 harness MUST 调用同一共享 bang/主环事件臂（或单一 select 拓扑）；MUST NOT 保留与共享入口分叉的第三套 bang Esc select；bang 进行中 Esc MUST 仍可达 Driver::abort 并走 note_bash_cancelled；chunk 到达 MUST 仅标记 dirty 并在 Tick 或 BangDone 时 try_render，MUST NOT 每字节强制全屏重绘；进行中的 bang MUST 仍可 poll agent EventStream（不得 bang-only 饿死 agent）。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  ath7,"one-select","审查 run_host_loop 与 harness bang 路径","存在进行中的 bang","两侧共用同一 helper/扇入；无第三份手写 bang Esc select"
-  ath7,"esc-during-stream","hanging bang 已 uplink 且有 chunk","按 Esc","Driver::abort 被调用且块呈 cancelled"

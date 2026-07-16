@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,adp4,"session-tree-kind-ssot","playground 会话树槽静图 MUST 用 DESIGN token 色区分 kind 前缀（user/assistant/tool），正文 MUST NOT 再把 role 字符串预烘焙进同一纯文本片段作为唯一表现；MUST 与 session-tree.md 的 kind 渲染序一致。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  adp4,"tree-slot-kind-colors","打开 playground 会话树槽","查看树行","可见分色 kind 前缀与无 role 烘焙的正文"

@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,pts13,"node-kind","TreeNode MUST 支持可选 kind（字符串；包 MUST NOT 硬编码产品 role 枚举）；有 kind 时渲染 MUST 在 annotation 之后、主 label 之前经主题闭包输出 kind 前缀；无 kind 时 MUST NOT 强制前缀。",null,null,null
-  add_requirement,pts14,"kind-in-search","TreeSelector 增量搜索 MUST 将节点 kind（若有）纳入匹配；搜索 MUST 仍与 include_node 组合（AND）。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  pts13,"kind-prefix-render","节点 kind=user 且 label 为正文无 role 前缀","render","行含主题化 user 前缀与正文 label"
-  pts13,"no-kind-compat","节点无 kind","render","行仅含既有 annotation/label 形态且无强制 role 前缀"
-  pts14,"search-matches-kind","可见节点含 kind=tool","键入 tool","该节点仍可见"

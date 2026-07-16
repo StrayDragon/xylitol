@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,be1,"streaming-executor","System MUST provide XyBashExecutor that executes shell commands via BashExecOpts carrying optional CancellationToken and optional bounded mpsc chunk_tx for output bytes; when chunk_tx is Some the executor MUST emit output chunks on that channel (try_send with sender-side coalesce on Full); when None MUST accumulate silently without requiring a callback. The former on_chunk callback signature MUST NOT remain as the public port.",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  be1,"stream-via-channel",chunk_tx is Some,command prints multiple lines,receiver gets one or more byte chunks covering the output before execute returns
-  be1,"no-callback-port",审查 runtime_protocol bash 端口,查找 on_chunk 回调签名,公共 execute 仅接受 BashExecOpts 而无 FnMut on_chunk

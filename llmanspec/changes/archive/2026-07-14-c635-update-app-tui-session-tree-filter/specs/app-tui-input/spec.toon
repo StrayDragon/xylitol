@@ -1,7 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ati22,"session-tree-filter-keys","产品 TUI 在 EditorSlot::Tree 打开时：Ctrl+D MUST 将 FilterMode 设为 default；Ctrl+T / Ctrl+U / Ctrl+L / Ctrl+A MUST 在对应模式（no-tools / user-only / labeled-only / all）与 default 之间 toggle；Ctrl+O MUST 按 default→no-tools→user-only→labeled-only→all 循环；上述键 MUST 优先于关树时的 thinking（Ctrl+T）与工具视口（Ctrl+O）；增量搜索键入 MUST 交给包 TreeSelector；有搜索串时 Esc MUST 先清搜索再关树（既有 ati5 语义保留）。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  ati22,"ctrl-o-cycles","树开且当前 default","按 Ctrl+O","进入 no-tools 或状态含 [no-tools]"
-  ati22,"tree-ctrl-t-not-thinking","树开","按 Ctrl+T","走 filter toggle 而非 thinking 折叠"
-  ati22,"esc-clears-search-first","树开且已键入搜索串","按 Esc","搜索清空且树仍开；再 Esc 关树"
