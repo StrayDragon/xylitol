@@ -163,11 +163,27 @@ impl McpClientManager {
     }
 
     async fn connect_sse(&self, name: &str, config: &McpServerConfig) -> Result<(), String> {
+        use http::{HeaderName, HeaderValue};
+        use rmcp::transport::StreamableHttpClientTransport;
+        use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
+
         let url = config
             .url
             .as_ref()
             .ok_or_else(|| "url is required for sse transport".to_string())?;
-        let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(url.to_string());
+        let mut transport_cfg = StreamableHttpClientTransportConfig::with_uri(url.clone());
+        if let Some(ref headers) = config.headers {
+            let mut custom = HashMap::new();
+            for (k, v) in headers {
+                let name = HeaderName::from_bytes(k.as_bytes())
+                    .map_err(|e| format!("invalid header name {k:?}: {e}"))?;
+                let value = HeaderValue::from_str(v)
+                    .map_err(|e| format!("invalid header value for {k}: {e}"))?;
+                custom.insert(name, value);
+            }
+            transport_cfg = transport_cfg.custom_headers(custom);
+        }
+        let transport = StreamableHttpClientTransport::from_config(transport_cfg);
         let service = serve_client((), transport)
             .await
             .map_err(|e| format!("init failed: {e}"))?;

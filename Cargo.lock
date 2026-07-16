@@ -5689,6 +5689,7 @@ dependencies = [
  "futures",
  "glob",
  "hex",
+ "http",
  "image",
  "insta",
  "jsonschema",

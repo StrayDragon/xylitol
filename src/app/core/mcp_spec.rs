@@ -22,6 +22,7 @@ pub struct McpServerSpec {
     pub args: Option<Vec<String>>,
     pub url: Option<String>,
     pub env: Option<HashMap<String, String>>,
+    pub headers: Option<HashMap<String, String>>,
 }
 
 impl From<&McpServerConfig> for McpServerSpec {
@@ -36,6 +37,7 @@ impl From<&McpServerConfig> for McpServerSpec {
             args: c.args.clone(),
             url: c.url.clone(),
             env: c.env.clone(),
+            headers: c.headers.clone(),
         }
     }
 }
@@ -52,6 +54,7 @@ impl From<&McpServerSpec> for McpServerConfig {
             args: s.args.clone(),
             url: s.url.clone(),
             env: s.env.clone(),
+            headers: s.headers.clone(),
         }
     }
 }
