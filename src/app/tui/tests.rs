@@ -887,6 +887,41 @@ async fn harness_busy_history_copy_last_still_copies() {
 }
 
 #[tokio::test]
+async fn harness_history_copy_emits_pending_osc52_on_terminal() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_run_started("prompt");
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::TextDelta(
+            "osc52-payload".into(),
+        ))))
+        .unwrap();
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
+            messages: Vec::new(),
+        })))
+        .unwrap();
+
+    let mut driver = ScriptedDriver::new();
+    let osc = "\x1b]52;c;dGVzdA==\x07";
+    driver.set_next_copy_pending_osc52(Some(osc.into()));
+    let mut stream = None;
+    root.borrow_mut().set_editor_text("/history-copy-last");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert!(
+        session.tui.terminal.frames.iter().any(|f| f.contains(osc)),
+        "host must write deferred OSC 52 via Terminal before render; frames={:?}",
+        session.tui.terminal.frames
+    );
+}
+
+#[tokio::test]
 async fn harness_idle_slash_trust_persists_without_reload() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::core::driver::ProjectTrustMode;

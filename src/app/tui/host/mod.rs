@@ -490,6 +490,16 @@ impl<T: Terminal> HostSession<T> {
         self.tui.terminal.set_progress(active);
     }
 
+    /// Emit a preformatted OSC 52 clipboard sequence on the host/UI thread.
+    ///
+    /// Must run outside differential render batches (caller: slash effect after
+    /// `Driver::copy_text_to_clipboard`, before `render_now`). Never call from
+    /// a blocking-pool clipboard worker.
+    pub fn emit_clipboard_osc52(&mut self, sequence: &str) {
+        self.tui.terminal.write(sequence);
+        self.tui.terminal.flush();
+    }
+
     pub fn render_now(&mut self) -> Result<(), String> {
         self.tui.render_now().map(|_| ()).map_err(|e| e.to_string())
     }

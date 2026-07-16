@@ -75,6 +75,8 @@ pub struct ScriptedDriver {
     reload_runtime_calls: AtomicUsize,
     persist_project_trust_calls: Mutex<Vec<crate::app::core::driver::ProjectTrustMode>>,
     copy_text_calls: Mutex<Vec<String>>,
+    /// When set, next `copy_text_to_clipboard` returns this OSC 52 for host emit.
+    copy_pending_osc52: Mutex<Option<String>>,
     dollar_skill_catalog: Mutex<Vec<(String, String)>>,
 }
 
@@ -163,8 +165,14 @@ impl ScriptedDriver {
             reload_runtime_calls: AtomicUsize::new(0),
             persist_project_trust_calls: Mutex::new(Vec::new()),
             copy_text_calls: Mutex::new(Vec::new()),
+            copy_pending_osc52: Mutex::new(None),
             dollar_skill_catalog: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Queue a pending OSC 52 sequence for the next clipboard copy (TUI host path).
+    pub fn set_next_copy_pending_osc52(&self, sequence: Option<String>) {
+        *self.copy_pending_osc52.lock().expect("copy_pending_osc52") = sequence;
     }
 
     pub fn reload_runtime_calls(&self) -> usize {
@@ -724,12 +732,20 @@ impl Driver for ScriptedDriver {
         })
     }
 
-    fn copy_text_to_clipboard(&mut self, text: &str) -> Result<(), String> {
+    async fn copy_text_to_clipboard(
+        &mut self,
+        text: &str,
+    ) -> Result<crate::app::core::driver::ClipboardCopyOutcome, String> {
         self.copy_text_calls
             .lock()
             .expect("copy_text_calls")
             .push(text.to_string());
-        Ok(())
+        let pending_osc52 = self
+            .copy_pending_osc52
+            .lock()
+            .expect("copy_pending_osc52")
+            .take();
+        Ok(crate::app::core::driver::ClipboardCopyOutcome { pending_osc52 })
     }
 }
 
