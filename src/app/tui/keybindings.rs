@@ -144,6 +144,13 @@ fn keybindings_path(agent_dir: &Path) -> PathBuf {
     agent_dir.join("keybindings.json")
 }
 
+/// Default agent directory (`~/.xylitol/`) without reaching `infra`.
+pub fn default_agent_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".xylitol")
+}
+
 /// Parse `keybindings.json` object: `{ "id": ["chord", ...] | "chord" }`.
 pub fn parse_keybindings_json(raw: &str) -> Result<KeybindingsConfig, String> {
     let value: serde_json::Value =
@@ -184,12 +191,26 @@ fn load_from_path(path: &Path) -> Result<KeybindingsConfig, String> {
     parse_keybindings_json(&raw)
 }
 
-/// Install package `tui.*` + product `app.*` with no disk overrides (harness).
-#[cfg(test)]
+/// Install package `tui.*` + product `app.*` with no disk overrides.
+///
+/// Used by harness and as a fallback when matching before a full install.
 pub fn install_product_keybindings_defaults_only() {
     let mut defs = create_default_definitions();
     defs.extend(app_definitions());
     set_keybindings(KeybindingsManager::new(defs, KeybindingsConfig::new()));
+}
+
+/// Convenience: match a product/package id against the global manager.
+pub fn matches_binding(event: &crossterm::event::KeyEvent, id: &'static str) -> bool {
+    ensure_product_catalog();
+    with_keybindings(|kb| kb.matches_event(event, id))
+}
+
+fn ensure_product_catalog() {
+    let missing = with_keybindings(|kb| kb.get_definition("app.interrupt").is_none());
+    if missing {
+        install_product_keybindings_defaults_only();
+    }
 }
 
 /// Install package `tui.*` + product `app.*` and apply disk overrides (if any).
@@ -231,11 +252,6 @@ pub fn reload_keybindings(agent_dir: &Path) -> ReloadOutcome {
         }
         Err(error) => ReloadOutcome::Failed { path, error },
     }
-}
-
-/// Convenience: match a product/package id against the global manager.
-pub fn matches_binding(event: &crossterm::event::KeyEvent, id: &'static str) -> bool {
-    with_keybindings(|kb| kb.matches_event(event, id))
 }
 
 #[cfg(test)]

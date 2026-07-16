@@ -1,10 +1,10 @@
 //! Product slash command catalog for editor completion (c1170 / c1175).
 //!
-//! Names and descriptions come from [`crate::agent::prompt::product_commands`] SSOT.
+//! Names and descriptions come from [`crate::app::core::product_commands`] SSOT.
 
 use xylitol_tui::SlashCommand;
 
-use crate::agent::prompt::product_commands::product_slash_commands;
+use crate::app::core::product_commands::product_slash_commands;
 
 pub(crate) fn product_slash_commands_for_editor() -> Vec<SlashCommand> {
     product_slash_commands()

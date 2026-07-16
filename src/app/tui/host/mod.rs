@@ -157,14 +157,14 @@ impl<T: Terminal> HostSession<T> {
     /// Product UI with footer identity (`cwd · model`).
     pub fn new_product_ui_with_meta(terminal: T, cwd: String, model: String) -> Self {
         // c1090: install tui.* + app.* before any input listeners run.
+        // Path is local (no infra reach); disk load only outside tests.
         #[cfg(test)]
         {
-            // Harness must not pick up the developer's ~/.xylitol/keybindings.json.
             super::keybindings::install_product_keybindings_defaults_only();
         }
         #[cfg(not(test))]
         {
-            let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
+            let agent_dir = super::keybindings::default_agent_dir();
             let _ = super::keybindings::install_product_keybindings(&agent_dir);
         }
 
