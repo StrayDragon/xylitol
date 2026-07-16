@@ -60,7 +60,17 @@ hooks:
 #   - name: "custom-skill"
 #     path: "./skills/custom"
 
-# mcp_servers:
+# mcp_servers:  # YAML list (not Cursor-style mcpServers object)
+#   # stdio
 #   - name: "my-server"
+#     transport: stdio   # default
 #     command: "npx"
 #     args: ["-y", "@my/mcp-server"]
+#     env:
+#       PATH: "/usr/bin:/bin"
+#   # streamable HTTP / SSE (+ optional headers; use secret.env + {{ secret.KEY }})
+#   - name: "context7"
+#     transport: sse
+#     url: "https://mcp.context7.com/mcp"
+#     headers:
+#       CONTEXT7_API_KEY: "{{ secret.CONTEXT7_API_KEY }}"

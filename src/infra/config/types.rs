@@ -698,12 +698,15 @@ pub struct McpServerConfig {
     /// Arguments for the command (stdio transport only).
     #[serde(default)]
     pub args: Option<Vec<String>>,
-    /// SSE endpoint URL (sse transport only).
+    /// SSE / streamable-HTTP endpoint URL (sse transport only).
     #[serde(default)]
     pub url: Option<String>,
     /// Extra environment variables for the child process (stdio transport only).
     #[serde(default)]
     pub env: Option<HashMap<String, String>>,
+    /// Extra HTTP headers for SSE / streamable-HTTP (e.g. API keys).
+    #[serde(default)]
+    pub headers: Option<HashMap<String, String>>,
 }
 
 impl Default for McpServerConfig {
@@ -715,6 +718,7 @@ impl Default for McpServerConfig {
             args: None,
             url: None,
             env: None,
+            headers: None,
         }
     }
 }
