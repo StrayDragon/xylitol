@@ -295,7 +295,7 @@ async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), String
             if let Some(log) = agent.wiring_hook_log.borrow().as_ref() {
                 log.calls.lock().unwrap_or_else(|e| e.into_inner()).clear();
             }
-            driver.set_thinking_level(ThinkingLevel::High);
+            driver.set_thinking_level(ThinkingLevel::High).unwrap();
             Ok(())
         }
         "打开会话树" => {
@@ -768,7 +768,7 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         "low" => ThinkingLevel::Low,
         _ => ThinkingLevel::Off,
     };
-    session.set_thinking_level(tl);
+    session.set_thinking_level(tl).unwrap();
     agent.last_result.replace(Some(Ok(format!(
         "level:{}",
         session.thinking_level().as_str()

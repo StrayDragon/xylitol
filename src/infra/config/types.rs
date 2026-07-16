@@ -79,6 +79,9 @@ pub struct ModelEntry {
     /// Whether this model supports thinking/reasoning. Default: true for all.
     #[serde(default = "default_thinking")]
     pub thinking: bool,
+    /// Optional explicit thinking levels (may contain holes). Unknown names fail load.
+    #[serde(default)]
+    pub thinking_levels: Option<Vec<String>>,
     /// Context window size in tokens. Default: 0 (auto-detect from provider).
     #[serde(default)]
     pub context_window: u64,
@@ -178,6 +181,18 @@ fn default_max_iterations() -> u32 {
 }
 
 impl AppConfig {
+    /// Validate optional `thinking_levels` on every model entry (unknown names fail).
+    pub fn validate_thinking_levels(&self) -> Result<(), String> {
+        for (alias, entry) in &self.model.models {
+            crate::domain::types::ThinkingLevel::resolve_configured_levels(
+                entry.thinking,
+                entry.thinking_levels.as_deref(),
+            )
+            .map_err(|e| format!("models.{alias}: {e}"))?;
+        }
+        Ok(())
+    }
+
     /// Resolve a model alias to a runtime [`XyModelConfig`](crate::domain::model::XyModelConfig).
     pub fn resolve_model(
         &self,
@@ -235,6 +250,12 @@ impl AppConfig {
             .and_then(|e| (e.context_window > 0).then_some(e.context_window))
             .unwrap_or_else(|| default_context_window_for(model_config.kind));
 
+        let levels = crate::domain::types::ThinkingLevel::resolve_configured_levels(
+            thinking,
+            entry.and_then(|e| e.thinking_levels.as_deref()),
+        )?;
+        let thinking_levels = levels.iter().map(|l| l.as_str().to_string()).collect();
+
         Ok(XyModelMeta {
             id: model_id.to_string(),
             config: model_config,
@@ -248,7 +269,7 @@ impl AppConfig {
             cost_cache_read: 0.0,
             cost_cache_write: 0.0,
             max_tokens: 0,
-            thinking_levels: Vec::new(),
+            thinking_levels,
         })
     }
 
@@ -786,4 +807,80 @@ fn default_review_mode() -> String {
 
 fn default_review_backend() -> String {
     "cli".into()
+}
+
+#[cfg(test)]
+mod thinking_levels_tests {
+    use super::*;
+    use crate::domain::model::XyModelKind;
+    use crate::domain::types::ThinkingLevel;
+
+    fn fake_entry(thinking: bool, levels: Option<Vec<&str>>) -> ModelEntry {
+        ModelEntry {
+            provider: XyModelKind::Fake,
+            model: "fake-1".into(),
+            base_url: None,
+            api: None,
+            fallback: None,
+            thinking,
+            thinking_levels: levels.map(|v| v.into_iter().map(str::to_string).collect()),
+            context_window: 0,
+        }
+    }
+
+    #[test]
+    fn resolve_model_meta_default_standard_levels() {
+        let mut cfg = AppConfig::default();
+        cfg.model.models.insert("f".into(), fake_entry(true, None));
+        let meta = cfg.resolve_model_meta("f").unwrap();
+        assert_eq!(
+            meta.thinking_levels,
+            vec![
+                "off".to_string(),
+                "minimal".to_string(),
+                "low".to_string(),
+                "medium".to_string(),
+                "high".to_string(),
+            ]
+        );
+        assert!(!meta.thinking_levels.iter().any(|l| l == "xhigh"));
+    }
+
+    #[test]
+    fn resolve_model_meta_explicit_hole() {
+        let mut cfg = AppConfig::default();
+        cfg.model
+            .models
+            .insert("f".into(), fake_entry(true, Some(vec!["high", "max"])));
+        let meta = cfg.resolve_model_meta("f").unwrap();
+        assert_eq!(
+            meta.thinking_levels,
+            vec!["high".to_string(), "max".to_string()]
+        );
+    }
+
+    #[test]
+    fn resolve_model_meta_thinking_false() {
+        let mut cfg = AppConfig::default();
+        cfg.model
+            .models
+            .insert("f".into(), fake_entry(false, Some(vec!["high"])));
+        let meta = cfg.resolve_model_meta("f").unwrap();
+        assert_eq!(meta.thinking_levels, vec!["off".to_string()]);
+    }
+
+    #[test]
+    fn validate_thinking_levels_rejects_unknown() {
+        let mut cfg = AppConfig::default();
+        cfg.model
+            .models
+            .insert("f".into(), fake_entry(true, Some(vec!["bogon"])));
+        let err = cfg.validate_thinking_levels().unwrap_err();
+        assert!(err.contains("unknown"));
+    }
+
+    #[test]
+    fn thinking_level_parse_xhigh() {
+        assert_eq!(ThinkingLevel::parse("xhigh"), Some(ThinkingLevel::Xhigh));
+    }
 }

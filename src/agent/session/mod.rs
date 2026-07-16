@@ -177,9 +177,9 @@ impl AgentCapabilities {
     }
 
     /// Set thinking level.
-    pub fn set_thinking_level(&mut self, level: ThinkingLevel) {
+    pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
         let previous = self.thinking_level();
-        self.model_manager.set_thinking_level(level);
+        self.model_manager.set_thinking_level(level)?;
         // Fire-and-forget persistence via the session store port.
         if let Some(ref sid) = self.session_id {
             let store = self.store.clone();
@@ -209,6 +209,17 @@ impl AgentCapabilities {
                 }),
             );
         }
+        Ok(())
+    }
+
+    /// Apply Settings `default_thinking_level` (if parseable) then clamp to model.
+    pub fn apply_default_thinking_level(&mut self, raw: Option<&str>) {
+        let preferred = raw.and_then(ThinkingLevel::parse);
+        self.model_manager.set_preferred_default(preferred);
+        if let Some(level) = preferred {
+            let _ = self.model_manager.set_thinking_level(level);
+        }
+        self.model_manager.clamp_thinking_to_model();
     }
 
     /// Select a specific model by ID (`source` = `"set"`).

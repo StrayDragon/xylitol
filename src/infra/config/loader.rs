@@ -36,6 +36,9 @@ pub(crate) enum LoadError {
 
     #[error("deserialize: {0}")]
     Deserialize(#[from] serde_json::Error),
+
+    #[error("{0}")]
+    Validation(String),
 }
 
 /// Load configuration from all layers, returning the merged `AppConfig`.
@@ -107,6 +110,9 @@ pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, Lo
     }
 
     let config: AppConfig = serde_json::from_value(merged)?;
+    config
+        .validate_thinking_levels()
+        .map_err(LoadError::Validation)?;
     Ok(config)
 }
 

@@ -170,6 +170,8 @@ pub struct ResolvedAssembly {
     pub mcp_servers: Option<Vec<crate::app::core::mcp_spec::McpServerSpec>>,
     /// Three-tier script hook configuration.
     pub hooks_config: crate::infra::config::types::HooksConfig,
+    /// Settings `defaultThinkingLevel` (camelCase JSON), if any.
+    pub default_thinking_level: Option<String>,
 }
 
 impl ResolvedAssembly {
@@ -258,6 +260,20 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                 crate::agent::model::registry::default_context_window_for(entry.provider)
             };
 
+            let levels = match crate::domain::types::ThinkingLevel::resolve_configured_levels(
+                entry.thinking,
+                entry.thinking_levels.as_deref(),
+            ) {
+                Ok(ls) => ls,
+                Err(e) => {
+                    warnings.push(BootstrapWarning::ConfigLoadFailed(format!(
+                        "models.{alias}: {e}"
+                    )));
+                    continue;
+                }
+            };
+            let thinking_levels = levels.iter().map(|l| l.as_str().to_string()).collect();
+
             model_registry.register(XyModelMeta {
                 id: alias.clone(),
                 config: crate::domain::model::XyModelConfig {
@@ -277,7 +293,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                 cost_cache_read: 0.0,
                 cost_cache_write: 0.0,
                 max_tokens: 0,
-                thinking_levels: Vec::new(),
+                thinking_levels,
             });
         }
     }
@@ -322,7 +338,10 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                     cost_cache_read: 0.0,
                     cost_cache_write: 0.0,
                     max_tokens: 0,
-                    thinking_levels: Vec::new(),
+                    thinking_levels: crate::domain::types::ThinkingLevel::STANDARD
+                        .iter()
+                        .map(|l| l.as_str().to_string())
+                        .collect(),
                 });
             }
         }
@@ -438,7 +457,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
     }
 
     // ── Step 3b2: compaction + queue settings ─────────────────────
-    let (compaction_settings, steering_mode, follow_up_mode) = {
+    let (compaction_settings, steering_mode, follow_up_mode, default_thinking_level) = {
         let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
         let settings_cwd = if project_trusted {
             std::path::PathBuf::from(&cwd)
@@ -457,7 +476,13 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
             .map(|c| crate::agent::compaction::CompactionSettings::from(c.clone()));
         let steering_mode = queue_mode_from_settings(settings_mgr.get_steering_mode());
         let follow_up_mode = queue_mode_from_settings(settings_mgr.get_follow_up_mode());
-        (compaction, steering_mode, follow_up_mode)
+        let default_thinking_level = settings_mgr.get_settings().default_thinking_level.clone();
+        (
+            compaction,
+            steering_mode,
+            follow_up_mode,
+            default_thinking_level,
+        )
     };
 
     // ── Step 3c: permission engine ────────────────────────────────
@@ -505,6 +530,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         warnings,
         mcp_servers,
         hooks_config,
+        default_thinking_level,
     })
 }
 
@@ -519,6 +545,7 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     let discovered_templates = assembly.discovered_templates.clone();
     let session_id = assembly.session_id.clone();
     let mcp_servers = assembly.mcp_servers.clone();
+    let default_thinking_level = assembly.default_thinking_level.clone();
     let target_model = model.or_else(|| assembly.default_profile_model.clone());
     let mut warnings = std::mem::take(&mut assembly.warnings);
 
@@ -544,6 +571,10 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
             }
         }
     }
+
+    agent
+        .inner_mut()
+        .apply_default_thinking_level(default_thinking_level.as_deref());
 
     // Reuse the same session store injected into the agent at composition time.
     let store = agent.session_store();

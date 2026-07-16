@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,rc16,"model-entry-thinking-levels","ModelsConfig 的 ModelEntry（或等价 YAML 面）MUST 支持可选 thinking_levels 字符串列表；解析时未知 level 名 MUST 使配置加载失败；Settings.default_thinking_level 若存在 MUST 可被选模/启动路径消费（合法则采用，非法则忽略并 clamp）。",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  rc16,"parse-list","YAML 模型条目含 thinking_levels [off, high, xhigh]","加载配置并 resolve_model_meta","XyModelMeta.thinking_levels 与列表一致"
+  rc16,"unknown-fails","thinking_levels 含未知名 bogon","加载配置","失败"
+  rc16,"default-setting","Settings.default_thinking_level 为 low 且模型支持 low","启动或选模","当前 thinking level 为 Low"
