@@ -146,6 +146,7 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
     session.apply_thinking_level_ui(driver.thinking_level());
     session.set_model_arg_catalog_from_models(&driver.available_models());
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
+    session.refresh_loaded_resources(driver).await;
     session.render_now()?;
 
     let mut term_events = CrosstermEventStream::new();

@@ -4,10 +4,12 @@
 //! Keep atoms in the package; put product scrollback / queue strip / glyphs here.
 
 mod glyphs;
+mod loaded_resources;
 mod queue;
 mod scrollback;
 
 pub use glyphs::GlyphSet;
+pub use loaded_resources::render_loaded_resources;
 pub use queue::render_queue_strip;
 pub use scrollback::{ScrollbackFold, render_scrollback};
 

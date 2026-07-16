@@ -220,11 +220,12 @@ Markdown **fg 内联、bg 延后到行宽 padding**（与 pi-tui Markdown 一致
 默认栈（对齐 `agent_demo` / 图 2）：
 
 ```
-content        全宽；当前轮 live 输出 → 引擎 scrollback（非 Codex 式浏览面）
-status         0 或 1 行（仅 busy / retry / error）
-editor         贴底；上下 muted `─` 边框标出操作区
-               双 Esc 会话树 / 命令面板：替换此槽（showSelector）
-footer         1 行 dim（cwd · model · 可选 context%）
+loaded_resources  Codex 风启动卡片（见 loaded-resources.md）
+content           全宽；当前轮 live 输出 → 引擎 scrollback（非 Codex 式浏览面）
+status            0 或 1 行（仅 busy / retry / error）
+editor            贴底；上下 muted `─` 边框标出操作区
+                  双 Esc 会话树 / 命令面板：替换此槽（showSelector）
+footer            1 行 dim（cwd · model · 可选 context%）
 ```
 
 硬规则：
@@ -233,7 +234,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 2. **无双栏**；无常驻 Workspace / Plan / Files 侧栏。
 3. **不截断历史**冒充滚动；**分支 travel / 回看**走会话树，不走 Codex 式 transcript 浏览器。
 4. **无常驻 debug strip**；调试信息走 `/debug`、日志或临时一行，不占 3 行底栏。
-5. **无常驻多行 header**；需要会话名/路径时并进 footer，或 quiet 启动后省略。
+5. **无常驻键墙 / debug header**；允许 **Codex 风边框启动卡片**（简约 meta；见 [`design/loaded-resources.md`](./design/loaded-resources.md)）——名称 **MUST 全量展示**（换行），**MUST NOT** `...` 截断。会话名/路径仍并进 footer。
 6. 会话树 / 命令面板 / 设置：**替换 editor 槽**，不要 blit 到内容顶部。
 7. 居中 `show_overlay` **默认不用**；交互优先 editor 槽（树 / Ask / 板）。仅极短确认可选用 overlay（见 [`overlay.md`](./design/overlay.md)）。
 8. **保留 editor 上下边框**作为操作区边界（图 2）；不要为了「更扁」去掉这层分区提示。
@@ -261,6 +262,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 | [`design/status.md`](./design/status.md) | busy 一行 |
 | [`design/editor.md`](./design/editor.md) | 操作区 |
 | [`design/skill-ref.md`](./design/skill-ref.md) | `$skill` 用户消息内高亮（A10；demo 先验） |
+| [`design/loaded-resources.md`](./design/loaded-resources.md) | 启动品牌 + Skills/MCP 换行清单（c1135） |
 | [`design/footer.md`](./design/footer.md) | 一行 dim |
 | [`design/overlay.md`](./design/overlay.md) | 默认不用；优先槽内；playground 静图已撤 |
 | [`design/diff-block.md`](./design/diff-block.md) | Diff 渲染 |

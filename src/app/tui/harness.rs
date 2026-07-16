@@ -15,8 +15,8 @@ use futures::StreamExt;
 use xylitol_tui::Terminal;
 
 use crate::app::core::driver::{
-    CommandInfo, DebugSceneLoad, Driver, EventStream, ModelInfo, QueueStats, ReloadStepReport,
-    RuntimeReloadReport, SessionListEntry, SessionStats, XyEvent,
+    CommandInfo, DebugSceneLoad, Driver, EventStream, LoadedResourcesSnapshot, ModelInfo,
+    QueueStats, ReloadStepReport, RuntimeReloadReport, SessionListEntry, SessionStats, XyEvent,
 };
 use crate::domain::session_types::{
     SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
@@ -78,6 +78,8 @@ pub struct ScriptedDriver {
     /// When set, next `copy_text_to_clipboard` returns this OSC 52 for host emit.
     copy_pending_osc52: Mutex<Option<String>>,
     dollar_skill_catalog: Mutex<Vec<(String, String)>>,
+    /// Injectable loaded-resources header snapshot (c1135).
+    loaded_resources: Mutex<LoadedResourcesSnapshot>,
     /// Current thinking level (c1150); mutable via set/cycle.
     thinking_level: ThinkingLevel,
     /// Support list for cycle (default STANDARD; tests may narrow e.g. `[Off, High]`).
@@ -171,6 +173,7 @@ impl ScriptedDriver {
             copy_text_calls: Mutex::new(Vec::new()),
             copy_pending_osc52: Mutex::new(None),
             dollar_skill_catalog: Mutex::new(Vec::new()),
+            loaded_resources: Mutex::new(LoadedResourcesSnapshot::default()),
             thinking_level: ThinkingLevel::Off,
             thinking_levels: ThinkingLevel::STANDARD.to_vec(),
         }
@@ -210,6 +213,11 @@ impl ScriptedDriver {
 
     pub fn set_dollar_skill_catalog_for_driver(&self, catalog: Vec<(String, String)>) {
         *self.dollar_skill_catalog.lock().expect("catalog") = catalog;
+    }
+
+    /// Inject loaded-resources snapshot for header harness (c1135).
+    pub fn set_loaded_resources_for_driver(&self, snap: LoadedResourcesSnapshot) {
+        *self.loaded_resources.lock().expect("loaded_resources") = snap;
     }
 
     pub fn new_session_calls(&self) -> usize {
@@ -734,8 +742,27 @@ impl Driver for ScriptedDriver {
         self.dollar_skill_catalog.lock().expect("catalog").clone()
     }
 
+    async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
+        self.loaded_resources
+            .lock()
+            .expect("loaded_resources")
+            .clone()
+    }
+
     async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, String> {
         self.reload_runtime_calls.fetch_add(1, Ordering::SeqCst);
+        // Mirror catalog → skill_names so /reload harness sees header refresh (c1135).
+        let names: Vec<String> = self
+            .dollar_skill_catalog
+            .lock()
+            .expect("catalog")
+            .iter()
+            .map(|(n, _)| n.clone())
+            .collect();
+        self.loaded_resources
+            .lock()
+            .expect("loaded_resources")
+            .skill_names = names;
         Ok(RuntimeReloadReport {
             steps: vec![ReloadStepReport {
                 step: "skills",
@@ -3907,5 +3934,118 @@ mod slice_tests {
         let frame = root.borrow_mut().render(80).join("\n");
         assert!(!frame.contains("refused"));
         assert!(!frame.contains("thinking-border"));
+    }
+
+    #[tokio::test]
+    async fn c1135_skills_visible_above_scrollback() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let driver = ScriptedDriver::new();
+        driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+            skill_names: vec!["demo".into(), "other".into()],
+            ..LoadedResourcesSnapshot::default()
+        });
+        session.refresh_loaded_resources(&driver).await;
+        session.push_system_note("scrollback marker");
+
+        let frame = root.borrow_mut().render(80);
+        let joined = frame.join("\n");
+        assert!(
+            joined.contains("xylitol")
+                && joined.contains("skills")
+                && joined.contains("demo")
+                && !joined.contains("..."),
+            "brand/skills missing or truncated: {joined}"
+        );
+        assert!(
+            !joined.contains("Prompt") && !joined.contains("prompt template"),
+            "MUST NOT list prompts: {joined}"
+        );
+        let skills_idx = frame
+            .iter()
+            .position(|l| l.contains("skills"))
+            .expect("skills row");
+        let marker_idx = frame
+            .iter()
+            .position(|l| l.contains("scrollback marker"))
+            .expect("scrollback marker");
+        assert!(
+            skills_idx < marker_idx,
+            "skills must render above scrollback: skills={skills_idx} marker={marker_idx}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1135_mcp_visible_when_scripted() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let driver = ScriptedDriver::new();
+        driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+            mcp_connected: vec![("fs".into(), 3), ("git".into(), 1)],
+            mcp_configured: 2,
+            ..LoadedResourcesSnapshot::default()
+        });
+        session.refresh_loaded_resources(&driver).await;
+
+        let frame = root.borrow_mut().render(80).join("\n");
+        assert!(
+            frame.contains("mcp") && frame.contains("fs(3)") && frame.contains("git(1)"),
+            "MCP line missing: {frame}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1135_empty_snapshot_keeps_brand_only() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let driver = ScriptedDriver::new();
+        session.refresh_loaded_resources(&driver).await;
+
+        let frame = root.borrow_mut().render(80).join("\n");
+        assert!(frame.contains("xylitol"), "brand must remain: {frame}");
+        assert!(!frame.contains("木糖醇"), "must not show 木糖醇: {frame}");
+        assert!(
+            !frame.contains("Skills") && !frame.contains("MCP"),
+            "empty resources must omit Skills/MCP rows: {frame}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1135_reload_refreshes_header() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+            skill_names: vec!["old".into()],
+            ..LoadedResourcesSnapshot::default()
+        });
+        session.refresh_loaded_resources(&driver).await;
+        let before = root.borrow_mut().render(80).join("\n");
+        assert!(before.contains("skills") && before.contains("old"));
+
+        driver.set_dollar_skill_catalog_for_driver(vec![
+            ("demo".into(), "demo skill".into()),
+            ("other".into(), "other skill".into()),
+        ]);
+        let mut stream = None;
+        root.borrow_mut().set_editor_text("/reload");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        let after = root.borrow_mut().render(80).join("\n");
+        assert!(
+            after.contains("skills") && after.contains("demo") && after.contains("other"),
+            "reload must refresh loaded-resources: {after}"
+        );
+        let skills_line = after
+            .lines()
+            .find(|l| l.contains("skills"))
+            .expect("skills line after reload");
+        assert!(
+            !skills_line.contains("old"),
+            "stale skill must not remain: {skills_line}"
+        );
     }
 }

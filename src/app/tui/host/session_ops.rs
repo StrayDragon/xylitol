@@ -1,6 +1,6 @@
 //! Session tree / models / resume mount + apply helpers (c1170 / ath12).
 
-use crate::app::core::driver::ModelInfo;
+use crate::app::core::driver::{Driver, ModelInfo};
 use crate::domain::session_types::{SessionEntry, SessionTreeTravel};
 use xylitol_tui::Terminal;
 use xylitol_tui::TreeNode;
@@ -212,6 +212,15 @@ impl<T: Terminal> HostSession<T> {
             return;
         };
         root.borrow_mut().set_dollar_skill_catalog(catalog);
+    }
+
+    /// Refresh loaded-resources header from Driver (c1135). Startup + `/reload`.
+    pub async fn refresh_loaded_resources(&mut self, driver: &dyn Driver) {
+        let snap = driver.loaded_resources_snapshot().await;
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().set_loaded_resources(snap);
     }
 
     pub fn close_models_slot(&mut self) {
