@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,atm7,"commands-module-growth","产品 TUI slash/bang 解析 MUST 继续收口于 commands 模块（可多文件），执行仍经 pending + drain_pending → protocol::Command / dispatch 或 Driver；SlashCommandSource 补全清单 MUST 与产品命令 SSOT（及 GetCommands 内建子集）同源；MUST NOT 在 UiRoot/widgets 内散落第二套 slash 语义；MUST NOT 维护与 agent 短名表分叉的第三套产品名表。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  atm7,"catalog-ssot",审查 slash_catalog 与 agent 产品 SSOT,比对 name 集合,"一致（debug-only 命令可仅 debug 构建出现）"
+  atm7,"legacy-unknown",产品 idle Editor,提交 /tree,unknown 系统行且不打开树
