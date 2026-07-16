@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,rd12,Skills 发现与重载报告,"System MUST 能在 Trust 语义下发现并列出已加载 skills（名与 scope）；提供 reload_skills（或等价）清空后重扫并返回 report（names/count；诊断可观察）；未信任 MUST NOT 列入项目 .xylitol/skills；reload MUST NOT 修改会话历史文件。",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  rd12,"list-trusted",信任且项目 skills 含 demo,"discovered_skills 或 get_skills",列表含 demo 且 scope 为 project
+  rd12,"list-untrusted",未信任且仅项目有 skill,"discovered_skills 或 get_skills",列表 MUST NOT 含该项目 skill
+  rd12,"reload-names",loader 已加载后盘上新增 skill,调用 reload_skills,report names 含新 skill

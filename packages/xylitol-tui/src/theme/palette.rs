@@ -33,6 +33,8 @@ pub struct Palette {
     pub tool_success_bg: RgbColor,
     pub tool_error_bg: RgbColor,
     pub user_message_bg: RgbColor,
+    /// Inline `$skill` highlight in user messages (`DESIGN.md` `skill-ref`, A10).
+    pub skill_ref: RgbColor,
 }
 
 impl Palette {
@@ -60,6 +62,7 @@ impl Palette {
             tool_success_bg: rgb(0x24, 0x35, 0x2a),
             tool_error_bg: rgb(0x35, 0x24, 0x28),
             user_message_bg: rgb(0x31, 0x32, 0x44),
+            skill_ref: rgb(0xcb, 0xa6, 0xf7),
         }
     }
 
@@ -87,6 +90,7 @@ impl Palette {
             tool_success_bg: rgb(0xdc, 0xe8, 0xd8),
             tool_error_bg: rgb(0xe8, 0xdc, 0xe0),
             user_message_bg: rgb(0xcc, 0xd0, 0xda),
+            skill_ref: rgb(0x88, 0x39, 0xef),
         }
     }
 

@@ -21,7 +21,8 @@ window.DESIGN_COLORS = {
   ["tool-pending-bg", "#313244"],
   ["tool-success-bg", "#24352a"],
   ["tool-error-bg", "#352428"],
-  ["user-message-bg", "#313244"]
+  ["user-message-bg", "#313244"],
+  ["skill-ref", "#cba6f7"]
   ],
   light: [
   ["on-surface", "#4c4f69"],
@@ -44,7 +45,8 @@ window.DESIGN_COLORS = {
   ["tool-pending-bg", "#ccd0da"],
   ["tool-success-bg", "#dce8d8"],
   ["tool-error-bg", "#e8dce0"],
-  ["user-message-bg", "#ccd0da"]
+  ["user-message-bg", "#ccd0da"],
+  ["skill-ref", "#8839ef"]
   ],
 };
 // Back-compat: default swatches = dark MVP.

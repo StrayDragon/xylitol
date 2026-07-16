@@ -29,6 +29,8 @@ colors:
   tool-success-bg: "#24352a"
   tool-error-bg: "#352428"
   user-message-bg: "#313244"
+  # Inline `$skill` token in user message (A10); mauve, distinct from accent spinner.
+  skill-ref: "#cba6f7"
 # Light companion (playground / demo opt-in; product MVP stays `colors` dark).
 colors_light:
   on-surface: "#4c4f69"
@@ -52,6 +54,7 @@ colors_light:
   tool-success-bg: "#dce8d8"
   tool-error-bg: "#e8dce0"
   user-message-bg: "#ccd0da"
+  skill-ref: "#8839ef"
 typography:
   body:
     fontFamily: "terminal-monospace"
@@ -87,6 +90,8 @@ components:
   user-message:
     backgroundColor: "{colors.user-message-bg}"
     textColor: "{colors.on-surface}"
+  skill-ref:
+    textColor: "{colors.skill-ref}"
   status-line:
     textColor: "{colors.muted}"
     height: "{spacing.status-rows}"
@@ -187,6 +192,7 @@ components:
 | `surface` | 默认底（终端常透明；需要垫底时用） |
 | `tool-pending-bg` / `tool-success-bg` / `tool-error-bg` | 工具块**全行背景**三态（Mocha tint：`#313244` / `#24352a` / `#352428`；对齐 pi 语义，色值本文件 SSOT） |
 | `user-message-bg` | 用户消息可选全行背景（对齐 pi `userMessageBg`） |
+| `skill-ref` | 用户消息内联 `$skill` 高亮（A10；提交注入见 c1130；**不是** accent） |
 
 **工具状态背景（吸取 pi）**：成功/失败不要只靠 fg `ok`/`error` 字——用极淡的绿/红 **bg** 铺满工具块行宽（`apply_background_to_line` + 仅重置 `\x1b[49m`），pending 用中性 surface tint。**demo 已验证（c462）**。产品侧 **不做 Codex 式 TranscriptView**（原 c470 已移除）；历史/分支 UX 优先双 Esc 会话树（c454→c456→**c615** 活树）。
 
@@ -253,6 +259,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 | [`design/expandable.md`](./design/expandable.md) | thinking / tool 可展开（demo 优先） |
 | [`design/status.md`](./design/status.md) | busy 一行 |
 | [`design/editor.md`](./design/editor.md) | 操作区 |
+| [`design/skill-ref.md`](./design/skill-ref.md) | `$skill` 用户消息内高亮（A10；demo 先验） |
 | [`design/footer.md`](./design/footer.md) | 一行 dim |
 | [`design/overlay.md`](./design/overlay.md) | 默认不用；优先槽内；playground 静图已撤 |
 | [`design/diff-block.md`](./design/diff-block.md) | Diff 渲染 |
