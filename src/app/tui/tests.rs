@@ -1147,14 +1147,42 @@ async fn harness_paste_image_miss_error() {
             .ui_model()
             .entries
             .iter()
-            .any(|e| matches!(e, UiEntry::Error { text } if text.contains("no image"))),
-        "expected no-image error; got {:?}",
+            .any(|e| matches!(e, UiEntry::Error { text } if text.contains("no image or text"))),
+        "expected empty-clipboard error; got {:?}",
         session.ui_model().entries
     );
 }
 
 #[tokio::test]
-async fn harness_paste_image_driver_err() {
+async fn harness_paste_text_fallback_inserts() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crate::app::tui::bridge::UiEntry;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    let mut driver = ScriptedDriver::new();
+    driver.set_clipboard_text("hello from clipboard");
+    let mut stream = None;
+
+    session.step(HostEvent::Input(ctrl_v_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert_eq!(root.borrow().editor_text(), "hello from clipboard");
+    assert!(
+        !session
+            .ui_model()
+            .entries
+            .iter()
+            .any(|e| matches!(e, UiEntry::Error { .. })),
+        "text fallback must not error; got {:?}",
+        session.ui_model().entries
+    );
+}
+
+#[tokio::test]
+async fn harness_paste_image_driver_err_falls_back_then_errors() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::tui::bridge::UiEntry;
 
@@ -1173,8 +1201,37 @@ async fn harness_paste_image_driver_err() {
             .ui_model()
             .entries
             .iter()
-            .any(|e| matches!(e, UiEntry::Error { text } if text.contains("wl-paste exploded"))),
-        "expected driver err; got {:?}",
+            .any(|e| matches!(e, UiEntry::Error { text } if text.contains("no image or text"))),
+        "image Err + no text → empty error; got {:?}",
+        session.ui_model().entries
+    );
+}
+
+#[tokio::test]
+async fn harness_paste_image_err_with_text_fallback() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crate::app::tui::bridge::UiEntry;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    let mut driver = ScriptedDriver::new();
+    driver.set_clipboard_image_error("wl-paste exploded");
+    driver.set_clipboard_text("recovered text");
+    let mut stream = None;
+
+    session.step(HostEvent::Input(ctrl_v_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert_eq!(root.borrow().editor_text(), "recovered text");
+    assert!(
+        !session
+            .ui_model()
+            .entries
+            .iter()
+            .any(|e| matches!(e, UiEntry::Error { .. })),
+        "text after image err must not error; got {:?}",
         session.ui_model().entries
     );
 }

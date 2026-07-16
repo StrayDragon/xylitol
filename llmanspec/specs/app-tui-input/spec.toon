@@ -41,8 +41,8 @@ requirements[39]{req_id,title,statement}:
   ati35,"keybindings-catalog-hot-reload",产品 TUI MUST 将已接线产品动作注册为 app.*（或文档约定的）keybinding id 并经 KeybindingsManager 匹配，MUST NOT 在产品输入路径新增字面和弦硬编码；MUST 在启动时从用户 agent 目录 keybindings.json（若存在）加载覆盖；MUST 提供 reload_keybindings（或等价）在成功时替换当前会话绑定、失败时保留旧绑定并报告诊断；重载 MUST NOT 清空 transcript 或 session 历史。
   ati40,"dollar-skill 补全与高亮","产品 Editor MUST 经 CompletionSource 在键入 $ 时弹出已加载 skill 名补全；Tab/Enter 选定 MUST 写入 $name；用户消息在 scrollback 中 MUST 用 skill-ref 色高亮 $name token；MUST NOT 另开 skill 色块或系统已加载行。"
   ati36,"thinking-level-cycle-key","产品 TUI MUST 注册 app.thinking.cycle（默认 Shift+Tab）经 KeybindingsManager 匹配；触发时 MUST 经 Driver/protocol 在当前模型支持的 thinking_levels 上循环（MUST NOT 用包 ThinkingBorderLevel::cycle_next 作为产品 cycle 真源）；idle 与 busy（含 agent/bash busy）均 MUST 允许 cycle；MUST NOT 新增产品 /thinking-level slash；MUST NOT 与 app.thinking.toggle（Ctrl+T 折叠）混淆。"
-  ati37,"paste-image-temp-path","产品 TUI MUST 支持将系统剪贴板图片粘贴进对话：经 Driver 只读缝读取图片字节；成功时 MUST 写入带不可预测名的 tempfile，并向 Editor 插入绝对路径纯文本（对齐 pi；MUST NOT 要求 @ 前缀）；MUST NOT 在 Editor 内嵌大段 base64；MUST NOT 在 idle/busy 提交时把该路径转成 user AgentPart::Image；MUST NOT 从 app/tui reach infra::clipboard 或 infra::image；读失败或无图 MUST 向 scrollback 追加短 Error 且 MUST NOT panic。"
-scenarios[76]{req_id,id,given,when,then}:
+  ati37,"paste-image-temp-path","产品 TUI MUST 支持将系统剪贴板图片粘贴进对话：经 Driver 只读缝读取图片字节；成功时 MUST 写入带不可预测名的 tempfile，并向 Editor 插入绝对路径纯文本（对齐 pi；MUST NOT 要求 @ 前缀）；MUST NOT 在 Editor 内嵌大段 base64；MUST NOT 在 idle/busy 提交时把该路径转成 user AgentPart::Image；MUST NOT 从 app/tui reach infra::clipboard 或 infra::image；当剪贴板无图（或读图失败）时 MUST 经 Driver 尝试读取系统剪贴板 UTF-8 文本并插入 Editor；仅当图与文本皆不可用时 MUST 向 scrollback 追加短 Error；MUST NOT panic。"
+scenarios[77]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-input",spec.toon 存在且 purpose 为中文
   ati1,"selector-slot","",打开模型选择器,editor 槽被选择器替换且贴底可见
   ati2,"esc-aborts","",流式中按 Esc,"Driver::abort 被调用"
@@ -118,4 +118,5 @@ scenarios[76]{req_id,id,given,when,then}:
   ati36,"busy-allowed",产品 agent busy,按 Shift+Tab,thinking level 仍 cycle 成功且无拒绝系统块
   ati37,"paste-inserts-abs-path",ScriptedDriver 剪贴板含 PNG,触发粘贴图片键,Editor 文本含 tempfile 绝对路径且无超长 base64
   ati37,"submit-stays-text",已粘贴图路径且 idle,Enter 提交,"Driver::run 收到含该路径的纯文本且无强制 user Image part"
-  ati37,"clipboard-miss-error",剪贴板无图或读失败,触发粘贴图片键,出现短 Error 提示且进程不崩
+  ati37,"clipboard-text-fallback","剪贴板无图但有 UTF-8 文本",触发粘贴键,Editor 插入该文本且 MUST NOT 出现 clipboard no image Error
+  ati37,"clipboard-miss-error",剪贴板无图且无文本,触发粘贴键,出现短 Error 提示且进程不崩
