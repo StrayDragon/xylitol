@@ -6,10 +6,18 @@ use crate::app::core::dispatch::{DispatchOutcome, dispatch};
 use crate::app::core::driver::Driver;
 use crate::protocol::Command;
 
+use super::super::bridge::UiEntry;
 use super::super::commands::PendingSlash;
 use super::super::host::HostSession;
 use super::super::keybindings::ReloadOutcome;
 use super::helpers::format_session_stats_dump;
+
+fn last_assistant_text(entries: &[UiEntry]) -> Option<&str> {
+    entries.iter().rev().find_map(|e| match e {
+        UiEntry::Assistant { text } if !text.trim().is_empty() => Some(text.as_str()),
+        _ => None,
+    })
+}
 
 fn format_keybindings_reload(outcome: ReloadOutcome) -> String {
     match outcome {
@@ -326,6 +334,20 @@ pub(super) async fn handle_slash<T: Terminal>(
                     Ok(report) => session.push_system_note(report.message),
                     Err(e) => session.push_system_note(format!("/trust failed: {e}")),
                 }
+            }
+            let _ = session.render_now();
+        }
+        PendingSlash::HistoryCopyLast => {
+            // c1110: busy allowed (readonly copy).
+            match last_assistant_text(&session.ui_model().entries) {
+                None => session.push_system_note("no assistant message to copy"),
+                Some(text) => match driver.copy_text_to_clipboard(text) {
+                    Ok(()) => session.push_system_note(format!(
+                        "Copied last assistant message ({} chars)",
+                        text.chars().count()
+                    )),
+                    Err(e) => session.push_system_note(format!("/history-copy-last failed: {e}")),
+                },
             }
             let _ = session.render_now();
         }
