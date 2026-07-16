@@ -305,6 +305,14 @@ pub trait Driver: Send {
 
     /// Delete a persisted session (resume panel; c1065). MUST NOT delete active session.
     async fn delete_session(&mut self, session_id: &str) -> Result<(), String>;
+
+    /// `(name, description)` for product `$skill` completion (c1130).
+    ///
+    /// Default empty (remote / scripted drivers). In-process uses Trust-filtered
+    /// loaded skills.
+    fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
+        Vec::new()
+    }
 }
 
 /// Outcome of [`Driver::load_debug_scene`] (c710).
@@ -371,6 +379,19 @@ impl InProcessDriver {
     /// Names currently in the system `<available_skills>` catalog (c1085).
     pub fn loaded_skill_names(&self) -> Vec<String> {
         self.agent.loaded_skill_names()
+    }
+
+    /// Full skill catalog for `$` completion / expand (c1130).
+    pub fn loaded_skills(&self) -> &[crate::domain::resource_types::SkillInfo] {
+        self.agent.loaded_skills()
+    }
+
+    fn skill_catalog_pairs(&self) -> Vec<(String, String)> {
+        self.agent
+            .loaded_skills()
+            .iter()
+            .map(|s| (s.name.clone(), s.description.clone().unwrap_or_default()))
+            .collect()
     }
 
     /// Test/diagnostics: tool names currently registered.
@@ -780,6 +801,10 @@ impl Driver for InProcessDriver {
 
     async fn delete_session(&mut self, session_id: &str) -> Result<(), String> {
         self.store.delete_session(session_id).await
+    }
+
+    fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
+        self.skill_catalog_pairs()
     }
 }
 

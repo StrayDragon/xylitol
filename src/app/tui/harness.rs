@@ -1312,6 +1312,30 @@ mod slice_tests {
     }
 
     #[tokio::test]
+    async fn c1130_dollar_skill_tab_applies_name() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        session.set_dollar_skill_catalog(vec![
+            ("demo".into(), "Demo skill".into()),
+            ("other".into(), String::new()),
+        ]);
+        for ch in "use $de".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        let frame = root.borrow_mut().render(80);
+        assert!(
+            frame.iter().any(|l| l.contains("demo")),
+            "expected $skill popup; got: {frame:?}"
+        );
+        session.step(HostEvent::Input(tab_event())).unwrap();
+        let text = root.borrow().editor_text();
+        assert!(
+            text.contains("$demo"),
+            "Tab must apply $skill name; got {text:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn c999_model_arg_tab_applies_id() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();

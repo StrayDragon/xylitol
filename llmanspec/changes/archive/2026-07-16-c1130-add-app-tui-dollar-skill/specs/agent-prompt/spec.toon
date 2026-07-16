@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,pt8,"dollar-skill 提交注入","当用户消息含 $name 且 name 在已加载 skills 目录中时，System MUST 在发往模型前将对应 SKILL.md 正文（去 frontmatter）注入该 user 消息的模型侧投影；会话历史 MUST 保留原始含 $ 文本；未知 $name MUST 透传；未信任 MUST NOT 注入项目 skill 正文（目录已空即可）。",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  pt8,"inject-known","目录含 demo 且用户文本含 $demo","展开后发模型","模型侧 user 文本含 SKILL.md 正文片段"
+  pt8,"history-raw","同上","检查会话历史 user 文本","仍含字面 $demo 且无强制展开块作为唯一形态"
+  pt8,"unknown-passthrough","文本含 $nosuch","展开","无 nosuch 的 skill 块；$nosuch 仍在文本中"

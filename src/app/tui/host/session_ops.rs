@@ -201,6 +201,14 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_model_arg_catalog(catalog);
     }
 
+    /// Seed `$skill` completion catalog (c1130).
+    pub fn set_dollar_skill_catalog(&mut self, catalog: Vec<(String, String)>) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().set_dollar_skill_catalog(catalog);
+    }
+
     pub fn close_models_slot(&mut self) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().close_slot();

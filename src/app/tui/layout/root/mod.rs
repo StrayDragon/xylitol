@@ -24,6 +24,7 @@ use xylitol_tui::{
     TreeSelector, TreeSelectorOptions, fg_rgb, fuzzy_filter, truncate_to_width,
 };
 
+use super::dollar_skill_source::DollarSkillSource;
 use super::slash_catalog::product_slash_commands_for_editor;
 
 use super::session_tree::FilterMode;
@@ -130,6 +131,8 @@ pub struct UiRoot {
     model_arg_catalog: Vec<(String, String)>,
     /// Root for [`AtPathSource`] (c1125); default process cwd.
     at_path_base: PathBuf,
+    /// `(name, description)` for [`DollarSkillSource`] (c1130).
+    dollar_skill_catalog: Vec<(String, String)>,
     /// `/session-import` confirm (c1010).
     import_confirm_list: SelectList,
     import_confirm_path: Option<String>,
@@ -192,6 +195,7 @@ impl UiRoot {
             models_filter: String::new(),
             model_arg_catalog: Vec::new(),
             at_path_base: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            dollar_skill_catalog: Vec::new(),
             import_confirm_list: import_confirm_list(theme),
             import_confirm_path: None,
             pending_import_decision: None,
@@ -227,6 +231,9 @@ impl UiRoot {
             product_slash_commands_for_editor(),
         )));
         sources.push(Box::new(AtPathSource::new(self.at_path_base.clone())));
+        sources.push(Box::new(DollarSkillSource::new(
+            self.dollar_skill_catalog.clone(),
+        )));
         self.editor.set_completion_sources(sources);
     }
 
@@ -239,6 +246,12 @@ impl UiRoot {
     /// Refresh `/model <id>` inline completion catalog (from `available_models`).
     pub fn set_model_arg_catalog(&mut self, catalog: Vec<(String, String)>) {
         self.model_arg_catalog = catalog;
+        self.install_completion_sources();
+    }
+
+    /// Refresh `$skill` completion catalog (from Trust-filtered loaded skills; c1130).
+    pub fn set_dollar_skill_catalog(&mut self, catalog: Vec<(String, String)>) {
+        self.dollar_skill_catalog = catalog;
         self.install_completion_sources();
     }
 

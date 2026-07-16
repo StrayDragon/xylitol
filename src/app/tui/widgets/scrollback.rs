@@ -5,7 +5,7 @@
 
 use xylitol_tui::{
     Component, DiffInput, DiffOptions, ExpandableOutputOptions, Markdown, TruncateFrom,
-    apply_background_to_line, bg_rgb, render_diff_lines, render_expandable_output,
+    apply_background_to_line, bg_rgb, bold, fg_rgb, render_diff_lines, render_expandable_output,
     truncate_to_width, visible_width, wrap_text_with_ansi,
 };
 
@@ -90,6 +90,34 @@ fn bash_bg_rgb(status: BashBlockStatus, theme: LayoutTheme) -> RgbColor {
     }
 }
 
+/// Paint `$name` with `skill_ref` (bold); leave other text unstyled (A10 / c1130).
+fn highlight_dollar_skill_refs(text: &str, skill_ref: RgbColor) -> String {
+    let bytes = text.as_bytes();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'$' {
+            let start = i + 1;
+            let mut end = start;
+            while end < bytes.len()
+                && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_' || bytes[end] == b'-')
+            {
+                end += 1;
+            }
+            if end > start {
+                let token = &text[i..end];
+                out.push_str(&bold(&fg_rgb(skill_ref, token)));
+                i = end;
+                continue;
+            }
+        }
+        let ch = text[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
 /// Render UiModel entries into scrollback lines for the product host.
 pub fn render_scrollback(
     model: &UiModel,
@@ -114,7 +142,8 @@ pub fn render_scrollback(
         match entry {
             UiEntry::User { text } => {
                 let prefix = theme.paint_user(glyphs.user());
-                let body = format!("{prefix} {text}");
+                let painted = highlight_dollar_skill_refs(text, theme.palette().skill_ref);
+                let body = format!("{prefix} {painted}");
                 let content = wrap_text_with_ansi(&body, width);
                 push_tinted(&mut lines, &content, width, theme.palette().user_message_bg);
             }
@@ -309,4 +338,33 @@ pub fn render_scrollback(
     }
 
     lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::tui::bridge::UiEntry;
+
+    #[test]
+    fn user_row_highlights_dollar_skill_ref() {
+        let mut model = UiModel::default();
+        model.entries.push(UiEntry::User {
+            text: "please run $demo now".into(),
+        });
+        let theme = LayoutTheme::product_dark();
+        let skill = theme.palette().skill_ref;
+        let lines = render_scrollback(
+            &model,
+            GlyphSet::from_env(),
+            theme,
+            ScrollbackFold::default(),
+            80,
+        );
+        let joined = lines.join("\n");
+        let expect = bold(&fg_rgb(skill, "$demo"));
+        assert!(
+            joined.contains(&expect),
+            "user row must paint skill_ref on $demo; got {joined:?}"
+        );
+    }
 }
