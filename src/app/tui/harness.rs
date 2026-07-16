@@ -90,6 +90,8 @@ pub struct ScriptedDriver {
     staged_paste_paths: Mutex<Vec<String>>,
     /// Force `stage_clipboard_image` to Err.
     clipboard_image_error: Mutex<Option<String>>,
+    /// Injectable clipboard text for Ctrl+V fallback (c1156).
+    clipboard_text: Mutex<Option<String>>,
 }
 
 impl ScriptedDriver {
@@ -185,6 +187,7 @@ impl ScriptedDriver {
             clipboard_image: Mutex::new(None),
             staged_paste_paths: Mutex::new(Vec::new()),
             clipboard_image_error: Mutex::new(None),
+            clipboard_text: Mutex::new(None),
         }
     }
 
@@ -199,6 +202,11 @@ impl ScriptedDriver {
             .clipboard_image_error
             .lock()
             .expect("clipboard_image_error") = Some(err.into());
+    }
+
+    /// Queue clipboard text for [`Driver::read_clipboard_text`] (c1156).
+    pub fn set_clipboard_text(&self, text: impl Into<String>) {
+        *self.clipboard_text.lock().expect("clipboard_text") = Some(text.into());
     }
 
     pub fn staged_paste_paths(&self) -> Vec<String> {
@@ -869,6 +877,10 @@ impl Driver for ScriptedDriver {
             .expect("staged_paste_paths")
             .push(path.display().to_string());
         Ok(Some(path))
+    }
+
+    async fn read_clipboard_text(&mut self) -> Result<Option<String>, String> {
+        Ok(self.clipboard_text.lock().expect("clipboard_text").take())
     }
 }
 
