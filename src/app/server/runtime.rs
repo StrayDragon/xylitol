@@ -25,9 +25,6 @@ pub struct RunningServer {
     /// read directly.
     #[allow(dead_code)]
     lock: Option<ServerLock>,
-    /// Keeps MCP connections alive for the server process lifetime.
-    #[allow(dead_code)]
-    _mcp: crate::app::core::composition::McpSession,
 }
 
 impl RunningServer {
@@ -107,12 +104,22 @@ pub async fn start(
         }
         BootstrapError::BuildFailed(msg) => msg,
     })?;
+    let project_trusted = !bootstrapped.warnings.iter().any(|w| {
+        matches!(
+            w,
+            crate::app::core::bootstrap::BootstrapWarning::ProjectNotTrusted { .. }
+        )
+    });
     let runtime = bootstrapped.into_runtime();
     let servers = runtime.mcp_servers.unwrap_or_default();
     let mut driver = runtime.driver;
-    let mut mcp = crate::app::core::composition::McpSession::new();
-    if let Err(e) = mcp.reload(&mut driver, &servers).await {
-        log::warn!("MCP reload failed error={}", e);
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
+    driver.enable_reload_state(cwd, agent_dir, project_trusted, servers);
+    if let Err(e) = driver.bootstrap_mcp().await {
+        log::warn!("MCP bootstrap failed error={e}");
+    } else if let Some(summary) = driver.mcp_status_summary().await {
+        log::info!("{summary}");
     }
 
     // ── Server state (Driver seam — same as Print) ────────────────
@@ -154,7 +161,6 @@ pub async fn start(
         RunningServer {
             cancel,
             lock: Some(lock),
-            _mcp: mcp,
         },
         actual_port,
     ))

@@ -39,6 +39,8 @@ pub enum PendingSlash {
     SessionName {
         name: Option<String>,
     },
+    /// Bare `/reload` — hot-reload runtime resources (c1120).
+    Reload,
     /// Slash usage / arity error (no dispatch).
     Usage(&'static str),
 }
@@ -136,6 +138,8 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
             Some(PendingSlash::Usage("usage: /session-clone (no arguments)"))
         }
         ("session-name", name) => Some(PendingSlash::SessionName { name }),
+        ("reload", None) => Some(PendingSlash::Reload),
+        ("reload", Some(_)) => Some(PendingSlash::Usage("usage: /reload (no arguments)")),
         // Space form only (`/debug scene`). Colon form intentionally unsupported.
         #[cfg(debug_assertions)]
         ("debug", None) => Some(PendingSlash::DebugScene("list".into())),
@@ -198,4 +202,26 @@ pub fn bash_result_entries(command: &str, result: &XyBashResult) -> Vec<UiEntry>
         output: bash_output_body(result),
         exclude_from_context: false,
     }]
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use super::{PendingSlash, parse_slash_command};
+
+    #[test]
+    fn parse_reload_bare() {
+        assert_eq!(parse_slash_command("/reload"), Some(PendingSlash::Reload));
+        assert_eq!(
+            parse_slash_command("  /reload  "),
+            Some(PendingSlash::Reload)
+        );
+    }
+
+    #[test]
+    fn parse_reload_with_args_usage() {
+        assert_eq!(
+            parse_slash_command("/reload foo"),
+            Some(PendingSlash::Usage("usage: /reload (no arguments)"))
+        );
+    }
 }

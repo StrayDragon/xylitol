@@ -593,7 +593,6 @@ pub fn discovered_theme_names(
 
 /// Report from [`discovered_skills`] / [`reload_skills`] (c1085).
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)] // consumed by c1120 `/reload` and c1130 `$` expand
 pub struct SkillsReloadReport {
     pub names: Vec<String>,
     pub count: usize,
@@ -628,7 +627,6 @@ pub fn discovered_skills(
 /// Re-discover skills from disk and apply to `driver` (c1085).
 ///
 /// Trust semantics match bootstrap. Does **not** mutate session history.
-#[allow(dead_code)] // consumed by c1120 `/reload`
 pub fn reload_skills(
     driver: &mut crate::app::core::driver::InProcessDriver,
     cwd: &std::path::Path,
@@ -656,7 +654,6 @@ pub fn reload_skills(
 
 /// Report from [`reload_prompt_context`] (c1100).
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)] // consumed by c1120 `/reload` and host wiring
 pub struct PromptContextReloadReport {
     pub context_file_count: usize,
     pub has_system_prompt: bool,
@@ -670,7 +667,6 @@ pub struct PromptContextReloadReport {
 /// `config_system_prompt` is the profile fallback when no SYSTEM.md is found.
 ///
 /// Does **not** mutate session history / transcript.
-#[allow(dead_code)] // consumed by c1120 `/reload` and host wiring
 pub fn reload_prompt_context(
     driver: &mut crate::app::core::driver::InProcessDriver,
     cwd: &std::path::Path,

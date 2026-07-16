@@ -8,7 +8,46 @@ use crate::protocol::Command;
 
 use super::super::commands::PendingSlash;
 use super::super::host::HostSession;
+use super::super::keybindings::ReloadOutcome;
 use super::helpers::format_session_stats_dump;
+
+fn format_keybindings_reload(outcome: ReloadOutcome) -> String {
+    match outcome {
+        ReloadOutcome::Applied { path } => format!("keybindings: ok — {}", path.display()),
+        ReloadOutcome::NoFile { path } => {
+            format!("keybindings: ok (no file) — {}", path.display())
+        }
+        ReloadOutcome::Failed { path, error } => {
+            format!("keybindings: failed — {} ({error})", path.display())
+        }
+    }
+}
+
+async fn handle_reload<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn Driver) {
+    let agent_dir = super::super::keybindings::default_agent_dir();
+    let mut lines = vec!["Reload:".to_string()];
+
+    lines.push(format_keybindings_reload(
+        session.reload_keybindings(&agent_dir),
+    ));
+
+    match driver.reload_runtime().await {
+        Ok(report) => lines.extend(report.format_lines()),
+        Err(e) => lines.push(format!("runtime: failed — {e}")),
+    }
+
+    if let Some(pref) = session.theme_preference().map(str::to_string) {
+        match session.reload_themes(&pref) {
+            Ok(()) => lines.push(format!("themes: ok — kept `{pref}`")),
+            Err(e) => lines.push(format!("themes: failed — {e}")),
+        }
+    } else {
+        lines.push("themes: unchanged (no preference; kept current)".into());
+    }
+
+    session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
+    session.push_system_note(lines.join("\n"));
+}
 
 pub(super) async fn handle_slash<T: Terminal>(
     session: &mut HostSession<T>,
@@ -268,6 +307,14 @@ pub(super) async fn handle_slash<T: Terminal>(
                         Err(e) => session.push_system_note(format!("/session-name failed: {e}")),
                     },
                 }
+            }
+            let _ = session.render_now();
+        }
+        PendingSlash::Reload => {
+            if session.is_busy() {
+                session.push_system_note("agent busy — /reload refused");
+            } else {
+                handle_reload(session, driver).await;
             }
             let _ = session.render_now();
         }

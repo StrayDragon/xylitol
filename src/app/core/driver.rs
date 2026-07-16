@@ -37,6 +37,43 @@ use crate::domain::session_types::{
 use crate::domain::types::{ThinkingLevel, XyModelMeta};
 use crate::runtime_protocol::{XyBashResult, XySessionStore};
 
+/// One step in a [`RuntimeReloadReport`] (c1120).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReloadStepReport {
+    pub step: &'static str,
+    pub ok: bool,
+    pub message: String,
+}
+
+/// Aggregated runtime reload outcome for `/reload` (c1120).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RuntimeReloadReport {
+    pub steps: Vec<ReloadStepReport>,
+}
+
+impl RuntimeReloadReport {
+    /// Scripted / remote drivers: no-op success with a single diagnostic step.
+    pub fn noop() -> Self {
+        Self {
+            steps: vec![ReloadStepReport {
+                step: "runtime",
+                ok: true,
+                message: "noop (reload not supported on this driver)".into(),
+            }],
+        }
+    }
+
+    pub fn format_lines(&self) -> Vec<String> {
+        self.steps
+            .iter()
+            .map(|s| {
+                let status = if s.ok { "ok" } else { "failed" };
+                format!("{}: {status} — {}", s.step, s.message)
+            })
+            .collect()
+    }
+}
+
 /// Re-export so Driver implementors under surfaces can name the return type
 /// without importing `crate::agent::session` directly (which arch_guard
 /// forbids for tui/). Surfaces reference this as
@@ -313,6 +350,14 @@ pub trait Driver: Send {
     fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
         Vec::new()
     }
+
+    /// Hot-reload skills, MCP, and prompt context (c1120).
+    ///
+    /// Keybindings and themes are orchestrated by the product TUI host. Default:
+    /// no-op report for drivers without reload state.
+    async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, String> {
+        Ok(RuntimeReloadReport::noop())
+    }
 }
 
 /// Outcome of [`Driver::load_debug_scene`] (c710).
@@ -327,6 +372,14 @@ pub struct DebugSceneLoad {
 
 // ── In-process driver ─────────────────────────────────────────────
 
+struct InProcessReloadState {
+    cwd: std::path::PathBuf,
+    agent_dir: std::path::PathBuf,
+    project_trusted: bool,
+    mcp: crate::app::core::composition::McpSession,
+    mcp_servers: Vec<crate::app::core::mcp_spec::McpServerSpec>,
+}
+
 /// In-process driver wrapping the local agent module.
 ///
 /// Constructed at the composition root (`app::cli` via `bootstrap`) which wires
@@ -338,6 +391,8 @@ pub struct InProcessDriver {
     /// agent holds its own clone internally; this one is the surface's handle
     /// for session-management commands.
     store: Arc<dyn XySessionStore>,
+    /// Optional reload state for `/reload` and MCP ownership (c1120).
+    reload: Option<InProcessReloadState>,
 }
 
 impl InProcessDriver {
@@ -347,7 +402,76 @@ impl InProcessDriver {
     /// holding it here lets session commands operate without reaching into
     /// agent internals.
     pub fn new(agent: AgentRuntime, store: Arc<dyn XySessionStore>) -> Self {
-        Self { agent, store }
+        Self {
+            agent,
+            store,
+            reload: None,
+        }
+    }
+
+    /// Enable `/reload` and MCP ownership for the process lifetime (c1120).
+    pub fn enable_reload_state(
+        &mut self,
+        cwd: std::path::PathBuf,
+        agent_dir: std::path::PathBuf,
+        project_trusted: bool,
+        mcp_servers: Vec<crate::app::core::mcp_spec::McpServerSpec>,
+    ) {
+        self.reload = Some(InProcessReloadState {
+            cwd,
+            agent_dir,
+            project_trusted,
+            mcp: crate::app::core::composition::McpSession::new(),
+            mcp_servers,
+        });
+    }
+
+    /// Initial MCP bootstrap after assembly (cli / server). No-op when reload disabled.
+    pub async fn bootstrap_mcp(&mut self) -> Result<(), String> {
+        let servers = self
+            .reload
+            .as_ref()
+            .map(|s| s.mcp_servers.clone())
+            .unwrap_or_default();
+        self.reload_mcp_with_servers(&servers).await
+    }
+
+    /// One-line MCP status for startup logs (empty when reload/MCP disabled).
+    pub async fn mcp_status_summary(&self) -> Option<String> {
+        let state = self.reload.as_ref()?;
+        if state.mcp_servers.is_empty() {
+            return None;
+        }
+        let connected = state.mcp.connected_servers().await;
+        let diags = state.mcp.diagnostics().await;
+        let ids: Vec<_> = connected.iter().map(|s| s.id.as_str()).collect();
+        let mut line = format!(
+            "MCP: {} configured, {} connected [{}]",
+            state.mcp_servers.len(),
+            connected.len(),
+            ids.join(", ")
+        );
+        if !diags.is_empty() {
+            let detail = diags
+                .iter()
+                .map(|d| format!("{}: {}", d.server, d.message))
+                .collect::<Vec<_>>()
+                .join("; ");
+            line.push_str(&format!("; diagnostics: {detail}"));
+        }
+        Some(line)
+    }
+
+    async fn reload_mcp_with_servers(
+        &mut self,
+        servers: &[crate::app::core::mcp_spec::McpServerSpec],
+    ) -> Result<(), String> {
+        let Some(mut state) = self.reload.take() else {
+            return Ok(());
+        };
+        let result = state.mcp.reload(self, servers).await;
+        self.reload = Some(state);
+        result
     }
 
     pub fn cancel_token(&self) -> CancellationToken {
@@ -805,6 +929,100 @@ impl Driver for InProcessDriver {
 
     fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
         self.skill_catalog_pairs()
+    }
+
+    async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, String> {
+        let Some(mut state) = self.reload.take() else {
+            return Ok(RuntimeReloadReport::noop());
+        };
+
+        let mut steps = Vec::new();
+
+        let app_config = crate::infra::config::loader::load_app_config(None).ok();
+        state.mcp_servers = crate::app::core::mcp_spec::McpServerSpec::from_infra_list(
+            app_config.as_ref().and_then(|c| c.mcp_servers.clone()),
+        )
+        .unwrap_or_default();
+        let config_system_prompt = app_config
+            .as_ref()
+            .and_then(|cfg| cfg.resolve_default_profile().ok())
+            .and_then(|p| p.system_prompt.clone());
+
+        let skills = crate::app::core::bootstrap::reload_skills(
+            self,
+            &state.cwd,
+            &state.agent_dir,
+            state.project_trusted,
+        );
+        let skills_msg = if skills.names.is_empty() {
+            "0 skills".into()
+        } else {
+            format!("{} skill(s): {}", skills.count, skills.names.join(", "))
+        };
+        steps.push(ReloadStepReport {
+            step: "skills",
+            ok: true,
+            message: skills_msg,
+        });
+
+        match state.mcp.reload(self, &state.mcp_servers).await {
+            Ok(()) => {
+                let connected = state.mcp.connected_servers().await;
+                let diags = state.mcp.diagnostics().await;
+                if diags.is_empty() {
+                    let ids: Vec<_> = connected.iter().map(|s| s.id.as_str()).collect();
+                    steps.push(ReloadStepReport {
+                        step: "mcp",
+                        ok: true,
+                        message: format!(
+                            "{} configured, {} connected [{}]",
+                            state.mcp_servers.len(),
+                            connected.len(),
+                            ids.join(", ")
+                        ),
+                    });
+                } else {
+                    let detail = diags
+                        .iter()
+                        .map(|d| format!("{}: {}", d.server, d.message))
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    steps.push(ReloadStepReport {
+                        step: "mcp",
+                        ok: !connected.is_empty(),
+                        message: format!(
+                            "{} configured, {} connected; diagnostics: {detail}",
+                            state.mcp_servers.len(),
+                            connected.len()
+                        ),
+                    });
+                }
+            }
+            Err(e) => steps.push(ReloadStepReport {
+                step: "mcp",
+                ok: false,
+                message: e,
+            }),
+        }
+
+        let ctx = crate::app::core::bootstrap::reload_prompt_context(
+            self,
+            &state.cwd,
+            &state.agent_dir,
+            state.project_trusted,
+            config_system_prompt,
+        );
+        steps.push(ReloadStepReport {
+            step: "context",
+            ok: true,
+            message: format!(
+                "{} context file(s), system={}, append={}",
+                ctx.context_file_count, ctx.has_system_prompt, ctx.append_count
+            ),
+        });
+
+        self.reload = Some(state);
+        Ok(RuntimeReloadReport { steps })
     }
 }
 
