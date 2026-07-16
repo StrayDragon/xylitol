@@ -108,12 +108,23 @@ fn product_tui_source_has_no_tui_start_call() {
     let sources = [
         ("mod.rs", include_str!("mod.rs")),
         ("host/mod.rs", include_str!("host/mod.rs")),
-        ("effects.rs", include_str!("effects.rs")),
+        ("effects/mod.rs", include_str!("effects/mod.rs")),
+        ("effects/slash.rs", include_str!("effects/slash.rs")),
+        (
+            "effects/pending_ui.rs",
+            include_str!("effects/pending_ui.rs"),
+        ),
+        ("effects/bang.rs", include_str!("effects/bang.rs")),
         ("commands.rs", include_str!("commands.rs")),
-        ("layout/root.rs", include_str!("layout/root.rs")),
+        ("layout/root/mod.rs", include_str!("layout/root/mod.rs")),
+        (
+            "layout/root/slot_input.rs",
+            include_str!("layout/root/slot_input.rs"),
+        ),
         ("layout/slots.rs", include_str!("layout/slots.rs")),
         ("terminal_guard.rs", include_str!("terminal_guard.rs")),
         ("bridge/mod.rs", include_str!("bridge/mod.rs")),
+        ("bridge/model.rs", include_str!("bridge/model.rs")),
     ];
     for (name, src) in sources {
         for line in src.lines() {
@@ -134,10 +145,15 @@ fn product_tui_source_has_no_tui_start_call() {
 #[test]
 fn render_modules_do_not_match_xy_event() {
     // atb1: render layer must not match XyEvent — only bridge does.
-    let root = include_str!("layout/root.rs");
+    let root = include_str!("layout/root/mod.rs");
     assert!(
         !root.contains("XyEvent"),
         "layout/root must stay XyEvent-free"
+    );
+    let slot_input = include_str!("layout/root/slot_input.rs");
+    assert!(
+        !slot_input.contains("XyEvent"),
+        "layout/root/slot_input must stay XyEvent-free"
     );
     let slots = include_str!("layout/slots.rs");
     assert!(
@@ -154,7 +170,7 @@ fn render_modules_do_not_match_xy_event() {
 #[test]
 fn shared_effect_pump_is_single_entry() {
     // ath6: production + harness share drain_pending; no duplicate PendingSlash match.
-    let effects = include_str!("effects.rs");
+    let effects = include_str!("effects/mod.rs");
     assert!(
         effects.contains("pub async fn drain_pending"),
         "effects must export drain_pending"
@@ -177,6 +193,25 @@ fn shared_effect_pump_is_single_entry() {
         !harness.contains("PendingSlash::Exit"),
         "harness must not duplicate PendingSlash match"
     );
+}
+
+#[test]
+fn god_module_entry_files_under_budget() {
+    // c1170 / ath12: entry modules must stay well under the ~1200 hard smell.
+    const BUDGET: usize = 800;
+    let files = [
+        ("host/mod.rs", include_str!("host/mod.rs")),
+        ("layout/root/mod.rs", include_str!("layout/root/mod.rs")),
+        ("effects/mod.rs", include_str!("effects/mod.rs")),
+        ("bridge/mod.rs", include_str!("bridge/mod.rs")),
+    ];
+    for (name, src) in files {
+        let lines = src.lines().count();
+        assert!(
+            lines < BUDGET,
+            "{name} has {lines} lines (budget {BUDGET}); split further per ath12"
+        );
+    }
 }
 
 #[test]

@@ -6,6 +6,7 @@
 
 mod root;
 mod session_tree;
+mod slash_catalog;
 mod slots;
 mod theme;
 
