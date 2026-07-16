@@ -4,7 +4,7 @@ use crate::domain::error::XyError;
 use crate::domain::message::AgentMessage;
 use crate::domain::message::XyStopReason;
 use crate::domain::types::{XyChunk, XyToolSchema};
-use crate::runtime_protocol::{XyModel, XyStream};
+use crate::runtime_protocol::{XyGenerateOptions, XyModel, XyStream};
 
 /// Drop-in mock for tests. Returns a fixed text response.
 pub struct MockXyModel {
@@ -37,6 +37,7 @@ impl XyModel for MockXyModel {
         _messages: Vec<AgentMessage>,
         _tools: &[XyToolSchema],
         _stream: bool,
+        _options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
         let text = self.response_text.clone();
         Ok(Box::pin(futures::stream::iter(vec![

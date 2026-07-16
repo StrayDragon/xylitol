@@ -8,11 +8,17 @@ pub use fake::{AiBridgeModel, FakeProvider, FakeProviderBuilder, FakeProviderMod
 pub mod hooks;
 pub mod provider;
 pub mod registry;
+pub mod thinking;
 pub mod tokenize;
 pub mod usage;
 
 pub use dto::*;
 pub use error::AiBridgeError;
+pub use thinking::{
+    AiBridgeGenerateOptions, AiBridgeResolvedThinking, AiBridgeThinkingAdapterKind,
+    AiBridgeThinkingBudgets, apply_thinking_anthropic, apply_thinking_openai_completions,
+    apply_thinking_openai_responses, resolve_from_options, resolve_thinking_for_request,
+};
 
 #[cfg(test)]
 mod boundary_tests {

@@ -145,7 +145,7 @@ async fn anthropic_adapter_drop_stream_stops_server_writes() {
 
     // Anthropic path POSTs /v1/messages; our stub ignores method/path and streams.
     let mut stream = adapter
-        .generate_stream(vec![], &[])
+        .generate_stream(vec![], &[], Default::default())
         .await
         .expect("adapter stream");
 

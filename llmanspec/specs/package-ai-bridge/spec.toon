@@ -2,14 +2,15 @@ kind: llman.sdd.spec
 name: "package-ai-bridge"
 purpose: "packages/xylitol-ai-bridge：client→LLM provider 接线与 AiBridge* DTO 边界。"
 valid_scope[2]: "packages/xylitol-ai-bridge/",src/infra/provider/
-requirements[6]{req_id,title,statement}:
+requirements[7]{req_id,title,statement}:
   pab1,"workspace-包边界","仓库 MUST 提供 workspace 成员包 packages/xylitol-ai-bridge，作为 client 到上游 LLM model provider 的接线与计量库；该包 MUST NOT 依赖主 crate xylitol。"
   pab2,包内模块划分,"xylitol-ai-bridge MUST 按职责划分至少包含 provider、usage、accounting、tokenize、registry 模块（名称可等价），分别承担方言接线、usage 归一化、多源计量、本地/远程分词计数与模型到分词源注册。"
   pab3,"包内-DTO-独立",包对外流式与消息类型 MUST 使用包内自有 LLM 投影 DTO（如 LlmMessage / AiBridgeChunk / AiBridgeUsage）；该 DTO MUST 仅表达发给模型的形状，MUST NOT 再定义与主仓 AgentMessage 平行的 bashExecution / compactionSummary / branchSummary / custom 等会话环境角色；包 MUST NOT 依赖主仓 domain。
   pab4,主仓映射层,主仓 infra MUST 提供显式投影 project_for_llm（或等价）：AgentMessage 切片到 bridge LLM DTO；MUST NOT 再靠全量孪生类型加 JSON 往返对齐；agent 与 domain MUST NOT 直接依赖 xylitol_ai_bridge 的 HTTP/vendor SDK 类型。
   pab5,"provider-实现迁入","OpenAI 兼容（Responses 与 Completions）与 Anthropic Messages 的流式/非流式接线实现 MUST 以 xylitol-ai-bridge 为实现归属；主仓 MUST NOT 保留与包并行的第二套完整 adapter 实现体（允许薄映射与装配）。"
   pab11,"vendor-sdk-first",OpenAI 兼容路径（Completions、Responses、input_tokens RemoteCount）与 Anthropic 兼容路径（Messages、count_tokens）MUST 优先经厂商官方 Rust SDK Client 接线；hooks MUST 经 SDK middleware（或文档化等价扩展点）接入且保持可移植 HeaderBag/JSON body 语义；新兼容端 MUST 以新 adapter/配置扩展（开闭），MUST NOT 为每个网关分叉改 AgentMessage 或 ReAct。
-scenarios[8]{req_id,id,given,when,then}:
+  pab12,"thinking-params-in-request-body","xylitol-ai-bridge 在组装 OpenAI Completions / Responses 与 Anthropic Messages 请求体时 MUST 消费已解析的 thinking 参数：Completions 用 reasoning_effort；Responses 用 reasoning.effort；Anthropic 用 thinking budget（enabled + budget_tokens）；level 为 off 或映射为 null 时 MUST 省略对应字段（或显式 disabled）；用户 map 字符串 MUST 覆盖内置默认；MUST NOT 在无 map/默认时伪造未知厂商字段。"
+scenarios[11]{req_id,id,given,when,then}:
   pab1,"crate-no-dep-xylitol","packages/xylitol-ai-bridge 已加入 workspace",检查该包 Cargo.toml 依赖,不存在对主包 xylitol 的依赖
   pab2,"modules-exist",包源码树已按 design 落地,枚举 src 模块,存在 provider usage accounting tokenize registry 职责边界
   pab3,"dto-no-bash-role",审查 bridge 公共消息 enum,列出 role 变体,无 bashExecution/compactionSummary/branchSummary 平行会话角色
@@ -18,3 +19,6 @@ scenarios[8]{req_id,id,given,when,then}:
   pab5,"single-impl",OpenAI 与 Anthropic 路径已迁入包,审查 src/infra/provider 与包 provider,主仓无并行完整 adapter 实现体仅剩映射或装配
   pab11,"openai-via-sdk",Completions 或 Responses 请求,实现归属,"经 async-openai Client（非手写重复 SSE 栈为默认路径）"
   pab11,"open-closed-adapter","新增一 OpenAI-compatible base_url",接线,仅增配置/薄 adapter 不改 AgentMessage
+  pab12,"openai-completions-effort",level=medium 且无自定义 map,组装 Completions 请求,body 含 reasoning_effort 为 medium
+  pab12,"anthropic-budget-off",level=off,组装 Anthropic 请求,body 无 enabled thinking budget 块
+  pab12,"map-override",map 将 high 映射为 max,组装 OpenAI 类请求,effort 字段为 max

@@ -1,5 +1,7 @@
 //! Core data types — streaming chunks, thinking levels, model metadata, tool schemas.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -167,6 +169,131 @@ impl ThinkingLevel {
     }
 }
 
+/// Per-model map: ThinkingLevel `as_str` → provider native string, or `null` to omit.
+///
+/// Missing keys mean adapter built-in defaults (see [`resolve_thinking_for_request`]).
+pub type ThinkingLevelMap = HashMap<String, Option<String>>;
+
+/// Optional Settings-style thinking budget overrides (Anthropic budget path).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ThinkingBudgets {
+    pub minimal: Option<u64>,
+    pub low: Option<u64>,
+    pub medium: Option<u64>,
+    pub high: Option<u64>,
+}
+
+/// Adapter family for thinking param resolution (Completions/Responses share effort).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThinkingAdapterKind {
+    OpenAi,
+    Anthropic,
+}
+
+/// Resolved thinking parameter ready for request-body injection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedThinking {
+    /// Do not send thinking/effort fields.
+    Omit,
+    /// OpenAI Completions `reasoning_effort` / Responses `reasoning.effort`.
+    OpenAiEffort(String),
+    /// Anthropic `thinking: { type: "enabled", budget_tokens }`.
+    AnthropicBudget(u64),
+}
+
+/// Validate map keys are known [`ThinkingLevel`] names.
+pub fn validate_thinking_level_map(map: &ThinkingLevelMap) -> Result<(), String> {
+    for key in map.keys() {
+        if ThinkingLevel::parse(key).is_none() {
+            return Err(format!("unknown thinking_level_map key: {key}"));
+        }
+    }
+    Ok(())
+}
+
+fn builtin_anthropic_budget(level: ThinkingLevel) -> u64 {
+    match level {
+        ThinkingLevel::Off => 0,
+        ThinkingLevel::Minimal => 1024,
+        ThinkingLevel::Low => 2048,
+        ThinkingLevel::Medium => 8192,
+        ThinkingLevel::High => 16384,
+        ThinkingLevel::Xhigh | ThinkingLevel::Max => 32768,
+    }
+}
+
+fn budget_for_level(level: ThinkingLevel, budgets: Option<&ThinkingBudgets>) -> u64 {
+    let override_budget = budgets.and_then(|b| match level {
+        ThinkingLevel::Minimal => b.minimal,
+        ThinkingLevel::Low => b.low,
+        ThinkingLevel::Medium => b.medium,
+        ThinkingLevel::High => b.high,
+        // Settings has no xhigh/max slots; fall through to built-in.
+        ThinkingLevel::Off | ThinkingLevel::Xhigh | ThinkingLevel::Max => None,
+    });
+    override_budget.unwrap_or_else(|| builtin_anthropic_budget(level))
+}
+
+/// Resolve session thinking level + optional user map into provider params.
+///
+/// - **Missing map key** → adapter built-in default
+/// - **`null` value** → [`ResolvedThinking::Omit`]
+/// - **string value** → OpenAI: send as-is; Anthropic: parse as budget u64, or as a
+///   level name to look up budget, else built-in for the current level
+pub fn resolve_thinking_for_request(
+    level: ThinkingLevel,
+    map: Option<&ThinkingLevelMap>,
+    budgets: Option<&ThinkingBudgets>,
+    adapter: ThinkingAdapterKind,
+) -> ResolvedThinking {
+    if let Some(map) = map
+        && let Some(entry) = map.get(level.as_str())
+    {
+        return match entry {
+            None => ResolvedThinking::Omit,
+            Some(raw) => match adapter {
+                ThinkingAdapterKind::OpenAi => ResolvedThinking::OpenAiEffort(raw.clone()),
+                ThinkingAdapterKind::Anthropic => resolve_anthropic_map_string(level, raw, budgets),
+            },
+        };
+    }
+
+    // Key absent → built-in defaults.
+    match adapter {
+        ThinkingAdapterKind::OpenAi => {
+            if level == ThinkingLevel::Off {
+                ResolvedThinking::Omit
+            } else {
+                ResolvedThinking::OpenAiEffort(level.as_str().to_string())
+            }
+        }
+        ThinkingAdapterKind::Anthropic => {
+            if level == ThinkingLevel::Off {
+                ResolvedThinking::Omit
+            } else {
+                ResolvedThinking::AnthropicBudget(budget_for_level(level, budgets))
+            }
+        }
+    }
+}
+
+fn resolve_anthropic_map_string(
+    level: ThinkingLevel,
+    raw: &str,
+    budgets: Option<&ThinkingBudgets>,
+) -> ResolvedThinking {
+    if let Ok(n) = raw.parse::<u64>() {
+        return ResolvedThinking::AnthropicBudget(n);
+    }
+    if let Some(as_level) = ThinkingLevel::parse(raw) {
+        if as_level == ThinkingLevel::Off {
+            return ResolvedThinking::Omit;
+        }
+        return ResolvedThinking::AnthropicBudget(budget_for_level(as_level, budgets));
+    }
+    ResolvedThinking::AnthropicBudget(budget_for_level(level, budgets))
+}
+
 // ── Model Metadata ──────────────────────────────────────────────────
 
 /// Metadata describing a model variant available from a provider.
@@ -185,6 +312,8 @@ pub struct XyModelMeta {
     pub cost_cache_write: f64,
     pub max_tokens: u64,
     pub thinking_levels: Vec<String>,
+    /// Optional per-level provider effort/budget overrides (`null` = omit).
+    pub thinking_level_map: ThinkingLevelMap,
 }
 
 #[cfg(test)]
@@ -402,10 +531,95 @@ mod tests {
             cost_cache_write: 3.75,
             max_tokens: 8192,
             thinking_levels: vec!["low".into(), "medium".into(), "high".into()],
+            thinking_level_map: std::collections::HashMap::new(),
         };
         assert_eq!(meta.id, "claude-3");
         assert!(meta.thinking);
         assert_eq!(meta.context_window, 200_000);
         assert_eq!(meta.max_tokens, 8192);
+    }
+
+    // ── resolve_thinking_for_request ─────────────────────────────────
+
+    #[test]
+    fn resolve_openai_absent_key_uses_identity() {
+        let r = resolve_thinking_for_request(
+            ThinkingLevel::Medium,
+            None,
+            None,
+            ThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(r, ResolvedThinking::OpenAiEffort("medium".into()));
+    }
+
+    #[test]
+    fn resolve_openai_off_omits() {
+        let r = resolve_thinking_for_request(
+            ThinkingLevel::Off,
+            None,
+            None,
+            ThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(r, ResolvedThinking::Omit);
+    }
+
+    #[test]
+    fn resolve_null_omits() {
+        let mut map = ThinkingLevelMap::new();
+        map.insert("high".into(), None);
+        let r = resolve_thinking_for_request(
+            ThinkingLevel::High,
+            Some(&map),
+            None,
+            ThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(r, ResolvedThinking::Omit);
+    }
+
+    #[test]
+    fn resolve_map_overrides_default() {
+        let mut map = ThinkingLevelMap::new();
+        map.insert("high".into(), Some("max".into()));
+        let r = resolve_thinking_for_request(
+            ThinkingLevel::High,
+            Some(&map),
+            None,
+            ThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(r, ResolvedThinking::OpenAiEffort("max".into()));
+    }
+
+    #[test]
+    fn resolve_anthropic_budget_defaults_and_settings() {
+        let r = resolve_thinking_for_request(
+            ThinkingLevel::Low,
+            None,
+            None,
+            ThinkingAdapterKind::Anthropic,
+        );
+        assert_eq!(r, ResolvedThinking::AnthropicBudget(2048));
+
+        let budgets = ThinkingBudgets {
+            low: Some(4096),
+            ..Default::default()
+        };
+        let r2 = resolve_thinking_for_request(
+            ThinkingLevel::Low,
+            None,
+            Some(&budgets),
+            ThinkingAdapterKind::Anthropic,
+        );
+        assert_eq!(r2, ResolvedThinking::AnthropicBudget(4096));
+    }
+
+    #[test]
+    fn validate_thinking_level_map_rejects_unknown() {
+        let mut map = ThinkingLevelMap::new();
+        map.insert("bogon".into(), Some("x".into()));
+        assert!(
+            validate_thinking_level_map(&map)
+                .unwrap_err()
+                .contains("bogon")
+        );
     }
 }

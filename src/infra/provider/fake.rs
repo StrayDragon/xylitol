@@ -6,7 +6,7 @@ use crate::domain::error::XyError;
 use crate::domain::message::AgentMessage;
 use crate::domain::types::XyToolSchema;
 use crate::infra::provider::map::{to_bridge_messages, to_bridge_tools, to_xy_error, to_xy_stream};
-use crate::runtime_protocol::{XyModel, XyStream};
+use crate::runtime_protocol::{XyGenerateOptions, XyModel, XyStream};
 
 pub use xylitol_ai_bridge::fake::{
     FakeProvider as AiBridgeFakeProvider, FakeProviderBuilder, FakeProviderMode, ScenarioStep,
@@ -55,6 +55,7 @@ impl XyModel for FakeProvider {
         messages: Vec<AgentMessage>,
         tools: &[XyToolSchema],
         stream: bool,
+        _options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
         let bridge_msgs = to_bridge_messages(messages)?;
         let bridge_tools = to_bridge_tools(tools);
@@ -79,9 +80,15 @@ mod tests {
     #[tokio::test]
     async fn fake_xy_model_text() {
         let provider = FakeProvider::new("test", vec![ScenarioStep::text("Hello world")]);
-        let mut stream = XyModel::generate_stream(&provider, vec![], &[], false)
-            .await
-            .unwrap();
+        let mut stream = XyModel::generate_stream(
+            &provider,
+            vec![],
+            &[],
+            false,
+            crate::runtime_protocol::XyGenerateOptions::default(),
+        )
+        .await
+        .unwrap();
         let chunk = stream.next().await.unwrap().unwrap();
         assert!(matches!(
             chunk,

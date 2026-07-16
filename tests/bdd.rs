@@ -357,6 +357,7 @@ fn ensure_wiring_fake_model(agent: &AgentState, thinking: bool) {
         cost_cache_write: 0.0,
         max_tokens: 0,
         thinking_levels: Vec::new(),
+        thinking_level_map: Default::default(),
     });
 }
 
@@ -616,6 +617,7 @@ fn _g_agent_mock_model(agent: &AgentState, ws: &Workspace, name: String) {
         cost_cache_write: 0.0,
         max_tokens: 0,
         thinking_levels: Vec::new(),
+        thinking_level_map: Default::default(),
     });
 }
 
@@ -698,6 +700,7 @@ fn _g_agent_thinking_level(agent: &AgentState, level: String) {
         cost_cache_write: 0.0,
         max_tokens: 0,
         thinking_levels: Vec::new(),
+        thinking_level_map: Default::default(),
     });
     agent.registry.replace(r);
 }
@@ -725,6 +728,7 @@ fn _g_agent_no_thinking(agent: &AgentState) {
         cost_cache_write: 0.0,
         max_tokens: 0,
         thinking_levels: Vec::new(),
+        thinking_level_map: Default::default(),
     });
     agent.registry.replace(r);
 }

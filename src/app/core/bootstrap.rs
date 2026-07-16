@@ -272,7 +272,16 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                     continue;
                 }
             };
+            if let Some(map) = &entry.thinking_level_map
+                && let Err(e) = crate::domain::types::validate_thinking_level_map(map)
+            {
+                warnings.push(BootstrapWarning::ConfigLoadFailed(format!(
+                    "models.{alias}: {e}"
+                )));
+                continue;
+            }
             let thinking_levels = levels.iter().map(|l| l.as_str().to_string()).collect();
+            let thinking_level_map = entry.thinking_level_map.clone().unwrap_or_default();
 
             model_registry.register(XyModelMeta {
                 id: alias.clone(),
@@ -294,6 +303,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                 cost_cache_write: 0.0,
                 max_tokens: 0,
                 thinking_levels,
+                thinking_level_map,
             });
         }
     }
@@ -342,6 +352,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                         .iter()
                         .map(|l| l.as_str().to_string())
                         .collect(),
+                    thinking_level_map: Default::default(),
                 });
             }
         }
