@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use super::super::slots::EditorSlot;
 use super::{
     ImportConfirmDecision, UiRoot, empty_models_list, empty_session_resume_panel,
-    import_confirm_list,
+    empty_themes_list, import_confirm_list,
 };
 use crate::app::tui::bridge::UiPhase;
 
@@ -62,6 +62,8 @@ impl UiRoot {
         self.models_filter.clear();
         self.models_items.clear();
         self.models_list = empty_models_list(self.theme);
+        self.themes_list = empty_themes_list(self.theme);
+        self.pending_theme_select = None;
         self.import_confirm_path = None;
         self.import_confirm_list = import_confirm_list(self.theme);
         self.session_resume = empty_session_resume_panel(self.theme);
@@ -83,7 +85,10 @@ impl UiRoot {
             EditorSlot::Plate | EditorSlot::Settings | EditorSlot::Choice => {
                 self.slot = slot;
             }
-            EditorSlot::Models | EditorSlot::ImportConfirm | EditorSlot::SessionResume => {
+            EditorSlot::Models
+            | EditorSlot::Themes
+            | EditorSlot::ImportConfirm
+            | EditorSlot::SessionResume => {
                 // Opened via mount_* after slash dispatch.
             }
         }

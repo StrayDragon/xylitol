@@ -11,7 +11,7 @@ components:
 # Keybindings
 
 > Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
-> 已接线：c480 / c615。下一波：c630 `/model` 列表 · c635–c645 树 power · c650 真 `$EDITOR`。
+> 已接线：c480 / c615 / c630 `/model` / **c1115 `/theme`**。下一波：c635–c645 树 power · c650 真 `$EDITOR`。
 > 活实验场：`just demo-tui`。静图：[`playground/`](./playground/)。
 
 ## MUST — 全局 / 输入（已落地）
@@ -29,9 +29,13 @@ components:
 | `/exit` | 退出并 restore（与垂直切片一致） |
 | `/model` | 打开 **fuzzy 模型列表**（替换 editor 槽；见 [`models-picker.md`](./models-picker.md)；**c630**；对齐 pi） |
 | `/model <id>` | 直选模型（不经列表） |
+| `/theme` | 打开 **Themes 槽** SelectList（`dark` / `light`；见 [`theme-tokens.md`](./theme-tokens.md)；**c1115**） |
+| `/theme dark` \| `light` | 经 `HostSession::reload_themes` 直切色板 |
+| `/theme toggle` \| `cycle` | dark↔light 翻转（相对当前 `theme_preference`，无则视为 dark） |
 
 **移除**：无参 `/model` 静默 **cycle** — 改为打开列表；**不**引入 `/models`。
 
+**产品不抄**：demo Ctrl+P `theme-toggle`（主题只走 `/theme` slash）。
 ## MUST — 树关时（有内容时）
 
 | 键 | 行为 |
@@ -60,7 +64,7 @@ components:
 | 键 | 行为 |
 |---|---|
 | Esc（选择器打开时） | 关闭选择器，还原 editor |
-| `/` 补全 | CompletionSource；产品命令含 `/exit` `/model` `/session` `/session-resume` `/session-tree` `/session-fork` `/session-compact` `/session-export` `/session-import`（**c1005–c1015**）；debug 构建另有 `/debug` |
+| `/` 补全 | CompletionSource；产品命令含 `/exit` `/model` `/theme` `/session` `/session-resume` `/session-tree` `/session-fork` `/session-compact` `/session-export` `/session-import` `/reload` `/trust` `/history-copy-last`（**c1005–c1115**）；debug 构建另有 `/debug`；`/theme ` 参数补全至少 `dark`/`light`（可含 `toggle`） |
 | `/session-tree` | 打开会话树（同双 Esc；**c700/c1005**；旧名 `/tree` 无效） |
 | `/session-fork` | 在当前 leaf fork（同 Shift+F 语义；选节点仍用树；**c700/c1005**；旧名 `/fork` 无效） |
 | `/session` | 转储会话 info/stats（**c1015**；非操作菜单） |

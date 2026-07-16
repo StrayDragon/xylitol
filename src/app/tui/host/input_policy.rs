@@ -118,6 +118,13 @@ impl<T: Terminal> HostSession<T> {
                     self.sync_ui_root_from_model();
                     return true;
                 }
+                Some(PendingSlash::Theme { .. }) => {
+                    root.set_editor_text(String::new());
+                    drop(root);
+                    self.push_system_note("agent busy — /theme refused");
+                    self.sync_ui_root_from_model();
+                    return true;
+                }
                 // c1110: readonly copy allowed while busy.
                 Some(PendingSlash::HistoryCopyLast) => {
                     root.set_editor_text(String::new());
@@ -211,6 +218,7 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::Reload
                 | PendingSlash::Trust { .. }
                 | PendingSlash::HistoryCopyLast
+                | PendingSlash::Theme { .. }
                 | PendingSlash::Usage(_) => {
                     self.pending.slash = Some(slash);
                 }
@@ -222,7 +230,7 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(String::new());
             drop(root);
             self.push_system_note(format!(
-                "unknown command: {} (try /exit, /model, /session, /session-resume, /session-new, /session-clone, /session-name, /session-tree, /session-fork, /session-compact, /session-export, /session-import, /reload, /trust, /history-copy-last)",
+                "unknown command: {} (try /exit, /model, /theme, /session, /session-resume, /session-new, /session-clone, /session-name, /session-tree, /session-fork, /session-compact, /session-export, /session-import, /reload, /trust, /history-copy-last)",
                 text.split_whitespace().next().unwrap_or("/")
             ));
             return true;

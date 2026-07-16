@@ -361,9 +361,48 @@ pub(super) async fn handle_slash<T: Terminal>(
             }
             let _ = session.render_now();
         }
+        PendingSlash::Theme { arg } => {
+            if session.is_busy() {
+                session.push_system_note("agent busy — /theme refused");
+            } else {
+                match arg.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+                    None => session.mount_themes_picker(),
+                    Some(name) => {
+                        let resolved = resolve_theme_arg(session, name);
+                        match resolved {
+                            Ok(theme_name) => match session.reload_themes(&theme_name) {
+                                Ok(()) => session.push_system_note(format!("theme → {theme_name}")),
+                                Err(e) => session.push_system_note(format!("/theme failed: {e}")),
+                            },
+                            Err(msg) => session.push_system_note(msg),
+                        }
+                    }
+                }
+            }
+            let _ = session.render_now();
+        }
         PendingSlash::Usage(msg) => {
             session.push_system_note(msg);
             let _ = session.render_now();
         }
+    }
+}
+
+/// Resolve `/theme` argument to a built-in name (c1115).
+fn resolve_theme_arg<T: Terminal>(session: &HostSession<T>, arg: &str) -> Result<String, String> {
+    match arg.to_ascii_lowercase().as_str() {
+        "dark" | "light" => Ok(arg.to_ascii_lowercase()),
+        "toggle" | "cycle" => {
+            let current = session.theme_preference().unwrap_or("dark");
+            let next = if current.eq_ignore_ascii_case("light") {
+                "dark"
+            } else {
+                "light"
+            };
+            Ok(next.to_string())
+        }
+        _ => Err(format!(
+            "unknown theme `{arg}` (usage: /theme [dark|light|toggle])"
+        )),
     }
 }
