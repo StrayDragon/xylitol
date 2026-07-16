@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "薄编排 ReAct 运行时：AgentRuntime 循环、工具批执行、steer/follow-up 队列、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
 valid_scope[3]: src/agent/,src/runtime_protocol/,tests/
-requirements[18]{req_id,title,statement}:
+requirements[19]{req_id,title,statement}:
   ar1,"thin-react-loop","agent/ 层 MUST 以 AgentRuntime（runtime/react.rs）驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls 或达 max_iterations；MUST NOT 在循环文件内联 bash 实现或厂商 HTTP。"
   ar2,"xy-event-stream","运行时 MUST 以 XyEvent 异步流对外输出（TextDelta / ThinkingDelta / Tool* / Turn* / QueueUpdate / Error 等）；MUST NOT 再引入 AgentEvent 或 adk 事件类型。"
   ar3,"tool-batch-before-next-model","同一模型响应中的全部工具调用 MUST 在下一轮模型调用前执行完毕（可并行或串行）；MUST NOT 因流结束 Done 而提前结束含 tool_calls 的回合。"
@@ -21,7 +21,8 @@ requirements[18]{req_id,title,statement}:
   ar16,"defaults","未显式配置时 MUST 有可测默认：thinking level、max_iterations、compaction 阈值等集中定义。"
   ar17,"cwd-validate","创建/导入会话时 MUST 校验工作目录可访问，失败返回含路径的错误。"
   ar18,"wire-event-mapping","MUST 提供 XyEvent ↔ protocol::Event 映射（From/TryFrom 或等价），覆盖闭集内变体。"
-scenarios[21]{req_id,id,given,when,then}:
+  ar19,"Driver context 重载缝","InProcessDriver（经 app/core 助手）MUST 能在 Trust 语义下重载磁盘 context/SYSTEM/APPEND 并应用到 agent；未信任 MUST NOT 注入项目侧 context；重载 MUST NOT 清空 transcript。"
+scenarios[23]{req_id,id,given,when,then}:
   ar1,"react-terminates","mock 模型先 tool 后无 tool","运行 AgentRuntime","先执行工具再结束且无 adk 类型"
   ar2,"stream-is-xyevent","消费事件流","轮询","每项为 XyEvent"
   ar3,"continues-after-tools","模型返回 FunctionCall 后 Done","循环","继续下一轮模型调用并带上 toolResult"
@@ -43,3 +44,5 @@ scenarios[21]{req_id,id,given,when,then}:
   ar4,"builder-build","AgentBuilder 装配","build","得到 AgentRuntime"
   ar5,"ports-exist","检查 runtime_protocol","SessionStore 与 EventSink","trait 存在且可被实现"
   ar10,"abort-cancels-bang","交互 bang 进行中","abort","子进程 cancelled"
+  ar19,"trusted-reload","项目信任且 cwd 有 AGENTS.md","调用 reload_prompt_context","agent 系统提示含该 AGENTS 内容"
+  ar19,"untrusted-skip","项目未信任且仅项目目录有 AGENTS.md","调用 reload_prompt_context","系统提示 MUST NOT 含该项目 AGENTS 正文"

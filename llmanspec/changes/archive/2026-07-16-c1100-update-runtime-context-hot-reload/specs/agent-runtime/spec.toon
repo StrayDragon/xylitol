@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ar19,Driver context 重载缝,InProcessDriver（经 app/core 助手）MUST 能在 Trust 语义下重载磁盘 context/SYSTEM/APPEND 并应用到 agent；未信任 MUST NOT 注入项目侧 context；重载 MUST NOT 清空 transcript。,null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ar19,"trusted-reload",项目信任且 cwd 有 AGENTS.md,调用 reload_prompt_context,agent 系统提示含该 AGENTS 内容
+  ar19,"untrusted-skip",项目未信任且仅项目目录有 AGENTS.md,调用 reload_prompt_context,系统提示 MUST NOT 含该项目 AGENTS 正文
