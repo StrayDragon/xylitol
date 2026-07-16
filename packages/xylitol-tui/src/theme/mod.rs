@@ -10,12 +10,14 @@
 
 mod paint;
 mod palette;
+mod thinking_border;
 
 pub use paint::{
     bg_rgb, bold, dim, fg_bg_rgb, fg_rgb, italic, mix_rgb, shade_toward_black, shade_toward_white,
     strikethrough, underline, word_wash_bg,
 };
 pub use palette::Palette;
+pub use thinking_border::{ThinkingBorderLevel, apply_thinking_border};
 
 /// Alias kept for call sites that already say “semantic”.
 pub type SemanticPalette = Palette;

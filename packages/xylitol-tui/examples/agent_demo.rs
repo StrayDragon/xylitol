@@ -26,12 +26,13 @@ use xylitol_tui::{
     ChoiceResult, Component, CrosstermTerminal, DiffInput, DiffOptions, DiffTheme,
     ExpandableOutputOptions, Focusable, Input, InputEvent, InputListenerResult, Markdown,
     MarkdownTheme, Palette, Panel, SystemClock, TUI, TerminalColorScheme, Text, ThemeDetectSources,
-    TreeNode, TreeSelector, TreeSelectorOptions, TreeSelectorTheme, TruncateFrom, TruncatedText,
-    apply_background_to_line, bg_rgb, fg_bg_rgb, fg_rgb, is_osc11_background_color_response,
-    is_terminal_color_reply, matches_key_event, parse_osc11_background_color,
-    parse_terminal_color_scheme_report, printable_from_key_event, render_diff_lines,
-    render_expandable_output, resolve_terminal_color_scheme, truncate_to_width, visible_width,
-    word_wash_bg, wrap_text_with_ansi,
+    ThinkingBorderLevel, TreeNode, TreeSelector, TreeSelectorOptions, TreeSelectorTheme,
+    TruncateFrom, TruncatedText, apply_background_to_line, apply_thinking_border, bg_rgb,
+    fg_bg_rgb, fg_rgb, is_osc11_background_color_response, is_terminal_color_reply,
+    matches_key_event, parse_osc11_background_color, parse_terminal_color_scheme_report,
+    printable_from_key_event, render_diff_lines, render_expandable_output,
+    resolve_terminal_color_scheme, truncate_to_width, visible_width, word_wash_bg,
+    wrap_text_with_ansi,
 };
 
 /// Demo slash commands (static; product would load from Driver / protocol).
@@ -40,6 +41,10 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("help", "Show key help in transcript"),
     ("md", "Stream full Markdown grammar stub (typewriter)"),
     ("theme", "Switch chrome theme: /theme [dark|light|toggle]"),
+    (
+        "thinking-level",
+        "Cycle editor thinking border (Shift+Tab; or /thinking-level)",
+    ),
     ("model", "Switch model: /model <id>"),
     ("compact", "Demo Compacting status → Working (c493)"),
     ("retry", "Demo Retry status → Working (c493)"),
@@ -313,6 +318,11 @@ const DEMO_PLATE: &[DemoPlateItem] = &[
         id: "theme-toggle",
         label: "Toggle theme dark ↔ light",
         description: "Cycle Palette chrome (/theme toggle)",
+    },
+    DemoPlateItem {
+        id: "thinking-level",
+        label: "Cycle thinking border level",
+        description: "Editor border color off→…→max (Shift+Tab)",
     },
     DemoPlateItem {
         id: "help-keys",
@@ -1345,6 +1355,8 @@ pub struct FakeCodingAgentApp {
     theme_auto: bool,
     /// Resolved Dark/Light token set (c458).
     theme_mode: TerminalColorScheme,
+    /// Editor thinking-level border (c1140); bash success border still wins while `!`.
+    thinking_border_level: ThinkingBorderLevel,
     /// Last submit's resolved `$skill` → stub SKILL.md bodies (demo inject assert).
     last_skill_injections: Vec<(String, String)>,
 }
@@ -1949,6 +1961,10 @@ impl FakeCodingAgentApp {
         self.sync_editor_border();
     }
 
+    pub fn editor_render_for_test(&mut self, width: usize) -> Vec<String> {
+        self.input.render(width)
+    }
+
     pub fn theme_mode_for_test(&self) -> TerminalColorScheme {
         self.theme_mode
     }
@@ -2114,14 +2130,13 @@ impl FakeCodingAgentApp {
     fn refresh_editor_border_theme(&mut self) {
         let bash = self.input.get_text().trim_start().starts_with('!');
         self.bash_mode = bash;
-        let success = self.palette().success;
-        let muted = self.palette().muted;
         if bash {
+            let success = self.palette().success;
             self.input
                 .set_border_color(Box::new(move |s| fg_rgb(success, s)));
         } else {
-            self.input
-                .set_border_color(Box::new(move |s| fg_rgb(muted, s)));
+            let palette = self.palette();
+            apply_thinking_border(&mut self.input, &palette, self.thinking_border_level);
         }
     }
 
@@ -2143,15 +2158,73 @@ impl FakeCodingAgentApp {
             return;
         }
         self.bash_mode = bash;
-        let success = self.palette().success;
-        let muted = self.palette().muted;
         if bash {
+            let success = self.palette().success;
             self.input
                 .set_border_color(Box::new(move |s| fg_rgb(success, s)));
         } else {
-            self.input
-                .set_border_color(Box::new(move |s| fg_rgb(muted, s)));
+            let palette = self.palette();
+            apply_thinking_border(&mut self.input, &palette, self.thinking_border_level);
         }
+    }
+
+    /// Cycle thinking border level (c1140). Non-bash applies immediately.
+    pub fn cycle_thinking_border_level(&mut self) {
+        self.thinking_border_level = self.thinking_border_level.cycle_next();
+        if !self.bash_mode {
+            let palette = self.palette();
+            apply_thinking_border(&mut self.input, &palette, self.thinking_border_level);
+        }
+        let level = self.thinking_border_level.as_str();
+        self.push_message(Role::System, format!("thinking-border → {level}"));
+        self.set_status(format!("Ready · thinking:{level}"));
+    }
+
+    pub fn thinking_border_level_for_test(&self) -> ThinkingBorderLevel {
+        self.thinking_border_level
+    }
+
+    pub fn set_thinking_border_level_for_test(&mut self, level: ThinkingBorderLevel) {
+        self.thinking_border_level = level;
+        self.refresh_editor_border_theme();
+    }
+
+    /// Parse `/thinking-level` / `:thinking-level` [cycle]. Returns true if consumed.
+    fn try_thinking_level_command(&mut self, last_line: &str) -> bool {
+        let body = last_line
+            .strip_prefix('/')
+            .or_else(|| last_line.strip_prefix(':'))
+            .unwrap_or(last_line);
+        let mut parts = body.split_whitespace();
+        let Some(cmd) = parts.next() else {
+            return false;
+        };
+        if !cmd.eq_ignore_ascii_case("thinking-level") {
+            return false;
+        }
+        match parts.next() {
+            None | Some("cycle" | "toggle" | "next") => self.cycle_thinking_border_level(),
+            Some(other) => {
+                if let Some(level) = ThinkingBorderLevel::parse(other) {
+                    self.thinking_border_level = level;
+                    self.refresh_editor_border_theme();
+                    self.push_message(
+                        Role::System,
+                        format!("thinking-border → {}", level.as_str()),
+                    );
+                    self.set_status(format!("Ready · thinking:{}", level.as_str()));
+                } else {
+                    self.push_message(
+                        Role::System,
+                        format!(
+                            "unknown thinking-level `{other}` · use /thinking-level or off|minimal|low|medium|high|xhigh|max"
+                        ),
+                    );
+                    self.set_status("Ready");
+                }
+            }
+        }
+        true
     }
 
     /// Ctrl+G: external editor — real `$EDITOR` on TTY via TUI suspend; stub in harness.
@@ -2501,11 +2574,13 @@ impl FakeCodingAgentApp {
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),
             theme_mode: TerminalColorScheme::Dark,
+            thinking_border_level: ThinkingBorderLevel::Medium,
             last_skill_injections: Vec::new(),
         };
         if app.theme_auto {
             app.refresh_theme_from_env();
         }
+        app.refresh_editor_border_theme();
         app.seed_transcript();
         app
     }
@@ -2571,7 +2646,7 @@ impl FakeCodingAgentApp {
         self.push_message(
             Role::System,
             "keys: Enter submit/steer · Alt+Enter follow-up · /md Markdown stream · Ctrl+P plate · \
-             /theme [dark|light|toggle] · /help · /diff · ! bash · Ctrl+G $EDITOR · double Esc tree · \
+             /theme [dark|light|toggle] · Shift+Tab thinking-border · /help · /diff · ! bash · Ctrl+G $EDITOR · double Esc tree · \
              (Ctrl+T) thinking · (Alt+E) tools · (Ctrl+O) tools viewport · Alt+G glyphs · \
              Alt+K compact-status · Alt+Y retry-status · Esc · Ctrl+C",
         );
@@ -2954,6 +3029,7 @@ impl FakeCodingAgentApp {
             }
             "help-keys" => self.inject_help_keys(),
             "theme-toggle" => self.cycle_theme(),
+            "thinking-level" => self.cycle_thinking_border_level(),
             "tests" => {
                 self.pending_events
                     .push_back(ScriptEvent::Tool("cargo test -p xylitol-tui --lib".into()));
@@ -3094,6 +3170,11 @@ impl FakeCodingAgentApp {
         }
 
         if self.try_theme_command(last_line) {
+            self.input.set_text(String::new());
+            return;
+        }
+
+        if self.try_thinking_level_command(last_line) {
             self.input.set_text(String::new());
             return;
         }
@@ -4441,6 +4522,7 @@ impl Component for FakeCodingAgentApp {
                             | "ask-tabs"
                             | "md-list-wrap"
                             | "theme-toggle"
+                            | "thinking-level"
                     ) {
                         self.advance_script();
                     }
@@ -4499,6 +4581,11 @@ impl Component for FakeCodingAgentApp {
         }
         // App-level toggles (DESIGN expandable blocks / glyph config). Not bare
         // letters — those must stay available for typing in the editor.
+        // Shift+Tab — pi `app.thinking.cycle` (product will wire in c1150; demo first).
+        if matches_key_event(key, "shift+tab") {
+            self.cycle_thinking_border_level();
+            return;
+        }
         if matches_key_event(key, "ctrl+t") {
             self.toggle_thinking_blocks();
             return;

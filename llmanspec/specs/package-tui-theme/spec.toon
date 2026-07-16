@@ -1,8 +1,8 @@
 kind: llman.sdd.spec
 name: "package-tui-theme"
-purpose: "包内 SemanticPalette（Dark/Light）、paint 真彩、主题工厂与 demo 换肤。"
+purpose: 包内 SemanticPalette（Dark/Light）、paint 真彩、主题工厂与 demo 换肤。
 valid_scope[2]: src/,tests/
-requirements[7]{req_id,title,statement}:
+requirements[8]{req_id,title,statement}:
   ptt00,"capability-shell","本增量由变更 c570-add-package-tui-theme-palette 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ptt01,"two-palettes",包 MUST 提供恰好两套内建 SemanticPalette：Dark（对齐 DESIGN Mocha）与 Light（对齐 Catppuccin Latte）；MUST 能经 TerminalColorScheme 选取。
   ptt02,"paint-truecolor",paint 辅助 MUST 用真彩 SGR 上色，前景复位 39、背景复位 49（或文档约定的行内恢复）；MUST NOT 要求组件依赖 JSON 主题文件。
@@ -10,7 +10,8 @@ requirements[7]{req_id,title,statement}:
   ptt04,"demo-full-restyle",当 agent_demo theme_mode 为 Light 时 MUST 将 markdown、diff、tool 背景与 muted chrome 切换为 Light 色板；Dark 时 MUST 使用 Dark 色板。
   ptt05,"detect-opt-in","终端色探测 MUST 仅在显式 opt-in（如 XYLITOL_AGENT_DEMO_THEME_AUTO）时启用；未启用时 MUST 保持 Dark。"
   ptt06,"host-feed-replies",包 MUST 导出 OSC11 / CSI 色方案查询常量，并允许宿主将 reply 喂入 resolve_terminal_color_scheme；MUST NOT 因本变更强制产品 host 打开自动亮色。
-scenarios[9]{req_id,id,given,when,then}:
+  ptt07,"thinking-border-palette","包 MUST 提供 ThinkingBorderLevel（或等价）覆盖至少 off、minimal、low、medium、high、xhigh、max，并提供 cycle_next；Palette MUST 经 thinking_border_rgb（或等价）为每一 level 返回边框色，色阶 MUST 对齐 pi coding-agent theme dark/light.json 的 thinking*，且相邻 level MUST 可区分；MUST 提供 thinking_border_paint（或等价）返回真彩边框闭包；MUST NOT 依赖主 crate domain::ThinkingLevel；MUST NOT 用 muted/accent/warning 等通用 token 冒充 thinking 强弱。"
+scenarios[13]{req_id,id,given,when,then}:
   ptt00,"shell-present","","列出 capability package-tui-theme",delta 含 ptt01–ptt06
   ptt01,"dark-light","","调用 SemanticPalette::dark 与 light",两套 on_surface 等 token 不同
   ptt01,"for-scheme","",for_scheme(Light),得到与 light 等价色板
@@ -20,3 +21,7 @@ scenarios[9]{req_id,id,given,when,then}:
   ptt05,"default-dark",未设 THEME_AUTO,启动 demo,theme_mode 为 Dark
   ptt06,"feed-osc",auto 开启,feed OSC11 浅色背景 reply,theme_mode 变为 Light
   ptt06,"query-consts","",读取查询常量,含 OSC 11 ? 与 CSI 996
+  ptt07,"levels-cycle","",从 Off 连续 cycle_next 七次,回到 Off 且途经 Max
+  ptt07,"rgb-distinct",同一 Palette,比较 medium 与 high 的 thinking_border_rgb,两色不等
+  ptt07,"paint-truecolor",给定 Dark palette 与 High,调用 thinking_border_paint 包装文本,输出含 38;2 真彩 SGR
+  ptt07,"pi-dark-high","",Dark palette thinking_border_rgb(High),等于 pi #b294bb
