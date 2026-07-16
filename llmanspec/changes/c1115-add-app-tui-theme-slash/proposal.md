@@ -3,6 +3,7 @@ change_id: c1115-add-app-tui-theme-slash
 title: "产品 slash：/theme 切换主题"
 status: purpose-draft
 priority: 1115
+apply_band: P3-feature
 depends_on: ["c1095-update-runtime-theme-hot-reload"]
 author: agent
 track: R

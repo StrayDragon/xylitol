@@ -3,6 +3,7 @@ change_id: c1105-add-app-tui-trust-slash
 title: "产品 slash：/trust 保存项目信任决策"
 status: purpose-draft
 priority: 1105
+apply_band: P3-feature
 depends_on: []
 author: agent
 track: R

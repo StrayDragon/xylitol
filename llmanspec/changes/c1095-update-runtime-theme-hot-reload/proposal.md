@@ -3,6 +3,7 @@ change_id: c1095-update-runtime-theme-hot-reload
 title: "Themes 热重载：磁盘主题 → 运行时 Palette/产品 theme"
 status: purpose-draft
 priority: 1095
+apply_band: P2-system
 depends_on: []
 author: agent
 track: R

@@ -1,25 +1,25 @@
 kind: llman.sdd.spec
 name: "package-tui-terminal-protocol"
-purpose: "Terminal protocol negotiation for packages/xylitol-tui (Kitty / modifyOtherKeys / OSC)."
+purpose: "packages/xylitol-tui 终端协议协商（Kitty / modifyOtherKeys / OSC）。"
 valid_scope[2]: "packages/xylitol-tui/",tests/
 requirements[6]{req_id,title,statement}:
-  tp01,"kitty-protocol-probe","The CrosstermTerminal MUST probe for Kitty keyboard protocol support at start: it sends the Kitty progressive-enhancement query (CSI >7u to request flags then CSI ?u to pop the current state then CSI c as a device-attributes sentinel) and reads the response within a short bounded window. The probe is best-effort (route A: crossterm retains the input layer; xy does NOT read raw stdin bytes like pi does). On a non-zero flags response the terminal MUST call set_kitty_protocol_active(true) (the keys.rs global that switches key parsing to Kitty disambiguation mode) and disable modifyOtherKeys. On zero flags, a device-attributes response, or window timeout, the terminal MUST fall back to enable_modify_other_keys()."
-  tp02,"kitty-flags-parser","The terminal layer MUST provide a pure parser parse_kitty_flags(seq) that maps a Kitty protocol response (CSI ?Nu where N is the negotiated flags) to a non-negative integer, returning None for non-matching sequences. The parser MUST distinguish a zero-flags response (terminal understood the query but supports no Kitty flags) from no response (timeout). This parser is unit-testable without a real terminal (c405 layer 1)."
-  tp03,"modify-other-keys-fallback","The terminal MUST manage the xterm modifyOtherKeys resource as a fallback when Kitty keyboard protocol is not available: enable_modify_other_keys() sends CSI >4;2m (mode 2), disable_modify_other_keys() sends CSI >4;0m (reset). The terminal MUST NOT enable modifyOtherKeys when Kitty protocol is active (Kitty supersedes it). On stop(), the terminal MUST reset whichever protocol it enabled (send CSI <u to pop Kitty state if it was pushed, then CSI >4;0m to clear modifyOtherKeys)."
-  tp04,"osc-title-and-progress","The Terminal trait MUST expose set_title(title) emitting OSC 0;title BEL (or OSC 2 equivalently) and set_progress(active) emitting OSC 9;4;3 for active and OSC 9;4;0 for clear (the xterm/conpty progress convention pi uses). The VirtualTerminal test double MUST record these calls (or no-op) without emitting real escapes. Unlike pi, xy does NOT run a 1-second keepalive interval for progress (the TUI clears progress on stop); a single emission per state change suffices."
+  tp01,"kitty-protocol-probe","CrosstermTerminal MUST 在启动时探测 Kitty 键盘协议支持：发送 Kitty 渐进增强查询（CSI >7u 请求 flags，再 CSI ?u 弹出当前状态，再 CSI c 作为 device-attributes 哨兵），并在短有界窗口内读取响应。探测为尽力而为（路线 A：crossterm 保留输入层；xy 不像 pi 那样读 raw stdin 字节）。非零 flags 响应时，terminal MUST 调用 set_kitty_protocol_active(true)（keys.rs 全局，切换 key 解析到 Kitty 消歧模式）并禁用 modifyOtherKeys。零 flags、device-attributes 响应或窗口超时时，terminal MUST 回退到 enable_modify_other_keys()。"
+  tp02,"kitty-flags-parser","终端层 MUST 提供纯解析器 parse_kitty_flags(seq)，将 Kitty 协议响应（CSI ?Nu，N 为协商 flags）映射为非负整数，非匹配序列返回 None。解析器 MUST 区分零 flags 响应（终端理解查询但不支持 Kitty flags）与无响应（timeout）。该解析器可无真实终端单测（c405 layer 1）。"
+  tp03,"modify-other-keys-fallback","Kitty 键盘协议不可用时，terminal MUST 管理 xterm modifyOtherKeys 资源作为回退：enable_modify_other_keys() 发送 CSI >4;2m（mode 2），disable_modify_other_keys() 发送 CSI >4;0m（reset）。Kitty 协议激活时 terminal MUST NOT 启用 modifyOtherKeys（Kitty 优先）。stop() 时，terminal MUST 重置其启用的协议（若已 push 则发送 CSI <u 弹出 Kitty 状态，再 CSI >4;0m 清除 modifyOtherKeys）。"
+  tp04,"osc-title-and-progress","Terminal trait MUST 暴露 set_title(title)，发出 OSC 0;title BEL（或等价 OSC 2），以及 set_progress(active)，active 时发出 OSC 9;4;3，清除时 OSC 9;4;0（pi 使用的 xterm/conpty progress 约定）。VirtualTerminal 测试替身 MUST 记录这些调用（或 no-op）而不发出真实转义。与 pi 不同，xy 不为 progress 运行 1 秒 keepalive 间隔（TUI 在 stop 时清除 progress）；每次状态变化单次发射即可。"
   tp05,"color-scheme-pure-helpers","packages/xylitol-tui 的 terminal_colors MUST 提供纯函数：从 OSC11 背景 RGB 经相对亮度判定 Dark/Light、解析 COLORFGBG（bg>=7 为 Light）、以及按优先级合成多源探测结果；MUST NOT 要求真实 TTY 或事件循环即可单测。"
   tp06,"color-scheme-priority",多源合成 MUST 按显式注入 > OSC11 亮度 > CSI 997 报告 > COLORFGBG > 默认 Dark 的优先级选择 TerminalColorScheme。
 scenarios[14]{req_id,id,given,when,then}:
-  tp01,"kitty-query-sent-at-start",the CrosstermTerminal is started in a real terminal (PTY E2E via c405 layer 5a),the byte stream the terminal writes is captured,it contains the Kitty query sequence CSI >7u
-  tp01,"kitty-activated-on-flags-response",the probe receives a CSI ?7u response within the window,set_kitty_protocol_active is called,is_kitty_protocol_active() returns true and modifyOtherKeys is not enabled
-  tp01,"fallback-on-timeout",the probe window elapses with no Kitty response,the terminal falls back,enable_modify_other_keys sent (CSI >4;2m) and is_kitty_protocol_active() stays false
-  tp02,"parse-flags-nonzero",parse_kitty_flags receives the CSI ?7u sequence,the parser is called,it returns 7
-  tp02,"parse-flags-zero",parse_kitty_flags receives the CSI ?0u sequence,the parser is called,it returns 0 (distinct from None)
-  tp02,"parse-flags-nonmatch","parse_kitty_flags receives a device-attributes response or unrelated sequence",the parser is called,it returns None
-  tp03,"modify-enabled-only-when-no-kitty",the terminal started without Kitty support,modifyOtherKeys enable is sent,the write stream contains CSI >4;2m and does not contain a Kitty pop
-  tp03,"protocols-reset-on-stop",the terminal stops after having enabled either protocol,stop() is called,the write stream contains the Kitty pop (if pushed) and CSI >4;0m
-  tp04,"title-set-via-osc",set_title is called with a string,the OSC sequence is written,the captured bytes contain OSC 0; (the title) BEL
-  tp04,"progress-active-then-clear",set_progress(true) then set_progress(false) are called,both are written,the stream contains OSC 9;4;3 then OSC 9;4;0
+  tp01,"kitty-query-sent-at-start","CrosstermTerminal 在真实终端（c405 layer 5a PTY E2E）启动",捕获 terminal 写入的字节流,含 Kitty 查询序列 CSI >7u
+  tp01,"kitty-activated-on-flags-response","探测在窗口内收到 CSI ?7u 响应",set_kitty_protocol_active 被调用,is_kitty_protocol_active() 返回 true 且 modifyOtherKeys 未启用
+  tp01,"fallback-on-timeout","探测窗口超时且无 Kitty 响应",terminal 回退,发送 enable_modify_other_keys（CSI >4;2m）且 is_kitty_protocol_active() 保持 false
+  tp02,"parse-flags-nonzero",parse_kitty_flags 收到 CSI ?7u 序列,调用解析器,返回 7
+  tp02,"parse-flags-zero",parse_kitty_flags 收到 CSI ?0u 序列,调用解析器,返回 0（与 None 区分）
+  tp02,"parse-flags-nonmatch","parse_kitty_flags 收到 device-attributes 响应或无关序列",调用解析器,返回 None
+  tp03,"modify-enabled-only-when-no-kitty","terminal 在无 Kitty 支持下启动",发送 modifyOtherKeys enable,写入流含 CSI >4;2m 且不含 Kitty pop
+  tp03,"protocols-reset-on-stop","terminal 在启用任一协议后 stop",stop() 被调用,写入流含 Kitty pop（若已 push）与 CSI >4;0m
+  tp04,"title-set-via-osc",set_title 被调用并传入字符串,写入 OSC 序列,捕获字节含 OSC 0;（title）BEL
+  tp04,"progress-active-then-clear",set_progress(true) 再 set_progress(false) 被调用,两者均写入,流含 OSC 9;4;3 再 OSC 9;4;0
   tp05,"osc11-light-bg",背景 RGB 近白,scheme_from_background_rgb,返回 Light
   tp05,"colorfgbg-light",COLORFGBG=0;15,parse_colorfgbg,返回 Light
   tp05,"colorfgbg-dark",COLORFGBG=15;0,parse_colorfgbg,返回 Dark

@@ -1,15 +1,15 @@
 kind: llman.sdd.spec
 name: "cli-print"
-purpose: "Print mode (non-interactive) output rendering — streams TextDelta to stdout, reasoning to stderr, and tool summaries."
+purpose: "Print 模式（非交互）输出渲染 — TextDelta 流式 stdout、reasoning 流式 stderr 与工具摘要。"
 valid_scope[2]: src/app/cli/print.rs,src/app/cli/mod.rs
 requirements[4]{req_id,title,statement}:
-  r1,"streaming-output","System MUST stream agent text output to stdout in real-time in Print mode."
-  r2,"tool-display",System MUST display tool execution name and result summary in Print mode.
-  r3,"thinking-to-stderr","System MUST stream reasoning/thinking content to stderr in Print mode (not stdout) so the formal answer stays unpolluted, wrapping it in <think>...</think> and MUST NOT double-wrap when the model already emits its own <think> tags."
-  r4,"message-dedup","System MUST write only incremental TextDelta to stdout in Print mode and MUST NOT write the accumulated MessageUpdate payload to stdout to avoid prefix-repetition output."
+  r1,"streaming-output","Print 模式下 System MUST 实时将 agent 文本输出流式写入 stdout。"
+  r2,"tool-display","Print 模式下 System MUST 显示工具执行名称与结果摘要。"
+  r3,"thinking-to-stderr","Print 模式下 System MUST 将 reasoning/thinking 内容流式写入 stderr（非 stdout），使正式答案不被污染，包裹于 <think>...</think>；模型已自行发出 <think> 标签时 MUST NOT 双重包裹。"
+  r4,"message-dedup","Print 模式下 System MUST 仅将增量 TextDelta 写入 stdout，MUST NOT 将累积 MessageUpdate payload 写入 stdout，以避免前缀重复输出。"
 scenarios[5]{req_id,id,given,when,then}:
-  r1,happy,agent emits TextDelta events,Print mode is active,text appears on stdout progressively
-  r2,happy,agent calls read tool then bash tool,Print mode displays results,"each tool shows [Tool: name] summary line"
-  r3,"thinking-streamed",a model emits ThinkingDelta events,Print mode is active,thinking text appears on stderr wrapped in <think> tags and stdout stays clean
-  r3,"embedded-tags",a model emits its own <think>...</think> tags inside ThinkingDelta,Print mode renders it,no second <think> wrapper is added
-  r4,"text-delta-only",a model emits TextDelta and MessageUpdate for the same content,Print mode renders it,stdout contains each token exactly once
+  r1,happy,agent 发出 TextDelta 事件,Print 模式激活,文本渐进出现在 stdout
+  r2,happy,"agent 依次调用 read 与 bash 工具",Print 模式显示结果,"每个工具显示 [Tool: name] 摘要行"
+  r3,"thinking-streamed",model 发出 ThinkingDelta 事件,Print 模式激活,thinking 文本出现在 stderr 且包裹 <think> 标签，stdout 保持干净
+  r3,"embedded-tags",model 在 ThinkingDelta 内自行发出 <think>...</think> 标签,Print 模式渲染,不添加第二层 <think> 包裹
+  r4,"text-delta-only",model 对同一内容发出 TextDelta 与 MessageUpdate,Print 模式渲染,stdout 中每个 token 恰好出现一次

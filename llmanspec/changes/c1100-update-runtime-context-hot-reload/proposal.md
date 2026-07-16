@@ -3,6 +3,7 @@ change_id: c1100-update-runtime-context-hot-reload
 title: "Context 文件热重载：AGENTS.md / SYSTEM 等不改历史"
 status: purpose-draft
 priority: 1100
+apply_band: P2-system
 depends_on: []
 author: agent
 track: R

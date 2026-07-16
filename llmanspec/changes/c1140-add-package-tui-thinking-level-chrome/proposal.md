@@ -3,6 +3,7 @@ change_id: c1140-add-package-tui-thinking-level-chrome
 title: "xylitol-tui / agent_demo：thinking level 编辑器边框能力"
 status: purpose-draft
 priority: 1140
+apply_band: P3-feature
 depends_on: []
 author: agent
 track: R

@@ -3,6 +3,7 @@ change_id: c1170-refactor-app-tui-god-modules
 title: "重构：拆分 TUI host/root/effects/bridge God 文件"
 status: purpose-draft
 priority: 1170
+apply_band: P1-refactor
 depends_on: []
 author: agent
 track: QA

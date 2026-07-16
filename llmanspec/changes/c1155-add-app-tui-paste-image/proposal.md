@@ -3,6 +3,7 @@ change_id: c1155-add-app-tui-paste-image
 title: "产品 TUI：粘贴图片进对话（含临时路径 fallback）"
 status: purpose-draft
 priority: 1155
+apply_band: P3-feature
 depends_on: []
 author: agent
 track: R

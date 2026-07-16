@@ -3,6 +3,7 @@ change_id: c1085-update-agent-skills-runtime
 title: "Skills 运行时加载：发现→注入→可选视觉表现"
 status: purpose-draft
 priority: 1085
+apply_band: P2-system
 depends_on: []
 author: agent
 track: R

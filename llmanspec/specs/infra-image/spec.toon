@@ -1,14 +1,14 @@
 kind: llman.sdd.spec
 name: "infra-image"
-purpose: "Image processing — format detection, resize, orientation, and terminal rendering."
+purpose: "图片处理 — 格式检测、缩放、方向校正与终端渲染。"
 valid_scope[1]: src/infra/image/
 requirements[4]{req_id,title,statement}:
-  i1,"image-resize",System MUST provide resize_image() that scales images to fit within configurable max width/height/bytes while preserving aspect ratio.
-  i2,"exif-orientation",System MUST apply EXIF orientation metadata when loading images and correct the pixel data accordingly.
-  i3,"format-convert","System MUST support converting between common image formats (PNG JPEG WebP) and auto-select JPEG with configurable quality when size reduction is needed."
-  i4,"multi-modal-prep","System MUST produce output suitable for multimodal LLM input: base64-encoded JPEG/PNG under 4.5MB payload limit with original dimension metadata."
+  i1,"image-resize","System MUST 提供 resize_image()，将图片缩放到可配置 max width/height/bytes 内并保持宽高比。"
+  i2,"exif-orientation","System MUST 加载图片时应用 EXIF orientation 元数据并相应校正像素数据。"
+  i3,"format-convert","System MUST 支持常见图片格式（PNG、JPEG、WebP）互转，需要缩小时自动选择 JPEG 与可配置 quality。"
+  i4,"multi-modal-prep","System MUST 产出适合 multimodal LLM 输入的输出：base64 编码 JPEG/PNG，载荷低于 4.5MB，含原始尺寸元数据。"
 scenarios[4]{req_id,id,given,when,then}:
-  i1,"scale-down",a 4000x3000 PNG image is provided with max 2000px limit,resize_image is called,output is 2000x1500 and was_resized is true
-  i2,"exif-rotate",a JPEG with EXIF orientation 6 (rotate 90) is provided,resize_image is called,pixel data is rotated 90 degrees and was_resized is true
-  i3,"format-auto",a PNG larger than 4.5MB is provided with max 4.5MB limit,resize_image is called,output is JPEG with quality 80 and is under 4.5MB
-  i4,payload,image is processed,resize_image returns,result contains base64 data MIME type original dimensions and final dimensions
+  i1,"scale-down","提供 4000x3000 PNG，max 2000px",resize_image 被调用,输出 2000x1500 且 was_resized 为 true
+  i2,"exif-rotate","JPEG 含 EXIF orientation 6（rotate 90）",resize_image 被调用,像素数据旋转 90 度且 was_resized 为 true
+  i3,"format-auto","PNG 大于 4.5MB，max 4.5MB",resize_image 被调用,输出为 quality 80 的 JPEG 且低于 4.5MB
+  i4,payload,图片已处理,resize_image 返回,结果含 base64 data、MIME type、原始尺寸与最终尺寸

@@ -3,6 +3,7 @@ change_id: c1160-update-app-tui-paste-collapse
 title: "产品 TUI：长粘贴折叠 [paste #N +lines] 与恢复追踪"
 status: purpose-draft
 priority: 1160
+apply_band: P2-system
 depends_on: []
 author: agent
 track: R

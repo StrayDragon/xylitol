@@ -3,6 +3,7 @@ change_id: c1135-add-app-tui-startup-header
 title: "启动 header：已加载 skills / MCP（不做 prompt）"
 status: purpose-draft
 priority: 1135
+apply_band: P3-feature
 depends_on:
   - c1080-update-infra-mcp-client-product
   - c1085-update-agent-skills-runtime

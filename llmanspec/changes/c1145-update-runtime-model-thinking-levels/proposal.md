@@ -3,6 +3,7 @@ change_id: c1145-update-runtime-model-thinking-levels
 title: "模型配置：thinking levels（high / xhigh / max 等）"
 status: purpose-draft
 priority: 1145
+apply_band: P3-feature
 depends_on: []
 author: agent
 track: R

@@ -1,20 +1,20 @@
 kind: llman.sdd.spec
 name: "server-ws"
-purpose: "Server WebSocket protocol — frame types, event journal, resync, and monotonic sequencing."
+purpose: "Server WebSocket 协议 — 帧类型、事件 journal、resync 与单调序号。"
 valid_scope[1]: src/app/server/ws.rs
 requirements[7]{req_id,title,statement}:
-  w1,"ws-frame-protocol","Server → Client frames MUST be ServerFrame enum with ServerHello {version}, Ack {seq, request_id}, Event {session_id, seq, event}, and ResyncRequired {session_id} variants."
-  w2,"ws-client-frames","Client → Server frames MUST be ClientFrame enum with Subscribe {session_id, last_seq}, ApproveTool {call_id, approved}, AnswerQuestion {call_id, answer}, and Ping variants."
-  w3,"ws-handshake","On WS connect the server MUST wait for Subscribe, then respond with ServerHello + Ack; the server MUST mount a WebSocket upgrade handler under /api/v1/session/{id}/ws that carries this handshake."
-  w4,"monotonic-seq",Each session MUST maintain a monotonic u64 sequence number that increments with every appended event; seq MUST be monotonically increasing per session.
-  w5,"journal-ring","The server MUST maintain a ring-buffer journal of the most recent N events per session (default 10000); when the journal wraps past a client's last_seq, the server MUST emit ResyncRequired to that client."
-  w6,"resync-flow","On receiving ResyncRequired, the client MUST resubscribe with an updated last_seq (e.g. 0 for full replay) to resume the event stream."
-  w7,"ws-event-push","After the handshake, the server MUST push Event frames for every new event emitted by the agent, tagged with the session's monotonic seq; Event frames MUST be sent as JSON over the WS connection."
+  w1,WS 帧协议,"Server→Client 帧 MUST 为 ServerFrame 枚举，变体含 ServerHello {version}、Ack {seq, request_id}、Event {session_id, seq, event}、ResyncRequired {session_id}。"
+  w2,WS 客户端帧,"Client→Server 帧 MUST 为 ClientFrame 枚举，变体含 Subscribe {session_id, last_seq}、ApproveTool {call_id, approved}、AnswerQuestion {call_id, answer}、Ping。"
+  w3,WS 握手,"WS 连接时 server MUST 等待 Subscribe，再以 ServerHello + Ack 响应；server MUST 在 /api/v1/session/{id}/ws 挂载承载此握手的 WebSocket 升级处理器。"
+  w4,单调 seq,"每个会话 MUST 维护单调递增的 u64 序号，每 append 事件递增；seq MUST 每会话单调递增。"
+  w5,journal 环形缓冲,"server MUST 维护每会话最近 N 个事件的环形 journal（默认 10000）；journal 环绕超过客户端 last_seq 时，server MUST 向该客户端发出 ResyncRequired。"
+  w6,resync 流程,"收到 ResyncRequired 后，客户端 MUST 以更新的 last_seq（如 0 全量重放）重新订阅以恢复事件流。"
+  w7,WS 事件推送,"握手后，server MUST 为 agent 发出的每个新事件推送 Event 帧，附带会话单调 seq；Event 帧 MUST 以 JSON 经 WS 连接发送。"
 scenarios[7]{req_id,id,given,when,then}:
-  w1,"frame-serialize","a ServerFrame::ServerHello is constructed",it is serialized to JSON,the JSON contains version field
-  w2,"subscribe-frame",a client wants to subscribe to session s0 with last_seq 5,"a ClientFrame::Subscribe is created",it has session_id=s0 and last_seq=5
-  w3,"ws-upgrade-mounted",a client connects to /api/v1/session/x/ws,the server accepts the upgrade,the client receives ServerHello then can send Subscribe
-  w4,"seq-monotonic",3 events are appended to a session,the events are read back,"their seq values are 1,2,3 (strictly increasing)"
-  w5,"resync-on-wrap",10001 events are appended to a session (journal capacity=10000),a client with last_seq=0 subscribes,the server sends ResyncRequired because events 0..1 are gone
-  w6,"resync-recover",a client receives ResyncRequired,the client resubscribes with last_seq=0,the server replays all available events from the journal
-  w7,"ws-events-pushed",a client subscribes and a prompt runs,the agent emits TextDelta events,the client receives Event frames on the WS connection
+  w1,"frame-serialize",构造 ServerFrame::ServerHello,序列化为 JSON,JSON 含 version 字段
+  w2,"subscribe-frame",客户端欲以 last_seq 5 订阅会话 s0,"创建 ClientFrame::Subscribe",含 session_id=s0 与 last_seq=5
+  w3,"ws-upgrade-mounted",客户端连接 /api/v1/session/x/ws,server 接受升级,客户端收到 ServerHello 后可发送 Subscribe
+  w4,"seq-monotonic",向会话 append 3 个事件,读回事件,"seq 值为 1,2,3（严格递增）"
+  w5,"resync-on-wrap",向会话 append 10001 个事件（journal 容量=10000）,last_seq=0 的客户端订阅,server 发送 ResyncRequired 因事件 0..1 已丢失
+  w6,"resync-recover",客户端收到 ResyncRequired,客户端以 last_seq=0 重新订阅,server 从 journal 重放全部可用事件
+  w7,"ws-events-pushed",客户端订阅且 prompt 运行,agent 发出 TextDelta 事件,客户端在 WS 连接上收到 Event 帧
