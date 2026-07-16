@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ath20,"reload-orchestrates-foundations","产品 host/effects 在处理 /reload 时 MUST 经 Driver/composition 缝调用已归档的 reload_skills、MCP reload、keybindings reload、theme/context reload（若已接线），MUST 在 skills 重载后刷新产品 $skill 补全 catalog；MUST NOT reach agent/infra 内部绕过 seam；任一步失败 MUST 记录诊断并继续其余步骤（部分成功）。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ath20,"skills-catalog-refresh","idle 且磁盘 skills 变更后","/reload","dollar skill catalog 或 loaded_skill_names 反映新目录"
+  ath20,"partial-success","某一 reload 步骤失败","/reload","系统报告含失败项且其它步骤仍执行"

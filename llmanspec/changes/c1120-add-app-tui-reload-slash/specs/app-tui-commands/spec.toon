@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,atm12,"slash-reload","产品 TUI idle 时 MUST 解析无参 /reload：依次（或文档约定安全序）触发 keybindings、skills、MCP、themes、context 热重载 API，并以系统块汇总成功/失败诊断；busy 时 MUST 拒绝且 MUST NOT 调用重载；MUST NOT 改写已持久化 session 历史或清空已渲染 transcript 历史块；SlashCommandSource MUST 列出 reload；带参 MUST usage 错误或不识别为成功路径。",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  atm12,"idle-reload","产品 idle 且 foundation 可测","提交 /reload","系统块含 reload 或各资源成功/失败摘要且历史条目数不变"
+  atm12,"busy-refuse","产品 busy","提交 /reload","拒绝提示且未改历史"
+  atm12,"catalog-lists","",打开 slash 补全,"列表含 reload"
