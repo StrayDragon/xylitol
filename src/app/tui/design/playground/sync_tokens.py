@@ -46,6 +46,7 @@ TOKEN_TO_FIELD = {
     "tool-success-bg": "tool_success_bg",
     "tool-error-bg": "tool_error_bg",
     "user-message-bg": "user_message_bg",
+    "skill-ref": "skill_ref",
 }
 
 

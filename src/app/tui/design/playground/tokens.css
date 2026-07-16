@@ -24,6 +24,7 @@
   --tool-success-bg: #24352a;
   --tool-error-bg: #352428;
   --user-message-bg: #313244;
+  --skill-ref: #cba6f7;
 
   /* page frame: aliases of DESIGN tokens only */
   --page-bg: var(--surface);
@@ -54,6 +55,7 @@
   --tool-success-bg: #dce8d8;
   --tool-error-bg: #e8dce0;
   --user-message-bg: #ccd0da;
+  --skill-ref: #8839ef;
 
   /* page frame: aliases of DESIGN tokens only */
   --page-bg: var(--surface);

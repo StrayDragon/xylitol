@@ -961,21 +961,58 @@ fn agent_demo_plate_diff_shows_c540_cjk_and_empty_half() {
 
 #[test]
 fn agent_demo_dollar_stub_source_opens_and_plate_mentions_c545() {
-    let mut h = TuiTestHarness::new(100, 40);
-    h.mount(Box::new(FakeCodingAgentApp::new_with_prompt(
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use agent_demo_example::SharedFakeCodingAgentApp;
+
+    let app = Rc::new(RefCell::new(FakeCodingAgentApp::new_with_prompt(
         Arc::new(AtomicBool::new(false)),
         "",
-    )))
-    .focus(Some(0));
+    )));
+    let mut h = TuiTestHarness::new(100, 40);
+    h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
+        .focus(Some(0));
     h.render_result().expect("initial render");
 
     h.keys("\x10completion\r");
     h.render_result().expect("after completion-dollar plate");
     let tip = h.tui.terminal.scroll_buffer().join("\n");
     assert!(
-        tip.contains("c545") || tip.contains("inline") || tip.contains("$skill"),
-        "plate completion-dollar should mention c545 inline $skill; got:\n{tip}"
+        tip.contains("A10") || tip.contains("skill-ref") || tip.contains("$demo"),
+        "plate completion-dollar should preview A10 skill-ref; got:\n{tip}"
     );
+    assert!(
+        tip.contains("$demo") && tip.contains("$narrow-clamp-skill"),
+        "multi-$ user row should appear in scrollback; got:\n{tip}"
+    );
+    // skill-ref mauve (dark DESIGN): #cba6f7 — cell FG, not plain scroll text
+    assert!(
+        scrollback_has_fg_rgb(&h, (0xcb, 0xa6, 0xf7)),
+        "user row $tokens should paint skill_ref fg in cell grid"
+    );
+    assert!(
+        !tip.contains("[skill]"),
+        "A10: no pi-style [skill] tint blocks; got:\n{tip}"
+    );
+    {
+        let app_ref = app.borrow();
+        let injections = app_ref.last_skill_injections_for_test();
+        assert_eq!(
+            injections.len(),
+            2,
+            "plate should resolve two stub SKILL.md injections; got {injections:?}"
+        );
+        assert!(
+            injections.iter().any(|(n, b)| n == "demo" && !b.is_empty()),
+            "demo stub body required; got {injections:?}"
+        );
+        let status = app_ref.status_text_for_test();
+        assert!(
+            !status.to_ascii_lowercase().contains("skill") && !status.starts_with("injected"),
+            "A10: status must not advertise skills; got {status:?}"
+        );
+    }
 
     // Mid-prompt `$` (like `@`), not line-leading only.
     h.keys("use $");
