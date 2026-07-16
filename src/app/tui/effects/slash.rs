@@ -99,9 +99,13 @@ pub(super) async fn handle_slash<T: Terminal>(
                         m.display_name
                     };
                     session.set_footer_model(label.clone());
+                    session.apply_thinking_level_ui(driver.thinking_level());
                     session.push_system_note(format!("model → {label}"));
                 }
-                Ok(_) => session.push_system_note("model set"),
+                Ok(_) => {
+                    session.apply_thinking_level_ui(driver.thinking_level());
+                    session.push_system_note("model set");
+                }
                 Err(e) => session.push_system_note(format!("/model failed: {e}")),
             }
             let _ = session.render_now();

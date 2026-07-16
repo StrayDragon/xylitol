@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-host"
 purpose: 产品 TUI 宿主：host 驱动引擎、终端生命周期、即时日志与尺寸降级。
 valid_scope[1]: src/app/tui/
-requirements[19]{req_id,title,statement}:
+requirements[20]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ath1,"host-driven-engine","产品 TUI MUST 以 host 驱动 packages/xylitol-tui：使用 dispatch_event、request_render、try_render、idle_tick；产品路径 MUST NOT 调用 TUI::start()。"
   ath2,"terminal-restore",产品 TUI MUST 在正常退出、错误退出与 panic 路径恢复终端（关闭 raw mode 等），不得把用户终端留在损坏状态；MUST 安装 panic hook（仅靠 Drop 不足）。
@@ -22,7 +22,8 @@ requirements[19]{req_id,title,statement}:
   ath16,"session-resume-manage-seam","产品 TUI Resume 面板内 rename/delete MUST 经 Driver set_session_name / delete_session（或 app::core 公开等价 seam）；删除当前活跃 session MUST 拒绝并提示且 MUST NOT 调用删除；删除 MUST 经显式确认（确认前 MUST NOT 删盘）；scope=Current MUST 仅展示 cwd 匹配会话，scope=All MUST 展示 Driver 列举的全部可 resume 会话；TUI MUST NOT 直删会话文件。"
   ath20,"reload-orchestrates-foundations",产品 host/effects 在处理 /reload 时 MUST 经 Driver/composition 缝调用已归档的 reload_skills、MCP reload、keybindings reload、theme/context reload（若已接线），MUST 在 skills 重载后刷新产品 $skill 补全 catalog；MUST NOT reach agent/infra 内部绕过 seam；任一步失败 MUST 记录诊断并继续其余步骤（部分成功）。
   ath21,"copy-last-via-driver-seam","产品 /history-copy-last MUST 经 Driver::copy_text_to_clipboard（或等价）调用剪贴板，MUST NOT 从 app/tui 直接 reach infra::clipboard；选文 MUST 取已提交 UiEntry::Assistant 自尾向前第一条非空正文，MUST NOT 复制 thinking/tool/system 块或未提交 streaming 半句作为成功路径。"
-scenarios[30]{req_id,id,given,when,then}:
+  ath22,"thinking-level-silent-cycle","产品 host 切换 thinking level 时 MUST 经 Driver set/cycle_thinking_level（或 Command::SetThinkingLevel / 等价 seam）更新运行时；成功后 MUST 仅更新边框与 footer；MUST NOT 向 live scrollback / transcript 追加 thinking-border → … 类系统块；MUST NOT 因 cycle 刷屏；模型切换后 MUST 从 Driver::thinking_level 重同步 UI；组件 MUST NOT 直接 reach ModelManager。"
+scenarios[32]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-host",spec.toon 存在且 purpose 为中文
   ath1,"no-start","",审计产品 TUI 源码,"无 TUI::start；存在 host 驱动调用"
   ath2,"panic-restore","",TUI 运行中发生 panic,panic hook 恢复终端后用户 shell 可用
@@ -53,3 +54,5 @@ scenarios[30]{req_id,id,given,when,then}:
   ath20,"partial-success",某一 reload 步骤失败,/reload,系统报告含失败项且其它步骤仍执行
   ath21,"seam-only",ScriptedDriver 可观测,"/history-copy-last 成功",copy_text 调用记录含目标正文
   ath21,"skip-non-assistant",末条为 system 其前为 assistant,"/history-copy-last",复制的是 assistant 而非 system
+  ath22,"silent-no-transcript",产品 host 已挂载,连续 cycle thinking level,"scrollback 无 thinking-border 系统行且 footer 与边框与 Driver 一致"
+  ath22,"model-switch-resync",已切换到支持集不同的模型且 level 被 clamp,下一帧 render,"footer 与边框反映 Driver::thinking_level 钳制结果"

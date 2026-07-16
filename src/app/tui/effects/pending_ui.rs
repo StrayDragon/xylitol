@@ -16,6 +16,19 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn Driver,
 ) {
+    if session.take_pending_thinking_cycle() {
+        match driver.cycle_thinking_level() {
+            Ok(level) => session.apply_thinking_level_ui(level),
+            Err(e) => {
+                log::warn!(
+                    target: "xylitol::tui",
+                    "cycle_thinking_level failed: {e}"
+                );
+            }
+        }
+        let _ = session.render_now();
+    }
+
     if session.take_pending_session_tree_open() {
         log::info!(target: "xylitol::tui", "Driver::session_tree(MessageHistory)");
         match driver.session_tree(SessionTreeKind::MessageHistory).await {
@@ -130,10 +143,12 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
                     m.display_name
                 };
                 session.set_footer_model(label.clone());
+                session.apply_thinking_level_ui(driver.thinking_level());
                 session.push_system_note(format!("model → {label}"));
                 session.close_models_slot();
             }
             Ok(_) => {
+                session.apply_thinking_level_ui(driver.thinking_level());
                 session.push_system_note("model set");
                 session.close_models_slot();
             }

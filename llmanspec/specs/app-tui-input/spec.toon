@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-input"
 purpose: "Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。"
 valid_scope[1]: src/app/tui/
-requirements[37]{req_id,title,statement}:
+requirements[38]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ati1,"editor-operation-zone","输入区 MUST 使用 xylitol-tui Editor，并保留上下边框作为操作区边界；选择器打开时 MUST 替换 editor 槽而非画到内容顶部。"
   ati2,"cancel-and-ctrl-c","流式或 agent 忙碌时 Esc MUST 调用 Driver::abort；Ctrl+C 在编辑器非空时 MUST 清空输入，在编辑器为空时 MUST 退出 TUI。"
@@ -18,7 +18,7 @@ requirements[37]{req_id,title,statement}:
   ati12,"product-queue-uplink","当 steer/follow-up 从队列注入 agent history 时，runtime MUST 发射 MessageStart/MessageEnd（role=user，带 message）；产品 bridge MUST 将其提交为 scrollback UiEntry::User（与 idle 提交同形）；queue strip 随 QueueUpdate 消退后用户文本 MUST 仍留在 transcript；MUST NOT 仅在 strip 闪现后丢失。"
   ati13,"product-editor-send-history","产品 Host 在 idle 提交、busy steer、busy follow-up 发送用户文本时 MUST 调用 Editor::add_to_history（跳过空串与连续重复）；同一 TUI session 内 MUST 能在 editor 空或已在浏览态时用 ↑/↓ 召回这些文本（委托包 ed05）；MUST NOT 要求跨进程持久化。"
   ati14,"product-abort-resumable","产品 TUI 在用户 Esc abort 当前流之后 MUST 回到可提交 idle（follow-up restore 语义不变）；MUST NOT 让后续用户输入持续产生粘性 aborted Error 而无法继续对话。"
-  ati15,"product-bash-prefix-border",产品 TUI 中当编辑器文本 trim 后以 ! 或 !! 开头时，Editor 操作区边框 MUST 切换为 bash 强调色（对齐 DESIGN success 前景）；去掉该前缀后 MUST 恢复默认 muted 边框。
+  ati15,"product-bash-prefix-border",产品 TUI 中当编辑器文本 trim 后以 ! 或 !! 开头时，Editor 操作区边框 MUST 切换为 bash 强调色（对齐 DESIGN success 前景）；去掉该前缀后 MUST 恢复当前 thinking level 边框（atc17），MUST NOT 在已接线 thinking 边框后仍用 muted 覆盖。
   ati16,"product-idle-bang-execute","产品 idle 且会话树关闭时，Enter 提交以 ! 或 !! 开头的非空命令 MUST 调用 Driver::execute_bash（经 Command::Bash / dispatch），MUST NOT 调用 Driver::run；!! 前缀 MUST 设置 exclude_from_context=true，单 ! 为 false；命令体为空时 MUST 提示且 MUST NOT 执行。"
   ati17,"product-external-editor","产品 Host MUST 将 Ctrl+G 绑定为外部编辑器入口：交互 TTY 且已配置非空 $VISUAL 或 $EDITOR 时 MUST 经 xylitol_tui::TUI::with_terminal_suspended 挂起终端、写入 tempfile、spawn 该编辑器、成功退出后把文件内容写回 Editor；harness / 非 TTY / 测试路径 MUST NOT spawn 真实编辑器（保持 stub：系统提示与可选 stub 标记）；未配置 $VISUAL 与 $EDITOR、tempfile/spawn/读回失败、或编辑器非零退出时 MUST NOT panic，MUST 向 scrollback 追加 UiEntry::Error 短行并保留原 Editor 文本；MUST NOT 静默默认 nano/notepad；MUST NOT 在 packages/xylitol-tui 内实现 $EDITOR/tempfile/spawn（包仅提供 with_terminal_suspended）。"
   ati18,"editor-slot-machine-live-tree","产品 TUI MUST 以显式 EditorSlot（至少含 Editor 与 Tree；MAY 含 Plate/Settings/Choice）互斥替换 editor 槽；打开任一非 Editor 槽时 MUST 替换贴底 editor 区而非画到 scrollback 顶部；Esc MUST 优先关闭当前槽并还原 Editor；忙碌时 Esc MUST 仍 abort（ati10）且 MUST NOT 打开 Tree；Tree 槽 MUST 由 Driver MessageHistory 活树驱动（见 app-tui-session-tree），MUST NOT 再冻结为仅假树 stub。"
@@ -40,7 +40,8 @@ requirements[37]{req_id,title,statement}:
   ati34,"paste-collapse-submit","产品 TUI 在 idle 提交、busy steer、busy follow-up、remember_editor_send（历史）以及 Ctrl+G 外部编辑器读出时，MUST 使用 Editor::get_expanded_text（或 UiRoot 等价 API）作为发送/写入文本；显示层 MUST 仍可经 get_text 展示 [paste #N …] 占位；MUST NOT 把未展开的 paste marker 作为 prompt/steer/follow-up 交给 Driver。"
   ati35,"keybindings-catalog-hot-reload",产品 TUI MUST 将已接线产品动作注册为 app.*（或文档约定的）keybinding id 并经 KeybindingsManager 匹配，MUST NOT 在产品输入路径新增字面和弦硬编码；MUST 在启动时从用户 agent 目录 keybindings.json（若存在）加载覆盖；MUST 提供 reload_keybindings（或等价）在成功时替换当前会话绑定、失败时保留旧绑定并报告诊断；重载 MUST NOT 清空 transcript 或 session 历史。
   ati40,"dollar-skill 补全与高亮","产品 Editor MUST 经 CompletionSource 在键入 $ 时弹出已加载 skill 名补全；Tab/Enter 选定 MUST 写入 $name；用户消息在 scrollback 中 MUST 用 skill-ref 色高亮 $name token；MUST NOT 另开 skill 色块或系统已加载行。"
-scenarios[72]{req_id,id,given,when,then}:
+  ati36,"thinking-level-cycle-key","产品 TUI MUST 注册 app.thinking.cycle（默认 Shift+Tab）经 KeybindingsManager 匹配；触发时 MUST 经 Driver/protocol 在当前模型支持的 thinking_levels 上循环（MUST NOT 用包 ThinkingBorderLevel::cycle_next 作为产品 cycle 真源）；idle 与 busy（含 agent/bash busy）均 MUST 允许 cycle；MUST NOT 新增产品 /thinking-level slash；MUST NOT 与 app.thinking.toggle（Ctrl+T 折叠）混淆。"
+scenarios[73]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-input",spec.toon 存在且 purpose 为中文
   ati1,"selector-slot","",打开模型选择器,editor 槽被选择器替换且贴底可见
   ati2,"esc-aborts","",流式中按 Esc,"Driver::abort 被调用"
@@ -65,8 +66,7 @@ scenarios[72]{req_id,id,given,when,then}:
   ati13,"submit-then-up",idle 提交过非空 prompt 且 editor 已空,按 ↑,editor 回填该 prompt
   ati13,"steer-in-history",busy 发送过 steer 文本,idle 后 editor 空再按 ↑,可召回该 steer 文本
   ati14,"esc-then-submit",TUI busy 中 Esc abort 后,再 idle Enter 提交,新一轮开始且无连续 aborted Error 墙
-  ati15,"bang-enables",editor 文本为 !ls,sync 边框,边框为 success 强调色
-  ati15,"clear-restores",曾处于 bash 边框,文本改为 hello 后 sync,边框恢复 muted
+  ati15,"clear-restores-thinking",曾处于 bash 边框且 thinking 为 low,文本改为 hello 后 sync,边框恢复为 low thinking 色而非仅 muted
   ati16,"bang-executes",idle 且 editor 为 !echo hi,Enter,execute_bash 被调用且 run 未被调用
   ati16,"bangbang-exclude",idle 且 editor 为 !!echo x,Enter,exclude_from_context 为 true
   ati16,"empty-bang",idle 且 editor 仅为 !,Enter,出现提示且未执行 bash
@@ -113,3 +113,5 @@ scenarios[72]{req_id,id,given,when,then}:
   ati35,"reload-bad-keeps-old",磁盘 JSON 损坏,调用 reload,绑定保持重载前状态且有诊断或错误提示
   ati40,completion,目录含 demo,键入 $de,补全列表含 demo
   ati40,highlight,scrollback 有用户行含 $demo,渲染用户消息,"$demo 使用 skill-ref 前景（可测 ANSI/cell）"
+  ati36,"shift-tab-cycles",产品 idle 且模型支持 off 与 high,按 Shift+Tab（或 app.thinking.cycle）,thinking level 在支持列表内前进一档且 footer/边框更新
+  ati36,"busy-allowed",产品 agent busy,按 Shift+Tab,thinking level 仍 cycle 成功且无拒绝系统块

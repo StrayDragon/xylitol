@@ -30,6 +30,7 @@ pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool)
 pub fn clear_steer_queue(&self)
 pub fn current_model(&self) -> Option<&XyModelMeta>
 pub fn cwd(&self) -> &str
+pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String>
 pub fn drain(&mut self) -> Vec<AgentMessage>
 pub fn enqueue(&mut self, message: AgentMessage)
 pub fn estimate_tokens(messages: &[crate::domain::message::AgentMessage]) -> u64

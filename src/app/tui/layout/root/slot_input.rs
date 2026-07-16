@@ -193,6 +193,10 @@ impl UiRoot {
         }
 
         if let InputEvent::Key(ref key) = event {
+            if matches_binding(key, "app.thinking.cycle") {
+                self.pending_thinking_cycle = true;
+                return;
+            }
             if matches_binding(key, "app.thinking.toggle") {
                 self.fold.thinking_expanded = !self.fold.thinking_expanded;
                 return;

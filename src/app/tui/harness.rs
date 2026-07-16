@@ -78,6 +78,10 @@ pub struct ScriptedDriver {
     /// When set, next `copy_text_to_clipboard` returns this OSC 52 for host emit.
     copy_pending_osc52: Mutex<Option<String>>,
     dollar_skill_catalog: Mutex<Vec<(String, String)>>,
+    /// Current thinking level (c1150); mutable via set/cycle.
+    thinking_level: ThinkingLevel,
+    /// Support list for cycle (default STANDARD; tests may narrow e.g. `[Off, High]`).
+    thinking_levels: Vec<ThinkingLevel>,
 }
 
 impl ScriptedDriver {
@@ -167,6 +171,17 @@ impl ScriptedDriver {
             copy_text_calls: Mutex::new(Vec::new()),
             copy_pending_osc52: Mutex::new(None),
             dollar_skill_catalog: Mutex::new(Vec::new()),
+            thinking_level: ThinkingLevel::Off,
+            thinking_levels: ThinkingLevel::STANDARD.to_vec(),
+        }
+    }
+
+    /// Replace the thinking support list used by [`Driver::cycle_thinking_level`].
+    pub fn set_thinking_levels(&mut self, levels: Vec<ThinkingLevel>) {
+        self.thinking_levels = levels;
+        if !self.thinking_levels.is_empty() && !self.thinking_levels.contains(&self.thinking_level)
+        {
+            self.thinking_level = self.thinking_levels[0];
         }
     }
 
@@ -396,12 +411,33 @@ impl Driver for ScriptedDriver {
         Ok(self.model.clone())
     }
 
-    fn set_thinking_level(&mut self, _level: ThinkingLevel) -> Result<(), String> {
+    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
+        if !self.thinking_levels.is_empty() && !self.thinking_levels.contains(&level) {
+            return Err(format!(
+                "thinking level `{}` is not supported by the current model",
+                level.as_str()
+            ));
+        }
+        self.thinking_level = level;
         Ok(())
     }
 
     fn thinking_level(&self) -> ThinkingLevel {
-        ThinkingLevel::Off
+        self.thinking_level
+    }
+
+    fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String> {
+        if self.thinking_levels.is_empty() {
+            return Err("current model has no thinking levels".into());
+        }
+        let idx = self
+            .thinking_levels
+            .iter()
+            .position(|l| *l == self.thinking_level)
+            .unwrap_or(0);
+        let next = self.thinking_levels[(idx + 1) % self.thinking_levels.len()];
+        self.thinking_level = next;
+        Ok(next)
     }
 
     fn session_id(&self) -> Option<String> {
@@ -958,6 +994,26 @@ mod slice_tests {
         use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
         InputEvent::Key(KeyEvent {
             code: KeyCode::Tab,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn shift_tab_event() -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::Tab,
+            modifiers: KeyModifiers::SHIFT,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })
+    }
+
+    fn back_tab_event() -> InputEvent {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        InputEvent::Key(KeyEvent {
+            code: KeyCode::BackTab,
             modifiers: KeyModifiers::NONE,
             kind: KeyEventKind::Press,
             state: KeyEventState::NONE,
@@ -1553,10 +1609,27 @@ mod slice_tests {
     fn b1_b2_bang_border_toggles() {
         let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
+        // Seed a non-off thinking level so restore is distinguishable from muted.
+        root.borrow_mut().set_thinking_level_ui(ThinkingLevel::Low);
         root.borrow_mut().set_editor_text("!ls");
         assert!(root.borrow().bash_mode(), "B1: !ls enables bash border");
+        let bash = root.borrow_mut().editor_render_for_test(40).join("\n");
+        let success = xylitol_tui::Palette::dark().success;
+        assert!(
+            bash.contains(&format!("38;2;{};{};{}", success.r, success.g, success.b)),
+            "bash should use success border; got:\n{bash}"
+        );
         root.borrow_mut().set_editor_text("hello");
-        assert!(!root.borrow().bash_mode(), "B2: clear restores muted");
+        assert!(
+            !root.borrow().bash_mode(),
+            "B2: clear restores thinking border"
+        );
+        let restored = root.borrow_mut().editor_render_for_test(40).join("\n");
+        // pi dark thinkingLow #5f87af
+        assert!(
+            restored.contains("38;2;95;135;175"),
+            "clear must restore low thinking border, not only muted; got:\n{restored}"
+        );
     }
 
     #[tokio::test]
@@ -3737,5 +3810,102 @@ mod slice_tests {
                 exclude_from_context: false
             }
         );
+    }
+
+    // ── c1150 thinking level cycle ─────────────────────────────────
+
+    #[test]
+    fn c1150_scripted_driver_cycle_wraps_support_list() {
+        let mut driver = ScriptedDriver::new();
+        driver.set_thinking_levels(vec![ThinkingLevel::Off, ThinkingLevel::High]);
+        assert_eq!(driver.thinking_level(), ThinkingLevel::Off);
+        assert_eq!(driver.cycle_thinking_level().unwrap(), ThinkingLevel::High);
+        assert_eq!(
+            driver.cycle_thinking_level().unwrap(),
+            ThinkingLevel::Off,
+            "must wrap"
+        );
+        assert!(driver.set_thinking_level(ThinkingLevel::Xhigh).is_err());
+        assert_eq!(driver.thinking_level(), ThinkingLevel::Off);
+    }
+
+    #[tokio::test]
+    async fn c1150_shift_tab_cycles_footer_and_border_silently() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_thinking_levels(vec![ThinkingLevel::Off, ThinkingLevel::High]);
+        session.apply_thinking_level_ui(driver.thinking_level());
+        let mut stream = None;
+
+        let entries_before = root.borrow().ui_model_entries_len_for_test();
+        session.step(HostEvent::Input(shift_tab_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert_eq!(driver.thinking_level(), ThinkingLevel::High);
+        assert_eq!(root.borrow().thinking_level_for_test(), ThinkingLevel::High);
+
+        let frame = root.borrow_mut().render(80);
+        let footer = frame.last().expect("footer");
+        assert!(
+            footer.contains("• high"),
+            "footer must show thinking label: {footer}"
+        );
+        let editor = root.borrow_mut().editor_render_for_test(40).join("\n");
+        // pi dark thinkingHigh #b294bb
+        assert!(
+            editor.contains("38;2;178;148;187"),
+            "high border SGR missing; got:\n{editor}"
+        );
+        assert_eq!(
+            root.borrow().ui_model_entries_len_for_test(),
+            entries_before,
+            "MUST NOT push thinking-border system note"
+        );
+        let scroll = frame.join("\n");
+        assert!(
+            !scroll.contains("thinking-border"),
+            "scrollback must stay silent: {scroll}"
+        );
+
+        // BackTab (legacy VT) also cycles.
+        session.step(HostEvent::Input(back_tab_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert_eq!(driver.thinking_level(), ThinkingLevel::Off);
+        let footer2 = root.borrow_mut().render(80);
+        let f2 = footer2.last().expect("footer");
+        assert!(f2.contains("• thinking off"), "off label: {f2}");
+    }
+
+    #[tokio::test]
+    async fn c1150_busy_shift_tab_still_cycles_no_refuse() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_thinking_levels(vec![ThinkingLevel::Off, ThinkingLevel::High]);
+        session.apply_thinking_level_ui(driver.thinking_level());
+        session.on_run_started("busy");
+        assert!(session.is_busy());
+        let mut stream = None;
+
+        let entries_before = root.borrow().ui_model_entries_len_for_test();
+        session.step(HostEvent::Input(shift_tab_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert_eq!(driver.thinking_level(), ThinkingLevel::High);
+        assert_eq!(
+            root.borrow().ui_model_entries_len_for_test(),
+            entries_before,
+            "busy cycle must not emit refuse / thinking-border note"
+        );
+        let frame = root.borrow_mut().render(80).join("\n");
+        assert!(!frame.contains("refused"));
+        assert!(!frame.contains("thinking-border"));
     }
 }
