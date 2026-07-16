@@ -28,6 +28,8 @@ pub struct BuildAgentOptions {
     pub system_prompt: Option<String>,
     pub context_files: Vec<(String, String)>,
     pub append_system_prompt: Vec<String>,
+    /// Skills catalog for `<available_skills>` (c1085).
+    pub skills: Vec<crate::domain::resource_types::SkillInfo>,
     pub max_iterations: u32,
     pub compaction_threshold: f64,
     pub cwd: String,
@@ -51,6 +53,7 @@ impl Default for BuildAgentOptions {
             system_prompt: None,
             context_files: Vec::new(),
             append_system_prompt: Vec::new(),
+            skills: Vec::new(),
             max_iterations: 50,
             compaction_threshold: 0.8,
             cwd: ".".into(),
@@ -118,6 +121,7 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, String> {
     .tools(ToolSet::from_iter(crate::infra::tools::default_tools()))
     .context_files(options.context_files)
     .append_system_prompt(options.append_system_prompt)
+    .skills(options.skills)
     .max_iterations(options.max_iterations)
     .compaction_threshold(options.compaction_threshold)
     .compaction_settings(options.compaction_settings)
@@ -157,6 +161,22 @@ impl McpSession {
     #[cfg(test)]
     pub fn has_manager(&self) -> bool {
         self.manager.is_some()
+    }
+
+    /// Read-only connected MCP snapshot (c1080 / mcp5). Empty when no manager.
+    pub async fn connected_servers(&self) -> Vec<crate::infra::mcp::ConnectedMcpServer> {
+        match &self.manager {
+            Some(m) => m.connected_servers().await,
+            None => Vec::new(),
+        }
+    }
+
+    /// Diagnostics from the last connect/reload (c1080 / mcp4).
+    pub async fn diagnostics(&self) -> Vec<crate::infra::mcp::McpConnectDiagnostic> {
+        match &self.manager {
+            Some(m) => m.diagnostics().await,
+            None => Vec::new(),
+        }
     }
 
     /// Reload MCP tools onto `driver` (empty servers → builtins only, zero-cost).
@@ -204,5 +224,7 @@ mod tests {
         let names: Vec<_> = driver.tool_names_for_test();
         assert!(names.iter().all(|n| !n.starts_with("mcp:")));
         assert!(names.iter().any(|n| n == "read"));
+        assert!(mcp.connected_servers().await.is_empty());
+        assert!(mcp.diagnostics().await.is_empty());
     }
 }

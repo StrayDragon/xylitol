@@ -20,6 +20,7 @@ pub enum QueueMode
 pub fn abort(&self)
 pub fn abort_bash(&self)
 pub fn apply_prompt_resources( &mut self, context_files: Vec<(String, String)>, system_prompt: Option<String>, append_system_prompt: Vec<String>, )
+pub fn apply_skills(&mut self, skills: Vec<crate::domain::resource_types::SkillInfo>)
 pub fn bind_event_tx(&self, tx: EventTx)
 pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, String>
 pub fn clear(&mut self)
@@ -37,6 +38,7 @@ pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission>
 pub fn has_items(&self) -> bool
 pub fn is_empty(&self) -> bool
 pub fn len(&self) -> usize
+pub fn loaded_skill_names(&self) -> Vec<String>
 pub fn max_iterations(&self) -> u32
 pub fn mode(&self) -> QueueMode
 pub fn model_registry(&self) -> &ModelRegistry
