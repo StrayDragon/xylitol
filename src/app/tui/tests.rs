@@ -217,7 +217,7 @@ fn god_module_entry_files_under_budget() {
 #[test]
 fn product_slash_catalog_matches_agent_ssot() {
     // c1175 / sc3 / atm7: TUI catalog names == product SSOT (same crate build).
-    use crate::agent::prompt::product_commands::{LEGACY_SHORT_NAMES, product_slash_commands};
+    use crate::app::core::product_commands::{LEGACY_SHORT_NAMES, product_slash_commands};
     use crate::app::tui::layout::product_slash_commands_for_editor;
 
     let ssot: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
