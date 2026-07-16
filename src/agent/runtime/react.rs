@@ -23,10 +23,12 @@ use tokio_util::sync::CancellationToken;
 use super::permission_router::permission_target;
 use super::retry::{RetryState, is_retryable_error};
 use super::{AgentHooks, XyEvent, XyEventStream};
+use crate::agent::prompt::expand_skills_in_agent_messages;
 use crate::agent::session::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::tools::ToolSet;
 use crate::domain::error::XyError;
 use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
+use crate::domain::resource_types::SkillInfo;
 use crate::domain::session_types::{EntryBase, MessageEntry, SessionEntry};
 use crate::domain::types::{XyChunk, XyToolSchema};
 use crate::runtime_protocol::{
@@ -162,6 +164,11 @@ impl AgentRuntime {
         self.inner.loaded_skill_names()
     }
 
+    /// Full skill catalog for `$` completion / expand (c1130).
+    pub fn loaded_skills(&self) -> &[crate::domain::resource_types::SkillInfo] {
+        self.inner.loaded_skills()
+    }
+
     /// Run a turn with an auto-generated session_id.
     pub async fn run(&mut self, prompt: &str) -> XyEventStream {
         self.run_with_id(prompt, &uuid::Uuid::new_v4().to_string())
@@ -245,6 +252,7 @@ impl AgentRuntime {
         let follow_up_queue = self.inner.follow_up_queue();
         let queues = self.inner.queues();
         let store = self.inner.session_store();
+        let skills = self.inner.loaded_skills().to_vec();
 
         let (queue_tx, mut queue_rx) = tokio::sync::mpsc::unbounded_channel();
         queues.bind_event_tx(queue_tx);
@@ -266,6 +274,7 @@ impl AgentRuntime {
             store,
             session_id: sid,
             seeded_history,
+            skills,
         }));
 
         let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> = Box::pin(async_stream::stream! {
@@ -324,6 +333,8 @@ struct ReActConfig {
     store: Arc<dyn XySessionStore>,
     session_id: String,
     seeded_history: Vec<AgentMessage>,
+    /// Trust-filtered catalog for `$skill` expand (c1130); clone kept raw in history.
+    skills: Vec<SkillInfo>,
 }
 
 fn drain_queue(queue: &Arc<Mutex<PendingMessageQueue>>) -> Vec<AgentMessage> {
@@ -379,6 +390,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         store,
         session_id,
         seeded_history,
+        skills,
     } = cfg;
     async_stream::stream! {
         if let Some(bus) = &hook_bus {
@@ -476,6 +488,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         messages = hook(messages);
                     }
                 }
+                // Expand `$skill` only on the model-bound clone (history stays raw).
+                expand_skills_in_agent_messages(&mut messages, &skills);
                 if let Some(bus) = &hook_bus
                     && let XyHookOutcome::Blocked { reason } = bus
                         .dispatch(
@@ -1787,5 +1801,153 @@ mod tests {
             "second turn must include first user prompt: {user_texts:?}"
         );
         assert!(user_texts.iter().any(|t| t == "turn two"));
+    }
+
+    #[tokio::test]
+    async fn dollar_skill_expanded_for_model_history_stays_raw() {
+        use crate::domain::resource_types::SkillInfo;
+        use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
+        use futures::StreamExt;
+
+        struct RecordingMockModel {
+            seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<AgentMessage>>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl XyModel for RecordingMockModel {
+            fn name(&self) -> &str {
+                "recording-mock"
+            }
+
+            async fn generate_stream(
+                &self,
+                messages: Vec<AgentMessage>,
+                _tools: &[crate::domain::types::XyToolSchema],
+                _stream: bool,
+            ) -> Result<XyStream, XyError> {
+                self.seen.lock().unwrap().push(messages);
+                Ok(Box::pin(futures::stream::iter(
+                    [
+                        crate::domain::types::XyChunk::TextDelta("ok".into()),
+                        crate::domain::types::XyChunk::Done {
+                            finish_reason: crate::domain::message::XyStopReason::Stop,
+                            usage: None,
+                        },
+                    ]
+                    .into_iter()
+                    .map(Ok),
+                )))
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let skill_path = dir.path().join("SKILL.md");
+        std::fs::write(
+            &skill_path,
+            "---\nname: demo\ndescription: d\n---\n\nREACT_SKILL_BODY_MARKER\n",
+        )
+        .unwrap();
+
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let reg = mock_model_registry();
+        let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+        let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
+        let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
+        let builder: ModelBuilderFn = {
+            let seen = seen.clone();
+            Arc::new(move |_| {
+                Ok(Arc::new(RecordingMockModel { seen: seen.clone() }) as Arc<dyn XyModel>)
+            })
+        };
+        let mut agent = AgentRuntime::new(AgentCapabilities::new(
+            reg,
+            ToolSet::empty(),
+            store,
+            sink,
+            None,
+            Vec::new(),
+            Vec::new(),
+            50,
+            0.8,
+            ".".into(),
+            None,
+            builder,
+            crate::infra::permission::allow_all_permission(),
+            None,
+            None,
+            crate::agent::session::QueueMode::default(),
+            crate::agent::session::QueueMode::default(),
+            None,
+        ));
+        agent.apply_skills(vec![SkillInfo {
+            name: "demo".into(),
+            description: Some("d".into()),
+            source_info: SourceInfo {
+                path: skill_path,
+                source: "test".into(),
+                scope: SourceScope::User,
+                origin: SourceOrigin::TopLevel,
+                base_dir: None,
+            },
+            disable_model_invocation: false,
+        }]);
+
+        let mut stream = agent.run("please use $demo and $nosuch").await;
+        let mut history = Vec::new();
+        while let Some(evt) = stream.next().await {
+            if let XyEvent::AgentEnd { messages } = evt {
+                history = messages;
+            }
+        }
+
+        let rounds = seen.lock().unwrap();
+        assert_eq!(rounds.len(), 1);
+        let model_user: Vec<String> = rounds[0]
+            .iter()
+            .filter_map(|m| match m {
+                AgentMessage::Llm(LlmMessage::UserMessage { content, .. }) => {
+                    content.iter().find_map(|p| match p {
+                        AgentPart::Text { text: t } => Some(t.clone()),
+                        _ => None,
+                    })
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(
+            model_user
+                .iter()
+                .any(|t| t.contains("REACT_SKILL_BODY_MARKER") && t.contains("$demo")),
+            "model input must expand known $skill: {model_user:?}"
+        );
+        assert!(
+            model_user.iter().any(|t| t.contains("$nosuch")),
+            "unknown $ must pass through: {model_user:?}"
+        );
+
+        let hist_user: Vec<String> = history
+            .iter()
+            .filter_map(|m| match m {
+                AgentMessage::Llm(LlmMessage::UserMessage { content, .. }) => {
+                    content.iter().find_map(|p| match p {
+                        AgentPart::Text { text: t } => Some(t.clone()),
+                        _ => None,
+                    })
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(
+            hist_user
+                .iter()
+                .any(|t| t == "please use $demo and $nosuch"),
+            "session history must stay raw: {hist_user:?}"
+        );
+        assert!(
+            !hist_user
+                .iter()
+                .any(|t| t.contains("REACT_SKILL_BODY_MARKER")),
+            "session history must not persist expanded body: {hist_user:?}"
+        );
     }
 }

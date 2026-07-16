@@ -39,6 +39,7 @@ pub fn has_items(&self) -> bool
 pub fn is_empty(&self) -> bool
 pub fn len(&self) -> usize
 pub fn loaded_skill_names(&self) -> Vec<String>
+pub fn loaded_skills(&self) -> &[crate::domain::resource_types::SkillInfo]
 pub fn max_iterations(&self) -> u32
 pub fn mode(&self) -> QueueMode
 pub fn model_registry(&self) -> &ModelRegistry

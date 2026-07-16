@@ -95,12 +95,8 @@ fn dollar_skill_names(text: &str) -> Vec<String> {
     out
 }
 
-/// Paint `$name` with `skill_ref` (bold); other spans with `body` (`on_surface`).
-fn highlight_dollar_skill_refs(
-    text: &str,
-    body: xylitol_tui::RgbColor,
-    skill_ref: xylitol_tui::RgbColor,
-) -> String {
+/// Paint `$name` with `skill_ref` (bold); leave other text unstyled (A10).
+fn highlight_dollar_skill_refs(text: &str, skill_ref: xylitol_tui::RgbColor) -> String {
     let bytes = text.as_bytes();
     let mut out = String::new();
     let mut i = 0;
@@ -121,7 +117,7 @@ fn highlight_dollar_skill_refs(
             }
         }
         let ch = text[i..].chars().next().unwrap();
-        out.push_str(&fg_rgb(body, &ch.to_string()));
+        out.push(ch);
         i += ch.len_utf8();
     }
     out
@@ -3993,7 +3989,7 @@ impl FakeCodingAgentApp {
                         let prefix = self.role_prefix(*role);
                         let body = if matches!(role, Role::User) {
                             let p = self.palette();
-                            highlight_dollar_skill_refs(text, p.on_surface, p.skill_ref)
+                            highlight_dollar_skill_refs(text, p.skill_ref)
                         } else {
                             text.clone()
                         };

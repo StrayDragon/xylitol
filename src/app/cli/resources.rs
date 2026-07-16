@@ -301,13 +301,16 @@ mod tests {
     #[test]
     fn doctor_with_issue_exits_failure() {
         let (_tmp, cwd, agent_dir) = layout();
-        // a skill dir whose SKILL.md lacks a name in frontmatter
+        // SKILL.md without frontmatter: dir name fills `name`, but description is still missing.
         let broken = agent_dir.join("skills").join("broken");
         fs::create_dir_all(&broken).unwrap();
         fs::write(broken.join("SKILL.md"), "no frontmatter here\n").unwrap();
         let (code, out) = run_with_dirs(ResourcesAction::Doctor, &cwd, &agent_dir);
         assert_eq!(code, ExitCode::FAILURE);
-        assert!(out.contains("missing name"));
+        assert!(
+            out.contains("missing description"),
+            "expected description diagnostic; got {out}"
+        );
     }
 
     #[test]
