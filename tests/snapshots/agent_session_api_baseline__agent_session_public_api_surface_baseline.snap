@@ -19,6 +19,7 @@ pub async fn record_bash_result( &self, command: &str, result: &crate::runtime_p
 pub enum QueueMode
 pub fn abort(&self)
 pub fn abort_bash(&self)
+pub fn apply_prompt_resources( &mut self, context_files: Vec<(String, String)>, system_prompt: Option<String>, append_system_prompt: Vec<String>, )
 pub fn bind_event_tx(&self, tx: EventTx)
 pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, String>
 pub fn clear(&mut self)

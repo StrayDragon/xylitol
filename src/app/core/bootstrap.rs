@@ -551,6 +551,58 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     })
 }
 
+/// Report from [`reload_prompt_context`] (c1100).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)] // consumed by c1120 `/reload` and host wiring
+pub struct PromptContextReloadReport {
+    pub context_file_count: usize,
+    pub has_system_prompt: bool,
+    pub append_count: usize,
+}
+
+/// Re-discover AGENTS/SYSTEM/APPEND from disk and apply to `driver` (c1100).
+///
+/// Trust semantics match bootstrap: when `project_trusted` is false, project CWD
+/// is replaced with a temp path so project-local resources are skipped.
+/// `config_system_prompt` is the profile fallback when no SYSTEM.md is found.
+///
+/// Does **not** mutate session history / transcript.
+#[allow(dead_code)] // consumed by c1120 `/reload` and host wiring
+pub fn reload_prompt_context(
+    driver: &mut crate::app::core::driver::InProcessDriver,
+    cwd: &std::path::Path,
+    agent_dir: &std::path::Path,
+    project_trusted: bool,
+    config_system_prompt: Option<String>,
+) -> PromptContextReloadReport {
+    let loader_cwd = if project_trusted {
+        cwd.to_path_buf()
+    } else {
+        std::env::temp_dir()
+    };
+    let loader =
+        crate::infra::resource::DefaultResourceLoader::new(loader_cwd, agent_dir.to_path_buf());
+
+    let context_files: Vec<(String, String)> = loader
+        .get_agents_files()
+        .iter()
+        .map(|f| (f.path.to_string_lossy().into_owned(), f.content.clone()))
+        .collect();
+    let system_prompt = loader
+        .get_system_prompt()
+        .map(String::from)
+        .or(config_system_prompt);
+    let append_system_prompt = loader.get_append_system_prompt().to_vec();
+
+    let report = PromptContextReloadReport {
+        context_file_count: context_files.len(),
+        has_system_prompt: system_prompt.is_some(),
+        append_count: append_system_prompt.len(),
+    };
+    driver.apply_prompt_resources(context_files, system_prompt, append_system_prompt);
+    report
+}
+
 /// Read the API key for a provider from environment variables.
 fn resolve_api_key(kind: crate::domain::model::XyModelKind) -> Option<String> {
     match kind {
@@ -572,5 +624,54 @@ fn queue_mode_from_settings(
         crate::infra::settings::types::SteeringMode::OneAtATime => {
             crate::agent::session::QueueMode::OneAtATime
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::core::composition::{BuildAgentOptions, build_agent};
+    use crate::app::core::driver::InProcessDriver;
+    use crate::runtime_protocol::XySessionStore;
+    use std::sync::Arc;
+
+    fn make_driver() -> InProcessDriver {
+        let agent = build_agent(BuildAgentOptions::default()).expect("build");
+        let store: Arc<dyn XySessionStore> = Arc::new(crate::infra::session::SessionManager::new(
+            tempfile::tempdir().unwrap().path().join("sessions"),
+        ));
+        InProcessDriver::new(agent, store)
+    }
+
+    #[test]
+    fn reload_prompt_context_trusted_injects_agents() {
+        let project = tempfile::tempdir().unwrap();
+        let agent_dir = tempfile::tempdir().unwrap();
+        std::fs::write(project.path().join("AGENTS.md"), "TRUSTED_AGENTS_BODY").unwrap();
+
+        let mut driver = make_driver();
+        let report =
+            reload_prompt_context(&mut driver, project.path(), agent_dir.path(), true, None);
+        assert!(report.context_file_count >= 1);
+        let sp = driver.system_prompt_for_test().unwrap_or_default();
+        assert!(
+            sp.contains("TRUSTED_AGENTS_BODY"),
+            "trusted reload must inject project AGENTS.md"
+        );
+    }
+
+    #[test]
+    fn reload_prompt_context_untrusted_skips_project_agents() {
+        let project = tempfile::tempdir().unwrap();
+        let agent_dir = tempfile::tempdir().unwrap();
+        std::fs::write(project.path().join("AGENTS.md"), "SECRET_PROJECT_AGENTS").unwrap();
+
+        let mut driver = make_driver();
+        let _ = reload_prompt_context(&mut driver, project.path(), agent_dir.path(), false, None);
+        let sp = driver.system_prompt_for_test().unwrap_or_default();
+        assert!(
+            !sp.contains("SECRET_PROJECT_AGENTS"),
+            "untrusted reload must not inject project AGENTS.md"
+        );
     }
 }

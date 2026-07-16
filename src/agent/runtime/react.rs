@@ -140,6 +140,18 @@ impl AgentRuntime {
         self.inner.set_system_prompt(prompt);
     }
 
+    /// Replace context / SYSTEM / APPEND and rebuild system prompt (c1100).
+    /// Takes effect on the next [`run`](Self::run); does not mutate history.
+    pub fn apply_prompt_resources(
+        &mut self,
+        context_files: Vec<(String, String)>,
+        system_prompt: Option<String>,
+        append_system_prompt: Vec<String>,
+    ) {
+        self.inner
+            .apply_prompt_resources(context_files, system_prompt, append_system_prompt);
+    }
+
     /// Run a turn with an auto-generated session_id.
     pub async fn run(&mut self, prompt: &str) -> XyEventStream {
         self.run_with_id(prompt, &uuid::Uuid::new_v4().to_string())
