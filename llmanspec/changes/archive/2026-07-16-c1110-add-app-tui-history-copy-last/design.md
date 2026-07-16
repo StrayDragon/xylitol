@@ -20,10 +20,16 @@ ui_model.entries 自尾向前
 ```text
 PendingSlash::HistoryCopyLast
   → 选文（host/effects，读 UiModel）
-  → Driver::copy_text_to_clipboard(&text)
-       → infra::clipboard::copy_to_clipboard（仅 InProcess）
-  → 系统块 ok / err
+  → await Driver::copy_text_to_clipboard(&text)
+       → InProcess: plan_clipboard_copy_async（spawn_blocking native only）
+         → ClipboardCopyOutcome { pending_osc52? }
+  → 若 pending_osc52：HostSession::emit_clipboard_osc52（UI 线程 Terminal::write+flush）
+  → 系统块 ok / err → render_now
 ```
+
+平台策略对齐 pi `clipboard.ts`（PATH 探测、不 wait wl-copy、OSC52 远程或 native 失败时）。
+
+**TUI 竞态**：OSC 52 MUST NOT 从 blocking pool / `stdout.lock` 与差分渲染并发写出；MUST 经 host `Terminal` 在 `render_now` 之外发射。
 
 TUI MUST NOT `use crate::infra::clipboard`。
 
