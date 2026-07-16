@@ -101,6 +101,8 @@ pub struct HostSession<T: Terminal> {
     /// After Esc abort: drop agent `XyEvent`s until this run's EventStream ends (c670).
     suppress_xy_until_stream_end: bool,
     layout_cwd: String,
+    /// Active theme preference for `/reload` (c1120 / c1095). `None` → keep current default.
+    theme_preference: Option<String>,
     /// Test-only: force real external-editor path (skip harness stub gate).
     #[cfg(test)]
     force_real_external_editor: bool,
@@ -142,6 +144,7 @@ impl<T: Terminal> HostSession<T> {
             suppress_idle_esc: false,
             suppress_xy_until_stream_end: false,
             layout_cwd: display_cwd(),
+            theme_preference: None,
             #[cfg(test)]
             force_real_external_editor: false,
             #[cfg(test)]
@@ -227,7 +230,12 @@ impl<T: Terminal> HostSession<T> {
         if let Some(root) = &self.ui_root {
             root.borrow_mut().set_layout_theme(theme);
         }
+        self.theme_preference = Some(theme_name.to_string());
         Ok(())
+    }
+
+    pub fn theme_preference(&self) -> Option<&str> {
+        self.theme_preference.as_deref()
     }
 
     pub fn bash_active(&self) -> bool {
