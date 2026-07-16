@@ -733,6 +733,50 @@ fn harness_idle_enter_queues_submit() {
 }
 
 #[test]
+fn harness_app_thinking_toggle_via_binding_id() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    assert!(!root.borrow().fold().thinking_expanded);
+    session
+        .step(HostEvent::Input(InputEvent::Key(KeyEvent {
+            code: KeyCode::Char('t'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        })))
+        .unwrap();
+    assert!(root.borrow().fold().thinking_expanded);
+}
+
+#[test]
+fn harness_keybindings_reload_keeps_old_on_bad_json() {
+    use crate::app::tui::keybindings::{ReloadOutcome, matches_binding};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("keybindings.json");
+    std::fs::write(&path, r#"{ "app.interrupt": ["ctrl+x"] }"#).unwrap();
+    assert!(matches!(
+        session.reload_keybindings(dir.path()),
+        ReloadOutcome::Applied { .. }
+    ));
+    assert!(matches_binding(
+        &KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL),
+        "app.interrupt"
+    ));
+    std::fs::write(&path, "{ broken").unwrap();
+    assert!(matches!(
+        session.reload_keybindings(dir.path()),
+        ReloadOutcome::Failed { .. }
+    ));
+    assert!(matches_binding(
+        &KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL),
+        "app.interrupt"
+    ));
+}
+
+#[test]
 fn harness_long_paste_collapses_display_and_submit_expands() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();

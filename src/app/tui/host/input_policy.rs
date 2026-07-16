@@ -1,11 +1,12 @@
 //! Busy/idle input policy for HostSession::step (c1170 / ath12).
 
-use xylitol_tui::{InputEvent, Terminal, matches_key_event};
+use xylitol_tui::{InputEvent, Terminal};
 
 use super::super::bridge::UiPhase;
 use super::super::commands::{
     BangParse, PendingBash, PendingSlash, parse_bang_command, parse_slash_command,
 };
+use super::super::keybindings::matches_binding;
 use super::HostSession;
 
 impl<T: Terminal> HostSession<T> {
@@ -25,7 +26,7 @@ impl<T: Terminal> HostSession<T> {
             self.suppress_idle_esc = false;
             return false;
         };
-        if matches_key_event(key, "escape") {
+        if matches_binding(key, "app.interrupt") {
             self.pending.abort = false;
             return true;
         }
@@ -49,7 +50,7 @@ impl<T: Terminal> HostSession<T> {
             return false;
         }
 
-        if matches_key_event(key, "escape") {
+        if matches_binding(key, "app.interrupt") {
             self.pending.abort = true;
             // Drop untaken local steer so loop does not re-enqueue after abort.
             self.pending.steer = None;
@@ -60,7 +61,7 @@ impl<T: Terminal> HostSession<T> {
             return true;
         }
 
-        if matches_key_event(key, "alt+up") {
+        if matches_binding(key, "app.message.dequeue") {
             let queued = self.ui_model.take_queued_for_editor();
             if queued.is_empty() {
                 return true;
@@ -80,7 +81,7 @@ impl<T: Terminal> HostSession<T> {
             return true;
         }
 
-        if matches_key_event(key, "alt+enter") {
+        if matches_binding(key, "app.message.followUp") {
             let mut root = root.borrow_mut();
             let text = root.editor_text();
             if text.trim().is_empty() {
@@ -96,7 +97,7 @@ impl<T: Terminal> HostSession<T> {
             return true;
         }
 
-        if matches_key_event(key, "enter") {
+        if matches_binding(key, "tui.input.submit") {
             let mut root = root.borrow_mut();
             let text = root.editor_text();
             if text.trim().is_empty() {
@@ -144,7 +145,7 @@ impl<T: Terminal> HostSession<T> {
         let InputEvent::Key(key) = input else {
             return false;
         };
-        if !matches_key_event(key, "enter") {
+        if !matches_binding(key, "tui.input.submit") {
             return false;
         }
         let mut root = root.borrow_mut();
@@ -237,7 +238,7 @@ impl<T: Terminal> HostSession<T> {
         let InputEvent::Key(key) = input else {
             return false;
         };
-        if !matches_key_event(key, "ctrl+g") {
+        if !matches_binding(key, "app.editor.external") {
             return false;
         }
         let mut root = root.borrow_mut();
