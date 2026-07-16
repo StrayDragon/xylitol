@@ -1,0 +1,10 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,m9,"thinking-levels-on-meta","ModelRegistry / resolve_model_meta（或等价）MUST 将配置中的 thinking_levels 填入 XyModelMeta.thinking_levels；thinking 为 false 时支持集 MUST 仅为 off（或空且运行时仅允许 Off）；thinking 为 true 且未声明列表时 MUST 默认为 off、minimal、low、medium、high；显式列表 MUST 保留配置顺序并可含洞（如无 xhigh）；domain ThinkingLevel MUST 覆盖 off…max（含 xhigh、max）。MUST NOT 依赖 xylitol-tui ThinkingBorderLevel。",null,null,null
+  add_requirement,m10,"thinking-level-validate-clamp","set_thinking_level（或 Driver 等价）在目标 level 不在当前模型支持集时 MUST 拒绝且 MUST NOT 更改当前值；换模或启动时若当前 level 不在新支持集 MUST clamp 到合法默认（Settings default_thinking_level 若合法则优先）。",null,null,null
+op_scenarios[5]{req_id,id,given,when,then}:
+  m9,"default-standard","模型 thinking true 且无 thinking_levels","resolve_model_meta","thinking_levels 含 off 至 high 且不含 xhigh"
+  m9,"explicit-hole","配置 thinking_levels 为 high 与 max","resolve_model_meta","列表为 high 与 max 且无 xhigh"
+  m9,"xhigh-parse","",解析 ThinkingLevel 字符串 xhigh,得到 Xhigh 变体
+  m10,"reject-unsupported","当前模型支持集无 xhigh","set_thinking_level(Xhigh)","失败且当前 level 不变"
+  m10,"clamp-on-switch","当前为 xhigh 后切换到仅支持至 high 的模型","select_model 完成","thinking level 被 clamp 到支持集内合法值"

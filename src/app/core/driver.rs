@@ -239,7 +239,9 @@ pub trait Driver: Send {
     fn cycle_model(&mut self) -> Result<ModelInfo, String>;
 
     /// Set the thinking level.
-    fn set_thinking_level(&mut self, level: ThinkingLevel);
+    ///
+    /// Returns `Err` if the level is not in the current model's support set.
+    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String>;
 
     /// Current thinking level.
     fn thinking_level(&self) -> ThinkingLevel;
@@ -673,8 +675,8 @@ impl Driver for InProcessDriver {
         Ok(ModelInfo::from(&list[next_idx]))
     }
 
-    fn set_thinking_level(&mut self, level: ThinkingLevel) {
-        self.agent.inner_mut().set_thinking_level(level);
+    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
+        self.agent.inner_mut().set_thinking_level(level)
     }
 
     fn thinking_level(&self) -> ThinkingLevel {
@@ -1444,13 +1446,14 @@ impl Driver for RemoteDriver {
         })
     }
 
-    fn set_thinking_level(&mut self, level: ThinkingLevel) {
+    fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
         *self.thinking.lock().unwrap() = level;
         let level_str = level.as_str();
-        let _ = self.block_on(async {
+        self.block_on(async {
             self.post_data("thinking", serde_json::json!({ "level": level_str }))
                 .await
-        });
+        })?;
+        Ok(())
     }
 
     fn thinking_level(&self) -> ThinkingLevel {

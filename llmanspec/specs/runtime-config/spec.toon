@@ -1,21 +1,22 @@
 kind: llman.sdd.spec
 name: "runtime-config"
-purpose: "运行时配置 — 含深合并、文件锁、camelCase 序列化与完整 Settings 接口的 settings manager。"
+purpose: 运行时配置 — 含深合并、文件锁、camelCase 序列化与完整 Settings 接口的 settings manager。
 valid_scope[2]: src/infra/config/,src/infra/settings/
-requirements[9]{req_id,title,statement}:
-  rc0,占位,"System SHALL 支持完整 pi Settings 接口，含 camelCase JSON 序列化。"
-  rc11,transport 字段,"Settings MUST 含 transport 字段，枚举 auto、sse、direct。"
+requirements[10]{req_id,title,statement}:
+  rc0,占位,System SHALL 支持完整 pi Settings 接口，含 camelCase JSON 序列化。
+  rc11,transport 字段,Settings MUST 含 transport 字段，枚举 auto、sse、direct。
   rc12,mode 字段,"Settings MUST 含 steering_mode 与 follow_up_mode，均为 one-at-a-time 枚举选项。"
-  rc13,杂项字段,"Settings MUST 含 shell_path、shell_command_prefix、npm_command、default_project_trust、enable_skill_commands、session_dir、markdown、warnings 及 c83 的 http 相关字段。"
-  rc14,列表字段,"Settings MUST 含 prompts 与 themes 作为 Option<Vec<String>> 用于资源路径配置。"
-  rc15,compaction 配置映射,"运行时配置 MUST 定义从 YAML 加载期 compaction 表面到规范运行时 compaction settings 的单一文档化映射，无并行重复类型。"
+  rc13,杂项字段,Settings MUST 含 shell_path、shell_command_prefix、npm_command、default_project_trust、enable_skill_commands、session_dir、markdown、warnings 及 c83 的 http 相关字段。
+  rc14,列表字段,Settings MUST 含 prompts 与 themes 作为 Option<Vec<String>> 用于资源路径配置。
+  rc15,compaction 配置映射,运行时配置 MUST 定义从 YAML 加载期 compaction 表面到规范运行时 compaction settings 的单一文档化映射，无并行重复类型。
   rc1,ConfigValue 在 infra,"ConfigValueResolver（环境变量、shell 命令与 ${VAR:-default} 解析，原 agent/config_value.rs）MUST 位于 infra/config/value.rs；除 infra/config 外 MUST 零 crate:: 内部依赖；agent/ MUST NOT 含 config_value.rs。"
   rc8,配置边界承载 JsonSchema,需要对外暴露 JSON Schema 的配置结构 MUST 在 runtime/config 边界（infra/config 或 settings）定义或包装，并 MUST 能映射到 domain 纯数据（若存在对应领域类型）。
   rc9,mcp_servers 配置字段,运行时配置 MUST 提供 mcp_servers（或等价）字段以声明 MCP 服务器；缺省或空表示未启用 MCP。
-scenarios[10]{req_id,id,given,when,then}:
+  rc16,"model-entry-thinking-levels",ModelsConfig 的 ModelEntry（或等价 YAML 面）MUST 支持可选 thinking_levels 字符串列表；解析时未知 level 名 MUST 使配置加载失败；Settings.default_thinking_level 若存在 MUST 可被选模/启动路径消费（合法则采用，非法则忽略并 clamp）。
+scenarios[13]{req_id,id,given,when,then}:
   rc0,placeholder,未配置任何 settings,无操作发生,无变化
   rc11,transport,settings.json 中 transport 设为 sse,加载 settings,Settings.transport 为 Some(sse)
-  rc12,"mode-set",settings.json 中 steering_mode 设为 one-at-a-time,加载 settings,Settings.steering_mode 为 OneAtATime
+  rc12,"mode-set","settings.json 中 steering_mode 设为 one-at-a-time",加载 settings,Settings.steering_mode 为 OneAtATime
   rc13,"shell-path","settings.json 中 shell_path 设为 \"/usr/local/bin/bash\"",调用 SettingsManager.get_shell_path,返回 Some(/usr/local/bin/bash)
   rc13,"trust-default",default_project_trust 设为 always,调用 SettingsManager.get_default_project_trust,返回 always
   rc14,"prompts-list",prompts 有两个路径,合并 settings,Settings.prompts 有 2 项
@@ -23,3 +24,6 @@ scenarios[10]{req_id,id,given,when,then}:
   rc1,"value-relocated",检查 src/agent/config_value.rs 是否存在,检查路径,不存在且存在 src/infra/config/value.rs
   rc8,"config-has-schema","",检查 AppConfig 或 settings 类型,JsonSchema derive 仅出现在配置边界模块
   rc9,field,"",读取默认配置,mcp 未启用且字段可序列化
+  rc16,"parse-list","YAML 模型条目含 thinking_levels [off, high, xhigh]",加载配置并 resolve_model_meta,XyModelMeta.thinking_levels 与列表一致
+  rc16,"unknown-fails",thinking_levels 含未知名 bogon,加载配置,失败
+  rc16,"default-setting",Settings.default_thinking_level 为 low 且模型支持 low,启动或选模,当前 thinking level 为 Low

@@ -65,9 +65,20 @@ pub enum ThinkingLevel {
     #[default]
     Medium,
     High,
+    Xhigh,
+    Max,
 }
 
 impl ThinkingLevel {
+    /// Default levels when `thinking: true` and no explicit list is configured.
+    pub const STANDARD: &'static [ThinkingLevel] = &[
+        ThinkingLevel::Off,
+        ThinkingLevel::Minimal,
+        ThinkingLevel::Low,
+        ThinkingLevel::Medium,
+        ThinkingLevel::High,
+    ];
+
     pub fn as_str(&self) -> &'static str {
         match self {
             ThinkingLevel::Off => "off",
@@ -75,15 +86,84 @@ impl ThinkingLevel {
             ThinkingLevel::Low => "low",
             ThinkingLevel::Medium => "medium",
             ThinkingLevel::High => "high",
+            ThinkingLevel::Xhigh => "xhigh",
+            ThinkingLevel::Max => "max",
         }
     }
 
-    /// Clamp to what the model supports.
+    /// Parse a level name (case-insensitive). Unknown → `None`.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "off" => Some(ThinkingLevel::Off),
+            "minimal" => Some(ThinkingLevel::Minimal),
+            "low" => Some(ThinkingLevel::Low),
+            "medium" => Some(ThinkingLevel::Medium),
+            "high" => Some(ThinkingLevel::High),
+            "xhigh" => Some(ThinkingLevel::Xhigh),
+            "max" => Some(ThinkingLevel::Max),
+            _ => None,
+        }
+    }
+
+    /// Clamp to what the model supports (boolean capability only).
     pub fn clamp(self, model_supports_thinking: bool) -> Self {
         if !model_supports_thinking {
             return ThinkingLevel::Off;
         }
         self
+    }
+
+    /// Resolve configured level names into a support list.
+    ///
+    /// - `thinking == false` → `[Off]`
+    /// - `thinking == true` and empty/missing list → [`STANDARD`]
+    /// - explicit list → parsed in order (holes allowed); unknown names → `Err`
+    pub fn resolve_configured_levels(
+        thinking: bool,
+        configured: Option<&[String]>,
+    ) -> Result<Vec<ThinkingLevel>, String> {
+        if !thinking {
+            return Ok(vec![ThinkingLevel::Off]);
+        }
+        let Some(raw) = configured.filter(|v| !v.is_empty()) else {
+            return Ok(Self::STANDARD.to_vec());
+        };
+        let mut out = Vec::with_capacity(raw.len());
+        for name in raw {
+            let Some(level) = Self::parse(name) else {
+                return Err(format!("unknown thinking level: {name}"));
+            };
+            out.push(level);
+        }
+        Ok(out)
+    }
+
+    /// Pick a legal level when the current one is unsupported.
+    pub fn clamp_to_supported(
+        current: ThinkingLevel,
+        supported: &[ThinkingLevel],
+        preferred_default: Option<ThinkingLevel>,
+    ) -> ThinkingLevel {
+        if supported.is_empty() {
+            return ThinkingLevel::Off;
+        }
+        if supported.contains(&current) {
+            return current;
+        }
+        if let Some(d) = preferred_default
+            && supported.contains(&d)
+        {
+            return d;
+        }
+        if supported.contains(&ThinkingLevel::Medium) {
+            return ThinkingLevel::Medium;
+        }
+        supported
+            .iter()
+            .copied()
+            .rev()
+            .find(|l| *l != ThinkingLevel::Off)
+            .unwrap_or(supported[0])
     }
 }
 
@@ -209,6 +289,15 @@ mod tests {
         assert_eq!(ThinkingLevel::Low.as_str(), "low");
         assert_eq!(ThinkingLevel::Medium.as_str(), "medium");
         assert_eq!(ThinkingLevel::High.as_str(), "high");
+        assert_eq!(ThinkingLevel::Xhigh.as_str(), "xhigh");
+        assert_eq!(ThinkingLevel::Max.as_str(), "max");
+    }
+
+    #[test]
+    fn thinking_level_parse_covers_all_and_rejects_unknown() {
+        assert_eq!(ThinkingLevel::parse("xhigh"), Some(ThinkingLevel::Xhigh));
+        assert_eq!(ThinkingLevel::parse("MAX"), Some(ThinkingLevel::Max));
+        assert_eq!(ThinkingLevel::parse("bogon"), None);
     }
 
     #[test]
@@ -219,12 +308,37 @@ mod tests {
             ThinkingLevel::Low,
             ThinkingLevel::Medium,
             ThinkingLevel::High,
+            ThinkingLevel::Xhigh,
+            ThinkingLevel::Max,
         ];
         for level in &levels {
             let json = serde_json::to_string(level).unwrap();
             let deserialized: ThinkingLevel = serde_json::from_str(&json).unwrap();
             assert_eq!(*level, deserialized);
         }
+    }
+
+    #[test]
+    fn thinking_level_resolve_configured_defaults_and_holes() {
+        let std = ThinkingLevel::resolve_configured_levels(true, None).unwrap();
+        assert_eq!(std, ThinkingLevel::STANDARD.to_vec());
+        assert!(!std.contains(&ThinkingLevel::Xhigh));
+
+        let hole =
+            ThinkingLevel::resolve_configured_levels(true, Some(&["high".into(), "max".into()]))
+                .unwrap();
+        assert_eq!(hole, vec![ThinkingLevel::High, ThinkingLevel::Max]);
+
+        assert!(
+            ThinkingLevel::resolve_configured_levels(true, Some(&["bogon".into()]))
+                .unwrap_err()
+                .contains("unknown")
+        );
+
+        assert_eq!(
+            ThinkingLevel::resolve_configured_levels(false, Some(&["high".into()])).unwrap(),
+            vec![ThinkingLevel::Off]
+        );
     }
 
     #[test]

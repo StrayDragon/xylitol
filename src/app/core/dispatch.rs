@@ -91,17 +91,9 @@ impl std::fmt::Display for DispatchError {
 
 impl std::error::Error for DispatchError {}
 
-/// Parse a thinking-level string ("off"/"minimal"/"low"/"medium"/"high") into
-/// the typed enum. Shared between dispatch and any caller that needs it.
+/// Parse a thinking-level string into the typed enum.
 pub fn parse_thinking_level(s: &str) -> Result<ThinkingLevel, DispatchError> {
-    match s.to_lowercase().as_str() {
-        "off" => Ok(ThinkingLevel::Off),
-        "minimal" => Ok(ThinkingLevel::Minimal),
-        "low" => Ok(ThinkingLevel::Low),
-        "medium" => Ok(ThinkingLevel::Medium),
-        "high" => Ok(ThinkingLevel::High),
-        _ => Err(DispatchError(format!("unknown thinking level: {s}"))),
-    }
+    ThinkingLevel::parse(s).ok_or_else(|| DispatchError(format!("unknown thinking level: {s}")))
 }
 
 /// Dispatch a non-Prompt, non-Quit, non-WS Command against `driver`.
@@ -136,7 +128,7 @@ pub async fn dispatch(
         }
         Command::SetThinkingLevel { level, .. } => {
             let tl = parse_thinking_level(&level)?;
-            driver.set_thinking_level(tl);
+            driver.set_thinking_level(tl).map_err(DispatchError)?;
             Ok(DispatchOutcome::ThinkingLevel(tl))
         }
         Command::Bash {
@@ -323,8 +315,9 @@ mod tests {
         fn cycle_model(&mut self) -> Result<ModelInfo, String> {
             Ok(self.current_model().unwrap())
         }
-        fn set_thinking_level(&mut self, level: ThinkingLevel) {
+        fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
             self.thinking = level;
+            Ok(())
         }
         fn thinking_level(&self) -> ThinkingLevel {
             self.thinking
