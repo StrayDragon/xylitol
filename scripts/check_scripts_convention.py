@@ -8,6 +8,7 @@ Convention:
 Usage:
   python3 scripts/check_scripts_convention.py
   python3 scripts/check_scripts_convention.py --check
+  python3 scripts/check_scripts_convention.py --check --verbose
 """
 
 from __future__ import annotations
@@ -28,7 +29,12 @@ def main() -> int:
         action="store_true",
         help="same as default (non-mutating gate)",
     )
-    parser.parse_args()
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="print ok summary on success (default: silent success; errors always print)",
+    )
+    args = parser.parse_args()
 
     if not SCRIPTS.is_dir():
         print("error: scripts/ directory missing", file=sys.stderr)
@@ -38,13 +44,25 @@ def main() -> int:
         return 1
 
     just = JUSTFILE.read_text(encoding="utf-8")
-    qa_line = next((ln for ln in just.splitlines() if ln.startswith("qa:")), "")
-    if "check-scripts-wired" not in qa_line or "check-scripts" not in qa_line:
+    # `qa:` or `qa verbosity=…:` may continue across `\` lines.
+    qa_chunks: list[str] = []
+    grabbing = False
+    for ln in just.splitlines():
+        if ln.startswith("["):
+            continue
+        if ln.startswith("qa:") or ln.startswith("qa ") or ln == "qa":
+            grabbing = True
+        if grabbing:
+            qa_chunks.append(ln.split("#", 1)[0])
+            if not ln.rstrip().endswith("\\"):
+                break
+    qa_block = "\n".join(qa_chunks)
+    if "check-scripts-wired" not in qa_block or "check-scripts" not in qa_block:
         print(
             "error: just qa must depend on check-scripts-wired and check-scripts",
             file=sys.stderr,
         )
-        print(f"  got: {qa_line!r}", file=sys.stderr)
+        print(f"  got: {qa_block!r}", file=sys.stderr)
         return 1
 
     checks = sorted(
@@ -59,7 +77,8 @@ def main() -> int:
         print(f"error: self not matched as check_*.py: {me}", file=sys.stderr)
         return 1
 
-    print(f"ok: {len(checks)} scripts/check_* gate(s); qa wires check-scripts*")
+    if args.verbose:
+        print(f"ok: {len(checks)} scripts/check_* gate(s); qa wires check-scripts*")
     return 0
 
 

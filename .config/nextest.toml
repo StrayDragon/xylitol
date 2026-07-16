@@ -4,3 +4,10 @@ slow-timeout = "60s"
 
 [profile.ci.junit]
 path = "junit.xml"
+
+# Agent / `just qa` default: failures only, no pass/progress noise.
+[profile.agent]
+fail-fast = false
+slow-timeout = "60s"
+status-level = "fail"
+final-status-level = "fail"

@@ -9,6 +9,7 @@ Checks (--check): tokens on disk + packages/xylitol-tui Palette::dark/light hex.
 Usage (from repo root or any cwd):
   python3 src/app/tui/design/playground/sync_tokens.py
   python3 src/app/tui/design/playground/sync_tokens.py --check
+  python3 src/app/tui/design/playground/sync_tokens.py --check --verbose
 """
 
 from __future__ import annotations
@@ -202,6 +203,11 @@ def main() -> int:
         action="store_true",
         help="fail if tokens.css/js or Palette diverge from DESIGN.md",
     )
+    ap.add_argument(
+        "--verbose",
+        action="store_true",
+        help="print ok / write summary (default: silent on success in --check; errors always print)",
+    )
     args = ap.parse_args()
 
     if not DESIGN.is_file():
@@ -228,10 +234,11 @@ def main() -> int:
             for e in errs:
                 print(f"  - {e}", file=sys.stderr)
             return 1
-        print(
-            f"ok: tokens + Palette match DESIGN.md "
-            f"({len(dark)} dark / {len(light)} light)"
-        )
+        if args.verbose:
+            print(
+                f"ok: tokens + Palette match DESIGN.md "
+                f"({len(dark)} dark / {len(light)} light)"
+            )
         return 0
 
     css_path.write_text(want_css, encoding="utf-8")
