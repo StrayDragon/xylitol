@@ -1060,6 +1060,125 @@ fn harness_long_paste_collapses_display_and_submit_expands() {
     assert_eq!(session.take_submit().as_deref(), Some(pasted.as_str()));
 }
 
+fn ctrl_v_event() -> InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    InputEvent::Key(KeyEvent {
+        code: KeyCode::Char('v'),
+        modifiers: KeyModifiers::CONTROL,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+#[tokio::test]
+async fn harness_paste_image_inserts_abs_path() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    let mut driver = ScriptedDriver::new();
+    // Minimal PNG header bytes (ScriptedDriver only writes; no decode on stage).
+    driver.set_clipboard_image(b"\x89PNG\r\n\x1a\nfake".to_vec(), "image/png");
+    let mut stream = None;
+
+    session.step(HostEvent::Input(ctrl_v_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    let text = root.borrow().editor_text();
+    assert!(
+        text.contains("xylitol-paste-") && text.ends_with(".png"),
+        "expected tempfile path in editor, got {text:?}"
+    );
+    assert!(
+        !text.contains("base64") && text.len() < 500,
+        "must not embed base64: {text:?}"
+    );
+    assert_eq!(driver.staged_paste_paths().len(), 1);
+}
+
+#[tokio::test]
+async fn harness_paste_image_submit_stays_text() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    let mut driver = ScriptedDriver::new();
+    driver.set_clipboard_image(b"\x89PNG\r\n\x1a\nfake".to_vec(), "image/png");
+    let mut stream = None;
+
+    session.step(HostEvent::Input(ctrl_v_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    let path_text = root.borrow().editor_text();
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert_eq!(driver.runs.len(), 1);
+    assert_eq!(driver.runs[0], path_text);
+    assert!(
+        driver.runs[0].contains("xylitol-paste-"),
+        "run must be path text: {:?}",
+        driver.runs[0]
+    );
+}
+
+#[tokio::test]
+async fn harness_paste_image_miss_error() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crate::app::tui::bridge::UiEntry;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let mut driver = ScriptedDriver::new();
+    // No clipboard image set → Ok(None).
+    let mut stream = None;
+
+    session.step(HostEvent::Input(ctrl_v_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert!(
+        session
+            .ui_model()
+            .entries
+            .iter()
+            .any(|e| matches!(e, UiEntry::Error { text } if text.contains("no image"))),
+        "expected no-image error; got {:?}",
+        session.ui_model().entries
+    );
+}
+
+#[tokio::test]
+async fn harness_paste_image_driver_err() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crate::app::tui::bridge::UiEntry;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let mut driver = ScriptedDriver::new();
+    driver.set_clipboard_image_error("wl-paste exploded");
+    let mut stream = None;
+
+    session.step(HostEvent::Input(ctrl_v_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert!(
+        session
+            .ui_model()
+            .entries
+            .iter()
+            .any(|e| matches!(e, UiEntry::Error { text } if text.contains("wl-paste exploded"))),
+        "expected driver err; got {:?}",
+        session.ui_model().entries
+    );
+}
+
 fn arrow_up_event() -> InputEvent {
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     InputEvent::Key(KeyEvent {

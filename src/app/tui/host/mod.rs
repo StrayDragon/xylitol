@@ -337,6 +337,11 @@ impl<T: Terminal> HostSession<T> {
         self.pending.take_dequeue()
     }
 
+    /// Take pending clipboard-image paste (c1155).
+    pub fn take_paste_image(&mut self) -> bool {
+        self.pending.take_paste_image()
+    }
+
     /// Update footer model name after `/model`.
     pub fn set_footer_model(&mut self, model: impl Into<String>) {
         let Some(root) = self.ui_root.as_ref() else {
@@ -465,6 +470,7 @@ impl<T: Terminal> HostSession<T> {
             HostEvent::Input(input) => {
                 if self.mode == LayoutMode::Ready {
                     if self.try_suppress_stale_esc(&input)
+                        || self.try_paste_image(&input)
                         || self.try_busy_input(&input)
                         || self.try_idle_enter_submit(&input)
                         || self.try_ctrl_g(&input)

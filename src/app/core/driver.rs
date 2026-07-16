@@ -456,6 +456,14 @@ pub trait Driver: Send {
     ) -> Result<ClipboardCopyOutcome, String> {
         Err("copy_text_to_clipboard not supported on this driver".into())
     }
+
+    /// Stage a clipboard image to a unique tempfile and return its absolute path (c1155).
+    ///
+    /// Returns `Ok(None)` when the clipboard has no image. Product TUI inserts the
+    /// path as plain text (pi-aligned); MUST NOT put base64 in the editor.
+    async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, String> {
+        Err("stage_clipboard_image not supported on this driver".into())
+    }
 }
 
 /// Outcome of [`Driver::load_debug_scene`] (c710).
@@ -1210,6 +1218,21 @@ impl Driver for InProcessDriver {
         Ok(ClipboardCopyOutcome {
             pending_osc52: plan.osc52_sequence,
         })
+    }
+
+    async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, String> {
+        let image = tokio::task::spawn_blocking(crate::infra::clipboard::read_clipboard_image)
+            .await
+            .map_err(|e| format!("clipboard image task failed: {e}"))??;
+        let Some(image) = image else {
+            return Ok(None);
+        };
+        let path = tokio::task::spawn_blocking(move || {
+            crate::infra::clipboard::write_clipboard_image_temp(&image.bytes, &image.mime_type)
+        })
+        .await
+        .map_err(|e| format!("clipboard image write task failed: {e}"))??;
+        Ok(Some(path))
     }
 }
 
