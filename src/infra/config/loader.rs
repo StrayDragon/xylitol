@@ -57,27 +57,39 @@ pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, Lo
 
     let mut merged = Value::Null;
 
-    let global_base = paths.global_dir.join("config.yaml");
-    if global_base.exists() {
+    if let Some(global_base) = first_existing(&[
+        paths.global_dir.join("config.yaml"),
+        paths.global_dir.join("config.yml"),
+    ]) {
+        log::info!(
+            target: "xylitol::config",
+            "loading global config {}",
+            global_base.display()
+        );
         let val = load_and_render(&global_base, &secrets)?;
         deep_merge(&mut merged, val);
     }
 
-    let global_local = paths.global_dir.join("config.local.yaml");
-    if global_local.exists() {
+    if let Some(global_local) = first_existing(&[
+        paths.global_dir.join("config.local.yaml"),
+        paths.global_dir.join("config.local.yml"),
+    ]) {
         let val = load_and_render(&global_local, &secrets)?;
         deep_merge(&mut merged, val);
     }
 
     if let Some(ref proj_dir) = paths.project_dir {
-        let proj_base = proj_dir.join("config.yaml");
-        if proj_base.exists() {
+        if let Some(proj_base) =
+            first_existing(&[proj_dir.join("config.yaml"), proj_dir.join("config.yml")])
+        {
             let val = load_and_render(&proj_base, &secrets)?;
             deep_merge(&mut merged, val);
         }
 
-        let proj_local = proj_dir.join("config.local.yaml");
-        if proj_local.exists() {
+        if let Some(proj_local) = first_existing(&[
+            proj_dir.join("config.local.yaml"),
+            proj_dir.join("config.local.yml"),
+        ]) {
             let val = load_and_render(&proj_local, &secrets)?;
             deep_merge(&mut merged, val);
         }
@@ -96,6 +108,10 @@ pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, Lo
 
     let config: AppConfig = serde_json::from_value(merged)?;
     Ok(config)
+}
+
+fn first_existing(candidates: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
+    candidates.iter().find(|p| p.is_file()).cloned()
 }
 
 fn load_and_render(path: &Path, secrets: &SecretMap) -> Result<Value, LoadError> {
@@ -179,5 +195,55 @@ mod tests {
         let overlay = json!({"key": "val"});
         deep_merge(&mut base, overlay);
         assert_eq!(base["key"], json!("val"));
+    }
+
+    #[test]
+    fn loads_yml_alias_and_renders_mcp_secret_headers() {
+        let home = tempfile::tempdir().unwrap();
+        // Isolate migrate_legacy (reads `$HOME/.xylitol`) from the real home tree.
+        let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
+        // Avoid merging the repo's project `.xylitol/` while tests run from workspace cwd.
+        let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", home.path().to_str().unwrap());
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(global.join("secret.env"), "CTX_KEY=secret-value\n").unwrap();
+        // Quoted mustache matches configs/example.yaml + typical user config.
+        std::fs::write(
+            global.join("config.yml"),
+            "mcp_servers:\n  - name: demo\n    transport: sse\n    url: https://example.com/mcp\n    headers:\n      CONTEXT7_API_KEY: \"{{ secret.CTX_KEY }}\"\n",
+        )
+        .unwrap();
+        let _cfg_dir = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
+        let cfg = load_app_config(None).expect("load");
+        let servers = cfg.mcp_servers.expect("mcp_servers");
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "demo");
+        let headers = servers[0].headers.as_ref().expect("headers");
+        assert_eq!(
+            headers.get("CONTEXT7_API_KEY").map(String::as_str),
+            Some("secret-value")
+        );
+    }
+
+    /// RAII env var restore for loader path tests.
+    struct EnvGuard {
+        key: &'static str,
+        prev: Option<String>,
+    }
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: test-only; short-lived; restored on drop.
+            unsafe { std::env::set_var(key, value) };
+            Self { key, prev }
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.prev {
+                Some(v) => unsafe { std::env::set_var(self.key, v) },
+                None => unsafe { std::env::remove_var(self.key) },
+            }
+        }
     }
 }
