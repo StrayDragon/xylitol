@@ -72,7 +72,7 @@ impl std::fmt::Display for TuiPreflightError {
             }
             Self::NoModelSelected => write!(
                 f,
-                "TUI requires a selected model; configure `.xylitol/config.local.yaml` or pass `--model`"
+                "TUI requires a selected model; configure `~/.config/xylitol/config.local.yaml` (or project `.xylitol/config.local.yaml`) or pass `--model`"
             ),
             Self::TerminalSizeUnavailable(e) => {
                 write!(f, "cannot read terminal size ({e}); is this a real TTY?")
