@@ -3,8 +3,8 @@ name: "cli-entry"
 purpose: "CLI 入口：默认 TUI、print 需 prompt、bootstrap/dispatch、server 子命令；产品 slash 以 session-* 为准。"
 valid_scope[2]: src/,tests/
 requirements[16]{req_id,title,statement}:
-  sc1,"info-fields",SlashCommandInfo MUST carry name description source and source_info fields.
-  sc2,"source-enum",SlashCommandSource MUST be exactly one of prompt or skill（extension 若未实现 MUST NOT 作为产品必选项）。
+  sc1,"info-fields","SlashCommandInfo MUST 携带 name、description、source 与 source_info 字段。"
+  sc2,"source-enum","SlashCommandSource MUST 恰为 prompt 或 skill 之一（extension 若未实现 MUST NOT 作为产品必选项）。"
   sc3,"builtin-table","agent 内 builtin 命令表 MAY 保留历史短名供 GetCommands；产品 TUI 对外 slash MUST 以 session-* /model /exit 等为准（见 app-tui-commands 与 PI_DELTAS A03），MUST NOT 要求产品识别已废弃的短名 /tree /fork /export 作为唯一入口。"
   sc4,dispatch,产品 TUI idle slash MUST 经 commands→effects→Driver/dispatch；MUST NOT 依赖已移除的 stdio rpc。
   ce1,"app-directory","CLI 模块 MUST 位于 src/app/cli/，print MUST 为其子模式；app 面 MUST NOT reach agent::runtime / agent::session / agent::tools。"

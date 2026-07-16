@@ -3,6 +3,7 @@ change_id: c1090-add-runtime-keybindings-hot-reload
 title: "Keybindings 热重载缝：资源加载 + 订阅通知"
 status: purpose-draft
 priority: 1090
+apply_band: P2-system
 depends_on: []
 author: agent
 track: R

@@ -3,26 +3,26 @@ name: "runtime-resource-discovery"
 purpose: "统一资源发现：skills、prompt 模板、themes、AGENTS.md / SYSTEM 与诊断（list/info/doctor）。"
 valid_scope[3]: src/infra/resource/,src/domain/resource_types.rs,src/runtime_protocol/resource.rs
 requirements[9]{req_id,title,statement}:
-  rd1,"resource-listing","System MUST provide a read-only command that lists all discovered skills prompts and themes with their source scope and path."
-  rd2,"resource-info","System MUST provide a command that shows details for a single named resource and exits non-zero when not found."
-  rd3,"resource-doctor","System MUST provide a command that surfaces ResourceLoader diagnostics and exits non-zero when issues exist."
-  rd4,"read-only",The resource commands MUST NOT create modify or delete any files or installed package state.
-  rd5,"loader-reuse",The resource commands MUST reuse DefaultResourceLoader discovery rather than rescanning independently.
-  rd6,"unified-source-type",System MUST provide a common SourceInfo type with path source scope origin and base_dir fields.
-  rd7,"source-factories",System MUST provide create_source_info and create_synthetic_source_info factory functions.
-  rd8,"source-migration",Skills PromptTemplate and SlashCommandInfo MUST use the unified SourceInfo type.
-  rd9,"scope-enum",SourceScope MUST support user project and temporary variants matching pi.
+  rd1,资源列表,"System MUST 提供只读命令，列出全部已发现 skills、prompts、themes 及其 source scope 与 path。"
+  rd2,资源详情,"System MUST 提供命令展示单个命名资源详情，未找到时以非零退出。"
+  rd3,资源 doctor,"System MUST 提供命令展示 ResourceLoader 诊断，存在问题时以非零退出。"
+  rd4,只读,资源命令 MUST NOT 创建、修改或删除任何文件或已安装包状态。
+  rd5,复用 loader,资源命令 MUST 复用 DefaultResourceLoader 发现，而非独立重扫。
+  rd6,统一 SourceInfo 类型,"System MUST 提供公共 SourceInfo 类型，含 path、source、scope、origin、base_dir 字段。"
+  rd7,Source 工厂,"System MUST 提供 create_source_info 与 create_synthetic_source_info 工厂函数。"
+  rd8,Source 迁移,"Skills、PromptTemplate、SlashCommandInfo MUST 使用统一 SourceInfo 类型。"
+  rd9,Scope 枚举,"SourceScope MUST 支持 user、project、temporary 变体，对齐 pi。"
 scenarios[13]{req_id,id,given,when,then}:
-  rd1,list,ResourceLoader has skills and prompts loaded,list is invoked,output shows each resource with scope and path
-  rd1,"list-empty",no resources are installed,list is invoked,output is empty and exit code is zero
-  rd2,"info-found",a skill named foo exists,info foo is invoked,details for foo are shown and exit zero
-  rd2,"info-missing",no resource named bar exists,info bar is invoked,"a not-found message is shown and exit non-zero"
-  rd3,"doctor-clean",all resources are valid,doctor is invoked,no issues are reported and exit zero
-  rd3,"doctor-issues",a SKILL.md with missing frontmatter exists,doctor is invoked,"the issue is listed and exit non-zero"
-  rd4,"read-only",any resource command is invoked,the command completes,no files are created or modified
-  rd5,reuse,ResourceLoader already discovered resources,list is invoked,the same set is shown without an independent rescan
-  rd6,create,resource metadata is provided,create_source_info is called,a SourceInfo with all fields populated is returned
-  rd7,"factory-create",resource metadata is provided with path and scope,create_source_info is called,a fully populated SourceInfo is returned
-  rd8,"migration-skills",a skill is loaded from a project directory,its SourceInfo is created,scope is project
-  rd8,"migration-commands",a slash command is registered,its source_info is set,origin is TopLevel if not from a package
-  rd9,"scope-variants",a resource is loaded from user scope,its SourceInfo is created,scope is User
+  rd1,list,ResourceLoader 已加载 skills 与 prompts,调用 list,输出展示每项资源的 scope 与 path
+  rd1,"list-empty",未安装任何资源,调用 list,输出为空且退出码为零
+  rd2,"info-found",存在名为 foo 的 skill,调用 info foo,展示 foo 详情且退出为零
+  rd2,"info-missing",不存在名为 bar 的资源,调用 info bar,展示 not-found 消息且退出非零
+  rd3,"doctor-clean",全部资源有效,调用 doctor,无问题报告且退出为零
+  rd3,"doctor-issues",存在缺少 frontmatter 的 SKILL.md,调用 doctor,列出问题且退出非零
+  rd4,"read-only",调用任意资源命令,命令完成,无文件被创建或修改
+  rd5,reuse,ResourceLoader 已发现资源,调用 list,展示相同集合且无独立重扫
+  rd6,create,提供资源元数据,调用 create_source_info,返回字段完整的 SourceInfo
+  rd7,"factory-create",提供含 path 与 scope 的资源元数据,调用 create_source_info,返回完整填充的 SourceInfo
+  rd8,"migration-skills",从项目目录加载 skill,创建其 SourceInfo,scope 为 project
+  rd8,"migration-commands",注册 slash 命令,设置其 source_info,非来自包时 origin 为 TopLevel
+  rd9,"scope-variants",从 user scope 加载资源,创建其 SourceInfo,scope 为 User

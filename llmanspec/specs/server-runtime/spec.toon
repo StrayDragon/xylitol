@@ -1,32 +1,32 @@
 kind: llman.sdd.spec
 name: "server-runtime"
-purpose: "Server runtime — REST router, WebSocket handler, single-instance lock, and graceful shutdown."
+purpose: "Server 运行时 — REST 路由、WebSocket 处理器、单实例锁与优雅关闭。"
 valid_scope[1]: src/app/server/
 requirements[13]{req_id,title,statement}:
-  sr1,"server-hosts-agent","app::server MUST assemble infra runtimes and inject them into agent ports at startup; app::server MUST pass the Agent into AppState so route handlers can invoke it."
-  sr2,"rest-and-ws","app::server MUST expose protocol/ over REST under a /api/v1 prefix (control commands and state queries) and over WebSocket (streaming events); both MUST speak the protocol::Command and protocol::Event types."
-  sr3,"single-instance-lock","app::server MUST acquire a single-instance lock before binding; a second server against the same lock path MUST receive a ServerLockedError."
-  sr4,"reconnect-journal","app/server/ MUST maintain a monotonic per-session event sequence number and an event journal; on reconnect a client subscribing with last_seq MUST receive replayed events from last_seq+1; if the journal is truncated past last_seq, server MUST emit resync_required."
-  sr5,"reverse-rpc","app/server/ MUST support reverse RPC for ApprovalRequired and QuestionRequired events: it pushes the request over WebSocket to a connected client holding the session, suspends the turn, and resumes on ApproveTool or AnswerQuestion matched by call_id."
-  sr7,"lock-file-content","The server lock file MUST contain a JSON payload with port (u16), pid (u32), and hostname (String); the file MUST be deleted on ServerLock drop (graceful shutdown)."
-  sr8,"port-retry","If the configured port is busy (EADDRINUSE), the server MUST try port+1 up to PORT_RETRY_LIMIT (10) times and update the lock file with the actual port."
-  sr9,"rest-routes-functional","app/server/ MUST respond to POST /api/v1/session/{id}/run by invoking Agent::run and returning session_id; DELETE /api/v1/session/{id} MUST abort the agent; GET /api/v1/session/{id}/events MUST pull from the journal."
-  sr10,"export-io-wiring","The app::server runtime composition root MUST construct an infra-provided StdExportIo and inject it as Arc<dyn runtime_protocol::export::ExportIo> when assembling the Agent hosted in AppState, preferably via app::core::composition::build_agent."
+  sr1,server 托管 agent,"app::server MUST 在启动时装配 infra 运行时并注入 agent 端口；app::server MUST 将 Agent 传入 AppState 供路由处理器调用。"
+  sr2,REST 与 WS,"app::server MUST 在 /api/v1 前缀下经 REST（控制命令与状态查询）与 WebSocket（流式事件）暴露 protocol/；二者 MUST 使用 protocol::Command 与 protocol::Event 类型。"
+  sr3,单实例锁,"app::server MUST 在绑定前获取单实例锁；同一锁路径上第二个 server MUST 收到 ServerLockedError。"
+  sr4,重连 journal,"app/server/ MUST 维护每会话单调事件序号与事件 journal；客户端以 last_seq 重连订阅时 MUST 从 last_seq+1 重放事件；journal 截断超过 last_seq 时 server MUST 发出 resync_required。"
+  sr5,反向 RPC,"app/server/ MUST 支持 ApprovalRequired 与 QuestionRequired 事件的反向 RPC：经 WebSocket 向持有会话的已连接客户端推送请求、挂起回合，并在匹配 call_id 的 ApproveTool 或 AnswerQuestion 时恢复。"
+  sr7,锁文件内容,"server 锁文件 MUST 含 JSON 载荷：port（u16）、pid（u32）、hostname（String）；ServerLock drop（优雅关闭）时 MUST 删除文件。"
+  sr8,端口重试,"配置端口繁忙（EADDRINUSE）时，server MUST 尝试 port+1 至多 PORT_RETRY_LIMIT（10）次，并用实际端口更新锁文件。"
+  sr9,REST 路由可用,"app/server/ MUST 响应 POST /api/v1/session/{id}/run 调用 Agent::run 并返回 session_id；DELETE /api/v1/session/{id} MUST 中止 agent；GET /api/v1/session/{id}/events MUST 从 journal 拉取。"
+  sr10,ExportIo 接线,"app::server 运行时组合根 MUST 构造 infra 提供的 StdExportIo，并在组装 AppState 中 Agent 时注入为 Arc<dyn runtime_protocol::export::ExportIo>，优先经 app::core::composition::build_agent。"
   "sr-driver1",Server 经 Driver 驱动,Server 运行时 MUST 通过 Driver（或等价文档化缝）驱动对话与会话命令，MUST NOT 在生产路径上以裸 AgentRuntime 作为唯一后端旁路 Print 主线。
   "sr-remote1",RemoteDriver 命令对齐,RemoteDriver MUST 实现与 InProcessDriver 对等的文档化 Driver 命令面（模型/会话/队列/导出等），MUST NOT 在生产路径对已承诺命令返回未实现错误。
   "sr-dispatch1",Server 经 dispatch 执行命令,"Server 对可映射的会话命令 MUST 经 protocol::Command + dispatch（或文档化的同一执行路径）执行，MUST NOT 为同一语义维护第二套与 dispatch 漂移的手写分支。"
-  "sr-st1","session-tree-rest","Server REST MUST 为 SessionTreeKind::MessageHistory 提供与 Driver 对等的读树与 travel 端点（路径/查询参数文档化 kind）；RemoteDriver MUST 经这些端点实现 session_tree/travel_session_tree，MUST NOT 对已承诺的 MessageHistory 返回未实现错误。"
+  "sr-st1",会话树 REST,"Server REST MUST 为 SessionTreeKind::MessageHistory 提供与 Driver 对等的读树与 travel 端点（路径/查询参数文档化 kind）；RemoteDriver MUST 经这些端点实现 session_tree/travel_session_tree，MUST NOT 对已承诺的 MessageHistory 返回未实现错误。"
 scenarios[14]{req_id,id,given,when,then}:
-  sr1,"server-under-app","",the source tree is inspected after the change,src/app/server exists and src/server no longer exists
-  sr2,"server-rest-ws-under-app","","app::server runtime is started","it exposes REST and WebSocket endpoints speaking protocol::Command and protocol::Event"
-  sr3,"server-lock-under-app","","a second app::server process starts against the same lock path",it receives ServerLockedError
-  sr4,"reconnect-replay",a client disconnects for N seconds then reconnects with last_seq,the server has produced events during the gap,the client receives all missed events from last_seq+1 then live events
-  sr5,"approval-roundtrip",a tool needs approval,an ApprovalRequired is pushed,the client answers ApproveTool and the turn resumes
-  sr7,"lock-file-json",a server acquires the lock,the lock file is read,it contains a valid JSON with port pid and hostname fields
-  sr8,"port-retry-binds",port 8080 is in use by another process,the server starts on port 8080,it retries and binds to 8081 then updates the lock file
-  sr9,"run-endpoint-works",a prompt is POSTed to /api/v1/session/x/run,the server processes the prompt,the endpoint returns a 200 with a session_id
-  sr10,"server-composition-export-io","","app::server runtime assembles the Agent via app::core::composition",an Arc<dyn ExportIo> is passed to the Agent
-  "sr-driver1","no-bare-runtime",审查 server AppState,检查持有类型,持有 Driver；handlers 不直接 Mutex AgentRuntime 作为唯一入口
+  sr1,"server-under-app","",变更后检查源码树,src/app/server 存在且 src/server 不再存在
+  sr2,"server-rest-ws-under-app","","启动 app::server 运行时",暴露使用 protocol::Command 与 protocol::Event 的 REST 与 WebSocket 端点
+  sr3,"server-lock-under-app","","第二个 app::server 进程对同一锁路径启动",收到 ServerLockedError
+  sr4,"reconnect-replay",客户端断开 N 秒后以 last_seq 重连,断开期间 server 产生事件,客户端收到 last_seq+1 起全部遗漏事件再收实时事件
+  sr5,"approval-roundtrip",工具需审批,推送 ApprovalRequired,客户端应答 ApproveTool 且回合恢复
+  sr7,"lock-file-json",server 获取锁,读取锁文件,含有效 JSON 的 port、pid、hostname 字段
+  sr8,"port-retry-binds",8080 被其它进程占用,server 在 8080 启动,重试并绑定 8081 后更新锁文件
+  sr9,"run-endpoint-works",向 /api/v1/session/x/run POST prompt,server 处理 prompt,端点返回 200 与 session_id
+  sr10,"server-composition-export-io","","app::server 运行时经 app::core::composition 组装 Agent",向 Agent 传入 Arc<dyn ExportIo>
+  "sr-driver1","no-bare-runtime",审查 server AppState,检查持有类型,持有 Driver；handlers 不直接以 Mutex AgentRuntime 作为唯一入口
   "sr-remote1","remote-commands","",调用 RemoteDriver steer 与 queue_stats,成功并与 server 状态一致
   "sr-dispatch1","shared-path","",审查 switch_model/steer 等 handlers,调用 dispatch 或共享 helper；与 InProcessDriver 语义一致
   "sr-st1","rest-get-tree",server 上存在 session 与消息树,GET 文档化的 session tree 端点且 kind=MessageHistory,200 且 body 含树节点

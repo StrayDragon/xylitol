@@ -1,20 +1,20 @@
 kind: llman.sdd.spec
 name: infra-clipboard
-purpose: "Clipboard integration — native clipboard, OSC 52, and image copy support."
+purpose: "剪贴板集成 — 原生剪贴板、OSC 52 与图片复制支持。"
 valid_scope[1]: src/infra/clipboard/
 requirements[6]{req_id,title,statement}:
-  c1,"text-copy","System MUST provide copy_to_clipboard(text) that copies UTF-8 text to system clipboard through platform-native tools."
-  c2,"platform-order","System MUST try platform-native clipboard in order: native addon greater pbcopy/clip greater wl-copy greater xclip/xsel greater termux-clipboard-set greater OSC 52."
-  c3,"image-clipboard",System MUST support reading image data from clipboard with MIME type detection on supported platforms.
-  c4,"osc52-remote",System MUST fall back to OSC 52 escape sequence for remote sessions (SSH) when native clipboard is unavailable.
-  c5,"osc52-limit",System MUST respect OSC 52 payload size limit (100KB encoded) and skip OSC 52 fallback when payload exceeds limit.
-  c6,"clipboard-error",System MUST return a descriptive error when all clipboard methods fail instead of silently swallowing the failure.
+  c1,"text-copy","System MUST 提供 copy_to_clipboard(text)，经平台原生工具将 UTF-8 文本复制到系统剪贴板。"
+  c2,"platform-order","System MUST 按顺序尝试平台原生剪贴板：native addon > pbcopy/clip > wl-copy > xclip/xsel > termux-clipboard-set > OSC 52。"
+  c3,"image-clipboard","System MUST 在支持平台上读取剪贴板图片数据并检测 MIME 类型。"
+  c4,"osc52-remote","原生剪贴板不可用时，System MUST 对远程会话（SSH）回退到 OSC 52 转义序列。"
+  c5,"osc52-limit","System MUST 遵守 OSC 52 载荷大小限制（编码后 100KB），超出时 MUST 跳过 OSC 52 回退。"
+  c6,"clipboard-error","所有剪贴板方法均失败时，System MUST 返回描述性错误，MUST NOT 静默吞掉失败。"
 scenarios[8]{req_id,id,given,when,then}:
-  c1,macos,macOS system with pbcopy available,copy_to_clipboard is called with text,pbcopy process receives text on stdin and clipboard contains text
-  c1,"linux-wayland","Wayland Linux with wl-copy available",copy_to_clipboard is called with text,"wl-copy process receives text via stdin pipe and clipboard contains text"
-  c1,"linux-x11",X11 Linux with xclip available,copy_to_clipboard is called with text,xclip process receives text and clipboard contains text
-  c2,"fallback-chain",all native clipboard tools fail,copy_to_clipboard is called with small text,OSC 52 escape sequence is emitted on stdout
-  c3,"image-read","wl-paste or xclip reports an image MIME type",read_clipboard_image is called,ClipboardImage with bytes and mime_type is returned
-  c4,"ssh-session",SSH_CONNECTION is set and native clipboard tools unavailable,copy_to_clipboard is called with small text,OSC 52 sequence is emitted to stdout
-  c5,oversize,text exceeds 100KB base64 encoded,copy_to_clipboard is called with large text,OSC 52 fallback is skipped and error is returned
-  c6,"all-fail",no clipboard tool exists on the system and no terminal,copy_to_clipboard is called,a descriptive error string is returned
+  c1,macos,"macOS 系统且 pbcopy 可用",copy_to_clipboard 被调用并传入 text,pbcopy 进程从 stdin 接收 text 且剪贴板含 text
+  c1,"linux-wayland","Wayland Linux 且 wl-copy 可用",copy_to_clipboard 被调用并传入 text,"wl-copy 经 stdin pipe 接收 text 且剪贴板含 text"
+  c1,"linux-x11","X11 Linux 且 xclip 可用",copy_to_clipboard 被调用并传入 text,xclip 接收 text 且剪贴板含 text
+  c2,"fallback-chain","所有原生剪贴板工具均失败",copy_to_clipboard 被调用并传入小文本,stdout 发出 OSC 52 转义序列
+  c3,"image-read","wl-paste 或 xclip 报告图片 MIME 类型",read_clipboard_image 被调用,返回含 bytes 与 mime_type 的 ClipboardImage
+  c4,"ssh-session","SSH_CONNECTION 已设置且原生剪贴板工具不可用",copy_to_clipboard 被调用并传入小文本,stdout 发出 OSC 52 序列
+  c5,oversize,"text 超过 100KB base64 编码",copy_to_clipboard 被调用并传入大文本,跳过 OSC 52 回退并返回错误
+  c6,"all-fail","系统无剪贴板工具且无终端",copy_to_clipboard 被调用,返回描述性错误字符串

@@ -3,6 +3,7 @@ change_id: c1175-refactor-slash-command-ssot
 title: "重构：收敛 slash 命令 SSOT（死短名表 vs session-*）"
 status: purpose-draft
 priority: 1175
+apply_band: P1-refactor
 depends_on: []
 author: agent
 track: QA

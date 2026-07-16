@@ -1,38 +1,38 @@
 kind: llman.sdd.spec
 name: domain-compaction
-purpose: "Conversation compaction — n-gram cut detection, LLM summarization, and token estimation."
+purpose: "对话 compaction — n-gram 切点检测、LLM 摘要与 token 估计。"
 valid_scope[2]: src/agent/compaction/,src/domain/compaction_config.rs
 requirements[15]{req_id,title,statement}:
-  c1,token-估算使用统一-Usage-与多源计量,"System MUST 基于当前消息与可选 XyUsage 锚点估计上下文占用，并经 xylitol-ai-bridge accounting（或等价注入端口）按 Api 然后 RemoteCount 然后 LocalTokenizer 然后 Heuristic 的优先级解析；MUST 继续使用 canonical XyUsage，MUST NOT 再引入并行的第二套 usage 结构。"
-  c2,"should-compact",System MUST trigger compaction when estimated token usage exceeds a configurable threshold percentage of the context window.
-  c3,"compact-summarize",Compaction MUST summarize older messages into a CompactionEntry while preserving the N most recent turns.
-  c4,"compact-session",Compaction MUST persist the CompactionEntry to the session file and update the session tree.
-  c5,"branch-summary","When navigating to a session tree branch, System MUST generate a branch summary entry bridging the context gap."
-  c6,"bdd-compaction",BDD tests under tests/features/compaction.feature MUST all pass.
-  c7,"llm-summarize","Compaction MUST call a configured LLM to generate a structured summary using format: ## Goal / ## Constraints & Preferences / ## Progress (Done, In Progress, Blocked) / ## Key Decisions / ## Next Steps / ## Critical Context."
-  c8,"cut-point","System MUST find a cut point in session entries that preserves approximately keepRecent tokens of recent context, walking backwards from newest entries and cutting at valid entry types (user/assistant/custom/branch_summary, never tool results)."
-  c9,"iterative-summary","When a previous CompactionEntry exists, System MUST use an update prompt that preserves existing structured information and merges new progress, rather than starting from scratch."
-  c10,"file-tracking","Compaction summary MUST append <read-files> and <modified-files> XML tags listing files referenced in tool calls within the summarized messages."
-  c11,"compact-entry","Compaction MUST produce a CompactionEntry containing summary string, firstKeptEntryId referencing the first retained entry after the cut point, tokensBefore count, and details object with readFiles and modifiedFiles lists."
-  c12,"agent-integration","AgentSession MUST expose compact_current_session() that: estimates context usage, finds cut point, calls LLM summarization, writes CompactionEntry, and reloads session state."
-  c13,"module-split","The compaction subsystem MUST be split into cohesive modules by responsibility covering token estimation and cut-point detection and file-operation tracking and LLM summarization and branch summary instead of a single oversized file."
-  c14,单一配置来源,"Compaction configuration MUST have exactly one serde-facing type named XyCompactionSettingsConfig and one runtime type named XyCompactionSettings; the duplicate CompactionConfig definition MUST be removed."
-  c15,token-使用量类型统一与来源标注,"Compaction 与会话侧上下文估计 MUST 使用 domain 的 XyUsage 作为厂商/归一化用量类型；估计结果 MUST 能暴露 TokenProvenance（或经映射的等价来源标注）供上层区分 Api 与降级估计；token_estimator 内 MUST NOT 再定义重复的 XyUsage。"
+  c1,token 估算使用统一 Usage 与多源计量,"System MUST 基于当前消息与可选 XyUsage 锚点估计上下文占用，并经 xylitol-ai-bridge accounting（或等价注入端口）按 Api 然后 RemoteCount 然后 LocalTokenizer 然后 Heuristic 的优先级解析；MUST 继续使用 canonical XyUsage，MUST NOT 再引入并行的第二套 usage 结构。"
+  c2,应触发 compact,"估计 token 用量超过上下文窗口可配置阈值百分比时，System MUST 触发 compaction。"
+  c3,compact 摘要,"Compaction MUST 将较早消息摘要为 CompactionEntry，同时保留最近 N 轮。"
+  c4,compact 会话,"Compaction MUST 将 CompactionEntry 持久化到会话文件并更新会话树。"
+  c5,分支摘要,"导航到会话树分支时，System MUST 生成分支摘要条目桥接上下文缺口。"
+  c6,BDD compaction,"tests/features/compaction.feature 下 BDD 测试 MUST 全部通过。"
+  c7,LLM 摘要,"Compaction MUST 调用配置的 LLM 生成结构化摘要，格式：## Goal / ## Constraints & Preferences / ## Progress (Done, In Progress, Blocked) / ## Key Decisions / ## Next Steps / ## Critical Context。"
+  c8,切点,"System MUST 在会话条目中找到切点，保留约 keepRecent tokens 的近期上下文，从最新条目向后遍历，在合法条目类型（user/assistant/custom/branch_summary，永不切 tool results）处切断。"
+  c9,迭代摘要,"存在先前 CompactionEntry 时，System MUST 使用更新 prompt 保留既有结构化信息并合并新进展，而非从头开始。"
+  c10,文件跟踪,"Compaction 摘要 MUST 在摘要消息内工具调用引用的文件后追加 <read-files> 与 <modified-files> XML 标签列表。"
+  c11,compact 条目,"Compaction MUST 产出含 summary 字符串、firstKeptEntryId（切点后首条保留条目）、tokensBefore 计数及含 readFiles 与 modifiedFiles 列表的 details 对象的 CompactionEntry。"
+  c12,agent 集成,"AgentSession MUST 暴露 compact_current_session()：估计上下文用量、找切点、调用 LLM 摘要、写入 CompactionEntry、重载会话状态。"
+  c13,模块拆分,"compaction 子系统 MUST 按职责拆分为内聚模块，覆盖 token 估计、切点检测、文件操作跟踪、LLM 摘要与分支摘要，而非单一超大文件。"
+  c14,单一配置来源,"Compaction 配置 MUST 有且仅有一个 serde 面向类型 XyCompactionSettingsConfig 与一个运行时类型 XyCompactionSettings；重复 CompactionConfig 定义 MUST 移除。"
+  c15,token 使用量类型统一与来源标注,"Compaction 与会话侧上下文估计 MUST 使用 domain 的 XyUsage 作为厂商/归一化用量类型；估计结果 MUST 能暴露 TokenProvenance（或经映射的等价来源标注）供上层区分 Api 与降级估计；token_estimator 内 MUST NOT 再定义重复的 XyUsage。"
 scenarios[17]{req_id,id,given,when,then}:
   c1,"estimate-uses-priority","存在可信 XyUsage 锚点","调用上下文估计","优先采用 Api 语义且仍返回统一估计结构"
   c1,"estimate-fallback-chain","无 XyUsage 且 LocalTokenizer 可用","调用上下文估计","采用 LocalTokenizer 而非静默当作 Api"
-  c2,trigger,tokens exceed 80% of context window,shouldCompact is called,returns true
-  c3,summarize,session has 50 turns,compact is called,first 40 turns are summarized into one CompactionEntry
-  c4,persist,compaction completes,session is loaded,CompactionEntry is present with summary and cut point
-  c5,branch,user navigates to earlier branch point,branch summary is generated,summary entry bridges the context gap
-  c6,"bdd-pass",BDD runner invoked,"cargo test --test bdd",all compaction scenarios pass
-  c7,summarize,session has 30 user+assistant turns with file edits,generate_summary is called,response contains Goal Progress Next Steps sections with specific file paths
-  c8,"find-cut",session has 50 entries totaling 80000 tokens with keepRecent=20000,find_cut_point is called,the cut index preserves roughly the last 20000 tokens of context
-  c9,iterative,"a previous CompactionEntry exists with summary, new messages are accumulated",generate_summary is called with previousSummary,result preserves previous Done items and adds new ones
-  c10,files,"messages contain tool calls: read a.txt, write b.rs, edit c.py",compact_session is called,"CompactionEntry summary ends with <read-files>a.txt</read-files> and <modified-files>b.rs c.py</modified-files>"
-  c11,entry,compact_session completes and session is loaded,CompactionEntry is present,"summary non-empty, firstKeptEntryId valid, tokensBefore positive, details contains file lists"
-  c12,agent,agent session has messages exceeding threshold,compact_current_session is called,"CompactionEntry written to session, session state reloaded"
-  c13,"split-by-responsibility",the compaction module responsibilities are enumerated,the module is split,each resulting file owns one responsibility and is independently testable
-  c14,"single-compaction-config",the codebase is searched for CompactionConfig,"rg \"struct CompactionConfig\"",zero matches remain
+  c2,trigger,tokens 超过上下文窗口 80%,调用 shouldCompact,返回 true
+  c3,summarize,会话有 50 轮,调用 compact,前 40 轮被摘要为一个 CompactionEntry
+  c4,persist,compaction 完成,加载会话,存在含 summary 与切点的 CompactionEntry
+  c5,branch,用户导航到较早分支点,生成分支摘要,摘要条目桥接上下文缺口
+  c6,"bdd-pass",调用 BDD runner,"cargo test --test bdd",全部 compaction 场景通过
+  c7,summarize,会话有 30 轮 user+assistant 含文件编辑,调用 generate_summary,响应含 Goal、Progress、Next Steps 节及具体文件路径
+  c8,"find-cut",会话 50 条共 80000 tokens 且 keepRecent=20000,调用 find_cut_point,切点索引大致保留最后 20000 tokens 上下文
+  c9,iterative,"先前 CompactionEntry 含 summary，新消息已累积",以 previousSummary 调用 generate_summary,结果保留先前 Done 项并添加新项
+  c10,files,"消息含工具调用：read a.txt、write b.rs、edit c.py",调用 compact_session,"CompactionEntry summary 以 <read-files>a.txt</read-files> 与 <modified-files>b.rs c.py</modified-files> 结尾"
+  c11,entry,compact_session 完成并加载会话,CompactionEntry 存在,"summary 非空、firstKeptEntryId 有效、tokensBefore 为正、details 含文件列表"
+  c12,agent,agent 会话消息超阈值,调用 compact_current_session,"CompactionEntry 写入会话，会话状态已重载"
+  c13,"split-by-responsibility",枚举 compaction 模块职责,拆分模块,各结果文件拥有单一职责且可独立测试
+  c14,"single-compaction-config",在代码库搜索 CompactionConfig,"rg \"struct CompactionConfig\"",零匹配残留
   c15,"provenance-available","完成一次启发式降级估计","检查估计结果","带有 Heuristic 来源标注且无重复 XyUsage 定义"
-  c15,"usage-unified",token_estimator.rs is inspected,the change is applied,it imports XyUsage from domain instead of defining a local struct
+  c15,"usage-unified",检查 token_estimator.rs,应用变更后,从 domain 导入 XyUsage 而非定义本地结构
