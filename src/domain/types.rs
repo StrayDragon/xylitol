@@ -116,7 +116,7 @@ impl ThinkingLevel {
     /// Resolve configured level names into a support list.
     ///
     /// - `thinking == false` → `[Off]`
-    /// - `thinking == true` and empty/missing list → [`STANDARD`]
+    /// - `thinking == true` and empty/missing list → [`Self::STANDARD`]
     /// - explicit list → parsed in order (holes allowed); unknown names → `Err`
     pub fn resolve_configured_levels(
         thinking: bool,

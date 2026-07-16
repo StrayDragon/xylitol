@@ -180,6 +180,19 @@ impl AgentCapabilities {
     pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
         let previous = self.thinking_level();
         self.model_manager.set_thinking_level(level)?;
+        self.persist_thinking_level_change(previous, level);
+        Ok(())
+    }
+
+    /// Cycle to the next level in the current model's support list.
+    pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String> {
+        let previous = self.thinking_level();
+        let level = self.model_manager.cycle_thinking_level()?;
+        self.persist_thinking_level_change(previous, level);
+        Ok(level)
+    }
+
+    fn persist_thinking_level_change(&self, previous: ThinkingLevel, level: ThinkingLevel) {
         // Fire-and-forget persistence via the session store port.
         if let Some(ref sid) = self.session_id {
             let store = self.store.clone();
@@ -209,7 +222,6 @@ impl AgentCapabilities {
                 }),
             );
         }
-        Ok(())
     }
 
     /// Apply Settings `default_thinking_level` (if parseable) then clamp to model.

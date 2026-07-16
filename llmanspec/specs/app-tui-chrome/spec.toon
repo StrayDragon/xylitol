@@ -2,10 +2,10 @@ kind: llman.sdd.spec
 name: "app-tui-chrome"
 purpose: 主题 token、glyph、status 与 footer 等 layout 壳（历史 capability 名 chrome）。
 valid_scope[1]: src/app/tui/
-requirements[17]{req_id,title,statement}:
+requirements[18]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   atc1,"idle-status-omitted",产品 UiRoot 空闲时 status 槽 MUST 渲染 0 行；忙碌时 MUST 至多独立 1 行短状态；MUST NOT 将 Working 等忙碌文案并入 footer。
-  atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本；字段序为 cwd 与 model（形如 `cwd · model`），并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api/RemoteCount/LocalTokenizer 为 used N tokens，Heuristic 为 used ~N tokens，Unknown 为 used ? tokens）；队列非空时可加 `q:sN|fM ·` 前缀；无估计数据时 MUST NOT 伪造 used 0；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。"
+  atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本；字段序为 cwd · model · thinking 标签（形如 `cwd · model · • thinking off` 或 `· • xhigh`，level 文案为 ThinkingLevel::as_str，off 时用 `thinking off`）；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api/RemoteCount/LocalTokenizer 为 used N tokens，Heuristic 为 used ~N tokens，Unknown 为 used ? tokens）；队列非空时可加 `q:sN|fM ·` 前缀；无估计数据时 MUST NOT 伪造 used 0；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。"
   atc3,"theme-glyphs-config","产品 host MUST 经 Palette::dark()（或等价闭包）将语义色注入组件主题；glyph 档（unicode/ascii）MUST 由显式配置切换，MUST NOT 做运行时字体探测；产品 MVP MUST NOT 默认开启 theme auto。"
   atc4,"design-docs-ssot","产品 TUI 视觉与 UX MUST 以 src/app/tui/DESIGN.md 为索引、以 src/app/tui/design/*.md 为组件级 SSOT；实现与 demo 引用组件规则时 MUST 指向对应子文档（尤其 design/diff-block.md 与 design/keybindings.md），MUST NOT 仅依赖口头约定。"
   atc5,"demo-theme-auto-detect",agent_demo MUST 默认使用 Dark token 集；当启用主题自动探测（环境变量或 harness API）时 MUST 经 package terminal_colors 纯函数切换 Light/Dark，并在 layout 壳（footer 或系统行）暴露当前 theme_mode；MUST NOT 将自动切换设为产品 MVP 默认。
@@ -20,13 +20,12 @@ requirements[17]{req_id,title,statement}:
   atc14,"footer-token-refresh",产品 host MUST 在 session tree travel 换叶、一轮 agent turn 结束后回到 idle、以及 compact 成功后刷新 footer token 字段；刷新 MUST 经 Driver 只读 estimate_context_tokens（或等价 seam），MUST NOT 在每个 TextDelta 上全量本地 tokenizer.encode。
   atc15,主题热应用,产品 TUI MUST 能按主题名（至少内建 dark/light）将 Palette 应用到 LayoutTheme/UiRoot；未知或非法名 MUST 保留旧主题并报告诊断；重载 MUST NOT 清空 transcript。
   atc16,"theme-slash-slot","产品 /theme 无参 MUST 使用独立 editor 槽（Themes SelectList，对齐 Models 槽模式）挂载内建主题项；选中 MUST 调用已有主题热应用路径（atc15）并关闭槽；Esc MUST 关闭槽且 MUST NOT 改主题；MUST NOT 解冻 Plate/Settings/Choice 活板；MUST NOT 将 theme auto 或 demo Ctrl+P theme-toggle 设为产品默认。"
+  atc17,"thinking-border-and-footer",产品 TUI MUST 将当前 Driver thinking level 映射为 ThinkingBorderLevel 并经 apply_thinking_border（或等价）染色 Editor 操作区边框；footer MUST 同步显示对应 level 标签（见 atc2）；主题切换后 MUST 按新 Palette 重涂 thinking 边框；bash 强调色边框（ati15）开启时 MUST 覆盖 thinking 边框，退出 bash 前缀后 MUST 恢复当前 thinking 边框而非仅 muted。
 scenarios[31]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-chrome",spec.toon 存在且 purpose 为中文
   atc1,"idle-status-zero-rows","",空闲 UiRoot apply_ui_model 后 render,无独立 Working 行且 status 槽占 0 行
   atc1,"busy-status-not-in-footer","",busy 且 status=Working 时 render,存在独立 status 文案且 footer 不含 Working
-  atc2,"footer-cwd-model-no-keywall","",空闲渲染末行,含 cwd 与 model 且不含 enter submit 键墙
-  atc2,"footer-with-used-tokens",已有 ContextTokenEstimate 且 provenance 为 Api,渲染 footer,末行含 used N tokens 且仍为单行 dim
-  atc2,"footer-omit-when-no-estimate",尚无 estimate 结果,渲染 footer,含 cwd 与 model 且不含伪造的 used 0
+  atc2,"footer-thinking-label",当前 thinking level 为 medium,渲染 footer,末行含 model 与 • medium（或等价 thinking 标签）且仍为单行
   atc3,"ascii-glyph-prefix","",配置 glyph=ascii 后渲染用户行,用户前缀为 ascii 档字符
   atc4,"index-lists-components","",打开 DESIGN.md,组件索引列出 design/ 下核心文档路径
   atc4,"diff-block-exists","",实现 Diff 渲染前查阅设计,"design/diff-block.md 存在且含 unified / word-level / CJK MUST"
@@ -52,3 +51,5 @@ scenarios[31]{req_id,id,given,when,then}:
   atc16,"select-applies",Themes 槽已打开,选中 light 并确认,palette 为 light 且槽关闭
   atc16,"esc-keeps",Themes 槽已打开且当前 dark,按 Esc,槽关闭且仍为 dark
   atc16,"no-auto-default",产品 host 默认构造,观察主题探测状态,未启用 theme auto
+  atc17,"border-follows-level",thinking level 为 high 且非 bash 前缀,sync_editor_border 或等价,Editor 边框色为 Palette thinking_border 对应 high
+  atc17,"bash-overrides-then-restore",thinking level 为 medium,编辑器文本改为 !ls 再改回 hello,先为 bash 强调色，再恢复 medium thinking 边框

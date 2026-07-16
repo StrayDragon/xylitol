@@ -322,6 +322,13 @@ mod tests {
         fn thinking_level(&self) -> ThinkingLevel {
             self.thinking
         }
+        fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String> {
+            let levels = ThinkingLevel::STANDARD;
+            let idx = levels.iter().position(|l| *l == self.thinking).unwrap_or(0);
+            let next = levels[(idx + 1) % levels.len()];
+            self.thinking = next;
+            Ok(next)
+        }
         fn session_id(&self) -> Option<String> {
             self.session_id.clone()
         }

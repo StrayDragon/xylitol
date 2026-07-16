@@ -347,6 +347,22 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
+    /// Take pending Shift+Tab thinking cycle (c1150).
+    pub fn take_pending_thinking_cycle(&mut self) -> bool {
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        root.borrow_mut().take_pending_thinking_cycle()
+    }
+
+    /// Silent UI sync for thinking level (border + footer only; c1150).
+    pub fn apply_thinking_level_ui(&mut self, level: crate::domain::types::ThinkingLevel) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().set_thinking_level_ui(level);
+    }
+
     /// Set or clear footer token usage fragment (c1035).
     pub fn set_footer_token_label(&mut self, label: Option<String>) {
         let Some(root) = self.ui_root.as_ref() else {

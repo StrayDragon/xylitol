@@ -11,7 +11,7 @@ pub use glyphs::GlyphSet;
 pub use queue::render_queue_strip;
 pub use scrollback::{ScrollbackFold, render_scrollback};
 
-use crate::domain::types::TokenProvenance;
+use crate::domain::types::{ThinkingLevel, TokenProvenance};
 
 /// Provenance-honest footer fragment (`used N tokens` / `~N` / `?`).
 pub fn footer_token_label(provenance: TokenProvenance, tokens: u64) -> String {
@@ -24,15 +24,25 @@ pub fn footer_token_label(provenance: TokenProvenance, tokens: u64) -> String {
     }
 }
 
-/// Footer identity line (`cwd · model`, optional queue badge / token usage).
+/// Footer thinking-level label (`thinking off` for Off, else `as_str`).
+pub fn footer_thinking_label(level: ThinkingLevel) -> String {
+    if level == ThinkingLevel::Off {
+        "thinking off".into()
+    } else {
+        level.as_str().to_string()
+    }
+}
+
+/// Footer identity line (`cwd · model · • {thinking}`, optional queue / tokens).
 pub fn format_footer_text(
     cwd: &str,
     model: &str,
+    thinking_label: &str,
     steer: usize,
     follow_up: usize,
     token_label: Option<&str>,
 ) -> String {
-    let mut base = format!("{cwd} · {model}");
+    let mut base = format!("{cwd} · {model} · • {thinking_label}");
     if let Some(tok) = token_label.filter(|s| !s.is_empty()) {
         base = format!("{base} · {tok}");
     }
@@ -72,15 +82,25 @@ mod tests {
     }
 
     #[test]
+    fn footer_thinking_label_off_and_levels() {
+        assert_eq!(footer_thinking_label(ThinkingLevel::Off), "thinking off");
+        assert_eq!(footer_thinking_label(ThinkingLevel::Medium), "medium");
+        assert_eq!(footer_thinking_label(ThinkingLevel::Xhigh), "xhigh");
+    }
+
+    #[test]
     fn format_footer_text_field_order() {
-        assert_eq!(format_footer_text("~/x", "m", 0, 0, None), "~/x · m");
         assert_eq!(
-            format_footer_text("~/x", "m", 0, 0, Some("used 3 tokens")),
-            "~/x · m · used 3 tokens"
+            format_footer_text("~/x", "m", "thinking off", 0, 0, None),
+            "~/x · m · • thinking off"
         );
         assert_eq!(
-            format_footer_text("~/x", "m", 1, 2, Some("used ~4 tokens")),
-            "q:s1|f2 · ~/x · m · used ~4 tokens"
+            format_footer_text("~/x", "m", "medium", 0, 0, Some("used 3 tokens")),
+            "~/x · m · • medium · used 3 tokens"
+        );
+        assert_eq!(
+            format_footer_text("~/x", "m", "high", 1, 2, Some("used ~4 tokens")),
+            "q:s1|f2 · ~/x · m · • high · used ~4 tokens"
         );
     }
 }
