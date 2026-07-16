@@ -1,6 +1,6 @@
 kind: llman.sdd.spec
 name: "package-tui-autocomplete"
-purpose: "TBD - created by archiving change c420-port-autocomplete-debounce. Update purpose after archive."
+purpose: "自动补全：CancellationToken 取消、可选 fd 模糊搜、DebouncedAutocomplete。"
 valid_scope[2]: src/,tests/
 requirements[3]{req_id,title,statement}:
   ac01,"async-cancellable-autocomplete","The autocomplete system MUST support asynchronous suggestion fetching with CancellationToken-based cancellation so that in-flight file-system queries can be aborted when the user types new input, mirroring pi's AbortSignal pattern. The CombinedAutocompleteProvider MUST expose an async method accepting CancellationToken for its fuzzy file search path."

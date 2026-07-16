@@ -1,6 +1,6 @@
 kind: llman.sdd.spec
 name: "test-hooks-wiring"
-purpose: "TBD - created by archiving change c990-add-test-hooks-wiring-bdd. Update purpose after archive."
+purpose: "hooks 接线 BDD：观察/可取消/可修改矩阵与 XyHookBus 精选导出。"
 valid_scope[2]: src/,tests/
 requirements[6]{req_id,title,statement}:
   thw1,"hooks-wiring-feature","仓库 MUST 提供 tests/features/hooks-wiring.feature（中文），以场景大纲固定「观察型 / 可取消 / 可修改」三类通用单元；每个已启用例子对应一种 hook 事件在权威路径上的至少一处引用。"

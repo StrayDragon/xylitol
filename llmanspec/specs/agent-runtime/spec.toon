@@ -1,95 +1,45 @@
 kind: llman.sdd.spec
 name: "agent-runtime"
-purpose: "TBD - created by archiving change c25-add-agent-loop. Update purpose after archive."
-valid_scope[2]: src/,tests/
-requirements[41]{req_id,title,statement}:
-  r1,"execution-loop","System MUST implement a self-contained ReAct loop (XyRunner) that calls XyModel for generation and dispatches XyTool calls until completion or max_iterations."
-  r2,"event-system","System MUST emit AgentEvent variants (TextDelta / ThinkingDelta / ToolCallStart / ToolCallEnd / StepComplete / Error) from XyRunner without any adk-core Event dependency."
-  r3,"session-runtime",System MUST manage session history via XySession trait with InMemorySession as default backend.
-  r4,"openai-provider","System MUST support OpenAI chat completions and streaming via async-openai with tool calling and base_url override."
-  r5,"anthropic-provider",System MUST support Anthropic messages API and streaming via reqwest with tool_use and base_url override.
-  r6,"content-types","System MUST define XyContent and XyPart types (Text / Thinking / FunctionCall / FunctionResponse) independent of adk-core."
-  ar1,"thin-agent-loop","The agent/ layer MUST contain only the ReAct loop (runtime/react.rs), hook cut-points (runtime/hooks.rs), event types (runtime/event.rs), and orchestration state (current model/tool selection); it MUST NOT inline prompt formatting, bash execution logic, or output guarding logic in the loop file."
-  ar2,统一事件输出,Agent runtime MUST emit XyEvent variants from the ReAct loop; the legacy AgentEvent enum MUST be removed.
-  ar3,"tool-execution","Agent runtime MUST execute all tool calls from a single model response before the next model call, supporting both sequential and parallel execution modes."
-  ar4,"ports-via-builder","Agent construction MUST go through an AgentBuilder that takes the minimal required ports (ModelRegistry, model builder, Arc<dyn XySessionStore>, Arc<dyn XyEventSink>, Arc<dyn XyPermission>) in its constructor and adds every other capability via consuming builder methods with defaults; the Agent::new(session) and Agent::with_ports(...) positional constructors MUST be removed."
-  ar5,统一事件流类型,Agent runtime MUST expose the loop as an async Stream<XyEvent> for consumer layers via XyEventStream.
-  ar8,"session-cwd","Agent runtime MUST validate session working directory exists on session creation and import, returning an error with the missing path when CWD is not accessible."
-  ar9,"infra-diagnostics","Agent runtime MUST collect non-fatal diagnostics (info/warning/error) during session creation covering: missing API keys, unknown model references, extension load failures, and CWD issues."
-  ar10,defaults,"System MUST centralize default values: DEFAULT_THINKING_LEVEL = medium, DEFAULT_MODEL for each known provider, DEFAULT_MAX_ITERATIONS = 50, DEFAULT_COMPACTION_THRESHOLD = 0.8."
-  ar11,"bdd-runtime-v3","BDD tests for session-cwd validation and defaults MUST all pass."
-  ar12,"output-guard-takeover","Agent runtime MUST support stdout takeover that redirects all process.stdout.write calls to stderr, enabling clean output in print mode. The takeover state must be queryable via is_stdout_taken_over()."
-  ar13,"output-guard-restore","Agent runtime MUST support stdout restore returning process.stdout.write to its original implementation, and write_raw_stdout that bypasses the takeover for direct output."
-  ar14,"bdd-runtime-v4",BDD tests for OutputGuard stdout takeover and restore MUST all pass.
-  ar15,"no-rloop-keyword","No source file under src/ MUST use the r#loop raw identifier; the ReAct loop module MUST be named runtime::react."
-  ar16,"agent-entry-direct","System MUST define AgentRuntime (the ReAct-loop driver) and AgentCapabilities (the pluggable capability aggregate) directly under agent/ and re-export them from agent/mod.rs; app layers MUST import agent symbols from agent/mod (not from an agent::facade hub); the previous single facade re-export module MUST be removed."
-  ar17,"sessionstore-port","System MUST define runtime_protocol::SessionStore with load_context (returns SessionContext), append, and exists methods — the minimal surface the ReAct loop and compaction call; SessionManager MUST implement it."
-  ar18,"eventsink-port","System MUST define runtime_protocol::EventSink with emit_lifecycle; EventBus MUST implement it."
-  ar19,"lifecyclehandler-in-runtime-protocol","The LifecycleHandler type alias for async event subscriptions MUST reside in runtime_protocol::event, not in domain::lifecycle, because it is a contract detail of the event runtime protocol rather than domain vocabulary."
-  ar20,事件映射自动化,"System MUST provide From<&XyEvent> for protocol::Event and TryFrom<&protocol::Event> for XyEvent to replace hand-written proto_to_agent conversions."
-  ar21,"agent-builder","System MUST provide an AgentBuilder in agent/ that depends only on runtime_protocol port trait objects and plain data (no concrete infra types), defaults tools to an empty ToolSet and bash_executor and export_io to None, provides consuming methods tools, system_prompt, hooks, bash, export_io, sandbox, context_files, compaction, max_iterations, and a build method returning Result<AgentRuntime, String>."
-  ar22,"runtime-mutable-slots","Agent MUST expose turn-level setters set_tools, set_hooks, add_hook, set_sandbox, and set_system_prompt that mutate session-backed capability state and take effect on the NEXT run call; an in-flight turn MUST be unaffected because run snapshots tools, prompt, cancel, and hooks at turn start, so the app or tui layer MAY switch configuration between turns (plan or edit mode) without locks."
-  ar23,"hooks-invoked","The ReAct loop MUST consult AgentHooks at the tool-call boundary: before executing a tool it MUST run the before chain where any hook MAY deny the call with a reason that short-circuits to a tool-error result, and after a tool returns it MUST run the after chain where hooks MAY observe or transform the result; when no hooks are registered the loop MUST incur zero overhead. The previous self.hooks field was never read; this requirement wires it."
-  ar24,"hook-chains-not-slots","AgentHooks MUST hold before, after, and transform_context as Vec of callbacks appendable at runtime via add_hook, not single Option slots; the steering and follow-up message callbacks MUST be separated into a distinct struct because they are message-injection, not tool-execution interception."
-  ar25,"react-agent-naming","Turn driver MUST be named AgentRuntime (formerly ReActAgent / AgentLoop); it MUST drive AgentCapabilities for each ReAct turn; hollow single-field delegation shells MUST NOT be reintroduced."
-  ar26,"facade-layer-removed","The agent::facade intermediate module MUST remain removed; AgentRuntime and AgentCapabilities MUST be defined under agent/ with builder/hooks/event re-exports on agent/mod.rs; reaching into agent::runtime or agent::session internals from app/ remains a layering violation."
-  ar27,"react-loop-continues-after-tool-call","The ReAct loop MUST continue to a next model round after executing tool calls (feeding the tool results back into history), and MUST terminate a turn only when a model round produces NO tool call (tool_calls is empty). The loop MUST NOT terminate merely because the model stream emitted XyChunk::Done: providers send Done at the end of every single model stream including ones that contain FunctionCalls (openai yields FunctionCall then Done at finish_reason; anthropic and openai-responses likewise), so treating Done as turn-end aborts every tool-calling turn after one round and the model never sees the tool results. Evidence: react.rs had if done { break } after TurnEnd where done was set by XyChunk::Done, so a tool call (FunctionCall followed by Done) broke the for-loop before the continuation round; a stateful mock model test confirmed the continuation text never reached the caller; the correct termination tool_calls.is_empty() already existed at react.rs:356."
-  "ar-q1","pending-message-queue","Agent runtime MUST 提供 PendingMessageQueue（或等价类型），支持 enqueue、drain、clear、has_items，以及 all 与 one-at-a-time 两种 drain 模式；steer 与 follow-up MUST 使用各自独立队列。"
-  "ar-q2","react-drains-steering","ReAct 循环 MUST 在每一轮模型调用之前 drain steering 队列并将消息注入历史；MUST 在即将结束（无 tool_calls 且将停止）之前 drain follow-up 队列；若 follow-up 非空 MUST 继续循环而非立即 AgentEnd。"
-  "ar-q3","queue-update-events","入队、drain 与 clear 之后，runtime MUST 发射 XyEvent::QueueUpdate，携带当前 steer_count 与 follow_up_count。"
-  "ar-q4","abort-clears-steer-keeps-followup","调用 abort 时 runtime MUST 清空 steering 队列且 MUST NOT 清空 follow-up 队列；显式 clear_queue API MUST 允许分别或同时清空两侧队列。"
-  "ar-ev1",未知事件可降级,若未来扩展 XyEvent（含可选 Extension/Custom 载荷），应用面与 bridge MUST 对未识别变体降级处理（如 tracing），MUST NOT panic；核心循环 MUST 不依赖厂商专属变体才能完成一轮工具调用。
-  "ar-q10",异步队列运行时,System MUST 提供可并发 enqueue 的异步消息队列运行时，至少覆盖 steer 与 follow_up 通道；入队与 clear 产生的队列状态更新 MUST 进入活跃 Driver run 的 XyEvent 流（或等价单通道），MUST NOT 仅依赖无人订阅的 EventBus 旁路。
-  "ar-q11",abort 与队列取消语义,Driver abort MUST 取消进行中的工具（经 CancellationToken）并清空 steer 通道；MUST 保留 follow_up 通道内容供 UI restore；队列实现 MUST 在 async 上下文中避免长时间持锁。
-  ar28,"abort-resets-cancel-token",AgentRuntime MUST 在每次 run 开始时安装一个新的 CancellationToken；abort MUST 只取消当前 run 的 token。abort 之后的下一次 run MUST NOT 因沿用已取消 token 而立即以 aborted 结束。
-  ar29,"abort-cancels-interactive-bash","AgentRuntime::abort（及经 Driver::abort 的同一入口）MUST 在取消当前 run CancellationToken 并清空 steer 队列之外，取消进行中的交互 bash（session abort_bash / BashExecHandler）；MUST 导致挂起中的 !/!! 或 execute_bash 子进程树被终止且结果标记 cancelled（或等价可观测中止）。工具 bash 仍经 run token 取消（ar-q11）；MUST NOT 清空 follow_up。"
-  ar30,"abort-cancels-provider-stream","AgentRuntime 在模型流进行中（含 call_with_retry/send 挂起与 chunk 消费中）收到 abort（当前 run CancellationToken 取消，及经 Driver::abort 的同一入口）时 MUST 停止继续 poll 该次模型流，MUST drop provider stream 以便关闭 HTTP 响应体，并 MUST 以 Error aborted（或等价可观测中止）结束本轮；MUST NOT 仅抑制 UI 事件而继续 drain 完 SSE。TUI/CLI/server/未来 client MUST 经 Driver::abort 无感继承，MUST NOT 在各应用面各自实现 HTTP 取消。"
-scenarios[48]{req_id,id,given,when,then}:
-  r1,"react-loop",a mock XyModel returns text then tool call then final text,XyRunner executes,all events are emitted and loop terminates after tool response
-  r1,"max-iterations",XyModel always returns tool calls,XyRunner reaches max_iterations,loop terminates with MaxIterationsReached error
-  r2,"no-adk-events",agent is executing,events are emitted,"no adk_core::Event or adk_runner types appear in the event stream"
-  r3,"session-history",a session has 3 turns of history,agent sends a new prompt,all previous turns are included in the XyModel request
-  r4,"openai-streaming","an OpenAI-compatible endpoint is configured",agent sends a prompt,"streaming text and tool_call chunks are emitted as adk_core::LlmResponse"
-  r5,"anthropic-streaming",an Anthropic endpoint is configured,agent sends a prompt,"streaming content_block_delta events are mapped to adk_core::LlmResponse"
-  r6,"part-roundtrip","an XyPart::FunctionCall is created",it is serialized and deserialized,all fields (name / args / id) are preserved
-  ar1,"loop-file-thin",runtime/react.rs is inspected,it is read,it contains only the ReAct algorithm and delegates formatting and execution
-  ar2,"no-agent-event",the codebase is searched for AgentEvent enum,"rg \"enum AgentEvent\"",zero matches remain
-  ar3,"parallel-tools",model returns 3 tool calls with parallel execution mode,tools execute concurrently,all results are appended before next model call
-  ar4,"builder-replaces-ctors","Agent::new and Agent::with_ports existed",the change is applied,only AgentBuilder constructs an Agent and the old positional constructors are gone
-  ar5,"stream-xy-event",a consumer polls the agent runtime stream,the loop emits events,each item is XyEvent
-  ar8,"cwd-exists",a session has cwd /home/user/project and directory exists,session is loaded,no error returned
-  ar8,"cwd-missing",a session has cwd /nonexistent/path,session is loaded,error message includes the missing path
-  ar9,"diag-missing-key",no API key configured for openai,session is created,diagnostics list contains warning about missing openai API key
-  ar10,"default-thinking",no thinking level explicitly set,thinking_level is queried,returns medium
-  ar11,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all runtime-v3 scenarios pass"
-  ar12,"takeover-redirects",stdout is not taken over,take_over_stdout is called,is_stdout_taken_over returns true
-  ar12,"double-takeover-noop",stdout is already taken over,take_over_stdout is called again,no error and is_stdout_taken_over still true
-  ar13,restore,stdout is taken over,restore_stdout is called,is_stdout_taken_over returns false and original stdout is restored
-  ar14,"bdd-pass",BDD runner invoked,"cargo test --test bdd","all runtime-v4 scenarios pass"
-  ar15,"grep-no-rloop",the source tree is grepped for r#loop,the grep runs,zero matches are found
-  ar16,"runtime-capabilities-named",源码树在本变更后,rg AgentRuntime 与 AgentCapabilities,二者均存在且 agent/mod 再导出；无 ReActAgent 类型名
-  ar17,"store-in-memory",a test constructs Agent with InMemoryStore,a turn runs,the test passes without creating a real SessionManager
-  ar18,"sink-records-events",a test constructs Agent with RecordingSink,compaction triggers lifecycle events,the sink contains the expected events
-  ar19,"handler-in-runtime-protocol",the source tree is inspected for LifecycleHandler,its definition is located,it is defined under src/runtime_protocol/event.rs
-  ar20,"auto-mapping",a protocol Event is converted back to domain,TryFrom is used,the conversion succeeds for all supported variants
-  ar21,"builder-returns-runtime",AgentBuilder 装配完成,调用 build,返回 AgentRuntime
-  ar22,"turn-snapshot",a turn N is in flight,"set_tools is called mid-turn",turn N still uses the old tool set and turn N+1 uses the new set with no lock
-  ar23,"before-chain-denies",a before hook denies the bash tool,the loop reaches the bash call,"execute is skipped and a tool-error result is recorded for the LLM"
-  ar24,"add-hook-runtime",an agent is already built,add_hook pushes a second before callback,both callbacks run on the next tool call in registration order
-  ar25,"agent-runtime-named",源码树在本变更后,"rg '\\bReActAgent\\b' src/",零匹配且 AgentRuntime 为 turn driver
-  ar26,"facade-still-gone",源码树,检查 agent/facade.rs,不存在且 agent/mod 再导出 AgentRuntime 与 AgentCapabilities
-  ar27,"tool-call-then-continuation",a model round emits a FunctionCall then Done and the agent executes the tool,the loop processes the tool result and calls the model again,the model continuation round (a final text reply with no tool call) reaches the caller and the turn ends with that reply visible
-  ar27,"plain-text-turn-unchanged",a model round emits only text and no tool call then Done,the loop terminates after that single round,"the turn ends after one round with no spurious continuation (the fix does not change plain-text behavior)"
-  "ar-q1","drain-one","","one-at-a-time 模式下队列有两条消息并 drain",仅返回一条且队列仍剩一条
-  "ar-q2","steer-inject","",流中 steer 一条消息后当前工具轮结束进入下一模型轮,steering 文本已注入历史并参与下一轮模型调用
-  "ar-q3","emit-counts","",steer 入队一条,观察到 QueueUpdate 且 steer_count 为 1
-  "ar-q4","abort-keep-fu","steer 与 follow-up 队列均非空",调用 abort,"steer 为空且 follow-up 仍保留原消息"
-  "ar-ev1",degrade,消费者收到未映射事件变体,渲染或 bridge 处理,记录日志且不崩溃
-  "ar-q10","single-channel","一次活跃的 Driver::run",UI 并发 enqueue steer,EventStream 上出现 QueueUpdate 且 ReAct 下轮 drain 到该消息
-  "ar-q11","abort-semantics",steer 与 follow_up 均非空且工具执行中,abort,工具停止、steer 空、follow_up 仍在
-  ar28,"abort-resets",AgentRuntime 上一轮被 abort,再次 run,不因旧 token 立即 aborted
-  ar29,"interactive-bash-aborted",交互 bash 正在执行 sleep 类长命令,"调用 AgentRuntime::abort 或 Driver::abort",bash 结果 cancelled 为 true 且子进程不再存活
-  ar29,"followup-kept",steer 与 follow_up 均非空且交互 bash 进行中,调用 abort,steer 空、follow_up 保留、交互 bash 已取消
-  ar30,"mid-stream-abort",慢速多段模型流进行中,"调用 AgentRuntime::abort 或 Driver::abort",出现 aborted 且后续 chunk/TextDelta 远少于未 abort 总量
-  ar30,"http-drop-evidence",本地慢速 chunked HTTP/SSE 服务,客户端 drop bytes_stream 或 adapter XyStream,服务端观察到写失败/断连且写入计数停滞
-  ar30,"driver-inherits",InProcessDriver 跑慢速 Fake 流,"首个 TextDelta 后 Driver::abort",事件含 aborted 且 TextDelta 段数远少于脚本量
+purpose: "薄编排 ReAct 运行时：AgentRuntime 循环、工具批执行、steer/follow-up 队列、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
+valid_scope[3]: src/agent/,src/runtime_protocol/,tests/
+requirements[18]{req_id,title,statement}:
+  ar1,"thin-react-loop","agent/ 层 MUST 以 AgentRuntime（runtime/react.rs）驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls 或达 max_iterations；MUST NOT 在循环文件内联 bash 实现或厂商 HTTP。"
+  ar2,"xy-event-stream","运行时 MUST 以 XyEvent 异步流对外输出（TextDelta / ThinkingDelta / Tool* / Turn* / QueueUpdate / Error 等）；MUST NOT 再引入 AgentEvent 或 adk 事件类型。"
+  ar3,"tool-batch-before-next-model","同一模型响应中的全部工具调用 MUST 在下一轮模型调用前执行完毕（可并行或串行）；MUST NOT 因流结束 Done 而提前结束含 tool_calls 的回合。"
+  ar4,"builder-ports","Agent 装配 MUST 经 AgentBuilder，依赖 runtime_protocol 端口与纯数据；app 组合根注入具体 infra 实现。"
+  ar5,"sessionstore-eventsink","runtime_protocol MUST 提供 SessionStore 与 EventSink；SessionManager / EventBus 为实现。"
+  ar6,"mutable-slots-next-turn","set_tools / set_hooks / set_system_prompt 等 MUST 只影响下一轮 run；进行中回合使用启动快照。"
+  ar7,"hooks-at-tool-boundary","工具执行前 MUST 跑 before 链（可拒绝）；之后 MUST 跑 after 链；无 hook 时零开销。"
+  ar8,"pending-queues","MUST 提供独立的 steer 与 follow_up 队列（enqueue/drain/clear）；ReAct MUST 在模型调用前 drain steer，在将结束前 drain follow_up（非空则继续）。"
+  ar9,"queue-update-events","入队/drain/clear 后 MUST 发射 XyEvent::QueueUpdate（steer_count / follow_up_count）。"
+  ar10,"abort-queue-semantics","abort MUST 清空 steer、保留 follow_up；MUST 取消当前 run CancellationToken 与进行中工具/交互 bash；MUST NOT 仅靠无人订阅的 EventBus 旁路传队列状态。"
+  ar11,"abort-resets-token","每次 run 开始 MUST 安装新 CancellationToken；abort 后下一次 run MUST NOT 因沿用已取消 token 立刻 aborted。"
+  ar12,"abort-cancels-provider-stream","模型流进行中 abort MUST 停止 poll 并 drop provider stream，以 aborted 结束；应用面 MUST 经 Driver::abort。"
+  ar13,"no-rloop-name","src/ MUST NOT 使用 r#loop 标识符；循环模块名为 runtime::react。"
+  ar14,"facade-removed","MUST NOT 恢复 agent::facade 中枢；AgentRuntime / AgentCapabilities 由 agent/mod 再导出；app 禁止 reach agent::runtime / agent::session 内部。"
+  ar15,"unknown-event-degrade","应用面/bridge 对未识别 XyEvent 变体 MUST 降级（日志），MUST NOT panic。"
+  ar16,"defaults","未显式配置时 MUST 有可测默认：thinking level、max_iterations、compaction 阈值等集中定义。"
+  ar17,"cwd-validate","创建/导入会话时 MUST 校验工作目录可访问，失败返回含路径的错误。"
+  ar18,"wire-event-mapping","MUST 提供 XyEvent ↔ protocol::Event 映射（From/TryFrom 或等价），覆盖闭集内变体。"
+scenarios[21]{req_id,id,given,when,then}:
+  ar1,"react-terminates","mock 模型先 tool 后无 tool","运行 AgentRuntime","先执行工具再结束且无 adk 类型"
+  ar2,"stream-is-xyevent","消费事件流","轮询","每项为 XyEvent"
+  ar3,"continues-after-tools","模型返回 FunctionCall 后 Done","循环","继续下一轮模型调用并带上 toolResult"
+  ar3,"done-not-turn-end","流含 tool 与 Done","观察循环","MUST NOT 仅因 Done 结束回合"
+  ar8,"steer-before-model","steer 队列非空","即将模型调用","历史含 steer 消息"
+  ar8,"followup-extends","无 tool 且 follow_up 非空","将结束时","继续循环而非 AgentEnd"
+  ar9,"queue-update","enqueue steer","观察流","出现 QueueUpdate 且计数正确"
+  ar10,"abort-clears-steer","有 steer 与 follow_up","abort","steer 空且 follow_up 保留"
+  ar11,"second-run-after-abort","abort 后","再次 run","正常完成而非立即 aborted"
+  ar12,"abort-drops-sse","模型流挂起","Driver::abort","流停止且回合 aborted"
+  ar13,"no-rloop","在 src 中搜索 r#loop 标识符","运行检查","零匹配"
+  ar14,"no-facade","检查 agent/facade.rs","不存在该模块","facade 保持移除"
+  ar15,"unknown-ok","bridge 收到未知变体","处理","不 panic"
+  ar16,"default-thinking","未设 thinking","查询","返回默认 medium 或配置约定值"
+  ar17,"cwd-missing","cwd 不存在","创建会话","错误含路径"
+  ar18,"roundtrip","XyEvent TextDelta","经 protocol 往返","字段保留"
+  ar7,"before-denies","before hook 拒绝 bash","循环到 bash","不执行并回写 tool-error"
+  ar6,"mid-turn-set-tools","回合进行中 set_tools","本回合","仍用旧工具集"
+  ar4,"builder-build","AgentBuilder 装配","build","得到 AgentRuntime"
+  ar5,"ports-exist","检查 runtime_protocol","SessionStore 与 EventSink","trait 存在且可被实现"
+  ar10,"abort-cancels-bang","交互 bang 进行中","abort","子进程 cancelled"
