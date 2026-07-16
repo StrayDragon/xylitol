@@ -148,6 +148,8 @@ impl PtySession {
         Self::spawn_example("agent_demo", cols, rows)
     }
 
+    /// Seed the editor via `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` (slash-submit cases).
+    #[allow(dead_code)] // kept for prompt-seeded e2e; palette/settings use Ctrl+P/S + wait_for_raw
     pub fn spawn_demo_with_prompt(cols: u16, rows: u16, prompt: &str) -> std::io::Result<Self> {
         Self::spawn_example_with_env(
             "agent_demo",
@@ -377,10 +379,9 @@ fn pty_agent_demo_submit_flow_survives_enter() {
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e`"]
 fn pty_agent_demo_command_palette_smoke() {
-    // Preload editor with exactly `:palette` so Enter matches the slash handler.
-    // Use a tall viewport so the plate title/filter lines stay on-screen.
-    let mut session =
-        PtySession::spawn_demo_with_prompt(172, 60, ":palette").expect("spawn agent_demo");
+    // Prefer Ctrl+P (same as harness / tmux). Tall seed + differential CSI leaves the
+    // VTE cell-grid oracle stale, so assert via raw PTY bytes (see wait_for_raw).
+    let mut session = PtySession::spawn_example("agent_demo", 172, 60).expect("spawn agent_demo");
     session
         .wait_for_idle(
             crate::DEMO_READY_NEEDLE,
@@ -390,25 +391,24 @@ fn pty_agent_demo_command_palette_smoke() {
             60,
         )
         .expect("agent_demo should be idle");
-    session.send_keys("\r").expect("submit :palette");
-    // Footer swaps to selector chrome when plate is open; also match plate body.
-    let screen = session
-        .wait_for("Type to filter", Duration::from_secs(10), 172, 60)
-        .expect("command plate should appear");
-    let text = screen.text();
+    session
+        .send_keys("\x10")
+        .expect("Ctrl+P open command plate");
+    session
+        .wait_for_raw(crate::DEMO_COMMAND_PLATE_NEEDLE, Duration::from_secs(10))
+        .expect("command plate title should appear in PTY stream");
     assert!(
-        text.contains("Run regression tests")
-            || text.contains("Markdown full")
-            || text.contains(crate::DEMO_COMMAND_PLATE_NEEDLE),
-        "command plate content should be visible; got:\n{text}"
+        session.raw_contains(b"Type to filter")
+            || session.raw_contains(b"Run regression tests")
+            || session.raw_contains(b"Markdown full"),
+        "command plate body should be present in raw stream"
     );
 }
 
 #[test]
 #[ignore = "E2E: spawns a real PTY + cargo build; run via `just test-tui-e2e`"]
 fn pty_agent_demo_settings_overlay_smoke() {
-    let mut session =
-        PtySession::spawn_demo_with_prompt(172, 60, ":settings").expect("spawn agent_demo");
+    let mut session = PtySession::spawn_example("agent_demo", 172, 60).expect("spawn agent_demo");
     session
         .wait_for_idle(
             crate::DEMO_READY_NEEDLE,
@@ -418,14 +418,13 @@ fn pty_agent_demo_settings_overlay_smoke() {
             60,
         )
         .expect("agent_demo should be idle");
-    session.send_keys("\r").expect("submit :settings");
-    let screen = session
-        .wait_for("Approval", Duration::from_secs(10), 172, 60)
-        .expect("settings overlay should appear");
-    let text = screen.text();
+    session.send_keys("\x13").expect("Ctrl+S open settings");
+    session
+        .wait_for_raw(crate::DEMO_SETTINGS_NEEDLE, Duration::from_secs(10))
+        .expect("settings title should appear in PTY stream");
     assert!(
-        text.contains(crate::DEMO_SETTINGS_NEEDLE) || text.contains("Approval"),
-        "settings overlay content should be visible; got:\n{text}"
+        session.raw_contains(b"Approval"),
+        "settings overlay should list Approval row in raw stream"
     );
 }
 
