@@ -901,6 +901,7 @@ mod tests {
                 origin: SourceOrigin::TopLevel,
                 base_dir: None,
             },
+            disable_model_invocation: false,
         }]);
 
         let after = session.system_prompt().unwrap_or("").to_string();
