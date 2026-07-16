@@ -551,6 +551,40 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     })
 }
 
+/// Report from [`discovered_theme_names`] / theme reload helpers (c1095).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeDiscoveryReport {
+    pub names: Vec<String>,
+}
+
+/// List discovered theme file stems under Trust semantics (c1095).
+///
+/// Untrusted → project themes skipped (loader cwd = temp). Built-in `dark`/`light`
+/// are **not** injected here; callers may union them for pickers.
+#[allow(dead_code)] // consumed by c1115 / c1120 and HostSession::reload_themes
+pub fn discovered_theme_names(
+    cwd: &std::path::Path,
+    agent_dir: &std::path::Path,
+    project_trusted: bool,
+) -> ThemeDiscoveryReport {
+    let loader_cwd = if project_trusted {
+        cwd.to_path_buf()
+    } else {
+        std::env::temp_dir()
+    };
+    let loader =
+        crate::infra::resource::DefaultResourceLoader::new(loader_cwd, agent_dir.to_path_buf());
+    let mut names: Vec<String> = loader
+        .get_themes()
+        .0
+        .iter()
+        .map(|t| t.name.clone())
+        .collect();
+    names.sort();
+    names.dedup();
+    ThemeDiscoveryReport { names }
+}
+
 /// Report from [`reload_prompt_context`] (c1100).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(dead_code)] // consumed by c1120 `/reload` and host wiring
@@ -672,6 +706,36 @@ mod tests {
         assert!(
             !sp.contains("SECRET_PROJECT_AGENTS"),
             "untrusted reload must not inject project AGENTS.md"
+        );
+    }
+
+    #[test]
+    fn discovered_theme_names_trusted_lists_project_theme() {
+        let project = tempfile::tempdir().unwrap();
+        let agent_dir = tempfile::tempdir().unwrap();
+        let themes = project.path().join(".xylitol").join("themes");
+        std::fs::create_dir_all(&themes).unwrap();
+        std::fs::write(themes.join("custom.json"), "{}").unwrap();
+
+        let report = discovered_theme_names(project.path(), agent_dir.path(), true);
+        assert!(
+            report.names.iter().any(|n| n == "custom"),
+            "trusted discovery must list project theme stem"
+        );
+    }
+
+    #[test]
+    fn discovered_theme_names_untrusted_skips_project_theme() {
+        let project = tempfile::tempdir().unwrap();
+        let agent_dir = tempfile::tempdir().unwrap();
+        let themes = project.path().join(".xylitol").join("themes");
+        std::fs::create_dir_all(&themes).unwrap();
+        std::fs::write(themes.join("secret.json"), "{}").unwrap();
+
+        let report = discovered_theme_names(project.path(), agent_dir.path(), false);
+        assert!(
+            !report.names.iter().any(|n| n == "secret"),
+            "untrusted discovery must skip project themes"
         );
     }
 }

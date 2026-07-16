@@ -11,6 +11,7 @@ pub(crate) mod keybindings;
 mod layout;
 pub(crate) mod session_resume;
 pub(crate) mod terminal_guard;
+mod themes;
 mod widgets;
 
 #[cfg(test)]

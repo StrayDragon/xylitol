@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,atc15,主题热应用,产品 TUI MUST 能按主题名（至少内建 dark/light）将 Palette 应用到 LayoutTheme/UiRoot；未知或非法名 MUST 保留旧主题并报告诊断；重载 MUST NOT 清空 transcript。,null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  atc15,"apply-light",当前为 dark LayoutTheme,apply 主题名 light,UiRoot palette 为 light 且 transcript 仍在
+  atc15,"bad-keeps-old",当前为 dark,apply 未知主题名,仍为 dark 且有诊断

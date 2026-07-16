@@ -1,0 +1,48 @@
+//! Theme apply helpers for [`UiRoot`] (c1095).
+
+use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
+use xylitol_tui::fg_rgb;
+
+use super::{
+    UiRoot, empty_models_list, empty_session_resume_panel, empty_tree_selector, import_confirm_list,
+};
+use crate::app::tui::layout::LayoutTheme;
+
+impl UiRoot {
+    pub fn layout_theme(&self) -> LayoutTheme {
+        self.theme
+    }
+
+    /// Replace the layout theme and rebuild theme-dependent chrome (c1095).
+    /// Does not clear transcript / `ui_model` entries.
+    pub fn set_layout_theme(&mut self, theme: LayoutTheme) {
+        self.theme = theme;
+        let accent = theme.palette().accent;
+        let muted = theme.palette().muted;
+        self.status_loader = Loader::new(
+            Box::new(move |s| fg_rgb(accent, s)),
+            Box::new(move |s| fg_rgb(muted, s)),
+            String::new(),
+            Some(LoaderIndicatorOptions::default()),
+        );
+        self.editor.set_border_color(if self.bash_mode {
+            theme.bash_border_color()
+        } else {
+            theme.muted_border_color()
+        });
+        // Rebuild themed shells; tree/resume content is host-refreshed on next open.
+        let selected = self.tree.selected_id().map(str::to_string);
+        self.tree = empty_tree_selector(theme);
+        if let Some(id) = selected {
+            let _ = self.tree.select_id(&id);
+        }
+        self.models_list = empty_models_list(theme);
+        self.apply_models_filter();
+        self.import_confirm_list = import_confirm_list(theme);
+        self.session_resume = empty_session_resume_panel(theme);
+        self.refresh_footer_from_queue(
+            self.ui_model.queue.steer_count,
+            self.ui_model.queue.follow_up_count,
+        );
+    }
+}

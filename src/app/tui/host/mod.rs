@@ -218,6 +218,18 @@ impl<T: Terminal> HostSession<T> {
         super::keybindings::reload_keybindings(agent_dir)
     }
 
+    /// Apply a built-in theme name to the product UI (c1095).
+    ///
+    /// Unknown names return `Err` and leave the current theme unchanged.
+    /// Does not clear transcript.
+    pub fn reload_themes(&mut self, theme_name: &str) -> Result<(), String> {
+        let theme = super::themes::layout_theme_from_name(theme_name)?;
+        if let Some(root) = &self.ui_root {
+            root.borrow_mut().set_layout_theme(theme);
+        }
+        Ok(())
+    }
+
     pub fn bash_active(&self) -> bool {
         self.bash_active
     }
