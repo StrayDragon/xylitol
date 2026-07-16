@@ -1,4 +1,4 @@
-use crate::keys::{KeyId, matches_key_event};
+use crate::keys::matches_key_event;
 use crossterm::event::KeyEvent;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -7,16 +7,18 @@ pub type Keybinding = &'static str;
 
 #[derive(Debug, Clone)]
 pub struct KeybindingDefinition {
-    pub default_keys: Vec<KeyId>,
+    pub default_keys: Vec<&'static str>,
     pub description: Option<&'static str>,
 }
 
 pub type KeybindingDefinitions = HashMap<&'static str, KeybindingDefinition>;
-pub type KeybindingsConfig = HashMap<&'static str, Vec<KeyId>>;
+
+/// User overrides from disk / tests (`id` → chords). Owned strings for JSON reload.
+pub type KeybindingsConfig = HashMap<String, Vec<String>>;
 
 #[derive(Debug, Clone)]
 pub struct KeybindingConflict {
-    pub key: KeyId,
+    pub key: String,
     pub keybindings: Vec<&'static str>,
 }
 
@@ -148,7 +150,7 @@ static TUI_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
 
 pub struct KeybindingsManager {
     definitions: HashMap<&'static str, KeybindingDefinition>,
-    keys_by_id: HashMap<&'static str, Vec<KeyId>>,
+    keys_by_id: HashMap<&'static str, Vec<String>>,
     conflicts: Vec<KeybindingConflict>,
 }
 
@@ -170,20 +172,20 @@ impl KeybindingsManager {
         self.keys_by_id.clear();
         self.conflicts.clear();
 
-        let mut user_claims: HashMap<KeyId, Vec<&str>> = HashMap::new();
+        let mut user_claims: HashMap<String, Vec<&'static str>> = HashMap::new();
         for (kb, keys) in user_bindings.iter() {
-            if !self.definitions.contains_key(kb) {
-                continue;
-            }
+            let Some((&id, _)) = self.definitions.iter().find(|(def_id, _)| *def_id == kb) else {
+                continue; // unknown id — ignore
+            };
             for key in keys {
-                user_claims.entry(key).or_default().push(kb);
+                user_claims.entry(key.clone()).or_default().push(id);
             }
         }
 
         for (key, kbs) in &user_claims {
             if kbs.len() > 1 {
                 self.conflicts.push(KeybindingConflict {
-                    key,
+                    key: key.clone(),
                     keybindings: kbs.to_vec(),
                 });
             }
@@ -193,7 +195,7 @@ impl KeybindingsManager {
             let keys = if let Some(user_keys) = user_bindings.get(id) {
                 user_keys.clone()
             } else {
-                def.default_keys.clone()
+                def.default_keys.iter().map(|s| (*s).to_string()).collect()
             };
             self.keys_by_id.insert(id, keys);
         }
@@ -210,7 +212,7 @@ impl KeybindingsManager {
         false
     }
 
-    pub fn get_keys(&self, keybinding: Keybinding) -> Vec<KeyId> {
+    pub fn get_keys(&self, keybinding: Keybinding) -> Vec<String> {
         self.keys_by_id.get(keybinding).cloned().unwrap_or_default()
     }
 
@@ -223,6 +225,17 @@ impl KeybindingsManager {
     }
 
     pub fn set_user_bindings(&mut self, user_bindings: KeybindingsConfig) {
+        self.rebuild(&user_bindings);
+    }
+
+    /// Merge additional static definitions (e.g. product `app.*`) then rebuild with
+    /// the given user overrides (or empty).
+    pub fn extend_definitions(
+        &mut self,
+        extra: HashMap<&'static str, KeybindingDefinition>,
+        user_bindings: KeybindingsConfig,
+    ) {
+        self.definitions.extend(extra);
         self.rebuild(&user_bindings);
     }
 }
@@ -241,13 +254,25 @@ where
     if let Some(ref kb) = *guard {
         f(kb)
     } else {
-        // Lazy init with defaults
         drop(guard);
         let definitions = create_default_definitions();
         let mut guard = GLOBAL_KEYBINDINGS.lock().unwrap();
         *guard = Some(KeybindingsManager::new(definitions, HashMap::new()));
         f(guard.as_ref().unwrap())
     }
+}
+
+/// Mutate the global manager (e.g. `set_user_bindings` on reload).
+pub fn with_keybindings_mut<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut KeybindingsManager) -> R,
+{
+    let mut guard = GLOBAL_KEYBINDINGS.lock().unwrap();
+    if guard.is_none() {
+        let definitions = create_default_definitions();
+        *guard = Some(KeybindingsManager::new(definitions, HashMap::new()));
+    }
+    f(guard.as_mut().unwrap())
 }
 
 /// Create default keybinding definitions from TUI_KEYBINDINGS.
@@ -263,4 +288,36 @@ pub fn create_default_definitions() -> HashMap<&'static str, KeybindingDefinitio
         );
     }
     map
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn owned_override_replaces_default() {
+        let defs = create_default_definitions();
+        let mut custom = KeybindingsConfig::new();
+        custom.insert("tui.input.submit".into(), vec!["ctrl+j".into()]);
+        let kb = KeybindingsManager::new(defs, custom);
+        assert!(!kb.matches_event(&key(KeyCode::Enter), "tui.input.submit"));
+        assert!(kb.matches_event(
+            &KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL),
+            "tui.input.submit"
+        ));
+    }
+
+    #[test]
+    fn unknown_id_ignored() {
+        let defs = create_default_definitions();
+        let mut custom = KeybindingsConfig::new();
+        custom.insert("app.does.not.exist".into(), vec!["f12".into()]);
+        let kb = KeybindingsManager::new(defs, custom);
+        assert!(kb.matches_event(&key(KeyCode::Enter), "tui.input.submit"));
+    }
 }

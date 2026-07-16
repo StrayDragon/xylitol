@@ -67,6 +67,7 @@ pub use highlight::{highlight_code, highlight_code_owned};
 pub use keybindings::{
     Keybinding, KeybindingConflict, KeybindingDefinition, KeybindingDefinitions, KeybindingsConfig,
     KeybindingsManager, create_default_definitions, set_keybindings, with_keybindings,
+    with_keybindings_mut,
 };
 pub use keys::{
     KeyId, decode_printable_key, is_key_release, is_key_repeat, matches_key, matches_key_event,

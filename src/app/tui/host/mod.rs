@@ -156,6 +156,18 @@ impl<T: Terminal> HostSession<T> {
 
     /// Product UI with footer identity (`cwd · model`).
     pub fn new_product_ui_with_meta(terminal: T, cwd: String, model: String) -> Self {
+        // c1090: install tui.* + app.* before any input listeners run.
+        #[cfg(test)]
+        {
+            // Harness must not pick up the developer's ~/.xylitol/keybindings.json.
+            super::keybindings::install_product_keybindings_defaults_only();
+        }
+        #[cfg(not(test))]
+        {
+            let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
+            let _ = super::keybindings::install_product_keybindings(&agent_dir);
+        }
+
         let ui_root = Rc::new(RefCell::new(UiRoot::new()));
         ui_root.borrow_mut().set_layout_meta(cwd.clone(), model);
         let quit_flag = Arc::new(AtomicBool::new(false));
@@ -195,6 +207,15 @@ impl<T: Terminal> HostSession<T> {
 
     pub fn run_active(&self) -> bool {
         self.run_active
+    }
+
+    /// Re-read `agent_dir/keybindings.json` into the global manager (c1090).
+    /// Failure keeps the previous bindings.
+    pub fn reload_keybindings(
+        &self,
+        agent_dir: &std::path::Path,
+    ) -> super::keybindings::ReloadOutcome {
+        super::keybindings::reload_keybindings(agent_dir)
     }
 
     pub fn bash_active(&self) -> bool {

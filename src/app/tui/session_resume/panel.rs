@@ -9,6 +9,7 @@ use xylitol_tui::{
 };
 
 use crate::app::core::driver::SessionListEntry;
+use crate::app::tui::keybindings::matches_binding;
 use crate::app::tui::layout::LayoutTheme;
 use crate::runtime_protocol::format_session_age;
 
@@ -305,7 +306,7 @@ impl SessionResumePanel {
         };
 
         if let Some((id, input)) = &mut self.rename {
-            if matches_key_event(key, "enter") {
+            if matches_binding(key, "tui.select.confirm") {
                 let id = id.clone();
                 let name = input.value().trim().to_string();
                 self.rename = None;
@@ -315,7 +316,7 @@ impl SessionResumePanel {
                 }
                 return SessionResumeAction::Rename { id, name };
             }
-            if matches_key_event(key, "escape") {
+            if matches_binding(key, "app.interrupt") {
                 self.rename = None;
                 return SessionResumeAction::None;
             }
@@ -324,7 +325,7 @@ impl SessionResumePanel {
         }
 
         if self.confirming_delete.is_some() {
-            if matches_key_event(key, "enter") {
+            if matches_binding(key, "tui.select.confirm") {
                 let id = self.confirming_delete.take().unwrap();
                 if self.current_session_id.as_deref() == Some(id.as_str()) {
                     self.status_line = Some("Cannot delete the active session".into());
@@ -332,19 +333,19 @@ impl SessionResumePanel {
                 }
                 return SessionResumeAction::Delete(id);
             }
-            if matches_key_event(key, "escape") {
+            if matches_binding(key, "app.interrupt") {
                 self.confirming_delete = None;
                 return SessionResumeAction::None;
             }
             return SessionResumeAction::None;
         }
 
-        if matches_key_event(key, "tab") {
+        if matches_binding(key, "tui.input.tab") {
             self.scope = self.scope.toggle();
             self.clamp_selection();
             return SessionResumeAction::None;
         }
-        if matches_key_event(key, "ctrl+s") {
+        if matches_binding(key, "app.session.toggleSort") {
             self.sort = self.sort.cycle();
             if self.sort != SortMode::Threaded {
                 self.folded_parents.clear();
@@ -352,16 +353,16 @@ impl SessionResumePanel {
             self.clamp_selection();
             return SessionResumeAction::None;
         }
-        if matches_key_event(key, "ctrl+n") {
+        if matches_binding(key, "app.session.toggleNamedFilter") {
             self.name_filter = self.name_filter.toggle();
             self.clamp_selection();
             return SessionResumeAction::None;
         }
-        if matches_key_event(key, "ctrl+p") {
+        if matches_binding(key, "app.session.togglePath") {
             self.show_path = !self.show_path;
             return SessionResumeAction::None;
         }
-        if matches_key_event(key, "ctrl+r") {
+        if matches_binding(key, "app.session.rename") {
             if let Some(entry) = self.selected_entry() {
                 let mut input = Input::new();
                 if let Some(name) = &entry.name {
@@ -371,7 +372,7 @@ impl SessionResumePanel {
             }
             return SessionResumeAction::None;
         }
-        if matches_key_event(key, "ctrl+d") {
+        if matches_binding(key, "app.session.delete") {
             if let Some(entry) = self.selected_entry() {
                 if self.current_session_id.as_deref() == Some(entry.id.as_str()) {
                     self.status_line = Some("Cannot delete the active session".into());
@@ -399,20 +400,20 @@ impl SessionResumePanel {
             return SessionResumeAction::None;
         }
 
-        if matches_key_event(key, "enter") {
+        if matches_binding(key, "tui.select.confirm") {
             if let Some(entry) = self.selected_entry() {
                 return SessionResumeAction::Switch(entry.id);
             }
             return SessionResumeAction::None;
         }
 
-        if matches_key_event(key, "up") {
+        if matches_binding(key, "tui.select.up") {
             if self.selected > 0 {
                 self.selected -= 1;
             }
             return SessionResumeAction::None;
         }
-        if matches_key_event(key, "down") {
+        if matches_binding(key, "tui.select.down") {
             let n = self.visible_rows().len();
             if n > 0 && self.selected + 1 < n {
                 self.selected += 1;
