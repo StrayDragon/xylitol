@@ -371,6 +371,27 @@ fn harness_busy_enter_queues_steer() {
 }
 
 #[test]
+fn harness_busy_steer_expands_paste_marker() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_run_started("hello");
+    let pasted = (0..12)
+        .map(|i| format!("steer{i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    session
+        .step(HostEvent::Input(InputEvent::Paste(pasted.clone())))
+        .unwrap();
+    assert!(
+        root.borrow()
+            .editor_display_text()
+            .contains("[paste #1 +12 lines]")
+    );
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    assert_eq!(session.take_steer().as_deref(), Some(pasted.as_str()));
+}
+
+#[test]
 fn harness_busy_alt_enter_queues_follow_up() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -709,6 +730,27 @@ fn harness_idle_enter_queues_submit() {
     session.step(HostEvent::Input(enter_event())).unwrap();
     assert_eq!(session.take_submit().as_deref(), Some("run me"));
     assert!(root.borrow().editor_text().is_empty());
+}
+
+#[test]
+fn harness_long_paste_collapses_display_and_submit_expands() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    let pasted = (0..15)
+        .map(|i| format!("line{i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    session
+        .step(HostEvent::Input(InputEvent::Paste(pasted.clone())))
+        .unwrap();
+    let display = root.borrow().editor_display_text();
+    assert!(
+        display.contains("[paste #1 +15 lines]"),
+        "display should collapse: {display}"
+    );
+    assert_eq!(root.borrow().editor_text(), pasted);
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    assert_eq!(session.take_submit().as_deref(), Some(pasted.as_str()));
 }
 
 fn arrow_up_event() -> InputEvent {

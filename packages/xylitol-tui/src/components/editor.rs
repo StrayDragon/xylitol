@@ -28,6 +28,37 @@ use crate::word_navigation::{find_word_backward, find_word_forward};
 use std::collections::HashMap;
 use unicode_segmentation::UnicodeSegmentation;
 
+/// Expand `[paste #N …]` markers using the editor's paste table (pi `expandPasteMarkers`).
+fn expand_paste_markers(text: &str, pastes: &HashMap<usize, String>) -> String {
+    let mut result = text.to_string();
+    for (&id, content) in pastes {
+        let prefix = format!("[paste #{id}");
+        let mut search_from = 0;
+        while let Some(rel) = result[search_from..].find(&prefix) {
+            let start = search_from + rel;
+            let after_prefix = start + prefix.len();
+            let Some(end) = paste_marker_end(&result, after_prefix) else {
+                search_from = after_prefix;
+                continue;
+            };
+            result.replace_range(start..end, content);
+            search_from = start + content.len();
+        }
+    }
+    result
+}
+
+/// End index (exclusive) of a paste marker that starts with `[paste #N` ending at `after_prefix`.
+fn paste_marker_end(text: &str, after_prefix: usize) -> Option<usize> {
+    let rest = text.get(after_prefix..)?;
+    if rest.starts_with(']') {
+        return Some(after_prefix + 1);
+    }
+    let stripped = rest.strip_prefix(' ')?;
+    let close = stripped.find(']')?;
+    Some(after_prefix + 1 + close + 1)
+}
+
 // ── types ───────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -307,11 +338,7 @@ impl Editor {
         self.insert_inner(t);
     }
     pub fn get_expanded_text(&self) -> String {
-        let mut r = self.state.lines.join("\n");
-        for (&id, c) in &self.pastes {
-            r = r.replace(&format!("[paste #{}", id), c);
-        }
-        r
+        expand_paste_markers(&self.state.lines.join("\n"), &self.pastes)
     }
 
     fn on_changed(&mut self) {
@@ -1840,6 +1867,47 @@ mod tests {
             "page_down from line 5 should go to ~17 (5+12), got {}",
             e.state.cursor_line
         );
+    }
+
+    #[test]
+    fn long_paste_collapses_and_expands_fully() {
+        let mut e = Editor::new(t(), EditorOptions::default(), clk());
+        let pasted = (0..15)
+            .map(|i| format!("line{i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        e.handle_input(InputEvent::Paste(pasted.clone()));
+        let display = e.get_text();
+        assert!(
+            display.contains("[paste #1 +15 lines]"),
+            "expected collapse marker, got: {display}"
+        );
+        assert_eq!(e.get_expanded_text(), pasted);
+        assert!(
+            !e.get_expanded_text().contains("[paste #"),
+            "expanded must not leave marker fragments"
+        );
+    }
+
+    #[test]
+    fn short_paste_inserts_inline() {
+        let mut e = Editor::new(t(), EditorOptions::default(), clk());
+        e.handle_input(InputEvent::Paste("hello\nworld".into()));
+        assert_eq!(e.get_text(), "hello\nworld");
+        assert_eq!(e.get_expanded_text(), "hello\nworld");
+    }
+
+    #[test]
+    fn char_paste_collapses_and_expands() {
+        let mut e = Editor::new(t(), EditorOptions::default(), clk());
+        let pasted = "x".repeat(1001);
+        e.handle_input(InputEvent::Paste(pasted.clone()));
+        let display = e.get_text();
+        assert!(
+            display.contains("[paste #1 1001 chars]"),
+            "expected char marker, got: {display}"
+        );
+        assert_eq!(e.get_expanded_text(), pasted);
     }
 
     #[test]
