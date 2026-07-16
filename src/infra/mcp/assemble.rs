@@ -98,4 +98,34 @@ mod tests {
         let result = connect_and_discover(&[]).await.unwrap();
         assert!(result.is_none());
     }
+
+    #[test]
+    fn validate_stdio_requires_command() {
+        let cfg = McpServerConfig {
+            name: "x".into(),
+            transport: crate::infra::mcp::McpTransportKind::Stdio,
+            command: None,
+            ..Default::default()
+        };
+        assert!(cfg.validate().unwrap_err().contains("command"));
+    }
+
+    #[tokio::test]
+    async fn connect_and_discover_invalid_still_returns_manager() {
+        // Invalid entries must not fail the Result; manager may exist with zero tools.
+        let servers = [McpServerConfig {
+            name: "bad".into(),
+            transport: crate::infra::mcp::McpTransportKind::Stdio,
+            command: None,
+            ..Default::default()
+        }];
+        let result = connect_and_discover(&servers).await.unwrap();
+        let Some((manager, tools)) = result else {
+            panic!("non-empty server list should still construct manager");
+        };
+        assert!(tools.is_empty());
+        let diags = manager.diagnostics().await;
+        assert!(!diags.is_empty());
+        assert!(manager.connected_servers().await.is_empty());
+    }
 }

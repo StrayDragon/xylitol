@@ -152,6 +152,16 @@ impl AgentRuntime {
             .apply_prompt_resources(context_files, system_prompt, append_system_prompt);
     }
 
+    /// Replace skills catalog and rebuild system prompt (c1085).
+    pub fn apply_skills(&mut self, skills: Vec<crate::domain::resource_types::SkillInfo>) {
+        self.inner.apply_skills(skills);
+    }
+
+    /// Names currently injected into the system prompt (c1085).
+    pub fn loaded_skill_names(&self) -> Vec<String> {
+        self.inner.loaded_skill_names()
+    }
+
     /// Run a turn with an auto-generated session_id.
     pub async fn run(&mut self, prompt: &str) -> XyEventStream {
         self.run_with_id(prompt, &uuid::Uuid::new_v4().to_string())

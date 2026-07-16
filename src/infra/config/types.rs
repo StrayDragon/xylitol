@@ -719,11 +719,33 @@ impl Default for McpServerConfig {
     }
 }
 
+impl McpServerConfig {
+    /// Validate required fields for the selected transport (c1080 / mcp4).
+    pub fn validate(&self) -> Result<(), String> {
+        if self.name.trim().is_empty() {
+            return Err("mcp server name must not be empty".into());
+        }
+        match self.transport {
+            McpTransportKind::Stdio => match self.command.as_deref().map(str::trim) {
+                None | Some("") => Err("command is required for stdio transport".into()),
+                Some(_) => Ok(()),
+            },
+            McpTransportKind::Sse => match self.url.as_deref().map(str::trim) {
+                None | Some("") => Err("url is required for sse transport".into()),
+                Some(u) if !(u.starts_with("http://") || u.starts_with("https://")) => {
+                    Err(format!("url must be http(s) for sse transport: {u}"))
+                }
+                Some(_) => Ok(()),
+            },
+        }
+    }
+}
+
 fn default_mcp_transport() -> McpTransportKind {
     McpTransportKind::Stdio
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum McpTransportKind {
     Stdio,

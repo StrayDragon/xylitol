@@ -140,6 +140,7 @@ impl AgentCapabilities {
                 append_system_prompt,
                 selected_tools,
                 tool_snippets,
+                skills: Vec::new(),
                 ..Default::default()
             },
             prompt_templates: Vec::new(),
@@ -528,6 +529,23 @@ impl AgentCapabilities {
         self.rebuild_system_prompt();
     }
 
+    /// Replace the skills catalog in the system prompt (c1085).
+    ///
+    /// Affects the **next** `run` only. Does **not** mutate session history.
+    pub fn apply_skills(&mut self, skills: Vec<crate::domain::resource_types::SkillInfo>) {
+        self.prompt_opts.skills = skills;
+        self.rebuild_system_prompt();
+    }
+
+    /// Names of skills currently injected into the system prompt (for `$` expand / reload).
+    pub fn loaded_skill_names(&self) -> Vec<String> {
+        self.prompt_opts
+            .skills
+            .iter()
+            .map(|s| s.name.clone())
+            .collect()
+    }
+
     /// Set the active system prompt text and rebuild.
     pub fn set_system_prompt(&mut self, prompt: Option<String>) {
         self.prompt_opts.system_prompt = prompt.clone();
@@ -856,6 +874,39 @@ mod tests {
         let after = session.system_prompt().unwrap_or("").to_string();
         assert!(after.contains("UNIQUE_CONTEXT_MARKER_V2"));
         assert!(after.contains("APPEND_MARK"));
+        assert_eq!(session.queue_stats(), stats_before);
+    }
+
+    #[test]
+    fn apply_skills_updates_system_keeps_queues_untouched() {
+        use crate::domain::resource_types::SkillInfo;
+        use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
+
+        let mut session = make_session();
+        session
+            .queues
+            .steer
+            .lock()
+            .unwrap()
+            .enqueue(AgentMessage::user("steer-keep"));
+        let stats_before = session.queue_stats();
+
+        session.apply_skills(vec![SkillInfo {
+            name: "demo-skill".into(),
+            description: Some("demo".into()),
+            source_info: SourceInfo {
+                path: std::path::PathBuf::from("/tmp/skills/demo/SKILL.md"),
+                source: "local".into(),
+                scope: SourceScope::User,
+                origin: SourceOrigin::TopLevel,
+                base_dir: None,
+            },
+        }]);
+
+        let after = session.system_prompt().unwrap_or("").to_string();
+        assert!(after.contains("<available_skills>"));
+        assert!(after.contains("demo-skill"));
+        assert_eq!(session.loaded_skill_names(), vec!["demo-skill".to_string()]);
         assert_eq!(session.queue_stats(), stats_before);
     }
 

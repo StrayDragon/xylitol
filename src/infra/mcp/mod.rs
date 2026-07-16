@@ -14,5 +14,5 @@ pub use adapter::McpToolAdapter;
 pub use assemble::{
     adapters_from_discovered, connect_and_discover, connect_and_discover_from_config, mcp_enabled,
 };
-pub use client::McpClientManager;
+pub use client::{ConnectedMcpServer, McpClientManager, McpConnectDiagnostic};
 pub use types::{McpServerConfig, McpTransportKind};
