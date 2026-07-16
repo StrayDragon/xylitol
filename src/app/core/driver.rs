@@ -2099,6 +2099,7 @@ mod driver_session_tree_tests {
                 _messages: Vec<AgentMessage>,
                 _tools: &[XyToolSchema],
                 _stream: bool,
+                _options: crate::runtime_protocol::XyGenerateOptions,
             ) -> Result<XyStream, XyError> {
                 let chunks = vec![
                     Ok(XyChunk::TextDelta("reply".into())),
@@ -2139,6 +2140,7 @@ mod driver_session_tree_tests {
             cost_cache_write: 0.0,
             max_tokens: 0,
             thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
         });
         let builder: ModelBuilderFn = Arc::new(|_| Ok(Arc::new(TextMockModel) as Arc<dyn XyModel>));
         let mut agent = AgentBuilder::new(

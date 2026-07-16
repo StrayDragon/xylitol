@@ -281,6 +281,7 @@ pub(crate) fn build_fallback_model(
             cost_cache_write: 0.0,
             max_tokens: 0,
             thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
         });
     }
 
@@ -299,6 +300,7 @@ pub(crate) fn build_fallback_model(
         cost_cache_write: 0.0,
         max_tokens: 0,
         thinking_levels: Vec::new(),
+        thinking_level_map: Default::default(),
     })
 }
 
@@ -340,6 +342,7 @@ mod tests {
                 cost_cache_write: 0.0,
                 max_tokens: 0,
                 thinking_levels: Vec::new(),
+                thinking_level_map: Default::default(),
             },
             XyModelMeta {
                 id: "openai/gpt-4o-mini".into(),
@@ -361,6 +364,7 @@ mod tests {
                 cost_cache_write: 0.0,
                 max_tokens: 0,
                 thinking_levels: Vec::new(),
+                thinking_level_map: Default::default(),
             },
             XyModelMeta {
                 id: "claude-sonnet-4-20250514".into(),
@@ -382,6 +386,7 @@ mod tests {
                 cost_cache_write: 0.0,
                 max_tokens: 0,
                 thinking_levels: Vec::new(),
+                thinking_level_map: Default::default(),
             },
             XyModelMeta {
                 id: "anthropic/claude-sonnet-4-20250514".into(),
@@ -403,6 +408,7 @@ mod tests {
                 cost_cache_write: 0.0,
                 max_tokens: 0,
                 thinking_levels: Vec::new(),
+                thinking_level_map: Default::default(),
             },
         ]
     }
@@ -528,6 +534,7 @@ mod tests {
                 cost_cache_write: 0.0,
                 max_tokens: 0,
                 thinking_levels: Vec::new(),
+                thinking_level_map: Default::default(),
             },
             XyModelMeta {
                 id: "claude-sonnet-4-20250514".into(),
@@ -549,6 +556,7 @@ mod tests {
                 cost_cache_write: 0.0,
                 max_tokens: 0,
                 thinking_levels: Vec::new(),
+                thinking_level_map: Default::default(),
             },
         ];
         let available = refs(&models);

@@ -91,7 +91,12 @@ pub(super) async fn generate_complete(
     _max_tokens: u32,
 ) -> Result<String> {
     let mut stream = model
-        .generate_stream(messages, &[], false)
+        .generate_stream(
+            messages,
+            &[],
+            false,
+            crate::runtime_protocol::XyGenerateOptions::default(),
+        )
         .await
         .map_err(|e| anyhow::anyhow!("summarization model error: {e}"))?;
 

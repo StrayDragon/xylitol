@@ -48,6 +48,7 @@ impl OpenAiResponsesAdapter {
         messages: Vec<AiBridgeMessage>,
         tools: &[AiBridgeToolSchema],
         stream: bool,
+        options: &crate::thinking::AiBridgeGenerateOptions,
     ) -> Value {
         let input_items = convert_messages_to_input_items(&messages);
         let mut body = serde_json::json!({
@@ -71,6 +72,12 @@ impl OpenAiResponsesAdapter {
             body["tools"] = Value::Array(tool_defs);
         }
 
+        let resolved = crate::thinking::resolve_from_options(
+            options,
+            crate::thinking::AiBridgeThinkingAdapterKind::OpenAi,
+        );
+        crate::thinking::apply_thinking_openai_responses(&mut body, &resolved);
+
         body
     }
 
@@ -89,10 +96,11 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
         &self,
         messages: Vec<AiBridgeMessage>,
         tools: &[AiBridgeToolSchema],
+        options: crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
         let trace =
             crate::provider::trace::ProviderRequestTrace::start("openai-responses", &self.model);
-        let body = self.build_body(messages, tools, true);
+        let body = self.build_body(messages, tools, true, &options);
         // BYOT + `Value`: compatible servers (e.g. llama.cpp) may omit fields that
         // typed `ResponseStreamEvent` requires (`created_at` on `response.created`).
         let sdk_stream = self
@@ -108,10 +116,11 @@ impl AiBridgeLlmAdapter for OpenAiResponsesAdapter {
         &self,
         messages: Vec<AiBridgeMessage>,
         tools: &[AiBridgeToolSchema],
+        options: crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
         let trace =
             crate::provider::trace::ProviderRequestTrace::start("openai-responses", &self.model);
-        let body = self.build_body(messages, tools, false);
+        let body = self.build_body(messages, tools, false, &options);
         let json: Value = self
             .client
             .responses()
@@ -597,5 +606,30 @@ mod tests {
             }
             other => panic!("expected Done with usage, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn build_body_injects_reasoning_effort() {
+        let adapter = OpenAiResponsesAdapter::new("sk".into(), "gpt".into(), None, None);
+        let opts = crate::thinking::AiBridgeGenerateOptions {
+            thinking_level: "medium".into(),
+            ..Default::default()
+        };
+        let body = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &opts);
+        assert_eq!(body["reasoning"]["effort"], "medium");
+
+        let off = crate::thinking::AiBridgeGenerateOptions::default();
+        let body_off = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &off);
+        assert!(body_off.get("reasoning").is_none());
+
+        let mut map = std::collections::HashMap::new();
+        map.insert("high".into(), Some("max".into()));
+        let mapped = crate::thinking::AiBridgeGenerateOptions {
+            thinking_level: "high".into(),
+            level_map: map,
+            thinking_budgets: None,
+        };
+        let body_map = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &mapped);
+        assert_eq!(body_map["reasoning"]["effort"], "max");
     }
 }

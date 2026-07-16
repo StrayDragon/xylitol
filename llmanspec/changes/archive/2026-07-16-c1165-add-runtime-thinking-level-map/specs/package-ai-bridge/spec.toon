@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,pab12,"thinking-params-in-request-body","xylitol-ai-bridge 在组装 OpenAI Completions / Responses 与 Anthropic Messages 请求体时 MUST 消费已解析的 thinking 参数：Completions 用 reasoning_effort；Responses 用 reasoning.effort；Anthropic 用 thinking budget（enabled + budget_tokens）；level 为 off 或映射为 null 时 MUST 省略对应字段（或显式 disabled）；用户 map 字符串 MUST 覆盖内置默认；MUST NOT 在无 map/默认时伪造未知厂商字段。",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  pab12,"openai-completions-effort","level=medium 且无自定义 map","组装 Completions 请求","body 含 reasoning_effort 为 medium"
+  pab12,"anthropic-budget-off","level=off","组装 Anthropic 请求","body 无 enabled thinking budget 块"
+  pab12,"map-override","map 将 high 映射为 max","组装 OpenAI 类请求","effort 字段为 max"

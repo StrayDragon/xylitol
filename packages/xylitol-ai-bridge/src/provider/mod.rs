@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 use crate::dto::{AiBridgeMessage, AiBridgeStream, AiBridgeToolSchema};
 use crate::error::AiBridgeError;
+use crate::thinking::AiBridgeGenerateOptions;
 
 pub mod anthropic_messages;
 pub mod factory;
@@ -62,12 +63,14 @@ pub trait AiBridgeLlmAdapter: Send + Sync {
         &self,
         messages: Vec<AiBridgeMessage>,
         tools: &[AiBridgeToolSchema],
+        options: AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError>;
 
     async fn generate(
         &self,
         messages: Vec<AiBridgeMessage>,
         tools: &[AiBridgeToolSchema],
+        options: AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError>;
 }
 

@@ -226,6 +226,7 @@ mod tests {
             cost_cache_write: 0.0,
             max_tokens: 0,
             thinking_levels: levels.iter().map(|s| (*s).to_string()).collect(),
+            thinking_level_map: Default::default(),
         }
     }
 
@@ -298,6 +299,44 @@ mod tests {
         mm.set_thinking_level(ThinkingLevel::Off).unwrap();
         assert_eq!(mm.cycle_thinking_level().unwrap(), ThinkingLevel::High);
         assert_eq!(mm.cycle_thinking_level().unwrap(), ThinkingLevel::Off);
+    }
+
+    /// c1165: after cycle/set, the same options path ReAct uses MUST resolve to
+    /// the matching OpenAI `reasoning_effort` (or Omit when Off).
+    #[test]
+    fn cycle_then_resolve_openai_effort_matches_level() {
+        use crate::domain::types::{
+            ResolvedThinking, ThinkingAdapterKind, resolve_thinking_for_request,
+        };
+
+        let mut mm = manager_with(vec![meta("m1", true, &["off", "medium", "high"])]);
+        mm.set_thinking_level(ThinkingLevel::Off).unwrap();
+
+        let off = resolve_thinking_for_request(
+            mm.thinking_level(),
+            mm.current_model().map(|m| &m.thinking_level_map),
+            None,
+            ThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(off, ResolvedThinking::Omit);
+
+        assert_eq!(mm.cycle_thinking_level().unwrap(), ThinkingLevel::Medium);
+        let mid = resolve_thinking_for_request(
+            mm.thinking_level(),
+            mm.current_model().map(|m| &m.thinking_level_map),
+            None,
+            ThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(mid, ResolvedThinking::OpenAiEffort("medium".into()));
+
+        assert_eq!(mm.cycle_thinking_level().unwrap(), ThinkingLevel::High);
+        let high = resolve_thinking_for_request(
+            mm.thinking_level(),
+            mm.current_model().map(|m| &m.thinking_level_map),
+            None,
+            ThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(high, ResolvedThinking::OpenAiEffort("high".into()));
     }
 
     #[test]

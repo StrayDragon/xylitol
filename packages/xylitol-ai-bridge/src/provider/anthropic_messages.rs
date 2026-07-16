@@ -72,16 +72,18 @@ impl AiBridgeLlmAdapter for AnthropicMessagesAdapter {
         &self,
         messages: Vec<AiBridgeMessage>,
         tools: &[AiBridgeToolSchema],
+        options: crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
-        self.execute(messages, tools, true).await
+        self.execute(messages, tools, true, options).await
     }
 
     async fn generate(
         &self,
         messages: Vec<AiBridgeMessage>,
         tools: &[AiBridgeToolSchema],
+        options: crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
-        self.execute(messages, tools, false).await
+        self.execute(messages, tools, false, options).await
     }
 }
 
@@ -91,6 +93,7 @@ impl AnthropicMessagesAdapter {
         messages: Vec<AiBridgeMessage>,
         tools: &[AiBridgeToolSchema],
         stream: bool,
+        options: crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
         let (system_prompt, anthropic_msgs) = convert_agent_messages_for_anthropic(&messages);
 
@@ -118,6 +121,13 @@ impl AnthropicMessagesAdapter {
                 .collect();
             body["tools"] = Value::Array(tool_defs);
         }
+
+        let resolved = crate::thinking::resolve_from_options(
+            &options,
+            crate::thinking::AiBridgeThinkingAdapterKind::Anthropic,
+        );
+        crate::thinking::apply_thinking_anthropic(&mut body, &resolved);
+
         let url = format!("{}/v1/messages", self.base_url);
 
         let mut headers = self.headers_bag();
@@ -624,5 +634,141 @@ mod tests {
         let (_, msgs) = convert_agent_messages_for_anthropic(&msgs);
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0]["role"], "user");
+    }
+
+    #[tokio::test]
+    async fn anthropic_body_omits_thinking_when_off() {
+        use std::sync::Arc;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        use crate::hooks::{HeaderBag, HttpHooks};
+
+        struct CaptureHooks {
+            body: std::sync::Arc<std::sync::Mutex<Option<Value>>>,
+        }
+
+        #[async_trait]
+        impl HttpHooks for CaptureHooks {
+            async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), AiBridgeError> {
+                Ok(())
+            }
+
+            async fn before_request(
+                &self,
+                _model: &str,
+                body: &mut Value,
+            ) -> Result<(), AiBridgeError> {
+                *self.body.lock().unwrap() = Some(body.clone());
+                Ok(())
+            }
+
+            async fn after_response(&self, _status: u16, _headers: &HeaderBag) {}
+        }
+
+        let captured = Arc::new(std::sync::Mutex::new(None));
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "hi"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1}
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = AnthropicMessagesAdapter::new(
+            "sk-test".into(),
+            "claude-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(CaptureHooks {
+                body: captured.clone(),
+            })),
+        );
+        let _ = adapter
+            .generate(
+                vec![AiBridgeMessage::user("hi")],
+                &[],
+                crate::thinking::AiBridgeGenerateOptions::default(),
+            )
+            .await
+            .expect("generate off");
+
+        let body = captured.lock().unwrap().clone().expect("body");
+        assert!(
+            body.get("thinking").is_none(),
+            "off must omit thinking block, got {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn anthropic_body_includes_budget_for_medium() {
+        use std::sync::Arc;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        use crate::hooks::{HeaderBag, HttpHooks};
+
+        struct CaptureHooks {
+            body: std::sync::Arc<std::sync::Mutex<Option<Value>>>,
+        }
+
+        #[async_trait]
+        impl HttpHooks for CaptureHooks {
+            async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), AiBridgeError> {
+                Ok(())
+            }
+
+            async fn before_request(
+                &self,
+                _model: &str,
+                body: &mut Value,
+            ) -> Result<(), AiBridgeError> {
+                *self.body.lock().unwrap() = Some(body.clone());
+                Ok(())
+            }
+
+            async fn after_response(&self, _status: u16, _headers: &HeaderBag) {}
+        }
+
+        let captured = Arc::new(std::sync::Mutex::new(None));
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "hi"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1}
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = AnthropicMessagesAdapter::new(
+            "sk-test".into(),
+            "claude-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(CaptureHooks {
+                body: captured.clone(),
+            })),
+        );
+        let opts = crate::thinking::AiBridgeGenerateOptions {
+            thinking_level: "medium".into(),
+            ..Default::default()
+        };
+        let _ = adapter
+            .generate(vec![AiBridgeMessage::user("hi")], &[], opts)
+            .await
+            .expect("generate medium");
+
+        let body = captured.lock().unwrap().clone().expect("body");
+        assert_eq!(body["thinking"]["type"], "enabled");
+        assert_eq!(body["thinking"]["budget_tokens"], 8192);
     }
 }

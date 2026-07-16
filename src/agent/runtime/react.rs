@@ -253,6 +253,15 @@ impl AgentRuntime {
         let queues = self.inner.queues();
         let store = self.inner.session_store();
         let skills = self.inner.loaded_skills().to_vec();
+        let generate_options = crate::runtime_protocol::XyGenerateOptions {
+            thinking_level: self.inner.thinking_level(),
+            level_map: self
+                .inner
+                .current_model()
+                .map(|m| m.thinking_level_map.clone())
+                .unwrap_or_default(),
+            thinking_budgets: None,
+        };
 
         let (queue_tx, mut queue_rx) = tokio::sync::mpsc::unbounded_channel();
         queues.bind_event_tx(queue_tx);
@@ -275,6 +284,7 @@ impl AgentRuntime {
             session_id: sid,
             seeded_history,
             skills,
+            generate_options,
         }));
 
         let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> = Box::pin(async_stream::stream! {
@@ -335,6 +345,8 @@ struct ReActConfig {
     seeded_history: Vec<AgentMessage>,
     /// Trust-filtered catalog for `$skill` expand (c1130); clone kept raw in history.
     skills: Vec<SkillInfo>,
+    /// Thinking level / map / budgets for provider request assembly (c1165).
+    generate_options: crate::runtime_protocol::XyGenerateOptions,
 }
 
 fn drain_queue(queue: &Arc<Mutex<PendingMessageQueue>>) -> Vec<AgentMessage> {
@@ -391,6 +403,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         session_id,
         seeded_history,
         skills,
+        generate_options,
     } = cfg;
     async_stream::stream! {
         if let Some(bus) = &hook_bus {
@@ -509,7 +522,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     biased;
                     _ = cancel.cancelled() => None,
                     result = call_with_retry(
-                        &model, messages, &tool_schemas, &retry_state,
+                        &model, messages, &tool_schemas, &retry_state, &generate_options,
                     ) => Some(result),
                 };
 
@@ -870,10 +883,11 @@ async fn call_with_retry(
     messages: Vec<AgentMessage>,
     tool_schemas: &[XyToolSchema],
     retry_state: &RetryState,
+    options: &crate::runtime_protocol::XyGenerateOptions,
 ) -> Result<Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>, String> {
     loop {
         match model
-            .generate_stream(messages.clone(), tool_schemas, true)
+            .generate_stream(messages.clone(), tool_schemas, true, options.clone())
             .await
         {
             Ok(stream) => return Ok(stream),
@@ -938,6 +952,7 @@ mod tests {
             cost_cache_write: 0.0,
             max_tokens: 0,
             thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
         });
 
         let session_mgr = SessionManager::new(SessionManager::default_dir());
@@ -995,6 +1010,7 @@ mod tests {
             cost_cache_write: 0.0,
             max_tokens: 0,
             thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
         });
 
         let session_mgr = SessionManager::new(SessionManager::default_dir());
@@ -1044,6 +1060,7 @@ mod tests {
             _messages: Vec<AgentMessage>,
             _tools: &[crate::domain::types::XyToolSchema],
             _stream: bool,
+            _options: crate::runtime_protocol::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             let chunks = self.chunks.clone();
             Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
@@ -1104,6 +1121,7 @@ mod tests {
             cost_cache_write: 0.0,
             max_tokens: 0,
             thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
         });
         reg
     }
@@ -1319,6 +1337,7 @@ mod tests {
             _messages: Vec<AgentMessage>,
             _tools: &[crate::domain::types::XyToolSchema],
             _stream: bool,
+            _options: crate::runtime_protocol::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             let chunks = self.rounds.lock().unwrap().remove(0);
             Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
@@ -1594,6 +1613,7 @@ mod tests {
                 _messages: Vec<AgentMessage>,
                 _tools: &[crate::domain::types::XyToolSchema],
                 _stream: bool,
+                _options: crate::runtime_protocol::XyGenerateOptions,
             ) -> Result<XyStream, XyError> {
                 let polled = self.polled.clone();
                 Ok(Box::pin(async_stream::stream! {
@@ -1728,6 +1748,7 @@ mod tests {
                 messages: Vec<AgentMessage>,
                 _tools: &[crate::domain::types::XyToolSchema],
                 _stream: bool,
+                _options: crate::runtime_protocol::XyGenerateOptions,
             ) -> Result<XyStream, XyError> {
                 self.seen.lock().unwrap().push(messages);
                 let chunks = self.chunks.clone();
@@ -1824,6 +1845,7 @@ mod tests {
                 messages: Vec<AgentMessage>,
                 _tools: &[crate::domain::types::XyToolSchema],
                 _stream: bool,
+                _options: crate::runtime_protocol::XyGenerateOptions,
             ) -> Result<XyStream, XyError> {
                 self.seen.lock().unwrap().push(messages);
                 Ok(Box::pin(futures::stream::iter(

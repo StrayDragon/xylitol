@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,rc17,"model-entry-thinking-level-map","ModelsConfig 的 ModelEntry MUST 支持可选 thinking_level_map（键为 ThinkingLevel 名，值为字符串或 null）；未知键名 MUST 使配置加载失败；解析结果 MUST 进入 XyModelMeta（或等价）供请求组装；键缺省 MUST 表示使用 adapter 内置默认，null MUST 表示该档不向 provider 发送 thinking/effort 字段。",null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  rc17,"parse-map","YAML 含 thinking_level_map high: max 与 off: null","加载并 resolve_model_meta","meta 含 high→max 与 off→null"
+  rc17,"unknown-key-fails","thinking_level_map 含未知名 bogon","加载配置","失败"
+  rc17,"absent-key-ok","仅配置 thinking_levels 无 map","加载配置","成功且 map 为空或缺省"

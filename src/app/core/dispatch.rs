@@ -534,6 +534,50 @@ mod tests {
         assert_eq!(d.thinking_level(), ThinkingLevel::High);
     }
 
+    /// c1165: Driver level after SetThinkingLevel / cycle MUST map to OpenAI effort.
+    #[tokio::test]
+    async fn cycle_thinking_level_maps_to_openai_reasoning_effort() {
+        use crate::domain::types::{
+            ResolvedThinking, ThinkingAdapterKind, resolve_thinking_for_request,
+        };
+
+        let mut d = stub();
+        assert_eq!(d.thinking_level(), ThinkingLevel::Medium);
+        let mid = resolve_thinking_for_request(
+            d.thinking_level(),
+            None,
+            None,
+            ThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(mid, ResolvedThinking::OpenAiEffort("medium".into()));
+
+        assert_eq!(d.cycle_thinking_level().unwrap(), ThinkingLevel::High);
+        let high = resolve_thinking_for_request(
+            d.thinking_level(),
+            None,
+            None,
+            ThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(high, ResolvedThinking::OpenAiEffort("high".into()));
+
+        dispatch(
+            &mut d,
+            Command::SetThinkingLevel {
+                id: None,
+                level: "off".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let off = resolve_thinking_for_request(
+            d.thinking_level(),
+            None,
+            None,
+            ThinkingAdapterKind::OpenAi,
+        );
+        assert_eq!(off, ResolvedThinking::Omit);
+    }
+
     #[tokio::test]
     async fn reject_invalid_thinking_level() {
         let mut d = stub();
