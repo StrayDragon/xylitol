@@ -3511,6 +3511,207 @@ mod slice_tests {
         );
     }
 
+    #[tokio::test]
+    async fn c1115_theme_light_applies() {
+        use xylitol_tui::Palette;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        assert_eq!(root.borrow().layout_theme().palette(), Palette::dark());
+        root.borrow_mut().set_editor_text("/theme light");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert_eq!(root.borrow().layout_theme().palette(), Palette::light());
+        assert_eq!(session.theme_preference(), Some("light"));
+        let notes = system_notes(&session);
+        assert!(
+            notes.iter().any(|t| t.contains("theme → light")),
+            "expected success note: {notes:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1115_theme_bad_name_keeps_palette() {
+        use xylitol_tui::Palette;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("/theme not-a-theme");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert_eq!(root.borrow().layout_theme().palette(), Palette::dark());
+        assert_eq!(session.theme_preference(), None);
+        let notes = system_notes(&session);
+        assert!(
+            notes
+                .iter()
+                .any(|t| t.contains("unknown theme") || t.contains("usage: /theme")),
+            "expected unknown note: {notes:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1115_theme_busy_refused() {
+        use xylitol_tui::Palette;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        session.on_run_started("busy");
+        root.borrow_mut().set_editor_text("/theme light");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert_eq!(root.borrow().layout_theme().palette(), Palette::dark());
+        assert_eq!(session.theme_preference(), None);
+        let notes = system_notes(&session);
+        assert!(
+            notes
+                .iter()
+                .any(|t| t.contains("busy") && t.contains("/theme refused")),
+            "expected busy refusal: {notes:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1115_theme_bare_opens_slot() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("/theme");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert!(
+            root.borrow().themes_open(),
+            "bare /theme must open Themes slot"
+        );
+        let frame = root.borrow_mut().render(80);
+        assert!(
+            frame.iter().any(|l| l.contains("dark")),
+            "expected dark in frame: {frame:?}"
+        );
+        assert!(
+            frame.iter().any(|l| l.contains("light")),
+            "expected light in frame: {frame:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1115_theme_slot_select_light() {
+        use xylitol_tui::Palette;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("/theme");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().themes_open());
+
+        // dark is first (*); move down to light then Enter.
+        session.step(HostEvent::Input(down_event())).unwrap();
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert!(!root.borrow().themes_open());
+        assert_eq!(root.borrow().layout_theme().palette(), Palette::light());
+        assert_eq!(session.theme_preference(), Some("light"));
+    }
+
+    #[tokio::test]
+    async fn c1115_theme_slot_esc_keeps_dark() {
+        use xylitol_tui::Palette;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("/theme");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(root.borrow().themes_open());
+        session.step(HostEvent::Input(esc_event())).unwrap();
+        assert!(!root.borrow().themes_open());
+        assert_eq!(root.borrow().layout_theme().palette(), Palette::dark());
+        assert_eq!(session.theme_preference(), None);
+    }
+
+    #[tokio::test]
+    async fn c1115_theme_toggle_from_dark() {
+        use xylitol_tui::Palette;
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        // Seed preference dark so toggle has a known baseline.
+        session.reload_themes("dark").unwrap();
+        root.borrow_mut().set_editor_text("/theme toggle");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert_eq!(root.borrow().layout_theme().palette(), Palette::light());
+        assert_eq!(session.theme_preference(), Some("light"));
+    }
+
+    #[tokio::test]
+    async fn c1115_theme_catalog_lists_theme() {
+        use crate::app::core::product_commands::product_slash_commands;
+        use crate::app::tui::layout::product_slash_commands_for_editor;
+
+        let ssot: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
+        assert!(ssot.contains(&"theme"));
+        let catalog: Vec<String> = product_slash_commands_for_editor()
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        assert!(catalog.iter().any(|n| n == "theme"));
+    }
+
+    #[test]
+    fn c1115_product_host_no_theme_auto() {
+        use xylitol_tui::Palette;
+
+        // Product HostSession has no theme-auto probe; default is fixed dark.
+        let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui");
+        assert_eq!(root.borrow().layout_theme().palette(), Palette::dark());
+        assert_eq!(session.theme_preference(), None);
+    }
+
     #[test]
     fn bang_parse_helpers() {
         use crate::app::tui::commands::{BangParse, parse_bang_command};

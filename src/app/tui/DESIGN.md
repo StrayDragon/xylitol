@@ -165,6 +165,7 @@ components:
 |---|---|---|
 | **c625** design/playground | 固定下一屏形状：`/model` 列表槽、树 power、真 `$EDITOR`、footer context%、abort 反馈；**不做** Settings/Plate 运行时改配置 | 本表 · [`playground/`](./design/playground/) |
 | **c630** `/model` | 替换 editor 槽的 **fuzzy 模型列表**（对齐 pi）；**移除** 无参 cycle | [`models-picker`](./design/models-picker.md) · [`keybindings`](./design/keybindings.md) |
+| **c1115** `/theme` | 产品 slash 切内建 `dark`/`light`（无参 Themes 槽；有参/`toggle`；busy 拒绝）；**不**默认开 theme auto；**不**抄 demo Ctrl+P | [`theme-tokens`](./design/theme-tokens.md) · [`keybindings`](./design/keybindings.md) |
 | **c635–c645** 树 power | 产品 filter → fold → fork（demo 已有；逐个接线） | [`session-tree`](./design/session-tree.md) · [`keybindings`](./design/keybindings.md) |
 | **c650** 真 `$EDITOR` | Ctrl+G：TTY 真编辑器；harness 仍 stub | [`bash-mode`](./design/bash-mode.md) |
 | **c1035** footer token usage | 带 provenance 的 `used N`/`~N`/`?`；travel 刷新 | [`footer`](./design/footer.md) |
@@ -172,7 +173,7 @@ components:
 
 **明确不做（本波）**：Settings / Plate 槽（配置继续 YAML+JSON Schema，无运行时改配置 UX）；computer-use 扩展；Codex TranscriptView。
 
-产品 MVP **固定暗色**；**MUST NOT** 默认开 theme auto / `/theme`（demo 可保留）。
+产品默认 **`Palette::dark()`**；**MUST NOT** 默认开 theme auto / OSC11。用户可经 **`/theme`** 切换内建色板（**c1115**；见 [`theme-tokens`](./design/theme-tokens.md)）。
 
 ## Colors
 
@@ -264,7 +265,7 @@ footer         1 行 dim（cwd · model · 可选 context%）
 | [`design/overlay.md`](./design/overlay.md) | 默认不用；优先槽内；playground 静图已撤 |
 | [`design/diff-block.md`](./design/diff-block.md) | Diff 渲染 |
 | [`design/glyphs.md`](./design/glyphs.md) | unicode / ascii 档 |
-| [`design/theme-tokens.md`](./design/theme-tokens.md) | 语义 → SGR；Palette/`/theme`（c570）；Ask/ChoicePrompt 见 playground（c565） |
+| [`design/theme-tokens.md`](./design/theme-tokens.md) | 语义 → SGR；Palette；产品 `/theme` slash（c1115）；Ask/ChoicePrompt 见 playground（c565） |
 | [`design/keybindings.md`](./design/keybindings.md) | 已决议键位 |
 | [`design/markdown.md`](./design/markdown.md) | 复制友好 / token 效率 markdown（`c530-update-package-tui-markdown`） |
 | [`design/errors.md`](./design/errors.md) | 错误呈现 |

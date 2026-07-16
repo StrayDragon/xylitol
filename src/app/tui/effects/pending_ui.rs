@@ -142,6 +142,18 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
         let _ = session.render_now();
     }
 
+    if let Some(theme_name) = session.take_pending_theme_select() {
+        log::info!(target: "xylitol::tui", "reload_themes from picker theme={}", theme_name);
+        match session.reload_themes(&theme_name) {
+            Ok(()) => {
+                session.push_system_note(format!("theme → {theme_name}"));
+                session.close_themes_slot();
+            }
+            Err(e) => session.push_system_note(format!("/theme failed: {e}")),
+        }
+        let _ = session.render_now();
+    }
+
     if let Some(decision) = session.take_pending_import_decision() {
         match decision {
             ImportConfirmDecision::Rejected => {
