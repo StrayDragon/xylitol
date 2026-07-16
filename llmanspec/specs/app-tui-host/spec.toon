@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-host"
 purpose: 产品 TUI 宿主：host 驱动引擎、终端生命周期、即时日志与尺寸降级。
 valid_scope[1]: src/app/tui/
-requirements[17]{req_id,title,statement}:
+requirements[18]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ath1,"host-driven-engine","产品 TUI MUST 以 host 驱动 packages/xylitol-tui：使用 dispatch_event、request_render、try_render、idle_tick；产品路径 MUST NOT 调用 TUI::start()。"
   ath2,"terminal-restore",产品 TUI MUST 在正常退出、错误退出与 panic 路径恢复终端（关闭 raw mode 等），不得把用户终端留在损坏状态；MUST 安装 panic hook（仅靠 Drop 不足）。
@@ -20,7 +20,8 @@ requirements[17]{req_id,title,statement}:
   ath14,"session-list-seam","产品 TUI 获取可 resume 会话列表时 MUST 经 Driver（或 app::core 公开 seam）list_sessions 或等价 API，行 MUST 能支撑 scope（cwd）、预览、parent、mtime/age 与可选 path 展示；MUST NOT 从 app/tui 直接 import infra::session / 直接读 sessions 目录；switch 成功后 MUST 重建 transcript 并清除与旧 session 绑定的树槽/pending UI 态。"
   ath15,"session-lifecycle-seam","产品 TUI 创建空会话与读写会话显示名时 MUST 经 Driver::new_session / get_session_name / set_session_name（或 app::core 公开等价 seam），MUST NOT 从 app/tui 直接 import infra::session 或直接写 sessions 目录；set_session_name MUST 将 CR/LF 规范为空格并 trim；new_session 成功后 MUST 清空与旧 session 绑定的 transcript/树槽；session-clone MUST 仅经既有 fork_session(At)+switch 路径，不得平行 fork 实现。"
   ath16,"session-resume-manage-seam","产品 TUI Resume 面板内 rename/delete MUST 经 Driver set_session_name / delete_session（或 app::core 公开等价 seam）；删除当前活跃 session MUST 拒绝并提示且 MUST NOT 调用删除；删除 MUST 经显式确认（确认前 MUST NOT 删盘）；scope=Current MUST 仅展示 cwd 匹配会话，scope=All MUST 展示 Driver 列举的全部可 resume 会话；TUI MUST NOT 直删会话文件。"
-scenarios[26]{req_id,id,given,when,then}:
+  ath20,"reload-orchestrates-foundations",产品 host/effects 在处理 /reload 时 MUST 经 Driver/composition 缝调用已归档的 reload_skills、MCP reload、keybindings reload、theme/context reload（若已接线），MUST 在 skills 重载后刷新产品 $skill 补全 catalog；MUST NOT reach agent/infra 内部绕过 seam；任一步失败 MUST 记录诊断并继续其余步骤（部分成功）。
+scenarios[28]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-host",spec.toon 存在且 purpose 为中文
   ath1,"no-start","",审计产品 TUI 源码,"无 TUI::start；存在 host 驱动调用"
   ath2,"panic-restore","",TUI 运行中发生 panic,panic hook 恢复终端后用户 shell 可用
@@ -47,3 +48,5 @@ scenarios[26]{req_id,id,given,when,then}:
   ath15,"name-via-driver",产品 harness,"提交 /session-name demo",经 Driver set_session_name 且无 tui 直写目录
   ath16,"delete-rejects-current",Resume 面板选中当前活跃 session,触发删除确认并确认,出现拒绝提示且会话仍存在
   ath16,"rename-via-driver",Resume 面板已开,完成一项 rename,Driver set_session_name 被调用且列表展示新名
+  ath20,"skills-catalog-refresh",idle 且磁盘 skills 变更后,/reload,dollar skill catalog 或 loaded_skill_names 反映新目录
+  ath20,"partial-success",某一 reload 步骤失败,/reload,系统报告含失败项且其它步骤仍执行
