@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use minijinja::{Environment, UndefinedBehavior, context, value::Value as MjValue};
+use minijinja::{AutoEscape, Environment, UndefinedBehavior, context, value::Value as MjValue};
 
 use super::secret_env::SecretMap;
 
@@ -37,6 +37,10 @@ pub(crate) fn render_config_template(
 
     let mut jinja = Environment::new();
     jinja.set_undefined_behavior(UndefinedBehavior::Strict);
+    // Default minijinja auto-escape treats `*.yaml`/`*.yml` as JSON → string
+    // interpolations gain extra quotes (`"{{ secret.K }}"` → `""value""`), which
+    // breaks YAML parse and MCP headers. Config templates are plain text.
+    jinja.set_auto_escape_callback(|_| AutoEscape::None);
 
     let name = path
         .file_name()
@@ -117,5 +121,20 @@ mod tests {
         let out =
             render_config_template("models: {}\n", Path::new("x.yaml"), &SecretMap::new()).unwrap();
         assert_eq!(out, "models: {}\n");
+    }
+
+    #[test]
+    fn renders_inside_yaml_double_quotes() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let path = PathBuf::from("config.yaml");
+        let mut secrets = SecretMap::new();
+        secrets.insert("CONTEXT7_API_KEY".into(), "sk-test".into());
+        let out = render_config_template(
+            "headers:\n  CONTEXT7_API_KEY: \"{{ secret.CONTEXT7_API_KEY }}\"\n",
+            &path,
+            &secrets,
+        )
+        .unwrap();
+        assert_eq!(out, "headers:\n  CONTEXT7_API_KEY: \"sk-test\"");
     }
 }
