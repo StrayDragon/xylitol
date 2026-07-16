@@ -318,6 +318,17 @@ pub(super) async fn handle_slash<T: Terminal>(
             }
             let _ = session.render_now();
         }
+        PendingSlash::Trust { mode } => {
+            if session.is_busy() {
+                session.push_system_note("agent busy — /trust refused");
+            } else {
+                match driver.persist_project_trust(mode) {
+                    Ok(report) => session.push_system_note(report.message),
+                    Err(e) => session.push_system_note(format!("/trust failed: {e}")),
+                }
+            }
+            let _ = session.render_now();
+        }
         PendingSlash::Usage(msg) => {
             session.push_system_note(msg);
             let _ = session.render_now();

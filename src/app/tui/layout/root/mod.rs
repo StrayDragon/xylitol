@@ -227,6 +227,22 @@ impl UiRoot {
             SlashArgCompletionSource::new("model", self.model_arg_catalog.clone())
                 .with_id("model-id"),
         ));
+        // Static `/trust <self|parent|deny>` args (c1105) — same space-after-cmd probe as `/model `.
+        // `self` first so Tab/Enter after `/trust ` defaults to trust cwd (same as bare `/trust`).
+        sources.push(Box::new(
+            SlashArgCompletionSource::new(
+                "trust",
+                vec![
+                    (
+                        "self".into(),
+                        "Trust this project directory (default)".into(),
+                    ),
+                    ("parent".into(), "Trust parent folder".into()),
+                    ("deny".into(), "Do not trust this project".into()),
+                ],
+            )
+            .with_id("trust-mode"),
+        ));
         sources.push(Box::new(SlashCommandSource::new(
             product_slash_commands_for_editor(),
         )));

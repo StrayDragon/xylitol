@@ -73,6 +73,7 @@ pub struct ScriptedDriver {
     /// Optional fixed estimate for footer harness (c1035).
     estimate_override: Option<crate::domain::types::ContextTokenEstimate>,
     reload_runtime_calls: AtomicUsize,
+    persist_project_trust_calls: Mutex<Vec<crate::app::core::driver::ProjectTrustMode>>,
     dollar_skill_catalog: Mutex<Vec<(String, String)>>,
 }
 
@@ -159,12 +160,20 @@ impl ScriptedDriver {
             delete_session_calls: Mutex::new(Vec::new()),
             estimate_override: None,
             reload_runtime_calls: AtomicUsize::new(0),
+            persist_project_trust_calls: Mutex::new(Vec::new()),
             dollar_skill_catalog: Mutex::new(Vec::new()),
         }
     }
 
     pub fn reload_runtime_calls(&self) -> usize {
         self.reload_runtime_calls.load(Ordering::SeqCst)
+    }
+
+    pub fn persist_project_trust_calls(&self) -> Vec<crate::app::core::driver::ProjectTrustMode> {
+        self.persist_project_trust_calls
+            .lock()
+            .expect("persist_project_trust_calls")
+            .clone()
     }
 
     pub fn set_dollar_skill_catalog_for_driver(&self, catalog: Vec<(String, String)>) {
@@ -678,6 +687,31 @@ impl Driver for ScriptedDriver {
                 ok: true,
                 message: "scripted noop".into(),
             }],
+        })
+    }
+
+    fn persist_project_trust(
+        &mut self,
+        mode: crate::app::core::driver::ProjectTrustMode,
+    ) -> Result<crate::app::core::driver::ProjectTrustPersistReport, String> {
+        use crate::app::core::driver::{ProjectTrustMode, ProjectTrustPersistReport};
+        self.persist_project_trust_calls
+            .lock()
+            .expect("persist_project_trust_calls")
+            .push(mode);
+        let (trusted, path) = match mode {
+            ProjectTrustMode::TrustCwd => (true, "/scripted/cwd"),
+            ProjectTrustMode::TrustParent => (true, "/scripted"),
+            ProjectTrustMode::Deny => (false, "/scripted/cwd"),
+        };
+        Ok(ProjectTrustPersistReport {
+            trusted,
+            saved_path: Some(path.into()),
+            message: format!(
+                "Project {} at {path}. {}",
+                if trusted { "trusted" } else { "denied" },
+                ProjectTrustPersistReport::RELOAD_HINT
+            ),
         })
     }
 }
@@ -1389,6 +1423,32 @@ mod slice_tests {
             Some(crate::app::tui::commands::PendingSlash::SetModel(
                 text.trim_start_matches("/model ").trim().to_string()
             ))
+        );
+    }
+
+    #[tokio::test]
+    async fn c1105_trust_arg_space_shows_self_parent_deny() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        for ch in "/trust ".chars() {
+            session.step(HostEvent::Input(char_event(ch))).unwrap();
+        }
+        let frame = root.borrow_mut().render(80);
+        assert!(
+            frame.iter().any(|l| l.contains("self"))
+                && frame.iter().any(|l| l.contains("parent"))
+                && frame.iter().any(|l| l.contains("deny")),
+            "expected /trust arg popup with self|parent|deny; got: {frame:?}"
+        );
+        session.step(HostEvent::Input(tab_event())).unwrap();
+        let text = root.borrow().editor_text();
+        let mode = text.trim_start_matches("/trust ").trim();
+        assert_eq!(mode, "self", "default Tab must apply self; got {text:?}");
+        assert_eq!(
+            crate::app::tui::commands::parse_slash_command(text.trim()),
+            Some(crate::app::tui::commands::PendingSlash::Trust {
+                mode: crate::app::core::driver::ProjectTrustMode::TrustCwd
+            })
         );
     }
 
