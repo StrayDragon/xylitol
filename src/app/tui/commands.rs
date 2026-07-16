@@ -41,6 +41,10 @@ pub enum PendingSlash {
     },
     /// Bare `/reload` — hot-reload runtime resources (c1120).
     Reload,
+    /// `/trust` [parent|deny] — persist trust decision without auto-reload (c1105).
+    Trust {
+        mode: crate::app::core::driver::ProjectTrustMode,
+    },
     /// Slash usage / arity error (no dispatch).
     Usage(&'static str),
 }
@@ -140,6 +144,23 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         ("session-name", name) => Some(PendingSlash::SessionName { name }),
         ("reload", None) => Some(PendingSlash::Reload),
         ("reload", Some(_)) => Some(PendingSlash::Usage("usage: /reload (no arguments)")),
+        ("trust", None) => Some(PendingSlash::Trust {
+            mode: crate::app::core::driver::ProjectTrustMode::TrustCwd,
+        }),
+        ("trust", Some(arg)) => match arg.to_ascii_lowercase().as_str() {
+            "self" | "this_dir" | "this-dir" => Some(PendingSlash::Trust {
+                mode: crate::app::core::driver::ProjectTrustMode::TrustCwd,
+            }),
+            "parent" => Some(PendingSlash::Trust {
+                mode: crate::app::core::driver::ProjectTrustMode::TrustParent,
+            }),
+            "deny" | "no" => Some(PendingSlash::Trust {
+                mode: crate::app::core::driver::ProjectTrustMode::Deny,
+            }),
+            _ => Some(PendingSlash::Usage(
+                "usage: /trust [self|this_dir|parent|deny]",
+            )),
+        },
         // Space form only (`/debug scene`). Colon form intentionally unsupported.
         #[cfg(debug_assertions)]
         ("debug", None) => Some(PendingSlash::DebugScene("list".into())),
@@ -222,6 +243,47 @@ mod parse_tests {
         assert_eq!(
             parse_slash_command("/reload foo"),
             Some(PendingSlash::Usage("usage: /reload (no arguments)"))
+        );
+    }
+
+    #[test]
+    fn parse_trust_modes() {
+        use crate::app::core::driver::ProjectTrustMode;
+        assert_eq!(
+            parse_slash_command("/trust"),
+            Some(PendingSlash::Trust {
+                mode: ProjectTrustMode::TrustCwd
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/trust self"),
+            Some(PendingSlash::Trust {
+                mode: ProjectTrustMode::TrustCwd
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/trust this_dir"),
+            Some(PendingSlash::Trust {
+                mode: ProjectTrustMode::TrustCwd
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/trust parent"),
+            Some(PendingSlash::Trust {
+                mode: ProjectTrustMode::TrustParent
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/trust deny"),
+            Some(PendingSlash::Trust {
+                mode: ProjectTrustMode::Deny
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/trust foo"),
+            Some(PendingSlash::Usage(
+                "usage: /trust [self|this_dir|parent|deny]"
+            ))
         );
     }
 }

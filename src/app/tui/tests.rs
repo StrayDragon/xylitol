@@ -785,6 +785,69 @@ async fn harness_idle_slash_reload_keeps_history_and_calls_runtime() {
 }
 
 #[tokio::test]
+async fn harness_idle_slash_trust_persists_without_reload() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crate::app::core::driver::ProjectTrustMode;
+    use crate::app::tui::bridge::UiEntry;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+
+    root.borrow_mut().set_editor_text("/trust");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        driver.persist_project_trust_calls(),
+        vec![ProjectTrustMode::TrustCwd]
+    );
+    assert_eq!(driver.reload_runtime_calls(), 0);
+    assert!(
+        session.ui_model().entries.iter().any(|e| matches!(
+            e,
+            UiEntry::System { text }
+                if text.contains("trusted")
+                    && (text.contains("/reload") || text.contains("restart"))
+        )),
+        "expected trust+reload hint; got {:?}",
+        session.ui_model().entries
+    );
+}
+
+#[tokio::test]
+async fn harness_busy_slash_trust_refused() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crate::app::tui::bridge::UiEntry;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_run_started("hello");
+    assert!(session.is_busy());
+
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+    root.borrow_mut().set_editor_text("/trust");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert!(driver.persist_project_trust_calls().is_empty());
+    assert_eq!(driver.reload_runtime_calls(), 0);
+    assert!(
+        session.ui_model().entries.iter().any(
+            |e| matches!(e, UiEntry::System { text } if text.contains("agent busy") && text.contains("/trust"))
+        ),
+        "expected busy refuse; got {:?}",
+        session.ui_model().entries
+    );
+}
+
+#[tokio::test]
 async fn harness_busy_slash_reload_refused() {
     use super::harness::{ScriptedDriver, pump_host_driver};
     use crate::app::tui::bridge::UiEntry;
