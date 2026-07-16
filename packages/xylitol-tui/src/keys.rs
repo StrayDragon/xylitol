@@ -1183,6 +1183,21 @@ pub fn matches_key_event(event: &crossterm::event::KeyEvent, key_id: &str) -> bo
     let has_shift = event.modifiers.contains(KeyModifiers::SHIFT);
     let has_super = event.modifiers.contains(KeyModifiers::SUPER);
 
+    // Crossterm often encodes Shift+Tab as `KeyCode::BackTab` without SHIFT in
+    // modifiers — treat that as `shift+tab` before the strict modifier check.
+    if parsed.key == "tab"
+        && parsed.shift
+        && !parsed.ctrl
+        && !parsed.alt
+        && !parsed.super_mod
+        && matches!(event.code, KeyCode::BackTab)
+        && !has_ctrl
+        && !has_alt
+        && !has_super
+    {
+        return true;
+    }
+
     if has_ctrl != parsed.ctrl
         || has_alt != parsed.alt
         || has_shift != parsed.shift
@@ -1194,7 +1209,13 @@ pub fn matches_key_event(event: &crossterm::event::KeyEvent, key_id: &str) -> bo
     match parsed.key.as_str() {
         "escape" | "esc" => matches!(event.code, KeyCode::Esc),
         "enter" | "return" => matches!(event.code, KeyCode::Enter),
-        "tab" => matches!(event.code, KeyCode::Tab),
+        "tab" => {
+            if parsed.shift {
+                matches!(event.code, KeyCode::Tab | KeyCode::BackTab)
+            } else {
+                matches!(event.code, KeyCode::Tab)
+            }
+        }
         "backspace" => matches!(event.code, KeyCode::Backspace),
         "delete" => matches!(event.code, KeyCode::Delete),
         "insert" => matches!(event.code, KeyCode::Insert),

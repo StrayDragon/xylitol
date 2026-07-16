@@ -150,6 +150,28 @@ fn test_modify_other_keys() {
 }
 
 #[test]
+fn matches_key_event_shift_tab_accepts_back_tab() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    assert!(matches_key_event(
+        &KeyEvent::new(KeyCode::Tab, KeyModifiers::SHIFT),
+        "shift+tab"
+    ));
+    assert!(matches_key_event(
+        &KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE),
+        "shift+tab"
+    ));
+    assert!(!matches_key_event(
+        &KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE),
+        "tab"
+    ));
+    assert!(!matches_key_event(
+        &KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
+        "shift+tab"
+    ));
+}
+
+#[test]
 fn test_is_key_release() {
     set_kitty_protocol_active(true);
     assert!(is_key_release("\x1b[97:3u"));

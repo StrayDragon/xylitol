@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "package-tui-editor"
 purpose: "xylitol-tui Editor：视觉行图、粘滞列、PasteBurst、历史导航与边框色 API。"
 valid_scope[2]: src/,tests/
-requirements[9]{req_id,title,statement}:
+requirements[10]{req_id,title,statement}:
   ed01,"visual-line-map","Editor MUST 经 build_visual_line_map(width) 从逻辑行构建 visual-line map，将每个 wrapped visual segment 映射到 logical line index、start column 与 byte length。map MUST 考虑宽于 width 的 word-wrap，空行 MUST 占一行 visual line。map 是跨 wrapped 行垂直光标移动的基础。"
   ed02,"sticky-column-vertical-move","Editor MUST 经 compute_vertical_move_column(current_col, src_max, tgt_max) 实现粘滞列垂直光标移动，遵循 P/S/T/U 决策表：（P=has preferred，S=cursor in middle，T=target shorter than current，U=target shorter than preferred）。editor MUST 存储 preferred_visual_col 与 snapped_from_cursor_col。set_cursor_col MUST 清除两者。move_cursor(dl, dc) 在 dl != 0 时 MUST 委托 move_to_visual_line。"
   ed03,"page-scroll","Editor MUST 用 build_visual_line_map 宽度相关布局实现 pageScroll(direction)，page size 为 max(5, terminal_rows * 30 / 100)。光标 MUST 经 move_to_visual_line 按 page 大小移动 visual lines，而非硬编码 logical-line 偏移。"
@@ -12,7 +12,8 @@ requirements[9]{req_id,title,statement}:
   ed07,"highlight-safety-limits",注入的 syntect（或等价）高亮 MUST 对过大输入施加字节与行数上限；超限时 MUST 回退为未高亮纯文本行，MUST NOT 阻塞事件循环。
   ed08,"set-border-color",Editor MUST 提供 set_border_color（或等价 API）以替换边框 ANSI 包装闭包，供 host 在 bash 模式等场景切换操作区边框色；MUST NOT 要求重建整个 Editor 实例。
   ed09,"paste-collapse-expand","Editor MUST 在 bracketed paste 内容超过 10 行或超过 1000 字符时，将缓冲区内文本替换为 [paste #N +L lines] 或 [paste #N C chars] 占位，并在内部 pastes 表保留原文；get_text MUST 返回含占位符的显示文本；get_expanded_text MUST 将每个有效 id 的完整 marker（含 +lines/chars 后缀）替换为原文，MUST NOT 残留 +N lines] 或 N chars] 碎片。短粘贴 MUST 直接插入原文。"
-scenarios[14]{req_id,id,given,when,then}:
+  ed10,"thinking-border-apply",Editor MUST 能在不重建实例的前提下经 set_border_color（ed08）或薄 helper apply_thinking_border 应用 Palette 给出的 thinking 边框闭包；应用后 render 的边框行 MUST 经该闭包着色；MUST NOT 在 Editor 内硬编码产品 domain ThinkingLevel。
+scenarios[16]{req_id,id,given,when,then}:
   ed01,"build-vl-map-wraps-long-lines",30 列 editor 中有一行 100 字符,build_visual_line_map(30) 被调用,map 含 4 个 visual line 条目，logical_line、start_col、len 正确
   ed02,"sticky-col-up-arrow",光标在第 2 行第 15 列，该行跨 3 个 visual lines,按下 cursor up,光标移到上一 logical line 对应 visual line 的第 15 列（或较短行尾）
   ed02,"sticky-col-cleared-on-horizontal",从第 15 列 cursor up 到第 8 列（行更短）设置 preferred_visual_col 为 15,word_left 被按下,preferred_visual_col 设为 None
@@ -27,3 +28,5 @@ scenarios[14]{req_id,id,given,when,then}:
   ed09,"long-paste-collapses",Editor 收到超过 10 行的 bracketed paste,粘贴完成,"get_text 匹配 [paste #N +L lines] 且 pastes 表含原文"
   ed09,"expanded-equals-original",长粘贴已折叠为 marker,调用 get_expanded_text,"返回值等于粘贴原文且不含 [paste #"
   ed09,"short-paste-inline",粘贴不超过 10 行且不超过 1000 字符,粘贴完成,"get_text 含原文且无 [paste # 占位"
+  ed10,"apply-high-border",Editor 已构造且 Palette 为 Dark,apply_thinking_border(High) 或等价 set_border_color 后 render,边框行含 High 对应真彩序列
+  ed10,"swap-without-rebuild",同一 Editor 实例,先 Medium 再 High 应用边框,两次 render 边框色不同且实例未重建

@@ -2475,3 +2475,99 @@ fn agent_demo_streaming_tool_detail_sticks_to_tail_while_collapsed() {
         "expanded shows full streamed detail; got:\n{full}"
     );
 }
+
+#[test]
+fn agent_demo_thinking_border_cycle_changes_level_and_paint() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    assert_eq!(
+        app.thinking_border_level_for_test(),
+        xylitol_tui::ThinkingBorderLevel::Medium
+    );
+    let before = app.editor_render_for_test(40).join("\n");
+    app.cycle_thinking_border_level();
+    assert_eq!(
+        app.thinking_border_level_for_test(),
+        xylitol_tui::ThinkingBorderLevel::High
+    );
+    let after = app.editor_render_for_test(40).join("\n");
+    assert_ne!(before, after, "cycle must change editor border paint");
+    // pi dark thinkingHigh #b294bb
+    assert!(
+        after.contains("38;2;178;148;187"),
+        "high border should use pi #b294bb; got:\n{after}"
+    );
+}
+
+#[test]
+fn agent_demo_shift_tab_cycles_thinking_border() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use xylitol_tui::{Component, InputEvent};
+
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    assert_eq!(
+        app.thinking_border_level_for_test(),
+        xylitol_tui::ThinkingBorderLevel::Medium
+    );
+    // Kitty/CSI style: Tab + SHIFT
+    app.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::Tab,
+        KeyModifiers::SHIFT,
+    )));
+    assert_eq!(
+        app.thinking_border_level_for_test(),
+        xylitol_tui::ThinkingBorderLevel::High
+    );
+    // Legacy VT: BackTab often has no SHIFT bit
+    app.handle_input(InputEvent::Key(KeyEvent::new(
+        KeyCode::BackTab,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(
+        app.thinking_border_level_for_test(),
+        xylitol_tui::ThinkingBorderLevel::Xhigh
+    );
+    let painted = app.editor_render_for_test(40).join("\n");
+    // pi dark thinkingXhigh #d183e8
+    assert!(
+        painted.contains("38;2;209;131;232"),
+        "xhigh border should use pi #d183e8; got:\n{painted}"
+    );
+}
+
+#[test]
+fn agent_demo_bash_overrides_thinking_border_then_restores() {
+    let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
+    app.set_thinking_border_level_for_test(xylitol_tui::ThinkingBorderLevel::High);
+    let high = app.editor_render_for_test(40).join("\n");
+    assert!(
+        high.contains("38;2;178;148;187"),
+        "pre-bash high border (pi #b294bb); got:\n{high}"
+    );
+
+    app.set_editor_text_for_test("!ls");
+    app.sync_editor_border_for_test();
+    assert!(app.bash_mode_for_test());
+    let bash = app.editor_render_for_test(40).join("\n");
+    let success = app.palette().success;
+    assert!(
+        bash.contains(&format!("38;2;{};{};{}", success.r, success.g, success.b)),
+        "bash must use success border; got:\n{bash}"
+    );
+    assert!(
+        !bash.contains("38;2;178;148;187"),
+        "bash border must not keep high thinking color"
+    );
+
+    app.set_editor_text_for_test("");
+    app.sync_editor_border_for_test();
+    assert!(!app.bash_mode_for_test());
+    let restored = app.editor_render_for_test(40).join("\n");
+    assert!(
+        restored.contains("38;2;178;148;187"),
+        "leaving bash restores thinking high border; got:\n{restored}"
+    );
+    assert_eq!(
+        app.thinking_border_level_for_test(),
+        xylitol_tui::ThinkingBorderLevel::High
+    );
+}
