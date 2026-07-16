@@ -3,6 +3,7 @@ change_id: c1125-add-app-tui-at-path-completion
 title: "产品 TUI：@ 文件模糊引用（接线 AtPathSource）"
 status: purpose-draft
 priority: 1125
+apply_band: P2-system
 depends_on: []
 author: agent
 track: R

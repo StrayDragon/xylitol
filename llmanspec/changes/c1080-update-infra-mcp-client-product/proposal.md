@@ -3,6 +3,7 @@ change_id: c1080-update-infra-mcp-client-product
 title: "MCP client 产品补齐：stdio / url·sse 传输与可观测装配"
 status: purpose-draft
 priority: 1080
+apply_band: P2-system
 depends_on: []
 author: agent
 track: R

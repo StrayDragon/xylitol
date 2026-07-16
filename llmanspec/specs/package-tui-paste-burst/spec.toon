@@ -1,16 +1,16 @@
 kind: llman.sdd.spec
 name: "package-tui-paste-burst"
-purpose: "PasteBurst detector for packages/xylitol-tui (non-bracketed paste Enter suppression)."
+purpose: "packages/xylitol-tui 的 PasteBurst 检测器（非 bracketed paste 的 Enter 抑制）。"
 valid_scope[2]: packages/xylitol-tui/,tests/
 requirements[3]{req_id,title,statement}:
-  pb01,"paste-burst-detector","The TUI MUST provide a PasteBurst detector (pure state machine) that recognizes a non-bracketed paste burst: 8 or more plain characters arriving within 8ms of each other. The detector MUST expose on_plain_char(now) to feed character arrivals and should_insert_newline_instead_of_submit(now) to query whether an imminent Enter should insert a newline rather than submit. The detector MUST NOT buffer characters (the editor inserts text normally); it only decides the Enter behavior. Mirrors pi paste-burst.ts."
-  pb02,"time-injected","PasteBurst methods MUST accept an Instant parameter (now) rather than reading wall-clock time internally so tests advance time deterministically via c405 MockClock without thread::sleep. The editor (future port) will pass clock.now() at each call site. This realizes c405 spec tt04 (timing-injectable-clock) for the paste-burst case."
-  pb03,"enter-suppress-window","When a burst is detected (8+ chars within the inter-char threshold) PasteBurst MUST open a 120ms enter-suppress window during which should_insert_newline_instead_of_submit returns true and a 30ms active-idle window that keeps the detector active between chars. After the suppress window elapses with no new chars a subsequent Enter MUST submit normally. reset() MUST clear all state (for non-printable keys, bracketed paste, or explicit disable)."
+  pb01,"paste-burst-detector","TUI MUST 提供 PasteBurst 检测器（纯状态机），识别 non-bracketed paste burst：8 个或以上 plain characters 彼此间隔 8ms 内到达。检测器 MUST 暴露 on_plain_char(now) 喂入字符到达，should_insert_newline_instead_of_submit(now) 查询即将到来的 Enter 是否应插入 newline 而非 submit。检测器 MUST NOT 缓冲字符（editor 正常插入文本）；仅决定 Enter 行为。镜像 pi paste-burst.ts。"
+  pb02,"time-injected","PasteBurst 方法 MUST 接受 Instant 参数（now）而非内部读 wall-clock，使测试经 c405 MockClock 确定性推进时间而无需 thread::sleep。editor（未来 port）将在各 call site 传入 clock.now()。这实现 c405 spec tt04（timing-injectable-clock）的 paste-burst 情形。"
+  pb03,"enter-suppress-window","检测到 burst（8+ chars 在 inter-char threshold 内）时，PasteBurst MUST 打开 120ms enter-suppress 窗口，期间 should_insert_newline_instead_of_submit 返回 true，以及 30ms active-idle 窗口在字符间保持检测器 active。suppress 窗口在无新字符后过期，后续 Enter MUST 正常 submit。reset() MUST 清除所有状态（用于 non-printable keys、bracketed paste 或显式 disable）。"
 scenarios[7]{req_id,id,given,when,then}:
-  pb01,"burst-detected-after-8-fast-chars",8 plain chars arrive each 1ms apart via on_plain_char,should_insert_newline_instead_of_submit is called immediately after,it returns true (the Enter should insert a newline)
-  pb01,"no-burst-slow-typing",8 plain chars arrive each 20ms apart (slower than the 8ms threshold),should_insert_newline_instead_of_submit is called,it returns false (normal typing is not a paste burst)
-  pb01,"fewer-than-8-chars-no-burst",only 5 fast chars arrive,should_insert_newline_instead_of_submit is called,"it returns false (below the 8-char minimum)"
-  pb02,"time-boundary-7ms-inside",two chars arrive 7ms apart,"the inter-char gap is checked against the 8ms threshold",7ms is inside the threshold so the consecutive counter increments
-  pb02,"time-boundary-9ms-outside",two chars arrive 9ms apart,"the inter-char gap is checked",9ms is outside the threshold so the consecutive counter resets to 1
-  pb03,"enter-submits-after-suppress-window",a burst is detected then 121ms pass with no new chars,should_insert_newline_instead_of_submit is called at +121ms,it returns false (the 120ms suppress window has elapsed)
-  pb03,"reset-clears-state",a burst is in progress and reset() is called,on_plain_char and should_insert_newline are called after reset,the detector behaves as if no chars arrived (no burst)
+  pb01,"burst-detected-after-8-fast-chars","8 个 plain chars 各 1ms 间隔经 on_plain_char 到达",随后立即调用 should_insert_newline_instead_of_submit,返回 true（Enter 应插入 newline）
+  pb01,"no-burst-slow-typing","8 个 plain chars 各 20ms 间隔（慢于 8ms threshold）",调用 should_insert_newline_instead_of_submit,返回 false（正常打字非 paste burst）
+  pb01,"fewer-than-8-chars-no-burst","仅 5 个 fast chars 到达",调用 should_insert_newline_instead_of_submit,"返回 false（低于 8-char 最小值）"
+  pb02,"time-boundary-7ms-inside","两个 chars 间隔 7ms 到达","检查 inter-char gap 对 8ms threshold",7ms 在 threshold 内，consecutive counter 递增
+  pb02,"time-boundary-9ms-outside","两个 chars 间隔 9ms 到达","检查 inter-char gap",9ms 超出 threshold，consecutive counter 重置为 1
+  pb03,"enter-submits-after-suppress-window","检测到 burst 后 121ms 无新 chars",在 +121ms 调用 should_insert_newline_instead_of_submit,返回 false（120ms suppress 窗口已过期）
+  pb03,"reset-clears-state",burst 进行中且 reset() 被调用,之后调用 on_plain_char 与 should_insert_newline,检测器行为如同无字符到达（无 burst）

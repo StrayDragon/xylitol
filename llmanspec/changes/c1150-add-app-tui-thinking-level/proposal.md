@@ -3,6 +3,7 @@ change_id: c1150-add-app-tui-thinking-level
 title: "产品 TUI：thinking level 边框 + footer 回退显示"
 status: purpose-draft
 priority: 1150
+apply_band: P3-feature
 depends_on:
   - c1140-add-package-tui-thinking-level-chrome
   - c1145-update-runtime-model-thinking-levels

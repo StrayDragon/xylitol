@@ -3,6 +3,7 @@ change_id: c1110-add-app-tui-history-copy-last
 title: "产品 slash：/history-copy-last 复制最后 assistant 消息"
 status: purpose-draft
 priority: 1110
+apply_band: P3-feature
 depends_on: []
 author: agent
 track: R

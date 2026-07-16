@@ -3,6 +3,7 @@ change_id: c1130-add-app-tui-dollar-skill
 title: "产品 TUI：$skill-name 内联引用（非 /skill:）"
 status: purpose-draft
 priority: 1130
+apply_band: P3-feature
 depends_on: ["c1085-update-agent-skills-runtime"]
 author: agent
 track: R

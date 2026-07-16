@@ -1,6 +1,6 @@
 kind: llman.sdd.spec
 name: "domain-message"
-purpose: AgentMessage / AgentPart 持久化 wire（JSONL content 自描述部件）— c646 起对齐 pi tagged 形态。
+purpose: "AgentMessage / AgentPart 持久化 wire（JSONL content 自描述部件）— c646 起对齐 pi tagged 形态。"
 valid_scope[2]: src/domain/message.rs,src/domain/session_types.rs
 requirements[5]{req_id,title,statement}:
   dm1,"agent-part-tagged-wire","AgentPart 序列化到 JSONL/session message.content 时 MUST 使用带 type 判别的自描述形态（对齐 pi ThinkingContent/TextContent/ToolCall）：thinking MUST 为 {type:thinking, thinking, thinkingSignature?, redacted?}；text MUST 为 {type:text, text}；toolCall MUST 为 {type:toolCall, id, name, arguments}。MUST NOT 使用 serde untagged；MUST NOT 将 Text 写成裸字符串；MUST NOT 将 Thinking 写成无 type 且字段名为 text 的对象。"

@@ -1,25 +1,25 @@
 kind: llman.sdd.spec
 name: "runtime-model-registry"
-purpose: "Model registry — provider registration, auth checks, model discovery, and model resolution. Only OpenAI-compatible and Anthropic providers are supported pre-1.0.0."
+purpose: "模型注册表 — provider 注册、鉴权检查、模型发现与解析。Pre-1.0.0 仅支持 OpenAI 兼容与 Anthropic provider。"
 valid_scope[2]: src/agent/model/,src/runtime_protocol/model.rs
 requirements[8]{req_id,title,statement}:
-  m1,"model-registry-providers","ModelRegistry MUST support register_provider(name, config) and has_configured_auth(model) / has_resolved_auth(model) for checking API key availability."
-  m2,"model-discovery","ModelRegistry MUST support get_available() returning all configured models across registered providers, sorted by provider priority."
-  m3,"model-defaults","ModelRegistry MUST maintain default model IDs for openai and anthropic providers only. Other providers MUST NOT have default model entries pre-1.0.0. The default model IDs MUST be valid, currently-shipping model identifiers (e.g. gpt-4o, claude-sonnet-4-20250514), never placeholder or non-existent model names."
-  m4,"model-resolver","System MUST provide resolve_model(pattern, available) supporting provider/modelId canonical form, bare id matching, alias preference over dated versions, and thinking-level:model pattern parsing."
-  m5,"scoped-models","AgentSession MUST support scoped_models (from CLI --models flag) for Ctrl+P model cycling, limiting available models to a user-specified subset with optional per-model thinking levels."
-  m6,"model-fallback","ModelResolver MUST build a fallback Model when target model ID is not in the provider's available list, preserving user intent while falling back to a base model from same provider."
-  m7,"auth-guidance","ModelRegistry MUST return user-facing error messages when no API key is configured for a model, guiding to the correct environment variable name."
-  m8,"bdd-model",BDD tests for model registry and resolution MUST all pass.
+  m1,ModelRegistry provider,"ModelRegistry MUST 支持 register_provider(name, config) 与 has_configured_auth(model) / has_resolved_auth(model) 检查 API key 可用性。"
+  m2,模型发现,"ModelRegistry MUST 支持 get_available()，返回已注册 provider 的全部配置模型，按 provider 优先级排序。"
+  m3,模型默认值,"ModelRegistry MUST 仅为 openai 与 anthropic provider 维护默认模型 ID。Pre-1.0.0 其它 provider MUST NOT 有默认模型条目。默认模型 ID MUST 为有效、当前可用的模型标识（如 gpt-4o、claude-sonnet-4-20250514），不得为占位或不存在的模型名。"
+  m4,模型解析器,"System MUST 提供 resolve_model(pattern, available)，支持 provider/modelId 规范形式、裸 id 匹配、别名优先于带日期版本、以及 thinking-level:model pattern 解析。"
+  m5,作用域模型,"AgentSession MUST 支持 scoped_models（来自 CLI --models 标志），用于 Ctrl+P 模型循环，将可用模型限制为用户指定子集并可含每模型 thinking level。"
+  m6,模型回退,"目标模型 ID 不在 provider 可用列表时，ModelResolver MUST 构建回退 Model，保留用户意图并回退到同 provider 基础模型。"
+  m7,鉴权指引,"未配置模型 API key 时，ModelRegistry MUST 返回面向用户的错误消息，指引正确环境变量名。"
+  m8,BDD model,模型注册表与解析的 BDD 测试 MUST 全部通过。
 scenarios[11]{req_id,id,given,when,then}:
-  m1,"register-provider",a provider is registered with name openai and api key,has_configured_auth for an openai model,returns true
-  m1,"no-auth",no api key is configured for anthropic,has_configured_auth for a claude model,returns false
-  m1,"resolved-auth",api key is an env var reference $MY_KEY that is set,has_resolved_auth for the provider,returns true
-  m1,"unresolved-auth",api key is an env var reference $MY_KEY that is unset,has_resolved_auth for the provider,returns false
-  m2,"available-models",two providers each have 2 models,get_available is called,returns 4 models sorted by priority
-  m3,"real-values","",default_model_id_for_provider is called for a supported provider,"the returned id is a real, usable model identifier, not a placeholder like gpt-5.4"
-  m4,"exact-match","available models include openai/gpt-4o","resolve_model of openai/gpt-4o is called",returns the matching model
-  m5,"scoped-cycle",scoped_models has 3 entries,cycle_model is called,cycles through only those 3 models
-  m6,"fallback-model","user requests nonexistent-model on openai provider",model is resolved,fallback uses base openai model with the requested id as name
-  m7,"auth-guidance-message",no API key configured for anthropic model,auth_guidance_message is called,message includes ANTHROPIC_API_KEY
-  m8,"bdd-pass",the model registry and resolver BDD suite is run,all scenarios execute,every scenario passes without regression
+  m1,"register-provider",以名称 openai 与 api key 注册 provider,对 openai 模型调用 has_configured_auth,返回 true
+  m1,"no-auth",anthropic 未配置 api key,对 claude 模型调用 has_configured_auth,返回 false
+  m1,"resolved-auth",api key 为已设置的环境变量引用 $MY_KEY,对 provider 调用 has_resolved_auth,返回 true
+  m1,"unresolved-auth",api key 为未设置的环境变量引用 $MY_KEY,对 provider 调用 has_resolved_auth,返回 false
+  m2,"available-models",两个 provider 各有 2 个模型,调用 get_available,按优先级返回 4 个模型
+  m3,"real-values","",对支持的 provider 调用 default_model_id_for_provider,返回真实可用模型标识而非 gpt-5.4 等占位符
+  m4,"exact-match","可用模型含 openai/gpt-4o","调用 resolve_model('openai/gpt-4o')",返回匹配模型
+  m5,"scoped-cycle",scoped_models 有 3 项,调用 cycle_model,仅在这 3 个模型间循环
+  m6,"fallback-model",用户在 openai provider 请求 nonexistent-model,解析模型,回退使用 openai 基础模型且以请求 id 为名称
+  m7,"auth-guidance-message",anthropic 模型未配置 API key,调用 auth_guidance_message,消息含 ANTHROPIC_API_KEY
+  m8,"bdd-pass",运行模型注册表与解析 BDD 套件,全部场景执行,每场景通过且无回归

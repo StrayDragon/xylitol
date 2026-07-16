@@ -3,56 +3,56 @@ name: "layer-architecture"
 purpose: "分层与 arch_guard：domain / runtime_protocol / agent / infra / protocol / app 依赖方向与组合根缝。"
 valid_scope[2]: src/,tests/
 requirements[26]{req_id,title,statement}:
-  la1,"core-layer","System MUST provide a base domain/ layer hosting domain vocabulary types including AgentMessage and ModelKind and XyChunk and ALL pure data types consumed by two or more layers (such as SessionEntry variants, SourceInfo, SkillInfo, PromptTemplate, CompactionSettings, AgentLifecycleEvent). System MUST provide a separate runtime_protocol/ layer hosting the trait contracts (XyModel, XyTool, SessionStore, EventSink, SandboxEngine, BashExecutor, SecretResolver, ResourceLoader, TrustStore, ExportIo) so that no layer must import crate::infra merely to reference a shared data type or to declare a port."
-  la2,"downward-dependency","infra/ modules MUST NOT import any crate::agent symbol; agent/ modules MUST NOT import any concrete infra/ type (only via runtime_protocol); app/ modules MUST NOT import crate::agent or crate::infra except in the documented seams: the composition roots app/cli/, app/server/, and app/core/composition.rs (which may import both), and app/core/driver.rs (which may import agent::facade only and MUST NOT import crate::infra per la11). domain/ MUST have zero crate:: internal dependencies and runtime_protocol/ MUST only depend on domain/."
-  la3,"arch-guard","System MUST enforce via a guard test that no file under src/infra imports crate::agent."
-  la4,"app-layer-name","The app/ surface directory MUST contain all user-facing entry points: cli/, server/, tui/, and gui.rs; cross-surface seams (composition, driver) MUST live under app/core/. The print mode MUST live under app/cli/ as a CLI sub-mode, not as a top-level app module."
-  la5,"protocol-module","System MUST provide a protocol/ module as the single source of truth for client-core interaction: command enum (client to core), event enum (core to client), response envelope, and error codes."
-  la6,"server-under-app","System MUST provide an app::server module (under src/app/server/) that hosts agent + infra runtimes and exposes protocol/ over REST (/api/v1) and WebSocket; the server MUST enforce a single-instance lock."
-  la7,"runtime-residence","All runtimes (provider, tool, session storage, exec-env, bash executor, secret resolution, resource loader, export I/O) MUST live under infra/; agent/ MUST hold them only as Arc<dyn Port> injected at the composition root from runtime_protocol/; agent/ MUST NOT call any infra constructor or borrow infra exec primitives directly."
-  la8,"agent-independence","The Agent (capability aggregate) constructor MUST NOT require a Session, MUST NOT hold a session_id, and MUST NOT depend on Session persistence lifecycle; session_id is a SessionStore query key bound in the app layer. The former facade wording is reconciled because the agent::facade hub is removed by c320."
-  la9,"arch-guard-expanded","The architecture guard MUST enforce via a guard test (src/tests.rs::arch_guard) all of: no infra file imports crate::agent, no agent file imports ANY concrete crate::infra type via a full scan of crate::infra:: in production code, and no app file imports crate::agent or crate::infra except the documented seams (app/cli/, app/server/, app/core/composition.rs, and app/core/driver.rs); the scan scope MUST reconcile with la2."
-  la10,"note-convention","Deliberate simplifications MUST be marked with a tool-agnostic comment of the form '// NOTE: <what>. ceiling: <when it breaks>. upgrade: <trigger>.' so they can be grepped and reaped."
-  la11,"arch-guard-app","The architecture guard MUST verify that app/ modules (excluding the documented seams: app/cli/, app/server/, app/core/composition.rs, and app/core/driver.rs) do not import crate::agent or crate::infra types; app/core/driver.rs MUST additionally be verified to contain no crate::infra import."
-  la12,"arch-guard-allowlist","System MUST maintain a documented allowlist of pre-existing agent to infra import violations inside arch_guard; each allowlist entry MUST cite a follow-up change id that will remove it, and any NEW agent to infra production import not present in the allowlist MUST fail the guard."
-  la13,"agent-thin-no-presentation","agent/ MUST NOT host pure presentation or user-guidance logic such as static help text or message formatting; such logic MUST live under app/ (the client surface), and agent/ MUST contain only the orchestration loop, hook points, and orchestration state."
-  la14,"no-core-rename-shim","System MUST NOT retain a pub use domain as core backward-compatibility shim; all call sites MUST be updated to crate::domain in one pass."
-  la15,"app-composition","System MUST provide an app::core::composition module that centralizes construction of a fully wired Agent from BuildAgentOptions so that CLI、Server 与 TUI do not duplicate Agent wiring code."
-  la16,"xy-domain-types","domain layer MUST host Xy-prefixed core abstractions and remove duplicate types."
-  la17,"xy-protocol-ports","runtime_protocol layer MUST host Xy-prefixed port contracts and signature types."
-  la18,"event-layering",XyEvent MUST live in domain and XyEventSink in runtime_protocol and EventBus in infra.
-  la19,"seam-surface-separation","app/ MUST group its cross-surface seams under src/app/core/: the composition root (composition.rs) and the runtime driver boundary (driver.rs) MUST both live under app/core/, separate from self-contained application surfaces (cli/, server/, tui/, gui.rs). Application surfaces MUST NOT host build_agent wiring or the Driver trait directly."
-  la20,"shared-bootstrap-and-dispatch","app::core MUST host a shared bootstrap module (app::core::bootstrap) centralizing the full assembly path from CLI args to a constructed AgentRuntime (config load, ModelRegistry build, trust resolution, resource discovery including templates/context_files/system_prompt/append_system_prompt, compaction settings, permission, build_agent, model select), and a shared dispatch module (app::core::dispatch) centralizing Command variant execution semantics; print (cli), server, and tui MUST call bootstrap, tui MUST call dispatch, and no surface MAY inline its own assembly or command-dispatch implementation."
+  la1,核心层,"System MUST 提供基础 domain/ 层承载领域词汇类型（AgentMessage、ModelKind、XyChunk 及两层以上消费的纯数据类型，如 SessionEntry 变体、SourceInfo、SkillInfo、PromptTemplate、CompactionSettings、AgentLifecycleEvent）。System MUST 提供独立 runtime_protocol/ 层承载 trait 契约（XyModel、XyTool、SessionStore、EventSink、SandboxEngine、BashExecutor、SecretResolver、ResourceLoader、TrustStore、ExportIo），使各层无需为引用共享数据类型或声明端口而 import crate::infra。"
+  la2,向下依赖,"infra/ 模块 MUST NOT import 任何 crate::agent 符号；agent/ 模块 MUST NOT import 任何具体 infra/ 类型（仅经 runtime_protocol）；app/ 模块 MUST NOT import crate::agent 或 crate::infra，除文档化缝：组合根 app/cli/、app/server/、app/core/composition.rs（可 import 二者），以及 app/core/driver.rs（仅可 import agent::facade 且 per la11 MUST NOT import crate::infra）。domain/ MUST 零 crate:: 内部依赖；runtime_protocol/ MUST 仅依赖 domain/。"
+  la3,arch_guard,"System MUST 经 guard 测试强制：src/infra 下无文件 import crate::agent。"
+  la4,app 层命名,"app/ 表面目录 MUST 含全部用户入口：cli/、server/、tui/、gui.rs；跨面缝（composition、driver）MUST 位于 app/core/。print 模式 MUST 位于 app/cli/ 作为 CLI 子模式，而非顶层 app 模块。"
+  la5,protocol 模块,"System MUST 提供 protocol/ 模块作为 client↔core 交互 SSOT：Command 枚举（client→core）、Event 枚举（core→client）、响应信封与错误码。"
+  la6,server 在 app 下,"System MUST 在 src/app/server/ 提供 app::server 模块，托管 agent + infra 运行时并经 REST（/api/v1）与 WebSocket 暴露 protocol/；server MUST 强制单实例锁。"
+  la7,运行时归属,"全部运行时（provider、tool、session storage、exec-env、bash executor、secret resolution、resource loader、export I/O）MUST 位于 infra/；agent/ MUST 仅以 Arc<dyn Port> 在组合根从 runtime_protocol/ 注入持有；agent/ MUST NOT 直接调用 infra 构造器或借用 infra exec 原语。"
+  la8,agent 独立性,"Agent（能力聚合体）构造器 MUST NOT 要求 Session、MUST NOT 持有 session_id、MUST NOT 依赖 Session 持久化生命周期；session_id 为 app 层绑定的 SessionStore 查询键。原 facade 表述因 c320 移除 agent::facade hub 而调和。"
+  la9,arch_guard 扩展,"架构 guard MUST 经 guard 测试（src/tests.rs::arch_guard）强制：无 infra 文件 import crate::agent；无 agent 文件经生产代码全扫描 import 任何具体 crate::infra 类型；无 app 文件 import crate::agent 或 crate::infra（除文档化缝 app/cli/、app/server/、app/core/composition.rs、app/core/driver.rs）；扫描范围 MUST 与 la2 调和。"
+  la10,NOTE 约定,"刻意简化 MUST 以工具无关注释标记：'// NOTE: <what>. ceiling: <when it breaks>. upgrade: <trigger>.'，便于 grep 与清理。"
+  la11,arch_guard app,"架构 guard MUST 验证 app/ 模块（除文档化缝 app/cli/、app/server/、app/core/composition.rs、app/core/driver.rs）不 import crate::agent 或 crate::infra；app/core/driver.rs MUST 额外验证无 crate::infra import。"
+  la12,arch_guard 允许列表,"System MUST 维护 arch_guard 内既有 agent→infra import 违规的文档化允许列表；每项 MUST 引用将移除它的后续变更 id；允许列表外任何新增 agent→infra 生产 import MUST 使 guard 失败。"
+  la13,agent 薄且无展示,"agent/ MUST NOT 托管纯展示或用户指引逻辑（如静态帮助文本或消息格式化）；此类逻辑 MUST 位于 app/（客户端表面），agent/ MUST 仅含编排循环、hook 点与编排状态。"
+  la14,禁止 core 重命名 shim,"System MUST NOT 保留 pub use domain as core 向后兼容 shim；全部调用点 MUST 一次性更新为 crate::domain。"
+  la15,app composition,"System MUST 提供 app::core::composition 模块，从 BuildAgentOptions 集中构造完整接线的 Agent，使 CLI、Server 与 TUI 不重复 Agent 接线代码。"
+  la16,Xy 领域类型,"domain 层 MUST 托管 Xy 前缀核心抽象并移除重复类型。"
+  la17,Xy 协议端口,"runtime_protocol 层 MUST 托管 Xy 前缀端口契约与签名类型。"
+  la18,事件分层,"XyEvent MUST 位于 domain，XyEventSink 位于 runtime_protocol，EventBus 位于 infra。"
+  la19,缝与表面分离,"app/ MUST 将跨面缝分组于 src/app/core/：组合根（composition.rs）与运行时 driver 边界（driver.rs）MUST 均位于 app/core/，与自包含应用表面（cli/、server/、tui/、gui.rs）分离。应用表面 MUST NOT 直接托管 build_agent 接线或 Driver trait。"
+  la20,共享 bootstrap 与 dispatch,"app::core MUST 托管共享 bootstrap 模块（app::core::bootstrap），集中从 CLI args 到 AgentRuntime 的完整装配路径（config load、ModelRegistry build、trust resolution、resource discovery 含 templates/context_files/system_prompt/append_system_prompt、compaction settings、permission、build_agent、model select），以及共享 dispatch 模块（app::core::dispatch）集中 Command 变体执行语义；print（cli）、server、tui MUST 调用 bootstrap，tui MUST 调用 dispatch，任何表面 MAY NOT 内联自有装配或命令分发实现。"
   la21,禁止死包装协作者,agent/ 内对端口的纯转发壳（无附加状态或行为，且无生产调用方）MUST 删除；Agent MUST 直接持有 Arc<dyn Port> 或经有真实职责的协作者访问，MUST NOT 保留 SessionIO 类零逻辑包装。
   "la-embed1","嵌入禁止 reach-in",嵌入路径 MUST 仅依赖精选 Xy 契约与文档化应用缝；MUST NOT 要求嵌入方 import infra 具体实现或 agent 子模块内部类型以完成标准装配。
   "la-server-driver",Server 与 Print 同缝,Server 与 Print MUST 共享同一应用缝（Driver/bootstrap）；新增 server 能力时优先扩缝，禁止为 server 单独复制一套 agent 编排。
   "la-mcp-seam",组合根消化 MCP 配置,"composition/McpSession MUST 在缝边界内将嵌入缝 MCP 描述转为 infra 实现；应用面 MUST NOT 为 MCP 装配单独 reach-in infra 类型。"
   "la-dispatch-consume",dispatch 有消费方,跨面命令执行缝 dispatch MUST 至少被一个生产应用面消费（Server 或 TUI）；禁止长期仅单测覆盖而无面接线。
-  la25,"provider-package-ocp","LLM 厂商差异 MUST 收敛在 packages/xylitol-ai-bridge 的 adapter 族与主仓投影缝；新 OpenAI-like 或 Anthropic-like 兼容端 MUST 以开闭方式扩展（新 adapter/配置），MUST NOT 修改 domain AgentMessage 或 agent ReAct 核心以适配某一网关；domain/agent MUST NOT 依赖厂商 SDK。"
+  la25,provider 包开闭,"LLM 厂商差异 MUST 收敛在 packages/xylitol-ai-bridge 的 adapter 族与主仓投影缝；新 OpenAI-like 或 Anthropic-like 兼容端 MUST 以开闭方式扩展（新 adapter/配置），MUST NOT 修改 domain AgentMessage 或 agent ReAct 核心以适配某一网关；domain/agent MUST NOT 依赖厂商 SDK。"
 scenarios[28]{req_id,id,given,when,then}:
-  la1,"shared-types-in-domain",a pure data type is needed by both agent/ and infra/,the type is declared and imported,"both layers import it from crate::domain and runtime_protocol from crate::runtime_protocol"
-  la2,"app-layer-isolated","","a new file under src/app/core/driver.rs imports crate::infra::tools::BashTool",the architecture guard fails and reports the violation
-  la2,"composition-root-allowed","","a file under src/app/core/composition.rs imports crate::infra::tools::default_tools",the architecture guard allows it as a documented composition root
-  la3,"guard-catches-violation","a new src/infra file adds use crate::agent::session",the architecture guard runs,the guard fails and reports the offending file path
-  la4,"app-dir-exists","",the source tree is inspected after the refactor,src/app exists and src/interactive no longer exists
-  la5,"protocol-commands",a client sends a command to the core,the command is serialized,"it deserializes into the protocol::Command enum defined in protocol/"
-  la6,"server-dir-moved","",the source tree is inspected after the refactor,src/app/server exists and src/server no longer exists
-  la7,"executor-not-in-agent",the bash executor is located,its source file is inspected,it lives under infra/ and agent/ reaches it only via an injected port
-  la8,"facade-wording-reconciled",la8 previously referenced the Agent facade constructor,the requirement is read after the change,it refers to the Agent capability aggregate constructor and still forbids requiring a Session or holding a session_id
-  la9,"guard-scans-app","","a new app/ file outside the documented seams imports crate::agent",the architecture guard fails and reports the offending file path
-  la10,"note-greppable",a deliberate simplification is made in code,the author marks it,"the line contains '// NOTE: ... ceiling: ... upgrade: ...' and is grep-findable"
-  la11,"driver-is-clean","",app/core/driver.rs is scanned for infra imports,"it contains no crate::infra import"
-  la12,"allowlist-blocks-new-violations","an agent file adds a NEW crate::infra import not listed in the allowlist",the guard runs,the build fails and the message names the file and says it is not in the allowlist
-  la13,"auth-guidance-not-in-agent","the source tree is inspected for user-guidance message formatting functions",src/agent/ is scanned,"no pure presentation or static help-text module (such as the former agent::auth guidance) remains under agent/"
-  la14,"no-shim",the source tree is grepped for backward shims,the grep runs,"zero matches for pub use domain as core or similar re-exports"
-  la15,"composition-reused","","CLI, RPC, and Server each need an Agent","all three call app::core::composition::build_agent instead of duplicating wiring code"
-  la16,"xy-domain-types",public domain type is external,the change is applied,it is renamed to Xy and imported consistently
-  la17,"xy-protocol-ports",runtime_protocol trait is referenced,the change is applied,it is renamed to Xy and implemented by infra
-  la18,"event-layer-check",event types and ports are located,src is inspected,XyEvent is in domain and XyEventSink is in runtime_protocol
-  la19,"seams-under-core","",the source tree is inspected,"composition.rs and driver.rs live under app/core/, and no Driver-trait or build_agent seam lives directly under a surface directory (cli/, server/, tui/, gui.rs)"
+  la1,"shared-types-in-domain",agent/ 与 infra/ 均需纯数据类型,声明并导入类型,两层均从 crate::domain 导入且 runtime_protocol 从 crate::runtime_protocol 导入
+  la2,"app-layer-isolated","","src/app/core/driver.rs 新文件 import crate::infra::tools::BashTool",架构 guard 失败并报告违规
+  la2,"composition-root-allowed","","src/app/core/composition.rs 文件 import crate::infra::tools::default_tools",架构 guard 允许为文档化组合根
+  la3,"guard-catches-violation","src/infra 新文件添加 use crate::agent::session",架构 guard 运行,guard 失败并报告违规文件路径
+  la4,"app-dir-exists","",重构后检查源码树,src/app 存在且 src/interactive 不再存在
+  la5,"protocol-commands",client 向 core 发送命令,命令序列化,反序列化为 protocol/ 中定义的 protocol::Command 枚举
+  la6,"server-dir-moved","",重构后检查源码树,src/app/server 存在且 src/server 不再存在
+  la7,"executor-not-in-agent",定位 bash executor,检查源文件,位于 infra/ 且 agent/ 仅经注入端口访问
+  la8,"facade-wording-reconciled",la8 曾引用 Agent facade 构造器,变更后阅读要求,指 Agent 能力聚合体构造器且仍禁止要求 Session 或持有 session_id
+  la9,"guard-scans-app","","文档化缝外 app/ 新文件 import crate::agent",架构 guard 失败并报告违规文件路径
+  la10,"note-greppable",代码中做刻意简化,作者标记,行含 '// NOTE: ... ceiling: ... upgrade: ...' 且可 grep
+  la11,"driver-is-clean","",扫描 app/core/driver.rs 的 infra import,不含 crate::infra import
+  la12,"allowlist-blocks-new-violations",agent 文件添加允许列表外的新 crate::infra import,guard 运行,构建失败且消息指明文件不在允许列表
+  la13,"auth-guidance-not-in-agent",检查源码树中的用户指引消息格式化函数,扫描 src/agent/,agent/ 下无纯展示或静态帮助文本模块（如原 agent::auth guidance）
+  la14,"no-shim",在源码树 grep 向后兼容 shim,grep 运行,零匹配 pub use domain as core 或类似再导出
+  la15,"composition-reused","","CLI、RPC、Server 均需 Agent",三者均调用 app::core::composition::build_agent 而非重复接线
+  la16,"xy-domain-types",公共 domain 类型对外,应用变更后,重命名为 Xy 并一致导入
+  la17,"xy-protocol-ports",引用 runtime_protocol trait,应用变更后,重命名为 Xy 并由 infra 实现
+  la18,"event-layer-check",定位事件类型与端口,检查 src,XyEvent 在 domain 且 XyEventSink 在 runtime_protocol
+  la19,"seams-under-core","",检查源码树,"composition.rs 与 driver.rs 位于 app/core/，且无 Driver trait 或 build_agent 缝直接位于表面目录（cli/、server/、tui/、gui.rs）"
   la20,"bootstrap-agent-runtime",bootstrap 完成,检查 BootstrappedAgent 字段,持有 AgentRuntime（或经 Driver 封装）
   la21,"no-session-io","",搜索 SessionIO 与 PermissionGate 生产调用,类型已删除或不再作为无逻辑壳存在
-  "la-embed1","no-reach-in","",按嵌入文档装配 agent,"调用点不出现 crate::infra:: 或 agent::session:: 路径（测试双除外）"
+  "la-embed1","no-reach-in","",按嵌入文档装配 agent,调用点不出现 crate::infra:: 或 agent::session:: 路径（测试双除外）
   "la-server-driver","shared-seam","",对比 print 与 server 装配,二者均经 composition/bootstrap 与 Driver 语义
   "la-mcp-seam","composition-owns","","审查 McpSession::reload 签名",参数为缝类型；infra 转换仅在 composition/infra 内
   "la-dispatch-consume","server-wires","",c550 归档后审查调用点,server REST 生产路径调用 dispatch

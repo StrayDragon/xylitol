@@ -1,20 +1,20 @@
 kind: llman.sdd.spec
 name: "test-provider-integration"
-purpose: "Provider integration — API key resolution, model registry integration, and OpenAI/Anthropic provider construction. Attribution headers, OAuth storage, and non-OpenAI/Anthropic provider integrations are out of scope until after 1.0.0."
+purpose: "Provider 集成 — API key 解析、模型注册表集成与 OpenAI/Anthropic provider 构造。Attribution headers、OAuth 存储与非 OpenAI/Anthropic provider 集成在 1.0.0 前不在范围内。"
 valid_scope[2]: src/infra/provider/,src/runtime_protocol/secret.rs
 requirements[6]{req_id,title,statement}:
-  pi0,"provider-registration","System SHALL support provider registration with configurable API keys base URLs headers and adapter api type for OpenAI-compatible and Anthropic providers."
-  cv1,"config-value-parser","System MUST provide a ConfigValueResolver that parses literal env-var template and shell-command config values."
-  cv2,"env-var-interpolation","ConfigValueResolver MUST interpolate $VAR and ${VAR} and ${VAR:-default} environment variable references."
-  cv3,"shell-command-execution","ConfigValueResolver MUST execute commands prefixed with ! via std::process::Command with 10-second timeout and cache results for process lifetime."
-  pi2,"provider-in-infra","All LLM provider implementations (OpenAI, Anthropic, Fake, Mock) MUST live under infra/provider/ and implement runtime_protocol::XyModel; agent/ MUST NOT contain a provider/ subdirectory; provider construction (the factory from ModelConfig to Arc<dyn XyModel>) MUST live in infra::provider::factory, not in agent/."
-  pi3,"provider-port-injection",The model registry held by the agent MUST store providers as Arc<dyn XyModel>; selecting a provider MUST NOT require the agent to name a concrete provider struct.
+  pi0,"provider-registration","System SHALL 支持 provider 注册，含可配置 API keys、base URLs、headers 与 adapter api type，适用于 OpenAI 兼容与 Anthropic provider。"
+  cv1,"config-value-parser","System MUST 提供 ConfigValueResolver，解析 literal、env-var template 与 shell-command 配置值。"
+  cv2,"env-var-interpolation","ConfigValueResolver MUST 插值 $VAR、${VAR} 与 ${VAR:-default} 环境变量引用。"
+  cv3,"shell-command-execution","ConfigValueResolver MUST 经 std::process::Command 执行以 ! 为前缀的命令，10 秒超时，并在进程生命周期内缓存结果。"
+  pi2,"provider-in-infra","所有 LLM provider 实现（OpenAI、Anthropic、Fake、Mock）MUST 位于 infra/provider/ 并实现 runtime_protocol::XyModel；agent/ MUST NOT 含 provider/ 子目录；provider 构造（从 ModelConfig 到 Arc<dyn XyModel> 的 factory）MUST 位于 infra::provider::factory，而非 agent/。"
+  pi3,"provider-port-injection","agent 持有的 model registry MUST 以 Arc<dyn XyModel> 存储 provider；选择 provider MUST NOT 要求 agent 命名具体 provider struct。"
 scenarios[8]{req_id,id,given,when,then}:
-  pi0,"config-api",a model config includes an api field,the factory builds the provider,the correct adapter is injected into the provider
-  cv1,literal,a config value is a plain string,it is resolved,the literal string is returned
-  cv2,"env-var",a config value is MY_KEY and MY_KEY is set in env,the value is resolved,the env var value is returned
-  cv2,"missing-env",a config value is MISSING and the var is unset,the value is resolved,None is returned
-  cv3,"shell-cmd","'a config value is \"!echo hello\"'",the command executes within 10 seconds,hello is returned
-  cv3,"shell-cache",same command is resolved twice,the value is cached,"the second call does not re-execute"
-  pi2,"provider-moved",src/agent/provider is checked for existence,the path is inspected,"it does not exist and src/infra/provider/ does and XyModel is imported from crate::runtime_protocol"
-  pi3,"no-concrete-provider",the agent references a provider,the reference type is inspected,it is the XyModel trait object not OpenAIProvider
+  pi0,"config-api","model config 含 api 字段",factory 构建 provider,正确 adapter 被注入 provider
+  cv1,literal,"config 值为纯字符串",解析该值,返回 literal 字符串
+  cv2,"env-var","config 值为 MY_KEY 且 MY_KEY 在 env 中已设置",解析该值,返回 env var 值
+  cv2,"missing-env","config 值为 MISSING 且变量未设置",解析该值,返回 None
+  cv3,"shell-cmd","'config 值为 \"!echo hello\"'",命令在 10 秒内执行,返回 hello
+  cv3,"shell-cache",同一命令解析两次,值被缓存,"第二次调用不重新执行"
+  pi2,"provider-moved",检查 src/agent/provider 是否存在,检查该路径,"不存在，且 src/infra/provider/ 存在且 XyModel 从 crate::runtime_protocol 导入"
+  pi3,"no-concrete-provider",agent 引用 provider,检查引用类型,"为 XyModel trait object，非 OpenAIProvider"

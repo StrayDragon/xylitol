@@ -3,6 +3,7 @@ change_id: c1120-add-app-tui-reload-slash
 title: "产品 slash：/reload 热重载资源（不改历史）"
 status: purpose-draft
 priority: 1120
+apply_band: P3-feature
 depends_on:
   - c1080-update-infra-mcp-client-product
   - c1085-update-agent-skills-runtime

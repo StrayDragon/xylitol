@@ -1,28 +1,28 @@
 kind: llman.sdd.spec
 name: "infra-bash"
-purpose: Bash command execution via shell subprocess with streaming output and cancellation.
+purpose: "经 shell 子进程执行 Bash 命令，含流式输出与取消。"
 valid_scope[2]: src/infra/bash_exec/,src/runtime_protocol/bash.rs
 requirements[10]{req_id,title,statement}:
-  be1,"streaming-executor","System MUST provide XyBashExecutor that executes shell commands via BashExecOpts carrying optional CancellationToken and optional bounded mpsc chunk_tx for output bytes; when chunk_tx is Some the executor MUST emit output chunks on that channel (try_send with sender-side coalesce on Full); when None MUST accumulate silently without requiring a callback. The former on_chunk callback signature MUST NOT remain as the public port."
-  be2,"abort-cancellation",BashExecutor MUST support cancellation that kills the whole process group and marks the result cancelled.
-  be3,"output-truncation",BashExecutor MUST truncate output to a configured max bytes and spill the full output to a temp file path when exceeded.
-  be4,"session-entry",SessionEntry MUST support a BashExecution variant carrying command output exit_code cancelled truncated full_output_path and exclude_from_context.
-  be5,"agent-session-api",AgentSession MUST expose execute_bash record_bash_result and abort_bash and route single or double bang prefixes to the executor.
-  be6,"context-filter",System MUST omit BashExecution entries whose exclude_from_context is true when building LLM context.
-  b1,"bash-trait",System MUST abstract bash execution behind a BashOperations trait supporting real and mock implementations for testing.
-  b2,"bash-hooks","System MUST support pre-spawn and post-spawn hooks on bash execution for extension integration."
-  b3,"timeout-esc","System MUST implement graduated timeout: SIGTERM then 5-second grace then SIGKILL on bash commands."
-  be7,"abort-reachable-from-runtime","交互 bash 的取消入口 abort_bash MUST 可从 AgentRuntime::abort（&self）到达，无需独占 &mut AgentCapabilities 才能在 Driver::abort 路径上杀进程树；CancellationToken 取消后 MUST 触发既有杀树路径（be2）。"
+  be1,流式执行器,"System MUST 提供 XyBashExecutor，经 BashExecOpts 执行 shell 命令，携带可选 CancellationToken 与可选有界 mpsc chunk_tx 输出字节；chunk_tx 为 Some 时执行器 MUST 在该通道发送输出块（Full 时发送方合并）；为 None 时 MUST 静默累积且不要求回调。原 on_chunk 回调签名 MUST NOT 保留为公共端口。"
+  be2,中止与取消,"BashExecutor MUST 支持取消，杀死整个进程组并将结果标为 cancelled。"
+  be3,输出截断,"BashExecutor MUST 将输出截断到配置 max bytes，超限时将完整输出溢出到临时文件路径。"
+  be4,会话条目,"SessionEntry MUST 支持 BashExecution 变体，携带 command、output、exit_code、cancelled、truncated、full_output_path、exclude_from_context。"
+  be5,AgentSession API,"AgentSession MUST 暴露 execute_bash、record_bash_result、abort_bash，并将单/双 bang 前缀路由到执行器。"
+  be6,上下文过滤,"构建 LLM 上下文时 System MUST 省略 exclude_from_context 为 true 的 BashExecution 条目。"
+  b1,bash trait,"System MUST 在 BashOperations trait 后抽象 bash 执行，支持真实与 mock 实现供测试。"
+  b2,bash hooks,"System MUST 支持 bash 执行的 pre-spawn 与 post-spawn hooks 以供扩展集成。"
+  b3,超时逐级升级,"System MUST 实现逐级超时：先 SIGTERM，5 秒宽限后 SIGKILL。"
+  be7,运行时可达 abort,"交互 bash 的取消入口 abort_bash MUST 可从 AgentRuntime::abort（&self）到达，无需独占 &mut AgentCapabilities 才能在 Driver::abort 路径杀进程树；CancellationToken 取消后 MUST 触发既有杀树路径（be2）。"
 scenarios[12]{req_id,id,given,when,then}:
-  be1,"stream-via-channel",chunk_tx is Some,command prints multiple lines,receiver gets one or more byte chunks covering the output before execute returns
+  be1,"stream-via-channel",chunk_tx 为 Some,命令打印多行,接收者在 execute 返回前收到覆盖输出的一个或多个字节块
   be1,"no-callback-port",审查 runtime_protocol bash 端口,查找 on_chunk 回调签名,公共 execute 仅接受 BashExecOpts 而无 FnMut on_chunk
-  be2,abort,long running command is executing,abort is invoked,process group is killed and cancelled is true
-  be3,truncate,output exceeds max bytes,execution completes,truncated is true and full_output_path is set
-  be4,entry,bash result is recorded,session is appended,entry is stored as BashExecution variant
-  be5,"bang-include",user input starts with single bang,command runs,result recorded with exclude_from_context false and sent to LLM
-  be5,"bang-exclude",user input starts with double bang,command runs,result recorded exclude_from_context true and omitted from context
-  be6,omit,history has a BashExecution entry with exclude_from_context true,LLM context is built,that entry is omitted
-  b1,mock,a mock BashOperations is registered,execute_bash is called,mock implementation runs instead of real shell
-  b2,"pre-hook","a pre-spawn hook is registered",bash command is executed,hook is called with the command string before spawn
-  b3,timeout,a command exceeds the timeout,execute_bash is called with timeout,process receives SIGTERM first then SIGKILL after grace period
+  be2,abort,长时间命令执行中,调用 abort,进程组被杀且 cancelled 为 true
+  be3,truncate,输出超过 max bytes,执行完成,truncated 为 true 且 full_output_path 已设置
+  be4,entry,记录 bash 结果,append 到 session,条目存为 BashExecution 变体
+  be5,"bang-include",用户输入以单 bang 开头,命令运行,结果记录 exclude_from_context false 并送 LLM
+  be5,"bang-exclude",用户输入以双 bang 开头,命令运行,结果记录 exclude_from_context true 且从上下文省略
+  be6,omit,history 有 exclude_from_context true 的 BashExecution 条目,构建 LLM 上下文,该条目被省略
+  b1,mock,注册 mock BashOperations,调用 execute_bash,运行 mock 实现而非真实 shell
+  b2,"pre-hook",已注册 pre-spawn hook,执行 bash 命令,spawn 前以命令字符串调用 hook
+  b3,timeout,命令超过超时,以 timeout 调用 execute_bash,进程先收 SIGTERM 宽限后 SIGKILL
   be7,"runtime-abort-kills",BashExecHandler 持有进行中的 cancel token,"仅通过 &self abort_bash / AgentRuntime::abort 取消",进程组被杀且 cancelled 为 true
