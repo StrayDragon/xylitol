@@ -59,6 +59,89 @@ const DEMO_DOLLAR_SKILLS: &[(&str, &str)] = &[
     ),
 ];
 
+/// Stub SKILL.md bodies keyed by demo skill name (A10 inject assert — not product IO).
+fn demo_skill_md_body(name: &str) -> Option<&'static str> {
+    match name {
+        "demo" => Some("# demo\n\nStub SKILL.md body for agent_demo inject assert."),
+        "narrow-clamp-skill-with-a-very-long-identifier" => {
+            Some("# narrow-clamp\n\nLong-id stub SKILL.md body.")
+        }
+        _ => None,
+    }
+}
+
+/// Collect `$name` tokens (name = `[A-Za-z0-9_-]+`) in left-to-right order.
+fn dollar_skill_names(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'$' {
+            let start = i + 1;
+            let mut end = start;
+            while end < bytes.len()
+                && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_' || bytes[end] == b'-')
+            {
+                end += 1;
+            }
+            if end > start {
+                out.push(text[start..end].to_string());
+                i = end;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Paint `$name` with `skill_ref` (bold); other spans with `body` (`on_surface`).
+fn highlight_dollar_skill_refs(
+    text: &str,
+    body: xylitol_tui::RgbColor,
+    skill_ref: xylitol_tui::RgbColor,
+) -> String {
+    let bytes = text.as_bytes();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'$' {
+            let start = i + 1;
+            let mut end = start;
+            while end < bytes.len()
+                && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_' || bytes[end] == b'-')
+            {
+                end += 1;
+            }
+            if end > start {
+                let token = &text[i..end];
+                out.push_str(&bold(&fg_rgb(skill_ref, token)));
+                i = end;
+                continue;
+            }
+        }
+        let ch = text[i..].chars().next().unwrap();
+        out.push_str(&fg_rgb(body, &ch.to_string()));
+        i += ch.len_utf8();
+    }
+    out
+}
+
+/// Resolve known demo `$` refs → (name, stub SKILL.md body). Unknown `$` skipped.
+fn resolve_demo_skill_injections(text: &str) -> Vec<(String, String)> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for name in dollar_skill_names(text) {
+        if !seen.insert(name.clone()) {
+            continue;
+        }
+        if let Some(body) = demo_skill_md_body(&name) {
+            out.push((name, body.to_string()));
+        }
+    }
+    out
+}
+
 struct DemoDollarSource;
 
 impl CompletionSource for DemoDollarSource {
@@ -1266,6 +1349,8 @@ pub struct FakeCodingAgentApp {
     theme_auto: bool,
     /// Resolved Dark/Light token set (c458).
     theme_mode: TerminalColorScheme,
+    /// Last submit's resolved `$skill` → stub SKILL.md bodies (demo inject assert).
+    last_skill_injections: Vec<(String, String)>,
 }
 
 impl FakeCodingAgentApp {
@@ -1872,6 +1957,11 @@ impl FakeCodingAgentApp {
         self.theme_mode
     }
 
+    /// Harness: stub SKILL.md bodies injected on last user submit (A10 demo path).
+    pub fn last_skill_injections_for_test(&self) -> &[(String, String)] {
+        &self.last_skill_injections
+    }
+
     pub fn theme_auto_for_test(&self) -> bool {
         self.theme_auto
     }
@@ -2415,6 +2505,7 @@ impl FakeCodingAgentApp {
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),
             theme_mode: TerminalColorScheme::Dark,
+            last_skill_injections: Vec::new(),
         };
         if app.theme_auto {
             app.refresh_theme_from_env();
@@ -2500,15 +2591,24 @@ impl FakeCodingAgentApp {
     }
 
     fn inject_completion_dollar_tip(&mut self) {
-        self.push_message(Role::User, "plate · completion-dollar · c545");
+        self.push_message(Role::User, "plate · completion-dollar · A10 skill-ref");
+        self.push_message(
+            Role::User,
+            "Please run $demo and also $narrow-clamp-skill-with-a-very-long-identifier together.",
+        );
         self.push_message(
             Role::System,
-            "c545: `$skill` is an inline reference (like `@path`), not a line-leading slash. \
-             Type e.g. `use $` mid-prompt — popup lists stub skills; Tab inserts `$name` and \
-             keeps surrounding text. Narrow terminals clamp popup width. `/` and `@` stay \
-             independent. Product skill semantics remain out of scope.",
+            "A10 preview: `$name` tokens in the user row above use skill-ref (mauve/purple). \
+             Submit a line with `$demo` — stub SKILL.md is recorded for inject assert \
+             (no per-skill tint blocks; no status count). Type `use $` for completion popup \
+             (c545).",
         );
-        self.set_status("Type use $ for stub skills");
+        // Drive inject path so plate alone proves resolve without Enter.
+        self.last_skill_injections = resolve_demo_skill_injections(
+            "Please run $demo and also $narrow-clamp-skill-with-a-very-long-identifier together.",
+        );
+        // A10: no status/footer skills:N — inject evidence is `last_skill_injections` only.
+        self.set_status("Ready");
     }
 
     fn inject_expandable_head_showcase(&mut self) {
@@ -3089,6 +3189,7 @@ impl FakeCodingAgentApp {
 
     fn commit_user_turn(&mut self, trimmed: String) {
         self.last_submitted = trimmed.clone();
+        self.last_skill_injections = resolve_demo_skill_injections(&trimmed);
         self.push_message(Role::User, trimmed.clone());
         let user_id = self.alloc_node_id("u");
         self.grow_session_tree(
@@ -3890,10 +3991,16 @@ impl FakeCodingAgentApp {
                         }
                     } else {
                         let prefix = self.role_prefix(*role);
-                        let raw = if prefix.is_empty() {
-                            text.clone()
+                        let body = if matches!(role, Role::User) {
+                            let p = self.palette();
+                            highlight_dollar_skill_refs(text, p.on_surface, p.skill_ref)
                         } else {
-                            format!("{prefix} {text}")
+                            text.clone()
+                        };
+                        let raw = if prefix.is_empty() {
+                            body
+                        } else {
+                            format!("{prefix} {body}")
                         };
                         let content = wrap_text_with_ansi(&raw, width);
                         let rgb = if matches!(role, Role::User) {

@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,ar20,Driver skills 重载缝,"InProcessDriver（经 app/core 助手）MUST 能在 Trust 语义下重载磁盘 skills 并应用到 agent；MUST 能查询当前已加载 skill 名（供后续 $ 展开）；未信任 MUST NOT 注入项目 skills；重载 MUST NOT 清空 transcript；本要求 MUST NOT 依赖 /session 或 /status skills UI。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  ar20,"trusted-reload",项目信任且 cwd 有 skill,调用 reload_skills,agent 系统提示或目录 API 含该 skill 名
+  ar20,"untrusted-skip",项目未信任且仅项目目录有 skill,调用 reload_skills,目录与系统提示 MUST NOT 含该项目 skill

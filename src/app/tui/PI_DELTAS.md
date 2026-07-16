@@ -34,6 +34,7 @@
 | A07 | Clone vs fork | `/clone` = leaf `fork(at)`；`/fork` = user 选择器 | `/session-clone` = leaf **恒 At** + switch；`/session-fork` 仍遵守 A02（user→Before / 非 user→At）。二者 MUST NOT 混用语义 | 是 |
 | A08 | Resume scope=All | 多 project 根目录 `listAll` 全局列举 | 单 `sessions_dir` 下全部 jsonl；scope=Current 按 header `cwd` 过滤 | 是 |
 | A09 | tool/diff 块键 id | 无独立 Alt+E app id（或不同命名） | **`app.tools.blocks`** = Alt+E（产品特有）；`app.tools.expand` = Ctrl+O 视口 | 是 |
+| A10 | Skill 调用呈现 | `/skill:name` → `<skill>…</skill>`；scrollback **每条** skill 用 `SkillInvocationMessage` 色块折叠/展开 **SKILL.md** | 产品用 **内联多 `$name`**（非 `/skill:`）。提交时 **读 SKILL.md 注入模型上下文**（静默，可多引用）。Scrollback：**只在用户消息内**用特殊色（如紫）高亮 `$name`；**MUST NOT** 另加系统消息行、N 个 skill 色块、footer `skills:N`、**`/session` / `/status skills` skill 清单**。验收以 **注入/read 断言**为准，不以 TUI 元素为主门禁 | 是 |
 
 ### 对齐（非差异，备忘）
 
@@ -77,3 +78,4 @@
 | 2026-07-15 | c1020：`/session-new` `/session-clone` `/session-name`；A07 clone(At) ≠ session-fork |
 | 2026-07-15 | c1065：Resume 面板 P0–P2；A08 单 sessions_dir All ≠ pi 多根 listAll |
 | 2026-07-16 | c1090：app.* 目录 + 热重载；A09 `app.tools.blocks` |
+| 2026-07-16 | A10：多 `$skill` → 用户消息内紫色高亮 + 静默注入 SKILL.md；废弃 /session·/status skills 观测面；验收验注入不验 TUI |

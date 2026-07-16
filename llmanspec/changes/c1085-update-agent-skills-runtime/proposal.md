@@ -1,7 +1,7 @@
 ---
 change_id: c1085-update-agent-skills-runtime
-title: "Skills 运行时加载：发现→注入→可选视觉表现"
-status: purpose-draft
+title: "Skills 运行时：Trust 目录 · system 注入 · 重载"
+status: draft
 priority: 1085
 apply_band: P2-system
 depends_on: []
@@ -9,43 +9,55 @@ author: agent
 track: R
 wave: reload-foundations
 domain: agent
+ethics:
+  risk_level: medium
+  prohibited_actions:
+    - 未信任项目加载 project skills 进 system / 目录
+    - 把 prompt 模板冒充 skill
+    - footer/status 塞 skills:N；pi 式 N 色块；用 /session 或 /status skills 作 skill 观测面（A10）
+  required_evidence:
+    - 单测：trusted 时 system 含 available_skills / skill 名；untrusted 跳过项目 skill
+    - 单测：reload_skills 后目录与 system 更新且历史条数不变
+    - MUST NOT 以 TUI dump/harness 像素或 /session Skills 段作为本变更验收
+  escalation_policy: 呈现与 $ 提交注入见 A10 / c1130；本变更只钉运行时目录
 ---
 
 # c1085-update-agent-skills-runtime
 
 ## Why
 
-`DefaultResourceLoader` 已发现 skills，system prompt 可渲染 `<available_skills>`；CLI `resources` 可 list/info。产品仍缺：会话内激活语义、`$skill` 数据源、启动 header 清单，以及**一种用户可见的视觉表现**（形态待定）。
+Loader 已发现 skills，`build_system_prompt` 能渲染 `<available_skills>`，但 bootstrap **未**把 `get_skills()` 写入 `SystemPromptOpts`；reload 路径也不更新 skills。`$` 提交注入与用户消息高亮属 c1130；本变更只钉**目录就绪**。
 
 ## Purpose
 
-钉死 skills 作为「可加载能力包」的运行时路径（Trust 闸项目技能）；提供可订阅的加载/重载结果；视觉表现先留扩展点，apply 前再定（列表条 / header chip / status 注脚等）。
+1. Trust 语义下装配 user/project skills → system prompt + 可查询目录（供 c1130 /reload）。
+2. `reload_skills`（或等价）报告 names/count/diags；不碰 session 历史。
+3. 对齐 A10：**不做** `/session` Skills 段、**不做** `/status skills`、**不做**系统消息行观测面。
+4. 验收：断言 system / loader 目录（及日后 c1130 的 SKILL.md 注入），**不**验 TUI 元素。
 
-## What Changes（升格 full 时）
+## What Changes
 
-- 装配：Trust 后加载 user/project skills；进 system / 会话可查询目录
-- 重载钩子：返回新增/移除/诊断，供 `/reload` 与 header
-- 视觉：TBD（proposal 不锁 UI）；至少有一处用户可见「已加载 N skills」信号路径
-- **不做** prompt templates 产品替代路径（明确用 skill）
-- delta：`runtime-resource-discovery` · `agent-prompt` · 可选 `app-tui-*`
+- bootstrap：`get_skills()` → `prompt_opts.skills`（Trust 同 temp-cwd）
+- Agent/Driver：`apply_skills`（或扩展 apply_prompt_resources）+ 可查询已加载名
+- `app/core`：`reload_skills` / `discovered_skills`（镜像 c1100/c1095）
+- delta：`runtime-resource-discovery` · `agent-prompt` · `agent-runtime`
 
 ## Capabilities
 
 - `runtime-resource-discovery`（modify）
 - `agent-prompt`（modify）
+- `agent-runtime`（modify）
 
 ## Out of scope
 
-- `/skill:name` slash（→ `$skill-name` 见 c1130）
-- prompt templates 产品 slash / header
-- pi Packages / 扩展市场
+- `$skill` 补全、提交读 SKILL.md 注入、用户消息紫色高亮（c1130）
+- `/session` / `/status skills` skill 清单
+- 启动 header（c1135）
+- pi `/skill:` / SkillInvocation 色块（A10）
 
-## Ethics
+## Impact
 
-- risk_level: medium
-- prohibited_actions: 未信任项目加载 project skills；把 prompt 模板冒充 skill
-- required_evidence: Trust on/off 加载差异测；重载后目录更新可测
-- escalation_policy: 视觉形态未定时保持 purpose-draft，升格前用户拍板
+- 解锁 c1120 skills 半边与 c1130 数据源
 
 ## Depends
 

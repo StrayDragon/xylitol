@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,mcp4,"配置校验与失败可观测","System MUST 校验 mcp_servers 条目（stdio 需 command；url/sse 需合法 url 类字段）；无效条目 MUST 产生可读错误或诊断且 MUST NOT 静默当作成功连接；单个服务器连接失败 MUST 可观察（warn 或诊断）且 MUST NOT 单独导致整次 bootstrap 失败。",null,null,null
+  add_requirement,mcp5,"已连接列表只读","System MUST 提供只读查询已成功连接的 MCP 服务器摘要（至少 id 与工具数量或等价）；无配置或全部失败时 MUST 返回空列表；该查询 MUST NOT 创建新连接。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  mcp4,"invalid-stdio","stdio 条目缺 command","装配或校验","诊断或错误指出缺字段且该条目未注册 mcp 工具"
+  mcp4,"connect-fail-continues","一个 server 连接失败且另一配置有效","bootstrap 装配","进程仍成功；失败可观察；有效服务器工具仍可注册"
+  mcp5,"snapshot-empty","配置无 mcp_servers","查询已连接列表","空列表且无 client"
+  mcp5,"snapshot-connected","一个 server 已成功连接并注册工具","查询已连接列表","含该 server id 与非零工具数或等价摘要"

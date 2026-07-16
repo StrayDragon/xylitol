@@ -17,11 +17,13 @@ domain: app-tui
 
 ## Why
 
-pi 启动 header 列出 context / skills / prompts / extensions / themes。xylitol：**明确不做 prompt 产品清单**；用 skills + MCP（+ 可选 themes）代替。依赖 skills/MCP 运行时就绪。
+pi 启动 header 列出 context / skills / prompts / extensions / themes。xylitol：**明确不做 prompt 产品清单**；用 skills + MCP（+ 可选 themes）代替。
 
-## Purpose
+## Purpose（**暂缓 / deferred**）
 
-产品 TUI 启动（及 `/reload` 后）展示已加载 skills 与 MCP 服务器/工具摘要（可折叠）；不列出 prompt templates；视觉形态可与 c1085 视觉 TBD 统筹。
+本变更 **P3 暂缓**：不挡 c1080 / c1085 apply。目录级「已加载」可见性待运行时与 A10（调用时用户消息内 `$` 高亮、静默注入）稳定后再升格。
+
+升格后目标（备忘，非本波）：启动及 `/reload` 后展示 skills + MCP 摘要（可折叠）；不做 prompt templates；与 A10 调用呈现正交。
 
 ## What Changes（升格 full 时）
 
@@ -38,14 +40,19 @@ pi 启动 header 列出 context / skills / prompts / extensions / themes。xylit
 
 - prompt templates 行
 - extensions / packages 行
+- 本波实现（deferred）
 
 ## Ethics
 
 - risk_level: low
-- prohibited_actions: header 泄露完整密钥/env
-- required_evidence: 有/无 skills、有/无 MCP 快照
-- escalation_policy: 与 DESIGN 壳布局冲突时先更新 design/
+- prohibited_actions: header 泄露完整密钥/env；用 header 替代 A10 注入验收
+- required_evidence: 有/无 skills、有/无 MCP 快照（升格后）
+- escalation_policy: 与 DESIGN 壳布局冲突时先更新 design/；与 A10 冲突时先改 PI_DELTAS
 
 ## Depends
 
-- c1080 · c1085
+- c1080 · c1085（运行时就绪后再议升格）
+
+## Notes
+
+- 2026-07-16：显式 deferred，优先 c1080+c1085 joint apply。
