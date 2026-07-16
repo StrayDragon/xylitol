@@ -2,7 +2,7 @@
 name: "llman-sdd-apply"
 description: "在一个闭环内实施 llman SDD 变更的 tasks：写代码 → 跑测试 → 失败自修复 → 直到门禁全绿。自动更新 tasks.md 勾选状态并运行校验。用于提案完成后的实现阶段。"
 metadata:
-  version: "0.0.59"
+  version: "0.0.61"
 ---
 
 # LLMAN SDD Apply
@@ -84,7 +84,7 @@ flowchart LR
 - 相关测试集：`just test` 或 `cargo test --all`
 - 格式/lint：`just check` 或 `just lint` + `just fmt`
 
-- BDD 回归：`cargo test --test bdd -- --test-threads=1`
+- BDD-on：实现 step definitions，确保 `llman sdd validate --specs` 通过（自动运行 `bdd.run_command`）。验证前用 `llman sdd solidify <id>` 生成 `.feature` 文件。
 
 - SDD 校验：`llman sdd validate <id> --strict --no-interactive`
 
