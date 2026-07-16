@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,att12,"history-rebuild-from-parts","产品 TUI 从 SessionEntry 重建 live scrollback（travel / fork / resume 共用路径）时 MUST 按 message.content 的 typed 部件投影：type=thinking → UiEntry::Thinking；type=text → UiEntry::Assistant（或等价助手正文）；tool 相关部件按既有 Tool 块规则。MUST NOT 仅用 message_text 把 thinking+text 拼成单一 Assistant。同一条 JSONL 重建结果 MUST 与该轮直播 flush_streaming 后的 Thinking/Assistant 分块形态幂等（可测）。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  att12,"rebuild-keeps-thinking",assistant SessionEntry content 含 thinking 与 text,rebuild_scrollback_from_travel 或 fork 后重建,UiModel 含独立 Thinking 与 Assistant 条目
-  att12,"rebuild-idempotent-with-live",同一轮直播已 flush 出 Thinking+Assistant,用其 persist 的 SessionEntry 再 rebuild,分块种类与顺序一致（正文等价）

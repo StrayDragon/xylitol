@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,la-embed1,嵌入禁止 reach-in,"嵌入路径 MUST 仅依赖精选 Xy 契约与文档化应用缝；MUST NOT 要求嵌入方 import infra 具体实现或 agent 子模块内部类型以完成标准装配。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  la-embed1,no-reach-in,"","按嵌入文档装配 agent","调用点不出现 crate::infra:: 或 agent::session:: 路径（测试双除外）"

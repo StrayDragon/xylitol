@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,la-mcp-seam,组合根消化 MCP 配置,"composition/McpSession MUST 在缝边界内将嵌入缝 MCP 描述转为 infra 实现；应用面 MUST NOT 为 MCP 装配单独 reach-in infra 类型。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  la-mcp-seam,composition-owns,"","审查 McpSession::reload 签名","参数为缝类型；infra 转换仅在 composition/infra 内"

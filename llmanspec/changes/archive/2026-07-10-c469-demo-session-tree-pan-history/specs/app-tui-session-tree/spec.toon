@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ast3,"demo-live-session-tree","在产品真 session 图接线前，packages/xylitol-tui agent_demo MUST 维护可变 session_tree：用户提交、工具事件与助手回复结束 MUST 在当前 history leaf 下挂对应节点并推进 leaf；双 Esc 打开的树 MUST 渲染该活树而非仅静态样例。",null,null,null
-  add_requirement,ast4,"demo-travel-reply-spine","agent_demo 在会话树 Enter travel 时 MUST 重建 root→选中节点路径上的 transcript，并 MUST 继续纳入其后单链的 assistant:/tool: 回复节点；history leaf MUST 落到该显示路径末端；完成后 status MUST 回到空闲（无 spinner）。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  ast3,"submit-grows-tree","agent_demo 已打开","提交唯一 user 文本","session_tree 含该文本且再开树可见"
-  ast3,"tool-grows-tree","agent_demo 脚本轮产生 Tool","推进 tick 至工具出现","session_tree 含 tool: 节点"
-  ast4,"travel-user-keeps-reply","样例树在 u1 下有线性 assistant 子节点",travel 到 u1,"transcript 含 user 文案与 assistant 回复且 leaf 为回复链末端"

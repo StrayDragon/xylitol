@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,pts10,"horizontal-viewport-pan","TreeSelector 渲染 MUST 在行宽不足以同时显示 gutter 与选中行 body 时对 body 做水平平移（固定光标 gutter，平移 label/连接符区）；选中行的关键 label 内容在窄宽下 MUST 仍可见；MUST NOT 平移掉选中指示 gutter。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  pts10,"deep-indent-visible","深嵌套树且 active/selected 为长 label 叶节点","以窄 width render","输出含叶 label 的可辨识子串且行仍以选中 gutter 开头"

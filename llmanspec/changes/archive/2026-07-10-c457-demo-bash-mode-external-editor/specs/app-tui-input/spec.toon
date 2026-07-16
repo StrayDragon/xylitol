@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ati8,"demo-bash-prefix-border","agent_demo 中当编辑器文本 trim 后以 ! 开头时，Editor 操作区边框 MUST 切换为 bash 强调色（对齐 DESIGN success 前景）；去掉 ! 前缀后 MUST 恢复默认 muted 边框。",null,null,null
-  add_requirement,ati9,"demo-external-editor-stub","agent_demo MUST 将 Ctrl+G 绑定为外部编辑器原型：记录调用并写入系统提示；MUST NOT 在 harness 路径强制 spawn 真实 $EDITOR；MAY 向编辑器追加 stub 标记以演示往返。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  ati8,"bang-enables-bash","编辑器文本为 !ls",sync 边框,bash_mode 为真
-  ati8,"clear-bang-restores","曾处于 bash 模式",文本改为 hello 后 sync,bash_mode 为假
-  ati9,"ctrl-g-stub","编辑器有文本",Ctrl+G 或 stub API,external_editor 计数加一且 transcript 含 external editor stub

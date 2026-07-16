@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,as46,"persist-tagged-agent-parts","ReAct/session 将 AssistantMessage/UserMessage 持久化为 SessionEntry::Message 时 MUST 写出 domain-message dm1 的 tagged content；从 store 恢复为 AgentMessage（as_agent_message 或等价）时 MUST 只接受 tagged 部件；遇旧 untagged/裸字符串 content MUST NOT 静默当成合法对话上下文（MUST 报错或跳过该条目并可观测），MUST NOT 把 thinking 与 text 糊成单一 Text。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  as46,"persist-load-thinking",一轮含 ThinkingDelta 与 TextDelta 的 assistant 已 persist,load_entries 后 as_agent_message,content 含独立 Thinking 与 Text 且 type 字段正确
-  as46,"legacy-content-rejected",JSONL message.content 为旧 untagged 形态,as_agent_message 或恢复上下文,不产生糊成一体的合法 Assistant Text；失败或跳过可观测

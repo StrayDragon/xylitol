@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,atc11,"models-picker-footer","经 models 槽或 /model <id> 成功 SetModel 后，产品 footer 的 model 字段 MUST 更新为选定模型的显示名或 id。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  atc11,"footer-updates",选定新模型成功,下一帧 footer,含新模型标签

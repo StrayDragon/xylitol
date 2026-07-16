@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ati28,"slash-tree-fork-keys","产品 TUI idle 且 Editor 槽时 Enter 提交 /tree 或 /fork MUST 走 PendingSlash（非向 agent 当普通 prompt）；树已开时 /tree 再提交 MUST NOT 重复破坏既有槽（可 noop 或刷新）；busy 时 MUST NOT 开树或 fork。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  ati28,"idle-tree-slash",产品 idle Editor 槽,提交 /tree,pending 为 OpenTree 或树被打开

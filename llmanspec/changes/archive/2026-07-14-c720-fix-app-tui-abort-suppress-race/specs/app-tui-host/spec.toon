@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,ath8,"abort-drops-stream-events","产品 TUI 在用户 Busy Esc 置 pending_abort 的同一同步步进内 MUST 立即臂装 suppress_xy_until_stream_end（或等价门闩），使在随后 drain_pending 调用 note_user_abort / Driver::abort 之前到达的 ThinkingDelta / TextDelta / 会提交正文的 AgentEnd MUST NOT 经 apply_xy_event 复活 busy 或写出 assistant 正文；note_user_abort 仍 MUST 清空 streaming_thinking 与 streaming_assistant；Driver::abort MUST 仍被调用；下一轮 submit MUST 可正常开始。",null,null,null
-  add_requirement,ath11,"abort-suppress-before-drain","Busy Esc（非 overlay）MUST 在 HostSession::step 内同步臂装 Xy 抑制，MUST NOT 仅依赖下一轮循环顶部的 drain_pending 才开始丢弃该轮流事件；bang Esc 路径 MUST 继续走 note_bash_cancelled（无 suppress_xy），不得与 agent abort 文案混用。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  ath8,"abort-then-deltas-ignored","busy 已 Esc abort","再泵入 ThinkingDelta 与 TextDelta 与 AgentEnd","无 assistant 正文条目且 status idle"
-  ath8,"esc-xy-before-drain","agent busy","Esc 后在 drain_pending 前注入 TextDelta","该 delta 被丢弃且 UI 不回 busy"
-  ath11,"bang-abort-unchanged","hanging bang 中 Esc","取消","块呈 cancelled 且无 System Aborted 混用"

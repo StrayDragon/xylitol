@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ar-embed1,公开嵌入装配缝,"System MUST 向库用户提供文档化的嵌入入口（含 bootstrap/Driver 或等价），使外部 crate 无需 reach-in agent::session 或 infra 具体类型即可装配并驱动一轮对话。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  ar-embed1,embed-surface,"","审查 lib 公开 API","存在嵌入入口且文档列出稳定符号；Driver/bootstrap 可被 crate 外路径引用"

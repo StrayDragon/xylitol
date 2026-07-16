@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,atb7,"abort-feedback-aborted-note","用户 Esc abort（或等价 Driver::abort）后，产品 bridge/host MUST 向 live scrollback 追加至多一行 muted/System 文案 Aborted，并将 status 置为 idle（0 行）；若随后收到 XyEvent::Error aborted，MUST NOT 再追加重复 Aborted/aborted 行；MUST NOT 用多行 Error 墙呈现取消。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  atb7,"esc-shows-aborted","产品 TUI agent Busy","Esc abort","scrollback 含 Aborted 且 status 为空闲"
-  atb7,"no-duplicate-aborted","已写入 System Aborted","再收到 Error aborted","scrollback 中 Aborted 类注记仍至多一行"

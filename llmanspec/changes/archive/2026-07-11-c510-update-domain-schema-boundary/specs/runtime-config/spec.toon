@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,rc8,配置边界承载 JsonSchema,需要对外暴露 JSON Schema 的配置结构 MUST 在 runtime/config 边界（infra/config 或 settings）定义或包装，并 MUST 能映射到 domain 纯数据（若存在对应领域类型）。,null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  rc8,"config-has-schema","",检查 AppConfig 或 settings 类型,JsonSchema derive 仅出现在配置边界模块

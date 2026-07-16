@@ -13,7 +13,7 @@
 | `lib.rs` re-export = API 边界 SSOT | 应用层 theme token / 流式业务缓冲 / 产品 layout |
 
 历史对齐源（行为参考，非逐文件镜像、非强制同步）：`../pi/packages/tui`。
-**刻意差异台账（整合时防覆盖）**：本包 [`PI_DELTAS.md`](PI_DELTAS.md)。进度笔记：根 `_HANDOFF.md`（非规范）。
+**刻意差异台账（整合时防覆盖）**：本包 [`PI_DELTAS.md`](PI_DELTAS.md)。
 
 ## 设计与实验场（单份 SSOT）
 
@@ -74,7 +74,7 @@
 
 ## 验证（本文件 = 人类/agent 验证分工 SSOT）
 
-其它文档（skill / `_HANDOFF` / just 注释）**只引用本节**，勿另写平行长文。
+其它文档（skill / just 注释）**只引用本节**，勿另写平行长文。
 
 | 验什么 | 在哪跑 | 命令 |
 |---|---|---|
@@ -106,4 +106,4 @@
 | 打开 DESIGN 浏览器静图 | `just open-design-playground` |
 | 日常 / 真终端闸 | 上「验证」表 |
 
-裁剪与待补 API 随接线演进，以代码与 `_HANDOFF.md` 为准，不在本文件维护进度清单。
+裁剪与待补 API 随接线演进，以代码与 `PI_DELTAS.md` 为准，不在本文件维护进度清单。

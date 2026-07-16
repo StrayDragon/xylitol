@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,atb7,"abort-feedback-aborted-note","用户 Esc abort agent 流后，产品 bridge/host MUST 向 live scrollback 追加至多一行 muted/System 文案 Aborted，清除 streaming_thinking 与 streaming_assistant，并将 status 置为 idle；若随后收到同轮已丢弃策略外的 XyEvent::Error aborted，MUST NOT 再追加重复 Aborted 行（仅与末行去重）；bang Esc 取消 MUST 走块内 (cancelled)，MUST NOT 冒充 agent Aborted。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  atb7,"esc-clears-streaming","busy 且已有 streaming_thinking","note_user_abort","streaming 缓冲为空且含 Aborted"

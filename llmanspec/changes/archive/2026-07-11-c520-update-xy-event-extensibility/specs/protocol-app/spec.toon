@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ip10,线协议不镜像厂商事件,"protocol::Event MUST 映射领域 XyEvent 闭集；MUST NOT 为 OpenAI/Anthropic 等厂商专属事件增加平行变体。无法表达的细节 MUST 留在领域 Message 载荷或被省略，而非拓宽线协议宽表。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  ip10,"no-vendor-wire","","对比 protocol::Event 与各 provider SSE 事件名",无线协议级厂商专名变体

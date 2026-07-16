@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ati25,"session-tree-fork-key","产品 TUI 在 EditorSlot::Tree 打开时 Shift+F MUST 触发产品会话 fork 流程（见 app-tui-session-tree ast10）；MUST NOT 在 Editor 槽把 Shift+F 误当成普通输入；树关时 Shift+F 保持既有语义（若无则 noop）。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  ati25,"shift-f-in-tree","EditorSlot::Tree 打开",按 Shift+F,pending fork 或等价入口被置位且不向 editor 写入字面 F

@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ati13,"product-editor-send-history","产品 Host 在 idle 提交、busy steer、busy follow-up 发送用户文本时 MUST 调用 Editor::add_to_history（跳过空串与连续重复）；同一 TUI session 内 MUST 能在 editor 空或已在浏览态时用 ↑/↓ 召回这些文本（委托包 ed05）；MUST NOT 要求跨进程持久化。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  ati13,submit-then-up,"idle 提交过非空 prompt 且 editor 已空",按 ↑,"editor 回填该 prompt"
-  ati13,steer-in-history,"busy 发送过 steer 文本",idle 后 editor 空再按 ↑,"可召回该 steer 文本"

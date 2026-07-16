@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ast7,"tree-reflects-persisted-turn","在 auto-persist 与稳定 session_id 就绪后，产品双 Esc 打开的 MessageHistory 树 MUST 能反映已完成回合写入 store 的消息节点；一轮 user/assistant 成功结束后 session_tree(MessageHistory) MUST NOT 因 store 仅有 header 而长期为 0 节点（空会话除外）。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  ast7,"after-turn-tree-nonempty",产品 TUI 完成至少一轮对话且消息已 persist,双 Esc 打开会话树,树节点数大于 0 且可见 user 正文
