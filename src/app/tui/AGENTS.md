@@ -13,11 +13,11 @@
 | 路径 | 职责（一句话） |
 |---|---|
 | `mod.rs` | 生产 `run_host_loop`：终端 / tick / agent 流 / bang 扇入 |
-| `host.rs`（及子模块） | `HostSession::step` 同步步进机；pending 标志；busy/idle 输入策略 |
-| `effects.rs` | **唯一** `drain_pending` → Driver / dispatch |
+| `host.rs`（及子模块） | `HostSession::step` 同步步进机；`pending` / `input_policy` / `session_ops`；busy/idle 输入策略 |
+| `effects/` | **唯一** `drain_pending` → Driver / dispatch；slash / pending_ui / bang 分文件 |
 | `commands.rs`（可多文件） | slash / bang 解析 → pending；不执行副作用 |
-| `bridge/` | `XyEvent` → `UiModel`；family handlers |
-| `layout/` | 产品壳：`EditorSlot`、`UiRoot`、theme |
+| `bridge/` | `XyEvent` → `UiModel`（`model.rs`）；family handlers |
+| `layout/` | 产品壳：`EditorSlot`、`UiRoot`（`root/`：slot_input / slot_nav / render）、theme、`slash_catalog` |
 | `widgets/` | scrollback / queue strip / glyphs（组合件，非通用引擎） |
 | `terminal_guard.rs` | 终端生命周期 / panic 恢复 |
 | `harness.rs` / `tests.rs` | 合成切片；`HostEvent` + `TestTerminal` |
