@@ -2,7 +2,7 @@
 name: "llman-sdd-verify"
 description: "验证已实施的 llman SDD 变更是否与 specs/design/tasks 一致。产出分级报告（CRITICAL / WARNING / SUGGESTION），对比代码与工件。在 apply 完成后运行；全绿则可归档。"
 metadata:
-  version: "0.0.59"
+  version: "0.0.61"
 ---
 
 # LLMAN SDD Verify
@@ -48,16 +48,11 @@ flowchart LR
 5. 对比 artifacts 与代码：
    - 标出不一致（缺失行为、错误行为、缺测试/文档）
    - 给出最小修复建议或建议更新 artifacts
-
-6. **BDD 验证**:
-   - 读取 delta specs 中关联的 feature_refs
-   - 对每个 scope=acceptance 且 required=true 的 .feature 文件:
-     - 执行: `cargo test --test bdd -- --test-threads=1`（替换 {feature_name} 为实际 feature 名）
-     - 所有 scenario MUST 通过
-     - 失败的 scenario 映射到对应 requirement ID，标记为 CRITICAL
+6. **BDD-on 验证**——仅当 `config.yaml` 含 `bdd:` 段时：
+   - `llman sdd validate <spec>` 在 Gherkin 解析后自动运行 `bdd.run_command`；退出码 0 = 通过，非 0 = 失败。
+   - 确认已运行 `llman sdd solidify <id>`——`.feature` 文件应与 delta scenario 保持同步。
 
    - 额外要求: Each scenario in the feature file MUST be mapped to an implemented step definition. Run `cargo test --test bdd` to confirm all scenarios pass.
-
 
 7. 输出简短报告：
    - **CRITICAL**（归档前必须修复）
