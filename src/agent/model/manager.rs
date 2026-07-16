@@ -23,6 +23,8 @@ pub struct ModelManager {
     pub(crate) current_index: usize,
     /// Current thinking level (clamped to model capabilities).
     pub(crate) thinking_level: ThinkingLevel,
+    /// Preferred default from Settings (`default_thinking_level`), if any.
+    preferred_default: Option<ThinkingLevel>,
     /// Injected provider factory (composition-root-supplied).
     pub(crate) model_builder: crate::runtime_protocol::XyModelBuilder,
 }
@@ -38,8 +40,14 @@ impl ModelManager {
             registry,
             current_index: 0,
             thinking_level: ThinkingLevel::default(),
+            preferred_default: None,
             model_builder,
         }
+    }
+
+    /// Store Settings `default_thinking_level` for clamp/startup.
+    pub fn set_preferred_default(&mut self, level: Option<ThinkingLevel>) {
+        self.preferred_default = level;
     }
 
     // ── Current model ────────────────────────────────────────────
@@ -60,15 +68,77 @@ impl ModelManager {
 
     // ── Thinking level ───────────────────────────────────────────
 
-    /// Get the current thinking level (already clamped).
-    pub fn thinking_level(&self) -> ThinkingLevel {
-        let supports = self.current_model().map(|m| m.thinking).unwrap_or(false);
-        self.thinking_level.clamp(supports)
+    fn supported_levels(&self) -> Option<Vec<ThinkingLevel>> {
+        let meta = self.current_model()?;
+        Some(Self::levels_for_meta(meta))
     }
 
-    /// Set a new thinking level (will be clamped by model capability).
-    pub fn set_thinking_level(&mut self, level: ThinkingLevel) {
+    fn levels_for_meta(meta: &XyModelMeta) -> Vec<ThinkingLevel> {
+        if !meta.thinking {
+            return vec![ThinkingLevel::Off];
+        }
+        if meta.thinking_levels.is_empty() {
+            return ThinkingLevel::STANDARD.to_vec();
+        }
+        meta.thinking_levels
+            .iter()
+            .filter_map(|s| ThinkingLevel::parse(s))
+            .collect()
+    }
+
+    /// Get the current thinking level (already clamped to support / bool).
+    pub fn thinking_level(&self) -> ThinkingLevel {
+        match self.supported_levels() {
+            Some(levels) => ThinkingLevel::clamp_to_supported(
+                self.thinking_level,
+                &levels,
+                self.preferred_default,
+            ),
+            None => {
+                let supports = false;
+                self.thinking_level.clamp(supports)
+            }
+        }
+    }
+
+    /// Set a new thinking level. Rejects if current model has a support set
+    /// that does not include `level` (current value unchanged).
+    pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String> {
+        if let Some(levels) = self.supported_levels()
+            && !levels.contains(&level)
+        {
+            return Err(format!(
+                "thinking level `{}` is not supported by the current model",
+                level.as_str()
+            ));
+        }
         self.thinking_level = level;
+        Ok(())
+    }
+
+    /// After model switch / startup: keep current if still legal, else clamp.
+    pub fn clamp_thinking_to_model(&mut self) {
+        let Some(levels) = self.supported_levels() else {
+            self.thinking_level = ThinkingLevel::Off;
+            return;
+        };
+        self.thinking_level =
+            ThinkingLevel::clamp_to_supported(self.thinking_level, &levels, self.preferred_default);
+    }
+
+    /// Cycle to the next level in the current model's support list.
+    pub fn cycle_thinking_level(&mut self) -> Result<ThinkingLevel, String> {
+        let levels = self
+            .supported_levels()
+            .ok_or_else(|| "no model configured".to_string())?;
+        if levels.is_empty() {
+            return Err("current model has no thinking levels".into());
+        }
+        let cur = self.thinking_level();
+        let idx = levels.iter().position(|l| *l == cur).unwrap_or(0);
+        let next = levels[(idx + 1) % levels.len()];
+        self.thinking_level = next;
+        Ok(next)
     }
 
     // ── Model switching ──────────────────────────────────────────
@@ -87,6 +157,7 @@ impl ModelManager {
             .position(|m| std::ptr::eq(m, model))
             .unwrap_or(0);
         self.current_index = idx;
+        self.clamp_thinking_to_model();
         Ok(())
     }
 
@@ -117,7 +188,8 @@ mod tests {
 
     use super::ModelManager;
     use crate::agent::model::registry::ModelRegistry;
-    use crate::domain::model::XyModelConfig;
+    use crate::domain::model::{XyModelConfig, XyModelKind};
+    use crate::domain::types::{ThinkingLevel, XyModelMeta};
     use crate::runtime_protocol::XyModel;
 
     type ModelBuilderFn =
@@ -129,10 +201,40 @@ mod tests {
         ))
     }
 
-    /// A fake model builder that always reports "no model configured";
-    /// tests don't build real providers.
     fn fake_builder() -> ModelBuilderFn {
         Arc::new(|_cfg: &XyModelConfig| Err("test: no provider".to_string()))
+    }
+
+    fn meta(id: &str, thinking: bool, levels: &[&str]) -> XyModelMeta {
+        XyModelMeta {
+            id: id.into(),
+            config: XyModelConfig {
+                kind: XyModelKind::Fake,
+                api_key: String::new(),
+                model: id.into(),
+                base_url: None,
+                api: None,
+            },
+            display_name: id.into(),
+            thinking,
+            context_window: 0,
+            api: String::new(),
+            provider: "fake".into(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: levels.iter().map(|s| (*s).to_string()).collect(),
+        }
+    }
+
+    fn manager_with(models: Vec<XyModelMeta>) -> ModelManager {
+        let mut reg = empty_registry();
+        for m in models {
+            reg.register(m);
+        }
+        ModelManager::new(reg, fake_builder())
     }
 
     #[test]
@@ -140,34 +242,62 @@ mod tests {
         let mm = ModelManager::new(empty_registry(), fake_builder());
         assert!(mm.current_model().is_none());
         assert_eq!(mm.current_index(), 0);
-        // No model means no thinking support → clamped to Off
-        assert_eq!(
-            mm.thinking_level(),
-            crate::domain::types::ThinkingLevel::Off
-        );
+        assert_eq!(mm.thinking_level(), ThinkingLevel::Off);
     }
 
     #[test]
     fn new_model_manager_default_thinking() {
         let mm = ModelManager::new(empty_registry(), fake_builder());
-        assert_eq!(
-            mm.thinking_level,
-            crate::domain::types::ThinkingLevel::Medium
-        );
+        assert_eq!(mm.thinking_level, ThinkingLevel::Medium);
     }
 
     #[test]
-    fn set_thinking_level() {
+    fn set_thinking_level_without_model_ok() {
         let mut mm = ModelManager::new(empty_registry(), fake_builder());
-        mm.set_thinking_level(crate::domain::types::ThinkingLevel::Low);
-        assert_eq!(mm.thinking_level, crate::domain::types::ThinkingLevel::Low);
+        mm.set_thinking_level(ThinkingLevel::Low).unwrap();
+        assert_eq!(mm.thinking_level, ThinkingLevel::Low);
     }
 
     #[test]
-    fn set_thinking_level_high() {
-        let mut mm = ModelManager::new(empty_registry(), fake_builder());
-        mm.set_thinking_level(crate::domain::types::ThinkingLevel::High);
-        assert_eq!(mm.thinking_level, crate::domain::types::ThinkingLevel::High);
+    fn set_thinking_level_rejects_unsupported() {
+        let mut mm = manager_with(vec![meta("m1", true, &["off", "high"])]);
+        assert!(mm.set_thinking_level(ThinkingLevel::Xhigh).is_err());
+        assert_eq!(mm.thinking_level, ThinkingLevel::Medium);
+        mm.set_thinking_level(ThinkingLevel::High).unwrap();
+        assert_eq!(mm.thinking_level(), ThinkingLevel::High);
+    }
+
+    #[test]
+    fn clamp_on_switch_from_xhigh() {
+        let mut mm = manager_with(vec![
+            meta("wide", true, &["off", "high", "xhigh"]),
+            meta("narrow", true, &["off", "high"]),
+        ]);
+        mm.set_thinking_level(ThinkingLevel::Xhigh).unwrap();
+        mm.select_model("narrow").unwrap();
+        assert_ne!(mm.thinking_level(), ThinkingLevel::Xhigh);
+        assert!(matches!(
+            mm.thinking_level(),
+            ThinkingLevel::Off | ThinkingLevel::High | ThinkingLevel::Medium
+        ));
+        assert_eq!(mm.thinking_level(), ThinkingLevel::High);
+    }
+
+    #[test]
+    fn preferred_default_used_when_clamping() {
+        let mut mm = manager_with(vec![meta("m1", true, &["off", "low", "high"])]);
+        mm.thinking_level = ThinkingLevel::Xhigh;
+        mm.set_preferred_default(Some(ThinkingLevel::Low));
+        mm.clamp_thinking_to_model();
+        assert_eq!(mm.thinking_level(), ThinkingLevel::Low);
+    }
+
+    #[test]
+    fn cycle_thinking_level_wraps() {
+        let mut mm = manager_with(vec![meta("m1", true, &["off", "high"])]);
+        mm.set_thinking_level(ThinkingLevel::Off).unwrap();
+        assert_eq!(mm.cycle_thinking_level().unwrap(), ThinkingLevel::High);
+        assert_eq!(mm.cycle_thinking_level().unwrap(), ThinkingLevel::Off);
     }
 
     #[test]

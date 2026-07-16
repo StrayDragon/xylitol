@@ -396,7 +396,9 @@ impl Driver for ScriptedDriver {
         Ok(self.model.clone())
     }
 
-    fn set_thinking_level(&mut self, _level: ThinkingLevel) {}
+    fn set_thinking_level(&mut self, _level: ThinkingLevel) -> Result<(), String> {
+        Ok(())
+    }
 
     fn thinking_level(&self) -> ThinkingLevel {
         ThinkingLevel::Off

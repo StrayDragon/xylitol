@@ -128,14 +128,7 @@ fn parse_thinking_suffix(pattern: &str) -> (String, Option<ThinkingLevel>) {
 
 /// Parse a thinking level string.
 fn parse_thinking_level(s: &str) -> Option<ThinkingLevel> {
-    match s.to_lowercase().as_str() {
-        "off" => Some(ThinkingLevel::Off),
-        "minimal" => Some(ThinkingLevel::Minimal),
-        "low" => Some(ThinkingLevel::Low),
-        "medium" => Some(ThinkingLevel::Medium),
-        "high" => Some(ThinkingLevel::High),
-        _ => None,
-    }
+    ThinkingLevel::parse(s)
 }
 
 // ── Exact Matching ──────────────────────────────────────────────────

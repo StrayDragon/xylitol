@@ -19,6 +19,7 @@ pub async fn record_bash_result( &self, command: &str, result: &crate::runtime_p
 pub enum QueueMode
 pub fn abort(&self)
 pub fn abort_bash(&self)
+pub fn apply_default_thinking_level(&mut self, raw: Option<&str>)
 pub fn apply_prompt_resources( &mut self, context_files: Vec<(String, String)>, system_prompt: Option<String>, append_system_prompt: Vec<String>, )
 pub fn apply_skills(&mut self, skills: Vec<crate::domain::resource_types::SkillInfo>)
 pub fn bind_event_tx(&self, tx: EventTx)
@@ -65,7 +66,7 @@ pub fn set_mode(&mut self, mode: QueueMode)
 pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>)
 pub fn set_session(&mut self, session_id: String)
 pub fn set_system_prompt(&mut self, prompt: Option<String>)
-pub fn set_thinking_level(&mut self, level: ThinkingLevel)
+pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> Result<(), String>
 pub fn set_tools(&mut self, tools: ToolSet)
 pub fn stats(&self) -> QueueStats
 pub fn steer(&self, message: impl Into<String>)
