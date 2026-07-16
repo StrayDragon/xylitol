@@ -6,6 +6,7 @@ use super::super::session_tree::FilterMode;
 use super::super::slots::EditorSlot;
 use super::ImportConfirmDecision;
 use super::UiRoot;
+use crate::app::tui::keybindings::matches_binding;
 use crate::app::tui::session_resume::SessionResumeAction;
 
 impl UiRoot {
@@ -16,7 +17,7 @@ impl UiRoot {
                     return;
                 };
                 if let Some((_, ref mut input)) = self.tree_label_edit {
-                    if matches_key_event(key, "enter") {
+                    if matches_binding(key, "tui.select.confirm") {
                         if let Some((id, input)) = self.tree_label_edit.take() {
                             let text = input.value().trim().to_string();
                             let ann = if text.is_empty() { None } else { Some(text) };
@@ -27,45 +28,45 @@ impl UiRoot {
                     input.handle_input(event);
                     return;
                 }
-                if matches_key_event(key, "ctrl+d") {
+                if matches_binding(key, "app.tree.filter.default") {
                     self.apply_tree_filter(FilterMode::Default);
                     return;
                 }
-                if matches_key_event(key, "ctrl+t") {
+                if matches_binding(key, "app.tree.filter.noTools") {
                     self.apply_tree_filter(self.tree_filter.toggle(FilterMode::NoTools));
                     return;
                 }
-                if matches_key_event(key, "ctrl+u") {
+                if matches_binding(key, "app.tree.filter.userOnly") {
                     self.apply_tree_filter(self.tree_filter.toggle(FilterMode::UserOnly));
                     return;
                 }
-                if matches_key_event(key, "ctrl+l") {
+                if matches_binding(key, "app.tree.filter.labeledOnly") {
                     self.apply_tree_filter(self.tree_filter.toggle(FilterMode::LabeledOnly));
                     return;
                 }
-                if matches_key_event(key, "ctrl+a") {
+                if matches_binding(key, "app.tree.filter.all") {
                     self.apply_tree_filter(self.tree_filter.toggle(FilterMode::All));
                     return;
                 }
-                if matches_key_event(key, "ctrl+shift+o") {
+                if matches_binding(key, "app.tree.filter.cycleBackward") {
                     self.apply_tree_filter(self.tree_filter.cycle_backward());
                     return;
                 }
-                if matches_key_event(key, "ctrl+o") {
+                if matches_binding(key, "app.tree.filter.cycleForward") {
                     self.apply_tree_filter(self.tree_filter.cycle());
                     return;
                 }
-                if matches_key_event(key, "enter") {
+                if matches_binding(key, "tui.select.confirm") {
                     let id = self.tree.selected_id().unwrap_or("?").to_string();
                     self.pending_tree_travel = Some(id);
                     return;
                 }
-                if matches_key_event(key, "shift+f") {
+                if matches_binding(key, "app.session.fork") {
                     let id = self.tree.selected_id().unwrap_or("?").to_string();
                     self.pending_tree_fork = Some(id);
                     return;
                 }
-                if matches_key_event(key, "shift+l") {
+                if matches_binding(key, "app.tree.editLabel") {
                     let Some(id) = self.tree.selected_id().map(str::to_string) else {
                         return;
                     };
@@ -75,20 +76,16 @@ impl UiRoot {
                     self.tree_label_edit = Some((id, input));
                     return;
                 }
-                if matches_key_event(key, "shift+t") {
+                if matches_binding(key, "app.tree.toggleLabelTimestamp") {
                     self.tree.toggle_annotation_timestamps();
                     return;
                 }
-                if matches_key_event(key, "up")
-                    || matches_key_event(key, "down")
-                    || matches_key_event(key, "pageUp")
-                    || matches_key_event(key, "pageDown")
-                    || matches_key_event(key, "left")
-                    || matches_key_event(key, "right")
-                    || matches_key_event(key, "ctrl+left")
-                    || matches_key_event(key, "alt+left")
-                    || matches_key_event(key, "ctrl+right")
-                    || matches_key_event(key, "alt+right")
+                if matches_binding(key, "tui.select.up")
+                    || matches_binding(key, "tui.select.down")
+                    || matches_binding(key, "tui.select.pageUp")
+                    || matches_binding(key, "tui.select.pageDown")
+                    || matches_binding(key, "tui.tree.foldOrUp")
+                    || matches_binding(key, "tui.tree.unfoldOrDown")
                     || matches_key_event(key, "backspace")
                     || printable_from_key_event(key).is_some()
                 {
@@ -104,16 +101,16 @@ impl UiRoot {
                 let InputEvent::Key(ref key) = event else {
                     return;
                 };
-                if matches_key_event(key, "enter") {
+                if matches_binding(key, "tui.select.confirm") {
                     if let Some(item) = self.models_list.get_selected_item() {
                         self.pending_model_select = Some(item.value.clone());
                     }
                     return;
                 }
-                if matches_key_event(key, "up")
-                    || matches_key_event(key, "down")
-                    || matches_key_event(key, "pageUp")
-                    || matches_key_event(key, "pageDown")
+                if matches_binding(key, "tui.select.up")
+                    || matches_binding(key, "tui.select.down")
+                    || matches_binding(key, "tui.select.pageUp")
+                    || matches_binding(key, "tui.select.pageDown")
                 {
                     self.models_list.handle_input(event);
                     return;
@@ -133,7 +130,7 @@ impl UiRoot {
                 let InputEvent::Key(ref key) = event else {
                     return;
                 };
-                if matches_key_event(key, "enter") {
+                if matches_binding(key, "tui.select.confirm") {
                     let Some(path) = self.import_confirm_path.clone() else {
                         return;
                     };
@@ -148,10 +145,10 @@ impl UiRoot {
                     });
                     return;
                 }
-                if matches_key_event(key, "up")
-                    || matches_key_event(key, "down")
-                    || matches_key_event(key, "pageUp")
-                    || matches_key_event(key, "pageDown")
+                if matches_binding(key, "tui.select.up")
+                    || matches_binding(key, "tui.select.down")
+                    || matches_binding(key, "tui.select.pageUp")
+                    || matches_binding(key, "tui.select.pageDown")
                 {
                     self.import_confirm_list.handle_input(event);
                 }
@@ -177,19 +174,19 @@ impl UiRoot {
         }
 
         if let InputEvent::Key(ref key) = event {
-            if matches_key_event(key, "ctrl+t") {
+            if matches_binding(key, "app.thinking.toggle") {
                 self.fold.thinking_expanded = !self.fold.thinking_expanded;
                 return;
             }
-            if matches_key_event(key, "alt+e") {
+            if matches_binding(key, "app.tools.blocks") {
                 self.fold.tools_expanded = !self.fold.tools_expanded;
                 return;
             }
-            if matches_key_event(key, "ctrl+o") {
+            if matches_binding(key, "app.tools.expand") {
                 self.fold.tools_output_expanded = !self.fold.tools_output_expanded;
                 return;
             }
-            // MAY: Ctrl+P opens Plate stub (Esc closes).
+            // MAY: Ctrl+P opens Plate stub (Esc closes). Not in app catalog (stub).
             if matches_key_event(key, "ctrl+p") {
                 self.open_slot(EditorSlot::Plate);
                 return;

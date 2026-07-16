@@ -70,8 +70,17 @@ impl FilterMode {
 }
 
 /// Product filter chords (not yet registered as `app.tree.filter.*` in the package).
-const TREE_FILTER_KEY_IDS: &[&str] = &["ctrl+d", "ctrl+t", "ctrl+u", "ctrl+l", "ctrl+a"];
-const TREE_CYCLE_KEY_IDS: &[&str] = &["ctrl+o", "ctrl+shift+o"];
+const TREE_FILTER_KEY_IDS: &[&str] = &[
+    "app.tree.filter.default",
+    "app.tree.filter.noTools",
+    "app.tree.filter.userOnly",
+    "app.tree.filter.labeledOnly",
+    "app.tree.filter.all",
+];
+const TREE_CYCLE_KEY_IDS: &[&str] = &[
+    "app.tree.filter.cycleForward",
+    "app.tree.filter.cycleBackward",
+];
 
 /// Search line above the tree list (pi `SearchLine` / demo morphology).
 pub(crate) fn tree_search_line(query: &str) -> String {
@@ -87,8 +96,8 @@ pub(crate) fn tree_help_line() -> String {
     let move_keys = binding_first_keys(&["tui.select.up", "tui.select.down"]);
     let page_keys = binding_first_keys(&["tui.select.pageUp", "tui.select.pageDown"]);
     let branch_keys = binding_first_keys(&["tui.tree.foldOrUp", "tui.tree.unfoldOrDown"]);
-    let label_keys = binding_first_keys(&["tui.tree.editLabel"]);
-    let label_time_keys = binding_first_keys(&["tui.tree.toggleLabelTimestamp"]);
+    let label_keys = binding_first_keys(&["app.tree.editLabel"]);
+    let label_time_keys = binding_first_keys(&["app.tree.toggleLabelTimestamp"]);
 
     let mut parts = Vec::new();
     // Purpose-first labels; ⊞/⊟ match tree fold markers (pi connector indicators).
@@ -99,19 +108,13 @@ pub(crate) fn tree_help_line() -> String {
     push_help_item(&mut parts, &label_time_keys, "timestamps", false);
     push_help_item(
         &mut parts,
-        &TREE_FILTER_KEY_IDS
-            .iter()
-            .map(|s| (*s).to_string())
-            .collect::<Vec<_>>(),
+        &binding_first_keys(TREE_FILTER_KEY_IDS),
         "filters",
         true,
     );
     push_help_item(
         &mut parts,
-        &TREE_CYCLE_KEY_IDS
-            .iter()
-            .map(|s| (*s).to_string())
-            .collect::<Vec<_>>(),
+        &binding_first_keys(TREE_CYCLE_KEY_IDS),
         "cycle filter",
         true,
     );
@@ -122,7 +125,7 @@ pub(crate) fn tree_help_line() -> String {
 fn binding_first_keys(ids: &[&'static str]) -> Vec<String> {
     with_keybindings(|kb| {
         ids.iter()
-            .filter_map(|id| kb.get_keys(id).into_iter().next().map(str::to_string))
+            .filter_map(|id| kb.get_keys(id).into_iter().next())
             .collect()
     })
 }

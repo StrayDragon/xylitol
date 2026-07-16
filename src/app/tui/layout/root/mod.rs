@@ -20,7 +20,7 @@ use xylitol_tui::components::text::Text;
 use xylitol_tui::{
     AtPathSource, CompletionSource, Component, Focusable, Input, InputEvent, InputListenerResult,
     SlashArgCompletionSource, SlashCommandSource, SystemClock, TUI, Terminal, TreeNode,
-    TreeSelector, TreeSelectorOptions, fg_rgb, fuzzy_filter, matches_key_event, truncate_to_width,
+    TreeSelector, TreeSelectorOptions, fg_rgb, fuzzy_filter, truncate_to_width,
 };
 
 use super::slash_catalog::product_slash_commands_for_editor;
@@ -720,11 +720,13 @@ pub fn install_ui_root_key_listeners<T: Terminal>(
         let InputEvent::Key(key) = &event else {
             return InputListenerResult::Continue;
         };
-        if matches_key_event(key, "ctrl+c") {
+        if crate::app::tui::keybindings::matches_binding(key, "app.clear") {
             root.borrow_mut().on_ctrl_c(&quit_flag);
             return InputListenerResult::Consumed;
         }
-        if matches_key_event(key, "escape") && root.borrow_mut().on_escape() {
+        if crate::app::tui::keybindings::matches_binding(key, "app.interrupt")
+            && root.borrow_mut().on_escape()
+        {
             return InputListenerResult::Consumed;
         }
         InputListenerResult::Continue

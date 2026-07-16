@@ -7,6 +7,7 @@ mod commands;
 mod effects;
 mod external_editor;
 mod host;
+pub(crate) mod keybindings;
 mod layout;
 pub(crate) mod session_resume;
 pub(crate) mod terminal_guard;
