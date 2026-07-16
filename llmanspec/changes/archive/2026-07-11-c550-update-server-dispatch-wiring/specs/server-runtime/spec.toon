@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,sr-dispatch1,Server 经 dispatch 执行命令,"Server 对可映射的会话命令 MUST 经 protocol::Command + dispatch（或文档化的同一执行路径）执行，MUST NOT 为同一语义维护第二套与 dispatch 漂移的手写分支。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  sr-dispatch1,shared-path,"","审查 switch_model/steer 等 handlers","调用 dispatch 或共享 helper；与 InProcessDriver 语义一致"

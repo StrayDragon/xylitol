@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,att9,"product-bash-result-scrollback","产品 TUI 在 idle bash 执行完成后 MUST 将命令摘要与输出写入 live scrollback；exit_code 非 0 时 MUST 以 error 或 warning 前景强调；MUST NOT 为此引入 Codex 式 TranscriptView。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  att9,ok-output,idle 已 execute_bash 成功,渲染,scrollback 含命令或输出片段
-  att9,err-tint,idle bash exit_code 非 0,渲染,失败结果带错误/警告色强调

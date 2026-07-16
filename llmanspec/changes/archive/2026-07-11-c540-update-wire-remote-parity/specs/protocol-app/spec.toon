@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,pa-wire1,线协议映射队列与闭集,"protocol Event MUST 能表达跨面所需的 XyEvent 闭集子集（至少含 QueueUpdate）；未映射变体 MUST 可降级忽略，MUST NOT panic。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  pa-wire1,queue-on-wire,"","XyEvent QueueUpdate 经 to_wire_event","得到对应 Event 变体或文档化等价载荷"

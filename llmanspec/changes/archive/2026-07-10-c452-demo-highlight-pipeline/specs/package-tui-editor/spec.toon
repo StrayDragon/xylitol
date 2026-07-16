@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ed06,"highlight-via-callback","Markdown 代码块高亮 MUST 经 MarkdownTheme.highlight_code 回调注入；xylitol-tui 默认依赖 MUST NOT 包含 syntect；真实高亮实现 MUST 位于 optional feature（如 highlight）或应用面适配层。",null,null,null
-  add_requirement,ed07,"highlight-safety-limits","注入的 syntect（或等价）高亮 MUST 对过大输入施加字节与行数上限；超限时 MUST 回退为未高亮纯文本行，MUST NOT 阻塞事件循环。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  ed06,"demo-injects-syntect","feature highlight 启用","agent_demo 渲染含 rust fence 的助手消息","输出行含 ANSI 颜色序列"
-  ed06,"default-no-syntect-dep","","cargo metadata 默认 features","xylitol-tui 默认依赖树不含 syntect"
-  ed07,"oversize-fallback","代码超过字节上限","调用 highlight_code","返回未高亮纯文本行且不 panic"

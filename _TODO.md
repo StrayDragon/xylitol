@@ -5,7 +5,7 @@
 ## 目标顺序
 
 1. [x] purpose-draft 提案 batch + depends_on DAG → commit (`fc09ec2`)
-2. [ ] 文档 cleanup（过时 architecture / 空壳 TUI 表述等）→ commit
+2. [x] 文档 cleanup → commit (`97e6ee3`)
 3. [ ] `llman sdd archive freeze` 旧 archive → 7z → commit
 4. [ ] `llman-sdd-specs-compact`：以代码为 SSOT 重写 specs → commit
 5. [ ] 坏味道分析 + 重构准备笔记

@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ath6,"shared-effect-pump",产品 TUI MUST 经单一 drain_pending（或等价共享入口）消费 HostSession pending 并调用 Driver/dispatch；合成 harness 泵 MUST 复用同一入口或与其同序同分支，MUST NOT 维护与生产循环分叉的第二份 slash/bash/steer 副作用 match。,null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  ath6,"one-pump",生产 host loop 与 harness 泵均接线,审查 drain_pending 调用点,两侧共用同一函数且无重复的 PendingSlash match 副本

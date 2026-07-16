@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ath12,"host-module-boundaries","产品 TUI MUST 将 HostSession 协调逻辑与可单测切片分离：pending 副作用标志 MUST 收拢为 PendingOps（或等价单一结构）；输入策略、session tree mount、models mount MUST 可位于 host 子模块或独立文件；UiRoot MUST 将 tree / models / editor 路由臂拆到可导航单元；组件与 layout MUST NOT 直接调用 Driver；单源文件逼近约 1200 行时 MUST 优先拆分而非继续堆叠。",null,null,null
-  add_requirement,ath13,"session-read-errors-surfaced","产品 TUI 在 travel/fork/label 等路径调用 Driver::get_messages（或等价）失败时 MUST 向用户展示 system/error note，MUST NOT 以 unwrap_or_default 静默得到空 transcript 并当作成功。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  ath12,"pending-ops-bag","审查 HostSession 字段","重构后","pending_* 位于 PendingOps（或等价）且 drain_pending 仍为唯一异步泵"
-  ath12,"no-driver-in-widgets","审计 layout/widgets","调用点","无 Driver 直接调用"
-  ath13,"get-messages-error-note","Driver get_messages 返回 Err","执行 travel","scrollback 含失败提示且不假装空树成功"

@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,tui10,repl-entry,"当未提供 one-shot prompt（位置参数或 --prompt）且 stdin 为 TTY 时，CLI MUST 进入 app::tui::run（默认入口，无需 --tui）；--tui MUST 可显式强制进入 TUI（即使同时给出 prompt）。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  tui10,tty-default-no-flag,"",无参数且 stdin 为 TTY,进入 app::tui::run 且不依赖 --tui
-  tui10,tui-flag-wins,"同时给 --tui 与 --prompt","启动",进入 TUI 而非 print

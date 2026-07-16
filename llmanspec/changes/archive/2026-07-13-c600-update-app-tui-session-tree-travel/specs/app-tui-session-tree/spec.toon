@@ -1,7 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,ast4,"demo-travel-pi-semantics","agent_demo 在会话树 Enter travel 时：若选中节点 kind 为 user，则 MUST 将 history leaf 设为该节点的父（根 user 则回到无叶/约定根策略）、MUST 用该 user 正文预填编辑器（可剥 steer 前缀）、MUST 重建 transcript 为 root→父 路径且 MUST NOT 纳入被选 user 及其后线性回复；若选中非 user，则 MUST 将 leaf 设为选中 id、MUST 重建 root→选中路径、MUST NOT 因 travel 预填 user 正文；完成后 status MUST 回到空闲（无 spinner）。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  ast4,"travel-user-prefills-editor","样例树选中 u1（kind=user，其下有 assistant 子节点）","Enter travel","编辑器含原 user 正文、leaf 为 u1 的父、transcript 不含 u1 子 assistant 正文、树关闭且 status 空闲"
-  ast4,"travel-user-omits-reply-spine","同上","Enter travel","transcript 不含 travel 前跟在 u1 后的线性 assistant/tool 回复"
-  ast4,"travel-assistant-no-prefill","选中 assistant 节点","Enter travel","leaf 为该 assistant id 且编辑器未因 travel 填入 user 正文"

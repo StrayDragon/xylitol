@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ed08,"set-border-color","Editor MUST 提供 set_border_color（或等价 API）以替换边框 ANSI 包装闭包，供 host 在 bash 模式等场景切换操作区边框色；MUST NOT 要求重建整个 Editor 实例。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  ed08,"border-swap","Editor 已构造",调用 set_border_color 后 render,"边框行经新闭包着色"

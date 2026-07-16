@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,adp5,"session-tree-travel-ssot","playground 会话树槽注脚与键位示意 MUST 写明 Enter 在 user 节点上将正文填入 input（对齐 session-tree.md travel 语义）；MUST NOT 再暗示 Enter 仅 travel→id 且保留回复链为唯一形态。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  adp5,"travel-footnote","打开 playground 会话树槽或键位树说明","阅读注脚","文案含 user+Enter→填 input（或等价中文）"

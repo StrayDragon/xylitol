@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ati19,"bang-esc-aborts","产品 TUI 在交互 !/!! bash 执行期间 MUST 视为忙碌：Esc MUST 调用 Driver::abort 以取消该 bash（进程树按 c660）；host MUST NOT 在 drain_pending 内独占 await bash 以致无法读键盘；取消后 MUST 回到可输入 idle。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  ati19,"esc-cancels-hanging-bang","产品 idle bang 已开始且 bash 未返回","按 Esc","Driver::abort 被调用且 bash 结果 cancelled 或等价中止"

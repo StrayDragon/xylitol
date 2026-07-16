@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,la-server-driver,Server 与 Print 同缝,"Server 与 Print MUST 共享同一应用缝（Driver/bootstrap）；新增 server 能力时优先扩缝，禁止为 server 单独复制一套 agent 编排。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  la-server-driver,shared-seam,"","对比 print 与 server 装配","二者均经 composition/bootstrap 与 Driver 语义"

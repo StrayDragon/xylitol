@@ -2,7 +2,7 @@
 
 > **目的**：对照 `../pi/packages/tui`（及 kimi-code 同源）做行为/代码整合时，**不得静默覆盖**本文件列出的 xylitol 决议。
 > **定位**：`xylitol-tui` 是源自 pi-tui 的 **独立 fork**（合规见 [`NOTICE`](NOTICE)），将随 xylitol 本体大幅迭代；不是持续 1:1 port。
-> **不是**进度板；进度见根 `_HANDOFF.md`。稳定边界见本包 `AGENTS.md`。
+> **不是**进度板；稳定边界见本包 `AGENTS.md`。
 > 新增刻意差异时：**先改代码与测试，再在本表加一行**；回退差异须显式评审。
 
 对齐源路径（历史参考）：`../pi/packages/tui`（npm：`@earendil-works/pi-tui`）。
@@ -52,7 +52,7 @@
 | 产品壳 | transcript / slash 语义 / session → `src/app/tui/` 或 `agent_demo`，**不**进本包 |
 | `agent_demo` 快捷键 | 应用级：`Ctrl+P/S` 槽替换；`Ctrl+T` thinking；**`Alt+E` tools**（避 `Ctrl+E`=cursorLineEnd）；**`Alt+G` glyphs**（避 `Ctrl+G`=外部编辑器）；`Ctrl+O` tools viewport；**Ctrl+C** 清编辑器/空则退；**Esc** 流中 abort（经 InputListener）；UI 旁注用 `(Ctrl+T)` 括号完整和弦 |
 | 外部 `$EDITOR` | 包只提供 `TUI::with_terminal_suspended`（stop/start/refresh_size + soft `request_render`；**保留** `previous_lines` 差分、**不**立刻 `do_render`、**不**整屏 `2J`——对齐 inline）；spawn/`$VISUAL`/`$EDITOR`/tempfile 在 demo 或 `src/app/tui`，**不**进本包 |
-| 原型优先 | 真实 `src/app/tui` 所需 UX/UI 交互，优先在 `agent_demo` 验证后再接线产品面（见根 `_HANDOFF.md`） |
+| 原型优先 | 真实 `src/app/tui` 所需 UX/UI 交互，优先在 `agent_demo` 验证后再接线产品面 |
 | 工具 bg 三态 | 产品 theme：`tool-pending-bg` / `tool-success-bg` / `tool-error-bg`（`DESIGN.md`）；对齐 pi coding-agent，**不**进 pi-tui 包 |
 | Diff 行号 | unified 双 gutter + EditText 紧凑 `±N` + SBS 左右行号（c459） |
 

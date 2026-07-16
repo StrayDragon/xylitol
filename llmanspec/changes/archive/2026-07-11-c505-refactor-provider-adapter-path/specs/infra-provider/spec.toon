@@ -1,7 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,pa6,单一 XyModel 装配路径,System MUST 通过唯一装配路径将方言适配器暴露为 XyModel：LlmAdapter 实现经统一外壳（如 AdapterXyModel）注入；MUST NOT 同时让底层 OpenAIProvider 直接 impl XyModel 再被 Completions 适配器二次包装。,null,null,null
-  add_requirement,pa7,vendor 类型不出 infra,"async-openai 与各厂商 HTTP/SSE 具体类型 MUST 仅出现在 infra/provider（及 adapter）内；agent/ 与 domain/ MUST NOT import 这些 vendor crate。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  pa6,"single-path","",审查 Completions 与 factory 装配,从配置到 dyn XyModel 仅一条路径且无双重 XyModel 包装
-  pa7,"no-vendor-leak","",rg async_openai 于 src/agent 与 src/domain,零匹配

@@ -1,7 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,ast2,"travel-stub-prefill","Enter 选中节点时 MUST 关闭树并记录 travel 目标 id（transcript 注记）；若选中节点 kind 为 user，则 MUST 用该节点正文（label）预填编辑器；若选中非 user，则 MUST NOT 因 travel 预填 user 正文；本切片 MUST NOT reach agent::session 或 infra session，MUST NOT 接线活树或 Driver navigateTree。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  ast2,"enter-closes",树已打开,Enter,树关闭且 transcript 含 travel 目标 id
-  ast2,"enter-user-prefills","树打开且选中 kind=user 节点（如 u1）","Enter","编辑器含该节点正文 label 且树关闭"
-  ast2,"enter-non-user-no-prefill","树打开且选中 kind=assistant 节点","Enter","编辑器未因 travel 填入 user 正文且树关闭"

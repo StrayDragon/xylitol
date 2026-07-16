@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,atc4,"design-docs-ssot","产品 TUI 视觉与 UX MUST 以 src/app/tui/DESIGN.md 为索引、以 src/app/tui/design/*.md 为组件级 SSOT；实现与 demo 引用组件规则时 MUST 指向对应子文档（尤其 design/diff-block.md 与 design/keybindings.md），MUST NOT 仅依赖口头约定。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  atc4,"index-lists-components","","打开 DESIGN.md","组件索引列出 design/ 下核心文档路径"
-  atc4,"diff-block-exists","","实现 Diff 渲染前查阅设计","design/diff-block.md 存在且含 unified / word-level / CJK MUST"

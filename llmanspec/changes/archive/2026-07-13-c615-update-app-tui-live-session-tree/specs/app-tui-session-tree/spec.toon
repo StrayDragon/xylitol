@@ -1,9 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,ast2,"live-travel-via-driver","产品双 Esc 会话树 MUST 渲染当前 session 的 MessageHistory 活树（经 Driver::session_tree(MessageHistory) 映射为包 TreeNode，含 kind）；Enter 选中节点时 MUST 调用 Driver::travel_session_tree(MessageHistory, id)，按返回的 SessionTreeTravel 关闭树、预填 editor（仅当 editor_text 有值）、并重建/刷新 transcript 与后续提交 leaf 语义；MUST NOT 再使用 c491 假树样例作为唯一数据源；MUST NOT 在本切片实现 filter/fold/Shift+F 产品 fork（fork 语义另 change）。",null,null,null
-  add_requirement,ast6,"map-session-tree-nodes","产品 MUST 将 domain SessionTreeNode（MessageHistory）映射为 xylitol-tui TreeNode：id 取 entry id、label 为可显示正文（MUST NOT 把 role 烘焙进 label）、kind 取 message role 或等价（user/assistant/tool 等）；主题 kind_prefix 继续由 LayoutTheme 供给。",null,null,null
-op_scenarios[4]{req_id,id,given,when,then}:
-  ast2,"open-shows-live",Driver 当前 session 已有 user/assistant 消息,空编辑器双 Esc 打开树,树行来自 MessageHistory 活数据而非 sample_session_tree 假树
-  ast2,"enter-travels-driver",树打开且选中 kind=user 节点,Enter,调用 travel_session_tree(MessageHistory)；编辑器含 editor_text；树关闭
-  ast2,"enter-non-user",树打开且选中非 user 节点,Enter,leaf 按 Travel 结果更新且编辑器未因 travel 填入 user 正文
-  ast6,"kind-mapped",活树含一条 user 消息,打开会话树,对应行 kind=user 且 label 为纯正文

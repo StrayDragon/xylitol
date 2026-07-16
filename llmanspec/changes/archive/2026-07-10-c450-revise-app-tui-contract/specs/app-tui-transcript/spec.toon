@@ -1,9 +1,0 @@
-kind: llman.sdd.delta
-ops[3]{op,req_id,title,statement,from,to,name}:
-  add_requirement,att1,"scrollback-transcript","transcript MUST 将用户提交与助手输出写入可滚动历史（引擎 scrollback 模型），MUST NOT 截断历史冒充滚动。",null,null,null
-  add_requirement,att2,"expandable-app-layer","thinking、tool 与 diff 块 MUST 支持折叠摘要与展开详情；可展开状态机 MUST 实现在 src/app/tui（应用面），MUST NOT 把产品 Expandable 塞进 xylitol-tui 包。",null,null,null
-  add_requirement,att3,"diff-via-package","文件编辑 diff 呈现 MUST 复用 packages/xylitol-tui 的 Diff 能力（含 word-level intra-line 与复制友好前缀）；MUST NOT 在应用面复制准通用 diff 渲染器。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  att1,user-echo,"","用户提交提示","用户文本立即出现在 transcript"
-  att2,tool-collapse,"","工具执行结束","默认显示一行摘要，展开后可见详情"
-  att3,edit-diff,"","edit 工具返回 display_diff","transcript 经包 Diff 组件着色显示"

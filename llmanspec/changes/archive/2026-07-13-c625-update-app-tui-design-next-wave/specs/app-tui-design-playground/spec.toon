@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,adp9,"next-wave-static-slots","DESIGN playground MUST 提供 Next-wave 静态槽 panel-models 与 panel-tree-power（固定状态示意）；MUST 与 design/models-picker.md、design/session-tree.md 形状一致；MUST NOT 在静图中表达实现分层（包标签/置灰）或顶栏快捷键墙。",null,null,null
-  add_requirement,adp10,"next-wave-design-ssot","产品下一波（/models、树 filter/fold/fork、真 EDITOR、footer context%、abort UI）的视觉 MUST 以 src/app/tui/DESIGN.md Next wave 表与对应 design/*.md 为 SSOT；静图一致性格式（L1/L2）MUST 记载于变更设计闸文档供后续 lint 引用。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  adp9,"slots-present","","打开 design playground","存在 Models 与 Tree power 槽且无包标签置灰"
-  adp9,"models-shape","","查看 Models 打开态","替换 editor 槽示意且选中行为整行 reverse"
-  adp10,"design-table","","阅读 DESIGN.md Next wave 表","列出 c625 及后续 change 与文档指针"

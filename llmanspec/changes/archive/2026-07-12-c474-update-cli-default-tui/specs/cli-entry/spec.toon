@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ce12,default-tui-entry,"当未提供 one-shot prompt（位置参数或 --prompt）、未指定 --list-models、且 stdin 为 TTY 时，CLI MUST 进入产品 TUI；MUST NOT 要求用户传 --tui 才能进入该默认路径。",null,null,null
-  add_requirement,ce13,print-requires-prompt,"print one-shot 模式 MUST 仅在提供位置 PROMPT 和/或 --prompt（或显式 --print 且能从 stdin 读到非空内容）时进入；无 prompt 时 MUST NOT 使用占位字符串 Hello! 作为默认 prompt。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  ce12,bare-tty-tui,"stdin 为 TTY 且无 prompt","运行 xylitol",进入 app::tui::run
-  ce13,prompt-flag-print,"","xylitol --prompt hi",进入 print 且 prompt 为 hi
-  ce13,no-hello-fallback,"非 TTY 且无 prompt","运行 xylitol",以错误退出且不运行 Hello!

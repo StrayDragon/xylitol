@@ -1,9 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  add_requirement,tp05,"color-scheme-pure-helpers","packages/xylitol-tui 的 terminal_colors MUST 提供纯函数：从 OSC11 背景 RGB 经相对亮度判定 Dark/Light、解析 COLORFGBG（bg>=7 为 Light）、以及按优先级合成多源探测结果；MUST NOT 要求真实 TTY 或事件循环即可单测。",null,null,null
-  add_requirement,tp06,"color-scheme-priority","多源合成 MUST 按显式注入 > OSC11 亮度 > CSI 997 报告 > COLORFGBG > 默认 Dark 的优先级选择 TerminalColorScheme。",null,null,null
-op_scenarios[4]{req_id,id,given,when,then}:
-  tp05,"osc11-light-bg","背景 RGB 近白",scheme_from_background_rgb,返回 Light
-  tp05,"colorfgbg-light","COLORFGBG=0;15",parse_colorfgbg,返回 Light
-  tp05,"colorfgbg-dark","COLORFGBG=15;0",parse_colorfgbg,返回 Dark
-  tp06,"priority-osc11-over-env","COLORFGBG 指示 Dark 且 OSC11 为亮背景",resolve_terminal_color_scheme,返回 Light
