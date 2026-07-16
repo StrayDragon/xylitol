@@ -376,16 +376,14 @@ impl CombinedAutocompleteProvider {
                         .file_name()
                         .and_then(|n| n.to_str())
                         .unwrap_or(&path);
-                    let completion_path = if is_dir {
-                        format!("{}/", path)
-                    } else {
-                        path.to_string()
-                    };
-                    AutocompleteItem {
-                        value: build_completion_value(&completion_path, is_dir, is_at, is_quoted),
-                        label: format!("{}{}", file_name, if is_dir { "/" } else { "" }),
-                        description: Some(to_display_path(&completion_path)),
-                    }
+                    // fd returns paths relative to walk root; keep parent in value.
+                    let parent = std::path::Path::new(&path)
+                        .parent()
+                        .and_then(|p| p.to_str())
+                        .filter(|p| !p.is_empty() && *p != ".")
+                        .map(|p| format!("{}/", p.trim_end_matches('/')))
+                        .unwrap_or_default();
+                    path_autocomplete_item(&parent, file_name, is_dir, is_at, is_quoted)
                 })
                 .collect();
         }
@@ -571,20 +569,13 @@ impl CombinedAutocompleteProvider {
                 let is_dir = e.file_type().ok()?.is_dir();
                 let name = e.file_name().to_str()?.to_string();
 
-                let relative = construct_relative_path(&display_prefix, &name);
-
-                let display = to_display_path(&relative);
-                let path_value = if is_dir {
-                    format!("{}/", display)
-                } else {
-                    display
-                };
-                let value = build_completion_value(&path_value, is_dir, is_at, is_quoted);
-                Some(AutocompleteItem {
-                    value,
-                    label: if is_dir { format!("{name}/") } else { name },
-                    description: None,
-                })
+                Some(path_autocomplete_item(
+                    &display_prefix,
+                    &name,
+                    is_dir,
+                    is_at,
+                    is_quoted,
+                ))
             })
             .collect();
 
@@ -638,20 +629,13 @@ impl CombinedAutocompleteProvider {
 
         scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.2.cmp(&b.2)));
 
+        // Fuzzy walk here is base-dir only; keep basename values (no nested prefix).
+        let display_prefix = String::new();
         scored
             .into_iter()
             .take(20)
             .map(|(_, is_dir, name)| {
-                let path_value = if is_dir {
-                    format!("{}/", name)
-                } else {
-                    name.clone()
-                };
-                AutocompleteItem {
-                    value: build_completion_value(&path_value, is_dir, is_at, is_quoted),
-                    label: if is_dir { format!("{name}/") } else { name },
-                    description: Some(to_display_path(&path_value)),
-                }
+                path_autocomplete_item(&display_prefix, &name, is_dir, is_at, is_quoted)
             })
             .collect()
     }
@@ -826,7 +810,7 @@ fn resolve_search_dir(base: &Path, expanded: &str, raw: &str) -> Result<ResolveR
 }
 
 /// Construct a display-relative path from a display prefix and entry name.
-fn construct_relative_path(display_prefix: &str, name: &str) -> String {
+pub(crate) fn construct_relative_path(display_prefix: &str, name: &str) -> String {
     if display_prefix.ends_with('/') {
         format!("{display_prefix}{name}")
     } else if display_prefix.contains('/') || display_prefix.contains('\\') {
@@ -841,6 +825,72 @@ fn construct_relative_path(display_prefix: &str, name: &str) -> String {
         }
     } else {
         name.to_string()
+    }
+}
+
+/// Build a path completion item (pi-aligned): `value` keeps directory prefix;
+/// `label` is basename; `description` is relative path only when it differs.
+pub(crate) fn path_autocomplete_item(
+    display_prefix: &str,
+    name: &str,
+    is_dir: bool,
+    is_at: bool,
+    is_quoted: bool,
+) -> AutocompleteItem {
+    let relative = construct_relative_path(display_prefix, name);
+    let display = to_display_path(&relative);
+    let path_value = if is_dir {
+        if display.ends_with('/') {
+            display
+        } else {
+            format!("{display}/")
+        }
+    } else {
+        display
+    };
+    let label = if is_dir {
+        format!("{name}/")
+    } else {
+        name.to_string()
+    };
+    let description = if path_value == label {
+        None
+    } else {
+        Some(path_value.clone())
+    };
+    AutocompleteItem {
+        value: build_completion_value(&path_value, is_dir, is_at, is_quoted),
+        label,
+        description,
+    }
+}
+
+#[cfg(test)]
+mod path_item_tests {
+    use super::path_autocomplete_item;
+
+    #[test]
+    fn root_entry_has_no_duplicate_description() {
+        let item = path_autocomplete_item("", "foo.rs", false, true, false);
+        assert_eq!(item.value, "@foo.rs");
+        assert_eq!(item.label, "foo.rs");
+        assert_eq!(item.description, None);
+    }
+
+    #[test]
+    fn nested_entry_keeps_prefix_and_shows_relative_desc() {
+        let item = path_autocomplete_item(".git/", "COMMIT_EDITMSG", false, true, false);
+        assert_eq!(item.value, "@.git/COMMIT_EDITMSG");
+        assert_eq!(item.label, "COMMIT_EDITMSG");
+        assert_eq!(item.description.as_deref(), Some(".git/COMMIT_EDITMSG"));
+    }
+
+    #[test]
+    fn nested_dir_keeps_trailing_slash_on_value() {
+        let item = path_autocomplete_item(".git/", "objects", true, true, false);
+        assert_eq!(item.value, "@.git/objects/");
+        assert_eq!(item.label, "objects/");
+        assert_eq!(item.description.as_deref(), Some(".git/objects/"));
     }
 }
 
