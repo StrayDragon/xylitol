@@ -413,17 +413,39 @@ impl DefaultResourceLoader {
     // ── Skills ────────────────────────────────────────────────────────
 
     /// Load skills discovered under `.xylitol/skills` (project + user).
+    ///
+    /// Load order: user then project; name collision → **project wins** (pi precedence).
     fn load_skills_internal(&mut self) {
-        // Use the skill loader integration from c45
-        {
-            let project_skills = self.cwd.join(".xylitol").join("skills");
-            let global_skills = self.agent_dir.join("skills");
-            self.load_skills_from_skills_dir(&project_skills, "project");
-            self.load_skills_from_skills_dir(&global_skills, "user");
-        }
+        let project_skills = self.cwd.join(".xylitol").join("skills");
+        let global_skills = self.agent_dir.join("skills");
+        self.load_skills_from_skills_dir(&global_skills);
+        self.load_skills_from_skills_dir(&project_skills);
+        self.dedup_skills_project_wins();
     }
 
-    fn load_skills_from_skills_dir(&mut self, dir: &Path, _source: &str) {
+    /// Keep first occurrence when iterating reverse (project loaded last → wins).
+    fn dedup_skills_project_wins(&mut self) {
+        let mut seen = std::collections::HashSet::new();
+        let mut deduped = Vec::new();
+        let mut collisions = Vec::new();
+        for skill in self.skills.iter().rev() {
+            if seen.insert(skill.name.clone()) {
+                deduped.push(skill.clone());
+            } else {
+                collisions.push(skill.name.clone());
+            }
+        }
+        deduped.reverse();
+        for name in collisions {
+            self.skills_diagnostics.push(ResourceDiagnostic::warning(
+                format!("duplicate skill name '{name}'; keeping higher-precedence entry"),
+                None,
+            ));
+        }
+        self.skills = deduped;
+    }
+
+    fn load_skills_from_skills_dir(&mut self, dir: &Path) {
         if !dir.is_dir() {
             return;
         }
@@ -439,21 +461,45 @@ impl DefaultResourceLoader {
             if !skill_file.is_file() {
                 continue;
             }
+            let fallback_name = skill_dir
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map(str::to_string);
             match std::fs::read_to_string(&skill_file) {
                 Ok(content) => {
-                    let (name, description) = parse_skill_frontmatter(&content);
-                    if let Some(name) = name {
-                        self.skills.push(SkillInfo {
-                            name,
-                            description,
-                            source_info: self.source_info_for_path(&skill_file),
-                        });
-                    } else {
+                    let parsed = parse_skill_frontmatter(&content);
+                    let name = parsed.name.or(fallback_name);
+                    let Some(name) = name else {
                         self.skills_diagnostics.push(ResourceDiagnostic::warning(
-                            "SKILL.md missing name in frontmatter",
+                            "SKILL.md missing name in frontmatter and directory name",
                             Some(skill_file),
                         ));
+                        continue;
+                    };
+                    for err in validate_skill_name(&name) {
+                        self.skills_diagnostics.push(ResourceDiagnostic::warning(
+                            format!("skill '{name}': {err}"),
+                            Some(skill_file.clone()),
+                        ));
                     }
+                    if parsed
+                        .description
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .is_none()
+                    {
+                        self.skills_diagnostics.push(ResourceDiagnostic::warning(
+                            format!("skill '{name}': missing description"),
+                            Some(skill_file.clone()),
+                        ));
+                    }
+                    self.skills.push(SkillInfo {
+                        name,
+                        description: parsed.description,
+                        source_info: self.source_info_for_path(&skill_file),
+                        disable_model_invocation: parsed.disable_model_invocation,
+                    });
                 }
                 Err(e) => {
                     self.skills_diagnostics.push(ResourceDiagnostic::error(
@@ -587,20 +633,36 @@ fn parse_template_frontmatter(content: &str) -> (Option<String>, Option<String>,
 }
 
 /// Parse SKILL.md frontmatter to extract name and description.
-fn parse_skill_frontmatter(content: &str) -> (Option<String>, Option<String>) {
+/// Parsed SKILL.md frontmatter (pi-aligned subset).
+struct ParsedSkillFrontmatter {
+    name: Option<String>,
+    description: Option<String>,
+    disable_model_invocation: bool,
+}
+
+fn parse_skill_frontmatter(content: &str) -> ParsedSkillFrontmatter {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
-        return (None, None);
+        return ParsedSkillFrontmatter {
+            name: None,
+            description: None,
+            disable_model_invocation: false,
+        };
     }
 
     let rest = &trimmed[3..];
     let Some(end_pos) = rest.find("\n---") else {
-        return (None, None);
+        return ParsedSkillFrontmatter {
+            name: None,
+            description: None,
+            disable_model_invocation: false,
+        };
     };
 
     let fm = &rest[..end_pos];
     let mut name = None;
     let mut description = None;
+    let mut disable_model_invocation = false;
 
     for line in fm.lines() {
         let line = line.trim();
@@ -608,10 +670,40 @@ fn parse_skill_frontmatter(content: &str) -> (Option<String>, Option<String>) {
             name = Some(value.trim().trim_matches('"').to_string());
         } else if let Some(value) = line.strip_prefix("description:") {
             description = Some(value.trim().trim_matches('"').to_string());
+        } else if let Some(value) = line.strip_prefix("disable-model-invocation:") {
+            let v = value.trim().trim_matches('"').to_ascii_lowercase();
+            disable_model_invocation = matches!(v.as_str(), "true" | "yes" | "1");
         }
     }
 
-    (name, description)
+    ParsedSkillFrontmatter {
+        name,
+        description,
+        disable_model_invocation,
+    }
+}
+
+/// Agent Skills name rules (pi / agentskills.io subset) — warnings only.
+fn validate_skill_name(name: &str) -> Vec<String> {
+    let mut errors = Vec::new();
+    if name.len() > 64 {
+        errors.push(format!("name exceeds 64 characters ({})", name.len()));
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        errors.push(
+            "name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)".into(),
+        );
+    }
+    if name.starts_with('-') || name.ends_with('-') {
+        errors.push("name must not start or end with a hyphen".into());
+    }
+    if name.contains("--") {
+        errors.push("name must not contain consecutive hyphens".into());
+    }
+    errors
 }
 
 // ── Convenience function ──────────────────────────────────────────────
@@ -824,6 +916,95 @@ mod tests {
         assert!(skills.iter().any(|s| s.name == "python"));
     }
 
+    #[test]
+    fn test_skills_project_overrides_user_on_name_collision() {
+        let project = TempDir::new().unwrap();
+        let agent = TempDir::new().unwrap();
+        let proj_skill = project
+            .path()
+            .join(".xylitol")
+            .join("skills")
+            .join("shared");
+        let user_skill = agent.path().join("skills").join("shared");
+        std::fs::create_dir_all(&proj_skill).unwrap();
+        std::fs::create_dir_all(&user_skill).unwrap();
+        std::fs::write(
+            proj_skill.join("SKILL.md"),
+            "---\nname: shared\ndescription: from-project\n---\n",
+        )
+        .unwrap();
+        std::fs::write(
+            user_skill.join("SKILL.md"),
+            "---\nname: shared\ndescription: from-user\n---\n",
+        )
+        .unwrap();
+
+        let loader =
+            DefaultResourceLoader::new(project.path().to_path_buf(), agent.path().to_path_buf());
+        let (skills, diags) = loader.get_skills();
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "shared");
+        assert_eq!(skills[0].description.as_deref(), Some("from-project"));
+        assert!(
+            diags.iter().any(|d| d.message.contains("duplicate")),
+            "collision should warn; got {diags:?}"
+        );
+    }
+
+    #[test]
+    fn test_skills_disable_model_invocation_flag_parsed() {
+        let tmp = TempDir::new().unwrap();
+        let skill = tmp.path().join(".xylitol").join("skills").join("quiet");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: quiet\ndescription: hush\ndisable-model-invocation: true\n---\n",
+        )
+        .unwrap();
+        let loader = DefaultResourceLoader::new(tmp.path().to_path_buf(), PathBuf::from("/tmp"));
+        let (skills, _) = loader.get_skills();
+        let s = skills.iter().find(|s| s.name == "quiet").unwrap();
+        assert!(s.disable_model_invocation);
+    }
+
+    #[test]
+    fn test_skills_name_falls_back_to_directory() {
+        let tmp = TempDir::new().unwrap();
+        let skill = tmp
+            .path()
+            .join(".xylitol")
+            .join("skills")
+            .join("fallback-dir");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(
+            skill.join("SKILL.md"),
+            "---\ndescription: no name key\n---\nbody\n",
+        )
+        .unwrap();
+        let loader = DefaultResourceLoader::new(tmp.path().to_path_buf(), PathBuf::from("/tmp"));
+        let (skills, _) = loader.get_skills();
+        assert!(
+            skills.iter().any(|s| s.name == "fallback-dir"),
+            "expected dir-name fallback; got {skills:?}"
+        );
+    }
+
+    #[test]
+    fn test_skills_missing_description_warns() {
+        let tmp = TempDir::new().unwrap();
+        let skill = tmp.path().join(".xylitol").join("skills").join("nodesc");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(skill.join("SKILL.md"), "---\nname: nodesc\n---\n").unwrap();
+        let loader = DefaultResourceLoader::new(tmp.path().to_path_buf(), PathBuf::from("/tmp"));
+        let (_, diags) = loader.get_skills();
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.message.contains("missing description")),
+            "expected description warning; got {diags:?}"
+        );
+    }
+
     // ── Themes ─────────────────────────────────────────────────────
 
     #[test]
@@ -863,16 +1044,25 @@ mod tests {
     #[test]
     fn test_parse_skill_frontmatter() {
         let content = "---\nname: code-review\ndescription: Automated code review\n---\n# Body";
-        let (name, desc) = parse_skill_frontmatter(content);
-        assert_eq!(name, Some("code-review".into()));
-        assert_eq!(desc, Some("Automated code review".into()));
+        let parsed = parse_skill_frontmatter(content);
+        assert_eq!(parsed.name, Some("code-review".into()));
+        assert_eq!(parsed.description, Some("Automated code review".into()));
+        assert!(!parsed.disable_model_invocation);
     }
 
     #[test]
     fn test_parse_skill_frontmatter_missing_name() {
         let content = "---\ndescription: Some skill\n---\n# Body";
-        let (name, _desc) = parse_skill_frontmatter(content);
-        assert_eq!(name, None);
+        let parsed = parse_skill_frontmatter(content);
+        assert_eq!(parsed.name, None);
+    }
+
+    #[test]
+    fn test_parse_skill_frontmatter_disable_model_invocation() {
+        let content =
+            "---\nname: quiet\ndescription: hush\ndisable-model-invocation: true\n---\n# Body";
+        let parsed = parse_skill_frontmatter(content);
+        assert!(parsed.disable_model_invocation);
     }
 
     #[test]

@@ -38,3 +38,14 @@ bootstrap / reload_skills:
 
 - 运行时目录就绪 ≠ 证明某次 `$` 已注入正文；后者在 c1130 用「模型侧消息 / 读文件结果」断言。
 - 不在 Host 长持有 ResourceLoader（同 c1100）。
+
+## pi 对齐（c1085 补强 / A11）
+
+| 行为 | xylitol |
+|---|---|
+| `disable-model-invocation` | `SkillInfo` + system 过滤 |
+| name 碰撞 | project 覆盖 user + diagnostic |
+| name 缺省 | frontmatter \|\| 目录名 |
+| description 缺失 | warning（仍加载） |
+| `<available_skills>` 引导 | 对齐 pi「use the read tool…」 |
+| 发现路径 | 仅 `.xylitol/skills`（不做 `.agents`/祖先/packages，见 A11） |

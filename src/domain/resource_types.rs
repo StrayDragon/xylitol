@@ -71,6 +71,9 @@ pub struct SkillInfo {
     pub name: String,
     pub description: Option<String>,
     pub source_info: SourceInfo,
+    /// When true, skill is omitted from `<available_skills>` (pi `disable-model-invocation`).
+    /// Still discoverable for explicit `$name` / slash invocation later.
+    pub disable_model_invocation: bool,
 }
 
 /// Theme metadata returned by the resource loader.
