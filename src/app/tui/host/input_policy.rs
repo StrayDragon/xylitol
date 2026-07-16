@@ -103,12 +103,22 @@ impl<T: Terminal> HostSession<T> {
             if text.trim().is_empty() {
                 return true;
             }
-            if matches!(parse_slash_command(&text), Some(PendingSlash::Reload)) {
-                root.set_editor_text(String::new());
-                drop(root);
-                self.push_system_note("agent busy — /reload refused");
-                self.sync_ui_root_from_model();
-                return true;
+            match parse_slash_command(&text) {
+                Some(PendingSlash::Reload) => {
+                    root.set_editor_text(String::new());
+                    drop(root);
+                    self.push_system_note("agent busy — /reload refused");
+                    self.sync_ui_root_from_model();
+                    return true;
+                }
+                Some(PendingSlash::Trust { .. }) => {
+                    root.set_editor_text(String::new());
+                    drop(root);
+                    self.push_system_note("agent busy — /trust refused");
+                    self.sync_ui_root_from_model();
+                    return true;
+                }
+                _ => {}
             }
             // c669 / ati32: hard-reject bang while bash_active or agent busy
             // (must not steer literal `!cmd`).
@@ -191,6 +201,7 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::SessionClone
                 | PendingSlash::SessionName { .. }
                 | PendingSlash::Reload
+                | PendingSlash::Trust { .. }
                 | PendingSlash::Usage(_) => {
                     self.pending.slash = Some(slash);
                 }
@@ -202,7 +213,7 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(String::new());
             drop(root);
             self.push_system_note(format!(
-                "unknown command: {} (try /exit, /model, /session, /session-resume, /session-new, /session-clone, /session-name, /session-tree, /session-fork, /session-compact, /session-export, /session-import)",
+                "unknown command: {} (try /exit, /model, /session, /session-resume, /session-new, /session-clone, /session-name, /session-tree, /session-fork, /session-compact, /session-export, /session-import, /reload, /trust)",
                 text.split_whitespace().next().unwrap_or("/")
             ));
             return true;

@@ -51,6 +51,31 @@ pub struct RuntimeReloadReport {
     pub steps: Vec<ReloadStepReport>,
 }
 
+/// `/trust` subcommand modes (c1105).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectTrustMode {
+    /// Persist trust for the current project cwd.
+    TrustCwd,
+    /// Persist trust for the parent folder (when available).
+    TrustParent,
+    /// Persist deny for the current project cwd.
+    Deny,
+}
+
+/// Outcome of [`Driver::persist_project_trust`] (c1105).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectTrustPersistReport {
+    pub trusted: bool,
+    pub saved_path: Option<String>,
+    pub message: String,
+}
+
+impl ProjectTrustPersistReport {
+    /// Shared post-write hint — resources apply only after explicit reload/restart.
+    pub const RELOAD_HINT: &'static str =
+        "Project resources apply after /reload or restart (not auto-reloaded).";
+}
+
 impl RuntimeReloadReport {
     /// Scripted / remote drivers: no-op success with a single diagnostic step.
     pub fn noop() -> Self {
@@ -357,6 +382,17 @@ pub trait Driver: Send {
     /// no-op report for drivers without reload state.
     async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, String> {
         Ok(RuntimeReloadReport::noop())
+    }
+
+    /// Persist a project trust decision for `/trust` (c1105).
+    ///
+    /// Does **not** reload skills/MCP/context — caller shows
+    /// [`ProjectTrustPersistReport::RELOAD_HINT`]. Default: unsupported.
+    fn persist_project_trust(
+        &mut self,
+        _mode: ProjectTrustMode,
+    ) -> Result<ProjectTrustPersistReport, String> {
+        Err("persist_project_trust not supported on this driver".into())
     }
 }
 
@@ -938,6 +974,13 @@ impl Driver for InProcessDriver {
 
         let mut steps = Vec::new();
 
+        // Re-read trust store so `/trust` + later `/reload` picks up new decisions (c1105).
+        let trust_mgr = crate::infra::trust::TrustManager::new(
+            crate::infra::trust::TrustManager::default_dir(),
+        );
+        let cwd_str = state.cwd.display().to_string();
+        state.project_trusted = trust_mgr.is_trusted(&cwd_str);
+
         let app_config = crate::infra::config::loader::load_app_config(None).ok();
         state.mcp_servers = crate::app::core::mcp_spec::McpServerSpec::from_infra_list(
             app_config.as_ref().and_then(|c| c.mcp_servers.clone()),
@@ -1023,6 +1066,50 @@ impl Driver for InProcessDriver {
 
         self.reload = Some(state);
         Ok(RuntimeReloadReport { steps })
+    }
+
+    fn persist_project_trust(
+        &mut self,
+        mode: ProjectTrustMode,
+    ) -> Result<ProjectTrustPersistReport, String> {
+        let cwd = self
+            .reload
+            .as_ref()
+            .map(|s| s.cwd.clone())
+            .or_else(|| std::env::current_dir().ok())
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        let cwd_str = cwd.display().to_string();
+        let mgr = crate::infra::trust::TrustManager::new(
+            crate::infra::trust::TrustManager::default_dir(),
+        );
+        let options = mgr.get_trust_options(&cwd_str, false);
+        let opt = match mode {
+            ProjectTrustMode::TrustCwd => options.first(),
+            ProjectTrustMode::TrustParent => {
+                options.iter().find(|o| o.label.starts_with("Trust parent"))
+            }
+            ProjectTrustMode::Deny => options.iter().find(|o| o.label == "Do not trust"),
+        };
+        let Some(opt) = opt else {
+            return Err(match mode {
+                ProjectTrustMode::TrustParent => "no parent folder to trust".into(),
+                _ => "trust option unavailable".into(),
+            });
+        };
+        if !opt.updates.is_empty() {
+            mgr.apply_updates(&opt.updates)
+                .map_err(|e| format!("trust store write failed: {e}"))?;
+        }
+        let saved = opt.saved_path.clone().unwrap_or_else(|| cwd_str.clone());
+        let verb = if opt.trusted { "trusted" } else { "denied" };
+        Ok(ProjectTrustPersistReport {
+            trusted: opt.trusted,
+            saved_path: opt.saved_path.clone(),
+            message: format!(
+                "Project {verb} at {saved}. {}",
+                ProjectTrustPersistReport::RELOAD_HINT
+            ),
+        })
     }
 }
 
@@ -2025,5 +2112,32 @@ mod driver_session_tree_tests {
             !tree.is_empty(),
             "session tree should reflect persisted messages"
         );
+    }
+
+    #[tokio::test]
+    async fn persist_project_trust_writes_store_under_home() {
+        let home = tempfile::tempdir().unwrap();
+        let prev = std::env::var_os("HOME");
+        unsafe {
+            std::env::set_var("HOME", home.path());
+        }
+        let cwd = home.path().join("proj");
+        std::fs::create_dir_all(cwd.join(".xylitol")).unwrap();
+        let store = Arc::new(SessionManager::new(home.path().join("sessions")));
+        let mut driver = build_test_driver(store).await;
+        driver.enable_reload_state(cwd.clone(), home.path().join(".xylitol"), false, Vec::new());
+        let report = driver
+            .persist_project_trust(ProjectTrustMode::TrustCwd)
+            .expect("persist");
+        assert!(report.trusted);
+        assert!(report.message.contains("/reload") || report.message.contains("restart"));
+        let mgr = crate::infra::trust::TrustManager::new(
+            crate::infra::trust::TrustManager::default_dir(),
+        );
+        assert!(mgr.is_trusted(&cwd.display().to_string()));
+        match prev {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
     }
 }
