@@ -749,6 +749,69 @@ fn harness_app_thinking_toggle_via_binding_id() {
     assert!(root.borrow().fold().thinking_expanded);
 }
 
+#[tokio::test]
+async fn harness_idle_slash_reload_keeps_history_and_calls_runtime() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crate::app::tui::bridge::UiEntry;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.push_system_note("seed history");
+    let before = session.ui_model().entries.len();
+
+    let mut driver = ScriptedDriver::new();
+    driver.set_dollar_skill_catalog_for_driver(vec![("demo".into(), "demo skill".into())]);
+    let mut stream = None;
+
+    root.borrow_mut().set_editor_text("/reload");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert_eq!(driver.reload_runtime_calls(), 1);
+    assert_eq!(
+        session.ui_model().entries.len(),
+        before + 1,
+        "reload must append one system note, not clear history"
+    );
+    assert!(
+        session.ui_model().entries.iter().any(
+            |e| matches!(e, UiEntry::System { text } if text.contains("Reload:") && text.contains("skills:"))
+        ),
+        "expected reload system report; got {:?}",
+        session.ui_model().entries
+    );
+}
+
+#[tokio::test]
+async fn harness_busy_slash_reload_refused() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crate::app::tui::bridge::UiEntry;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    session.on_run_started("hello");
+    assert!(session.is_busy());
+
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+    root.borrow_mut().set_editor_text("/reload");
+    session.step(HostEvent::Input(enter_event())).unwrap();
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert_eq!(driver.reload_runtime_calls(), 0);
+    assert!(
+        session.ui_model().entries.iter().any(
+            |e| matches!(e, UiEntry::System { text } if text.contains("agent busy") && text.contains("/reload"))
+        ),
+        "expected busy refuse note; got {:?}",
+        session.ui_model().entries
+    );
+}
+
 #[test]
 fn harness_keybindings_reload_keeps_old_on_bad_json() {
     use crate::app::tui::keybindings::{ReloadOutcome, matches_binding};

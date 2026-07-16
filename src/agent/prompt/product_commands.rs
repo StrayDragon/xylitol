@@ -74,6 +74,11 @@ pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
             description: "Show or set session display name",
             argument_hint: Some("[name]"),
         },
+        ProductSlashCommand {
+            name: "reload",
+            description: "Hot-reload keybindings, skills, MCP, themes, context",
+            argument_hint: None,
+        },
     ];
     #[cfg(debug_assertions)]
     cmds.push(ProductSlashCommand {

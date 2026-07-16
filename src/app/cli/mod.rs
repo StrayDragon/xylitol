@@ -268,14 +268,25 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .any(|w| matches!(w, BootstrapWarning::ProjectNotTrusted { .. }));
     let runtime = bootstrapped.into_runtime();
     let session_id = runtime.session_id;
+    let project_trusted = !runtime
+        .warnings
+        .iter()
+        .any(|w| matches!(w, BootstrapWarning::ProjectNotTrusted { .. }));
     let mut driver = runtime.driver;
-    let mut mcp = crate::app::core::composition::McpSession::new();
-    let servers = runtime.mcp_servers.unwrap_or_default();
-    if let Err(e) = mcp.reload(&mut driver, &servers).await {
-        eprintln!("Warning: MCP reload failed: {e}");
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
+    let mcp_servers = runtime.mcp_servers.unwrap_or_default();
+    driver.enable_reload_state(cwd, agent_dir, project_trusted, mcp_servers);
+    if let Err(e) = driver.bootstrap_mcp().await {
+        eprintln!("Warning: MCP bootstrap failed: {e}");
+    } else if let Some(summary) = driver.mcp_status_summary().await {
+        // Surface connect issues (empty connected + diags) without breaking print-mode stdout.
+        if summary.contains("diagnostics:") {
+            eprintln!("Warning: {summary}");
+        } else {
+            log::info!(target: "xylitol::mcp", "{summary}");
+        }
     }
-    // `mcp` kept for process lifetime (owns MCP connections when enabled).
-    let _mcp = mcp;
 
     // ── dispatch by mode ───────────────────────────────────────
     #[cfg(feature = "tui")]

@@ -103,6 +103,13 @@ impl<T: Terminal> HostSession<T> {
             if text.trim().is_empty() {
                 return true;
             }
+            if matches!(parse_slash_command(&text), Some(PendingSlash::Reload)) {
+                root.set_editor_text(String::new());
+                drop(root);
+                self.push_system_note("agent busy — /reload refused");
+                self.sync_ui_root_from_model();
+                return true;
+            }
             // c669 / ati32: hard-reject bang while bash_active or agent busy
             // (must not steer literal `!cmd`).
             let reject_bang = self.bash_active || self.run_active || self.is_busy();
@@ -183,6 +190,7 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::SessionNew
                 | PendingSlash::SessionClone
                 | PendingSlash::SessionName { .. }
+                | PendingSlash::Reload
                 | PendingSlash::Usage(_) => {
                     self.pending.slash = Some(slash);
                 }

@@ -15,8 +15,8 @@ use futures::StreamExt;
 use xylitol_tui::Terminal;
 
 use crate::app::core::driver::{
-    CommandInfo, DebugSceneLoad, Driver, EventStream, ModelInfo, QueueStats, SessionListEntry,
-    SessionStats, XyEvent,
+    CommandInfo, DebugSceneLoad, Driver, EventStream, ModelInfo, QueueStats, ReloadStepReport,
+    RuntimeReloadReport, SessionListEntry, SessionStats, XyEvent,
 };
 use crate::domain::session_types::{
     SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
@@ -72,6 +72,8 @@ pub struct ScriptedDriver {
     delete_session_calls: Mutex<Vec<String>>,
     /// Optional fixed estimate for footer harness (c1035).
     estimate_override: Option<crate::domain::types::ContextTokenEstimate>,
+    reload_runtime_calls: AtomicUsize,
+    dollar_skill_catalog: Mutex<Vec<(String, String)>>,
 }
 
 impl ScriptedDriver {
@@ -156,7 +158,17 @@ impl ScriptedDriver {
             set_session_name_for_calls: Mutex::new(Vec::new()),
             delete_session_calls: Mutex::new(Vec::new()),
             estimate_override: None,
+            reload_runtime_calls: AtomicUsize::new(0),
+            dollar_skill_catalog: Mutex::new(Vec::new()),
         }
+    }
+
+    pub fn reload_runtime_calls(&self) -> usize {
+        self.reload_runtime_calls.load(Ordering::SeqCst)
+    }
+
+    pub fn set_dollar_skill_catalog_for_driver(&self, catalog: Vec<(String, String)>) {
+        *self.dollar_skill_catalog.lock().expect("catalog") = catalog;
     }
 
     pub fn new_session_calls(&self) -> usize {
@@ -652,6 +664,21 @@ impl Driver for ScriptedDriver {
             .expect("session_list")
             .retain(|e| e.id != session_id);
         Ok(())
+    }
+
+    fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
+        self.dollar_skill_catalog.lock().expect("catalog").clone()
+    }
+
+    async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, String> {
+        self.reload_runtime_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(RuntimeReloadReport {
+            steps: vec![ReloadStepReport {
+                step: "skills",
+                ok: true,
+                message: "scripted noop".into(),
+            }],
+        })
     }
 }
 
@@ -3336,6 +3363,58 @@ mod slice_tests {
         assert!(
             f.contains("used 7 tokens"),
             "AgentEnd + drain must refresh footer: {f}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1120_reload_preserves_session_message_count() {
+        use crate::app::tui::commands::{PendingSlash, parse_slash_command};
+
+        assert_eq!(parse_slash_command("/reload"), Some(PendingSlash::Reload));
+
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        driver.set_session_messages(harness_sample_session_messages());
+        let before = driver.get_messages().await.unwrap().len();
+        let mut stream = None;
+
+        root.borrow_mut().set_editor_text("/reload");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert_eq!(driver.reload_runtime_calls(), 1);
+        assert_eq!(driver.get_messages().await.unwrap().len(), before);
+        let notes = system_notes(&session);
+        assert!(
+            notes.iter().any(|t| t.contains("Reload:")),
+            "expected reload report: {notes:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn c1120_reload_busy_refused() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+
+        session.on_run_started("busy");
+        root.borrow_mut().set_editor_text("/reload");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+
+        assert_eq!(driver.reload_runtime_calls(), 0);
+        let notes = system_notes(&session);
+        assert!(
+            notes
+                .iter()
+                .any(|t| t.contains("busy") && t.contains("/reload refused")),
+            "expected busy refusal: {notes:?}"
         );
     }
 
