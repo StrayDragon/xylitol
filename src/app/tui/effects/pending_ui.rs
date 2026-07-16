@@ -16,6 +16,25 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn Driver,
 ) {
+    if session.take_paste_image() {
+        log::info!(target: "xylitol::tui", "Driver::stage_clipboard_image");
+        match driver.stage_clipboard_image().await {
+            Ok(Some(path)) => {
+                let insert = path.display().to_string();
+                if let Some(root) = session.ui_root() {
+                    root.borrow_mut().insert_editor_text_at_cursor(&insert);
+                }
+            }
+            Ok(None) => {
+                session.push_error_note("clipboard: no image");
+            }
+            Err(e) => {
+                session.push_error_note(format!("clipboard image: {e}"));
+            }
+        }
+        let _ = session.render_now();
+    }
+
     if session.take_pending_thinking_cycle() {
         match driver.cycle_thinking_level() {
             Ok(level) => session.apply_thinking_level_ui(level),

@@ -5,6 +5,7 @@ use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 use crate::domain::error::XyToolError;
+use crate::domain::message::AgentPart;
 
 /// Context passed to tool execution.
 #[derive(Clone)]
@@ -53,6 +54,18 @@ pub trait XyTool: Send + Sync {
     fn description(&self) -> &str;
     fn parameters_schema(&self) -> Value;
     async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError>;
+
+    /// Multimodal tool result (text + images). Default wraps [`Self::execute`] as a text part.
+    ///
+    /// `read` overrides this for image files (c1155 / t21). React MUST prefer this over
+    /// wrapping `execute` alone so Image parts reach the provider.
+    async fn execute_as_parts(
+        &self,
+        ctx: &XyToolCtx,
+        args: Value,
+    ) -> Result<Vec<AgentPart>, XyToolError> {
+        Ok(vec![AgentPart::text(self.execute(ctx, args).await?)])
+    }
 
     fn prompt_snippet(&self) -> Option<&str> {
         None

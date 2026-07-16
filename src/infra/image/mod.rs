@@ -7,8 +7,10 @@
 //! - Produces base64-encoded payload under 4.5MB
 
 mod format;
+mod from_path;
 mod orientation;
 mod resize;
 
+pub use from_path::{agent_part_from_image_path, image_content_from_path};
 pub use resize::resize_image;
 pub use resize::{ImageResizeOptions, ResizedImage};

@@ -5,12 +5,14 @@
 //! - Offset (line-based) and limit support
 //! - Reports offset-out-of-bounds
 //! - Remaining lines hint when truncated
-//! - Image file detection: returns placeholder for images
+//! - Image files: resize → `AgentPart::Image` (+ short text note); c1155 / t21
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use crate::domain::error::XyToolError;
+use crate::domain::message::AgentPart;
+use crate::infra::image::agent_part_from_image_path;
 use crate::runtime_protocol::{XyTool, XyToolCtx};
 
 use super::truncate::{TruncationOptions, truncate_head};
@@ -18,6 +20,15 @@ use super::truncate::{TruncationOptions, truncate_head};
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "ico", "svg"];
 
 pub struct ReadTool;
+
+fn is_image_path(file_path: &str) -> bool {
+    let ext = std::path::Path::new(file_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    IMAGE_EXTENSIONS.contains(&ext.as_str())
+}
 
 #[async_trait]
 impl XyTool for ReadTool {
@@ -51,6 +62,23 @@ impl XyTool for ReadTool {
     }
 
     async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+        let parts = self.execute_as_parts(ctx, args).await?;
+        Ok(parts
+            .into_iter()
+            .filter_map(|p| match p {
+                AgentPart::Text { text } => Some(text),
+                AgentPart::Image(_) => Some("[image]".into()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"))
+    }
+
+    async fn execute_as_parts(
+        &self,
+        ctx: &XyToolCtx,
+        args: Value,
+    ) -> Result<Vec<AgentPart>, XyToolError> {
         let file_path = args["path"]
             .as_str()
             .ok_or_else(|| XyToolError::InvalidArgs("missing 'path'".into()))?;
@@ -63,19 +91,21 @@ impl XyTool for ReadTool {
             XyToolError::ExecutionFailed(anyhow::anyhow!("failed to stat '{file_path}': {e}"))
         })?;
 
-        // Detect image files by extension
-        let ext = std::path::Path::new(file_path)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-
-        if IMAGE_EXTENSIONS.contains(&ext.as_str()) {
-            // Return placeholder for images (like pi does)
-            return Ok(format!(
-                "[Image file: {file_path} ({size})]",
-                size = format_size(metadata.len())
-            ));
+        if is_image_path(file_path) {
+            let path = std::path::Path::new(file_path);
+            return match agent_part_from_image_path(path) {
+                Ok(image_part) => {
+                    let note = format!(
+                        "Read image file [{size}]",
+                        size = format_size(metadata.len())
+                    );
+                    Ok(vec![AgentPart::text(note), image_part])
+                }
+                Err(e) => Ok(vec![AgentPart::text(format!(
+                    "Read image file [{size}]\n{e}",
+                    size = format_size(metadata.len())
+                ))]),
+            };
         }
 
         let raw_content = tokio::fs::read_to_string(file_path).await.map_err(|e| {
@@ -98,13 +128,15 @@ impl XyTool for ReadTool {
             };
 
             if start >= total_lines {
-                return Ok(json!({
-                    "content": "",
-                    "total_lines": total_lines,
-                    "offset": offset,
-                    "note": "offset exceeds file length"
-                })
-                .to_string());
+                return Ok(vec![AgentPart::text(
+                    json!({
+                        "content": "",
+                        "total_lines": total_lines,
+                        "offset": offset,
+                        "note": "offset exceeds file length"
+                    })
+                    .to_string(),
+                )]);
             }
 
             lines[start..end].join("\n")
@@ -135,7 +167,9 @@ impl XyTool for ReadTool {
             }
         }
 
-        Ok(serde_json::to_string(&result).expect("serde_json::to_string on Value/Map never fails"))
+        Ok(vec![AgentPart::text(
+            serde_json::to_string(&result).expect("serde_json::to_string on Value/Map never fails"),
+        )])
     }
 }
 
@@ -152,6 +186,7 @@ fn format_size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::{ImageBuffer, Rgb};
 
     fn test_ctx() -> XyToolCtx {
         XyToolCtx::new("test-call")
@@ -228,5 +263,29 @@ mod tests {
         let v: Value = serde_json::from_str(&result).unwrap();
         assert_eq!(v["content"], "");
         assert!(v["note"].as_str().unwrap_or("").contains("exceeds"));
+    }
+
+    #[tokio::test]
+    async fn test_read_png_yields_image_part() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tiny.png");
+        let img: ImageBuffer<Rgb<u8>, _> = ImageBuffer::from_fn(8, 8, |_, _| Rgb([10, 20, 30]));
+        img.save(&path).unwrap();
+
+        let tool = ReadTool;
+        let parts = tool
+            .execute_as_parts(&test_ctx(), json!({"path": path.to_str().unwrap()}))
+            .await
+            .unwrap();
+        assert!(
+            parts.iter().any(|p| matches!(p, AgentPart::Text { .. })),
+            "expected text note"
+        );
+        let image = parts.iter().find(|p| matches!(p, AgentPart::Image(_)));
+        assert!(image.is_some(), "expected Image part");
+        if let Some(AgentPart::Image(img)) = image {
+            assert!(img.data.as_ref().is_some_and(|d| !d.is_empty()));
+            assert!(img.media_type.starts_with("image/"));
+        }
     }
 }

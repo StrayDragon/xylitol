@@ -226,7 +226,7 @@ impl<T: Terminal> HostSession<T> {
             return true;
         }
 
-        if text.trim().starts_with('/') {
+        if text.trim().starts_with('/') && looks_like_unknown_slash_command(&text) {
             root.set_editor_text(String::new());
             drop(root);
             self.push_system_note(format!(
@@ -263,6 +263,24 @@ impl<T: Terminal> HostSession<T> {
         root.set_editor_text(String::new());
         drop(root);
         self.pending.submit = Some(text);
+        true
+    }
+
+    /// Ctrl+V / `app.paste.image`: stage clipboard image via Driver (c1155).
+    pub(super) fn try_paste_image(&mut self, input: &InputEvent) -> bool {
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        let InputEvent::Key(key) = input else {
+            return false;
+        };
+        if !matches_binding(key, "app.paste.image") {
+            return false;
+        }
+        if root.borrow().slot().is_overlay() {
+            return false;
+        }
+        self.pending.paste_image = true;
         true
     }
 
@@ -365,4 +383,17 @@ impl<T: Terminal> HostSession<T> {
         // (no full-screen clear — inline TUI preserves scrollback above).
         true
     }
+}
+
+/// True when idle Enter should treat leading `/` as an unknown slash (not a filesystem path).
+///
+/// Absolute paths like `/tmp/xylitol-paste-….png` (c1155 / pi) contain another `/` after the
+/// root slash; slash commands are a single token (`/model`, `/session-new`).
+fn looks_like_unknown_slash_command(text: &str) -> bool {
+    let first = text.split_whitespace().next().unwrap_or("");
+    if !first.starts_with('/') {
+        return false;
+    }
+    // `/tmp/…`, `/home/…`, `//unc` → prompt text, not a slash command.
+    first.matches('/').count() <= 1
 }

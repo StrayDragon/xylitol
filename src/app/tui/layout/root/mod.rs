@@ -362,6 +362,12 @@ impl UiRoot {
         self.sync_editor_border();
     }
 
+    /// Insert text at the editor cursor (clipboard image path paste, c1155).
+    pub fn insert_editor_text_at_cursor(&mut self, text: &str) {
+        self.editor.insert_text_at_cursor(text);
+        self.sync_editor_border();
+    }
+
     /// Autocomplete popup open (host must not steal Enter before confirm).
     pub fn editor_autocomplete_open(&self) -> bool {
         self.editor.is_showing_autocomplete()

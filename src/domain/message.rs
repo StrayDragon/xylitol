@@ -116,6 +116,14 @@ impl LlmMessage {
         }
     }
 
+    /// User message with arbitrary parts (text + images, c1155 / dm7).
+    pub fn user_parts(content: Vec<AgentPart>) -> Self {
+        Self::UserMessage {
+            content,
+            timestamp: now_ms(),
+        }
+    }
+
     pub fn assistant(text: impl Into<String>) -> Self {
         Self::AssistantMessage {
             content: vec![AgentPart::text(text)],
@@ -276,6 +284,11 @@ impl AgentMessage {
         Self::Llm(LlmMessage::user(text))
     }
 
+    /// User message with arbitrary parts (text + images, c1155 / dm7).
+    pub fn user_parts(content: Vec<AgentPart>) -> Self {
+        Self::Llm(LlmMessage::user_parts(content))
+    }
+
     pub fn assistant(text: impl Into<String>) -> Self {
         Self::Llm(LlmMessage::assistant(text))
     }
@@ -345,6 +358,15 @@ impl AgentPart {
     /// Construct a text part.
     pub fn text(s: impl Into<String>) -> Self {
         Self::Text { text: s.into() }
+    }
+
+    /// Inline image part (base64 `data` + MIME).
+    pub fn image(media_type: impl Into<String>, data: impl Into<String>) -> Self {
+        Self::Image(ImageContent {
+            url: None,
+            data: Some(data.into()),
+            media_type: media_type.into(),
+        })
     }
 
     /// Construct a thinking part (no signature).

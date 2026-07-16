@@ -113,6 +113,11 @@ static APP_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
     ),
     ("app.session.rename", &["ctrl+r"], Some("Resume: rename")),
     ("app.session.delete", &["ctrl+d"], Some("Resume: delete")),
+    (
+        "app.paste.image",
+        &["ctrl+v"],
+        Some("Paste clipboard image as tempfile path"),
+    ),
 ];
 
 /// Result of a reload attempt.
