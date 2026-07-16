@@ -41,7 +41,7 @@
 | D16 | InputListener | VT 字符串回调常见 | **`InputEvent` 原生** `add_input_listener`；无 KeyEvent→VT；v1 仅 `Continue`/`Consumed` | 是 |
 | D17 | Diff 组件 | `renderDiff` 函数式 | **`Diff` Component + `render_diff_lines`**；`similar` 在包内；主题闭包；对齐 `design/diff-block.md` | 是 |
 | D18 | 代码高亮 | 应用层常见 | **`highlight` optional feature**（syntect+two-face）；默认依赖无 syntect；经 `MarkdownTheme.highlight_code` 注入 | 是 |
-| D19 | `requestRender(true)` / suspend | force 用 `previousWidth=-1` → **整屏 clear**；外部编辑器 resume 亦 clear | force 用 `previous_width=0`（首帧哨兵）→ **full path 但不 `2J`**；`with_terminal_suspended` **保留** `previous_lines` 差分、不立刻 paint（inline 保留上方 scrollback） | 是 |
+| D19 | `requestRender(true)` / suspend / resize | force 用 `previousWidth=-1` → **整屏 clear**；resize 回调 **soft** `requestRender()` → `width/heightChanged` → `fullRender(true)`；外部编辑器 resume 亦 `force` clear | **对齐**：force 用 `FORCE_SIZE_SENTINEL`（`usize::MAX` ≡ pi `-1`）→ **clear**；host resize / mount **soft** `request_render(false)`；`with_terminal_suspended` 仍保留 `previous_lines`、不立刻 paint（resume 后由调用方 soft/force） | 是 |
 | D20 | paste marker 原子分段 | `segmentWithMarkers`：光标/删除把 `[paste #N …]` 当单段 | **未移植**；折叠/展开与 `get_expanded_text` 已对齐；原子分段另开 change | 是 |
 
 ---
@@ -52,7 +52,7 @@
 |---|---|
 | 产品壳 | transcript / slash 语义 / session → `src/app/tui/` 或 `agent_demo`，**不**进本包 |
 | `agent_demo` 快捷键 | 应用级：`Ctrl+P/S` 槽替换；`Ctrl+T` thinking；**`Alt+E` tools**（避 `Ctrl+E`=cursorLineEnd）；**`Alt+G` glyphs**（避 `Ctrl+G`=外部编辑器）；`Ctrl+O` tools viewport；**Ctrl+C** 清编辑器/空则退；**Esc** 流中 abort（经 InputListener）；UI 旁注用 `(Ctrl+T)` 括号完整和弦 |
-| 外部 `$EDITOR` | 包只提供 `TUI::with_terminal_suspended`（stop/start/refresh_size + soft `request_render`；**保留** `previous_lines` 差分、**不**立刻 `do_render`、**不**整屏 `2J`——对齐 inline）；spawn/`$VISUAL`/`$EDITOR`/tempfile 在 demo 或 `src/app/tui`，**不**进本包 |
+| 外部 `$EDITOR` | 包只提供 `TUI::with_terminal_suspended`（stop/start/`refresh_size` + soft pending；**保留** `previous_lines`、**不**立刻 paint；若挂起期间尺寸变了，下一帧走 size-changed clear）；spawn/`$VISUAL`/`$EDITOR`/tempfile 在 demo 或 `src/app/tui`，**不**进本包 |
 | 原型优先 | 真实 `src/app/tui` 所需 UX/UI 交互，优先在 `agent_demo` 验证后再接线产品面 |
 | 工具 bg 三态 | 产品 theme：`tool-pending-bg` / `tool-success-bg` / `tool-error-bg`（`DESIGN.md`）；对齐 pi coding-agent，**不**进 pi-tui 包 |
 | Diff 行号 | unified 双 gutter + EditText 紧凑 `±N` + SBS 左右行号（c459） |
@@ -72,3 +72,4 @@
 | 2026-07-12 | **c575**：D08 overlay focus-restore（eligible/blocked/resume + dispatch reclaim）已落地 |
 | 2026-07-14 | **D19**：Ctrl+G resume 不整屏 clear；`set_text` 光标默认 End（对齐 pi editor） |
 | 2026-07-16 | **D20**：paste marker 原子分段延后；c1160 折叠/展开 + 产品提交展开 |
+| 2026-07-17 | **D19 对齐 pi**：force 哨兵改 clear；resize/mount soft（修宽高残影） |

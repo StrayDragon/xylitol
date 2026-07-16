@@ -67,8 +67,8 @@ pub trait Terminal {
     /// resize event so the cached `columns`/`rows` stay in sync.
     fn refresh_size(&mut self) {}
 
-    /// Test / host hint: set cached size without querying the OS. Default
-    /// no-op. Real `CrosstermTerminal` ignores this and uses `refresh_size`.
+    /// Host hint: set cached size from a resize event without querying the OS.
+    /// Real terminals SHOULD apply this — `refresh_size` alone can lag.
     fn set_size_hint(&mut self, _cols: u16, _rows: u16) {}
 
     // ── c410: lifecycle + protocol (defaults no-op for test doubles) ──
@@ -257,6 +257,15 @@ impl Terminal for CrosstermTerminal {
 
     fn refresh_size(&mut self) {
         self.refresh_size_impl();
+    }
+
+    fn set_size_hint(&mut self, cols: u16, rows: u16) {
+        if cols > 0 {
+            self.columns = cols;
+        }
+        if rows > 0 {
+            self.rows = rows;
+        }
     }
 
     fn start(&mut self) {
