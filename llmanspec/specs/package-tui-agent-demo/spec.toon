@@ -2,14 +2,15 @@ kind: llman.sdd.spec
 name: "package-tui-agent-demo"
 purpose: "xylitol-tui agent_demo 演示面：Command plate 预制触发、瘦 chrome、打字机 Markdown stub。"
 valid_scope[2]: "packages/xylitol-tui/examples/agent_demo.rs","packages/xylitol-tui/tests/agent_demo_test.rs"
-requirements[6]{req_id,title,statement}:
+requirements[7]{req_id,title,statement}:
   pad0,"capability-shell","本 capability 由变更 c535-add-package-tui-agent-demo-plate 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   pad1,"command-plate-slot",agent_demo MUST 提供 Command plate（经 Ctrl+P 或等价 slash），以替换 editor 槽的方式展示可选演示项；MUST NOT 做成居中大 overlay 仪表盘。
   pad2,"canned-triggers",Command plate 每一项 MUST 绑定预制动作或预制 prompt；选中后 MUST 触发可重复的演示脚本（含 Markdown 全语法、流式代码高亮、Diff、工具三态、会话树等已支持场景中的子集）。
   pad3,"slim-default-seed",默认 seed transcript MUST 保持短小（帮助指向 plate）；重型 showcase MUST 经 plate 或显式 slash（如 /md）注入，MUST NOT 仅依赖过长默认 seed。
   pad4,"footer-no-key-wall",agent_demo footer MUST NOT 常驻多行或长键位墙；完整键位说明 MUST 经 plate 项或 /help 进入 transcript。
   pad5,"demo-compaction-retry-chrome","agent_demo MUST 提供可触发的 Compacting 与 Retry n/m 单行 status 预览（和弦或 Command plate 或 slash），时序结束后 MUST 回到 Ready/Working 类空闲短词，并 MUST 向 transcript 追加对应 System 说明；MUST NOT 以 capturing overlay focus-restore 演示作为本预览的一部分。"
-scenarios[10]{req_id,id,given,when,then}:
+  pad6,"thinking-border-cycle","agent_demo MUST 以 Shift+Tab 作为 thinking border level 的主 cycle 入口（可另保留 plate 或 /thinking-level 辅助）；每次 cycle MUST 经 Editor set_border_color（或 apply_thinking_border）应用对应 Palette 边框；bash 模式边框 MUST 仍优先 success，退出 bash 后 MUST 恢复当前 thinking 边框；MUST NOT 将本 cycle 实现为产品 src/app/tui 默认键位（产品 Shift+Tab 留给 c1150）。"
+scenarios[14]{req_id,id,given,when,then}:
   pad0,"shell-present","","列出 capability package-tui-agent-demo",spec 含 pad0–pad5 且 purpose 为中文
   pad1,"open-plate","",用户按下 Ctrl+P,editor 槽被 plate 列表替换且可上下选择
   pad1,"not-overlay-dashboard","",打开 plate,内容仍在 editor 槽区域而非居中 overlay 仪表盘
@@ -20,3 +21,7 @@ scenarios[10]{req_id,id,given,when,then}:
   pad5,"compact-status-sequence",agent_demo 空闲,"触发 compact-status",status 曾为 Compacting 且稍后为 Ready
   pad5,"retry-status-sequence",agent_demo 空闲,"触发 retry-status",status 曾为 Retry 1/3 且稍后为 Ready
   pad5,"no-overlay-focus-demo",agent_demo 入口,查阅 plate/slash/和弦,"无 overlay-focus 演示入口"
+  pad6,"cycle-changes-border",agent_demo 非 bash,"触发 thinking-level cycle",当前 ThinkingBorderLevel 前进且 editor 边框色相对 cycle 前改变
+  pad6,"shift-tab-cycles",agent_demo 非 bash 且无 overlay 占键,按 Shift+Tab,ThinkingBorderLevel 前进且边框色改变
+  pad6,"bash-overrides",thinking 边框已为 High 且进入 bash 模式,观察 editor 边框,为 success 边框而非 High
+  pad6,"restore-after-bash",bash 结束后仍为原 thinking level,观察 editor 边框,恢复为该 level 的 thinking 边框

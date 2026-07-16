@@ -1,0 +1,8 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,pad6,"thinking-border-cycle","agent_demo MUST 以 Shift+Tab 作为 thinking border level 的主 cycle 入口（可另保留 plate 或 /thinking-level 辅助）；每次 cycle MUST 经 Editor set_border_color（或 apply_thinking_border）应用对应 Palette 边框；bash 模式边框 MUST 仍优先 success，退出 bash 后 MUST 恢复当前 thinking 边框；MUST NOT 将本 cycle 实现为产品 src/app/tui 默认键位（产品 Shift+Tab 留给 c1150）。",null,null,null
+op_scenarios[4]{req_id,id,given,when,then}:
+  pad6,"cycle-changes-border","agent_demo 非 bash","触发 thinking-level cycle","当前 ThinkingBorderLevel 前进且 editor 边框色相对 cycle 前改变"
+  pad6,"shift-tab-cycles","agent_demo 非 bash 且无 overlay 占键","按 Shift+Tab","ThinkingBorderLevel 前进且边框色改变"
+  pad6,"bash-overrides","thinking 边框已为 High 且进入 bash 模式","观察 editor 边框","为 success 边框而非 High"
+  pad6,"restore-after-bash","bash 结束后仍为原 thinking level","观察 editor 边框","恢复为该 level 的 thinking 边框"
