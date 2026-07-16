@@ -215,6 +215,43 @@ fn god_module_entry_files_under_budget() {
 }
 
 #[test]
+fn product_slash_catalog_matches_agent_ssot() {
+    // c1175 / sc3 / atm7: TUI catalog names == product SSOT (same crate build).
+    use crate::agent::prompt::product_commands::{LEGACY_SHORT_NAMES, product_slash_commands};
+    use crate::app::tui::layout::product_slash_commands_for_editor;
+
+    let ssot: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
+    let catalog: Vec<String> = product_slash_commands_for_editor()
+        .into_iter()
+        .map(|c| c.name)
+        .collect();
+    assert_eq!(
+        catalog,
+        ssot.iter().map(|s| (*s).to_string()).collect::<Vec<_>>()
+    );
+    for legacy in LEGACY_SHORT_NAMES {
+        assert!(!catalog.iter().any(|n| n == legacy));
+    }
+}
+
+#[test]
+fn legacy_short_slash_names_are_not_parsed() {
+    // A03 / c1175: /tree etc. stay unknown at the parse layer.
+    use super::commands::parse_slash_command;
+    for legacy in [
+        "/tree", "/fork", "/export", "/import", "/compact", "/resume", "/new", "/clone", "/name",
+    ] {
+        assert!(
+            parse_slash_command(legacy).is_none(),
+            "{legacy} must not parse as PendingSlash"
+        );
+    }
+    assert!(parse_slash_command("/session-tree").is_some());
+    assert!(parse_slash_command("/exit").is_some());
+    assert!(parse_slash_command("/quit").is_some());
+}
+
+#[test]
 fn quit_event_stops_session() {
     let mut session = HostSession::new(TestTerminal::new(80, 24), build_root);
     session.step(HostEvent::Quit).unwrap();

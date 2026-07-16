@@ -22,7 +22,7 @@ use xylitol_tui::{
     TreeSelector, TreeSelectorOptions, fg_rgb, fuzzy_filter, matches_key_event, truncate_to_width,
 };
 
-use super::slash_catalog::product_slash_commands;
+use super::slash_catalog::product_slash_commands_for_editor;
 
 use super::session_tree::FilterMode;
 use super::slots::EditorSlot;
@@ -218,7 +218,9 @@ impl UiRoot {
             SlashArgCompletionSource::new("model", self.model_arg_catalog.clone())
                 .with_id("model-id"),
         ));
-        sources.push(Box::new(SlashCommandSource::new(product_slash_commands())));
+        sources.push(Box::new(SlashCommandSource::new(
+            product_slash_commands_for_editor(),
+        )));
         self.editor.set_completion_sources(sources);
     }
 
