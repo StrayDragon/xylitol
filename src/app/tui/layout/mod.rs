@@ -4,6 +4,7 @@
 //! and product theme wiring. Atomic widgets live in [`crate::app::tui::widgets`];
 //! generic Editor/Markdown/TreeSelector stay in `xylitol_tui`.
 
+mod dollar_skill_source;
 mod root;
 mod session_tree;
 mod slash_catalog;

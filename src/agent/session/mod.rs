@@ -546,6 +546,11 @@ impl AgentCapabilities {
             .collect()
     }
 
+    /// Full skill catalog (paths for `$` SKILL.md expand; c1130).
+    pub fn loaded_skills(&self) -> &[crate::domain::resource_types::SkillInfo] {
+        &self.prompt_opts.skills
+    }
+
     /// Set the active system prompt text and rebuild.
     pub fn set_system_prompt(&mut self, prompt: Option<String>) {
         self.prompt_opts.system_prompt = prompt.clone();

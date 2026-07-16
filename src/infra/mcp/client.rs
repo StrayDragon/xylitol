@@ -95,7 +95,7 @@ impl McpClientManager {
             .push(McpConnectDiagnostic { server, message });
     }
 
-    /// Diagnostics from the last [`connect_servers`] (validate + connect failures).
+    /// Diagnostics from the last [`Self::connect_servers`] (validate + connect failures).
     pub async fn diagnostics(&self) -> Vec<McpConnectDiagnostic> {
         self.diagnostics.lock().await.clone()
     }
