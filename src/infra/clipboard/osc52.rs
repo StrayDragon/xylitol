@@ -1,8 +1,13 @@
 //! OSC 52 terminal escape sequence support.
 //!
 //! OSC 52 (Operating System Command 52) allows writing to the system clipboard
-//! by emitting a special escape sequence to stdout. This is the universal
-//! fallback that works over SSH and in any terminal emulator that supports it.
+//! by emitting a special escape sequence. This is the universal fallback that
+//! works over SSH and in any terminal emulator that supports it.
+//!
+//! **TUI safety**: prefer [`format_osc52`] and write the sequence on the host
+//! thread via `Terminal::write` (outside a differential render batch). Never
+//! emit from a `spawn_blocking` worker while the TUI owns stdout — that races
+//! CSI 2026 synchronized updates.
 
 use std::io::Write;
 
@@ -44,24 +49,23 @@ pub(crate) fn base64_encode(input: &[u8]) -> String {
     result
 }
 
-/// Emit an OSC 52 escape sequence to set the system clipboard.
+/// Build an OSC 52 sequence without writing anywhere.
 ///
-/// Returns `true` if the sequence was written successfully (within size
-/// limits), `false` if the payload exceeds [`MAX_OSC52_ENCODED_LENGTH`].
-///
-/// # Errors
-///
-/// Returns an error if writing to stdout fails.
-pub fn emit_osc52(text: &str) -> Result<bool, std::io::Error> {
+/// Returns `None` when the base64 payload exceeds `MAX_OSC52_ENCODED_LENGTH` (100_000).
+pub fn format_osc52(text: &str) -> Option<String> {
     let encoded = base64_encode(text.as_bytes());
     if encoded.len() > MAX_OSC52_ENCODED_LENGTH {
-        return Ok(false);
+        return None;
     }
+    Some(format!("\x1b]52;c;{encoded}\x07"))
+}
 
+/// Write a preformatted OSC 52 sequence to stdout and flush (CLI / non-TUI).
+pub fn write_osc52_stdout(sequence: &str) -> Result<(), std::io::Error> {
     let mut stdout = std::io::stdout().lock();
-    write!(stdout, "\x1b]52;c;{}\x07", encoded)?;
+    stdout.write_all(sequence.as_bytes())?;
     stdout.flush()?;
-    Ok(true)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -99,12 +103,28 @@ mod tests {
     }
 
     #[test]
+    fn format_osc52_matches_emit_shape() {
+        let seq = format_osc52("hi").expect("fits");
+        assert!(seq.starts_with("\x1b]52;c;"));
+        assert!(seq.ends_with('\x07'));
+        assert!(seq.contains(&base64_encode(b"hi")));
+    }
+
+    #[test]
+    fn format_osc52_rejects_oversize() {
+        let large = "a".repeat(MAX_OSC52_ENCODED_LENGTH);
+        assert!(format_osc52(&large).is_none());
+    }
+
+    #[test]
     fn test_is_remote_session_negative_when_no_env() {
         // SAFETY: test-only env manipulation — single-threaded test context
         let old_ssh = std::env::var("SSH_CONNECTION").ok();
         unsafe { std::env::remove_var("SSH_CONNECTION") };
         let old_client = std::env::var("SSH_CLIENT").ok();
         unsafe { std::env::remove_var("SSH_CLIENT") };
+        let old_mosh = std::env::var("MOSH_CONNECTION").ok();
+        unsafe { std::env::remove_var("MOSH_CONNECTION") };
 
         assert!(!is_remote_session());
 
@@ -114,13 +134,15 @@ mod tests {
         if let Some(v) = old_client {
             unsafe { std::env::set_var("SSH_CLIENT", v) };
         }
+        if let Some(v) = old_mosh {
+            unsafe { std::env::set_var("MOSH_CONNECTION", v) };
+        }
     }
 
     #[test]
-    fn test_emit_osc52_returns_ok_for_small_text() {
-        // In test context stdout is captured, so this won't actually
-        // affect the terminal.
-        let result = emit_osc52("small");
-        assert!(result.is_ok());
+    fn test_write_osc52_stdout_ok_for_formatted_sequence() {
+        let seq = format_osc52("small").expect("fits");
+        // In test context stdout is captured.
+        assert!(write_osc52_stdout(&seq).is_ok());
     }
 }
