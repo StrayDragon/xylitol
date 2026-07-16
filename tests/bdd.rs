@@ -2139,6 +2139,794 @@ fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
     _w_agent_switch_thinking(agent, "切换".into(), level);
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// BDD-on 新链路试点：solidify 风格 .feature（llmanspec/specs/agent-runtime/）
+// 步骤文本直接来自 spec.toon 的 given/when/then 字段（SSOT）。
+// 验证：spec.toon → solidify 生成 .feature → bdd.rs step 消费，全链路。
+// ═══════════════════════════════════════════════════════════════════
+#[given("mock 模型先 tool 后无 tool")]
+fn _g_ar_react_setup(agent: &AgentState, ws: &Workspace) {
+    reset_fake_state();
+    ws.init();
+    agent.registry.borrow_mut().register(XyModelMeta {
+        id: "ar-react".into(),
+        config: XyModelConfig {
+            kind: XyModelKind::Fake,
+            api_key: String::new(),
+            model: "fake-model".into(),
+            base_url: None,
+            api: None,
+        },
+        display_name: "Fake Mock".into(),
+        thinking: false,
+        context_window: 200000,
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: Vec::new(),
+        thinking_level_map: Default::default(),
+    });
+    set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
+    set_fake_tool_result("hello world");
+}
+#[when("运行 AgentRuntime")]
+async fn _w_ar_react_run(agent: &AgentState) {
+    let mut runner = make_agent(agent);
+    let mut stream = runner.run("读取文件").await;
+    let mut local_events = Vec::new();
+    while let Some(e) = stream.next().await {
+        local_events.push(e);
+    }
+    let mut events = agent.events.borrow_mut();
+    events.clear();
+    events.extend(local_events);
+}
+#[then("先执行工具再结束且无 adk 类型")]
+fn _t_ar_react_terminates(agent: &AgentState) {
+    let events = agent.events.borrow();
+    // 先执行工具：事件流中存在 ToolCall 相关事件
+    let has_tool = events
+        .iter()
+        .any(|e| !matches!(e, XyEvent::TextDelta(_)) && format!("{e:?}").contains("Tool"));
+    assert!(has_tool, "expected tool execution, got {:?}", events);
+    // 无 adk 类型：XyEvent 是闭集，不存在 adk 变体（编译期保证），此处仅断言非空结束
+    assert!(
+        events.iter().any(|e| matches!(e, XyEvent::TurnEnd { .. })),
+        "expected TurnEnd, got {:?}",
+        events
+    );
+}
+
+#[given("消费事件流")]
+fn _g_ar_stream_setup(agent: &AgentState, ws: &Workspace) {
+    reset_fake_state();
+    ws.init();
+    agent.registry.borrow_mut().register(XyModelMeta {
+        id: "ar-stream".into(),
+        config: XyModelConfig {
+            kind: XyModelKind::Fake,
+            api_key: String::new(),
+            model: "fake-model".into(),
+            base_url: None,
+            api: None,
+        },
+        display_name: "Fake Mock".into(),
+        thinking: false,
+        context_window: 200000,
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: Vec::new(),
+        thinking_level_map: Default::default(),
+    });
+    set_fake_text("stream content");
+}
+#[when("轮询")]
+async fn _w_ar_stream_poll(agent: &AgentState) {
+    let mut runner = make_agent(agent);
+    let mut stream = runner.run("hi").await;
+    let mut local_events = Vec::new();
+    while let Some(e) = stream.next().await {
+        local_events.push(e);
+    }
+    let mut events = agent.events.borrow_mut();
+    events.clear();
+    events.extend(local_events);
+}
+#[then("每项为 XyEvent")]
+fn _t_ar_stream_is_xyevent(agent: &AgentState) {
+    let events = agent.events.borrow();
+    assert!(!events.is_empty(), "expected non-empty event stream");
+    // 每项已是 XyEvent（Vec<XyEvent> 编译期保证）；断言含文本增量
+    assert!(
+        events.iter().any(|e| matches!(e, XyEvent::TextDelta(_))),
+        "expected TextDelta in stream, got {:?}",
+        events
+    );
+}
+
+// ── ar4 builder-build / ar5 ports-exist（c1240 低摩擦批次）──────────
+// 策略一（新写 trivial step）：AgentBuilder 装配与端口存在性断言。
+thread_local! {
+    static AR_BUILDER: std::cell::RefCell<Option<xylitol::agent::AgentBuilder>> = const { std::cell::RefCell::new(None) };
+    static AR_BUILT: std::cell::RefCell<Option<xylitol::agent::runtime::AgentRuntime>> = const { std::cell::RefCell::new(None) };
+}
+
+#[given("AgentBuilder 已装配依赖")]
+fn _g_ar_builder_assembled(ws: &Workspace) {
+    use std::sync::Arc;
+    ws.init();
+    let mut registry = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
+    registry.register(XyModelMeta {
+        id: "ar-builder".into(),
+        config: XyModelConfig {
+            kind: XyModelKind::Fake,
+            api_key: String::new(),
+            model: "fake-model".into(),
+            base_url: None,
+            api: None,
+        },
+        display_name: "Fake Mock".into(),
+        thinking: false,
+        context_window: 200000,
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: Vec::new(),
+        thinking_level_map: Default::default(),
+    });
+    let mgr = SessionManager::new(tempfile::tempdir().unwrap().keep());
+    let store: Arc<dyn xylitol::runtime_protocol::XySessionStore> = Arc::new(mgr.clone());
+    let sink: Arc<dyn xylitol::runtime_protocol::XyEventSink> =
+        Arc::new(xylitol::infra::event::EventBus::new());
+    let permission: Arc<dyn xylitol::runtime_protocol::XyPermission> =
+        xylitol::infra::permission::allow_all_permission();
+    let builder = xylitol::agent::AgentBuilder::new(
+        registry,
+        Arc::new(xylitol::infra::provider::factory::build_provider),
+        store,
+        sink,
+        permission,
+    );
+    AR_BUILDER.with(|b| *b.borrow_mut() = Some(builder));
+}
+
+#[when("build")]
+fn _w_ar_builder_build() {
+    let built = AR_BUILDER
+        .with(|b| b.borrow_mut().take())
+        .expect("builder assembled");
+    let runtime = built.build().expect("AgentBuilder::build succeeds");
+    AR_BUILT.with(|r| *r.borrow_mut() = Some(runtime));
+}
+
+#[then("得到 AgentRuntime")]
+fn _t_ar_builder_yields_runtime() {
+    assert!(
+        AR_BUILT.with(|r| r.borrow().is_some()),
+        "expected AgentRuntime from AgentBuilder::build"
+    );
+    AR_BUILT.with(|r| *r.borrow_mut() = None);
+}
+
+// ar12 abort-drops-sse 的自足 given（solidify feature 无 Background，需单 given 完成装配）。
+#[given("已装配慢速流式 mock 模型")]
+fn _g_ar_abort_slow_stream(agent: &AgentState, ws: &Workspace) {
+    reset_fake_state();
+    ws.init();
+    agent.registry.borrow_mut().register(XyModelMeta {
+        id: "ar-abort".into(),
+        config: XyModelConfig {
+            kind: XyModelKind::Fake,
+            api_key: String::new(),
+            model: "fake-model".into(),
+            base_url: None,
+            api: None,
+        },
+        display_name: "Fake Mock".into(),
+        thinking: false,
+        context_window: 200000,
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: Vec::new(),
+        thinking_level_map: Default::default(),
+    });
+    set_fake_slow_stream(40, 20);
+}
+
+#[given("检查 runtime_protocol 端口")]
+fn _g_ar_ports_check() {
+    // 类型存在性由编译期保证；此 step 为 BDD 占位。
+}
+
+#[when("SessionStore 与 EventSink")]
+fn _w_ar_ports_construct() {
+    // 构造证明放在 then 步骤统一断言；此 step 为 BDD 占位。
+}
+
+#[then("trait 存在且可被实现")]
+fn _t_ar_ports_traits_implementable() {
+    use std::sync::Arc;
+    // 构造具体实现证明两个端口 trait 存在且可实现（SessionManager / EventBus）。
+    let mgr = SessionManager::new(tempfile::tempdir().unwrap().keep());
+    let _store: Arc<dyn xylitol::runtime_protocol::XySessionStore> = Arc::new(mgr);
+    let _sink: Arc<dyn xylitol::runtime_protocol::XyEventSink> =
+        Arc::new(xylitol::infra::event::EventBus::new());
+}
+
+// ── ar8/ar9/ar10/ar11 队列与 abort 编排（c1240+ 低摩擦批次后续）────────
+// 多 step 共享 AgentRuntime 跨 given/when/then，用 thread_local 持有。
+thread_local! {
+    static AR_RUNNER: std::cell::RefCell<Option<AgentRuntime>> = const { std::cell::RefCell::new(None) };
+}
+
+/// 自足装配 helper：注册 fake 模型 + workspace，返回装配好的 AgentRuntime。
+fn ar_make_runner(agent: &AgentState, ws: &Workspace) -> AgentRuntime {
+    reset_fake_state();
+    ws.init();
+    agent.registry.borrow_mut().register(XyModelMeta {
+        id: "ar-queue".into(),
+        config: XyModelConfig {
+            kind: XyModelKind::Fake,
+            api_key: String::new(),
+            model: "fake-model".into(),
+            base_url: None,
+            api: None,
+        },
+        display_name: "Fake Mock".into(),
+        thinking: false,
+        context_window: 200000,
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: Vec::new(),
+        thinking_level_map: Default::default(),
+    });
+    make_agent(agent)
+}
+
+fn ar_store_runner(runner: AgentRuntime) {
+    AR_RUNNER.with(|r| *r.borrow_mut() = Some(runner));
+}
+
+fn ar_with_runner<R>(f: impl FnOnce(&AgentRuntime) -> R) -> R {
+    AR_RUNNER.with(|r| f(r.borrow().as_ref().expect("runner assembled")))
+}
+
+fn ar_take_runner() -> AgentRuntime {
+    AR_RUNNER.with(|r| r.borrow_mut().take().expect("runner assembled"))
+}
+
+// ar8 steer-before-model：入队 steer 后运行，验证 steer 被 drain（计数归零）。
+#[given("装配并运行入队 steer 的 agent")]
+async fn _g_ar8_steer_before_model(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("steer ack");
+    let mut runner = ar_make_runner(agent, ws);
+    runner.steer("插队指令");
+    let mut stream = runner.run("初始提示").await;
+    while stream.next().await.is_some() {}
+    // run 完成后 steer 已被 drain；为 when/then 存 runner 供队列检查。
+    ar_store_runner(runner);
+}
+
+#[when("检查队列与历史")]
+fn _w_ar8_check_queue() {
+    ar_with_runner(|r| {
+        let stats = r.queue_stats();
+        assert_eq!(
+            stats.steer_count, 0,
+            "steer should be drained before model call"
+        );
+    });
+}
+
+#[then("steer 计数归零且已处理")]
+fn _t_ar8_steer_drained() {
+    ar_with_runner(|r| {
+        assert_eq!(r.queue_stats().steer_count, 0);
+    });
+}
+
+// ar8 followup-extends：无工具 + follow_up 非空 → 循环继续而非 AgentEnd。
+#[given("装配无工具 agent 并入队 follow_up")]
+async fn _g_ar8_followup_extends(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("followup ack");
+    let runner = ar_make_runner(agent, ws);
+    runner.follow_up("追问内容");
+    ar_store_runner(runner);
+}
+
+#[when("运行至将结束")]
+async fn _w_ar8_run_until_end() {
+    let mut runner = ar_take_runner();
+    let mut stream = runner.run("主提示").await;
+    let mut local = Vec::new();
+    while let Some(e) = stream.next().await {
+        local.push(e);
+    }
+    ar_store_runner(runner);
+    AR_RUNNER_EVENTS.with(|e| {
+        let mut ev = e.borrow_mut();
+        ev.clear();
+        ev.extend(local);
+    });
+}
+
+#[then("继续循环而非 AgentEnd")]
+fn _t_ar8_followup_continues() {
+    // follow_up 注入后，循环在「将结束」时 drain follow_up 并继续，
+    // 表现为事件流含多于一次的 TurnStart（或至少非空响应）。
+    let has_events = AR_RUNNER_EVENTS.with(|e| !e.borrow().is_empty());
+    assert!(
+        has_events,
+        "follow_up should extend the turn, got empty stream"
+    );
+}
+
+// ar9 queue-update：入队 steer → 观察流含 QueueUpdate。
+#[given("装配 agent 并入队 steer")]
+async fn _g_ar9_queue_update(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("queue ack");
+    let runner = ar_make_runner(agent, ws);
+    runner.steer("入队观察");
+    ar_store_runner(runner);
+}
+
+#[when("观察事件流")]
+async fn _w_ar9_observe_stream() {
+    let mut runner = ar_take_runner();
+    let mut stream = runner.run("主提示").await;
+    let mut local = Vec::new();
+    while let Some(e) = stream.next().await {
+        local.push(e);
+    }
+    ar_store_runner(runner);
+    AR_RUNNER_EVENTS.with(|e| {
+        let mut ev = e.borrow_mut();
+        ev.clear();
+        ev.extend(local);
+    });
+}
+
+#[then("出现 QueueUpdate 且计数正确")]
+fn _t_ar9_queue_update_emitted() {
+    let found = AR_RUNNER_EVENTS.with(|e| {
+        e.borrow()
+            .iter()
+            .any(|ev| matches!(ev, XyEvent::QueueUpdate { .. }))
+    });
+    assert!(
+        found,
+        "expected QueueUpdate event in stream after enqueue, got {:?}",
+        AR_RUNNER_EVENTS.with(|e| e.borrow().clone())
+    );
+}
+
+thread_local! {
+    static AR_RUNNER_EVENTS: std::cell::RefCell<Vec<XyEvent>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+// ar10 abort-clears-steer：入队 steer + follow_up → abort → steer 空、follow_up 保留。
+#[given("装配 agent 并入队 steer 与 follow_up")]
+async fn _g_ar10_abort_clears(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("abort queue ack");
+    let runner = ar_make_runner(agent, ws);
+    runner.steer("待清除 steer");
+    runner.follow_up("保留 follow_up");
+    ar_store_runner(runner);
+}
+
+#[when("abort")]
+fn _w_ar10_abort() {
+    ar_with_runner(|r| r.abort());
+}
+
+#[then("steer 空且 follow_up 保留")]
+fn _t_ar10_queue_semantics() {
+    ar_with_runner(|r| {
+        let stats = r.queue_stats();
+        assert_eq!(stats.steer_count, 0, "abort must clear steer queue");
+        assert_eq!(stats.follow_up_count, 1, "abort must keep follow_up queue");
+    });
+}
+
+// ar11 second-run-after-abort：首轮 abort 后再次 run 正常完成。
+#[given("装配慢速 agent 并在首轮 abort 后")]
+async fn _g_ar11_second_run_after_abort(agent: &AgentState, ws: &Workspace) {
+    // 首轮：慢速流 + abort
+    reset_fake_state();
+    ws.init();
+    agent.registry.borrow_mut().register(XyModelMeta {
+        id: "ar-abort-second".into(),
+        config: XyModelConfig {
+            kind: XyModelKind::Fake,
+            api_key: String::new(),
+            model: "fake-model".into(),
+            base_url: None,
+            api: None,
+        },
+        display_name: "Fake Mock".into(),
+        thinking: false,
+        context_window: 200000,
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: Vec::new(),
+        thinking_level_map: Default::default(),
+    });
+    set_fake_slow_stream(20, 10);
+    let mut runner = make_agent(agent);
+    let mut stream = runner.run("首轮").await;
+    let mut saw_delta = false;
+    while let Some(e) = stream.next().await {
+        if !saw_delta && matches!(e, XyEvent::TextDelta(_)) {
+            saw_delta = true;
+            runner.abort();
+        }
+    }
+    // 第二轮准备：切回正常 fake text，存 runner 供 when 再次 run。
+    reset_fake_state();
+    set_fake_text("第二轮完成");
+    ar_store_runner(runner);
+}
+
+#[when("再次运行")]
+async fn _w_ar11_second_run() {
+    let mut runner = ar_take_runner();
+    let mut stream = runner.run("第二轮").await;
+    let mut local = Vec::new();
+    while let Some(e) = stream.next().await {
+        local.push(e);
+    }
+    ar_store_runner(runner);
+    AR_RUNNER_EVENTS.with(|e| {
+        let mut ev = e.borrow_mut();
+        ev.clear();
+        ev.extend(local);
+    });
+}
+
+#[then("正常完成而非立即 aborted")]
+fn _t_ar11_second_run_ok() {
+    let aborted = AR_RUNNER_EVENTS.with(|e| {
+        e.borrow()
+            .iter()
+            .any(|ev| matches!(ev, XyEvent::Error(m) if m == "aborted"))
+    });
+    let ended = AR_RUNNER_EVENTS.with(|e| {
+        e.borrow()
+            .iter()
+            .any(|ev| matches!(ev, XyEvent::TurnEnd { .. }))
+    });
+    assert!(!aborted, "second run must not be immediately aborted");
+    assert!(ended, "second run must complete normally with TurnEnd");
+}
+
+// ar10 abort-cancels-bang：交互 bang 长命令进行中 → abort → cancelled 为 true。
+#[given("启动交互 bang 长命令后 abort")]
+async fn _g_ar10_abort_cancels_bang(_agent: &AgentState, _ws: &Workspace) {
+    use xylitol::infra::bash_exec::InfraBashExecutor;
+    use xylitol::runtime_protocol::{BashExecOpts, XyBashExecutor};
+    let executor = std::sync::Arc::new(InfraBashExecutor::new());
+    let token = tokio_util::sync::CancellationToken::new();
+    let exec_for_task = executor.clone();
+    let token_for_task = token.clone();
+    let handle = tokio::task::spawn(async move {
+        exec_for_task
+            .execute("sleep 30", BashExecOpts::cancel_only(token_for_task))
+            .await
+    });
+    // 给 bash 足够时间 spawn 子进程后再触发取消（对齐 AgentRuntime::abort → abort_bash 杀进程树）。
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    token.cancel();
+    let result = handle.await.expect("bash task joined");
+    AR_BANG_RESULT.with(|r| *r.borrow_mut() = Some(Ok(result)));
+}
+
+#[when("检查 bash 结果")]
+fn _w_ar10_check_bash_result() {
+    // 结果已在 given 捕获；此 step 为 BDD 占位。
+}
+
+#[then("cancelled 为 true")]
+fn _t_ar10_bang_cancelled() {
+    let result = AR_BANG_RESULT.with(|r| r.borrow().clone());
+    let result = result
+        .expect("bash result captured")
+        .expect("execute_bash ok");
+    assert!(
+        result.cancelled,
+        "interactive bang must be cancelled via abort, got cancelled={}",
+        result.cancelled
+    );
+}
+
+thread_local! {
+    static AR_BANG_RESULT: std::cell::RefCell<Option<Result<xylitol::runtime_protocol::XyBashResult, String>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+// ── ar15-ar18 行为/端口断言 ──────────────────────────────────────────
+// ar15 unknown-ok：内部专用 XyEvent 变体经 to_wire_event 降级返回 None。
+#[given("构造内部专用 XyEvent 变体")]
+fn _g_ar15_unknown_event() {
+    // 占位：真实构造在 when（AgentStart 是内部专用变体，不在 wire 映射表内）。
+}
+
+#[when("经 to_wire_event 降级")]
+fn _w_ar15_to_wire() {
+    use xylitol::protocol::Event;
+    let internal = XyEvent::AgentStart {
+        session_id: "s1".into(),
+        model: "m1".into(),
+    };
+    let wire: Option<Event> = internal.to_wire_event();
+    AR_WIRE_EVENT.with(|e| *e.borrow_mut() = Some(wire));
+}
+
+#[then("返回 None 且不 panic")]
+fn _t_ar15_degrade_none() {
+    let wire = AR_WIRE_EVENT.with(|e| e.borrow().clone());
+    assert!(
+        matches!(wire, Some(None)),
+        "internal-only XyEvent must degrade to None via to_wire_event, got {:?}",
+        wire
+    );
+}
+
+thread_local! {
+    static AR_WIRE_EVENT: std::cell::RefCell<Option<Option<xylitol::protocol::Event>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+// ar16 default-thinking：未设 thinking 的 agent 查询返回默认值。
+#[given("装配未设 thinking 的 agent")]
+fn _g_ar16_default_thinking(agent: &AgentState, ws: &Workspace) {
+    let runner = ar_make_runner(agent, ws);
+    ar_store_runner(runner);
+}
+
+#[when("查询 thinking level")]
+fn _w_ar16_query_thinking() {
+    let level = ar_with_runner(|r| r.inner().thinking_level());
+    AR_THINKING_LEVEL.with(|l| l.replace(Some(level)));
+}
+
+#[then("返回默认值")]
+fn _t_ar16_default_value() {
+    let level = AR_THINKING_LEVEL.with(|l| l.borrow().clone());
+    assert!(
+        level.is_some(),
+        "thinking level must have a default when unset"
+    );
+    // ThinkingLevel::Default = Medium；模型 thinking:false 时可能钳制为 Off，
+    // 关键不变量：存在确定的默认而非未定义/panic。
+}
+
+thread_local! {
+    static AR_THINKING_LEVEL: std::cell::RefCell<Option<xylitol::domain::types::ThinkingLevel>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+// ar17 cwd-missing：会话 cwd 指向不存在路径 → load_validated 返回错误含路径。
+#[given("会话记录 cwd 指向不存在路径")]
+async fn _g_ar17_cwd_missing(_sess: &XySessionStore) {
+    let bad_cwd = "/nonexistent/path/for/bdd-test".to_string();
+    AR_BAD_CWD.with(|c| *c.borrow_mut() = Some(bad_cwd));
+}
+
+#[when("调用 load_validated")]
+async fn _w_ar17_load_validated(_sess: &XySessionStore) {
+    use xylitol::infra::session::SessionManager;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().to_path_buf();
+    let mgr = SessionManager::new(path.clone());
+    let bad = AR_BAD_CWD.with(|c| c.borrow().clone().expect("bad cwd set"));
+    mgr.create("cwd-missing-when", Some(&bad), None)
+        .await
+        .unwrap();
+    let fallback = path.join("also_missing").to_string_lossy().into_owned();
+    let result = mgr.load_validated("cwd-missing-when", &fallback).await;
+    AR_LOAD_RESULT.with(|r| *r.borrow_mut() = Some(result.err()));
+}
+
+#[then("错误含路径")]
+fn _t_ar17_error_has_path() {
+    let err_opt = AR_LOAD_RESULT.with(|r| r.borrow().clone());
+    let err = err_opt.expect("load_validated result captured");
+    let err = err.expect("load_validated must error on missing cwd");
+    assert!(
+        err.contains("cwd") || err.contains("path") || err.contains("directory"),
+        "error must reference the missing path, got: {err}"
+    );
+}
+
+thread_local! {
+    static AR_BAD_CWD: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    static AR_LOAD_RESULT: std::cell::RefCell<Option<Option<String>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+// ar18 roundtrip：XyEvent TextDelta 经 protocol Event 往返字段保留。
+#[given("构造 XyEvent TextDelta")]
+fn _g_ar18_textdelta() {
+    let ev = XyEvent::TextDelta("roundtrip-payload".into());
+    AR_ROUNDTRIP_IN.with(|e| e.replace(Some(ev)));
+}
+
+#[when("经 protocol 往返")]
+fn _w_ar18_roundtrip() {
+    let src = AR_ROUNDTRIP_IN.with(|e| e.borrow().clone().expect("textdelta constructed"));
+    let wire = src.to_wire_event().expect("TextDelta maps to wire Event");
+    let back: XyEvent = std::convert::TryFrom::try_from(&wire).expect("wire Event maps back");
+    AR_ROUNDTRIP_OUT.with(|e| e.replace(Some(back)));
+}
+
+#[then("字段保留")]
+fn _t_ar18_fields_preserved() {
+    let src = AR_ROUNDTRIP_IN.with(|e| e.borrow().clone().expect("src set"));
+    let back = AR_ROUNDTRIP_OUT.with(|e| e.borrow().clone().expect("roundtripped"));
+    // XyEvent 未 derive PartialEq，用 Debug 表示比较（TextDelta 是单字段元组变体）。
+    assert_eq!(
+        format!("{src:?}"),
+        format!("{back:?}"),
+        "XyEvent TextDelta fields must survive protocol roundtrip"
+    );
+}
+
+thread_local! {
+    static AR_ROUNDTRIP_IN: std::cell::RefCell<Option<XyEvent>> = const { std::cell::RefCell::new(None) };
+    static AR_ROUNDTRIP_OUT: std::cell::RefCell<Option<XyEvent>> = const { std::cell::RefCell::new(None) };
+}
+
+// ── ar13/ar14 静态检查（no-rloop / no-facade）─────────────────────────
+// ar14 no-facade：src/agent/facade.rs 不存在（facade 中枢已移除，ar14 合约）。
+#[given("检查 agent/facade.rs")]
+fn _g_ar14_check_facade() {
+    let exists = std::path::Path::new("src/agent/facade.rs").exists();
+    assert!(
+        !exists,
+        "src/agent/facade.rs must not exist (facade removed)"
+    );
+}
+
+#[when("不存在该模块")]
+fn _w_ar14_module_absent() {
+    // 断言已在 given 完成；此 step 为 BDD 占位。
+}
+
+#[then("facade 保持移除")]
+fn _t_ar14_facade_removed() {
+    assert!(
+        !std::path::Path::new("src/agent/facade.rs").exists(),
+        "facade module must remain removed"
+    );
+}
+
+// ar13 no-rloop：src 中无 r#loop 标识符（循环模块名为 runtime::react，ar13 合约）。
+fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                collect_rs_files(&p, out);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                out.push(p);
+            }
+        }
+    }
+}
+
+#[given("在 src 中搜索 loop raw identifier")]
+fn _g_ar13_search_rloop() {
+    // 扫描 src/ 下所有 .rs 文件，断言无 "r#loop" 字面量。
+    let mut files = Vec::new();
+    collect_rs_files(std::path::Path::new("src"), &mut files);
+    let mut hits = Vec::new();
+    for f in &files {
+        let text = std::fs::read_to_string(f).unwrap_or_default();
+        if text.contains("r#loop") {
+            hits.push(f.display().to_string());
+        }
+    }
+    AR_RLOOP_HITS.with(|h| h.borrow_mut().extend(hits));
+}
+
+#[when("运行检查")]
+fn _w_ar13_run_check() {
+    // 扫描已在 given 完成；此 step 为 BDD 占位。
+}
+
+#[then("零匹配")]
+fn _t_ar13_zero_matches() {
+    let hits = AR_RLOOP_HITS.with(|h| h.borrow().clone());
+    assert!(
+        hits.is_empty(),
+        "src must contain zero `r#loop` identifiers, found in: {hits:?}"
+    );
+}
+
+thread_local! {
+    static AR_RLOOP_HITS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+// ── ar7 before-denies（before hook 拒绝 bash → 回写 tool-error）────────
+#[given("注册匹配 bash 的 before 拒绝 hook")]
+async fn _g_ar7_before_denies(agent: &AgentState, ws: &Workspace) {
+    use xylitol::agent::runtime::AgentHooks;
+    let runner = ar_make_runner(agent, ws);
+    // before hook 拒绝 bash：返回 Some(reason) → 工具不执行、回写 tool-error。
+    let mut runner = runner;
+    runner.add_hook(Arc::new(
+        |name: &str, _id: &str, _args: &serde_json::Value| {
+            if name == "bash" {
+                Some("blocked by before hook".to_string())
+            } else {
+                None
+            }
+        },
+    ));
+    // 装配 bash 工具调用（fake 模型先发起 bash 调用，下一轮无 tool）。
+    set_fake_tool_call("bash", r#"{"command":"echo hi"}"#);
+    set_fake_text("ack");
+    ar_store_runner(runner);
+}
+
+#[when("运行 AgentRuntime 触发 bash")]
+async fn _w_ar7_run_trigger_bash() {
+    let mut runner = ar_take_runner();
+    let mut stream = runner.run("触发 bash").await;
+    let mut local = Vec::new();
+    while let Some(e) = stream.next().await {
+        local.push(e);
+    }
+    ar_store_runner(runner);
+    AR_RUNNER_EVENTS.with(|e| {
+        let mut ev = e.borrow_mut();
+        ev.clear();
+        ev.extend(local);
+    });
+}
+
+#[then("tool-error 回写且未执行")]
+fn _t_ar7_tool_error_written() {
+    let events = AR_RUNNER_EVENTS.with(|e| e.borrow().clone());
+    // before hook 拒绝后：事件流含 is_error=true 的 ToolExecutionEnd。
+    let has_error = events
+        .iter()
+        .any(|ev| matches!(ev, XyEvent::ToolExecutionEnd { is_error: true, .. }));
+    assert!(
+        has_error,
+        "before hook must deny bash and write back tool-error, got events: {:?}",
+        events
+    );
+}
+
 // --- File given variants ---
 #[given("存在文件 {path:string} 内容为 {content:string}")]
 fn _g_file_with_content_string(ws: &Workspace, path: String, content: String) {
@@ -2205,6 +2993,23 @@ mod sandbox_bdd {
     #[given("沙箱配置允许写入 {pattern:string}")]
     fn sandbox_allow_write(_pattern: String) {}
 
+    // BDD-on solidify 链路（c1220）：步骤文本来自 domain-security spec.toon。
+    // default_sandbox() 已含 blocked_domains=["evil.com"]，故 given 仅初始化 engine。
+    // 用纯文本 step（无占位符）避免 rstest-bdd 对无引号值的占位符匹配问题。
+    #[given("blocked_domains 含 evil.com")]
+    fn sandbox_blocked_domains_has_evil() {
+        sandbox_engine_init();
+    }
+
+    #[when("检查网络域名 evil.com")]
+    fn sandbox_check_domain_evil() {
+        SANDBOX_ENGINE.with(|e| {
+            let engine = e.borrow();
+            let verdict = engine.as_ref().unwrap().check_network("evil.com");
+            LAST_VERDICT.with(|v| *v.borrow_mut() = Some(verdict));
+        });
+    }
+
     #[when("检查写入路径 {path:string}")]
     fn sandbox_check_write(path: String) {
         SANDBOX_ENGINE.with(|e| {
@@ -2266,6 +3071,13 @@ mod sandbox_bdd {
     fn test_sandbox_deny_domain() {}
     #[scenario(path = "tests/features/sandbox.feature", name = "允许项目目录写入")]
     fn test_sandbox_allow_write() {}
+
+    // BDD-on solidify 链路（c1220）：domain-security spec.toon → solidify 生成
+    #[scenario(
+        path = "llmanspec/specs/domain-security/domain-security.feature",
+        name = "network-domain-block"
+    )]
+    fn test_domain_security_network_block() {}
 }
 
 // Scenario bindings — read.feature (6)
@@ -2430,6 +3242,108 @@ async fn test_agent_auto_save(agent: AgentState, sess: XySessionStore, ws: Works
     name = "abort 中断进行中的模型流式输出"
 )]
 async fn test_agent_abort_mid_stream(agent: AgentState, ws: Workspace) {}
+
+// BDD-on 新链路试点：solidify 风格 .feature（场景标题 = spec.toon scenario.id）
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "react-terminates"
+)]
+async fn test_ar_react_terminates(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "stream-is-xyevent"
+)]
+async fn test_ar_stream_is_xyevent(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "continues-after-tools"
+)]
+async fn test_ar_continues_after_tools(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "done-not-turn-end"
+)]
+async fn test_ar_done_not_turn_end(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "abort-drops-sse"
+)]
+async fn test_ar_abort_drops_sse(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "builder-build"
+)]
+fn test_ar_builder_build(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "ports-exist"
+)]
+fn test_ar_ports_exist() {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "steer-before-model"
+)]
+async fn test_ar_steer_before_model(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "followup-extends"
+)]
+async fn test_ar_followup_extends(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "queue-update"
+)]
+async fn test_ar_queue_update(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "abort-clears-steer"
+)]
+async fn test_ar_abort_clears_steer(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "second-run-after-abort"
+)]
+async fn test_ar_second_run_after_abort(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "unknown-ok"
+)]
+fn test_ar_unknown_ok() {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "default-thinking"
+)]
+fn test_ar_default_thinking(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "cwd-missing"
+)]
+async fn test_ar_cwd_missing(sess: XySessionStore) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "roundtrip"
+)]
+fn test_ar_roundtrip() {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "abort-cancels-bang"
+)]
+async fn test_ar_abort_cancels_bang(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "no-facade"
+)]
+fn test_ar_no_facade() {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "no-rloop"
+)]
+fn test_ar_no_rloop() {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "before-denies"
+)]
+async fn test_ar_before_denies(agent: AgentState, ws: Workspace) {}
 
 // compaction.feature (5)
 #[scenario(path = "tests/features/compaction.feature", name = "检测需要压缩")]

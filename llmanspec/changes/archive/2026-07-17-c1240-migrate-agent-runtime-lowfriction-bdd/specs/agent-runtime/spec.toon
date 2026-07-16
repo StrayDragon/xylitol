@@ -1,0 +1,12 @@
+kind: llman.sdd.delta
+ops[4]{op,req_id,title,statement}:
+  modify_requirement,ar3,工具批后继续,"同一模型响应中的全部工具调用 MUST 在下一轮模型调用前执行完毕（可并行或串行）；MUST NOT 因流结束 Done 而提前结束含 tool_calls 的回合。该行为 MUST 有可执行 BDD 场景（solidify 链路，feature:true）。"
+  modify_requirement,ar4,builder-ports,"Agent 装配 MUST 经 AgentBuilder，依赖 runtime_protocol 端口与纯数据；app 组合根注入具体 infra 实现。该装配入口 MUST 有可执行 BDD 场景（solidify 链路，feature:true）。"
+  modify_requirement,ar5,sessionstore-eventsink,"runtime_protocol MUST 提供 SessionStore 与 EventSink；SessionManager / EventBus 为实现。该端口存在性 MUST 有可执行 BDD 场景（solidify 链路，feature:true）。"
+  modify_requirement,ar12,abort-cancels-provider-stream,"模型流进行中 abort MUST 停止 poll 并 drop provider stream，以 aborted 结束；应用面 MUST 经 Driver::abort。该行为 MUST 有可执行 BDD 场景（solidify 链路，feature:true）。"
+op_scenarios[5]{req_id,id,given,when,then,feature}:
+  ar3,"continues-after-tools",mock 模型先 tool 后无 tool,运行 AgentRuntime,turn_end 事件包含 toolResult,true
+  ar3,"done-not-turn-end",mock 模型先 tool 后无 tool,运行 AgentRuntime,turn_end 事件包含 toolResult,true
+  ar12,"abort-drops-sse",已装配慢速流式 mock 模型,经 Driver 启动会话并在首个 TextDelta 后 abort,事件流包含 aborted 错误,true
+  ar4,"builder-build",AgentBuilder 已装配依赖,build,得到 AgentRuntime,true
+  ar5,"ports-exist",检查 runtime_protocol 端口,"SessionStore 与 EventSink",trait 存在且可被实现,true
