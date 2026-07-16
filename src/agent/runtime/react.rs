@@ -171,13 +171,39 @@ impl AgentRuntime {
 
     /// Run a turn with an auto-generated session_id.
     pub async fn run(&mut self, prompt: &str) -> XyEventStream {
-        self.run_with_id(prompt, &uuid::Uuid::new_v4().to_string())
+        self.run_parts_with_id(
+            vec![crate::domain::message::AgentPart::text(prompt)],
+            &uuid::Uuid::new_v4().to_string(),
+        )
+        .await
+    }
+
+    /// Run a multi-part user turn (text + images, c1155).
+    pub async fn run_parts(
+        &mut self,
+        parts: Vec<crate::domain::message::AgentPart>,
+    ) -> XyEventStream {
+        self.run_parts_with_id(parts, &uuid::Uuid::new_v4().to_string())
             .await
     }
 
     /// Run a turn with an explicit session_id.
     #[allow(clippy::type_complexity)]
     pub async fn run_with_id(&mut self, prompt: &str, session_id: &str) -> XyEventStream {
+        self.run_parts_with_id(
+            vec![crate::domain::message::AgentPart::text(prompt)],
+            session_id,
+        )
+        .await
+    }
+
+    /// Run a multi-part user turn with an explicit session_id (c1155).
+    #[allow(clippy::type_complexity)]
+    pub async fn run_parts_with_id(
+        &mut self,
+        parts: Vec<crate::domain::message::AgentPart>,
+        session_id: &str,
+    ) -> XyEventStream {
         // Build permission check callback from session
         let permission_check: Option<
             std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>,
@@ -231,7 +257,7 @@ impl AgentRuntime {
         let hooks = self.inner.hooks().clone();
         let hook_bus = self.inner.hook_bus();
         let tool_mode = self.inner.tool_mode();
-        let prompt = prompt.to_string();
+        let user_parts = parts;
 
         // Build tool schemas
         let tool_schemas: Vec<XyToolSchema> = tools
@@ -272,7 +298,7 @@ impl AgentRuntime {
             tool_schemas,
             system_prompt,
             max_iterations: max_iterations as usize,
-            user_prompt: prompt,
+            user_parts,
             cancel,
             permission_check,
             hooks,
@@ -325,7 +351,7 @@ struct ReActConfig {
     tool_schemas: Vec<XyToolSchema>,
     system_prompt: Option<String>,
     max_iterations: usize,
-    user_prompt: String,
+    user_parts: Vec<crate::domain::message::AgentPart>,
     cancel: CancellationToken,
     /// Optional permission check. Called with (tool_name, target_path_or_domain).
     /// Returns Some(reason) if the operation is denied.
@@ -391,7 +417,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         tool_schemas,
         system_prompt,
         max_iterations,
-        user_prompt,
+        user_parts,
         cancel,
         permission_check,
         hooks,
@@ -419,8 +445,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             history.push(AgentMessage::user(sp.clone()));
         }
 
-        // Add user message
-        history.push(AgentMessage::user(user_prompt.clone()));
+        // Add user message (text and/or images, c1155).
+        history.push(AgentMessage::user_parts(user_parts));
         persist_agent_message(&store, &session_id, history.last().expect("user message")).await;
 
         let retry_state = RetryState::new(3, 1000);
@@ -743,29 +769,42 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
 
                     let mut result = match tool {
-                        Some(t) => match t.execute(&ctx, tool_args.clone()).await {
-                            Ok(output) => (serde_json::Value::String(output), false),
+                        Some(t) => match t.execute_as_parts(&ctx, tool_args.clone()).await {
+                            Ok(parts) => (parts, false),
                             Err(e) => {
                                 let err = format!("Tool '{name}' error: {e}");
                                 yield XyEvent::Error(err.clone());
-                                (serde_json::Value::String(err), true)
+                                (vec![AgentPart::text(err)], true)
                             }
                         },
                         None => {
                             let err = format!("Unknown tool: {name}");
                             yield XyEvent::Error(err.clone());
-                            (serde_json::Value::String(err), true)
+                            (vec![AgentPart::text(err)], true)
                         }
                     };
 
                     if !hooks.after_tool_call.is_empty() {
+                        // Hooks still see a string/JSON value (text preview); Image parts are
+                        // preserved unless the hook replaces the whole result with text.
+                        let mut hook_value = serde_json::Value::String(parts_preview_text(&result.0));
+                        let mut hook_err = result.1;
                         for hook in &hooks.after_tool_call {
                             if let Some((new_value, new_is_error)) =
-                                hook(name, id, result.0.clone(), result.1)
+                                hook(name, id, hook_value.clone(), hook_err)
                             {
-                                result = (new_value, new_is_error);
+                                hook_value = new_value;
+                                hook_err = new_is_error;
+                                result = (
+                                    vec![AgentPart::text(match hook_value {
+                                        serde_json::Value::String(ref s) => s.clone(),
+                                        ref other => other.to_string(),
+                                    })],
+                                    hook_err,
+                                );
                             }
                         }
+                        result.1 = hook_err;
                     }
                     if let Some(bus) = &hook_bus
                         && let XyHookOutcome::Modified { args: modified } = bus
@@ -774,24 +813,25 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 "post",
                                 serde_json::json!({
                                     "tool": name,
-                                    "result": result.0,
+                                    "result": parts_preview_text(&result.0),
                                     "is_error": result.1,
                                 }),
                             )
                             .await
                     {
                         if let Some(val) = modified.get("result") {
-                            result.0 = val.clone();
+                            let text = match val {
+                                serde_json::Value::String(s) => s.clone(),
+                                other => other.to_string(),
+                            };
+                            result.0 = vec![AgentPart::text(text)];
                         }
                         if let Some(err) = modified.get("is_error").and_then(|v| v.as_bool()) {
                             result.1 = err;
                         }
                     }
 
-                    let result_text = match result.0 {
-                        serde_json::Value::String(s) => s,
-                        other => other.to_string(),
-                    };
+                    let result_text = parts_preview_text(&result.0);
 
                     yield XyEvent::ToolExecutionEnd {
                         id: id.clone(),
@@ -803,7 +843,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     history.push(AgentMessage::tool_result(
                         id.clone(),
                         name.clone(),
-                        vec![AgentPart::text(result_text.clone())],
+                        result.0,
                         result.1,
                     ));
                     persist_agent_message(
@@ -859,6 +899,20 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         }
         yield XyEvent::AgentEnd { messages: history };
     }
+}
+
+/// UI / event preview for tool results — text notes only; never dump image base64.
+fn parts_preview_text(parts: &[AgentPart]) -> String {
+    let mut out = Vec::new();
+    for part in parts {
+        match part {
+            AgentPart::Text { text } => out.push(text.clone()),
+            AgentPart::Image(_) => out.push("[image]".into()),
+            AgentPart::Thinking { thinking, .. } => out.push(thinking.clone()),
+            AgentPart::ToolCall { name, .. } => out.push(format!("[toolCall:{name}]")),
+        }
+    }
+    out.join("\n")
 }
 
 async fn observe_script_hook(

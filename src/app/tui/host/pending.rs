@@ -15,6 +15,8 @@ pub struct PendingOps {
     pub bash: Option<PendingBash>,
     /// Refresh footer token estimate via Driver (c1035: turn end / stream close).
     pub footer_token_refresh: bool,
+    /// Stage clipboard image into editor as tempfile path (c1155).
+    pub paste_image: bool,
 }
 
 impl PendingOps {
@@ -41,5 +43,8 @@ impl PendingOps {
     }
     pub fn take_footer_token_refresh(&mut self) -> bool {
         std::mem::take(&mut self.footer_token_refresh)
+    }
+    pub fn take_paste_image(&mut self) -> bool {
+        std::mem::take(&mut self.paste_image)
     }
 }

@@ -10,7 +10,7 @@ mod image;
 mod native;
 pub(crate) mod osc52;
 
-pub use image::{ClipboardImage, read_clipboard_image};
+pub use image::{ClipboardImage, read_clipboard_image, write_clipboard_image_temp};
 pub use native::{
     ClipboardPlan, apply_clipboard_plan_stdout, copy_to_clipboard, copy_to_clipboard_async,
     plan_clipboard_copy, plan_clipboard_copy_async,

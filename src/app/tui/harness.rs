@@ -84,6 +84,12 @@ pub struct ScriptedDriver {
     thinking_level: ThinkingLevel,
     /// Support list for cycle (default STANDARD; tests may narrow e.g. `[Off, High]`).
     thinking_levels: Vec<ThinkingLevel>,
+    /// Injectable clipboard image bytes for paste staging (c1155); `None` = no image.
+    clipboard_image: Mutex<Option<(Vec<u8>, String)>>,
+    /// Paths written by [`Driver::stage_clipboard_image`].
+    staged_paste_paths: Mutex<Vec<String>>,
+    /// Force `stage_clipboard_image` to Err.
+    clipboard_image_error: Mutex<Option<String>>,
 }
 
 impl ScriptedDriver {
@@ -176,7 +182,30 @@ impl ScriptedDriver {
             loaded_resources: Mutex::new(LoadedResourcesSnapshot::default()),
             thinking_level: ThinkingLevel::Off,
             thinking_levels: ThinkingLevel::STANDARD.to_vec(),
+            clipboard_image: Mutex::new(None),
+            staged_paste_paths: Mutex::new(Vec::new()),
+            clipboard_image_error: Mutex::new(None),
         }
+    }
+
+    /// Queue a fake clipboard image for the next [`Driver::stage_clipboard_image`] (c1155).
+    pub fn set_clipboard_image(&self, bytes: Vec<u8>, mime: impl Into<String>) {
+        *self.clipboard_image.lock().expect("clipboard_image") = Some((bytes, mime.into()));
+    }
+
+    /// Next stage call returns this error.
+    pub fn set_clipboard_image_error(&self, err: impl Into<String>) {
+        *self
+            .clipboard_image_error
+            .lock()
+            .expect("clipboard_image_error") = Some(err.into());
+    }
+
+    pub fn staged_paste_paths(&self) -> Vec<String> {
+        self.staged_paste_paths
+            .lock()
+            .expect("staged_paste_paths")
+            .clone()
     }
 
     /// Replace the thinking support list used by [`Driver::cycle_thinking_level`].
@@ -811,6 +840,35 @@ impl Driver for ScriptedDriver {
             .expect("copy_pending_osc52")
             .take();
         Ok(crate::app::core::driver::ClipboardCopyOutcome { pending_osc52 })
+    }
+
+    async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, String> {
+        if let Some(err) = self
+            .clipboard_image_error
+            .lock()
+            .expect("clipboard_image_error")
+            .take()
+        {
+            return Err(err);
+        }
+        let Some((bytes, mime)) = self.clipboard_image.lock().expect("clipboard_image").take()
+        else {
+            return Ok(None);
+        };
+        let ext = match mime.as_str() {
+            "image/jpeg" | "image/jpg" => "jpg",
+            "image/webp" => "webp",
+            "image/gif" => "gif",
+            _ => "png",
+        };
+        let path =
+            std::env::temp_dir().join(format!("xylitol-paste-{}.{}", uuid::Uuid::new_v4(), ext));
+        std::fs::write(&path, &bytes).map_err(|e| format!("write paste image failed: {e}"))?;
+        self.staged_paste_paths
+            .lock()
+            .expect("staged_paste_paths")
+            .push(path.display().to_string());
+        Ok(Some(path))
     }
 }
 

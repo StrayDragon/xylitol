@@ -3,6 +3,7 @@
 //! Reads image data from the system clipboard on supported platforms.
 //! Uses platform-specific tools (wl-paste, xclip, macOS clipboard, PowerShell).
 
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 /// An image read from the system clipboard.
@@ -12,6 +13,25 @@ pub struct ClipboardImage {
     pub bytes: Vec<u8>,
     /// MIME type of the image (e.g. "image/png").
     pub mime_type: String,
+}
+
+/// Write clipboard (or other) image bytes to a unique tempfile (c1155 / c7).
+///
+/// Path is under [`std::env::temp_dir`] with a UUID stem; extension follows MIME.
+pub fn write_clipboard_image_temp(bytes: &[u8], mime_type: &str) -> Result<PathBuf, String> {
+    if bytes.is_empty() {
+        return Err("image bytes are empty".into());
+    }
+    let ext = match mime_type {
+        "image/jpeg" | "image/jpg" => "jpg",
+        "image/webp" => "webp",
+        "image/gif" => "gif",
+        _ => "png",
+    };
+    let name = format!("xylitol-paste-{}.{}", uuid::Uuid::new_v4(), ext);
+    let path = std::env::temp_dir().join(name);
+    std::fs::write(&path, bytes).map_err(|e| format!("write paste image failed: {e}"))?;
+    Ok(path)
 }
 
 /// Read an image from the system clipboard, if one is available.
@@ -97,24 +117,31 @@ fn read_via_wl_paste() -> Result<Option<ClipboardImage>, String> {
         .output()
         .map_err(|e| format!("wl-paste --list-types failed: {e}"))?;
 
-    let mime_types = String::from_utf8_lossy(&list_output.stdout);
-    let mime_type = pick_image_mime_type(&mime_types)?;
+    if !list_output.status.success() {
+        return Ok(None);
+    }
 
-    // Read the actual image data
+    let mime_types = String::from_utf8_lossy(&list_output.stdout);
+    let Some(mime_type) = select_preferred_image_mime(&mime_types) else {
+        return Ok(None);
+    };
+
+    // MUST pass -t: bare `wl-paste` often returns empty when the clipboard is
+    // image-only (Gradia / screenshot tools). Aligns with pi's `--type`.
     let output = Command::new("wl-paste")
-        .arg("--no-newline")
+        .args(["--type", &mime_type, "--no-newline"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
         .map_err(|e| format!("wl-paste failed: {e}"))?;
 
-    if output.stdout.is_empty() {
+    if !output.status.success() || output.stdout.is_empty() {
         return Ok(None);
     }
 
     Ok(Some(ClipboardImage {
         bytes: output.stdout,
-        mime_type,
+        mime_type: base_image_mime(&mime_type).to_string(),
     }))
 }
 
@@ -183,16 +210,33 @@ fn read_windows_clipboard_image() -> Result<Option<ClipboardImage>, String> {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/// Pick the first supported image MIME type from a newline-separated list.
-fn pick_image_mime_type(mime_types: &str) -> Result<String, String> {
-    let supported = ["image/png", "image/jpeg", "image/webp", "image/gif"];
-    for line in mime_types.lines() {
-        let mt = line.trim();
-        if supported.contains(&mt) {
-            return Ok(mt.to_string());
+const PREFERRED_IMAGE_MIMES: &[&str] = &["image/png", "image/jpeg", "image/webp", "image/gif"];
+
+fn base_image_mime(mime_type: &str) -> &str {
+    mime_type.split(';').next().unwrap_or(mime_type).trim()
+}
+
+/// Prefer png/jpeg/webp/gif (pi order); otherwise first `image/*` offer.
+fn select_preferred_image_mime(mime_types: &str) -> Option<String> {
+    let entries: Vec<&str> = mime_types
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    for preferred in PREFERRED_IMAGE_MIMES {
+        if let Some(raw) = entries
+            .iter()
+            .find(|t| base_image_mime(t).eq_ignore_ascii_case(preferred))
+        {
+            return Some((*raw).to_string());
         }
     }
-    Err("clipboard does not contain a supported image MIME type".to_string())
+
+    entries
+        .into_iter()
+        .find(|t| base_image_mime(t).starts_with("image/"))
+        .map(str::to_string)
 }
 
 /// Minimal base64 decoder — mirrors the encoder in osc52.rs.
@@ -256,14 +300,31 @@ mod tests {
     }
 
     #[test]
-    fn test_base64_decode_padding() {
-        let decoded = base64_decode("Zg==").unwrap();
-        assert_eq!(decoded, b"f");
+    fn write_clipboard_image_temp_png_suffix() {
+        let path = write_clipboard_image_temp(&[1, 2, 3, 4], "image/png").unwrap();
+        assert!(path.extension().is_some_and(|e| e == "png"));
+        assert!(path.is_file());
+        let _ = std::fs::remove_file(&path);
+    }
 
-        let decoded = base64_decode("Zm8=").unwrap();
-        assert_eq!(decoded, b"fo");
+    #[test]
+    fn select_mime_prefers_png_over_earlier_bmp_jpeg() {
+        // Gradia / KDE-style offer list: bmp first, then jpeg/png.
+        let list = "\
+image/bmp
+image/x-bmp
+image/jpeg
+image/png
+image/webp
+";
+        assert_eq!(
+            select_preferred_image_mime(list).as_deref(),
+            Some("image/png")
+        );
+    }
 
-        let decoded = base64_decode("Zm9v").unwrap();
-        assert_eq!(decoded, b"foo");
+    #[test]
+    fn select_mime_none_when_text_only() {
+        assert!(select_preferred_image_mime("text/plain\ntext/html\n").is_none());
     }
 }

@@ -407,7 +407,12 @@ impl AgentCapabilities {
 
     /// Enqueue a steering message (injected before the next model round).
     pub fn steer(&self, message: impl Into<String>) {
-        let msg = AgentMessage::user(message);
+        self.steer_parts(vec![crate::domain::message::AgentPart::text(message)]);
+    }
+
+    /// Enqueue a multi-part steering message (c1155).
+    pub fn steer_parts(&self, parts: Vec<crate::domain::message::AgentPart>) {
+        let msg = AgentMessage::user_parts(parts);
         self.queues
             .steer
             .lock()
@@ -418,7 +423,12 @@ impl AgentCapabilities {
 
     /// Enqueue a follow-up message (injected when the run would otherwise stop).
     pub fn follow_up(&self, message: impl Into<String>) {
-        let msg = AgentMessage::user(message);
+        self.follow_up_parts(vec![crate::domain::message::AgentPart::text(message)]);
+    }
+
+    /// Enqueue a multi-part follow-up message (c1155).
+    pub fn follow_up_parts(&self, parts: Vec<crate::domain::message::AgentPart>) {
+        let msg = AgentMessage::user_parts(parts);
         self.queues
             .follow_up
             .lock()
