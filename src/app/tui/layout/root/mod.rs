@@ -29,6 +29,7 @@ use super::slash_catalog::product_slash_commands_for_editor;
 use super::session_tree::FilterMode;
 use super::slots::EditorSlot;
 use super::theme::LayoutTheme;
+use crate::app::core::driver::LoadedResourcesSnapshot;
 use crate::app::tui::bridge::UiModel;
 use crate::app::tui::session_resume::SessionResumePanel;
 use crate::app::tui::widgets::{
@@ -100,8 +101,10 @@ pub enum ImportConfirmDecision {
     Rejected,
 }
 
-/// Root UI: live scrollback + optional status + bordered editor|tree + footer.
+/// Root UI: loaded-resources + live scrollback + optional status + bordered editor|tree + footer.
 pub struct UiRoot {
+    /// Brand ASCII + Skills/MCP above scrollback (c1135).
+    loaded_resources: LoadedResourcesSnapshot,
     ui_model: UiModel,
     fold: ScrollbackFold,
     /// Busy-only; idle leaves this unused so status occupies 0 rows.
@@ -187,6 +190,7 @@ impl UiRoot {
         );
         editor.set_focused(true);
         let mut root = Self {
+            loaded_resources: LoadedResourcesSnapshot::default(),
             ui_model: UiModel::new(),
             fold: ScrollbackFold::default(),
             status_loader,
@@ -308,6 +312,11 @@ impl UiRoot {
     pub fn set_dollar_skill_catalog(&mut self, catalog: Vec<(String, String)>) {
         self.dollar_skill_catalog = catalog;
         self.install_completion_sources();
+    }
+
+    /// Replace the loaded-resources header snapshot (c1135).
+    pub fn set_loaded_resources(&mut self, snap: LoadedResourcesSnapshot) {
+        self.loaded_resources = snap;
     }
 
     /// Inject footer identity (cwd · model). Call before first render when known.
@@ -714,6 +723,7 @@ impl Default for UiRoot {
 impl Component for UiRoot {
     fn render(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
+        lines.extend(self.render_loaded_resources_slot(width));
         lines.extend(self.render_scrollback_slot(width));
         // Queue strip sits between transcript and status (pi morphology).
         lines.extend(self.render_queue_slot(width));

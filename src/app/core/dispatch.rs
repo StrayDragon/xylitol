@@ -487,6 +487,12 @@ mod tests {
         async fn delete_session(&mut self, _session_id: &str) -> Result<(), String> {
             Err("stub: delete_session not implemented".into())
         }
+
+        async fn loaded_resources_snapshot(
+            &self,
+        ) -> crate::app::core::driver::LoadedResourcesSnapshot {
+            crate::app::core::driver::LoadedResourcesSnapshot::default()
+        }
     }
 
     fn stub() -> StubDriver {

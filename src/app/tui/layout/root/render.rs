@@ -8,6 +8,17 @@ use super::UiRoot;
 use crate::app::tui::widgets::{render_queue_strip, render_scrollback};
 
 impl UiRoot {
+    /// Codex-style startup card (brand + skills/MCP) above scrollback (c1135).
+    pub(super) fn render_loaded_resources_slot(&mut self, width: usize) -> Vec<String> {
+        crate::app::tui::widgets::render_loaded_resources(
+            self.theme,
+            &self.loaded_resources,
+            &self.cwd,
+            &self.model,
+            width,
+        )
+    }
+
     pub(super) fn render_queue_slot(&mut self, width: usize) -> Vec<String> {
         render_queue_strip(
             self.theme,

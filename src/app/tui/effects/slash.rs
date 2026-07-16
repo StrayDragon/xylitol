@@ -54,6 +54,7 @@ async fn handle_reload<T: Terminal>(session: &mut HostSession<T>, driver: &mut d
     }
 
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
+    session.refresh_loaded_resources(driver).await;
     session.push_system_note(lines.join("\n"));
 }
 

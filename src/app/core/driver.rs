@@ -110,6 +110,30 @@ impl RuntimeReloadReport {
     }
 }
 
+/// Read-only skills + MCP summary for the product TUI loaded-resources slot (c1135).
+///
+/// MUST NOT carry secrets or env values — only server ids, tool counts, and short
+/// failure lines safe for dim header display.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LoadedResourcesSnapshot {
+    pub skill_names: Vec<String>,
+    /// `(server_id, tool_count)` for successfully connected MCP servers.
+    pub mcp_connected: Vec<(String, usize)>,
+    pub mcp_configured: usize,
+    /// Short failure lines (`server: message`); no secrets.
+    pub mcp_diag_short: Vec<String>,
+}
+
+impl LoadedResourcesSnapshot {
+    /// Whether skills or MCP sections would render (brand line is separate).
+    pub fn has_resource_rows(&self) -> bool {
+        !self.skill_names.is_empty()
+            || self.mcp_configured > 0
+            || !self.mcp_connected.is_empty()
+            || !self.mcp_diag_short.is_empty()
+    }
+}
+
 /// Re-export so Driver implementors under surfaces can name the return type
 /// without importing `crate::agent::session` directly (which arch_guard
 /// forbids for tui/). Surfaces reference this as
@@ -394,6 +418,12 @@ pub trait Driver: Send {
     fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
         Vec::new()
     }
+
+    /// Skills + MCP summary for the product TUI loaded-resources slot (c1135).
+    ///
+    /// In-process reads Trust-filtered skill names and MCP connected/diagnostics.
+    /// Remote / stub drivers return empty (no default body — `dyn Driver` + Sync).
+    async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot;
 
     /// Hot-reload skills, MCP, and prompt context (c1120).
     ///
@@ -1001,6 +1031,30 @@ impl Driver for InProcessDriver {
 
     fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
         self.skill_catalog_pairs()
+    }
+
+    async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
+        let skill_names = self.loaded_skill_names();
+        let Some(state) = self.reload.as_ref() else {
+            return LoadedResourcesSnapshot {
+                skill_names,
+                ..LoadedResourcesSnapshot::default()
+            };
+        };
+        let connected = state.mcp.connected_servers().await;
+        let diags = state.mcp.diagnostics().await;
+        LoadedResourcesSnapshot {
+            skill_names,
+            mcp_connected: connected
+                .into_iter()
+                .map(|s| (s.id, s.tool_count))
+                .collect(),
+            mcp_configured: state.mcp_servers.len(),
+            mcp_diag_short: diags
+                .into_iter()
+                .map(|d| format!("{}: {}", d.server, d.message))
+                .collect(),
+        }
     }
 
     async fn reload_runtime(&mut self) -> Result<RuntimeReloadReport, String> {
@@ -1858,6 +1912,10 @@ impl Driver for RemoteDriver {
 
     async fn delete_session(&mut self, _session_id: &str) -> Result<(), String> {
         Err("remote: delete_session not implemented".into())
+    }
+
+    async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
+        LoadedResourcesSnapshot::default()
     }
 }
 

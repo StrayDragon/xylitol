@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-chrome"
 purpose: 主题 token、glyph、status 与 footer 等 layout 壳（历史 capability 名 chrome）。
 valid_scope[1]: src/app/tui/
-requirements[18]{req_id,title,statement}:
+requirements[19]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   atc1,"idle-status-omitted",产品 UiRoot 空闲时 status 槽 MUST 渲染 0 行；忙碌时 MUST 至多独立 1 行短状态；MUST NOT 将 Working 等忙碌文案并入 footer。
   atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本；字段序为 cwd · model · thinking 标签（形如 `cwd · model · • thinking off` 或 `· • xhigh`，level 文案为 ThinkingLevel::as_str，off 时用 `thinking off`）；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api/RemoteCount/LocalTokenizer 为 used N tokens，Heuristic 为 used ~N tokens，Unknown 为 used ? tokens）；队列非空时可加 `q:sN|fM ·` 前缀；无估计数据时 MUST NOT 伪造 used 0；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。"
@@ -21,7 +21,8 @@ requirements[18]{req_id,title,statement}:
   atc15,主题热应用,产品 TUI MUST 能按主题名（至少内建 dark/light）将 Palette 应用到 LayoutTheme/UiRoot；未知或非法名 MUST 保留旧主题并报告诊断；重载 MUST NOT 清空 transcript。
   atc16,"theme-slash-slot","产品 /theme 无参 MUST 使用独立 editor 槽（Themes SelectList，对齐 Models 槽模式）挂载内建主题项；选中 MUST 调用已有主题热应用路径（atc15）并关闭槽；Esc MUST 关闭槽且 MUST NOT 改主题；MUST NOT 解冻 Plate/Settings/Choice 活板；MUST NOT 将 theme auto 或 demo Ctrl+P theme-toggle 设为产品默认。"
   atc17,"thinking-border-and-footer",产品 TUI MUST 将当前 Driver thinking level 映射为 ThinkingBorderLevel 并经 apply_thinking_border（或等价）染色 Editor 操作区边框；footer MUST 同步显示对应 level 标签（见 atc2）；主题切换后 MUST 按新 Palette 重涂 thinking 边框；bash 强调色边框（ati15）开启时 MUST 覆盖 thinking 边框，退出 bash 前缀后 MUST 恢复当前 thinking 边框而非仅 muted。
-scenarios[31]{req_id,id,given,when,then}:
+  atc18,"loaded-resources-slot","产品 UiRoot MUST 在 scrollback 上方渲染 loaded-resources 槽：Codex 风边框卡片（>_ xylitol + model/directory；有 skills 时 skill-ref 色 skills 行并换行全量；有 MCP 时 success 色 mcp 行）；MUST NOT 展示木糖醇中文标签；MUST NOT 渲染 ASCII logo 艺术字；MUST NOT 用省略号截断资源名；MUST NOT 列出 prompt templates；MUST NOT 展示密钥或完整 env。"
+scenarios[35]{req_id,id,given,when,then}:
   meta0,"shell-present","","列出 llmanspec/specs/app-tui-chrome",spec.toon 存在且 purpose 为中文
   atc1,"idle-status-zero-rows","",空闲 UiRoot apply_ui_model 后 render,无独立 Working 行且 status 槽占 0 行
   atc1,"busy-status-not-in-footer","",busy 且 status=Working 时 render,存在独立 status 文案且 footer 不含 Working
@@ -53,3 +54,7 @@ scenarios[31]{req_id,id,given,when,then}:
   atc16,"no-auto-default",产品 host 默认构造,观察主题探测状态,未启用 theme auto
   atc17,"border-follows-level",thinking level 为 high 且非 bash 前缀,sync_editor_border 或等价,Editor 边框色为 Palette thinking_border 对应 high
   atc17,"bash-overrides-then-restore",thinking level 为 medium,编辑器文本改为 !ls 再改回 hello,先为 bash 强调色，再恢复 medium thinking 边框
+  atc18,"brand-line","",渲染 UiRoot,顶部卡片含 xylitol 且不含木糖醇与 ASCII logo
+  atc18,"skills-all-visible",已加载多个长 skill 名,窄宽渲染,所有 skill 名可见且无省略号
+  atc18,"skills-above-scrollback",已加载 skills demo,渲染 UiRoot,Skills 出现在 scrollback 之前
+  atc18,"no-prompts",有 skills,审查文案,不含 Prompts 或 prompt template 清单
