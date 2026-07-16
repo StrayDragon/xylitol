@@ -1,12 +1,19 @@
-//! Platform-native clipboard tool wrappers.
+//! Platform-native clipboard tool wrappers (aligned with pi `clipboard.ts`).
 //!
-//! Each platform has its own clipboard utility (pbcopy, clip, wl-copy, xclip, …).
-//! These functions dispatch to the appropriate tool based on the current OS and
-//! desktop environment, falling back through the chain on failure.
+//! Strategy (pi order):
+//! 1. Platform tools — pbcopy / clip / termux / wl-copy (spawn+unref) / xclip / xsel
+//! 2. OSC 52 when remote **or** native failed
+//!
+//! Hard rules for TUI safety:
+//! - Never probe tools by executing them with inherited stdin (`xclip`/`wl-copy` block).
+//! - Never `wait()` a daemonized `wl-copy` — Rust `Child::drop` waits; use `forget` (pi `unref`).
+//! - Bound waits for sync pipe tools (pi `timeout: 5000`).
+//! - Never emit OSC 52 from a blocking-pool worker while the product TUI owns
+//!   stdout — return a deferred sequence for the host thread (`Terminal::write`).
 
 use std::process::{Command, Stdio};
 
-use super::osc52::{emit_osc52, is_remote_session};
+use super::osc52::{format_osc52, is_remote_session, write_osc52_stdout};
 
 /// Result of a clipboard copy attempt.
 #[derive(Debug, Clone, PartialEq)]
@@ -19,37 +26,93 @@ pub enum ClipboardResult {
     Failed(String),
 }
 
-/// Copy text to the system clipboard using platform-native tools or OSC 52.
+/// Planned clipboard copy: native attempt + optional OSC 52 (not yet written).
 ///
-/// Strategy (in order):
-/// 1. Platform-native tool (pbcopy / clip / wl-copy / xclip / termux-clipboard-set)
-/// 2. OSC 52 fallback for remote sessions or when native tools fail
-pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
-    // ── Step 1: Try platform-native tools ──────────────────────────
-    let native_result = try_native_copy(text);
+/// TUI hosts apply [`ClipboardPlan::osc52_sequence`] via `Terminal` on the UI
+/// thread; CLI paths use [`apply_clipboard_plan_stdout`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipboardPlan {
+    pub native_copied: bool,
+    /// Policy wants OSC 52 (remote session or native miss), per pi.
+    pub want_osc52: bool,
+    /// Preformatted OSC 52 when `want_osc52` and payload fits the size limit.
+    pub osc52_sequence: Option<String>,
+}
 
-    match &native_result {
-        ClipboardResult::Copied => return Ok(()),
-        ClipboardResult::Unsupported => { /* fall through to OSC 52 */ }
-        ClipboardResult::Failed(_e) => { /* fall through to OSC 52 */ }
+impl ClipboardPlan {
+    /// True when native succeeded and/or a writable OSC 52 sequence is ready.
+    pub fn will_succeed(&self) -> bool {
+        self.native_copied || self.osc52_sequence.is_some()
     }
 
-    // ── Step 2: OSC 52 fallback ────────────────────────────────────
-    if is_remote_session() || native_result == ClipboardResult::Unsupported {
-        match emit_osc52(text) {
-            Ok(true) => return Ok(()),
-            Ok(false) => {
-                return Err("Clipboard: text exceeds OSC 52 size limit (100KB encoded) \
-                     and no native tool available"
-                    .to_string());
-            }
-            Err(e) => {
-                return Err(format!("Clipboard: OSC 52 write failed: {e}"));
-            }
+    /// Error string when [`Self::will_succeed`] is false.
+    pub fn failure_message(&self) -> String {
+        if self.want_osc52 && self.osc52_sequence.is_none() && !self.native_copied {
+            "Clipboard: text exceeds OSC 52 size limit (100KB encoded) \
+             and no native tool available"
+                .into()
+        } else {
+            "Clipboard: no clipboard method available on this platform".into()
         }
     }
+}
 
-    Err("Clipboard: no clipboard method available on this platform".to_string())
+/// Plan a copy: try native tools; format OSC 52 when policy requires it.
+///
+/// Does **not** write to stdout — safe to call from `spawn_blocking`.
+pub fn plan_clipboard_copy(text: &str) -> ClipboardPlan {
+    let native_copied = matches!(try_native_copy(text), ClipboardResult::Copied);
+    let remote = is_remote_session();
+    // pi: OSC 52 when remote OR native did not copy.
+    let want_osc52 = remote || !native_copied;
+    let osc52_sequence = if want_osc52 { format_osc52(text) } else { None };
+    ClipboardPlan {
+        native_copied,
+        want_osc52,
+        osc52_sequence,
+    }
+}
+
+/// Apply a plan by writing any OSC 52 sequence to stdout (CLI / non-TUI).
+pub fn apply_clipboard_plan_stdout(plan: ClipboardPlan) -> Result<(), String> {
+    if let Some(ref seq) = plan.osc52_sequence {
+        match write_osc52_stdout(seq) {
+            Ok(()) => {}
+            Err(e) if !plan.native_copied => {
+                return Err(format!("Clipboard: OSC 52 write failed: {e}"));
+            }
+            Err(_) => {}
+        }
+    }
+    if plan.native_copied || plan.osc52_sequence.is_some() {
+        Ok(())
+    } else {
+        Err(plan.failure_message())
+    }
+}
+
+/// Copy text to the system clipboard using platform-native tools or OSC 52.
+///
+/// Prefer [`plan_clipboard_copy_async`] + host-side OSC 52 from product TUI.
+pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
+    apply_clipboard_plan_stdout(plan_clipboard_copy(text))
+}
+
+/// Async plan — native tools on Tokio's blocking pool; OSC 52 deferred.
+pub async fn plan_clipboard_copy_async(text: String) -> Result<ClipboardPlan, String> {
+    tokio::task::spawn_blocking(move || plan_clipboard_copy(&text))
+        .await
+        .map_err(|e| format!("Clipboard: join error: {e}"))
+}
+
+/// Async wrapper — runs [`copy_to_clipboard`] on Tokio's blocking pool.
+///
+/// CLI convenience. Product TUI must use [`plan_clipboard_copy_async`] so OSC 52
+/// is not written from the blocking pool.
+pub async fn copy_to_clipboard_async(text: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || copy_to_clipboard(&text))
+        .await
+        .map_err(|e| format!("Clipboard: join error: {e}"))?
 }
 
 /// Try platform-native clipboard tools.
@@ -93,26 +156,32 @@ fn copy_windows(_text: &str) -> ClipboardResult {
 
 #[cfg(target_os = "linux")]
 fn copy_linux(text: &str) -> ClipboardResult {
-    // Termux on Android
     if std::env::var("TERMUX_VERSION").is_ok() {
         return pipe_to_command("termux-clipboard-set", &[], text);
     }
 
-    // Wayland
-    let has_wayland = std::env::var("WAYLAND_DISPLAY").is_ok()
-        || std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland");
+    // Align with pi `isWaylandSession` + WAYLAND_DISPLAY gate.
+    let has_wayland_display = std::env::var_os("WAYLAND_DISPLAY").is_some();
+    let is_wayland = has_wayland_display
+        || std::env::var("XDG_SESSION_TYPE")
+            .map(|v| v.eq_ignore_ascii_case("wayland"))
+            .unwrap_or(false);
+    let has_x11 = std::env::var_os("DISPLAY").is_some();
 
-    if has_wayland && tool_exists("wl-copy") {
-        return spawn_detached("wl-copy", text);
+    // pi: Wayland first (spawn+unref); on tool/spawn failure fall through to X11.
+    if is_wayland && has_wayland_display && tool_on_path("wl-copy") {
+        match spawn_unref_pipe_command("wl-copy", &[], text) {
+            ClipboardResult::Copied => return ClipboardResult::Copied,
+            other if !has_x11 => return other,
+            _ => { /* fall through to xclip/xsel */ }
+        }
     }
 
-    // X11
-    let has_x11 = std::env::var("DISPLAY").is_ok();
     if has_x11 {
-        if tool_exists("xclip") {
+        if tool_on_path("xclip") {
             return pipe_to_command("xclip", &["-selection", "clipboard"], text);
         }
-        if tool_exists("xsel") {
+        if tool_on_path("xsel") {
             return pipe_to_command("xsel", &["--clipboard", "--input"], text);
         }
     }
@@ -127,17 +196,34 @@ fn copy_linux(_text: &str) -> ClipboardResult {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/// Check whether an executable is available on PATH.
-fn tool_exists(cmd: &str) -> bool {
-    Command::new(cmd)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+/// PATH presence check — never execute the tool (pi uses `which wl-copy`).
+fn tool_on_path(cmd: &str) -> bool {
+    let Ok(path) = std::env::var("PATH") else {
+        return false;
+    };
+    for dir in std::env::split_paths(&path) {
+        let candidate = dir.join(cmd);
+        if !candidate.is_file() {
+            continue;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = candidate.metadata()
+                && meta.permissions().mode() & 0o111 != 0
+            {
+                return true;
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            return true;
+        }
+    }
+    false
 }
 
-/// Pipe text to a command via stdin and wait for it to complete.
+/// Pipe text to a command via stdin; wait up to 5s (pi `timeout: 5000`).
 fn pipe_to_command(cmd: &str, args: &[&str], text: &str) -> ClipboardResult {
     use std::io::Write;
 
@@ -158,27 +244,39 @@ fn pipe_to_command(cmd: &str, args: &[&str], text: &str) -> ClipboardResult {
         .expect("stdin was requested")
         .write_all(text.as_bytes())
     {
+        let _ = child.kill();
         return ClipboardResult::Failed(e.to_string());
     }
 
-    match child.wait() {
-        Ok(status) if status.success() => ClipboardResult::Copied,
-        Ok(status) => ClipboardResult::Failed(format!("exit code {:?}", status.code())),
-        Err(e) => ClipboardResult::Failed(e.to_string()),
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(5_000);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => return ClipboardResult::Copied,
+            Ok(Some(status)) => {
+                return ClipboardResult::Failed(format!("exit code {:?}", status.code()));
+            }
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return ClipboardResult::Failed(format!("{cmd} timed out after 5s"));
+            }
+            Err(e) => return ClipboardResult::Failed(e.to_string()),
+        }
     }
 }
 
-/// Spawn a command asynchronously (detached stdin pipe).
+/// pi: `spawn`; stdin.write; stdin.end; proc.unref()` — do not wait.
 ///
-/// Used for wl-copy which daemonizes and would hang a synchronous wait. We
-/// poll for up to ~500ms; if the child is still alive by then, we treat it as
-/// daemonized (wl-copy holds the selection in the background by design) and
-/// report success without blocking forever.
-#[cfg(target_os = "linux")]
-fn spawn_detached(cmd: &str, text: &str) -> ClipboardResult {
+/// Rust `Child` Drop waits for the process; forgetting the handle is the unref
+/// equivalent so a daemonized wl-copy cannot freeze the TUI.
+fn spawn_unref_pipe_command(cmd: &str, args: &[&str], text: &str) -> ClipboardResult {
     use std::io::Write;
 
     let mut child = match Command::new(cmd)
+        .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -188,32 +286,24 @@ fn spawn_detached(cmd: &str, text: &str) -> ClipboardResult {
         Err(e) => return ClipboardResult::Failed(e.to_string()),
     };
 
-    // Write text and close stdin to let wl-copy proceed
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(text.as_bytes());
+    if let Some(mut stdin) = child.stdin.take()
+        && let Err(e) = stdin.write_all(text.as_bytes())
+    {
+        let _ = child.kill();
+        let _ = child.wait();
+        return ClipboardResult::Failed(e.to_string());
     }
+    // stdin Drop (above take) closes the pipe (pi `stdin.end()`).
 
-    // Poll briefly. wl-copy exits promptly on most systems after taking the
-    // selection; where it daemonizes (holding the selection), it stays alive
-    // until replaced — a blocking wait() would hang forever (the
-    // test_copy_to_clipboard_no_panic regression). Give it 500ms, then let go.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
-    loop {
-        match child.try_wait() {
-            Ok(Some(_status)) => break,
-            Ok(None) if std::time::Instant::now() < deadline => {
-                std::thread::sleep(std::time::Duration::from_millis(20));
-            }
-            Ok(None) => {
-                // Still running after the deadline — daemonized. Best-effort
-                // kill is wrong (would lose the selection); leave it be.
-                break;
-            }
-            Err(_e) => break,
+    match child.try_wait() {
+        Ok(Some(_)) => ClipboardResult::Copied,
+        Ok(None) => {
+            // Still alive — daemon holding selection. Forget = unref.
+            std::mem::forget(child);
+            ClipboardResult::Copied
         }
+        Err(e) => ClipboardResult::Failed(e.to_string()),
     }
-
-    ClipboardResult::Copied
 }
 
 #[cfg(test)]
@@ -226,13 +316,121 @@ mod tests {
     }
 
     #[test]
+    fn tool_on_path_does_not_execute_clipboard_binaries() {
+        let start = std::time::Instant::now();
+        let _ = tool_on_path("wl-copy");
+        let _ = tool_on_path("xclip");
+        let _ = tool_on_path("definitely-not-a-real-clipboard-tool-xyz");
+        assert!(
+            start.elapsed() < std::time::Duration::from_millis(200),
+            "tool_on_path must be a PATH lookup only"
+        );
+    }
+
+    #[test]
+    fn plan_defers_osc52_without_requiring_stdout() {
+        // Empty PATH → native miss → want OSC52 with a sequence (local non-remote).
+        let plan = {
+            let old_path = std::env::var("PATH").ok();
+            let old_ssh = std::env::var("SSH_CONNECTION").ok();
+            let old_client = std::env::var("SSH_CLIENT").ok();
+            let old_mosh = std::env::var("MOSH_CONNECTION").ok();
+            // SAFETY: test-only; restored below.
+            unsafe {
+                std::env::set_var("PATH", "");
+                std::env::remove_var("SSH_CONNECTION");
+                std::env::remove_var("SSH_CLIENT");
+                std::env::remove_var("MOSH_CONNECTION");
+            }
+            let p = plan_clipboard_copy("defer-me");
+            unsafe {
+                match old_path {
+                    Some(v) => std::env::set_var("PATH", v),
+                    None => std::env::remove_var("PATH"),
+                }
+                if let Some(v) = old_ssh {
+                    std::env::set_var("SSH_CONNECTION", v);
+                }
+                if let Some(v) = old_client {
+                    std::env::set_var("SSH_CLIENT", v);
+                }
+                if let Some(v) = old_mosh {
+                    std::env::set_var("MOSH_CONNECTION", v);
+                }
+            }
+            p
+        };
+        assert!(!plan.native_copied);
+        assert!(plan.want_osc52);
+        let seq = plan
+            .osc52_sequence
+            .as_deref()
+            .expect("small text must format");
+        assert!(seq.starts_with("\x1b]52;c;"));
+        assert!(plan.will_succeed());
+    }
+
+    #[test]
+    fn pipe_to_command_times_out_hanging_tool() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let hang = dir.path().join("hang-clip");
+        std::fs::write(&hang, "#!/bin/sh\nsleep 120\n").expect("write");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&hang).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&hang, perms).unwrap();
+        }
+        let start = std::time::Instant::now();
+        let result = pipe_to_command(hang.to_str().unwrap(), &[], "payload");
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(6),
+            "pipe_to_command must bound wait at ~5s"
+        );
+        match result {
+            ClipboardResult::Failed(msg) => assert!(msg.contains("timed out"), "{msg}"),
+            other => panic!("expected Failed timeout, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn spawn_unref_returns_without_waiting_for_hanging_child() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let hang = dir.path().join("hang-unref");
+        // Read stdin then sleep — mimics wl-copy holding the pipe open as daemon.
+        std::fs::write(&hang, "#!/bin/sh\ncat >/dev/null\nsleep 120\n").expect("write");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&hang).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&hang, perms).unwrap();
+        }
+        let start = std::time::Instant::now();
+        let result = spawn_unref_pipe_command(hang.to_str().unwrap(), &[], "payload");
+        assert!(
+            start.elapsed() < std::time::Duration::from_millis(500),
+            "unref/forget path must return immediately, elapsed={:?}",
+            start.elapsed()
+        );
+        assert_eq!(result, ClipboardResult::Copied);
+    }
+
+    #[tokio::test]
+    async fn plan_async_completes_within_pipe_timeout() {
+        let start = std::time::Instant::now();
+        let _ = plan_clipboard_copy_async("xylitol async clipboard probe".into()).await;
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(6),
+            "async plan must not hang past pipe timeout"
+        );
+    }
+
+    #[test]
     #[ignore = "touches the real system clipboard (spawns wl-copy/xclip/pbcopy); \
-        run explicitly with --ignored. Skipped in the normal gate because \
-        Wayland wl-copy daemonizes and its background child inherits the test \
-        harness stdout/stderr pipes, deadlocking cargo test on a real desktop"]
+        run explicitly with --ignored"]
     fn test_copy_to_clipboard_no_panic() {
-        // In CI/headless environments, this will likely fall through to
-        // an error or OSC 52 write (captured by test harness). No panic.
         let _ = copy_to_clipboard("xylitol test");
     }
 }

@@ -76,6 +76,17 @@ impl ProjectTrustPersistReport {
         "Project resources apply after /reload or restart (not auto-reloaded).";
 }
 
+/// Outcome of [`Driver::copy_text_to_clipboard`] (c1110).
+///
+/// Native tools run off the UI thread; OSC 52 (when needed) is returned here so
+/// the product TUI can write it via `Terminal` on the host thread — never from
+/// a blocking worker racing CSI 2026 frames.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ClipboardCopyOutcome {
+    /// Preformatted OSC 52 sequence for the host to emit (may be `None`).
+    pub pending_osc52: Option<String>,
+}
+
 impl RuntimeReloadReport {
     /// Scripted / remote drivers: no-op success with a single diagnostic step.
     pub fn noop() -> Self {
@@ -387,7 +398,7 @@ pub trait Driver: Send {
     /// Persist a project trust decision for `/trust` (c1105).
     ///
     /// Does **not** reload skills/MCP/context — caller shows
-    /// [`ProjectTrustPersistReport::RELOAD_HINT`]. Default: unsupported.
+    /// `ProjectTrustPersistReport::RELOAD_HINT`. Default: unsupported.
     fn persist_project_trust(
         &mut self,
         _mode: ProjectTrustMode,
@@ -397,8 +408,14 @@ pub trait Driver: Send {
 
     /// Copy UTF-8 text to the system clipboard (`/history-copy-last`, c1110).
     ///
-    /// Default: unsupported (remote / stubs override as needed).
-    fn copy_text_to_clipboard(&mut self, _text: &str) -> Result<(), String> {
+    /// Async so platform tools (`xclip` wait / `wl-copy` spawn) do not freeze the
+    /// TUI host task. When OSC 52 is required, return it in
+    /// `ClipboardCopyOutcome.pending_osc52` for the host to write via
+    /// `Terminal` (do not emit from the driver). Default: unsupported.
+    async fn copy_text_to_clipboard(
+        &mut self,
+        _text: &str,
+    ) -> Result<ClipboardCopyOutcome, String> {
         Err("copy_text_to_clipboard not supported on this driver".into())
     }
 }
@@ -1119,8 +1136,14 @@ impl Driver for InProcessDriver {
         })
     }
 
-    fn copy_text_to_clipboard(&mut self, text: &str) -> Result<(), String> {
-        crate::infra::clipboard::copy_to_clipboard(text)
+    async fn copy_text_to_clipboard(&mut self, text: &str) -> Result<ClipboardCopyOutcome, String> {
+        let plan = crate::infra::clipboard::plan_clipboard_copy_async(text.to_string()).await?;
+        if !plan.will_succeed() {
+            return Err(plan.failure_message());
+        }
+        Ok(ClipboardCopyOutcome {
+            pending_osc52: plan.osc52_sequence,
+        })
     }
 }
 

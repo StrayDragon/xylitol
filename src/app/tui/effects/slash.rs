@@ -338,16 +338,26 @@ pub(super) async fn handle_slash<T: Terminal>(
             let _ = session.render_now();
         }
         PendingSlash::HistoryCopyLast => {
-            // c1110: busy allowed (readonly copy).
+            // c1110: busy allowed (readonly). Native copy async; OSC52 on host thread.
             match last_assistant_text(&session.ui_model().entries) {
                 None => session.push_system_note("no assistant message to copy"),
-                Some(text) => match driver.copy_text_to_clipboard(text) {
-                    Ok(()) => session.push_system_note(format!(
-                        "Copied last assistant message ({} chars)",
-                        text.chars().count()
-                    )),
-                    Err(e) => session.push_system_note(format!("/history-copy-last failed: {e}")),
-                },
+                Some(text) => {
+                    let text = text.to_string();
+                    let n = text.chars().count();
+                    match driver.copy_text_to_clipboard(&text).await {
+                        Ok(outcome) => {
+                            if let Some(seq) = outcome.pending_osc52.as_deref() {
+                                session.emit_clipboard_osc52(seq);
+                            }
+                            session.push_system_note(format!(
+                                "Copied last assistant message ({n} chars)"
+                            ));
+                        }
+                        Err(e) => {
+                            session.push_system_note(format!("/history-copy-last failed: {e}"))
+                        }
+                    }
+                }
             }
             let _ = session.render_now();
         }
