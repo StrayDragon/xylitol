@@ -149,6 +149,8 @@ pub struct ResolvedAssembly {
     pub system_prompt: Option<String>,
     pub context_files: Vec<(String, String)>,
     pub append_system_prompt: Vec<String>,
+    /// Skills discovered under Trust semantics (c1085).
+    pub skills: Vec<crate::domain::resource_types::SkillInfo>,
     pub max_iterations: u32,
     pub compaction_threshold: f64,
     pub cwd: String,
@@ -180,6 +182,7 @@ impl ResolvedAssembly {
             system_prompt: self.system_prompt,
             context_files: self.context_files,
             append_system_prompt: self.append_system_prompt,
+            skills: self.skills,
             max_iterations: self.max_iterations,
             compaction_threshold: self.compaction_threshold,
             cwd: self.cwd,
@@ -396,7 +399,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         });
     }
 
-    let (discovered_templates, context_files, loader_system_prompt, append_system_prompt) = {
+    let (discovered_templates, context_files, loader_system_prompt, append_system_prompt, skills) = {
         let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
         let loader_cwd = if project_trusted {
             std::path::PathBuf::from(&cwd)
@@ -412,17 +415,19 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
             .collect();
         let sys = loader.get_system_prompt().map(String::from);
         let append = loader.get_append_system_prompt().to_vec();
-        (templates, ctx, sys, append)
+        let skills = loader.get_skills().0.to_vec();
+        (templates, ctx, sys, append, skills)
     };
     log::debug!(
-        "resource discovery resolved caller={} trusted={} cwd={} context_files={} templates={} append_system_prompt={} loader_system_prompt={}",
+        "resource discovery resolved caller={} trusted={} cwd={} context_files={} templates={} append_system_prompt={} loader_system_prompt={} skills={}",
         input.caller,
         project_trusted,
         cwd,
         context_files.len(),
         discovered_templates.len(),
         append_system_prompt.len(),
-        loader_system_prompt.is_some()
+        loader_system_prompt.is_some(),
+        skills.len()
     );
     for (path, content) in &context_files {
         log::debug!(
@@ -486,6 +491,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         system_prompt,
         context_files,
         append_system_prompt,
+        skills,
         max_iterations,
         compaction_threshold: 0.8,
         cwd,
@@ -583,6 +589,69 @@ pub fn discovered_theme_names(
     names.sort();
     names.dedup();
     ThemeDiscoveryReport { names }
+}
+
+/// Report from [`discovered_skills`] / [`reload_skills`] (c1085).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)] // consumed by c1120 `/reload` and c1130 `$` expand
+pub struct SkillsReloadReport {
+    pub names: Vec<String>,
+    pub count: usize,
+}
+
+/// List discovered skill names under Trust semantics (c1085).
+#[allow(dead_code)] // consumed by c1120 / c1130
+pub fn discovered_skills(
+    cwd: &std::path::Path,
+    agent_dir: &std::path::Path,
+    project_trusted: bool,
+) -> SkillsReloadReport {
+    let loader_cwd = if project_trusted {
+        cwd.to_path_buf()
+    } else {
+        std::env::temp_dir()
+    };
+    let loader =
+        crate::infra::resource::DefaultResourceLoader::new(loader_cwd, agent_dir.to_path_buf());
+    let mut names: Vec<String> = loader
+        .get_skills()
+        .0
+        .iter()
+        .map(|s| s.name.clone())
+        .collect();
+    names.sort();
+    names.dedup();
+    let count = names.len();
+    SkillsReloadReport { names, count }
+}
+
+/// Re-discover skills from disk and apply to `driver` (c1085).
+///
+/// Trust semantics match bootstrap. Does **not** mutate session history.
+#[allow(dead_code)] // consumed by c1120 `/reload`
+pub fn reload_skills(
+    driver: &mut crate::app::core::driver::InProcessDriver,
+    cwd: &std::path::Path,
+    agent_dir: &std::path::Path,
+    project_trusted: bool,
+) -> SkillsReloadReport {
+    let loader_cwd = if project_trusted {
+        cwd.to_path_buf()
+    } else {
+        std::env::temp_dir()
+    };
+    let loader =
+        crate::infra::resource::DefaultResourceLoader::new(loader_cwd, agent_dir.to_path_buf());
+    let skills = loader.get_skills().0.to_vec();
+    let mut names: Vec<String> = skills.iter().map(|s| s.name.clone()).collect();
+    names.sort();
+    names.dedup();
+    let report = SkillsReloadReport {
+        count: names.len(),
+        names,
+    };
+    driver.apply_skills(skills);
+    report
 }
 
 /// Report from [`reload_prompt_context`] (c1100).
@@ -736,6 +805,82 @@ mod tests {
         assert!(
             !report.names.iter().any(|n| n == "secret"),
             "untrusted discovery must skip project themes"
+        );
+    }
+
+    fn write_skill(dir: &std::path::Path, name: &str) {
+        let skill_dir = dir.join(".xylitol").join("skills").join(name);
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            format!("---\nname: {name}\ndescription: test\n---\n\nbody\n"),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn discovered_skills_trusted_lists_project_skill() {
+        let project = tempfile::tempdir().unwrap();
+        let agent_dir = tempfile::tempdir().unwrap();
+        write_skill(project.path(), "demo");
+
+        let report = discovered_skills(project.path(), agent_dir.path(), true);
+        assert!(
+            report.names.iter().any(|n| n == "demo"),
+            "trusted discovery must list project skill"
+        );
+        assert_eq!(report.count, report.names.len());
+    }
+
+    #[test]
+    fn discovered_skills_untrusted_skips_project_skill() {
+        let project = tempfile::tempdir().unwrap();
+        let agent_dir = tempfile::tempdir().unwrap();
+        write_skill(project.path(), "secret-skill");
+
+        let report = discovered_skills(project.path(), agent_dir.path(), false);
+        assert!(
+            !report.names.iter().any(|n| n == "secret-skill"),
+            "untrusted discovery must skip project skills"
+        );
+    }
+
+    #[test]
+    fn reload_skills_trusted_injects_into_system_prompt() {
+        let project = tempfile::tempdir().unwrap();
+        let agent_dir = tempfile::tempdir().unwrap();
+        write_skill(project.path(), "reload-demo");
+
+        let mut driver = make_driver();
+        let before_len = driver.system_prompt_for_test().unwrap_or_default().len();
+        let report = reload_skills(&mut driver, project.path(), agent_dir.path(), true);
+        assert!(report.names.iter().any(|n| n == "reload-demo"));
+        let sp = driver.system_prompt_for_test().unwrap_or_default();
+        assert!(sp.contains("reload-demo") || sp.contains("<available_skills>"));
+        assert!(sp.len() >= before_len);
+        assert!(
+            driver
+                .loaded_skill_names()
+                .iter()
+                .any(|n| n == "reload-demo")
+        );
+    }
+
+    #[test]
+    fn reload_skills_untrusted_skips_project_skill() {
+        let project = tempfile::tempdir().unwrap();
+        let agent_dir = tempfile::tempdir().unwrap();
+        write_skill(project.path(), "secret-reload");
+
+        let mut driver = make_driver();
+        let _ = reload_skills(&mut driver, project.path(), agent_dir.path(), false);
+        let sp = driver.system_prompt_for_test().unwrap_or_default();
+        assert!(!sp.contains("secret-reload"));
+        assert!(
+            !driver
+                .loaded_skill_names()
+                .iter()
+                .any(|n| n == "secret-reload")
         );
     }
 }

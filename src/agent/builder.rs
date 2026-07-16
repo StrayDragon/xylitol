@@ -31,6 +31,7 @@ pub struct AgentBuilder {
     system_prompt: Option<String>,
     context_files: Vec<(String, String)>,
     append_system_prompt: Vec<String>,
+    skills: Vec<crate::domain::resource_types::SkillInfo>,
     max_iterations: u32,
     compaction_threshold: f64,
     compaction_settings: Option<CompactionSettings>,
@@ -61,6 +62,7 @@ impl AgentBuilder {
             system_prompt: None,
             context_files: Vec::new(),
             append_system_prompt: Vec::new(),
+            skills: Vec::new(),
             max_iterations: 50,
             compaction_threshold: 0.8,
             compaction_settings: None,
@@ -94,6 +96,12 @@ impl AgentBuilder {
     /// Set append-system-prompt lines.
     pub fn append_system_prompt(mut self, lines: Vec<String>) -> Self {
         self.append_system_prompt = lines;
+        self
+    }
+
+    /// Set skills catalog for `<available_skills>` in the system prompt (c1085).
+    pub fn skills(mut self, skills: Vec<crate::domain::resource_types::SkillInfo>) -> Self {
+        self.skills = skills;
         self
     }
 
@@ -159,7 +167,7 @@ impl AgentBuilder {
 
     /// Build the [`AgentRuntime`] (ReAct-loop runtime over [`AgentCapabilities`]).
     pub fn build(self) -> Result<AgentRuntime, String> {
-        let session = AgentCapabilities::new(
+        let mut session = AgentCapabilities::new(
             self.model_registry,
             self.tools,
             self.store,
@@ -179,6 +187,9 @@ impl AgentBuilder {
             self.follow_up_mode,
             self.hook_bus,
         );
+        if !self.skills.is_empty() {
+            session.apply_skills(self.skills);
+        }
         Ok(AgentRuntime::new(session))
     }
 }

@@ -363,6 +363,16 @@ impl InProcessDriver {
             .apply_prompt_resources(context_files, system_prompt, append_system_prompt);
     }
 
+    /// Replace skills catalog for the next `run` (c1085). Does not mutate history.
+    pub fn apply_skills(&mut self, skills: Vec<crate::domain::resource_types::SkillInfo>) {
+        self.agent.apply_skills(skills);
+    }
+
+    /// Names currently in the system `<available_skills>` catalog (c1085).
+    pub fn loaded_skill_names(&self) -> Vec<String> {
+        self.agent.loaded_skill_names()
+    }
+
     /// Test/diagnostics: tool names currently registered.
     #[cfg(test)]
     pub(crate) fn tool_names_for_test(&self) -> Vec<String> {
