@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,a23,slash 命令,"AgentSession MUST 暴露 get_commands，返回与产品 TUI 同源的内建命令（至少含 model、exit、session、session-tree、session-fork、session-compact、session-export、session-import、session-resume、session-new、session-clone、session-name 等已实现项）及扩展注册命令；MUST NOT 继续以已废弃 pi 短名表冒充产品命令清单。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  a23,"product-names-in-get-commands",空扩展命令的 AgentSession,调用 get_commands,"含 session-tree 且不含短名 tree 作为内建主名"

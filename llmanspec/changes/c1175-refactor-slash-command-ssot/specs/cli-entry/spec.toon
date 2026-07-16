@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,sc3,"builtin-table","产品对外 slash 与 GetCommands 内建表 MUST 同源自同一产品命令 SSOT（见 app-tui-commands）；名称 MUST 以 session-* /model /exit 等产品名为准（PI_DELTAS A03）；MUST NOT 再以 pi 短名表（/tree /fork /export /compact /resume /new 等）作为 GetCommands 或文档的权威清单；产品解析 MUST NOT 将上述废弃短名识别为有效命令入口。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  sc3,"getcommands-matches-catalog",InProcessDriver 与产品 SlashCommandSource,列出命令名,集合一致（允许 quit 仅作 exit 解析别名）
+  sc3,"no-legacy-short-names",GetCommands 返回列表,检查名称,不含 tree/fork/export/compact/resume/new 作为产品主名
