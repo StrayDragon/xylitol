@@ -47,16 +47,22 @@ impl AiBridgeLlmAdapter for OpenAiCompletionsAdapter {
         &self,
         messages: Vec<AiBridgeMessage>,
         tools: &[AiBridgeToolSchema],
+        options: crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
-        self.inner.generate_stream(messages, tools, true).await
+        self.inner
+            .generate_stream(messages, tools, true, &options)
+            .await
     }
 
     async fn generate(
         &self,
         messages: Vec<AiBridgeMessage>,
         tools: &[AiBridgeToolSchema],
+        options: crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
-        self.inner.generate_stream(messages, tools, false).await
+        self.inner
+            .generate_stream(messages, tools, false, &options)
+            .await
     }
 }
 
@@ -134,7 +140,7 @@ mod tests {
             Some(Arc::new(NoopHooks)),
         );
         let mut stream = adapter
-            .generate(vec![AiBridgeMessage::user("hi")], &[])
+            .generate(vec![AiBridgeMessage::user("hi")], &[], Default::default())
             .await
             .expect("generate");
         let mut saw_text = false;
@@ -174,8 +180,242 @@ mod tests {
             Some(Arc::new(ModifyBodyHooks)),
         );
         let _ = adapter
-            .generate(vec![AiBridgeMessage::user("hi")], &[])
+            .generate(vec![AiBridgeMessage::user("hi")], &[], Default::default())
             .await
             .expect("generate with modify");
+    }
+
+    #[tokio::test]
+    async fn completions_body_includes_reasoning_effort_medium() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .and(wiremock::matchers::body_partial_json(serde_json::json!({
+                "reasoning_effort": "medium"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "x",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "ok"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = OpenAiCompletionsAdapter::new(
+            "sk-test".into(),
+            "gpt-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(NoopHooks)),
+        );
+        let opts = crate::thinking::AiBridgeGenerateOptions {
+            thinking_level: "medium".into(),
+            ..Default::default()
+        };
+        let _ = adapter
+            .generate(vec![AiBridgeMessage::user("hi")], &[], opts)
+            .await
+            .expect("generate medium");
+    }
+
+    #[tokio::test]
+    async fn completions_body_omits_effort_when_off() {
+        use std::sync::{Arc as StdArc, Mutex};
+
+        let captured: StdArc<Mutex<Option<Value>>> = StdArc::new(Mutex::new(None));
+        let captured_hook = captured.clone();
+
+        struct CaptureHooks {
+            body: StdArc<Mutex<Option<Value>>>,
+        }
+
+        #[async_trait]
+        impl HttpHooks for CaptureHooks {
+            async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), AiBridgeError> {
+                Ok(())
+            }
+
+            async fn before_request(
+                &self,
+                _model: &str,
+                body: &mut Value,
+            ) -> Result<(), AiBridgeError> {
+                *self.body.lock().unwrap() = Some(body.clone());
+                Ok(())
+            }
+
+            async fn after_response(&self, _status: u16, _headers: &HeaderBag) {}
+        }
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "x",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "ok"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = OpenAiCompletionsAdapter::new(
+            "sk-test".into(),
+            "gpt-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(CaptureHooks {
+                body: captured_hook,
+            })),
+        );
+        let _ = adapter
+            .generate(
+                vec![AiBridgeMessage::user("hi")],
+                &[],
+                crate::thinking::AiBridgeGenerateOptions::default(),
+            )
+            .await
+            .expect("generate off");
+
+        let body = captured.lock().unwrap().clone().expect("captured body");
+        assert!(
+            body.get("reasoning_effort").is_none(),
+            "off must omit reasoning_effort, got {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn completions_body_map_override_high_to_max() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .and(wiremock::matchers::body_partial_json(serde_json::json!({
+                "reasoning_effort": "max"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "x",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "ok"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+            })))
+            .mount(&server)
+            .await;
+
+        let mut map = std::collections::HashMap::new();
+        map.insert("high".into(), Some("max".into()));
+        let adapter = OpenAiCompletionsAdapter::new(
+            "sk-test".into(),
+            "gpt-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(NoopHooks)),
+        );
+        let opts = crate::thinking::AiBridgeGenerateOptions {
+            thinking_level: "high".into(),
+            level_map: map,
+            thinking_budgets: None,
+        };
+        let _ = adapter
+            .generate(vec![AiBridgeMessage::user("hi")], &[], opts)
+            .await
+            .expect("generate map override");
+    }
+
+    /// After switching level Off → high, the next Completions body MUST carry
+    /// `reasoning_effort: "high"` (c1165 regression lock for UI cycle → request).
+    #[tokio::test]
+    async fn completions_body_effort_follows_level_switch() {
+        use std::sync::{Arc as StdArc, Mutex};
+
+        let captured: StdArc<Mutex<Vec<Value>>> = StdArc::new(Mutex::new(Vec::new()));
+        let captured_hook = captured.clone();
+
+        struct CaptureHooks {
+            bodies: StdArc<Mutex<Vec<Value>>>,
+        }
+
+        #[async_trait]
+        impl HttpHooks for CaptureHooks {
+            async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), AiBridgeError> {
+                Ok(())
+            }
+
+            async fn before_request(
+                &self,
+                _model: &str,
+                body: &mut Value,
+            ) -> Result<(), AiBridgeError> {
+                self.bodies.lock().unwrap().push(body.clone());
+                Ok(())
+            }
+
+            async fn after_response(&self, _status: u16, _headers: &HeaderBag) {}
+        }
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "x",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "ok"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = OpenAiCompletionsAdapter::new(
+            "sk-test".into(),
+            "gpt-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(CaptureHooks {
+                bodies: captured_hook,
+            })),
+        );
+
+        let _ = adapter
+            .generate(
+                vec![AiBridgeMessage::user("hi")],
+                &[],
+                crate::thinking::AiBridgeGenerateOptions {
+                    thinking_level: "off".into(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("off");
+        let _ = adapter
+            .generate(
+                vec![AiBridgeMessage::user("hi")],
+                &[],
+                crate::thinking::AiBridgeGenerateOptions {
+                    thinking_level: "high".into(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("high after switch");
+
+        let bodies = captured.lock().unwrap().clone();
+        assert_eq!(bodies.len(), 2, "expected two requests");
+        assert!(
+            bodies[0].get("reasoning_effort").is_none(),
+            "off: {bodies:?}"
+        );
+        assert_eq!(
+            bodies[1].get("reasoning_effort"),
+            Some(&serde_json::json!("high")),
+            "after switch to high: {bodies:?}"
+        );
     }
 }

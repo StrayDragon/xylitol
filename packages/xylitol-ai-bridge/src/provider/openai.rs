@@ -56,11 +56,17 @@ impl OpenAIProvider {
         messages: Vec<AiBridgeMessage>,
         tools: &[AiBridgeToolSchema],
         stream: bool,
+        options: &crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
         let trace =
             crate::provider::trace::ProviderRequestTrace::start("openai-completions", &self.model);
         let msgs = convert_agent_messages(&messages, None);
         let tool_defs = convert_tools(tools);
+
+        let resolved = crate::thinking::resolve_from_options(
+            options,
+            crate::thinking::AiBridgeThinkingAdapterKind::OpenAi,
+        );
 
         if stream {
             let request = CreateChatCompletionRequestArgs::default()
@@ -75,10 +81,15 @@ impl OpenAIProvider {
                 .build()
                 .map_err(Self::map_err)?;
 
+            let mut body = serde_json::to_value(&request).map_err(|e| {
+                AiBridgeError::Provider(anyhow::anyhow!("serialize completions request: {e}"))
+            })?;
+            crate::thinking::apply_thinking_openai_completions(&mut body, &resolved);
+
             let sdk_stream = self
                 .client
                 .chat()
-                .create_stream(request)
+                .create_stream_byot::<_, CreateChatCompletionStreamResponse>(body)
                 .await
                 .map_err(Self::map_err)?;
 
@@ -92,10 +103,15 @@ impl OpenAIProvider {
                 .build()
                 .map_err(Self::map_err)?;
 
+            let mut body = serde_json::to_value(&request).map_err(|e| {
+                AiBridgeError::Provider(anyhow::anyhow!("serialize completions request: {e}"))
+            })?;
+            crate::thinking::apply_thinking_openai_completions(&mut body, &resolved);
+
             let json: Value = self
                 .client
                 .chat()
-                .create_byot(request)
+                .create_byot(body)
                 .await
                 .map_err(Self::map_err)?;
 

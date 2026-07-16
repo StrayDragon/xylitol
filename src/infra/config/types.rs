@@ -82,6 +82,10 @@ pub struct ModelEntry {
     /// Optional explicit thinking levels (may contain holes). Unknown names fail load.
     #[serde(default)]
     pub thinking_levels: Option<Vec<String>>,
+    /// Optional level → provider effort/budget string map (`null` value = omit that level).
+    /// Unknown keys fail load. Missing keys use adapter built-in defaults at request time.
+    #[serde(default)]
+    pub thinking_level_map: Option<std::collections::HashMap<String, Option<String>>>,
     /// Context window size in tokens. Default: 0 (auto-detect from provider).
     #[serde(default)]
     pub context_window: u64,
@@ -189,6 +193,10 @@ impl AppConfig {
                 entry.thinking_levels.as_deref(),
             )
             .map_err(|e| format!("models.{alias}: {e}"))?;
+            if let Some(map) = &entry.thinking_level_map {
+                crate::domain::types::validate_thinking_level_map(map)
+                    .map_err(|e| format!("models.{alias}: {e}"))?;
+            }
         }
         Ok(())
     }
@@ -255,6 +263,9 @@ impl AppConfig {
             entry.and_then(|e| e.thinking_levels.as_deref()),
         )?;
         let thinking_levels = levels.iter().map(|l| l.as_str().to_string()).collect();
+        let thinking_level_map = entry
+            .and_then(|e| e.thinking_level_map.clone())
+            .unwrap_or_default();
 
         Ok(XyModelMeta {
             id: model_id.to_string(),
@@ -270,6 +281,7 @@ impl AppConfig {
             cost_cache_write: 0.0,
             max_tokens: 0,
             thinking_levels,
+            thinking_level_map,
         })
     }
 
@@ -824,6 +836,7 @@ mod thinking_levels_tests {
             fallback: None,
             thinking,
             thinking_levels: levels.map(|v| v.into_iter().map(str::to_string).collect()),
+            thinking_level_map: None,
             context_window: 0,
         }
     }
@@ -882,5 +895,46 @@ mod thinking_levels_tests {
     #[test]
     fn thinking_level_parse_xhigh() {
         assert_eq!(ThinkingLevel::parse("xhigh"), Some(ThinkingLevel::Xhigh));
+    }
+
+    #[test]
+    fn resolve_model_meta_thinking_level_map() {
+        let mut cfg = AppConfig::default();
+        let mut entry = fake_entry(true, None);
+        let mut map = std::collections::HashMap::new();
+        map.insert("high".into(), Some("max".into()));
+        map.insert("off".into(), None);
+        entry.thinking_level_map = Some(map);
+        cfg.model.models.insert("f".into(), entry);
+        let meta = cfg.resolve_model_meta("f").unwrap();
+        assert_eq!(
+            meta.thinking_level_map
+                .get("high")
+                .cloned()
+                .flatten()
+                .as_deref(),
+            Some("max")
+        );
+        assert!(matches!(meta.thinking_level_map.get("off"), Some(None)));
+    }
+
+    #[test]
+    fn validate_thinking_level_map_rejects_unknown() {
+        let mut cfg = AppConfig::default();
+        let mut entry = fake_entry(true, None);
+        let mut map = std::collections::HashMap::new();
+        map.insert("bogon".into(), Some("x".into()));
+        entry.thinking_level_map = Some(map);
+        cfg.model.models.insert("f".into(), entry);
+        let err = cfg.validate_thinking_levels().unwrap_err();
+        assert!(err.contains("bogon"));
+    }
+
+    #[test]
+    fn resolve_model_meta_absent_map_ok() {
+        let mut cfg = AppConfig::default();
+        cfg.model.models.insert("f".into(), fake_entry(true, None));
+        let meta = cfg.resolve_model_meta("f").unwrap();
+        assert!(meta.thinking_level_map.is_empty());
     }
 }

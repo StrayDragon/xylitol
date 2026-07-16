@@ -124,6 +124,7 @@ pub fn load_models_from_manifest(
             cost_cache_write: m.cost_cache_write,
             max_tokens: m.max_tokens,
             thinking_levels: m.thinking_levels.clone(),
+            thinking_level_map: Default::default(),
         };
 
         registry.register(meta);

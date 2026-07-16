@@ -6,7 +6,7 @@ use crate::domain::error::XyError;
 use crate::domain::message::AgentMessage;
 use crate::domain::types::XyToolSchema;
 use crate::infra::provider::adapter::AdapterRef;
-use crate::runtime_protocol::{XyModel, XyStream};
+use crate::runtime_protocol::{XyGenerateOptions, XyModel, XyStream};
 
 /// An [`XyModel`] backed by an [`AdapterRef`].
 pub struct AdapterXyModel {
@@ -31,11 +31,12 @@ impl XyModel for AdapterXyModel {
         messages: Vec<AgentMessage>,
         tools: &[XyToolSchema],
         stream: bool,
+        options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
         if stream {
-            self.adapter.generate_stream(messages, tools).await
+            self.adapter.generate_stream(messages, tools, options).await
         } else {
-            self.adapter.generate(messages, tools).await
+            self.adapter.generate(messages, tools, options).await
         }
     }
 }

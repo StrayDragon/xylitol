@@ -25,7 +25,7 @@ pub use bash::{BashExecOpts, XyBashExecutor, XyBashResult};
 pub use event::{LifecycleHandler, XyEventSink};
 pub use export::XyExportIo;
 pub use hook::{NoopHookBus, XyHookBus, XyHookOutcome};
-pub use model::{XyModel, XyModelBuilder, XyStream};
+pub use model::{XyGenerateOptions, XyModel, XyModelBuilder, XyStream};
 pub use permission::{XyPermission, XyPermissionVerdict};
 pub use reload::XyReloadable;
 pub use resource::XyResourceLoader;

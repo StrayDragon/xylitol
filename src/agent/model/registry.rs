@@ -304,6 +304,7 @@ pub fn build_default_model_meta(provider: &ProviderConfig) -> Option<XyModelMeta
         cost_cache_write: 0.0,
         max_tokens: 0,
         thinking_levels: Vec::new(),
+        thinking_level_map: Default::default(),
     })
 }
 
@@ -353,6 +354,7 @@ mod tests {
             cost_cache_write: 0.0,
             max_tokens: 0,
             thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
         });
         reg.register(XyModelMeta {
             id: "openai/gpt-4o-mini".into(),
@@ -374,6 +376,7 @@ mod tests {
             cost_cache_write: 0.0,
             max_tokens: 0,
             thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
         });
         reg.register(XyModelMeta {
             id: "claude-sonnet-4-20250514".into(),
@@ -395,6 +398,7 @@ mod tests {
             cost_cache_write: 0.0,
             max_tokens: 0,
             thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
         });
         reg
     }
