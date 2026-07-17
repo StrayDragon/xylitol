@@ -13,10 +13,10 @@
     那么 ExpandableOutput 与 render_expandable_output 可导出
 
   @req:peo2
-  场景: hint-above-tail
+  场景: hint-below-tail
     假如 文本超过 max_preview_lines
     当 collapsed Tail render
-    那么 首行含 earlier lines 与 expand_hint 且末行是原文尾
+    那么 末行含 earlier lines 与 expand_hint 且首行是可见尾窗起点
 
   @req:peo3
   场景: stream-then-expand

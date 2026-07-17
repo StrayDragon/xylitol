@@ -1,7 +1,7 @@
 //! Expandable multi-line output with a max-height viewport (pi bash/tool preview).
 //!
 //! Collapsed **Tail** (default): last `max_preview_lines` with dim
-//! `... (N earlier lines, …)` **above** the window.
+//! `... (N earlier lines, …)` **below** the window (block footer).
 //! Collapsed **Head**: first N lines with dim `... (N more lines, …)` **below**.
 //! Expanded: full content. `width == 0` returns empty (c550). Host owns the
 //! expand keybinding (pi: `Ctrl+O` / `app.tools.expand`).
@@ -72,15 +72,11 @@ pub fn render_expandable_output(
     let style = opts.hint_style.unwrap_or(default_dim);
     let hint = style(&hint_raw);
 
+    // Hint is always a block footer (after the visible window) so it sits under
+    // tool body lines, not under the tool header / first command line.
     let mut out = Vec::with_capacity(visual_lines.len() + 1);
-    // pi bash tool: hint above the visible tail (image 1).
-    if matches!(opts.from, TruncateFrom::Tail) {
-        out.push(hint);
-        out.extend(visual_lines);
-    } else {
-        out.extend(visual_lines);
-        out.push(hint);
-    }
+    out.extend(visual_lines);
+    out.push(hint);
     out
 }
 
@@ -140,7 +136,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn collapsed_tail_shows_hint_then_last_lines() {
+    fn collapsed_tail_shows_last_lines_then_hint() {
         let text = (1..=20)
             .map(|i| format!("line-{i}"))
             .collect::<Vec<_>>()
@@ -153,11 +149,23 @@ mod tests {
         };
         let lines = render_expandable_output(&text, 40, false, &opts);
         assert!(
-            lines[0].contains("17 earlier lines") && lines[0].contains("ctrl+o to expand"),
-            "hint first: {lines:?}"
+            lines[0].contains("line-18"),
+            "Tail body starts with window head: {lines:?}"
         );
-        assert_eq!(lines.len(), 4); // hint + 3
-        assert!(lines[3].contains("line-20"), "tail last: {lines:?}");
+        assert!(
+            !lines[0].contains("earlier lines"),
+            "hint must NOT sit above the tail window: {lines:?}"
+        );
+        assert_eq!(lines.len(), 4); // 3 body + hint
+        assert!(
+            lines[2].contains("line-20"),
+            "tail window ends with latest: {lines:?}"
+        );
+        let last = lines.last().expect("hint line");
+        assert!(
+            last.contains("17 earlier lines") && last.contains("ctrl+o to expand"),
+            "Tail hint as block footer: {lines:?}"
+        );
     }
 
     #[test]
@@ -190,7 +198,10 @@ mod tests {
             out.append_text(&format!("row{i}\n"));
         }
         let lines = out.render(40);
-        assert!(lines[0].contains("earlier"));
+        assert!(
+            lines.last().is_some_and(|l| l.contains("earlier")),
+            "hint footer: {lines:?}"
+        );
         assert!(
             lines.iter().any(|l| l.contains("row10")),
             "tail includes latest row: {lines:?}"

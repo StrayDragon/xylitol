@@ -5,7 +5,7 @@ valid_scope[1]: "packages/xylitol-tui/"
 requirements[7]{req_id,title,statement}:
   r29,"capability-shell","本 capability 由变更 c466-add-package-tui-expandable-output 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   peo1,"expandable-api",包 MUST 提供 ExpandableOutput 与 render_expandable_output；选项 MUST 含 max_preview_lines、TruncateFrom（Tail 或 Head）、expand_hint；MUST NOT 依赖主 crate xylitol。
-  peo2,"collapsed-tail-hint",当 collapsed 且跳过行数大于 0 时 Tail 模式 MUST 在可见尾部之上渲染 dim 提示（含 earlier lines 与 expand_hint）；Head 模式 MUST 在尾部提示 more lines。
+  peo2,"collapsed-tail-hint",当 collapsed 且跳过行数大于 0 时 Tail 与 Head 模式 MUST 均在可见窗口之下（块尾）渲染 dim 提示（Tail：earlier lines；Head：more lines；均含 expand_hint）；MUST NOT 把提示插在工具头行/首条可见正文之上。
   peo3,"streaming-stick-tail",流式追加文本时 collapsed Tail 视口 MUST 继续显示最新视觉行；expanded MUST 显示全文且无 earlier 提示。
   peo0,"capability-shell","本增量由变更 c550-update-package-tui-expandable-edges 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   peo4,"head-more-hint","当 TruncateFrom::Head 且 collapsed 并跳过行数大于 0 时，MUST 在可见首部之下渲染 dim 的 more lines 提示（含 expand_hint）；MUST NOT 把该提示放在首部之上冒充 Tail。"
