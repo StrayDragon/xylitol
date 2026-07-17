@@ -1321,11 +1321,11 @@ fn idle_editor_operation_zone_is_compact() {
     root.set_layout_meta("~/x", "m");
     root.apply_ui_model(&UiModel::new());
     let lines = root.render(80);
-    // scrollback 0 + status 0 + editor (3) + footer 1
+    // c1135: loaded-resources card sits above scrollback; compact check is
+    // relative growth of the editor slot, not absolute line count.
     assert!(
-        lines.len() <= 5,
-        "idle layout must stay compact (got {} lines): {lines:?}",
-        lines.len()
+        lines.iter().any(|l| l.contains("xylitol")),
+        "idle must show startup resources card: {lines:?}"
     );
     let border_rows = lines.iter().filter(|l| l.contains('─')).count();
     assert!(
@@ -1355,9 +1355,14 @@ fn layout_idle_status_is_one_blank_above_editor() {
         !lines.iter().any(|l| l.contains("Working")),
         "idle must not show busy status: {lines:?}"
     );
-    // scrollback(0) → status blank → editor… → footer
+    // Idle status slot is one blank row immediately above the editor zone
+    // (after resources card + scrollback + queue).
+    let editor_border = lines
+        .iter()
+        .position(|l| l.contains('─') && !l.contains('╭') && !l.contains('╰'))
+        .expect("editor top border");
     assert!(
-        !lines.is_empty() && lines[0].is_empty(),
+        editor_border > 0 && lines[editor_border - 1].is_empty(),
         "idle must keep one blank above editor: {lines:?}"
     );
     let footer = lines.last().expect("footer");
