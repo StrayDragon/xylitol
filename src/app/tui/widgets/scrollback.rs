@@ -33,7 +33,13 @@ const MAX_DIFF_RENDER_LINES: usize = 80;
 /// Disable word-level when raw display_diff exceeds this many lines.
 const WORD_LEVEL_DIFF_LINE_LIMIT: usize = 120;
 
-fn push_capped_diff_lines(lines: &mut Vec<String>, diff: &str, width: usize, theme: LayoutTheme) {
+fn push_capped_diff_lines(
+    lines: &mut Vec<String>,
+    diff: &str,
+    width: usize,
+    theme: LayoutTheme,
+    block_bg: Option<RgbColor>,
+) {
     let raw_lines = diff.lines().count();
     let word_level = raw_lines <= WORD_LEVEL_DIFF_LINE_LIMIT;
     let input = DiffInput::DisplayText(diff.to_string());
@@ -41,7 +47,11 @@ fn push_capped_diff_lines(lines: &mut Vec<String>, diff: &str, width: usize, the
         word_level,
         ..DiffOptions::default()
     };
-    let rendered = render_diff_lines(&input, width, &theme.palette().diff_theme(), &opts);
+    let diff_theme = match block_bg {
+        Some(bg) => theme.palette().diff_theme_on_block(bg),
+        None => theme.palette().diff_theme(),
+    };
+    let rendered = render_diff_lines(&input, width, &diff_theme, &opts);
     if rendered.len() <= MAX_DIFF_RENDER_LINES {
         for line in rendered {
             lines.push(fit(&line, width));
@@ -312,14 +322,18 @@ pub fn render_scrollback(
                     }
                 }
 
-                push_tinted(&mut lines, &block, width, rgb);
-
-                // edit diff: default visible; body stays untinted (att4 / expandable rule 6).
+                // edit: header + diff share one tool-*-bg wash (pi Box / att4 / diff-block §5).
+                // No diff-*-bg row tints — word_wash on block_bg only.
                 if let Some(diff) = display_diff
                     && !diff.is_empty()
                 {
-                    push_capped_diff_lines(&mut lines, diff, width, theme);
+                    if !block.is_empty() {
+                        block.push(String::new()); // pi Spacer between title and body
+                    }
+                    push_capped_diff_lines(&mut block, diff, width, theme, Some(rgb));
                 }
+
+                push_tinted(&mut lines, &block, width, rgb);
             }
             UiEntry::Diff {
                 summary,
@@ -335,13 +349,14 @@ pub fn render_scrollback(
                     glyphs.tool(),
                     key_hint("Alt+E")
                 );
-                let mut header_lines = Vec::new();
-                push_wrapped(&mut header_lines, &theme.paint_tool(&header), width);
+                let mut block = Vec::new();
+                push_wrapped(&mut block, &theme.paint_tool(&header), width);
                 let rgb = tool_bg_rgb(false, false, theme);
-                push_tinted(&mut lines, &header_lines, width, rgb);
                 if fold.tools_expanded && !display_diff.is_empty() {
-                    push_capped_diff_lines(&mut lines, display_diff, width, theme);
+                    block.push(String::new());
+                    push_capped_diff_lines(&mut block, display_diff, width, theme, Some(rgb));
                 }
+                push_tinted(&mut lines, &block, width, rgb);
             }
             UiEntry::Bash {
                 command,
@@ -508,6 +523,61 @@ mod tests {
         assert_write_header_body_share_bg(false, false, p.tool_pending_bg);
         assert_write_header_body_share_bg(true, false, p.tool_success_bg);
         assert_write_header_body_share_bg(true, true, p.tool_error_bg);
+    }
+
+    #[test]
+    fn edit_block_tints_header_and_diff_together() {
+        let mut model = UiModel::default();
+        model.entries.push(UiEntry::Tool {
+            id: "e1".into(),
+            name: "edit".into(),
+            args_preview: "edit tmp/flow_test.py".into(),
+            tool_path: Some("tmp/flow_test.py".into()),
+            write_content: None,
+            display_diff: Some(
+                "@@ -4,3 +4,4 @@\n context-a\n-old line\n+new line\n context-b\n".into(),
+            ),
+            output: String::new(),
+            is_error: false,
+            done: true,
+        });
+        let theme = LayoutTheme::product_dark();
+        let p = theme.palette();
+        let success_bg = format!(
+            "\x1b[48;2;{};{};{}m",
+            p.tool_success_bg.r, p.tool_success_bg.g, p.tool_success_bg.b
+        );
+        let added_row_bg = format!(
+            "\x1b[48;2;{};{};{}m",
+            p.diff_added_bg.r, p.diff_added_bg.g, p.diff_added_bg.b
+        );
+        let lines = render_scrollback(
+            &model,
+            GlyphSet::from_env(),
+            theme,
+            ScrollbackFold::default(),
+            100,
+        );
+        let header = lines
+            .iter()
+            .find(|l| l.contains("edit tmp/flow_test.py"))
+            .expect("header");
+        let body = lines
+            .iter()
+            .find(|l| l.contains("new line") || l.contains("+new"))
+            .expect("diff body");
+        assert!(
+            header.contains(&success_bg),
+            "edit header must use tool-success-bg"
+        );
+        assert!(
+            body.contains(&success_bg),
+            "edit diff body must share tool-success-bg wash (no naked black split)"
+        );
+        assert!(
+            !body.contains(&added_row_bg),
+            "embedded edit MUST NOT stack diff-added-bg row tint; got {body:?}"
+        );
     }
 
     #[test]

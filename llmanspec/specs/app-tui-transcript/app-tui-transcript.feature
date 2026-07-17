@@ -18,9 +18,9 @@
     那么 render 经包 Diff 着色
 
   @req:att4
-  场景: header-tint-only
-    当 展开 edit/diff 块
-    那么 仅 header 含 tool status bg
+  场景: edit-unified-tint
+    当 渲染含 display_diff 的成功 edit 工具块
+    那么 header 与 Diff 正文同属 tool-success-bg 洗底且无 diff-*-bg 行底分层
 
   @req:att5
   场景: reuse-apply-bg
