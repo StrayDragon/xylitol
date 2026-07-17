@@ -1,8 +1,7 @@
-Feature: 反向 RPC 工具审批
-
-  当工具需要审批时，服务端向已连接的客户端推送审批请求并等待响应。
-
-  Scenario: 工具审批往返
+# language: en
+# migrated from tests/features/approval.feature
+Feature: server-reverse-rpc
+  Scenario: approve-roundtrip
     Given 服务端和已连接的 WebSocket 客户端
     When agent 执行需要审批的工具
     Then 客户端收到带有 call_id 的审批请求
@@ -10,7 +9,7 @@ Feature: 反向 RPC 工具审批
     Then 工具执行继续
     And turn 正常结束
 
-  Scenario: 工具被拒绝
+  Scenario: tool-denied
     Given 服务端和已连接的 WebSocket 客户端
     When agent 执行需要审批的工具
     And 客户端发送 ApproveTool approved=false

@@ -12,7 +12,7 @@ requirements[36]{req_id,title,statement}:
   a7,上下文用量,AgentSession MUST 暴露 getContextUsage()，返回估计 token 数与上下文窗口百分比。
   a8,"agent-session-store","AgentCapabilities 或 ReAct 运行时 MUST 在每条 user、assistant、toolResult 消息完成时（对齐 pi message_end）经 XySessionStore::append_session_entry 写入当前 session；tool 执行结束后 MUST 持久化对应 toolResult；一轮结束后 session 文件或内存 backend MUST 含本轮消息。MUST NOT 仅把对话留在 ReAct 本地 history 而不写入 store。"
   a9,prompt 构造,AgentSession MUST 构造完整 messages 数组：system prompt + context files + history + user prompt，每轮前置。
-  a10,BDD agent,tests/features/agent.feature 下 BDD 测试 MUST 全部通过。
+  a10,BDD agent,llmanspec/specs/agent-session/agent-session.feature 下 BDD 测试 MUST 全部通过。
   a21,"agent-prompt",System MUST 支持正斜杠模板语法 colon name args，含位置参数替换、全参占位符与默认值语法。
   a22,模板加载器,System MUST 从全局与项目 .xylitol/prompts 目录及 CLI 指定路径加载 md 为 prompt 模板；frontmatter 提供 description。
   a23,slash 命令,"AgentSession MUST 暴露 get_commands，返回与产品 TUI 同源的内建命令（至少含 model、exit、session、session-tree、session-fork、session-compact、session-export、session-import、session-resume、session-new、session-clone、session-name 等已实现项）及扩展注册命令；MUST NOT 继续以已废弃 pi 短名表冒充产品命令清单。"
