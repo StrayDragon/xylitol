@@ -99,6 +99,7 @@ incremental = false
 
 [dev-dependencies]
 tempfile = "3.27.0"
+xylitol-ai-bridge = { path = "packages/xylitol-ai-bridge" }
 assert_cmd = "2.2.2"
 assert_matches = "1.5.0"
 async-trait = "0.1.89"

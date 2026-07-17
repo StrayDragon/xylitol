@@ -171,8 +171,9 @@ fn responses_sdk_stream(
     })
 }
 
+/// Mutable state for Responses SSE → chunk mapping (streaming tool calls).
 #[derive(Default)]
-struct ResponsesStreamState {
+pub struct ResponsesStreamState {
     /// item_id → (name, partial args json, started)
     function_calls: HashMap<String, (String, String, bool)>,
     usage_input: u64,
@@ -183,7 +184,12 @@ struct ResponsesStreamState {
 ///
 /// Compatible servers may emit partial objects (e.g. `response.created` without
 /// `created_at`); those events are ignored rather than failing deserialization.
-fn map_responses_sse_event(data: &Value, state: &mut ResponsesStreamState) -> Vec<AiBridgeChunk> {
+///
+/// Public for BDD / harness (c1250 pab13).
+pub fn map_responses_sse_event(
+    data: &Value,
+    state: &mut ResponsesStreamState,
+) -> Vec<AiBridgeChunk> {
     let event_type = data.get("type").and_then(|v| v.as_str()).unwrap_or("");
     match event_type {
         "response.reasoning_text.delta" => data

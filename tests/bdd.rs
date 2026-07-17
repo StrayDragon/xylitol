@@ -3513,6 +3513,141 @@ fn tool_denied(approval_test: &mut ApprovalTest) {
 #[then("turn 继续但不包含工具结果")]
 fn turn_continues_without_tool(_approval_test: &mut ApprovalTest) {}
 
+// ═══════════════════════════════════════════════════════════════════
+// package-ai-bridge — c1250 tool-call stream lifecycle (pab13/pab14)
+// ═══════════════════════════════════════════════════════════════════
+
+pub struct AiBridgeBdd {
+    chunks: RefCell<Vec<xylitol_ai_bridge::dto::AiBridgeChunk>>,
+    parse_value: RefCell<Option<serde_json::Value>>,
+}
+
+impl AiBridgeBdd {
+    fn new() -> Self {
+        Self {
+            chunks: RefCell::new(Vec::new()),
+            parse_value: RefCell::new(None),
+        }
+    }
+}
+
+#[fixture]
+fn ai_bridge_bdd() -> AiBridgeBdd {
+    AiBridgeBdd::new()
+}
+
+#[given(
+    "Responses SSE 含 function_call 的 output_item.added 与多帧 function_call_arguments.delta 后才有 output_item.done"
+)]
+fn g_pab13_responses_sse(ai_bridge_bdd: &AiBridgeBdd) {
+    use xylitol_ai_bridge::dto::AiBridgeChunk;
+    use xylitol_ai_bridge::provider::{ResponsesStreamState, map_responses_sse_event};
+
+    let mut state = ResponsesStreamState::default();
+    let mut out = Vec::new();
+    let events = [
+        serde_json::json!({
+            "type": "response.output_item.added",
+            "item": { "type": "function_call", "id": "fc_bdd", "name": "ls", "arguments": "" }
+        }),
+        serde_json::json!({
+            "type": "response.function_call_arguments.delta",
+            "item_id": "fc_bdd",
+            "delta": "{\"path\":"
+        }),
+        serde_json::json!({
+            "type": "response.function_call_arguments.delta",
+            "item_id": "fc_bdd",
+            "delta": "\"/tmp\"}"
+        }),
+        serde_json::json!({
+            "type": "response.output_item.done",
+            "item": {
+                "type": "function_call",
+                "id": "fc_bdd",
+                "name": "ls",
+                "arguments": "{\"path\":\"/tmp\"}"
+            }
+        }),
+    ];
+    for ev in events {
+        out.extend(map_responses_sse_event(&ev, &mut state));
+    }
+    assert!(
+        out.iter()
+            .any(|c| matches!(c, AiBridgeChunk::ToolCallStart { .. })),
+        "fixture must produce Start, got {out:?}"
+    );
+    ai_bridge_bdd.chunks.replace(out);
+}
+
+#[when("映射为 AiBridgeChunk 流")]
+fn w_pab13_already_mapped(ai_bridge_bdd: &AiBridgeBdd) {
+    assert!(
+        !ai_bridge_bdd.chunks.borrow().is_empty(),
+        "expected chunks from given step"
+    );
+}
+
+#[then(
+    "首个 args delta 之前或当时已有 ToolCallStart 且存在至少一次 ToolCallDelta 早于对应 ToolCallEnd"
+)]
+fn t_pab13_lifecycle(ai_bridge_bdd: &AiBridgeBdd) {
+    use xylitol_ai_bridge::dto::AiBridgeChunk;
+    let chunks = ai_bridge_bdd.chunks.borrow();
+    let start = chunks
+        .iter()
+        .position(|c| matches!(c, AiBridgeChunk::ToolCallStart { .. }));
+    let delta = chunks
+        .iter()
+        .position(|c| matches!(c, AiBridgeChunk::ToolCallDelta { .. }));
+    let end = chunks
+        .iter()
+        .position(|c| matches!(c, AiBridgeChunk::ToolCallEnd { .. }));
+    assert!(start.is_some(), "missing ToolCallStart in {chunks:?}");
+    assert!(delta.is_some(), "missing ToolCallDelta in {chunks:?}");
+    assert!(end.is_some(), "missing ToolCallEnd in {chunks:?}");
+    let (s, d, e) = (start.unwrap(), delta.unwrap(), end.unwrap());
+    assert!(
+        s <= d && d < e,
+        "expected Start<=Delta<End, got Start={s} Delta={d} End={e} chunks={chunks:?}"
+    );
+}
+
+#[given("输入残缺工具参数 JSON")]
+fn g_pab14_partial_json(ai_bridge_bdd: &AiBridgeBdd) {
+    ai_bridge_bdd.parse_value.replace(None);
+}
+
+#[when("调用 parse_streaming_json")]
+fn w_pab14_parse(ai_bridge_bdd: &AiBridgeBdd) {
+    let v = xylitol_ai_bridge::dto::parse_streaming_json(r#"{"command":"ls"#);
+    ai_bridge_bdd.parse_value.replace(Some(v));
+}
+
+#[then("返回 Value 且不 panic")]
+fn t_pab14_ok(ai_bridge_bdd: &AiBridgeBdd) {
+    let v = ai_bridge_bdd
+        .parse_value
+        .borrow()
+        .clone()
+        .expect("parse_streaming_json result missing");
+    assert!(v.is_object(), "expected object, got {v:?}");
+    assert_eq!(v.get("command").and_then(|c| c.as_str()), Some("ls"));
+}
+
+#[scenario(
+    path = "llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    name = "responses-toolcall-streams-before-done"
+)]
+fn test_pab13_responses_toolcall_stream(ai_bridge_bdd: AiBridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    name = "partial-args-object"
+)]
+fn test_pab14_partial_args(ai_bridge_bdd: AiBridgeBdd) {}
+
 // approval.feature scenarios
 #[scenario(
     path = "llmanspec/specs/server-reverse-rpc/server-reverse-rpc.feature",

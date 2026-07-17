@@ -67,3 +67,15 @@
     假如 map 将 high 映射为 max
     当 组装 OpenAI 类请求
     那么 effort 字段为 max
+
+  @req:pab13
+  场景: responses-toolcall-streams-before-done
+    假如 Responses SSE 含 function_call 的 output_item.added 与多帧 function_call_arguments.delta 后才有 output_item.done
+    当 映射为 AiBridgeChunk 流
+    那么 首个 args delta 之前或当时已有 ToolCallStart 且存在至少一次 ToolCallDelta 早于对应 ToolCallEnd
+
+  @req:pab14
+  场景: partial-args-object
+    假如 输入残缺工具参数 JSON
+    当 调用 parse_streaming_json
+    那么 返回 Value 且不 panic
