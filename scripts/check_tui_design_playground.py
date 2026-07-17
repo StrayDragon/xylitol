@@ -8,6 +8,7 @@ HTML: src/app/tui/design/playground/index.html
 Usage:
   python3 scripts/check_tui_design_playground.py
   python3 scripts/check_tui_design_playground.py --check
+  python3 scripts/check_tui_design_playground.py --check --verbose
 """
 
 from __future__ import annotations
@@ -323,7 +324,12 @@ def check_raw_hex(html: str, errors: list[str]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="non-mutating gate (default)")
-    parser.parse_args()
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="print ok summary on success (default: silent success; errors always print)",
+    )
+    args = parser.parse_args()
 
     errors: list[str] = []
     if not HTML.is_file():
@@ -342,7 +348,8 @@ def main() -> int:
         for e in errors:
             print(f"  - {e}", file=sys.stderr)
         return 1
-    print("ok: playground L1/L2 checks passed")
+    if args.verbose:
+        print("ok: playground L1/L2 checks passed")
     return 0
 
 

@@ -76,7 +76,7 @@
 
 ## 命令
 
-`just setup`（prek hooks）、`just fmt`、`just lint`（clippy）、`just test`（nextest 或 cargo test）、`just test-tui`（包 TUI 层 1–4）、`just qa`/`just ci`（**统一满闸**：fmt+clippy+test+test-tui+docs+DESIGN tokens+`scripts/check_*` 入闸校验与执行+prek）、`just qa-e2e`（`qa` + PTY/tmux 第 5 层，按需）。`scripts/check_*.py`（或 `check-*.py`）= 非变更闸脚本，**MUST** 经 `check-scripts-wired`/`check-scripts` 进 `qa`；`cleanup_*` 等维护脚本不进 `qa`。本地探查 `cargo run -- --help`。API 文档 `cargo doc --no-deps --all-features`。
+`just setup`（prek hooks）、`just fmt`、`just lint`（clippy）、`just test`（nextest 或 cargo test）、`just test-tui`（包 TUI 层 1–4）、`just qa`/`just ci`（**统一满闸**：fmt+clippy+test+test-tui+docs+DESIGN tokens+`scripts/check_*` 入闸校验与执行+prek）、`just qa-e2e`（`qa` + PTY/tmux 第 5 层，按需）。闸默认 `verbosity=quiet`（成功零输出、失败打全量日志；`just qa normal` / `verbose` 或 `JUST_VERBOSITY=`）。`scripts/check_*.py`（或 `check-*.py`）= 非变更闸脚本，**MUST** 经 `check-scripts-wired`/`check-scripts` 进 `qa`；`cleanup_*` 等维护脚本不进 `qa`。本地探查 `cargo run -- --help`。API 文档 `cargo doc --no-deps --all-features`。
 
 ## 提交与测试
 
