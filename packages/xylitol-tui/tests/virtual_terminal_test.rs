@@ -315,6 +315,50 @@ fn request_render_force_resets_previous_state_for_full_redraw() {
     );
 }
 
+/// Mid-buffer shrink: surplus clear stays in the same sync batch and after a
+/// CUD to content end (pi tui.ts:1555-1568) — not a second batch from mid-file.
+#[test]
+fn differential_shrink_cleanup_moves_to_content_end_in_one_batch() {
+    use support::MutableComponent;
+
+    let lines = std::rc::Rc::new(std::cell::RefCell::new(vec![
+        "keep-a".into(),
+        "keep-b".into(),
+        "gone-1".into(),
+        "gone-2".into(),
+        "gone-3".into(),
+    ]));
+    let term = LoggingVirtualTerminal::new(20, 10);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(MutableComponent {
+        lines: lines.clone(),
+    }));
+    tui.render_frame().unwrap();
+    tui.terminal.clear_writes();
+
+    // Change only the top (firstChanged=0) while shrinking — old bug cleared
+    // extras from mid-render without CUD to content end.
+    *lines.borrow_mut() = vec!["keep-A".into(), "keep-B".into()];
+    tui.request_render(false);
+    tui.render_frame().unwrap();
+
+    let writes = tui.terminal.all_writes();
+    let begins = writes.matches("\x1b[?2026h").count();
+    assert_eq!(
+        begins, 1,
+        "shrink cleanup must stay in one sync batch, got {begins}: {writes:?}"
+    );
+    assert!(
+        writes.contains("\x1b[2K"),
+        "must clear surplus lines: {writes:?}"
+    );
+    let vp = tui.terminal.viewport();
+    assert!(
+        !vp.iter().any(|l| l.contains("gone")),
+        "surplus rows must be gone: {vp:?}"
+    );
+}
+
 /// Soft resize (pi stdout resize → requestRender()): size delta → full clear.
 #[test]
 fn soft_resize_triggers_clearing_full_redraw() {
