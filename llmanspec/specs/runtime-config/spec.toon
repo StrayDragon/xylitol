@@ -14,20 +14,4 @@ requirements[11]{req_id,title,statement}:
   rc9,mcp_servers 配置字段,运行时配置 MUST 提供 mcp_servers（或等价）字段以声明 MCP 服务器；缺省或空表示未启用 MCP。
   rc16,"model-entry-thinking-levels",ModelsConfig 的 ModelEntry（或等价 YAML 面）MUST 支持可选 thinking_levels 字符串列表；解析时未知 level 名 MUST 使配置加载失败；Settings.default_thinking_level 若存在 MUST 可被选模/启动路径消费（合法则采用，非法则忽略并 clamp）。
   rc17,"model-entry-thinking-level-map",ModelsConfig 的 ModelEntry MUST 支持可选 thinking_level_map（键为 ThinkingLevel 名，值为字符串或 null）；未知键名 MUST 使配置加载失败；解析结果 MUST 进入 XyModelMeta（或等价）供请求组装；键缺省 MUST 表示使用 adapter 内置默认，null MUST 表示该档不向 provider 发送 thinking/effort 字段。
-scenarios[16]{req_id,id,given,when,then}:
-  rc0,placeholder,未配置任何 settings,无操作发生,无变化
-  rc11,transport,settings.json 中 transport 设为 sse,加载 settings,Settings.transport 为 Some(sse)
-  rc12,"mode-set","settings.json 中 steering_mode 设为 one-at-a-time",加载 settings,Settings.steering_mode 为 OneAtATime
-  rc13,"shell-path","settings.json 中 shell_path 设为 \"/usr/local/bin/bash\"",调用 SettingsManager.get_shell_path,返回 Some(/usr/local/bin/bash)
-  rc13,"trust-default",default_project_trust 设为 always,调用 SettingsManager.get_default_project_trust,返回 always
-  rc14,"prompts-list",prompts 有两个路径,合并 settings,Settings.prompts 有 2 项
-  rc15,"mapping-documented",用户在 config.yaml 设置 compaction 字段,加载配置并解析为运行时 settings,规范运行时 compaction settings 经单一文档化映射反映 YAML 值
-  rc1,"value-relocated",检查 src/agent/config_value.rs 是否存在,检查路径,不存在且存在 src/infra/config/value.rs
-  rc8,"config-has-schema","",检查 AppConfig 或 settings 类型,JsonSchema derive 仅出现在配置边界模块
-  rc9,field,"",读取默认配置,mcp 未启用且字段可序列化
-  rc16,"parse-list","YAML 模型条目含 thinking_levels [off, high, xhigh]",加载配置并 resolve_model_meta,XyModelMeta.thinking_levels 与列表一致
-  rc16,"unknown-fails",thinking_levels 含未知名 bogon,加载配置,失败
-  rc16,"default-setting",Settings.default_thinking_level 为 low 且模型支持 low,启动或选模,当前 thinking level 为 Low
-  rc17,"parse-map","YAML 含 thinking_level_map high: max 与 off: null",加载并 resolve_model_meta,meta 含 high→max 与 off→null
-  rc17,"unknown-key-fails",thinking_level_map 含未知名 bogon,加载配置,失败
-  rc17,"absent-key-ok",仅配置 thinking_levels 无 map,加载配置,成功且 map 为空或缺省
+scenarios[0]:

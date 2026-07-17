@@ -10,18 +10,4 @@ requirements[7]{req_id,title,statement}:
   pad4,"footer-no-key-wall",agent_demo footer MUST NOT 常驻多行或长键位墙；完整键位说明 MUST 经 plate 项或 /help 进入 transcript。
   pad5,"demo-compaction-retry-chrome","agent_demo MUST 提供可触发的 Compacting 与 Retry n/m 单行 status 预览（和弦或 Command plate 或 slash），时序结束后 MUST 回到 Ready/Working 类空闲短词，并 MUST 向 transcript 追加对应 System 说明；MUST NOT 以 capturing overlay focus-restore 演示作为本预览的一部分。"
   pad6,"thinking-border-cycle","agent_demo MUST 以 Shift+Tab 作为 thinking border level 的主 cycle 入口（可另保留 plate 或 /thinking-level 辅助）；每次 cycle MUST 经 Editor set_border_color（或 apply_thinking_border）应用对应 Palette 边框；bash 模式边框 MUST 仍优先 success，退出 bash 后 MUST 恢复当前 thinking 边框；MUST NOT 将本 cycle 实现为产品 src/app/tui 默认键位（产品 Shift+Tab 留给 c1150）。"
-scenarios[14]{req_id,id,given,when,then}:
-  pad0,"shell-present","","列出 capability package-tui-agent-demo",spec 含 pad0–pad5 且 purpose 为中文
-  pad1,"open-plate","",用户按下 Ctrl+P,editor 槽被 plate 列表替换且可上下选择
-  pad1,"not-overlay-dashboard","",打开 plate,内容仍在 editor 槽区域而非居中 overlay 仪表盘
-  pad2,"md-trigger","",选中 markdown 全语法项或提交 /md,transcript 出现全语法 Markdown 助手块
-  pad2,"stream-trigger","",选中定点流式语言项,开始脚本化流式回复且含该语言代码块
-  pad3,"slim-seed","",启动 demo 默认 seed,viewport/scrollback 以短帮助为主且可通过 plate 再注入 showcase
-  pad4,"footer-short","",渲染 footer,单行 dim 元数据为主且无常驻长快捷键清单
-  pad5,"compact-status-sequence",agent_demo 空闲,"触发 compact-status",status 曾为 Compacting 且稍后为 Ready
-  pad5,"retry-status-sequence",agent_demo 空闲,"触发 retry-status",status 曾为 Retry 1/3 且稍后为 Ready
-  pad5,"no-overlay-focus-demo",agent_demo 入口,查阅 plate/slash/和弦,"无 overlay-focus 演示入口"
-  pad6,"cycle-changes-border",agent_demo 非 bash,"触发 thinking-level cycle",当前 ThinkingBorderLevel 前进且 editor 边框色相对 cycle 前改变
-  pad6,"shift-tab-cycles",agent_demo 非 bash 且无 overlay 占键,按 Shift+Tab,ThinkingBorderLevel 前进且边框色改变
-  pad6,"bash-overrides",thinking 边框已为 High 且进入 bash 模式,观察 editor 边框,为 success 边框而非 High
-  pad6,"restore-after-bash",bash 结束后仍为原 thinking level,观察 editor 边框,恢复为该 level 的 thinking 边框
+scenarios[0]:

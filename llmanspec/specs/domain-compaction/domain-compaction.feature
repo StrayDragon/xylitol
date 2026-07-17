@@ -36,3 +36,105 @@
     当 生成分支摘要
     那么 摘要描述了被跳过的上下文
     并且 当前上下文是连贯的
+
+  @req:c1
+  场景: estimate-uses-priority
+    假如 存在可信 XyUsage 锚点
+    当 调用上下文估计
+    那么 优先采用 Api 语义且仍返回统一估计结构
+
+  @req:c1
+  场景: estimate-fallback-chain
+    假如 无 XyUsage 且 LocalTokenizer 可用
+    当 调用上下文估计
+    那么 采用 LocalTokenizer 而非静默当作 Api
+
+  @req:c2
+  场景: trigger
+    假如 tokens 超过上下文窗口 80%
+    当 调用 shouldCompact
+    那么 返回 true
+
+  @req:c3
+  场景: summarize
+    假如 会话有 50 轮
+    当 调用 compact
+    那么 前 40 轮被摘要为一个 CompactionEntry
+
+  @req:c4
+  场景: persist
+    假如 compaction 完成
+    当 加载会话
+    那么 存在含 summary 与切点的 CompactionEntry
+
+  @req:c5
+  场景: branch
+    假如 用户导航到较早分支点
+    当 生成分支摘要
+    那么 摘要条目桥接上下文缺口
+
+  @req:c6
+  场景: bdd-pass
+    假如 调用 BDD runner
+    当 cargo test --test bdd
+    那么 全部 compaction 场景通过
+
+  @req:c7
+  场景: summarize
+    假如 会话有 30 轮 user+assistant 含文件编辑
+    当 调用 generate_summary
+    那么 响应含 Goal、Progress、Next Steps 节及具体文件路径
+
+  @req:c8
+  场景: find-cut
+    假如 会话 50 条共 80000 tokens 且 keepRecent=20000
+    当 调用 find_cut_point
+    那么 切点索引大致保留最后 20000 tokens 上下文
+
+  @req:c9
+  场景: iterative
+    假如 先前 CompactionEntry 含 summary，新消息已累积
+    当 以 previousSummary 调用 generate_summary
+    那么 结果保留先前 Done 项并添加新项
+
+  @req:c10
+  场景: files
+    假如 消息含工具调用：read a.txt、write b.rs、edit c.py
+    当 调用 compact_session
+    那么 CompactionEntry summary 以 <read-files>a.txt</read-files> 与 <modified-files>b.rs c.py</modified-files> 结尾
+
+  @req:c11
+  场景: entry
+    假如 compact_session 完成并加载会话
+    当 CompactionEntry 存在
+    那么 summary 非空、firstKeptEntryId 有效、tokensBefore 为正、details 含文件列表
+
+  @req:c12
+  场景: agent
+    假如 agent 会话消息超阈值
+    当 调用 compact_current_session
+    那么 CompactionEntry 写入会话，会话状态已重载
+
+  @req:c13
+  场景: split-by-responsibility
+    假如 枚举 compaction 模块职责
+    当 拆分模块
+    那么 各结果文件拥有单一职责且可独立测试
+
+  @req:c14
+  场景: single-compaction-config
+    假如 在代码库搜索 CompactionConfig
+    当 rg "struct CompactionConfig"
+    那么 零匹配残留
+
+  @req:c15
+  场景: provenance-available
+    假如 完成一次启发式降级估计
+    当 检查估计结果
+    那么 带有 Heuristic 来源标注且无重复 XyUsage 定义
+
+  @req:c15
+  场景: usage-unified
+    假如 检查 token_estimator.rs
+    当 应用变更后
+    那么 从 domain 导入 XyUsage 而非定义本地结构

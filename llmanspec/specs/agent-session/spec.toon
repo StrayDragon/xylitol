@@ -12,7 +12,7 @@ requirements[36]{req_id,title,statement}:
   a7,上下文用量,AgentSession MUST 暴露 getContextUsage()，返回估计 token 数与上下文窗口百分比。
   a8,"agent-session-store","AgentCapabilities 或 ReAct 运行时 MUST 在每条 user、assistant、toolResult 消息完成时（对齐 pi message_end）经 XySessionStore::append_session_entry 写入当前 session；tool 执行结束后 MUST 持久化对应 toolResult；一轮结束后 session 文件或内存 backend MUST 含本轮消息。MUST NOT 仅把对话留在 ReAct 本地 history 而不写入 store。"
   a9,prompt 构造,AgentSession MUST 构造完整 messages 数组：system prompt + context files + history + user prompt，每轮前置。
-  a10,BDD agent,llmanspec/specs/agent-session/agent-session.feature 下 BDD 测试 MUST 全部通过。
+  a10,BDD agent,"llmanspec/specs/agent-session/agent-session.feature 下 BDD 测试 MUST 全部通过。"
   a21,"agent-prompt",System MUST 支持正斜杠模板语法 colon name args，含位置参数替换、全参占位符与默认值语法。
   a22,模板加载器,System MUST 从全局与项目 .xylitol/prompts 目录及 CLI 指定路径加载 md 为 prompt 模板；frontmatter 提供 description。
   a23,slash 命令,"AgentSession MUST 暴露 get_commands，返回与产品 TUI 同源的内建命令（至少含 model、exit、session、session-tree、session-fork、session-compact、session-export、session-import、session-resume、session-new、session-clone、session-name 等已实现项）及扩展注册命令；MUST NOT 继续以已废弃 pi 短名表冒充产品命令清单。"
@@ -39,48 +39,4 @@ requirements[36]{req_id,title,statement}:
   as44,死代码清理,"经 grep 确认零生产调用点后，Agent 上死方法 MUST 移除：整个 steering 域（steer、follow_up、clear_queue、pending_message_count、has_pending_steer、get_steering_messages、get_follow_up_messages、drain_queued_messages、message_queue、message_queue_mut）、process_prompt、cycle_forward、cycle_backward、share_as_gist、registry_clone、set_append_prompt、compact_current_session、compaction_threshold、compaction_settings、register_template、register_templates、register_command、register_skill_commands；死 #[allow(dead_code)] MUST 一并移除。"
   as45,从 store 播种 history,"AgentRuntime::run_with_id（或等价入口）在已有 session 上开新一轮时 MUST 经 store.build_session_context（及既有 SessionEntry→AgentMessage 转换）灌入 history，再追加本轮 user prompt；MUST NOT 每轮从空 history 起步导致多轮丢失上下文。"
   as46,持久化带 tag 的 agent 部件,"ReAct/session 将 AssistantMessage/UserMessage 持久化为 SessionEntry::Message 时 MUST 写出 domain-message dm1 的 tagged content；从 store 恢复为 AgentMessage（as_agent_message 或等价）时 MUST 只接受 tagged 部件；遇旧 untagged/裸字符串 content MUST NOT 静默当成合法对话上下文（MUST 报错或跳过该条目并可观测），MUST NOT 把 thinking 与 text 糊成单一 Text。"
-scenarios[44]{req_id,id,given,when,then}:
-  a1,"prompt-from-loader",项目含 AGENTS.md 且 CLI 组合根构造 agent,agent 构建 system prompt,system prompt MUST 含 AGENTS.md 内容且 loader 有值时 MUST NOT 回退硬编码占位符
-  a2,"turn-events",agent 处理含工具调用的回合,回合开始,事件按序发出：turn_start message_start message_update* message_end turn_end
-  a3,"tool-stream",bash 工具流式输出,tool_execution_start 触发,多次 tool_execution_update 后 tool_execution_end
-  a4,"switch-model",agent 运行中,调用 cycleForward,下一可用模型成为活动模型
-  a5,"thinking-toggle",模型支持 thinking,变更 thinking level,新级别钳制到模型能力
-  a6,abort,agent 流式响应中,调用 abort(),agent 循环终止并返回 abort 错误
-  a7,"context-usage",活动模型上下文窗口 200k,消息消耗 50k tokens,getContextUsage() 返回 25% 与 50000 tokens
-  a8,"persist-user-assistant",已绑定稳定 session_id 的 Agent 跑完一轮 user→assistant,load_entries(session_id),"含本轮 user 与 assistant 的 SessionEntry::Message"
-  a8,"persist-tool-result",一轮含工具调用,工具执行结束,store 含对应 toolResult（或等价 tool）消息条目
-  a9,"prompt-build",system prompt 已配置上下文文件,agent 开始回合,messages 数组为 system prompt、history、user message
-  a10,"bdd-pass",调用 BDD runner,"cargo test --test bdd",全部 agent 场景通过
-  a21,"template-expand",模板含第一参数占位符,以 main.rs 展开模板,内容中 main.rs 已替换
-  a21,"default-value",模板第一参数有默认值,无参展开模板,内容含默认值
-  a22,"load-global",prompts 目录有 review.md,加载模板,返回含 description 的 review 模板
-  a23,"product-names-in-get-commands",空扩展命令的 AgentSession,调用 get_commands,"含 session-tree 且不含短名 tree 作为内建主名"
-  a24,"slash-dispatch",用户发送 /compact,prompt 被拦截,compact 处理器被调用
-  a24,"template-dispatch",用户发送 /review 及参数,prompt 被拦截,模板展开并送 LLM
-  a25,"context-files-found",cwd 树存在 AGENTS.md,调用 load_context_files,以 AGENTS.md 内容为首项返回
-  a26,"bdd-pass",调用 BDD runner,运行 cargo test,"全部 agent-v3 场景通过"
-  as27,"auto-persist-on-message-end",已启用 session 的 Agent,assistant message_end 发生,该消息已 append 到 session store
-  as28,"resume-validates-cwd",会话文件 cwd 指向存在目录,调用 resume_session,会话加载成功
-  as29,"bdd-pass",调用 BDD runner,"cargo test --test bdd","全部 agent-v4 场景通过"
-  as30,"responsibilities-separated",枚举 session 模块职责,划定组件边界,各组件拥有单一职责类
-  as31,"capabilities-named",源码树在本变更后,"rg '\\bstruct Agent\\b' agent/session",能力聚合体类型名为 AgentCapabilities
-  as32,"retry-extracted","AgentSession 持有 retry_state 与超 100 行内联 auto-retry 逻辑",应用变更后,存在 AutoRetryEngine 协作者，AgentSession 组合它，公共 retry 行为不变
-  as32,"bash-extracted",AgentSession 持有 bash_cancel 与内联 !cmd/!!cmd 处理,应用变更后,"存在 BashExecHandler 协作者，AgentSession 组合它，infra-bash slash 命令行为一致"
-  as32,"export-extracted",AgentSession 有内联导出/导入方法,应用变更后,存在 SessionExporter 协作者，AgentSession 组合它，导出输出字节一致
-  as32,"api-retained",AgentSession 公共 API（per as31）,session 模块重组为含子模块的目录,全部既有公共方法签名与发出事件不变
-  as33,"no-orphan-managers",检查 src/agent/,列出顶层文件,model_manager.rs、compaction_orchestrator.rs、skill_manager.rs 不存在（分别位于 model/、compaction/、prompt/）
-  as34,"store-is-trait",agent 持有 session backend,检查字段类型,为 Arc<dyn SessionStore> 而非 Arc<SessionManager>
-  as35,"export-io-injected",为导出构造 AgentSession,执行写入,写入经注入 ExportIo 实现，agent/ 内无直接 fs 调用
-  as36,"bang-in-agent",定位 bang 解析器,检查模块,定义于 src/agent/session/bang.rs
-  as37,"exporter-in-agent",定位导出渲染辅助,检查模块,定义于 src/agent/session/export.rs
-  as38,"no-bash-configured",构建无 bash executor 的 agent,调用 execute_bash,返回提及 bash executor 未配置的错误且不 panic
-  as39,"loop-no-dup-state",检查 AgentLoop 字段,应用变更后,hooks 与 tool_mode 仅在 AgentSession，AgentLoop 仅持 session 与 cancel
-  as40,"agent-session-renamed",重命名后源码树,"rg '\\bAgentSession\\b' src/ tests/ 运行",零匹配且 Agent 为能力聚合体
-  as40,"snapshot-regenerated",公共 API 快照曾针对 AgentSession,快照测试运行,重生成后针对 Agent 类型通过
-  as41,"permission-gate-exists",permission 端口曾是 Agent 裸字段,应用变更后,PermissionGate 结构持有它且 get_permission 仍返回 Arc 供 react 路由
-  as42,"stats-delegate",get_session_stats 曾含内联聚合,检查 Agent 方法,"主体为一行委托至 stats::compute"
-  as43,"trust-free-fn",save_trust_decision 曾在 Agent 上,应用变更后,为 agent/session/trust.rs 自由函数且 Agent 不再携带
-  as44,"dead-methods-gone",steering 域与其它死方法曾存在,在 src/agent/ rg 那些方法名,无生产死方法残留（仅合法使用方法保留）
-  as45,"second-turn-sees-first",同一 session_id 第一轮 user/assistant 已在 store,第二轮 run_with_id,送给模型的 history 含第一轮消息
-  as46,"persist-load-thinking",含 ThinkingDelta 与 TextDelta 的 assistant 已 persist,load_entries 后 as_agent_message,content 含独立 Thinking 与 Text 且 type 字段正确
-  as46,"legacy-content-rejected",JSONL message.content 为旧 untagged 形态,as_agent_message 或恢复上下文,不产生糊成一体的合法 Assistant Text；失败或跳过可观测
+scenarios[0]:

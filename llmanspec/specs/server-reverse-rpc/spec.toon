@@ -1,14 +1,10 @@
 kind: llman.sdd.spec
 name: "server-reverse-rpc"
-purpose: "Server reverse RPC — 经 WebSocket 回调的带外审批与问题解析。"
+purpose: Server reverse RPC — 经 WebSocket 回调的带外审批与问题解析。
 valid_scope[2]: src/app/server/ws.rs,src/app/server/runtime.rs
 requirements[4]{req_id,title,statement}:
   rr1,"reverse-rpc-approval","ApprovalRequired 事件时，server MUST 向持有该 session 的所有 WS 连接广播 ServerFrame::ReverseRpc {type: approval, call_id, ...}；首个客户端响应胜出。"
   rr2,"reverse-rpc-question","QuestionRequired 事件时，server MUST 向所有 WS 连接广播 ServerFrame::ReverseRpc {type: question, call_id, ...}；同样首个响应胜出。"
-  rr3,"call-id-lifecycle","每个 reverse RPC MUST 有 UUID call_id，在 HashMap 中注册 oneshot channel；超时（默认 60s）时 channel 收到 ApprovalTimeout 错误；应答时 channel 收到结果；消费后 MUST 移除条目。"
-  rr4,"no-conflict-arbitration","v1 MUST NOT 实现多客户端冲突仲裁；给定 call_id 的首个 ApproveTool 或 AnswerQuestion 胜出；同一 call_id 的后续响应 MUST 被静默忽略。"
-scenarios[4]{req_id,id,given,when,then}:
-  rr1,"approval-broadcast","agent 发出 ApprovalRequired，call_id 为 xyz",server 检查 session 的 WS 连接,3 个已连接客户端均收到 ReverseRpc frame
-  rr2,"first-wins","2 个客户端应答 ApproveTool，call_id xyz（首个 true，50ms 后 false）",server 处理首个应答,"agent 以 approved=true 恢复；第二个应答被忽略"
-  rr3,"timeout-error","60s 内无客户端应答 ApproveTool",server 将 call_id 标记为 expired,agent 收到 ApprovalTimeout 错误
-  rr4,"second-answer-ignored","第二个客户端对已消费 call_id 应答 ApproveTool",server 收到该应答,"应答被静默忽略（无状态变化、无错误）"
+  rr3,"call-id-lifecycle",每个 reverse RPC MUST 有 UUID call_id，在 HashMap 中注册 oneshot channel；超时（默认 60s）时 channel 收到 ApprovalTimeout 错误；应答时 channel 收到结果；消费后 MUST 移除条目。
+  rr4,"no-conflict-arbitration",v1 MUST NOT 实现多客户端冲突仲裁；给定 call_id 的首个 ApproveTool 或 AnswerQuestion 胜出；同一 call_id 的后续响应 MUST 被静默忽略。
+scenarios[0]:

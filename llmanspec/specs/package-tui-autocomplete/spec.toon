@@ -1,16 +1,9 @@
 kind: llman.sdd.spec
 name: "package-tui-autocomplete"
-purpose: "自动补全：CancellationToken 取消、可选 fd 模糊搜、DebouncedAutocomplete。"
+purpose: 自动补全：CancellationToken 取消、可选 fd 模糊搜、DebouncedAutocomplete。
 valid_scope[2]: src/,tests/
 requirements[3]{req_id,title,statement}:
-  ac01,"async-cancellable-autocomplete","autocomplete 系统 MUST 支持异步建议获取，基于 CancellationToken 取消，使用户输入新内容时可中止进行中的文件系统查询，镜像 pi 的 AbortSignal 模式。CombinedAutocompleteProvider MUST 在其 fuzzy file search 路径暴露接受 CancellationToken 的 async 方法。"
+  ac01,"async-cancellable-autocomplete",autocomplete 系统 MUST 支持异步建议获取，基于 CancellationToken 取消，使用户输入新内容时可中止进行中的文件系统查询，镜像 pi 的 AbortSignal 模式。CombinedAutocompleteProvider MUST 在其 fuzzy file search 路径暴露接受 CancellationToken 的 async 方法。
   ac02,"walk-directory-with-fd","autocomplete 系统 MUST 支持递归模糊文件系统搜索，spawn fd(1) 子进程，参数匹配 pi 的 walkDirectoryWithFd：--base-directory、--max-results、--type f、--type d、--follow、--hidden，query 含 path separator 时使用 --full-path。fdPath MUST 可选（None = 无 fd，回退 read_dir stub）。CancellationToken 取消时子进程 MUST 收到 SIGKILL。"
   ac03,"debounced-autocomplete","DebouncedAutocomplete<P> wrapper MUST 按配置 delay（默认 250ms，对齐 pi setTimeout）debounce 连续 get_suggestions 调用。窗口内新调用到达时 MUST 取消前一 CancellationToken，仅最新 query 继续。debounce MUST 经 #[tokio::test(start_paused)] 可确定性测试窗口行为。"
-scenarios[7]{req_id,id,given,when,then}:
-  ac01,"async-cancellation","CombinedAutocompleteProvider 设 fd_path 且 fd 子进程查询进行中",其 CancellationToken 被取消,子进程收到 SIGKILL 且 get_suggestions_async 立即返回空结果
-  ac01,"async-fuzzy-with-fd","CombinedAutocompleteProvider 的 fd_path 指向有效 fd 二进制",以 @ prefix query 调用 get_suggestions_async,fd 子进程运行且结果与 shell fd 命令同 query 一致
-  ac02,"fd-recursive-search-finds-nested-files","tempdir 含嵌套目录与文件",以 base_dir 指向 tempdir 且 query 匹配深层文件调用 walk_directory_with_fd,结果含嵌套文件路径且目录带 trailing slash
-  ac02,"fd-path-none-fallback",fdPath 为 None,调用 get_fuzzy_file_suggestions,"函数回退到现有非递归 read_dir 并返回结果"
-  ac03,"debounce-drops-intermediate-calls","DebouncedAutocomplete 配置 250ms delay",0ms/50ms/100ms 三次 get_suggestions 到达且仅最后一次继续,前两个 CancellationToken 被取消且仅 100ms 调用的结果在 350ms 点返回
-  ac03,"debounce-cancellation-stops-in-flight",debounced query 已启动 fd 子进程,新调用取消前一 token,旧子进程收到 SIGKILL 且新 query 运行至完成
-  ac03,"debounce-in-test","#[tokio::test(start_paused)] 激活且 DebouncedAutocomplete delay 为 250ms",0ms 到达 get_suggestions 调用,"tokio::time::advance(250ms).await 触发 query 而无需真实 wall-clock 等待"
+scenarios[0]:

@@ -1,20 +1,12 @@
 kind: llman.sdd.spec
 name: "package-tui-choice-prompt"
-purpose: "通用 ChoicePrompt：单选/多选、Other 自由输入、多题 Tab 混搭（AskQuestion 形态，供 agent_demo / 产品内联槽）。"
+purpose: 通用 ChoicePrompt：单选/多选、Other 自由输入、多题 Tab 混搭（AskQuestion 形态，供 agent_demo / 产品内联槽）。
 valid_scope[1]: "packages/xylitol-tui/"
 requirements[6]{req_id,title,statement}:
   pcp00,"capability-shell","本 capability 由变更 c565-add-package-tui-choice-prompt 引入；归档合并后以本 spec 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   pcp01,"single-and-multi","ChoicePrompt MUST 支持每题 ChoiceMode::Single（互斥）与 ChoiceMode::Multi（可勾选多项）；提交结果 MUST 区分单值与多值；Single 行视觉 MUST NOT 使用 ●/○ 单选圆点（用 →/反色）。"
-  pcp02,"other-free-text","当题目 allow_other 为真时 MUST 提供 Other 选项；用户 MUST 能经 Tab 聚焦自由输入并在提交中带回自定义文本。"
-  pcp03,"multi-question-tabs","当问卷含多题时 MUST 渲染可切换的题目标签与 Submit，且每题可独立为 Single 或 Multi；单题 MUST NOT 强制显示多题 Tab 条。"
-  pcp04,"inline-not-overlay","ChoicePrompt MUST 可作为 Component 嵌入宿主布局（如 editor 槽替换）；MUST NOT 要求以全屏 Overlay 仪表盘呈现。"
-  pcp05,cancel,"Esc（tui.select.cancel）MUST 取消整份问卷并给出 cancelled 结果；MUST NOT 静默丢弃无回调。"
-scenarios[8]{req_id,id,given,when,then}:
-  pcp00,"shell-present","","列出 capability package-tui-choice-prompt","spec 含 pcp01–pcp05"
-  pcp01,"single-enter","单题 Single 有两项","高亮第二项并 Enter","结果含该单值且非 cancelled"
-  pcp01,"multi-space","单题 Multi","Space 勾选两项再 Enter","结果含两个值"
-  pcp02,"other-tab","allow_other 真","移到 Other 行按 Tab 输入再 Enter","结果含自定义文本且标记 was_custom"
-  pcp03,"tabs-multi-q","两题问卷","渲染","可见两题标签与 Submit"
-  pcp03,"tabs-single-q","一题问卷","渲染","无多题 Tab 条"
-  pcp04,"inline-slot","agent_demo 打开 ask plate","观察布局","组件在 editor 槽内联显示"
-  pcp05,"esc-cancel","问卷打开","按 Esc","回调 cancelled 为真"
+  pcp02,"other-free-text",当题目 allow_other 为真时 MUST 提供 Other 选项；用户 MUST 能经 Tab 聚焦自由输入并在提交中带回自定义文本。
+  pcp03,"multi-question-tabs",当问卷含多题时 MUST 渲染可切换的题目标签与 Submit，且每题可独立为 Single 或 Multi；单题 MUST NOT 强制显示多题 Tab 条。
+  pcp04,"inline-not-overlay",ChoicePrompt MUST 可作为 Component 嵌入宿主布局（如 editor 槽替换）；MUST NOT 要求以全屏 Overlay 仪表盘呈现。
+  pcp05,cancel,Esc（tui.select.cancel）MUST 取消整份问卷并给出 cancelled 结果；MUST NOT 静默丢弃无回调。
+scenarios[0]:
