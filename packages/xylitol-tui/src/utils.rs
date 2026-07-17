@@ -160,6 +160,37 @@ pub fn extract_ansi_code(s: &str, pos: usize) -> Option<(&str, usize)> {
     }
 }
 
+/// pi `normalizeTerminalOutput`: Thai/Lao AM decompose + tab → 3 spaces (ANSI-safe).
+/// Applied in the engine before paint so width / diff stay consistent.
+pub fn normalize_terminal_output(s: &str) -> String {
+    let mut normalized = s.to_string();
+    if normalized.contains('\u{0e33}') || normalized.contains('\u{0eb3}') {
+        normalized = normalized.replace('\u{0e33}', "\u{0e4d}\u{0e32}");
+        normalized = normalized.replace('\u{0eb3}', "\u{0ecd}\u{0eb2}");
+    }
+    if !normalized.contains('\t') {
+        return normalized;
+    }
+    let mut result = String::with_capacity(normalized.len());
+    let mut i = 0;
+    while i < normalized.len() {
+        if let Some((code, len)) = extract_ansi_code(&normalized, i) {
+            result.push_str(code);
+            i += len;
+            continue;
+        }
+        let ch = normalized[i..].chars().next().expect("valid utf-8 at i");
+        if ch == '\t' {
+            result.push_str("   ");
+            i += 1;
+        } else {
+            result.push(ch);
+            i += ch.len_utf8();
+        }
+    }
+    result
+}
+
 /// Track active ANSI SGR codes to preserve styling across line breaks.
 #[derive(Default)]
 struct AnsiCodeTracker {
@@ -1148,5 +1179,22 @@ mod visible_width_tests {
         assert_eq!(visible_width(plain), 11);
         let styled = format!("\x1b[31m{plain}\x1b[0m");
         assert_eq!(visible_width(&styled), 11);
+    }
+
+    #[test]
+    fn normalize_terminal_output_expands_tabs_preserving_ansi() {
+        let s = "\x1b[31ma\tb\x1b[0m";
+        let out = normalize_terminal_output(s);
+        assert_eq!(out, "\x1b[31ma   b\x1b[0m");
+        assert!(!out.contains('\t'));
+    }
+
+    #[test]
+    fn normalize_terminal_output_decomposes_thai_sara_am() {
+        // U+0E33 → U+0E4D U+0E32
+        let s = "ก\u{0e33}";
+        let out = normalize_terminal_output(s);
+        assert!(out.contains("\u{0e4d}\u{0e32}"));
+        assert!(!out.contains('\u{0e33}'));
     }
 }

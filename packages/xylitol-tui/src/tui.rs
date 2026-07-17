@@ -1,5 +1,5 @@
 use crate::terminal::Terminal;
-use crate::utils::visible_width;
+use crate::utils::{normalize_terminal_output, visible_width};
 use crossterm::event::{KeyEvent, KeyEventKind};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -1077,14 +1077,19 @@ impl<T: Terminal> TUI<T> {
             new_lines = self.composite_overlays(new_lines, width, height);
         }
 
-        let reset = "\x1b[0m\x1b]8;;\x07";
-        for line in &mut new_lines {
-            if !line.is_empty() {
-                line.push_str(reset);
-            }
-        }
-
+        // pi: extract cursor marker before applyLineResets.
         let cursor_pos = self.extract_cursor_position(&mut new_lines, height);
+
+        // pi applyLineResets: normalize + SEGMENT_RESET on every non-image line
+        // (including empty — clears OSC-8 / SGR bleed).
+        const SEGMENT_RESET: &str = "\x1b[0m\x1b]8;;\x07";
+        for line in &mut new_lines {
+            if is_image_line(line) {
+                continue;
+            }
+            *line = normalize_terminal_output(line);
+            line.push_str(SEGMENT_RESET);
+        }
 
         // Hard width invariant (pi's crash guard): every rendered line must fit
         // the terminal width. An overflowing line desyncs the cursor and
@@ -1112,6 +1117,15 @@ impl<T: Terminal> TUI<T> {
         // consider it (pi decides after computing firstChanged/lastChanged).
         let (first_changed, last_changed, appended) = self.compute_line_diff(&new_lines);
 
+        // pi all-deletions safety nets (tui.ts:1411-1425): escalate to full clear.
+        let deletions_need_full = first_changed >= new_lines.len() as isize
+            && self.previous_lines.len() > new_lines.len()
+            && {
+                let target = new_lines.len().saturating_sub(1);
+                let extra = self.previous_lines.len() - new_lines.len();
+                target < self.previous_viewport_top || extra > height
+            };
+
         // Full redraw triggers (order matches pi tui.ts:1335-1459):
         // 1. first frame / width change / height change (non-Termux)
         // 2. clearOnShrink (content shrank below the historical high-water mark)
@@ -1119,9 +1133,11 @@ impl<T: Terminal> TUI<T> {
         //    viewport, the diff path can't reach it, so repaint everything.
         // 4. all-deletions with the new tail above the viewport — likewise can't
         //    be expressed as a diff, fullRedraw to resync.
+        // 5. all-deletions safety nets (target above viewport / extra > height).
         let do_full = self.previous_lines.is_empty()
             || width_changed
             || height_changed
+            || deletions_need_full
             || (self.clear_on_shrink
                 && new_lines.len() < self.max_lines_rendered
                 && self.overlays.is_empty())
@@ -1218,12 +1234,20 @@ impl<T: Terminal> TUI<T> {
         last_changed: isize,
         appended: bool,
     ) {
+        let prev_viewport_top = self.previous_viewport_top;
+
         // All-deletions branch: content only shrank. Clear the surplus lines.
+        // Full-clear guards already handled in `do_render` (`deletions_need_full`).
         if first_changed_in >= new_lines.len() as isize {
             if self.previous_lines.len() > new_lines.len() {
                 let mut buf = String::from(BEGIN_RENDER_BATCH);
                 let target = new_lines.len().saturating_sub(1);
-                let diff = target as isize - self.hardware_cursor_row as isize;
+                // Viewport-relative move (pi computeLineDiff).
+                let current_screen = (self.hardware_cursor_row as isize
+                    - prev_viewport_top as isize)
+                    .clamp(0, height.saturating_sub(1) as isize);
+                let target_screen = target as isize - prev_viewport_top as isize;
+                let diff = target_screen - current_screen;
                 if diff > 0 {
                     buf.push_str(&format!("\x1b[{}B", diff));
                 } else if diff < 0 {
@@ -1265,6 +1289,7 @@ impl<T: Terminal> TUI<T> {
         };
 
         let mut buf = String::from(BEGIN_RENDER_BATCH);
+        let mut hardware_cursor_row = self.hardware_cursor_row;
 
         // Viewport scroll (pi Step 5C, tui.ts:1466-1478): if the changed region
         // falls below the previous viewport bottom, CUD to the screen's last row
@@ -1273,9 +1298,9 @@ impl<T: Terminal> TUI<T> {
         let mut prev_viewport_top = self.previous_viewport_top;
         let prev_viewport_bottom = prev_viewport_top + height.saturating_sub(1);
         if move_target > prev_viewport_bottom {
-            let current_screen_row = (self.hardware_cursor_row as isize
-                - prev_viewport_top as isize)
-                .clamp(0, height as isize - 1) as usize;
+            let current_screen_row = (hardware_cursor_row as isize - prev_viewport_top as isize)
+                .clamp(0, height.saturating_sub(1) as isize)
+                as usize;
             let move_to_bottom = height - 1 - current_screen_row;
             if move_to_bottom > 0 {
                 buf.push_str(&format!("\x1b[{}B", move_to_bottom));
@@ -1285,13 +1310,14 @@ impl<T: Terminal> TUI<T> {
                 buf.push_str(&"\r\n".repeat(scroll));
             }
             prev_viewport_top += scroll;
+            // pi: hardwareCursorRow = moveTargetRow after scroll.
+            hardware_cursor_row = move_target;
         }
 
         // Move to the target row (relative to the current viewport top) and
         // start the changed region.
         let screen_row = move_target as isize - prev_viewport_top as isize;
-        let cursor_diff =
-            screen_row - (self.hardware_cursor_row as isize - prev_viewport_top as isize);
+        let cursor_diff = screen_row - (hardware_cursor_row as isize - prev_viewport_top as isize);
         if cursor_diff > 0 {
             buf.push_str(&format!("\x1b[{}B", cursor_diff));
         } else if cursor_diff < 0 {
@@ -1308,28 +1334,28 @@ impl<T: Terminal> TUI<T> {
             buf.push_str("\x1b[2K");
             buf.push_str(line);
         }
-        buf.push_str(END_RENDER_BATCH);
-        self.terminal.write(&buf);
 
-        // Shrink cleanup: if content got shorter, clear the surplus rows below
-        // the new tail (pi tui.ts:1555-1568). finalCursorRow tracks where the
-        // cursor physically ended so the cursor-positioning step stays accurate.
+        // Shrink cleanup in the same sync batch (pi tui.ts:1555-1568): move to
+        // content end if we stopped early, clear surplus rows, step back.
         let mut final_cursor_row = end;
         if self.previous_lines.len() > new_lines.len() && !appended {
+            let content_end = new_lines.len().saturating_sub(1);
+            if end < content_end {
+                let move_down = content_end - end;
+                buf.push_str(&format!("\x1b[{}B", move_down));
+                final_cursor_row = content_end;
+            }
             let extra = self.previous_lines.len() - new_lines.len();
-            let mut tail = String::from(BEGIN_RENDER_BATCH);
-            // Move to one past the last rendered line, clear each surplus row.
             for _ in 0..extra {
-                tail.push_str("\r\n\x1b[2K");
+                buf.push_str("\r\n\x1b[2K");
             }
-            // Step back up to the content end.
             if extra > 0 {
-                tail.push_str(&format!("\x1b[{}A", extra));
+                buf.push_str(&format!("\x1b[{}A", extra));
             }
-            tail.push_str(END_RENDER_BATCH);
-            self.terminal.write(&tail);
-            final_cursor_row = new_lines.len().saturating_sub(1);
         }
+
+        buf.push_str(END_RENDER_BATCH);
+        self.terminal.write(&buf);
 
         self.cursor_row = new_lines.len().saturating_sub(1);
         self.hardware_cursor_row = final_cursor_row;

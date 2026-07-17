@@ -73,3 +73,4 @@
 | 2026-07-14 | **D19**：Ctrl+G resume 不整屏 clear；`set_text` 光标默认 End（对齐 pi editor） |
 | 2026-07-16 | **D20**：paste marker 原子分段延后；c1160 折叠/展开 + 产品提交展开 |
 | 2026-07-17 | **D19 对齐 pi**：force 哨兵改 clear；resize/mount soft（修宽高残影） |
+| 2026-07-17 | 引擎差分对齐：shrink 清尾同批+CUD、viewport scroll 更新 hardware cursor、all-deletions full 护栏、`normalize_terminal_output` |
