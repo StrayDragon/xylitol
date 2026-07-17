@@ -224,7 +224,10 @@ pub struct TUI<T: Terminal> {
     components: Vec<Box<dyn Component>>,
     overlays: Vec<(Box<dyn Component>, OverlayOptions, OverlayStackEntry)>,
     previous_lines: Vec<String>,
+    /// Last painted terminal width. `0` = first-frame sentinel (no clear).
+    /// [`FORCE_SIZE_SENTINEL`] = pi `previousWidth = -1` (force clearing redraw).
     previous_width: usize,
+    /// Last painted terminal height. Same sentinels as [`Self::previous_width`].
     previous_height: usize,
     /// Row index (in the rendered line buffer) of the top of the visible
     /// viewport at the end of the previous frame. Differential rendering uses
@@ -265,6 +268,10 @@ pub struct TUI<T: Terminal> {
 const MIN_RENDER_INTERVAL_MS: u64 = 16;
 const BEGIN_RENDER_BATCH: &str = "\x1b[?2026h\x1b[?7l";
 const END_RENDER_BATCH: &str = "\x1b[?7h\x1b[?2026l";
+/// pi `requestRender(true)` sets `previousWidth = -1` so `widthChanged` is true
+/// and the next frame takes `fullRender(true)` (`2J`/`H`/`3J`). `usize` has no
+/// `-1`; use `MAX` as the same non-zero ≠ real-width sentinel.
+const FORCE_SIZE_SENTINEL: usize = usize::MAX;
 
 impl<T: Terminal> TUI<T> {
     pub fn new(terminal: T) -> Self {
@@ -1001,18 +1008,20 @@ impl<T: Terminal> TUI<T> {
     /// Mark a render as needed. The actual frame is driven by whoever calls
     /// `try_render` (a host loop) or by `run_event_loop`'s internal timer. If
     /// `force`, previous-frame state is reset so the next render takes the
-    /// full-redraw path.
+    /// **clearing** full-redraw path (aligned with pi `requestRender(true)`).
     ///
-    /// **Inline TUI (xylitol vs pi):** force sets `previous_width/height = 0`,
-    /// the same sentinel as the first frame, so the next full paint does **not**
-    /// emit `\x1b[2J` (preserves scrollback above the TUI). pi uses `-1` to
-    /// force a clearing redraw; we deliberately keep the no-clear force for
-    /// inline/host embedding. See `packages/xylitol-tui/PI_DELTAS.md`.
+    /// Force sets `previous_width/height` to [`FORCE_SIZE_SENTINEL`] (pi `-1`),
+    /// which makes `width_changed`/`height_changed` true so `full_render`
+    /// emits `\x1b[2J\x1b[H\x1b[3J`. First paint and ordinary soft renders still
+    /// use `previous_* = 0` / real sizes (no clear). See `PI_DELTAS.md` D19.
+    ///
+    /// **Resize:** call with `force=false` (pi: soft `requestRender()` on
+    /// stdout resize) so real size deltas drive the same clear path.
     pub fn request_render(&mut self, force: bool) {
         if force {
             self.previous_lines.clear();
-            self.previous_width = 0;
-            self.previous_height = 0;
+            self.previous_width = FORCE_SIZE_SENTINEL;
+            self.previous_height = FORCE_SIZE_SENTINEL;
             self.previous_viewport_top = 0;
             self.cursor_row = 0;
             self.hardware_cursor_row = 0;

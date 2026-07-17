@@ -301,18 +301,52 @@ fn request_render_force_resets_previous_state_for_full_redraw() {
     let before = tui.full_redraws();
     tui.terminal.clear_writes();
 
-    // force=true resets previous state → next render is full redraw.
-    // Inline xylitol: force uses previous_width=0 (first-frame sentinel) so it
-    // does **not** emit 2J (unlike pi's -1 clearing force).
+    // force=true → pi previousWidth=-1 sentinel → clearing full redraw (2J/H/3J).
     tui.request_render(true);
     tui.try_render().unwrap();
     assert!(
         tui.full_redraws() > before,
         "force request should trigger a full redraw"
     );
+    let writes = tui.terminal.all_writes();
     assert!(
-        !tui.terminal.all_writes().contains("\x1b[2J"),
-        "inline force must not wipe scrollback above the TUI"
+        writes.contains("\x1b[2J"),
+        "force must clear like pi requestRender(true): {writes:?}"
+    );
+}
+
+/// Soft resize (pi stdout resize → requestRender()): size delta → full clear.
+#[test]
+fn soft_resize_triggers_clearing_full_redraw() {
+    use support::MutableComponent;
+
+    let lines = std::rc::Rc::new(std::cell::RefCell::new(vec![
+        "AAAAAAAA".to_string(),
+        "BBBBBBBB".to_string(),
+        "CCCCCCCC".to_string(),
+    ]));
+    let term = LoggingVirtualTerminal::new(8, 6);
+    let mut tui = TUI::new(term);
+    tui.add_child(Box::new(MutableComponent {
+        lines: lines.clone(),
+    }));
+    tui.render_frame().unwrap();
+    tui.terminal.clear_writes();
+
+    tui.terminal.set_size_hint(6, 6);
+    *lines.borrow_mut() = vec!["AAAAAA".to_string(), "BBBBBB".to_string()];
+    tui.request_render(false);
+    tui.render_frame().unwrap();
+
+    let writes = tui.terminal.all_writes();
+    assert!(
+        writes.contains("\x1b[2J") && writes.contains("\x1b[3J"),
+        "soft size change must fullRender(true) like pi: {writes:?}"
+    );
+    let vp = tui.terminal.viewport();
+    assert!(
+        !vp.iter().any(|l| l.contains('C')),
+        "cleared resize must not leave stale rows: {vp:?}"
     );
 }
 
