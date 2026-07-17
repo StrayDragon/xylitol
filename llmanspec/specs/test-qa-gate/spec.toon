@@ -8,10 +8,4 @@ requirements[5]{req_id,title,statement}:
   qg03,文档指针,"根 AGENTS.md 命令段与 test-tui-harness skill MUST 写明 just qa 与 just qa-e2e 的分工；TUI 五层方法论仍以 package-tui-testing 与该 skill 为 SSOT，本闸仅统一入口。"
   qg04,"scripts-check-convention","仓库 MUST 约定 scripts/check_*.py（或 check-*.py）为非变更闸脚本且 MUST 经 just qa 的 check-scripts-wired/check-scripts 入闸；cleanup_* 等维护脚本 MUST NOT 被 just qa 强制执行。"
   qg05,"session-tree-pty-e2e","仓库 MUST 在 tests/tui_e2e（portable-pty）提供至少一条产品 Fake 会话树 E2E：双 Esc 开树后屏幕 MUST 含 Search 或 Type to search 类提示，且含 TreeHelp 用途片段（如 fold/unfold 或 filters）；该用例 MUST 为 #[ignore] 并由 just test-tui-e2e-pty（或 qa-e2e）拉取；默认 just qa MUST NOT 强制运行之。"
-scenarios[6]{req_id,id,given,when,then}:
-  qg01,"qa-runs-full-gate",开发者准备提交,运行 just qa,"fmt、clippy、workspace 测试、xylitol-tui 包测、doc、token check、scripts/check_*、prek 均执行且全部通过才打印成功"
-  qg01,"qa-runs-scripts-checks",仓库含 scripts/check_*.py,运行 just qa,"check-scripts-wired 与 check-scripts 被执行且全部通过才打印成功"
-  qg02,"qa-skips-e2e-by-default",本机未安装 tmux,仅运行 just qa,第 5 层 E2E 不被调用；闸门可绿
-  qg03,"docs-point-to-recipes","读者打开根 AGENTS.md 或 test-tui-harness skill",查找验证入口,"文档写明 just qa 为日常满闸、just qa-e2e 含真终端 E2E"
-  qg04,"wired-meta",新增 scripts/check_foo.py,"运行 just check-scripts-wired","因 check-scripts 通配或显式引用而通过；未入闸则失败"
-  qg05,"pty-opens-tree-slot",产品 Fake PTY 已就绪且已有至少一轮对话,双 Esc 开树,屏幕含 Type to search 或 Search: 且含 fold/unfold 或 filters
+scenarios[0]:

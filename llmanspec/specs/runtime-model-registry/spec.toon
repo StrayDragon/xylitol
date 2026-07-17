@@ -14,22 +14,4 @@ requirements[11]{req_id,title,statement}:
   m9,"thinking-levels-on-meta","ModelRegistry / resolve_model_meta（或等价）MUST 将配置中的 thinking_levels 填入 XyModelMeta.thinking_levels；thinking 为 false 时支持集 MUST 仅为 off（或空且运行时仅允许 Off）；thinking 为 true 且未声明列表时 MUST 默认为 off、minimal、low、medium、high；显式列表 MUST 保留配置顺序并可含洞（如无 xhigh）；domain ThinkingLevel MUST 覆盖 off…max（含 xhigh、max）。MUST NOT 依赖 xylitol-tui ThinkingBorderLevel。"
   m10,"thinking-level-validate-clamp",set_thinking_level（或 Driver 等价）在目标 level 不在当前模型支持集时 MUST 拒绝且 MUST NOT 更改当前值；换模或启动时若当前 level 不在新支持集 MUST clamp 到合法默认（Settings default_thinking_level 若合法则优先）。
   m11,"thinking-level-on-generate","Agent 在调用 XyModel::generate_stream（或等价）时 MUST 传入当前 ThinkingLevel 与模型 thinking_level_map（及可用的 thinking_budgets）；resolve 后 MUST 影响下一轮 provider 请求体；MUST NOT 仅更新会话/UI 状态而不影响请求组装。"
-scenarios[18]{req_id,id,given,when,then}:
-  m1,"register-provider",以名称 openai 与 api key 注册 provider,对 openai 模型调用 has_configured_auth,返回 true
-  m1,"no-auth",anthropic 未配置 api key,对 claude 模型调用 has_configured_auth,返回 false
-  m1,"resolved-auth",api key 为已设置的环境变量引用 $MY_KEY,对 provider 调用 has_resolved_auth,返回 true
-  m1,"unresolved-auth",api key 为未设置的环境变量引用 $MY_KEY,对 provider 调用 has_resolved_auth,返回 false
-  m2,"available-models",两个 provider 各有 2 个模型,调用 get_available,按优先级返回 4 个模型
-  m3,"real-values","",对支持的 provider 调用 default_model_id_for_provider,"返回真实可用模型标识而非 gpt-5.4 等占位符"
-  m4,"exact-match","可用模型含 openai/gpt-4o","调用 resolve_model('openai/gpt-4o')",返回匹配模型
-  m5,"scoped-cycle",scoped_models 有 3 项,调用 cycle_model,仅在这 3 个模型间循环
-  m6,"fallback-model","用户在 openai provider 请求 nonexistent-model",解析模型,回退使用 openai 基础模型且以请求 id 为名称
-  m7,"auth-guidance-message",anthropic 模型未配置 API key,调用 auth_guidance_message,消息含 ANTHROPIC_API_KEY
-  m8,"bdd-pass",运行模型注册表与解析 BDD 套件,全部场景执行,每场景通过且无回归
-  m9,"default-standard",模型 thinking true 且无 thinking_levels,resolve_model_meta,thinking_levels 含 off 至 high 且不含 xhigh
-  m9,"explicit-hole",配置 thinking_levels 为 high 与 max,resolve_model_meta,列表为 high 与 max 且无 xhigh
-  m9,"xhigh-parse","",解析 ThinkingLevel 字符串 xhigh,得到 Xhigh 变体
-  m10,"reject-unsupported",当前模型支持集无 xhigh,set_thinking_level(Xhigh),失败且当前 level 不变
-  m10,"clamp-on-switch",当前为 xhigh 后切换到仅支持至 high 的模型,select_model 完成,thinking level 被 clamp 到支持集内合法值
-  m11,"level-reaches-options",当前 thinking level 为 high,发起一轮 generate_stream,"调用携带 ThinkingLevel::High（或等价 options）"
-  m11,"map-from-meta",模型 meta 含 thinking_level_map,发起 generate_stream,options 含该 map
+scenarios[0]:

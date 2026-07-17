@@ -10,15 +10,4 @@ requirements[7]{req_id,title,statement}:
   pab5,"provider-实现迁入","OpenAI 兼容（Responses 与 Completions）与 Anthropic Messages 的流式/非流式接线实现 MUST 以 xylitol-ai-bridge 为实现归属；主仓 MUST NOT 保留与包并行的第二套完整 adapter 实现体（允许薄映射与装配）。"
   pab11,"vendor-sdk-first",OpenAI 兼容路径（Completions、Responses、input_tokens RemoteCount）与 Anthropic 兼容路径（Messages、count_tokens）MUST 优先经厂商官方 Rust SDK Client 接线；hooks MUST 经 SDK middleware（或文档化等价扩展点）接入且保持可移植 HeaderBag/JSON body 语义；新兼容端 MUST 以新 adapter/配置扩展（开闭），MUST NOT 为每个网关分叉改 AgentMessage 或 ReAct。
   pab12,"thinking-params-in-request-body","xylitol-ai-bridge 在组装 OpenAI Completions / Responses 与 Anthropic Messages 请求体时 MUST 消费已解析的 thinking 参数：Completions 用 reasoning_effort；Responses 用 reasoning.effort；Anthropic 用 thinking budget（enabled + budget_tokens）；level 为 off 或映射为 null 时 MUST 省略对应字段（或显式 disabled）；用户 map 字符串 MUST 覆盖内置默认；MUST NOT 在无 map/默认时伪造未知厂商字段。"
-scenarios[11]{req_id,id,given,when,then}:
-  pab1,"crate-no-dep-xylitol","packages/xylitol-ai-bridge 已加入 workspace",检查该包 Cargo.toml 依赖,不存在对主包 xylitol 的依赖
-  pab2,"modules-exist",包源码树已按 design 落地,枚举 src 模块,存在 provider usage accounting tokenize registry 职责边界
-  pab3,"dto-no-bash-role",审查 bridge 公共消息 enum,列出 role 变体,无 bashExecution/compactionSummary/branchSummary 平行会话角色
-  pab4,"explicit-projection",含 BashExecution 的 AgentMessage 列表,调用 project_for_llm,得到不含独立 bash 角色的 LLM DTO 且内容按规则折叠或跳过
-  pab4,"no-json-twin-map",生成路径装配,审查 infra map,不存在 AgentMessage 与全量 AiBridgeMessage 的 serde_json 往返
-  pab5,"single-impl",OpenAI 与 Anthropic 路径已迁入包,审查 src/infra/provider 与包 provider,主仓无并行完整 adapter 实现体仅剩映射或装配
-  pab11,"openai-via-sdk",Completions 或 Responses 请求,实现归属,"经 async-openai Client（非手写重复 SSE 栈为默认路径）"
-  pab11,"open-closed-adapter","新增一 OpenAI-compatible base_url",接线,仅增配置/薄 adapter 不改 AgentMessage
-  pab12,"openai-completions-effort",level=medium 且无自定义 map,组装 Completions 请求,body 含 reasoning_effort 为 medium
-  pab12,"anthropic-budget-off",level=off,组装 Anthropic 请求,body 无 enabled thinking budget 块
-  pab12,"map-override",map 将 high 映射为 max,组装 OpenAI 类请求,effort 字段为 max
+scenarios[0]:

@@ -1,16 +1,11 @@
 kind: llman.sdd.spec
 name: "user-experience"
-purpose: "用户体验 — 鉴权引导消息、错误消息与启动诊断。"
+purpose: 用户体验 — 鉴权引导消息、错误消息与启动诊断。
 valid_scope[2]: src/app/cli/logging.rs,src/domain/types.rs
 requirements[5]{req_id,title,statement}:
-  ux0,placeholder,"System SHALL 为常见配置问题提供用户友好引导。"
-  ux1,"login-help","System MUST 提供 get_provider_login_help，返回引用 /login 与文档路径的引导。"
-  ux2,"no-models","无可用模型时，System MUST 提供 format_no_models_available_message。"
-  ux3,"no-model-selected","未选择模型时，System MUST 提供 format_no_model_selected_message。"
-  ux4,"no-api-key","System MUST 提供 format_no_api_key_found_message，含 provider 名称。"
-scenarios[5]{req_id,id,given,when,then}:
-  ux0,placeholder,无用户交互,无操作,无变化
-  ux1,"login-help",用户需要 provider 设置引导,get_provider_login_help 被调用,消息含 /login 与文档路径
-  ux2,"no-models",model registry 为空,format_no_models_available_message 被调用,"'消息含 \"/login\" 与 \"providers.md\"'"
-  ux3,"no-selection",未选择模型,format_no_model_selected_message 被调用,"'消息含 \"Use /login\" 与 \"/model\"'"
-  ux4,"no-key","provider anthropic 无 API key",format_no_api_key_found_message 被调用,"'消息含 \"anthropic\" 与 \"/login\"'"
+  ux0,placeholder,System SHALL 为常见配置问题提供用户友好引导。
+  ux1,"login-help",System MUST 提供 get_provider_login_help，返回引用 /login 与文档路径的引导。
+  ux2,"no-models",无可用模型时，System MUST 提供 format_no_models_available_message。
+  ux3,"no-model-selected",未选择模型时，System MUST 提供 format_no_model_selected_message。
+  ux4,"no-api-key",System MUST 提供 format_no_api_key_found_message，含 provider 名称。
+scenarios[0]:

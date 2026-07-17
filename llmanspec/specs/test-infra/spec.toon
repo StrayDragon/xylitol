@@ -3,19 +3,11 @@ name: "test-infra"
 purpose: "测试基础设施：Fake/Faux provider、rstest-bdd、临时目录 RAII、TUI E2E 隔离。"
 valid_scope[2]: src/,tests/
 requirements[7]{req_id,title,statement}:
-  r1,"faux-provider","System MUST 提供 FauxProvider，返回预配置的响应步骤，无需网络调用，用于确定性 agent 测试。"
-  r2,"test-harness-tools","System MUST 通过 rstest-bdd 场景/测试函数测试工具，使用 given/when/then 类型化占位符步骤，每个场景对应一个测试函数。"
-  r4,"temp-file-raii","所有创建临时文件的测试 MUST 使用 RAII 清理（tempfile crate），执行后 MUST NOT 遗留产物。"
-  r5,"async-test-timeout","异步集成测试 MUST 用 with_test_timeout 辅助函数包裹主体（默认 10s），防止 CI 因死锁或 mock 失败挂起。"
-  r6,"no-fixed-tmp-paths","测试 MUST NOT 使用固定名称的硬编码 /tmp 路径；MUST 使用唯一自动生成路径以支持并行执行。"
-  r7,"bdd-framework","System MUST 使用 rstest-bdd（非 cucumber-rs）做 BDD 测试；每个 feature 场景 MUST 绑定到测试函数；步骤定义 MUST 使用类型化占位符而非 regex。"
-  r8,"tui-e2e-isolation","TUI 端到端测试（portable-pty 与 tmux）MUST 与主测试矩阵隔离：MUST 位于 workspace 级 tests/tui_e2e/（非 packages/xylitol-tui/tests/），MUST 标记 #[ignore] 或由 feature flag 门控，默认 cargo test 不运行，MUST 经专用 justfile 目标（test-tui-e2e）调用。tmux smoke MUST 额外要求 tmux 二进制存在（缺失则 skip 并给出清晰消息），并为 spawned session 设置 TERM=xterm-256color。每个 tmux session MUST 使用唯一名称（基于 PID 或时间戳）以支持并行，MUST 经 Drop guard 在 panic 时也 kill，避免泄漏 session。"
-scenarios[8]{req_id,id,given,when,then}:
-  r1,happy,"FauxProvider 已配置 text 与 tool call 响应",agent 循环以 FauxProvider 运行,所有响应无网络调用返回且 call_count 被跟踪
-  r2,scenario,"rstest-bdd 步骤定义已存在","cargo test -- test_read_file",测试通过，使用类型化占位符步骤与场景绑定
-  r4,"lsp-cleanup","LSP 测试创建临时 .rs 文件",测试完成（成功或 panic）,临时文件自动删除
-  r5,"timeout-helper","异步测试使用 with_test_timeout(10, future)",future 超过 10s,测试 panic 并输出 timeout 消息而非无限挂起
-  r6,"parallel-safe","两个 config loader 测试实例并行运行",两者均使用唯一临时目录,无文件冲突或测试干扰
-  r7,"compiles-with-rstest","项目有 rstest 与 rstest-bdd dev-dependencies","cargo test bdd",所有场景以 cargo test 语法通过，无需自定义 runner
-  r8,"e2e-not-in-default","默认 cargo test 运行","tests/tui_e2e/ 用例存在但 #[ignore]","默认 cargo test 不执行 portable-pty 或 tmux 测试（仅经专用目标运行）"
-  r8,"tmux-session-cleaned-on-panic","tmux smoke 测试执行中 panic",Drop guard 运行,"tmux session 被 kill，无名为 xyl_e2e_* 的孤儿 session（可通过 tmux list-sessions 验证）"
+  r39,"faux-provider",System MUST 提供 FauxProvider，返回预配置的响应步骤，无需网络调用，用于确定性 agent 测试。
+  r46,"test-harness-tools","System MUST 通过 rstest-bdd 场景/测试函数测试工具，使用 given/when/then 类型化占位符步骤，每个场景对应一个测试函数。"
+  r54,"temp-file-raii",所有创建临时文件的测试 MUST 使用 RAII 清理（tempfile crate），执行后 MUST NOT 遗留产物。
+  r57,"async-test-timeout",异步集成测试 MUST 用 with_test_timeout 辅助函数包裹主体（默认 10s），防止 CI 因死锁或 mock 失败挂起。
+  r60,"no-fixed-tmp-paths",测试 MUST NOT 使用固定名称的硬编码 /tmp 路径；MUST 使用唯一自动生成路径以支持并行执行。
+  r62,"bdd-framework","System MUST 使用 rstest-bdd（非 cucumber-rs）做 BDD 测试；每个 feature 场景 MUST 绑定到测试函数；步骤定义 MUST 使用类型化占位符而非 regex。"
+  r63,"tui-e2e-isolation","TUI 端到端测试（portable-pty 与 tmux）MUST 与主测试矩阵隔离：MUST 位于 workspace 级 tests/tui_e2e/（非 packages/xylitol-tui/tests/），MUST 标记 #[ignore] 或由 feature flag 门控，默认 cargo test 不运行，MUST 经专用 justfile 目标（test-tui-e2e）调用。tmux smoke MUST 额外要求 tmux 二进制存在（缺失则 skip 并给出清晰消息），并为 spawned session 设置 TERM=xterm-256color。每个 tmux session MUST 使用唯一名称（基于 PID 或时间戳）以支持并行，MUST 经 Drop guard 在 panic 时也 kill，避免泄漏 session。"
+scenarios[0]:

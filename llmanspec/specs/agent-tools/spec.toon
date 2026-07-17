@@ -3,9 +3,9 @@ name: "agent-tools"
 purpose: 工具系统 — 工具定义、执行分发、bash/ls/grep/edit/write/read 内置工具与路径工具。
 valid_scope[3]: src/agent/tools/,src/infra/tools/,src/runtime_protocol/tool.rs
 requirements[37]{req_id,title,statement}:
-  r1,工具 trait 前缀,System MUST 将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，MUST 与 runtime_protocol 边界其余命名一致。
-  r2,七种内置工具,System MUST 实现 7 个内置工具：read、bash、edit、write、grep、find、ls。
-  r3,补丁应用,System MUST 使用 fudiff 模糊匹配应用 AI 生成的补丁，并以 patch crate 精确匹配作为回退。
+  r32,工具 trait 前缀,System MUST 将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，MUST 与 runtime_protocol 边界其余命名一致。
+  r42,七种内置工具,System MUST 实现 7 个内置工具：read、bash、edit、write、grep、find、ls。
+  r48,补丁应用,System MUST 使用 fudiff 模糊匹配应用 AI 生成的补丁，并以 patch crate 精确匹配作为回退。
   r4,读文件大小限制,Read 工具 MUST 拒绝超过 MAX_FILE_SIZE（默认 10MB）的文件，并返回清晰错误信息。
   r5,bash 流式输出,Bash 工具 MUST 流式输出 stdout/stderr 并设字节上限；超限时 MUST 终止子进程。
   r6,整数转换校验,工具 MUST 在转换前校验数值参数（timeout、max_results）处于正数安全范围内。
@@ -26,10 +26,10 @@ requirements[37]{req_id,title,statement}:
   t10,read 截断,Read 工具 MUST 在 2000 行或 50KB 处截断，并对 offset 越界报告剩余行提示。
   t11,infra,System MUST 提供 TruncationResult、XxxOperations trait、FileMutationQueue 与 CancellationToken。
   t12,ToolSet 单元操作,工具容器 ToolSet MUST 仅提供构建期单元操作：empty、from_iter、plus、remove、merge、retain（带谓词）；MUST NOT 提供运行时 allow/exclude 过滤 API 或 wrap_with_hooks 方法。按名 get 与遍历最终集合仍可用。
-  t13,BDD 工具测试,llmanspec/specs/agent-tools/agent-tools.feature 下全部 7 个工具的 BDD 测试 MUST 通过（solidify 路径；场景标题为英文 id）。
+  t13,BDD 工具测试,"llmanspec/specs/agent-tools/agent-tools.feature 下全部 7 个工具的 BDD 测试 MUST 通过（live `.feature` 路径；场景标题为英文 id）。"
   t14,OutputAccumulator,工具执行 MUST 支持 OutputAccumulator：增量缓冲接收流式数据、在内存保留可配置尾部窗口、总量超滚动阈值时透明溢出到临时文件，并产出含截断信息的最终快照。
   t15,bash 累加器,Bash 工具 MUST 对 stdout/stderr 流式输出使用 OutputAccumulator，替代 String 拼接；配置 max_lines 100 与 max_bytes DEFAULT_MAX_BYTES。
-  t16,"BDD tool-v3",OutputAccumulator 与 bash 累加器集成的 BDD 测试 MUST 全部通过（含 agent-tools.feature 中 bash-truncate 等场景）。
+  t16,"BDD tool-v3","OutputAccumulator 与 bash 累加器集成的 BDD 测试 MUST 全部通过（含 agent-tools.feature 中 bash-truncate 等场景）。"
   e1,模糊匹配,System MUST 对 edit oldText 做模糊匹配：NFKC 规范化、智能引号转 ASCII、破折号转连字符、剥离尾部空白，再逐步放宽匹配。
   e2,行尾风格,System MUST 在编辑前检测文件行尾（CRLF vs LF），应用变更后恢复原有风格。
   e3,跨行 span 匹配,精确匹配失败时，System MUST 支持跨不同行段匹配多行 oldText span。
@@ -40,43 +40,4 @@ requirements[37]{req_id,title,statement}:
   t20,移除死过滤 API,"先前的运行时过滤 API（set_allowed_tool_names、set_excluded_tool_names、list_filtered、builtins 空操作别名、AgentSession::set_active_tools）MUST 移除；ReAct 循环 MUST 直接消费最终工具集。先前循环调用 list 绕过过滤；移除过滤 API 消除此类 bypass 缺陷。"
   r36,MCP 工具经 XyTool 接入,MCP 工具 MUST 仅通过 XyTool 端口进入 agent 工具集；rmcp 具体类型 MUST NOT 泄漏到 agent/ 或 domain/。
   t21,"read-image-parts","Read 工具在路径为支持的图片文件时 MUST 经 resize/multimodal 准备产出含 AgentPart::Image（base64 data + media_type）的 tool result parts，并附简短 text note；MUST NOT 仅返回「[Image file: …]」占位字符串作为唯一结果。文本文件行为保持既有截断语义。工具端口 MUST 允许 execute 结果以 parts 形式进入 history（默认实现可将纯文本包成 Text part）。"
-scenarios[39]{req_id,id,given,when,then}:
-  r1,"xy-tool-consistent",检查 runtime_protocol 工具边界,应用变更后,所有工具边界类型均带 Xy 前缀
-  r2,happy,工具注册表含全部 7 个工具,各工具以合法参数调用,各返回成功 ToolResult
-  r3,happy,AI 生成的 unified diff 略有行偏移,经 fudiff 应用补丁,fudiff 在行偏移下仍成功应用
-  r4,"large-file",存在 50MB 文件,read 工具在无 offset/limit 时调用,工具返回文件过大错误
-  r5,"output-overflow",bash 运行 yes 命令,stdout 超过 1MB 上限,子进程被杀并返回截断输出
-  r6,"negative-timeout","LLM 传入 timeout=-1",bash 工具校验参数,工具以无效 timeout 错误拒绝
-  r7,"absolute-pattern",find 以 pattern='/etc/**' 调用,安全已启用,工具返回错误或过滤结果至 root
-  r8,"multibyte-truncation","bash 输出在上限边界以不完整 UTF-8 序列结束",调用 truncate_output,输出在字符边界安全截断且不 panic
-  r9,happy,工具需要必填字符串参数,"工具调用 require_str(args, 'file_path')",返回 Ok(value) 或含一致错误码的 Err(AdkError)
-  r10,happy,crate 在启用 dead_code lint 下编译,运行 cargo clippy,生产路径无 dead_code 警告
-  r11,"error-mapping","工具返回 XyToolError::InvalidArgs",错误传播到 agent 循环,错误类别保留并展示给用户
-  t1,cancel,全部工具实现 XyTool,触发取消,返回 abort 错误
-  t2,registry,调用 ToolRegistry builtins,调用 list(),返回七个工具
-  t3,"multi-edit",文件有 3 个不重叠区域,"调用 multi-edit",3 个区域均被替换
-  t4,overlap,两个重叠编辑,调用 edit,错误含重叠及索引
-  t5,bom,"文件含 UTF-8 BOM",替换文本,BOM 保留且内容已更新
-  t6,diff,文件已编辑,返回结果,含 unified patch 与带行号 diff
-  t7,"grep-basic",存在匹配文件,以 pattern 调用 grep,rg 返回带路径的匹配行
-  t8,"find-basic",文件匹配 glob,调用 find,fd 返回尊重 gitignore 的 Posix 路径
-  t9,"bash-kill",长时间 bash 命令运行中,CancellationToken 触发,进程被杀并返回 abort 错误
-  t10,"read-trunc",存在 10000 行文件,无限制调用 read,截断并附提示
-  t11,"infra-works",infra 结构已定义,全部工具使用它们,行为与 pi 完全一致
-  t12,"toolset-unit-ops",构造 ToolSet,链式 plus/remove/merge/retain,结果集仅反映单元操作且无运行时过滤状态
-  t13,"bdd-pass",调用 BDD runner,"cargo test --test bdd",全部工具场景通过
-  t14,"small-output",累加器接收 100 字节,调用 finish,snapshot.content 含 100 字节，未创建临时文件
-  t14,"overflow-temp-file",累加器接收 2x max_bytes,调用 finish,快照内容为截断尾部，full_output_path 指向含完整输出的临时文件
-  t15,"bash-uses-accumulator",bash 执行 echo hello,经 OutputAccumulator 捕获输出,result.output 为 hello 且小输出时 result.full_output_path 为 None
-  t16,"bdd-pass",调用 BDD runner,"cargo test --test bdd","全部 tool-v3 场景通过"
-  e1,fuzzy,文件含弯引号、尾部空白或破折号但 oldText 用 ASCII 等价,应用 edit,模糊匹配成功并写入替换
-  e2,"line-ending",文件使用 CRLF 或 LF,应用 edit,输出文件保留原行尾风格
-  e3,span,oldText 跨 5 行但中间一行精确匹配失败,以 span 匹配应用 edit,滑动窗口匹配成功
-  e4,diff,edit 应用变更,计算 diff,结果含变更标记的前后行
-  t17,"tool-def-contains-schema",构造 ToolDefinition,应用变更后,"存储 schema: XyToolSchema 且 prompt 元数据分离"
-  t18,"toolset-in-agent-final",定位工具容器类型,检查模块路径,"为 agent::tools 的 ToolSet，一轮接收最终集合"
-  t19,"tool-mode-renamed",代码引用 ToolExecutionMode,应用变更后,各处重命名为 XyToolExecutionMode
-  t20,"loop-uses-final-set",检查循环源码,应用变更后,无 set_allowed 或 list_filtered 符号且循环直接迭代 ToolSet
-  r36,"via-port","",rg rmcp 于 src/agent 与 src/domain,零匹配
-  t21,"png-yields-image-part",临时目录有小 PNG,调用 read,tool result parts 含 Image 且 data 非空
-  t21,"text-still-works",临时目录有 .txt,调用 read,返回文本内容且无 Image part
+scenarios[0]:

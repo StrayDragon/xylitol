@@ -1,31 +1,17 @@
 kind: llman.sdd.spec
 name: "protocol-app"
-purpose: "Client↔core 线协议词汇（Command/Event 枚举 + 传输辅助），传输无关。"
+purpose: Client↔core 线协议词汇（Command/Event 枚举 + 传输辅助），传输无关。
 valid_scope[2]: src/,tests/
 requirements[11]{req_id,title,statement}:
-  ip1,Command 枚举,"protocol MUST 定义 Command 枚举，至少覆盖 Run、Cancel、SwitchModel、SetThinking、ListCommands、ApproveTool、AnswerQuestion、SwitchSession、GetMessages、ExportHtml、ExportJsonl、ImportJsonl；每个 client→core 消息 MUST 反序列化为此枚举。"
-  ip2,Event 枚举,"protocol/ MUST 定义 Event 枚举，至少覆盖 TurnStart、Delta、ToolCall、ApprovalRequired、QuestionRequired、TurnEnd、Usage；每个 core→client 消息 MUST 反序列化为此枚举。"
+  ip1,Command 枚举,protocol MUST 定义 Command 枚举，至少覆盖 Run、Cancel、SwitchModel、SetThinking、ListCommands、ApproveTool、AnswerQuestion、SwitchSession、GetMessages、ExportHtml、ExportJsonl、ImportJsonl；每个 client→core 消息 MUST 反序列化为此枚举。
+  ip2,Event 枚举,protocol/ MUST 定义 Event 枚举，至少覆盖 TurnStart、Delta、ToolCall、ApprovalRequired、QuestionRequired、TurnEnd、Usage；每个 core→client 消息 MUST 反序列化为此枚举。
   ip3,信封与错误,"protocol/ MUST 定义统一 REST 响应信封 {code, msg, data, request_id} 与类型化错误码集；信封类型位于 protocol/ 且 MUST 传输无关（内部无 HTTP 或 WS 类型）。"
   ip6,Subscribe 命令,"protocol/ MUST 定义 Command::Subscribe {session_id, last_seq} 用于 WS 订阅，Event::Subscribed {session_id, seq} 作为确认。"
   ip7,Event 变体完整,"protocol::Event MUST 覆盖全部 AgentEvent 变体：TurnStart、TurnEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionUpdate、CompactionEnd、TextDelta、ThinkingDelta；ThinkingDelta MUST 往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate。"
-  ip8,会话命令分发,"RPC dispatch MUST 实现 SwitchSession：经 SessionStore 校验目标会话存在并切换上下文；GetMessages 返回已加载 SessionEntry 记录；ExportJsonl 与 ImportJsonl 委托 AgentSession；MUST NOT 交付 stub 或仅字符串实现。"
+  ip8,会话命令分发,RPC dispatch MUST 实现 SwitchSession：经 SessionStore 校验目标会话存在并切换上下文；GetMessages 返回已加载 SessionEntry 记录；ExportJsonl 与 ImportJsonl 委托 AgentSession；MUST NOT 交付 stub 或仅字符串实现。
   ip9,dispatch 归属,"protocol::Command 变体执行语义（Command 分发时做什么）MUST 位于 app::core::dispatch 并由 tui 消费；需活跃 WS 会话的传输专属变体（Subscribe、ApproveTool、AnswerQuestion）MUST 留在 server/ws 层，MUST NOT 泄漏到 app::core::dispatch。"
   "ip-q1",steer 与 followup 命令,"protocol::Command MUST 包含 Steer、FollowUp 与 ClearQueue（或语义等价变体）；client 经线协议入队或清队列 MUST 反序列化为这些变体。"
   "ip-q2",dispatch 队列命令,"app::core::dispatch MUST 将 Steer、FollowUp、ClearQueue 路由到 Driver 对应方法；这些变体 MUST NOT 留在仅 WS 层处理。"
   ip10,线协议不镜像厂商事件,"protocol::Event MUST 映射领域 XyEvent 闭集；MUST NOT 为 OpenAI/Anthropic 等厂商专属事件增加平行变体。无法表达的细节 MUST 留在领域 Message 载荷或被省略，而非拓宽线协议宽表。"
   "pa-wire1",线协议映射队列与闭集,protocol Event MUST 能表达跨面所需的 XyEvent 闭集子集（至少含 QueueUpdate）；未映射变体 MUST 可降级忽略，MUST NOT panic。
-scenarios[14]{req_id,id,given,when,then}:
-  ip1,"jsonl-commands-in-enum",检查 Command 枚举,检查 ExportJsonl 与 ImportJsonl 变体,两变体存在且可从 client 消息反序列化
-  ip2,"approval-event",agent 需审批工具,发出 ApprovalRequired 事件,携带 call_id 与 tool summary
-  ip3,"envelope-serializes",构造含 code Ok 与 data 的 Envelope,序列化为 JSON,"JSON 含 code、msg、data、request_id 字段"
-  ip6,"subscribe-command-serializes","Command::Subscribe {session_id: s0, last_seq: 5} 序列化为 JSON",反序列化回来,匹配原始 session_id 与 last_seq
-  ip7,"thinking-delta-variant",检查 Event 枚举,检查 TextDelta 与 ThinkingDelta 变体,两变体存在且携带 text 字段
-  ip7,"thinking-roundtrip","XyEvent::ThinkingDelta 经 wire 往返转换",反序列化,结果等于原始 ThinkingDelta 而非空 MessageUpdate
-  ip8,"switch-validates-target",client 对不存在 session id 发送 SwitchSession,RPC dispatch 处理,返回错误且活动会话未改变
-  ip8,"get-messages-returns-entries",活动会话有持久化条目,分发 GetMessages 命令,返回已加载 SessionEntry 记录（非 stub 错误）
-  ip9,"ws-variants-stay-in-server","","检查 app::core::dispatch 源码",不含 Subscribe、ApproveTool、AnswerQuestion 处理；这些留在 server/ws.rs
-  ip9,"tui-dispatch-path",tui 分发 Command::SetModel,追踪执行路径,到达 app::core::dispatch 并由 Driver 支撑，非并行 tui 本地实现
-  "ip-q1","serde-steer","","序列化再反序列化 Command::Steer",字段与原文一致
-  "ip-q2","dispatch-steer","",dispatch Steer,调用 Driver::steer 且不报未处理变体错误
-  ip10,"no-vendor-wire","","对比 protocol::Event 与各 provider SSE 事件名",无线协议级厂商专名变体
-  "pa-wire1","queue-on-wire","",XyEvent QueueUpdate 经 to_wire_event,得到对应 Event 变体或文档化等价载荷
+scenarios[0]:

@@ -13,19 +13,4 @@ requirements[10]{req_id,title,statement}:
   atb7,"abort-feedback-aborted-note","用户 Esc abort agent 流后，产品 bridge/host MUST 向 live scrollback 追加至多一行 muted/System 文案 Aborted，清除 streaming_thinking 与 streaming_assistant，并将 status 置为 idle；若随后收到同轮已丢弃策略外的 XyEvent::Error aborted，MUST NOT 再追加重复 Aborted 行（仅与末行去重）；bang Esc 取消 MUST 走块内 (cancelled)，MUST NOT 冒充 agent Aborted。"
   atb8,"bash-ui-entry-block","产品 bridge/host MUST 以 UI-only 可着色块表示交互 bang（建议 UiEntry::Bash 或等价），携带 command 与 status（pending/success/error/cancelled）及输出；渲染层 MUST NOT 再把 bang 长期拼成无语义的裸 System 行。"
   atb9,"bash-stream-append",产品 bridge MUST 提供对最后一条 Pending Bash 块的增量追加 API（append_bash_output 或等价）；流式 chunk 追加期间 status MUST 保持 pending tint；BashDone 或取消收口时 MUST 经既有 finish/cancelled 路径切换终态；MUST NOT 每 chunk 新建独立 System 行。
-scenarios[15]{req_id,id,given,when,then}:
-  meta0,"shell-present","","列出 llmanspec/specs/app-tui-bridge",spec.toon 存在且 purpose 为中文
-  atb1,"unknown-event","",收到未映射 XyEvent,记录日志且 UI 不崩溃
-  atb1,"no-xyevent-in-render","",审查 tui 渲染模块,无 XyEvent 匹配；事件经 apply_xy_event
-  atb2,"tool-turn-middle","",工具调用后出现中间 TurnEnd,UI 仍保持 busy 并继续消费后续事件
-  atb3,"queue-update","","steer 与 follow-up 入队",UI 收到 QueueUpdate 计数
-  atb4,"remote-type-kept","",检查 Driver 实现,InProcess 为默认且 RemoteDriver 仍存在
-  atb5,"compact-start-status",agent Busy,CompactionStart,status 为 Compacting 且 scrollback 含 reason 说明
-  atb5,"compact-end-restores-working",Busy 且 status=Compacting,CompactionEnd aborted=false,scrollback 含 complete 且 status 恢复 Working
-  atb5,"compact-end-aborted",Busy 且 Compacting,CompactionEnd aborted=true,scrollback 含 aborted 且 status 恢复 Working
-  atb6,"retry-start-status",agent Busy,AutoRetryStart attempt=2 max=5,status 为 Retry 2/5
-  atb6,"retry-end-fail-note",Busy 且 Retry 状态,AutoRetryEnd success=false,scrollback 含失败说明且 status 恢复 Working
-  atb6,"retry-end-success-restores",Busy 且 Retry 状态,AutoRetryEnd success=true,status 恢复 Working 且无失败 System 行
-  atb7,"esc-clears-streaming",busy 且已有 streaming_thinking,note_user_abort,streaming 缓冲为空且含 Aborted
-  atb8,"bash-entry-shape",idle 提交 bang,审查 UiModel entries,存在 Bash 块或等价含 command 字段
-  atb9,"append-keeps-pending",已 begin_bash_block,连续两次 append_bash_output,同一 Bash 条目 output 增长且 status 仍为 pending
+scenarios[0]:

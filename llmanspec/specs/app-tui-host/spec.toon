@@ -3,7 +3,7 @@ name: "app-tui-host"
 purpose: 产品 TUI 宿主：host 驱动引擎、终端生命周期、即时日志与尺寸降级。
 valid_scope[1]: src/app/tui/
 requirements[21]{req_id,title,statement}:
-  meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+  r23,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ath1,"host-driven-engine","产品 TUI MUST 以 host 驱动 packages/xylitol-tui：使用 dispatch_event、request_render、try_render、idle_tick；产品路径 MUST NOT 调用 TUI::start()。"
   ath2,"terminal-restore",产品 TUI MUST 在正常退出、错误退出与 panic 路径恢复终端（关闭 raw mode 等），不得把用户终端留在损坏状态；MUST 安装 panic hook（仅靠 Drop 不足）。
   ath3,"infra-logging-default","debug 构建下产品 TUI MUST 默认启用即时文件日志（人类与 agent 可用 tail -f 观察）；release 构建 MUST 默认关闭，仍可通过 XYLITOL_DEBUG 或 RUST_LOG 显式打开。src/app/tui/AGENTS.md MUST 写明日志路径与查看方式。"
@@ -24,38 +24,4 @@ requirements[21]{req_id,title,statement}:
   ath21,"copy-last-via-driver-seam","产品 /history-copy-last MUST 经 Driver::copy_text_to_clipboard（或等价）调用剪贴板，MUST NOT 从 app/tui 直接 reach infra::clipboard；选文 MUST 取已提交 UiEntry::Assistant 自尾向前第一条非空正文，MUST NOT 复制 thinking/tool/system 块或未提交 streaming 半句作为成功路径。"
   ath22,"thinking-level-silent-cycle","产品 host 切换 thinking level 时 MUST 经 Driver set/cycle_thinking_level（或 Command::SetThinkingLevel / 等价 seam）更新运行时；成功后 MUST 仅更新边框与 footer；MUST NOT 向 live scrollback / transcript 追加 thinking-border → … 类系统块；MUST NOT 因 cycle 刷屏；模型切换后 MUST 从 Driver::thinking_level 重同步 UI；组件 MUST NOT 直接 reach ModelManager。"
   ath23,"loaded-resources-via-driver","产品 host MUST 经 Driver 只读缝获取 skills 名与 MCP 连接摘要以填充 loaded-resources；启动与 /reload 成功后 MUST 刷新该槽；MUST NOT 从 app/tui reach infra::mcp 或 skills 目录；busy 时 /reload 拒绝语义保持 ath20/既有行为。"
-scenarios[34]{req_id,id,given,when,then}:
-  meta0,"shell-present","","列出 llmanspec/specs/app-tui-host",spec.toon 存在且 purpose 为中文
-  ath1,"no-start","",审计产品 TUI 源码,"无 TUI::start；存在 host 驱动调用"
-  ath2,"panic-restore","",TUI 运行中发生 panic,panic hook 恢复终端后用户 shell 可用
-  ath3,"debug-tail","",以 debug 构建启动 TUI,日志文件持续写入且 AGENTS 记载路径
-  ath4,"tiny-terminal","",终端高度为 3,显示放大提示或干净退出，进程不挂死
-  ath5,"harness-min-size",TestTerminal 尺寸为 20x3,HostSession 推进一帧,视口含放大提示且进程逻辑不 panic
-  ath5,"harness-no-start",产品 TUI 源码与 host 单元测试,审计调用点,"产品路径无 TUI::start 调用"
-  ath6,"one-pump",生产 host loop 与 harness 泵均接线,审查 drain_pending 调用点,两侧共用同一函数且无重复的 PendingSlash match 副本
-  ath7,"one-select",审查 run_host_loop 与 harness bang 路径,存在进行中的 bang,两侧共用同一 helper/扇入；无第三份手写 bang Esc select
-  ath7,"esc-during-stream",hanging bang 已 uplink 且有 chunk,按 Esc,"Driver::abort 被调用且块呈 cancelled"
-  ath8,"abort-then-deltas-ignored",busy 已 Esc abort,再泵入 ThinkingDelta 与 TextDelta 与 AgentEnd,无 assistant 正文条目且 status idle
-  ath8,"esc-xy-before-drain",agent busy,Esc 后在 drain_pending 前注入 TextDelta,该 delta 被丢弃且 UI 不回 busy
-  ath10,"layout-section-present",打开 src/app/tui/AGENTS.md,审计文档结构,含文件布局表、模块职责、硬约束与验证指针，且无进度表
-  ath9,"shared-bang-helper",生产 mod.rs bang 环与 harness bang Esc 测并存,审查 bang Esc 消费路径,两侧调用同一共享 helper 或同序同分支入口，无第三份手写 select
-  ath9,"bdd-features-present","tests/features 含 app-tui abort/bang/esc/queue feature","cargo test --test bdd -- --test-threads=1","新增 app-tui 场景全部通过且既有核心 BDD 不回归"
-  ath11,"bang-abort-unchanged",hanging bang 中 Esc,取消,块呈 cancelled 且无 System Aborted 混用
-  ath12,"god-files-under-budget",拆分后统计行数,审查 host/mod layout/root effects 入口 bridge/mod,各文件显著低于约 800 行且无第二套 drain 泵
-  ath12,"input-policy-module",审查 host 目录,定位 busy Esc 与 idle Enter,位于 input_policy（或等价）子模块且 step 仍为唯一调度入口
-  ath12,"effects-slash-split",审查 effects 目录,定位 PendingSlash 臂,按族分文件且 harness 仍调用同一 drain_pending
-  ath13,"get-messages-error-note",Driver get_messages 返回 Err,执行 travel,scrollback 含失败提示且不假装空树成功
-  ath14,"list-via-driver",产品 harness 或单元,打开 resume 列表路径,"经 Driver/seam 返回且无 tui→infra::session 依赖"
-  ath14,"row-has-preview-fields",list_sessions 返回非空,检查行字段,含预览或 name 以及可用于 age 的时间信息
-  ath15,"new-via-driver",产品 harness,"提交 /session-new","经 Driver new_session 返回新 id 且无 tui→infra::session 依赖"
-  ath15,"name-via-driver",产品 harness,"提交 /session-name demo",经 Driver set_session_name 且无 tui 直写目录
-  ath16,"delete-rejects-current",Resume 面板选中当前活跃 session,触发删除确认并确认,出现拒绝提示且会话仍存在
-  ath16,"rename-via-driver",Resume 面板已开,完成一项 rename,Driver set_session_name 被调用且列表展示新名
-  ath20,"skills-catalog-refresh",idle 且磁盘 skills 变更后,/reload,dollar skill catalog 或 loaded_skill_names 反映新目录
-  ath20,"partial-success",某一 reload 步骤失败,/reload,系统报告含失败项且其它步骤仍执行
-  ath21,"seam-only",ScriptedDriver 可观测,"/history-copy-last 成功",copy_text 调用记录含目标正文
-  ath21,"skip-non-assistant",末条为 system 其前为 assistant,"/history-copy-last",复制的是 assistant 而非 system
-  ath22,"silent-no-transcript",产品 host 已挂载,连续 cycle thinking level,"scrollback 无 thinking-border 系统行且 footer 与边框与 Driver 一致"
-  ath22,"model-switch-resync",已切换到支持集不同的模型且 level 被 clamp,下一帧 render,"footer 与边框反映 Driver::thinking_level 钳制结果"
-  ath23,"reload-refreshes",idle 且磁盘 skills 变更后,/reload,"loaded-resources 与 dollar skill catalog 反映新目录"
-  ath23,"no-infra-reach",审查 app/tui 源码,检查 import,"无 tui→infra::mcp 直达"
+scenarios[0]:
