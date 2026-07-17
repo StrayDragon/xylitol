@@ -1070,10 +1070,18 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         is_error: result.1,
                     };
 
-                    history.push(AgentMessage::tool_result(
+                    // c1310: UI keeps full End.result; history content is short for write/edit.
+                    let (history_parts, details) =
+                        crate::domain::tool_result_quiet::quiet_write_edit_for_history(
+                            name,
+                            &result_text,
+                            result.1,
+                        );
+                    history.push(AgentMessage::tool_result_with_details(
                         id.clone(),
                         name.clone(),
-                        result.0,
+                        history_parts,
+                        details,
                         result.1,
                     ));
                     persist_agent_message(

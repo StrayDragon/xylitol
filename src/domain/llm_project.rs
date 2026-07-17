@@ -118,6 +118,26 @@ mod tests {
         )];
         let projected = project_for_llm(&history);
         assert_eq!(projected.len(), 1);
+        assert_eq!(projected[0].text(), "ok");
+    }
+
+    #[test]
+    fn edit_tool_result_content_short_details_not_in_text() {
+        let history = vec![AgentMessage::tool_result_with_details(
+            "e1",
+            "edit",
+            vec![AgentPart::text("Successfully replaced 1 block(s) in a.rs.")],
+            Some(serde_json::json!({
+                "success": true,
+                "display_diff": "big-diff-wall",
+            })),
+            false,
+        )];
+        let projected = project_for_llm(&history);
+        assert_eq!(projected.len(), 1);
         assert_eq!(projected[0].role_name(), "toolResult");
+        assert!(projected[0].text().contains("Successfully replaced"));
+        assert!(!projected[0].text().contains("display_diff"));
+        assert!(!projected[0].text().contains("big-diff-wall"));
     }
 }

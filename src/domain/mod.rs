@@ -25,4 +25,5 @@ pub mod resource_types;
 pub mod session_types;
 pub mod source_info;
 pub mod text;
+pub mod tool_result_quiet;
 pub mod types;
