@@ -159,6 +159,18 @@ impl PtySession {
         )
     }
 
+    /// Resize the PTY window (delivers a real crossterm `Resize` to the child).
+    pub fn resize(&mut self, cols: u16, rows: u16) -> std::io::Result<()> {
+        self._master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| std::io::Error::other(e.to_string()))
+    }
+
     /// Write a key sequence to the PTY (the child reads it via crossterm).
     pub fn send_keys(&mut self, keys: &str) -> std::io::Result<()> {
         self.writer.write_all(keys.as_bytes())?;
@@ -259,6 +271,15 @@ impl PtySession {
     /// assert protocol-negotiation sequences were sent (c410 tp01).
     pub fn raw_contains(&self, needle: &[u8]) -> bool {
         windows_two(self.buf.as_slice(), needle)
+    }
+
+    /// Non-blocking poll of child exit status (`None` = still running).
+    pub fn try_wait(&mut self) -> std::io::Result<Option<u32>> {
+        match self.child.try_wait() {
+            Ok(Some(status)) => Ok(Some(status.exit_code())),
+            Ok(None) => Ok(None),
+            Err(e) => Err(std::io::Error::other(e.to_string())),
+        }
     }
 
     /// Poll until the child process exits, up to `timeout`.
@@ -443,6 +464,52 @@ fn pty_agent_demo_narrow_cjk_submit_flow_survives_enter() {
         .wait_for("窄宽 CJK", Duration::from_secs(10), 96, 32)
         .expect("narrow submit should appear");
     assert!(!screen.text().trim().is_empty());
+}
+
+/// Extreme shrink must show TooSmall hint and recover Ready on restore (not exit/stuck).
+/// Also paints Ready at 40–44 with a long project path (startup-card wrap regression).
+#[test]
+#[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_product_fake_extreme_shrink_then_restore() {
+    const COLS: u16 = 100;
+    const ROWS: u16 = 30;
+    let (mut session, _tmp) = spawn_product_fake_ready_long_path(COLS, ROWS);
+
+    // Ready zone that previously hung forever on long cwd wrap.
+    session.resize(44, 24).expect("narrow Ready");
+    session.drain(Duration::from_millis(300));
+    assert!(
+        session.try_wait().ok().flatten().is_none(),
+        "must stay alive at Ready 44x24 with long path"
+    );
+
+    session.resize(8, 3).expect("shrink PTY");
+    session
+        .wait_for_raw("请放大", Duration::from_secs(15))
+        .expect("TooSmall hint should paint (not crash/exit)");
+    assert!(
+        session.try_wait().ok().flatten().is_none(),
+        "product must stay alive while too small"
+    );
+
+    session.resize(COLS, ROWS).expect("restore PTY");
+    session
+        .wait_for(
+            crate::PRODUCT_READY_NEEDLE,
+            Duration::from_secs(15),
+            COLS as usize,
+            ROWS as usize,
+        )
+        .expect("Ready chrome must recover after enlarge");
+
+    session.send_keys("\x15/exit\r").expect("submit /exit");
+    let code = session
+        .wait_exit(Duration::from_secs(30))
+        .expect("process should exit after /exit");
+    assert_eq!(
+        code, 0,
+        "product TUI /exit should exit 0 after shrink/restore"
+    );
 }
 
 /// c485 avs2: product `xylitol` Fake smoke — Hello → `/exit`.
@@ -669,8 +736,25 @@ fn pty_product_fake_session_tree_branched() {
 }
 
 fn spawn_product_fake_ready(cols: u16, rows: u16) -> (PtySession, tempfile::TempDir) {
+    spawn_product_fake_ready_in(cols, rows, "project")
+}
+
+/// Long nested project path — exercises startup-card wrap at narrow Ready widths.
+fn spawn_product_fake_ready_long_path(cols: u16, rows: u16) -> (PtySession, tempfile::TempDir) {
+    spawn_product_fake_ready_in(
+        cols,
+        rows,
+        "Projects/__straydragon__/xylitol-very-long-path-segment",
+    )
+}
+
+fn spawn_product_fake_ready_in(
+    cols: u16,
+    rows: u16,
+    project_rel: &str,
+) -> (PtySession, tempfile::TempDir) {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let project = tmp.path().join("project");
+    let project = tmp.path().join(project_rel);
     let config_dir = tmp.path().join("config");
     let home = tmp.path().join("home");
     std::fs::create_dir_all(&project).expect("project dir");

@@ -7,7 +7,9 @@ use std::sync::atomic::AtomicBool;
 
 #[cfg(test)]
 use xylitol_tui::TreeNode;
-use xylitol_tui::{Component, InputEvent, InputListenerResult, TUI, Terminal};
+use xylitol_tui::{
+    Component, InputEvent, InputListenerResult, TUI, Terminal, truncate_to_width, visible_width,
+};
 
 use super::UiRoot;
 use crate::app::tui::host::{LayoutMode, TOO_SMALL_HINT};
@@ -40,10 +42,17 @@ impl Component for TooSmallHint {
     fn render(&mut self, width: usize) -> Vec<String> {
         let msg = TOO_SMALL_HINT;
         if width == 0 {
-            return vec![msg.into()];
+            return vec![String::new()];
         }
-        let pad = width.saturating_sub(msg.chars().count()) / 2;
-        vec![format!("{}{msg}", " ".repeat(pad))]
+        // CJK: `chars().count()` under-counts columns and tripped the width
+        // invariant (RenderError → host exit) so recovery from tiny sizes stuck.
+        let msg_w = visible_width(msg);
+        if msg_w >= width {
+            return vec![truncate_to_width(msg, width, "", true)];
+        }
+        let left = (width - msg_w) / 2;
+        let right = width - msg_w - left;
+        vec![format!("{}{msg}{}", " ".repeat(left), " ".repeat(right))]
     }
 
     fn handle_input(&mut self, _event: InputEvent) {}

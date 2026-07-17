@@ -506,13 +506,38 @@ impl<T: Terminal> HostSession<T> {
 
         match self.tui.try_render() {
             Ok(_) => Ok(()),
-            Err(RenderError { .. }) => {
-                self.quit = true;
-                Err("render failed: terminal too extreme; restoring and exiting".into())
-            }
+            Err(RenderError { .. }) => self.recover_from_render_error(),
         }
     }
-    /// Force an immediate frame (bypasses throttle) — useful after mount.
+
+    /// ath4: min-size shows a hint; only exit if even the hint cannot paint.
+    /// Overflow at a "valid" size degrades to TooSmall instead of freezing/exiting.
+    fn recover_from_render_error(&mut self) -> Result<(), String> {
+        let cols = self.tui.terminal.columns();
+        let rows = self.tui.terminal.rows();
+        if self.mode != LayoutMode::TooSmall {
+            self.mode = LayoutMode::TooSmall;
+            self.tui.clear_children();
+            for child in (self.rebuild)(LayoutMode::TooSmall) {
+                self.tui.add_child(child);
+            }
+            self.tui.set_focus(Some(0));
+            // Force clearing redraw so Ready chrome does not ghost over the hint.
+            self.tui.request_render(true);
+            if self.tui.render_now().is_ok() {
+                log::warn!(
+                    target: "xylitol::tui",
+                    "render overflow at {cols}x{rows}; degraded to TooSmall hint"
+                );
+                return Ok(());
+            }
+        }
+        self.quit = true;
+        Err(format!(
+            "render failed: terminal too extreme ({cols}x{rows}); restoring and exiting"
+        ))
+    }
+
     /// Toggle terminal task progress (OSC 9;4) — used while loading session list.
     pub fn set_task_progress(&mut self, active: bool) {
         self.tui.terminal.set_progress(active);

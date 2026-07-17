@@ -152,61 +152,65 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
     let mut ticker = tokio::time::interval(Duration::from_millis(16));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-    while !session.should_quit() && !exit_requested() {
-        drain_pending(&mut session, driver, &mut agent_stream).await?;
+    // Always restore the TTY (even on RenderError / other Err) so a failed
+    // host exit does not leave raw mode / keyboard protocol stuck.
+    let host_result = async {
+        while !session.should_quit() && !exit_requested() {
+            drain_pending(&mut session, driver, &mut agent_stream).await?;
 
-        if let Some(bash) = session.take_bash() {
-            // Guard: never start a second interactive bang while one is active.
-            if session.bash_active() {
-                session.push_system_note(
-                    "bash already running — wait or Esc to cancel (second ! rejected)",
-                );
-            } else {
-                // Shared bang loop (c715/c725): same crossterm→HostEvent map as main arms.
-                let input = term_events
-                    .by_ref()
-                    .filter_map(|maybe| futures::future::ready(map_crossterm_item(maybe)));
-                run_interactive_bang(&mut session, driver, bash, &mut agent_stream, input).await?;
-                continue;
+            if let Some(bash) = session.take_bash() {
+                // Guard: never start a second interactive bang while one is active.
+                if session.bash_active() {
+                    session.push_system_note(
+                        "bash already running — wait or Esc to cancel (second ! rejected)",
+                    );
+                } else {
+                    // Shared bang loop (c715/c725): same crossterm→HostEvent map as main arms.
+                    let input = term_events
+                        .by_ref()
+                        .filter_map(|maybe| futures::future::ready(map_crossterm_item(maybe)));
+                    run_interactive_bang(&mut session, driver, bash, &mut agent_stream, input)
+                        .await?;
+                    continue;
+                }
             }
-        }
 
-        tokio::select! {
-            _ = ticker.tick() => {
-                session.step(HostEvent::Tick)?;
-            }
-            maybe = term_events.next() => {
-                match maybe {
-                    Some(item) => {
-                        if let Some(ev) = map_crossterm_item(item) {
-                            match ev {
-                                Ok(host_ev) => session.step(host_ev)?,
-                                Err(e) => {
-                                    session.tui.finish_inline();
-                                    return Err(e);
+            tokio::select! {
+                _ = ticker.tick() => {
+                    session.step(HostEvent::Tick)?;
+                }
+                maybe = term_events.next() => {
+                    match maybe {
+                        Some(item) => {
+                            if let Some(ev) = map_crossterm_item(item) {
+                                match ev {
+                                    Ok(host_ev) => session.step(host_ev)?,
+                                    Err(e) => return Err(e),
                                 }
                             }
                         }
-                    }
-                    None => {
-                        session.request_quit();
+                        None => {
+                            session.request_quit();
+                        }
                     }
                 }
-            }
-            maybe_agent = async {
-                match agent_stream.as_mut() {
-                    Some(stream) => stream.next().await,
-                    None => std::future::pending().await,
+                maybe_agent = async {
+                    match agent_stream.as_mut() {
+                        Some(stream) => stream.next().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    on_agent_stream_item(&mut session, &mut agent_stream, maybe_agent)?;
                 }
-            } => {
-                on_agent_stream_item(&mut session, &mut agent_stream, maybe_agent)?;
             }
         }
+        Ok(())
     }
+    .await;
 
     session.tui.finish_inline();
     log::info!(target: "xylitol::tui", "product TUI host stopped");
-    Ok(())
+    host_result
 }
 
 /// Shared crossterm → HostEvent map for main select and bang input stream (c725 / 2A).

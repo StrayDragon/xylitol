@@ -1,6 +1,6 @@
 //! Codex-style startup card: minimal meta card (c1135 polish).
 
-use xylitol_tui::{fg_rgb, truncate_to_width, visible_width};
+use xylitol_tui::{fg_rgb, truncate_to_width, visible_width, wrap_text_with_ansi};
 
 use crate::app::core::driver::LoadedResourcesSnapshot;
 use crate::app::tui::layout::LayoutTheme;
@@ -174,49 +174,9 @@ fn wrap_plain(text: &str, max_width: usize) -> Vec<String> {
     if max_width == 0 {
         return vec![text.to_string()];
     }
-    let mut lines = Vec::new();
-    let mut cur = String::new();
-    let mut cur_w = 0usize;
-    for token in text.split_whitespace() {
-        let tw = visible_width(token);
-        let gap = usize::from(!cur.is_empty());
-        if !cur.is_empty() && cur_w + gap + tw > max_width {
-            lines.push(std::mem::take(&mut cur));
-            cur_w = 0;
-        }
-        if !cur.is_empty() {
-            cur.push(' ');
-            cur_w += 1;
-        }
-        if tw > max_width {
-            let mut rest = token;
-            while visible_width(rest) > max_width {
-                let mut end = rest.len();
-                while visible_width(&rest[..end]) > max_width {
-                    end = rest.char_indices().nth_back(1).map(|(i, _)| i).unwrap_or(0);
-                    if end == 0 {
-                        break;
-                    }
-                }
-                if end == 0 {
-                    break;
-                }
-                lines.push(rest[..end].to_string());
-                rest = &rest[end..];
-            }
-            if !rest.is_empty() {
-                cur.push_str(rest);
-                cur_w = visible_width(rest);
-            }
-        } else {
-            cur.push_str(token);
-            cur_w += tw;
-        }
-    }
-    if !cur.is_empty() || lines.is_empty() {
-        lines.push(cur);
-    }
-    lines
+    // Library wrap is grapheme-safe; the previous char-peel loop could spin on
+    // long path/model tokens at narrow card widths (Ready @ 40–44 hung forever).
+    wrap_text_with_ansi(text, max_width)
 }
 
 #[cfg(test)]
@@ -270,17 +230,38 @@ mod tests {
     }
 
     #[test]
-    fn mcp_inside_card() {
-        let snap = LoadedResourcesSnapshot {
-            mcp_connected: vec![("fs".into(), 3), ("git".into(), 1)],
-            mcp_configured: 2,
-            ..Default::default()
-        };
-        let lines = render_loaded_resources(LayoutTheme::product_dark(), &snap, "~/x", "m", 80);
-        let joined = lines.join("\n");
-        assert!(joined.contains("mcp"));
-        assert!(joined.contains("fs(3)"));
-        assert!(joined.contains("git(1)"));
-        assert!(!joined.contains("..."));
+    fn card_at_narrow_widths_does_not_hang() {
+        let cases: &[(usize, &str, &str)] = &[
+            (72, "~/x", "m"),
+            (
+                50,
+                "~/Projects/__straydragon__/xylitol",
+                "fake-model-with-a-very-long-name",
+            ),
+            (
+                44,
+                "~/Projects/__straydragon__/xylitol",
+                "fake-model-with-a-very-long-name",
+            ),
+            (
+                40,
+                "~/Projects/__straydragon__/xylitol",
+                "fake-model-with-a-very-long-name",
+            ),
+            (8, "~/x", "m"),
+        ];
+        for &(w, cwd, model) in cases {
+            let lines = render_loaded_resources(
+                LayoutTheme::product_dark(),
+                &LoadedResourcesSnapshot::default(),
+                cwd,
+                model,
+                w,
+            );
+            assert!(!lines.is_empty(), "w={w}");
+            for line in &lines {
+                assert_eq!(visible_width(line), w.max(1), "w={w} line={line:?}");
+            }
+        }
     }
 }

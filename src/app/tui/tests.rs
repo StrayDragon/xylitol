@@ -91,6 +91,37 @@ fn harness_resize_to_ready() {
 }
 
 #[test]
+fn harness_too_small_hint_safe_at_cjk_underfull_width() {
+    // "请放大终端" is 10 cols; chars().count()==5 used to overflow and exit.
+    for cols in [1u16, 5, 9, 10, 12] {
+        let mut session = HostSession::new(TestTerminal::new(cols, 3), build_root);
+        assert_eq!(session.mode(), LayoutMode::TooSmall);
+        session
+            .render_now()
+            .unwrap_or_else(|e| panic!("TooSmallHint must render at width {cols}: {e}"));
+    }
+}
+
+#[test]
+fn harness_extreme_shrink_then_restore_recovers_ready() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.render_now().unwrap();
+    assert_eq!(session.mode(), LayoutMode::Ready);
+
+    session
+        .step(HostEvent::Resize { cols: 8, rows: 3 })
+        .expect("tiny resize must not exit");
+    assert_eq!(session.mode(), LayoutMode::TooSmall);
+    session.render_now().expect("hint at tiny size");
+
+    session
+        .step(HostEvent::Resize { cols: 80, rows: 24 })
+        .expect("restore must not exit");
+    session.render_now().unwrap();
+    assert_eq!(session.mode(), LayoutMode::Ready);
+}
+
+#[test]
 fn harness_never_calls_terminal_start() {
     let mut session = HostSession::new(TestTerminal::new(80, 24), build_root);
     session.render_now().unwrap();
@@ -1735,4 +1766,35 @@ fn preflight_error_messages_are_cli_friendly() {
 
     let msg = super::TuiPreflightError::StdinNotTty.to_string();
     assert!(msg.contains("TTY"), "{msg}");
+}
+
+#[test]
+fn harness_ready_narrow_with_long_cwd_does_not_hang() {
+    // Regression: startup-card wrap_plain spun forever on long path tokens at
+    // Ready widths 40–44 (felt like "shrink then dead").
+    let mut session = HostSession::new_product_ui_with_meta(
+        TestTerminal::new(80, 24),
+        "~/Projects/__straydragon__/xylitol".into(),
+        "fake-model-with-a-very-long-name".into(),
+    );
+    session.render_now().expect("warm");
+    for cols in [50u16, 45, 44, 42, 40] {
+        session
+            .step(HostEvent::Resize { cols, rows: 24 })
+            .unwrap_or_else(|e| panic!("step {cols}: {e}"));
+        session
+            .render_now()
+            .unwrap_or_else(|e| panic!("render_now {cols}: {e}"));
+        assert_eq!(session.mode(), LayoutMode::Ready, "cols={cols}");
+    }
+    session
+        .step(HostEvent::Resize { cols: 8, rows: 3 })
+        .expect("too small");
+    session.render_now().expect("hint");
+    assert_eq!(session.mode(), LayoutMode::TooSmall);
+    session
+        .step(HostEvent::Resize { cols: 80, rows: 24 })
+        .expect("restore");
+    session.render_now().expect("ready again");
+    assert_eq!(session.mode(), LayoutMode::Ready);
 }
