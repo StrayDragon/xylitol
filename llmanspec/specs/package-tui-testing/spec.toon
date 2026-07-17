@@ -1,21 +1,13 @@
 kind: llman.sdd.spec
 name: "package-tui-testing"
 purpose: "packages/xylitol-tui 五层测试 harness。"
-valid_scope[2]: packages/xylitol-tui/,tests/
+valid_scope[2]: "packages/xylitol-tui/",tests/
 requirements[7]{req_id,title,statement}:
   tt01,五层测试架构,"TUI 测试 harness MUST 组织为五层互不重叠：第 1 层按键序列→状态断言（以字节序列驱动 Component::handle_input 并断言模型状态，仿 helix test_key_sequence）；第 2 层 insta 快照黄金（经 assert_snapshot! 断言整屏 viewport 输出）；第 3 层时序基础设施（可注入 Clock trait 用于同步逻辑如 paste-burst，tokio start_paused 用于异步逻辑如 debounce）；第 4 层 proptest 状态机（随机按键序列 + editor 状态机不变量断言）；第 5 层端到端终端集成（portable-pty 为主驱动 + tmux 真终端兼容冒烟）。每层 MUST 职责 distinct 互不重叠：1-4 层经现有 VirtualTerminal 单元格网格 oracle 进程内运行；第 5 层 spawn 真实二进制。"
   tt02,按键序列辅助,"TUI 测试支持 MUST 提供通用按键序列驱动：接受终端输入字节串，经 Component::handle_input 分发，并暴露状态断言（assert_text、assert_cursor、assert_screen_contains）。MutableComponent 模式（Rc<RefCell> 注入为 Component）MUST 从当前单测局部定义泛化到 tests/support/，使任意测试可挂载 widget、驱动按键并在多帧断言，无需每测手写 Rc/RefCell。测试 MUST NOT 重建第二个 TUI 实例观察第二帧（virtual_terminal_test.rs:178-184 记录的当前变通）；辅助 MUST 原地变更同一实例。"
   tt03,insta 快照黄金,"TUI 测试 harness MUST 用 insta（assert_snapshot!）做整屏渲染回归：VirtualTerminal::viewport() 输出（或单元格网格人类可读渲染）送入 assert_snapshot!，快照经 cargo insta review 审查，布局/颜色/换行变更以 diff 呈现。结构断言（精确单元格内容、特定单元格 SGR 样式）MUST 继续用显式 assert_eq 保精度。两种断言风格 MUST 共存（快照广度回归、assert_eq  pinpoint 正确性）。"
   tt04,可注入 Clock 的时序,"时序相关 TUI 逻辑（paste-burst 检测、autocomplete debounce、loader spinner 帧调度）MUST 可无真实 wall-clock sleep 确定性测试。同步时序逻辑 MUST 接受注入 Clock trait（now() 返回可控 Instant）使测试逐步推进时间；异步时序逻辑 MUST 在 #[tokio::test(start_paused = true)] 下用 tokio::time::advance 测试。测试 MUST NOT 用 thread::sleep 或 std::thread::sleep 等待时序效果（天然 flaky）。paste-burst 窗口边界（刚好在 8ms 字符间或 120ms enter 抑制窗口内/外）MUST 显式覆盖。"
-  tt05,portable-pty E2E 主驱动,"端到端 TUI 测试 MUST 以 portable-pty 为主集成驱动：以 PTY 子进程 spawn 真实二进制，经 writer 注入按键序列（时序重要时键间显式 sleep），从 reader 读原始字节流，送入现有 VirtualTerminal（vte 单元格解析器），断言结果网格（单元格内容、SGR 样式、光标位置）。PTY 驱动 MUST 支持选择 spawn 哪个 example 或二进制表面，使冒烟测试可跟随包单一主 example 表面。该层 MUST 覆盖 crossterm 真实多字节序列事件解析（Ctrl+arrow、Alt+arrow、bracketed paste 标记），进程内 handle_input 无法演练。portable-pty 测试位于工作区 tests/tui_e2e/（非 packages/xylitol-tui/tests/），因测试组装二进制而非 crate。"
+  tt05,"portable-pty E2E 主驱动","端到端 TUI 测试 MUST 以 portable-pty 为主集成驱动：以 PTY 子进程 spawn 真实二进制，经 writer 注入按键序列（时序重要时键间显式 sleep），从 reader 读原始字节流，送入现有 VirtualTerminal（vte 单元格解析器），断言结果网格（单元格内容、SGR 样式、光标位置）。PTY 驱动 MUST 支持选择 spawn 哪个 example 或二进制表面，使冒烟测试可跟随包单一主 example 表面。该层 MUST 覆盖 crossterm 真实多字节序列事件解析（Ctrl+arrow、Alt+arrow、bracketed paste 标记），进程内 handle_input 无法演练。portable-pty 测试位于工作区 tests/tui_e2e/（非 packages/xylitol-tui/tests/），因测试组装二进制而非 crate。"
   tt06,tmux 真终端冒烟,"TUI 测试 harness MUST 含少量（3-5 例）经 tmux 驱动的真终端冒烟测试（用手写薄包装 std::process::Command，非 tmux 绑定 crate）：创建 detached 会话（tmux new-session -d -s <name> -x <w> -y <h>），经 tmux send-keys 注入按键（支持 C-Left/M-Right/Escape/Enter 特殊键），经 tmux capture-pane -e -p 抓屏（保留 SGR 转义），经字符串包含 + insta 快照断言（过滤易变部分）。tmux 测试 MUST 标 #[ignore] 并经专用 justfile 目标（test-tui-e2e）运行，非主测试矩阵，因慢（每例 1-3s）且依赖真实 tmux 二进制与 TERM=xterm-256color。若屏幕内容轮询不可靠，MAY 添加渲染就绪信号（env XYLITOL_TEST_RENDER_SIGNAL=1 向 stderr 写 RENDER_DONE <frame_id>）以减少抓屏 flaky。"
   tt07,单一主 example 表面,"xylitol-tui 包 MUST 保留代表假 coding-agent 工作流的单一主 example 表面，而非多个重叠 showcase demo。验收与 E2E 测试 MUST 瞄准该主 example。主 example MUST 覆盖 transcript history、tool activity、侧栏或状态表面、可编辑输入区，且 MUST 在 realistic submit 流程中不违反 engine 宽度合约。"
-scenarios[8]{req_id,id,given,when,then}:
-  tt01,"five-layers-distinct",检查测试目录布局,"tests/support/ 含按键序列辅助、快照 fixture、Clock 抽象；tests/tui_e2e/ 含 portable-pty 与 tmux 驱动",五层均存在且各层职责互不重叠（无层重复另一层断言）
-  tt02,"keys-helper-drives-editor",测试经泛化辅助挂载 Input 并对 abc-左箭头-backspace 序列调用 keys,按键序列经 handle_input 分发,组件状态反映 ab（输入 abc、左移光标、backspace 删 b）且未重建第二实例
-  tt03,"snapshot-detects-layout-regression",TUI 组件渲染输出变更布局（如面板边框样式）,测试运行并调用 cargo insta review,快照 diff 呈现布局变更供人工审查
-  tt04,"paste-burst-window-boundary",8ms 字符间阈值的 paste-burst 检测器以 mock clock 测试,两字符间隔 7ms 注入再 9ms 注入,7ms 对被检测为 burst（enter 抑制）且 9ms 对不是（enter 提交），确定性且无 thread::sleep
-  tt05,"spawn-primary-example",PTY E2E 层被要求 spawn agent_demo,子进程在 portable-pty 下启动,请求的 example 启动且可用通用 send_keys 与 wait_for 辅助驱动
-  tt06,"tmux-captures-colored-screen",xylitol 二进制在 TERM=xterm-256color 的 tmux 会话运行且渲染含红色词的回复,调用 tmux capture-pane -e -p,捕获输出含 SGR 红色转义序列（CSI 31 m 或等价）确认真终端颜色渲染
-  tt07,"agent-demo-submit-flow",假 coding-agent example 在代表性终端宽度进程内挂载,测试提交默认 editor 内容,渲染成功无 RenderError 且 tool-running 状态可见
-  tt07,"agent-demo-pty-smoke",假 coding-agent example 在 portable-pty 下运行,经真实终端输入驱动提交流程,进程保持存活且提交后屏幕仍有内容
+scenarios[0]:

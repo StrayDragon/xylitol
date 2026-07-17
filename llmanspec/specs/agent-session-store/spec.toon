@@ -1,70 +1,35 @@
 kind: llman.sdd.spec
 name: "agent-session-store"
-purpose: "会话持久化 — 基于 JSONL 文件的会话存储，含树操作、compaction、fork 与 CWD 校验。"
+purpose: 会话持久化 — 基于 JSONL 文件的会话存储，含树操作、compaction、fork 与 CWD 校验。
 valid_scope[1]: src/infra/session/
 requirements[29]{req_id,title,statement}:
-  r1,快照操作,"System MUST 支持对不可变会话快照执行 snapshot、restore、spawn、list、prune、diff、merge 操作。"
-  r2,compaction,对话 token 数超过配置窗口阈值时，System MUST 自动 compact 上下文。
-  s1,JSONL 存储,"SessionManager MUST 将会话持久化为 JSONL 文件（每行一个带版本标签的 JSON 对象），位于 ~/.xylitol/sessions/。"
-  s2,条目类型,"SessionManager MUST 支持条目类型：message、compaction、branch_summary、model_change、thinking_level_change、custom、label、session_info。"
-  s3,CRUD,"SessionManager MUST 支持 create、append、load、list、exists 操作。"
+  r31,快照操作,System MUST 支持对不可变会话快照执行 snapshot、restore、spawn、list、prune、diff、merge 操作。
+  r41,compaction,对话 token 数超过配置窗口阈值时，System MUST 自动 compact 上下文。
+  s1,JSONL 存储,SessionManager MUST 将会话持久化为 JSONL 文件（每行一个带版本标签的 JSON 对象），位于 ~/.xylitol/sessions/。
+  s2,条目类型,SessionManager MUST 支持条目类型：message、compaction、branch_summary、model_change、thinking_level_change、custom、label、session_info。
+  s3,CRUD,SessionManager MUST 支持 create、append、load、list、exists 操作。
   s4,禁止旧 AgentPart 迁移,"Session JSONL 的 message.content AgentPart 形态以 domain-message dm1 为唯一真源；系统 MUST NOT 迁移或静默解读 c646 之前的 untagged/裸字符串 content。读到此类旧 content 时 MUST 按 agent-session as46 拒绝/跳过策略处理。文件级其它版本字段若存在 MAY 保留，但 MUST NOT 借此复活旧 AgentPart 语义。"
-  s5,会话树,"SessionManager MUST 维护 parent/child 会话链接：fork 创建子分支，branch_summary 引用父条目。"
-  s6,分支摘要,"System MUST 支持 generateBranchSummary(parentEntries)，产出汇总切点前条目的 CompactionEntry。"
-  s7,文件操作,"SessionManager MUST 使用原子 append（仅追加 JSONL）与文件锁保证并发安全。"
+  s5,会话树,SessionManager MUST 维护 parent/child 会话链接：fork 创建子分支，branch_summary 引用父条目。
+  s6,分支摘要,System MUST 支持 generateBranchSummary(parentEntries)，产出汇总切点前条目的 CompactionEntry。
+  s7,文件操作,SessionManager MUST 使用原子 append（仅追加 JSONL）与文件锁保证并发安全。
   s8,BDD session,"llmanspec/specs/agent-session-store/agent-session-store.feature 下 BDD 测试 MUST 全部通过。"
   s9,会话 fork,"SessionManager MUST 支持 fork(parent_id, child_id, at_entry_id)，将父条目复制到切点至新子会话文件并 append branch_summary 条目。"
-  s10,分支摘要实现,"fork 时 System MUST 生成描述被跳过条目的分支摘要：条目数、条目类型、最后 user 消息及工具调用中的 notable actions。"
+  s10,分支摘要实现,fork 时 System MUST 生成描述被跳过条目的分支摘要：条目数、条目类型、最后 user 消息及工具调用中的 notable actions。
   s11,agent fork,"AgentSession MUST 暴露 fork_session(at_entry_id)，经 SessionManager::fork() 创建新子会话并返回子 session id。"
-  s16,会话 CWD 校验,"从磁盘加载会话时 SessionManager MUST 校验存储 CWD 存在且可访问；不可用时返回可操作错误信息。"
-  s17,BDD session-v3,CWD 校验的 BDD 测试 MUST 通过。
-  ex1,导出 HTML,"AgentSession MUST 支持将会话导出为 HTML 文件。"
-  ex2,导出 JSONL,"AgentSession MUST 支持将会话导出为 JSONL 文件。"
-  ex3,导入 JSONL,"AgentSession MUST 支持从 JSONL 文件导入会话为新会话。"
-  ex4,HTML 工具渲染,"HTML 导出 MUST 将 tool 与 assistant 内容渲染为可读块。"
-  ex5,分享指引,"未配置 token 时调用分享，System MUST 返回配置指引。"
-  sc1,CWD 校验,"恢复会话时 System MUST 校验存储 cwd 存在；不匹配时返回 SessionCwdIssue。"
-  sc2,CWD 错误,"System MUST 提供 MissingSessionCwdError，携带会话文件路径、存储 cwd 与 fallback cwd。"
-  sc3,CWD 格式化,"System MUST 提供 format_missing_session_cwd_error 与 format_missing_session_cwd_prompt 用于面向用户的消息。"
-  sc4,CWD 集成,"CLI 与 RPC 模式 MUST 在恢复会话前调用 assert_session_cwd_exists。"
+  s16,会话 CWD 校验,从磁盘加载会话时 SessionManager MUST 校验存储 CWD 存在且可访问；不可用时返回可操作错误信息。
+  s17,"BDD session-v3",CWD 校验的 BDD 测试 MUST 通过。
+  ex1,导出 HTML,AgentSession MUST 支持将会话导出为 HTML 文件。
+  ex2,导出 JSONL,AgentSession MUST 支持将会话导出为 JSONL 文件。
+  ex3,导入 JSONL,AgentSession MUST 支持从 JSONL 文件导入会话为新会话。
+  ex4,HTML 工具渲染,HTML 导出 MUST 将 tool 与 assistant 内容渲染为可读块。
+  ex5,分享指引,未配置 token 时调用分享，System MUST 返回配置指引。
+  sc1,CWD 校验,恢复会话时 System MUST 校验存储 cwd 存在；不匹配时返回 SessionCwdIssue。
+  sc2,CWD 错误,System MUST 提供 MissingSessionCwdError，携带会话文件路径、存储 cwd 与 fallback cwd。
+  sc3,CWD 格式化,System MUST 提供 format_missing_session_cwd_error 与 format_missing_session_cwd_prompt 用于面向用户的消息。
+  sc4,CWD 集成,CLI 与 RPC 模式 MUST 在恢复会话前调用 assert_session_cwd_exists。
   sp1,SessionStore 实现,"infra::session::SessionManager MUST 实现 runtime_protocol::SessionStore，含 append、load、exists，仅覆盖 agent 循环与 compaction 所需；完整 SessionManager 面（fork、navigate、export）MAY 留在具体结构体供组合根直接使用。"
   sp2,SessionStore 实现,"infra::session::SessionManager MUST 实现 runtime_protocol::SessionStore，含 load_context、append、exists，仅覆盖 agent 循环与 compaction 所需；完整 SessionManager 面（fork/navigate/export）MAY 留在具体结构体供 app 组合根使用。"
   sp6,日志访问,"会话 store MUST 暴露 read_recent(session_id, limit) -> Vec<Event> 供 server journal；journal 容量 MUST 可配置（默认 10000）。"
   sp3,ExportIo 实现,"infra/ MUST 提供 runtime_protocol::export::ExportIo 实现（StdExportIo），使用 tokio::fs 做 write_text 与 read_bytes；组合根 MUST 注入 AgentSession。"
-  s12,延迟持久化至 assistant,"Persisted SessionManager（非 in_memory backend）MUST 对齐 pi：首条 assistant 消息写入前，会话条目可仅保留在内存；首条 assistant append 时 MUST 创建磁盘 jsonl（若尚不存在）并刷出此前挂起条目（含 header 与先前 user 等）；其后每次 append MUST 落盘。InMemory backend MUST NOT 写文件。MUST NOT 在仅有 header、用户又放弃对话时强制留下无消息垃圾文件作为唯一策略（允许 create 仍写 header，但 deferred 刷出路径 MUST 存在并可测）。"
-scenarios[35]{req_id,id,given,when,then}:
-  r1,happy,存在快照,以 snapshot_id 与新 prompt 调用 spawn,新 agent 实例以快照上下文启动
-  r2,happy,对话超过上下文窗口 75%,触发 compaction,较早回合被摘要并替换为 compact system message
-  s1,"create-load",创建新会话,append 条目并加载会话,全部条目按序返回
-  s2,types,append 各类型条目,加载会话,各条目保留类型与数据
-  s3,list,存在多个会话,调用 list(),返回全部 session id
-  s4,"no-untagged-migration",磁盘 JSONL 含旧 untagged thinking 对象,load 并解析为 AgentPart,不迁移为合法 Thinking；走拒绝或跳过
-  s5,fork,会话 A 有 10 条条目,在条目 5 fork 创建会话 B,"B 含条目 1-5 + branch_summary"
-  s6,"branch-summary",切点前有 5 条条目,调用 generateBranchSummary,产出汇总该 5 条的 CompactionEntry
-  s7,concurrent,两个写入者 append 同一会话,两次写入完成,文件含全部条目且无损坏
-  s8,"bdd-pass",调用 BDD runner,"cargo test --test bdd",全部 session 场景通过
-  s9,"basic-fork",会话 A 有 e0 至 e9 共 10 条,在 e4 fork,子会话有 5 条（e0..e4）加 branch_summary
-  s9,"full-fork",会话 A 有 5 条,在最后条目 e4 fork,子会话含全部 5 条且无 branch_summary
-  s9,"parent-link",经 fork 创建子会话,加载子会话 header,parent_session 字段匹配父 id
-  s10,summary,父会话有 3 条 user、7 条 assistant 与 5 次工具调用,生成分支摘要,摘要含总条目数与工具调用数
-  s10,"empty-summary",fork 点后无剩余条目,生成分支摘要,摘要为空串或表明无跳过内容
-  s11,"agent-fork",agent 会话活动,调用 AgentSession.fork_session(e4),返回新子 session id 且磁盘存在子会话文件
-  s16,"cwd-ok",会话文件 cwd 为 /tmp 且目录存在,调用 load,正常返回条目
-  s16,"cwd-missing",会话文件 cwd 为 /nonexistent,调用 load,错误引用缺失目录 /nonexistent
-  s17,"bdd-pass",调用 BDD runner,"cargo test --test bdd",全部 session-v3 场景通过
-  ex1,html,会话有消息,调用 export_to_html,写入 HTML 文件
-  ex2,jsonl,会话有条目,调用 export_to_jsonl,文件每行一个 JSON 对象
-  ex3,import,存在合法 JSONL 文件,调用 import_from_jsonl,条目加载到新会话
-  ex4,"html-tools",会话含工具调用,打开导出 HTML,工具结果渲染为可读块
-  ex5,"share-unconfigured",未配置 token 调用 share,调用 share,返回配置指引消息
-  sc1,exists,存储 cwd 在磁盘存在,调用 assert_session_cwd_exists,调用成功
-  sc1,missing,存储 cwd 在磁盘不存在,调用 assert_session_cwd_exists,返回 MissingSessionCwdError
-  sc2,"cwd-error",存储 cwd 不存在,创建 MissingSessionCwdError,错误携带会话文件路径与两个 cwd
-  sc3,"cwd-format",存在 MissingSessionCwdError,调用 format_missing_session_cwd_error,返回含两个 cwd 的面向用户消息
-  sc4,"cli-missing",CLI 启动时会话 cwd 缺失,格式化并展示错误,引导用户至 fallback cwd
-  sp1,"manager-impls-store",对照 SessionStore 检查 SessionManager,检查 impl,实现 trait 且可编译
-  sp2,"manager-impls-store",对照 SessionStore 测试 SessionManager,检查 trait 边界,三方法可编译且往返数据
-  sp6,"journal-reads-recent",会话有 50 个事件且 journal limit 为 10000,"调用 read_recent(s0, 10)",按 seq 顺序返回最后 10 个事件
-  sp3,"std-export-io",组合根为导出构造 Agent,注入 ExportIo,具体类型为 infra/ 的 StdExportIo
-  s12,"defer-before-assistant",新 persisted session 仅有 user 消息已 append,检查磁盘 jsonl,文件尚不存在或未含完整挂起条目刷出；首条 assistant append 后文件存在且含 user+assistant
-  s12,"in-memory-no-file","SessionManager::in_memory()",append 多条消息,无 session 文件被创建且 load 仍可读到条目
+  s12,延迟持久化至 assistant,Persisted SessionManager（非 in_memory backend）MUST 对齐 pi：首条 assistant 消息写入前，会话条目可仅保留在内存；首条 assistant append 时 MUST 创建磁盘 jsonl（若尚不存在）并刷出此前挂起条目（含 header 与先前 user 等）；其后每次 append MUST 落盘。InMemory backend MUST NOT 写文件。MUST NOT 在仅有 header、用户又放弃对话时强制留下无消息垃圾文件作为唯一策略（允许 create 仍写 header，但 deferred 刷出路径 MUST 存在并可测）。
+scenarios[0]:

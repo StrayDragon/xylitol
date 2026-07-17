@@ -1,9 +1,7 @@
 kind: llman.sdd.spec
 name: "build-config"
-purpose: "构建配置 — Cargo features、profile 设置与条件编译。"
+purpose: 构建配置 — Cargo features、profile 设置与条件编译。
 valid_scope[1]: Cargo.toml
 requirements[1]{req_id,title,statement}:
-  r1,"default-features","Cargo.toml default MUST 包含除 dev- 前缀外的所有 feature。"
-scenarios[2]{req_id,id,given,when,then}:
-  r1,"all-features-on",Cargo.toml 存在且 default 列表已更新,无额外 flags 运行 cargo build,"二进制包含所有非 dev feature 功能"
-  r1,"minimal-build",Cargo.toml 存在且 default 列表已更新,"cargo build --no-default-features --features tui 运行","仅编译 tui 及其依赖"
+  r33,"default-features","Cargo.toml default MUST 包含除 dev- 前缀外的所有 feature。"
+scenarios[0]:

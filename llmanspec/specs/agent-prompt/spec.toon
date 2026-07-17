@@ -11,17 +11,4 @@ requirements[8]{req_id,title,statement}:
   pt6,context 热应用,Agent MUST 提供 apply_prompt_resources（或等价）：用新的 context_files、system_prompt、append_system_prompt 重建系统提示；MUST 只影响后续 run；MUST NOT 改写已持久化历史消息。
   pt7,skills 热应用与引导注入,Agent MUST 在构造/bootstrap 时将 ResourceLoader 发现的 skills 写入 SystemPromptOpts 并经 build_system_prompt 进入 available_skills（若非空）；MUST 提供 apply_skills（或扩展 apply_prompt_resources）用新目录重建系统提示；MUST 只影响后续 run；MUST NOT 改写已持久化历史；未信任 MUST NOT 注入项目 skills。
   pt8,"dollar-skill 提交注入",当用户消息含 $name 且 name 在已加载 skills 目录中时，System MUST 在发往模型前将对应 SKILL.md 正文（去 frontmatter）注入该 user 消息的模型侧投影；会话历史 MUST 保留原始含 $ 文本；未知 $name MUST 透传；未信任 MUST NOT 注入项目 skill 正文（目录已空即可）。
-scenarios[13]{req_id,id,given,when,then}:
-  pt1,assemble,提供 tools 与 context,build_system_prompt,输出含工具与 context 片段
-  pt2,skills,"已加载 demo-skill",组装系统提示,含 skill 名或 available_skills 段
-  pt2,"skills-untrusted",项目未信任且仅有项目 skill,组装,MUST NOT 含该项目 skill
-  pt3,register,加载模板 greet,register_prompt_commands,get_commands 含 greet 且带 source_path
-  pt4,positionals,模板体含 $1,带参展开,位置参数被替换
-  pt5,"no-jinja-dep","",检查 Cargo.toml 与 src/agent/prompt,无 jinja/minijinja 依赖
-  pt6,"apply-next-turn",会话已有 user/assistant 历史,apply_prompt_resources 换新 AGENTS 内容,历史条数不变且下一轮 system 含新 context
-  pt7,"bootstrap-inject","信任且已加载 demo-skill",构造 Agent 或 bootstrap 装配,"系统提示含 demo-skill 或 available_skills 段"
-  pt7,"untrusted-skip",未信任且仅有项目 skill,装配系统提示,MUST NOT 含该项目 skill 名
-  pt7,"apply-keeps-history",会话已有历史,apply_skills 换新目录,历史条数不变且下一轮 system 反映新 skills
-  pt8,"inject-known",目录含 demo 且用户文本含 $demo,展开后发模型,模型侧 user 文本含 SKILL.md 正文片段
-  pt8,"history-raw",同上,检查会话历史 user 文本,仍含字面 $demo 且无强制展开块作为唯一形态
-  pt8,"unknown-passthrough",文本含 $nosuch,展开,无 nosuch 的 skill 块；$nosuch 仍在文本中
+scenarios[0]:

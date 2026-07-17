@@ -3,21 +3,11 @@ name: "package-tui-editor-autocomplete"
 purpose: "Editor 补全 popup：可插拔 CompletionSource 注册表（slash、@-path、未来触发符）。"
 valid_scope[2]: src/,tests/
 requirements[7]{req_id,title,statement}:
-  ea01,"completion-source-registry","Editor MUST 经 set_completion_sources() 支持可插拔 CompletionSource。Editor MUST 在 edit/Tab 时按顺序探测已注册 source；首个 probe hit 拥有 popup。包 MUST 提供内置 SlashCommandSource（/）与 AtPathSource（@）；应用注册启用的 source。set_autocomplete_provider(CombinedAutocompleteProvider) MUST 保留为兼容 shim，安装 SlashCommandSource + AtPathSource。注册表为空时，Tab/newline/Enter MUST 回退到正常 editor 行为。"
+  ea01,"completion-source-registry",Editor MUST 经 set_completion_sources() 支持可插拔 CompletionSource。Editor MUST 在 edit/Tab 时按顺序探测已注册 source；首个 probe hit 拥有 popup。包 MUST 提供内置 SlashCommandSource（/）与 AtPathSource（@）；应用注册启用的 source。set_autocomplete_provider(CombinedAutocompleteProvider) MUST 保留为兼容 shim，安装 SlashCommandSource + AtPathSource。注册表为空时，Tab/newline/Enter MUST 回退到正常 editor 行为。
   ea02,"autocomplete-selectlist-popup","CompletionSource 返回建议时，Editor MUST 用建议创建 SelectList popup，计算 best-match 预选项（精确 value 匹配 > prefix 起始匹配），并在 render() 中渲染于 editor 边框下方。popup 激活时，Tab/Enter MUST 经 active source 的 apply() 应用选中项，Esc MUST 取消 popup，上下箭头 MUST 导航列表。应用后 popup MUST 关闭且光标 MUST 定位到补全后位置。"
-  ea03,"edit-cursor-refresh","任意文本插入、删除或光标移动后，Editor MUST 咨询 CompletionSource 注册表：popup 打开时，should_dismiss_active 或 failed probe MUST 取消；否则 MUST 刷新建议；无 popup 时 probe_first MUST 打开匹配 source。单结果 Tab 补全（force+explicitTab）MUST 自动应用而不显示 popup。SlashCommandSource MUST 在 popup 已打开且前缀仅为 lone `/` 时 dismiss。"
+  ea03,"edit-cursor-refresh",任意文本插入、删除或光标移动后，Editor MUST 咨询 CompletionSource 注册表：popup 打开时，should_dismiss_active 或 failed probe MUST 取消；否则 MUST 刷新建议；无 popup 时 probe_first MUST 打开匹配 source。单结果 Tab 补全（force+explicitTab）MUST 自动应用而不显示 popup。SlashCommandSource MUST 在 popup 已打开且前缀仅为 lone `/` 时 dismiss。
   ea04,"request-serialisation-and-debounce","多个快速 autocomplete 请求 MUST 由 autocomplete_start_token 计数器串行化；仅最新请求应用结果。@-attachment 触发器在 async debounce 接线时 MUST 强制 20ms debounce。显式 Tab 或 force-file 补全时 debounce MUST 为 0。editor MUST NOT 在 autocomplete 期间阻塞主线程；async 执行 MUST 使用可选 tokio Handle，缺失时回退 sync。"
   ea00,"capability-shell","本增量由变更 c545-update-package-tui-editor-sources 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
-  ea05,"extra-source-open","Editor MUST 允许在 Slash/AtPath 之外再注册自定义 CompletionSource；未注册时 MUST NOT 为未来触发符预留运行时成本。应用面 MAY 注册测试桩或未来 $/^ 源。"
-  ea06,"narrow-popup-width","补全 popup 打开时，其渲染行宽 MUST 不超过 Editor 当前内容宽度预算；超长项 MUST 截断或夹紧，MUST NOT 使整行超出 terminal width。"
-scenarios[10]{req_id,id,given,when,then}:
-  ea01,"slash-trigger-on-tab","editor 已注册 SlashCommandSource 且光标在 /hel 之后",按下 Tab,从 SlashCommandSource 获取建议且 SelectList 出现在 editor 下方
-  ea01,"at-path-trigger","editor 已注册 AtPathSource 且目录含某文件",用户输入 @,AtPathSource 在 SelectList popup 中列出目录项
-  ea02,"selectlist-enter-applies","autocomplete popup 显示且首项预选中",按下 Enter,item value 替换光标处前缀且 popup 关闭
-  ea02,"selectlist-esc-cancels",autocomplete popup 显示中,按下 Escape,popup 关闭且不修改文本
-  ea03,"backspace-updates-suggestions",autocomplete 显示建议中,backspace 从 prefix 删除一字符,active source 刷新建议以匹配新 prefix
-  ea04,"rapid-tabs-drop-stale",三次 Tab 快速连续到达,仅最后一次的建议应用,前两次因 start_token 递增被丢弃
-  ea00,"shell-present","","列出 capability package-tui-editor-autocomplete",delta 含 ea05–ea06
-  ea05,"register-stub",注册含测试桩的 sources,在桩触发前缀下 Tab,popup 由该桩提供建议且 Slash/AtPath 仍可独立工作
-  ea05,"empty-ok",仅注册 Slash,输入不触发 /,无 popup 且无额外源探测副作用
-  ea06,"narrow-clamp",终端宽较窄且建议标签很长,打开 popup 并 render,每行 visible_width 不超过给定 width
+  ea05,"extra-source-open",Editor MUST 允许在 Slash/AtPath 之外再注册自定义 CompletionSource；未注册时 MUST NOT 为未来触发符预留运行时成本。应用面 MAY 注册测试桩或未来 $/^ 源。
+  ea06,"narrow-popup-width",补全 popup 打开时，其渲染行宽 MUST 不超过 Editor 当前内容宽度预算；超长项 MUST 截断或夹紧，MUST NOT 使整行超出 terminal width。
+scenarios[0]:

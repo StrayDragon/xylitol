@@ -7,18 +7,6 @@ requirements[6]{req_id,title,statement}:
   pte02,"overlay-handle","TUI::show_overlay MUST 返回 OverlayHandle，可 hide（永久移除）、set_hidden / is_hidden（临时）、report is_focused。hide MUST 经 focus-restore 状态机恢复焦点（最上层可见 capturing overlay，否则 retarget 后的 pre_focus FocusTarget）。handle MUST 仅在 overlay 条目存在时可用（hide 后操作为 no-op）。"
   pte03,"overlay-handle-focus-controls","OverlayHandle MUST 暴露 focus 与 unfocus 操作。focus MUST 将可见 overlay（含 non_capturing）带到视觉最前并捕获输入。unfocus MUST 释放焦点而不 rebuild；unfocus MAY 接受显式 FocusTarget。TUI MUST 实现 eligible/blocked/resume overlay focus-restore，并在焦点不在 overlay 上时于 dispatch_event reclaim。"
   pte04,"image-surface-optional","包 MUST NOT 要求 Image 组件或完整 terminal_image encode 路径用于主 agent_demo / app-shell 接线。is_image_line（及 width invariant 所需的 minimal helpers）MUST 保留。未使用的 image encode/UI surface MAY 移除或 feature-gate。"
-  pte05,"input-listener-pre-focus","TUI MUST 提供 add_input_listener / remove_input_listener；每个 InputEvent 在路由到 focused overlay 或 focused root child 之前 MUST 按注册顺序调用 listener；任一 listener 返回 Consumed MUST 阻止后续 listener 与焦点组件接收该事件。"
+  pte05,"input-listener-pre-focus",TUI MUST 提供 add_input_listener / remove_input_listener；每个 InputEvent 在路由到 focused overlay 或 focused root child 之前 MUST 按注册顺序调用 listener；任一 listener 返回 Consumed MUST 阻止后续 listener 与焦点组件接收该事件。
   pte06,"overlay-focus-restore-sm","TUI MUST 维护 overlay focus-restore 状态 inactive/eligible/blocked；capturing overlay 获焦时 MUST 进入 eligible；焦点被临时转到非祖先 root/child 时 MUST 进入 blocked；dispatch_event 在 listener 之后 MUST reclaim eligible 或满足条件的 blocked resume；set_focus(None) 在 clear 策略下 MUST 清除 restore；non_capturing show 与 set_hidden(false) MUST NOT 自动抢焦点。"
-scenarios[12]{req_id,id,given,when,then}:
-  pte01,"container-concatenates-children","Container 持有 Text(a) 再 Text(b)",render(width) 被调用,输出行按 a 再 b 顺序
-  pte01,"container-does-not-fanout-input","Container 有 child Input",Container.handle_input 收到 Key 事件,除非 host/TUI 直接聚焦该 child，否则 child Input 不收到事件
-  pte02,"overlay-hide-restores-prefocus","capturing overlay 聚焦在 root editor 上",OverlayHandle.hide,焦点回到 editor pre_focus
-  pte03,"overlay-focus-nc-allowed","可见 non_capturing overlay",OverlayHandle.focus,overlay 获焦并接收后续输入
-  pte03,"overlay-unfocus-no-reclaim","capturing overlay 已聚焦",unfocus 再 dispatch_event,root 保持焦点；overlay 不 reclaim
-  pte04,"agent-demo-builds-without-image","xylitol-tui 包以默认 features 构建","agent_demo 与 cargo test -p xylitol-tui 运行",成功且不依赖 Image 组件 API
-  pte05,"listener-consumes-before-focus","已注册对 ctrl+c 返回 Consumed 的 listener，且 Editor 处于焦点",调用 dispatch_event(Key(ctrl+c)),Editor 不收到该事件
-  pte05,"listener-yields-to-focus","listener 对普通字符返回 Continue，Editor 处于焦点",调用 dispatch_event(Key(a)),Editor 收到该事件
-  pte05,"paste-through-listeners","listener 对 Paste 返回 Continue",调用 dispatch_event(Paste(...)),焦点组件收到 paste
-  pte06,"reclaim-after-set-focus-steal","capturing overlay 可见",set_focus root 再 dispatch_event,overlay reclaim 焦点并接收事件
-  pte06,"set-focus-none-clears","overlay 聚焦且 eligible restore",set_focus None,restore inactive 且 overlay 不在下次输入 reclaim
-  pte06,"nested-retarget-on-hide","parent 再 child capturing overlays",hide child,焦点经 retargeted pre_focus 恢复到 parent
+scenarios[0]:

@@ -14,18 +14,4 @@ requirements[11]{req_id,title,statement}:
   adp6,"playground-lint-gate","仓库 MUST 提供 scripts/check_tui_design_playground.py（或等价），并由 just qa 经 check-scripts 执行；失败时 MUST 非零退出。脚本 MUST 覆盖至少：禁止实现分层标签/置灰、Next-wave 槽与 fixture 源内禁止 change-id 噪音、选中 .rev 对比度护栏（CSS inherit 与选中行无 kind 前景穿透）、必有 panel-models 与 panel-tree-power、Models/Tree 使用 term-slot。"
   adp7,"playground-fixtures-l2","src/app/tui/design/fixtures/ MUST 存在至少 session-tree.filter 与 models.open 的 YAML 夹具；playground HTML MUST 以 data-design-fixture 关联；lint MUST 按夹具 must_contain / must_not_contain / assert_html 断言对应模板源。"
   adp8,"playground-lint-docs","design/AGENTS.md 与 playground README MUST 写明改静图须跑 playground lint（及 check-tui-tokens）；MUST NOT 再暗示仅靠人眼发现 DESIGN 漂移。"
-scenarios[14]{req_id,id,given,when,then}:
-  adp0,"shell-present","","列出 capability app-tui-design-playground",spec 含 adp0 及后续 requirements
-  adp1,"sync-runs","",运行 sync_tokens.py,生成或刷新 tokens.css 与 tokens.js 且无报错
-  adp2,"md-slot","",打开 playground Markdown 槽,示意中无井号标题前缀且链接呈 text (url) 形态
-  adp2,"no-star-wrapping","",查看粗体斜体示意,可见文案无 ** 或成对 * 包裹
-  adp3,"agents-pointer","",阅读 design/AGENTS.md,含 Agent 默认忽略 playground 的说明
-  adp4,"tree-slot-kind-colors",打开 playground 会话树槽,查看树行,可见分色 kind 前缀与无 role 烘焙的正文
-  adp5,"playground-live-note",打开 design playground 会话树槽,阅读注脚,写明活树与 travel_session_tree / user 预填
-  adp9,"slots-present","",打开 design playground,存在 Models 与 Tree power 槽且无包标签置灰
-  adp9,"models-shape","",查看 Models 打开态,替换 editor 槽示意且选中行为整行 reverse
-  adp10,"design-table","",阅读 DESIGN.md Next wave 表,列出后续 change 与文档指针
-  adp6,"qa-runs-lint","","运行 python3 scripts/check_tui_design_playground.py --check",退出码 0 或对故意违规样本非 0
-  adp6,"rev-inherit",playground CSS 含 .rev,检查选中对比度规则,"要求 .rev * color inherit 且 TREEP 选中行无 fg-user 穿透"
-  adp7,"fixtures-present","",列出 design/fixtures,"存在 session-tree.filter 与 models.open YAML 且 HTML 有对应 data-design-fixture"
-  adp8,"docs-pointer","",阅读 design/AGENTS.md 与 playground README,含 lint / qa 指针
+scenarios[0]:

@@ -1,12 +1,8 @@
 kind: llman.sdd.spec
 name: "test-fake-provider"
-purpose: "Fake 与 mock provider：用于 agent 行为的确定性测试。"
+purpose: Fake 与 mock provider：用于 agent 行为的确定性测试。
 valid_scope[2]: src/infra/provider/fake.rs,src/infra/provider/mock.rs
 requirements[2]{req_id,title,statement}:
-  r1,"fake-provider","System MUST 实现 FakeProvider，实现 adk_core::Llm，经 ScenarioStep 序列返回预配置响应。"
-  r2,"scenario-orchestration","System MUST 支持编排多步场景：text -> tool_call -> tool_result -> text，含可配置 delay 与经 ScenarioStep 的错误注入。"
-scenarios[4]{req_id,id,given,when,then}:
-  r1,happy,"FakeProvider 配置为仅 text 的 ScenarioStep::Text",generate_content() 被调用,响应流 yield 单个含预定 text 的 LlmResponse
-  r1,"tool-call","FakeProvider 配置 ScenarioStep::ToolCall，含 preset name 与 args",generate_content() 被调用,"响应含 Part::FunctionCall，name 与 args 与配置一致"
-  r1,delay,"FakeProvider 配置 ScenarioStep::Delay(50ms) 后接 text",generate_content() 被调用,调用至少耗时 50ms 后返回 text 响应
-  r2,"multi-turn","FakeProvider 配置多回合场景（text、tool_call、tool_result、text）",跨对话回合调用 generate_content(),每次调用按序返回预期 step；tool_result step 被消费而不产生响应
+  r38,"fake-provider","System MUST 实现 FakeProvider，实现 adk_core::Llm，经 ScenarioStep 序列返回预配置响应。"
+  r45,"scenario-orchestration","System MUST 支持编排多步场景：text -> tool_call -> tool_result -> text，含可配置 delay 与经 ScenarioStep 的错误注入。"
+scenarios[0]:

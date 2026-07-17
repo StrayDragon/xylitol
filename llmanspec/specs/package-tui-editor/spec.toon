@@ -13,20 +13,4 @@ requirements[10]{req_id,title,statement}:
   ed08,"set-border-color",Editor MUST 提供 set_border_color（或等价 API）以替换边框 ANSI 包装闭包，供 host 在 bash 模式等场景切换操作区边框色；MUST NOT 要求重建整个 Editor 实例。
   ed09,"paste-collapse-expand","Editor MUST 在 bracketed paste 内容超过 10 行或超过 1000 字符时，将缓冲区内文本替换为 [paste #N +L lines] 或 [paste #N C chars] 占位，并在内部 pastes 表保留原文；get_text MUST 返回含占位符的显示文本；get_expanded_text MUST 将每个有效 id 的完整 marker（含 +lines/chars 后缀）替换为原文，MUST NOT 残留 +N lines] 或 N chars] 碎片。短粘贴 MUST 直接插入原文。"
   ed10,"thinking-border-apply",Editor MUST 能在不重建实例的前提下经 set_border_color（ed08）或薄 helper apply_thinking_border 应用 Palette 给出的 thinking 边框闭包；应用后 render 的边框行 MUST 经该闭包着色；MUST NOT 在 Editor 内硬编码产品 domain ThinkingLevel。
-scenarios[16]{req_id,id,given,when,then}:
-  ed01,"build-vl-map-wraps-long-lines",30 列 editor 中有一行 100 字符,build_visual_line_map(30) 被调用,map 含 4 个 visual line 条目，logical_line、start_col、len 正确
-  ed02,"sticky-col-up-arrow",光标在第 2 行第 15 列，该行跨 3 个 visual lines,按下 cursor up,光标移到上一 logical line 对应 visual line 的第 15 列（或较短行尾）
-  ed02,"sticky-col-cleared-on-horizontal",从第 15 列 cursor up 到第 8 列（行更短）设置 preferred_visual_col 为 15,word_left 被按下,preferred_visual_col 设为 None
-  ed03,"page-scroll-moves-by-pagesize",terminal rows=40，page size=12,page_down 被按下,光标经 move_to_visual_line 下移 12 个 visual lines，而非 5 个 logical lines
-  ed04,"paste-burst-enter-suppressed",9 个 fast chars 各 1ms 内到达，触发 paste burst，再 Enter,handle_input 收到 Enter,PasteBurst 对 should_insert_newline_instead_of_submit 返回 true，插入 newline 而非 submit
-  ed04,"paste-burst-reset-on-nonprintable",burst 进行中,"按下 CursorLeft（non-printable）",paste_burst.reset() 被调用，清除 burst 状态
-  ed05,"history-draft-restored","用户 up-arrow 浏览 2 条 history","down-arrow 越过最后一条回到 history_index=-1",保存的 history_draft 以原 editor 内容恢复
-  ed06,"demo-injects-syntect",feature highlight 启用,agent_demo 渲染含 rust fence 的助手消息,输出行含 ANSI 颜色序列
-  ed06,"default-no-syntect-dep","",cargo metadata 默认 features,"xylitol-tui 默认依赖树不含 syntect"
-  ed07,"oversize-fallback",代码超过字节上限,调用 highlight_code,返回未高亮纯文本行且不 panic
-  ed08,"border-swap",Editor 已构造,调用 set_border_color 后 render,边框行经新闭包着色
-  ed09,"long-paste-collapses",Editor 收到超过 10 行的 bracketed paste,粘贴完成,"get_text 匹配 [paste #N +L lines] 且 pastes 表含原文"
-  ed09,"expanded-equals-original",长粘贴已折叠为 marker,调用 get_expanded_text,"返回值等于粘贴原文且不含 [paste #"
-  ed09,"short-paste-inline",粘贴不超过 10 行且不超过 1000 字符,粘贴完成,"get_text 含原文且无 [paste # 占位"
-  ed10,"apply-high-border",Editor 已构造且 Palette 为 Dark,apply_thinking_border(High) 或等价 set_border_color 后 render,边框行含 High 对应真彩序列
-  ed10,"swap-without-rebuild",同一 Editor 实例,先 Medium 再 High 应用边框,两次 render 边框色不同且实例未重建
+scenarios[0]:

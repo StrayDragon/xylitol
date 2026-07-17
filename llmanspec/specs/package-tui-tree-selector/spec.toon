@@ -3,7 +3,7 @@ name: "package-tui-tree-selector"
 purpose: 通用 TreeSelector：flatten/过滤/搜索/翻页/fold/annotation（供双 Esc 会话树）。
 valid_scope[1]: "packages/xylitol-tui/"
 requirements[16]{req_id,title,statement}:
-  meta0,"capability-shell","本 capability 由变更 c454-add-package-tui-tree-selector 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+  r30,"capability-shell","本 capability 由变更 c454-add-package-tui-tree-selector 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   pts1,"tree-node-model",包 MUST 提供 TreeNode（id/label/children）与可导航 TreeSelector 组件；MUST NOT 依赖主 crate xylitol 或 session 类型。
   pts2,"include-node-filter",TreeSelector MUST 支持 include_node 钩子过滤可见节点，并在过滤后重算 indent/connector/gutter；MUST NOT 硬编码产品 FilterMode 枚举。
   pts3,"select-keybindings",TreeSelector 导航 MUST 使用 tui.select.* 键绑定（up/down/page/confirm/cancel）；选中态 MUST 可用主题闭包（如 reverse）表达。
@@ -19,22 +19,4 @@ requirements[16]{req_id,title,statement}:
   pts12,"selection-stable-on-filter",include_node 或搜索串变更后，若先前选中 id 仍在可见列表中则 MUST 保持该选中；否则 MUST 将选中落到可见列表的合理默认项（通常为首项）。
   pts13,"node-kind",TreeNode MUST 支持可选 kind（字符串；包 MUST NOT 硬编码产品 role 枚举）；有 kind 时渲染 MUST 在 annotation 之后、主 label 之前经主题闭包输出 kind 前缀；无 kind 时 MUST NOT 强制前缀。
   pts14,"kind-in-search",TreeSelector 增量搜索 MUST 将节点 kind（若有）纳入匹配；搜索 MUST 仍与 include_node 组合（AND）。
-scenarios[18]{req_id,id,given,when,then}:
-  meta0,"shell-present","","列出 llmanspec/specs/package-tui-tree-selector",spec.toon 存在且 purpose 为中文
-  pts1,"unit-flatten","",对分支树 flatten,单子链 indent 不漂移且分支点出现连接符
-  pts2,"filter-recalc","",隐藏中间节点,可见兄弟 indent 对齐且无幽灵连接符
-  pts3,"nav-confirm","",↓ 后 Enter,on_select 收到对应节点 id
-  pts4,"search-and-esc",树有多节点,键入匹配子串后 Esc,仅匹配节点可见且搜索清空后恢复；第二次 Esc 才 cancel
-  pts5,"arrow-page",可见行多于一页,按 → 或 pageDown,selected_index 增加约 max_visible 且不越界
-  pts6,"suffix-render","host 设置 status_suffix=[no-tools]",render,"状态行含 (i/n) 与 [no-tools]"
-  pts7,"fold-hides-desc",可折叠节点选中,foldOrUp,子节点从可见列表消失且前缀含 ⊞
-  pts8,"annotation-render",节点带 annotation,render,"行含 [annotation] 与主 label"
-  pts9,"edit-label-fires",选中节点,Shift+L,on_label_edit 收到该 id
-  pts10,"deep-indent-visible",深嵌套树且 active/selected 为长 label 叶节点,以窄 width render,输出含叶 label 的可辨识子串且行仍以选中 gutter 开头
-  pts00,"shell-present","","列出 capability package-tui-tree-selector",delta 含 pts11–pts12
-  pts11,"no-match",树有节点,搜索无匹配串,render 含空态提示文案
-  pts12,"keep-id",选中某仍可见节点,收紧 include_node 但仍含该 id,选中仍为该 id
-  pts12,fallback,选中节点被过滤掉,刷新可见列表,选中变为可见首项或等价默认
-  pts13,"kind-prefix-render",节点 kind=user 且 label 为正文无 role 前缀,render,行含主题化 user 前缀与正文 label
-  pts13,"no-kind-compat",节点无 kind,render,行仅含既有 annotation/label 形态且无强制 role 前缀
-  pts14,"search-matches-kind",可见节点含 kind=tool,键入 tool,该节点仍可见
+scenarios[0]:

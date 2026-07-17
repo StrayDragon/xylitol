@@ -15,23 +15,4 @@ requirements[12]{req_id,title,statement}:
   rd10,资源热重载,DefaultResourceLoader MUST 提供 reload（或实现 XyReloadable）：清空缓存后重新发现 context/prompts/skills/themes/SYSTEM/APPEND；失败诊断 MUST 可观察；reload MUST NOT 修改会话历史文件。
   rd11,主题名发现,System MUST 能在 Trust 语义下列出已发现 theme 文件名（stem）；未信任 MUST NOT 列出项目 themes 目录条目。
   rd12,Skills 发现与重载报告,System MUST 能在 Trust 语义下发现并列出已加载 skills（名与 scope）；提供 reload_skills（或等价）清空后重扫并返回 report（names/count；诊断可观察）；未信任 MUST NOT 列入项目 .xylitol/skills；reload MUST NOT 修改会话历史文件。
-scenarios[19]{req_id,id,given,when,then}:
-  rd1,list,ResourceLoader 已加载 skills 与 prompts,调用 list,输出展示每项资源的 scope 与 path
-  rd1,"list-empty",未安装任何资源,调用 list,输出为空且退出码为零
-  rd2,"info-found",存在名为 foo 的 skill,调用 info foo,展示 foo 详情且退出为零
-  rd2,"info-missing",不存在名为 bar 的资源,调用 info bar,"展示 not-found 消息且退出非零"
-  rd3,"doctor-clean",全部资源有效,调用 doctor,无问题报告且退出为零
-  rd3,"doctor-issues",存在缺少 frontmatter 的 SKILL.md,调用 doctor,列出问题且退出非零
-  rd4,"read-only",调用任意资源命令,命令完成,无文件被创建或修改
-  rd5,reuse,ResourceLoader 已发现资源,调用 list,展示相同集合且无独立重扫
-  rd6,create,提供资源元数据,调用 create_source_info,返回字段完整的 SourceInfo
-  rd7,"factory-create",提供含 path 与 scope 的资源元数据,调用 create_source_info,返回完整填充的 SourceInfo
-  rd8,"migration-skills",从项目目录加载 skill,创建其 SourceInfo,scope 为 project
-  rd8,"migration-commands",注册 slash 命令,设置其 source_info,非来自包时 origin 为 TopLevel
-  rd9,"scope-variants",从 user scope 加载资源,创建其 SourceInfo,scope 为 User
-  rd10,"reload-agents",loader 已加载且盘上 AGENTS.md 已改,调用 reload,get_agents_files 反映新内容
-  rd10,"reloadable-trait",runtime_protocol 导出 XyReloadable,检查 DefaultResourceLoader,实现 XyReloadable 且 Outcome 可丢弃或含诊断
-  rd11,"list-trusted",信任且项目 themes/foo.json 存在,discovered_theme_names,列表含 foo
-  rd12,"list-trusted",信任且项目 skills 含 demo,discovered_skills 或 get_skills,列表含 demo 且 scope 为 project
-  rd12,"list-untrusted",未信任且仅项目有 skill,discovered_skills 或 get_skills,列表 MUST NOT 含该项目 skill
-  rd12,"reload-names",loader 已加载后盘上新增 skill,调用 reload_skills,report names 含新 skill
+scenarios[0]:
