@@ -42,7 +42,9 @@ pub(crate) fn compact_json_preview(value: &Value, max_chars: usize) -> String {
     format!("{truncated}…")
 }
 
-/// Human-readable collapsed tool args (c1260 M1). Fallback: compact JSON.
+/// Human-readable collapsed tool args (c1260 / c1280).
+///
+/// Missing key fields → short placeholder. Never dump full args JSON as chrome.
 pub(crate) fn human_tool_args_preview(name: &str, args: &Value, max_chars: usize) -> String {
     let pick_str = |keys: &[&str]| -> Option<String> {
         for key in keys {
@@ -57,20 +59,82 @@ pub(crate) fn human_tool_args_preview(name: &str, args: &Value, max_chars: usize
         None
     };
 
-    let summary = match name {
-        "bash" | "shell" => pick_str(&["command", "cmd"]).map(|c| format!("$ {c}")),
-        "read" => pick_str(&["path", "file"]).map(|p| format!("read {p}")),
-        "ls" => pick_str(&["path", "dir"]).map(|p| format!("ls {p}")),
-        "edit" => pick_str(&["path", "file"]).map(|p| format!("edit {p}")),
-        "write" => pick_str(&["path", "file"]).map(|p| format!("write {p}")),
-        "find" => pick_str(&["pattern", "path", "glob"]).map(|p| format!("find {p}")),
-        "grep" => pick_str(&["pattern", "path"]).map(|p| format!("grep {p}")),
-        _ => None,
+    let path_from_edits = || -> Option<String> {
+        args.get("edits")
+            .and_then(Value::as_array)
+            .and_then(|arr| arr.first())
+            .and_then(|edit| {
+                ["path", "file"]
+                    .iter()
+                    .find_map(|k| edit.get(*k).and_then(Value::as_str))
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+            })
     };
 
-    match summary {
-        Some(s) => compact_json_preview(&Value::String(s), max_chars),
-        None => compact_json_preview(args, max_chars),
+    let content_line_count = || -> Option<usize> {
+        let content = args.get("content").and_then(Value::as_str)?;
+        if content.is_empty() {
+            return None;
+        }
+        Some(content.lines().count().max(1))
+    };
+
+    let summary = match name {
+        "bash" | "shell" => pick_str(&["command", "cmd"])
+            .map(|c| format!("$ {c}"))
+            .unwrap_or_else(|| name.to_string()),
+        "read" => pick_str(&["path", "file"])
+            .map(|p| format!("read {p}"))
+            .unwrap_or_else(|| "read".into()),
+        "ls" => pick_str(&["path", "dir"])
+            .map(|p| format!("ls {p}"))
+            .unwrap_or_else(|| "ls".into()),
+        "edit" => pick_str(&["path", "file"])
+            .or_else(path_from_edits)
+            .map(|p| format!("edit {p}"))
+            .unwrap_or_else(|| "edit".into()),
+        "write" => {
+            let path = pick_str(&["path", "file"]);
+            match (path, content_line_count()) {
+                (Some(p), Some(n)) => format!("write {p} ({n} lines)"),
+                (Some(p), None) => format!("write {p}"),
+                (None, Some(n)) => format!("write ({n} lines)"),
+                (None, None) => "write".into(),
+            }
+        }
+        "find" => pick_str(&["pattern", "path", "glob"])
+            .map(|p| format!("find {p}"))
+            .unwrap_or_else(|| "find".into()),
+        "grep" => pick_str(&["pattern", "path"])
+            .map(|p| format!("grep {p}"))
+            .unwrap_or_else(|| "grep".into()),
+        _ => pick_str(&["path", "file", "command", "cmd", "pattern", "query", "url"])
+            .unwrap_or_default(),
+    };
+
+    compact_json_preview(&Value::String(summary), max_chars)
+}
+
+/// Success write/edit machine JSON is not default chrome (c1280); errors stay visible.
+pub(crate) fn quiet_tool_success_output(
+    name: &str,
+    result: &str,
+    is_error: bool,
+) -> Option<String> {
+    if is_error {
+        return None;
+    }
+    match name {
+        "write" | "edit" => {
+            let trimmed = result.trim_start();
+            if trimmed.starts_with('{') || trimmed.starts_with('[') {
+                Some(String::new())
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 
@@ -512,6 +576,165 @@ mod tests {
             human_tool_args_preview("bash", &serde_json::json!({"command": "ls -la"}), 80);
         assert!(preview.starts_with("$ ls"), "got {preview}");
         assert!(!preview.contains('{'));
+    }
+
+    #[test]
+    fn write_summary_includes_line_count_not_content() {
+        let preview = human_tool_args_preview(
+            "write",
+            &serde_json::json!({
+                "path": "docs/a.md",
+                "content": "line1\nline2\nline3"
+            }),
+            80,
+        );
+        assert!(preview.contains("docs/a.md"), "got {preview}");
+        assert!(preview.contains("3 lines"), "got {preview}");
+        assert!(!preview.contains("line1"), "got {preview}");
+        assert!(!preview.contains('{'));
+    }
+
+    #[test]
+    fn edit_summary_from_edits_path_not_json_wall() {
+        let preview = human_tool_args_preview(
+            "edit",
+            &serde_json::json!({
+                "edits": [{
+                    "path": "src/main.rs",
+                    "oldText": "fn a() {}",
+                    "newText": "fn a() { todo!() }"
+                }]
+            }),
+            80,
+        );
+        assert_eq!(preview, "edit src/main.rs");
+        assert!(!preview.contains("oldText"));
+        assert!(!preview.contains('{'));
+    }
+
+    #[test]
+    fn edit_without_path_is_short_placeholder() {
+        let preview = human_tool_args_preview(
+            "edit",
+            &serde_json::json!({
+                "edits": [{"oldText": "a", "newText": "b"}]
+            }),
+            80,
+        );
+        assert_eq!(preview, "edit");
+    }
+
+    #[test]
+    fn unknown_tool_large_args_not_json_wall() {
+        let preview = human_tool_args_preview(
+            "custom_tool",
+            &serde_json::json!({
+                "payload": {"a": 1, "b": "x".repeat(200)},
+                "meta": {"nested": true}
+            }),
+            80,
+        );
+        assert!(!preview.contains("payload"), "got {preview}");
+        assert!(!preview.contains('{'), "got {preview}");
+    }
+
+    #[test]
+    fn write_success_end_quiets_tool_output() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionStart {
+                id: "w1".into(),
+                name: "write".into(),
+                args: serde_json::json!({"path": "a.md", "content": "hi\n"}),
+            },
+        );
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionEnd {
+                id: "w1".into(),
+                name: "write".into(),
+                result: r#"{"path":"a.md","success":true}"#.into(),
+                is_error: false,
+            },
+        );
+        let output = model.entries.iter().find_map(|e| match e {
+            UiEntry::Tool {
+                id, output, done, ..
+            } if id == "w1" => Some((output.as_str(), *done)),
+            _ => None,
+        });
+        assert_eq!(output, Some(("", true)));
+    }
+
+    #[test]
+    fn edit_success_end_quiets_output_keeps_diff() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionStart {
+                id: "e1".into(),
+                name: "edit".into(),
+                args: serde_json::json!({"path": "a.rs"}),
+            },
+        );
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionEnd {
+                id: "e1".into(),
+                name: "edit".into(),
+                result: r#"{"path":"a.rs","display_diff":"--- a\n+++ b\n","success":true}"#.into(),
+                is_error: false,
+            },
+        );
+        let tool_out = model.entries.iter().find_map(|e| match e {
+            UiEntry::Tool { id, output, .. } if id == "e1" => Some(output.as_str()),
+            _ => None,
+        });
+        assert_eq!(tool_out, Some(""));
+        assert!(
+            model
+                .entries
+                .iter()
+                .any(|e| matches!(e, UiEntry::Diff { summary, .. } if summary.contains("a.rs"))),
+            "expected Diff entry, got {:?}",
+            model.entries
+        );
+    }
+
+    #[test]
+    fn edit_error_keeps_result_output() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionStart {
+                id: "e2".into(),
+                name: "edit".into(),
+                args: serde_json::json!({"path": "a.rs"}),
+            },
+        );
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionEnd {
+                id: "e2".into(),
+                name: "edit".into(),
+                result: "exact match failed".into(),
+                is_error: true,
+            },
+        );
+        let tool_out = model.entries.iter().find_map(|e| match e {
+            UiEntry::Tool {
+                id,
+                output,
+                is_error,
+                ..
+            } if id == "e2" => Some((output.as_str(), *is_error)),
+            _ => None,
+        });
+        assert_eq!(tool_out, Some(("exact match failed", true)));
     }
 
     #[test]
