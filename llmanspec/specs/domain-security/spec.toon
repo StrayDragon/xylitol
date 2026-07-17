@@ -9,7 +9,7 @@ requirements[19]{req_id,title,statement}:
   r4,MCP 工具安全策略,"SecurityEngine MUST 对 MCP 工具（名称前缀 'mcp:'）应用专用策略分支，含显式 server/tool 允许列表与默认拒绝语义。"
   r5,安全默认启用,生产构建中 SecurityConfig.enabled MUST 默认为 true。
   r6,hook 超时杀进程,"Hook 执行器 MUST 在超时时杀死子进程，并 MUST 支持可配置 fail-open 或 fail-closed 行为。"
-  r7,网络域强制,"SecurityEngine MUST 对 bash/curl 与 MCP SSE URL 强制 network.allowed_domains 与 network.blocked_domains。该行为 MUST 有可执行 BDD 场景（solidify 链路，feature:true）。"
+  r7,网络域强制,"SecurityEngine MUST 对 bash/curl 与 MCP SSE URL 强制 network.allowed_domains 与 network.blocked_domains。该行为 MUST 有可执行 BDD 场景（solidify：domain-security.feature / network-domain-block）。"
   s10,Permission 配置结构,System MUST 定义 PermissionConfig 结构（自 SandboxConfig 重命名），含 enabled、backend（PermissionBackend，Glob 默认、Landlock、MacOs）、filesystem（read_allowed、write_allowed、write_denied）、network（allowed_domains、denied_domains）、process（allowed_paths），可从 config.yaml security.permission 键加载（自 security.sandbox 重命名）。
   s11,文件系统权限检查,"文件系统工具（read、write、edit）SHALL 在执行前检查 XyPermission。路径匹配 write_denied 或（read_allowed 非空时）不匹配 read_allowed 时，工具 SHALL 返回 access-denied 错误。"
   s12,网络权限检查,Bash 执行 SHALL 对命令文本中出现的 URL 检查 XyPermission 的 network.allowed_domains 与 network.denied_domains。域被拒绝或（allowed_domains 非空时）不在允许列表时，执行 SHALL 被阻止。
@@ -22,14 +22,16 @@ requirements[19]{req_id,title,statement}:
   t5,信任状态接线,agent 启动时，项目 CWD 的已解析 trust 决策 MUST 应用于门控项目范围 settings 与资源。项目未 trusted 时 SettingsManager MUST 拒绝加载项目范围 settings。SettingsManager 上独立 project_trusted bool 切换 MUST 由已解析 trust 决策替换（per t1 单一真源）。
   t6,信任命令接线,"trust slash 命令（commands.rs）MUST 接线至经 infra/trust/ store 持久化 trust 决策，替换当前死入口。会话中运行 /trust 或 /no-trust MUST 为当前项目 CWD 持久化决策。"
   s15,Permission 非安全边界,文档与命名 MUST 明示 XyPermission 为建议性：礼貌阻止循环调用被拒绝工具，但不阻止主机级访问，因 bash 仍可删文件且恶意 prompt 不受 containment。真实隔离 MUST 来自 OS、容器或 VM 边界（如未来将工具执行委托到沙箱的工具路由模式）；扩展 XyPermission MUST NOT 被视为增加安全控制。这与 pi 无内置沙箱立场一致。
-scenarios[22]{req_id,id,given,when,then,feature}:
+scenarios[24]{req_id,id,given,when,then,feature}:
   r1,"xy-tool-approval",需审批的工具被 SecurityToolWrapper 包装,调用工具,"审批检查在 XyTool::execute 前运行且拒绝时阻止",true
   r2,happy,user 配置试图允许禁止 pattern,合并配置,禁止 pattern 仍被阻止,true
   r3,"path-field-bypass","安全启用且 forbidden_patterns=['/etc/**']",grep 以 path='/etc/passwd' 调用,SecurityEngine 返回 Blocked,true
   r4,"mcp-default-deny",安全启用且无 MCP 允许列表,"agent 调用 mcp:server:tool",SecurityEngine 返回 Blocked 并附理由,true
   r5,"default-enabled",全新安装无配置覆盖,SecurityEngine 初始化,enabled 字段为 true,true
   r6,"hook-kill-on-timeout",hook 配置 timeout=100ms,hook 脚本运行 sleep 999,"子进程被杀且动作为 Block（默认 fail-closed）",true
-  r7,"network-domain-block",blocked_domains 含 evil.com,检查网络域名 evil.com,结果应为拒绝,true
+  r7,"network-domain-block",沙箱引擎已初始化,"检查网络域名 \"evil.com\"","结果应为拒绝且原因含 denied_domains",true
+  s11,"deny-write",沙箱引擎已初始化,"检查写入路径 \"/project/.env\"","结果应为拒绝且原因含 write_denied",true
+  s11,"allow-write",沙箱引擎已初始化,"检查写入路径 \"/project/src/main.rs\"",结果应为允许,true
   s10,"permission-config","config.yaml 含 security.permission.filesystem.write_denied=['.env']",加载配置,PermissionConfig.write_denied 含 .env 且无 SandboxConfig 类型,true
   s11,"s11-renamed",阅读文件系统强制要求,应用变更后,引用 XyPermission 而非 SandboxEngine,true
   s12,"s12-renamed",阅读网络强制要求,应用变更后,引用 XyPermission 而非 SandboxEngine,true

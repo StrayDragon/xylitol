@@ -58,7 +58,7 @@
 
 | 角色 | 做什么 |
 |---|---|
-| **Agent 必跑** | 相关 `harness.rs` / lib；产品 TUI BDD（`tests/features/app-tui-*.feature` → `cargo test --test bdd -- --test-threads=1`）；`just fmt` + 相关 clippy；change `--strict` |
+| **Agent 必跑** | 相关 `harness.rs` / `tests.rs`（lib）；核心 BDD（`cargo test --test bdd -- --test-threads=1`）；`just fmt` + 相关 clippy；change `--strict`。产品 TUI 交互护栏以 harness 为准，不再维护 `app-tui-*.feature`。 |
 | **Agent 尽量跑** | 真终端：`just test-tui-e2e-pty`；会话树满路径见 c705 `pty_product_fake_session_tree_*` |
 | **人类确认** | 最短手测观感；**不**替代 harness |
 

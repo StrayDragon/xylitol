@@ -81,7 +81,7 @@
 ## 提交与测试
 
 - 提交用 Conventional Commits：`feat(cli): …`/`fix(agent): …`/`refactor(config): …`/`docs: …`/`chore: …`。开 PR 前跑 **`just qa`**；真终端协议/渲染再跑 **`just qa-e2e`**（或 `just test-tui-e2e`）。
-- BDD 场景在 `tests/features/*.feature`，rstest-bdd 实现在 `tests/bdd.rs`；需顺序/共享状态时 `cargo test bdd -- --test-threads=1`。快照用 `insta`，接受前复核。回归放 `tests/regression/{issue号}-{简述}.rs`。优先扩既有测试文件，别为小特性新建。
+- BDD：手写场景在 `tests/features/*.feature`；solidify 场景在 `llmanspec/specs/<cap>/<cap>.feature`（场景标题 = `scenario.id`）。step 实现在 `tests/bdd.rs`；需顺序/共享状态时 `cargo test --test bdd -- --test-threads=1`。快照用 `insta`，接受前复核。回归放 `tests/regression/{issue号}-{简述}.rs`。优先扩既有测试文件，别为小特性新建。
 - **测试分层**：BDD 覆盖端到端编排（agent 循环、工具完整路径、session、CLI slash、跨组件）；`#[cfg(test)]` 覆盖纯数据/算法/组件内状态机。已有 BDD 的路径，单测只测底层边界，不重复全链路。
 - 实现计划变更后同步 `llmanspec/` 工件（`/llman-sdd-*` 技能）。读代码优先 `rg`。
 

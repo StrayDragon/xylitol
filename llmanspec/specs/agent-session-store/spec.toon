@@ -12,7 +12,7 @@ requirements[29]{req_id,title,statement}:
   s5,会话树,"SessionManager MUST 维护 parent/child 会话链接：fork 创建子分支，branch_summary 引用父条目。"
   s6,分支摘要,"System MUST 支持 generateBranchSummary(parentEntries)，产出汇总切点前条目的 CompactionEntry。"
   s7,文件操作,"SessionManager MUST 使用原子 append（仅追加 JSONL）与文件锁保证并发安全。"
-  s8,BDD session,"tests/features/session.feature 下 BDD 测试 MUST 全部通过。"
+  s8,BDD session,"llmanspec/specs/agent-session-store/agent-session-store.feature 下 BDD 测试 MUST 全部通过。"
   s9,会话 fork,"SessionManager MUST 支持 fork(parent_id, child_id, at_entry_id)，将父条目复制到切点至新子会话文件并 append branch_summary 条目。"
   s10,分支摘要实现,"fork 时 System MUST 生成描述被跳过条目的分支摘要：条目数、条目类型、最后 user 消息及工具调用中的 notable actions。"
   s11,agent fork,"AgentSession MUST 暴露 fork_session(at_entry_id)，经 SessionManager::fork() 创建新子会话并返回子 session id。"

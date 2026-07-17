@@ -15,7 +15,7 @@ requirements[22]{req_id,title,statement}:
   h7,before_provider_request,"before_provider_request hook MUST 在 provider JSON body 构建后、HTTP 发送前运行；Modify.args MUST 替换请求体（如 cache_control）。"
   h8,after_provider_response,"after_provider_response hook MUST 在 HTTP 响应头可用后、成功流/体消费前触发；上下文 MUST 含 status 与响应头；MUST NOT 要求读取 SSE body。"
   h9,空配置零开销,"未配置 hooks 时，dispatch MUST 为零开销 no-op。"
-  h10,BDD hooks,"tests/features/hooks.feature 下 BDD 测试 MUST 全部通过。"
+  h10,BDD hooks,"llmanspec/specs/agent-hooks/agent-hooks.feature 下可执行 BDD 场景（solidify）MUST 全部通过；MUST 复用既有 hook step 词表，避免平行场景。"
   h11,before_provider_headers,"before_provider_headers hook MUST 在默认 auth 头构建后、发送前运行；Modify.args.headers 对象 MUST 合并或替换请求头。"
   h12,provider hooks 接线,"注入 HookDispatcher 时，OpenAI Responses、Anthropic Messages、OpenAI Completions adapter MUST 调用三个 provider hooks；空 dispatcher MUST 为零开销 no-op。"
   h13,脚本桥接 ReAct,"Agent 附加 HookDispatcher 时，ReAct MUST 除 AgentHooks 外为 tool_call（pre）、tool_result（post）、context（pre model call）分发脚本 hooks。"
@@ -25,26 +25,26 @@ requirements[22]{req_id,title,statement}:
   h17,Completions provider 三缝,"注入 HookDispatcher 时，OpenAI Completions adapter MUST 按与 Responses 相同顺序调用 before_provider_headers、before_provider_request、after_provider_response；空 dispatcher MUST 为零开销 no-op；after_provider_response MUST NOT 要求读取 SSE body。"
   h18,会话树切换 hooks,"附加 XyHookBus 时，Driver session_tree 与 travel_session_tree MUST 分发 session_before_tree（Blocked 可取消）与成功时 session_tree；switch_session MUST 分发 session_before_switch（Blocked 可取消）与成功时对 prior session 的 session_shutdown；process-quit shutdown MAY 直至库拆卸缝存在。"
   h19,user_bash 于 execute_bash,"附加 XyHookBus 时，Driver execute_bash MUST 在运行命令前分发 user_bash；Blocked MUST 阻止执行并 surfaced 错误；input 事件不在本变更范围。"
-scenarios[22]{req_id,id,given,when,then}:
-  r1,happy,已注册 pre.tool_call hook,工具即将执行,hook 脚本运行并经 stdin 接收事件上下文
-  r2,happy,同一事件的 global 与 project hook 均存在,hook 分发器运行,project hook 覆盖 global hook
-  r3,happy,hook 脚本返回 block 动作,工具执行待定,工具执行被阻止并附理由
-  h1,"event-names",HookEvent 枚举列出 provider 与生命周期变体,查询 event_type,provider 与生命周期事件返回 pi 名称
-  h2,"pattern-match","hook 条目 events: [\"pre.tool_call.bash\",\"post.step_complete\"]",post 阶段 step_complete 事件触发,hook 匹配
-  h3,block,"hook 返回 {\"action\":\"block\",\"reason\":\"forbidden\"}",dispatch 处理结果,返回 DispatchResult::Blocked
-  h4,merge,user 配置有覆盖 global 的 pre.tool_call hook,加载 hooks,使用 user 的 hook 命令
-  h5,timeout,hook 脚本挂起 10s 且超时 2s,dispatch 等待,hook 被杀且结果为 Allow（fail-open）
-  h6,env,"hook 条目 env: {\"DEBUG\":\"1\"}",hook 运行,脚本环境中 DEBUG=1
-  h7,"prefix-cache",before_provider_request hook 返回含 cache_control 的 Modify,Responses 或 Anthropic adapter 发送,请求 JSON 含修改字段
-  h8,"after-headers",provider 返回 HTTP 200,after_provider_response 运行,hook 上下文含 status 200 与头且在 SSE 读取前
-  h9,empty,未配置 hooks,调用 dispatch,结果为 Allowed 且零开销
-  h10,"bdd-pass",调用 BDD runner,"cargo test --test bdd",全部 hook 场景通过
-  h11,"header-merge",before_provider_headers Modify 添加 X-Test,发送请求,出站请求携带 X-Test
-  h12,"completions-wired",Completions 注入 HookDispatcher,发送请求,三缝被调用或空 dispatcher 为零开销
-  h13,"tool-bridge",脚本 hook 匹配 pre.tool_call,ReAct 即将运行工具,脚本经 stdin 接收工具名与 args
-  h14,"agent-start-fire",已附加 dispatcher,agent run 开始,agent_start hook 模式可匹配
-  h15,"bdd-real",hooks.feature provider 场景,"cargo test --test bdd",provider 场景非空 stub
-  h16,"model-select-fire",库缝注入了匹配 model_select 的 hook,执行操作「选择模型 fake」,hook 被调用且上下文含 model
-  h17,"completions-modify",Completions adapter 注入了 before_provider_request Modify hook,发送 Completions 请求,outgoing JSON 包含修改后的字段
-  h18,"switch-cancel",注册了匹配 session_before_switch 且返回 block 的 hook,执行操作「切换会话 target」,切换未发生且阻止原因可观测
-  h19,"bash-block",注册了匹配 user_bash 且返回 block 的 hook,执行操作「执行 bash」,bash 未执行且操作被阻止
+scenarios[22]{req_id,id,given,when,then,feature}:
+  r1,"pre-tool-call","注册了匹配 \"pre.tool_call.bash\" 的 hook",bash 工具即将执行,hook 脚本被调用,true
+  r2,"three-layer-merge",全局与用户 hook 已合并覆盖 pre.tool_call,hook 被加载,使用用户配置的 hook 命令,true
+  r3,"hook-blocks",注册了匹配 pre.tool_call 的 hook 且返回 block 不允许,任何工具即将执行,操作被阻止,true
+  h1,"event-names",HookEvent 枚举列出 provider 与生命周期变体,查询 event_type,provider 与生命周期事件返回 pi 名称,false
+  h2,"pattern-match","hook 条目 events: [\"pre.tool_call.bash\",\"post.step_complete\"]",post 阶段 step_complete 事件触发,hook 匹配,false
+  h3,"hook-modifies-args",注册了匹配 pre.tool_call.bash 的 hook 且返回 modify echo safe,"bash 工具以 \"rm -rf /\" 调用","实际执行的命令为 \"echo safe\"",true
+  h4,"three-layer-merge-doc",user 配置有覆盖 global 的 pre.tool_call hook,加载 hooks,使用 user 的 hook 命令,false
+  h5,"hook-timeout",hook 脚本超 2 秒且超时设为 1 秒,dispatch hook,hook 在 1 秒后被杀死,true
+  h6,env,"hook 条目 env: {\"DEBUG\":\"1\"}",hook 运行,脚本环境中 DEBUG=1,false
+  h7,"before-provider-request",注册了匹配 before_provider_request 的 hook 且 provider 为 deepseek,provider 请求发送前,hook 收到请求 payload,true
+  h8,"after-provider-response","注册了匹配 \"after_provider_response\" 的 hook",provider 返回状态码 200,"hook 收到 status=200 和响应 headers",true
+  h9,"empty-hooks-noop",没有注册任何 hook,任何事件触发,dispatch 是零开销 no-op,true
+  h10,"bdd-pass",调用 BDD runner,"cargo test --test bdd",全部 hook 场景通过,false
+  h11,"header-merge",before_provider_headers Modify 添加 X-Test,发送请求,出站请求携带 X-Test,false
+  h12,"completions-wired",Completions 注入 HookDispatcher,发送请求,三缝被调用或空 dispatcher 为零开销,false
+  h13,"tool-bridge",脚本 hook 匹配 pre.tool_call,ReAct 即将运行工具,脚本经 stdin 接收工具名与 args,false
+  h14,"agent-start-fire",已附加 dispatcher,agent run 开始,agent_start hook 模式可匹配,false
+  h15,"bdd-real",agent-hooks.feature provider 场景,"cargo test --test bdd",provider 场景非空 stub,false
+  h16,"model-select-fire",库缝注入了匹配 model_select 的 hook,执行操作「选择模型 fake」,hook 被调用且上下文含 model,false
+  h17,"completions-modify",Completions adapter 注入了 before_provider_request Modify hook,发送 Completions 请求,outgoing JSON 包含修改后的字段,false
+  h18,"switch-cancel",注册了匹配 session_before_switch 且返回 block 的 hook,执行操作「切换会话 target」,切换未发生且阻止原因可观测,false
+  h19,"bash-block",注册了匹配 user_bash 且返回 block 的 hook,执行操作「执行 bash」,bash 未执行且操作被阻止,false

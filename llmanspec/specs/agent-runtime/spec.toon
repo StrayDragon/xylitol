@@ -6,49 +6,48 @@ requirements[21]{req_id,title,statement}:
   ar1,"thin-react-loop",agent/ 层 MUST 以 AgentRuntime（runtime/react.rs）驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls 或达 max_iterations；MUST NOT 在循环文件内联 bash 实现或厂商 HTTP。
   ar2,"xy-event-stream",运行时 MUST 以 XyEvent 异步流对外输出（TextDelta / ThinkingDelta / Tool* / Turn* / QueueUpdate / Error 等）；MUST NOT 再引入 AgentEvent 或 adk 事件类型。
   ar3,工具批后继续,"同一模型响应中的全部工具调用 MUST 在下一轮模型调用前执行完毕（可并行或串行）；MUST NOT 因流结束 Done 而提前结束含 tool_calls 的回合。该行为 MUST 有可执行 BDD 场景（solidify 链路，feature:true）。"
-  ar4,"builder-ports","Agent 装配 MUST 经 AgentBuilder，依赖 runtime_protocol 端口与纯数据；app 组合根注入具体 infra 实现。该装配入口 MUST 有可执行 BDD 场景（solidify 链路，feature:true）。"
-  ar5,"sessionstore-eventsink","runtime_protocol MUST 提供 SessionStore 与 EventSink；SessionManager / EventBus 为实现。该端口存在性 MUST 有可执行 BDD 场景（solidify 链路，feature:true）。"
+  ar4,"builder-ports","Agent 装配 MUST 经 AgentBuilder，依赖 runtime_protocol 端口与纯数据；app 组合根注入具体 infra 实现。装配入口由单元测试 / 组合根覆盖，MUST NOT 为静态存在性单独扩 BDD step。"
+  ar5,"sessionstore-eventsink","runtime_protocol MUST 提供 SessionStore 与 EventSink；SessionManager / EventBus 为实现。端口存在性由类型系统与组合根覆盖，MUST NOT 为 trait 存在性单独扩 BDD step。"
   ar6,"mutable-slots-next-turn",set_tools / set_hooks / set_system_prompt 等 MUST 只影响下一轮 run；进行中回合使用启动快照。
   ar7,"hooks-at-tool-boundary",工具执行前 MUST 跑 before 链（可拒绝）；之后 MUST 跑 after 链；无 hook 时零开销。
   ar8,"pending-queues",MUST 提供独立的 steer 与 follow_up 队列（enqueue/drain/clear）；ReAct MUST 在模型调用前 drain steer，在将结束前 drain follow_up（非空则继续）。
   ar9,"queue-update-events","入队/drain/clear 后 MUST 发射 XyEvent::QueueUpdate（steer_count / follow_up_count）。"
   ar10,"abort-queue-semantics",abort MUST 清空 steer、保留 follow_up；MUST 取消当前 run CancellationToken 与进行中工具/交互 bash；MUST NOT 仅靠无人订阅的 EventBus 旁路传队列状态。
   ar11,"abort-resets-token",每次 run 开始 MUST 安装新 CancellationToken；abort 后下一次 run MUST NOT 因沿用已取消 token 立刻 aborted。
-  ar12,"abort-cancels-provider-stream","模型流进行中 abort MUST 停止 poll 并 drop provider stream，以 aborted 结束；应用面 MUST 经 Driver::abort。该行为 MUST 有可执行 BDD 场景（solidify 链路，feature:true）。"
-  ar13,"no-rloop-name","src/ MUST NOT 使用 r#loop 标识符；循环模块名为 runtime::react。"
-  ar14,"facade-removed","MUST NOT 恢复 agent::facade 中枢；AgentRuntime / AgentCapabilities 由 agent/mod 再导出；app 禁止 reach agent::runtime / agent::session 内部。"
-  ar15,"unknown-event-degrade",应用面/bridge 对未识别 XyEvent 变体 MUST 降级（日志），MUST NOT panic。
-  ar16,defaults,未显式配置时 MUST 有可测默认：thinking level、max_iterations、compaction 阈值等集中定义。
-  ar17,"cwd-validate",创建/导入会话时 MUST 校验工作目录可访问，失败返回含路径的错误。
-  ar18,"wire-event-mapping","MUST 提供 XyEvent ↔ protocol::Event 映射（From/TryFrom 或等价），覆盖闭集内变体。"
+  ar12,"abort-cancels-provider-stream","模型流进行中 abort MUST 停止 poll 并 drop provider stream，以 aborted 结束；应用面 MUST 经 Driver::abort。该行为 MUST 有可执行 BDD 场景（solidify 链路，feature:true），并复用既有 abort step 词表。"
+  ar13,"no-rloop-name","src/ MUST NOT 使用 r#loop 标识符；循环模块名为 runtime::react。由 arch_guard / 代码审查保障，MUST NOT 单独扩 BDD step。"
+  ar14,"facade-removed","MUST NOT 恢复 agent::facade 中枢；AgentRuntime / AgentCapabilities 由 agent/mod 再导出；app 禁止 reach agent::runtime / agent::session 内部。由 arch_guard 保障，MUST NOT 单独扩 BDD step。"
+  ar15,"unknown-event-degrade",应用面/bridge 对未识别 XyEvent 变体 MUST 降级（日志），MUST NOT panic。由 protocol 单元测试覆盖。
+  ar16,defaults,未显式配置时 MUST 有可测默认：thinking level、max_iterations、compaction 频率等集中定义。由单元测试覆盖。
+  ar17,"cwd-validate",创建/导入会话时 MUST 校验工作目录可访问，失败返回含路径的错误。由 session 单元测试覆盖。
+  ar18,"wire-event-mapping","MUST 提供 XyEvent ↔ protocol::Event 映射（From/TryFrom 或等价），覆盖闭集内变体。由 protocol 单元测试覆盖。"
   ar19,Driver context 重载缝,InProcessDriver（经 app/core 助手）MUST 能在 Trust 语义下重载磁盘 context/SYSTEM/APPEND 并应用到 agent；未信任 MUST NOT 注入项目侧 context；重载 MUST NOT 清空 transcript。
   ar20,Driver skills 重载缝,InProcessDriver（经 app/core 助手）MUST 能在 Trust 语义下重载磁盘 skills 并应用到 agent；MUST 能查询当前已加载 skill 名（供后续 $ 展开）；未信任 MUST NOT 注入项目 skills；重载 MUST NOT 清空 transcript；本要求 MUST NOT 依赖 /session 或 /status skills UI。
-  "ar-pilot",solidify 风格 feature 试点,"agent-runtime spec MUST 在 llmanspec/specs/agent-runtime/agent-runtime.feature 携带可执行场景 react-terminates 与 stream-is-xyevent，作为 solidify 链路的首个试点；场景文本源自 spec.toon 对应 scenario 的 given/when/then。"
-scenarios[27]{req_id,id,given,when,then,feature}:
+  "ar-pilot",solidify 风格 feature 试点,"agent-runtime spec MUST 在 llmanspec/specs/agent-runtime/agent-runtime.feature 携带可执行场景 react-terminates 与 stream-is-xyevent，作为 solidify 链路试点；场景文本源自 spec.toon 对应 scenario 的 given/when/then。"
+scenarios[26]{req_id,id,given,when,then,feature}:
   ar1,"react-terminates",mock 模型先 tool 后无 tool,运行 AgentRuntime,先执行工具再结束且无 adk 类型,true
   ar2,"stream-is-xyevent",消费事件流,轮询,每项为 XyEvent,true
   ar3,"continues-after-tools",mock 模型先 tool 后无 tool,运行 AgentRuntime,turn_end 事件包含 toolResult,true
-  ar3,"done-not-turn-end",mock 模型先 tool 后无 tool,运行 AgentRuntime,turn_end 事件包含 toolResult,true
   ar8,"steer-before-model",装配并运行入队 steer 的 agent,检查队列与历史,steer 计数归零且已处理,true
   ar8,"followup-extends",装配无工具 agent 并入队 follow_up,运行至将结束,继续循环而非 AgentEnd,true
   ar9,"queue-update",装配 agent 并入队 steer,观察事件流,出现 QueueUpdate 且计数正确,true
   ar10,"abort-clears-steer",装配 agent 并入队 steer 与 follow_up,abort,steer 空且 follow_up 保留,true
   ar11,"second-run-after-abort",装配慢速 agent 并在首轮 abort 后,再次运行,正常完成而非立即 aborted,true
-  ar12,"abort-drops-sse",已装配慢速流式 mock 模型,经 Driver 启动会话并在首个 TextDelta 后 abort,事件流包含 aborted 错误,true
-  ar13,"no-rloop",在 src 中搜索 loop raw identifier,运行检查,零匹配,true
-  ar14,"no-facade",检查 agent/facade.rs,不存在该模块,facade 保持移除,true
-  ar15,"unknown-ok",构造内部专用 XyEvent 变体,经 to_wire_event 降级,返回 None 且不 panic,true
-  ar16,"default-thinking",装配未设 thinking 的 agent,查询 thinking level,返回默认值,true
-  ar17,"cwd-missing",会话记录 cwd 指向不存在路径,调用 load_validated,错误含路径,true
-  ar18,roundtrip,构造 XyEvent TextDelta,经 protocol 往返,字段保留,true
-  ar7,"before-denies",注册匹配 bash 的 before 拒绝 hook,运行 AgentRuntime 触发 bash,tool-error 回写且未执行,true
-  ar6,"mid-turn-set-tools",回合进行中 set_tools,本回合,仍用旧工具集,true
-  ar4,"builder-build",AgentBuilder 已装配依赖,build,得到 AgentRuntime,true
-  ar5,"ports-exist",检查 runtime_protocol 端口,SessionStore 与 EventSink,trait 存在且可被实现,true
-  ar10,"abort-cancels-bang",启动交互 bang 长命令后 abort,检查 bash 结果,cancelled 为 true,true
-  ar19,"trusted-reload",项目信任且 cwd 有 AGENTS.md,调用 reload_prompt_context,agent 系统提示含该 AGENTS 内容,true
-  ar19,"untrusted-skip",项目未信任且仅项目目录有 AGENTS.md,调用 reload_prompt_context,系统提示 MUST NOT 含该项目 AGENTS 正文,true
-  ar20,"trusted-reload",项目信任且 cwd 有 skill,调用 reload_skills,agent 系统提示或目录 API 含该 skill 名,true
-  ar20,"untrusted-skip",项目未信任且仅项目目录有 skill,调用 reload_skills,目录与系统提示 MUST NOT 含该项目 skill,true
-  "ar-pilot","react-terminates",mock 模型先 tool 后无 tool,运行 AgentRuntime,先执行工具再结束且无 adk 类型,true
-  "ar-pilot","stream-is-xyevent",消费事件流,轮询,每项为 XyEvent,true
+  ar12,"abort-drops-sse",配置了 mock 模型 test-model 且慢速流式 40 段间隔 20 毫秒,经 Driver 启动会话并在首个 TextDelta 后 abort,事件流包含 aborted 错误,true
+  ar13,no-rloop,在 src 中搜索 loop raw identifier,运行检查,零匹配,false
+  ar14,no-facade,检查 agent/facade.rs,不存在该模块,facade 保持移除,false
+  ar15,unknown-ok,构造内部专用 XyEvent 变体,经 to_wire_event 降级,返回 None 且不 panic,false
+  ar16,default-thinking,装配未设 thinking 的 agent,查询 thinking level,返回默认值,false
+  ar17,cwd-missing,会话记录 cwd 指向不存在路径,调用 load_validated,错误含路径,false
+  ar18,roundtrip,构造 XyEvent TextDelta,经 protocol 往返,字段保留,false
+  ar7,before-denies,注册匹配 bash 的 before 拒绝 hook,运行 AgentRuntime 触发 bash,tool-error 回写且未执行,true
+  ar6,mid-turn-set-tools,回合进行中 set_tools,本回合,仍用旧工具集,false
+  ar4,builder-build,AgentBuilder 已装配依赖,build,得到 AgentRuntime,false
+  ar5,ports-exist,检查 runtime_protocol 端口,SessionStore 与 EventSink,trait 存在且可被实现,false
+  ar10,abort-cancels-bang,启动交互 bang 长命令后 abort,检查 bash 结果,cancelled 为 true,true
+  ar19,trusted-reload,项目信任且 cwd 有 AGENTS.md,调用 reload_prompt_context,agent 系统提示含该 AGENTS 内容,false
+  ar19,untrusted-skip,项目未信任且仅项目目录有 AGENTS.md,调用 reload_prompt_context,系统提示 MUST NOT 含该项目 AGENTS 正文,false
+  ar20,trusted-reload,项目信任且 cwd 有 skill,调用 reload_skills,agent 系统提示或目录 API 含该 skill 名,false
+  ar20,untrusted-skip,项目未信任且仅项目目录有 skill,调用 reload_skills,目录与系统提示 MUST NOT 含该项目 skill,false
+  "ar-pilot",react-terminates,mock 模型先 tool 后无 tool,运行 AgentRuntime,先执行工具再结束且无 adk 类型,false
+  "ar-pilot",stream-is-xyevent,消费事件流,轮询,每项为 XyEvent,false
