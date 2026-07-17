@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r7,网络域强制,"SecurityEngine MUST 对 bash/curl 与 MCP SSE URL 强制 network.allowed_domains 与 network.blocked_domains。该行为 MUST 有可执行 BDD 场景（solidify 链路，feature:true）。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then,feature}:
+  r7,"network-domain-block","blocked_domains 含 evil.com","检查网络域名 evil.com",结果应为拒绝,true

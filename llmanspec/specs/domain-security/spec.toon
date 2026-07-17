@@ -1,47 +1,47 @@
 kind: llman.sdd.spec
 name: "domain-security"
-purpose: "安全策略 — 含工具级门控的 permission 系统、trust store 与审批工作流。"
+purpose: 安全策略 — 含工具级门控的 permission 系统、trust store 与审批工作流。
 valid_scope[4]: src/infra/permission/,src/infra/trust/,src/runtime_protocol/permission.rs,src/runtime_protocol/trust.rs
 requirements[19]{req_id,title,statement}:
   r1,Security 包装器,"SecurityToolWrapper MUST 包装 XyTool（非 adk_core::Tool），并在工具执行前强制审批策略。"
-  r2,仅收紧,"System MUST 仅允许三层配置覆盖收紧规则，不得放宽。"
-  r3,统一 path 字段检查,"SecurityEngine MUST 在评估文件系统工具访问时同时检查 'file_path' 与 'path' 参数字段。"
+  r2,仅收紧,System MUST 仅允许三层配置覆盖收紧规则，不得放宽。
+  r3,统一 path 字段检查,SecurityEngine MUST 在评估文件系统工具访问时同时检查 'file_path' 与 'path' 参数字段。
   r4,MCP 工具安全策略,"SecurityEngine MUST 对 MCP 工具（名称前缀 'mcp:'）应用专用策略分支，含显式 server/tool 允许列表与默认拒绝语义。"
-  r5,安全默认启用,"生产构建中 SecurityConfig.enabled MUST 默认为 true。"
+  r5,安全默认启用,生产构建中 SecurityConfig.enabled MUST 默认为 true。
   r6,hook 超时杀进程,"Hook 执行器 MUST 在超时时杀死子进程，并 MUST 支持可配置 fail-open 或 fail-closed 行为。"
-  r7,网络域强制,"SecurityEngine MUST 对 bash/curl 与 MCP SSE URL 强制 network.allowed_domains 与 network.blocked_domains。"
-  s10,Permission 配置结构,"System MUST 定义 PermissionConfig 结构（自 SandboxConfig 重命名），含 enabled、backend（PermissionBackend，Glob 默认、Landlock、MacOs）、filesystem（read_allowed、write_allowed、write_denied）、network（allowed_domains、denied_domains）、process（allowed_paths），可从 config.yaml security.permission 键加载（自 security.sandbox 重命名）。"
+  r7,网络域强制,"SecurityEngine MUST 对 bash/curl 与 MCP SSE URL 强制 network.allowed_domains 与 network.blocked_domains。该行为 MUST 有可执行 BDD 场景（solidify 链路，feature:true）。"
+  s10,Permission 配置结构,System MUST 定义 PermissionConfig 结构（自 SandboxConfig 重命名），含 enabled、backend（PermissionBackend，Glob 默认、Landlock、MacOs）、filesystem（read_allowed、write_allowed、write_denied）、network（allowed_domains、denied_domains）、process（allowed_paths），可从 config.yaml security.permission 键加载（自 security.sandbox 重命名）。
   s11,文件系统权限检查,"文件系统工具（read、write、edit）SHALL 在执行前检查 XyPermission。路径匹配 write_denied 或（read_allowed 非空时）不匹配 read_allowed 时，工具 SHALL 返回 access-denied 错误。"
-  s12,网络权限检查,"Bash 执行 SHALL 对命令文本中出现的 URL 检查 XyPermission 的 network.allowed_domains 与 network.denied_domains。域被拒绝或（allowed_domains 非空时）不在允许列表时，执行 SHALL 被阻止。"
+  s12,网络权限检查,Bash 执行 SHALL 对命令文本中出现的 URL 检查 XyPermission 的 network.allowed_domains 与 network.denied_domains。域被拒绝或（allowed_domains 非空时）不在允许列表时，执行 SHALL 被阻止。
   s13,Permission trait,"System MUST 提供 runtime_protocol::XyPermission trait（自 XySandboxEngine 重命名），含 check_read(path)、check_write(path)、check_network(domain)、check_process(path)，返回 XyPermissionVerdict（自 XySandboxVerdict 重命名）。该 trait 为 ReAct 循环在工具分发前消费的进程内建议性 permission 门控，非安全边界。具体后端（禁用时 AllowAllPermission、配置模式匹配 GlobPolicy）位于 infra/。"
-  s14,Permission 默认拒绝未列出,"permission.filesystem.read_allowed 非空时，任何不匹配允许 pattern 的路径 SHALL 视为拒绝（默认拒绝）。permission.network.allowed_domains 非空时，任何不匹配允许 pattern 的域 SHALL 视为拒绝。"
-  t1,信任单一事实来源,"项目 trust 状态 MUST 在 infra/trust/ 有单一真源。agent/ 层 MUST NOT 含自有 trust store 或 trust resolver。src/agent/trust/（store.rs、resolve.rs）重复实现 MUST 移除。"
-  t2,信任持久化格式,"Trust 决策 MUST 持久化为 JSON 文件，映射规范绝对目录路径到布尔 trust 决策（true=trusted、false=untrusted）或 null（已清除）。store MUST 支持父目录继承：祖先目录上的 trust 决策适用于全部后代项目目录，除非被覆盖。"
+  s14,Permission 默认拒绝未列出,permission.filesystem.read_allowed 非空时，任何不匹配允许 pattern 的路径 SHALL 视为拒绝（默认拒绝）。permission.network.allowed_domains 非空时，任何不匹配允许 pattern 的域 SHALL 视为拒绝。
+  t1,信任单一事实来源,项目 trust 状态 MUST 在 infra/trust/ 有单一真源。agent/ 层 MUST NOT 含自有 trust store 或 trust resolver。src/agent/trust/（store.rs、resolve.rs）重复实现 MUST 移除。
+  t2,信任持久化格式,Trust 决策 MUST 持久化为 JSON 文件，映射规范绝对目录路径到布尔 trust 决策（true=trusted、false=untrusted）或 null（已清除）。store MUST 支持父目录继承：祖先目录上的 trust 决策适用于全部后代项目目录，除非被覆盖。
   t3,信任解析管线,"项目 trust 解析 MUST 遵循固定优先级：(1) 显式 CLI 覆盖（--trust / --no-trust）；(2) 无 trust 所需输入时自动 trust；(3) 带父继承的持久 store 查找；(4) 配置默认策略（always / never / ask）；(5) 仅 has_ui 为 true 时 app UI 提示；(6) 回退 deny。解析 MUST 同时返回决策与原因。"
-  t4,信任 UI 回调注入,"trust resolver MUST 接受 app 步骤的 on_prompt 回调，MUST NOT 直接做终端 I/O。app/ 层负责提供提示回调；agent/ 与 infra/ 层对 trust 决策 MUST 保持 UI 无关。"
-  t5,信任状态接线,"agent 启动时，项目 CWD 的已解析 trust 决策 MUST 应用于门控项目范围 settings 与资源。项目未 trusted 时 SettingsManager MUST 拒绝加载项目范围 settings。SettingsManager 上独立 project_trusted bool 切换 MUST 由已解析 trust 决策替换（per t1 单一真源）。"
+  t4,信任 UI 回调注入,trust resolver MUST 接受 app 步骤的 on_prompt 回调，MUST NOT 直接做终端 I/O。app/ 层负责提供提示回调；agent/ 与 infra/ 层对 trust 决策 MUST 保持 UI 无关。
+  t5,信任状态接线,agent 启动时，项目 CWD 的已解析 trust 决策 MUST 应用于门控项目范围 settings 与资源。项目未 trusted 时 SettingsManager MUST 拒绝加载项目范围 settings。SettingsManager 上独立 project_trusted bool 切换 MUST 由已解析 trust 决策替换（per t1 单一真源）。
   t6,信任命令接线,"trust slash 命令（commands.rs）MUST 接线至经 infra/trust/ store 持久化 trust 决策，替换当前死入口。会话中运行 /trust 或 /no-trust MUST 为当前项目 CWD 持久化决策。"
-  s15,Permission 非安全边界,"文档与命名 MUST 明示 XyPermission 为建议性：礼貌阻止循环调用被拒绝工具，但不阻止主机级访问，因 bash 仍可删文件且恶意 prompt 不受 containment。真实隔离 MUST 来自 OS、容器或 VM 边界（如未来将工具执行委托到沙箱的工具路由模式）；扩展 XyPermission MUST NOT 被视为增加安全控制。这与 pi 无内置沙箱立场一致。"
-scenarios[22]{req_id,id,given,when,then}:
-  r1,"xy-tool-approval",需审批的工具被 SecurityToolWrapper 包装,调用工具,审批检查在 XyTool::execute 前运行且拒绝时阻止
-  r2,happy,user 配置试图允许禁止 pattern,合并配置,禁止 pattern 仍被阻止
-  r3,"path-field-bypass","安全启用且 forbidden_patterns=['/etc/**']",grep 以 path='/etc/passwd' 调用,SecurityEngine 返回 Blocked
-  r4,"mcp-default-deny",安全启用且无 MCP 允许列表,"agent 调用 mcp:server:tool",SecurityEngine 返回 Blocked 并附理由
-  r5,"default-enabled",全新安装无配置覆盖,SecurityEngine 初始化,enabled 字段为 true
-  r6,"hook-kill-on-timeout",hook 配置 timeout=100ms,hook 脚本运行 sleep 999,子进程被杀且动作为 Block（默认 fail-closed）
-  r7,"network-domain-block",blocked_domains 含 evil.com,bash 执行 curl evil.com,SecurityEngine 返回 Blocked
-  s10,"permission-config","config.yaml 含 security.permission.filesystem.write_denied=['.env']",加载配置,PermissionConfig.write_denied 含 .env 且无 SandboxConfig 类型
-  s11,"s11-renamed",阅读文件系统强制要求,应用变更后,引用 XyPermission 而非 SandboxEngine
-  s12,"s12-renamed",阅读网络强制要求,应用变更后,引用 XyPermission 而非 SandboxEngine
-  s13,"permission-trait",定位 permission 边界类型,检查名称,"为 runtime_protocol::XyPermission 返回 XyPermissionVerdict，后端含 AllowAllPermission 与 GlobPolicy"
-  s14,"default-deny-read","permission.filesystem.read_allowed=['/home/user/project']",read 工具读取 /etc/passwd,permission engine 返回 access-denied
-  t1,"no-agent-trust",应用变更后,"运行 rg 'agent::trust' src/ tests/（排除已移除模块）",零匹配且 src/agent/trust/ 目录不存在
-  t2,"parent-inheritance",trust store 将 /home/user 设为 true,查询 is_trusted('/home/user/projects/foo'),经父继承返回 true
-  t2,"child-override",trust store 将 /home/user 设为 true 且 /home/user/evil 设为 false,查询 is_trusted('/home/user/evil'),返回 false（最近祖先胜出）
-  t3,"override-wins",trust store 将项目标为 untrusted,以 trust_override=Some(true) 调用解析,结果为 trusted 且原因为 Override
-  t3,"no-inputs-auto-trust",目录无 .xylitol/ 且无 .agents/skills/,无覆盖调用解析,结果为 trusted 且原因为 NoTrustInputs
-  t3,"fallback-deny-no-ui","目录有 trust 所需输入、无存储决策、默认策略 Ask 且 has_ui=false",调用解析,结果非 trusted 且原因为 FallbackNoUi
-  t4,"callback-invoked",解析在 has_ui=true 时到达 Ask 步骤,用户回调选择 Trust 选项,决策为 trusted 且原因为 UserPrompt，选择持久化到 store
-  t5,"untrusted-blocks-project-settings",项目有 .xylitol/settings.json 且项目解析为未 trusted,SettingsManager 加载 settings,项目范围 settings 不合并到有效 settings
-  t6,"command-persists",项目 CWD 中有活动会话,用户运行 trust 命令,infra/trust/ store 记录决策且后续解析返回持久化值
-  s15,"advisory-not-security",读者检查 XyPermission 模块文档,阅读文档,声明门控为建议性且非安全边界，并指向 OS 或容器隔离以实现真实 containment
+  s15,Permission 非安全边界,文档与命名 MUST 明示 XyPermission 为建议性：礼貌阻止循环调用被拒绝工具，但不阻止主机级访问，因 bash 仍可删文件且恶意 prompt 不受 containment。真实隔离 MUST 来自 OS、容器或 VM 边界（如未来将工具执行委托到沙箱的工具路由模式）；扩展 XyPermission MUST NOT 被视为增加安全控制。这与 pi 无内置沙箱立场一致。
+scenarios[22]{req_id,id,given,when,then,feature}:
+  r1,"xy-tool-approval",需审批的工具被 SecurityToolWrapper 包装,调用工具,"审批检查在 XyTool::execute 前运行且拒绝时阻止",true
+  r2,happy,user 配置试图允许禁止 pattern,合并配置,禁止 pattern 仍被阻止,true
+  r3,"path-field-bypass","安全启用且 forbidden_patterns=['/etc/**']",grep 以 path='/etc/passwd' 调用,SecurityEngine 返回 Blocked,true
+  r4,"mcp-default-deny",安全启用且无 MCP 允许列表,"agent 调用 mcp:server:tool",SecurityEngine 返回 Blocked 并附理由,true
+  r5,"default-enabled",全新安装无配置覆盖,SecurityEngine 初始化,enabled 字段为 true,true
+  r6,"hook-kill-on-timeout",hook 配置 timeout=100ms,hook 脚本运行 sleep 999,"子进程被杀且动作为 Block（默认 fail-closed）",true
+  r7,"network-domain-block",blocked_domains 含 evil.com,检查网络域名 evil.com,结果应为拒绝,true
+  s10,"permission-config","config.yaml 含 security.permission.filesystem.write_denied=['.env']",加载配置,PermissionConfig.write_denied 含 .env 且无 SandboxConfig 类型,true
+  s11,"s11-renamed",阅读文件系统强制要求,应用变更后,引用 XyPermission 而非 SandboxEngine,true
+  s12,"s12-renamed",阅读网络强制要求,应用变更后,引用 XyPermission 而非 SandboxEngine,true
+  s13,"permission-trait",定位 permission 边界类型,检查名称,"为 runtime_protocol::XyPermission 返回 XyPermissionVerdict，后端含 AllowAllPermission 与 GlobPolicy",true
+  s14,"default-deny-read","permission.filesystem.read_allowed=['/home/user/project']",read 工具读取 /etc/passwd,"permission engine 返回 access-denied",true
+  t1,"no-agent-trust",应用变更后,"运行 rg 'agent::trust' src/ tests/（排除已移除模块）",零匹配且 src/agent/trust/ 目录不存在,true
+  t2,"parent-inheritance",trust store 将 /home/user 设为 true,查询 is_trusted('/home/user/projects/foo'),经父继承返回 true,true
+  t2,"child-override",trust store 将 /home/user 设为 true 且 /home/user/evil 设为 false,查询 is_trusted('/home/user/evil'),返回 false（最近祖先胜出）,true
+  t3,"override-wins",trust store 将项目标为 untrusted,以 trust_override=Some(true) 调用解析,结果为 trusted 且原因为 Override,true
+  t3,"no-inputs-auto-trust",目录无 .xylitol/ 且无 .agents/skills/,无覆盖调用解析,结果为 trusted 且原因为 NoTrustInputs,true
+  t3,"fallback-deny-no-ui",目录有 trust 所需输入、无存储决策、默认策略 Ask 且 has_ui=false,调用解析,结果非 trusted 且原因为 FallbackNoUi,true
+  t4,"callback-invoked",解析在 has_ui=true 时到达 Ask 步骤,用户回调选择 Trust 选项,决策为 trusted 且原因为 UserPrompt，选择持久化到 store,true
+  t5,"untrusted-blocks-project-settings",项目有 .xylitol/settings.json 且项目解析为未 trusted,SettingsManager 加载 settings,项目范围 settings 不合并到有效 settings,true
+  t6,"command-persists",项目 CWD 中有活动会话,用户运行 trust 命令,infra/trust/ store 记录决策且后续解析返回持久化值,true
+  s15,"advisory-not-security",读者检查 XyPermission 模块文档,阅读文档,声明门控为建议性且非安全边界，并指向 OS 或容器隔离以实现真实 containment,true
