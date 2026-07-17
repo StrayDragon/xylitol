@@ -129,7 +129,9 @@ impl<T: Terminal> HostSession<T> {
             tui.add_child(child);
         }
         tui.set_focus(Some(0));
-        tui.request_render(true);
+        // Soft pending paint — pi `start()` also uses soft `requestRender()`.
+        // force=true would set the clear sentinel and wipe the screen on mount.
+        tui.request_render(false);
         Self {
             tui,
             mode,
@@ -462,10 +464,14 @@ impl<T: Terminal> HostSession<T> {
                 self.tui.request_render(false);
             }
             HostEvent::Resize { cols, rows } => {
-                self.tui.terminal.set_size_hint(cols, rows);
+                // Prefer crossterm Resize payload: ioctl refresh can lag/stale.
                 self.tui.terminal.refresh_size();
+                self.tui.terminal.set_size_hint(cols, rows);
                 self.sync_layout_from_terminal();
-                self.tui.request_render(true);
+                // Align pi: resize → soft requestRender(); doRender sees
+                // width/heightChanged → fullRender(true) with 2J/H/3J.
+                // force=true would zero/sentinel-skip that path incorrectly.
+                self.tui.request_render(false);
             }
             HostEvent::Input(input) => {
                 if self.mode == LayoutMode::Ready {
