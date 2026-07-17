@@ -26,10 +26,10 @@ requirements[37]{req_id,title,statement}:
   t10,read 截断,Read 工具 MUST 在 2000 行或 50KB 处截断，并对 offset 越界报告剩余行提示。
   t11,infra,System MUST 提供 TruncationResult、XxxOperations trait、FileMutationQueue 与 CancellationToken。
   t12,ToolSet 单元操作,工具容器 ToolSet MUST 仅提供构建期单元操作：empty、from_iter、plus、remove、merge、retain（带谓词）；MUST NOT 提供运行时 allow/exclude 过滤 API 或 wrap_with_hooks 方法。按名 get 与遍历最终集合仍可用。
-  t13,BDD 工具测试,tests/features/ 下全部 7 个工具的 BDD 测试 MUST 通过。
+  t13,BDD 工具测试,llmanspec/specs/agent-tools/agent-tools.feature 下全部 7 个工具的 BDD 测试 MUST 通过（solidify 路径；场景标题为英文 id）。
   t14,OutputAccumulator,工具执行 MUST 支持 OutputAccumulator：增量缓冲接收流式数据、在内存保留可配置尾部窗口、总量超滚动阈值时透明溢出到临时文件，并产出含截断信息的最终快照。
   t15,bash 累加器,Bash 工具 MUST 对 stdout/stderr 流式输出使用 OutputAccumulator，替代 String 拼接；配置 max_lines 100 与 max_bytes DEFAULT_MAX_BYTES。
-  t16,"BDD tool-v3",OutputAccumulator 与 bash 累加器集成的 BDD 测试 MUST 全部通过。
+  t16,"BDD tool-v3",OutputAccumulator 与 bash 累加器集成的 BDD 测试 MUST 全部通过（含 agent-tools.feature 中 bash-truncate 等场景）。
   e1,模糊匹配,System MUST 对 edit oldText 做模糊匹配：NFKC 规范化、智能引号转 ASCII、破折号转连字符、剥离尾部空白，再逐步放宽匹配。
   e2,行尾风格,System MUST 在编辑前检测文件行尾（CRLF vs LF），应用变更后恢复原有风格。
   e3,跨行 span 匹配,精确匹配失败时，System MUST 支持跨不同行段匹配多行 oldText span。

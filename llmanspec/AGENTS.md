@@ -40,7 +40,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 ## 语言
 
 - spec 的 `purpose` / requirement `title`+`statement` / scenario `given`/`when`/`then` **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。
-- Gherkin `.feature` 由 `llman sdd solidify` 从 `spec.toon` scenarios 衍生（BDD-on，见 config `bdd:` 段）；`.feature` 是生成产物，**禁止手工编辑**。
+- Gherkin `.feature`：BDD-on 下由 `llman sdd solidify` 从 `spec.toon` scenarios 衍生到 `llmanspec/specs/<capability>/`（**禁止为改行为而手改**——改 toon 再 solidify）。存量迁移可暂时保留 rich Gherkin（Background / docstring / 并且），但场景标题 MUST 用英文 `scenario.id`。与 `tests/features/` 手写链路可并存；工具/ hooks / permission 已迁 solidify 路径。
 
 ## 指针
 

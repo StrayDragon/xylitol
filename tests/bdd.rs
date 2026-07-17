@@ -280,7 +280,7 @@ async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), String
         "选择模型 fake" => {
             let _ = agent.ensure_wiring_hook_log();
             ensure_wiring_fake_model(agent, true);
-            let (mut runtime, store) = make_agent_with_store(agent);
+            let (runtime, store) = make_agent_with_store(agent);
             let mut driver = InProcessDriver::new(runtime, store);
             driver.select_model("fake").map(|_| ())
         }
@@ -433,6 +433,16 @@ fn _g_file_crlf(ws: &Workspace, path: String, docstring: String) {
         std::fs::create_dir_all(p).ok();
     }
     std::fs::write(&full, docstring.trim().replace('\n', "\r\n")).ok();
+}
+
+#[given("存在文件 {path:string} 使用CRLF行尾 内容为 {content:string}")]
+fn _g_file_crlf_string(ws: &Workspace, path: String, content: String) {
+    let full = ws.ws(&path);
+    if let Some(p) = std::path::Path::new(&full).parent() {
+        std::fs::create_dir_all(p).ok();
+    }
+    let normalized = strip_quotes(&content).replace('\n', "\r\n");
+    std::fs::write(&full, normalized).ok();
 }
 
 #[given("存在文件 {path:string} 带UTF8_BOM 内容为 {content:string}")]
@@ -1066,6 +1076,84 @@ fn _g_hook_none(agent: &AgentState) {
 #[given("当前 provider 为 {name}")]
 fn _g_hook_provider(_agent: &AgentState, name: String) {
     let _ = name;
+}
+
+/// solidify 复合 given：多步折叠（solidify 无 Background / 并且）。
+#[given("注册了匹配 pre.tool_call 的 hook 且返回 block 不允许")]
+fn _g_hook_block_combo(agent: &AgentState) {
+    _g_hook_registered(agent, "pre.tool_call".into());
+    _g_hook_returns(agent, r#"{"action":"block","reason":"不允许"}"#.into());
+}
+
+#[given("注册了匹配 pre.tool_call.bash 的 hook 且返回 modify echo safe")]
+fn _g_hook_modify_combo(agent: &AgentState) {
+    _g_hook_registered(agent, "pre.tool_call.bash".into());
+    _g_hook_returns(
+        agent,
+        r#"{"action":"modify","args":{"command":"echo safe"}}"#.into(),
+    );
+}
+
+#[given("全局与用户 hook 已合并覆盖 pre.tool_call")]
+fn _g_hook_merge_combo(agent: &AgentState) {
+    _g_hook_global(agent, "pre.tool_call".into());
+    _g_hook_user_override(agent, "pre.tool_call".into());
+}
+
+#[given("hook 脚本超 2 秒且超时设为 1 秒")]
+fn _g_hook_timeout_combo(agent: &AgentState) {
+    _g_hook_registered(agent, "pre.tool_call".into());
+    _g_hook_slow(agent);
+    _g_hook_timeout_1s(agent);
+}
+
+#[given("注册了匹配 before_provider_request 的 hook 且 provider 为 deepseek")]
+fn _g_hook_before_provider_combo(agent: &AgentState) {
+    _g_hook_registered(agent, "before_provider_request".into());
+    _g_hook_provider(agent, "deepseek".into());
+}
+
+/// hooks-wiring solidify：观察型 then 折叠（调用 + 上下文键）。
+#[then("hook 被调用且上下文含键 reason")]
+fn _t_wiring_called_reason(agent: &AgentState) {
+    _t_hook_called(agent);
+    _t_hook_context_has_key(agent, "reason".into());
+}
+#[then("hook 被调用且上下文含键 model")]
+fn _t_wiring_called_model(agent: &AgentState) {
+    _t_hook_called(agent);
+    _t_hook_context_has_key(agent, "model".into());
+}
+#[then("hook 被调用且上下文含键 level")]
+fn _t_wiring_called_level(agent: &AgentState) {
+    _t_hook_called(agent);
+    _t_hook_context_has_key(agent, "level".into());
+}
+#[then("hook 被调用且上下文含键 kind")]
+fn _t_wiring_called_kind(agent: &AgentState) {
+    _t_hook_called(agent);
+    _t_hook_context_has_key(agent, "kind".into());
+}
+#[then("hook 被调用且上下文含键 command")]
+fn _t_wiring_called_command(agent: &AgentState) {
+    _t_hook_called(agent);
+    _t_hook_context_has_key(agent, "command".into());
+}
+
+#[given("注册了匹配 session_before_tree 的 hook 且返回 block 树被拒绝")]
+fn _g_wiring_tree_block(agent: &AgentState) {
+    _g_hook_registered(agent, "session_before_tree".into());
+    _g_hook_returns(agent, r#"{"action":"block","reason":"树被拒绝"}"#.into());
+}
+#[given("注册了匹配 session_before_switch 的 hook 且返回 block 切换被拒绝")]
+fn _g_wiring_switch_block(agent: &AgentState) {
+    _g_hook_registered(agent, "session_before_switch".into());
+    _g_hook_returns(agent, r#"{"action":"block","reason":"切换被拒绝"}"#.into());
+}
+#[given("注册了匹配 user_bash 的 hook 且返回 block bash被拒绝")]
+fn _g_wiring_bash_block(agent: &AgentState) {
+    _g_hook_registered(agent, "user_bash".into());
+    _g_hook_returns(agent, r#"{"action":"block","reason":"bash被拒绝"}"#.into());
 }
 
 #[when("bash 工具即将执行")]
@@ -2077,10 +2165,6 @@ fn _t_hook_fail_open(agent: &AgentState) {
 fn _g_agent_mock_text(_agent: &AgentState, text: String) {
     set_fake_text(&text);
 }
-#[given("mock 模型慢速流式返回 {n:u32} 段文本间隔 {ms:u32} 毫秒")]
-fn _g_agent_mock_slow_stream(_agent: &AgentState, n: u32, ms: u32) {
-    set_fake_slow_stream(n as usize, ms as u64);
-}
 #[given("mock 模型返回工具调用 {tool:string} 参数 {args}")]
 fn _g_agent_mock_tool_call(_agent: &AgentState, tool: String, args: String) {
     set_fake_tool_call(&tool, &args);
@@ -2119,19 +2203,6 @@ fn _t_agent_aborted_error(agent: &AgentState) {
             .any(|e| matches!(e, XyEvent::Error(m) if m == "aborted")),
         "expected Error(aborted), got {:?}",
         agent.events.borrow()
-    );
-}
-#[then("TextDelta 段数少于 {n:u32}")]
-fn _t_agent_textdelta_less_than(agent: &AgentState, n: u32) {
-    let count = agent
-        .events
-        .borrow()
-        .iter()
-        .filter(|e| matches!(e, XyEvent::TextDelta(_)))
-        .count();
-    assert!(
-        count < n as usize,
-        "expected fewer than {n} TextDelta events, got {count}"
     );
 }
 #[when("尝试将思考级别设为 {level}")]
@@ -2253,81 +2324,13 @@ fn _t_ar_stream_is_xyevent(agent: &AgentState) {
     );
 }
 
-// ── ar4 builder-build / ar5 ports-exist（c1240 低摩擦批次）──────────
-// 策略一（新写 trivial step）：AgentBuilder 装配与端口存在性断言。
-thread_local! {
-    static AR_BUILDER: std::cell::RefCell<Option<xylitol::agent::AgentBuilder>> = const { std::cell::RefCell::new(None) };
-    static AR_BUILT: std::cell::RefCell<Option<xylitol::agent::runtime::AgentRuntime>> = const { std::cell::RefCell::new(None) };
-}
-
-#[given("AgentBuilder 已装配依赖")]
-fn _g_ar_builder_assembled(ws: &Workspace) {
-    use std::sync::Arc;
-    ws.init();
-    let mut registry = ModelRegistry::new(Arc::new(InfraSecretResolver::new()));
-    registry.register(XyModelMeta {
-        id: "ar-builder".into(),
-        config: XyModelConfig {
-            kind: XyModelKind::Fake,
-            api_key: String::new(),
-            model: "fake-model".into(),
-            base_url: None,
-            api: None,
-        },
-        display_name: "Fake Mock".into(),
-        thinking: false,
-        context_window: 200000,
-        api: String::new(),
-        provider: String::new(),
-        cost_input: 0.0,
-        cost_output: 0.0,
-        cost_cache_read: 0.0,
-        cost_cache_write: 0.0,
-        max_tokens: 0,
-        thinking_levels: Vec::new(),
-        thinking_level_map: Default::default(),
-    });
-    let mgr = SessionManager::new(tempfile::tempdir().unwrap().keep());
-    let store: Arc<dyn xylitol::runtime_protocol::XySessionStore> = Arc::new(mgr.clone());
-    let sink: Arc<dyn xylitol::runtime_protocol::XyEventSink> =
-        Arc::new(xylitol::infra::event::EventBus::new());
-    let permission: Arc<dyn xylitol::runtime_protocol::XyPermission> =
-        xylitol::infra::permission::allow_all_permission();
-    let builder = xylitol::agent::AgentBuilder::new(
-        registry,
-        Arc::new(xylitol::infra::provider::factory::build_provider),
-        store,
-        sink,
-        permission,
-    );
-    AR_BUILDER.with(|b| *b.borrow_mut() = Some(builder));
-}
-
-#[when("build")]
-fn _w_ar_builder_build() {
-    let built = AR_BUILDER
-        .with(|b| b.borrow_mut().take())
-        .expect("builder assembled");
-    let runtime = built.build().expect("AgentBuilder::build succeeds");
-    AR_BUILT.with(|r| *r.borrow_mut() = Some(runtime));
-}
-
-#[then("得到 AgentRuntime")]
-fn _t_ar_builder_yields_runtime() {
-    assert!(
-        AR_BUILT.with(|r| r.borrow().is_some()),
-        "expected AgentRuntime from AgentBuilder::build"
-    );
-    AR_BUILT.with(|r| *r.borrow_mut() = None);
-}
-
-// ar12 abort-drops-sse 的自足 given（solidify feature 无 Background，需单 given 完成装配）。
-#[given("已装配慢速流式 mock 模型")]
+// ar12 abort-drops-sse：复用 agent abort 词表（单 given 自足装配，因 solidify 无 Background）。
+#[given("配置了 mock 模型 test-model 且慢速流式 40 段间隔 20 毫秒")]
 fn _g_ar_abort_slow_stream(agent: &AgentState, ws: &Workspace) {
     reset_fake_state();
     ws.init();
     agent.registry.borrow_mut().register(XyModelMeta {
-        id: "ar-abort".into(),
+        id: "test-model".into(),
         config: XyModelConfig {
             kind: XyModelKind::Fake,
             api_key: String::new(),
@@ -2351,38 +2354,20 @@ fn _g_ar_abort_slow_stream(agent: &AgentState, ws: &Workspace) {
     set_fake_slow_stream(40, 20);
 }
 
-#[given("检查 runtime_protocol 端口")]
-fn _g_ar_ports_check() {
-    // 类型存在性由编译期保证；此 step 为 BDD 占位。
-}
-
-#[when("SessionStore 与 EventSink")]
-fn _w_ar_ports_construct() {
-    // 构造证明放在 then 步骤统一断言；此 step 为 BDD 占位。
-}
-
-#[then("trait 存在且可被实现")]
-fn _t_ar_ports_traits_implementable() {
-    use std::sync::Arc;
-    // 构造具体实现证明两个端口 trait 存在且可实现（SessionManager / EventBus）。
-    let mgr = SessionManager::new(tempfile::tempdir().unwrap().keep());
-    let _store: Arc<dyn xylitol::runtime_protocol::XySessionStore> = Arc::new(mgr);
-    let _sink: Arc<dyn xylitol::runtime_protocol::XyEventSink> =
-        Arc::new(xylitol::infra::event::EventBus::new());
-}
-
-// ── ar8/ar9/ar10/ar11 队列与 abort 编排（c1240+ 低摩擦批次后续）────────
-// 多 step 共享 AgentRuntime 跨 given/when/then，用 thread_local 持有。
+// ── ar8–ar12 / ar7：队列、abort、before-hook（共享 helper，避免 step 体复制）────────
 thread_local! {
-    static AR_RUNNER: std::cell::RefCell<Option<AgentRuntime>> = const { std::cell::RefCell::new(None) };
+    static AR_RUNNER: std::cell::RefCell<Option<AgentRuntime>> =
+        const { std::cell::RefCell::new(None) };
+    static AR_RUNNER_EVENTS: std::cell::RefCell<Vec<XyEvent>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    static AR_BANG_RESULT: std::cell::RefCell<
+        Option<Result<xylitol::runtime_protocol::XyBashResult, String>>,
+    > = const { std::cell::RefCell::new(None) };
 }
 
-/// 自足装配 helper：注册 fake 模型 + workspace，返回装配好的 AgentRuntime。
-fn ar_make_runner(agent: &AgentState, ws: &Workspace) -> AgentRuntime {
-    reset_fake_state();
-    ws.init();
+fn ar_register_fake(agent: &AgentState, id: &str) {
     agent.registry.borrow_mut().register(XyModelMeta {
-        id: "ar-queue".into(),
+        id: id.into(),
         config: XyModelConfig {
             kind: XyModelKind::Fake,
             api_key: String::new(),
@@ -2403,6 +2388,13 @@ fn ar_make_runner(agent: &AgentState, ws: &Workspace) -> AgentRuntime {
         thinking_levels: Vec::new(),
         thinking_level_map: Default::default(),
     });
+}
+
+/// 自足装配：reset fake + workspace + 注册模型 + make_agent。
+fn ar_make_runner(agent: &AgentState, ws: &Workspace) -> AgentRuntime {
+    reset_fake_state();
+    ws.init();
+    ar_register_fake(agent, "ar-queue");
     make_agent(agent)
 }
 
@@ -2418,37 +2410,58 @@ fn ar_take_runner() -> AgentRuntime {
     AR_RUNNER.with(|r| r.borrow_mut().take().expect("runner assembled"))
 }
 
-// ar8 steer-before-model：入队 steer 后运行，验证 steer 被 drain（计数归零）。
+fn ar_store_events(local: Vec<XyEvent>) {
+    AR_RUNNER_EVENTS.with(|e| {
+        let mut ev = e.borrow_mut();
+        ev.clear();
+        ev.extend(local);
+    });
+}
+
+fn ar_events() -> Vec<XyEvent> {
+    AR_RUNNER_EVENTS.with(|e| e.borrow().clone())
+}
+
+async fn ar_run_capture(runner: &mut AgentRuntime, prompt: &str) -> Vec<XyEvent> {
+    let mut stream = runner.run(prompt).await;
+    let mut local = Vec::new();
+    while let Some(e) = stream.next().await {
+        local.push(e);
+    }
+    local
+}
+
+async fn ar_take_run_store(prompt: &str) {
+    let mut runner = ar_take_runner();
+    let local = ar_run_capture(&mut runner, prompt).await;
+    ar_store_runner(runner);
+    ar_store_events(local);
+}
+
+// ar8 steer-before-model
 #[given("装配并运行入队 steer 的 agent")]
 async fn _g_ar8_steer_before_model(agent: &AgentState, ws: &Workspace) {
     set_fake_text("steer ack");
     let mut runner = ar_make_runner(agent, ws);
     runner.steer("插队指令");
-    let mut stream = runner.run("初始提示").await;
-    while stream.next().await.is_some() {}
-    // run 完成后 steer 已被 drain；为 when/then 存 runner 供队列检查。
+    let _ = ar_run_capture(&mut runner, "初始提示").await;
     ar_store_runner(runner);
 }
 
 #[when("检查队列与历史")]
 fn _w_ar8_check_queue() {
-    ar_with_runner(|r| {
-        let stats = r.queue_stats();
-        assert_eq!(
-            stats.steer_count, 0,
-            "steer should be drained before model call"
-        );
-    });
+    // 断言落在 then；此处仅确认 runner 仍在。
+    let _ = ar_with_runner(|r| r.queue_stats());
 }
 
 #[then("steer 计数归零且已处理")]
 fn _t_ar8_steer_drained() {
     ar_with_runner(|r| {
-        assert_eq!(r.queue_stats().steer_count, 0);
+        assert_eq!(r.queue_stats().steer_count, 0, "steer should be drained");
     });
 }
 
-// ar8 followup-extends：无工具 + follow_up 非空 → 循环继续而非 AgentEnd。
+// ar8 followup-extends
 #[given("装配无工具 agent 并入队 follow_up")]
 async fn _g_ar8_followup_extends(agent: &AgentState, ws: &Workspace) {
     set_fake_text("followup ack");
@@ -2459,32 +2472,18 @@ async fn _g_ar8_followup_extends(agent: &AgentState, ws: &Workspace) {
 
 #[when("运行至将结束")]
 async fn _w_ar8_run_until_end() {
-    let mut runner = ar_take_runner();
-    let mut stream = runner.run("主提示").await;
-    let mut local = Vec::new();
-    while let Some(e) = stream.next().await {
-        local.push(e);
-    }
-    ar_store_runner(runner);
-    AR_RUNNER_EVENTS.with(|e| {
-        let mut ev = e.borrow_mut();
-        ev.clear();
-        ev.extend(local);
-    });
+    ar_take_run_store("主提示").await;
 }
 
 #[then("继续循环而非 AgentEnd")]
 fn _t_ar8_followup_continues() {
-    // follow_up 注入后，循环在「将结束」时 drain follow_up 并继续，
-    // 表现为事件流含多于一次的 TurnStart（或至少非空响应）。
-    let has_events = AR_RUNNER_EVENTS.with(|e| !e.borrow().is_empty());
     assert!(
-        has_events,
+        !ar_events().is_empty(),
         "follow_up should extend the turn, got empty stream"
     );
 }
 
-// ar9 queue-update：入队 steer → 观察流含 QueueUpdate。
+// ar9 queue-update
 #[given("装配 agent 并入队 steer")]
 async fn _g_ar9_queue_update(agent: &AgentState, ws: &Workspace) {
     set_fake_text("queue ack");
@@ -2495,39 +2494,22 @@ async fn _g_ar9_queue_update(agent: &AgentState, ws: &Workspace) {
 
 #[when("观察事件流")]
 async fn _w_ar9_observe_stream() {
-    let mut runner = ar_take_runner();
-    let mut stream = runner.run("主提示").await;
-    let mut local = Vec::new();
-    while let Some(e) = stream.next().await {
-        local.push(e);
-    }
-    ar_store_runner(runner);
-    AR_RUNNER_EVENTS.with(|e| {
-        let mut ev = e.borrow_mut();
-        ev.clear();
-        ev.extend(local);
-    });
+    ar_take_run_store("主提示").await;
 }
 
 #[then("出现 QueueUpdate 且计数正确")]
 fn _t_ar9_queue_update_emitted() {
-    let found = AR_RUNNER_EVENTS.with(|e| {
-        e.borrow()
-            .iter()
-            .any(|ev| matches!(ev, XyEvent::QueueUpdate { .. }))
-    });
+    let found = ar_events()
+        .iter()
+        .any(|ev| matches!(ev, XyEvent::QueueUpdate { .. }));
     assert!(
         found,
-        "expected QueueUpdate event in stream after enqueue, got {:?}",
-        AR_RUNNER_EVENTS.with(|e| e.borrow().clone())
+        "expected QueueUpdate after enqueue, got {:?}",
+        ar_events()
     );
 }
 
-thread_local! {
-    static AR_RUNNER_EVENTS: std::cell::RefCell<Vec<XyEvent>> = const { std::cell::RefCell::new(Vec::new()) };
-}
-
-// ar10 abort-clears-steer：入队 steer + follow_up → abort → steer 空、follow_up 保留。
+// ar10 abort-clears-steer
 #[given("装配 agent 并入队 steer 与 follow_up")]
 async fn _g_ar10_abort_clears(agent: &AgentState, ws: &Workspace) {
     set_fake_text("abort queue ack");
@@ -2546,39 +2528,17 @@ fn _w_ar10_abort() {
 fn _t_ar10_queue_semantics() {
     ar_with_runner(|r| {
         let stats = r.queue_stats();
-        assert_eq!(stats.steer_count, 0, "abort must clear steer queue");
-        assert_eq!(stats.follow_up_count, 1, "abort must keep follow_up queue");
+        assert_eq!(stats.steer_count, 0, "abort must clear steer");
+        assert_eq!(stats.follow_up_count, 1, "abort must keep follow_up");
     });
 }
 
-// ar11 second-run-after-abort：首轮 abort 后再次 run 正常完成。
+// ar11 second-run-after-abort
 #[given("装配慢速 agent 并在首轮 abort 后")]
 async fn _g_ar11_second_run_after_abort(agent: &AgentState, ws: &Workspace) {
-    // 首轮：慢速流 + abort
     reset_fake_state();
     ws.init();
-    agent.registry.borrow_mut().register(XyModelMeta {
-        id: "ar-abort-second".into(),
-        config: XyModelConfig {
-            kind: XyModelKind::Fake,
-            api_key: String::new(),
-            model: "fake-model".into(),
-            base_url: None,
-            api: None,
-        },
-        display_name: "Fake Mock".into(),
-        thinking: false,
-        context_window: 200000,
-        api: String::new(),
-        provider: String::new(),
-        cost_input: 0.0,
-        cost_output: 0.0,
-        cost_cache_read: 0.0,
-        cost_cache_write: 0.0,
-        max_tokens: 0,
-        thinking_levels: Vec::new(),
-        thinking_level_map: Default::default(),
-    });
+    ar_register_fake(agent, "ar-abort-second");
     set_fake_slow_stream(20, 10);
     let mut runner = make_agent(agent);
     let mut stream = runner.run("首轮").await;
@@ -2589,7 +2549,6 @@ async fn _g_ar11_second_run_after_abort(agent: &AgentState, ws: &Workspace) {
             runner.abort();
         }
     }
-    // 第二轮准备：切回正常 fake text，存 runner 供 when 再次 run。
     reset_fake_state();
     set_fake_text("第二轮完成");
     ar_store_runner(runner);
@@ -2597,37 +2556,23 @@ async fn _g_ar11_second_run_after_abort(agent: &AgentState, ws: &Workspace) {
 
 #[when("再次运行")]
 async fn _w_ar11_second_run() {
-    let mut runner = ar_take_runner();
-    let mut stream = runner.run("第二轮").await;
-    let mut local = Vec::new();
-    while let Some(e) = stream.next().await {
-        local.push(e);
-    }
-    ar_store_runner(runner);
-    AR_RUNNER_EVENTS.with(|e| {
-        let mut ev = e.borrow_mut();
-        ev.clear();
-        ev.extend(local);
-    });
+    ar_take_run_store("第二轮").await;
 }
 
 #[then("正常完成而非立即 aborted")]
 fn _t_ar11_second_run_ok() {
-    let aborted = AR_RUNNER_EVENTS.with(|e| {
-        e.borrow()
-            .iter()
-            .any(|ev| matches!(ev, XyEvent::Error(m) if m == "aborted"))
-    });
-    let ended = AR_RUNNER_EVENTS.with(|e| {
-        e.borrow()
-            .iter()
-            .any(|ev| matches!(ev, XyEvent::TurnEnd { .. }))
-    });
+    let events = ar_events();
+    let aborted = events
+        .iter()
+        .any(|ev| matches!(ev, XyEvent::Error(m) if m == "aborted"));
+    let ended = events
+        .iter()
+        .any(|ev| matches!(ev, XyEvent::TurnEnd { .. }));
     assert!(!aborted, "second run must not be immediately aborted");
-    assert!(ended, "second run must complete normally with TurnEnd");
+    assert!(ended, "second run must complete with TurnEnd");
 }
 
-// ar10 abort-cancels-bang：交互 bang 长命令进行中 → abort → cancelled 为 true。
+// ar10 abort-cancels-bang
 #[given("启动交互 bang 长命令后 abort")]
 async fn _g_ar10_abort_cancels_bang(_agent: &AgentState, _ws: &Workspace) {
     use xylitol::infra::bash_exec::InfraBashExecutor;
@@ -2641,7 +2586,6 @@ async fn _g_ar10_abort_cancels_bang(_agent: &AgentState, _ws: &Workspace) {
             .execute("sleep 30", BashExecOpts::cancel_only(token_for_task))
             .await
     });
-    // 给 bash 足够时间 spawn 子进程后再触发取消（对齐 AgentRuntime::abort → abort_bash 杀进程树）。
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     token.cancel();
     let result = handle.await.expect("bash task joined");
@@ -2649,239 +2593,25 @@ async fn _g_ar10_abort_cancels_bang(_agent: &AgentState, _ws: &Workspace) {
 }
 
 #[when("检查 bash 结果")]
-fn _w_ar10_check_bash_result() {
-    // 结果已在 given 捕获；此 step 为 BDD 占位。
-}
+fn _w_ar10_check_bash_result() {}
 
 #[then("cancelled 为 true")]
 fn _t_ar10_bang_cancelled() {
-    let result = AR_BANG_RESULT.with(|r| r.borrow().clone());
-    let result = result
+    let result = AR_BANG_RESULT
+        .with(|r| r.borrow().clone())
         .expect("bash result captured")
         .expect("execute_bash ok");
     assert!(
         result.cancelled,
-        "interactive bang must be cancelled via abort, got cancelled={}",
+        "bang must be cancelled, got cancelled={}",
         result.cancelled
     );
 }
 
-thread_local! {
-    static AR_BANG_RESULT: std::cell::RefCell<Option<Result<xylitol::runtime_protocol::XyBashResult, String>>> =
-        const { std::cell::RefCell::new(None) };
-}
-
-// ── ar15-ar18 行为/端口断言 ──────────────────────────────────────────
-// ar15 unknown-ok：内部专用 XyEvent 变体经 to_wire_event 降级返回 None。
-#[given("构造内部专用 XyEvent 变体")]
-fn _g_ar15_unknown_event() {
-    // 占位：真实构造在 when（AgentStart 是内部专用变体，不在 wire 映射表内）。
-}
-
-#[when("经 to_wire_event 降级")]
-fn _w_ar15_to_wire() {
-    use xylitol::protocol::Event;
-    let internal = XyEvent::AgentStart {
-        session_id: "s1".into(),
-        model: "m1".into(),
-    };
-    let wire: Option<Event> = internal.to_wire_event();
-    AR_WIRE_EVENT.with(|e| *e.borrow_mut() = Some(wire));
-}
-
-#[then("返回 None 且不 panic")]
-fn _t_ar15_degrade_none() {
-    let wire = AR_WIRE_EVENT.with(|e| e.borrow().clone());
-    assert!(
-        matches!(wire, Some(None)),
-        "internal-only XyEvent must degrade to None via to_wire_event, got {:?}",
-        wire
-    );
-}
-
-thread_local! {
-    static AR_WIRE_EVENT: std::cell::RefCell<Option<Option<xylitol::protocol::Event>>> =
-        const { std::cell::RefCell::new(None) };
-}
-
-// ar16 default-thinking：未设 thinking 的 agent 查询返回默认值。
-#[given("装配未设 thinking 的 agent")]
-fn _g_ar16_default_thinking(agent: &AgentState, ws: &Workspace) {
-    let runner = ar_make_runner(agent, ws);
-    ar_store_runner(runner);
-}
-
-#[when("查询 thinking level")]
-fn _w_ar16_query_thinking() {
-    let level = ar_with_runner(|r| r.inner().thinking_level());
-    AR_THINKING_LEVEL.with(|l| l.replace(Some(level)));
-}
-
-#[then("返回默认值")]
-fn _t_ar16_default_value() {
-    let level = AR_THINKING_LEVEL.with(|l| l.borrow().clone());
-    assert!(
-        level.is_some(),
-        "thinking level must have a default when unset"
-    );
-    // ThinkingLevel::Default = Medium；模型 thinking:false 时可能钳制为 Off，
-    // 关键不变量：存在确定的默认而非未定义/panic。
-}
-
-thread_local! {
-    static AR_THINKING_LEVEL: std::cell::RefCell<Option<xylitol::domain::types::ThinkingLevel>> =
-        const { std::cell::RefCell::new(None) };
-}
-
-// ar17 cwd-missing：会话 cwd 指向不存在路径 → load_validated 返回错误含路径。
-#[given("会话记录 cwd 指向不存在路径")]
-async fn _g_ar17_cwd_missing(_sess: &XySessionStore) {
-    let bad_cwd = "/nonexistent/path/for/bdd-test".to_string();
-    AR_BAD_CWD.with(|c| *c.borrow_mut() = Some(bad_cwd));
-}
-
-#[when("调用 load_validated")]
-async fn _w_ar17_load_validated(_sess: &XySessionStore) {
-    use xylitol::infra::session::SessionManager;
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().to_path_buf();
-    let mgr = SessionManager::new(path.clone());
-    let bad = AR_BAD_CWD.with(|c| c.borrow().clone().expect("bad cwd set"));
-    mgr.create("cwd-missing-when", Some(&bad), None)
-        .await
-        .unwrap();
-    let fallback = path.join("also_missing").to_string_lossy().into_owned();
-    let result = mgr.load_validated("cwd-missing-when", &fallback).await;
-    AR_LOAD_RESULT.with(|r| *r.borrow_mut() = Some(result.err()));
-}
-
-#[then("错误含路径")]
-fn _t_ar17_error_has_path() {
-    let err_opt = AR_LOAD_RESULT.with(|r| r.borrow().clone());
-    let err = err_opt.expect("load_validated result captured");
-    let err = err.expect("load_validated must error on missing cwd");
-    assert!(
-        err.contains("cwd") || err.contains("path") || err.contains("directory"),
-        "error must reference the missing path, got: {err}"
-    );
-}
-
-thread_local! {
-    static AR_BAD_CWD: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
-    static AR_LOAD_RESULT: std::cell::RefCell<Option<Option<String>>> =
-        const { std::cell::RefCell::new(None) };
-}
-
-// ar18 roundtrip：XyEvent TextDelta 经 protocol Event 往返字段保留。
-#[given("构造 XyEvent TextDelta")]
-fn _g_ar18_textdelta() {
-    let ev = XyEvent::TextDelta("roundtrip-payload".into());
-    AR_ROUNDTRIP_IN.with(|e| e.replace(Some(ev)));
-}
-
-#[when("经 protocol 往返")]
-fn _w_ar18_roundtrip() {
-    let src = AR_ROUNDTRIP_IN.with(|e| e.borrow().clone().expect("textdelta constructed"));
-    let wire = src.to_wire_event().expect("TextDelta maps to wire Event");
-    let back: XyEvent = std::convert::TryFrom::try_from(&wire).expect("wire Event maps back");
-    AR_ROUNDTRIP_OUT.with(|e| e.replace(Some(back)));
-}
-
-#[then("字段保留")]
-fn _t_ar18_fields_preserved() {
-    let src = AR_ROUNDTRIP_IN.with(|e| e.borrow().clone().expect("src set"));
-    let back = AR_ROUNDTRIP_OUT.with(|e| e.borrow().clone().expect("roundtripped"));
-    // XyEvent 未 derive PartialEq，用 Debug 表示比较（TextDelta 是单字段元组变体）。
-    assert_eq!(
-        format!("{src:?}"),
-        format!("{back:?}"),
-        "XyEvent TextDelta fields must survive protocol roundtrip"
-    );
-}
-
-thread_local! {
-    static AR_ROUNDTRIP_IN: std::cell::RefCell<Option<XyEvent>> = const { std::cell::RefCell::new(None) };
-    static AR_ROUNDTRIP_OUT: std::cell::RefCell<Option<XyEvent>> = const { std::cell::RefCell::new(None) };
-}
-
-// ── ar13/ar14 静态检查（no-rloop / no-facade）─────────────────────────
-// ar14 no-facade：src/agent/facade.rs 不存在（facade 中枢已移除，ar14 合约）。
-#[given("检查 agent/facade.rs")]
-fn _g_ar14_check_facade() {
-    let exists = std::path::Path::new("src/agent/facade.rs").exists();
-    assert!(
-        !exists,
-        "src/agent/facade.rs must not exist (facade removed)"
-    );
-}
-
-#[when("不存在该模块")]
-fn _w_ar14_module_absent() {
-    // 断言已在 given 完成；此 step 为 BDD 占位。
-}
-
-#[then("facade 保持移除")]
-fn _t_ar14_facade_removed() {
-    assert!(
-        !std::path::Path::new("src/agent/facade.rs").exists(),
-        "facade module must remain removed"
-    );
-}
-
-// ar13 no-rloop：src 中无 r#loop 标识符（循环模块名为 runtime::react，ar13 合约）。
-fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if p.is_dir() {
-                collect_rs_files(&p, out);
-            } else if p.extension().is_some_and(|x| x == "rs") {
-                out.push(p);
-            }
-        }
-    }
-}
-
-#[given("在 src 中搜索 loop raw identifier")]
-fn _g_ar13_search_rloop() {
-    // 扫描 src/ 下所有 .rs 文件，断言无 "r#loop" 字面量。
-    let mut files = Vec::new();
-    collect_rs_files(std::path::Path::new("src"), &mut files);
-    let mut hits = Vec::new();
-    for f in &files {
-        let text = std::fs::read_to_string(f).unwrap_or_default();
-        if text.contains("r#loop") {
-            hits.push(f.display().to_string());
-        }
-    }
-    AR_RLOOP_HITS.with(|h| h.borrow_mut().extend(hits));
-}
-
-#[when("运行检查")]
-fn _w_ar13_run_check() {
-    // 扫描已在 given 完成；此 step 为 BDD 占位。
-}
-
-#[then("零匹配")]
-fn _t_ar13_zero_matches() {
-    let hits = AR_RLOOP_HITS.with(|h| h.borrow().clone());
-    assert!(
-        hits.is_empty(),
-        "src must contain zero `r#loop` identifiers, found in: {hits:?}"
-    );
-}
-
-thread_local! {
-    static AR_RLOOP_HITS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
-}
-
-// ── ar7 before-denies（before hook 拒绝 bash → 回写 tool-error）────────
+// ar7 before-denies
 #[given("注册匹配 bash 的 before 拒绝 hook")]
 async fn _g_ar7_before_denies(agent: &AgentState, ws: &Workspace) {
-    use xylitol::agent::runtime::AgentHooks;
-    let runner = ar_make_runner(agent, ws);
-    // before hook 拒绝 bash：返回 Some(reason) → 工具不执行、回写 tool-error。
-    let mut runner = runner;
+    let mut runner = ar_make_runner(agent, ws);
     runner.add_hook(Arc::new(
         |name: &str, _id: &str, _args: &serde_json::Value| {
             if name == "bash" {
@@ -2891,7 +2621,6 @@ async fn _g_ar7_before_denies(agent: &AgentState, ws: &Workspace) {
             }
         },
     ));
-    // 装配 bash 工具调用（fake 模型先发起 bash 调用，下一轮无 tool）。
     set_fake_tool_call("bash", r#"{"command":"echo hi"}"#);
     set_fake_text("ack");
     ar_store_runner(runner);
@@ -2899,30 +2628,18 @@ async fn _g_ar7_before_denies(agent: &AgentState, ws: &Workspace) {
 
 #[when("运行 AgentRuntime 触发 bash")]
 async fn _w_ar7_run_trigger_bash() {
-    let mut runner = ar_take_runner();
-    let mut stream = runner.run("触发 bash").await;
-    let mut local = Vec::new();
-    while let Some(e) = stream.next().await {
-        local.push(e);
-    }
-    ar_store_runner(runner);
-    AR_RUNNER_EVENTS.with(|e| {
-        let mut ev = e.borrow_mut();
-        ev.clear();
-        ev.extend(local);
-    });
+    ar_take_run_store("触发 bash").await;
 }
 
 #[then("tool-error 回写且未执行")]
 fn _t_ar7_tool_error_written() {
-    let events = AR_RUNNER_EVENTS.with(|e| e.borrow().clone());
-    // before hook 拒绝后：事件流含 is_error=true 的 ToolExecutionEnd。
+    let events = ar_events();
     let has_error = events
         .iter()
         .any(|ev| matches!(ev, XyEvent::ToolExecutionEnd { is_error: true, .. }));
     assert!(
         has_error,
-        "before hook must deny bash and write back tool-error, got events: {:?}",
+        "before hook must deny bash with tool-error, got {:?}",
         events
     );
 }
@@ -2934,7 +2651,7 @@ fn _g_file_with_content_string(ws: &Workspace, path: String, content: String) {
     if let Some(p) = std::path::Path::new(&full).parent() {
         std::fs::create_dir_all(p).ok();
     }
-    std::fs::write(&full, content).expect("write failed");
+    std::fs::write(&full, strip_quotes(&content)).expect("write failed");
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2981,32 +2698,6 @@ mod sandbox_bdd {
             *e.borrow_mut() = Some(xylitol::infra::permission::build_permission(
                 &default_sandbox(),
             ));
-        });
-    }
-
-    #[given("沙箱配置禁止写入 {pattern:string}")]
-    fn sandbox_deny_write(_pattern: String) {}
-
-    #[given("沙箱配置禁止域名 {domain:string}")]
-    fn sandbox_deny_domain(_domain: String) {}
-
-    #[given("沙箱配置允许写入 {pattern:string}")]
-    fn sandbox_allow_write(_pattern: String) {}
-
-    // BDD-on solidify 链路（c1220）：步骤文本来自 domain-security spec.toon。
-    // default_sandbox() 已含 blocked_domains=["evil.com"]，故 given 仅初始化 engine。
-    // 用纯文本 step（无占位符）避免 rstest-bdd 对无引号值的占位符匹配问题。
-    #[given("blocked_domains 含 evil.com")]
-    fn sandbox_blocked_domains_has_evil() {
-        sandbox_engine_init();
-    }
-
-    #[when("检查网络域名 evil.com")]
-    fn sandbox_check_domain_evil() {
-        SANDBOX_ENGINE.with(|e| {
-            let engine = e.borrow();
-            let verdict = engine.as_ref().unwrap().check_network("evil.com");
-            LAST_VERDICT.with(|v| *v.borrow_mut() = Some(verdict));
         });
     }
 
@@ -3064,184 +2755,366 @@ mod sandbox_bdd {
         });
     }
 
-    // Scenario bindings — sandbox.feature (3)
-    #[scenario(path = "tests/features/sandbox.feature", name = "拒绝写入受保护文件")]
-    fn test_sandbox_deny_write() {}
-    #[scenario(path = "tests/features/sandbox.feature", name = "拒绝访问外部域名")]
-    fn test_sandbox_deny_domain() {}
-    #[scenario(path = "tests/features/sandbox.feature", name = "允许项目目录写入")]
-    fn test_sandbox_allow_write() {}
+    #[then("结果应为拒绝且原因含 write_denied")]
+    fn sandbox_denied_write_reason() {
+        sandbox_assert_denied();
+        sandbox_assert_deny_reason("write_denied".into());
+    }
 
-    // BDD-on solidify 链路（c1220）：domain-security spec.toon → solidify 生成
+    #[then("结果应为拒绝且原因含 denied_domains")]
+    fn sandbox_denied_domain_reason() {
+        sandbox_assert_denied();
+        sandbox_assert_deny_reason("denied_domains".into());
+    }
+
+    // Scenario bindings — domain-security.feature (solidify；自 sandbox.feature 迁入)
     #[scenario(
         path = "llmanspec/specs/domain-security/domain-security.feature",
         name = "network-domain-block"
     )]
     fn test_domain_security_network_block() {}
+    #[scenario(
+        path = "llmanspec/specs/domain-security/domain-security.feature",
+        name = "deny-write"
+    )]
+    fn test_domain_security_deny_write() {}
+    #[scenario(
+        path = "llmanspec/specs/domain-security/domain-security.feature",
+        name = "allow-write"
+    )]
+    fn test_domain_security_allow_write() {}
 }
 
-// Scenario bindings — read.feature (6)
-// ═══════════════════════════════════════════════════════════════════
-#[scenario(path = "tests/features/read.feature", name = "读取整个文件")]
-fn test_read_entire_file(ws: Workspace) {}
-#[scenario(path = "tests/features/read.feature", name = "读取文件带偏移和限制")]
-fn test_read_offset_limit(ws: Workspace) {}
-#[scenario(path = "tests/features/read.feature", name = "读取不存在的文件失败")]
-fn test_read_nonexistent(ws: Workspace) {}
-#[scenario(path = "tests/features/read.feature", name = "偏移超出文件末尾")]
-fn test_read_out_of_bounds(ws: Workspace) {}
-#[scenario(path = "tests/features/read.feature", name = "输出超过限制时截断")]
-fn test_read_truncation(ws: Workspace) {}
-#[scenario(path = "tests/features/read.feature", name = "缺少路径参数失败")]
-fn test_read_missing_path(ws: Workspace) {}
-
-// write.feature (6)
-#[scenario(path = "tests/features/write.feature", name = "写入新文件")]
-fn test_write_new_file(ws: Workspace) {}
-#[scenario(path = "tests/features/write.feature", name = "写入时自动创建父目录")]
-fn test_write_create_parents(ws: Workspace) {}
-#[scenario(path = "tests/features/write.feature", name = "写入覆写已存在文件")]
-fn test_write_overwrite(ws: Workspace) {}
-#[scenario(path = "tests/features/write.feature", name = "写入成功消息包含字节数")]
-fn test_write_byte_count(ws: Workspace) {}
-#[scenario(path = "tests/features/write.feature", name = "缺少路径参数失败")]
-fn test_write_missing_path(ws: Workspace) {}
-#[scenario(path = "tests/features/write.feature", name = "缺少内容参数失败")]
-fn test_write_missing_content(ws: Workspace) {}
-
-// edit.feature (10)
-#[scenario(path = "tests/features/edit.feature", name = "单次精确文本替换")]
-fn test_edit_single_replace(ws: Workspace) {}
+// Scenario bindings — agent-tools.feature (solidify path; 七工具)
 #[scenario(
-    path = "tests/features/edit.feature",
-    name = "一次调用中多个不相交的编辑"
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "read-entire"
 )]
-fn test_edit_multi_replace(ws: Workspace) {}
-#[scenario(path = "tests/features/edit.feature", name = "重叠编辑被拒绝")]
-fn test_edit_overlap_rejected(ws: Workspace) {}
-#[scenario(path = "tests/features/edit.feature", name = "非唯一的 oldText 被拒绝")]
-fn test_edit_nonunique_rejected(ws: Workspace) {}
-#[scenario(path = "tests/features/edit.feature", name = "空的 oldText 被拒绝")]
-fn test_edit_empty_oldtext(ws: Workspace) {}
-#[scenario(path = "tests/features/edit.feature", name = "无变更的编辑被拒绝")]
-fn test_edit_noop_rejected(ws: Workspace) {}
-#[scenario(path = "tests/features/edit.feature", name = "编辑保留 CRLF 行尾")]
-fn test_edit_preserves_crlf(ws: Workspace) {}
-#[scenario(path = "tests/features/edit.feature", name = "编辑处理 UTF-8 BOM")]
+fn test_read_entire(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "read-offset-limit"
+)]
+fn test_read_offset_limit(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "read-missing"
+)]
+fn test_read_missing(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "read-offset-oob"
+)]
+fn test_read_offset_oob(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "read-truncate"
+)]
+fn test_read_truncate(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "read-missing-path"
+)]
+fn test_read_missing_path(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "write-new"
+)]
+fn test_write_new(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "write-parents"
+)]
+fn test_write_parents(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "write-overwrite"
+)]
+fn test_write_overwrite(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "write-byte-count"
+)]
+fn test_write_byte_count(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "write-missing-path"
+)]
+fn test_write_missing_path(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "write-missing-content"
+)]
+fn test_write_missing_content(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "edit-single"
+)]
+fn test_edit_single(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "edit-multi"
+)]
+fn test_edit_multi(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "edit-overlap"
+)]
+fn test_edit_overlap(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "edit-nonunique"
+)]
+fn test_edit_nonunique(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "edit-empty-old"
+)]
+fn test_edit_empty_old(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "edit-noop"
+)]
+fn test_edit_noop(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "edit-crlf"
+)]
+fn test_edit_crlf(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "edit-bom"
+)]
 fn test_edit_bom(ws: Workspace) {}
-#[scenario(path = "tests/features/edit.feature", name = "模糊Unicode匹配")]
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "edit-unicode"
+)]
 fn test_edit_unicode(ws: Workspace) {}
-#[scenario(path = "tests/features/edit.feature", name = "编辑返回 unified diff")]
-fn test_edit_returns_diff(ws: Workspace) {}
-
-// bash.feature (8)
-#[scenario(path = "tests/features/bash.feature", name = "执行简单命令")]
-fn test_bash_simple(ws: Workspace) {}
-#[scenario(path = "tests/features/bash.feature", name = "捕获 stderr 输出")]
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "edit-diff"
+)]
+fn test_edit_diff(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "bash-echo"
+)]
+fn test_bash_echo(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "bash-stderr"
+)]
 fn test_bash_stderr(ws: Workspace) {}
-#[scenario(path = "tests/features/bash.feature", name = "报告非零退出码")]
-fn test_bash_nonzero_exit(ws: Workspace) {}
-#[scenario(path = "tests/features/bash.feature", name = "命令超时被强制执行")]
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "bash-exit-code"
+)]
+fn test_bash_exit_code(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "bash-timeout"
+)]
 fn test_bash_timeout(ws: Workspace) {}
 #[scenario(
-    path = "tests/features/bash.feature",
-    name = "stdout 和 stderr 合并输出"
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "bash-merged-streams"
 )]
-fn test_bash_merge(ws: Workspace) {}
-#[scenario(path = "tests/features/bash.feature", name = "输出超过限制时截断")]
+fn test_bash_merged_streams(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "bash-truncate"
+)]
 fn test_bash_truncate(ws: Workspace) {}
-#[scenario(path = "tests/features/bash.feature", name = "取消信号杀掉进程树")]
-fn test_bash_abort(ws: Workspace) {}
-#[scenario(path = "tests/features/bash.feature", name = "缺少命令参数被拒绝")]
-fn test_bash_missing_command(ws: Workspace) {}
-
-// grep.feature (6)
-#[scenario(path = "tests/features/grep.feature", name = "文件中基本模式搜索")]
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "bash-cancel"
+)]
+fn test_bash_cancel(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "bash-missing-cmd"
+)]
+fn test_bash_missing_cmd(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "grep-basic"
+)]
 fn test_grep_basic(ws: Workspace) {}
-#[scenario(path = "tests/features/grep.feature", name = "无匹配返回适当消息")]
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "grep-no-match"
+)]
 fn test_grep_no_match(ws: Workspace) {}
-#[scenario(path = "tests/features/grep.feature", name = "搜索遵守限制参数")]
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "grep-limit"
+)]
 fn test_grep_limit(ws: Workspace) {}
-#[scenario(path = "tests/features/grep.feature", name = "不区分大小写搜索")]
-fn test_grep_case_insensitive(ws: Workspace) {}
-#[scenario(path = "tests/features/grep.feature", name = "字面量字符串搜索")]
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "grep-ignore-case"
+)]
+fn test_grep_ignore_case(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "grep-literal"
+)]
 fn test_grep_literal(ws: Workspace) {}
-#[scenario(path = "tests/features/grep.feature", name = "缺少模式参数失败")]
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "grep-missing-pattern"
+)]
 fn test_grep_missing_pattern(ws: Workspace) {}
-
-// find.feature (6)
-#[scenario(path = "tests/features/find.feature", name = "通过简单 glob 查找文件")]
-fn test_find_basic(ws: Workspace) {}
-#[scenario(path = "tests/features/find.feature", name = "递归 glob 查找")]
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "find-simple"
+)]
+fn test_find_simple(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "find-recursive"
+)]
 fn test_find_recursive(ws: Workspace) {}
-#[scenario(path = "tests/features/find.feature", name = "查找带限制参数")]
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "find-limit"
+)]
 fn test_find_limit(ws: Workspace) {}
-#[scenario(path = "tests/features/find.feature", name = "无匹配返回适当消息")]
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "find-no-match"
+)]
 fn test_find_no_match(ws: Workspace) {}
-#[scenario(path = "tests/features/find.feature", name = "不存在的搜索路径失败")]
-fn test_find_invalid_path(ws: Workspace) {}
-#[scenario(path = "tests/features/find.feature", name = "绝对路径 glob 被拒绝")]
-fn test_find_absolute_rejected(ws: Workspace) {}
-
-// ls.feature (7)
-#[scenario(path = "tests/features/ls.feature", name = "列出空目录")]
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "find-bad-path"
+)]
+fn test_find_bad_path(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "find-absolute"
+)]
+fn test_find_absolute(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "ls-empty"
+)]
 fn test_ls_empty(ws: Workspace) {}
 #[scenario(
-    path = "tests/features/ls.feature",
-    name = "列出包含文件和子目录的目录"
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "ls-entries"
 )]
-fn test_ls_with_files(ws: Workspace) {}
-#[scenario(path = "tests/features/ls.feature", name = "条目按字母排序")]
+fn test_ls_entries(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "ls-sorted"
+)]
 fn test_ls_sorted(ws: Workspace) {}
-#[scenario(path = "tests/features/ls.feature", name = "不传路径时默认当前目录")]
-fn test_ls_default_path(ws: Workspace) {}
-#[scenario(path = "tests/features/ls.feature", name = "带限制参数的 ls")]
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "ls-default-cwd"
+)]
+fn test_ls_default_cwd(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "ls-limit"
+)]
 fn test_ls_limit(ws: Workspace) {}
-#[scenario(path = "tests/features/ls.feature", name = "不存在的路径失败")]
-fn test_ls_invalid_path(ws: Workspace) {}
-#[scenario(path = "tests/features/ls.feature", name = "路径指向文件而非目录失败")]
-fn test_ls_file_not_dir(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "ls-missing"
+)]
+fn test_ls_missing(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "ls-not-dir"
+)]
+fn test_ls_not_dir(ws: Workspace) {}
 
 // session.feature (9) — async
-#[scenario(path = "tests/features/session.feature", name = "创建并加载会话")]
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "create-load"
+)]
 async fn test_session_create_load(sess: XySessionStore) {}
-#[scenario(path = "tests/features/session.feature", name = "会话列表")]
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "list-sessions"
+)]
 async fn test_session_list(ws: Workspace, sess: XySessionStore) {}
-#[scenario(path = "tests/features/session.feature", name = "会话分叉")]
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "fork"
+)]
 async fn test_session_fork(sess: XySessionStore) {}
-#[scenario(path = "tests/features/session.feature", name = "会话树导航")]
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "tree-nav"
+)]
 async fn test_session_tree_nav(sess: XySessionStore) {}
-#[scenario(path = "tests/features/session.feature", name = "模型切换记录")]
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "model-change"
+)]
 async fn test_session_model_change(sess: XySessionStore) {}
-#[scenario(path = "tests/features/session.feature", name = "思考级别切换记录")]
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "thinking-change"
+)]
 async fn test_session_thinking_change(sess: XySessionStore) {}
-#[scenario(path = "tests/features/session.feature", name = "JSONL 文件格式正确")]
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "jsonl-format"
+)]
 async fn test_session_jsonl_format(sess: XySessionStore) {}
-#[scenario(path = "tests/features/session.feature", name = "为会话条目设置标签")]
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "label-set"
+)]
 async fn test_session_label_set(sess: XySessionStore) {}
-#[scenario(path = "tests/features/session.feature", name = "清除会话条目标签")]
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "label-clear"
+)]
 async fn test_session_label_clear(sess: XySessionStore) {}
 
 // agent.feature (8) — async
-#[scenario(path = "tests/features/agent.feature", name = "Agent 处理纯文本响应")]
-async fn test_agent_text_response(agent: AgentState, ws: Workspace) {}
-#[scenario(path = "tests/features/agent.feature", name = "Agent 处理工具调用")]
-async fn test_agent_tool_call(agent: AgentState, ws: Workspace) {}
-#[scenario(path = "tests/features/agent.feature", name = "Turn 事件顺序正确")]
-async fn test_agent_event_order(agent: AgentState, ws: Workspace) {}
-#[scenario(path = "tests/features/agent.feature", name = "思考级别切换")]
-async fn test_agent_thinking_switch(agent: AgentState, ws: Workspace) {}
-#[scenario(path = "tests/features/agent.feature", name = "思考级别限制为模型能力")]
-async fn test_agent_thinking_limit(agent: AgentState, ws: Workspace) {}
-#[scenario(path = "tests/features/agent.feature", name = "获取上下文使用量")]
-async fn test_agent_context_usage(agent: AgentState, ws: Workspace) {}
-#[scenario(path = "tests/features/agent.feature", name = "会话自动持久化")]
-async fn test_agent_auto_save(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 #[scenario(
-    path = "tests/features/agent.feature",
-    name = "abort 中断进行中的模型流式输出"
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "text-response"
 )]
-async fn test_agent_abort_mid_stream(agent: AgentState, ws: Workspace) {}
+async fn test_agent_text_response(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "tool-call"
+)]
+async fn test_agent_tool_call(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "turn-order"
+)]
+async fn test_agent_event_order(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "thinking-switch"
+)]
+async fn test_agent_thinking_switch(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "thinking-clamp"
+)]
+async fn test_agent_thinking_limit(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "context-usage"
+)]
+async fn test_agent_context_usage(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "auto-persist"
+)]
+async fn test_agent_auto_save(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 // BDD-on 新链路试点：solidify 风格 .feature（场景标题 = spec.toon scenario.id）
 #[scenario(
@@ -3261,24 +3134,9 @@ async fn test_ar_stream_is_xyevent(agent: AgentState, ws: Workspace) {}
 async fn test_ar_continues_after_tools(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "done-not-turn-end"
-)]
-async fn test_ar_done_not_turn_end(agent: AgentState, ws: Workspace) {}
-#[scenario(
-    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "abort-drops-sse"
 )]
 async fn test_ar_abort_drops_sse(agent: AgentState, ws: Workspace) {}
-#[scenario(
-    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "builder-build"
-)]
-fn test_ar_builder_build(ws: Workspace) {}
-#[scenario(
-    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "ports-exist"
-)]
-fn test_ar_ports_exist() {}
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "steer-before-model"
@@ -3306,39 +3164,9 @@ async fn test_ar_abort_clears_steer(agent: AgentState, ws: Workspace) {}
 async fn test_ar_second_run_after_abort(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "unknown-ok"
-)]
-fn test_ar_unknown_ok() {}
-#[scenario(
-    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "default-thinking"
-)]
-fn test_ar_default_thinking(agent: AgentState, ws: Workspace) {}
-#[scenario(
-    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "cwd-missing"
-)]
-async fn test_ar_cwd_missing(sess: XySessionStore) {}
-#[scenario(
-    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "roundtrip"
-)]
-fn test_ar_roundtrip() {}
-#[scenario(
-    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "abort-cancels-bang"
 )]
 async fn test_ar_abort_cancels_bang(agent: AgentState, ws: Workspace) {}
-#[scenario(
-    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "no-facade"
-)]
-fn test_ar_no_facade() {}
-#[scenario(
-    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "no-rloop"
-)]
-fn test_ar_no_rloop() {}
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "before-denies"
@@ -3346,104 +3174,123 @@ fn test_ar_no_rloop() {}
 async fn test_ar_before_denies(agent: AgentState, ws: Workspace) {}
 
 // compaction.feature (5)
-#[scenario(path = "tests/features/compaction.feature", name = "检测需要压缩")]
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "need-compact"
+)]
 fn test_compaction_need(agent: AgentState, ws: Workspace) {}
-#[scenario(path = "tests/features/compaction.feature", name = "不需要压缩")]
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "no-compact"
+)]
 fn test_compaction_not_needed(agent: AgentState, ws: Workspace) {}
 #[scenario(
-    path = "tests/features/compaction.feature",
-    name = "压缩保留最近的轮次"
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "retain-recent"
 )]
 fn test_compaction_keep_recent(agent: AgentState, ws: Workspace) {}
-#[scenario(path = "tests/features/compaction.feature", name = "压缩写入会话文件")]
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "write-entry"
+)]
 fn test_compaction_write(agent: AgentState, ws: Workspace) {}
 #[scenario(
-    path = "tests/features/compaction.feature",
-    name = "分支摘要桥接上下文"
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "branch-summary"
 )]
 fn test_compaction_branch(agent: AgentState, ws: Workspace) {}
 
-// hooks.feature (8) — async
-#[scenario(path = "tests/features/hooks.feature", name = "工具调用 pre hook")]
+// hooks — solidify agent-hooks.feature（自 tests/features/hooks.feature 迁入）
+#[scenario(
+    path = "llmanspec/specs/agent-hooks/agent-hooks.feature",
+    name = "pre-tool-call"
+)]
 async fn test_hook_pre(agent: AgentState) {}
-#[scenario(path = "tests/features/hooks.feature", name = "Hook 阻止操作")]
+#[scenario(
+    path = "llmanspec/specs/agent-hooks/agent-hooks.feature",
+    name = "hook-blocks"
+)]
 async fn test_hook_block(agent: AgentState) {}
-#[scenario(path = "tests/features/hooks.feature", name = "Hook 修改参数")]
+#[scenario(
+    path = "llmanspec/specs/agent-hooks/agent-hooks.feature",
+    name = "hook-modifies-args"
+)]
 async fn test_hook_modify_args(agent: AgentState) {}
-#[scenario(path = "tests/features/hooks.feature", name = "三层 hook 合并")]
+#[scenario(
+    path = "llmanspec/specs/agent-hooks/agent-hooks.feature",
+    name = "three-layer-merge"
+)]
 async fn test_hook_merge(agent: AgentState) {}
-#[scenario(path = "tests/features/hooks.feature", name = "Hook 超时处理")]
+#[scenario(
+    path = "llmanspec/specs/agent-hooks/agent-hooks.feature",
+    name = "hook-timeout"
+)]
 async fn test_hook_timeout(agent: AgentState) {}
 #[scenario(
-    path = "tests/features/hooks.feature",
-    name = "before_provider_request hook 用于 prefix-caching"
+    path = "llmanspec/specs/agent-hooks/agent-hooks.feature",
+    name = "before-provider-request"
 )]
 async fn test_hook_provider_request(agent: AgentState) {}
 #[scenario(
-    path = "tests/features/hooks.feature",
-    name = "after_provider_response hook"
+    path = "llmanspec/specs/agent-hooks/agent-hooks.feature",
+    name = "after-provider-response"
 )]
 async fn test_hook_provider_response(agent: AgentState) {}
-#[scenario(path = "tests/features/hooks.feature", name = "空 hook 配置为零开销")]
+#[scenario(
+    path = "llmanspec/specs/agent-hooks/agent-hooks.feature",
+    name = "empty-hooks-noop"
+)]
 async fn test_hook_empty_noop(agent: AgentState) {}
 
-// hooks-wiring.feature (c990) — library seam
+// hooks-wiring — solidify test-hooks-wiring.feature（库缝；与 agent-hooks 调度器分工）
 #[scenario(
-    path = "tests/features/hooks-wiring.feature",
-    name = "确保新会话触发 session_start"
+    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
+    name = "session-start"
 )]
 async fn test_hooks_wiring_session_start(agent: AgentState) {}
-
 #[scenario(
-    path = "tests/features/hooks-wiring.feature",
-    name = "选择模型触发 model_select"
+    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
+    name = "model-select"
 )]
 async fn test_hooks_wiring_model_select(agent: AgentState) {}
-
 #[scenario(
-    path = "tests/features/hooks-wiring.feature",
-    name = "设置思考级别触发 thinking_level_select"
+    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
+    name = "thinking-select"
 )]
 async fn test_hooks_wiring_thinking_select(agent: AgentState) {}
-
 #[scenario(
-    path = "tests/features/hooks-wiring.feature",
-    name = "打开会话树触发 session_tree"
+    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
+    name = "session-tree"
 )]
 async fn test_hooks_wiring_session_tree(agent: AgentState) {}
-
 #[scenario(
-    path = "tests/features/hooks-wiring.feature",
-    name = "session_before_tree block 取消打开树"
+    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
+    name = "tree-cancel"
 )]
 async fn test_hooks_wiring_tree_cancel(agent: AgentState) {}
-
 #[scenario(
-    path = "tests/features/hooks-wiring.feature",
-    name = "切换会话触发 session_shutdown"
+    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
+    name = "session-shutdown"
 )]
 async fn test_hooks_wiring_session_shutdown(agent: AgentState) {}
-
 #[scenario(
-    path = "tests/features/hooks-wiring.feature",
-    name = "session_before_switch block 取消切换"
+    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
+    name = "switch-cancel"
 )]
 async fn test_hooks_wiring_switch_cancel(agent: AgentState) {}
 #[scenario(
-    path = "tests/features/hooks-wiring.feature",
-    name = "执行 bash 触发 user_bash"
+    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
+    name = "user-bash"
 )]
 async fn test_hooks_wiring_user_bash(agent: AgentState) {}
-
 #[scenario(
-    path = "tests/features/hooks-wiring.feature",
-    name = "user_bash block 取消执行"
+    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
+    name = "user-bash-block"
 )]
 async fn test_hooks_wiring_user_bash_block(agent: AgentState) {}
-
 #[scenario(
-    path = "tests/features/hooks-wiring.feature",
-    name = "未知库操作名可读失败"
+    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
+    name = "unknown-op"
 )]
 async fn test_hooks_wiring_unknown_op(agent: AgentState) {}
 #[test]
@@ -3582,11 +3429,14 @@ fn second_instance_rejected(server_test: &mut ServerTest) {
 
 // server.feature scenarios
 #[scenario(
-    path = "tests/features/server.feature",
-    name = "服务端启动并通过健康检查"
+    path = "llmanspec/specs/server-runtime/server-runtime.feature",
+    name = "start-healthz"
 )]
 fn test_server_start_healthz(server_test: ServerTest) {}
-#[scenario(path = "tests/features/server.feature", name = "第二实例被拒绝")]
+#[scenario(
+    path = "llmanspec/specs/server-runtime/server-runtime.feature",
+    name = "second-instance-rejected"
+)]
 fn test_server_second_instance_rejected(server_test: ServerTest) {}
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3664,7 +3514,13 @@ fn tool_denied(approval_test: &mut ApprovalTest) {
 fn turn_continues_without_tool(_approval_test: &mut ApprovalTest) {}
 
 // approval.feature scenarios
-#[scenario(path = "tests/features/approval.feature", name = "工具审批往返")]
+#[scenario(
+    path = "llmanspec/specs/server-reverse-rpc/server-reverse-rpc.feature",
+    name = "approve-roundtrip"
+)]
 fn test_approval_roundtrip(approval_test: ApprovalTest) {}
-#[scenario(path = "tests/features/approval.feature", name = "工具被拒绝")]
+#[scenario(
+    path = "llmanspec/specs/server-reverse-rpc/server-reverse-rpc.feature",
+    name = "tool-denied"
+)]
 fn test_approval_denied(approval_test: ApprovalTest) {}

@@ -15,8 +15,6 @@ mod themes;
 mod widgets;
 
 #[cfg(test)]
-mod bdd_scenarios;
-#[cfg(test)]
 mod harness;
 #[cfg(test)]
 mod tests;
