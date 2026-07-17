@@ -2,7 +2,7 @@
 
 > **只写高维产品/业务思考与流程图。**
 > 具体类型、API、文件路径、crate 选型 → `llmanspec/changes/*/design.md` 与代码。
-> 规范边界：根 / `src` `AGENTS.md`。
+> 规范边界：根 / `src` `AGENTS.md`；**docs 闭环**（roadmaps 落地后迁入本目录）：[`docs/AGENTS.md`](../AGENTS.md)。
 
 一个不熟悉代码的人应能从本目录回答：开箱有什么、后置什么、多 client 怎么共享体验、插话 / 事件 / 信任 / MCP 的产品规则是什么。
 
@@ -35,3 +35,5 @@
 | [扩展能力-MCP.md](./扩展能力-MCP.md) | 写：配置启用、zero-cost、重载。不写：MCP SDK / 传输细节。 |
 
 实现与变更：`llmanspec/`（主线与产品 TUI 多波已归档；下一波对齐缺口见 active purpose-drafts `c1080`–`c1160`）。
+
+分道后的方向板（非今日 MUST）：[`docs/roadmaps/`](../roadmaps/README.md)。
