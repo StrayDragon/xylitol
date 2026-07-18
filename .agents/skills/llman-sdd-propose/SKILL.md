@@ -2,7 +2,7 @@
 name: "llman-sdd-propose"
 description: "创建 llman SDD 变更提案，一次性生成 proposal + delta specs + tasks 等规划工件。用于正式定义变更——尤其是涉及 MUST/SHALL 行为合约的变更。"
 metadata:
-  version: "0.0.63"
+  version: "0.0.64"
 ---
 
 # LLMAN SDD 提案（Propose）
@@ -83,7 +83,14 @@ flowchart LR
 
 ### 4b) BDD-on 模式——仅当 `config.yaml` 含 `bdd:` 段时（Git-native）
 - 在**非默认 Git feature 分支**上工作（禁止在 main/master 上 propose/实现 BDD-on 变更）。
-- **Partitioned SSOT**：编辑 live `spec.toon`（约束）与 `*.feature`（可执行 GWT + `@req`）；禁止同一 scenario id 双写。
+- **Partitioned SSOT**：编辑 live `spec.toon`（约束）与 `*.feature`（可执行 GWT + `@req`）；禁止同一 scenario id 双写。双写形状对照：
+
+  | 场景类型 | `spec.toon` `scenarios[]` | `*.feature` |
+  |---|---|---|
+  | 可执行场景（有 `@req` / 走 harness） | **MUST NOT** 出现（requirements 放 toon，例子放 .feature） | **唯一**存放可执行 GWT 的地方 |
+  | 不可执行场景（纯文档） | `feature: false` + GWT 可填 | n/a（不要放） |
+
+  要点：Partitioned SSOT 下 toon 里 **不要** 写 `feature: true` 的行；requirement 语句放 toon，可执行例子放 `.feature` 并用 `@req:<req_id>` 挂回。
 - Change 壳：`llman sdd change new <change-id>` → 充实 proposal/tasks → `llman sdd change attach <change-id>`。
 - **不要**跑 solidify / 写 `change delta` / 新建 feature_delta；若仓库里已有活跃 `*.feature.delta.toon`，先迁移再继续。
 - **BDD-off**（无 `bdd:`）：用 `change delta …`；不要求 feature 分支 / attach / checkpoint。
