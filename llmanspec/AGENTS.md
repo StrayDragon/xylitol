@@ -42,10 +42,10 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 - spec 的 `purpose` / requirement `title`+`statement` / scenario `given`/`when`/`then` **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。
 - Gherkin `.feature`：BDD-on（Partitioned SSOT）下 `spec.toon` = 约束/不可执行场景；live `llmanspec/specs/<capability>/*.feature` = 可执行 GWT（`@req:`）。在非默认 feature 分支直接编辑二者 → `llman sdd change attach` / `checkpoint` → docs-only `change archive` → Git merge。**禁止** `solidify`、`change delta`、新建 `*.feature.delta.toon`。场景标题 MUST 用英文 `scenario.id`；可保留 rich Gherkin（Background / docstring / 并且）。与 `tests/features/` 手写链路可并存。
 
-## BDD-on 操作闸（临时硬约束 — 字段经验）
+## BDD-on 操作闸（字段经验；上游正在收口）
 
-以下来自 c1250 归档周转；待上游 llman skill/CLI 吸收后可删薄。跨仓改进稿：
-`../llman/docs/release/partitioned-ssot/AGENT_FRICTION_PROMPT.md`。
+Partitioned 双写与 checkpoint 时序已部分吸收进 llman **0.0.64**（`improve-partitioned-ssot-agent-friction`）。
+本段只保留 xylitol 仍要遵守的硬约束；CLI 缺口见 `../llman` change **`fix-sdd-bdd-on-change-stage`**。
 
 ### Partitioned 双写（MUST）
 
@@ -61,16 +61,22 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ```text
 commit（live specs + 代码）
-→ llman sdd change checkpoint <id>   # 会改 proposal.md frontmatter
+→ llman sdd change checkpoint <id> [--no-interactive]   # 会改 proposal.md frontmatter
 → commit checkpoint 元数据
 → llman sdd change archive <id>      # 要求干净树；仅搬 change 文档
 → commit archive rename
 ```
 
 - `checkpoint` **之后**工作区会脏（`checkpointed` / `checkpoint_sha`）；**不要**立刻 archive。
+- `checkpoint --no-interactive`：0.0.64+ **接受并忽略**（与 archive/freeze 旗标矩阵对齐）。
 - 结构门禁先跑：`llman sdd validate <cap|change> --strict --no-check`（快）；再跑带 BDD 的全量 validate / checkpoint。
-- `change checkpoint` 当前**不接受** `--no-interactive`；不要照搬其它子命令的该 flag。
 - 全量 `validate --specs` 若只见 `N passed, 1 failed`：用 `--no-check` 或按 capability 校验定位；dual-write 看 `package-*/dual-write` 类 ERROR。
+
+### stage=draft 噪音（直至 `fix-sdd-bdd-on-change-stage` 落地）
+
+`llman sdd show` / completeness 的 `determine_stage` 仍按 **BDD-off** 要求 `changes/<id>/specs/`。
+Git-native BDD-on **禁止** change delta，故即使 `proposal+design+tasks` 且已 `attach`、live specs 已改，仍常报 `stage=draft` / `readyToImplement=false` / `next: add specs/`。
+**这不是实现未完成**：apply/verify 以 tasks + live specs + 测试为准；勿被该 INFO 拦住。上游修完后删本小节。
 
 ### depends_on
 
