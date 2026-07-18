@@ -15,10 +15,20 @@ use crate::domain::model::XyModelConfig;
 pub enum XyChunk {
     TextDelta(String),
     ThinkingDelta(String),
-    FunctionCall {
+    ToolCallStart {
+        id: String,
+        name: String,
+    },
+    ToolCallDelta {
+        id: String,
+        name: String,
+        args_delta: String,
+        args: Value,
+    },
+    ToolCallEnd {
+        id: String,
         name: String,
         args: Value,
-        id: String,
     },
     Done {
         finish_reason: XyStopReason,
@@ -342,18 +352,18 @@ mod tests {
     }
 
     #[test]
-    fn xy_chunk_function_call() {
-        let chunk = XyChunk::FunctionCall {
+    fn xy_chunk_tool_call_end() {
+        let chunk = XyChunk::ToolCallEnd {
             name: "read_file".into(),
             args: serde_json::json!({}),
             id: "call-1".into(),
         };
         match chunk {
-            XyChunk::FunctionCall { name, id, .. } => {
+            XyChunk::ToolCallEnd { name, id, .. } => {
                 assert_eq!(name, "read_file");
                 assert_eq!(id, "call-1");
             }
-            _ => panic!("expected FunctionCall"),
+            _ => panic!("expected ToolCallEnd"),
         }
     }
 

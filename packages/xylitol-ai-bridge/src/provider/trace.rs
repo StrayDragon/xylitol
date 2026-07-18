@@ -69,7 +69,9 @@ impl ProviderRequestTrace {
         let (variant, text) = match chunk {
             AiBridgeChunk::TextDelta(t) => ("TextDelta", t.as_str()),
             AiBridgeChunk::ThinkingDelta(t) => ("ThinkingDelta", t.as_str()),
-            AiBridgeChunk::FunctionCall { name, .. } => ("FunctionCall", name.as_str()),
+            AiBridgeChunk::ToolCallStart { name, .. } => ("ToolCallStart", name.as_str()),
+            AiBridgeChunk::ToolCallDelta { name, .. } => ("ToolCallDelta", name.as_str()),
+            AiBridgeChunk::ToolCallEnd { name, .. } => ("ToolCallEnd", name.as_str()),
             AiBridgeChunk::Done { .. } => ("Done", ""),
         };
         let (text, truncated) = truncate_text(text);

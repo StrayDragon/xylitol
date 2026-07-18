@@ -106,7 +106,9 @@ pub(super) async fn generate_complete(
             XyChunk::TextDelta(delta) => text.push_str(&delta),
             XyChunk::ThinkingDelta(_) => {}
             XyChunk::Done { .. } => break,
-            XyChunk::FunctionCall { .. } => {}
+            XyChunk::ToolCallStart { .. }
+            | XyChunk::ToolCallDelta { .. }
+            | XyChunk::ToolCallEnd { .. } => {}
         }
     }
 
