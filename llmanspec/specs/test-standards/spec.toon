@@ -6,5 +6,5 @@ requirements[4]{req_id,title,statement}:
   ts01,"BDD-vs-Unit 测试分界",项目 MUST 维护 documented 边界：BDD 场景覆盖端到端编排（agent loop、tool execution、session lifecycle、CLI dispatch）；单元测试覆盖纯算法、数据结构契约、组件内部状态机与错误类型行为。测试 MUST NOT 在两层间重复覆盖。
   ts02,核心数据类型测试覆盖,"domain/（error、message、model、types）与 runtime_protocol/（model、tool、session、event、sandbox、bash、secret、resource、trust、export）中所有类型 MUST 有 #[cfg(test)] 模块验证：（1）serialization round-trip，（2）Display/From 转换，（3）constructor invariants。"
   ts03,纯逻辑组件测试覆盖,"以下 agent/ 模块 MUST 有 #[cfg(test)] 验证纯逻辑行为：queue.rs（MessageQueue 全部操作）、retry.rs（状态转换）、commands.rs（slash 解析）、templates.rs（prompt template 展开）、config_value.rs（resolution）。"
-  ts04,Session 子组件测试覆盖,"c230 提取的以下 agent/ 子组件 MUST 有 #[cfg(test)]：model_manager.rs（cycle/select/thinking）、tool_manager.rs（register/filter）、skill_manager.rs（activation/XML 展开）。"
+  ts04,Session 子组件测试覆盖,"以下 agent/ 子组件 MUST 有 #[cfg(test)]：model_manager.rs（cycle/select/thinking）、tool_manager.rs（register/filter）、skill_manager.rs（activation/XML 展开）。"
 scenarios[0]:

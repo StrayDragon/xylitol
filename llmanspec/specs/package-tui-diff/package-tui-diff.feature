@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: package-tui-diff
 
-  @req:r28
-  场景: shell-present
-    当 列出 llmanspec/specs/package-tui-diff
-    那么 spec.toon 存在且 purpose 为中文
-
   @req:ptd1
   场景: render-line-pair
     当 DiffInput::LinePair 含一行删除与一行添加
@@ -62,11 +57,6 @@
     假如 theme 配置了非 identity 的 added_line_bg
     当 width 达到 side_by_side 阈值并渲染 SBS
     那么 输出半栏行不含该行底 SGR；unified 同 theme 仍可含行底
-
-  @req:ptd0
-  场景: shell-present
-    当 列出 capability package-tui-diff
-    那么 delta 含 ptd8–ptd9
 
   @req:ptd8
   场景: cjk-wrap

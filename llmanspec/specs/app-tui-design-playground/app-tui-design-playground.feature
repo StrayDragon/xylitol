@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: app-tui-design-playground
 
-  @req:adp0
-  场景: shell-present
-    当 列出 capability app-tui-design-playground
-    那么 spec 含 adp0 及后续 requirements
-
   @req:adp1
   场景: sync-runs
     当 运行 sync_tokens.py

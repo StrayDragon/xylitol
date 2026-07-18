@@ -137,8 +137,8 @@
   @req:r76
   场景: command-persists
     假如 项目 CWD 中有活动会话
-    当 用户运行 trust 命令
-    那么 infra/trust/ store 记录决策且后续解析返回持久化值
+    当 用户经产品命令面运行信任命令
+    那么 经应用缝持久化到 trust store，后续解析返回持久化值，且本会话不自动重载项目资源
 
   @req:s15
   场景: advisory-not-security

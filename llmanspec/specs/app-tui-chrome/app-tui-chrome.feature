@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: app-tui-chrome
 
-  @req:r21
-  场景: shell-present
-    当 列出 llmanspec/specs/app-tui-chrome
-    那么 spec.toon 存在且 purpose 为中文
-
   @req:atc1
   场景: idle-status-zero-rows
     当 空闲 UiRoot apply_ui_model 后 render

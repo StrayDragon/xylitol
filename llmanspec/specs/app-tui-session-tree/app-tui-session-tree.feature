@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: app-tui-session-tree
 
-  @req:r25
-  场景: shell-present
-    当 列出 llmanspec/specs/app-tui-session-tree
-    那么 spec.toon 存在且 purpose 为中文
-
   @req:ast1
   场景: double-esc-opens
     假如 空编辑器

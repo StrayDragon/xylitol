@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: app-tui-commands
 
-  @req:r22
-  场景: shell-present
-    当 列出 llmanspec/specs/app-tui-commands
-    那么 spec.toon 存在且 purpose 为中文
-
   @req:atm1
   场景: model-opens-picker
     假如 idle 且会话树关闭

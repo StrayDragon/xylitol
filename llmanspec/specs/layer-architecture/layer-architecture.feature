@@ -88,7 +88,7 @@
 
   @req:la15
   场景: composition-reused
-    当 CLI、RPC、Server 均需 Agent
+    当 CLI、Server、TUI 均需 Agent
     那么 三者均调用 app::core::composition::build_agent 而非重复接线
 
   @req:la16
@@ -108,6 +108,11 @@
     假如 定位事件类型与端口
     当 检查 src
     那么 XyEvent 在 domain 且 XyEventSink 在 runtime_protocol
+
+  @req:la18
+  场景: closed-set
+    当 审查 XyEvent 变体与 provider 适配器
+    那么 无厂商专名变体；流增量经 XyChunk 进入循环后再发标准 XyEvent
 
   @req:la19
   场景: seams-under-core
@@ -130,6 +135,11 @@
     当 按嵌入文档装配 agent
     那么 调用点不出现 crate::infra:: 或 agent::session:: 路径（测试双除外）
 
+  @req:la-embed1
+  场景: embed-surface
+    当 审查 lib 公开 API
+    那么 存在嵌入入口且文档列出稳定符号；Driver/bootstrap 可被 crate 外路径引用
+
   @req:la-server-driver
   场景: shared-seam
     当 对比 print 与 server 装配
@@ -139,6 +149,11 @@
   场景: composition-owns
     当 审查 McpSession::reload 签名
     那么 参数为缝类型；infra 转换仅在 composition/infra 内
+
+  @req:la-mcp-seam
+  场景: no-infra-path
+    当 审查 xylitol::embed 与 BootstrappedRuntime
+    那么 公开字段/方法签名不出现 infra::mcp::McpServerConfig
 
   @req:la-dispatch-consume
   场景: server-wires
@@ -155,4 +170,38 @@
   场景: domain-no-sdk
     假如 src/domain 与 src/agent
     当 rg async_openai 或 anthropic SDK
+    那么 零匹配
+
+  @req:ar01
+  场景: pi-refs-cleared
+    假如 src/ 文件含 'Aligns with pi' 注释
+    当 运行 rg 'Aligns with pi' src/
+    那么 零匹配
+
+  @req:ar02
+  场景: aggregate-decomposed
+    假如 Agent 已增至 25 字段，混合 export bash permission stats trust
+    当 审查聚合边界
+    那么 这些关注点位于命名协作者对象，Agent 聚合保持内聚而非无界增长
+
+  @req:ar06
+  场景: curated-export
+    假如 准备精选 pub use
+    当 审查 lib.rs 导出列表
+    那么 仅端口与 XyEvent/XyChunk 等契约类型带 Xy；Driver 与 AgentMessage 可不带
+
+  @req:ar07
+  场景: no-duplicate-usage
+    假如 代码库搜索 token-usage 类型
+    当 rg "struct (Usage|XyUsage)"
+    那么 恰好剩一个 canonical XyUsage
+
+  @req:ar09
+  场景: pub-use-exists
+    当 检查 src/lib.rs
+    那么 存在精选 pub use 且文档标明稳定契约
+
+  @req:r12
+  场景: no-domain-jsonschema
+    当 rg JsonSchema 于 src/domain
     那么 零匹配

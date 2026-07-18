@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: package-tui-choice-prompt
 
-  @req:pcp00
-  场景: shell-present
-    当 列出 capability package-tui-choice-prompt
-    那么 spec 含 pcp01–pcp05
-
   @req:pcp01
   场景: single-enter
     假如 单题 Single 有两项

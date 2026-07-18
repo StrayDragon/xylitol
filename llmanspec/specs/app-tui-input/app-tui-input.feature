@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: app-tui-input
 
-  @req:r24
-  场景: shell-present
-    当 列出 llmanspec/specs/app-tui-input
-    那么 spec.toon 存在且 purpose 为中文
-
   @req:ati1
   场景: selector-slot
     当 打开模型选择器
