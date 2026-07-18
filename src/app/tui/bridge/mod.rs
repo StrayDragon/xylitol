@@ -11,7 +11,7 @@ pub(crate) mod session_tree;
 pub(crate) use model::trailing_aborted_note;
 pub use model::{BashBlockStatus, QueueBadge, UiEntry, UiModel, UiPhase};
 pub use preview::extract_display_diff;
-pub(crate) use preview::extract_full_output_notice;
+pub(crate) use preview::{extract_full_output_notice, extract_truncated_tool_display};
 pub(crate) use preview::{
     extract_result_path, extract_tool_path, human_tool_args_preview,
     human_tool_args_preview_with_path, preview_is_downgrade, preview_lacks_real_path,
