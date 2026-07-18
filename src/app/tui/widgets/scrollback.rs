@@ -592,6 +592,12 @@ mod tests {
             plain.contains("line-17"),
             "write viewport must show stream end; got {plain:?}"
         );
+        let body_at = plain.find("line-17").expect("line-17 present");
+        let hint_at = plain.find("earlier lines").expect("earlier hint present");
+        assert!(
+            hint_at > body_at,
+            "earlier hint must be block footer after body; got {plain:?}"
+        );
     }
 
     #[test]
