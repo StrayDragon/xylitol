@@ -34,6 +34,7 @@ flowchart LR
 - **禁止猜测**：需求不明确、specs 与实现矛盾时，先 STOP 并报告，不要自行假定行为。
 - **不保留旧兼容层**：若 change 要求改行为，直接全量升级到新写法，除非 tasks/proposal 明确写了要兼容。
 - **不要问「要不要继续」**：除非遇到无法自动解决的 blocker，否则一路执行到闭环结束。
+- **BDD-on 收尾**：实现自测通过后优先 `llman sdd change finalize <id>`（工作区可脏）→ 一次 `git commit`；勿默认再拆 checkpoint/archive 三连 commit。
 
 ## 步骤
 
@@ -56,8 +57,8 @@ flowchart LR
   ```bash
   llman sdd show <id> --json --type change
   ```
-  - `draft`：变更尚未准备好实现 → STOP，提示先用 `llman-sdd-propose` 完善到至少 `spec` 阶段。
-  - `specified` / `designed` / `full`：通过，继续。
+  - `draft`：变更尚未准备好实现 → STOP，提示先用 `llman-sdd-propose` 完善到至少 `spec` 阶段。 BDD-on 下，若已有 proposal+design+tasks 仍是 `draft`，说明变更**未 attach** —— 在非默认 feature 分支上运行 `llman sdd change attach <id>`（不要新增 `changes/<id>/specs/`，BDD-on specs 位于分支）。attach 后 stage 即为 `full`。
+  - `specified` / `designed` / `full`：通过，继续。 BDD-on 下 `full` 由 attach + 完整工件推断；`changes/<id>/specs/` 预期为**不存在**，请勿视为缺失。
 - 使用 `llman sdd context --task "<proposal 中的目标>" --paths "<specs 中的 scope>"` 获取相关 specs。
   - 若 context 不可用，运行 `llman sdd index rebuild` 后重试。
 
