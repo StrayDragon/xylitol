@@ -10,31 +10,31 @@ use crate::agent::tools::ToolSet;
 
 /// Options for building the system prompt.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct SystemPromptOpts {
+pub struct SystemPromptOpts {
     /// User-provided custom prompt (replaces the default).
-    pub(crate) custom_prompt: Option<String>,
+    pub custom_prompt: Option<String>,
     /// Selected tool names (for snippet/guideline inclusion).
-    pub(crate) selected_tools: Vec<String>,
+    pub selected_tools: Vec<String>,
     /// One-line tool snippets keyed by tool name.
-    pub(crate) tool_snippets: Vec<(String, String)>,
+    pub tool_snippets: Vec<(String, String)>,
     /// Additional guideline bullets.
-    pub(crate) prompt_guidelines: Vec<String>,
+    pub prompt_guidelines: Vec<String>,
     /// Text appended to the end of the prompt.
-    pub(crate) append_prompt: Option<String>,
+    pub append_prompt: Option<String>,
     /// Current working directory.
-    pub(crate) cwd: String,
+    pub cwd: String,
     /// Project-specific context files (path => content).
-    pub(crate) context_files: Vec<(String, String)>,
+    pub context_files: Vec<(String, String)>,
     /// Available skills (name + description + source info for XML rendering).
-    pub(crate) skills: Vec<crate::domain::resource_types::SkillInfo>,
+    pub skills: Vec<crate::domain::resource_types::SkillInfo>,
     /// System prompt from SYSTEM.md (will be prepended to the output).
-    pub(crate) system_prompt: Option<String>,
+    pub system_prompt: Option<String>,
     /// Append system prompt lines from APPEND_SYSTEM.md.
-    pub(crate) append_system_prompt: Vec<String>,
+    pub append_system_prompt: Vec<String>,
 }
 
 /// Build a system prompt dynamically based on options.
-pub(crate) fn build_system_prompt(opts: &SystemPromptOpts) -> String {
+pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
     let now = chrono::Utc::now();
     let date = now.format("%Y-%m-%d").to_string();
 
@@ -157,6 +157,20 @@ pub(crate) fn collect_tool_snippets(
                 let snippet = tool.prompt_snippet().unwrap_or(tool.description());
                 (name.clone(), snippet.to_string())
             })
+        })
+        .collect()
+}
+
+/// Flatten non-empty `XyTool::prompt_guidelines` for selected tools (pi Guidelines section).
+pub(crate) fn collect_tool_guidelines(tool_registry: &ToolSet, selected: &[String]) -> Vec<String> {
+    selected
+        .iter()
+        .filter_map(|name| tool_registry.get(name))
+        .flat_map(|tool| {
+            tool.prompt_guidelines()
+                .iter()
+                .map(|g| (*g).to_string())
+                .collect::<Vec<_>>()
         })
         .collect()
 }
@@ -325,5 +339,31 @@ mod tests {
         };
         let prompt = build_system_prompt(&opts);
         assert!(prompt.contains("Extra safety rules"));
+    }
+
+    #[test]
+    fn test_custom_prompt_no_silent_tools_backfill() {
+        let opts = SystemPromptOpts {
+            custom_prompt: Some("Only custom body".into()),
+            cwd: ".".into(),
+            selected_tools: vec!["read".into()],
+            tool_snippets: vec![("read".into(), "Read file".into())],
+            ..Default::default()
+        };
+        let prompt = build_system_prompt(&opts);
+        assert!(prompt.contains("Only custom body"));
+        assert!(!prompt.contains("Available tools:"));
+    }
+
+    #[test]
+    fn test_prompt_guidelines_section() {
+        let opts = SystemPromptOpts {
+            prompt_guidelines: vec!["Use read to examine files instead of cat or sed.".into()],
+            cwd: ".".into(),
+            ..Default::default()
+        };
+        let prompt = build_system_prompt(&opts);
+        assert!(prompt.contains("Guidelines:"));
+        assert!(prompt.contains("Use read to examine files instead of cat or sed."));
     }
 }

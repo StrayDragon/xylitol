@@ -3581,6 +3581,7 @@ pub struct AiBridgeBdd {
     chunks: RefCell<Vec<xylitol_ai_bridge::dto::AiBridgeChunk>>,
     parse_value: RefCell<Option<serde_json::Value>>,
     input_items: RefCell<Vec<serde_json::Value>>,
+    request_body: RefCell<Option<serde_json::Value>>,
 }
 
 impl AiBridgeBdd {
@@ -3589,6 +3590,7 @@ impl AiBridgeBdd {
             chunks: RefCell::new(Vec::new()),
             parse_value: RefCell::new(None),
             input_items: RefCell::new(Vec::new()),
+            request_body: RefCell::new(None),
         }
     }
 }
@@ -3777,6 +3779,104 @@ fn t_pab15_text_only(ai_bridge_bdd: &AiBridgeBdd) {
     assert!(!text.contains("HIDDEN_THINK"));
 }
 
+#[given("Responses 组装且 thinking_level 为 medium 且 tools 非空")]
+fn g_pab16_body(ai_bridge_bdd: &AiBridgeBdd) {
+    use xylitol_ai_bridge::dto::{AiBridgeMessage, AiBridgeToolSchema};
+    use xylitol_ai_bridge::provider::assemble_responses_body;
+    use xylitol_ai_bridge::thinking::AiBridgeGenerateOptions;
+
+    let tools = [AiBridgeToolSchema {
+        name: "bash".into(),
+        description: "run".into(),
+        parameters: serde_json::json!({"type": "object"}),
+    }];
+    let body = assemble_responses_body(
+        "m",
+        vec![AiBridgeMessage::user("hi")],
+        &tools,
+        false,
+        &AiBridgeGenerateOptions {
+            thinking_level: "medium".into(),
+            ..Default::default()
+        },
+    );
+    ai_bridge_bdd.request_body.replace(Some(body));
+}
+
+#[when("构建请求体")]
+fn w_pab16_build(ai_bridge_bdd: &AiBridgeBdd) {
+    assert!(
+        ai_bridge_bdd.request_body.borrow().is_some(),
+        "expected request body from given"
+    );
+}
+
+#[then(
+    "store 为 false 且每个 tool 的 strict 为 false 且 reasoning.summary 存在且 include 含 reasoning.encrypted_content"
+)]
+fn t_pab16_fields(ai_bridge_bdd: &AiBridgeBdd) {
+    let body = ai_bridge_bdd.request_body.borrow().clone().expect("body");
+    assert_eq!(body["store"], false);
+    let tools = body["tools"].as_array().expect("tools");
+    assert!(!tools.is_empty());
+    for t in tools {
+        assert_eq!(t["strict"], false, "tool strict: {t}");
+    }
+    assert_eq!(body["reasoning"]["summary"], "auto");
+    let include = body["include"].as_array().expect("include");
+    assert!(
+        include
+            .iter()
+            .any(|v| v.as_str() == Some("reasoning.encrypted_content")),
+        "include={include:?}"
+    );
+}
+
+#[given("Responses 流或非流输出含完整 type=reasoning 的 output item")]
+fn g_pab16_reasoning_item(ai_bridge_bdd: &AiBridgeBdd) {
+    use xylitol_ai_bridge::provider::{ResponsesStreamState, map_responses_sse_event};
+
+    let mut state = ResponsesStreamState::default();
+    let event = serde_json::json!({
+        "type": "response.output_item.done",
+        "item": {
+            "type": "reasoning",
+            "id": "rs_bdd",
+            "summary": [{"type": "summary_text", "text": "think"}],
+            "encrypted_content": "blob"
+        }
+    });
+    ai_bridge_bdd
+        .chunks
+        .replace(map_responses_sse_event(&event, &mut state));
+}
+
+#[when("映射为 AiBridgeChunk")]
+fn w_pab16_map_chunks(ai_bridge_bdd: &AiBridgeBdd) {
+    assert!(!ai_bridge_bdd.chunks.borrow().is_empty(), "expected chunks");
+}
+
+#[then(
+    "存在带 thinkingSignature 的 Thinking 终态（ThinkingEnd 或等价）且 signature 可 JSON 解析为该 reasoning item"
+)]
+fn t_pab16_signature(ai_bridge_bdd: &AiBridgeBdd) {
+    use xylitol_ai_bridge::dto::AiBridgeChunk;
+
+    let chunks = ai_bridge_bdd.chunks.borrow();
+    let end = chunks.iter().find_map(|c| match c {
+        AiBridgeChunk::ThinkingEnd {
+            thinking_signature: Some(sig),
+            ..
+        } => Some(sig.clone()),
+        _ => None,
+    });
+    let sig = end.expect("ThinkingEnd with signature");
+    let parsed: serde_json::Value = serde_json::from_str(&sig).expect("signature JSON");
+    assert_eq!(parsed["type"], "reasoning");
+    assert_eq!(parsed["id"], "rs_bdd");
+    assert_eq!(parsed["encrypted_content"], "blob");
+}
+
 #[scenario(
     path = "llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
     name = "responses-toolcall-streams-before-done"
@@ -3800,6 +3900,116 @@ fn test_pab15_system_developer(ai_bridge_bdd: AiBridgeBdd) {}
     name = "responses-thinking-not-in-output-text"
 )]
 fn test_pab15_thinking_omit(ai_bridge_bdd: AiBridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    name = "responses-body-store-strict-summary-include"
+)]
+fn test_pab16_body_fields(ai_bridge_bdd: AiBridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    name = "responses-reasoning-item-sets-thinking-signature"
+)]
+fn test_pab16_thinking_signature(ai_bridge_bdd: AiBridgeBdd) {}
+
+// ── agent-prompt pt9 (c1290) ──────────────────────────────────────
+
+pub struct PromptBdd {
+    prompt: RefCell<String>,
+}
+
+impl PromptBdd {
+    fn new() -> Self {
+        Self {
+            prompt: RefCell::new(String::new()),
+        }
+    }
+}
+
+#[fixture]
+fn prompt_bdd() -> PromptBdd {
+    PromptBdd::new()
+}
+
+#[given("工具集含 bash 且其 prompt_guidelines 非空")]
+fn g_pt9_bash_guidelines(prompt_bdd: &PromptBdd) {
+    use xylitol::agent::prompt::{SystemPromptOpts, build_system_prompt};
+    use xylitol::runtime_protocol::XyTool;
+
+    let bash = BashTool::default();
+    assert!(
+        !bash.prompt_guidelines().is_empty(),
+        "bash guidelines must be non-empty"
+    );
+    let opts = SystemPromptOpts {
+        prompt_guidelines: bash
+            .prompt_guidelines()
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect(),
+        cwd: ".".into(),
+        ..Default::default()
+    };
+    // Store guidelines for when step; also prebuild for convenience
+    prompt_bdd.prompt.replace(build_system_prompt(&opts));
+}
+
+#[when("set_tools 或等价装配后 build_system_prompt")]
+fn w_pt9_build(prompt_bdd: &PromptBdd) {
+    assert!(
+        !prompt_bdd.prompt.borrow().is_empty(),
+        "expected prompt from given"
+    );
+}
+
+#[then("输出含 Guidelines 段且含该工具 guideline 短句")]
+fn t_pt9_guidelines(prompt_bdd: &PromptBdd) {
+    let p = prompt_bdd.prompt.borrow();
+    assert!(p.contains("Guidelines:"), "{p}");
+    assert!(
+        p.contains("Prefer specialized read/edit/write tools") || p.contains("bash"),
+        "expected bash guideline in {p}"
+    );
+}
+
+#[given("custom_prompt 或 SYSTEM.md 整段替换默认正文且未附 Available tools")]
+fn g_pt9_custom(prompt_bdd: &PromptBdd) {
+    use xylitol::agent::prompt::{SystemPromptOpts, build_system_prompt};
+
+    let opts = SystemPromptOpts {
+        custom_prompt: Some("CUSTOM_ONLY_BODY".into()),
+        selected_tools: vec!["read".into()],
+        tool_snippets: vec![("read".into(), "Read file".into())],
+        cwd: ".".into(),
+        ..Default::default()
+    };
+    prompt_bdd.prompt.replace(build_system_prompt(&opts));
+}
+
+#[when("build_system_prompt")]
+fn w_pt9_build_again(prompt_bdd: &PromptBdd) {
+    assert!(!prompt_bdd.prompt.borrow().is_empty());
+}
+
+#[then("正文以该替换内容为主且 MUST NOT 偷偷回填默认 Available tools 清单")]
+fn t_pt9_no_backfill(prompt_bdd: &PromptBdd) {
+    let p = prompt_bdd.prompt.borrow();
+    assert!(p.contains("CUSTOM_ONLY_BODY"), "{p}");
+    assert!(!p.contains("Available tools:"), "{p}");
+}
+
+#[scenario(
+    path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
+    name = "collect-tool-guidelines"
+)]
+fn test_pt9_collect(prompt_bdd: PromptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
+    name = "custom-prompt-no-silent-tools-backfill"
+)]
+fn test_pt9_no_backfill(prompt_bdd: PromptBdd) {}
 
 // approval.feature scenarios
 #[scenario(

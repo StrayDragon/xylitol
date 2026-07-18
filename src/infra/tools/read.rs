@@ -171,6 +171,10 @@ impl XyTool for ReadTool {
             serde_json::to_string(&result).expect("serde_json::to_string on Value/Map never fails"),
         )])
     }
+
+    fn prompt_guidelines(&self) -> &[&str] {
+        &["Use read to examine files instead of cat or sed."]
+    }
 }
 
 fn format_size(bytes: u64) -> String {

@@ -15,6 +15,11 @@ use crate::domain::model::XyModelConfig;
 pub enum XyChunk {
     TextDelta(String),
     ThinkingDelta(String),
+    /// Reasoning finalized with optional opaque signature for Responses replay (c1290).
+    ThinkingEnd {
+        thinking: String,
+        thinking_signature: Option<String>,
+    },
     ToolCallStart {
         id: String,
         name: String,

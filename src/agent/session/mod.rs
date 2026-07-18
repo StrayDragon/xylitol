@@ -119,6 +119,7 @@ impl AgentCapabilities {
         let selected_tools: Vec<String> =
             tool_registry.iter().map(|t| t.name().to_string()).collect();
         let tool_snippets = prompt::collect_tool_snippets(&tool_registry, &selected_tools);
+        let prompt_guidelines = prompt::collect_tool_guidelines(&tool_registry, &selected_tools);
 
         let mut session = Self {
             model_manager: ModelManager::new(model_registry, model_builder),
@@ -140,6 +141,7 @@ impl AgentCapabilities {
                 append_system_prompt,
                 selected_tools,
                 tool_snippets,
+                prompt_guidelines,
                 skills: Vec::new(),
                 ..Default::default()
             },
@@ -596,6 +598,8 @@ impl AgentCapabilities {
         self.prompt_opts.selected_tools = tools.iter().map(|t| t.name().to_string()).collect();
         self.prompt_opts.tool_snippets =
             prompt::collect_tool_snippets(&tools, &self.prompt_opts.selected_tools);
+        self.prompt_opts.prompt_guidelines =
+            prompt::collect_tool_guidelines(&tools, &self.prompt_opts.selected_tools);
         self.tools = tools;
         self.rebuild_system_prompt();
     }

@@ -40,11 +40,16 @@ fn upsert_streaming_tool(
 fn partial_assistant_message(
     text: &str,
     thinking: &str,
+    thinking_signature: Option<&str>,
     tool_calls: &[(String, String, Value)],
 ) -> AgentMessage {
     let mut parts = Vec::new();
-    if !thinking.is_empty() {
-        parts.push(AgentPart::thinking(thinking.to_string()));
+    if !thinking.is_empty() || thinking_signature.is_some() {
+        parts.push(AgentPart::Thinking {
+            thinking: thinking.to_string(),
+            redacted: false,
+            thinking_signature: thinking_signature.map(str::to_string),
+        });
     }
     if !text.is_empty() {
         parts.push(AgentPart::text(text.to_string()));
@@ -623,6 +628,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                 let mut text_acc = String::new();
                 let mut thinking_acc = String::new();
+                let mut thinking_signature: Option<String> = None;
                 let mut tool_calls: Vec<(String, String, Value)> = Vec::new();
 
                 // Mid-stream abort: drop `chunk_stream` so adapter/reqwest closes
@@ -653,6 +659,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     message: Some(partial_assistant_message(
                                         &text_acc,
                                         &thinking_acc,
+                                        thinking_signature.as_deref(),
                                         &tool_calls,
                                     )),
                                 };
@@ -666,6 +673,32 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     message: Some(partial_assistant_message(
                                         &text_acc,
                                         &thinking_acc,
+                                        thinking_signature.as_deref(),
+                                        &tool_calls,
+                                    )),
+                                };
+                            }
+                            XyChunk::ThinkingEnd {
+                                thinking,
+                                thinking_signature: sig,
+                            } => {
+                                if !thinking.is_empty() {
+                                    thinking_acc = thinking;
+                                }
+                                if sig.is_some() {
+                                    thinking_signature = sig;
+                                }
+                                yield XyEvent::MessageUpdate {
+                                    text: text_acc.clone(),
+                                    thinking: if thinking_acc.is_empty() {
+                                        None
+                                    } else {
+                                        Some(thinking_acc.clone())
+                                    },
+                                    message: Some(partial_assistant_message(
+                                        &text_acc,
+                                        &thinking_acc,
+                                        thinking_signature.as_deref(),
                                         &tool_calls,
                                     )),
                                 };
@@ -687,6 +720,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     message: Some(partial_assistant_message(
                                         &text_acc,
                                         &thinking_acc,
+                                        thinking_signature.as_deref(),
                                         &tool_calls,
                                     )),
                                 };
@@ -708,6 +742,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     message: Some(partial_assistant_message(
                                         &text_acc,
                                         &thinking_acc,
+                                        thinking_signature.as_deref(),
                                         &tool_calls,
                                     )),
                                 };
@@ -725,6 +760,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     message: Some(partial_assistant_message(
                                         &text_acc,
                                         &thinking_acc,
+                                        thinking_signature.as_deref(),
                                         &tool_calls,
                                     )),
                                 };
@@ -742,6 +778,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                 let assistant_partial = if text_acc.is_empty()
                     && thinking_acc.is_empty()
+                    && thinking_signature.is_none()
                     && tool_calls.is_empty()
                 {
                     None
@@ -749,6 +786,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     Some(partial_assistant_message(
                         &text_acc,
                         &thinking_acc,
+                        thinking_signature.as_deref(),
                         &tool_calls,
                     ))
                 };
@@ -767,8 +805,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 }
 
                 let mut assistant_parts = Vec::new();
-                if !thinking_acc.is_empty() {
-                    assistant_parts.push(AgentPart::thinking(thinking_acc));
+                if !thinking_acc.is_empty() || thinking_signature.is_some() {
+                    assistant_parts.push(AgentPart::Thinking {
+                        thinking: thinking_acc,
+                        redacted: false,
+                        thinking_signature,
+                    });
                 }
                 if !text_acc.is_empty() {
                     assistant_parts.push(AgentPart::text(text_acc));
