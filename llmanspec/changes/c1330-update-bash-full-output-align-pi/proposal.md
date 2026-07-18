@@ -6,7 +6,8 @@ depends_on:
 - c1320-update-app-tui-tool-path-stream-chrome
 branch: feat/tui-dev
 base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 5c738fe6dcbaae88f37e95b165fe2cecfb2646e4
 ---
 
 # Proposal: 对齐 pi 的 bash Full output（context + TUI）
