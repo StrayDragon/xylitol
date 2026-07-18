@@ -11,7 +11,8 @@ wave: tui-stream-align
 domain: app
 branch: feat/tui-dev
 base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
-checkpointed: false
+checkpointed: true
+checkpoint_sha: a8213af7589b797c57922fecf7cca0b2fc3d6a35
 ---
 
 # c1300-update-app-tui-write-edit-process-chrome
