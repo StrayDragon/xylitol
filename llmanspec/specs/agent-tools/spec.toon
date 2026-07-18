@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-tools"
 purpose: 工具系统 — 工具定义、执行分发、bash/ls/grep/edit/write/read 内置工具与路径工具。
 valid_scope[3]: src/agent/tools/,src/infra/tools/,src/runtime_protocol/tool.rs
-requirements[37]{req_id,title,statement}:
+requirements[38]{req_id,title,statement}:
   r32,工具 trait 前缀,System MUST 将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，MUST 与 runtime_protocol 边界其余命名一致。
   r42,七种内置工具,System MUST 实现 7 个内置工具：read、bash、edit、write、grep、find、ls。
   r48,补丁应用,System MUST 使用 fudiff 模糊匹配应用 AI 生成的补丁，并以 patch crate 精确匹配作为回退。
@@ -19,7 +19,7 @@ requirements[37]{req_id,title,statement}:
   t3,edit 多段编辑,Edit 工具 MUST 接受 path 与 edits 数组（oldText、newText），对照原始内容匹配。
   t4,edit 校验,Edit 工具 MUST 拒绝重叠编辑、非唯一 oldText、空 oldText 与无变化编辑。
   t5,edit Unicode,"Edit 工具 MUST 将 CRLF 规范为 LF、剥离 UTF-8 BOM，并通过 NFKC 规范化做模糊匹配。"
-  t6,edit diff,Edit 工具 MUST 同时返回 unified patch 与带行号的展示 diff。
+  t6,edit diff,Edit 工具 MUST 产生 unified patch 与带行号的展示 diff 供 UI/审阅；发往模型的 tool result 正文 MUST NOT 嵌入完整 diff/display_diff。
   t7,grep ripgrep,Grep 工具 MUST 使用 ripgrep，支持 regex、glob、ignoreCase、literal、context、limit。
   t8,find fd,Find 工具 MUST 使用 fd，尊重 gitignore，返回 Posix 相对路径并支持 limit。
   t9,bash 中止,Bash 工具 MUST 支持 CancellationToken 杀进程树并合并流式输出。
@@ -40,4 +40,7 @@ requirements[37]{req_id,title,statement}:
   t20,移除死过滤 API,"先前的运行时过滤 API（set_allowed_tool_names、set_excluded_tool_names、list_filtered、builtins 空操作别名、AgentSession::set_active_tools）MUST 移除；ReAct 循环 MUST 直接消费最终工具集。先前循环调用 list 绕过过滤；移除过滤 API 消除此类 bypass 缺陷。"
   r36,MCP 工具经 XyTool 接入,MCP 工具 MUST 仅通过 XyTool 端口进入 agent 工具集；rmcp 具体类型 MUST NOT 泄漏到 agent/ 或 domain/。
   t21,"read-image-parts","Read 工具在路径为支持的图片文件时 MUST 经 resize/multimodal 准备产出含 AgentPart::Image（base64 data + media_type）的 tool result parts，并附简短 text note；MUST NOT 仅返回「[Image file: …]」占位字符串作为唯一结果。文本文件行为保持既有截断语义。工具端口 MUST 允许 execute 结果以 parts 形式进入 history（默认实现可将纯文本包成 Text part）。"
-scenarios[0]:
+  t22,"write-edit-llm-result-quiet","write/edit 成功时，进入会话 history 并经 project_for_llm 发往模型的 tool result 正文 MUST 为短成功句（对齐 pi）；MUST NOT 把完整 content 回灌或嵌入 unified/display_diff。失败时 MUST 保留可读错误原因。UI 仍 MUST 能取得 display_diff（或等价）以渲染编辑块。"
+scenarios[2]{req_id,id,given,when,then,feature}:
+  t22,"edit-success-short-llm",edit 成功后,project_for_llm 的 tool result 正文,为短成功句且不含 display_diff,false
+  t22,"write-success-short-llm",write 成功后,project_for_llm 的 tool result 正文,为短成功句且不含文件正文,false
