@@ -3580,6 +3580,7 @@ fn turn_continues_without_tool(_approval_test: &mut ApprovalTest) {}
 pub struct AiBridgeBdd {
     chunks: RefCell<Vec<xylitol_ai_bridge::dto::AiBridgeChunk>>,
     parse_value: RefCell<Option<serde_json::Value>>,
+    input_items: RefCell<Vec<serde_json::Value>>,
 }
 
 impl AiBridgeBdd {
@@ -3587,6 +3588,7 @@ impl AiBridgeBdd {
         Self {
             chunks: RefCell::new(Vec::new()),
             parse_value: RefCell::new(None),
+            input_items: RefCell::new(Vec::new()),
         }
     }
 }
@@ -3696,6 +3698,85 @@ fn t_pab14_ok(ai_bridge_bdd: &AiBridgeBdd) {
     assert_eq!(v.get("command").and_then(|c| c.as_str()), Some("ls"));
 }
 
+#[given("Responses 组装且 system_prompt 非空且 thinking_level 为 medium")]
+fn g_pab15_system_developer(ai_bridge_bdd: &AiBridgeBdd) {
+    use xylitol_ai_bridge::dto::AiBridgeMessage;
+    use xylitol_ai_bridge::provider::messages_to_responses_input_with_options;
+    use xylitol_ai_bridge::thinking::AiBridgeGenerateOptions;
+
+    let opts = AiBridgeGenerateOptions {
+        thinking_level: "medium".into(),
+        system_prompt: Some("SYS_PROMPT_BDD".into()),
+        ..Default::default()
+    };
+    let items = messages_to_responses_input_with_options(&[AiBridgeMessage::user("hi")], &opts);
+    ai_bridge_bdd.input_items.replace(items);
+}
+
+#[when("转换为 input items")]
+fn w_pab15_already_converted(ai_bridge_bdd: &AiBridgeBdd) {
+    assert!(
+        !ai_bridge_bdd.input_items.borrow().is_empty(),
+        "expected input items from given"
+    );
+}
+
+#[then("首项 role 为 developer 且 content 为 system_prompt")]
+fn t_pab15_developer(ai_bridge_bdd: &AiBridgeBdd) {
+    let items = ai_bridge_bdd.input_items.borrow();
+    assert_eq!(items[0]["role"], "developer");
+    assert_eq!(items[0]["content"], "SYS_PROMPT_BDD");
+}
+
+#[given("assistant 含 Thinking 无 signature 与 Text")]
+fn g_pab15_thinking_text(ai_bridge_bdd: &AiBridgeBdd) {
+    use xylitol_ai_bridge::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason};
+    use xylitol_ai_bridge::provider::messages_to_responses_input;
+
+    let msgs = vec![AiBridgeMessage::AssistantMessage {
+        content: vec![
+            AiBridgePart::Thinking {
+                thinking: "HIDDEN_THINK".into(),
+                redacted: false,
+                thinking_signature: None,
+            },
+            AiBridgePart::text("ONLY_TEXT"),
+        ],
+        stop_reason: Some(AiBridgeStopReason::Stop),
+        usage: None,
+        api: String::new(),
+        provider: String::new(),
+        model: String::new(),
+        response_id: None,
+        error_message: None,
+        timestamp: 0,
+        diagnostics: Vec::new(),
+    }];
+    ai_bridge_bdd
+        .input_items
+        .replace(messages_to_responses_input(&msgs));
+}
+
+#[when("转换为 Responses input")]
+fn w_pab15_converted_again(ai_bridge_bdd: &AiBridgeBdd) {
+    assert!(
+        !ai_bridge_bdd.input_items.borrow().is_empty(),
+        "expected input items"
+    );
+}
+
+#[then("output_text 仅含 Text 且无 Thinking 正文")]
+fn t_pab15_text_only(ai_bridge_bdd: &AiBridgeBdd) {
+    let items = ai_bridge_bdd.input_items.borrow();
+    let assistant = items
+        .iter()
+        .find(|i| i.get("role") == Some(&serde_json::json!("assistant")))
+        .expect("assistant item");
+    let text = assistant["content"][0]["text"].as_str().unwrap();
+    assert_eq!(text, "ONLY_TEXT");
+    assert!(!text.contains("HIDDEN_THINK"));
+}
+
 #[scenario(
     path = "llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
     name = "responses-toolcall-streams-before-done"
@@ -3707,6 +3788,18 @@ fn test_pab13_responses_toolcall_stream(ai_bridge_bdd: AiBridgeBdd) {}
     name = "partial-args-object"
 )]
 fn test_pab14_partial_args(ai_bridge_bdd: AiBridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    name = "responses-system-as-developer"
+)]
+fn test_pab15_system_developer(ai_bridge_bdd: AiBridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    name = "responses-thinking-not-in-output-text"
+)]
+fn test_pab15_thinking_omit(ai_bridge_bdd: AiBridgeBdd) {}
 
 // approval.feature scenarios
 #[scenario(

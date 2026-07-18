@@ -23,7 +23,7 @@ pub use anthropic_messages::AnthropicMessagesAdapter;
 pub use openai_completions::OpenAiCompletionsAdapter;
 pub use openai_responses::{
     OpenAiResponsesAdapter, ResponsesStreamState, map_responses_sse_event,
-    messages_to_responses_input,
+    messages_to_responses_input, messages_to_responses_input_with_options,
 };
 pub use remote_count::{
     AnthropicRemoteCounter, OpenAiResponsesRemoteCounter, RemoteCounter, StubRemoteCounter,

@@ -95,7 +95,8 @@ impl AnthropicMessagesAdapter {
         stream: bool,
         options: crate::thinking::AiBridgeGenerateOptions,
     ) -> Result<AiBridgeStream, AiBridgeError> {
-        let (system_prompt, anthropic_msgs) = convert_agent_messages_for_anthropic(&messages);
+        let (extracted_system, anthropic_msgs) = convert_agent_messages_for_anthropic(&messages);
+        let system_prompt = options.system_prompt.clone().or(extracted_system);
 
         let mut body = serde_json::json!({
             "model": self.model,

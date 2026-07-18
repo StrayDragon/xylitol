@@ -303,7 +303,6 @@ impl AgentRuntime {
 
         let tools = self.inner.tools().clone();
         let max_iterations = self.inner.max_iterations();
-        let system_prompt = self.inner.system_prompt().map(|s| s.to_string());
         let hooks = self.inner.hooks().clone();
         let hook_bus = self.inner.hook_bus();
         let tool_mode = self.inner.tool_mode();
@@ -337,6 +336,7 @@ impl AgentRuntime {
                 .map(|m| m.thinking_level_map.clone())
                 .unwrap_or_default(),
             thinking_budgets: None,
+            system_prompt: self.inner.system_prompt().map(|s| s.to_string()),
         };
 
         let (queue_tx, mut queue_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -346,7 +346,6 @@ impl AgentRuntime {
             model,
             tools,
             tool_schemas,
-            system_prompt,
             max_iterations: max_iterations as usize,
             user_parts,
             cancel,
@@ -399,7 +398,6 @@ struct ReActConfig {
     model: Arc<dyn XyModel>,
     tools: ToolSet,
     tool_schemas: Vec<XyToolSchema>,
-    system_prompt: Option<String>,
     max_iterations: usize,
     user_parts: Vec<crate::domain::message::AgentPart>,
     cancel: CancellationToken,
@@ -465,7 +463,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         model,
         tools,
         tool_schemas,
-        system_prompt,
         max_iterations,
         user_parts,
         cancel,
@@ -487,13 +484,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         }
 
         let mut history: Vec<AgentMessage> = seeded_history;
-
-        // First turn only: prepend configured system prompt when store is empty.
-        if history.is_empty()
-            && let Some(ref sp) = system_prompt
-        {
-            history.push(AgentMessage::user(sp.clone()));
-        }
+        // System prompt rides on `generate_options.system_prompt` (c1270 / pi align).
+        // MUST NOT stuff it into history as a fake user turn.
 
         // Add user message (text and/or images, c1155).
         history.push(AgentMessage::user_parts(user_parts));
@@ -2246,6 +2238,108 @@ mod tests {
             "second turn must include first user prompt: {user_texts:?}"
         );
         assert!(user_texts.iter().any(|t| t == "turn two"));
+    }
+
+    #[tokio::test]
+    async fn system_prompt_via_options_not_user_history() {
+        use futures::StreamExt;
+
+        struct RecordingMockModel {
+            seen_msgs: std::sync::Arc<std::sync::Mutex<Vec<Vec<AgentMessage>>>>,
+            seen_opts:
+                std::sync::Arc<std::sync::Mutex<Vec<crate::runtime_protocol::XyGenerateOptions>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl XyModel for RecordingMockModel {
+            fn name(&self) -> &str {
+                "recording-mock"
+            }
+
+            async fn generate_stream(
+                &self,
+                messages: Vec<AgentMessage>,
+                _tools: &[crate::domain::types::XyToolSchema],
+                _stream: bool,
+                options: crate::runtime_protocol::XyGenerateOptions,
+            ) -> Result<XyStream, XyError> {
+                self.seen_msgs.lock().unwrap().push(messages);
+                self.seen_opts.lock().unwrap().push(options);
+                Ok(Box::pin(futures::stream::iter(vec![Ok(
+                    crate::domain::types::XyChunk::Done {
+                        finish_reason: crate::domain::message::XyStopReason::Stop,
+                        usage: None,
+                    },
+                )])))
+            }
+        }
+
+        let seen_msgs = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen_opts = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let reg = mock_model_registry();
+        let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+        let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
+        let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
+        let builder: ModelBuilderFn = {
+            let seen_msgs = seen_msgs.clone();
+            let seen_opts = seen_opts.clone();
+            Arc::new(move |_| {
+                Ok(Arc::new(RecordingMockModel {
+                    seen_msgs: seen_msgs.clone(),
+                    seen_opts: seen_opts.clone(),
+                }) as Arc<dyn XyModel>)
+            })
+        };
+        let mut agent = AgentRuntime::new(AgentCapabilities::new(
+            reg,
+            ToolSet::empty(),
+            store,
+            sink,
+            Some("CUSTOM_SYSTEM_MARKER".into()),
+            Vec::new(),
+            Vec::new(),
+            50,
+            0.8,
+            ".".into(),
+            None,
+            builder,
+            crate::infra::permission::allow_all_permission(),
+            None,
+            None,
+            crate::agent::session::QueueMode::default(),
+            crate::agent::session::QueueMode::default(),
+            None,
+        ));
+
+        let mut stream = agent.run("real user hello").await;
+        while stream.next().await.is_some() {}
+
+        let opts = seen_opts.lock().unwrap();
+        assert_eq!(opts.len(), 1);
+        let sp = opts[0]
+            .system_prompt
+            .as_deref()
+            .expect("system_prompt in options");
+        assert!(
+            sp.contains("CUSTOM_SYSTEM_MARKER"),
+            "options must carry system: {sp}"
+        );
+
+        let rounds = seen_msgs.lock().unwrap();
+        let first = &rounds[0];
+        assert!(!first.is_empty(), "history must include user message");
+        let first_text = match &first[0] {
+            AgentMessage::Llm(LlmMessage::UserMessage { content, .. }) => content
+                .iter()
+                .find_map(|p| match p {
+                    AgentPart::Text { text } => Some(text.as_str()),
+                    _ => None,
+                })
+                .unwrap_or(""),
+            other => panic!("first history entry must be user, got {other:?}"),
+        };
+        assert_eq!(first_text, "real user hello");
+        assert!(!first_text.contains("CUSTOM_SYSTEM_MARKER"));
     }
 
     #[tokio::test]

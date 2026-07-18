@@ -50,7 +50,12 @@ impl OpenAiResponsesAdapter {
         stream: bool,
         options: &crate::thinking::AiBridgeGenerateOptions,
     ) -> Value {
-        let input_items = convert_messages_to_input_items(&messages);
+        let mut input_items = convert_messages_to_input_items(&messages);
+        prepend_system_prompt_item(
+            &mut input_items,
+            options.system_prompt.as_deref(),
+            &options.thinking_level,
+        );
         let mut body = serde_json::json!({
             "model": self.model,
             "input": input_items,
@@ -446,6 +451,44 @@ pub fn messages_to_responses_input(messages: &[AiBridgeMessage]) -> Vec<Value> {
     convert_messages_to_input_items(messages)
 }
 
+/// Build Responses `input` with optional system/developer prepend (c1270 / pi align).
+pub fn messages_to_responses_input_with_options(
+    messages: &[AiBridgeMessage],
+    options: &crate::thinking::AiBridgeGenerateOptions,
+) -> Vec<Value> {
+    let mut items = convert_messages_to_input_items(messages);
+    prepend_system_prompt_item(
+        &mut items,
+        options.system_prompt.as_deref(),
+        &options.thinking_level,
+    );
+    items
+}
+
+/// Prepend system prompt as `developer` (thinking on) or `system` (off), matching pi.
+fn prepend_system_prompt_item(
+    items: &mut Vec<Value>,
+    system_prompt: Option<&str>,
+    thinking_level: &str,
+) {
+    let Some(sp) = system_prompt.filter(|s| !s.is_empty()) else {
+        return;
+    };
+    let role = if thinking_level != "off" {
+        "developer"
+    } else {
+        "system"
+    };
+    // pi uses bare `{role, content: string}` for system/developer; keep that shape.
+    items.insert(
+        0,
+        serde_json::json!({
+            "role": role,
+            "content": sp,
+        }),
+    );
+}
+
 /// Convert a slice of [`AiBridgeMessage`] values to OpenAI Responses `input` items.
 fn convert_messages_to_input_items(messages: &[AiBridgeMessage]) -> Vec<Value> {
     let mut items: Vec<Value> = Vec::new();
@@ -453,7 +496,7 @@ fn convert_messages_to_input_items(messages: &[AiBridgeMessage]) -> Vec<Value> {
     for msg in messages {
         match msg {
             AiBridgeMessage::UserMessage { content, .. } => {
-                let text = collect_text_parts(content);
+                let text = collect_user_text_parts(content);
                 if !text.is_empty() {
                     // Responses API requires each input item to declare its
                     // `type`; a bare {role, content} object yields
@@ -467,7 +510,19 @@ fn convert_messages_to_input_items(messages: &[AiBridgeMessage]) -> Vec<Value> {
                 }
             }
             AiBridgeMessage::AssistantMessage { content, .. } => {
-                let text = collect_text_parts(content);
+                // Replay thinking with signature as reasoning items first (pi).
+                for part in content {
+                    if let AiBridgePart::Thinking {
+                        thinking_signature: Some(sig),
+                        ..
+                    } = part
+                        && let Ok(item) = serde_json::from_str::<Value>(sig)
+                    {
+                        items.push(item);
+                    }
+                }
+
+                let text = collect_assistant_output_text(content);
                 let tool_calls: Vec<Value> = content
                     .iter()
                     .filter_map(|p| match p {
@@ -504,7 +559,7 @@ fn convert_messages_to_input_items(messages: &[AiBridgeMessage]) -> Vec<Value> {
                 content,
                 ..
             } => {
-                let text = collect_text_parts(content);
+                let text = collect_user_text_parts(content);
                 items.push(serde_json::json!({
                     "type": "function_call_output",
                     "call_id": tool_use_id,
@@ -517,10 +572,22 @@ fn convert_messages_to_input_items(messages: &[AiBridgeMessage]) -> Vec<Value> {
     items
 }
 
-fn collect_text_parts(parts: &[AiBridgePart]) -> String {
+/// User / tool-result text (Text + Thinking for tool output payloads).
+fn collect_user_text_parts(parts: &[AiBridgePart]) -> String {
     let mut buf = String::new();
     for part in parts {
         if let Some(text) = part.as_text() {
+            buf.push_str(text);
+        }
+    }
+    buf
+}
+
+/// Assistant `output_text` MUST be Text-only (c1270): never merge Thinking.
+fn collect_assistant_output_text(parts: &[AiBridgePart]) -> String {
+    let mut buf = String::new();
+    for part in parts {
+        if let AiBridgePart::Text { text } = part {
             buf.push_str(text);
         }
     }
@@ -755,8 +822,97 @@ mod tests {
             thinking_level: "high".into(),
             level_map: map,
             thinking_budgets: None,
+            system_prompt: None,
         };
         let body_map = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &mapped);
         assert_eq!(body_map["reasoning"]["effort"], "max");
+    }
+
+    #[test]
+    fn system_prompt_prepends_developer_when_thinking_on() {
+        let msgs = vec![AiBridgeMessage::user("hi")];
+        let opts = crate::thinking::AiBridgeGenerateOptions {
+            thinking_level: "medium".into(),
+            system_prompt: Some("You are xylitol".into()),
+            ..Default::default()
+        };
+        let items = messages_to_responses_input_with_options(&msgs, &opts);
+        assert_eq!(items[0]["role"], "developer");
+        assert_eq!(items[0]["content"], "You are xylitol");
+        assert_eq!(items[1]["role"], "user");
+    }
+
+    #[test]
+    fn system_prompt_prepends_system_when_thinking_off() {
+        let msgs = vec![AiBridgeMessage::user("hi")];
+        let opts = crate::thinking::AiBridgeGenerateOptions {
+            system_prompt: Some("sys".into()),
+            ..Default::default()
+        };
+        let items = messages_to_responses_input_with_options(&msgs, &opts);
+        assert_eq!(items[0]["role"], "system");
+    }
+
+    #[test]
+    fn assistant_thinking_without_signature_not_in_output_text() {
+        let msgs = vec![AiBridgeMessage::AssistantMessage {
+            content: vec![
+                AiBridgePart::Thinking {
+                    thinking: "secret chain of thought".into(),
+                    redacted: false,
+                    thinking_signature: None,
+                },
+                AiBridgePart::text("visible"),
+            ],
+            stop_reason: Some(AiBridgeStopReason::Stop),
+            usage: None,
+            api: "openai-responses".into(),
+            provider: "test".into(),
+            model: "m".into(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        }];
+        let items = convert_messages_to_input_items(&msgs);
+        let text_item = items
+            .iter()
+            .find(|i| i.get("role") == Some(&serde_json::json!("assistant")))
+            .expect("assistant message");
+        let out = text_item["content"][0]["text"].as_str().unwrap();
+        assert_eq!(out, "visible");
+        assert!(!out.contains("secret"));
+    }
+
+    #[test]
+    fn assistant_thinking_with_signature_replays_reasoning_item() {
+        let reasoning = serde_json::json!({
+            "type": "reasoning",
+            "id": "rs_1",
+            "summary": [{"type": "summary_text", "text": "plan"}]
+        });
+        let msgs = vec![AiBridgeMessage::AssistantMessage {
+            content: vec![
+                AiBridgePart::Thinking {
+                    thinking: "plan".into(),
+                    redacted: false,
+                    thinking_signature: Some(reasoning.to_string()),
+                },
+                AiBridgePart::text("ok"),
+            ],
+            stop_reason: Some(AiBridgeStopReason::Stop),
+            usage: None,
+            api: "openai-responses".into(),
+            provider: "test".into(),
+            model: "m".into(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        }];
+        let items = convert_messages_to_input_items(&msgs);
+        assert_eq!(items[0]["type"], "reasoning");
+        assert_eq!(items[0]["id"], "rs_1");
+        assert_eq!(items[1]["role"], "assistant");
     }
 }

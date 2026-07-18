@@ -321,6 +321,7 @@ mod tests {
             thinking_level: "high".into(),
             level_map: map,
             thinking_budgets: None,
+            system_prompt: None,
         };
         let _ = adapter
             .generate(vec![AiBridgeMessage::user("hi")], &[], opts)
