@@ -4,14 +4,15 @@ title: 观测：Phase A — inspect 滞后脚本 + agent 低频 span + fastrace-
 status: full
 priority: 1265
 depends_on:
-  - c1250-update-ai-bridge-assistant-stream-events
+- c1250-update-ai-bridge-assistant-stream-events
 author: agent
 track: stream-tool-ux
 wave: tui-stream-align
 domain: infra
 branch: feat/tui-dev
 base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 739398e5bd2523dd4ae3972f8ffa6696b95b4362
 ---
 
 # c1265-add-obs-fastrace-package-spans
