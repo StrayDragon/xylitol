@@ -1,31 +1,55 @@
-# Design: c1265 obs fastrace package spans
+# Design: c1265 Phase A（收窄）
 
-## Span 树（建议）
+## 价值分层
 
-```text
-provider.request                    (existing)
-  └── adapter.map_event             (per SSE → assistant event)
-react.turn
-  ├── react.stream
-  └── tool.execute { name, id }
-tui.host.event { kind }             (debug / sampled)
-  └── tui.bridge.apply
-```
+| 层 | 作用 | Phase |
+|---|---|---|
+| 已有 raw/mapped Event | t0718 滞后判定的数据面 | 已有 |
+| inspect skill 脚本 | 把 t0718 变成可复制命令 | **A** |
+| `react.stream` / `react.turn` / 可选 `tool.execute` | 跨层时间边界（低频） | **A** |
+| `adapter.map_event` / TUI / engine / live CI | 热路径或产品断言 | **B+** |
 
-关联：沿用 `request_id` / fastrace `trace_id`；TUI span 用 message/turn id 属性。
-
-## 真机剧本（opt-in）
+## Span 树（Phase A）
 
 ```text
-1. 启用 XYLITOL_PROVIDER_TRACE=1
-2. 用户：简单问候
-3. 用户：触发 ls/read 类工具
-4. 检查 provider-trace：
-   - 若存在 function_call_arguments.delta（或 Completions tool_calls）
-     → 首个对应 mapped ToolCallStart/Delta 不得晚于「整包 item.done only」模式
-   - 若仅有 TextDelta 且含伪 XML → 报告「端点未发原生 tools」，非 UI bug
+react.turn                          (optional parent)
+  └── react.stream                  (1 per provider HTTP)
+        └── provider.request        (existing; may stay Span::root —
+                                    correlate via request_id property)
+              ├── Event raw
+              └── Event mapped
+tool.execute {name,id}              (sibling / under turn; optional)
 ```
 
-## 与 inspect skill
+跨 crate 真父子若成本高：**属性关联 `request_id` 优先**，不阻塞 Phase A。
 
-更新 `xylitol-inspect-runtime-logs`：增加「按 request_id 计算 args_delta→mapped 滞后」的短 python 片段（t0718 分析方法固化）。
+## Reporter 注意
+
+`FileTraceReporter` 今日只展平 **span.events**。无 Event 的 agent span 可能不进 `provider-trace.jsonl`。
+
+选项（实现时二选一，最小改动）：
+
+1. 在 `react.stream` 起止各 `add_event`（`kind=lifecycle`）
+2. 扩展 reporter 写 span start/end 一行（schema 小增，需改 ipt1）
+
+优先 (1)，避免动 schema。
+
+## 关闸
+
+复用 bridge `provider_trace_active()`（或 agent 同原子/同一 env）：关则 `start()` 返回 None，不做序列化。
+
+## Inspect 配方（skill）
+
+输入：`~/.xylitol/logs/provider-trace.jsonl` + `request_id`。
+
+输出示例：
+
+- `t_first_args_delta`（raw `response.function_call_arguments.delta` 或 Completions 等价）
+- `t_first_mapped_tool`（mapped `ToolCallStart` / `ToolCallDelta`）
+- `lag_ms`；若无 raw tool delta 仅有伪 XML TextDelta → 报告「端点未发原生 tools」
+
+## 非目标
+
+- 每 SSE 子 span
+- TUI 采样框架（留给 Phase B）
+- BDD 可执行场景接线（feature 已有；steps 另开，不挡 Phase A 文档+单测）
