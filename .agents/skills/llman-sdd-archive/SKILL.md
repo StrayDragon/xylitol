@@ -61,8 +61,8 @@ flowchart LR
     4. llman sdd change archive <id>      # 仅移动 change 文档到 archive/
     5. git commit   # 提交 archive 改名
     ```
-  - **提交卫生（本仓 SHOULD）**：勿单独 commit 纯 draft；相关 change 可批量 archive；
-    流程 commit 仅用 `chore(sdd):`。上游若提供 `change finalize`（见 `../llman`
+  - **提交卫生（本仓 SHOULD）**：相关 change 可批量 archive；流程 commit 仅用 `chore(sdd):`。
+    Draft 提案可单独或一批提交（roadmap 意向入库）。上游若提供 `change finalize`（见 `../llman`
     `improve-bdd-on-finalize-and-commit-hygiene`），优先用它把步骤 2–5 收成「一次脏树 + 一次 commit」。
   - **BDD-off**：
     - `change archive` 按今日流程将 change 内 TOON delta 合并进主 `spec.toon`。
