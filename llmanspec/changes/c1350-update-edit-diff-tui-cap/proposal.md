@@ -6,7 +6,8 @@ depends_on:
 - c1310-update-infra-tool-result-quiet-align-pi
 branch: feat/tui-dev
 base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
-checkpointed: false
+checkpointed: true
+checkpoint_sha: c182c11d6f8a28855a0a9f5e82b7a3ae4046536b
 ---
 
 # Proposal: 大文件 edit diff 封顶（生成 + TUI）
