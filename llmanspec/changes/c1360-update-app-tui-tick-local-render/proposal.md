@@ -5,7 +5,8 @@ depends_on:
 - c1350-update-edit-diff-tui-cap
 branch: feat/tui-dev
 base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 4ef7dc0254bf733f2cbba42baf63f9dd406257a5
 ---
 
 # Proposal: Tick 局部刷新（spinner 不整树重算）
