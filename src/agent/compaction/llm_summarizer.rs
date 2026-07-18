@@ -104,7 +104,7 @@ pub(super) async fn generate_complete(
     while let Some(chunk) = stream.next().await {
         match chunk.map_err(|e| anyhow::anyhow!("summarization stream error: {e}"))? {
             XyChunk::TextDelta(delta) => text.push_str(&delta),
-            XyChunk::ThinkingDelta(_) => {}
+            XyChunk::ThinkingDelta(_) | XyChunk::ThinkingEnd { .. } => {}
             XyChunk::Done { .. } => break,
             XyChunk::ToolCallStart { .. }
             | XyChunk::ToolCallDelta { .. }

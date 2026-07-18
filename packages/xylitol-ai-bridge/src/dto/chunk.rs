@@ -18,6 +18,11 @@ use crate::error::AiBridgeError;
 pub enum AiBridgeChunk {
     TextDelta(String),
     ThinkingDelta(String),
+    /// Reasoning item finalized (pi `thinking_end`); signature is opaque JSON for replay.
+    ThinkingEnd {
+        thinking: String,
+        thinking_signature: Option<String>,
+    },
     ToolCallStart {
         id: String,
         name: String,

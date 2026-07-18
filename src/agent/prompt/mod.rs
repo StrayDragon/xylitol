@@ -10,4 +10,5 @@ pub mod templates;
 
 // Umbrella re-export: system-prompt construction is the subsystem's main entry.
 pub(crate) use skill_expand::expand_skills_in_agent_messages;
-pub(crate) use system::{SystemPromptOpts, build_system_prompt, collect_tool_snippets};
+pub use system::{SystemPromptOpts, build_system_prompt};
+pub(crate) use system::{collect_tool_guidelines, collect_tool_snippets};

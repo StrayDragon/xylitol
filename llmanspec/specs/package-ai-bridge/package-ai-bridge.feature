@@ -91,3 +91,15 @@
     假如 assistant 含 Thinking 无 signature 与 Text
     当 转换为 Responses input
     那么 output_text 仅含 Text 且无 Thinking 正文
+
+  @req:pab16
+  场景: responses-body-store-strict-summary-include
+    假如 Responses 组装且 thinking_level 为 medium 且 tools 非空
+    当 构建请求体
+    那么 store 为 false 且每个 tool 的 strict 为 false 且 reasoning.summary 存在且 include 含 reasoning.encrypted_content
+
+  @req:pab16
+  场景: responses-reasoning-item-sets-thinking-signature
+    假如 Responses 流或非流输出含完整 type=reasoning 的 output item
+    当 映射为 AiBridgeChunk
+    那么 存在带 thinkingSignature 的 Thinking 终态（ThinkingEnd 或等价）且 signature 可 JSON 解析为该 reasoning item

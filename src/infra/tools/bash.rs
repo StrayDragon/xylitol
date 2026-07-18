@@ -318,6 +318,12 @@ impl XyTool for BashTool {
         }))
         .expect("serde_json::to_string on Value/Map never fails"))
     }
+
+    fn prompt_guidelines(&self) -> &[&str] {
+        &[
+            "Prefer specialized read/edit/write tools for file operations; use bash for shell commands.",
+        ]
+    }
 }
 
 impl BashTool {

@@ -153,7 +153,7 @@ pub fn apply_thinking_openai_completions(body: &mut Value, resolved: &AiBridgeRe
     }
 }
 
-/// Inject OpenAI Responses `reasoning: { effort }`.
+/// Inject OpenAI Responses `reasoning: { effort, summary }` (summary aligns with pi default `auto`).
 pub fn apply_thinking_openai_responses(body: &mut Value, resolved: &AiBridgeResolvedThinking) {
     match resolved {
         AiBridgeResolvedThinking::Omit => {
@@ -162,7 +162,7 @@ pub fn apply_thinking_openai_responses(body: &mut Value, resolved: &AiBridgeReso
             }
         }
         AiBridgeResolvedThinking::OpenAiEffort(effort) => {
-            body["reasoning"] = json!({ "effort": effort });
+            body["reasoning"] = json!({ "effort": effort, "summary": "auto" });
         }
         AiBridgeResolvedThinking::AnthropicBudget(_) => {}
     }
@@ -272,6 +272,7 @@ mod tests {
             &AiBridgeResolvedThinking::OpenAiEffort("high".into()),
         );
         assert_eq!(body["reasoning"]["effort"], json!("high"));
+        assert_eq!(body["reasoning"]["summary"], json!("auto"));
     }
 
     #[test]
