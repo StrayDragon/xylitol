@@ -211,6 +211,38 @@ pub(crate) fn extract_edit_path(result: &str) -> Option<String> {
     extract_result_path(result)
 }
 
+/// True when header still has no real path slot (`edit ...`, bare `write`, etc.).
+pub(crate) fn preview_lacks_real_path(name: &str, preview: &str) -> bool {
+    let prefixes = match name {
+        "write" => &["write "][..],
+        "edit" => &["edit "][..],
+        "read" => &["read "][..],
+        "ls" => &["ls "][..],
+        _ => return false,
+    };
+    let Some(rest) = prefixes.iter().find_map(|p| preview.strip_prefix(p)) else {
+        return true;
+    };
+    rest.is_empty() || rest.starts_with("...")
+}
+
+/// Prefer keeping a richer streaming header over a weaker later snapshot.
+pub(crate) fn preview_is_downgrade(name: &str, old: &str, new: &str) -> bool {
+    if old.is_empty() || old == new {
+        return false;
+    }
+    if new == name || new == format!("{name} ...") {
+        return true;
+    }
+    match name {
+        "bash" | "shell" => new == name || new == "$ ...",
+        "write" | "edit" | "read" | "ls" => {
+            preview_lacks_real_path(name, new) && !preview_lacks_real_path(name, old)
+        }
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,6 +471,99 @@ mod tests {
             _ => None,
         });
         assert_eq!(preview, Some("edit /tmp/x"));
+    }
+
+    #[test]
+    fn end_preserves_bash_command_preview() {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionStart {
+                id: "b1".into(),
+                name: "bash".into(),
+                args: serde_json::json!({"command": "python3 a.py"}),
+            },
+        );
+        assert_eq!(
+            model.entries.iter().find_map(|e| match e {
+                UiEntry::Tool {
+                    id, args_preview, ..
+                } if id == "b1" => Some(args_preview.as_str()),
+                _ => None,
+            }),
+            Some("$ python3 a.py")
+        );
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionEnd {
+                id: "b1".into(),
+                name: "bash".into(),
+                result: "ok\n".into(),
+                is_error: false,
+            },
+        );
+        let after = model.entries.iter().find_map(|e| match e {
+            UiEntry::Tool {
+                id,
+                args_preview,
+                done,
+                ..
+            } if id == "b1" => Some((args_preview.as_str(), *done)),
+            _ => None,
+        });
+        assert_eq!(after, Some(("$ python3 a.py", true)));
+    }
+
+    #[test]
+    fn end_preserves_streamed_write_path() {
+        use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
+
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        let msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
+            content: vec![AgentPart::ToolCall {
+                id: "w1".into(),
+                name: "write".into(),
+                arguments: serde_json::json!({
+                    "path": "a.py",
+                    "content": "print(1)\n"
+                }),
+            }],
+            stop_reason: None,
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        });
+        apply_xy_event(
+            &mut model,
+            &XyEvent::MessageUpdate {
+                text: String::new(),
+                thinking: None,
+                message: Some(msg),
+            },
+        );
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionEnd {
+                id: "w1".into(),
+                name: "write".into(),
+                result: r#"{"path":"a.py","success":true}"#.into(),
+                is_error: false,
+            },
+        );
+        let after = model.entries.iter().find_map(|e| match e {
+            UiEntry::Tool {
+                id, args_preview, ..
+            } if id == "w1" => Some(args_preview.as_str()),
+            _ => None,
+        });
+        assert_eq!(after, Some("write a.py (1 lines)"));
     }
 
     #[test]
