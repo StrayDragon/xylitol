@@ -236,7 +236,12 @@ fn anthropic_stream(
                         if block_type == "tool_use" {
                             let id = content_block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                             let name = content_block.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                            tool_accumulators.insert(index, (id, name, String::new()));
+                            tool_accumulators.insert(index, (id.clone(), name.clone(), String::new()));
+                            let chunk = AiBridgeChunk::ToolCallStart { id, name };
+                            if let Some(t) = &trace {
+                                t.emit_mapped_chunk(&chunk);
+                            }
+                            yield chunk;
                         }
                     }
                 }
@@ -274,6 +279,16 @@ fn anthropic_stream(
                                     tool_accumulators.get_mut(&index),
                                 ) {
                                     acc.2.push_str(partial_json);
+                                    let chunk = AiBridgeChunk::ToolCallDelta {
+                                        id: acc.0.clone(),
+                                        name: acc.1.clone(),
+                                        args_delta: partial_json.to_string(),
+                                        args: crate::dto::parse_streaming_json(&acc.2),
+                                    };
+                                    if let Some(t) = &trace {
+                                        t.emit_mapped_chunk(&chunk);
+                                    }
+                                    yield chunk;
                                 }
                             }
                             _ => {}
@@ -282,6 +297,17 @@ fn anthropic_stream(
                 }
 
                 "content_block_stop" => {
+                    if let Some(index) = current_block_index
+                        && let Some((id, name, args_str)) = tool_accumulators.remove(&index)
+                    {
+                        let args: Value = serde_json::from_str(&args_str)
+                            .unwrap_or_else(|_| crate::dto::parse_streaming_json(&args_str));
+                        let chunk = AiBridgeChunk::ToolCallEnd { name, args, id };
+                        if let Some(t) = &trace {
+                            t.emit_mapped_chunk(&chunk);
+                        }
+                        yield chunk;
+                    }
                     current_block_index = None;
                 }
 
@@ -297,12 +323,13 @@ fn anthropic_stream(
                     }
 
                     if stop_reason.is_some() {
+                        // Finalize any tool blocks that missed content_block_stop.
                         let mut sorted: Vec<_> = tool_accumulators.drain().collect();
                         sorted.sort_by_key(|(idx, _)| *idx);
                         for (_, (id, name, args_str)) in sorted {
-                            let args: Value =
-                                serde_json::from_str(&args_str).unwrap_or(serde_json::json!({}));
-                            let chunk = AiBridgeChunk::FunctionCall { name, args, id };
+                            let args: Value = serde_json::from_str(&args_str)
+                                .unwrap_or_else(|_| crate::dto::parse_streaming_json(&args_str));
+                            let chunk = AiBridgeChunk::ToolCallEnd { name, args, id };
                             if let Some(t) = &trace {
                                 t.emit_mapped_chunk(&chunk);
                             }
@@ -382,7 +409,11 @@ fn parse_anthropic_response(json: &Value) -> Vec<AiBridgeChunk> {
                         .unwrap_or("")
                         .to_string();
                     let args = block.get("input").cloned().unwrap_or(serde_json::json!({}));
-                    chunks.push(AiBridgeChunk::FunctionCall { name, args, id });
+                    chunks.push(AiBridgeChunk::ToolCallStart {
+                        id: id.clone(),
+                        name: name.clone(),
+                    });
+                    chunks.push(AiBridgeChunk::ToolCallEnd { name, args, id });
                 }
                 _ => {}
             }

@@ -34,6 +34,7 @@ log = "0.4"
 tiktoken-rs = "0.6"
 tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
 dirs = "6"
+partial-json-fixer = "0.5.3"
 
 [dev-dependencies]
 wiremock = "0.6"

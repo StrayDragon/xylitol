@@ -1,13 +1,17 @@
 ---
 change_id: c1250-update-ai-bridge-assistant-stream-events
-title: "ai-bridge：助手流式内容块事件（对齐 pi AssistantMessageEvent）"
-status: purpose-draft
+title: ai-bridge：助手流式内容块事件（对齐 pi AssistantMessageEvent）
+status: full
 priority: 1250
+git_branch: feat/tui-dev
 depends_on: []
 author: agent
 track: stream-tool-ux
 wave: tui-stream-align
 domain: packages
+branch: feat/tui-dev
+base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
+checkpointed: false
 ---
 
 # c1250-update-ai-bridge-assistant-stream-events

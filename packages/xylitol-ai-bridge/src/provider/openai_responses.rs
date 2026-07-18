@@ -173,7 +173,8 @@ fn responses_sdk_stream(
 
 #[derive(Default)]
 struct ResponsesStreamState {
-    function_call_args: HashMap<String, String>,
+    /// item_id → (name, partial args json, started)
+    function_calls: HashMap<String, (String, String, bool)>,
     usage_input: u64,
     usage_output: u64,
 }
@@ -195,18 +196,61 @@ fn map_responses_sse_event(data: &Value, state: &mut ResponsesStreamState) -> Ve
             .and_then(|v| v.as_str())
             .map(|d| vec![AiBridgeChunk::TextDelta(d.to_string())])
             .unwrap_or_default(),
+        "response.output_item.added" => {
+            let Some(item) = data.get("item") else {
+                return Vec::new();
+            };
+            let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            if item_type != "function_call" {
+                return Vec::new();
+            }
+            let id = item
+                .get("id")
+                .or_else(|| item.get("call_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if id.is_empty() {
+                return Vec::new();
+            }
+            let name = item
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            state
+                .function_calls
+                .insert(id.clone(), (name.clone(), String::new(), true));
+            vec![AiBridgeChunk::ToolCallStart { id, name }]
+        }
         "response.function_call_arguments.delta" => {
-            if let (Some(item_id), Some(delta)) = (
+            let (Some(item_id), Some(delta)) = (
                 data.get("item_id").and_then(|v| v.as_str()),
                 data.get("delta").and_then(|v| v.as_str()),
-            ) {
-                state
-                    .function_call_args
-                    .entry(item_id.to_string())
-                    .or_default()
-                    .push_str(delta);
+            ) else {
+                return Vec::new();
+            };
+            let entry = state
+                .function_calls
+                .entry(item_id.to_string())
+                .or_insert_with(|| (String::new(), String::new(), false));
+            let mut out = Vec::new();
+            if !entry.2 {
+                entry.2 = true;
+                out.push(AiBridgeChunk::ToolCallStart {
+                    id: item_id.to_string(),
+                    name: entry.0.clone(),
+                });
             }
-            Vec::new()
+            entry.1.push_str(delta);
+            let args = crate::dto::parse_streaming_json(&entry.1);
+            out.push(AiBridgeChunk::ToolCallDelta {
+                id: item_id.to_string(),
+                name: entry.0.clone(),
+                args_delta: delta.to_string(),
+                args,
+            });
+            out
         }
         "response.output_item.done" => {
             let Some(item) = data.get("item") else {
@@ -222,20 +266,39 @@ fn map_responses_sse_event(data: &Value, state: &mut ResponsesStreamState) -> Ve
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let name = item
+            let name_from_item = item
                 .get("name")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let args_str = state.function_call_args.remove(&id).unwrap_or_else(|| {
+            let (name, args_str, started) = state
+                .function_calls
+                .remove(&id)
+                .unwrap_or_else(|| (name_from_item.clone(), String::new(), false));
+            let name = if name.is_empty() {
+                name_from_item
+            } else {
+                name
+            };
+            let args_str = if args_str.is_empty() {
                 item.get("arguments")
                     .and_then(|v| v.as_str())
                     .unwrap_or("{}")
                     .to_string()
-            });
-            let args: Value =
-                serde_json::from_str(&args_str).unwrap_or_else(|_| serde_json::json!({}));
-            vec![AiBridgeChunk::FunctionCall { name, args, id }]
+            } else {
+                args_str
+            };
+            let args: Value = serde_json::from_str(&args_str)
+                .unwrap_or_else(|_| crate::dto::parse_streaming_json(&args_str));
+            let mut out = Vec::new();
+            if !started {
+                out.push(AiBridgeChunk::ToolCallStart {
+                    id: id.clone(),
+                    name: name.clone(),
+                });
+            }
+            out.push(AiBridgeChunk::ToolCallEnd { id, name, args });
+            out
         }
         "response.usage" => {
             if let Some(usage) = data.get("usage") {
@@ -327,11 +390,16 @@ fn parse_responses_output(json: &Value) -> Vec<AiBridgeChunk> {
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let args = item
-                        .get("arguments")
-                        .cloned()
-                        .unwrap_or(serde_json::json!({}));
-                    chunks.push(AiBridgeChunk::FunctionCall { name, args, id });
+                    let args = match item.get("arguments") {
+                        Some(Value::String(s)) => crate::dto::parse_streaming_json(s),
+                        Some(v) => v.clone(),
+                        None => serde_json::json!({}),
+                    };
+                    chunks.push(AiBridgeChunk::ToolCallStart {
+                        id: id.clone(),
+                        name: name.clone(),
+                    });
+                    chunks.push(AiBridgeChunk::ToolCallEnd { id, name, args });
                 }
                 _ => {}
             }
@@ -605,6 +673,59 @@ mod tests {
                 assert_eq!(u.total_tokens, 8);
             }
             other => panic!("expected Done with usage, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn function_call_args_stream_before_done() {
+        // t0718-shaped: item.added → many args deltas → item.done
+        let mut state = ResponsesStreamState::default();
+        let added = serde_json::json!({
+            "type": "response.output_item.added",
+            "item": { "type": "function_call", "id": "fc_1", "name": "ls", "arguments": "" }
+        });
+        let start = map_responses_sse_event(&added, &mut state);
+        assert!(matches!(
+            &start[..],
+            [AiBridgeChunk::ToolCallStart { id, name }] if id == "fc_1" && name == "ls"
+        ));
+
+        let d1 = serde_json::json!({
+            "type": "response.function_call_arguments.delta",
+            "item_id": "fc_1",
+            "delta": "{\"path\":"
+        });
+        let mid = map_responses_sse_event(&d1, &mut state);
+        assert!(
+            matches!(&mid[..], [AiBridgeChunk::ToolCallDelta { id, args_delta, .. }] if id == "fc_1" && args_delta == "{\"path\":"),
+            "got {mid:?}"
+        );
+
+        let d2 = serde_json::json!({
+            "type": "response.function_call_arguments.delta",
+            "item_id": "fc_1",
+            "delta": "\"/tmp\"}"
+        });
+        let mid2 = map_responses_sse_event(&d2, &mut state);
+        assert!(matches!(&mid2[..], [AiBridgeChunk::ToolCallDelta { .. }]));
+
+        let done = serde_json::json!({
+            "type": "response.output_item.done",
+            "item": {
+                "type": "function_call",
+                "id": "fc_1",
+                "name": "ls",
+                "arguments": "{\"path\":\"/tmp\"}"
+            }
+        });
+        let end = map_responses_sse_event(&done, &mut state);
+        match &end[..] {
+            [AiBridgeChunk::ToolCallEnd { id, name, args }] => {
+                assert_eq!(id, "fc_1");
+                assert_eq!(name, "ls");
+                assert_eq!(args["path"], "/tmp");
+            }
+            other => panic!("expected ToolCallEnd only, got {other:?}"),
         }
     }
 
