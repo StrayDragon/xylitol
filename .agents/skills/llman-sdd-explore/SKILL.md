@@ -2,7 +2,7 @@
 name: "llman-sdd-explore"
 description: "进入 llman SDD 探索模式：理清思路、调查需求、分析问题。仅思考，禁止写代码。用于意图不明确或需要分析后再行动的场景。"
 metadata:
-  version: "0.0.63"
+  version: "0.0.64"
 ---
 
 # LLMAN SDD Explore
@@ -43,6 +43,7 @@ flowchart LR
    - 如果 context 不可用，运行 `llman sdd index rebuild`（默认 `pageindex`，无需模型）后重试。
 2. 澄清目标与约束（问 1–3 个问题）。
 3. 如果某个 change id 相关，阅读 `llmanspec/changes/<id>/` 下的 artifacts。
+   - 诊断校验错误时优先跑 `llman sdd validate <spec> --strict --no-check`（fast mode，跳过可能耗时的 `bdd.run_command`），先解决结构门禁（Gherkin / `@req` 链接 / 双写 / req_id 唯一性），再跑 full mode（`--check` 或 `cargo test --features bdd`）。错误输出中的 `FAIL <item_type>/<id>` 行会逐条指明失败项。
 4. 探索 2–3 个选项与权衡。
 5. 判断变更规模（triage），确定是否需要走完整 SDD 流程。
 6. 当结论逐渐清晰时，建议用户把它记录下来（不要自动写入）：
