@@ -289,6 +289,14 @@ impl XyTool for BashTool {
             return Err(XyToolError::Aborted);
         }
 
+        // Live uplink path: stream stdout/stderr chunks to ReAct while running
+        // (c1255 ToolExecutionUpdate). Falls back to wait_with_output otherwise.
+        if let Some(out_tx) = ctx.output_tx.clone() {
+            return self
+                .execute_streaming(cmd, timeout_secs, ctx.cancel.clone(), out_tx)
+                .await;
+        }
+
         let output = self
             .operations
             .execute(cmd, timeout_secs, ctx.cancel.clone())
@@ -307,6 +315,55 @@ impl XyTool for BashTool {
             "exit_code": output.exit_code,
             "combined": output.combined,
             "full_output_path": output.full_output_path,
+        }))
+        .expect("serde_json::to_string on Value/Map never fails"))
+    }
+}
+
+impl BashTool {
+    async fn execute_streaming(
+        &self,
+        cmd: &str,
+        _timeout_secs: u64,
+        cancel: tokio_util::sync::CancellationToken,
+        out_tx: tokio::sync::mpsc::Sender<String>,
+    ) -> Result<String, XyToolError> {
+        use crate::infra::bash_exec::InfraBashExecutor;
+        use crate::runtime_protocol::{BashExecOpts, XyBashExecutor};
+
+        let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+        let forward = tokio::spawn(async move {
+            while let Some(bytes) = chunk_rx.recv().await {
+                let s = String::from_utf8_lossy(&bytes).into_owned();
+                if out_tx.send(s).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        let result = InfraBashExecutor::new()
+            .execute(
+                cmd,
+                BashExecOpts {
+                    cancel: Some(cancel),
+                    chunk_tx: Some(chunk_tx),
+                },
+            )
+            .await;
+
+        let _ = forward.await;
+
+        if result.cancelled {
+            return Err(XyToolError::Aborted);
+        }
+
+        Ok(serde_json::to_string(&json!({
+            "stdout": result.output,
+            "stderr": "",
+            "exit_code": result.exit_code,
+            "combined": result.output,
+            "full_output_path": result.full_output_path,
+            "truncated": result.truncated,
         }))
         .expect("serde_json::to_string on Value/Map never fails"))
     }

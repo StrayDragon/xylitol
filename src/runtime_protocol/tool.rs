@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use serde_json::Value;
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::domain::error::XyToolError;
@@ -14,6 +15,12 @@ pub struct XyToolCtx {
     pub call_id: String,
     /// Cancellation token — tools should check this and abort if cancelled.
     pub cancel: CancellationToken,
+    /// Optional live output uplink for [`crate::domain::lifecycle::XyEvent::ToolExecutionUpdate`].
+    ///
+    /// Long-running tools (e.g. bash) SHOULD send progressive chunks here while
+    /// executing. ReAct drains this channel and emits Update events. `None` for
+    /// tools that only report a final result.
+    pub output_tx: Option<mpsc::Sender<String>>,
 }
 
 impl XyToolCtx {
@@ -21,6 +28,7 @@ impl XyToolCtx {
         Self {
             call_id: call_id.into(),
             cancel: CancellationToken::new(),
+            output_tx: None,
         }
     }
 
@@ -28,7 +36,14 @@ impl XyToolCtx {
         Self {
             call_id: call_id.into(),
             cancel,
+            output_tx: None,
         }
+    }
+
+    /// Attach a live output channel (c1255 bash / long-tool streaming).
+    pub fn with_output_tx(mut self, tx: mpsc::Sender<String>) -> Self {
+        self.output_tx = Some(tx);
+        self
     }
 }
 
