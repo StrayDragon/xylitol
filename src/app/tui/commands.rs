@@ -197,13 +197,26 @@ pub fn bash_output_body(result: &XyBashResult) -> String {
     let code = result.exit_code;
     let mut body = result.output.trim_end().to_string();
     if body.len() > 4000 {
-        body = format!("{}…", &body[..4000]);
+        // Keep Full output footer if present near the end.
+        if let Some(idx) = body.rfind("\n[Full output:") {
+            let footer = body[idx + 1..].to_string();
+            let head = &body[..idx.min(4000)];
+            body = format!("{head}…\n{footer}");
+        } else {
+            body = format!("{}…", &body[..4000]);
+        }
     }
-    if result.truncated {
+    if result.truncated && !body.contains("[Full output:") {
         if !body.is_empty() {
             body.push('\n');
         }
-        body.push_str("(truncated)");
+        if let Some(path) = result.full_output_path.as_deref() {
+            body.push_str(&format!(
+                "[Full output: {path}. Truncated: (see file) lines shown (50.0KB limit)]"
+            ));
+        } else {
+            body.push_str("(truncated)");
+        }
     }
     if result.cancelled {
         if !body.is_empty() {

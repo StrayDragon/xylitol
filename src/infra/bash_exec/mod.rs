@@ -167,7 +167,7 @@ impl XyBashExecutor for InfraBashExecutor {
         let snapshot = acc.finish();
 
         XyBashResult {
-            output: snapshot.content,
+            output: snapshot.display_content(),
             exit_code: if cancelled { None } else { exit_code },
             cancelled,
             truncated: snapshot.truncated,

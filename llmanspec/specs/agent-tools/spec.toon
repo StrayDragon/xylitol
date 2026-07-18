@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-tools"
 purpose: 工具系统 — 工具定义、执行分发、bash/ls/grep/edit/write/read 内置工具与路径工具。
 valid_scope[3]: src/agent/tools/,src/infra/tools/,src/runtime_protocol/tool.rs
-requirements[38]{req_id,title,statement}:
+requirements[39]{req_id,title,statement}:
   r32,工具 trait 前缀,System MUST 将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，MUST 与 runtime_protocol 边界其余命名一致。
   r42,七种内置工具,System MUST 实现 7 个内置工具：read、bash、edit、write、grep、find、ls。
   r48,补丁应用,System MUST 使用 fudiff 模糊匹配应用 AI 生成的补丁，并以 patch crate 精确匹配作为回退。
@@ -30,6 +30,7 @@ requirements[38]{req_id,title,statement}:
   t14,OutputAccumulator,工具执行 MUST 支持 OutputAccumulator：增量缓冲接收流式数据、在内存保留可配置尾部窗口、总量超滚动阈值时透明溢出到临时文件，并产出含截断信息的最终快照。
   t15,bash 累加器,Bash 工具 MUST 对 stdout/stderr 流式输出使用 OutputAccumulator，替代 String 拼接；配置 max_lines 100 与 max_bytes DEFAULT_MAX_BYTES。
   t16,"BDD tool-v3","OutputAccumulator 与 bash 累加器集成的 BDD 测试 MUST 全部通过（含 agent-tools.feature 中 bash-truncate 等场景）。"
+  t23,"bash-tool-result-no-full-dump","Bash 工具返回的 JSON（流式与非流式）在截断时 MUST 仅含截断视图（stdout/combined 为 display_content，含 Full output 脚注）与 truncated/full_output_path；MUST NOT 再附带未截断的完整 stdout 或 stderr 载荷。未截断时 stdout/combined MUST 为完整合并输出且无 Full output 脚注。"
   e1,模糊匹配,System MUST 对 edit oldText 做模糊匹配：NFKC 规范化、智能引号转 ASCII、破折号转连字符、剥离尾部空白，再逐步放宽匹配。
   e2,行尾风格,System MUST 在编辑前检测文件行尾（CRLF vs LF），应用变更后恢复原有风格。
   e3,跨行 span 匹配,精确匹配失败时，System MUST 支持跨不同行段匹配多行 oldText span。

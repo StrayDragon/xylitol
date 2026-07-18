@@ -187,6 +187,7 @@ impl OutputAccumulator {
             full_content,
             total_bytes: self.total_bytes,
             truncated,
+            max_bytes: self.max_bytes,
             full_output_path: self.temp_file.clone(),
         }
     }
@@ -204,26 +205,37 @@ pub(crate) struct OutputSnapshot {
     #[allow(dead_code)]
     pub(crate) full_content: String,
     /// Total bytes accumulated.
+    #[allow(dead_code)]
     pub(crate) total_bytes: usize,
     /// Whether the output was truncated.
     pub(crate) truncated: bool,
+    /// Max rolling tail bytes applied (for footer limit text).
+    pub(crate) max_bytes: usize,
     /// Path to full output if spilled to temp file.
     pub(crate) full_output_path: Option<PathBuf>,
 }
 
 impl OutputSnapshot {
-    /// Get content for display, with truncation notice if needed.
+    /// Content for display / LLM context, with pi-shaped Full output footer when truncated.
     pub fn display_content(&self) -> String {
-        if self.truncated {
-            format!(
-                "{}\n[Output truncated: {} total bytes, showing last {} bytes]",
-                self.content,
-                format_size(self.total_bytes),
-                format_size(self.content.len()),
-            )
-        } else {
-            self.content.clone()
+        if !self.truncated {
+            return self.content.clone();
         }
+        let path = self
+            .full_output_path
+            .as_ref()
+            .and_then(|p| p.to_str())
+            .unwrap_or("(unavailable)");
+        let lines_shown = if self.content.is_empty() {
+            0
+        } else {
+            self.content.lines().count()
+        };
+        let body = self.content.trim_end_matches('\n');
+        format!(
+            "{body}\n[Full output: {path}. Truncated: {lines_shown} lines shown ({} limit)]",
+            format_size(self.max_bytes),
+        )
     }
 }
 
@@ -294,7 +306,13 @@ mod tests {
         acc.append(b"this is a very long output that exceeds the limit");
         let snapshot = acc.finish();
         let display = snapshot.display_content();
-        assert!(display.contains("truncated"));
+        assert!(display.contains("[Full output:"), "{display}");
+        assert!(display.contains("lines shown"), "{display}");
+        assert!(display.contains("Truncated:"), "{display}");
+        assert!(
+            display.contains("/tmp/") || display.contains("(unavailable)"),
+            "{display}"
+        );
     }
 
     #[test]

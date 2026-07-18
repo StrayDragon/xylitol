@@ -25,6 +25,7 @@
     假如 输出超过 max bytes
     当 执行完成
     那么 truncated 为 true 且 full_output_path 已设置
+    并且 output 含 Full output 脚注与 lines shown
 
   @req:be4
   场景: entry

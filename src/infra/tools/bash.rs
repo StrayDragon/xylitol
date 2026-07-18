@@ -48,6 +48,7 @@ pub struct BashOutput {
     pub stderr: String,
     pub exit_code: i32,
     pub combined: String,
+    pub truncated: bool,
     pub full_output_path: Option<String>,
 }
 
@@ -139,12 +140,16 @@ impl BashOperations for RealBashOperations {
             acc.append(stdout_raw.as_bytes());
         }
         let snapshot = acc.finish();
+        let display = snapshot.display_content();
 
         let bash_output = BashOutput {
-            stdout: stdout_raw,
-            stderr: stderr_raw,
+            // Keep fields for hooks/tests, but never exceed truncated display size
+            // when spilled (full bytes live only in full_output_path).
+            stdout: display.clone(),
+            stderr: String::new(),
             exit_code,
-            combined: snapshot.display_content(),
+            combined: display,
+            truncated: snapshot.truncated,
             full_output_path: snapshot
                 .full_output_path
                 .and_then(|p| p.to_str().map(|s| s.to_string())),
@@ -310,10 +315,11 @@ impl XyTool for BashTool {
             })?;
 
         Ok(serde_json::to_string(&json!({
-            "stdout": output.stdout,
-            "stderr": output.stderr,
+            "stdout": output.combined,
+            "stderr": "",
             "exit_code": output.exit_code,
             "combined": output.combined,
+            "truncated": output.truncated,
             "full_output_path": output.full_output_path,
         }))
         .expect("serde_json::to_string on Value/Map never fails"))
@@ -439,6 +445,7 @@ mod tests {
                     stderr: String::new(),
                     exit_code: 0,
                     combined: "mock output".into(),
+                    truncated: false,
                     full_output_path: None,
                 })
             }
