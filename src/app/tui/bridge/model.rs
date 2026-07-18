@@ -90,6 +90,8 @@ pub enum UiEntry {
         id: String,
         name: String,
         args_preview: String,
+        /// Sticky path from streaming args / End backfill (c1320).
+        tool_path: Option<String>,
         /// Streaming write body (args.content); shown with Head viewport (c1300).
         write_content: Option<String>,
         /// Edit display_diff merged into the same tool row (c1300).
