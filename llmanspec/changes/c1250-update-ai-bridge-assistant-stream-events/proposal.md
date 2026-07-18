@@ -11,7 +11,8 @@ wave: tui-stream-align
 domain: packages
 branch: feat/tui-dev
 base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 281a075dd0f56f2ca92a71dc899b4d0109498606
 ---
 
 # c1250-update-ai-bridge-assistant-stream-events
