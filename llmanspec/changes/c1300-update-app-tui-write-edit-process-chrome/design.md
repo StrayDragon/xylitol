@@ -16,6 +16,7 @@ Streaming = **tool-call argument streaming**（与 pi 同），不是 `execute` 
 | 默认行数 | **10** Head | 5 Tail | **全量**（就绪即显） |
 | Ctrl+O | 全量 content | 全量 output | n/a（或保留无操作） |
 | Alt+E | 不挡 write body | 可挡其它 tool detail | **不挡** edit diff |
+| 洗底 | **header+正文同一** pending/success/error 块 | 整块 | header tint；diff 正文不加 tool-*-bg（att4） |
 
 ### Edit merge
 
