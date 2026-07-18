@@ -11,7 +11,8 @@ wave: tui-stream-align
 domain: infra
 branch: feat/tui-dev
 base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
-checkpointed: false
+checkpointed: true
+checkpoint_sha: e8555dc19865e81bfdfe867e0285a18112fd7ae1
 ---
 
 # c1290-update-ai-bridge-responses-reasoning-replay-align-pi
