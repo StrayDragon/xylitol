@@ -59,12 +59,12 @@ Then 与全日用 Web 检视模块看到同一事实源子集
 |---|---|
 | M1 语义清单 | 明文列出「必须同源」的状态集合 |
 | M2 会话与改道 | 跨面接续主路径 |
-| M3 覆盖集与检视 | 即时设置 + Inspect 同源 |
+| M3 覆盖集与检视 | 即时设置 + Inspect 同源（含同一进程内对照底座 → 检视台） |
 | M4 编排类 | Sub-agent / Loop 状态同源 |
 
 ## 依赖
 
-- 承载面：[Cloud-Agent与Web控制台.md](./Cloud-Agent与Web控制台.md)、[出口流量检视.md](./出口流量检视.md)
+- 承载面：[Cloud-Agent与Web控制台.md](./Cloud-Agent与Web控制台.md)、[出口流量检视.md](./出口流量检视.md)（M0 底座 → M1+ 检视台；跨面同一记录集）
 - 现行多 client：[../architecture/库与多客户端.md](../architecture/库与多客户端.md)、[../architecture/远程体验与线协议.md](../architecture/远程体验与线协议.md)
 - 本文件是**跨主线约束**；落地后应迁入 architecture（多客户端 / 远程体验的强化章）
 
