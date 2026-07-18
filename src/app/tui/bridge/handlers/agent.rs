@@ -1,7 +1,9 @@
 //! Agent / turn / message lifecycle events.
 
 use crate::app::core::driver::XyEvent;
-use crate::app::tui::bridge::{UiModel, UiPhase, push_user_entry_dedup};
+use crate::app::tui::bridge::{
+    UiModel, UiPhase, push_user_entry_dedup, sync_tool_intent_from_message,
+};
 
 pub fn apply_agent_family(model: &mut UiModel, event: &XyEvent) -> bool {
     match event {
@@ -49,9 +51,13 @@ pub fn apply_agent_family(model: &mut UiModel, event: &XyEvent) -> bool {
             }
             true
         }
-        XyEvent::MessageUpdate { .. } => {
-            // Accumulated snapshot — TextDelta/ThinkingDelta already stream the
-            // increments; applying this would duplicate prefixes (see print mode).
+        XyEvent::MessageUpdate { message, .. } => {
+            // Text/thinking top-level fields are snapshots — TextDelta/ThinkingDelta
+            // already stream increments (must not re-apply). ToolCall parts in
+            // `message` are intent-only and mount/update Tool chrome (c1260).
+            if let Some(msg) = message {
+                sync_tool_intent_from_message(model, msg);
+            }
             true
         }
         XyEvent::MessageEnd { .. } => {

@@ -13,6 +13,7 @@ pub use model::{BashBlockStatus, QueueBadge, UiEntry, UiModel, UiPhase};
 use serde_json::Value;
 
 use crate::app::core::driver::XyEvent;
+use crate::domain::message::AgentMessage;
 
 /// Single seam: translate one [`XyEvent`] into UI-only mutations.
 ///
@@ -39,6 +40,81 @@ pub(crate) fn compact_json_preview(value: &Value, max_chars: usize) -> String {
     }
     let truncated: String = raw.chars().take(max_chars.saturating_sub(1)).collect();
     format!("{truncated}…")
+}
+
+/// Human-readable collapsed tool args (c1260 M1). Fallback: compact JSON.
+pub(crate) fn human_tool_args_preview(name: &str, args: &Value, max_chars: usize) -> String {
+    let pick_str = |keys: &[&str]| -> Option<String> {
+        for key in keys {
+            if let Some(s) = args
+                .get(*key)
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+            {
+                return Some(s.to_string());
+            }
+        }
+        None
+    };
+
+    let summary = match name {
+        "bash" | "shell" => pick_str(&["command", "cmd"]).map(|c| format!("$ {c}")),
+        "read" => pick_str(&["path", "file"]).map(|p| format!("read {p}")),
+        "ls" => pick_str(&["path", "dir"]).map(|p| format!("ls {p}")),
+        "edit" => pick_str(&["path", "file"]).map(|p| format!("edit {p}")),
+        "write" => pick_str(&["path", "file"]).map(|p| format!("write {p}")),
+        "find" => pick_str(&["pattern", "path", "glob"]).map(|p| format!("find {p}")),
+        "grep" => pick_str(&["pattern", "path"]).map(|p| format!("grep {p}")),
+        _ => None,
+    };
+
+    match summary {
+        Some(s) => compact_json_preview(&Value::String(s), max_chars),
+        None => compact_json_preview(args, max_chars),
+    }
+}
+
+/// Upsert a pending tool row from streaming intent (MessageUpdate) or execution start.
+pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args: &Value) {
+    let preview = human_tool_args_preview(name, args, 80);
+    if let Some(UiEntry::Tool {
+        name: n,
+        args_preview,
+        ..
+    }) = find_tool_mut(&mut model.entries, id)
+    {
+        *n = name.to_string();
+        *args_preview = preview;
+        return;
+    }
+    model.entries.push(UiEntry::Tool {
+        id: id.to_string(),
+        name: name.to_string(),
+        args_preview: preview,
+        output: String::new(),
+        is_error: false,
+        done: false,
+    });
+}
+
+/// Sync ToolCall parts from a partial assistant message (c1255 → c1260).
+/// Does not touch text/thinking streaming buffers.
+pub(crate) fn sync_tool_intent_from_message(model: &mut UiModel, message: &AgentMessage) {
+    use crate::domain::message::{AgentPart, LlmMessage};
+
+    let AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. }) = message else {
+        return;
+    };
+    for part in content {
+        if let AgentPart::ToolCall {
+            id,
+            name,
+            arguments,
+        } = part
+        {
+            upsert_tool_entry(model, id, name, arguments);
+        }
+    }
 }
 
 pub(crate) fn find_tool_mut<'a>(entries: &'a mut [UiEntry], id: &str) -> Option<&'a mut UiEntry> {
@@ -418,6 +494,140 @@ mod tests {
             })
             .collect();
         assert_eq!(assistants, ["Hello!"]);
+    }
+
+    #[test]
+    fn bash_summary_is_human_readable() {
+        let preview =
+            human_tool_args_preview("bash", &serde_json::json!({"command": "ls -la"}), 80);
+        assert!(preview.starts_with("$ ls"), "got {preview}");
+        assert!(!preview.contains('{'));
+    }
+
+    #[test]
+    fn message_update_creates_tool_before_execution() {
+        use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
+
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        let partial = AgentMessage::Llm(LlmMessage::AssistantMessage {
+            content: vec![AgentPart::ToolCall {
+                id: "call-1".into(),
+                name: "bash".into(),
+                arguments: serde_json::json!({"command": "echo hi"}),
+            }],
+            stop_reason: None,
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        });
+        apply_xy_event(
+            &mut model,
+            &XyEvent::MessageUpdate {
+                text: String::new(),
+                thinking: None,
+                message: Some(partial),
+            },
+        );
+        let tools: Vec<_> = model
+            .entries
+            .iter()
+            .filter_map(|e| match e {
+                UiEntry::Tool {
+                    id,
+                    args_preview,
+                    done,
+                    ..
+                } => Some((id.as_str(), args_preview.as_str(), *done)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].0, "call-1");
+        assert!(tools[0].1.starts_with("$ echo"), "got {}", tools[0].1);
+        assert!(!tools[0].2);
+
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionStart {
+                id: "call-1".into(),
+                name: "bash".into(),
+                args: serde_json::json!({"command": "echo hi"}),
+            },
+        );
+        let tool_count = model
+            .entries
+            .iter()
+            .filter(|e| matches!(e, UiEntry::Tool { .. }))
+            .count();
+        assert_eq!(
+            tool_count, 1,
+            "ToolExecutionStart must upsert, not duplicate"
+        );
+    }
+
+    #[test]
+    fn message_update_streams_args_preview() {
+        use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
+
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        let mk = |args: serde_json::Value| {
+            AgentMessage::Llm(LlmMessage::AssistantMessage {
+                content: vec![AgentPart::ToolCall {
+                    id: "call-1".into(),
+                    name: "read".into(),
+                    arguments: args,
+                }],
+                stop_reason: None,
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: Vec::new(),
+            })
+        };
+        apply_xy_event(
+            &mut model,
+            &XyEvent::MessageUpdate {
+                text: String::new(),
+                thinking: None,
+                message: Some(mk(serde_json::json!({"path": "/tm"}))),
+            },
+        );
+        apply_xy_event(
+            &mut model,
+            &XyEvent::MessageUpdate {
+                text: String::new(),
+                thinking: None,
+                message: Some(mk(serde_json::json!({"path": "/tmp/x.rs"}))),
+            },
+        );
+        let preview = model
+            .entries
+            .iter()
+            .find_map(|e| match e {
+                UiEntry::Tool { args_preview, .. } => Some(args_preview.as_str()),
+                _ => None,
+            })
+            .expect("tool row");
+        assert_eq!(preview, "read /tmp/x.rs");
+        assert_eq!(
+            model
+                .entries
+                .iter()
+                .filter(|e| matches!(e, UiEntry::Tool { .. }))
+                .count(),
+            1
+        );
     }
 
     #[test]
