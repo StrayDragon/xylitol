@@ -1995,7 +1995,7 @@ mod driver_session_tree_tests {
                 entry_type: "message".into(),
                 id: id.into(),
                 parent_id: parent.map(str::to_string),
-                timestamp: format!("2026-01-01T00:00:{id}Z"),
+                timestamp: format!("2026-01-01T00:00:00.{id}Z"),
             },
             message: crate::domain::session_types::fixture_message_json(role, text),
         })
@@ -2074,13 +2074,25 @@ mod driver_session_tree_tests {
             .await
             .expect("append a1");
 
+        let loaded = store.load(&sid).await.expect("load after append");
+        let ids: Vec<_> = loaded.iter().filter_map(|e| e.entry_id()).collect();
+        assert_eq!(
+            ids,
+            vec!["u1", "a1"],
+            "persisted entries before tree: {loaded:?}"
+        );
+
         let tree = driver
             .session_tree(SessionTreeKind::MessageHistory)
             .await
             .expect("tree");
-        assert_eq!(tree.len(), 1);
+        assert_eq!(tree.len(), 1, "tree={tree:?} loaded={loaded:?}");
         assert_eq!(tree[0].entry.entry_id(), Some("u1"));
-        assert_eq!(tree[0].children.len(), 1);
+        assert_eq!(
+            tree[0].children.len(),
+            1,
+            "expected a1 under u1; tree={tree:?} loaded={loaded:?}"
+        );
         assert_eq!(tree[0].children[0].entry.entry_id(), Some("a1"));
     }
 

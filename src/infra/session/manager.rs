@@ -150,13 +150,61 @@ impl SessionManager {
     }
 
     async fn flush_pending_to_disk(&self, session_id: &str) -> Result<(), String> {
-        let entries = {
-            let mut pending = self.pending_store.write().expect("RwLock not poisoned");
-            pending
+        let pending = {
+            let mut store = self.pending_store.write().expect("RwLock not poisoned");
+            store
                 .remove(session_id)
                 .ok_or_else(|| format!("no pending entries for session: {session_id}"))?
         };
-        self.write_entries_to_disk(session_id, &entries).await
+
+        // `append_with_id` may have already created the JSONL (body rows) while the
+        // header was still pending. Blind overwrite would clobber those rows.
+        if self.session_file_exists(session_id) {
+            let path = self.session_path(session_id);
+            let content = tokio::fs::read_to_string(&path)
+                .await
+                .map_err(|e| format!("read session before pending merge: {e}"))?;
+            let disk = Self::parse_entries_from_content(&content)?;
+            let merged = Self::merge_pending_ahead_of_disk(pending, disk);
+            self.write_entries_to_disk(session_id, &merged).await
+        } else {
+            self.write_entries_to_disk(session_id, &pending).await
+        }
+    }
+
+    /// Prefers on-disk rows when ids collide; keeps a missing session header from pending.
+    fn merge_pending_ahead_of_disk(
+        pending: Vec<SessionEntry>,
+        disk: Vec<SessionEntry>,
+    ) -> Vec<SessionEntry> {
+        let mut disk_ids = std::collections::HashSet::new();
+        let mut has_header = false;
+        for entry in &disk {
+            if entry.entry_type() == "session" {
+                has_header = true;
+            }
+            if let Some(id) = entry.entry_id() {
+                disk_ids.insert(id.to_string());
+            }
+        }
+
+        let mut merged = Vec::with_capacity(pending.len() + disk.len());
+        for entry in pending {
+            if entry.entry_type() == "session" {
+                if !has_header {
+                    merged.push(entry);
+                }
+                continue;
+            }
+            if let Some(id) = entry.entry_id()
+                && disk_ids.contains(id)
+            {
+                continue;
+            }
+            merged.push(entry);
+        }
+        merged.extend(disk);
+        merged
     }
 
     fn update_leaf_from_entry(&self, session_id: &str, entry: &SessionEntry) {
@@ -261,6 +309,9 @@ impl SessionManager {
                     file.write_all(content.as_bytes())
                         .await
                         .map_err(|e| format!("write entry: {e}"))?;
+                    file.flush()
+                        .await
+                        .map_err(|e| format!("flush entry: {e}"))?;
                 } else {
                     let is_assistant =
                         crate::domain::session_types::is_assistant_message(&entry_with_ids);
@@ -391,6 +442,18 @@ impl SessionManager {
         session_id: &str,
         entry: &SessionEntry,
     ) -> Result<(), String> {
+        // Flush deferred header (and any pending rows) before writing the file
+        // directly — otherwise `load` ignores pending once the file exists, and a
+        // later `flush_pending_to_disk` can overwrite body rows with header-only.
+        let has_pending = self
+            .pending_store
+            .read()
+            .expect("RwLock not poisoned")
+            .contains_key(session_id);
+        if has_pending {
+            self.flush_pending_to_disk(session_id).await?;
+        }
+
         let path = self.session_path(session_id);
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
@@ -410,6 +473,9 @@ impl SessionManager {
         file.write_all(content.as_bytes())
             .await
             .map_err(|e| format!("write entry: {e}"))?;
+        file.flush()
+            .await
+            .map_err(|e| format!("flush entry: {e}"))?;
 
         if let Some(new_id) = entry.entry_id() {
             self.set_leaf(session_id, Some(new_id.to_string()));
@@ -1573,6 +1639,94 @@ mod deferred_persist_tests {
     }
 
     #[tokio::test]
+    async fn append_with_id_after_create_persists_header_and_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        let sid = "append-with-id-flush";
+
+        mgr.create(sid, Some("."), None).await.unwrap();
+        // No explicit flush — append_with_id must promote pending header first.
+        mgr.append_with_id(
+            sid,
+            &SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "u1".into(),
+                    parent_id: None,
+                    timestamp: "t-u1".into(),
+                },
+                message: crate::domain::session_types::fixture_message_json("user", "hello"),
+            }),
+        )
+        .await
+        .unwrap();
+        mgr.append_with_id(
+            sid,
+            &SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "a1".into(),
+                    parent_id: Some("u1".into()),
+                    timestamp: "t-a1".into(),
+                },
+                message: crate::domain::session_types::fixture_message_json("assistant", "hi"),
+            }),
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            !mgr.pending_store.read().expect("lock").contains_key(sid),
+            "pending must be cleared after append_with_id"
+        );
+
+        let loaded = mgr.load(sid).await.unwrap();
+        let ids: Vec<_> = loaded.iter().filter_map(|e| e.entry_id()).collect();
+        assert!(
+            loaded.iter().any(|e| matches!(e, SessionEntry::Header(_))),
+            "header must be on disk: {loaded:?}"
+        );
+        assert_eq!(ids, vec!["u1", "a1"], "body rows must survive: {ids:?}");
+    }
+
+    #[tokio::test]
+    async fn flush_pending_merges_when_file_already_has_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        let sid = "merge-pending";
+
+        mgr.create(sid, Some("."), None).await.unwrap();
+        // Simulate pre-fix append_with_id: body on disk, header still pending.
+        let path = mgr.session_path(sid);
+        tokio::fs::create_dir_all(path.parent().unwrap())
+            .await
+            .unwrap();
+        let body = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "u1".into(),
+                parent_id: None,
+                timestamp: "t-u1".into(),
+            },
+            message: crate::domain::session_types::fixture_message_json("user", "kept"),
+        });
+        let line = serde_json::to_string(&body).unwrap();
+        tokio::fs::write(&path, format!("{line}\n")).await.unwrap();
+
+        mgr.flush_pending_to_disk(sid).await.unwrap();
+
+        let loaded = mgr.load(sid).await.unwrap();
+        assert!(
+            loaded.iter().any(|e| matches!(e, SessionEntry::Header(_))),
+            "merged flush must keep header"
+        );
+        assert!(
+            loaded.iter().any(|e| e.entry_id() == Some("u1")),
+            "merged flush must not clobber body: {loaded:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn in_memory_append_never_creates_files() {
         let dir = tempfile::tempdir().unwrap();
         let mgr = SessionManager::in_memory();
@@ -1698,17 +1852,23 @@ mod fork_path_tests {
         }
     }
 
+    fn unique_pair() -> (String, String) {
+        let n = uuid::Uuid::new_v4();
+        (format!("parent-{n}"), format!("child-{n}"))
+    }
+
     #[tokio::test]
     async fn fork_at_excludes_sibling_branch() {
         let dir = tempfile::tempdir().unwrap();
         let mgr = SessionManager::new(dir.path().join("sessions"));
-        seeded_sibling_tree(&mgr, "parent").await;
+        let (parent_id, child_id) = unique_pair();
+        seeded_sibling_tree(&mgr, &parent_id).await;
 
-        mgr.fork("parent", "child", "u_right", ForkPosition::At)
+        mgr.fork(&parent_id, &child_id, "u_right", ForkPosition::At)
             .await
             .unwrap();
 
-        let child = mgr.load("child").await.unwrap();
+        let child = mgr.load(&child_id).await.unwrap();
         let ids: Vec<_> = child.iter().filter_map(|e| e.entry_id()).collect();
         assert!(
             ids.contains(&"u1") && ids.contains(&"a_right") && ids.contains(&"u_right"),
@@ -1719,7 +1879,7 @@ mod fork_path_tests {
             "sibling a_left must NOT leak into child (file-order bug): {ids:?}"
         );
 
-        let parent = mgr.load("parent").await.unwrap();
+        let parent = mgr.load(&parent_id).await.unwrap();
         assert_eq!(
             parent.iter().filter(|e| e.entry_id().is_some()).count(),
             4,
@@ -1731,7 +1891,7 @@ mod fork_path_tests {
         });
         assert_eq!(
             header.and_then(|h| h.parent_session.as_deref()),
-            Some("parent")
+            Some(parent_id.as_str())
         );
     }
 
@@ -1739,13 +1899,14 @@ mod fork_path_tests {
     async fn fork_before_user_omits_user_and_prefills_source() {
         let dir = tempfile::tempdir().unwrap();
         let mgr = SessionManager::new(dir.path().join("sessions"));
-        seeded_sibling_tree(&mgr, "parent").await;
+        let (parent_id, child_id) = unique_pair();
+        seeded_sibling_tree(&mgr, &parent_id).await;
 
-        mgr.fork("parent", "child", "u_right", ForkPosition::Before)
+        mgr.fork(&parent_id, &child_id, "u_right", ForkPosition::Before)
             .await
             .unwrap();
 
-        let child = mgr.load("child").await.unwrap();
+        let child = mgr.load(&child_id).await.unwrap();
         let ids: Vec<_> = child.iter().filter_map(|e| e.entry_id()).collect();
         assert!(
             ids.contains(&"u1") && ids.contains(&"a_right"),
@@ -1757,7 +1918,7 @@ mod fork_path_tests {
         );
         assert!(!ids.contains(&"a_left"), "no sibling leak: {ids:?}");
 
-        let parent = mgr.load("parent").await.unwrap();
+        let parent = mgr.load(&parent_id).await.unwrap();
         let u = parent
             .iter()
             .find(|e| e.entry_id() == Some("u_right"))
@@ -1774,9 +1935,10 @@ mod fork_path_tests {
     async fn fork_before_rejects_non_user() {
         let dir = tempfile::tempdir().unwrap();
         let mgr = SessionManager::new(dir.path().join("sessions"));
-        seeded_sibling_tree(&mgr, "parent").await;
+        let (parent_id, child_id) = unique_pair();
+        seeded_sibling_tree(&mgr, &parent_id).await;
         let err = mgr
-            .fork("parent", "child", "a_right", ForkPosition::Before)
+            .fork(&parent_id, &child_id, "a_right", ForkPosition::Before)
             .await
             .unwrap_err();
         assert!(err.contains("user"), "Before on assistant must err: {err}");
@@ -1786,17 +1948,17 @@ mod fork_path_tests {
     async fn persisted_fork_does_not_mutate_parent_file() {
         let dir = tempfile::tempdir().unwrap();
         let mgr = SessionManager::new(dir.path().join("sessions"));
-        seeded_sibling_tree(&mgr, "parent").await;
-        // Force flush parent to disk (assistant already flushed via append_with_id).
-        let before = tokio::fs::read(mgr.session_path("parent")).await.unwrap();
+        let (parent_id, child_id) = unique_pair();
+        seeded_sibling_tree(&mgr, &parent_id).await;
+        let before = tokio::fs::read(mgr.session_path(&parent_id)).await.unwrap();
 
-        mgr.fork("parent", "child", "u_right", ForkPosition::At)
+        mgr.fork(&parent_id, &child_id, "u_right", ForkPosition::At)
             .await
             .unwrap();
 
-        let after = tokio::fs::read(mgr.session_path("parent")).await.unwrap();
+        let after = tokio::fs::read(mgr.session_path(&parent_id)).await.unwrap();
         assert_eq!(before, after, "parent JSONL bytes must be identical");
-        assert!(mgr.session_path("child").exists());
+        assert!(mgr.session_path(&child_id).exists());
     }
 }
 
