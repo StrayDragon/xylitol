@@ -2,11 +2,12 @@ kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "薄编排 ReAct 运行时：AgentRuntime 循环、工具批执行、steer/follow-up 队列、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
 valid_scope[3]: src/agent/,src/runtime_protocol/,tests/
-requirements[22]{req_id,title,statement}:
+requirements[23]{req_id,title,statement}:
   ar1,"thin-react-loop",agent/ 层 MUST 以 AgentRuntime（runtime/react.rs）驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls 或达 max_iterations；MUST NOT 在循环文件内联 bash 实现或厂商 HTTP。
   ar2,"xy-event-stream",运行时 MUST 以 XyEvent 异步流对外输出（TextDelta / ThinkingDelta / Tool* / Turn* / QueueUpdate / Error 等）；MUST NOT 再引入 AgentEvent 或 adk 事件类型。
   ar3,工具批后继续,"同一模型响应中的全部工具调用 MUST 在下一轮模型调用前执行完毕（可并行或串行）；MUST NOT 因流结束 Done 而提前结束含 tool_calls 的回合。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。"
   ar21,"tool-intent-before-execution","ReAct 消费 XyChunk::ToolCallStart/Delta/End 时：流式阶段 MUST 经 MessageUpdate（message 含渐进 ToolCall 部分）暴露工具意图；MUST NOT 在流未结束（MessageEnd 前）发射 ToolExecutionStart 或执行工具副作用。ToolExecutionStart/Update/End MUST 仅在 MessageEnd 之后的执行路径发出。该行为 MUST 有可执行 BDD 或等价单测场景。"
+  ar22,"system-via-generate-options","配置的 system prompt MUST 经 XyGenerateOptions.system_prompt 传给模型适配层；MUST NOT 将 system 正文作为 AgentMessage::user 写入会话 history（空会话首条 MUST 为真实用户输入）。由 ReAct 单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。"
   ar4,"builder-ports",Agent 装配 MUST 经 AgentBuilder，依赖 runtime_protocol 端口与纯数据；app 组合根注入具体 infra 实现。装配入口由单元测试 / 组合根覆盖，MUST NOT 为静态存在性单独扩 BDD step。
   ar5,"sessionstore-eventsink",runtime_protocol MUST 提供 SessionStore 与 EventSink；SessionManager / EventBus 为实现。端口存在性由类型系统与组合根覆盖，MUST NOT 为 trait 存在性单独扩 BDD step。
   ar6,"mutable-slots-next-turn",set_tools / set_hooks / set_system_prompt 等 MUST 只影响下一轮 run；进行中回合使用启动快照。
@@ -25,7 +26,7 @@ requirements[22]{req_id,title,statement}:
   ar19,Driver context 重载缝,InProcessDriver（经 app/core 助手）MUST 能在 Trust 语义下重载磁盘 context/SYSTEM/APPEND 并应用到 agent；未信任 MUST NOT 注入项目侧 context；重载 MUST NOT 清空 transcript。
   ar20,Driver skills 重载缝,InProcessDriver（经 app/core 助手）MUST 能在 Trust 语义下重载磁盘 skills 并应用到 agent；MUST 能查询当前已加载 skill 名（供后续 $ 展开）；未信任 MUST NOT 注入项目 skills；重载 MUST NOT 清空 transcript；本要求 MUST NOT 依赖 /session 或 /status skills UI。
   "ar-pilot",live feature 试点,"agent-runtime spec MUST 在 llmanspec/specs/agent-runtime/agent-runtime.feature 携带可执行场景 react-terminates 与 stream-is-xyevent；场景文本与 @req 对齐对应 requirement。"
-scenarios[13]{req_id,id,given,when,then,feature}:
+scenarios[14]{req_id,id,given,when,then,feature}:
   ar13,"no-rloop",在 src 中搜索 loop raw identifier,运行检查,零匹配,false
   ar14,"no-facade",检查 agent/facade.rs,不存在该模块,facade 保持移除,false
   ar15,"unknown-ok",构造内部专用 XyEvent 变体,经 to_wire_event 降级,返回 None 且不 panic,false
@@ -39,3 +40,4 @@ scenarios[13]{req_id,id,given,when,then,feature}:
   ar19,"untrusted-skip",项目未信任且仅项目目录有 AGENTS.md,调用 reload_prompt_context,系统提示 MUST NOT 含该项目 AGENTS 正文,false
   ar20,"trusted-reload",项目信任且 cwd 有 skill,调用 reload_skills,agent 系统提示或目录 API 含该 skill 名,false
   ar20,"untrusted-skip",项目未信任且仅项目目录有 skill,调用 reload_skills,目录与系统提示 MUST NOT 含该项目 skill,false
+  ar22,"system-not-user-history",空会话配置 system prompt 后运行,检查传给模型的 history,首条为真实用户输入且 options 含 system_prompt,false

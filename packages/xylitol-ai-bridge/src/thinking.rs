@@ -20,6 +20,9 @@ pub struct AiBridgeGenerateOptions {
     pub thinking_level: String,
     pub level_map: HashMap<String, Option<String>>,
     pub thinking_budgets: Option<AiBridgeThinkingBudgets>,
+    /// System prompt injected each request via the adapter's formal channel
+    /// (Responses `developer`/`system`, Completions system message, Anthropic `system`).
+    pub system_prompt: Option<String>,
 }
 
 impl Default for AiBridgeGenerateOptions {
@@ -28,6 +31,7 @@ impl Default for AiBridgeGenerateOptions {
             thinking_level: "off".into(),
             level_map: HashMap::new(),
             thinking_budgets: None,
+            system_prompt: None,
         }
     }
 }

@@ -103,6 +103,7 @@ fn to_bridge_options(options: XyGenerateOptions) -> xylitol_ai_bridge::AiBridgeG
                 high: b.high,
             }
         }),
+        system_prompt: options.system_prompt,
     }
 }
 
