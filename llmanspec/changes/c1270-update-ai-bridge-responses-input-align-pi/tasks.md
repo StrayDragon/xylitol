@@ -5,4 +5,4 @@
 - [x] 3. Completions / Anthropic：经 options 注入正式 system 通道
 - [x] 4. live specs：`pab15` + feature 场景；`ar22`（system 不入 history 首条 user）
 - [x] 5. 单测 + BDD；`just lint` / 相关 `cargo test`；`llman sdd validate`
-- [ ] 6. attach → checkpoint → archive（干净树）
+- [x] 6. attach → checkpoint → archive（干净树）
