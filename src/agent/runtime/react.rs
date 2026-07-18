@@ -20,6 +20,56 @@ use futures::StreamExt;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
+fn upsert_streaming_tool(
+    tools: &mut Vec<(String, String, Value)>,
+    id: String,
+    name: String,
+    args: Value,
+) {
+    if let Some(slot) = tools
+        .iter_mut()
+        .find(|(existing_id, _, _)| existing_id == &id)
+    {
+        slot.1 = name;
+        slot.2 = args;
+    } else {
+        tools.push((id, name, args));
+    }
+}
+
+fn partial_assistant_message(
+    text: &str,
+    thinking: &str,
+    tool_calls: &[(String, String, Value)],
+) -> AgentMessage {
+    let mut parts = Vec::new();
+    if !thinking.is_empty() {
+        parts.push(AgentPart::thinking(thinking.to_string()));
+    }
+    if !text.is_empty() {
+        parts.push(AgentPart::text(text.to_string()));
+    }
+    for (id, name, args) in tool_calls {
+        parts.push(AgentPart::ToolCall {
+            id: id.clone(),
+            name: name.clone(),
+            arguments: args.clone(),
+        });
+    }
+    AgentMessage::Llm(LlmMessage::AssistantMessage {
+        content: parts,
+        stop_reason: None,
+        usage: None,
+        api: String::new(),
+        provider: String::new(),
+        model: String::new(),
+        response_id: None,
+        error_message: None,
+        timestamp: crate::domain::message::now_ms(),
+        diagnostics: Vec::new(),
+    })
+}
+
 use super::permission_router::permission_target;
 use super::retry::{RetryState, is_retryable_error};
 use super::{AgentHooks, XyEvent, XyEventStream};
@@ -603,24 +653,89 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 yield XyEvent::TextDelta(text.clone());
                                 yield XyEvent::MessageUpdate {
                                     text: text_acc.clone(),
-                                    thinking: if thinking_acc.is_empty() { None } else { Some(thinking_acc.clone()) },
-                                    message: None,
+                                    thinking: if thinking_acc.is_empty() {
+                                        None
+                                    } else {
+                                        Some(thinking_acc.clone())
+                                    },
+                                    message: Some(partial_assistant_message(
+                                        &text_acc,
+                                        &thinking_acc,
+                                        &tool_calls,
+                                    )),
                                 };
                             }
                             XyChunk::ThinkingDelta(text) => {
                                 thinking_acc.push_str(&text);
                                 yield XyEvent::ThinkingDelta(text);
+                                yield XyEvent::MessageUpdate {
+                                    text: text_acc.clone(),
+                                    thinking: Some(thinking_acc.clone()),
+                                    message: Some(partial_assistant_message(
+                                        &text_acc,
+                                        &thinking_acc,
+                                        &tool_calls,
+                                    )),
+                                };
                             }
-                            XyChunk::ToolCallStart { .. } | XyChunk::ToolCallDelta { .. } => {
-                                // Intent streaming is consumed in c1255; execution waits for End.
+                            XyChunk::ToolCallStart { id, name } => {
+                                upsert_streaming_tool(
+                                    &mut tool_calls,
+                                    id,
+                                    name,
+                                    Value::Object(Default::default()),
+                                );
+                                yield XyEvent::MessageUpdate {
+                                    text: text_acc.clone(),
+                                    thinking: if thinking_acc.is_empty() {
+                                        None
+                                    } else {
+                                        Some(thinking_acc.clone())
+                                    },
+                                    message: Some(partial_assistant_message(
+                                        &text_acc,
+                                        &thinking_acc,
+                                        &tool_calls,
+                                    )),
+                                };
+                            }
+                            XyChunk::ToolCallDelta {
+                                id,
+                                name,
+                                args,
+                                ..
+                            } => {
+                                upsert_streaming_tool(&mut tool_calls, id, name, args);
+                                yield XyEvent::MessageUpdate {
+                                    text: text_acc.clone(),
+                                    thinking: if thinking_acc.is_empty() {
+                                        None
+                                    } else {
+                                        Some(thinking_acc.clone())
+                                    },
+                                    message: Some(partial_assistant_message(
+                                        &text_acc,
+                                        &thinking_acc,
+                                        &tool_calls,
+                                    )),
+                                };
                             }
                             XyChunk::ToolCallEnd { name, args, id } => {
-                                yield XyEvent::ToolExecutionStart {
-                                    id: id.clone(),
-                                    name: name.clone(),
-                                    args: args.clone(),
+                                // Intent only — execute after MessageEnd (c1255 / ar21).
+                                upsert_streaming_tool(&mut tool_calls, id, name, args);
+                                yield XyEvent::MessageUpdate {
+                                    text: text_acc.clone(),
+                                    thinking: if thinking_acc.is_empty() {
+                                        None
+                                    } else {
+                                        Some(thinking_acc.clone())
+                                    },
+                                    message: Some(partial_assistant_message(
+                                        &text_acc,
+                                        &thinking_acc,
+                                        &tool_calls,
+                                    )),
                                 };
-                                tool_calls.push((id, name, args));
                             }
                             XyChunk::Done { .. } => {
                                 // Stream-end marker for this single model call.
@@ -633,9 +748,21 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
                 }
 
+                let assistant_partial = if text_acc.is_empty()
+                    && thinking_acc.is_empty()
+                    && tool_calls.is_empty()
+                {
+                    None
+                } else {
+                    Some(partial_assistant_message(
+                        &text_acc,
+                        &thinking_acc,
+                        &tool_calls,
+                    ))
+                };
                 yield XyEvent::MessageEnd {
                     role: "assistant".to_string(),
-                    message: None,
+                    message: assistant_partial,
                 };
                 if let Some(bus) = &hook_bus {
                     observe_script_hook(
@@ -707,6 +834,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 }
 
                 for (id, name, args) in &tool_calls {
+                    yield XyEvent::ToolExecutionStart {
+                        id: id.clone(),
+                        name: name.clone(),
+                        args: args.clone(),
+                    };
+
                     let tool = tools.get(name);
                     let ctx = XyToolCtx::with_cancel(id, cancel.clone());
                     let mut tool_args = args.clone();
@@ -750,6 +883,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                     if let Some(reason) = denied_reason {
                         let err = format!("Tool '{name}' blocked: {reason}");
+                        yield XyEvent::ToolExecutionUpdate {
+                            id: id.clone(),
+                            output: err.clone(),
+                        };
                         yield XyEvent::ToolExecutionEnd {
                             id: id.clone(),
                             name: name.clone(),
@@ -836,6 +973,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                     let result_text = parts_preview_text(&result.0);
 
+                    yield XyEvent::ToolExecutionUpdate {
+                        id: id.clone(),
+                        output: result_text.clone(),
+                    };
                     yield XyEvent::ToolExecutionEnd {
                         id: id.clone(),
                         name: name.clone(),
@@ -1220,6 +1361,105 @@ mod tests {
             None,
         );
         AgentRuntime::new(session)
+    }
+
+    #[tokio::test]
+    async fn test_tool_intent_before_execution() {
+        use crate::domain::lifecycle::XyEvent;
+        use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
+        use futures::StreamExt;
+
+        let chunks = vec![
+            crate::domain::types::XyChunk::ToolCallStart {
+                id: "call-1".into(),
+                name: "mock_tool".into(),
+            },
+            crate::domain::types::XyChunk::ToolCallDelta {
+                id: "call-1".into(),
+                name: "mock_tool".into(),
+                args_delta: r#"{"input":"#.into(),
+                args: serde_json::json!({"input": ""}),
+            },
+            crate::domain::types::XyChunk::ToolCallDelta {
+                id: "call-1".into(),
+                name: "mock_tool".into(),
+                args_delta: r#"x"}"#.into(),
+                args: serde_json::json!({"input": "x"}),
+            },
+            crate::domain::types::XyChunk::ToolCallEnd {
+                id: "call-1".into(),
+                name: "mock_tool".into(),
+                args: serde_json::json!({"input": "x"}),
+            },
+            crate::domain::types::XyChunk::Done {
+                finish_reason: crate::domain::message::XyStopReason::ToolUse,
+                usage: None,
+            },
+        ];
+        let mut agent = make_agent_with_tools(
+            chunks,
+            ToolSet::from_iter(vec![
+                Arc::new(MockTool) as Arc<dyn crate::runtime_protocol::XyTool>
+            ]),
+        );
+
+        let mut stream = agent.run("go").await;
+        let mut saw_intent_update = false;
+        let mut message_end_seen = false;
+        let mut tool_start_after_end = false;
+        let mut tool_update_seen = false;
+
+        while let Some(evt) = stream.next().await {
+            match evt {
+                XyEvent::MessageUpdate {
+                    message: Some(AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. })),
+                    ..
+                } if !message_end_seen => {
+                    if content.iter().any(|p| {
+                        matches!(
+                            p,
+                            AgentPart::ToolCall {
+                                name,
+                                ..
+                            } if name == "mock_tool"
+                        )
+                    }) {
+                        saw_intent_update = true;
+                    }
+                }
+                XyEvent::MessageEnd { .. } => {
+                    message_end_seen = true;
+                    assert!(
+                        saw_intent_update,
+                        "expected MessageUpdate with ToolCall before MessageEnd"
+                    );
+                }
+                XyEvent::ToolExecutionStart { .. } => {
+                    assert!(
+                        message_end_seen,
+                        "ToolExecutionStart must not precede MessageEnd"
+                    );
+                    tool_start_after_end = true;
+                }
+                XyEvent::ToolExecutionUpdate { .. } => {
+                    tool_update_seen = true;
+                }
+                _ => {}
+            }
+        }
+
+        assert!(
+            saw_intent_update,
+            "expected streaming tool intent MessageUpdate"
+        );
+        assert!(
+            tool_start_after_end,
+            "expected ToolExecutionStart after MessageEnd"
+        );
+        assert!(
+            tool_update_seen,
+            "expected ToolExecutionUpdate during execution"
+        );
     }
 
     #[tokio::test]

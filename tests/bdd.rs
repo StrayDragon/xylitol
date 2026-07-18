@@ -2256,6 +2256,61 @@ async fn _w_ar_react_run(agent: &AgentState) {
     events.clear();
     events.extend(local_events);
 }
+
+#[when("运行 AgentRuntime 并收集事件")]
+async fn _w_ar_react_run_collect(agent: &AgentState) {
+    _w_ar_react_run(agent).await;
+}
+
+#[then(
+    "MessageUpdate 含工具意图且早于任意 ToolExecutionStart；ToolExecutionStart 不早于 MessageEnd"
+)]
+fn _t_ar_intent_before_execution(agent: &AgentState) {
+    use xylitol::domain::message::{AgentMessage, AgentPart, LlmMessage};
+
+    let events = agent.events.borrow();
+    let mut saw_intent = false;
+    let mut message_end_idx = None;
+    let mut tool_start_idx = None;
+
+    for (i, evt) in events.iter().enumerate() {
+        match evt {
+            XyEvent::MessageUpdate {
+                message: Some(AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. })),
+                ..
+            } => {
+                if content
+                    .iter()
+                    .any(|p| matches!(p, AgentPart::ToolCall { .. }))
+                {
+                    saw_intent = true;
+                    if tool_start_idx.is_some() {
+                        panic!("MessageUpdate with ToolCall after ToolExecutionStart: {events:?}");
+                    }
+                }
+            }
+            XyEvent::MessageEnd { .. } => {
+                message_end_idx.get_or_insert(i);
+            }
+            XyEvent::ToolExecutionStart { .. } => {
+                tool_start_idx.get_or_insert(i);
+            }
+            _ => {}
+        }
+    }
+
+    assert!(
+        saw_intent,
+        "expected MessageUpdate with ToolCall intent: {events:?}"
+    );
+    let end_i = message_end_idx.expect("expected MessageEnd");
+    let start_i = tool_start_idx.expect("expected ToolExecutionStart");
+    assert!(
+        start_i > end_i,
+        "ToolExecutionStart (idx {start_i}) must follow MessageEnd (idx {end_i}): {events:?}"
+    );
+}
+
 #[then("先执行工具再结束且无 adk 类型")]
 fn _t_ar_react_terminates(agent: &AgentState) {
     let events = agent.events.borrow();
@@ -3132,6 +3187,11 @@ async fn test_ar_stream_is_xyevent(agent: AgentState, ws: Workspace) {}
     name = "continues-after-tools"
 )]
 async fn test_ar_continues_after_tools(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "intent-before-execution"
+)]
+async fn test_ar_intent_before_execution(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "abort-drops-sse"
