@@ -56,6 +56,8 @@ impl Reporter for FileTraceReporter {
 
             // Span-level correlation for lifecycle (react.turn / stream / tool.execute).
             let span_turn_id = prop(&span.properties, "turn_id");
+            let span_tool_name = prop(&span.properties, "tool_name");
+            let span_tool_id = prop(&span.properties, "tool_id");
 
             for ev in &span.events {
                 let kind = prop(&ev.properties, "kind").unwrap_or(ev.name.as_ref());
@@ -100,6 +102,16 @@ impl Reporter for FileTraceReporter {
                     && let Some(tid) = span_turn_id
                 {
                     obj.insert("turn_id".into(), Value::String(tid.into()));
+                }
+                if !obj.contains_key("tool_name")
+                    && let Some(name) = span_tool_name
+                {
+                    obj.insert("tool_name".into(), Value::String(name.into()));
+                }
+                if !obj.contains_key("tool_id")
+                    && let Some(id) = span_tool_id
+                {
+                    obj.insert("tool_id".into(), Value::String(id.into()));
                 }
                 let truncated = prop(&ev.properties, "truncated").is_some_and(|v| v == "true");
                 obj.insert("truncated".into(), Value::Bool(truncated));
