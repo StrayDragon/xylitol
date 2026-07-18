@@ -10,7 +10,7 @@ description: >-
 # xylitol 观测 / Inspect（省 token）
 
 **边界**：只做窄读与分组摘要；schema / 闸门 SSOT → `src/AGENTS.md` Provider、`infra-provider-trace`、c1265 design。
-**产品前瞻**：`docs/roadmaps/出口流量检视.md`（M0 底座 → 检视台；OTel 为后置）。
+**产品前瞻**：`docs/roadmaps/出口流量检视.md`（检视台）；进程内底座见 `docs/architecture/进程内观测.md`。
 
 ## 硬约束（agent）
 
