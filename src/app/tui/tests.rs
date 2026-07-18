@@ -1798,3 +1798,87 @@ fn harness_ready_narrow_with_long_cwd_does_not_hang() {
     session.render_now().expect("ready again");
     assert_eq!(session.mode(), LayoutMode::Ready);
 }
+
+#[test]
+fn idle_tick_skips_paint_when_clean() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.render_now().expect("warm");
+    let frames = session.tui.frame_count();
+    session.step(HostEvent::Tick).expect("tick");
+    assert_eq!(
+        session.tui.frame_count(),
+        frames,
+        "idle Tick must not paint when nothing is dirty"
+    );
+}
+
+#[test]
+fn bang_chunk_marks_dirty_and_paints_on_tick() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.begin_bash_exec("echo hi", false);
+    session.render_now().expect("warm");
+    let frames = session.tui.frame_count();
+    session.append_bash_chunk(b"hi from bang\n");
+    assert_eq!(
+        session.tui.frame_count(),
+        frames,
+        "chunk must not force immediate paint"
+    );
+    // Honor TUI 16ms throttle after render_now.
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    session.step(HostEvent::Tick).expect("tick");
+    assert!(
+        session.tui.frame_count() > frames,
+        "Tick must paint after paint_dirty bang chunk"
+    );
+    let text = session.tui.terminal.frames.join("\n");
+    // Frames hold raw ANSI writes; plain "hi from bang" may be split — also check model.
+    assert!(
+        session
+            .ui_model()
+            .entries
+            .iter()
+            .any(|e| matches!(e, super::bridge::UiEntry::Bash { output, .. } if output.contains("hi from bang")))
+            || text.contains("hi from bang"),
+        "bash chunk must land in model/viewport"
+    );
+}
+
+#[test]
+fn upper_cache_reused_across_spinner_ticks() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    root.set_layout_meta("~/xylitol", "ornith");
+    let mut model = UiModel::new();
+    model.begin_run("hello");
+    for i in 0..40 {
+        model.entries.push(super::bridge::UiEntry::Assistant {
+            text: format!("line-{i}"),
+        });
+    }
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    let rebuilt = root.upper_rebuild_count_for_test();
+    assert!(rebuilt >= 1);
+    // Status-only ticks should not rebuild upper.
+    for _ in 0..5 {
+        let _ = root.tick();
+        let _ = root.render(80);
+    }
+    assert_eq!(
+        root.upper_rebuild_count_for_test(),
+        rebuilt,
+        "spinner ticks must reuse upper cache"
+    );
+    // Model change must rebuild.
+    model.entries.push(super::bridge::UiEntry::Assistant {
+        text: "extra".into(),
+    });
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    assert!(
+        root.upper_rebuild_count_for_test() > rebuilt,
+        "apply_ui_model must invalidate upper cache"
+    );
+}

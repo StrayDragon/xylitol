@@ -18,6 +18,7 @@ impl UiRoot {
     /// Does not clear transcript / `ui_model` entries.
     pub fn set_layout_theme(&mut self, theme: LayoutTheme) {
         self.theme = theme;
+        self.bump_upper_gen();
         let accent = theme.palette().accent;
         let muted = theme.palette().muted;
         self.status_loader = Loader::new(

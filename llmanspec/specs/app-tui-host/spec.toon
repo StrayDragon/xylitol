@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-host"
 purpose: 产品 TUI 宿主：host 驱动引擎、终端生命周期、即时日志与尺寸降级。
 valid_scope[1]: src/app/tui/
-requirements[21]{req_id,title,statement}:
+requirements[22]{req_id,title,statement}:
   r23,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   ath1,"host-driven-engine","产品 TUI MUST 以 host 驱动 packages/xylitol-tui：使用 dispatch_event、request_render、try_render、idle_tick；产品路径 MUST NOT 调用 TUI::start()。"
   ath2,"terminal-restore",产品 TUI MUST 在正常退出、错误退出与 panic 路径恢复终端（关闭 raw mode 等），不得把用户终端留在损坏状态；MUST 安装 panic hook（仅靠 Drop 不足）。
@@ -24,4 +24,5 @@ requirements[21]{req_id,title,statement}:
   ath21,"copy-last-via-driver-seam","产品 /history-copy-last MUST 经 Driver::copy_text_to_clipboard（或等价）调用剪贴板，MUST NOT 从 app/tui 直接 reach infra::clipboard；选文 MUST 取已提交 UiEntry::Assistant 自尾向前第一条非空正文，MUST NOT 复制 thinking/tool/system 块或未提交 streaming 半句作为成功路径。"
   ath22,"thinking-level-silent-cycle","产品 host 切换 thinking level 时 MUST 经 Driver set/cycle_thinking_level（或 Command::SetThinkingLevel / 等价 seam）更新运行时；成功后 MUST 仅更新边框与 footer；MUST NOT 向 live scrollback / transcript 追加 thinking-border → … 类系统块；MUST NOT 因 cycle 刷屏；模型切换后 MUST 从 Driver::thinking_level 重同步 UI；组件 MUST NOT 直接 reach ModelManager。"
   ath23,"loaded-resources-via-driver","产品 host MUST 经 Driver 只读缝获取 skills 名与 MCP 连接摘要以填充 loaded-resources；启动与 /reload 成功后 MUST 刷新该槽；MUST NOT 从 app/tui reach infra::mcp 或 skills 目录；busy 时 /reload 拒绝语义保持 ath20/既有行为。"
+  ath24,"tick-gated-local-paint","产品 host 在 Ready 态处理 Tick 时：MUST 先 idle_tick；仅当 idle_tick 报告 dirty 或 host 已置 paint_dirty（含 bang chunk 追加）时才 request_render；idle 且无 paint_dirty 时 MUST NOT 仅为 Tick 整帧重绘。UiRoot 对 loaded-resources+scrollback+queue MUST 在仅 status Loader 推进时复用上区行缓存；apply_ui_model、fold、theme、loaded-resources 或宽度变化时 MUST 失效缓存。"
 scenarios[0]:
