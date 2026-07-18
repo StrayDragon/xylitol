@@ -6,7 +6,8 @@ depends_on:
 - c1300-update-app-tui-write-edit-process-chrome
 branch: feat/tui-dev
 base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 00dcf3be18c6223e04761f952a97f18aa0b0dd42
 ---
 
 # Proposal: write 流式尾视口 + 超限 tool/bash 禁展开
