@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-bridge"
 purpose: XyEvent 到 UI 模型的单一翻译缝与 agent 循环生命周期。
 valid_scope[1]: src/app/tui/
-requirements[11]{req_id,title,statement}:
+requirements[12]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   atb1,"xyevent-to-ui-seam","产品 TUI MUST 经单一 bridge 缝（apply_xy_event）将 XyEvent 译为 UI-only 模型；渲染层 MUST NOT 直接 match XyEvent。未知/元数据变体 MUST 降级（tracing）且 MUST NOT panic。"
   atb2,"agent-loop-lifecycle","用户可见忙碌态 MUST 覆盖从提交或 steer 起至 AgentEnd 且 follow-up 队列为空；中间 TurnEnd MUST NOT 被当作整轮结束去清空 streaming 尾或复位 idle。"
@@ -14,5 +14,8 @@ requirements[11]{req_id,title,statement}:
   atb7,"abort-feedback-aborted-note","用户 Esc abort agent 流后，产品 bridge/host MUST 向 live scrollback 追加至多一行 muted/System 文案 Aborted，清除 streaming_thinking 与 streaming_assistant，并将 status 置为 idle；若随后收到同轮已丢弃策略外的 XyEvent::Error aborted，MUST NOT 再追加重复 Aborted 行（仅与末行去重）；bang Esc 取消 MUST 走块内 (cancelled)，MUST NOT 冒充 agent Aborted。"
   atb8,"bash-ui-entry-block","产品 bridge/host MUST 以 UI-only 可着色块表示交互 bang（建议 UiEntry::Bash 或等价），携带 command 与 status（pending/success/error/cancelled）及输出；渲染层 MUST NOT 再把 bang 长期拼成无语义的裸 System 行。"
   atb9,"bash-stream-append",产品 bridge MUST 提供对最后一条 Pending Bash 块的增量追加 API（append_bash_output 或等价）；流式 chunk 追加期间 status MUST 保持 pending tint；BashDone 或取消收口时 MUST 经既有 finish/cancelled 路径切换终态；MUST NOT 每 chunk 新建独立 System 行。
-scenarios[1]{req_id,id,given,when,then,feature}:
+  atb11,"quiet-write-edit-success-output","ToolExecutionEnd 对 write/edit 且 is_error=false 时，若 result 为机器成功 JSON（含 path/success 或 display_diff），bridge MUST NOT 把该 JSON 作为默认可见 Tool.output；edit 成功仍 MUST 经既有路径抽取 display_diff 推入 UiEntry::Diff。is_error=true 时 MUST 保留 result 供展开查看。"
+scenarios[3]{req_id,id,given,when,then,feature}:
   atb10,"intent-upsert",MessageUpdate 含渐进 ToolCall,经 apply_xy_event,出现单条 UiEntry::Tool 且 Start 不重复 push,false
+  atb11,"write-success-quiet",write ToolExecutionEnd 成功 JSON,经 apply_xy_event,对应 Tool.output 为空,false
+  atb11,"edit-success-diff-not-json",edit 成功含 display_diff,经 apply_xy_event,Tool.output 空且存在 Diff 条目,false
