@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-transcript"
 purpose: Live 输出进引擎 scrollback（非 Codex 式 transcript 浏览面）；分支回看走会话树。
 valid_scope[1]: src/app/tui/
-requirements[16]{req_id,title,statement}:
+requirements[17]{req_id,title,statement}:
   r26,"capability-shell",本 capability 约束 live scrollback 行呈现与相关积木复用；MUST NOT 被解读为要求 Codex 式 TranscriptView。本壳 MUST 保持非空以满足 BDD 护栏。
   att1,"live-scrollback-output",产品 UiRoot 当前轮 live 用户/助手/系统输出 MUST 写入引擎 scrollback 并以包 Markdown（及角色色/glyph）呈现；MUST NOT 截断历史冒充滚动；MUST NOT 以此要求实现 Codex 式可导航 transcript 浏览面。
   att3,"diff-via-package","产品 live scrollback 中文件编辑 diff MUST 复用 packages/xylitol-tui Diff（含 word-level 与复制友好前缀）；MUST NOT 在应用面复制准通用 diff 渲染器。"
@@ -19,7 +19,8 @@ requirements[16]{req_id,title,statement}:
   att14,"write-edit-process-chrome","产品 write 工具块 MUST 在意图/执行过程中默认展示正文 viewport（对齐流式跟尾：默认至多 10 逻辑行 Tail，超出 MUST 提示 earlier lines 与 ctrl+o）；write 的 header 与正文 MUST 处于同一 tool-*-bg 洗底块（pending/success/error 整块同色，MUST NOT 仅头行着色而正文裸底）。edit 成功后 diff MUST 在同一工具块内默认可见（MUST NOT 依赖 Alt+E 才露出）。工具头行 MUST NOT 嵌入 [ok]/[err]/[…] 字面状态标签；成败 MUST 由 tool-*-bg tint 与块末错误行表达。"
   att15,"bash-full-output-footer-chrome","产品 live scrollback 中 bang Bash 块与 bash 工具块的输出若含以 `[Full output:` 开头的脚注行，该行 MUST 以 DESIGN `{colors.warning}` 前景绘制（可 bold）；截断时 MUST 展示该脚注而非仅用 `(truncated)` 字面替换；未截断 MUST NOT 伪造该脚注。"
   att16,"hard-truncated-no-viewport-expand","产品 bang Bash 与 tool 块（含 bash）的输出若含 `[Full output:`（系统硬截断），Ctrl+O 视口 MUST NOT 展开为全文；渲染 MUST 保持 Tail 预览并提示 expand disabled（或等价）；write 正文 viewport MUST 仍允许 Ctrl+O 展开。ToolExecutionEnd 在 truncated 时 MUST 用截断后的 combined/stdout 替换流式累积的 output 缓冲。"
-scenarios[12]{req_id,id,given,when,then,feature}:
+  att17,"diff-render-cap","产品 live scrollback 渲染 edit/Diff 的 display_diff 时 MUST 限制可见行数（硬上限）；超限 MUST 截断并提示 omitted；过大 diff MUST NOT 启用 word-level，以免卡死 TUI。"
+scenarios[13]{req_id,id,given,when,then,feature}:
   att13,"bash-summary",bash 工具 args 含 command,外显或重建 args_preview,以 $ 开头且非纯 JSON 墙,false
   att13,"write-lines-hint",write args 含 path 与多行 content,求 args_preview,含 path 与 lines 且无 content 正文,false
   att13,"edit-no-json-fallback",edit args 仅有 edits 无顶层 path,求 args_preview,为 edit 短形且不含 oldText/newText JSON 墙,false
@@ -32,3 +33,4 @@ scenarios[12]{req_id,id,given,when,then,feature}:
   att15,"full-output-warning-fg",Bash 输出含 Full output 脚注行,外显 scrollback,该行使用 warning 前景,false
   att16,"truncated-bash-no-expand",Bash 输出含 Full output 且 Ctrl+O 已按,外显,仍为尾视口且含 expand disabled,false
   att16,"write-still-expandable",write 长正文 Ctrl+O,外显,可展开全文,false
+  att17,"huge-diff-capped",edit display_diff 超长,外显 scrollback,可见行受上限且含 omitted 提示,false

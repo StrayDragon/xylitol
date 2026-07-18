@@ -28,6 +28,36 @@ pub struct ScrollbackFold {
 const TOOLS_OUTPUT_PREVIEW_LINES: usize = 5;
 /// Collapsed write body viewport (pi write.ts = 10 logical lines).
 const WRITE_BODY_PREVIEW_LINES: usize = 10;
+/// Max visual lines of edit/Diff body painted into scrollback (c1350).
+const MAX_DIFF_RENDER_LINES: usize = 80;
+/// Disable word-level when raw display_diff exceeds this many lines.
+const WORD_LEVEL_DIFF_LINE_LIMIT: usize = 120;
+
+fn push_capped_diff_lines(lines: &mut Vec<String>, diff: &str, width: usize, theme: LayoutTheme) {
+    let raw_lines = diff.lines().count();
+    let word_level = raw_lines <= WORD_LEVEL_DIFF_LINE_LIMIT;
+    let input = DiffInput::DisplayText(diff.to_string());
+    let opts = DiffOptions {
+        word_level,
+        ..DiffOptions::default()
+    };
+    let rendered = render_diff_lines(&input, width, &theme.palette().diff_theme(), &opts);
+    if rendered.len() <= MAX_DIFF_RENDER_LINES {
+        for line in rendered {
+            lines.push(fit(&line, width));
+        }
+        return;
+    }
+    let keep = MAX_DIFF_RENDER_LINES.saturating_sub(1);
+    let omitted = rendered.len().saturating_sub(keep);
+    for line in rendered.into_iter().take(keep) {
+        lines.push(fit(&line, width));
+    }
+    let note = theme.paint_warning(&format!(
+        "… ({omitted} more diff lines omitted — large edit capped for TUI)"
+    ));
+    lines.push(fit(&bold(&note), width));
+}
 
 fn key_hint(chord: &str) -> String {
     format!("({chord})")
@@ -288,16 +318,7 @@ pub fn render_scrollback(
                 if let Some(diff) = display_diff
                     && !diff.is_empty()
                 {
-                    let input = DiffInput::DisplayText(diff.clone());
-                    let opts = DiffOptions {
-                        word_level: true,
-                        ..DiffOptions::default()
-                    };
-                    for line in
-                        render_diff_lines(&input, width, &theme.palette().diff_theme(), &opts)
-                    {
-                        lines.push(fit(&line, width));
-                    }
+                    push_capped_diff_lines(&mut lines, diff, width, theme);
                 }
             }
             UiEntry::Diff {
@@ -319,16 +340,7 @@ pub fn render_scrollback(
                 let rgb = tool_bg_rgb(false, false, theme);
                 push_tinted(&mut lines, &header_lines, width, rgb);
                 if fold.tools_expanded && !display_diff.is_empty() {
-                    let input = DiffInput::DisplayText(display_diff.clone());
-                    let opts = DiffOptions {
-                        word_level: true,
-                        ..DiffOptions::default()
-                    };
-                    for line in
-                        render_diff_lines(&input, width, &theme.palette().diff_theme(), &opts)
-                    {
-                        lines.push(fit(&line, width));
-                    }
+                    push_capped_diff_lines(&mut lines, display_diff, width, theme);
                 }
             }
             UiEntry::Bash {
@@ -579,6 +591,44 @@ mod tests {
         assert!(
             plain.contains("line-17"),
             "write viewport must show stream end; got {plain:?}"
+        );
+    }
+
+    #[test]
+    fn huge_edit_diff_is_capped_in_scrollback() {
+        let mut diff = String::new();
+        for i in 0..300 {
+            diff.push_str(&format!("     {i:>4} | +line-{i}\n"));
+        }
+        let mut model = UiModel::default();
+        model.entries.push(UiEntry::Tool {
+            id: "e1".into(),
+            name: "edit".into(),
+            args_preview: "edit big.txt".into(),
+            tool_path: Some("big.txt".into()),
+            write_content: None,
+            display_diff: Some(diff),
+            output: String::new(),
+            is_error: false,
+            done: true,
+        });
+        let theme = LayoutTheme::product_dark();
+        let lines = render_scrollback(
+            &model,
+            GlyphSet::from_env(),
+            theme,
+            ScrollbackFold::default(),
+            100,
+        );
+        let plain = strip_ansi_local(&lines.join("\n"));
+        assert!(
+            plain.contains("omitted") || plain.contains("capped"),
+            "huge diff must show cap notice; got {plain:?}"
+        );
+        assert!(
+            lines.len() < 120,
+            "scrollback must not paint hundreds of diff rows; got {}",
+            lines.len()
         );
     }
 

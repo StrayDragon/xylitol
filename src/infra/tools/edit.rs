@@ -115,15 +115,14 @@ impl EditTool {
         }
         result_content.push_str(&normalized[last..]);
 
+        let unified = patch::generate_unified_diff(&normalized, &result_content, file_path);
+        let display = patch::generate_display_diff(&normalized, &result_content, file_path);
+
         let final_content = if has_bom {
             format!("\u{FEFF}{result_content}")
         } else {
             result_content
         };
-
-        let old_sample = &matched_old_texts[0];
-        let unified = patch::generate_unified_diff(old_sample, &final_content, file_path);
-        let display = patch::generate_display_diff(old_sample, &final_content, file_path);
 
         // Atomic write
         let path = std::path::Path::new(file_path);

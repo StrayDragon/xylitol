@@ -252,7 +252,10 @@ fn find_best_match(text: &str, target: &str) -> Option<std::ops::Range<usize>> {
 // Diff generation
 // ═══════════════════════════════════════════════════════════════════
 
-use similar::{ChangeTag, TextDiff};
+use similar::TextDiff;
+
+/// Max lines written into `display_diff` (c1350) — keeps UI/history details bounded.
+pub(crate) const MAX_DISPLAY_DIFF_LINES: usize = 200;
 
 /// Generate a unified diff between old and new content.
 pub(crate) fn generate_unified_diff(old: &str, new: &str, _file_path: &str) -> String {
@@ -260,51 +263,93 @@ pub(crate) fn generate_unified_diff(old: &str, new: &str, _file_path: &str) -> S
     diff.unified_diff().context_radius(3).to_string()
 }
 
-/// Generate a human-readable display diff with line numbers and context folding.
+/// Generate a human-readable display diff with line numbers.
+///
+/// Uses unified context hunks (radius 3) so unchanged file bodies are not expanded.
+/// Hard-caps at [`MAX_DISPLAY_DIFF_LINES`].
 pub(crate) fn generate_display_diff(old: &str, new: &str, file_path: &str) -> String {
     let diff = TextDiff::from_lines(old, new);
-    let mut output = String::new();
-
-    output.push_str(&format!("--- a/{file_path}\n+++ b/{file_path}\n"));
-
-    for change in diff.iter_all_changes() {
-        let sign = match change.tag() {
-            ChangeTag::Delete => "-",
-            ChangeTag::Insert => "+",
-            ChangeTag::Equal => " ",
-        };
-        output.push_str(sign);
-        output.push_str(change.value());
-        if !change.value().ends_with('\n') {
-            output.push('\n');
-        }
+    let unified = diff.unified_diff().context_radius(3).to_string();
+    if unified.trim().is_empty() {
+        return "(no changes)".to_string();
     }
 
-    // Add line numbers
-    let mut old_line = 1;
-    let mut new_line = 1;
+    let mut old_line = 1u32;
+    let mut new_line = 1u32;
     let mut result = String::new();
-    for line in output.lines() {
-        if let Some(content) = line.strip_prefix('-') {
-            result.push_str(&format!("{old_line:>4}     | {content}\n"));
-            old_line += 1;
-        } else if let Some(content) = line.strip_prefix('+') {
-            result.push_str(&format!("     {new_line:>4} | {content}\n"));
-            new_line += 1;
-        } else if let Some(content) = line.strip_prefix(' ') {
-            result.push_str(&format!("{old_line:>4} {new_line:>4} | {content}\n"));
-            old_line += 1;
-            new_line += 1;
-        } else if line.starts_with("---") || line.starts_with("+++") {
+    result.push_str(&format!("      ... | --- a/{file_path}\n"));
+    result.push_str(&format!("      ... | +++ b/{file_path}\n"));
+
+    let mut emitted = 0usize;
+    let mut omitted = 0usize;
+
+    for line in unified.lines() {
+        if line.starts_with("@@") {
+            // Reset line counters from hunk header when present: @@ -l,s +l,s @@
+            if let Some((o, n)) = parse_hunk_starts(line) {
+                old_line = o;
+                new_line = n;
+            }
+            if emitted >= MAX_DISPLAY_DIFF_LINES {
+                omitted += 1;
+                continue;
+            }
             result.push_str(&format!("      ... | {line}\n"));
+            emitted += 1;
+            continue;
         }
+        if line.starts_with("---") || line.starts_with("+++") {
+            continue;
+        }
+
+        let row = if let Some(content) = line.strip_prefix('-') {
+            let row = format!("{old_line:>4}     | {content}");
+            old_line += 1;
+            row
+        } else if let Some(content) = line.strip_prefix('+') {
+            let row = format!("     {new_line:>4} | {content}");
+            new_line += 1;
+            row
+        } else if let Some(content) = line.strip_prefix(' ') {
+            let row = format!("{old_line:>4} {new_line:>4} | {content}");
+            old_line += 1;
+            new_line += 1;
+            row
+        } else {
+            format!("      ... | {line}")
+        };
+
+        if emitted >= MAX_DISPLAY_DIFF_LINES {
+            omitted += 1;
+            continue;
+        }
+        result.push_str(&row);
+        result.push('\n');
+        emitted += 1;
     }
 
-    if result.is_empty() {
+    if omitted > 0 {
+        result.push_str(&format!(
+            "      ... | (diff truncated for display, {omitted} lines omitted)\n"
+        ));
+    }
+
+    if result.lines().count() <= 2 {
         "(no changes)".to_string()
     } else {
         result
     }
+}
+
+fn parse_hunk_starts(hunk: &str) -> Option<(u32, u32)> {
+    // @@ -12,5 +14,7 @@  or  @@ -12 +14 @@
+    let rest = hunk.strip_prefix("@@")?.trim();
+    let mut parts = rest.split_whitespace();
+    let old = parts.next()?.strip_prefix('-')?;
+    let new = parts.next()?.strip_prefix('+')?;
+    let old_start = old.split(',').next()?.parse().ok()?;
+    let new_start = new.split(',').next()?.parse().ok()?;
+    Some((old_start, new_start))
 }
 
 #[cfg(test)]
@@ -339,6 +384,35 @@ mod tests {
         let input = "a\u{00A0}b\u{3000}c";
         let result = normalize_for_fuzzy_match(input);
         assert_eq!(result, "a b c");
+    }
+
+    #[test]
+    fn display_diff_uses_context_hunks_not_full_file() {
+        let mut old = String::new();
+        for i in 0..5000 {
+            old.push_str(&format!("line-{i}\n"));
+        }
+        let mut new = old.clone();
+        new = new.replacen("line-100\n", "line-100-edited\n", 1);
+        let display = generate_display_diff(&old, &new, "big.txt");
+        let n = display.lines().count();
+        assert!(
+            n < 80,
+            "small edit in large file must not expand full Equal body; got {n} lines:\n{display}"
+        );
+        assert!(display.contains("line-100-edited") || display.contains("edited"));
+    }
+
+    #[test]
+    fn display_diff_hard_caps_lines() {
+        let old: String = (0..500).map(|i| format!("a{i}\n")).collect();
+        let new: String = (0..500).map(|i| format!("b{i}\n")).collect();
+        let display = generate_display_diff(&old, &new, "rewrite.txt");
+        assert!(
+            display.lines().count() <= MAX_DISPLAY_DIFF_LINES + 5,
+            "must hard-cap display_diff"
+        );
+        assert!(display.contains("truncated for display") || display.contains("omitted"));
     }
 
     #[test]
