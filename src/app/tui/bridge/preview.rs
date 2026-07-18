@@ -196,6 +196,24 @@ pub(crate) fn quiet_tool_success_output(
     }
 }
 
+/// Pull pi-shaped `[Full output: …]` line from bash tool JSON / plain result.
+pub(crate) fn extract_full_output_notice(result: &str) -> Option<String> {
+    if let Ok(value) = serde_json::from_str::<Value>(result) {
+        for key in ["combined", "stdout", "output"] {
+            if let Some(text) = value.get(key).and_then(|v| v.as_str())
+                && let Some(line) = text.lines().find(|l| l.starts_with("[Full output:"))
+            {
+                return Some(line.to_string());
+            }
+        }
+        return None;
+    }
+    result
+        .lines()
+        .find(|l| l.starts_with("[Full output:"))
+        .map(str::to_string)
+}
+
 /// Pull `display_diff` from edit-tool JSON result (shape is intentionally fragile).
 pub fn extract_display_diff(result: &str) -> Option<String> {
     let value: Value = serde_json::from_str(result).ok()?;

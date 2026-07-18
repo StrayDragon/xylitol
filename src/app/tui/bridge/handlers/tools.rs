@@ -2,9 +2,9 @@
 
 use crate::app::core::driver::XyEvent;
 use crate::app::tui::bridge::{
-    UiEntry, UiModel, UiPhase, extract_display_diff, extract_result_path, find_tool_mut,
-    human_tool_args_preview_with_path, preview_lacks_real_path, quiet_tool_success_output,
-    upsert_tool_entry,
+    UiEntry, UiModel, UiPhase, extract_display_diff, extract_full_output_notice,
+    extract_result_path, find_tool_mut, human_tool_args_preview_with_path, preview_lacks_real_path,
+    quiet_tool_success_output, upsert_tool_entry,
 };
 
 pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
@@ -41,6 +41,14 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
                 if let Some(quiet) = quiet_tool_success_output(name, result, *is_error) {
                     // Clear machine JSON result chrome; write body lives in write_content.
                     *output = quiet;
+                } else if let Some(notice) = extract_full_output_notice(result) {
+                    // Streaming bash kept live chunks; append pi Full output footer once.
+                    if !output.contains("[Full output:") {
+                        if !output.is_empty() && !output.ends_with('\n') {
+                            output.push('\n');
+                        }
+                        output.push_str(&notice);
+                    }
                 } else if output.is_empty() {
                     *output = result.clone();
                 }

@@ -1625,12 +1625,63 @@ fn _t_cmd_abort(ws: &Workspace) {
 
 #[then("输出被截断")]
 fn _t_truncated(ws: &Workspace) {
-    assert!(result_ok_str(&ws.last_result).contains("truncated"));
+    let r = result_ok_str(&ws.last_result);
+    let truncated = serde_json::from_str::<serde_json::Value>(&r)
+        .ok()
+        .and_then(|v| v.get("truncated")?.as_bool())
+        .unwrap_or(false);
+    assert!(
+        truncated || r.contains("[Full output:"),
+        "expected truncated output, got: {}",
+        &r[..r.len().min(200)]
+    );
 }
 
 #[then("截断详情显示达到字节或行限制")]
 fn _t_truncation_details(ws: &Workspace) {
-    assert!(result_ok_str(&ws.last_result).contains("truncated"));
+    let r = result_ok_str(&ws.last_result);
+    assert!(
+        r.contains("truncated") || r.contains("Full output"),
+        "expected truncation details, got: {r}"
+    );
+}
+
+#[then("结果含 Full output 脚注")]
+fn _t_full_output_footer(ws: &Workspace) {
+    let r = result_ok_str(&ws.last_result);
+    assert!(
+        r.contains("[Full output:"),
+        "expected Full output footer, got: {r}"
+    );
+    assert!(
+        r.contains("lines shown"),
+        "expected lines shown in footer, got: {r}"
+    );
+}
+
+#[then("bash 结果 JSON 无未截断全量 stdout 字段载荷")]
+fn _t_bash_no_full_stdout_dump(ws: &Workspace) {
+    let r = result_ok_str(&ws.last_result);
+    let v: serde_json::Value =
+        serde_json::from_str(&r).unwrap_or_else(|_| serde_json::json!({ "raw": r }));
+    let stdout = v
+        .get("stdout")
+        .and_then(|x| x.as_str())
+        .or_else(|| v.get("combined").and_then(|x| x.as_str()))
+        .unwrap_or(&r);
+    // Truncated display must stay near DEFAULT_MAX_BYTES (50KiB) + footer.
+    assert!(
+        stdout.len() < 60 * 1024,
+        "stdout/combined still looks like a full dump: {} bytes",
+        stdout.len()
+    );
+    assert!(
+        v.get("truncated")
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false)
+            || r.contains("[Full output:"),
+        "expected truncated=true or Full output footer"
+    );
 }
 
 #[then("如果截断则显示剩余行提示")]
@@ -2981,6 +3032,11 @@ fn test_bash_merged_streams(ws: Workspace) {}
     name = "bash-truncate"
 )]
 fn test_bash_truncate(ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "bash-result-no-full-dump"
+)]
+fn test_bash_result_no_full_dump(ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/agent-tools/agent-tools.feature",
     name = "bash-cancel"
