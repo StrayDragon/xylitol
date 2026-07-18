@@ -54,7 +54,8 @@ pub fn apply_agent_family(model: &mut UiModel, event: &XyEvent) -> bool {
         XyEvent::MessageUpdate { message, .. } => {
             // Text/thinking top-level fields are snapshots — TextDelta/ThinkingDelta
             // already stream increments (must not re-apply). ToolCall parts in
-            // `message` are intent-only and mount/update Tool chrome (c1260).
+            // `message` are intent-only: flush streaming first (order), then
+            // mount/update Tool chrome (c1260).
             if let Some(msg) = message {
                 sync_tool_intent_from_message(model, msg);
             }
