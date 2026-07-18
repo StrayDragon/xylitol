@@ -5,10 +5,13 @@
 
 mod handlers;
 mod model;
+mod preview;
 pub(crate) mod session_tree;
 
 pub(crate) use model::trailing_aborted_note;
 pub use model::{BashBlockStatus, QueueBadge, UiEntry, UiModel, UiPhase};
+pub use preview::extract_display_diff;
+pub(crate) use preview::{human_tool_args_preview, quiet_tool_success_output};
 
 use serde_json::Value;
 
@@ -30,131 +33,37 @@ pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
     log::debug!(target: "xylitol::tui", "XyEvent unhandled by bridge event={}", event.description());
 }
 
-pub(crate) fn compact_json_preview(value: &Value, max_chars: usize) -> String {
-    let raw = match value {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
-    };
-    if raw.chars().count() <= max_chars {
-        return raw;
-    }
-    let truncated: String = raw.chars().take(max_chars.saturating_sub(1)).collect();
-    format!("{truncated}…")
-}
-
-/// Human-readable collapsed tool args (c1260 / c1280).
-///
-/// Missing key fields → short placeholder. Never dump full args JSON as chrome.
-pub(crate) fn human_tool_args_preview(name: &str, args: &Value, max_chars: usize) -> String {
-    let pick_str = |keys: &[&str]| -> Option<String> {
-        for key in keys {
-            if let Some(s) = args
-                .get(*key)
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-            {
-                return Some(s.to_string());
-            }
-        }
-        None
-    };
-
-    let path_from_edits = || -> Option<String> {
-        args.get("edits")
-            .and_then(Value::as_array)
-            .and_then(|arr| arr.first())
-            .and_then(|edit| {
-                ["path", "file"]
-                    .iter()
-                    .find_map(|k| edit.get(*k).and_then(Value::as_str))
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string)
-            })
-    };
-
-    let content_line_count = || -> Option<usize> {
-        let content = args.get("content").and_then(Value::as_str)?;
-        if content.is_empty() {
-            return None;
-        }
-        Some(content.lines().count().max(1))
-    };
-
-    let summary = match name {
-        "bash" | "shell" => pick_str(&["command", "cmd"])
-            .map(|c| format!("$ {c}"))
-            .unwrap_or_else(|| name.to_string()),
-        "read" => pick_str(&["path", "file"])
-            .map(|p| format!("read {p}"))
-            .unwrap_or_else(|| "read".into()),
-        "ls" => pick_str(&["path", "dir"])
-            .map(|p| format!("ls {p}"))
-            .unwrap_or_else(|| "ls".into()),
-        "edit" => pick_str(&["path", "file"])
-            .or_else(path_from_edits)
-            .map(|p| format!("edit {p}"))
-            .unwrap_or_else(|| "edit".into()),
-        "write" => {
-            let path = pick_str(&["path", "file"]);
-            match (path, content_line_count()) {
-                (Some(p), Some(n)) => format!("write {p} ({n} lines)"),
-                (Some(p), None) => format!("write {p}"),
-                (None, Some(n)) => format!("write ({n} lines)"),
-                (None, None) => "write".into(),
-            }
-        }
-        "find" => pick_str(&["pattern", "path", "glob"])
-            .map(|p| format!("find {p}"))
-            .unwrap_or_else(|| "find".into()),
-        "grep" => pick_str(&["pattern", "path"])
-            .map(|p| format!("grep {p}"))
-            .unwrap_or_else(|| "grep".into()),
-        _ => pick_str(&["path", "file", "command", "cmd", "pattern", "query", "url"])
-            .unwrap_or_default(),
-    };
-
-    compact_json_preview(&Value::String(summary), max_chars)
-}
-
-/// Success write/edit machine JSON is not default chrome (c1280); errors stay visible.
-pub(crate) fn quiet_tool_success_output(
-    name: &str,
-    result: &str,
-    is_error: bool,
-) -> Option<String> {
-    if is_error {
-        return None;
-    }
-    match name {
-        "write" | "edit" => {
-            let trimmed = result.trim_start();
-            if trimmed.starts_with('{') || trimmed.starts_with('[') {
-                Some(String::new())
-            } else {
-                None
-            }
-        }
-        _ => None,
-    }
-}
-
 /// Upsert a pending tool row from streaming intent (MessageUpdate) or execution start.
 pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args: &Value) {
     let preview = human_tool_args_preview(name, args, 80);
+    let write_content = (name == "write")
+        .then(|| {
+            args.get("content")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .flatten()
+        .filter(|s| !s.is_empty());
     if let Some(UiEntry::Tool {
         name: n,
         args_preview,
+        write_content: wc,
         ..
     }) = find_tool_mut(&mut model.entries, id)
     {
         *n = name.to_string();
         *args_preview = preview;
+        if write_content.is_some() {
+            *wc = write_content;
+        }
         return;
     }
     model.entries.push(UiEntry::Tool {
         id: id.to_string(),
         name: name.to_string(),
         args_preview: preview,
+        write_content,
+        display_diff: None,
         output: String::new(),
         is_error: false,
         done: false,
@@ -207,23 +116,6 @@ pub(crate) fn push_user_entry_dedup(model: &mut UiModel, text: String) {
         return;
     }
     model.entries.push(UiEntry::User { text });
-}
-
-/// Pull `display_diff` from edit-tool JSON result (shape is intentionally fragile).
-pub fn extract_display_diff(result: &str) -> Option<String> {
-    let value: Value = serde_json::from_str(result).ok()?;
-    value
-        .get("display_diff")
-        .and_then(|v| v.as_str())
-        .map(str::to_string)
-}
-
-pub(crate) fn extract_edit_path(result: &str) -> Option<String> {
-    let value: Value = serde_json::from_str(result).ok()?;
-    value
-        .get("path")
-        .and_then(|v| v.as_str())
-        .map(str::to_string)
 }
 
 #[cfg(test)]
@@ -481,37 +373,6 @@ mod tests {
     }
 
     #[test]
-    fn edit_tool_end_extracts_display_diff() {
-        let mut model = UiModel::new();
-        model.begin_run("edit please");
-        apply_xy_event(
-            &mut model,
-            &XyEvent::ToolExecutionStart {
-                id: "e1".into(),
-                name: "edit".into(),
-                args: Value::Null,
-            },
-        );
-        let result = r#"{"success":true,"path":"src/a.rs","display_diff":"1 1 | fn main() {}","diff":"---"}"#;
-        apply_xy_event(
-            &mut model,
-            &XyEvent::ToolExecutionEnd {
-                id: "e1".into(),
-                name: "edit".into(),
-                result: result.into(),
-                is_error: false,
-            },
-        );
-        assert!(model.entries.iter().any(|e| matches!(
-            e,
-            UiEntry::Diff {
-                summary,
-                display_diff
-            } if summary.contains("src/a.rs") && display_diff.contains("fn main")
-        )));
-    }
-
-    #[test]
     fn metadata_events_do_not_panic() {
         let mut model = UiModel::new();
         apply_xy_event(
@@ -568,173 +429,6 @@ mod tests {
             })
             .collect();
         assert_eq!(assistants, ["Hello!"]);
-    }
-
-    #[test]
-    fn bash_summary_is_human_readable() {
-        let preview =
-            human_tool_args_preview("bash", &serde_json::json!({"command": "ls -la"}), 80);
-        assert!(preview.starts_with("$ ls"), "got {preview}");
-        assert!(!preview.contains('{'));
-    }
-
-    #[test]
-    fn write_summary_includes_line_count_not_content() {
-        let preview = human_tool_args_preview(
-            "write",
-            &serde_json::json!({
-                "path": "docs/a.md",
-                "content": "line1\nline2\nline3"
-            }),
-            80,
-        );
-        assert!(preview.contains("docs/a.md"), "got {preview}");
-        assert!(preview.contains("3 lines"), "got {preview}");
-        assert!(!preview.contains("line1"), "got {preview}");
-        assert!(!preview.contains('{'));
-    }
-
-    #[test]
-    fn edit_summary_from_edits_path_not_json_wall() {
-        let preview = human_tool_args_preview(
-            "edit",
-            &serde_json::json!({
-                "edits": [{
-                    "path": "src/main.rs",
-                    "oldText": "fn a() {}",
-                    "newText": "fn a() { todo!() }"
-                }]
-            }),
-            80,
-        );
-        assert_eq!(preview, "edit src/main.rs");
-        assert!(!preview.contains("oldText"));
-        assert!(!preview.contains('{'));
-    }
-
-    #[test]
-    fn edit_without_path_is_short_placeholder() {
-        let preview = human_tool_args_preview(
-            "edit",
-            &serde_json::json!({
-                "edits": [{"oldText": "a", "newText": "b"}]
-            }),
-            80,
-        );
-        assert_eq!(preview, "edit");
-    }
-
-    #[test]
-    fn unknown_tool_large_args_not_json_wall() {
-        let preview = human_tool_args_preview(
-            "custom_tool",
-            &serde_json::json!({
-                "payload": {"a": 1, "b": "x".repeat(200)},
-                "meta": {"nested": true}
-            }),
-            80,
-        );
-        assert!(!preview.contains("payload"), "got {preview}");
-        assert!(!preview.contains('{'), "got {preview}");
-    }
-
-    #[test]
-    fn write_success_end_quiets_tool_output() {
-        let mut model = UiModel::new();
-        model.begin_run("hi");
-        apply_xy_event(
-            &mut model,
-            &XyEvent::ToolExecutionStart {
-                id: "w1".into(),
-                name: "write".into(),
-                args: serde_json::json!({"path": "a.md", "content": "hi\n"}),
-            },
-        );
-        apply_xy_event(
-            &mut model,
-            &XyEvent::ToolExecutionEnd {
-                id: "w1".into(),
-                name: "write".into(),
-                result: r#"{"path":"a.md","success":true}"#.into(),
-                is_error: false,
-            },
-        );
-        let output = model.entries.iter().find_map(|e| match e {
-            UiEntry::Tool {
-                id, output, done, ..
-            } if id == "w1" => Some((output.as_str(), *done)),
-            _ => None,
-        });
-        assert_eq!(output, Some(("", true)));
-    }
-
-    #[test]
-    fn edit_success_end_quiets_output_keeps_diff() {
-        let mut model = UiModel::new();
-        model.begin_run("hi");
-        apply_xy_event(
-            &mut model,
-            &XyEvent::ToolExecutionStart {
-                id: "e1".into(),
-                name: "edit".into(),
-                args: serde_json::json!({"path": "a.rs"}),
-            },
-        );
-        apply_xy_event(
-            &mut model,
-            &XyEvent::ToolExecutionEnd {
-                id: "e1".into(),
-                name: "edit".into(),
-                result: r#"{"path":"a.rs","display_diff":"--- a\n+++ b\n","success":true}"#.into(),
-                is_error: false,
-            },
-        );
-        let tool_out = model.entries.iter().find_map(|e| match e {
-            UiEntry::Tool { id, output, .. } if id == "e1" => Some(output.as_str()),
-            _ => None,
-        });
-        assert_eq!(tool_out, Some(""));
-        assert!(
-            model
-                .entries
-                .iter()
-                .any(|e| matches!(e, UiEntry::Diff { summary, .. } if summary.contains("a.rs"))),
-            "expected Diff entry, got {:?}",
-            model.entries
-        );
-    }
-
-    #[test]
-    fn edit_error_keeps_result_output() {
-        let mut model = UiModel::new();
-        model.begin_run("hi");
-        apply_xy_event(
-            &mut model,
-            &XyEvent::ToolExecutionStart {
-                id: "e2".into(),
-                name: "edit".into(),
-                args: serde_json::json!({"path": "a.rs"}),
-            },
-        );
-        apply_xy_event(
-            &mut model,
-            &XyEvent::ToolExecutionEnd {
-                id: "e2".into(),
-                name: "edit".into(),
-                result: "exact match failed".into(),
-                is_error: true,
-            },
-        );
-        let tool_out = model.entries.iter().find_map(|e| match e {
-            UiEntry::Tool {
-                id,
-                output,
-                is_error,
-                ..
-            } if id == "e2" => Some((output.as_str(), *is_error)),
-            _ => None,
-        });
-        assert_eq!(tool_out, Some(("exact match failed", true)));
     }
 
     #[test]
