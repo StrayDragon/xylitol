@@ -424,6 +424,7 @@ mod tests {
             id: "w1".into(),
             name: "write".into(),
             args_preview: "write a.py (3 lines)".into(),
+            tool_path: Some("a.py".into()),
             write_content: Some("line-a\nline-b\nline-c\n".into()),
             display_diff: None,
             output: String::new(),

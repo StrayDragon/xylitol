@@ -127,6 +127,7 @@ fn message_json_to_ui_entries(entry_id: &str, message: &Value) -> Vec<UiEntry> {
                     .unwrap_or("tool")
                     .to_string(),
                 args_preview: String::new(),
+                tool_path: None,
                 write_content: None,
                 display_diff,
                 output: message_text(message),
@@ -200,6 +201,7 @@ fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
                         .to_string(),
                     name: name.to_string(),
                     args_preview: crate::app::tui::bridge::human_tool_args_preview(name, &args, 80),
+                    tool_path: crate::app::tui::bridge::extract_tool_path(&args),
                     write_content: (name == "write")
                         .then(|| {
                             args.get("content")
