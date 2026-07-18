@@ -10,7 +10,8 @@ wave: tui-stream-align
 domain: infra
 branch: feat/tui-dev
 base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 543568701581015a48f5fcecfca0b73bedda83cd
 ---
 
 # c1310-update-infra-tool-result-quiet-align-pi
