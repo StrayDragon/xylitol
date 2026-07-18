@@ -526,6 +526,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     )
                     .await;
                 }
+                let turn_span = super::obs::ReactTurnSpan::start(turn);
+                let turn_id = turn_span.as_ref().map(|t| t.turn_id().to_string());
 
                 // Inject pending messages (steering / follow-up) before the model call.
                 // Emit user MessageStart/End so surfaces can 上行 scrollback (pi chat).
@@ -605,7 +607,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         yield XyEvent::Error("aborted".to_string());
                         break 'outer;
                     }
-                    Some(Ok(s)) => chunk_stream = s,
+                    Some(Ok(s)) => {
+                        chunk_stream = super::obs::wrap_chunk_stream(s, turn_id.as_deref());
+                    }
                     Some(Err(e)) => {
                         yield XyEvent::Error(e);
                         break 'outer;
@@ -868,6 +872,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 }
 
                 for (id, name, args) in &tool_calls {
+                    let _tool_span = super::obs::ToolExecuteSpan::start(name, id);
                     yield XyEvent::ToolExecutionStart {
                         id: id.clone(),
                         name: name.clone(),
