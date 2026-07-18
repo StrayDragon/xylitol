@@ -11,7 +11,8 @@ wave: tui-stream-align
 domain: app
 branch: feat/tui-dev
 base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 3a3680f584c5763c1a12e25072815d170511f32e
 ---
 
 # c1320-update-app-tui-tool-path-stream-chrome
