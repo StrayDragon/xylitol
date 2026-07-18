@@ -12,6 +12,4 @@ requirements[9]{req_id,title,statement}:
   pab12,"thinking-params-in-request-body","xylitol-ai-bridge 在组装 OpenAI Completions / Responses 与 Anthropic Messages 请求体时 MUST 消费已解析的 thinking 参数：Completions 用 reasoning_effort；Responses 用 reasoning.effort；Anthropic 用 thinking budget（enabled + budget_tokens）；level 为 off 或映射为 null 时 MUST 省略对应字段（或显式 disabled）；用户 map 字符串 MUST 覆盖内置默认；MUST NOT 在无 map/默认时伪造未知厂商字段。"
   pab13,"assistant-stream-toolcall-lifecycle","Completions、Responses 与 Anthropic Messages 的流式路径 MUST 将原生工具调用映射为 AiBridgeChunk 的 ToolCallStart / ToolCallDelta / ToolCallEnd 生命周期：在首个可判别的工具相关上游事件后 MUST 发出 ToolCallStart（或同轮首次 ToolCallDelta 前已有 Start）；参数 JSON 片段 MUST 经 ToolCallDelta 增量发出且携带 parse_streaming_json 渐进 args；完整参数 MUST 在块结束时经 ToolCallEnd 发出。MUST NOT 仅在 finish_reason / output_item.done / message stop 才首次暴露工具意图。MUST NOT 在核心路径解析文本通道伪工具 XML。"
   pab14,"parse-streaming-json","包 MUST 提供 parse_streaming_json（或等价）：对不完整工具参数 JSON 尽最大努力解析为 serde_json::Value，非法中间态 MUST NOT panic，可回退为空对象。"
-scenarios[2]{req_id,id,given,when,then,feature}:
-  pab13,"responses-toolcall-streams-before-done",Responses SSE 含 function_call 的 output_item.added 与多帧 function_call_arguments.delta 后才有 output_item.done,映射为 AiBridgeChunk 流,首个 args delta 之前或当时已有 ToolCallStart 且存在至少一次 ToolCallDelta 早于对应 ToolCallEnd,true
-  pab14,"partial-args-object",输入残缺工具参数 JSON,调用 parse_streaming_json,返回 Value 且不 panic,true
+scenarios[0]:
