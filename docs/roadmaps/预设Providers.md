@@ -53,9 +53,9 @@ Then 无 Cursor 依赖；配置后可按协同路线调度
 
 ## 依赖
 
-- 开闭扩展心智：[可扩展架构心智.md](./可扩展架构心智.md)、[../architecture/多厂商模型.md](../architecture/多厂商模型.md)
+- 开闭扩展心智：[../architecture/多厂商模型.md](../architecture/多厂商模型.md)、[../architecture/产品分层总览.md](../architecture/产品分层总览.md)
 - 与 Tokenizer、Inspect、Web 可交错，不互相硬阻塞
-- 厂商/网关排障第一现场：[出口流量检视.md](./出口流量检视.md)（对照底座 → 检视台）
+- 厂商/网关排障：[出口流量检视.md](./出口流量检视.md)；对照底座见 [../architecture/进程内观测.md](../architecture/进程内观测.md)
 
 ## 相关
 

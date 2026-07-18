@@ -8,8 +8,8 @@
 
 | 路径 | 写什么 | 不写什么 |
 |---|---|---|
-| [`architecture/`](./architecture/README.md) | **已落地**产品心智：MUST/禁止、开箱 vs 后置、多面同构 | 易腐实现路径、进度板、未兑现方向 |
-| [`roadmaps/`](./roadmaps/README.md) | **未落地**方向板：可并行主线、依赖、BDD 意图级场景 | 可执行 `.feature`、模块/类型清单 |
+| [`architecture/`](./architecture/README.md) | **已落地**产品心智：MUST/禁止、开箱 vs 后置、多面同构 | 易腐实现路径、进度板、未兑现方向、带日期的 change id |
+| [`roadmaps/`](./roadmaps/README.md) | **未落地**统一候补：可并行主线、依赖、BDD 意图级场景（不维护状态列） | 可执行 `.feature`、模块/类型清单、进度勾选 |
 | 本文件 | docs 维护规则与产品↔实现闭环 | 具体能力正文（下沉到子目录） |
 
 文风对齐：纯产品/领域语言（DDD），BDD 口吻描述意图；**尽量不写会漂移的代码细节**。
@@ -25,7 +25,7 @@ llmanspec/changes/…     →  提案 + specs（BDD）+ design/tasks；关注实
         ↓  apply / verify / archive
 docs/architecture/      →  能力落地后，把「已成事实」的产品 MUST/禁止迁入 architecture
         ↓
-docs/roadmaps/          →  收缩或删除已兑现叙事，避免双源
+docs/roadmaps/          →  删除已兑现段落；整篇兑现则删文件并更新索引
 ```
 
 | 侧 | 关注点 |
@@ -38,8 +38,8 @@ docs/roadmaps/          →  收缩或删除已兑现叙事，避免双源
 当某条 roadmap 主线（或其可交付切片）在产品上**已兑现**且对应 change 已归档（或等价已成为默认体验）时：
 
 1. **写入 / 更新** `docs/architecture/` 中对应主题（新建或并入既有文），只保留稳定 MUST/禁止与用户心智；
-2. **收敛** `docs/roadmaps/`：删掉已兑现段落，或改成「已迁入 architecture」的短指针，禁止长期双份正文；
-3. **交叉链接**：architecture 可链回历史意图（可选）；roadmap 索引表更新状态。
+2. **收敛** `docs/roadmaps/`：删掉已兑现段落；若整篇已无未兑现内容，**删除该文件**并更新索引——禁止长期占位 stub；
+3. **交叉链接**：architecture 可链回仍候补的 roadmap（可选）；勿在 roadmap 里复述已迁入的正文。
 
 未落地的方向**禁止**提前写成 architecture 的现行 MUST（可用「理想 vs 现状」区分的除外，且须标明未兑现）。
 

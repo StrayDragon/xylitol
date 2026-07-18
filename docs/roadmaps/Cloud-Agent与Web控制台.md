@@ -72,7 +72,7 @@ Then 进入 Inspect 模块页，不必加载完整多工作区壳
 | M1 控制面骨架 | 多工作区列表 + 连上已有 Server/驱动语义 |
 | M2 对话 parity | 跑 / 流式 / 改道 / 中止与本地心智同构 |
 | M3 审阅 | diff + 简易预览 |
-| M4 Inspect 模块 | 见出口流量检视路线图 M2–M3；依赖其 **M0 进程内对照底座** |
+| M4 Inspect 模块 | 见 [出口流量检视.md](./出口流量检视.md)；底座见 [../architecture/进程内观测.md](../architecture/进程内观测.md) |
 | M5 Cursor SDK 协同 | 可选集成；默认零打扰 |
 | M6 分布式强化 | 更完整的 cloud agent 编排（队列、隔离、资源） |
 | M7 可选标准导出 | 与出口流量检视 M6 对齐：显式开启才导出标准时间线 |
@@ -88,8 +88,8 @@ Then 进入 Inspect 模块页，不必加载完整多工作区壳
 |---|---|
 | 远程体验 parity | [../architecture/远程体验与线协议.md](../architecture/远程体验与线协议.md) |
 | [Web与TUI同源.md](./Web与TUI同源.md) | 跨面语义约束 |
-| Inspect | 模块融入本应用；可独立页供 TUI 附带；事实源底座见 [出口流量检视.md](./出口流量检视.md) M0 |
-| 可并行 | TUI 视觉优化、引擎质量（不同面） |
+| Inspect | 模块融入本应用；可独立页供 TUI 附带；底座见 [../architecture/进程内观测.md](../architecture/进程内观测.md) |
+| 可并行 | TUI 视觉优化（不同面） |
 
 ## 相关
 

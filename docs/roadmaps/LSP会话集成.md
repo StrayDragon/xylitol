@@ -58,7 +58,7 @@ Then 产品采用限制范围/按需/隔离等策略之一，并让用户知道�
 
 - **可并行**于 Web / 视觉 / Tokenizer；与 [DAP调试集成.md](./DAP调试集成.md) 平行（同为零成本、会话启停）。
 - 开闭叙事挂 [运行时即时设置.md](./运行时即时设置.md)。
-- 对齐后置零成本心智：[可扩展架构心智.md](./可扩展架构心智.md)、[../architecture/扩展能力-MCP.md](../architecture/扩展能力-MCP.md)。
+- 对齐后置零成本心智：[../architecture/扩展能力-MCP.md](../architecture/扩展能力-MCP.md)、[../architecture/产品分层总览.md](../architecture/产品分层总览.md)。
 
 ## 相关
 
