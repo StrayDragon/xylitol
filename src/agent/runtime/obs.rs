@@ -1,21 +1,21 @@
 //! Low-frequency ReAct fastrace spans (c1265 Phase A).
 //!
-//! Gated by [`crate::infra::provider::trace::provider_trace_active`]. When off,
-//! helpers are no-ops (zero/near-zero cost).
+//! Gated by [`xylitol_ai_bridge::provider::trace::provider_trace_active`]. When
+//! off, helpers are no-ops (zero/near-zero cost).
 //!
 //! Note: do **not** hold [`LocalParentGuard`] across `.await` in the ReAct
 //! `async_stream` (guard is `!Send`). `fastrace-futures::in_span` sets local
-//! parent only during sync `poll_next`.
+//! parent only during sync `poll_next`. Must not import `crate::infra` (arch_guard).
 
 use std::pin::Pin;
 
 use fastrace::prelude::*;
 use fastrace_futures::StreamExt as _;
 use futures::Stream;
+use xylitol_ai_bridge::provider::trace::provider_trace_active;
 
 use crate::domain::error::XyError;
 use crate::domain::types::XyChunk;
-use crate::infra::provider::trace::provider_trace_active;
 
 type ChunkStream = Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
 
@@ -104,7 +104,7 @@ impl ToolExecuteSpan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::provider::trace::set_provider_trace_active;
+    use xylitol_ai_bridge::provider::trace::set_provider_trace_active;
 
     #[test]
     fn inactive_helpers_are_none() {
