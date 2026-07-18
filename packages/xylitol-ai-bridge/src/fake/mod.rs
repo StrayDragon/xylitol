@@ -285,7 +285,11 @@ impl AiBridgeModel for FakeProvider {
             ScenarioStep::ToolCall { name, args } => {
                 let id = format!("fake-call-{name}");
                 Ok(Box::pin(futures::stream::iter(vec![
-                    Ok(AiBridgeChunk::FunctionCall { name, args, id }),
+                    Ok(AiBridgeChunk::ToolCallStart {
+                        id: id.clone(),
+                        name: name.clone(),
+                    }),
+                    Ok(AiBridgeChunk::ToolCallEnd { name, args, id }),
                     Ok(AiBridgeChunk::Done {
                         finish_reason: AiBridgeStopReason::Stop,
                         usage: None,
@@ -329,10 +333,15 @@ mod tests {
             )],
         );
         let mut stream = provider.generate_stream(vec![], &[], false).await.unwrap();
+        let start = stream.next().await.unwrap().unwrap();
+        assert!(
+            matches!(start, AiBridgeChunk::ToolCallStart { name, .. } if name == "read"),
+            "expected ToolCallStart for 'read'"
+        );
         let chunk = stream.next().await.unwrap().unwrap();
         assert!(
-            matches!(chunk, AiBridgeChunk::FunctionCall { name, .. } if name == "read"),
-            "expected FunctionCall for 'read'"
+            matches!(chunk, AiBridgeChunk::ToolCallEnd { name, .. } if name == "read"),
+            "expected ToolCallEnd for 'read'"
         );
     }
 
@@ -352,8 +361,9 @@ mod tests {
         assert!(matches!(c1, AiBridgeChunk::TextDelta(t) if t == "Hello!"));
 
         let mut s2 = provider.generate_stream(vec![], &[], false).await.unwrap();
+        let _start = s2.next().await.unwrap().unwrap();
         let c2 = s2.next().await.unwrap().unwrap();
-        assert!(matches!(c2, AiBridgeChunk::FunctionCall { name, .. } if name == "search"));
+        assert!(matches!(c2, AiBridgeChunk::ToolCallEnd { name, .. } if name == "search"));
 
         let mut s3 = provider.generate_stream(vec![], &[], false).await.unwrap();
         let c3 = s3.next().await.unwrap().unwrap();
@@ -427,8 +437,9 @@ mod tests {
         assert!(matches!(c1, AiBridgeChunk::TextDelta(t) if t == "step1"));
 
         let mut s2 = provider.generate_stream(vec![], &[], false).await.unwrap();
+        let _start = s2.next().await.unwrap().unwrap();
         let c2 = s2.next().await.unwrap().unwrap();
-        assert!(matches!(c2, AiBridgeChunk::FunctionCall { name, .. } if name == "tool1"));
+        assert!(matches!(c2, AiBridgeChunk::ToolCallEnd { name, .. } if name == "tool1"));
     }
 
     #[tokio::test]
@@ -450,8 +461,9 @@ mod tests {
         );
 
         let mut s1 = provider.generate_stream(vec![], &[], false).await.unwrap();
+        let _start = s1.next().await.unwrap().unwrap();
         let c1 = s1.next().await.unwrap().unwrap();
-        assert!(matches!(c1, AiBridgeChunk::FunctionCall { name, .. } if name == "read"));
+        assert!(matches!(c1, AiBridgeChunk::ToolCallEnd { name, .. } if name == "read"));
 
         let mut s2 = provider.generate_stream(vec![], &[], false).await.unwrap();
         let c2 = s2.next().await.unwrap().unwrap();

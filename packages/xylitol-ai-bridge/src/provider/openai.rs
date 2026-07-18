@@ -138,7 +138,7 @@ fn completions_sdk_stream(
     trace: Option<crate::provider::trace::ProviderRequestTrace>,
 ) -> Pin<Box<dyn Stream<Item = Result<AiBridgeChunk, AiBridgeError>> + Send>> {
     Box::pin(async_stream::try_stream! {
-        let mut tool_accumulators: HashMap<u32, (String, String, String)> = HashMap::new();
+        let mut tool_accumulators: HashMap<u32, (String, String, String, bool)> = HashMap::new();
         let mut pending_usage: Option<crate::dto::AiBridgeUsage> = None;
 
         while let Some(item) = sdk_stream.next().await {
@@ -180,7 +180,7 @@ fn completions_sdk_stream(
                     for tc in tool_calls {
                         let entry = tool_accumulators
                             .entry(tc.index)
-                            .or_insert_with(|| (String::new(), String::new(), String::new()));
+                            .or_insert_with(|| (String::new(), String::new(), String::new(), false));
                         if let Some(id) = &tc.id {
                             entry.0 = id.clone();
                         }
@@ -189,7 +189,38 @@ fn completions_sdk_stream(
                                 entry.1 = name.clone();
                             }
                             if let Some(args) = &func.arguments {
+                                if !entry.3 {
+                                    entry.3 = true;
+                                    let start = AiBridgeChunk::ToolCallStart {
+                                        id: entry.0.clone(),
+                                        name: entry.1.clone(),
+                                    };
+                                    if let Some(t) = &trace {
+                                        t.emit_mapped_chunk(&start);
+                                    }
+                                    yield start;
+                                }
                                 entry.2.push_str(args);
+                                let delta_out = AiBridgeChunk::ToolCallDelta {
+                                    id: entry.0.clone(),
+                                    name: entry.1.clone(),
+                                    args_delta: args.clone(),
+                                    args: crate::dto::parse_streaming_json(&entry.2),
+                                };
+                                if let Some(t) = &trace {
+                                    t.emit_mapped_chunk(&delta_out);
+                                }
+                                yield delta_out;
+                            } else if !entry.3 && (!entry.0.is_empty() || !entry.1.is_empty()) {
+                                entry.3 = true;
+                                let start = AiBridgeChunk::ToolCallStart {
+                                    id: entry.0.clone(),
+                                    name: entry.1.clone(),
+                                };
+                                if let Some(t) = &trace {
+                                    t.emit_mapped_chunk(&start);
+                                }
+                                yield start;
                             }
                         }
                     }
@@ -199,10 +230,20 @@ fn completions_sdk_stream(
                     if !tool_accumulators.is_empty() {
                         let mut sorted: Vec<_> = tool_accumulators.drain().collect();
                         sorted.sort_by_key(|(idx, _)| *idx);
-                        for (_, (id, name, args_str)) in sorted {
+                        for (_, (id, name, args_str, started)) in sorted {
                             let args: Value = serde_json::from_str(&args_str)
-                                .unwrap_or(serde_json::json!({}));
-                            let out = AiBridgeChunk::FunctionCall { name, args, id };
+                                .unwrap_or_else(|_| crate::dto::parse_streaming_json(&args_str));
+                            if !started {
+                                let start = AiBridgeChunk::ToolCallStart {
+                                    id: id.clone(),
+                                    name: name.clone(),
+                                };
+                                if let Some(t) = &trace {
+                                    t.emit_mapped_chunk(&start);
+                                }
+                                yield start;
+                            }
+                            let out = AiBridgeChunk::ToolCallEnd { name, args, id };
                             if let Some(t) = &trace {
                                 t.emit_mapped_chunk(&out);
                             }
@@ -296,7 +337,11 @@ fn parse_nonstream_json(response: &Value) -> Vec<AiBridgeChunk> {
                     .and_then(|v| v.as_str())
                     .unwrap_or("{}");
                 let args: Value = serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
-                chunks.push(AiBridgeChunk::FunctionCall { name, args, id });
+                chunks.push(AiBridgeChunk::ToolCallStart {
+                    id: id.clone(),
+                    name: name.clone(),
+                });
+                chunks.push(AiBridgeChunk::ToolCallEnd { name, args, id });
             }
         }
 

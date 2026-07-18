@@ -611,7 +611,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 thinking_acc.push_str(&text);
                                 yield XyEvent::ThinkingDelta(text);
                             }
-                            XyChunk::FunctionCall { name, args, id } => {
+                            XyChunk::ToolCallStart { .. } | XyChunk::ToolCallDelta { .. } => {
+                                // Intent streaming is consumed in c1255; execution waits for End.
+                            }
+                            XyChunk::ToolCallEnd { name, args, id } => {
                                 yield XyEvent::ToolExecutionStart {
                                     id: id.clone(),
                                     name: name.clone(),
@@ -1225,7 +1228,7 @@ mod tests {
         use crate::domain::lifecycle::XyEvent;
         use futures::StreamExt;
 
-        let chunks = vec![crate::domain::types::XyChunk::FunctionCall {
+        let chunks = vec![crate::domain::types::XyChunk::ToolCallEnd {
             id: "call-1".into(),
             name: "mock_tool".into(),
             args: serde_json::json!({"input": "x"}),
@@ -1271,7 +1274,7 @@ mod tests {
         use crate::domain::lifecycle::XyEvent;
         use futures::StreamExt;
 
-        let chunks = vec![crate::domain::types::XyChunk::FunctionCall {
+        let chunks = vec![crate::domain::types::XyChunk::ToolCallEnd {
             id: "call-1".into(),
             name: "mock_tool".into(),
             args: serde_json::json!({"input": "x"}),
@@ -1317,7 +1320,7 @@ mod tests {
         use crate::domain::lifecycle::XyEvent;
         use futures::StreamExt;
 
-        let chunks = vec![crate::domain::types::XyChunk::FunctionCall {
+        let chunks = vec![crate::domain::types::XyChunk::ToolCallEnd {
             id: "call-1".into(),
             name: "mock_tool".into(),
             args: serde_json::json!({"input": "x"}),
@@ -1450,7 +1453,7 @@ mod tests {
         };
         let rounds = vec![
             vec![
-                crate::domain::types::XyChunk::FunctionCall {
+                crate::domain::types::XyChunk::ToolCallEnd {
                     id: "call-1".into(),
                     name: "mock_tool".into(),
                     args: serde_json::json!({"input": "x"}),
