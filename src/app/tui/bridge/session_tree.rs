@@ -112,23 +112,32 @@ fn message_json_to_ui_entries(entry_id: &str, message: &Value) -> Vec<UiEntry> {
             text: message_text(message),
         }],
         "assistant" => assistant_parts_to_ui(entry_id, message),
-        "toolResult" | "tool" => vec![UiEntry::Tool {
-            id: entry_id.to_string(),
-            name: message
-                .get("toolName")
-                .or_else(|| message.get("tool_name"))
+        "toolResult" | "tool" => {
+            let details = message.get("details");
+            let display_diff = details
+                .and_then(|d| d.get("display_diff"))
                 .and_then(Value::as_str)
-                .unwrap_or("tool")
-                .to_string(),
-            args_preview: String::new(),
-            output: message_text(message),
-            is_error: message
-                .get("isError")
-                .or_else(|| message.get("is_error"))
-                .and_then(Value::as_bool)
-                .unwrap_or(false),
-            done: true,
-        }],
+                .map(str::to_string);
+            vec![UiEntry::Tool {
+                id: entry_id.to_string(),
+                name: message
+                    .get("toolName")
+                    .or_else(|| message.get("tool_name"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("tool")
+                    .to_string(),
+                args_preview: String::new(),
+                write_content: None,
+                display_diff,
+                output: message_text(message),
+                is_error: message
+                    .get("isError")
+                    .or_else(|| message.get("is_error"))
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                done: true,
+            }]
+        }
         _ => {
             let text = message_text(message);
             if text.is_empty() {
@@ -191,6 +200,15 @@ fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
                         .to_string(),
                     name: name.to_string(),
                     args_preview: crate::app::tui::bridge::human_tool_args_preview(name, &args, 80),
+                    write_content: (name == "write")
+                        .then(|| {
+                            args.get("content")
+                                .and_then(Value::as_str)
+                                .map(str::to_string)
+                        })
+                        .flatten()
+                        .filter(|s| !s.is_empty()),
+                    display_diff: None,
                     output: String::new(),
                     is_error: false,
                     done: false,

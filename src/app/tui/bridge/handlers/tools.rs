@@ -2,8 +2,8 @@
 
 use crate::app::core::driver::XyEvent;
 use crate::app::tui::bridge::{
-    UiEntry, UiModel, UiPhase, extract_display_diff, extract_edit_path, find_tool_mut,
-    quiet_tool_success_output, upsert_tool_entry,
+    UiEntry, UiModel, UiPhase, extract_display_diff, find_tool_mut, quiet_tool_success_output,
+    upsert_tool_entry,
 };
 
 pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
@@ -30,27 +30,24 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
                 output,
                 is_error: err,
                 done,
+                display_diff,
                 ..
             }) = find_tool_mut(&mut model.entries, id)
             {
                 if let Some(quiet) = quiet_tool_success_output(name, result, *is_error) {
+                    // Clear machine JSON result chrome; write body lives in write_content.
                     *output = quiet;
                 } else if output.is_empty() {
                     *output = result.clone();
                 }
+                if name == "edit"
+                    && !*is_error
+                    && let Some(diff) = extract_display_diff(result)
+                {
+                    *display_diff = Some(diff);
+                }
                 *err = *is_error;
                 *done = true;
-            }
-            if name == "edit"
-                && let Some(display_diff) = extract_display_diff(result)
-            {
-                let summary = extract_edit_path(result)
-                    .map(|p| format!("edited {p}"))
-                    .unwrap_or_else(|| "edit".into());
-                model.entries.push(UiEntry::Diff {
-                    summary,
-                    display_diff,
-                });
             }
             if model.phase == UiPhase::Busy {
                 model.status = Some("Working".into());
