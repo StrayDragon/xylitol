@@ -85,6 +85,27 @@ fn paint_bg_line(line: &str, width: usize, rgb: RgbColor) -> String {
     apply_background_to_line(&fit(line, width), width, &|s| bg_rgb(rgb, s))
 }
 
+/// Paint bash/tool body lines; Full output footer uses warning fg (att15 / pi).
+fn paint_output_with_full_footer(output: &str, theme: LayoutTheme, error: bool) -> String {
+    let mut out = String::new();
+    for (i, line) in output.lines().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        if line.starts_with("[Full output:") {
+            out.push_str(&bold(&theme.paint_warning(line)));
+        } else if error {
+            out.push_str(&theme.paint_error(line));
+        } else {
+            out.push_str(&theme.paint_muted(line));
+        }
+    }
+    if output.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
 /// pi `Box` padding_y=1: tinted empty row above/below content; wash spans full terminal width.
 fn push_tinted(lines: &mut Vec<String>, content: &[String], width: usize, rgb: RgbColor) {
     lines.push(paint_bg_line("", width, rgb));
@@ -234,6 +255,7 @@ pub fn render_scrollback(
 
                 // Error / other output behind Alt+E: still same wash when shown.
                 if fold.tools_expanded && !output.is_empty() {
+                    let painted = paint_output_with_full_footer(output, theme, *is_error);
                     let opts = ExpandableOutputOptions {
                         max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
                         from: TruncateFrom::Tail,
@@ -241,7 +263,7 @@ pub fn render_scrollback(
                         hint_style: None,
                     };
                     for line in
-                        render_expandable_output(output, width, fold.tools_output_expanded, &opts)
+                        render_expandable_output(&painted, width, fold.tools_output_expanded, &opts)
                     {
                         block.push(line);
                     }
@@ -309,12 +331,11 @@ pub fn render_scrollback(
                     width,
                 );
                 if !output.is_empty() {
-                    let body =
-                        if matches!(status, BashBlockStatus::Error | BashBlockStatus::Cancelled) {
-                            theme.paint_error(output)
-                        } else {
-                            theme.paint_muted(output)
-                        };
+                    let body = paint_output_with_full_footer(
+                        output,
+                        theme,
+                        matches!(status, BashBlockStatus::Error | BashBlockStatus::Cancelled),
+                    );
                     let opts = ExpandableOutputOptions {
                         max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
                         from: TruncateFrom::Tail,
@@ -458,5 +479,38 @@ mod tests {
         assert_write_header_body_share_bg(false, false, p.tool_pending_bg);
         assert_write_header_body_share_bg(true, false, p.tool_success_bg);
         assert_write_header_body_share_bg(true, true, p.tool_error_bg);
+    }
+
+    #[test]
+    fn bash_full_output_footer_uses_warning_fg() {
+        let mut model = UiModel::default();
+        model.entries.push(UiEntry::Bash {
+            command: "big".into(),
+            status: BashBlockStatus::Success,
+            output: "tail\n[Full output: /tmp/x.log. Truncated: 1 lines shown (50.0KB limit)]"
+                .into(),
+            exclude_from_context: false,
+        });
+        let theme = LayoutTheme::product_dark();
+        let warning = theme.palette().warning;
+        let expect = bold(&fg_rgb(
+            warning,
+            "[Full output: /tmp/x.log. Truncated: 1 lines shown (50.0KB limit)]",
+        ));
+        let lines = render_scrollback(
+            &model,
+            GlyphSet::from_env(),
+            theme,
+            ScrollbackFold {
+                tools_output_expanded: true,
+                ..ScrollbackFold::default()
+            },
+            120,
+        );
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains(&expect),
+            "Full output footer must use warning fg; got {joined:?}"
+        );
     }
 }

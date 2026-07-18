@@ -90,9 +90,17 @@
     并且 stdout 和 stderr 合并输出包含 "out2"
 
   场景: bash-truncate
-    当 调用bash命令 "yes '长文本行' | head -10000"
+    当 调用bash命令 "yes xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | head -n 3000"
     那么 输出被截断
     并且 截断详情显示达到字节或行限制
+    并且 结果含 Full output 脚注
+    并且 bash 结果 JSON 无未截断全量 stdout 字段载荷
+
+  @req:t23
+  场景: bash-result-no-full-dump
+    当 调用bash命令 "yes yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy | head -n 3000"
+    那么 结果含 Full output 脚注
+    并且 bash 结果 JSON 无未截断全量 stdout 字段载荷
 
   场景: bash-cancel
     当 调用bash命令 "sleep 60"

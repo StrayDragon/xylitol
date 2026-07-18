@@ -5,7 +5,7 @@ valid_scope[2]: src/infra/bash_exec/,src/runtime_protocol/bash.rs
 requirements[10]{req_id,title,statement}:
   be1,流式执行器,System MUST 提供 XyBashExecutor，经 BashExecOpts 执行 shell 命令，携带可选 CancellationToken 与可选有界 mpsc chunk_tx 输出字节；chunk_tx 为 Some 时执行器 MUST 在该通道发送输出块（Full 时发送方合并）；为 None 时 MUST 静默累积且不要求回调。原 on_chunk 回调签名 MUST NOT 保留为公共端口。
   be2,中止与取消,BashExecutor MUST 支持取消，杀死整个进程组并将结果标为 cancelled。
-  be3,输出截断,BashExecutor MUST 将输出截断到配置 max bytes，超限时将完整输出溢出到临时文件路径。
+  be3,输出截断,"BashExecutor MUST 将输出截断到配置 max bytes，超限时将完整输出溢出到临时文件；返回给调用方/会话的 output MUST 为截断尾部，并 MUST 追加 pi 形脚注 `[Full output: <path>. Truncated: <N> lines shown (<limit> limit)]`（path 不可用时用 `(unavailable)`）；未截断 MUST NOT 追加该脚注。"
   be4,会话条目,SessionEntry MUST 支持 BashExecution 变体，携带 command、output、exit_code、cancelled、truncated、full_output_path、exclude_from_context。
   be5,AgentSession API,AgentSession MUST 暴露 execute_bash、record_bash_result、abort_bash，并将单/双 bang 前缀路由到执行器。
   be6,上下文过滤,构建 LLM 上下文时 System MUST 省略 exclude_from_context 为 true 的 BashExecution 条目。
