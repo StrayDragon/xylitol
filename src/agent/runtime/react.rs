@@ -841,7 +841,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     };
 
                     let tool = tools.get(name);
-                    let ctx = XyToolCtx::with_cancel(id, cancel.clone());
+                    let tool_missing = tool.is_none();
+                    let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<String>(64);
+                    let ctx = XyToolCtx::with_cancel(id, cancel.clone()).with_output_tx(out_tx);
                     let mut tool_args = args.clone();
 
                     let mut denied_reason: Option<String> = None;
@@ -908,17 +910,64 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         continue;
                     }
 
-                    let mut result = match tool {
-                        Some(t) => match t.execute_as_parts(&ctx, tool_args.clone()).await {
-                            Ok(parts) => (parts, false),
-                            Err(e) => {
-                                let err = format!("Tool '{name}' error: {e}");
-                                yield XyEvent::Error(err.clone());
-                                (vec![AgentPart::text(err)], true)
+                    // Race tool future against live output chunks (bash uplink).
+                    let exec_fut = async {
+                        match tool {
+                            Some(t) => t.execute_as_parts(&ctx, tool_args.clone()).await,
+                            None => Err(crate::domain::error::XyToolError::ExecutionFailed(
+                                anyhow::anyhow!("Unknown tool: {name}"),
+                            )),
+                        }
+                    };
+                    tokio::pin!(exec_fut);
+                    let mut streamed_output = false;
+                    let exec_outcome = loop {
+                        tokio::select! {
+                            biased;
+                            _ = cancel.cancelled() => {
+                                break Err(crate::domain::error::XyToolError::Aborted);
                             }
-                        },
-                        None => {
-                            let err = format!("Unknown tool: {name}");
+                            chunk = out_rx.recv() => {
+                                match chunk {
+                                    Some(output) => {
+                                        streamed_output = true;
+                                        yield XyEvent::ToolExecutionUpdate {
+                                            id: id.clone(),
+                                            output,
+                                        };
+                                    }
+                                    None => {
+                                        // Sender dropped — wait for execute to finish.
+                                        break exec_fut.await;
+                                    }
+                                }
+                            }
+                            done = &mut exec_fut => {
+                                break done;
+                            }
+                        }
+                    };
+                    // Drain any chunks that arrived after the future completed.
+                    while let Ok(output) = out_rx.try_recv() {
+                        streamed_output = true;
+                        yield XyEvent::ToolExecutionUpdate {
+                            id: id.clone(),
+                            output,
+                        };
+                    }
+
+                    let mut result = match exec_outcome {
+                        Ok(parts) => (parts, false),
+                        Err(crate::domain::error::XyToolError::Aborted) => {
+                            let err = format!("Tool '{name}' aborted");
+                            (vec![AgentPart::text(err)], true)
+                        }
+                        Err(e) => {
+                            let err = if tool_missing {
+                                format!("Unknown tool: {name}")
+                            } else {
+                                format!("Tool '{name}' error: {e}")
+                            };
                             yield XyEvent::Error(err.clone());
                             (vec![AgentPart::text(err)], true)
                         }
@@ -973,10 +1022,13 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                     let result_text = parts_preview_text(&result.0);
 
-                    yield XyEvent::ToolExecutionUpdate {
-                        id: id.clone(),
-                        output: result_text.clone(),
-                    };
+                    // Avoid appending the final JSON blob on top of live bash chunks.
+                    if !streamed_output {
+                        yield XyEvent::ToolExecutionUpdate {
+                            id: id.clone(),
+                            output: result_text.clone(),
+                        };
+                    }
                     yield XyEvent::ToolExecutionEnd {
                         id: id.clone(),
                         name: name.clone(),
@@ -1295,6 +1347,38 @@ mod tests {
         }
     }
 
+    /// Emits multiple live output chunks before returning (bash-like uplink).
+    struct StreamingMockTool;
+
+    #[async_trait::async_trait]
+    impl crate::runtime_protocol::XyTool for StreamingMockTool {
+        fn name(&self) -> &str {
+            "mock_tool"
+        }
+
+        fn description(&self) -> &str {
+            "streaming mock"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object", "properties": {}})
+        }
+
+        async fn execute(
+            &self,
+            ctx: &crate::runtime_protocol::XyToolCtx,
+            _args: serde_json::Value,
+        ) -> Result<String, crate::domain::error::XyToolError> {
+            if let Some(tx) = &ctx.output_tx {
+                for part in ["chunk-a\n", "chunk-b\n", "chunk-c\n"] {
+                    let _ = tx.send(part.into()).await;
+                    tokio::task::yield_now().await;
+                }
+            }
+            Ok("done".into())
+        }
+    }
+
     fn mock_model_registry() -> ModelRegistry {
         let mut reg = ModelRegistry::new(std::sync::Arc::new(
             crate::infra::config::value::InfraSecretResolver::new(),
@@ -1460,6 +1544,49 @@ mod tests {
             tool_update_seen,
             "expected ToolExecutionUpdate during execution"
         );
+    }
+
+    #[tokio::test]
+    async fn test_tool_execution_streams_multiple_updates() {
+        use crate::domain::lifecycle::XyEvent;
+        use futures::StreamExt;
+
+        let chunks = vec![
+            crate::domain::types::XyChunk::ToolCallEnd {
+                id: "call-1".into(),
+                name: "mock_tool".into(),
+                args: serde_json::json!({}),
+            },
+            crate::domain::types::XyChunk::Done {
+                finish_reason: crate::domain::message::XyStopReason::ToolUse,
+                usage: None,
+            },
+        ];
+        let mut agent = make_agent_with_tools(
+            chunks,
+            ToolSet::from_iter(vec![
+                Arc::new(StreamingMockTool) as Arc<dyn crate::runtime_protocol::XyTool>
+            ]),
+        );
+
+        let mut stream = agent.run("go").await;
+        let mut updates = Vec::new();
+        let mut saw_end = false;
+        while let Some(evt) = stream.next().await {
+            match evt {
+                XyEvent::ToolExecutionUpdate { output, .. } => updates.push(output),
+                XyEvent::ToolExecutionEnd { .. } => saw_end = true,
+                _ => {}
+            }
+        }
+        assert!(
+            updates.len() >= 3,
+            "expected ≥3 live updates, got {updates:?}"
+        );
+        assert_eq!(updates[0], "chunk-a\n");
+        assert_eq!(updates[1], "chunk-b\n");
+        assert_eq!(updates[2], "chunk-c\n");
+        assert!(saw_end, "expected ToolExecutionEnd");
     }
 
     #[tokio::test]

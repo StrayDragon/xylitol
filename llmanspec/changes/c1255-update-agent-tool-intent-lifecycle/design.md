@@ -28,7 +28,8 @@ Prefer **少加类型、语义钉死**：
 | 今日 | 目标 |
 |---|---|
 | ToolCallEnd → ToolExecutionStart（流内） | tool 意图 ⊂ MessageUpdate；Start 在 MessageEnd 后 |
-| 无/极少 ToolExecutionUpdate | 执行路径至少一次 Update（长输出多段可后续加强） |
+| 无/极少 ToolExecutionUpdate | 执行路径：bash 经 `XyToolCtx.output_tx` 多段 Update；其它工具 ≥1 次终态 Update |
+
 | flush 时机由 TUI 绑在 Start | TUI（c1260）可在 Update 时挂旁路组件 |
 
 
