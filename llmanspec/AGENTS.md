@@ -57,35 +57,41 @@ Partitioned 双写与 checkpoint 时序已部分吸收进 llman **0.0.64**（`im
 - **禁止**在 toon 写 `feature: true` 行（哪怕 GWT 与 `.feature`「看起来一样」——validate 报 `dual-write`）。
 - 新需求：toon 只加 `requirements` 行；例子只加 `.feature` 场景。
 
-### checkpoint → archive 提交序（MUST）
+### checkpoint / finalize 提交序（MUST 知悉）
+
+**推荐（单 commit）**：
+
+```text
+实现 live specs + 代码（工作区可脏）
+→ llman sdd change finalize <id> [--no-check]
+→ git commit   # 一次：实现 + frontmatter + archive 改名
+```
+
+- `finalize` **不要求**干净树；写入 `checkpointed: true` 且 `checkpoint_sha = attach 时 base_sha`（不是实现 HEAD）。
+- 审计仍可用：`git diff base_sha..HEAD` + `branch`。
+
+**Fallback（多 commit，严格 sha）**：
 
 ```text
 commit（live specs + 代码）
-→ llman sdd change checkpoint <id> [--no-interactive]   # 会改 proposal.md frontmatter
+→ llman sdd change checkpoint <id>   # checkpoint_sha = 实现 HEAD
 → commit checkpoint 元数据
-→ llman sdd change archive <id>      # 要求干净树；仅搬 change 文档
+→ llman sdd change archive <id>
 → commit archive rename
 ```
 
-- `checkpoint` **之后**工作区会脏（`checkpointed` / `checkpoint_sha`）；**不要**立刻 archive。
-- `checkpoint --no-interactive`：0.0.64+ **接受并忽略**（与 archive/freeze 旗标矩阵对齐）。
-- 结构门禁先跑：`llman sdd validate <cap|change> --strict --no-check`（快）；再跑带 BDD 的全量 validate / checkpoint。
-- 全量 `validate --specs` 若只见 `N passed, 1 failed`：用 `--no-check` 或按 capability 校验定位；dual-write 看 `package-*/dual-write` 类 ERROR。
+- 结构门禁先跑：`llman sdd validate <cap|change> --strict --no-check`（快）；再跑带 BDD 的全量 validate / finalize。
+- `checkpoint`/`finalize`/`archive` 的 `--no-interactive`：接受并忽略。
 
-### 提交卫生（SHOULD；减少刻意 chore commit）
+### 提交卫生（SHOULD）
 
-BDD-on 闭环在 CLI 未提供 `finalize` 前，**结构上**每 change 至少多 2 条流程 commit（checkpoint 元数据 + archive rename）。本仓约定尽量少造「空流程」，但 **draft 提案可单独/批量提交**：
+1. **Draft 可独提或一批提**：可从 `docs/roadmaps` 等意向一次 `change new` 多个草案并 `chore(sdd): draft …` 入库；**不**要求与实现同提。
+2. **闭环收尾优先 `finalize`**，减少 checkpoint/archive 礼仪 commit。
+3. **产品 vs 流程**：实现用 `feat`/`fix`/`refactor`；SDD 礼仪用 `chore(sdd):` / `docs(sdd):`。
 
-1. **Draft 可独提或一批提**：可从 `docs/roadmaps` 等意向一次 `change new` 多个草案并 `chore(sdd): draft …` 入库（仅 proposal 亦可）；**不**要求与实现同提。
-2. **批量收尾**：相关 change 都 verify 完后，可连续 checkpoint→commit→archive，最后用 **一条** `chore(sdd): archive cA, cB, …` 提交多次 rename（若工作区允许一次 stage 多个 archive）；或每条 change 仍各一次 archive commit。
-3. **产品 vs 流程**：实现用 `feat`/`fix`/`refactor`；SDD 礼仪只用 `chore(sdd):` / `docs(sdd):`。PR 可用 squash；本地 `checkpoint_sha` 仍指向分支上的实现 commit 即可。
-4. **上游缺口**：希望 `llman sdd change finalize` 把 checkpoint+archive 收成一次脏树再单 commit——见 `../llman` change `improve-bdd-on-finalize-and-commit-hygiene`（他仓 agent 落地）。落地后删本条「结构多 2 commit」说明，改写 skills。
+### stage=draft（BDD-on）
 
-### stage=draft 噪音（直至 `fix-sdd-bdd-on-change-stage` 落地）
-
-`llman sdd show` / completeness 的 `determine_stage` 仍按 **BDD-off** 要求 `changes/<id>/specs/`。
-Git-native BDD-on **禁止** change delta，故即使 `proposal+design+tasks` 且已 `attach`、live specs 已改，仍常报 `stage=draft` / `readyToImplement=false` / `next: add specs/`。
-**这不是实现未完成**：apply/verify 以 tasks + live specs + 测试为准；勿被该 INFO 拦住。上游修完后删本小节。
+已有 `proposal+design+tasks` 仍报 `draft` 时：通常是 **未 attach** → `llman sdd change attach <id>`（不要新建 `changes/<id>/specs/`）。attach 后应为 `full`。
 
 ### depends_on
 
