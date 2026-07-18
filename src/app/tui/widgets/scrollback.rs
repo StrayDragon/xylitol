@@ -210,12 +210,11 @@ pub fn render_scrollback(
                     glyphs.tool(),
                     key_hint("Alt+E")
                 );
+                let rgb = tool_bg_rgb(!done, *is_error, theme);
                 let mut block = Vec::new();
                 push_wrapped(&mut block, &theme.paint_tool(&header), width);
-                let rgb = tool_bg_rgb(!done, *is_error, theme);
-                push_tinted(&mut lines, &block, width, rgb);
 
-                // write body: always visible process chrome (Head-10 + ctrl+o).
+                // write: header + body share one pending/success/error wash (pi Box).
                 if let Some(content) = write_content
                     && !content.is_empty()
                 {
@@ -229,11 +228,28 @@ pub fn render_scrollback(
                     for line in
                         render_expandable_output(content, width, fold.tools_output_expanded, &opts)
                     {
-                        lines.push(fit(&line, width));
+                        block.push(fit(&line, width));
                     }
                 }
 
-                // edit diff: default visible once ready (no Alt+E gate).
+                // Error / other output behind Alt+E: still same wash when shown.
+                if fold.tools_expanded && !output.is_empty() {
+                    let opts = ExpandableOutputOptions {
+                        max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
+                        from: TruncateFrom::Tail,
+                        expand_hint: "ctrl+o to expand".into(),
+                        hint_style: None,
+                    };
+                    for line in
+                        render_expandable_output(output, width, fold.tools_output_expanded, &opts)
+                    {
+                        block.push(line);
+                    }
+                }
+
+                push_tinted(&mut lines, &block, width, rgb);
+
+                // edit diff: default visible; body stays untinted (att4 / expandable rule 6).
                 if let Some(diff) = display_diff
                     && !diff.is_empty()
                 {
@@ -247,23 +263,6 @@ pub fn render_scrollback(
                     {
                         lines.push(fit(&line, width));
                     }
-                }
-
-                // Other tool output / errors: still behind Alt+E + Tail viewport.
-                if fold.tools_expanded && !output.is_empty() {
-                    let mut out_block = Vec::new();
-                    let opts = ExpandableOutputOptions {
-                        max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
-                        from: TruncateFrom::Tail,
-                        expand_hint: "ctrl+o to expand".into(),
-                        hint_style: None,
-                    };
-                    for line in
-                        render_expandable_output(output, width, fold.tools_output_expanded, &opts)
-                    {
-                        out_block.push(line);
-                    }
-                    push_tinted(&mut lines, &out_block, width, rgb);
                 }
             }
             UiEntry::Diff {
@@ -416,6 +415,41 @@ mod tests {
         assert!(
             joined.contains(&expect),
             "user row must paint skill_ref on $demo; got {joined:?}"
+        );
+    }
+
+    #[test]
+    fn write_block_tints_header_and_body_together() {
+        let mut model = UiModel::default();
+        model.entries.push(UiEntry::Tool {
+            id: "w1".into(),
+            name: "write".into(),
+            args_preview: "write a.py (3 lines)".into(),
+            write_content: Some("line-a\nline-b\nline-c\n".into()),
+            display_diff: None,
+            output: String::new(),
+            is_error: false,
+            done: true,
+        });
+        let theme = LayoutTheme::product_dark();
+        let success = theme.palette().tool_success_bg;
+        let bg = format!("\x1b[48;2;{};{};{}m", success.r, success.g, success.b);
+        let lines = render_scrollback(
+            &model,
+            GlyphSet::from_env(),
+            theme,
+            ScrollbackFold::default(),
+            80,
+        );
+        let header = lines
+            .iter()
+            .find(|l| l.contains("write a.py"))
+            .expect("header");
+        let body = lines.iter().find(|l| l.contains("line-a")).expect("body");
+        assert!(header.contains(&bg), "write header must use success wash");
+        assert!(
+            body.contains(&bg),
+            "write body must share the same success wash (no naked black split)"
         );
     }
 }
