@@ -238,6 +238,13 @@ pub fn to_xy_chunk(chunk: AiBridgeChunk) -> XyChunk {
     match chunk {
         AiBridgeChunk::TextDelta(t) => XyChunk::TextDelta(t),
         AiBridgeChunk::ThinkingDelta(t) => XyChunk::ThinkingDelta(t),
+        AiBridgeChunk::ThinkingEnd {
+            thinking,
+            thinking_signature,
+        } => XyChunk::ThinkingEnd {
+            thinking,
+            thinking_signature,
+        },
         AiBridgeChunk::ToolCallStart { id, name } => XyChunk::ToolCallStart { id, name },
         AiBridgeChunk::ToolCallDelta {
             id,

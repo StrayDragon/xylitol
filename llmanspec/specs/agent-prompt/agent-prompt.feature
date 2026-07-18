@@ -78,3 +78,15 @@
     假如 文本含 $nosuch
     当 展开
     那么 无 nosuch 的 skill 块；$nosuch 仍在文本中
+
+  @req:pt9
+  场景: collect-tool-guidelines
+    假如 工具集含 bash 且其 prompt_guidelines 非空
+    当 set_tools 或等价装配后 build_system_prompt
+    那么 输出含 Guidelines 段且含该工具 guideline 短句
+
+  @req:pt9
+  场景: custom-prompt-no-silent-tools-backfill
+    假如 custom_prompt 或 SYSTEM.md 整段替换默认正文且未附 Available tools
+    当 build_system_prompt
+    那么 正文以该替换内容为主且 MUST NOT 偷偷回填默认 Available tools 清单

@@ -109,6 +109,10 @@ impl XyTool for WriteTool {
         .await
         .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("{e}")))
     }
+
+    fn prompt_guidelines(&self) -> &[&str] {
+        &["Use write only for new files or complete rewrites."]
+    }
 }
 
 #[cfg(test)]

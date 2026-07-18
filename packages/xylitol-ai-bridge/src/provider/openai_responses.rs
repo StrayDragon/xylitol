@@ -50,45 +50,67 @@ impl OpenAiResponsesAdapter {
         stream: bool,
         options: &crate::thinking::AiBridgeGenerateOptions,
     ) -> Value {
-        let mut input_items = convert_messages_to_input_items(&messages);
-        prepend_system_prompt_item(
-            &mut input_items,
-            options.system_prompt.as_deref(),
-            &options.thinking_level,
-        );
-        let mut body = serde_json::json!({
-            "model": self.model,
-            "input": input_items,
-            "stream": stream,
-        });
-
-        if !tools.is_empty() {
-            let tool_defs: Vec<Value> = tools
-                .iter()
-                .map(|t| {
-                    serde_json::json!({
-                        "type": "function",
-                        "name": t.name,
-                        "description": t.description,
-                        "parameters": t.parameters,
-                    })
-                })
-                .collect();
-            body["tools"] = Value::Array(tool_defs);
-        }
-
-        let resolved = crate::thinking::resolve_from_options(
-            options,
-            crate::thinking::AiBridgeThinkingAdapterKind::OpenAi,
-        );
-        crate::thinking::apply_thinking_openai_responses(&mut body, &resolved);
-
-        body
+        assemble_responses_body(&self.model, messages, tools, stream, options)
     }
 
     fn map_err(err: async_openai::error::OpenAIError) -> AiBridgeError {
         AiBridgeError::Provider(anyhow::anyhow!("OpenAI Responses: {err}"))
     }
+}
+
+/// Assemble a Responses `/v1/responses` JSON body (pi-aligned store/strict/summary/include).
+///
+/// Public for BDD / unit harness (c1290 pab16).
+pub fn assemble_responses_body(
+    model: &str,
+    messages: Vec<AiBridgeMessage>,
+    tools: &[AiBridgeToolSchema],
+    stream: bool,
+    options: &crate::thinking::AiBridgeGenerateOptions,
+) -> Value {
+    let mut input_items = convert_messages_to_input_items(&messages);
+    prepend_system_prompt_item(
+        &mut input_items,
+        options.system_prompt.as_deref(),
+        &options.thinking_level,
+    );
+    let mut body = serde_json::json!({
+        "model": model,
+        "input": input_items,
+        "stream": stream,
+        "store": false,
+    });
+
+    if !tools.is_empty() {
+        let tool_defs: Vec<Value> = tools
+            .iter()
+            .map(|t| {
+                serde_json::json!({
+                    "type": "function",
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                    "strict": false,
+                })
+            })
+            .collect();
+        body["tools"] = Value::Array(tool_defs);
+    }
+
+    let resolved = crate::thinking::resolve_from_options(
+        options,
+        crate::thinking::AiBridgeThinkingAdapterKind::OpenAi,
+    );
+    crate::thinking::apply_thinking_openai_responses(&mut body, &resolved);
+
+    if matches!(
+        resolved,
+        crate::thinking::AiBridgeResolvedThinking::OpenAiEffort(_)
+    ) {
+        body["include"] = serde_json::json!(["reasoning.encrypted_content"]);
+    }
+
+    body
 }
 
 #[async_trait]
@@ -268,6 +290,9 @@ pub fn map_responses_sse_event(
                 return Vec::new();
             };
             let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            if item_type == "reasoning" {
+                return vec![thinking_end_from_reasoning_item(item)];
+            }
             if item_type != "function_call" {
                 return Vec::new();
             }
@@ -364,7 +389,32 @@ pub fn map_responses_sse_event(
     }
 }
 
-/// Convert a slice of [`AiBridgeMessage`] values to OpenAI Responses `input` items.
+fn reasoning_item_display_text(item: &Value) -> String {
+    let join_texts = |key: &str| -> String {
+        item.get(key)
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|block| block.get("text").and_then(|t| t.as_str()))
+                    .collect::<Vec<_>>()
+                    .join("\n\n")
+            })
+            .unwrap_or_default()
+    };
+    let summary = join_texts("summary");
+    if !summary.is_empty() {
+        return summary;
+    }
+    join_texts("content")
+}
+
+fn thinking_end_from_reasoning_item(item: &Value) -> AiBridgeChunk {
+    AiBridgeChunk::ThinkingEnd {
+        thinking: reasoning_item_display_text(item),
+        thinking_signature: Some(item.to_string()),
+    }
+}
+
 fn parse_responses_output(json: &Value) -> Vec<AiBridgeChunk> {
     let mut chunks = Vec::new();
 
@@ -373,13 +423,7 @@ fn parse_responses_output(json: &Value) -> Vec<AiBridgeChunk> {
             let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
             match item_type {
                 "reasoning" => {
-                    if let Some(content) = item.get("content").and_then(|v| v.as_array()) {
-                        for block in content {
-                            if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                                chunks.push(AiBridgeChunk::ThinkingDelta(text.to_string()));
-                            }
-                        }
-                    }
+                    chunks.push(thinking_end_from_reasoning_item(item));
                 }
                 "message" => {
                     if let Some(content) = item.get("content").and_then(|v| v.as_array()) {
@@ -811,10 +855,18 @@ mod tests {
         };
         let body = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &opts);
         assert_eq!(body["reasoning"]["effort"], "medium");
+        assert_eq!(body["reasoning"]["summary"], "auto");
+        assert_eq!(body["store"], false);
+        assert_eq!(
+            body["include"],
+            serde_json::json!(["reasoning.encrypted_content"])
+        );
 
         let off = crate::thinking::AiBridgeGenerateOptions::default();
         let body_off = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &off);
         assert!(body_off.get("reasoning").is_none());
+        assert_eq!(body_off["store"], false);
+        assert!(body_off.get("include").is_none());
 
         let mut map = std::collections::HashMap::new();
         map.insert("high".into(), Some("max".into()));
@@ -826,6 +878,57 @@ mod tests {
         };
         let body_map = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &mapped);
         assert_eq!(body_map["reasoning"]["effort"], "max");
+        assert_eq!(body_map["reasoning"]["summary"], "auto");
+    }
+
+    #[test]
+    fn build_body_tools_strict_false() {
+        let adapter = OpenAiResponsesAdapter::new("sk".into(), "gpt".into(), None, None);
+        let tools = [AiBridgeToolSchema {
+            name: "bash".into(),
+            description: "run".into(),
+            parameters: serde_json::json!({"type": "object"}),
+        }];
+        let body = adapter.build_body(
+            vec![AiBridgeMessage::user("hi")],
+            &tools,
+            false,
+            &crate::thinking::AiBridgeGenerateOptions {
+                thinking_level: "medium".into(),
+                ..Default::default()
+            },
+        );
+        assert_eq!(body["tools"][0]["strict"], false);
+    }
+
+    #[test]
+    fn reasoning_output_item_done_emits_thinking_end_with_signature() {
+        let mut state = ResponsesStreamState::default();
+        let item = serde_json::json!({
+            "type": "reasoning",
+            "id": "rs_1",
+            "summary": [{"type": "summary_text", "text": "plan"}],
+            "encrypted_content": "enc"
+        });
+        let event = serde_json::json!({
+            "type": "response.output_item.done",
+            "item": item,
+        });
+        let chunks = map_responses_sse_event(&event, &mut state);
+        match &chunks[..] {
+            [
+                AiBridgeChunk::ThinkingEnd {
+                    thinking,
+                    thinking_signature: Some(sig),
+                },
+            ] => {
+                assert_eq!(thinking, "plan");
+                let parsed: Value = serde_json::from_str(sig).unwrap();
+                assert_eq!(parsed["id"], "rs_1");
+                assert_eq!(parsed["encrypted_content"], "enc");
+            }
+            other => panic!("expected ThinkingEnd, got {other:?}"),
+        }
     }
 
     #[test]
