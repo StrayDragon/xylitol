@@ -19,7 +19,7 @@ requirements[39]{req_id,title,statement}:
   t3,edit 多段编辑,Edit 工具 MUST 接受 path 与 edits 数组（oldText、newText），对照原始内容匹配。
   t4,edit 校验,Edit 工具 MUST 拒绝重叠编辑、非唯一 oldText、空 oldText 与无变化编辑。
   t5,edit Unicode,"Edit 工具 MUST 将 CRLF 规范为 LF、剥离 UTF-8 BOM，并通过 NFKC 规范化做模糊匹配。"
-  t6,edit diff,Edit 工具 MUST 产生 unified patch 与带行号的展示 diff 供 UI/审阅；发往模型的 tool result 正文 MUST NOT 嵌入完整 diff/display_diff。
+  t6,edit diff,"Edit 工具 MUST 对编辑前后的整文件内容产生 unified patch 与带行号的展示 diff（display_diff MUST 为 context hunk，MUST NOT 把全文件 Equal 行展开进展示；展示行数 MUST 有硬上限并在超限时标注截断）；发往模型的 tool result 正文 MUST NOT 嵌入完整 diff/display_diff。"
   t7,grep ripgrep,Grep 工具 MUST 使用 ripgrep，支持 regex、glob、ignoreCase、literal、context、limit。
   t8,find fd,Find 工具 MUST 使用 fd，尊重 gitignore，返回 Posix 相对路径并支持 limit。
   t9,bash 中止,Bash 工具 MUST 支持 CancellationToken 杀进程树并合并流式输出。
