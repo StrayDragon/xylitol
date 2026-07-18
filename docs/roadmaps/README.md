@@ -86,7 +86,7 @@ flowchart TB
 | [TUI视觉与信息表达.md](./TUI视觉与信息表达.md) | 重要信息显形、工具可读 | 软依赖引擎质量 |
 | [Tokenizer精准计量.md](./Tokenizer精准计量.md) | 精准计数 + 知情同意 | 可并行 |
 | [TUI引擎质量.md](./TUI引擎质量.md) | 迁移后包层质量 | 视觉底座 |
-| [出口流量检视.md](./出口流量检视.md) | 自研 Inspect；Web 模块；TUI 可只起检视页 | 融入 Web；非 MITM |
+| [出口流量检视.md](./出口流量检视.md) | 自研 Inspect；Web 模块；TUI 可只起检视页；**M0 进程内对照底座** | 融入 Web；非 MITM；实现底座见 c1265 |
 | [Cloud-Agent与Web控制台.md](./Cloud-Agent与Web控制台.md) | 多工作区 CS + TS Web + Cursor 协同 | Inspect / 同源 |
 | [运行时即时设置.md](./运行时即时设置.md) | 下一波次生效的会话覆盖开关盘 | LSP/DAP/Sub/Loop… |
 | [Loop管理与触发可视化.md](./Loop管理与触发可视化.md) | Loop 管理；触发时间醒目 | 同源、即时设置 |

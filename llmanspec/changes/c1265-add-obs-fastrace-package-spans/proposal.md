@@ -1,6 +1,6 @@
 ---
 change_id: c1265-add-obs-fastrace-package-spans
-title: "观测：Phase A — inspect 滞后脚本 + agent 低频 span"
+title: "观测：Phase A — inspect 滞后脚本 + agent 低频 span + fastrace-futures"
 status: purpose-draft
 priority: 1265
 depends_on:
@@ -17,32 +17,38 @@ branch: feat/tui-dev
 ## Why
 
 1. t0718 已证明：用现有 `provider-trace.jsonl`（raw `function_call_arguments.delta` vs mapped `ToolCall*`）可在分钟级判定映射滞后；缺的是 **可复用的 inspect 配方**，不是再堆每条 SSE 的 span。
-2. agent / app-tui 仍无与 `provider.request` 可关联的低频边界，跨层 timing 只能猜。
-3. 原草稿把 `adapter.map_event`、TUI 60Hz、`engine.frame`、live CI 捆在一起——热路径风险高、与 t0718 价值不对齐。
+2. agent 仍无与 `provider.request` 可关联的低频边界；跨 await 的 Stream 若手写 `set_local_parent` 易丢上下文。
+3. fastrace 生态里 **`fastrace-futures`**（`StreamExt::in_span`）正好覆盖 provider Stream，减少 DIY；OTel/Jaeger/axum 等面向跨进程导出或 HTTP 框架，与当前「本地 JSONL 排障」不对口，留给后续。
+4. 产品 roadmap「出口流量检视」需要进程内可关联时间线作事实源底座——Phase A 先把底座与排障配方钉死，不为检视台提前堆 UI。
 
-## Purpose（Phase A — 收窄）
+## Purpose（Phase A）
 
-1. **文档/skill**：在 `xylitol-inspect-runtime-logs` 固化 t0718 滞后计算（按 `request_id`：首个 args delta → 首个 mapped ToolCall*）。
-2. **低频 agent span**（关闸零成本，复用 `provider_trace_active` 或等价闸）：
-   - `react.stream`（每次 provider HTTP 流 1 个）
-   - `react.turn`（每次 ReAct 迭代 1 个）
-   - 可选 `tool.execute {name,id}`（仅工具执行）
-3. 命名稳定；尽量挂 `request_id` / 父子关系（若跨 crate 根 span 限制，至少属性关联）。
-4. **MUST** 证明闸关闭时无昂贵序列化；file-only（ipt3 / dl1）。
+1. **skill**：`xylitol-inspect-runtime-logs` 固化 t0718 滞后计算（按 `request_id`）。
+2. **依赖**：主 crate / bridge 按需引入 **`fastrace-futures`**；用 `in_span` 包裹 provider 输出 Stream，使 `react.stream` 在每次 poll 保持 local parent。
+3. **低频 span**（关闸零成本，复用 `provider_trace_active`）：
+   - `react.stream`（每 HTTP 流 1 个；优先经 fastrace-futures）
+   - `react.turn`（每 ReAct 迭代 1 个）
+   - 可选 `tool.execute {name,id}`
+4. 命名稳定；`request_id` 属性关联优先于强行跨 crate 真父子。
+5. **MUST** 关闸无昂贵序列化；file-only（ipt3 / dl1）；**禁止** `fastrace-tracing` / 引入 `tracing`。
 
-## Explicitly deferred（Phase B+，本 change 不做）
+## Phase B+（本 change 不做，但 design 预留钩子）
 
-- `adapter.map_event`（与现有 raw/mapped Event 重复；热路径）
-- `tui.host.event` / `tui.bridge.apply` / `xylitol-tui` `engine.frame`
-- `XYLITOL_LIVE_MODEL` 真机剧本 / CI 断言
-- 引入 `tracing` crate
+| 项 | 说明 | 产品挂钩 |
+|---|---|---|
+| **opt-in OTel reporter**（`fastrace-opentelemetry` 等） | 与现有 `FileTraceReporter` **并存或可切换**；默认仍 JSONL；禁止默认打 stdout | 为「出口流量检视」/ Web Inspect 导出标准时间线做准备 |
+| `fastrace-reqwest` | 仅当需要 W3C `traceparent` 出站传播时 | 跨服务协同（非模型厂商回传） |
+| TUI / engine 采样 span | 另开 change | 视觉排障，非检视事实源主路径 |
+| `adapter.map_event` | 与 raw/mapped Event 重复 | 不做 |
+| live model CI | 另开 | — |
 
 ## What Changes
 
-- `.agents/skills/xylitol-inspect-runtime-logs/SKILL.md`（+ `.claude` 镜像若存在）：滞后脚本片段
-- `src/agent/runtime`（及必要）：低频 span + 关闸
-- 可选：`FileTraceReporter` 对「无 event 的 span」是否写一行起止——仅当 Phase A agent span 否则不可见时再动
-- live specs：`infra-provider-trace`（ipt1/ipt2 增补跨层/零成本）和/或 `infra-logging` 指针；**不**新建大 capability 除非必要
+- Cargo：`fastrace-futures`（版本与 `fastrace` 对齐）
+- skill：滞后脚本
+- agent + bridge stream 接线：`in_span` + 低频 span
+- live specs：`infra-provider-trace` 增补跨层/零成本；可选一句「未来可并列 OTel reporter」文档意图（非本 change MUST）
+- design 记清：自定义 JSONL schema **保留**（OTel 不能替代 t0718 对照）
 
 ## Capabilities
 
@@ -51,16 +57,17 @@ branch: feat/tui-dev
 
 ## Out of scope
 
-- 见「Explicitly deferred」
-- XML 抽取器；默认 CI 付费模型
+- Phase B+ 表中各项的实现
+- XML 抽取器；默认 CI 付费模型；ConsoleReporter
 
 ## Ethics
 
 - risk_level: low
-- prohibited_actions: span/log 写 Authorization；stdout/stderr 毁 TUI；release 默认昂贵序列化；热路径无采样 span
-- required_evidence: 关闸零/近零开销；开闸一次请求可见 skill 滞后计算 + agent 低频 span（或属性关联）
-- escalation_policy: 若 agent span 不可见于 JSONL → 最小扩展 reporter 或加边界 Event；若延迟可测 → 砍 span 只留 skill
+- prohibited_actions: span/log 写 Authorization；stdout/stderr 毁 TUI；release 默认昂贵序列化；默认启用外部 OTel 出口；引入 `tracing`
+- required_evidence: 关闸零成本；开闸 skill 可算 lag；`react.stream` 经 futures 集成可见关联
+- escalation_policy: span 不可见 JSONL → lifecycle Event；延迟可测 → 砍 span 留 skill；OTel 与 JSONL 冲突 → JSONL 优先
 
 ## Depends
 
-- `c1250-update-ai-bridge-assistant-stream-events`（已归档；事件名与 mapped 形状）
+- `c1250`（已归档）
+- 产品前瞻：`docs/roadmaps/出口流量检视.md`（进程内时间线 → Inspect 事实源；OTel 为可选导出）
