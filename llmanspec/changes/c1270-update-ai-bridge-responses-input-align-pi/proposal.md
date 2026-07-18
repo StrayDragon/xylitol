@@ -11,7 +11,8 @@ wave: tui-stream-align
 domain: infra
 branch: feat/tui-dev
 base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
-checkpointed: false
+checkpointed: true
+checkpoint_sha: d3fc2ecb27f4ea22b85f90b3bdcc5a0e3008ae9c
 ---
 
 # c1270-update-ai-bridge-responses-input-align-pi
