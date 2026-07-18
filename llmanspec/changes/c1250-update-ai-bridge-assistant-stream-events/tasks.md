@@ -2,7 +2,7 @@
 
 ## Promote
 
-- [x] live `package-ai-bridge` 约束 pab13/pab14 + scenarios（feature:false，由包单测举证）
+- [x] live `package-ai-bridge` 约束 pab13/pab14 + scenarios（feature:true；BDD step 在 tests/bdd.rs）
 - [x] `llman sdd change attach c1250-update-ai-bridge-assistant-stream-events`
 - [x] proposal `status: full`
 
