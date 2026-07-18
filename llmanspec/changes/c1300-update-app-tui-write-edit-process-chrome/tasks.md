@@ -11,3 +11,4 @@
 - [x] 停止成功 edit 的第二 `UiEntry::Diff`；更新 atb11 与单测
 - [x] session_tree 重建对齐（details.display_diff）
 - [x] bridge/preview 拆分过预算；`cargo test` app::tui + validate
+- [x] write 整块洗底：header+正文同一 pending/success/error（修割裂裸底）
