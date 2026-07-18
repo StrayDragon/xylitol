@@ -2,8 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-commands"
 purpose: "斜杠命令与 protocol::Command / dispatch 映射。"
 valid_scope[1]: src/app/tui/
-requirements[16]{req_id,title,statement}:
-  r22,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+requirements[15]{req_id,title,statement}:
   atm1,"slash-exit-model",TUI MUST 解析斜杠命令 /exit（映射 Quit）与 /model：无参 MUST 打开替换 editor 槽的 fuzzy 模型列表（GetAvailableModels + 选定后 SetModel）；有参 /model <id> MUST 直接 SetModel；键入 /model 参数时 MAY/MUST 经包 SlashArgCompletionSource 内联补全（见 ati23），补全写入后仍走有参 SetModel；MUST NOT 再把无参 /model 做成 CycleModel 静默轮换；MUST NOT 引入 /models 主路径；未知斜杠 MUST 显示内联错误且 MUST NOT 崩溃。
   atm2,"dispatch-shared","除 Prompt、Quit 与传输专用命令外，斜杠执行 MUST 走 app::core::dispatch 共享路径，MUST NOT 发明平行命令词表。"
   atm3,"extensible-commands",命令面 MUST 允许后续追加斜杠（如 /compact /help）而不改引擎；MVP 仅要求 /exit 与 /model。

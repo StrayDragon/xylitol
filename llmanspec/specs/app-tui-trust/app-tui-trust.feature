@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: app-tui-trust
 
-  @req:r27
-  场景: shell-present
-    当 列出 llmanspec/specs/app-tui-trust
-    那么 spec.toon 存在且 purpose 为中文
-
   @req:atr1
   场景: no-stdio-menu
     假如 需要 Ask 且启动 --tui

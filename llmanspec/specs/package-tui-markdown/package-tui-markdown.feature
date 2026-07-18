@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: package-tui-markdown
 
-  @req:ptm0
-  场景: shell-present
-    当 列出 capability package-tui-markdown
-    那么 spec 含 ptm0–ptm8 且 purpose 为中文
-
   @req:ptm1
   场景: h1-no-hash
     当 渲染一级标题 Hello

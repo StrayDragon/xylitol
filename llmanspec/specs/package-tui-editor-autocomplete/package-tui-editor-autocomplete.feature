@@ -38,11 +38,6 @@
     当 仅最后一次的建议应用
     那么 前两次因 start_token 递增被丢弃
 
-  @req:ea00
-  场景: shell-present
-    当 列出 capability package-tui-editor-autocomplete
-    那么 delta 含 ea05–ea06
-
   @req:ea05
   场景: register-stub
     假如 注册含测试桩的 sources

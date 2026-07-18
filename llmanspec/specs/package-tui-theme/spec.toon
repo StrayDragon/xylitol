@@ -2,8 +2,7 @@ kind: llman.sdd.spec
 name: "package-tui-theme"
 purpose: 包内 SemanticPalette（Dark/Light）、paint 真彩、主题工厂与 demo 换肤。
 valid_scope[2]: src/,tests/
-requirements[8]{req_id,title,statement}:
-  ptt00,"capability-shell","本增量由变更 c570-add-package-tui-theme-palette 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+requirements[7]{req_id,title,statement}:
   ptt01,"two-palettes",包 MUST 提供恰好两套内建 SemanticPalette：Dark（对齐 DESIGN Mocha）与 Light（对齐 Catppuccin Latte）；MUST 能经 TerminalColorScheme 选取。
   ptt02,"paint-truecolor",paint 辅助 MUST 用真彩 SGR 上色，前景复位 39、背景复位 49（或文档约定的行内恢复）；MUST NOT 要求组件依赖 JSON 主题文件。
   ptt03,"theme-factories",包 MUST 提供由 SemanticPalette 生成 MarkdownTheme 与 DiffTheme 的工厂；组件仍只收闭包主题。

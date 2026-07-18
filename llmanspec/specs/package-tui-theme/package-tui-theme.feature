@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: package-tui-theme
 
-  @req:ptt00
-  场景: shell-present
-    当 列出 capability package-tui-theme
-    那么 delta 含 ptt01–ptt06
-
   @req:ptt01
   场景: dark-light
     当 调用 SemanticPalette::dark 与 light

@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: app-tui-transcript
 
-  @req:r26
-  场景: shell-live-purpose
-    当 列出 app-tui-transcript
-    那么 purpose 描述 live scrollback 且禁 Codex 浏览面
-
   @req:att1
   场景: markdown-assistant
     当 UiModel 含助手 Markdown 条目并 render

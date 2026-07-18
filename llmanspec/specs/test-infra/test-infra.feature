@@ -32,12 +32,6 @@
     当 两者均使用唯一临时目录
     那么 无文件冲突或测试干扰
 
-  @req:r62
-  场景: compiles-with-rstest
-    假如 项目有 rstest 与 rstest-bdd dev-dependencies
-    当 cargo test bdd
-    那么 所有场景以 cargo test 语法通过，无需自定义 runner
-
   @req:r63
   场景: e2e-not-in-default
     假如 默认 cargo test 运行

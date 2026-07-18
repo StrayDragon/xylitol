@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: package-tui-expandable-output
 
-  @req:r29
-  场景: shell-present
-    当 列出 llmanspec/specs/package-tui-expandable-output
-    那么 spec.toon 存在且 purpose 为中文
-
   @req:peo1
   场景: api-export
     当 从 xylitol_tui 引用
@@ -23,11 +18,6 @@
     假如 连续 append 多行
     当 collapsed 再 set_expanded
     那么 collapsed 贴尾且 expanded 无 earlier 提示
-
-  @req:peo0
-  场景: shell-present
-    当 列出 capability package-tui-expandable-output
-    那么 delta 含 peo4–peo5
 
   @req:peo4
   场景: head-hint
