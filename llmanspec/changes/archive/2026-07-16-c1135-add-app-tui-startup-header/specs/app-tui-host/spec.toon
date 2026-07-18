@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ath23,"loaded-resources-via-driver","产品 host MUST 经 Driver 只读缝获取 skills 名与 MCP 连接摘要以填充 loaded-resources；启动与 /reload 成功后 MUST 刷新该槽；MUST NOT 从 app/tui reach infra::mcp 或 skills 目录；busy 时 /reload 拒绝语义保持 ath20/既有行为。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  ath23,"reload-refreshes","idle 且磁盘 skills 变更后","/reload","loaded-resources 与 dollar skill catalog 反映新目录"
-  ath23,"no-infra-reach","审查 app/tui 源码","检查 import","无 tui→infra::mcp 直达"

@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,pa20,agent-to-llm-projection,"infra provider 装配路径 MUST 在调用 xylitol-ai-bridge 之前将 AgentMessage 经显式投影转为 LLM DTO；投影 MUST 保留开闭：新环境消息变体的折叠策略落在投影层，MUST NOT 要求 bridge 同步增加平行 session 角色。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  pa20,"bash-folded","history 含 bashExecution","投影后送入 adapter","bridge 侧无 bashExecution 变体"
-  pa20,"vendor-not-in-agent","agent 层","搜索 async_openai 与 anthropic vendor 类型","零匹配"

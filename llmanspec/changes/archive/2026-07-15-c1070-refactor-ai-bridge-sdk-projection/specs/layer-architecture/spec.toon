@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,la25,provider-package-ocp,"LLM 厂商差异 MUST 收敛在 packages/xylitol-ai-bridge 的 adapter 族与主仓投影缝；新 OpenAI-like 或 Anthropic-like 兼容端 MUST 以开闭方式扩展（新 adapter/配置），MUST NOT 修改 domain AgentMessage 或 agent ReAct 核心以适配某一网关；domain/agent MUST NOT 依赖厂商 SDK。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  la25,"new-compatible-endpoint","新增兼容 OpenAI base_url 的供应商","接线","不改 AgentMessage 定义"
-  la25,"domain-no-sdk","src/domain 与 src/agent","rg async_openai 或 anthropic SDK","零匹配"

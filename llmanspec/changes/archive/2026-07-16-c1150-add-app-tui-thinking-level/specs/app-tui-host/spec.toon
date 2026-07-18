@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ath22,"thinking-level-silent-cycle","产品 host 切换 thinking level 时 MUST 经 Driver set/cycle_thinking_level（或 Command::SetThinkingLevel / 等价 seam）更新运行时；成功后 MUST 仅更新边框与 footer；MUST NOT 向 live scrollback / transcript 追加 thinking-border → … 类系统块；MUST NOT 因 cycle 刷屏；模型切换后 MUST 从 Driver::thinking_level 重同步 UI；组件 MUST NOT 直接 reach ModelManager。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  ath22,"silent-no-transcript","产品 host 已挂载","连续 cycle thinking level","scrollback 无 thinking-border 系统行且 footer 与边框与 Driver 一致"
-  ath22,"model-switch-resync","已切换到支持集不同的模型且 level 被 clamp","下一帧 render","footer 与边框反映 Driver::thinking_level 钳制结果"

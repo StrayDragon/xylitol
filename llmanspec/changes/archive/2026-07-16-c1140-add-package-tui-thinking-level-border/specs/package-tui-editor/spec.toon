@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ed10,"thinking-border-apply","Editor MUST 能在不重建实例的前提下经 set_border_color（ed08）或薄 helper apply_thinking_border 应用 Palette 给出的 thinking 边框闭包；应用后 render 的边框行 MUST 经该闭包着色；MUST NOT 在 Editor 内硬编码产品 domain ThinkingLevel。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  ed10,"apply-high-border","Editor 已构造且 Palette 为 Dark","apply_thinking_border(High) 或等价 set_border_color 后 render","边框行含 High 对应真彩序列"
-  ed10,"swap-without-rebuild","同一 Editor 实例","先 Medium 再 High 应用边框","两次 render 边框色不同且实例未重建"

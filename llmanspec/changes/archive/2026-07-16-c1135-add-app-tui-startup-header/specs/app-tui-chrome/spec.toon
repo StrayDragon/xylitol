@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,atc18,"loaded-resources-slot","产品 UiRoot MUST 在 scrollback 上方渲染 loaded-resources 槽：Codex 风边框卡片（>_ xylitol + model/directory；有 skills 时 skill-ref 色 skills 行并换行全量；有 MCP 时 success 色 mcp 行）；MUST NOT 展示木糖醇中文标签；MUST NOT 渲染 ASCII logo 艺术字；MUST NOT 用省略号截断资源名；MUST NOT 列出 prompt templates；MUST NOT 展示密钥或完整 env。",null,null,null
-op_scenarios[4]{req_id,id,given,when,then}:
-  atc18,"brand-line","","渲染 UiRoot","顶部卡片含 xylitol 且不含木糖醇与 ASCII logo"
-  atc18,"skills-all-visible","已加载多个长 skill 名","窄宽渲染","所有 skill 名可见且无省略号"
-  atc18,"skills-above-scrollback","已加载 skills demo","渲染 UiRoot","Skills 出现在 scrollback 之前"
-  atc18,"no-prompts","有 skills","审查文案","不含 Prompts 或 prompt template 清单"
