@@ -20,6 +20,6 @@ requirements[19]{req_id,title,statement}:
   r73,信任解析管线,"项目 trust 解析 MUST 遵循固定优先级：(1) 显式 CLI 覆盖（--trust / --no-trust）；(2) 无 trust 所需输入时自动 trust；(3) 带父继承的持久 store 查找；(4) 配置默认策略（always / never / ask）；(5) 仅 has_ui 为 true 时 app UI 提示；(6) 回退 deny。解析 MUST 同时返回决策与原因。"
   r74,信任 UI 回调注入,trust resolver MUST 接受 app 步骤的 on_prompt 回调，MUST NOT 直接做终端 I/O。app/ 层负责提供提示回调；agent/ 与 infra/ 层对 trust 决策 MUST 保持 UI 无关。
   r75,信任状态接线,agent 启动时，项目 CWD 的已解析 trust 决策 MUST 应用于门控项目范围 settings 与资源。项目未 trusted 时 SettingsManager MUST 拒绝加载项目范围 settings。SettingsManager 上独立 project_trusted bool 切换 MUST 由已解析 trust 决策替换（per t1 单一真源）。
-  r76,信任命令接线,"trust slash 命令（commands.rs）MUST 接线至经 infra/trust/ store 持久化 trust 决策，替换当前死入口。会话中运行 /trust 或 /no-trust MUST 为当前项目 CWD 持久化决策。"
+  r76,信任命令接线,"信任相关产品命令（如 /trust）MUST 经 Driver/composition（或等价应用缝）调用 TrustManager/端口持久化决策；MUST NOT 从应用面 reach-in infra::trust 具体类型。会话中运行信任命令 MUST 为当前项目 CWD 持久化决策；写盘成功后本会话 MUST NOT 自动重载项目 skills/MCP/context（用户显式 /reload 或重启除外）。"
   s15,Permission 非安全边界,文档与命名 MUST 明示 XyPermission 为建议性：礼貌阻止循环调用被拒绝工具，但不阻止主机级访问，因 bash 仍可删文件且恶意 prompt 不受 containment。真实隔离 MUST 来自 OS、容器或 VM 边界（如未来将工具执行委托到沙箱的工具路由模式）；扩展 XyPermission MUST NOT 被视为增加安全控制。这与 pi 无内置沙箱立场一致。
 scenarios[0]:

@@ -2,8 +2,7 @@ kind: llman.sdd.spec
 name: "package-tui-choice-prompt"
 purpose: 通用 ChoicePrompt：单选/多选、Other 自由输入、多题 Tab 混搭（AskQuestion 形态，供 agent_demo / 产品内联槽）。
 valid_scope[1]: "packages/xylitol-tui/"
-requirements[6]{req_id,title,statement}:
-  pcp00,"capability-shell","本 capability 由变更 c565-add-package-tui-choice-prompt 引入；归档合并后以本 spec 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+requirements[5]{req_id,title,statement}:
   pcp01,"single-and-multi","ChoicePrompt MUST 支持每题 ChoiceMode::Single（互斥）与 ChoiceMode::Multi（可勾选多项）；提交结果 MUST 区分单值与多值；Single 行视觉 MUST NOT 使用 ●/○ 单选圆点（用 →/反色）。"
   pcp02,"other-free-text",当题目 allow_other 为真时 MUST 提供 Other 选项；用户 MUST 能经 Tab 聚焦自由输入并在提交中带回自定义文本。
   pcp03,"multi-question-tabs",当问卷含多题时 MUST 渲染可切换的题目标签与 Submit，且每题可独立为 Single 或 Multi；单题 MUST NOT 强制显示多题 Tab 条。

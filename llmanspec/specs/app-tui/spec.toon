@@ -1,12 +1,11 @@
 kind: llman.sdd.spec
 name: "app-tui"
-purpose: "跨切面不变量索引（第四次 TUI 重做）。产品细节见 app-tui-*；引擎/harness 见 package-tui-*。旧 ratatui/StyledLine/always-on status 等实现史 req 已移除。"
+purpose: "跨切面不变量索引。产品细节见 app-tui-*；引擎/harness 见 package-tui-*；CLI 默认进 TUI 见 cli-entry。"
 valid_scope[2]: src/,tests/
-requirements[6]{req_id,title,statement}:
+requirements[5]{req_id,title,statement}:
   tui2,"in-process-default","产品 TUI 默认 MUST 经 app::core::driver::InProcessDriver 驱动 agent；MUST NOT 默认 RemoteDriver 或自动拉起 daemon。RemoteDriver 类型 MUST 保留以支持日后远控。"
-  tui3,"three-surfaces-coexist",rpc（stdio JSONL）、server（REST+WS）与 tui（inline）应用面 MUST 共存；不得以统一为名删除任一传输面。
+  tui3,"three-surfaces-coexist",print（cli）、server（REST+WS）与 tui（inline）应用面 MUST 共存；不得以统一为名删除任一传输面。
   tui4,"reuse-contract","产品 TUI MUST 仅从 crate::agent（mod 级）、crate::app::core、crate::protocol、crate::domain 导入；MUST NOT 导入 crate::agent::session、crate::agent::runtime 或 crate::infra。斜杠语义 MUST 复用 protocol::Command。"
   tui5,"no-skeleton-spray","src/app/tui/ 下每个新增源文件 MUST 在同一变更内由真实入口 tui::run 驱动；MUST NOT 用 #[allow(dead_code)] 落地未驱动骨架。"
-  tui10,"repl-entry","当未提供 one-shot prompt（位置参数或 --prompt）且 stdin 为 TTY 时，CLI MUST 进入 app::tui::run（默认入口，无需 --tui）；--tui MUST 可显式强制进入 TUI（即使同时给出 prompt）。"
   "tui-index","capability-index","产品 TUI 行为细节 MUST 由 app-tui-host / app-tui-bridge / app-tui-transcript / app-tui-chrome / app-tui-input / app-tui-commands 各自约束；引擎与五层 harness MUST 由 package-tui-*（含 package-tui-testing）约束，不得在本索引重复实现史细节。"
 scenarios[0]:

@@ -2,8 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-bridge"
 purpose: XyEvent 到 UI 模型的单一翻译缝与 agent 循环生命周期。
 valid_scope[1]: src/app/tui/
-requirements[14]{req_id,title,statement}:
-  meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+requirements[13]{req_id,title,statement}:
   atb1,"xyevent-to-ui-seam","产品 TUI MUST 经单一 bridge 缝（apply_xy_event）将 XyEvent 译为 UI-only 模型；渲染层 MUST NOT 直接 match XyEvent。未知/元数据变体 MUST 降级（tracing）且 MUST NOT panic。"
   atb2,"agent-loop-lifecycle","用户可见忙碌态 MUST 覆盖从提交或 steer 起至 AgentEnd 且 follow-up 队列为空；中间 TurnEnd MUST NOT 被当作整轮结束去清空 streaming 尾或复位 idle。"
   atb3,"steer-followup-events",bridge MUST 能消费 QueueUpdate（steer_count / follow_up_count）；display_diff 等工具结果字段 MUST 在 ToolExecutionEnd 路径可被抽取供 transcript 使用。

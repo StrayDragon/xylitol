@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: package-tui-agent-demo
 
-  @req:pad0
-  场景: shell-present
-    当 列出 capability package-tui-agent-demo
-    那么 spec 含 pad0–pad5 且 purpose 为中文
-
   @req:pad1
   场景: open-plate
     当 用户按下 Ctrl+P

@@ -2,8 +2,7 @@ kind: llman.sdd.spec
 name: "package-tui-markdown"
 purpose: token 友好的 Markdown 终端渲染：SGR 层级、明文链接、无围栏代码块、空格对齐表。
 valid_scope[2]: "packages/xylitol-tui/src/components/markdown.rs",src/app/tui/design/markdown.md
-requirements[9]{req_id,title,statement}:
-  ptm0,"capability-shell","本 capability 由变更 c530-update-package-tui-markdown 引入；归档合并后以本 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+requirements[8]{req_id,title,statement}:
   ptm1,"heading-sgr-no-hash",Markdown 渲染标题时 MUST 用主题色与 bold/underline 表达 H1–H6 层级；可见文本 MUST NOT 包含 # 或 ## 等井号前缀。
   ptm2,"link-text-url",Markdown 渲染链接时 MUST 输出可见形态 text (url)；图片 MUST 输出 alt (url)（无 alt 则用 url）；MUST NOT 仅依赖不可选中的 OSC 或丢弃 URL。
   ptm3,"code-block-no-fence",Markdown 代码块 MUST 仅输出代码内容行（可选缩进与 highlight_code 高亮）；MUST NOT 输出围栏行、语言标签条或行号墙。

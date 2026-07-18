@@ -2,8 +2,7 @@ kind: llman.sdd.spec
 name: "package-tui-tree-selector"
 purpose: 通用 TreeSelector：flatten/过滤/搜索/翻页/fold/annotation（供双 Esc 会话树）。
 valid_scope[1]: "packages/xylitol-tui/"
-requirements[16]{req_id,title,statement}:
-  r30,"capability-shell","本 capability 由变更 c454-add-package-tui-tree-selector 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+requirements[14]{req_id,title,statement}:
   pts1,"tree-node-model",包 MUST 提供 TreeNode（id/label/children）与可导航 TreeSelector 组件；MUST NOT 依赖主 crate xylitol 或 session 类型。
   pts2,"include-node-filter",TreeSelector MUST 支持 include_node 钩子过滤可见节点，并在过滤后重算 indent/connector/gutter；MUST NOT 硬编码产品 FilterMode 枚举。
   pts3,"select-keybindings",TreeSelector 导航 MUST 使用 tui.select.* 键绑定（up/down/page/confirm/cancel）；选中态 MUST 可用主题闭包（如 reverse）表达。
@@ -14,7 +13,6 @@ requirements[16]{req_id,title,statement}:
   pts8,"node-annotation","TreeNode MUST 支持可选 annotation 与 annotation_at；渲染 MUST 在主 label 前显示 [annotation]；show_annotation_timestamps 为真时 MUST 显示 annotation_at。"
   pts9,"label-edit-callback",TreeSelector MUST 在 tui.tree.editLabel（默认 Shift+L）时调用 on_label_edit(id current_annotation)；MUST 在 tui.tree.toggleLabelTimestamp（默认 Shift+T）时切换时间戳显示。
   pts10,"horizontal-viewport-pan",TreeSelector 渲染 MUST 在行宽不足以同时显示 gutter 与选中行 body 时对 body 做水平平移（固定光标 gutter，平移 label/连接符区）；选中行的关键 label 内容在窄宽下 MUST 仍可见；MUST NOT 平移掉选中指示 gutter。
-  pts00,"capability-shell","本增量由变更 c560-update-package-tui-tree-edges 引入；归档合并后以本 delta 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   pts11,"empty-visible-state",当过滤或搜索导致无可见节点时，TreeSelector MUST 渲染可辨识空态行（主题 no_match 或等价）；MUST NOT 静默输出完全空白列表且无提示。
   pts12,"selection-stable-on-filter",include_node 或搜索串变更后，若先前选中 id 仍在可见列表中则 MUST 保持该选中；否则 MUST 将选中落到可见列表的合理默认项（通常为首项）。
   pts13,"node-kind",TreeNode MUST 支持可选 kind（字符串；包 MUST NOT 硬编码产品 role 枚举）；有 kind 时渲染 MUST 在 annotation 之后、主 label 之前经主题闭包输出 kind 前缀；无 kind 时 MUST NOT 强制前缀。

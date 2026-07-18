@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: app-tui-bridge
 
-  @req:meta0
-  场景: shell-present
-    当 列出 llmanspec/specs/app-tui-bridge
-    那么 spec.toon 存在且 purpose 为中文
-
   @req:atb1
   场景: unknown-event
     当 收到未映射 XyEvent

@@ -2,8 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-design-playground"
 purpose: "DESIGN playground 静态设计图：token 同步、Next-wave 槽、Agent 默认忽略、L1/L2 一致性闸门指针。"
 valid_scope[7]: src/app/tui/design/playground/,src/app/tui/design/AGENTS.md,src/app/tui/design/playground/README.md,src/app/tui/design/playground/sync_tokens.py,src/app/tui/design/playground/index.html,src/app/tui/design/fixtures/,src/app/tui/DESIGN.md
-requirements[11]{req_id,title,statement}:
-  adp0,"capability-shell","本 capability 由变更 c555-add-app-tui-design-playground-sync 引入；归档合并后以本文件为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+requirements[10]{req_id,title,statement}:
   adp1,"token-sync-ssot",playground 的 tokens.css 与 tokens.js MUST 由 sync_tokens.py 从 DESIGN.md frontmatter 生成；手改生成物 MUST NOT 作为长期真值。
   adp2,"markdown-slot-align",playground Markdown 槽示意 MUST 对齐 design/markdown.md：无井号标题前缀、链接为 text (url)、粗体斜体无可见星号包裹。
   adp3,"agent-default-ignore",design/AGENTS.md MUST 写明 Agent 默认忽略 playground/；仅在人类点名路径或粘贴片段时才读。

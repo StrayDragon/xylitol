@@ -2,8 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-chrome"
 purpose: 主题 token、glyph、status 与 footer 等 layout 壳（历史 capability 名 chrome）。
 valid_scope[1]: src/app/tui/
-requirements[19]{req_id,title,statement}:
-  r21,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
+requirements[18]{req_id,title,statement}:
   atc1,"idle-status-omitted",产品 UiRoot 空闲时 status 槽 MUST 渲染 0 行；忙碌时 MUST 至多独立 1 行短状态；MUST NOT 将 Working 等忙碌文案并入 footer。
   atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本；字段序为 cwd · model · thinking 标签（形如 `cwd · model · • thinking off` 或 `· • xhigh`，level 文案为 ThinkingLevel::as_str，off 时用 `thinking off`）；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api/RemoteCount/LocalTokenizer 为 used N tokens，Heuristic 为 used ~N tokens，Unknown 为 used ? tokens）；队列非空时可加 `q:sN|fM ·` 前缀；无估计数据时 MUST NOT 伪造 used 0；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。"
   atc3,"theme-glyphs-config","产品 host MUST 经 Palette::dark()（或等价闭包）将语义色注入组件主题；glyph 档（unicode/ascii）MUST 由显式配置切换，MUST NOT 做运行时字体探测；产品 MVP MUST NOT 默认开启 theme auto。"

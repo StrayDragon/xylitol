@@ -9,7 +9,7 @@
 
   @req:tui3
   场景: surfaces-retained
-    当 检查 rpc 与 server 入口
+    当 检查 print 与 server 入口
     那么 两面仍存在且可分发
 
   @req:tui4
@@ -21,17 +21,6 @@
   场景: driven-on-land
     当 变更完成检查新文件
     那么 均可从 tui::run 到达且无 allow dead_code 骨架
-
-  @req:tui10
-  场景: tty-default-no-flag
-    当 无参数且 stdin 为 TTY
-    那么 进入 app::tui::run 且不依赖 --tui
-
-  @req:tui10
-  场景: tui-flag-wins
-    假如 同时给 --tui 与 --prompt
-    当 启动
-    那么 进入 TUI 而非 print
 
   @req:tui-index
   场景: split-capabilities

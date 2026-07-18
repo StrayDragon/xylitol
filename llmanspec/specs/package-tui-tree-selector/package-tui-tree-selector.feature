@@ -2,11 +2,6 @@
 # managed by llman sdd partition-migrate
 功能: package-tui-tree-selector
 
-  @req:r30
-  场景: shell-present
-    当 列出 llmanspec/specs/package-tui-tree-selector
-    那么 spec.toon 存在且 purpose 为中文
-
   @req:pts1
   场景: unit-flatten
     当 对分支树 flatten
@@ -63,11 +58,6 @@
     假如 深嵌套树且 active/selected 为长 label 叶节点
     当 以窄 width render
     那么 输出含叶 label 的可辨识子串且行仍以选中 gutter 开头
-
-  @req:pts00
-  场景: shell-present
-    当 列出 capability package-tui-tree-selector
-    那么 delta 含 pts11–pts12
 
   @req:pts11
   场景: no-match
