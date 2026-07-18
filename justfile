@@ -278,6 +278,49 @@ fmt-check verbosity=verbosity_default:
       verbose) cargo fmt -v --all -- --check ;;
     esac
 
+# --- Observability / provider-trace inspect (maintenance; not in qa) ---
+# Token-efficient summaries. Skill: xylitol-inspect-runtime-logs.
+# Filters (--since / --request-id / --turn-id): pass via python CLI, not just kwargs
+#   python3 scripts/inspect_provider_trace.py --since 30m summary
+
+obs-summary:
+    python3 scripts/inspect_provider_trace.py summary
+
+obs-requests n="8":
+    python3 scripts/inspect_provider_trace.py requests -n {{n}}
+
+obs-recent n="40":
+    python3 scripts/inspect_provider_trace.py recent -n {{n}}
+
+obs-turns n="8":
+    python3 scripts/inspect_provider_trace.py turns -n {{n}}
+
+obs-lag REQUEST_ID="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ -n "{{REQUEST_ID}}" ]]; then
+      python3 scripts/inspect_provider_trace.py --request-id "{{REQUEST_ID}}" lag
+    else
+      python3 scripts/inspect_provider_trace.py lag
+    fi
+
+obs-lifecycle REQUEST_ID="" TURN_ID="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=()
+    [[ -n "{{REQUEST_ID}}" ]] && args+=(--request-id "{{REQUEST_ID}}")
+    [[ -n "{{TURN_ID}}" ]] && args+=(--turn-id "{{TURN_ID}}")
+    python3 scripts/inspect_provider_trace.py "${args[@]}" lifecycle
+
+obs-channel REQUEST_ID="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ -n "{{REQUEST_ID}}" ]]; then
+      python3 scripts/inspect_provider_trace.py --request-id "{{REQUEST_ID}}" channel
+    else
+      python3 scripts/inspect_provider_trace.py channel
+    fi
+
 # --- Documentation ---
 
 # Build API docs (cargo doc) and open in browser.

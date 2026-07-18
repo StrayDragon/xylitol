@@ -54,6 +54,9 @@ impl Reporter for FileTraceReporter {
             let trace_id = span.trace_id.to_string();
             let span_id = format!("{:016x}", span.span_id.0);
 
+            // Span-level correlation for lifecycle (react.turn / stream / tool.execute).
+            let span_turn_id = prop(&span.properties, "turn_id");
+
             for ev in &span.events {
                 let kind = prop(&ev.properties, "kind").unwrap_or(ev.name.as_ref());
                 let mut obj = Map::new();
@@ -78,6 +81,25 @@ impl Reporter for FileTraceReporter {
                 }
                 if let Some(text) = prop(&ev.properties, "text") {
                     obj.insert("text".into(), Value::String(text.into()));
+                }
+                // Lifecycle / low-freq span fields (c1265) — must not be dropped.
+                for key in [
+                    "name",
+                    "phase",
+                    "turn_id",
+                    "turn_index",
+                    "tool_name",
+                    "tool_id",
+                    "span_role",
+                ] {
+                    if let Some(v) = prop(&ev.properties, key) {
+                        obj.insert(key.into(), Value::String(v.into()));
+                    }
+                }
+                if !obj.contains_key("turn_id")
+                    && let Some(tid) = span_turn_id
+                {
+                    obj.insert("turn_id".into(), Value::String(tid.into()));
                 }
                 let truncated = prop(&ev.properties, "truncated").is_some_and(|v| v == "true");
                 obj.insert("truncated".into(), Value::Bool(truncated));
