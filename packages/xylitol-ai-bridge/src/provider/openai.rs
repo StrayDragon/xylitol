@@ -60,7 +60,7 @@ impl OpenAIProvider {
     ) -> Result<AiBridgeStream, AiBridgeError> {
         let trace =
             crate::provider::trace::ProviderRequestTrace::start("openai-completions", &self.model);
-        let msgs = convert_agent_messages(&messages, None);
+        let msgs = convert_agent_messages(&messages, options.system_prompt.as_deref());
         let tool_defs = convert_tools(tools);
 
         let resolved = crate::thinking::resolve_from_options(

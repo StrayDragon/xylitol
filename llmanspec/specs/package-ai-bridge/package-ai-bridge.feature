@@ -79,3 +79,15 @@
     假如 输入残缺工具参数 JSON
     当 调用 parse_streaming_json
     那么 返回 Value 且不 panic
+
+  @req:pab15
+  场景: responses-system-as-developer
+    假如 Responses 组装且 system_prompt 非空且 thinking_level 为 medium
+    当 转换为 input items
+    那么 首项 role 为 developer 且 content 为 system_prompt
+
+  @req:pab15
+  场景: responses-thinking-not-in-output-text
+    假如 assistant 含 Thinking 无 signature 与 Text
+    当 转换为 Responses input
+    那么 output_text 仅含 Text 且无 Thinking 正文

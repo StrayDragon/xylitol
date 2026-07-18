@@ -31,6 +31,8 @@ pub struct XyGenerateOptions {
     pub thinking_level: ThinkingLevel,
     pub level_map: ThinkingLevelMap,
     pub thinking_budgets: Option<ThinkingBudgets>,
+    /// Formal system prompt for the adapter (not stuffed into user history).
+    pub system_prompt: Option<String>,
 }
 
 impl Default for XyGenerateOptions {
@@ -39,6 +41,7 @@ impl Default for XyGenerateOptions {
             thinking_level: ThinkingLevel::Off,
             level_map: HashMap::new(),
             thinking_budgets: None,
+            system_prompt: None,
         }
     }
 }

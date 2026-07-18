@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "package-ai-bridge"
 purpose: "packages/xylitol-ai-bridge：client→LLM provider 接线与 AiBridge* DTO 边界。"
 valid_scope[2]: "packages/xylitol-ai-bridge/",src/infra/provider/
-requirements[9]{req_id,title,statement}:
+requirements[10]{req_id,title,statement}:
   pab1,"workspace-包边界","仓库 MUST 提供 workspace 成员包 packages/xylitol-ai-bridge，作为 client 到上游 LLM model provider 的接线与计量库；该包 MUST NOT 依赖主 crate xylitol。"
   pab2,包内模块划分,"xylitol-ai-bridge MUST 按职责划分至少包含 provider、usage、accounting、tokenize、registry 模块（名称可等价），分别承担方言接线、usage 归一化、多源计量、本地/远程分词计数与模型到分词源注册。"
   pab3,"包内-DTO-独立",包对外流式与消息类型 MUST 使用包内自有 LLM 投影 DTO（如 LlmMessage / AiBridgeChunk / AiBridgeUsage）；该 DTO MUST 仅表达发给模型的形状，MUST NOT 再定义与主仓 AgentMessage 平行的 bashExecution / compactionSummary / branchSummary / custom 等会话环境角色；包 MUST NOT 依赖主仓 domain。
@@ -12,4 +12,5 @@ requirements[9]{req_id,title,statement}:
   pab12,"thinking-params-in-request-body","xylitol-ai-bridge 在组装 OpenAI Completions / Responses 与 Anthropic Messages 请求体时 MUST 消费已解析的 thinking 参数：Completions 用 reasoning_effort；Responses 用 reasoning.effort；Anthropic 用 thinking budget（enabled + budget_tokens）；level 为 off 或映射为 null 时 MUST 省略对应字段（或显式 disabled）；用户 map 字符串 MUST 覆盖内置默认；MUST NOT 在无 map/默认时伪造未知厂商字段。"
   pab13,"assistant-stream-toolcall-lifecycle","Completions、Responses 与 Anthropic Messages 的流式路径 MUST 将原生工具调用映射为 AiBridgeChunk 的 ToolCallStart / ToolCallDelta / ToolCallEnd 生命周期：在首个可判别的工具相关上游事件后 MUST 发出 ToolCallStart（或同轮首次 ToolCallDelta 前已有 Start）；参数 JSON 片段 MUST 经 ToolCallDelta 增量发出且携带 parse_streaming_json 渐进 args；完整参数 MUST 在块结束时经 ToolCallEnd 发出。MUST NOT 仅在 finish_reason / output_item.done / message stop 才首次暴露工具意图。MUST NOT 在核心路径解析文本通道伪工具 XML。"
   pab14,"parse-streaming-json","包 MUST 提供 parse_streaming_json（或等价）：对不完整工具参数 JSON 尽最大努力解析为 serde_json::Value，非法中间态 MUST NOT panic，可回退为空对象。"
+  pab15,"responses-input-align-pi","组装 OpenAI Responses 请求体时：AiBridgeGenerateOptions.system_prompt 非空 MUST 每请求前置 input 项，thinking_level 非 off 时 role 为 developer，否则为 system；assistant 历史回放 MUST 仅将 Text 部分写入 output_text；Thinking 有 thinkingSignature 时 MUST 解析为 reasoning item 推入 input，无 signature 时 MUST 省略该 Thinking 且 MUST NOT 并入 output_text。Completions MUST 经 system message、Anthropic MUST 经 body.system 消费同一 options.system_prompt。"
 scenarios[0]:
