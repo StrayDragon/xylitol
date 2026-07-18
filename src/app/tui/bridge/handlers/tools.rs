@@ -3,7 +3,7 @@
 use crate::app::core::driver::XyEvent;
 use crate::app::tui::bridge::{
     UiEntry, UiModel, UiPhase, extract_display_diff, extract_edit_path, find_tool_mut,
-    upsert_tool_entry,
+    quiet_tool_success_output, upsert_tool_entry,
 };
 
 pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
@@ -33,7 +33,9 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
                 ..
             }) = find_tool_mut(&mut model.entries, id)
             {
-                if output.is_empty() {
+                if let Some(quiet) = quiet_tool_success_output(name, result, *is_error) {
+                    *output = quiet;
+                } else if output.is_empty() {
                     *output = result.clone();
                 }
                 *err = *is_error;
