@@ -5,7 +5,9 @@ use crate::components::diff::DiffTheme;
 use crate::components::markdown::MarkdownTheme;
 use crate::highlight::highlight_code;
 use crate::terminal_colors::{RgbColor, TerminalColorScheme};
-use crate::theme::paint::{bg_rgb, bold, fg_bg_rgb, fg_rgb, italic, strikethrough, underline};
+use crate::theme::paint::{
+    bg_rgb, bold, fg_bg_rgb, fg_rgb, italic, strikethrough, underline, word_wash_bg,
+};
 
 /// Semantic colors aligned with `src/app/tui/DESIGN.md` (+ Latte light companion).
 ///
@@ -154,6 +156,32 @@ impl Palette {
             word_change_removed: Box::new(move |s| fg_bg_rgb(removed, removed_word, removed_bg, s)),
             added_line_bg: Box::new(move |s| bg_rgb(added_bg, s)),
             removed_line_bg: Box::new(move |s| bg_rgb(removed_bg, s)),
+            highlight_line: Box::new(|s| s.to_string()),
+        }
+    }
+
+    /// Diff inside a `tool-*-bg` wash (pi edit path / `design/diff-block.md` §Edit 一体块).
+    ///
+    /// Polarity stays on fg; word spans use [`word_wash_bg`] toward red/green and restore
+    /// to `block_bg`. **No** `diff-*-bg` row tints — the expandable shell owns the wash.
+    pub fn diff_theme_on_block(&self, block_bg: RgbColor) -> DiffTheme {
+        let added = self.diff_added;
+        let removed = self.diff_removed;
+        let context = self.diff_context;
+        let word_added_bg = word_wash_bg(block_bg, added);
+        let word_removed_bg = word_wash_bg(block_bg, removed);
+        DiffTheme {
+            added: Box::new(move |s| fg_rgb(added, s)),
+            removed: Box::new(move |s| fg_rgb(removed, s)),
+            context: Box::new(move |s| fg_rgb(context, s)),
+            gutter: Box::new(move |s| fg_rgb(context, s)),
+            meta: Box::new(move |s| fg_rgb(context, s)),
+            word_change_added: Box::new(move |s| fg_bg_rgb(added, word_added_bg, block_bg, s)),
+            word_change_removed: Box::new(move |s| {
+                fg_bg_rgb(removed, word_removed_bg, block_bg, s)
+            }),
+            added_line_bg: Box::new(|s| s.to_string()),
+            removed_line_bg: Box::new(|s| s.to_string()),
             highlight_line: Box::new(|s| s.to_string()),
         }
     }

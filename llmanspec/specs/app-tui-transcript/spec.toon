@@ -6,7 +6,7 @@ requirements[17]{req_id,title,statement}:
   r26,"capability-shell",本 capability 约束 live scrollback 行呈现与相关积木复用；MUST NOT 被解读为要求 Codex 式 TranscriptView。本壳 MUST 保持非空以满足 BDD 护栏。
   att1,"live-scrollback-output",产品 UiRoot 当前轮 live 用户/助手/系统输出 MUST 写入引擎 scrollback 并以包 Markdown（及角色色/glyph）呈现；MUST NOT 截断历史冒充滚动；MUST NOT 以此要求实现 Codex 式可导航 transcript 浏览面。
   att3,"diff-via-package","产品 live scrollback 中文件编辑 diff MUST 复用 packages/xylitol-tui Diff（含 word-level 与复制友好前缀）；MUST NOT 在应用面复制准通用 diff 渲染器。"
-  att4,"tool-block-status-bg","产品 tool 可展开块 MUST 按 pending/success/error 为可见行套 tool-*-bg；edit/diff 块 MUST 仅对摘要/header 套同一 tint，Diff 正文 MUST NOT 再套 tool-*-bg；色值 MUST 对齐 DESIGN.md；ANSI 背景 MUST 以 \\x1b[49m 复位。"
+  att4,"tool-block-status-bg","产品 tool 可展开块 MUST 按 pending/success/error 为可见行套 tool-*-bg。edit/Diff（含 unified display_diff）MUST 将 header 与 Diff 正文置于同一 tool-*-bg 洗底块（对齐 pi Box / DESIGN diff-block「Edit 一体块」）；正文 MUST NOT 再叠 diff-*-bg 行底（极性靠 fg + word_wash_bg）；色值 MUST 对齐 DESIGN.md；外层 ANSI 背景 MUST 以 \\x1b[49m 复位。"
   att5,"tool-bg-via-package-helper","全行背景铺色 MUST 复用 packages/xylitol-tui 的 apply_background_to_line（或等价包 API）；MUST NOT 在应用面复制一套行宽 padding+bg 逻辑。"
   att6,"no-codex-transcript-view","产品 TUI MUST NOT 实现 Codex 风格的独立 transcript 浏览面或专用 TranscriptView 作为主 UX；历史/分支 travel MUST 经双 Esc 会话树（app-tui session-tree / package TreeSelector）。"
   att7,"expandable-block-fold","产品 live scrollback 的 thinking/tool/edit-diff 可展开块 MUST 支持折叠与展开；折叠态 MUST 保留可读摘要行；状态机 MUST 在应用面；展开快捷键旁注 MUST 为括号完整和弦（Ctrl+T / Alt+E）。"
