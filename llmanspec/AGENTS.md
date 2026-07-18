@@ -42,6 +42,40 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 - spec 的 `purpose` / requirement `title`+`statement` / scenario `given`/`when`/`then` **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。
 - Gherkin `.feature`：BDD-on（Partitioned SSOT）下 `spec.toon` = 约束/不可执行场景；live `llmanspec/specs/<capability>/*.feature` = 可执行 GWT（`@req:`）。在非默认 feature 分支直接编辑二者 → `llman sdd change attach` / `checkpoint` → docs-only `change archive` → Git merge。**禁止** `solidify`、`change delta`、新建 `*.feature.delta.toon`。场景标题 MUST 用英文 `scenario.id`；可保留 rich Gherkin（Background / docstring / 并且）。与 `tests/features/` 手写链路可并存。
 
+## BDD-on 操作闸（临时硬约束 — 字段经验）
+
+以下来自 c1250 归档周转；待上游 llman skill/CLI 吸收后可删薄。跨仓改进稿：
+`../llman/docs/release/partitioned-ssot/AGENT_FRICTION_PROMPT.md`。
+
+### Partitioned 双写（MUST）
+
+| 放哪 | 可执行场景（进 harness） | 仅文档场景 |
+|---|---|---|
+| `spec.toon` `scenarios[]` | **禁止**出现（无则 `scenarios[0]:`） | `feature: false` + GWT 可以 |
+| `*.feature` + `@req:` | **唯一**可执行 GWT 正文 | n/a |
+
+- **禁止**在 toon 写 `feature: true` 行（哪怕 GWT 与 `.feature`「看起来一样」——validate 报 `dual-write`）。
+- 新需求：toon 只加 `requirements` 行；例子只加 `.feature` 场景。
+
+### checkpoint → archive 提交序（MUST）
+
+```text
+commit（live specs + 代码）
+→ llman sdd change checkpoint <id>   # 会改 proposal.md frontmatter
+→ commit checkpoint 元数据
+→ llman sdd change archive <id>      # 要求干净树；仅搬 change 文档
+→ commit archive rename
+```
+
+- `checkpoint` **之后**工作区会脏（`checkpointed` / `checkpoint_sha`）；**不要**立刻 archive。
+- 结构门禁先跑：`llman sdd validate <cap|change> --strict --no-check`（快）；再跑带 BDD 的全量 validate / checkpoint。
+- `change checkpoint` 当前**不接受** `--no-interactive`；不要照搬其它子命令的该 flag。
+- 全量 `validate --specs` 若只见 `N passed, 1 failed`：用 `--no-check` 或按 capability 校验定位；dual-write 看 `package-*/dual-write` 类 ERROR。
+
+### depends_on
+
+- `depends_on` 指向的 change **归档后**仍可用原 `change_id`（目录进 `archive/YYYY-MM-DD-*`）；apply 前确认依赖已归档或本分支已落地其行为。
+
 ## 指针
 
 - 架构 SSOT（分层、不变量、seam、Xy\*、Provider 适配）：`src/AGENTS.md`。

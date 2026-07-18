@@ -27,9 +27,10 @@ Prefer **少加类型、语义钉死**：
 
 | 今日 | 目标 |
 |---|---|
-| FunctionCall → ToolExecutionStart | tool 意图 ⊂ MessageUpdate；Start 在 message_end 后 |
-| 无/极少 ToolExecutionUpdate | bash 等长输出 MUST Update |
+| ToolCallEnd → ToolExecutionStart（流内） | tool 意图 ⊂ MessageUpdate；Start 在 MessageEnd 后 |
+| 无/极少 ToolExecutionUpdate | 执行路径至少一次 Update（长输出多段可后续加强） |
 | flush 时机由 TUI 绑在 Start | TUI（c1260）可在 Update 时挂旁路组件 |
+
 
 ## 截断 / 错误
 
