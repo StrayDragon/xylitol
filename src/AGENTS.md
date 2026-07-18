@@ -6,11 +6,11 @@
 
 ## 主线 vs 后置（产品）
 
-**主线（开箱即要好）**：ReAct 循环 · 内置工具（read/write/edit/bash + grep/find/ls）· 会话持久化 · compaction · Print 面 · OpenAI 兼容 + Anthropic · 项目 Trust（对齐 pi：闸项目本地资源）· 工具侧 allow-all。
+**主线（开箱即要好）**：ReAct 循环 · 内置工具（read/write/edit/bash + grep/find/ls）· 会话持久化与导出 · compaction · 用量 provenance · Print + 产品 TUI（TTY 默认）· OpenAI 兼容（Completions / Responses）+ Anthropic · 项目 Trust（对齐 pi：闸项目本地资源）· 工具侧 allow-all · 图像附件。
 
-**后置 / 配置启用**：Server · MCP（见下）· 更多 provider 适配器 · Export / 周边能力。未配置则不装配。
+**后置 / 配置启用**：Server · MCP（见下）· 更多 provider 适配器 · 周边能力。未配置则不装配。独立远程薄端客户端未接线（线协议与 Server 已通）。
 
-**产品 TUI（`src/app/tui`）**：**已开闸并可用**。会话树 / slash / bang / steer 等走 Driver + `XyEvent`。下一波对齐缺口见 purpose-drafts `c1080`–`c1160`。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。
+**产品 TUI（`src/app/tui`）**：**已开闸并可用**。会话树 / slash / bang / steer / `$skill` / `/reload` / `/trust` / 粘贴与 thinking UX 等走 Driver + `XyEvent`。后续打磨（reload UX、MCP 启动策略等）见 `llmanspec/do-not-read-me/` purpose-drafts；勿在本文件钉 change id。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。
 
 共享流水线：`bootstrap` → `composition::build_agent` → `Driver::run` → ReAct → `XyEvent` → 应用面。库嵌入入口：`xylitol::embed`；矩阵与理想/现状：`docs/architecture/库与多客户端.md`。
 
