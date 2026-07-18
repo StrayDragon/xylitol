@@ -65,6 +65,54 @@ rg -n '"request_id"' ~/.xylitol/logs/provider-trace.jsonl | tail -5
 # 通道错分常用 pattern
 rg 'response\.(reasoning_text|output_text)\.delta|"variant":"ThinkingDelta"|"variant":"TextDelta"' \
   ~/.xylitol/logs/provider-trace.jsonl | tail -30
+
+# t0718 / c1265：args delta → mapped ToolCall* 滞后
+python3 - "$HOME/.xylitol/logs/provider-trace.jsonl" "${REQUEST_ID:-}" <<'PY'
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+rid = sys.argv[2] if len(sys.argv) > 2 else ""
+rows = []
+for line in path.open():
+    if not line.strip():
+        continue
+    o = json.loads(line)
+    if rid and o.get("request_id") != rid:
+        continue
+    rows.append(o)
+if not rid and rows:
+    rid = rows[-1].get("request_id") or ""
+    rows = [o for o in rows if o.get("request_id") == rid]
+raw_t = next(
+    (
+        o["ts_unix_ns"]
+        for o in rows
+        if o.get("kind") == "raw"
+        and "function_call_arguments.delta" in (o.get("event") or "")
+    ),
+    None,
+)
+map_t = next(
+    (
+        o["ts_unix_ns"]
+        for o in rows
+        if o.get("kind") == "mapped"
+        and o.get("variant") in ("ToolCallStart", "ToolCallDelta")
+    ),
+    None,
+)
+print("request_id", rid)
+print("t_first_args_delta_ns", raw_t)
+print("t_first_mapped_tool_ns", map_t)
+if raw_t is not None and map_t is not None:
+    print("lag_ms", (map_t - raw_t) / 1e6)
+elif raw_t is None and map_t is not None:
+    print("note", "mapped tools without args-delta raw")
+elif raw_t is None and map_t is None:
+    textish = any(o.get("variant") == "TextDelta" for o in rows)
+    print("note", "no native tool stream; text-only" if textish else "no tool signals")
+print("lifecycle_events", sum(1 for o in rows if o.get("kind") == "lifecycle"))
+PY
 ```
 
 ## 闸门提醒
@@ -72,3 +120,4 @@ rg 'response\.(reasoning_text|output_text)\.delta|"variant":"ThinkingDelta"|"var
 - debug 构建：文件日志 / provider trace 默认开
 - release：`XYLITOL_DEBUG` / `RUST_LOG`（级别日志）；`XYLITOL_PROVIDER_TRACE=1`（timeline）
 - **永不**依赖 stdout/stderr 日志（毁 TUI）
+- c1265：开闸时可见 `react.turn` / `react.stream` / `tool.execute` 的 lifecycle Event（与 raw/mapped 同文件）

@@ -7,6 +7,7 @@
 
 pub mod event;
 pub mod hooks;
+pub(crate) mod obs;
 pub(crate) mod permission_router;
 pub mod react;
 pub mod retry;
