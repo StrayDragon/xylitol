@@ -418,8 +418,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn write_block_tints_header_and_body_together() {
+    fn assert_write_header_body_share_bg(done: bool, is_error: bool, expect: RgbColor) {
         let mut model = UiModel::default();
         model.entries.push(UiEntry::Tool {
             id: "w1".into(),
@@ -428,12 +427,11 @@ mod tests {
             write_content: Some("line-a\nline-b\nline-c\n".into()),
             display_diff: None,
             output: String::new(),
-            is_error: false,
-            done: true,
+            is_error,
+            done,
         });
         let theme = LayoutTheme::product_dark();
-        let success = theme.palette().tool_success_bg;
-        let bg = format!("\x1b[48;2;{};{};{}m", success.r, success.g, success.b);
+        let bg = format!("\x1b[48;2;{};{};{}m", expect.r, expect.g, expect.b);
         let lines = render_scrollback(
             &model,
             GlyphSet::from_env(),
@@ -446,10 +444,18 @@ mod tests {
             .find(|l| l.contains("write a.py"))
             .expect("header");
         let body = lines.iter().find(|l| l.contains("line-a")).expect("body");
-        assert!(header.contains(&bg), "write header must use success wash");
+        assert!(header.contains(&bg), "write header must share wash");
         assert!(
             body.contains(&bg),
-            "write body must share the same success wash (no naked black split)"
+            "write body must share the same wash (no naked black split)"
         );
+    }
+
+    #[test]
+    fn write_block_tints_header_and_body_together() {
+        let p = LayoutTheme::product_dark().palette();
+        assert_write_header_body_share_bg(false, false, p.tool_pending_bg);
+        assert_write_header_body_share_bg(true, false, p.tool_success_bg);
+        assert_write_header_body_share_bg(true, true, p.tool_error_bg);
     }
 }
