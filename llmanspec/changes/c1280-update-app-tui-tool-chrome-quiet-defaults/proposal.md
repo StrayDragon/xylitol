@@ -11,7 +11,8 @@ wave: tui-stream-align
 domain: app
 branch: feat/tui-dev
 base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
-checkpointed: false
+checkpointed: true
+checkpoint_sha: add03c532abd91b2ba3cfc8faa4042542744671a
 ---
 
 # c1280-update-app-tui-tool-chrome-quiet-defaults
