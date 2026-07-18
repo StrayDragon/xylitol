@@ -1,7 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ed09,"paste-collapse-expand","Editor MUST 在 bracketed paste 内容超过 10 行或超过 1000 字符时，将缓冲区内文本替换为 [paste #N +L lines] 或 [paste #N C chars] 占位，并在内部 pastes 表保留原文；get_text MUST 返回含占位符的显示文本；get_expanded_text MUST 将每个有效 id 的完整 marker（含 +lines/chars 后缀）替换为原文，MUST NOT 残留 +N lines] 或 N chars] 碎片。短粘贴 MUST 直接插入原文。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  ed09,"long-paste-collapses","Editor 收到超过 10 行的 bracketed paste",粘贴完成,"get_text 匹配 [paste #N +L lines] 且 pastes 表含原文"
-  ed09,"expanded-equals-original","长粘贴已折叠为 marker",调用 get_expanded_text,"返回值等于粘贴原文且不含 [paste #"
-  ed09,"short-paste-inline","粘贴不超过 10 行且不超过 1000 字符",粘贴完成,"get_text 含原文且无 [paste # 占位"

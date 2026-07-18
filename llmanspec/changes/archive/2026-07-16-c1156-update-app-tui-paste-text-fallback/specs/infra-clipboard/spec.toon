@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,c8,"clipboard-text-read","System MUST 提供 read_clipboard_text：在支持平台上读取系统剪贴板 UTF-8 文本；无文本时返回空/None；工具不可用或失败 MUST 返回描述性错误。MUST NOT 依赖 OSC 52 读取（OSC 52 仅用于写出回退）。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  c8,"wayland-plain-text","Wayland 且 wl-paste 报告 text/plain",调用 read_clipboard_text,返回非空 UTF-8 字符串
-  c8,"empty-clipboard","剪贴板无 text/plain",调用 read_clipboard_text,返回 None 或空串语义且不 panic

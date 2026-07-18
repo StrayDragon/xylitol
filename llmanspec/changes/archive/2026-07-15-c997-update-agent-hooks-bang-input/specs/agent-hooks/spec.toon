@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,h19,"user-bash-on-execute-bash","When XyHookBus is attached, Driver execute_bash MUST dispatch user_bash before running the command; Blocked MUST prevent execution and surface an error; input event is out of scope for this change.",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  h19,"bash-block",注册了匹配 user_bash 且返回 block 的 hook,执行操作「执行 bash」,bash 未执行且操作被阻止

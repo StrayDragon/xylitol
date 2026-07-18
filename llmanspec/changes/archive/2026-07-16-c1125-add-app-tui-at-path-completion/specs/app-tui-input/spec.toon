@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ati33,"at-path-completion",产品 Editor MUST 经包 CompletionSource 注册 AtPathSource，根目录默认为进程 cwd（harness MAY 注入测试根）；用户键入 @（及路径前缀）时 MUST 弹出文件/目录补全；Tab/Enter 选定 MUST 将路径引用写入 editor；Esc 关 popup MUST NOT 改已有非补全文本；提交消息时本变更 MUST NOT 自动把文件内容读入 transcript（路径文本引用即可）。,null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  ati33,"at-opens-popup",产品 idle 且 AtPath 根目录含 hello.rs,键入 @hel,补全 popup 出现 hello.rs
-  ati33,"tab-inserts-path",@ 补全已开且选中 hello.rs,按 Tab,editor 含 @ 与 hello.rs 路径引用

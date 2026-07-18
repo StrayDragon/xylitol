@@ -1,9 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,ath14,"session-list-seam","产品 TUI 获取可 resume 会话列表时 MUST 经 Driver（或 app::core 公开 seam）list_sessions 或等价 API，行 MUST 能支撑 scope（cwd）、预览、parent、mtime/age 与可选 path 展示；MUST NOT 从 app/tui 直接 import infra::session / 直接读 sessions 目录；switch 成功后 MUST 重建 transcript 并清除与旧 session 绑定的树槽/pending UI 态。",null,null,null
-  add_requirement,ath16,"session-resume-manage-seam","产品 TUI Resume 面板内 rename/delete MUST 经 Driver set_session_name / delete_session（或 app::core 公开等价 seam）；删除当前活跃 session MUST 拒绝并提示且 MUST NOT 调用删除；删除 MUST 经显式确认（确认前 MUST NOT 删盘）；scope=Current MUST 仅展示 cwd 匹配会话，scope=All MUST 展示 Driver 列举的全部可 resume 会话；TUI MUST NOT 直删会话文件。",null,null,null
-op_scenarios[4]{req_id,id,given,when,then}:
-  ath14,"list-via-driver","产品 harness 或单元","打开 resume 列表路径","经 Driver/seam 返回且无 tui→infra::session 依赖"
-  ath14,"row-has-preview-fields","list_sessions 返回非空","检查行字段","含预览或 name 以及可用于 age 的时间信息"
-  ath16,"delete-rejects-current","Resume 面板选中当前活跃 session","触发删除确认并确认","出现拒绝提示且会话仍存在"
-  ath16,"rename-via-driver","Resume 面板已开","完成一项 rename","Driver set_session_name 被调用且列表展示新名"

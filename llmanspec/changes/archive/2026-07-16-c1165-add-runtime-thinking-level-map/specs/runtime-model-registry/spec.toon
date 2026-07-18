@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,m11,"thinking-level-on-generate","Agent 在调用 XyModel::generate_stream（或等价）时 MUST 传入当前 ThinkingLevel 与模型 thinking_level_map（及可用的 thinking_budgets）；resolve 后 MUST 影响下一轮 provider 请求体；MUST NOT 仅更新会话/UI 状态而不影响请求组装。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  m11,"level-reaches-options","当前 thinking level 为 high","发起一轮 generate_stream","调用携带 ThinkingLevel::High（或等价 options）"
-  m11,"map-from-meta","模型 meta 含 thinking_level_map","发起 generate_stream","options 含该 map"

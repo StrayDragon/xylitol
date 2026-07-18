@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,c7,"clipboard-image-temp-file","System MUST 提供将剪贴板图片字节写入 tempfile 的能力：文件名含不可预测分量；扩展名由 MIME 推导；返回绝对路径。MUST NOT 写入固定世界可读路径（如 ~/.xylitol/paste.png）。写盘失败 MUST 返回描述性错误。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  c7,"write-png-temp","提供 image/png 字节",写出 tempfile,路径存在且后缀为 .png

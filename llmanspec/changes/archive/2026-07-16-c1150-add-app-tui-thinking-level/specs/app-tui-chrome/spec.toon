@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[2]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,atc2,"footer-minimal","产品 footer MUST 为 1 行 dim 文本；字段序为 cwd · model · thinking 标签（形如 `cwd · model · • thinking off` 或 `· • xhigh`，level 文案为 ThinkingLevel::as_str，off 时用 `thinking off`）；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api/RemoteCount/LocalTokenizer 为 used N tokens，Heuristic 为 used ~N tokens，Unknown 为 used ? tokens）；队列非空时可加 `q:sN|fM ·` 前缀；无估计数据时 MUST NOT 伪造 used 0；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。",null,null,null
-  add_requirement,atc17,"thinking-border-and-footer","产品 TUI MUST 将当前 Driver thinking level 映射为 ThinkingBorderLevel 并经 apply_thinking_border（或等价）染色 Editor 操作区边框；footer MUST 同步显示对应 level 标签（见 atc2）；主题切换后 MUST 按新 Palette 重涂 thinking 边框；bash 强调色边框（ati15）开启时 MUST 覆盖 thinking 边框，退出 bash 前缀后 MUST 恢复当前 thinking 边框而非仅 muted。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  atc2,"footer-thinking-label","当前 thinking level 为 medium","渲染 footer","末行含 model 与 • medium（或等价 thinking 标签）且仍为单行"
-  atc17,"border-follows-level","thinking level 为 high 且非 bash 前缀","sync_editor_border 或等价","Editor 边框色为 Palette thinking_border 对应 high"
-  atc17,"bash-overrides-then-restore","thinking level 为 medium","编辑器文本改为 !ls 再改回 hello","先为 bash 强调色，再恢复 medium thinking 边框"

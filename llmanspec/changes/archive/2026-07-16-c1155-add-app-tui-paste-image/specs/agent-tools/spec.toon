@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,t21,"read-image-parts","Read 工具在路径为支持的图片文件时 MUST 经 resize/multimodal 准备产出含 AgentPart::Image（base64 data + media_type）的 tool result parts，并附简短 text note；MUST NOT 仅返回「[Image file: …]」占位字符串作为唯一结果。文本文件行为保持既有截断语义。工具端口 MUST 允许 execute 结果以 parts 形式进入 history（默认实现可将纯文本包成 Text part）。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  t21,"png-yields-image-part","临时目录有小 PNG",调用 read,tool result parts 含 Image 且 data 非空
-  t21,"text-still-works","临时目录有 .txt",调用 read,返回文本内容且无 Image part

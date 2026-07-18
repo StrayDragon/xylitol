@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,atr4,"slash-persist-no-auto-reload","产品 /trust slash MUST 经 Driver/composition 缝调用 TrustManager（或等价端口）持久化 cwd/parent/deny 决策；MUST NOT 从 app/tui 直接 reach infra::trust；MUST NOT 解冻 Choice/Plate 活板作为本命令唯一路径；写盘成功后本会话 MUST NOT 自动重载项目 skills/MCP/context（用户显式 /reload 或重启除外）。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  atr4,"persist-cwd","idle 且 trust store 可测","/trust","store 含当前 cwd 信任决策"
-  atr4,"no-auto-reload","idle","/trust 成功","reload_runtime 调用次数为 0"
