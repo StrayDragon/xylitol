@@ -81,3 +81,35 @@ domain: infra
 ## Status note
 
 **purpose-draft / 延后**：先锁对齐范围；用户显式开闸后再 propose/apply。
+
+## Evidence（2026-07-18，升 full 前）
+
+工具：`packages/xylitol-ai-bridge/examples/evidence_responses_capture.rs`
+产物目录（不入库）：`/tmp/xylitol-c1290-evidence/`
+
+### 方法
+
+1. **Offline**：把 session `eeee`（`c3b3045a-…`）导出为 turn 前缀，经与 `OpenAiResponsesAdapter::build_body` 等价路径组装请求体。
+2. **Live**：同一 `OpenAiResponsesAdapter` + `HttpHooks::before_request` 抓真实 POST body；`--probe-pi-fields` 在发送前补 pi 字段做兼容探针。
+3. **SSE 探针**：`include=["reasoning.encrypted_content"]` 时 Ornith 是否回 `encrypted_content`。
+
+### 结果摘要
+
+| 检查项 | 当前 xylitol 体 | eeee 多轮 offline | Ornith live |
+|---|---|---|---|
+| `developer` system（c1270） | 有 | turn0–9 均有 | 有 |
+| `store: false` | **无** | gap | probe 后服务器接受，流式成功 |
+| `tools[].strict: false` | **无** | gap | probe 后接受 |
+| `reasoning.summary` | **无**（仅 effort） | gap | probe 后接受 |
+| `include: reasoning.encrypted_content` | **无** | gap | probe 后接受；SSE **确有** `encrypted_content` |
+| history Thinking → input `reasoning` 回放 | 无 signature → 省略 | turn1+：`thinking_parts≥1` 且 `input_reasoning_items=0` → **gap_replay=true** | n/a（首轮） |
+
+Live 基线首轮（同提示词）：原生 `write` ToolCallStart（正常）。
+Probe（补 pi 字段）：同样拿到 ToolCallStart，**未**因 include/store/strict/summary 4xx。
+
+### 对 full 提案的含义
+
+- c1290 A/B（捕获 signature + include/store/strict/summary）在 **本机 Ornith/tufa** 上 **技术可行且有协议缺口证据**。
+- 多步 eeee 回放缺口已量化：从第二轮请求起 history 有 Thinking 却 **零** reasoning input items。
+- C（guidelines 装配）仍属结构对齐，本轮未做 A/B 实验依赖。
+- **建议**：证据足够 → 可升 **propose/full**；实现后用同提示词多轮真机回归（含删文件步）。
