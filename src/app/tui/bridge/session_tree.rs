@@ -181,8 +181,8 @@ fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
                 let args = part
                     .get("arguments")
                     .or_else(|| part.get("args"))
-                    .map(|v| v.to_string())
-                    .unwrap_or_default();
+                    .cloned()
+                    .unwrap_or(Value::Object(Default::default()));
                 out.push(UiEntry::Tool {
                     id: part
                         .get("id")
@@ -190,7 +190,7 @@ fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
                         .unwrap_or(entry_id)
                         .to_string(),
                     name: name.to_string(),
-                    args_preview: args,
+                    args_preview: crate::app::tui::bridge::human_tool_args_preview(name, &args, 80),
                     output: String::new(),
                     is_error: false,
                     done: false,
