@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,h16,"model-thinking-select-wiring","When XyHookBus is attached, Driver select_model and cycle_model MUST dispatch model_select after successful change; set_thinking_level MUST dispatch thinking_level_select; both MUST be observe-only fail-open; MUST NOT depend on TUI-only paths.",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  h16,"model-select-fire",库缝注入了匹配 model_select 的 hook,执行操作「选择模型 fake」,hook 被调用且上下文含 model

@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,atm14,"slash-history-copy-last","产品 TUI MUST 解析无参 /history-copy-last：将当前 transcript 最近一条已提交 assistant 正文经 Driver 缝复制到系统剪贴板，并以系统块提示成功或失败；idle 与 busy MUST 均可执行（只读）；无 assistant 时 MUST 提示且 MUST NOT 伪造成功；SlashCommandSource MUST 列出 history-copy-last；带参 MUST usage 错误。",null,null,null
-op_scenarios[4]{req_id,id,given,when,then}:
-  atm14,"copy-ok","transcript 含 assistant","提交 /history-copy-last","系统块成功提示且 Driver copy 被调用"
-  atm14,"copy-empty","无 assistant 条目","提交 /history-copy-last","系统块提示无可复制内容且未伪造成功"
-  atm14,"busy-allowed","产品 busy 且有 assistant","提交 /history-copy-last","仍执行复制（非 busy 拒绝）"
-  atm14,"catalog-lists","","打开 slash 补全","列表含 history-copy-last"

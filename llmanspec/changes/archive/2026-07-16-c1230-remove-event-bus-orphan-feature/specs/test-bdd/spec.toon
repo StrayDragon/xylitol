@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,r1,BDD 全量通过,"BDD 场景集 MUST 保持全量通过（cargo test --test bdd 与 cargo test --lib bdd_scenarios）；未实现的孤儿 feature（如 event-bus）MUST 移除而非保留为债务，其行为由对应模块单测覆盖。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then,feature}:
-  r1,"no-orphan-features","tests/features 下所有 feature 均有对应 #[scenario] 绑定","cargo test --test bdd -- --test-threads=1",全量通过且无孤儿 feature 被跳过,false

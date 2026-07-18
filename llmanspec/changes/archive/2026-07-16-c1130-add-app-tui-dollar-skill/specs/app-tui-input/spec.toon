@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ati40,"dollar-skill 补全与高亮","产品 Editor MUST 经 CompletionSource 在键入 $ 时弹出已加载 skill 名补全；Tab/Enter 选定 MUST 写入 $name；用户消息在 scrollback 中 MUST 用 skill-ref 色高亮 $name token；MUST NOT 另开 skill 色块或系统已加载行。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  ati40,"completion","目录含 demo","键入 $de","补全列表含 demo"
-  ati40,"highlight","scrollback 有用户行含 $demo","渲染用户消息","$demo 使用 skill-ref 前景（可测 ANSI/cell）"

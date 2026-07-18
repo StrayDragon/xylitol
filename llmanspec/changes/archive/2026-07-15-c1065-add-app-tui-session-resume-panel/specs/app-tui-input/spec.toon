@@ -1,9 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ati29,"session-resume-panel-keys","产品 TUI 在 EditorSlot::SessionResume 打开时：Tab MUST 切换 scope Current/All；Ctrl+S（或键位表等价）MUST 循环 Sort Threaded/Recent/Fuzzy；Ctrl+N MUST 切换 Name All/Named；Ctrl+P MUST 切换 path 显示；Ctrl+R MUST 进入选中项 rename（Esc 取消 rename MUST NOT 改名）；Ctrl+D MUST 进入删除确认（Enter 确认 / Esc 取消）；Threaded 下 ctrl/alt+left|right（tui.tree.foldOrUp / unfoldOrDown）MUST 折叠或展开选中父节点的子会话行；上述键 MUST 优先于 Editor 槽同名语义；面板关闭后键位恢复既有语义；搜索键入 MUST 交给面板 filter 而非误提交 prompt。",null,null,null
-op_scenarios[5]{req_id,id,given,when,then}:
-  ati29,"tab-toggles-scope","Resume 面板已开","按 Tab","header scope 在 Current 与 All 间切换或列表按 cwd 过滤变化"
-  ati29,"sort-cycles","Resume 面板已开","按 Ctrl+S","Sort 标签在 Threaded/Recent/Fuzzy 间变化"
-  ati29,"named-filter","Resume 面板已开且存在未命名会话","按 Ctrl+N 至 Named","未命名行不可见"
-  ati29,"delete-confirm-esc","Resume 面板选中可删项并 Ctrl+D","按 Esc","未删除且退出确认态"
-  ati29,"fold-hides-children","Threaded 且选中有子会话的父节点","按 fold 键","子行不可见且再 unfold 恢复"

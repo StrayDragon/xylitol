@@ -1,7 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,pt7,skills 热应用与引导注入,"Agent MUST 在构造/bootstrap 时将 ResourceLoader 发现的 skills 写入 SystemPromptOpts 并经 build_system_prompt 进入 available_skills（若非空）；MUST 提供 apply_skills（或扩展 apply_prompt_resources）用新目录重建系统提示；MUST 只影响后续 run；MUST NOT 改写已持久化历史；未信任 MUST NOT 注入项目 skills。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  pt7,"bootstrap-inject",信任且已加载 demo-skill,构造 Agent 或 bootstrap 装配,系统提示含 demo-skill 或 available_skills 段
-  pt7,"untrusted-skip",未信任且仅有项目 skill,装配系统提示,MUST NOT 含该项目 skill 名
-  pt7,"apply-keeps-history",会话已有历史,apply_skills 换新目录,历史条数不变且下一轮 system 反映新 skills

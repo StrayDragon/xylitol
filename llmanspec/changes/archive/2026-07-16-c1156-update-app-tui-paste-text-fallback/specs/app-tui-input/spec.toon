@@ -1,8 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  modify_requirement,ati37,"paste-image-temp-path","产品 TUI MUST 支持将系统剪贴板图片粘贴进对话：经 Driver 只读缝读取图片字节；成功时 MUST 写入带不可预测名的 tempfile，并向 Editor 插入绝对路径纯文本（对齐 pi；MUST NOT 要求 @ 前缀）；MUST NOT 在 Editor 内嵌大段 base64；MUST NOT 在 idle/busy 提交时把该路径转成 user AgentPart::Image；MUST NOT 从 app/tui reach infra::clipboard 或 infra::image；当剪贴板无图（或读图失败）时 MUST 经 Driver 尝试读取系统剪贴板 UTF-8 文本并插入 Editor；仅当图与文本皆不可用时 MUST 向 scrollback 追加短 Error；MUST NOT panic。",null,null,null
-op_scenarios[4]{req_id,id,given,when,then}:
-  ati37,"paste-inserts-abs-path","ScriptedDriver 剪贴板含 PNG",触发粘贴图片键,Editor 文本含 tempfile 绝对路径且无超长 base64
-  ati37,"submit-stays-text","已粘贴图路径且 idle",Enter 提交,Driver::run 收到含该路径的纯文本且无强制 user Image part
-  ati37,"clipboard-text-fallback","剪贴板无图但有 UTF-8 文本",触发粘贴键,Editor 插入该文本且 MUST NOT 出现 clipboard no image Error
-  ati37,"clipboard-miss-error","剪贴板无图且无文本",触发粘贴键,出现短 Error 提示且进程不崩

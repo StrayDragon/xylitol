@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,i5,"path-to-multimodal-image","System MUST 提供从本地图片路径产出 multimodal ImageContent（或等价 AgentPart::Image）的入口：读取文件、经 resize_image 约束尺寸与载荷、填充 media_type 与 base64 data。路径不可读或超限失败 MUST 返回描述性错误，MUST NOT 静默跳过。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then}:
-  i5,"small-png-path","临时目录有小 PNG 文件",path_to_image_content 被调用,返回含 data 与 image/png 的 ImageContent

@@ -1,9 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,atm15,"slash-theme","产品 TUI idle 时 MUST 解析 /theme：无参 MUST 打开替换 editor 槽的主题 SelectList（至少内建 dark/light）；有参 dark|light MUST 经 HostSession::reload_themes（或等价）应用；有参 toggle|cycle MUST 在 dark↔light 间切换；busy MUST 拒绝且 MUST NOT 改主题；未知参 MUST 提示且 MUST NOT 伪造成功；SlashCommandSource MUST 列出 theme；空格后参数补全 MUST 至少含 dark 与 light。",null,null,null
-op_scenarios[5]{req_id,id,given,when,then}:
-  atm15,"bare-opens-slot",idle,"提交无参 /theme",打开 Themes 槽且列表含 dark 与 light
-  atm15,"named-light",idle 且当前 dark,"提交 /theme light","应用 light 且系统块成功提示"
-  atm15,"toggle",idle 且 preference 为 dark,"提交 /theme toggle",应用 light
-  atm15,"busy-reject",产品 busy,"提交 /theme light",系统块拒绝且主题未变
-  atm15,"catalog-lists","","打开 slash 补全",列表含 theme

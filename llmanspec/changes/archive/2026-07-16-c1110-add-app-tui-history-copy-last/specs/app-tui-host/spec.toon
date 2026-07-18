@@ -1,6 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,ath21,"copy-last-via-driver-seam","产品 /history-copy-last MUST 经 Driver::copy_text_to_clipboard（或等价）调用剪贴板，MUST NOT 从 app/tui 直接 reach infra::clipboard；选文 MUST 取已提交 UiEntry::Assistant 自尾向前第一条非空正文，MUST NOT 复制 thinking/tool/system 块或未提交 streaming 半句作为成功路径。",null,null,null
-op_scenarios[2]{req_id,id,given,when,then}:
-  ath21,"seam-only","ScriptedDriver 可观测","/history-copy-last 成功","copy_text 调用记录含目标正文"
-  ath21,"skip-non-assistant","末条为 system 其前为 assistant","/history-copy-last","复制的是 assistant 而非 system"

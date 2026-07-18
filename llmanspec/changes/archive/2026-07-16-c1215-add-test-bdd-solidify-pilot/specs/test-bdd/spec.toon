@@ -1,5 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,tb3,solidify 链路 BDD,"BDD 场景 MUST 支持从 spec.toon scenarios 经 solidify 生成 llmanspec/specs/<capability>/<capability>.feature，并由 bdd.rs 的 #[scenario(path=..., name=<scenario.id>)] 消费；场景标题 MUST 等于 spec.toon 的 scenario.id 字段；该链路 MUST 与现有 tests/features/ 手写链路并存，互不干扰。",null,null,null
-op_scenarios[1]{req_id,id,given,when,then,feature}:
-  tb3,"solidify-pilot-passes","agent-runtime spec.toon 含 scenario react-terminates 与 stream-is-xyevent","cargo test --test bdd -- --test-threads=1",两个 solidify 风格场景通过且现有场景无回归,false

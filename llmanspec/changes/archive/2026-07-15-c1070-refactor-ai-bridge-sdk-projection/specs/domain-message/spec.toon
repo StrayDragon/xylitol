@@ -1,7 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,dm6,session-vs-llm-vocab,"AgentMessage MUST 作为 session/agent 真源，并以组合表达 LLM 回合与环境元信息：Llm(LlmMessage) 仅含 user/assistant/toolResult；Env(EnvMessage) 含 bashExecution、compactionSummary、branchSummary、custom 等。发往模型前 MUST 经 project_for_llm 得到 Vec<LlmMessage>。MUST NOT 在 domain 内嵌 xylitol-ai-bridge 的 AiBridgeMessage。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  dm6,"bash-is-session","一条 bashExecution 消息","持久化 session","仍以 Env bashExecution 角色写入 JSONL（role 字段不变）"
-  dm6,"llm-compose","一条 user 消息","序列化再反序列化","得到 AgentMessage::Llm(LlmMessage::User…)"
-  dm6,"not-twin-dto","对比 bridge 公共消息 enum 与 LlmMessage","角色集合","bridge 不为环境角色维护平行 enum"

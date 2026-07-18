@@ -1,7 +1,0 @@
-kind: llman.sdd.delta
-ops[1]{op,req_id,title,statement,from,to,name}:
-  add_requirement,atc16,"theme-slash-slot","产品 /theme 无参 MUST 使用独立 editor 槽（Themes SelectList，对齐 Models 槽模式）挂载内建主题项；选中 MUST 调用已有主题热应用路径（atc15）并关闭槽；Esc MUST 关闭槽且 MUST NOT 改主题；MUST NOT 解冻 Plate/Settings/Choice 活板；MUST NOT 将 theme auto 或 demo Ctrl+P theme-toggle 设为产品默认。",null,null,null
-op_scenarios[3]{req_id,id,given,when,then}:
-  atc16,"select-applies",Themes 槽已打开,"选中 light 并确认","palette 为 light 且槽关闭"
-  atc16,"esc-keeps",Themes 槽已打开且当前 dark,按 Esc,槽关闭且仍为 dark
-  atc16,"no-auto-default",产品 host 默认构造,观察主题探测状态,未启用 theme auto
