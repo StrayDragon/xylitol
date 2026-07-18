@@ -30,22 +30,15 @@
 ## Span 树（Phase A）
 
 ```text
-react.turn
-  └── react.stream          ← fastrace-futures::in_span(provider Stream)
-        └── provider.request  (existing root or child; request_id 关联)
-              ├── Event raw
-              └── Event mapped
-tool.execute {name,id}      (optional)
+react.turn                 (Span::root + turn_id；不跨 await 持 LocalParentGuard)
+react.stream               ← fastrace-futures::in_span（仅 poll 内 local parent）
+provider.request           (existing root；用 request_id / 时间邻近关联)
+  ├── Event raw
+  └── Event mapped
+tool.execute {name,id}     (Span::root；可选)
 ```
 
-推荐接线：
-
-```text
-let stream_span = Span::enter_with_local_parent("react.stream"); // or root if no turn
-provider_stream.in_span(stream_span)
-```
-
-若 `provider.request` 仍 `Span::root`：靠 `request_id` 属性对齐，不强求一次改完父子。
+`async_stream` ReAct 循环是 `Send` 的：`LocalParentGuard`（`Rc`）**禁止**跨 `.await` 持有。关联靠 `turn_id` 属性 + lifecycle Event。
 
 ## Reporter
 

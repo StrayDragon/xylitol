@@ -1,7 +1,7 @@
 ---
 change_id: c1265-add-obs-fastrace-package-spans
-title: "观测：Phase A — inspect 滞后脚本 + agent 低频 span + fastrace-futures"
-status: purpose-draft
+title: 观测：Phase A — inspect 滞后脚本 + agent 低频 span + fastrace-futures
+status: full
 priority: 1265
 depends_on:
   - c1250-update-ai-bridge-assistant-stream-events
@@ -10,6 +10,8 @@ track: stream-tool-ux
 wave: tui-stream-align
 domain: infra
 branch: feat/tui-dev
+base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
+checkpointed: false
 ---
 
 # c1265-add-obs-fastrace-package-spans

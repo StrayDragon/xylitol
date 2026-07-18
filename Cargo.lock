@@ -1304,6 +1304,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fastrace-futures"
+version = "0.7.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3b6a02e77334be6072af69c93f49a07af3212de09b5cd95a9ee44be49ffb2ac"
+dependencies = [
+ "fastrace",
+ "futures-core",
+ "futures-sink",
+ "pin-project",
+]
+
+[[package]]
 name = "fastrace-macro"
 version = "0.7.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5691,6 +5703,7 @@ dependencies = [
  "dirs",
  "env_logger",
  "fastrace",
+ "fastrace-futures",
  "flate2",
  "futures",
  "glob",
