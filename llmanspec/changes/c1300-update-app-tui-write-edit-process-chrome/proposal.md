@@ -47,6 +47,7 @@ checkpointed: false
 ## Out of scope
 
 - infra tool_result 瘦身 → **c1310**
+- **路径流式 / read 行域 / 粘性 path** → **c1320**
 - XML tool salvage、fastrace、假树 stub
 - 全工具语法高亮（write 可先纯文本；高亮可选增量）
 

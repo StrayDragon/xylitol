@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-bridge"
 purpose: XyEvent 到 UI 模型的单一翻译缝与 agent 循环生命周期。
 valid_scope[1]: src/app/tui/
-requirements[13]{req_id,title,statement}:
+requirements[14]{req_id,title,statement}:
   meta0,"capability-shell","本 capability 由变更 c450-revise-app-tui-contract 引入；归档合并后以 delta 增补的 requirements 为准。本壳 MUST 保持非空以满足 BDD 护栏。"
   atb1,"xyevent-to-ui-seam","产品 TUI MUST 经单一 bridge 缝（apply_xy_event）将 XyEvent 译为 UI-only 模型；渲染层 MUST NOT 直接 match XyEvent。未知/元数据变体 MUST 降级（tracing）且 MUST NOT panic。"
   atb2,"agent-loop-lifecycle","用户可见忙碌态 MUST 覆盖从提交或 steer 起至 AgentEnd 且 follow-up 队列为空；中间 TurnEnd MUST NOT 被当作整轮结束去清空 streaming 尾或复位 idle。"
@@ -16,8 +16,13 @@ requirements[13]{req_id,title,statement}:
   atb9,"bash-stream-append",产品 bridge MUST 提供对最后一条 Pending Bash 块的增量追加 API（append_bash_output 或等价）；流式 chunk 追加期间 status MUST 保持 pending tint；BashDone 或取消收口时 MUST 经既有 finish/cancelled 路径切换终态；MUST NOT 每 chunk 新建独立 System 行。
   atb11,"quiet-write-edit-success-output","ToolExecutionEnd 对 write/edit 且 is_error=false 时，若 result 为机器成功 JSON（含 path/success 或 display_diff），bridge MUST NOT 把该 JSON 当作默认可见的机器结果墙。edit 成功时 MUST 将 display_diff 合入同一条工具块（MUST NOT 再 push 独立 UiEntry::Diff）。write 意图流式阶段 MUST 把 args.content 写入该工具块可渲染正文（供 viewport）。is_error=true 时 MUST 保留错误文案供块末查看。"
   atb12,"write-intent-body-stream","当 MessageUpdate/ToolCall 名为 write 且 arguments 含 content 时，bridge MUST 刷新同一 Tool 行的可渲染正文为当前 content 快照（可与 args_preview 并存）；MUST NOT 等 ToolExecutionEnd 才首次出现正文。"
-scenarios[4]{req_id,id,given,when,then,feature}:
+  atb13,"tool-path-stream-sticky","write/edit/read 意图流式阶段，args 一旦可解析出 path（含 file_path/file 别名）MUST 立即进入该 Tool 行 args_preview（~/ 缩短）；path 仍空时 MUST 用 … 占位（如 edit … / write …），MUST NOT 等 ToolExecutionEnd 才首次出现路径槽。同 id 后续 upsert 若新 args 缺 path 但该行已见真实 path，MUST 保留（粘性）。ToolExecutionEnd 成功 JSON 含 path 且 header 仍无真实路径时 MUST 回填。read 在有 offset/limit 时 MUST 在 path 后附 :start 或 :start-end（end=offset+limit-1；仅 offset 则 :offset）。edit header MUST NOT 附加 :N 行域（行号仅在 display_diff 正文）。"
+scenarios[8]{req_id,id,given,when,then,feature}:
   atb10,"intent-upsert",MessageUpdate 含渐进 ToolCall,经 apply_xy_event,出现单条 UiEntry::Tool 且 Start 不重复 push,false
   atb11,"write-success-quiet",write ToolExecutionEnd 成功 JSON,经 apply_xy_event,对应机器 JSON 不作为可见墙,false
   atb11,"edit-success-single-block",edit 成功含 display_diff,经 apply_xy_event,仅一条 Tool 块含 diff 且无独立 Diff 条目,false
   atb12,"write-content-on-intent",MessageUpdate write 含 path 与 content,经 apply_xy_event,Tool 可渲染正文含 content 片段,false
+  atb13,"edit-path-streams",MessageUpdate edit 仅含部分 path,经 apply_xy_event,args_preview 含该 path 片段或 …,false
+  atb13,"write-path-sticky",先有 path 后仅有 content 的同 id upsert,经 apply_xy_event,args_preview 仍含已见 path,false
+  atb13,"read-line-range",read args 含 path 与 offset=120 limit=210,求 args_preview,含 :120-329,false
+  atb13,"edit-header-no-line-suffix",edit 成功含 firstChangedLine,求 header/args_preview,不含 :1 行域后缀,false

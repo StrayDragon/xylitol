@@ -15,13 +15,15 @@ requirements[14]{req_id,title,statement}:
   att10,"scrollback-block-gap","产品 live scrollback 相邻块之间 MUST 至少有一行 untinted 空行隔开（对齐 agent_demo / pi Spacer）；MUST NOT 把块内容粘成连续墙；着色块 MUST 以整行终端宽度铺 tool-*-bg / user-message-bg（含块内 padding_y 空 tint 行）。"
   att11,"bang-block-tint-via-helper","bang 块全行背景 MUST 复用 apply_background_to_line（或等价包 API）与 DESIGN tool-*-bg；MUST NOT 在应用面手写第二套 pad+bg。"
   att12,"history-rebuild-from-parts","产品 TUI 从 SessionEntry 重建 live scrollback（travel / fork / resume 共用路径）时 MUST 按 message.content 的 typed 部件投影：type=thinking → UiEntry::Thinking；type=text → UiEntry::Assistant（或等价助手正文）；tool 相关部件按既有 Tool 块规则。MUST NOT 仅用 message_text 把 thinking+text 拼成单一 Assistant。同一条 JSONL 重建结果 MUST 与该轮直播 flush_streaming 后的 Thinking/Assistant 分块形态幂等（可测）。"
-  att13,"tool-human-summary","折叠态 tool 块 args_preview MUST 使用人类可读摘要（bash/shell → `$ {command}`；read/ls/edit → `{name} {path}` 或短占位；write → `write {path}` 且有 content 时 MUST 附 `(N lines)`）。缺关键字段时 MUST 用短占位（如 `write`/`edit`），MUST NOT 把完整 args JSON（含 content/edits/oldText/newText）当作默认 args_preview。历史重建 MUST 与直播路径共用同一摘要 helper。"
+  att13,"tool-human-summary","折叠态 tool 块 args_preview MUST 使用人类可读摘要（bash/shell → `$ {command}`；read/ls/edit → `{name} {path|…}`；write → `write {path|…}` 且有 content 时 MUST 附 `(N lines)`；read 有 offset/limit 时 MUST 附 `:start` 或 `:start-end`）。path 键 MUST 认 path/file_path/file。缺 path 时 MUST 用 `…` 占位（如 `edit …` / `write …`），MUST NOT 把完整 args JSON（含 content/edits/oldText/newText）当作默认 args_preview。历史重建 MUST 与直播路径共用同一摘要 helper。edit header MUST NOT 附加 `:N` 行域（行号在 diff 正文）。"
   att14,"write-edit-process-chrome","产品 write 工具块 MUST 在意图/执行过程中默认展示正文 viewport（对齐 pi：默认至多 10 逻辑行 Head，超出 MUST 提示 more lines 与 ctrl+o）；write 的 header 与正文 MUST 处于同一 tool-*-bg 洗底块（pending/success/error 整块同色，MUST NOT 仅头行着色而正文裸底）。edit 成功后 diff MUST 在同一工具块内默认可见（MUST NOT 依赖 Alt+E 才露出）。工具头行 MUST NOT 嵌入 [ok]/[err]/[…] 字面状态标签；成败 MUST 由 tool-*-bg tint 与块末错误行表达。"
-scenarios[7]{req_id,id,given,when,then,feature}:
+scenarios[9]{req_id,id,given,when,then,feature}:
   att13,"bash-summary",bash 工具 args 含 command,外显或重建 args_preview,以 $ 开头且非纯 JSON 墙,false
   att13,"write-lines-hint",write args 含 path 与多行 content,求 args_preview,含 path 与 lines 且无 content 正文,false
   att13,"edit-no-json-fallback",edit args 仅有 edits 无顶层 path,求 args_preview,为 edit 短形且不含 oldText/newText JSON 墙,false
   att13,"unknown-no-json-wall",未知工具 args 为大对象且无 path,求 args_preview,非完整 args JSON 墙,false
+  att13,"path-ellipsis-placeholder",write 仅有 content 无 path,求 args_preview,含 write … 与 lines,false
+  att13,"read-range-suffix",read 含 path offset limit,求 args_preview,path 后含 :start-end,false
   att14,"write-viewport-default",write 正文超过 10 行且未 ctrl+o,外显 scrollback,可见至多 10 行并含 more lines 提示,false
   att14,"no-ok-in-header",成功 write/edit 工具头,外显,不含字面 [ok],false
   att14,"write-unified-tint",成功 write 含正文,外显 scrollback,header 与正文行同属 tool-success-bg 洗底,false
