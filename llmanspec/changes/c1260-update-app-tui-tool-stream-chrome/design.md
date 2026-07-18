@@ -31,4 +31,5 @@ chatContainer
 ## flush
 
 - 流式 assistant 文本与 thinking 仍按 MessageEnd / 回合边界提交；
+- **挂 tool 意图前** MUST `flush_streaming()`，保证 ThinkingDelta* 先于 Tool 行进入 scrollback（对齐 provider / session part 序；避免 tool 压到 thinking 上方）。
 - **禁止**在 ToolExecutionStart 时把未闭合的「假工具文本」策略——本波无 XML 抽取；原生路径下 text 与 tool 已分块。

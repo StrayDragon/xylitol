@@ -98,13 +98,23 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
 }
 
 /// Sync ToolCall parts from a partial assistant message (c1255 → c1260).
-/// Does not touch text/thinking streaming buffers.
+///
+/// Flushes any in-flight thinking/text **before** mounting tools so scrollback
+/// order matches provider order (ThinkingDelta* → ToolCall*), not
+/// tool-row-then-late-flush-thinking.
 pub(crate) fn sync_tool_intent_from_message(model: &mut UiModel, message: &AgentMessage) {
     use crate::domain::message::{AgentPart, LlmMessage};
 
     let AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. }) = message else {
         return;
     };
+    let has_tool = content
+        .iter()
+        .any(|p| matches!(p, AgentPart::ToolCall { .. }));
+    if !has_tool {
+        return;
+    }
+    model.flush_streaming();
     for part in content {
         if let AgentPart::ToolCall {
             id,
@@ -502,6 +512,67 @@ mod tests {
             human_tool_args_preview("bash", &serde_json::json!({"command": "ls -la"}), 80);
         assert!(preview.starts_with("$ ls"), "got {preview}");
         assert!(!preview.contains('{'));
+    }
+
+    #[test]
+    fn message_update_tool_intent_flushes_thinking_first() {
+        use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
+
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        apply_xy_event(&mut model, &XyEvent::ThinkingDelta("plan…".into()));
+        assert!(
+            model
+                .entries
+                .iter()
+                .all(|e| !matches!(e, UiEntry::Thinking { .. })),
+            "thinking still in streaming buffer"
+        );
+
+        let partial = AgentMessage::Llm(LlmMessage::AssistantMessage {
+            content: vec![
+                AgentPart::thinking("plan…"),
+                AgentPart::ToolCall {
+                    id: "call-1".into(),
+                    name: "find".into(),
+                    arguments: serde_json::json!({"pattern": "**/*.md"}),
+                },
+            ],
+            stop_reason: None,
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        });
+        apply_xy_event(
+            &mut model,
+            &XyEvent::MessageUpdate {
+                text: String::new(),
+                thinking: Some("plan…".into()),
+                message: Some(partial),
+            },
+        );
+
+        let kinds: Vec<&str> = model
+            .entries
+            .iter()
+            .filter_map(|e| match e {
+                UiEntry::Thinking { .. } => Some("thinking"),
+                UiEntry::Tool { name, .. } => Some(name.as_str()),
+                UiEntry::Assistant { .. } => Some("assistant"),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            ["thinking", "find"],
+            "scrollback must be thinking then tool, got {kinds:?}"
+        );
+        assert!(model.streaming_thinking.is_empty());
     }
 
     #[test]
