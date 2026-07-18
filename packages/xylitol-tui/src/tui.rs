@@ -248,6 +248,8 @@ pub struct TUI<T: Terminal> {
     clear_on_shrink: bool,
     max_lines_rendered: usize,
     full_redraw_count: u64,
+    /// Increments on every successful `do_render` (throttle / skip 不计入).
+    frame_count: u64,
     focus_order_counter: u64,
     next_overlay_id: u64,
     next_input_listener_id: u64,
@@ -293,6 +295,7 @@ impl<T: Terminal> TUI<T> {
             clear_on_shrink: false,
             max_lines_rendered: 0,
             full_redraw_count: 0,
+            frame_count: 0,
             focus_order_counter: 0,
             next_overlay_id: 1,
             next_input_listener_id: 1,
@@ -328,6 +331,16 @@ impl<T: Terminal> TUI<T> {
 
     pub fn full_redraws(&self) -> u64 {
         self.full_redraw_count
+    }
+
+    /// Frames actually painted via `do_render` (excludes throttle skips).
+    pub fn frame_count(&self) -> u64 {
+        self.frame_count
+    }
+
+    /// Whether a soft/force `request_render` is pending.
+    pub fn is_render_requested(&self) -> bool {
+        self.render_requested
     }
     pub fn set_show_hardware_cursor(&mut self, enabled: bool) {
         if self.show_hardware_cursor == enabled {
@@ -1062,6 +1075,7 @@ impl<T: Terminal> TUI<T> {
         if self.stopped {
             return Ok(());
         }
+        self.frame_count = self.frame_count.saturating_add(1);
         let width = self.terminal.columns() as usize;
         let height = self.terminal.rows() as usize;
         if width == 0 {

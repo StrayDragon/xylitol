@@ -199,14 +199,17 @@ impl UiRoot {
             }
             if matches_binding(key, "app.thinking.toggle") {
                 self.fold.thinking_expanded = !self.fold.thinking_expanded;
+                self.bump_upper_gen();
                 return;
             }
             if matches_binding(key, "app.tools.blocks") {
                 self.fold.tools_expanded = !self.fold.tools_expanded;
+                self.bump_upper_gen();
                 return;
             }
             if matches_binding(key, "app.tools.expand") {
                 self.fold.tools_output_expanded = !self.fold.tools_output_expanded;
+                self.bump_upper_gen();
                 return;
             }
             // MAY: Ctrl+P opens Plate stub (Esc closes). Not in app catalog (stub).

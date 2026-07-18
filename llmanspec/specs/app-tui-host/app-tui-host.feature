@@ -200,3 +200,21 @@
     假如 审查 app/tui 源码
     当 检查 import
     那么 无 tui→infra::mcp 直达
+
+  @req:ath24
+  场景: idle-tick-skips-paint
+    假如 Ready 且 idle 无 paint_dirty
+    当 HostEvent::Tick
+    那么 不因该 Tick 单独 request_render
+
+  @req:ath24
+  场景: bang-chunk-paints-on-tick
+    假如 bang 追加 chunk 已标 paint_dirty
+    当 随后 Tick
+    那么 合并 request_render 且 scrollback 可见新输出
+
+  @req:ath24
+  场景: spinner-reuses-upper-cache
+    假如 busy 且 transcript 很长
+    当 仅 status Loader 推进
+    那么 UiRoot 复用上区缓存且 spinner 帧仍更新

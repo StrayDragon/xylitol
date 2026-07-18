@@ -100,6 +100,8 @@ pub struct HostSession<T: Terminal> {
     suppress_idle_esc: bool,
     /// After Esc abort: drop agent `XyEvent`s until this run's EventStream ends (c670).
     suppress_xy_until_stream_end: bool,
+    /// Bang chunk / deferred content: Tick must paint even if Loader idle (ath24 / ath7).
+    paint_dirty: bool,
     layout_cwd: String,
     /// Active theme preference for `/reload` (c1120 / c1095). `None` → keep current default.
     theme_preference: Option<String>,
@@ -145,6 +147,7 @@ impl<T: Terminal> HostSession<T> {
             bash_active: false,
             suppress_idle_esc: false,
             suppress_xy_until_stream_end: false,
+            paint_dirty: false,
             layout_cwd: display_cwd(),
             theme_preference: None,
             #[cfg(test)]
@@ -322,10 +325,11 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Append live bang output chunk (c669); caller renders on Tick/Done.
+    /// Append live bang output chunk (c669); mark paint_dirty — Tick merges render (ath7/ath24).
     pub fn append_bash_chunk(&mut self, chunk: &[u8]) {
         self.ui_model.append_bash_output(chunk);
         self.sync_ui_root_from_model();
+        self.paint_dirty = true;
     }
 
     /// Refresh queue badge from driver stats (after local steer/follow-up/abort).
@@ -458,10 +462,14 @@ impl<T: Terminal> HostSession<T> {
                 self.quit = true;
             }
             HostEvent::Tick => {
-                if self.mode == LayoutMode::Ready {
-                    let _ = self.tui.idle_tick();
+                let anim_dirty = if self.mode == LayoutMode::Ready {
+                    self.tui.idle_tick()
+                } else {
+                    false
+                };
+                if anim_dirty || self.paint_dirty {
+                    self.tui.request_render(false);
                 }
-                self.tui.request_render(false);
             }
             HostEvent::Resize { cols, rows } => {
                 // Prefer crossterm Resize payload: ioctl refresh can lag/stale.
@@ -505,7 +513,12 @@ impl<T: Terminal> HostSession<T> {
         }
 
         match self.tui.try_render() {
-            Ok(_) => Ok(()),
+            Ok(painted) => {
+                if painted {
+                    self.paint_dirty = false;
+                }
+                Ok(())
+            }
             Err(RenderError { .. }) => self.recover_from_render_error(),
         }
     }
@@ -554,7 +567,13 @@ impl<T: Terminal> HostSession<T> {
     }
 
     pub fn render_now(&mut self) -> Result<(), String> {
-        self.tui.render_now().map(|_| ()).map_err(|e| e.to_string())
+        match self.tui.render_now() {
+            Ok(_) => {
+                self.paint_dirty = false;
+                Ok(())
+            }
+            Err(e) => Err(e.to_string()),
+        }
     }
 
     /// Re-evaluate layout from the terminal's current size (after an external
