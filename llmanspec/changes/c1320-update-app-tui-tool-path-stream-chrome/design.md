@@ -37,9 +37,11 @@ read {short|…}[:start[-end]]
 
 推荐：`UiEntry::Tool` 增 `tool_path: Option<String>`，preview 只读该字段 + 行数/range；渲染仍走 `args_preview` 字符串（少改 scrollback）。
 
-### C. End 回填
+### C. End 回填（修订）
 
-`ToolExecutionEnd`：`serde_json` 取 `path`/`file_path` → 写入 `tool_path` 并刷新 `args_preview`。
+`ToolExecutionEnd`：**不得**用空 synthetic 重写整段 `args_preview`（会抹掉 bash `$ cmd` 与已流式 path——对齐 pi：`updateResult` 只改结果/ tint，call header 仍来自 streaming args）。
+
+仅当 header 仍缺真实 path（`edit ...` / 裸名）且 result JSON 含 path 时，才回填 `tool_path` 并刷新 preview。
 
 ### D. edit 行信息
 
