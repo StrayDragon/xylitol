@@ -299,7 +299,24 @@ impl AgentMessage {
         content: Vec<AgentPart>,
         is_error: bool,
     ) -> Self {
-        Self::Llm(LlmMessage::tool_result(id, tool_name, content, is_error))
+        Self::tool_result_with_details(id, tool_name, content, None, is_error)
+    }
+
+    pub fn tool_result_with_details(
+        id: impl Into<String>,
+        tool_name: impl Into<String>,
+        content: Vec<AgentPart>,
+        details: Option<Value>,
+        is_error: bool,
+    ) -> Self {
+        Self::Llm(LlmMessage::ToolResultMessage {
+            tool_use_id: id.into(),
+            tool_name: tool_name.into(),
+            content,
+            details,
+            is_error,
+            timestamp: now_ms(),
+        })
     }
 
     pub fn bash(
