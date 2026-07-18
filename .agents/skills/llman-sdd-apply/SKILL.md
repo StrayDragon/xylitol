@@ -91,7 +91,7 @@ flowchart LR
 - 相关测试集：`just test` 或 `cargo test --all`
 - 格式/lint：`just check` 或 `just lint` + `just fmt`
 
-- BDD-on（Git-native Partitioned SSOT）：留在已 attach 的 feature 分支；编辑 live `spec.toon`（约束）与 `*.feature`（`@req`）；实现 steps；`llman sdd validate --specs` 通过后，干净工作区再 `change checkpoint <id>`。不要跑 solidify / 新建 feature_delta。
+- BDD-on（Git-native Partitioned SSOT）：留在已 attach 的 feature 分支；编辑 live `spec.toon`（约束）与 `*.feature`（`@req`）；实现 steps；`llman sdd validate --specs` 通过。闭环收尾优先在 verify 后用 `change finalize`（工作区可脏）；勿在每个 task 后跑 `checkpoint`。不要跑 solidify / 新建 feature_delta。
 
 - SDD 校验：`llman sdd validate <id> --strict --no-interactive`
 
@@ -122,10 +122,11 @@ flowchart LR
 - `llman sdd index check`（检查索引新鲜度）
 - `llman sdd change new <id>`（创建草稿 `changes/<id>/proposal.md`）
 - `llman sdd change attach <id> [--force]`（BDD-on：绑定 feature 分支 + base SHA）
-- `llman sdd change checkpoint <id> [--no-check]`（BDD-on：干净工作区 + 归档前门禁）
+- `llman sdd change finalize <id> [--no-check]`（BDD-on：**推荐单 commit 路径**——不要求干净树；同进程 checkpoint + docs-only archive；写 `checkpoint_sha = base_sha`）
+- `llman sdd change checkpoint <id> [--no-check]`（BDD-on：干净工作区 + 归档前门禁；严格 sha = HEAD）
 - `llman sdd change diff <id> [--export-patch <path>]`（BDD-on：只读 `base...HEAD` 审查/导出）
 - `llman sdd change delta …`（仅 BDD-off：TOON delta 作者工具；BDD-on 会拒绝）
-- `llman sdd change archive <id>`（封存变更；BDD-on：checkpoint 后仅文档；BDD-off：合并 TOON delta）
+- `llman sdd change archive <id>`（封存变更；BDD-on：checkpoint 后仅文档 / 或作 finalize fallback；BDD-off：合并 TOON delta）
 - `llman sdd archive freeze [--before YYYY-MM-DD] [--keep-recent N] [--dry-run]`（冻结已归档目录）
 - `llman sdd archive thaw [--change <id> ...] [--dest <path>]`（从冷备份恢复）
 - `llman sdd graph [CHANGE] [--format mermaid] [--scope active|archived|all] [--depth N]`（生成变更依赖图）
