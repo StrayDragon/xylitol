@@ -2,8 +2,8 @@
 
 use crate::app::core::driver::XyEvent;
 use crate::app::tui::bridge::{
-    UiEntry, UiModel, UiPhase, extract_display_diff, find_tool_mut, quiet_tool_success_output,
-    upsert_tool_entry,
+    UiEntry, UiModel, UiPhase, extract_display_diff, extract_result_path, find_tool_mut,
+    human_tool_args_preview_with_path, quiet_tool_success_output, upsert_tool_entry,
 };
 
 pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
@@ -27,6 +27,9 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
             is_error,
         } => {
             if let Some(UiEntry::Tool {
+                args_preview,
+                tool_path,
+                write_content,
                 output,
                 is_error: err,
                 done,
@@ -46,6 +49,23 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
                 {
                     *display_diff = Some(diff);
                 }
+                if let Some(path) = extract_result_path(result) {
+                    *tool_path = Some(path);
+                }
+                // Refresh header from sticky path + write body / empty args shell.
+                let mut synthetic = serde_json::Map::new();
+                if let Some(p) = tool_path.as_deref() {
+                    synthetic.insert("path".into(), serde_json::Value::String(p.to_string()));
+                }
+                if let Some(c) = write_content.as_deref() {
+                    synthetic.insert("content".into(), serde_json::Value::String(c.to_string()));
+                }
+                *args_preview = human_tool_args_preview_with_path(
+                    name,
+                    &serde_json::Value::Object(synthetic),
+                    tool_path.as_deref(),
+                    80,
+                );
                 *err = *is_error;
                 *done = true;
             }

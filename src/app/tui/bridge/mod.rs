@@ -11,7 +11,10 @@ pub(crate) mod session_tree;
 pub(crate) use model::trailing_aborted_note;
 pub use model::{BashBlockStatus, QueueBadge, UiEntry, UiModel, UiPhase};
 pub use preview::extract_display_diff;
-pub(crate) use preview::{human_tool_args_preview, quiet_tool_success_output};
+pub(crate) use preview::{
+    extract_result_path, extract_tool_path, human_tool_args_preview,
+    human_tool_args_preview_with_path, quiet_tool_success_output,
+};
 
 use serde_json::Value;
 
@@ -35,7 +38,7 @@ pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
 
 /// Upsert a pending tool row from streaming intent (MessageUpdate) or execution start.
 pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args: &Value) {
-    let preview = human_tool_args_preview(name, args, 80);
+    let fresh_path = extract_tool_path(args);
     let write_content = (name == "write")
         .then(|| {
             args.get("content")
@@ -47,21 +50,28 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
     if let Some(UiEntry::Tool {
         name: n,
         args_preview,
+        tool_path,
         write_content: wc,
         ..
     }) = find_tool_mut(&mut model.entries, id)
     {
         *n = name.to_string();
-        *args_preview = preview;
+        if let Some(p) = fresh_path {
+            *tool_path = Some(p);
+        }
+        *args_preview = human_tool_args_preview_with_path(name, args, tool_path.as_deref(), 80);
         if write_content.is_some() {
             *wc = write_content;
         }
         return;
     }
+    let tool_path = fresh_path;
+    let preview = human_tool_args_preview_with_path(name, args, tool_path.as_deref(), 80);
     model.entries.push(UiEntry::Tool {
         id: id.to_string(),
         name: name.to_string(),
         args_preview: preview,
+        tool_path,
         write_content,
         display_diff: None,
         output: String::new(),
