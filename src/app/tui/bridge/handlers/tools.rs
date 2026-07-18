@@ -2,23 +2,15 @@
 
 use crate::app::core::driver::XyEvent;
 use crate::app::tui::bridge::{
-    UiEntry, UiModel, UiPhase, compact_json_preview, extract_display_diff, extract_edit_path,
-    find_tool_mut,
+    UiEntry, UiModel, UiPhase, extract_display_diff, extract_edit_path, find_tool_mut,
+    upsert_tool_entry,
 };
 
 pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
     match event {
         XyEvent::ToolExecutionStart { id, name, args } => {
             model.flush_streaming();
-            let args_preview = compact_json_preview(args, 80);
-            model.entries.push(UiEntry::Tool {
-                id: id.clone(),
-                name: name.clone(),
-                args_preview,
-                output: String::new(),
-                is_error: false,
-                done: false,
-            });
+            upsert_tool_entry(model, id, name, args);
             model.set_busy_status(format!("Running {name}"));
             true
         }

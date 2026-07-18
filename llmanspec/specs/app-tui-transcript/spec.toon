@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "app-tui-transcript"
 purpose: Live 输出进引擎 scrollback（非 Codex 式 transcript 浏览面）；分支回看走会话树。
 valid_scope[1]: src/app/tui/
-requirements[12]{req_id,title,statement}:
+requirements[13]{req_id,title,statement}:
   r26,"capability-shell",本 capability 约束 live scrollback 行呈现与相关积木复用；MUST NOT 被解读为要求 Codex 式 TranscriptView。本壳 MUST 保持非空以满足 BDD 护栏。
   att1,"live-scrollback-output",产品 UiRoot 当前轮 live 用户/助手/系统输出 MUST 写入引擎 scrollback 并以包 Markdown（及角色色/glyph）呈现；MUST NOT 截断历史冒充滚动；MUST NOT 以此要求实现 Codex 式可导航 transcript 浏览面。
   att3,"diff-via-package","产品 live scrollback 中文件编辑 diff MUST 复用 packages/xylitol-tui Diff（含 word-level 与复制友好前缀）；MUST NOT 在应用面复制准通用 diff 渲染器。"
@@ -15,4 +15,6 @@ requirements[12]{req_id,title,statement}:
   att10,"scrollback-block-gap","产品 live scrollback 相邻块之间 MUST 至少有一行 untinted 空行隔开（对齐 agent_demo / pi Spacer）；MUST NOT 把块内容粘成连续墙；着色块 MUST 以整行终端宽度铺 tool-*-bg / user-message-bg（含块内 padding_y 空 tint 行）。"
   att11,"bang-block-tint-via-helper","bang 块全行背景 MUST 复用 apply_background_to_line（或等价包 API）与 DESIGN tool-*-bg；MUST NOT 在应用面手写第二套 pad+bg。"
   att12,"history-rebuild-from-parts","产品 TUI 从 SessionEntry 重建 live scrollback（travel / fork / resume 共用路径）时 MUST 按 message.content 的 typed 部件投影：type=thinking → UiEntry::Thinking；type=text → UiEntry::Assistant（或等价助手正文）；tool 相关部件按既有 Tool 块规则。MUST NOT 仅用 message_text 把 thinking+text 拼成单一 Assistant。同一条 JSONL 重建结果 MUST 与该轮直播 flush_streaming 后的 Thinking/Assistant 分块形态幂等（可测）。"
-scenarios[0]:
+  att13,"tool-human-summary","折叠态 tool 块 args_preview MUST 使用人类可读摘要（bash/shell → `$ {command}`；read/ls/edit/write → `{name} {path}`；未知回退短 JSON）；历史重建 MUST 与直播路径共用同一摘要 helper。"
+scenarios[1]{req_id,id,given,when,then,feature}:
+  att13,"bash-summary",bash 工具 args 含 command,渲染或重建 args_preview,以 $ 开头且非纯 JSON 墙,false
