@@ -22,7 +22,7 @@ components:
 | 空 `!` / `!!` | 系统提示，不执行 |
 | 结果 | live scrollback：`UiEntry::Bash` 块（`$ cmd` + 输出）；提交即 **pending** tint（`tool-pending-bg`）；输出 chunk 到达时 **同一块内增量刷新**（保持 pending）；成功 → `tool-success-bg`；失败 / Esc `(cancelled)` → `tool-error-bg`；**整行终端宽度** `apply_background_to_line` + 块内 padding_y=1 |
 | 块间距 | 块与块之间 **一行** untinted Spacer |
-| 长输出 | 默认末尾 5 行视口 + `ctrl+o to expand`；**Ctrl+O** 全局视口折叠/全文（与工具详情同键）；截断时块内 MUST 含 pi 形 `[Full output: <path>. Truncated: …]` 脚注，并以 `{colors.warning}`（可 bold）绘制 |
+| 长输出 | 默认末尾 5 行视口；**Ctrl+O** 可展开全文（与工具详情同键）；若含 `[Full output: …]` 硬截断则 **禁展开**（hint=`expand disabled — see Full output`），脚注以 `{colors.warning}`（可 bold）绘制 |
 | busy（agent） | `!…` 仍走 steer/普通文本；**不**另开 bash |
 | busy（交互 bang 仍在跑） | 再提交 `!`/`!!` **硬拒绝**：提示 + 保留编辑器文本；**MUST NOT** 第二次 `execute_bash`、**MUST NOT** 排队 |
 | Ctrl+G | **c650**：交互 TTY 且已配置非空 `$VISUAL`/`$EDITOR` → 真外部编辑器；harness / 非 TTY → stub（系统行 + `# $EDITOR stub`）；未配置或失败 → `UiEntry::Error`（**无**静默 nano/notepad；与 demo 可默认 nano **分叉**） |

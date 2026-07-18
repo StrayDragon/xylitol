@@ -85,6 +85,13 @@ fn paint_bg_line(line: &str, width: usize, rgb: RgbColor) -> String {
     apply_background_to_line(&fit(line, width), width, &|s| bg_rgb(rgb, s))
 }
 
+/// Hard system truncate (c1330/c1340): sidecar Full output footer present.
+fn output_is_hard_truncated(output: &str) -> bool {
+    output.lines().any(|l| l.starts_with("[Full output:"))
+}
+
+const HARD_TRUNCATED_EXPAND_HINT: &str = "expand disabled — see Full output";
+
 /// Paint bash/tool body lines; Full output footer uses warning fg (att15 / pi).
 fn paint_output_with_full_footer(output: &str, theme: LayoutTheme, error: bool) -> String {
     let mut out = String::new();
@@ -236,13 +243,14 @@ pub fn render_scrollback(
                 push_wrapped(&mut block, &theme.paint_tool(&header), width);
 
                 // write: header + body share one pending/success/error wash (pi Box).
+                // Tail viewport follows stream end (c1340); Ctrl+O still expands.
                 if let Some(content) = write_content
                     && !content.is_empty()
                 {
                     let total = content.lines().count().max(1);
                     let opts = ExpandableOutputOptions {
                         max_preview_lines: WRITE_BODY_PREVIEW_LINES,
-                        from: TruncateFrom::Head,
+                        from: TruncateFrom::Tail,
                         expand_hint: format!("{total} total, ctrl+o to expand"),
                         hint_style: None,
                     };
@@ -254,17 +262,22 @@ pub fn render_scrollback(
                 }
 
                 // Error / other output behind Alt+E: still same wash when shown.
+                // Hard-truncated: never expand viewport (att16).
                 if fold.tools_expanded && !output.is_empty() {
                     let painted = paint_output_with_full_footer(output, theme, *is_error);
+                    let hard = output_is_hard_truncated(output);
                     let opts = ExpandableOutputOptions {
                         max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
                         from: TruncateFrom::Tail,
-                        expand_hint: "ctrl+o to expand".into(),
+                        expand_hint: if hard {
+                            HARD_TRUNCATED_EXPAND_HINT.into()
+                        } else {
+                            "ctrl+o to expand".into()
+                        },
                         hint_style: None,
                     };
-                    for line in
-                        render_expandable_output(&painted, width, fold.tools_output_expanded, &opts)
-                    {
+                    let expanded = fold.tools_output_expanded && !hard;
+                    for line in render_expandable_output(&painted, width, expanded, &opts) {
                         block.push(line);
                     }
                 }
@@ -336,15 +349,19 @@ pub fn render_scrollback(
                         theme,
                         matches!(status, BashBlockStatus::Error | BashBlockStatus::Cancelled),
                     );
+                    let hard = output_is_hard_truncated(output);
                     let opts = ExpandableOutputOptions {
                         max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
                         from: TruncateFrom::Tail,
-                        expand_hint: "ctrl+o to expand".into(),
+                        expand_hint: if hard {
+                            HARD_TRUNCATED_EXPAND_HINT.into()
+                        } else {
+                            "ctrl+o to expand".into()
+                        },
                         hint_style: None,
                     };
-                    for line in
-                        render_expandable_output(&body, width, fold.tools_output_expanded, &opts)
-                    {
+                    let expanded = fold.tools_output_expanded && !hard;
+                    for line in render_expandable_output(&body, width, expanded, &opts) {
                         block.push(line);
                     }
                 } else if matches!(status, BashBlockStatus::Pending) {
@@ -484,18 +501,22 @@ mod tests {
     #[test]
     fn bash_full_output_footer_uses_warning_fg() {
         let mut model = UiModel::default();
+        let mut output = String::new();
+        for i in 0..20 {
+            output.push_str(&format!("line-{i}\n"));
+        }
+        output.push_str("[Full output: /tmp/x.log. Truncated: 20 lines shown (50.0KB limit)]");
         model.entries.push(UiEntry::Bash {
             command: "big".into(),
             status: BashBlockStatus::Success,
-            output: "tail\n[Full output: /tmp/x.log. Truncated: 1 lines shown (50.0KB limit)]"
-                .into(),
+            output,
             exclude_from_context: false,
         });
         let theme = LayoutTheme::product_dark();
         let warning = theme.palette().warning;
         let expect = bold(&fg_rgb(
             warning,
-            "[Full output: /tmp/x.log. Truncated: 1 lines shown (50.0KB limit)]",
+            "[Full output: /tmp/x.log. Truncated: 20 lines shown (50.0KB limit)]",
         ));
         let lines = render_scrollback(
             &model,
@@ -512,5 +533,72 @@ mod tests {
             joined.contains(&expect),
             "Full output footer must use warning fg; got {joined:?}"
         );
+        let plain = strip_ansi_local(&joined);
+        assert!(
+            plain.contains("expand disabled"),
+            "hard-truncated must not offer ctrl+o expand; got {plain:?}"
+        );
+        assert!(
+            !plain.contains("ctrl+o to expand"),
+            "hard-truncated must not show expand hint"
+        );
+        assert!(
+            !plain.contains("line-0"),
+            "even with Ctrl+O fold on, hard-truncated must stay on tail; got {plain:?}"
+        );
+    }
+
+    #[test]
+    fn write_viewport_defaults_to_tail_earlier() {
+        let mut model = UiModel::default();
+        let body: String = (0..18).map(|i| format!("line-{i}\n")).collect();
+        model.entries.push(UiEntry::Tool {
+            id: "w1".into(),
+            name: "write".into(),
+            args_preview: "write a.py (18 lines)".into(),
+            tool_path: Some("a.py".into()),
+            write_content: Some(body),
+            display_diff: None,
+            output: String::new(),
+            is_error: false,
+            done: false,
+        });
+        let theme = LayoutTheme::product_dark();
+        let lines = render_scrollback(
+            &model,
+            GlyphSet::from_env(),
+            theme,
+            ScrollbackFold::default(),
+            100,
+        );
+        let plain = strip_ansi_local(&lines.join("\n"));
+        assert!(
+            plain.contains("earlier lines"),
+            "write must use Tail earlier hint; got {plain:?}"
+        );
+        assert!(
+            plain.contains("line-17"),
+            "write viewport must show stream end; got {plain:?}"
+        );
+    }
+
+    fn strip_ansi_local(s: &str) -> String {
+        let mut out = String::new();
+        let mut chars = s.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\u{1b}' {
+                if chars.peek() == Some(&'[') {
+                    chars.next();
+                    for x in chars.by_ref() {
+                        if x.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        out
     }
 }

@@ -214,6 +214,23 @@ pub(crate) fn extract_full_output_notice(result: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// When tool JSON is hard-truncated, return the truncated display body (att16).
+pub(crate) fn extract_truncated_tool_display(result: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(result).ok()?;
+    let truncated = value.get("truncated").and_then(|v| v.as_bool())?;
+    if !truncated {
+        return None;
+    }
+    for key in ["combined", "stdout", "output"] {
+        if let Some(text) = value.get(key).and_then(|v| v.as_str())
+            && !text.is_empty()
+        {
+            return Some(text.to_string());
+        }
+    }
+    None
+}
+
 /// Pull `display_diff` from edit-tool JSON result (shape is intentionally fragile).
 pub fn extract_display_diff(result: &str) -> Option<String> {
     let value: Value = serde_json::from_str(result).ok()?;
@@ -786,5 +803,59 @@ mod tests {
             _ => None,
         });
         assert_eq!(preview, Some("edit src/a.rs"));
+    }
+
+    #[test]
+    fn truncated_bash_end_replaces_streamed_buffer() {
+        let mut model = UiModel::new();
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionStart {
+                id: "b1".into(),
+                name: "bash".into(),
+                args: serde_json::json!({"command": "yes"}),
+            },
+        );
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionUpdate {
+                id: "b1".into(),
+                output: "STREAMED-HUGE\n".repeat(100),
+            },
+        );
+        let truncated = format!(
+            "tail-line\n[Full output: /tmp/x.log. Truncated: 1 lines shown (50.0KB limit)]"
+        );
+        apply_xy_event(
+            &mut model,
+            &XyEvent::ToolExecutionEnd {
+                id: "b1".into(),
+                name: "bash".into(),
+                result: serde_json::json!({
+                    "stdout": truncated,
+                    "stderr": "",
+                    "combined": truncated,
+                    "truncated": true,
+                    "full_output_path": "/tmp/x.log",
+                    "exit_code": 0,
+                })
+                .to_string(),
+                is_error: false,
+            },
+        );
+        let out = model.entries.iter().find_map(|e| match e {
+            UiEntry::Tool { id, output, .. } if id == "b1" => Some(output.as_str()),
+            _ => None,
+        });
+        let out = out.expect("bash tool");
+        assert!(
+            out.contains("[Full output:"),
+            "must keep Full output footer: {out}"
+        );
+        assert!(
+            !out.contains("STREAMED-HUGE"),
+            "must drop streamed full buffer: {out}"
+        );
+        assert!(out.contains("tail-line"));
     }
 }
