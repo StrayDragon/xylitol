@@ -26,9 +26,31 @@ pub struct ScrollbackFold {
 
 /// Max visual lines for collapsed tool/bash detail (pi bash tool = 5).
 const TOOLS_OUTPUT_PREVIEW_LINES: usize = 5;
+/// Collapsed write body viewport (pi write.ts = 10 logical lines).
+const WRITE_BODY_PREVIEW_LINES: usize = 10;
 
 fn key_hint(chord: &str) -> String {
     format!("({chord})")
+}
+
+fn tool_header_summary(name: &str, args_preview: &str) -> String {
+    if args_preview.is_empty() {
+        return name.to_string();
+    }
+    // Human summaries that already include the verb / `$` — avoid `write write path`.
+    if args_preview.starts_with("write ")
+        || args_preview.starts_with("edit ")
+        || args_preview.starts_with("read ")
+        || args_preview.starts_with("ls ")
+        || args_preview.starts_with("find ")
+        || args_preview.starts_with("grep ")
+    {
+        return args_preview.to_string();
+    }
+    if args_preview.starts_with(name) {
+        return args_preview.to_string();
+    }
+    format!("{name} {args_preview}")
 }
 
 fn fit(text: &str, width: usize) -> String {
@@ -170,6 +192,8 @@ pub fn render_scrollback(
             UiEntry::Tool {
                 name,
                 args_preview,
+                write_content,
+                display_diff,
                 output,
                 is_error,
                 done,
@@ -180,18 +204,7 @@ pub fn render_scrollback(
                 } else {
                     glyphs.fold()
                 };
-                let state = if !done {
-                    "…"
-                } else if *is_error {
-                    "err"
-                } else {
-                    "ok"
-                };
-                let summary = if args_preview.is_empty() {
-                    format!("{name} [{state}]")
-                } else {
-                    format!("{name} [{state}] {args_preview}")
-                };
+                let summary = tool_header_summary(name, args_preview);
                 let header = format!(
                     "{marker} {} {summary}  {}",
                     glyphs.tool(),
@@ -199,7 +212,46 @@ pub fn render_scrollback(
                 );
                 let mut block = Vec::new();
                 push_wrapped(&mut block, &theme.paint_tool(&header), width);
+                let rgb = tool_bg_rgb(!done, *is_error, theme);
+                push_tinted(&mut lines, &block, width, rgb);
+
+                // write body: always visible process chrome (Head-10 + ctrl+o).
+                if let Some(content) = write_content
+                    && !content.is_empty()
+                {
+                    let total = content.lines().count().max(1);
+                    let opts = ExpandableOutputOptions {
+                        max_preview_lines: WRITE_BODY_PREVIEW_LINES,
+                        from: TruncateFrom::Head,
+                        expand_hint: format!("{total} total, ctrl+o to expand"),
+                        hint_style: None,
+                    };
+                    for line in
+                        render_expandable_output(content, width, fold.tools_output_expanded, &opts)
+                    {
+                        lines.push(fit(&line, width));
+                    }
+                }
+
+                // edit diff: default visible once ready (no Alt+E gate).
+                if let Some(diff) = display_diff
+                    && !diff.is_empty()
+                {
+                    let input = DiffInput::DisplayText(diff.clone());
+                    let opts = DiffOptions {
+                        word_level: true,
+                        ..DiffOptions::default()
+                    };
+                    for line in
+                        render_diff_lines(&input, width, &theme.palette().diff_theme(), &opts)
+                    {
+                        lines.push(fit(&line, width));
+                    }
+                }
+
+                // Other tool output / errors: still behind Alt+E + Tail viewport.
                 if fold.tools_expanded && !output.is_empty() {
+                    let mut out_block = Vec::new();
                     let opts = ExpandableOutputOptions {
                         max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
                         from: TruncateFrom::Tail,
@@ -209,11 +261,10 @@ pub fn render_scrollback(
                     for line in
                         render_expandable_output(output, width, fold.tools_output_expanded, &opts)
                     {
-                        block.push(line);
+                        out_block.push(line);
                     }
+                    push_tinted(&mut lines, &out_block, width, rgb);
                 }
-                let rgb = tool_bg_rgb(!done, *is_error, theme);
-                push_tinted(&mut lines, &block, width, rgb);
             }
             UiEntry::Diff {
                 summary,
