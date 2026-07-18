@@ -58,7 +58,6 @@ flowchart LR
 
 ### 3) 创建变更目录与工件
    - 建议先用 `llman sdd change new <change-id>` 生成草稿 `proposal.md`（或手动创建 `llmanspec/changes/<change-id>/`）。
-   - **提交卫生**：纯 draft **SHOULD NOT** 单独成 commit；与充实后的 propose 工件或首个实现 commit 同提（见 `llmanspec/AGENTS.md`「提交卫生」）。
    - 若变更已存在，STOP 并建议使用 `llman-sdd-continue`。
    - 充实 `proposal.md`（Why / What Changes / Capabilities / Impact）
    - 仅在涉及权衡/迁移时创建 `design.md`
