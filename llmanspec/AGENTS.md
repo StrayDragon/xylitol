@@ -74,10 +74,10 @@ commit（live specs + 代码）
 
 ### 提交卫生（SHOULD；减少刻意 chore commit）
 
-BDD-on 闭环在 CLI 未提供 `finalize` 前，**结构上**每 change 至少多 2 条流程 commit（checkpoint 元数据 + archive rename）。本仓约定尽量少造「空流程」：
+BDD-on 闭环在 CLI 未提供 `finalize` 前，**结构上**每 change 至少多 2 条流程 commit（checkpoint 元数据 + archive rename）。本仓约定尽量少造「空流程」，但 **draft 提案可单独/批量提交**：
 
-1. **不要单独 commit 纯 draft**：`change new` / 半成品 `proposal.md` 与完整 propose（design+tasks+live specs）或首个实现 commit **同提**；或 PR 前 squash 掉孤立 draft。
-2. **批量收尾**：相关 change 都 verify 完后，可连续 checkpoint→commit→archive，最后用 **一条** `chore(sdd): archive cA, cB, …` 提交多次 rename（若工作区允许一次 stage 多个 archive）；或每条 change 仍各一次 archive commit，但 **禁止** 再夹带无关 draft。
+1. **Draft 可独提或一批提**：可从 `docs/roadmaps` 等意向一次 `change new` 多个草案并 `chore(sdd): draft …` 入库（仅 proposal 亦可）；**不**要求与实现同提。
+2. **批量收尾**：相关 change 都 verify 完后，可连续 checkpoint→commit→archive，最后用 **一条** `chore(sdd): archive cA, cB, …` 提交多次 rename（若工作区允许一次 stage 多个 archive）；或每条 change 仍各一次 archive commit。
 3. **产品 vs 流程**：实现用 `feat`/`fix`/`refactor`；SDD 礼仪只用 `chore(sdd):` / `docs(sdd):`。PR 可用 squash；本地 `checkpoint_sha` 仍指向分支上的实现 commit 即可。
 4. **上游缺口**：希望 `llman sdd change finalize` 把 checkpoint+archive 收成一次脏树再单 commit——见 `../llman` change `improve-bdd-on-finalize-and-commit-hygiene`（他仓 agent 落地）。落地后删本条「结构多 2 commit」说明，改写 skills。
 
