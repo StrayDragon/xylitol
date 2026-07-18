@@ -22,6 +22,12 @@
     当 运行 AgentRuntime
     那么 turn_end 事件包含 toolResult
 
+  @req:ar21
+  场景: intent-before-execution
+    假如 mock 模型先 tool 后无 tool
+    当 运行 AgentRuntime 并收集事件
+    那么 MessageUpdate 含工具意图且早于任意 ToolExecutionStart；ToolExecutionStart 不早于 MessageEnd
+
   @req:ar12
   场景: abort-drops-sse
     假如 配置了 mock 模型 test-model 且慢速流式 40 段间隔 20 毫秒

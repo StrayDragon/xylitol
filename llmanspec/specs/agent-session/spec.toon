@@ -5,7 +5,7 @@ valid_scope[3]: src/agent/session/,src/runtime_protocol/session.rs,src/domain/se
 requirements[36]{req_id,title,statement}:
   a1,"agent-session",System MUST 提供 AgentSession，封装 prompt→model→tools→loop 与完整事件流，仅持有编排状态；system prompt MUST 由组合根注入的上下文（AGENTS.md、配置 system prompt、append prompts）组装，MUST NOT 使用硬编码回退。
   a2,回合事件,AgentSession MUST 每轮发出：turn_start、message_start、message_update（流式）、message_end。
-  a3,工具事件,AgentSession MUST 每次工具调用发出：tool_execution_start、tool_execution_update（流式片段）、tool_execution_end。
+  a3,工具事件,"AgentSession / ReAct MUST 每次工具调用在 MessageEnd 之后发出 tool_execution_start，执行期发出至少一次 tool_execution_update（长输出工具宜多段），再 tool_execution_end。MUST NOT 在助手消息流式阶段（MessageEnd 前）发出 tool_execution_start。"
   a4,模型切换,AgentSession MUST 支持 cycleForward、cycleBackward、select(model) 运行时切换模型。
   a5,thinking 级别,AgentSession MUST 支持 thinking level 切换（low/medium/high），并钳制到模型能力。
   a6,abort,AgentSession MUST 支持 abort() 取消当前 agent 操作。

@@ -1,19 +1,16 @@
 # Tasks: c1255-update-agent-tool-intent-lifecycle
 
-status: purpose-draft — promote 后再 apply。
+## Promote
 
-## Promote 前
-
-- [ ] live specs：`agent-runtime` / `agent-session` 增加意图-先于-执行与 tool-stream MUST
-- [ ] `llman sdd change attach c1255-update-agent-tool-intent-lifecycle`
-- [ ] 确认 c1250 已在本分支可用（或 depends 已归档）
+- [x] live specs：`agent-runtime` ar21 + `intent-before-execution`；`agent-session` a3
+- [x] `llman sdd change attach c1255-update-agent-tool-intent-lifecycle`
+- [x] proposal `status: full`
 
 ## 实施
 
-- [ ] react：消费 assistant stream events；维护 partial；流结束前不 execute
-- [ ] 发射 MessageUpdate（含 tool 块渐进 args）
-- [ ] message_end 后批执行工具；Start/Update/End
-- [ ] protocol 映射：ToolStart 保留 args（若远程面需要）
-- [ ] 单测：假流 toolcall_delta × N → 无 Start；done 后才 Start
-- [ ] BDD：对齐/修复 tool-stream 场景
-- [ ] `just test` 相关过滤或全量；validate change
+- [x] react：消费 ToolCallStart/Delta/End；维护 partial；MessageEnd 前不 execute / 不 ToolExecutionStart
+- [x] 发射 MessageUpdate（message 含渐进 ToolCall 部分）
+- [x] MessageEnd 后批执行；Start → Update（≥1）→ End
+- [x] 单测：`test_tool_intent_before_execution`
+- [x] BDD：`intent-before-execution` step + scenario binding
+- [x] `llman sdd validate c1255-… --strict --no-check`；agent-runtime OK
