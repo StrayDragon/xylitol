@@ -81,7 +81,7 @@
 ## 提交与测试
 
 - 提交用 Conventional Commits：`feat(cli): …`/`fix(agent): …`/`refactor(config): …`/`docs: …`/`chore: …`。开 PR 前跑 **`just qa`**；真终端协议/渲染再跑 **`just qa-e2e`**（或 `just test-tui-e2e`）。
-- BDD（BDD-on / Partitioned SSOT）：手写场景可在 `tests/features/*.feature`；可执行合约场景在 live `llmanspec/specs/<cap>/<cap>.feature`（`@req:` + 场景标题 = `scenario.id`），与 `spec.toon` 约束并存。工作流：feature 分支上改 live specs → `llman sdd change attach` → 实现/校验 → 干净树 `checkpoint` → docs-only `archive` → Git merge。**禁止** `solidify` / `change delta` / 新建 `*.feature.delta.toon`。step 在 `tests/bdd.rs`；需顺序时 `cargo test --test bdd -- --test-threads=1`。快照用 `insta`。回归放 `tests/regression/{issue号}-{简述}.rs`。
+- BDD（BDD-on / Partitioned SSOT）：手写场景可在 `tests/features/*.feature`；可执行合约场景在 live `llmanspec/specs/<cap>/<cap>.feature`（`@req:` + 场景标题 = `scenario.id`），与 `spec.toon` 约束并存。工作流：feature 分支上改 live specs → `llman sdd change attach` → 实现/校验 → 优先 `change finalize`（单 commit；或 fallback 干净树 `checkpoint` → docs-only `archive`）→ Git merge。**禁止** `solidify` / `change delta` / 新建 `*.feature.delta.toon`。细则见 `llmanspec/AGENTS.md`。step 在 `tests/bdd.rs`；需顺序时 `cargo test --test bdd -- --test-threads=1`。快照用 `insta`。回归放 `tests/regression/{issue号}-{简述}.rs`。
 - **测试分层**：BDD 覆盖端到端编排（agent 循环、工具完整路径、session、CLI slash、跨组件）；`#[cfg(test)]` 覆盖纯数据/算法/组件内状态机。已有 BDD 的路径，单测只测底层边界，不重复全链路。
 - 实现计划变更后同步 `llmanspec/` 工件（`/llman-sdd-*` 技能）。读代码优先 `rg`。
 
