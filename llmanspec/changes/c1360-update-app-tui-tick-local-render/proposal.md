@@ -1,8 +1,11 @@
 ---
 id: c1360-update-app-tui-tick-local-render
-stage: draft
+stage: full
 depends_on:
-  - c1350-update-edit-diff-tui-cap
+- c1350-update-edit-diff-tui-cap
+branch: feat/tui-dev
+base_sha: 680e83b0baf487deed2bfe8f17a19c96c0c4f975
+checkpointed: false
 ---
 
 # Proposal: Tick 局部刷新（spinner 不整树重算）
@@ -19,10 +22,9 @@ depends_on:
 
 ## Capabilities
 
-- `app-tui-host`（Tick / paint_dirty）
-- 可选触及 `app-tui-chrome`（status 形态不变）
+- `app-tui-host`（Tick / paint_dirty / ath24）
 
 ## Impact
 
 - busy 时 spinner 仍按 Loader interval 推进；大 transcript 下 Tick CPU 下降。
-- 非目标：引擎 `previous_lines` 热缓冲封顶（→ c1370）；改 Loader 帧率语义。
+- 非目标：引擎 `previous_lines` 热缓冲封顶（原 c1370 已搁置至 `llmanspec/do-not-read-me/`）；改 Loader 帧率语义。

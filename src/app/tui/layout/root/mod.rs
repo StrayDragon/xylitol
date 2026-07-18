@@ -13,14 +13,15 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+#[cfg(test)]
+use xylitol_tui::Component;
 use xylitol_tui::components::editor::{Editor, EditorOptions};
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::select_list::{SelectItem, SelectList, SelectListLayoutOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
-    AtPathSource, CompletionSource, Component, Focusable, Input, InputEvent,
-    SlashArgCompletionSource, SlashCommandSource, SystemClock, TreeNode, TreeSelector,
-    TreeSelectorOptions, fg_rgb, fuzzy_filter, truncate_to_width,
+    AtPathSource, CompletionSource, Focusable, Input, SlashArgCompletionSource, SlashCommandSource,
+    SystemClock, TreeNode, TreeSelector, TreeSelectorOptions, fg_rgb, fuzzy_filter,
 };
 
 use super::dollar_skill_source::DollarSkillSource;
@@ -166,6 +167,14 @@ pub struct UiRoot {
     pending_session_resume_select: Option<String>,
     pending_session_resume_rename: Option<(String, String)>,
     pending_session_resume_delete: Option<String>,
+    /// Generation for loaded+scrollback+queue cache (ath24); bumps on content/theme/fold.
+    upper_gen: u64,
+    upper_cache_gen: u64,
+    upper_cache_width: usize,
+    upper_cache_lines: Vec<String>,
+    /// Test/obs: how many times upper (loaded+scrollback+queue) was rebuilt.
+    #[cfg(test)]
+    upper_rebuild_count: u64,
 }
 
 impl UiRoot {
@@ -232,6 +241,12 @@ impl UiRoot {
             pending_session_resume_select: None,
             pending_session_resume_rename: None,
             pending_session_resume_delete: None,
+            upper_gen: 0,
+            upper_cache_gen: u64::MAX,
+            upper_cache_width: usize::MAX,
+            upper_cache_lines: Vec::new(),
+            #[cfg(test)]
+            upper_rebuild_count: 0,
         };
         root.install_completion_sources();
         root.sync_editor_border();
@@ -317,6 +332,7 @@ impl UiRoot {
     /// Replace the loaded-resources header snapshot (c1135).
     pub fn set_loaded_resources(&mut self, snap: LoadedResourcesSnapshot) {
         self.loaded_resources = snap;
+        self.bump_upper_gen();
     }
 
     /// Inject footer identity (cwd · model). Call before first render when known.
@@ -488,6 +504,7 @@ impl UiRoot {
         self.pending_session_resume_delete.take()
     }
 
+    #[cfg(test)]
     pub fn session_resume_panel_text_for_test(&self, width: usize) -> String {
         self.session_resume.render(width).join("\n")
     }
@@ -650,6 +667,7 @@ impl UiRoot {
     /// Push bridge UI model into status / footer; scrollback re-renders from model (c476).
     pub fn apply_ui_model(&mut self, model: &UiModel) {
         self.ui_model = model.clone();
+        self.bump_upper_gen();
 
         match model.status.as_ref() {
             Some(s) if !s.is_empty() => {
@@ -662,6 +680,10 @@ impl UiRoot {
         }
 
         self.refresh_footer_from_queue(model.queue.steer_count, model.queue.follow_up_count);
+    }
+
+    fn bump_upper_gen(&mut self) {
+        self.upper_gen = self.upper_gen.saturating_add(1);
     }
 
     fn refresh_footer_from_queue(&mut self, steer: usize, follow_up: usize) {
@@ -718,58 +740,16 @@ impl UiRoot {
     pub fn thinking_level_for_test(&self) -> ThinkingLevel {
         self.thinking_level
     }
+
+    #[cfg(test)]
+    pub fn upper_rebuild_count_for_test(&self) -> u64 {
+        self.upper_rebuild_count
+    }
 }
 
 impl Default for UiRoot {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl Component for UiRoot {
-    fn render(&mut self, width: usize) -> Vec<String> {
-        let mut lines = Vec::new();
-        lines.extend(self.render_loaded_resources_slot(width));
-        lines.extend(self.render_scrollback_slot(width));
-        // Queue strip sits between transcript and status (pi morphology).
-        lines.extend(self.render_queue_slot(width));
-        lines.extend(self.render_status_slot(width));
-        // Editor owns the operation-zone ─ borders (DESIGN editor.md / agent_demo).
-        // Do NOT wrap with a second outer border pair.
-        lines.extend(self.render_editor_slot(width));
-        let footer = if width == 0 {
-            self.footer.text().to_string()
-        } else {
-            truncate_to_width(self.footer.text(), width, "...", true)
-        };
-        lines.push(footer);
-        lines
-    }
-
-    fn handle_input(&mut self, event: InputEvent) {
-        self.handle_slot_input(event);
-    }
-
-    fn invalidate(&mut self) {
-        self.status_loader.invalidate();
-        self.editor.invalidate();
-        self.footer.invalidate();
-        self.tree.invalidate();
-        self.models_list.invalidate();
-        self.import_confirm_list.invalidate();
-        self.session_resume.invalidate();
-    }
-
-    fn tick(&mut self) -> bool {
-        let mut dirty = self.editor.tick();
-        if self.status_busy {
-            let interval = self.status_loader.interval_ms() as u128;
-            if self.loader_last_tick.elapsed().as_millis() >= interval {
-                dirty = Component::tick(&mut self.status_loader) || dirty;
-                self.loader_last_tick = Instant::now();
-            }
-        }
-        dirty
     }
 }
 

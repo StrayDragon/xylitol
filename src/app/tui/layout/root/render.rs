@@ -1,6 +1,8 @@
 //! Slot render helpers for UiRoot (c1170).
 
-use xylitol_tui::Component;
+use std::time::Instant;
+
+use xylitol_tui::{Component, InputEvent, truncate_to_width};
 
 use super::super::session_tree::{tree_help_line, tree_search_line, wrap_help_line};
 use super::super::slots::EditorSlot;
@@ -97,5 +99,65 @@ impl UiRoot {
     pub(super) fn render_scrollback_slot(&mut self, width: usize) -> Vec<String> {
         // Idle empty: 0 rows (DESIGN editor.md — no loud placeholder wall).
         render_scrollback(&self.ui_model, self.glyphs, self.theme, self.fold, width)
+    }
+}
+
+impl Component for UiRoot {
+    fn render(&mut self, width: usize) -> Vec<String> {
+        let mut lines = Vec::new();
+        if self.upper_cache_width == width && self.upper_cache_gen == self.upper_gen {
+            lines.extend(self.upper_cache_lines.iter().cloned());
+        } else {
+            let mut upper = Vec::new();
+            upper.extend(self.render_loaded_resources_slot(width));
+            upper.extend(self.render_scrollback_slot(width));
+            // Queue strip sits between transcript and status (pi morphology).
+            upper.extend(self.render_queue_slot(width));
+            self.upper_cache_width = width;
+            self.upper_cache_gen = self.upper_gen;
+            self.upper_cache_lines = upper.clone();
+            #[cfg(test)]
+            {
+                self.upper_rebuild_count = self.upper_rebuild_count.saturating_add(1);
+            }
+            lines.extend(upper);
+        }
+        lines.extend(self.render_status_slot(width));
+        // Editor owns the operation-zone ─ borders (DESIGN editor.md / agent_demo).
+        // Do NOT wrap with a second outer border pair.
+        lines.extend(self.render_editor_slot(width));
+        let footer = if width == 0 {
+            self.footer.text().to_string()
+        } else {
+            truncate_to_width(self.footer.text(), width, "...", true)
+        };
+        lines.push(footer);
+        lines
+    }
+
+    fn handle_input(&mut self, event: InputEvent) {
+        self.handle_slot_input(event);
+    }
+
+    fn invalidate(&mut self) {
+        self.status_loader.invalidate();
+        self.editor.invalidate();
+        self.footer.invalidate();
+        self.tree.invalidate();
+        self.models_list.invalidate();
+        self.import_confirm_list.invalidate();
+        self.session_resume.invalidate();
+    }
+
+    fn tick(&mut self) -> bool {
+        let mut dirty = self.editor.tick();
+        if self.status_busy {
+            let interval = self.status_loader.interval_ms() as u128;
+            if self.loader_last_tick.elapsed().as_millis() >= interval {
+                dirty = Component::tick(&mut self.status_loader) || dirty;
+                self.loader_last_tick = Instant::now();
+            }
+        }
+        dirty
     }
 }
