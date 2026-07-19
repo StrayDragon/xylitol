@@ -1,20 +1,20 @@
 kind: llman.sdd.spec
 name: "layer-architecture"
-purpose: "分层与 arch_guard、Xy 精选导出、嵌入缝与组件粒度：domain / runtime_protocol / agent / infra / protocol / app。"
+purpose: "分层与 seam、Xy 精选导出、嵌入缝与组件粒度：domain / runtime_protocol / agent / infra / protocol / app（单 crate；不用源码 grep 元测试卡写法）。"
 valid_scope[3]: src/,tests/,src/AGENTS.md
 requirements[32]{req_id,title,statement}:
   la1,核心层,"System MUST 提供基础 domain/ 层承载领域词汇类型（AgentMessage、ModelKind、XyChunk 及两层以上消费的纯数据类型，如 SessionEntry 变体、SourceInfo、SkillInfo、PromptTemplate、CompactionSettings、AgentLifecycleEvent）。System MUST 提供独立 runtime_protocol/ 层承载 trait 契约（XyModel、XyTool、SessionStore、EventSink、SandboxEngine、BashExecutor、SecretResolver、ResourceLoader、TrustStore、ExportIo），使各层无需为引用共享数据类型或声明端口而 import crate::infra。"
-  la2,向下依赖,"infra/ 模块 MUST NOT import 任何 crate::agent 符号；agent/ 模块 MUST NOT import 任何具体 infra/ 类型（仅经 runtime_protocol）；app/ 模块 MUST NOT import crate::agent 或 crate::infra，除文档化缝：组合根 app/cli/、app/server/、app/core/composition.rs（可 import 二者），以及 app/core/driver.rs（仅可 import crate::agent 的 mod 级导出且 per la11 MUST NOT import crate::infra）。domain/ MUST 零 crate:: 内部依赖；runtime_protocol/ MUST 仅依赖 domain/。"
-  la3,arch_guard,"System MUST 经 guard 测试强制：src/infra 下无文件 import crate::agent。"
+  la2,向下依赖,"infra/ 模块 MUST NOT import 任何 crate::agent 符号；agent/ 模块 MUST NOT import 任何具体 infra/ 类型（仅经 runtime_protocol）；应用面（cli 渲染子路径、tui、非组合根的 app 模块）MUST NOT import crate::infra 或 agent 子模块内部，MUST 经 app/core seam（composition / Driver / bootstrap / dispatch）与 crate::agent 的 mod 级导出。组合根 app/cli/、app/server/、app/core/composition.rs 可同时 import agent 与 infra 做装配。InProcessDriver MAY 调用文档化的表面 infra（trust / clipboard / 必要 config 读）；MUST NOT 成为第二套组合根去构造 provider/session 工具集。domain/ MUST 零 crate:: 内部依赖；runtime_protocol/ MUST 仅依赖 domain/。分层靠 AGENTS + review + 缝行为测保障，MUST NOT 要求源码 grep 元测试。"
+  la3,infra 不依赖 agent,"src/infra 下 MUST NOT 有生产代码 import crate::agent；由约定与审查保障，MUST NOT 要求独立 arch_guard 测试模块。"
   la4,app 层命名,app/ 表面目录 MUST 含全部用户入口：cli/、server/、tui/、gui.rs；跨面缝（composition、driver）MUST 位于 app/core/。print 模式 MUST 位于 app/cli/ 作为 CLI 子模式，而非顶层 app 模块。
   la5,protocol 模块,System MUST 提供 protocol/ 模块作为 client↔core 交互 SSOT：Command 枚举（client→core）、Event 枚举（core→client）、响应信封与错误码。
   la6,server 在 app 下,"System MUST 在 src/app/server/ 提供 app::server 模块，托管 agent + infra 运行时并经 REST（/api/v1）与 WebSocket 暴露 protocol/；server MUST 强制单实例锁。"
   la7,运行时归属,"全部运行时（provider、tool、session storage、exec-env、bash executor、secret resolution、resource loader、export I/O）MUST 位于 infra/；agent/ MUST 仅以 Arc<dyn Port> 在组合根从 runtime_protocol/ 注入持有；agent/ MUST NOT 直接调用 infra 构造器或借用 infra exec 原语。"
   la8,agent 独立性,"Agent（能力聚合体）构造器 MUST NOT 要求 Session、MUST NOT 持有 session_id、MUST NOT 依赖 Session 持久化生命周期；session_id 为 app 层绑定的 SessionStore 查询键。"
-  la9,arch_guard 扩展,"架构 guard MUST 经 guard 测试（src/tests.rs::arch_guard）强制：无 infra 文件 import crate::agent；无 agent 文件经生产代码全扫描 import 任何具体 crate::infra 类型；无 app 文件 import crate::agent 或 crate::infra（除文档化缝 app/cli/、app/server/、app/core/composition.rs、app/core/driver.rs）；扫描范围 MUST 与 la2 调和。"
+  la9,分层保障方式,"分层不变量（la2）MUST 经 src/AGENTS.md、write-surface 流程与缝/行为测试保障；System MUST NOT 要求 src/tests.rs::arch_guard 或等价源码 grep 元测试作为强制闸。"
   la10,NOTE 约定,"刻意简化 MUST 以工具无关注释标记：'// NOTE: <what>. ceiling: <when it breaks>. upgrade: <trigger>.'，便于 grep 与清理。"
-  la11,arch_guard app,"架构 guard MUST 验证 app/ 模块（除文档化缝 app/cli/、app/server/、app/core/composition.rs、app/core/driver.rs）不 import crate::agent 或 crate::infra；app/core/driver.rs MUST 额外验证无 crate::infra import。"
-  la12,arch_guard 允许列表,System MUST 维护 arch_guard 内既有 agent→infra import 违规的文档化允许列表；每项 MUST 引用将移除它的后续变更 id；允许列表外任何新增 agent→infra 生产 import MUST 使 guard 失败。
+  la11,Driver 表面缝,"app/core/driver.rs 的 InProcessDriver MAY import 文档化表面 infra（trust / clipboard / 必要 config）；应用面仍 MUST NOT reach infra。Driver MUST NOT 替代 composition 做完整 agent+工具装配。"
+  la12,禁止 arch_guard 回归,"System MUST NOT 恢复以扫描 import 路径为手段的 arch_guard 测试模块；新增分层约束优先写成缝行为测或 AGENTS 约定。"
   la13,agent 薄且无展示,agent/ MUST NOT 托管纯展示或用户指引逻辑（如静态帮助文本或消息格式化）；此类逻辑 MUST 位于 app/（客户端表面），agent/ MUST 仅含编排循环、hook 点与编排状态。
   la14,禁止 core 重命名 shim,"System MUST NOT 保留 pub use domain as core 向后兼容 shim；全部调用点 MUST 一次性更新为 crate::domain。"
   la15,app composition,"System MUST 提供 app::core::composition 模块，从 BuildAgentOptions 集中构造完整接线的 Agent，使 CLI、Server 与 TUI 不重复 Agent 接线代码。"

@@ -9,20 +9,20 @@
     那么 两层均从 crate::domain 导入且 runtime_protocol 从 crate::runtime_protocol 导入
 
   @req:la2
-  场景: app-layer-isolated
-    当 src/app/core/driver.rs 新文件 import crate::infra::tools::BashTool
-    那么 架构 guard 失败并报告违规
+  场景: app-layer-via-seam
+    当 应用面需要工具或会话能力
+    那么 经 app/core Driver 或 composition 缝，而非直接 import crate::infra 生产类型
 
   @req:la2
   场景: composition-root-allowed
     当 src/app/core/composition.rs 文件 import crate::infra::tools::default_tools
-    那么 架构 guard 允许为文档化组合根
+    那么 允许为文档化组合根
 
   @req:la3
-  场景: guard-catches-violation
-    假如 src/infra 新文件添加 use crate::agent::session
-    当 架构 guard 运行
-    那么 guard 失败并报告违规文件路径
+  场景: infra-no-agent-import
+    假如 审查 src/infra 生产代码
+    当 查找 crate::agent 引用
+    那么 无生产 import；由约定与审查保障而非 arch_guard 元测试
 
   @req:la4
   场景: app-dir-exists
@@ -53,9 +53,9 @@
     那么 指 Agent 能力聚合体构造器且仍禁止要求 Session 或持有 session_id
 
   @req:la9
-  场景: guard-scans-app
-    当 文档化缝外 app/ 新文件 import crate::agent
-    那么 架构 guard 失败并报告违规文件路径
+  场景: no-source-grep-arch-guard
+    当 审查 src/tests.rs
+    那么 不存在 arch_guard 模块或以扫描 import 路径为手段的分层元测试
 
   @req:la10
   场景: note-greppable
@@ -64,15 +64,15 @@
     那么 行含 '// NOTE: ... ceiling: ... upgrade: ...' 且可 grep
 
   @req:la11
-  场景: driver-is-clean
-    当 扫描 app/core/driver.rs 的 infra import
-    那么 不含 crate::infra import
+  场景: driver-surface-infra-ok
+    当 审查 InProcessDriver 的 trust 或 clipboard 路径
+    那么 允许经 Driver 调表面 infra；应用面仍不直接 import infra
 
   @req:la12
-  场景: allowlist-blocks-new-violations
-    假如 agent 文件添加允许列表外的新 crate::infra import
-    当 guard 运行
-    那么 构建失败且消息指明文件不在允许列表
+  场景: no-arch-guard-regression
+    假如 提议用源码 grep 恢复分层闸
+    当 对照 la9/la12
+    那么 MUST 拒绝；改用缝行为测或 AGENTS 约定
 
   @req:la13
   场景: auth-guidance-not-in-agent

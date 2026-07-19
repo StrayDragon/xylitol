@@ -5,7 +5,8 @@
 //!
 //! Note: do **not** hold [`LocalParentGuard`] across `.await` in the ReAct
 //! `async_stream` (guard is `!Send`). `fastrace-futures::in_span` sets local
-//! parent only during sync `poll_next`. Must not import `crate::infra` (arch_guard).
+//! parent only during sync `poll_next`. Must not import `crate::infra` (agent
+//! stays on ports / bridge; see `src/AGENTS.md`).
 
 use std::pin::Pin;
 
