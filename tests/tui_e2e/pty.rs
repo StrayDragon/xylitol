@@ -617,23 +617,28 @@ fn pty_product_fake_session_tree_opens_search_help() {
         .expect("Fake reply");
 
     // Empty editor, then double Esc within the product window.
+    // Tall welcome/skills + differential CSI leaves CapturedScreen stale (no
+    // scroll-region); assert via raw PTY like labeled/branched tree open.
     session.send_keys("\x15").expect("clear editor");
     session.drain(Duration::from_millis(100));
     session.send_keys("\x1b").expect("Esc 1");
     session.drain(Duration::from_millis(80));
     session.send_keys("\x1b").expect("Esc 2");
 
-    let screen = session
-        .wait_for("Type to search", Duration::from_secs(15), COLS, ROWS)
-        .expect("tree Search row");
-    let text = screen.text();
+    session
+        .wait_for_raw("Type to search", Duration::from_secs(15))
+        .expect("tree Search row in PTY stream");
     assert!(
-        text.contains("fold/unfold") || text.contains("filters") || text.contains("cycle"),
-        "TreeHelp should show fold/unfold or filters/cycle; screen:\n{text}"
+        session.raw_contains(b"fold/unfold")
+            || session.raw_contains(b"filters")
+            || session.raw_contains(b"cycle"),
+        "TreeHelp should show fold/unfold or filters/cycle in raw PTY"
     );
     assert!(
-        text.contains("Session tree") || text.contains("hi") || text.contains("Hello"),
-        "tree should show session content; screen:\n{text}"
+        session.raw_contains(b"Session tree")
+            || session.raw_contains(b"hi")
+            || session.raw_contains(b"Hello"),
+        "tree should show session content in raw PTY"
     );
 
     session.send_keys("\x1b").expect("Esc close tree");
@@ -705,12 +710,14 @@ fn pty_product_fake_session_tree_branched() {
     session.send_keys("\x1b").expect("dismiss completion");
     session.drain(Duration::from_millis(100));
     session.send_keys("\r").expect("submit debug scene");
+    // Tall branched fixture scrolls the system note off the cell-grid oracle;
+    // assert via raw PTY (same rationale as Type to search below).
     session
-        .wait_for("debug scene", Duration::from_secs(20), COLS, ROWS)
-        .expect("debug scene note");
+        .wait_for_raw("debug scene", Duration::from_secs(20))
+        .expect("debug scene note in PTY stream");
     session
-        .wait_for("alt leaf", Duration::from_secs(15), COLS, ROWS)
-        .expect("fixture alt leaf in scrollback");
+        .wait_for_raw("alt leaf", Duration::from_secs(15))
+        .expect("fixture alt leaf in PTY stream");
 
     // Same open path as labeled (c705): empty editor + double Esc.
     // Assert via raw bytes: tall fixture scrollback desyncs CapturedScreen
