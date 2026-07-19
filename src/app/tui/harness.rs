@@ -1,7 +1,7 @@
 //! c485 synthetic vertical-slice harness — ScriptedDriver + host/driver pump.
 //!
 //! Only compiled in unit tests (`cfg(test)`). Stays inside `app/tui` and talks
-//! to the core solely via [`crate::app::core::driver::Driver`] (arch_guard).
+//! to the core solely via [`crate::app::core::driver::Driver`] (layering seam).
 
 use std::collections::HashMap;
 use std::collections::VecDeque;

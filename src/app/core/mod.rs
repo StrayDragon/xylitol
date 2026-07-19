@@ -18,8 +18,9 @@
 //!   `protocol::Command` variants to [`driver::Driver`] method calls.
 //!   Consumed by tui (spec ce10).
 //! - [`driver`] — the runtime boundary (`Driver` trait + `InProcessDriver`/
-//!   `RemoteDriver`). It imports `agent` (mod-level) only (never `infra`, per
-//!   la11); every surface depends on this, never on `agent` internals.
+//!   `RemoteDriver`). Surfaces depend on this, never on `agent` internals.
+//!   `InProcessDriver` MAY call documented surface infra (trust / clipboard /
+//!   config read); full agent+tool assembly stays in `composition`.
 
 pub(crate) mod bootstrap;
 pub(crate) mod composition;

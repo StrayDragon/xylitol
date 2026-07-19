@@ -17,8 +17,8 @@ requirements[23]{req_id,title,statement}:
   ar10,"abort-queue-semantics",abort MUST 清空 steer、保留 follow_up；MUST 取消当前 run CancellationToken 与进行中工具/交互 bash；MUST NOT 仅靠无人订阅的 EventBus 旁路传队列状态。
   ar11,"abort-resets-token",每次 run 开始 MUST 安装新 CancellationToken；abort 后下一次 run MUST NOT 因沿用已取消 token 立刻 aborted。
   ar12,"abort-cancels-provider-stream","模型流进行中 abort MUST 停止 poll 并 drop provider stream，以 aborted 结束；应用面 MUST 经 Driver::abort。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`），并复用既有 abort step 词表。"
-  ar13,"no-rloop-name","src/ MUST NOT 使用 r#loop 标识符；循环模块名为 runtime::react。由 arch_guard / 代码审查保障，MUST NOT 单独扩 BDD step。"
-  ar14,"facade-removed","MUST NOT 恢复 agent::facade 中枢；AgentRuntime / AgentCapabilities 由 agent/mod 再导出；app 禁止 reach agent::runtime / agent::session 内部。由 arch_guard 保障，MUST NOT 单独扩 BDD step。"
+  ar13,"no-rloop-name","src/ MUST NOT 使用 r#loop 标识符；循环模块名为 runtime::react。由约定与代码审查保障，MUST NOT 单独扩 BDD step。"
+  ar14,"facade-removed","MUST NOT 恢复 agent::facade 中枢；AgentRuntime / AgentCapabilities 由 agent/mod 再导出；app 禁止 reach agent::runtime / agent::session 内部。由 AGENTS + write-surface 保障，MUST NOT 单独扩 BDD step。"
   ar15,"unknown-event-degrade",应用面/bridge 对未识别 XyEvent 变体 MUST 降级（日志），MUST NOT panic。由 protocol 单元测试覆盖。
   ar16,defaults,未显式配置时 MUST 有可测默认：thinking level、max_iterations、compaction 频率等集中定义。由单元测试覆盖。
   ar17,"cwd-validate",创建/导入会话时 MUST 校验工作目录可访问，失败返回含路径的错误。由 session 单元测试覆盖。

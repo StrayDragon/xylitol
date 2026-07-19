@@ -135,8 +135,8 @@ impl LoadedResourcesSnapshot {
 }
 
 /// Re-export so Driver implementors under surfaces can name the return type
-/// without importing `crate::agent::session` directly (which arch_guard
-/// forbids for tui/). Surfaces reference this as
+/// without importing `crate::agent::session` directly (layering: surfaces use
+/// the Driver seam). Surfaces reference this as
 /// `crate::app::core::driver::SessionStats`.
 pub use crate::agent::session::{QueueStats, SessionStats};
 
@@ -184,7 +184,7 @@ pub fn estimate_from_session_entries(
 }
 
 /// Lifecycle events on [`EventStream`] — surfaces import via the Driver seam
-/// (not `crate::agent`), so arch_guard stays green for `app/tui`.
+/// (not `crate::agent`), keeping app/tui off agent internals.
 pub use crate::domain::lifecycle::XyEvent;
 
 #[cfg(feature = "server")]
