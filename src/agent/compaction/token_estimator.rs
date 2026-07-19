@@ -5,8 +5,7 @@ use xylitol_ai_bridge::dto::{
     AiBridgeImageContent, AiBridgeMessage, AiBridgePart, AiBridgeStopReason, AiBridgeUsage,
     AiBridgeUsageCost, Diagnostic as AiBridgeDiagnostic, TokenProvenance as AiBridgeProvenance,
 };
-use xylitol_ai_bridge::registry::TokenizerSource;
-use xylitol_ai_bridge::registry::resolve_tokenizer;
+use xylitol_ai_bridge::registry::{TokenizerSource, resolve_tokenizer_with_override};
 use xylitol_ai_bridge::tokenize::HfTokenizerCache;
 use xylitol_ai_bridge::tokenize::{BuiltinTokenizer, estimate_messages};
 
@@ -157,6 +156,8 @@ fn to_domain_provenance(p: AiBridgeProvenance) -> TokenProvenance {
 #[derive(Debug, Clone, Default)]
 pub struct EstimateOpts {
     pub model_id: Option<String>,
+    /// Config / CLI-derived override (c1380 `ModelEntry.tokenizer`).
+    pub tokenizer_override: Option<xylitol_ai_bridge::registry::TokenizerOverride>,
     /// When false (default), RemoteCount is skipped (must be explicitly enabled).
     pub allow_remote_count: bool,
     /// Injected RemoteCount result (tests / Anthropic count_tokens caller).
@@ -187,12 +188,13 @@ pub fn estimate_context_tokens_with(
     let bridge_stop = stop_reason.map(to_bridge_stop);
 
     let model_id = opts.model_id.clone();
+    let tok_over = opts.tokenizer_override.clone();
     let remote_tokens = opts.remote_count_tokens;
     let allow_remote = opts.allow_remote_count;
 
     let tokenizer_estimate: Option<Box<xylitol_ai_bridge::accounting::TokenizerEstimateFn>> =
         model_id.as_ref().and_then(|id| {
-            let source = resolve_tokenizer(id)?;
+            let source = resolve_tokenizer_with_override(id, tok_over.clone())?;
             Some(Box::new(move |msgs: &[AiBridgeMessage]| match &source {
                 TokenizerSource::Builtin(b) => estimate_messages(msgs, *b),
                 TokenizerSource::HuggingFace { repo, file } => {
@@ -202,6 +204,17 @@ pub fn estimate_context_tokens_with(
                             let s = serde_json::to_string(m).unwrap_or_default();
                             cache
                                 .encode_count_if_cached(repo, file, &s)
+                                .unwrap_or_else(|| BuiltinTokenizer::OpenAiCl100k.encode_count(&s))
+                        })
+                        .sum()
+                }
+                TokenizerSource::Local { path } => {
+                    let cache = HfTokenizerCache::new(None);
+                    msgs.iter()
+                        .map(|m| {
+                            let s = serde_json::to_string(m).unwrap_or_default();
+                            cache
+                                .encode_count_at_path(path, &s)
                                 .unwrap_or_else(|| BuiltinTokenizer::OpenAiCl100k.encode_count(&s))
                         })
                         .sum()
@@ -248,4 +261,40 @@ pub(crate) fn should_compact_by_reserve(
     }
     let threshold = context_window.saturating_sub(settings.reserve_tokens);
     context_tokens > threshold
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::message::AgentMessage;
+    use crate::domain::types::TokenProvenance;
+    use xylitol_ai_bridge::registry::TokenizerOverride;
+
+    #[test]
+    fn override_enables_local_tokenizer_for_unmapped_alias() {
+        let msgs = [AgentMessage::user("hello world")];
+        let without_over = estimate_context_tokens_with(
+            &msgs,
+            None,
+            None,
+            &EstimateOpts {
+                model_id: Some("qwen-custom".into()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(without_over.provenance, TokenProvenance::Heuristic);
+
+        let with_over = estimate_context_tokens_with(
+            &msgs,
+            None,
+            None,
+            &EstimateOpts {
+                model_id: Some("qwen-custom".into()),
+                tokenizer_override: Some(TokenizerOverride::Builtin),
+                ..Default::default()
+            },
+        );
+        assert_eq!(with_over.provenance, TokenProvenance::LocalTokenizer);
+        assert!(with_over.tokens > 0);
+    }
 }

@@ -1,7 +1,8 @@
 # Cloud Agent 与 Web 控制台
 
 > CS 架构的 self-host 分布式 cloud agent 类似物 + TypeScript 生态 Web 应用：一个前端管控多工作区，并预留与 Cursor Agent 模式协同。
-> 现状对齐：2026-07-17。
+> 现状对齐：2026-07-20。
+> Inspect：**独立检视页可先于**本篇全日用控制台；见 [出口流量检视.md](./出口流量检视.md)。
 
 ## 用户怎么碰到
 
