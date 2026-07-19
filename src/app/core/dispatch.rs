@@ -16,16 +16,13 @@
 //! correlation handle; dispatch ignores it and
 //! lets the caller extract/echo it around the dispatch call.
 //!
-//! NOTE: dispatch is consumed by server REST (c550) and will be by tui slash.
+//! NOTE: dispatch is consumed by server REST and tui slash/effects.
 //! Under default features without `server`/`tui` the dispatcher still appears
-//! lightly used; unit tests cover it.
+//! lightly used; unit tests cover it. `DispatchOutcome` payloads are allowed
+//! for dead_code at the enum (feature-gated readers).
 //!
-//! Outcome payload fields (Bash result, export paths, session entries, ...) are
-//! read by callers as they wire up the corresponding slash commands; only
-//! `/model` is wired today. ceiling: many outcome fields unread. upgrade: tui
-//! exposes `/compact` `/export` etc. (c355).
-
-#![allow(dead_code)]
+//! Outcome payload fields are read by server REST and tui slash wiring
+//! (`/model`, `/compact`, `/export`, …).
 
 use std::path::PathBuf;
 
@@ -38,8 +35,12 @@ use crate::runtime_protocol::XyBashResult;
 /// The result of executing a (non-Prompt, non-Quit, non-WS) Command.
 ///
 /// Callers translate this into their transport-specific response shape
-/// (tui's inline message, ...).
+/// (tui's inline message, server REST JSON, ...).
+///
+/// Payload fields are matched under `server` / tui feature paths; default
+/// `cargo build` may not see those reads — allow here instead of module-wide.
 #[derive(Debug)]
+#[allow(dead_code)] // fields read by server REST + tui slash (feature-gated)
 pub enum DispatchOutcome {
     /// `Abort` — whether an active loop was actually cancelled.
     Aborted { cancelled: bool },
@@ -279,7 +280,6 @@ mod tests {
 
     /// A stub Driver that records calls and returns canned responses, so the
     /// dispatcher's Command→method mapping can be asserted without an agent.
-    #[allow(dead_code)]
     struct StubDriver {
         thinking: ThinkingLevel,
         session_id: Option<String>,
