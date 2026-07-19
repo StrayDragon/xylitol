@@ -1,119 +1,112 @@
 ---
 name: xylitol-inspect-runtime-logs
 description: >-
-  Token-efficient xylitol observability inspect: provider-trace.jsonl + xylitol.log.
-  Use for channel mix-ups, tool-stream lag, react lifecycle spans, or when the user
-  asks to check/tail/summarize traces. MUST run scripts/inspect_provider_trace.py
-  (or just obs-*) — never Read whole JSONL into context.
+  Token-efficient xylitol observability: provider-trace JSONL + level log.
+  Use for channel mix-ups, tool-stream lag, react lifecycle, empty-log health,
+  or staged obs baselines. MUST use inspect_provider_trace.py / just obs-* —
+  never Read whole JSONL or large logs into context.
 ---
 
 # xylitol 观测 / Inspect（省 token）
 
-**边界**：只做窄读与分组摘要；schema / 闸门 SSOT → `src/AGENTS.md` Provider、`infra-provider-trace`、c1265 design。
-**产品前瞻**：`docs/roadmaps/出口流量检视.md`（检视台）；进程内底座见 `docs/architecture/进程内观测.md`。
+**边界**：窄读与分组摘要。闸门/schema SSOT → `src/AGENTS.md`（Provider / 观测）与 `app/cli/logging.rs`。
+**产品前瞻**：检视台在 roadmaps；进程内底座在 `docs/architecture/进程内观测.md`。
 
 ## 硬约束（agent）
 
-1. **MUST** 用下方 CLI / `just obs-*`；**MUST NOT** `Read`/`Cat` 整份 `provider-trace.jsonl` 或大段 log。
-2. 单次工具输出 **≤ ~40 行**；需要细节再换子命令 + 过滤。
-3. 结论只引用：`request_id`、`turn_id`、`kind`、`event`/`variant`、`lag_ms`、lifecycle 名；**勿**贴完整 SSE `text`。
-4. 人类要看时间线 UI → 推荐节；**不要**为「好看」在会话里展开 JSONL。
+1. **MUST** 用 `just obs-*` 或 `scripts/inspect_provider_trace.py`；**MUST NOT** 整文件 `Read` JSONL/大 log。
+2. 单次工具输出 **≤ ~40 行**；再深挖时换子命令 + 过滤。
+3. 结论只引用：`request_id`、`turn_id`、`kind`、`event`/`variant`、`lag_ms`、lifecycle 名；**勿**贴完整 SSE 正文。
+4. 路径用下方 **发现规则**，勿在回复/新文档里写死某一用户 home。
 
-## 默认路径
+## 路径发现（勿写死）
 
-| 文件 | 用途 |
-|------|------|
-| `~/.xylitol/logs/provider-trace.jsonl` | raw / mapped / lifecycle（`xylitol.provider_trace.v1`） |
-| `~/.xylitol/logs/xylitol.log` | `log` 级别（另用 `tail`/`rg`，勿整文件 Read） |
+运行时文件在 **`{agent_dir}/logs/`**：
 
-闸门：debug 默认开；release → `XYLITOL_PROVIDER_TRACE=1`；**永不** stdout/stderr 毁 TUI。
+| 文件 | 写入方 |
+|------|--------|
+| `provider-trace.jsonl` | fastrace `FileTraceReporter`（与 `log` 无关） |
+| `xylitol.log` | `env_logger` 文件 sink（`init_logging`） |
 
-## 分组工具（首选）
+**解析 `agent_dir`（按优先级）**：
 
-全局过滤（放在子命令**前**；`just` 薄封装不传过滤，需过滤时直接调 python）：
+1. 用户/会话已给出的 agent 数据目录
+2. 环境覆盖（若有项目约定的 `XYLITOL_*` / 自定义 `HOME`——E2E 常用临时 `HOME`）
+3. 代码默认：`DefaultResourceLoader::default_agent_dir()` → `$HOME/.xylitol`（实现见 `infra/resource`）
 
-| 过滤 | 例 |
-|------|-----|
-| `--since` | `30m` / `1h` / `90s` / `1h30m` |
-| `--request-id` | UUID |
-| `--turn-id` | c1265 `react.turn` |
-| `--trace-id` | fastrace hex |
+```bash
+# 示例：默认布局（仅当未另指定 agent_dir）
+LOG_DIR="${XYLITOL_AGENT_DIR:-$HOME/.xylitol}/logs"
+# 有自定义 agent_dir 时：LOG_DIR="$AGENT_DIR/logs"
+```
+
+`inspect_provider_trace.py` 默认同上；覆盖：`--path "$LOG_DIR/provider-trace.jsonl"`。
+
+**闸门**（`logging.rs`）：debug 构建默认开 log+trace；release 需 `RUST_LOG` / `XYLITOL_DEBUG=1`，或仅 `XYLITOL_PROVIDER_TRACE=1`（可只开 trace、不开级别日志）。**永不**写 stdout/stderr（保 TUI）。
+
+## 健康检查（空 log / 双通道）
+
+`trace` 与 `xylitol.log` **独立**：一边增长、另一边为空**不一定是产品 bug**。
+
+| 现象 | 先查 | 常见原因 |
+|------|------|----------|
+| log **0 字节**，trace 有数据 | `wc -c` / `stat` 两文件；是否刚被截断 | 人工/脚本 `>` 清空；或只开了 provider-trace |
+| log **不存在**，trace 有 | 闸门 | release + 仅 `XYLITOL_PROVIDER_TRACE=1`（`want_log=false` 不建 log） |
+| 两文件都不长 | `summary` | 观测未开；或写到**另一** `HOME`/`agent_dir`（测例临时目录） |
+| log 存在但不增长 | 复现一轮 + `tail` | `env_logger::try_init` 失败时文件可已创建却无常规写入——应出现 `env_logger init failed` 面包屑行（见 `logging.rs`） |
+
+复验级别日志：开闸后跑一轮短对话，再 `tail -n 20 "$LOG_DIR/xylitol.log"`（仍勿整文件 Read）。
+
+## 分组工具
+
+过滤放在子命令**前**（`just` 薄封装不传过滤时直接调 python）。
+
+`just` 的 `n` 为**位置参数**（`just obs-requests 8`），不要写 `n=8`。
 
 ```bash
 just obs-summary
 just obs-requests 8
 just obs-recent 40
 just obs-turns 8
-just obs-lag REQUEST_ID=…              # 默认最近 request
-just obs-lifecycle TURN_ID=…           # 或 REQUEST_ID
-just obs-channel REQUEST_ID=…
+just obs-lag                          # 或 REQUEST_ID=…
+just obs-lifecycle                    # 或 TURN_ID=… / REQUEST_ID=…
+just obs-channel
 
-# 带过滤（推荐 agent 直接用这条）
 python3 scripts/inspect_provider_trace.py --since 30m summary
+python3 scripts/inspect_provider_trace.py --path "$LOG_DIR/provider-trace.jsonl" summary
 python3 scripts/inspect_provider_trace.py --turn-id TID turns -n 8
 python3 scripts/inspect_provider_trace.py --request-id RID lag
-python3 scripts/inspect_provider_trace.py --path /other/trace.jsonl summary
 ```
-### 推荐排障顺序
 
-| 怀疑 | 命令顺序 |
-|------|----------|
-| 「有没有 trace / 开没开闸」 | `summary` → `requests` |
-| 工具意图晚于 args 流 | `lag`（必要时加 `REQUEST_ID`） |
-| c1265 span 有没有 | `turns` → `lifecycle`（需较新二进制：reporter 写入 name/phase/turn_id） |
+### 排障顺序
+
+| 怀疑 | 顺序 |
+|------|------|
+| 开没开闸 / 写到哪 | 健康检查 → `summary` → `requests` |
+| 工具意图晚于 args | `lag`（可加 `REQUEST_ID`） |
+| react span | `turns` → `lifecycle` |
 | thinking/text 通道混 | `channel` + 少量 `recent` |
-| 级别日志 | `tail -n 80 ~/.xylitol/logs/xylitol.log`（勿 Read 全文件） |
+| 级别日志 / TUI 埋点 | `tail -n 80 "$LOG_DIR/xylitol.log"` |
 
-## 人类：DuckDB 即席查询（可选）
+### 阶段性基线（可选）
 
-Agent **仍优先** `just obs-*`。人类本地探索可用 [DuckDB](https://duckdb.org/)（勿把大结果贴回 agent 会话）：
+需要「观测还活着」时跑一遍即可，勿灌全文：
 
-```sql
--- 启动: duckdb
-SELECT kind, count(*) AS n
-FROM read_json_auto(concat(getenv('HOME'), '/.xylitol/logs/provider-trace.jsonl'))
-GROUP BY 1 ORDER BY n DESC;
+1. 解析 `LOG_DIR` + 健康检查表
+2. `summary`（有 `schema` / kinds / 非零 request）
+3. `requests` + `turns` 各若干
+4. 最近一请求：`lag` + `channel`（text-only 无 tool lag 也算正常）
+5. `lifecycle`（按 turn；按 request 过滤可能为 0）
 
-SELECT request_id, count(*) AS n
-FROM read_json_auto(concat(getenv('HOME'), '/.xylitol/logs/provider-trace.jsonl'))
-WHERE kind IN ('raw','mapped')
-GROUP BY 1 ORDER BY n DESC LIMIT 10;
+报告只留：路径来源、文件大小/mtime 是否合理、各 probe 绿/黄/红一句。
 
--- 最近 30 分钟 lifecycle（需 name/phase 已落盘）
-SELECT name, phase, turn_id, ts_unix_ns
-FROM read_json_auto(concat(getenv('HOME'), '/.xylitol/logs/provider-trace.jsonl'))
-WHERE kind = 'lifecycle'
-  AND ts_unix_ns > (epoch_ns(now()) - 30*60*1e9)
-ORDER BY ts_unix_ns DESC
-LIMIT 40;
+## 人类可选（agent 仍优先脚本）
 
--- 某 request：raw args-delta vs mapped ToolCall*
-SELECT kind, event, variant, ts_unix_ns
-FROM read_json_auto(concat(getenv('HOME'), '/.xylitol/logs/provider-trace.jsonl'))
-WHERE request_id = 'REQUEST_ID_HERE'
-  AND (
-    (kind = 'raw' AND event LIKE '%function_call_arguments.delta%')
-    OR (kind = 'mapped' AND variant IN ('ToolCallStart','ToolCallDelta','ToolCallEnd'))
-  )
-ORDER BY ts_unix_ns
-LIMIT 50;
-```
+- DuckDB / `lnav`：对 **`$LOG_DIR/provider-trace.jsonl`** 即席查；勿把大结果贴回 agent。
+- 「漂亮时间线」→ roadmap OTel/Jaeger；当前产物是 **专用 JSONL**，不是 OTLP。
 
-## 人类友好查看（推荐）
+## agent 约定
 
-| 场景 | 推荐 | 说明 |
-|------|------|------|
-| **今天（JSONL 本地）** | 本脚本 + `just obs-*` | agent/人共用；最快、零依赖 |
-| JSONL 即席 SQL | DuckDB（上节） | 人类探索；agent 仍优先脚本摘要 |
-| 行级浏览 | `lnav` / VS Code JSONL | 人类；agent 勿整文件灌上下文 |
-| **Phase B+（标准时间线）** | Jaeger all-in-one + `fastrace-opentelemetry`（opt-in） | 浏览器火焰图；需另 change，默认关 |
-| LLM/agent 流水线 OTLP JSON | [WideScope](https://widescope.soumendrak.com/editor/) | 拖入 **OTLP/Jaeger JSON**；**不能**直接吃当前 v1 JSONL |
-| SaaS | Honeycomb / Grafana Tempo | 团队规模后再说；同样依赖 OTLP 导出 |
-
-**要点**：当前产物是 **专用 JSONL**，不是 OTLP。要「漂亮 UI」要么继续用脚本摘要，要么走 roadmap M6（opt-in OTel → Jaeger）。**禁止**为了 UI 默认开外部导出或打 stdout。
-
-## agent 友好约定
-
-- 先跑 **一个** 子命令，把 stdout **原样**贴给用户/推理，再决定下一步。
-- `lag` / `lifecycle` 已够结论时 **停止**，不要再 `recent -n 500`。
-- 用户说「打开 Jaeger」→ 说明需 Phase B OTel；短期用 `obs-*`。
+- 先跑 **一个** 子命令，stdout 原样用于推理，再决定下一步。
+- `lag` / `lifecycle` / 健康检查已够则 **停**，不要 `recent -n 500`。
+- 用户要 Jaeger → 说明需后续 OTel；短期用本 skill。

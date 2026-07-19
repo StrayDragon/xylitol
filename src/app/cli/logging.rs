@@ -39,7 +39,7 @@ pub fn init_logging(agent_dir: &Path) -> Option<()> {
         let log_path = log_dir.join("xylitol.log");
         let file = open_append(&log_dir, &log_path)?;
         let filter = level_filter();
-        let _ = env_logger::Builder::new()
+        match env_logger::Builder::new()
             .filter_level(log::LevelFilter::Warn)
             .parse_filters(&filter)
             .target(env_logger::Target::Pipe(Box::new(MutexWriter(Mutex::new(
@@ -55,12 +55,29 @@ pub fn init_logging(agent_dir: &Path) -> Option<()> {
                     record.args()
                 )
             })
-            .try_init();
-        log::info!(
-            target: "xylitol::logging",
-            "logging enabled path={}",
-            log_path.display()
-        );
+            .try_init()
+        {
+            Ok(()) => {
+                log::info!(
+                    target: "xylitol::logging",
+                    "logging enabled path={}",
+                    log_path.display()
+                );
+            }
+            Err(e) => {
+                // Another global logger already installed — leave a TUI-safe
+                // breadcrumb in the log file (never stdout/stderr).
+                if let Some(mut f) = open_append(&log_dir, &log_path) {
+                    let _ = writeln!(
+                        f,
+                        "xylitol::logging WARN env_logger init failed ({e}); \
+                         level log sink inactive; provider-trace may still run \
+                         under the same logs/ dir"
+                    );
+                    let _ = f.flush();
+                }
+            }
+        }
     }
 
     if want_provider {
