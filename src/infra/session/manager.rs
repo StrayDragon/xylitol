@@ -1117,7 +1117,16 @@ impl SessionManager {
             .await
     }
 
+    /// Pi runtime guard when the parent JSONL is not on disk yet.
+    pub const UNFLUSHED_FORK_ERR: &str = "This session has not been saved yet. Wait for the first assistant response before cloning or forking it.";
+
     /// Fork implementation (path-based; see [`crate::domain::session_types::ForkPosition`]).
+    ///
+    /// Aligns with pi `createBranchedSession`:
+    /// - Persisted parent with no file yet → reject ([`Self::UNFLUSHED_FORK_ERR`]).
+    /// - Strip label entries from the path and re-chain; recreate labels for targets on the path.
+    /// - Child path with no assistant → keep pending (no file) until first assistant append.
+    /// - Child path with assistant → flush to disk immediately.
     pub async fn fork_inner(
         &self,
         parent_id: &str,
@@ -1125,7 +1134,13 @@ impl SessionManager {
         at_entry_id: &str,
         position: crate::domain::session_types::ForkPosition,
     ) -> Result<(), String> {
-        use crate::domain::session_types::{ForkPosition, is_user_message};
+        use crate::domain::session_types::{ForkPosition, is_assistant_message, is_user_message};
+
+        if matches!(&self.backend, SessionBackend::Persisted { .. })
+            && !self.session_file_exists(parent_id)
+        {
+            return Err(Self::UNFLUSHED_FORK_ERR.into());
+        }
 
         let parent_entries = self.load(parent_id).await?;
         let selected = parent_entries
@@ -1150,10 +1165,13 @@ impl SessionManager {
             Some(leaf) => self.get_branch(parent_id, Some(leaf)).await?,
         };
 
-        // Re-chain parent_id along the path (keep original entry ids — pi style).
+        // Strip labels and re-chain (pi createBranchedSession).
         let mut rechanneled = Vec::with_capacity(path.len());
         let mut prev_id: Option<String> = None;
-        for entry in path {
+        for entry in &path {
+            if entry.entry_type() == "label" {
+                continue;
+            }
             let Some(eid) = entry.entry_id() else {
                 continue;
             };
@@ -1162,36 +1180,93 @@ impl SessionManager {
                 .map(|b| b.timestamp.as_str())
                 .unwrap_or("")
                 .to_string();
-            let rewritten = Self::clone_entry_with_ids(&entry, eid, prev_id.as_deref(), &ts);
+            let rewritten = Self::clone_entry_with_ids(entry, eid, prev_id.as_deref(), &ts);
             prev_id = Some(eid.to_string());
             rechanneled.push(rewritten);
         }
 
-        self.create(child_id, None, Some(parent_id)).await?;
-        // Persist header before body rows (append_with_id writes the file directly).
-        if matches!(&self.backend, SessionBackend::Persisted { .. }) {
-            self.flush_pending_to_disk(child_id).await?;
-        }
-
-        for entry in &rechanneled {
-            match &self.backend {
-                SessionBackend::Persisted { .. } => {
-                    self.append_with_id(child_id, entry).await?;
-                }
-                SessionBackend::InMemory { .. } => {
-                    let mut store = self.in_memory_store.write().expect("RwLock not poisoned");
-                    store
-                        .entry(child_id.to_string())
-                        .or_default()
-                        .push(entry.clone());
-                    if let Some(id) = entry.entry_id() {
-                        self.set_leaf(child_id, Some(id.to_string()));
-                    }
+        let path_ids: std::collections::HashSet<&str> =
+            rechanneled.iter().filter_map(|e| e.entry_id()).collect();
+        // Last label wins per target (same as build_session_tree).
+        let mut labels_by_target: HashMap<String, (Option<String>, String)> = HashMap::new();
+        for entry in &parent_entries {
+            if let SessionEntry::Label(l) = entry
+                && path_ids.contains(l.target_id.as_str())
+            {
+                if l.label.is_none() {
+                    labels_by_target.remove(&l.target_id);
+                } else {
+                    labels_by_target.insert(
+                        l.target_id.clone(),
+                        (l.label.clone(), l.base.timestamp.clone()),
+                    );
                 }
             }
         }
+        let mut label_targets: Vec<_> = labels_by_target.into_iter().collect();
+        label_targets.sort_by(|a, b| a.1.1.cmp(&b.1.1).then_with(|| a.0.cmp(&b.0)));
 
-        if let Some(last) = rechanneled.last().and_then(|e| e.entry_id()) {
+        let mut label_entries = Vec::with_capacity(label_targets.len());
+        let mut label_parent = rechanneled
+            .last()
+            .and_then(|e| e.entry_id())
+            .map(str::to_string);
+        for (target_id, (label, timestamp)) in label_targets {
+            let id = Uuid::new_v4().to_string();
+            label_entries.push(SessionEntry::Label(LabelEntry {
+                base: EntryBase {
+                    entry_type: "label".into(),
+                    id: id.clone(),
+                    parent_id: label_parent.clone(),
+                    timestamp,
+                },
+                target_id,
+                label,
+            }));
+            label_parent = Some(id);
+        }
+
+        let mut child_body = rechanneled;
+        child_body.extend(label_entries);
+
+        let parent_cwd = parent_entries.iter().find_map(|e| {
+            if let SessionEntry::Header(h) = e {
+                Some(h.cwd.as_str())
+            } else {
+                None
+            }
+        });
+        self.create(child_id, parent_cwd, Some(parent_id)).await?;
+
+        let has_assistant = child_body.iter().any(is_assistant_message);
+
+        match &self.backend {
+            SessionBackend::Persisted { .. } => {
+                if has_assistant {
+                    // Path includes assistant → write immediately (pi _rewriteFile).
+                    self.flush_pending_to_disk(child_id).await?;
+                    for entry in &child_body {
+                        self.append_with_id(child_id, entry).await?;
+                    }
+                } else {
+                    // No assistant → stay pending until first assistant append (pi deferred).
+                    let mut pending = self.pending_store.write().expect("RwLock not poisoned");
+                    pending
+                        .entry(child_id.to_string())
+                        .or_default()
+                        .extend(child_body.iter().cloned());
+                }
+            }
+            SessionBackend::InMemory { .. } => {
+                let mut store = self.in_memory_store.write().expect("RwLock not poisoned");
+                store
+                    .entry(child_id.to_string())
+                    .or_default()
+                    .extend(child_body.iter().cloned());
+            }
+        }
+
+        if let Some(last) = child_body.last().and_then(|e| e.entry_id()) {
             self.set_leaf(child_id, Some(last.to_string()));
         } else {
             self.set_leaf(child_id, None);
@@ -1959,6 +2034,150 @@ mod fork_path_tests {
         let after = tokio::fs::read(mgr.session_path(&parent_id)).await.unwrap();
         assert_eq!(before, after, "parent JSONL bytes must be identical");
         assert!(mgr.session_path(&child_id).exists());
+    }
+
+    #[tokio::test]
+    async fn unflushed_parent_rejects_fork() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        let parent = format!("parent-{}", uuid::Uuid::new_v4());
+        let child = format!("child-{}", uuid::Uuid::new_v4());
+        mgr.create(&parent, Some("."), None).await.unwrap();
+        // User only in pending — no JSONL yet.
+        mgr.append(&parent, &msg("u1", None, "user", "not flushed"))
+            .await
+            .unwrap();
+        assert!(!mgr.session_path(&parent).exists());
+
+        let err = mgr
+            .fork(&parent, &child, "u1", ForkPosition::At)
+            .await
+            .unwrap_err();
+        assert!(
+            err.contains("not been saved yet"),
+            "pi unflushed guard: {err}"
+        );
+        assert!(!mgr.session_path(&child).exists());
+    }
+
+    #[tokio::test]
+    async fn fork_user_only_path_defers_child_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        let (parent_id, child_id) = unique_pair();
+        mgr.create(&parent_id, Some("."), None).await.unwrap();
+        mgr.flush_pending_to_disk(&parent_id).await.unwrap();
+        mgr.append_with_id(&parent_id, &msg("u1", None, "user", "first"))
+            .await
+            .unwrap();
+        mgr.append_with_id(&parent_id, &msg("a1", Some("u1"), "assistant", "answer"))
+            .await
+            .unwrap();
+
+        // Fork At first user → path has no assistant → child stays pending.
+        mgr.fork(&parent_id, &child_id, "u1", ForkPosition::At)
+            .await
+            .unwrap();
+        assert!(
+            !mgr.session_path(&child_id).exists(),
+            "pi: no assistant on path → no child file yet"
+        );
+        let loaded = mgr.load(&child_id).await.unwrap();
+        let ids: Vec<_> = loaded.iter().filter_map(|e| e.entry_id()).collect();
+        assert_eq!(ids, vec!["u1"], "child pending body: {ids:?}");
+        assert!(
+            loaded
+                .iter()
+                .any(|e| matches!(e, SessionEntry::Header(h) if h.parent_session.as_deref() == Some(parent_id.as_str()))),
+            "header parent_session: {loaded:?}"
+        );
+
+        // First assistant on child flushes (deferred persist).
+        mgr.append(
+            &child_id,
+            &msg("a_new", Some("u1"), "assistant", "branched"),
+        )
+        .await
+        .unwrap();
+        assert!(mgr.session_path(&child_id).exists());
+        let flushed = mgr.load(&child_id).await.unwrap();
+        assert!(
+            flushed.iter().any(|e| e.entry_id() == Some("u1")),
+            "flushed keeps forked user: {flushed:?}"
+        );
+        assert!(
+            flushed.iter().any(
+                |e| matches!(e, SessionEntry::Message(m) if message_role_of(m) == Some("assistant"))
+            ),
+            "assistant present after flush: {flushed:?}"
+        );
+    }
+
+    fn message_role_of(m: &MessageEntry) -> Option<&str> {
+        m.message.get("role").and_then(|r| r.as_str())
+    }
+
+    #[tokio::test]
+    async fn fork_strips_path_labels_and_rebuilds_at_end() {
+        let mgr = SessionManager::in_memory();
+        let parent = "parent-labels";
+        let child = "child-labels";
+        mgr.create(parent, Some("."), None).await.unwrap();
+        for e in [
+            msg("u1", None, "user", "hello"),
+            msg("a1", Some("u1"), "assistant", "hi"),
+        ] {
+            let mut store = mgr.in_memory_store.write().expect("lock");
+            store.entry(parent.to_string()).or_default().push(e.clone());
+            if let Some(id) = e.entry_id() {
+                mgr.set_leaf(parent, Some(id.to_string()));
+            }
+        }
+        // Label targets u1; fork at a1 rebuilds label at end (pi createBranchedSession).
+        {
+            let mut store = mgr.in_memory_store.write().expect("lock");
+            store
+                .entry(parent.to_string())
+                .or_default()
+                .push(SessionEntry::Label(
+                    crate::domain::session_types::LabelEntry {
+                        base: EntryBase {
+                            entry_type: "label".into(),
+                            id: "lbl1".into(),
+                            parent_id: Some("a1".into()),
+                            timestamp: "t-lbl".into(),
+                        },
+                        target_id: "u1".into(),
+                        label: Some("checkpoint".into()),
+                    },
+                ));
+        }
+
+        mgr.fork(parent, child, "a1", ForkPosition::At)
+            .await
+            .unwrap();
+
+        let child_entries = mgr.load(child).await.unwrap();
+        let ids: Vec<_> = child_entries.iter().filter_map(|e| e.entry_id()).collect();
+        assert!(ids.contains(&"u1") && ids.contains(&"a1"), "{ids:?}");
+        assert!(
+            !ids.contains(&"lbl1"),
+            "original label id must not be copied: {ids:?}"
+        );
+        let labels: Vec<_> = child_entries
+            .iter()
+            .filter_map(|e| match e {
+                SessionEntry::Label(l) => Some((l.target_id.as_str(), l.label.as_deref())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(labels, vec![("u1", Some("checkpoint"))], "{labels:?}");
+        // Rebuilt label is after path; a1's parent must be u1 (not the old label).
+        let a1 = child_entries
+            .iter()
+            .find(|e| e.entry_id() == Some("a1"))
+            .unwrap();
+        assert_eq!(a1.parent_id(), Some("u1"));
     }
 }
 
