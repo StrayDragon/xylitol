@@ -93,6 +93,10 @@ impl Reporter for FileTraceReporter {
                     "tool_name",
                     "tool_id",
                     "span_role",
+                    // token.estimate (c1420 follow-up)
+                    "backend",
+                    "provenance",
+                    "tokens",
                 ] {
                     if let Some(v) = prop(&ev.properties, key) {
                         obj.insert(key.into(), Value::String(v.into()));
