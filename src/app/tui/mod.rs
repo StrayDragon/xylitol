@@ -88,7 +88,7 @@ impl std::error::Error for TuiPreflightError {}
 ///
 /// Planned extensions (still CLI-level, never after raw mode):
 /// - API key unresolved for the selected provider
-/// - `--tui` forced on a pipe without a PTY
+/// - `tui` verb / default TTY entry forced on a pipe without a PTY
 /// - (optional) unreachable `base_url` probe — keep off critical path unless requested
 pub fn preflight(driver: &dyn Driver) -> Result<(), TuiPreflightError> {
     use std::io::IsTerminal;
