@@ -370,11 +370,6 @@ impl ScriptedDriver {
         self.list_sessions_calls.load(Ordering::SeqCst)
     }
 
-    #[allow(dead_code)] // harness helper for model-picker scripts
-    pub fn set_available_models(&mut self, models: Vec<ModelInfo>) {
-        self.available_models = models;
-    }
-
     pub fn set_current_model(&mut self, model: ModelInfo) {
         self.model = model;
     }

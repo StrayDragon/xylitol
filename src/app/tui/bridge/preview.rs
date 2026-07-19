@@ -240,12 +240,6 @@ pub fn extract_display_diff(result: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-// Used to be for Diff summary; kept for edit-tool result shape.
-#[allow(dead_code)]
-pub(crate) fn extract_edit_path(result: &str) -> Option<String> {
-    extract_result_path(result)
-}
-
 /// True when header still has no real path slot (`edit ...`, bare `write`, etc.).
 pub(crate) fn preview_lacks_real_path(name: &str, preview: &str) -> bool {
     let prefixes = match name {

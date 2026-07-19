@@ -13,6 +13,6 @@ requirements[12]{req_id,title,statement}:
   rd8,Source 迁移,Skills、PromptTemplate、SlashCommandInfo MUST 使用统一 SourceInfo 类型。
   rd9,Scope 枚举,SourceScope MUST 支持 user、project、temporary 变体，对齐 pi。
   rd10,资源热重载,DefaultResourceLoader MUST 提供 reload（或实现 XyReloadable）：清空缓存后重新发现 context/prompts/skills/themes/SYSTEM/APPEND；失败诊断 MUST 可观察；reload MUST NOT 修改会话历史文件。
-  rd11,主题名发现,System MUST 能在 Trust 语义下列出已发现 theme 文件名（stem）；未信任 MUST NOT 列出项目 themes 目录条目。
+  rd11,主题名发现,System MUST 能在 Trust 语义下经 resource loader（get_themes 或等价）列出已发现 theme 文件名（stem）；未信任 MUST NOT 列出项目 themes 目录条目。应用面 MAY 仅暴露内建主题切换；发现能力 MUST 仍可由 loader 路径验证。
   rd12,Skills 发现与重载报告,System MUST 能在 Trust 语义下发现并列出已加载 skills（名与 scope）；提供 reload_skills（或等价）清空后重扫并返回 report（names/count；诊断可观察）；未信任 MUST NOT 列入项目 .xylitol/skills；reload MUST NOT 修改会话历史文件。
 scenarios[0]:

@@ -15,12 +15,9 @@
 //! (Subscribe/ApproveTool/AnswerQuestion) do NOT live here — they stay in
 //! `app::server::ws`.
 //!
-//! NOTE: many trait methods (compact/export_*/get_messages/...) are consumed
-//! only when the tui feature is on (via dispatch); under default features they
-//! appear unused. ceiling: never consumed without tui. upgrade: tui becomes
-//! default or another surface consumes dispatch.
-
-#![allow(dead_code)]
+//! NOTE: trait methods are consumed via dispatch under tui/server features.
+//! `RemoteDriver` is reserved for a remote thin-client surface (not constructed
+//! yet) — `dead_code` allow is on that type/impl, not this module.
 
 use std::path::Path;
 use std::pin::Pin;
@@ -1253,7 +1250,11 @@ impl Driver for InProcessDriver {
 ///
 /// Uses `reqwest` for control commands (prompt, abort, model, export, ...) and
 /// `tokio-tungstenite` for WebSocket event streaming.
+///
+/// 预留：独立远程薄端客户端接线后由该面 `RemoteDriver::new` 实例化；
+/// 落地条件：远程客户端应用面开闸。当前 Server 面用进程内 Driver，不构造本类型。
 #[cfg(feature = "server")]
+#[allow(dead_code)] // reserved remote thin-client surface; see doc above
 pub struct RemoteDriver {
     base_url: String,
     session_id: String,
@@ -1266,6 +1267,7 @@ pub struct RemoteDriver {
 }
 
 #[cfg(feature = "server")]
+#[allow(dead_code)] // reserved with RemoteDriver until thin client wires it
 impl RemoteDriver {
     /// Create a new RemoteDriver connected to `base_url`.
     ///
@@ -1963,6 +1965,7 @@ fn session_tree_kind_unimplemented(kind: SessionTreeKind) -> String {
     format!("session tree kind '{name}' is not implemented")
 }
 
+#[cfg(feature = "server")]
 fn urlencoding_loose(s: &str) -> String {
     s.replace(' ', "%20")
 }

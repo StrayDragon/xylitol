@@ -95,19 +95,25 @@
   @req:rd11
   场景: list-trusted
     假如 信任且项目 themes/foo.json 存在
-    当 discovered_theme_names
+    当 经 Trust 语义的 resource loader get_themes（项目 cwd）
     那么 列表含 foo
+
+  @req:rd11
+  场景: list-untrusted-themes
+    假如 未信任且仅项目有 themes/secret.json
+    当 经未信任语义的 loader（cwd 不指向项目）get_themes
+    那么 列表 MUST NOT 含 secret
 
   @req:rd12
   场景: list-trusted
     假如 信任且项目 skills 含 demo
-    当 discovered_skills 或 get_skills
+    当 get_skills 或 reload_skills
     那么 列表含 demo 且 scope 为 project
 
   @req:rd12
   场景: list-untrusted
     假如 未信任且仅项目有 skill
-    当 discovered_skills 或 get_skills
+    当 get_skills 或 reload_skills（未信任）
     那么 列表 MUST NOT 含该项目 skill
 
   @req:rd12
