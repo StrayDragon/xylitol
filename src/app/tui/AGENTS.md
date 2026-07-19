@@ -50,7 +50,7 @@
 
 - **视觉 SSOT**：`DESIGN.md` + `design/*`。三层：浏览器静图 / `just demo-tui` / 本目录生产。
 - **Specs**：`app-tui-*`（勿再堆单体 `app-tui`）。steer/follow-up 经 Driver 队列（c461），本面不持有 ReAct 队列。
-- **日志**：debug 默认写 `~/.xylitol/logs/xylitol.log`；`tail -f`；`RUST_LOG` / `XYLITOL_DEBUG=1`；埋点 `target: "xylitol::tui"`；禁止 `println!`。装配：`app/cli/logging.rs`。
+- **日志**：debug 默认写 `{agent_dir}/logs/xylitol.log`（默认 agent_dir 见 `DefaultResourceLoader::default_agent_dir`）；`RUST_LOG` / `XYLITOL_DEBUG=1`；埋点 `target: "xylitol::tui"`；禁止 `println!`。装配：`app/cli/logging.rs`。排障窄读：skill **`xylitol-inspect-runtime-logs`**。
 
 ## 验证
 
@@ -73,6 +73,6 @@
 | UX / token | `DESIGN.md` + `design/*` |
 | 包能力 / 五层测 | `packages/xylitol-tui/AGENTS.md`；`test-tui-harness` |
 | 新增应用面 | `write-surface` |
-| 排查 | `tail -f ~/.xylitol/logs/xylitol.log` |
+| 排查 | skill `xylitol-inspect-runtime-logs`（`just obs-*` / 级别 log `tail`；勿整文件灌上下文） |
 
 历史/分支 UX 以会话树为准；live 只进 scrollback。不做 Codex TranscriptView；不做 Settings/Plate 运行时改配置。
