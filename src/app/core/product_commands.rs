@@ -1,7 +1,7 @@
-//! Product slash command SSOT re-export for app surfaces (c1175 / arch_guard).
+//! Product slash command SSOT re-export for app surfaces (c1175 / seam).
 //!
 //! Lives under `app/core` so `app/tui` can use the catalog without importing
-//! `crate::agent` directly (see `tests::arch_guard::app_only_from_driver`).
+//! `crate::agent` internals (see `src/AGENTS.md` / write-surface).
 
 pub use crate::agent::prompt::product_commands::product_slash_commands;
 

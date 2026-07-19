@@ -16,13 +16,14 @@
 
 ## 分层不变量（normative）
 
-由 `src/tests.rs::arch_guard` 强制（代码是真值）：
+单 crate 逻辑分层：约定写在本文件，靠 review 与缝/行为测守住。**禁止**用源码 grep 元测试卡 import 路径；**不**为分层拆 crate（编译产物膨胀）。代码结构与 seam 行为仍是真值。
 
-- **组合根集中装配**：仅 `app/core/composition.rs` 与次级组合根 `app/cli/mod.rs`、`app/server/subcommand.rs` 可同时 import `agent` 与 `infra`。
-- **agent 不依赖 infra**；**infra 不依赖 agent**。
+- **组合根集中装配**：仅 `app/core/composition.rs` 与次级组合根 `app/cli/mod.rs`、`app/server/subcommand.rs`（及文档化的 `rpc` 等）可同时 import `agent` 与 `infra` 做装配。
+- **agent 不依赖 infra**；**infra 不依赖 agent**（经 `runtime_protocol` 端口）。
 - **domain** 零 crate 内依赖；**runtime_protocol** 只依赖 `domain`（可依赖已接受的契约级外部类型，见下「取消」）。
 - **应用面走 seam、不 reach 内部**：禁止 `agent::session::*` / `agent::runtime::*` / `infra::*`；只从 `crate::agent`（mod 级）与 `crate::app::core` import。共享 seam：`composition::build_agent` → `Driver::run(prompt)` → `XyEvent` 流 → 该面渲染；不够就扩 seam，不绕过。方法论：`write-surface` skill。
-- **流中改道（steer / follow-up）**：经 `Driver` 队列 API（c461），禁止应用面直接改 ReAct 内部队列。`abort` 清 steer、保留 follow_up（供 UI restore）。详见 archive `c461-expose-steer-followup-seam/design.md`。
+- **`InProcessDriver` 表面 infra**：trust / clipboard / 必要 config 读可在 Driver 内调 `infra`（面仍禁止 reach）。provider / session / 默认工具集装配仍归 `composition`。内部搬家以 seam 行为保持绿为准。
+- **流中改道（steer / follow-up）**：经 `Driver` 队列 API（c461），禁止应用面直接改 ReAct 内部队列。`abort` 清 steer、保留 follow_up（队列条可见；Alt+Up 还原编辑器）。详见 archive `c461-expose-steer-followup-seam/design.md`。
 
 ```text
 app → agent → runtime_protocol → domain
@@ -95,7 +96,7 @@ protocol ───────────────────────�
 - 观测栈：**仅 fastrace**（时间线）+ **`log`**（级别日志）；禁止 `tracing` / 双栈。外挂 MITM 提案已暂停：`llmanspec/do-not-read-me/c999-add-infra-provider-traffic-capture/`。
 - **读 trace 要省 token**：禁止整文件 `Read` JSONL/log；用 skill **`xylitol-inspect-runtime-logs`** → `scripts/inspect_provider_trace.py` / `just obs-*`（summary / lag / lifecycle / turns / channel；过滤 `--since` / `--turn-id` / `--request-id`）。
 
-## 跨层测试与守卫
+## 跨层测试
 
-- `arch_guard`；BDD（`tests/features` + `tests/bdd.rs`）；回归（`tests/regression/`）。
+- BDD（`tests/features` + `tests/bdd.rs`）；回归（`tests/regression/`）；应用面 / Driver 行为测。
 - 设计史：`llmanspec/changes/archive/<变更>/design.md`。

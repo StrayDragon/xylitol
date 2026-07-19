@@ -41,9 +41,9 @@ description: >-
 
 ```bash
 just obs-summary
-just obs-requests n=8
-just obs-recent n=40
-just obs-turns n=8
+just obs-requests 8
+just obs-recent 40
+just obs-turns 8
 just obs-lag REQUEST_ID=…              # 默认最近 request
 just obs-lifecycle TURN_ID=…           # 或 REQUEST_ID
 just obs-channel REQUEST_ID=…
@@ -54,7 +54,6 @@ python3 scripts/inspect_provider_trace.py --turn-id TID turns -n 8
 python3 scripts/inspect_provider_trace.py --request-id RID lag
 python3 scripts/inspect_provider_trace.py --path /other/trace.jsonl summary
 ```
-
 ### 推荐排障顺序
 
 | 怀疑 | 命令顺序 |

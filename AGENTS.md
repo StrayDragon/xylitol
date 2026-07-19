@@ -37,14 +37,14 @@
 
 ## 项目结构（分层地图）
 
-单 crate 分层架构，跨层依赖由 `src/tests.rs::arch_guard` 强制。分层不变量、各层职责、应用面状态的 SSOT 见 `src/AGENTS.md`；本表只给一行角色 + 关键约束。
+单 crate 分层（**不**拆 crate，避免编译产物膨胀）。跨层纪律写在 `src/AGENTS.md`，靠 review + 缝/行为测试守住——**不用**源码 grep 元测试卡 import 路径。下表只给一行角色；细节以 `src/AGENTS.md` 为准。
 
 | 层 | 角色 | 关键约束 |
 |---|---|---|
 | `domain/` | 纯领域词汇（`XyEvent` / 消息类型等） | 零 crate 内依赖 |
 | `runtime_protocol/` | agent↔infra 边界 traits（ports） | 只依赖 `domain/` |
-| `agent/` | 薄编排核心（ReAct 循环、session、model、tools 聚合） | 不依赖 `infra`（arch_guard 强制） |
-| `infra/` | 运行时域（provider adapter、工具实现、config、session 等） | 不依赖 `agent`（arch_guard 强制） |
+| `agent/` | 薄编排核心（ReAct 循环、session、model、tools 聚合） | 不依赖 `infra`（约定 + review） |
+| `infra/` | 运行时域（provider adapter、工具实现、config、session 等） | 不依赖 `agent`（约定 + review） |
 | `protocol/` | client↔core 线协议 SSOT（`Command`/`Event`） | 传输无关，只依赖 `domain/` |
 | `app/` | 应用面（`cli` print / `server` / `tui`）+ 跨面 seam（`core/`） | 走 seam 不 reach 内部，见 `src/app/AGENTS.md` |
 | `packages/xylitol-tui` | 通用 TUI 引擎与组件库（workspace 包） | 零引用主 crate；见该包 `AGENTS.md` |
@@ -121,5 +121,5 @@ SDD：`.agents/skills/llman-sdd-*`。应用面：`write-surface`、`audit-dead-c
 ### 维护习惯
 
 - 先问：这条六个月后是否仍真？会否随每个 PR 改？若否 → skill 或 handoff，不是 AGENTS。
-- 新增规则要有代码或 arch_guard 事实支撑；删过时规则，避免沉默腐烂。
+- 新增规则要有代码或可验证行为支撑；删过时规则，避免沉默腐烂。
 - 子文件变长时拆 skill，不要把根或子 AGENTS 写成百科。

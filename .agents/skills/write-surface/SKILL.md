@@ -42,7 +42,7 @@ composition::build_agent  →  InProcessDriver  →  Driver::run(prompt)
 
 - 面的新代码只允许 import：`crate::app::core::composition`、`crate::app::core::driver`（`Driver`/`InProcessDriver`/`RemoteDriver`）、`crate::agent`（mod 级：`AgentRuntime`/`AgentCapabilities`/`XyEvent`/`XyEventStream`/`AgentBuilder`）、`crate::protocol`、`crate::domain`。
 - 面**禁止** import：`crate::agent::session::*`、`crate::agent::runtime::*`、`crate::infra::*` 的任何子模块。唯一例外是组合根（`cli/mod.rs`、`server/subcommand.rs`、`rpc.rs`、`core/composition.rs`），它们在构造期注入具体 adapter。
-- `src/tests.rs::arch_guard` 会拦 `agent ↔ infra` 互引；但它拦不住「面 reach into agent 内部」，那是本 skill 的社会性规则，靠 review 把关。
+- 分层靠 `src/AGENTS.md` + review；面 reach-in 靠本 skill 社会性规则，**无** arch_guard 源码 grep 闸。
 
 ### 步骤 3 — 经 mode 分发接线，绝不绕过 seam
 
@@ -90,7 +90,7 @@ match app_mode {
 
 完成一个新面后：
 
-1. 跑 `just qa`，确认 `arch_guard` 与全测试通过。
+1. 跑 `just qa`，确认全测试通过。
 2. 在本面目录补/更新 `AGENTS.md`（参照 `src/app/tui/AGENTS.md` 的结构）。
 3. 若该面有复杂的交互组件（dialog/selector/输入框），补一个该面的 `DESIGN.md`（对标 kimi-code `write-tui/DESIGN.md`）作为单一真值源。
 4. 用 `/llman-sdd-propose` 把这次新增登记为一个变更，保持 specs 同步。
