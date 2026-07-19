@@ -80,9 +80,7 @@ impl PtySession {
         home_dir: &Path,
     ) -> std::io::Result<Self> {
         let mut cmd = CommandBuilder::new("cargo");
-        cmd.args([
-            "run", "--quiet", "--", "--trust", "--tui", "--model", "fake",
-        ]);
+        cmd.args(["run", "--quiet", "--", "--trust", "--model", "fake", "tui"]);
         cmd.cwd(env!("CARGO_MANIFEST_DIR"));
         cmd.env("TERM", "xterm-256color");
         cmd.env("HOME", home_dir);

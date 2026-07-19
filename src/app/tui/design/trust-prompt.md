@@ -13,7 +13,7 @@ components:
 # Trust prompt
 
 > Token 根源：`{colors.*}` → [`../DESIGN.md`](../DESIGN.md)。
-> **c490**：产品 `--tui` / 默认 TUI 入口在 bootstrap **之前**用包 `ChoicePrompt`（`Palette::dark().choice_prompt_theme()`）完成 Ask；**MUST NOT** `prompt_trust_options_stdio`。
+> **c490**：产品 `tui` / 默认 TUI 入口在 bootstrap **之前**用包 `ChoicePrompt`（`Palette::dark().choice_prompt_theme()`）完成 Ask；**MUST NOT** `prompt_trust_options_stdio`。
 
 ## MUST
 

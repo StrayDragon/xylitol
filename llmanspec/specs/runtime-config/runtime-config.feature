@@ -113,3 +113,21 @@
     假如 模型条目 tokenizer 为未知名且非 HF repo/路径/builtin
     当 加载配置
     那么 失败
+
+  @req:rc19
+  场景: local-tokenizer-default-off
+    假如 YAML 未设 token_estimate.local_tokenizer
+    当 加载配置
+    那么 local_tokenizer 闸为 off
+
+  @req:rc19
+  场景: local-tokenizer-on
+    假如 YAML 含 token_estimate.local_tokenizer: on
+    当 加载配置
+    那么 local_tokenizer 闸为 on
+
+  @req:rc19
+  场景: local-tokenizer-invalid-fails
+    假如 YAML 含 token_estimate.local_tokenizer: every_n
+    当 加载配置
+    那么 失败

@@ -63,6 +63,11 @@ pub enum HostEvent {
     Quit,
     /// Agent lifecycle event from `Driver::run` EventStream (c465).
     Xy(Box<XyEvent>),
+    /// Background footer token estimate finished (must not block input/render).
+    FooterTokens {
+        job_id: u64,
+        label: Option<String>,
+    },
 }
 
 /// Layout mode after applying size policy.
@@ -111,6 +116,11 @@ pub struct HostSession<T: Terminal> {
     /// Test-only: override `$VISUAL`/`$EDITOR` resolve (avoids process-wide env races).
     #[cfg(test)]
     external_editor_cmd_override: Option<Result<String, String>>,
+    /// Latest footer-token job generation (stale results discarded).
+    footer_token_gen: u64,
+    /// Background estimate results → host `select!` (production).
+    footer_token_tx: tokio::sync::mpsc::UnboundedSender<(u64, Option<String>)>,
+    footer_token_rx: tokio::sync::mpsc::UnboundedReceiver<(u64, Option<String>)>,
 }
 
 impl<T: Terminal> HostSession<T> {
@@ -134,6 +144,7 @@ impl<T: Terminal> HostSession<T> {
         // Soft pending paint — pi `start()` also uses soft `requestRender()`.
         // force=true would set the clear sentinel and wipe the screen on mount.
         tui.request_render(false);
+        let (footer_token_tx, footer_token_rx) = tokio::sync::mpsc::unbounded_channel();
         Self {
             tui,
             mode,
@@ -154,6 +165,9 @@ impl<T: Terminal> HostSession<T> {
             force_real_external_editor: false,
             #[cfg(test)]
             external_editor_cmd_override: None,
+            footer_token_gen: 0,
+            footer_token_tx,
+            footer_token_rx,
         }
     }
 
@@ -391,6 +405,30 @@ impl<T: Terminal> HostSession<T> {
         self.pending.take_footer_token_refresh()
     }
 
+    /// Allocate a generation id for a new background footer estimate job.
+    pub fn begin_footer_token_job(&mut self) -> u64 {
+        self.footer_token_gen = self.footer_token_gen.wrapping_add(1);
+        self.footer_token_gen
+    }
+
+    pub fn footer_token_tx(&self) -> tokio::sync::mpsc::UnboundedSender<(u64, Option<String>)> {
+        self.footer_token_tx.clone()
+    }
+
+    /// Poll one completed background estimate (non-blocking).
+    pub fn try_recv_footer_token(&mut self) -> Option<(u64, Option<String>)> {
+        self.footer_token_rx.try_recv().ok()
+    }
+
+    /// Await the next background footer estimate (production `select!`).
+    pub async fn recv_footer_token(&mut self) -> Option<(u64, Option<String>)> {
+        self.footer_token_rx.recv().await
+    }
+
+    pub fn footer_token_gen(&self) -> u64 {
+        self.footer_token_gen
+    }
+
     /// Push a system line into the UI model (slash errors, notes).
     pub fn push_system_note(&mut self, text: impl Into<String>) {
         self.ui_model
@@ -507,6 +545,13 @@ impl<T: Terminal> HostSession<T> {
                         self.pending.footer_token_refresh = true;
                     }
                     self.sync_ui_root_from_model();
+                    self.tui.request_render(false);
+                }
+            }
+            HostEvent::FooterTokens { job_id, label } => {
+                if job_id == self.footer_token_gen {
+                    self.set_footer_token_label(label);
+                    // Differential engine: only footer line should rewrite.
                     self.tui.request_render(false);
                 }
             }

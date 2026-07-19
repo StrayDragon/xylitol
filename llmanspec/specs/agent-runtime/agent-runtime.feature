@@ -75,3 +75,9 @@
     假如 注册匹配 bash 的 before 拒绝 hook
     当 运行 AgentRuntime 触发 bash
     那么 tool-error 回写且未执行
+
+  @req:ar23
+  场景: persist-done-usage
+    假如 mock 模型流以 Done 结束且携带非空 usage
+    当 运行 AgentRuntime 并检查会话持久化的 assistant 消息
+    那么 usage 字段非空且与 Done 一致

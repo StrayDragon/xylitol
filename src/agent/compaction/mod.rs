@@ -26,7 +26,9 @@ pub use file_ops::{
 };
 pub use llm_summarizer::{generate_summary, serialize_conversation};
 pub use settings::CompactionSettings;
-pub use token_estimator::{calculate_context_tokens, estimate_context_tokens};
+pub use token_estimator::{
+    EstimateOpts, calculate_context_tokens, estimate_context_tokens, estimate_from_session_entries,
+};
 
 use anyhow::Result;
 use serde_json::json;

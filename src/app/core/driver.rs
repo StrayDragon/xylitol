@@ -149,37 +149,13 @@ pub fn estimate_from_session_entries(
     model_id: Option<String>,
     tokenizer_override: Option<xylitol_ai_bridge::registry::TokenizerOverride>,
 ) -> crate::domain::types::ContextTokenEstimate {
-    use crate::agent::compaction::token_estimator::{EstimateOpts, estimate_context_tokens_with};
-    use crate::domain::message::{AgentMessage, XyUsage};
-
-    let mut messages: Vec<AgentMessage> = Vec::new();
-    let mut last_usage: Option<XyUsage> = None;
-    let mut stop_reason = None;
-
-    for entry in entries {
-        if let SessionEntry::Message(m) = entry
-            && let Ok(msg) = serde_json::from_value::<AgentMessage>(m.message.clone())
-        {
-            if let AgentMessage::Llm(crate::domain::message::LlmMessage::AssistantMessage {
-                usage: Some(u),
-                stop_reason: sr,
-                ..
-            }) = &msg
-            {
-                last_usage = Some(*u);
-                stop_reason = *sr;
-            }
-            messages.push(msg);
-        }
-    }
-
-    estimate_context_tokens_with(
-        &messages,
-        last_usage.as_ref(),
-        stop_reason,
+    use crate::agent::compaction::{EstimateOpts, estimate_from_session_entries as estimate};
+    estimate(
+        entries,
         &EstimateOpts {
             model_id,
             tokenizer_override,
+            allow_local_tokenizer: allow_local_tokenizer_from_app_config(),
             ..Default::default()
         },
     )
@@ -192,6 +168,26 @@ fn tokenizer_override_from_app_config(
     crate::infra::config::loader::load_app_config(None)
         .ok()?
         .tokenizer_override_for(model_alias)
+}
+
+fn allow_local_tokenizer_from_app_config() -> bool {
+    crate::infra::config::loader::load_app_config(None)
+        .map(|c| c.token_estimate.local_tokenizer.is_on())
+        .unwrap_or(false)
+}
+
+fn estimate_opts_from_app_config(
+    model_id: Option<String>,
+) -> crate::agent::compaction::EstimateOpts {
+    let tokenizer_override = model_id
+        .as_deref()
+        .and_then(tokenizer_override_from_app_config);
+    crate::agent::compaction::EstimateOpts {
+        model_id,
+        tokenizer_override,
+        allow_local_tokenizer: allow_local_tokenizer_from_app_config(),
+        ..Default::default()
+    }
 }
 
 /// Lifecycle events on [`EventStream`] — surfaces import via the Driver seam
@@ -766,7 +762,9 @@ impl Driver for InProcessDriver {
     }
 
     async fn compact(&mut self) -> Result<bool, String> {
-        self.agent.inner_mut().maybe_auto_compact().await
+        let model_id = self.current_model().map(|m| m.id);
+        let opts = estimate_opts_from_app_config(model_id);
+        self.agent.inner_mut().maybe_auto_compact_with(&opts).await
     }
 
     async fn export_html(&mut self, path: &Path) -> Result<String, String> {
@@ -839,11 +837,12 @@ impl Driver for InProcessDriver {
         let tokenizer_override = model_id
             .as_deref()
             .and_then(tokenizer_override_from_app_config);
-        Ok(estimate_from_session_entries(
-            &entries,
-            model_id,
-            tokenizer_override,
-        ))
+        // HF / local encode is CPU-heavy — keep it off the async worker (TUI host loop).
+        tokio::task::spawn_blocking(move || {
+            estimate_from_session_entries(&entries, model_id, tokenizer_override)
+        })
+        .await
+        .map_err(|e| format!("estimate join: {e}"))
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {
