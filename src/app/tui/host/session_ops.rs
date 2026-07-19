@@ -6,7 +6,6 @@ use xylitol_tui::Terminal;
 use xylitol_tui::TreeNode;
 use xylitol_tui::components::select_list::SelectItem;
 
-use super::super::bridge::UiEntry;
 use super::super::bridge::session_tree::rebuild_scrollback_from_travel;
 use super::HostSession;
 
@@ -282,16 +281,15 @@ impl<T: Terminal> HostSession<T> {
             editor_text: editor_prefill.clone(),
         };
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
-        if let Some(UiEntry::System { text }) = self.ui_model.entries.first_mut() {
-            *text = format!("forked → session {child_id}");
-        }
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
             root.close_session_tree();
             root.set_editor_text(editor_prefill.unwrap_or_default());
         }
         self.sync_ui_root_from_model();
-        self.push_system_note(format!("Forked to new session {child_id}"));
+        // Single trailing note (same family as clone/resume); do not also rewrite the
+        // history @ banner — that duplicated the fork notice at top and bottom.
+        self.push_system_note(format!("forked → session {child_id}"));
     }
 
     /// After import + switch: rebuild transcript from imported entries (c1010).
