@@ -1,11 +1,12 @@
 //! Multi-layer config loader with deep merge.
 //!
 //! Loading order (lowest → highest priority):
-//! 1. Global base:   `~/.config/xylitol/config.yaml`
-//! 2. Global local:  `~/.config/xylitol/config.local.yaml`
-//! 3. Project base:  `<project>/.xylitol/config.yaml`
-//! 4. Project local: `<project>/.xylitol/config.local.yaml`
-//! 5. CLI override:  `--config <path>` (single file, no local overlay)
+//! 1. Global:   `~/.config/xylitol/config.yaml`
+//! 2. Project:  `<project>/.xylitol/config.yaml`
+//! 3. CLI:      `--config <path>`
+//!
+//! `config.local.yaml` / `.yml` are **not** loaded (c1400). Use `secret.env` for
+//! secrets and `config.yaml` for shareable settings.
 //!
 //! Before YAML parse, each file is rendered with minijinja
 //! (`{{ env.KEY }}` / `{{ secret.KEY }}`). `secret.env` is loaded first.
@@ -73,29 +74,12 @@ pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, Lo
         deep_merge(&mut merged, val);
     }
 
-    if let Some(global_local) = first_existing(&[
-        paths.global_dir.join("config.local.yaml"),
-        paths.global_dir.join("config.local.yml"),
-    ]) {
-        let val = load_and_render(&global_local, &secrets)?;
-        deep_merge(&mut merged, val);
-    }
-
-    if let Some(ref proj_dir) = paths.project_dir {
-        if let Some(proj_base) =
+    if let Some(ref proj_dir) = paths.project_dir
+        && let Some(proj_base) =
             first_existing(&[proj_dir.join("config.yaml"), proj_dir.join("config.yml")])
-        {
-            let val = load_and_render(&proj_base, &secrets)?;
-            deep_merge(&mut merged, val);
-        }
-
-        if let Some(proj_local) = first_existing(&[
-            proj_dir.join("config.local.yaml"),
-            proj_dir.join("config.local.yml"),
-        ]) {
-            let val = load_and_render(&proj_local, &secrets)?;
-            deep_merge(&mut merged, val);
-        }
+    {
+        let val = load_and_render(&proj_base, &secrets)?;
+        deep_merge(&mut merged, val);
     }
 
     if let Some(cli_path) = cli_config
@@ -232,6 +216,39 @@ mod tests {
             headers.get("CONTEXT7_API_KEY").map(String::as_str),
             Some("secret-value")
         );
+    }
+
+    #[test]
+    fn ignores_config_local_yaml() {
+        let home = tempfile::tempdir().unwrap();
+        let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
+        let project_root = home.path().join("proj");
+        let proj = project_root.join(".xylitol");
+        std::fs::create_dir_all(&proj).unwrap();
+        let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project_root.to_str().unwrap());
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        let _cfg_dir = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
+
+        std::fs::write(
+            proj.join("config.local.yaml"),
+            "models:\n  default_model: from-local\n  models:\n    from-local:\n      provider: fake\n      model: fake\n",
+        )
+        .unwrap();
+
+        let cfg = load_app_config(None).expect("load");
+        assert!(
+            cfg.model.default_model.is_none(),
+            "config.local.yaml must not be merged"
+        );
+
+        std::fs::write(
+            proj.join("config.yaml"),
+            "models:\n  default_model: from-yaml\n  models:\n    from-yaml:\n      provider: fake\n      model: fake\n",
+        )
+        .unwrap();
+        let cfg = load_app_config(None).expect("load with yaml");
+        assert_eq!(cfg.model.default_model.as_deref(), Some("from-yaml"));
     }
 
     /// RAII env var restore for loader path tests.

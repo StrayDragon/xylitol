@@ -1,7 +1,9 @@
 # xylitol example configuration
-# Place as xylitol.yaml or .xylitol.yaml in your project root,
-# or at $XDG_CONFIG_HOME/xylitol/config.yaml
-
+# Place as .xylitol/config.yaml in your project (shareable; no secrets),
+# and/or at $XDG_CONFIG_HOME/xylitol/config.yaml (~/.config/xylitol/config.yaml).
+# Secrets: copy .xylitol/secret.env.example → secret.env (gitignored);
+# reference keys in YAML as "{{ secret.OPENAI_API_KEY }}".
+# config.local.yaml is not supported.
 # Local tokenizer encode gate (c1420): only on|off; default off if omitted.
 # Quote to avoid YAML 1.1 boolean aliases in some parsers.
 token_estimate:

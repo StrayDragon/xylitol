@@ -131,3 +131,15 @@
     假如 YAML 含 token_estimate.local_tokenizer: every_n
     当 加载配置
     那么 失败
+
+  @req:rc20
+  场景: config-yaml-secret-env-layout
+    假如 查阅产品配置文档与 example
+    当 读取主叙事
+    那么 仅描述 config.yaml 与 secret.env 为配置面
+
+  @req:rc21
+  场景: config-local-not-merged
+    假如 仅存在 config.local.yaml 含可观测字段而无同层 config.yaml
+    当 加载配置
+    那么 该字段不生效（local 被忽略）
