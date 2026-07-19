@@ -2280,6 +2280,58 @@ mod driver_session_tree_tests {
     }
 
     #[tokio::test]
+    async fn fork_rejects_unflushed_session_via_driver() {
+        // TUI cannot hit this while assistant is streaming (steer takes over); cover via Driver.
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+        let mut driver = build_test_driver(store.clone()).await;
+        let sid = driver.session_id().expect("session");
+        let path = store.get_session_file(&sid).expect("persisted path");
+        assert!(
+            !path.exists(),
+            "build_test_driver leaves session pending-only"
+        );
+
+        store
+            .append(
+                &sid,
+                &SessionEntry::Message(MessageEntry {
+                    base: EntryBase {
+                        entry_type: "message".into(),
+                        id: String::new(),
+                        parent_id: None,
+                        timestamp: String::new(),
+                    },
+                    message: crate::domain::session_types::fixture_message_json(
+                        "user",
+                        "only user",
+                    ),
+                }),
+            )
+            .await
+            .expect("pending user");
+        assert!(!path.exists());
+
+        let uid = store
+            .load(&sid)
+            .await
+            .expect("load")
+            .iter()
+            .find_map(|e| e.entry_id())
+            .expect("user id")
+            .to_string();
+
+        let err = driver
+            .fork_session(&uid, crate::domain::session_types::ForkPosition::At)
+            .await
+            .expect_err("unflushed fork");
+        assert!(
+            err.contains("not been saved yet"),
+            "pi unflushed guard via Driver: {err}"
+        );
+    }
+
+    #[tokio::test]
     async fn persist_project_trust_writes_store_under_home() {
         let home = tempfile::tempdir().unwrap();
         let prev = std::env::var_os("HOME");
