@@ -2506,13 +2506,29 @@ mod slice_tests {
         assert_eq!(driver.switch_calls(), vec!["forked-child".to_string()]);
         assert!(!root.borrow().tree_open(), "tree must close after fork");
         assert_eq!(root.borrow().editor_text(), "hello");
-        assert!(
+        assert_eq!(
             session
                 .ui_model()
                 .entries
                 .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text.contains("Forked"))),
-            "expected fork note: {:?}",
+                .filter(|e| matches!(e, UiEntry::System { text } if text.contains("forked →")))
+                .count(),
+            1,
+            "exactly one trailing fork note: {:?}",
+            session.ui_model().entries
+        );
+        let last_fork = session
+            .ui_model()
+            .entries
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                UiEntry::System { text } if text.contains("forked →") => Some(text.as_str()),
+                _ => None,
+            });
+        assert!(
+            last_fork.is_some_and(|t| t.contains("forked-child")),
+            "fork note at end: {:?}",
             session.ui_model().entries
         );
     }
@@ -2775,13 +2791,15 @@ mod slice_tests {
             vec![("a1".to_string(), ForkPosition::At)]
         );
         assert_eq!(driver.switch_calls(), vec!["forked-child".to_string()]);
-        assert!(
+        assert_eq!(
             session
                 .ui_model()
                 .entries
                 .iter()
-                .any(|e| matches!(e, UiEntry::System { text } if text.contains("Forked"))),
-            "expected fork note: {:?}",
+                .filter(|e| matches!(e, UiEntry::System { text } if text.contains("forked →")))
+                .count(),
+            1,
+            "exactly one trailing fork note: {:?}",
             session.ui_model().entries
         );
     }
