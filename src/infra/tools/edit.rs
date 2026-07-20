@@ -16,11 +16,11 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::protocol::error::XyToolError;
-use crate::protocol::ports::{XyTool, XyToolCtx};
+use crate::protocol::ports::XyToolCtx;
 
-use super::args::parse_tool_args;
 use super::mutation::FileMutationQueue;
 use super::patch;
+use super::typed::TypedTool;
 
 pub struct EditTool {
     mutation_queue: Arc<FileMutationQueue>,
@@ -28,13 +28,13 @@ pub struct EditTool {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct EditItem {
+pub struct EditItem {
     old_text: String,
     new_text: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct EditArgs {
+pub struct EditArgs {
     path: String,
     edits: Vec<EditItem>,
 }
@@ -163,7 +163,9 @@ impl EditTool {
 }
 
 #[async_trait]
-impl XyTool for EditTool {
+impl TypedTool for EditTool {
+    type Args = EditArgs;
+
     fn name(&self) -> &str {
         "edit"
     }
@@ -198,11 +200,11 @@ impl XyTool for EditTool {
         crate::protocol::ports::XyToolExecutionMode::Sequential
     }
 
-    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+    async fn execute_typed(&self, ctx: &XyToolCtx, args: EditArgs) -> Result<String, XyToolError> {
         let EditArgs {
             path: file_path,
             edits,
-        } = parse_tool_args(args)?;
+        } = args;
         if edits.is_empty() {
             return Err(XyToolError::InvalidArgs("edits must not be empty".into()));
         }
@@ -270,6 +272,7 @@ impl XyTool for EditTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::ports::XyTool;
 
     fn test_ctx() -> XyToolCtx {
         XyToolCtx::new("test-call")

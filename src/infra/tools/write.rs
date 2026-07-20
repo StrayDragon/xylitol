@@ -13,17 +13,17 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::protocol::error::XyToolError;
-use crate::protocol::ports::{XyTool, XyToolCtx};
+use crate::protocol::ports::XyToolCtx;
 
-use super::args::parse_tool_args;
 use super::mutation::FileMutationQueue;
+use super::typed::TypedTool;
 
 pub struct WriteTool {
     mutation_queue: Arc<FileMutationQueue>,
 }
 
 #[derive(Debug, Deserialize)]
-struct WriteArgs {
+pub struct WriteArgs {
     path: String,
     content: String,
 }
@@ -35,7 +35,9 @@ impl WriteTool {
 }
 
 #[async_trait]
-impl XyTool for WriteTool {
+impl TypedTool for WriteTool {
+    type Args = WriteArgs;
+
     fn name(&self) -> &str {
         "write"
     }
@@ -61,11 +63,11 @@ impl XyTool for WriteTool {
         })
     }
 
-    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+    async fn execute_typed(&self, ctx: &XyToolCtx, args: WriteArgs) -> Result<String, XyToolError> {
         let WriteArgs {
             path: file_path,
             content,
-        } = parse_tool_args(args)?;
+        } = args;
 
         if ctx.cancel.is_cancelled() {
             return Err(XyToolError::Aborted);
@@ -126,6 +128,7 @@ impl XyTool for WriteTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::ports::XyTool;
 
     fn test_ctx() -> XyToolCtx {
         XyToolCtx::new("test-call")

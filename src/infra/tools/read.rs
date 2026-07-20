@@ -14,17 +14,17 @@ use serde_json::{Value, json};
 use crate::infra::image::agent_part_from_image_path;
 use crate::protocol::error::XyToolError;
 use crate::protocol::message::AgentPart;
-use crate::protocol::ports::{XyTool, XyToolCtx};
+use crate::protocol::ports::XyToolCtx;
 
-use super::args::parse_tool_args;
 use super::truncate::{TruncationOptions, truncate_head};
+use super::typed::TypedTool;
 
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "ico", "svg"];
 
 pub struct ReadTool;
 
 #[derive(Debug, Deserialize)]
-struct ReadArgs {
+pub struct ReadArgs {
     path: String,
     #[serde(default)]
     offset: i64,
@@ -42,7 +42,9 @@ fn is_image_path(file_path: &str) -> bool {
 }
 
 #[async_trait]
-impl XyTool for ReadTool {
+impl TypedTool for ReadTool {
+    type Args = ReadArgs;
+
     fn name(&self) -> &str {
         "read"
     }
@@ -72,8 +74,8 @@ impl XyTool for ReadTool {
         })
     }
 
-    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
-        let parts = self.execute_as_parts(ctx, args).await?;
+    async fn execute_typed(&self, ctx: &XyToolCtx, args: ReadArgs) -> Result<String, XyToolError> {
+        let parts = self.execute_as_parts_typed(ctx, args).await?;
         Ok(parts
             .into_iter()
             .filter_map(|p| match p {
@@ -85,16 +87,16 @@ impl XyTool for ReadTool {
             .join("\n"))
     }
 
-    async fn execute_as_parts(
+    async fn execute_as_parts_typed(
         &self,
         ctx: &XyToolCtx,
-        args: Value,
+        args: ReadArgs,
     ) -> Result<Vec<AgentPart>, XyToolError> {
         let ReadArgs {
             path: file_path,
             offset,
             limit,
-        } = parse_tool_args(args)?;
+        } = args;
         let file_path = file_path.as_str();
 
         if ctx.cancel.is_cancelled() {
@@ -202,6 +204,7 @@ fn format_size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::ports::XyTool;
     use image::{ImageBuffer, Rgb};
 
     fn test_ctx() -> XyToolCtx {
