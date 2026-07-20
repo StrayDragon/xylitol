@@ -235,7 +235,7 @@ impl XyDriver for XyInProcessDriver {
             .iter()
             .find(|m| m.config.model == model_id || m.id == model_id)
             .map(|m| m.id.clone())
-            .ok_or_else(|| XyDriverError::from(format!("model not found: {model_id}")))?;
+            .ok_or_else(|| XyDriverError::not_found(format!("model not found: {model_id}")))?;
         self.agent
             .inner_mut()
             .select_model(&found)
@@ -257,7 +257,7 @@ impl XyDriver for XyInProcessDriver {
     fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
         let list = self.agent.inner().model_registry().list().to_vec();
         if list.is_empty() {
-            return Err("no models available".into());
+            return Err(XyDriverError::not_found("no models available"));
         }
         let current_id = self.agent.inner().current_model().map(|m| m.id.clone());
         let current_idx = current_id
@@ -346,7 +346,7 @@ impl XyDriver for XyInProcessDriver {
 
     async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {
         if !self.store.exists(session_id).await {
-            return Err(XyDriverError::from(format!(
+            return Err(XyDriverError::not_found(format!(
                 "session not found: {session_id}"
             )));
         }
@@ -369,7 +369,7 @@ impl XyDriver for XyInProcessDriver {
             .agent
             .inner()
             .session_id()
-            .ok_or_else(|| XyDriverError::from("no active session"))?;
+            .ok_or_else(|| XyDriverError::not_found("no active session"))?;
         Self::map_str(self.store.load_entries(sid).await)
     }
 
@@ -390,8 +390,7 @@ impl XyDriver for XyInProcessDriver {
             estimate_from_session_entries(&entries, model_id, tokenizer_override)
         })
         .await
-        .map_err(|e| format!("estimate join: {e}"))
-        .map_err(XyDriverError::from)
+        .map_err(|e| XyDriverError::io(format!("estimate join: {e}")))
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {
@@ -437,7 +436,7 @@ impl XyDriver for XyInProcessDriver {
             .agent
             .inner()
             .session_id()
-            .ok_or_else(|| XyDriverError::from("no active session"))?;
+            .ok_or_else(|| XyDriverError::not_found("no active session"))?;
         if let Some(bus) = self.agent.inner().hook_bus() {
             let kind = format!("{kind:?}");
             let (ty, phase, ctx) =
@@ -450,7 +449,9 @@ impl XyDriver for XyInProcessDriver {
         let tree = match kind {
             SessionTreeKind::MessageHistory => self.store.message_history_tree(sid).await?,
             SessionTreeKind::FileBrowser => {
-                return Err(XyDriverError::from(session_tree_kind_unimplemented(kind)));
+                return Err(XyDriverError::unsupported(session_tree_kind_unimplemented(
+                    kind,
+                )));
             }
         };
         if let Some(bus) = self.agent.inner().hook_bus() {
@@ -470,7 +471,7 @@ impl XyDriver for XyInProcessDriver {
             .agent
             .inner()
             .session_id()
-            .ok_or_else(|| XyDriverError::from("no active session"))?;
+            .ok_or_else(|| XyDriverError::not_found("no active session"))?;
         if let Some(bus) = self.agent.inner().hook_bus() {
             let kind_s = format!("{kind:?}");
             let (ty, phase, ctx) =
@@ -487,7 +488,9 @@ impl XyDriver for XyInProcessDriver {
                 travel
             }
             SessionTreeKind::FileBrowser => {
-                return Err(XyDriverError::from(session_tree_kind_unimplemented(kind)));
+                return Err(XyDriverError::unsupported(session_tree_kind_unimplemented(
+                    kind,
+                )));
             }
         };
         if let Some(bus) = self.agent.inner().hook_bus() {
@@ -513,11 +516,11 @@ impl XyDriver for XyInProcessDriver {
             .agent
             .inner()
             .session_id()
-            .ok_or_else(|| XyDriverError::from("no active session"))?;
+            .ok_or_else(|| XyDriverError::not_found("no active session"))?;
         self.agent.inner().ensure_session(sid, None).await?;
         let entries = self.store.load_entries(sid).await?;
         if !entries.iter().any(|e| e.entry_id() == Some(target_id)) {
-            return Err(XyDriverError::from(format!(
+            return Err(XyDriverError::not_found(format!(
                 "target entry not found: {target_id}"
             )));
         }
@@ -548,10 +551,10 @@ impl XyDriver for XyInProcessDriver {
 
         let scene = scene.trim();
         if scene.is_empty() || scene.eq_ignore_ascii_case("list") {
-            return Err(XyDriverError::from(list_note()));
+            return Err(XyDriverError::invalid_input(list_note()));
         }
         let canonical = resolve_scene_id(scene).ok_or_else(|| {
-            XyDriverError::from(format!("unknown debug scene: {scene}\n{}", list_note()))
+            XyDriverError::invalid_input(format!("unknown debug scene: {scene}\n{}", list_note()))
         })?;
         let short = &uuid::Uuid::new_v4().to_string()[..8];
         let session_id = format!("debug-{canonical}-{short}");
@@ -612,7 +615,7 @@ impl XyDriver for XyInProcessDriver {
             .agent
             .inner()
             .session_id()
-            .ok_or_else(|| XyDriverError::from("no active session"))?;
+            .ok_or_else(|| XyDriverError::not_found("no active session"))?;
         Self::map_str(self.store.get_session_name(sid).await)
     }
 
@@ -621,7 +624,7 @@ impl XyDriver for XyInProcessDriver {
             .agent
             .inner()
             .session_id()
-            .ok_or_else(|| XyDriverError::from("no active session"))?;
+            .ok_or_else(|| XyDriverError::not_found("no active session"))?;
         Self::map_str(self.store.set_session_name(sid, name).await)
     }
 
@@ -790,13 +793,15 @@ impl XyDriver for XyInProcessDriver {
         };
         let Some(opt) = opt else {
             return Err(match mode {
-                ProjectTrustMode::TrustParent => "no parent folder to trust".into(),
-                _ => "trust option unavailable".into(),
+                ProjectTrustMode::TrustParent => {
+                    XyDriverError::invalid_input("no parent folder to trust")
+                }
+                _ => XyDriverError::invalid_input("trust option unavailable"),
             });
         };
         if !opt.updates.is_empty() {
             mgr.apply_updates(&opt.updates)
-                .map_err(|e| format!("trust store write failed: {e}"))?;
+                .map_err(|e| XyDriverError::io(format!("trust store write failed: {e}")))?;
         }
         let saved = opt.saved_path.clone().unwrap_or_else(|| cwd_str.clone());
         let verb = if opt.trusted { "trusted" } else { "denied" };
@@ -816,9 +821,9 @@ impl XyDriver for XyInProcessDriver {
     ) -> Result<ClipboardCopyOutcome, XyDriverError> {
         let plan = crate::infra::clipboard::plan_clipboard_copy_async(text.to_string())
             .await
-            .map_err(XyDriverError::from)?;
+            .map_err(XyDriverError::io)?;
         if !plan.will_succeed() {
-            return Err(XyDriverError::from(plan.failure_message()));
+            return Err(XyDriverError::io(plan.failure_message()));
         }
         Ok(ClipboardCopyOutcome {
             pending_osc52: plan.osc52_sequence,
@@ -828,8 +833,8 @@ impl XyDriver for XyInProcessDriver {
     async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, XyDriverError> {
         let image = tokio::task::spawn_blocking(crate::infra::clipboard::read_clipboard_image)
             .await
-            .map_err(|e| XyDriverError::from(format!("clipboard image task failed: {e}")))?
-            .map_err(XyDriverError::from)?;
+            .map_err(|e| XyDriverError::io(format!("clipboard image task failed: {e}")))?
+            .map_err(XyDriverError::io)?;
         let Some(image) = image else {
             return Ok(None);
         };
@@ -837,16 +842,16 @@ impl XyDriver for XyInProcessDriver {
             crate::infra::clipboard::write_clipboard_image_temp(&image.bytes, &image.mime_type)
         })
         .await
-        .map_err(|e| XyDriverError::from(format!("clipboard image write task failed: {e}")))?
-        .map_err(XyDriverError::from)?;
+        .map_err(|e| XyDriverError::io(format!("clipboard image write task failed: {e}")))?
+        .map_err(XyDriverError::io)?;
         Ok(Some(path))
     }
 
     async fn read_clipboard_text(&mut self) -> Result<Option<String>, XyDriverError> {
         tokio::task::spawn_blocking(crate::infra::clipboard::read_clipboard_text)
             .await
-            .map_err(|e| XyDriverError::from(format!("clipboard text task failed: {e}")))?
-            .map_err(XyDriverError::from)
+            .map_err(|e| XyDriverError::io(format!("clipboard text task failed: {e}")))?
+            .map_err(XyDriverError::io)
     }
 }
 

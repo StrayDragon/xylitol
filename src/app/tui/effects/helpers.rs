@@ -2,9 +2,31 @@
 
 use xylitol_tui::Terminal;
 
-use crate::app::core::driver::XyDriver;
+use crate::app::core::driver::{XyDriver, XyDriverError};
 
 use super::super::host::HostSession;
+
+/// Log `error.kind` then push a system note (direct Driver calls, not via dispatch).
+pub(super) fn note_driver_err<T: Terminal>(
+    session: &mut HostSession<T>,
+    where_: &str,
+    e: &XyDriverError,
+    note: impl Into<String>,
+) {
+    e.log_failure(where_);
+    session.push_system_note(note);
+}
+
+/// Log `error.kind` then push an error-styled note.
+pub(super) fn note_driver_err_styled<T: Terminal>(
+    session: &mut HostSession<T>,
+    where_: &str,
+    e: &XyDriverError,
+    note: impl Into<String>,
+) {
+    e.log_failure(where_);
+    session.push_error_note(note);
+}
 
 pub(super) fn deepest_tree_id(nodes: &[xylitol_tui::TreeNode]) -> Option<String> {
     fn walk(node: &xylitol_tui::TreeNode, last: &mut Option<String>) {
@@ -43,8 +65,12 @@ pub(super) async fn switch_and_rebuild_transcript<T: Terminal>(
                 SwitchRebuildKind::Resume => session.apply_resume_session(session_id, entries),
             },
             Err(e) => {
-                e.log_failure(&format!("tui.{label}.get_messages"));
-                session.push_system_note(format!("{label}: get_messages failed: {e}"));
+                note_driver_err(
+                    session,
+                    &format!("tui.{label}.get_messages"),
+                    &e,
+                    format!("{label}: get_messages failed: {e}"),
+                );
                 match kind {
                     SwitchRebuildKind::Import => session.close_import_confirm(),
                     SwitchRebuildKind::Resume => session.close_session_resume_slot(),
@@ -52,8 +78,12 @@ pub(super) async fn switch_and_rebuild_transcript<T: Terminal>(
             }
         },
         Err(e) => {
-            e.log_failure(&format!("tui.{label}.switch_session"));
-            session.push_system_note(format!("{label}: switch failed: {e}"));
+            note_driver_err(
+                session,
+                &format!("tui.{label}.switch_session"),
+                &e,
+                format!("{label}: switch failed: {e}"),
+            );
             match kind {
                 SwitchRebuildKind::Import => session.close_import_confirm(),
                 SwitchRebuildKind::Resume => session.close_session_resume_slot(),

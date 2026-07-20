@@ -617,6 +617,7 @@ Vec<AiBridgeMessage> → XyModel / dialect adapters
 | 2026-07-21 | agent | §G | `XyError`/`XyToolError` `kind()`；ReAct 热路径 log/fastrace 带 `error.kind` |
 | 2026-07-21 | agent | §C5 | `HookEvent` 载荷扩展 + `script_hook_ctx` 收拢 react/session/driver `json!` |
 | 2026-07-21 | agent | §G2+ | dispatch/TUI/remote 失败打 `error.kind`；C3 TypedTool **搁置** |
+| 2026-07-21 | agent | §G2++ | pending_ui/bang `log_failure`；in_process/remote 升 NotFound/Io/Unsupported/Remote |
 |  |  |  |  |
 
 ---

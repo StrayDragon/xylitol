@@ -87,7 +87,7 @@ impl XyRemoteDriver {
             Err(_) => tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
-                .map_err(|e| XyDriverError::from(e.to_string()))?
+                .map_err(|e| XyDriverError::io(e.to_string()))?
                 .block_on(fut),
         }
     }
@@ -98,7 +98,7 @@ impl XyRemoteDriver {
             .get(self.api(suffix))
             .send()
             .await
-            .map_err(|e| XyDriverError::from(e.to_string()))?;
+            .map_err(|e| XyDriverError::remote(e.to_string()))?;
         Self::parse_envelope(resp).await
     }
 
@@ -113,7 +113,7 @@ impl XyRemoteDriver {
             .json(&body)
             .send()
             .await
-            .map_err(|e| XyDriverError::from(e.to_string()))?;
+            .map_err(|e| XyDriverError::remote(e.to_string()))?;
         Self::parse_envelope(resp).await
     }
 
@@ -122,7 +122,7 @@ impl XyRemoteDriver {
         let env: crate::protocol::Envelope<serde_json::Value> = resp
             .json()
             .await
-            .map_err(|e| XyDriverError::from(e.to_string()))?;
+            .map_err(|e| XyDriverError::remote(e.to_string()))?;
         if env.code != crate::protocol::ErrorCode::Ok {
             let err = XyDriverError::remote(
                 env.msg
@@ -295,7 +295,7 @@ impl XyDriver for XyRemoteDriver {
                 .post(&url)
                 .send()
                 .await
-                .map_err(|e| XyDriverError::from(e.to_string()))?;
+                .map_err(|e| XyDriverError::remote(e.to_string()))?;
             let data = Self::parse_envelope(resp).await?;
             // Endpoint returns { model, display_name }; enrich via list if needed.
             if data.get("id").is_some() {
@@ -485,7 +485,7 @@ impl XyDriver for XyRemoteDriver {
             .get("entries")
             .cloned()
             .unwrap_or(serde_json::Value::Null);
-        serde_json::from_value(entries).map_err(|e| XyDriverError::from(e.to_string()))
+        serde_json::from_value(entries).map_err(|e| XyDriverError::remote(e.to_string()))
     }
 
     async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
@@ -619,11 +619,11 @@ impl XyDriver for XyRemoteDriver {
             SessionTreeKind::MessageHistory => {
                 let data = self.get_data("trees/message-history").await?;
                 let tree = data.get("tree").cloned().unwrap_or(serde_json::Value::Null);
-                serde_json::from_value(tree).map_err(|e| XyDriverError::from(e.to_string()))
+                serde_json::from_value(tree).map_err(|e| XyDriverError::remote(e.to_string()))
             }
-            SessionTreeKind::FileBrowser => {
-                Err(XyDriverError::from(session_tree_kind_unimplemented(kind)))
-            }
+            SessionTreeKind::FileBrowser => Err(XyDriverError::unsupported(
+                session_tree_kind_unimplemented(kind),
+            )),
         }
     }
 
@@ -640,11 +640,11 @@ impl XyDriver for XyRemoteDriver {
                         serde_json::json!({ "entry_id": entry_id }),
                     )
                     .await?;
-                serde_json::from_value(data).map_err(|e| XyDriverError::from(e.to_string()))
+                serde_json::from_value(data).map_err(|e| XyDriverError::remote(e.to_string()))
             }
-            SessionTreeKind::FileBrowser => {
-                Err(XyDriverError::from(session_tree_kind_unimplemented(kind)))
-            }
+            SessionTreeKind::FileBrowser => Err(XyDriverError::unsupported(
+                session_tree_kind_unimplemented(kind),
+            )),
         }
     }
 
@@ -653,7 +653,9 @@ impl XyDriver for XyRemoteDriver {
         _target_id: &str,
         _label: Option<&str>,
     ) -> Result<(), XyDriverError> {
-        Err("remote: append_entry_label not implemented".into())
+        Err(XyDriverError::unsupported(
+            "remote: append_entry_label not implemented",
+        ))
     }
 
     fn leaf_entry_id(&self) -> Option<String> {
@@ -661,7 +663,9 @@ impl XyDriver for XyRemoteDriver {
     }
 
     async fn load_debug_scene(&mut self, _scene: &str) -> Result<DebugSceneLoad, XyDriverError> {
-        Err("remote: load_debug_scene not implemented".into())
+        Err(XyDriverError::unsupported(
+            "remote: load_debug_scene not implemented",
+        ))
     }
 
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
@@ -721,15 +725,21 @@ impl XyDriver for XyRemoteDriver {
     }
 
     async fn new_session(&mut self) -> Result<String, XyDriverError> {
-        Err("remote: new_session not implemented".into())
+        Err(XyDriverError::unsupported(
+            "remote: new_session not implemented",
+        ))
     }
 
     async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
-        Err("remote: get_session_name not implemented".into())
+        Err(XyDriverError::unsupported(
+            "remote: get_session_name not implemented",
+        ))
     }
 
     async fn set_session_name(&mut self, _name: &str) -> Result<String, XyDriverError> {
-        Err("remote: set_session_name not implemented".into())
+        Err(XyDriverError::unsupported(
+            "remote: set_session_name not implemented",
+        ))
     }
 
     async fn set_session_name_for(
@@ -737,11 +747,15 @@ impl XyDriver for XyRemoteDriver {
         _session_id: &str,
         _name: &str,
     ) -> Result<String, XyDriverError> {
-        Err("remote: set_session_name_for not implemented".into())
+        Err(XyDriverError::unsupported(
+            "remote: set_session_name_for not implemented",
+        ))
     }
 
     async fn delete_session(&mut self, _session_id: &str) -> Result<(), XyDriverError> {
-        Err("remote: delete_session not implemented".into())
+        Err(XyDriverError::unsupported(
+            "remote: delete_session not implemented",
+        ))
     }
 
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
