@@ -86,7 +86,7 @@
 
 ## Skills
 
-SDD：`llman-sdd-*`。应用面：`write-surface`、`audit-dead-code`、`write-tui`。TUI 验证：`test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。
+SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用面：`write-surface`、`audit-dead-code`、`write-tui`。TUI 验证：`test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。TUI 参考：`tui-expert-of-codex`、`terminal-tui-differential-rendering`。
 
 ## 编写与维护 AGENTS.md
 

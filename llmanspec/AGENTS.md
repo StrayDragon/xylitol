@@ -44,7 +44,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ## BDD-on 操作闸（字段经验；上游正在收口）
 
-Partitioned 双写与 checkpoint 时序已部分吸收进 llman **0.0.64**（`improve-partitioned-ssot-agent-friction`）。
+Partitioned 双写与 checkpoint 时序已部分吸收进上游 llman（`improve-partitioned-ssot-agent-friction`）。
 本段只保留 xylitol 仍要遵守的硬约束；CLI 缺口见 `../llman` change **`fix-sdd-bdd-on-change-stage`**。
 
 ### Partitioned 双写（MUST）
