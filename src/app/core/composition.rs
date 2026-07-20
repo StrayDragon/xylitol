@@ -30,7 +30,6 @@ pub struct BuildAgentOptions {
     pub append_system_prompt: Vec<String>,
     /// Skills catalog for `<available_skills>` (c1085).
     pub skills: Vec<crate::domain::resource_types::SkillInfo>,
-    pub max_iterations: u32,
     pub compaction_threshold: f64,
     pub cwd: String,
     pub compaction_settings: Option<CompactionSettings>,
@@ -54,7 +53,6 @@ impl Default for BuildAgentOptions {
             context_files: Vec::new(),
             append_system_prompt: Vec::new(),
             skills: Vec::new(),
-            max_iterations: 50,
             compaction_threshold: 0.8,
             cwd: ".".into(),
             compaction_settings: None,
@@ -122,7 +120,6 @@ pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, String> {
     .context_files(options.context_files)
     .append_system_prompt(options.append_system_prompt)
     .skills(options.skills)
-    .max_iterations(options.max_iterations)
     .compaction_threshold(options.compaction_threshold)
     .compaction_settings(options.compaction_settings)
     .cwd(options.cwd)

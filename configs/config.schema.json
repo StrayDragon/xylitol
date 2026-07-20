@@ -145,8 +145,9 @@
   },
   "$defs": {
     "AgentProfile": {
-      "description": "Agent profile — binds model, prompt, tools, iterations.\n\nFlat struct to support YAML anchor/alias merge keys:\n```yaml\nagents:\n  profiles:\n    default: &default-agent\n      model: gpt-4o\n      max_iterations: 50\n    planning:\n      <<: *default-agent\n      model: claude-opus\n      system_prompt: \"You are a planning agent.\"\n```",
+      "description": "Agent profile — binds model, prompt, tools.\n\nFlat struct to support YAML anchor/alias merge keys:\n```yaml\nagents:\n  profiles:\n    default: &default-agent\n      model: gpt-4o\n    planning:\n      <<: *default-agent\n      model: claude-opus\n      system_prompt: \"You are a planning agent.\"\n```\n\nUnknown fields (including removed `max_iterations`) are rejected.",
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "allowed_tools": {
           "description": "Tool names this agent is allowed to use. `None` = all tools.",
@@ -158,13 +159,6 @@
           "items": {
             "type": "string"
           }
-        },
-        "max_iterations": {
-          "description": "Maximum agent loop iterations.",
-          "type": "integer",
-          "format": "uint32",
-          "default": 50,
-          "minimum": 0
         },
         "model": {
           "description": "Model alias referencing a key in `model.models`, or a raw model ID.\nWhen `None`, falls back to config-level defaults.",
