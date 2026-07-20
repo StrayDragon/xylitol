@@ -28,7 +28,7 @@ impl ConfigPaths {
     /// Global **AppConfig** SSOT is `~/.config/xylitol/` (or XDG / env override),
     /// **not** `~/.xylitol/` (that remains the data/agent dir for skills/sessions/logs).
     /// On discover, missing global config files are one-shot copied from legacy
-    /// `~/.xylitol/{config.yaml,config.yml,config.local.yaml,secret.env}` when present.
+    /// `~/.xylitol/{config.yaml,config.yml,secret.env}` when present (`config.local.*` skipped).
     pub(crate) fn discover() -> Self {
         let global_dir = resolve_global_dir();
         super::migrate::migrate_legacy_global_config_files(&global_dir);

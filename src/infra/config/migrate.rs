@@ -2,10 +2,11 @@
 
 use std::path::{Path, PathBuf};
 
-/// Copy legacy `~/.xylitol/{config.yaml,config.yml,config.local.yaml,secret.env}` into
-/// `global_dir` when the destination file is missing.
+/// Copy legacy `~/.xylitol/{config.yaml,config.yml,secret.env}` into `global_dir`
+/// when the destination file is missing.
 ///
 /// `config.yml` migrates to `config.yaml` (loader SSOT name).
+/// `config.local.*` is **not** migrated (c1400 — unsupported).
 /// Returns the list of destination basenames successfully copied.
 /// Does **not** delete legacy files (user can remove after verifying).
 ///
@@ -27,8 +28,6 @@ pub(crate) fn migrate_legacy_global_config_files(global_dir: &Path) -> Vec<Strin
     let yaml_pairs = [
         ("config.yaml", "config.yaml"),
         ("config.yml", "config.yaml"),
-        ("config.local.yaml", "config.local.yaml"),
-        ("config.local.yml", "config.local.yaml"),
         ("secret.env", "secret.env"),
     ];
     for (src_name, dst_name) in yaml_pairs {
@@ -39,9 +38,6 @@ pub(crate) fn migrate_legacy_global_config_files(global_dir: &Path) -> Vec<Strin
         }
         // Skip config.yml if config.yaml already migrated in this pass.
         if src_name == "config.yml" && migrated.iter().any(|m| m == "config.yaml") {
-            continue;
-        }
-        if src_name == "config.local.yml" && migrated.iter().any(|m| m == "config.local.yaml") {
             continue;
         }
         if let Err(e) = std::fs::create_dir_all(global_dir) {
@@ -149,5 +145,24 @@ mod tests {
         let migrated = migrate_between(&legacy, &global);
         assert!(migrated.contains(&"config.yaml".to_string()));
         assert!(global.join("config.yaml").is_file());
+    }
+
+    #[test]
+    fn does_not_migrate_config_local() {
+        let home = TempDir::new().unwrap();
+        let legacy = home.path().join(".xylitol");
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("config.local.yaml"), "models: {}\n").unwrap();
+        // SAFETY: test-only HOME override for migrate_legacy_global_config_files.
+        let prev = std::env::var("HOME").ok();
+        unsafe { std::env::set_var("HOME", home.path()) };
+        let migrated = migrate_legacy_global_config_files(&global);
+        match prev {
+            Some(v) => unsafe { std::env::set_var("HOME", v) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        assert!(!migrated.iter().any(|m| m.contains("local")));
+        assert!(!global.join("config.local.yaml").exists());
     }
 }
