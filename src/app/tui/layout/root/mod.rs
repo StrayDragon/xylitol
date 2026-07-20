@@ -210,7 +210,7 @@ impl UiRoot {
             theme,
             glyphs: GlyphSet::from_env(),
             cwd: ".".into(),
-            model: "—".into(),
+            model: crate::app::core::bootstrap::UNSET_MODEL_DISPLAY.into(),
             footer_token: None,
             thinking_level: ThinkingLevel::Off,
             pending_thinking_cycle: false,

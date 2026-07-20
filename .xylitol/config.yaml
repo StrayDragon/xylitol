@@ -2,7 +2,8 @@
 #
 # 仓库共享配置（可进 git）。无密钥。
 # 加载顺序（低→高）：~/.config/xylitol/config.yaml → 本文件 → --config
-# 密钥放 .xylitol/secret.env（或 ~/.config/xylitol/secret.env），YAML 用 {{ secret.KEY }}。
+# 密钥放 .xylitol/secret.env（或 ~/.config/xylitol/secret.env）。
+# YAML 插值：用 secret.NAME（须在 secret.env 定义）；勿在注释里写未转义的双花括号示例。
 # 不再支持 config.local.yaml。
 
 # 本地 tokenizer encode：默认 off（缺省同义）；要精确本地计数时改为 on
