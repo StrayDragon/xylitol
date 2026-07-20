@@ -4,7 +4,7 @@
 
   @req:atr1
   场景: no-stdio-menu
-    假如 需要 Ask 且启动 --tui
+    假如 需要 Ask 且启动 TUI
     当 进入产品 TUI
     那么 editor 槽为 ChoicePrompt 且无 Choice [1-N] stderr 菜单
 
