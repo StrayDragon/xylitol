@@ -66,7 +66,7 @@ flowchart TB
 |---|---|
 | [Web与TUI同源.md](./Web与TUI同源.md) | 跨面语义约束板（非 Web 壳本身） |
 | [TUI视觉与信息表达.md](./TUI视觉与信息表达.md) | 状态减噪、主题密度 |
-| [Tokenizer精准计量.md](./Tokenizer精准计量.md) | 词表下载同意流 / CLI·TUI·Web 管理 |
+| [Tokenizer精准计量.md](./Tokenizer精准计量.md) | TUI 确认 / Web 管理（M1 CLI 已兑现 → architecture） |
 | [出口流量检视.md](./出口流量检视.md) | 事实源、独立检视页、子进程、agent API |
 | [Cloud-Agent与Web控制台.md](./Cloud-Agent与Web控制台.md) | 多工作区 CS + Web |
 | [运行时即时设置.md](./运行时即时设置.md) | 会话覆盖、下一波次生效（≠ `/reload`） |
