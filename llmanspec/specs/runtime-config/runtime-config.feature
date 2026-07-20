@@ -98,12 +98,18 @@
 
   @req:rc18
   场景: tokenizer-hf-ok
-    假如 YAML 模型条目含 tokenizer.huggingface.repo
+    假如 YAML 含 tokenizers.qwen36.repo 且模型条目 tokenizer 为 qwen36
     当 加载配置
-    那么 成功且可解析为 HuggingFace 词表源
+    那么 成功且该模型可解析为 HuggingFace 词表源
 
   @req:rc18
-  场景: tokenizer-mutex-fails
-    假如 同一 ModelEntry 同时含 tokenizer.huggingface 与 tokenizer.local
+  场景: tokenizer-inline-repo
+    假如 模型条目 tokenizer 为 Qwen/Qwen3.6-35B-A3B 字符串
+    当 解析 tokenizer 引用
+    那么 得到 HuggingFace repo 且无需 tokenizers 表项
+
+  @req:rc18
+  场景: tokenizer-unknown-name-fails
+    假如 模型条目 tokenizer 为未知名且非 HF repo/路径/builtin
     当 加载配置
     那么 失败

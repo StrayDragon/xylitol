@@ -14,5 +14,5 @@ requirements[12]{req_id,title,statement}:
   rc9,mcp_servers 配置字段,运行时配置 MUST 提供 mcp_servers（或等价）字段以声明 MCP 服务器；缺省或空表示未启用 MCP。
   rc16,"model-entry-thinking-levels",ModelsConfig 的 ModelEntry（或等价 YAML 面）MUST 支持可选 thinking_levels 字符串列表；解析时未知 level 名 MUST 使配置加载失败；Settings.default_thinking_level 若存在 MUST 可被选模/启动路径消费（合法则采用，非法则忽略并 clamp）。
   rc17,"model-entry-thinking-level-map",ModelsConfig 的 ModelEntry MUST 支持可选 thinking_level_map（键为 ThinkingLevel 名，值为字符串或 null）；未知键名 MUST 使配置加载失败；解析结果 MUST 进入 XyModelMeta（或等价）供请求组装；键缺省 MUST 表示使用 adapter 内置默认，null MUST 表示该档不向 provider 发送 thinking/effort 字段。
-  rc18,"model-entry-tokenizer","ModelsConfig 的 ModelEntry MUST 支持可选 tokenizer 字段，用于本地精确计量词表源：至少支持 huggingface（repo + 可选 file，默认 tokenizer.json）、local（path）与显式 builtin；同一条目 MUST NOT 同时声明多种互斥变体（否则配置加载失败）；缺省时 MUST 回退 registry builtin 启发式或视为未映射，MUST NOT 静默假定某一 HF 仓库。"
+  rc18,"model-entry-tokenizer","ModelsConfig 的 ModelEntry MUST 支持可选字符串字段 tokenizer：可为顶层 tokenizers 表中的名字、HF owner/repo、本地路径或 builtin；AppConfig MUST 支持可选顶层 tokenizers 映射（条目含 repo/file 或 path）供多模型共用同一词表源；缺省 tokenizer 时 MUST 回退 registry builtin 启发式或视为未映射，MUST NOT 用推理用 model id 静默假定 HF 仓库。"
 scenarios[0]:

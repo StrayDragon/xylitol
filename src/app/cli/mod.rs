@@ -8,12 +8,14 @@ mod logging;
 mod print;
 mod provider_guidance;
 pub mod resources;
+pub mod tokenizer;
 #[cfg(feature = "tui")]
 mod trust_gate;
 
 use clap::{Parser, Subcommand};
 
 use crate::app::cli::resources::ResourcesAction;
+use crate::app::cli::tokenizer::TokenizerAction;
 use crate::app::core::bootstrap::{
     BootstrapError, BootstrapInput, BootstrapWarning, bootstrap, resolve_assembly,
 };
@@ -29,6 +31,11 @@ pub enum CliCommand {
     Resources {
         #[command(subcommand)]
         action: ResourcesAction,
+    },
+    /// Local tokenizer cache: status / opt-in download / clean (c1380).
+    Tokenizer {
+        #[command(subcommand)]
+        action: TokenizerAction,
     },
     /// Server lifecycle management.
     #[cfg(feature = "server")]
@@ -165,6 +172,13 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     match args.command {
         Some(CliCommand::Resources { action }) => {
             let code = crate::app::cli::resources::run(action);
+            if code == std::process::ExitCode::FAILURE {
+                std::process::exit(1);
+            }
+            return Ok(());
+        }
+        Some(CliCommand::Tokenizer { action }) => {
+            let code = crate::app::cli::tokenizer::run(action).await;
             if code == std::process::ExitCode::FAILURE {
                 std::process::exit(1);
             }
