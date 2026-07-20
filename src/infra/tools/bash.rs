@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::process::Command;
 use tokio::time::timeout;
@@ -19,10 +20,25 @@ use crate::domain::error::XyToolError;
 use crate::runtime_protocol::{XyTool, XyToolCtx};
 
 use super::accumulator::OutputAccumulator;
+use super::args::parse_tool_args;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 const MAX_TIMEOUT_SECS: u64 = 120;
 const SIGTERM_GRACE_SECS: u64 = 5;
+
+#[derive(Debug, Deserialize)]
+struct BashArgs {
+    command: String,
+    #[serde(default)]
+    #[allow(dead_code)] // accepted in schema for LLM UX; not used by executor
+    description: Option<String>,
+    #[serde(default = "default_bash_timeout")]
+    timeout: i64,
+}
+
+fn default_bash_timeout() -> i64 {
+    DEFAULT_TIMEOUT_SECS as i64
+}
 
 // ── BashOperations trait ──────────────────────────────────────────────
 
@@ -277,13 +293,12 @@ impl XyTool for BashTool {
     }
 
     async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
-        let cmd = args["command"]
-            .as_str()
-            .ok_or_else(|| XyToolError::InvalidArgs("missing 'command'".into()))?;
+        let BashArgs {
+            command: cmd,
+            description: _,
+            timeout: requested,
+        } = parse_tool_args(args)?;
 
-        let requested = args["timeout"]
-            .as_i64()
-            .unwrap_or(DEFAULT_TIMEOUT_SECS as i64);
         let timeout_secs = if requested <= 0 {
             DEFAULT_TIMEOUT_SECS
         } else {
@@ -298,13 +313,13 @@ impl XyTool for BashTool {
         // (c1255 ToolExecutionUpdate). Falls back to wait_with_output otherwise.
         if let Some(out_tx) = ctx.output_tx.clone() {
             return self
-                .execute_streaming(cmd, timeout_secs, ctx.cancel.clone(), out_tx)
+                .execute_streaming(&cmd, timeout_secs, ctx.cancel.clone(), out_tx)
                 .await;
         }
 
         let output = self
             .operations
-            .execute(cmd, timeout_secs, ctx.cancel.clone())
+            .execute(&cmd, timeout_secs, ctx.cancel.clone())
             .await
             .map_err(|e| match e {
                 BashError::Aborted => XyToolError::Aborted,

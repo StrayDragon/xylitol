@@ -8,8 +8,10 @@
 //! - Entry limit hint when truncated
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::args::parse_tool_args;
 use super::path_utils::resolve_to_cwd;
 use crate::domain::error::XyToolError;
 use crate::runtime_protocol::{XyTool, XyToolCtx};
@@ -17,6 +19,22 @@ use crate::runtime_protocol::{XyTool, XyToolCtx};
 const DEFAULT_LS_LIMIT: usize = 200;
 
 pub struct LsTool;
+
+#[derive(Debug, Deserialize)]
+struct LsArgs {
+    #[serde(default = "default_ls_path")]
+    path: String,
+    #[serde(default = "default_ls_limit")]
+    limit: u64,
+}
+
+fn default_ls_path() -> String {
+    ".".into()
+}
+
+fn default_ls_limit() -> u64 {
+    DEFAULT_LS_LIMIT as u64
+}
 
 #[async_trait]
 impl XyTool for LsTool {
@@ -46,10 +64,13 @@ impl XyTool for LsTool {
     }
 
     async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
-        let dir_path = args["path"].as_str().unwrap_or(".");
-        let limit = args["limit"].as_u64().unwrap_or(DEFAULT_LS_LIMIT as u64) as usize;
+        let LsArgs {
+            path: dir_path,
+            limit,
+        } = parse_tool_args(args)?;
+        let limit = limit as usize;
 
-        let resolved = resolve_to_cwd(dir_path);
+        let resolved = resolve_to_cwd(&dir_path);
         let _resolved_str = resolved.to_string_lossy().to_string();
 
         if ctx.cancel.is_cancelled() {

@@ -8,10 +8,12 @@
 //! - Respects .gitignore (built into ripgrep)
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::process::Command;
 use tokio::time::Duration;
 
+use super::args::parse_tool_args;
 use super::path_utils::resolve_to_cwd;
 use super::truncate::{
     DEFAULT_MAX_BYTES, GREP_MAX_LINE_LENGTH, TruncationOptions, format_size, truncate_head,
@@ -24,6 +26,32 @@ const DEFAULT_LIMIT: usize = 100;
 const RG_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct GrepTool;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GrepArgs {
+    pattern: String,
+    #[serde(default = "default_dot")]
+    path: String,
+    #[serde(default)]
+    glob: Option<String>,
+    #[serde(default)]
+    ignore_case: bool,
+    #[serde(default)]
+    literal: bool,
+    #[serde(default)]
+    context: u32,
+    #[serde(default = "default_grep_limit")]
+    limit: u64,
+}
+
+fn default_dot() -> String {
+    ".".into()
+}
+
+fn default_grep_limit() -> u64 {
+    DEFAULT_LIMIT as u64
+}
 
 #[async_trait]
 impl XyTool for GrepTool {
@@ -73,18 +101,18 @@ impl XyTool for GrepTool {
     }
 
     async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
-        let pattern = args["pattern"]
-            .as_str()
-            .ok_or_else(|| XyToolError::InvalidArgs("missing 'pattern'".into()))?;
-        let search_path = args["path"].as_str().unwrap_or(".");
-        let glob = args["glob"].as_str().map(|s| s.to_string());
-        let ignore_case = args["ignoreCase"].as_bool().unwrap_or(false);
-        let literal = args["literal"].as_bool().unwrap_or(false);
-        let context = args["context"].as_u64().unwrap_or(0) as u32;
-        let limit_val = args["limit"].as_u64().unwrap_or(DEFAULT_LIMIT as u64) as usize;
-        let effective_limit = limit_val.max(1);
+        let GrepArgs {
+            pattern,
+            path: search_path,
+            glob,
+            ignore_case,
+            literal,
+            context,
+            limit: limit_val,
+        } = parse_tool_args(args)?;
+        let effective_limit = (limit_val as usize).max(1);
 
-        let search_dir = resolve_to_cwd(search_path);
+        let search_dir = resolve_to_cwd(&search_path);
         let search_dir_str = search_dir.to_string_lossy().to_string();
 
         if ctx.cancel.is_cancelled() {
