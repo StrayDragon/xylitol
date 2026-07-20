@@ -1133,6 +1133,21 @@ token_estimate:
     }
 
     #[test]
+    fn token_estimate_local_tokenizer_unquoted_off() {
+        // YAML 1.1 may treat bare `off` as bool; must still load as Off gate.
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+models: {}
+token_estimate:
+  local_tokenizer: off
+"#,
+        )
+        .expect("unquoted off must deserialize");
+        assert!(!cfg.token_estimate.local_tokenizer.is_on());
+        assert_eq!(cfg.token_estimate.local_tokenizer, LocalTokenizerGate::Off);
+    }
+
+    #[test]
     fn token_estimate_local_tokenizer_invalid_fails() {
         let err = yaml_serde::from_str::<AppConfig>(
             r#"
