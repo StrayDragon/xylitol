@@ -32,7 +32,6 @@ pub struct AgentBuilder {
     context_files: Vec<(String, String)>,
     append_system_prompt: Vec<String>,
     skills: Vec<crate::domain::resource_types::SkillInfo>,
-    max_iterations: u32,
     compaction_threshold: f64,
     compaction_settings: Option<CompactionSettings>,
     cwd: String,
@@ -63,7 +62,6 @@ impl AgentBuilder {
             context_files: Vec::new(),
             append_system_prompt: Vec::new(),
             skills: Vec::new(),
-            max_iterations: 50,
             compaction_threshold: 0.8,
             compaction_settings: None,
             cwd: ".".into(),
@@ -102,12 +100,6 @@ impl AgentBuilder {
     /// Set skills catalog for `<available_skills>` in the system prompt (c1085).
     pub fn skills(mut self, skills: Vec<crate::domain::resource_types::SkillInfo>) -> Self {
         self.skills = skills;
-        self
-    }
-
-    /// Set the maximum ReAct iterations per turn (default: 50).
-    pub fn max_iterations(mut self, n: u32) -> Self {
-        self.max_iterations = n;
         self
     }
 
@@ -175,7 +167,6 @@ impl AgentBuilder {
             self.system_prompt,
             self.context_files,
             self.append_system_prompt,
-            self.max_iterations,
             self.compaction_threshold,
             self.cwd,
             self.compaction_settings,

@@ -1,9 +1,9 @@
 //! Agent hooks — extension points for customizing the ReAct loop.
 //!
 //! [`AgentHooks`] carries callback chains injected at tool-call boundaries and
-//! context transforms. The loop consults them when non-empty; empty chains are
-//! a cheap `is_empty()` check. This is the "open for extension" seam of the
-//! runtime.
+//! context transforms, plus an optional pi-aligned [`ShouldStopAfterTurnHook`]
+//! slot. The loop consults them when non-empty; empty chains are a cheap
+//! `is_empty()` check. This is the "open for extension" seam of the runtime.
 //!
 //! Steering / follow-up injection is owned by [`crate::agent::session::PendingMessageQueue`]
 //! on [`crate::agent::session::AgentCapabilities`] (c461). [`SteeringHooks`] remains as an
@@ -36,14 +36,42 @@ pub type TransformCtxHook = Arc<dyn Fn(Vec<AgentMessage>) -> Vec<AgentMessage> +
 /// returns messages to prepend to the turn.
 pub type GetMessagesHook = Arc<dyn Fn() -> Vec<AgentMessage> + Send + Sync>;
 
+/// Context passed to [`ShouldStopAfterTurnHook`] after each `TurnEnd` (pi-aligned).
+#[derive(Debug, Clone)]
+pub struct ShouldStopAfterTurnCtx {
+    /// Zero-based turn index that just completed.
+    pub turn_index: u32,
+    /// Assistant message persisted for this turn, if any (pi: `message`).
+    pub assistant: Option<AgentMessage>,
+    /// Tool-result messages appended during this turn (may be empty).
+    pub tool_results: Vec<AgentMessage>,
+    /// Full conversation history after this turn's writes (pi: `context` messages).
+    pub history: Vec<AgentMessage>,
+    /// Messages appended by this `run` invocation so far (pi: `newMessages`).
+    ///
+    /// Includes the prompt user message and everything written after it; excludes
+    /// `seeded_history` that existed before this `run` started.
+    pub new_messages: Vec<AgentMessage>,
+}
+
+/// After-turn stop callback (pi `shouldStopAfterTurn`).
+///
+/// Called after `TurnEnd`. Returning `true` ends the run with `AgentEnd` without
+/// draining steer / follow-up or starting another model call.
+///
+/// Contract: must not panic. Prefer returning `false` on uncertainty.
+pub type ShouldStopAfterTurnHook = Arc<dyn Fn(&ShouldStopAfterTurnCtx) -> bool + Send + Sync>;
+
 // ── AgentHooks ──────────────────────────────────────────────────────
 
-/// Hooks for customizing the agent loop around tool execution.
+/// Hooks for customizing the agent loop around tool execution and turn stop.
 #[derive(Default, Clone)]
 pub struct AgentHooks {
     pub before_tool_call: Vec<BeforeToolHook>,
     pub after_tool_call: Vec<AfterToolHook>,
     pub transform_context: Vec<TransformCtxHook>,
+    /// Optional single-slot stop gate (pi: one callback, not a chain).
+    pub should_stop_after_turn: Option<ShouldStopAfterTurnHook>,
 }
 
 impl AgentHooks {
@@ -65,6 +93,11 @@ impl AgentHooks {
     /// Add a context-transform hook.
     pub fn add_transform_context(&mut self, hook: TransformCtxHook) {
         self.transform_context.push(hook);
+    }
+
+    /// Set or clear the pi-aligned after-turn stop callback (single slot).
+    pub fn set_should_stop_after_turn(&mut self, hook: Option<ShouldStopAfterTurnHook>) {
+        self.should_stop_after_turn = hook;
     }
 }
 

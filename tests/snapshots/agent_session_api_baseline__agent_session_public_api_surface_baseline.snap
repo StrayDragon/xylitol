@@ -1,6 +1,5 @@
 ---
 source: tests/agent_session_api_baseline.rs
-assertion_line: 138
 expression: "all_items.join(\"\\n\")"
 ---
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), String>
@@ -44,10 +43,9 @@ pub fn is_empty(&self) -> bool
 pub fn len(&self) -> usize
 pub fn loaded_skill_names(&self) -> Vec<String>
 pub fn loaded_skills(&self) -> &[crate::domain::resource_types::SkillInfo]
-pub fn max_iterations(&self) -> u32
 pub fn mode(&self) -> QueueMode
 pub fn model_registry(&self) -> &ModelRegistry
-pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dyn XySessionStore>, sink: Arc<dyn XyEventSink>, system_prompt: Option<String>, context_files: Vec<(String, String)>, append_system_prompt: Vec<String>, max_iterations: u32, compaction_threshold: f64, cwd: String, compaction_settings: Option<CompactionSettings>, model_builder: crate::runtime_protocol::XyModelBuilder, permission: Arc<dyn XyPermission>, bash_executor: Option<Arc<dyn XyBashExecutor>>, export_io: Option<Arc<dyn XyExportIo>>, steering_mode: QueueMode, follow_up_mode: QueueMode, hook_bus: Option<Arc<dyn XyHookBus>>, ) -> Self
+pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dyn XySessionStore>, sink: Arc<dyn XyEventSink>, system_prompt: Option<String>, context_files: Vec<(String, String)>, append_system_prompt: Vec<String>, compaction_threshold: f64, cwd: String, compaction_settings: Option<CompactionSettings>, model_builder: crate::runtime_protocol::XyModelBuilder, permission: Arc<dyn XyPermission>, bash_executor: Option<Arc<dyn XyBashExecutor>>, export_io: Option<Arc<dyn XyExportIo>>, steering_mode: QueueMode, follow_up_mode: QueueMode, hook_bus: Option<Arc<dyn XyHookBus>>, ) -> Self
 pub fn new(executor: Option<Arc<dyn XyBashExecutor>>) -> Self
 pub fn new(io: Option<Arc<dyn XyExportIo>>) -> Self
 pub fn new(mode: QueueMode) -> Self

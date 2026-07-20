@@ -238,7 +238,6 @@ fn make_agent_with_store(
         Some("you are helpful".into()),
         Vec::new(),
         Vec::new(),
-        50,
         0.8,
         ".".into(),
         None,
@@ -760,7 +759,6 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
         None,
         Vec::new(),
         Vec::new(),
-        50,
         0.8,
         ".".into(),
         None,
@@ -2268,6 +2266,9 @@ fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
 // ═══════════════════════════════════════════════════════════════════
 #[given("mock 模型先 tool 后无 tool")]
 fn _g_ar_react_setup(agent: &AgentState, ws: &Workspace) {
+    // Isolate from prior scenarios that left a prepared AR_RUNNER.
+    AR_RUNNER.with(|r| *r.borrow_mut() = None);
+    AR_RUNNER_EVENTS.with(|e| e.borrow_mut().clear());
     reset_fake_state();
     ws.init();
     agent.registry.borrow_mut().register(XyModelMeta {
@@ -2297,12 +2298,17 @@ fn _g_ar_react_setup(agent: &AgentState, ws: &Workspace) {
 }
 #[when("运行 AgentRuntime")]
 async fn _w_ar_react_run(agent: &AgentState) {
-    let mut runner = make_agent(agent);
+    // Prefer a runner prepared by a prior Given (e.g. stop-hook / queues).
+    let mut runner = AR_RUNNER
+        .with(|r| r.borrow_mut().take())
+        .unwrap_or_else(|| make_agent(agent));
     let mut stream = runner.run("读取文件").await;
     let mut local_events = Vec::new();
     while let Some(e) = stream.next().await {
         local_events.push(e);
     }
+    ar_store_runner(runner);
+    ar_store_events(local_events.clone());
     let mut events = agent.events.borrow_mut();
     events.clear();
     events.extend(local_events);
@@ -2676,6 +2682,109 @@ fn _t_ar11_second_run_ok() {
         .any(|ev| matches!(ev, XyEvent::TurnEnd { .. }));
     assert!(!aborted, "second run must not be immediately aborted");
     assert!(ended, "second run must complete with TurnEnd");
+}
+
+// ar24 should-stop-emits-agent-end / should-stop-skips-followup
+#[given("注册 should_stop_after_turn 在首次 TurnEnd 后返回 true")]
+async fn _g_ar24_should_stop(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("stop-after-turn ack");
+    let mut runner = ar_make_runner(agent, ws);
+    runner.set_should_stop_after_turn(Some(std::sync::Arc::new(|_| true)));
+    ar_store_runner(runner);
+}
+
+#[given("入队 follow_up 且 should_stop_after_turn 在首次 TurnEnd 后返回 true")]
+async fn _g_ar24_should_stop_with_followup(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("stop-skip-followup ack");
+    let mut runner = ar_make_runner(agent, ws);
+    runner.follow_up("停闸后不应注入的追问");
+    runner.set_should_stop_after_turn(Some(std::sync::Arc::new(|_| true)));
+    ar_store_runner(runner);
+}
+
+#[given("未注册 should_stop_after_turn 的无工具 agent")]
+async fn _g_ar24_no_hook_open(agent: &AgentState, ws: &Workspace) {
+    set_fake_text("open-end ack");
+    let runner = ar_make_runner(agent, ws);
+    ar_store_runner(runner);
+}
+
+#[then("出现 AgentEnd 且其后无新的模型轮 TurnStart")]
+fn _t_ar24_agent_end_no_extra_turn(agent: &AgentState) {
+    let events = agent.events.borrow();
+    let mut turn_starts = 0usize;
+    let mut saw_agent_end = false;
+    let mut turn_start_after_end = false;
+    for ev in events.iter() {
+        match ev {
+            XyEvent::TurnStart { .. } => {
+                turn_starts += 1;
+                if saw_agent_end {
+                    turn_start_after_end = true;
+                }
+            }
+            XyEvent::AgentEnd { .. } => saw_agent_end = true,
+            _ => {}
+        }
+    }
+    assert!(saw_agent_end, "expected AgentEnd, got {events:?}");
+    assert_eq!(
+        turn_starts, 1,
+        "expected exactly one TurnStart, got {events:?}"
+    );
+    assert!(
+        !turn_start_after_end,
+        "no TurnStart after AgentEnd: {events:?}"
+    );
+}
+
+#[then("本 run 以 AgentEnd 结束且 follow_up 未被注入历史")]
+fn _t_ar24_followup_not_injected(agent: &AgentState) {
+    let events = agent.events.borrow();
+    let agent_end = events.iter().rev().find_map(|ev| match ev {
+        XyEvent::AgentEnd { messages } => Some(messages.clone()),
+        _ => None,
+    });
+    let history = agent_end.expect("expected AgentEnd");
+    let injected = history.iter().any(|m| match m {
+        xylitol::domain::message::AgentMessage::Llm(
+            xylitol::domain::message::LlmMessage::UserMessage { content, .. },
+        ) => content.iter().any(|p| match p {
+            xylitol::domain::message::AgentPart::Text { text } => {
+                text.contains("停闸后不应注入的追问")
+            }
+            _ => false,
+        }),
+        _ => false,
+    });
+    assert!(!injected, "follow_up must not be in history: {history:?}");
+    ar_with_runner(|r| {
+        assert_eq!(
+            r.queue_stats().follow_up_count,
+            1,
+            "follow_up must remain queued"
+        );
+    });
+}
+
+#[then("正常出现 AgentEnd 且恰好一轮 TurnStart")]
+fn _t_ar24_no_hook_open_end(agent: &AgentState) {
+    let events = agent.events.borrow();
+    let turn_starts = events
+        .iter()
+        .filter(|ev| matches!(ev, XyEvent::TurnStart { .. }))
+        .count();
+    let saw_agent_end = events
+        .iter()
+        .any(|ev| matches!(ev, XyEvent::AgentEnd { .. }));
+    assert!(
+        saw_agent_end,
+        "expected AgentEnd without stop hook: {events:?}"
+    );
+    assert_eq!(
+        turn_starts, 1,
+        "open end without max_iterations / stop hook: one TurnStart, got {events:?}"
+    );
 }
 
 // ar10 abort-cancels-bang
@@ -3288,6 +3397,21 @@ async fn test_ar_abort_cancels_bang(agent: AgentState, ws: Workspace) {}
     name = "before-denies"
 )]
 async fn test_ar_before_denies(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "should-stop-emits-agent-end"
+)]
+async fn test_ar_should_stop_emits_agent_end(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "should-stop-skips-followup"
+)]
+async fn test_ar_should_stop_skips_followup(agent: AgentState, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "no-hook-open-end"
+)]
+async fn test_ar_no_hook_open_end(agent: AgentState, ws: Workspace) {}
 
 // compaction.feature (5)
 #[scenario(

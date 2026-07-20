@@ -75,6 +75,7 @@ fn partial_assistant_message(
     })
 }
 
+use super::hooks::ShouldStopAfterTurnCtx;
 use super::permission_router::permission_target;
 use super::retry::{RetryState, is_retryable_error};
 use super::{AgentHooks, XyEvent, XyEventStream};
@@ -180,6 +181,16 @@ impl AgentRuntime {
     /// Add a before-tool hook. Takes effect on the next [`run`](Self::run) call.
     pub fn add_hook(&mut self, hook: super::hooks::BeforeToolHook) {
         self.inner.hooks_mut().add_before(hook);
+    }
+
+    /// Set the optional after-turn stop callback (pi `shouldStopAfterTurn`).
+    ///
+    /// Takes effect on the next [`run`](Self::run) call. Single slot — not a chain.
+    pub fn set_should_stop_after_turn(
+        &mut self,
+        hook: Option<super::hooks::ShouldStopAfterTurnHook>,
+    ) {
+        self.inner.hooks_mut().set_should_stop_after_turn(hook);
     }
 
     /// Set the permission port. Takes effect on the next [`run`](Self::run) call.
@@ -307,7 +318,6 @@ impl AgentRuntime {
         };
 
         let tools = self.inner.tools().clone();
-        let max_iterations = self.inner.max_iterations();
         let hooks = self.inner.hooks().clone();
         let hook_bus = self.inner.hook_bus();
         let tool_mode = self.inner.tool_mode();
@@ -351,7 +361,6 @@ impl AgentRuntime {
             model,
             tools,
             tool_schemas,
-            max_iterations: max_iterations as usize,
             user_parts,
             cancel,
             permission_check,
@@ -403,14 +412,13 @@ struct ReActConfig {
     model: Arc<dyn XyModel>,
     tools: ToolSet,
     tool_schemas: Vec<XyToolSchema>,
-    max_iterations: usize,
     user_parts: Vec<crate::domain::message::AgentPart>,
     cancel: CancellationToken,
     /// Optional permission check. Called with (tool_name, target_path_or_domain).
     /// Returns Some(reason) if the operation is denied.
     #[allow(clippy::type_complexity)]
     permission_check: Option<std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>>,
-    /// Hooks consulted at tool-call boundaries.
+    /// Hooks consulted at tool-call boundaries and optional after-turn stop.
     hooks: AgentHooks,
     /// Optional script hook bus (pi-aligned lifecycle + tool/context bridge).
     hook_bus: Option<Arc<dyn XyHookBus>>,
@@ -426,6 +434,13 @@ struct ReActConfig {
     skills: Vec<SkillInfo>,
     /// Thinking level / map / budgets for provider request assembly (c1165).
     generate_options: crate::runtime_protocol::XyGenerateOptions,
+}
+
+fn should_stop_after_turn(hooks: &AgentHooks, ctx: &ShouldStopAfterTurnCtx) -> bool {
+    hooks
+        .should_stop_after_turn
+        .as_ref()
+        .is_some_and(|hook| hook(ctx))
 }
 
 fn drain_queue(queue: &Arc<Mutex<PendingMessageQueue>>) -> Vec<AgentMessage> {
@@ -468,7 +483,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         model,
         tools,
         tool_schemas,
-        max_iterations,
         user_parts,
         cancel,
         permission_check,
@@ -491,6 +505,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let mut history: Vec<AgentMessage> = seeded_history;
         // System prompt rides on `generate_options.system_prompt` (c1270 / pi align).
         // MUST NOT stuff it into history as a fake user turn.
+        // pi `newMessages`: everything this run appends (exclude pre-seed).
+        let run_baseline = history.len();
 
         // Add user message (text and/or images, c1155).
         history.push(AgentMessage::user_parts(user_parts));
@@ -510,9 +526,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 if cancel.is_cancelled() {
                     // Bridge maps this to a dim system note + idle (not a sticky fault).
                     yield XyEvent::Error("aborted".to_string());
-                    break 'outer;
-                }
-                if turn >= max_iterations {
                     break 'outer;
                 }
 
@@ -855,7 +868,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 continue_after_tools = !tool_calls.is_empty();
 
                 if tool_calls.is_empty() {
-                    yield XyEvent::TurnEnd { turn_index: turn as u32 };
+                    let turn_index = turn as u32;
+                    yield XyEvent::TurnEnd { turn_index };
                     if let Some(bus) = &hook_bus {
                         observe_script_hook(
                             bus,
@@ -866,6 +880,21 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         .await;
                     }
                     turn += 1;
+                    let stop_ctx = ShouldStopAfterTurnCtx {
+                        turn_index,
+                        assistant: history
+                            .iter()
+                            .rev()
+                            .find(|m| m.role_name() == "assistant")
+                            .cloned(),
+                        tool_results: Vec::new(),
+                        history: history.clone(),
+                        new_messages: history[run_baseline..].to_vec(),
+                    };
+                    if should_stop_after_turn(&hooks, &stop_ctx) {
+                        // pi: agent_end without polling steer / follow-up.
+                        break 'outer;
+                    }
                     // Poll steering even when there were no tools (pi: pending
                     // after turn may restart the inner loop).
                     pending = drain_queue(&steer_queue);
@@ -879,6 +908,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
                     continue;
                 }
+
+                let mut turn_tool_results: Vec<AgentMessage> = Vec::new();
+                let turn_assistant = history.last().cloned();
 
                 for (id, name, args) in &tool_calls {
                     let _tool_span = super::obs::ToolExecuteSpan::start(name, id);
@@ -955,6 +987,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             history.last().expect("tool result"),
                         )
                         .await;
+                        turn_tool_results.push(history.last().expect("tool result").clone());
                         continue;
                     }
 
@@ -1104,9 +1137,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         history.last().expect("tool result"),
                     )
                     .await;
+                    turn_tool_results.push(history.last().expect("tool result").clone());
                 }
 
-                yield XyEvent::TurnEnd { turn_index: turn as u32 };
+                let turn_index = turn as u32;
+                yield XyEvent::TurnEnd { turn_index };
                 if let Some(bus) = &hook_bus {
                     observe_script_hook(
                         bus,
@@ -1117,6 +1152,18 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     .await;
                 }
                 turn += 1;
+
+                let stop_ctx = ShouldStopAfterTurnCtx {
+                    turn_index,
+                    assistant: turn_assistant,
+                    tool_results: turn_tool_results,
+                    history: history.clone(),
+                    new_messages: history[run_baseline..].to_vec(),
+                };
+                if should_stop_after_turn(&hooks, &stop_ctx) {
+                    // pi: agent_end without polling steer / follow-up.
+                    break 'outer;
+                }
 
                 // After tools (or a text-only turn handled above), poll steering
                 // for the next model round.
@@ -1272,7 +1319,6 @@ mod tests {
             Some("You are helpful.".into()),
             Vec::new(),
             Vec::new(),
-            50,
             0.8,
             ".".into(),
             None,
@@ -1330,7 +1376,6 @@ mod tests {
             Some("You are helpful.".into()),
             Vec::new(),
             Vec::new(),
-            50,
             0.8,
             ".".into(),
             None,
@@ -1353,6 +1398,9 @@ mod tests {
 
     struct MockModel {
         chunks: Vec<crate::domain::types::XyChunk>,
+        /// Without max_iterations (c1430), a constant tool-call mock would loop
+        /// forever. First `generate_stream` returns `chunks`; later calls stop.
+        calls: std::sync::atomic::AtomicUsize,
     }
 
     #[async_trait::async_trait]
@@ -1368,7 +1416,19 @@ mod tests {
             _stream: bool,
             _options: crate::runtime_protocol::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
-            let chunks = self.chunks.clone();
+            use std::sync::atomic::Ordering;
+            let n = self.calls.fetch_add(1, Ordering::SeqCst);
+            let chunks = if n == 0 {
+                self.chunks.clone()
+            } else {
+                vec![
+                    crate::domain::types::XyChunk::TextDelta("(mock end)".into()),
+                    crate::domain::types::XyChunk::Done {
+                        finish_reason: crate::domain::message::XyStopReason::Stop,
+                        usage: None,
+                    },
+                ]
+            };
             Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
         }
     }
@@ -1468,6 +1528,7 @@ mod tests {
         Arc::new(move |_| {
             Ok(Arc::new(MockModel {
                 chunks: chunks.clone(),
+                calls: std::sync::atomic::AtomicUsize::new(0),
             }) as Arc<dyn XyModel>)
         })
     }
@@ -1495,7 +1556,6 @@ mod tests {
             None,
             Vec::new(),
             Vec::new(),
-            50,
             0.8,
             ".".into(),
             None,
@@ -1899,7 +1959,6 @@ mod tests {
             None,
             Vec::new(),
             Vec::new(),
-            50,
             0.8,
             ".".into(),
             None,
@@ -2054,6 +2113,103 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn should_stop_after_turn_skips_follow_up_and_ends() {
+        use crate::domain::lifecycle::XyEvent;
+        use futures::StreamExt;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let done_stop = || crate::domain::types::XyChunk::Done {
+            finish_reason: crate::domain::message::XyStopReason::Stop,
+            usage: None,
+        };
+        // Two rounds available — stop hook must prevent the second.
+        let rounds = vec![
+            vec![
+                crate::domain::types::XyChunk::TextDelta("first".into()),
+                done_stop(),
+            ],
+            vec![
+                crate::domain::types::XyChunk::TextDelta("second".into()),
+                done_stop(),
+            ],
+        ];
+        let mut agent = make_agent_with_rounds(rounds, ToolSet::empty());
+        agent.follow_up("queued follow-up must stay");
+        let calls = std::sync::Arc::new(AtomicUsize::new(0));
+        let calls_hook = calls.clone();
+        let seen_new = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen_new_hook = seen_new.clone();
+        agent.set_should_stop_after_turn(Some(std::sync::Arc::new(move |ctx| {
+            calls_hook.fetch_add(1, Ordering::SeqCst);
+            *seen_new_hook.lock().unwrap() = ctx.new_messages.clone();
+            true
+        })));
+
+        let mut stream = agent.run("start").await;
+        let mut texts = Vec::new();
+        let mut turn_starts = 0u32;
+        let mut turn_ends = 0u32;
+        let mut agent_end_msgs = None;
+        while let Some(evt) = stream.next().await {
+            match evt {
+                XyEvent::TextDelta(t) => texts.push(t),
+                XyEvent::TurnStart { .. } => turn_starts += 1,
+                XyEvent::TurnEnd { .. } => turn_ends += 1,
+                XyEvent::AgentEnd { messages } => agent_end_msgs = Some(messages),
+                _ => {}
+            }
+        }
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "stop hook once after TurnEnd"
+        );
+        assert_eq!(turn_starts, 1, "no second model turn");
+        assert_eq!(turn_ends, 1);
+        assert!(texts.iter().any(|t| t == "first"));
+        assert!(
+            !texts.iter().any(|t| t == "second"),
+            "second model round must not run: {texts:?}"
+        );
+        assert_eq!(agent.queue_stats().follow_up_count, 1);
+        let new_msgs = seen_new.lock().unwrap();
+        let new_user: Vec<String> = new_msgs
+            .iter()
+            .filter_map(|m| match m {
+                AgentMessage::Llm(LlmMessage::UserMessage { content, .. }) => {
+                    content.iter().find_map(|p| match p {
+                        AgentPart::Text { text: t } => Some(t.clone()),
+                        _ => None,
+                    })
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(
+            new_user.iter().any(|t| t == "start"),
+            "new_messages must carry the run prompt (pi newMessages): {new_user:?}"
+        );
+        let history = agent_end_msgs.expect("AgentEnd");
+        let user_texts: Vec<String> = history
+            .iter()
+            .filter_map(|m| match m {
+                AgentMessage::Llm(LlmMessage::UserMessage { content, .. }) => {
+                    content.iter().find_map(|p| match p {
+                        AgentPart::Text { text: t } => Some(t.clone()),
+                        _ => None,
+                    })
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(
+            !user_texts.iter().any(|t| t.contains("queued follow-up")),
+            "follow_up must not be injected: {user_texts:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn abort_before_run_does_not_stick_to_next_run() {
         use crate::domain::lifecycle::XyEvent;
         use futures::StreamExt;
@@ -2182,7 +2338,6 @@ mod tests {
             None,
             Vec::new(),
             Vec::new(),
-            50,
             0.8,
             ".".into(),
             None,
@@ -2314,7 +2469,6 @@ mod tests {
             None,
             Vec::new(),
             Vec::new(),
-            50,
             0.8,
             ".".into(),
             None,
@@ -2415,7 +2569,6 @@ mod tests {
             Some("CUSTOM_SYSTEM_MARKER".into()),
             Vec::new(),
             Vec::new(),
-            50,
             0.8,
             ".".into(),
             None,
@@ -2524,7 +2677,6 @@ mod tests {
             None,
             Vec::new(),
             Vec::new(),
-            50,
             0.8,
             ".".into(),
             None,

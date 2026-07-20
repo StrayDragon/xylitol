@@ -151,7 +151,6 @@ pub struct ResolvedAssembly {
     pub append_system_prompt: Vec<String>,
     /// Skills discovered under Trust semantics (c1085).
     pub skills: Vec<crate::domain::resource_types::SkillInfo>,
-    pub max_iterations: u32,
     pub compaction_threshold: f64,
     pub cwd: String,
     pub compaction_settings: Option<crate::agent::compaction::CompactionSettings>,
@@ -185,7 +184,6 @@ impl ResolvedAssembly {
             context_files: self.context_files,
             append_system_prompt: self.append_system_prompt,
             skills: self.skills,
-            max_iterations: self.max_iterations,
             compaction_threshold: self.compaction_threshold,
             cwd: self.cwd,
             compaction_settings: self.compaction_settings,
@@ -377,17 +375,13 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
     }
     timing::time("session.restore");
 
-    // ── Step 3: resolve default profile (drives system_prompt/max_iter/model) ──
+    // ── Step 3: resolve default profile (drives system_prompt/model) ──
     let resolved_profile = app_config
         .as_ref()
         .and_then(|cfg| cfg.resolve_default_profile().ok());
     let config_system_prompt = resolved_profile
         .as_ref()
         .and_then(|p| p.system_prompt.clone());
-    let max_iterations = resolved_profile
-        .as_ref()
-        .map(|p| p.max_iterations)
-        .unwrap_or(50);
     let default_profile_model = resolved_profile
         .as_ref()
         .map(|p| p.model_config.model.clone());
@@ -528,7 +522,6 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         context_files,
         append_system_prompt,
         skills,
-        max_iterations,
         compaction_threshold: 0.8,
         cwd,
         compaction_settings,

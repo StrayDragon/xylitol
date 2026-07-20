@@ -64,8 +64,6 @@ pub struct AgentCapabilities {
     system_prompt: Option<String>,
     /// Current session ID.
     session_id: Option<String>,
-    /// Max ReAct loop iterations per turn.
-    max_iterations: u32,
     /// Compaction orchestration (threshold check, trigger).
     compaction_orchestrator: CompactionOrchestrator,
     /// CWD for session header.
@@ -104,7 +102,6 @@ impl AgentCapabilities {
         system_prompt: Option<String>,
         context_files: Vec<(String, String)>,
         append_system_prompt: Vec<String>,
-        max_iterations: u32,
         compaction_threshold: f64,
         cwd: String,
         compaction_settings: Option<CompactionSettings>,
@@ -128,7 +125,6 @@ impl AgentCapabilities {
             tool_mode: XyToolExecutionMode::Sequential,
             system_prompt: system_prompt.clone(),
             session_id: None,
-            max_iterations,
             compaction_orchestrator: CompactionOrchestrator::new(
                 compaction_threshold,
                 compaction_settings.unwrap_or_default(),
@@ -487,10 +483,6 @@ impl AgentCapabilities {
 
     pub fn system_prompt(&self) -> Option<&str> {
         self.system_prompt.as_deref()
-    }
-
-    pub fn max_iterations(&self) -> u32 {
-        self.max_iterations
     }
 
     pub fn model_registry(&self) -> &ModelRegistry {
@@ -867,7 +859,6 @@ mod tests {
             Some("you are helpful".into()),
             Vec::new(),
             Vec::new(),
-            50,
             0.8,
             ".".into(),
             None,
