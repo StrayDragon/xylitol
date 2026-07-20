@@ -34,42 +34,24 @@ checkpointed: false
 
 估计路径仍遵守 paa6：无缓存且未 download → **不**静默联网。
 
-## 配置：用户要不要配 model / tokenizer path？
+## 配置：用户要不要配？
 
-**要，对非 Builtin 模型。** 解析优先级（设计钉死）：
-
-```text
-ModelEntry.tokenizer（用户配置）
-  → registry builtin 启发式（仅常见 OpenAI 族）
-  → unmapped（须 CLI 显式 owner/repo，或先补配置）
-```
-
-| 模型情况 | 用户是否必须配置 | 行为 |
-|---|---|---|
-| 常见 OpenAI 族（builtin tiktoken） | **否** | `status`=`builtin`；`download` 提示无需下载 |
-| 开源/兼容端需 HF 词表 | **是**（或 download 时显式 `owner/repo`） | 配置 `tokenizer.huggingface` 或 CLI target |
-| 已有本地 `tokenizer.json` | **是**（`tokenizer.local.path`） | 不下载；直接离线加载 |
-| 未映射且无 CLI target | — | `download`/`status --model` **明确错误**，不猜厂商、不盲下 |
-
-建议 YAML 形状（本波落地最小字段；schema/example 见 tasks）：
+**要，对非 Builtin 模型。** 推理 `model` 与词表 HF repo **分开**（可共用）：
 
 ```yaml
+tokenizers:
+  qwen36:
+    repo: Qwen/Qwen3.6-35B-A3B
 models:
   models:
-    qwen-local:
-      provider: openai-compatible   # 示例
-      model: Qwen/Qwen2.5-7B-Instruct
-      tokenizer:
-        # 三选一（互斥）
-        huggingface:
-          repo: Qwen/Qwen2.5-7B-Instruct   # HF model id / repo
-          file: tokenizer.json            # 可选，默认 tokenizer.json
-        # local:
-        #   path: /path/to/tokenizer.json
-        # builtin: true                   # 显式强制 builtin（罕用）
+    qwen:
+      model: Qwen3.6-35B-A3B/UD-Q5_K_XL-think-coding
+      tokenizer: qwen36
 ```
 
-**不是**「model page path」漫游浏览器页，而是 **HF repo id + 文件名**（或本地文件路径）。「model card URL」解析 → **后置 / 待完善**。
+或短写 `tokenizer: Qwen/Qwen3.6-35B-A3B`。镜像用环境变量 `HF_ENDPOINT`，不写进 model。
+
+Pre-1.0：**怎么简单怎么来**；字段形态可在理清全配置关系后再收紧。
 
 ## HF 镜像与基址（本波 MUST）
 

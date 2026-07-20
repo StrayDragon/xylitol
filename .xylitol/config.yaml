@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=../configs/config.schema.json
+#
+# 仓库共享配置（可进 git）。无密钥。
+# 加载顺序（低→高）：~/.config/xylitol/config.yaml → …local →
+#   本文件 → .xylitol/config.local.yaml（若有）→ --config
+# 本仓库约定：只用本文件；不用 config.local.yaml。
+
+tokenizers:
+  qwen36:
+    repo: Qwen/Qwen3.6-35B-A3B
+    # file: tokenizer.json
+
+models:
+  default_model: qwen
+  models:
+    qwen:
+      provider: openai
+      model: Qwen3.6-35B-A3B/UD-Q5_K_XL-think-coding
+      base_url: http://tufa:50256/v1
+      tokenizer: qwen36
+
+agents:
+  default_profile: default
+  profiles:
+    default:
+      model: qwen
