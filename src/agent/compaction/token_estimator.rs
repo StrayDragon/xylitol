@@ -279,13 +279,60 @@ pub fn estimate_context_tokens_with(
         },
     );
 
-    ContextTokenEstimate {
+    let result = ContextTokenEstimate {
         tokens: est.tokens,
         provenance: to_domain_provenance(est.provenance),
         usage_tokens: est.usage_tokens,
         trailing_tokens: est.trailing_tokens,
         last_usage_index: est.last_usage_index,
+    };
+    emit_token_estimate_obs(&result, opts);
+    result
+}
+
+/// Record which estimate backend won (fastrace + level log), gated like provider-trace.
+fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &EstimateOpts) {
+    let backend = est.provenance.as_str();
+    log::debug!(
+        target: "xylitol::token_estimate",
+        "token estimate backend={backend} tokens={} usage_tokens={} trailing={} allow_local={} allow_remote={} model_id={:?}",
+        est.tokens,
+        est.usage_tokens,
+        est.trailing_tokens,
+        opts.allow_local_tokenizer,
+        opts.allow_remote_count,
+        opts.model_id,
+    );
+
+    if !xylitol_ai_bridge::provider::trace::provider_trace_active() {
+        return;
     }
+    use fastrace::prelude::*;
+    let model = opts.model_id.clone().unwrap_or_default();
+    let span = Span::root("token.estimate", SpanContext::random()).with_properties(|| {
+        [
+            ("backend", backend.to_string()),
+            ("provenance", backend.to_string()),
+            ("tokens", est.tokens.to_string()),
+            ("usage_tokens", est.usage_tokens.to_string()),
+            ("trailing_tokens", est.trailing_tokens.to_string()),
+            (
+                "allow_local_tokenizer",
+                opts.allow_local_tokenizer.to_string(),
+            ),
+            ("allow_remote_count", opts.allow_remote_count.to_string()),
+            ("model_id", model),
+        ]
+    });
+    span.add_event(Event::new("token.estimate").with_properties(|| {
+        [
+            ("kind", "token.estimate".to_string()),
+            ("backend", backend.to_string()),
+            ("tokens", est.tokens.to_string()),
+        ]
+    }));
+    // Drop span → flush via reporter.
+    drop(span);
 }
 
 /// Check if compaction should trigger based on a token reserve threshold.
