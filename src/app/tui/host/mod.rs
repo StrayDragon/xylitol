@@ -173,7 +173,11 @@ impl<T: Terminal> HostSession<T> {
 
     /// Product empty UI: shared `UiRoot` + Ctrl+C / Esc / idle-Enter listeners.
     pub fn new_product_ui(terminal: T) -> Self {
-        Self::new_product_ui_with_meta(terminal, display_cwd(), "—".into())
+        Self::new_product_ui_with_meta(
+            terminal,
+            display_cwd(),
+            crate::app::core::bootstrap::UNSET_MODEL_DISPLAY.into(),
+        )
     }
 
     /// Product UI with footer identity (`cwd · model`).

@@ -42,6 +42,14 @@ pub(crate) enum LoadError {
     Validation(String),
 }
 
+/// Result of loading AppConfig YAML layers.
+#[derive(Debug, Clone)]
+pub(crate) struct LoadedAppConfig {
+    pub config: AppConfig,
+    /// True if at least one `config.yaml` / `config.yml` / `--config` layer was merged.
+    pub from_yaml_layers: bool,
+}
+
 /// Load configuration from all layers, returning the merged `AppConfig`.
 ///
 /// `cli_config` — optional path to a CLI `--config` YAML file (highest priority).
@@ -49,6 +57,13 @@ pub(crate) enum LoadError {
 /// Side effects: loads `secret.env` into the process environment (unset keys
 /// only) and renders `{{ env.* }}` / `{{ secret.* }}` in each YAML layer.
 pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, LoadError> {
+    Ok(load_app_config_detailed(cli_config)?.config)
+}
+
+/// Like [`load_app_config`], but reports whether any YAML layer contributed.
+pub(crate) fn load_app_config_detailed(
+    cli_config: Option<&Path>,
+) -> Result<LoadedAppConfig, LoadError> {
     let paths = ConfigPaths::discover();
 
     let (secrets, injected) = super::secret_env::load_secret_env_files(&paths);
@@ -60,6 +75,7 @@ pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, Lo
     }
 
     let mut merged = Value::Null;
+    let mut from_yaml_layers = false;
 
     if let Some(global_base) = first_existing(&[
         paths.global_dir.join("config.yaml"),
@@ -72,6 +88,7 @@ pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, Lo
         );
         let val = load_and_render(&global_base, &secrets)?;
         deep_merge(&mut merged, val);
+        from_yaml_layers = true;
     }
 
     if let Some(ref proj_dir) = paths.project_dir
@@ -80,6 +97,7 @@ pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, Lo
     {
         let val = load_and_render(&proj_base, &secrets)?;
         deep_merge(&mut merged, val);
+        from_yaml_layers = true;
     }
 
     if let Some(cli_path) = cli_config
@@ -87,10 +105,14 @@ pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, Lo
     {
         let val = load_and_render(cli_path, &secrets)?;
         deep_merge(&mut merged, val);
+        from_yaml_layers = true;
     }
 
     if merged.is_null() {
-        return Ok(AppConfig::default());
+        return Ok(LoadedAppConfig {
+            config: AppConfig::default(),
+            from_yaml_layers: false,
+        });
     }
 
     let config: AppConfig = serde_json::from_value(merged)?;
@@ -100,7 +122,10 @@ pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, Lo
     config
         .validate_model_tokenizers()
         .map_err(LoadError::Validation)?;
-    Ok(config)
+    Ok(LoadedAppConfig {
+        config,
+        from_yaml_layers,
+    })
 }
 
 fn first_existing(candidates: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {

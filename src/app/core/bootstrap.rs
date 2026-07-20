@@ -31,7 +31,7 @@ use crate::agent::session::ModelRegistry;
 use crate::app::core::composition::{BuildAgentOptions, build_agent};
 use crate::domain::resource_types::PromptTemplate;
 use crate::domain::types::XyModelMeta;
-use crate::infra::config::loader::load_app_config;
+use crate::infra::config::loader::load_app_config_detailed;
 use crate::infra::config::value::InfraSecretResolver;
 use crate::infra::permission;
 use crate::infra::session::SessionManager;
@@ -66,10 +66,8 @@ pub struct BootstrapInput {
 /// exact wording (e.g. cli's `provider_guidance` enriches `NoModelsAvailable`).
 #[derive(Debug)]
 pub enum BootstrapWarning {
-    /// Config file was found but failed to load (fell back to env vars).
-    ConfigLoadFailed(String),
-    /// Config loaded but contributed zero models (likely a `model:` typo).
-    ConfigLoadedZeroModels,
+    /// A single model entry had a non-fatal config issue (skipped that entry).
+    ModelEntrySkipped(String),
     /// A provider entry had no resolvable API key.
     NoApiKey { provider: String },
     /// The project CWD is not trusted; `.xylitol/` resources were skipped.
@@ -81,6 +79,9 @@ pub enum BootstrapWarning {
     /// Model id failed to resolve entirely; no model pre-selected.
     ModelResolutionFailed(String),
 }
+
+/// Product display when no model is selected (cli-entry ce18).
+pub const UNSET_MODEL_DISPLAY: &str = "NOT-SET";
 
 /// A fully-assembled agent plus the resolved side-products surfaces need.
 ///
@@ -199,6 +200,10 @@ impl ResolvedAssembly {
 /// Error when assembly cannot proceed (no models available, build failure).
 #[derive(Debug)]
 pub enum BootstrapError {
+    /// YAML / template / IO config load failed (fail-closed; ce17).
+    ConfigLoadFailed(String),
+    /// Config YAML layers loaded but contributed zero registerable models (ce2).
+    ConfigLoadedZeroModels,
     /// No models could be loaded from config or environment.
     NoModelsAvailable,
     /// `build_agent` returned an error.
@@ -208,6 +213,12 @@ pub enum BootstrapError {
 impl std::fmt::Display for BootstrapError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            BootstrapError::ConfigLoadFailed(e) => write!(f, "config load failed: {e}"),
+            BootstrapError::ConfigLoadedZeroModels => write!(
+                f,
+                "config file present but loaded 0 models (check `models:` vs `model:` typo; \
+                 see configs/example.yaml)"
+            ),
             BootstrapError::NoModelsAvailable => write!(f, "no models available"),
             BootstrapError::BuildFailed(e) => write!(f, "agent build failed: {e}"),
         }
@@ -226,16 +237,13 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
     let mut warnings: Vec<BootstrapWarning> = Vec::new();
 
     // ── Step 1: load YAML config ──────────────────────────────────
-    let app_config = match load_app_config(cli_config_path) {
-        Ok(cfg) => Some(cfg),
-        Err(e) => {
-            warnings.push(BootstrapWarning::ConfigLoadFailed(e.to_string()));
-            None
-        }
+    let loaded = match load_app_config_detailed(cli_config_path) {
+        Ok(loaded) => loaded,
+        Err(e) => return Err(BootstrapError::ConfigLoadFailed(e.to_string())),
     };
+    let from_yaml_layers = loaded.from_yaml_layers;
+    let app_config = Some(loaded.config);
     timing::time("config.load");
-
-    let config_loaded = app_config.is_some();
 
     // ── Step 2: build ModelRegistry ───────────────────────────────
     let secret_resolver: Arc<dyn crate::runtime_protocol::XySecretResolver> =
@@ -264,7 +272,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
             ) {
                 Ok(ls) => ls,
                 Err(e) => {
-                    warnings.push(BootstrapWarning::ConfigLoadFailed(format!(
+                    warnings.push(BootstrapWarning::ModelEntrySkipped(format!(
                         "models.{alias}: {e}"
                     )));
                     continue;
@@ -273,7 +281,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
             if let Some(map) = &entry.thinking_level_map
                 && let Err(e) = crate::domain::types::validate_thinking_level_map(map)
             {
-                warnings.push(BootstrapWarning::ConfigLoadFailed(format!(
+                warnings.push(BootstrapWarning::ModelEntrySkipped(format!(
                     "models.{alias}: {e}"
                 )));
                 continue;
@@ -306,10 +314,13 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
         }
     }
 
-    if config_loaded && model_registry.is_empty() {
-        warnings.push(BootstrapWarning::ConfigLoadedZeroModels);
+    // ce2: YAML present but zero registerable models → hard fail (no env gpt-4o).
+    if from_yaml_layers && model_registry.is_empty() {
+        return Err(BootstrapError::ConfigLoadedZeroModels);
     }
 
+    // No YAML layers: env keys may populate the registry for discovery / --model.
+    // MUST NOT auto-select here (m12); selection only via --model or profile model.
     if model_registry.is_empty() {
         for (provider_name, env_var, kind) in [
             (
@@ -796,6 +807,148 @@ mod tests {
                 .iter()
                 .any(|n| n == "secret-reload")
         );
+    }
+
+    /// RAII env restore for bootstrap path tests.
+    struct EnvGuard {
+        key: &'static str,
+        prev: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, val: &str) -> Self {
+            let prev = std::env::var(key).ok();
+            unsafe { std::env::set_var(key, val) };
+            Self { key, prev }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.prev {
+                Some(v) => unsafe { std::env::set_var(self.key, v) },
+                None => unsafe { std::env::remove_var(self.key) },
+            }
+        }
+    }
+
+    #[test]
+    fn config_template_error_is_hard_fail() {
+        let home = tempfile::tempdir().unwrap();
+        let project = home.path().join("proj");
+        let proj_xy = project.join(".xylitol");
+        std::fs::create_dir_all(&proj_xy).unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+
+        let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
+        let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
+        let _cfg = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
+        let _key = EnvGuard::set("OPENAI_API_KEY", "sk-test");
+
+        std::fs::write(
+            proj_xy.join("config.yaml"),
+            "# doc {{ secret.KEY }}\nmodels:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\n",
+        )
+        .unwrap();
+
+        let err = match resolve_assembly(&BootstrapInput {
+            config_path: None,
+            session: None,
+            model: None,
+            trust_override: Some(true),
+            interactive: false,
+            caller: "test",
+        }) {
+            Ok(_) => panic!("template in comment must fail closed"),
+            Err(e) => e,
+        };
+        assert!(
+            matches!(err, BootstrapError::ConfigLoadFailed(_)),
+            "got {err}"
+        );
+    }
+
+    #[test]
+    fn yaml_zero_models_hard_fail_no_env_gpt4o() {
+        let home = tempfile::tempdir().unwrap();
+        let project = home.path().join("proj");
+        let proj_xy = project.join(".xylitol");
+        std::fs::create_dir_all(&proj_xy).unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+
+        let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
+        let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
+        let _cfg = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
+        let _key = EnvGuard::set("OPENAI_API_KEY", "sk-test");
+
+        // Explicit empty models map (config present, zero registerable models).
+        std::fs::write(
+            proj_xy.join("config.yaml"),
+            "models:\n  default_model: x\n  models: {}\n",
+        )
+        .unwrap();
+
+        let err = match resolve_assembly(&BootstrapInput {
+            config_path: None,
+            session: None,
+            model: None,
+            trust_override: Some(true),
+            interactive: false,
+            caller: "test",
+        }) {
+            Ok(_) => panic!("zero models from yaml must hard fail"),
+            Err(e) => e,
+        };
+        assert!(
+            matches!(err, BootstrapError::ConfigLoadedZeroModels),
+            "got {err}"
+        );
+    }
+
+    #[test]
+    fn env_only_registers_but_bootstrap_does_not_select() {
+        let home = tempfile::tempdir().unwrap();
+        let project = home.path().join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+
+        let _home = EnvGuard::set("HOME", home.path().to_str().unwrap());
+        let _proj = EnvGuard::set("XYLITOL_PROJECT_DIR", project.to_str().unwrap());
+        let _cfg = EnvGuard::set("XYLITOL_CONFIG_DIR", global.to_str().unwrap());
+        let _key = EnvGuard::set("OPENAI_API_KEY", "sk-test");
+        unsafe { std::env::remove_var("ANTHROPIC_API_KEY") };
+
+        let assembly = resolve_assembly(&BootstrapInput {
+            config_path: None,
+            session: None,
+            model: None,
+            trust_override: Some(true),
+            interactive: false,
+            caller: "test",
+        })
+        .expect("env-only assembly");
+        assert!(
+            !assembly.model_registry.list().is_empty(),
+            "env key should populate registry for discovery"
+        );
+
+        let boot = bootstrap(BootstrapInput {
+            config_path: None,
+            session: None,
+            model: None,
+            trust_override: Some(true),
+            interactive: false,
+            caller: "test",
+        })
+        .expect("bootstrap without --model");
+        assert!(
+            boot.agent.inner().current_model().is_none(),
+            "must not silent-select gpt-4o"
+        );
+        assert_eq!(UNSET_MODEL_DISPLAY, "NOT-SET");
     }
 
     #[test]

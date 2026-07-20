@@ -102,6 +102,10 @@ pub async fn start(
         BootstrapError::NoModelsAvailable => {
             "no models available: set OPENAI_API_KEY/ANTHROPIC_API_KEY or a config file".to_string()
         }
+        BootstrapError::ConfigLoadFailed(msg) => format!("config load failed: {msg}"),
+        BootstrapError::ConfigLoadedZeroModels => {
+            BootstrapError::ConfigLoadedZeroModels.to_string()
+        }
         BootstrapError::BuildFailed(msg) => msg,
     })?;
     let project_trusted = !bootstrapped.warnings.iter().any(|w| {

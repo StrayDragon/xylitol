@@ -42,7 +42,19 @@
   场景: typo-error
     假如 配置 models 因 typo 为空
     当 启动 CLI
-    那么 报错指向配置
+    那么 报错指向配置且 MUST NOT 静默进入 TUI
+
+  @req:ce17
+  场景: config-template-fail-closed
+    假如 项目 config.yaml 因未定义的模板变量导致加载失败
+    当 经 bootstrap 启动 TUI 或 print 或 --list-models
+    那么 硬失败非零退出且 MUST NOT 进入 TUI
+
+  @req:ce18
+  场景: unset-model-shows-not-set
+    假如 无配置模型且未传 --model
+    当 查询当前选中模型展示名
+    那么 为 NOT-SET 而非 gpt-4o
 
   @req:ce6
   场景: same-handler-both-drivers
