@@ -63,6 +63,42 @@ protocol ───────────────────────�
 
 **EventBus / `XyEventSink`**：装配时注入的 sink 用于侧路生命周期（如 compaction），**不是**多 client 的 turn 总线；turn 进度走 `Driver::run` 的 `XyEvent` 流。可经 `BuildAgentOptions.event_sink` 替换默认 EventBus。
 
+## 扩展决策准则（normative）
+
+产品心智（可插拔 ≠ 插件市场）：`docs/architecture/扩展与开闭.md`。此处只写**实现侧**何时开闭、开哪一层。
+
+### 三层扩展手段（按优先序）
+
+| 手段 | 何时用 | 代价 |
+|---|---|---|
+| **配置 / 会话开关 + composition 接线** | 单一（或极少）实现；启用才装配 | 最低；未启用须 zero-cost |
+| **既有 port**（`XyTool` / `XyModel` / `XyHookBus` / …） | 新能力可映射到已有契约 | 中；禁止旁路第二套语义 |
+| **新 `runtime_protocol` trait** | 已有**真实第二实现**，或测试/嵌入方必须替换 | 最高；须论证为何不能复用上两行 |
+
+**禁止**：Extension Host、插件清单市场、为未交付能力预挖空 `Xy*`、「已是统一口再包一层」双路径。
+
+### 升格 / 降级触发
+
+- **升格为 port**：出现第二个生产实现，或嵌入方/测试必须注入替换，且复用 `XyTool`/`XyModel`/缝会扭曲语义。
+- **保持具体类型 + 组合根**：仅 bootstrap/composition 知道具体类型；agent 只拿投影后的数据或既有 port（例：资源发现结果经 options 注入，不必强行 `dyn XyResourceLoader`）。
+- **`XyReloadable`**：编译期刷新约束（关联 `Outcome`），**不是** dyn 插件注册表；`/reload` 按固定顺序编排具体 reload。
+- **进精选 `pub use`**：仅库嵌入方稳定需要的端口/事件；`XyReloadable` / `XyResourceLoader` / `XyTrustStore` 等可留在 `runtime_protocol` 而不进 crate 根，直到嵌入契约需要。
+
+### 端口健康（审计快照 · 2026-07-21）
+
+| 端口 | 角色 | 备注 |
+|---|---|---|
+| `XyModel` / `XyModelBuilder` | 热路径可替换 | 开闭范例：ai-bridge adapter |
+| `XyTool` | 内置 + MCP 同口 | 新外部能力优先落此 |
+| `XySessionStore` / `XyEventSink` / `XyExportIo` / `XyBashExecutor` | agent 注入 | 组合根装配 |
+| `XyPermission` | 建议性门控 | 开箱 allow-all；非 popup 平台 |
+| `XySecretResolver` | 模型注册表 | |
+| `XyHookBus` | 脚本/库钩子 | 空配置 = 不装配 |
+| `XyTrustStore` | Trust 读写 | `&dyn` 调用；未进精选 `pub use` |
+| `XyResourceLoader` | 资源发现抽象 | **暂无生产 `dyn` 消费者**；具体 loader + inherent 为主；升格前先接线再谈精选导出 |
+| `XyReloadable` | 热重载约束 | 非 dyn 注册表 |
+
+后置（LSP / DAP / Sub-agent / 即时设置）认领时：默认走「开关 + `XyTool`/`Driver`/`XyEvent`」，**先证明**需要新 port 再提案；产品轴见 `docs/architecture/扩展与开闭.md`。
 
 ## Trust / Permission / MCP
 
