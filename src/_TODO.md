@@ -58,7 +58,8 @@ A  AGENTS 调音规则 + RETUNE 指针文件     ← 立规矩，低风险
 B  错误类型抬升（XyDriver / dispatch）     ← 横切收益最大
 C  内置工具 Args 类型化                  ← 局部、类型可见
 D  God 文件拆分（react / driver / session）
-   └─ driver D5–D7 已完成；react：先 D0/D0b/软 D1–D4；P3 状态机已评估、未开闸
+   └─ driver D5–D7 已完成
+   └─ react / session 大拆：默认不做（见 §D 决议）；可选卫生 D11
 E  runtime_protocol RPITIT               ← 一批改 port+实现
 F  孪生类型 SSOT（需动 packages）         ← 后置；先写归属、禁新增孪生
 G  观测 kind 打尖                        ← 可与 B 并行或紧随
@@ -249,23 +250,39 @@ crate 内热路径 / 内置工具 = struct + serde
 
 **react.rs**（硬约束：`run_react_loop` 的 `async_stream` 宏块是原子单元，跨函数 `yield` 不可行）
 
-体量切面（先记账，**本轮先不改代码**）：
+体量切面（记账用）：
 
 | 区段 | 约行 | 备注 |
 |---|---|---|
 | prelude + 小 helper | ~100 | streaming tool upsert 等 |
-| `AgentRuntime` facade | ~380 | 可整文件搬走（P1） |
+| `AgentRuntime` facade | ~380 | 可整文件搬走（D0b） |
 | `run_react_loop` + 尾部 helper | ~780 | 真·剧本；拆法受限 |
-| `#[cfg(test)]` | ~1500 | 外置即可腰斩生产文件（P0） |
+| `#[cfg(test)]` | ~1500 | 几乎全是经 `AgentRuntime` + Mock 的**循环行为测**，不是可抽 helper 的单元测 |
 
-原 D1–D4 在「可 yield 切片」意义上**不可直接执行**；改写为：
+原 D1–D4 在「可 yield 切片」意义上**不可直接执行**；曾改写为软项（见下）。
 
-- [ ] **D1**（软）turn / outer-inner 边界：注释分区 + 无 yield 纯决策函数（是否继续、注入 pending）
-- [ ] **D2**（软）tool / permission：`execute_tool_batch → Outcome`，loop 内只 `yield` Outcome
-- [ ] **D3**（软）`call_with_retry` 加深进 `retry.rs`
-- [ ] **D4**（软）`observe_script_hook` / span 细节进 `obs.rs`
-- [ ] **D0**（可选、高 ROI）外置 `react` 测试模块（~1500 行）——仅为可维护性，非状态机
-- [ ] **D0b**（可选）`AgentRuntime` → 独立文件，与 loop 分居
+#### 决议：react 拆分 / 外置测试——低优先级（2026-07-21）
+
+**事实**
+
+- 同文件测试约 19 个 `async` 用例，关键词命中：`XyEvent`/`Mock`/`AgentRuntime`/`abort`/`steer`/`follow_up`；**零**直接测 `run_react_loop` / `call_with_retry` / `partial_assistant_*`。
+- 即：这不是「一堆游离单测堵在生产文件里」，而是 **ReAct 行为回归套件与剧本同居**——外置只换文件边界，不增加可测性、不降低 loop 认知复杂度。
+- 真难读的是 ~780 行 `async_stream`；外置 ~1500 行测试只让 `wc -l` / RETUNE 好看，对改 loop 的人帮助有限（仍要跨文件对照事件序）。
+- P3 状态机已评估并冻结（见下）；软 D1–D4 亦不能绕过 yield 原子性。
+
+**结论**
+
+- **不必为「拆单测」而拆。** D0（外置 tests）标为 **won't / 除非编辑器或审阅痛到受不了**。
+- **不必为行数而拆 `AgentRuntime`（D0b）或软 D1–D4**，除非某次改 loop 时自然顺手、且行为测全绿。
+- RETUNE：`react.rs` 可视为「生产剧本 + 同居行为测」；超硬顶保留，但 **不要** 用「先拆测试」当伪进度。
+- 真正值得再开闸的仍是：**功能逼出 P3**，或 loop 生产段本身再显著膨胀。
+
+勾选状态（冻结意向，非待办压力）：
+
+- [ ] **D0** 外置 tests — **低优先级 / 默认不做**
+- [ ] **D0b** `AgentRuntime` 分文件 — **低优先级 / 默认不做**
+- [ ] **D1–D4**（软）— **低优先级 / 有改动时顺手，不单开 PR**
+- [x] **P3 评估** — 已评估，先不改（正文见下）
 
 #### P3 评估：sub-turn state machine（2026-07-21，**先不改**）
 
@@ -297,13 +314,13 @@ step(phase, ctx) -> (next, Vec<XyEvent>)   // 或 mpsc，由薄 async_stream 只
 - ~780 行行为保持重写；`XyEvent` **顺序**被 TUI / BDD 钉死，回归面大
 - cancel 竞态、并行 tool + uplink、hook 短路，在「纯步进」里都要重新表达，易静默改语义
 - 若事件序或 abort/steer 可见行为有任何漂移 → 可能升级 SDD；即便号称纯内部，也需满闸 `qa` + 相关 BDD
-- 短期内对「行数超标」的 ROI **低于** D0（外置 tests）
+- 对「行数超标」的 ROI 低于「什么都不做并承认同居测」；也**不高于**瞎外置测试
 
 **结论（冻结）**
 
 - **现在不做 P3。**
-- 触发再议：① D0/D0b/D1–D4 软拆之后 loop 生产行仍持续膨胀；或 ② 某功能无法在单一 `async_stream` 剧本里干净落地、且需要按 phase 单测。
-- 在此之前：`react` 拆分默认走 **D0 → D0b → D1–D4（软）**；P3 仅作升级阀门，不与 driver 式「按类型切文件」混为一谈。
+- 触发再议：① loop **生产段**持续膨胀且审阅痛；或 ② 某功能无法在单一 `async_stream` 剧本里干净落地、且需要按 phase 单测。
+- **不要**把 D0/D0b 当 P3 的前置伪进度。
 
 **driver/**（原 `driver.rs`）
 
@@ -313,9 +330,34 @@ step(phase, ctx) -> (next, Vec<XyEvent>)   // 或 mpsc，由薄 async_stream 只
 
 **session/manager.rs**
 
-- [ ] **D8** persist / load
-- [ ] **D9** tree / travel / list
-- [ ] **D10** mutate（rename/delete/switch…）
+体量（2026-07-21）：总 ~2191；其中同文件 `#[cfg(test)]` ~538；**生产 ~1653**（仍超软顶、低于若去掉测试后的「硬顶错觉」——连测则超硬顶）。目录内已有 `cwd.rs` / `types.rs`；`tests.rs` **未挂进 `mod.rs`**，且引用不存在的 `SnapshotManager` 等——**孤儿死文件**，与 D8–D10 无关。
+
+现成注释切面（同一 `impl SessionManager`）：Leaf / CRUD(~450) / Tree nav(~285) / Change tracking / Branch summary / Fork(~175) / Tree ops / Label / CWD / `XySessionStore`(~149)。文件末尾另有 **`XyEventSink for EventBus`**——与 session 无关，属错置。
+
+#### 决议：D8–D10 是否必要（2026-07-21）
+
+**与 driver 拆分的差别**
+
+| | `driver`（已做） | `session/manager` |
+|---|---|---|
+| 切分轴 | trait + 两套实现（in-process / remote）+ feature | **同一类型**上的方法清单 |
+| 编译/feature 收益 | remote 可闸 | 几乎无 |
+| 认知收益 | 读协议 vs 读实现分离 | 多文件仍要在脑中拼回一个 `SessionManager` |
+
+**结论**
+
+- **不值得为 RETUNE 行数单开 D8–D10 搬家 PR。** 方法本就按域分了注释区；再切成 `persist.rs` / `tree.rs` / `mutate.rs` 只是 `impl SessionManager` 分散，审阅收益有限，还增加跳转成本。
+- **值得做的小卫生**（可另项、非 D8–D10）：
+  1. 把 `XyEventSink for EventBus` 挪到 `infra/event`（错置）
+  2. 删除或真正接线孤儿 `infra/session/tests.rs`（死代码分诊）
+- **再开闸条件**：某域（如 fork / tree travel / deferred persist）要**独立演进或独立测**、且改动频繁撞 CRUD 大段时，再按**那一域**抽 `pub(crate)` 协作模块——而不是一次性按 D8/D9/D10 三切。
+
+勾选：
+
+- [ ] **D8** persist / load — **默认不做**（见上再开闸条件）
+- [ ] **D9** tree / travel / list — **默认不做**
+- [ ] **D10** mutate — **默认不做**
+- [ ] **D11**（可选卫生）挪走 `EventBus: XyEventSink`；分诊孤儿 `session/tests.rs`
 
 ### 约束
 
@@ -463,7 +505,9 @@ map.rs → 变薄：project_for_llm + 少量边界转换
 | 2026-07-21 | agent | §C | commit `73d2aec6`；`args.rs` **暂留** tools 顶层（倾向日后整批迁 `support/`，现保持方案 1） |
 | 2026-07-21 | agent | §D5–D7 | `driver.rs` → `driver/{mod,types,proto,in_process,remote}.rs`；修 remote/rest `XyDriverError` 映射 |
 | 2026-07-21 | agent | 命名 | 决议：代码保留 `XyDriver`；心智「多 client 统一交互内核」写入 `docs/architecture/库与多客户端.md` |
-| 2026-07-21 | agent | §D react/P3 | 评估 sub-turn state machine：**先不改**；默认路径 D0→D0b→D1–D4（软）；P3 作升级阀门 |
+| 2026-07-21 | agent | §D react/P3 | 评估 sub-turn state machine：**先不改**（当时仍写 D0 路径；已被同日「默认不做」决议取代） |
+| 2026-07-21 | agent | docs | commit `04afab14`（Driver 心智 + P3 冻结写入） |
+| 2026-07-21 | agent | §D react/session | 再分析：外置 react 测 / D8–D10 **默认不做**；可选卫生 D11（EventBus 错置 + 孤儿 tests.rs） |
 |  |  |  |  |
 
 ---
