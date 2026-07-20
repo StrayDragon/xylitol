@@ -59,6 +59,19 @@ pub enum TokenProvenance {
     Unknown,
 }
 
+impl TokenProvenance {
+    /// Stable string for logs / fastrace (`Api`, `LocalTokenizer`, …).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Api => "Api",
+            Self::RemoteCount => "RemoteCount",
+            Self::LocalTokenizer => "LocalTokenizer",
+            Self::Heuristic => "Heuristic",
+            Self::Unknown => "Unknown",
+        }
+    }
+}
+
 /// Context occupancy estimate with provenance (Driver / compaction seam).
 #[derive(Debug, Clone)]
 pub struct ContextTokenEstimate {

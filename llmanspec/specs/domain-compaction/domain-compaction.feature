@@ -138,3 +138,10 @@
     假如 检查 token_estimator.rs
     当 应用变更后
     那么 从 domain 导入 XyUsage 而非定义本地结构
+
+  @req:c2
+  @req:c16
+  场景: threshold-shares-footer-estimate
+    假如 会话叶上存在可信 Api usage 锚点且 footer 同源估计可用
+    当 执行 auto-compact 阈值判断
+    那么 所用 token 数字与同源估计一致且 MUST NOT 另算独立 len/4 总和
