@@ -8,8 +8,6 @@ pub enum XyError {
     Tool(#[from] XyToolError),
     #[error("session error: {0}")]
     Session(#[source] anyhow::Error),
-    #[error("max iterations reached ({0})")]
-    MaxIterations(usize),
     #[error("agent config error: {0}")]
     Config(String),
     #[error("aborted")]
@@ -58,12 +56,6 @@ mod tests {
     fn xy_error_display_config() {
         let err = XyError::Config("missing api key".into());
         assert_eq!(err.to_string(), "agent config error: missing api key");
-    }
-
-    #[test]
-    fn xy_error_display_max_iterations() {
-        let err = XyError::MaxIterations(42);
-        assert_eq!(err.to_string(), "max iterations reached (42)");
     }
 
     #[test]

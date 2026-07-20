@@ -251,7 +251,7 @@ fn default_max_retries() -> u8 {
 // Agent Profiles
 // ---------------------------------------------------------------------------
 
-/// Agent profile — binds model, prompt, tools, iterations.
+/// Agent profile — binds model, prompt, tools.
 ///
 /// Flat struct to support YAML anchor/alias merge keys:
 /// ```yaml
@@ -259,13 +259,15 @@ fn default_max_retries() -> u8 {
 ///   profiles:
 ///     default: &default-agent
 ///       model: gpt-4o
-///       max_iterations: 50
 ///     planning:
 ///       <<: *default-agent
 ///       model: claude-opus
 ///       system_prompt: "You are a planning agent."
 /// ```
+///
+/// Unknown fields (including removed `max_iterations`) are rejected.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct AgentProfile {
     /// Model alias referencing a key in `model.models`, or a raw model ID.
     /// When `None`, falls back to config-level defaults.
@@ -277,9 +279,6 @@ pub struct AgentProfile {
     /// Tool names this agent is allowed to use. `None` = all tools.
     #[serde(default)]
     pub allowed_tools: Option<Vec<String>>,
-    /// Maximum agent loop iterations.
-    #[serde(default = "default_max_iterations")]
-    pub max_iterations: u32,
 }
 
 /// Agent profiles container.
@@ -299,10 +298,6 @@ pub struct AgentsConfig {
 
 fn default_profile_name() -> String {
     "default".into()
-}
-
-fn default_max_iterations() -> u32 {
-    50
 }
 
 impl AppConfig {
@@ -433,14 +428,13 @@ impl AppConfig {
     ) -> Result<crate::domain::model::ResolvedProfile, String> {
         let profile = self.agents.profiles.get(name);
 
-        let (model_ref, system_prompt, allowed_tools, max_iterations) = match profile {
+        let (model_ref, system_prompt, allowed_tools) = match profile {
             Some(p) => (
                 p.model.as_deref(),
                 p.system_prompt.as_ref().cloned(),
                 p.allowed_tools.as_ref().cloned(),
-                p.max_iterations,
             ),
-            None => (None, self.execution.system_prompt.clone(), None, 50),
+            None => (None, self.execution.system_prompt.clone(), None),
         };
 
         let model_id = model_ref
@@ -457,7 +451,6 @@ impl AppConfig {
             model_config,
             system_prompt,
             allowed_tools,
-            max_iterations,
             name: name.into(),
         })
     }
@@ -960,6 +953,40 @@ fn default_review_mode() -> String {
 
 fn default_review_backend() -> String {
     "cli".into()
+}
+
+#[cfg(test)]
+mod agent_profile_tests {
+    use super::*;
+
+    #[test]
+    fn residual_max_iterations_is_rejected() {
+        let err = yaml_serde::from_str::<AgentProfile>(
+            r#"
+model: gpt-4o
+max_iterations: 50
+"#,
+        )
+        .expect_err("max_iterations must be unknown / denied");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("max_iterations") || msg.contains("unknown field"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn known_profile_fields_deserialize() {
+        let p: AgentProfile = yaml_serde::from_str(
+            r#"
+model: gpt-4o
+system_prompt: "hi"
+"#,
+        )
+        .expect("valid profile");
+        assert_eq!(p.model.as_deref(), Some("gpt-4o"));
+        assert_eq!(p.system_prompt.as_deref(), Some("hi"));
+    }
 }
 
 #[cfg(test)]

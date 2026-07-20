@@ -77,8 +77,6 @@ pub struct ResolvedProfile {
     pub system_prompt: Option<String>,
     /// Allowed tool names. `None` means all tools available.
     pub allowed_tools: Option<Vec<String>>,
-    /// Maximum ReAct loop iterations for this agent.
-    pub max_iterations: u32,
     /// Profile name (for logging and diagnostics).
     pub name: String,
 }
@@ -216,11 +214,9 @@ mod tests {
             model_config: config,
             system_prompt: Some("You are an AI".into()),
             allowed_tools: Some(vec!["read".into(), "write".into()]),
-            max_iterations: 50,
             name: "default".into(),
         };
         assert_eq!(profile.name, "default");
-        assert_eq!(profile.max_iterations, 50);
         assert_eq!(
             profile.allowed_tools.as_deref(),
             Some(&["read".to_string(), "write".to_string()][..])

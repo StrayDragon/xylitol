@@ -81,3 +81,22 @@
     假如 mock 模型流以 Done 结束且携带非空 usage
     当 运行 AgentRuntime 并检查会话持久化的 assistant 消息
     那么 usage 字段非空且与 Done 一致
+
+  @req:ar24
+  场景: should-stop-emits-agent-end
+    假如 注册 should_stop_after_turn 在首次 TurnEnd 后返回 true
+    当 运行 AgentRuntime
+    那么 出现 AgentEnd 且其后无新的模型轮 TurnStart
+
+  @req:ar8
+  @req:ar24
+  场景: should-stop-skips-followup
+    假如 入队 follow_up 且 should_stop_after_turn 在首次 TurnEnd 后返回 true
+    当 运行 AgentRuntime
+    那么 本 run 以 AgentEnd 结束且 follow_up 未被注入历史
+
+  @req:ar24
+  场景: no-hook-open-end
+    假如 未注册 should_stop_after_turn 的无工具 agent
+    当 运行 AgentRuntime
+    那么 正常出现 AgentEnd 且恰好一轮 TurnStart
