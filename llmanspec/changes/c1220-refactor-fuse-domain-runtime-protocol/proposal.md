@@ -19,12 +19,12 @@ checkpointed: false
 
 ## Purpose（已钉）
 
-1. **消 `src/domain/`**：不再存在独立纯类型顶栏；原进 port/wire 签名的词汇归入 `protocol/vocab/`（见 design），**禁止**再立第三顶栏品牌。
-2. **`src/agent/` ≈ pi-agent-core（语义）**：拥有 `project_for_llm`、ReAct、对 `AgentMessage`/`XyEvent` 的生产与再导出；发模型前在 agent 内投影。因单 crate + `infra`↛`agent`，`AgentMessage`/`XyEvent`/`SessionEntry` **物理**落在 `protocol/vocab/`（避免 `agent`↔`protocol` 环）。
-3. **`XyModel` 入参 = `Vec<AiBridgeMessage>`**（或 bridge DTO 等价）：infra adapter **MUST NOT** 再吃 `AgentMessage`。
-4. **`src/protocol/` 三子树**：`wire/`（Command/Event）+ `ports/`（原 runtime_protocol）+ `vocab/`（共享词汇）；删 `src/runtime_protocol/` 顶栏（迁移期可留 re-export，apply 结束前去掉）。
-5. **依赖纪律**：`infra` ↛ `agent`；`agent` ↛ `infra`；`protocol` 仅依赖 bridge DTO（若签名需要）与标准库/serde——**MUST NOT** 依赖 agent/infra 实现。
-6. **`XyEvent` 钉死**：物理 `protocol/vocab/lifecycle.rs`；wire `Event` 与之分离；`XyEventSink` 在 `ports/`。
+1. **消 `src/domain/`**：不再存在独立纯类型顶栏；进 port/wire 签名的共享类型落在 **`protocol` 根模块**（方案 B），**禁止**再立 `vocab/`/`types/` 第三子树顶栏。
+2. **`src/agent/` ≈ pi-agent-core（语义）**：拥有 `project_for_llm`、ReAct、对 `AgentMessage`/`XyEvent` 的生产与再导出。因单 crate + `infra`↛`agent`，`AgentMessage`/`XyEvent`/`SessionEntry` **物理**在 `protocol` 根（避免环）。
+3. **`XyModel` 入参 = `Vec<AiBridgeMessage>`**：infra adapter **MUST NOT** 再吃 `AgentMessage`。
+4. **`src/protocol/` 方案 B**：仅两子树 `wire/` + `ports/`；共享类型为 protocol 根 `.rs`；删 `src/runtime_protocol/`（迁移期可留 re-export，apply 结束前去掉）。
+5. **依赖纪律**：`infra` ↛ `agent`；`agent` ↛ `infra`；`protocol` MUST NOT 依赖 agent/infra 实现。
+6. **`XyEvent` 钉死**：物理 `protocol/lifecycle.rs`；wire `Event` 分离；`XyEventSink` 在 `ports/`。
 
 ## What Changes
 

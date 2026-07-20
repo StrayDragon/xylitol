@@ -6,7 +6,7 @@
   场景: shared-types-in-agent-and-protocol
     假如 agent/ 与 infra/ 需要跨边界类型或端口
     当 声明并导入
-    那么 共享词汇自 crate::protocol::vocab（或 agent/crate 再导出）导入；ports 自 protocol::ports；线协议自 protocol::wire
+    那么 共享类型自 crate::protocol（根模块或 agent/crate 再导出）导入；ports 自 protocol::ports；线协议自 protocol::wire
     并且 不存在独立 src/domain/ 或 src/runtime_protocol/ 顶栏
 
   @req:la2

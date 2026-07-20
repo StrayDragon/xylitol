@@ -66,7 +66,7 @@
   场景: no-domain-top-level
     假如 审查主仓 src 布局
     当 查找 src/domain/
-    那么 不存在独立顶栏；共享消息词汇在 protocol/vocab（迁移完成后）
+    那么 不存在独立顶栏；共享消息类型在 protocol 根（迁移完成后）
 
   @req:dm3
   场景: legacy-bash-lift
