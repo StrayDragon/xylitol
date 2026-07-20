@@ -123,7 +123,13 @@ pub async fn run(driver: &mut dyn XyDriver) -> Result<(), XyDriverError> {
     let result = run_host_loop(terminal, driver).await;
 
     if let Err(ref e) = result {
-        log::error!(target: "xylitol::tui", "TUI host exited with error error={}", e);
+        log::error!(
+            target: "xylitol::tui",
+            "TUI host exited with error error.kind={} detail.kind={} error={}",
+            e.kind(),
+            e.detail_kind(),
+            e
+        );
         terminal_guard::emergency_restore();
     }
     result

@@ -43,6 +43,7 @@ pub(super) async fn switch_and_rebuild_transcript<T: Terminal>(
                 SwitchRebuildKind::Resume => session.apply_resume_session(session_id, entries),
             },
             Err(e) => {
+                e.log_failure(&format!("tui.{label}.get_messages"));
                 session.push_system_note(format!("{label}: get_messages failed: {e}"));
                 match kind {
                     SwitchRebuildKind::Import => session.close_import_confirm(),
@@ -51,6 +52,7 @@ pub(super) async fn switch_and_rebuild_transcript<T: Terminal>(
             }
         },
         Err(e) => {
+            e.log_failure(&format!("tui.{label}.switch_session"));
             session.push_system_note(format!("{label}: switch failed: {e}"));
             match kind {
                 SwitchRebuildKind::Import => session.close_import_confirm(),

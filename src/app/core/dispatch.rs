@@ -96,6 +96,20 @@ pub async fn dispatch(
     driver: &mut dyn XyDriver,
     cmd: Command,
 ) -> Result<DispatchOutcome, XyDriverError> {
+    let where_ = format!("dispatch.{}", cmd_variant_name(&cmd));
+    match dispatch_inner(driver, cmd).await {
+        Ok(outcome) => Ok(outcome),
+        Err(err) => {
+            err.log_failure(&where_);
+            Err(err)
+        }
+    }
+}
+
+async fn dispatch_inner(
+    driver: &mut dyn XyDriver,
+    cmd: Command,
+) -> Result<DispatchOutcome, XyDriverError> {
     match cmd {
         Command::Abort { .. } => {
             // The XyDriver::abort cancels the active run loop. Whether something
@@ -238,7 +252,7 @@ pub async fn dispatch(
     }
 }
 
-/// Return a stable name for a Command variant (for error messages).
+/// Return a stable name for a Command variant (for error messages / log `where`).
 fn cmd_variant_name(cmd: &Command) -> &'static str {
     match cmd {
         Command::Prompt { .. } => "Prompt",
@@ -246,7 +260,25 @@ fn cmd_variant_name(cmd: &Command) -> &'static str {
         Command::Subscribe { .. } => "Subscribe",
         Command::ApproveTool { .. } => "ApproveTool",
         Command::AnswerQuestion { .. } => "AnswerQuestion",
-        _ => "(other)",
+        Command::Abort { .. } => "Abort",
+        Command::GetState { .. } => "GetState",
+        Command::SetModel { .. } => "SetModel",
+        Command::CycleModel { .. } => "CycleModel",
+        Command::GetAvailableModels { .. } => "GetAvailableModels",
+        Command::SetThinkingLevel { .. } => "SetThinkingLevel",
+        Command::Bash { .. } => "Bash",
+        Command::Compact { .. } => "Compact",
+        Command::GetSessionStats { .. } => "GetSessionStats",
+        Command::ExportHtml { .. } => "ExportHtml",
+        Command::ExportJsonl { .. } => "ExportJsonl",
+        Command::ImportJsonl { .. } => "ImportJsonl",
+        Command::SwitchSession { .. } => "SwitchSession",
+        Command::Fork { .. } => "Fork",
+        Command::GetMessages { .. } => "GetMessages",
+        Command::GetCommands { .. } => "GetCommands",
+        Command::Steer { .. } => "Steer",
+        Command::FollowUp { .. } => "FollowUp",
+        Command::ClearQueue { .. } => "ClearQueue",
     }
 }
 
