@@ -1,8 +1,9 @@
 //! Built-in tool implementations and the default registry factory.
 //!
-//! Each tool implements [`crate::protocol::ports::XyTool`]. The composition root
-//! (and tests) build a registry via [`default_tools`]; the agent holds the
-//! resulting registry as orchestration state without naming these types.
+//! Each tool implements [`crate::protocol::ports::XyTool`] (directly or via
+//! [`typed::TypedTool`] blanket). The composition root (and tests) build a
+//! registry via [`default_tools`]; the agent holds the resulting registry as
+//! orchestration state without naming these types.
 
 pub mod accumulator;
 pub mod args;
@@ -17,6 +18,7 @@ pub mod path_utils;
 pub mod process;
 pub mod read;
 pub mod truncate;
+pub mod typed;
 pub mod write;
 
 use std::sync::Arc;
