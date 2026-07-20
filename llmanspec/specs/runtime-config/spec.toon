@@ -1,8 +1,8 @@
 kind: llman.sdd.spec
 name: "runtime-config"
-purpose: 运行时配置 — 含深合并、文件锁、camelCase 序列化与完整 Settings 接口的 settings manager。
+purpose: 运行时配置 — 深合并、secret.env、settings；仅 config.yaml + secret.env，不支持 config.local。
 valid_scope[2]: src/infra/config/,src/infra/settings/
-requirements[13]{req_id,title,statement}:
+requirements[15]{req_id,title,statement}:
   rc0,占位,System SHALL 支持完整 pi Settings 接口，含 camelCase JSON 序列化。
   rc11,transport 字段,Settings MUST 含 transport 字段，枚举 auto、sse、direct。
   rc12,mode 字段,"Settings MUST 含 steering_mode 与 follow_up_mode，均为 one-at-a-time 枚举选项。"
@@ -16,4 +16,6 @@ requirements[13]{req_id,title,statement}:
   rc17,"model-entry-thinking-level-map",ModelsConfig 的 ModelEntry MUST 支持可选 thinking_level_map（键为 ThinkingLevel 名，值为字符串或 null）；未知键名 MUST 使配置加载失败；解析结果 MUST 进入 XyModelMeta（或等价）供请求组装；键缺省 MUST 表示使用 adapter 内置默认，null MUST 表示该档不向 provider 发送 thinking/effort 字段。
   rc18,"model-entry-tokenizer","ModelsConfig 的 ModelEntry MUST 支持可选字符串字段 tokenizer：可为顶层 tokenizers 表中的名字、HF owner/repo、本地路径或 builtin；AppConfig MUST 支持可选顶层 tokenizers 映射（条目含 repo/file 或 path）供多模型共用同一词表源；缺省 tokenizer 时 MUST 回退 registry builtin 启发式或视为未映射，MUST NOT 用推理用 model id 静默假定 HF 仓库。"
   rc19,"token-estimate-local-tokenizer","AppConfig MUST 支持可选 token_estimate.local_tokenizer，取值仅 on 或 off（或缺省等价 off）；默认 MUST 为 off；非法值 MUST 使配置加载失败；该闸 MUST 接到估计路径的 LocalTokenizer 允许位（paa10），MUST NOT 引入其它本地计数策略枚举。"
+  rc20,"config-yaml-secret-env-only","产品配置 MUST 仅以 config.yaml（可分享非密钥）与 secret.env（密钥；YAML 经 {{ secret.KEY }}）为配置面；加载链 MUST 为 global config.yaml → project config.yaml → 可选 --config，外加 secret.env 注入；AppConfig 全局目录 MUST 以 ~/.config/xylitol/ 为 SSOT，~/.xylitol/ MUST 定位为数据目录（sessions/tokenizers/logs 等），MUST NOT 鼓励在 ~/.xylitol/config.yaml 放置 AppConfig（migrate 兼容除外）。"
+  rc21,"config-local-unsupported","加载器 MUST NOT 读取或深合并 config.local.yaml 或 config.local.yml（global 与 project）；磁盘上若存在这些文件 MUST 忽略其内容且 MUST NOT 提供自动迁移到 config.yaml/secret.env；MAY 经 resources doctor 或加载诊断提示已忽略。"
 scenarios[0]:

@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=../configs/config.schema.json
 #
 # 仓库共享配置（可进 git）。无密钥。
-# 加载顺序（低→高）：~/.config/xylitol/config.yaml → …local →
-#   本文件 → .xylitol/config.local.yaml（若有）→ --config
-# 本仓库约定：只用本文件；不用 config.local.yaml。
+# 加载顺序（低→高）：~/.config/xylitol/config.yaml → 本文件 → --config
+# 密钥放 .xylitol/secret.env（或 ~/.config/xylitol/secret.env），YAML 用 {{ secret.KEY }}。
+# 不再支持 config.local.yaml。
 
 # 本地 tokenizer encode：默认 off（缺省同义）；要精确本地计数时改为 on
 # 引号避免部分 YAML 1.1 解析器把 off 当成布尔

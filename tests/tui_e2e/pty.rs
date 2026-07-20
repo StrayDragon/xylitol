@@ -70,7 +70,7 @@ impl PtySession {
 
     /// Product `xylitol` TUI with isolated Fake model config (c485 avs2).
     ///
-    /// `project_root` must contain `.xylitol/config.local.yaml` with a `fake`
+    /// `project_root` must contain `.xylitol/config.yaml` with a `fake`
     /// model. `config_dir` / `home_dir` isolate global config + trust/sessions.
     pub fn spawn_product_fake(
         cols: u16,
@@ -303,7 +303,7 @@ fn write_fake_project_config(project_root: &Path) -> std::io::Result<()> {
     let dir = project_root.join(".xylitol");
     std::fs::create_dir_all(&dir)?;
     std::fs::write(
-        dir.join("config.local.yaml"),
+        dir.join("config.yaml"),
         "models:\n  default_model: fake\n  models:\n    fake:\n      provider: fake\n      model: fake-model\n",
     )?;
     Ok(())
