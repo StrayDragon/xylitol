@@ -49,7 +49,7 @@ pub struct XyInProcessDriver {
 
 impl XyInProcessDriver {
     fn map_str<T>(r: Result<T, String>) -> Result<T, XyDriverError> {
-        r.map_err(XyDriverError::from)
+        r.map_err(XyDriverError::from_opaque)
     }
 
     /// Construct from a built agent plus the store used to build it.
