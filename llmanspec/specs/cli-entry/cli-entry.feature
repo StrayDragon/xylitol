@@ -103,3 +103,57 @@
     假如 同一 Driver 两次 run
     当 session_id
     那么 保持不变
+
+  @req:ce15
+  场景: tokenizer-help-tree
+    假如 CLI 已解析
+    当 xylitol tokenizer --help
+    那么 可见 status、download、clean 叶子
+
+  @req:ce15
+  场景: tokenizer-status-empty
+    假如 缓存目录为空
+    当 xylitol tokenizer status
+    那么 报告缓存根且不失败伪装已下载
+
+  @req:ce15
+  场景: tokenizer-download-opt-in
+    假如 目标映射到 HuggingFace 且本地无缓存
+    当 xylitol tokenizer download <target> --yes
+    那么 词表落入缓存路径且再次 status 可见
+
+  @req:ce15
+  场景: tokenizer-clean
+    假如 缓存中已有条目
+    当 xylitol tokenizer clean --all
+    那么 条目被移除且 status 不再列出
+
+  @req:ce15
+  场景: tokenizer-no-bootstrap
+    假如 仅执行 tokenizer 子命令
+    当 xylitol tokenizer status
+    那么 不经 bootstrap 装配会话或 MCP 即可完成
+
+  @req:ce15
+  场景: tokenizer-download-shows-hf-base
+    假如 已设置 HF_ENDPOINT 为镜像基址且目标已映射
+    当 xylitol tokenizer download <target> 进入确认摘要（或 --yes 的等价日志）
+    那么 摘要含该镜像基址与落盘路径
+
+  @req:ce16
+  场景: surface-tui-verb
+    假如 TTY
+    当 xylitol tui
+    那么 进入产品 TUI
+
+  @req:ce16
+  场景: surface-print-verb
+    假如 无 prompt
+    当 xylitol print
+    那么 错误退出且无 Hello!
+
+  @req:ce16
+  场景: ops-stay-toplevel
+    假如 CLI 已解析
+    当 xylitol --help
+    那么 Commands 含 tokenizer 与 resources 为顶层而非 tui 子命令
