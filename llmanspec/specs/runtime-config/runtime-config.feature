@@ -95,3 +95,15 @@
     假如 仅配置 thinking_levels 无 map
     当 加载配置
     那么 成功且 map 为空或缺省
+
+  @req:rc18
+  场景: tokenizer-hf-ok
+    假如 YAML 模型条目含 tokenizer.huggingface.repo
+    当 加载配置
+    那么 成功且可解析为 HuggingFace 词表源
+
+  @req:rc18
+  场景: tokenizer-mutex-fails
+    假如 同一 ModelEntry 同时含 tokenizer.huggingface 与 tokenizer.local
+    当 加载配置
+    那么 失败
