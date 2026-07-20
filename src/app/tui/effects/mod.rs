@@ -7,7 +7,7 @@ mod slash;
 
 use xylitol_tui::Terminal;
 
-use crate::app::core::driver::{Driver, EventStream};
+use crate::app::core::driver::{Driver, EventStream, estimate_from_session_entries};
 
 use super::host::HostSession;
 use super::widgets::footer_token_label;
@@ -17,6 +17,9 @@ pub use bang::run_interactive_bang;
 /// Refresh footer token usage from [`Driver::estimate_context_tokens`] (c1035).
 ///
 /// Empty session → omit field (MUST NOT forge `used 0`). Estimate errors → omit.
+///
+/// **Harness / tests**: awaits estimate (override is instant). Production host
+/// MUST prefer [`kick_footer_token_refresh`] so HF encode does not block input.
 pub async fn refresh_footer_tokens<T: Terminal>(session: &mut HostSession<T>, driver: &dyn Driver) {
     let _ = session.take_pending_footer_token_refresh();
     let entries = match driver.get_messages().await {
@@ -39,6 +42,48 @@ pub async fn refresh_footer_tokens<T: Terminal>(session: &mut HostSession<T>, dr
     }
 }
 
+/// Start a background footer estimate; return immediately (production host).
+///
+/// Loads messages on the async path (cheap), then `spawn_blocking` for encode.
+/// Result arrives via [`HostSession::recv_footer_token`] → `HostEvent::FooterTokens`.
+#[cfg_attr(test, allow(dead_code))] // production `drain_pending` only (`not(test)`)
+pub async fn kick_footer_token_refresh<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &dyn Driver,
+) {
+    let _ = session.take_pending_footer_token_refresh();
+    let entries = match driver.get_messages().await {
+        Ok(e) => e,
+        Err(_) => {
+            session.set_footer_token_label(None);
+            return;
+        }
+    };
+    if entries.is_empty() {
+        session.set_footer_token_label(None);
+        return;
+    }
+
+    let job_id = session.begin_footer_token_job();
+    let tx = session.footer_token_tx();
+    let model_id = driver.current_model().map(|m| m.id);
+    let tokenizer_override = model_id.as_deref().and_then(|id| {
+        crate::infra::config::loader::load_app_config(None)
+            .ok()
+            .and_then(|c| c.tokenizer_override_for(id))
+    });
+
+    tokio::spawn(async move {
+        let label = tokio::task::spawn_blocking(move || {
+            let est = estimate_from_session_entries(&entries, model_id, tokenizer_override);
+            footer_token_label(est.provenance, est.tokens)
+        })
+        .await
+        .ok();
+        let _ = tx.send((job_id, label));
+    });
+}
+
 /// Consume HostSession pending ops and call Driver / dispatch.
 ///
 /// Ordering matches the historical `run_host_loop` body (abort → dequeue → steer →
@@ -49,14 +94,25 @@ pub async fn refresh_footer_tokens<T: Terminal>(session: &mut HostSession<T>, dr
 /// When `agent_stream` is already `Some`, submit is not taken. A newly started
 /// run is stored in `agent_stream`; callers decide whether to drain it (harness)
 /// or poll it in a select loop (production).
+///
+/// Footer token refresh is **kicked** async (does not await HF encode).
 pub async fn drain_pending<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn Driver,
     agent_stream: &mut Option<EventStream>,
 ) -> Result<(), String> {
     if session.take_pending_footer_token_refresh() {
-        refresh_footer_tokens(session, driver).await;
-        let _ = session.render_now();
+        // Tests: await so ScriptedDriver estimate_override still applies.
+        // Production: kick background job — never block input on HF encode.
+        #[cfg(test)]
+        {
+            refresh_footer_tokens(session, driver).await;
+            let _ = session.render_now();
+        }
+        #[cfg(not(test))]
+        {
+            kick_footer_token_refresh(session, driver).await;
+        }
     }
     if session.take_abort() {
         log::info!(target: "xylitol::tui", "Driver::abort (Esc)");

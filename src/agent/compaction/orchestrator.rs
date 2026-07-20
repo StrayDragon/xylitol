@@ -3,6 +3,7 @@
 //! Extracted from [`AgentCapabilities`](crate::agent::session::AgentCapabilities) to isolate
 //! compaction orchestration into a focused component.
 
+use crate::agent::compaction::token_estimator::{EstimateOpts, estimate_from_session_entries};
 use crate::agent::compaction::{CompactionSettings, compact_session};
 use crate::domain::lifecycle::XyEvent;
 use crate::runtime_protocol::{XyEventSink, XyModel, XySessionStore};
@@ -65,6 +66,9 @@ impl CompactionOrchestrator {
 
     /// Check threshold and auto-compact if needed.
     /// Returns true if compaction was performed.
+    ///
+    /// Threshold uses the same estimate path as the TUI footer (`estimate_from_session_entries`
+    /// / paa1), not a separate `len/4` sum (c1420 / c2 / c16).
     pub async fn maybe_auto_compact(
         &self,
         store: &dyn XySessionStore,
@@ -72,13 +76,10 @@ impl CompactionOrchestrator {
         model: &dyn XyModel,
         event_sink: &dyn XyEventSink,
         context_window: u64,
+        estimate_opts: &EstimateOpts,
     ) -> Result<bool, String> {
-        let session_ctx = store.build_session_context(sid).await?;
-        let token_estimate: u64 = session_ctx
-            .messages
-            .iter()
-            .map(|m| (m.to_string().len() as u64).div_ceil(4))
-            .sum();
+        let entries = store.load_entries(sid).await?;
+        let token_estimate = estimate_from_session_entries(&entries, estimate_opts).tokens;
 
         if !should_compact(token_estimate, context_window, self.threshold) {
             return Ok(false);

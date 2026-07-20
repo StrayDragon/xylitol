@@ -23,10 +23,31 @@ use crate::app::core::bootstrap::{
 use crate::app::server::subcommand::ServerSubcommand;
 use crate::infra::timing;
 
-/// Top-level subcommand. When absent, flat flags/positional drive TUI (default)
-/// or print one-shot.
+/// Optional leaf under `xylitol tui` (default = run when omitted).
+#[derive(Subcommand, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TuiAction {
+    /// Open the interactive TUI (same as bare `xylitol tui`).
+    Run,
+}
+
+/// Top-level subcommand. When absent: TTY → TUI; non-TTY → print (stdin).
+/// Surface verbs (`tui` / `print`) vs ops (`resources` / …). No flat surface aliases.
 #[derive(Subcommand, Debug)]
 pub enum CliCommand {
+    /// Interactive TUI surface (default on a TTY).
+    Tui {
+        #[command(subcommand)]
+        action: Option<TuiAction>,
+    },
+    /// One-shot print surface (requires a non-empty prompt).
+    Print {
+        /// Positional one-shot prompt.
+        #[arg(value_name = "PROMPT")]
+        prompt: Option<String>,
+        /// Prompt via flag (`--prompt` / `-p`) under `print` only.
+        #[arg(short = 'p', long = "prompt", value_name = "TEXT")]
+        prompt_flag: Option<String>,
+    },
     /// Read-only resource listing and diagnostics.
     Resources {
         #[command(subcommand)]
@@ -55,28 +76,12 @@ pub struct CliArgs {
     #[command(subcommand)]
     pub command: Option<CliCommand>,
 
-    /// One-shot prompt for print mode (`--prompt` / `-p`).
-    #[arg(short = 'p', long = "prompt", value_name = "TEXT")]
-    pub prompt_flag: Option<String>,
-
-    /// Positional one-shot prompt (same as `--prompt`).
-    #[arg(value_name = "PROMPT")]
-    pub positional_prompt: Option<String>,
-
-    /// Force print mode (still requires a prompt via `--prompt`, positional, or piped stdin).
-    #[arg(long)]
-    pub print: bool,
-
     #[arg(long)]
     pub session: Option<String>,
     #[arg(long)]
     pub model: Option<String>,
     #[arg(long)]
     pub config: Option<String>,
-
-    /// Force the interactive TUI (default when no one-shot prompt on a TTY).
-    #[arg(long)]
-    pub tui: bool,
 
     #[arg(long)]
     pub list_models: bool,
@@ -90,14 +95,26 @@ pub struct CliArgs {
     pub no_trust: bool,
 }
 
-impl CliArgs {
-    /// Merged one-shot prompt: `--prompt` wins over positional.
-    pub fn one_shot_prompt(&self) -> Option<&str> {
-        self.prompt_flag
-            .as_deref()
-            .or(self.positional_prompt.as_deref())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
+fn merge_prompt_parts<'a>(flag: Option<&'a str>, positional: Option<&'a str>) -> Option<&'a str> {
+    flag.or(positional).map(str::trim).filter(|s| !s.is_empty())
+}
+
+/// Resolve force-tui / explicit-print / one-shot prompt from surface verbs only.
+///
+/// Ops subcommands are handled before this; callers pass only `None` / `Tui` / `Print`.
+/// There are no flat `--tui` / `--print` / top-level `-p` aliases.
+pub fn resolve_surface_intent(command: Option<&CliCommand>) -> (bool, bool, Option<String>) {
+    match command {
+        Some(CliCommand::Tui { .. }) => (true, false, None),
+        Some(CliCommand::Print {
+            prompt,
+            prompt_flag,
+        }) => {
+            let merged =
+                merge_prompt_parts(prompt_flag.as_deref(), prompt.as_deref()).map(str::to_string);
+            (false, true, merged)
+        }
+        None | Some(_) => (false, false, None),
     }
 }
 
@@ -108,23 +125,23 @@ pub enum SurfaceMode {
     Print,
 }
 
-/// Pure dispatch (c474): TUI is the default on a TTY; print needs an explicit prompt path.
+/// Pure dispatch: TUI default on a TTY; print via `print` verb or non-TTY bare launch.
 pub fn select_surface_mode(
     force_tui: bool,
-    print_flag: bool,
+    explicit_print: bool,
     has_one_shot_prompt: bool,
     stdin_is_tty: bool,
 ) -> SurfaceMode {
     if force_tui {
         return SurfaceMode::Tui;
     }
-    if has_one_shot_prompt || print_flag {
+    if has_one_shot_prompt || explicit_print {
         return SurfaceMode::Print;
     }
     if stdin_is_tty {
         return SurfaceMode::Tui;
     }
-    // Non-TTY bare launch: treat as print so the caller can error (no Hello!).
+    // Non-TTY bare launch: treat as print so the caller can read stdin or error (no Hello!).
     SurfaceMode::Print
 }
 
@@ -146,8 +163,8 @@ pub fn resolve_print_prompt(
         }
     }
     Err(
-        "print mode requires a prompt: pass PROMPT, --prompt TEXT, or pipe stdin \
-         (bare launch on a TTY opens the TUI; use --tui to force it)"
+        "print mode requires a prompt: `xylitol print <PROMPT>`, `print --prompt TEXT`, \
+         or pipe stdin (bare TTY launch opens the TUI; use `tui` to force it)"
             .into(),
     )
 }
@@ -168,7 +185,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let _flush = FlushOnDrop;
 
-    // ── Subcommands: handled early, no model loading needed ─────────
+    // ── Ops subcommands: early exit, no session/MCP bootstrap ───────
     match args.command {
         Some(CliCommand::Resources { action }) => {
             let code = crate::app::cli::resources::run(action);
@@ -188,7 +205,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some(CliCommand::Server { action }) => {
             return crate::app::server::subcommand::run(action).await;
         }
-        None => {}
+        Some(CliCommand::Tui { .. } | CliCommand::Print { .. }) | None => {}
     }
 
     timing::reset_timings();
@@ -201,11 +218,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     use std::io::IsTerminal;
     let stdin_is_tty = std::io::stdin().is_terminal();
-    let one_shot = args.one_shot_prompt().map(str::to_string);
+    let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
 
     #[cfg(feature = "tui")]
     let want_tui = !args.list_models
-        && select_surface_mode(args.tui, args.print, one_shot.is_some(), stdin_is_tty)
+        && select_surface_mode(force_tui, explicit_print, one_shot.is_some(), stdin_is_tty)
             == SurfaceMode::Tui;
     #[cfg(not(feature = "tui"))]
     let want_tui = false;
@@ -320,7 +337,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let prompt = match resolve_print_prompt(
         one_shot.as_deref(),
-        args.print || one_shot.is_none(),
+        explicit_print || one_shot.is_none(),
         stdin_is_tty,
         || {
             use std::io::Read;
@@ -390,6 +407,7 @@ fn render_warnings(warnings: &[BootstrapWarning]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
 
     #[test]
     fn bare_tty_selects_tui() {
@@ -416,7 +434,7 @@ mod tests {
     }
 
     #[test]
-    fn print_flag_selects_print() {
+    fn explicit_print_selects_print() {
         assert_eq!(
             select_surface_mode(false, true, false, true),
             SurfaceMode::Print
@@ -426,7 +444,7 @@ mod tests {
     #[test]
     fn resolve_print_prompt_rejects_hello_fallback() {
         let err = resolve_print_prompt(None, false, true, || Ok(String::new())).unwrap_err();
-        assert!(err.contains("--prompt") || err.contains("PROMPT"), "{err}");
+        assert!(err.contains("print") || err.contains("PROMPT"), "{err}");
         assert!(!err.contains("Hello!"), "{err}");
     }
 
@@ -440,5 +458,107 @@ mod tests {
     fn resolve_print_prompt_reads_pipe() {
         let p = resolve_print_prompt(None, true, false, || Ok("piped\n".into())).unwrap();
         assert_eq!(p, "piped");
+    }
+
+    #[test]
+    fn parses_cli_command_tui() {
+        let args = CliArgs::try_parse_from(["xylitol", "tui"]).unwrap();
+        assert!(matches!(
+            args.command,
+            Some(CliCommand::Tui { action: None })
+        ));
+        let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
+        assert!(force_tui);
+        assert!(!explicit_print);
+        assert!(one_shot.is_none());
+        assert_eq!(
+            select_surface_mode(force_tui, explicit_print, one_shot.is_some(), true),
+            SurfaceMode::Tui
+        );
+    }
+
+    #[test]
+    fn parses_cli_command_tui_run() {
+        let args = CliArgs::try_parse_from(["xylitol", "tui", "run"]).unwrap();
+        assert!(matches!(
+            args.command,
+            Some(CliCommand::Tui {
+                action: Some(TuiAction::Run)
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_cli_command_print_with_prompt() {
+        let args = CliArgs::try_parse_from(["xylitol", "print", "hello"]).unwrap();
+        let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
+        assert!(!force_tui);
+        assert!(explicit_print);
+        assert_eq!(one_shot.as_deref(), Some("hello"));
+        assert_eq!(
+            select_surface_mode(force_tui, explicit_print, one_shot.is_some(), true),
+            SurfaceMode::Print
+        );
+    }
+
+    #[test]
+    fn print_verb_without_prompt_selects_print() {
+        let args = CliArgs::try_parse_from(["xylitol", "print"]).unwrap();
+        let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
+        assert!(!force_tui);
+        assert!(explicit_print);
+        assert!(one_shot.is_none());
+        let err =
+            resolve_print_prompt(None, explicit_print, true, || Ok(String::new())).unwrap_err();
+        assert!(!err.contains("Hello!"), "{err}");
+    }
+
+    #[test]
+    fn rejects_flat_surface_aliases() {
+        assert!(
+            CliArgs::try_parse_from(["xylitol", "--tui"]).is_err(),
+            "--tui must not exist"
+        );
+        assert!(
+            CliArgs::try_parse_from(["xylitol", "--print"]).is_err(),
+            "--print must not exist"
+        );
+        assert!(
+            CliArgs::try_parse_from(["xylitol", "-p", "x"]).is_err(),
+            "top-level -p must not exist"
+        );
+        assert!(
+            CliArgs::try_parse_from(["xylitol", "hello"]).is_err(),
+            "top-level positional prompt must not exist"
+        );
+        // `-p` lives only under `print`
+        let args = CliArgs::try_parse_from(["xylitol", "print", "-p", "x"]).unwrap();
+        let (_, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
+        assert!(explicit_print);
+        assert_eq!(one_shot.as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn help_lists_surface_and_ops_commands() {
+        use clap::CommandFactory;
+        let mut cmd = CliArgs::command();
+        let help = cmd.render_long_help().to_string();
+        for name in ["tui", "print", "resources", "tokenizer"] {
+            assert!(
+                help.contains(name),
+                "expected `{name}` in top-level help:\n{help}"
+            );
+        }
+        assert!(
+            !help.contains("--tui") && !help.contains("--print"),
+            "flat surface flags must be gone:\n{help}"
+        );
+        let tui = cmd.find_subcommand_mut("tui").expect("tui");
+        let tui_help = tui.render_long_help().to_string();
+        assert!(tui_help.contains("run"), "{tui_help}");
+        assert!(
+            !tui_help.contains("tokenizer") && !tui_help.contains("resources"),
+            "ops must stay top-level, not under tui:\n{tui_help}"
+        );
     }
 }

@@ -2,6 +2,11 @@
 # Place as xylitol.yaml or .xylitol.yaml in your project root,
 # or at $XDG_CONFIG_HOME/xylitol/config.yaml
 
+# Local tokenizer encode gate (c1420): only on|off; default off if omitted.
+# Quote to avoid YAML 1.1 boolean aliases in some parsers.
+token_estimate:
+  local_tokenizer: "off"
+
 # Optional shared tokenizer sources (many models can point at one).
 # Download: HF_ENDPOINT=https://hf-mirror.com xylitol tokenizer download qwen --yes
 tokenizers:

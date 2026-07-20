@@ -4132,9 +4132,10 @@ fn tokenizer_bdd() -> TokenizerBdd {
 }
 
 fn parse_app_config_yaml(yaml: &str) -> Result<xylitol::infra::config::types::AppConfig, String> {
-    let value: serde_json::Value = yaml_serde::from_str(yaml).map_err(|e| format!("yaml: {e}"))?;
+    // Prefer direct typed deserialize so unknown enum variants (e.g. local_tokenizer)
+    // fail here rather than only after a loose Value round-trip.
     let cfg: xylitol::infra::config::types::AppConfig =
-        serde_json::from_value(value).map_err(|e| format!("deserialize: {e}"))?;
+        yaml_serde::from_str(yaml).map_err(|e| format!("yaml: {e}"))?;
     cfg.validate_thinking_levels()?;
     cfg.validate_model_tokenizers()?;
     Ok(cfg)
@@ -4659,3 +4660,215 @@ fn test_rc18_inline(tokenizer_bdd: TokenizerBdd) {}
     name = "tokenizer-unknown-name-fails"
 )]
 fn test_rc18_unknown(tokenizer_bdd: TokenizerBdd) {}
+
+#[given("YAML 未设 token_estimate.local_tokenizer")]
+fn g_rc19_default(tokenizer_bdd: &TokenizerBdd) {
+    match parse_app_config_yaml("models: {}\n") {
+        Ok(cfg) => {
+            tokenizer_bdd.config.replace(cfg);
+            tokenizer_bdd.cfg_ok.set(true);
+        }
+        Err(e) => {
+            tokenizer_bdd.cfg_ok.set(false);
+            tokenizer_bdd.cfg_err.replace(e);
+        }
+    }
+}
+
+#[given("YAML 含 token_estimate.local_tokenizer: on")]
+fn g_rc19_on(tokenizer_bdd: &TokenizerBdd) {
+    match parse_app_config_yaml("models: {}\ntoken_estimate:\n  local_tokenizer: on\n") {
+        Ok(cfg) => {
+            tokenizer_bdd.config.replace(cfg);
+            tokenizer_bdd.cfg_ok.set(true);
+            tokenizer_bdd.cfg_err.replace(String::new());
+        }
+        Err(e) => {
+            tokenizer_bdd.cfg_ok.set(false);
+            tokenizer_bdd.cfg_err.replace(e);
+        }
+    }
+}
+
+#[given("YAML 含 token_estimate.local_tokenizer: every_n")]
+fn g_rc19_invalid(tokenizer_bdd: &TokenizerBdd) {
+    match parse_app_config_yaml("models: {}\ntoken_estimate:\n  local_tokenizer: every_n\n") {
+        Ok(cfg) => {
+            tokenizer_bdd.config.replace(cfg);
+            tokenizer_bdd.cfg_ok.set(true);
+            tokenizer_bdd.cfg_err.replace(String::new());
+        }
+        Err(e) => {
+            tokenizer_bdd.cfg_ok.set(false);
+            tokenizer_bdd.cfg_err.replace(e);
+        }
+    }
+}
+
+#[then("local_tokenizer 闸为 off")]
+fn t_rc19_off(tokenizer_bdd: &TokenizerBdd) {
+    assert!(
+        tokenizer_bdd.cfg_ok.get(),
+        "{}",
+        tokenizer_bdd.cfg_err.borrow()
+    );
+    assert!(
+        !tokenizer_bdd
+            .config
+            .borrow()
+            .token_estimate
+            .local_tokenizer
+            .is_on()
+    );
+}
+
+#[then("local_tokenizer 闸为 on")]
+fn t_rc19_on(tokenizer_bdd: &TokenizerBdd) {
+    assert!(
+        tokenizer_bdd.cfg_ok.get(),
+        "{}",
+        tokenizer_bdd.cfg_err.borrow()
+    );
+    assert!(
+        tokenizer_bdd
+            .config
+            .borrow()
+            .token_estimate
+            .local_tokenizer
+            .is_on()
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "local-tokenizer-default-off"
+)]
+fn test_rc19_default(tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "local-tokenizer-on"
+)]
+fn test_rc19_on(tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "local-tokenizer-invalid-fails"
+)]
+fn test_rc19_invalid(tokenizer_bdd: TokenizerBdd) {}
+
+// ═══════════════════════════════════════════════════════════════════
+// c1390 — CLI surface verbs (ce16)
+// ═══════════════════════════════════════════════════════════════════
+
+pub struct SurfaceBdd {
+    mode: Cell<Option<xylitol::app::cli::SurfaceMode>>,
+    print_err: RefCell<String>,
+    help: RefCell<String>,
+}
+
+impl SurfaceBdd {
+    fn new() -> Self {
+        Self {
+            mode: Cell::new(None),
+            print_err: RefCell::new(String::new()),
+            help: RefCell::new(String::new()),
+        }
+    }
+}
+
+#[fixture]
+fn surface_bdd() -> SurfaceBdd {
+    SurfaceBdd::new()
+}
+
+#[given("TTY")]
+fn g_ce16_tty(_surface_bdd: &SurfaceBdd) {}
+
+#[when("xylitol tui")]
+fn w_ce16_tui(surface_bdd: &SurfaceBdd) {
+    use clap::Parser;
+    use xylitol::app::cli::{CliArgs, resolve_surface_intent, select_surface_mode};
+    let args = CliArgs::try_parse_from(["xylitol", "tui"]).expect("parse tui");
+    let (force_tui, print_flag, one_shot) = resolve_surface_intent(args.command.as_ref());
+    surface_bdd.mode.set(Some(select_surface_mode(
+        force_tui,
+        print_flag,
+        one_shot.is_some(),
+        true,
+    )));
+}
+
+#[then("进入产品 TUI")]
+fn t_ce16_enters_tui(surface_bdd: &SurfaceBdd) {
+    assert_eq!(
+        surface_bdd.mode.get(),
+        Some(xylitol::app::cli::SurfaceMode::Tui)
+    );
+}
+
+#[given("无 prompt")]
+fn g_ce16_no_prompt(_surface_bdd: &SurfaceBdd) {}
+
+#[when("xylitol print")]
+fn w_ce16_print(surface_bdd: &SurfaceBdd) {
+    use clap::Parser;
+    use xylitol::app::cli::{CliArgs, resolve_print_prompt, resolve_surface_intent};
+    let args = CliArgs::try_parse_from(["xylitol", "print"]).expect("parse print");
+    let (_force_tui, print_flag, one_shot) = resolve_surface_intent(args.command.as_ref());
+    let err = resolve_print_prompt(one_shot.as_deref(), print_flag, true, || Ok(String::new()))
+        .expect_err("print without prompt must fail");
+    surface_bdd.print_err.replace(err);
+}
+
+#[then("错误退出且无 Hello!")]
+fn t_ce16_print_no_hello(surface_bdd: &SurfaceBdd) {
+    let err = surface_bdd.print_err.borrow();
+    assert!(!err.is_empty(), "expected print error");
+    assert!(!err.contains("Hello!"), "{err}");
+}
+
+#[when("xylitol --help")]
+fn w_ce16_top_help(tokenizer_bdd: &TokenizerBdd) {
+    use clap::CommandFactory;
+    let help = xylitol::app::cli::CliArgs::command()
+        .render_long_help()
+        .to_string();
+    tokenizer_bdd.cli_out.replace(help);
+    tokenizer_bdd.cli_code_ok.set(true);
+}
+
+#[then("Commands 含 tokenizer 与 resources 为顶层而非 tui 子命令")]
+fn t_ce16_ops_toplevel(tokenizer_bdd: &TokenizerBdd) {
+    use clap::CommandFactory;
+    let help = tokenizer_bdd.cli_out.borrow();
+    assert!(help.contains("tokenizer"), "{help}");
+    assert!(help.contains("resources"), "{help}");
+    assert!(help.contains("tui"), "{help}");
+    assert!(help.contains("print"), "{help}");
+    let mut cmd = xylitol::app::cli::CliArgs::command();
+    let tui = cmd.find_subcommand_mut("tui").expect("tui subcommand");
+    let tui_help = tui.render_long_help().to_string();
+    assert!(
+        !tui_help.contains("tokenizer") && !tui_help.contains("resources"),
+        "ops must not nest under tui:\n{tui_help}"
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "surface-tui-verb"
+)]
+fn test_ce16_tui(surface_bdd: SurfaceBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "surface-print-verb"
+)]
+fn test_ce16_print(surface_bdd: SurfaceBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "ops-stay-toplevel"
+)]
+fn test_ce16_ops(tokenizer_bdd: TokenizerBdd) {}
