@@ -14,7 +14,7 @@
 ## 目标 help 心智
 
 ```text
-Usage: xylitol [OPTIONS] [PROMPT] [COMMAND]
+Usage: xylitol [OPTIONS] [COMMAND]
 
 Commands:
   tui         Interactive TUI surface (default on TTY)
@@ -32,9 +32,8 @@ Commands:
 | `xylitol`（TTY） | TUI |
 | `xylitol tui` / `xylitol tui run` | TUI |
 | `xylitol print "hi"` / `xylitol print --prompt hi` | print |
-| `xylitol "hi"`（位置 prompt） | **本波**：仍可走 print（兼容）；或文档化为隐式 print——钉：保持今日 `select_surface_mode` 语义 |
-| `xylitol --print` / `-p` | 兼容别名 → print |
-| `xylitol --tui` | 兼容别名 → tui |
+| `xylitol "hi"` / `--tui` / `--print` / 顶层 `-p` | **禁止**（未发布，不留别名债） |
+| 非 TTY 裸跑 + stdin | print（管道） |
 | `xylitol tokenizer …` | ops；不进 TUI |
 
 ## `tui` 子树（本波最小）
@@ -73,4 +72,4 @@ src/app/cli/surface.rs       可选：TuiAction / PrintAction 解析与进入既
 ## 测试
 
 - BDD：裸 TTY → TUI；`tui` → TUI；`print` 无 prompt 失败；`tokenizer`/`resources` 仍为顶层 Commands
-- 兼容：`--tui` / `--print` 仍可用（本波）
+- MUST NOT：顶层 `--tui` / `--print` / `-p` / `--prompt` / 位置 PROMPT
