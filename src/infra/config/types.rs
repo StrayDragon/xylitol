@@ -39,6 +39,10 @@ pub struct AppConfig {
     pub mcp_servers: Option<Vec<McpServerConfig>>,
 
     pub review: Option<ReviewConfig>,
+
+    /// Named tokenizer sources shared by models (c1380; pre-1.0 simple shape).
+    #[serde(default)]
+    pub tokenizers: HashMap<String, TokenizerEntry>,
 }
 
 // ---------------------------------------------------------------------------
@@ -89,6 +93,95 @@ pub struct ModelEntry {
     /// Context window size in tokens. Default: 0 (auto-detect from provider).
     #[serde(default)]
     pub context_window: u64,
+    /// Tokenizer ref: named entry in top-level `tokenizers`, HF `owner/repo`,
+    /// local path, or `builtin` (c1380; pre-1.0 string-only).
+    #[serde(default)]
+    pub tokenizer: Option<String>,
+}
+
+/// Shared tokenizer definition under top-level `tokenizers:` (c1380).
+///
+/// Prefer `repo` (HF). If `path` is set, load local file and ignore `repo`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+pub struct TokenizerEntry {
+    /// HuggingFace repo id, e.g. `Qwen/Qwen3.6-35B-A3B`.
+    #[serde(default)]
+    pub repo: Option<String>,
+    /// File within the repo. Default `tokenizer.json`.
+    #[serde(default = "default_tokenizer_file")]
+    pub file: String,
+    /// Local filesystem path to a tokenizer.json (wins over `repo` when set).
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+fn default_tokenizer_file() -> String {
+    "tokenizer.json".into()
+}
+
+/// Resolve a model alias's `tokenizer:` string against `tokenizers:` table.
+///
+/// Pre-1.0: keep it dumb — named ref, `builtin`, path-ish, or HF `owner/repo`.
+pub fn resolve_tokenizer_ref(
+    tokenizers: &HashMap<String, TokenizerEntry>,
+    raw: &str,
+) -> Result<xylitol_ai_bridge::registry::TokenizerOverride, String> {
+    use xylitol_ai_bridge::registry::TokenizerOverride;
+    let s = raw.trim();
+    if s.is_empty() {
+        return Err("tokenizer ref is empty".into());
+    }
+    if s.eq_ignore_ascii_case("builtin") {
+        return Ok(TokenizerOverride::Builtin);
+    }
+    if let Some(entry) = tokenizers.get(s) {
+        if let Some(path) = entry
+            .path
+            .as_ref()
+            .map(|p| p.trim())
+            .filter(|p| !p.is_empty())
+        {
+            return Ok(TokenizerOverride::Local {
+                path: std::path::PathBuf::from(path),
+            });
+        }
+        let repo = entry
+            .repo
+            .as_ref()
+            .map(|r| r.trim())
+            .filter(|r| !r.is_empty())
+            .ok_or_else(|| format!("tokenizers.{s}: need repo or path"))?;
+        let file = if entry.file.trim().is_empty() {
+            "tokenizer.json".into()
+        } else {
+            entry.file.clone()
+        };
+        return Ok(TokenizerOverride::HuggingFace {
+            repo: repo.to_string(),
+            file,
+        });
+    }
+    // Local path heuristics (pre-1.0 messy OK).
+    if s.starts_with('/')
+        || s.starts_with('.')
+        || s.ends_with(".json")
+        || s.contains('\\')
+        || std::path::Path::new(s).exists()
+    {
+        return Ok(TokenizerOverride::Local {
+            path: std::path::PathBuf::from(s),
+        });
+    }
+    // HF repo: contains '/'
+    if s.contains('/') {
+        return Ok(TokenizerOverride::HuggingFace {
+            repo: s.to_string(),
+            file: "tokenizer.json".into(),
+        });
+    }
+    Err(format!(
+        "unknown tokenizer `{s}`: use a name from tokenizers:, HF owner/repo, path, or builtin"
+    ))
 }
 
 fn default_thinking() -> bool {
@@ -199,6 +292,26 @@ impl AppConfig {
             }
         }
         Ok(())
+    }
+
+    /// Soft-check tokenizer refs (pre-1.0: warn via Err only for clearly broken named refs).
+    pub fn validate_model_tokenizers(&self) -> Result<(), String> {
+        for (alias, entry) in &self.model.models {
+            if let Some(raw) = &entry.tokenizer {
+                resolve_tokenizer_ref(&self.tokenizers, raw)
+                    .map_err(|e| format!("models.{alias}.tokenizer: {e}"))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Resolve `models.<id>.tokenizer` to a bridge override, if set.
+    pub fn tokenizer_override_for(
+        &self,
+        model_alias: &str,
+    ) -> Option<xylitol_ai_bridge::registry::TokenizerOverride> {
+        let raw = self.model.models.get(model_alias)?.tokenizer.as_ref()?;
+        resolve_tokenizer_ref(&self.tokenizers, raw).ok()
     }
 
     /// Resolve a model alias to a runtime [`XyModelConfig`](crate::domain::model::XyModelConfig).
@@ -838,6 +951,7 @@ mod thinking_levels_tests {
             thinking_levels: levels.map(|v| v.into_iter().map(str::to_string).collect()),
             thinking_level_map: None,
             context_window: 0,
+            tokenizer: None,
         }
     }
 
@@ -936,5 +1050,37 @@ mod thinking_levels_tests {
         cfg.model.models.insert("f".into(), fake_entry(true, None));
         let meta = cfg.resolve_model_meta("f").unwrap();
         assert!(meta.thinking_level_map.is_empty());
+    }
+
+    #[test]
+    fn tokenizer_ref_named_and_inline() {
+        use xylitol_ai_bridge::registry::TokenizerOverride;
+        let mut table = HashMap::new();
+        table.insert(
+            "qwen36".into(),
+            TokenizerEntry {
+                repo: Some("Qwen/Qwen3.6-35B-A3B".into()),
+                file: "tokenizer.json".into(),
+                path: None,
+            },
+        );
+        match resolve_tokenizer_ref(&table, "qwen36").unwrap() {
+            TokenizerOverride::HuggingFace { repo, file } => {
+                assert_eq!(repo, "Qwen/Qwen3.6-35B-A3B");
+                assert_eq!(file, "tokenizer.json");
+            }
+            other => panic!("expected HF, got {other:?}"),
+        }
+        match resolve_tokenizer_ref(&HashMap::new(), "Qwen/Qwen3.6-35B-A3B").unwrap() {
+            TokenizerOverride::HuggingFace { repo, .. } => {
+                assert_eq!(repo, "Qwen/Qwen3.6-35B-A3B");
+            }
+            other => panic!("expected HF, got {other:?}"),
+        }
+        assert!(matches!(
+            resolve_tokenizer_ref(&HashMap::new(), "builtin").unwrap(),
+            TokenizerOverride::Builtin
+        ));
+        assert!(resolve_tokenizer_ref(&HashMap::new(), "nope").is_err());
     }
 }

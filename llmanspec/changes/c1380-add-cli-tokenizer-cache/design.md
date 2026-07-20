@@ -42,59 +42,46 @@ xylitol tokenizer clean (--all | --model <id> | <target>)
 | 顶层 `cache` 大伞 | 过早抽象 |
 | flat `--prefetch-tokenizer` | 破坏动词树 |
 
-## 配置模型 ↔ 词表（核心）
+## 配置模型 ↔ 词表（核心 · pre-1.0 从简）
 
-### 为什么要配
+推理 `model` id **经常 ≠** HF 词表仓库（量化后缀、本地路由名等）。配置分开写，并允许 **多模型共用** 同一词表。
 
-Builtin tiktoken **只覆盖**少量 OpenAI 族启发式。Qwen/Llama/DeepSeek 等要本地精确计数，必须知道 **HF repo（或本地 path）**——这不是「模型推理 base_url」，而是 **计量用词表源**。
-
-### `ModelEntry.tokenizer`（最小）
+### 推荐（共享表 + 短写）
 
 ```yaml
-tokenizer:
-  huggingface:
-    repo: "org/name"
-    file: "tokenizer.json"   # optional
-# 或
-tokenizer:
-  local:
-    path: "/abs/or/relative/tokenizer.json"
-# 或
-tokenizer:
-  builtin: true
+tokenizers:
+  qwen36:
+    repo: Qwen/Qwen3.6-35B-A3B   # → {HF_ENDPOINT}/Qwen/Qwen3.6-35B-A3B/resolve/main/tokenizer.json
+
+models:
+  models:
+    qwen:
+      provider: openai
+      model: Qwen3.6-35B-A3B/UD-Q5_K_XL-think-coding   # 推理 id
+      base_url: http://tufa:50256/v1
+      tokenizer: qwen36                                 # 引用共享词表
 ```
 
-互斥：同时出现多种 → 配置加载失败（可读错误）。
+### 也允许（不建表）
 
-### 解析顺序
+```yaml
+tokenizer: Qwen/Qwen3.6-35B-A3B   # 含 / → HF repo
+# tokenizer: ./tokenizer.json
+# tokenizer: builtin
+```
+
+### 解析（dumb，1.0 前可乱）
 
 ```text
-resolve_tokenizer(model_id):
-  1. 若配置有 tokenizer.local     → LocalPath { path }（加载，不下载）
-  2. 若配置有 tokenizer.huggingface → HuggingFace { repo, file }
-  3. 若配置有 tokenizer.builtin     → Builtin（显式）
-  4. 否则 builtin_tokenizer_for(model_id) 启发式
-  5. 否则 None → unmapped
+tokenizer 字符串
+  → tokenizers.<name> 存在 → 用其 repo/file 或 path
+  → "builtin" → Builtin
+  → 像路径 → Local
+  → 含 "/" → HuggingFace repo + tokenizer.json
+  → 否则错误（不猜）
 ```
 
-`download`：
-
-- Builtin / Local → 不下载（0 + 说明）
-- HuggingFace → 经 HF base 拉取到缓存键 `repo/__file`
-- unmapped + CLI `owner/repo` → 允许一次性下载（仍 opt-in）；**建议**用户事后写入配置以免每次敲 repo
-- unmapped 且无 repo → 错误，提示配置字段或 CLI 形状
-
-### 与「model page path」的关系
-
-用户说的「model page / tokenizer path」在本产品落为：
-
-| 用户说法 | 本设计字段 |
-|---|---|
-| HF 模型页对应的仓库 | `tokenizer.huggingface.repo` |
-| 词表文件 | `tokenizer.huggingface.file`（默认 `tokenizer.json`） |
-| 本机已有词表 | `tokenizer.local.path` |
-
-不爬 HF 网页；不把 chat `base_url` 当成词表 CDN。
+`HF_ENDPOINT` 只影响下载基址，不写进每条 model。
 
 ## HF 基址与镜像
 
