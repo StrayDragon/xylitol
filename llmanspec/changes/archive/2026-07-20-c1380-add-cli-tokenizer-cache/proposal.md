@@ -1,6 +1,6 @@
 ---
 change_id: c1380-add-cli-tokenizer-cache
-title: "CLI tokenizer 词表缓存：status / download / clean（知情同意 + HF 镜像）"
+title: CLI tokenizer 词表缓存：status / download / clean（知情同意 + HF 镜像）
 status: full
 priority: 1380
 depends_on: []
@@ -10,7 +10,8 @@ wave: tokenizer-consent
 domain: cli
 branch: feat/c1380-add-cli-tokenizer-cache
 base_sha: a481fdb0bb9ffe675daa024edab5f5d7c9310105
-checkpointed: false
+checkpointed: true
+checkpoint_sha: a481fdb0bb9ffe675daa024edab5f5d7c9310105
 ---
 
 # c1380-add-cli-tokenizer-cache
