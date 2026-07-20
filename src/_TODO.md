@@ -60,8 +60,8 @@ C  内置工具 Args 类型化                  ← 局部、类型可见
 D  God 文件拆分（react / driver / session）
    └─ driver D5–D7 已完成
    └─ react / session 大拆：默认不做（见 §D 决议）；D11 已分诊待确认
-E  runtime_protocol RPITIT               ← E1/E4 已评估：dyn 全覆盖 → 默认 α 维持 async_trait
-F  孪生类型 SSOT（需动 packages）         ← 后置；先写归属、禁新增孪生
+E  runtime_protocol RPITIT               ← **已关闭（α）**：dyn 全覆盖，维持 async_trait
+F  孪生类型 SSOT（需动 packages）         ← F1–F3 文档纪律；F4+ 后置（待决 domain→bridge）
 G  观测 kind 打尖                        ← 可与 B 并行或紧随
 ```
 
@@ -530,9 +530,9 @@ map.rs → 变薄：project_for_llm + 少量边界转换
 
 **现阶段（仅 src，不动 packages）**
 
-- [ ] **F1** 把「归属表」写入 `src/AGENTS.md`「Provider 适配」（长期 rule；可压缩成表 + 指针）。
-- [ ] **F2** 约定：禁止在 domain 再新增与 bridge 平行的叶类型；新叶先问归属。
-- [ ] **F3** 在 `map.rs` 顶部注释标出「待删除的手写字段映射清单」（为后置搬迁做索引）。
+- [x] **F1** 把「归属表」写入 `src/AGENTS.md`「Provider 适配」（长期 rule；可压缩成表 + 指针）。
+- [x] **F2** 约定：禁止在 domain 再新增与 bridge 平行的叶类型；新叶先问归属（已写入 AGENTS）。
+- [x] **F3** 在 `map.rs` 顶部注释标出「待删除的手写字段映射清单」（为后置搬迁做索引）。
 
 **后置（允许改 packages 时）**
 
@@ -542,7 +542,7 @@ map.rs → 变薄：project_for_llm + 少量边界转换
 
 ### 决议（填写）
 
-- 是否接受 `domain → xylitol-ai-bridge(dto)`：_（待填 yes/no）_
+- 是否接受 `domain → xylitol-ai-bridge(dto)`：_（待填 yes/no；**F4 前门禁**；F1–F3 不依赖此决议）_
 - 若 no，备选（共享极薄 types crate / 保持孪生+生成）：_（待填）_
 
 ### 验收
@@ -602,6 +602,8 @@ map.rs → 变薄：project_for_llm + 少量边界转换
 | 2026-07-21 | agent | docs | commit `5ae1ae8f`（D11 分诊入 TODO） |
 | 2026-07-21 | agent | §D11a+b | 实施：EventBus `XyEventSink` 归 `infra/event`；删除孤儿 `session/tests.rs` |
 | 2026-07-21 | agent | §E | E1+E4：7 个 async port 全 `dyn`；朴素 RPITIT 不可行；**默认 α 维持 async_trait**；β/γ 未开闸 |
+| 2026-07-21 | agent | docs | commit `11eacb8c`（§E α 决议）；确认维持 α，转入 §F |
+| 2026-07-21 | agent | §F1–F3 | AGENTS 叶归属表 + 禁新增孪生；`map.rs` 待删映射索引；**F4 domain→bridge 仍待决** |
 |  |  |  |  |
 
 ---
@@ -613,7 +615,7 @@ map.rs → 变薄：project_for_llm + 少量边界转换
 - `serde_json::Value` 在 `src/` 多处出现；hooks / react / driver 为热点。
 - 无 `dyn Any` / `as_any` / `TypeId` 逃逸（加分）。
 - `Result<…, String>` 在 session / 部分 infra 仍密；driver seam 已抬到 `XyDriverError`。
-- `async_trait` 属性约百级（全仓探测；实施 E 前重跑 `rg`）。
+- `async_trait`：`src` 约 37 处；因 dyn port 默认维持（§E α）。
 
 ---
 

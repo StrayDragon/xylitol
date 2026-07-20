@@ -122,7 +122,19 @@ protocol ───────────────────────�
 |---|---|
 | `AgentMessage`（domain） | session **真源** = `Llm(LlmMessage) \| Env(EnvMessage)` |
 | `LlmMessage`（domain） | 仅 user / assistant / toolResult |
-| bridge LLM DTO | 从 `LlmMessage` 映射；**MUST NOT** 平行拷贝 Env 角色；**MUST NOT** 被 domain 内嵌 |
+| bridge LLM DTO | 从 `LlmMessage` 映射；**MUST NOT** 平行拷贝 Env 角色；**MUST NOT** 被 domain 内嵌（现行；F4 叶 SSOT 迁 bridge 前不变） |
+
+**叶类型归属（SSOT 意向；现行仍双份 + `infra/provider/map.rs`）**：
+
+| 叶 / 组合 | 归属意向 | 现行 |
+|---|---|---|
+| `TokenProvenance` / `ContextTokenEstimate` | bridge（计量） | domain ∥ bridge，经 `map.rs` `From` |
+| `Diagnostic` / StopReason / Usage / UsageCost | bridge（LLM 通用） | 同上 |
+| Part（Text/Image/Thinking/ToolCall）与 `LlmMessage` | bridge（LLM 可见） | domain 有平行定义；bridge 为 `AiBridge*` |
+| `EnvMessage` / `AgentMessage` | **domain**（组合） | 已是组合；Env **永不**进 bridge DTO |
+| session / trust / queue / AgentState | **domain** | 与 bridge 无关 |
+
+**禁止新增孪生叶**：不得在 domain 再平行发明与 bridge DTO 同形的新叶类型；新叶先定归属（bridge vs domain-only）。调优清单与后置搬迁：`src/_TODO.md` §F。
 
 **开闭**：新 OpenAI-like / Anthropic-like 兼容端 = 新 adapter 或配置；**MUST NOT** 为网关改 `AgentMessage` / ReAct。禁止 Completions「已是 `XyModel` 再包一层」双路径。Pre-1.0 **交付**范围见根 `AGENTS.md`。细则与包边界（含 Responses 流式 BYOT/`Value`）：`packages/xylitol-ai-bridge/AGENTS.md`；设计史：**c1070-refactor-ai-bridge-sdk-projection**（`llmanspec/changes/archive/`）。
 
