@@ -162,6 +162,39 @@ pub struct EstimateOpts {
     pub allow_remote_count: bool,
     /// Injected RemoteCount result (tests / Anthropic count_tokens caller).
     pub remote_count_tokens: Option<u64>,
+    /// When false (default, c1420 / paa10), LocalTokenizer encode is skipped.
+    pub allow_local_tokenizer: bool,
+}
+
+/// Build a [`ContextTokenEstimate`] from persisted session entries (footer + compact).
+pub fn estimate_from_session_entries(
+    entries: &[crate::domain::session_types::SessionEntry],
+    opts: &EstimateOpts,
+) -> ContextTokenEstimate {
+    use crate::domain::session_types::SessionEntry;
+
+    let mut messages: Vec<AgentMessage> = Vec::new();
+    let mut last_usage: Option<XyUsage> = None;
+    let mut stop_reason = None;
+
+    for entry in entries {
+        if let SessionEntry::Message(m) = entry
+            && let Ok(msg) = serde_json::from_value::<AgentMessage>(m.message.clone())
+        {
+            if let AgentMessage::Llm(LlmMessage::AssistantMessage {
+                usage: Some(u),
+                stop_reason: sr,
+                ..
+            }) = &msg
+            {
+                last_usage = Some(*u);
+                stop_reason = *sr;
+            }
+            messages.push(msg);
+        }
+    }
+
+    estimate_context_tokens_with(&messages, last_usage.as_ref(), stop_reason, opts)
 }
 
 /// Estimate context tokens via accounting priority:
@@ -193,35 +226,41 @@ pub fn estimate_context_tokens_with(
     let allow_remote = opts.allow_remote_count;
 
     let tokenizer_estimate: Option<Box<xylitol_ai_bridge::accounting::TokenizerEstimateFn>> =
-        model_id.as_ref().and_then(|id| {
-            let source = resolve_tokenizer_with_override(id, tok_over.clone())?;
-            Some(Box::new(move |msgs: &[AiBridgeMessage]| match &source {
-                TokenizerSource::Builtin(b) => estimate_messages(msgs, *b),
-                TokenizerSource::HuggingFace { repo, file } => {
-                    let cache = HfTokenizerCache::new(None);
-                    msgs.iter()
-                        .map(|m| {
-                            let s = serde_json::to_string(m).unwrap_or_default();
-                            cache
-                                .encode_count_if_cached(repo, file, &s)
-                                .unwrap_or_else(|| BuiltinTokenizer::OpenAiCl100k.encode_count(&s))
-                        })
-                        .sum()
-                }
-                TokenizerSource::Local { path } => {
-                    let cache = HfTokenizerCache::new(None);
-                    msgs.iter()
-                        .map(|m| {
-                            let s = serde_json::to_string(m).unwrap_or_default();
-                            cache
-                                .encode_count_at_path(path, &s)
-                                .unwrap_or_else(|| BuiltinTokenizer::OpenAiCl100k.encode_count(&s))
-                        })
-                        .sum()
-                }
+        if opts.allow_local_tokenizer {
+            model_id.as_ref().and_then(|id| {
+                let source = resolve_tokenizer_with_override(id, tok_over.clone())?;
+                Some(Box::new(move |msgs: &[AiBridgeMessage]| match &source {
+                    TokenizerSource::Builtin(b) => estimate_messages(msgs, *b),
+                    TokenizerSource::HuggingFace { repo, file } => {
+                        let cache = HfTokenizerCache::new(None);
+                        msgs.iter()
+                            .map(|m| {
+                                let s = serde_json::to_string(m).unwrap_or_default();
+                                cache
+                                    .encode_count_if_cached(repo, file, &s)
+                                    .unwrap_or_else(|| {
+                                        BuiltinTokenizer::OpenAiCl100k.encode_count(&s)
+                                    })
+                            })
+                            .sum()
+                    }
+                    TokenizerSource::Local { path } => {
+                        let cache = HfTokenizerCache::new(None);
+                        msgs.iter()
+                            .map(|m| {
+                                let s = serde_json::to_string(m).unwrap_or_default();
+                                cache.encode_count_at_path(path, &s).unwrap_or_else(|| {
+                                    BuiltinTokenizer::OpenAiCl100k.encode_count(&s)
+                                })
+                            })
+                            .sum()
+                    }
+                })
+                    as Box<xylitol_ai_bridge::accounting::TokenizerEstimateFn>)
             })
-                as Box<xylitol_ai_bridge::accounting::TokenizerEstimateFn>)
-        });
+        } else {
+            None
+        };
 
     let remote_count: Option<Box<xylitol_ai_bridge::accounting::RemoteCountFn>> = if allow_remote {
         Some(Box::new(move |_msgs: &[AiBridgeMessage]| remote_tokens))
@@ -279,6 +318,7 @@ mod tests {
             None,
             &EstimateOpts {
                 model_id: Some("qwen-custom".into()),
+                allow_local_tokenizer: true,
                 ..Default::default()
             },
         );
@@ -291,10 +331,83 @@ mod tests {
             &EstimateOpts {
                 model_id: Some("qwen-custom".into()),
                 tokenizer_override: Some(TokenizerOverride::Builtin),
+                allow_local_tokenizer: true,
                 ..Default::default()
             },
         );
         assert_eq!(with_over.provenance, TokenProvenance::LocalTokenizer);
         assert!(with_over.tokens > 0);
+    }
+
+    #[test]
+    fn local_tokenizer_off_skips_encode_even_with_override() {
+        let msgs = [AgentMessage::user("hello world")];
+        let est = estimate_context_tokens_with(
+            &msgs,
+            None,
+            None,
+            &EstimateOpts {
+                model_id: Some("qwen-custom".into()),
+                tokenizer_override: Some(TokenizerOverride::Builtin),
+                allow_local_tokenizer: false,
+                ..Default::default()
+            },
+        );
+        assert_ne!(est.provenance, TokenProvenance::LocalTokenizer);
+        assert_eq!(est.provenance, TokenProvenance::Heuristic);
+    }
+
+    #[test]
+    fn session_entries_api_usage_anchors_estimate() {
+        use crate::domain::message::{LlmMessage, XyStopReason, XyUsage};
+        use crate::domain::session_types::{EntryBase, MessageEntry, SessionEntry};
+        use crate::domain::types::TokenProvenance;
+
+        let usage = XyUsage {
+            input: 100,
+            output: 20,
+            cache_read: 0,
+            cache_write: 0,
+            cache_write_1h: 0,
+            total_tokens: 120,
+            cost: None,
+        };
+        let asst = AgentMessage::Llm(LlmMessage::AssistantMessage {
+            content: vec![crate::domain::message::AgentPart::text("ok")],
+            stop_reason: Some(XyStopReason::Stop),
+            usage: Some(usage),
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        });
+        let entries = vec![
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "u1".into(),
+                    parent_id: None,
+                    timestamp: String::new(),
+                },
+                message: serde_json::to_value(AgentMessage::user("hi")).unwrap(),
+            }),
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: "a1".into(),
+                    parent_id: None,
+                    timestamp: String::new(),
+                },
+                message: serde_json::to_value(asst).unwrap(),
+            }),
+        ];
+        let est = estimate_from_session_entries(&entries, &EstimateOpts::default());
+        assert_eq!(est.provenance, TokenProvenance::Api);
+        assert!(est.tokens > 0);
+        // Threshold must use this shared number (not an independent len/4 sum).
+        let _ = crate::agent::compaction::should_compact(est.tokens, 128_000, 0.8);
     }
 }
