@@ -11,7 +11,8 @@ domain: agent
 apply_band: P0
 branch: feat/c1420-align-compact-estimate-gate-local-tokenizer
 base_sha: 2e6efd061cdb8087514f6ca0533c02d8f78dbcc5
-checkpointed: false
+checkpointed: true
+checkpoint_sha: 2e6efd061cdb8087514f6ca0533c02d8f78dbcc5
 ---
 
 # c1420-align-compact-estimate-gate-local-tokenizer

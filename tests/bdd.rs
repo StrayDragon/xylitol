@@ -4132,9 +4132,10 @@ fn tokenizer_bdd() -> TokenizerBdd {
 }
 
 fn parse_app_config_yaml(yaml: &str) -> Result<xylitol::infra::config::types::AppConfig, String> {
-    let value: serde_json::Value = yaml_serde::from_str(yaml).map_err(|e| format!("yaml: {e}"))?;
+    // Prefer direct typed deserialize so unknown enum variants (e.g. local_tokenizer)
+    // fail here rather than only after a loose Value round-trip.
     let cfg: xylitol::infra::config::types::AppConfig =
-        serde_json::from_value(value).map_err(|e| format!("deserialize: {e}"))?;
+        yaml_serde::from_str(yaml).map_err(|e| format!("yaml: {e}"))?;
     cfg.validate_thinking_levels()?;
     cfg.validate_model_tokenizers()?;
     Ok(cfg)
@@ -4659,3 +4660,99 @@ fn test_rc18_inline(tokenizer_bdd: TokenizerBdd) {}
     name = "tokenizer-unknown-name-fails"
 )]
 fn test_rc18_unknown(tokenizer_bdd: TokenizerBdd) {}
+
+#[given("YAML 未设 token_estimate.local_tokenizer")]
+fn g_rc19_default(tokenizer_bdd: &TokenizerBdd) {
+    match parse_app_config_yaml("models: {}\n") {
+        Ok(cfg) => {
+            tokenizer_bdd.config.replace(cfg);
+            tokenizer_bdd.cfg_ok.set(true);
+        }
+        Err(e) => {
+            tokenizer_bdd.cfg_ok.set(false);
+            tokenizer_bdd.cfg_err.replace(e);
+        }
+    }
+}
+
+#[given("YAML 含 token_estimate.local_tokenizer: on")]
+fn g_rc19_on(tokenizer_bdd: &TokenizerBdd) {
+    match parse_app_config_yaml("models: {}\ntoken_estimate:\n  local_tokenizer: on\n") {
+        Ok(cfg) => {
+            tokenizer_bdd.config.replace(cfg);
+            tokenizer_bdd.cfg_ok.set(true);
+            tokenizer_bdd.cfg_err.replace(String::new());
+        }
+        Err(e) => {
+            tokenizer_bdd.cfg_ok.set(false);
+            tokenizer_bdd.cfg_err.replace(e);
+        }
+    }
+}
+
+#[given("YAML 含 token_estimate.local_tokenizer: every_n")]
+fn g_rc19_invalid(tokenizer_bdd: &TokenizerBdd) {
+    match parse_app_config_yaml("models: {}\ntoken_estimate:\n  local_tokenizer: every_n\n") {
+        Ok(cfg) => {
+            tokenizer_bdd.config.replace(cfg);
+            tokenizer_bdd.cfg_ok.set(true);
+            tokenizer_bdd.cfg_err.replace(String::new());
+        }
+        Err(e) => {
+            tokenizer_bdd.cfg_ok.set(false);
+            tokenizer_bdd.cfg_err.replace(e);
+        }
+    }
+}
+
+#[then("local_tokenizer 闸为 off")]
+fn t_rc19_off(tokenizer_bdd: &TokenizerBdd) {
+    assert!(
+        tokenizer_bdd.cfg_ok.get(),
+        "{}",
+        tokenizer_bdd.cfg_err.borrow()
+    );
+    assert!(
+        !tokenizer_bdd
+            .config
+            .borrow()
+            .token_estimate
+            .local_tokenizer
+            .is_on()
+    );
+}
+
+#[then("local_tokenizer 闸为 on")]
+fn t_rc19_on(tokenizer_bdd: &TokenizerBdd) {
+    assert!(
+        tokenizer_bdd.cfg_ok.get(),
+        "{}",
+        tokenizer_bdd.cfg_err.borrow()
+    );
+    assert!(
+        tokenizer_bdd
+            .config
+            .borrow()
+            .token_estimate
+            .local_tokenizer
+            .is_on()
+    );
+}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "local-tokenizer-default-off"
+)]
+fn test_rc19_default(tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "local-tokenizer-on"
+)]
+fn test_rc19_on(tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "local-tokenizer-invalid-fails"
+)]
+fn test_rc19_invalid(tokenizer_bdd: TokenizerBdd) {}

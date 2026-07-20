@@ -58,6 +58,10 @@ token_estimate:
 
 Compact 侧：低估危险。同源后若落到 Heuristic，继续 chars/4（偏粗）；有 Api 则跟厂商。开 local 时用词表。不在本 change 引入「人为高估系数」。
 
+## 切点尺子（本波决策）
+
+auto-compact **阈值**已与 footer 同源；`cut_detector` / `tokens_before` **仍用** entry 级 chars/4 heuristic（成本低、切点算法未改）。后续若要切点也换尺子，另开 change。
+
 ## 非目标再钉
 
 - Footer async / generation 丢旧结果（进程内已有）够用；**不做**跨进程 single-flight。
