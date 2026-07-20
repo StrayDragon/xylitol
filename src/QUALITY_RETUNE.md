@@ -29,7 +29,7 @@
 | 文件 | 约行数 | 相对硬顶 | 拆分入口 |
 |---|---|---|---|
 | `agent/runtime/react.rs` | 2762 | 超硬顶 | **默认不拆**（同居行为测 ~1500；真剧本 ~780）。见 `_TODO` §D 决议；P3 未开闸 |
-| `infra/session/manager.rs` | 2191 | 超硬顶 | **默认不按 D8–D10 大拆**；生产 ~1653。可选 D11 卫生。见 `_TODO` §D |
+| `infra/session/manager.rs` | 2191 | 超硬顶 | **默认不按 D8–D10 大拆**；生产 ~1653。D11 见 `_TODO` 分诊（a 错置顺手 / b 孤儿真死） |
 | `app/core/driver/in_process.rs` | 1269 | 超软顶 | §D5–D7 已拆；仍可再切 reload/clipboard/tests |
 | `infra/resource/loader.rs` | 1217 | 超软顶 | 暂观察；有改动时顺手拆 |
 | `infra/config/types.rs` | 1188 | 近软顶 | 暂观察（类型清单型文件） |
