@@ -37,6 +37,12 @@
     当 对支持的 provider 调用 default_model_id_for_provider
     那么 返回真实可用模型标识而非 gpt-5.4 等占位符
 
+  @req:m12
+  场景: no-silent-env-select
+    假如 仅设置 OPENAI_API_KEY 且无配置模型且未传 --model
+    当 bootstrap 完成装配
+    那么 当前选中模型为空且 MUST NOT 自动选中 gpt-4o
+
   @req:m4
   场景: exact-match
     假如 可用模型含 openai/gpt-4o

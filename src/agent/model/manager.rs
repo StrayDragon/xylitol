@@ -19,8 +19,8 @@ use crate::runtime_protocol::XyModel;
 pub struct ModelManager {
     /// Model registry for provider/model lookup.
     pub(crate) registry: ModelRegistry,
-    /// Index of the currently selected model in the registry.
-    pub(crate) current_index: usize,
+    /// Index of the currently selected model in the registry (`None` = unset).
+    pub(crate) current_index: Option<usize>,
     /// Current thinking level (clamped to model capabilities).
     pub(crate) thinking_level: ThinkingLevel,
     /// Preferred default from Settings (`default_thinking_level`), if any.
@@ -38,7 +38,7 @@ impl ModelManager {
     ) -> Self {
         Self {
             registry,
-            current_index: 0,
+            current_index: None,
             thinking_level: ThinkingLevel::default(),
             preferred_default: None,
             model_builder,
@@ -54,7 +54,8 @@ impl ModelManager {
 
     /// Get the currently selected model metadata.
     pub fn current_model(&self) -> Option<&XyModelMeta> {
-        self.registry.list().get(self.current_index)
+        let idx = self.current_index?;
+        self.registry.list().get(idx)
     }
 
     /// Build a provider instance from the current model config (via the
@@ -156,7 +157,7 @@ impl ModelManager {
             .iter()
             .position(|m| std::ptr::eq(m, model))
             .unwrap_or(0);
-        self.current_index = idx;
+        self.current_index = Some(idx);
         self.clamp_thinking_to_model();
         Ok(())
     }
@@ -168,17 +169,15 @@ impl ModelManager {
         &self.registry
     }
 
-    /// Get the index of the currently selected model.
-    pub fn current_index(&self) -> usize {
+    /// Get the index of the currently selected model (`None` if unset).
+    pub fn current_index(&self) -> Option<usize> {
         self.current_index
     }
 
     /// Get the XyModelConfig for the current model.
     pub fn current_config(&self) -> Option<XyModelConfig> {
-        self.registry
-            .list()
-            .get(self.current_index)
-            .map(|m| m.config.clone())
+        let idx = self.current_index?;
+        self.registry.list().get(idx).map(|m| m.config.clone())
     }
 }
 
@@ -231,18 +230,32 @@ mod tests {
     }
 
     fn manager_with(models: Vec<XyModelMeta>) -> ModelManager {
+        let first_id = models.first().map(|m| m.id.clone());
         let mut reg = empty_registry();
         for m in models {
             reg.register(m);
         }
-        ModelManager::new(reg, fake_builder())
+        let mut mm = ModelManager::new(reg, fake_builder());
+        if let Some(id) = first_id {
+            mm.select_model(&id).unwrap();
+        }
+        mm
+    }
+
+    #[test]
+    fn register_without_select_leaves_unset() {
+        let mut reg = empty_registry();
+        reg.register(meta("m1", true, &["off", "high"]));
+        let mm = ModelManager::new(reg, fake_builder());
+        assert!(mm.current_model().is_none());
+        assert_eq!(mm.current_index(), None);
     }
 
     #[test]
     fn new_model_manager_empty_registry() {
         let mm = ModelManager::new(empty_registry(), fake_builder());
         assert!(mm.current_model().is_none());
-        assert_eq!(mm.current_index(), 0);
+        assert_eq!(mm.current_index(), None);
         assert_eq!(mm.thinking_level(), ThinkingLevel::Off);
     }
 
@@ -262,8 +275,12 @@ mod tests {
     #[test]
     fn set_thinking_level_rejects_unsupported() {
         let mut mm = manager_with(vec![meta("m1", true, &["off", "high"])]);
+        // select_model clamps Medium → High for this support set
+        assert_eq!(mm.thinking_level(), ThinkingLevel::High);
         assert!(mm.set_thinking_level(ThinkingLevel::Xhigh).is_err());
-        assert_eq!(mm.thinking_level, ThinkingLevel::Medium);
+        assert_eq!(mm.thinking_level, ThinkingLevel::High);
+        mm.set_thinking_level(ThinkingLevel::Off).unwrap();
+        assert_eq!(mm.thinking_level(), ThinkingLevel::Off);
         mm.set_thinking_level(ThinkingLevel::High).unwrap();
         assert_eq!(mm.thinking_level(), ThinkingLevel::High);
     }

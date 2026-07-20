@@ -2,13 +2,13 @@ kind: llman.sdd.spec
 name: "cli-entry"
 purpose: "CLI 统一入口：默认 TUI；surface（tui/print）与 ops（resources/server/tokenizer）；bootstrap/dispatch；产品 slash 以 session-* 为准。"
 valid_scope[2]: src/,tests/
-requirements[18]{req_id,title,statement}:
+requirements[20]{req_id,title,statement}:
   r67,"info-fields",SlashCommandInfo MUST 携带 name、description、source 与 source_info 字段。
   r68,"source-enum",SlashCommandSource MUST 恰为 prompt 或 skill 之一（extension 若未实现 MUST NOT 作为产品必选项）。
   r69,"builtin-table","产品对外 slash 与 GetCommands 内建表 MUST 同源自同一产品命令 SSOT（见 app-tui-commands）；名称 MUST 以 session-* /model /exit 等产品名为准（PI_DELTAS A03）；MUST NOT 再以 pi 短名表（/tree /fork /export /compact /resume /new 等）作为 GetCommands 或文档的权威清单；产品解析 MUST NOT 将上述废弃短名识别为有效命令入口。"
   r70,dispatch,产品 TUI idle slash MUST 经 commands→effects→Driver/dispatch；MUST NOT 依赖已移除的 stdio rpc。
   ce1,"app-directory","CLI 模块 MUST 位于 src/app/cli/，print MUST 为其子模式；app 面 MUST NOT reach agent::runtime / agent::session / agent::tools。"
-  ce2,"no-silent-fallback",配置文件存在但零可加载模型时，CLI MUST 明确报错指向配置，MUST NOT 静默回退到占位默认。
+  ce2,"no-silent-fallback","配置文件存在但零可加载模型时，经 bootstrap 的表面（TUI/print/--list-models/server）MUST 硬失败并明确报错指向配置，MUST NOT 静默回退到 env 占位默认（如 gpt-4o）后继续。"
   ce6,"driver-abstraction","MUST 提供 app::Driver；InProcessDriver 与 RemoteDriver MUST 同实现；切换本地/远程 MUST 只换构造。"
   ce7,"composition-root-ports","组合根 MUST 从 infra 构造 SessionStore/EventSink 注入装配；MUST NOT 经已删除的 agent::facade。"
   ce8,"server-subcommands",CLI MUST 提供 server run/install/stop 子命令。
@@ -21,4 +21,6 @@ requirements[18]{req_id,title,statement}:
   ce14,"stable-session-id-on-run","InProcessDriver::run MUST 复用 bootstrap session_id，MUST NOT 每轮新建 Uuid 文件。"
   ce15,"tokenizer-cache-subcommands","CLI MUST 提供顶层动词 tokenizer（跨面 ops，MUST NOT 仅挂在 tui 下），叶子至少含 status、download、clean：status MUST 可报告缓存根与条目（及可选 --model 的 builtin/local/cached/missing/unmapped）；download MUST 为显式 opt-in（调用即同意；TTY 默认可二次确认，--yes 跳过），MUST 在确认摘要中告知 repo/file、HF 基址与落盘路径，MUST NOT 在估计热路径静默下载；无配置映射且无显式 owner/repo 时 MUST 失败并提示配置 tokenizer 字段或 CLI 形状，MUST NOT 猜测下载目标；clean MUST 支持 --all 或按 model/target 删除；上述子命令 MUST 早退且 MUST NOT 经 bootstrap 装配会话/MCP；实现 MUST 委托 bridge 缓存 API，MUST NOT 在 CLI 内直接发起 HTTP。"
   ce16,"cli-surface-vs-ops","CLI MUST 区分表面动词与管理动词：表面至少含 tui 与 print（xylitol tui 进入 TUI；xylitol print 进入一次性 print 且须非空 prompt）；管理动词 resources、server、tokenizer MUST 保持顶层，MUST NOT 挪入 tui 子树；TTY 裸跑默认 TUI 的语义 MUST 保持；MUST NOT 提供顶层 --tui/--print/-p/--prompt 或位置 PROMPT 作为表面切换别名（print 的 --prompt/-p 仅允许挂在 print 子命令下）。"
+  ce17,"config-load-fail-closed","load_app_config（或等价）失败（含模板渲染、YAML 解析、IO）时，bootstrap MUST 返回硬错误且经其装配的全表面 MUST 非零退出；MUST NOT 仅 Warning 后继续并用 env 默认模型进入 TUI/print。"
+  ce18,"unset-model-display","当前未选中模型时，产品面展示的模型名 MUST 为 NOT-SET（或文档化的等价明确占位）；MUST NOT 将未显式配置/未传 --model 的状态显示为 gpt-4o 等厂商默认模型名。"
 scenarios[0]:

@@ -266,6 +266,14 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 return Err("no models available".into());
             }
+            Err(BootstrapError::ConfigLoadFailed(e)) => {
+                eprintln!("Error: config load failed ({e})");
+                return Err(e.into());
+            }
+            Err(BootstrapError::ConfigLoadedZeroModels) => {
+                eprintln!("Error: {}", BootstrapError::ConfigLoadedZeroModels);
+                return Err("config loaded zero models".into());
+            }
             Err(e) => return Err(e.into()),
         };
         render_warnings(&assembly.warnings);
@@ -287,6 +295,14 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 provider_guidance::format_no_models_available_message()
             );
             return Err("no models available".into());
+        }
+        Err(BootstrapError::ConfigLoadFailed(e)) => {
+            eprintln!("Error: config load failed ({e})");
+            return Err(e.into());
+        }
+        Err(BootstrapError::ConfigLoadedZeroModels) => {
+            eprintln!("Error: {}", BootstrapError::ConfigLoadedZeroModels);
+            return Err("config loaded zero models".into());
         }
         Err(e) => return Err(e.into()),
     };
@@ -367,15 +383,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 fn render_warnings(warnings: &[BootstrapWarning]) {
     for w in warnings {
         match w {
-            BootstrapWarning::ConfigLoadFailed(e) => {
-                eprintln!("Warning: config load failed ({e}), falling back to env vars");
-            }
-            BootstrapWarning::ConfigLoadedZeroModels => {
-                eprintln!(
-                    "Warning: config file present but loaded 0 models. \
-                     A structural typo such as `model:` (singular) instead of `models:` \
-                     (plural) is silently ignored. See configs/example.yaml."
-                );
+            BootstrapWarning::ModelEntrySkipped(e) => {
+                eprintln!("Warning: skipped model entry ({e})");
             }
             BootstrapWarning::NoApiKey { provider } => {
                 eprintln!(

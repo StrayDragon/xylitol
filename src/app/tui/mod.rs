@@ -139,7 +139,7 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
                 m.display_name
             }
         })
-        .unwrap_or_else(|| "—".into());
+        .unwrap_or_else(|| crate::app::core::bootstrap::UNSET_MODEL_DISPLAY.into());
     let mut session = HostSession::new_product_ui_with_meta(terminal, host::display_cwd(), model);
     session.apply_thinking_level_ui(driver.thinking_level());
     session.set_model_arg_catalog_from_models(&driver.available_models());
