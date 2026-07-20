@@ -31,6 +31,7 @@ components:
 5. 快捷键提示：默认**不**写进 footer（勿 `enter submit · double Esc…` 墙）；需要时 `/help` 或旁注括号和弦（见 [`keybindings.md`](./keybindings.md)）。
 6. 队列摘要若展示：短前缀 `q:sN|fM ·` 可贴 footer 最左，仍保持单行。
 7. 刷新时机：session tree travel 换叶、一轮 turn 结束（AgentEnd / stream close）、compact 成功、thinking cycle / 模型切换；**MUST NOT** 每个 TextDelta 全量 tokenizer.encode。
-8. **MUST NOT** 常驻多行 debug / 快捷键墙；**MUST NOT** 把 Working 文案塞进 footer（那是 status）；**MUST NOT** 把 Heuristic 显示成无 `~` 的精确值。
+8. **异步**：footer token 估计 MUST 在后台完成（`spawn_blocking`），**MUST NOT** 阻塞输入 / Tick / 其它渲染；结果落地后再差分刷新 footer 行。
+9. **MUST NOT** 常驻多行 debug / 快捷键墙；**MUST NOT** 把 Working 文案塞进 footer（那是 status）；**MUST NOT** 把 Heuristic 显示成无 `~` 的精确值。
 
 颜色：`{colors.muted}`；高度：`{spacing.footer-rows}`。

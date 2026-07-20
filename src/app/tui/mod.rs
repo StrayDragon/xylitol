@@ -177,6 +177,10 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
 
             tokio::select! {
                 _ = ticker.tick() => {
+                    // Drain any footer estimates that completed without waiting on select.
+                    while let Some((job_id, label)) = session.try_recv_footer_token() {
+                        session.step(HostEvent::FooterTokens { job_id, label })?;
+                    }
                     session.step(HostEvent::Tick)?;
                 }
                 maybe = term_events.next() => {
@@ -201,6 +205,11 @@ async fn run_host_loop(terminal: CrosstermTerminal, driver: &mut dyn Driver) -> 
                     }
                 } => {
                     on_agent_stream_item(&mut session, &mut agent_stream, maybe_agent)?;
+                }
+                maybe_footer = session.recv_footer_token() => {
+                    if let Some((job_id, label)) = maybe_footer {
+                        session.step(HostEvent::FooterTokens { job_id, label })?;
+                    }
                 }
             }
         }
