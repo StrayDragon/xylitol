@@ -839,11 +839,12 @@ impl Driver for InProcessDriver {
         let tokenizer_override = model_id
             .as_deref()
             .and_then(tokenizer_override_from_app_config);
-        Ok(estimate_from_session_entries(
-            &entries,
-            model_id,
-            tokenizer_override,
-        ))
+        // HF / local encode is CPU-heavy — keep it off the async worker (TUI host loop).
+        tokio::task::spawn_blocking(move || {
+            estimate_from_session_entries(&entries, model_id, tokenizer_override)
+        })
+        .await
+        .map_err(|e| format!("estimate join: {e}"))
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {

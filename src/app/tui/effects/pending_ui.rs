@@ -87,7 +87,10 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
             Ok(travel) => match driver.get_messages().await {
                 Ok(entries) => {
                     session.apply_session_tree_travel(travel, entries);
+                    #[cfg(test)]
                     super::refresh_footer_tokens(session, driver).await;
+                    #[cfg(not(test))]
+                    super::kick_footer_token_refresh(session, driver).await;
                 }
                 Err(e) => session.push_system_note(format!("travel: get_messages failed: {e}")),
             },
