@@ -34,7 +34,7 @@ protocol ───────────────────────�
 
 ## 各层职责（摘要）
 
-- `domain/` — 纯领域词汇与 `XyEvent` 等；零内部层依赖。
+- `domain/` — 纯领域词汇与 `XyEvent` 等；零内部层依赖；准可迁出为独立 package（**禁止**依赖 `xylitol-ai-bridge` 等业务适配包）。
 - `runtime_protocol/` — agent↔infra ports（`XyModel`/`XyTool`/`XySessionStore`/…）；近期精选 `pub use` 的主要来源。
 - `infra/` — ports 的实现（provider、tools、session、config、…）；vendor 类型（async-openai、rmcp、…）关在本层。
 - `agent/` — ReAct / session / model / tools 编排；公共入口为 mod 级 re-export。
@@ -121,20 +121,22 @@ protocol ───────────────────────�
 | 类型 | 含义 |
 |---|---|
 | `AgentMessage`（domain） | session **真源** = `Llm(LlmMessage) \| Env(EnvMessage)` |
-| `LlmMessage`（domain） | 仅 user / assistant / toolResult |
-| bridge LLM DTO | 从 `LlmMessage` 映射；**MUST NOT** 平行拷贝 Env 角色；**MUST NOT** 被 domain 内嵌（现行；F4 叶 SSOT 迁 bridge 前不变） |
+| `LlmMessage` / Part / Usage…（domain） | **业务侧** LLM 可见词汇（随 session / 投影）；属 domain，不内嵌 bridge |
+| bridge LLM DTO（`AiBridge*`） | **适配器侧**通用形状；由 `infra/provider/map` 从 domain 映射；**MUST NOT** 含 Env；**MUST NOT** 被 domain 依赖/内嵌 |
 
-**叶类型归属（SSOT 意向；现行仍双份 + `infra/provider/map.rs`）**：
+**边界心智（MUST）**：`domain`（`src/domain`）只关心业务需要的类型，并保持足够开闭、**准可迁出为独立 package**；`packages/xylitol-ai-bridge` 只关心跨厂商通用的 LLM/计量/适配设计。二者各自自洽；**禁止** `domain → xylitol-ai-bridge`。缝在 `infra/provider/map.rs`（主仓装配侧），不在 domain 里「嵌库类型」。
 
-| 叶 / 组合 | 归属意向 | 现行 |
+**叶类型归属（SSOT）**：
+
+| 叶 / 组合 | 归属 | 说明 |
 |---|---|---|
-| `TokenProvenance` / `ContextTokenEstimate` | bridge（计量） | domain ∥ bridge，经 `map.rs` `From` |
-| `Diagnostic` / StopReason / Usage / UsageCost | bridge（LLM 通用） | 同上 |
-| Part（Text/Image/Thinking/ToolCall）与 `LlmMessage` | bridge（LLM 可见） | domain 有平行定义；bridge 为 `AiBridge*` |
-| `EnvMessage` / `AgentMessage` | **domain**（组合） | 已是组合；Env **永不**进 bridge DTO |
+| `LlmMessage` / Part / StopReason / Usage（session 形状） | **domain** | 业务真源；可随 domain 包迁出 |
+| `EnvMessage` / `AgentMessage` | **domain** | 组合在 domain；Env 永不进 bridge |
 | session / trust / queue / AgentState | **domain** | 与 bridge 无关 |
+| `AiBridge*` DTO + accounting 叶 | **bridge** | 适配器/计量自用；可与 domain 同形，但是**另一份边界类型** |
+| `TokenProvenance` / `ContextTokenEstimate` | 计量主责在 bridge；若进 session/UI 业务面则 domain 自有对应类型，经 map 转换 | 禁止为省事让 domain import bridge |
 
-**禁止新增孪生叶**：不得在 domain 再平行发明与 bridge DTO 同形的新叶类型；新叶先定归属（bridge vs domain-only）。调优清单与后置搬迁：`src/_TODO.md` §F。
+**禁止无必要孪生**：新叶先问「业务 session 要不要持久化/推理」→ domain；「仅适配器/计量」→ bridge。不要两边各加一份却无 map。调优：`src/_TODO.md` §F。
 
 **开闭**：新 OpenAI-like / Anthropic-like 兼容端 = 新 adapter 或配置；**MUST NOT** 为网关改 `AgentMessage` / ReAct。禁止 Completions「已是 `XyModel` 再包一层」双路径。Pre-1.0 **交付**范围见根 `AGENTS.md`。细则与包边界（含 Responses 流式 BYOT/`Value`）：`packages/xylitol-ai-bridge/AGENTS.md`；设计史：**c1070-refactor-ai-bridge-sdk-projection**（`llmanspec/changes/archive/`）。
 
