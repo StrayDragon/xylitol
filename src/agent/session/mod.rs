@@ -740,6 +740,18 @@ impl AgentCapabilities {
     /// Check and perform auto-compaction if the context is full.
     /// Returns true if compaction was performed.
     pub async fn maybe_auto_compact(&self) -> Result<bool, String> {
+        self.maybe_auto_compact_with(&crate::agent::compaction::EstimateOpts {
+            model_id: self.current_model().map(|m| m.id.clone()),
+            ..Default::default()
+        })
+        .await
+    }
+
+    /// Auto-compact using the same estimate opts as the product footer (c1420).
+    pub async fn maybe_auto_compact_with(
+        &self,
+        estimate_opts: &crate::agent::compaction::EstimateOpts,
+    ) -> Result<bool, String> {
         let sid = self
             .session_id()
             .ok_or_else(|| "no active session".to_string())?;
@@ -765,6 +777,7 @@ impl AgentCapabilities {
                 model.as_ref(),
                 self.sink.as_ref(),
                 ctx_window,
+                estimate_opts,
             )
             .await?;
 

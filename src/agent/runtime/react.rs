@@ -634,6 +634,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let mut thinking_acc = String::new();
                 let mut thinking_signature: Option<String> = None;
                 let mut tool_calls: Vec<(String, String, Value)> = Vec::new();
+                let mut done_usage: Option<crate::domain::message::XyUsage> = None;
+                let mut done_stop_reason: Option<crate::domain::message::XyStopReason> = None;
 
                 // Mid-stream abort: drop `chunk_stream` so adapter/reqwest closes
                 // the HTTP body (c680). Surfaces inherit via Driver::abort → token.
@@ -769,8 +771,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     )),
                                 };
                             }
-                            XyChunk::Done { .. } => {
-                                // Stream-end marker for this single model call.
+                            XyChunk::Done {
+                                finish_reason,
+                                usage,
+                            } => {
+                                // Persist usage/stop for Api-anchor estimates (c1420 / ar23).
+                                done_stop_reason = Some(finish_reason);
+                                if usage.is_some() {
+                                    done_usage = usage;
+                                }
                             }
                         },
                         Some(Err(e)) => {
@@ -829,8 +838,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 if !assistant_parts.is_empty() {
                     let assistant_msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
                         content: assistant_parts,
-                        stop_reason: None,
-                        usage: None,
+                        stop_reason: done_stop_reason,
+                        usage: done_usage,
                         api: String::new(),
                         provider: String::new(),
                         model: String::new(),
@@ -1467,6 +1476,13 @@ mod tests {
         chunks: Vec<crate::domain::types::XyChunk>,
         tools: ToolSet,
     ) -> AgentRuntime {
+        make_agent_with_tools_and_store(chunks, tools).0
+    }
+
+    fn make_agent_with_tools_and_store(
+        chunks: Vec<crate::domain::types::XyChunk>,
+        tools: ToolSet,
+    ) -> (AgentRuntime, Arc<dyn XySessionStore>) {
         let reg = mock_model_registry();
         let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
@@ -1474,7 +1490,7 @@ mod tests {
         let session = AgentCapabilities::new(
             reg,
             tools,
-            store,
+            Arc::clone(&store),
             sink,
             None,
             Vec::new(),
@@ -1491,7 +1507,53 @@ mod tests {
             crate::agent::session::QueueMode::default(),
             None,
         );
-        AgentRuntime::new(session)
+        (AgentRuntime::new(session), store)
+    }
+
+    #[tokio::test]
+    async fn test_persist_done_usage() {
+        use crate::domain::message::{AgentMessage, LlmMessage, XyStopReason, XyUsage};
+        use futures::StreamExt;
+
+        let usage = XyUsage {
+            input: 11,
+            output: 7,
+            cache_read: 0,
+            cache_write: 0,
+            cache_write_1h: 0,
+            total_tokens: 18,
+            cost: None,
+        };
+        let chunks = vec![
+            crate::domain::types::XyChunk::TextDelta("hi".into()),
+            crate::domain::types::XyChunk::Done {
+                finish_reason: XyStopReason::Stop,
+                usage: Some(usage),
+            },
+        ];
+        let (mut agent, store) = make_agent_with_tools_and_store(chunks, ToolSet::from_iter([]));
+        let mut stream = agent.run_with_id("ping", "sess-usage").await;
+        while stream.next().await.is_some() {}
+
+        let entries = store.load_entries("sess-usage").await.expect("entries");
+        let mut found = false;
+        for entry in entries {
+            let SessionEntry::Message(m) = entry else {
+                continue;
+            };
+            let Ok(AgentMessage::Llm(LlmMessage::AssistantMessage {
+                usage: Some(u),
+                stop_reason: Some(XyStopReason::Stop),
+                ..
+            })) = serde_json::from_value(m.message)
+            else {
+                continue;
+            };
+            assert_eq!(u.input, 11);
+            assert_eq!(u.output, 7);
+            found = true;
+        }
+        assert!(found, "expected persisted assistant with Done.usage");
     }
 
     #[tokio::test]

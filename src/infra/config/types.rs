@@ -43,6 +43,34 @@ pub struct AppConfig {
     /// Named tokenizer sources shared by models (c1380; pre-1.0 simple shape).
     #[serde(default)]
     pub tokenizers: HashMap<String, TokenizerEntry>,
+
+    /// Context token estimate gates (c1420).
+    #[serde(default)]
+    pub token_estimate: TokenEstimateConfig,
+}
+
+/// Gates for multi-source context token estimation (c1420 / paa10 / rc19).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub struct TokenEstimateConfig {
+    /// Local tokenizer encode: only `on` | `off` (default off).
+    #[serde(default)]
+    pub local_tokenizer: LocalTokenizerGate,
+}
+
+/// `token_estimate.local_tokenizer` — on/off only (no every-N / idle).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum LocalTokenizerGate {
+    On,
+    #[default]
+    Off,
+}
+
+impl LocalTokenizerGate {
+    pub fn is_on(&self) -> bool {
+        matches!(self, Self::On)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1082,5 +1110,52 @@ mod thinking_levels_tests {
             TokenizerOverride::Builtin
         ));
         assert!(resolve_tokenizer_ref(&HashMap::new(), "nope").is_err());
+    }
+
+    #[test]
+    fn token_estimate_local_tokenizer_default_off() {
+        let cfg: AppConfig = yaml_serde::from_str("models: {}").unwrap();
+        assert_eq!(cfg.token_estimate.local_tokenizer, LocalTokenizerGate::Off);
+        assert!(!cfg.token_estimate.local_tokenizer.is_on());
+    }
+
+    #[test]
+    fn token_estimate_local_tokenizer_on() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+models: {}
+token_estimate:
+  local_tokenizer: on
+"#,
+        )
+        .unwrap();
+        assert!(cfg.token_estimate.local_tokenizer.is_on());
+    }
+
+    #[test]
+    fn token_estimate_local_tokenizer_unquoted_off() {
+        // YAML 1.1 may treat bare `off` as bool; must still load as Off gate.
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+models: {}
+token_estimate:
+  local_tokenizer: off
+"#,
+        )
+        .expect("unquoted off must deserialize");
+        assert!(!cfg.token_estimate.local_tokenizer.is_on());
+        assert_eq!(cfg.token_estimate.local_tokenizer, LocalTokenizerGate::Off);
+    }
+
+    #[test]
+    fn token_estimate_local_tokenizer_invalid_fails() {
+        let err = yaml_serde::from_str::<AppConfig>(
+            r#"
+models: {}
+token_estimate:
+  local_tokenizer: every_n
+"#,
+        );
+        assert!(err.is_err());
     }
 }

@@ -9,10 +9,17 @@
     那么 provenance 为 Api 且 tokens 反映该 usage
 
   @req:paa1
+  @req:paa10
   场景: fallback-local
-    假如 无 Api 锚点且 registry 命中已加载 LocalTokenizer
+    假如 无 Api 锚点且 LocalTokenizer 闸为 on 且 registry 命中已加载词表
     当 调用 estimate_context
     那么 provenance 为 LocalTokenizer
+
+  @req:paa10
+  场景: local-off-skips-tokenizer
+    假如 无 Api 锚点且 LocalTokenizer 闸为 off 且 registry 已映射可用词表
+    当 调用 estimate_context
+    那么 provenance 不是 LocalTokenizer 且估计路径未调用本地 encode
 
   @req:paa1
   场景: fallback-heuristic
