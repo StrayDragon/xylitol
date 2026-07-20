@@ -2,12 +2,14 @@ kind: llman.sdd.spec
 name: "package-ai-bridge-accounting"
 purpose: "xylitol-ai-bridge 多源上下文 token 计量与 TokenProvenance。"
 valid_scope[2]: "packages/xylitol-ai-bridge/",src/agent/compaction/
-requirements[7]{req_id,title,statement}:
+requirements[9]{req_id,title,statement}:
   paa1,计量优先级,上下文 token 估计 MUST 按固定优先级解析来源：Api，然后 RemoteCount，然后 LocalTokenizer，然后 Heuristic；结果 MUST 携带 TokenProvenance（或等价枚举）标明实际采用的来源。
   paa2,"Api-锚点规则",当存在适用于当前会话 prefix/leaf 的可信厂商 usage 时 MUST 优先用作 Api 锚点；因 abort 或 error 结束的回合 usage、以及 compaction 之后不再描述当前 prefix 的旧 usage，MUST NOT 作为锚点。
   paa3,禁止流上全量 encode,generate_stream 热路径 MUST NOT 在每个文本 delta 上对累计全文调用完整本地 tokenizer.encode；本地精确计数 MUST 仅在显式 estimate 调用、流结束补洞或经文档化的节流策略下发生。
   paa4,"Heuristic-诚实标注",当最终采用 Heuristic 时，ContextTokenEstimate 的 provenance MUST 为 Heuristic；下游展示层若使用该结果 MUST 能区分于 Api/LocalTokenizer。
   paa5,"RemoteCount-可降级",RemoteCount（Anthropic count_tokens 与 OpenAI Responses input_tokens，及等价注入 stub）MUST 可配置关闭；调用失败或超时时 MUST 降级到 LocalTokenizer 或 Heuristic，且 MUST NOT 将失败结果标为 Api。
-  paa6,"LocalTokenizer-注册与缓存","LocalTokenizer MUST 经 registry 将 model_id 映射到 Builtin 或 HuggingFace tokenizer.json 源；HuggingFace 文件下载 MUST 为 opt-in 或显式 prefetch，默认 MUST NOT 静默拉取大文件；缓存命中后 MUST 可离线加载。"
+  paa6,"LocalTokenizer-注册与缓存","LocalTokenizer MUST 经 registry 将 model_id 映射到 Builtin、HuggingFace tokenizer.json 或本地 path 源（用户配置优先于 builtin 启发式）；HuggingFace 文件下载 MUST 为 opt-in 或显式 prefetch，默认 MUST NOT 静默拉取大文件；缓存命中或 local path 可用后 MUST 可离线加载。"
   paa7,"openai-responses-remote-count","当模型路径为 OpenAI Responses（或声明兼容 input_tokens 的端点）且 RemoteCount 已启用时，估计上下文 MUST 可经 POST /v1/responses/input_tokens（或配置的 base_url 等价路径）取得 input_tokens 并标 provenance 为 RemoteCount；Completions-only 路径 MUST NOT 伪造该远程调用成功。"
+  paa8,"tokenizer-cache-manage-api","HfTokenizerCache（或等价）MUST 提供可测的缓存根查询、条目列举与按键删除；opt-in download MUST 在成功前不把不完整文件当作可用缓存；CLI 与其它面 MUST 经此 API 管理缓存，MUST NOT 在估计路径调用 download。"
+  paa9,"hf-endpoint-base","拼装 HuggingFace resolve URL 时 MUST 以环境变量 HF_ENDPOINT 为优先基址（去尾斜杠），未设置时可回退 HF_HUB_ENDPOINT，再默认 https://huggingface.co；URL 形状 MUST 为 {base}/{repo}/resolve/main/{file}（本波 revision 固定 main）；opt-in download MUST 使用该基址，MUST NOT 在已设 HF_ENDPOINT 时仍硬编码仅官方域。"
 scenarios[0]:

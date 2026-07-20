@@ -113,6 +113,9 @@ pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, Lo
     config
         .validate_thinking_levels()
         .map_err(LoadError::Validation)?;
+    config
+        .validate_model_tokenizers()
+        .map_err(LoadError::Validation)?;
     Ok(config)
 }
 

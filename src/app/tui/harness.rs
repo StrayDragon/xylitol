@@ -599,6 +599,7 @@ impl Driver for ScriptedDriver {
         Ok(crate::app::core::driver::estimate_from_session_entries(
             &self.session_messages,
             self.current_model().map(|m| m.id),
+            None,
         ))
     }
 
