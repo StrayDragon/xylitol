@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "薄编排 ReAct 运行时：AgentRuntime 循环、工具批执行、steer/follow-up 队列、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
 valid_scope[3]: src/agent/,src/runtime_protocol/,tests/
-requirements[23]{req_id,title,statement}:
+requirements[24]{req_id,title,statement}:
   ar1,"thin-react-loop",agent/ 层 MUST 以 AgentRuntime（runtime/react.rs）驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls 或达 max_iterations；MUST NOT 在循环文件内联 bash 实现或厂商 HTTP。
   ar2,"xy-event-stream",运行时 MUST 以 XyEvent 异步流对外输出（TextDelta / ThinkingDelta / Tool* / Turn* / QueueUpdate / Error 等）；MUST NOT 再引入 AgentEvent 或 adk 事件类型。
   ar3,工具批后继续,"同一模型响应中的全部工具调用 MUST 在下一轮模型调用前执行完毕（可并行或串行）；MUST NOT 因流结束 Done 而提前结束含 tool_calls 的回合。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。"
@@ -26,6 +26,7 @@ requirements[23]{req_id,title,statement}:
   ar19,Driver context 重载缝,InProcessDriver（经 app/core 助手）MUST 能在 Trust 语义下重载磁盘 context/SYSTEM/APPEND 并应用到 agent；未信任 MUST NOT 注入项目侧 context；重载 MUST NOT 清空 transcript。
   ar20,Driver skills 重载缝,InProcessDriver（经 app/core 助手）MUST 能在 Trust 语义下重载磁盘 skills 并应用到 agent；MUST 能查询当前已加载 skill 名（供后续 $ 展开）；未信任 MUST NOT 注入项目 skills；重载 MUST NOT 清空 transcript；本要求 MUST NOT 依赖 /session 或 /status skills UI。
   "ar-pilot",live feature 试点,"agent-runtime spec MUST 在 llmanspec/specs/agent-runtime/agent-runtime.feature 携带可执行场景 react-terminates 与 stream-is-xyevent；场景文本与 @req 对齐对应 requirement。"
+  ar23,"persist-done-usage","ReAct 在模型流正常结束时 MUST 将 XyChunk::Done 携带的 usage 与 stop_reason（若有）写入随后持久化的 AssistantMessage；MUST NOT 在 Done 已提供非空 usage 时仍硬编码 usage: None。该行为 MUST 有可执行 BDD 或等价单测场景。"
 scenarios[14]{req_id,id,given,when,then,feature}:
   ar13,"no-rloop",在 src 中搜索 loop raw identifier,运行检查,零匹配,false
   ar14,"no-facade",检查 agent/facade.rs,不存在该模块,facade 保持移除,false

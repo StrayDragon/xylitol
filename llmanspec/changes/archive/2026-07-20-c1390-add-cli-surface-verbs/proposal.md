@@ -4,15 +4,16 @@ title: CLI 统一入口：surface 动词 tui/print + 默认 TUI 不变
 status: purpose-draft
 priority: 1390
 depends_on:
-  - c1380-add-cli-tokenizer-cache
+- c1380-add-cli-tokenizer-cache
 author: agent
 track: B
 wave: cli-surface
 domain: cli
 apply_band: P1-after-c1380
-branch: feat/c1380-add-cli-tokenizer-cache
-base_sha: a481fdb0bb9ffe675daa024edab5f5d7c9310105
-checkpointed: false
+branch: feat/c1390-add-cli-surface-verbs
+base_sha: 3cee6683ea21d8859f6ee910ab21e490e23602f5
+checkpointed: true
+checkpoint_sha: 3cee6683ea21d8859f6ee910ab21e490e23602f5
 ---
 
 # c1390-add-cli-surface-verbs
@@ -35,12 +36,12 @@ checkpointed: false
 xylitol                         → 默认 TUI（MUST 保持）
 xylitol tui [run]               → 显式进 TUI（与默认同义）
 xylitol tui <专有…>             → 仅 TUI 的运维/诊断占位（本波可极少叶子）
-xylitol print [--] <prompt>     → 一次性对话（收编 --print / -p / 位置 prompt）
+xylitol print [--] <prompt>     → 一次性对话（唯一 print 入口；无顶层别名）
 xylitol resources|server|tokenizer …  → ops（已有或由 c1380 交付；本 change 不搬迁）
 共享：--model / --session / --config / --trust
 ```
 
-兼容：短期内保留 `--tui` / `--print` / `-p` 为别名（文档主推动词树）；弃用节奏见 design。
+MUST NOT 保留 `--tui` / `--print` / 顶层 `-p`/`--prompt`/位置 PROMPT 别名（未发布，一步到位）。
 
 ## What Changes
 

@@ -15,6 +15,7 @@ pub async fn get_session_stats(&self) -> Result<SessionStats, String>
 pub async fn import_from_jsonl( &self, store: &dyn XySessionStore, path: &std::path::Path, ) -> Result<String, String>
 pub async fn import_from_jsonl(&self, path: &std::path::Path) -> Result<String, String>
 pub async fn maybe_auto_compact(&self) -> Result<bool, String>
+pub async fn maybe_auto_compact_with( &self, estimate_opts: &crate::agent::compaction::EstimateOpts, ) -> Result<bool, String>
 pub async fn record_bash_result( &self, command: &str, result: &crate::runtime_protocol::XyBashResult, exclude_from_context: bool, session_id: Option<&str>, ) -> Result<(), String>
 pub enum QueueMode
 pub fn abort(&self)
