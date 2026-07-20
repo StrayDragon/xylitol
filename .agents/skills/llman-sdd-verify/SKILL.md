@@ -3,6 +3,9 @@ name: "llman-sdd-verify"
 description: "验证已实施的 llman SDD 变更是否与 specs/design/tasks 一致。产出分级报告（CRITICAL / WARNING / SUGGESTION），对比代码与工件。在 apply 完成后运行；全绿则可归档。"
 metadata:
   version: "0.0.64"
+  llman_sdd:
+    bdd_mode: "on"
+    skill_set: "default"
 ---
 
 # LLMAN SDD Verify
@@ -43,9 +46,12 @@ flowchart LR
    - `llman sdd validate <id> --strict --no-interactive`
    - **诊断结构问题（Gherkin 解析 / `@req` 链接 / 双写 / 全局 req_id 唯一性）时优先加 `--no-check`**（BDD-on 下跳过可能耗时的 `bdd.run_command`），结构门禁全绿后再跑完整 `--check`（full mode）。`FAIL <item_type>/<id>` 行会逐条列出失败项（在 Totals 行上方）。
 4. 阅读：
-   - `llmanspec/changes/<id>/specs/` 下的 delta specs
+
+   - feature 分支上的 live specs：`llmanspec/specs/**`（`spec.toon` + `*.feature`）——BDD-on 下这是 SSOT
    - `proposal.md` 与 `design.md`（如存在）
    - `tasks.md`（理解实现范围）
+   - change 内 `llmanspec/changes/<id>/specs/` 仅当残留文档存在时（优先读 live specs）
+
 5. 对比 artifacts 与代码：
    - 标出不一致（缺失行为、错误行为、缺测试/文档）
    - 给出最小修复建议或建议更新 artifacts
@@ -78,17 +84,18 @@ flowchart LR
 - `llman sdd index rebuild`（重建 pageindex 树索引——不需要模型）
 - `llman sdd index check`（检查索引新鲜度）
 - `llman sdd change new <id>`（创建草稿 `changes/<id>/proposal.md`）
+
 - `llman sdd change attach <id> [--force]`（BDD-on：绑定 feature 分支 + base SHA）
 - `llman sdd change finalize <id> [--no-check]`（BDD-on：**推荐单 commit 路径**——不要求干净树；同进程 checkpoint + docs-only archive；写 `checkpoint_sha = base_sha`）
 - `llman sdd change checkpoint <id> [--no-check]`（BDD-on：干净工作区 + 归档前门禁；严格 sha = HEAD）
 - `llman sdd change diff <id> [--export-patch <path>]`（BDD-on：只读 `base...HEAD` 审查/导出）
-- `llman sdd change delta …`（仅 BDD-off：TOON delta 作者工具；BDD-on 会拒绝）
+
+
 - `llman sdd change archive <id>`（封存变更；BDD-on：checkpoint 后仅文档 / 或作 finalize fallback；BDD-off：合并 TOON delta）
 - `llman sdd archive freeze [--before YYYY-MM-DD] [--keep-recent N] [--dry-run]`（冻结已归档目录）
 - `llman sdd archive thaw [--change <id> ...] [--dest <path>]`（从冷备份恢复）
 - `llman sdd graph [CHANGE] [--format mermaid] [--scope active|archived|all] [--depth N]`（生成变更依赖图）
 - `llman sdd project migrate [--kind format|partitioned|legacy-bdd|auto]`（一次性迁移）
-
 
 ## Context
 - 执行前先确认当前 change/spec 状态。

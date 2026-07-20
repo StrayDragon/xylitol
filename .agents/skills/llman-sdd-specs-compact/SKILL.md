@@ -3,6 +3,9 @@ name: "llman-sdd-specs-compact"
 description: "人类主动触发的维护工具。压缩去重 llman SDD specs——在归档积累较多后合并冗余 requirement/scenario，保留所有规范行为不变。不属于日常 pipeline：仅在用户明确要求压缩 specs 时才运行。"
 metadata:
   version: "0.0.64"
+  llman_sdd:
+    bdd_mode: "on"
+    skill_set: "default"
 ---
 
 # LLMAN SDD Specs Compact
@@ -69,17 +72,18 @@ flowchart LR
 - `llman sdd index rebuild`（重建 pageindex 树索引——不需要模型）
 - `llman sdd index check`（检查索引新鲜度）
 - `llman sdd change new <id>`（创建草稿 `changes/<id>/proposal.md`）
+
 - `llman sdd change attach <id> [--force]`（BDD-on：绑定 feature 分支 + base SHA）
 - `llman sdd change finalize <id> [--no-check]`（BDD-on：**推荐单 commit 路径**——不要求干净树；同进程 checkpoint + docs-only archive；写 `checkpoint_sha = base_sha`）
 - `llman sdd change checkpoint <id> [--no-check]`（BDD-on：干净工作区 + 归档前门禁；严格 sha = HEAD）
 - `llman sdd change diff <id> [--export-patch <path>]`（BDD-on：只读 `base...HEAD` 审查/导出）
-- `llman sdd change delta …`（仅 BDD-off：TOON delta 作者工具；BDD-on 会拒绝）
+
+
 - `llman sdd change archive <id>`（封存变更；BDD-on：checkpoint 后仅文档 / 或作 finalize fallback；BDD-off：合并 TOON delta）
 - `llman sdd archive freeze [--before YYYY-MM-DD] [--keep-recent N] [--dry-run]`（冻结已归档目录）
 - `llman sdd archive thaw [--change <id> ...] [--dest <path>]`（从冷备份恢复）
 - `llman sdd graph [CHANGE] [--format mermaid] [--scope active|archived|all] [--depth N]`（生成变更依赖图）
 - `llman sdd project migrate [--kind format|partitioned|legacy-bdd|auto]`（一次性迁移）
-
 
 常见校验修复（TOON 独立文件 spec）：
 
@@ -123,7 +127,6 @@ r1,happy,"","a trigger happens","the outcome is observed"
 - 每个 spec 是一个独立的 `.toon` 文件；没有 Markdown 外壳，也没有 ```toon fence。
 - `null` 表示可选字段缺失。
 - 从旧版 `.md`+fence 迁移请使用 `llman sdd migrate`。
-
 
 ## Context
 - 执行前先确认当前 change/spec 状态。
