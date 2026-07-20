@@ -198,7 +198,10 @@ async fn run_host_loop(
                             if let Some(ev) = map_crossterm_item(item) {
                                 match ev {
                                     Ok(host_ev) => session.step(host_ev)?,
-                                    Err(e) => return Err(e),
+                                    Err(e) => {
+                                        e.log_failure("tui.term_input");
+                                        return Err(e);
+                                    }
                                 }
                             }
                         }
@@ -246,7 +249,7 @@ fn map_crossterm_item(
         Ok(Event::Paste(data)) => Some(Ok(HostEvent::Input(InputEvent::Paste(data)))),
         Ok(Event::Resize(cols, rows)) => Some(Ok(HostEvent::Resize { cols, rows })),
         Ok(_) => None,
-        Err(e) => Some(Err(format!("input error: {e}").into())),
+        Err(e) => Some(Err(XyDriverError::io(format!("input error: {e}")))),
     }
 }
 
