@@ -18,7 +18,7 @@
 |---|---|---|
 | SSOT / 少冗余 | 叶类型一份定义；业务用组合挂库类型 | 架构 SSOT 强；bridge↔domain 仍有同形孪生 |
 | 全类型 | 少「受控 any」；边界外 JSON、边界内 struct/enum | 无 `dyn Any`；工具/钩子/`XyDriver` 仍多 `Value`/`String` |
-| 现代 Rust | 2024 + RPITIT 等；少不必要宏/装箱 | Edition 2024 + let-else 已用；port 仍大量 `async_trait` |
+| 现代 Rust | 2024 + RPITIT 等；少不必要宏/装箱 | Edition 2024；port **因 dyn 全覆盖**默认保留 `async_trait`（§E α） |
 | 可维护 | 模块可审阅；AGENTS 长期规则与易腐调音分离 | 纪律清晰；`react`/`driver`/`session` God 文件 |
 | 性能 | 热路径克制 clone；端口 `Arc<dyn>` 合理 | 可用；未做针对性压榨（勿盲改） |
 | 错误 / 观测 | 可匹配的 kind；anyhow 仅叶 source；trace 带 kind | `XyError` 有但 seam 少用；多 `to_string()` |
@@ -60,7 +60,7 @@ C  内置工具 Args 类型化                  ← 局部、类型可见
 D  God 文件拆分（react / driver / session）
    └─ driver D5–D7 已完成
    └─ react / session 大拆：默认不做（见 §D 决议）；D11 已分诊待确认
-E  runtime_protocol RPITIT               ← 一批改 port+实现
+E  runtime_protocol RPITIT               ← E1/E4 已评估：dyn 全覆盖 → 默认 α 维持 async_trait
 F  孪生类型 SSOT（需动 packages）         ← 后置；先写归属、禁新增孪生
 G  观测 kind 打尖                        ← 可与 B 并行或紧随
 ```
@@ -438,28 +438,60 @@ step(phase, ctx) -> (next, Vec<XyEvent>)   // 或 mpsc，由薄 async_stream 只
 
 ### 背景
 
-- `src` + 实现侧约有大量 `#[async_trait]`（探测约百级属性；以 `rg '#\[async_trait\]' src` 为准）。
-- Port 集中在 `src/runtime_protocol/`；实现在 `infra` / `agent` / 测试 stub。
-- Edition 已是 2024；QA 足够则适合整批，但应 **独立 PR**，避免与 B/D 缠在一起难回滚。
+- `src` 内 `#[async_trait]` **约 37 处**（2026-07-21 `rg`；早先「约百级」偏高，以现场为准）。
+- Port 集中在 `src/runtime_protocol/`；实现在 `infra` / `agent` / 测试 stub；另有 `XyDriver`（`app/core/driver`）亦 `dyn` + `async_trait`。
+- Edition 2024 + rustc 1.95：AFIT / RPITIT 可用，但 **带 `async fn` / `-> impl Future` 的 trait 默认仍非 dyn-compatible**。
 
 ### 要做
 
-- [ ] **E1** 盘点：列出 `runtime_protocol` 中所有 async 方法的 trait。
-- [ ] **E2** 改为 `-> impl Future<Output = …> + Send`（注意生命周期：`+ Send` / 必要时显式）。
-- [ ] **E3** 更新全部实现与 mock/stub。
-- [ ] **E4** 确认 `dyn Trait` 对象安全：若某处需要 `dyn XyTool`，RPITIT 在 dyn 上有限制——**先核实再改**；不能 dyn 的保持 `async_trait` 或改设计（文档记入决议）。
+- [x] **E1** 盘点：列出 `runtime_protocol` 中所有 async 方法的 trait（见下表）。
+- [ ] **E2** 改为 `-> impl Future<Output = …> + Send` — **默认不做**（见决议；与 dyn 冲突）。
+- [ ] **E3** 更新全部实现与 mock/stub — 随 E2；未开闸。
+- [x] **E4** 确认 `dyn Trait`：七个 async port **全部**以 `Arc<dyn …>` / `&dyn …` 注入（见下）；朴素 RPITIT **不可行**。
 
-### 决议（填写）
+### E1 盘点（2026-07-21）
 
-- 可 `dyn` 的 port 名单与策略：_（待填；可能部分保留 async_trait）_
+| Trait | async 方法（摘要） | `dyn` 使用（约） | 结论 |
+|---|---|---|---|
+| `XyModel` | `generate_stream` | ~26 / 10 files | **必须**保持 dyn 友好 |
+| `XySessionStore` | exists/load/append/create/fork/… | ~48 / 14 files | 同上（最重） |
+| `XyEventSink` | `emit` | ~20 / 8 files | 同上 |
+| `XyTool` | `execute` / `execute_as_parts` | ~15 / 5 files（ToolSet） | 同上 |
+| `XyHookBus` | `dispatch` | ~12 / 5 files | 同上 |
+| `XyBashExecutor` | `execute` | ~11 / 6 files | 同上 |
+| `XyExportIo` | `write_text` / `read_bytes` | ~11 / 6 files | 同上 |
+
+同步 port（本项无关）：`XyPermission` / `XySecretResolver` / `XyTrustStore` / `XyResourceLoader` / `XyReloadable` — 无 `async_trait`。
+
+`runtime_protocol` 内 **不存在**「有 async、却从不用 dyn」的 port → 没有「只改这一处 RPITIT」的甜区。
+
+### 决议（2026-07-21，E4 驱动）
+
+朴素 E2（trait 上 `async fn` / `-> impl Future + Send`）会使上述 trait **不能**再写 `dyn XyModel` 等，与现行组合根 / ReAct / ToolSet 架构冲突。
+
+可选升级路径（**均未开闸**）：
+
+| 方案 | 做法 | 利 | 弊 |
+|---|---|---|---|
+| **α 维持** | 保留 `async_trait` 于全部 dyn async port | 零风险；宏已承担 `Pin<Box<dyn Future>>` | 依赖宏；「现代感」不足 |
+| **β 手写 box** | trait 方法改为显式 `-> Pin<Box<dyn Future<Output=…> + Send + '_>>`，去宏 | dyn 安全；无 async_trait 依赖 | 签名吵；实现处处 `Box::pin`；**热路径 box 次数与今日宏路径同级**，无性能胜负 |
+| **γ 消 dyn** | 改成泛型 / enum 分发，去掉 `Arc<dyn Port>` | 才真正吃到 AFIT/RPITIT | 等于重写装配与 ToolSet；远超本项 |
+| **δ 双轨** | 静态泛型 trait + dyn 擦除包装 | 理论完美 | 双倍 API；不值得为 7 个 port |
+
+**冻结默认：α。** §E 的「整批 RPITIT」目标关闭，除非将来显式选 β/γ。
+
+- 嵌入 API：今日已是 `async_trait` 形变的 `dyn` port；α 不破坏。若选 β，视为公开签名风格变更，评估 changelog，**通常仍不走 SDD**（行为不变）。
+- `XyDriver`：同属 dyn async，**同样适用 α**；不要单独拿 Driver 做 RPITIT 试点。
 
 ### 验收
 
-- 编译 + 相关测绿；无无故新增 `Box<dyn Future>` 热路径回归（对比前后需有意识）。
+- E1/E4 文档结论进本文件即本阶段验收。
+- 若开 β：编译 + 相关测绿；确认未额外叠一层无意义 box。
 
 ### 风险 / SDD
 
-- 公开库 port 形变：若视为嵌入 API 破坏 → 评估是否记入 changelog；行为不变则 **通常不走 SDD**。
+- α：**不改代码**。
+- β/γ：行为不变则通常不走 SDD；γ 触及架构时另议。
 
 ---
 
@@ -569,6 +601,7 @@ map.rs → 变薄：project_for_llm + 少量边界转换
 | 2026-07-21 | agent | §D11 | 严谨分诊：D11a=活着的错置（顺手挪）；D11b=真死孤儿 tests（建议删、待确认）；二者解耦 |
 | 2026-07-21 | agent | docs | commit `5ae1ae8f`（D11 分诊入 TODO） |
 | 2026-07-21 | agent | §D11a+b | 实施：EventBus `XyEventSink` 归 `infra/event`；删除孤儿 `session/tests.rs` |
+| 2026-07-21 | agent | §E | E1+E4：7 个 async port 全 `dyn`；朴素 RPITIT 不可行；**默认 α 维持 async_trait**；β/γ 未开闸 |
 |  |  |  |  |
 
 ---
