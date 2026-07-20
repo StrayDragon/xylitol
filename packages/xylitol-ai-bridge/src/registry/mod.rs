@@ -1,11 +1,28 @@
 //! Model id → tokenizer source + RemoteCount capability mapping.
 
+use std::path::PathBuf;
+
 use crate::tokenize::BuiltinTokenizer;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenizerSource {
     Builtin(BuiltinTokenizer),
+    HuggingFace {
+        repo: String,
+        file: String,
+    },
+    /// Absolute or relative path to a local `tokenizer.json` (no download).
+    Local {
+        path: PathBuf,
+    },
+}
+
+/// Explicit override from product config (`ModelEntry.tokenizer`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TokenizerOverride {
+    Builtin,
     HuggingFace { repo: String, file: String },
+    Local { path: PathBuf },
 }
 
 /// Which remote token-count API a path can use (c1030 / c1060).
@@ -32,9 +49,28 @@ pub fn builtin_tokenizer_for(model_id: &str) -> Option<TokenizerSource> {
     None
 }
 
-/// Resolve tokenizer source: user override (future TOML) then builtin map.
+/// Resolve tokenizer: optional config override, then builtin heuristics.
 pub fn resolve_tokenizer(model_id: &str) -> Option<TokenizerSource> {
-    // Stub: user override via `registry.user.toml` — not loaded in scaffold.
+    resolve_tokenizer_with_override(model_id, None)
+}
+
+pub fn resolve_tokenizer_with_override(
+    model_id: &str,
+    over: Option<TokenizerOverride>,
+) -> Option<TokenizerSource> {
+    if let Some(o) = over {
+        return Some(match o {
+            TokenizerOverride::Builtin => {
+                // Prefer heuristic for this id when forcing builtin; else cl100k.
+                builtin_tokenizer_for(model_id)
+                    .unwrap_or(TokenizerSource::Builtin(BuiltinTokenizer::OpenAiCl100k))
+            }
+            TokenizerOverride::HuggingFace { repo, file } => {
+                TokenizerSource::HuggingFace { repo, file }
+            }
+            TokenizerOverride::Local { path } => TokenizerSource::Local { path },
+        });
+    }
     builtin_tokenizer_for(model_id)
 }
 
@@ -76,6 +112,25 @@ mod tests {
     #[test]
     fn unknown_model_returns_none() {
         assert!(resolve_tokenizer("unknown-model-xyz").is_none());
+    }
+
+    #[test]
+    fn override_huggingface_wins() {
+        let src = resolve_tokenizer_with_override(
+            "unknown-model-xyz",
+            Some(TokenizerOverride::HuggingFace {
+                repo: "org/m".into(),
+                file: "tokenizer.json".into(),
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            src,
+            TokenizerSource::HuggingFace {
+                repo: "org/m".into(),
+                file: "tokenizer.json".into(),
+            }
+        );
     }
 
     #[test]

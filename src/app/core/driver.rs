@@ -141,9 +141,13 @@ pub use crate::agent::session::{QueueStats, SessionStats};
 pub use crate::runtime_protocol::SessionListEntry;
 
 /// Build a [`ContextTokenEstimate`] from persisted session entries (Driver seam).
+///
+/// `tokenizer_override` comes from `AppConfig` (`models.*.tokenizer` / `tokenizers:`)
+/// when the in-process Driver estimates; harness / remote may pass `None`.
 pub fn estimate_from_session_entries(
     entries: &[SessionEntry],
     model_id: Option<String>,
+    tokenizer_override: Option<xylitol_ai_bridge::registry::TokenizerOverride>,
 ) -> crate::domain::types::ContextTokenEstimate {
     use crate::agent::compaction::token_estimator::{EstimateOpts, estimate_context_tokens_with};
     use crate::domain::message::{AgentMessage, XyUsage};
@@ -175,9 +179,19 @@ pub fn estimate_from_session_entries(
         stop_reason,
         &EstimateOpts {
             model_id,
+            tokenizer_override,
             ..Default::default()
         },
     )
+}
+
+/// Resolve `models.<alias>.tokenizer` from the layered AppConfig (best-effort).
+fn tokenizer_override_from_app_config(
+    model_alias: &str,
+) -> Option<xylitol_ai_bridge::registry::TokenizerOverride> {
+    crate::infra::config::loader::load_app_config(None)
+        .ok()?
+        .tokenizer_override_for(model_alias)
 }
 
 /// Lifecycle events on [`EventStream`] — surfaces import via the Driver seam
@@ -821,9 +835,14 @@ impl Driver for InProcessDriver {
         &self,
     ) -> Result<crate::domain::types::ContextTokenEstimate, String> {
         let entries = self.get_messages().await?;
+        let model_id = self.current_model().map(|m| m.id);
+        let tokenizer_override = model_id
+            .as_deref()
+            .and_then(tokenizer_override_from_app_config);
         Ok(estimate_from_session_entries(
             &entries,
-            self.current_model().map(|m| m.id),
+            model_id,
+            tokenizer_override,
         ))
     }
 
@@ -1748,9 +1767,12 @@ impl Driver for RemoteDriver {
         &self,
     ) -> Result<crate::domain::types::ContextTokenEstimate, String> {
         let entries = self.get_messages().await.unwrap_or_default();
+        // Remote surface: tokenizer mapping lives on the server; do not inject
+        // local AppConfig override here.
         Ok(estimate_from_session_entries(
             &entries,
             self.current_model().map(|m| m.id),
+            None,
         ))
     }
 

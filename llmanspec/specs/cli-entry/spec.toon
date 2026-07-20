@@ -1,8 +1,8 @@
 kind: llman.sdd.spec
 name: "cli-entry"
-purpose: "CLI 入口：默认 TUI、print 需 prompt、bootstrap/dispatch、server 子命令；产品 slash 以 session-* 为准。"
+purpose: "CLI 统一入口：默认 TUI；surface（tui/print）与 ops（resources/server/tokenizer）；bootstrap/dispatch；产品 slash 以 session-* 为准。"
 valid_scope[2]: src/,tests/
-requirements[16]{req_id,title,statement}:
+requirements[18]{req_id,title,statement}:
   r67,"info-fields",SlashCommandInfo MUST 携带 name、description、source 与 source_info 字段。
   r68,"source-enum",SlashCommandSource MUST 恰为 prompt 或 skill 之一（extension 若未实现 MUST NOT 作为产品必选项）。
   r69,"builtin-table","产品对外 slash 与 GetCommands 内建表 MUST 同源自同一产品命令 SSOT（见 app-tui-commands）；名称 MUST 以 session-* /model /exit 等产品名为准（PI_DELTAS A03）；MUST NOT 再以 pi 短名表（/tree /fork /export /compact /resume /new 等）作为 GetCommands 或文档的权威清单；产品解析 MUST NOT 将上述废弃短名识别为有效命令入口。"
@@ -15,8 +15,10 @@ requirements[16]{req_id,title,statement}:
   ce9,"assembly-via-bootstrap","cli 与 server MUST 经 app::core::bootstrap 装配，MUST NOT 内联第二套装配。"
   ce10,"dispatch-via-shared",产品 TUI 命令执行 MUST 委托 dispatch/Driver，MUST NOT 复制第二套语义。
   ce11,"rpc-removed","stdio RPC（rpc.rs / --rpc / feature）MUST 保持移除。"
-  ce12,"default-tui-entry","TTY 且无 one-shot prompt 时 MUST 默认进入产品 TUI。"
+  ce12,"default-tui-entry","TTY 且无 one-shot prompt、无表面子命令时 MUST 默认进入产品 TUI。"
   ce13,"print-requires-prompt",print MUST 有非空 prompt；MUST NOT 使用 Hello! 占位。
   "ce-st1","session-tree-kind-api",Driver MUST 暴露 SessionTreeKind 区分的 session_tree / travel_session_tree；至少 MessageHistory；未实现 kind MUST 明确错误。
   ce14,"stable-session-id-on-run","InProcessDriver::run MUST 复用 bootstrap session_id，MUST NOT 每轮新建 Uuid 文件。"
+  ce15,"tokenizer-cache-subcommands","CLI MUST 提供顶层动词 tokenizer（跨面 ops，MUST NOT 仅挂在 tui 下），叶子至少含 status、download、clean：status MUST 可报告缓存根与条目（及可选 --model 的 builtin/local/cached/missing/unmapped）；download MUST 为显式 opt-in（调用即同意；TTY 默认可二次确认，--yes 跳过），MUST 在确认摘要中告知 repo/file、HF 基址与落盘路径，MUST NOT 在估计热路径静默下载；无配置映射且无显式 owner/repo 时 MUST 失败并提示配置 tokenizer 字段或 CLI 形状，MUST NOT 猜测下载目标；clean MUST 支持 --all 或按 model/target 删除；上述子命令 MUST 早退且 MUST NOT 经 bootstrap 装配会话/MCP；实现 MUST 委托 bridge 缓存 API，MUST NOT 在 CLI 内直接发起 HTTP。"
+  ce16,"cli-surface-vs-ops","CLI MUST 区分表面动词与管理动词：表面至少含 tui 与 print（xylitol tui 进入 TUI；xylitol print 进入一次性 print 且须非空 prompt）；管理动词 resources、server、tokenizer MUST 保持顶层，MUST NOT 挪入 tui 子树；TTY 裸跑默认 TUI 的语义 MUST 保持；本波可保留 --tui/--print/-p 为兼容别名。"
 scenarios[0]:
