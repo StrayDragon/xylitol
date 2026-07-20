@@ -1,6 +1,6 @@
 ---
 name: "llman-sdd-archive"
-description: "归档已完成的 llman SDD 变更。BDD-off 合并 TOON delta 到主 specs；BDD-on 在 attach/checkpoint 后仅封存 change 文档，再由 Git/PR merge 提升 live specs。在 verify 报告全绿后运行。"
+description: "归档已完成的 llman SDD 变更。BDD-off 合并 TOON delta 到主 specs；BDD-on 在 attach/checkpoint 后仅封存 change 文档，再由本地 merge 提升 live specs。在 verify 报告全绿后运行。"
 metadata:
   version: "0.0.64"
   llman_sdd:
@@ -10,7 +10,7 @@ metadata:
 
 # LLMAN SDD 归档
 
-使用此 skill 归档已完成的变更。**BDD-off**：合并 delta specs 到主 specs。**BDD-on**：仅移动 change 文档（specs 已在 feature 分支上 live），再经 Git/PR merge 提升。
+使用此 skill 归档已完成的变更。**BDD-off**：合并 delta specs 到主 specs。**BDD-on**：仅移动 change 文档（specs 已在 feature 分支上 live），再由本地 merge 提升进默认分支（`git push` / Hosting PR 仅为可选）。
 
 ## Pipeline 位置
 
@@ -31,6 +31,7 @@ flowchart LR
 - **必须先通过 verify 阶段全绿**：未通过验证的 change 禁止归档。
 - **SSOT 校验**：每个 change 归档前必须通过 `llman sdd validate <id> --strict --no-interactive`。
 - **不要问「要不要继续」**：批量归档时间线上一路执行到底，除非遇到无法自动解决的错误。
+- **BDD-on 收尾不默认导向 PR/push**：文档归档后，默认引导用户在**本地**将 feature 分支 merge（或 rebase）进默认分支（如 `git switch <default> && git merge --ff-only <feature>`）。`git push` / Hosting PR（`gh pr create`/`gh pr merge`）仅为可选——仅当用户或项目明确要求远程审查时才做。**Agent MUST NOT** 因本 skill 默认执行 push 或创建 PR。
 
 ## 步骤
 
@@ -55,7 +56,7 @@ flowchart LR
   - 前置：已 `llman sdd change attach <id>`，仍在 feature 分支上。
   - `change archive` / `change finalize` **只移动 change 文档**到 `changes/archive/`——**不会**把 TOON delta 当 SSOT 合并，也永不 apply `feature_delta`。
   - change 下遗留活跃 `*.feature.delta.toon` 是迁移阻断项——归档前须移除/迁移。
-  - 归档后，通过正常 Git/PR 将 feature 分支合并进默认分支，以提升 live `llmanspec/specs/**`。
+  - 归档后，通过本地 merge 将 feature 分支合并进默认分支，以提升 live `llmanspec/specs/**`（`git switch <default> && git merge --ff-only <feature>`；push / Hosting PR 可选）。
   - **推荐：单 commit 收尾（`change finalize`）**——同进程跑门禁 → 写 frontmatter（`checkpointed` / `checkpoint_sha = base_sha`）→ docs-only archive，结束后工作区脏一次，**一次 `git commit`** 收尾：
     ```text
     1. 实现 live specs + 代码（工作区可保持脏）
@@ -81,7 +82,7 @@ flowchart LR
 
 ### 4) Commit / merge 引导
 - BDD-off：输出建议 commit message（格式：`feat(sdd): archive <id1>, <id2> - <简短总结>`），然后 `git add -A && git commit -m "..."`。
-- BDD-on：文档归档后，打开/合并 feature 分支 PR，使 live specs/features 进入默认分支。
+- BDD-on：文档归档后，本地将 feature 分支 merge 进默认分支（`git switch <default> && git merge --ff-only <feature>`；可选 `git branch -d <feature>`）。push / Hosting PR 仅在用户或项目明确要求远程审查时才做。
 - 若用户要求自动 commit 归档文档提交，执行后输出 commit hash。
 - **archived `depends_on`**：archive 会把 change 目录改名为 `archive/YYYY-MM-DD-<id>`，但 validate 会把指向 archived/frozen id 的 `depends_on` 识别为 INFO（非 ERROR），所以**归档后无需**手动更新其它 change 的 `depends_on` frontmatter。
 

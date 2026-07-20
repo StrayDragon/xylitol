@@ -57,11 +57,21 @@ git add -A && git commit -m "<前缀>: <描述>"
 ```
 使用常规提交前缀（feat:/fix:/refactor:）。
 
+### 5) 本地合回默认分支（BDD-on，不默认 push/PR）
+
+```bash
+git switch <默认分支> && git merge --ff-only <feature 分支>
+# 可选：git branch -d <feature 分支>
+```
+默认做法是**本地** ff-merge 进默认分支。`git push` / Hosting PR（`gh pr create`/`gh pr merge`）仅为可选——仅当用户或项目明确要求远程审查时再做。
+
+
 ## 硬约束
 - **不要问**"要不要继续"——直到做完或遇到 blocker。
 - **不要切换**到其他变更，直到当前变更归档并提交。
 - **重试上限**：每步最多 3 次失败后报告 blocker。
 - **SSOT**：以 `llman sdd status` 输出为唯一事实来源。不要直接读 tasks.md/proposal.md/spec 文件。
+- **禁止默认 push/PR**：未获用户明确要求时，禁止执行 `git push` 或 `gh pr create|merge`。BDD-on 收尾默认是本地 merge 进默认分支。
 
 ## Ethics Governance
 - `ethics.risk_level`: medium
