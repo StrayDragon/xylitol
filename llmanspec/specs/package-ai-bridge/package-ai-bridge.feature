@@ -24,13 +24,13 @@
   场景: explicit-projection
     假如 含 BashExecution 的 AgentMessage 列表
     当 调用 project_for_llm
-    那么 得到不含独立 bash 角色的 LLM DTO 且内容按规则折叠或跳过
+    那么 得到 Vec AiBridgeMessage 且无独立 bash 角色，内容按规则折叠或跳过
 
   @req:pab4
   场景: no-json-twin-map
     假如 生成路径装配
-    当 审查 infra map
-    那么 不存在 AgentMessage 与全量 AiBridgeMessage 的 serde_json 往返
+    当 审查 infra map 与 domain
+    那么 不存在第二份 domain LlmMessage 叶 enum，也不存在 AgentMessage↔AiBridgeMessage 全量 serde_json 往返主路径
 
   @req:pab5
   场景: single-impl

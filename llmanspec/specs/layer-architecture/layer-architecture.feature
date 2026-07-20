@@ -164,13 +164,13 @@
   场景: new-compatible-endpoint
     假如 新增兼容 OpenAI base_url 的供应商
     当 接线
-    那么 不改 AgentMessage 定义
+    那么 不改 AgentMessage 的 Env/LLM 角色集（仅新 adapter/配置）
 
   @req:la25
   场景: domain-no-sdk
     假如 src/domain 与 src/agent
     当 rg async_openai 或 anthropic SDK
-    那么 零匹配
+    那么 零匹配（允许依赖 bridge DTO，禁止 SDK）
 
   @req:ar01
   场景: pi-refs-cleared
