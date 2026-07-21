@@ -5,6 +5,7 @@
 //! resulting registry as orchestration state without naming these types.
 
 pub mod accumulator;
+pub mod args;
 pub mod bash;
 pub mod edit;
 pub mod find;

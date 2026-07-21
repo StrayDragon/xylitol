@@ -8,10 +8,12 @@
 //! - Supports `--full-path` mode for path-containing patterns
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::process::Command;
 use tokio::time::{Duration, timeout};
 
+use super::args::parse_tool_args;
 use super::path_utils::resolve_to_cwd;
 use super::truncate::{DEFAULT_MAX_BYTES, TruncationOptions, format_size, truncate_head};
 use crate::domain::error::XyToolError;
@@ -21,6 +23,23 @@ const DEFAULT_LIMIT: usize = 1000;
 const FD_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct FindTool;
+
+#[derive(Debug, Deserialize)]
+struct FindArgs {
+    pattern: String,
+    #[serde(default = "default_find_path")]
+    path: String,
+    #[serde(default = "default_find_limit")]
+    limit: u64,
+}
+
+fn default_find_path() -> String {
+    ".".into()
+}
+
+fn default_find_limit() -> u64 {
+    DEFAULT_LIMIT as u64
+}
 
 #[async_trait]
 impl XyTool for FindTool {
@@ -54,14 +73,14 @@ impl XyTool for FindTool {
     }
 
     async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
-        let pattern = args["pattern"]
-            .as_str()
-            .ok_or_else(|| XyToolError::InvalidArgs("missing 'pattern'".into()))?;
-        let search_path = args["path"].as_str().unwrap_or(".");
-        let limit = args["limit"].as_u64().unwrap_or(DEFAULT_LIMIT as u64) as usize;
-        let effective_limit = limit.clamp(1, 10_000);
+        let FindArgs {
+            pattern,
+            path: search_path,
+            limit,
+        } = parse_tool_args(args)?;
+        let effective_limit = (limit as usize).clamp(1, 10_000);
 
-        let search_dir = resolve_to_cwd(search_path);
+        let search_dir = resolve_to_cwd(&search_path);
         let search_dir_str = search_dir.to_string_lossy().to_string();
 
         if ctx.cancel.is_cancelled() {
@@ -78,7 +97,7 @@ impl XyTool for FindTool {
             effective_limit.to_string(),
         ];
 
-        let mut effective_pattern = pattern.to_string();
+        let mut effective_pattern = pattern.clone();
         if pattern.contains('/') {
             fd_args.push("--full-path".to_string());
             if !pattern.starts_with('/') && !pattern.starts_with("**/") && pattern != "**" {

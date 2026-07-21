@@ -9,15 +9,23 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::domain::error::XyToolError;
 use crate::runtime_protocol::{XyTool, XyToolCtx};
 
+use super::args::parse_tool_args;
 use super::mutation::FileMutationQueue;
 
 pub struct WriteTool {
     mutation_queue: Arc<FileMutationQueue>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WriteArgs {
+    path: String,
+    content: String,
 }
 
 impl WriteTool {
@@ -54,14 +62,10 @@ impl XyTool for WriteTool {
     }
 
     async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
-        let file_path = args["path"]
-            .as_str()
-            .ok_or_else(|| XyToolError::InvalidArgs("missing 'path'".into()))?
-            .to_string();
-        let content = args["content"]
-            .as_str()
-            .ok_or_else(|| XyToolError::InvalidArgs("missing 'content'".into()))?
-            .to_string();
+        let WriteArgs {
+            path: file_path,
+            content,
+        } = parse_tool_args(args)?;
 
         if ctx.cancel.is_cancelled() {
             return Err(XyToolError::Aborted);
