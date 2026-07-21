@@ -41,15 +41,13 @@
 
 | 层 | 角色 | 关键约束 |
 |---|---|---|
-| `domain/` | 纯领域词汇（`XyEvent` / 消息类型等） | 零 crate 内依赖；MAY 依赖 bridge **DTO only** |
-| `runtime_protocol/` | agent↔infra 边界 traits（ports） | 只依赖 `domain/` |
-| `agent/` | 薄编排核心（ReAct 循环、session、model、tools 聚合） | 不依赖 `infra`（约定 + review） |
+| `protocol/` | `wire/`（Command/Event）+ `ports/`（XyModel/XyTool/…）+ 根上共享类型（AgentMessage/`XyEvent`/…） | MUST NOT 依赖 agent/infra；MAY 依赖 bridge **DTO only** |
+| `agent/` | 薄编排核心（ReAct、session、model、`project_for_llm`） | 不依赖 `infra`（约定 + review） |
 | `infra/` | 运行时域（provider adapter、工具实现、config、session 等） | 不依赖 `agent`（约定 + review） |
-| `protocol/` | client↔core 线协议 SSOT（`Command`/`Event`） | 传输无关，只依赖 `domain/` |
 | `app/` | 应用面（`cli` print / `server` / `tui`）+ 跨面 seam（`core/`） | 走 seam 不 reach 内部，见 `src/app/AGENTS.md` |
 | `packages/xylitol-tui` | 通用 TUI 引擎与组件库（workspace 包） | 零引用主 crate；见该包 `AGENTS.md` |
 
-依赖方向：`app → agent → runtime_protocol → domain`，`infra → runtime_protocol → domain`，`protocol → domain`。
+依赖方向：`app → agent → protocol`，`app → infra → protocol`；`agent` ↛ `infra`；`infra` ↛ `agent`。
 
 ## `Xy*` 与外部库包装
 

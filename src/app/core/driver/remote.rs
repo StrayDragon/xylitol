@@ -8,11 +8,9 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tokio_util::sync::CancellationToken;
 
 use crate::app::server::ws::{ClientFrame, ServerFrame};
-use crate::domain::session_types::{
-    SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel,
-};
-use crate::domain::types::ThinkingLevel;
-use crate::runtime_protocol::XyBashResult;
+use crate::protocol::ports::XyBashResult;
+use crate::protocol::session::{SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel};
+use crate::protocol::types::ThinkingLevel;
 
 use super::XyDriver;
 use super::XyDriverError;
@@ -445,7 +443,7 @@ impl XyDriver for XyRemoteDriver {
     async fn fork_session(
         &mut self,
         entry_id: &str,
-        position: crate::domain::session_types::ForkPosition,
+        position: crate::protocol::session::ForkPosition,
     ) -> Result<String, XyDriverError> {
         let data = self
             .post_data(
@@ -453,8 +451,8 @@ impl XyDriver for XyRemoteDriver {
                 serde_json::json!({
                     "entry_id": entry_id,
                     "position": match position {
-                        crate::domain::session_types::ForkPosition::At => "at",
-                        crate::domain::session_types::ForkPosition::Before => "before",
+                        crate::protocol::session::ForkPosition::At => "at",
+                        crate::protocol::session::ForkPosition::Before => "before",
                     },
                 }),
             )
@@ -524,7 +522,7 @@ impl XyDriver for XyRemoteDriver {
 
     async fn estimate_context_tokens(
         &self,
-    ) -> Result<crate::domain::types::ContextTokenEstimate, XyDriverError> {
+    ) -> Result<crate::protocol::types::ContextTokenEstimate, XyDriverError> {
         let entries = self.get_messages().await.unwrap_or_default();
         // Remote surface: tokenizer mapping lives on the server; do not inject
         // local AppConfig override here.

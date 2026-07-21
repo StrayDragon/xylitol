@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::domain::lifecycle::XyEvent;
+use crate::protocol::lifecycle::XyEvent;
 
 /// An event from the core: either a response to a command or a streamed
 /// occurrence during a turn.

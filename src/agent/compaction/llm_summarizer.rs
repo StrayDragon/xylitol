@@ -3,9 +3,10 @@
 use anyhow::Result;
 use futures::StreamExt;
 
-use crate::domain::message::{AgentMessage, AgentPart};
-use crate::domain::types::XyChunk;
-use crate::runtime_protocol::XyModel;
+use crate::agent::llm_project::project_for_llm;
+use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+use crate::protocol::ports::XyModel;
+use crate::protocol::types::XyChunk;
 
 // ── Prompt constants ───────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ Keep each section concise. Preserve exact file paths, function names, and error 
 
 pub(super) async fn generate_complete(
     model: &dyn XyModel,
-    messages: Vec<AgentMessage>,
+    messages: Vec<LlmMessage>,
     _max_tokens: u32,
 ) -> Result<String> {
     let mut stream = model
@@ -95,7 +96,7 @@ pub(super) async fn generate_complete(
             messages,
             &[],
             false,
-            crate::runtime_protocol::XyGenerateOptions::default(),
+            crate::protocol::ports::XyGenerateOptions::default(),
         )
         .await
         .map_err(|e| anyhow::anyhow!("summarization model error: {e}"))?;
@@ -207,7 +208,7 @@ pub async fn generate_summary(
     }
     prompt_text.push_str(base_prompt);
 
-    let summarization_messages = vec![AgentMessage::user(prompt_text.clone())];
+    let summarization_messages = project_for_llm(&[AgentMessage::user(prompt_text.clone())]);
 
     let max_tokens = ((_reserve_tokens as f64) * 0.8) as u32;
     generate_complete(model, summarization_messages, max_tokens.max(256)).await

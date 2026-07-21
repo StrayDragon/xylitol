@@ -108,7 +108,7 @@
   场景: event-layer-check
     假如 定位事件类型与端口
     当 检查 src
-    那么 XyEvent 在 protocol/vocab（或精选 pub use）且 XyEventSink 在 protocol/ports；wire Event 与之分离
+    那么 XyEvent 在 protocol/lifecycle（或精选 pub use）且 XyEventSink 在 protocol/ports；wire Event 与之分离
 
   @req:la18
   场景: closed-set

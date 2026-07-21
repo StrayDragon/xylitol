@@ -1,6 +1,6 @@
 //! File operation tracking — extract read/write/edit ops from tool calls.
 
-use crate::domain::session_types::CompactionEntry;
+use crate::protocol::session::CompactionEntry;
 
 /// Tracked file operations from tool calls.
 #[derive(Debug, Clone, Default)]
@@ -24,7 +24,7 @@ impl FileOps {
 
 /// Extract file operations from `AgentMessage` messages.
 pub fn extract_file_ops_from_messages(
-    messages: &[crate::domain::message::AgentMessage],
+    messages: &[crate::protocol::message::AgentMessage],
     prev_compaction: Option<&CompactionEntry>,
 ) -> FileOps {
     let mut ops = FileOps::default();
@@ -50,7 +50,7 @@ pub fn extract_file_ops_from_messages(
 
     for msg in messages {
         for part in msg.content() {
-            if let crate::domain::message::AgentPart::ToolCall {
+            if let crate::protocol::message::AgentPart::ToolCall {
                 name, arguments, ..
             } = part
             {

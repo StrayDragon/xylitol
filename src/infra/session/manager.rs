@@ -12,7 +12,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::types::*;
-use crate::runtime_protocol::XySessionStore;
+use crate::protocol::ports::XySessionStore;
 
 /// Manages session persistence using JSONL files or in-memory storage.
 ///
@@ -313,7 +313,7 @@ impl SessionManager {
                         .map_err(|e| format!("flush entry: {e}"))?;
                 } else {
                     let is_assistant =
-                        crate::domain::session_types::is_assistant_message(&entry_with_ids);
+                        crate::protocol::session::is_assistant_message(&entry_with_ids);
                     {
                         let mut pending = self.pending_store.write().expect("RwLock not poisoned");
                         pending
@@ -781,7 +781,7 @@ impl SessionManager {
     pub async fn build_session_context_v2(
         &self,
         session_id: &str,
-    ) -> Result<Vec<crate::domain::message::AgentMessage>, String> {
+    ) -> Result<Vec<crate::protocol::message::AgentMessage>, String> {
         let leaf_id = self.get_leaf(session_id);
         let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
         Ok(branch.iter().filter_map(|e| e.as_agent_message()).collect())
@@ -830,7 +830,7 @@ impl SessionManager {
             parent_id,
             child_id,
             target_entry_id,
-            crate::domain::session_types::ForkPosition::At,
+            crate::protocol::session::ForkPosition::At,
         )
         .await
     }
@@ -934,7 +934,7 @@ impl SessionManager {
 
     /// Generate a branch summary for cut-point entries.
     pub fn generate_branch_summary(&self, skipped_entries: &[SessionEntry]) -> String {
-        use crate::domain::session_types::{
+        use crate::protocol::session::{
             count_tool_calls, is_user_message, message_text, tool_file_paths,
         };
 
@@ -1029,7 +1029,7 @@ impl SessionManager {
         parent_id: &str,
         child_id: &str,
         at_entry_id: &str,
-        position: crate::domain::session_types::ForkPosition,
+        position: crate::protocol::session::ForkPosition,
     ) -> Result<(), String> {
         self.fork_inner(parent_id, child_id, at_entry_id, position)
             .await
@@ -1038,7 +1038,7 @@ impl SessionManager {
     /// Pi runtime guard when the parent JSONL is not on disk yet.
     pub const UNFLUSHED_FORK_ERR: &str = "This session has not been saved yet. Wait for the first assistant response before cloning or forking it.";
 
-    /// Fork implementation (path-based; see [`crate::domain::session_types::ForkPosition`]).
+    /// Fork implementation (path-based; see [`crate::protocol::session::ForkPosition`]).
     ///
     /// Aligns with pi `createBranchedSession`:
     /// - Persisted parent with no file yet → reject ([`Self::UNFLUSHED_FORK_ERR`]).
@@ -1050,9 +1050,9 @@ impl SessionManager {
         parent_id: &str,
         child_id: &str,
         at_entry_id: &str,
-        position: crate::domain::session_types::ForkPosition,
+        position: crate::protocol::session::ForkPosition,
     ) -> Result<(), String> {
-        use crate::domain::session_types::{ForkPosition, is_assistant_message, is_user_message};
+        use crate::protocol::session::{ForkPosition, is_assistant_message, is_user_message};
 
         if matches!(&self.backend, SessionBackend::Persisted { .. })
             && !self.session_file_exists(parent_id)
@@ -1263,7 +1263,7 @@ impl SessionManager {
     /// Builds a `Vec<SessionTreeNode>` with labels resolved from LabelEntries.
     pub async fn get_tree(&self, session_id: &str) -> Result<Vec<SessionTreeNode>, String> {
         let entries = self.load(session_id).await?;
-        Ok(crate::domain::session_types::build_session_tree(&entries))
+        Ok(crate::protocol::session::build_session_tree(&entries))
     }
 
     // ── Label and session info ─────────────────────────────────
@@ -1335,7 +1335,7 @@ impl SessionManager {
         &self,
         params: BashExecutionParams<'_>,
     ) -> Result<(), String> {
-        let entry = crate::domain::session_types::bash_execution_message_entry(
+        let entry = crate::protocol::session::bash_execution_message_entry(
             params.command,
             params.output,
             params.exit_code,
@@ -1439,7 +1439,7 @@ impl XySessionStore for SessionManager {
     async fn build_session_context(
         &self,
         session_id: &str,
-    ) -> Result<crate::domain::session_types::SessionContext, String> {
+    ) -> Result<crate::protocol::session::SessionContext, String> {
         SessionManager::build_session_context(self, session_id).await
     }
 
@@ -1457,7 +1457,7 @@ impl XySessionStore for SessionManager {
         parent_id: &str,
         child_id: &str,
         at_entry_id: &str,
-        position: crate::domain::session_types::ForkPosition,
+        position: crate::protocol::session::ForkPosition,
     ) -> Result<(), String> {
         SessionManager::fork(self, parent_id, child_id, at_entry_id, position).await
     }
@@ -1470,10 +1470,8 @@ impl XySessionStore for SessionManager {
         SessionManager::get_leaf_id(self, session_id)
     }
 
-    async fn list_sessions(
-        &self,
-    ) -> Result<Vec<crate::runtime_protocol::SessionListEntry>, String> {
-        use crate::domain::session_types::{SessionEntry, is_user_message, message_text};
+    async fn list_sessions(&self) -> Result<Vec<crate::protocol::ports::SessionListEntry>, String> {
+        use crate::protocol::session::{SessionEntry, is_user_message, message_text};
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let ids = SessionManager::list(self).await?;
@@ -1537,7 +1535,7 @@ impl XySessionStore for SessionManager {
                         .map(|d| d.as_secs());
                 }
             }
-            out.push(crate::runtime_protocol::SessionListEntry {
+            out.push(crate::protocol::ports::SessionListEntry {
                 id,
                 name,
                 first_message,
@@ -1565,7 +1563,7 @@ impl XySessionStore for SessionManager {
 #[cfg(test)]
 mod deferred_persist_tests {
     use super::*;
-    use crate::domain::session_types::{EntryBase, MessageEntry};
+    use crate::protocol::session::{EntryBase, MessageEntry};
 
     fn user_message(text: &str) -> SessionEntry {
         SessionEntry::Message(MessageEntry {
@@ -1575,7 +1573,7 @@ mod deferred_persist_tests {
                 parent_id: None,
                 timestamp: String::new(),
             },
-            message: crate::domain::session_types::fixture_message_json("user", text),
+            message: crate::protocol::session::fixture_message_json("user", text),
         })
     }
 
@@ -1587,7 +1585,7 @@ mod deferred_persist_tests {
                 parent_id: None,
                 timestamp: String::new(),
             },
-            message: crate::domain::session_types::fixture_message_json("assistant", text),
+            message: crate::protocol::session::fixture_message_json("assistant", text),
         })
     }
 
@@ -1642,7 +1640,7 @@ mod deferred_persist_tests {
                     parent_id: None,
                     timestamp: "t-u1".into(),
                 },
-                message: crate::domain::session_types::fixture_message_json("user", "hello"),
+                message: crate::protocol::session::fixture_message_json("user", "hello"),
             }),
         )
         .await
@@ -1656,7 +1654,7 @@ mod deferred_persist_tests {
                     parent_id: Some("u1".into()),
                     timestamp: "t-a1".into(),
                 },
-                message: crate::domain::session_types::fixture_message_json("assistant", "hi"),
+                message: crate::protocol::session::fixture_message_json("assistant", "hi"),
             }),
         )
         .await
@@ -1695,7 +1693,7 @@ mod deferred_persist_tests {
                 parent_id: None,
                 timestamp: "t-u1".into(),
             },
-            message: crate::domain::session_types::fixture_message_json("user", "kept"),
+            message: crate::protocol::session::fixture_message_json("user", "kept"),
         });
         let line = serde_json::to_string(&body).unwrap();
         tokio::fs::write(&path, format!("{line}\n")).await.unwrap();
@@ -1741,7 +1739,7 @@ mod deferred_persist_tests {
 #[cfg(test)]
 mod branch_summary_tests {
     use super::*;
-    use crate::domain::session_types::{EntryBase, MessageEntry, fixture_message_json};
+    use crate::protocol::session::{EntryBase, MessageEntry, fixture_message_json};
     use serde_json::json;
 
     fn msg(id: &str, message: serde_json::Value) -> SessionEntry {
@@ -1785,7 +1783,7 @@ mod branch_summary_tests {
 mod fork_path_tests {
     //! c645: path-based fork (pi createBranchedSession) — not file-order slice.
     use super::*;
-    use crate::domain::session_types::{
+    use crate::protocol::session::{
         EntryBase, ForkPosition, MessageEntry, fixture_message_json, is_user_message, message_text,
     };
 
@@ -2051,18 +2049,16 @@ mod fork_path_tests {
             store
                 .entry(parent.to_string())
                 .or_default()
-                .push(SessionEntry::Label(
-                    crate::domain::session_types::LabelEntry {
-                        base: EntryBase {
-                            entry_type: "label".into(),
-                            id: "lbl1".into(),
-                            parent_id: Some("a1".into()),
-                            timestamp: "t-lbl".into(),
-                        },
-                        target_id: "u1".into(),
-                        label: Some("checkpoint".into()),
+                .push(SessionEntry::Label(crate::protocol::session::LabelEntry {
+                    base: EntryBase {
+                        entry_type: "label".into(),
+                        id: "lbl1".into(),
+                        parent_id: Some("a1".into()),
+                        timestamp: "t-lbl".into(),
                     },
-                ));
+                    target_id: "u1".into(),
+                    label: Some("checkpoint".into()),
+                }));
         }
 
         mgr.fork(parent, child, "a1", ForkPosition::At)

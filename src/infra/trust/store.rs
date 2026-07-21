@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::runtime_protocol::XyTrustStore;
+use crate::protocol::ports::XyTrustStore;
 
 /// In-memory trust file: canonical path → decision. Sorted for deterministic output.
 type TrustFile = BTreeMap<String, Option<bool>>;

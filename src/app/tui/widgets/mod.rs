@@ -13,7 +13,7 @@ pub use loaded_resources::render_loaded_resources;
 pub use queue::render_queue_strip;
 pub use scrollback::{ScrollbackFold, render_scrollback};
 
-use crate::domain::types::{ThinkingLevel, TokenProvenance};
+use crate::protocol::types::{ThinkingLevel, TokenProvenance};
 
 /// Provenance-honest footer fragment (`used N tokens` / `~N` / `?`).
 pub fn footer_token_label(provenance: TokenProvenance, tokens: u64) -> String {
@@ -57,7 +57,7 @@ pub fn format_footer_text(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::types::TokenProvenance;
+    use crate::protocol::types::TokenProvenance;
 
     #[test]
     fn footer_token_label_provenance() {

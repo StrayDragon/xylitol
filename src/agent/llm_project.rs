@@ -6,7 +6,7 @@
 
 use serde_json::Value;
 
-use super::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage, now_ms};
+use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage, now_ms};
 
 /// Project session history into LLM-visible [`LlmMessage`] / `AiBridgeMessage` rows.
 pub fn project_for_llm(messages: &[AgentMessage]) -> Vec<LlmMessage> {
@@ -61,7 +61,7 @@ fn custom_text(content: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::message::{AgentMessage, AgentPart, EnvMessage};
+    use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage};
 
     #[test]
     fn bash_folds_to_user_llm() {

@@ -1,9 +1,9 @@
 //! Persist fixture entries into an already-created session.
 
-use crate::domain::session_types::{
+use crate::protocol::ports::XySessionStore;
+use crate::protocol::session::{
     EntryBase, LabelEntry, MessageEntry, SessionEntry, fixture_message_json,
 };
-use crate::runtime_protocol::XySessionStore;
 
 use super::catalog::resolve_scene_id;
 
@@ -139,8 +139,8 @@ async fn seed_labeled(store: &dyn XySessionStore, session_id: &str) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::session_types::message_text;
     use crate::infra::session::SessionManager;
+    use crate::protocol::session::message_text;
 
     #[tokio::test]
     async fn seed_multiturn_has_user_text() {
@@ -184,7 +184,7 @@ mod tests {
 
     #[tokio::test]
     async fn seed_branched_has_sibling_children() {
-        use crate::domain::session_types::build_session_tree;
+        use crate::protocol::session::build_session_tree;
 
         let mgr = SessionManager::in_memory();
         mgr.create("d3", Some("."), None).await.unwrap();

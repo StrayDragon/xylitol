@@ -3,7 +3,7 @@
 //! Walk session entries backwards from newest, accumulate token estimates,
 //! and find the nearest valid boundary (user message / branch summary).
 
-use crate::domain::session_types::SessionEntry;
+use crate::protocol::session::SessionEntry;
 
 /// Result from [`find_cut_point`].
 #[derive(Debug, Clone)]

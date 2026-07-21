@@ -2,7 +2,7 @@ pub mod toolset;
 
 pub use toolset::ToolSet;
 
-use crate::runtime_protocol::XyTool;
+use crate::protocol::ports::XyTool;
 
 // ── Argument validation ─────────────────────────────────────────
 
@@ -93,7 +93,7 @@ mod tests {
     fn test_toolset_from_iter_and_get() {
         struct DummyTool;
         #[async_trait::async_trait]
-        impl crate::runtime_protocol::XyTool for DummyTool {
+        impl crate::protocol::ports::XyTool for DummyTool {
             fn name(&self) -> &str {
                 "dummy"
             }
@@ -105,9 +105,9 @@ mod tests {
             }
             async fn execute(
                 &self,
-                _: &crate::runtime_protocol::XyToolCtx,
+                _: &crate::protocol::ports::XyToolCtx,
                 _: serde_json::Value,
-            ) -> Result<String, crate::domain::error::XyToolError> {
+            ) -> Result<String, crate::protocol::error::XyToolError> {
                 Ok("ok".into())
             }
         }

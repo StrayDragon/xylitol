@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
-use crate::domain::model::XyModelConfig;
 use crate::infra::hooks::HookDispatcher;
 use crate::infra::provider::adapter::{AdapterKind, AdapterRef, MappedBridgeAdapter};
 use crate::infra::provider::hooks_port::to_http_hooks;
+use crate::protocol::model_config::XyModelConfig;
 
 /// Resolve the adapter kind for a model config.
 pub fn resolve_adapter_kind(config: &XyModelConfig) -> AdapterKind {

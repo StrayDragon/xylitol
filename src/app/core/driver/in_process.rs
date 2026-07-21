@@ -7,11 +7,11 @@ use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::AgentRuntime;
-use crate::domain::session_types::{
+use crate::protocol::ports::{XyBashResult, XySessionStore};
+use crate::protocol::session::{
     SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
 };
-use crate::domain::types::ThinkingLevel;
-use crate::runtime_protocol::{XyBashResult, XySessionStore};
+use crate::protocol::types::ThinkingLevel;
 
 use super::XyDriver;
 use super::XyDriverError;
@@ -152,7 +152,7 @@ impl XyInProcessDriver {
     }
 
     /// Replace skills catalog for the next `run` (c1085). Does not mutate history.
-    pub fn apply_skills(&mut self, skills: Vec<crate::domain::resource_types::SkillInfo>) {
+    pub fn apply_skills(&mut self, skills: Vec<crate::protocol::resource::SkillInfo>) {
         self.agent.apply_skills(skills);
     }
 
@@ -162,7 +162,7 @@ impl XyInProcessDriver {
     }
 
     /// Full skill catalog for `$` completion / expand (c1130).
-    pub fn loaded_skills(&self) -> &[crate::domain::resource_types::SkillInfo] {
+    pub fn loaded_skills(&self) -> &[crate::protocol::resource::SkillInfo] {
         self.agent.loaded_skills()
     }
 
@@ -334,7 +334,7 @@ impl XyDriver for XyInProcessDriver {
     async fn fork_session(
         &mut self,
         entry_id: &str,
-        position: crate::domain::session_types::ForkPosition,
+        position: crate::protocol::session::ForkPosition,
     ) -> Result<String, XyDriverError> {
         Self::map_str(
             self.agent
@@ -389,7 +389,7 @@ impl XyDriver for XyInProcessDriver {
 
     async fn estimate_context_tokens(
         &self,
-    ) -> Result<crate::domain::types::ContextTokenEstimate, XyDriverError> {
+    ) -> Result<crate::protocol::types::ContextTokenEstimate, XyDriverError> {
         let entries = self.get_messages().await?;
         let model_id = self.current_model().map(|m| m.id);
         let tokenizer_override = model_id
@@ -532,7 +532,7 @@ impl XyDriver for XyInProcessDriver {
         target_id: &str,
         label: Option<&str>,
     ) -> Result<(), XyDriverError> {
-        use crate::domain::session_types::{EntryBase, LabelEntry};
+        use crate::protocol::session::{EntryBase, LabelEntry};
 
         let sid = self
             .agent
@@ -882,17 +882,17 @@ mod driver_session_tree_tests {
     use super::*;
     use crate::agent::AgentBuilder;
     use crate::agent::tools::ToolSet;
-    use crate::domain::model::XyModelConfig;
-    use crate::domain::session_types::{EntryBase, MessageEntry, SessionEntry, SessionTreeKind};
     use crate::infra::bash_exec::InfraBashExecutor;
     use crate::infra::config::value::InfraSecretResolver;
     use crate::infra::event::EventBus;
     use crate::infra::export::StdExportIo;
     use crate::infra::permission;
     use crate::infra::session::SessionManager;
-    use crate::runtime_protocol::{
+    use crate::protocol::model_config::XyModelConfig;
+    use crate::protocol::ports::{
         XyBashExecutor, XyEventSink, XyExportIo, XyModel, XySessionStore,
     };
+    use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, SessionTreeKind};
 
     type ModelBuilderFn =
         Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync>;
@@ -905,7 +905,7 @@ mod driver_session_tree_tests {
                 parent_id: parent.map(str::to_string),
                 timestamp: format!("2026-01-01T00:00:00.{id}Z"),
             },
-            message: crate::domain::session_types::fixture_message_json(role, text),
+            message: crate::protocol::session::fixture_message_json(role, text),
         })
     }
 
@@ -1094,12 +1094,11 @@ mod driver_session_tree_tests {
         use async_trait::async_trait;
         use futures::StreamExt;
 
-        use crate::domain::error::XyError;
-        use crate::domain::message::AgentMessage;
-        use crate::domain::message::XyStopReason;
-        use crate::domain::model::XyModelConfig;
-        use crate::domain::types::{XyChunk, XyModelMeta, XyToolSchema};
-        use crate::runtime_protocol::{XyModel, XyStream};
+        use crate::protocol::error::XyError;
+        use crate::protocol::message::XyStopReason;
+        use crate::protocol::model_config::XyModelConfig;
+        use crate::protocol::ports::{XyModel, XyStream};
+        use crate::protocol::types::{XyChunk, XyModelMeta, XyToolSchema};
 
         struct TextMockModel;
         #[async_trait]
@@ -1110,10 +1109,10 @@ mod driver_session_tree_tests {
 
             async fn generate_stream(
                 &self,
-                _messages: Vec<AgentMessage>,
+                _messages: Vec<crate::protocol::message::LlmMessage>,
                 _tools: &[XyToolSchema],
                 _stream: bool,
-                _options: crate::runtime_protocol::XyGenerateOptions,
+                _options: crate::protocol::ports::XyGenerateOptions,
             ) -> Result<XyStream, XyError> {
                 let chunks = vec![
                     Ok(XyChunk::TextDelta("reply".into())),
@@ -1137,7 +1136,7 @@ mod driver_session_tree_tests {
         reg.register(XyModelMeta {
             id: "mock".into(),
             config: XyModelConfig {
-                kind: crate::domain::model::XyModelKind::Fake,
+                kind: crate::protocol::model_config::XyModelKind::Fake,
                 api_key: String::new(),
                 model: "mock".into(),
                 base_url: None,
@@ -1161,7 +1160,7 @@ mod driver_session_tree_tests {
             reg,
             builder,
             store_trait.clone(),
-            Arc::new(EventBus::new()) as Arc<dyn crate::runtime_protocol::XyEventSink>,
+            Arc::new(EventBus::new()) as Arc<dyn crate::protocol::ports::XyEventSink>,
             permission::allow_all_permission(),
         )
         .cwd(".")
@@ -1211,10 +1210,7 @@ mod driver_session_tree_tests {
                         parent_id: None,
                         timestamp: String::new(),
                     },
-                    message: crate::domain::session_types::fixture_message_json(
-                        "user",
-                        "only user",
-                    ),
+                    message: crate::protocol::session::fixture_message_json("user", "only user"),
                 }),
             )
             .await
@@ -1231,7 +1227,7 @@ mod driver_session_tree_tests {
             .to_string();
 
         let err = driver
-            .fork_session(&uid, crate::domain::session_types::ForkPosition::At)
+            .fork_session(&uid, crate::protocol::session::ForkPosition::At)
             .await
             .expect_err("unflushed fork");
         assert!(

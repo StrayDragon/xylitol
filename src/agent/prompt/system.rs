@@ -26,7 +26,7 @@ pub struct SystemPromptOpts {
     /// Project-specific context files (path => content).
     pub context_files: Vec<(String, String)>,
     /// Available skills (name + description + source info for XML rendering).
-    pub skills: Vec<crate::domain::resource_types::SkillInfo>,
+    pub skills: Vec<crate::protocol::resource::SkillInfo>,
     /// System prompt from SYSTEM.md (will be prepended to the output).
     pub system_prompt: Option<String>,
     /// Append system prompt lines from APPEND_SYSTEM.md.
@@ -94,9 +94,9 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
              <available_skills>\n",
         );
         for skill in visible_skills {
-            let name = crate::domain::text::xml_escape(&skill.name);
-            let desc = crate::domain::text::xml_escape(skill.description.as_deref().unwrap_or(""));
-            let loc = crate::domain::text::xml_escape(&skill.source_info.path.to_string_lossy());
+            let name = crate::agent::text::xml_escape(&skill.name);
+            let desc = crate::agent::text::xml_escape(skill.description.as_deref().unwrap_or(""));
+            let loc = crate::agent::text::xml_escape(&skill.source_info.path.to_string_lossy());
             prompt.push_str(&format!(
                 "  <skill>\n    <name>{name}</name>\n    <description>{desc}</description>\n    <location>{loc}</location>\n  </skill>\n"
             ));
@@ -222,18 +222,18 @@ mod tests {
 
     #[test]
     fn test_skills_section() {
-        use crate::domain::resource_types::SkillInfo;
+        use crate::protocol::resource::SkillInfo;
         use std::path::PathBuf;
         let opts = SystemPromptOpts {
             cwd: ".".into(),
             skills: vec![SkillInfo {
                 name: "code-review".into(),
                 description: Some("Automated code review".into()),
-                source_info: crate::domain::source_info::SourceInfo {
+                source_info: crate::protocol::source_info::SourceInfo {
                     path: PathBuf::from("/home/u/.xylitol/skills/SKILL.md"),
                     source: "user".into(),
-                    scope: crate::domain::source_info::SourceScope::User,
-                    origin: crate::domain::source_info::SourceOrigin::TopLevel,
+                    scope: crate::protocol::source_info::SourceScope::User,
+                    origin: crate::protocol::source_info::SourceOrigin::TopLevel,
                     base_dir: Some(PathBuf::from("/home/u/.xylitol/skills")),
                 },
                 disable_model_invocation: false,
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn test_skills_disable_model_invocation_omitted_from_prompt() {
-        use crate::domain::resource_types::SkillInfo;
+        use crate::protocol::resource::SkillInfo;
         use std::path::PathBuf;
         let opts = SystemPromptOpts {
             cwd: ".".into(),
@@ -262,11 +262,11 @@ mod tests {
                 SkillInfo {
                     name: "visible".into(),
                     description: Some("ok".into()),
-                    source_info: crate::domain::source_info::SourceInfo {
+                    source_info: crate::protocol::source_info::SourceInfo {
                         path: PathBuf::from("/s/visible/SKILL.md"),
                         source: "user".into(),
-                        scope: crate::domain::source_info::SourceScope::User,
-                        origin: crate::domain::source_info::SourceOrigin::TopLevel,
+                        scope: crate::protocol::source_info::SourceScope::User,
+                        origin: crate::protocol::source_info::SourceOrigin::TopLevel,
                         base_dir: None,
                     },
                     disable_model_invocation: false,
@@ -274,11 +274,11 @@ mod tests {
                 SkillInfo {
                     name: "hidden".into(),
                     description: Some("slash only".into()),
-                    source_info: crate::domain::source_info::SourceInfo {
+                    source_info: crate::protocol::source_info::SourceInfo {
                         path: PathBuf::from("/s/hidden/SKILL.md"),
                         source: "user".into(),
-                        scope: crate::domain::source_info::SourceScope::User,
-                        origin: crate::domain::source_info::SourceOrigin::TopLevel,
+                        scope: crate::protocol::source_info::SourceScope::User,
+                        origin: crate::protocol::source_info::SourceOrigin::TopLevel,
                         base_dir: None,
                     },
                     disable_model_invocation: true,
@@ -294,18 +294,18 @@ mod tests {
 
     #[test]
     fn test_skills_xml_escapes_special_chars() {
-        use crate::domain::resource_types::SkillInfo;
+        use crate::protocol::resource::SkillInfo;
         use std::path::PathBuf;
         let opts = SystemPromptOpts {
             cwd: ".".into(),
             skills: vec![SkillInfo {
                 name: "a&b".into(),
                 description: Some("<x>".into()),
-                source_info: crate::domain::source_info::SourceInfo {
+                source_info: crate::protocol::source_info::SourceInfo {
                     path: PathBuf::from("/tmp/a&b/SKILL.md"),
                     source: "user".into(),
-                    scope: crate::domain::source_info::SourceScope::User,
-                    origin: crate::domain::source_info::SourceOrigin::TopLevel,
+                    scope: crate::protocol::source_info::SourceScope::User,
+                    origin: crate::protocol::source_info::SourceOrigin::TopLevel,
                     base_dir: None,
                 },
                 disable_model_invocation: false,

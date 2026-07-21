@@ -2,11 +2,11 @@
 
 use async_trait::async_trait;
 
-use crate::domain::error::XyError;
-use crate::domain::message::AgentMessage;
-use crate::domain::types::XyToolSchema;
-use crate::infra::provider::map::{to_bridge_messages, to_bridge_tools, to_xy_error, to_xy_stream};
-use crate::runtime_protocol::{XyGenerateOptions, XyModel, XyStream};
+use crate::infra::provider::map::{to_bridge_tools, to_xy_error, to_xy_stream};
+use crate::protocol::error::XyError;
+use crate::protocol::message::LlmMessage;
+use crate::protocol::ports::{XyGenerateOptions, XyModel, XyStream};
+use crate::protocol::types::XyToolSchema;
 
 pub use xylitol_ai_bridge::fake::{
     FakeProvider as AiBridgeFakeProvider, FakeProviderBuilder, FakeProviderMode, ScenarioStep,
@@ -52,16 +52,15 @@ impl XyModel for FakeProvider {
 
     async fn generate_stream(
         &self,
-        messages: Vec<AgentMessage>,
+        messages: Vec<LlmMessage>,
         tools: &[XyToolSchema],
         stream: bool,
         _options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
-        let bridge_msgs = to_bridge_messages(messages)?;
         let bridge_tools = to_bridge_tools(tools);
         let bridge_stream = xylitol_ai_bridge::fake::AiBridgeModel::generate_stream(
             &self.inner,
-            bridge_msgs,
+            messages,
             &bridge_tools,
             stream,
         )
@@ -85,14 +84,14 @@ mod tests {
             vec![],
             &[],
             false,
-            crate::runtime_protocol::XyGenerateOptions::default(),
+            crate::protocol::ports::XyGenerateOptions::default(),
         )
         .await
         .unwrap();
         let chunk = stream.next().await.unwrap().unwrap();
         assert!(matches!(
             chunk,
-            crate::domain::types::XyChunk::TextDelta(t) if t == "Hello world"
+            crate::protocol::types::XyChunk::TextDelta(t) if t == "Hello world"
         ));
     }
 

@@ -7,7 +7,7 @@
 //!   调用 `run` / `abort` / `set_tools` 等方法。
 //! - [`AgentCapabilities`]（[`session::AgentCapabilities`]）：可插拔的能力聚合体
 //!   （models + io + tools + 编排状态）。被 `AgentRuntime` 持有；构造期由
-//!   [`AgentBuilder`] 装配。**不是** [`crate::domain::message::AgentContext`]
+//!   [`AgentBuilder`] 装配。**不是** [`crate::protocol::message::AgentContext`]
 //!   （那是 LLM 请求快照）。
 //!
 //! 两者关系是 Runtime + Capabilities：`AgentRuntime` 跑 ReAct 循环，
@@ -23,16 +23,20 @@
 
 pub mod builder;
 pub mod compaction;
+pub mod llm_project;
 pub mod model;
 pub mod prompt;
 pub mod runtime;
 pub mod session;
+pub mod text;
+pub mod tool_result_quiet;
 pub mod tools;
 
 // ── 公共入口（mod 级 re-export）──────────────────────────────────
 // 库用户应从 `crate::agent::*` import，而非 reach into 子模块。
 
 pub use crate::agent::builder::AgentBuilder;
+pub use crate::agent::llm_project::project_for_llm;
 /// ReAct 循环运行时（驱动 [`AgentCapabilities`]）。
 pub use crate::agent::runtime::AgentRuntime;
 pub use crate::agent::runtime::hooks::BeforeToolHook;
@@ -40,4 +44,6 @@ pub use crate::agent::runtime::hooks::{ShouldStopAfterTurnCtx, ShouldStopAfterTu
 pub use crate::agent::runtime::{AgentHooks, XyEventStream};
 pub use crate::agent::session::AgentCapabilities;
 pub use crate::agent::session::{PendingMessageQueue, QueueMode, QueueStats};
-pub use crate::domain::lifecycle::XyEvent;
+/// Semantic ownership: agent re-exports shared protocol vocabulary.
+pub use crate::protocol::lifecycle::XyEvent;
+pub use crate::protocol::message::AgentMessage;

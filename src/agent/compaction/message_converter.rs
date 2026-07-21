@@ -1,13 +1,13 @@
 //! SessionEntry → AgentMessage conversion.
 //!
-//! The conversion lives on [`crate::domain::session_types::SessionEntry::as_agent_message`]
+//! The conversion lives on [`crate::protocol::session::SessionEntry::as_agent_message`]
 //! (c1210 unified seed path). This module keeps focused unit tests that previously
 //! lived here.
 
 #[cfg(test)]
 mod tests {
-    use crate::domain::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
-    use crate::domain::session_types::{
+    use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
+    use crate::protocol::session::{
         BashExecutionEntry, EntryBase, MessageEntry, SessionEntry, fixture_message_json,
     };
     use serde_json::{Value, json};
@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn compaction_projects_to_env() {
-        use crate::domain::session_types::CompactionEntry;
+        use crate::protocol::session::CompactionEntry;
         let e = SessionEntry::Compaction(CompactionEntry {
             base: EntryBase {
                 entry_type: "compaction".into(),

@@ -19,11 +19,11 @@ use crate::app::core::driver::{
     ReloadStepReport, RuntimeReloadReport, SessionListEntry, SessionStats, XyDriver, XyDriverError,
     XyEvent,
 };
-use crate::domain::session_types::{
+use crate::protocol::ports::XyBashResult;
+use crate::protocol::session::{
     SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
 };
-use crate::domain::types::ThinkingLevel;
-use crate::runtime_protocol::XyBashResult;
+use crate::protocol::types::ThinkingLevel;
 
 use super::effects::{drain_pending, refresh_footer_tokens, run_interactive_bang};
 use super::host::{HostEvent, HostSession};
@@ -52,7 +52,7 @@ pub struct ScriptedDriver {
     travel_overrides: HashMap<String, SessionTreeTravel>,
     session_tree_calls: AtomicUsize,
     travel_calls: Mutex<Vec<String>>,
-    fork_calls: Mutex<Vec<(String, crate::domain::session_types::ForkPosition)>>,
+    fork_calls: Mutex<Vec<(String, crate::protocol::session::ForkPosition)>>,
     switch_calls: Mutex<Vec<String>>,
     label_calls: Mutex<Vec<(String, Option<String>)>>,
     debug_scene_calls: Mutex<Vec<String>>,
@@ -72,7 +72,7 @@ pub struct ScriptedDriver {
     set_session_name_for_calls: Mutex<Vec<(String, String)>>,
     delete_session_calls: Mutex<Vec<String>>,
     /// Optional fixed estimate for footer harness (c1035).
-    estimate_override: Option<crate::domain::types::ContextTokenEstimate>,
+    estimate_override: Option<crate::protocol::types::ContextTokenEstimate>,
     reload_runtime_calls: AtomicUsize,
     persist_project_trust_calls: Mutex<Vec<crate::app::core::driver::ProjectTrustMode>>,
     copy_text_calls: Mutex<Vec<String>>,
@@ -294,7 +294,7 @@ impl ScriptedDriver {
     /// Fixed [`XyDriver::estimate_context_tokens`] result for footer harness (c1035).
     pub fn set_estimate_override(
         &mut self,
-        estimate: Option<crate::domain::types::ContextTokenEstimate>,
+        estimate: Option<crate::protocol::types::ContextTokenEstimate>,
     ) {
         self.estimate_override = estimate;
     }
@@ -311,7 +311,7 @@ impl ScriptedDriver {
         self.travel_calls.lock().expect("travel_calls").clone()
     }
 
-    pub fn fork_calls(&self) -> Vec<(String, crate::domain::session_types::ForkPosition)> {
+    pub fn fork_calls(&self) -> Vec<(String, crate::protocol::session::ForkPosition)> {
         self.fork_calls.lock().expect("fork_calls").clone()
     }
 
@@ -564,7 +564,7 @@ impl XyDriver for ScriptedDriver {
     async fn fork_session(
         &mut self,
         entry_id: &str,
-        position: crate::domain::session_types::ForkPosition,
+        position: crate::protocol::session::ForkPosition,
     ) -> Result<String, XyDriverError> {
         self.fork_calls
             .lock()
@@ -594,7 +594,7 @@ impl XyDriver for ScriptedDriver {
 
     async fn estimate_context_tokens(
         &self,
-    ) -> Result<crate::domain::types::ContextTokenEstimate, XyDriverError> {
+    ) -> Result<crate::protocol::types::ContextTokenEstimate, XyDriverError> {
         if let Some(est) = self.estimate_override.clone() {
             return Ok(est);
         }
@@ -737,7 +737,7 @@ impl XyDriver for ScriptedDriver {
     }
 
     async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
-        let stored = crate::runtime_protocol::sanitize_session_display_name(name);
+        let stored = crate::protocol::ports::sanitize_session_display_name(name);
         self.set_session_name_calls
             .lock()
             .expect("set_session_name_calls")
@@ -751,7 +751,7 @@ impl XyDriver for ScriptedDriver {
         session_id: &str,
         name: &str,
     ) -> Result<String, XyDriverError> {
-        let stored = crate::runtime_protocol::sanitize_session_display_name(name);
+        let stored = crate::protocol::ports::sanitize_session_display_name(name);
         self.set_session_name_for_calls
             .lock()
             .expect("set_session_name_for_calls")
@@ -922,7 +922,7 @@ pub async fn pump_host_driver<T: Terminal>(
 
 #[cfg(test)]
 pub fn harness_sample_message_history_tree() -> Vec<SessionTreeNode> {
-    use crate::domain::session_types::{EntryBase, MessageEntry};
+    use crate::protocol::session::{EntryBase, MessageEntry};
 
     fn msg(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionTreeNode {
         SessionTreeNode {
@@ -933,7 +933,7 @@ pub fn harness_sample_message_history_tree() -> Vec<SessionTreeNode> {
                     parent_id: parent.map(str::to_string),
                     timestamp: format!("t-{id}"),
                 },
-                message: crate::domain::session_types::fixture_message_json(role, text),
+                message: crate::protocol::session::fixture_message_json(role, text),
             }),
             children: Vec::new(),
             label: None,
@@ -2489,7 +2489,7 @@ mod slice_tests {
 
     #[tokio::test]
     async fn h19_tree_shift_f_forks_user_before() {
-        use crate::domain::session_types::ForkPosition;
+        use crate::protocol::session::ForkPosition;
 
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2540,7 +2540,7 @@ mod slice_tests {
 
     #[tokio::test]
     async fn h20_tree_shift_f_forks_assistant_at() {
-        use crate::domain::session_types::ForkPosition;
+        use crate::protocol::session::ForkPosition;
 
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
@@ -2773,7 +2773,7 @@ mod slice_tests {
     #[tokio::test]
     async fn h27_slash_session_fork_at_leaf() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
-        use crate::domain::session_types::ForkPosition;
+        use crate::protocol::session::ForkPosition;
         assert_eq!(
             parse_slash_command("/session-fork"),
             Some(PendingSlash::ForkAtLeaf)
@@ -3315,7 +3315,7 @@ mod slice_tests {
     #[tokio::test]
     async fn h34_slash_session_clone_at_and_no_leaf() {
         use crate::app::tui::commands::{PendingSlash, parse_slash_command};
-        use crate::domain::session_types::ForkPosition;
+        use crate::protocol::session::ForkPosition;
         assert_eq!(
             parse_slash_command("/session-clone"),
             Some(PendingSlash::SessionClone)
@@ -3507,7 +3507,7 @@ mod slice_tests {
     #[tokio::test]
     async fn c1035_heuristic_shows_tilde() {
         use crate::app::tui::effects::refresh_footer_tokens;
-        use crate::domain::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
             TestTerminal::new(80, 24),
@@ -3535,7 +3535,7 @@ mod slice_tests {
     #[tokio::test]
     async fn c1035_api_shows_exact_used() {
         use crate::app::tui::effects::refresh_footer_tokens;
-        use crate::domain::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
             TestTerminal::new(80, 24),
@@ -3562,7 +3562,7 @@ mod slice_tests {
 
     #[tokio::test]
     async fn c1035_travel_refreshes_footer_token() {
-        use crate::domain::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
             TestTerminal::new(80, 24),
@@ -3621,7 +3621,7 @@ mod slice_tests {
 
     #[tokio::test]
     async fn c1035_agent_end_requests_footer_refresh() {
-        use crate::domain::types::{ContextTokenEstimate, TokenProvenance};
+        use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
 
         let mut session = HostSession::new_product_ui_with_meta(
             TestTerminal::new(80, 24),

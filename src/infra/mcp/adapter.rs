@@ -1,4 +1,4 @@
-//! MCP tool adapter — wraps MCP tools as [`crate::runtime_protocol::XyTool`].
+//! MCP tool adapter — wraps MCP tools as [`crate::protocol::ports::XyTool`].
 
 use std::sync::Arc;
 
@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::client::McpClientManager;
 
-/// Adapter wrapping an MCP tool as an [`crate::runtime_protocol::XyTool`].
+/// Adapter wrapping an MCP tool as an [`crate::protocol::ports::XyTool`].
 ///
 /// The publicly-facing name follows the convention `mcp:{server_id}:{name}`
 /// to avoid naming conflicts with built-in tools.
@@ -37,7 +37,7 @@ impl McpToolAdapter {
 }
 
 #[async_trait]
-impl crate::runtime_protocol::XyTool for McpToolAdapter {
+impl crate::protocol::ports::XyTool for McpToolAdapter {
     fn name(&self) -> &str {
         &self.full_name
     }
@@ -54,9 +54,9 @@ impl crate::runtime_protocol::XyTool for McpToolAdapter {
 
     async fn execute(
         &self,
-        _ctx: &crate::runtime_protocol::XyToolCtx,
+        _ctx: &crate::protocol::ports::XyToolCtx,
         args: Value,
-    ) -> Result<String, crate::domain::error::XyToolError> {
+    ) -> Result<String, crate::protocol::error::XyToolError> {
         let parts: Vec<&str> = self.full_name.splitn(3, ':').collect();
         let server_id = parts.get(1).unwrap_or(&"unknown");
         let tool_name = parts.get(2).unwrap_or(&"unknown");
@@ -66,7 +66,7 @@ impl crate::runtime_protocol::XyTool for McpToolAdapter {
             .call_tool(server_id, tool_name, args)
             .await
             .map_err(|e| {
-                crate::domain::error::XyToolError::ExecutionFailed(anyhow::anyhow!(
+                crate::protocol::error::XyToolError::ExecutionFailed(anyhow::anyhow!(
                     "MCP call to {} failed: {}",
                     self.full_name,
                     e
@@ -74,7 +74,7 @@ impl crate::runtime_protocol::XyTool for McpToolAdapter {
             })?;
 
         serde_json::to_string(&result).map_err(|e| {
-            crate::domain::error::XyToolError::ExecutionFailed(anyhow::anyhow!(
+            crate::protocol::error::XyToolError::ExecutionFailed(anyhow::anyhow!(
                 "failed to serialize MCP result: {}",
                 e
             ))
@@ -85,7 +85,7 @@ impl crate::runtime_protocol::XyTool for McpToolAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime_protocol::XyTool;
+    use crate::protocol::ports::XyTool;
 
     #[test]
     fn test_mcp_tool_adapter_name_format() {

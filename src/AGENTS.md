@@ -2,7 +2,7 @@
 
 本文件是 `src/` **代码架构**的单一真值源：分层不变量、各层职责、应用面状态、seam、`Xy*` / 导出边界。全局工作方式与产品定调见根 `AGENTS.md`。高维 mermaid：`docs/architecture/`。子目录 `AGENTS.md` 与 skills 只引用本文件，不重复长文。
 
-`xylitol` 主 crate：薄编排（`agent/`）+ 运行时域（`infra/`）+ 应用面（`app/`）+ 线协议（`protocol/`）+ 领域词（`domain/`）+ ports（`runtime_protocol/`）。通用 TUI 库在 workspace 包 `packages/xylitol-tui`（不在本文件展开）。
+`xylitol` 主 crate：薄编排（`agent/`）+ 运行时域（`infra/`）+ 应用面（`app/`）+ 统一契约层（`protocol/` = `wire/` + `ports/` + 根上共享类型）。通用 TUI 库在 workspace 包 `packages/xylitol-tui`（不在本文件展开）。
 
 ## 主线 vs 后置（产品）
 
@@ -19,26 +19,23 @@
 单 crate 逻辑分层：约定写在本文件，靠 review 与缝/行为测守住。**禁止**用源码 grep 元测试卡 import 路径；**不**为分层拆 crate（编译产物膨胀）。代码结构与 seam 行为仍是真值。
 
 - **组合根集中装配**：仅 `app/core/composition.rs` 与次级组合根 `app/cli/mod.rs`、`app/server/subcommand.rs`（及文档化的 `rpc` 等）可同时 import `agent` 与 `infra` 做装配。
-- **agent 不依赖 infra**；**infra 不依赖 agent**（经 `runtime_protocol` 端口）。
-- **domain** 零 crate 内依赖（MAY 依赖 workspace 包 **DTO only**：`xylitol_ai_bridge::dto` 组合 LLM 叶）；**runtime_protocol** 只依赖 `domain`（可依赖已接受的契约级外部类型，见下「取消」）。
+- **agent 不依赖 infra**；**infra 不依赖 agent**（经 `protocol::ports`）。
+- **protocol** MUST NOT 依赖 `agent` / `infra`；根上共享类型零内部层依赖（MAY 依赖 workspace 包 **DTO only**：`xylitol_ai_bridge::dto`）；`wire/` MUST NOT 依赖 `ports/`；`ports/` MAY 用根类型 + bridge DTO，MUST NOT 依赖 `wire/`。禁止再建 `domain/` / `vocab/` / `types/` 第三顶栏。
 - **应用面走 seam、不 reach 内部**：禁止 `agent::session::*` / `agent::runtime::*` / `infra::*`；只从 `crate::agent`（mod 级）与 `crate::app::core` import。共享 seam：`composition::build_agent` → `XyDriver::run(prompt)` → `XyEvent` 流 → 该面渲染；不够就扩 seam，不绕过。方法论：`write-surface` skill。
 - **`XyInProcessDriver` 表面 infra**：trust / clipboard / 必要 config 读可在 XyDriver 内调 `infra`（面仍禁止 reach）。provider / session / 默认工具集装配仍归 `composition`。内部搬家以 seam 行为保持绿为准。
 - **流中改道（steer / follow-up）**：经 `XyDriver` 队列 API（c461），禁止应用面直接改 ReAct 内部队列。`abort` 清 steer、保留 follow_up（队列条可见；Alt+Up 还原编辑器）。详见 archive `c461-expose-steer-followup-seam/design.md`。
 
 ```text
-app → agent → runtime_protocol → domain
+app → agent → protocol/{wire,ports + root types}
   ↓     ↑
   └──── infra ───────────────────┘
-protocol ───────────────────────→ domain
 ```
 
 ## 各层职责（摘要）
 
-- `domain/` — 纯领域词汇与 `XyEvent` 等；零 crate 内层依赖；MAY 依赖 workspace **DTO only**（`xylitol_ai_bridge::dto`）组合 LLM 叶；MUST NOT 依赖 bridge HTTP/SDK。
-- `runtime_protocol/` — agent↔infra ports（`XyModel`/`XyTool`/`XySessionStore`/…）；近期精选 `pub use` 的主要来源。
+- `protocol/` — 方案 B：`wire/`（client↔core `Command`/`Event`）+ `ports/`（agent↔infra `XyModel`/`XyTool`/…）+ 根上共享类型（`AgentMessage`/`XyEvent`/`XyChunk`/session entries…）。进根门槛 = 出现在 port/wire 签名或跨 agent/infra 共享。
 - `infra/` — ports 的实现（provider、tools、session、config、…）；vendor 类型（async-openai、rmcp、…）关在本层。
-- `agent/` — ReAct / session / model / tools 编排；公共入口为 mod 级 re-export。
-- `protocol/` — `Command` / `Event` 线协议，传输无关。
+- `agent/` — ReAct / session / model / tools 编排 + `project_for_llm`；公共入口为 mod 级 re-export（含 `AgentMessage`/`XyEvent` 语义再导出）。
 - `app/` — 应用面 + `core/` seam。状态：`cli/print` ✅；`server/` ✅；`tui/` ✅ 已开闸可用；`gui` 🔴。跨面：`core/{bootstrap,dispatch,composition,driver}`。
 
 模块级文件地图以目录与代码为准；本文件不维护易变文件清单。
@@ -59,7 +56,7 @@ protocol ───────────────────────�
 
 **取消（CancellationToken）**：`XyToolCtx` / bash 端口直接使用 `tokio_util::sync::CancellationToken`。接受 **tokio_util 作为库公开契约依赖**（与 tokio 异步运行时绑定已成事实）；不优先自造 cancel trait。
 
-**schemars**：配置/settings 的 `JsonSchema` derive 放在 **infra（或 config 面）**；`domain` 领域类型默认只保留 serde，避免把 schema 生成依赖绑进领域层。若某 domain 类型确需 schema，先论证是否应下沉为 config DTO。
+**schemars**：配置/settings 的 `JsonSchema` derive 放在 **infra（或 config 面）**；protocol 根共享类型默认只保留 serde，避免把 schema 生成依赖绑进契约层。若某类型确需 schema，先论证是否应下沉为 config DTO。
 
 **队列运行时**：产品语义见 `docs/architecture/插话续跑与中止.md`；实现见 archive c525。QueueUpdate MUST 进活跃 EventStream。
 
@@ -75,7 +72,7 @@ protocol ───────────────────────�
 |---|---|---|
 | **配置 / 会话开关 + composition 接线** | 单一（或极少）实现；启用才装配 | 最低；未启用须 zero-cost |
 | **既有 port**（`XyTool` / `XyModel` / `XyHookBus` / …） | 新能力可映射到已有契约 | 中；禁止旁路第二套语义 |
-| **新 `runtime_protocol` trait** | 已有**真实第二实现**，或测试/嵌入方必须替换 | 最高；须论证为何不能复用上两行 |
+| **新 `protocol::ports` trait** | 已有**真实第二实现**，或测试/嵌入方必须替换 | 最高；须论证为何不能复用上两行 |
 
 **禁止**：Extension Host、插件清单市场、为未交付能力预挖空 `Xy*`、「已是统一口再包一层」双路径。
 
@@ -84,7 +81,7 @@ protocol ───────────────────────�
 - **升格为 port**：出现第二个生产实现，或嵌入方/测试必须注入替换，且复用 `XyTool`/`XyModel`/缝会扭曲语义。
 - **保持具体类型 + 组合根**：仅 bootstrap/composition 知道具体类型；agent 只拿投影后的数据或既有 port（例：资源发现结果经 options 注入，不必强行 `dyn XyResourceLoader`）。
 - **`XyReloadable`**：编译期刷新约束（关联 `Outcome`），**不是** dyn 插件注册表；`/reload` 按固定顺序编排具体 reload。
-- **进精选 `pub use`**：仅库嵌入方稳定需要的端口/事件；`XyReloadable` / `XyResourceLoader` / `XyTrustStore` 等可留在 `runtime_protocol` 而不进 crate 根，直到嵌入契约需要。
+- **进精选 `pub use`**：仅库嵌入方稳定需要的端口/事件；`XyReloadable` / `XyResourceLoader` / `XyTrustStore` 等可留在 `protocol::ports` 而不进 crate 根，直到嵌入契约需要。
 
 ### 端口健康（审计快照 · 2026-07-21）
 
@@ -111,29 +108,29 @@ protocol ───────────────────────�
 ## Provider 适配
 
 业务 / agent 只认 `XyModel`。厂商 HTTP/SSE **优先经官方 SDK Client**（OpenAI：`async-openai`；Anthropic：官方 Rust SDK 未成熟前 **reqwest 兜底**）落在 workspace 包
-`packages/xylitol-ai-bridge`；主仓 `infra/provider` 负责：
+`packages/xylitol-ai-bridge`；主仓分工：
 
-1. **`AgentMessage` → `AiBridgeMessage` 投影**（`project_for_llm`；Llm 臂 **passthrough**，Env 折叠；**无**叶↔叶孪生表）
-2. 装配 `XyModel` / 配置（base_url、密钥）
+1. **agent**：调用前 `project_for_llm`（`AgentMessage` → `Vec<LlmMessage>` / `AiBridgeMessage`；Llm 臂 passthrough，Env 折叠）
+2. **infra/provider**：装配 `XyModel` / 配置（base_url、密钥）；chunk / tool-schema / error 边界映射（`map.rs`）。**MUST NOT** 再对 `AgentMessage` 做 Env 折叠主路径。
 
 **概念分层（MUST）**：
 
 | 类型 | 含义 |
 |---|---|
-| `AgentMessage`（domain） | session **真源** = `Llm(AiBridgeMessage)` \| `Env(EnvMessage)`（`LlmMessage` / Part / Usage… 为 bridge DTO 的 `pub use` 别名） |
-| bridge LLM DTO（`AiBridge*`） | LLM 叶 SSOT（user / assistant / toolResult）；**MUST NOT** 平行拷贝 Env 角色 |
-| domain → bridge | **MAY** 依赖 **DTO only** 完成组合；**MUST NOT** 依赖 bridge HTTP / vendor SDK |
+| `AgentMessage`（`protocol/message`；agent 再导出） | session **真源** = `Llm(AiBridgeMessage)` \| `Env(EnvMessage)`（`LlmMessage` / Part / Usage… 为 bridge DTO 的 `pub use` 别名） |
+| bridge LLM DTO（`AiBridge*`） | LLM 叶 SSOT；`XyModel::generate_stream` **只吃** `Vec<LlmMessage>` |
+| protocol → bridge | **MAY** 依赖 **DTO only** 完成组合；**MUST NOT** 依赖 bridge HTTP / vendor SDK |
 
-**叶类型归属（c1210）**：
+**叶类型归属（c1210 / c1220）**：
 
 | 叶 / 组合 | 归属 | 说明 |
 |---|---|---|
-| `AiBridgeMessage` / Part / StopReason / Usage | **bridge**（domain 别名） | LLM 叶 SSOT |
-| `EnvMessage` / `AgentMessage` | **domain** | 组合；Env 永不进 bridge |
-| session / trust / queue / AgentState | **domain** | 与 bridge 无关 |
-| chunk / provenance 等真边界差 | `infra/provider/map` | 消息路径为 identity |
+| `AiBridgeMessage` / Part / StopReason / Usage | **bridge**（protocol 别名） | LLM 叶 SSOT |
+| `EnvMessage` / `AgentMessage` / `XyEvent` | **protocol 根** | 跨 agent/infra；agent 语义再导出 |
+| `project_for_llm` | **agent** | 投影 MUST 在 agent |
+| chunk / provenance 等真边界差 | `infra/provider/map` | 无 AgentMessage 折叠路径 |
 
-调优史：`src/_TODO.md` §F。设计史：**c1070** / **c1210**。
+调优史：`src/_TODO.md` §F。设计史：**c1070** / **c1210** / **c1220**。
 
 **开闭**：新 OpenAI-like / Anthropic-like 兼容端 = 新 adapter 或配置；**MUST NOT** 为网关改 `AgentMessage` / ReAct。禁止 Completions「已是 `XyModel` 再包一层」双路径。Pre-1.0 **交付**范围见根 `AGENTS.md`。细则与包边界（含 Responses 流式 BYOT/`Value`）：`packages/xylitol-ai-bridge/AGENTS.md`。
 

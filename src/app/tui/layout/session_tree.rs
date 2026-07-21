@@ -3,7 +3,7 @@
 
 use xylitol_tui::{TreeNode, truncate_to_width, visible_width, with_keybindings};
 
-use crate::domain::session_types::{SessionEntry, SessionTreeNode, message_role, message_text};
+use crate::protocol::session::{SessionEntry, SessionTreeNode, message_role, message_text};
 
 const LABEL_PREVIEW_WIDTH: usize = 48;
 
@@ -318,7 +318,7 @@ fn preview_label_line(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::session_types::{EntryBase, MessageEntry, ModelChangeEntry};
+    use crate::protocol::session::{EntryBase, MessageEntry, ModelChangeEntry};
 
     fn user_node(id: &str, text: &str) -> SessionTreeNode {
         SessionTreeNode {
@@ -329,7 +329,7 @@ mod tests {
                     parent_id: None,
                     timestamp: "t".into(),
                 },
-                message: crate::domain::session_types::fixture_message_json("user", text),
+                message: crate::protocol::session::fixture_message_json("user", text),
             }),
             children: Vec::new(),
             label: None,

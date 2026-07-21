@@ -8,7 +8,7 @@ use super::adapter::McpToolAdapter;
 use super::client::McpClientManager;
 use super::types::McpServerConfig;
 use crate::infra::config::types::AppConfig;
-use crate::runtime_protocol::XyTool;
+use crate::protocol::ports::XyTool;
 
 /// True when MCP should be assembled (non-empty server list).
 pub fn mcp_enabled(servers: &Option<Vec<McpServerConfig>>) -> bool {

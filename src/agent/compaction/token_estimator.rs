@@ -6,9 +6,9 @@ use xylitol_ai_bridge::registry::{TokenizerSource, resolve_tokenizer_with_overri
 use xylitol_ai_bridge::tokenize::HfTokenizerCache;
 use xylitol_ai_bridge::tokenize::{BuiltinTokenizer, estimate_messages};
 
-use crate::domain::llm_project::project_for_llm;
-use crate::domain::message::{AgentMessage, LlmMessage, XyStopReason, XyUsage};
-use crate::domain::types::{ContextTokenEstimate, TokenProvenance};
+use crate::agent::llm_project::project_for_llm;
+use crate::protocol::message::{AgentMessage, LlmMessage, XyStopReason, XyUsage};
+use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
 
 /// Calculate total context tokens from a XyUsage struct.
 /// Priority: total_tokens > input+output+cache_read+cache_write sum.
@@ -48,10 +48,10 @@ pub struct EstimateOpts {
 
 /// Build a [`ContextTokenEstimate`] from persisted session entries (footer + compact).
 pub fn estimate_from_session_entries(
-    entries: &[crate::domain::session_types::SessionEntry],
+    entries: &[crate::protocol::session::SessionEntry],
     opts: &EstimateOpts,
 ) -> ContextTokenEstimate {
-    use crate::domain::session_types::SessionEntry;
+    use crate::protocol::session::SessionEntry;
 
     let mut messages: Vec<AgentMessage> = Vec::new();
     let mut last_usage: Option<XyUsage> = None;
@@ -230,8 +230,8 @@ pub(crate) fn should_compact_by_reserve(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::message::AgentMessage;
-    use crate::domain::types::TokenProvenance;
+    use crate::protocol::message::AgentMessage;
+    use crate::protocol::types::TokenProvenance;
     use xylitol_ai_bridge::registry::TokenizerOverride;
 
     #[test]
@@ -284,9 +284,9 @@ mod tests {
 
     #[test]
     fn session_entries_api_usage_anchors_estimate() {
-        use crate::domain::message::{LlmMessage, XyStopReason, XyUsage};
-        use crate::domain::session_types::{EntryBase, MessageEntry, SessionEntry};
-        use crate::domain::types::TokenProvenance;
+        use crate::protocol::message::{LlmMessage, XyStopReason, XyUsage};
+        use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+        use crate::protocol::types::TokenProvenance;
 
         let usage = XyUsage {
             input: 100,
@@ -298,7 +298,7 @@ mod tests {
             cost: None,
         };
         let asst = AgentMessage::Llm(LlmMessage::AssistantMessage {
-            content: vec![crate::domain::message::AgentPart::text("ok")],
+            content: vec![crate::protocol::message::AgentPart::text("ok")],
             stop_reason: Some(XyStopReason::Stop),
             usage: Some(usage),
             api: String::new(),

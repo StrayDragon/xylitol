@@ -1,6 +1,6 @@
 //! [`XyDriverError`] — typed failures for the shared application driver protocol.
 
-use crate::domain::error::{XyError, XyToolError};
+use crate::protocol::error::{XyError, XyToolError};
 
 /// Errors from [`super::driver::XyDriver`] (整机遥控器 / 多面共享应用协议).
 ///

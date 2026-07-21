@@ -12,7 +12,7 @@ use crate::agent::model::registry::ModelRegistry;
 use crate::agent::runtime::AgentRuntime;
 use crate::agent::session::{AgentCapabilities, QueueMode};
 use crate::agent::tools::ToolSet;
-use crate::runtime_protocol::{
+use crate::protocol::ports::{
     XyBashExecutor, XyEventSink, XyExportIo, XyHookBus, XyModelBuilder, XyPermission,
     XySessionStore,
 };
@@ -31,7 +31,7 @@ pub struct AgentBuilder {
     system_prompt: Option<String>,
     context_files: Vec<(String, String)>,
     append_system_prompt: Vec<String>,
-    skills: Vec<crate::domain::resource_types::SkillInfo>,
+    skills: Vec<crate::protocol::resource::SkillInfo>,
     compaction_threshold: f64,
     compaction_settings: Option<CompactionSettings>,
     cwd: String,
@@ -98,7 +98,7 @@ impl AgentBuilder {
     }
 
     /// Set skills catalog for `<available_skills>` in the system prompt (c1085).
-    pub fn skills(mut self, skills: Vec<crate::domain::resource_types::SkillInfo>) -> Self {
+    pub fn skills(mut self, skills: Vec<crate::protocol::resource::SkillInfo>) -> Self {
         self.skills = skills;
         self
     }

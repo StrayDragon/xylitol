@@ -2,11 +2,11 @@
 
 use async_trait::async_trait;
 
-use crate::domain::session_types::{
+use crate::protocol::session::{
     EntryBase, SessionContext, SessionEntry, SessionInfoEntry, SessionTreeNode, build_session_tree,
 };
 
-pub use crate::domain::session_types::ForkPosition;
+pub use crate::protocol::session::ForkPosition;
 
 /// Row for session resume picker (XyDriver seam; mtime order is store-defined).
 #[derive(Debug, Clone, PartialEq, Eq)]

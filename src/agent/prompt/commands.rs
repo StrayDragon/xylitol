@@ -3,7 +3,7 @@
 //! Builtin names/descriptions come from [`super::product_commands`] (product SSOT).
 //! Extension/skill/prompt commands merge on top.
 
-use crate::domain::source_info::SourceInfo;
+use crate::protocol::source_info::SourceInfo;
 
 use super::product_commands::product_slash_commands;
 
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn slash_command_info_with_source_info() {
-        use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
+        use crate::protocol::source_info::{SourceInfo, SourceOrigin, SourceScope};
         let si = SourceInfo {
             path: std::path::PathBuf::from("/a/b/c.md"),
             source: "local".into(),

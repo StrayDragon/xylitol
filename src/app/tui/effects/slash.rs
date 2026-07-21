@@ -269,7 +269,7 @@ pub(super) async fn handle_slash<T: Terminal>(
             if session.is_busy() {
                 session.push_system_note("session clone unavailable while busy");
             } else {
-                use crate::domain::session_types::ForkPosition;
+                use crate::protocol::session::ForkPosition;
                 match driver.leaf_entry_id() {
                     None => session.push_system_note("Nothing to clone yet"),
                     Some(entry_id) => {

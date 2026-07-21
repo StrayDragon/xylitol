@@ -10,9 +10,9 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use crate::domain::session_types::{MessageEntry, SessionEntry, message_role};
-use crate::domain::text::xml_escape;
-use crate::runtime_protocol::{XyExportIo, XySessionStore};
+use crate::agent::text::xml_escape;
+use crate::protocol::ports::{XyExportIo, XySessionStore};
+use crate::protocol::session::{MessageEntry, SessionEntry, message_role};
 
 /// Stateful export/import collaborator — owns the [`XyExportIo`] port.
 ///
@@ -178,7 +178,7 @@ fn render_message(m: &MessageEntry) -> String {
 }
 
 fn message_text(msg: &Value) -> String {
-    crate::domain::session_types::message_text(msg)
+    crate::protocol::session::message_text(msg)
 }
 
 /// Render a session's entries as JSONL (one JSON object per line).
@@ -224,7 +224,7 @@ pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::session_types::{BashExecutionEntry, EntryBase, SessionHeader};
+    use crate::protocol::session::{BashExecutionEntry, EntryBase, SessionHeader};
 
     fn header(id: &str) -> SessionEntry {
         SessionEntry::Header(SessionHeader {
@@ -249,7 +249,7 @@ mod tests {
     fn message(role: &str, text: &str) -> SessionEntry {
         SessionEntry::Message(MessageEntry {
             base: base(),
-            message: crate::domain::session_types::fixture_message_json(role, text),
+            message: crate::protocol::session::fixture_message_json(role, text),
         })
     }
 

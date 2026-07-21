@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::domain::message::{AgentPart, ImageContent};
+use crate::protocol::message::{AgentPart, ImageContent};
 
 use super::resize::{ImageResizeOptions, resize_image};
 

@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use crate::domain::source_info::SourceInfo;
+use crate::protocol::source_info::SourceInfo;
 
 // ── AgentsFile ────────────────────────────────────────────────────────
 

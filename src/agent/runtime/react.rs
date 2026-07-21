@@ -70,7 +70,7 @@ fn partial_assistant_message(
         model: String::new(),
         response_id: None,
         error_message: None,
-        timestamp: crate::domain::message::now_ms(),
+        timestamp: crate::protocol::message::now_ms(),
         diagnostics: Vec::new(),
     })
 }
@@ -79,19 +79,20 @@ use super::hooks::ShouldStopAfterTurnCtx;
 use super::permission_router::permission_target;
 use super::retry::{RetryState, is_retryable_error};
 use super::{AgentHooks, XyEvent, XyEventStream};
+use crate::agent::llm_project::project_for_llm;
 use crate::agent::prompt::expand_skills_in_agent_messages;
 use crate::agent::session::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::tools::ToolSet;
-use crate::domain::error::XyError;
-use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
-use crate::domain::resource_types::SkillInfo;
-use crate::domain::session_types::{EntryBase, MessageEntry, SessionEntry};
-use crate::domain::types::{XyChunk, XyToolSchema};
-use crate::runtime_protocol::{
+use crate::protocol::error::XyError;
+use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+use crate::protocol::ports::{
     XyHookBus, XyHookOutcome, XyModel, XySessionStore, XyToolCtx, XyToolExecutionMode,
 };
+use crate::protocol::resource::SkillInfo;
+use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+use crate::protocol::types::{XyChunk, XyToolSchema};
 
-use crate::runtime_protocol::XyPermissionVerdict;
+use crate::protocol::ports::XyPermissionVerdict;
 
 // ── AgentRuntime ───────────────────────────────────────────────────────
 
@@ -164,7 +165,7 @@ impl AgentRuntime {
     }
 
     /// Session store shared with the XyDriver seam.
-    pub fn session_store(&self) -> Arc<dyn crate::runtime_protocol::XySessionStore> {
+    pub fn session_store(&self) -> Arc<dyn crate::protocol::ports::XySessionStore> {
         self.inner.session_store()
     }
 
@@ -194,12 +195,12 @@ impl AgentRuntime {
     }
 
     /// Set the permission port. Takes effect on the next [`run`](Self::run) call.
-    pub fn set_permission(&mut self, permission: Arc<dyn crate::runtime_protocol::XyPermission>) {
+    pub fn set_permission(&mut self, permission: Arc<dyn crate::protocol::ports::XyPermission>) {
         self.inner.set_permission(permission);
     }
 
     /// Set the tool execution mode. Takes effect on the next [`run`](Self::run) call.
-    pub fn set_tool_mode(&mut self, mode: crate::runtime_protocol::XyToolExecutionMode) {
+    pub fn set_tool_mode(&mut self, mode: crate::protocol::ports::XyToolExecutionMode) {
         self.inner.set_tool_mode(mode);
     }
 
@@ -221,7 +222,7 @@ impl AgentRuntime {
     }
 
     /// Replace skills catalog and rebuild system prompt (c1085).
-    pub fn apply_skills(&mut self, skills: Vec<crate::domain::resource_types::SkillInfo>) {
+    pub fn apply_skills(&mut self, skills: Vec<crate::protocol::resource::SkillInfo>) {
         self.inner.apply_skills(skills);
     }
 
@@ -231,14 +232,14 @@ impl AgentRuntime {
     }
 
     /// Full skill catalog for `$` completion / expand (c1130).
-    pub fn loaded_skills(&self) -> &[crate::domain::resource_types::SkillInfo] {
+    pub fn loaded_skills(&self) -> &[crate::protocol::resource::SkillInfo] {
         self.inner.loaded_skills()
     }
 
     /// Run a turn with an auto-generated session_id.
     pub async fn run(&mut self, prompt: &str) -> XyEventStream {
         self.run_parts_with_id(
-            vec![crate::domain::message::AgentPart::text(prompt)],
+            vec![crate::protocol::message::AgentPart::text(prompt)],
             &uuid::Uuid::new_v4().to_string(),
         )
         .await
@@ -247,7 +248,7 @@ impl AgentRuntime {
     /// Run a multi-part user turn (text + images, c1155).
     pub async fn run_parts(
         &mut self,
-        parts: Vec<crate::domain::message::AgentPart>,
+        parts: Vec<crate::protocol::message::AgentPart>,
     ) -> XyEventStream {
         self.run_parts_with_id(parts, &uuid::Uuid::new_v4().to_string())
             .await
@@ -257,7 +258,7 @@ impl AgentRuntime {
     #[allow(clippy::type_complexity)]
     pub async fn run_with_id(&mut self, prompt: &str, session_id: &str) -> XyEventStream {
         self.run_parts_with_id(
-            vec![crate::domain::message::AgentPart::text(prompt)],
+            vec![crate::protocol::message::AgentPart::text(prompt)],
             session_id,
         )
         .await
@@ -267,7 +268,7 @@ impl AgentRuntime {
     #[allow(clippy::type_complexity)]
     pub async fn run_parts_with_id(
         &mut self,
-        parts: Vec<crate::domain::message::AgentPart>,
+        parts: Vec<crate::protocol::message::AgentPart>,
         session_id: &str,
     ) -> XyEventStream {
         // Build permission check callback from session
@@ -343,7 +344,7 @@ impl AgentRuntime {
         let queues = self.inner.queues();
         let store = self.inner.session_store();
         let skills = self.inner.loaded_skills().to_vec();
-        let generate_options = crate::runtime_protocol::XyGenerateOptions {
+        let generate_options = crate::protocol::ports::XyGenerateOptions {
             thinking_level: self.inner.thinking_level(),
             level_map: self
                 .inner
@@ -412,7 +413,7 @@ struct ReActConfig {
     model: Arc<dyn XyModel>,
     tools: ToolSet,
     tool_schemas: Vec<XyToolSchema>,
-    user_parts: Vec<crate::domain::message::AgentPart>,
+    user_parts: Vec<crate::protocol::message::AgentPart>,
     cancel: CancellationToken,
     /// Optional permission check. Called with (tool_name, target_path_or_domain).
     /// Returns Some(reason) if the operation is denied.
@@ -433,7 +434,7 @@ struct ReActConfig {
     /// Trust-filtered catalog for `$skill` expand (c1130); clone kept raw in history.
     skills: Vec<SkillInfo>,
     /// Thinking level / map / budgets for provider request assembly (c1165).
-    generate_options: crate::runtime_protocol::XyGenerateOptions,
+    generate_options: crate::protocol::ports::XyGenerateOptions,
 }
 
 fn should_stop_after_turn(hooks: &AgentHooks, ctx: &ShouldStopAfterTurnCtx) -> bool {
@@ -647,8 +648,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let mut thinking_acc = String::new();
                 let mut thinking_signature: Option<String> = None;
                 let mut tool_calls: Vec<(String, String, Value)> = Vec::new();
-                let mut done_usage: Option<crate::domain::message::XyUsage> = None;
-                let mut done_stop_reason: Option<crate::domain::message::XyStopReason> = None;
+                let mut done_usage: Option<crate::protocol::message::XyUsage> = None;
+                let mut done_stop_reason: Option<crate::protocol::message::XyStopReason> = None;
 
                 // Mid-stream abort: drop `chunk_stream` so adapter/reqwest closes
                 // the HTTP body (c680). Surfaces inherit via XyDriver::abort → token.
@@ -858,7 +859,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         model: String::new(),
                         response_id: None,
                         error_message: None,
-                        timestamp: crate::domain::message::now_ms(),
+                        timestamp: crate::protocol::message::now_ms(),
                         diagnostics: Vec::new(),
                     });
                     persist_agent_message(&store, &session_id, &assistant_msg).await;
@@ -995,7 +996,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     let exec_fut = async {
                         match tool {
                             Some(t) => t.execute_as_parts(&ctx, tool_args.clone()).await,
-                            None => Err(crate::domain::error::XyToolError::ExecutionFailed(
+                            None => Err(crate::protocol::error::XyToolError::ExecutionFailed(
                                 anyhow::anyhow!("Unknown tool: {name}"),
                             )),
                         }
@@ -1006,7 +1007,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         tokio::select! {
                             biased;
                             _ = cancel.cancelled() => {
-                                break Err(crate::domain::error::XyToolError::Aborted);
+                                break Err(crate::protocol::error::XyToolError::Aborted);
                             }
                             chunk = out_rx.recv() => {
                                 match chunk {
@@ -1039,7 +1040,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                     let mut result = match exec_outcome {
                         Ok(parts) => (parts, false),
-                        Err(crate::domain::error::XyToolError::Aborted) => {
+                        Err(crate::protocol::error::XyToolError::Aborted) => {
                             let err = format!("Tool '{name}' aborted");
                             (vec![AgentPart::text(err)], true)
                         }
@@ -1119,7 +1120,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
 
                     // c1310: UI keeps full End.result; history content is short for write/edit.
                     let (history_parts, details) =
-                        crate::domain::tool_result_quiet::quiet_write_edit_for_history(
+                        crate::agent::tool_result_quiet::quiet_write_edit_for_history(
                             name,
                             &result_text,
                             result.1,
@@ -1236,11 +1237,12 @@ async fn call_with_retry(
     messages: Vec<AgentMessage>,
     tool_schemas: &[XyToolSchema],
     retry_state: &RetryState,
-    options: &crate::runtime_protocol::XyGenerateOptions,
+    options: &crate::protocol::ports::XyGenerateOptions,
 ) -> Result<Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>, String> {
+    let llm_messages = project_for_llm(&messages);
     loop {
         match model
-            .generate_stream(messages.clone(), tool_schemas, true, options.clone())
+            .generate_stream(llm_messages.clone(), tool_schemas, true, options.clone())
             .await
         {
             Ok(stream) => return Ok(stream),
@@ -1264,11 +1266,11 @@ mod tests {
     use super::*;
     use crate::agent::model::registry::ModelRegistry;
     use crate::agent::session::AgentCapabilities;
-    use crate::domain::model::XyModelConfig;
-    use crate::domain::session_types::SessionEntry;
-    use crate::domain::types::XyModelMeta;
     use crate::infra::session::SessionManager;
-    use crate::runtime_protocol::{XyEventSink, XyModel, XySessionStore, XyStream};
+    use crate::protocol::model_config::XyModelConfig;
+    use crate::protocol::ports::{XyEventSink, XyModel, XySessionStore, XyStream};
+    use crate::protocol::session::SessionEntry;
+    use crate::protocol::types::XyModelMeta;
 
     type ModelBuilderFn =
         Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync>;
@@ -1287,8 +1289,8 @@ mod tests {
         ));
         reg.register(XyModelMeta {
             id: "mock".into(),
-            config: crate::domain::model::XyModelConfig {
-                kind: crate::domain::model::XyModelKind::OpenAi,
+            config: crate::protocol::model_config::XyModelConfig {
+                kind: crate::protocol::model_config::XyModelKind::OpenAi,
                 api_key: "sk-test".into(),
                 model: "mock-model".into(),
                 base_url: None,
@@ -1345,8 +1347,8 @@ mod tests {
         ));
         reg.register(XyModelMeta {
             id: "mock".into(),
-            config: crate::domain::model::XyModelConfig {
-                kind: crate::domain::model::XyModelKind::OpenAi,
+            config: crate::protocol::model_config::XyModelConfig {
+                kind: crate::protocol::model_config::XyModelKind::OpenAi,
                 api_key: "sk-test".into(),
                 model: "mock-model".into(),
                 base_url: None,
@@ -1398,7 +1400,7 @@ mod tests {
     // ── Mock model / tool helpers for hook and snapshot tests ───────
 
     struct MockModel {
-        chunks: Vec<crate::domain::types::XyChunk>,
+        chunks: Vec<crate::protocol::types::XyChunk>,
         /// Without max_iterations (c1430), a constant tool-call mock would loop
         /// forever. First `generate_stream` returns `chunks`; later calls stop.
         calls: std::sync::atomic::AtomicUsize,
@@ -1412,10 +1414,10 @@ mod tests {
 
         async fn generate_stream(
             &self,
-            _messages: Vec<AgentMessage>,
-            _tools: &[crate::domain::types::XyToolSchema],
+            _messages: Vec<crate::protocol::message::LlmMessage>,
+            _tools: &[crate::protocol::types::XyToolSchema],
             _stream: bool,
-            _options: crate::runtime_protocol::XyGenerateOptions,
+            _options: crate::protocol::ports::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             use std::sync::atomic::Ordering;
             let n = self.calls.fetch_add(1, Ordering::SeqCst);
@@ -1423,9 +1425,9 @@ mod tests {
                 self.chunks.clone()
             } else {
                 vec![
-                    crate::domain::types::XyChunk::TextDelta("(mock end)".into()),
-                    crate::domain::types::XyChunk::Done {
-                        finish_reason: crate::domain::message::XyStopReason::Stop,
+                    crate::protocol::types::XyChunk::TextDelta("(mock end)".into()),
+                    crate::protocol::types::XyChunk::Done {
+                        finish_reason: crate::protocol::message::XyStopReason::Stop,
                         usage: None,
                     },
                 ]
@@ -1437,7 +1439,7 @@ mod tests {
     struct MockTool;
 
     #[async_trait::async_trait]
-    impl crate::runtime_protocol::XyTool for MockTool {
+    impl crate::protocol::ports::XyTool for MockTool {
         fn name(&self) -> &str {
             "mock_tool"
         }
@@ -1457,9 +1459,9 @@ mod tests {
 
         async fn execute(
             &self,
-            _ctx: &crate::runtime_protocol::XyToolCtx,
+            _ctx: &crate::protocol::ports::XyToolCtx,
             _args: serde_json::Value,
-        ) -> Result<String, crate::domain::error::XyToolError> {
+        ) -> Result<String, crate::protocol::error::XyToolError> {
             Ok("executed".into())
         }
     }
@@ -1468,7 +1470,7 @@ mod tests {
     struct StreamingMockTool;
 
     #[async_trait::async_trait]
-    impl crate::runtime_protocol::XyTool for StreamingMockTool {
+    impl crate::protocol::ports::XyTool for StreamingMockTool {
         fn name(&self) -> &str {
             "mock_tool"
         }
@@ -1483,9 +1485,9 @@ mod tests {
 
         async fn execute(
             &self,
-            ctx: &crate::runtime_protocol::XyToolCtx,
+            ctx: &crate::protocol::ports::XyToolCtx,
             _args: serde_json::Value,
-        ) -> Result<String, crate::domain::error::XyToolError> {
+        ) -> Result<String, crate::protocol::error::XyToolError> {
             if let Some(tx) = &ctx.output_tx {
                 for part in ["chunk-a\n", "chunk-b\n", "chunk-c\n"] {
                     let _ = tx.send(part.into()).await;
@@ -1503,7 +1505,7 @@ mod tests {
         reg.register(XyModelMeta {
             id: "mock".into(),
             config: XyModelConfig {
-                kind: crate::domain::model::XyModelKind::Fake,
+                kind: crate::protocol::model_config::XyModelKind::Fake,
                 api_key: String::new(),
                 model: "mock".into(),
                 base_url: None,
@@ -1532,7 +1534,7 @@ mod tests {
         session
     }
 
-    fn mock_model_builder(chunks: Vec<crate::domain::types::XyChunk>) -> ModelBuilderFn {
+    fn mock_model_builder(chunks: Vec<crate::protocol::types::XyChunk>) -> ModelBuilderFn {
         Arc::new(move |_| {
             Ok(Arc::new(MockModel {
                 chunks: chunks.clone(),
@@ -1542,14 +1544,14 @@ mod tests {
     }
 
     fn make_agent_with_tools(
-        chunks: Vec<crate::domain::types::XyChunk>,
+        chunks: Vec<crate::protocol::types::XyChunk>,
         tools: ToolSet,
     ) -> AgentRuntime {
         make_agent_with_tools_and_store(chunks, tools).0
     }
 
     fn make_agent_with_tools_and_store(
-        chunks: Vec<crate::domain::types::XyChunk>,
+        chunks: Vec<crate::protocol::types::XyChunk>,
         tools: ToolSet,
     ) -> (AgentRuntime, Arc<dyn XySessionStore>) {
         let reg = mock_model_registry();
@@ -1583,7 +1585,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_persist_done_usage() {
-        use crate::domain::message::{AgentMessage, LlmMessage, XyStopReason, XyUsage};
+        use crate::protocol::message::{AgentMessage, LlmMessage, XyStopReason, XyUsage};
         use futures::StreamExt;
 
         let usage = XyUsage {
@@ -1596,8 +1598,8 @@ mod tests {
             cost: None,
         };
         let chunks = vec![
-            crate::domain::types::XyChunk::TextDelta("hi".into()),
-            crate::domain::types::XyChunk::Done {
+            crate::protocol::types::XyChunk::TextDelta("hi".into()),
+            crate::protocol::types::XyChunk::Done {
                 finish_reason: XyStopReason::Stop,
                 usage: Some(usage),
             },
@@ -1629,41 +1631,41 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_intent_before_execution() {
-        use crate::domain::lifecycle::XyEvent;
-        use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
+        use crate::protocol::lifecycle::XyEvent;
+        use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
         use futures::StreamExt;
 
         let chunks = vec![
-            crate::domain::types::XyChunk::ToolCallStart {
+            crate::protocol::types::XyChunk::ToolCallStart {
                 id: "call-1".into(),
                 name: "mock_tool".into(),
             },
-            crate::domain::types::XyChunk::ToolCallDelta {
+            crate::protocol::types::XyChunk::ToolCallDelta {
                 id: "call-1".into(),
                 name: "mock_tool".into(),
                 args_delta: r#"{"input":"#.into(),
                 args: serde_json::json!({"input": ""}),
             },
-            crate::domain::types::XyChunk::ToolCallDelta {
+            crate::protocol::types::XyChunk::ToolCallDelta {
                 id: "call-1".into(),
                 name: "mock_tool".into(),
                 args_delta: r#"x"}"#.into(),
                 args: serde_json::json!({"input": "x"}),
             },
-            crate::domain::types::XyChunk::ToolCallEnd {
+            crate::protocol::types::XyChunk::ToolCallEnd {
                 id: "call-1".into(),
                 name: "mock_tool".into(),
                 args: serde_json::json!({"input": "x"}),
             },
-            crate::domain::types::XyChunk::Done {
-                finish_reason: crate::domain::message::XyStopReason::ToolUse,
+            crate::protocol::types::XyChunk::Done {
+                finish_reason: crate::protocol::message::XyStopReason::ToolUse,
                 usage: None,
             },
         ];
         let mut agent = make_agent_with_tools(
             chunks,
             ToolSet::from_iter(vec![
-                Arc::new(MockTool) as Arc<dyn crate::runtime_protocol::XyTool>
+                Arc::new(MockTool) as Arc<dyn crate::protocol::ports::XyTool>
             ]),
         );
 
@@ -1728,24 +1730,24 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_execution_streams_multiple_updates() {
-        use crate::domain::lifecycle::XyEvent;
+        use crate::protocol::lifecycle::XyEvent;
         use futures::StreamExt;
 
         let chunks = vec![
-            crate::domain::types::XyChunk::ToolCallEnd {
+            crate::protocol::types::XyChunk::ToolCallEnd {
                 id: "call-1".into(),
                 name: "mock_tool".into(),
                 args: serde_json::json!({}),
             },
-            crate::domain::types::XyChunk::Done {
-                finish_reason: crate::domain::message::XyStopReason::ToolUse,
+            crate::protocol::types::XyChunk::Done {
+                finish_reason: crate::protocol::message::XyStopReason::ToolUse,
                 usage: None,
             },
         ];
         let mut agent = make_agent_with_tools(
             chunks,
             ToolSet::from_iter(vec![
-                Arc::new(StreamingMockTool) as Arc<dyn crate::runtime_protocol::XyTool>
+                Arc::new(StreamingMockTool) as Arc<dyn crate::protocol::ports::XyTool>
             ]),
         );
 
@@ -1772,10 +1774,10 @@ mod tests {
     #[tokio::test]
     async fn test_before_hook_denies_tool_call() {
         use crate::agent::runtime::hooks::BeforeToolHook;
-        use crate::domain::lifecycle::XyEvent;
+        use crate::protocol::lifecycle::XyEvent;
         use futures::StreamExt;
 
-        let chunks = vec![crate::domain::types::XyChunk::ToolCallEnd {
+        let chunks = vec![crate::protocol::types::XyChunk::ToolCallEnd {
             id: "call-1".into(),
             name: "mock_tool".into(),
             args: serde_json::json!({"input": "x"}),
@@ -1783,7 +1785,7 @@ mod tests {
         let mut agent = make_agent_with_tools(
             chunks,
             ToolSet::from_iter(vec![
-                Arc::new(MockTool) as Arc<dyn crate::runtime_protocol::XyTool>
+                Arc::new(MockTool) as Arc<dyn crate::protocol::ports::XyTool>
             ]),
         );
 
@@ -1818,10 +1820,10 @@ mod tests {
     #[tokio::test]
     async fn test_after_hook_modifies_tool_result() {
         use crate::agent::runtime::hooks::AfterToolHook;
-        use crate::domain::lifecycle::XyEvent;
+        use crate::protocol::lifecycle::XyEvent;
         use futures::StreamExt;
 
-        let chunks = vec![crate::domain::types::XyChunk::ToolCallEnd {
+        let chunks = vec![crate::protocol::types::XyChunk::ToolCallEnd {
             id: "call-1".into(),
             name: "mock_tool".into(),
             args: serde_json::json!({"input": "x"}),
@@ -1838,7 +1840,7 @@ mod tests {
         let mut agent = make_agent_with_tools(
             chunks,
             ToolSet::from_iter(vec![
-                Arc::new(MockTool) as Arc<dyn crate::runtime_protocol::XyTool>
+                Arc::new(MockTool) as Arc<dyn crate::protocol::ports::XyTool>
             ]),
         );
         agent.replace_hooks(hooks);
@@ -1864,10 +1866,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_set_tools_takes_effect_on_next_turn() {
-        use crate::domain::lifecycle::XyEvent;
+        use crate::protocol::lifecycle::XyEvent;
         use futures::StreamExt;
 
-        let chunks = vec![crate::domain::types::XyChunk::ToolCallEnd {
+        let chunks = vec![crate::protocol::types::XyChunk::ToolCallEnd {
             id: "call-1".into(),
             name: "mock_tool".into(),
             args: serde_json::json!({"input": "x"}),
@@ -1875,7 +1877,7 @@ mod tests {
         let mut agent = make_agent_with_tools(
             chunks.clone(),
             ToolSet::from_iter(vec![
-                Arc::new(MockTool) as Arc<dyn crate::runtime_protocol::XyTool>
+                Arc::new(MockTool) as Arc<dyn crate::protocol::ports::XyTool>
             ]),
         );
 
@@ -1929,7 +1931,7 @@ mod tests {
     /// so a multi-round turn (tool call → text reply) can be exercised. Each
     /// `generate_stream` call pops the front sequence.
     struct StatefulMockModel {
-        rounds: std::sync::Mutex<Vec<Vec<crate::domain::types::XyChunk>>>,
+        rounds: std::sync::Mutex<Vec<Vec<crate::protocol::types::XyChunk>>>,
     }
     #[async_trait::async_trait]
     impl XyModel for StatefulMockModel {
@@ -1938,10 +1940,10 @@ mod tests {
         }
         async fn generate_stream(
             &self,
-            _messages: Vec<AgentMessage>,
-            _tools: &[crate::domain::types::XyToolSchema],
+            _messages: Vec<crate::protocol::message::LlmMessage>,
+            _tools: &[crate::protocol::types::XyToolSchema],
             _stream: bool,
-            _options: crate::runtime_protocol::XyGenerateOptions,
+            _options: crate::protocol::ports::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             let chunks = self.rounds.lock().unwrap().remove(0);
             Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
@@ -1949,10 +1951,10 @@ mod tests {
     }
 
     fn make_agent_with_rounds(
-        rounds: Vec<Vec<crate::domain::types::XyChunk>>,
+        rounds: Vec<Vec<crate::protocol::types::XyChunk>>,
         tools: ToolSet,
     ) -> AgentRuntime {
-        use crate::runtime_protocol::XyModelBuilder;
+        use crate::protocol::ports::XyModelBuilder;
         let reg = mock_model_registry();
         let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
@@ -1989,20 +1991,20 @@ mod tests {
 
     #[tokio::test]
     async fn tool_call_then_continuation_round_reaches_final_text() {
-        use crate::domain::lifecycle::XyEvent;
+        use crate::protocol::lifecycle::XyEvent;
         use futures::StreamExt;
 
         // Round 1: model calls a tool. The provider appends Done after the
         // FunctionCall (openai.rs:156-176), so Done sets `done=true` — this is
         // exactly the case where the old `if done { break }` wrongly aborted.
         // Round 2: model gives the final text reply (no tool call) + Done.
-        let done_stop = || crate::domain::types::XyChunk::Done {
-            finish_reason: crate::domain::message::XyStopReason::Stop,
+        let done_stop = || crate::protocol::types::XyChunk::Done {
+            finish_reason: crate::protocol::message::XyStopReason::Stop,
             usage: None,
         };
         let rounds = vec![
             vec![
-                crate::domain::types::XyChunk::ToolCallEnd {
+                crate::protocol::types::XyChunk::ToolCallEnd {
                     id: "call-1".into(),
                     name: "mock_tool".into(),
                     args: serde_json::json!({"input": "x"}),
@@ -2010,14 +2012,14 @@ mod tests {
                 done_stop(),
             ],
             vec![
-                crate::domain::types::XyChunk::TextDelta("the answer is 42".into()),
+                crate::protocol::types::XyChunk::TextDelta("the answer is 42".into()),
                 done_stop(),
             ],
         ];
         let mut agent = make_agent_with_rounds(
             rounds,
             ToolSet::from_iter(vec![
-                Arc::new(MockTool) as Arc<dyn crate::runtime_protocol::XyTool>
+                Arc::new(MockTool) as Arc<dyn crate::protocol::ports::XyTool>
             ]),
         );
 
@@ -2046,15 +2048,15 @@ mod tests {
 
     #[tokio::test]
     async fn steer_before_run_is_injected_into_history() {
-        use crate::domain::lifecycle::XyEvent;
+        use crate::protocol::lifecycle::XyEvent;
         use futures::StreamExt;
 
-        let done_stop = || crate::domain::types::XyChunk::Done {
-            finish_reason: crate::domain::message::XyStopReason::Stop,
+        let done_stop = || crate::protocol::types::XyChunk::Done {
+            finish_reason: crate::protocol::message::XyStopReason::Stop,
             usage: None,
         };
         let rounds = vec![vec![
-            crate::domain::types::XyChunk::TextDelta("ok".into()),
+            crate::protocol::types::XyChunk::TextDelta("ok".into()),
             done_stop(),
         ]];
         let mut agent = make_agent_with_rounds(rounds, ToolSet::empty());
@@ -2088,20 +2090,20 @@ mod tests {
 
     #[tokio::test]
     async fn follow_up_continues_after_text_only_turn() {
-        use crate::domain::lifecycle::XyEvent;
+        use crate::protocol::lifecycle::XyEvent;
         use futures::StreamExt;
 
-        let done_stop = || crate::domain::types::XyChunk::Done {
-            finish_reason: crate::domain::message::XyStopReason::Stop,
+        let done_stop = || crate::protocol::types::XyChunk::Done {
+            finish_reason: crate::protocol::message::XyStopReason::Stop,
             usage: None,
         };
         let rounds = vec![
             vec![
-                crate::domain::types::XyChunk::TextDelta("first".into()),
+                crate::protocol::types::XyChunk::TextDelta("first".into()),
                 done_stop(),
             ],
             vec![
-                crate::domain::types::XyChunk::TextDelta("second".into()),
+                crate::protocol::types::XyChunk::TextDelta("second".into()),
                 done_stop(),
             ],
         ];
@@ -2128,22 +2130,22 @@ mod tests {
 
     #[tokio::test]
     async fn should_stop_after_turn_skips_follow_up_and_ends() {
-        use crate::domain::lifecycle::XyEvent;
+        use crate::protocol::lifecycle::XyEvent;
         use futures::StreamExt;
         use std::sync::atomic::{AtomicUsize, Ordering};
 
-        let done_stop = || crate::domain::types::XyChunk::Done {
-            finish_reason: crate::domain::message::XyStopReason::Stop,
+        let done_stop = || crate::protocol::types::XyChunk::Done {
+            finish_reason: crate::protocol::message::XyStopReason::Stop,
             usage: None,
         };
         // Two rounds available — stop hook must prevent the second.
         let rounds = vec![
             vec![
-                crate::domain::types::XyChunk::TextDelta("first".into()),
+                crate::protocol::types::XyChunk::TextDelta("first".into()),
                 done_stop(),
             ],
             vec![
-                crate::domain::types::XyChunk::TextDelta("second".into()),
+                crate::protocol::types::XyChunk::TextDelta("second".into()),
                 done_stop(),
             ],
         ];
@@ -2225,15 +2227,15 @@ mod tests {
 
     #[tokio::test]
     async fn abort_before_run_does_not_stick_to_next_run() {
-        use crate::domain::lifecycle::XyEvent;
+        use crate::protocol::lifecycle::XyEvent;
         use futures::StreamExt;
 
-        let done_stop = || crate::domain::types::XyChunk::Done {
-            finish_reason: crate::domain::message::XyStopReason::Stop,
+        let done_stop = || crate::protocol::types::XyChunk::Done {
+            finish_reason: crate::protocol::message::XyStopReason::Stop,
             usage: None,
         };
         let rounds = vec![vec![
-            crate::domain::types::XyChunk::TextDelta("recovered".into()),
+            crate::protocol::types::XyChunk::TextDelta("recovered".into()),
             done_stop(),
         ]];
         let mut agent = make_agent_with_rounds(rounds, ToolSet::empty());
@@ -2259,17 +2261,17 @@ mod tests {
 
     #[tokio::test]
     async fn abort_after_completed_run_allows_second_run() {
-        use crate::domain::lifecycle::XyEvent;
+        use crate::protocol::lifecycle::XyEvent;
         use futures::StreamExt;
 
-        let done_stop = || crate::domain::types::XyChunk::Done {
-            finish_reason: crate::domain::message::XyStopReason::Stop,
+        let done_stop = || crate::protocol::types::XyChunk::Done {
+            finish_reason: crate::protocol::message::XyStopReason::Stop,
             usage: None,
         };
         // Each `run` rebuilds the mock from the same round template — we only
         // assert the second run is not sticky-aborted (c482).
         let rounds = vec![vec![
-            crate::domain::types::XyChunk::TextDelta("ok".into()),
+            crate::protocol::types::XyChunk::TextDelta("ok".into()),
             done_stop(),
         ]];
         let mut agent = make_agent_with_rounds(rounds, ToolSet::empty());
@@ -2298,7 +2300,7 @@ mod tests {
     /// slow chunks even after `abort()` — proving UI-only abort is insufficient.
     #[tokio::test]
     async fn abort_mid_stream_stops_polling_model_chunks() {
-        use crate::domain::lifecycle::XyEvent;
+        use crate::protocol::lifecycle::XyEvent;
         use futures::StreamExt;
         use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -2313,20 +2315,20 @@ mod tests {
             }
             async fn generate_stream(
                 &self,
-                _messages: Vec<AgentMessage>,
-                _tools: &[crate::domain::types::XyToolSchema],
+                _messages: Vec<crate::protocol::message::LlmMessage>,
+                _tools: &[crate::protocol::types::XyToolSchema],
                 _stream: bool,
-                _options: crate::runtime_protocol::XyGenerateOptions,
+                _options: crate::protocol::ports::XyGenerateOptions,
             ) -> Result<XyStream, XyError> {
                 let polled = self.polled.clone();
                 Ok(Box::pin(async_stream::stream! {
                     for i in 0..80u32 {
                         tokio::time::sleep(std::time::Duration::from_millis(15)).await;
                         polled.fetch_add(1, Ordering::SeqCst);
-                        yield Ok(crate::domain::types::XyChunk::TextDelta(format!("c{i}")));
+                        yield Ok(crate::protocol::types::XyChunk::TextDelta(format!("c{i}")));
                     }
-                    yield Ok(crate::domain::types::XyChunk::Done {
-                        finish_reason: crate::domain::message::XyStopReason::Stop,
+                    yield Ok(crate::protocol::types::XyChunk::Done {
+                        finish_reason: crate::protocol::message::XyStopReason::Stop,
                         usage: None,
                     });
                 }))
@@ -2339,7 +2341,7 @@ mod tests {
         let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-        let builder: crate::runtime_protocol::XyModelBuilder = Arc::new(move |_| {
+        let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
             Ok(Arc::new(SlowMock {
                 polled: polled_for_builder.clone(),
             }) as Arc<dyn XyModel>)
@@ -2397,12 +2399,12 @@ mod tests {
     async fn persist_turn_writes_user_and_assistant_messages() {
         use futures::StreamExt;
 
-        let done_stop = || crate::domain::types::XyChunk::Done {
-            finish_reason: crate::domain::message::XyStopReason::Stop,
+        let done_stop = || crate::protocol::types::XyChunk::Done {
+            finish_reason: crate::protocol::message::XyStopReason::Stop,
             usage: None,
         };
         let rounds = vec![vec![
-            crate::domain::types::XyChunk::TextDelta("hello back".into()),
+            crate::protocol::types::XyChunk::TextDelta("hello back".into()),
             done_stop(),
         ]];
         let mut agent = make_agent_with_rounds(rounds, ToolSet::empty());
@@ -2429,14 +2431,14 @@ mod tests {
     async fn second_turn_model_input_includes_first_turn_messages() {
         use futures::StreamExt;
 
-        let done_stop = || crate::domain::types::XyChunk::Done {
-            finish_reason: crate::domain::message::XyStopReason::Stop,
+        let done_stop = || crate::protocol::types::XyChunk::Done {
+            finish_reason: crate::protocol::message::XyStopReason::Stop,
             usage: None,
         };
 
         struct RecordingMockModel {
-            seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<AgentMessage>>>>,
-            chunks: Vec<crate::domain::types::XyChunk>,
+            seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<crate::protocol::message::LlmMessage>>>>,
+            chunks: Vec<crate::protocol::types::XyChunk>,
         }
 
         #[async_trait::async_trait]
@@ -2447,10 +2449,10 @@ mod tests {
 
             async fn generate_stream(
                 &self,
-                messages: Vec<AgentMessage>,
-                _tools: &[crate::domain::types::XyToolSchema],
+                messages: Vec<crate::protocol::message::LlmMessage>,
+                _tools: &[crate::protocol::types::XyToolSchema],
                 _stream: bool,
-                _options: crate::runtime_protocol::XyGenerateOptions,
+                _options: crate::protocol::ports::XyGenerateOptions,
             ) -> Result<XyStream, XyError> {
                 self.seen.lock().unwrap().push(messages);
                 let chunks = self.chunks.clone();
@@ -2469,7 +2471,7 @@ mod tests {
                 Ok(Arc::new(RecordingMockModel {
                     seen: seen.clone(),
                     chunks: vec![
-                        crate::domain::types::XyChunk::TextDelta("ok".into()),
+                        crate::protocol::types::XyChunk::TextDelta("ok".into()),
                         done_stop(),
                     ],
                 }) as Arc<dyn XyModel>)
@@ -2509,12 +2511,10 @@ mod tests {
         let user_texts: Vec<String> = second_input
             .iter()
             .filter_map(|m| match m {
-                AgentMessage::Llm(LlmMessage::UserMessage { content, .. }) => {
-                    content.iter().find_map(|p| match p {
-                        AgentPart::Text { text: t } => Some(t.clone()),
-                        _ => None,
-                    })
-                }
+                LlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
+                    AgentPart::Text { text: t } => Some(t.clone()),
+                    _ => None,
+                }),
                 _ => None,
             })
             .collect();
@@ -2530,9 +2530,10 @@ mod tests {
         use futures::StreamExt;
 
         struct RecordingMockModel {
-            seen_msgs: std::sync::Arc<std::sync::Mutex<Vec<Vec<AgentMessage>>>>,
+            seen_msgs:
+                std::sync::Arc<std::sync::Mutex<Vec<Vec<crate::protocol::message::LlmMessage>>>>,
             seen_opts:
-                std::sync::Arc<std::sync::Mutex<Vec<crate::runtime_protocol::XyGenerateOptions>>>,
+                std::sync::Arc<std::sync::Mutex<Vec<crate::protocol::ports::XyGenerateOptions>>>,
         }
 
         #[async_trait::async_trait]
@@ -2543,16 +2544,16 @@ mod tests {
 
             async fn generate_stream(
                 &self,
-                messages: Vec<AgentMessage>,
-                _tools: &[crate::domain::types::XyToolSchema],
+                messages: Vec<crate::protocol::message::LlmMessage>,
+                _tools: &[crate::protocol::types::XyToolSchema],
                 _stream: bool,
-                options: crate::runtime_protocol::XyGenerateOptions,
+                options: crate::protocol::ports::XyGenerateOptions,
             ) -> Result<XyStream, XyError> {
                 self.seen_msgs.lock().unwrap().push(messages);
                 self.seen_opts.lock().unwrap().push(options);
                 Ok(Box::pin(futures::stream::iter(vec![Ok(
-                    crate::domain::types::XyChunk::Done {
-                        finish_reason: crate::domain::message::XyStopReason::Stop,
+                    crate::protocol::types::XyChunk::Done {
+                        finish_reason: crate::protocol::message::XyStopReason::Stop,
                         usage: None,
                     },
                 )])))
@@ -2613,7 +2614,7 @@ mod tests {
         let first = &rounds[0];
         assert!(!first.is_empty(), "history must include user message");
         let first_text = match &first[0] {
-            AgentMessage::Llm(LlmMessage::UserMessage { content, .. }) => content
+            LlmMessage::UserMessage { content, .. } => content
                 .iter()
                 .find_map(|p| match p {
                     AgentPart::Text { text } => Some(text.as_str()),
@@ -2628,12 +2629,12 @@ mod tests {
 
     #[tokio::test]
     async fn dollar_skill_expanded_for_model_history_stays_raw() {
-        use crate::domain::resource_types::SkillInfo;
-        use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
+        use crate::protocol::resource::SkillInfo;
+        use crate::protocol::source_info::{SourceInfo, SourceOrigin, SourceScope};
         use futures::StreamExt;
 
         struct RecordingMockModel {
-            seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<AgentMessage>>>>,
+            seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<crate::protocol::message::LlmMessage>>>>,
         }
 
         #[async_trait::async_trait]
@@ -2644,17 +2645,17 @@ mod tests {
 
             async fn generate_stream(
                 &self,
-                messages: Vec<AgentMessage>,
-                _tools: &[crate::domain::types::XyToolSchema],
+                messages: Vec<crate::protocol::message::LlmMessage>,
+                _tools: &[crate::protocol::types::XyToolSchema],
                 _stream: bool,
-                _options: crate::runtime_protocol::XyGenerateOptions,
+                _options: crate::protocol::ports::XyGenerateOptions,
             ) -> Result<XyStream, XyError> {
                 self.seen.lock().unwrap().push(messages);
                 Ok(Box::pin(futures::stream::iter(
                     [
-                        crate::domain::types::XyChunk::TextDelta("ok".into()),
-                        crate::domain::types::XyChunk::Done {
-                            finish_reason: crate::domain::message::XyStopReason::Stop,
+                        crate::protocol::types::XyChunk::TextDelta("ok".into()),
+                        crate::protocol::types::XyChunk::Done {
+                            finish_reason: crate::protocol::message::XyStopReason::Stop,
                             usage: None,
                         },
                     ]
@@ -2728,12 +2729,10 @@ mod tests {
         let model_user: Vec<String> = rounds[0]
             .iter()
             .filter_map(|m| match m {
-                AgentMessage::Llm(LlmMessage::UserMessage { content, .. }) => {
-                    content.iter().find_map(|p| match p {
-                        AgentPart::Text { text: t } => Some(t.clone()),
-                        _ => None,
-                    })
-                }
+                LlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
+                    AgentPart::Text { text: t } => Some(t.clone()),
+                    _ => None,
+                }),
                 _ => None,
             })
             .collect();

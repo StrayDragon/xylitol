@@ -1,7 +1,7 @@
 //! Session tree / models / resume mount + apply helpers (c1170 / ath12).
 
 use crate::app::core::driver::{ModelInfo, XyDriver};
-use crate::domain::session_types::{SessionEntry, SessionTreeTravel};
+use crate::protocol::session::{SessionEntry, SessionTreeTravel};
 use xylitol_tui::Terminal;
 use xylitol_tui::TreeNode;
 use xylitol_tui::components::select_list::SelectItem;
@@ -275,7 +275,7 @@ impl<T: Terminal> HostSession<T> {
             .rev()
             .find_map(|e| e.entry_id().map(str::to_string));
         let travel = SessionTreeTravel {
-            kind: crate::domain::session_types::SessionTreeKind::MessageHistory,
+            kind: crate::protocol::session::SessionTreeKind::MessageHistory,
             selected_id: child_id.to_string(),
             leaf_id,
             editor_text: editor_prefill.clone(),
@@ -354,7 +354,7 @@ impl<T: Terminal> HostSession<T> {
             .rev()
             .find_map(|e| e.entry_id().map(str::to_string));
         let travel = SessionTreeTravel {
-            kind: crate::domain::session_types::SessionTreeKind::MessageHistory,
+            kind: crate::protocol::session::SessionTreeKind::MessageHistory,
             selected_id: session_id.to_string(),
             leaf_id,
             editor_text: None,
@@ -377,7 +377,7 @@ impl<T: Terminal> HostSession<T> {
             .rev()
             .find_map(|e| e.entry_id().map(str::to_string));
         let travel = SessionTreeTravel {
-            kind: crate::domain::session_types::SessionTreeKind::MessageHistory,
+            kind: crate::protocol::session::SessionTreeKind::MessageHistory,
             selected_id: leaf_id.clone().unwrap_or_else(|| load.session_id.clone()),
             leaf_id,
             editor_text: None,

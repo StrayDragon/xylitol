@@ -1,6 +1,6 @@
 //! Slash / bang parsing for the product TUI host (c480 / c492 / c494).
 
-use crate::runtime_protocol::XyBashResult;
+use crate::protocol::ports::XyBashResult;
 
 use super::bridge::{BashBlockStatus, UiEntry};
 

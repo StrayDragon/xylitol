@@ -11,7 +11,7 @@
 
 use std::sync::{Arc, Mutex};
 
-pub(crate) use crate::runtime_protocol::{XyEventSink, XySessionStore};
+pub(crate) use crate::protocol::ports::{XyEventSink, XySessionStore};
 
 mod bash;
 mod export;
@@ -33,16 +33,16 @@ use crate::agent::prompt::templates::PromptTemplate;
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::AgentHooks;
 use crate::agent::tools::ToolSet;
-use crate::domain::message::AgentMessage;
-use crate::domain::session_types::{
+use crate::protocol::message::AgentMessage;
+use crate::protocol::ports::{
+    XyBashExecutor, XyExportIo, XyHookBus, XyModel, XyPermission, XyToolExecutionMode,
+};
+use crate::protocol::session::{
     EntryBase, ModelChangeEntry, SessionEntry, ThinkingLevelChangeEntry,
 };
 #[cfg(test)]
-use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
-use crate::domain::types::{ThinkingLevel, XyModelMeta};
-use crate::runtime_protocol::{
-    XyBashExecutor, XyExportIo, XyHookBus, XyModel, XyPermission, XyToolExecutionMode,
-};
+use crate::protocol::source_info::{SourceInfo, SourceOrigin, SourceScope};
+use crate::protocol::types::{ThinkingLevel, XyModelMeta};
 
 // ── Model Registry ──────────────────────────────────────────────────
 
@@ -105,7 +105,7 @@ impl AgentCapabilities {
         compaction_threshold: f64,
         cwd: String,
         compaction_settings: Option<CompactionSettings>,
-        model_builder: crate::runtime_protocol::XyModelBuilder,
+        model_builder: crate::protocol::ports::XyModelBuilder,
         permission: Arc<dyn XyPermission>,
         bash_executor: Option<Arc<dyn XyBashExecutor>>,
         export_io: Option<Arc<dyn XyExportIo>>,
@@ -285,7 +285,7 @@ impl AgentCapabilities {
     /// command.
     pub fn register_prompt_commands(
         &mut self,
-        templates: &[crate::domain::resource_types::PromptTemplate],
+        templates: &[crate::protocol::resource::PromptTemplate],
     ) {
         for t in templates {
             self.prompt_templates.push(PromptTemplate {
@@ -405,11 +405,11 @@ impl AgentCapabilities {
 
     /// Enqueue a steering message (injected before the next model round).
     pub fn steer(&self, message: impl Into<String>) {
-        self.steer_parts(vec![crate::domain::message::AgentPart::text(message)]);
+        self.steer_parts(vec![crate::protocol::message::AgentPart::text(message)]);
     }
 
     /// Enqueue a multi-part steering message (c1155).
-    pub fn steer_parts(&self, parts: Vec<crate::domain::message::AgentPart>) {
+    pub fn steer_parts(&self, parts: Vec<crate::protocol::message::AgentPart>) {
         let msg = AgentMessage::user_parts(parts);
         self.queues
             .steer
@@ -421,11 +421,11 @@ impl AgentCapabilities {
 
     /// Enqueue a follow-up message (injected when the run would otherwise stop).
     pub fn follow_up(&self, message: impl Into<String>) {
-        self.follow_up_parts(vec![crate::domain::message::AgentPart::text(message)]);
+        self.follow_up_parts(vec![crate::protocol::message::AgentPart::text(message)]);
     }
 
     /// Enqueue a multi-part follow-up message (c1155).
-    pub fn follow_up_parts(&self, parts: Vec<crate::domain::message::AgentPart>) {
+    pub fn follow_up_parts(&self, parts: Vec<crate::protocol::message::AgentPart>) {
         let msg = AgentMessage::user_parts(parts);
         self.queues
             .follow_up
@@ -499,11 +499,11 @@ impl AgentCapabilities {
     /// Fork the current session at a given entry, creating a child session.
     ///
     /// Returns the child session ID on success. See
-    /// [`crate::domain::session_types::ForkPosition`].
+    /// [`crate::protocol::session::ForkPosition`].
     pub async fn fork_session(
         &self,
         at_entry_id: &str,
-        position: crate::domain::session_types::ForkPosition,
+        position: crate::protocol::session::ForkPosition,
     ) -> Result<String, String> {
         let parent_id = self
             .session_id()
@@ -559,7 +559,7 @@ impl AgentCapabilities {
     /// Replace the skills catalog in the system prompt (c1085).
     ///
     /// Affects the **next** `run` only. Does **not** mutate session history.
-    pub fn apply_skills(&mut self, skills: Vec<crate::domain::resource_types::SkillInfo>) {
+    pub fn apply_skills(&mut self, skills: Vec<crate::protocol::resource::SkillInfo>) {
         self.prompt_opts.skills = skills;
         self.rebuild_system_prompt();
     }
@@ -574,7 +574,7 @@ impl AgentCapabilities {
     }
 
     /// Full skill catalog (paths for `$` SKILL.md expand; c1130).
-    pub fn loaded_skills(&self) -> &[crate::domain::resource_types::SkillInfo] {
+    pub fn loaded_skills(&self) -> &[crate::protocol::resource::SkillInfo] {
         &self.prompt_opts.skills
     }
 
@@ -630,7 +630,7 @@ impl AgentCapabilities {
         command: &str,
         exclude_from_context: bool,
         chunk_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>,
-    ) -> Result<crate::runtime_protocol::XyBashResult, String> {
+    ) -> Result<crate::protocol::ports::XyBashResult, String> {
         if let Some(bus) = &self.hook_bus {
             cancel_hook(
                 bus,
@@ -661,7 +661,7 @@ impl AgentCapabilities {
     pub async fn record_bash_result(
         &self,
         command: &str,
-        result: &crate::runtime_protocol::XyBashResult,
+        result: &crate::protocol::ports::XyBashResult,
         exclude_from_context: bool,
         session_id: Option<&str>,
     ) -> Result<(), String> {
@@ -789,7 +789,7 @@ pub(crate) async fn cancel_hook(
     context: serde_json::Value,
 ) -> Result<(), String> {
     match bus.dispatch(event_type, phase, context).await {
-        crate::runtime_protocol::XyHookOutcome::Blocked { reason } => Err(reason),
+        crate::protocol::ports::XyHookOutcome::Blocked { reason } => Err(reason),
         _ => Ok(()),
     }
 }
@@ -800,7 +800,7 @@ pub(crate) async fn observe_hook(
     phase: &str,
     context: serde_json::Value,
 ) {
-    if let crate::runtime_protocol::XyHookOutcome::Blocked { reason } =
+    if let crate::protocol::ports::XyHookOutcome::Blocked { reason } =
         bus.dispatch(event_type, phase, context).await
     {
         log::warn!(
@@ -845,9 +845,9 @@ mod tests {
 
     fn make_session() -> AgentCapabilities {
         let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
-        let store: std::sync::Arc<dyn crate::runtime_protocol::XySessionStore> =
+        let store: std::sync::Arc<dyn crate::protocol::ports::XySessionStore> =
             std::sync::Arc::new(mgr);
-        let sink: std::sync::Arc<dyn crate::runtime_protocol::XyEventSink> =
+        let sink: std::sync::Arc<dyn crate::protocol::ports::XyEventSink> =
             std::sync::Arc::new(crate::infra::event::EventBus::new());
         AgentCapabilities::new(
             ModelRegistry::new(std::sync::Arc::new(
@@ -878,8 +878,8 @@ mod tests {
         name: &str,
         body: &str,
         source: &str,
-    ) -> crate::domain::resource_types::PromptTemplate {
-        crate::domain::resource_types::PromptTemplate {
+    ) -> crate::protocol::resource::PromptTemplate {
+        crate::protocol::resource::PromptTemplate {
             name: name.into(),
             content: body.into(),
             description: None,
@@ -925,8 +925,8 @@ mod tests {
 
     #[test]
     fn apply_skills_updates_system_keeps_queues_untouched() {
-        use crate::domain::resource_types::SkillInfo;
-        use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
+        use crate::protocol::resource::SkillInfo;
+        use crate::protocol::source_info::{SourceInfo, SourceOrigin, SourceScope};
 
         let mut session = make_session();
         session

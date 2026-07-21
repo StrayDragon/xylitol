@@ -12,7 +12,7 @@
 
 use std::sync::Arc;
 
-use crate::domain::message::AgentMessage;
+use crate::protocol::message::AgentMessage;
 use serde_json::Value;
 
 // ── Hook callback type aliases ──────────────────────────────────────
