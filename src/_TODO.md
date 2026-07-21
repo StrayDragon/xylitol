@@ -65,7 +65,7 @@ F  孪生类型与 protocol↔packages 边界   ← **已关闭**（c1210 compos
 G  观测 kind 打尖                        ← **已关闭**（G1–G4 + TUI/host/dispatch/`from_opaque`）
 ```
 
-可并行项已收束。开放项仅 **C3（可选后置 TypedTool）**；**勿再开**「抽出 `xylitol-domain`」。
+可并行项已收束。**C3 TypedTool 样板已落地**（`ls`/`find`）；其余内置可按需迁。**勿再开**「抽出 `xylitol-domain`」。
 
 **§G 覆盖面（收束）**：ReAct 热路径 · 共享 `dispatch` · in-process/remote 变体升格 · effects（slash/pending_ui/bang）· host（render/input/external editor）。`host/session_ops` **无** `Result`/失败路径（纯 UI mount/apply）。
 
@@ -201,7 +201,7 @@ crate 内热路径 / 内置工具 = struct + serde
   - 顺序完成：`read` → `grep` → `find`/`ls` → `write`/`edit` → `bash`；共享 `infra/tools/args.rs::parse_tool_args`。
 - [x] **C2** schema 与 Args 同构策略二选一（写入决议）：
   - **选定 (a)**：手写 schema 与 Args 字段并置（LLM schema 形状稳定）；Args 用 `serde`/`rename_all = "camelCase"` 对齐。
-- [ ] **C3**（可选后置）`TypedTool` associated type + blanket 擦成 `dyn XyTool` — **搁置**：C1 后无实际痛点；有第二套内置工具装配痛再开。
+- [x] **C3** `TypedTool` associated type + blanket → `dyn XyTool`：`infra/tools/typed.rs`；样板迁 `ls` / `find`。其余内置（含覆写 `execute_as_parts` 的 `read`）仍可直接 `impl XyTool`。
 
 ### 要做 — 钩子
 
@@ -591,7 +591,7 @@ Vec<AiBridgeMessage> → XyModel / dialect adapters
 
 ### §G 状态
 
-- [x] **已关闭**（本轮观测债收束）。后续仅：误伤调 `from_opaque`、或新产品路径补 `log_failure`。
+- [x] **已关闭**（本轮观测债收束）。`from_opaque` 已收窄误伤（去掉裸 `unavailable`，补 Io/InvalidInput 短语）；新产品路径再补 `log_failure`。
 
 ---
 
@@ -629,6 +629,8 @@ Vec<AiBridgeMessage> → XyModel / dialect adapters
 | 2026-07-21 | agent | §G2++ | pending_ui/bang `log_failure`；in_process/remote 升 NotFound/Io/Unsupported/Remote |
 | 2026-07-21 | agent | §G2+++ | slash 非 dispatch 失败打 kind；`From<String>`→`from_opaque` 启发式分类 |
 | 2026-07-21 | agent | §G2++++ | host render/input/external-editor 打 kind；确认 `session_ops` 无 Err；§G **收束关闭** |
+| 2026-07-21 | agent | §G from_opaque | 收窄裸 `unavailable`；补 Io/InvalidInput 短语 + 单测 |
+| 2026-07-21 | agent | §C3 | `TypedTool` + blanket；样板迁 `ls`/`find` |
 |  |  |  |  |
 
 ---

@@ -11,17 +11,17 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::args::parse_tool_args;
 use super::path_utils::resolve_to_cwd;
+use super::typed::TypedTool;
 use crate::protocol::error::XyToolError;
-use crate::protocol::ports::{XyTool, XyToolCtx};
+use crate::protocol::ports::XyToolCtx;
 
 const DEFAULT_LS_LIMIT: usize = 200;
 
 pub struct LsTool;
 
 #[derive(Debug, Deserialize)]
-struct LsArgs {
+pub struct LsArgs {
     #[serde(default = "default_ls_path")]
     path: String,
     #[serde(default = "default_ls_limit")]
@@ -37,7 +37,9 @@ fn default_ls_limit() -> u64 {
 }
 
 #[async_trait]
-impl XyTool for LsTool {
+impl TypedTool for LsTool {
+    type Args = LsArgs;
+
     fn name(&self) -> &str {
         "ls"
     }
@@ -63,11 +65,11 @@ impl XyTool for LsTool {
         })
     }
 
-    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+    async fn execute_typed(&self, ctx: &XyToolCtx, args: LsArgs) -> Result<String, XyToolError> {
         let LsArgs {
             path: dir_path,
             limit,
-        } = parse_tool_args(args)?;
+        } = args;
         let limit = limit as usize;
 
         let resolved = resolve_to_cwd(&dir_path);
@@ -144,6 +146,8 @@ impl XyTool for LsTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::ports::XyTool;
+    use serde_json::json;
 
     fn test_ctx() -> XyToolCtx {
         XyToolCtx::new("test-call")

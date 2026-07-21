@@ -1,7 +1,8 @@
 //! Shared serde helpers for built-in tool argument parsing.
 //!
 //! Trait boundary stays [`serde_json::Value`] (MCP / dynamic tools). Each built-in
-//! tool deserializes once into a typed `*Args` struct at `execute` entry.
+//! tool deserializes once into a typed `*Args` struct — either via
+//! [`super::typed::TypedTool`] blanket or at a manual `execute` entry.
 
 use serde::de::DeserializeOwned;
 use serde_json::Value;
