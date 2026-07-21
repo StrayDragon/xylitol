@@ -24,25 +24,27 @@
 
 ## 超标表（生产模块）
 
-快照日期：ACCT-000022。权威以现场 `wc -l` 为准。
+快照日期：2026-07-21（c1220 后 `wc -l` 重测）。权威以现场 `wc -l` 为准。
 
 | 文件 | 约行数 | 相对硬顶 | 拆分入口 |
 |---|---|---|---|
-| `agent/runtime/react.rs` | 2762 | 超硬顶 | **默认不拆**（同居行为测 ~1500；真剧本 ~780）。见 `_TODO` §D 决议；P3 未开闸 |
-| `infra/session/manager.rs` | 2191 | 超硬顶 | **默认不按 D8–D10 大拆**；生产 ~1653。D11 见 `_TODO` 分诊（a 错置顺手 / b 孤儿真死） |
-| `app/core/driver/in_process.rs` | 1269 | 超软顶 | §D5–D7 已拆；仍可再切 reload/clipboard/tests |
+| `agent/runtime/react.rs` | 2775 | 超硬顶 | **默认不拆**（同居行为测 ~1500；真剧本 ~780）。见 `_TODO` §D 决议；P3 未开闸 |
+| `infra/session/manager.rs` | 2090 | 超硬顶 | **默认不按 D8–D10 大拆**；D11 已做。见 `_TODO` §D |
+| `app/core/driver/in_process.rs` | 1265 | 超软顶 | §D5–D7 已拆；仍可再切 reload/clipboard/tests |
 | `infra/resource/loader.rs` | 1217 | 超软顶 | 暂观察；有改动时顺手拆 |
-| `infra/config/types.rs` | 1188 | 近软顶 | 暂观察（类型清单型文件） |
+| `infra/config/types.rs` | 1190 | 近软顶 | 暂观察（类型清单型文件） |
 | `agent/session/mod.rs` | 1056 | 近软顶 | 暂观察 |
-| `app/core/bootstrap.rs` | 1005 | 近软顶 | 暂观察 |
+| `app/core/bootstrap.rs` | 1007 | 近软顶 | 暂观察 |
 
-`app/core/driver/` 拆后（2026-07-21）：`types` 228 / `proto` 263 / `remote` 755 / `mod` 42；合计约 2557，单文件已无 >2000。
+`app/core/driver/` 拆后：`types` 227 / `proto` 260 / `remote` 753 / `mod` 41；合计约 2546，单文件已无 >2000。
+
+c1220 后 `protocol/` 根模块（均未超软顶，知情）：`session` 820 / `types` 653 / `message` 457 / `lifecycle` 159 / `error` 137。勿为行数再抽 `xylitol-domain`。
 
 ## 测试专用（另计，仅知情）
 
 | 文件 | 约行数 | 备注 |
 |---|---|---|
-| `app/tui/harness.rs` | 4135 | 可按场景族拆文件；不与生产硬顶混用 |
+| `app/tui/harness.rs` | 4144 | 可按场景族拆文件；不与生产硬顶混用 |
 | `app/tui/tests.rs` | 1884 | 同上 |
 
 ## 调音记录
@@ -53,6 +55,7 @@
 | 2026-07-21 | §D5–D7：`driver.rs` → `driver/` 子模块；重测行数 |
 | 2026-07-21 | 决议：react / session manager **默认不大拆**；超标保留并注明理由（见 `_TODO` §D） |
 | 2026-07-21 | D11a+b：EventBus port impl 归 `infra/event`；删除孤儿 `session/tests.rs` |
+| 2026-07-21 | c1220 后重测：react 2775 / manager 2090；protocol 根模块均 < 软顶；F8 domain 包搁置 |
 |  |  |
 
 ## 下次调音
