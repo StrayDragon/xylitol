@@ -9,7 +9,8 @@
 //! secrets and `config.yaml` for shareable settings.
 //!
 //! Before YAML parse, each file is rendered with minijinja
-//! (`{{ env.KEY }}` / `{{ secret.KEY }}`). `secret.env` is loaded first.
+//! (`{{ env.KEY }}` / `{{ secret.KEY }}` / `{{ vars.home }}`). `secret.env`
+//! is loaded first.
 
 use std::path::Path;
 
@@ -55,7 +56,8 @@ pub(crate) struct LoadedAppConfig {
 /// `cli_config` — optional path to a CLI `--config` YAML file (highest priority).
 ///
 /// Side effects: loads `secret.env` into the process environment (unset keys
-/// only) and renders `{{ env.* }}` / `{{ secret.* }}` in each YAML layer.
+/// only) and renders `{{ env.* }}` / `{{ secret.* }}` / `{{ vars.home }}` in
+/// each YAML layer.
 pub(crate) fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, LoadError> {
     Ok(load_app_config_detailed(cli_config)?.config)
 }
