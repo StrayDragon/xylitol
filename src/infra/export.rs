@@ -4,7 +4,7 @@ use std::path::Path;
 
 use async_trait::async_trait;
 
-use crate::runtime_protocol::XyExportIo;
+use crate::protocol::ports::XyExportIo;
 
 /// Filesystem-backed [`XyExportIo`] using `tokio::fs`.
 #[derive(Debug, Default, Clone)]

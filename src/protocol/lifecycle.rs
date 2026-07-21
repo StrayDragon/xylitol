@@ -4,18 +4,18 @@
 //! with a meaningful payload. The `EventBus` runtime (dispatch/subscription)
 //! lives in `infra::event`; this module holds only the event enum and its
 //! handler type alias so both `agent` and `infra` can reference them without
-//! a cross-layer reach. Zero crate-internal deps beyond `domain::message`.
+//! a cross-layer reach. Zero crate-internal deps beyond `protocol::message`.
 //!
 //! **Closed set:** `XyEvent` is the agent lifecycle vocabulary (Agent/Turn/Message/
 //! Tool/Compaction/Queue…), not a dump of provider SSE names. Provider streams map
-//! to [`crate::domain::types::XyChunk`] in adapters, then the ReAct loop emits
+//! to [`crate::protocol::types::XyChunk`] in adapters, then the ReAct loop emits
 //! standard `XyEvent`s. See
 //! `llmanspec/changes/archive/2026-07-11-c520-update-xy-event-extensibility/design.md`.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::domain::message::AgentMessage;
+use crate::protocol::message::AgentMessage;
 
 // ── XyEvent ─────────────────────────────────────────────
 

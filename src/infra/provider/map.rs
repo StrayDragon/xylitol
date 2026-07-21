@@ -1,29 +1,26 @@
-//! Provider boundary maps (c1210: LLM messages are identity / passthrough).
+//! Provider boundary maps (c1210 / c1220).
 //!
-//! Session vocabulary stays on [`AgentMessage`] (`Llm` ∪ `Env`). Bridge DTOs
-//! are LLM-only; [`crate::domain::llm_project::project_for_llm`] folds Env
-//! first. `LlmMessage` is a type alias of [`AiBridgeMessage`], so message maps
-//! are identity.
+//! Session vocabulary stays on [`crate::protocol::message::AgentMessage`]
+//! (`Llm` ∪ `Env`). Bridge DTOs are LLM-only; agent MUST call
+//! [`crate::agent::llm_project::project_for_llm`] before crossing into
+//! [`crate::protocol::ports::XyModel`]. `LlmMessage` ≡
+//! [`xylitol_ai_bridge::dto::AiBridgeMessage`].
 //!
-//! Remaining hand-written maps (true boundary seams):
-//! - `TokenProvenance` / `ContextTokenEstimate` — `From` bridge → domain
-//! - chunk / tool-schema / error boundary conversion
-//!
-//! Ownership: `src/AGENTS.md`「Provider 适配」；`src/_TODO.md` §F.
+//! This module maps chunk / tool-schema / error / token-estimate seams only —
+//! no `AgentMessage` folding paths.
 
 use futures::StreamExt;
 use xylitol_ai_bridge::dto::{
-    AiBridgeChunk, AiBridgeMessage, AiBridgeStream, AiBridgeToolSchema,
+    AiBridgeChunk, AiBridgeStream, AiBridgeToolSchema,
     ContextTokenEstimate as AiBridgeContextTokenEstimate,
     TokenProvenance as AiBridgeTokenProvenance,
 };
 use xylitol_ai_bridge::error::AiBridgeError;
 
-use crate::domain::error::XyError;
-use crate::domain::llm_project::project_for_llm;
-use crate::domain::message::{AgentMessage, LlmMessage, XyUsage};
-use crate::domain::types::{ContextTokenEstimate, TokenProvenance, XyChunk, XyToolSchema};
-use crate::runtime_protocol::XyStream;
+use crate::protocol::error::XyError;
+use crate::protocol::message::XyUsage;
+use crate::protocol::ports::XyStream;
+use crate::protocol::types::{ContextTokenEstimate, TokenProvenance, XyChunk, XyToolSchema};
 
 impl From<AiBridgeTokenProvenance> for TokenProvenance {
     fn from(value: AiBridgeTokenProvenance) -> Self {
@@ -47,28 +44,6 @@ impl From<AiBridgeContextTokenEstimate> for ContextTokenEstimate {
             last_usage_index: value.last_usage_index,
         }
     }
-}
-
-/// Project session messages to LLM bridge DTOs (provider entry).
-pub fn to_bridge_messages(messages: Vec<AgentMessage>) -> Result<Vec<AiBridgeMessage>, XyError> {
-    Ok(project_for_llm(&messages))
-}
-
-/// Map a single LLM-role [`AgentMessage`] to bridge DTO (identity on Llm arm).
-pub fn to_bridge_message(msg: AgentMessage) -> Result<AiBridgeMessage, XyError> {
-    match msg {
-        AgentMessage::Llm(m) => Ok(m),
-        AgentMessage::Env(e) => Err(XyError::Provider(anyhow::anyhow!(
-            "to_bridge_message expects Llm after projection; got Env {}",
-            e.role_name()
-        ))),
-    }
-}
-
-/// Identity: [`LlmMessage`] ≡ [`AiBridgeMessage`].
-#[inline]
-pub fn to_bridge_llm_message(msg: LlmMessage) -> AiBridgeMessage {
-    msg
 }
 
 pub fn to_bridge_tools(tools: &[XyToolSchema]) -> Vec<AiBridgeToolSchema> {
@@ -143,31 +118,8 @@ pub fn to_xy_stream(stream: AiBridgeStream) -> XyStream {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::message::{AgentMessage, XyStopReason};
+    use crate::protocol::message::XyStopReason;
     use xylitol_ai_bridge::dto::{AiBridgeStopReason, AiBridgeUsage};
-
-    #[test]
-    fn llm_user_maps_to_bridge() {
-        let msg = AgentMessage::user("hello");
-        let bridge = to_bridge_message(msg).expect("to bridge");
-        assert_eq!(bridge.role_name(), "user");
-        assert_eq!(bridge.text(), "hello");
-    }
-
-    #[test]
-    fn bash_projects_then_maps() {
-        let msgs = vec![AgentMessage::bash("echo hi", "hi", Some(0))];
-        let bridge = to_bridge_messages(msgs).expect("project+map");
-        assert_eq!(bridge.len(), 1);
-        assert_eq!(bridge[0].role_name(), "user");
-        assert!(bridge[0].text().contains("echo hi"));
-    }
-
-    #[test]
-    fn env_rejected_without_projection() {
-        let msg = AgentMessage::bash("x", "y", None);
-        assert!(to_bridge_message(msg).is_err());
-    }
 
     #[test]
     fn chunk_maps_done_usage() {

@@ -5,8 +5,8 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::domain::error::XyToolError;
-use crate::domain::message::AgentPart;
+use crate::protocol::error::XyToolError;
+use crate::protocol::message::AgentPart;
 
 /// Context passed to tool execution.
 #[derive(Clone)]
@@ -15,7 +15,7 @@ pub struct XyToolCtx {
     pub call_id: String,
     /// Cancellation token — tools should check this and abort if cancelled.
     pub cancel: CancellationToken,
-    /// Optional live output uplink for [`crate::domain::lifecycle::XyEvent::ToolExecutionUpdate`].
+    /// Optional live output uplink for [`crate::protocol::lifecycle::XyEvent::ToolExecutionUpdate`].
     ///
     /// Long-running tools (e.g. bash) SHOULD send progressive chunks here while
     /// executing. ReAct drains this channel and emits Update events. `None` for

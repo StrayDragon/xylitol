@@ -36,7 +36,7 @@ use crate::app::tui::session_resume::SessionResumePanel;
 use crate::app::tui::widgets::{
     GlyphSet, ScrollbackFold, footer_thinking_label, format_footer_text,
 };
-use crate::domain::types::ThinkingLevel;
+use crate::protocol::types::ThinkingLevel;
 
 pub(super) fn empty_tree_selector(theme: LayoutTheme) -> TreeSelector {
     TreeSelector::new(

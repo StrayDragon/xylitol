@@ -19,7 +19,7 @@ pub use fake::*;
 #[cfg(test)]
 pub use mock::MockXyModel;
 
-pub use crate::domain::types::{ContextTokenEstimate, TokenProvenance};
+pub use crate::protocol::types::{ContextTokenEstimate, TokenProvenance};
 
 /// Re-export provider-trace gate so CLI logging keeps a stable path.
 pub mod trace {

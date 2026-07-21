@@ -13,13 +13,13 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::runtime_protocol::{XyReloadable, XyResourceLoader};
+use crate::protocol::ports::{XyReloadable, XyResourceLoader};
 
 // ── ResourceDiagnostic ────────────────────────────────────────────────
 
 // Resource metadata types relocated to `domain::resource_types` (shared vocabulary).
 // `DefaultResourceLoader` (the runtime/loader impl) stays here in infra.
-pub use crate::domain::resource_types::{
+pub use crate::protocol::resource::{
     AgentsFile, PromptTemplate, ResourceDiagnostic, SkillInfo, ThemeInfo,
 };
 
@@ -995,7 +995,7 @@ mod tests {
         let s = skills.iter().find(|s| s.name == "from-agents").unwrap();
         assert_eq!(
             s.source_info.scope,
-            crate::domain::source_info::SourceScope::Project
+            crate::protocol::source_info::SourceScope::Project
         );
     }
 
@@ -1052,7 +1052,7 @@ mod tests {
             .expect("user .agents skill");
         assert_eq!(
             s.source_info.scope,
-            crate::domain::source_info::SourceScope::User
+            crate::protocol::source_info::SourceScope::User
         );
     }
 
@@ -1181,7 +1181,7 @@ mod tests {
 
     #[test]
     fn test_reload_picks_up_changed_agents_md() {
-        use crate::runtime_protocol::XyReloadable;
+        use crate::protocol::ports::XyReloadable;
 
         let tmp = tempfile::tempdir().unwrap();
         let agent_dir = tempfile::tempdir().unwrap();

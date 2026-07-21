@@ -4,7 +4,7 @@
 //! and `infra::{config, settings}` (file loading). Zero crate-internal deps.
 //!
 //! JSON Schema for config/settings files is derived on infra DTOs / `schemars(with=…)`
-//! twins (c510); this domain type stays serde-only.
+//! twins (c510); this protocol type stays serde-only.
 
 use serde::{Deserialize, Serialize};
 

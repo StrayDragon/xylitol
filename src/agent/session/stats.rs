@@ -1,6 +1,6 @@
 //! Session statistics and context-usage estimation (spec c255 / as32).
 
-use crate::runtime_protocol::XySessionStore;
+use crate::protocol::ports::XySessionStore;
 
 /// Statistics for a session.
 #[derive(Debug, Clone)]
@@ -53,7 +53,7 @@ pub struct ContextUsage {
 pub use crate::agent::compaction::orchestrator::should_compact;
 
 /// Estimate token count from messages via accounting (Heuristic fallback).
-pub fn estimate_tokens(messages: &[crate::domain::message::AgentMessage]) -> u64 {
+pub fn estimate_tokens(messages: &[crate::protocol::message::AgentMessage]) -> u64 {
     crate::agent::compaction::token_estimator::estimate_context_tokens(messages, None).tokens
 }
 

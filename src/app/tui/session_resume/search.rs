@@ -4,7 +4,7 @@ use regex::Regex;
 use xylitol_tui::fuzzy_match;
 
 use crate::app::core::driver::SessionListEntry;
-use crate::runtime_protocol::flatten_session_forest;
+use crate::protocol::ports::flatten_session_forest;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SortMode {

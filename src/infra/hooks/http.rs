@@ -10,7 +10,7 @@ use std::sync::Arc;
 use serde_json::{Map, Value};
 
 use super::{DispatchResult, HookDispatcher, HookEvent, HookPhase};
-use crate::domain::error::XyError;
+use crate::protocol::error::XyError;
 
 /// Portable request/response header bag (lowercase keys preferred).
 pub type HeaderBag = Map<String, Value>;

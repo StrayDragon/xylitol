@@ -6,7 +6,7 @@
 
 use serde_json::Value;
 
-use super::message::AgentPart;
+use crate::protocol::message::AgentPart;
 
 /// Split a tool execute preview into LLM-facing content + optional UI details.
 pub fn quiet_write_edit_for_history(

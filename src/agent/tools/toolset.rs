@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use crate::runtime_protocol::XyTool;
+use crate::protocol::ports::XyTool;
 
 /// A build-time-final set of tools.
 #[derive(Clone, Default)]

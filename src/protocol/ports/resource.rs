@@ -1,6 +1,6 @@
 //! Runtime boundary for resource loading.
 
-use crate::domain::resource_types::{AgentsFile, ResourceDiagnostic, SkillInfo};
+use crate::protocol::resource::{AgentsFile, ResourceDiagnostic, SkillInfo};
 
 /// Resource loader port — abstracts discovery of project context files,
 /// prompt templates, skills, themes, and system prompts.

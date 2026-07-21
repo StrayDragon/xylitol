@@ -1,6 +1,6 @@
 //! Rebuild live scrollback after MessageHistory travel (c615 / c646).
 
-use crate::domain::session_types::{
+use crate::protocol::session::{
     SessionEntry, SessionTreeTravel, is_tool_call_part, message_parts, message_role, message_text,
     tool_call_name,
 };
@@ -263,7 +263,7 @@ fn assistant_parts_to_ui(entry_id: &str, message: &Value) -> Vec<UiEntry> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::session_types::{EntryBase, MessageEntry, fixture_message_json};
+    use crate::protocol::session::{EntryBase, MessageEntry, fixture_message_json};
     use serde_json::json;
 
     #[test]

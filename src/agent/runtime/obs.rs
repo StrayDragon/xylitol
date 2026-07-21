@@ -15,8 +15,8 @@ use fastrace_futures::StreamExt as _;
 use futures::Stream;
 use xylitol_ai_bridge::provider::trace::provider_trace_active;
 
-use crate::domain::error::XyError;
-use crate::domain::types::XyChunk;
+use crate::protocol::error::XyError;
+use crate::protocol::types::XyChunk;
 
 type ChunkStream = Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
 

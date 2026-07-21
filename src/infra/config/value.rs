@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::runtime_protocol::XySecretResolver;
+use crate::protocol::ports::XySecretResolver;
 
 // ── Types ──────────────────────────────────────────────────────────
 

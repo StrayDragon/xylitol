@@ -12,8 +12,8 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::domain::error::XyToolError;
-use crate::runtime_protocol::{XyTool, XyToolCtx};
+use crate::protocol::error::XyToolError;
+use crate::protocol::ports::{XyTool, XyToolCtx};
 
 use super::args::parse_tool_args;
 use super::mutation::FileMutationQueue;

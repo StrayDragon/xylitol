@@ -8,10 +8,10 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use crate::domain::model::{XyModelConfig, XyModelKind};
 use crate::infra::provider::adapter::{AdapterXyModel, factory::build_adapter};
 use crate::infra::provider::{FakeProvider, ScenarioStep};
-use crate::runtime_protocol::XyModel;
+use crate::protocol::model_config::{XyModelConfig, XyModelKind};
+use crate::protocol::ports::XyModel;
 
 thread_local! {
     static FAKE_TEXT: RefCell<Option<String>> = const { RefCell::new(None) };

@@ -1,9 +1,8 @@
-//! Runtime protocol — boundary traits between [`crate::agent`] and [`crate::infra`].
+//! Ports — boundary traits between [`crate::agent`] and [`crate::infra`].
 //!
-//! This layer contains only trait contracts and their signature-only
-//! associated types. It depends on [`crate::domain`] for pure data types
-//! and errors, and it must never depend on concrete `agent/` or `infra/`
-//! implementations.
+//! Trait contracts and signature-only associated types. Depends on protocol-root
+//! shared types (and MAY depend on `xylitol_ai_bridge::dto`). MUST NOT depend on
+//! [`crate::protocol::wire`], `agent/`, or `infra/` implementations.
 
 pub mod bash;
 pub mod event;
@@ -20,7 +19,8 @@ pub mod tool;
 pub mod trust;
 
 // Flat re-exports for the common case where callers import the boundary
-// trait directly from `runtime_protocol` rather than from its submodule.
+// trait directly from `protocol::ports` (or via `protocol` root) rather than
+// from its submodule.
 pub use bash::{BashExecOpts, XyBashExecutor, XyBashResult};
 pub use event::{LifecycleHandler, XyEventSink};
 pub use export::XyExportIo;

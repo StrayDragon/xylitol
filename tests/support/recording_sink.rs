@@ -7,8 +7,8 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 
-use crate::domain::lifecycle::XyEvent;
-use crate::runtime_protocol::XyEventSink;
+use crate::protocol::lifecycle::XyEvent;
+use crate::protocol::ports::XyEventSink;
 
 /// Collects lifecycle events into a `Vec` for later assertion.
 pub struct RecordingSink {

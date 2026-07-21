@@ -29,13 +29,13 @@ use std::sync::Arc;
 use crate::agent::model::resolver;
 use crate::agent::session::ModelRegistry;
 use crate::app::core::composition::{BuildAgentOptions, build_agent};
-use crate::domain::resource_types::PromptTemplate;
-use crate::domain::types::XyModelMeta;
 use crate::infra::config::loader::load_app_config_detailed;
 use crate::infra::config::value::InfraSecretResolver;
 use crate::infra::permission;
 use crate::infra::session::SessionManager;
 use crate::infra::timing;
+use crate::protocol::resource::PromptTemplate;
+use crate::protocol::types::XyModelMeta;
 
 /// Inputs to [`bootstrap`] / `resolve_assembly`, mirroring the CLI flags that
 /// drive assembly.
@@ -103,7 +103,7 @@ pub struct BootstrappedAgent {
     /// Surfaces construct an [`crate::app::core::driver::XyInProcessDriver`] from this + the agent so
     /// XyDriver session commands (SwitchSession/GetMessages) operate without
     /// reaching into agent internals.
-    pub store: Arc<dyn crate::runtime_protocol::XySessionStore>,
+    pub store: Arc<dyn crate::protocol::ports::XySessionStore>,
     /// MCP servers from loaded config (`None` / empty = disabled, zero-cost).
     pub mcp_servers: Option<Vec<crate::app::core::mcp_spec::McpServerSpec>>,
 }
@@ -151,11 +151,11 @@ pub struct ResolvedAssembly {
     pub context_files: Vec<(String, String)>,
     pub append_system_prompt: Vec<String>,
     /// Skills discovered under Trust semantics (c1085).
-    pub skills: Vec<crate::domain::resource_types::SkillInfo>,
+    pub skills: Vec<crate::protocol::resource::SkillInfo>,
     pub compaction_threshold: f64,
     pub cwd: String,
     pub compaction_settings: Option<crate::agent::compaction::CompactionSettings>,
-    pub permission: Option<Arc<dyn crate::runtime_protocol::XyPermission>>,
+    pub permission: Option<Arc<dyn crate::protocol::ports::XyPermission>>,
     pub steering_mode: crate::agent::session::QueueMode,
     pub follow_up_mode: crate::agent::session::QueueMode,
     pub discovered_templates: Vec<PromptTemplate>,
@@ -246,7 +246,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
     timing::time("config.load");
 
     // ── Step 2: build ModelRegistry ───────────────────────────────
-    let secret_resolver: Arc<dyn crate::runtime_protocol::XySecretResolver> =
+    let secret_resolver: Arc<dyn crate::protocol::ports::XySecretResolver> =
         Arc::new(InfraSecretResolver::new());
     let mut model_registry = ModelRegistry::new(secret_resolver);
 
@@ -266,7 +266,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                 crate::agent::model::registry::default_context_window_for(entry.provider)
             };
 
-            let levels = match crate::domain::types::ThinkingLevel::resolve_configured_levels(
+            let levels = match crate::protocol::types::ThinkingLevel::resolve_configured_levels(
                 entry.thinking,
                 entry.thinking_levels.as_deref(),
             ) {
@@ -279,7 +279,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                 }
             };
             if let Some(map) = &entry.thinking_level_map
-                && let Err(e) = crate::domain::types::validate_thinking_level_map(map)
+                && let Err(e) = crate::protocol::types::validate_thinking_level_map(map)
             {
                 warnings.push(BootstrapWarning::ModelEntrySkipped(format!(
                     "models.{alias}: {e}"
@@ -291,7 +291,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
 
             model_registry.register(XyModelMeta {
                 id: alias.clone(),
-                config: crate::domain::model::XyModelConfig {
+                config: crate::protocol::model_config::XyModelConfig {
                     kind: entry.provider,
                     api_key: api_key.expect("checked above"),
                     model: entry.model.clone(),
@@ -326,12 +326,12 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
             (
                 "openai",
                 "OPENAI_API_KEY",
-                crate::domain::model::XyModelKind::OpenAi,
+                crate::protocol::model_config::XyModelKind::OpenAi,
             ),
             (
                 "anthropic",
                 "ANTHROPIC_API_KEY",
-                crate::domain::model::XyModelKind::Anthropic,
+                crate::protocol::model_config::XyModelKind::Anthropic,
             ),
         ] {
             if let Ok(key) = std::env::var(env_var)
@@ -340,7 +340,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
             {
                 model_registry.register(XyModelMeta {
                     id: model_id.to_string(),
-                    config: crate::domain::model::XyModelConfig {
+                    config: crate::protocol::model_config::XyModelConfig {
                         kind,
                         api_key: key,
                         model: model_id.to_string(),
@@ -357,7 +357,7 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
                     cost_cache_read: 0.0,
                     cost_cache_write: 0.0,
                     max_tokens: 0,
-                    thinking_levels: crate::domain::types::ThinkingLevel::STANDARD
+                    thinking_levels: crate::protocol::types::ThinkingLevel::STANDARD
                         .iter()
                         .map(|l| l.as_str().to_string())
                         .collect(),
@@ -689,15 +689,15 @@ pub fn reload_prompt_context(
 }
 
 /// Read the API key for a provider from environment variables.
-fn resolve_api_key(kind: crate::domain::model::XyModelKind) -> Option<String> {
+fn resolve_api_key(kind: crate::protocol::model_config::XyModelKind) -> Option<String> {
     match kind {
-        crate::domain::model::XyModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
+        crate::protocol::model_config::XyModelKind::OpenAi => std::env::var("OPENAI_API_KEY")
             .or_else(|_| std::env::var("OPENAI_KEY"))
             .ok(),
-        crate::domain::model::XyModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
+        crate::protocol::model_config::XyModelKind::Anthropic => std::env::var("ANTHROPIC_API_KEY")
             .or_else(|_| std::env::var("ANTHROPIC_KEY"))
             .ok(),
-        crate::domain::model::XyModelKind::Fake => Some(String::new()),
+        crate::protocol::model_config::XyModelKind::Fake => Some(String::new()),
     }
 }
 
@@ -717,7 +717,7 @@ mod tests {
     use super::*;
     use crate::app::core::composition::{BuildAgentOptions, build_agent};
     use crate::app::core::driver::XyInProcessDriver;
-    use crate::runtime_protocol::XySessionStore;
+    use crate::protocol::ports::XySessionStore;
     use std::sync::Arc;
 
     fn make_driver() -> XyInProcessDriver {
@@ -953,8 +953,8 @@ mod tests {
 
     #[test]
     fn build_agent_with_skills_injects_available_skills_section() {
-        use crate::domain::resource_types::SkillInfo;
-        use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
+        use crate::protocol::resource::SkillInfo;
+        use crate::protocol::source_info::{SourceInfo, SourceOrigin, SourceScope};
 
         let mut opts = BuildAgentOptions::default();
         opts.skills = vec![SkillInfo {
