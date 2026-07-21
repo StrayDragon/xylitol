@@ -8,7 +8,8 @@ depends_on:
 author: agent
 branch: feature/c1485-add-otel-usage-io
 base_sha: c8fa127776ea9cd8bb8ddcc23dfd7c9661721249
-checkpointed: false
+checkpointed: true
+checkpoint_sha: c8fa127776ea9cd8bb8ddcc23dfd7c9661721249
 ---
 
 # c1485-add-otel-usage-io
