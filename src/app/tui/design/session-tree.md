@@ -39,7 +39,7 @@ components:
    - Shift+F fork：demo `ast5`（同会话）；产品 **c645** = XyDriver 新 session（user Before / 非 user At）。
    - **产品（c615）**：Enter MUST 调 `travel_session_tree`；`editor_text` 有值时预填；scrollback 按 travel `leaf_id` ancestry 最佳努力重建。
 6. **搜索**：对 label / kind / annotation 增量过滤（与 `include_node` AND）— 产品 **c635**；槽上 Search 行 **c685**。
-7. **翻页**：←→ 与 PgUp/PgDn 按 `max_visible` 翻页。
+7. **翻页**：`tui.select.pageUp|pageDown` **默认无按键**（裸 ←→ 留给 `/model` picker 调 thinking）；需要时经 `keybindings.json` 绑定 PgUp/PgDn 等。
 8. **Filter**（产品 **c635**，对齐 pi）：Ctrl+D → default；Ctrl+T/U/L/A **toggle** ↔ default；Ctrl+O cycle forward；Ctrl+Shift+O cycle backward（**c685**）；default 藏 `kind=meta` bookkeeping；状态行 `(i/n)` + 非 default 时 `[filter]`（无 `[default]`）。
 9. **Fold / 分支跳转**：Ctrl/Alt+←→；连接符 ⊞/⊟（c467）— 产品 **c640**。
 10. **Annotation**：可选 `[annotation]` + Shift+L 编辑 + Shift+T 时间戳 — 产品 **c690**。

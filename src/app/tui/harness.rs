@@ -2475,7 +2475,7 @@ mod slice_tests {
         session.step(HostEvent::Input(bare_left_event())).unwrap();
         assert!(
             !root.borrow().tree_is_folded_for_test("u1"),
-            "bare Left must page, not fold"
+            "bare Left must not fold (page chords unbound; fold is Ctrl/Alt+Left)"
         );
         let panel = root.borrow_mut().tree_panel_text_for_test(80);
         assert!(
