@@ -1,15 +1,15 @@
 kind: llman.sdd.spec
 name: "agent-runtime"
 purpose: "薄编排 ReAct 运行时：AgentRuntime 循环、工具批执行、steer/follow-up 队列、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
-valid_scope[3]: src/agent/,src/runtime_protocol/,tests/
+valid_scope[3]: src/agent/,src/protocol/,tests/
 requirements[25]{req_id,title,statement}:
   ar1,"thin-react-loop","agent/ 层 MUST 以 AgentRuntime（runtime/react.rs）驱动 ReAct：调用 XyModel、执行工具、直至无 tool_calls、abort、或可选 should_stop_after_turn 请求停；MUST NOT 以 max_iterations 或等价硬步数闸结束 run；MUST NOT 在循环文件内联 bash 实现或厂商 HTTP。"
   ar2,"xy-event-stream",运行时 MUST 以 XyEvent 异步流对外输出（TextDelta / ThinkingDelta / Tool* / Turn* / QueueUpdate / Error 等）；MUST NOT 再引入 AgentEvent 或 adk 事件类型。
   ar3,工具批后继续,"同一模型响应中的全部工具调用 MUST 在下一轮模型调用前执行完毕（可并行或串行）；MUST NOT 因流结束 Done 而提前结束含 tool_calls 的回合。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。"
   ar21,"tool-intent-before-execution","ReAct 消费 XyChunk::ToolCallStart/Delta/End 时：流式阶段 MUST 经 MessageUpdate（message 含渐进 ToolCall 部分）暴露工具意图；MUST NOT 在流未结束（MessageEnd 前）发射 ToolExecutionStart 或执行工具副作用。ToolExecutionStart/Update/End MUST 仅在 MessageEnd 之后的执行路径发出。该行为 MUST 有可执行 BDD 或等价单测场景。"
   ar22,"system-via-generate-options","配置的 system prompt MUST 经 XyGenerateOptions.system_prompt 传给模型适配层；MUST NOT 将 system 正文作为 AgentMessage::user 写入会话 history（空会话首条 MUST 为真实用户输入）。由 ReAct 单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。"
-  ar4,"builder-ports",Agent 装配 MUST 经 AgentBuilder，依赖 runtime_protocol 端口与纯数据；app 组合根注入具体 infra 实现。装配入口由单元测试 / 组合根覆盖，MUST NOT 为静态存在性单独扩 BDD step。
-  ar5,"sessionstore-eventsink",runtime_protocol MUST 提供 SessionStore 与 EventSink；SessionManager / EventBus 为实现。端口存在性由类型系统与组合根覆盖，MUST NOT 为 trait 存在性单独扩 BDD step。
+  ar4,"builder-ports",Agent 装配 MUST 经 AgentBuilder，依赖 protocol 端口与 agent 会话词汇；app 组合根注入具体 infra 实现。装配入口由单元测试 / 组合根覆盖，MUST NOT 为静态存在性单独扩 BDD step。
+  ar5,"sessionstore-eventsink",protocol MUST 提供 SessionStore 与 EventSink；SessionManager / EventBus 为实现。端口存在性由类型系统与组合根覆盖，MUST NOT 为 trait 存在性单独扩 BDD step。
   ar6,"mutable-slots-next-turn",set_tools / set_hooks / set_system_prompt 等 MUST 只影响下一轮 run；进行中回合使用启动快照。
   ar7,"hooks-at-tool-boundary",工具执行前 MUST 跑 before 链（可拒绝）；之后 MUST 跑 after 链；无 hook 时零开销。
   ar8,"pending-queues","MUST 提供独立的 steer 与 follow_up 队列（enqueue/drain/clear）；ReAct MUST 在模型调用前 drain steer；在将因无 tool_calls 而结束前 drain follow_up（非空则继续）；若 should_stop_after_turn 已请求停，MUST NOT drain steer 或 follow_up。"
@@ -38,7 +38,7 @@ scenarios[15]{req_id,id,given,when,then,feature}:
   ar18,roundtrip,构造 XyEvent TextDelta,经 protocol 往返,字段保留,false
   ar6,"mid-turn-set-tools",回合进行中 set_tools,本回合,仍用旧工具集,false
   ar4,"builder-build",AgentBuilder 已装配依赖,build,得到 AgentRuntime,false
-  ar5,"ports-exist",检查 runtime_protocol 端口,SessionStore 与 EventSink,trait 存在且可被实现,false
+  ar5,"ports-exist",检查 protocol 端口,SessionStore 与 EventSink,trait 存在且可被实现,false
   ar19,"trusted-reload",项目信任且 cwd 有 AGENTS.md,调用 reload_prompt_context,agent 系统提示含该 AGENTS 内容,false
   ar19,"untrusted-skip",项目未信任且仅项目目录有 AGENTS.md,调用 reload_prompt_context,系统提示 MUST NOT 含该项目 AGENTS 正文,false
   ar20,"trusted-reload",项目信任且 cwd 有 skill,调用 reload_skills,agent 系统提示或目录 API 含该 skill 名,false

@@ -3,10 +3,11 @@
 功能: layer-architecture
 
   @req:la1
-  场景: shared-types-in-domain
-    假如 agent/ 与 infra/ 均需纯数据类型
-    当 声明并导入类型
-    那么 两层均从 crate::domain 导入且 runtime_protocol 从 crate::runtime_protocol 导入
+  场景: shared-types-in-agent-and-protocol
+    假如 agent/ 与 infra/ 需要跨边界类型或端口
+    当 声明并导入
+    那么 共享词汇自 crate::protocol::vocab（或 agent/crate 再导出）导入；ports 自 protocol::ports；线协议自 protocol::wire
+    并且 不存在独立 src/domain/ 或 src/runtime_protocol/ 顶栏
 
   @req:la2
   场景: app-layer-via-seam
@@ -92,22 +93,22 @@
     那么 三者均调用 app::core::composition::build_agent 而非重复接线
 
   @req:la16
-  场景: xy-domain-types
-    假如 公共 domain 类型对外
+  场景: xy-shared-types
+    假如 公共跨层类型对外
     当 应用变更后
-    那么 重命名为 Xy 并一致导入
+    那么 重命名为 Xy 并一致导入（归属 agent/ 或 protocol/）
 
   @req:la17
   场景: xy-protocol-ports
-    假如 引用 runtime_protocol trait
+    假如 引用 protocol 端口 trait
     当 应用变更后
-    那么 重命名为 Xy 并由 infra 实现
+    那么 重命名为 Xy 并由 infra 实现；路径为 crate::protocol
 
   @req:la18
   场景: event-layer-check
     假如 定位事件类型与端口
     当 检查 src
-    那么 XyEvent 在 domain 且 XyEventSink 在 runtime_protocol
+    那么 XyEvent 在 protocol/vocab（或精选 pub use）且 XyEventSink 在 protocol/ports；wire Event 与之分离
 
   @req:la18
   场景: closed-set
@@ -167,8 +168,8 @@
     那么 不改 AgentMessage 的 Env/LLM 角色集（仅新 adapter/配置）
 
   @req:la25
-  场景: domain-no-sdk
-    假如 src/domain 与 src/agent
+  场景: agent-no-sdk
+    假如 src/agent 与 src/protocol
     当 rg async_openai 或 anthropic SDK
     那么 零匹配（允许依赖 bridge DTO，禁止 SDK）
 
@@ -203,5 +204,5 @@
 
   @req:r12
   场景: no-domain-jsonschema
-    当 rg JsonSchema 于 src/domain
-    那么 零匹配
+    当 rg JsonSchema 于已删除的 src/domain 或现存 agent/protocol 词汇模块
+    那么 零匹配（不得给会话词汇挂 JsonSchema）

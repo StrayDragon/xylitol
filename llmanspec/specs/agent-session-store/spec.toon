@@ -27,9 +27,9 @@ requirements[29]{req_id,title,statement}:
   sc2,CWD 错误,System MUST 提供 MissingSessionCwdError，携带会话文件路径、存储 cwd 与 fallback cwd。
   sc3,CWD 格式化,System MUST 提供 format_missing_session_cwd_error 与 format_missing_session_cwd_prompt 用于面向用户的消息。
   sc4,CWD 集成,CLI 与 RPC 模式 MUST 在恢复会话前调用 assert_session_cwd_exists。
-  sp1,SessionStore 实现,"infra::session::SessionManager MUST 实现 runtime_protocol::SessionStore，含 append、load、exists，仅覆盖 agent 循环与 compaction 所需；完整 SessionManager 面（fork、navigate、export）MAY 留在具体结构体供组合根直接使用。"
-  sp2,SessionStore 实现,"infra::session::SessionManager MUST 实现 runtime_protocol::SessionStore，含 load_context、append、exists，仅覆盖 agent 循环与 compaction 所需；完整 SessionManager 面（fork/navigate/export）MAY 留在具体结构体供 app 组合根使用。"
+  sp1,SessionStore 实现,"infra::session::SessionManager MUST 实现 protocol::SessionStore，含 append、load、exists，仅覆盖 agent 循环与 compaction 所需；完整 SessionManager 面（fork、navigate、export）MAY 留在具体结构体供组合根直接使用。"
+  sp2,SessionStore 实现,"infra::session::SessionManager MUST 实现 protocol::SessionStore，含 load_context、append、exists，仅覆盖 agent 循环与 compaction 所需；完整 SessionManager 面（fork/navigate/export）MAY 留在具体结构体供 app 组合根使用。"
   sp6,日志访问,"会话 store MUST 暴露 read_recent(session_id, limit) -> Vec<Event> 供 server journal；journal 容量 MUST 可配置（默认 10000）。"
-  sp3,ExportIo 实现,"infra/ MUST 提供 runtime_protocol::export::ExportIo 实现（StdExportIo），使用 tokio::fs 做 write_text 与 read_bytes；组合根 MUST 注入 AgentSession。"
+  sp3,ExportIo 实现,"infra/ MUST 提供 protocol::export::ExportIo 实现（StdExportIo），使用 tokio::fs 做 write_text 与 read_bytes；组合根 MUST 注入 AgentSession。"
   s12,延迟持久化至 assistant,Persisted SessionManager（非 in_memory backend）MUST 对齐 pi：首条 assistant 消息写入前，会话条目可仅保留在内存；首条 assistant append 时 MUST 创建磁盘 jsonl（若尚不存在）并刷出此前挂起条目（含 header 与先前 user 等）；其后每次 append MUST 落盘。InMemory backend MUST NOT 写文件。MUST NOT 在仅有 header、用户又放弃对话时强制留下无消息垃圾文件作为唯一策略（允许 create 仍写 header，但 deferred 刷出路径 MUST 存在并可测）。
 scenarios[0]:

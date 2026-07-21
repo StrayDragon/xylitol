@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "runtime-resource-discovery"
 purpose: 统一资源发现：skills、prompt 模板、themes、AGENTS.md / SYSTEM 与诊断（list/info/doctor）。
-valid_scope[4]: src/infra/resource/,src/domain/resource_types.rs,src/runtime_protocol/resource.rs,src/runtime_protocol/reload.rs
+valid_scope[2]: src/infra/resource/,src/protocol/
 requirements[12]{req_id,title,statement}:
   rd1,资源列表,System MUST 提供只读命令，列出全部已发现 skills、prompts、themes 及其 source scope 与 path。
   rd2,资源详情,System MUST 提供命令展示单个命名资源详情，未找到时以非零退出。

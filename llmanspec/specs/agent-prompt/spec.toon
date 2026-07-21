@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "agent-prompt"
 purpose: 系统提示组装与资源模板：skills/context 注入、可选 prompt 模板展开（非 Jinja；产品主路径用 skill 而非 prompt slash）。
-valid_scope[3]: src/agent/prompt/,src/runtime_protocol/resource.rs,src/infra/resource/
+valid_scope[3]: src/agent/prompt/,src/protocol/,src/infra/resource/
 requirements[9]{req_id,title,statement}:
   pt1,"system-assembly",System MUST 经 build_system_prompt（或等价）组装系统提示，可包含工具片段、skills 摘要、context 文件、日期与 CWD；自定义 system 文件可替换或 append。
   pt2,"skills-section",当 ResourceLoader 发现 skills 时，系统提示 MUST 能包含 available_skills（或等价）清单供模型发现；未信任项目 MUST NOT 注入项目 skills。

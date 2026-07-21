@@ -1,117 +1,52 @@
 ---
 change_id: c1220-refactor-fuse-domain-runtime-protocol
-title: 消除纯 domain 层——类型就地融合；ports 收拢；agent ≈ pi-agent-core
-status: purpose-draft
+title: 消除纯 domain 层——类型就地融合；ports 并入 protocol；agent ≈ pi-agent-core
+status: full
 priority: 1220
 depends_on:
-  - c1210-refactor-compose-bridge-llm
+- c1210-refactor-compose-bridge-llm
 author: agent
+branch: feat/c1220-refactor-fuse-domain-runtime-protocol
+base_sha: 92fe7048a544aab9c8e4d0ea59b0ea8206150b25
+checkpointed: false
 ---
 
 # c1220-refactor-fuse-domain-runtime-protocol
 
-> **状态**：purpose-draft（仅意向说明，未 attach / 未改 live specs）。
-> **依赖**：MUST 先完成并归档 **c1210**（组合 bridge LLM DTO + bash 嵌 message）。
-> **命名**：今日 `src/protocol/`（线协议）与 `src/runtime_protocol/`（ports）本是同一类「跨边界契约」被拆成两个顶栏；本 change 意向是 **收拢为一致的 `protocol/`（可分子模组）**，并消掉纯 `domain/`——不是永久维护两套「protocol」品牌。
-
 ## Why
 
-今日分层把「共享纯类型」堆在 `src/domain/`，把「ports」堆在 `src/runtime_protocol/`，与 pi 的 **agent-core（类型与循环同住）← pi-ai（LLM 叶）** 心智不一致：
+`src/domain/` 纯类型桶 + `src/runtime_protocol/` 与 `src/protocol/` 双顶栏，是过度分层：会话词汇被迫共享、ports 与线协议同属「跨边界契约」却品牌分裂。c1210 已钉 LLM 叶组合；本 change 对齐 pi：**agent ≈ agent-core**（类型与循环同住），**一个 `protocol/`** 收契约，**删掉独立 domain/**。
 
-- `XyModel::generate_stream(Vec<AgentMessage>)` 让会话词汇穿过适配边界，才被迫维持独立 domain 桶。
-- pi 中 `convertToLlm` 在 agent-core 内完成，LLM 侧只见 `Message[]`。
-- 用户意向：`src/agent` ≈ pi-agent-core；**消掉纯类型层**；能就地融合的放回 agent / session / config 等；ports 与少量跨面契约收拢到更清晰的「通用」位置。
+## Purpose（已钉）
 
-## 与 c1210 的顺序（决议）
+1. **消 `src/domain/`**：不再存在独立纯类型顶栏；原进 port/wire 签名的词汇归入 `protocol/vocab/`（见 design），**禁止**再立第三顶栏品牌。
+2. **`src/agent/` ≈ pi-agent-core（语义）**：拥有 `project_for_llm`、ReAct、对 `AgentMessage`/`XyEvent` 的生产与再导出；发模型前在 agent 内投影。因单 crate + `infra`↛`agent`，`AgentMessage`/`XyEvent`/`SessionEntry` **物理**落在 `protocol/vocab/`（避免 `agent`↔`protocol` 环）。
+3. **`XyModel` 入参 = `Vec<AiBridgeMessage>`**（或 bridge DTO 等价）：infra adapter **MUST NOT** 再吃 `AgentMessage`。
+4. **`src/protocol/` 三子树**：`wire/`（Command/Event）+ `ports/`（原 runtime_protocol）+ `vocab/`（共享词汇）；删 `src/runtime_protocol/` 顶栏（迁移期可留 re-export，apply 结束前去掉）。
+5. **依赖纪律**：`infra` ↛ `agent`；`agent` ↛ `infra`；`protocol` 仅依赖 bridge DTO（若签名需要）与标准库/serde——**MUST NOT** 依赖 agent/infra 实现。
+6. **`XyEvent` 钉死**：物理 `protocol/vocab/lifecycle.rs`；wire `Event` 与之分离；`XyEventSink` 在 `ports/`。
 
-| 先做 | 原因 |
-|---|---|
-| **先 c1210，后本 change** | c1210 钉死「LLM 叶 SSOT = bridge、AgentMessage 组合之、bash 落盘同构」。大重构若先做，会在孪生叶 + 顶层 bash 上搬两次。 |
-| 本 change **depends_on c1210** | 组合与投影语义稳定后再搬目录/改端口。 |
+## What Changes
 
-**不要**并行大开：c1210 apply 期间只动消息/投影/session bash；本 draft 只文档占位。
+- live specs：`layer-architecture`（la1/la2/la14/la16–la18/…）、`domain-message`（归属与 valid_scope）、`infra-provider`（pa20）、相关 features
+- 实现（apply）：搬模块、改 `XyModel`、合并 protocol、更新 AGENTS/`pub use`、全量编译与 BDD
 
-## 目标形状（意向，非正式合约）
+## Out of scope
 
-```text
-packages/xylitol-ai-bridge     ≈ pi-ai（LLM 叶 DTO + adapters）
-        ↑
-src/agent/                    ≈ pi-agent-core
-  AgentMessage = Llm(bridge) | Env
-  project_for_llm / ReAct / compaction / prompt / session façade
-        ↑
-src/protocol/                 跨边界契约（线协议 Command/Event + ports XyModel/…）
-  XyModel 入参 = Vec<AiBridgeMessage> —— 不再吃 AgentMessage
-        ↑
-src/infra/                    实现：adapter、JSONL IO、tools…
-src/app/                      应用面
-```
+- 抽多 crate；改 Trust/MCP 产品语义；重做 Command/Event 线协议形状
+- 强制改写用户磁盘 session（wire 形状由 c1210 已钉，本 change 不改 JSONL role 语义）
 
-消掉 **`src/domain/` 作为独立「纯类型层」**；不是把所有类型塞进一个新超级目录。
+## Capabilities
 
-## 命名与收拢（修订）
-
-今日两套顶栏都叫「protocol」，却分家：
-
-| 今日 | 实际装的 |
-|---|---|
-| `src/protocol/` | client↔core `Command` / `Event`（线协议） |
-| `src/runtime_protocol/` | agent↔infra ports（`XyModel` / `XyTool` / …） |
-
-**合理实践**：这是**同一类东西**（跨边界契约），拆成两个顶层目录多半是过度分层，不是必要隔离。目标形态倾向：
-
-```text
-src/protocol/
-  command.rs / event.rs / transport.rs   ← 线协议（已有）
-  model.rs / tool.rs / session.rs / …    ← 今日 runtime_protocol ports
-  （可选）少量真正跨面共享的枚举/DTO —— 仅当多处签名都要用
-```
-
-子模组可以按稳定性分开（wire vs ports），但 **一个 `protocol/` 品牌即可**。
-仍须避免的是：把 `AgentMessage` / session JSONL 词汇无差别地倒进 `protocol/` 根上与 `Command` 糊成一锅——那些应 **就地进 `agent/`**（≈ pi-agent-core），不是再造纯类型桶。
-
-「有的直接融合回合适的地方」优先于「换皮保留 domain」。
-
-## 类型落点草图（正式化时再写成 tasks）
-
-| 今日 | 意向归属 |
-|---|---|
-| `message` / `llm_project` / Env | **`agent/`**（与 loop 同住） |
-| `XyModel` 消息入参 | **LLM DTO only**；投影只在 agent |
-| `session_types` | agent/session 与/或 infra/session **与实现同住**；避免第三份 SSOT |
-| `XyEvent` | 靠 `XyEventSink` / 线协议再导出；不单独 domain |
-| `types`（Chunk/ToolSchema/thinking） | port 签名旁或 bridge / config 按消费方 |
-| `model` Kind/Config | agent/model 或 infra config |
-| `error` / resource / source_info | 跟 port 或 loader |
-| `tool_result_quiet` / `text` | **agent/** |
-| `runtime_protocol/*` traits | **并入 `src/protocol/`**（与 Command/Event 同顶栏；可分子模组） |
-
-## What Changes（正式 propose 时）
-
-- 改写 `layer-architecture` / `domain-message` / provider 相关 live specs（la1/la2/dm6/pa20…）
-- 搬模块、改 `XyModel` 签名、删 `src/domain/`
-- 更新 `src/AGENTS.md` 分层图与 `pub use`
-- 全量编译 + BDD + `just qa`
-
-## Out of scope（本 draft）
-
-- 本 change **不实现**；不改 live specs
-- 不抽多 crate；不改 Trust/MCP 产品语义
-- 不重做 `src/protocol/` 线协议（除非显式另开 change）
-
-## Capabilities（预期触及）
-
-- `layer-architecture`、`domain-message`（或后继改名）、`infra-provider`、`agent-runtime`、`agent-session`、`package-ai-bridge`（边界措辞）
+- `layer-architecture`（modify）
+- `domain-message`（modify；capability 名暂留，valid_scope → agent）
+- `infra-provider`（modify；pa20 / pa7）
+- `package-ai-bridge`（modify；pab3/pab4 措辞）
+- 路径跟改：`agent-runtime`、`agent-session`、`agent-session-store`、`agent-tools`、`agent-prompt`、`app-tui`、`domain-security`、`domain-compaction`、`infra-bash`、`infra-process`、`runtime-model-registry`、`runtime-resource-discovery`、`server-runtime`、`test-standards`、`test-provider-integration`、`test-hooks-wiring`、`user-experience`
 
 ## Ethics
 
-- risk_level: critical（全仓分层与端口签名）
-- prohibited_actions: 在 c1210 未归档前开写本 change 实现；为「纯度」再造第三个纯类型顶栏；把 AgentMessage 与 Command 无结构地混在同一文件级 SSOT
-- required_evidence（正式化后）: `XyModel` 不再接受 `AgentMessage`；`src/domain/` 与 `src/runtime_protocol/` 删除或仅迁移期 re-export；契约集中在 `src/protocol/`；agent 不依赖 infra；infra 不依赖 agent
-- escalation_policy: 正式 propose 前确认 session 类型最终在 agent vs protocol 子模组的边界
-
-## 建议下一步
-
-1. **Apply c1210**（当前分支已 propose）。
-2. c1210 archive / merge 后，再对本 id **正式 propose**（补 design/tasks、改 live specs、attach）。
-3. 正式化时默认：**ports 并入已有 `src/protocol/`**；类型能进 agent 的不进 protocol。
+- risk_level: critical
+- prohibited_actions: 再造第三个纯类型顶栏；AgentMessage 与 Command 无结构混源；infra 依赖 agent
+- required_evidence: 无 `src/domain/` / `src/runtime_protocol/`（或仅短暂 re-export 再删）；`XyModel::generate_stream` 签名为 LLM DTO；`just qa` 绿
+- escalation_policy: session JSONL 类型最终文件路径若与 design 冲突，apply 前以 design 为准改 tasks

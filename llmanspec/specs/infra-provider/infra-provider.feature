@@ -51,24 +51,24 @@
     那么 主仓无并行完整实现体
 
   @req:pa7
-  场景: no-vendor-in-agent-domain
+  场景: no-vendor-in-agent
     假如 变更完成后
-    当 rg async_openai 于 src/agent 与 src/domain
+    当 rg async_openai 于 src/agent
     那么 零匹配
 
   @req:pa7
   场景: no-vendor-leak
-    当 rg async_openai 于 src/agent 与 src/domain
+    当 rg async_openai 于 src/agent 与 src/protocol
     那么 零匹配
 
   @req:pa20
   场景: bash-folded
     假如 history 含 bashExecution
-    当 投影后送入 adapter
-    那么 bridge 侧无 bashExecution 变体
+    当 agent 投影后调用 XyModel
+    那么 入参为 AiBridgeMessage 列表且无 bashExecution 变体
 
   @req:pa20
-  场景: vendor-not-in-agent
-    假如 agent 层
-    当 搜索 async_openai 与 anthropic vendor 类型
-    那么 零匹配
+  场景: model-port-llm-dto-only
+    假如 审查 XyModel::generate_stream 签名
+    当 查看消息参数类型
+    那么 为 Vec AiBridgeMessage（或等价 LLM DTO）而非 AgentMessage

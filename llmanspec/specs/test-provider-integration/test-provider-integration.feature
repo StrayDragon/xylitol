@@ -42,7 +42,7 @@
   场景: provider-moved
     假如 检查 src/agent/provider 是否存在
     当 检查该路径
-    那么 不存在，且 src/infra/provider/ 存在且 XyModel 从 crate::runtime_protocol 导入
+    那么 不存在，且 src/infra/provider/ 存在且 XyModel 从 crate::protocol 导入
 
   @req:pi3
   场景: no-concrete-provider
