@@ -590,11 +590,11 @@ impl XyReloadable for DefaultResourceLoader {
     }
 }
 
-// XyResourceLoader port impl. The trait currently has no `dyn` consumer in
-// production (the loader-based prompt assembly path was never wired into
-// Agent.prompt_opts); concrete callers in interactive/resources.rs
-// use inherent methods directly. Kept as a port abstraction for the
-// prompt-assembly wiring planned in c280 (session commands / system prompt).
+// XyResourceLoader: port exists for boundary clarity, but production still
+// calls DefaultResourceLoader inherent methods (bootstrap projects data into
+// BuildAgentOptions). No `dyn` consumer yet — do not add one "for symmetry";
+// upgrade when a second implementation or embed replacement is real.
+// See src/AGENTS.md「扩展决策准则」.
 #[allow(dead_code)]
 impl XyResourceLoader for DefaultResourceLoader {
     fn get_agents_files(&self) -> &[AgentsFile] {
