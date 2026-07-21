@@ -180,6 +180,13 @@ impl EventBus {
     }
 }
 
+#[async_trait::async_trait]
+impl crate::runtime_protocol::XyEventSink for EventBus {
+    async fn emit(&self, event: &XyEvent) {
+        self.emit_lifecycle(event);
+    }
+}
+
 // ── Standard channel names (align with pi) ────────────────────────
 
 /// Standard event channel names used across the system.
