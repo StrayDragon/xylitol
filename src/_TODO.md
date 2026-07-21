@@ -16,7 +16,7 @@
 
 | 维度 | 期望 | 当前粗判（2026-07-21） |
 |---|---|---|
-| SSOT / 少冗余 | 叶类型一份定义；业务用组合挂库类型 | 架构 SSOT 强；bridge↔domain 仍有同形孪生 |
+| SSOT / 少冗余 | 叶类型一份定义；业务用组合挂库类型 | 架构 SSOT 强；消息孪生已由 c1210/c1220 消除（`Llm`≡bridge DTO；protocol 方案 B） |
 | 全类型 | 少「受控 any」；边界外 JSON、边界内 struct/enum | 无 `dyn Any`；工具/钩子/`XyDriver` 仍多 `Value`/`String` |
 | 现代 Rust | 2024 + RPITIT 等；少不必要宏/装箱 | Edition 2024；port **因 dyn 全覆盖**默认保留 `async_trait`（§E α） |
 | 可维护 | 模块可审阅；AGENTS 长期规则与易腐调音分离 | 纪律清晰；`react`/`driver`/`session` God 文件 |
@@ -61,12 +61,12 @@ D  God 文件拆分（react / driver / session）
    └─ driver D5–D7 已完成
    └─ react / session 大拆：默认不做（见 §D 决议）；D11 已分诊待确认
 E  protocol/ports RPITIT               ← **已关闭（α）**：dyn 全覆盖，维持 async_trait
-F  孪生类型与 domain↔packages 边界     ← **c1210**：compose bridge DTO；消息孪生已删
-G  观测 kind 打尖                        ← 可与 B 并行或紧随
+F  孪生类型与 protocol↔packages 边界   ← **已关闭**（c1210 compose + c1220 protocol 方案 B）
+G  观测 kind 打尖                        ← 可与 B 并行或紧随（B 已完成，下一项默认 G）
 ```
 
-可并行：A ∥ 开写 F 的「归属表」段落；C 与 D 不同文件时可并行。
-串行更稳：B 完成后再大面积改 XyDriver 调用方；E 最好独立 PR。
+可并行：C 与 D 不同文件时可并行；G 可紧随 B。
+串行更稳：B 已完成；E 已关（α）；**勿再开**「抽出 `xylitol-domain` / bridge→domain 叶」（与 c1210/c1220 主线冲突，搁置）。
 
 ### 0.6 关键路径速查
 
@@ -534,12 +534,13 @@ Vec<AiBridgeMessage> → XyModel / dialect adapters
 - [x] **F4** domain 组合 bridge DTO + 删消息孪生 — **c1210**。
 - [x] **F5** `map.rs` 消息路径 identity；chunk/tool 保留薄 map。
 - [x] **F6** bridge / 主仓 AGENTS 与本决议一致。
-- [x] **F7** 消 domain 顶栏；ports 并入 protocol（方案 B）— **c1220**。
+- [x] **F7** 消 domain 顶栏；ports 并入 protocol（方案 B）— **c1220**（`56212249`）。
+- [ ] **F8** 抽出 workspace 包 `xylitol-domain` / 把 LLM 叶从 bridge 挪走 — **取消 / 搁置**（与 c1210 compose、c1220 方案 B 主线冲突；勿再执行）。
 
 ### 决议
 
 - `protocol` 根 → `xylitol-ai-bridge(dto)`：**yes（仅 DTO）**；agent 持有 `project_for_llm`。
-- 拒绝抽第三 `*-types` crate / `vocab`/`types` 子树顶栏。
+- 拒绝抽第三 `*-types` crate / `vocab`/`types` 子树顶栏；**拒绝**再抽 `xylitol-domain` 把叶从 bridge 挪走。
 - bang-bash 新写：`type=message` + `role=bashExecution`；旧顶层 bash 读提升。
 
 ### 验收
@@ -602,7 +603,9 @@ Vec<AiBridgeMessage> → XyModel / dialect adapters
 | 2026-07-21 | agent | §F1–F3 | AGENTS 叶归属表 + 禁新增孪生；`map.rs` 待删映射索引；**F4 domain→bridge 仍待决** |
 | 2026-07-21 | agent | docs | commit `bf7c7a45`（F1–F3） |
 | 2026-07-21 | agent | §F 决议 | **拒绝** `domain→bridge`；domain 业务自洽/准迁出；bridge 通用适配；孪生留在 `infra/map` 缝；F4 取消 |
-| 2026-07-21 | agent | §F / c1210 | **解冻**：compose `Llm(AiBridgeMessage)`；消息孪生 map 删除；bash 嵌 message |
+| 2026-07-21 | agent | §F / c1210 | **解冻**：compose `Llm(AiBridgeMessage)`；消息孪生 map 删除；bash 嵌 message（`6e74f3ae`） |
+| 2026-07-21 | agent | §F / c1220 | 合入方案 B：消 `src/domain/` + `runtime_protocol/`；共享类型进 `protocol` 根；ports 并入 `protocol/ports`；`project_for_llm`→agent（`56212249`；docs `bb585524`） |
+| 2026-07-21 | agent | §F8 | **取消**：抽出 `xylitol-domain` / bridge→domain 叶与主线冲突，搁置 |
 |  |  |  |  |
 
 ---
