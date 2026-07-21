@@ -75,7 +75,7 @@ G  观测 kind 打尖                        ← 可与 B 并行或紧随
 | Provider / 消息投影 | `src/AGENTS.md`「Provider 适配」；`src/infra/provider/map.rs`；`src/domain/llm_project.rs` |
 | 工具 port | `src/runtime_protocol/tool.rs`；实现 `src/infra/tools/` |
 | 钩子 | `src/runtime_protocol/hook.rs`；`src/agent/runtime/hooks.rs`；`src/infra/hooks/` |
-| XyDriver seam | `src/app/core/driver.rs`；`src/app/core/dispatch.rs` |
+| XyDriver seam | `src/app/core/driver/`；`src/app/core/dispatch.rs` |
 | 领域错误 | `src/domain/error.rs` |
 | bridge 包边界（后置） | `packages/xylitol-ai-bridge/AGENTS.md` |
 | 根 AGENTS 临时文档约定 | 根 `AGENTS.md`「编写与维护 AGENTS.md」→ 临时交接用 `_TODO` / `_HANDOFF` |
@@ -231,7 +231,7 @@ crate 内热路径 / 内置工具 = struct + serde
 | 文件 | 约行数 | 备注 |
 |---|---|---|
 | `src/agent/runtime/react.rs` | ~2762 | ReAct 核心 |
-| `src/app/core/driver.rs` | ~2384 | trait + in-process + remote |
+| `src/app/core/driver/` | 拆后见 RETUNE | trait / in-process / remote / types |
 | `src/infra/session/manager.rs` | ~2191 | session 持久化与树 |
 | `src/app/tui/harness.rs` | ~4135 | 测试；预算可另计 |
 
@@ -246,11 +246,11 @@ crate 内热路径 / 内置工具 = struct + serde
 - [ ] **D3** model call + retry（已有 helper 可下沉）
 - [ ] **D4** 加深已有 `obs.rs`，避免 loop 内嵌观测细节
 
-**driver.rs**
+**driver/**（原 `driver.rs`）
 
-- [ ] **D5** `trait XyDriver` + 报告/DTO 类型 → 独立模块
-- [ ] **D6** `XyInProcessDriver`
-- [ ] **D7** `XyRemoteDriver`
+- [x] **D5** `trait XyDriver` + 报告/DTO 类型 → `driver/{proto,types}.rs`
+- [x] **D6** `XyInProcessDriver` → `driver/in_process.rs`
+- [x] **D7** `XyRemoteDriver` → `driver/remote.rs`（顺手修 `--all-features` 下 `XyDriverError` 映射遗漏）
 
 **session/manager.rs**
 
@@ -399,6 +399,8 @@ map.rs → 变薄：project_for_llm + 少量边界转换
 | 2026-07-21 | agent | §B | 落地重命名 + `XyDriverError` + 导出/AGENTS；dispatch/harness/driver 测绿 |
 | 2026-07-21 | agent | §B | commit `57efe1a7` |
 | 2026-07-21 | agent | §C | 内置工具 `*Args` + `parse_tool_args`；schema 策略 (a)；hooks 签名刻意保留 |
+| 2026-07-21 | agent | §C | commit `73d2aec6`；`args.rs` **暂留** tools 顶层（倾向日后整批迁 `support/`，现保持方案 1） |
+| 2026-07-21 | agent | §D5–D7 | `driver.rs` → `driver/{mod,types,proto,in_process,remote}.rs`；修 remote/rest `XyDriverError` 映射 |
 |  |  |  |  |
 
 ---
@@ -409,7 +411,7 @@ map.rs → 变薄：project_for_llm + 少量边界转换
 
 - `serde_json::Value` 在 `src/` 多处出现；hooks / react / driver 为热点。
 - 无 `dyn Any` / `as_any` / `TypeId` 逃逸（加分）。
-- `Result<…, String>` 在 `driver.rs` / `dispatch` / `session` 等密集。
+- `Result<…, String>` 在 session / 部分 infra 仍密；driver seam 已抬到 `XyDriverError`。
 - `async_trait` 属性约百级（全仓探测；实施 E 前重跑 `rg`）。
 
 ---
