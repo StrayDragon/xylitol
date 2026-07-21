@@ -1326,7 +1326,7 @@ mod slice_tests {
         );
         let frame = root.borrow_mut().render(80);
         assert!(
-            frame.iter().any(|l| l.contains("bash")),
+            frame.iter().any(|l| l.contains("Bash")),
             "missing tool in frame: {frame:?}"
         );
     }
@@ -3970,8 +3970,8 @@ mod slice_tests {
         let frame = root.borrow_mut().render(80);
         let footer = frame.last().expect("footer");
         assert!(
-            footer.contains("• high"),
-            "footer must show thinking label: {footer}"
+            footer.contains("high") && !footer.contains('•'),
+            "footer must show thinking label without decorative bullet: {footer}"
         );
         let editor = root.borrow_mut().editor_render_for_test(40).join("\n");
         // pi dark thinkingHigh #b294bb
@@ -3998,7 +3998,11 @@ mod slice_tests {
         assert_eq!(driver.thinking_level(), ThinkingLevel::Off);
         let footer2 = root.borrow_mut().render(80);
         let f2 = footer2.last().expect("footer");
-        assert!(f2.contains("• thinking off"), "off label: {f2}");
+        assert!(f2.contains("thinking off"), "off label: {f2}");
+        assert!(
+            !f2.contains("· •") && !f2.contains("• thinking"),
+            "MUST NOT keep decorative bullet before thinking: {f2}"
+        );
     }
 
     #[tokio::test]

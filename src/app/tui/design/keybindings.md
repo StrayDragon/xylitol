@@ -93,7 +93,7 @@ components:
 
 ## 明确不做（键位）
 
-- Settings / Plate 槽的运行时配置编辑（配置走 YAML+JSON Schema）。
+- Settings / Plate 槽的运行时配置编辑（配置走 YAML+JSON Schema）；**产品 MUST NOT** 绑定 Ctrl+P 打开 Command Plate stub（demo 可有）。
 - computer-use 专用键位（本波延后）。
 - 产品 `/thinking-level` slash（demo 可有；产品用 Shift+Tab / `app.thinking.cycle` 静默切换）。
 

@@ -28,12 +28,18 @@ components:
 
 1. 默认 **详略得当**：折叠时一行（或短摘要）；展开后显示完整 thinking / 工具输出。
 2. 折叠态仍须复制友好：摘要行本身可读，**MUST NOT** 只有图标。
-3. 快捷键切换（thinking toggle、tools expand）由产品面绑定；包组件只渲染给定展开态。
-4. 折叠行旁 MUST 提示对应快捷键，格式为括号包裹的完整和弦（demo 榜样：`thinking  (Ctrl+T)`、`tool/diff  (Alt+E)`），避免 `^T` 缩写与无括号裸键；勿只靠 footer 快捷键墙。
-5. **工具块背景三态**（吸取 pi `ToolExecutionComponent`）：pending → `{colors.tool-pending-bg}`；成功 → `{colors.tool-success-bg}`；失败 → `{colors.tool-error-bg}`。全行宽 padding 后套 bg（`apply_background_to_line`），ANSI 只重置背景（`\x1b[49m`），勿冲掉内容 fg。
-6. **Edit / Diff 一体块**（对齐 pi `Box(tool*Bg)` + `design/diff-block.md`）：`tool-*-bg` 洗底包住 **header + Diff 正文**；正文 **MUST NOT** 再叠 `diff-*-bg` 行底（红/绿墙分层）；词级用 `word_wash_bg(block_bg, polarity)`。独立「裸 unified」演示路径仍可用行底，但产品 Edit/tool 默认走一体块。
-7. **Tool 详情不重复命令**：摘要行已含命令时，展开详情 MUST NOT 再 echo 同一命令（可只留 exit / stderr / 预览）。
-8. **详情视口（max-height）**：块已展开（Alt+E）后，长输出仍有第二层折叠——默认只保留末尾 N 行视觉行（wrap-aware），**块尾**插 dim 提示 `... (N earlier lines, ctrl+o to expand)`（MUST NOT 插在工具头行下一行）；**Ctrl+O** 全局切换「视口 / 全文」。流式时折叠态贴尾（新行进尾、earlier 计数涨）。**硬截断**（含 `[Full output:`）时 MUST NOT 展开全文，hint 改为 expand disabled。write 正文默认亦为 Tail（跟流）；仍允许 Ctrl+O。包实现：`ExpandableOutput` / `render_expandable_output`（`packages/xylitol-tui`）；与 Alt+E「块有无详情」正交。
+3. 工具主视线形态：`<ToolName> <path>[:range]`（例 `Read src/main.rs:42-80`）；ToolName **首字母大写**，加粗 + accent；path 用 on-surface；**行范围后缀**用 `{colors.skill-ref}`（mauve，勿用 warning 黄）。cwd 内相对路径，之外绝对路径。输入侧（bash `$ cmd` / 路径）**MUST NOT** 按固定字符数截断；终端宽不够则折行留痕。**MUST NOT** 使用 `⚙` 等装饰 glyph。
+4. **默认展开**：`tools_expanded` 默认 true（工具/Edit/Diff 正文默认可见）；**Alt+E** 在 hide ↔ unhide 间切换（Edit 的 `display_diff` **MUST** 服从同一开关，不得常驻展开）。
+5. **Viewport**：正文展开后仍有高度上限（tool/bash/write/diff）；**Ctrl+O** 切满高。与 Alt+E 正交。
+6. 快捷键切换（thinking toggle、tools expand）由产品面绑定；包组件只渲染给定展开态。
+7. 折叠行旁 MUST 提示对应快捷键，格式为括号包裹的完整和弦（`thinking  (Ctrl+T)`、`Read path  (Alt+E)`）。
+8. **工具块背景三态**：pending → `{colors.tool-pending-bg}`；成功 → `{colors.tool-success-bg}`；失败 → `{colors.tool-error-bg}`。
+9. **Edit / Diff 一体块**：`tool-*-bg` 洗底包住 header +（展开时）正文；正文 **MUST NOT** 再叠 `diff-*-bg` 行底。
+10. **Tool 详情不重复命令**：摘要行已含命令时，展开详情 MUST NOT 再 echo 同一命令。
+11. **Bash / Read 工具结果**：bash 呈现 shell 式 stdout/stderr；read 呈现 `content` 正文（可附 truncation hint），**MUST NOT** 默认甩 `{"content":…,"total_lines":…}` / `exit_code` 等 machine JSON。write/edit 成功 JSON 静默（diff 走 `display_diff` 块）。
+12. **详情视口（max-height）**：块已展开（Alt+E）后，长输出仍有第二层折叠——默认只保留末尾 N 行；**Ctrl+O** 全文。硬截断时 MUST NOT 展开全文。
+
+色板：tool-name≈accent、tool-path≈on-surface、range≈warning；playground 可继续试色。
 
 ## 已验证（c453 / c462 / c466 · agent_demo）
 

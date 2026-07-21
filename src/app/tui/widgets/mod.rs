@@ -35,7 +35,7 @@ pub fn footer_thinking_label(level: ThinkingLevel) -> String {
     }
 }
 
-/// Footer identity line (`cwd · model · • {thinking}`, optional queue / tokens).
+/// Footer identity line (`cwd · model · {thinking}`, optional queue / tokens).
 pub fn format_footer_text(
     cwd: &str,
     model: &str,
@@ -44,7 +44,7 @@ pub fn format_footer_text(
     follow_up: usize,
     token_label: Option<&str>,
 ) -> String {
-    let mut base = format!("{cwd} · {model} · • {thinking_label}");
+    let mut base = format!("{cwd} · {model} · {thinking_label}");
     if let Some(tok) = token_label.filter(|s| !s.is_empty()) {
         base = format!("{base} · {tok}");
     }
@@ -94,15 +94,15 @@ mod tests {
     fn format_footer_text_field_order() {
         assert_eq!(
             format_footer_text("~/x", "m", "thinking off", 0, 0, None),
-            "~/x · m · • thinking off"
+            "~/x · m · thinking off"
         );
         assert_eq!(
             format_footer_text("~/x", "m", "medium", 0, 0, Some("used 3 tokens")),
-            "~/x · m · • medium · used 3 tokens"
+            "~/x · m · medium · used 3 tokens"
         );
         assert_eq!(
             format_footer_text("~/x", "m", "high", 1, 2, Some("used ~4 tokens")),
-            "q:s1|f2 · ~/x · m · • high · used ~4 tokens"
+            "q:s1|f2 · ~/x · m · high · used ~4 tokens"
         );
     }
 }

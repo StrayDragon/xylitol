@@ -161,6 +161,9 @@
     .fg-accent { color: var(--accent); }
     .fg-user { color: var(--user); }
     .fg-tool { color: var(--tool); }
+    .fg-tool-name { color: var(--tool-name, var(--accent)); font-weight: 700; }
+    .fg-tool-path { color: var(--tool-path, var(--on-surface)); }
+    .fg-tool-range { color: var(--skill-ref); }
     .fg-on { color: var(--on-surface); }
     .fg-assistant { color: var(--assistant); }
     .fg-success { color: var(--success); }
@@ -417,8 +420,18 @@
         <h2>Tool / Expandable</h2>
         <p class="spec">
           <a href="../expandable.md">expandable.md</a> ·
-          三态 · 流式 thinking · 视口贴尾 · Diff 块摘要 tint 对照
+          形态 <code>Read path:12-40</code>（无 ⚙）· 三态 · 下方调色盘试 tool-name / tool-path
         </p>
+        <div class="ctl" id="tool-palette" style="flex-wrap:wrap;gap:0.75rem;align-items:center">
+          <label class="hint">tool-name
+            <input type="color" id="pick-tool-name" value="#89b4fa" title="tool-name" />
+          </label>
+          <label class="hint">tool-path
+            <input type="color" id="pick-tool-path" value="#cdd6f4" title="tool-path" />
+          </label>
+          <button type="button" id="tool-palette-reset" class="chip-btn">重置色</button>
+          <span class="hint">实验色写入 CSS 变量；定稿后再升格 DESIGN</span>
+        </div>
         <div class="ctl">
           <button type="button" class="chip-btn" data-tool-state="pending" aria-pressed="true">pending</button>
           <button type="button" class="chip-btn" data-tool-state="success" aria-pressed="false">success</button>
@@ -443,7 +456,7 @@
             </div>
             <!-- Diff-as-tool: header may use success tint; body MUST NOT -->
             <div class="hidden" id="tool-diff-block">
-              <div class="row bg-tool-success fg-tool" id="diff-as-tool-h">✓ diff  src/x.rs  (Alt+E)</div>
+              <div class="row bg-tool-success" id="diff-as-tool-h">▶ <span class="fg-tool-name">Diff</span> <span class="fg-tool-path">src/x.rs</span>  <span class="fg-muted">(Alt+E)</span></div>
               <div class="rows" id="diff-as-tool-body">
                 <div class="row fg-diff-context">@@ -1 +1 @@</div>
                 <div class="row bg-diff-removed fg-diff-removed">- old</div>
@@ -584,7 +597,7 @@
             </div>
             <div class="row fg-assistant">当前轮进 scrollback。</div>
             <div class="row bg-tool-success" style="padding:0.15rem 0.35rem">
-              <span class="fg-tool">✓ read  DESIGN.md</span>
+              <span class="fg-tool-name">Read</span> <span class="fg-tool-path">DESIGN.md</span>
             </div>
           </div>
           <div class="steer-hint hidden" id="lay-steer-line">↳ queued steer · Enter 发送</div>
@@ -982,17 +995,23 @@
     });
 
     /* —— tool —— */
-    const toolGlyph = { pending: "⚙", success: "✓", error: "✗" };
     const toolBg = {
       pending: "bg-tool-pending",
       success: "bg-tool-success",
       error: "bg-tool-error",
     };
-    const toolCmd = {
-      pending: "bash  cargo test -p xylitol-tui",
-      success: "bash  cargo test -p xylitol-tui",
-      error: "edit  missing path",
+    const toolRows = {
+      pending: { name: "Bash", path: "$ cargo test -p xylitol-tui", range: "" },
+      success: { name: "Read", path: "src/app/tui/DESIGN.md", range: ":42-80" },
+      error: { name: "Edit", path: "missing/path.rs", range: ":12-14" },
     };
+
+    function applyToolPalette() {
+      const name = document.getElementById("pick-tool-name").value;
+      const path = document.getElementById("pick-tool-path").value;
+      document.documentElement.style.setProperty("--tool-name", name);
+      document.documentElement.style.setProperty("--tool-path", path);
+    }
 
     function stopThinkStream() {
       if (thinkTimer) clearInterval(thinkTimer);
@@ -1004,9 +1023,10 @@
     function renderTool() {
       const t = state.tool;
       const sum = document.getElementById("tool-summary");
+      const row = toolRows[t.status];
       sum.className = `row ${toolBg[t.status]}`;
       sum.innerHTML =
-        `<span class="fg-tool">${toolGlyph[t.status]} ${toolCmd[t.status]}  (Alt+E)</span>`;
+        `▶ <span class="fg-tool-name">${row.name}</span> <span class="fg-tool-path">${row.path}</span><span class="fg-tool-range">${row.range}</span>  <span class="fg-muted">(Alt+E)</span>`;
       document.getElementById("tool-detail").classList.toggle("hidden", !t.expanded);
       document.getElementById("tool-viewport").classList.toggle("hidden", !t.expanded);
       document.getElementById("tool-earlier").classList.toggle("hidden", t.full);
@@ -1032,6 +1052,23 @@
         b.setAttribute("aria-pressed", String(b.dataset.toolState === t.status));
       });
     }
+
+    document.getElementById("pick-tool-name").addEventListener("input", () => {
+      applyToolPalette();
+      renderTool();
+    });
+    document.getElementById("pick-tool-path").addEventListener("input", () => {
+      applyToolPalette();
+      renderTool();
+    });
+    document.getElementById("tool-palette-reset").addEventListener("click", () => {
+      const dark = document.documentElement.getAttribute("data-scheme") !== "light";
+      document.getElementById("pick-tool-name").value = dark ? "#89b4fa" : "#1e66f5";
+      document.getElementById("pick-tool-path").value = dark ? "#cdd6f4" : "#4c4f69";
+      applyToolPalette();
+      renderTool();
+    });
+    applyToolPalette();
 
     document.querySelectorAll("[data-tool-state]").forEach((b) => {
       b.addEventListener("click", () => {
@@ -1205,9 +1242,9 @@
       if (S.tool) {
         html +=
           '<div class="row bg-tool-success" style="padding:0.15rem 0.35rem">' +
-          '<span class="fg-tool">✓ read  src/app/tui/DESIGN.md</span></div>' +
+          '<span class="fg-tool-name">Read</span> <span class="fg-tool-path">src/app/tui/DESIGN.md</span></div>' +
           '<div class="row bg-tool-pending" style="padding:0.15rem 0.35rem">' +
-          '<span class="fg-tool">… bash  cargo test --lib app::tui</span></div>';
+          '<span class="fg-tool-name">Bash</span> <span class="fg-tool-path">$ cargo test --lib app::tui</span></div>';
       }
       content.innerHTML = html;
 
@@ -1302,9 +1339,9 @@
       footer: `<div class="row fg-muted">~/xylitol · ornith</div>
 <div class="row fg-muted">q:s1|f0 · ~/proj · model-x</div>
 <div class="row fg-muted" style="font-size:11px">MVP = cwd · model · 可选 q: 前缀 · 无键位墙 · Working 不进 footer</div>`,
-      glyph: `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">unicode 默认</span> · <span class="fg-tool">⚙</span> tool</div>
-<div class="row"><span class="fg-user">&gt;</span> <span class="fg-on">ascii 档</span> · <span class="fg-tool">*</span> tool</div>
-<div class="row fg-muted" style="font-size:11px">glyphs.md · 不探测字体 · 产品注入</div>`,
+      glyph: `<div class="row"><span class="fg-user">❯</span> <span class="fg-on">unicode 默认</span> · <span class="fg-tool-name">Read</span> <span class="fg-tool-path">path.rs:10</span></div>
+<div class="row"><span class="fg-user">&gt;</span> <span class="fg-on">ascii 档</span> · <span class="fg-tool-name">Read</span> <span class="fg-tool-path">path.rs:10</span></div>
+<div class="row fg-muted" style="font-size:11px">glyphs.md · 工具无 ⚙ · 名/路径调色盘</div>`,
     };
     function renderLayoutShell() {
       document.getElementById("layout-shell-stage").innerHTML =

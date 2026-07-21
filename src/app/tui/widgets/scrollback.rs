@@ -15,7 +15,7 @@ use crate::app::tui::layout::LayoutTheme;
 use xylitol_tui::terminal_colors::RgbColor;
 
 /// Fold state owned by the product surface (att7).
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct ScrollbackFold {
     pub thinking_expanded: bool,
     /// Alt+E — tool/diff **block** show/hide detail.
@@ -24,21 +24,35 @@ pub struct ScrollbackFold {
     pub tools_output_expanded: bool,
 }
 
+impl Default for ScrollbackFold {
+    fn default() -> Self {
+        Self {
+            thinking_expanded: false,
+            // Product default: tool bodies open; Ctrl+O still clamps viewport height.
+            tools_expanded: true,
+            tools_output_expanded: false,
+        }
+    }
+}
+
 /// Max visual lines for collapsed tool/bash detail (pi bash tool = 5).
 const TOOLS_OUTPUT_PREVIEW_LINES: usize = 5;
 /// Collapsed write body viewport (pi write.ts = 10 logical lines).
 const WRITE_BODY_PREVIEW_LINES: usize = 10;
+/// Diff body viewport when Alt+E open but Ctrl+O not yet full.
+const DIFF_VIEWPORT_LINES: usize = 12;
 /// Max visual lines of edit/Diff body painted into scrollback (c1350).
 const MAX_DIFF_RENDER_LINES: usize = 80;
 /// Disable word-level when raw display_diff exceeds this many lines.
 const WORD_LEVEL_DIFF_LINE_LIMIT: usize = 120;
 
-fn push_capped_diff_lines(
+fn push_viewport_diff_lines(
     lines: &mut Vec<String>,
     diff: &str,
     width: usize,
     theme: LayoutTheme,
     block_bg: Option<RgbColor>,
+    viewport_full: bool,
 ) {
     let raw_lines = diff.lines().count();
     let word_level = raw_lines <= WORD_LEVEL_DIFF_LINE_LIMIT;
@@ -52,45 +66,97 @@ fn push_capped_diff_lines(
         None => theme.palette().diff_theme(),
     };
     let rendered = render_diff_lines(&input, width, &diff_theme, &opts);
-    if rendered.len() <= MAX_DIFF_RENDER_LINES {
-        for line in rendered {
-            lines.push(fit(&line, width));
-        }
-        return;
-    }
-    let keep = MAX_DIFF_RENDER_LINES.saturating_sub(1);
-    let omitted = rendered.len().saturating_sub(keep);
-    for line in rendered.into_iter().take(keep) {
+    let body = if rendered.len() > MAX_DIFF_RENDER_LINES {
+        let keep = MAX_DIFF_RENDER_LINES.saturating_sub(1);
+        let omitted = rendered.len().saturating_sub(keep);
+        let mut clipped: Vec<String> = rendered.into_iter().take(keep).collect();
+        clipped.push(bold(&theme.paint_warning(&format!(
+            "… ({omitted} more diff lines omitted — large edit capped for TUI)"
+        ))));
+        clipped.join("\n")
+    } else {
+        rendered.join("\n")
+    };
+    let exp_opts = ExpandableOutputOptions {
+        max_preview_lines: DIFF_VIEWPORT_LINES,
+        from: TruncateFrom::Tail,
+        expand_hint: "ctrl+o to expand".into(),
+        hint_style: None,
+    };
+    for line in render_expandable_output(&body, width, viewport_full, &exp_opts) {
         lines.push(fit(&line, width));
     }
-    let note = theme.paint_warning(&format!(
-        "… ({omitted} more diff lines omitted — large edit capped for TUI)"
-    ));
-    lines.push(fit(&bold(&note), width));
 }
 
 fn key_hint(chord: &str) -> String {
     format!("({chord})")
 }
 
-fn tool_header_summary(name: &str, args_preview: &str) -> String {
+fn paint_tool_header_line(
+    theme: LayoutTheme,
+    marker: &str,
+    name: &str,
+    args_preview: &str,
+) -> String {
+    use crate::app::tui::bridge::display_tool_title;
+    let title = display_tool_title(name);
+    let hint = theme.paint_muted(&key_hint("Alt+E"));
     if args_preview.is_empty() {
-        return name.to_string();
+        format!("{marker} {}  {hint}", theme.paint_tool_name(&title))
+    } else {
+        let (path, range) = split_path_and_range(args_preview);
+        let loc = match range {
+            Some(r) => format!(
+                "{}{}",
+                theme.paint_tool_path(path),
+                theme.paint_tool_range(r)
+            ),
+            None => theme.paint_tool_path(path),
+        };
+        format!("{marker} {} {}  {hint}", theme.paint_tool_name(&title), loc)
     }
-    // Human summaries that already include the verb / `$` — avoid `write write path`.
-    if args_preview.starts_with("write ")
-        || args_preview.starts_with("edit ")
-        || args_preview.starts_with("read ")
-        || args_preview.starts_with("ls ")
-        || args_preview.starts_with("find ")
-        || args_preview.starts_with("grep ")
-    {
-        return args_preview.to_string();
+}
+
+/// Split `path:12-40` / `path:42:8` — range suffix painted separately (warning).
+fn split_path_and_range(loc: &str) -> (&str, Option<&str>) {
+    if loc.starts_with('$') {
+        return (loc, None);
     }
-    if args_preview.starts_with(name) {
-        return args_preview.to_string();
+    for (i, ch) in loc.char_indices().rev() {
+        if ch != ':' {
+            continue;
+        }
+        let suffix = &loc[i..];
+        if is_line_range_suffix(suffix) {
+            return (&loc[..i], Some(suffix));
+        }
     }
-    format!("{name} {args_preview}")
+    (loc, None)
+}
+
+fn is_line_range_suffix(s: &str) -> bool {
+    let Some(body) = s.strip_prefix(':') else {
+        return false;
+    };
+    if body.is_empty() || !body.as_bytes()[0].is_ascii_digit() {
+        return false;
+    }
+    // :N | :N-M | :N:C | :N-M:C (C optional col — rare)
+    let mut saw_digit = false;
+    let mut seps = 0u8;
+    for b in body.bytes() {
+        if b.is_ascii_digit() {
+            saw_digit = true;
+            continue;
+        }
+        if (b == b'-' || b == b':') && saw_digit && seps < 2 {
+            seps += 1;
+            saw_digit = false;
+            continue;
+        }
+        return false;
+    }
+    saw_digit
 }
 
 fn fit(text: &str, width: usize) -> String {
@@ -272,65 +338,71 @@ pub fn render_scrollback(
                 } else {
                     glyphs.fold()
                 };
-                let summary = tool_header_summary(name, args_preview);
-                let header = format!(
-                    "{marker} {} {summary}  {}",
-                    glyphs.tool(),
-                    key_hint("Alt+E")
-                );
+                let header = paint_tool_header_line(theme, marker, name, args_preview);
                 let rgb = tool_bg_rgb(!done, *is_error, theme);
                 let mut block = Vec::new();
-                push_wrapped(&mut block, &theme.paint_tool(&header), width);
+                push_wrapped(&mut block, &header, width);
 
-                // write: header + body share one pending/success/error wash (pi Box).
-                // Tail viewport follows stream end (c1340); Ctrl+O still expands.
-                if let Some(content) = write_content
-                    && !content.is_empty()
-                {
-                    let total = content.lines().count().max(1);
-                    let opts = ExpandableOutputOptions {
-                        max_preview_lines: WRITE_BODY_PREVIEW_LINES,
-                        from: TruncateFrom::Tail,
-                        expand_hint: format!("{total} total, ctrl+o to expand"),
-                        hint_style: None,
-                    };
-                    for line in
-                        render_expandable_output(content, width, fold.tools_output_expanded, &opts)
+                if fold.tools_expanded {
+                    // write: header + body share one pending/success/error wash (pi Box).
+                    // Tail viewport follows stream end (c1340); Ctrl+O still expands.
+                    if let Some(content) = write_content
+                        && !content.is_empty()
                     {
-                        block.push(fit(&line, width));
+                        let total = content.lines().count().max(1);
+                        let opts = ExpandableOutputOptions {
+                            max_preview_lines: WRITE_BODY_PREVIEW_LINES,
+                            from: TruncateFrom::Tail,
+                            expand_hint: format!("{total} total, ctrl+o to expand"),
+                            hint_style: None,
+                        };
+                        for line in render_expandable_output(
+                            content,
+                            width,
+                            fold.tools_output_expanded,
+                            &opts,
+                        ) {
+                            block.push(fit(&line, width));
+                        }
                     }
-                }
 
-                // Error / other output behind Alt+E: still same wash when shown.
-                // Hard-truncated: never expand viewport (att16).
-                if fold.tools_expanded && !output.is_empty() {
-                    let painted = paint_output_with_full_footer(output, theme, *is_error);
-                    let hard = output_is_hard_truncated(output);
-                    let opts = ExpandableOutputOptions {
-                        max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
-                        from: TruncateFrom::Tail,
-                        expand_hint: if hard {
-                            HARD_TRUNCATED_EXPAND_HINT.into()
-                        } else {
-                            "ctrl+o to expand".into()
-                        },
-                        hint_style: None,
-                    };
-                    let expanded = fold.tools_output_expanded && !hard;
-                    for line in render_expandable_output(&painted, width, expanded, &opts) {
-                        block.push(line);
+                    // Error / other output behind Alt+E: still same wash when shown.
+                    // Hard-truncated: never expand viewport (att16).
+                    if !output.is_empty() {
+                        let painted = paint_output_with_full_footer(output, theme, *is_error);
+                        let hard = output_is_hard_truncated(output);
+                        let opts = ExpandableOutputOptions {
+                            max_preview_lines: TOOLS_OUTPUT_PREVIEW_LINES,
+                            from: TruncateFrom::Tail,
+                            expand_hint: if hard {
+                                HARD_TRUNCATED_EXPAND_HINT.into()
+                            } else {
+                                "ctrl+o to expand".into()
+                            },
+                            hint_style: None,
+                        };
+                        let expanded = fold.tools_output_expanded && !hard;
+                        for line in render_expandable_output(&painted, width, expanded, &opts) {
+                            block.push(line);
+                        }
                     }
-                }
 
-                // edit: header + diff share one tool-*-bg wash (pi Box / att4 / diff-block §5).
-                // No diff-*-bg row tints — word_wash on block_bg only.
-                if let Some(diff) = display_diff
-                    && !diff.is_empty()
-                {
-                    if !block.is_empty() {
-                        block.push(String::new()); // pi Spacer between title and body
+                    // edit: header + diff share one tool-*-bg wash; MUST honor Alt+E.
+                    if let Some(diff) = display_diff
+                        && !diff.is_empty()
+                    {
+                        if !block.is_empty() {
+                            block.push(String::new()); // pi Spacer between title and body
+                        }
+                        push_viewport_diff_lines(
+                            &mut block,
+                            diff,
+                            width,
+                            theme,
+                            Some(rgb),
+                            fold.tools_output_expanded,
+                        );
                     }
-                    push_capped_diff_lines(&mut block, diff, width, theme, Some(rgb));
                 }
 
                 push_tinted(&mut lines, &block, width, rgb);
@@ -344,17 +416,20 @@ pub fn render_scrollback(
                 } else {
                     glyphs.fold()
                 };
-                let header = format!(
-                    "{marker} {} {summary}  {}",
-                    glyphs.tool(),
-                    key_hint("Alt+E")
-                );
+                let header = paint_tool_header_line(theme, marker, "diff", summary);
                 let mut block = Vec::new();
-                push_wrapped(&mut block, &theme.paint_tool(&header), width);
+                push_wrapped(&mut block, &header, width);
                 let rgb = tool_bg_rgb(false, false, theme);
                 if fold.tools_expanded && !display_diff.is_empty() {
                     block.push(String::new());
-                    push_capped_diff_lines(&mut block, display_diff, width, theme, Some(rgb));
+                    push_viewport_diff_lines(
+                        &mut block,
+                        display_diff,
+                        width,
+                        theme,
+                        Some(rgb),
+                        fold.tools_output_expanded,
+                    );
                 }
                 push_tinted(&mut lines, &block, width, rgb);
             }
@@ -488,7 +563,7 @@ mod tests {
         model.entries.push(UiEntry::Tool {
             id: "w1".into(),
             name: "write".into(),
-            args_preview: "write a.py (3 lines)".into(),
+            args_preview: "a.py".into(),
             tool_path: Some("a.py".into()),
             write_content: Some("line-a\nline-b\nline-c\n".into()),
             display_diff: None,
@@ -507,10 +582,14 @@ mod tests {
         );
         let header = lines
             .iter()
-            .find(|l| l.contains("write a.py"))
+            .find(|l| l.contains("Write") && l.contains("a.py"))
             .expect("header");
         let body = lines.iter().find(|l| l.contains("line-a")).expect("body");
         assert!(header.contains(&bg), "write header must share wash");
+        assert!(
+            !header.contains('⚙'),
+            "tool header MUST NOT use gear glyph: {header}"
+        );
         assert!(
             body.contains(&bg),
             "write body must share the same wash (no naked black split)"
@@ -531,7 +610,7 @@ mod tests {
         model.entries.push(UiEntry::Tool {
             id: "e1".into(),
             name: "edit".into(),
-            args_preview: "edit tmp/flow_test.py".into(),
+            args_preview: "tmp/flow_test.py".into(),
             tool_path: Some("tmp/flow_test.py".into()),
             write_content: None,
             display_diff: Some(
@@ -560,7 +639,7 @@ mod tests {
         );
         let header = lines
             .iter()
-            .find(|l| l.contains("edit tmp/flow_test.py"))
+            .find(|l| l.contains("Edit") && l.contains("tmp/flow_test.py"))
             .expect("header");
         let body = lines
             .iter()
@@ -637,7 +716,7 @@ mod tests {
         model.entries.push(UiEntry::Tool {
             id: "w1".into(),
             name: "write".into(),
-            args_preview: "write a.py (18 lines)".into(),
+            args_preview: "a.py".into(),
             tool_path: Some("a.py".into()),
             write_content: Some(body),
             display_diff: None,
