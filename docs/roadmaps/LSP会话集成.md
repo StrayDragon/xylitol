@@ -58,7 +58,15 @@ Then 产品采用限制范围/按需/隔离等策略之一，并让用户知道�
 
 - **可并行**于 Web / 视觉 / Tokenizer；与 [DAP调试集成.md](./DAP调试集成.md) 平行（同为零成本、会话启停）。
 - 开闭叙事挂 [运行时即时设置.md](./运行时即时设置.md)。
-- 对齐后置零成本心智：[../architecture/扩展能力-MCP.md](../architecture/扩展能力-MCP.md)、[../architecture/产品分层总览.md](../architecture/产品分层总览.md)。
+- 对齐后置零成本心智：[../architecture/扩展能力-MCP.md](../architecture/扩展能力-MCP.md)、[../architecture/产品分层总览.md](../architecture/产品分层总览.md)、[../architecture/扩展与开闭.md](../architecture/扩展与开闭.md)。
+
+## 实现接缝（认领时 · 非现行 MUST）
+
+| 接 | 不接 |
+|---|---|
+| 会话/即时设置开关 → 组合根按波次装配；能力经**统一工具口**进对话 | 新插件平台 / Extension Host |
+| 压缩后的诊断/符号进工具结果；界面仍只认既有生命周期事件 | LSP 私有事件挤进跨面事件闭集 |
+| 未启用零成本（同 MCP 心智） | 启动即常驻语言服务 |
 
 ## 相关
 
