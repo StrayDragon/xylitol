@@ -28,8 +28,8 @@
 
 | 文件 | 约行数 | 相对硬顶 | 拆分入口 |
 |---|---|---|---|
-| `agent/runtime/react.rs` | 2762 | 超 | [`_TODO.md`](./_TODO.md) §D1–D4 |
-| `infra/session/manager.rs` | 2191 | 超 | §D8–D10 |
+| `agent/runtime/react.rs` | 2762 | 超硬顶 | **默认不拆**（同居行为测 ~1500；真剧本 ~780）。见 `_TODO` §D 决议；P3 未开闸 |
+| `infra/session/manager.rs` | 2191 | 超硬顶 | **默认不按 D8–D10 大拆**；生产 ~1653。可选 D11 卫生。见 `_TODO` §D |
 | `app/core/driver/in_process.rs` | 1269 | 超软顶 | §D5–D7 已拆；仍可再切 reload/clipboard/tests |
 | `infra/resource/loader.rs` | 1217 | 超软顶 | 暂观察；有改动时顺手拆 |
 | `infra/config/types.rs` | 1188 | 近软顶 | 暂观察（类型清单型文件） |
@@ -51,6 +51,7 @@
 |---|---|
 | 2026-07-21 | 初建：预算 + 超标快照；对应 `_TODO.md` §A |
 | 2026-07-21 | §D5–D7：`driver.rs` → `driver/` 子模块；重测行数 |
+| 2026-07-21 | 决议：react / session manager **默认不大拆**；超标保留并注明理由（见 `_TODO` §D） |
 |  |  |
 
 ## 下次调音
