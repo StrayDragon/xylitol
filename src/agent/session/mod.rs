@@ -396,6 +396,7 @@ impl AgentCapabilities {
 
     /// Set the active session ID.
     pub fn set_session(&mut self, session_id: String) {
+        xylitol_ai_bridge::provider::set_obs_session(session_id.clone(), None);
         self.session_id = Some(session_id);
     }
 

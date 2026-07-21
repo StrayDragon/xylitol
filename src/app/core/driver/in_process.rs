@@ -378,6 +378,9 @@ impl XyDriver for XyInProcessDriver {
             crate::agent::session::observe_hook(&bus, ty, phase, ctx).await;
         }
         self.agent.inner_mut().set_session(session_id.to_string());
+        if let Ok(Some(name)) = self.store.get_session_name(session_id).await {
+            xylitol_ai_bridge::provider::set_obs_session_name(Some(name.as_str()));
+        }
         Ok(session_id.to_string())
     }
 
@@ -642,7 +645,9 @@ impl XyDriver for XyInProcessDriver {
             .inner()
             .session_id()
             .ok_or_else(|| XyDriverError::not_found("no active session"))?;
-        Self::map_str(self.store.set_session_name(sid, name).await)
+        let out = Self::map_str(self.store.set_session_name(sid, name).await)?;
+        xylitol_ai_bridge::provider::set_obs_session_name(Some(out.as_str()));
+        Ok(out)
     }
 
     async fn set_session_name_for(
@@ -650,7 +655,11 @@ impl XyDriver for XyInProcessDriver {
         session_id: &str,
         name: &str,
     ) -> Result<String, XyDriverError> {
-        Self::map_str(self.store.set_session_name(session_id, name).await)
+        let out = Self::map_str(self.store.set_session_name(session_id, name).await)?;
+        if self.agent.inner().session_id() == Some(session_id) {
+            xylitol_ai_bridge::provider::set_obs_session_name(Some(out.as_str()));
+        }
+        Ok(out)
     }
 
     async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {

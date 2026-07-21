@@ -13,6 +13,7 @@ use std::pin::Pin;
 use fastrace::prelude::*;
 use fastrace_futures::StreamExt as _;
 use futures::Stream;
+use xylitol_ai_bridge::provider::langfuse_session_properties;
 use xylitol_ai_bridge::provider::trace::provider_trace_active;
 
 use crate::protocol::error::{XyError, XyToolError};
@@ -33,10 +34,12 @@ impl ReactTurnSpan {
         }
         let turn_id = uuid::Uuid::new_v4().to_string();
         let root = Span::root("react.turn", SpanContext::random()).with_properties(|| {
-            [
-                ("turn_id", turn_id.clone()),
-                ("turn_index", turn_index.to_string()),
-            ]
+            let mut props = vec![
+                ("turn_id".to_string(), turn_id.clone()),
+                ("turn_index".to_string(), turn_index.to_string()),
+            ];
+            props.extend(langfuse_session_properties());
+            props
         });
         root.add_event(Event::new("lifecycle").with_properties(|| {
             [
@@ -59,8 +62,14 @@ impl ReactTurnSpan {
 fn stream_span(turn_id: Option<&str>) -> Span {
     let tid = turn_id.unwrap_or("").to_string();
     // Always root: cannot rely on local parent across await boundaries.
-    let span = Span::root("react.stream", SpanContext::random())
-        .with_properties(|| [("turn_id", tid), ("span_role", "react.stream".to_string())]);
+    let span = Span::root("react.stream", SpanContext::random()).with_properties(|| {
+        let mut props = vec![
+            ("turn_id".to_string(), tid),
+            ("span_role".to_string(), "react.stream".to_string()),
+        ];
+        props.extend(langfuse_session_properties());
+        props
+    });
     span.add_event(Event::new("lifecycle").with_properties(|| {
         [
             ("kind", "lifecycle".to_string()),
@@ -89,8 +98,14 @@ impl ToolExecuteSpan {
         if !provider_trace_active() {
             return None;
         }
-        let span = Span::root("tool.execute", SpanContext::random())
-            .with_properties(|| [("tool_name", name.to_string()), ("tool_id", id.to_string())]);
+        let span = Span::root("tool.execute", SpanContext::random()).with_properties(|| {
+            let mut props = vec![
+                ("tool_name".to_string(), name.to_string()),
+                ("tool_id".to_string(), id.to_string()),
+            ];
+            props.extend(langfuse_session_properties());
+            props
+        });
         span.add_event(Event::new("lifecycle").with_properties(|| {
             [
                 ("kind", "lifecycle".to_string()),
@@ -114,11 +129,13 @@ pub(crate) fn record_xy_error(where_: &str, err: &XyError, turn_id: Option<&str>
         return;
     }
     let span = Span::root("react.error", SpanContext::random()).with_properties(|| {
-        [
-            ("error.kind", kind.to_string()),
-            ("where", where_.to_string()),
-            ("turn_id", tid.to_string()),
-        ]
+        let mut props = vec![
+            ("error.kind".to_string(), kind.to_string()),
+            ("where".to_string(), where_.to_string()),
+            ("turn_id".to_string(), tid.to_string()),
+        ];
+        props.extend(langfuse_session_properties());
+        props
     });
     span.add_event(Event::new("error").with_properties(|| {
         [
@@ -141,11 +158,13 @@ pub(crate) fn record_tool_error(tool: &str, err: &XyToolError, turn_id: Option<&
         return;
     }
     let span = Span::root("tool.error", SpanContext::random()).with_properties(|| {
-        [
-            ("error.kind", kind.to_string()),
-            ("tool_name", tool.to_string()),
-            ("turn_id", tid.to_string()),
-        ]
+        let mut props = vec![
+            ("error.kind".to_string(), kind.to_string()),
+            ("tool_name".to_string(), tool.to_string()),
+            ("turn_id".to_string(), tid.to_string()),
+        ];
+        props.extend(langfuse_session_properties());
+        props
     });
     span.add_event(Event::new("error").with_properties(|| {
         [
