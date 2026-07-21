@@ -70,12 +70,15 @@ where
                             }
                         }
                         Some(Err(e)) => {
+                            e.log_failure("tui.bang.input");
                             session.tui.finish_inline();
                             return Err(e);
                         }
                         None => {
                             session.request_quit();
-                            break Err("input closed during bang".into());
+                            let err = XyDriverError::message("input closed during bang");
+                            err.log_failure("tui.bang.input_closed");
+                            break Err(err);
                         }
                     }
                 }
@@ -110,7 +113,10 @@ where
                 session.push_bash_result(&bash.command, &r);
             }
         }
-        Err(e) => session.push_system_note(format!("bash failed: {e}")),
+        Err(e) => {
+            e.log_failure("tui.execute_bash");
+            session.push_system_note(format!("bash failed: {e}"));
+        }
     }
     session.end_bash_exec();
     if aborted_during_bash {

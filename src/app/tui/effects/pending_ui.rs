@@ -10,7 +10,10 @@ use crate::protocol::session::SessionTreeKind;
 use super::super::host::HostSession;
 use super::super::layout::ImportConfirmDecision;
 use super::super::layout::map_session_tree_nodes;
-use super::helpers::{SwitchRebuildKind, deepest_tree_id, switch_and_rebuild_transcript};
+use super::helpers::{
+    SwitchRebuildKind, deepest_tree_id, note_driver_err, note_driver_err_styled,
+    switch_and_rebuild_transcript,
+};
 
 pub(super) async fn drain_pending_ui<T: Terminal>(
     session: &mut HostSession<T>,
@@ -29,6 +32,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
             Ok(None) | Err(_) => {
                 // c1156 / pi: no image (or read failed) → try system clipboard text.
                 if let Err(e) = &image_outcome {
+                    e.log_failure("tui.stage_clipboard_image");
                     log::info!(
                         target: "xylitol::tui",
                         "clipboard image unavailable, trying text: {e}"
@@ -44,7 +48,12 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
                         session.push_error_note("clipboard: no image or text");
                     }
                     Err(e) => {
-                        session.push_error_note(format!("clipboard: {e}"));
+                        note_driver_err_styled(
+                            session,
+                            "tui.read_clipboard_text",
+                            &e,
+                            format!("clipboard: {e}"),
+                        );
                     }
                 }
             }
@@ -56,6 +65,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
         match driver.cycle_thinking_level() {
             Ok(level) => session.apply_thinking_level_ui(level),
             Err(e) => {
+                e.log_failure("tui.cycle_thinking_level");
                 log::warn!(
                     target: "xylitol::tui",
                     "cycle_thinking_level failed: {e}"
@@ -73,7 +83,12 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
                 let active = deepest_tree_id(&mapped);
                 session.mount_session_tree(mapped, active);
             }
-            Err(e) => session.push_system_note(format!("session tree failed: {e}")),
+            Err(e) => note_driver_err(
+                session,
+                "tui.session_tree",
+                &e,
+                format!("session tree failed: {e}"),
+            ),
         }
         let _ = session.render_now();
     }
@@ -92,9 +107,19 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
                     #[cfg(not(test))]
                     super::kick_footer_token_refresh(session, driver).await;
                 }
-                Err(e) => session.push_system_note(format!("travel: get_messages failed: {e}")),
+                Err(e) => note_driver_err(
+                    session,
+                    "tui.travel.get_messages",
+                    &e,
+                    format!("travel: get_messages failed: {e}"),
+                ),
             },
-            Err(e) => session.push_system_note(format!("travel failed: {e}")),
+            Err(e) => note_driver_err(
+                session,
+                "tui.travel_session_tree",
+                &e,
+                format!("travel failed: {e}"),
+            ),
         }
         let _ = session.render_now();
     }
@@ -106,7 +131,12 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
         let parent_entries = match driver.get_messages().await {
             Ok(e) => e,
             Err(e) => {
-                session.push_system_note(format!("fork: get_messages failed: {e}"));
+                note_driver_err(
+                    session,
+                    "tui.fork.get_messages",
+                    &e,
+                    format!("fork: get_messages failed: {e}"),
+                );
                 let _ = session.render_now();
                 return;
             }
@@ -139,15 +169,26 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
                             Ok(entries) => {
                                 session.apply_session_tree_fork(&child_id, entries, prefill);
                             }
-                            Err(e) => {
-                                session.push_system_note(format!("fork: get_messages failed: {e}"))
-                            }
+                            Err(e) => note_driver_err(
+                                session,
+                                "tui.fork.get_messages_after",
+                                &e,
+                                format!("fork: get_messages failed: {e}"),
+                            ),
                         },
-                        Err(e) => {
-                            session.push_system_note(format!("switch after fork failed: {e}"))
-                        }
+                        Err(e) => note_driver_err(
+                            session,
+                            "tui.fork.switch_session",
+                            &e,
+                            format!("switch after fork failed: {e}"),
+                        ),
                     },
-                    Err(e) => session.push_system_note(format!("fork failed: {e}")),
+                    Err(e) => note_driver_err(
+                        session,
+                        "tui.fork_session",
+                        &e,
+                        format!("fork failed: {e}"),
+                    ),
                 }
             }
         }
@@ -158,7 +199,12 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
         log::info!(target: "xylitol::tui", "XyDriver::append_entry_label entry_id={}", entry_id);
         match driver.append_entry_label(&entry_id, label.as_deref()).await {
             Ok(()) => session.apply_session_tree_label(&entry_id, label),
-            Err(e) => session.push_system_note(format!("label failed: {e}")),
+            Err(e) => note_driver_err(
+                session,
+                "tui.append_entry_label",
+                &e,
+                format!("label failed: {e}"),
+            ),
         }
         let _ = session.render_now();
     }
@@ -191,6 +237,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
                 session.push_system_note("model set");
                 session.close_models_slot();
             }
+            // dispatch already logs error.kind
             Err(e) => session.push_system_note(format!("/model failed: {e}")),
         }
         let _ = session.render_now();
@@ -203,7 +250,12 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
                 session.push_system_note(format!("theme → {theme_name}"));
                 session.close_themes_slot();
             }
-            Err(e) => session.push_system_note(format!("/theme failed: {e}")),
+            Err(e) => note_driver_err(
+                session,
+                "tui.reload_themes.picker",
+                &e,
+                format!("/theme failed: {e}"),
+            ),
         }
         let _ = session.render_now();
     }
@@ -238,6 +290,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
                         session.push_system_note("import complete");
                         session.close_import_confirm();
                     }
+                    // dispatch already logs error.kind
                     Err(e) => {
                         session.push_system_note(format!("/session-import failed: {e}"));
                         session.close_import_confirm();
@@ -262,8 +315,13 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
                 session.push_system_note(format!("Session renamed: {stored}"));
             }
             Err(e) => {
+                note_driver_err(
+                    session,
+                    "tui.set_session_name_for",
+                    &e,
+                    format!("rename failed: {e}"),
+                );
                 session.session_resume_set_status(format!("rename failed: {e}"));
-                session.push_system_note(format!("rename failed: {e}"));
             }
         }
         let _ = session.render_now();
@@ -280,8 +338,13 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
                     session.push_system_note(format!("Deleted session {id}"));
                 }
                 Err(e) => {
+                    note_driver_err(
+                        session,
+                        "tui.delete_session",
+                        &e,
+                        format!("delete failed: {e}"),
+                    );
                     session.session_resume_set_status(format!("delete failed: {e}"));
-                    session.push_system_note(format!("delete failed: {e}"));
                 }
             }
         }
