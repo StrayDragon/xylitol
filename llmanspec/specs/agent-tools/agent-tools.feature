@@ -269,7 +269,7 @@
 
   @req:r32
   场景: xy-tool-consistent
-    假如 检查 runtime_protocol 工具边界
+    假如 检查 protocol 工具边界
     当 应用变更后
     那么 所有工具边界类型均带 Xy 前缀
 
@@ -479,7 +479,7 @@
 
   @req:r36
   场景: via-port
-    当 rg rmcp 于 src/agent 与 src/domain
+    当 rg rmcp 于 src/agent 与 src/protocol
     那么 零匹配
 
   @req:t21

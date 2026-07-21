@@ -1,9 +1,9 @@
 kind: llman.sdd.spec
 name: "agent-tools"
 purpose: 工具系统 — 工具定义、执行分发、bash/ls/grep/edit/write/read 内置工具与路径工具。
-valid_scope[3]: src/agent/tools/,src/infra/tools/,src/runtime_protocol/tool.rs
+valid_scope[3]: src/agent/tools/,src/infra/tools/,src/protocol/
 requirements[39]{req_id,title,statement}:
-  r32,工具 trait 前缀,System MUST 将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，MUST 与 runtime_protocol 边界其余命名一致。
+  r32,工具 trait 前缀,System MUST 将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，MUST 与 protocol 边界其余命名一致。
   r42,七种内置工具,System MUST 实现 7 个内置工具：read、bash、edit、write、grep、find、ls。
   r48,补丁应用,System MUST 使用 fudiff 模糊匹配应用 AI 生成的补丁，并以 patch crate 精确匹配作为回退。
   r4,读文件大小限制,Read 工具 MUST 拒绝超过 MAX_FILE_SIZE（默认 10MB）的文件，并返回清晰错误信息。
@@ -37,7 +37,7 @@ requirements[39]{req_id,title,statement}:
   e4,diff 输出,编辑操作后，System MUST 使用 similar crate 计算结构化 diff 供审阅。
   t17,工具定义包含 schema,展示类型 ToolDefinition MUST 包含 XyToolSchema 字段，而非重复 name/description/parameters 字段。
   t18,ToolSet 在 agent 终态,"ToolSet（自 ToolRegistry 重命名）MUST 留在 agent/ 作为构建期终态编排状态，持有 Vec<Arc<dyn XyTool>>；具体工具由组合根从 infra::tools::default_tools 注入并经 ToolSet 单元操作组合；构建后交给一轮的集合为终态，无运行时过滤。"
-  t19,工具相关类型统一前缀,ToolExecutionMode MUST 重命名为 XyToolExecutionMode；runtime_protocol 工具边界及其签名类型 MUST 一致使用 Xy 前缀命名。
+  t19,工具相关类型统一前缀,ToolExecutionMode MUST 重命名为 XyToolExecutionMode；protocol 工具边界及其签名类型 MUST 一致使用 Xy 前缀命名。
   t20,移除死过滤 API,"先前的运行时过滤 API（set_allowed_tool_names、set_excluded_tool_names、list_filtered、builtins 空操作别名、AgentSession::set_active_tools）MUST 移除；ReAct 循环 MUST 直接消费最终工具集。先前循环调用 list 绕过过滤；移除过滤 API 消除此类 bypass 缺陷。"
   r36,MCP 工具经 XyTool 接入,MCP 工具 MUST 仅通过 XyTool 端口进入 agent 工具集；rmcp 具体类型 MUST NOT 泄漏到 agent/ 或 domain/。
   t21,"read-image-parts","Read 工具在路径为支持的图片文件时 MUST 经 resize/multimodal 准备产出含 AgentPart::Image（base64 data + media_type）的 tool result parts，并附简短 text note；MUST NOT 仅返回「[Image file: …]」占位字符串作为唯一结果。文本文件行为保持既有截断语义。工具端口 MUST 允许 execute 结果以 parts 形式进入 history（默认实现可将纯文本包成 Text part）。"

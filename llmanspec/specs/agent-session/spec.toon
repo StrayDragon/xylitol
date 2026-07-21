@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "agent-session"
 purpose: Agent 会话管理 — 会话生命周期、能力状态、prompt 构造与回合编排。
-valid_scope[3]: src/agent/session/,src/runtime_protocol/session.rs,src/domain/session_types.rs
+valid_scope[2]: src/agent/session/,src/protocol/
 requirements[36]{req_id,title,statement}:
   a1,"agent-session",System MUST 提供 AgentSession，封装 prompt→model→tools→loop 与完整事件流，仅持有编排状态；system prompt MUST 由组合根注入的上下文（AGENTS.md、配置 system prompt、append prompts）组装，MUST NOT 使用硬编码回退。
   a2,回合事件,AgentSession MUST 每轮发出：turn_start、message_start、message_update（流式）、message_end。
@@ -26,10 +26,10 @@ requirements[36]{req_id,title,statement}:
   as31,Agent 自 Session 重命名,能力聚合体 MUST 命名为 AgentCapabilities（原 Agent / AgentSession）；MUST 组合已分解协作者并 MUST 保留既有事件流相关公共 API，调用点仅改类型名。
   as32,AgentSession 协作对象提取（落地 as30）,"AgentSession MUST 分解为命名协作者：auto-retry（AutoRetryEngine）、bash 执行（BashExecHandler）、会话导出/导入（SessionExporter）。AgentSession MUST 以字段组合这些协作者并 MUST 保留既有公共 API 与事件流（per as31）。session 模块 MUST 重组为 session/ 目录及聚焦子模块（io、retry、bash_exec、export、stats、prompt、steering），AgentSession 单文件 MUST 降至 600 行以下。"
   as33,管理器提取到兄弟模块,AgentSession 协作者（ModelManager、CompactionOrchestrator、SkillManager）MUST 位于所属子系统专用模块（model/manager.rs、compaction/orchestrator.rs、prompt/skills.rs），不得作为 agent/ 顶层孤儿文件；AgentSession 以字段组合它们。
-  as34,SessionStore 端口,"System MUST 在 runtime_protocol 定义 SessionStore 抽象会话持久化；infra::session::SessionManager MUST 实现它，tests/support/ MUST 存在测试内存双实现；agent/ MUST 以 Arc<dyn SessionStore> 持有 store。"
-  as35,导出 IO 端口,"AgentSession 的 export_to_html、export_to_jsonl、import_from_jsonl MUST 经注入的 Arc<dyn runtime_protocol::export::ExportIo> 做文件 I/O，不得直接调用 std::fs，使 agent 层无文件系统副作用且未来后端（gist、S3）可不改 agent 代码。"
-  as36,bang 前缀在 agent,"用户输入 bang 解析器（!cmd / !!cmd）MUST 位于 agent::session::bang，不得在 domain 层，因其编码 CLI/agent 交互语法而非通用领域词汇。"
-  as37,SessionExporter 在 agent,"会话导出/导入渲染与解析辅助（render_html、render_jsonl、parse_jsonl）MUST 位于 agent::session::export，不得在 domain 层，因其属于导出命令编排。"
+  as34,SessionStore 端口,"System MUST 在 protocol 定义 SessionStore 抽象会话持久化；infra::session::SessionManager MUST 实现它，tests/support/ MUST 存在测试内存双实现；agent/ MUST 以 Arc<dyn SessionStore> 持有 store。"
+  as35,导出 IO 端口,"AgentSession 的 export_to_html、export_to_jsonl、import_from_jsonl MUST 经注入的 Arc<dyn protocol::export::ExportIo> 做文件 I/O，不得直接调用 std::fs，使 agent 层无文件系统副作用且未来后端（gist、S3）可不改 agent 代码。"
+  as36,bang 前缀在 agent,"用户输入 bang 解析器（!cmd / !!cmd）MUST 位于 agent::session::bang，MUST 与 AgentSession 同住 agent，因其编码 CLI/agent 交互语法。"
+  as37,SessionExporter 在 agent,"会话导出/导入渲染与解析辅助（render_html、render_jsonl、parse_jsonl）MUST 位于 agent::session::export，MUST 与 AgentSession 同住 agent，因其属于导出命令编排。"
   as38,可选 bash 导出,AgentSession MUST 将 bash_executor 与 export_io 持有为 Option<Arc<端口 trait>>；execute_bash 与 export_to_html/export_to_jsonl/import_from_jsonl 在对应槽为 None 时 MUST 返回清晰未配置错误，使最小对话 agent 不必强制携带 bash 或导出能力。
   as39,能力状态在 Session,AgentSession MUST 拥有运行时可变能力状态（tools ToolSet、permission engine、hooks、active system prompt），使 Agent facade setter 可变更且 run 每轮快照；AgentLoop MUST NOT 重复此状态，且 AgentLoop 上 hooks 与 tool_mode 字段重复 MUST 移除。
   as40,Agent 重命名调用点,AgentSession→Agent 重命名 MUST 更新全部调用点（agent/builder.rs、agent/runtime/react.rs、app/core/composition.rs、app/core/driver.rs、app/rpc.rs、app/server/rest.rs、tests/bdd.rs、公共 API 快照测试）；快照 MUST 重新生成且重命名 MUST NOT 改变行为。

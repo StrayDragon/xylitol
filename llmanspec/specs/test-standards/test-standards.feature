@@ -10,9 +10,9 @@
 
   @req:ts02
   场景: domain-types-covered
-    假如 domain/ 与 runtime_protocol/ 源文件存在
+    假如 agent/ 会话词汇与 protocol/ 端口源文件存在
     当 运行 cargo test
-    那么 所有 domain 与 runtime_protocol 模块报告 serialize/Display/From 行为测试通过
+    那么 相关 agent 与 protocol 模块报告 serialize/Display/From 行为测试通过
 
   @req:ts03
   场景: pure-logic-covered
