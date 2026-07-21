@@ -28,7 +28,7 @@ requirements[32]{req_id,title,statement}:
   "la-server-driver",Server 与 Print 同缝,Server 与 Print MUST 共享同一应用缝（Driver/bootstrap）；新增 server 能力时优先扩缝，禁止为 server 单独复制一套 agent 编排。
   "la-mcp-seam",MCP 经嵌入缝,"System MUST 向嵌入方提供不依赖 infra 路径的 MCP 服务器描述（或等价句柄），使 bootstrap/reload 可在不 reach-in infra::mcp 的情况下传递配置。composition/McpSession MUST 在缝边界内将嵌入缝 MCP 描述转为 infra 实现；应用面 MUST NOT 为 MCP 装配单独 reach-in infra 类型。"
   "la-dispatch-consume",dispatch 有消费方,跨面命令执行缝 dispatch MUST 至少被一个生产应用面消费（Server 或 TUI）；禁止长期仅单测覆盖而无面接线。
-  la25,provider 包开闭,"LLM 厂商差异 MUST 收敛在 packages/xylitol-ai-bridge 的 adapter 族与主仓投影缝；新 OpenAI-like 或 Anthropic-like 兼容端 MUST 以开闭方式扩展（新 adapter/配置），MUST NOT 修改 domain AgentMessage 或 agent ReAct 核心以适配某一网关；domain/agent MUST NOT 依赖厂商 SDK。"
+  la25,provider 包开闭,"LLM 厂商差异 MUST 收敛在 packages/xylitol-ai-bridge 的 adapter 族；主仓投影缝仅负责 Env→LLM 折叠（Llm 臂组合 bridge DTO）。新 OpenAI-like 或 Anthropic-like 兼容端 MUST 以开闭方式扩展（新 adapter/配置），MUST NOT 为某一网关修改 AgentMessage 角色集或 agent ReAct 核心；domain MAY 依赖 bridge DTO 组合 Llm 臂，domain/agent MUST NOT 依赖厂商 HTTP/SDK。"
   ar01,清除 pi 文档引用,src/ 中所有源文件 MUST NOT 在 doc comments 中引用 pi coding agent 或其 TypeScript 模块。pi 设计理由引用 MUST 替换为该模块实际职责的独立描述。
   ar02,组件粒度边界,"少于 100 行或 5 个方法且无行为逻辑的组件 MUST 内联到父 struct。反之，内联块超过约 100 行、有独立行为逻辑且概念内聚时 MUST 提取为命名协作者对象。Agent 能力聚合 MUST NOT 作为单一 struct 或单一文件无界增长；export、bash、permission、stats、trust 关注点 MUST 提取为命名协作者，使聚合保持内聚。"
   ar06,精选库入口 Xy 前缀,精选进 crate 公开 API（lib.rs pub use）的可替换端口、跨面生命周期事件及其绑定签名类型 MUST 使用 Xy 前缀；应用面缝（Driver/bootstrap/dispatch）、protocol 线协议类型、infra 具体实现、以及未导出的内部协作者 MUST NOT 仅为品牌而加 Xy 前缀。

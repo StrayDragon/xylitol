@@ -31,7 +31,13 @@
   场景: entry
     假如 记录 bash 结果
     当 append 到 session
-    那么 条目存为 BashExecution 变体
+    那么 条目为 type=message 且 message.role=bashExecution
+
+  @req:be4
+  场景: legacy-top-level-bash-read
+    假如 session 文件含旧顶层 type=bashExecution
+    当 加载并构建上下文
+    那么 可见等价 bashExecution 消息（字段保留）
 
   @req:be5
   场景: bang-include
@@ -47,8 +53,8 @@
 
   @req:be6
   场景: omit
-    假如 history 有 exclude_from_context true 的 BashExecution 条目
-    当 构建 LLM 上下文
+    假如 history 有 exclude_from_context true 的 bashExecution（Message 内或读提升）
+    当 构建 LLM 上下文或 ReAct 播种
     那么 该条目被省略
 
   @req:b1
