@@ -21,7 +21,7 @@
 | 现代 Rust | 2024 + RPITIT 等；少不必要宏/装箱 | Edition 2024；port **因 dyn 全覆盖**默认保留 `async_trait`（§E α） |
 | 可维护 | 模块可审阅；AGENTS 长期规则与易腐调音分离 | 纪律清晰；`react`/`driver`/`session` God 文件 |
 | 性能 | 热路径克制 clone；端口 `Arc<dyn>` 合理 | 可用；未做针对性压榨（勿盲改） |
-| 错误 / 观测 | 可匹配的 kind；anyhow 仅叶 source；trace 带 kind | `XyError` 有但 seam 少用；多 `to_string()` |
+| 错误 / 观测 | 可匹配的 kind；anyhow 仅叶 source；trace 带 kind | `XyError`/`XyDriverError` 有 `kind`；seam/TUI 关键失败已打 `error.kind`（§G 已关） |
 
 ### 0.2 非目标（本清单不做）
 
@@ -62,10 +62,12 @@ D  God 文件拆分（react / driver / session）
    └─ react / session 大拆：默认不做（见 §D 决议）
 E  protocol/ports RPITIT               ← **已关闭（α）**：dyn 全覆盖，维持 async_trait
 F  孪生类型与 protocol↔packages 边界   ← **已关闭**（c1210 compose + c1220 protocol 方案 B）
-G  观测 kind 打尖                        ← **已关闭**（G1–G4；dispatch/driver 亦带 error.kind）
+G  观测 kind 打尖                        ← **已关闭**（G1–G4 + TUI/host/dispatch/`from_opaque`）
 ```
 
-可并行项已收束。开放项仅 **C3（可选后置）**；**勿再开**「抽出 `xylitol-domain`」。
+可并行项已收束。开放项仅 **C3（可选后置 TypedTool）**；**勿再开**「抽出 `xylitol-domain`」。
+
+**§G 覆盖面（收束）**：ReAct 热路径 · 共享 `dispatch` · in-process/remote 变体升格 · effects（slash/pending_ui/bang）· host（render/input/external editor）。`host/session_ops` **无** `Result`/失败路径（纯 UI mount/apply）。
 
 ### 0.6 关键路径速查
 
@@ -579,10 +581,17 @@ Vec<AiBridgeMessage> → XyModel / dialect adapters
 
 ### 落地摘要（2026-07-21）
 
-- `XyError` / `XyToolError` /（既有）`XyDriverError` 均有 `kind()`；`XyDriverError::detail_kind` / `log_failure`。
-- ReAct：`model.generate_stream` / `model.stream` / `tool.execute` 失败路径 `log` + 条件 fastrace，带 `error.kind` 与 `turn_id`。
-- dispatch / TUI 直接 driver 调用 / remote envelope：失败时 `error.kind`（Agent 时另带 `agent.kind`）。
+- `XyError` / `XyToolError` / `XyDriverError` 均有 `kind()`；`XyDriverError::{detail_kind,log_failure,from_opaque}`。
+- ReAct：`model.generate_stream` / `model.stream` / `tool.execute` → log + 条件 fastrace（`error.kind` + `turn_id`）。
+- Seam：`dispatch.<Command>`；in-process/remote 明确路径升 `NotFound`/`Io`/`Unsupported`/`Remote`；`From<String>`→`from_opaque`。
+- TUI effects：slash / pending_ui / bang / steer·follow-up 经 `note_driver_err` 或 `log_failure`。
+- TUI host：`render_now` / too-extreme render / term input / external editor resolve·run。
+- **非缺口**：`host/session_ops` 无错误返回（纯 UI）；经 `dispatch` 的 slash 臂不重复打 kind。
 - 排障：skill `xylitol-inspect-runtime-logs` / `just obs-*`。
+
+### §G 状态
+
+- [x] **已关闭**（本轮观测债收束）。后续仅：误伤调 `from_opaque`、或新产品路径补 `log_failure`。
 
 ---
 
@@ -619,6 +628,7 @@ Vec<AiBridgeMessage> → XyModel / dialect adapters
 | 2026-07-21 | agent | §G2+ | dispatch/TUI/remote 失败打 `error.kind`；C3 TypedTool **搁置** |
 | 2026-07-21 | agent | §G2++ | pending_ui/bang `log_failure`；in_process/remote 升 NotFound/Io/Unsupported/Remote |
 | 2026-07-21 | agent | §G2+++ | slash 非 dispatch 失败打 kind；`From<String>`→`from_opaque` 启发式分类 |
+| 2026-07-21 | agent | §G2++++ | host render/input/external-editor 打 kind；确认 `session_ops` 无 Err；§G **收束关闭** |
 |  |  |  |  |
 
 ---
@@ -629,7 +639,8 @@ Vec<AiBridgeMessage> → XyModel / dialect adapters
 
 - `serde_json::Value` 在 `src/` 多处出现；hooks / react / driver 为热点。
 - 无 `dyn Any` / `as_any` / `TypeId` 逃逸（加分）。
-- `Result<…, String>` 在 session / 部分 infra 仍密；driver seam 已抬到 `XyDriverError`。
+- `Result<…, String>` 在 session / 部分 infra 仍密；**driver / dispatch seam** 已抬到 `XyDriverError`，且 `From<String>` 经 `from_opaque` 分类。
+- TUI 失败观测：effects + host 关键路径已带 `error.kind`（见 §G 落地摘要）。
 - `async_trait`：`src` 约 37 处；因 dyn port 默认维持（§E α）。
 
 ---

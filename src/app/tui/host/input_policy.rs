@@ -332,6 +332,9 @@ impl<T: Terminal> HostSession<T> {
                     match over {
                         Ok(cmd) => cmd,
                         Err(msg) => {
+                            let err =
+                                crate::app::core::driver::XyDriverError::invalid_input(msg.clone());
+                            err.log_failure("tui.external_editor.resolve");
                             self.push_error_note(msg);
                             return true;
                         }
@@ -340,6 +343,9 @@ impl<T: Terminal> HostSession<T> {
                     match super::super::external_editor::resolve_external_editor_command() {
                         Ok(cmd) => cmd,
                         Err(msg) => {
+                            let err =
+                                crate::app::core::driver::XyDriverError::invalid_input(msg.clone());
+                            err.log_failure("tui.external_editor.resolve");
                             self.push_error_note(msg);
                             return true;
                         }
@@ -351,6 +357,9 @@ impl<T: Terminal> HostSession<T> {
                 match super::super::external_editor::resolve_external_editor_command() {
                     Ok(cmd) => cmd,
                     Err(msg) => {
+                        let err =
+                            crate::app::core::driver::XyDriverError::invalid_input(msg.clone());
+                        err.log_failure("tui.external_editor.resolve");
                         self.push_error_note(msg);
                         return true;
                     }
@@ -371,11 +380,17 @@ impl<T: Terminal> HostSession<T> {
                 }
             }
             Ok(None) => {
+                log::warn!(
+                    target: "xylitol::tui",
+                    "tui.external_editor.run failed error.kind=Message error=exited non-zero"
+                );
                 self.push_error_note(
                     "external editor exited non-zero — keeping original text".to_string(),
                 );
             }
             Err(err) => {
+                let e = crate::app::core::driver::XyDriverError::from_opaque(err.clone());
+                e.log_failure("tui.external_editor.run");
                 self.push_error_note(format!("external editor failed: {err}"));
             }
         }
