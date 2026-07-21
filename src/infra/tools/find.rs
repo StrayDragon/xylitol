@@ -13,11 +13,11 @@ use serde_json::{Value, json};
 use tokio::process::Command;
 use tokio::time::{Duration, timeout};
 
-use super::args::parse_tool_args;
 use super::path_utils::resolve_to_cwd;
 use super::truncate::{DEFAULT_MAX_BYTES, TruncationOptions, format_size, truncate_head};
+use super::typed::TypedTool;
 use crate::protocol::error::XyToolError;
-use crate::protocol::ports::{XyTool, XyToolCtx};
+use crate::protocol::ports::XyToolCtx;
 
 const DEFAULT_LIMIT: usize = 1000;
 const FD_TIMEOUT: Duration = Duration::from_secs(30);
@@ -25,7 +25,7 @@ const FD_TIMEOUT: Duration = Duration::from_secs(30);
 pub struct FindTool;
 
 #[derive(Debug, Deserialize)]
-struct FindArgs {
+pub struct FindArgs {
     pattern: String,
     #[serde(default = "default_find_path")]
     path: String,
@@ -42,7 +42,9 @@ fn default_find_limit() -> u64 {
 }
 
 #[async_trait]
-impl XyTool for FindTool {
+impl TypedTool for FindTool {
+    type Args = FindArgs;
+
     fn name(&self) -> &str {
         "find"
     }
@@ -72,12 +74,12 @@ impl XyTool for FindTool {
         })
     }
 
-    async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError> {
+    async fn execute_typed(&self, ctx: &XyToolCtx, args: FindArgs) -> Result<String, XyToolError> {
         let FindArgs {
             pattern,
             path: search_path,
             limit,
-        } = parse_tool_args(args)?;
+        } = args;
         let effective_limit = (limit as usize).clamp(1, 10_000);
 
         let search_dir = resolve_to_cwd(&search_path);
@@ -203,6 +205,8 @@ impl XyTool for FindTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::ports::XyTool;
+    use serde_json::json;
 
     fn test_ctx() -> XyToolCtx {
         XyToolCtx::new("test-call")
