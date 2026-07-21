@@ -58,6 +58,7 @@ A  AGENTS 调音规则 + RETUNE 指针文件     ← 立规矩，低风险
 B  错误类型抬升（XyDriver / dispatch）     ← 横切收益最大
 C  内置工具 Args 类型化                  ← 局部、类型可见
 D  God 文件拆分（react / driver / session）
+   └─ driver D5–D7 已完成；react：先 D0/D0b/软 D1–D4；P3 状态机已评估、未开闸
 E  runtime_protocol RPITIT               ← 一批改 port+实现
 F  孪生类型 SSOT（需动 packages）         ← 后置；先写归属、禁新增孪生
 G  观测 kind 打尖                        ← 可与 B 并行或紧随
@@ -75,7 +76,7 @@ G  观测 kind 打尖                        ← 可与 B 并行或紧随
 | Provider / 消息投影 | `src/AGENTS.md`「Provider 适配」；`src/infra/provider/map.rs`；`src/domain/llm_project.rs` |
 | 工具 port | `src/runtime_protocol/tool.rs`；实现 `src/infra/tools/` |
 | 钩子 | `src/runtime_protocol/hook.rs`；`src/agent/runtime/hooks.rs`；`src/infra/hooks/` |
-| XyDriver seam | `src/app/core/driver/`；`src/app/core/dispatch.rs` |
+| XyDriver seam | `src/app/core/driver/`；`src/app/core/dispatch.rs`；心智见 `docs/architecture/库与多客户端.md` |
 | 领域错误 | `src/domain/error.rs` |
 | bridge 包边界（后置） | `packages/xylitol-ai-bridge/AGENTS.md` |
 | 根 AGENTS 临时文档约定 | 根 `AGENTS.md`「编写与维护 AGENTS.md」→ 临时交接用 `_TODO` / `_HANDOFF` |
@@ -230,21 +231,79 @@ crate 内热路径 / 内置工具 = struct + serde
 
 | 文件 | 约行数 | 备注 |
 |---|---|---|
-| `src/agent/runtime/react.rs` | ~2762 | ReAct 核心 |
+| `src/agent/runtime/react.rs` | ~2762 | ReAct 核心（其中 `#[cfg(test)]` ~1500） |
 | `src/app/core/driver/` | 拆后见 RETUNE | trait / in-process / remote / types |
 | `src/infra/session/manager.rs` | ~2191 | session 持久化与树 |
 | `src/app/tui/harness.rs` | ~4135 | 测试；预算可另计 |
 
 `src/app/tui/AGENTS.md` 已禁止继续堆 God 文件；需拆现有存量。
 
+### 决议：XyDriver 命名心智（2026-07-21）
+
+- **代码不改名**（保持 `XyDriver` / `XyInProcessDriver` / `XyRemoteDriver`）。
+- **产品心智**：多 client 共用的统一交互内核（整机遥控器）；已写入 `docs/architecture/库与多客户端.md`。
+- **`XyAppCore`**：若将来出现，更宜指整个 `app/core`（装配 + Driver + dispatch），**不要**只把 trait 改名成 Core，以免与目录边界糊在一起。
+- 产品面（TUI / Server 等）**不必**现在品牌化为 `XyTuiApp` / `XyWebAppServer`。
+
 ### 建议切面（实现时可按 PR 切开）
 
-**react.rs**
+**react.rs**（硬约束：`run_react_loop` 的 `async_stream` 宏块是原子单元，跨函数 `yield` 不可行）
 
-- [ ] **D1** `loop` / 步进与 turn 边界
-- [ ] **D2** tool 批处理 / permission / streaming update
-- [ ] **D3** model call + retry（已有 helper 可下沉）
-- [ ] **D4** 加深已有 `obs.rs`，避免 loop 内嵌观测细节
+体量切面（先记账，**本轮先不改代码**）：
+
+| 区段 | 约行 | 备注 |
+|---|---|---|
+| prelude + 小 helper | ~100 | streaming tool upsert 等 |
+| `AgentRuntime` facade | ~380 | 可整文件搬走（P1） |
+| `run_react_loop` + 尾部 helper | ~780 | 真·剧本；拆法受限 |
+| `#[cfg(test)]` | ~1500 | 外置即可腰斩生产文件（P0） |
+
+原 D1–D4 在「可 yield 切片」意义上**不可直接执行**；改写为：
+
+- [ ] **D1**（软）turn / outer-inner 边界：注释分区 + 无 yield 纯决策函数（是否继续、注入 pending）
+- [ ] **D2**（软）tool / permission：`execute_tool_batch → Outcome`，loop 内只 `yield` Outcome
+- [ ] **D3**（软）`call_with_retry` 加深进 `retry.rs`
+- [ ] **D4**（软）`observe_script_hook` / span 细节进 `obs.rs`
+- [ ] **D0**（可选、高 ROI）外置 `react` 测试模块（~1500 行）——仅为可维护性，非状态机
+- [ ] **D0b**（可选）`AgentRuntime` → 独立文件，与 loop 分居
+
+#### P3 评估：sub-turn state machine（2026-07-21，**先不改**）
+
+**动机**：文件头已写「升级路径 = sub-turn state machine」。只有状态机（或等价：步进返回 `Vec<XyEvent>` + 下一状态）才能把「会 yield 的阶段」拆出单一宏块，而不靠 `include!` 假拆。
+
+**现状剧本里与状态机强相关的交织点**（均在 ~780 行 loop 内）：
+
+1. `outer`（follow-up 续跑）× inner（tools 后续轮）× 单 turn 生命周期事件序
+2. 模型 `connect/retry` 与 mid-stream chunk 上的 `tokio::select!` + cancel（c680：drop stream 关 HTTP）
+3. 流式 `MessageUpdate` / tool_call 累积与 `partial_assistant_message`
+4. tool 批：permission → 串/并执行 → live output `try_recv` 上行 → hooks 看到的 preview vs Image parts
+5. turn 后 poll steer；将停时 drain follow-up 决定是否再进 `outer`
+
+**一种可行形状（评估用，非设计定稿）**：
+
+```text
+enum TurnPhase { InjectPending, ModelConnect, StreamChunks, AssistEnd, ToolBatch, PollSteer, FollowUpOrSettle }
+step(phase, ctx) -> (next, Vec<XyEvent>)   // 或 mpsc，由薄 async_stream 只负责 yield
+```
+
+**收益**
+
+- 阶段可单测（不必跑完整 stream）
+- 主文件可长期压在软顶内且结构清晰
+- 新能力（新 turn 钩子 / 新 abort 语义）有明确插入点
+
+**成本 / 风险**
+
+- ~780 行行为保持重写；`XyEvent` **顺序**被 TUI / BDD 钉死，回归面大
+- cancel 竞态、并行 tool + uplink、hook 短路，在「纯步进」里都要重新表达，易静默改语义
+- 若事件序或 abort/steer 可见行为有任何漂移 → 可能升级 SDD；即便号称纯内部，也需满闸 `qa` + 相关 BDD
+- 短期内对「行数超标」的 ROI **低于** D0（外置 tests）
+
+**结论（冻结）**
+
+- **现在不做 P3。**
+- 触发再议：① D0/D0b/D1–D4 软拆之后 loop 生产行仍持续膨胀；或 ② 某功能无法在单一 `async_stream` 剧本里干净落地、且需要按 phase 单测。
+- 在此之前：`react` 拆分默认走 **D0 → D0b → D1–D4（软）**；P3 仅作升级阀门，不与 driver 式「按类型切文件」混为一谈。
 
 **driver/**（原 `driver.rs`）
 
@@ -263,6 +322,7 @@ crate 内热路径 / 内置工具 = struct + serde
 - 拆分 **行为不变**；优先 `pub(crate)` 边界清晰。
 - 每个子 PR 保持可审阅（避免一次 2k 行大搬家无结构）。
 - 拆完更新 `QUALITY_RETUNE.md` 超标表。
+- `react`：**禁止**为拆而 `include!` / 宏切片假拆；P3 未开闸前不要把 yield 阶段硬拆成多函数。
 
 ### 验收
 
@@ -271,6 +331,7 @@ crate 内热路径 / 内置工具 = struct + serde
 ### 风险 / SDD
 
 - 纯搬家 → **不走 SDD**。
+- P3 若改变事件序 / abort / steer 可见语义 → **走 SDD**。
 
 ---
 
@@ -401,6 +462,8 @@ map.rs → 变薄：project_for_llm + 少量边界转换
 | 2026-07-21 | agent | §C | 内置工具 `*Args` + `parse_tool_args`；schema 策略 (a)；hooks 签名刻意保留 |
 | 2026-07-21 | agent | §C | commit `73d2aec6`；`args.rs` **暂留** tools 顶层（倾向日后整批迁 `support/`，现保持方案 1） |
 | 2026-07-21 | agent | §D5–D7 | `driver.rs` → `driver/{mod,types,proto,in_process,remote}.rs`；修 remote/rest `XyDriverError` 映射 |
+| 2026-07-21 | agent | 命名 | 决议：代码保留 `XyDriver`；心智「多 client 统一交互内核」写入 `docs/architecture/库与多客户端.md` |
+| 2026-07-21 | agent | §D react/P3 | 评估 sub-turn state machine：**先不改**；默认路径 D0→D0b→D1–D4（软）；P3 作升级阀门 |
 |  |  |  |  |
 
 ---
