@@ -59,6 +59,26 @@ pub fn langfuse_session_properties() -> Vec<(String, String)> {
     out
 }
 
+/// Append Langfuse observation type (+ session) onto span property lists.
+pub fn langfuse_observation_properties(observation_type: &str) -> Vec<(String, String)> {
+    let mut out = vec![(
+        "langfuse.observation.type".into(),
+        observation_type.to_string(),
+    )];
+    out.extend(langfuse_session_properties());
+    out
+}
+
+/// Generation helpers: observation type + model name attributes.
+pub fn langfuse_generation_properties(model: &str) -> Vec<(String, String)> {
+    let mut out = langfuse_observation_properties("generation");
+    if !model.is_empty() {
+        out.push(("gen_ai.request.model".into(), model.to_string()));
+        out.push(("langfuse.observation.model.name".into(), model.to_string()));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,5 +117,16 @@ mod tests {
         set_obs_session_name(Some("  "));
         let p3 = langfuse_session_properties();
         assert_eq!(p3, vec![("langfuse.session.id".into(), "sid-2".into())]);
+    }
+
+    #[test]
+    fn generation_properties_include_type_and_model() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        reset();
+        set_obs_session("sid-g", None);
+        let p = langfuse_generation_properties("gpt-test");
+        assert!(p.contains(&("langfuse.observation.type".into(), "generation".into())));
+        assert!(p.contains(&("gen_ai.request.model".into(), "gpt-test".into())));
+        assert!(p.contains(&("langfuse.session.id".into(), "sid-g".into())));
     }
 }
