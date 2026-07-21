@@ -52,6 +52,7 @@
 | 2026-07-21 | 初建：预算 + 超标快照；对应 `_TODO.md` §A |
 | 2026-07-21 | §D5–D7：`driver.rs` → `driver/` 子模块；重测行数 |
 | 2026-07-21 | 决议：react / session manager **默认不大拆**；超标保留并注明理由（见 `_TODO` §D） |
+| 2026-07-21 | D11a+b：EventBus port impl 归 `infra/event`；删除孤儿 `session/tests.rs` |
 |  |  |
 
 ## 下次调音

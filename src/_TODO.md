@@ -413,8 +413,8 @@ step(phase, ctx) -> (next, Vec<XyEvent>)   // 或 mpsc，由薄 async_stream 只
 勾选（分析完成；实施另议）：
 
 - [x] **D11 分诊**（本小节）
-- [ ] **D11a** 挪 `XyEventSink for EventBus` → `infra/event` — **默认顺手 / 不单开**
-- [ ] **D11b** 删除孤儿 `infra/session/tests.rs` — **真死；建议删，待显式确认后执行**
+- [x] **D11a** 挪 `XyEventSink for EventBus` → `infra/event`（2026-07-21）
+- [x] **D11b** 删除孤儿 `infra/session/tests.rs`（2026-07-21）
 
 ### 约束
 
@@ -567,6 +567,8 @@ map.rs → 变薄：project_for_llm + 少量边界转换
 | 2026-07-21 | agent | §D react/session | 再分析：外置 react 测 / D8–D10 **默认不做**；可选卫生 D11（EventBus 错置 + 孤儿 tests.rs） |
 | 2026-07-21 | agent | docs | commit `ac1899b6`（react/session 默认不拆写入 TODO/RETUNE） |
 | 2026-07-21 | agent | §D11 | 严谨分诊：D11a=活着的错置（顺手挪）；D11b=真死孤儿 tests（建议删、待确认）；二者解耦 |
+| 2026-07-21 | agent | docs | commit `5ae1ae8f`（D11 分诊入 TODO） |
+| 2026-07-21 | agent | §D11a+b | 实施：EventBus `XyEventSink` 归 `infra/event`；删除孤儿 `session/tests.rs` |
 |  |  |  |  |
 
 ---

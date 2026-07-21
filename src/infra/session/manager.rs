@@ -12,8 +12,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::types::*;
-use crate::domain::lifecycle::XyEvent;
-use crate::runtime_protocol::{XyEventSink, XySessionStore};
+use crate::runtime_protocol::XySessionStore;
 
 /// Manages session persistence using JSONL files or in-memory storage.
 ///
@@ -2178,14 +2177,5 @@ mod fork_path_tests {
             .find(|e| e.entry_id() == Some("a1"))
             .unwrap();
         assert_eq!(a1.parent_id(), Some("u1"));
-    }
-}
-
-// ── XyEventSink impl ───────────────────────────────────────────────────
-
-#[async_trait::async_trait]
-impl XyEventSink for crate::infra::event::EventBus {
-    async fn emit(&self, event: &XyEvent) {
-        self.emit_lifecycle(event);
     }
 }
