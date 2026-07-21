@@ -817,9 +817,9 @@ mod tests {
                 output: "STREAMED-HUGE\n".repeat(100),
             },
         );
-        let truncated = format!(
+        let truncated =
             "tail-line\n[Full output: /tmp/x.log. Truncated: 1 lines shown (50.0KB limit)]"
-        );
+                .to_string();
         apply_xy_event(
             &mut model,
             &XyEvent::ToolExecutionEnd {

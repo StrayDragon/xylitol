@@ -956,19 +956,21 @@ mod tests {
         use crate::protocol::resource::SkillInfo;
         use crate::protocol::source_info::{SourceInfo, SourceOrigin, SourceScope};
 
-        let mut opts = BuildAgentOptions::default();
-        opts.skills = vec![SkillInfo {
-            name: "boot-skill".into(),
-            description: Some("from build options".into()),
-            source_info: SourceInfo {
-                path: std::path::PathBuf::from("/tmp/boot/SKILL.md"),
-                source: "user".into(),
-                scope: SourceScope::User,
-                origin: SourceOrigin::TopLevel,
-                base_dir: None,
-            },
-            disable_model_invocation: false,
-        }];
+        let opts = BuildAgentOptions {
+            skills: vec![SkillInfo {
+                name: "boot-skill".into(),
+                description: Some("from build options".into()),
+                source_info: SourceInfo {
+                    path: std::path::PathBuf::from("/tmp/boot/SKILL.md"),
+                    source: "user".into(),
+                    scope: SourceScope::User,
+                    origin: SourceOrigin::TopLevel,
+                    base_dir: None,
+                },
+                disable_model_invocation: false,
+            }],
+            ..Default::default()
+        };
         let agent = build_agent(opts).expect("build");
         let sp = agent.inner().system_prompt().unwrap_or("");
         assert!(sp.contains("<available_skills>"));
