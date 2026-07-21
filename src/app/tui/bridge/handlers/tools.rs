@@ -3,8 +3,9 @@
 use crate::app::core::driver::XyEvent;
 use crate::app::tui::bridge::{
     UiEntry, UiModel, UiPhase, extract_display_diff, extract_full_output_notice,
-    extract_result_path, extract_truncated_tool_display, find_tool_mut,
-    human_tool_args_preview_with_path, preview_lacks_real_path, quiet_tool_success_output,
+    extract_line_range_from_display_diff, extract_result_path, extract_truncated_tool_display,
+    find_tool_mut, human_tool_args_preview_with_path, humanize_tool_result_for_tui,
+    merge_path_preview_with_range, output_looks_like_machine_json, preview_lacks_real_path,
     upsert_tool_entry,
 };
 
@@ -39,12 +40,17 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
                 ..
             }) = find_tool_mut(&mut model.entries, id)
             {
-                if let Some(quiet) = quiet_tool_success_output(name, result, *is_error) {
-                    // Clear machine JSON result chrome; write body lives in write_content.
-                    *output = quiet;
-                } else if let Some(truncated_display) = extract_truncated_tool_display(result) {
+                if let Some(truncated_display) = extract_truncated_tool_display(result) {
                     // att16: drop streamed full buffer; keep truncated view + Full output footer.
                     *output = truncated_display;
+                } else if let Some(human) = humanize_tool_result_for_tui(name, result, *is_error) {
+                    // write/edit/read always replace; bash only when no live stream yet.
+                    match name.as_str() {
+                        "write" | "edit" | "read" => *output = human,
+                        "bash" | "shell" if output.is_empty() => *output = human,
+                        _ if output.is_empty() => *output = human,
+                        _ => {}
+                    }
                 } else if let Some(notice) = extract_full_output_notice(result) {
                     // Streaming bash kept live chunks; append pi Full output footer once.
                     if !output.contains("[Full output:") {
@@ -56,7 +62,15 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
                 } else if output.is_empty() {
                     *output = result.clone();
                 }
-                if name == "edit"
+
+                // Safety net: never leave built-in success JSON chrome in the TUI body.
+                if !*is_error
+                    && output_looks_like_machine_json(output)
+                    && let Some(human) = humanize_tool_result_for_tui(name, result, false)
+                {
+                    *output = human;
+                }
+                if *name == "edit"
                     && !*is_error
                     && let Some(diff) = extract_display_diff(result)
                 {
@@ -85,9 +99,17 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
                             name,
                             &serde_json::Value::Object(synthetic),
                             tool_path.as_deref(),
-                            80,
+                            usize::MAX,
                         );
                     }
+                }
+
+                // Edit line-range after path backfill so `:N-M` is not wiped.
+                if *name == "edit"
+                    && let Some(diff) = display_diff.as_ref()
+                    && let Some(range) = extract_line_range_from_display_diff(diff)
+                {
+                    *args_preview = merge_path_preview_with_range(args_preview, &range);
                 }
 
                 *err = *is_error;

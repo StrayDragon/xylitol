@@ -11,11 +11,12 @@ pub(crate) mod session_tree;
 pub(crate) use model::trailing_aborted_note;
 pub use model::{BashBlockStatus, QueueBadge, UiEntry, UiModel, UiPhase};
 pub use preview::extract_display_diff;
-pub(crate) use preview::{extract_full_output_notice, extract_truncated_tool_display};
 pub(crate) use preview::{
-    extract_result_path, extract_tool_path, human_tool_args_preview,
-    human_tool_args_preview_with_path, preview_is_downgrade, preview_lacks_real_path,
-    quiet_tool_success_output,
+    display_tool_title, extract_full_output_notice, extract_line_range_from_display_diff,
+    extract_result_path, extract_tool_path, extract_truncated_tool_display,
+    human_tool_args_preview, human_tool_args_preview_with_path, humanize_tool_result_for_tui,
+    merge_path_preview_with_range, output_looks_like_machine_json, preview_is_downgrade,
+    preview_lacks_real_path,
 };
 
 use serde_json::Value;
@@ -61,7 +62,8 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
         if let Some(p) = fresh_path {
             *tool_path = Some(p);
         }
-        let new_preview = human_tool_args_preview_with_path(name, args, tool_path.as_deref(), 80);
+        let new_preview =
+            human_tool_args_preview_with_path(name, args, tool_path.as_deref(), usize::MAX);
         if !preview_is_downgrade(name, args_preview, &new_preview) {
             *args_preview = new_preview;
         }
@@ -71,7 +73,7 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
         return;
     }
     let tool_path = fresh_path;
-    let preview = human_tool_args_preview_with_path(name, args, tool_path.as_deref(), 80);
+    let preview = human_tool_args_preview_with_path(name, args, tool_path.as_deref(), usize::MAX);
     model.entries.push(UiEntry::Tool {
         id: id.to_string(),
         name: name.to_string(),
@@ -622,7 +624,7 @@ mod tests {
                 _ => None,
             })
             .expect("tool row");
-        assert_eq!(preview, "read /tmp/x.rs");
+        assert_eq!(preview, "/tmp/x.rs");
         assert_eq!(
             model
                 .entries
