@@ -1,0 +1,18 @@
+{
+  "name": "所有AGENTS.md",
+  "description": "",
+  "files": [
+    "AGENTS.md",
+    "docs/AGENTS.md",
+    "llmanspec/AGENTS.md",
+    "packages/xylitol-ai-bridge/AGENTS.md",
+    "packages/xylitol-tui/AGENTS.md",
+    "src/AGENTS.md",
+    "src/app/AGENTS.md",
+    "src/app/tui/AGENTS.md",
+    "src/app/tui/design/AGENTS.md"
+  ],
+  "dirs": [],
+  "createdAt": "2026-07-21T12:43:14.407Z",
+  "updatedAt": "2026-07-21T12:43:14.408Z"
+}
