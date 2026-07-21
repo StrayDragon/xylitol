@@ -4,16 +4,17 @@
 //! are LLM-only; [`crate::domain::llm_project::project_for_llm`] folds Env
 //! first. This module maps [`LlmMessage`] ↔ package DTOs for the provider path.
 //!
-//! ## Pending deletion index（§F 后置：叶 SSOT 迁 bridge 后应变薄/删除）
+//! ## Boundary seam（长期；非「迁 SSOT 后删除」）
 //!
-//! Hand-written twin field maps still living here (do **not** add new ones):
+//! domain 与 packages 各自自洽：业务叶在 domain，适配器叶在 bridge。
+//! 本文件是主仓唯一应认识双方的薄缝。Hand-written maps（勿无故加长）：
 //! - `TokenProvenance` / `ContextTokenEstimate` — `From` bridge → domain
 //! - `to_bridge_llm_message` / `to_bridge_part` / `to_bridge_image` / `to_bridge_diagnostic`
 //! - `to_bridge_stop_reason` / `to_bridge_usage`（及反向 `to_xy_*`）
-//! - chunk / tool-schema 边界转换（若仍近 1:1 字段表）
+//! - chunk / tool-schema 边界转换
 //!
 //! Keep: `project_for_llm` 入口、`to_bridge_messages`、Env 误入 bridge 的错误路径。
-//! Ownership / ban on new twins: `src/AGENTS.md`「Provider 适配」；计划：`src/_TODO.md` §F.
+//! Ownership: `src/AGENTS.md`「Provider 适配」；计划：`src/_TODO.md` §F（**禁止** domain→bridge）。
 
 use futures::StreamExt;
 use xylitol_ai_bridge::dto::{
