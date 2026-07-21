@@ -10,7 +10,7 @@
 
   @req:be1
   场景: no-callback-port
-    假如 审查 runtime_protocol bash 端口
+    假如 审查 protocol bash 端口
     当 查找 on_chunk 回调签名
     那么 公共 execute 仅接受 BashExecOpts 而无 FnMut on_chunk
 

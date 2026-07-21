@@ -52,9 +52,21 @@
 
   @req:dm6
   场景: compose-not-twin
-    假如 审查 domain 公共 API
+    假如 审查 agent 公共 API
     当 查找平行于 AiBridgeMessage 的第二份 LLM 叶 enum
     那么 不存在（仅组合 bridge DTO + Env）
+
+  @req:dm6
+  场景: model-receives-llm-only
+    假如 agent 调用 XyModel
+    当 查看入参
+    那么 为投影后的 Vec AiBridgeMessage 而非 AgentMessage
+
+  @req:dm7
+  场景: no-domain-top-level
+    假如 审查主仓 src 布局
+    当 查找 src/domain/
+    那么 不存在独立顶栏；共享消息词汇在 protocol/vocab（迁移完成后）
 
   @req:dm3
   场景: legacy-bash-lift

@@ -78,7 +78,7 @@
   场景: permission-trait
     假如 定位 permission 边界类型
     当 检查名称
-    那么 为 runtime_protocol::XyPermission 返回 XyPermissionVerdict，后端含 AllowAllPermission 与 GlobPolicy
+    那么 为 protocol::XyPermission 返回 XyPermissionVerdict，后端含 AllowAllPermission 与 GlobPolicy
 
   @req:s14
   场景: default-deny-read

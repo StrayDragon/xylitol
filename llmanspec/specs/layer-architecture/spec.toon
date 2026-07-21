@@ -1,26 +1,26 @@
 kind: llman.sdd.spec
 name: "layer-architecture"
-purpose: "分层与 seam、Xy 精选导出、嵌入缝与组件粒度：domain / runtime_protocol / agent / infra / protocol / app（单 crate；不用源码 grep 元测试卡写法）。"
+purpose: "分层与 seam、Xy 精选导出、嵌入缝与组件粒度：agent / protocol / infra / app（单 crate；无独立 domain/ 或 runtime_protocol/ 顶栏；不用源码 grep 元测试卡写法）。"
 valid_scope[3]: src/,tests/,src/AGENTS.md
 requirements[32]{req_id,title,statement}:
-  la1,核心层,"System MUST 提供基础 domain/ 层承载领域词汇类型（AgentMessage、ModelKind、XyChunk 及两层以上消费的纯数据类型，如 SessionEntry 变体、SourceInfo、SkillInfo、PromptTemplate、CompactionSettings、AgentLifecycleEvent）。System MUST 提供独立 runtime_protocol/ 层承载 trait 契约（XyModel、XyTool、XySessionStore、XyEventSink、XyPermission、XyBashExecutor、XySecretResolver、XyResourceLoader、XyTrustStore、XyExportIo、XyHookBus），使各层无需为引用共享数据类型或声明端口而 import crate::infra。"
-  la2,向下依赖,"infra/ 模块 MUST NOT import 任何 crate::agent 符号；agent/ 模块 MUST NOT import 任何具体 infra/ 类型（仅经 runtime_protocol）；应用面（cli 渲染子路径、tui、非组合根的 app 模块）MUST NOT import crate::infra 或 agent 子模块内部，MUST 经 app/core seam（composition / Driver / bootstrap / dispatch）与 crate::agent 的 mod 级导出。组合根 app/cli/、app/server/、app/core/composition.rs 可同时 import agent 与 infra 做装配。InProcessDriver MAY 调用文档化的表面 infra（trust / clipboard / 必要 config 读）；MUST NOT 成为第二套组合根去构造 provider/session 工具集。domain/ MUST 零 crate:: 内部依赖；runtime_protocol/ MUST 仅依赖 domain/。分层靠 AGENTS + review + 缝行为测保障，MUST NOT 要求源码 grep 元测试。"
+  la1,核心层,"System MUST 以 src/agent/ 承载编排与投影（ReAct、project_for_llm、session 编排），语义对齐 pi-agent-core。System MUST 以单一 src/protocol/ 承载跨边界契约，并分为 wire/（Command/Event）、ports/（XyModel、XyTool、XySessionStore、XyEventSink 等）与 vocab/（AgentMessage、Env、SessionEntry、XyEvent、XyChunk 等进入 port/wire 签名的共享词汇）。因 infra 不得依赖 agent，vocab 物理 MUST 在 protocol/vocab，由 agent 再导出；MUST NOT 再提供独立的 src/domain/ 纯类型顶栏，也 MUST NOT 再提供独立的 src/runtime_protocol/ 顶栏。"
+  la2,向下依赖,"infra/ 模块 MUST NOT import 任何 crate::agent 符号；agent/ 模块 MUST NOT import 任何具体 infra/ 类型（仅经 protocol ports）；应用面（cli 渲染子路径、tui、非组合根的 app 模块）MUST NOT import crate::infra 或 agent 子模块内部，MUST 经 app/core seam（composition / Driver / bootstrap / dispatch）与 crate::agent 的 mod 级导出。组合根 app/cli/、app/server/、app/core/composition.rs 可同时 import agent 与 infra 做装配。InProcessDriver MAY 调用文档化的表面 infra（trust / clipboard / 必要 config 读）；MUST NOT 成为第二套组合根去构造 provider/session 工具集。protocol/ MUST NOT 依赖 agent/ 或 infra/ 实现。分层靠 AGENTS + review + 缝行为测保障，MUST NOT 要求源码 grep 元测试。"
   la3,infra 不依赖 agent,"src/infra 下 MUST NOT 有生产代码 import crate::agent；由约定与审查保障，MUST NOT 要求独立 arch_guard 测试模块。"
   la4,app 层命名,app/ 表面目录 MUST 含全部用户入口：cli/、server/、tui/、gui.rs；跨面缝（composition、driver）MUST 位于 app/core/。print 模式 MUST 位于 app/cli/ 作为 CLI 子模式，而非顶层 app 模块。
-  la5,protocol 模块,System MUST 提供 protocol/ 模块作为 client↔core 交互 SSOT：Command 枚举（client→core）、Event 枚举（core→client）、响应信封与错误码。
+  la5,protocol 模块,"System MUST 提供单一 protocol/ 模块作为跨边界契约 SSOT，内分 wire/、ports/、vocab/ 三子树；MUST NOT 再并列 runtime_protocol/ 或 domain/ 顶栏。wire MUST NOT 依赖 ports；ports MAY 依赖 vocab；vocab MUST NOT 依赖 ports/wire/agent/infra。"
   la6,server 在 app 下,"System MUST 在 src/app/server/ 提供 app::server 模块，托管 agent + infra 运行时并经 REST（/api/v1）与 WebSocket 暴露 protocol/；server MUST 强制单实例锁。"
-  la7,运行时归属,"全部运行时（provider、tool、session storage、exec-env、bash executor、secret resolution、resource loader、export I/O）MUST 位于 infra/；agent/ MUST 仅以 Arc<dyn Port> 在组合根从 runtime_protocol/ 注入持有；agent/ MUST NOT 直接调用 infra 构造器或借用 infra exec 原语。"
+  la7,运行时归属,"全部运行时（provider、tool、session storage、exec-env、bash executor、secret resolution、resource loader、export I/O）MUST 位于 infra/；agent/ MUST 仅以 Arc<dyn Port> 在组合根从 protocol/ 注入持有；agent/ MUST NOT 直接调用 infra 构造器或借用 infra exec 原语。"
   la8,agent 独立性,"Agent（能力聚合体）构造器 MUST NOT 要求 Session、MUST NOT 持有 session_id、MUST NOT 依赖 Session 持久化生命周期；session_id 为 app 层绑定的 SessionStore 查询键。"
   la9,分层保障方式,"分层不变量（la2）MUST 经 src/AGENTS.md、write-surface 流程与缝/行为测试保障；System MUST NOT 要求 src/tests.rs::arch_guard 或等价源码 grep 元测试作为强制闸。"
   la10,NOTE 约定,"刻意简化 MUST 以工具无关注释标记：'// NOTE: <what>. ceiling: <when it breaks>. upgrade: <trigger>.'，便于 grep 与清理。"
   la11,Driver 表面缝,"app/core/driver.rs 的 InProcessDriver MAY import 文档化表面 infra（trust / clipboard / 必要 config）；应用面仍 MUST NOT reach infra。Driver MUST NOT 替代 composition 做完整 agent+工具装配。"
   la12,禁止 arch_guard 回归,"System MUST NOT 恢复以扫描 import 路径为手段的 arch_guard 测试模块；新增分层约束优先写成缝行为测或 AGENTS 约定。"
   la13,agent 薄且无展示,agent/ MUST NOT 托管纯展示或用户指引逻辑（如静态帮助文本或消息格式化）；此类逻辑 MUST 位于 app/（客户端表面），agent/ MUST 仅含编排循环、hook 点与编排状态。
-  la14,禁止 core 重命名 shim,"System MUST NOT 保留 pub use domain as core 向后兼容 shim；全部调用点 MUST 一次性更新为 crate::domain。"
+  la14,禁止 domain 顶栏与兼容 shim,"System MUST NOT 保留独立 src/domain/ 顶栏，也 MUST NOT 保留 pub use domain as core 或 domain 路径的长期兼容 shim；调用点 MUST 一次性迁到 protocol/vocab、protocol/ports、protocol/wire 或 agent/（投影与编排）。MUST NOT 将 vocab 再升格为与 protocol 并列的第三顶栏。"
   la15,app composition,"System MUST 提供 app::core::composition 模块，从 BuildAgentOptions 集中构造完整接线的 Agent，使 CLI、Server 与 TUI 不重复 Agent 接线代码。"
-  la16,Xy 领域类型,domain 层 MUST 托管 Xy 前缀核心抽象并移除重复类型。
-  la17,Xy 协议端口,runtime_protocol 层 MUST 托管 Xy 前缀端口契约与签名类型。
-  la18,事件分层与闭集,"XyEvent MUST 位于 domain，XyEventSink 位于 runtime_protocol，EventBus 位于 infra。XyEvent MUST 保持为 agent 生命周期闭集（Agent/Turn/Message/Tool/Compaction/Queue 等），MUST NOT 为每个 provider 专属 SSE 事件新增变体；厂商流细节 MUST 在适配器边界映射为 XyChunk 或已有 MessageUpdate 载荷。"
+  la16,Xy 词汇就地,"Xy 前缀核心抽象 MUST 落在其主人分区（protocol/vocab 共享词汇、protocol/ports、protocol/wire、agent 编排与投影、infra 实现），MUST NOT 再集中堆在独立 domain/ 顶栏。"
+  la17,Xy 协议端口,"protocol/ports/ MUST 托管 Xy 前缀端口契约；其签名所用共享类型 MUST 来自 protocol/vocab/（含自原 runtime_protocol / domain 迁入者）。"
+  la18,事件分层与闭集,"XyEvent MUST 物理位于 protocol/vocab/lifecycle（可由 agent 再导出）；XyEventSink MUST 位于 protocol/ports；wire Event MUST 与 XyEvent 分离；EventBus MUST 位于 infra。XyEvent MUST 保持为 agent 生命周期闭集（Agent/Turn/Message/Tool/Compaction/Queue 等），MUST NOT 为每个 provider 专属 SSE 事件新增变体；厂商流细节 MUST 在适配器边界映射为 XyChunk 或已有 MessageUpdate 载荷。"
   la19,缝与表面分离,app/ MUST 将跨面缝分组于 src/app/core/：组合根（composition.rs）与运行时 driver 边界（driver.rs）MUST 均位于 app/core/，与自包含应用表面（cli/、server/、tui/、gui.rs）分离。应用表面 MUST NOT 直接托管 build_agent 接线或 Driver trait。
   la20,共享 bootstrap 与 dispatch,"app::core MUST 托管共享 bootstrap 模块（app::core::bootstrap），集中从 CLI args 到 AgentRuntime 的完整装配路径（config load、ModelRegistry build、trust resolution、resource discovery 含 templates/context_files/system_prompt/append_system_prompt、compaction settings、permission、build_agent、model select），以及共享 dispatch 模块（app::core::dispatch）集中 Command 变体执行语义；print（cli）、server、tui MUST 调用 bootstrap，tui MUST 调用 dispatch，任何表面 MAY NOT 内联自有装配或命令分发实现。"
   la21,禁止死包装协作者,agent/ 内对端口的纯转发壳（无附加状态或行为，且无生产调用方）MUST 删除；Agent MUST 直接持有 Arc<dyn Port> 或经有真实职责的协作者访问，MUST NOT 保留 SessionIO 类零逻辑包装。
@@ -28,11 +28,11 @@ requirements[32]{req_id,title,statement}:
   "la-server-driver",Server 与 Print 同缝,Server 与 Print MUST 共享同一应用缝（Driver/bootstrap）；新增 server 能力时优先扩缝，禁止为 server 单独复制一套 agent 编排。
   "la-mcp-seam",MCP 经嵌入缝,"System MUST 向嵌入方提供不依赖 infra 路径的 MCP 服务器描述（或等价句柄），使 bootstrap/reload 可在不 reach-in infra::mcp 的情况下传递配置。composition/McpSession MUST 在缝边界内将嵌入缝 MCP 描述转为 infra 实现；应用面 MUST NOT 为 MCP 装配单独 reach-in infra 类型。"
   "la-dispatch-consume",dispatch 有消费方,跨面命令执行缝 dispatch MUST 至少被一个生产应用面消费（Server 或 TUI）；禁止长期仅单测覆盖而无面接线。
-  la25,provider 包开闭,"LLM 厂商差异 MUST 收敛在 packages/xylitol-ai-bridge 的 adapter 族；主仓投影缝仅负责 Env→LLM 折叠（Llm 臂组合 bridge DTO）。新 OpenAI-like 或 Anthropic-like 兼容端 MUST 以开闭方式扩展（新 adapter/配置），MUST NOT 为某一网关修改 AgentMessage 角色集或 agent ReAct 核心；domain MAY 依赖 bridge DTO 组合 Llm 臂，domain/agent MUST NOT 依赖厂商 HTTP/SDK。"
+  la25,provider 包开闭,"LLM 厂商差异 MUST 收敛在 packages/xylitol-ai-bridge 的 adapter 族；主仓投影缝（agent 内 project_for_llm）仅负责 Env→LLM 折叠。新 OpenAI-like 或 Anthropic-like 兼容端 MUST 以开闭方式扩展（新 adapter/配置），MUST NOT 为某一网关修改 AgentMessage 角色集或 agent ReAct 核心；agent MAY 依赖 bridge DTO 组合 Llm 臂；agent/infra MUST NOT 依赖厂商 HTTP/SDK。"
   ar01,清除 pi 文档引用,src/ 中所有源文件 MUST NOT 在 doc comments 中引用 pi coding agent 或其 TypeScript 模块。pi 设计理由引用 MUST 替换为该模块实际职责的独立描述。
   ar02,组件粒度边界,"少于 100 行或 5 个方法且无行为逻辑的组件 MUST 内联到父 struct。反之，内联块超过约 100 行、有独立行为逻辑且概念内聚时 MUST 提取为命名协作者对象。Agent 能力聚合 MUST NOT 作为单一 struct 或单一文件无界增长；export、bash、permission、stats、trust 关注点 MUST 提取为命名协作者，使聚合保持内聚。"
   ar06,精选库入口 Xy 前缀,精选进 crate 公开 API（lib.rs pub use）的可替换端口、跨面生命周期事件及其绑定签名类型 MUST 使用 Xy 前缀；应用面缝（Driver/bootstrap/dispatch）、protocol 线协议类型、infra 具体实现、以及未导出的内部协作者 MUST NOT 仅为品牌而加 Xy 前缀。
   ar07,消除重复领域实体,System MUST NOT 为同一领域概念定义多种类型；Usage、StopReason 与 Compaction 配置 MUST 各有一个 canonical 类型。
   ar09,精选 pub use 清单,System MUST 在 src/lib.rs（或等价公开入口）维护精选 pub use，至少覆盖 XyModel、XyTool、XySessionStore、XyEvent、XyChunk 及文档化的配套错误/配置类型；未列入清单的内部模块 MUST NOT 被误当作稳定公开 API。
-  r12,domain 不绑 schemars,"src/domain 下的领域类型 MUST NOT derive schemars::JsonSchema；需要 JSON Schema 的配置/settings DTO MUST 位于 infra/config 或 infra/settings（或等价配置边界）并在该处 derive。"
+  r12,配置 JSON Schema 边界,"需要 JSON Schema 的配置/settings DTO MUST 位于 infra/config 或 infra/settings（或等价配置边界）并在该处 derive schemars；agent/protocol 会话词汇 MUST NOT 仅为 schema 而 derive JsonSchema。"
 scenarios[0]:

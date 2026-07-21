@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "runtime-model-registry"
 purpose: "模型注册表 — provider 注册、鉴权检查、模型发现与解析。Pre-1.0.0 仅支持 OpenAI 兼容与 Anthropic provider。"
-valid_scope[3]: src/agent/model/,src/runtime_protocol/model.rs,src/app/core/bootstrap.rs
+valid_scope[3]: src/agent/model/,src/protocol/,src/app/core/bootstrap.rs
 requirements[12]{req_id,title,statement}:
   m1,ModelRegistry provider,"ModelRegistry MUST 支持 register_provider(name, config) 与 has_configured_auth(model) / has_resolved_auth(model) 检查 API key 可用性。"
   m2,模型发现,ModelRegistry MUST 支持 get_available()，返回已注册 provider 的全部配置模型，按 provider 优先级排序。

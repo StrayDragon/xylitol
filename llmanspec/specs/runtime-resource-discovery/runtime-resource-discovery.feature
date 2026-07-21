@@ -88,7 +88,7 @@
 
   @req:rd10
   场景: reloadable-trait
-    假如 runtime_protocol 导出 XyReloadable
+    假如 protocol 导出 XyReloadable
     当 检查 DefaultResourceLoader
     那么 实现 XyReloadable 且 Outcome 可丢弃或含诊断
 

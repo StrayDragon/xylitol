@@ -29,8 +29,8 @@
   @req:pab4
   场景: no-json-twin-map
     假如 生成路径装配
-    当 审查 infra map 与 domain
-    那么 不存在第二份 domain LlmMessage 叶 enum，也不存在 AgentMessage↔AiBridgeMessage 全量 serde_json 往返主路径
+    当 审查 infra map 与 agent
+    那么 不存在第二份平行 LLM 叶 enum，也不存在 AgentMessage↔AiBridgeMessage 全量 serde_json 往返主路径
 
   @req:pab5
   场景: single-impl

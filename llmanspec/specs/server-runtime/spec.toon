@@ -11,7 +11,7 @@ requirements[13]{req_id,title,statement}:
   sr7,锁文件内容,server 锁文件 MUST 含 JSON 载荷：port（u16）、pid（u32）、hostname（String）；ServerLock drop（优雅关闭）时 MUST 删除文件。
   sr8,端口重试,配置端口繁忙（EADDRINUSE）时，server MUST 尝试 port+1 至多 PORT_RETRY_LIMIT（10）次，并用实际端口更新锁文件。
   sr9,REST 路由可用,"app/server/ MUST 响应 POST /api/v1/session/{id}/run 调用 Agent::run 并返回 session_id；DELETE /api/v1/session/{id} MUST 中止 agent；GET /api/v1/session/{id}/events MUST 从 journal 拉取。"
-  sr10,ExportIo 接线,"app::server 运行时组合根 MUST 构造 infra 提供的 StdExportIo，并在组装 AppState 中 Agent 时注入为 Arc<dyn runtime_protocol::export::ExportIo>，优先经 app::core::composition::build_agent。"
+  sr10,ExportIo 接线,"app::server 运行时组合根 MUST 构造 infra 提供的 StdExportIo，并在组装 AppState 中 Agent 时注入为 Arc<dyn protocol::export::ExportIo>，优先经 app::core::composition::build_agent。"
   "sr-driver1",Server 经 Driver 驱动,Server 运行时 MUST 通过 Driver（或等价文档化缝）驱动对话与会话命令，MUST NOT 在生产路径上以裸 AgentRuntime 作为唯一后端旁路 Print 主线。
   "sr-remote1",RemoteDriver 命令对齐,RemoteDriver MUST 实现与 InProcessDriver 对等的文档化 Driver 命令面（模型/会话/队列/导出等），MUST NOT 在生产路径对已承诺命令返回未实现错误。
   "sr-dispatch1",Server 经 dispatch 执行命令,"Server 对可映射的会话命令 MUST 经 protocol::Command + dispatch（或文档化的同一执行路径）执行，MUST NOT 为同一语义维护第二套与 dispatch 漂移的手写分支。"
