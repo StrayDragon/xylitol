@@ -416,7 +416,7 @@ mod tests {
 
     #[test]
     fn write_path_sticky_across_content_only_upsert() {
-        use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
+        use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 
         let mut model = UiModel::new();
         model.begin_run("hi");
@@ -465,7 +465,7 @@ mod tests {
 
     #[test]
     fn edit_path_streams_from_partial_args() {
-        use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
+        use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 
         let mut model = UiModel::new();
         model.begin_run("hi");
@@ -546,7 +546,7 @@ mod tests {
 
     #[test]
     fn end_preserves_streamed_write_path() {
-        use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
+        use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 
         let mut model = UiModel::new();
         model.begin_run("hi");
@@ -676,7 +676,7 @@ mod tests {
 
     #[test]
     fn write_intent_streams_content_body() {
-        use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
+        use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 
         let mut model = UiModel::new();
         model.begin_run("hi");

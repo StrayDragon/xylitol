@@ -5,10 +5,10 @@ use std::pin::Pin;
 
 use async_trait::async_trait;
 
-use crate::domain::error::XyError;
-use crate::domain::message::AgentMessage;
-use crate::domain::model::XyModelConfig;
-use crate::domain::types::{ThinkingBudgets, ThinkingLevel, ThinkingLevelMap, XyChunk};
+use crate::protocol::error::XyError;
+use crate::protocol::message::LlmMessage;
+use crate::protocol::model_config::XyModelConfig;
+use crate::protocol::types::{ThinkingBudgets, ThinkingLevel, ThinkingLevelMap, XyChunk};
 
 /// Streaming response from an LLM provider.
 pub type XyStream = Pin<Box<dyn futures::Stream<Item = Result<XyChunk, XyError>> + Send>>;
@@ -49,16 +49,20 @@ impl Default for XyGenerateOptions {
 /// LLM provider contract.
 ///
 /// Implementations connect to a remote API (OpenAI, Anthropic, etc.) and
-/// produce a streaming response from a conversation history.
+/// produce a streaming response from LLM-visible history.
+///
+/// Callers MUST project session [`crate::protocol::message::AgentMessage`] history
+/// via [`crate::agent::llm_project::project_for_llm`] before invoking this trait.
+/// [`LlmMessage`] is a type alias of bridge `AiBridgeMessage`.
 #[async_trait]
 pub trait XyModel: Send + Sync {
     fn name(&self) -> &str;
 
-    /// Generate a streaming response from AgentMessage history.
+    /// Generate a streaming response from LLM-only message history.
     async fn generate_stream(
         &self,
-        messages: Vec<AgentMessage>,
-        tools: &[crate::domain::types::XyToolSchema],
+        messages: Vec<LlmMessage>,
+        tools: &[crate::protocol::types::XyToolSchema],
         stream: bool,
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError>;

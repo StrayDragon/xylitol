@@ -16,8 +16,8 @@ use serde_json::{Value, json};
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::domain::error::XyToolError;
-use crate::runtime_protocol::{XyTool, XyToolCtx};
+use crate::protocol::error::XyToolError;
+use crate::protocol::ports::{XyTool, XyToolCtx};
 
 use super::accumulator::OutputAccumulator;
 use super::args::parse_tool_args;
@@ -356,7 +356,7 @@ impl BashTool {
         out_tx: tokio::sync::mpsc::Sender<String>,
     ) -> Result<String, XyToolError> {
         use crate::infra::bash_exec::InfraBashExecutor;
-        use crate::runtime_protocol::{BashExecOpts, XyBashExecutor};
+        use crate::protocol::ports::{BashExecOpts, XyBashExecutor};
 
         let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
         let forward = tokio::spawn(async move {

@@ -4,11 +4,9 @@ use std::path::Path;
 
 use async_trait::async_trait;
 
-use crate::domain::session_types::{
-    SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel,
-};
-use crate::domain::types::ThinkingLevel;
-use crate::runtime_protocol::XyBashResult;
+use crate::protocol::ports::XyBashResult;
+use crate::protocol::session::{SessionEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel};
+use crate::protocol::types::ThinkingLevel;
 
 use super::XyDriverError;
 use super::types::{
@@ -97,7 +95,7 @@ pub trait XyDriver: Send {
     async fn fork_session(
         &mut self,
         entry_id: &str,
-        position: crate::domain::session_types::ForkPosition,
+        position: crate::protocol::session::ForkPosition,
     ) -> Result<String, XyDriverError>;
 
     /// Switch to an existing session id. Validates existence first.
@@ -114,7 +112,7 @@ pub trait XyDriver: Send {
     /// Product footer polls this after travel / turn / compact.
     async fn estimate_context_tokens(
         &self,
-    ) -> Result<crate::domain::types::ContextTokenEstimate, XyDriverError>;
+    ) -> Result<crate::protocol::types::ContextTokenEstimate, XyDriverError>;
 
     /// List available slash commands.
     fn get_commands(&self) -> Vec<CommandInfo>;

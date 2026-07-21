@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::domain::message::{XyStopReason, XyUsage};
-use crate::domain::model::XyModelConfig;
+use crate::protocol::message::{XyStopReason, XyUsage};
+use crate::protocol::model_config::XyModelConfig;
 
 // ── Streaming Chunk ──────────────────────────────────────────────
 
@@ -347,7 +347,7 @@ pub struct XyModelMeta {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::message::XyUsage;
+    use crate::protocol::message::XyUsage;
 
     // ── XyChunk ─────────────────────────────────────────────────────
 
@@ -538,8 +538,8 @@ mod tests {
 
     #[test]
     fn model_meta_construct() {
-        let config = crate::domain::model::XyModelConfig {
-            kind: crate::domain::model::XyModelKind::Anthropic,
+        let config = crate::protocol::model_config::XyModelConfig {
+            kind: crate::protocol::model_config::XyModelKind::Anthropic,
             api_key: "sk-test".into(),
             model: "claude-3".into(),
             base_url: None,

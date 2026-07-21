@@ -11,12 +11,12 @@ use xylitol_ai_bridge::provider::{
     AdapterKind as AiBridgeAdapterKind, AdapterRef as AiBridgeAdapterRef,
 };
 
-use crate::domain::error::XyError;
-use crate::domain::message::AgentMessage;
-use crate::domain::model::XyModelKind;
-use crate::domain::types::XyToolSchema;
-use crate::infra::provider::map::{to_bridge_messages, to_bridge_tools, to_xy_error, to_xy_stream};
-use crate::runtime_protocol::{XyGenerateOptions, XyStream};
+use crate::infra::provider::map::{to_bridge_tools, to_xy_error, to_xy_stream};
+use crate::protocol::error::XyError;
+use crate::protocol::message::LlmMessage;
+use crate::protocol::model_config::XyModelKind;
+use crate::protocol::ports::{XyGenerateOptions, XyStream};
+use crate::protocol::types::XyToolSchema;
 
 pub mod factory;
 pub mod xy_model;
@@ -69,21 +69,21 @@ impl std::fmt::Display for AdapterKind {
     }
 }
 
-/// Domain-facing adapter: AiBridge DTO in, [`crate::domain::types::XyChunk`] stream out.
+/// Domain-facing adapter: AiBridge DTO in, [`crate::protocol::types::XyChunk`] stream out.
 #[async_trait]
 pub trait LlmAdapter: Send + Sync {
     fn name(&self) -> &str;
 
     async fn generate_stream(
         &self,
-        messages: Vec<AgentMessage>,
+        messages: Vec<LlmMessage>,
         tools: &[XyToolSchema],
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError>;
 
     async fn generate(
         &self,
-        messages: Vec<AgentMessage>,
+        messages: Vec<LlmMessage>,
         tools: &[XyToolSchema],
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError>;
@@ -126,15 +126,14 @@ impl LlmAdapter for MappedBridgeAdapter {
 
     async fn generate_stream(
         &self,
-        messages: Vec<AgentMessage>,
+        messages: Vec<LlmMessage>,
         tools: &[XyToolSchema],
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
-        let bridge_msgs = to_bridge_messages(messages)?;
         let bridge_tools = to_bridge_tools(tools);
         let stream = self
             .inner
-            .generate_stream(bridge_msgs, &bridge_tools, to_bridge_options(options))
+            .generate_stream(messages, &bridge_tools, to_bridge_options(options))
             .await
             .map_err(to_xy_error)?;
         Ok(to_xy_stream(stream))
@@ -142,15 +141,14 @@ impl LlmAdapter for MappedBridgeAdapter {
 
     async fn generate(
         &self,
-        messages: Vec<AgentMessage>,
+        messages: Vec<LlmMessage>,
         tools: &[XyToolSchema],
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
-        let bridge_msgs = to_bridge_messages(messages)?;
         let bridge_tools = to_bridge_tools(tools);
         let stream = self
             .inner
-            .generate(bridge_msgs, &bridge_tools, to_bridge_options(options))
+            .generate(messages, &bridge_tools, to_bridge_options(options))
             .await
             .map_err(to_xy_error)?;
         Ok(to_xy_stream(stream))
@@ -186,7 +184,7 @@ impl LlmAdapter for AnthropicMessagesAdapter {
 
     async fn generate_stream(
         &self,
-        messages: Vec<AgentMessage>,
+        messages: Vec<LlmMessage>,
         tools: &[XyToolSchema],
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
@@ -195,7 +193,7 @@ impl LlmAdapter for AnthropicMessagesAdapter {
 
     async fn generate(
         &self,
-        messages: Vec<AgentMessage>,
+        messages: Vec<LlmMessage>,
         tools: &[XyToolSchema],
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
@@ -232,7 +230,7 @@ impl LlmAdapter for OpenAiResponsesAdapter {
 
     async fn generate_stream(
         &self,
-        messages: Vec<AgentMessage>,
+        messages: Vec<LlmMessage>,
         tools: &[XyToolSchema],
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
@@ -241,7 +239,7 @@ impl LlmAdapter for OpenAiResponsesAdapter {
 
     async fn generate(
         &self,
-        messages: Vec<AgentMessage>,
+        messages: Vec<LlmMessage>,
         tools: &[XyToolSchema],
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
@@ -278,7 +276,7 @@ impl LlmAdapter for OpenAiCompletionsAdapter {
 
     async fn generate_stream(
         &self,
-        messages: Vec<AgentMessage>,
+        messages: Vec<LlmMessage>,
         tools: &[XyToolSchema],
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
@@ -287,7 +285,7 @@ impl LlmAdapter for OpenAiCompletionsAdapter {
 
     async fn generate(
         &self,
-        messages: Vec<AgentMessage>,
+        messages: Vec<LlmMessage>,
         tools: &[XyToolSchema],
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {

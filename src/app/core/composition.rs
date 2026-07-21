@@ -16,7 +16,7 @@ use crate::infra::export::StdExportIo;
 use crate::infra::hooks::HookDispatcher;
 use crate::infra::permission;
 use crate::infra::session::SessionManager;
-use crate::runtime_protocol::{
+use crate::protocol::ports::{
     XyBashExecutor, XyEventSink, XyExportIo, XyHookBus, XyModelBuilder, XyPermission,
     XySessionStore,
 };
@@ -30,7 +30,7 @@ pub struct BuildAgentOptions {
     pub context_files: Vec<(String, String)>,
     pub append_system_prompt: Vec<String>,
     /// Skills catalog for `<available_skills>` (c1085).
-    pub skills: Vec<crate::domain::resource_types::SkillInfo>,
+    pub skills: Vec<crate::protocol::resource::SkillInfo>,
     pub compaction_threshold: f64,
     pub cwd: String,
     pub compaction_settings: Option<CompactionSettings>,

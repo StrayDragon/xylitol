@@ -6,7 +6,7 @@
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::domain::error::XyToolError;
+use crate::protocol::error::XyToolError;
 
 /// Deserialize tool JSON args into `T`, mapping failures to [`XyToolError::InvalidArgs`].
 pub fn parse_tool_args<T: DeserializeOwned>(args: Value) -> Result<T, XyToolError> {

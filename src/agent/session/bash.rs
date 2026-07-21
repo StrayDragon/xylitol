@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::domain::session_types::bash_execution_message_entry;
-use crate::runtime_protocol::{BashExecOpts, XyBashExecutor, XyBashResult, XySessionStore};
+use crate::protocol::ports::{BashExecOpts, XyBashExecutor, XyBashResult, XySessionStore};
+use crate::protocol::session::bash_execution_message_entry;
 
 /// Stateful bash-execution collaborator.
 pub struct BashExecHandler {
@@ -111,9 +111,9 @@ pub(crate) async fn record_bash_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::message::{AgentMessage, EnvMessage};
-    use crate::domain::session_types::{SessionEntry, message_role};
     use crate::infra::bash_exec::InfraBashExecutor;
+    use crate::protocol::message::{AgentMessage, EnvMessage};
+    use crate::protocol::session::{SessionEntry, message_role};
     use std::time::Duration;
 
     #[tokio::test]

@@ -17,5 +17,5 @@ pub(crate) struct PromptTemplate {
     /// Optional description from frontmatter.
     pub(crate) description: Option<String>,
     /// Provenance info for the template.
-    pub(crate) source_info: Option<crate::domain::source_info::SourceInfo>,
+    pub(crate) source_info: Option<crate::protocol::source_info::SourceInfo>,
 }

@@ -1,6 +1,6 @@
 //! Permission policy backends for the agent runtime.
 //!
-//! Provides the [`XyPermission`] trait (defined in [`crate::runtime_protocol::permission`])
+//! Provides the [`XyPermission`] trait (defined in [`crate::protocol::ports::permission`])
 //! and concrete backends that enforce application-level path/domain matching.
 //! Platform-specific backends (Landlock, macOS sandbox) are added as separate
 //! modules.
@@ -20,10 +20,10 @@ use super::config::types::{
     PermissionProcessConfig,
 };
 
-// XyPermissionVerdict + XyPermission trait live in `runtime_protocol::permission`.
+// XyPermissionVerdict + XyPermission trait live in `protocol::ports::permission`.
 // Concrete backends below (AllowAllPermission, GlobPolicy, platform) implement
 // the port; re-exported here for existing `crate::infra::permission::*` references.
-pub use crate::runtime_protocol::{XyPermission, XyPermissionVerdict};
+pub use crate::protocol::ports::{XyPermission, XyPermissionVerdict};
 
 /// A permission backend that allows everything. Used when permission checks are
 /// disabled.

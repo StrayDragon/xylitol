@@ -13,7 +13,7 @@ pub mod react;
 pub mod retry;
 
 // Public surface of the loop (XyEvent/XyEventStream/AgentRuntime/AgentHooks are `pub`).
-pub use crate::domain::lifecycle::XyEvent;
+pub use crate::protocol::lifecycle::XyEvent;
 pub use event::XyEventStream;
 pub use hooks::AgentHooks;
 pub use react::AgentRuntime;

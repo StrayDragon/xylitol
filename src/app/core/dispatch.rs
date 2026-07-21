@@ -28,10 +28,10 @@ use std::path::PathBuf;
 
 use crate::app::core::driver::{CommandInfo, ModelInfo, SessionState, XyDriver};
 pub use crate::app::core::driver_error::XyDriverError;
-use crate::domain::session_types::SessionEntry;
-use crate::domain::types::ThinkingLevel;
 use crate::protocol::Command;
-use crate::runtime_protocol::XyBashResult;
+use crate::protocol::ports::XyBashResult;
+use crate::protocol::session::SessionEntry;
+use crate::protocol::types::ThinkingLevel;
 
 /// The result of executing a (non-Prompt, non-Quit, non-WS) Command.
 ///
@@ -182,8 +182,8 @@ pub async fn dispatch(
             entry_id, position, ..
         } => {
             let pos = match position.as_deref() {
-                Some("before") => crate::domain::session_types::ForkPosition::Before,
-                _ => crate::domain::session_types::ForkPosition::At,
+                Some("before") => crate::protocol::session::ForkPosition::Before,
+                _ => crate::protocol::session::ForkPosition::At,
             };
             let new_id = driver.fork_session(&entry_id, pos).await?;
             Ok(DispatchOutcome::NewSession(new_id))
@@ -254,9 +254,9 @@ fn cmd_variant_name(cmd: &Command) -> &'static str {
 mod tests {
     use super::*;
     use crate::app::core::driver::{CommandInfo, ModelInfo, SessionState};
-    use crate::domain::session_types::SessionTreeKind;
-    use crate::domain::types::ThinkingLevel;
-    use crate::runtime_protocol::XyBashResult;
+    use crate::protocol::ports::XyBashResult;
+    use crate::protocol::session::SessionTreeKind;
+    use crate::protocol::types::ThinkingLevel;
     use async_trait::async_trait;
 
     /// A stub XyDriver that records calls and returns canned responses, so the
@@ -336,7 +336,7 @@ mod tests {
         async fn fork_session(
             &mut self,
             _entry_id: &str,
-            _position: crate::domain::session_types::ForkPosition,
+            _position: crate::protocol::session::ForkPosition,
         ) -> Result<String, XyDriverError> {
             Ok("forked-session".into())
         }
@@ -354,10 +354,10 @@ mod tests {
         }
         async fn estimate_context_tokens(
             &self,
-        ) -> Result<crate::domain::types::ContextTokenEstimate, XyDriverError> {
-            Ok(crate::domain::types::ContextTokenEstimate {
+        ) -> Result<crate::protocol::types::ContextTokenEstimate, XyDriverError> {
+            Ok(crate::protocol::types::ContextTokenEstimate {
                 tokens: 0,
-                provenance: crate::domain::types::TokenProvenance::Unknown,
+                provenance: crate::protocol::types::TokenProvenance::Unknown,
                 usage_tokens: 0,
                 trailing_tokens: 0,
                 last_usage_index: None,
@@ -400,7 +400,7 @@ mod tests {
         async fn session_tree(
             &self,
             kind: SessionTreeKind,
-        ) -> Result<Vec<crate::domain::session_types::SessionTreeNode>, XyDriverError> {
+        ) -> Result<Vec<crate::protocol::session::SessionTreeNode>, XyDriverError> {
             match kind {
                 SessionTreeKind::MessageHistory => Ok(Vec::new()),
                 SessionTreeKind::FileBrowser => {
@@ -413,7 +413,7 @@ mod tests {
             &self,
             kind: SessionTreeKind,
             _entry_id: &str,
-        ) -> Result<crate::domain::session_types::SessionTreeTravel, XyDriverError> {
+        ) -> Result<crate::protocol::session::SessionTreeTravel, XyDriverError> {
             match kind {
                 SessionTreeKind::MessageHistory => {
                     Err("stub: travel_session_tree not implemented".into())
@@ -528,7 +528,7 @@ mod tests {
     /// c1165: XyDriver level after SetThinkingLevel / cycle MUST map to OpenAI effort.
     #[tokio::test]
     async fn cycle_thinking_level_maps_to_openai_reasoning_effort() {
-        use crate::domain::types::{
+        use crate::protocol::types::{
             ResolvedThinking, ThinkingAdapterKind, resolve_thinking_for_request,
         };
 

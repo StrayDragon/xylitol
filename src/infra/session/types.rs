@@ -2,14 +2,14 @@
 //!
 //! This file remains as a thin re-export so `crate::infra::session::types`
 //! references (session manager) keep resolving during the import migration.
-//! New code should import from `crate::domain::session_types`.
+//! New code should import from `crate::protocol::session`.
 //!
 //! The `SessionBackend` enum is an infra-only storage implementation detail
 //! (used solely by `manager.rs`) and is defined here.
 
 use std::path::PathBuf;
 
-pub use crate::domain::session_types::{
+pub use crate::protocol::session::{
     BashExecutionEntry, BranchSummaryEntry, CompactionEntry, CustomEntry, CustomMessageEntry,
     EntryBase, LabelEntry, MessageEntry, ModelChangeEntry, SESSION_VERSION, SessionContext,
     SessionEntry, SessionHeader, SessionInfoEntry, SessionTreeNode, ThinkingLevelChangeEntry,

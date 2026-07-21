@@ -132,9 +132,9 @@ pub struct Settings {
     pub warnings: Option<WarningSettings>,
 }
 
-/// Compaction behavior settings — domain serde type; schema twin in config.
-pub use crate::domain::compaction_config::XyCompactionSettingsConfig;
 pub use crate::infra::config::types::CompactionSettingsSchema;
+/// Compaction behavior settings — domain serde type; schema twin in config.
+pub use crate::protocol::compaction_config::XyCompactionSettingsConfig;
 
 /// Branch summary settings for forked conversations.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

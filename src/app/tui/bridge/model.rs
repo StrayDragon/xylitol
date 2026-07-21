@@ -58,7 +58,7 @@ pub enum UiPhase {
     Busy,
 }
 
-/// Queue badge counts from [`crate::domain::lifecycle::XyEvent::QueueUpdate`].
+/// Queue badge counts from [`crate::protocol::lifecycle::XyEvent::QueueUpdate`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct QueueBadge {
     pub steer_count: usize,

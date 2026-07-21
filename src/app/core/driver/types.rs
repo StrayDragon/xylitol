@@ -4,8 +4,8 @@ use std::pin::Pin;
 
 use futures::Stream;
 
-use crate::domain::session_types::{SessionEntry, SessionTreeKind};
-use crate::domain::types::{ThinkingLevel, XyModelMeta};
+use crate::protocol::session::{SessionEntry, SessionTreeKind};
+use crate::protocol::types::{ThinkingLevel, XyModelMeta};
 
 /// One step in a [`RuntimeReloadReport`] (c1120).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,7 +111,7 @@ impl LoadedResourcesSnapshot {
 pub use crate::agent::session::{QueueStats, SessionStats};
 
 /// Session resume list row (from [`XySessionStore::list_sessions`]).
-pub use crate::runtime_protocol::SessionListEntry;
+pub use crate::protocol::ports::SessionListEntry;
 
 /// Build a [`ContextTokenEstimate`] from persisted session entries (XyDriver seam).
 ///
@@ -121,7 +121,7 @@ pub fn estimate_from_session_entries(
     entries: &[SessionEntry],
     model_id: Option<String>,
     tokenizer_override: Option<xylitol_ai_bridge::registry::TokenizerOverride>,
-) -> crate::domain::types::ContextTokenEstimate {
+) -> crate::protocol::types::ContextTokenEstimate {
     use crate::agent::compaction::{EstimateOpts, estimate_from_session_entries as estimate};
     estimate(
         entries,
@@ -165,7 +165,7 @@ pub(crate) fn estimate_opts_from_app_config(
 
 /// Lifecycle events on [`EventStream`] — surfaces import via the XyDriver seam
 /// (not `crate::agent`), keeping app/tui off agent internals.
-pub use crate::domain::lifecycle::XyEvent;
+pub use crate::protocol::lifecycle::XyEvent;
 
 /// A stream of [`XyEvent`] items.
 pub type EventStream = Pin<Box<dyn Stream<Item = XyEvent> + Send>>;

@@ -7,10 +7,10 @@
 //! - `model:thinkingLevel` suffix parsing
 //! - Fallback model construction
 
-use crate::domain::model::XyModelConfig;
+use crate::protocol::model_config::XyModelConfig;
 #[cfg(test)]
-use crate::domain::model::XyModelKind;
-use crate::domain::types::{ThinkingLevel, XyModelMeta};
+use crate::protocol::model_config::XyModelKind;
+use crate::protocol::types::{ThinkingLevel, XyModelMeta};
 
 // ── Resolved Model ──────────────────────────────────────────────────
 
@@ -318,7 +318,7 @@ impl ResolvedModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::XyModelConfig;
+    use crate::protocol::model_config::XyModelConfig;
 
     fn make_available() -> Vec<XyModelMeta> {
         vec![

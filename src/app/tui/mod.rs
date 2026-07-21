@@ -247,7 +247,7 @@ fn map_crossterm_item(
 fn on_agent_stream_item<T: xylitol_tui::Terminal>(
     session: &mut HostSession<T>,
     agent_stream: &mut Option<AgentEventStream>,
-    maybe: Option<crate::domain::lifecycle::XyEvent>,
+    maybe: Option<crate::protocol::lifecycle::XyEvent>,
 ) -> Result<(), XyDriverError> {
     match maybe {
         Some(xy) => session.step(HostEvent::Xy(Box::new(xy))),

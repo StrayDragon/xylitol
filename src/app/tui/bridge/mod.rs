@@ -21,7 +21,7 @@ pub(crate) use preview::{
 use serde_json::Value;
 
 use crate::app::core::driver::XyEvent;
-use crate::domain::message::AgentMessage;
+use crate::protocol::message::AgentMessage;
 
 /// Single seam: translate one [`XyEvent`] into UI-only mutations.
 ///
@@ -91,7 +91,7 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
 /// order matches provider order (ThinkingDelta* → ToolCall*), not
 /// tool-row-then-late-flush-thinking.
 pub(crate) fn sync_tool_intent_from_message(model: &mut UiModel, message: &AgentMessage) {
-    use crate::domain::message::{AgentPart, LlmMessage};
+    use crate::protocol::message::{AgentPart, LlmMessage};
 
     let AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. }) = message else {
         return;
@@ -136,7 +136,7 @@ pub(crate) fn push_user_entry_dedup(model: &mut UiModel, text: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::message::AgentMessage;
+    use crate::protocol::message::AgentMessage;
 
     fn assistant_end() -> XyEvent {
         XyEvent::AgentEnd {
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn user_message_start_commits_steer_to_scrollback() {
-        use crate::domain::message::AgentMessage;
+        use crate::protocol::message::AgentMessage;
 
         let mut model = UiModel::new();
         model.begin_run("hello");
@@ -448,7 +448,7 @@ mod tests {
 
     #[test]
     fn message_update_tool_intent_flushes_thinking_first() {
-        use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
+        use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 
         let mut model = UiModel::new();
         model.begin_run("hi");
@@ -509,7 +509,7 @@ mod tests {
 
     #[test]
     fn message_update_creates_tool_before_execution() {
-        use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
+        use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 
         let mut model = UiModel::new();
         model.begin_run("hi");
@@ -576,7 +576,7 @@ mod tests {
 
     #[test]
     fn message_update_streams_args_preview() {
-        use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
+        use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 
         let mut model = UiModel::new();
         model.begin_run("hi");

@@ -181,7 +181,7 @@ impl EventBus {
 }
 
 #[async_trait::async_trait]
-impl crate::runtime_protocol::XyEventSink for EventBus {
+impl crate::protocol::ports::XyEventSink for EventBus {
     async fn emit(&self, event: &XyEvent) {
         self.emit_lifecycle(event);
     }

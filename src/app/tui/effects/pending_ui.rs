@@ -4,8 +4,8 @@ use xylitol_tui::Terminal;
 
 use crate::app::core::dispatch::{DispatchOutcome, dispatch};
 use crate::app::core::driver::XyDriver;
-use crate::domain::session_types::SessionTreeKind;
 use crate::protocol::Command;
+use crate::protocol::session::SessionTreeKind;
 
 use super::super::host::HostSession;
 use super::super::layout::ImportConfirmDecision;
@@ -100,7 +100,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     }
 
     if let Some(entry_id) = session.take_pending_session_tree_fork() {
-        use crate::domain::session_types::{ForkPosition, is_user_message, message_text};
+        use crate::protocol::session::{ForkPosition, is_user_message, message_text};
 
         log::info!(target: "xylitol::tui", "XyDriver::fork_session + switch_session entry_id={}", entry_id);
         let parent_entries = match driver.get_messages().await {
@@ -121,7 +121,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
             Some(e) => {
                 let (position, prefill) = if is_user_message(e) {
                     let text = match e {
-                        crate::domain::session_types::SessionEntry::Message(m) => {
+                        crate::protocol::session::SessionEntry::Message(m) => {
                             let raw = message_text(&m.message);
                             raw.strip_prefix("[steer] ")
                                 .unwrap_or(raw.as_str())

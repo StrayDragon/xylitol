@@ -5,7 +5,7 @@
 //! OAuth login is not supported until after 1.0.0. Lives under interactive/cli/
 //! because it is presentation, not agent orchestration.
 
-use crate::domain::model::XyModelKind;
+use crate::protocol::model_config::XyModelKind;
 
 /// Get help text for provider auth configuration.
 ///

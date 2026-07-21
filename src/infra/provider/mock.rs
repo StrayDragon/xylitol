@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 
-use crate::domain::error::XyError;
-use crate::domain::message::AgentMessage;
-use crate::domain::message::XyStopReason;
-use crate::domain::types::{XyChunk, XyToolSchema};
-use crate::runtime_protocol::{XyGenerateOptions, XyModel, XyStream};
+use crate::protocol::error::XyError;
+use crate::protocol::message::LlmMessage;
+use crate::protocol::message::XyStopReason;
+use crate::protocol::ports::{XyGenerateOptions, XyModel, XyStream};
+use crate::protocol::types::{XyChunk, XyToolSchema};
 
 /// Drop-in mock for tests. Returns a fixed text response.
 pub struct MockXyModel {
@@ -34,7 +34,7 @@ impl XyModel for MockXyModel {
 
     async fn generate_stream(
         &self,
-        _messages: Vec<AgentMessage>,
+        _messages: Vec<LlmMessage>,
         _tools: &[XyToolSchema],
         _stream: bool,
         _options: XyGenerateOptions,

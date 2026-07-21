@@ -6,9 +6,9 @@
 use std::sync::Arc;
 
 use crate::agent::model::registry::ModelRegistry;
-use crate::domain::model::XyModelConfig;
-use crate::domain::types::{ThinkingLevel, XyModelMeta};
-use crate::runtime_protocol::XyModel;
+use crate::protocol::model_config::XyModelConfig;
+use crate::protocol::ports::XyModel;
+use crate::protocol::types::{ThinkingLevel, XyModelMeta};
 
 /// Manages model registry, current model selection, and thinking level.
 ///
@@ -26,7 +26,7 @@ pub struct ModelManager {
     /// Preferred default from Settings (`default_thinking_level`), if any.
     preferred_default: Option<ThinkingLevel>,
     /// Injected provider factory (composition-root-supplied).
-    pub(crate) model_builder: crate::runtime_protocol::XyModelBuilder,
+    pub(crate) model_builder: crate::protocol::ports::XyModelBuilder,
 }
 
 impl ModelManager {
@@ -34,7 +34,7 @@ impl ModelManager {
     /// injected provider builder.
     pub fn new(
         registry: ModelRegistry,
-        model_builder: crate::runtime_protocol::XyModelBuilder,
+        model_builder: crate::protocol::ports::XyModelBuilder,
     ) -> Self {
         Self {
             registry,
@@ -187,9 +187,9 @@ mod tests {
 
     use super::ModelManager;
     use crate::agent::model::registry::ModelRegistry;
-    use crate::domain::model::{XyModelConfig, XyModelKind};
-    use crate::domain::types::{ThinkingLevel, XyModelMeta};
-    use crate::runtime_protocol::XyModel;
+    use crate::protocol::model_config::{XyModelConfig, XyModelKind};
+    use crate::protocol::ports::XyModel;
+    use crate::protocol::types::{ThinkingLevel, XyModelMeta};
 
     type ModelBuilderFn =
         Arc<dyn Fn(&XyModelConfig) -> Result<Arc<dyn XyModel>, String> + Send + Sync>;
@@ -322,7 +322,7 @@ mod tests {
     /// the matching OpenAI `reasoning_effort` (or Omit when Off).
     #[test]
     fn cycle_then_resolve_openai_effort_matches_level() {
-        use crate::domain::types::{
+        use crate::protocol::types::{
             ResolvedThinking, ThinkingAdapterKind, resolve_thinking_for_request,
         };
 

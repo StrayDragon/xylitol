@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use xylitol_tui::{InputEvent, RenderError, TUI, Terminal};
 
 use crate::app::core::driver::{XyDriverError, XyEvent};
-use crate::runtime_protocol::XyBashResult;
+use crate::protocol::ports::XyBashResult;
 
 use super::bridge::{UiEntry, UiModel, UiPhase, apply_xy_event};
 use super::layout::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
@@ -385,7 +385,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     /// Silent UI sync for thinking level (border + footer only; c1150).
-    pub fn apply_thinking_level_ui(&mut self, level: crate::domain::types::ThinkingLevel) {
+    pub fn apply_thinking_level_ui(&mut self, level: crate::protocol::types::ThinkingLevel) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
         };

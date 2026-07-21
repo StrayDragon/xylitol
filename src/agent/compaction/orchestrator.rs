@@ -5,8 +5,8 @@
 
 use crate::agent::compaction::token_estimator::{EstimateOpts, estimate_from_session_entries};
 use crate::agent::compaction::{CompactionSettings, compact_session};
-use crate::domain::lifecycle::XyEvent;
-use crate::runtime_protocol::{XyEventSink, XyModel, XySessionStore};
+use crate::protocol::lifecycle::XyEvent;
+use crate::protocol::ports::{XyEventSink, XyModel, XySessionStore};
 
 /// Orchestrates session compaction — threshold checks and execution.
 ///

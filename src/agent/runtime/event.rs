@@ -8,7 +8,7 @@ use std::task::{Context, Poll};
 
 use futures::Stream;
 
-use crate::domain::lifecycle::XyEvent;
+use crate::protocol::lifecycle::XyEvent;
 
 // ── XyEventStream ─────────────────────────────────────────────────
 

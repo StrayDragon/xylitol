@@ -8,7 +8,7 @@
 //!
 //! This module lives under `infra/` because it is a runtime facility
 //! (process spawn + output streaming). The agent consumes it only through the
-//! `XyBashExecutor` port in `runtime_protocol`.
+//! `XyBashExecutor` port in `protocol::ports`.
 
 use std::time::Duration;
 
@@ -20,7 +20,7 @@ use tokio_util::sync::CancellationToken;
 use crate::infra::tools::accumulator::OutputAccumulator;
 use crate::infra::tools::process::kill_tree;
 use crate::infra::tools::truncate::DEFAULT_MAX_BYTES;
-use crate::runtime_protocol::{BashExecOpts, XyBashExecutor, XyBashResult};
+use crate::protocol::ports::{BashExecOpts, XyBashExecutor, XyBashResult};
 
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 

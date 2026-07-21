@@ -13,8 +13,8 @@ use serde_json::{Value, json};
 
 use super::args::parse_tool_args;
 use super::path_utils::resolve_to_cwd;
-use crate::domain::error::XyToolError;
-use crate::runtime_protocol::{XyTool, XyToolCtx};
+use crate::protocol::error::XyToolError;
+use crate::protocol::ports::{XyTool, XyToolCtx};
 
 const DEFAULT_LS_LIMIT: usize = 200;
 

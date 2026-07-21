@@ -23,8 +23,8 @@ use std::path::Path;
 use serde::Deserialize;
 
 use super::registry::ModelRegistry;
-use crate::domain::model::{XyModelConfig, XyModelKind};
-use crate::domain::types::XyModelMeta;
+use crate::protocol::model_config::{XyModelConfig, XyModelKind};
+use crate::protocol::types::XyModelMeta;
 
 /// A single model definition from a manifest file.
 #[derive(Debug, Clone, Deserialize)]

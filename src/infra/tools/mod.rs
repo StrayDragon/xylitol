@@ -1,6 +1,6 @@
 //! Built-in tool implementations and the default registry factory.
 //!
-//! Each tool implements [`crate::runtime_protocol::XyTool`]. The composition root
+//! Each tool implements [`crate::protocol::ports::XyTool`]. The composition root
 //! (and tests) build a registry via [`default_tools`]; the agent holds the
 //! resulting registry as orchestration state without naming these types.
 
@@ -21,7 +21,7 @@ pub mod write;
 
 use std::sync::Arc;
 
-use crate::runtime_protocol::XyTool;
+use crate::protocol::ports::XyTool;
 
 /// Return all built-in tools as trait objects.
 ///

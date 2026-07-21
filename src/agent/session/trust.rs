@@ -4,7 +4,7 @@
 //! aggregate to a free function: it reads only `cwd` and does not hold a trust
 //! store, so it had no cohesive reason to live on the aggregate (design §5).
 
-use crate::runtime_protocol::XyTrustStore;
+use crate::protocol::ports::XyTrustStore;
 
 /// Persist a project trust decision for the given CWD via the trust store
 /// (single source of truth). Returns the persisted decision.

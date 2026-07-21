@@ -7,7 +7,7 @@ use log::warn;
 use super::script::{run_hook_script, run_hook_script_with_context};
 use super::{DispatchResult, HookAction, HookEvent, HookPhase, entry_matches_raw, event_matches};
 use crate::infra::config::types::{HookEntry, HooksConfig};
-use crate::runtime_protocol::{XyHookBus, XyHookOutcome};
+use crate::protocol::ports::{XyHookBus, XyHookOutcome};
 
 /// Default timeout per hook script execution.
 const DEFAULT_TIMEOUT_SECS: u64 = 5;

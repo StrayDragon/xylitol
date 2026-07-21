@@ -6,8 +6,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use crate::domain::message::{AgentMessage, AgentPart, LlmMessage};
-use crate::domain::resource_types::SkillInfo;
+use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+use crate::protocol::resource::SkillInfo;
 
 /// Collect unique `$name` tokens left-to-right (`[A-Za-z0-9_-]+`).
 pub fn dollar_skill_names(text: &str) -> Vec<String> {
@@ -137,7 +137,7 @@ pub fn expand_skills_in_agent_messages(messages: &mut [AgentMessage], skills: &[
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::source_info::{SourceInfo, SourceOrigin, SourceScope};
+    use crate::protocol::source_info::{SourceInfo, SourceOrigin, SourceScope};
     use std::path::PathBuf;
     use tempfile::TempDir;
 

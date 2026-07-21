@@ -6,8 +6,8 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-use crate::domain::lifecycle::XyEvent;
-use crate::domain::message::AgentMessage;
+use crate::protocol::lifecycle::XyEvent;
+use crate::protocol::message::AgentMessage;
 
 /// Drain policy for a pending-message queue.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

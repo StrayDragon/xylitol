@@ -2,11 +2,11 @@
 
 use async_trait::async_trait;
 
-use crate::domain::error::XyError;
-use crate::domain::message::AgentMessage;
-use crate::domain::types::XyToolSchema;
 use crate::infra::provider::adapter::AdapterRef;
-use crate::runtime_protocol::{XyGenerateOptions, XyModel, XyStream};
+use crate::protocol::error::XyError;
+use crate::protocol::message::LlmMessage;
+use crate::protocol::ports::{XyGenerateOptions, XyModel, XyStream};
+use crate::protocol::types::XyToolSchema;
 
 /// An [`XyModel`] backed by an [`AdapterRef`].
 pub struct AdapterXyModel {
@@ -28,7 +28,7 @@ impl XyModel for AdapterXyModel {
 
     async fn generate_stream(
         &self,
-        messages: Vec<AgentMessage>,
+        messages: Vec<LlmMessage>,
         tools: &[XyToolSchema],
         stream: bool,
         options: XyGenerateOptions,

@@ -24,8 +24,8 @@ use tokio::sync::Mutex;
 use crate::app::core::dispatch::{DispatchOutcome, XyDriverError, dispatch};
 use crate::app::core::driver::{XyDriver, XyInProcessDriver};
 use crate::app::server::ws::{ClientFrame, EventJournal, ReverseRpcGateway, ServerFrame};
-use crate::domain::lifecycle::XyEvent;
-use crate::domain::session_types::SessionTreeKind;
+use crate::protocol::lifecycle::XyEvent;
+use crate::protocol::session::SessionTreeKind;
 use crate::protocol::{Command, Envelope, ErrorCode};
 
 // ── Shared application state ───────────────────────────────────────
@@ -832,7 +832,7 @@ pub fn router(state: Arc<AppState>) -> Router {
 mod tests {
     use super::*;
     use crate::app::core::composition::{BuildAgentOptions, build_agent};
-    use crate::runtime_protocol::XySessionStore;
+    use crate::protocol::ports::XySessionStore;
 
     fn test_state() -> Arc<AppState> {
         let agent = build_agent(BuildAgentOptions::default()).expect("build");

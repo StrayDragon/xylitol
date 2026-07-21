@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::domain::lifecycle::XyEvent;
+use crate::protocol::lifecycle::XyEvent;
 
 /// Event emission port — abstracts lifecycle event delivery so the
 /// loop can emit lifecycle events without knowing the concrete bus.

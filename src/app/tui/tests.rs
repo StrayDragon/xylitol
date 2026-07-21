@@ -595,7 +595,7 @@ async fn harness_enter_travel_closes_tree() {
 #[tokio::test]
 async fn harness_enter_user_prefills_editor() {
     use super::harness::{ScriptedDriver, harness_sample_session_messages, pump_host_driver};
-    use crate::domain::session_types::{SessionTreeKind, SessionTreeTravel};
+    use crate::protocol::session::{SessionTreeKind, SessionTreeTravel};
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();

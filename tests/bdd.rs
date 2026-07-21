@@ -15,8 +15,6 @@ use xylitol::agent::compaction::should_compact;
 use xylitol::agent::runtime::{AgentRuntime, XyEvent};
 use xylitol::agent::session::{AgentCapabilities, ContextUsage, ModelRegistry, get_context_usage};
 use xylitol::agent::tools::ToolSet;
-use xylitol::domain::model::{XyModelConfig, XyModelKind};
-use xylitol::domain::types::{ThinkingLevel, XyModelMeta};
 use xylitol::infra::config::types::HookEntry;
 use xylitol::infra::config::value::InfraSecretResolver;
 use xylitol::infra::hooks::{DispatchResult, HookDispatcher, HookEvent, HookPhase};
@@ -30,7 +28,9 @@ use xylitol::infra::tools::{
     bash::BashTool, edit::EditTool, find::FindTool, grep::GrepTool, ls::LsTool,
     mutation::FileMutationQueue, read::ReadTool, write::WriteTool,
 };
-use xylitol::runtime_protocol::{XyTool, XyToolCtx};
+use xylitol::protocol::model_config::{XyModelConfig, XyModelKind};
+use xylitol::protocol::ports::{XyTool, XyToolCtx};
+use xylitol::protocol::types::{ThinkingLevel, XyModelMeta};
 
 // ═══════════════════════════════════════════════════════════════════
 // Fixture types (one-level RefCell for interior mutability)
@@ -218,13 +218,13 @@ fn make_agent_with_store(
     agent: &AgentState,
 ) -> (
     AgentRuntime,
-    Arc<dyn xylitol::runtime_protocol::XySessionStore>,
+    Arc<dyn xylitol::protocol::ports::XySessionStore>,
 ) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     use std::sync::Arc;
-    let store: Arc<dyn xylitol::runtime_protocol::XySessionStore> = Arc::new(mgr.clone());
-    let sink: Arc<dyn xylitol::runtime_protocol::XyEventSink> =
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr.clone());
+    let sink: Arc<dyn xylitol::protocol::ports::XyEventSink> =
         Arc::new(xylitol::infra::event::EventBus::new());
     let hook_bus: Option<Arc<dyn xylitol::XyHookBus>> = agent
         .wiring_hook_log
@@ -266,9 +266,9 @@ fn make_agent_with_store(
 /// Library-seam operation dictionary (c990+). Unknown names return a readable Err.
 /// Must not call `HookDispatcher::dispatch` directly — only XyDriver/agent APIs.
 async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), XyDriverError> {
-    use xylitol::domain::session_types::SessionTreeKind;
-    use xylitol::domain::types::ThinkingLevel;
     use xylitol::embed::{XyDriver, XyInProcessDriver};
+    use xylitol::protocol::session::SessionTreeKind;
+    use xylitol::protocol::types::ThinkingLevel;
 
     match op {
         "确保新会话" => {
@@ -337,8 +337,8 @@ async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), XyDriv
 }
 
 fn ensure_wiring_fake_model(agent: &AgentState, thinking: bool) {
-    use xylitol::domain::model::{XyModelConfig, XyModelKind};
-    use xylitol::domain::types::XyModelMeta;
+    use xylitol::protocol::model_config::{XyModelConfig, XyModelKind};
+    use xylitol::protocol::types::XyModelMeta;
     let mut reg = agent.registry.borrow_mut();
     if reg.find("fake").is_some() {
         return;
@@ -756,9 +756,9 @@ fn _w_agent_switch_thinking(agent: &AgentState, verb: String, level: String) {
     let _ = verb;
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
-    let store: std::sync::Arc<dyn xylitol::runtime_protocol::XySessionStore> =
+    let store: std::sync::Arc<dyn xylitol::protocol::ports::XySessionStore> =
         std::sync::Arc::new(mgr.clone());
-    let sink: std::sync::Arc<dyn xylitol::runtime_protocol::XyEventSink> =
+    let sink: std::sync::Arc<dyn xylitol::protocol::ports::XyEventSink> =
         std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
@@ -2344,7 +2344,7 @@ async fn _w_ar_react_run_collect(agent: &AgentState) {
     "MessageUpdate 含工具意图且早于任意 ToolExecutionStart；ToolExecutionStart 不早于 MessageEnd"
 )]
 fn _t_ar_intent_before_execution(agent: &AgentState) {
-    use xylitol::domain::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 
     let events = agent.events.borrow();
     let mut saw_intent = false;
@@ -2494,7 +2494,7 @@ thread_local! {
     static AR_RUNNER_EVENTS: std::cell::RefCell<Vec<XyEvent>> =
         const { std::cell::RefCell::new(Vec::new()) };
     static AR_BANG_RESULT: std::cell::RefCell<
-        Option<Result<xylitol::runtime_protocol::XyBashResult, XyDriverError>>,
+        Option<Result<xylitol::protocol::ports::XyBashResult, XyDriverError>>,
     > = const { std::cell::RefCell::new(None) };
 }
 
@@ -2777,10 +2777,10 @@ fn _t_ar24_followup_not_injected(agent: &AgentState) {
     });
     let history = agent_end.expect("expected AgentEnd");
     let injected = history.iter().any(|m| match m {
-        xylitol::domain::message::AgentMessage::Llm(
-            xylitol::domain::message::LlmMessage::UserMessage { content, .. },
+        xylitol::protocol::message::AgentMessage::Llm(
+            xylitol::protocol::message::LlmMessage::UserMessage { content, .. },
         ) => content.iter().any(|p| match p {
-            xylitol::domain::message::AgentPart::Text { text } => {
+            xylitol::protocol::message::AgentPart::Text { text } => {
                 text.contains("停闸后不应注入的追问")
             }
             _ => false,
@@ -2821,7 +2821,7 @@ fn _t_ar24_no_hook_open_end(agent: &AgentState) {
 #[given("启动交互 bang 长命令后 abort")]
 async fn _g_ar10_abort_cancels_bang(_agent: &AgentState, _ws: &Workspace) {
     use xylitol::infra::bash_exec::InfraBashExecutor;
-    use xylitol::runtime_protocol::{BashExecOpts, XyBashExecutor};
+    use xylitol::protocol::ports::{BashExecOpts, XyBashExecutor};
     let executor = std::sync::Arc::new(InfraBashExecutor::new());
     let token = tokio_util::sync::CancellationToken::new();
     let exec_for_task = executor.clone();
@@ -4149,7 +4149,7 @@ fn prompt_bdd() -> PromptBdd {
 #[given("工具集含 bash 且其 prompt_guidelines 非空")]
 fn g_pt9_bash_guidelines(prompt_bdd: &PromptBdd) {
     use xylitol::agent::prompt::{SystemPromptOpts, build_system_prompt};
-    use xylitol::runtime_protocol::XyTool;
+    use xylitol::protocol::ports::XyTool;
 
     let bash = BashTool::default();
     assert!(
