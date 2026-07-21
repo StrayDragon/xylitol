@@ -54,6 +54,35 @@ impl XyDriverError {
         }
     }
 
+    /// Nested hot-path kind when [`Self::Agent`]; otherwise same as [`Self::kind`].
+    pub fn detail_kind(&self) -> &'static str {
+        match self {
+            Self::Agent(inner) => inner.kind(),
+            other => other.kind(),
+        }
+    }
+
+    /// Log a driver/dispatch failure with stable `error.kind` (and `agent.kind` when nested).
+    pub fn log_failure(&self, where_: &str) {
+        match self {
+            Self::Agent(inner) => {
+                log::warn!(
+                    target: "xylitol::driver",
+                    "{where_} failed error.kind={} agent.kind={} error={self}",
+                    self.kind(),
+                    inner.kind()
+                );
+            }
+            _ => {
+                log::warn!(
+                    target: "xylitol::driver",
+                    "{where_} failed error.kind={} error={self}",
+                    self.kind()
+                );
+            }
+        }
+    }
+
     pub fn not_found(msg: impl Into<String>) -> Self {
         Self::NotFound(msg.into())
     }
@@ -100,6 +129,16 @@ impl From<XyToolError> for XyDriverError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detail_kind_for_agent_and_leaf() {
+        let agent: XyDriverError = XyError::Aborted.into();
+        assert_eq!(agent.kind(), "Agent");
+        assert_eq!(agent.detail_kind(), "Aborted");
+        let not_found = XyDriverError::not_found("x");
+        assert_eq!(not_found.kind(), "NotFound");
+        assert_eq!(not_found.detail_kind(), "NotFound");
+    }
 
     #[test]
     fn kind_and_display_message() {

@@ -138,6 +138,7 @@ pub async fn drain_pending<T: Terminal>(
     if let Some(msg) = session.take_steer() {
         log::info!(target: "xylitol::tui", "XyDriver::steer prompt_len={}", msg.len());
         if let Err(e) = driver.steer(&msg) {
+            e.log_failure("tui.steer");
             session.push_system_note(format!("steer failed: {e}"));
         }
         let stats = driver.queue_stats();
@@ -147,6 +148,7 @@ pub async fn drain_pending<T: Terminal>(
     if let Some(msg) = session.take_follow_up() {
         log::info!(target: "xylitol::tui", "XyDriver::follow_up prompt_len={}", msg.len());
         if let Err(e) = driver.follow_up(&msg) {
+            e.log_failure("tui.follow_up");
             session.push_system_note(format!("follow-up failed: {e}"));
         }
         let stats = driver.queue_stats();

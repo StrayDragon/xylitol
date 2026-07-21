@@ -124,10 +124,12 @@ impl XyRemoteDriver {
             .await
             .map_err(|e| XyDriverError::from(e.to_string()))?;
         if env.code != crate::protocol::ErrorCode::Ok {
-            return Err(XyDriverError::remote(
+            let err = XyDriverError::remote(
                 env.msg
                     .unwrap_or_else(|| format!("server error ({status})")),
-            ));
+            );
+            err.log_failure("remote.parse_envelope");
+            return Err(err);
         }
         Ok(env.data.unwrap_or(serde_json::Value::Null))
     }

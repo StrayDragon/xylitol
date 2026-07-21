@@ -58,15 +58,14 @@ A  AGENTS 调音规则 + RETUNE 指针文件     ← 立规矩，低风险
 B  错误类型抬升（XyDriver / dispatch）     ← 横切收益最大
 C  内置工具 Args 类型化                  ← 局部、类型可见
 D  God 文件拆分（react / driver / session）
-   └─ driver D5–D7 已完成
-   └─ react / session 大拆：默认不做（见 §D 决议）；D11 已分诊待确认
+   └─ driver D5–D7 已完成；D11 已完成
+   └─ react / session 大拆：默认不做（见 §D 决议）
 E  protocol/ports RPITIT               ← **已关闭（α）**：dyn 全覆盖，维持 async_trait
 F  孪生类型与 protocol↔packages 边界   ← **已关闭**（c1210 compose + c1220 protocol 方案 B）
-G  观测 kind 打尖                        ← **已关闭**（G1–G4；热路径带 error.kind）
+G  观测 kind 打尖                        ← **已关闭**（G1–G4；dispatch/driver 亦带 error.kind）
 ```
 
-可并行：C 与 D 不同文件时可并行；C5 已随 G 落地。
-串行更稳：B / E / F 已关；**勿再开**「抽出 `xylitol-domain` / bridge→domain 叶」（与 c1210/c1220 主线冲突，搁置）。
+可并行项已收束。开放项仅 **C3（可选后置）**；**勿再开**「抽出 `xylitol-domain`」。
 
 ### 0.6 关键路径速查
 
@@ -200,7 +199,7 @@ crate 内热路径 / 内置工具 = struct + serde
   - 顺序完成：`read` → `grep` → `find`/`ls` → `write`/`edit` → `bash`；共享 `infra/tools/args.rs::parse_tool_args`。
 - [x] **C2** schema 与 Args 同构策略二选一（写入决议）：
   - **选定 (a)**：手写 schema 与 Args 字段并置（LLM schema 形状稳定）；Args 用 `serde`/`rename_all = "camelCase"` 对齐。
-- [ ] **C3**（可选后置）`TypedTool` associated type + blanket 擦成 `dyn XyTool`——仅当 C1 完成后仍痛再做。
+- [ ] **C3**（可选后置）`TypedTool` associated type + blanket 擦成 `dyn XyTool` — **搁置**：C1 后无实际痛点；有第二套内置工具装配痛再开。
 
 ### 要做 — 钩子
 
@@ -580,8 +579,9 @@ Vec<AiBridgeMessage> → XyModel / dialect adapters
 
 ### 落地摘要（2026-07-21）
 
-- `XyError` / `XyToolError` /（既有）`XyDriverError` 均有 `kind()`。
+- `XyError` / `XyToolError` /（既有）`XyDriverError` 均有 `kind()`；`XyDriverError::detail_kind` / `log_failure`。
 - ReAct：`model.generate_stream` / `model.stream` / `tool.execute` 失败路径 `log` + 条件 fastrace，带 `error.kind` 与 `turn_id`。
+- dispatch / TUI 直接 driver 调用 / remote envelope：失败时 `error.kind`（Agent 时另带 `agent.kind`）。
 - 排障：skill `xylitol-inspect-runtime-logs` / `just obs-*`。
 
 ---
@@ -616,6 +616,7 @@ Vec<AiBridgeMessage> → XyModel / dialect adapters
 | 2026-07-21 | agent | §F8 | **取消**：抽出 `xylitol-domain` / bridge→domain 叶与主线冲突，搁置 |
 | 2026-07-21 | agent | §G | `XyError`/`XyToolError` `kind()`；ReAct 热路径 log/fastrace 带 `error.kind` |
 | 2026-07-21 | agent | §C5 | `HookEvent` 载荷扩展 + `script_hook_ctx` 收拢 react/session/driver `json!` |
+| 2026-07-21 | agent | §G2+ | dispatch/TUI/remote 失败打 `error.kind`；C3 TypedTool **搁置** |
 |  |  |  |  |
 
 ---
