@@ -595,10 +595,11 @@ impl<T: Terminal> HostSession<T> {
             }
         }
         self.quit = true;
-        Err(
-            format!("render failed: terminal too extreme ({cols}x{rows}); restoring and exiting")
-                .into(),
-        )
+        let err = XyDriverError::io(format!(
+            "render failed: terminal too extreme ({cols}x{rows}); restoring and exiting"
+        ));
+        err.log_failure("tui.render.too_extreme");
+        Err(err)
     }
 
     /// Toggle terminal task progress (OSC 9;4) — used while loading session list.
@@ -622,7 +623,11 @@ impl<T: Terminal> HostSession<T> {
                 self.paint_dirty = false;
                 Ok(())
             }
-            Err(e) => Err(XyDriverError::from(e.to_string())),
+            Err(e) => {
+                let err = XyDriverError::from_opaque(e.to_string());
+                err.log_failure("tui.render_now");
+                Err(err)
+            }
         }
     }
 
