@@ -29,14 +29,14 @@
 | 文件 | 约行数 | 相对硬顶 | 拆分入口 |
 |---|---|---|---|
 | `agent/runtime/react.rs` | 2762 | 超 | [`_TODO.md`](./_TODO.md) §D1–D4 |
-| `app/core/driver.rs` | 2384 | 超 | §D5–D7 |
 | `infra/session/manager.rs` | 2191 | 超 | §D8–D10 |
+| `app/core/driver/in_process.rs` | 1269 | 超软顶 | §D5–D7 已拆；仍可再切 reload/clipboard/tests |
 | `infra/resource/loader.rs` | 1217 | 超软顶 | 暂观察；有改动时顺手拆 |
 | `infra/config/types.rs` | 1188 | 近软顶 | 暂观察（类型清单型文件） |
 | `agent/session/mod.rs` | 1056 | 近软顶 | 暂观察 |
 | `app/core/bootstrap.rs` | 1005 | 近软顶 | 暂观察 |
 
-未列入但接近软顶的，下回合 `wc` 时再补。
+`app/core/driver/` 拆后（2026-07-21）：`types` 228 / `proto` 263 / `remote` 755 / `mod` 42；合计约 2557，单文件已无 >2000。
 
 ## 测试专用（另计，仅知情）
 
@@ -50,6 +50,7 @@
 | 日期 | 说明 |
 |---|---|
 | 2026-07-21 | 初建：预算 + 超标快照；对应 `_TODO.md` §A |
+| 2026-07-21 | §D5–D7：`driver.rs` → `driver/` 子模块；重测行数 |
 |  |  |
 
 ## 下次调音

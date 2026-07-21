@@ -27,7 +27,7 @@
 use std::path::PathBuf;
 
 use crate::app::core::driver::{CommandInfo, ModelInfo, SessionState, XyDriver};
-use crate::app::core::driver_error::XyDriverError;
+pub use crate::app::core::driver_error::XyDriverError;
 use crate::domain::session_types::SessionEntry;
 use crate::domain::types::ThinkingLevel;
 use crate::protocol::Command;
