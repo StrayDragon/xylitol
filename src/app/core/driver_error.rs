@@ -111,6 +111,9 @@ impl XyDriverError {
     ///
     /// Unknown strings stay [`Self::Message`] so Display text is unchanged.
     /// Matched strings keep the original body and add a kind prefix via Display.
+    ///
+    /// Prefer specific phrases over bare tokens (`unavailable`, `failed to`) to
+    /// avoid misclassifying status notes and business-logic messages.
     pub fn from_opaque(msg: impl Into<String>) -> Self {
         let msg = msg.into();
         let lower = msg.to_ascii_lowercase();
@@ -120,6 +123,7 @@ impl XyDriverError {
             || lower.contains("no such file")
             || lower.contains("no such session")
             || lower.contains("no models available")
+            || lower.contains("no pending entries")
         {
             Self::NotFound(msg)
         } else if lower.contains("not implemented")
@@ -130,7 +134,10 @@ impl XyDriverError {
         } else if lower.contains("invalid")
             || lower.contains("unknown ")
             || lower.starts_with("usage:")
-            || lower.contains("unavailable")
+            || lower.contains("trust option unavailable")
+            || lower.contains("no thinking levels")
+            || lower.contains("set $visual")
+            || lower.contains("set $editor")
         {
             Self::InvalidInput(msg)
         } else if lower.contains("permission denied")
@@ -138,10 +145,17 @@ impl XyDriverError {
             || lower.contains("io error")
             || lower.contains("failed to read")
             || lower.contains("failed to write")
+            || lower.contains("failed to list")
+            || lower.contains("failed to acquire")
+            || lower.contains("failed to stat")
+            || lower.contains("read sessions dir")
             || lower.contains("filesystem")
             || lower.contains("disk ")
             || lower.contains("clipboard")
             || lower.contains("trust store write")
+            || lower.contains("create trust lock")
+            || lower.contains("write tempfile")
+            || lower.contains("spawn ")
         {
             Self::Io(msg)
         } else if lower.starts_with("remote:") || lower.contains("server error") {
@@ -211,6 +225,42 @@ mod tests {
             "This session has not been saved yet. Wait for the first assistant response.".into();
         assert_eq!(msg.kind(), "Message");
         assert!(msg.to_string().contains("not been saved yet"));
+    }
+
+    #[test]
+    fn from_opaque_avoids_bare_unavailable_false_positives() {
+        let note: XyDriverError = "models list unavailable".into();
+        assert_eq!(note.kind(), "Message");
+
+        let busy: XyDriverError = "session resume unavailable while busy".into();
+        assert_eq!(busy.kind(), "Message");
+
+        let trust: XyDriverError = "trust option unavailable in this mode".into();
+        assert_eq!(trust.kind(), "InvalidInput");
+    }
+
+    #[test]
+    fn from_opaque_covers_io_and_editor_shapes() {
+        let list: XyDriverError = "failed to list sessions: boom".into();
+        assert_eq!(list.kind(), "Io");
+
+        let lock: XyDriverError = "create trust lock: boom".into();
+        assert_eq!(lock.kind(), "Io");
+
+        let editor: XyDriverError = "set $EDITOR before /editor".into();
+        assert_eq!(editor.kind(), "InvalidInput");
+
+        let thinking: XyDriverError = "current model has no thinking levels".into();
+        assert_eq!(thinking.kind(), "InvalidInput");
+    }
+
+    #[test]
+    fn from_opaque_keeps_business_notes_as_message() {
+        let empty: XyDriverError = "empty session, nothing to compact".into();
+        assert_eq!(empty.kind(), "Message");
+
+        let disabled: XyDriverError = "compaction disabled".into();
+        assert_eq!(disabled.kind(), "Message");
     }
 
     #[test]
