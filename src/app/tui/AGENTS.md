@@ -27,7 +27,7 @@
 
 ## Module Responsibilities
 
-- **`mod` / `HostSession`**：协调者。新逻辑能单测的 → 先下沉到 `effects` / `bridge` / `commands` / `layout` 子模块，**禁止**继续把业务堆进 God 文件。体量软顶/硬顶与超标表 → [`../QUALITY_RETUNE.md`](../QUALITY_RETUNE.md)（测试 `harness`/`tests` 另计）。
+- **`mod` / `HostSession`**：协调者。新逻辑能单测的 → 先下沉到 `effects` / `bridge` / `commands` / `layout` 子模块，**禁止**继续把业务堆进 God 文件。体量软顶/硬顶与拆分策略 → [`../AGENTS.md`](../AGENTS.md)「体量与拆分策略」（测试 `harness`/`tests` 另计）。
 - **`effects`**：唯一异步副作用泵；harness MUST 复用，禁止第二套 slash/steer match。
 - **`bridge`**：只更新 `UiModel`；layout MUST NOT match `XyEvent`。
 - **`commands`**：只解析与 pending 类型；执行经 `drain_pending` → `protocol::Command` / `dispatch` 或 XyDriver。

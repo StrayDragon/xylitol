@@ -1,8 +1,10 @@
 # src/ 分层架构（代码架构 SSOT）
 
-本文件是 `src/` **代码架构**的单一真值源：分层不变量、各层职责、应用面状态、seam、`Xy*` / 导出边界。全局工作方式与产品定调见根 `AGENTS.md`。高维 mermaid：`docs/architecture/`。子目录 `AGENTS.md` 与 skills 只引用本文件，不重复长文。
+本文件是 `src/` **代码架构**的单一真值源：分层不变量、各层职责、应用面状态、seam、`Xy*` / 导出边界、工具类型化、体量与拆分策略。全局工作方式与产品定调见根 `AGENTS.md`。高维 mermaid：`docs/architecture/`。子目录 `AGENTS.md` 与 skills 只引用本文件，不重复长文。
 
 `xylitol` 主 crate：薄编排（`agent/`）+ 运行时域（`infra/`）+ 应用面（`app/`）+ 统一契约层（`protocol/` = `wire/` + `ports/` + 根上共享类型）。通用 TUI 库在 workspace 包 `packages/xylitol-tui`（不在本文件展开）。
+
+设计史（勿当进度板）：`llmanspec/changes/archive/<变更>/design.md`（消息/分层主线：**c1210** compose LLM 叶、**c1220** protocol 方案 B）。
 
 ## 主线 vs 后置（产品）
 
@@ -10,13 +12,13 @@
 
 **后置 / 配置启用**：Server · MCP（见下）· 更多 provider 适配器 · 周边能力。未配置则不装配。独立远程薄端客户端未接线（线协议与 Server 已通）。
 
-**产品 TUI（`src/app/tui`）**：**已开闸并可用**。会话树 / slash / bang / steer / `$skill` / `/reload` / `/trust` / 粘贴与 thinking UX 等走 XyDriver + `XyEvent`。后续打磨（reload UX、MCP 启动策略等）见 `llmanspec/do-not-read-me/` purpose-drafts；勿在本文件钉 change id。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。
+**产品 TUI（`src/app/tui`）**：**已开闸并可用**。会话树 / slash / bang / steer / `$skill` / `/reload` / `/trust` / 粘贴与 thinking UX 等走 XyDriver + `XyEvent`。后续打磨见 `llmanspec/do-not-read-me/` purpose-drafts；勿在本文件钉 change id。引擎能力仍可在 `packages/xylitol-tui` / `agent_demo` 先行验证。
 
 共享流水线：`bootstrap` → `composition::build_agent` → `XyDriver::run` → ReAct → `XyEvent` → 应用面。库嵌入入口：`xylitol::embed`；矩阵与理想/现状：`docs/architecture/库与多客户端.md`。
 
 ## 分层不变量（normative）
 
-单 crate 逻辑分层：约定写在本文件，靠 review 与缝/行为测守住。**禁止**用源码 grep 元测试卡 import 路径；**不**为分层拆 crate（编译产物膨胀）。代码结构与 seam 行为仍是真值。
+单 crate 逻辑分层：约定写在本文件，靠 review 与缝/行为测守住。**禁止**用源码 grep 元测试卡 import 路径；**不**为分层拆 crate（编译产物膨胀）。**禁止**再抽 workspace 包 `xylitol-domain` / 把 LLM 叶从 bridge 挪进主仓（与 c1210/c1220 主线冲突）。
 
 - **组合根集中装配**：仅 `app/core/composition.rs` 与次级组合根 `app/cli/mod.rs`、`app/server/subcommand.rs`（及文档化的 `rpc` 等）可同时 import `agent` 与 `infra` 做装配。
 - **agent 不依赖 infra**；**infra 不依赖 agent**（经 `protocol::ports`）。
@@ -52,6 +54,14 @@ app → agent → protocol/{wire,ports + root types}
 | 库级错误：`XyError` / `XyToolError`；整机缝错误：`XyDriverError` | |
 | 未来进精选 `pub use` 的稳定 API | |
 
+三圈契约（防混）：
+
+```text
+① 线协议     protocol::Command / Event
+② 应用协议   XyDriver + XyEvent 流 + XyDriverError
+③ 可替换口   XyModel / XyTool / XySessionStore / …
+```
+
 **外部库包装**：会出现在库入口或多方言统一 → 包一层；纯内部 → 直接用 crate 类型（reqwest、glob、uuid、chrono、similar、`serde_json::Value` 等）。禁止为包而包。
 
 **取消（CancellationToken）**：`XyToolCtx` / bash 端口直接使用 `tokio_util::sync::CancellationToken`。接受 **tokio_util 作为库公开契约依赖**（与 tokio 异步运行时绑定已成事实）；不优先自造 cancel trait。
@@ -61,6 +71,26 @@ app → agent → protocol/{wire,ports + root types}
 **队列运行时**：产品语义见 `docs/architecture/插话续跑与中止.md`；实现见 archive c525。QueueUpdate MUST 进活跃 EventStream。
 
 **EventBus / `XyEventSink`**：装配时注入的 sink 用于侧路生命周期（如 compaction），**不是**多 client 的 turn 总线；turn 进度走 `XyDriver::run` 的 `XyEvent` 流。可经 `BuildAgentOptions.event_sink` 替换默认 EventBus。
+
+## 错误与观测（normative）
+
+- **`XyError` / `XyToolError`**：ReAct / provider / tool 热路径；稳定 `kind()`。
+- **`XyDriverError`**：整机缝（NotFound / Unsupported / InvalidInput / Io / Remote / `Agent(XyError)` …）；`kind()` / `detail_kind()`；失败打 tip 用 `log_failure`。
+- **`From<String>` / opaque**：经 `XyDriverError::from_opaque` 启发式分类；优先具体短语，避免裸 token 误伤状态文案。
+- **观测栈**：**仅 fastrace**（时间线）+ **`log`**（级别日志）；禁止 `tracing` / 双栈。热路径与 seam 失败日志宜带 `error.kind`（及已有 turn/request id）。
+- **读 trace 要省 token**：禁止整文件 `Read` JSONL/log；用 skill **`xylitol-inspect-runtime-logs`** → `scripts/inspect_provider_trace.py` / `just obs-*`。
+
+## 工具：边界 JSON，内部 typed（normative）
+
+```text
+跨进程 / MCP / 脚本 hook  = Value（或 JSON map）
+crate 内置工具             = *Args + serde；优先 TypedTool
+```
+
+- **`XyTool`**：MCP / 动态工具 / 手写实现共用口；`execute(..., Value)` 保留。
+- **`TypedTool`**（`infra/tools/typed.rs`）：内置工具 associated `Args` + blanket → `dyn XyTool`；parse 只在 blanket。样板：`ls` / `find`。其余内置可直接 `impl XyTool`，全量迁见延后 draft `c1440-refactor-migrate-builtin-tools-typed`（升 full 前不实现）。
+- **schema**：手写 `parameters_schema` 与 Args 字段并置（形状稳定）；Args 用 serde/`camelCase` 对齐。
+- **钩子**：`XyHookBus::dispatch(..., Value)` 与 `AgentHooks` before/after **刻意保留 Value**；调用方 typed 组装再 `to_value`。`HookEvent` 载荷尽量 typed，减少临时 `json!`。
 
 ## 扩展决策准则（normative）
 
@@ -83,7 +113,7 @@ app → agent → protocol/{wire,ports + root types}
 - **`XyReloadable`**：编译期刷新约束（关联 `Outcome`），**不是** dyn 插件注册表；`/reload` 按固定顺序编排具体 reload。
 - **进精选 `pub use`**：仅库嵌入方稳定需要的端口/事件；`XyReloadable` / `XyResourceLoader` / `XyTrustStore` 等可留在 `protocol::ports` 而不进 crate 根，直到嵌入契约需要。
 
-### 端口健康（审计快照 · 2026-07-21）
+### 端口一览
 
 | 端口 | 角色 | 备注 |
 |---|---|---|
@@ -94,8 +124,10 @@ app → agent → protocol/{wire,ports + root types}
 | `XySecretResolver` | 模型注册表 | |
 | `XyHookBus` | 脚本/库钩子 | 空配置 = 不装配 |
 | `XyTrustStore` | Trust 读写 | `&dyn` 调用；未进精选 `pub use` |
-| `XyResourceLoader` | 资源发现抽象 | **暂无生产 `dyn` 消费者**；具体 loader + inherent 为主；升格前先接线再谈精选导出 |
+| `XyResourceLoader` | 资源发现抽象 | 具体 loader + inherent 为主；升格前先接线 |
 | `XyReloadable` | 热重载约束 | 非 dyn 注册表 |
+
+**async port**：七个异步 port 均以 `Arc<dyn …>` / `&dyn …` 注入 → **维持 `async_trait`**；朴素 RPITIT 与 dyn 冲突，默认不做迁移。
 
 后置（LSP / DAP / Sub-agent / 即时设置）认领时：默认走「开关 + `XyTool`/`XyDriver`/`XyEvent`」，**先证明**需要新 port 再提案；产品轴见 `docs/architecture/扩展与开闭.md`。
 
@@ -121,7 +153,7 @@ app → agent → protocol/{wire,ports + root types}
 | bridge LLM DTO（`AiBridge*`） | LLM 叶 SSOT；`XyModel::generate_stream` **只吃** `Vec<LlmMessage>` |
 | protocol → bridge | **MAY** 依赖 **DTO only** 完成组合；**MUST NOT** 依赖 bridge HTTP / vendor SDK |
 
-**叶类型归属（c1210 / c1220）**：
+**叶类型归属**：
 
 | 叶 / 组合 | 归属 | 说明 |
 |---|---|---|
@@ -130,8 +162,6 @@ app → agent → protocol/{wire,ports + root types}
 | `project_for_llm` | **agent** | 投影 MUST 在 agent |
 | chunk / provenance 等真边界差 | `infra/provider/map` | 无 AgentMessage 折叠路径 |
 
-调优史：`src/_TODO.md` §F。设计史：**c1070** / **c1210** / **c1220**。
-
 **开闭**：新 OpenAI-like / Anthropic-like 兼容端 = 新 adapter 或配置；**MUST NOT** 为网关改 `AgentMessage` / ReAct。禁止 Completions「已是 `XyModel` 再包一层」双路径。Pre-1.0 **交付**范围见根 `AGENTS.md`。细则与包边界（含 Responses 流式 BYOT/`Value`）：`packages/xylitol-ai-bridge/AGENTS.md`。
 
 **HTTP / SDK vs hook 缝（隔离）**：
@@ -139,14 +169,22 @@ app → agent → protocol/{wire,ports + root types}
 - 传输实现经 SDK **middleware**（或薄 bridge）在适配器边缘对接；换 SDK = 换 middleware，不改 hook 合约。
 - 禁止为包而包：不另造全局 `XyHttpClient`，除非出现跨方言共享且要进库入口的传输端口。
 - 原始 SSE / 通道错分诊断：**优先进程内 raw provider trace**（fastrace Event + `provider-trace.jsonl`；与映射后 `XyChunk` 对照；debug 默认、release 经 `XYLITOL_PROVIDER_TRACE` —— **不**塞进 hook）。
-- 观测栈：**仅 fastrace**（时间线）+ **`log`**（级别日志）；禁止 `tracing` / 双栈。外挂 MITM 提案已暂停：`llmanspec/do-not-read-me/c999-add-infra-provider-traffic-capture/`。
-- **读 trace 要省 token**：禁止整文件 `Read` JSONL/log；用 skill **`xylitol-inspect-runtime-logs`** → `scripts/inspect_provider_trace.py` / `just obs-*`（summary / lag / lifecycle / turns / channel；过滤 `--since` / `--turn-id` / `--request-id`）。
+
+## 体量与拆分策略（normative）
+
+生产模块避免无结构 God 文件。软顶约 **~1200** 行、硬顶约 **~2000** 行（`wc -l`；含同文件内联测试时一并计入）。测试专用（`harness.rs` / 大块 `#[cfg(test)]`）**另计**，不与生产硬顶混用；仍禁止无结构堆叠。
+
+**默认不做（除非功能逼出或编辑痛点明确）**：
+
+| 区域 | 策略 |
+|---|---|
+| `agent/runtime/react.rs` | 生产剧本 + 同居行为测可同文件；**不为行数外置测**；sub-turn state machine（P3）未开闸 |
+| `infra/session/manager.rs` | **不**按 persist/tree/mutate 大拆；有改动时局部整理即可 |
+| `app/core/driver/` | 已拆 `proto` / `types` / `in_process` / `remote`；再切仅顺手 |
+
+合并后若某生产文件显著超硬顶且无豁免理由，应在 PR 说明拆分计划或为何维持。现场行数用 `find src -name '*.rs' -exec wc -l {} + | sort -nr | head`，**不**在本文件维护超标清单。
 
 ## 跨层测试
 
 - BDD（`tests/features` + `tests/bdd.rs`）；回归（`tests/regression/`）；应用面 / XyDriver 行为测。
 - 设计史：`llmanspec/changes/archive/<变更>/design.md`。
-
-## 体量调音（指针）
-
-生产模块行数预算、超标表、下次调音日 → [`QUALITY_RETUNE.md`](./QUALITY_RETUNE.md)。质量调优待办（临时）→ [`_TODO.md`](./_TODO.md)。根 AGENTS「维护习惯」含长期调音 rule。
