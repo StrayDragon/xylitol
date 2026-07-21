@@ -60,7 +60,7 @@ C  内置工具 Args 类型化                  ← 局部、类型可见
 D  God 文件拆分（react / driver / session）
    └─ driver D5–D7 已完成
    └─ react / session 大拆：默认不做（见 §D 决议）；D11 已分诊待确认
-E  runtime_protocol RPITIT               ← **已关闭（α）**：dyn 全覆盖，维持 async_trait
+E  protocol/ports RPITIT               ← **已关闭（α）**：dyn 全覆盖，维持 async_trait
 F  孪生类型与 domain↔packages 边界     ← **c1210**：compose bridge DTO；消息孪生已删
 G  观测 kind 打尖                        ← 可与 B 并行或紧随
 ```
@@ -74,11 +74,11 @@ G  观测 kind 打尖                        ← 可与 B 并行或紧随
 |---|---|
 | 分层与 seam | `src/AGENTS.md` |
 | TUI 面边界 | `src/app/tui/AGENTS.md` |
-| Provider / 消息投影 | `src/AGENTS.md`「Provider 适配」；`src/infra/provider/map.rs`；`src/domain/llm_project.rs` |
-| 工具 port | `src/runtime_protocol/tool.rs`；实现 `src/infra/tools/` |
-| 钩子 | `src/runtime_protocol/hook.rs`；`src/agent/runtime/hooks.rs`；`src/infra/hooks/` |
+| Provider / 消息投影 | `src/AGENTS.md`「Provider 适配」；`src/infra/provider/map.rs`；`src/agent/llm_project.rs` |
+| 工具 port | `src/protocol/ports/tool.rs`；实现 `src/infra/tools/` |
+| 钩子 | `src/protocol/ports/hook.rs`；`src/agent/runtime/hooks.rs`；`src/infra/hooks/` |
 | XyDriver seam | `src/app/core/driver/`；`src/app/core/dispatch.rs`；心智见 `docs/architecture/库与多客户端.md` |
-| 领域错误 | `src/domain/error.rs` |
+| 契约错误 | `src/protocol/error.rs` |
 | bridge 包边界（后置） | `packages/xylitol-ai-bridge/AGENTS.md` |
 | 根 AGENTS 临时文档约定 | 根 `AGENTS.md`「编写与维护 AGENTS.md」→ 临时交接用 `_TODO` / `_HANDOFF` |
 
@@ -180,7 +180,7 @@ anyhow               // 仅叶 #[source]
 
 ### 背景
 
-- `XyTool::execute(..., args: Value)` + `parameters_schema() -> Value`（`runtime_protocol/tool.rs`）——MCP/动态工具需要。
+- `XyTool::execute(..., args: Value)` + `parameters_schema() -> Value`（`protocol/ports/tool.rs`）——MCP/动态工具需要。
 - 内置工具（`infra/tools/{read,write,edit,bash,grep,find,ls}.rs`）用手写 `args["path"].as_str()` 解析。
 - 脚本 hook 合约是 JSON stdin/stdout → **必须**保留 `Value`（`XyHookBus`）。
 - `infra::hooks::HookEvent` 已部分 typed；`AgentHooks` before/after 仍是 `Value`。
@@ -366,7 +366,7 @@ step(phase, ctx) -> (next, Vec<XyEvent>)   // 或 mpsc，由薄 async_stream 只
 | 项 | 事实 |
 |---|---|
 | 代码 | 文件末 ~8 行：`emit` → `self.emit_lifecycle(event)` |
-| 归属 | `EventBus` 定义在 `infra/event/mod.rs`；port 在 `runtime_protocol::XyEventSink` |
+| 归属 | `EventBus` 定义在 `infra/event/mod.rs`；port 在 `protocol::ports::XyEventSink` |
 | 存活 | **活的**：`composition` / BDD / `react` 测等大量 `Arc::new(EventBus::new()) as Arc<dyn XyEventSink>` 依赖此 impl（同 crate 内任一模块提供即可） |
 | 来历 | c295（`ec7b0c32`）把 `EventSink` 重命名为 `XyEventSink` 时留在 manager；更早则是洋葱重构期「端口 impl 就近堆」的惯性，**不是** session 领域逻辑 |
 | `manager` 耦合 | `use XyEvent` / `XyEventSink` 在 manager 中**仅服务该 impl**；与 `XySessionStore for SessionManager` 无关 |
@@ -439,12 +439,12 @@ step(phase, ctx) -> (next, Vec<XyEvent>)   // 或 mpsc，由薄 async_stream 只
 ### 背景
 
 - `src` 内 `#[async_trait]` **约 37 处**（2026-07-21 `rg`；早先「约百级」偏高，以现场为准）。
-- Port 集中在 `src/runtime_protocol/`；实现在 `infra` / `agent` / 测试 stub；另有 `XyDriver`（`app/core/driver`）亦 `dyn` + `async_trait`。
+- Port 集中在 `src/protocol/ports/`；实现在 `infra` / 测试 stub；另有 `XyDriver`（`app/core/driver`）亦 `dyn` + `async_trait`。
 - Edition 2024 + rustc 1.95：AFIT / RPITIT 可用，但 **带 `async fn` / `-> impl Future` 的 trait 默认仍非 dyn-compatible**。
 
 ### 要做
 
-- [x] **E1** 盘点：列出 `runtime_protocol` 中所有 async 方法的 trait（见下表）。
+- [x] **E1** 盘点：列出 `protocol/ports` 中所有 async 方法的 trait（见下表）。
 - [ ] **E2** 改为 `-> impl Future<Output = …> + Send` — **默认不做**（见决议；与 dyn 冲突）。
 - [ ] **E3** 更新全部实现与 mock/stub — 随 E2；未开闸。
 - [x] **E4** 确认 `dyn Trait`：七个 async port **全部**以 `Arc<dyn …>` / `&dyn …` 注入（见下）；朴素 RPITIT **不可行**。
@@ -463,7 +463,7 @@ step(phase, ctx) -> (next, Vec<XyEvent>)   // 或 mpsc，由薄 async_stream 只
 
 同步 port（本项无关）：`XyPermission` / `XySecretResolver` / `XyTrustStore` / `XyResourceLoader` / `XyReloadable` — 无 `async_trait`。
 
-`runtime_protocol` 内 **不存在**「有 async、却从不用 dyn」的 port → 没有「只改这一处 RPITIT」的甜区。
+`protocol/ports` 内 **不存在**「有 async、却从不用 dyn」的 port → 没有「只改这一处 RPITIT」的甜区。
 
 ### 决议（2026-07-21，E4 驱动）
 
@@ -495,35 +495,37 @@ step(phase, ctx) -> (next, Vec<XyEvent>)   // 或 mpsc，由薄 async_stream 只
 
 ---
 
-## F. 孪生类型与 domain↔packages 边界
+## F. 孪生类型与 protocol↔packages 边界
 
 ### 背景
 
 - 曾有 `domain::LlmMessage` ∥ `AiBridgeMessage` 近 1:1 孪生 + `infra/provider/map.rs` 叶映射。
-- **c1210** 解冻：LLM 叶 SSOT 迁 bridge；domain **组合**之；消息孪生表删除。
+- **c1210**：LLM 叶 SSOT 迁 bridge；组合进 `AgentMessage`；消息孪生表删除。
+- **c1220**：消 `src/domain/` / `runtime_protocol/`；共享类型进 `protocol` 根；ports 进 `protocol/ports`；`project_for_llm` 在 agent；`XyModel` 只吃 LLM DTO。
 
-### 边界心智（c1210 后）
+### 边界心智（c1220 后）
 
 | 侧 | 职责 | 开闭 |
 |---|---|---|
-| **`src/domain`** | session 真源：`AgentMessage = Llm(AiBridgeMessage) \| Env`；Env / session / trust | MAY 依赖 bridge **DTO only**；禁 HTTP/SDK |
+| **`src/protocol` 根** | session 真源类型：`AgentMessage = Llm \| Env`；`XyEvent` / session entries / chunk… | MAY 依赖 bridge **DTO only**；禁 HTTP/SDK |
+| **`src/agent`** | `project_for_llm`、ReAct；再导出消息/`XyEvent` | 不依赖 infra |
 | **`packages/xylitol-ai-bridge`** | LLM 叶 SSOT + 方言 adapter / 计量 | 对厂商开闭；不依赖主仓 |
-| **`infra/provider/map`** | chunk / tool-schema / provenance 等真边界缝；**消息 = identity** | 薄 |
+| **`infra/provider/map`** | chunk / tool-schema / provenance 等真边界缝；**无 AgentMessage 折叠** | 薄 |
 
 ```text
-domain::AgentMessage::Llm(AiBridgeMessage) | Env(EnvMessage)
-        │  project_for_llm（passthrough Llm；fold Env）
+protocol::AgentMessage::Llm(AiBridgeMessage) | Env(EnvMessage)
+        │  agent::project_for_llm（passthrough Llm；fold Env）
         ▼
-Vec<AiBridgeMessage> → dialect adapters
+Vec<AiBridgeMessage> → XyModel / dialect adapters
 ```
 
 ### 归属表
 
 | 类型 | 归属 | 说明 |
 |---|---|---|
-| `AiBridgeMessage` / Part / StopReason / Usage | **bridge**（domain `pub use` 别名） | LLM 叶 SSOT |
-| `EnvMessage` / `AgentMessage` | **domain** | 组合；Env 不进 bridge |
-| session / trust / queue / AgentState | **domain** | 与 bridge 无关 |
+| `AiBridgeMessage` / Part / StopReason / Usage | **bridge**（protocol `pub use` 别名） | LLM 叶 SSOT |
+| `EnvMessage` / `AgentMessage` / `XyEvent` | **protocol 根** | 跨 agent/infra；agent 再导出 |
+| `project_for_llm` | **agent** | 投影 MUST 在 agent |
 | chunk / provenance 若仍双份 | **map 缝** | 仅真边界差 |
 
 ### 要做
@@ -532,20 +534,21 @@ Vec<AiBridgeMessage> → dialect adapters
 - [x] **F4** domain 组合 bridge DTO + 删消息孪生 — **c1210**。
 - [x] **F5** `map.rs` 消息路径 identity；chunk/tool 保留薄 map。
 - [x] **F6** bridge / 主仓 AGENTS 与本决议一致。
+- [x] **F7** 消 domain 顶栏；ports 并入 protocol（方案 B）— **c1220**。
 
 ### 决议
 
-- `domain → xylitol-ai-bridge(dto)`：**yes（仅 DTO）**。
-- 拒绝抽第三 `*-types` crate（除非另议迁出 `xylitol-domain`）。
+- `protocol` 根 → `xylitol-ai-bridge(dto)`：**yes（仅 DTO）**；agent 持有 `project_for_llm`。
+- 拒绝抽第三 `*-types` crate / `vocab`/`types` 子树顶栏。
 - bang-bash 新写：`type=message` + `role=bashExecution`；旧顶层 bash 读提升。
 
 ### 验收
 
-- 无平行 domain `LlmMessage` enum 体；`project_for_llm` → `Vec<AiBridgeMessage>`；Env 永不进 bridge DTO；相关单测绿。
+- 无 `src/domain/` / `src/runtime_protocol/`；无平行 LLM 叶 enum；`project_for_llm` 在 agent → `Vec<AiBridgeMessage>`；`XyModel` 只吃 LLM DTO；相关单测绿。
 
 ### 风险 / SDD
 
-- 行为合约 → **c1210-refactor-compose-bridge-llm**。
+- 行为合约 → **c1210** + **c1220-refactor-fuse-domain-runtime-protocol**。
 
 ---
 

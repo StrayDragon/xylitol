@@ -277,10 +277,7 @@ async fn run_wiring_operation(agent: &AgentState, op: &str) -> Result<(), XyDriv
             let orphan = uuid::Uuid::new_v4().to_string();
             runtime.inner_mut().set_session(orphan);
             let driver = XyInProcessDriver::new(runtime, store);
-            driver
-                .session_tree(SessionTreeKind::MessageHistory)
-                .await
-                .map_err(|e| e)?;
+            driver.session_tree(SessionTreeKind::MessageHistory).await?;
             Ok(())
         }
         "选择模型 fake" => {
@@ -2356,15 +2353,13 @@ fn _t_ar_intent_before_execution(agent: &AgentState) {
             XyEvent::MessageUpdate {
                 message: Some(AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. })),
                 ..
-            } => {
-                if content
-                    .iter()
-                    .any(|p| matches!(p, AgentPart::ToolCall { .. }))
-                {
-                    saw_intent = true;
-                    if tool_start_idx.is_some() {
-                        panic!("MessageUpdate with ToolCall after ToolExecutionStart: {events:?}");
-                    }
+            } if content
+                .iter()
+                .any(|p| matches!(p, AgentPart::ToolCall { .. })) =>
+            {
+                saw_intent = true;
+                if tool_start_idx.is_some() {
+                    panic!("MessageUpdate with ToolCall after ToolExecutionStart: {events:?}");
                 }
             }
             XyEvent::MessageEnd { .. } => {
@@ -4924,7 +4919,6 @@ fn test_rc19_invalid(tokenizer_bdd: TokenizerBdd) {}
 pub struct SurfaceBdd {
     mode: Cell<Option<xylitol::app::cli::SurfaceMode>>,
     print_err: RefCell<String>,
-    help: RefCell<String>,
 }
 
 impl SurfaceBdd {
@@ -4932,7 +4926,6 @@ impl SurfaceBdd {
         Self {
             mode: Cell::new(None),
             print_err: RefCell::new(String::new()),
-            help: RefCell::new(String::new()),
         }
     }
 }

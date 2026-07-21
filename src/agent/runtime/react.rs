@@ -1680,8 +1680,8 @@ mod tests {
                 XyEvent::MessageUpdate {
                     message: Some(AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. })),
                     ..
-                } if !message_end_seen => {
-                    if content.iter().any(|p| {
+                } if !message_end_seen
+                    && content.iter().any(|p| {
                         matches!(
                             p,
                             AgentPart::ToolCall {
@@ -1689,9 +1689,9 @@ mod tests {
                                 ..
                             } if name == "mock_tool"
                         )
-                    }) {
-                        saw_intent_update = true;
-                    }
+                    }) =>
+                {
+                    saw_intent_update = true;
                 }
                 XyEvent::MessageEnd { .. } => {
                     message_end_seen = true;

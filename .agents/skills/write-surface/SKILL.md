@@ -20,9 +20,9 @@ composition::build_agent  →  XyInProcessDriver  →  XyDriver::run(prompt)
 
 | 层 | 处置 | 具体对象 |
 |---|---|---|
-| **复用，绝不重写** | 共享，所有面走同一条 | `app/core/composition.rs::build_agent`（组合根，唯一允许同时 import agent+infra，见 `src/AGENTS.md`）；`XyDriver` trait + `XyInProcessDriver`；`AgentRuntime::run/run_with_id → XyEventStream`；`protocol::Command` 的语义；`domain::lifecycle::XyEvent` 变体集 |
+| **复用，绝不重写** | 共享，所有面走同一条 | `app/core/composition.rs::build_agent`（组合根，唯一允许同时 import agent+infra，见 `src/AGENTS.md`）；`XyDriver` trait + `XyInProcessDriver`；`AgentRuntime::run/run_with_id → XyEventStream`；`protocol::Command` 的语义；`XyEvent` 变体集（`protocol/lifecycle`；agent 再导出） |
 | **每面重写，绝不共享** | 面内独占 | 输入采集（REPL 循环 / HTTP handler / 行编辑器）；渲染（stdout / TUI widget / HTTP JSON）；slash 命令 → driver 调用的本地分派 |
-| **新 agent 能力** | 进 `agent/`，不进面 | 若新面需要 agent 还没有的行为，那是 agent 层的 port 扩容（先在 `runtime_protocol/` 加 trait，再在 `infra/` 实现），不是在面里 reach into `agent::session` |
+| **新 agent 能力** | 进 `agent/`，不进面 | 若新面需要 agent 还没有的行为，那是 agent 层的 port 扩容（先在 `protocol/ports/` 加 trait，再在 `infra/` 实现），不是在面里 reach into `agent::session` |
 
 判定原则：一段逻辑「任何面都需要」→ 复用侧；「只有这个面才需要」→ 重写侧；「需要 agent/infra 内部」→ 不属于面，上提到 agent/infra。
 
@@ -40,7 +40,7 @@ composition::build_agent  →  XyInProcessDriver  →  XyDriver::run(prompt)
 
 ### 步骤 2 — 确认复用边界，只改重写侧
 
-- 面的新代码只允许 import：`crate::app::core::composition`、`crate::app::core::driver`（`XyDriver`/`XyInProcessDriver`/`XyRemoteDriver`）、`crate::agent`（mod 级：`AgentRuntime`/`AgentCapabilities`/`XyEvent`/`XyEventStream`/`AgentBuilder`）、`crate::protocol`、`crate::domain`。
+- 面的新代码只允许 import：`crate::app::core::composition`、`crate::app::core::driver`（`XyDriver`/`XyInProcessDriver`/`XyRemoteDriver`）、`crate::agent`（mod 级：`AgentRuntime`/`AgentCapabilities`/`XyEvent`/`XyEventStream`/`AgentBuilder`）、`crate::protocol`（含 `wire` / `ports` / 根共享类型；或 crate 精选 `pub use`）。
 - 面**禁止** import：`crate::agent::session::*`、`crate::agent::runtime::*`、`crate::infra::*` 的任何子模块。唯一例外是组合根（`cli/mod.rs`、`server/subcommand.rs`、`rpc.rs`、`core/composition.rs`），它们在构造期注入具体 adapter。
 - 分层靠 `src/AGENTS.md` + review；面 reach-in 靠本 skill 社会性规则，**无** arch_guard 源码 grep 闸。
 

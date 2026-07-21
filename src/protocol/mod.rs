@@ -26,7 +26,7 @@ pub mod types;
 // Wire Command/Event at protocol root (legacy call sites).
 pub use wire::{Command, Envelope, ErrorCode, Event};
 
-// Flat port re-exports (legacy `runtime_protocol::*` call sites).
+// Flat port re-exports for `crate::protocol::{XyModel, …}` call sites.
 pub use ports::{
     BashExecOpts, LifecycleHandler, NoopHookBus, SessionListEntry, XyBashExecutor, XyBashResult,
     XyEventSink, XyExportIo, XyGenerateOptions, XyHookBus, XyHookOutcome, XyModel, XyModelBuilder,
