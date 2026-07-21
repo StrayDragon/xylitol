@@ -752,50 +752,19 @@ impl SessionManager {
 
         for entry in &branch {
             match entry {
-                SessionEntry::Message(m) => {
-                    messages.push(m.message.clone());
-                }
-                SessionEntry::Compaction(c) => {
-                    // Compaction summary as user-shaped AgentMessage JSON (no `system` role).
-                    messages.push(crate::domain::session_types::fixture_message_json(
-                        "user",
-                        &format!("[Previous context summary]\n{}", c.summary),
-                    ));
-                }
-                SessionEntry::BranchSummary(b) => {
-                    messages.push(crate::domain::session_types::fixture_message_json(
-                        "user",
-                        &format!("[Branch summary]\n{}", b.summary),
-                    ));
-                }
                 SessionEntry::ModelChange(mc) => {
                     model = Some((mc.provider.clone(), mc.model_id.clone()));
                 }
                 SessionEntry::ThinkingLevelChange(tc) => {
                     thinking_level = tc.thinking_level.clone();
                 }
-                SessionEntry::CustomMessage(cm) => {
-                    // Custom messages participate in context as user messages
-                    if cm.display {
-                        messages.push(cm.content.clone());
+                other => {
+                    // Unified entry→AgentMessage (honors exclude; lifts legacy bash).
+                    if let Some(msg) = other.as_agent_message()
+                        && let Ok(v) = serde_json::to_value(&msg)
+                    {
+                        messages.push(v);
                     }
-                }
-                SessionEntry::Header(_)
-                | SessionEntry::Custom(_)
-                | SessionEntry::Label(_)
-                | SessionEntry::SessionInfo(_) => {
-                    // Non-context entries: skip
-                }
-                SessionEntry::BashExecution(b) => {
-                    // Bash executions enter context only when not explicitly excluded (`!` vs `!!`).
-                    if b.exclude_from_context {
-                        continue;
-                    }
-                    let msg = crate::domain::session_types::fixture_message_json(
-                        "user",
-                        &format!("$ {}\n{}", b.command, b.output),
-                    );
-                    messages.push(msg);
                 }
             }
         }
@@ -808,64 +777,14 @@ impl SessionManager {
     }
 
     /// Build session context as `Vec<AgentMessage>` (type-safe version).
-    /// Walks from leaf to root, reconstructing messages in chronological order.
-    /// Handles compaction summaries, bash execution, and branch summaries.
+    /// Walks from leaf to root via unified [`SessionEntry::as_agent_message`].
     pub async fn build_session_context_v2(
         &self,
         session_id: &str,
     ) -> Result<Vec<crate::domain::message::AgentMessage>, String> {
         let leaf_id = self.get_leaf(session_id);
         let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
-
-        let mut messages = Vec::new();
-        use crate::domain::message::{AgentMessage, EnvMessage};
-
-        for entry in &branch {
-            match entry {
-                SessionEntry::Compaction(c) => {
-                    messages.push(AgentMessage::Env(EnvMessage::CompactionSummaryMessage {
-                        summary: c.summary.clone(),
-                        tokens_before: c.tokens_before,
-                        tokens_after: 0,
-                        read_files: None,
-                        modified_files: None,
-                    }));
-                }
-                SessionEntry::BranchSummary(b) => {
-                    messages.push(AgentMessage::Env(EnvMessage::BranchSummaryMessage {
-                        summary: b.summary.clone(),
-                        from_id: b.from_id.clone(),
-                    }));
-                }
-                SessionEntry::CustomMessage(cm) => {
-                    if cm.display {
-                        let text = cm.content.as_str().unwrap_or("").to_string();
-                        messages.push(AgentMessage::user(text));
-                    }
-                }
-                SessionEntry::BashExecution(b) => {
-                    if b.exclude_from_context {
-                        continue;
-                    }
-                    messages.push(AgentMessage::bash(&b.command, &b.output, b.exit_code));
-                }
-                SessionEntry::Message(m) => {
-                    // Try to parse message JSON into AgentMessage
-                    if let Ok(msg) = serde_json::from_value::<AgentMessage>(m.message.clone()) {
-                        messages.push(msg);
-                    }
-                }
-                // Non-context entries: skip
-                SessionEntry::Header(_)
-                | SessionEntry::Custom(_)
-                | SessionEntry::Label(_)
-                | SessionEntry::SessionInfo(_)
-                | SessionEntry::ModelChange(_)
-                | SessionEntry::ThinkingLevelChange(_) => {}
-            }
-        }
-
-        Ok(messages)
+        Ok(branch.iter().filter_map(|e| e.as_agent_message()).collect())
     }
 
     /// Get a range of branch entries between two entry IDs.
@@ -1408,7 +1327,7 @@ impl SessionManager {
         self.append(session_id, &entry).await
     }
 
-    /// Append a bash-execution entry (`!cmd` / `!!cmd`).
+    /// Append a bash-execution entry (`!cmd` / `!!cmd`) as nested Message (c1210).
     ///
     /// Stored on disk; the `exclude_from_context` flag controls whether it
     /// participates in LLM context (see `build_session_context`).
@@ -1416,21 +1335,15 @@ impl SessionManager {
         &self,
         params: BashExecutionParams<'_>,
     ) -> Result<(), String> {
-        let entry = SessionEntry::BashExecution(BashExecutionEntry {
-            base: EntryBase {
-                entry_type: "bash_execution".into(),
-                id: String::new(),
-                parent_id: None,
-                timestamp: String::new(),
-            },
-            command: params.command.to_string(),
-            output: params.output.to_string(),
-            exit_code: params.exit_code,
-            cancelled: params.cancelled,
-            truncated: params.truncated,
-            full_output_path: params.full_output_path.map(|s| s.to_string()),
-            exclude_from_context: params.exclude_from_context,
-        });
+        let entry = crate::domain::session_types::bash_execution_message_entry(
+            params.command,
+            params.output,
+            params.exit_code,
+            params.cancelled,
+            params.truncated,
+            params.full_output_path.map(|s| s.to_string()),
+            params.exclude_from_context,
+        );
         self.append(params.session_id, &entry).await
     }
 

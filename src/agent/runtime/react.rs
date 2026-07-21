@@ -1311,7 +1311,7 @@ mod tests {
         let session_mgr = SessionManager::new(SessionManager::default_dir());
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr.clone());
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-        let session = AgentCapabilities::new(
+        let mut session = AgentCapabilities::new(
             reg,
             ToolSet::from_iter(crate::infra::tools::default_tools()),
             store,
@@ -1332,6 +1332,7 @@ mod tests {
             crate::agent::session::QueueMode::default(),
             None,
         );
+        session.select_model("mock").expect("select mock");
 
         assert!(session.current_model().is_some());
         assert_eq!(session.current_model().unwrap().id, "mock");
@@ -1368,7 +1369,7 @@ mod tests {
         let session_mgr = SessionManager::new(SessionManager::default_dir());
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr.clone());
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-        let session = AgentCapabilities::new(
+        let session = select_mock(AgentCapabilities::new(
             reg,
             ToolSet::from_iter(crate::infra::tools::default_tools()),
             store,
@@ -1388,7 +1389,7 @@ mod tests {
             crate::agent::session::QueueMode::default(),
             crate::agent::session::QueueMode::default(),
             None,
-        );
+        ));
 
         let mut loop_runner = AgentRuntime::new(session);
         let _stream = loop_runner.run_with_id("hello", "test-session").await;
@@ -1524,6 +1525,13 @@ mod tests {
         reg
     }
 
+    fn select_mock(mut session: AgentCapabilities) -> AgentCapabilities {
+        session
+            .select_model("mock")
+            .expect("select mock model for react tests");
+        session
+    }
+
     fn mock_model_builder(chunks: Vec<crate::domain::types::XyChunk>) -> ModelBuilderFn {
         Arc::new(move |_| {
             Ok(Arc::new(MockModel {
@@ -1548,7 +1556,7 @@ mod tests {
         let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-        let session = AgentCapabilities::new(
+        let mut session = AgentCapabilities::new(
             reg,
             tools,
             Arc::clone(&store),
@@ -1567,6 +1575,9 @@ mod tests {
             crate::agent::session::QueueMode::default(),
             None,
         );
+        session
+            .select_model("mock")
+            .expect("select mock model for react tests");
         (AgentRuntime::new(session), store)
     }
 
@@ -1951,7 +1962,7 @@ mod tests {
                 rounds: std::sync::Mutex::new(rounds.clone()),
             }) as Arc<dyn XyModel>)
         });
-        let session = AgentCapabilities::new(
+        let mut session = AgentCapabilities::new(
             reg,
             tools,
             store,
@@ -1970,6 +1981,9 @@ mod tests {
             crate::agent::session::QueueMode::default(),
             None,
         );
+        session
+            .select_model("mock")
+            .expect("select mock model for round tests");
         AgentRuntime::new(session)
     }
 
@@ -2330,7 +2344,7 @@ mod tests {
                 polled: polled_for_builder.clone(),
             }) as Arc<dyn XyModel>)
         });
-        let session = AgentCapabilities::new(
+        let session = select_mock(AgentCapabilities::new(
             reg,
             ToolSet::empty(),
             store,
@@ -2348,7 +2362,7 @@ mod tests {
             crate::agent::session::QueueMode::default(),
             crate::agent::session::QueueMode::default(),
             None,
-        );
+        ));
         let mut agent = AgentRuntime::new(session);
 
         let mut stream = agent.run("go").await;
@@ -2461,7 +2475,7 @@ mod tests {
                 }) as Arc<dyn XyModel>)
             })
         };
-        let mut agent = AgentRuntime::new(AgentCapabilities::new(
+        let mut agent = AgentRuntime::new(select_mock(AgentCapabilities::new(
             reg,
             ToolSet::empty(),
             store,
@@ -2479,7 +2493,7 @@ mod tests {
             crate::agent::session::QueueMode::default(),
             crate::agent::session::QueueMode::default(),
             None,
-        ));
+        )));
         let sid = "multi-turn-session".to_string();
         agent.inner_mut().set_session(sid.clone());
 
@@ -2561,7 +2575,7 @@ mod tests {
                 }) as Arc<dyn XyModel>)
             })
         };
-        let mut agent = AgentRuntime::new(AgentCapabilities::new(
+        let mut agent = AgentRuntime::new(select_mock(AgentCapabilities::new(
             reg,
             ToolSet::empty(),
             store,
@@ -2579,7 +2593,7 @@ mod tests {
             crate::agent::session::QueueMode::default(),
             crate::agent::session::QueueMode::default(),
             None,
-        ));
+        )));
 
         let mut stream = agent.run("real user hello").await;
         while stream.next().await.is_some() {}
@@ -2669,7 +2683,7 @@ mod tests {
                 Ok(Arc::new(RecordingMockModel { seen: seen.clone() }) as Arc<dyn XyModel>)
             })
         };
-        let mut agent = AgentRuntime::new(AgentCapabilities::new(
+        let mut agent = AgentRuntime::new(select_mock(AgentCapabilities::new(
             reg,
             ToolSet::empty(),
             store,
@@ -2687,7 +2701,7 @@ mod tests {
             crate::agent::session::QueueMode::default(),
             crate::agent::session::QueueMode::default(),
             None,
-        ));
+        )));
         agent.apply_skills(vec![SkillInfo {
             name: "demo".into(),
             description: Some("d".into()),

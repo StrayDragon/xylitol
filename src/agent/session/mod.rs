@@ -657,7 +657,7 @@ impl AgentCapabilities {
             .await
     }
 
-    /// Persist a bash result as a `BashExecution` session entry.
+    /// Persist a bash result as `SessionEntry::Message` with `role=bashExecution`.
     pub async fn record_bash_result(
         &self,
         command: &str,

@@ -41,7 +41,7 @@
 
 | 层 | 角色 | 关键约束 |
 |---|---|---|
-| `domain/` | 纯领域词汇（`XyEvent` / 消息类型等） | 零 crate 内依赖 |
+| `domain/` | 纯领域词汇（`XyEvent` / 消息类型等） | 零 crate 内依赖；MAY 依赖 bridge **DTO only** |
 | `runtime_protocol/` | agent↔infra 边界 traits（ports） | 只依赖 `domain/` |
 | `agent/` | 薄编排核心（ReAct 循环、session、model、tools 聚合） | 不依赖 `infra`（约定 + review） |
 | `infra/` | 运行时域（provider adapter、工具实现、config、session 等） | 不依赖 `agent`（约定 + review） |

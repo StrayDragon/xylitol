@@ -1,36 +1,15 @@
 //! SessionEntry → AgentMessage conversion.
 //!
-//! Provides [`SessionEntry::as_agent_message()`] for converting persisted
-//! session entries back into runtime agent messages.
-
-use crate::domain::message::AgentMessage;
-use crate::domain::session_types::SessionEntry;
-
-impl SessionEntry {
-    /// Convert a SessionEntry to `AgentMessage` if it contains conversation content.
-    ///
-    /// c646: only tagged AgentMessage JSON is accepted (E1 — no legacy untagged content).
-    pub fn as_agent_message(&self) -> Option<AgentMessage> {
-        match self {
-            SessionEntry::Message(msg) => {
-                match serde_json::from_value::<AgentMessage>(msg.message.clone()) {
-                    Ok(agent_msg) => Some(agent_msg),
-                    Err(e) => {
-                        log::warn!(target: "xylitol::session", "skip message entry: AgentMessage deserialize failed (c646 tagged wire only) error={}", e);
-                        None
-                    }
-                }
-            }
-            _ => None,
-        }
-    }
-}
+//! The conversion lives on [`crate::domain::session_types::SessionEntry::as_agent_message`]
+//! (c1210 unified seed path). This module keeps focused unit tests that previously
+//! lived here.
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::domain::message::AgentPart;
-    use crate::domain::session_types::{EntryBase, MessageEntry, fixture_message_json};
+    use crate::domain::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
+    use crate::domain::session_types::{
+        BashExecutionEntry, EntryBase, MessageEntry, SessionEntry, fixture_message_json,
+    };
     use serde_json::{Value, json};
 
     fn entry(message: Value) -> SessionEntry {
@@ -68,9 +47,7 @@ mod tests {
         }));
         let msg = e.as_agent_message().expect("assistant");
         match msg {
-            crate::domain::message::AgentMessage::Llm(
-                crate::domain::message::LlmMessage::AssistantMessage { content, .. },
-            ) => {
+            AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. }) => {
                 assert!(matches!(
                     content.as_slice(),
                     [
@@ -97,5 +74,72 @@ mod tests {
             "model": "",
         }));
         assert!(e.as_agent_message().is_none());
+    }
+
+    #[test]
+    fn lifts_legacy_top_level_bash() {
+        let e = SessionEntry::BashExecution(BashExecutionEntry {
+            base: EntryBase {
+                entry_type: "bashExecution".into(),
+                id: "b1".into(),
+                parent_id: None,
+                timestamp: "t".into(),
+            },
+            command: "ls".into(),
+            output: "a".into(),
+            exit_code: Some(0),
+            cancelled: false,
+            truncated: false,
+            full_output_path: None,
+            exclude_from_context: false,
+        });
+        let msg = e.as_agent_message().expect("lift");
+        match msg {
+            AgentMessage::Env(EnvMessage::BashExecutionMessage {
+                command,
+                output,
+                exclude_from_context,
+                ..
+            }) => {
+                assert_eq!(command, "ls");
+                assert_eq!(output, "a");
+                assert!(!exclude_from_context);
+            }
+            _ => panic!("expected Env bash"),
+        }
+    }
+
+    #[test]
+    fn skips_excluded_nested_bash_message() {
+        let e = entry(json!({
+            "role": "bashExecution",
+            "command": "secret",
+            "output": "x",
+            "cancelled": false,
+            "truncated": false,
+            "exclude_from_context": true,
+        }));
+        assert!(e.as_agent_message().is_none());
+    }
+
+    #[test]
+    fn compaction_projects_to_env() {
+        use crate::domain::session_types::CompactionEntry;
+        let e = SessionEntry::Compaction(CompactionEntry {
+            base: EntryBase {
+                entry_type: "compaction".into(),
+                id: "c1".into(),
+                parent_id: None,
+                timestamp: "t".into(),
+            },
+            summary: "sum".into(),
+            first_kept_entry_id: "m1".into(),
+            tokens_before: 100,
+            details: None,
+            from_hook: None,
+        });
+        let msg = e.as_agent_message().expect("compaction");
+        assert_eq!(msg.role_name(), "compactionSummary");
+        assert!(msg.text().contains("sum"));
     }
 }
